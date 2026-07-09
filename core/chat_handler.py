@@ -633,7 +633,12 @@ def handle_chat(self):
         system_prompt = _get_manifesto_content(manifesto_path)
         if not system_prompt.strip():
             system_prompt = """Sei Sigma AI Studio, un assistente AI integrato in Sigma Studio.
-Rispondi in italiano in modo chiaro, diretto e strutturato."""
+Rispondi in italiano in modo chiaro, diretto e strutturato.
+## FORMATO RISPOSTA
+In modalità CHIEDI rispondi SEMPRE con JSON: {"response": "La risposta all'utente...", "thinking": "Il tuo ragionamento passo-passo..."}
+- "response": solo la risposta finale, ben formattata
+- "thinking": il processo logico separato (verrà mostrato con toggle "Mostra ragionamento")
+MAI mischiare thinking e response. MAI usare tag XML."""
 
         # --- BUILD SYSTEM PROMPT ---
         if allow_actions or planning_mode:
