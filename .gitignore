@@ -58,8 +58,11 @@ Thumbs.db
 agent_context.db
 agent_memory/
 
-# Agent manifests (user-specific prompts)
+# Agent manifests (user-created agents)
 manifesti/
+
+# Sigma0 — official admin agent (tracked in repo)
+!sigma0/
 
 # Agent metadata (auto-generated from manifesti + API)
 agents_meta.json

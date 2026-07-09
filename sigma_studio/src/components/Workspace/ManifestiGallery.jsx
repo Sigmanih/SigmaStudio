@@ -17,12 +17,12 @@ export default function ManifestiGallery({ modules, manifesti, openTab, setFileM
   const [modelsLoading, setModelsLoading] = useState(false);
   const [creatingModel, setCreatingModel] = useState(false);
   const [createResult, setCreateResult] = useState(null);
-  const [selectedManifesto, setSelectedManifesto] = useState('manifesti/agente0.md');
+  const [selectedManifesto, setSelectedManifesto] = useState('sigma0/agente0.md');
   const [modelName, setModelName] = useState('sigma-agent');
   const [baseModel, setBaseModel] = useState('llama3.2');
 
   useEffect(() => {
-    fetch('/api/get_file?path=manifesti/agente0.md')
+    fetch('/api/get_file?path=sigma0/agente0.md')
       .then(r => r.json())
       .then(d => { 
         if (d.success) setManifestoText(d.content); 
@@ -166,7 +166,7 @@ export default function ManifestiGallery({ modules, manifesti, openTab, setFileM
           Scegli, modifica o crea il tuo manifesto, poi genera un modello AI su Ollama con un click.
         </p>
         <div style={{ display: 'flex', gap: '8px' }}>
-          <button className="mg-btn-primary" onClick={() => openTab({ name: 'agente0.md', path: 'manifesti/agente0.md' }, 'manifesti')}>
+          <button className="mg-btn-primary" onClick={() => openTab({ name: 'agente0.md', path: 'sigma0/agente0.md' }, 'manifesti')}>
             <Eye size={14} />
             Leggi il Manifesto
           </button>
@@ -302,7 +302,7 @@ export default function ManifestiGallery({ modules, manifesti, openTab, setFileM
           <div className="mg-lab-col">
             <label>Manifesto base</label>
             <select value={selectedManifesto} onChange={e => setSelectedManifesto(e.target.value)}>
-              <option value="manifesti/agente0.md">agente0.md (Manifesto principale)</option>
+              <option value="sigma0/agente0.md">agente0.md (Sigma AI Architect — Admin)</option>
               {manifesti.map((mf, i) => (
                 <option key={i} value={mf.path}>{mf.filename}</option>
               ))}
