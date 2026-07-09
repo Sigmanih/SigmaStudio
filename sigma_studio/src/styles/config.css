@@ -1,0 +1,36 @@
+/* ========================================================================
+   AI CONFIG MODAL — Fixed spacing & layout
+   ======================================================================== */
+
+.config-modal { max-width: 580px !important; width: 580px !important; padding: 0 !important; overflow-y: auto; max-height: 90vh; }
+.config-modal::before { display: none; }
+.config-modal .modal-header { margin-bottom: 0; padding: 16px 20px; }
+.config-modal .modal-title { display: flex; align-items: center; gap: 8px; font-size: 0.9rem; font-weight: 700; color: var(--primary); }
+.config-modal .modal-close { background: none; border: none; color: var(--text-dark); cursor: pointer; padding: 4px; border-radius: 4px; transition: var(--trans-fast); }
+
+.config-provider-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; padding: 8px 20px 4px; }
+.provider-chip { display: flex; align-items: center; gap: 4px; padding: 6px 8px; border-radius: 6px; border: 1px solid var(--border-bright); background: rgba(255,255,255,0.02); color: var(--text-dim); cursor: pointer; transition: var(--trans-fast); font-size: 0.65rem; font-weight: 600; width: 100%; }
+.provider-chip:hover { border-color: var(--primary-border); color: var(--text); background: rgba(255,255,255,0.04); }
+.provider-chip.active { border-color: var(--primary); background: rgba(0,210,255,0.08); color: var(--primary); }
+.provider-chip-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 0.62rem; }
+
+.config-grid { display: flex; flex-direction: column; gap: 10px; padding: 10px 20px 16px; }
+.config-field { display: flex; flex-direction: column; gap: 3px; }
+.config-field span { font-size: 0.65rem; text-transform: uppercase; letter-spacing: 0.8px; color: var(--text-dim); margin-bottom: 1px; display: flex; align-items: center; gap: 4px; }
+.config-field input, .config-field select { background: rgba(0,0,0,0.3); border: 1px solid var(--border-bright); border-radius: 6px; padding: 8px 10px; font-size: 0.78rem; color: var(--text); outline: none; font-family: 'JetBrains Mono', monospace; transition: var(--trans-fast); }
+.config-field input:focus, .config-field select:focus { border-color: var(--primary); box-shadow: 0 0 0 2px var(--primary-glow); }
+.config-field select { font-family: 'Inter', sans-serif; cursor: pointer; }
+.config-field-row { display: flex; gap: 6px; align-items: center; }
+.config-field-with-range { display: flex; align-items: center; gap: 6px; }
+.config-field-with-range input[type="range"] { flex: 1; accent-color: var(--primary); height: 3px; padding: 0; border: none; }
+.config-range-value { font-size: 0.68rem; font-family: 'JetBrains Mono', monospace; color: var(--primary); min-width: 30px; text-align: right; }
+.config-params-row { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; }
+.config-hint { font-size: 0.6rem; color: var(--text-dark); margin-top: 1px; line-height: 1.3; }
+.btn-small { display: inline-flex; align-items: center; gap: 4px; padding: 5px 8px; font-size: 0.65rem; border-radius: 6px; background: rgba(255,255,255,0.04); border: 1px solid var(--border-bright); color: var(--text-dim); cursor: pointer; }
+.btn-small:hover { background: var(--primary-glow); border-color: var(--primary-border); color: var(--primary); }
+.test-status { padding: 8px 20px; font-size: 0.75rem; font-family: 'JetBrains Mono', monospace; }
+.test-status.ok { color: var(--success); background: rgba(63,185,80,0.06); }
+.test-status.err { color: var(--error); background: rgba(255,85,85,0.06); }
+.config-modal .modal-footer { padding: 12px 20px; margin-top: 0; border-top: 1px solid var(--border); gap: 8px; }
+.config-modal .modal-footer .btn-cancel { padding: 8px 16px; font-size: 0.78rem; min-width: auto; }
+.config-modal .modal-footer .btn-primary { padding: 8px 16px; font-size: 0.78rem; min-width: auto; }

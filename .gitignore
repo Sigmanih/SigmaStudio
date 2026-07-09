@@ -1,0 +1,74 @@
+# Dependencies
+node_modules/
+sigma_studio/node_modules/
+
+# Build output
+sigma_studio/dist/
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+
+# Environment / Secrets
+.env
+.env.local
+.env.*.local
+*.env
+
+# Config with API keys
+config.json
+config.local.json
+
+# Data modules (each user adds their own)
+data/
+!data/.gitkeep
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Debug / Temp test output
+test_1M_output.txt
+test_output.txt
+*.tmp
+
+# Scratch (temporary workspace)
+scratch/
+!scratch/.gitkeep
+
+# Pipeline definitions (user-specific)
+collatz_pipeline.json
+
+# Virtual Environment
+.venv/
+projects/
+sandboxes.json
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Database files (contain user data)
+agent_context.db
+agent_memory/
+
+# Agent manifests (user-specific prompts)
+manifesti/
+
+# Agent metadata (auto-generated from manifesti + API)
+agents_meta.json
+
+# Temp / generated files
+sigma_studio/build_log.txt
+sigma_studio/modules_meta.json
+modules_meta.json
+tasks.json
+
+# Notebooks / experiments
+*.ipynb

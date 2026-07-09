@@ -1,0 +1,280 @@
+"""Agent Templates for Sigma Studio — Genera Modelfile e registra nuovi agenti.
+Permette di creare rapidamente nuovi agenti AI specializzati."""
+import os
+import json
+import datetime
+
+AGENT_TEMPLATES = {
+    "mathematics": {
+        "label": "Ricercatore Matematico",
+        "description": "Specializzato in matematica, teoremi, dimostrazioni e analisi numerica",
+        "base_model": "llama3.2",
+        "temperature": 0.7,
+        "context_window": 8192,
+        "capabilities": ["create_file", "edit_file", "run_test", "read_file", "update_task", "send_notification"],
+        "allowed_topics": ["matematica"],
+        "system_prompt": """Sei un assistente AI specializzato in ricerca matematica.
+Il tuo ruolo è aiutare l'utente a navigare, comprendere, creare e validare contenuti di ricerca matematica.
+
+Competenze:
+- Dimostrazioni e teoremi
+- Analisi numerica e computazionale
+- Teoria dei numeri
+- Topologia
+- Generazione di test di verifica
+
+Regole:
+- Usa SEMPRE percorsi validi: data/<topic>/<NN_modulo>/<sezione>/<file>
+- Le uniche sezioni permesse sono: teoria/, test/, viz/, docs/, whitepapers/
+- Prima di creare un file, verifica che il modulo esista
+- Per ogni file creato, aggiorna il task corrispondente
+"""
+    },
+    "software_development": {
+        "label": "Sviluppatore Software",
+        "description": "Specializzato in sviluppo software full-stack, refactoring e debugging",
+        "base_model": "llama3.2",
+        "temperature": 0.3,
+        "context_window": 16384,
+        "capabilities": ["create_file", "edit_file", "delete_file", "rename_file", "run_test", "read_file", "run_terminal", "update_task", "send_notification"],
+        "allowed_topics": [],
+        "system_prompt": """Sei un assistente AI specializzato in sviluppo software.
+Il tuo ruolo è scrivere, modificare e testare codice di alta qualità.
+
+Competenze:
+- Sviluppo full-stack (React, Python, Node.js)
+- Refactoring e debugging
+- Scrittura test automatici
+- Ottimizzazione performance
+- Documentazione tecnica
+
+Regole:
+- Temperatura consigliata: 0.3 (bassa, per preservare struttura)
+- MAI rimuovere DOCTYPE, <html>, <head>, <title>, <body> da file HTML
+- MAI rompere la struttura DOM
+- Dopo ogni modifica, verifica che il codice sia valido
+"""
+    },
+    "research_assistant": {
+        "label": "Assistente di Ricerca",
+        "description": "Specializzato in ricerca scientifica, analisi dati e documentazione",
+        "base_model": "llama3.2",
+        "temperature": 0.6,
+        "context_window": 16384,
+        "capabilities": ["create_file", "edit_file", "run_test", "read_file", "update_task", "send_notification"],
+        "allowed_topics": [],
+        "system_prompt": """Sei un assistente AI specializzato in ricerca scientifica.
+Il tuo ruolo è aiutare nella ricerca, analisi e documentazione scientifica.
+
+Competenze:
+- Ricerca bibliografica
+- Analisi di dati scientifici
+- Stesura di paper e whitepaper
+- Generazione di visualizzazioni
+- Validazione di risultati
+
+Regole:
+- Verifica sempre le fonti e i dati
+- Usa un linguaggio preciso e formale
+- Documenta ogni passaggio della ricerca
+"""
+    },
+    "data_analyst": {
+        "label": "Analista Dati",
+        "description": "Specializzato in analisi dati, statistiche e visualizzazioni",
+        "base_model": "llama3.2",
+        "temperature": 0.4,
+        "context_window": 32768,
+        "capabilities": ["create_file", "edit_file", "run_test", "read_file", "update_task", "send_notification"],
+        "allowed_topics": [],
+        "system_prompt": """Sei un assistente AI specializzato in analisi dati.
+Il tuo ruolo è analizzare dati, generare statistiche e creare visualizzazioni.
+
+Competenze:
+- Analisi statistica
+- Data mining
+- Generazione grafici (D3.js, matplotlib)
+- Report analitici
+- Correlazione e trend analysis
+
+Regole:
+- Usa numeri precisi e fonti verificabili
+- Spiega le metodologie usate
+- Genera visualizzazioni chiare e informative
+"""
+    },
+}
+
+
+def generate_modelfile(template_key: str, name: str, base_model: str = None, temperature: float = None) -> str:
+    """Generate a Modelfile from a template.
+
+    Args:
+        template_key: Key from AGENT_TEMPLATES
+        name: Name for the agent
+        base_model: Override base model
+        temperature: Override temperature
+
+    Returns:
+        Complete Modelfile content as string
+    """
+    template = AGENT_TEMPLATES.get(template_key)
+    if not template:
+        return ""
+
+    model = base_model or template["base_model"]
+    temp = temperature if temperature is not None else template["temperature"]
+    ctx = template["context_window"]
+    system = template["system_prompt"].strip()
+    label = template["label"]
+
+    modelfile_lines = [
+        f"FROM {model}",
+        "",
+        "# ==============================================================================",
+        f"# {name} — {label}",
+        "# Generated by Sigma Studio Agent Templates",
+        "# ==============================================================================",
+        "",
+        'SYSTEM """',
+        system,
+        "",
+        "## REGOLE OPERATIVE",
+        "- Rispondi in italiano in modo chiaro e strutturato",
+        "- Usa percorsi completi per tutti i file",
+        "- Rispetta la struttura modulare della piattaforma",
+        "- Ogni azione deve generare una notifica nel task corrispondente",
+        "- Non modificare file che non sono nella sandbox consentita",
+        '"""',
+        "",
+        'TEMPLATE """<|system|>',
+        "{{ .System }}<|end|>",
+        "<|user|>",
+        "{{ .Prompt }}<|end|>",
+        "<|assistant|>",
+        '"""',
+        "",
+        f"PARAMETER temperature {temp}",
+        "PARAMETER top_p 0.9",
+        "PARAMETER top_k 40",
+        "PARAMETER repeat_penalty 1.1",
+        f"PARAMETER num_ctx {ctx}",
+        "PARAMETER num_predict 4096",
+        "",
+        'PARAMETER stop "<|system|>"',
+        'PARAMETER stop "<|user|>"',
+        'PARAMETER stop "<|assistant|>"',
+        'PARAMETER stop "<|end|>"',
+    ]
+
+    return "\n".join(modelfile_lines)
+
+
+def register_agent_from_template(self, req) -> dict:
+    """Handle POST /api/agents/create — Create agent from template.
+
+    Body:
+    {
+        "name": "my_math_agent",
+        "display_name": "My Math Agent",
+        "template": "mathematics",
+        "base_model": "qwen3.6:35b",
+        "temperature": 0.5,
+        "topics": ["matematica"]
+    }
+    """
+    from core.agent_registry import register_agent
+
+    try:
+        name = req.get("name", "").strip().lower().replace(" ", "_")
+        display_name = req.get("display_name", "").strip() or name
+        template_key = req.get("template", "research_assistant")
+        base_model = req.get("base_model")
+        temperature = req.get("temperature")
+        topics = req.get("topics", [])
+        description = req.get("description", "")
+
+        if not name:
+            return {"success": False, "error": "name è obbligatorio"}
+
+        template = AGENT_TEMPLATES.get(template_key)
+        if not template:
+            return {"success": False, "error": f"Template '{template_key}' non trovato. Templates: {', '.join(AGENT_TEMPLATES.keys())}"}
+
+        # Generate Modelfile
+        modelfile_content = generate_modelfile(template_key, display_name, base_model, temperature)
+
+        # Write Modelfile to manifesti/
+        manifesto_path = f"manifesti/{name}.md"
+        with open(manifesto_path, "w", encoding="utf-8") as f:
+            f.write(modelfile_content)
+
+        # Register in agent registry
+        agent_model = base_model or template["base_model"]
+        temp = temperature if temperature is not None else template["temperature"]
+        capabilities = template["capabilities"]
+        allowed_topics = topics or template["allowed_topics"]
+
+        success, result = register_agent(
+            agent_id=name,
+            name=display_name,
+            manifesto=manifesto_path,
+            specialization=template_key,
+            capabilities=capabilities,
+            models=[agent_model],
+            temperature=temp,
+            context_window=template["context_window"],
+            allowed_topics=allowed_topics,
+        )
+
+        if success:
+            return {
+                "success": True,
+                "agent": {"id": name, **result},
+                "manifesto_path": manifesto_path,
+                "modelfile_preview": modelfile_content[:500] + "..."
+            }
+        return {"success": False, "error": result}
+
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+
+def list_agent_templates() -> dict:
+    """Get list of available agent templates."""
+    return {
+        "success": True,
+        "templates": {
+            key: {
+                "label": t["label"],
+                "description": t["description"],
+                "base_model": t["base_model"],
+                "temperature": t["temperature"],
+                "context_window": t["context_window"],
+            }
+            for key, t in AGENT_TEMPLATES.items()
+        }
+    }
+
+
+# ==============================================================================
+# API Handlers
+# ==============================================================================
+
+def handle_agents_templates(self):
+    """GET /api/agents/templates — List available agent templates."""
+    try:
+        return self.send_json_response(list_agent_templates())
+    except Exception as e:
+        return self.send_json_response({"success": False, "error": str(e)}, 500)
+
+
+def handle_agents_create(self):
+    """POST /api/agents/create — Create a new agent from template."""
+    try:
+        result = register_agent_from_template(self, self.read_json_body())
+        if result.get("success"):
+            return self.send_json_response(result)
+        return self.send_json_response(result, 400)
+    except Exception as e:
+        return self.send_json_response({"success": False, "error": str(e)}, 500)

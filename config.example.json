@@ -1,0 +1,38 @@
+{
+    "ai": {
+        "active_provider": "deepseek",
+        "active_model": "deepseek-v4-flash",
+        "providers": {
+            "ollama": {
+                "label": "Ollama (Locale)",
+                "endpoint": "http://localhost:11434/api/chat",
+                "model": "llama3.2",
+                "temperature": 0.1,
+                "max_tokens": 4096,
+                "top_p": 0.9,
+                "models": [],
+                "top_k": 40,
+                "repeat_penalty": 1.1,
+                "num_ctx": 131072,
+                "seed": 0,
+                "timeout": 300
+            },
+            "deepseek": {
+                "label": "DeepSeek",
+                "api_url": "https://api.deepseek.com/v1/chat/completions",
+                "api_key": "YOUR_DEEPSEEK_API_KEY_HERE",
+                "model": "deepseek-v4-flash",
+                "temperature": 0.4,
+                "max_tokens": 65536,
+                "top_p": 0.9,
+                "models": ["deepseek-chat", "deepseek-reasoner", "deepseek-coder", "deepseek-v4-flash", "deepseek-v4-pro"],
+                "endpoint": "http://localhost:11434",
+                "num_ctx": 131072,
+                "top_k": 40,
+                "repeat_penalty": 1.1,
+                "seed": 0,
+                "timeout": 120
+            }
+        }
+    }
+}

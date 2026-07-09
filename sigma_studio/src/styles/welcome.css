@@ -1,0 +1,90 @@
+/* ========================================================================
+   WELCOME SCREEN — Dashboard UX + WelcomeGraph
+   ======================================================================== */
+
+.welcome-screen { padding: 32px 48px 80px; max-width: 1280px; margin: 0 auto; animation: fadeIn 0.6s ease-out; }
+
+/* Hero */
+.ws-hero { text-align: center; padding: 48px 0 40px; position: relative; overflow: hidden; }
+.ws-hero::before { content: ''; position: absolute; top: -120px; left: 50%; transform: translateX(-50%); width: 600px; height: 500px; background: radial-gradient(ellipse, var(--primary-glow) 0%, transparent 70%); opacity: 0.3; pointer-events: none; }
+.ws-hero-badge { display: inline-block; font-size: 0.6rem; font-weight: 800; letter-spacing: 3px; color: var(--primary); background: var(--primary-glow); border: 1px solid var(--primary-border); padding: 6px 16px; border-radius: 20px; margin-bottom: 20px; text-transform: uppercase; }
+.ws-hero-title { font-size: 2.6rem; font-weight: 800; letter-spacing: -1.5px; margin: 0 0 16px; color: #fff; }
+.ws-hero-accent { background: linear-gradient(135deg, var(--primary), #7c5bf0); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+.ws-hero-sub { font-size: 0.95rem; color: var(--text-dim); max-width: 520px; margin: 0 auto; line-height: 1.7; }
+
+/* Metrics */
+.ws-metrics { display: grid; grid-template-columns: repeat(5, 1fr); gap: 16px; margin-bottom: 40px; }
+.ws-metric { background: var(--surface-bright); border: var(--glass-border); border-radius: var(--radius-m); padding: 20px 16px; text-align: center; transition: all 0.3s ease; position: relative; overflow: hidden; }
+.ws-metric::before { content: ''; position: absolute; top: 0; left: 0; right: 0; height: 3px; background: linear-gradient(90deg, var(--primary), #7c5bf0); opacity: 0; transition: opacity 0.3s ease; }
+.ws-metric:hover { transform: translateY(-4px); box-shadow: var(--shadow-l); }
+.ws-metric:hover::before { opacity: 1; }
+.ws-metric-value { display: block; font-size: 2rem; font-weight: 800; color: #fff; letter-spacing: -1px; margin-bottom: 4px; }
+.ws-metric-label { display: block; font-size: 0.65rem; color: var(--text-dim); text-transform: uppercase; letter-spacing: 1px; font-weight: 600; }
+
+/* Grid */
+.ws-grid { display: grid; grid-template-columns: 1.4fr 1fr; gap: 28px; align-items: start; }
+.ws-card { background: var(--surface-bright); border: var(--glass-border); border-radius: var(--radius-l); overflow: hidden; transition: all 0.3s ease; }
+.ws-card:hover { box-shadow: var(--shadow-l); transform: translateY(-2px); }
+.ws-card-head { display: flex; align-items: center; justify-content: space-between; padding: 18px 24px; border-bottom: 1px solid var(--border); background: rgba(255,255,255,0.015); }
+.ws-card-title { font-size: 1rem; font-weight: 700; color: #fff; margin: 0; }
+.ws-card-body { padding: 8px 24px 16px; }
+.ws-empty { color: var(--text-dark); font-size: 0.8rem; padding: 28px 0; text-align: center; }
+
+/* Topics */
+.ws-topic { padding: 14px 0; border-bottom: 1px solid rgba(255,255,255,0.03); }
+.ws-topic-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; gap: 12px; }
+.ws-topic-name { font-size: 0.85rem; color: #fff; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+/* Domain tags */
+.ws-domain-tag { font-size: 0.55rem; font-weight: 800; text-transform: uppercase; letter-spacing: 0.5px; padding: 3px 10px; border-radius: 4px; flex-shrink: 0; }
+.ws-domain-tag.domain-analisi { background: rgba(0,210,255,0.08); color: var(--primary); border: 1px solid var(--primary-border); }
+.ws-domain-tag.domain-algebra { background: rgba(124,91,240,0.1); color: #a78bfa; border: 1px solid rgba(124,91,240,0.2); }
+.ws-domain-tag.domain-numeri { background: rgba(63,185,80,0.08); color: var(--success); border: 1px solid rgba(63,185,80,0.15); }
+.ws-domain-tag.domain-topologia { background: rgba(250,160,60,0.1); color: #faa03c; border: 1px solid rgba(250,160,60,0.2); }
+
+.ws-topic-desc { font-size: 0.72rem; color: var(--text-dim); line-height: 1.6; margin-bottom: 10px; padding-left: 24px; }
+.ws-topic-modules { display: flex; flex-wrap: wrap; gap: 6px; padding-left: 24px; }
+.ws-mod-chip { font-size: 0.63rem; padding: 5px 10px; border-radius: 6px; background: rgba(255,255,255,0.03); border: 1px solid var(--border); color: var(--text-dim); cursor: pointer; transition: all 0.2s ease; display: inline-flex; align-items: center; gap: 6px; }
+.ws-mod-chip:hover { background: var(--primary-glow); border-color: var(--primary-border); color: var(--primary); }
+
+/* ========================================
+   WelcomeGraph — Force-Directed Graph Dashboard
+   ======================================== */
+.wg-container { padding: 32px 48px 80px; max-width: 1400px; margin: 0 auto; animation: fadeIn 0.6s ease-out; overflow-y: auto; height: 100%; }
+.wg-hero { text-align: center; padding: 24px 0 32px; position: relative; overflow: hidden; }
+.wg-hero::before { content: ''; position: absolute; top: -120px; left: 50%; transform: translateX(-50%); width: 600px; height: 500px; background: radial-gradient(ellipse, var(--primary-glow) 0%, transparent 70%); opacity: 0.25; pointer-events: none; }
+.wg-hero-title { font-size: 2.4rem; font-weight: 800; letter-spacing: -1.5px; margin: 0 0 12px; color: #fff; }
+.wg-hero-accent { background: linear-gradient(135deg, var(--primary), #7c5bf0); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+.wg-hero-sub { font-size: 0.9rem; color: var(--text-dim); max-width: 520px; margin: 0 auto; line-height: 1.7; }
+.wg-metrics { display: grid; grid-template-columns: repeat(5, 1fr); gap: 14px; margin-bottom: 32px; }
+.wg-metric { background: var(--surface-bright); border: var(--glass-border); border-radius: var(--radius-m); padding: 18px 14px; text-align: center; transition: all 0.3s ease; }
+.wg-metric-value { display: block; font-size: 1.8rem; font-weight: 800; color: #fff; letter-spacing: -1px; margin-bottom: 2px; }
+.wg-metric-label { display: block; font-size: 0.6rem; color: var(--text-dim); text-transform: uppercase; letter-spacing: 1px; font-weight: 600; }
+.wg-split { display: grid; grid-template-columns: 1fr 380px; gap: 24px; margin-bottom: 28px; }
+.wg-split-graph { background: var(--surface-bright); border: var(--glass-border); border-radius: var(--radius-l); overflow: hidden; display: flex; flex-direction: column; }
+.wg-split-head { display: flex; align-items: center; justify-content: space-between; padding: 16px 24px; border-bottom: 1px solid var(--border); background: rgba(255,255,255,0.015); }
+.wg-split-head h3 { font-size: 1rem; font-weight: 700; color: #fff; margin: 0; }
+.wg-graph-wrapper { padding: 20px; flex: 1; display: flex; flex-direction: column; }
+.wg-svg { width: 100%; flex: 1; min-height: 380px; display: block; }
+.wg-detail { background: var(--surface-bright); border: var(--glass-border); border-radius: var(--radius-l); padding: 24px; min-height: 380px; }
+.wg-detail-title { font-size: 1.3rem; font-weight: 800; color: #fff; margin: 0 0 12px; letter-spacing: -0.5px; }
+.wg-detail-desc { font-size: 0.8rem; color: var(--text-dim); line-height: 1.7; }
+.wg-legend { display: flex; flex-wrap: wrap; gap: 12px; justify-content: center; padding: 12px 0 4px; border-top: 1px solid var(--border); }
+.wg-legend-item { display: inline-flex; align-items: center; gap: 6px; font-size: 0.6rem; font-weight: 600; color: var(--text-dim); }
+.wg-legend-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+.wg-btn-add-topic { display: inline-flex; align-items: center; gap: 6px; padding: 6px 14px; background: linear-gradient(135deg, rgba(0,210,255,0.08), rgba(124,91,240,0.08)); border: 1px solid var(--primary-border); border-radius: var(--radius-s); color: var(--primary); font-size: 0.72rem; font-weight: 700; cursor: pointer; text-transform: uppercase; }
+
+/* Welcome detail */
+.wg-detail-module { display: flex; align-items: center; gap: 12px; padding: 10px 12px; border-radius: var(--radius-s); background: rgba(255,255,255,0.015); border: 1px solid var(--border); cursor: pointer; margin-bottom: 8px; }
+.wg-detail-module:hover { background: rgba(255,255,255,0.04); border-color: var(--border-bright); transform: translateX(4px); }
+.wg-detail-mod-name { font-size: 0.8rem; color: #fff; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.wg-detail-mod-files { font-size: 0.65rem; color: var(--text-dark); margin-top: 2px; }
+
+/* Modals */
+.wg-modal-overlay { position: fixed; inset: 0; z-index: 9999; display: flex; align-items: center; justify-content: center; background: rgba(0,0,0,0.6); backdrop-filter: blur(6px); }
+.wg-modal { background: var(--surface); border: var(--glass-border); border-radius: var(--radius-l); box-shadow: 0 24px 80px rgba(0,0,0,0.5); width: 100%; max-width: 480px; }
+.wg-modal-head { display: flex; align-items: center; justify-content: space-between; padding: 20px 24px; border-bottom: 1px solid var(--border); }
+.wg-modal-head h3 { font-size: 1rem; font-weight: 700; color: #fff; margin: 0; }
+.wg-modal-body { padding: 20px 24px; }
+.wg-modal-foot { display: flex; align-items: center; justify-content: flex-end; gap: 12px; padding: 16px 24px; border-top: 1px solid var(--border); }
+.wg-domain-pill { display: inline-flex; align-items: center; gap: 6px; padding: 7px 14px; border-radius: 20px; font-size: 0.72rem; font-weight: 700; cursor: pointer; border: 1.5px solid var(--border); background: rgba(255,255,255,0.02); color: var(--text-dim); }

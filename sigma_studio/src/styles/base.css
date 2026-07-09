@@ -1,0 +1,87 @@
+/* ========================================================================
+   BASE — Variables, Reset, Grid, Scrollbars
+   ======================================================================== */
+
+:root {
+  --bg: #030305;
+  --surface: rgba(10, 10, 15, 0.75);
+  --surface-bright: rgba(18, 18, 30, 0.98);
+  
+  --primary: #00d2ff;
+  --primary-glow: hsla(191, 100%, 50%, 0.12);
+  --primary-border: rgba(0, 210, 255, 0.15);
+  
+  --accent: #bc8cff;
+  --accent-glow: hsla(266, 100%, 77%, 0.12);
+  
+  --success: #3fb950;
+  --success-glow: rgba(63, 185, 80, 0.1);
+  --warning: #ffb86c;
+  --error: #ff5555;
+  
+  --text: #f0f0f5;
+  --text-dim: #9494a5;
+  --text-dark: #5a5a6a;
+  
+  --border: rgba(255, 255, 255, 0.04);
+  --border-bright: rgba(255, 255, 255, 0.08);
+  
+  --sidebar-w: 260px;
+  --dash-w: 320px;
+  --header-h: 52px;
+  
+  --radius-s: 8px;
+  --radius-m: 14px;
+  --radius-l: 24px;
+  
+  --trans-fast: all 0.15s cubic-bezier(0.4, 0, 0.2, 1);
+  --trans-smooth: all 0.5s cubic-bezier(0.16, 1, 0.3, 1);
+  --glass: blur(18px) saturate(180%);
+  --shadow-l: 0 32px 64px -16px rgba(0, 0, 0, 0.6);
+  --glass-border: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  background: var(--bg);
+  background-image: 
+    radial-gradient(at 0% 0%, hsla(191,100%,50%,0.04) 0, transparent 50%),
+    radial-gradient(at 100% 100%, hsla(266,100%,77%,0.04) 0, transparent 50%);
+  color: var(--text);
+  font-family: 'Inter', sans-serif;
+  overflow: hidden;
+  height: 100vh;
+  -webkit-font-smoothing: antialiased;
+}
+
+.mono { font-family: 'JetBrains Mono', monospace; letter-spacing: -0.2px; }
+
+::-webkit-scrollbar { width: 3px; height: 3px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.05); border-radius: 10px; transition: 0.2s; }
+::-webkit-scrollbar-thumb:hover { background: var(--primary); }
+
+/* Main Layout Grid */
+.app-container {
+  display: grid;
+  grid-template-columns: var(--sidebar-w) 1fr var(--dash-w);
+  height: 100vh; width: 100vw;
+  transition: var(--trans-smooth);
+  background: #000;
+}
+.app-container.left-collapsed { grid-template-columns: 0px 1fr var(--dash-w); }
+.app-container.right-collapsed { grid-template-columns: var(--sidebar-w) 1fr 0px; }
+.app-container.left-collapsed.right-collapsed { grid-template-columns: 0px 1fr 0px; }
+.workspace { 
+  margin: 0px; 
+  transition: var(--trans-smooth); 
+  position: relative; 
+  z-index: 1; 
+}
+
+/* Animations */
+@keyframes fadeIn { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: translateY(0); } }
+@keyframes modalIn { from { opacity: 0; transform: scale(0.95) translateY(20px); } to { opacity: 1; transform: scale(1) translateY(0); } }
+@keyframes slideUp { from { opacity: 0; transform: translateY(16px) scale(0.97); } to { opacity: 1; transform: translateY(0) scale(1); } }
+@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }

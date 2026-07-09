@@ -1,0 +1,11 @@
+{
+  "name": "sigma-studio",
+  "version": "6.0.0",
+  "license": "MIT",
+  "private": false,
+  "scripts": {
+    "dev": "npm --prefix sigma_studio run dev",
+    "build": "npm --prefix sigma_studio run build",
+    "start": "python sigma_server.py"
+  }
+}

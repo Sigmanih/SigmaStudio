@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>sigma_studio</title>
+    <style>
+      @media print {
+        /* Hide all chrome */
+        .sidebar,
+        .collapse-btn,
+        .dashboard,
+        .app-container > aside,
+        .app-container > div:not(.workspace),
+        .app-container > section,
+        .ai-float-bar,
+        .ai-chat-panel,
+        .lab-editor-header,
+        .lab-palette,
+        .lab-editor-pane,
+        .lab-console,
+        .tab-bar { display: none !important; }
+
+        /* Reset layout */
+        .app-container { display: block !important; }
+        .workspace { display: block !important; overflow: visible !important; }
+        .content-area { display: block !important; overflow: visible !important; }
+        .lab-editor { background: #fff !important; overflow: visible !important; height: auto !important; }
+        .lab-main { display: block !important; overflow: visible !important; }
+        .lab-preview-pane { flex: 1 !important; width: 100% !important; overflow: visible !important; }
+        .lab-preview { padding: 0 !important; background: #fff !important; overflow: visible !important; }
+        .lab-viewer { max-width: 100% !important; }
+      }
+    </style>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.jsx"></script>
+  </body>
+</html>
