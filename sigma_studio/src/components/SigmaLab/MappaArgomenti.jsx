@@ -1062,8 +1062,8 @@ export default function MappaArgomenti({ onOpenFile }) {
         .mappa-zoom-controls .btn-explore { padding: 7px 14px; font-size: 0.7rem; font-weight: 600; gap: 6px; border-color: rgba(63,185,80,0.25); color: #3fb950; }
         .mappa-zoom-controls .btn-explore:hover { background: rgba(63,185,80,0.12); border-color: rgba(63,185,80,0.4); }
         .mappa-zoom-controls .btn-explore.active { background: rgba(255,85,85,0.1); border-color: rgba(255,85,85,0.25); color: #ff5555; }
-        .mappa-zoom-controls .btn-zoom { width: 30px; height: 30px; font-size: 0.9rem; }
-        .mappa-zoom-label { font-size: 0.5rem; color: #5a5e72; letter-spacing: 0.3px; }
+        .mappa-zoom-controls .btn-new-topic { padding: 7px 14px; font-size: 0.7rem; font-weight: 600; border-color: rgba(188,140,255,0.25); color: #bc8cff; display: flex; align-items: center; gap: 6px; }
+        .mappa-zoom-controls .btn-new-topic:hover { background: rgba(188,140,255,0.12); border-color: rgba(188,140,255,0.4); }
 
         /* Detail Panel (side panel in top section) */
         .mappa-detail-panel {
@@ -1188,10 +1188,9 @@ export default function MappaArgomenti({ onOpenFile }) {
             <button className={`btn-explore ${showDocs ? 'active' : ''}`} onClick={() => setShowDocs(v => !v)} title={showDocs ? 'Chiudi' : 'Esplora'}>
               {showDocs ? '✕ Chiudi' : '🔍 Esplora'}
             </button>
-            <span className="mappa-zoom-label">ZOOM</span>
-            <button className="btn-zoom" onClick={zoomIn} title="Ingrandisci">+</button>
-            <button className="btn-zoom" onClick={zoomOut} title="Rimpicciolisci">−</button>
-            <button className="btn-zoom" onClick={resetZoom} title="Reimposta zoom">⟲</button>
+            <button className="btn-new-topic" onClick={handleCreateTopic} title="Crea nuovo argomento">
+              🌐 Nuovo Argomento
+            </button>
           </div>
         </div>
         <div className="mappa-detail-panel">
