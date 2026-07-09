@@ -837,48 +837,49 @@ IMPORTANTE — STRUTTURA MINIMA DI OGNI TASK:
 
         actions_log = []
         clean_response = ai_response
+        thinking = ai_thinking
 
-        # Universally remove all container tags from the response
-        # This handles models (Gemma, fine-tuned, etc.) that produce <thinking>, <response>, etc.
-        # Native model thinking (DeepSeek) is already extracted by ai_providers.py
+        # In Ask mode (no actions), keep the raw response intact — don't mess with it
+        # LaTeX, markdown, line breaks, etc. must be preserved for the frontend KaTeX renderer
+        if not allow_actions and not planning_mode:
+            # If JSON response/thinking format detected, extract cleanly
+            json_match = _extract_json_from_response(ai_response)
+            if json_match:
+                try:
+                    parsed = json.loads(json_match.group())
+                    resp_text = parsed.get("response", "")
+                    think_text = parsed.get("thinking", parsed.get("reasoning", ""))
+                    if resp_text:
+                        clean_response = resp_text
+                    if think_text and not thinking:
+                        thinking = think_text
+                except:
+                    pass
+            # Log for debugging
+            print(f"[SIGMA_ASK_DEBUG] response length={len(clean_response)}, thinking={'yes' if thinking else 'none'}", flush=True)
+            manifesto_name = os.path.basename(manifesto_path).replace('.md', '') if manifesto_path else ''
+            self.send_json_response({"response": clean_response, "thinking": thinking, "actions_log": [], "error": None, "manifesto_used": manifesto_name})
+            return
+
+        # --- From here on: ALLOW ACTIONS or PLANNING mode ---
+        # Remove container tags, extract thinking, and look for JSON with actions
         clean_response, extracted_tags_thinking = _clean_all_tags(clean_response)
-        
-        # Use native thinking first, fallback to thinking extracted from tags
         thinking = ai_thinking or extracted_tags_thinking
 
-        if allow_actions or planning_mode:
-            print(f"\n[SIGMA_CHAT_DEBUG] allow_actions={allow_actions} planning_mode={planning_mode}", flush=True)
-            print(f"[SIGMA_CHAT_DEBUG] AI response cleaned (first 2000 chars): {clean_response[:2000]}", flush=True)
+        print(f"\n[SIGMA_CHAT_DEBUG] allow_actions={allow_actions} planning_mode={planning_mode}", flush=True)
+        print(f"[SIGMA_CHAT_DEBUG] AI response cleaned (first 2000 chars): {clean_response[:2000]}", flush=True)
 
-        # SEMPRE prova a estrarre JSON con response/thinking, anche in modalità Chiedi
-        # I modelli DeepSeek via API restituiscono thinking nativamente (ai_thinking)
-        # Per Ollama, proviamo a parsare manualmente il formato {"response":..., "thinking":...}
         json_match = _extract_json_from_response(clean_response)
-        if json_match and not allow_actions and not planning_mode:
-            try:
-                parsed = json.loads(json_match.group())
-                resp_text = parsed.get("response", "")
-                think_text = parsed.get("thinking", parsed.get("reasoning", ""))
-                if resp_text:
-                    clean_response = _format_response(resp_text)
-                if think_text and not thinking:
-                    thinking = think_text
-            except:
-                pass
-
         if json_match:
             try:
                 parsed = json.loads(json_match.group())
-                # In Ask mode, response has already been extracted above — skip overwrite
-                if allow_actions or planning_mode:
-                    clean_response = parsed.get("response", ai_response)
-                    clean_response = _format_response(clean_response)
+                print(f"[SIGMA_CHAT_DEBUG] JSON parsed. actions={parsed.get('actions', [])}", flush=True)
+                clean_response = parsed.get("response", ai_response)
+                clean_response = _format_response(clean_response)
                 json_thinking = parsed.get("thinking", parsed.get("reasoning", None))
-                if json_thinking and not ai_thinking:
+                if json_thinking and not thinking:
                     thinking = json_thinking
-                actions = parsed.get("actions", []) if (allow_actions or planning_mode) else []
-                if not allow_actions and not planning_mode:
-                    print(f"[SIGMA_CHAT_DEBUG] Ask mode JSON: response='{clean_response[:80]}...', thinking={'yes' if thinking else 'no'}", flush=True)
+                actions = parsed.get("actions", [])
 
                 if planning_mode and "tasks" in parsed:
                     plan_tasks = parsed.get("tasks", [])
