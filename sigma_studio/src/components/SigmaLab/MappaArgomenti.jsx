@@ -1050,14 +1050,20 @@ export default function MappaArgomenti({ onOpenFile }) {
         .graph-link.parent-link.highlight { stroke: rgba(210,153,34,0.5) !important; }
         .graph-node { cursor: pointer; transition: opacity 0.2s; }
         .mappa-zoom-controls {
-          position: absolute; bottom: 10px; left: 10px; display: flex; gap: 4px;
+          position: absolute; bottom: 12px; left: 12px; display: flex; gap: 6px; align-items: center;
         }
         .mappa-zoom-controls button {
-          width: 26px; height: 26px; background: #11131b; border: 1px solid #1e2030;
-          border-radius: 6px; color: #8b8fa3; cursor: pointer; font-size: 0.7rem;
-          display: flex; align-items: center; justify-content: center; transition: all 0.15s;
+          background: rgba(17,19,27,0.92); border: 1px solid #1e2030; border-radius: 8px;
+          color: #8b8fa3; cursor: pointer; font-family: inherit;
+          transition: all 0.15s; backdrop-filter: blur(8px);
+          display: flex; align-items: center; justify-content: center;
         }
-        .mappa-zoom-controls button:hover { background: #1e2030; color: #e2e4eb; }
+        .mappa-zoom-controls button:hover { background: #1e2030; color: #e2e4eb; border-color: #2a2d3e; }
+        .mappa-zoom-controls .btn-explore { padding: 7px 14px; font-size: 0.7rem; font-weight: 600; gap: 6px; border-color: rgba(63,185,80,0.25); color: #3fb950; }
+        .mappa-zoom-controls .btn-explore:hover { background: rgba(63,185,80,0.12); border-color: rgba(63,185,80,0.4); }
+        .mappa-zoom-controls .btn-explore.active { background: rgba(255,85,85,0.1); border-color: rgba(255,85,85,0.25); color: #ff5555; }
+        .mappa-zoom-controls .btn-zoom { width: 30px; height: 30px; font-size: 0.9rem; }
+        .mappa-zoom-label { font-size: 0.5rem; color: #5a5e72; letter-spacing: 0.3px; }
 
         /* Detail Panel (side panel in top section) */
         .mappa-detail-panel {
@@ -1179,12 +1185,13 @@ export default function MappaArgomenti({ onOpenFile }) {
         <div ref={containerRef} className="mappa-graph-container" style={{ display: 'flex' }}>
           <svg ref={svgRef} className="mappa-graph-svg" style={{ flex: 1 }}></svg>
           <div className="mappa-zoom-controls">
-            <button onClick={() => setShowDocs(v => !v)} title={showDocs ? 'Nascondi documenti' : 'Mostra documenti'}>
-              {showDocs ? '📄✕' : '📄'}
+            <button className={`btn-explore ${showDocs ? 'active' : ''}`} onClick={() => setShowDocs(v => !v)} title={showDocs ? 'Chiudi' : 'Esplora'}>
+              {showDocs ? '✕ Chiudi' : '🔍 Esplora'}
             </button>
-            <button onClick={zoomIn} title="Zoom +">+</button>
-            <button onClick={zoomOut} title="Zoom -">−</button>
-            <button onClick={resetZoom} title="Ripristina">⟲</button>
+            <span className="mappa-zoom-label">ZOOM</span>
+            <button className="btn-zoom" onClick={zoomIn} title="Ingrandisci">+</button>
+            <button className="btn-zoom" onClick={zoomOut} title="Rimpicciolisci">−</button>
+            <button className="btn-zoom" onClick={resetZoom} title="Reimposta zoom">⟲</button>
           </div>
         </div>
         <div className="mappa-detail-panel">
