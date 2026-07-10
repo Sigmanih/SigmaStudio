@@ -631,6 +631,20 @@ def handle_research_start(self):
             model_override = req.get("model_override", "")
             print(f"[RESEARCH_START] session={session_id}, objectives={len(objectives)}, agents={len(agents_config)}, model={model_override or ai_cfg.get('model','?')}", flush=True)
             
+            # If no objectives, auto-decompose first
+            if len(objectives) == 0:
+                print(f"[RESEARCH_START] No objectives found, auto-decomposing...", flush=True)
+                _sse({"type": "agent_thinking", "agent_id": "sigma_architect", "agent_name": "Coordinatore",
+                      "thinking": "Decomposizione automatica del goal in micro-obiettivi...",
+                      "message": "🧠 Coordinatore: scomposizione automatica del goal..."})
+                decomp_result = _fallback_objectives(session_id, agents_config, goal)
+                if decomp_result.get("success"):
+                    objectives = decomp_result.get("objectives", [])
+                    print(f"[RESEARCH_START] Auto-decomposed: {len(objectives)} objectives", flush=True)
+                    _sse({"type": "agent_response", "agent_id": "sigma_architect", "agent_name": "Coordinatore",
+                          "response": f"✅ Generati {len(objectives)} micro-obiettivi automaticamente",
+                          "message": f"✅ Generati {len(objectives)} micro-obiettivi"})
+            
             _sse({"type": "research_start", "session_id": session_id, "total_objectives": len(objectives),
                   "agents": agents_config, "message": f"🔬 Avvio ricerca con {len(objectives)} micro-obiettivi, {len(agents_config)} agenti"})
             
