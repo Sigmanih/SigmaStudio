@@ -441,7 +441,7 @@ export default function ResearchLab({ onClose, onTasksUpdated, addToast }) {
               <div className="rl-dashboard-actions">
                 <span className="rl-progress">{progress.done}/{progress.total} obiettivi</span>
                 {!executing ? (
-                  <button className="rl-btn-primary" onClick={handleStartResearch} disabled={objectives.length === 0}>
+                  <button className="rl-btn-primary" onClick={handleStartResearch}>
                     <Play size={14} /> Avvia Ricerca
                   </button>
                 ) : (

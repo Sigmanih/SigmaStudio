@@ -394,6 +394,23 @@ def handle_chat_orchestrate(self):
 # RESEARCH DECOMPOSE + NEXT STEPS (Research Lab v2)
 # ==============================================================================
 
+def _fallback_objectives(session_id, agents_list, goal):
+    """Generate default micro-objectives when AI decomposition fails."""
+    from core.research_sessions import add_micro_objective
+    defaults = [
+        {"title": "Analizzare il problema", "description": f"Analizza approfonditamente: {goal[:200]}", "assigned_to": "sigma_architect", "actions_hint": ["read_file", "create_file"], "completion_criteria": "Produci un'analisi strutturata del problema"},
+        {"title": "Ricerca e documentazione", "description": "Ricerca informazioni, documenta risultati, crea file di teoria", "assigned_to": "math1", "actions_hint": ["create_file", "read_file"], "completion_criteria": "Crea almeno 1 file di documentazione"},
+        {"title": "Validazione e test", "description": "Esegui test per verificare ipotesi e risultati", "assigned_to": "test-engineer", "actions_hint": ["run_test", "create_file"], "completion_criteria": "Esegui test e riporta risultati"},
+        {"title": "Revisione finale", "description": "Verifica tutto il lavoro prodotto", "assigned_to": "proof-reviewer", "actions_hint": ["read_file", "create_file"], "completion_criteria": "Produci report di validazione"},
+    ]
+    added = []
+    for obj in defaults:
+        result = add_micro_objective(session_id, obj)
+        if result:
+            added.append(result)
+    return {"success": True, "objectives": added, "analysis": "Fallback: obiettivi predefiniti generati", "count": len(added)}
+
+
 def decompose_goal_to_micro_objectives(goal, agents_list, ai_cfg, model_override, session_id):
     """Decompose a research goal into micro-objectives using the coordinator agent."""
     from core.research_sessions import get_session, add_micro_objective, save_session
@@ -444,29 +461,30 @@ Agenti disponibili:
     response, thinking, error = _call_ai_model(messages, ai_cfg, model,
         provider, endpoint, api_url, api_key, 0.3, max_tokens * 2, top_p, timeout)
     
+    session = get_session(session_id)
+    if not session:
+        return {"success": False, "error": "Sessione non trovata"}
+    
     if error or not response:
-        return {"success": False, "error": error or "Nessuna risposta dal coordinatore"}
+        return _fallback_objectives(session_id, agents_list, goal)
     
     json_match = _extract_json_from_response(response)
     if not json_match:
-        return {"success": False, "error": "Il coordinatore non ha prodotto JSON valido"}
+        return _fallback_objectives(session_id, agents_list, goal)
     
     try:
         parsed = json.loads(json_match.group())
         objectives = parsed.get("micro_objectives", [])
-        session = get_session(session_id)
-        if not session:
-            return {"success": False, "error": "Sessione non trovata"}
-        
         added = []
         for obj in objectives:
             result = add_micro_objective(session_id, obj)
             if result:
                 added.append(result)
-        
+        if len(added) == 0:
+            return _fallback_objectives(session_id, agents_list, goal)
         return {"success": True, "objectives": added, "analysis": parsed.get("analysis", ""), "count": len(added)}
     except json.JSONDecodeError:
-        return {"success": False, "error": "JSON malformato nella risposta"}
+        return _fallback_objectives(session_id, agents_list, goal)
 
 
 def generate_next_steps(session_id, ai_cfg, model_override):
