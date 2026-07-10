@@ -188,6 +188,22 @@ SigmaAPIHandler.handle_context_get = handle_context_get
 SigmaAPIHandler.handle_context_chat_log = handle_context_chat_log
 SigmaAPIHandler.handle_chat_message_save = handle_chat_message_save
 
+# 16. Research Sessions (multi-session research with micro-objectives)
+from core.research_sessions import (
+    handle_research_create, handle_research_list, handle_research_status,
+    handle_research_delete, handle_research_update_objective
+)
+SigmaAPIHandler.handle_research_create = handle_research_create
+SigmaAPIHandler.handle_research_list = handle_research_list
+SigmaAPIHandler.handle_research_status = handle_research_status
+SigmaAPIHandler.handle_research_delete = handle_research_delete
+SigmaAPIHandler.handle_research_update_objective = handle_research_update_objective
+
+# 17. Research Decompose + Next Steps (Agent Orchestrator v2)
+from core.agent_orchestrator import handle_research_decompose, handle_research_next_steps
+SigmaAPIHandler.handle_research_decompose = handle_research_decompose
+SigmaAPIHandler.handle_research_next_steps = handle_research_next_steps
+
 # --- Register routing ---
 register_get_handlers(SigmaAPIHandler)
 register_post_handlers(SigmaAPIHandler)

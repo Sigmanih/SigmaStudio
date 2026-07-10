@@ -24,6 +24,8 @@ def register_get_handlers(handler_class):
         '/api/chat/pipeline/status': 'handle_pipeline_status',
         '/api/context/get': 'handle_context_get',
         '/api/context/chat_log': 'handle_context_chat_log',
+        '/api/research/list': 'handle_research_list',
+        '/api/research/status': 'handle_research_status',
     }
 
 
@@ -62,6 +64,11 @@ def register_post_handlers(handler_class):
         '/api/chat/pipeline/stop': 'handle_pipeline_stop',
         '/api/context/share': 'handle_context_share',
         '/api/context/chat_message': 'handle_chat_message_save',
+        '/api/research/create': 'handle_research_create',
+        '/api/research/delete': 'handle_research_delete',
+        '/api/research/update_objective': 'handle_research_update_objective',
+        '/api/research/decompose': 'handle_research_decompose',
+        '/api/research/next_steps': 'handle_research_next_steps',
     }
 
 

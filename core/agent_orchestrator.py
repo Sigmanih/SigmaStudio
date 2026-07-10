@@ -388,3 +388,183 @@ def handle_chat_orchestrate(self):
     except Exception as e:
         try: self.send_json_response({"error": str(e)}, 500)
         except Exception: pass
+
+
+# ==============================================================================
+# RESEARCH DECOMPOSE + NEXT STEPS (Research Lab v2)
+# ==============================================================================
+
+def decompose_goal_to_micro_objectives(goal, agents_list, ai_cfg, model_override, session_id):
+    """Decompose a research goal into micro-objectives using the coordinator agent."""
+    from core.research_sessions import get_session, add_micro_objective, save_session
+    
+    provider, endpoint, api_url, api_key, temperature, max_tokens, top_p, timeout = \
+        _load_agent_config(ai_cfg, model_override, SIGMA_ARCHITECT_ID)
+    
+    agents_json = json.dumps([{
+        "id": a.get("id", a.get("agent_id", "")),
+        "name": a.get("name", a.get("agent_name", "")),
+        "specialization": a.get("specialization", "general"),
+        "capabilities": a.get("capabilities", []),
+    } for a in agents_list], indent=2)
+    
+    system_prompt = f"""Sei un coordinatore di ricerca scientifica. Devi scomporre un obiettivo di ricerca
+in micro-obiettivi specifici, misurabili e verificabili.
+
+Agenti disponibili:
+{agents_json}
+
+## REGOLE DI SCOMPOSIZIONE
+1. Produci 3-7 micro-obiettivi concreti
+2. Ogni micro-obiettivo deve essere verificabile (criterio di completamento chiaro)
+3. Assegna ogni obiettivo all'agente più adatto
+4. Bilancia teoria, test, visualizzazione e documentazione
+5. Ordina gli obiettivi logicamente (dipendenze)
+
+## FORMATO RISPOSTA — SOLO JSON
+{{
+  "analysis": "Analisi del goal...",
+  "micro_objectives": [
+    {{
+      "title": "Titolo sintetico",
+      "description": "Descrizione dettagliata di cosa fare",
+      "assigned_to": "agent_id",
+      "actions_hint": ["create_file", "run_test"],
+      "completion_criteria": "Criterio oggettivo per dire che è completato"
+    }}
+  ]
+}}"""
+    
+    messages = [
+        {"role": "system", "content": system_prompt},
+        {"role": "user", "content": f"Scomponi il seguente obiettivo di ricerca in micro-obiettivi:\n\n{goal}"}
+    ]
+    
+    model = model_override or ai_cfg.get("model", "deepseek-v4-flash")
+    response, thinking, error = _call_ai_model(messages, ai_cfg, model,
+        provider, endpoint, api_url, api_key, 0.3, max_tokens * 2, top_p, timeout)
+    
+    if error or not response:
+        return {"success": False, "error": error or "Nessuna risposta dal coordinatore"}
+    
+    json_match = _extract_json_from_response(response)
+    if not json_match:
+        return {"success": False, "error": "Il coordinatore non ha prodotto JSON valido"}
+    
+    try:
+        parsed = json.loads(json_match.group())
+        objectives = parsed.get("micro_objectives", [])
+        session = get_session(session_id)
+        if not session:
+            return {"success": False, "error": "Sessione non trovata"}
+        
+        added = []
+        for obj in objectives:
+            result = add_micro_objective(session_id, obj)
+            if result:
+                added.append(result)
+        
+        return {"success": True, "objectives": added, "analysis": parsed.get("analysis", ""), "count": len(added)}
+    except json.JSONDecodeError:
+        return {"success": False, "error": "JSON malformato nella risposta"}
+
+
+def generate_next_steps(session_id, ai_cfg, model_override):
+    """After research completion, generate suggested next steps."""
+    from core.research_sessions import get_session, set_next_steps
+    
+    session = get_session(session_id)
+    if not session:
+        return {"success": False, "error": "Sessione non trovata"}
+    
+    provider, endpoint, api_url, api_key, temperature, max_tokens, top_p, timeout = \
+        _load_agent_config(ai_cfg, model_override, SIGMA_ARCHITECT_ID)
+    
+    # Build context from session results
+    objectives_summary = "\n".join(
+        f"- {o['title']}: {o.get('status', '?')} — {o.get('result', o.get('description', ''))[:200]}"
+        for o in session.get("micro_objectives", [])
+    )
+    
+    system_prompt = f"""Sei un coordinatore di ricerca. Hai appena completato uno studio i cui risultati sono:
+
+## Obiettivi completati:
+{objectives_summary}
+
+## Azioni eseguite:
+{len(session.get('actions_log', []))} azioni totali
+
+Analizza i risultati e suggerisci 3-5 direzioni per continuare la ricerca.
+Sii specifico e basati sui pattern e le scoperte emerse.
+
+## FORMATO RISPOSTA — SOLO JSON:
+{{
+  "analysis": "Analisi complessiva dei risultati...",
+  "next_steps": [
+    {{"title": "Titolo del prossimo passo", "description": "Descrizione dettagliata", "priority": "alta/media/bassa"}}
+  ]
+}}"""
+    
+    messages = [
+        {"role": "system", "content": system_prompt},
+        {"role": "user", "content": f"Goal originale: {session.get('goal', '')}\n\nSuggerisci i prossimi passi di ricerca."}
+    ]
+    
+    model = model_override or ai_cfg.get("model", "deepseek-v4-flash")
+    response, thinking, error = _call_ai_model(messages, ai_cfg, model,
+        provider, endpoint, api_url, api_key, 0.5, max_tokens, top_p, timeout)
+    
+    if error or not response:
+        return {"success": False, "error": error or "Nessuna risposta"}
+    
+    json_match = _extract_json_from_response(response)
+    if not json_match:
+        return {"success": False, "error": "Formato risposta non valido"}
+    
+    try:
+        parsed = json.loads(json_match.group())
+        steps = parsed.get("next_steps", [])
+        set_next_steps(session_id, steps)
+        return {"success": True, "next_steps": steps, "analysis": parsed.get("analysis", "")}
+    except json.JSONDecodeError:
+        return {"success": False, "error": "JSON malformato"}
+
+
+def handle_research_decompose(self):
+    """POST /api/research/decompose — Decompose goal into micro-objectives."""
+    try:
+        req = self.read_json_body()
+        session_id = req.get("session_id", "")
+        goal = req.get("goal", "")
+        agents = req.get("agents", [])
+        model_override = req.get("model_override", "")
+        
+        if not session_id or not goal:
+            return self.send_json_response({"success": False, "error": "session_id e goal richiesti"}, 400)
+        
+        ai_cfg = load_ai_config()
+        result = decompose_goal_to_micro_objectives(goal, agents, ai_cfg, model_override, session_id)
+        if result.get("success"):
+            return self.send_json_response(result)
+        return self.send_json_response(result, 500)
+    except Exception as e:
+        return self.send_json_response({"success": False, "error": str(e)}, 500)
+
+
+def handle_research_next_steps(self):
+    """POST /api/research/next_steps — Generate next steps after completion."""
+    try:
+        req = self.read_json_body()
+        session_id = req.get("session_id", "")
+        model_override = req.get("model_override", "")
+        
+        if not session_id:
+            return self.send_json_response({"success": False, "error": "session_id richiesto"}, 400)
+        
+        ai_cfg = load_ai_config()
+        result = generate_next_steps(session_id, ai_cfg, model_override)
+        if result.get("success"):
+            return self.send_json_response(result)
+        return self.send_json_response(result, 500)
+    except Exception as e:
+        return self.send_json_response({"success": False, "error": str(e)}, 500)

@@ -58,6 +58,9 @@ Thumbs.db
 agent_context.db
 agent_memory/
 
+# Research sessions (user-specific)
+research_sessions/
+
 # Agent manifests (user-created agents)
 manifesti/
 
