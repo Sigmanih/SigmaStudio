@@ -1,97 +1,89 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { Play, Square, RotateCcw, ChevronRight, Cpu, Target, Layers, RefreshCw, Database, GitCompare, Settings, Wifi, WifiOff, X, Sliders, MessageSquare, Send } from 'lucide-react';
+import { 
+  Play, Square, RotateCcw, ChevronRight, Cpu, Target, Layers, RefreshCw, 
+  Database, Wifi, WifiOff, X, MessageSquare, Send, Plus, Trash2, 
+  CheckCircle, Circle, Clock, AlertTriangle, ArrowRight, GitBranch
+} from 'lucide-react';
 import useResearchPipeline from './core/useResearchPipeline';
 
-const STATUS_LABELS = {
-  idle: 'In attesa — seleziona un template',
-  planning: 'Pianificazione in corso...',
-  running: 'Esecuzione pipeline...',
-  paused: 'In pausa',
-  done: 'Pipeline completata ✅',
-  error: 'Errore ❌',
+// ==============================================================================
+// RESEARCH LAB v2 — Multi-Session Research with Micro-Objectives & Next Steps
+// ==============================================================================
+
+const PIPELINE_TEMPLATES = {
+  math_research: {
+    id: 'math_research',
+    name: '∑ Ricerca Matematica',
+    description: 'Teoria, test computazionali, visualizzazioni D3 e revisione formale',
+    agents: ['math1', 'test-engineer', 'viz-designer', 'proof-reviewer'],
+  },
+  full_analysis: {
+    id: 'full_analysis',
+    name: '📋 Analisi Completa',
+    description: 'Coordinamento, ricerca, sviluppo test, visualizzazione e revisione',
+    agents: ['sigma_architect', 'math1', 'code_architect', 'viz-designer', 'proof-reviewer'],
+  },
+  code_review: {
+    id: 'code_review',
+    name: '⚙️ Code Review',
+    description: 'Analisi codice, refactoring, test, ottimizzazione e documentazione',
+    agents: ['code_architect', 'sigma_architect', 'proof-reviewer'],
+  },
+  general_research: {
+    id: 'general_research',
+    name: '🔬 Ricerca Generale',
+    description: 'Ricerca scientifica completa con validazione e documentazione',
+    agents: ['sigma_architect', 'math1', 'test-engineer', 'proof-reviewer'],
+  },
 };
 
-const STATUS_ICONS = {
-  idle: <Target size={14} />,
-  planning: <RefreshCw size={14} className="spin" />,
-  running: <RefreshCw size={14} className="spin" />,
-  done: <Cpu size={14} />,
-  error: <Cpu size={14} />,
-};
-
-function AgentConfigPanel({ agentId, meta, config, onUpdate, onClose, testState, onTest }) {
-  const isTesting = testState?.testing;
-  const testSuccess = testState?.success;
-  const testError = testState?.error;
-  const testLatency = testState?.latency;
+function SessionListItem({ session, isActive, onClick, onDelete }) {
+  const statusColors = {
+    created: '#5a5e72', active: '#00d2ff', completed: '#3fb950', failed: '#ff5555',
+  };
+  const statusIcons = {
+    created: '📝', active: '⚡', completed: '✅', failed: '❌',
+  };
   return (
-    <div className="agent-config-overlay" onClick={onClose}>
-      <div className="agent-config-panel" onClick={e => e.stopPropagation()}>
-        <div className="agent-config-header" style={{ borderBottomColor: meta.bg }}>
-          <span className="agent-config-icon">{meta.icon}</span>
-          <span className="agent-config-name" style={{ color: meta.bg }}>{meta.name}</span>
-          <button className="agent-config-close" onClick={onClose}><X size={14} /></button>
-        </div>
-        <div className="agent-config-body">
-          <div className="agent-config-field">
-            <span className="agent-config-label">Provider AI</span>
-            <select className="agent-config-select" value={config.provider} onChange={e => onUpdate(agentId, { provider: e.target.value })}>
-              <option value="deepseek">DeepSeek</option>
-              <option value="ollama">Ollama (Locale)</option>
-              <option value="openai">OpenAI</option>
-              <option value="anthropic">Anthropic (Claude)</option>
-            </select>
-          </div>
-          <div className="agent-config-field">
-            <span className="agent-config-label">Modello</span>
-            <select className="agent-config-select" value={config.model} onChange={e => onUpdate(agentId, { model: e.target.value })}>
-              {config.provider === 'deepseek' && ['deepseek-v4-flash','deepseek-chat','deepseek-reasoner','deepseek-coder','deepseek-v4-pro'].map(m => <option key={m} value={m}>{m}</option>)}
-              {config.provider === 'ollama' && ['llama3.2','qwen3.6','gemma2','mistral','phi3'].map(m => <option key={m} value={m}>{m}</option>)}
-              {config.provider === 'openai' && ['gpt-4o','gpt-4o-mini','gpt-4-turbo','o1','o3-mini'].map(m => <option key={m} value={m}>{m}</option>)}
-              {config.provider === 'anthropic' && ['claude-sonnet-4','claude-3-5-sonnet','claude-3-opus'].map(m => <option key={m} value={m}>{m}</option>)}
-            </select>
-          </div>
-          <div className="agent-config-field">
-            <span className="agent-config-label">Temperatura <strong>{config.temperature?.toFixed(2)}</strong></span>
-            <input type="range" className="agent-config-range" min="0" max="2" step="0.05" value={config.temperature} onChange={e => onUpdate(agentId, { temperature: parseFloat(e.target.value) })} />
-          </div>
-          <div className="agent-config-test-section">
-            <button className={`agent-config-test-btn ${isTesting ? 'testing' : ''}`} onClick={() => onTest(agentId)} disabled={isTesting}>
-              {isTesting ? <><RefreshCw size={14} className="spin" /> Test...</> : <><Wifi size={14} /> Test Connessione</>}
-            </button>
-            {testSuccess && <div className="agent-config-test-result success"><Wifi size={12} /> Risposta OK ({testLatency}ms)</div>}
-            {testError && <div className="agent-config-test-result error"><WifiOff size={12} /> Errore: {testError}</div>}
-          </div>
-          <div className="agent-config-status">
-            <span className={`agent-config-status-dot ${testSuccess ? 'connected' : testError ? 'error' : 'unknown'}`} />
-            <span className="agent-config-status-text">{testSuccess ? '🟢 Connesso' : testError ? '🔴 Non connesso' : '⚪ Non testato'}</span>
-          </div>
+    <div className={`rl-session-item ${isActive ? 'active' : ''}`} onClick={onClick}>
+      <div className="rl-session-status" style={{ color: statusColors[session.status] || '#5a5e72' }}>
+        {statusIcons[session.status] || '📝'}
+      </div>
+      <div className="rl-session-info">
+        <div className="rl-session-name">{session.name}</div>
+        <div className="rl-session-meta">
+          {session.objectives_total > 0 && `${session.objectives_done}/${session.objectives_total} obiettivi · `}
+          {session.agents_count} agenti
         </div>
       </div>
+      <button className="rl-session-delete" onClick={e => { e.stopPropagation(); onDelete(session.id); }}>
+        <Trash2 size={12} />
+      </button>
     </div>
   );
 }
 
-function AgentChatMessage({ msg, meta }) {
-  const isUser = msg.message_type === 'user';
-  const isSystem = msg.message_type === 'system';
+function ObjectiveCard({ obj, agentsMeta }) {
+  const statusColors = {
+    pending: '#5a5e72', in_progress: '#00d2ff', done: '#3fb950', failed: '#ff5555',
+  };
+  const statusIcons = {
+    pending: <Circle size={14} />, in_progress: <RefreshCw size={14} className="spin" />,
+    done: <CheckCircle size={14} />, failed: <AlertTriangle size={14} />,
+  };
+  const agentMeta = agentsMeta[obj.assigned_to] || {};
   return (
-    <div className={`agent-chat-msg ${isUser ? 'user-msg' : ''} ${isSystem ? 'system-msg' : ''}`}
-      style={{ borderLeftColor: isUser ? '#00d2ff' : isSystem ? '#d29922' : (meta?.bg || '#8b8fa3') }}>
-      <div className="agent-chat-msg-header">
-        <span className="agent-chat-msg-icon">{isUser ? '👤' : isSystem ? '⚙️' : (meta?.icon || '🤖')}</span>
-        <span className="agent-chat-msg-agent" style={{ color: isUser ? '#00d2ff' : isSystem ? '#d29922' : (meta?.bg || '#8b8fa3') }}>
-          {isUser ? 'Tu' : isSystem ? 'Sistema' : (meta?.name || msg.agent_id)}
+    <div className="rl-objective-card" style={{ borderLeftColor: statusColors[obj.status] || '#5a5e72' }}>
+      <div className="rl-objective-header">
+        <span className="rl-objective-status" style={{ color: statusColors[obj.status] }}>
+          {statusIcons[obj.status]}
         </span>
-        <span className="agent-chat-msg-time">{msg.timestamp ? msg.timestamp.slice(11, 19) : ''}</span>
+        <span className="rl-objective-title">{obj.title}</span>
+        {agentMeta.icon && <span className="rl-objective-agent" title={agentMeta.name}>{agentMeta.icon}</span>}
       </div>
-      <div className="agent-chat-msg-text">{msg.message?.slice(0, 2000)}</div>
-      {msg.actions?.length > 0 && (
-        <div className="agent-chat-msg-actions">
-          {msg.actions.map((a, i) => (
-            <span key={i} className="agent-chat-action-chip">{a.type} ✓</span>
-          ))}
-        </div>
+      <div className="rl-objective-desc">{obj.description}</div>
+      {obj.completion_criteria && (
+        <div className="rl-objective-criteria">✓ {obj.completion_criteria}</div>
       )}
     </div>
   );
@@ -99,326 +91,351 @@ function AgentChatMessage({ msg, meta }) {
 
 export default function ResearchLab({ onClose, onTasksUpdated, addToast }) {
   const pipeline = useResearchPipeline(onTasksUpdated, addToast);
-  const [showAllAgents, setShowAllAgents] = useState(false);
-  const [chatMessages, setChatMessages] = useState([]);
-  const [chatInput, setChatInput] = useState('');
-  const chatEndRef = useRef(null);
-  const prevAgentStatesRef = useRef({});
-  const prevLogLengthRef = useRef(0);
-
   const {
-    pipelineGoal, setPipelineGoal,
-    pipelineStatus, pipelineError,
-    enabledAgents, toggleAgent, getAgentColor,
-    agentStates, currentStep, totalSteps,
+    AGENTS_META, getAgentColor, agentStates,
+    pipelineActionsLog, pipelineStatus, pipelineError,
     startPipeline, stopPipeline, resetPipeline,
-    activeTemplate, selectTemplate, getTemplateList,
-    memorySnapshots, feedbackCycles,
-    PIPELINE_TEMPLATES, AGENTS_META,
-    getAgentConfig, updateAgentConfig,
-    selectedAgentId, selectAgentForConfig, closeAgentConfig,
-    testStates, testAgentConnection,
-    pipelineActionsLog, pipelineGoal: goalFromHook,
-    agentResponses,
+    activeTemplate, selectTemplate,
+    feedbackCycles, agentResponses,
     saveChatMessage, loadChatMessages, pipelineId,
   } = pipeline;
 
-  const isRunning = pipelineStatus === 'running' || pipelineStatus === 'planning';
-  const canStart = pipelineGoal.trim() && !isRunning;
-  const templateList = getTemplateList();
-  const currentTemplate = PIPELINE_TEMPLATES[activeTemplate];
+  // --- Research Sessions State ---
+  const [sessions, setSessions] = useState([]);
+  const [activeSessionId, setActiveSessionId] = useState(null);
+  const [sessionData, setSessionData] = useState(null);
+  const [showNewSession, setShowNewSession] = useState(false);
+  const [newGoal, setNewGoal] = useState('');
+  const [newTemplate, setNewTemplate] = useState('full_analysis');
+  const [decomposing, setDecomposing] = useState(false);
+  const [generatingSteps, setGeneratingSteps] = useState(false);
+  const [nextSteps, setNextSteps] = useState([]);
 
-  const selectedAgent = selectedAgentId ? {
-    id: selectedAgentId,
-    meta: AGENTS_META[selectedAgentId] || getAgentColor(selectedAgentId),
-    config: getAgentConfig(selectedAgentId),
-  } : null;
-
-  // Track agentStates changes → chat messages
+  // ============================
+  // Load sessions on mount
+  // ============================
   useEffect(() => {
-    const prev = prevAgentStatesRef.current;
-    Object.entries(agentStates).forEach(([agentId, state]) => {
-      const prevState = prev[agentId];
-      const meta = AGENTS_META[agentId];
-      
-      // Agent just started working
-      if (state?.status === 'active' && (!prevState || prevState.status !== 'active')) {
-        const taskName = state?.task || 'Lavorando...';
-        addChatMessage(agentId, `▶️ Inizio: ${taskName}`, 'action', meta);
-      }
-      
-      // Agent just completed work
-      if (state?.status === 'done' && (!prevState || prevState.status === 'active')) {
-        const summary = state?.successful_actions 
-          ? `✅ Completato: ${state.successful_actions}/${state.total_actions} azioni riuscite`
-          : '✅ Completato';
-        addChatMessage(agentId, summary, 'response', meta);
-      }
-      
-      // Agent failed
-      if (state?.status === 'failed' && (!prevState || prevState.status === 'active')) {
-        const error = state?.error || state?.error_detail || (state?.review_notes ? `Revisione fallita: ${state?.review_notes?.slice(0, 100)}` : 'Errore sconosciuto (nessun dettaglio dal backend)');
-        addChatMessage(agentId, `❌ Fallito: ${error}`, 'error', meta);
-      }
-      
-      // New task arrived (orchestrate mode)
-      if (state?.task && (!prevState || prevState.task !== state.task)) {
-        if (state.status === 'pending') {
-          addChatMessage(agentId, `📋 Assegnato: ${state.task}`, 'action', meta);
-        }
-      }
-    });
-    prevAgentStatesRef.current = JSON.parse(JSON.stringify(agentStates));
-  }, [agentStates]);
-
-  // Track AI responses (from agent_task_iteration SSE events)
-  const prevResponsesRef = useRef(0);
-  useEffect(() => {
-    if (agentResponses.length > prevResponsesRef.current) {
-      const newResps = agentResponses.slice(prevResponsesRef.current);
-      newResps.forEach(r => {
-        const meta = AGENTS_META[r.agent_id];
-        addChatMessage(r.agent_id, `💬 ${r.response?.slice(0, 1000)}`, 'response', meta);
-      });
-      prevResponsesRef.current = agentResponses.length;
-    }
-  }, [agentResponses]);
-
-  // Track pipeline actions log for new entries
-  useEffect(() => {
-    if (pipelineActionsLog.length > prevLogLengthRef.current) {
-      const newActions = pipelineActionsLog.slice(prevLogLengthRef.current);
-      newActions.forEach(action => {
-        if (action.type === 'create_file' || action.type === 'run_test' || action.type === 'edit_file') {
-          const agentId = action.bot_name || 'sigma_architect';
-          const meta = AGENTS_META[agentId];
-          const icon = action.type === 'create_file' ? '📄' : action.type === 'edit_file' ? '✏️' : '🧪';
-          addChatMessage(agentId, `${icon} ${action.path || action.message || ''}`, 'action', meta);
-        }
-      });
-      prevLogLengthRef.current = pipelineActionsLog.length;
-    }
-  }, [pipelineActionsLog]);
-
-  // Load saved messages on mount
-  useEffect(() => {
-    loadChatMessages().then(saved => {
-      if (saved.length > 0) {
-        setChatMessages(saved);
-      }
-    });
+    fetchSessions();
   }, []);
 
-  // Clear chat on new pipeline
-  useEffect(() => {
-    if (pipelineStatus === 'planning') {
-      // Don't clear — keep persisted messages
-      prevLogLengthRef.current = 0;
-      prevAgentStatesRef.current = {};
-    }
-  }, [pipelineStatus]);
+  const fetchSessions = async () => {
+    try {
+      const res = await fetch('/api/research/list');
+      const data = await res.json();
+      if (data.success) setSessions(data.sessions || []);
+    } catch (e) { console.error('Failed to load sessions:', e); }
+  };
 
-  // Scroll to bottom
-  useEffect(() => {
-    chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [chatMessages]);
+  const fetchSessionStatus = async (sessionId) => {
+    try {
+      const res = await fetch(`/api/research/status?id=${encodeURIComponent(sessionId)}`);
+      const data = await res.json();
+      if (data.success) setSessionData(data.session);
+    } catch (e) { console.error('Failed to load session status:', e); }
+  };
 
-  const addChatMessage = useCallback((agentId, text, type = 'action', meta = null) => {
-    if (!text) return;
-    // Save to backend immediately
-    saveChatMessage(agentId, text, type);
-    setChatMessages(prev => {
-      if (prev.length > 0 && prev[prev.length - 1].message === text) return prev;
-      return [...prev, {
-        id: Date.now() + Math.random(),
-        agent_id: agentId,
-        message: text,
-        message_type: type,
-        actions: [],
-        timestamp: new Date().toISOString(),
-      }];
-    });
-  }, [saveChatMessage]);
+  const handleSelectSession = (sessionId) => {
+    setActiveSessionId(sessionId);
+    fetchSessionStatus(sessionId);
+  };
 
-  // Send user message to the chat (visible locally)
-  const sendUserMessage = useCallback(() => {
-    const text = chatInput.trim();
-    if (!text) return;
-    addChatMessage('user', text, 'user');
-    setChatInput('');
-  }, [chatInput, addChatMessage]);
-
-  const handleChatKeyDown = (e) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault();
-      sendUserMessage();
+  const handleCreateSession = async () => {
+    if (!newGoal.trim()) return;
+    try {
+      const template = PIPELINE_TEMPLATES[newTemplate];
+      const agents = (template?.agents || ['sigma_architect']).map(id => ({
+        agent_id: id,
+        provider: 'deepseek',
+        model: 'deepseek-v4-flash',
+        temperature: 0.4,
+      }));
+      const res = await fetch('/api/research/create', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: newGoal.slice(0, 80),
+          goal: newGoal,
+          pipeline_template: newTemplate,
+          agents,
+        }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setShowNewSession(false);
+        setNewGoal('');
+        fetchSessions();
+        handleSelectSession(data.session.id);
+        // Auto-decompose
+        handleDecompose(data.session.id, newGoal, agents);
+        if (addToast) addToast('✅ Sessione di ricerca creata', 'success', 3000);
+      }
+    } catch (e) {
+      if (addToast) addToast('❌ Errore creazione sessione', 'error', 3000);
     }
   };
 
-  // Typing indicator — shows "sta scrivendo..." for active agents
-  const [typingAgents, setTypingAgents] = useState({});
-  useEffect(() => {
-    const newTyping = {};
-    Object.entries(agentStates).forEach(([agentId, state]) => {
-      if (state?.status === 'active') {
-        const meta = AGENTS_META[agentId];
-        if (!typingAgents[agentId]) {
-          newTyping[agentId] = {
-            meta,
-            startedAt: Date.now(),
-            text: `${meta?.icon || '🤖'} ${meta?.name || agentId} sta scrivendo...`,
-          };
-        } else {
-          newTyping[agentId] = typingAgents[agentId];
-        }
+  const handleDecompose = async (sessionId, goal, agents) => {
+    setDecomposing(true);
+    try {
+      const res = await fetch('/api/research/decompose', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ session_id: sessionId, goal, agents }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        fetchSessionStatus(sessionId);
+        if (addToast) addToast(`📋 Scomposto in ${data.count} micro-obiettivi`, 'success', 4000);
+      } else {
+        if (addToast) addToast(`⚠️ ${data.error}`, 'warning', 4000);
       }
-    });
-    setTypingAgents(newTyping);
-  }, [agentStates]);
+    } catch (e) {
+      if (addToast) addToast('❌ Errore decomposizione', 'error', 3000);
+    }
+    setDecomposing(false);
+  };
+
+  const handleGenerateNextSteps = async () => {
+    if (!activeSessionId) return;
+    setGeneratingSteps(true);
+    try {
+      const res = await fetch('/api/research/next_steps', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ session_id: activeSessionId }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setNextSteps(data.next_steps || []);
+        fetchSessionStatus(activeSessionId);
+        if (addToast) addToast('💡 Next steps generati!', 'success', 3000);
+      }
+    } catch (e) {
+      if (addToast) addToast('❌ Errore', 'error', 3000);
+    }
+    setGeneratingSteps(false);
+  };
+
+  const handleDeleteSession = async (sessionId) => {
+    try {
+      await fetch('/api/research/delete', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: sessionId }),
+      });
+      if (activeSessionId === sessionId) {
+        setActiveSessionId(null);
+        setSessionData(null);
+      }
+      fetchSessions();
+    } catch (e) { console.error(e); }
+  };
+
+  const handleUseNextStep = (step) => {
+    setNewGoal(step.description);
+    setShowNewSession(true);
+  };
+
+  // Group objectives by status for Kanban
+  const getObjectives = () => sessionData?.micro_objectives || [];
+  const pendingObjectives = getObjectives().filter(o => o.status === 'pending');
+  const inProgressObjectives = getObjectives().filter(o => o.status === 'in_progress');
+  const doneObjectives = getObjectives().filter(o => o.status === 'done');
+  const failedObjectives = getObjectives().filter(o => o.status === 'failed');
+
+  const isRunning = pipelineStatus === 'running' || pipelineStatus === 'planning';
 
   return (
-    <div className="research-lab-new">
-      {/* LEFT PANEL */}
-      <div className="research-lab-panel">
-        <div className="research-lab-header">
-          <div className="research-lab-title">
-            <Cpu size={16} />
-            <span>🔬 Research Lab</span>
-          </div>
-          <div className="research-lab-controls">
-            {!isRunning ? (
-              <button className="research-btn research-btn-primary" onClick={startPipeline} disabled={!canStart}>
-                <Play size={13} /> Avvia
-              </button>
-            ) : (
-              <button className="research-btn research-btn-danger" onClick={stopPipeline}>
-                <Square size={13} />
-              </button>
-            )}
-            <button className="research-btn research-btn-ghost" onClick={resetPipeline} disabled={isRunning}>
-              <RotateCcw size={13} />
-            </button>
-            <button className="research-btn research-btn-ghost" onClick={onClose}>✕</button>
-          </div>
-        </div>
-
-        <div className="research-compact-section">
-          <div className="research-compact-status">
-            {STATUS_ICONS[pipelineStatus] || STATUS_ICONS.idle}
-            <span className="research-status-text">{STATUS_LABELS[pipelineStatus]}</span>
-            {isRunning && <span className="research-status-detail">Nodo {currentStep}/{totalSteps}</span>}
-            {feedbackCycles > 0 && pipelineStatus === 'done' && <span className="research-status-feedback"> · {feedbackCycles} feedback</span>}
-          </div>
-          <div className="research-compact-templates">
-            {templateList.filter(t => t.id !== 'none').slice(0, 4).map(t => (
-              <button key={t.id} className={`research-template-chip ${activeTemplate === t.id ? 'active' : ''}`} onClick={() => selectTemplate(t.id)} disabled={isRunning}>
-                {t.label}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        <div className="research-path-compact">
-          {enabledAgents.map((agent, i) => {
-            const meta = AGENTS_META[agent.id] || getAgentColor(agent.id);
-            const state = agentStates[agent.id];
-            const isActive = state?.status === 'active';
-            const isDone = state?.status === 'done';
-            return (
-              <React.Fragment key={agent.id}>
-                <div className={`research-path-node-compact ${isActive ? 'active' : ''} ${isDone ? 'done' : ''}`}
-                  style={{ borderColor: meta.bg }} onClick={() => selectAgentForConfig(agent.id)}>
-                  <span className="research-path-icon-compact">{meta.icon}</span>
-                  {isActive && <span className="research-path-pulse" style={{ background: meta.bg }} />}
-                </div>
-                {i < enabledAgents.length - 1 && <ChevronRight size={14} className="research-path-arrow-compact" />}
-              </React.Fragment>
-            );
-          })}
-        </div>
-
-        <div className="research-agent-chips">
-          {Object.entries(AGENTS_META).map(([id, meta]) => {
-            const isEnabled = enabledAgents.some(a => a.id === id);
-            const isSelected = selectedAgentId === id;
-            const hasMemory = memorySnapshots[id];
-            const config = getAgentConfig(id);
-            const isTested = testStates[id]?.success;
-            return (
-              <button key={id} className={`research-chip-compact ${isEnabled ? 'on' : ''} ${isSelected ? 'sel' : ''}`}
-                style={{ borderColor: isEnabled ? meta.bg : 'rgba(255,255,255,0.06)' }}
-                onClick={() => selectAgentForConfig(id)} disabled={isRunning}
-                title={`${meta.name}: ${config.provider}/${config.model}`}>
-                <span>{meta.icon}{meta.short.slice(0,3)}</span>
-                {isTested && <span className="research-chip-ok">✓</span>}
-                {hasMemory && <Database size={8} className="research-chip-mem" />}
-              </button>
-            );
-          })}
-        </div>
-
-        <div className="research-compact-stats">
-          <span>📄 {Object.values(memorySnapshots).reduce((s, m) => s + (m.files_created || 0), 0)} file</span>
-          <span>🧪 {Object.values(memorySnapshots).reduce((s, m) => s + (m.tests_passed || 0), 0)} test</span>
-          <span>⚡ {Object.values(memorySnapshots).reduce((s, m) => s + (m.actions || 0), 0)} azioni</span>
-        </div>
-      </div>
-
-      {/* RIGHT PANEL — Agent Chat with Input */}
-      <div className="research-chat-sidebar">
-        <div className="research-chat-sidebar-header">
-          <MessageSquare size={14} />
-          <span>Chat Agenti</span>
-          <span className="research-chat-sidebar-count">{chatMessages.length}</span>
-        </div>
-        <div className="research-chat-sidebar-msgs">
-          {chatMessages.length === 0 && pipelineStatus === 'idle' && (
-            <div className="research-chat-sidebar-empty">
-              <MessageSquare size={24} />
-              <span>I messaggi degli agenti appariranno qui durante l'esecuzione</span>
-              <span style={{ fontSize: '0.6rem', opacity: 0.5, marginTop: 8 }}>Puoi anche scrivere messaggi nella chat sottostante</span>
-            </div>
-          )}
-          {chatMessages.map(msg => (
-            <AgentChatMessage key={msg.id} msg={msg} meta={AGENTS_META[msg.agent_id]} />
-          ))}
-          {/* Typing indicators — shows which agents are currently working */}
-          {Object.entries(typingAgents).map(([agentId, ta]) => (
-            <div key={agentId} className="research-typing-indicator" style={{ borderLeftColor: ta.meta?.bg || 'var(--primary)' }}>
-              <span>{ta.meta?.icon || '🤖'} <strong style={{ color: ta.meta?.bg || 'var(--primary)' }}>{ta.meta?.name || agentId}</strong> sta scrivendo</span>
-              <span className="research-typing-dots">
-                <span /><span /><span />
-              </span>
-            </div>
-          ))}
-          <div ref={chatEndRef} />
-        </div>
-        {/* Chat Input */}
-        <div className="research-chat-input">
-          <input
-            className="research-chat-input-field"
-            type="text"
-            placeholder={isRunning ? "Scrivi un messaggio agli agenti..." : "In attesa dell'esecuzione..."}
-            value={chatInput}
-            onChange={e => setChatInput(e.target.value)}
-            onKeyDown={handleChatKeyDown}
-            disabled={!isRunning && chatMessages.length === 0}
-          />
-          <button className="research-chat-send-btn" onClick={sendUserMessage} disabled={!chatInput.trim()}>
-            <Send size={14} />
+    <div className="research-lab-v2">
+      {/* LEFT BAR — Session List */}
+      <div className="rl-sidebar">
+        <div className="rl-sidebar-header">
+          <Target size={14} />
+          <span>Ricerche</span>
+          <button className="rl-btn-icon" onClick={() => setShowNewSession(true)} title="Nuova ricerca">
+            <Plus size={14} />
           </button>
         </div>
+        <div className="rl-session-list">
+          {sessions.map(s => (
+            <SessionListItem
+              key={s.id}
+              session={s}
+              isActive={activeSessionId === s.id}
+              onClick={() => handleSelectSession(s.id)}
+              onDelete={handleDeleteSession}
+            />
+          ))}
+          {sessions.length === 0 && (
+            <div className="rl-empty">
+              <Layers size={24} />
+              <span>Nessuna ricerca</span>
+              <button className="rl-btn" onClick={() => setShowNewSession(true)}>Nuova Ricerca</button>
+            </div>
+          )}
+        </div>
       </div>
 
-      {pipelineError && <div className="research-error"><span>❌ {pipelineError}</span></div>}
+      {/* MAIN AREA */}
+      <div className="rl-main">
+        {/* New Session Modal */}
+        {showNewSession && (
+          <div className="rl-new-session-overlay" onClick={() => setShowNewSession(false)}>
+            <div className="rl-new-session" onClick={e => e.stopPropagation()}>
+              <div className="rl-new-header">
+                <span>🔬 Nuova Ricerca</span>
+                <button className="rl-btn-icon" onClick={() => setShowNewSession(false)}><X size={14} /></button>
+              </div>
+              <div className="rl-new-body">
+                <label>Obiettivo della ricerca</label>
+                <textarea
+                  className="rl-goal-input"
+                  value={newGoal}
+                  onChange={e => setNewGoal(e.target.value)}
+                  placeholder="Descrivi l'obiettivo della ricerca. Es: Studiare le transizioni nella congettura di Collatz per n fino a 10^6, analizzando le classi modulo 6 e producendo visualizzazioni interattive..."
+                  rows={4}
+                />
+                <label>Pipeline template</label>
+                <div className="rl-template-grid">
+                  {Object.values(PIPELINE_TEMPLATES).map(t => (
+                    <div
+                      key={t.id}
+                      className={`rl-template-card ${newTemplate === t.id ? 'active' : ''}`}
+                      onClick={() => setNewTemplate(t.id)}
+                    >
+                      <div className="rl-template-name">{t.name}</div>
+                      <div className="rl-template-desc">{t.description}</div>
+                      <div className="rl-template-agents">
+                        {t.agents.map(a => {
+                          const meta = AGENTS_META[a] || {};
+                          return <span key={a} title={meta.name}>{meta.icon || '🤖'}</span>;
+                        })}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+                <button
+                  className="rl-btn-primary"
+                  onClick={handleCreateSession}
+                  disabled={!newGoal.trim()}
+                >
+                  <Play size={14} /> Crea e Avvia Ricerca
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
 
-      {selectedAgent && (
-        <AgentConfigPanel
-          agentId={selectedAgent.id} meta={selectedAgent.meta} config={selectedAgent.config}
-          onUpdate={updateAgentConfig} onClose={closeAgentConfig}
-          testState={testStates[selectedAgent.id]} onTest={testAgentConnection}
-        />
-      )}
+        {/* Session Dashboard */}
+        {sessionData ? (
+          <>
+            <div className="rl-dashboard-header">
+              <div className="rl-dashboard-title">
+                <Target size={16} />
+                <span>{sessionData.name}</span>
+                <span className={`rl-badge rl-badge-${sessionData.status}`}>
+                  {sessionData.status?.toUpperCase()}
+                </span>
+              </div>
+              <div className="rl-dashboard-actions">
+                <span className="rl-progress">{sessionData.objectives_progress || '0/0'} obiettivi</span>
+                {sessionData.status === 'completed' && (
+                  <button className="rl-btn" onClick={handleGenerateNextSteps} disabled={generatingSteps}>
+                    {generatingSteps ? <RefreshCw size={14} className="spin" /> : <GitBranch size={14} />}
+                    {generatingSteps ? 'Generando...' : 'Next Steps'}
+                  </button>
+                )}
+                <button className="rl-btn-icon" onClick={() => { setActiveSessionId(null); setSessionData(null); }}>
+                  <X size={14} />
+                </button>
+              </div>
+            </div>
+
+            {/* Goal */}
+            <div className="rl-goal-display">
+              <MessageSquare size={14} />
+              <span>{sessionData.goal}</span>
+            </div>
+
+            {/* Kanban Board */}
+            <div className="rl-kanban">
+              <div className="rl-kanban-col">
+                <div className="rl-kanban-header" style={{ borderColor: '#5a5e72' }}>
+                  <Circle size={12} /> Da Fare ({pendingObjectives.length})
+                </div>
+                {pendingObjectives.map(o => <ObjectiveCard key={o.id} obj={o} agentsMeta={AGENTS_META} />)}
+              </div>
+              <div className="rl-kanban-col">
+                <div className="rl-kanban-header" style={{ borderColor: '#00d2ff' }}>
+                  <RefreshCw size={12} /> In Corso ({inProgressObjectives.length})
+                </div>
+                {inProgressObjectives.map(o => <ObjectiveCard key={o.id} obj={o} agentsMeta={AGENTS_META} />)}
+              </div>
+              <div className="rl-kanban-col">
+                <div className="rl-kanban-header" style={{ borderColor: '#3fb950' }}>
+                  <CheckCircle size={12} /> Completati ({doneObjectives.length})
+                </div>
+                {doneObjectives.map(o => <ObjectiveCard key={o.id} obj={o} agentsMeta={AGENTS_META} />)}
+              </div>
+              <div className="rl-kanban-col">
+                <div className="rl-kanban-header" style={{ borderColor: '#ff5555' }}>
+                  <AlertTriangle size={12} /> Bloccati ({failedObjectives.length})
+                </div>
+                {failedObjectives.map(o => <ObjectiveCard key={o.id} obj={o} agentsMeta={AGENTS_META} />)}
+              </div>
+            </div>
+
+            {/* Agents Bar */}
+            <div className="rl-agents-bar">
+              {sessionData.agents?.map(agent => {
+                const meta = AGENTS_META[agent.agent_id || agent.id] || getAgentColor(agent.agent_id);
+                return (
+                  <div key={agent.agent_id || agent.id} className="rl-agent-chip" style={{ borderColor: meta.bg }}>
+                    <span>{meta.icon}</span>
+                    <span style={{ color: meta.bg }}>{meta.short || agent.agent_id}</span>
+                    <span className="rl-agent-model">{agent.model}</span>
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* Next Steps */}
+            {nextSteps.length > 0 && (
+              <div className="rl-next-steps">
+                <div className="rl-next-header">
+                  <GitBranch size={14} />
+                  <span>Prossimi Passi Suggeriti</span>
+                </div>
+                <div className="rl-next-list">
+                  {nextSteps.map((step, i) => (
+                    <div key={i} className="rl-next-item">
+                      <div className="rl-next-title">
+                        <span className={`rl-priority rl-priority-${step.priority}`}>
+                          {step.priority?.toUpperCase()}
+                        </span>
+                        {step.title}
+                      </div>
+                      <div className="rl-next-desc">{step.description}</div>
+                      <button className="rl-btn-sm" onClick={() => handleUseNextStep(step)}>
+                        <Play size={10} /> Usa come nuova ricerca
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </>
+        ) : (
+          <div className="rl-welcome">
+            <Cpu size={48} />
+            <h2>Research Lab v2</h2>
+            <p>Seleziona una ricerca esistente o creane una nuova per iniziare.</p>
+            <button className="rl-btn-primary" onClick={() => setShowNewSession(true)}>
+              <Plus size={16} /> Nuova Ricerca
+            </button>
+          </div>
+        )}
+      </div>
     </div>
   );
 }
