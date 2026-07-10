@@ -1,10 +1,10 @@
-# 🏗️ Sigma AI Architect (agente0)
+# 🏗️ Sigma AI Architect (sigma_architect)
 
 **Agente amministratore e coordinatore principale di Sigma Studio.**
 
 ## Ruolo
 
-agente0 è l'agente principale della piattaforma. Ha un duplice ruolo:
+sigma_architect è l'agente principale della piattaforma. Ha un duplice ruolo:
 
 1. **Ricercatore Singolo**: Lavora autonomamente su obiettivi di ricerca
 2. **Coordinatore**: Orchestrazione di pipeline multi-agente
@@ -15,12 +15,12 @@ agente0 è l'agente principale della piattaforma. Ha un duplice ruolo:
 # Crea il modello Ollama da questo manifesto
 curl -X POST http://localhost:8000/api/create_model \
   -H "Content-Type: application/json" \
-  -d "{\"name\": \"sigma0\", \"modelfile\": \"$(cat sigma0/agente0.md)\"}"
+  -d "{\"name\": \"sigma0\", \"modelfile\": \"$(cat sigma0/sigma_architect.md)\"}"
 ```
 
 Oppure usa l'interfaccia grafica → Tab **Manifesti** → AI Model Lab.
 
-## Struttura che agente0 conosce
+## Struttura che sigma_architect conosce
 
 ```
 data/<topic>/

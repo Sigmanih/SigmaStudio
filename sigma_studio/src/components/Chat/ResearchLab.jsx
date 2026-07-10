@@ -190,7 +190,7 @@ export default function ResearchLab({ onClose, onTasksUpdated, addToast }) {
       const newActions = pipelineActionsLog.slice(prevLogLengthRef.current);
       newActions.forEach(action => {
         if (action.type === 'create_file' || action.type === 'run_test' || action.type === 'edit_file') {
-          const agentId = action.bot_name || 'agente0';
+          const agentId = action.bot_name || 'sigma_architect';
           const meta = AGENTS_META[agentId];
           const icon = action.type === 'create_file' ? '📄' : action.type === 'edit_file' ? '✏️' : '🧪';
           addChatMessage(agentId, `${icon} ${action.path || action.message || ''}`, 'action', meta);

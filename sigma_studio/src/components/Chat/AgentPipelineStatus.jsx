@@ -21,13 +21,13 @@ const STATUS_COLORS = {
 };
 
 const AGENT_ICONS = {
-  agente0: '🏗️',
+  sigma_architect: '🏗️',
   math1: '∑',
   code_architect: '⚙️',
 };
 
 const AGENT_COLORS = {
-  agente0: '#7c5bf0',
+  sigma_architect: '#7c5bf0',
   math1: '#3fb950',
   code_architect: '#00d2ff',
 };

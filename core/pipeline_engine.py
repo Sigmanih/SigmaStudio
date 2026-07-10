@@ -245,10 +245,10 @@ def _map_role_to_agent_id(role: str) -> str:
         "reviewer": "proof-reviewer",
         "analyst": "viz-designer",
         "visualizer": "viz-designer",
-        "architect": "agente0",
+        "architect": "sigma_architect",
         "developer": "code_architect",
     }
-    return role_map.get(role, "agente0")
+    return role_map.get(role, "sigma_architect")
 
 
 # ==============================================================================

@@ -17,12 +17,12 @@ export default function ManifestiGallery({ modules, manifesti, openTab, setFileM
   const [modelsLoading, setModelsLoading] = useState(false);
   const [creatingModel, setCreatingModel] = useState(false);
   const [createResult, setCreateResult] = useState(null);
-  const [selectedManifesto, setSelectedManifesto] = useState('sigma0/agente0.md');
+  const [selectedManifesto, setSelectedManifesto] = useState('sigma0/sigma_architect.md');
   const [modelName, setModelName] = useState('sigma-agent');
   const [baseModel, setBaseModel] = useState('llama3.2');
 
   useEffect(() => {
-    fetch('/api/get_file?path=sigma0/agente0.md')
+    fetch('/api/get_file?path=sigma0/sigma_architect.md')
       .then(r => r.json())
       .then(d => { 
         if (d.success) setManifestoText(d.content); 
@@ -92,8 +92,6 @@ export default function ManifestiGallery({ modules, manifesti, openTab, setFileM
         .mg-section { margin-bottom: 20px; }
         .mg-section-title { font-size: 0.85rem; font-weight: 600; color: #e2e4eb; display: flex; align-items: center; gap: 8px; margin-bottom: 12px; }
         .mg-section-desc { font-size: 0.62rem; color: #5a5e72; margin-bottom: 10px; }
-
-        /* Manifesti Collection — compact cards at top */
         .mg-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 8px; }
         .mg-card { display: flex; flex-direction: column; gap: 6px; padding: 12px 14px; background: #11131b; border: 1px solid #1e2030; border-radius: 10px; cursor: pointer; transition: all 0.15s; }
         .mg-card:hover { border-color: #2a2d3e; transform: translateY(-1px); }
@@ -111,21 +109,15 @@ export default function ManifestiGallery({ modules, manifesti, openTab, setFileM
         .mg-btn-create-model:hover { background: rgba(63,185,80,0.2); }
         .mg-btn-create-model:disabled { opacity: 0.5; cursor: not-allowed; }
         .mg-toolbar { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
-
-        /* Hero */
         .mg-hero { background: linear-gradient(135deg, rgba(188,140,255,0.06) 0%, rgba(0,210,255,0.03) 100%); border: 1px solid rgba(188,140,255,0.12); border-radius: 12px; padding: 20px; }
         .mg-hero-badge { display: inline-flex; align-items: center; gap: 5px; font-size: 0.5rem; font-weight: 600; letter-spacing: 1px; text-transform: uppercase; padding: 3px 10px; border-radius: 20px; background: rgba(188,140,255,0.12); color: #bc8cff; margin-bottom: 10px; }
         .mg-hero-title { font-size: 1.2rem; font-weight: 700; color: #e2e4eb; margin-bottom: 4px; display: flex; align-items: center; gap: 8px; }
         .mg-hero-version { font-size: 0.55rem; background: rgba(0,210,255,0.1); color: #00d2ff; padding: 2px 8px; border-radius: 4px; font-weight: 600; }
         .mg-hero-sub { font-size: 0.68rem; color: #8b8fa3; margin-bottom: 12px; }
-
-        /* Guide cards — compact */
         .mg-guide-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 8px; }
         .mg-guide-card { background: rgba(14,16,22,0.6); border: 1px solid rgba(188,140,255,0.06); border-radius: 8px; padding: 12px; }
         .mg-guide-card-title { display: flex; align-items: center; gap: 6px; font-size: 0.7rem; font-weight: 600; color: #e2e4eb; margin-bottom: 6px; }
         .mg-guide-card p { font-size: 0.6rem; color: #8b8fa3; line-height: 1.5; margin: 0; }
-
-        /* Model Lab */
         .mg-lab { background: #11131b; border: 1px solid #1e2030; border-radius: 10px; padding: 16px; }
         .mg-lab-title { font-size: 0.85rem; font-weight: 600; color: #e2e4eb; display: flex; align-items: center; gap: 8px; margin-bottom: 12px; }
         .mg-lab-row { display: flex; gap: 12px; margin-bottom: 12px; }
@@ -136,12 +128,9 @@ export default function ManifestiGallery({ modules, manifesti, openTab, setFileM
         .mg-result { padding: 8px 12px; border-radius: 6px; font-size: 0.65rem; margin-top: 10px; display: flex; align-items: center; gap: 6px; }
         .mg-result.success { background: rgba(63,185,80,0.1); border: 1px solid rgba(63,185,80,0.2); color: #3fb950; }
         .mg-result.error { background: rgba(255,85,85,0.1); border: 1px solid rgba(255,85,85,0.2); color: #ff5555; }
-        
         .mg-models-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 6px; margin-top: 10px; }
         .mg-model-chip { display: flex; align-items: center; gap: 6px; padding: 6px 10px; background: #0e1016; border: 1px solid #1e2030; border-radius: 6px; font-size: 0.6rem; color: #8b8fa3; }
         .mg-model-chip .dot { width: 5px; height: 5px; border-radius: 50%; background: #3fb950; flex-shrink: 0; }
-
-        /* How-to — compact */
         .mg-howto { margin-top: 12px; padding: 12px; background: rgba(14,16,22,0.8); border: 1px solid rgba(210,153,34,0.12); border-radius: 8px; }
         .mg-howto-title { display: flex; align-items: center; gap: 6px; font-size: 0.75rem; font-weight: 600; color: #d29922; margin: 0 0 8px 0; }
         .mg-howto-steps { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 6px; }
@@ -166,7 +155,7 @@ export default function ManifestiGallery({ modules, manifesti, openTab, setFileM
           Scegli, modifica o crea il tuo manifesto, poi genera un modello AI su Ollama con un click.
         </p>
         <div style={{ display: 'flex', gap: '8px' }}>
-          <button className="mg-btn-primary" onClick={() => openTab({ name: 'agente0.md', path: 'sigma0/agente0.md' }, 'manifesti')}>
+          <button className="mg-btn-primary" onClick={() => openTab({ name: 'sigma_architect.md', path: 'sigma0/sigma_architect.md' }, 'manifesti')}>
             <Eye size={14} />
             Leggi il Manifesto
           </button>
@@ -266,7 +255,7 @@ export default function ManifestiGallery({ modules, manifesti, openTab, setFileM
         <div className="mg-howto-steps">
           <div className="mg-step">
             <div className="mg-step-num" style={{background:'rgba(210,153,34,0.12)'}}>1</div>
-            <p><strong style={{color:'#e2e4eb'}}>Scegli un base</strong> — agente0.md come template universale o creane uno nuovo.</p>
+            <p><strong style={{color:'#e2e4eb'}}>Scegli un base</strong> — sigma_architect.md come template universale o creane uno nuovo.</p>
           </div>
           <div className="mg-step">
             <div className="mg-step-num" style={{background:'rgba(210,153,34,0.12)'}}>2</div>
@@ -302,7 +291,7 @@ export default function ManifestiGallery({ modules, manifesti, openTab, setFileM
           <div className="mg-lab-col">
             <label>Manifesto base</label>
             <select value={selectedManifesto} onChange={e => setSelectedManifesto(e.target.value)}>
-              <option value="sigma0/agente0.md">agente0.md (Sigma AI Architect — Admin)</option>
+              <option value="sigma0/sigma_architect.md">sigma_architect.md (Sigma AI Architect — Admin)</option>
               {manifesti.map((mf, i) => (
                 <option key={i} value={mf.path}>{mf.filename}</option>
               ))}

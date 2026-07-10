@@ -722,12 +722,12 @@ ESEMPIO:
         # Determine agent ID from model name or manifesto
         agent_id = None
         model_lower = model.lower()
-        for candidate_id in ['agente0', 'math1', 'code_architect']:
+        for candidate_id in ['sigma_architect', 'math1', 'code_architect']:
             if candidate_id in model_lower:
                 agent_id = candidate_id
                 break
         if not agent_id and manifesto_path:
-            for candidate_id in ['agente0', 'math1', 'code_architect']:
+            for candidate_id in ['sigma_architect', 'math1', 'code_architect']:
                 if candidate_id in manifesto_path.lower():
                     agent_id = candidate_id
                     break

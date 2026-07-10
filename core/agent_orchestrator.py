@@ -10,7 +10,7 @@ import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from core.ai_providers import load_ai_config, resolve_provider_config, call_ollama, call_openai_compatible, call_anthropic
 from core.task_handler import execute_ai_actions
-from core.agent_registry import get_all_agents, get_specialized_agent, increment_usage
+from core.agent_registry import get_all_agents, get_specialized_agent, increment_usage, SIGMA_ARCHITECT_ID
 from core.agent_memory import save_session_memory, get_memory_context
 from core.chat_handler import _get_manifesto_content, _get_time_context, _build_filesystem_context, _extract_json_from_response, _collect_context_files
 
@@ -67,7 +67,7 @@ def _load_agent_config(ai_cfg, model_override, agent_id=None):
 
 
 AGENT_COLORS = {
-    "agente0": {"bg": "#7c5bf0", "color": "#ffffff", "icon": "🏗️", "short": "Arch"},
+    "sigma_architect": {"bg": "#7c5bf0", "color": "#ffffff", "icon": "🏗️", "short": "Arch"},
     "math1": {"bg": "#3fb950", "color": "#ffffff", "icon": "∑", "short": "Math"},
     "code_architect": {"bg": "#00d2ff", "color": "#0e1016", "icon": "⚙️", "short": "Code"},
     "default": {"bg": "#8b8fa3", "color": "#0e1016", "icon": "🤖", "short": "AI"},
@@ -89,7 +89,7 @@ def _get_available_agents_for_goal(goal):
 
 def _decompose_goal(goal, agents_list, ai_cfg, model_override):
     provider, endpoint, api_url, api_key, temperature, max_tokens, top_p, timeout = \
-        _load_agent_config(ai_cfg, model_override, "agente0")
+        _load_agent_config(ai_cfg, model_override, SIGMA_ARCHITECT_ID)
     agents_json = json.dumps([{
         "id": a.get("id"), "name": a.get("name"),
         "specialization": a.get("specialization"), "capabilities": a.get("capabilities"),
@@ -106,7 +106,7 @@ Agenti disponibili:
 4. Se un task è troppo generico, assegnalo all'agente più versatile
 ## FORMATO RISPOSTA — SOLO JSON
 {{"analysis": "...", "subtasks": [
-  {{"agent_id": "agente0", "task": "Titolo task", "description": "Cosa fare...", "actions_hint": ["create_file", "run_test"]}},
+  {{"agent_id": "sigma_architect", "task": "Titolo task", "description": "Cosa fare...", "actions_hint": ["create_file", "run_test"]}},
   ...
 ]}}"""
     messages = [
@@ -115,7 +115,7 @@ Agenti disponibili:
     ]
     main_model = ai_cfg.get("active_model", ai_cfg.get("model", "deepseek-v4-flash"))
     for a in agents_list:
-        if a.get("id") == "agente0" and a.get("models"):
+        if a.get("id") == SIGMA_ARCHITECT_ID and a.get("models"):
             main_model = a["models"][0]
             break
     response, thinking, error = _call_ai_model(messages, ai_cfg, main_model,
@@ -130,11 +130,11 @@ Agenti disponibili:
         subtasks = parsed.get("subtasks", [])
         validated = []
         for st in subtasks:
-            agent_id = st.get("agent_id", "agente0")
+            agent_id = st.get("agent_id", SIGMA_ARCHITECT_ID)
             agent = next((a for a in agents_list if a.get("id") == agent_id), None)
             if not agent:
-                agent = next((a for a in agents_list if a.get("id") == "agente0"), None)
-                agent_id = "agente0"
+                agent = next((a for a in agents_list if a.get("id") == SIGMA_ARCHITECT_ID), None)
+                agent_id = SIGMA_ARCHITECT_ID
             validated.append({
                 "agent_id": agent_id,
                 "agent_name": agent.get("name", "Sigma Agent") if agent else "Sigma Agent",
@@ -153,7 +153,7 @@ Agenti disponibili:
 def _generate_fallback_tasks(agents_list, goal):
     tasks = []
     task_templates = {
-        "agente0": {"task": "Coordinare l'intera pipeline: leggere tutti i file esistenti, eseguire test, produrre un report riepilogativo", "description": f"Leggi lo stato completo ({goal[:100]}). Esegui TUTTI i test in test/ e controlla i risultati. Crea il file docs/report_completo.md con: riepilogo di ogni file di teoria, risultati test, struttura moduli, metriche. Usa update_task per aggiornare lo stato.", "hint": ["read_file", "run_test", "create_file", "edit_file", "update_task"]},
+        "sigma_architect": {"task": "Coordinare l'intera pipeline: leggere tutti i file esistenti, eseguire test, produrre un report riepilogativo", "description": f"Leggi lo stato completo ({goal[:100]}). Esegui TUTTI i test in test/ e controlla i risultati. Crea il file docs/report_completo.md con: riepilogo di ogni file di teoria, risultati test, struttura moduli, metriche. Usa update_task per aggiornare lo stato.", "hint": ["read_file", "run_test", "create_file", "edit_file", "update_task"]},
         "math1": {"task": "Ricerca e analisi matematica: leggere, verificare e documentare tutta la teoria matematica esistente", "description": f"Leggi tutti i file in teoria/ e docs/. Verifica la correttezza logica delle dimostrazioni. Se mancano dimostrazioni formali, crea nuovi file teoria/NN_teorema.md. Esegui i test in test/ per validazione. Crea almeno 1-2 nuovi file di teoria se necessario.", "hint": ["read_file", "create_file", "run_test", "edit_file", "update_task"]},
         "code_architect": {"task": "Sviluppo e refactoring: analizzare il codice, eseguire test, correggere errori, ottimizzare", "description": f"Leggi tutti i file .py in test/. Esegui ogni test. Se ci sono errori, correggi i file. Crea nuovi test per coprire casi mancanti. Documenta le modifiche. Obiettivo: tutti i test PASSANO.", "hint": ["read_file", "run_test", "create_file", "edit_file", "update_task"]},
         "math-collatz": {"task": "Analisi matematica e dimostrazioni formali", "description": "Studia la teoria esistente. Crea file di teoria con dimostrazioni formali, analisi strutturale e teoremi. Usa LaTeX per formule. Almeno 2 file di teoria.", "hint": ["read_file", "create_file", "run_test", "update_task"]},
@@ -175,7 +175,7 @@ def _generate_fallback_tasks(agents_list, goal):
 # ==============================================================================
 
 def _execute_subtask(self, subtask, goal, stream_callback):
-    agent_id = subtask.get("agent_id", "agente0")
+    agent_id = subtask.get("agent_id", SIGMA_ARCHITECT_ID)
     agent_name = subtask.get("agent_name", "Agent")
     task = subtask.get("task", "")
     description = subtask.get("description", "")

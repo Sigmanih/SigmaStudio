@@ -210,8 +210,10 @@ def get_specialized_agent(specialization: str) -> dict:
 
 
 # Agent display colors (matching AGENT_COLORS in orchestrator)
+SIGMA_ARCHITECT_ID = "sigma_architect"
+
 AGENT_DISPLAY_COLORS = {
-    "agente0": {"bg": "#7c5bf0", "color": "#ffffff", "icon": "🏗️", "short": "Arch"},
+    "sigma_architect": {"bg": "#7c5bf0", "color": "#ffffff", "icon": "🏗️", "short": "Arch"},
     "math1": {"bg": "#3fb950", "color": "#ffffff", "icon": "∑", "short": "Math"},
     "code_architect": {"bg": "#00d2ff", "color": "#0e1016", "icon": "⚙️", "short": "Code"},
 }

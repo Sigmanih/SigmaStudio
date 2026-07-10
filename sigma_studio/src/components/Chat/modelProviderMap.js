@@ -32,8 +32,8 @@ export const MODEL_PROVIDER_MAP = {
   'solar': { provider: 'ollama' },
   'orca-mini': { provider: 'ollama' },
   'tinydolphin': { provider: 'ollama' },
-  'agente0_gwen3_6_35b': { provider: 'ollama' },
-  'agente0_gwen3_6_35b:latest': { provider: 'ollama' },
+  'sigma_architect_gwen3_6_35b': { provider: 'ollama' },
+  'sigma_architect_gwen3_6_35b:latest': { provider: 'ollama' },
   'math1': { provider: 'ollama' },
   // DeepSeek API
   'deepseek-chat': { provider: 'deepseek' },

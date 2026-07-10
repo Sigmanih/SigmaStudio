@@ -11,7 +11,7 @@ const MAX_ATTACHMENTS = 10;
 
 export { STORAGE_KEY, POS_KEY, SIZE_KEY, LAST_MODEL_KEY, MAX_HISTORY, MAX_ATTACHMENTS };
 
-export function loadLastModel(defaultModel = 'llama3.2') {
+export function loadLastModel(defaultModel = '') {
   try {
     const saved = localStorage.getItem(LAST_MODEL_KEY);
     return saved || defaultModel;
@@ -34,7 +34,7 @@ export function createSession(model, name) {
   return {
     id: generateId(),
     name: name || `Chat ${new Date().toLocaleTimeString()}`,
-    model: model || 'llama3.2',
+    model: model || '',
     messages: [],
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString()

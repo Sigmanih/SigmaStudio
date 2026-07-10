@@ -9,7 +9,7 @@ import 'katex/dist/katex.min.css';
 // ==============================================================================
 
 const AGENT_COLORS = {
-  agente0: { bg: '#7c5bf0', color: '#ffffff', icon: '🏗️', short: 'Arch' },
+  sigma_architect: { bg: '#7c5bf0', color: '#ffffff', icon: '🏗️', short: 'Arch' },
   math1: { bg: '#3fb950', color: '#ffffff', icon: '∑', short: 'Math' },
   code_architect: { bg: '#00d2ff', color: '#0e1016', icon: '⚙️', short: 'Code' },
 };

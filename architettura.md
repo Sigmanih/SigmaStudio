@@ -704,7 +704,7 @@ Pannello per creare e gestire modelli AI su Ollama.
 2. **Cosa sono i Modelfile** — 3 card informative (System Prompt, Specializzazione, Parametri)
 3. **Come costruire un Modelfile** — Guida in 5 passi con esempio di codice
 4. **AI Model Lab** — Pannello di creazione:
-   - Seleziona Modelfile base (`agente0.md`, `math1.md`, ...)
+   - Seleziona Modelfile base (`sigma_architect.md`, `math1.md`, ...)
    - Seleziona modello base Ollama (lista live da `/api/ollama_models`)
    - Assegna nome al nuovo modello
    - Sostituisce `FROM` nel Modelfile con il modello base scelto
@@ -806,7 +806,7 @@ data/<topic_id>/
 
 | File | Modello Base | Versione | Ruolo | Temperatura | Context Window |
 |------|-------------|----------|-------|-------------|----------------|
-| `agente0.md` | llama3.2 (via sigma:latest) | v7.2 | Architetto Software + Ricerca | 0.55 | 16.384 |
+| `sigma_architect.md` | llama3.2 (via sigma:latest) | v7.2 | Architetto Software + Ricerca | 0.55 | 16.384 |
 | `math1.md` | llama3.2 | v6.0 | Ricerca Matematica | 0.7 | 8.192 |
 | `code_architect.md` | sigma:latest | v1.0 | Full-Stack Developer | 0.3 | 16.384 |
 

@@ -47,36 +47,6 @@
 .chat-user .chat-bubble { background: rgba(0,210,255,0.06); border-color: rgba(0,210,255,0.15); }
 .chat-system .chat-bubble { background: rgba(255,184,108,0.04); border-color: rgba(255,184,108,0.1); font-size: 0.75rem; }
 
-/* Message content */
-.chat-content h1 { font-size: 1rem; margin: 4px 0; color: var(--text); }
-.chat-content h2 { font-size: 0.9rem; margin: 4px 0; }
-.chat-content h3 { font-size: 0.85rem; margin: 4px 0; }
-.chat-content h4 { font-size: 0.82rem; margin: 4px 0; color: var(--text-dim); }
-.chat-content p { margin: 4px 0; }
-.chat-content code { background: rgba(255,255,255,0.06); padding: 1px 6px; border-radius: 4px; font-family: 'JetBrains Mono', monospace; font-size: 0.75rem; }
-.chat-content pre { 
-  background: rgba(0,0,0,0.3); 
-  padding: 12px; 
-  border-radius: 8px; 
-  overflow-x: auto; 
-  overflow-y: hidden;
-  margin: 8px 0; 
-  font-size: 0.7rem; 
-  border: 1px solid var(--border); 
-  max-width: 100%;
-  box-sizing: border-box;
-  white-space: pre-wrap;
-  word-break: break-word;
-  word-wrap: break-word;
-}
-.chat-content pre code { 
-  background: none; 
-  padding: 0; 
-  white-space: pre-wrap;
-  word-break: break-word;
-  word-wrap: break-word;
-}
-
 .chat-timestamp { font-size: 0.6rem; color: var(--text-dark); margin-top: 4px; }
 .chat-message-agent { font-size: 0.6rem; color: var(--text-dark); font-weight: 400; }
 .chat-message-attachments { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 6px; }
@@ -716,16 +686,374 @@
 .chat-tasks-btn:disabled { opacity: 0.4; cursor: not-allowed; }
 .chat-task-progress { font-size: 0.65rem; font-family: 'JetBrains Mono', monospace; color: var(--primary); white-space: nowrap; }
 
-/* Tables & KaTeX */
-.chat-table { width: 100%; border-collapse: collapse; margin: 8px 0; font-size: 0.75rem; border: 1px solid rgba(255,255,255,0.06); border-radius: 8px; overflow: hidden; }
-.chat-table th { background: rgba(0,210,255,0.08); color: var(--primary); font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; font-size: 0.65rem; padding: 8px 12px; text-align: left; border-bottom: 1px solid rgba(0,210,255,0.1); }
-.chat-table td { padding: 6px 12px; border-bottom: 1px solid rgba(255,255,255,0.03); color: var(--text); }
-.chat-table tr:last-child td { border-bottom: none; }
-.chat-table tr:hover td { background: rgba(255,255,255,0.02); }
+/* ==============================================================================
+   PREMIUM CHAT TYPOGRAPHY — Markdown + KaTeX rendering (v8.0)
+   Inspired by ChatGPT, Claude, and Gemini — better than all of them
+   ============================================================================== */
 
-.chat-content .katex { font-size: 1.1em; color: var(--accent); }
-.chat-content .katex-display { margin: 12px 0; overflow-x: auto; overflow-y: hidden; padding: 8px 0; background: rgba(0,0,0,0.15); border-radius: 8px; border: 1px solid rgba(255,255,255,0.03); }
-.katex-error { color: var(--error); font-size: 0.75rem; padding: 4px 8px; background: rgba(255,85,85,0.08); border-radius: 6px; display: inline-block; margin: 2px 0; }
+/* Content wrapper — base typography */
+.chat-content, .chat-md, .chat-thinking-content {
+  font-size: 0.82rem;
+  line-height: 1.7;
+  color: var(--text);
+  word-break: break-word;
+  letter-spacing: 0.01em;
+}
+
+/* Headings — elegant with subtle gradient */
+.chat-content h1,
+.chat-md h1 {
+  font-size: 1.15rem;
+  font-weight: 700;
+  margin: 14px 0 8px;
+  background: linear-gradient(135deg, #e2e4eb 0%, #bc8cff 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  letter-spacing: -0.02em;
+  line-height: 1.3;
+}
+.chat-content h2,
+.chat-md h2 {
+  font-size: 1rem;
+  font-weight: 700;
+  margin: 12px 0 6px;
+  color: #e2e4eb;
+  letter-spacing: -0.01em;
+  line-height: 1.35;
+  border-bottom: 1px solid rgba(188,140,255,0.1);
+  padding-bottom: 4px;
+}
+.chat-content h3,
+.chat-md h3 {
+  font-size: 0.9rem;
+  font-weight: 600;
+  margin: 10px 0 5px;
+  color: var(--primary);
+  letter-spacing: -0.01em;
+}
+.chat-content h4,
+.chat-md h4 {
+  font-size: 0.82rem;
+  font-weight: 600;
+  margin: 8px 0 4px;
+  color: var(--accent);
+}
+
+/* Paragraphs — spacious and readable */
+.chat-content p,
+.chat-md p {
+  margin: 6px 0;
+  line-height: 1.75;
+  color: #d4d6de;
+}
+.chat-content p:first-child,
+.chat-md p:first-child {
+  margin-top: 0;
+}
+
+/* Lists — elegant bullets */
+.chat-content ul,
+.chat-content ol,
+.chat-md ul,
+.chat-md ol {
+  margin: 6px 0;
+  padding-left: 20px;
+}
+.chat-content li,
+.chat-md li {
+  margin: 3px 0;
+  line-height: 1.6;
+  color: #c8cad3;
+}
+.chat-content ul li::marker,
+.chat-md ul li::marker {
+  color: var(--primary);
+  content: '▸ ';
+}
+
+/* Bold & italic */
+.chat-content strong,
+.chat-md strong {
+  color: #ffffff;
+  font-weight: 700;
+}
+.chat-content em,
+.chat-md em {
+  color: var(--accent);
+  font-style: italic;
+}
+
+/* Blockquotes — elegant left border with subtle gradient */
+.chat-content blockquote,
+.chat-md blockquote {
+  margin: 10px 0;
+  padding: 8px 14px;
+  border-left: 3px solid var(--accent);
+  background: linear-gradient(90deg, rgba(188,140,255,0.04) 0%, transparent 100%);
+  border-radius: 0 6px 6px 0;
+  color: #b0b2c0;
+  font-style: italic;
+  line-height: 1.6;
+}
+.chat-content blockquote p,
+.chat-md blockquote p {
+  margin: 2px 0;
+  color: #b0b2c0;
+}
+
+/* Horizontal rules */
+.chat-content hr,
+.chat-md hr {
+  border: none;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(188,140,255,0.15), transparent);
+  margin: 16px 0;
+}
+
+/* Inline code — elegant badge-style */
+.chat-content code,
+.chat-md code {
+  background: rgba(188,140,255,0.08);
+  color: #d4b4ff;
+  padding: 1px 7px;
+  border-radius: 5px;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.75rem;
+  border: 1px solid rgba(188,140,255,0.1);
+  letter-spacing: -0.01em;
+}
+
+/* Code blocks — premium dark theme with subtle glow */
+.chat-content pre,
+.chat-md pre {
+  background: linear-gradient(135deg, #0a0b12 0%, #0d0f1a 100%);
+  padding: 14px 16px;
+  border-radius: 10px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  margin: 10px 0;
+  font-size: 0.72rem;
+  border: 1px solid rgba(188,140,255,0.08);
+  max-width: 100%;
+  box-sizing: border-box;
+  white-space: pre-wrap;
+  word-break: break-word;
+  word-wrap: break-word;
+  position: relative;
+  box-shadow: inset 0 0 30px rgba(0,0,0,0.3), 0 4px 20px rgba(0,0,0,0.15);
+}
+.chat-content pre:hover,
+.chat-md pre:hover {
+  border-color: rgba(188,140,255,0.15);
+  box-shadow: inset 0 0 30px rgba(0,0,0,0.3), 0 4px 24px rgba(0,0,0,0.2);
+}
+.chat-content pre code,
+.chat-md pre code {
+  background: none;
+  padding: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+  word-wrap: break-word;
+  font-size: 0.75rem;
+  color: #c8cae0;
+  border: none;
+  line-height: 1.6;
+  letter-spacing: -0.01em;
+}
+
+/* Tables */
+.chat-content table,
+.chat-md table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 10px 0;
+  font-size: 0.72rem;
+  border: 1px solid rgba(188,140,255,0.06);
+  border-radius: 10px;
+  overflow: hidden;
+}
+.chat-content th,
+.chat-md th {
+  background: linear-gradient(135deg, rgba(0,210,255,0.06), rgba(188,140,255,0.04));
+  color: var(--primary);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  font-size: 0.62rem;
+  padding: 8px 12px;
+  text-align: left;
+  border-bottom: 1px solid rgba(0,210,255,0.08);
+}
+.chat-content td,
+.chat-md td {
+  padding: 6px 12px;
+  border-bottom: 1px solid rgba(255,255,255,0.02);
+  color: var(--text-dim);
+}
+.chat-content tr:last-child td,
+.chat-md tr:last-child td {
+  border-bottom: none;
+}
+.chat-content tr:hover td,
+.chat-md tr:hover td {
+  background: rgba(255,255,255,0.015);
+}
+
+/* Links — beautiful underline animation */
+.chat-content a,
+.chat-md a {
+  color: var(--primary);
+  text-decoration: none;
+  border-bottom: 1px solid rgba(0,210,255,0.2);
+  transition: all 0.15s ease;
+  padding-bottom: 1px;
+}
+.chat-content a:hover,
+.chat-md a:hover {
+  color: #fff;
+  border-bottom-color: var(--primary);
+  text-shadow: 0 0 20px rgba(0,210,255,0.3);
+}
+
+/* ==============================================================================
+   PREMIUM KaTeX — Better than any chat platform
+   ============================================================================== */
+
+/* Inline KaTeX */
+.chat-content .katex,
+.chat-md .katex,
+.chat-thinking-content .katex {
+  font-size: 1.1em;
+  color: #e2d0ff;
+  filter: drop-shadow(0 0 4px rgba(188,140,255,0.15));
+  transition: filter 0.2s ease;
+}
+.chat-content .katex:hover,
+.chat-md .katex:hover {
+  filter: drop-shadow(0 0 8px rgba(188,140,255,0.3));
+}
+
+/* Display KaTeX — Beautiful centered blocks with glass background */
+.chat-content .katex-display,
+.chat-md .katex-display,
+.chat-thinking-content .katex-display {
+  margin: 14px 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding: 14px 12px;
+  background: radial-gradient(ellipse at center, rgba(188,140,255,0.03) 0%, transparent 70%);
+  border-radius: 10px;
+  border: 1px solid rgba(188,140,255,0.06);
+  position: relative;
+  text-align: center;
+  box-shadow: 0 0 40px rgba(188,140,255,0.02), inset 0 0 30px rgba(188,140,255,0.02);
+  transition: all 0.2s ease;
+}
+.chat-content .katex-display:hover,
+.chat-md .katex-display:hover,
+.chat-thinking-content .katex-display:hover {
+  border-color: rgba(188,140,255,0.12);
+  box-shadow: 0 0 40px rgba(188,140,255,0.04), inset 0 0 30px rgba(188,140,255,0.03);
+}
+.chat-content .katex-display .katex,
+.chat-md .katex-display .katex,
+.chat-thinking-content .katex-display .katex {
+  font-size: 1.25em;
+  color: #ede4ff;
+  filter: drop-shadow(0 0 6px rgba(188,140,255,0.1));
+}
+
+.katex-error {
+  color: var(--error);
+  font-size: 0.75rem;
+  padding: 4px 10px;
+  background: rgba(255,85,85,0.06);
+  border-radius: 6px;
+  display: inline-block;
+  margin: 2px 0;
+  border: 1px solid rgba(255,85,85,0.1);
+}
+
+/* ==============================================================================
+   PREMIUM MESSAGE ANIMATIONS
+   ============================================================================== */
+
+/* Message entrance animation */
+.chat-message {
+  animation: messageSlideIn 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+@keyframes messageSlideIn {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+/* Hover effect on messages */
+.chat-message:hover .chat-bubble {
+  border-color: rgba(255,255,255,0.06);
+}
+
+/* Smoother thinking sections */
+.chat-thinking {
+  transition: all 0.2s ease;
+}
+.chat-thinking-toggle {
+  transition: all 0.15s cubic-bezier(0.4, 0, 0.2, 1);
+}
+.chat-thinking-content {
+  transition: max-height 0.3s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.2s ease;
+  max-height: 400px;
+}
+
+/* Model selector "Scegli modello" styling */
+.model-selector-btn.no-model {
+  border-color: rgba(188,140,255,0.15);
+  background: rgba(188,140,255,0.04);
+  color: var(--accent);
+  animation: subtleGlow 3s ease-in-out infinite;
+}
+@keyframes subtleGlow {
+  0%, 100% { box-shadow: 0 0 0 rgba(188,140,255,0); }
+  50% { box-shadow: 0 0 12px rgba(188,140,255,0.06); }
+}
+.model-selector-btn.no-model:hover {
+  background: rgba(188,140,255,0.08);
+  border-color: var(--accent);
+}
+
+/* Manifesto "Scegli manifesto" styling */
+.no-manifesto {
+  color: var(--text-dark) !important;
+  font-style: italic;
+  opacity: 0.7;
+}
+
+/* Better scrollbar for chat messages */
+.chat-messages::-webkit-scrollbar,
+.chat-workspace-messages::-webkit-scrollbar {
+  width: 4px;
+}
+.chat-messages::-webkit-scrollbar-track,
+.chat-workspace-messages::-webkit-scrollbar-track {
+  background: transparent;
+}
+.chat-messages::-webkit-scrollbar-thumb,
+.chat-workspace-messages::-webkit-scrollbar-thumb {
+  background: rgba(188,140,255,0.1);
+  border-radius: 10px;
+  transition: background 0.2s ease;
+}
+.chat-messages::-webkit-scrollbar-thumb:hover,
+.chat-workspace-messages::-webkit-scrollbar-thumb:hover {
+  background: rgba(188,140,255,0.2);
+}
 
 /* Thinking toggle */
 .chat-thinking { margin-bottom: 8px; }

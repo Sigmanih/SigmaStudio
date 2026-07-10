@@ -47,7 +47,7 @@ export default function ChatHeader({
             style={{ gap: '4px', padding: '3px 8px', fontSize: '0.65rem' }}
           >
             <span>📋</span>
-            <span className="model-selector-name">{activeManifesto.name || 'nessuno'}</span>
+            <span className={`model-selector-name ${!activeManifesto.name ? 'no-manifesto' : ''}`}>{activeManifesto.name || 'Scegli manifesto'}</span>
             <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
               <path d="m6 9 6 6 6-6" />
             </svg>

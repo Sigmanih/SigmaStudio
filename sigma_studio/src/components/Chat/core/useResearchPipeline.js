@@ -52,7 +52,7 @@ const DEFAULT_AGENT_CONFIG = {
 
 // --- All 7 registered agents with colors, icons, roles ---
 const AGENTS_META = {
-  agente0: { bg: '#7c5bf0', color: '#ffffff', icon: '🏗️', short: 'Arch', name: 'Sigma AI Architect', role: 'architect' },
+  sigma_architect: { bg: '#7c5bf0', color: '#ffffff', icon: '🏗️', short: 'Arch', name: 'Sigma AI Architect', role: 'architect' },
   math1: { bg: '#3fb950', color: '#ffffff', icon: '∑', short: 'Math', name: 'Sigma Math Researcher', role: 'researcher' },
   code_architect: { bg: '#00d2ff', color: '#0e1016', icon: '⚙️', short: 'Code', name: 'Sigma Code Architect', role: 'developer' },
   'math-collatz': { bg: '#2ea043', color: '#ffffff', icon: '🧮', short: 'Math', name: 'Matematico Specialista', role: 'mathematician' },
@@ -79,7 +79,7 @@ const PIPELINE_TEMPLATES = {
     label: '📋 Analisi Completa Multi-Agente',
     goal: 'Analizzare il problema in modo completo: pianificazione, ricerca, sviluppo test, visualizzazione e revisione critica finale.',
     agents: [
-      { id: 'agente0', enabled: true, order: 0 },
+      { id: 'sigma_architect', enabled: true, order: 0 },
       { id: 'math1', enabled: true, order: 1 },
       { id: 'code_architect', enabled: true, order: 2 },
       { id: 'viz-designer', enabled: true, order: 3 },
@@ -92,7 +92,7 @@ const PIPELINE_TEMPLATES = {
     goal: 'Revisione completa del codice: analisi, refactoring, test, ottimizzazione e documentazione tecnica.',
     agents: [
       { id: 'code_architect', enabled: true, order: 0 },
-      { id: 'agente0', enabled: true, order: 1 },
+      { id: 'sigma_architect', enabled: true, order: 1 },
       { id: 'proof-reviewer', enabled: true, order: 2 },
     ],
     use_pipeline_engine: false,
@@ -100,7 +100,7 @@ const PIPELINE_TEMPLATES = {
 };
 
 const DEFAULT_AGENTS = [
-  { id: 'agente0', enabled: true, order: 0 },
+  { id: 'sigma_architect', enabled: true, order: 0 },
   { id: 'math1', enabled: true, order: 1 },
   { id: 'code_architect', enabled: true, order: 2 },
 ];

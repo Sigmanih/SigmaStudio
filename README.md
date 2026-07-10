@@ -103,7 +103,7 @@ curl http://localhost:8000/api/tasks
 # Create an Ollama model from a manifesto
 curl -X POST http://localhost:8000/api/create_model \
   -H "Content-Type: application/json" \
-  -d '{"name": "agente0", "modelfile": "FROM llama3.2\nSYSTEM \"\"\"You are a software architect...\"\"\""}'
+  -d '{"name": "sigma_architect", "modelfile": "FROM llama3.2\nSYSTEM \"\"\"You are a software architect...\"\"\""}'
 ```
 
 ---
@@ -146,7 +146,7 @@ AI agents aren't black boxes. They're defined by **Ollama Modelfiles** that spec
 
 | Agent | Base Model | Version | Role |
 |:------|:-----------|:--------|:-----|
-| `agente0.md` | llama3.2 | **v6.0** | Software Architect — full-stack engineer, main orchestrator |
+| `sigma_architect.md` | llama3.2 | **v6.0** | Software Architect — full-stack engineer, main orchestrator |
 | `math1.md` | llama3.2 | v5.0 | Math Research Assistant — template for new agents |
 
 ### Create a New Agent in 30 Seconds

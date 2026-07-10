@@ -36,7 +36,7 @@ AGENT_OUTPUT_SCHEMAS = {
             }
         }
     },
-    "agente0": {
+    "sigma_architect": {
         "response": {"type": "string", "min_length": 1},
         "actions": {
             "type": "array",
@@ -69,7 +69,7 @@ def validate_agent_output(agent_id: str, parsed_json: dict) -> tuple:
     """Validate an agent's JSON output against its schema.
 
     Args:
-        agent_id: Agent identifier ('agente0', 'math1', 'code_architect', etc.)
+        agent_id: Agent identifier ('sigma_architect', 'math1', 'code_architect', etc.)
         parsed_json: Parsed JSON dict from agent response
 
     Returns:

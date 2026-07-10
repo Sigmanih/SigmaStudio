@@ -28,14 +28,29 @@ if errorlevel 1 (
 :: Check for npm
 where npm >nul 2>nul
 if not errorlevel 1 (
+    echo [SIGMA_SERVER] Cleaning Vite cache...
+    if exist sigma_studio\node_modules\.vite (
+        rmdir /s /q sigma_studio\node_modules\.vite
+    )
+    echo [SIGMA_SERVER] Removing old build...
+    if exist sigma_studio\dist (
+        rmdir /s /q sigma_studio\dist
+    )
     echo [SIGMA_SERVER] Building frontend assets...
     cd sigma_studio
-    call npm run build
+    call npx vite build
     cd ..
 )
 
+:: Kill any existing Python server on port 8000
+echo [SIGMA_SERVER] Stopping any existing server...
+for /f "tokens=5" %%a in ('netstat -ano ^| findstr ":8000"') do (
+    taskkill /f /pid %%a >nul 2>nul
+)
+timeout /t 1 >nul
+
 :: Run server
-echo [SIGMA_SERVER] Starting server on http://localhost:8000
+echo [SIGMA_SERVER] Starting fresh server on http://localhost:8000
 python sigma_server.py
 
 :: Deactivate venv automatically when server exits

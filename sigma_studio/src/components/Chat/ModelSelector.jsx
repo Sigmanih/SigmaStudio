@@ -8,9 +8,9 @@ export default function ModelSelector({
 }) {
   return (
     <div className="model-selector-wrapper" ref={modelBtnRef}>
-      <button className="model-selector-btn" onClick={onToggle}>
+      <button className={`model-selector-btn ${!effectiveModelName ? 'no-model' : ''}`} onClick={onToggle}>
         <Cpu size={12} />
-        <span className="model-selector-name">{effectiveModelName}</span>
+        <span className="model-selector-name">{effectiveModelName || 'Scegli modello'}</span>
         <ChevronDown size={10} className={`model-selector-chevron ${showDropdown ? 'open' : ''}`} />
       </button>
       {showDropdown && (
