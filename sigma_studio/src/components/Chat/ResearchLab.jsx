@@ -142,6 +142,7 @@ export default function ResearchLab({ onClose, onTasksUpdated, addToast }) {
   const [launching, setLaunching] = useState(false);
   const [generatingSteps, setGeneratingSteps] = useState(false);
   const [nextSteps, setNextSteps] = useState([]);
+  const [commandInput, setCommandInput] = useState('');
 
   // --- Live execution state ---
   const [executing, setExecuting] = useState(false);
@@ -349,6 +350,12 @@ export default function ResearchLab({ onClose, onTasksUpdated, addToast }) {
     setExecuting(false);
   };
 
+  const handleSendCommand = () => {
+    if (!commandInput.trim() || executing) return;
+    setChatMessages(prev => [...prev, { type: 'agent_start', agent_id: 'user', message: `👤 Tu: ${commandInput}`, ts: Date.now() }]);
+    setCommandInput('');
+  };
+
   useEffect(() => { chatEndRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [chatMessages]);
 
   // Kanban
@@ -496,6 +503,22 @@ export default function ResearchLab({ onClose, onTasksUpdated, addToast }) {
               <div className="rl-kanban-col"><div className="rl-kanban-header" style={{ borderColor: '#00d2ff' }}><RefreshCw size={12} /> In Corso ({progressO.length})</div>{progressO.map(o => <ObjectiveCard key={o.id} obj={o} agentsMeta={AGENTS_META} />)}</div>
               <div className="rl-kanban-col"><div className="rl-kanban-header" style={{ borderColor: '#3fb950' }}><CheckCircle size={12} /> Completati ({doneO.length})</div>{doneO.map(o => <ObjectiveCard key={o.id} obj={o} agentsMeta={AGENTS_META} />)}</div>
               <div className="rl-kanban-col"><div className="rl-kanban-header" style={{ borderColor: '#ff5555' }}><AlertTriangle size={12} /> Bloccati ({failedO.length})</div>{failedO.map(o => <ObjectiveCard key={o.id} obj={o} agentsMeta={AGENTS_META} />)}</div>
+            </div>
+
+            {/* Agent Command Input — always visible */}
+            <div className="rl-agent-input">
+              <input
+                className="rl-agent-input-field"
+                type="text"
+                placeholder="Scrivi un comando per il team di agenti..."
+                value={commandInput}
+                onChange={e => setCommandInput(e.target.value)}
+                onKeyDown={e => { if (e.key === 'Enter' && commandInput.trim()) handleSendCommand(); }}
+                disabled={executing}
+              />
+              <button className="rl-btn-primary" onClick={handleSendCommand} disabled={!commandInput.trim() || executing}>
+                <Send size={14} /> Invia
+              </button>
             </div>
 
             {/* Live Chat Panel */}

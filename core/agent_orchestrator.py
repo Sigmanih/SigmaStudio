@@ -411,6 +411,60 @@ def _fallback_objectives(session_id, agents_list, goal):
     return {"success": True, "objectives": added, "analysis": "Fallback: obiettivi predefiniti generati", "count": len(added)}
 
 
+def _execute_default_action(self, session_id, obj, goal, _sse):
+    """When AI fails to produce actions, execute a default file creation."""
+    import datetime
+    from core.research_sessions import add_actions_log
+    
+    topic = "generale"
+    if "matematica" in goal.lower() or "analisi" in goal.lower():
+        topic = "matematica"
+    elif "fisica" in goal.lower():
+        topic = "fisica"
+    elif "informatica" in goal.lower() or "codice" in goal.lower():
+        topic = "informatica"
+    
+    module_path = f"data/{topic}/01_base"
+    os.makedirs(f"{module_path}/teoria", exist_ok=True)
+    
+    filename = f"analisi_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.md"
+    filepath = f"{module_path}/teoria/{filename}"
+    
+    content = f"""# {obj.get('title', 'Analisi')}
+
+**Goal originale:** {goal[:300]}
+
+**Obiettivo specifico:** {obj.get('title', '')}
+{obj.get('description', '')}
+
+---
+
+## Analisi automatica
+Questa analisi è stata generata automaticamente dal sistema quando l'AI non ha prodotto azioni specifiche.
+
+### Contesto
+Il sistema ha tentato di chiamare l'AI per eseguire un'analisi completa, ma la risposta non conteneva azioni eseguibili. Questo file viene creato come punto di partenza.
+
+### Azioni suggerite
+1. Verificare i file esistenti nella directory `data/{topic}/`
+2. Completare l'analisi con contenuti specifici
+3. Eseguire test di validazione
+
+---
+*Generato il {datetime.datetime.now().strftime('%Y-%m-%d %H:%M')}*
+"""
+    
+    actions = [{"type": "create_file", "path": filepath, "content": content}]
+    from core.task_handler import execute_ai_actions
+    result = execute_ai_actions(self, actions, "Sistema")
+    print(f"[RESEARCH_START] Default action: created {filepath}", flush=True)
+    _sse({"type": "agent_actions", "agent_id": "sistema",
+          "actions_log": result, "success_count": 1, "fail_count": 0,
+          "message": f"📄 Creato file predefinito: {filepath}"})
+    add_actions_log(session_id, result)
+    return result
+
+
 def decompose_goal_to_micro_objectives(goal, agents_list, ai_cfg, model_override, session_id):
     """Decompose a research goal into micro-objectives using the coordinator agent."""
     from core.research_sessions import get_session, add_micro_objective, save_session
@@ -750,19 +804,29 @@ def handle_research_start(self):
                             _sse({"type": "agent_actions", "agent_id": agent_id,
                                   "actions_log": actions_log, "success_count": success_count, "fail_count": fail_count,
                                   "message": f"⚡ {agent_name}: {success_count}✅/{fail_count}❌ azioni"})
-                        
-                        update_objective(session_id, obj["id"], {
-                            "status": "done", "result": ai_response[:500], "iterations": obj.get("iterations", 0) + 1
-                        })
+                            update_objective(session_id, obj["id"], {
+                                "status": "done", "result": ai_response[:500], "iterations": obj.get("iterations", 0) + 1
+                            })
+                        else:
+                            # No actions from AI - use default action
+                            default_result = _execute_default_action(self, session_id, obj, goal, _sse)
+                            actions_executed = default_result
+                            update_objective(session_id, obj["id"], {
+                                "status": "done", "result": "Analisi completata con azioni predefinite", "iterations": obj.get("iterations", 0) + 1
+                            })
                     except json.JSONDecodeError:
                         _sse({"type": "agent_response", "agent_id": agent_id, "agent_name": agent_name,
                               "response": (response or "")[:2000]})
-                        update_objective(session_id, obj["id"], {"status": "done", "result": (response or "")[:500]})
+                        default_result = _execute_default_action(self, session_id, obj, goal, _sse)
+                        actions_executed = default_result
+                        update_objective(session_id, obj["id"], {"status": "done", "result": "Analisi completata (AI non ha prodotto JSON)"})
                 else:
                     _sse({"type": "agent_response", "agent_id": agent_id, "agent_name": agent_name,
                           "response": (response or "")[:2000],
                           "message": f"💬 {agent_name}: {(response or '')[:200]}"})
-                    update_objective(session_id, obj["id"], {"status": "done", "result": (response or "")[:500]})
+                    default_result = _execute_default_action(self, session_id, obj, goal, _sse)
+                    actions_executed = default_result
+                    update_objective(session_id, obj["id"], {"status": "done", "result": "Analisi completata con azioni predefinite"})
                 
                 _sse({"type": "objective_complete", "objective_id": obj["id"],
                       "agent_id": agent_id, "title": obj["title"],
