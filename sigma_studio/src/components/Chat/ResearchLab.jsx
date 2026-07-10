@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { 
   Play, Square, RotateCcw, ChevronRight, Cpu, Target, Layers, RefreshCw, 
-  Database, Wifi, WifiOff, X, MessageSquare, Send, Plus, Trash2, 
-  CheckCircle, Circle, Clock, AlertTriangle, ArrowRight, GitBranch, StopCircle
+  Database, GitCompare, Settings, Wifi, WifiOff, X, Sliders, MessageSquare, Send,
+  Plus, Trash2, CheckCircle, Circle, ArrowRight, GitBranch, StopCircle, AlertTriangle
 } from 'lucide-react';
 import useResearchPipeline from './core/useResearchPipeline';
 
@@ -28,6 +28,62 @@ const PIPELINE_TEMPLATES = {
     agents: ['sigma_architect', 'math1', 'test-engineer', 'proof-reviewer'],
   },
 };
+
+// ==============================================================================
+// AGENT CONFIG PANEL — restored from original working version
+// ==============================================================================
+function AgentConfigPanel({ agentId, meta, config, onUpdate, onClose, testState, onTest }) {
+  const isTesting = testState?.testing;
+  const testSuccess = testState?.success;
+  const testError = testState?.error;
+  const testLatency = testState?.latency;
+  return (
+    <div className="agent-config-overlay" onClick={onClose}>
+      <div className="agent-config-panel" onClick={e => e.stopPropagation()}>
+        <div className="agent-config-header" style={{ borderBottomColor: meta.bg }}>
+          <span className="agent-config-icon">{meta.icon}</span>
+          <span className="agent-config-name" style={{ color: meta.bg }}>{meta.name}</span>
+          <button className="agent-config-close" onClick={onClose}><X size={14} /></button>
+        </div>
+        <div className="agent-config-body">
+          <div className="agent-config-field">
+            <span className="agent-config-label">Provider AI</span>
+            <select className="agent-config-select" value={config.provider} onChange={e => onUpdate(agentId, { provider: e.target.value })}>
+              <option value="deepseek">DeepSeek</option>
+              <option value="ollama">Ollama (Locale)</option>
+              <option value="openai">OpenAI</option>
+              <option value="anthropic">Anthropic (Claude)</option>
+            </select>
+          </div>
+          <div className="agent-config-field">
+            <span className="agent-config-label">Modello</span>
+            <select className="agent-config-select" value={config.model} onChange={e => onUpdate(agentId, { model: e.target.value })}>
+              {config.provider === 'deepseek' && ['deepseek-v4-flash','deepseek-chat','deepseek-reasoner','deepseek-coder','deepseek-v4-pro'].map(m => <option key={m} value={m}>{m}</option>)}
+              {config.provider === 'ollama' && ['llama3.2','qwen3.6','gemma2','mistral','phi3'].map(m => <option key={m} value={m}>{m}</option>)}
+              {config.provider === 'openai' && ['gpt-4o','gpt-4o-mini','gpt-4-turbo','o1','o3-mini'].map(m => <option key={m} value={m}>{m}</option>)}
+              {config.provider === 'anthropic' && ['claude-sonnet-4','claude-3-5-sonnet','claude-3-opus'].map(m => <option key={m} value={m}>{m}</option>)}
+            </select>
+          </div>
+          <div className="agent-config-field">
+            <span className="agent-config-label">Temperatura <strong>{config.temperature?.toFixed(2)}</strong></span>
+            <input type="range" className="agent-config-range" min="0" max="2" step="0.05" value={config.temperature} onChange={e => onUpdate(agentId, { temperature: parseFloat(e.target.value) })} />
+          </div>
+          <div className="agent-config-test-section">
+            <button className={`agent-config-test-btn ${isTesting ? 'testing' : ''}`} onClick={() => onTest(agentId)} disabled={isTesting}>
+              {isTesting ? <><RefreshCw size={14} className="spin" /> Test...</> : <><Wifi size={14} /> Test Connessione</>}
+            </button>
+            {testSuccess && <div className="agent-config-test-result success"><Wifi size={12} /> Risposta OK ({testLatency}ms)</div>}
+            {testError && <div className="agent-config-test-result error"><WifiOff size={12} /> Errore: {testError}</div>}
+          </div>
+          <div className="agent-config-status">
+            <span className={`agent-config-status-dot ${testSuccess ? 'connected' : testError ? 'error' : 'unknown'}`} />
+            <span className="agent-config-status-text">{testSuccess ? '🟢 Connesso' : testError ? '🔴 Non connesso' : '⚪ Non testato'}</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 function SessionListItem({ session, isActive, onClick, onDelete }) {
   const sc = { created: '#5a5e72', active: '#00d2ff', completed: '#3fb950', failed: '#ff5555' };
@@ -65,9 +121,18 @@ function ObjectiveCard({ obj, agentsMeta }) {
 
 export default function ResearchLab({ onClose, onTasksUpdated, addToast }) {
   const pipeline = useResearchPipeline(onTasksUpdated, addToast);
-  const { AGENTS_META, getAgentColor, pipelineId } = pipeline;
+  
+  // --- Full pipeline hook (restored) ---
+  const {
+    AGENTS_META, getAgentColor,
+    getAgentConfig, updateAgentConfig,
+    selectedAgentId, selectAgentForConfig, closeAgentConfig,
+    testStates, testAgentConnection,
+    enabledAgents, toggleAgent,
+    saveChatMessage, loadChatMessages, pipelineId,
+  } = pipeline;
 
-  // Research Sessions State
+  // --- Research Sessions State ---
   const [sessions, setSessions] = useState([]);
   const [activeSessionId, setActiveSessionId] = useState(null);
   const [sessionData, setSessionData] = useState(null);
@@ -78,13 +143,20 @@ export default function ResearchLab({ onClose, onTasksUpdated, addToast }) {
   const [generatingSteps, setGeneratingSteps] = useState(false);
   const [nextSteps, setNextSteps] = useState([]);
 
-  // Live execution state
+  // --- Live execution state ---
   const [executing, setExecuting] = useState(false);
   const [chatMessages, setChatMessages] = useState([]);
   const [agentStates, setAgentStates] = useState({});
   const [progress, setProgress] = useState({ done: 0, total: 0 });
   const abortRef = useRef(null);
   const chatEndRef = useRef(null);
+
+  // --- Selected agent for config panel ---
+  const selectedAgent = selectedAgentId ? {
+    id: selectedAgentId,
+    meta: AGENTS_META[selectedAgentId] || getAgentColor(selectedAgentId),
+    config: getAgentConfig(selectedAgentId),
+  } : null;
 
   useEffect(() => { fetchSessions(); }, []);
 
@@ -120,9 +192,16 @@ export default function ResearchLab({ onClose, onTasksUpdated, addToast }) {
     if (!newGoal.trim()) return;
     try {
       const template = PIPELINE_TEMPLATES[newTemplate];
-      const agents = (template?.agents || ['sigma_architect']).map(id => ({
-        agent_id: id, provider: 'deepseek', model: 'deepseek-v4-flash', temperature: 0.4,
-      }));
+      // Build agents array using the configured agent settings from useResearchPipeline
+      const agents = (template?.agents || ['sigma_architect']).map(id => {
+        const config = getAgentConfig(id);
+        return {
+          agent_id: id,
+          provider: config.provider || 'deepseek',
+          model: config.model || 'deepseek-v4-flash',
+          temperature: config.temperature ?? 0.4,
+        };
+      });
       const res = await fetch('/api/research/create', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name: newGoal.slice(0, 80), goal: newGoal, pipeline_template: newTemplate, agents }),
@@ -192,7 +271,6 @@ export default function ResearchLab({ onClose, onTasksUpdated, addToast }) {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ session_id: activeSessionId }), signal: controller.signal,
       });
-
       const reader = res.body.getReader(); const decoder = new TextDecoder();
       let buffer = '';
       while (true) {
@@ -232,7 +310,7 @@ export default function ResearchLab({ onClose, onTasksUpdated, addToast }) {
     } else if (type === 'agent_response') {
       setChatMessages(prev => [...prev, { type: 'agent_response', agent_id: event.agent_id, response: event.response, message: event.message, ts: Date.now() }]);
     } else if (type === 'agent_actions') {
-      setChatMessages(prev => [...prev, { type: 'agent_actions', agent_id: event.agent_id, actions_log: event.actions_log, message: event.message, ts: Date.now() }]);
+      setChatMessages(prev => [...prev, { type: 'agent_actions', agent_id: event.agent_id, message: event.message, ts: Date.now() }]);
     } else if (type === 'objective_complete') {
       setProgress(prev => ({ ...prev, done: prev.done + 1 }));
       setAgentStates(prev => ({ ...prev, [event.agent_id]: { status: 'done' } }));
@@ -242,7 +320,6 @@ export default function ResearchLab({ onClose, onTasksUpdated, addToast }) {
       setChatMessages(prev => [...prev, { type: 'error', agent_id: event.agent_id, message: event.message, ts: Date.now() }]);
     } else if (type === 'all_done') {
       setChatMessages(prev => [...prev, { type: 'all_done', message: event.message, ts: Date.now() }]);
-      Object.keys(agentStates).forEach(k => setAgentStates(prev => ({ ...prev, [k]: { status: 'done' } })));
     } else if (type === 'next_steps_ready') {
       if (event.next_steps) setNextSteps(event.next_steps);
     }
@@ -278,6 +355,7 @@ export default function ResearchLab({ onClose, onTasksUpdated, addToast }) {
 
       {/* MAIN */}
       <div className="rl-main">
+        {/* New Session Modal */}
         {showNewSession && (
           <div className="rl-new-session-overlay" onClick={() => setShowNewSession(false)}>
             <div className="rl-new-session" onClick={e => e.stopPropagation()}>
@@ -294,10 +372,42 @@ export default function ResearchLab({ onClose, onTasksUpdated, addToast }) {
                     </div>
                   ))}
                 </div>
-                <button className="rl-btn-primary" onClick={handleCreateSession} disabled={!newGoal.trim()}><Play size={14} /> Crea e Avvia</button>
+
+                {/* Agent Configuration Chips */}
+                <label>Configurazione Agenti</label>
+                <div className="rl-agent-config-row">
+                  {Object.entries(AGENTS_META).map(([id, meta]) => {
+                    const config = getAgentConfig(id);
+                    const isSelected = selectedAgentId === id;
+                    const isTested = testStates[id]?.success;
+                    return (
+                      <button key={id}
+                        className={`rl-agent-config-chip ${isSelected ? 'selected' : ''}`}
+                        style={{ borderColor: meta.bg }}
+                        onClick={() => selectAgentForConfig(id)}
+                        title={`${meta.name}: ${config.provider}/${config.model} @ ${config.temperature?.toFixed(2)}`}>
+                        <span>{meta.icon}</span><span style={{ color: meta.bg }}>{meta.short}</span>
+                        {isTested && <span className="rl-chip-ok">✓</span>}
+                      </button>
+                    );
+                  })}
+                </div>
+
+                <button className="rl-btn-primary" onClick={handleCreateSession} disabled={!newGoal.trim()}>
+                  <Play size={14} /> Crea e Avvia
+                </button>
               </div>
             </div>
           </div>
+        )}
+
+        {/* Agent Config Panel Overlay */}
+        {selectedAgent && (
+          <AgentConfigPanel
+            agentId={selectedAgent.id} meta={selectedAgent.meta} config={selectedAgent.config}
+            onUpdate={updateAgentConfig} onClose={closeAgentConfig}
+            testState={testStates[selectedAgent.id]} onTest={testAgentConnection}
+          />
         )}
 
         {sessionData ? (
@@ -325,26 +435,31 @@ export default function ResearchLab({ onClose, onTasksUpdated, addToast }) {
                     {generatingSteps ? <RefreshCw size={14} className="spin" /> : <GitBranch size={14} />} Next Steps
                   </button>
                 )}
-                <button className="rl-btn-icon" onClick={() => { setActiveSessionId(null); setSessionData(null); }}><X size={14} /></button>
+                <button className="rl-btn-icon" onClick={() => { setActiveSessionId(null); setSessionData(null); closeAgentConfig(); }}>
+                  <X size={14} />
+                </button>
               </div>
             </div>
 
-            {/* Agents Grid */}
+            {/* Agents Grid — clickable chips that open config */}
             <div className="rl-agents-grid">
               {sessionData.agents?.map(agent => {
                 const meta = AGENTS_META[agent.agent_id || agent.id] || getAgentColor(agent.agent_id);
                 const state = agentStates[agent.agent_id || agent.id] || {};
-                const isWorking = state.status === 'working' || executing;
+                const isWorking = state.status === 'working';
+                const config = getAgentConfig(agent.agent_id || agent.id);
                 return (
-                  <div key={agent.agent_id || agent.id} className={`rl-agent-card-live ${isWorking ? 'working' : ''} ${state.status === 'done' ? 'done' : ''} ${state.status === 'error' ? 'error' : ''}`}
-                    style={{ borderColor: isWorking ? meta.bg : 'rgba(255,255,255,0.06)' }}>
+                  <div key={agent.agent_id || agent.id}
+                    className={`rl-agent-card-live ${isWorking ? 'working' : ''} ${state.status === 'done' ? 'done' : ''} ${state.status === 'error' ? 'error' : ''}`}
+                    style={{ borderColor: isWorking ? meta.bg : 'rgba(255,255,255,0.06)', cursor: 'pointer' }}
+                    onClick={() => selectAgentForConfig(agent.agent_id || agent.id)}>
                     <div className="rl-agent-icon-live" style={{ background: meta.bg + '20', color: meta.bg }}>
                       <span>{meta.icon}</span>
                       {isWorking && <span className="rl-agent-pulse" style={{ background: meta.bg }} />}
                     </div>
                     <div className="rl-agent-info-live">
                       <div className="rl-agent-name-live" style={{ color: meta.bg }}>{meta.name || agent.agent_id}</div>
-                      <div className="rl-agent-model-live">{agent.model}</div>
+                      <div className="rl-agent-model-live">{config.model || agent.model}</div>
                       {state.task && <div className="rl-agent-task-live">{state.task}</div>}
                     </div>
                     <div className="rl-agent-status-live" style={{ color: isWorking ? meta.bg : state.status === 'done' ? '#3fb950' : state.status === 'error' ? '#ff5555' : '#5a5e72' }}>
@@ -358,10 +473,10 @@ export default function ResearchLab({ onClose, onTasksUpdated, addToast }) {
             {/* Goal + Kanban */}
             <div className="rl-goal-display"><MessageSquare size={14} /><span>{sessionData.goal}</span></div>
             <div className="rl-kanban">
-              <div className="rl-kanban-col">{/* pending */}<div className="rl-kanban-header" style={{ borderColor: '#5a5e72' }}><Circle size={12} /> Da Fare ({pendingO.length})</div>{pendingO.map(o => <ObjectiveCard key={o.id} obj={o} agentsMeta={AGENTS_META} />)}</div>
-              <div className="rl-kanban-col">{/* in progress */}<div className="rl-kanban-header" style={{ borderColor: '#00d2ff' }}><RefreshCw size={12} /> In Corso ({progressO.length})</div>{progressO.map(o => <ObjectiveCard key={o.id} obj={o} agentsMeta={AGENTS_META} />)}</div>
-              <div className="rl-kanban-col">{/* done */}<div className="rl-kanban-header" style={{ borderColor: '#3fb950' }}><CheckCircle size={12} /> Completati ({doneO.length})</div>{doneO.map(o => <ObjectiveCard key={o.id} obj={o} agentsMeta={AGENTS_META} />)}</div>
-              <div className="rl-kanban-col">{/* failed */}<div className="rl-kanban-header" style={{ borderColor: '#ff5555' }}><AlertTriangle size={12} /> Bloccati ({failedO.length})</div>{failedO.map(o => <ObjectiveCard key={o.id} obj={o} agentsMeta={AGENTS_META} />)}</div>
+              <div className="rl-kanban-col"><div className="rl-kanban-header" style={{ borderColor: '#5a5e72' }}><Circle size={12} /> Da Fare ({pendingO.length})</div>{pendingO.map(o => <ObjectiveCard key={o.id} obj={o} agentsMeta={AGENTS_META} />)}</div>
+              <div className="rl-kanban-col"><div className="rl-kanban-header" style={{ borderColor: '#00d2ff' }}><RefreshCw size={12} /> In Corso ({progressO.length})</div>{progressO.map(o => <ObjectiveCard key={o.id} obj={o} agentsMeta={AGENTS_META} />)}</div>
+              <div className="rl-kanban-col"><div className="rl-kanban-header" style={{ borderColor: '#3fb950' }}><CheckCircle size={12} /> Completati ({doneO.length})</div>{doneO.map(o => <ObjectiveCard key={o.id} obj={o} agentsMeta={AGENTS_META} />)}</div>
+              <div className="rl-kanban-col"><div className="rl-kanban-header" style={{ borderColor: '#ff5555' }}><AlertTriangle size={12} /> Bloccati ({failedO.length})</div>{failedO.map(o => <ObjectiveCard key={o.id} obj={o} agentsMeta={AGENTS_META} />)}</div>
             </div>
 
             {/* Live Chat Panel */}
@@ -371,7 +486,7 @@ export default function ResearchLab({ onClose, onTasksUpdated, addToast }) {
                 {chatMessages.length === 0 && !executing && <div className="rl-chat-empty">I messaggi degli agenti appariranno qui durante l'esecuzione</div>}
                 {chatMessages.map((msg, i) => {
                   const meta = AGENTS_META[msg.agent_id] || {};
-                  const colorMap = { agent_start: '#00d2ff', agent_thinking: '#bc8cff', agent_response: '#3fb950', agent_actions: '#d29922', error: '#ff5555', objective_complete: '#3fb950', all_done: '#3fb950' };
+                  const colorMap = { agent_start: '#00d2ff', agent_thinking: '#bc8cff', agent_response: '#3fb950', agent_actions: '#d29922', error: '#ff5555' };
                   const color = colorMap[msg.type] || '#8b8fa3';
                   return (
                     <div key={i} className="rl-chat-msg" style={{ borderLeftColor: color }}>
@@ -417,8 +532,6 @@ export default function ResearchLab({ onClose, onTasksUpdated, addToast }) {
           </div>
         )}
       </div>
-
-      {/* RIGHT PANEL — Agent Live Chat (always visible during execution) */}
     </div>
   );
 }
