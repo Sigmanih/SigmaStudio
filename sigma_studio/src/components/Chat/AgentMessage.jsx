@@ -1,9 +1,11 @@
 import React from 'react';
-import { Bot, User, Terminal, FileText, CheckCircle, XCircle, Loader } from 'lucide-react';
+import { Bot, User, Terminal, FileText } from 'lucide-react';
+import { renderMarkdownLatex } from '../../utils/markdownLatex';
+import 'katex/dist/katex.min.css';
 
 // ==============================================================================
-// AGENT MESSAGE — Bolla messaggio con badge agente colorato
-// Visualizza messaggi con badge agente, icona specializzazione e bordo colorato
+// AGENT MESSAGE — Premium Markdown + KaTeX rendering (v2.0)
+// Utilizza renderMarkdownLatex per rendering unificato, nessuna manipolazione DOM
 // ==============================================================================
 
 const AGENT_COLORS = {
@@ -16,7 +18,7 @@ function getAgentStyle(agentId) {
   return AGENT_COLORS[agentId] || { bg: '#8b8fa3', color: '#0e1016', icon: '🤖', short: 'AI' };
 }
 
-export default function AgentMessage({ msg, msgId, expandedThinking, onToggleThinking, effectiveModelName, onDeleteMessage, msgIndex }) {
+export default function AgentMessage({ msg, msgId, expandedThinking, onToggleThinking, effectiveModelName, onDeleteMessage, msgIndex, loading: standaloneLoading }) {
   const isUser = msg.role === 'user';
   const isSystem = msg.role === 'system';
   const isAction = msg.isAction;
@@ -24,6 +26,25 @@ export default function AgentMessage({ msg, msgId, expandedThinking, onToggleThi
   const agentStyle = agentId ? getAgentStyle(agentId) : null;
   const isOrchestrated = msg.is_orchestrated;
   const isError = msg.error;
+  const isLoading = standaloneLoading || msg.loading;
+
+  if (isLoading && !msg.content && !msg.thinking) {
+    return (
+      <div className="chat-message chat-assistant">
+        <div className="chat-avatar">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"></path>
+          </svg>
+        </div>
+        <div className="chat-bubble">
+          <div className="chat-loading">
+            <span className="chat-loading-cursor">●</span>
+            <span>Sto pensando...</span>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div
@@ -40,7 +61,6 @@ export default function AgentMessage({ msg, msgId, expandedThinking, onToggleThi
         )}
       </div>
       <div className="chat-bubble">
-        {/* Agent Badge */}
         {agentId && (
           <div className="chat-agent-badge" style={{ backgroundColor: agentStyle.bg, color: agentStyle.color }}>
             <span className="chat-agent-icon">{agentStyle.icon}</span>
@@ -49,7 +69,6 @@ export default function AgentMessage({ msg, msgId, expandedThinking, onToggleThi
           </div>
         )}
 
-        {/* User attachments */}
         {isUser && msg.attachments?.length > 0 && (
           <div className="chat-message-attachments">
             {msg.attachments.map(p => (
@@ -60,7 +79,6 @@ export default function AgentMessage({ msg, msgId, expandedThinking, onToggleThi
           </div>
         )}
 
-        {/* Native model thinking */}
         {!isUser && !isSystem && msg.thinking && (
           <div className={`chat-thinking ${msg.streamingThinking ? 'chat-thinking-streaming' : ''}`}>
             <button className="chat-thinking-toggle" onClick={() => onToggleThinking(msgId)}>
@@ -72,26 +90,31 @@ export default function AgentMessage({ msg, msgId, expandedThinking, onToggleThi
               </span>
             </button>
             {(msg.streamingThinking || expandedThinking[msgId]) && (
-              <div className="chat-thinking-content">{msg.thinking}</div>
+              <div
+                className="chat-thinking-content chat-md"
+                dangerouslySetInnerHTML={{ __html: renderMarkdownLatex(msg.thinking) }}
+              />
             )}
           </div>
         )}
 
-        {/* Content */}
         {isAction ? (
           <div className="chat-actions-log">
-            {msg.content.split('\n').map((l, j) => (
-              <div key={j} className="action-line">{l}</div>
-            ))}
+            {Array.isArray(msg.content)
+              ? msg.content.map((l, j) => <div key={j} className="action-line">{String(l)}</div>)
+              : (msg.content || '').split('\n').map((l, j) => (
+                <div key={j} className="action-line">{l}</div>
+              ))}
           </div>
         ) : (
-          <div className="chat-content">{msg.content}</div>
+          <div
+            className="chat-content chat-md"
+            dangerouslySetInnerHTML={{ __html: renderMarkdownLatex(msg.content) }}
+          />
         )}
 
-        {/* Error */}
         {isError && <div className="chat-error">⚠️ {msg.error}</div>}
 
-        {/* Timestamp & agent */}
         <div className="chat-timestamp">
           {msg.timestamp ? new Date(msg.timestamp).toLocaleTimeString() : ''}
           {!isSystem && (

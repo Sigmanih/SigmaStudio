@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Play, Save, Trash2, Eye, FileText, ChevronRight, X } from 'lucide-react';
-import { marked } from 'marked';
-import katex from 'katex';
+import { renderMarkdownLatex } from '../../utils/markdownLatex';
 import mermaid from 'mermaid';
 import Editor from 'react-simple-code-editor';
 import { highlight, languages } from 'prismjs/components/prism-core';
@@ -14,8 +13,9 @@ import 'prismjs/themes/prism-tomorrow.css';
 import 'katex/dist/katex.min.css';
 
 // ==============================================================================
-// SigmaLabEditor — Editor/Preview unificato
+// SigmaLabEditor — Editor/Preview unificato (v2.0)
 // Gestisce .md (editor+preview), .py (editor+console), .html/viz (editor+iframe)
+// Utilizza renderMarkdownLatex per rendering unificato
 // ==============================================================================
 
 const CodeEditor = typeof Editor === 'function' ? Editor : Editor.default;
@@ -102,56 +102,12 @@ export default function SigmaLabEditor({
     renderPreview();
   }, [content, fileType]);
 
-  const MATH_PLACEHOLDERS = {
-    'display': { open: '§§MATH_DISPLAY_OPEN§§', close: '§§MATH_DISPLAY_CLOSE§§' },
-    'inline': { open: '§§MATH_INLINE_OPEN§§', close: '§§MATH_INLINE_CLOSE§§' }
-  };
-
-  const protectMath = (text) => {
-    let protectedText = text.replace(/\$\$([\s\S]*?)\$\$/g, (match, expr) => {
-      return MATH_PLACEHOLDERS.display.open + expr.trim() + MATH_PLACEHOLDERS.display.close;
-    });
-    protectedText = protectedText.replace(/(?<!\$)\$([^\s$][^$]*?[^\s$])\$(?!\$)/g, (match, expr) => {
-      return MATH_PLACEHOLDERS.inline.open + expr + MATH_PLACEHOLDERS.inline.close;
-    });
-    protectedText = protectedText.replace(/\\\[([\s\S]*?)\\\]/g, (match, expr) => {
-      return MATH_PLACEHOLDERS.display.open + expr.trim() + MATH_PLACEHOLDERS.display.close;
-    });
-    protectedText = protectedText.replace(/\\\(([\s\S]*?)\\\)/g, (match, expr) => {
-      return MATH_PLACEHOLDERS.inline.open + expr + MATH_PLACEHOLDERS.inline.close;
-    });
-    return protectedText;
-  };
-
-  const restoreMath = (html) => {
-    html = html.replace(new RegExp(MATH_PLACEHOLDERS.display.open + '([\\s\\S]*?)' + MATH_PLACEHOLDERS.display.close, 'g'), (match, expr) => {
-      try {
-        const el = document.createElement('span');
-        katex.render(expr, el, { displayMode: true, throwOnError: false, output: 'html' });
-        return el.innerHTML;
-      } catch (e) {
-        return `<div class="math-error">${expr}</div>`;
-      }
-    });
-    html = html.replace(new RegExp(MATH_PLACEHOLDERS.inline.open + '([\\s\\S]*?)' + MATH_PLACEHOLDERS.inline.close, 'g'), (match, expr) => {
-      try {
-        const el = document.createElement('span');
-        katex.render(expr, el, { displayMode: false, throwOnError: false, output: 'html' });
-        return el.innerHTML;
-      } catch (e) {
-        return `<span class="math-error">${expr}</span>`;
-      }
-    });
-    return html;
-  };
-
   const renderPreview = async () => {
     const container = previewRef.current;
     if (!container) return;
 
-    const protectedContent = protectMath(content);
-    let html = marked.parse(protectedContent);
-    html = restoreMath(html);
+    // Use unified renderer that handles Markdown + LaTeX in one pass
+    const html = renderMarkdownLatex(content);
     container.innerHTML = html;
 
     const mermaidBlocks = container.querySelectorAll('.language-mermaid');
