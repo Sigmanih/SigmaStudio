@@ -2352,8 +2352,22 @@
 .rl-main {
   flex: 1;
   display: flex;
+  flex-direction: row;
+  overflow: hidden;
+}
+.rl-left-pane {
+  flex: 1 1 60%;
+  display: flex;
   flex-direction: column;
   overflow: hidden;
+  border-right: 1px solid rgba(255,255,255,0.04);
+}
+.rl-right-pane {
+  flex: 1 1 40%;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  min-width: 300px;
 }
 .rl-welcome {
   flex: 1;
@@ -2546,10 +2560,11 @@
 .rl-kanban {
   flex: 1;
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 8px;
-  padding: 12px;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 6px;
+  padding: 8px;
   overflow-y: auto;
+  min-height: 0;
 }
 .rl-kanban-col {
   display: flex;
@@ -2746,10 +2761,10 @@
 
 /* Live Chat Panel */
 .rl-chat-panel {
-  border-top: 1px solid rgba(255,255,255,0.06);
-  background: rgba(0,0,0,0.1);
-  flex: 1 1 60%;
-  min-height: 120px;
+  border-top: 1px solid rgba(255,255,255,0.04);
+  background: rgba(0,0,0,0.08);
+  flex: 1 1 auto;
+  min-height: 0;
   display: flex;
   flex-direction: column;
 }
@@ -2841,8 +2856,58 @@
   opacity: 0.7;
 }
 
-/* Keep existing media queries */
+/* Agent Input Area */
+.rl-agent-input {
+  display: flex;
+  gap: 8px;
+  padding: 10px 12px;
+  border-top: 1px solid rgba(255,255,255,0.06);
+  background: rgba(0,0,0,0.12);
+  flex-shrink: 0;
+}
+.rl-agent-input-field {
+  flex: 1;
+  background: rgba(0,0,0,0.3);
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 10px;
+  padding: 10px 14px;
+  font-size: 0.75rem;
+  color: var(--text);
+  font-family: inherit;
+  resize: none;
+  outline: none;
+  min-height: 40px;
+}
+.rl-agent-input-field:focus { border-color: var(--primary-border); }
+.rl-agent-input-field::placeholder { color: var(--text-dark); }
+
+/* Agent config chip row */
+.rl-agent-config-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.rl-agent-config-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 6px 12px;
+  border-radius: 20px;
+  border: 1.5px solid;
+  font-size: 0.7rem;
+  font-weight: 600;
+  cursor: pointer;
+  font-family: inherit;
+  transition: all 0.2s;
+  background: rgba(0,0,0,0.2);
+}
+.rl-agent-config-chip:hover { transform: translateY(-1px); box-shadow: 0 0 12px rgba(0,0,0,0.1); }
+.rl-agent-config-chip.selected { box-shadow: 0 0 8px rgba(0,210,255,0.2); }
+.rl-chip-ok { font-size: 0.55rem; color: #3fb950; }
+
 @media (max-width: 900px) {
+  .rl-main { flex-direction: column; }
+  .rl-left-pane, .rl-right-pane { flex: 1 1 50%; }
   .rl-kanban { grid-template-columns: repeat(2, 1fr); }
   .rl-template-grid { grid-template-columns: 1fr; }
   .rl-sidebar { width: 160px; }

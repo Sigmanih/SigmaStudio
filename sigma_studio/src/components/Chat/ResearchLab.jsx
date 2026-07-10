@@ -467,63 +467,51 @@ export default function ResearchLab({ onClose, onTasksUpdated, addToast }) {
               </div>
             </div>
 
-            {/* Agents Grid — clickable chips that open config */}
-            <div className="rl-agents-grid">
-              {sessionData.agents?.map(agent => {
-                const meta = AGENTS_META[agent.agent_id || agent.id] || getAgentColor(agent.agent_id);
-                const state = agentStates[agent.agent_id || agent.id] || {};
-                const isWorking = state.status === 'working';
-                const config = getAgentConfig(agent.agent_id || agent.id);
-                return (
-                  <div key={agent.agent_id || agent.id}
-                    className={`rl-agent-card-live ${isWorking ? 'working' : ''} ${state.status === 'done' ? 'done' : ''} ${state.status === 'error' ? 'error' : ''}`}
-                    style={{ borderColor: isWorking ? meta.bg : 'rgba(255,255,255,0.06)', cursor: 'pointer' }}
-                    onClick={() => selectAgentForConfig(agent.agent_id || agent.id)}>
-                    <div className="rl-agent-icon-live" style={{ background: meta.bg + '20', color: meta.bg }}>
-                      <span>{meta.icon}</span>
-                      {isWorking && <span className="rl-agent-pulse" style={{ background: meta.bg }} />}
+            {/* LEFT-RIGHT LAYOUT */}
+            <div className="rl-left-pane">
+              {/* Agents Grid — clickable chips that open config */}
+              <div className="rl-agents-grid">
+                {sessionData.agents?.map(agent => {
+                  const meta = AGENTS_META[agent.agent_id || agent.id] || getAgentColor(agent.agent_id);
+                  const state = agentStates[agent.agent_id || agent.id] || {};
+                  const isWorking = state.status === 'working';
+                  const config = getAgentConfig(agent.agent_id || agent.id);
+                  return (
+                    <div key={agent.agent_id || agent.id}
+                      className={`rl-agent-card-live ${isWorking ? 'working' : ''} ${state.status === 'done' ? 'done' : ''} ${state.status === 'error' ? 'error' : ''}`}
+                      style={{ borderColor: isWorking ? meta.bg : 'rgba(255,255,255,0.06)', cursor: 'pointer' }}
+                      onClick={() => selectAgentForConfig(agent.agent_id || agent.id)}>
+                      <div className="rl-agent-icon-live" style={{ background: meta.bg + '20', color: meta.bg }}>
+                        <span>{meta.icon}</span>
+                        {isWorking && <span className="rl-agent-pulse" style={{ background: meta.bg }} />}
+                      </div>
+                      <div className="rl-agent-info-live">
+                        <div className="rl-agent-name-live" style={{ color: meta.bg }}>{meta.name || agent.agent_id}</div>
+                        <div className="rl-agent-model-live">{config.model || agent.model}</div>
+                        {state.task && <div className="rl-agent-task-live">{state.task}</div>}
+                      </div>
+                      <div className="rl-agent-status-live" style={{ color: isWorking ? meta.bg : state.status === 'done' ? '#3fb950' : state.status === 'error' ? '#ff5555' : '#5a5e72' }}>
+                        {isWorking ? <RefreshCw size={12} className="spin" /> : state.status === 'done' ? <CheckCircle size={12} /> : state.status === 'error' ? <AlertTriangle size={12} /> : <Circle size={12} />}
+                      </div>
                     </div>
-                    <div className="rl-agent-info-live">
-                      <div className="rl-agent-name-live" style={{ color: meta.bg }}>{meta.name || agent.agent_id}</div>
-                      <div className="rl-agent-model-live">{config.model || agent.model}</div>
-                      {state.task && <div className="rl-agent-task-live">{state.task}</div>}
-                    </div>
-                    <div className="rl-agent-status-live" style={{ color: isWorking ? meta.bg : state.status === 'done' ? '#3fb950' : state.status === 'error' ? '#ff5555' : '#5a5e72' }}>
-                      {isWorking ? <RefreshCw size={12} className="spin" /> : state.status === 'done' ? <CheckCircle size={12} /> : state.status === 'error' ? <AlertTriangle size={12} /> : <Circle size={12} />}
-                    </div>
-                  </div>
-                );
-              })}
+                  );
+                })}
+              </div>
+
+              {/* Goal + Kanban */}
+              <div className="rl-goal-display"><MessageSquare size={14} /><span>{sessionData.goal}</span></div>
+              <div className="rl-kanban">
+                <div className="rl-kanban-col"><div className="rl-kanban-header" style={{ borderColor: '#5a5e72' }}><Circle size={12} /> Da Fare ({pendingO.length})</div>{pendingO.map(o => <ObjectiveCard key={o.id} obj={o} agentsMeta={AGENTS_META} />)}</div>
+                <div className="rl-kanban-col"><div className="rl-kanban-header" style={{ borderColor: '#00d2ff' }}><RefreshCw size={12} /> In Corso ({progressO.length})</div>{progressO.map(o => <ObjectiveCard key={o.id} obj={o} agentsMeta={AGENTS_META} />)}</div>
+                <div className="rl-kanban-col"><div className="rl-kanban-header" style={{ borderColor: '#3fb950' }}><CheckCircle size={12} /> Completati ({doneO.length})</div>{doneO.map(o => <ObjectiveCard key={o.id} obj={o} agentsMeta={AGENTS_META} />)}</div>
+                <div className="rl-kanban-col"><div className="rl-kanban-header" style={{ borderColor: '#ff5555' }}><AlertTriangle size={12} /> Bloccati ({failedO.length})</div>{failedO.map(o => <ObjectiveCard key={o.id} obj={o} agentsMeta={AGENTS_META} />)}</div>
+              </div>
             </div>
 
-            {/* Goal + Kanban */}
-            <div className="rl-goal-display"><MessageSquare size={14} /><span>{sessionData.goal}</span></div>
-            <div className="rl-kanban">
-              <div className="rl-kanban-col"><div className="rl-kanban-header" style={{ borderColor: '#5a5e72' }}><Circle size={12} /> Da Fare ({pendingO.length})</div>{pendingO.map(o => <ObjectiveCard key={o.id} obj={o} agentsMeta={AGENTS_META} />)}</div>
-              <div className="rl-kanban-col"><div className="rl-kanban-header" style={{ borderColor: '#00d2ff' }}><RefreshCw size={12} /> In Corso ({progressO.length})</div>{progressO.map(o => <ObjectiveCard key={o.id} obj={o} agentsMeta={AGENTS_META} />)}</div>
-              <div className="rl-kanban-col"><div className="rl-kanban-header" style={{ borderColor: '#3fb950' }}><CheckCircle size={12} /> Completati ({doneO.length})</div>{doneO.map(o => <ObjectiveCard key={o.id} obj={o} agentsMeta={AGENTS_META} />)}</div>
-              <div className="rl-kanban-col"><div className="rl-kanban-header" style={{ borderColor: '#ff5555' }}><AlertTriangle size={12} /> Bloccati ({failedO.length})</div>{failedO.map(o => <ObjectiveCard key={o.id} obj={o} agentsMeta={AGENTS_META} />)}</div>
-            </div>
-
-            {/* Agent Command Input — always visible */}
-            <div className="rl-agent-input">
-              <input
-                className="rl-agent-input-field"
-                type="text"
-                placeholder="Scrivi un comando per il team di agenti..."
-                value={commandInput}
-                onChange={e => setCommandInput(e.target.value)}
-                onKeyDown={e => { if (e.key === 'Enter' && commandInput.trim()) handleSendCommand(); }}
-                disabled={executing}
-              />
-              <button className="rl-btn-primary" onClick={handleSendCommand} disabled={!commandInput.trim() || executing}>
-                <Send size={14} /> Invia
-              </button>
-            </div>
-
-            {/* Live Chat Panel */}
-            <div className="rl-chat-panel">
-              <div className="rl-chat-header"><MessageSquare size={14} /><span>Chat Agenti Live</span><span className="rl-chat-count">{chatMessages.length}</span></div>
+            <div className="rl-right-pane">
+              {/* Live Chat Panel */}
+              <div className="rl-chat-panel">
+                <div className="rl-chat-header"><MessageSquare size={14} /><span>Chat Agenti Live</span><span className="rl-chat-count">{chatMessages.length}</span></div>
               <div className="rl-chat-msgs">
                 {chatMessages.length === 0 && !executing && <div className="rl-chat-empty">I messaggi degli agenti appariranno qui durante l'esecuzione</div>}
                 {chatMessages.map((msg, i) => {
@@ -547,6 +535,22 @@ export default function ResearchLab({ onClose, onTasksUpdated, addToast }) {
                 })}
                 {executing && <div className="rl-chat-typing">Agenti al lavoro <RefreshCw size={10} className="spin" /></div>}
                 <div ref={chatEndRef} />
+              </div>
+              </div>
+
+              {/* Agent Command Input */}
+              <div className="rl-agent-input">
+                <input
+                  className="rl-agent-input-field"
+                  type="text"
+                  placeholder="Scrivi un comando per il team..."
+                  value={commandInput}
+                  onChange={e => setCommandInput(e.target.value)}
+                  onKeyDown={e => { if (e.key === 'Enter' && commandInput.trim()) handleSendCommand(); }}
+                />
+                <button className="rl-btn-primary" onClick={handleSendCommand} disabled={!commandInput.trim()}>
+                  <Send size={14} /> Invia
+                </button>
               </div>
             </div>
 
