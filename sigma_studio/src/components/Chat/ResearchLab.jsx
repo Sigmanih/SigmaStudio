@@ -139,7 +139,7 @@ export default function ResearchLab({ onClose, onTasksUpdated, addToast }) {
   const [showNewSession, setShowNewSession] = useState(false);
   const [newGoal, setNewGoal] = useState('');
   const [newTemplate, setNewTemplate] = useState('full_analysis');
-  const [decomposing, setDecomposing] = useState(false);
+  const [launching, setLaunching] = useState(false);
   const [generatingSteps, setGeneratingSteps] = useState(false);
   const [nextSteps, setNextSteps] = useState([]);
 
@@ -188,49 +188,68 @@ export default function ResearchLab({ onClose, onTasksUpdated, addToast }) {
     fetchSessionStatus(sessionId);
   };
 
-  const handleCreateSession = async () => {
-    if (!newGoal.trim()) return;
+  const handleCreateAndStart = async () => {
+    if (!newGoal.trim() || launching) return;
+    setLaunching(true);
     try {
       const template = PIPELINE_TEMPLATES[newTemplate];
-      // Build agents array using the configured agent settings from useResearchPipeline
       const agents = (template?.agents || ['sigma_architect']).map(id => {
         const config = getAgentConfig(id);
-        return {
-          agent_id: id,
-          provider: config.provider || 'deepseek',
-          model: config.model || 'deepseek-v4-flash',
-          temperature: config.temperature ?? 0.4,
-        };
+        return { agent_id: id, provider: config.provider || 'deepseek', model: config.model || 'deepseek-v4-flash', temperature: config.temperature ?? 0.4 };
       });
-      const res = await fetch('/api/research/create', {
+      // 1. Create session
+      const r1 = await fetch('/api/research/create', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name: newGoal.slice(0, 80), goal: newGoal, pipeline_template: newTemplate, agents }),
       });
-      const data = await res.json();
-      if (data.success) {
-        setShowNewSession(false); setNewGoal('');
-        fetchSessions();
-        handleSelectSession(data.session.id);
-        handleDecompose(data.session.id, newGoal, agents);
-        if (addToast) addToast('✅ Sessione di ricerca creata', 'success', 3000);
-      }
-    } catch (e) { if (addToast) addToast('❌ Errore', 'error', 3000); }
-  };
-
-  const handleDecompose = async (sessionId, goal, agents) => {
-    setDecomposing(true);
-    try {
-      const res = await fetch('/api/research/decompose', {
+      const d1 = await r1.json();
+      if (!d1.success) { setLaunching(false); return; }
+      const sid = d1.session.id;
+      setShowNewSession(false); setNewGoal('');
+      fetchSessions();
+      setActiveSessionId(sid);
+      setChatMessages([]); setAgentStates({});
+      // 2. Decompose
+      const r2 = await fetch('/api/research/decompose', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ session_id: sessionId, goal, agents }),
+        body: JSON.stringify({ session_id: sid, goal: newGoal, agents }),
       });
-      const data = await res.json();
-      if (data.success) {
-        fetchSessionStatus(sessionId);
-        if (addToast) addToast(`📋 ${data.count} micro-obiettivi creati`, 'success', 4000);
-      } else { if (addToast) addToast(`⚠️ ${data.error}`, 'warning', 4000); }
-    } catch (e) { if (addToast) addToast('❌ Errore decomposizione', 'error', 3000); }
-    setDecomposing(false);
+      const d2 = await r2.json();
+      // 3. Refresh status
+      const r3 = await fetch(`/api/research/status?id=${encodeURIComponent(sid)}`);
+      const d3 = await r3.json();
+      if (d3.success) {
+        setSessionData(d3.session);
+        const objs = d3.session.micro_objectives || [];
+        setProgress({ done: objs.filter(o => o.status === 'done').length, total: objs.length });
+      }
+      // 4. Start execution
+      setExecuting(true);
+      const controller = new AbortController();
+      abortRef.current = controller;
+      const res = await fetch('/api/research/start', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ session_id: sid }), signal: controller.signal,
+      });
+      const reader = res.body.getReader(); const decoder = new TextDecoder();
+      let buffer = '';
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const parts = buffer.split('\n\n'); buffer = parts.pop() || '';
+        for (const part of parts) {
+          for (const line of part.split('\n')) {
+            if (!line.startsWith('data: ')) continue;
+            const p = line.slice(6); if (p === '[DONE]') break;
+            try { handleSSEEvent(JSON.parse(p)); } catch (e) {}
+          }
+        }
+      }
+    } catch (e) {
+      if (e.name !== 'AbortError') setChatMessages(prev => [...prev, { type: 'error', message: `❌ ${e.message}`, ts: Date.now() }]);
+    }
+    setExecuting(false); abortRef.current = null; setLaunching(false);
   };
 
   const handleGenerateNextSteps = async () => {
@@ -393,8 +412,8 @@ export default function ResearchLab({ onClose, onTasksUpdated, addToast }) {
                   })}
                 </div>
 
-                <button className="rl-btn-primary" onClick={handleCreateSession} disabled={!newGoal.trim()}>
-                  <Play size={14} /> Crea e Avvia
+                <button className="rl-btn-primary" onClick={handleCreateAndStart} disabled={!newGoal.trim() || launching}>
+                  {launching ? <><RefreshCw size={14} className="spin" /> Avvio in corso...</> : <><Play size={14} /> Crea e Avvia</>}
                 </button>
               </div>
             </div>

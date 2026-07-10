@@ -2748,8 +2748,8 @@
 .rl-chat-panel {
   border-top: 1px solid rgba(255,255,255,0.06);
   background: rgba(0,0,0,0.1);
-  flex-shrink: 0;
-  max-height: 220px;
+  flex: 1 1 60%;
+  min-height: 120px;
   display: flex;
   flex-direction: column;
 }
