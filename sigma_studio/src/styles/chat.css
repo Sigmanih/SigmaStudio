@@ -2355,19 +2355,25 @@
   flex-direction: row;
   overflow: hidden;
 }
+.rl-content-row {
+  flex: 1;
+  display: flex;
+  flex-direction: row;
+  overflow: hidden;
+}
 .rl-left-pane {
-  flex: 1 1 60%;
+  flex: 1 1 55%;
   display: flex;
   flex-direction: column;
   overflow: hidden;
   border-right: 1px solid rgba(255,255,255,0.04);
 }
 .rl-right-pane {
-  flex: 1 1 40%;
+  flex: 1 1 45%;
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  min-width: 300px;
+  min-width: 280px;
 }
 .rl-welcome {
   flex: 1;

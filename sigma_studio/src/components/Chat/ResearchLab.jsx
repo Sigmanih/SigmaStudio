@@ -437,38 +437,26 @@ export default function ResearchLab({ onClose, onTasksUpdated, addToast }) {
         )}
 
         {sessionData ? (
-          <>
-            {/* Header */}
-            <div className="rl-dashboard-header">
-              <div className="rl-dashboard-title">
-                <Target size={16} /><span>{sessionData.name}</span>
-                <span className={`rl-badge rl-badge-${executing ? 'active' : sessionData.status}`}>{executing ? 'IN ESECUZIONE' : sessionData.status?.toUpperCase()}</span>
-                {executing && <RefreshCw size={14} className="spin" />}
-              </div>
-              <div className="rl-dashboard-actions">
-                <span className="rl-progress">{progress.done}/{progress.total} obiettivi</span>
+          <div className="rl-content-row">
+            {/* LEFT PANE */}
+            <div className="rl-left-pane">
+              {/* Compact header */}
+              <div className="rl-left-header">
+                <span className="rl-left-title">{sessionData.name?.slice(0, 40)}</span>
+                <span className={`rl-badge rl-badge-${executing ? 'active' : sessionData.status}`}>{executing ? 'LIVE' : sessionData.status?.toUpperCase()}</span>
+                <span className="rl-progress">{progress.done}/{progress.total}</span>
                 {!executing ? (
-                  <button className="rl-btn-primary" onClick={handleStartResearch}>
-                    <Play size={14} /> Avvia Ricerca
-                  </button>
+                  <button className="rl-btn-sm" onClick={handleStartResearch}><Play size={12} /> Avvia</button>
                 ) : (
-                  <button className="rl-btn" onClick={handleStopResearch} style={{ color: '#ff5555', borderColor: 'rgba(255,85,85,0.3)' }}>
-                    <StopCircle size={14} /> Ferma
-                  </button>
+                  <button className="rl-btn-sm" onClick={handleStopResearch} style={{ color: '#ff5555' }}><StopCircle size={12} /> Ferma</button>
                 )}
                 {!executing && sessionData.status === 'completed' && (
-                  <button className="rl-btn" onClick={handleGenerateNextSteps} disabled={generatingSteps}>
-                    {generatingSteps ? <RefreshCw size={14} className="spin" /> : <GitBranch size={14} />} Next Steps
+                  <button className="rl-btn-sm" onClick={handleGenerateNextSteps} disabled={generatingSteps}>
+                    <GitBranch size={12} /> Next
                   </button>
                 )}
-                <button className="rl-btn-icon" onClick={() => { setActiveSessionId(null); setSessionData(null); closeAgentConfig(); }}>
-                  <X size={14} />
-                </button>
+                <button className="rl-btn-icon" onClick={() => { setActiveSessionId(null); setSessionData(null); closeAgentConfig(); }}><X size={12} /></button>
               </div>
-            </div>
-
-            {/* LEFT-RIGHT LAYOUT */}
-            <div className="rl-left-pane">
               {/* Agents Grid — clickable chips that open config */}
               <div className="rl-agents-grid">
                 {sessionData.agents?.map(agent => {
@@ -569,7 +557,7 @@ export default function ResearchLab({ onClose, onTasksUpdated, addToast }) {
                 </div>
               </div>
             )}
-          </>
+          </div>
         ) : (
           <div className="rl-welcome">
             <Cpu size={48} /><h2>Research Lab v3</h2>
