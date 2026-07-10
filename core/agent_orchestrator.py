@@ -480,7 +480,6 @@ def generate_next_steps(session_id, ai_cfg, model_override):
     provider, endpoint, api_url, api_key, temperature, max_tokens, top_p, timeout = \
         _load_agent_config(ai_cfg, model_override, SIGMA_ARCHITECT_ID)
     
-    # Build context from session results
     objectives_summary = "\n".join(
         f"- {o['title']}: {o.get('status', '?')} — {o.get('result', o.get('description', ''))[:200]}"
         for o in session.get("micro_objectives", [])
@@ -568,3 +567,183 @@ def handle_research_next_steps(self):
         return self.send_json_response(result, 500)
     except Exception as e:
         return self.send_json_response({"success": False, "error": str(e)}, 500)
+
+
+# ==============================================================================
+# RESEARCH START — Live Multi-Agent Execution (Research Lab v3)
+# ==============================================================================
+
+def handle_research_start(self):
+    """POST /api/research/start — Esegue la sessione di ricerca con SSE streaming.
+    Coordina gli agenti, invia messaggi live alla chat, aggiorna lo stato in tempo reale."""
+    from core.research_sessions import get_session, update_objective, add_actions_log, save_session
+    
+    try:
+        req = self.read_json_body()
+        session_id = req.get("session_id", "")
+        if not session_id:
+            return self.send_json_response({"success": False, "error": "session_id richiesto"}, 400)
+        
+        session = get_session(session_id)
+        if not session:
+            return self.send_json_response({"success": False, "error": "Sessione non trovata"}, 404)
+        
+        # SSE
+        self.send_response(200)
+        self.send_header("Content-Type", "text/event-stream")
+        self.send_header("Cache-Control", "no-cache")
+        self.send_header("Connection", "keep-alive")
+        self.send_header("Access-Control-Allow-Origin", "*")
+        self.end_headers()
+        
+        _sse_lock = threading.Lock()
+        def _sse(event):
+            with _sse_lock:
+                try:
+                    self.wfile.write(f"data: {json.dumps(event)}\n\n".encode())
+                    self.wfile.flush()
+                except Exception:
+                    pass
+        
+        try:
+            ai_cfg = load_ai_config()
+            objectives = session.get("micro_objectives", [])
+            agents_config = session.get("agents", [])
+            goal = session.get("goal", "")
+            model_override = req.get("model_override", "")
+            
+            _sse({"type": "research_start", "session_id": session_id, "total_objectives": len(objectives),
+                  "agents": agents_config, "message": f"🔬 Avvio ricerca con {len(objectives)} micro-obiettivi, {len(agents_config)} agenti"})
+            
+            for idx, obj in enumerate(objectives):
+                if obj.get("status") == "done":
+                    _sse({"type": "objective_complete", "objective_id": obj["id"], "title": obj["title"],
+                          "progress": f"{idx + 1}/{len(objectives)}", "message": f"✅ Già completato: {obj['title']}"})
+                    continue
+                
+                agent_id = obj.get("assigned_to", SIGMA_ARCHITECT_ID)
+                agent_name = agent_id
+                provider, endpoint, api_url, api_key, temperature, max_tokens, top_p, timeout = \
+                    _load_agent_config(ai_cfg, model_override, agent_id)
+                
+                # Update to in_progress
+                update_objective(session_id, obj["id"], {"status": "in_progress"})
+                
+                # Notify: agent started
+                _sse({"type": "agent_start", "agent_id": agent_id, "agent_name": agent_name,
+                      "objective_id": obj["id"], "objective": obj["title"],
+                      "progress": f"{idx + 1}/{len(objectives)}",
+                      "message": f"▶️ {agent_name} inizia: {obj['title']}"})
+                
+                # Build prompt
+                system_prompt = f"""Sei un agente specializzato. Esegui il seguente micro-obiettivo di ricerca.
+
+## OBIETTIVO GENERALE
+{goal}
+
+## MICRO-OBIETTIVO
+{obj['title']}
+{obj.get('description', '')}
+
+## CRITERIO DI COMPLETAMENTO
+{obj.get('completion_criteria', 'Esegui azioni pertinenti e riporta il risultato.')}
+
+## REGOLE
+- Rispondi SOLO con JSON: {{"response": "...", "thinking": "...", "actions": [...]}}
+- Azioni valide: create_file, edit_file, run_test, read_file
+- Parla sempre in italiano."""
+                
+                messages = [
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": f"Esegui: {obj['title']}"}
+                ]
+                
+                model = model_override or ai_cfg.get("model", "deepseek-v4-flash")
+                response, thinking, error = _call_ai_model(messages, ai_cfg, model,
+                    provider, endpoint, api_url, api_key, temperature, max_tokens, top_p, timeout)
+                
+                if error:
+                    _sse({"type": "agent_error", "agent_id": agent_id, "objective_id": obj["id"],
+                          "error": error, "message": f"❌ {agent_name}: {error}"})
+                    update_objective(session_id, obj["id"], {"status": "failed", "result": error})
+                    continue
+                
+                # Send thinking to chat
+                if thinking:
+                    _sse({"type": "agent_thinking", "agent_id": agent_id, "agent_name": agent_name,
+                          "thinking": thinking[:2000], "objective_id": obj["id"],
+                          "message": f"🧠 {agent_name} sta ragionando..."})
+                
+                json_match = _extract_json_from_response(response or "")
+                actions_executed = []
+                if json_match:
+                    try:
+                        parsed = json.loads(json_match.group())
+                        ai_response = parsed.get("response", response or "")[:2000]
+                        actions = parsed.get("actions", [])
+                        
+                        _sse({"type": "agent_response", "agent_id": agent_id, "agent_name": agent_name,
+                              "response": ai_response, "objective_id": obj["id"],
+                              "message": f"💬 {agent_name}: {ai_response[:300]}"})
+                        
+                        if actions:
+                            actions_log = execute_ai_actions(self, actions, agent_name)
+                            actions_executed = actions_log
+                            success_count = sum(1 for a in actions_log if a.get("success"))
+                            fail_count = sum(1 for a in actions_log if not a.get("success"))
+                            
+                            _sse({"type": "agent_actions", "agent_id": agent_id,
+                                  "actions_log": actions_log, "success_count": success_count, "fail_count": fail_count,
+                                  "message": f"⚡ {agent_name}: {success_count}✅/{fail_count}❌ azioni"})
+                        
+                        update_objective(session_id, obj["id"], {
+                            "status": "done", "result": ai_response[:500], "iterations": obj.get("iterations", 0) + 1
+                        })
+                    except json.JSONDecodeError:
+                        _sse({"type": "agent_response", "agent_id": agent_id, "response": (response or "")[:2000]})
+                        update_objective(session_id, obj["id"], {"status": "done", "result": (response or "")[:500]})
+                else:
+                    _sse({"type": "agent_response", "agent_id": agent_id, "response": (response or "")[:2000]})
+                    update_objective(session_id, obj["id"], {"status": "done", "result": (response or "")[:500]})
+                
+                _sse({"type": "objective_complete", "objective_id": obj["id"],
+                      "agent_id": agent_id, "title": obj["title"],
+                      "progress": f"{idx + 1}/{len(objectives)}",
+                      "message": f"✅ Completato: {obj['title']}"})
+                
+                if actions_executed:
+                    add_actions_log(session_id, actions_executed)
+            
+            # Check completion
+            from core.research_sessions import check_all_satisfied
+            all_satisfied, done_count, total = check_all_satisfied(session_id)
+            
+            if all_satisfied and total > 0:
+                session["status"] = "completed"
+                save_session(session)
+                
+                _sse({"type": "all_done", "done_count": done_count, "total": total,
+                      "message": f"🎯 Tutti i {total} micro-obiettivi completati! Generazione next steps..."})
+                
+                next_result = generate_next_steps(session_id, ai_cfg, model_override)
+                if next_result.get("success"):
+                    _sse({"type": "next_steps_ready",
+                          "next_steps": next_result.get("next_steps", []),
+                          "analysis": next_result.get("analysis", ""),
+                          "message": "💡 Next steps generati con successo"})
+            else:
+                _sse({"type": "research_done", "session_id": session_id,
+                      "done_count": done_count, "total": total,
+                      "message": f"⏹️ Ricerca completata: {done_count}/{total} obiettivi"})
+        
+        except Exception as e:
+            _sse({"type": "error", "error": str(e), "message": f"❌ Errore: {e}"})
+        
+        self.wfile.write(b"data: [DONE]\n\n")
+        self.wfile.flush()
+    
+    except Exception as e:
+        try:
+            self.send_json_response({"success": False, "error": str(e)}, 500)
+        except Exception:
+            pass

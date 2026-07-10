@@ -200,9 +200,10 @@ SigmaAPIHandler.handle_research_delete = handle_research_delete
 SigmaAPIHandler.handle_research_update_objective = handle_research_update_objective
 
 # 17. Research Decompose + Next Steps (Agent Orchestrator v2)
-from core.agent_orchestrator import handle_research_decompose, handle_research_next_steps
+from core.agent_orchestrator import handle_research_decompose, handle_research_next_steps, handle_research_start
 SigmaAPIHandler.handle_research_decompose = handle_research_decompose
 SigmaAPIHandler.handle_research_next_steps = handle_research_next_steps
+SigmaAPIHandler.handle_research_start = handle_research_start
 
 # --- Register routing ---
 register_get_handlers(SigmaAPIHandler)
