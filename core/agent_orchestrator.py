@@ -629,6 +629,7 @@ def handle_research_start(self):
             agents_config = session.get("agents", [])
             goal = session.get("goal", "")
             model_override = req.get("model_override", "")
+            print(f"[RESEARCH_START] session={session_id}, objectives={len(objectives)}, agents={len(agents_config)}, model={model_override or ai_cfg.get('model','?')}", flush=True)
             
             _sse({"type": "research_start", "session_id": session_id, "total_objectives": len(objectives),
                   "agents": agents_config, "message": f"🔬 Avvio ricerca con {len(objectives)} micro-obiettivi, {len(agents_config)} agenti"})
@@ -640,9 +641,17 @@ def handle_research_start(self):
                     continue
                 
                 agent_id = obj.get("assigned_to", SIGMA_ARCHITECT_ID)
+                # Validate agent_id exists - fallback to sigma_architect
+                from core.agent_registry import get_agent
+                agent_check = get_agent(agent_id)
+                if not agent_check:
+                    print(f"[RESEARCH_START] Agent '{agent_id}' not found, falling back to {SIGMA_ARCHITECT_ID}", flush=True)
+                    agent_id = SIGMA_ARCHITECT_ID
                 agent_name = agent_id
                 provider, endpoint, api_url, api_key, temperature, max_tokens, top_p, timeout = \
                     _load_agent_config(ai_cfg, model_override, agent_id)
+                
+                print(f"[RESEARCH_START] Objective {idx+1}/{len(objectives)}: agent={agent_id}, provider={provider}, model={model_override or ai_cfg.get('model','?')}", flush=True)
                 
                 # Update to in_progress
                 update_objective(session_id, obj["id"], {"status": "in_progress"})
@@ -652,6 +661,11 @@ def handle_research_start(self):
                       "objective_id": obj["id"], "objective": obj["title"],
                       "progress": f"{idx + 1}/{len(objectives)}",
                       "message": f"▶️ {agent_name} inizia: {obj['title']}"})
+                
+                # Send thinking immediately to show activity
+                _sse({"type": "agent_thinking", "agent_id": agent_id, "agent_name": agent_name,
+                      "thinking": f"Analisi di: {obj['title']}", "objective_id": obj["id"],
+                      "message": f"🧠 {agent_name} sta analizzando..."})
                 
                 # Build prompt
                 system_prompt = f"""Sei un agente specializzato. Esegui il seguente micro-obiettivo di ricerca.
@@ -677,20 +691,26 @@ def handle_research_start(self):
                 ]
                 
                 model = model_override or ai_cfg.get("model", "deepseek-v4-flash")
+                print(f"[RESEARCH_START] Calling AI: model={model}, provider={provider}, timeout={timeout}", flush=True)
                 response, thinking, error = _call_ai_model(messages, ai_cfg, model,
                     provider, endpoint, api_url, api_key, temperature, max_tokens, top_p, timeout)
                 
                 if error:
+                    print(f"[RESEARCH_START] AI error for {agent_id}: {error}", flush=True)
                     _sse({"type": "agent_error", "agent_id": agent_id, "objective_id": obj["id"],
                           "error": error, "message": f"❌ {agent_name}: {error}"})
+                    _sse({"type": "agent_response", "agent_id": agent_id, "agent_name": agent_name,
+                          "response": f"⚠️ Errore: {error}", "message": f"❌ {agent_name}: {error}"})
                     update_objective(session_id, obj["id"], {"status": "failed", "result": error})
                     continue
                 
-                # Send thinking to chat
+                print(f"[RESEARCH_START] AI response received for {agent_id}: length={len(response or '')}", flush=True)
+                
+                # Send thinking to chat if available
                 if thinking:
                     _sse({"type": "agent_thinking", "agent_id": agent_id, "agent_name": agent_name,
                           "thinking": thinking[:2000], "objective_id": obj["id"],
-                          "message": f"🧠 {agent_name} sta ragionando..."})
+                          "message": f"🧠 {agent_name}: {thinking[:150]}..."})
                 
                 json_match = _extract_json_from_response(response or "")
                 actions_executed = []
@@ -705,10 +725,13 @@ def handle_research_start(self):
                               "message": f"💬 {agent_name}: {ai_response[:300]}"})
                         
                         if actions:
+                            print(f"[RESEARCH_START] Executing {len(actions)} actions for {agent_id}", flush=True)
+                            from core.task_handler import execute_ai_actions
                             actions_log = execute_ai_actions(self, actions, agent_name)
                             actions_executed = actions_log
                             success_count = sum(1 for a in actions_log if a.get("success"))
                             fail_count = sum(1 for a in actions_log if not a.get("success"))
+                            print(f"[RESEARCH_START] Actions result: {success_count}✅/{fail_count}❌", flush=True)
                             
                             _sse({"type": "agent_actions", "agent_id": agent_id,
                                   "actions_log": actions_log, "success_count": success_count, "fail_count": fail_count,
@@ -718,10 +741,13 @@ def handle_research_start(self):
                             "status": "done", "result": ai_response[:500], "iterations": obj.get("iterations", 0) + 1
                         })
                     except json.JSONDecodeError:
-                        _sse({"type": "agent_response", "agent_id": agent_id, "response": (response or "")[:2000]})
+                        _sse({"type": "agent_response", "agent_id": agent_id, "agent_name": agent_name,
+                              "response": (response or "")[:2000]})
                         update_objective(session_id, obj["id"], {"status": "done", "result": (response or "")[:500]})
                 else:
-                    _sse({"type": "agent_response", "agent_id": agent_id, "response": (response or "")[:2000]})
+                    _sse({"type": "agent_response", "agent_id": agent_id, "agent_name": agent_name,
+                          "response": (response or "")[:2000],
+                          "message": f"💬 {agent_name}: {(response or '')[:200]}"})
                     update_objective(session_id, obj["id"], {"status": "done", "result": (response or "")[:500]})
                 
                 _sse({"type": "objective_complete", "objective_id": obj["id"],
