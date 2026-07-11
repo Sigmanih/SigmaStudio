@@ -803,7 +803,18 @@ def handle_research_start(self):
                 _sse({"type": "agent_thinking", "agent_id": agent_id, "agent_name": agent_name,
                       "thinking": f"Analisi di: {obj['title']}", "objective_id": obj["id"],
                       "message": f"🧠 {agent_name} sta analizzando..."})
-                system_prompt = f"""Sei un agente specializzato. Esegui il seguente micro-obiettivo di ricerca.
+                # Role-specific system prompt
+                role_prompts = {
+                    "sigma_architect": "Sei l'Architetto coordinatore. Il tuo compito è leggere e analizzare TUTTI i file prodotti, verificare la completezza, e creare report riepilogativi.",
+                    "math1": "Sei un MATEMATICO esperto. Crea file di teoria con definizioni rigorose, teoremi, dimostrazioni formali, esempi svolti. Usa LaTeX per ogni formula.",
+                    "code_architect": "Sei uno SVILUPPATORE esperto. Scrivi codice Python pulito, test automatici, algoritmi efficienti. Documenta le scelte di design.",
+                    "test-engineer": "Sei un QA ENGINEER. Scrivi test automatici usando sympy/pytest. Verifica correttezza di formule e algoritmi. Ogni test deve avere assert espliciti.",
+                    "proof-reviewer": "Sei un REVISORE critico. Verifica la correttezza logica e matematica di TUTTI i file. Cerca errori, controesempi, imprecisioni. Produci un report di validazione dettagliato.",
+                }
+                role_prefix = role_prompts.get(agent_id, f"Sei un agente specializzato: {agent_id}.")
+                system_prompt = f"""{role_prefix}
+
+Esegui il seguente micro-obiettivo di ricerca.
 
 ## OBIETTIVO GENERALE
 {goal}
