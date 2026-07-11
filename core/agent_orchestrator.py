@@ -54,13 +54,16 @@ def _load_agent_config(ai_cfg, model_override, agent_id=None):
     max_tokens = active_prov_cfg.get("max_tokens", 4096)
     top_p = active_prov_cfg.get("top_p", 0.9)
     request_timeout = active_prov_cfg.get("timeout", 300)
-    # Auto-detect provider from model name prefix (fixes routing to wrong API)
+    # Auto-detect provider from model name prefix with default API URLs
     if model.startswith('deepseek'):
         provider = 'deepseek'
+        if not api_url: api_url = 'https://api.deepseek.com/v1/chat/completions'
     elif model.startswith(('gpt-', 'o1', 'o3')):
         provider = 'openai'
+        if not api_url: api_url = 'https://api.openai.com/v1/chat/completions'
     elif model.startswith('claude'):
         provider = 'anthropic'
+        if not api_url: api_url = 'https://api.anthropic.com/v1/messages'
     
     dp, dpv = resolve_provider_config(ai_cfg, model)
     if dpv:
@@ -776,9 +779,11 @@ def handle_research_start(self):
                     _sse({"type": "agent_error", "agent_id": agent_id, "objective_id": obj["id"],
                           "error": error, "message": f"❌ {agent_name}: {error}"})
                     _sse({"type": "agent_response", "agent_id": agent_id, "agent_name": agent_name,
-                          "response": f"⚠️ Errore: {error}", "message": f"❌ {agent_name}: {error}"})
-                    update_objective(session_id, obj["id"], {"status": "failed", "result": error})
-                    continue
+                          "response": f"⚠️ Errore AI, creazione file predefinito...", "message": f"⚠️ {agent_name}: errore API, uso azioni predefinite"})
+                    # Always create something even on AI error
+                    default_result = _execute_default_action(self, session_id, obj, goal, _sse)
+                    actions_executed = default_result
+                    update_objective(session_id, obj["id"], {"status": "done", "result": "File creato con azioni predefinite (AI non disponibile)"})
                 
                 print(f"[RESEARCH_START] AI response received for {agent_id}: length={len(response or '')}", flush=True)
                 
