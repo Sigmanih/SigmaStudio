@@ -1,4 +1,4 @@
-"""Agent Orchestrator for Sigma Studio — Multi-Agent Collaboration System.
+otti"""Agent Orchestrator for Sigma Studio — Multi-Agent Collaboration System.
 Permette a più agenti specializzati di collaborare su un obiettivo comune,
 scomponendolo in sotto-task e assegnando ciascuno all'agente più adatto.
 Supporta esecuzione parallela con ThreadPoolExecutor e sintesi finale."""
@@ -811,6 +811,7 @@ def handle_research_start(self):
                     "test-engineer": "Sei un QA ENGINEER. Scrivi test automatici usando sympy/pytest. Verifica correttezza di formule e algoritmi. Ogni test deve avere assert espliciti.",
                     "proof-reviewer": "Sei un REVISORE critico. Verifica la correttezza logica e matematica di TUTTI i file. Cerca errori, controesempi, imprecisioni. Produci un report di validazione dettagliato.",
                 }
+                fs_ctx = _build_filesystem_context()
                 role_prefix = role_prompts.get(agent_id, f"Sei un agente specializzato: {agent_id}.")
                 system_prompt = f"""{role_prefix}
 
@@ -825,6 +826,9 @@ Esegui il seguente micro-obiettivo di ricerca.
 
 ## CRITERIO DI COMPLETAMENTO
 {obj.get('completion_criteria', 'Esegui azioni pertinenti e riporta il risultato.')}
+
+## CONTESTO DEL PROGETTO (filesystem)
+{fs_ctx[:1500]}
 
 ## REGOLE OBBLIGATORIE
 - DEVI SEMPRE includere almeno 1 azione create_file con contenuto SOSTANZIOSO (min 300 parole)
