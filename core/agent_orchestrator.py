@@ -806,40 +806,27 @@ def handle_research_start(self):
             _sse({"type": "research_start", "session_id": session_id, "total_objectives": len(objectives),
                   "agents": agents_config, "message": f"🔬 Avvio ricerca con {len(objectives)} micro-obiettivi, {len(agents_config)} agenti"})
             
-            for idx, obj in enumerate(objectives):
+            # Execute objectives in parallel
+            def process_objective(obj):
                 if obj.get("status") == "done":
                     _sse({"type": "objective_complete", "objective_id": obj["id"], "title": obj["title"],
-                          "progress": f"{idx + 1}/{len(objectives)}", "message": f"✅ Già completato: {obj['title']}"})
-                    continue
-                
+                          "message": f"✅ Già completato: {obj['title']}"})
+                    return
                 agent_id = obj.get("assigned_to", SIGMA_ARCHITECT_ID)
-                # Validate agent_id exists - fallback to sigma_architect
                 from core.agent_registry import get_agent
                 agent_check = get_agent(agent_id)
                 if not agent_check:
-                    print(f"[RESEARCH_START] Agent '{agent_id}' not found, falling back to {SIGMA_ARCHITECT_ID}", flush=True)
                     agent_id = SIGMA_ARCHITECT_ID
                 agent_name = agent_id
                 provider, endpoint, api_url, api_key, temperature, max_tokens, top_p, timeout = \
                     _load_agent_config(ai_cfg, model_override, agent_id)
-                
-                print(f"[RESEARCH_START] Objective {idx+1}/{len(objectives)}: agent={agent_id}, provider={provider}, model={model_override or ai_cfg.get('model','?')}", flush=True)
-                
-                # Update to in_progress
                 update_objective(session_id, obj["id"], {"status": "in_progress"})
-                
-                # Notify: agent started
                 _sse({"type": "agent_start", "agent_id": agent_id, "agent_name": agent_name,
                       "objective_id": obj["id"], "objective": obj["title"],
-                      "progress": f"{idx + 1}/{len(objectives)}",
                       "message": f"▶️ {agent_name} inizia: {obj['title']}"})
-                
-                # Send thinking immediately to show activity
                 _sse({"type": "agent_thinking", "agent_id": agent_id, "agent_name": agent_name,
                       "thinking": f"Analisi di: {obj['title']}", "objective_id": obj["id"],
                       "message": f"🧠 {agent_name} sta analizzando..."})
-                
-                # Build prompt
                 system_prompt = f"""Sei un agente specializzato. Esegui il seguente micro-obiettivo di ricerca.
 
 ## OBIETTIVO GENERALE
@@ -855,95 +842,78 @@ def handle_research_start(self):
 ## REGOLE OBBLIGATORIE
 - DEVI SEMPRE includere almeno 1 azione create_file con contenuto SOSTANZIOSO (min 300 parole)
 - Rispondi SOLO con JSON: {{"response": "...", "thinking": "...", "actions": [...]}}
-- Formato azione: {{"type": "create_file", "path": "data/analisi_1/01_base/teoria/nome_file.md", "content": "..."}}
 - Azioni valide: create_file, edit_file, run_test, read_file
 - Parla sempre in italiano.
 - NON limitarti a descrivere — CREA il file con il contenuto completo."""
-                
                 messages = [
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": f"Esegui: {obj['title']}"}
                 ]
-                
                 model = model_override or ai_cfg.get("model", "deepseek-v4-flash")
-                print(f"[RESEARCH_START] Calling AI: model={model}, provider={provider}, timeout={timeout}", flush=True)
+                print(f"[RESEARCH_START] Calling {agent_id}: model={model}, provider={provider}", flush=True)
                 response, thinking, error = _call_ai_model(messages, ai_cfg, model,
                     provider, endpoint, api_url, api_key, temperature, max_tokens, top_p, timeout)
-                
+                actions_executed = []
                 if error:
                     print(f"[RESEARCH_START] AI error for {agent_id}: {error}", flush=True)
                     _sse({"type": "agent_error", "agent_id": agent_id, "objective_id": obj["id"],
                           "error": error, "message": f"❌ {agent_name}: {error}"})
                     _sse({"type": "agent_response", "agent_id": agent_id, "agent_name": agent_name,
-                          "response": f"⚠️ Errore AI, creazione file predefinito...", "message": f"⚠️ {agent_name}: errore API, uso azioni predefinite"})
-                    # Always create something even on AI error
+                          "response": f"⚠️ Errore AI, creazione file predefinito...", "message": f"⚠️ {agent_name}: errore API"})
                     default_result = _execute_default_action(self, session_id, obj, goal, _sse)
                     actions_executed = default_result
-                    update_objective(session_id, obj["id"], {"status": "done", "result": "File creato con azioni predefinite (AI non disponibile)"})
-                
-                print(f"[RESEARCH_START] AI response received for {agent_id}: length={len(response or '')}", flush=True)
-                
-                # Send thinking to chat if available
-                if thinking:
-                    _sse({"type": "agent_thinking", "agent_id": agent_id, "agent_name": agent_name,
-                          "thinking": thinking[:2000], "objective_id": obj["id"],
-                          "message": f"🧠 {agent_name}: {thinking[:150]}..."})
-                
-                json_match = _extract_json_from_response(response or "")
-                actions_executed = []
-                if json_match:
-                    try:
-                        parsed = json.loads(json_match.group())
-                        ai_response = parsed.get("response", response or "")[:2000]
-                        actions = parsed.get("actions", [])
-                        
-                        _sse({"type": "agent_response", "agent_id": agent_id, "agent_name": agent_name,
-                              "response": ai_response, "objective_id": obj["id"],
-                              "message": f"💬 {agent_name}: {ai_response[:300]}"})
-                        
-                        if actions:
-                            print(f"[RESEARCH_START] Executing {len(actions)} actions for {agent_id}", flush=True)
-                            from core.task_handler import execute_ai_actions
-                            actions_log = execute_ai_actions(self, actions, agent_name)
-                            actions_executed = actions_log
-                            success_count = sum(1 for a in actions_log if a.get("success"))
-                            fail_count = sum(1 for a in actions_log if not a.get("success"))
-                            print(f"[RESEARCH_START] Actions result: {success_count}✅/{fail_count}❌", flush=True)
-                            
-                            _sse({"type": "agent_actions", "agent_id": agent_id,
-                                  "actions_log": actions_log, "success_count": success_count, "fail_count": fail_count,
-                                  "message": f"⚡ {agent_name}: {success_count}✅/{fail_count}❌ azioni"})
-                            update_objective(session_id, obj["id"], {
-                                "status": "done", "result": ai_response[:500], "iterations": obj.get("iterations", 0) + 1
-                            })
-                        else:
-                            # No actions from AI - use default action
+                    update_objective(session_id, obj["id"], {"status": "done", "result": "File creato (AI non disponibile)"})
+                else:
+                    print(f"[RESEARCH_START] AI response from {agent_id}: {len(response or '')} chars", flush=True)
+                    if thinking:
+                        _sse({"type": "agent_thinking", "agent_id": agent_id, "agent_name": agent_name,
+                              "thinking": thinking[:2000], "message": f"🧠 {agent_name}: {thinking[:150]}..."})
+                    json_match = _extract_json_from_response(response or "")
+                    if json_match:
+                        try:
+                            parsed = json.loads(json_match.group())
+                            ai_response = parsed.get("response", response or "")[:2000]
+                            actions = parsed.get("actions", [])
+                            _sse({"type": "agent_response", "agent_id": agent_id, "agent_name": agent_name,
+                                  "response": ai_response, "message": f"💬 {agent_name}: {ai_response[:300]}"})
+                            if actions:
+                                from core.task_handler import execute_ai_actions
+                                actions_log = execute_ai_actions(self, actions, agent_name)
+                                actions_executed = actions_log
+                                sc = sum(1 for a in actions_log if a.get("success"))
+                                fc = sum(1 for a in actions_log if not a.get("success"))
+                                _sse({"type": "agent_actions", "agent_id": agent_id,
+                                      "actions_log": actions_log, "success_count": sc, "fail_count": fc,
+                                      "message": f"⚡ {agent_name}: {sc}✅/{fc}❌ azioni"})
+                                update_objective(session_id, obj["id"], {"status": "done", "result": ai_response[:500]})
+                            else:
+                                default_result = _execute_default_action(self, session_id, obj, goal, _sse)
+                                actions_executed = default_result
+                                update_objective(session_id, obj["id"], {"status": "done", "result": "Azioni predefinite"})
+                        except json.JSONDecodeError:
+                            _sse({"type": "agent_response", "agent_id": agent_id, "agent_name": agent_name,
+                                  "response": (response or "")[:2000]})
                             default_result = _execute_default_action(self, session_id, obj, goal, _sse)
                             actions_executed = default_result
-                            update_objective(session_id, obj["id"], {
-                                "status": "done", "result": "Analisi completata con azioni predefinite", "iterations": obj.get("iterations", 0) + 1
-                            })
-                    except json.JSONDecodeError:
+                            update_objective(session_id, obj["id"], {"status": "done", "result": "Analisi (JSON non valido)"})
+                    else:
                         _sse({"type": "agent_response", "agent_id": agent_id, "agent_name": agent_name,
-                              "response": (response or "")[:2000]})
+                              "response": (response or "")[:2000], "message": f"💬 {agent_name}: {(response or '')[:200]}"})
                         default_result = _execute_default_action(self, session_id, obj, goal, _sse)
                         actions_executed = default_result
-                        update_objective(session_id, obj["id"], {"status": "done", "result": "Analisi completata (AI non ha prodotto JSON)"})
-                else:
-                    _sse({"type": "agent_response", "agent_id": agent_id, "agent_name": agent_name,
-                          "response": (response or "")[:2000],
-                          "message": f"💬 {agent_name}: {(response or '')[:200]}"})
-                    default_result = _execute_default_action(self, session_id, obj, goal, _sse)
-                    actions_executed = default_result
-                    update_objective(session_id, obj["id"], {"status": "done", "result": "Analisi completata con azioni predefinite"})
-                
+                        update_objective(session_id, obj["id"], {"status": "done", "result": "Azioni predefinite"})
                 _sse({"type": "objective_complete", "objective_id": obj["id"],
-                      "agent_id": agent_id, "title": obj["title"],
-                      "progress": f"{idx + 1}/{len(objectives)}",
-                      "message": f"✅ Completato: {obj['title']}"})
-                
+                      "agent_id": agent_id, "title": obj["title"], "message": f"✅ Completato: {obj['title']}"})
                 if actions_executed:
                     add_actions_log(session_id, actions_executed)
+            
+            # Run non-done objectives in parallel
+            pending = [o for o in objectives if o.get("status") != "done"]
+            with ThreadPoolExecutor(max_workers=min(4, len(pending))) as executor:
+                futures = [executor.submit(process_objective, o) for o in pending]
+                for f in futures:
+                    try: f.result()
+                    except Exception as e: print(f"[RESEARCH_START] Thread error: {e}", flush=True)
             
             # Check completion
             from core.research_sessions import check_all_satisfied
