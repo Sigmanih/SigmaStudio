@@ -408,20 +408,51 @@ def handle_chat_orchestrate(self):
 # ==============================================================================
 
 def _fallback_objectives(session_id, agents_list, goal):
-    """Generate default micro-objectives when AI decomposition fails."""
-    from core.research_sessions import add_micro_objective
-    defaults = [
-        {"title": "Analizzare il problema", "description": f"Analizza approfonditamente: {goal[:200]}", "assigned_to": "sigma_architect", "actions_hint": ["read_file", "create_file"], "completion_criteria": "Produci un'analisi strutturata del problema"},
-        {"title": "Ricerca e documentazione", "description": "Ricerca informazioni, documenta risultati, crea file di teoria", "assigned_to": "math1", "actions_hint": ["create_file", "read_file"], "completion_criteria": "Crea almeno 1 file di documentazione"},
-        {"title": "Validazione e test", "description": "Esegui test per verificare ipotesi e risultati", "assigned_to": "test-engineer", "actions_hint": ["run_test", "create_file"], "completion_criteria": "Esegui test e riporta risultati"},
-        {"title": "Revisione finale", "description": "Verifica tutto il lavoro prodotto", "assigned_to": "proof-reviewer", "actions_hint": ["read_file", "create_file"], "completion_criteria": "Produci report di validazione"},
-    ]
+    """Generate topic-aware micro-objectives when AI decomposition fails."""
+    from core.research_sessions import add_micro_objective, get_session
+    
+    session = get_session(session_id)
+    session_name = (session.get("name") or goal[:40]).lower()
+    
+    # Detect topic from session name / goal
+    topic = "generale"
+    if "analisi_1" in session_name or "analisi 1" in goal.lower() or "analisi matematica 1" in goal.lower():
+        topic = "analisi_1"
+    elif "analisi_2" in session_name or "analisi 2" in goal.lower():
+        topic = "analisi_2"
+    elif "fisica" in goal.lower():
+        topic = "fisica"
+    elif "informatica" in goal.lower() or "codice" in goal.lower():
+        topic = "informatica"
+    
+    base_path = f"data/{topic}/01_base"
+    
+    # Topic-specific objectives with concrete paths
+    if topic == "analisi_1":
+        objectives = [
+            {"title": "Crea teoria dei limiti", "description": f"Crea {base_path}/teoria/01_limiti.md con: definizione limite finito/infinito, teoremi principali (unicità, permanenza segno, confronto), limiti notevoli, forme indeterminate, 5 esempi svolti con LaTeX", "assigned_to": "math1", "actions_hint": ["create_file"], "completion_criteria": f"File {base_path}/teoria/01_limiti.md creato con tutti i contenuti"},
+            {"title": "Crea teoria delle derivate", "description": f"Crea {base_path}/teoria/02_derivate.md con: definizione derivata, regole derivazione, teorema Lagrange/Rolle/Cauchy, derivate fondamentali, studio funzione, 5 esempi svolti con LaTeX", "assigned_to": "math1", "actions_hint": ["create_file"], "completion_criteria": f"File {base_path}/teoria/02_derivate.md creato"},
+            {"title": "Crea teoria degli integrali", "description": f"Crea {base_path}/teoria/03_integrali.md con: integrale di Riemann, teorema fondamentale calcolo integrale, metodi integrazione (parti, sostituzione), integrali impropri, 5 esempi svolti", "assigned_to": "code_architect", "actions_hint": ["create_file"], "completion_criteria": f"File {base_path}/teoria/03_integrali.md creato"},
+            {"title": "Crea test Python per limiti", "description": f"Crea {base_path}/test/test_limits.py usando sympy per verificare calcolo limiti notevoli, regole di L'Hopital. Usa assert per validare risultati. Esegui il test.", "assigned_to": "test-engineer", "actions_hint": ["create_file", "run_test"], "completion_criteria": "Test eseguibile e passante"},
+            {"title": "Crea test Python per derivate", "description": f"Crea {base_path}/test/test_derivatives.py con test per derivate, massimi/minimi, studio funzione. Usa sympy.", "assigned_to": "test-engineer", "actions_hint": ["create_file", "run_test"], "completion_criteria": "Test eseguibile"},
+            {"title": "Coordinamento: verifica e report finale", "description": f"Leggi TUTTI i file in {base_path}/teoria/ e {base_path}/test/. Verifica completezza e coerenza. Crea {base_path}/docs/report_completo.md con riepilogo e metriche", "assigned_to": "sigma_architect", "actions_hint": ["read_file", "create_file"], "completion_criteria": "Report creato con tutti gli argomenti verificati"},
+            {"title": "Revisione e validazione", "description": f"Verifica la correttezza matematica di tutti i file in {base_path}/teoria/. Controlla dimostrazioni ed esempi. Crea {base_path}/docs/report_validazione.md", "assigned_to": "proof-reviewer", "actions_hint": ["read_file", "create_file"], "completion_criteria": "Report validazione creato con errori e correzioni trovati"},
+        ]
+    else:
+        objectives = [
+            {"title": "Analizzare il problema", "description": f"Analizza: {goal[:200]} e crea file di analisi strutturata", "assigned_to": "sigma_architect", "actions_hint": ["read_file", "create_file"], "completion_criteria": f"Analisi documentata"},
+            {"title": "Ricerca e documentazione", "description": f"Documenta risultati e crea file di teoria in data/", "assigned_to": "math1", "actions_hint": ["create_file", "read_file"], "completion_criteria": "File di teoria creati"},
+            {"title": "Validazione e test", "description": "Esegui test per verificare ipotesi e risultati", "assigned_to": "test-engineer", "actions_hint": ["run_test", "create_file"], "completion_criteria": "Test eseguiti e risultati riportati"},
+            {"title": "Revisione finale", "description": "Verifica tutto il lavoro prodotto", "assigned_to": "proof-reviewer", "actions_hint": ["read_file", "create_file"], "completion_criteria": "Report di validazione completato"},
+        ]
+    
     added = []
-    for obj in defaults:
+    for obj in objectives:
         result = add_micro_objective(session_id, obj)
         if result:
             added.append(result)
-    return {"success": True, "objectives": added, "analysis": "Fallback: obiettivi predefiniti generati", "count": len(added)}
+    
+    return {"success": True, "objectives": added, "analysis": f"Obiettivi generati per topic '{topic}': {len(added)} task", "count": len(added)}
 
 
 def _execute_default_action(self, session_id, obj, goal, _sse):
