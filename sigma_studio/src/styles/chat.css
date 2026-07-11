@@ -2856,7 +2856,7 @@
   padding: 4px 8px;
   background: rgba(188,140,255,0.04);
   border-radius: 4px;
-  max-height: 80px;
+  max-height: 200px;
   overflow-y: auto;
 }
 .rl-chat-msg-response {
@@ -2865,7 +2865,7 @@
   padding: 4px 8px;
   background: rgba(63,185,80,0.03);
   border-radius: 4px;
-  max-height: 80px;
+  max-height: 250px;
   overflow-y: auto;
 }
 .rl-chat-typing {

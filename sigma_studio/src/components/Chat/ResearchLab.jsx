@@ -567,8 +567,8 @@ export default function ResearchLab({ onClose, onTasksUpdated, addToast }) {
                         {msg.agent_id && <span className="rl-chat-msg-agent" style={{ color: meta.bg || color }}>{meta.name || msg.agent_id}</span>}
                         <span className="rl-chat-msg-type" style={{ color }}>{msg.type.replace('_', ' ').toUpperCase()}</span>
                       </div>
-                      {msg.type === 'agent_thinking' && <div className="rl-chat-msg-thinking">{msg.thinking?.slice(0, 500)}</div>}
-                      {msg.type === 'agent_response' && <div className="rl-chat-msg-response">{msg.response?.slice(0, 500)}</div>}
+                      {msg.type === 'agent_thinking' && <div className="rl-chat-msg-thinking">{msg.thinking}</div>}
+                      {msg.type === 'agent_response' && <div className="rl-chat-msg-response">{msg.response}</div>}
                       {(msg.type === 'agent_start' || msg.type === 'objective_complete' || msg.type === 'all_done' || msg.type === 'agent_actions' || msg.type === 'error') && (
                         <div className="rl-chat-msg-text">{msg.message}</div>
                       )}
