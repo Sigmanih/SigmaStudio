@@ -326,8 +326,15 @@ export default function ResearchLab({ onClose, onTasksUpdated, addToast }) {
     } else if (type === 'agent_start') {
       setAgentStates(prev => ({ ...prev, [event.agent_id]: { status: 'working', task: event.objective } }));
       setChatMessages(prev => [...prev, { type: 'agent_start', agent_id: event.agent_id, message: event.message, ts: Date.now() }]);
-      // Refresh kanban
-      if (activeSessionId) fetchSessionStatus(activeSessionId);
+      // Move card to In Corso directly
+      if (event.objective_id) {
+        setSessionData(prev => prev ? {
+          ...prev,
+          micro_objectives: (prev.micro_objectives || []).map(o =>
+            o.id === event.objective_id ? { ...o, status: 'in_progress' } : o
+          )
+        } : null);
+      }
     } else if (type === 'agent_thinking') {
       setChatMessages(prev => [...prev, { type: 'agent_thinking', agent_id: event.agent_id, thinking: event.thinking, message: event.message, ts: Date.now() }]);
     } else if (type === 'agent_response') {
@@ -338,14 +345,20 @@ export default function ResearchLab({ onClose, onTasksUpdated, addToast }) {
       setProgress(prev => ({ ...prev, done: prev.done + 1 }));
       setAgentStates(prev => ({ ...prev, [event.agent_id]: { status: 'done' } }));
       setChatMessages(prev => [...prev, { type: 'objective_complete', message: event.message, ts: Date.now() }]);
-      // Refresh kanban to move cards
-      if (activeSessionId) fetchSessionStatus(activeSessionId);
+      // Move card to Completati directly
+      if (event.objective_id) {
+        setSessionData(prev => prev ? {
+          ...prev,
+          micro_objectives: (prev.micro_objectives || []).map(o =>
+            o.id === event.objective_id ? { ...o, status: 'done' } : o
+          )
+        } : null);
+      }
     } else if (type === 'agent_error') {
       setAgentStates(prev => ({ ...prev, [event.agent_id]: { status: 'error' } }));
       setChatMessages(prev => [...prev, { type: 'error', agent_id: event.agent_id, message: event.message, ts: Date.now() }]);
     } else if (type === 'all_done') {
       setChatMessages(prev => [...prev, { type: 'all_done', message: event.message, ts: Date.now() }]);
-      if (activeSessionId) fetchSessionStatus(activeSessionId);
     } else if (type === 'next_steps_ready') {
       if (event.next_steps) setNextSteps(event.next_steps);
     }
