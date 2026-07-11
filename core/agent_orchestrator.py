@@ -775,10 +775,13 @@ def handle_research_start(self):
 ## CRITERIO DI COMPLETAMENTO
 {obj.get('completion_criteria', 'Esegui azioni pertinenti e riporta il risultato.')}
 
-## REGOLE
+## REGOLE OBBLIGATORIE
+- DEVI SEMPRE includere almeno 1 azione create_file con contenuto SOSTANZIOSO (min 300 parole)
 - Rispondi SOLO con JSON: {{"response": "...", "thinking": "...", "actions": [...]}}
+- Formato azione: {{"type": "create_file", "path": "data/analisi_1/01_base/teoria/nome_file.md", "content": "..."}}
 - Azioni valide: create_file, edit_file, run_test, read_file
-- Parla sempre in italiano."""
+- Parla sempre in italiano.
+- NON limitarti a descrivere — CREA il file con il contenuto completo."""
                 
                 messages = [
                     {"role": "system", "content": system_prompt},
