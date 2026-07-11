@@ -1,4 +1,4 @@
-otti"""Agent Orchestrator for Sigma Studio — Multi-Agent Collaboration System.
+"""Agent Orchestrator for Sigma Studio — Multi-Agent Collaboration System.
 Permette a più agenti specializzati di collaborare su un obiettivo comune,
 scomponendolo in sotto-task e assegnando ciascuno all'agente più adatto.
 Supporta esecuzione parallela con ThreadPoolExecutor e sintesi finale."""
@@ -781,6 +781,15 @@ def handle_research_start(self):
             
             _sse({"type": "research_start", "session_id": session_id, "total_objectives": len(objectives),
                   "agents": agents_config, "message": f"🔬 Avvio ricerca con {len(objectives)} micro-obiettivi, {len(agents_config)} agenti"})
+            
+            # Coordinator plan visible in chat
+            plan_lines = []
+            for o in objectives:
+                icon = AGENT_COLORS.get(o.get('assigned_to', ''), {}).get('icon', '🤖')
+                plan_lines.append(f"{icon} **{o.get('title', '')[:60]}** → {o.get('assigned_to', '?')}")
+            plan_msg = "📋 **Piano di lavoro:**\n" + "\n".join(plan_lines)
+            _sse({"type": "agent_response", "agent_id": "sigma_architect", "agent_name": "Coordinatore",
+                  "response": plan_msg, "message": f"📋 Piano: {len(objectives)} task assegnati"})
             
             # Execute objectives in parallel
             def process_objective(obj):
