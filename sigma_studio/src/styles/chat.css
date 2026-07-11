@@ -2580,17 +2580,23 @@
 .rl-kanban {
   flex: 1;
   display: flex;
-  flex-direction: column;
-  gap: 8px;
+  flex-direction: row;
+  gap: 6px;
   padding: 8px;
-  overflow-y: auto;
+  overflow-x: auto;
   min-height: 0;
 }
 .rl-kanban-col {
+  flex: 1;
+  min-width: 180px;
   display: flex;
   flex-direction: column;
-  gap: 6px;
-  min-height: 100px;
+  gap: 4px;
+  overflow-y: auto;
+  max-height: 100%;
+}
+.rl-kanban-col > .rl-objective-card {
+  flex-shrink: 0;
 }
 .rl-kanban-header {
   font-size: 0.6rem;
