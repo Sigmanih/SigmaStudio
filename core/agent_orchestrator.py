@@ -442,12 +442,10 @@ def _execute_default_action(self, session_id, obj, goal, _sse):
     session_name = (session.get("name") or "").lower() if session else ""
     topic = None
     
-    # Priority: session name > goal keywords > "generale"
-    if session_name:
-        # Extract clean topic from session name (e.g. "Studiamo analisi_1" → "analisi_1")
-        clean = session_name.replace("studiamo", "").replace("gli argomenti di", "").strip().split()[0] if " " in session_name else session_name
-        topic = clean.rstrip(".,;:!?")
-    if not topic and ("analisi_1" in goal.lower() or "analisi 1" in goal.lower()):
+    # Priority: goal keywords > session name > "generale"
+    # NOTE: Do NOT use random words from session name as topic directory
+    goal_lower = goal.lower()
+    if "analisi_1" in goal_lower or "analisi 1" in goal_lower or "analisi_1" in session_name:
         topic = "analisi_1"
     if not topic and ("analisi_2" in goal.lower() or "analisi 2" in goal.lower()):
         topic = "analisi_2"
