@@ -2579,9 +2579,9 @@
 /* --- Kanban Board --- */
 .rl-kanban {
   flex: 1;
-  display: grid;
-  grid-template-columns: 1fr;
-  gap: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
   padding: 8px;
   overflow-y: auto;
   min-height: 0;
@@ -2928,13 +2928,11 @@
 @media (max-width: 900px) {
   .rl-main { flex-direction: column; }
   .rl-left-pane, .rl-right-pane { flex: 1 1 50%; }
-  .rl-kanban { grid-template-columns: repeat(2, 1fr); }
   .rl-template-grid { grid-template-columns: 1fr; }
   .rl-sidebar { width: 160px; }
   .rl-agents-grid { grid-template-columns: repeat(2, 1fr); }
 }
 @media (max-width: 600px) {
-  .rl-kanban { grid-template-columns: 1fr; }
   .research-lab-v2 { flex-direction: column; }
   .rl-sidebar { width: 100%; max-height: 120px; }
   .rl-agents-grid { grid-template-columns: 1fr; }
