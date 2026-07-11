@@ -429,13 +429,27 @@ def _execute_default_action(self, session_id, obj, goal, _sse):
     import datetime
     from core.research_sessions import add_actions_log
     
-    topic = "generale"
-    if "matematica" in goal.lower() or "analisi" in goal.lower():
-        topic = "matematica"
-    elif "fisica" in goal.lower():
+    # Extract topic from session goal — use session name if available
+    from core.research_sessions import get_session
+    session = get_session(session_id)
+    session_name = (session.get("name") or "").lower() if session else ""
+    topic = None
+    
+    # Priority: session name > goal keywords > "generale"
+    if session_name:
+        # Extract clean topic from session name (e.g. "Studiamo analisi_1" → "analisi_1")
+        clean = session_name.replace("studiamo", "").replace("gli argomenti di", "").strip().split()[0] if " " in session_name else session_name
+        topic = clean.rstrip(".,;:!?")
+    if not topic and ("analisi_1" in goal.lower() or "analisi 1" in goal.lower()):
+        topic = "analisi_1"
+    if not topic and ("analisi_2" in goal.lower() or "analisi 2" in goal.lower()):
+        topic = "analisi_2"
+    if not topic and ("fisica" in goal.lower()):
         topic = "fisica"
-    elif "informatica" in goal.lower() or "codice" in goal.lower():
+    if not topic and ("informatica" in goal.lower() or "codice" in goal.lower()):
         topic = "informatica"
+    if not topic:
+        topic = "generale"
     
     module_path = f"data/{topic}/01_base"
     os.makedirs(f"{module_path}/teoria", exist_ok=True)
