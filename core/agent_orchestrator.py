@@ -20,8 +20,10 @@ MAX_PARALLEL_WORKERS = 5
 
 def _call_ai_model(messages, ai_cfg, model, provider, endpoint, api_url, api_key, temperature, max_tokens, top_p, request_timeout):
     route_provider = provider
-    if route_provider not in ('ollama', 'api', 'anthropic'):
-        route_provider = 'api' if 'anthropic' not in api_url.lower() else 'anthropic'
+    if route_provider in ('deepseek', 'openai'):
+        route_provider = 'api'
+    elif route_provider not in ('ollama', 'api', 'anthropic'):
+        route_provider = 'api'
     ac = ai_cfg.get("providers", {}).get(provider, {})
     try:
         if route_provider == "ollama":
