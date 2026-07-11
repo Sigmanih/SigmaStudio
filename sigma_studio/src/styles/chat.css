@@ -2580,7 +2580,7 @@
 .rl-kanban {
   flex: 1;
   display: grid;
-  grid-template-columns: repeat(2, 1fr);
+  grid-template-columns: 1fr;
   gap: 6px;
   padding: 8px;
   overflow-y: auto;
