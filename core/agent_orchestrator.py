@@ -54,6 +54,14 @@ def _load_agent_config(ai_cfg, model_override, agent_id=None):
     max_tokens = active_prov_cfg.get("max_tokens", 4096)
     top_p = active_prov_cfg.get("top_p", 0.9)
     request_timeout = active_prov_cfg.get("timeout", 300)
+    # Auto-detect provider from model name prefix (fixes routing to wrong API)
+    if model.startswith('deepseek'):
+        provider = 'deepseek'
+    elif model.startswith(('gpt-', 'o1', 'o3')):
+        provider = 'openai'
+    elif model.startswith('claude'):
+        provider = 'anthropic'
+    
     dp, dpv = resolve_provider_config(ai_cfg, model)
     if dpv:
         provider = dp
