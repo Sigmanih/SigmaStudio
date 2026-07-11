@@ -143,6 +143,7 @@ export default function ResearchLab({ onClose, onTasksUpdated, addToast }) {
   const [generatingSteps, setGeneratingSteps] = useState(false);
   const [nextSteps, setNextSteps] = useState([]);
   const [commandInput, setCommandInput] = useState('');
+  const [editingGoal, setEditingGoal] = useState(null);
 
   // --- Live execution state ---
   const [executing, setExecuting] = useState(false);
@@ -350,10 +351,35 @@ export default function ResearchLab({ onClose, onTasksUpdated, addToast }) {
     setExecuting(false);
   };
 
-  const handleSendCommand = () => {
-    if (!commandInput.trim() || executing) return;
-    setChatMessages(prev => [...prev, { type: 'agent_start', agent_id: 'user', message: `👤 Tu: ${commandInput}`, ts: Date.now() }]);
+  const handleSaveGoal = async () => {
+    if (editingGoal === null || !activeSessionId || editingGoal === sessionData?.goal) {
+      setEditingGoal(null); return;
+    }
+    try {
+      await fetch('/api/research/update_objective', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ session_id: activeSessionId, goal: editingGoal }),
+      });
+      setSessionData(prev => prev ? { ...prev, goal: editingGoal } : null);
+      if (addToast) addToast('✅ Obiettivo aggiornato', 'success', 2000);
+    } catch (e) { console.error(e); }
+    setEditingGoal(null);
+  };
+
+  const handleSendCommand = async () => {
+    if (!commandInput.trim() || !activeSessionId) return;
+    const cmd = commandInput.trim();
     setCommandInput('');
+    setChatMessages(prev => [...prev, { type: 'agent_start', agent_id: 'user', message: `👤 Tu: ${cmd}`, ts: Date.now() }]);
+    // Execute as new objective
+    try {
+      const res = await fetch('/api/research/decompose', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ session_id: activeSessionId, goal: cmd, agents: sessionData?.agents || [] }),
+      });
+      await res.json();
+      handleStartResearch();
+    } catch (e) { console.error(e); }
   };
 
   useEffect(() => { chatEndRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [chatMessages]);
@@ -486,8 +512,18 @@ export default function ResearchLab({ onClose, onTasksUpdated, addToast }) {
                 })}
               </div>
 
-              {/* Goal + Kanban */}
-              <div className="rl-goal-display"><MessageSquare size={14} /><span>{sessionData.goal}</span></div>
+              {/* Goal — editable */}
+              <div className="rl-goal-display">
+                <MessageSquare size={14} />
+                <textarea
+                  className="rl-goal-edit"
+                  value={editingGoal !== null ? editingGoal : (sessionData.goal || '')}
+                  onChange={e => setEditingGoal(e.target.value)}
+                  onBlur={handleSaveGoal}
+                  onFocus={() => setEditingGoal(sessionData.goal || '')}
+                  rows={2}
+                />
+              </div>
               <div className="rl-kanban">
                 <div className="rl-kanban-col"><div className="rl-kanban-header" style={{ borderColor: '#5a5e72' }}><Circle size={12} /> Da Fare ({pendingO.length})</div>{pendingO.map(o => <ObjectiveCard key={o.id} obj={o} agentsMeta={AGENTS_META} />)}</div>
                 <div className="rl-kanban-col"><div className="rl-kanban-header" style={{ borderColor: '#00d2ff' }}><RefreshCw size={12} /> In Corso ({progressO.length})</div>{progressO.map(o => <ObjectiveCard key={o.id} obj={o} agentsMeta={AGENTS_META} />)}</div>
