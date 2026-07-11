@@ -524,8 +524,27 @@ Il sistema ha tentato di chiamare l'AI per eseguire un'analisi completa, ma la r
 
 
 def decompose_goal_to_micro_objectives(goal, agents_list, ai_cfg, model_override, session_id):
-    """Decompose a research goal into micro-objectives using the coordinator agent."""
+    """Decompose a research goal into micro-objectives using the coordinator agent.
+    The coordinator is the BRAIN — it must analyze and delegate with precision."""
     from core.research_sessions import get_session, add_micro_objective, save_session
+    
+    session = get_session(session_id)
+    session_name = (session.get("name") or goal[:40]) if session else goal[:40]
+    
+    # Detect topic for path generation
+    topic = "generale"
+    session_lower = session_name.lower()
+    goal_lower = goal.lower()
+    if "analisi_1" in session_lower or "analisi 1" in goal_lower or "analisi matematica 1" in goal_lower:
+        topic = "analisi_1"
+    elif "analisi_2" in session_lower or "analisi 2" in goal_lower:
+        topic = "analisi_2"
+    elif "fisica" in goal_lower:
+        topic = "fisica"
+    elif "informatica" in goal_lower or "codice" in goal_lower:
+        topic = "informatica"
+    
+    base_path = f"data/{topic}/01_base"
     
     provider, endpoint, api_url, api_key, temperature, max_tokens, top_p, timeout = \
         _load_agent_config(ai_cfg, model_override, SIGMA_ARCHITECT_ID)
@@ -536,57 +555,83 @@ def decompose_goal_to_micro_objectives(goal, agents_list, ai_cfg, model_override
         "specialization": a.get("specialization", "general"),
         "capabilities": a.get("capabilities", []),
     } for a in agents_list], indent=2)
-    
-    system_prompt = f"""Sei un coordinatore di ricerca scientifica. Devi scomporre un obiettivo di ricerca
-in micro-obiettivi specifici, misurabili e verificabili.
 
-Agenti disponibili:
+    # Build existing filesystem context
+    fs_context = ""
+    if os.path.exists(f"data/{topic}"):
+        try:
+            import subprocess
+            result = subprocess.run(["dir", f"data\\{topic}", "/s", "/b"], capture_output=True, text=True, shell=True, timeout=5)
+            files = result.stdout.strip().split("\n")
+            fs_context = "File già esistenti:\n" + "\n".join(f"  {f}" for f in files[:20])
+        except: pass
+    
+    system_prompt = f"""Sei il COORDINATORE PRINCIPALE di un team di agenti AI specializzati.
+Il tuo compito è analizzare l'obiettivo dell'utente e scomporlo in micro-task PRECISI e DETTAGLIATI.
+
+## TEAM DISPONIBILE
 {agents_json}
 
-## REGOLE DI SCOMPOSIZIONE
-1. Produci 3-7 micro-obiettivi concreti
-2. Ogni micro-obiettivo deve essere verificabile (criterio di completamento chiaro)
-3. Assegna ogni obiettivo all'agente più adatto
-4. Bilancia teoria, test, visualizzazione e documentazione
-5. Ordina gli obiettivi logicamente (dipendenze)
+## TOPIC E STRUTTURA
+Topic: {topic}
+Directory base: {base_path}/
+Sottodirectory: teoria/, test/, docs/, viz/
+{fs_context}
+
+## REGOLE FONDAMENTALI
+1. Sei il CAPO — devi pensare TU a quali file servono, cosa devono contenere, chi li crea
+2. Ogni task DEVE avere un path file ESATTO (es. {base_path}/teoria/01_limiti.md)
+3. Ogni task DEVE specificare ESATTAMENTE cosa scrivere nel file (contenuti, formule, esempi)
+4. Assegna task agli agenti in base alla loro specializzazione
+5. Bilancia: teoria (math1/code_architect), test (test-engineer), revisione (proof-reviewer)
+6. Produci 3-7 micro-obiettivi. Se il topic è UNKNOWN, fanne 3-4 generici
+7. Il criterio di completamento deve essere verificabile (file creato, test passato, etc.)
 
 ## FORMATO RISPOSTA — SOLO JSON
 {{
-  "analysis": "Analisi del goal...",
+  "analysis": "Analisi dettagliata del goal (2-3 frasi)",
   "micro_objectives": [
     {{
-      "title": "Titolo sintetico",
-      "description": "Descrizione dettagliata di cosa fare",
+      "title": "Titolo sintetico del task",
+      "description": "ISTRUZIONI DETTAGLIATE: path file esatto, contenuti da scrivere, formule da includere, esempi da fare. Sii PRECISO.",
       "assigned_to": "agent_id",
-      "actions_hint": ["create_file", "run_test"],
-      "completion_criteria": "Criterio oggettivo per dire che è completato"
+      "actions_hint": ["create_file"],
+      "completion_criteria": "Criterio verificabile (es: 'File {base_path}/teoria/01_limiti.md creato con definizione, teoremi e 5 esempi')"
     }}
   ]
-}}"""
+}}
+
+ESEMPIO per analisi_1:
+{{"title": "Teoria dei limiti", "description": "Crea {base_path}/teoria/01_limiti.md con: definizione epsilon-delta di limite finito, limite infinito, teorema unicità, permanenza segno, confronto, limiti notevoli (sin x/x, (1+1/n)^n), forme indeterminate, 5 esempi svolti passo-passo in LaTeX", "assigned_to": "math1", "actions_hint": ["create_file"], "completion_criteria": "File {base_path}/teoria/01_limiti.md creato con tutti i contenuti richiesti"}}"""
     
     messages = [
         {"role": "system", "content": system_prompt},
-        {"role": "user", "content": f"Scomponi il seguente obiettivo di ricerca in micro-obiettivi:\n\n{goal}"}
+        {"role": "user", "content": f"## OBIETTIVO UTENTE\n{session_name}\n\n{goal}\n\nAnalizza l'obiettivo e produci il piano di lavoro dettagliato con micro-obiettivi."}
     ]
     
     model = model_override or ai_cfg.get("model", "deepseek-v4-flash")
+    print(f"[DECOMPOSE] Calling coordinator with model={model}, provider={provider}", flush=True)
     response, thinking, error = _call_ai_model(messages, ai_cfg, model,
-        provider, endpoint, api_url, api_key, 0.3, max_tokens * 2, top_p, timeout)
+        provider, endpoint, api_url, api_key, 0.4, max_tokens * 3, top_p, timeout)
     
-    session = get_session(session_id)
     if not session:
         return {"success": False, "error": "Sessione non trovata"}
     
     if error or not response:
+        print(f"[DECOMPOSE] Coordinator error: {error}, using fallback", flush=True)
         return _fallback_objectives(session_id, agents_list, goal)
     
+    print(f"[DECOMPOSE] Coordinator response: {len(response)} chars", flush=True)
     json_match = _extract_json_from_response(response)
     if not json_match:
+        print(f"[DECOMPOSE] No JSON in response, using fallback. Raw: {response[:200]}", flush=True)
         return _fallback_objectives(session_id, agents_list, goal)
     
     try:
         parsed = json.loads(json_match.group())
         objectives = parsed.get("micro_objectives", [])
+        analysis = parsed.get("analysis", "")
+        print(f"[DECOMPOSE] Coordinator produced {len(objectives)} objectives. Analysis: {analysis[:100]}", flush=True)
         added = []
         for obj in objectives:
             result = add_micro_objective(session_id, obj)
@@ -594,8 +639,9 @@ Agenti disponibili:
                 added.append(result)
         if len(added) == 0:
             return _fallback_objectives(session_id, agents_list, goal)
-        return {"success": True, "objectives": added, "analysis": parsed.get("analysis", ""), "count": len(added)}
+        return {"success": True, "objectives": added, "analysis": analysis, "count": len(added)}
     except json.JSONDecodeError:
+        print(f"[DECOMPOSE] JSON decode error, using fallback", flush=True)
         return _fallback_objectives(session_id, agents_list, goal)
 
 
