@@ -838,7 +838,7 @@ Esegui il seguente micro-obiettivo di ricerca.
 {fs_ctx[:1500]}
 
 ## REGOLE OBBLIGATORIE
-- DEVI SEMPRE includere almeno 1 azione create_file con contenuto SOSTANZIOSO (min 300 parole)
+- DEVI SEMPRE includere almeno 1 azione create_file con contenuto SOSTANZIOSO (min 500 parole)
 - Rispondi SOLO con JSON: {{"response": "...", "thinking": "...", "actions": [...]}}
 - Azioni valide: create_file, edit_file, run_test, read_file
 - Parla sempre in italiano.
@@ -870,7 +870,7 @@ Esegui il seguente micro-obiettivo di ricerca.
                     if json_match:
                         try:
                             parsed = json.loads(json_match.group())
-                            ai_response = parsed.get("response", response or "")[:2000]
+                            ai_response = parsed.get("response", response or "")
                             actions = parsed.get("actions", [])
                             _sse({"type": "agent_response", "agent_id": agent_id, "agent_name": agent_name,
                                   "response": ai_response, "message": f"💬 {agent_name}: {ai_response[:300]}"})
