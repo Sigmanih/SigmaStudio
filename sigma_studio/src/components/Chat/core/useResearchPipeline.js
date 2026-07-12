@@ -50,28 +50,42 @@ const DEFAULT_AGENT_CONFIG = {
   temperature: 0.4,
 };
 
-// --- All 7 registered agents with colors, icons, roles ---
+// --- All agents with colors, icons, roles ---
 const AGENTS_META = {
   sigma_architect: { bg: '#7c5bf0', color: '#ffffff', icon: '🏗️', short: 'Arch', name: 'Sigma AI Architect', role: 'architect', image: '/images/agente0.png', manifesto: 'manifesti/sigma_architect.md' },
-  math1: { bg: '#3fb950', color: '#ffffff', icon: '∑', short: 'Math', name: 'Sigma Math Researcher', role: 'researcher', image: '/images/matematicoAi.png', manifesto: '' },
-  code_architect: { bg: '#00d2ff', color: '#0e1016', icon: '⚙️', short: 'Code', name: 'Sigma Code Architect', role: 'developer', image: '/images/programmatoreAi.png', manifesto: '' },
-  'math-collatz': { bg: '#2ea043', color: '#ffffff', icon: '🧮', short: 'Math', name: 'Matematico Specialista', role: 'mathematician', image: '/images/default.png', manifesto: '' },
-  'test-engineer': { bg: '#58a6ff', color: '#0e1016', icon: '🧪', short: 'Test', name: 'Ingegnere dei Test', role: 'tester', image: '/images/default.png', manifesto: '' },
-  'viz-designer': { bg: '#d29922', color: '#0e1016', icon: '📊', short: 'Viz', name: 'Visualizzatore D3.js', role: 'visualizer', image: '/images/default.png', manifesto: '' },
-  'proof-reviewer': { bg: '#ff5555', color: '#ffffff', icon: '🔍', short: 'Review', name: 'Revisore e Confutatore', role: 'reviewer', image: '/images/default.png', manifesto: '' },
+  math1:           { bg: '#3fb950', color: '#ffffff', icon: '∑',   short: 'Math', name: 'Sigma Math Researcher', role: 'researcher', image: '/images/matematicoAi.png', manifesto: 'manifesti/math1.md' },
+  code_architect:  { bg: '#00d2ff', color: '#0e1016', icon: '⚙️',  short: 'Code', name: 'Sigma Code Architect', role: 'developer', image: '/images/programmatoreAi.png', manifesto: 'manifesti/code_architect.md' },
+  'test-engineer': { bg: '#58a6ff', color: '#0e1016', icon: '🧪',  short: 'Test', name: 'Ingegnere dei Test', role: 'tester', image: '/images/default.png', manifesto: 'manifesti/test-engineer.md' },
+  'formulario':    { bg: '#e67e22', color: '#ffffff', icon: '📖',  short: 'Form', name: 'Sigma Formulario', role: 'formulario', image: '/images/default.png', manifesto: 'manifesti/formulario.md' },
+  'viz-designer':  { bg: '#d29922', color: '#0e1016', icon: '📊',  short: 'Viz',  name: 'Visualizzatore D3.js', role: 'visualizer', image: '/images/default.png', manifesto: 'manifesti/viz-designer.md' },
+  'proof-reviewer':{ bg: '#ff5555', color: '#ffffff', icon: '🔍',  short: 'Rev',  name: 'Revisore e Confutatore', role: 'reviewer', image: '/images/default.png', manifesto: 'manifesti/proof-reviewer.md' },
+  'math-collatz':  { bg: '#2ea043', color: '#ffffff', icon: '🧮',  short: 'Coll', name: 'Matematico Specialista', role: 'mathematician', image: '/images/default.png', manifesto: 'manifesti/math-collatz.md' },
 };
 
 // --- Pipeline Templates ---
 const PIPELINE_TEMPLATES = {
   none: { label: '— Personalizzata —', agents: [] },
+  analisi_matematica: {
+    label: '∑ Analisi 1 — Corso Completo',
+    goal: 'Scriviamo tutti gli argomenti e i sottoargomenti trattati in un corso di Analisi 1 matematica ingegneria con dimostrazioni, formulari, esercizi in files separati e tutto il necessario a comprendere perfettamente la materia.',
+    agents: [
+      { id: 'sigma_architect', enabled: true, order: 0 },
+      { id: 'math1',           enabled: true, order: 1 },
+      { id: 'test-engineer',   enabled: true, order: 2 },
+      { id: 'formulario',      enabled: true, order: 3 },
+      { id: 'proof-reviewer',  enabled: true, order: 4 },
+    ],
+    use_pipeline_engine: false,
+  },
   math_research: {
     label: '∑ Ricerca Matematica',
     goal: 'Ricerca matematica assistita: formulazione teoremi, dimostrazioni, test computazionali, visualizzazioni e validazione formale.',
     agents: [
-      { id: 'math1', enabled: true, order: 0 },
-      { id: 'test-engineer', enabled: true, order: 1 },
-      { id: 'viz-designer', enabled: true, order: 2 },
-      { id: 'proof-reviewer', enabled: true, order: 3 },
+      { id: 'math1',          enabled: true, order: 0 },
+      { id: 'test-engineer',  enabled: true, order: 1 },
+      { id: 'formulario',     enabled: true, order: 2 },
+      { id: 'viz-designer',   enabled: true, order: 3 },
+      { id: 'proof-reviewer', enabled: true, order: 4 },
     ],
     use_pipeline_engine: false,
   },
@@ -80,10 +94,10 @@ const PIPELINE_TEMPLATES = {
     goal: 'Analizzare il problema in modo completo: pianificazione, ricerca, sviluppo test, visualizzazione e revisione critica finale.',
     agents: [
       { id: 'sigma_architect', enabled: true, order: 0 },
-      { id: 'math1', enabled: true, order: 1 },
-      { id: 'code_architect', enabled: true, order: 2 },
-      { id: 'viz-designer', enabled: true, order: 3 },
-      { id: 'proof-reviewer', enabled: true, order: 4 },
+      { id: 'math1',           enabled: true, order: 1 },
+      { id: 'code_architect',  enabled: true, order: 2 },
+      { id: 'viz-designer',    enabled: true, order: 3 },
+      { id: 'proof-reviewer',  enabled: true, order: 4 },
     ],
     use_pipeline_engine: false,
   },
@@ -91,9 +105,9 @@ const PIPELINE_TEMPLATES = {
     label: '⚙️ Code Review & Refactoring',
     goal: 'Revisione completa del codice: analisi, refactoring, test, ottimizzazione e documentazione tecnica.',
     agents: [
-      { id: 'code_architect', enabled: true, order: 0 },
+      { id: 'code_architect',  enabled: true, order: 0 },
       { id: 'sigma_architect', enabled: true, order: 1 },
-      { id: 'proof-reviewer', enabled: true, order: 2 },
+      { id: 'proof-reviewer',  enabled: true, order: 2 },
     ],
     use_pipeline_engine: false,
   },
