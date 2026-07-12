@@ -923,10 +923,18 @@ Devi rispondere SOLO con un JSON del tipo:
                             
                             rev_json_match = _extract_json_from_response(rev_resp) if rev_resp else None
                             if rev_err or not rev_json_match:
-                                log.warning("Reviewer validation failed or syntax error. Auto-approving to avoid block.")
-                                approved = True
-                                validation_summary = "Approvato automaticamente causa errore validatore."
-                                break
+                                if has_failures:
+                                    log.warning("Reviewer syntax error but actions/tests failed. Rejecting to force fix.")
+                                    approved = False
+                                    validation_summary = (
+                                        "Il validatore ha riscontrato un errore di sintassi, ma ci sono errori/fallimenti reali nei test o nelle azioni "
+                                        f"precedenti:\n{log_str}\nSi prega di correggere gli errori riscontrati prima di procedere."
+                                    )
+                                else:
+                                    log.warning("Reviewer validation failed or syntax error. Auto-approving to avoid block.")
+                                    approved = True
+                                    validation_summary = "Approvato automaticamente causa errore validatore."
+                                    break
                             
                             try:
                                 rev_parsed = json.loads(rev_json_match.group())
