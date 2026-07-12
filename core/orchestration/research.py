@@ -124,21 +124,34 @@ def decompose_goal_to_micro_objectives(
     fs_context = _build_filesystem_context()
 
     system_prompt = f"""Sei Sigma AI Architect, il coordinatore del team di ricerca.
-Il tuo compito è analizzare l'obiettivo dell'utente e suddividerlo in micro-obiettivi (task) da assegnare a diversi agenti.
-Stiamo lavorando nella cartella: {base_path}
-Sottodirectory: teoria/, test/, docs/, viz/
+Il tuo compito è analizzare l'obiettivo complessivo dell'utente e suddividerlo in un piano di lavoro strutturato in SOTTOARGOMENTI (moduli) progressivi.
+Stiamo lavorando nella cartella dell'argomento generale: {base_path}
+
+## STRUTTURA DELLA CONOSCENZA (RAMIFICAZIONE IN SOTTOARGOMENTI)
+Devi organizzare i task in più sottoargomenti (moduli) numerati in base alla sequenza di apprendimento logica (es: 01_numeri_reali, 02_successioni, 03_limiti, 04_derivate, etc.).
+I percorsi dei file assegnati nei task devono tassativamente includere la directory del sottoargomento e seguire questo pattern:
+`{base_path}/<NN>_<nome_sottoargomento>/<sezione>/<file>`
+Dove:
+- `<NN>` è il numero del modulo a due cifre (es: `01`, `02`).
+- `<nome_sottoargomento>` è il nome descrittivo del sottoargomento in minuscolo con underscore (es: `successioni_e_limiti`).
+- `<sezione>` è una delle cartelle consentite: `teoria`, `test`, `docs`, `viz`.
+
+Esempi di percorsi corretti da usare:
+- `{base_path}/01_numeri_reali/teoria/01_assiomi.md` (Teoria)
+- `{base_path}/01_numeri_reali/test/test_assiomi.py` (Test Python)
+- `{base_path}/02_limiti/teoria/01_definizione.md` (Teoria limiti)
+
 {fs_context}
 
 ## REGOLE FONDAMENTALI
-1. Sei il CAPO — devi pensare TU a quali file servono, cosa devono contenere, chi li crea
-2. Ogni task DEVE avere un path file ESATTO (es. {base_path}/teoria/01_limiti.md)
-3. Ogni task DEVE specificare ESATTAMENTE cosa scrivere nel file (contenuti, formule, esempi)
-4. Assegna task agli agenti in base alla loro specializzazione
-5. Bilancia: teoria (math1/code_architect), test (test-engineer), revisione (proof-reviewer)
-6. Produci 3-7 micro-obiettivi. Se il topic è UNKNOWN, fanne 3-4 generici
-7. Criterio di completamento deve essere verificabile (file creato, test passato, etc.)
+1. Sei il CAPO — devi pensare TU a quali file servono, cosa devono contenere, chi li crea.
+2. Ogni task DEVE avere un path file ESATTO con la struttura a moduli indicata sopra.
+3. Ogni task DEVE specificare ESATTAMENTE cosa scrivere nel file (contenuti, formule, esempi).
+4. Assegna task agli agenti in base alla loro specializzazione.
+5. Bilancia: teoria (math1/code_architect), test (test-engineer), revisione (proof-reviewer).
+6. Produci 3-7 micro-obiettivi complessivi.
+7. Criterio di completamento deve essere verificabile (file creato, test passato, etc.).
 8. Anche se l'input dell'utente è breve o sintetico, il team deve gestire tutto al meglio, formulando compiti completi ed impeccabili per generare tutta la documentazione di ricerca richiesta.
-9. I file creati devono tassativamente seguire la struttura gerarchica della cartella {base_path} (nelle cartelle teoria/, test/, docs/, viz/, whitepapers/).
 
 ## FORMATO RISPOSTA — SOLO JSON
 {{
@@ -146,7 +159,7 @@ Sottodirectory: teoria/, test/, docs/, viz/
   "micro_objectives": [
     {{
       "title": "Titolo sintetico del task",
-      "description": "ISTRUZIONI DETTAGLIATE: path file esatto, contenuti da scrivere, formule da includere, esempi da fare. Sii PRECISO.",
+      "description": "ISTRUZIONI DETTAGLIATE: path file esatto con la ramificazione del sottoargomento (es. {base_path}/01_numeri_reali/teoria/01_assiomi.md), contenuti da scrivere, formule da includere, esempi da fare.",
       "assigned_to": "agent_id",
       "actions_hint": ["create_file"],
       "completion_criteria": "Criterio verificabile"
