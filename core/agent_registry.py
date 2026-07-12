@@ -45,7 +45,10 @@ def get_agent(agent_id: str) -> dict:
     """Get a single agent by ID. Returns None if not found."""
     meta = load_agents_meta()
     agents = meta.get("agents", {})
+    if agent_id == "sigma_architect" and "sigma_architect" not in agents and "agente0" in agents:
+        return agents.get("agente0")
     return agents.get(agent_id)
+
 
 
 def register_agent(

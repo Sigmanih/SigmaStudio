@@ -193,6 +193,118 @@ Sottodirectory: teoria/, test/, docs/, viz/
         log.error("Failed to parse coordinator JSON: %s. Using fallback.", exc)
         return _fallback_objectives(session_id, agents_list, goal)
 
+def check_and_expand_research_roadmap(
+    session_id: str,
+    goal: str,
+    agents_list: list[dict],
+    ai_cfg: dict,
+    model_override: str,
+    _sse
+) -> bool:
+    """Valuta il filesystem ed i risultati correnti tramite l'Architetto ed espande la roadmap se necessario."""
+    from core.research_sessions import get_session, add_micro_objective
+    session = get_session(session_id)
+    if not session:
+        return False
+
+    current_objectives = session.get("micro_objectives", [])
+    completed_summary = []
+    for o in current_objectives:
+        completed_summary.append(f"- Task: {o.get('title')} (Assegnato a: {o.get('assigned_to')}) -> Esito: {o.get('result')[:400]}")
+
+    base_path = "data/analisi_1"
+    if "cartella" in goal.lower() or "data/" in goal.lower():
+        import re
+        m = re.search(r'data/([a-zA-Z0-9_-]+)', goal)
+        if m:
+            base_path = f"data/{m.group(1)}"
+
+    coordinator_model, provider, endpoint, api_url, api_key, temperature, max_tokens, top_p, timeout = \
+        load_agent_config(ai_cfg, model_override, SIGMA_ARCHITECT_ID)
+
+    fs_context = _build_filesystem_context()
+
+    system_prompt = f"""Sei Sigma AI Architect, il coordinatore del team di ricerca.
+Il tuo compito attuale è valutare lo stato complessivo del lavoro svolto dal team rispetto al goal dell'utente.
+Se ritieni che ci siano ancora sottoargomenti da trattare, approfondimenti matematici necessari, spiegazioni non sufficientemente precise, teoremi da dimostrare passo-passo o test Python da scrivere/migliorare per garantire l'eccellenza dello studio, genera una lista di nuovi micro-obiettivi (da 1 a 3 task) assegnandoli agli agenti competenti (math1, code_architect, test-engineer, proof-reviewer).
+Se il lavoro è completo, esaustivo ed impeccabile in ogni suo aspetto, rispondi con una lista vuota.
+
+## OBIETTIVO GENERALE
+{goal}
+
+## STATO ATTUALE DEI FILE IN {base_path}
+{fs_context}
+
+## SOTTO-TASK GIÀ SVOLTI
+{chr(10).join(completed_summary)}
+
+## REGOLA SULLE STRUTTURE DEI PERCORSI
+I file creati devono tassativamente seguire la struttura gerarchica della cartella {base_path} (nelle cartelle teoria/, test/, docs/, viz/, whitepapers/).
+
+## FORMATO RISPOSTA — SOLO JSON
+Se servono nuovi task:
+{{
+  "analysis": "Breve spiegazione sul perché sono necessari altri passaggi",
+  "new_objectives": [
+    {{
+      "title": "Titolo del nuovo task",
+      "description": "Istruzioni dettagliate con path file esatto (es. {base_path}/teoria/02_successioni.md), concetti da inserire passo-passo.",
+      "assigned_to": "agent_id",
+      "actions_hint": ["create_file"],
+      "completion_criteria": "Criterio di successo"
+    }}
+  ]
+}}
+Se non serve fare altro ed il lavoro è perfetto:
+{{
+  "analysis": "Il lavoro è completo ed impeccabile.",
+  "new_objectives": []
+}}"""
+
+    messages = [
+        {"role": "system", "content": system_prompt},
+        {"role": "user", "content": "Valuta il lavoro e decidi se aggiungere nuovi micro-obiettivi dinamici. Rispondi solo in JSON."}
+    ]
+
+    log.info("Coordinatore valuta espansione roadmap con modello=%s provider=%s", coordinator_model, provider)
+    response, thinking, error = call_ai_model(
+        messages, ai_cfg, coordinator_model, provider, endpoint, api_url, api_key,
+        0.3, max_tokens, top_p, timeout
+    )
+
+    if error or not response:
+        log.warning("Coordinatore espansione non riuscita: %s. Nessun nuovo task aggiunto.", error)
+        return False
+
+    json_match = _extract_json_from_response(response)
+    if not json_match:
+        log.warning("Nessun JSON valido per l'espansione della roadmap.")
+        return False
+
+    try:
+        parsed = json.loads(json_match.group())
+        new_objectives = parsed.get("new_objectives", [])
+        analysis = parsed.get("analysis", "")
+        
+        if not new_objectives:
+            log.info("Coordinatore dichiara la ricerca completata. Nessun nuovo task.")
+            return False
+
+        _sse({
+            "type": "agent_response", "agent_id": "sigma_architect", "agent_name": "Coordinatore",
+            "response": f"### 🔄 Espansione Roadmap Rilevata dal Coordinatore\n\n{analysis}\n\nL'Architetto ha aggiunto {len(new_objectives)} nuovi task per completare al meglio l'obiettivo.",
+            "message": f"🔄 Aggiunti {len(new_objectives)} nuovi task alla roadmap."
+        })
+
+        for obj in new_objectives:
+            add_micro_objective(session_id, obj)
+
+        return True
+    except Exception as exc:
+        log.error("Errore durante il parsing del JSON di espansione: %s", exc)
+        return False
+
+
 
 def generate_next_steps(session_id: str, ai_cfg: dict, model_override: str) -> dict:
     """Generate suggested next steps for the research session."""
@@ -325,8 +437,12 @@ def _execute_default_action(self, session_id: str, obj: dict, goal: str, _sse) -
     match = re.search(r'(data/[^\s]+)', desc)
     if match:
         target_path = match.group(0).rstrip('.,;!?')
+        # Prevent collision: if the target path does not end with a file extension, reject it
+        if target_path and '.' not in os.path.basename(target_path):
+            target_path = ""
 
     if not target_path or not self._is_path_allowed(target_path):
+
         # Auto-create standard path under data/analisi_1
         base = "data/analisi_1"
         sub = "teoria"
@@ -746,12 +862,47 @@ Format:
                     })
 
 
-            # Esecuzione sequenziale e strutturata dei micro-obiettivi
-            for obj in objectives:
+            # Esecuzione sequenziale dinamica e strutturata con loop di espansione gestito dal Coordinatore
+            expansion_cycle = 0
+            max_expansion_cycles = 3
+            
+            while True:
+                # Carica lo stato più aggiornato della sessione
+                updated_session = get_session(session_id) or {}
+                current_objectives = updated_session.get("micro_objectives", [])
+                pending_objectives = [o for o in current_objectives if o.get("status") != "done"]
+
+                if not pending_objectives:
+                    # Se tutti i compiti sono finiti, l'Architetto valuta se espandere il lavoro
+                    if expansion_cycle >= max_expansion_cycles:
+                        break
+                    
+                    _sse({
+                        "type": "agent_thinking", "agent_id": "sigma_architect", "agent_name": "Coordinatore",
+                        "thinking": "Valutazione dei risultati attuali per rilevare la necessità di ulteriori approfondimenti, test o correzioni...",
+                        "message": "🧠 Coordinatore: valutazione dei risultati..."
+                    })
+                    
+                    new_tasks_added = check_and_expand_research_roadmap(session_id, goal, agents_config, ai_cfg, model_override, _sse)
+                    if not new_tasks_added:
+                        break
+                    else:
+                        expansion_cycle += 1
+                        continue
+                
+                # Prende ed esegue il primo micro-obiettivo non completato
+                obj = pending_objectives[0]
                 try:
                     process_objective(obj)
                 except Exception as exc:
                     log.error("Objective processing failed for %s: %s", obj.get("title"), exc)
+                    fallback_res = _execute_default_action(self, session_id, obj, goal, _sse)
+                    update_objective(session_id, obj["id"], {"status": "done", "result": fallback_res["message"]})
+                    _sse({
+                        "type": "objective_complete", "objective_id": obj["id"], "title": obj["title"],
+                        "result": fallback_res["message"], "message": f"✅ Completato con default: {obj['title']}"
+                    })
+
 
 
             # Generazione automatica report di fine sessione

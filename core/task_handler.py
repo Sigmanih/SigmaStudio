@@ -140,8 +140,17 @@ def _get_or_create_default_module(topic_folder: str) -> str:
     rel_folder = topic_folder.replace("\\", "/").rstrip("/")
     abs_topic_folder = os.path.abspath(topic_folder)
 
+    # Remove conflicting flat file if it has the same name as the expected directory
+    if os.path.exists(abs_topic_folder) and not os.path.isdir(abs_topic_folder):
+        log.warning("Collision detected: file '%s' exists but directory expected. Removing file.", abs_topic_folder)
+        try:
+            os.remove(abs_topic_folder)
+        except Exception as err:
+            log.error("Failed to remove conflicting file '%s': %s", abs_topic_folder, err)
+
     if os.path.isdir(abs_topic_folder):
         for entry in sorted(os.listdir(abs_topic_folder)):
+
             full = os.path.join(abs_topic_folder, entry)
             if os.path.isdir(full) and entry[:2].isdigit() and "_" in entry:
                 return os.path.relpath(full).replace("\\", "/")
