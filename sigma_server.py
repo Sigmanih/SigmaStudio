@@ -286,7 +286,34 @@ def _write_build_stamp() -> None:
         pass
 
 
+def _init_manifesti() -> None:
+    """Ensure the manifesti/ directory exists and copy default manifestos from sigma0/."""
+    manifesti_dir = "manifesti"
+    sigma0_dir = "sigma0"
+
+    if not os.path.exists(manifesti_dir):
+        try:
+            os.makedirs(manifesti_dir)
+            log.info("Created directory %s/", manifesti_dir)
+        except OSError as exc:
+            log.error("Failed to create directory %s: %s", manifesti_dir, exc)
+            return
+
+    if os.path.exists(sigma0_dir):
+        for fname in os.listdir(sigma0_dir):
+            if fname.endswith(".md") and fname.lower() != "readme.md":
+                dest_path = os.path.join(manifesti_dir, fname)
+                src_path = os.path.join(sigma0_dir, fname)
+                if not os.path.exists(dest_path):
+                    try:
+                        shutil.copy2(src_path, dest_path)
+                        log.info("Copied default manifesto %s -> %s", src_path, dest_path)
+                    except OSError as exc:
+                        log.error("Failed to copy manifesto %s to %s: %s", src_path, dest_path, exc)
+
+
 def _rebuild_modules_meta() -> None:
+
     """Synchronise modules_meta.json from the filesystem at startup.
 
     Merges existing custom fields (parent_id, description, domain) with
@@ -346,8 +373,12 @@ if __name__ == "__main__":
     signal.signal(signal.SIGINT, graceful_shutdown)
     signal.signal(signal.SIGTERM, graceful_shutdown)
 
+    # 0. Ensure default manifestos are copied
+    _init_manifesti()
+
     # 1. Rebuild modules_meta.json from filesystem
     _rebuild_modules_meta()
+
 
     # 2. Ensure virtual environment exists (for AI terminal access)
     log.info("Checking virtual environment...")
