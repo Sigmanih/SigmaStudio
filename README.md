@@ -38,26 +38,27 @@ Imagine a **team of specialized AI agents** (a mathematician, an architect, a te
 ## 🖼️ Screenshots
 
 <p align="center">
-  <img src="images/screenshots/argomenti.png" alt="Dashboard con Mappa degli Argomenti e Grafo Interattivo" width="48%" />
+  <img src="images/screenshots/argomenti.png" alt="Mappa degli Argomenti e Grafo Relazionale" width="48%" />
+  <img src="images/screenshots/test.png" alt="Test e Validazione Computazionale" width="48%" />
+</p>
+<p align="center">
+  <em>Mappa degli Argomenti con Grafo Relazionale D3.js (sinistra) e Test Automatici / Validazione dei moduli (destra).</em>
+</p>
+
+<p align="center">
+  <img src="images/screenshots/ResearchLab.png" alt="Research Lab — Orchestrazione e Roadmap del Team di Agenti" width="48%" />
   <img src="images/screenshots/chat.png" alt="Chat Multi-Agente con Manifesti" width="48%" />
 </p>
 <p align="center">
-  <em>Mappa degli Argomenti con Grafo Relazionale Interattivo D3.js (sinistra) e Chat Multi-Agente con integrazione dei Manifesti (destra).</em>
+  <em>Research Lab con la pianificazione in micro-task (sinistra) e la Chat Multi-Agente con integrazione dei Manifesti (destra).</em>
 </p>
 
 <p align="center">
-  <img src="images/screenshots/ResearchLab.png" alt="Research Lab — Orchestrazione e Roadmap del Team di Agenti" width="70%" />
+  <img src="images/screenshots/modificafile.png" alt="Modifica File / Editor" width="48%" />
+  <img src="images/screenshots/visualizzazioni.png" alt="Visualizzazioni Interattive Generate" width="48%" />
 </p>
 <p align="center">
-  <em>Research Lab: Definisci gli obiettivi generali, pianifica la roadmap in micro-task ed esegui i cicli di ricerca in modalità automatica o interattiva.</em>
-</p>
-
-<p align="center">
-  <img src="images/screenshots/test.png" alt="Test automatici della pipeline" width="48%" />
-  <img src="images/screenshots/visualizzazioni.png" alt="Visualizzazioni interattive generate" width="48%" />
-</p>
-<p align="center">
-  <em>Integrazione test di esecuzione e verifica in tempo reale (sinistra) e visualizzazioni grafiche interattive ed editoriali generate dagli agenti (destra).</em>
+  <em>Sigma Lab Editor per la redazione e modifica dei file (sinistra) e le Visualizzazioni interattive ed editoriali D3.js generate dagli agenti (destra).</em>
 </p>
 
 ---
