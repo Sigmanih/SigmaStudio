@@ -376,12 +376,13 @@ def _execute_single_action(self, action: dict, action_type: str, bot_name: str, 
         path = _normalize_action_path(action.get("path", ""))
         content = action.get("content", "")
 
+        path = _ensure_module_structure(path)
+
         valid, err = _validate_module_path(path)
         if not valid:
             result_log.append({"type": "create_file", "success": False, "path": path, "error": err})
             return
 
-        path = _ensure_module_structure(path)
         if path and self._is_path_allowed(path):
             os.makedirs(os.path.dirname(os.path.abspath(path)) or ".", exist_ok=True)
             with open(path, "w", encoding="utf-8") as fh:
@@ -392,6 +393,7 @@ def _execute_single_action(self, action: dict, action_type: str, bot_name: str, 
         else:
             result_log.append({"type": "create_file", "success": False, "path": path,
                                 "error": f"Path non consentito: {path}"})
+
 
     elif action_type == "create_module":
         topic_name = action.get("topic", "").strip()
@@ -422,6 +424,9 @@ def _execute_single_action(self, action: dict, action_type: str, bot_name: str, 
         path = _normalize_action_path(action.get("path", ""))
         content = action.get("content", "")
         search = action.get("search", "")
+        
+        path = _ensure_module_structure(path)
+        
         if path and self._is_path_allowed(path) and os.path.exists(path):
             if search:
                 with open(path, "r", encoding="utf-8") as fh:
@@ -443,6 +448,7 @@ def _execute_single_action(self, action: dict, action_type: str, bot_name: str, 
             result_log.append({"type": "edit_file", "success": False, "path": path,
                                 "error": f"Path non trovato o non consentito: {path}"})
 
+
     elif action_type == "rename_file":
         old_path = _normalize_action_path(action.get("old_path", ""))
         new_path = _normalize_action_path(action.get("new_path", ""))
@@ -461,6 +467,7 @@ def _execute_single_action(self, action: dict, action_type: str, bot_name: str, 
 
     elif action_type == "delete_file":
         path = _normalize_action_path(action.get("path", ""))
+        path = _ensure_module_structure(path)
         if path and self._is_path_allowed(path) and os.path.exists(path):
             os.remove(path)
             result_log.append({"type": "delete_file", "success": True, "path": path,
@@ -468,6 +475,7 @@ def _execute_single_action(self, action: dict, action_type: str, bot_name: str, 
         else:
             result_log.append({"type": "delete_file", "success": False, "path": path,
                                 "error": f"Path non trovato o non consentito: {path}"})
+
 
     elif action_type == "update_task":
         titolo = action.get("titolo", "")

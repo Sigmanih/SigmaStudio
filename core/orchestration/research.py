@@ -12,7 +12,9 @@ import os
 import json
 import datetime
 import threading
+import re
 from concurrent.futures import ThreadPoolExecutor, as_completed
+
 
 from core.ai_providers import load_ai_config, call_ai_model
 from core.agent_registry import SIGMA_ARCHITECT_ID
@@ -596,6 +598,15 @@ MAI creare file al di fuori di queste cartelle."""
                             rev_model, rev_prov, rev_end, rev_url, rev_key, rev_temp, rev_tokens, rev_top, rev_to = \
                                 load_agent_config(ai_cfg, model_override, "proof-reviewer")
                             
+                            actions_status_info = ""
+                            if actions and success_count < len(actions_log):
+                                actions_status_info = (
+                                    "\n⚠️ ATTENZIONE: Alcune azioni richieste dal collaboratore sono fallite a livello di sistema backend!\n"
+                                    f"Dettagli esecuzione e log errori:\n{log_str}\n"
+                                    "Poiché i file non sono stati scritti correttamente sul disco, devi tassativamente RIFIUTARE il task (\"approved\": false) "
+                                    "e richiedere di correggere i percorsi o il codice per completare correttamente l'obiettivo.\n"
+                                )
+
                             reviewer_prompt = f"""Sei il REVISORE e VALIDATORE critico del team di ricerca.
 Il tuo compito è validare il lavoro svolto dal collaboratore per il micro-obiettivo indicato.
 
@@ -610,13 +621,13 @@ Il tuo compito è validare il lavoro svolto dal collaboratore per il micro-obiet
 Agente: {agent_name}
 Risposta collaboratore: {resp_text}
 Azioni eseguite: {log_str}
-
+{actions_status_info}
 ## STATO FILE SYSTEM
 {_build_filesystem_context()}
 
 ## REGOLE DI VALIDAZIONE
 1. Se il lavoro è corretto, completo e coerente, approvalo ("approved": true).
-2. Se ci sono errori logici, formule errate, codice non funzionante o omissioni gravi, rifiutalo ("approved": false) e fornisci un feedback dettagliato per correggerlo.
+2. Se ci sono errori logici, formule errate, codice non funzionante, omissioni gravi o azioni fallite, rifiutalo ("approved": false) e fornisci un feedback dettagliato per correggerlo.
 3. Se rifiuti, puoi anche specificare delle azioni correttive facoltative.
 
 ## FORMATO RISPOSTA — SOLO JSON
@@ -733,14 +744,13 @@ Format:
                     })
 
 
-            # Run with ThreadPoolExecutor
-            with ThreadPoolExecutor(max_workers=3) as executor:
-                futures = [executor.submit(process_objective, obj) for obj in objectives]
-                for future in as_completed(futures):
-                    try:
-                        future.result()
-                    except Exception as exc:
-                        log.error("ThreadPool worker execution failed: %s", exc)
+            # Esecuzione sequenziale e strutturata dei micro-obiettivi
+            for obj in objectives:
+                try:
+                    process_objective(obj)
+                except Exception as exc:
+                    log.error("Objective processing failed for %s: %s", obj.get("title"), exc)
+
 
             # Generazione automatica report di fine sessione
             _sse({
@@ -749,8 +759,16 @@ Format:
                 "message": "📝 Coordinatore: generazione del report finale..."
             })
             
-            from core.research_sessions import get_session, update_session
+            from core.research_sessions import get_session, save_session
+            base_path = "data/analisi_1"
+            if "cartella" in goal.lower() or "data/" in goal.lower():
+                m = re.search(r'data/([a-zA-Z0-9_-]+)', goal)
+                if m:
+                    base_path = f"data/{m.group(1)}"
+            
             updated_session = get_session(session_id) or {}
+
+
             objectives_summary = []
             for o in updated_session.get("micro_objectives", []):
                 objectives_summary.append(f"### Task: {o.get('title')}\nAssegnato a: {o.get('assigned_to')}\nEsito: {o.get('result')}\n")
@@ -820,12 +838,14 @@ Il tuo compito è redigere un report finale di ricerca strutturato in italiano c
                 report_text = f"# Report Finale di Ricerca\n\nObiettivo: {goal}\n\nRicerca completata con successo.\n"
 
             # Mark research done
-            update_session(session_id, {
-                "status": "done", 
-                "report": report_text,
-                "updated_at": datetime.datetime.now().isoformat()
-            })
+            session_data = get_session(session_id)
+            if session_data:
+                session_data["status"] = "done"
+                session_data["report"] = report_text
+                session_data["updated_at"] = datetime.datetime.now().isoformat()
+                save_session(session_data)
             _sse({"type": "research_done", "session_id": session_id, "message": "🎯 Sessione di ricerca completata!"})
+
 
 
         except Exception as exc:
