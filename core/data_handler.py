@@ -214,4 +214,57 @@ def handle_update_manifesto_image(self):
     except Exception as exc:
         log.error("handle_update_manifesto_image: %s", exc)
         self.send_json_response({"error": str(exc)}, 500)
+
+
+def handle_upload_agent_image(self):
+    try:
+        ct = self.headers.get('Content-Type', '')
+        if 'multipart/form-data' not in ct:
+            return self.send_json_response({"error": "Content-Type must be multipart/form-data"}, 400)
+            
+        from core.file_handler import _parse_multipart
+        parsed = _parse_multipart(self)
+        file_item = parsed.get('file')
+        manifesto_path = parsed.get('path') # il percorso del manifesto a cui associare l'immagine
+        
+        if not file_item or not manifesto_path:
+            return self.send_json_response({"error": "Missing file or path fields"}, 400)
+            
+        filename = file_item['filename']
+        if '..' in filename or '..' in manifesto_path:
+            return self.send_json_response({"error": "Invalid path"}, 400)
+            
+        # Percorso di destinazione: images/
+        dest_dir = "images"
+        os.makedirs(dest_dir, exist_ok=True)
+        dest_path = os.path.join(dest_dir, filename)
+        
+        # Salva il file immagine
+        with open(dest_path, 'wb') as f:
+            f.write(file_item['data'])
+            
+        # Associa l'immagine al manifesto nel file agents_meta.json
+        image_url = f"/images/{filename}"
+        manifesto_path = manifesto_path.replace('\\', '/')
+        
+        from core.agent_registry import load_agents_meta, save_agents_meta
+        meta = load_agents_meta()
+        manifesto_images = meta.setdefault("manifesto_images", {})
+        manifesto_images[manifesto_path] = image_url
+        
+        for agent_id, agent_data in meta.setdefault("agents", {}).items():
+            if agent_data.get("manifesto") == manifesto_path:
+                agent_data["image"] = image_url
+                
+        save_agents_meta(meta)
+        
+        self.send_json_response({
+            "success": True, 
+            "image": image_url, 
+            "message": f"Immagine caricata e associata a {manifesto_path}"
+        })
+    except Exception as exc:
+        log.error("handle_upload_agent_image: %s", exc)
+        self.send_json_response({"error": str(exc)}, 500)
+
 

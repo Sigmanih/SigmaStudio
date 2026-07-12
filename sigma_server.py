@@ -96,13 +96,15 @@ class SigmaAPIHandler(SimpleHTTPRequestHandler):
 # 1. Data handlers (modules, topics, knowledge DB, manifesti)
 from core.data_handler import (
     handle_api_modules, handle_api_topics, handle_knowledge_db, handle_list_manifesti,
-    handle_update_manifesto_image
+    handle_update_manifesto_image, handle_upload_agent_image
 )
 SigmaAPIHandler.handle_api_modules = handle_api_modules
 SigmaAPIHandler.handle_api_topics = handle_api_topics
 SigmaAPIHandler.handle_knowledge_db = handle_knowledge_db
 SigmaAPIHandler.handle_list_manifesti = handle_list_manifesti
 SigmaAPIHandler.handle_update_manifesto_image = handle_update_manifesto_image
+SigmaAPIHandler.handle_upload_agent_image = handle_upload_agent_image
+
 
 
 # 2. Module and Topic CRUD
