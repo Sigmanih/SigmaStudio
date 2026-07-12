@@ -119,9 +119,17 @@ Obiettivo: {goal}
 3. Dopo le azioni, riceverai i risultati. Analizza e decidi se continuare.
 4. Per completare: {{"done": true, "response": "riepilogo", "summary": {{...}}}}
 
-### AZIONI
-- create_file, edit_file, read_file, delete_file, rename_file
-- create_module, run_test, run_terminal, update_task, send_notification
+### AZIONI DISPONIBILI (campi obbligatori):
+- create_module: {{"type": "create_module", "topic": "nome_topic", "number": "01", "name": "nome_modulo"}}
+  Crea un modulo con le 5 sezioni standard (teoria, test, viz, docs, whitepapers)
+- create_file: {{"type": "create_file", "path": "data/topic/NN_modulo/sezione/file", "content": "..."}}
+- edit_file: {{"type": "edit_file", "path": "...", "content": "..."}} (cerca e sostituisci)
+- read_file: {{"type": "read_file", "path": "..."}}
+- delete_file: {{"type": "delete_file", "path": "..."}}
+- rename_file: {{"type": "rename_file", "old_path": "sorgente", "new_path": "destinazione"}} (sposta file)
+- run_test: {{"type": "run_test", "path": "..."}}
+- update_task: {{"type": "update_task", "task_id": "...", "status": "..."}}
+- send_notification: {{"type": "send_notification", "message": "..."}}
 """
     full_system += loop_prompt
 

@@ -11,11 +11,12 @@ export default function ChatWorkspaceTab() {
   const core = useChatCore({});
 
   const handleSelectManifesto = (m) => {
-    core.setActiveManifesto({ name: m.name, path: m.path, exists: true });
+    const manifesto = { name: m.name, path: m.path, exists: true, image: m.image || '/images/default.png' };
+    core.setActiveManifesto(manifesto);
     core.setSelectedManifestoPath(m.path);
     core.setManifestoManuallySelected(true);
     core.setShowManifestoDropdown(false);
-    try { localStorage.setItem('sigma_selected_manifesto', JSON.stringify({ name: m.name, path: m.path, exists: true })); } catch (e) {}
+    try { localStorage.setItem('sigma_selected_manifesto', JSON.stringify(manifesto)); } catch (e) {}
   };
 
   const groupedSessions = core.sessions.reduce((acc, s) => {
@@ -108,6 +109,8 @@ export default function ChatWorkspaceTab() {
           selectedModel={core.selectedModel}
           refs={core.refs}
           onStop={core.stopInference}
+          activeManifesto={core.activeManifesto}
+          manifestos={core.manifestos}
         />
       </div>
 

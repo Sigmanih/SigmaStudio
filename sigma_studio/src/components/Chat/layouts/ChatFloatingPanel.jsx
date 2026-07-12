@@ -33,11 +33,12 @@ export default function ChatFloatingPanel({ openFiles, onClose, onOpenConfig, on
   }, [core.activeSessionId]);
 
   const handleSelectManifesto = useCallback((m) => {
-    core.setActiveManifesto({ name: m.name, path: m.path, exists: true });
+    const manifesto = { name: m.name, path: m.path, exists: true, image: m.image || '/images/default.png' };
+    core.setActiveManifesto(manifesto);
     core.setSelectedManifestoPath(m.path);
     core.setManifestoManuallySelected(true);
     core.setShowManifestoDropdown(false);
-    try { localStorage.setItem('sigma_selected_manifesto', JSON.stringify({ name: m.name, path: m.path, exists: true })); } catch (e) {}
+    try { localStorage.setItem('sigma_selected_manifesto', JSON.stringify(manifesto)); } catch (e) {}
   }, []);
 
   const handleDuplicateSession = useCallback(() => {
@@ -128,6 +129,8 @@ export default function ChatFloatingPanel({ openFiles, onClose, onOpenConfig, on
           onDeleteMessage={handleDeleteMsg}
           refs={core.refs}
           onStop={core.stopInference}
+          activeManifesto={core.activeManifesto}
+          manifestos={core.manifestos}
         />
       </div>
 

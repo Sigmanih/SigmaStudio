@@ -408,9 +408,12 @@ def _execute_single_action(self, action: dict, action_type: str, bot_name: str, 
 
 
     elif action_type == "create_module":
-        topic_name = action.get("topic", "").strip()
+        # Supporta alias di campo usati dall'AI: "topic_id" → "topic", "title" → "name"
+        topic_name = action.get("topic") or action.get("topic_id") or action.get("topic_name") or ""
+        topic_name = str(topic_name).strip()
         mod_num = action.get("number", "").strip().zfill(2) or "01"
-        mod_name = action.get("name", "").strip() or "nuovo"
+        mod_name = action.get("name") or action.get("title") or action.get("module_name") or "nuovo"
+        mod_name = str(mod_name).strip() or "nuovo"
         if not topic_name:
             result_log.append({"type": "create_module", "success": False, "error": "Topic mancante"})
             return
@@ -462,8 +465,8 @@ def _execute_single_action(self, action: dict, action_type: str, bot_name: str, 
 
 
     elif action_type == "rename_file":
-        old_path = _normalize_action_path(action.get("old_path", ""))
-        new_path = _normalize_action_path(action.get("new_path", ""))
+        old_path = _normalize_action_path(action.get("old_path") or action.get("path") or "")
+        new_path = _normalize_action_path(action.get("new_path") or action.get("destination") or "")
         if (old_path and new_path
                 and self._is_path_allowed(old_path)
                 and self._is_path_allowed(new_path)
@@ -490,9 +493,11 @@ def _execute_single_action(self, action: dict, action_type: str, bot_name: str, 
 
 
     elif action_type == "update_task":
-        titolo = action.get("titolo", "")
-        new_status = action.get("status", "")
-        notifica = action.get("notifica", "")
+        # Supporta alias di campo: "title" → "titolo", "task_id"/"task" → "titolo"
+        titolo = action.get("titolo") or action.get("title") or action.get("name") or action.get("task") or action.get("task_id") or ""
+        titolo = str(titolo).strip()
+        new_status = action.get("status") or action.get("new_status") or ""
+        notifica = action.get("notifica") or action.get("message") or ""
         if not titolo:
             result_log.append({"type": "update_task", "success": False, "error": "Titolo task mancante"})
             return

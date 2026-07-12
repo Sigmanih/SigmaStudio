@@ -4,8 +4,8 @@ import { renderMarkdownLatex } from '../../utils/markdownLatex';
 import 'katex/dist/katex.min.css';
 
 // ==============================================================================
-// AGENT MESSAGE — Premium Markdown + KaTeX rendering (v2.0)
-// Utilizza renderMarkdownLatex per rendering unificato, nessuna manipolazione DOM
+// AGENT MESSAGE v4.0 — Modern Header Layout
+// Avatar + ruolo/modello in header, contenuto full-width sotto
 // ==============================================================================
 
 const AGENT_COLORS = {
@@ -18,23 +18,57 @@ function getAgentStyle(agentId) {
   return AGENT_COLORS[agentId] || { bg: '#8b8fa3', color: '#0e1016', icon: '🤖', short: 'AI', image: '/images/default.png' };
 }
 
-export default function AgentMessage({ msg, msgId, expandedThinking, onToggleThinking, effectiveModelName, onDeleteMessage, msgIndex, loading: standaloneLoading }) {
-  const isUser = msg.role === 'user';
-  const isSystem = msg.role === 'system';
-  const isAction = msg.isAction;
-  const agentId = msg.agent_id;
-  const agentStyle = agentId ? getAgentStyle(agentId) : null;
-  const isOrchestrated = msg.is_orchestrated;
-  const isError = msg.error;
-  const isLoading = standaloneLoading || msg.loading;
+function formatTimestamp(ts) {
+  if (!ts) return '';
+  try { return new Date(ts).toLocaleTimeString(); } catch { return ''; }
+}
 
-  if (isLoading && !msg.content && !msg.thinking) {
+// ==============================================================================
+// Main AgentMessage Component
+// ==============================================================================
+export default function AgentMessage({
+  msg,
+  groupedMessages,
+  msgId,
+  expandedThinking,
+  onToggleThinking,
+  effectiveModelName,
+  onDeleteMessage,
+  msgIndex,
+  loading: standaloneLoading,
+}) {
+  const messages = groupedMessages || (msg ? [msg] : []);
+  if (messages.length === 0) return null;
+
+  const first = messages[0];
+  const isUser = first.role === 'user';
+  const isSystem = first.role === 'system';
+  const agentId = first.agent_id;
+  const agentStyle = agentId ? getAgentStyle(agentId) : null;
+  const isOrchestrated = first.is_orchestrated;
+  const isLoading = standaloneLoading || first.loading;
+  const isGrouped = messages.length > 1;
+
+  // Agent image from message (frozen at creation) or fallback to agent style
+  const avatarSrc = agentId ? agentStyle.image : (first.agentImage || '/images/default.png');
+  const avatarBg = agentId ? agentStyle.bg : '#2a2d3e';
+  const roleName = agentId
+    ? (first.agent_name || agentId)
+    : (first.agentRole || 'AI');
+
+  const modelName = first.agentName || effectiveModelName || 'AI';
+
+  if (isLoading && !first.content && !first.thinking && messages.length === 1) {
     return (
-      <div className="chat-message chat-assistant">
-        <div className="chat-avatar">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"></path>
-          </svg>
+      <div className={`chat-message chat-assistant ${isGrouped ? 'chat-message-grouped' : ''}`}>
+        <div className="chat-msg-header">
+          <div className="chat-msg-avatar chat-msg-avatar-loading">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"></path>
+            </svg>
+          </div>
+          <div className="chat-msg-role">{roleName}</div>
+          <div className="chat-msg-model">· {modelName}</div>
         </div>
         <div className="chat-bubble">
           <div className="chat-loading">
@@ -48,38 +82,34 @@ export default function AgentMessage({ msg, msgId, expandedThinking, onToggleThi
 
   return (
     <div
-      className={`chat-message ${isUser ? 'chat-user' : isSystem ? 'chat-system' : 'chat-assistant'} ${agentId ? 'chat-agent-message' : ''}`}
-      style={agentId ? { borderLeft: `3px solid ${agentStyle.bg}`, paddingLeft: '12px' } : {}}
+      className={`chat-message ${isUser ? 'chat-user' : isSystem ? 'chat-system' : 'chat-assistant'} ${agentId ? 'chat-agent-message' : ''} ${isGrouped ? 'chat-message-grouped' : ''}`}
     >
-      <div className="chat-avatar">
-        {isUser ? <User size={14} /> : isSystem ? <Terminal size={14} /> : agentId ? (
-          <div className="chat-agent-avatar-container" style={{ borderColor: agentStyle.bg }}>
-            <img
-              src={agentStyle.image}
-              alt={agentStyle.short}
-              className="chat-agent-avatar-img"
-              onError={(e) => { e.target.style.display = 'none'; e.target.nextSibling.style.display = 'inline'; }}
-            />
-            <span className="chat-agent-avatar-fallback" style={{ fontSize: '16px' }}>{agentStyle.icon}</span>
-          </div>
-        ) : (
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"></path>
-          </svg>
+      {/* Header: Avatar + Role + Model */}
+      <div className="chat-msg-header">
+        <div className="chat-msg-avatar" style={{ borderColor: avatarBg }}>
+          <img
+            src={avatarSrc}
+            alt={roleName}
+            className="chat-msg-avatar-img"
+            onError={(e) => { e.target.style.display = 'none'; }}
+          />
+        </div>
+        <div className="chat-msg-role">{roleName}</div>
+        <div className="chat-msg-model">· {modelName}</div>
+        {isOrchestrated && <span className="chat-msg-orchestrated" title="Assegnato dall'Orchestrator">🎯</span>}
+        <div className="chat-msg-header-spacer" />
+        <div className="chat-msg-time">{formatTimestamp(first.timestamp)}</div>
+        {onDeleteMessage && !isGrouped && (
+          <button className="chat-msg-del-btn" title="Elimina" onClick={() => onDeleteMessage(msgIndex)}>✕</button>
         )}
       </div>
-      <div className="chat-bubble">
-        {agentId && (
-          <div className="chat-agent-badge" style={{ backgroundColor: agentStyle.bg, color: agentStyle.color }}>
-            <span className="chat-agent-icon">{agentStyle.icon}</span>
-            <span className="chat-agent-name">{msg.agent_name || agentId}</span>
-            {isOrchestrated && <span className="chat-agent-orchestrated" title="Assegnato dall'Orchestrator">🎯</span>}
-          </div>
-        )}
 
-        {isUser && msg.attachments?.length > 0 && (
+      {/* Bubble content */}
+      <div className="chat-bubble">
+        {/* Attachments for user messages */}
+        {isUser && first.attachments?.length > 0 && (
           <div className="chat-message-attachments">
-            {msg.attachments.map(p => (
+            {first.attachments.map(p => (
               <span key={p} className="chat-attachment-chip">
                 <FileText size={10} /> {p.split('/').pop()}
               </span>
@@ -87,54 +117,62 @@ export default function AgentMessage({ msg, msgId, expandedThinking, onToggleThi
           </div>
         )}
 
-        {!isUser && !isSystem && msg.thinking && (
-          <div className={`chat-thinking ${msg.streamingThinking ? 'chat-thinking-streaming' : ''}`}>
-            <button className="chat-thinking-toggle" onClick={() => onToggleThinking(msgId)}>
-              <span>
-                🧠 {msg.streamingThinking
-                  ? <span className="chat-thinking-live"><span className="thinking-pulse"></span> Ragionando...</span>
-                  : (expandedThinking[msgId] ? 'Nascondi ragionamento' : 'Mostra ragionamento')
-                }
-              </span>
-            </button>
-            {(msg.streamingThinking || expandedThinking[msgId]) && (
-              <div
-                className="chat-thinking-content chat-md"
-                dangerouslySetInnerHTML={{ __html: renderMarkdownLatex(msg.thinking) }}
-              />
-            )}
-          </div>
-        )}
+        {/* Rendered messages (single or grouped) */}
+        {messages.map((m, idx) => {
+          const mid = msgId || `msg-${idx}`;
+          const isLast = idx === messages.length - 1;
+          return (
+            <div key={idx} className={isGrouped && !isLast ? 'chat-msg-grouped-item chat-msg-grouped-border' : 'chat-msg-grouped-item'}>
+              {/* Thinking toggle */}
+              {!isUser && !isSystem && m.thinking && (
+                <div className={`chat-thinking ${m.streamingThinking ? 'chat-thinking-streaming' : ''}`}>
+                  <button className="chat-thinking-toggle" onClick={() => onToggleThinking(mid)}>
+                    <span>
+                      🧠 {m.streamingThinking
+                        ? <span className="chat-thinking-live"><span className="thinking-pulse"></span> Ragionando...</span>
+                        : (expandedThinking?.[mid] ? 'Nascondi ragionamento' : 'Mostra ragionamento')
+                      }
+                    </span>
+                  </button>
+                  {(m.streamingThinking || expandedThinking?.[mid]) && (
+                    <div
+                      className="chat-thinking-content chat-md"
+                      dangerouslySetInnerHTML={{ __html: renderMarkdownLatex(m.thinking) }}
+                    />
+                  )}
+                </div>
+              )}
 
-        {isAction ? (
-          <div className="chat-actions-log">
-            {Array.isArray(msg.content)
-              ? msg.content.map((l, j) => <div key={j} className="action-line">{String(l)}</div>)
-              : (msg.content || '').split('\n').map((l, j) => (
-                <div key={j} className="action-line">{l}</div>
-              ))}
-          </div>
-        ) : (
-          <div
-            className="chat-content chat-md"
-            dangerouslySetInnerHTML={{ __html: renderMarkdownLatex(msg.content) }}
-          />
-        )}
+              {/* Content */}
+              {m.isAction ? (
+                <div className="chat-actions-log">
+                  {(m.content || '').split('\n').map((l, j) => (
+                    <div key={j} className="action-line">{l}</div>
+                  ))}
+                </div>
+              ) : m.content ? (
+                <div
+                  className="chat-content chat-md"
+                  dangerouslySetInnerHTML={{ __html: renderMarkdownLatex(m.content) }}
+                />
+              ) : null}
 
-        {isError && <div className="chat-error">⚠️ {msg.error}</div>}
+              {/* Error */}
+              {m.error && <div className="chat-error">⚠️ {m.error}</div>}
 
-        <div className="chat-timestamp">
-          {msg.timestamp ? new Date(msg.timestamp).toLocaleTimeString() : ''}
-          {!isSystem && (
-            <span className="chat-message-agent">
-              {' · '}{agentId ? agentStyle.short : (msg.agentName || effectiveModelName || 'AI')}
-            </span>
-          )}
-        </div>
+              {/* Timestamp + model for grouped items */}
+              {isGrouped && (
+                <div className="chat-timestamp">
+                  {formatTimestamp(m.timestamp)}
+                  <span className="chat-message-agent">
+                    {' · '}{m.agent_name || agentId || m.agentName || effectiveModelName || 'AI'}
+                  </span>
+                </div>
+              )}
+            </div>
+          );
+        })}
       </div>
-      {onDeleteMessage && (
-        <button className="chat-msg-delete-btn" title="Elimina" onClick={() => onDeleteMessage(msgIndex)}>✕</button>
-      )}
     </div>
   );
 }

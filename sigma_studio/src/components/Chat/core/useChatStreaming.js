@@ -47,6 +47,7 @@ export function useChatStreaming({
   selectedManifestoPath,
   fetchOllamaModels,
   refreshConfig,
+  activeManifesto,
 }) {
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
@@ -122,7 +123,7 @@ export function useChatStreaming({
               if (p.token) { fullText += p.token; }
               if (firstToken) {
                 firstToken = false;
-                setSessionMessages(prev => ({ ...prev, [sessionId]: [...(prev[sessionId] || []), { role: 'assistant', content: fullText, agentName: modelName, timestamp: new Date().toISOString(), streaming: true, thinking: hasThinking ? fullThinking : undefined, streamingThinking: hasThinking }] }));
+                setSessionMessages(prev => ({ ...prev, [sessionId]: [...(prev[sessionId] || []), { role: 'assistant', content: fullText, agentName: modelName, timestamp: new Date().toISOString(), streaming: true, thinking: hasThinking ? fullThinking : undefined, streamingThinking: hasThinking, agentImage: activeManifesto?.image || '/images/default.png', agentRole: activeManifesto?.name || '' }] }));
               } else {
                 setSessionMessages(prev => {
                   const n = [...(prev[sessionId] || [])];
@@ -145,14 +146,14 @@ export function useChatStreaming({
       saveMessagesImmediately(sessionId, sessionRefs.sessionMessages.current[sessionId] || []);
     } catch (e) {
       setLoading(false);
-      setSessionMessages(prev => [...(prev[sessionId] || []), { role: 'assistant', content: `⚠️ **Errore:** ${e.message}`, timestamp: new Date().toISOString(), error: true }]);
+      setSessionMessages(prev => [...(prev[sessionId] || []), { role: 'assistant', content: `⚠️ **Errore:** ${e.message}`, timestamp: new Date().toISOString(), error: true, agentImage: activeManifesto?.image || '/images/default.png', agentRole: activeManifesto?.name || '' }]);
     }
   };
 
   const handleJsonResponse = async (res, sessionId, updatedMessages) => {
     try {
       const data = await res.json();
-      const assistant = { role: 'assistant', content: data.response || '⚠️ Nessuna risposta.', thinking: data.thinking || null, timestamp: new Date().toISOString(), error: data.error || null, agentName: selectedModel };
+      const assistant = { role: 'assistant', content: data.response || '⚠️ Nessuna risposta.', thinking: data.thinking || null, timestamp: new Date().toISOString(), error: data.error || null, agentName: selectedModel, agentImage: activeManifesto?.image || '/images/default.png', agentRole: activeManifesto?.name || '' };
       if (sessionRefs.activeSessionId.current === sessionId) {
         const finalMessages = [...updatedMessages, assistant];
         setMessagesForSession(sessionId, finalMessages);

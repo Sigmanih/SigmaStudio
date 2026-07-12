@@ -63,7 +63,10 @@ export function useChatConfig({ saveSessionsState, sessionRefs }) {
         if (d.config?.providers) setProviderConfigs(d.config.providers);
         if (d.config?.model) { setSelectedModel(d.config.model); setConfigModel(d.config.model); }
         if (d.config?.provider) setConfigProvider(d.config.provider);
-        if (d.config?.manifesto && !refs.manifestoManuallySelected.current) setActiveManifesto(d.config.manifesto);
+        if (d.config?.manifesto && !refs.manifestoManuallySelected.current) {
+          const m = d.config.manifesto;
+          setActiveManifesto({ ...m, image: m.image || '/images/default.png' });
+        }
       }
     } catch (e) {} finally { fetchOllamaModels(); }
   }, [fetchOllamaModels]);
@@ -87,7 +90,10 @@ export function useChatConfig({ saveSessionsState, sessionRefs }) {
           seed: d.config?.seed ?? 0,
           timeout: d.config?.timeout ?? 300
         }));
-        if (d.config?.manifesto && !refs.manifestoManuallySelected.current) setActiveManifesto(d.config.manifesto);
+        if (d.config?.manifesto && !refs.manifestoManuallySelected.current) {
+          const m = d.config.manifesto;
+          setActiveManifesto({ ...m, image: m.image || '/images/default.png' });
+        }
       }
     } catch (e) {}
   }, []);
@@ -97,7 +103,12 @@ export function useChatConfig({ saveSessionsState, sessionRefs }) {
       const res = await fetch('/api/list_manifesti');
       const data = await res.json();
       if (data.success && data.files) {
-        setManifestos(data.files.map(f => ({ path: f.path, name: f.name.replace('.md', '') })));
+        setManifestos(data.files.map(f => ({
+          path: f.path,
+          name: f.name.replace('.md', ''),
+          filename: f.filename,
+          image: f.image || '/images/default.png'
+        })));
       }
     } catch (e) {}
   }, []);

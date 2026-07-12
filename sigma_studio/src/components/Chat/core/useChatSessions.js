@@ -1,5 +1,5 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
-import { STORAGE_KEY, MAX_HISTORY, createSession } from '../chatStorage';
+import { STORAGE_KEY, MAX_HISTORY, createSession, loadSessions } from '../chatStorage';
 
 export function useChatSessions({ selectedModel, setSelectedModel, setActionsLog, saveMessagesImmediately, loadMessagesFromStorage, welcomeMsg }) {
   const [sessions, setSessions] = useState([]);
@@ -17,6 +17,14 @@ export function useChatSessions({ selectedModel, setSelectedModel, setActionsLog
   useEffect(() => { refs.sessions.current = sessions; }, [sessions]);
   useEffect(() => { refs.sessionMessages.current = sessionMessages; }, [sessionMessages]);
   useEffect(() => { refs.activeSessionId.current = activeSessionId; }, [activeSessionId]);
+
+  // Carica le sessioni salvate da localStorage al mount
+  useEffect(() => {
+    const saved = loadSessions();
+    if (saved.length > 0) {
+      setSessions(saved);
+    }
+  }, []);
 
   const saveSessionsState = useCallback((ns) => {
     setSessions(ns);

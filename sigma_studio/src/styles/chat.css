@@ -36,17 +36,35 @@
 .chat-msg-delete-btn { position: absolute; top: 4px; right: 4px; width: 18px; height: 18px; border: none; border-radius: 50%; background: rgba(255,85,85,0.15); color: var(--error); font-size: 0.6rem; cursor: pointer; display: flex; align-items: center; justify-content: center; opacity: 0; transition: opacity 0.15s ease; z-index: 5; }
 .chat-msg-delete-btn:hover { background: var(--error); color: #fff; }
 
-/* Message bubbles */
-.chat-message { display: flex; gap: 8px; align-items: flex-start; }
-.chat-avatar { flex-shrink: 0; width: 24px; height: 24px; border-radius: 50%; display: flex; align-items: center; justify-content: center; background: rgba(255,255,255,0.05); color: var(--text-dim); margin-top: 2px; }
-.chat-user .chat-avatar { background: rgba(0,210,255,0.15); color: var(--primary); }
-.chat-assistant .chat-avatar { background: rgba(188,140,255,0.15); color: var(--accent); }
-.chat-system .chat-avatar { background: rgba(255,184,108,0.1); color: var(--warning); }
+/* Message bubbles — Modern Header Layout (v4.0) */
+.chat-message { display: flex; flex-direction: column; gap: 4px; }
 
-.chat-bubble { flex: 1; padding: 10px 14px; border-radius: 12px; background: rgba(255,255,255,0.03); border: 1px solid var(--border); font-size: 0.8rem; line-height: 1.5; color: var(--text); word-break: break-word; }
+/* Message header: avatar + role + model + time */
+.chat-msg-header { display: flex; align-items: center; gap: 8px; padding: 0 2px; margin-bottom: 2px; }
+.chat-msg-avatar { width: 32px; height: 32px; min-width: 32px; border-radius: 50%; overflow: hidden; display: flex; align-items: center; justify-content: center; border: 2px solid #2a2d3e; background: #0e1016; flex-shrink: 0; }
+.chat-msg-avatar img { width: 100%; height: 100%; object-fit: cover; }
+.chat-msg-avatar-loading { background: rgba(188,140,255,0.15); color: var(--accent); border-color: var(--accent); display: flex; align-items: center; justify-content: center; }
+.chat-msg-role { font-size: 0.75rem; font-weight: 600; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.chat-msg-model { font-size: 0.65rem; color: var(--text-dark); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.chat-msg-orchestrated { font-size: 0.65rem; margin-left: 2px; }
+.chat-msg-header-spacer { flex: 1; min-width: 4px; }
+.chat-msg-time { font-size: 0.55rem; color: var(--text-dark); white-space: nowrap; flex-shrink: 0; }
+.chat-msg-del-btn { width: 18px; height: 18px; border: none; border-radius: 50%; background: rgba(255,85,85,0.15); color: var(--error); font-size: 0.55rem; cursor: pointer; display: flex; align-items: center; justify-content: center; opacity: 0; transition: opacity 0.15s; flex-shrink: 0; }
+.chat-message:hover .chat-msg-del-btn { opacity: 1; }
+.chat-msg-del-btn:hover { background: var(--error); color: #fff; }
+
+/* Bubble — now full-width since avatar is in header */
+.chat-bubble { width: 100%; padding: 10px 14px; border-radius: 12px; background: rgba(255,255,255,0.03); border: 1px solid var(--border); font-size: 0.8rem; line-height: 1.5; color: var(--text); word-break: break-word; }
 .chat-user .chat-bubble { background: rgba(0,210,255,0.06); border-color: rgba(0,210,255,0.15); }
 .chat-system .chat-bubble { background: rgba(255,184,108,0.04); border-color: rgba(255,184,108,0.1); font-size: 0.75rem; }
 
+/* Grouped messages — consecutive system/assistant in one bubble */
+.chat-message-grouped-item { padding: 4px 0; }
+.chat-message-grouped-item:first-child { padding-top: 0; }
+.chat-message-grouped-item:last-child { padding-bottom: 0; }
+.chat-message-grouped-border { border-bottom: 1px solid rgba(255,255,255,0.06); margin-bottom: 4px; padding-bottom: 8px; }
+.chat-message-grouped-item .chat-timestamp { margin-top: 2px; }
+.chat-message-grouped-item .chat-thinking { margin: 4px 0; }
 .chat-timestamp { font-size: 0.6rem; color: var(--text-dark); margin-top: 4px; }
 .chat-message-agent { font-size: 0.6rem; color: var(--text-dark); font-weight: 400; }
 .chat-message-attachments { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 6px; }
@@ -2016,28 +2034,10 @@
 
 /* Agent message badges */
 /* Agent avatar images — used in AgentMessage.jsx */
-.chat-agent-avatar-container {
-  position: relative;
-  width: 40px;
-  height: 40px;
-  border-radius: 50%;
-  overflow: hidden;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border: 2px solid;
-  flex-shrink: 0;
-}
-.chat-agent-avatar-img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  border-radius: 50%;
-}
-.chat-agent-avatar-fallback {
-  display: none;
-  line-height: 1;
-}
+.chat-agent-avatar-container { border-radius: 50%; overflow: hidden; display: flex; align-items: center; justify-content: center; border: 2px solid; flex-shrink: 0; }
+.chat-agent-avatar-img { width: 100%; height: 100%; object-fit: cover; border-radius: 50%; }
+.chat-agent-avatar-fallback { display: none; line-height: 1; }
+/* Pipeline agent avatars are larger (48px) — handled by .agent-pipeline-avatar-container */
 
 /* Agent pipeline avatar images — used in AgentPipelineStatus.jsx */
 .agent-pipeline-avatar-container {

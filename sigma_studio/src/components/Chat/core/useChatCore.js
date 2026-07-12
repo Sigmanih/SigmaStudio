@@ -66,7 +66,8 @@ export default function useChatCore(extraProps = {}) {
     quickConfig: configHook.quickConfig,
     selectedManifestoPath: configHook.selectedManifestoPath,
     fetchOllamaModels: configHook.fetchOllamaModels,
-    refreshConfig: configHook.refreshConfig
+    refreshConfig: configHook.refreshConfig,
+    activeManifesto: configHook.activeManifesto
   });
 
   // Connect actions log back to sessions switch
@@ -75,14 +76,13 @@ export default function useChatCore(extraProps = {}) {
   // Sync back actual selected model to sessions init (first load)
   useEffect(() => {
     if (sessionsHook.sessions.length > 0 && !sessionsHook.activeSessionId) {
-      const saved = sessionsHook.sessions;
-      const sid = saved[0].id;
+      const sid = sessionsHook.sessions[0].id;
       const stored = loadMessagesFromStorage(sid);
       if (stored) {
         sessionsHook.setSessionMessages(prev => ({ ...prev, [sid]: stored }));
-        sessionsHook.setActiveSessionId(sid);
-        if (saved[0].model) configHook.setSelectedModel(saved[0].model);
       }
+      sessionsHook.setActiveSessionId(sid);
+      if (sessionsHook.sessions[0].model) configHook.setSelectedModel(sessionsHook.sessions[0].model);
     }
   }, [sessionsHook.sessions, sessionsHook.activeSessionId]);
 
@@ -155,6 +155,7 @@ export default function useChatCore(extraProps = {}) {
     selectedManifestoPath: configHook.selectedManifestoPath,
     setSelectedManifestoPath: configHook.setSelectedManifestoPath,
     manifestoManuallySelected: configHook.manifestoManuallySelected,
+    setManifestoManuallySelected: configHook.setManifestoManuallySelected,
     showManifestoDropdown: configHook.showManifestoDropdown,
     setShowManifestoDropdown: configHook.setShowManifestoDropdown,
     loopMaxIterations: streamingHook.loopMaxIterations,
