@@ -10,14 +10,6 @@ import ActionsBar from '../ActionsBar';
 export default function ChatWorkspaceTab() {
   const core = useChatCore({});
 
-  const handleSelectManifesto = (m) => {
-    const manifesto = { name: m.name, path: m.path, exists: true, image: m.image || '/images/default.png' };
-    core.setActiveManifesto(manifesto);
-    core.setSelectedManifestoPath(m.path);
-    core.setManifestoManuallySelected(true);
-    core.setShowManifestoDropdown(false);
-    try { localStorage.setItem('sigma_selected_manifesto', JSON.stringify(manifesto)); } catch (e) {}
-  };
 
   const groupedSessions = core.sessions.reduce((acc, s) => {
     const diff = new Date() - new Date(s.updatedAt);
@@ -44,7 +36,7 @@ export default function ChatWorkspaceTab() {
         manifestos={core.manifestos}
         showManifestoDropdown={core.showManifestoDropdown}
         setShowManifestoDropdown={core.setShowManifestoDropdown}
-        onSelectManifesto={handleSelectManifesto}
+        onSelectManifesto={core.handleSelectManifesto}
         onOpenQuickConfig={() => core.setShowQuickConfig(!core.showQuickConfig)}
         showQuickConfig={core.showQuickConfig}
       />

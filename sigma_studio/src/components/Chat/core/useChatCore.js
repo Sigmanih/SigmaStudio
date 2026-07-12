@@ -92,6 +92,58 @@ export default function useChatCore(extraProps = {}) {
     configHook.fetchManifestos();
   }, []);
 
+  const handleSelectManifesto = useCallback((m) => {
+    const manifesto = { name: m.name, path: m.path, exists: true, image: m.image || '/images/default.png' };
+    configHook.setActiveManifesto(manifesto);
+    configHook.setSelectedManifestoPath(m.path);
+    configHook.setManifestoManuallySelected(true);
+    configHook.setShowManifestoDropdown(false);
+    try { localStorage.setItem('sigma_selected_manifesto', JSON.stringify(manifesto)); } catch (e) {}
+
+    // Save selection in the current session
+    if (sessionsHook.activeSessionId && sessionsHook.saveSessionsState) {
+      sessionsHook.saveSessionsState(sessionsHook.sessions.map(s =>
+        s.id === sessionsHook.activeSessionId
+          ? { ...s, manifestoPath: m.path, updatedAt: new Date().toISOString() }
+          : s
+      ));
+    }
+  }, [sessionsHook.activeSessionId, sessionsHook.sessions, sessionsHook.saveSessionsState]);
+
+  // Sync selected model and active manifesto when activeSessionId changes
+  useEffect(() => {
+    if (!sessionsHook.activeSessionId) return;
+    const currentSession = sessionsHook.sessions.find(s => s.id === sessionsHook.activeSessionId);
+    if (currentSession) {
+      if (currentSession.model) {
+        configHook.setSelectedModel(currentSession.model);
+      }
+
+      const manifestoPath = currentSession.manifestoPath || 'manifesti/sigma_architect.md';
+      const m = configHook.manifestos.find(x => x.path === manifestoPath || x.filename === manifestoPath.split('/').pop());
+      if (m) {
+        configHook.setActiveManifesto({
+          name: m.name,
+          path: m.path,
+          exists: true,
+          image: m.image || '/images/default.png'
+        });
+        configHook.setSelectedManifestoPath(m.path);
+      } else {
+        const filename = manifestoPath.split('/').pop();
+        let name = filename.replace('.md', '');
+        if (name === 'sigma_architect' || name === 'agente0') name = 'Sigma AI Architect';
+        configHook.setActiveManifesto({
+          name: name,
+          path: manifestoPath,
+          exists: true,
+          image: '/images/default.png'
+        });
+        configHook.setSelectedManifestoPath(manifestoPath);
+      }
+    }
+  }, [sessionsHook.activeSessionId, configHook.manifestos]);
+
   // Sync state between config model selection and localStorage
   const handleModelSelectWrapped = async (name) => {
     await configHook.handleModelSelect(name);
@@ -200,6 +252,7 @@ export default function useChatCore(extraProps = {}) {
     handleFinishRename: sessionsHook.handleFinishRename,
     handleRenameKeyDown: sessionsHook.handleRenameKeyDown,
     handleModelSelect: handleModelSelectWrapped,
+    handleSelectManifesto,
     openModelDropdown: async () => {
       await configHook.refreshConfig();
       await configHook.fetchOllamaModels();

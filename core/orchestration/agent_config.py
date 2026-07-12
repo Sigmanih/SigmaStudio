@@ -84,9 +84,9 @@ def load_agent_config(
     api_url         = active_prov_cfg.get("api_url", "")
     api_key         = active_prov_cfg.get("api_key", "")
     temperature     = active_prov_cfg.get("temperature", 0.7)
-    max_tokens      = active_prov_cfg.get("max_tokens", 4096)
+    max_tokens      = active_prov_cfg.get("max_tokens", 8192)   # Increased for long content generation
     top_p           = active_prov_cfg.get("top_p", 0.9)
-    request_timeout = active_prov_cfg.get("timeout", 300)
+    request_timeout = active_prov_cfg.get("timeout", 600)        # Increased for complex tasks
 
     # Auto-detect provider from model name prefix
     if model.startswith("deepseek"):

@@ -32,117 +32,108 @@ from core.orchestration.agent_config import AGENT_COLORS, load_agent_config
 log = get_logger(__name__)
 
 
-# Curriculum canonico di Analisi 1 — 13 moduli standard
-ANALISI1_MODULES = [
-    ("01", "insiemi_e_numeri_reali",   "Assiomi di R, insiemi, sup/inf, disuguaglianze, valore assoluto, intorni"),
-    ("02", "successioni",              "Definizione limite di successione, teoremi di confronto, monotone, Cauchy"),
-    ("03", "serie_numeriche",          "Criteri di convergenza (Leibniz, rapporto, radice), serie geometrica, armonica, Taylor"),
-    ("04", "limiti_e_continuita",      "Definizione epsilon-delta, limiti notevoli, TVI, Weierstrass, continuità uniforme"),
-    ("05", "derivate",                 "Derivabilità, regole di derivazione, teorema di Lagrange, de l'Hôpital, Taylor, McLaurin"),
-    ("06", "integrali_indefiniti",     "Primitivi, integrazione per parti, sostituzione, frazioni parziali"),
-    ("07", "integrali_definiti",       "Integrale di Riemann, T. fondamentale del calcolo, applicazioni geometriche (aree, volumi)"),
-    ("08", "equazioni_differenziali",  "EDO I ordine (separabili, lineari), II ordine lineari a coefficienti costanti"),
-    ("09", "funzioni_piu_variabili",   "Derivate parziali, gradiente, differenziabilità, Hessiana, differenziale totale"),
-    ("10", "ottimizzazione",           "Estremi liberi e vincolati, moltiplicatori di Lagrange, punti di sella"),
-    ("11", "integrali_multipli",       "Integrali doppi e tripli, Jacobiano, cambi di variabili, coordinate polari/cilindriche"),
-    ("12", "serie_di_fourier",         "Coefficienti di Fourier, convergenza, identità di Parseval"),
-    ("13", "trasformate",              "Laplace, Z, proprietà, applicazioni alle EDO"),
-]
+# ==============================================================================
+# Generic domain curriculum discovery
+# ==============================================================================
 
-
-def _is_analisi1_goal(goal: str) -> bool:
-    """Detect if the goal is about Analisi 1 mathematics."""
-    keywords = ["analisi 1", "analisi1", "matematica ingegneria", "analisi matematica",
-                "derivate", "integrali", "limiti", "serie", "successioni", "fourier",
-                "equazioni differenziali", "calcolo"]
+def _detect_base_path(goal: str) -> str:
+    """Extract or infer the base data path from the goal text."""
+    if "data/" in goal.lower():
+        m = re.search(r'data/([a-zA-Z0-9_-]+)', goal)
+        if m:
+            return f"data/{m.group(1)}"
+    # Infer from topic keywords
+    keywords_map = [
+        (["analisi", "calcolo", "limite", "derivat", "integral", "serie", "successioni", "fourier", "differenziali"], "analisi_1"),
+        (["fisica", "meccanica", "termodinamica", "elettromagnetismo", "ottica", "quantistica"], "fisica"),
+        (["algebra", "linear", "geometria", "vettori", "matrici"], "algebra_lineare"),
+        (["statistica", "probabilit", "distribuzion", "inferenza", "regressione"], "statistica"),
+        (["informatica", "algoritm", "strutture dati", "programmazione", "software"], "informatica"),
+        (["economia", "micro", "macro", "mercato", "domanda", "offerta"], "economia"),
+        (["chimica", "reazioni", "legami", "molecole", "atomi", "organica"], "chimica"),
+        (["biologia", "cellule", "dna", "genetica", "evoluzione"], "biologia"),
+        (["storia", "storica", "civilta", "guerre"], "storia"),
+    ]
     goal_l = goal.lower()
-    return any(k in goal_l for k in keywords)
+    for keywords, topic in keywords_map:
+        if any(k in goal_l for k in keywords):
+            return f"data/{topic}"
+    # Generic fallback: use sanitized first word
+    first_word = re.sub(r'[^a-z0-9]', '_', goal_l.split()[0])[:20] if goal.split() else "ricerca"
+    return f"data/{first_word}"
+
+
+def _scan_existing_modules(base_path: str) -> list[str]:
+    """Scan filesystem and return list of existing module directories under base_path."""
+    modules = []
+    if os.path.isdir(base_path):
+        for entry in sorted(os.listdir(base_path)):
+            full = os.path.join(base_path, entry)
+            if os.path.isdir(full) and re.match(r'^\d{2}_', entry):
+                modules.append(entry)
+    return modules
 
 
 def _fallback_objectives(session_id: str, agents_list: list[dict], goal: str) -> dict:
     """Generate fallback micro-objectives if AI coordinator fails.
     
-    For Analisi 1 goals, generates a structured set covering the first 3 modules.
-    Otherwise generates 4 generic objectives.
+    Creates a structured set of tasks covering the first 2 modules of the topic.
+    Designed to work for ANY domain (not just Analisi 1).
     """
     from core.research_sessions import add_micro_objective
     log.warning("Coordinator AI failed or timed out. Falling back to static template objectives.")
 
-    base_path = "data/analisi_1"
-    if "data/" in goal.lower() or "cartella" in goal.lower():
-        match = re.search(r'data/[a-zA-Z0-9_]+', goal)
-        if match:
-            base_path = match.group(0)
+    base_path = _detect_base_path(goal)
+    topic_name = base_path.replace("data/", "").replace("_", " ").title()
 
-    if _is_analisi1_goal(goal):
-        # Structured fallback with first 3 canonical modules
-        fallback_templates = []
-        for nn, modulo, descrizione in ANALISI1_MODULES[:3]:
-            fallback_templates.append({
-                "title": f"Teoria: {modulo.replace('_', ' ').title()} (modulo {nn})",
-                "description": (
-                    f"Crea il file {base_path}/{nn}_{modulo}/teoria/{modulo}.md con: "
-                    f"definizioni formali, teoremi con dimostrazione passo-passo, "
-                    f"esempi numerici, esercizi svolti. Argomenti: {descrizione}. "
-                    f"Usa LaTeX per tutte le formule ($...$ inline, $$...$$ display). "
-                    f"File LUNGO e COMPLETO, minimo 500 righe."
-                ),
-                "assigned_to": "math1",
-                "actions_hint": ["create_file"],
-                "completion_criteria": f"File {base_path}/{nn}_{modulo}/teoria/{modulo}.md creato con teoria completa."
-            })
-            fallback_templates.append({
-                "title": f"Test computazionali: {modulo.replace('_', ' ').title()}",
-                "description": (
-                    f"Crea lo script {base_path}/{nn}_{modulo}/test/test_{modulo}.py con: "
-                    f"import sympy, numpy; funzioni test_* con assert; blocco main. "
-                    f"Verifica computazionale di: {descrizione}. "
-                    f"Script ESEGUIBILE senza errori con: python test_{modulo}.py"
-                ),
-                "assigned_to": "test-engineer",
-                "actions_hint": ["create_file"],
-                "completion_criteria": f"Script {base_path}/{nn}_{modulo}/test/test_{modulo}.py funzionante."
-            })
-    else:
-        # Generic fallback for non-analisi1 goals
-        fallback_templates = [
-            {
-                "title": f"Studio iniziale di fattibilità in {base_path}",
-                "description": f"Analizza la cartella di lavoro {base_path} ed elenca i file esistenti. Pianifica la struttura di moduli numerati.",
-                "assigned_to": "sigma_architect",
-                "actions_hint": ["read_file"],
-                "completion_criteria": "Struttura della cartella mappata."
-            },
-            {
-                "title": "Stesura della teoria fondamentale",
-                "description": (
-                    f"Crea il file {base_path}/01_fondamenti/teoria/teoria_base.md con: "
-                    f"definizioni formali, teoremi con dimostrazione, esempi numerici, "
-                    f"formulario LaTeX ed esercizi svolti per: {goal}"
-                ),
-                "assigned_to": "math1",
-                "actions_hint": ["create_file"],
-                "completion_criteria": "File di teoria completo creato."
-            },
-            {
-                "title": "Implementazione dei test e validazione",
-                "description": (
-                    f"Crea {base_path}/01_fondamenti/test/test_fondamenti.py con: "
-                    f"import sympy; funzioni test_*; assert; blocco main. "
-                    f"Verifica computazionale delle formule teoriche."
-                ),
-                "assigned_to": "test-engineer",
-                "actions_hint": ["create_file", "run_test"],
-                "completion_criteria": "Script di test creato ed eseguibile."
-            },
-            {
-                "title": "Report riepilogativo di sessione",
-                "description": f"Verifica i file creati e scrivi {base_path}/01_fondamenti/docs/report_completo.md.",
-                "assigned_to": "proof-reviewer",
-                "actions_hint": ["create_file"],
-                "completion_criteria": "Report di sessione completato."
-            }
-        ]
+    fallback_templates = [
+        {
+            "title": f"Teoria: {topic_name} — Fondamenti (Modulo 01)",
+            "description": (
+                f"Crea il file {base_path}/01_fondamenti/teoria/fondamenti.md con: "
+                f"introduzione al dominio, definizioni fondamentali, concetti base strutturati, "
+                f"esempi concreti e spiegazioni dettagliate. "
+                f"File COMPLETO, almeno 300 righe, per l'obiettivo: {goal[:200]}"
+            ),
+            "assigned_to": "math1",
+            "actions_hint": ["create_file"],
+            "completion_criteria": f"File {base_path}/01_fondamenti/teoria/fondamenti.md creato con contenuto completo."
+        },
+        {
+            "title": f"Test computazionali: {topic_name} — Fondamenti (Modulo 01)",
+            "description": (
+                f"Crea lo script {base_path}/01_fondamenti/test/test_fondamenti.py con: "
+                f"import sympy, numpy; funzioni test_* con assert e print; blocco main. "
+                f"Verifica computazionale dei concetti fondamentali del dominio. "
+                f"Script ESEGUIBILE con: python test_fondamenti.py"
+            ),
+            "assigned_to": "test-engineer",
+            "actions_hint": ["create_file"],
+            "completion_criteria": f"Script {base_path}/01_fondamenti/test/test_fondamenti.py funzionante."
+        },
+        {
+            "title": f"Formulario: {topic_name} — Fondamenti (Modulo 01)",
+            "description": (
+                f"Crea il formulario {base_path}/01_fondamenti/docs/formulario_fondamenti.md con: "
+                f"tabelle di definizioni, formule/concetti chiave, guida al riconoscimento del problema, "
+                f"errori comuni. Formulario COMPATTO e NAVIGABILE."
+            ),
+            "assigned_to": "formulario",
+            "actions_hint": ["create_file"],
+            "completion_criteria": f"Formulario creato in {base_path}/01_fondamenti/docs/."
+        },
+        {
+            "title": f"Teoria: {topic_name} — Approfondimenti (Modulo 02)",
+            "description": (
+                f"Crea il file {base_path}/02_approfondimenti/teoria/approfondimenti.md con: "
+                f"argomenti di secondo livello del dominio, teoremi/leggi avanzate, casi speciali. "
+                f"Contenuto basato su: {goal[:200]}"
+            ),
+            "assigned_to": "math1",
+            "actions_hint": ["create_file"],
+            "completion_criteria": f"File {base_path}/02_approfondimenti/teoria/approfondimenti.md creato."
+        },
+    ]
 
     added = []
     for t in fallback_templates:
@@ -166,95 +157,86 @@ def decompose_goal_to_micro_objectives(
     session = get_session(session_id)
     session_name = session.get("name", "Ricerca") if session else "Ricerca"
 
-    base_path = "data/analisi_1"
-    if "cartella" in goal.lower() or "data/" in goal.lower():
-        import re
-        m = re.search(r'data/([a-zA-Z0-9_-]+)', goal)
-        if m:
-            base_path = f"data/{m.group(1)}"
+    base_path = _detect_base_path(goal)
+    existing_modules = _scan_existing_modules(base_path)
 
     coordinator_model, provider, endpoint, api_url, api_key, temperature, max_tokens, top_p, timeout = \
         load_agent_config(ai_cfg, model_override, SIGMA_ARCHITECT_ID)
 
+    # Boost timeout and max_tokens for large decomposition tasks
+    effective_timeout = max(timeout, 600)
+    effective_max_tokens = max(max_tokens, 8192)
+
     fs_context = _build_filesystem_context()
 
-    # Detect if this is an Analisi 1 goal to inject canonical curriculum
-    is_analisi1 = _is_analisi1_goal(goal)
-    curriculum_section = ""
-    if is_analisi1:
-        modules_list = "\n".join(
-            f"  - {nn}_{nome}: {desc}"
-            for nn, nome, desc in ANALISI1_MODULES
-        )
-        curriculum_section = f"""
-## CURRICULUM CANONICO DI ANALISI 1 — OBBLIGATORIO
-Questo è un obiettivo di Analisi 1 Matematica per Ingegneria.
-Il curriculum completo è composto da 13 moduli. Inizia dai primi 4-5 moduli e usa l'espansione progressiva per i restanti:
-{modules_list}
 
-Per ogni modulo crea SEMPRE ALMENO:
-1. File teoria: `{base_path}/[NN]_[nome_modulo]/teoria/[nome].md` → agente: math1
-2. File test: `{base_path}/[NN]_[nome_modulo]/test/test_[nome].py` → agente: test-engineer  
-3. File formulario: `{base_path}/[NN]_[nome_modulo]/docs/formulario_[nome].md` → agente: formulario
+    existing_modules_str = (
+        "\n".join(f"  - {m}" for m in existing_modules)
+        if existing_modules else "  (nessuno — directory vuota o non ancora creata)"
+    )
 
-Nella prima decomposizione, copri i moduli 01-04 (fondamentali). Il coordinatore espanderà ai moduli 05-13 nei cicli successivi.
-"""
-
-    system_prompt = f"""Sei Sigma AI Architect, il coordinatore del team di ricerca.
-Il tuo compito è analizzare l'obiettivo dell'utente e suddividerlo in micro-obiettivi (task) da assegnare a diversi agenti.
+    system_prompt = f"""Sei Sigma AI Architect, il coordinatore del team di ricerca multi-agente.
+Il tuo compito è analizzare l'obiettivo dell'utente e suddividerlo in micro-obiettivi (task) da assegnare agli agenti specializzati.
 Stiamo lavorando nella cartella: {base_path}
 
-## STRUTTURAZIONE IN MODULI (SOTTOARGOMENTI) — CRITICA
-Devi suddividere la conoscenza in diversi sottoargomenti (moduli) NUMERATI con prefisso a due cifre.
-I percorsi dei file nei task DEVONO avere ESATTAMENTE la struttura a 5 parti:
-  {base_path}/[XX]_[nome_modulo]/[sezione]/[nome_file]
+## OBIETTIVO GENERALE
+{goal}
+
+## STRUTTURA DEL TOPIC
+Cartella base: {base_path}
+Moduli già presenti sul disco:
+{existing_modules_str}
+
+## REGOLA STRUTTURA PATH — CRITICA
+Ogni file DEVE avere esattamente questa struttura a 5 parti:
+  {base_path}/<NN>_<nome_modulo>/<sezione>/<nome_file>
 Dove:
-- [XX] = numero progressivo a due cifre (es. 01, 02, 03)
-- [nome_modulo] = nome del sottoargomento (es. insiemi_e_numeri_reali, limiti_e_continuita)
-- [sezione] = una tra: teoria, test, docs, viz, whitepapers
-- [nome_file] = nome del file con estensione corretta (.md per teoria/docs, .py per test, .html per viz)
+- <NN> = numero progressivo a due cifre (01, 02, 03, ...)
+- <nome_modulo> = nome descrittivo del sottoargomento (underscore, niente spazi)
+- <sezione> = SOLO una tra: teoria, test, docs, viz, whitepapers
+- <nome_file> = nome del file con estensione (.md per teoria/docs, .py per test, .html per viz)
 
-Esempi CORRETTI:
-- {base_path}/01_insiemi_e_numeri_reali/teoria/numeri_reali.md
-- {base_path}/02_successioni/test/test_successioni.py
-- {base_path}/03_serie_numeriche/docs/formulario_serie.md
-- {base_path}/04_limiti_e_continuita/teoria/definizione_limite.md
+ESEMPI CORRETTI per qualsiasi dominio:
+- {base_path}/01_fondamenti/teoria/introduzione.md
+- {base_path}/02_argomento_2/test/test_argomento_2.py
+- {base_path}/03_argomento_3/docs/formulario_argomento_3.md
 
-Esempi SBAGLIATI (VIETATI):
-- {base_path}/01_base/teoria/file.md (modulo troppo generico)
+VIETATO:
+- {base_path}/01_base/teoria/file.md (modulo troppo generico, usa nome descrittivo)
 - {base_path}/teoria/file.md (manca il modulo numerato)
-- {base_path}/01_limiti/file.py (sezione mancante)
-{curriculum_section}
+- {base_path}/01_argomento/file.py (manca la sezione)
+
 ## TEAM DI AGENTI DISPONIBILI
-- `math1` → Scrive teoria .md con definizioni formali, teoremi DIMOSTRATI passo-passo, LaTeX, esercizi svolti
-- `test-engineer` → Scrive script .py con sympy/numpy, funzioni test_*, assert, eseguibili
-- `formulario` → Scrive formulari .md riassuntivi con tabelle formule per esame
-- `proof-reviewer` → Valida e scrive report di revisione .md
-- `viz-designer` → Crea visualizzazioni .html standalone con D3.js/Chart.js
-- `code_architect` → Script Python avanzati, algoritmi, codice complesso
+- `math1` → Teoria formale: definizioni, teoremi dimostrati passo-passo, esempi, esercizi svolti (.md in teoria/)
+- `test-engineer` → Script Python: verifica computazionale con sympy/numpy, funzioni test_*, eseguibili (.py in test/)
+- `formulario` → Formulari riassuntivi: tabelle definizioni+formule, guida problemi, errori comuni (.md in docs/)
+- `proof-reviewer` → Revisione e validazione: report di qualità critico (.md in docs/)
+- `viz-designer` → Visualizzazioni interattive standalone (.html in viz/)
+- `code_architect` → Implementazioni avanzate, algoritmi, software (.py in test/)
 
 {fs_context}
 
-## REGOLE FONDAMENTALI
-1. Sei il CAPO — pianifica TU quali file servono, cosa devono contenere, chi li crea.
-2. Ogni task DEVE avere path file ESATTO a 5 parti.
-3. Ogni task DEVE specificare il contenuto minimo richiesto (argomenti, formule, esempi).
-4. Assegna agli agenti in base alla specializzazione (teoria→math1, test→test-engineer, formulario→formulario).
-5. Produci 5-8 micro-obiettivi per la prima decomposizione, coprendo più moduli distinti.
-6. Il criterio di completamento deve essere verificabile (file creato, test eseguito).
-7. Per Analisi 1: copri i moduli 01-04 nella prima decomposizione, poi espanderemo.
-8. OGNI descrizione deve includere il path esatto + gli argomenti specifici da trattare.
+## ISTRUZIONI DI DECOMPOSIZIONE
+1. Identifica i principali SOTTOARGOMENTI del dominio (almeno 4-6 moduli distinti e descrittivi)
+2. Per ogni sottoargomento, pianifica ALMENO:
+   - Un file di teoria (math1 → teoria/)
+   - Uno script di test (test-engineer → test/)
+   - Un formulario (formulario → docs/)
+3. Nella prima decomposizione, copri i primi 3-4 sottoargomenti fondamentali
+4. Genera 6-10 task nella prima decomposizione
+5. Sii SPECIFICO: ogni description deve indicare path esatto + argomenti da trattare + struttura attesa
+6. Non generare task per moduli già presenti nel filesystem (vedi lista sopra)
 
 ## FORMATO RISPOSTA — SOLO JSON
 {{
-  "analysis": "Analisi dettagliata del goal (2-3 frasi che descrivono il piano generale)",
+  "analysis": "Descrizione del dominio e struttura pianificata: moduli identificati, agenti assegnati, strategia di copertura progressiva.",
   "micro_objectives": [
     {{
-      "title": "[Ruolo]: [Argomento] — Modulo [NN]",
-      "description": "Path file: {base_path}/[NN]_[modulo]/[sezione]/[file]. Contenuto da produrre: [descrizione dettagliata degli argomenti, formule da includere, struttura del file]. Formato: [.md con LaTeX / .py con sympy / etc.]",
+      "title": "[Tipo]: [Argomento] — Modulo [NN]",
+      "description": "Path file: {base_path}/[NN]_[modulo]/[sezione]/[file]. Contenuto richiesto: [argomenti specifici, struttura del file, livello di dettaglio atteso].",
       "assigned_to": "agent_id",
       "actions_hint": ["create_file"],
-      "completion_criteria": "File [path_preciso] creato con [contenuto minimo]"
+      "completion_criteria": "File [path] creato con contenuto completo e strutturato"
     }}
   ]
 }}"""
@@ -267,7 +249,7 @@ Esempi SBAGLIATI (VIETATI):
     log.info("Calling coordinator model=%s provider=%s for decomposition", coordinator_model, provider)
     response, thinking, error = call_ai_model(
         messages, ai_cfg, coordinator_model, provider, endpoint, api_url, api_key,
-        0.4, max_tokens * 3, top_p, timeout
+        0.4, effective_max_tokens, top_p, effective_timeout
     )
 
     if not session:
@@ -317,102 +299,71 @@ def check_and_expand_research_roadmap(
     for o in current_objectives:
         completed_summary.append(f"- Task: {o.get('title')} (Assegnato a: {o.get('assigned_to')}) -> Esito: {o.get('result')[:400]}")
 
-    base_path = "data/analisi_1"
-    if "cartella" in goal.lower() or "data/" in goal.lower():
-        import re
-        m = re.search(r'data/([a-zA-Z0-9_-]+)', goal)
-        if m:
-            base_path = f"data/{m.group(1)}"
+    base_path = _detect_base_path(goal)
+    existing_modules = _scan_existing_modules(base_path)
+    covered = [f"  ✅ {m}" for m in existing_modules]
+    next_nn = len(existing_modules) + 1
+
 
     coordinator_model, provider, endpoint, api_url, api_key, temperature, max_tokens, top_p, timeout = \
         load_agent_config(ai_cfg, model_override, SIGMA_ARCHITECT_ID)
 
+    effective_timeout = max(timeout, 600)
+    effective_max_tokens = max(max_tokens, 6144)
+
     fs_context = _build_filesystem_context()
-
-    # Build list of covered modules from filesystem
-    covered_modules = []
-    missing_modules = []
-    if _is_analisi1_goal(goal):
-        import os as _os
-        for nn, nome, desc in ANALISI1_MODULES:
-            module_path = f"{base_path}/{nn}_{nome}"
-            if _os.path.isdir(module_path):
-                covered_modules.append(f"  ✅ {nn}_{nome}")
-            else:
-                missing_modules.append(f"  ❌ {nn}_{nome}: {desc}")
-
-        analisi1_status = f"""
-## STATO COPERTURA MODULI ANALISI 1
-Moduli già presenti sul disco:
-{chr(10).join(covered_modules) if covered_modules else '  (nessuno ancora)'}
-
-Moduli MANCANTI da trattare:
-{chr(10).join(missing_modules) if missing_modules else '  (tutti coperti!)'}
-
-Se ci sono moduli mancanti, genera nuovi task per coprire i moduli successivi (2-3 per ciclo).
-Per ogni modulo mancante, crea almeno:
-- File teoria: math1 → {base_path}/[NN]_[nome]/teoria/[nome].md
-- File test: test-engineer → {base_path}/[NN]_[nome]/test/test_[nome].py
-- Formulario: formulario → {base_path}/[NN]_[nome]/docs/formulario_[nome].md
-"""
-    else:
-        analisi1_status = ""
+    covered_str = "\n".join(covered) if covered else "  (nessuno — nessun modulo ancora creato)"
 
     system_prompt = f"""Sei Sigma AI Architect, il coordinatore del team di ricerca.
-Il tuo compito è valutare lo stato complessivo del lavoro svolto dal team rispetto al goal dell'utente.
-Devi decidere se ci sono ancora moduli da trattare, approfondimenti necessari, o correzioni da fare.
+Il tuo compito è valutare lo stato del lavoro e decidere se ci sono ancora moduli o aspetti da trattare.
 
 ## OBIETTIVO GENERALE
 {goal}
 
-## STATO ATTUALE DEI FILE IN {base_path}
+## STATO CORRENTE DEL FILESYSTEM IN {base_path}
 {fs_context}
 
-## SOTTO-TASK GIÀ SVOLTI
-{chr(10).join(completed_summary)}
-{analisi1_status}
-## REGOLA STRUTTURA PATH — OBBLIGATORIA
-I percorsi dei file DEVONO avere esattamente la struttura a 5 parti:
-{base_path}/[XX]_[nome_modulo]/[sezione]/[nome_file]
-Dove:
-- [XX] = numero progressivo a due cifre (01, 02, 03, ...)
-- [sezione] = una tra: teoria, test, docs, viz, whitepapers
+## MODULI GIÀ CREATI
+{covered_str}
 
-Esempi corretti:
-- {base_path}/05_derivate/teoria/regole_derivazione.md
-- {base_path}/05_derivate/test/test_derivate.py
-- {base_path}/05_derivate/docs/formulario_derivate.md
+## TASK GIÀ SVOLTI
+{chr(10).join(completed_summary)}
+
+## STRATEGIA DI ESPANSIONE
+Se ci sono ancora sottoargomenti del dominio non coperti, genera 2-4 nuovi task per i moduli successivi.
+Il prossimo numero di modulo suggerito è: {next_nn:02d}
+Per ogni nuovo modulo, pianifica:
+- Teoria: math1 → {base_path}/[NN]_[nome]/teoria/[nome].md
+- Test: test-engineer → {base_path}/[NN]_[nome]/test/test_[nome].py
+- Formulario: formulario → {base_path}/[NN]_[nome]/docs/formulario_[nome].md
+
+Se esistono moduli senza test o formulario, genera task per colmare le lacune.
+Segnala completamento (new_objectives: []) SOLO quando TUTTI i sottoargomenti del dominio sono coperti in modo esaustivo.
+
+## REGOLA PATH — OBBLIGATORIA
+  {base_path}/[NN]_[nome_modulo]/[sezione]/[nome_file]
+Sezioni permesse: teoria, test, docs, viz, whitepapers
 
 ## AGENTI DISPONIBILI
-- math1 → teoria .md (definizioni + teoremi dimostrati + esercizi)
-- test-engineer → test .py (sympy, assert, eseguibile)
-- formulario → formulario .md (tabelle formule, riferimento rapido)
-- proof-reviewer → report validazione .md
-- viz-designer → visualizzazioni .html
-
-## ISTRUZIONE PRIMARIA
-Se ci sono moduli MANCANTI del curriculum, genera 2-4 nuovi task per i moduli successivi.
-Se i moduli esistenti hanno lacune (mancano test, formulario o revisione), colmale.
-Se tutto è completo ed impeccabile, rispondi con lista vuota.
+- math1 → teoria .md
+- test-engineer → test .py
+- formulario → formulario .md in docs/
+- proof-reviewer → report validazione .md in docs/
+- viz-designer → visualizzazioni .html in viz/
+- code_architect → implementazioni Python avanzate in test/
 
 ## FORMATO RISPOSTA — SOLO JSON
-Se servono nuovi task:
 {{
-  "analysis": "Spiegazione: quali moduli mancano e perché sono necessari",
+  "analysis": "Moduli coperti: [lista]. Moduli/aspetti mancanti: [lista]. Motivo dell'espansione o del completamento.",
   "new_objectives": [
     {{
-      "title": "[Agente]: [Argomento] — Modulo [NN]",
-      "description": "Path file: {base_path}/[NN]_[modulo]/[sezione]/[file]. Contenuto: [argomenti specifici, formule, struttura attesa].",
+      "title": "[Tipo]: [Argomento] — Modulo [NN]",
+      "description": "Path file: {base_path}/[NN]_[modulo]/[sezione]/[file]. Contenuto: [argomenti specifici, struttura attesa].",
       "assigned_to": "agent_id",
       "actions_hint": ["create_file"],
       "completion_criteria": "File creato con contenuto completo"
     }}
   ]
-}}
-Se il lavoro è completo:
-{{
-  "analysis": "Il curriculum è completo e impeccabile.",
-  "new_objectives": []
 }}"""
 
     messages = [
@@ -423,7 +374,7 @@ Se il lavoro è completo:
     log.info("Coordinatore valuta espansione roadmap con modello=%s provider=%s", coordinator_model, provider)
     response, thinking, error = call_ai_model(
         messages, ai_cfg, coordinator_model, provider, endpoint, api_url, api_key,
-        0.3, max_tokens, top_p, timeout
+        0.3, effective_max_tokens, top_p, effective_timeout
     )
 
     if error or not response:
@@ -598,7 +549,7 @@ def _execute_default_action(self, session_id: str, obj: dict, goal: str, _sse) -
     if not target_path or not self._is_path_allowed(target_path):
 
         # Auto-create standard path under data/analisi_1
-        base = "data/analisi_1"
+        base = _detect_base_path(goal)
         sub = "teoria"
         if assigned in ("test-engineer", "code_architect"):
             sub = "test"
@@ -608,7 +559,7 @@ def _execute_default_action(self, session_id: str, obj: dict, goal: str, _sse) -
             sub = "docs"
 
         fn = title.lower().replace(' ', '_').replace(':', '')[:30] + (".py" if sub == "test" else ".html" if sub == "viz" else ".md")
-        target_path = f"{base}/{sub}/{fn}"
+        target_path = f"{base}/00_default/{sub}/{fn}"
 
     if not self._is_path_allowed(target_path):
         return {"success": False, "error": f"Path non consentito: {target_path}"}
@@ -725,73 +676,69 @@ def handle_research_start(self) -> None:
                 role_prompts = {
                     "sigma_architect": (
                         "Sei Sigma AI Architect, coordinatore e pianificatore. "
-                        "Il tuo compito è analizzare i file prodotti dal team e decidere cosa manca o va migliorato. "
+                        "Analizza i file prodotti dal team e decidi cosa manca o va migliorato. "
                         "Quando crei file, segui SEMPRE la struttura a 5 parti: "
-                        "data/[topic]/[XX]_[nome_modulo]/[sezione]/[nome_file]. "
+                        "data/<topic>/<NN>_<nome_modulo>/<sezione>/<nome_file>. "
                         "Produci report di sintesi in docs/ e aggiorna la roadmap con update_task."
                     ),
                     "math1": (
-                        "Sei Sigma Math Researcher, matematico esperto di Analisi Matematica per Ingegneria. "
-                        "Il tuo compito è creare file .md di TEORIA FORMALE con: "
-                        "(1) Definizioni formali complete nel formato 'Definizione N.M: Sia... Si dice...'; "
-                        "(2) Teoremi con enunciato formale (ipotesi + tesi) e DIMOSTRAZIONE COMPLETA passo-passo "
-                        "— VIETATO scrivere 'si dimostra analogamente' o 'per esercizio'; "
-                        "(3) Esempi numerici concreti dopo ogni teorema; "
-                        "(4) Formulario LaTeX riassuntivo; "
-                        "(5) Almeno 3 esercizi svolti tipo esame con tutti i calcoli mostrati. "
-                        "Usa LaTeX: $...$ per inline, $$...$$ per display. File LUNGO, minimo 400 righe. "
-                        "Path: data/[topic]/[NN]_[modulo]/teoria/[nome].md"
+                        "Sei Sigma Math Researcher, esperto di teoria formale per qualsiasi dominio. "
+                        "Il tuo compito è creare file .md di TEORIA FORMALE. Struttura obbligatoria: "
+                        "(1) Definizioni formali complete con spiegazione intuitiva ed esempi; "
+                        "(2) Teoremi/Leggi/Principi con enunciato formale e DERIVAZIONE COMPLETA passo-passo "
+                        "— VIETATO scrivere 'si dimostra analogamente', 'è ovvio che', 'per esercizio'; "
+                        "(3) Esempi concreti e numerici dopo ogni concetto; "
+                        "(4) Formulario riassuntivo finale; "
+                        "(5) Almeno 3 esercizi/problemi svolti tipo esame con tutti i passaggi mostrati. "
+                        "File LUNGO, almeno 300 righe. ZERO placeholder. ZERO contenuto troncato. "
+                        "Path: data/<topic>/<NN>_<modulo>/teoria/<nome>.md"
                     ),
                     "test-engineer": (
                         "Sei Sigma Test Engineer, ingegnere di test computazionale. "
-                        "Il tuo compito è creare script .py FUNZIONANTI e AUTOESEGUIBILI che verificano le formule matematiche. "
-                        "Struttura obbligatoria di ogni script: "
-                        "(1) Header con descrizione e dipendenze; "
-                        "(2) import sympy as sp, import numpy as np; "
-                        "(3) Definizione variabili simboliche: x, n, a, b = sp.symbols('x n a b'); "
-                        "(4) Funzioni test_*() con: calcolo simbolico + assert + print('✅ test_nome: PASS'); "
-                        "(5) Blocco if __name__ == '__main__': con chiamata a tutte le funzioni test_*. "
-                        "ZERO import non standard. Script eseguibile con: python nome_file.py. "
-                        "Path: data/[topic]/[NN]_[modulo]/test/test_[nome].py"
+                        "Il tuo compito è creare script .py FUNZIONANTI e AUTOESEGUIBILI. "
+                        "Struttura obbligatoria: "
+                        "(1) Header con descrizione, topic, dipendenze; "
+                        "(2) Import standard (sympy, numpy, scipy, ecc.); "
+                        "(3) Funzioni test_*() con: calcolo + assert + print('✅ test_nome: PASS risultato'); "
+                        "(4) Runner: lista tests, loop try/except, contatore pass/fail, messaggio finale; "
+                        "Script eseguibile con: python nome_file.py. ZERO import non standard. "
+                        "Path: data/<topic>/<NN>_<modulo>/test/test_<nome>.py"
                     ),
                     "formulario": (
-                        "Sei Sigma Formulario, specialista in formulari e sintesi per esame. "
-                        "Il tuo compito è creare file .md COMPATTI con TUTTE le formule chiave del modulo. "
+                        "Sei Sigma Formulario, specialista in formulari e sintesi di studio. "
+                        "Il tuo compito è creare file .md COMPATTI con tutte le informazioni chiave del modulo. "
                         "Struttura obbligatoria: "
-                        "(1) Tabella 'Definizioni Fondamentali' con | Termine | Formula LaTeX |; "
-                        "(2) Sezione 'Teoremi Principali' con: ipotesi, tesi in LaTeX, quando si usa; "
-                        "(3) Tabella 'Formule Essenziali' con | Formula | Condizioni | Note |; "
-                        "(4) Tabella 'Derivate/Integrali/Limiti Notevoli' (quando rilevante); "
-                        "(5) Sezione 'Errori Comuni' con correzioni; "
-                        "(6) Tabella 'Riconoscimento Tipo di Problema'. "
-                        "Usa LaTeX per TUTTE le formule. Massima densità informativa. "
-                        "Path: data/[topic]/[NN]_[modulo]/docs/formulario_[nome].md"
+                        "(1) Tabella 'Definizioni Fondamentali' con | Termine | Definizione |; "
+                        "(2) Sezione 'Risultati Principali' con: condizioni, risultato, quando si usa; "
+                        "(3) Tabella 'Formule/Regole Essenziali' con | Formula/Regola | Condizioni | Note |; "
+                        "(4) Sezione 'Errori Comuni' con correzioni; "
+                        "(5) Tabella 'Riconoscimento Tipo di Problema'. "
+                        "Massima densità informativa. Testo minimo, formule e tabelle al massimo. "
+                        "Path: data/<topic>/<NN>_<modulo>/docs/formulario_<nome>.md"
                     ),
                     "code_architect": (
                         "Sei Sigma Code Architect, sviluppatore Python esperto. "
-                        "Il tuo compito è creare script Python avanzati, algoritmi e implementazioni computazionali. "
-                        "Ogni script deve essere: ben documentato con docstring, type hints, commenti in italiano. "
-                        "Usa sympy per calcolo simbolico, numpy per numerico, scipy per EDO e ottimizzazione. "
-                        "Path: data/[topic]/[NN]_[modulo]/test/[nome].py"
+                        "Crea script Python avanzati, algoritmi e implementazioni computazionali. "
+                        "Usa: docstring, type hints, commenti in italiano, gestione errori. "
+                        "Scegli le librerie più adatte al dominio (sympy, numpy, scipy, pandas, ecc.). "
+                        "Path: data/<topic>/<NN>_<modulo>/test/<nome>.py"
                     ),
                     "proof-reviewer": (
                         "Sei Sigma Proof Reviewer, revisore critico del team. "
-                        "Il tuo compito è verificare la correttezza formale di teoria e test prodotti dagli altri agenti. "
+                        "Verifica la correttezza di teoria e test prodotti dagli altri agenti per QUALSIASI dominio. "
                         "Per ogni modulo, produci un report in docs/ con: "
-                        "(1) Lista file analizzati con stato (✅/❌); "
-                        "(2) Problemi trovati: formula errata, dimostrazione incompleta, script con errori; "
+                        "(1) Tabella file analizzati con stato (✅/❌); "
+                        "(2) Problemi trovati: concetto errato, dimostrazione incompleta, script non funzionante; "
                         "(3) Verifiche superate; "
-                        "(4) Conclusione con giudizio complessivo. "
-                        "Quando crei il report: usa formato Markdown strutturato. "
-                        "Path: data/[topic]/[NN]_[modulo]/docs/report_validazione.md"
+                        "(4) Conclusione e giudizio complessivo. "
+                        "Path: data/<topic>/<NN>_<modulo>/docs/report_validazione.md"
                     ),
                     "viz-designer": (
-                        "Sei Sigma Viz Designer, visualizzatore di matematica con D3.js e Chart.js. "
-                        "Il tuo compito è creare file .html STANDALONE con visualizzazioni interattive. "
-                        "Ogni file deve funzionare aprendo direttamente nel browser (nessuna dipendenza esterna non CDN). "
-                        "Usa CDN: d3 v7, Chart.js, MathJax (per formule). "
-                        "Visualizza: grafici di funzioni, grafici di convergenza, rappresentazioni geometriche. "
-                        "Path: data/[topic]/[NN]_[modulo]/viz/[nome].html"
+                        "Sei Sigma Viz Designer, creatore di visualizzazioni interattive. "
+                        "Crea file .html STANDALONE funzionanti nel browser (nessuna dipendenza esterna non CDN). "
+                        "Usa CDN appropriati per il dominio: D3.js, Chart.js, Plotly, MathJax, ecc. "
+                        "Visualizza: grafici, diagrammi, rappresentazioni del dominio studiato. "
+                        "Path: data/<topic>/<NN>_<modulo>/viz/<nome>.html"
                     ),
                 }
                 
@@ -1062,9 +1009,10 @@ Format:
                     })
 
 
-            # Esecuzione sequenziale dinamica e strutturata con loop di espansione gestito dal Coordinatore
+            # Esecuzione sequenziale dinamica con loop di espansione gestito dal Coordinatore
+            # max_expansion_cycles elevato: il coordinatore decide quando il dominio è completo
             expansion_cycle = 0
-            max_expansion_cycles = 3
+            max_expansion_cycles = 10  # Supporto per domini molto estesi (es. corso universitario completo)
             
             while True:
                 # Carica lo stato più aggiornato della sessione
