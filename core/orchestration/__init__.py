@@ -8,3 +8,14 @@ from core.orchestration.agent_config import (  # noqa: F401
     get_agent_color,
     load_agent_config,
 )
+from core.orchestration.orchestrator import (  # noqa: F401
+    orchestrate,
+    handle_chat_orchestrate,
+)
+from core.orchestration.research import (  # noqa: F401
+    decompose_goal_to_micro_objectives,
+    generate_next_steps,
+    handle_research_decompose,
+    handle_research_next_steps,
+    handle_research_start,
+)
