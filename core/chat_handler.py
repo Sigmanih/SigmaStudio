@@ -337,6 +337,12 @@ IMPORTANTE â€” STRUTTURA MINIMA DI OGNI TASK:
                         thinking = think_text
                 except Exception:
                     pass
+            
+            # If thinking is still not set, try separating using response parser tags & transition checks
+            if not thinking:
+                clean_response, extracted_tags_thinking = _clean_all_tags(clean_response)
+                thinking = extracted_tags_thinking
+
             log.debug("ASK mode: response_len=%d thinking=%s", len(clean_response), 'yes' if thinking else 'none')
             manifesto_name = os.path.basename(manifesto_path).replace('.md', '') if manifesto_path else ''
             self.send_json_response({"response": clean_response, "thinking": thinking, "actions_log": [], "error": None, "manifesto_used": manifesto_name})

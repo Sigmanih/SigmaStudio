@@ -1080,7 +1080,7 @@
 .chat-thinking { margin-bottom: 8px; }
 .chat-thinking-toggle { display: inline-flex; align-items: center; gap: 4px; background: none; border: 1px solid var(--border); border-radius: 6px; padding: 4px 10px; font-size: 0.65rem; color: var(--text-dim); cursor: pointer; transition: var(--trans-fast); font-family: inherit; }
 .chat-thinking-toggle:hover { border-color: var(--primary-border); color: var(--primary); background: rgba(0,210,255,0.04); }
-.chat-thinking-content { margin-top: 6px; padding: 10px 12px; background: rgba(0,0,0,0.2); border: 1px solid var(--border); border-left: 3px solid var(--accent); border-radius: 8px; font-size: 0.72rem; color: var(--text-dim); line-height: 1.6; max-height: 600px; overflow-y: auto; white-space: pre-wrap; }
+.chat-thinking-content { margin-top: 6px; padding: 10px 12px; background: rgba(188, 140, 255, 0.04); border: 1px solid rgba(188, 140, 255, 0.18); border-left: 3px solid var(--accent); border-radius: 8px; font-size: 0.72rem; color: var(--text-dim); line-height: 1.6; max-height: 600px; overflow-y: auto; white-space: pre-wrap; }
 
 /* Thinking in streaming — auto-expanded with live pulse animation */
 .chat-thinking-streaming .chat-thinking-toggle {

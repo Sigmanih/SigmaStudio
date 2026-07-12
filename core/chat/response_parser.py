@@ -111,6 +111,61 @@ def _extract_english_thinking(content: str) -> tuple[str, str | None]:
     return content, None
 
 
+_ENGLISH_STOPWORDS = {"the", "of", "to", "and", "a", "in", "is", "it", "you", "that", "for", "on", "are", "with", "this", "have", "from", "be"}
+_ITALIAN_STOPWORDS = {"il", "la", "di", "dei", "della", "del", "in", "con", "su", "per", "tra", "fra", "un", "una", "che", "si", "sono", "è", "ad", "al", "alla", "allo", "ai", "gli", "le", "lo"}
+
+def _detect_language(text: str) -> str:
+    """Return 'en' or 'it' or 'unknown' based on stopword frequency."""
+    words = re.findall(r"\b[a-zàèéìòù\']+\b", text.lower())
+    if not words:
+        return "unknown"
+    en_count = sum(1 for w in words if w in _ENGLISH_STOPWORDS)
+    it_count = sum(1 for w in words if w in _ITALIAN_STOPWORDS)
+    if en_count > it_count:
+        return "en"
+    elif it_count > en_count:
+        return "it"
+    return "unknown"
+
+
+def _split_by_language_transition(content: str) -> tuple[str, str | None]:
+    """Detect and split English thinking block from Italian response."""
+    if not content or not isinstance(content, str):
+        return content, None
+
+    lines = content.split("\n")
+    split_idx = -1
+    consecutive_italian = 0
+
+    for idx, line in enumerate(lines):
+        stripped = line.strip()
+        if not stripped:
+            continue
+
+        clean_line = re.sub(r"^[\s#\-\*\d\.\(\)]+", "", stripped).strip()
+        if len(clean_line) < 15:
+            continue
+
+        lang = _detect_language(clean_line)
+        if lang == "it":
+            consecutive_italian += 1
+            if split_idx == -1:
+                split_idx = idx
+            if consecutive_italian >= 2:
+                break
+        elif lang == "en":
+            split_idx = -1
+            consecutive_italian = 0
+
+    if split_idx > 0:
+        preceding = "\n".join(lines[:split_idx]).strip()
+        following = "\n".join(lines[split_idx:]).strip()
+        if len(preceding) > 30 and len(following) > 30:
+            return following, preceding
+
+    return content, None
+
+
 def _extract_bullet_thinking(content: str) -> tuple[str, str | None]:
     """Detect and extract bullet-point style inline thinking."""
     if not content or not isinstance(content, str):
@@ -290,6 +345,12 @@ def _clean_all_tags(content: str) -> tuple[str, str | None]:
         remaining, english_thinking = _extract_english_thinking(remaining)
         if english_thinking:
             extracted = english_thinking
+
+    # 5.5 — Language transition splitting (English to Italian)
+    if not extracted:
+        remaining, transition_thinking = _split_by_language_transition(remaining)
+        if transition_thinking:
+            extracted = transition_thinking
 
     # 6 — Generic XML tag cleanup
     remaining = re.sub(r"</?[a-zA-Z_][a-zA-Z0-9_]*>", "", remaining).strip()
