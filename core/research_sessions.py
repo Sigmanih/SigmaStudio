@@ -19,7 +19,7 @@ def _session_path(session_id):
     return os.path.join(RESEARCH_SESSIONS_DIR, f"{session_id}.json")
 
 
-def create_session(name, goal, pipeline_template, agents_config, model_override="") -> dict:
+def create_session(name, goal, pipeline_template, agents_config, model_override="", interactive_mode=True) -> dict:
     """Create a new research session."""
     _ensure_dir()
     session_id = f"research_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}_{uuid.uuid4().hex[:6]}"
@@ -31,6 +31,7 @@ def create_session(name, goal, pipeline_template, agents_config, model_override=
         "status": "created",
         "pipeline_template": pipeline_template,
         "model_override": model_override,
+        "interactive_mode": interactive_mode,
         "agents": agents_config,
         "micro_objectives": [],
         "actions_log": [],
@@ -189,7 +190,8 @@ def handle_research_create(self):
         pipeline_template = req.get("pipeline_template", "full_analysis")
         agents = req.get("agents", [])
         model_override = req.get("model_override", "")
-        session = create_session(name, goal, pipeline_template, agents, model_override)
+        interactive_mode = req.get("interactive_mode", True)
+        session = create_session(name, goal, pipeline_template, agents, model_override, interactive_mode)
         return self.send_json_response({"success": True, "session": session})
     except Exception as e:
         return self.send_json_response({"success": False, "error": str(e)}, 500)

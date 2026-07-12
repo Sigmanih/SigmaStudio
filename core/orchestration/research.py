@@ -832,7 +832,17 @@ MAI creare file al di fuori di queste cartelle."""
                         actions_log = execute_ai_actions(self, actions, agent_name)
 
                     success_count = sum(1 for a in actions_log if a.get("success"))
-                    log_str = "\n".join(f"  {a.get('type')}: {a.get('message') or a.get('error')}" for a in actions_log)
+                    detailed_log_parts = []
+                    for a in actions_log:
+                        part = f"  - [{a.get('type')}] success={a.get('success')}: {a.get('message') or a.get('error') or ''}"
+                        if a.get('type') == 'run_test':
+                            part += f"\n    Exit Code: {a.get('exit_code', 0)}"
+                            if a.get('stdout'):
+                                part += f"\n    Stdout:\n    ---\n    {a.get('stdout')}\n    ---"
+                            if a.get('stderr'):
+                                part += f"\n    Stderr:\n    ---\n    {a.get('stderr')}\n    ---"
+                        detailed_log_parts.append(part)
+                    log_str = "\n".join(detailed_log_parts)
 
                     # Save memory
                     save_session_memory(agent_id, {
@@ -862,12 +872,13 @@ MAI creare file al di fuori di queste cartelle."""
                                 load_agent_config(ai_cfg, model_override, "proof-reviewer")
                             
                             actions_status_info = ""
-                            if actions and success_count < len(actions_log):
+                            has_failures = actions and (success_count < len(actions_log) or any(not a.get("success") for a in actions_log))
+                            if has_failures:
                                 actions_status_info = (
-                                    "\n⚠️ ATTENZIONE: Alcune azioni richieste dal collaboratore sono fallite a livello di sistema backend!\n"
-                                    f"Dettagli esecuzione e log errori:\n{log_str}\n"
-                                    "Poiché i file non sono stati scritti correttamente sul disco, devi tassativamente RIFIUTARE il task (\"approved\": false) "
-                                    "e richiedere di correggere i percorsi o il codice per completare correttamente l'obiettivo.\n"
+                                    "\n⚠️ ATTENZIONE: Alcune azioni o test eseguiti dal collaboratore sono falliti!\n"
+                                    f"Dettagli esecuzione, log errori e output dei test:\n{log_str}\n"
+                                    "Poiché il codice o i test non sono superati con successo sul disco, devi tassativamente RIFIUTARE il task (\"approved\": false) "
+                                    "e richiedere nel feedback di correggere i file/codice per superare tutti i test o allinearsi alla teoria.\n"
                                 )
 
                             reviewer_prompt = f"""Sei il REVISORE e VALIDATORE critico del team di ricerca.
@@ -1022,21 +1033,36 @@ Format:
 
                 if not pending_objectives:
                     # Se tutti i compiti sono finiti, l'Architetto valuta se espandere il lavoro
-                    if expansion_cycle >= max_expansion_cycles:
-                        break
-                    
-                    _sse({
-                        "type": "agent_thinking", "agent_id": "sigma_architect", "agent_name": "Coordinatore",
-                        "thinking": "Valutazione dei risultati attuali per rilevare la necessità di ulteriori approfondimenti, test o correzioni...",
-                        "message": "🧠 Coordinatore: valutazione dei risultati..."
-                    })
-                    
-                    new_tasks_added = check_and_expand_research_roadmap(session_id, goal, agents_config, ai_cfg, model_override, _sse)
-                    if not new_tasks_added:
-                        break
+                    is_first_check = (expansion_cycle == 0)
+                    is_automatic = not updated_session.get("interactive_mode", True)
+
+                    if is_first_check or is_automatic:
+                        if expansion_cycle >= max_expansion_cycles:
+                            break
+
+                        _sse({
+                            "type": "agent_thinking", "agent_id": "sigma_architect", "agent_name": "Coordinatore",
+                            "thinking": "Valutazione dei risultati attuali per rilevare la necessità di ulteriori approfondimenti, test o correzioni...",
+                            "message": "🧠 Coordinatore: valutazione dei risultati..."
+                        })
+
+                        new_tasks_added = check_and_expand_research_roadmap(session_id, goal, agents_config, ai_cfg, model_override, _sse)
+                        if not new_tasks_added:
+                            break
+                        else:
+                            expansion_cycle += 1
+                            continue
                     else:
-                        expansion_cycle += 1
-                        continue
+                        # In modalità interattiva, ci fermiamo qui per far esaminare i risultati all'utente
+                        updated_session["status"] = "pending_user"
+                        from core.research_sessions import save_session
+                        save_session(updated_session)
+                        _sse({
+                            "type": "agent_thinking", "agent_id": "sigma_architect", "agent_name": "Coordinatore",
+                            "thinking": "Pausa di coordinamento: in attesa di decisione dell'utente.",
+                            "message": "⏸️ Tutti i task completati. Esamina i risultati e premi 'Avvia' per procedere al prossimo ciclo."
+                        })
+                        return
                 
                 # Prende ed esegue il primo micro-obiettivo non completato
                 obj = pending_objectives[0]

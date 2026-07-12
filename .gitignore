@@ -78,3 +78,4 @@ tasks.json
 
 # Notebooks / experiments
 *.ipynb
+sigma_studio/.build_stamp

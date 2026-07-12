@@ -283,6 +283,7 @@ export default function ResearchLab({ onClose, onTasksUpdated, addToast }) {
   const [nextSteps, setNextSteps] = useState([]);
   const [commandInput, setCommandInput] = useState('');
   const [editingGoal, setEditingGoal] = useState(null);
+  const [interactiveMode, setInteractiveMode] = useState(true);
 
   // --- Live execution state ---
   const [executing, setExecuting] = useState(false);
@@ -370,7 +371,7 @@ export default function ResearchLab({ onClose, onTasksUpdated, addToast }) {
       // 1. Create session
       const r1 = await fetch('/api/research/create', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: newGoal.slice(0, 80), goal: newGoal, pipeline_template: newTemplate, agents }),
+        body: JSON.stringify({ name: newGoal.slice(0, 80), goal: newGoal, pipeline_template: newTemplate, agents, interactive_mode: interactiveMode }),
       });
       const d1 = await r1.json();
       if (!d1.success) { setLaunching(false); return; }
@@ -683,6 +684,29 @@ export default function ResearchLab({ onClose, onTasksUpdated, addToast }) {
                   })}
                 </div>
 
+                {/* Modalità di Iterazione */}
+                <div className="rl-interactive-mode-toggle" style={{ margin: '15px 0' }}>
+                  <label style={{ display: 'block', marginBottom: '8px', fontSize: '0.8rem', color: '#8b8fa3' }}>Modalità di Iterazione</label>
+                  <div style={{ display: 'flex', gap: '10px' }}>
+                    <button
+                      type="button"
+                      className="rl-btn-sm"
+                      onClick={(e) => { e.preventDefault(); setInteractiveMode(true); }}
+                      style={{ flex: 1, padding: '8px', border: '1px solid rgba(255,255,255,0.06)', borderRadius: '4px', cursor: 'pointer', background: interactiveMode ? '#7c5bf0' : 'rgba(255,255,255,0.03)', color: '#fff', fontSize: '0.75rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px' }}
+                    >
+                      👤 Iterazione con l'utente
+                    </button>
+                    <button
+                      type="button"
+                      className="rl-btn-sm"
+                      onClick={(e) => { e.preventDefault(); setInteractiveMode(false); }}
+                      style={{ flex: 1, padding: '8px', border: '1px solid rgba(255,255,255,0.06)', borderRadius: '4px', cursor: 'pointer', background: !interactiveMode ? '#7c5bf0' : 'rgba(255,255,255,0.03)', color: '#fff', fontSize: '0.75rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px' }}
+                    >
+                      🤖 Iterazione automatica
+                    </button>
+                  </div>
+                </div>
+
                 <button className="rl-btn-primary" onClick={handleCreateAndStart} disabled={!newGoal.trim() || launching}>
                   {launching ? <><RefreshCw size={14} className="spin" /> Creazione...</> : <><Plus size={14} /> Crea Ricerca</>}
                 </button>
@@ -709,7 +733,10 @@ export default function ResearchLab({ onClose, onTasksUpdated, addToast }) {
               <div className="rl-left-header">
                 <span className="rl-left-title">{sessionData.name?.slice(0, 40)}</span>
                 <div className="rl-left-header-spacer" />
-                <span className={`rl-badge rl-badge-${executing ? 'active' : sessionData.status}`}>{executing ? 'LIVE' : sessionData.status?.toUpperCase()}</span>
+                 <span className={`rl-badge rl-badge-${executing ? 'active' : sessionData.status}`}>{executing ? 'LIVE' : sessionData.status?.toUpperCase()}</span>
+                 <span className="rl-badge" style={{ backgroundColor: 'rgba(255,255,255,0.06)', color: '#8b8fa3', marginLeft: '6px' }}>
+                   {sessionData.interactive_mode ? '👤 Interattivo' : '🤖 Automatico'}
+                 </span>
                 <span className="rl-progress">{progress.done}/{progress.total}</span>
                 <div className="rl-left-header-actions">
                   {!executing ? (
