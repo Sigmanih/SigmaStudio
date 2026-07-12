@@ -411,3 +411,48 @@
 .research-typing-dots span:nth-child(3) { animation-delay: 0.4s; }
 @keyframes typingPulse { 0%, 100% { opacity: 0.7; } 50% { opacity: 1; } }
 @keyframes dotPulse { 0%, 100% { opacity: 0.3; transform: scale(0.8); } 50% { opacity: 1; transform: scale(1.2); } }
+
+/* ==============================================================================
+   AGENT GRAPH VIEW CLASSES
+   ============================================================================== */
+
+.animated-link {
+  animation: dash 1.5s linear infinite;
+}
+@keyframes dash {
+  to {
+    stroke-dashoffset: -20;
+  }
+}
+
+.rl-node-avatar {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  border: 2px solid var(--border-color);
+  background: #111322;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.22s cubic-bezier(0.4, 0, 0.2, 1);
+  position: relative;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.35);
+}
+.rl-node-avatar:hover {
+  transform: scale(1.12);
+  border-color: #fff !important;
+  box-shadow: 0 0 18px var(--glow-color);
+}
+.rl-node-label {
+  font-size: 0.58rem;
+  font-weight: 600;
+  color: #8b8fa3;
+  text-align: center;
+  margin-top: 5px;
+  max-width: 72px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  letter-spacing: 0.2px;
+}

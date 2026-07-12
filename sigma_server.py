@@ -181,13 +181,14 @@ SigmaAPIHandler.handle_sandbox_destroy = handle_sandbox_destroy
 # 11. Agent registry
 from core.agent_registry import (
     handle_agents_list, handle_agents_get, handle_agents_register,
-    handle_agents_update, handle_agents_for_topic,
+    handle_agents_update, handle_agents_for_topic, handle_agents_colors,
 )
 SigmaAPIHandler.handle_agents_list = handle_agents_list
 SigmaAPIHandler.handle_agents_get = handle_agents_get
 SigmaAPIHandler.handle_agents_register = handle_agents_register
 SigmaAPIHandler.handle_agents_update = handle_agents_update
 SigmaAPIHandler.handle_agents_for_topic = handle_agents_for_topic
+SigmaAPIHandler.handle_agents_colors = handle_agents_colors
 
 # 12. Agent orchestrator (multi-agent collaboration)
 from core.agent_orchestrator import handle_chat_orchestrate

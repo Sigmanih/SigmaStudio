@@ -820,48 +820,217 @@ export default function ResearchLab({ onClose, onTasksUpdated, addToast }) {
                   <button className="rl-btn-icon" onClick={() => { setActiveSessionId(null); setSessionData(null); closeAgentConfig(); }} title="Chiudi"><X size={14} /></button>
                 </div>
               </div>
-              {/* Agents Grid — Coordinator on its own row */}
-              <div className="rl-agents-grid">
+              {/* Grafo Relazionale degli Agenti */}
+              <div className="rl-agents-grid" style={{ background: 'rgba(21, 23, 38, 0.4)', borderRadius: '12px', border: '1px solid rgba(255,255,255,0.03)', padding: '15px', position: 'relative', overflow: 'visible', minHeight: '300px' }}>
                 {(() => {
                   const allAgents = sessionData.agents?.some(a => (a.agent_id || a.id) === 'sigma_architect')
                     ? sessionData.agents
                     : [{ agent_id: 'sigma_architect', provider: 'deepseek', model: 'deepseek-v4-flash' }, ...(sessionData.agents || [])];
+                  
                   const coordinator = allAgents.find(a => (a.agent_id || a.id) === 'sigma_architect');
                   const team = allAgents.filter(a => (a.agent_id || a.id) !== 'sigma_architect');
                   const availableAgents = Object.keys(AGENTS_META).filter(id => !allAgents.some(a => (a.agent_id || a.id) === id));
+
+                  const totalNodes = team.length + 1; // Team members + 1 for Add button
+                  const cx = 250;
+                  const cy = 135;
+                  const radius = 105;
+
                   return (
-                    <>
-                      {/* Coordinator row */}
-                      {coordinator && (
-                        <div className="rl-coordinator-row">
-                          <div className="rl-coordinator-label">COORDINATORE</div>
-                          <div className="rl-coordinator-card" onClick={() => selectAgentForConfig('sigma_architect')}>
-                            {renderAgentCard(coordinator)}
-                          </div>
-                        </div>
-                      )}
-                      {/* Team row */}
-                      <div className="rl-team-label">TEAM</div>
-                      <div className="rl-team-grid">
-                        {team.map(agent => {
+                    <div style={{ position: 'relative', width: '100%', height: '270px' }}>
+                      <svg width="100%" height="100%" viewBox="0 0 500 270" style={{ overflow: 'visible' }}>
+                        {/* Connection Lines with Animated Flow */}
+                        {team.map((agent, i) => {
                           const aid = agent.agent_id || agent.id;
+                          const meta = AGENTS_META[aid] || getAgentColor(aid);
+                          const angle = (i * 2 * Math.PI) / totalNodes - Math.PI / 2;
+                          const tx = cx + radius * Math.cos(angle);
+                          const ty = cy + radius * Math.sin(angle);
+                          const isWorking = agentStates[aid]?.status === 'working';
+
+                          // Exchange label based on agent type
+                          let exchangeLabel = 'Dati';
+                          if (aid === 'math1') exchangeLabel = 'Teoria';
+                          else if (aid === 'test-engineer') exchangeLabel = 'Test Unitari';
+                          else if (aid === 'viz-designer') exchangeLabel = 'Grafici D3';
+                          else if (aid === 'proof-reviewer') exchangeLabel = 'Revisioni';
+                          else if (aid === 'code_architect') exchangeLabel = 'Codice';
+
                           return (
-                            <div key={aid} className="rl-team-card-wrapper">
-                              <div onClick={() => selectAgentForConfig(aid)}>
-                                {renderAgentCard(agent)}
-                              </div>
-                              <button className="rl-remove-agent-btn" onClick={e => { e.stopPropagation(); handleRemoveAgent(aid); }} title="Rimuovi agente"><X size={10} /></button>
-                            </div>
+                            <g key={`link-${aid}`}>
+                              {/* Background link path */}
+                              <line
+                                x1={cx} y1={cy} x2={tx} y2={ty}
+                                stroke="rgba(255,255,255,0.06)"
+                                strokeWidth="3"
+                              />
+                              {/* Animated active data link */}
+                              <line
+                                x1={cx} y1={cy} x2={tx} y2={ty}
+                                stroke={meta.bg}
+                                strokeWidth="2"
+                                strokeDasharray={isWorking ? "4,4" : "8,8"}
+                                className="animated-link"
+                                style={{
+                                  animation: isWorking ? 'dash 0.8s linear infinite' : 'dash 2.5s linear infinite',
+                                  opacity: isWorking ? 0.9 : 0.4
+                                }}
+                              />
+                              {/* Exchange label pill */}
+                              <g transform={`translate(${(cx + tx)/2}, ${(cy + ty)/2})`}>
+                                <rect
+                                  x="-36" y="-7" width="72" height="14" rx="7"
+                                  fill="#111322" stroke="rgba(255,255,255,0.08)" strokeWidth="1"
+                                />
+                                <text
+                                  textAnchor="middle" dy="3.5"
+                                  fill="#8b8fa3" fontSize="8" fontWeight="600"
+                                >
+                                  {exchangeLabel}
+                                </text>
+                              </g>
+                            </g>
                           );
                         })}
-                        {availableAgents.length > 0 && (
-                          <div className="rl-add-agent-card" onClick={() => handleAddAgent(availableAgents[0])} title={`Aggiungi ${AGENTS_META[availableAgents[0]]?.name || availableAgents[0]}`}>
-                            <Plus size={20} />
-                            <span>Aggiungi</span>
-                          </div>
-                        )}
-                      </div>
-                    </>
+
+                        {/* Add agent node connection */}
+                        {availableAgents.length > 0 && (() => {
+                          const i = team.length;
+                          const angle = (i * 2 * Math.PI) / totalNodes - Math.PI / 2;
+                          const tx = cx + radius * Math.cos(angle);
+                          const ty = cy + radius * Math.sin(angle);
+                          return (
+                            <line
+                              x1={cx} y1={cy} x2={tx} y2={ty}
+                              stroke="rgba(255,255,255,0.04)"
+                              strokeWidth="1.5"
+                              strokeDasharray="3,3"
+                            />
+                          );
+                        })()}
+
+                        {/* Coordinator Central Node */}
+                        {coordinator && (() => {
+                          const meta = AGENTS_META['sigma_architect'] || {};
+                          const isWorking = agentStates['sigma_architect']?.status === 'working';
+                          return (
+                            <foreignObject x={cx - 40} y={cy - 45} width="80" height="90" style={{ overflow: 'visible' }}>
+                              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+                                <div
+                                  className={`rl-node-avatar ${isWorking ? 'working' : ''}`}
+                                  style={{
+                                    '--border-color': meta.bg,
+                                    '--glow-color': meta.bg,
+                                    borderColor: meta.bg,
+                                    boxShadow: isWorking ? `0 0 15px ${meta.bg}` : 'none'
+                                  }}
+                                  onClick={() => selectAgentForConfig('sigma_architect')}
+                                >
+                                  <AgentAvatar meta={meta} size={40} />
+                                  {isWorking && <span className="rl-agent-pulse" style={{ background: meta.bg }} />}
+                                </div>
+                                <span className="rl-node-label" style={{ color: meta.bg, fontWeight: '700' }}>Architect</span>
+                              </div>
+                            </foreignObject>
+                          );
+                        })()}
+
+                        {/* Team Nodes */}
+                        {team.map((agent, i) => {
+                          const aid = agent.agent_id || agent.id;
+                          const meta = AGENTS_META[aid] || getAgentColor(aid);
+                          const state = agentStates[aid] || {};
+                          const isWorking = state.status === 'working';
+                          const angle = (i * 2 * Math.PI) / totalNodes - Math.PI / 2;
+                          const tx = cx + radius * Math.cos(angle);
+                          const ty = cy + radius * Math.sin(angle);
+
+                          return (
+                            <foreignObject key={`node-${aid}`} x={tx - 35} y={ty - 35} width="70" height="85" style={{ overflow: 'visible' }}>
+                              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', position: 'relative' }}>
+                                <div
+                                  className={`rl-node-avatar ${isWorking ? 'working' : ''}`}
+                                  style={{
+                                    '--border-color': meta.bg,
+                                    '--glow-color': meta.bg,
+                                    borderColor: state.status === 'done' ? '#3fb950' : state.status === 'error' ? '#ff5555' : meta.bg,
+                                    boxShadow: isWorking ? `0 0 12px ${meta.bg}` : 'none'
+                                  }}
+                                  onClick={() => selectAgentForConfig(aid)}
+                                >
+                                  <AgentAvatar meta={meta} size={34} />
+                                  {isWorking && <span className="rl-agent-pulse" style={{ background: meta.bg, width: '8px', height: '8px', right: '-1px', bottom: '-1px' }} />}
+                                  {/* Small state checkmark/warning */}
+                                  {!isWorking && state.status === 'done' && (
+                                    <span style={{ position: 'absolute', top: '-4px', right: '-4px', background: '#0e1016', borderRadius: '50%', color: '#3fb950', display: 'flex', padding: '1px' }}><CheckCircle size={10} /></span>
+                                  )}
+                                  {!isWorking && state.status === 'error' && (
+                                    <span style={{ position: 'absolute', top: '-4px', right: '-4px', background: '#0e1016', borderRadius: '50%', color: '#ff5555', display: 'flex', padding: '1px' }}><AlertTriangle size={10} /></span>
+                                  )}
+                                </div>
+                                <span className="rl-node-label">{meta.short || aid}</span>
+                                {/* Remove button floating next to the label */}
+                                <button
+                                  style={{
+                                    position: 'absolute',
+                                    top: '-6px',
+                                    left: '42px',
+                                    background: 'rgba(255,85,85,0.15)',
+                                    color: '#ff5555',
+                                    border: 'none',
+                                    borderRadius: '50%',
+                                    width: '14px',
+                                    height: '14px',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    cursor: 'pointer',
+                                    fontSize: '8px',
+                                    padding: 0
+                                  }}
+                                  onClick={e => { e.stopPropagation(); handleRemoveAgent(aid); }}
+                                  title="Rimuovi agente"
+                                >
+                                  ✕
+                                </button>
+                              </div>
+                            </foreignObject>
+                          );
+                        })}
+
+                        {/* Add Agent Node */}
+                        {availableAgents.length > 0 && (() => {
+                          const i = team.length;
+                          const angle = (i * 2 * Math.PI) / totalNodes - Math.PI / 2;
+                          const tx = cx + radius * Math.cos(angle);
+                          const ty = cy + radius * Math.sin(angle);
+
+                          return (
+                            <g>
+                              <foreignObject x={tx - 35} y={ty - 35} width="70" height="85" style={{ overflow: 'visible' }}>
+                                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', position: 'relative' }}>
+                                  <div
+                                    className="rl-node-avatar"
+                                    style={{
+                                      '--border-color': 'rgba(255,255,255,0.06)',
+                                      '--glow-color': '#00d2ff',
+                                      borderColor: 'rgba(255,255,255,0.06)',
+                                      borderStyle: 'dashed',
+                                      background: 'rgba(255,255,255,0.02)'
+                                    }}
+                                    onClick={() => handleAddAgent(availableAgents[0])}
+                                    title={`Aggiungi ${AGENTS_META[availableAgents[0]]?.name || availableAgents[0]}`}
+                                  >
+                                    <Plus size={16} style={{ color: '#8b8fa3' }} />
+                                  </div>
+                                  <span className="rl-node-label" style={{ color: '#5a5e72' }}>Aggiungi</span>
+                                </div>
+                              </foreignObject>
+                            </g>
+                          );
+                        })()}
+                      </svg>
+                    </div>
                   );
                 })()}
               </div>
