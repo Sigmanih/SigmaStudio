@@ -135,6 +135,8 @@ Sottodirectory: teoria/, test/, docs/, viz/
 5. Bilancia: teoria (math1/code_architect), test (test-engineer), revisione (proof-reviewer)
 6. Produci 3-7 micro-obiettivi. Se il topic è UNKNOWN, fanne 3-4 generici
 7. Criterio di completamento deve essere verificabile (file creato, test passato, etc.)
+8. Anche se l'input dell'utente è breve o sintetico, il team deve gestire tutto al meglio, formulando compiti completi ed impeccabili per generare tutta la documentazione di ricerca richiesta.
+9. I file creati devono tassativamente seguire la struttura gerarchica della cartella {base_path} (nelle cartelle teoria/, test/, docs/, viz/, whitepapers/).
 
 ## FORMATO RISPOSTA — SOLO JSON
 {{
@@ -449,11 +451,30 @@ def handle_research_start(self) -> None:
                 })
 
                 role_prompts = {
-                    "sigma_architect": "Sei l'Architetto coordinatore. Il tuo compito è leggere e analizzare TUTTI i file prodotti, verificare la completezza, e creare report riepilogativi.",
-                    "math1": "Sei un MATEMATICO esperto. Crea file di teoria con definizioni rigorose, teoremi, dimostrazioni formali, esempi svolti. Usa LaTeX per ogni formula.",
-                    "code_architect": "Sei uno SVILUPPATORE esperto. Scrivi codice Python pulito, test automatici, algoritmi efficienti. Documenta le scelte di design.",
-                    "test-engineer": "Sei un QA ENGINEER. Scrivi test automatici usando sympy/pytest. Verifica correttezza di formule e algoritmi. Ogni test deve avere assert espliciti.",
-                    "proof-reviewer": "Sei un REVISORE critico. Verifica la correttezza logica e matematica di TUTTI i file. Cerca errori, controesempi, imprecisioni. Produci un report di validazione dettagliato.",
+                    "sigma_architect": (
+                        "Sei l'Architetto coordinatore. Il tuo compito è leggere e analizzare TUTTI i file prodotti, "
+                        "garantendo che la documentazione sia dettagliata ed impeccabile. I file devono essere creati "
+                        "sempre seguendo la struttura di /data (teoria/, test/, viz/, docs/, whitepapers/)."
+                    ),
+                    "math1": (
+                        "Sei un MATEMATICO esperto. Crea file di teoria con definizioni rigorose, teoremi, dimostrazioni formali, "
+                        "esempi svolti e spiegazioni dettagliate. Usa LaTeX per ogni formula. I file devono essere creati "
+                        "sempre sotto la cartella teoria/ seguendo la struttura di /data."
+                    ),
+                    "code_architect": (
+                        "Sei uno SVILUPPATORE esperto. Scrivi codice Python pulito, test automatici, algoritmi efficienti. "
+                        "Documenta le scelte di design e commenta il codice in dettaglio. I file devono essere creati "
+                        "sempre sotto la cartella test/ o scratch/ seguendo la struttura di /data."
+                    ),
+                    "test-engineer": (
+                        "Sei un QA ENGINEER. Scrivi test automatici usando sympy/pytest. Verifica la correttezza logica e computazionale "
+                        "di formule e algoritmi con assert espliciti. I file devono essere creati sempre sotto la cartella test/ seguendo la struttura di /data."
+                    ),
+                    "proof-reviewer": (
+                        "Sei un REVISORE critico. Verifica la correttezza logica e matematica di TUTTI i file. Cerca errori, "
+                        "controesempi ed imprecisioni, producendo report di validazione dettagliati e precisi. I file devono essere "
+                        "creati sempre sotto la cartella docs/ seguendo la struttura di /data."
+                    ),
                 }
                 
                 attempts = 0
