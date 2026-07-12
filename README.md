@@ -61,6 +61,44 @@ Imagine a **team of specialized AI agents** (a mathematician, an architect, a te
   <em>Sigma Lab Editor per la redazione e modifica dei file (sinistra) e le Visualizzazioni interattive ed editoriali D3.js generate dagli agenti (destra).</em>
 </p>
 
+### 💡 From a Single Prompt to a Complete Knowledge Base
+
+Tutti i file di teoria, i formulari, i grafici interattivi D3.js e gli script di test visibili negli screenshot sono stati generati a partire da **un unico, singolo prompt iniziale** inserito nel **Research Lab**:
+
+> *"Scriviamo tutti gli argomenti e i sottoargomenti trattati in un corso di Analisi 1 matematica ingegneria con dimostrazioni, formulari, esercizi in files separati e tutto il necessario a comprendere perfettamente la materia"*
+
+Da questo singolo input, il coordinatore **Sigma Architect** e la pipeline di agenti hanno:
+1. **Analizzato il dominio** e suddiviso la roadmap in 7 moduli sequenziali (dalle Successioni alle Equazioni Differenziali).
+2. **Generato la teoria** in file Markdown arricchiti con formule LaTeX e definizioni rigorose.
+3. **Scritto ed eseguito i test unitari Python** (`test-engineer`) con validazione matematica e self-healing automatico in caso di errori.
+4. **Disegnato visualizzazioni interattive** (`viz-designer`) pronte da navigare nel Sigma Lab.
+5. **Redatto whitepaper** e report di validazione formali per certificare il lavoro.
+
+---
+
+## 💬 The Power of AI Chat & Orchestration
+
+La chat di Sigma Studio non è un semplice chatbot, ma un pannello di controllo cognitivo flessibile che vanta funzionalità avanzate:
+
+- **4 Modalità Operative**:
+  - **Ask**: Spiegazioni rapide e domande teoriche senza modificare il workspace.
+  - **Plan**: Scomposizione di obiettivi complessi in micro-task salvati direttamente nella Roadmap.
+  - **Execute**: Modifica e scrittura di file sul disco in tempo reale con controllo del Sandbox.
+  - **Complete Task**: Risoluzione assistita o autonoma di compiti specifici della Roadmap.
+- **Associazione del Manifesto**: Cambio al volo del comportamento dell'agente associando i Manifesti di configurazione, con ripristino automatico quando si naviga tra sessioni diverse.
+- **Tracciamento in Tempo Reale**: Ogni azione (creazione di file, esecuzione di comandi, test di validazione) lascia una notifica strutturata per la massima trasparenza operativa.
+
+---
+
+## 🤝 Open to Contributions!
+
+Sigma Studio è un progetto **open-source** in continua evoluzione e accoglie con entusiasmo contributi da parte della community! Puoi contribuire in molti modi:
+
+- 📜 **Nuovi Manifesti**: Crea e condividi nuovi ruoli di agenti (`manifesti/*.md`) specializzati in campi scientifici, ingegneristici o creativi.
+- 🎨 **Miglioramenti UI/UX**: Estendi il design system in vetro (glassmorphism) in React 19.
+- 🔧 **Estensioni Backend**: Aggiungi nuovi provider AI, ottimizza la pipeline di test o arricchisci le API REST.
+- 🔬 **Pipeline di Ricerca**: Integra nuovi strumenti di validazione o template di orchestrazione multi-agente.
+
 ---
 
 ## ⚙️ Quick Start
