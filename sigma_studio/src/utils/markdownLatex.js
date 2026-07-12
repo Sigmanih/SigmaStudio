@@ -33,7 +33,7 @@ function renderLatex(expr, displayMode = false) {
  * replacing them with KaTeX-rendered HTML.
  * Handles edge cases: escaped dollars, unmatched delimiters, nested usage.
  */
-function renderLatexInText(text) {
+function renderLatexInText(text, katexBlocks = null) {
   if (!text || typeof text !== 'string') return text;
 
   // Helper: find the position of the next unescaped $, starting from 'start'
@@ -72,7 +72,14 @@ function renderLatexInText(text) {
         continue;
       }
       const mathExpr = text.slice(dollarPos + 2, endPos);
-      result += renderLatex(mathExpr, true);
+      const html = renderLatex(mathExpr, true);
+      if (katexBlocks) {
+        const idx = katexBlocks.length;
+        katexBlocks.push(html);
+        result += `%%KATEXBLOCK_${idx}%%`;
+      } else {
+        result += html;
+      }
       i = endPos + 2; // skip past closing $$
     } else {
       // Inline math: $...$
@@ -84,13 +91,21 @@ function renderLatexInText(text) {
         continue;
       }
       const mathExpr = text.slice(dollarPos + 1, endPos);
-      result += renderLatex(mathExpr, false);
+      const html = renderLatex(mathExpr, false);
+      if (katexBlocks) {
+        const idx = katexBlocks.length;
+        katexBlocks.push(html);
+        result += `%%KATEXBLOCK_${idx}%%`;
+      } else {
+        result += html;
+      }
       i = endPos + 1; // skip past closing $
     }
   }
 
   return result;
 }
+
 
 /**
  * Convert paths like data/file.md to clickable links.
@@ -283,8 +298,8 @@ export function renderMarkdownLatex(text) {
       return `%%INLINECODE_${idx}%%`;
     });
 
-    // Step 2: Render LaTeX before markdown processing (so $ inside code won't be touched)
-    // We need to do this line by line for block-level processing
+    // Step 2: Render LaTeX and protect the output in an array
+    const katexBlocks = [];
     const lines = processed.split('\n');
     const renderedLines = lines.map(line => {
       // Only render LaTeX if the line is not a heading (starts with #)
@@ -292,10 +307,10 @@ export function renderMarkdownLatex(text) {
         // Render LaTeX only in the heading content (after the #)
         const headingMatch = line.match(/^(#{1,4})\s(.+)$/);
         if (headingMatch) {
-          return headingMatch[1] + ' ' + renderLatexInText(headingMatch[2]);
+          return headingMatch[1] + ' ' + renderLatexInText(headingMatch[2], katexBlocks);
         }
       }
-      return renderLatexInText(line);
+      return renderLatexInText(line, katexBlocks);
     });
     processed = renderedLines.join('\n');
 
@@ -304,12 +319,11 @@ export function renderMarkdownLatex(text) {
       return inlineCodes[parseInt(idx)] || match;
     });
 
-    // Step 4: Apply block-level markdown
+    // Step 4: Apply block-level markdown (safe because LaTeX html is placeholderized)
     processed = processBlocks(processed);
 
     // Step 5: Apply inline formatting (bold, italic, links, strikethrough)
-    // But only outside of HTML tags like <h1>, <pre>, <code>, <a>, <span class="katex
-    // We use a simple approach: split by tags, process text segments
+    // But only outside of HTML tags like <h1>, <pre>, <code>, <a>
     processed = processed.replace(/(<[^>]+>)|([^<]+)/g, (match, tag, text) => {
       if (tag) return tag; // Don't touch HTML tags
       if (text) return processInlineFormatting(text);
@@ -319,6 +333,11 @@ export function renderMarkdownLatex(text) {
     // Step 6: Restore code blocks
     processed = processed.replace(/%%CODEBLOCK_(\d+)%%/g, (match, idx) => {
       return codeBlocks[parseInt(idx)] || match;
+    });
+
+    // Step 6.5: Restore KaTeX HTML blocks safely
+    processed = processed.replace(/%%KATEXBLOCK_(\d+)%%/g, (match, idx) => {
+      return katexBlocks[parseInt(idx)] || match;
     });
 
     // Step 7: Linkify file paths
@@ -331,6 +350,7 @@ export function renderMarkdownLatex(text) {
     return String(text).replace(/\n/g, '<br>');
   }
 }
+
 
 /**
  * Simple markdown-only renderer (no LaTeX, no KaTeX dependency).

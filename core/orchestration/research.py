@@ -677,10 +677,12 @@ Devi rispondere SOLO con un JSON del tipo:
                                     correct_prompt = f"""{role_prefix}
 
 Il revisore ha respinto il tuo lavoro per il seguente micro-obiettivo: {obj['title']}
-Feedback del revisore: {validation_summary}
+## ESITO E LOG DELLE TUE AZIONI PRECEDENTI
+{log_str}
 
 ## OBIETTIVO GENERALE
 {goal}
+
 
 ## FILE PRODOTTI
 {_build_filesystem_context()}

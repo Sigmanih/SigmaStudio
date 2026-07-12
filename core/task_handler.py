@@ -516,7 +516,8 @@ def _execute_single_action(self, action: dict, action_type: str, bot_name: str, 
                             "message": f"Task aggiornato: {titolo}"})
 
     elif action_type == "run_test":
-        path = action.get("path", "")
+        path = _normalize_action_path(action.get("path", ""))
+        path = _ensure_module_structure(path)
         if path and self._is_path_allowed(path) and os.path.exists(path):
             cmd = ["python", "-u", path] if path.endswith(".py") else ["node", path]
             res = subprocess.run(
@@ -538,6 +539,8 @@ def _execute_single_action(self, action: dict, action_type: str, bot_name: str, 
 
     elif action_type == "read_file":
         path = _normalize_action_path(action.get("path", ""))
+        path = _ensure_module_structure(path)
+
         if path and self._is_path_allowed(path) and os.path.exists(path):
             fsize = os.path.getsize(path)
             if fsize > 100_000:
