@@ -110,6 +110,7 @@ export default function useResearchPipeline(onTasksUpdated, addToast) {
   const [agentsMeta, setAgentsMeta] = useState(AGENTS_META);
 
   useEffect(() => {
+    // 1. Fetch manifesti list for images
     fetch('/api/list_manifesti')
       .then(r => r.json())
       .then(data => {
@@ -118,10 +119,32 @@ export default function useResearchPipeline(onTasksUpdated, addToast) {
             const next = { ...prev };
             data.manifesti.forEach(m => {
               const agentId = m.filename.replace('.md', '');
-              if (next[agentId]) {
-                next[agentId] = { ...next[agentId], image: m.image };
-              } else if (agentId === 'sigma_architect' && next['sigma_architect']) {
-                next['sigma_architect'] = { ...next['sigma_architect'], image: m.image };
+              const key = agentId === 'agente0' ? 'sigma_architect' : agentId;
+              if (next[key]) {
+                next[key] = { ...next[key], image: m.image, manifesto: m.path };
+              }
+            });
+            return next;
+          });
+        }
+      })
+      .catch(() => {});
+
+    // 2. Fetch active agents configurations to sync actual database manifest paths
+    fetch('/api/agents')
+      .then(r => r.json())
+      .then(data => {
+        if (data.success && data.agents) {
+          setAgentsMeta(prev => {
+            const next = { ...prev };
+            data.agents.forEach(agent => {
+              const key = agent.id === 'agente0' ? 'sigma_architect' : agent.id;
+              if (next[key]) {
+                next[key] = { 
+                  ...next[key], 
+                  name: agent.name || next[key].name,
+                  manifesto: agent.manifesto || next[key].manifesto 
+                };
               }
             });
             return next;
