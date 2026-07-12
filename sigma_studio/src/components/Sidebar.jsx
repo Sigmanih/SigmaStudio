@@ -102,13 +102,6 @@ export default function Sidebar({
             active={activeTabId != null && activeTabId.startsWith('knowledge')}
             onClick={() => openTab({ name: 'Argomenti' }, 'knowledge')} 
           />
-          <SidebarItem 
-            icon={MessageSquare} 
-            label="Chat" 
-            badgeColor="rgba(0,210,255,0.2)"
-            active={activeTabId != null && activeTabId === 'chat'}
-            onClick={() => openTab({ name: 'Chat AI', path: 'chat-tab' }, 'chat')} 
-          />
         </nav>
 
         <nav className="nav-section">
@@ -119,7 +112,15 @@ export default function Sidebar({
             active={activeTabId != null && activeTabId.startsWith('research_lab')}
             onClick={() => openTab({ name: '🔬 Sigma Research Lab' }, 'research_lab')} 
           />
+          <SidebarItem 
+            icon={MessageSquare} 
+            label="Chat" 
+            badgeColor="rgba(0,210,255,0.2)"
+            active={activeTabId != null && activeTabId === 'chat'}
+            onClick={() => openTab({ name: 'Chat AI', path: 'chat-tab' }, 'chat')} 
+          />
         </nav>
+
       </div>
     </aside>
   );

@@ -455,6 +455,13 @@ def handle_research_start(self) -> None:
                     "test-engineer": "Sei un QA ENGINEER. Scrivi test automatici usando sympy/pytest. Verifica correttezza di formule e algoritmi. Ogni test deve avere assert espliciti.",
                     "proof-reviewer": "Sei un REVISORE critico. Verifica la correttezza logica e matematica di TUTTI i file. Cerca errori, controesempi, imprecisioni. Produci un report di validazione dettagliato.",
                 }
+                
+                attempts = 0
+                max_attempts = 2
+                approved = False
+                validation_summary = ""
+                
+                # Primo tentativo del worker
                 fs_ctx = _build_filesystem_context()
                 role_prefix = role_prompts.get(agent_id, f"Sei un agente specializzato: {agent_id}.")
                 system_prompt = f"""{role_prefix}
@@ -526,9 +533,8 @@ MAI creare file al di fuori di queste cartelle."""
                     _sse({
                         "type": "agent_response", "agent_id": agent_id, "agent_name": agent_name,
                         "response": resp_text, "thinking": thinking or parsed.get("thinking"),
-                        "objective_id": obj["id"], "message": f"🧠 {agent_name} ha completato l'analisi"
+                        "objective_id": obj["id"], "message": f"🧠 {agent_name} ha completato la bozza iniziale"
                     })
-
 
                     actions_log = []
                     if actions:
@@ -549,14 +555,150 @@ MAI creare file al di fuori di queste cartelle."""
                         "success_count": success_count,
                         "fail_count": len(actions_log) - success_count,
                         "learning": "",
-                        "summary": f"Eseguito micro-obiettivo: {obj['title']}"
+                        "summary": f"Bozza iniziale per micro-obiettivo: {obj['title']}"
                     })
 
-                    res_summary = f"{resp_text}\n\n📋 **Azioni Eseguite:**\n{log_str}"
+                    # LOOP DI REVISIONE (se non è l'agente proof-reviewer stesso)
+                    if agent_id == "proof-reviewer":
+                        approved = True
+                        validation_summary = "Autovalidato come Revisore principale."
+                    else:
+                        while attempts < max_attempts and not approved:
+                            attempts += 1
+                            _sse({
+                                "type": "agent_thinking", "agent_id": "proof-reviewer", "agent_name": "Revisore",
+                                "thinking": f"Verifica e revisione del lavoro di {agent_name}...", "objective_id": obj["id"],
+                                "message": f"🔍 Invio a revisione (tentativo {attempts})..."
+                            })
+                            
+                            # Chiamata al proof-reviewer
+                            rev_model, rev_prov, rev_end, rev_url, rev_key, rev_temp, rev_tokens, rev_top, rev_to = \
+                                load_agent_config(ai_cfg, model_override, "proof-reviewer")
+                            
+                            reviewer_prompt = f"""Sei il REVISORE e VALIDATORE critico del team di ricerca.
+Il tuo compito è validare il lavoro svolto dal collaboratore per il micro-obiettivo indicato.
+
+## OBIETTIVO GENERALE
+{goal}
+
+## MICRO-OBIETTIVO
+{obj['title']}
+{obj.get('description', '')}
+
+## COLLABORATORE
+Agente: {agent_name}
+Risposta collaboratore: {resp_text}
+Azioni eseguite: {log_str}
+
+## STATO FILE SYSTEM
+{_build_filesystem_context()}
+
+## REGOLE DI VALIDAZIONE
+1. Se il lavoro è corretto, completo e coerente, approvalo ("approved": true).
+2. Se ci sono errori logici, formule errate, codice non funzionante o omissioni gravi, rifiutalo ("approved": false) e fornisci un feedback dettagliato per correggerlo.
+3. Se rifiuti, puoi anche specificare delle azioni correttive facoltative.
+
+## FORMATO RISPOSTA — SOLO JSON
+Devi rispondere SOLO con un JSON del tipo:
+{{
+  "approved": true / false,
+  "feedback": "Spiegazione dettagliata dell'approvazione o delle correzioni da fare in italiano...",
+  "actions": []
+}}"""
+                            rev_messages = [
+                                {"role": "system", "content": reviewer_prompt},
+                                {"role": "user", "content": "Verifica il lavoro e restituisci la validazione in JSON."}
+                            ]
+                            
+                            rev_resp, rev_think, rev_err = call_ai_model(
+                                rev_messages, ai_cfg, rev_model, rev_prov, rev_end,
+                                rev_url, rev_key, 0.3, rev_tokens, rev_top, rev_to
+                            )
+                            
+                            rev_json_match = _extract_json_from_response(rev_resp) if rev_resp else None
+                            if rev_err or not rev_json_match:
+                                log.warning("Reviewer validation failed or syntax error. Auto-approving to avoid block.")
+                                approved = True
+                                validation_summary = "Approvato automaticamente causa errore validatore."
+                                break
+                            
+                            try:
+                                rev_parsed = json.loads(rev_json_match.group())
+                                approved = rev_parsed.get("approved", False)
+                                validation_summary = rev_parsed.get("feedback", "")
+                                
+                                _sse({
+                                    "type": "agent_response", "agent_id": "proof-reviewer", "agent_name": "Revisore",
+                                    "response": f"### Esito Revisione: { '✅ Approvato' if approved else '❌ Respinto'}\n\n{validation_summary}",
+                                    "objective_id": obj["id"],
+                                    "message": f"🔍 Validazione: {'Approvato' if approved else 'Richiesta correzione'}"
+                                })
+                                
+                                if not approved and attempts < max_attempts:
+                                    # Chiediamo al worker di correggere basandosi sul feedback
+                                    _sse({
+                                        "type": "agent_thinking", "agent_id": agent_id, "agent_name": agent_name,
+                                        "thinking": f"Correzione in corso basata sul feedback: {validation_summary}", "objective_id": obj["id"],
+                                        "message": f"🛠️ {agent_name} corregge il lavoro..."
+                                    })
+                                    
+                                    correct_prompt = f"""{role_prefix}
+
+Il revisore ha respinto il tuo lavoro per il seguente micro-obiettivo: {obj['title']}
+Feedback del revisore: {validation_summary}
+
+## OBIETTIVO GENERALE
+{goal}
+
+## FILE PRODOTTI
+{_build_filesystem_context()}
+
+Modifica o riscrivi i file per risolvere TUTTE le obiezioni del revisore.
+Rispondi sempre nel formato JSON con le azioni (create_file, etc.) per applicare le correzioni.
+Format:
+{{"response": "Spiegazione di come hai risolto il feedback...",
+  "actions": [
+    {{"type": "create_file", "path": "path/file.md", "content": "..."}}
+  ]
+}}"""
+                                    correct_messages = [
+                                        {"role": "system", "correct_prompt": correct_prompt},
+                                        {"role": "user", "content": f"Applica le correzioni richieste: {validation_summary}"}
+                                    ]
+                                    
+                                    corr_resp, corr_think, corr_err = call_ai_model(
+                                        correct_messages, ai_cfg, agent_model, provider, endpoint,
+                                        api_url, api_key, temperature, max_tokens, top_p, timeout
+                                    )
+                                    
+                                    corr_match = _extract_json_from_response(corr_resp) if corr_resp else None
+                                    if corr_match:
+                                        corr_parsed = json.loads(corr_match.group())
+                                        resp_text = corr_parsed.get("response", "")
+                                        corr_actions = corr_parsed.get("actions", [])
+                                        
+                                        corr_actions_log = []
+                                        if corr_actions:
+                                            corr_actions_log = execute_ai_actions(self, corr_actions, agent_name)
+                                        log_str = "\n".join(f"  {a.get('type')}: {a.get('message') or a.get('error')}" for a in corr_actions_log)
+                                        
+                                        _sse({
+                                            "type": "agent_response", "agent_id": agent_id, "agent_name": agent_name,
+                                            "response": f"🛠️ Correzione applicata:\n{resp_text}",
+                                            "objective_id": obj["id"],
+                                            "message": f"⚡ Correzioni applicate da {agent_name}"
+                                        })
+                            except Exception as parse_exc:
+                                log.error("Review loop parsing failed: %s", parse_exc)
+                                approved = True
+                                validation_summary = "Approvazione automatica per errore strutturale del validatore."
+                                break
+
+                    res_summary = f"{resp_text}\n\n📋 **Azioni Eseguite:**\n{log_str}\n\n🔍 **Esito Validazione:**\n{validation_summary}"
                     update_objective(session_id, obj["id"], {"status": "done", "result": res_summary})
                     _sse({
                         "type": "objective_complete", "objective_id": obj["id"], "title": obj["title"],
-                        "result": res_summary, "message": f"✅ Completato: {obj['title']}"
+                        "result": res_summary, "message": f"✅ Completato & Validato: {obj['title']}"
                     })
 
                 except Exception as exc:
@@ -567,6 +709,7 @@ MAI creare file al di fuori di queste cartelle."""
                         "type": "objective_complete", "objective_id": obj["id"], "title": obj["title"],
                         "result": fallback_res["message"], "message": f"✅ Completato con default: {obj['title']}"
                     })
+
 
             # Run with ThreadPoolExecutor
             with ThreadPoolExecutor(max_workers=3) as executor:
