@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useEffect } from 'react';
 
 // Sub-components
 import Sidebar from './components/Sidebar';
@@ -6,163 +6,56 @@ import Workspace from './components/Workspace';
 import Dashboard from './components/Dashboard';
 import ChatPanel from './components/Chat/ChatPanel';
 import AIConfig from './components/AIConfig';
-import ToastNotification, { useToast } from './components/ToastNotification';
+import ToastNotification from './components/ToastNotification';
 import { ModuleModal, TaskModal, NewFileModal } from './components/modals';
 
-// Hooks
-import { useModules } from './hooks/useModules';
-import { useTasks } from './hooks/useTasks';
-import { useTabs } from './hooks/useTabs';
+// Context
+import { AppProvider, useApp } from './contexts/AppContext';
 
 // ==============================================================================
-// SIGMA STUDIO | State Orchestrator v6.2 — refactored with hooks
+// SIGMA STUDIO | State Orchestrator v6.2 — Context & Provider Refactored
 // ==============================================================================
 
-export default function App() {
-  // --- HOOKS ---
-  const { modules, loading, fetchModules, createModule, updateModule, deleteModule } = useModules();
-  const { tasks, fetchTasks, handleTaskSave, toggleTaskStatus, deleteTask, clearAllTasks } = useTasks();
-  const { openTabs, activeTabId, setActiveTabId, openTab, closeTab, closeAllTabs, handleDirtyChange, handleFileDelete } = useTabs();
-  const { toasts, addToast, removeToast } = useToast();
-
-  // --- LOCAL STATE ---
-  const [manifesti, setManifesti] = useState([]);
-  const [topicsCount, setTopicsCount] = useState(0);
-  const [terminalOutput, setTerminalOutput] = useState("Sigma Studio Initialized. Ready for research.\n");
-  
-  // --- UI STATE ---
-  const [leftVisible, setLeftVisible] = useState(true);
-  const [rightVisible, setRightVisible] = useState(true);
-  const [isModalOpen, setIsModalOpen] = useState(false);
-  const [editingModule, setEditingModule] = useState(null);
-  const [isTaskModalOpen, setIsTaskModalOpen] = useState(false);
-  const [editingTask, setEditingTask] = useState(null);
-  const [isFileModalOpen, setIsFileModalOpen] = useState(false);
-  const [fileModalContext, setFileModalContext] = useState({ folder: "", type: "" });
-  
-  // --- AI CHAT STATE ---
-  const [aiChatOpen, setAiChatOpen] = useState(false);
-  const [aiConfigOpen, setAiConfigOpen] = useState(false);
-
-  // --- INIT ---
-  useEffect(() => {
-    fetchModules();
-    fetchTasks();
-    fetchManifesti();
-    fetchTopicsCount();
-  }, []);
-
-  const fetchTopicsCount = async () => {
-    try {
-      const res = await fetch('/api/topics');
-      const data = await res.json();
-      if (data.topics) setTopicsCount(data.topics.length);
-    } catch (e) {}
-  };
-
-  const fetchManifesti = async () => {
-    try {
-      const res = await fetch('/api/list_manifesti');
-      const data = await res.json();
-      if (data.success) setManifesti(data.files || []);
-    } catch (e) {
-      console.error("Fetch manifesti error:", e);
-    }
-  };
-
-  // --- FILE ACTIONS ---
-  const handleCreateFile = async (filename) => {
-    let { folder, type } = fileModalContext;
-    let finalPath = `${folder}/${type}/${filename}`;
-    
-    if (type === 'whitepaper') {
-      finalPath = `${folder}/docs/WHITEPAPER_${filename}`;
-    }
-    if (type === 'manifesti') {
-      finalPath = `manifesti/${filename}`;
-    }
-
-    const initialContent = type === 'test' 
-      ? "# Sigma Validation Script\nimport os\n\ndef run():\n    print('Validating...')\n\nif __name__ == '__main__':\n    run()" 
-      : "# Nuovo Manifesto Sigma\n= = = = = = = = = = = =\n\n**Sezione**: \n\nContenuto del manifesto...";
-    
-    try {
-      const res = await fetch('/api/create_file', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ path: finalPath, content: initialContent })
-      });
-      if ((await res.json()).success) {
-        setIsFileModalOpen(false);
-        if (type === 'manifesti') {
-          fetchManifesti();
-        } else {
-          fetchModules();
-        }
-        openTab({ path: finalPath, filename: filename.replace('.md', '') }, type);
-      }
-    } catch (e) { alert(e.message); }
-  };
-
-  const deleteFileDirectly = async (e, path) => {
-    e.stopPropagation();
-    if (!confirm(`Sei sicuro di voler eliminare dal progetto il file: ${path}?`)) return;
-    try {
-      const res = await fetch('/api/delete_file', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ path })
-      });
-      if ((await res.json()).success) {
-        const tabMatch = openTabs.find(t => t.path === path);
-        if (tabMatch) handleFileDelete(tabMatch.id);
-        fetchModules();
-      }
-    } catch(e) { alert(e.message); }
-  };
-
-  const runTest = async (path) => {
-    setTerminalOutput(`[RUNNING] ${path}...\n`);
-    try {
-      const res = await fetch('/api/run_test', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ script_path: path })
-      });
-      const data = await res.json();
-      setTerminalOutput(prev => prev + (data.stdout || "") + (data.stderr || "") + `\n[EXIT] Code ${data.exit_code}`);
-    } catch (e) { setTerminalOutput(prev => prev + `[ERROR] ${e.message}`); }
-  };
-
-  // --- MODULE CRUD ---
-  const handleCreateModule = async (data) => {
-    const ok = await createModule(data);
-    if (ok) setIsModalOpen(false);
-  };
-
-  const handleUpdateModule = async (data) => {
-    const ok = await updateModule(data, editingModule);
-    if (ok) {
-      setIsModalOpen(false);
-      setEditingModule(null);
-    }
-  };
-
-  const handleDeleteModule = async (folder) => {
-    if (!confirm(`Sei sicuro di voler eliminare il modulo ${folder}?`)) return;
-    const ok = await deleteModule(folder);
-    if (ok) {
-      handleFileDelete(`module-${folder}`);
-    }
-  };
-
-  // --- TASK CRUD ---
-  const onTaskSave = async (taskData) => {
-    if (await handleTaskSave(taskData, editingTask)) {
-      setIsTaskModalOpen(false);
-      setEditingTask(null);
-    }
-  };
+function AppContent() {
+  const {
+    modules,
+    loading,
+    fetchModules,
+    tasks,
+    fetchTasks,
+    onTaskSave,
+    toggleTaskStatus,
+    deleteTask,
+    clearAllTasks,
+    isTaskModalOpen,
+    setIsTaskModalOpen,
+    editingTask,
+    setEditingTask,
+    openTabs,
+    activeTabId,
+    setActiveTabId,
+    openTab,
+    closeTab,
+    closeAllTabs,
+    handleDirtyChange,
+    handleFileDelete,
+    toasts,
+    addToast,
+    removeToast,
+    manifesti,
+    fetchManifesti,
+    topicsCount,
+    aiChatOpen,
+    setAiChatOpen,
+    aiConfigOpen,
+    setAiConfigOpen,
+    leftVisible,
+    setLeftVisible,
+    rightVisible,
+    setRightVisible,
+    fileOps,
+    moduleOps
+  } = useApp();
 
   // --- MESSAGE EVENT LISTENERS ---
   useEffect(() => {
@@ -175,7 +68,7 @@ export default function App() {
     };
     window.addEventListener('message', handler);
     return () => window.removeEventListener('message', handler);
-  }, []);
+  }, [openTab]);
 
   useEffect(() => {
     const handler = (e) => {
@@ -191,9 +84,8 @@ export default function App() {
     };
     window.addEventListener('sigma-open-file', handler);
     return () => window.removeEventListener('sigma-open-file', handler);
-  }, []);
+  }, [openTab]);
 
-  // --- RENDER ---
   if (loading) return <div className="loading-screen">SIGMA_STUDIO Booting...</div>;
 
   return (
@@ -220,14 +112,14 @@ export default function App() {
         modules={modules}
         manifesti={manifesti}
         tasks={tasks}
-        terminalOutput={terminalOutput}
+        terminalOutput={fileOps.terminalOutput}
         openTab={openTab}
         handleDirtyChange={handleDirtyChange}
         handleFileDelete={handleFileDelete}
-        deleteFileDirectly={deleteFileDirectly}
-        runTest={runTest}
-        setFileModalContext={setFileModalContext}
-        setIsFileModalOpen={setIsFileModalOpen}
+        deleteFileDirectly={fileOps.deleteFileDirectly}
+        runTest={fileOps.runTest}
+        setFileModalContext={fileOps.setFileModalContext}
+        setIsFileModalOpen={fileOps.setIsFileModalOpen}
         setEditingTask={setEditingTask}
         setIsTaskModalOpen={setIsTaskModalOpen}
         fetchData={fetchModules}
@@ -248,10 +140,10 @@ export default function App() {
       />
 
       <ModuleModal
-        isOpen={isModalOpen}
-        onClose={() => { setIsModalOpen(false); setEditingModule(null); }}
-        onSave={editingModule ? handleUpdateModule : handleCreateModule}
-        initialData={editingModule || {}}
+        isOpen={moduleOps.isModalOpen}
+        onClose={() => { moduleOps.setIsModalOpen(false); moduleOps.setEditingModule(null); }}
+        onSave={moduleOps.editingModule ? moduleOps.handleUpdateModule : moduleOps.handleCreateModule}
+        initialData={moduleOps.editingModule || {}}
       />
       <TaskModal
         isOpen={isTaskModalOpen}
@@ -261,11 +153,11 @@ export default function App() {
         onOpenFile={(path) => openTab({ path, filename: path.split('/').pop() }, 'teoria')}
       />
       <NewFileModal
-        isOpen={isFileModalOpen}
-        onClose={() => setIsFileModalOpen(false)}
-        onSave={handleCreateFile}
-        folder={fileModalContext.folder}
-        type={fileModalContext.type}
+        isOpen={fileOps.isFileModalOpen}
+        onClose={() => fileOps.setIsFileModalOpen(false)}
+        onSave={fileOps.handleCreateFile}
+        folder={fileOps.fileModalContext.folder}
+        type={fileOps.fileModalContext.type}
       />
 
       {/* AI CHAT TOGGLE BUTTON — FIRST in DOM to stay clickable on all browsers */}
@@ -309,5 +201,13 @@ export default function App() {
       {/* Toast Notifications */}
       <ToastNotification toasts={toasts} removeToast={removeToast} />
     </div>
+  );
+}
+
+export default function App() {
+  return (
+    <AppProvider>
+      <AppContent />
+    </AppProvider>
   );
 }
