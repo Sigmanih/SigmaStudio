@@ -32,7 +32,9 @@ export default function MappaArgomenti({ onOpenFile }) {
   const [selectedModule, setSelectedModule] = useState(null); // null = all modules in active topic
   const [dimensions, setDimensions] = useState({ width: 500, height: 260 });
   const [stats, setStats] = useState({ topics: 0, modules: 0, docs: 0, teoria: 0, test: 0, viz: 0, parentLinks: 0 });
-  const [showDocs, setShowDocs] = useState(false);
+  const [showDocs, setShowDocs] = useState(() => {
+    return localStorage.getItem('sigma_mappa_explore') === 'true';
+  });
 
   // D3 refs
   const simulationRef = useRef(null);
@@ -331,10 +333,14 @@ export default function MappaArgomenti({ onOpenFile }) {
 
       // Simulation
       const simulation = d3.forceSimulation(nodes)
-        .force('link', d3.forceLink(links).id(d => d.id).distance(120).strength(0.3))
-        .force('charge', d3.forceManyBody().strength(d => d.type === 'topic' ? -400 : -250))
+        .force('link', d3.forceLink(links).id(d => d.id).distance(180).strength(0.4))
+        .force('charge', d3.forceManyBody().strength(d => d.type === 'topic' ? -900 : -450))
         .force('center', d3.forceCenter(width / 2, height / 2))
-        .force('collision', d3.forceCollide().radius(d => d.r + 10))
+        .force('collision', d3.forceCollide().radius(d => {
+          if (d.type === 'topic') return d.r + 65;
+          if (d.type === 'module') return d.r + 45;
+          return d.r + 35;
+        }).strength(0.85))
         .on('tick', () => {
           linkElements
             .attr('x1', d => d.source.x)
@@ -1062,6 +1068,8 @@ export default function MappaArgomenti({ onOpenFile }) {
         .mappa-zoom-controls .btn-explore { padding: 7px 14px; font-size: 0.7rem; font-weight: 600; gap: 6px; border-color: rgba(63,185,80,0.25); color: #3fb950; }
         .mappa-zoom-controls .btn-explore:hover { background: rgba(63,185,80,0.12); border-color: rgba(63,185,80,0.4); }
         .mappa-zoom-controls .btn-explore.active { background: rgba(255,85,85,0.1); border-color: rgba(255,85,85,0.25); color: #ff5555; }
+        .mappa-zoom-controls .btn-update { padding: 7px 14px; font-size: 0.7rem; font-weight: 600; border-color: rgba(0,210,255,0.25); color: #00d2ff; display: flex; align-items: center; gap: 6px; }
+        .mappa-zoom-controls .btn-update:hover { background: rgba(0,210,255,0.12); border-color: rgba(0,210,255,0.4); }
         .mappa-zoom-controls .btn-new-topic { padding: 7px 14px; font-size: 0.7rem; font-weight: 600; border-color: rgba(188,140,255,0.25); color: #bc8cff; display: flex; align-items: center; gap: 6px; }
         .mappa-zoom-controls .btn-new-topic:hover { background: rgba(188,140,255,0.12); border-color: rgba(188,140,255,0.4); }
 
@@ -1185,8 +1193,17 @@ export default function MappaArgomenti({ onOpenFile }) {
         <div ref={containerRef} className="mappa-graph-container" style={{ display: 'flex' }}>
           <svg ref={svgRef} className="mappa-graph-svg" style={{ flex: 1 }}></svg>
           <div className="mappa-zoom-controls">
-            <button className={`btn-explore ${showDocs ? 'active' : ''}`} onClick={() => setShowDocs(v => !v)} title={showDocs ? 'Chiudi' : 'Esplora'}>
-              {showDocs ? '✕ Chiudi' : '🔍 Esplora'}
+            <button className={`btn-explore ${showDocs ? 'active' : ''}`} onClick={() => {
+              setShowDocs(prev => {
+                const next = !prev;
+                localStorage.setItem('sigma_mappa_explore', String(next));
+                return next;
+              });
+            }} title={showDocs ? 'Collidi' : 'Esplora'}>
+              {showDocs ? '✕ Collidi' : '🔍 Esplora'}
+            </button>
+            <button className="btn-update" onClick={fetchData} title="Aggiorna dati e grafico">
+              🔄 Aggiorna
             </button>
             <button className="btn-new-topic" onClick={handleCreateTopic} title="Crea nuovo argomento">
               🌐 Nuovo Argomento
