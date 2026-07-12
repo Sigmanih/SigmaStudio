@@ -27,7 +27,25 @@ AGENT_COLORS: dict[str, dict] = {
 
 def get_agent_color(agent_id: str) -> dict:
     """Return display metadata for *agent_id*, falling back to ``default``."""
-    return AGENT_COLORS.get(agent_id, AGENT_COLORS["default"])
+    base = AGENT_COLORS.get(agent_id, AGENT_COLORS["default"]).copy()
+    try:
+        from core.agent_registry import get_agent
+        agent = get_agent(agent_id)
+        if agent and agent.get("image"):
+            base["image"] = agent["image"]
+        else:
+            # Fallback check mapping manifesto path if agent_id doesn't match keys directly
+            from core.agent_registry import load_agents_meta
+            meta = load_agents_meta()
+            manifesto_images = meta.get("manifesto_images", {})
+            for mpath, img in manifesto_images.items():
+                if f"manifesti/{agent_id}.md" == mpath or f"{agent_id}.md" in mpath:
+                    base["image"] = img
+                    break
+    except Exception:
+        pass
+    return base
+
 
 
 def load_agent_config(

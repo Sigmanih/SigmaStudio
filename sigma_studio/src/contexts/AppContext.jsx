@@ -41,7 +41,8 @@ export function AppProvider({ children }) {
     try {
       const res = await fetch('/api/list_manifesti');
       const data = await res.json();
-      if (data.success) setManifesti(data.files || []);
+      if (data.success) setManifesti(data.manifesti || data.files || []);
+
     } catch (e) {
       console.error("Fetch manifesti error:", e);
     }

@@ -50,9 +50,26 @@ export default function ManifestiGallery({ modules, manifesti, openTab, setFileM
 
   useEffect(() => { fetchOllamaModels(); }, []);
 
+  const handleUpdateImage = async (path, image) => {
+    try {
+      const res = await fetch('/api/manifesti/update_image', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ path, image })
+      });
+      const data = await res.json();
+      if (data.success && fetchManifesti) {
+        fetchManifesti();
+      }
+    } catch (e) {
+      console.error("Failed to update manifesto image:", e);
+    }
+  };
+
   const handleNewManifesto = () => {
     setFileModalContext({ folder: 'manifesti', type: 'manifesti' });
     setIsFileModalOpen(true);
+
   };
 
   const handleCreateModel = async () => {
@@ -196,17 +213,31 @@ export default function ManifestiGallery({ modules, manifesti, openTab, setFileM
           {manifesti.map((mf, i) => (
             <div key={i} className="mg-card" onClick={() => openTab(mf, 'manifesti')}>
               <div className="mg-card-header">
-                <div className="mg-card-icon" style={{background: 'rgba(124,91,240,0.12)', color: '#a78bfa'}}>
-                  <ScrollText size={14} />
+                <div className="mg-card-icon" style={{background: 'rgba(124,91,240,0.12)', color: '#a78bfa', overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center'}}>
+                  {mf.image ? (
+                    <img src={mf.image} alt={mf.name} style={{width: '100%', height: '100%', objectFit: 'cover'}} />
+                  ) : (
+                    <ScrollText size={14} />
+                  )}
                 </div>
                 <span className="mg-card-name">{mf.name}</span>
                 <div className="mg-card-action">
                   <ArrowRight size={14} />
                 </div>
               </div>
-              <div className="mg-card-meta">
+              <div className="mg-card-meta" onClick={(e) => e.stopPropagation()} style={{display: 'flex', alignItems: 'center', gap: '6px', marginTop: '6px'}}>
                 <FileSignature size={10} />
-                Manifesto AI
+                <span style={{marginRight: 'auto'}}>Immagine:</span>
+                <select 
+                  value={mf.image || '/images/default.png'} 
+                  onChange={(e) => handleUpdateImage(mf.path, e.target.value)}
+                  style={{fontSize: '0.55rem', background: '#0e1016', border: '1px solid #1e2030', color: '#e2e4eb', borderRadius: '4px', padding: '2px 4px', cursor: 'pointer', outline: 'none'}}
+                >
+                  <option value="/images/default.png">🤖 Default</option>
+                  <option value="/images/agente0.png">🏗️ Architect</option>
+                  <option value="/images/matematicoAi.png">∑ Math</option>
+                  <option value="/images/programmatoreAi.png">⚙️ Code</option>
+                </select>
               </div>
             </div>
           ))}

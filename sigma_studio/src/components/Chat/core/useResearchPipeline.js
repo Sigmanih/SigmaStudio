@@ -106,8 +106,34 @@ const DEFAULT_AGENTS = [
 ];
 
 export default function useResearchPipeline(onTasksUpdated, addToast) {
+  // --- Agents Meta State ---
+  const [agentsMeta, setAgentsMeta] = useState(AGENTS_META);
+
+  useEffect(() => {
+    fetch('/api/list_manifesti')
+      .then(r => r.json())
+      .then(data => {
+        if (data.success && data.manifesti) {
+          setAgentsMeta(prev => {
+            const next = { ...prev };
+            data.manifesti.forEach(m => {
+              const agentId = m.filename.replace('.md', '');
+              if (next[agentId]) {
+                next[agentId] = { ...next[agentId], image: m.image };
+              } else if (agentId === 'sigma_architect' && next['sigma_architect']) {
+                next['sigma_architect'] = { ...next['sigma_architect'], image: m.image };
+              }
+            });
+            return next;
+          });
+        }
+      })
+      .catch(() => {});
+  }, []);
+
   // --- Template ---
   const [activeTemplate, setActiveTemplate] = useState('none');
+
 
   // --- Pipeline Definition ---
   const [pipelineAgents, setPipelineAgents] = useState(DEFAULT_AGENTS);
@@ -199,7 +225,8 @@ export default function useResearchPipeline(onTasksUpdated, addToast) {
   // --- Agent Display ---
   const enabledAgents = pipelineAgents.filter(a => a.enabled).sort((a, b) => a.order - b.order);
 
-  const getAgentColor = (agentId) => AGENTS_META[agentId] || { bg: '#8b8fa3', color: '#fff', icon: '🤖', short: 'AI', name: agentId };
+  const getAgentColor = (agentId) => agentsMeta[agentId] || { bg: '#8b8fa3', color: '#fff', icon: '🤖', short: 'AI', name: agentId };
+
 
   const getAgentConfig = useCallback((agentId) => {
     return agentConfigs[agentId] || DEFAULT_AGENT_CONFIG;
@@ -765,7 +792,8 @@ export default function useResearchPipeline(onTasksUpdated, addToast) {
     abortRef,
 
     // Meta
-    AGENTS_META,
+    AGENTS_META: agentsMeta,
+
     DEFAULT_AGENTS,
     PROVIDER_OPTIONS,
     DEFAULT_AGENT_CONFIG,

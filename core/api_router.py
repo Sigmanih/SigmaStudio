@@ -72,7 +72,9 @@ def register_post_handlers(handler_class):
         '/api/research/decompose': 'handle_research_decompose',
         '/api/research/next_steps': 'handle_research_next_steps',
         '/api/research/start': 'handle_research_start',
+        '/api/manifesti/update_image': 'handle_update_manifesto_image',
     }
+
 
 
 def route_get(self):

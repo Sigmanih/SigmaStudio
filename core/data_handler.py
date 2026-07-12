@@ -145,17 +145,73 @@ def handle_list_manifesti(self):
     try:
         manifesto_dir = 'manifesti'
         manifesti = []
+        
+        from core.agent_registry import load_agents_meta
+        meta = load_agents_meta()
+        manifesto_images = meta.get("manifesto_images", {})
+
+        def get_fallback_image(filename):
+            fn = filename.lower()
+            if "math" in fn:
+                return "/images/matematicoAi.png"
+            if "code" in fn or "program" in fn or "dev" in fn:
+                return "/images/programmatoreAi.png"
+            if "architect" in fn or "agente0" in fn:
+                return "/images/agente0.png"
+            return "/images/default.png"
+
         if os.path.isdir(manifesto_dir):
             for f in sorted(os.listdir(manifesto_dir)):
                 fpath = os.path.join(manifesto_dir, f)
                 if os.path.isfile(fpath) and f.lower().endswith('.md') and f.lower() != 'readme.md':
+                    norm_path = fpath.replace('\\', '/')
+                    
+                    img = manifesto_images.get(norm_path)
+                    
+                    if not img:
+                        for agent_id, agent_data in meta.get("agents", {}).items():
+                            if agent_data.get("manifesto") == norm_path:
+                                img = agent_data.get("image")
+                                break
+                                
+                    if not img:
+                        img = get_fallback_image(f)
+
                     manifesti.append({
                         "filename": f,
-                        "path": fpath.replace('\\', '/'),
+                        "path": norm_path,
                         "name": f.replace('.md', '').replace('_', ' ').title(),
-                        "size": os.path.getsize(fpath)
+                        "size": os.path.getsize(fpath),
+                        "image": img
                     })
-        self.send_json_response({"success": True, "manifesti": manifesti})
+        self.send_json_response({"success": True, "manifesti": manifesti, "files": manifesti})
     except Exception as exc:
         log.error("handle_list_manifesti: %s", exc)
         self.send_json_response({"error": str(exc)}, 500)
+
+
+def handle_update_manifesto_image(self):
+    try:
+        req = self.read_json_body()
+        manifesto_path = req.get("path", "")
+        image_path = req.get("image", "")
+        if not manifesto_path or not image_path:
+            return self.send_json_response({"success": False, "error": "path e image sono richiesti"}, 400)
+            
+        manifesto_path = manifesto_path.replace('\\', '/')
+        
+        from core.agent_registry import load_agents_meta, save_agents_meta
+        meta = load_agents_meta()
+        manifesto_images = meta.setdefault("manifesto_images", {})
+        manifesto_images[manifesto_path] = image_path
+        
+        for agent_id, agent_data in meta.setdefault("agents", {}).items():
+            if agent_data.get("manifesto") == manifesto_path:
+                agent_data["image"] = image_path
+                
+        save_agents_meta(meta)
+        self.send_json_response({"success": True, "message": "Immagine associata correttamente al manifesto"})
+    except Exception as exc:
+        log.error("handle_update_manifesto_image: %s", exc)
+        self.send_json_response({"error": str(exc)}, 500)
+
