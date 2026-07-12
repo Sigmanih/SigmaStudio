@@ -662,7 +662,8 @@ Format:
   ]
 }}"""
                                     correct_messages = [
-                                        {"role": "system", "correct_prompt": correct_prompt},
+                                        {"role": "system", "content": correct_prompt},
+
                                         {"role": "user", "content": f"Applica le correzioni richieste: {validation_summary}"}
                                     ]
                                     
@@ -720,10 +721,91 @@ Format:
                     except Exception as exc:
                         log.error("ThreadPool worker execution failed: %s", exc)
 
+            # Generazione automatica report di fine sessione
+            _sse({
+                "type": "agent_thinking", "agent_id": "sigma_architect", "agent_name": "Coordinatore",
+                "thinking": "Analisi dei risultati e redazione del report finale di ricerca...",
+                "message": "📝 Coordinatore: generazione del report finale..."
+            })
+            
+            from core.research_sessions import get_session, update_session
+            updated_session = get_session(session_id) or {}
+            objectives_summary = []
+            for o in updated_session.get("micro_objectives", []):
+                objectives_summary.append(f"### Task: {o.get('title')}\nAssegnato a: {o.get('assigned_to')}\nEsito: {o.get('result')}\n")
+            
+            summary_payload = "\n".join(objectives_summary)
+            
+            coord_prompt = f"""Sei Sigma AI Architect, il coordinatore del team di ricerca.
+Il tuo compito è redigere un report finale di ricerca strutturato in italiano che sintetizzi tutto il lavoro svolto dal team per l'obiettivo indicato.
+
+## OBIETTIVO GENERALE
+{goal}
+
+## SOTTO-TASK SVOLTI E RISULTATI
+{summary_payload}
+
+## FILE PRODOTTI NEL PROGETTO
+{_build_filesystem_context()}
+
+## AZIONE RICHIESTA
+1. Redigi un report ricco, dettagliato ed elegante in Markdown che descriva:
+   - Contesto e obiettivo della ricerca.
+   - Sintesi delle scoperte, formule o codice sviluppato.
+   - Stato della validazione logico/matematica.
+   - Conclusioni e prossimi passi raccomandati.
+2. Salva questo report creando o modificando un file con percorso esatto sotto la cartella docs (es. {base_path}/docs/report_finale.md).
+3. Rispondi solo ed esclusivamente con il JSON contenente la spiegazione testuale, il report markdown nel campo "response" e l'azione di tipo "create_file".
+
+## FORMATO RISPOSTA — SOLO JSON
+{{
+  "response": "# [Titolo del Report] ... (contenuto completo del report markdown)",
+  "actions": [
+    {{
+      "type": "create_file",
+      "path": "{base_path}/docs/report_finale.md",
+      "content": "# [Titolo del Report] ... (contenuto completo del report markdown)"
+    }}
+  ]
+}}"""
+
+            coord_messages = [
+                {"role": "system", "content": coord_prompt},
+                {"role": "user", "content": "Redigi il report finale e restituisci il JSON con l'azione."}
+            ]
+            
+            coord_model, coord_prov, coord_end, coord_url, coord_key, coord_temp, coord_tokens, coord_top, coord_to = \
+                load_agent_config(ai_cfg, model_override, SIGMA_ARCHITECT_ID)
+                
+            report_resp, report_think, report_err = call_ai_model(
+                coord_messages, ai_cfg, coord_model, coord_prov, coord_end,
+                coord_url, coord_key, 0.4, coord_tokens * 2, coord_top, coord_to
+            )
+            
+            report_text = ""
+            if not report_err and report_resp:
+                report_match = _extract_json_from_response(report_resp)
+                if report_match:
+                    try:
+                        report_parsed = json.loads(report_match.group())
+                        report_text = report_parsed.get("response", "")
+                        report_actions = report_parsed.get("actions", [])
+                        if report_actions:
+                            execute_ai_actions(self, report_actions, "sigma_architect")
+                    except Exception:
+                        pass
+            
+            if not report_text:
+                report_text = f"# Report Finale di Ricerca\n\nObiettivo: {goal}\n\nRicerca completata con successo.\n"
+
             # Mark research done
-            from core.research_sessions import update_session
-            update_session(session_id, {"status": "done", "updated_at": datetime.datetime.now().isoformat()})
+            update_session(session_id, {
+                "status": "done", 
+                "report": report_text,
+                "updated_at": datetime.datetime.now().isoformat()
+            })
             _sse({"type": "research_done", "session_id": session_id, "message": "🎯 Sessione di ricerca completata!"})
+
 
         except Exception as exc:
             log.error("Internal research start loop error: %s", exc)
