@@ -1,7 +1,10 @@
-"""File CRUD handlers."""
+"""File CRUD handlers for Sigma Studio."""
 import os
 import json
+import subprocess
+from core.logger import get_logger
 
+log = get_logger(__name__)
 
 def handle_get_file(self):
     from urllib.parse import parse_qs, urlparse
@@ -10,36 +13,39 @@ def handle_get_file(self):
         path = query.get('path', [None])[0]
         if not path or not self._is_path_allowed(path) or not os.path.exists(path):
             return self.send_json_response({"success": False, "error": "Path invalido o non consentito"}, 400)
-        with open(path, 'r', encoding='utf-8') as f:
-            self.send_json_response({"success": True, "content": f.read()})
-    except Exception as e:
-        self.send_json_response({"error": str(e)}, 500)
+        with open(path, 'r', encoding='utf-8') as fh:
+            self.send_json_response({"success": True, "content": fh.read()})
+    except Exception as exc:
+        log.error("handle_get_file: %s", exc)
+        self.send_json_response({"error": str(exc)}, 500)
 
 
 def handle_create_file(self):
     try:
         req = self.read_json_body()
         path = req.get('path')
-        if not path or '..' in path or not self._is_path_allowed(path):
+        if not path or not self._is_path_allowed(path):
             return self.send_json_response({"error": "Path invalido o non consentito"}, 400)
         os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
-        with open(path, 'w', encoding='utf-8') as f:
-            f.write(req.get('content', ''))
+        with open(path, 'w', encoding='utf-8') as fh:
+            fh.write(req.get('content', ''))
         self.send_json_response({"success": True})
-    except Exception as e:
-        self.send_json_response({"error": str(e)}, 500)
+    except Exception as exc:
+        log.error("handle_create_file: %s", exc)
+        self.send_json_response({"error": str(exc)}, 500)
 
 
 def handle_delete_file(self):
     try:
         req = self.read_json_body()
         path = req.get('path')
-        if not path or '..' in path or not self._is_path_allowed(path) or not os.path.exists(path):
+        if not path or not self._is_path_allowed(path) or not os.path.exists(path):
             return self.send_json_response({"error": "Path invalido o non consentito"}, 400)
         os.remove(path)
         self.send_json_response({"success": True})
-    except Exception as e:
-        self.send_json_response({"error": str(e)}, 500)
+    except Exception as exc:
+        log.error("handle_delete_file: %s", exc)
+        self.send_json_response({"error": str(exc)}, 500)
 
 
 def _parse_multipart(self):
@@ -125,15 +131,15 @@ def handle_upload_file(self):
 
 
 def handle_run_test(self):
-    import subprocess
     try:
         p = self.read_json_body().get('script_path')
-        if not p or not self._is_path_allowed(p) or ('..' in p):
+        if not p or not self._is_path_allowed(p):
             return self.send_json_response({"error": "Path invalido o non consentito"}, 400)
         if not os.path.exists(p):
             return self.send_json_response({"error": f"File non trovato: {p}"}, 400)
         cmd = ["python", "-u", p] if p.endswith('.py') else ["node", p]
         res = subprocess.run(cmd, capture_output=True, text=True, timeout=30, encoding='utf-8', errors='replace')
         self.send_json_response({"stdout": res.stdout, "stderr": res.stderr, "exit_code": res.returncode})
-    except Exception as e:
-        self.send_json_response({"error": str(e)}, 500)
+    except Exception as exc:
+        log.error("handle_run_test: %s", exc)
+        self.send_json_response({"error": str(exc)}, 500)

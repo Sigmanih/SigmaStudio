@@ -117,3 +117,31 @@ def _serve_static(self, rel_path):
                 return self.send_error(404, f"File {rel_path} non trovato")
     
     self.serve_static_file(file_path)
+
+
+# ---------------------------------------------------------------------------
+# RESTful extension stubs (DELETE / PATCH)
+# ---------------------------------------------------------------------------
+# Registered in sigma_server.py via do_DELETE / do_PATCH.
+# Add endpoint → handler mappings here as the API evolves.
+
+_DELETE_HANDLERS: dict = {}
+_PATCH_HANDLERS: dict = {}
+
+
+def route_delete(self) -> None:
+    """Route DELETE requests to registered handlers (REST support)."""
+    parsed = urlparse(self.path)
+    handler_name = _DELETE_HANDLERS.get(parsed.path)
+    if handler_name and hasattr(self, handler_name):
+        return getattr(self, handler_name)()
+    self.send_error(405, "Method Not Allowed")
+
+
+def route_patch(self) -> None:
+    """Route PATCH requests to registered handlers (REST support)."""
+    parsed = urlparse(self.path)
+    handler_name = _PATCH_HANDLERS.get(parsed.path)
+    if handler_name and hasattr(self, handler_name):
+        return getattr(self, handler_name)()
+    self.send_error(405, "Method Not Allowed")

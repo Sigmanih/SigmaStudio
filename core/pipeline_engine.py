@@ -16,6 +16,9 @@ from core.agent_registry import get_agent, increment_usage
 from core.agent_memory import save_session_memory, get_memory_context
 from core.chat_handler import _get_manifesto_content, _get_time_context, _build_filesystem_context, _extract_json_from_response, _collect_context_files
 from core.output_validator import validate_agent_output
+from core.logger import get_logger
+
+log = get_logger(__name__)
 
 # ==============================================================================
 # CONSTANTS
@@ -29,19 +32,40 @@ MAX_WORKERS = 10  # Max parallel threads for node execution
 os.makedirs(PIPELINE_STATUS_DIR, exist_ok=True)
 
 # ==============================================================================
-# PIPELINE STATUS MANAGEMENT
+# PIPELINE STATUS MANAGEMENT  (thread-safe)
 # ==============================================================================
 
-_active_pipelines = {}  # In-memory: pipeline_id -> status dict
+_active_pipelines: dict = {}       # pipeline_id -> status dict
+_pipelines_lock = threading.RLock()  # protects _active_pipelines
 
 
-def _save_checkpoint(pipeline_id: str, pipeline_status: dict):
-    """Save pipeline checkpoint to disk for resume/audit."""
-    checkpoints = _load_checkpoints()
-    checkpoints[pipeline_id] = pipeline_status
+def _get_pipeline(pipeline_id: str) -> dict | None:
+    """Return a shallow copy of the pipeline status (thread-safe)."""
+    with _pipelines_lock:
+        return dict(_active_pipelines.get(pipeline_id, {})) or None
+
+
+def _set_pipeline(pipeline_id: str, status: dict) -> None:
+    """Store pipeline status and checkpoint to disk (thread-safe)."""
+    with _pipelines_lock:
+        _active_pipelines[pipeline_id] = status
+    _save_checkpoint(pipeline_id, status)
+
+
+def _delete_pipeline(pipeline_id: str) -> None:
+    """Remove pipeline from in-memory store (thread-safe)."""
+    with _pipelines_lock:
+        _active_pipelines.pop(pipeline_id, None)
+
+
+def _save_checkpoint(pipeline_id: str, pipeline_status: dict) -> None:
+    """Save pipeline checkpoint to disk for resume/audit (called outside lock)."""
     ckpt_path = os.path.join(PIPELINE_STATUS_DIR, f"{pipeline_id}.json")
-    with open(ckpt_path, "w", encoding="utf-8") as f:
-        json.dump(pipeline_status, f, indent=2)
+    try:
+        with open(ckpt_path, "w", encoding="utf-8") as fh:
+            json.dump(pipeline_status, fh, indent=2)
+    except OSError as exc:
+        log.error("Failed to checkpoint pipeline %s: %s", pipeline_id, exc)
 
 
 def _load_checkpoints() -> dict:
@@ -919,7 +943,7 @@ def run_pipeline(self, req, stream_callback=None) -> dict:
         "parallel_levels": len(parallel_levels),
         "skipped_nodes": [],
     }
-    _active_pipelines[pipeline_id] = pipeline_status
+    _set_pipeline(pipeline_id, pipeline_status)
     
     # Execute nodes in topological order
     node_results = {}  # node_id -> result dict
@@ -935,7 +959,7 @@ def run_pipeline(self, req, stream_callback=None) -> dict:
                 raise TimeoutError(f"Pipeline timeout dopo {max_minutes} minuti")
             
             # Check if pipeline was stopped externally
-            if _active_pipelines.get(pipeline_id, {}).get("status") in ("stopped",):
+            if (_get_pipeline(pipeline_id) or {}).get("status") in ("stopped",):
                 if stream_callback:
                     stream_callback({"type": "pipeline_stopped", "message": "Pipeline fermata dall'utente"})
                 break
@@ -1168,35 +1192,35 @@ def run_pipeline(self, req, stream_callback=None) -> dict:
 
 def get_pipeline_status(pipeline_id: str = None) -> dict:
     """Get status of active or completed pipelines.
-    
-    Checks both in-memory and disk checkpoints for completed/stopped pipelines.
+
+    Checks both in-memory (via thread-safe helpers) and disk checkpoints.
     """
     if pipeline_id:
-        status = _active_pipelines.get(pipeline_id)
+        status = _get_pipeline(pipeline_id)
         if not status:
-            # Try loading from checkpoint file (for completed pipelines)
             status = _load_checkpoints().get(pipeline_id)
         if status:
             return {"success": True, "pipeline": status}
         return {"success": False, "error": f"Pipeline '{pipeline_id}' non trovata"}
-    
+
     # Merge in-memory + checkpoint pipelines, sorted by start time
-    result = list(_active_pipelines.values())
+    with _pipelines_lock:
+        in_memory = list(_active_pipelines.values())
+        in_memory_ids = set(_active_pipelines.keys())
     checkpoints = _load_checkpoints()
-    for pid, data in checkpoints.items():
-        if pid not in _active_pipelines:
-            result.append(data)
+    result = in_memory + [v for k, v in checkpoints.items() if k not in in_memory_ids]
     return {
         "success": True,
-        "pipelines": sorted(result, key=lambda x: x.get("started_at", ""), reverse=True)
+        "pipelines": sorted(result, key=lambda x: x.get("started_at", ""), reverse=True),
     }
 
 
 def stop_pipeline(pipeline_id: str) -> dict:
-    """Stop a running pipeline and save final checkpoint."""
-    if pipeline_id in _active_pipelines:
-        _active_pipelines[pipeline_id]["status"] = "stopped"
-        _save_checkpoint(pipeline_id, _active_pipelines[pipeline_id])
+    """Stop a running pipeline and save final checkpoint (thread-safe)."""
+    status = _get_pipeline(pipeline_id)
+    if status:
+        status["status"] = "stopped"
+        _set_pipeline(pipeline_id, status)
         return {"success": True, "message": f"Pipeline '{pipeline_id}' fermata"}
     return {"success": False, "error": f"Pipeline '{pipeline_id}' non trovata"}
 

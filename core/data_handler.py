@@ -2,7 +2,9 @@
 import os
 import glob
 import json
+from core.logger import get_logger
 
+log = get_logger(__name__)
 
 def get_all_module_folders(self):
     """Scan topic folders for nested module folders."""
@@ -60,8 +62,9 @@ def handle_api_modules(self):
             res.update(files_data)
             data["modules"].append(res)
         self.send_json_response(data)
-    except Exception as e:
-        self.send_json_response({"error": str(e)}, 500)
+    except Exception as exc:
+        log.error("handle_api_modules: %s", exc, exc_info=True)
+        self.send_json_response({"error": str(exc)}, 500)
 
 
 def handle_api_topics(self):
@@ -80,11 +83,10 @@ def handle_api_topics(self):
                 "parent_id": topic_data.get("parent_id", None),
                 "modules": []
             }
-            # Only include modules whose actual folder exists on disk
-            seen_modules = set()
+            seen_modules: set = set()
             for mod_num in topic_data.get("modules", []):
                 if mod_num in seen_modules:
-                    continue  # skip duplicates
+                    continue
                 seen_modules.add(mod_num)
                 mod_folder = None
                 if os.path.isdir(topic_folder):
@@ -94,7 +96,7 @@ def handle_api_topics(self):
                             break
                 if mod_folder and os.path.isdir(mod_folder):
                     stored_name = meta.get("modules", {}).get(mod_num, "")
-                    display_name = stored_name if stored_name else os.path.basename(mod_folder)[3:].replace('_', ' ').title()
+                    display_name = stored_name or os.path.basename(mod_folder)[3:].replace('_', ' ').title()
                     mod_info = {
                         "number": mod_num,
                         "folder": mod_folder.replace('\\', '/'),
@@ -102,13 +104,13 @@ def handle_api_topics(self):
                         "description": stored_name,
                         "teoria": [], "test": [], "viz": [], "docs": [], "whitepapers": []
                     }
-                    files_data = load_module_files(self, mod_folder)
-                    mod_info.update(files_data)
+                    mod_info.update(load_module_files(self, mod_folder))
                     topic_info["modules"].append(mod_info)
             result["topics"].append(topic_info)
         self.send_json_response(result)
-    except Exception as e:
-        self.send_json_response({"error": str(e)}, 500)
+    except Exception as exc:
+        log.error("handle_api_topics: %s", exc, exc_info=True)
+        self.send_json_response({"error": str(exc)}, 500)
 
 
 def handle_knowledge_db(self):

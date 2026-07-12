@@ -6,6 +6,9 @@ import tempfile
 import re
 import shutil
 from core.ai_providers import load_ai_config, save_ai_config
+from core.logger import get_logger
+
+log = get_logger(__name__)
 
 
 def handle_api_config_get(self):
@@ -67,8 +70,9 @@ def handle_api_config_post(self):
                 prov['model'] = req['model']
         save_ai_config(ai_cfg)
         self.send_json_response({"success": True})
-    except Exception as e:
-        self.send_json_response({"error": str(e)}, 500)
+    except Exception as exc:
+        log.error("handle_api_config_post: %s", exc)
+        self.send_json_response({"error": str(exc)}, 500)
 
 
 def handle_api_ollama_models(self):
@@ -112,9 +116,12 @@ def handle_api_create_model(self):
             return self.send_json_response({"error": f"Ollama error: {result.stderr or result.stdout}"}, 500)
         finally:
             shutil.rmtree(tmp_dir, ignore_errors=True)
-    except FileNotFoundError:
+    except FileNotFoundError as exc:
+        log.error("handle_api_create_model: %s", exc)
         return self.send_json_response({"error": "Ollama non trovato."}, 500)
-    except subprocess.TimeoutExpired:
+    except subprocess.TimeoutExpired as exc:
+        log.error("handle_api_create_model: %s", exc)
         return self.send_json_response({"error": "Timeout (120s)."}, 500)
-    except Exception as e:
-        return self.send_json_response({"error": str(e)}, 500)
+    except Exception as exc:
+        log.error("handle_api_create_model: %s", exc)
+        return self.send_json_response({"error": str(exc)}, 500)
