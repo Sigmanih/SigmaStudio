@@ -1,6 +1,7 @@
 import React from 'react';
 import { Bot, User, Terminal, FileText } from 'lucide-react';
 import { renderMarkdownLatex } from '../../utils/markdownLatex';
+import { useApp } from '../../contexts/AppContext';
 import 'katex/dist/katex.min.css';
 
 // ==============================================================================
@@ -37,6 +38,23 @@ export default function AgentMessage({
   msgIndex,
   loading: standaloneLoading,
 }) {
+  const app = useApp();
+  const openTab = app ? app.openTab : null;
+
+  const handleFileClick = (path) => {
+    if (!path || !openTab) return;
+    const filename = path.split('/').pop() || path;
+    const pathLower = path.toLowerCase();
+    let type = 'teoria';
+    if (pathLower.includes('/test/')) type = 'test';
+    else if (pathLower.includes('/viz/')) type = 'viz';
+    else if (pathLower.includes('/docs/')) {
+      type = path.split('/').pop()?.toUpperCase().startsWith('WHITEPAPER_') ? 'whitepaper' : 'docs';
+    }
+    else if (pathLower.includes('/teoria/')) type = 'teoria';
+    openTab({ path, filename }, type);
+  };
+
   const messages = groupedMessages || (msg ? [msg] : []);
   if (messages.length === 0) return null;
 
@@ -141,6 +159,14 @@ export default function AgentMessage({
                     {(m.streamingThinking || expandedThinking?.[mid]) && (
                       <div
                         className="chat-thinking-content chat-md"
+                        onClick={e => {
+                          const link = e.target.closest('.chat-file-link');
+                          if (link) {
+                            e.preventDefault();
+                            const path = link.getAttribute('data-path') || link.dataset.path;
+                            handleFileClick(path);
+                          }
+                        }}
                         dangerouslySetInnerHTML={{ __html: renderMarkdownLatex(m.thinking) }}
                       />
                     )}
@@ -157,6 +183,14 @@ export default function AgentMessage({
                 ) : m.content ? (
                   <div
                     className="chat-content chat-md"
+                    onClick={e => {
+                      const link = e.target.closest('.chat-file-link');
+                      if (link) {
+                        e.preventDefault();
+                        const path = link.getAttribute('data-path') || link.dataset.path;
+                        handleFileClick(path);
+                      }
+                    }}
                     dangerouslySetInnerHTML={{ __html: renderMarkdownLatex(m.content) }}
                   />
                 ) : null}
