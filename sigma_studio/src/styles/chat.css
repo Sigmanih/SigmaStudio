@@ -36,27 +36,30 @@
 .chat-msg-delete-btn { position: absolute; top: 4px; right: 4px; width: 18px; height: 18px; border: none; border-radius: 50%; background: rgba(255,85,85,0.15); color: var(--error); font-size: 0.6rem; cursor: pointer; display: flex; align-items: center; justify-content: center; opacity: 0; transition: opacity 0.15s ease; z-index: 5; }
 .chat-msg-delete-btn:hover { background: var(--error); color: #fff; }
 
-/* Message bubbles — Modern Header Layout (v4.0) */
+/* Message bubbles — v5.0 Header inside bubble, avatar 64px */
 .chat-message { display: flex; flex-direction: column; gap: 4px; }
 
-/* Message header: avatar + role + model + time */
-.chat-msg-header { display: flex; align-items: center; gap: 8px; padding: 0 2px; margin-bottom: 2px; }
-.chat-msg-avatar { width: 32px; height: 32px; min-width: 32px; border-radius: 50%; overflow: hidden; display: flex; align-items: center; justify-content: center; border: 2px solid #2a2d3e; background: #0e1016; flex-shrink: 0; }
+/* Bubble — now contains header + content together */
+.chat-bubble { width: 100%; border-radius: 12px; background: rgba(255,255,255,0.03); border: 1px solid var(--border); font-size: 0.8rem; line-height: 1.5; color: var(--text); word-break: break-word; overflow: hidden; }
+.chat-user .chat-bubble { background: rgba(0,210,255,0.06); border-color: rgba(0,210,255,0.15); }
+.chat-system .chat-bubble { background: rgba(255,184,108,0.04); border-color: rgba(255,184,108,0.1); font-size: 0.75rem; }
+
+/* Message header inside bubble: dark background, blue text, flex row */
+.chat-msg-header { display: flex; align-items: center; gap: 10px; padding: 10px 14px; background: rgba(0,0,0,0.2); border-bottom: 1px solid rgba(255,255,255,0.04); border-radius: 12px 12px 0 0; }
+.chat-msg-avatar { width: 64px; height: 64px; min-width: 64px; border-radius: 50%; overflow: hidden; display: flex; align-items: center; justify-content: center; border: 2px solid var(--primary); background: #0e1016; flex-shrink: 0; }
 .chat-msg-avatar img { width: 100%; height: 100%; object-fit: cover; }
 .chat-msg-avatar-loading { background: rgba(188,140,255,0.15); color: var(--accent); border-color: var(--accent); display: flex; align-items: center; justify-content: center; }
-.chat-msg-role { font-size: 0.75rem; font-weight: 600; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.chat-msg-model { font-size: 0.65rem; color: var(--text-dark); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.chat-msg-role { font-size: 0.85rem; font-weight: 700; color: var(--primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.chat-msg-model { font-size: 0.7rem; color: var(--primary); opacity: 0.8; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .chat-msg-orchestrated { font-size: 0.65rem; margin-left: 2px; }
 .chat-msg-header-spacer { flex: 1; min-width: 4px; }
-.chat-msg-time { font-size: 0.55rem; color: var(--text-dark); white-space: nowrap; flex-shrink: 0; }
-.chat-msg-del-btn { width: 18px; height: 18px; border: none; border-radius: 50%; background: rgba(255,85,85,0.15); color: var(--error); font-size: 0.55rem; cursor: pointer; display: flex; align-items: center; justify-content: center; opacity: 0; transition: opacity 0.15s; flex-shrink: 0; }
+.chat-msg-time { font-size: 0.6rem; color: var(--text-dark); white-space: nowrap; flex-shrink: 0; }
+.chat-msg-del-btn { width: 20px; height: 20px; border: none; border-radius: 50%; background: rgba(255,85,85,0.15); color: var(--error); font-size: 0.6rem; cursor: pointer; display: flex; align-items: center; justify-content: center; opacity: 0; transition: opacity 0.15s; flex-shrink: 0; }
 .chat-message:hover .chat-msg-del-btn { opacity: 1; }
 .chat-msg-del-btn:hover { background: var(--error); color: #fff; }
 
-/* Bubble — now full-width since avatar is in header */
-.chat-bubble { width: 100%; padding: 10px 14px; border-radius: 12px; background: rgba(255,255,255,0.03); border: 1px solid var(--border); font-size: 0.8rem; line-height: 1.5; color: var(--text); word-break: break-word; }
-.chat-user .chat-bubble { background: rgba(0,210,255,0.06); border-color: rgba(0,210,255,0.15); }
-.chat-system .chat-bubble { background: rgba(255,184,108,0.04); border-color: rgba(255,184,108,0.1); font-size: 0.75rem; }
+/* Content area inside bubble */
+.chat-msg-content { padding: 10px 14px; }
 
 /* Grouped messages — consecutive system/assistant in one bubble */
 .chat-message-grouped-item { padding: 4px 0; }
