@@ -213,9 +213,9 @@ def get_specialized_agent(specialization: str) -> dict:
 SIGMA_ARCHITECT_ID = "sigma_architect"
 
 AGENT_DISPLAY_COLORS = {
-    "sigma_architect": {"bg": "#7c5bf0", "color": "#ffffff", "icon": "🏗️", "short": "Arch"},
-    "math1": {"bg": "#3fb950", "color": "#ffffff", "icon": "∑", "short": "Math"},
-    "code_architect": {"bg": "#00d2ff", "color": "#0e1016", "icon": "⚙️", "short": "Code"},
+    "sigma_architect": {"bg": "#7c5bf0", "color": "#ffffff", "icon": "🏗️", "short": "Arch", "image": "/images/agente0.png"},
+    "math1": {"bg": "#3fb950", "color": "#ffffff", "icon": "∑", "short": "Math", "image": "/images/matematicoAi.png"},
+    "code_architect": {"bg": "#00d2ff", "color": "#0e1016", "icon": "⚙️", "short": "Code", "image": "/images/programmatoreAi.png"},
 }
 
 
@@ -225,7 +225,7 @@ def get_agents_colors() -> dict:
     agents = meta.get("agents", {})
     result = {}
     for agent_id in agents:
-        color = AGENT_DISPLAY_COLORS.get(agent_id, {"bg": "#8b8fa3", "color": "#0e1016", "icon": "🤖", "short": "AI"})
+        color = AGENT_DISPLAY_COLORS.get(agent_id, {"bg": "#8b8fa3", "color": "#0e1016", "icon": "🤖", "short": "AI", "image": "/images/default.png"})
         result[agent_id] = color
     return result
 

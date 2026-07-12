@@ -4,7 +4,7 @@
 # Fix: quando l'AI risponde in testo normale, mostra il testo ed esce dal loop
 # ==============================================================================
 import os, json, datetime, re
-from core.ai_providers import load_ai_config, resolve_provider_config, call_ollama, call_openai_compatible, call_anthropic
+from core.ai_providers import load_ai_config, resolve_provider_config, call_ai_model, call_ollama, call_openai_compatible, call_anthropic
 from core.task_handler import execute_ai_actions
 from core.chat_handler import _get_manifesto_content, _get_time_context, _build_filesystem_context, _extract_json_from_response, _collect_context_files
 
@@ -17,33 +17,21 @@ _WRITE_ACTIONS = frozenset([
     'create_file', 'edit_file', 'rename_file', 'delete_file', 'create_module',
 ])
 
-def _call_ai_model(messages, ai_cfg, model, provider, endpoint, api_url, api_key, temperature, max_tokens, top_p, request_timeout):
-    route_provider = provider
-    if route_provider not in ('ollama', 'api', 'anthropic'):
-        route_provider = 'api' if 'anthropic' not in api_url.lower() else 'anthropic'
-    ac = ai_cfg.get("providers", {}).get(provider, {})
-    try:
-        if route_provider == "ollama":
-            return call_ollama(messages, model, endpoint, temperature, max_tokens, top_p,
-                ac.get("top_k", 40), ac.get("repeat_penalty", 1.1), ac.get("num_ctx", 8192), ac.get("seed", 0), request_timeout)
-        elif route_provider == "api":
-            return call_openai_compatible(messages, model, api_url, api_key, temperature, max_tokens, top_p, request_timeout)
-        elif route_provider == "anthropic":
-            r = call_anthropic(messages, model, api_url, api_key, temperature, max_tokens, top_p)
-            return r[0], None, r[1] if len(r) > 1 else None
-    except Exception as e:
-        return None, None, str(e)
-    return None, None, "Provider sconosciuto"
 
 def _validate_action_types(actions):
     valid, invalid = [], []
     for a in actions:
-        if "type" not in a:
-            invalid.append({"type": "MISSING", "path": a.get("path", ""), "reason": "Manca 'type'!"})
-        elif a.get("type") in _VALID_ACTION_TYPES:
+        # Accept both "type" and "action" as the action type field (LLMs often use "action" instead of "type")
+        action_type = a.get("type") or a.get("action")
+        if not action_type:
+            invalid.append({"type": "MISSING", "path": a.get("path", ""), "reason": "Manca 'type' o 'action'!"})
+        elif action_type in _VALID_ACTION_TYPES:
+            # Normalize to "type" if it was "action"
+            if "action" in a and "type" not in a:
+                a["type"] = a["action"]
             valid.append(a)
         else:
-            invalid.append({"type": a.get("type"), "path": a.get("path", ""), "reason": f"Tipo sconosciuto: {a.get('type')}"})
+            invalid.append({"type": action_type, "path": a.get("path", ""), "reason": f"Tipo sconosciuto: {action_type}"})
     return valid, invalid
 
 def _completion_keywords(text):
@@ -156,7 +144,7 @@ Obiettivo: {goal}
         if callback:
             callback({"type": "iteration_start", "iteration": current_iteration, "max_iterations": max_iterations})
 
-        response, thinking, error = _call_ai_model(messages, ai_cfg, model, provider, endpoint, api_url, api_key, temperature, max_tokens * 2, top_p, request_timeout)
+        response, thinking, error = call_ai_model(messages, ai_cfg, model, provider, endpoint, api_url, api_key, temperature, max_tokens * 2, top_p, request_timeout)
 
         if error:
             if callback:

@@ -11,7 +11,7 @@ import os
 import json
 import datetime
 import re
-from core.ai_providers import load_ai_config, resolve_provider_config, call_ollama, call_openai_compatible, call_anthropic
+from core.ai_providers import load_ai_config, resolve_provider_config, call_ai_model, call_ollama, call_openai_compatible, call_anthropic
 from core.task_handler import execute_ai_actions, _add_action_notifications
 
 
@@ -94,31 +94,6 @@ def _extract_json_from_response(content):
                 i = j
         idx = content.find('{', idx + 1)
     return re.search(r'\{[\s\S]*"response"[\s\S]*("actions"|"tasks"|"self_reflection")[\s\S]*\}', content)
-
-
-def _call_ai_model(messages, ai_cfg, model, provider, endpoint, api_url, api_key, temperature, max_tokens, top_p, request_timeout):
-    """Call AI model and return response."""
-    route_provider = provider
-    if route_provider not in ('ollama', 'api', 'anthropic'):
-        route_provider = 'api' if 'anthropic' not in api_url.lower() else 'anthropic'
-    
-    active_prov_cfg = ai_cfg.get("providers", {}).get(provider, {})
-    
-    try:
-        if route_provider == "ollama":
-            num_ctx = active_prov_cfg.get("num_ctx", 8192)
-            top_k = active_prov_cfg.get("top_k", 40)
-            repeat_penalty = active_prov_cfg.get("repeat_penalty", 1.1)
-            seed = active_prov_cfg.get("seed", 0)
-            return call_ollama(messages, model, endpoint, temperature, max_tokens, top_p, top_k, repeat_penalty, num_ctx, seed, request_timeout)
-        elif route_provider == "api":
-            return call_openai_compatible(messages, model, api_url, api_key, temperature, max_tokens, top_p, request_timeout)
-        elif route_provider == "anthropic":
-            result = call_anthropic(messages, model, api_url, api_key, temperature, max_tokens, top_p)
-            return result[0], None, result[1] if len(result) > 1 else None
-    except Exception as e:
-        return None, None, str(e)
-    return None, None, "Provider sconosciuto"
 
 
 # ==============================================================================
@@ -224,7 +199,7 @@ Rispondi SOLO con JSON:
         {"role": "user", "content": f"Pianifica i task necessari per: {goal}\n\nOra: {time_ctx}"}
     ]
     
-    plan_response, plan_thinking, plan_error = _call_ai_model(
+    plan_response, plan_thinking, plan_error = call_ai_model(
         plan_messages, ai_cfg, model, provider, endpoint, api_url, api_key,
         temperature, max_tokens, top_p, request_timeout
     )
@@ -387,7 +362,7 @@ Moduli: {task.get('moduli', [])}
         ]
         
         print(f"[LOOP_DEBUG] Calling AI for task: {task['titolo']}", flush=True)
-        exec_response, exec_thinking, exec_error = _call_ai_model(
+        exec_response, exec_thinking, exec_error = call_ai_model(
             exec_messages, ai_cfg, model, provider, endpoint, api_url, api_key,
             0.3,  # Lower temperature for code execution
             max_tokens * 2, top_p, request_timeout  # double max_tokens for code generation

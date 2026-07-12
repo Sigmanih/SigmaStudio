@@ -439,6 +439,29 @@ def resolve_provider_config(ai_cfg: dict, model_name: str):
 # AI Call implementations
 # ---------------------------------------------------------------------------
 
+# Centralized AI model caller — eliminates 3x duplication across codebase
+def call_ai_model(messages, ai_cfg, model, provider, endpoint, api_url, api_key, temperature, max_tokens, top_p, request_timeout):
+    """Unified AI model caller used by agent_orchestrator, execute_loop, loop_handler.
+    Eliminates 3x code duplication."""
+    route_provider = provider
+    if route_provider in ('deepseek', 'openai'):
+        route_provider = 'api'
+    elif route_provider not in ('ollama', 'api', 'anthropic'):
+        route_provider = 'api'
+    ac = ai_cfg.get("providers", {}).get(provider, {})
+    try:
+        if route_provider == "ollama":
+            return call_ollama(messages, model, endpoint, temperature, max_tokens, top_p,
+                ac.get("top_k", 40), ac.get("repeat_penalty", 1.1), ac.get("num_ctx", 8192), ac.get("seed", 0), request_timeout)
+        elif route_provider == "api":
+            return call_openai_compatible(messages, model, api_url, api_key, temperature, max_tokens, top_p, request_timeout)
+        elif route_provider == "anthropic":
+            r = call_anthropic(messages, model, api_url, api_key, temperature, max_tokens, top_p)
+            return r[0], None, r[1] if len(r) > 1 else None
+    except Exception as e:
+        return None, None, str(e)
+    return None, None, "Provider sconosciuto"
+
 def call_ollama(
     messages: list,
     model: str,

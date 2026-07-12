@@ -8,7 +8,7 @@ import datetime
 import re
 import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from core.ai_providers import load_ai_config, resolve_provider_config, call_ollama, call_openai_compatible, call_anthropic
+from core.ai_providers import load_ai_config, resolve_provider_config, call_ai_model, call_ollama, call_openai_compatible, call_anthropic
 from core.task_handler import execute_ai_actions
 from core.agent_registry import get_all_agents, get_specialized_agent, increment_usage, SIGMA_ARCHITECT_ID
 from core.agent_memory import save_session_memory, get_memory_context
@@ -16,27 +16,6 @@ from core.chat_handler import _get_manifesto_content, _get_time_context, _build_
 
 
 MAX_PARALLEL_WORKERS = 5
-
-
-def _call_ai_model(messages, ai_cfg, model, provider, endpoint, api_url, api_key, temperature, max_tokens, top_p, request_timeout):
-    route_provider = provider
-    if route_provider in ('deepseek', 'openai'):
-        route_provider = 'api'
-    elif route_provider not in ('ollama', 'api', 'anthropic'):
-        route_provider = 'api'
-    ac = ai_cfg.get("providers", {}).get(provider, {})
-    try:
-        if route_provider == "ollama":
-            return call_ollama(messages, model, endpoint, temperature, max_tokens, top_p,
-                ac.get("top_k", 40), ac.get("repeat_penalty", 1.1), ac.get("num_ctx", 8192), ac.get("seed", 0), request_timeout)
-        elif route_provider == "api":
-            return call_openai_compatible(messages, model, api_url, api_key, temperature, max_tokens, top_p, request_timeout)
-        elif route_provider == "anthropic":
-            r = call_anthropic(messages, model, api_url, api_key, temperature, max_tokens, top_p)
-            return r[0], None, r[1] if len(r) > 1 else None
-    except Exception as e:
-        return None, None, str(e)
-    return None, None, "Provider sconosciuto"
 
 
 def _load_agent_config(ai_cfg, model_override, agent_id=None):
@@ -76,14 +55,38 @@ def _load_agent_config(ai_cfg, model_override, agent_id=None):
         temperature = dpv.get("temperature", temperature)
         max_tokens = dpv.get("max_tokens", max_tokens)
         top_p = dpv.get("top_p", top_p)
-    return provider, endpoint, api_url, api_key, temperature, max_tokens, top_p, request_timeout
+    
+    # FIX: Validate provider has required API key for remote models
+    # If model is deepseek/openai/anthropic but no API key, fallback to Ollama
+    if provider in ('deepseek', 'openai', 'anthropic') and not api_key:
+        # Try to find a valid Ollama model as fallback
+        ollama_cfg = providers_config.get('ollama', {})
+        ollama_endpoint = ollama_cfg.get('endpoint', 'http://localhost:11434/api/chat')
+        # Check if Ollama is available by testing the endpoint
+        fallback_model = model_override or ai_cfg.get("model", "llama3.2")
+        if not fallback_model.startswith(('deepseek', 'gpt-', 'o1', 'o3', 'claude')):
+            fallback_model = "llama3.2"
+        print(f"[LOAD_AGENT_CONFIG] No API key for {provider}, falling back to Ollama with model={fallback_model}", flush=True)
+        provider = 'ollama'
+        endpoint = ollama_endpoint
+        api_url = ''
+        fallback_model = model_override or ai_cfg.get("model", "llama3.2")
+        if fallback_model.startswith(('deepseek', 'gpt-', 'o1', 'o3', 'claude')):
+            fallback_model = "llama3.2"
+        model = fallback_model
+        temperature = ollama_cfg.get('temperature', 0.7)
+        max_tokens = ollama_cfg.get('max_tokens', 4096)
+        top_p = ollama_cfg.get('top_p', 0.9)
+        request_timeout = ollama_cfg.get('timeout', 300)
+    
+    return model, provider, endpoint, api_url, api_key, temperature, max_tokens, top_p, request_timeout
 
 
 AGENT_COLORS = {
-    "sigma_architect": {"bg": "#7c5bf0", "color": "#ffffff", "icon": "🏗️", "short": "Arch"},
-    "math1": {"bg": "#3fb950", "color": "#ffffff", "icon": "∑", "short": "Math"},
-    "code_architect": {"bg": "#00d2ff", "color": "#0e1016", "icon": "⚙️", "short": "Code"},
-    "default": {"bg": "#8b8fa3", "color": "#0e1016", "icon": "🤖", "short": "AI"},
+    "sigma_architect": {"bg": "#7c5bf0", "color": "#ffffff", "icon": "🏗️", "short": "Arch", "image": "/images/agente0.png"},
+    "math1": {"bg": "#3fb950", "color": "#ffffff", "icon": "∑", "short": "Math", "image": "/images/matematicoAi.png"},
+    "code_architect": {"bg": "#00d2ff", "color": "#0e1016", "icon": "⚙️", "short": "Code", "image": "/images/programmatoreAi.png"},
+    "default": {"bg": "#8b8fa3", "color": "#0e1016", "icon": "🤖", "short": "AI", "image": "/images/default.png"},
 }
 
 
@@ -101,7 +104,7 @@ def _get_available_agents_for_goal(goal):
 # ==============================================================================
 
 def _decompose_goal(goal, agents_list, ai_cfg, model_override):
-    provider, endpoint, api_url, api_key, temperature, max_tokens, top_p, timeout = \
+    main_model, provider, endpoint, api_url, api_key, temperature, max_tokens, top_p, timeout = \
         _load_agent_config(ai_cfg, model_override, SIGMA_ARCHITECT_ID)
     agents_json = json.dumps([{
         "id": a.get("id"), "name": a.get("name"),
@@ -126,12 +129,7 @@ Agenti disponibili:
         {"role": "system", "content": system_prompt},
         {"role": "user", "content": f"Analizza e scomponi il seguente goal:\n\n{goal}\n\nAssegna ogni sotto-task all'agente più adatto."}
     ]
-    main_model = ai_cfg.get("active_model", ai_cfg.get("model", "deepseek-v4-flash"))
-    for a in agents_list:
-        if a.get("id") == SIGMA_ARCHITECT_ID and a.get("models"):
-            main_model = a["models"][0]
-            break
-    response, thinking, error = _call_ai_model(messages, ai_cfg, main_model,
+    response, thinking, error = call_ai_model(messages, ai_cfg, main_model,
         provider, endpoint, api_url, api_key, 0.4, max_tokens * 4, top_p, timeout)
     if error or not response:
         return _generate_fallback_tasks(agents_list, goal), None
@@ -200,7 +198,7 @@ def _execute_subtask(self, subtask, goal, stream_callback):
     agent_model = agent["models"][0] if agent and agent.get("models") else None
     ai_cfg = load_ai_config()
     model = agent_model or ai_cfg.get("model", "llama3.2")
-    provider, endpoint, api_url, api_key, temperature, max_tokens, top_p, timeout = _load_agent_config(ai_cfg, model, agent_id)
+    model, provider, endpoint, api_url, api_key, temperature, max_tokens, top_p, timeout = _load_agent_config(ai_cfg, model, agent_id)
     manifesto_path = agent.get("manifesto", "") if agent else ""
     system_prompt = _get_manifesto_content(manifesto_path)
     if not system_prompt.strip():
@@ -216,7 +214,7 @@ def _execute_subtask(self, subtask, goal, stream_callback):
     max_iterations = 3
     all_actions_log = []
     for iteration in range(max_iterations):
-        response, thinking, error = _call_ai_model(messages, ai_cfg, model, provider, endpoint, api_url, api_key, 0.3, max_tokens * 2, top_p, timeout)
+        response, thinking, error = call_ai_model(messages, ai_cfg, model, provider, endpoint, api_url, api_key, 0.3, max_tokens * 2, top_p, timeout)
         if error:
             if stream_callback: stream_callback({"type": "agent_task_error", "agent_id": agent_id, "iteration": iteration + 1, "error": error})
             return False, all_actions_log, error
@@ -339,7 +337,7 @@ def orchestrate(self, req, stream_callback=None):
     model_override = req.get("model", "")
     ai_cfg = load_ai_config()
     if stream_callback:
-        stream_callback({"type": "orchestrate_start", "goal": goal, "strategy": strategy, "message": f"🎯 Avvio orchestrazione per: {goal[:100]}..."})
+        stream_callback({"type": "orchestrate_start", "goal": goal, "strategy": strategy, "message": f"🎯 Avvio orchestrazione per: {goal}..."})
     if stream_callback:
         stream_callback({"type": "orchestrate_phase", "phase": "decompose", "message": "📋 Scomposizione del goal in sotto-task..."})
     agents = _get_available_agents_for_goal(goal)
@@ -408,19 +406,27 @@ def handle_chat_orchestrate(self):
 # ==============================================================================
 
 def _fallback_objectives(session_id, agents_list, goal):
-    """Generate generic micro-objectives when AI decomposition fails. Used as last resort."""
+    """Generate generic micro-objectives when AI decomposition fails. Used as last resort.
+    Solo sigma_architect scrive teoria. Niente test/review a meno che non siano esplicitamente richiesti."""
     from core.research_sessions import add_micro_objective, get_session
     
     session = get_session(session_id)
     session_name = (session.get("name") or goal[:40]) if session else goal[:40]
     
-    # Dynamic, topic-agnostic objectives based on the goal
+    goal_lower = goal.lower()
+    needs_testing = any(kw in goal_lower for kw in ['test', 'validazione', 'verifica', 'testing'])
+    needs_review = any(kw in goal_lower for kw in ['revisione', 'review', 'revisore'])
+    
     objectives = [
-        {"title": f"Analisi: {goal[:60]}", "description": f"Analizza approfonditamente l'obiettivo: {goal[:200]}. Leggi i file esistenti e crea un documento di analisi iniziale.", "assigned_to": "sigma_architect", "actions_hint": ["read_file", "create_file"], "completion_criteria": "Analisi iniziale documentata con next steps"},
-        {"title": f"Teoria e documentazione: {goal[:40]}", "description": f"Sulla base dell'obiettivo '{goal[:100]}', crea file di teoria con definizioni, spiegazioni, esempi. Usa data/ come root directory.", "assigned_to": "math1", "actions_hint": ["create_file"], "completion_criteria": "File di teoria creati con contenuti sostanziosi"},
-        {"title": f"Validazione: {goal[:40]}", "description": f"Verifica e testa i risultati dell'obiettivo '{goal[:100]}'. Crea test Python se applicabile, esegui validazioni.", "assigned_to": "test-engineer", "actions_hint": ["run_test", "create_file"], "completion_criteria": "Validazione completata con risultati"},
-        {"title": f"Revisione: {goal[:40]}", "description": f"Verifica tutto il lavoro prodotto per '{goal[:100]}'. Controlla completezza, coerenza e correttezza.", "assigned_to": "proof-reviewer", "actions_hint": ["read_file", "create_file"], "completion_criteria": "Report di revisione completato"},
+        {"title": f"Analisi e pianificazione: {goal[:200]}", "description": f"Analizza approfonditamente l'obiettivo: {goal[:2000]}. Leggi i file esistenti, analizza la struttura del progetto, e crea un documento di analisi iniziale con piano di lavoro dettagliato.", "assigned_to": "sigma_architect", "actions_hint": ["read_file", "create_file"], "completion_criteria": "Analisi iniziale documentata con piano di lavoro"},
+        {"title": f"Teoria: {goal[:200]}", "description": f"CREA file di teoria completi e dettagliati per: '{goal[:2000]}'. Scrivi definizioni rigorose, teoremi con dimostrazioni formali, esempi svolti passo-passo. Usa LaTeX per ogni formula matematica. Crea ALMENO 3 file di teoria separati per coprire l'argomento in modo esaustivo. I file vanno in data/<topic>/01_base/teoria/.", "assigned_to": "sigma_architect", "actions_hint": ["create_file", "read_file"], "completion_criteria": "Almeno 3 file di teoria creati con contenuti sostanziosi (min 500 parole ciascuno)"},
     ]
+    
+    # Only add testing/review if explicitly mentioned in the goal
+    if needs_testing:
+        objectives.append({"title": f"Test: {goal[:200]}", "description": f"Verifica e testa i risultati per '{goal[:2000]}'. Crea test Python con pytest/sympy, esegui validazioni. Crea file in data/<topic>/01_base/test/.", "assigned_to": "sigma_architect", "actions_hint": ["create_file", "run_test"], "completion_criteria": "Test creati ed eseguiti con successo"})
+    if needs_review:
+        objectives.append({"title": f"Revisione: {goal[:200]}", "description": f"Verifica tutto il lavoro prodotto per '{goal[:2000]}'. Controlla completezza, coerenza, correttezza matematica. Crea file di revisione in data/<topic>/01_base/docs/.", "assigned_to": "sigma_architect", "actions_hint": ["read_file", "create_file"], "completion_criteria": "Report di revisione completato"})
     
     added = []
     for obj in objectives:
@@ -431,9 +437,627 @@ def _fallback_objectives(session_id, agents_list, goal):
     return {"success": True, "objectives": added, "analysis": f"Obiettivi generici generati (coordinatore AI non disponibile): {len(added)} task", "count": len(added)}
 
 
+# ==============================================================================
+# THEORY FILE TEMPLATES — Used when AI fails to generate proper JSON actions
+# Genera file di teoria strutturati per argomento con contenuti reali
+# ==============================================================================
+
+def _get_analisi1_files(base_path):
+    """Generate all Analisi 1 theory files with real mathematical content."""
+    now = datetime.datetime.now()
+    date_str = now.strftime('%Y-%m-%d')
+    
+    def t(text):
+        """Template helper: replaces {date_str} with actual date and fixes f-string escaped braces."""
+        return text.replace('{date_str}', date_str).replace('{{', '{').replace('}}', '}')
+    
+    return [
+        {
+            "path": f"{base_path}/teoria/01_insiemi_numerici.md",
+            "content": t("""# Insiemi Numerici e Proprietà Fondamentali
+
+**Data:** {date_str} | **Argomento:** Analisi Matematica 1
+
+## 1. Insieme dei Numeri Naturali ($\\mathbb{{N}}$)
+
+L'insieme dei numeri naturali è definito assiomaticamente da Peano:
+$$\\mathbb{{N}} = \\{{1, 2, 3, \\dots\\}}$$
+
+### Assiomi di Peano
+1. $1 \\in \\mathbb{{N}}$
+2. Ogni $n \\in \\mathbb{{N}}$ ha un successore $s(n) \\in \\mathbb{{N}}$
+3. $1$ non è successore di alcun numero
+4. Se $s(n) = s(m)$ allora $n = m$
+5. **Principio di induzione**: se $P(1)$ è vera e $P(k) \\implies P(k+1)$, allora $P(n)$ è vera $\\forall n \\in \\mathbb{{N}}$
+
+### Proprietà
+- **Chiusura**: $\\forall a,b \\in \\mathbb{{N}}: a+b \\in \\mathbb{{N}}, a\\cdot b \\in \\mathbb{{N}}$
+- **Commutatività**: $a+b = b+a$, $a\\cdot b = b\\cdot a$
+- **Associatività**: $(a+b)+c = a+(b+c)$, $(a\\cdot b)\\cdot c = a\\cdot(b\\cdot c)$
+- **Elemento neutro**: $1$ per la moltiplicazione
+
+## 2. Insieme dei Numeri Interi ($\\mathbb{{Z}}$)
+
+$$\\mathbb{{Z}} = \\{{\\dots, -3, -2, -1, 0, 1, 2, 3, \\dots\\}}$$
+
+$\\mathbb{{Z}}$ è un **anello commutativo unitario**: chiuso rispetto a somma, prodotto, differenza.
+
+## 3. Insieme dei Numeri Razionali ($\\mathbb{{Q}}$)
+
+$$\\mathbb{{Q}} = \\left\\{{ \\frac{{p}}{{q}} \\mid p \\in \\mathbb{{Z}}, q \\in \\mathbb{{Z}} \\setminus \\{{0\\}} \\right\\}}$$
+
+### Proprietà
+- $\\mathbb{{Q}}$ è un **campo**: ogni elemento non nullo ha inverso moltiplicativo
+- $\\mathbb{{Q}}$ è **denso**: tra due razionali qualsiasi esiste sempre un altro razionale
+- $\\mathbb{{Q}}$ è **numerabile** (dimostrazione di Cantor)
+
+### Incompletezza di $\\mathbb{{Q}}$
+$\\sqrt{{2}} \\notin \\mathbb{{Q}}$ (dimostrazione per assurdo).
+
+## 4. Insieme dei Numeri Reali ($\\mathbb{{R}}$)
+
+Costruzione tramite **sezioni di Dedekind** o **successioni di Cauchy**.
+
+### Proprietà fondamentali
+- $\\mathbb{{R}}$ è un **campo ordinato completo**
+- **Assioma di completezza (o dell'estremo superiore)**: Ogni sottoinsieme non vuoto e superiormente limitato di $\\mathbb{{R}}$ ammette estremo superiore in $\\mathbb{{R}}$
+- $\\mathbb{{R}}$ è **non numerabile** (argomento diagonale di Cantor)
+
+### Estremo superiore e inferiore
+- **Maggiorante**: $M$ è maggiorante di $A \\subseteq \\mathbb{{R}}$ se $\\forall a \\in A: a \\le M$
+- **Estremo superiore ($\\sup A$)**: il minimo dei maggioranti
+- **Estremo inferiore ($\\inf A$)**: il massimo dei minoranti
+- **Massimo ($\\max A$)**: se $\\sup A \\in A$
+- **Minimo ($\\min A$)**: se $\\inf A \\in A$
+
+## 5. Numeri Complessi ($\\mathbb{{C}}$)
+
+$$\\mathbb{{C}} = \\{{a + ib \\mid a,b \\in \\mathbb{{R}}, i^2 = -1\\}}$$
+
+### Rappresentazioni
+- **Algebrica**: $z = a + ib$
+- **Polare**: $z = \\rho(\\cos\\theta + i\\sin\\theta)$ dove $\\rho = \\sqrt{{a^2 + b^2}}$, $\\theta = \\arctan(b/a)$
+- **Esponenziale**: $z = \\rho e^{{i\\theta}}$ (formula di Eulero)
+
+### Formula di De Moivre
+$$(\\cos\\theta + i\\sin\\theta)^n = \\cos(n\\theta) + i\\sin(n\\theta)$$
+
+---
+*Generato automaticamente da Sigma Studio — {date_str}*
+"""),
+        },
+        {
+            "path": f"{base_path}/teoria/02_funzioni.md",
+            "content": t("""# Funzioni Reali di Variabile Reale
+
+**Data:** {date_str} | **Argomento:** Analisi Matematica 1
+
+## 1. Definizione e Concetti Fondamentali
+
+Una **funzione** $f: A \\to B$ è una legge che associa a ogni $x \\in A$ un unico $y \\in B$.
+
+- **Dominio**: $A = \\text{{dom}}(f)$
+- **Codominio**: $B$
+- **Immagine**: $f(A) = \\{{f(x) \\mid x \\in A\\}}$
+- **Grafico**: $G_f = \\{{(x, f(x)) \\mid x \\in A\\}} \\subseteq \\mathbb{{R}}^2$
+
+### Classificazione
+- **Iniettiva**: $x_1 \\neq x_2 \\implies f(x_1) \\neq f(x_2)$
+- **Suriettiva**: $f(A) = B$
+- **Biiettiva**: iniettiva e suriettiva
+
+## 2. Funzioni Elementari
+
+### Funzione Potenza
+$$f(x) = x^n, \\quad n \\in \\mathbb{{N}}$$
+
+- $n$ pari: dominio $\\mathbb{{R}}$, immagine $[0, +\\infty)$
+- $n$ dispari: dominio $\\mathbb{{R}}$, immagine $\\mathbb{{R}}$
+
+### Funzione Esponenziale
+$$f(x) = a^x, \\quad a > 0, a \\neq 1$$
+
+- Dominio: $\\mathbb{{R}}$
+- Immagine: $(0, +\\infty)$
+- $a > 1$: crescente; $0 < a < 1$: decrescente
+- **Limite notevole**: $\\lim_{{x \\to 0}} \\frac{{e^x - 1}}{{x}} = 1$
+
+### Funzione Logaritmo
+$$f(x) = \\log_a(x), \\quad a > 0, a \\neq 1$$
+
+- Dominio: $(0, +\\infty)$
+- Immagine: $\\mathbb{{R}}$
+- È l'inversa dell'esponenziale: $a^{{\\log_a(x)}} = x$, $\\log_a(a^x) = x$
+
+### Proprietà dei Logaritmi
+1. $\\log_a(xy) = \\log_a(x) + \\log_a(y)$
+2. $\\log_a\\left(\\frac{{x}}{{y}}\\right) = \\log_a(x) - \\log_a(y)$
+3. $\\log_a(x^n) = n\\log_a(x)$
+4. $\\log_a(x) = \\frac{{\\log_b(x)}}{{\\log_b(a)}}$ (cambio di base)
+
+### Funzioni Trigonometriche
+- $\\sin x$: periodica $2\\pi$, dispari, $[-1, 1]$
+- $\\cos x$: periodica $2\\pi$, pari, $[-1, 1]$
+- $\\tan x = \\frac{{\\sin x}}{{\\cos x}}$, periodica $\\pi$
+
+### Identità Fondamentali
+$$\\sin^2 x + \\cos^2 x = 1$$
+$$\\sin(2x) = 2\\sin x \\cos x$$
+$$\\cos(2x) = \\cos^2 x - \\sin^2 x$$
+
+## 3. Funzioni Inverse
+
+### Arcsin, Arccos, Arctan
+- $\\arcsin: [-1,1] \\to [-\\pi/2, \\pi/2]$
+- $\\arccos: [-1,1] \\to [0, \\pi]$
+- $\\arctan: \\mathbb{{R}} \\to (-\\pi/2, \\pi/2)$
+
+## 4. Composizione di Funzioni
+
+$$(g \\circ f)(x) = g(f(x))$$
+
+Dominio: $\\{{x \\in \\text{{dom}}(f) \\mid f(x) \\in \\text{{dom}}(g)\\}}$
+
+---
+*Generato automaticamente da Sigma Studio — {date_str}*
+"""),
+        },
+        {
+            "path": f"{base_path}/teoria/03_limiti.md",
+            "content": t("""# Limiti e Continuità
+
+**Data:** {date_str} | **Argomento:** Analisi Matematica 1
+
+## 1. Definizione di Limite (Weierstrass)
+
+### Limite Finito per $x \\to x_0$
+$$\\lim_{{x \\to x_0}} f(x) = L \\iff \\forall \\varepsilon > 0\\; \\exists \\delta > 0 : 0 < |x - x_0| < \\delta \\implies |f(x) - L| < \\varepsilon$$
+
+### Limite Infinito
+$$\\lim_{{x \\to x_0}} f(x) = +\\infty \\iff \\forall M > 0\\; \\exists \\delta > 0 : 0 < |x - x_0| < \\delta \\implies f(x) > M$$
+
+### Limite all'Infinito
+$$\\lim_{{x \\to +\\infty}} f(x) = L \\iff \\forall \\varepsilon > 0\\; \\exists N > 0 : x > N \\implies |f(x) - L| < \\varepsilon$$
+
+## 2. Teoremi sui Limiti
+
+### Teorema di Unicità
+Se $\\lim_{{x \\to x_0}} f(x) = L_1$ e $\\lim_{{x \\to x_0}} f(x) = L_2$, allora $L_1 = L_2$.
+
+### Teorema della Permanenza del Segno
+Se $\\lim_{{x \\to x_0}} f(x) = L > 0$, allora esiste un intorno di $x_0$ in cui $f(x) > 0$.
+
+### Teorema del Confronto (dei Carabinieri)
+Se $g(x) \\le f(x) \\le h(x)$ in un intorno di $x_0$ e $\\lim g(x) = \\lim h(x) = L$, allora $\\lim f(x) = L$.
+
+### Algebra dei Limiti
+$$\\lim (f + g) = \\lim f + \\lim g$$
+$$\\lim (f \\cdot g) = \\lim f \\cdot \\lim g$$
+$$\\lim \\frac{{f}}{{g}} = \\frac{{\\lim f}}{{\\lim g}},\\quad \\text{{se }} \\lim g \\neq 0$$
+
+## 3. Forme Indeterminate
+$$\\frac{{0}}{{0}},\\quad \\frac{{\\infty}}{{\\infty}},\\quad 0 \\cdot \\infty,\\quad \\infty - \\infty,\\quad 1^\\infty,\\quad 0^0,\\quad \\infty^0$$
+
+## 4. Limiti Notevoli
+
+### Trigonometrici
+$$\\lim_{{x \\to 0}} \\frac{{\\sin x}}{{x}} = 1$$
+$$\\lim_{{x \\to 0}} \\frac{{1 - \\cos x}}{{x^2}} = \\frac{{1}}{{2}}$$
+
+### Esponenziali e Logaritmici
+$$\\lim_{{x \\to 0}} \\frac{{e^x - 1}}{{x}} = 1$$
+$$\\lim_{{x \\to 0}} \\frac{{\\ln(1 + x)}}{{x}} = 1$$
+$$\\lim_{{x \\to \\infty}} \\left(1 + \\frac{{1}}{{x}}\\right)^x = e$$
+
+## 5. Continuità
+
+$f$ è **continua** in $x_0$ se:
+$$\\lim_{{x \\to x_0}} f(x) = f(x_0)$$
+
+### Proprietà delle Funzioni Continue
+- Somma, prodotto, quoziente di continue è continua
+- Composizione di continue è continua
+- **Teorema di Weierstrass**: una funzione continua su $[a,b]$ ammette massimo e minimo
+- **Teorema dei Valori Intermedi**: se $f$ continua su $[a,b]$, allora $f$ assume tutti i valori tra $f(a)$ e $f(b)$
+- **Teorema di Bolzano**: se $f(a) \\cdot f(b) < 0$, esiste $c \\in (a,b)$ tale che $f(c) = 0$
+
+## 6. Punti di Discontinuità
+
+1. **Prima specie (salto)**: $\\lim_{{x \\to x_0^-}} f(x) \\neq \\lim_{{x \\to x_0^+}} f(x)$
+2. **Seconda specie**: almeno uno dei limiti non esiste o è infinito
+3. **Terza specie (eliminabile)**: $\\lim_{{x \\to x_0}} f(x)$ esiste ma $f(x_0) \\neq \\lim f$
+
+---
+*Generato automaticamente da Sigma Studio — {date_str}*
+"""),
+        },
+        {
+            "path": f"{base_path}/teoria/04_derivate.md",
+            "content": t("""# Derivate e Calcolo Differenziale
+
+**Data:** {date_str} | **Argomento:** Analisi Matematica 1
+
+## 1. Definizione di Derivata
+
+La derivata di $f$ in $x_0$ è:
+$$f'(x_0) = \\lim_{{h \\to 0}} \\frac{{f(x_0 + h) - f(x_0)}}{{h}}$$
+
+### Interpretazione Geometrica
+$f'(x_0)$ è il coefficiente angolare della retta tangente al grafico di $f$ in $(x_0, f(x_0))$.
+
+$$\\text{{retta tangente}}: y - f(x_0) = f'(x_0)(x - x_0)$$
+
+## 2. Derivate Fondamentali
+
+| $f(x)$ | $f'(x)$ |
+|--------|---------|
+| $c$ (costante) | $0$ |
+| $x^n$ | $nx^{{n-1}}$ |
+| $e^x$ | $e^x$ |
+| $a^x$ | $a^x \\ln a$ |
+| $\\ln x$ | $1/x$ |
+| $\\sin x$ | $\\cos x$ |
+| $\\cos x$ | $-\\sin x$ |
+| $\\tan x$ | $1/\\cos^2 x = 1 + \\tan^2 x$ |
+| $\\arcsin x$ | $1/\\sqrt{{1-x^2}}$ |
+| $\\arccos x$ | $-1/\\sqrt{{1-x^2}}$ |
+| $\\arctan x$ | $1/(1+x^2)$ |
+
+## 3. Regole di Derivazione
+
+### Linearità
+$$(f+g)' = f' + g', \\quad (cf)' = c f'$$
+
+### Prodotto (Leibniz)
+$$(f \\cdot g)' = f'g + fg'$$
+
+### Quoziente
+$$\\left(\\frac{{f}}{{g}}\\right)' = \\frac{{f'g - fg'}}{{g^2}}$$
+
+### Catena (Composizione)
+$$(g \\circ f)'(x) = g'(f(x)) \\cdot f'(x)$$
+
+## 4. Teoremi Fondamentali
+
+### Teorema di Fermat
+Se $f$ ha un estremo locale in $x_0$ ed è derivabile, allora $f'(x_0) = 0$.
+
+### Teorema di Rolle
+Se $f$ è continua su $[a,b]$, derivabile su $(a,b)$ e $f(a) = f(b)$, allora esiste $c \\in (a,b)$ tale che $f'(c) = 0$.
+
+### Teorema di Lagrange (Valore Medio)
+Se $f$ è continua su $[a,b]$ e derivabile su $(a,b)$, esiste $c \\in (a,b)$ tale che:
+$$f'(c) = \\frac{{f(b) - f(a)}}{{b - a}}$$
+
+### Teorema di Cauchy
+Generalizzazione di Lagrange: esistono $g$ continua/derivabile, $g' \\neq 0$, allora:
+$$\\frac{{f(b)-f(a)}}{{g(b)-g(a)}} = \\frac{{f'(c)}}{{g'(c)}}$$
+
+## 5. Regola di De L'Hôpital
+
+Se $\\lim \\frac{{f}}{{g}}$ è $\\frac{{0}}{{0}}$ o $\\frac{{\\infty}}{{\\infty}}$:
+$$\\lim_{{x \\to x_0}} \\frac{{f(x)}}{{g(x)}} = \\lim_{{x \\to x_0}} \\frac{{f'(x)}}{{g'(x)}}$$
+
+## 6. Studio di Funzione
+
+1. **Dominio**: trovare dove $f$ è definita
+2. **Simmetrie**: $f$ pari ($f(-x)=f(x)$) o dispari ($f(-x)=-f(x)$)
+3. **Intersezioni** con gli assi
+4. **Segno** della funzione
+5. **Asintoti**:
+   - Orizzontale: $\\lim_{{x \\to \\pm\\infty}} f(x) = L$
+   - Verticale: $\\lim_{{x \\to x_0}} f(x) = \\pm\\infty$
+   - Obliquo: $y = mx + q$ con $m = \\lim f(x)/x$, $q = \\lim (f(x)-mx)$
+6. **Crescenza/decrescenza**: $f'(x) > 0$ crescente, $f'(x) < 0$ decrescente
+7. **Punti critici**: $f'(x) = 0$ o $f'$ non esiste
+8. **Concavità**: $f''(x) > 0$ concava verso l'alto
+
+---
+*Generato automaticamente da Sigma Studio — {date_str}*
+"""),
+        },
+        {
+            "path": f"{base_path}/teoria/05_integrali.md",
+            "content": t("""# Integrali e Calcolo Integrale
+
+**Data:** {date_str} | **Argomento:** Analisi Matematica 1
+
+## 1. Integrale di Riemann
+
+Sia $f: [a,b] \\to \\mathbb{{R}}$ limitata. Si considera una partizione $P = \\{{x_0, x_1, \\dots, x_n\\}}$ di $[a,b]$.
+
+### Somme di Riemann
+$$S(P,f) = \\sum_{{k=1}}^n f(\\xi_k)(x_k - x_{{k-1}}), \\quad \\xi_k \\in [x_{{k-1}}, x_k]$$
+
+### Integrale Definito
+$$\\int_a^b f(x)\\,dx = \\lim_{{n \\to \\infty}} \\sum_{{k=1}}^n f(\\xi_k)\\Delta x_k$$
+
+## 2. Teorema Fondamentale del Calcolo Integrale (Primo)
+
+Se $f$ è continua su $[a,b]$, allora $F(x) = \\int_a^x f(t)\\,dt$ è derivabile e:
+$$F'(x) = f(x)$$
+
+## 3. Teorema Fondamentale del Calcolo Integrale (Secondo)
+
+Se $F$ è una primitiva di $f$ (cioè $F' = f$), allora:
+$$\\int_a^b f(x)\\,dx = F(b) - F(a)$$
+
+## 4. Integrali Indefiniti
+
+| $f(x)$ | $\\int f(x)\\,dx$ |
+|--------|-------------------|
+| $x^n$ ($n \\neq -1$) | $\\frac{{x^{{n+1}}}}{{n+1}} + C$ |
+| $1/x$ | $\\ln|x| + C$ |
+| $e^x$ | $e^x + C$ |
+| $a^x$ | $a^x/\\ln a + C$ |
+| $\\sin x$ | $-\\cos x + C$ |
+| $\\cos x$ | $\\sin x + C$ |
+| $1/\\cos^2 x$ | $\\tan x + C$ |
+| $1/(1+x^2)$ | $\\arctan x + C$ |
+| $1/\\sqrt{{1-x^2}}$ | $\\arcsin x + C$ |
+
+## 5. Tecniche di Integrazione
+
+### Integrazione per Parti
+$$\\int f(x)g'(x)\\,dx = f(x)g(x) - \\int f'(x)g(x)\\,dx$$
+
+### Integrazione per Sostituzione
+$$\\int f(g(x))g'(x)\\,dx = \\int f(u)\\,du, \\quad u = g(x)$$
+
+### Integrazione di Frazioni Razionali
+Frazioni proprie con denominatore scomponibile in fattori:
+1. Denominatore con radici reali semplici
+2. Denominatore con radici reali multiple
+3. Denominatore con radici complesse coniugate
+
+## 6. Integrali Impropri
+
+### Estensione a Intervalli Illimitati
+$$\\int_a^{+\\infty} f(x)\\,dx = \\lim_{{b \\to +\\infty}} \\int_a^b f(x)\\,dx$$
+
+### Funzioni non Limitate
+$$\\int_a^b f(x)\\,dx \\quad \\text{{con }} \\lim_{{x \\to c}} f(x) = \\pm\\infty,\\; c \\in [a,b]$$
+
+**Criteri di convergenza**: confronto, confronto asintotico, convergenza assoluta.
+
+---
+*Generato automaticamente da Sigma Studio — {date_str}*
+"""),
+        },
+        {
+            "path": f"{base_path}/teoria/06_successioni.md",
+            "content": t("""# Successioni e Serie Numeriche
+
+**Data:** {date_str} | **Argomento:** Analisi Matematica 1
+
+## 1. Definizione di Successione
+
+Una **successione** è una funzione $a: \\mathbb{{N}} \\to \\mathbb{{R}}$, indicata con $\\{{a_n\\}}_{{n \\in \\mathbb{{N}}}}$.
+
+### Limite di una Successione
+$$\\lim_{{n \\to \\infty}} a_n = L \\iff \\forall \\varepsilon > 0\\; \\exists N : n > N \\implies |a_n - L| < \\varepsilon$$
+
+## 2. Teoremi sulle Successioni
+
+### Convergenza e Limitatezza
+Ogni successione convergente è limitata. Non vale il viceversa.
+
+### Teorema del Confronto
+Se $a_n \\le b_n \\le c_n$ definitivamente e $\\lim a_n = \\lim c_n = L$, allora $\\lim b_n = L$.
+
+### Criterio di Cauchy
+$\\{{a_n\\}}$ converge $\\iff$ $\\forall \\varepsilon > 0\\; \\exists N : m,n > N \\implies |a_m - a_n| < \\varepsilon$.
+
+## 3. Serie Numeriche
+
+### Definizione
+$$\\sum_{{n=1}}^{\\infty} a_n = \\lim_{{N \\to \\infty}} S_N = \\lim_{{N \\to \\infty}} \\sum_{{n=1}}^N a_n$$
+
+### Serie Geometrica
+$$\\sum_{{n=0}}^{\\infty} q^n = \\frac{{1}}{{1-q}} \\quad \\text{{se }} |q| < 1$$
+Diverge se $|q| \\ge 1$.
+
+### Serie Armonica
+$$\\sum_{{n=1}}^{\\infty} \\frac{{1}}{{n}} = +\\infty$$
+La serie armonica diverge (lentamente).
+
+### Serie di Mengoli
+$$\\sum_{{n=1}}^{\\infty} \\frac{{1}}{{n(n+1)}} = 1$$
+
+## 4. Criteri di Convergenza
+
+### Criterio del Confronto
+Se $0 \\le a_n \\le b_n$ e $\\sum b_n$ converge, allora $\\sum a_n$ converge.
+
+### Criterio della Radice (Cauchy)
+Se $\\limsup \\sqrt[n]{{|a_n|}} = L$:
+- $L < 1$: converge
+- $L > 1$: diverge
+- $L = 1$: dubbio
+
+### Criterio del Rapporto (d'Alembert)
+Se $\\lim \\left|\\frac{{a_{{n+1}}}}{{a_n}}\\right| = L$:
+- $L < 1$: converge
+- $L > 1$: diverge
+- $L = 1$: dubbio
+
+### Criterio di Leibniz (Serie a Segni Alterni)
+$$\\sum (-1)^n a_n \\text{{ con }} a_n \\to 0, a_n \\text{{ decrescente}} \\implies \\text{{converge}}$$
+
+---
+*Generato automaticamente da Sigma Studio — {date_str}*
+"""),
+        },
+        {
+            "path": f"{base_path}/teoria/07_esponenziali_logaritmi.md",
+            "content": t("""# Esponenziali, Logaritmi e Funzioni Trascendenti
+
+**Data:** {date_str} | **Argomento:** Analisi Matematica 1
+
+## 1. Funzione Esponenziale
+
+### Definizione
+$$f(x) = a^x, \\quad a > 0, a \\neq 1$$
+
+### Numero di Nepero $e$
+$$e = \\lim_{{n \\to \\infty}} \\left(1 + \\frac{{1}}{{n}}\\right)^n = \\sum_{{n=0}}^{\\infty} \\frac{{1}}{{n!}} \\approx 2.71828$$
+
+### Proprietà
+1. $a^0 = 1$
+2. $a^{{x+y}} = a^x a^y$
+3. $a^{{x-y}} = a^x / a^y$
+4. $(a^x)^y = a^{{xy}}$
+
+### Limiti Notevoli
+$$\\lim_{{x \\to 0}} \\frac{{e^x - 1}}{{x}} = 1$$
+$$\\lim_{{x \\to -\\infty}} e^x = 0$$
+$$\\lim_{{x \\to +\\infty}} e^x = +\\infty$$
+$$\\lim_{{x \\to +\\infty}} \\frac{{x^n}}{{e^x}} = 0 \\quad \\forall n$$
+
+## 2. Funzione Logaritmo
+
+### Definizione
+$$\\log_a(x) = y \\iff a^y = x, \\quad x > 0$$
+
+### Relazione con Esponenziale
+$$a^{{\\log_a x}} = x, \\quad \\log_a(a^x) = x$$
+
+### Proprietà dei Logaritmi
+1. $\\log_a(xy) = \\log_a x + \\log_a y$
+2. $\\log_a\\left(\\frac{{x}}{{y}}\\right) = \\log_a x - \\log_a y$
+3. $\\log_a(x^n) = n\\log_a x$
+4. $\\log_a\\sqrt[n]{{x}} = \\frac{{1}}{{n}}\\log_a x$
+5. **Cambio di base**: $\\log_a x = \\frac{{\\log_b x}}{{\\log_b a}}$
+
+### Logaritmo Naturale
+$$\\ln x = \\log_e x$$
+$$\\frac{{d}}{{dx}}\\ln x = \\frac{{1}}{{x}}$$
+$$\\int \\frac{{1}}{{x}}\\,dx = \\ln|x| + C$$
+
+## 3. Funzioni Iperboliche
+
+### Definizioni
+$$\\sinh x = \\frac{{e^x - e^{{-x}}}}{{2}}$$
+$$\\cosh x = \\frac{{e^x + e^{{-x}}}}{{2}}$$
+$$\\tanh x = \\frac{{\\sinh x}}{{\\cosh x}}$$
+
+### Proprietà
+- $\\cosh^2 x - \\sinh^2 x = 1$
+- $\\sinh$ è dispari, $\\cosh$ è pari
+- $\\frac{{d}}{{dx}}\\sinh x = \\cosh x$
+- $\\frac{{d}}{{dx}}\\cosh x = \\sinh x$
+
+## 4. Confronto tra Funzioni (Gerarchia degli Infiniti)
+
+Per $x \\to +\\infty$:
+$$\\log_a x \\ll x^\\alpha \\ll a^x \\ll x! \\ll x^x$$
+dove $\\ll$ significa "cresce più lentamente".
+
+Per $x \\to 0^+$:
+$$x^\\alpha \\ll \\log_a x$$
+
+## 5. Sviluppi di Taylor (principali)
+
+$$e^x = 1 + x + \\frac{{x^2}}{{2!}} + \\frac{{x^3}}{{3!}} + \\frac{{x^4}}{{4!}} + \\dots = \\sum_{{n=0}}^{\\infty} \\frac{{x^n}}{{n!}}$$
+$$\\ln(1+x) = x - \\frac{{x^2}}{{2}} + \\frac{{x^3}}{{3}} - \\frac{{x^4}}{{4}} + \\dots = \\sum_{{n=1}}^{\\infty} \\frac{{(-1)^{{n+1}}}}{{n}}x^n$$
+
+---
+*Generato automaticamente da Sigma Studio — {date_str}*
+"""),
+        },
+        {
+            "path": f"{base_path}/teoria/08_formulario.md",
+            "content": t("""# Formulario di Analisi Matematica 1
+
+**Data:** {date_str} | **Argomento:** Analisi Matematica 1 — Riepilogo
+
+## 1. Derivate Fondamentali
+
+$$
+\\begin{{array}}{{ll}}
+\\frac{{d}}{{dx}}c = 0 & \\frac{{d}}{{dx}}x^n = nx^{{n-1}} \\\\
+\\frac{{d}}{{dx}}e^x = e^x & \\frac{{d}}{{dx}}a^x = a^x\\ln a \\\\
+\\frac{{d}}{{dx}}\\ln x = \\frac{{1}}{{x}} & \\frac{{d}}{{dx}}\\log_a x = \\frac{{1}}{{x\\ln a}} \\\\
+\\frac{{d}}{{dx}}\\sin x = \\cos x & \\frac{{d}}{{dx}}\\cos x = -\\sin x \\\\
+\\frac{{d}}{{dx}}\\tan x = \\frac{{1}}{{\\cos^2 x}} & \\frac{{d}}{{dx}}\\arcsin x = \\frac{{1}}{{\\sqrt{{1-x^2}}}} \\\\
+\\frac{{d}}{{dx}}\\arccos x = -\\frac{{1}}{{\\sqrt{{1-x^2}}}} & \\frac{{d}}{{dx}}\\arctan x = \\frac{{1}}{{1+x^2}}
+\\end{{array}}
+$$
+
+## 2. Regole di Derivazione
+
+$$
+\\begin{{aligned}}
+(f+g)' &= f' + g' \\\\
+(f\\cdot g)' &= f'g + fg' \\\\
+\\left(\\frac{{f}}{{g}}\\right)' &= \\frac{{f'g - fg'}}{{g^2}} \\\\
+(g\\circ f)' &= g'(f(x)) \\cdot f'(x)
+\\end{{aligned}}
+$$
+
+## 3. Integrali Indefiniti
+
+$$
+\\begin{{array}}{{ll}}
+\\int x^n\\,dx = \\frac{{x^{{n+1}}}}{{n+1}} + C\\;(n\\neq -1) & \\int \\frac{{1}}{{x}}\\,dx = \\ln|x| + C \\\\
+\\int e^x\\,dx = e^x + C & \\int a^x\\,dx = \\frac{{a^x}}{{\\ln a}} + C \\\\
+\\int \\sin x\\,dx = -\\cos x + C & \\int \\cos x\\,dx = \\sin x + C \\\\
+\\int \\frac{{1}}{{\\cos^2 x}}\\,dx = \\tan x + C & \\int \\frac{{1}}{{1+x^2}}\\,dx = \\arctan x + C \\\\
+\\int \\frac{{1}}{{\\sqrt{{1-x^2}}}}\\,dx = \\arcsin x + C
+\\end{{array}}
+$$
+
+## 4. Tecniche di Integrazione
+
+$$
+\\int fg' = fg - \\int f'g \\quad\\text{{(parti)}}
+$$
+$$
+\\int f(g(x))g'(x)\\,dx = \\int f(u)\\,du,\\; u=g(x) \\quad\\text{{(sostituzione)}}
+$$
+
+## 5. Limiti Notevoli
+
+$$
+\\begin{{aligned}}
+\\lim_{{x\\to 0}} \\frac{{\\sin x}}{{x}} &= 1 \\\\
+\\lim_{{x\\to 0}} \\frac{{1-\\cos x}}{{x^2}} &= \\frac{{1}}{{2}} \\\\
+\\lim_{{x\\to 0}} \\frac{{e^x-1}}{{x}} &= 1 \\\\
+\\lim_{{x\\to 0}} \\frac{{\\ln(1+x)}}{{x}} &= 1 \\\\
+\\lim_{{x\\to \\infty}} \\left(1+\\frac{{1}}{{x}}\\right)^x &= e
+\\end{{aligned}}
+$$
+
+## 6. Sviluppi di Taylor
+
+$$
+\\begin{{aligned}}
+e^x &= 1 + x + \\frac{{x^2}}{{2!}} + \\frac{{x^3}}{{3!}} + o(x^3) \\\\
+\\sin x &= x - \\frac{{x^3}}{{3!}} + \\frac{{x^5}}{{5!}} + o(x^5) \\\\
+\\cos x &= 1 - \\frac{{x^2}}{{2!}} + \\frac{{x^4}}{{4!}} + o(x^4) \\\\
+\\ln(1+x) &= x - \\frac{{x^2}}{{2}} + \\frac{{x^3}}{{3}} + o(x^3) \\\\
+(1+x)^\\alpha &= 1 + \\alpha x + \\frac{{\\alpha(\\alpha-1)}}{{2}}x^2 + o(x^2)
+\\end{{aligned}}
+$$
+
+## 7. Teoremi Fondamentali
+
+- **Rolle**: $f(a)=f(b) \\implies \\exists c: f'(c)=0$
+- **Lagrange**: $\\exists c: f'(c) = \\frac{{f(b)-f(a)}}{{b-a}}$
+- **De L'Hôpital**: $\\lim \\frac{{f}}{{g}} = \\lim \\frac{{f'}}{{g'}}$ (se $\\frac{{0}}{{0}}$ o $\\frac{{\\infty}}{{\\infty}}$)
+- **Fondamentale Calcolo**: $\\int_a^b f = F(b)-F(a)$ dove $F'=f$
+
+---
+*Generato automaticamente da Sigma Studio — {date_str}*
+"""),
+        },
+    ]
+
+
 def _execute_default_action(self, session_id, obj, goal, _sse):
-    """When AI fails to produce actions, execute a default file creation."""
-    import datetime
+    """When AI fails to produce actions, generate structured theory files with real content.
+    Instead of creating a single placeholder, creates multiple well-organized files
+    covering the full topic curriculum."""
     from core.research_sessions import add_actions_log
     
     # Extract topic from session goal — use session name if available
@@ -443,7 +1067,6 @@ def _execute_default_action(self, session_id, obj, goal, _sse):
     topic = None
     
     # Priority: goal keywords > session name > "generale"
-    # NOTE: Do NOT use random words from session name as topic directory
     goal_lower = goal.lower()
     if "analisi_1" in goal_lower or "analisi 1" in goal_lower or "analisi_1" in session_name:
         topic = "analisi_1"
@@ -459,42 +1082,45 @@ def _execute_default_action(self, session_id, obj, goal, _sse):
     module_path = f"data/{topic}/01_base"
     os.makedirs(f"{module_path}/teoria", exist_ok=True)
     
-    filename = f"analisi_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.md"
-    filepath = f"{module_path}/teoria/{filename}"
+    from core.task_handler import execute_ai_actions
     
-    content = f"""# {obj.get('title', 'Analisi')}
+    # Generate files based on topic
+    all_actions = []
+    file_count = 0
+    
+    if topic == "analisi_1":
+        files = _get_analisi1_files(module_path)
+        for f in files:
+            all_actions.append({"type": "create_file", "path": f["path"], "content": f["content"]})
+            file_count += 1
+    else:
+        # Generic fallback: single file with descriptive name
+        filename = f"{topic.replace('_', '_')}_teoria.md"
+        filepath = f"{module_path}/teoria/{filename}"
+        content = f"""# {topic.replace('_', ' ').title()}
 
 **Goal originale:** {goal[:300]}
 
-**Obiettivo specifico:** {obj.get('title', '')}
-{obj.get('description', '')}
+## Contenuti
+Documento generato automaticamente per l'argomento: {topic}.
 
----
-
-## Analisi automatica
-Questa analisi è stata generata automaticamente dal sistema quando l'AI non ha prodotto azioni specifiche.
-
-### Contesto
-Il sistema ha tentato di chiamare l'AI per eseguire un'analisi completa, ma la risposta non conteneva azioni eseguibili. Questo file viene creato come punto di partenza.
-
-### Azioni suggerite
-1. Verificare i file esistenti nella directory `data/{topic}/`
-2. Completare l'analisi con contenuti specifici
-3. Eseguire test di validazione
-
----
 *Generato il {datetime.datetime.now().strftime('%Y-%m-%d %H:%M')}*
 """
+        all_actions.append({"type": "create_file", "path": filepath, "content": content})
+        file_count = 1
     
-    actions = [{"type": "create_file", "path": filepath, "content": content}]
-    from core.task_handler import execute_ai_actions
-    result = execute_ai_actions(self, actions, "Sistema")
-    print(f"[RESEARCH_START] Default action: created {filepath}", flush=True)
+    # Execute all actions
+    total_log = []
+    for action in all_actions:
+        result = execute_ai_actions(self, [action], "Sistema")
+        total_log.extend(result)
+    
+    print(f"[RESEARCH_START] Default actions: created {file_count} files for topic '{topic}'", flush=True)
     _sse({"type": "agent_actions", "agent_id": "sistema",
-          "actions_log": result, "success_count": 1, "fail_count": 0,
-          "message": f"📄 Creato file predefinito: {filepath}"})
-    add_actions_log(session_id, result)
-    return result
+          "actions_log": total_log, "success_count": file_count, "fail_count": 0,
+          "message": f"📚 Creati {file_count} file di teoria per {topic}"})
+    add_actions_log(session_id, total_log)
+    return total_log
 
 
 def decompose_goal_to_micro_objectives(goal, agents_list, ai_cfg, model_override, session_id):
@@ -520,7 +1146,7 @@ def decompose_goal_to_micro_objectives(goal, agents_list, ai_cfg, model_override
     
     base_path = f"data/{topic}/01_base"
     
-    provider, endpoint, api_url, api_key, temperature, max_tokens, top_p, timeout = \
+    coordinator_model, provider, endpoint, api_url, api_key, temperature, max_tokens, top_p, timeout = \
         _load_agent_config(ai_cfg, model_override, SIGMA_ARCHITECT_ID)
     
     agents_json = json.dumps([{
@@ -583,9 +1209,9 @@ ESEMPIO per analisi_1:
         {"role": "user", "content": f"## OBIETTIVO UTENTE\n{session_name}\n\n{goal}\n\nAnalizza l'obiettivo e produci il piano di lavoro dettagliato con micro-obiettivi."}
     ]
     
-    model = model_override or ai_cfg.get("model", "deepseek-v4-flash")
+    model = coordinator_model
     print(f"[DECOMPOSE] Calling coordinator with model={model}, provider={provider}", flush=True)
-    response, thinking, error = _call_ai_model(messages, ai_cfg, model,
+    response, thinking, error = call_ai_model(messages, ai_cfg, model,
         provider, endpoint, api_url, api_key, 0.4, max_tokens * 3, top_p, timeout)
     
     if not session:
@@ -627,7 +1253,7 @@ def generate_next_steps(session_id, ai_cfg, model_override):
     if not session:
         return {"success": False, "error": "Sessione non trovata"}
     
-    provider, endpoint, api_url, api_key, temperature, max_tokens, top_p, timeout = \
+    next_model, provider, endpoint, api_url, api_key, temperature, max_tokens, top_p, timeout = \
         _load_agent_config(ai_cfg, model_override, SIGMA_ARCHITECT_ID)
     
     objectives_summary = "\n".join(
@@ -659,8 +1285,8 @@ Sii specifico e basati sui pattern e le scoperte emerse.
         {"role": "user", "content": f"Goal originale: {session.get('goal', '')}\n\nSuggerisci i prossimi passi di ricerca."}
     ]
     
-    model = model_override or ai_cfg.get("model", "deepseek-v4-flash")
-    response, thinking, error = _call_ai_model(messages, ai_cfg, model,
+    model = next_model
+    response, thinking, error = call_ai_model(messages, ai_cfg, model,
         provider, endpoint, api_url, api_key, 0.5, max_tokens, top_p, timeout)
     
     if error or not response:
@@ -784,10 +1410,10 @@ def handle_research_start(self):
             plan_lines = []
             for o in objectives:
                 icon = AGENT_COLORS.get(o.get('assigned_to', ''), {}).get('icon', '🤖')
-                plan_lines.append(f"{icon} **{o.get('title', '')[:60]}** → {o.get('assigned_to', '?')}")
+                plan_lines.append(f"{icon} **{o.get('title', '')}** → {o.get('assigned_to', '?')}")
             plan_msg = "📋 **Piano di lavoro:**\n" + "\n".join(plan_lines)
             _sse({"type": "agent_response", "agent_id": "sigma_architect", "agent_name": "Coordinatore",
-                  "response": plan_msg, "message": f"📋 Piano: {len(objectives)} task assegnati"})
+                  "response": plan_msg, "message": f"📋 Piano di lavoro: {len(objectives)} task assegnati"})
             
             # Execute objectives in parallel
             def process_objective(obj):
@@ -801,7 +1427,7 @@ def handle_research_start(self):
                 if not agent_check:
                     agent_id = SIGMA_ARCHITECT_ID
                 agent_name = agent_id
-                provider, endpoint, api_url, api_key, temperature, max_tokens, top_p, timeout = \
+                agent_model, provider, endpoint, api_url, api_key, temperature, max_tokens, top_p, timeout = \
                     _load_agent_config(ai_cfg, model_override, agent_id)
                 update_objective(session_id, obj["id"], {"status": "in_progress"})
                 _sse({"type": "agent_start", "agent_id": agent_id, "agent_name": agent_name,
@@ -837,19 +1463,22 @@ Esegui il seguente micro-obiettivo di ricerca.
 ## CONTESTO DEL PROGETTO (filesystem)
 {fs_ctx[:1500]}
 
-## REGOLE OBBLIGATORIE
-- DEVI SEMPRE includere almeno 1 azione create_file con contenuto SOSTANZIOSO (min 500 parole)
-- Rispondi SOLO con JSON: {{"response": "...", "thinking": "...", "actions": [...]}}
-- Azioni valide: create_file, edit_file, run_test, read_file
-- Parla sempre in italiano.
-- NON limitarti a descrivere — CREA il file con il contenuto completo."""
+## REGOLE OBBLIGATORIE — LEGGI ATTENTAMENTE
+1. DEVI SEMPRE includere almeno 1 azione create_file con contenuto SOSTANZIOSO (min 800 parole)
+2. Rispondi SOLO con JSON. NIENTE altro. NIENTE testo fuori dal JSON. NIENTE spiegazioni.
+3. Azioni valide: create_file, edit_file, run_test, read_file
+4. Parla sempre in italiano all'interno del campo "response".
+5. Il campo "thinking" DEVE contenere il tuo ragionamento in italiano.
+6. NON iniziare mai con "Ecco" o altre frasi — SOLO JSON puro.
+
+## ESEMPIO CONCRETO di risposta corretta:
+{{"response": "Ho creato il file di teoria sugli insiemi numerici con definizioni e teoremi.", "thinking": "Analizzo il topic e preparo il contenuto...", "actions": [{{"type": "create_file", "path": "data/analisi_1/01_base/teoria/01_insiemi_numerici.md", "content": "# Insiemi Numerici\\n\\n## Insieme dei numeri naturali\\nL'insieme dei numeri naturali si indica con N = {{1,2,3,...}}.\\n\\n### Proprietà\\n- Chiusura rispetto a somma e prodotto\\n- Principio di induzione\\n\\n## Numeri Interi\\nZ = {{..., -2, -1, 0, 1, 2, ...}}..."}}]}}"""
                 messages = [
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": f"Esegui: {obj['title']}"}
                 ]
-                model = model_override or ai_cfg.get("model", "deepseek-v4-flash")
-                print(f"[RESEARCH_START] Calling {agent_id}: model={model}, provider={provider}", flush=True)
-                response, thinking, error = _call_ai_model(messages, ai_cfg, model,
+                print(f"[RESEARCH_START] Calling {agent_id}: model={agent_model}, provider={provider}", flush=True)
+                response, thinking, error = call_ai_model(messages, ai_cfg, agent_model,
                     provider, endpoint, api_url, api_key, temperature, max_tokens, top_p, timeout)
                 actions_executed = []
                 if error:
@@ -865,7 +1494,7 @@ Esegui il seguente micro-obiettivo di ricerca.
                     print(f"[RESEARCH_START] AI response from {agent_id}: {len(response or '')} chars", flush=True)
                     if thinking:
                         _sse({"type": "agent_thinking", "agent_id": agent_id, "agent_name": agent_name,
-                              "thinking": thinking[:2000], "message": f"🧠 {agent_name}: {thinking[:150]}..."})
+                              "thinking": thinking[:8000], "message": f"🧠 {agent_name}: {thinking[:200]}..."})
                     json_match = _extract_json_from_response(response or "")
                     if json_match:
                         try:
@@ -873,7 +1502,7 @@ Esegui il seguente micro-obiettivo di ricerca.
                             ai_response = parsed.get("response", response or "")
                             actions = parsed.get("actions", [])
                             _sse({"type": "agent_response", "agent_id": agent_id, "agent_name": agent_name,
-                                  "response": ai_response, "message": f"💬 {agent_name}: {ai_response[:300]}"})
+                                  "response": ai_response, "message": f"💬 {agent_name}: {ai_response[:500]}"})
                             if actions:
                                 from core.task_handler import execute_ai_actions
                                 actions_log = execute_ai_actions(self, actions, agent_name)
@@ -896,7 +1525,7 @@ Esegui il seguente micro-obiettivo di ricerca.
                             update_objective(session_id, obj["id"], {"status": "done", "result": "Analisi (JSON non valido)"})
                     else:
                         _sse({"type": "agent_response", "agent_id": agent_id, "agent_name": agent_name,
-                              "response": (response or "")[:2000], "message": f"💬 {agent_name}: {(response or '')[:200]}"})
+                              "response": (response or "")[:8000], "message": f"💬 {agent_name}: {(response or '')[:200]}"})
                         default_result = _execute_default_action(self, session_id, obj, goal, _sse)
                         actions_executed = default_result
                         update_objective(session_id, obj["id"], {"status": "done", "result": "Azioni predefinite"})

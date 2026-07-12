@@ -84,11 +84,11 @@ def handle_api_ollama_models(self):
                         name = parts[0]
                         size_str = parts[2] if len(parts) > 2 else '?'
                         models.append({"name": name, "size": size_str})
-        self.send_json_response({"models": models})
+        self.send_json_response({"success": True, "models": models})
     except FileNotFoundError:
-        return self.send_json_response({"models": [], "error": "ollama not found"})
+        return self.send_json_response({"success": False, "models": [], "error": "ollama not found"})
     except Exception as e:
-        self.send_json_response({"models": [], "error": str(e)})
+        self.send_json_response({"success": False, "models": [], "error": str(e)})
 
 
 def handle_api_create_model(self):

@@ -6,6 +6,7 @@ import os
 import json
 import datetime
 import uuid
+import threading
 
 RESEARCH_SESSIONS_DIR = "research_sessions"
 
@@ -78,12 +79,15 @@ def list_sessions() -> list:
     return sessions
 
 
+_save_lock = threading.Lock()
+
 def save_session(session: dict):
-    """Save/update a research session."""
+    """Save/update a research session (thread-safe)."""
     _ensure_dir()
     session["updated_at"] = datetime.datetime.now().isoformat()
-    with open(_session_path(session["id"]), "w", encoding="utf-8") as f:
-        json.dump(session, f, indent=2)
+    with _save_lock:
+        with open(_session_path(session["id"]), "w", encoding="utf-8") as f:
+            json.dump(session, f, indent=2)
 
 
 def delete_session(session_id) -> bool:
@@ -191,6 +195,77 @@ def handle_research_create(self):
         return self.send_json_response({"success": False, "error": str(e)}, 500)
 
 
+def handle_research_chat_history(self):
+    """GET /api/research/chat_history?id=... — Ricostruisce la cronologia chat di una sessione dagli actions_log e micro_objectives."""
+    from urllib.parse import parse_qs, urlparse
+    try:
+        query = parse_qs(urlparse(self.path).query)
+        session_id = query.get("id", [None])[0]
+        if not session_id:
+            return self.send_json_response({"success": False, "error": "id richiesto"}, 400)
+        
+        session = get_session(session_id)
+        if not session:
+            return self.send_json_response({"success": False, "error": "Sessione non trovata"}, 404)
+        
+        messages = []
+        ts = 0
+        
+        # Piano di lavoro dagli objectives
+        objectives = session.get("micro_objectives", [])
+        if objectives:
+            plan_lines = []
+            for o in objectives:
+                meta = o.get("assigned_to", "?")
+                plan_lines.append(f"📋 **{o.get('title', '')}** → {meta}")
+            if plan_lines:
+                messages.append({
+                    "type": "agent_response", "agent_id": "sigma_architect",
+                    "message": "📋 **Piano di lavoro:**\n" + "\n".join(plan_lines),
+                    "ts": ts
+                })
+                ts += 1
+        
+        # Ricostruisci messaggi dagli actions_log
+        actions_log = session.get("actions_log", [])
+        # Raggruppa per sessione di esecuzione (separate da obiettivi completati)
+        agent_task_map = {}
+        for entry in actions_log:
+            agent_id = entry.get("agent_id") or entry.get("type", "sistema")
+            if agent_id not in agent_task_map:
+                agent_task_map[agent_id] = []
+            agent_task_map[agent_id].append(entry)
+        
+        # Messaggi per ogni agente
+        for agent_id, entries in agent_task_map.items():
+            success = sum(1 for e in entries if e.get("success"))
+            fail = sum(1 for e in entries if not e.get("success"))
+            if success + fail > 0:
+                messages.append({
+                    "type": "agent_actions", "agent_id": agent_id,
+                    "message": f"⚡ {agent_id}: {success}✅/{fail}❌ azioni",
+                    "ts": ts
+                })
+                ts += 1
+        
+        # Aggiungi obiettivi completati come messaggi
+        for o in objectives:
+            if o.get("status") == "done":
+                messages.append({
+                    "type": "objective_complete", "agent_id": o.get("assigned_to", ""),
+                    "message": f"✅ Completato: {o.get('title', '')}",
+                    "ts": ts
+                })
+                ts += 1
+        
+        # Ordina per timestamp
+        messages.sort(key=lambda m: m.get("ts", 0))
+        
+        return self.send_json_response({"success": True, "messages": messages, "count": len(messages)})
+    except Exception as e:
+        return self.send_json_response({"success": False, "error": str(e)}, 500)
+
+
 def handle_research_list(self):
     """GET /api/research/list — List all research sessions."""
     try:
@@ -219,6 +294,51 @@ def handle_research_status(self):
         return self.send_json_response({"success": False, "error": str(e)}, 500)
 
 
+def handle_research_update_agents(self):
+    """POST /api/research/update_agents — Update agents in a research session (add/remove/update)."""
+    try:
+        req = self.read_json_body()
+        session_id = req.get("session_id", "")
+        if not session_id:
+            return self.send_json_response({"success": False, "error": "session_id richiesto"}, 400)
+        
+        session = get_session(session_id)
+        if not session:
+            return self.send_json_response({"success": False, "error": "Sessione non trovata"}, 404)
+        
+        # Full replace or incremental update
+        agents = req.get("agents", None)
+        if agents is not None:
+            session["agents"] = agents
+        else:
+            # Incremental update
+            action = req.get("action", "")
+            agent = req.get("agent", {})
+            agent_id = agent.get("agent_id", "") or agent.get("id", "")
+            if not agent_id:
+                return self.send_json_response({"success": False, "error": "agent_id richiesto"}, 400)
+            
+            if action == "add":
+                # Add agent if not already present
+                existing = [a for a in session.get("agents", []) if (a.get("agent_id") or a.get("id")) == agent_id]
+                if not existing:
+                    session["agents"].append(agent)
+            elif action == "remove":
+                session["agents"] = [a for a in session.get("agents", []) if (a.get("agent_id") or a.get("id")) != agent_id]
+            elif action == "update":
+                for a in session.get("agents", []):
+                    if (a.get("agent_id") or a.get("id")) == agent_id:
+                        a.update({k: v for k, v in agent.items() if k != "agent_id" and k != "id"})
+                        break
+            else:
+                return self.send_json_response({"success": False, "error": f"Azione '{action}' non valida. Usa add/remove/update"}, 400)
+        
+        save_session(session)
+        return self.send_json_response({"success": True, "session": session})
+    except Exception as e:
+        return self.send_json_response({"success": False, "error": str(e)}, 500)
+
+
 def handle_research_delete(self):
     """POST /api/research/delete — Delete a research session."""
     try:
@@ -233,13 +353,28 @@ def handle_research_delete(self):
 
 
 def handle_research_update_objective(self):
-    """POST /api/research/update_objective — Update a micro-objective."""
+    """POST /api/research/update_objective — Update a session or micro-objective."""
     try:
         req = self.read_json_body()
         session_id = req.get("session_id", "")
-        objective_id = req.get("objective_id", "")
-        if not session_id or not objective_id:
-            return self.send_json_response({"success": False, "error": "session_id e objective_id richiesti"}, 400)
+        if not session_id:
+            return self.send_json_response({"success": False, "error": "session_id richiesto"}, 400)
+        
+        # If goal is provided without objective_id, update session goal
+        goal = req.get("goal")
+        objective_id = req.get("objective_id")
+        
+        if goal and not objective_id:
+            session = get_session(session_id)
+            if not session:
+                return self.send_json_response({"success": False, "error": "Sessione non trovata"}, 404)
+            session["goal"] = goal
+            save_session(session)
+            return self.send_json_response({"success": True, "session": session})
+        
+        if not objective_id:
+            return self.send_json_response({"success": False, "error": "objective_id richiesto"}, 400)
+            
         updates = {k: v for k, v in req.items() if k not in ("session_id", "objective_id")}
         obj = update_objective(session_id, objective_id, updates)
         if not obj:

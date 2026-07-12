@@ -52,13 +52,13 @@ const DEFAULT_AGENT_CONFIG = {
 
 // --- All 7 registered agents with colors, icons, roles ---
 const AGENTS_META = {
-  sigma_architect: { bg: '#7c5bf0', color: '#ffffff', icon: '🏗️', short: 'Arch', name: 'Sigma AI Architect', role: 'architect' },
-  math1: { bg: '#3fb950', color: '#ffffff', icon: '∑', short: 'Math', name: 'Sigma Math Researcher', role: 'researcher' },
-  code_architect: { bg: '#00d2ff', color: '#0e1016', icon: '⚙️', short: 'Code', name: 'Sigma Code Architect', role: 'developer' },
-  'math-collatz': { bg: '#2ea043', color: '#ffffff', icon: '🧮', short: 'Math', name: 'Matematico Specialista', role: 'mathematician' },
-  'test-engineer': { bg: '#58a6ff', color: '#0e1016', icon: '🧪', short: 'Test', name: 'Ingegnere dei Test', role: 'tester' },
-  'viz-designer': { bg: '#d29922', color: '#0e1016', icon: '📊', short: 'Viz', name: 'Visualizzatore D3.js', role: 'visualizer' },
-  'proof-reviewer': { bg: '#ff5555', color: '#ffffff', icon: '🔍', short: 'Review', name: 'Revisore e Confutatore', role: 'reviewer' },
+  sigma_architect: { bg: '#7c5bf0', color: '#ffffff', icon: '🏗️', short: 'Arch', name: 'Sigma AI Architect', role: 'architect', image: '/images/agente0.png', manifesto: 'sigma0/sigma_architect.md' },
+  math1: { bg: '#3fb950', color: '#ffffff', icon: '∑', short: 'Math', name: 'Sigma Math Researcher', role: 'researcher', image: '/images/matematicoAi.png', manifesto: '' },
+  code_architect: { bg: '#00d2ff', color: '#0e1016', icon: '⚙️', short: 'Code', name: 'Sigma Code Architect', role: 'developer', image: '/images/programmatoreAi.png', manifesto: '' },
+  'math-collatz': { bg: '#2ea043', color: '#ffffff', icon: '🧮', short: 'Math', name: 'Matematico Specialista', role: 'mathematician', image: '/images/default.png', manifesto: '' },
+  'test-engineer': { bg: '#58a6ff', color: '#0e1016', icon: '🧪', short: 'Test', name: 'Ingegnere dei Test', role: 'tester', image: '/images/default.png', manifesto: '' },
+  'viz-designer': { bg: '#d29922', color: '#0e1016', icon: '📊', short: 'Viz', name: 'Visualizzatore D3.js', role: 'visualizer', image: '/images/default.png', manifesto: '' },
+  'proof-reviewer': { bg: '#ff5555', color: '#ffffff', icon: '🔍', short: 'Review', name: 'Revisore e Confutatore', role: 'reviewer', image: '/images/default.png', manifesto: '' },
 };
 
 // --- Pipeline Templates ---
@@ -219,6 +219,23 @@ export default function useResearchPipeline(onTasksUpdated, addToast) {
       ...prev,
       [agentId]: { ...(prev[agentId] || DEFAULT_AGENT_CONFIG), ...configUpdates }
     }));
+  }, []);
+
+  // --- Load agent configs from session data (persisted settings) ---
+  const loadSessionConfigs = useCallback((sessionAgents) => {
+    if (!sessionAgents || !Array.isArray(sessionAgents)) return;
+    const configs = {};
+    sessionAgents.forEach(agent => {
+      const aid = agent.agent_id || agent.id;
+      if (!aid) return;
+      configs[aid] = {
+        provider: agent.provider || DEFAULT_AGENT_CONFIG.provider,
+        model: agent.model || DEFAULT_AGENT_CONFIG.model,
+        temperature: agent.temperature ?? DEFAULT_AGENT_CONFIG.temperature,
+        manifesto: agent.manifesto || '',
+      };
+    });
+    setAgentConfigs(prev => ({ ...prev, ...configs }));
   }, []);
 
   // --- Connection Test ---
@@ -740,6 +757,9 @@ export default function useResearchPipeline(onTasksUpdated, addToast) {
     pipelineId,
     saveChatMessage,
     loadChatMessages,
+
+    // Session config loader
+    loadSessionConfigs,
 
     // Refs
     abortRef,

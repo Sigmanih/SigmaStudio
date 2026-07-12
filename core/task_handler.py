@@ -222,8 +222,23 @@ def _get_or_create_default_module(topic_folder):
 def handle_api_tasks_get(self):
     tasks = []
     if os.path.exists('tasks.json'):
-        with open('tasks.json', 'r', encoding='utf-8') as f:
-            tasks = json.load(f)
+        try:
+            with open('tasks.json', 'r', encoding='utf-8') as f:
+                content = f.read().strip()
+            if content.startswith('{') or content.startswith('['):
+                tasks = json.loads(content)
+            else:
+                # Malformed JSON: reset file
+                tasks = []
+                with open('tasks.json', 'w', encoding='utf-8') as f:
+                    json.dump([], f)
+        except (json.JSONDecodeError, Exception):
+            tasks = []
+            try:
+                with open('tasks.json', 'w', encoding='utf-8') as f:
+                    json.dump([], f)
+            except Exception:
+                pass
     self.send_json_response(tasks)
 
 
@@ -312,8 +327,23 @@ def _add_action_notifications(log, bot_name):
     try:
         tasks = []
         if os.path.exists('tasks.json'):
-            with open('tasks.json', 'r', encoding='utf-8') as f:
-                tasks = json.load(f)
+            try:
+                with open('tasks.json', 'r', encoding='utf-8') as f:
+                    content = f.read().strip()
+                if content.startswith('[') or content.startswith('{'):
+                    tasks = json.loads(content)
+                    if isinstance(tasks, dict):
+                        tasks = [tasks]
+                else:
+                    tasks = []
+            except (json.JSONDecodeError, Exception):
+                tasks = []
+                # Reset corrupted file
+                try:
+                    with open('tasks.json', 'w', encoding='utf-8') as f:
+                        json.dump([], f)
+                except Exception:
+                    pass
         
         # Find active task (first one with status "in_corso"), or create default
         active_task = None

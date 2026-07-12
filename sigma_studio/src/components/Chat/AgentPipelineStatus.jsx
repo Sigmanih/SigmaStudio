@@ -20,16 +20,22 @@ const STATUS_COLORS = {
   failed: '#ff5555',
 };
 
-const AGENT_ICONS = {
-  sigma_architect: '🏗️',
-  math1: '∑',
-  code_architect: '⚙️',
+const AGENT_IMAGES = {
+  sigma_architect: '/images/agente0.png',
+  math1: '/images/matematicoAi.png',
+  code_architect: '/images/programmatoreAi.png',
 };
 
 const AGENT_COLORS = {
   sigma_architect: '#7c5bf0',
   math1: '#3fb950',
   code_architect: '#00d2ff',
+};
+
+const AGENT_ICONS = {
+  sigma_architect: '🏗️',
+  math1: '∑',
+  code_architect: '⚙️',
 };
 
 export default function AgentPipelineStatus({ pipeline }) {
@@ -55,7 +61,15 @@ export default function AgentPipelineStatus({ pipeline }) {
           return (
             <div key={agent.id} className={`agent-pipeline-step ${agent.status}`}>
               <div className="agent-pipeline-node" style={{ borderColor: isActive ? agentColor : statusColor }}>
-                <span className="agent-pipeline-icon">{AGENT_ICONS[agent.id] || '🤖'}</span>
+                <div className="agent-pipeline-avatar-container">
+                  <img
+                    src={AGENT_IMAGES[agent.id] || '/images/default.png'}
+                    alt={agent.id}
+                    className="agent-pipeline-avatar-img"
+                    onError={(e) => { e.target.style.display = 'none'; e.target.nextSibling.style.display = 'flex'; }}
+                  />
+                  <span className="agent-pipeline-avatar-fallback">{AGENT_ICONS[agent.id] || '🤖'}</span>
+                </div>
                 {STATUS_ICONS[agent.status] || STATUS_ICONS.pending}
               </div>
               <div className="agent-pipeline-info">

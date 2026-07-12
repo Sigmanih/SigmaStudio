@@ -9,13 +9,13 @@ import 'katex/dist/katex.min.css';
 // ==============================================================================
 
 const AGENT_COLORS = {
-  sigma_architect: { bg: '#7c5bf0', color: '#ffffff', icon: '🏗️', short: 'Arch' },
-  math1: { bg: '#3fb950', color: '#ffffff', icon: '∑', short: 'Math' },
-  code_architect: { bg: '#00d2ff', color: '#0e1016', icon: '⚙️', short: 'Code' },
+  sigma_architect: { bg: '#7c5bf0', color: '#ffffff', icon: '🏗️', short: 'Arch', image: '/images/agente0.png' },
+  math1: { bg: '#3fb950', color: '#ffffff', icon: '∑', short: 'Math', image: '/images/matematicoAi.png' },
+  code_architect: { bg: '#00d2ff', color: '#0e1016', icon: '⚙️', short: 'Code', image: '/images/programmatoreAi.png' },
 };
 
 function getAgentStyle(agentId) {
-  return AGENT_COLORS[agentId] || { bg: '#8b8fa3', color: '#0e1016', icon: '🤖', short: 'AI' };
+  return AGENT_COLORS[agentId] || { bg: '#8b8fa3', color: '#0e1016', icon: '🤖', short: 'AI', image: '/images/default.png' };
 }
 
 export default function AgentMessage({ msg, msgId, expandedThinking, onToggleThinking, effectiveModelName, onDeleteMessage, msgIndex, loading: standaloneLoading }) {
@@ -53,7 +53,15 @@ export default function AgentMessage({ msg, msgId, expandedThinking, onToggleThi
     >
       <div className="chat-avatar">
         {isUser ? <User size={14} /> : isSystem ? <Terminal size={14} /> : agentId ? (
-          <span style={{ fontSize: '16px' }}>{agentStyle.icon}</span>
+          <div className="chat-agent-avatar-container" style={{ borderColor: agentStyle.bg }}>
+            <img
+              src={agentStyle.image}
+              alt={agentStyle.short}
+              className="chat-agent-avatar-img"
+              onError={(e) => { e.target.style.display = 'none'; e.target.nextSibling.style.display = 'inline'; }}
+            />
+            <span className="chat-agent-avatar-fallback" style={{ fontSize: '16px' }}>{agentStyle.icon}</span>
+          </div>
         ) : (
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
             <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"></path>

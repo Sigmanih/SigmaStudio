@@ -142,17 +142,19 @@ def handle_knowledge_db(self):
 def handle_list_manifesti(self):
     try:
         manifesto_dir = 'manifesti'
-        files = []
-        if os.path.isdir(manifesto_dir):
-            for f in sorted(os.listdir(manifesto_dir)):
-                fpath = os.path.join(manifesto_dir, f)
-                if os.path.isfile(fpath) and f.lower().endswith('.md'):
-                    files.append({
-                        "filename": f,
-                        "path": fpath.replace('\\', '/'),
-                        "name": f.replace('.md', '').replace('_', ' '),
-                        "size": os.path.getsize(fpath)
-                    })
-        self.send_json_response({"success": True, "files": files})
+        manifesti = []
+        # Check manifesti/ dir first, then sigma0/ as fallback
+        for dir_name in (manifesto_dir, 'sigma0'):
+            if os.path.isdir(dir_name):
+                for f in sorted(os.listdir(dir_name)):
+                    fpath = os.path.join(dir_name, f)
+                    if os.path.isfile(fpath) and f.lower().endswith('.md') and f.lower() != 'readme.md':
+                        manifesti.append({
+                            "filename": f,
+                            "path": fpath.replace('\\', '/'),
+                            "name": f.replace('.md', '').replace('_', ' ').title(),
+                            "size": os.path.getsize(fpath)
+                        })
+        self.send_json_response({"success": True, "manifesti": manifesti})
     except Exception as e:
         self.send_json_response({"success": False, "error": str(e)}, 500)

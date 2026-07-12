@@ -4,6 +4,29 @@ import 'katex/dist/katex.min.css';
 import { Bot, User, Terminal, FileText, Loader } from 'lucide-react';
 
 // ==============================================================================
+// AGENT AVATAR MAP — Match agent names/IDs to images
+// ==============================================================================
+const AGENT_AVATARS = {
+  sigma_architect: { image: '/images/agente0.png', name: 'Sigma AI Architect' },
+  math1: { image: '/images/matematicoAi.png', name: 'Sigma Math Researcher' },
+  code_architect: { image: '/images/programmatoreAi.png', name: 'Sigma Code Architect' },
+};
+
+function getAgentAvatar(agentName) {
+  if (!agentName) return null;
+  const lower = agentName.toLowerCase();
+  // Try direct match by id
+  if (AGENT_AVATARS[lower]) return AGENT_AVATARS[lower];
+  // Try match by name keywords
+  for (const [id, info] of Object.entries(AGENT_AVATARS)) {
+    if (lower.includes(id) || lower.includes(info.name.toLowerCase())) {
+      return info;
+    }
+  }
+  return null;
+}
+
+// ==============================================================================
 // MESSAGE BUBBLE — Full markdown rendering with KaTeX (v2.0)
 // Utilizza renderMarkdownLatex per rendering unificato, nessuna manipolazione DOM
 // ==============================================================================
@@ -11,6 +34,7 @@ import { Bot, User, Terminal, FileText, Loader } from 'lucide-react';
 export default function MessageBubble({ msg, isLast, onStop, onFileLinkClick }) {
   const isUser = msg.role === 'user';
   const isSystem = msg.role === 'system';
+  const agentInfo = !isUser && !isSystem ? getAgentAvatar(msg.agentName || msg.manifesto_used) : null;
 
   const renderContent = (text) => {
     if (text == null) return '';
@@ -31,9 +55,16 @@ export default function MessageBubble({ msg, isLast, onStop, onFileLinkClick }) 
   }
 
   return (
-    <div className={`chat-message ${isUser ? 'user-message' : 'ai-message'}`}>
+    <div className={`chat-message ${isUser ? 'user-message' : 'ai-message'} ${agentInfo ? 'chat-agent-message' : ''}`}>
       <div className="message-avatar">
-        {isUser ? <User size={16} /> : <Bot size={16} />}
+        {isUser ? <User size={16} /> : agentInfo ? (
+          <img
+            src={agentInfo.image}
+            alt={agentInfo.name}
+            className="message-agent-avatar-img"
+            onError={(e) => { e.target.style.display = 'none'; }}
+          />
+        ) : <Bot size={16} />}
       </div>
       <div className="message-content">
         <div className="message-header">

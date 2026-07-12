@@ -26,6 +26,7 @@ def register_get_handlers(handler_class):
         '/api/context/chat_log': 'handle_context_chat_log',
         '/api/research/list': 'handle_research_list',
         '/api/research/status': 'handle_research_status',
+        '/api/research/chat_history': 'handle_research_chat_history',
     }
 
 
@@ -67,6 +68,7 @@ def register_post_handlers(handler_class):
         '/api/research/create': 'handle_research_create',
         '/api/research/delete': 'handle_research_delete',
         '/api/research/update_objective': 'handle_research_update_objective',
+        '/api/research/update_agents': 'handle_research_update_agents',
         '/api/research/decompose': 'handle_research_decompose',
         '/api/research/next_steps': 'handle_research_next_steps',
         '/api/research/start': 'handle_research_start',
