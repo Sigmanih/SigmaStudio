@@ -8,90 +8,32 @@ import datetime
 import re
 import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
+
 from core.ai_providers import load_ai_config, resolve_provider_config, call_ai_model, call_ollama, call_openai_compatible, call_anthropic
 from core.task_handler import execute_ai_actions
 from core.agent_registry import get_all_agents, get_specialized_agent, increment_usage, SIGMA_ARCHITECT_ID
 from core.agent_memory import save_session_memory, get_memory_context
-from core.chat_handler import _get_manifesto_content, _get_time_context, _build_filesystem_context, _extract_json_from_response, _collect_context_files
+from core.logger import get_logger
 
+# --- Chat helpers (now in core/chat sub-package) ---
+from core.chat.prompt_builder import (
+    _get_manifesto_content, _get_time_context,
+    _build_filesystem_context, _collect_context_files,
+)
+from core.chat.response_parser import _extract_json_from_response
+
+# --- Orchestration sub-package ---
+from core.orchestration.agent_config import (
+    AGENT_COLORS, get_agent_color, load_agent_config,
+)
+
+log = get_logger(__name__)
 
 MAX_PARALLEL_WORKERS = 5
 
+# Backward-compat alias (old callers used _load_agent_config)
+_load_agent_config = load_agent_config
 
-def _load_agent_config(ai_cfg, model_override, agent_id=None):
-    provider = ai_cfg.get("active_provider", "ollama")
-    providers_config = ai_cfg.get("providers", {})
-    active_prov_cfg = providers_config.get(provider, {})
-    model = model_override or ai_cfg.get("model", "llama3.2")
-    if agent_id:
-        from core.agent_registry import get_agent
-        agent = get_agent(agent_id)
-        if agent and agent.get("models"):
-            model = agent["models"][0]
-    endpoint = active_prov_cfg.get("endpoint", "http://localhost:11434/api/chat")
-    api_url = active_prov_cfg.get("api_url", "")
-    api_key = active_prov_cfg.get("api_key", "")
-    temperature = active_prov_cfg.get("temperature", 0.7)
-    max_tokens = active_prov_cfg.get("max_tokens", 4096)
-    top_p = active_prov_cfg.get("top_p", 0.9)
-    request_timeout = active_prov_cfg.get("timeout", 300)
-    # Auto-detect provider from model name prefix with default API URLs
-    if model.startswith('deepseek'):
-        provider = 'deepseek'
-        if not api_url: api_url = 'https://api.deepseek.com/v1/chat/completions'
-    elif model.startswith(('gpt-', 'o1', 'o3')):
-        provider = 'openai'
-        if not api_url: api_url = 'https://api.openai.com/v1/chat/completions'
-    elif model.startswith('claude'):
-        provider = 'anthropic'
-        if not api_url: api_url = 'https://api.anthropic.com/v1/messages'
-    
-    dp, dpv = resolve_provider_config(ai_cfg, model)
-    if dpv:
-        provider = dp
-        if dpv.get("endpoint"): endpoint = dpv["endpoint"]
-        if dpv.get("api_url"): api_url = dpv["api_url"]
-        if dpv.get("api_key"): api_key = dpv["api_key"]
-        temperature = dpv.get("temperature", temperature)
-        max_tokens = dpv.get("max_tokens", max_tokens)
-        top_p = dpv.get("top_p", top_p)
-    
-    # FIX: Validate provider has required API key for remote models
-    # If model is deepseek/openai/anthropic but no API key, fallback to Ollama
-    if provider in ('deepseek', 'openai', 'anthropic') and not api_key:
-        # Try to find a valid Ollama model as fallback
-        ollama_cfg = providers_config.get('ollama', {})
-        ollama_endpoint = ollama_cfg.get('endpoint', 'http://localhost:11434/api/chat')
-        # Check if Ollama is available by testing the endpoint
-        fallback_model = model_override or ai_cfg.get("model", "llama3.2")
-        if not fallback_model.startswith(('deepseek', 'gpt-', 'o1', 'o3', 'claude')):
-            fallback_model = "llama3.2"
-        print(f"[LOAD_AGENT_CONFIG] No API key for {provider}, falling back to Ollama with model={fallback_model}", flush=True)
-        provider = 'ollama'
-        endpoint = ollama_endpoint
-        api_url = ''
-        fallback_model = model_override or ai_cfg.get("model", "llama3.2")
-        if fallback_model.startswith(('deepseek', 'gpt-', 'o1', 'o3', 'claude')):
-            fallback_model = "llama3.2"
-        model = fallback_model
-        temperature = ollama_cfg.get('temperature', 0.7)
-        max_tokens = ollama_cfg.get('max_tokens', 4096)
-        top_p = ollama_cfg.get('top_p', 0.9)
-        request_timeout = ollama_cfg.get('timeout', 300)
-    
-    return model, provider, endpoint, api_url, api_key, temperature, max_tokens, top_p, request_timeout
-
-
-AGENT_COLORS = {
-    "sigma_architect": {"bg": "#7c5bf0", "color": "#ffffff", "icon": "🏗️", "short": "Arch", "image": "/images/agente0.png"},
-    "math1": {"bg": "#3fb950", "color": "#ffffff", "icon": "∑", "short": "Math", "image": "/images/matematicoAi.png"},
-    "code_architect": {"bg": "#00d2ff", "color": "#0e1016", "icon": "⚙️", "short": "Code", "image": "/images/programmatoreAi.png"},
-    "default": {"bg": "#8b8fa3", "color": "#0e1016", "icon": "🤖", "short": "AI", "image": "/images/default.png"},
-}
-
-
-def get_agent_color(agent_id):
-    return AGENT_COLORS.get(agent_id, AGENT_COLORS["default"])
 
 
 def _get_available_agents_for_goal(goal):

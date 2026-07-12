@@ -52,7 +52,7 @@ const DEFAULT_AGENT_CONFIG = {
 
 // --- All 7 registered agents with colors, icons, roles ---
 const AGENTS_META = {
-  sigma_architect: { bg: '#7c5bf0', color: '#ffffff', icon: '🏗️', short: 'Arch', name: 'Sigma AI Architect', role: 'architect', image: '/images/agente0.png', manifesto: 'sigma0/sigma_architect.md' },
+  sigma_architect: { bg: '#7c5bf0', color: '#ffffff', icon: '🏗️', short: 'Arch', name: 'Sigma AI Architect', role: 'architect', image: '/images/agente0.png', manifesto: 'manifesti/sigma_architect.md' },
   math1: { bg: '#3fb950', color: '#ffffff', icon: '∑', short: 'Math', name: 'Sigma Math Researcher', role: 'researcher', image: '/images/matematicoAi.png', manifesto: '' },
   code_architect: { bg: '#00d2ff', color: '#0e1016', icon: '⚙️', short: 'Code', name: 'Sigma Code Architect', role: 'developer', image: '/images/programmatoreAi.png', manifesto: '' },
   'math-collatz': { bg: '#2ea043', color: '#ffffff', icon: '🧮', short: 'Math', name: 'Matematico Specialista', role: 'mathematician', image: '/images/default.png', manifesto: '' },

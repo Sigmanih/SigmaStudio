@@ -17,19 +17,24 @@ export default function ManifestiGallery({ modules, manifesti, openTab, setFileM
   const [modelsLoading, setModelsLoading] = useState(false);
   const [creatingModel, setCreatingModel] = useState(false);
   const [createResult, setCreateResult] = useState(null);
-  const [selectedManifesto, setSelectedManifesto] = useState('sigma0/sigma_architect.md');
+  const [selectedManifesto, setSelectedManifesto] = useState('');
   const [modelName, setModelName] = useState('sigma-agent');
   const [baseModel, setBaseModel] = useState('llama3.2');
 
+  // Load the first available manifesto on mount (or the default fallback)
   useEffect(() => {
-    fetch('/api/get_file?path=sigma0/sigma_architect.md')
+    const defaultPath = manifesti.length > 0
+      ? manifesti[0].path
+      : 'manifesti/sigma_architect.md';
+    setSelectedManifesto(defaultPath);
+    fetch(`/api/get_file?path=${encodeURIComponent(defaultPath)}`)
       .then(r => r.json())
-      .then(d => { 
-        if (d.success) setManifestoText(d.content); 
+      .then(d => {
+        if (d.success) setManifestoText(d.content);
         setManifestoLoading(false);
       })
       .catch(() => setManifestoLoading(false));
-  }, []);
+  }, [manifesti]);
 
   const fetchOllamaModels = async () => {
     setModelsLoading(true);
@@ -155,7 +160,11 @@ export default function ManifestiGallery({ modules, manifesti, openTab, setFileM
           Scegli, modifica o crea il tuo manifesto, poi genera un modello AI su Ollama con un click.
         </p>
         <div style={{ display: 'flex', gap: '8px' }}>
-          <button className="mg-btn-primary" onClick={() => openTab({ name: 'sigma_architect.md', path: 'sigma0/sigma_architect.md' }, 'manifesti')}>
+          <button className="mg-btn-primary" onClick={() => {
+            const path = manifesti.length > 0 ? manifesti[0].path : 'manifesti/sigma_architect.md';
+            const name = manifesti.length > 0 ? manifesti[0].filename : 'sigma_architect.md';
+            openTab({ name, path }, 'manifesti');
+          }}>
             <Eye size={14} />
             Leggi il Manifesto
           </button>
@@ -291,7 +300,9 @@ export default function ManifestiGallery({ modules, manifesti, openTab, setFileM
           <div className="mg-lab-col">
             <label>Manifesto base</label>
             <select value={selectedManifesto} onChange={e => setSelectedManifesto(e.target.value)}>
-              <option value="sigma0/sigma_architect.md">sigma_architect.md (Sigma AI Architect — Admin)</option>
+              {manifesti.length === 0 && (
+                <option value="manifesti/sigma_architect.md">sigma_architect.md (default)</option>
+              )}
               {manifesti.map((mf, i) => (
                 <option key={i} value={mf.path}>{mf.filename}</option>
               ))}
