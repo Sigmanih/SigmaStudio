@@ -490,46 +490,114 @@ export default function ResearchLab({ onClose, onTasksUpdated, addToast }) {
 
   const handleSSEEvent = (event) => {
     const { type } = event;
+    const now = Date.now();
+
     if (type === 'research_start') {
       setProgress({ done: 0, total: event.total_objectives });
-    } else if (type === 'agent_start') {
-      setAgentStates(prev => ({ ...prev, [event.agent_id]: { status: 'working', task: event.objective } }));
-      setChatMessages(prev => [...prev, { type: 'agent_start', agent_id: event.agent_id, message: event.message, ts: Date.now() }]);
-      // Move card to In Corso directly
-      if (event.objective_id) {
-        setSessionData(prev => prev ? {
-          ...prev,
-          micro_objectives: (prev.micro_objectives || []).map(o =>
-            o.id === event.objective_id ? { ...o, status: 'in_progress' } : o
-          )
-        } : null);
-      }
-    } else if (type === 'agent_thinking') {
-      setChatMessages(prev => [...prev, { type: 'agent_thinking', agent_id: event.agent_id, thinking: event.thinking, message: event.message, ts: Date.now() }]);
-    } else if (type === 'agent_response') {
-      setChatMessages(prev => [...prev, { type: 'agent_response', agent_id: event.agent_id, response: event.response, message: event.message, ts: Date.now() }]);
-    } else if (type === 'agent_actions') {
-      setChatMessages(prev => [...prev, { type: 'agent_actions', agent_id: event.agent_id, message: event.message, ts: Date.now() }]);
-    } else if (type === 'objective_complete') {
-      setProgress(prev => ({ ...prev, done: prev.done + 1 }));
-      setAgentStates(prev => ({ ...prev, [event.agent_id]: { status: 'done' } }));
-      setChatMessages(prev => [...prev, { type: 'objective_complete', message: event.message, ts: Date.now() }]);
-      // Move card to Completati directly
-      if (event.objective_id) {
-        setSessionData(prev => prev ? {
-          ...prev,
-          micro_objectives: (prev.micro_objectives || []).map(o =>
-            o.id === event.objective_id ? { ...o, status: 'done' } : o
-          )
-        } : null);
-      }
-    } else if (type === 'agent_error') {
-      setAgentStates(prev => ({ ...prev, [event.agent_id]: { status: 'error' } }));
-      setChatMessages(prev => [...prev, { type: 'error', agent_id: event.agent_id, message: event.message, ts: Date.now() }]);
-    } else if (type === 'all_done') {
-      setChatMessages(prev => [...prev, { type: 'all_done', message: event.message, ts: Date.now() }]);
-    } else if (type === 'next_steps_ready') {
+      setChatMessages(prev => [...prev, { type: 'agent_start', message: event.message, ts: now }]);
+      return;
+    }
+
+    if (type === 'research_done' || type === 'all_done') {
+      setExecuting(false);
+      setProgress(prev => ({ ...prev, done: prev.total }));
+      setChatMessages(prev => [...prev, { type: 'all_done', message: event.message, ts: now }]);
+      return;
+    }
+
+    if (type === 'next_steps_ready') {
       if (event.next_steps) setNextSteps(event.next_steps);
+      return;
+    }
+
+    // Agent-specific events
+    const agentId = event.agent_id;
+    if (agentId) {
+      if (type === 'agent_start') {
+        setAgentStates(prev => ({ ...prev, [agentId]: { status: 'working', task: event.objective } }));
+        if (event.objective_id) {
+          setSessionData(prev => prev ? {
+            ...prev,
+            micro_objectives: (prev.micro_objectives || []).map(o =>
+              o.id === event.objective_id ? { ...o, status: 'in_progress' } : o
+            )
+          } : null);
+        }
+      } else if (type === 'objective_complete') {
+        setProgress(prev => ({ ...prev, done: Math.min(prev.total, prev.done + 1) }));
+        setAgentStates(prev => ({ ...prev, [agentId]: { status: 'done' } }));
+        if (event.objective_id) {
+          setSessionData(prev => prev ? {
+            ...prev,
+            micro_objectives: (prev.micro_objectives || []).map(o =>
+              o.id === event.objective_id ? { ...o, status: 'done' } : o
+            )
+          } : null);
+        }
+      } else if (type === 'agent_error') {
+        setAgentStates(prev => ({ ...prev, [agentId]: { status: 'error' } }));
+      }
+
+      setChatMessages(prev => {
+        const lastMsg = prev.length > 0 ? prev[prev.length - 1] : null;
+        if (lastMsg && lastMsg.agent_id === agentId && agentId !== 'user') {
+          const updated = [...prev];
+          const msg = { ...lastMsg };
+
+          if (type === 'agent_start') {
+            msg.message = event.message;
+          } else if (type === 'agent_thinking') {
+            msg.thinking = event.thinking;
+            if (event.message) msg.message = event.message;
+          } else if (type === 'agent_actions') {
+            msg.message = (msg.message ? msg.message + '\n' : '') + event.message;
+          } else if (type === 'agent_response') {
+            msg.response = event.response;
+            if (event.message) msg.message = event.message;
+          } else if (type === 'objective_complete') {
+            msg.message = (msg.message ? msg.message + '\n' : '') + event.message;
+            msg.type = 'objective_complete';
+          } else if (type === 'agent_error') {
+            msg.message = (msg.message ? msg.message + '\n' : '') + event.message;
+            msg.type = 'error';
+          }
+
+          msg.ts = now;
+          updated[updated.length - 1] = msg;
+          return updated;
+        } else {
+          let msgObj = { type: type, agent_id: agentId, ts: now };
+          if (type === 'agent_start') {
+            msgObj.message = event.message;
+          } else if (type === 'agent_thinking') {
+            msgObj.thinking = event.thinking;
+            msgObj.message = event.message;
+          } else if (type === 'agent_actions') {
+            msgObj.message = event.message;
+          } else if (type === 'agent_response') {
+            msgObj.response = event.response;
+            msgObj.message = event.message;
+          } else if (type === 'objective_complete') {
+            msgObj.message = event.message;
+          } else if (type === 'agent_error') {
+            msgObj.message = event.message;
+          }
+          return [...prev, msgObj];
+        }
+      });
+    } else {
+      if (type === 'objective_complete') {
+        setProgress(prev => ({ ...prev, done: Math.min(prev.total, prev.done + 1) }));
+        if (event.objective_id) {
+          setSessionData(prev => prev ? {
+            ...prev,
+            micro_objectives: (prev.micro_objectives || []).map(o =>
+              o.id === event.objective_id ? { ...o, status: 'done' } : o
+            )
+          } : null);
+        }
+      }
+      setChatMessages(prev => [...prev, { type: type, message: event.message, ts: now }]);
     }
   };
 
@@ -839,12 +907,13 @@ export default function ResearchLab({ onClose, onTasksUpdated, addToast }) {
                         {msg.agent_id && <AgentAvatar meta={meta} size={24} />}
                         {msg.agent_id && <span className="rl-chat-msg-agent" style={{ color: meta.bg || color }}>{meta.name || msg.agent_id}</span>}
                         <span className="rl-chat-msg-type" style={{ color }}>{msg.type.replace('_', ' ').toUpperCase()}</span>
+                        <span className="rl-chat-msg-time" style={{ marginLeft: 'auto', fontSize: '0.65rem', color: '#8b8fa3' }}>
+                          {msg.ts ? new Date(msg.ts).toLocaleTimeString() : ''}
+                        </span>
                       </div>
-                      {msg.type === 'agent_thinking' && <div className="rl-chat-msg-thinking">{msg.thinking}</div>}
-                      {msg.type === 'agent_response' && <div className="rl-chat-msg-response">{msg.response}</div>}
-                      {(msg.type === 'agent_start' || msg.type === 'objective_complete' || msg.type === 'all_done' || msg.type === 'agent_actions' || msg.type === 'error') && (
-                        <div className="rl-chat-msg-text">{msg.message}</div>
-                      )}
+                      {msg.message && <div className="rl-chat-msg-text" style={{ whiteSpace: 'pre-wrap' }}>{msg.message}</div>}
+                      {msg.thinking && <div className="rl-chat-msg-thinking" style={{ whiteSpace: 'pre-wrap' }}>{msg.thinking}</div>}
+                      {msg.response && <div className="rl-chat-msg-response" style={{ whiteSpace: 'pre-wrap' }}>{msg.response}</div>}
                     </div>
                   );
                 })}
