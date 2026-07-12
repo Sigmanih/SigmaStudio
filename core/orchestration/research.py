@@ -124,34 +124,37 @@ def decompose_goal_to_micro_objectives(
     fs_context = _build_filesystem_context()
 
     system_prompt = f"""Sei Sigma AI Architect, il coordinatore del team di ricerca.
-Il tuo compito è analizzare l'obiettivo complessivo dell'utente e suddividerlo in un piano di lavoro strutturato in SOTTOARGOMENTI (moduli) progressivi.
-Stiamo lavorando nella cartella dell'argomento generale: {base_path}
+Il tuo compito è analizzare l'obiettivo dell'utente e suddividerlo in micro-obiettivi (task) da assegnare a diversi agenti.
+Stiamo lavorando nella cartella: {base_path}
 
-## STRUTTURA DELLA CONOSCENZA (RAMIFICAZIONE IN SOTTOARGOMENTI)
-Devi organizzare i task in più sottoargomenti (moduli) numerati in base alla sequenza di apprendimento logica (es: 01_numeri_reali, 02_successioni, 03_limiti, 04_derivate, etc.).
-I percorsi dei file assegnati nei task devono tassativamente includere la directory del sottoargomento e seguire questo pattern:
-`{base_path}/<NN>_<nome_sottoargomento>/<sezione>/<file>`
+## STRUTTURAZIONE IN MODULI (SOTTOARGOMENTI)
+Devi suddividere la conoscenza in diversi sottoargomenti (moduli) numerati con prefisso a due cifre (es. "01_preliminari", "02_limiti", "03_derivate", ecc.) in base alla complessità e alla vastità dell'obiettivo.
+I percorsi dei file pianificati nei task DEVONO avere esattamente la seguente struttura a 5 parti:
+{base_path}/[XX]_[nome_modulo]/[sezione]/[nome_file]
 Dove:
-- `<NN>` è il numero del modulo a due cifre (es: `01`, `02`).
-- `<nome_sottoargomento>` è il nome descrittivo del sottoargomento in minuscolo con underscore (es: `successioni_e_limiti`).
-- `<sezione>` è una delle cartelle consentite: `teoria`, `test`, `docs`, `viz`.
+- [XX] è il numero progressivo del modulo a due cifre (es. 01, 02, 03).
+- [nome_modulo] è il nome del sottoargomento/modulo (es. funzioni, limiti, derivate).
+- [sezione] è uno tra: teoria, test, docs, viz, whitepapers.
+- [nome_file] è il nome del file con estensione appropriata (es. definizione.md, test_derivazione.py).
 
-Esempi di percorsi corretti da usare:
-- `{base_path}/01_numeri_reali/teoria/01_assiomi.md` (Teoria)
-- `{base_path}/01_numeri_reali/test/test_assiomi.py` (Test Python)
-- `{base_path}/02_limiti/teoria/01_definizione.md` (Teoria limiti)
+Esempio di percorsi corretti a 5 parti che devi usare nei task:
+- {base_path}/01_funzioni/teoria/numeri_reali.md
+- {base_path}/02_limiti/teoria/definizione_limite.md
+- {base_path}/02_limiti/test/test_limite.py
+- {base_path}/03_derivate/teoria/regole_derivazione.md
 
 {fs_context}
 
 ## REGOLE FONDAMENTALI
 1. Sei il CAPO — devi pensare TU a quali file servono, cosa devono contenere, chi li crea.
-2. Ogni task DEVE avere un path file ESATTO con la struttura a moduli indicata sopra.
+2. Ogni task DEVE avere un path file ESATTO a 5 parti strutturato come spiegato sopra.
 3. Ogni task DEVE specificare ESATTAMENTE cosa scrivere nel file (contenuti, formule, esempi).
 4. Assegna task agli agenti in base alla loro specializzazione.
 5. Bilancia: teoria (math1/code_architect), test (test-engineer), revisione (proof-reviewer).
-6. Produci 3-7 micro-obiettivi complessivi.
+6. Produci 3-7 micro-obiettivi. Se il topic è UNKNOWN, fanne 3-4 generici.
 7. Criterio di completamento deve essere verificabile (file creato, test passato, etc.).
 8. Anche se l'input dell'utente è breve o sintetico, il team deve gestire tutto al meglio, formulando compiti completi ed impeccabili per generare tutta la documentazione di ricerca richiesta.
+9. I file creati devono tassativamente seguire la struttura gerarchica della cartella a 5 parti.
 
 ## FORMATO RISPOSTA — SOLO JSON
 {{
@@ -159,7 +162,7 @@ Esempi di percorsi corretti da usare:
   "micro_objectives": [
     {{
       "title": "Titolo sintetico del task",
-      "description": "ISTRUZIONI DETTAGLIATE: path file esatto con la ramificazione del sottoargomento (es. {base_path}/01_numeri_reali/teoria/01_assiomi.md), contenuti da scrivere, formule da includere, esempi da fare.",
+      "description": "ISTRUZIONI DETTAGLIATE: path file esatto a 5 parti (es. {base_path}/02_limiti/teoria/definizione.md), contenuti da scrivere, formule da includere, esempi da fare. Sii PRECISO.",
       "assigned_to": "agent_id",
       "actions_hint": ["create_file"],
       "completion_criteria": "Criterio verificabile"
@@ -251,8 +254,16 @@ Se il lavoro è completo, esaustivo ed impeccabile in ogni suo aspetto, rispondi
 ## SOTTO-TASK GIÀ SVOLTI
 {chr(10).join(completed_summary)}
 
-## REGOLA SULLE STRUTTURE DEI PERCORSI
-I file creati devono tassativamente seguire la struttura gerarchica della cartella {base_path} (nelle cartelle teoria/, test/, docs/, viz/, whitepapers/).
+## REGOLA SULLE STRUTTURE DEI PERCORSI E MODULI
+Devi strutturare i nuovi file in moduli (sottoargomenti) numerati con un prefisso a due cifre progressivo.
+I percorsi dei file DEVONO avere esattamente la seguente struttura a 5 parti:
+{base_path}/[XX]_[nome_modulo]/[sezione]/[nome_file]
+Dove [XX] è il numero del modulo a due cifre (es. 01, 02, 03) e [sezione] è uno tra: teoria, test, docs, viz, whitepapers.
+
+Esempi di percorsi corretti:
+- {base_path}/02_limiti/teoria/definizione.md
+- {base_path}/03_derivate/teoria/definizione.md
+- {base_path}/03_derivate/test/test_derivate.py
 
 ## FORMATO RISPOSTA — SOLO JSON
 Se servono nuovi task:
@@ -261,7 +272,7 @@ Se servono nuovi task:
   "new_objectives": [
     {{
       "title": "Titolo del nuovo task",
-      "description": "Istruzioni dettagliate con path file esatto (es. {base_path}/teoria/02_successioni.md), concetti da inserire passo-passo.",
+      "description": "Istruzioni dettagliate con path file esatto a 5 parti (es. {base_path}/02_limiti/teoria/definizione.md), concetti da inserire passo-passo.",
       "assigned_to": "agent_id",
       "actions_hint": ["create_file"],
       "completion_criteria": "Criterio di successo"
@@ -584,27 +595,29 @@ def handle_research_start(self) -> None:
                 role_prompts = {
                     "sigma_architect": (
                         "Sei l'Architetto coordinatore. Il tuo compito è leggere e analizzare TUTTI i file prodotti, "
-                        "garantendo che la documentazione sia dettagliata ed impeccabile. I file devono essere creati "
-                        "sempre seguendo la struttura di /data (teoria/, test/, viz/, docs/, whitepapers/)."
+                        "garantendo che la documentazione sia dettagliata ed impeccabile. I file devono essere organizzati "
+                        "in moduli numerati di sottoargomenti progressivi seguendo la struttura a 5 parti: "
+                        "data/[topic]/[XX]_[nome_modulo]/[sezione]/[nome_file] (es. data/analisi_1/01_funzioni/teoria/numeri.md)."
                     ),
                     "math1": (
                         "Sei un MATEMATICO esperto. Crea file di teoria con definizioni rigorose, teoremi, dimostrazioni formali, "
-                        "esempi svolti e spiegazioni dettagliate. Usa LaTeX per ogni formula. I file devono essere creati "
-                        "sempre sotto la cartella teoria/ seguendo la struttura di /data."
+                        "esempi svolti e spiegazioni dettagliate. Usa LaTeX per ogni formula. I file devono essere posizionati "
+                        "all'interno del modulo numerato corretto, sotto la cartella teoria/ (es. data/analisi_1/01_funzioni/teoria/numeri.md)."
                     ),
                     "code_architect": (
                         "Sei uno SVILUPPATORE esperto. Scrivi codice Python pulito, test automatici, algoritmi efficienti. "
-                        "Documenta le scelte di design e commenta il codice in dettaglio. I file devono essere creati "
-                        "sempre sotto la cartella test/ o scratch/ seguendo la struttura di /data."
+                        "Documenta le scelte di design e commenta il codice in dettaglio. I file devono essere posizionati "
+                        "all'interno del modulo numerato corretto, sotto la cartella test/ o scratch/ (es. data/analisi_1/01_funzioni/test/funzioni.py)."
                     ),
                     "test-engineer": (
                         "Sei un QA ENGINEER. Scrivi test automatici usando sympy/pytest. Verifica la correttezza logica e computazionale "
-                        "di formule e algoritmi con assert espliciti. I file devono essere creati sempre sotto la cartella test/ seguendo la struttura di /data."
+                        "di formule e algoritmi con assert espliciti. I file devono essere posizionati all'interno del modulo "
+                        "numerato corretto, sotto la cartella test/ (es. data/analisi_1/01_funzioni/test/test_funzioni.py)."
                     ),
                     "proof-reviewer": (
                         "Sei un REVISORE critico. Verifica la correttezza logica e matematica di TUTTI i file. Cerca errori, "
                         "controesempi ed imprecisioni, producendo report di validazione dettagliati e precisi. I file devono essere "
-                        "creati sempre sotto la cartella docs/ seguendo la struttura di /data."
+                        "posizionati all'interno del modulo numerato corretto, sotto la cartella docs/ (es. data/analisi_1/01_funzioni/docs/report.md)."
                     ),
                 }
                 

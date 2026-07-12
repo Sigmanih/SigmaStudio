@@ -331,7 +331,9 @@ def _extract_json_from_response(content: str):
                 depth -= 1
                 if depth == 0:
                     candidate = content[idx : i + 1]
-                    if '"response"' in candidate and any(k in candidate for k in valid_pair_keys):
+                    is_coordinator = '"micro_objectives"' in candidate or '"new_objectives"' in candidate
+                    is_agent_action = '"response"' in candidate and any(k in candidate for k in valid_pair_keys)
+                    if is_coordinator or is_agent_action:
                         try:
                             json.loads(candidate)
 
