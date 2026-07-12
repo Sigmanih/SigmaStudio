@@ -558,7 +558,7 @@ def _execute_single_action(self, action: dict, action_type: str, bot_name: str, 
         path = _normalize_action_path(action.get("path", ""))
         path = _ensure_module_structure(path)
 
-        if path and self._is_path_allowed(path) and os.path.exists(path):
+        if path and self._is_path_allowed(path) and os.path.isfile(path):
             fsize = os.path.getsize(path)
             if fsize > 100_000:
                 result_log.append({"type": "read_file", "success": False, "path": path,
