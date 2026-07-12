@@ -51,6 +51,40 @@ export default function Sidebar({
   tasks = [],
   topicsCount = 0
 }) {
+  const [chatCount, setChatCount] = React.useState(0);
+  const [researchCount, setResearchCount] = React.useState(0);
+
+  React.useEffect(() => {
+    const updateCounts = () => {
+      try {
+        const data = localStorage.getItem('sigma_chat_sessions');
+        if (data) {
+          const parsed = JSON.parse(data);
+          if (Array.isArray(parsed)) {
+            setChatCount(parsed.length);
+          }
+        } else {
+          setChatCount(0);
+        }
+      } catch (e) {
+        setChatCount(0);
+      }
+
+      fetch('/api/research/list')
+        .then(res => res.json())
+        .then(data => {
+          if (data.success && Array.isArray(data.sessions)) {
+            setResearchCount(data.sessions.length);
+          }
+        })
+        .catch(() => {});
+    };
+
+    updateCounts();
+    const interval = setInterval(updateCounts, 5000);
+    return () => clearInterval(interval);
+  }, []);
+
   const taskInCorso = tasks.filter(t => t.status === 'in_corso' || !t.status).length;
   const taskDone = tasks.filter(t => t.status === 'done').length;
   const taskTotal = tasks.length;
@@ -107,17 +141,20 @@ export default function Sidebar({
         <nav className="nav-section">
           <div className="section-title">AGENTI</div>
           <SidebarItem 
-            icon={FlaskConical} 
-            label="Research Lab" 
-            active={activeTabId != null && activeTabId.startsWith('research_lab')}
-            onClick={() => openTab({ name: '🔬 Sigma Research Lab' }, 'research_lab')} 
-          />
-          <SidebarItem 
             icon={MessageSquare} 
             label="Chat" 
-            badgeColor="rgba(0,210,255,0.2)"
+            badge={chatCount > 0 ? chatCount : 0}
+            badgeColor="rgba(0,210,255,0.15)"
             active={activeTabId != null && activeTabId === 'chat'}
             onClick={() => openTab({ name: 'Chat AI', path: 'chat-tab' }, 'chat')} 
+          />
+          <SidebarItem 
+            icon={FlaskConical} 
+            label="Research Lab" 
+            badge={researchCount > 0 ? researchCount : 0}
+            badgeColor="rgba(188,140,255,0.15)"
+            active={activeTabId != null && activeTabId.startsWith('research_lab')}
+            onClick={() => openTab({ name: '🔬 Sigma Research Lab' }, 'research_lab')} 
           />
         </nav>
 

@@ -38,25 +38,26 @@ Imagine a **team of specialized AI agents** (a mathematician, an architect, a te
 ## 🖼️ Screenshots
 
 <p align="center">
-  <img src="screenshots/dashboard.svg" alt="Dashboard — Navigator with Knowledge Graph and task overview" width="48%" />
-  <img src="screenshots/chat.svg" alt="Chat — Multi-agent conversation with Architect mode" width="48%" />
+  <img src="images/screenshots/argomenti.png" alt="Dashboard con Mappa degli Argomenti e Grafo Interattivo" width="48%" />
+  <img src="images/screenshots/chat.png" alt="Chat Multi-Agente con Manifesti" width="48%" />
 </p>
 <p align="center">
-  <em>Interactive Knowledge Graph (left) and AI Chat with specialized agents (right).</em>
-</p>
-
-<p align="center">
-  <img src="screenshots/pipeline.svg" alt="Pipeline Designer — DAG-based multi-agent pipeline execution" width="70%" />
-</p>
-<p align="center">
-  <em>Pipeline Designer: define, execute and review multi-agent DAG pipelines with feedback loops.</em>
+  <em>Mappa degli Argomenti con Grafo Relazionale Interattivo D3.js (sinistra) e Chat Multi-Agente con integrazione dei Manifesti (destra).</em>
 </p>
 
 <p align="center">
-  <img src="screenshots/editor.svg" alt="Sigma Lab Editor — Module editing with real-time preview" width="70%" />
+  <img src="images/screenshots/ResearchLab.png" alt="Research Lab — Orchestrazione e Roadmap del Team di Agenti" width="70%" />
 </p>
 <p align="center">
-  <em>Sigma Lab Editor: navigate modules, edit Markdown with live preview, manage visualizations.</em>
+  <em>Research Lab: Definisci gli obiettivi generali, pianifica la roadmap in micro-task ed esegui i cicli di ricerca in modalità automatica o interattiva.</em>
+</p>
+
+<p align="center">
+  <img src="images/screenshots/test.png" alt="Test automatici della pipeline" width="48%" />
+  <img src="images/screenshots/visualizzazioni.png" alt="Visualizzazioni interattive generate" width="48%" />
+</p>
+<p align="center">
+  <em>Integrazione test di esecuzione e verifica in tempo reale (sinistra) e visualizzazioni grafiche interattive ed editoriali generate dagli agenti (destra).</em>
 </p>
 
 ---
