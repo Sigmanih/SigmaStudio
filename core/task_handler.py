@@ -137,36 +137,39 @@ def _ensure_module_structure(path: str) -> str:
 
 def _get_or_create_default_module(topic_folder: str) -> str:
     """Return an existing module folder or create ``01_base`` as default."""
-    if os.path.isdir(topic_folder):
-        for entry in sorted(os.listdir(topic_folder)):
-            full = os.path.join(topic_folder, entry)
+    rel_folder = topic_folder.replace("\\", "/").rstrip("/")
+    abs_topic_folder = os.path.abspath(topic_folder)
+
+    if os.path.isdir(abs_topic_folder):
+        for entry in sorted(os.listdir(abs_topic_folder)):
+            full = os.path.join(abs_topic_folder, entry)
             if os.path.isdir(full) and entry[:2].isdigit() and "_" in entry:
-                return full
+                return os.path.relpath(full).replace("\\", "/")
 
     mod_num, mod_name = "01", "base"
-    module_path = os.path.join(topic_folder, f"{mod_num}_{mod_name}")
-    os.makedirs(module_path, exist_ok=True)
+    abs_module_path = os.path.join(abs_topic_folder, f"{mod_num}_{mod_name}")
+    os.makedirs(abs_module_path, exist_ok=True)
     for sub in _ALLOWED_MODULE_SECTIONS:
-        os.makedirs(os.path.join(module_path, sub), exist_ok=True)
+        os.makedirs(os.path.join(abs_module_path, sub), exist_ok=True)
 
     # Update modules_meta.json via thread-safe store
     try:
         def _add_module(meta: dict) -> dict:
             meta.setdefault("modules", {})[mod_num] = mod_name.title()
             for tid, tdata in meta.get("topics", {}).items():
-                tf = tdata.get("folder", "").replace("\\", "/")
-                if tf == topic_folder.replace("\\", "/"):
+                tf = tdata.get("folder", "").replace("\\", "/").rstrip("/")
+                if tf == rel_folder:
                     if mod_num not in tdata.get("modules", []):
                         tdata.setdefault("modules", []).append(mod_num)
                     break
             return meta
 
         modules_store.update(_add_module)
-        log.debug("Created default module: %s", module_path)
+        log.debug("Created default module: %s", abs_module_path)
     except Exception as exc:
-        log.error("Failed to update modules_meta.json: %s", exc)
+        log.error("Failed to update modules metadata: %s", exc)
 
-    return module_path
+    return os.path.relpath(abs_module_path).replace("\\", "/")
 
 
 def _sync_module_meta(topic_id: str, topic_folder: str, mod_num: str, mod_name: str) -> None:

@@ -14,6 +14,9 @@ try:
 except ImportError:
     REQUESTS_AVAILABLE = False
 
+from core.logger import log
+
+
 
 # ---------------------------------------------------------------------------
 # Config loading / saving
@@ -495,6 +498,22 @@ def call_ollama(
             "options": options,
         }
         resp = requests.post(endpoint, json=payload, timeout=timeout)
+        if resp.status_code == 404 and "not found" in resp.text:
+            try:
+                base_url = endpoint.rsplit('/', 1)[0]
+                tags_url = f"{base_url}/tags"
+                tags_resp = requests.get(tags_url, timeout=5)
+                if tags_resp.status_code == 200:
+                    models_data = tags_resp.json()
+                    models_list = [m.get("name") for m in models_data.get("models", [])]
+                    if models_list:
+                        fallback_model = models_list[0]
+                        log.warning("Ollama model '%s' not found. Falling back to first available model: '%s'", model, fallback_model)
+                        payload["model"] = fallback_model
+                        resp = requests.post(endpoint, json=payload, timeout=timeout)
+            except Exception as ex:
+                log.error("Failed to query Ollama tags for fallback: %s", ex)
+
         if resp.status_code == 200:
             data = resp.json()
             msg = data.get("message", {})
