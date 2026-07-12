@@ -66,7 +66,12 @@ body {
 .app-container {
   display: grid;
   grid-template-columns: var(--sidebar-w) 1fr var(--dash-w);
-  height: 100vh; width: 100vw;
+  /* Hard-lock to viewport — no child can push beyond this */
+  height: 100vh;
+  max-height: 100vh;
+  width: 100vw;
+  overflow: hidden;
+  align-items: stretch;
   transition: var(--trans-smooth);
   background: #000;
 }
@@ -77,7 +82,9 @@ body {
   margin: 0px; 
   transition: var(--trans-smooth); 
   position: relative; 
-  z-index: 1; 
+  z-index: 1;
+  min-height: 0;
+  overflow: hidden;
 }
 
 /* Animations */

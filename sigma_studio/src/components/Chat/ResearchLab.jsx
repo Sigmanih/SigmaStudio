@@ -284,6 +284,42 @@ export default function ResearchLab({ onClose, onTasksUpdated, addToast }) {
   const [commandInput, setCommandInput] = useState('');
   const [editingGoal, setEditingGoal] = useState(null);
   const [interactiveMode, setInteractiveMode] = useState(true);
+  const [showAddMenu, setShowAddMenu] = useState(false);
+  const [hoveredAgent, setHoveredAgent] = useState(null);
+
+  const getAgentColorWithFallback = (id) => {
+    if (!id) return { bg: '#8b8fa3', color: '#fff', icon: '🤖', short: 'AI', name: 'AI' };
+    if (AGENTS_META[id]) return AGENTS_META[id];
+    const prefix = id.split('_')[0].split('-')[0];
+    const baseId = Object.keys(AGENTS_META).find(k => k.startsWith(prefix) || k.includes(prefix));
+    if (baseId && AGENTS_META[baseId]) {
+      const baseMeta = AGENTS_META[baseId];
+      const numMatch = id.match(/_(\d+)$/);
+      const numberSuffix = numMatch ? ` ${numMatch[1]}` : '';
+      const shortSuffix = numMatch ? `-${numMatch[1]}` : '';
+      return {
+        ...baseMeta,
+        name: `${baseMeta.name}${numberSuffix}`,
+        short: `${baseMeta.short}${shortSuffix}`
+      };
+    }
+    return getAgentColor(id);
+  };
+
+  useEffect(() => {
+    if (sessionData) {
+      const objs = sessionData.micro_objectives || [];
+      const doneCount = objs.filter(o => o.status === 'done').length;
+      window.__activeSessionObjectives = objs;
+      window.__activeSessionName = sessionData.name || '';
+      window.__activeSessionProgress = { done: doneCount, total: objs.length };
+    } else {
+      window.__activeSessionObjectives = [];
+      window.__activeSessionName = '';
+      window.__activeSessionProgress = { done: 0, total: 0 };
+    }
+    window.dispatchEvent(new CustomEvent('sigma-research-objectives-updated'));
+  }, [sessionData]);
 
   // --- Live execution state ---
   const [executing, setExecuting] = useState(false);
@@ -647,6 +683,54 @@ export default function ResearchLab({ onClose, onTasksUpdated, addToast }) {
     } catch (e) { console.error(e); }
   };
 
+  const handleAddNewAgentInstance = async (prefix, baseId) => {
+    if (!activeSessionId) return;
+    
+    const activeAgents = sessionData?.agents || [];
+    const team = activeAgents.filter(a => (a.agent_id || a.id) !== 'sigma_architect');
+
+    // Count existing agents starting with this prefix in the current session
+    const count = team.filter(a => {
+      const aid = a.agent_id || a.id;
+      return aid.startsWith(prefix);
+    }).length;
+    
+    // Generate unique numbered ID (e.g., math_2, math_3)
+    let newAgentId = count === 0 ? baseId : `${prefix}_${count + 1}`;
+    
+    // Safety check to avoid duplicate ID
+    let idx = count + 1;
+    while (team.some(a => (a.agent_id || a.id) === newAgentId)) {
+      idx++;
+      newAgentId = `${prefix}_${idx}`;
+    }
+    
+    const baseConfig = getAgentConfig(baseId);
+    const newAgent = {
+      agent_id: newAgentId,
+      provider: baseConfig.provider || 'deepseek',
+      model: baseConfig.model || 'deepseek-v4-flash',
+      temperature: baseConfig.temperature ?? 0.4,
+      manifesto: baseConfig.manifesto || `manifesti/${baseId}.md`
+    };
+    
+    try {
+      const res = await fetch('/api/research/update_agents', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ session_id: activeSessionId, action: 'add', agent: newAgent }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setSessionData(data.session);
+        if (addToast) addToast(`✅ Agente ${newAgentId} aggiunto`, 'success', 2000);
+      }
+    } catch (e) {
+      console.error(e);
+    }
+    setShowAddMenu(false);
+  };
+
   const handleSendCommand = async () => {
     if (!commandInput.trim() || !activeSessionId) return;
     const cmd = commandInput.trim();
@@ -820,216 +904,448 @@ export default function ResearchLab({ onClose, onTasksUpdated, addToast }) {
                   <button className="rl-btn-icon" onClick={() => { setActiveSessionId(null); setSessionData(null); closeAgentConfig(); }} title="Chiudi"><X size={14} /></button>
                 </div>
               </div>
-              {/* Grafo Relazionale degli Agenti */}
-              <div className="rl-agents-grid" style={{ background: 'rgba(21, 23, 38, 0.4)', borderRadius: '12px', border: '1px solid rgba(255,255,255,0.03)', padding: '15px', position: 'relative', overflow: 'visible', minHeight: '300px' }}>
+              {/* Grafo Relazionale Piramidale degli Agenti */}
+              <div className="rl-agents-grid" style={{
+                background: 'rgba(21, 23, 38, 0.25)',
+                backdropFilter: 'blur(10px)',
+                borderRadius: '12px',
+                border: '1px solid rgba(255,255,255,0.02)',
+                padding: '10px 15px',
+                position: 'relative',
+                overflow: 'visible',
+                flex: 1,
+                minHeight: 0,
+                display: 'flex',
+                flexDirection: 'column',
+                justifyContent: 'center',
+                margin: '8px'
+              }}>
                 {(() => {
                   const allAgents = sessionData.agents?.some(a => (a.agent_id || a.id) === 'sigma_architect')
                     ? sessionData.agents
                     : [{ agent_id: 'sigma_architect', provider: 'deepseek', model: 'deepseek-v4-flash' }, ...(sessionData.agents || [])];
-                  
+
                   const coordinator = allAgents.find(a => (a.agent_id || a.id) === 'sigma_architect');
                   const team = allAgents.filter(a => (a.agent_id || a.id) !== 'sigma_architect');
+
+                  // Direct reports: agents the architect manages directly
+                  const DIRECT_ROLES = ['math', 'code_architect', 'formulario', 'proof-reviewer'];
+                  const directAgents = team.filter(a => {
+                    const aid = a.agent_id || a.id;
+                    return DIRECT_ROLES.some(r => aid.startsWith(r));
+                  });
+                  // Indirect: downstream agents (test-engineer, viz-designer, math-collatz, others)
+                  const INDIRECT_ROLES = ['test-engineer', 'viz-designer', 'math-collatz'];
+                  const indirectAgents = team.filter(a => {
+                    const aid = a.agent_id || a.id;
+                    return !DIRECT_ROLES.some(r => aid.startsWith(r));
+                  });
+
                   const availableAgents = Object.keys(AGENTS_META).filter(id => !allAgents.some(a => (a.agent_id || a.id) === id));
 
-                  const totalNodes = team.length + 1; // Team members + 1 for Add button
-                  const cx = 250;
-                  const cy = 135;
-                  const radius = 105;
+                  // ---- Layout parameters ----
+                  const W = 480;         // viewBox width
+                  const ROW_Y = [55, 170, 290];   // Y centers: architect / direct / indirect
+                  const AVATAR_R = 28;   // radius of avatar circle
+                  const COORD_R = 36;   // bigger for architect
+
+                  // Compute X positions for a row of N nodes
+                  const rowX = (n, i, total) => {
+                    if (total === 1) return W / 2;
+                    const span = Math.min((total - 1) * 90, W - 80);
+                    const start = (W - span) / 2;
+                    return start + i * (span / Math.max(total - 1, 1));
+                  };
+
+                  const positions = {};
+                  if (coordinator) positions['sigma_architect'] = { x: W / 2, y: ROW_Y[0] };
+                  directAgents.forEach((a, i) => {
+                    positions[a.agent_id || a.id] = { x: rowX(i, i, directAgents.length), y: ROW_Y[1] };
+                  });
+                  indirectAgents.forEach((a, i) => {
+                    positions[a.agent_id || a.id] = { x: rowX(i, i, indirectAgents.length), y: ROW_Y[2] };
+                  });
+
+                  // Add-button position (below last row)
+                  const hasAdd = availableAgents.length > 0;
+                  const addPos = { x: W / 2, y: ROW_Y[2] + 80 };
+
+                  // ---- Connection lines ----
+                  const lines = [];
+                  if (coordinator) {
+                    directAgents.forEach(a => lines.push({ from: 'sigma_architect', to: a.agent_id || a.id, type: 'direct' }));
+                    if (directAgents.length === 0) {
+                      indirectAgents.forEach(a => lines.push({ from: 'sigma_architect', to: a.agent_id || a.id, type: 'direct' }));
+                    }
+                  }
+                  // Math → test & viz
+                  directAgents.filter(a => (a.agent_id||a.id).startsWith('math')).forEach(m => {
+                    indirectAgents.filter(a => {
+                      const aid = a.agent_id||a.id;
+                      return aid.startsWith('test') || aid.startsWith('viz');
+                    }).forEach(t => lines.push({ from: m.agent_id||m.id, to: t.agent_id||t.id, type: 'indirect' }));
+                  });
+                  // code → test
+                  directAgents.filter(a => (a.agent_id||a.id).startsWith('code')).forEach(c => {
+                    indirectAgents.filter(a => (a.agent_id||a.id).startsWith('test')).forEach(t =>
+                      lines.push({ from: c.agent_id||c.id, to: t.agent_id||t.id, type: 'indirect' })
+                    );
+                  });
+                  // proof-reviewer ← everything
+                  directAgents.filter(a => (a.agent_id||a.id).startsWith('proof')).forEach(p => {
+                    indirectAgents.forEach(t => lines.push({ from: t.agent_id||t.id, to: p.agent_id||p.id, type: 'indirect' }));
+                  });
+                  // Safeguard: orphan → architect
+                  team.forEach(a => {
+                    const aid = a.agent_id || a.id;
+                    if (!lines.some(l => l.from === aid || l.to === aid) && coordinator) {
+                      lines.push({ from: 'sigma_architect', to: aid, type: 'direct' });
+                    }
+                  });
+
+                  const roleDescriptions = {
+                    architect: 'Coordina il team, assegna i task e supervisiona la qualità complessiva',
+                    researcher: 'Ricerca teorica, formulazione di teoremi e dimostrazioni matematiche',
+                    developer: 'Sviluppo codice, implementazione algoritmi e ottimizzazione',
+                    tester: 'Test computazionali, verifica correttezza e benchmark prestazioni',
+                    visualizer: 'Grafici interattivi D3.js, visualizzazioni dati e dashboard',
+                    formulario: 'Sintesi di formulari, tabelle riassuntive e documentazione strutturata',
+                    reviewer: 'Revisione critica, confutazione errori e validazione formale',
+                    mathematician: 'Analisi matematica specialistica e computazione simbolica',
+                  };
+
+                  const addAgentOptions = [
+                    { label: '∑ Ricercatore Matematica', prefix: 'math', baseId: 'math1' },
+                    { label: '⚙️ Sviluppatore Codice', prefix: 'code_architect', baseId: 'code_architect' },
+                    { label: '🧪 Ingegnere dei Test', prefix: 'test-engineer', baseId: 'test-engineer' },
+                    { label: '📊 Visualizzatore Grafico', prefix: 'viz-designer', baseId: 'viz-designer' },
+                    { label: '🔍 Revisore e Confutatore', prefix: 'proof-reviewer', baseId: 'proof-reviewer' }
+                  ];
+
+                  // Compute dynamic viewBox height
+                  const hasIndirect = indirectAgents.length > 0;
+                  const vbH = hasIndirect ? (hasAdd ? 410 : 360) : (hasAdd ? 300 : 250);
 
                   return (
-                    <div style={{ position: 'relative', width: '100%', height: '270px' }}>
-                      <svg width="100%" height="100%" viewBox="0 0 500 270" style={{ overflow: 'visible' }}>
-                        {/* Connection Lines with Animated Flow */}
-                        {team.map((agent, i) => {
-                          const aid = agent.agent_id || agent.id;
-                          const meta = AGENTS_META[aid] || getAgentColor(aid);
-                          const angle = (i * 2 * Math.PI) / totalNodes - Math.PI / 2;
-                          const tx = cx + radius * Math.cos(angle);
-                          const ty = cy + radius * Math.sin(angle);
-                          const isWorking = agentStates[aid]?.status === 'working';
+                    <div style={{ position: 'relative', width: '100%', flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'flex-start', paddingTop: '6px' }}>
+                      <svg
+                        width="100%"
+                        viewBox={`0 0 ${W} ${vbH}`}
+                        style={{ overflow: 'visible', maxHeight: '380px' }}
+                      >
+                        <defs>
+                          <filter id="glow-strong">
+                            <feGaussianBlur stdDeviation="3" result="blur"/>
+                            <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+                          </filter>
+                          <filter id="glow-soft">
+                            <feGaussianBlur stdDeviation="1.5" result="blur"/>
+                            <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+                          </filter>
+                          {/* Avatar clip paths */}
+                          {coordinator && (
+                            <clipPath id="clip-sigma_architect">
+                              <circle cx={positions['sigma_architect'].x} cy={positions['sigma_architect'].y} r={COORD_R} />
+                            </clipPath>
+                          )}
+                          {team.map(a => {
+                            const aid = a.agent_id || a.id;
+                            const pos = positions[aid];
+                            if (!pos) return null;
+                            return (
+                              <clipPath key={`clip-${aid}`} id={`clip-${aid}`}>
+                                <circle cx={pos.x} cy={pos.y} r={AVATAR_R} />
+                              </clipPath>
+                            );
+                          })}
+                        </defs>
 
-                          // Exchange label based on agent type
-                          let exchangeLabel = 'Dati';
-                          if (aid === 'math1') exchangeLabel = 'Teoria';
-                          else if (aid === 'test-engineer') exchangeLabel = 'Test Unitari';
-                          else if (aid === 'viz-designer') exchangeLabel = 'Grafici D3';
-                          else if (aid === 'proof-reviewer') exchangeLabel = 'Revisioni';
-                          else if (aid === 'code_architect') exchangeLabel = 'Codice';
+                        {/* Row labels */}
+                        {coordinator && (
+                          <text x={10} y={ROW_Y[0] - COORD_R - 6} fill="rgba(255,255,255,0.18)" fontSize="7.5" fontWeight="700" textAnchor="start" letterSpacing="1.5">COORDINATORE</text>
+                        )}
+                        {directAgents.length > 0 && (
+                          <text x={10} y={ROW_Y[1] - AVATAR_R - 8} fill="rgba(255,255,255,0.12)" fontSize="7" fontWeight="700" textAnchor="start" letterSpacing="1.5">COLLABORATORI DIRETTI</text>
+                        )}
+                        {indirectAgents.length > 0 && (
+                          <text x={10} y={ROW_Y[2] - AVATAR_R - 8} fill="rgba(255,255,255,0.10)" fontSize="7" fontWeight="700" textAnchor="start" letterSpacing="1.5">AGENTI SPECIALIZZATI</text>
+                        )}
 
+                        {/* Connection lines */}
+                        {lines.map((link, idx) => {
+                          const fp = positions[link.from];
+                          const tp = positions[link.to];
+                          if (!fp || !tp) return null;
+                          const fromMeta = getAgentColorWithFallback(link.from);
+                          const isActive = agentStates[link.from]?.status === 'working' || agentStates[link.to]?.status === 'working';
+                          const isDirect = link.type === 'direct';
                           return (
-                            <g key={`link-${aid}`}>
-                              {/* Background link path */}
-                              <line
-                                x1={cx} y1={cy} x2={tx} y2={ty}
-                                stroke="rgba(255,255,255,0.06)"
-                                strokeWidth="3"
+                            <g key={`line-${idx}`}>
+                              <line x1={fp.x} y1={fp.y} x2={tp.x} y2={tp.y}
+                                stroke="rgba(255,255,255,0.04)" strokeWidth={isDirect ? 3 : 1.5} />
+                              <line x1={fp.x} y1={fp.y} x2={tp.x} y2={tp.y}
+                                stroke={fromMeta.bg}
+                                strokeWidth={isDirect ? 1.5 : 1}
+                                strokeDasharray={isActive ? '5,3' : isDirect ? '0' : '4,5'}
+                                opacity={isActive ? 0.85 : isDirect ? 0.35 : 0.18}
+                                style={{ animation: isActive ? 'dash 1s linear infinite' : isDirect ? 'none' : 'dash 3s linear infinite' }}
                               />
-                              {/* Animated active data link */}
-                              <line
-                                x1={cx} y1={cy} x2={tx} y2={ty}
-                                stroke={meta.bg}
-                                strokeWidth="2"
-                                strokeDasharray={isWorking ? "4,4" : "8,8"}
-                                className="animated-link"
-                                style={{
-                                  animation: isWorking ? 'dash 0.8s linear infinite' : 'dash 2.5s linear infinite',
-                                  opacity: isWorking ? 0.9 : 0.4
-                                }}
-                              />
-                              {/* Exchange label pill */}
-                              <g transform={`translate(${(cx + tx)/2}, ${(cy + ty)/2})`}>
-                                <rect
-                                  x="-36" y="-7" width="72" height="14" rx="7"
-                                  fill="#111322" stroke="rgba(255,255,255,0.08)" strokeWidth="1"
-                                />
-                                <text
-                                  textAnchor="middle" dy="3.5"
-                                  fill="#8b8fa3" fontSize="8" fontWeight="600"
-                                >
-                                  {exchangeLabel}
-                                </text>
-                              </g>
                             </g>
                           );
                         })}
 
-                        {/* Add agent node connection */}
-                        {availableAgents.length > 0 && (() => {
-                          const i = team.length;
-                          const angle = (i * 2 * Math.PI) / totalNodes - Math.PI / 2;
-                          const tx = cx + radius * Math.cos(angle);
-                          const ty = cy + radius * Math.sin(angle);
-                          return (
-                            <line
-                              x1={cx} y1={cy} x2={tx} y2={ty}
-                              stroke="rgba(255,255,255,0.04)"
-                              strokeWidth="1.5"
-                              strokeDasharray="3,3"
-                            />
-                          );
-                        })()}
-
-                        {/* Coordinator Central Node */}
+                        {/* Architect node */}
                         {coordinator && (() => {
-                          const meta = AGENTS_META['sigma_architect'] || {};
-                          const isWorking = agentStates['sigma_architect']?.status === 'working';
+                          const meta = getAgentColorWithFallback('sigma_architect');
+                          const state = agentStates['sigma_architect'] || {};
+                          const isWorking = state.status === 'working';
+                          const pos = positions['sigma_architect'];
+                          const agentData = allAgents.find(a => (a.agent_id || a.id) === 'sigma_architect');
                           return (
-                            <foreignObject x={cx - 40} y={cy - 45} width="80" height="90" style={{ overflow: 'visible' }}>
-                              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-                                <div
-                                  className={`rl-node-avatar ${isWorking ? 'working' : ''}`}
-                                  style={{
-                                    '--border-color': meta.bg,
-                                    '--glow-color': meta.bg,
-                                    borderColor: meta.bg,
-                                    boxShadow: isWorking ? `0 0 15px ${meta.bg}` : 'none'
-                                  }}
-                                  onClick={() => selectAgentForConfig('sigma_architect')}
-                                >
-                                  <AgentAvatar meta={meta} size={40} />
-                                  {isWorking && <span className="rl-agent-pulse" style={{ background: meta.bg }} />}
-                                </div>
-                                <span className="rl-node-label" style={{ color: meta.bg, fontWeight: '700' }}>Architect</span>
-                              </div>
-                            </foreignObject>
+                            <g
+                              key="node-arch"
+                              style={{ cursor: 'pointer' }}
+                              onClick={() => selectAgentForConfig('sigma_architect')}
+                              onMouseEnter={() => setHoveredAgent('sigma_architect')}
+                              onMouseLeave={() => setHoveredAgent(null)}
+                            >
+                              {/* Outer glow ring */}
+                              <circle cx={pos.x} cy={pos.y} r={COORD_R + 8}
+                                fill="none" stroke={meta.bg}
+                                strokeWidth="1.5" opacity="0.2"
+                                style={{ animation: isWorking ? 'pulse-ring 1.2s ease-in-out infinite' : 'none' }}
+                              />
+                              <circle cx={pos.x} cy={pos.y} r={COORD_R + 4}
+                                fill="none" stroke={meta.bg}
+                                strokeWidth={isWorking ? 2.5 : 1.5}
+                                opacity={isWorking ? 0.7 : 0.4}
+                              />
+                              {/* Avatar circle background */}
+                              <circle cx={pos.x} cy={pos.y} r={COORD_R} fill="#1a1d2e" />
+                              {/* Agent image */}
+                              <image
+                                href={meta.image || '/images/agente0.png'}
+                                x={pos.x - COORD_R} y={pos.y - COORD_R}
+                                width={COORD_R * 2} height={COORD_R * 2}
+                                clipPath="url(#clip-sigma_architect)"
+                                preserveAspectRatio="xMidYMid slice"
+                              />
+                              {/* Status ring */}
+                              <circle cx={pos.x} cy={pos.y} r={COORD_R}
+                                fill="none"
+                                stroke={isWorking ? meta.bg : state.status === 'done' ? '#3fb950' : state.status === 'error' ? '#ff5555' : meta.bg}
+                                strokeWidth={isWorking ? 2.5 : 2}
+                                filter={isWorking ? 'url(#glow-strong)' : undefined}
+                                opacity={isWorking ? 1 : 0.6}
+                              />
+                              {/* Working pulse dot */}
+                              {isWorking && <circle cx={pos.x + COORD_R - 5} cy={pos.y - COORD_R + 5} r={5} fill={meta.bg} filter="url(#glow-soft)" style={{ animation: 'pulse-ring 0.8s ease-in-out infinite' }} />}
+                              {/* Name label */}
+                              <text x={pos.x} y={pos.y + COORD_R + 14} textAnchor="middle" fill={meta.bg} fontSize="9" fontWeight="800" letterSpacing="0.5">
+                                {meta.short || 'Arch'}
+                              </text>
+                              <text x={pos.x} y={pos.y + COORD_R + 24} textAnchor="middle" fill="rgba(255,255,255,0.35)" fontSize="6.5" fontWeight="600">
+                                {agentData?.model || meta.name || ''}
+                              </text>
+                            </g>
                           );
                         })()}
 
-                        {/* Team Nodes */}
-                        {team.map((agent, i) => {
+                        {/* Team nodes (direct + indirect merged) */}
+                        {team.map(agent => {
                           const aid = agent.agent_id || agent.id;
-                          const meta = AGENTS_META[aid] || getAgentColor(aid);
+                          const meta = getAgentColorWithFallback(aid);
                           const state = agentStates[aid] || {};
                           const isWorking = state.status === 'working';
-                          const angle = (i * 2 * Math.PI) / totalNodes - Math.PI / 2;
-                          const tx = cx + radius * Math.cos(angle);
-                          const ty = cy + radius * Math.sin(angle);
+                          const isDone = state.status === 'done';
+                          const isError = state.status === 'error';
+                          const pos = positions[aid];
+                          if (!pos) return null;
+                          const borderColor = isWorking ? meta.bg : isDone ? '#3fb950' : isError ? '#ff5555' : meta.bg;
 
                           return (
-                            <foreignObject key={`node-${aid}`} x={tx - 35} y={ty - 35} width="70" height="85" style={{ overflow: 'visible' }}>
-                              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', position: 'relative' }}>
-                                <div
-                                  className={`rl-node-avatar ${isWorking ? 'working' : ''}`}
-                                  style={{
-                                    '--border-color': meta.bg,
-                                    '--glow-color': meta.bg,
-                                    borderColor: state.status === 'done' ? '#3fb950' : state.status === 'error' ? '#ff5555' : meta.bg,
-                                    boxShadow: isWorking ? `0 0 12px ${meta.bg}` : 'none'
-                                  }}
-                                  onClick={() => selectAgentForConfig(aid)}
-                                >
-                                  <AgentAvatar meta={meta} size={34} />
-                                  {isWorking && <span className="rl-agent-pulse" style={{ background: meta.bg, width: '8px', height: '8px', right: '-1px', bottom: '-1px' }} />}
-                                  {/* Small state checkmark/warning */}
-                                  {!isWorking && state.status === 'done' && (
-                                    <span style={{ position: 'absolute', top: '-4px', right: '-4px', background: '#0e1016', borderRadius: '50%', color: '#3fb950', display: 'flex', padding: '1px' }}><CheckCircle size={10} /></span>
-                                  )}
-                                  {!isWorking && state.status === 'error' && (
-                                    <span style={{ position: 'absolute', top: '-4px', right: '-4px', background: '#0e1016', borderRadius: '50%', color: '#ff5555', display: 'flex', padding: '1px' }}><AlertTriangle size={10} /></span>
-                                  )}
-                                </div>
-                                <span className="rl-node-label">{meta.short || aid}</span>
-                                {/* Remove button floating next to the label */}
-                                <button
-                                  style={{
-                                    position: 'absolute',
-                                    top: '-6px',
-                                    left: '42px',
-                                    background: 'rgba(255,85,85,0.15)',
-                                    color: '#ff5555',
-                                    border: 'none',
-                                    borderRadius: '50%',
-                                    width: '14px',
-                                    height: '14px',
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    justifyContent: 'center',
-                                    cursor: 'pointer',
-                                    fontSize: '8px',
-                                    padding: 0
-                                  }}
-                                  onClick={e => { e.stopPropagation(); handleRemoveAgent(aid); }}
-                                  title="Rimuovi agente"
-                                >
-                                  ✕
-                                </button>
-                              </div>
-                            </foreignObject>
+                            <g
+                              key={`node-${aid}`}
+                              style={{ cursor: 'pointer' }}
+                              onClick={() => selectAgentForConfig(aid)}
+                              onMouseEnter={() => setHoveredAgent(aid)}
+                              onMouseLeave={() => setHoveredAgent(null)}
+                            >
+                              {/* Outer working animation ring */}
+                              {isWorking && (
+                                <circle cx={pos.x} cy={pos.y} r={AVATAR_R + 6}
+                                  fill="none" stroke={meta.bg} strokeWidth="1.2" opacity="0.3"
+                                  style={{ animation: 'pulse-ring 1.2s ease-in-out infinite' }}
+                                />
+                              )}
+                              <circle cx={pos.x} cy={pos.y} r={AVATAR_R + 2}
+                                fill="none" stroke={borderColor}
+                                strokeWidth={isWorking ? 2 : 1.2}
+                                opacity={isWorking ? 0.6 : 0.3}
+                              />
+                              {/* Avatar bg */}
+                              <circle cx={pos.x} cy={pos.y} r={AVATAR_R} fill="#1a1d2e" />
+                              {/* Agent image */}
+                              <image
+                                href={meta.image || '/images/default.png'}
+                                x={pos.x - AVATAR_R} y={pos.y - AVATAR_R}
+                                width={AVATAR_R * 2} height={AVATAR_R * 2}
+                                clipPath={`url(#clip-${aid})`}
+                                preserveAspectRatio="xMidYMid slice"
+                              />
+                              {/* Status border */}
+                              <circle cx={pos.x} cy={pos.y} r={AVATAR_R}
+                                fill="none" stroke={borderColor}
+                                strokeWidth={isWorking ? 2.5 : 1.8}
+                                filter={isWorking ? 'url(#glow-soft)' : undefined}
+                                opacity={isWorking ? 1 : 0.5}
+                              />
+                              {/* Done badge */}
+                              {isDone && !isWorking && (
+                                <g transform={`translate(${pos.x + AVATAR_R - 8}, ${pos.y - AVATAR_R + 2})`}>
+                                  <circle r={6} fill="#0e1016" />
+                                  <text textAnchor="middle" dy="3.5" fontSize="7" fill="#3fb950">✓</text>
+                                </g>
+                              )}
+                              {/* Error badge */}
+                              {isError && !isWorking && (
+                                <g transform={`translate(${pos.x + AVATAR_R - 8}, ${pos.y - AVATAR_R + 2})`}>
+                                  <circle r={6} fill="#0e1016" />
+                                  <text textAnchor="middle" dy="3.5" fontSize="7" fill="#ff5555">!</text>
+                                </g>
+                              )}
+                              {/* Working dot */}
+                              {isWorking && <circle cx={pos.x + AVATAR_R - 5} cy={pos.y - AVATAR_R + 5} r={4} fill={meta.bg} filter="url(#glow-soft)" style={{ animation: 'pulse-ring 0.8s ease-in-out infinite' }} />}
+                              {/* Remove button */}
+                              <g transform={`translate(${pos.x - AVATAR_R + 4}, ${pos.y - AVATAR_R + 4})`}
+                                onClick={e => { e.stopPropagation(); handleRemoveAgent(aid); }}
+                                style={{ cursor: 'pointer', opacity: 0 }}
+                                className="rl-node-remove-btn"
+                              >
+                                <circle r={7} fill="rgba(255,85,85,0.8)" />
+                                <text textAnchor="middle" dy="3.5" fontSize="8" fill="#fff" fontWeight="800">✕</text>
+                              </g>
+                              {/* Label */}
+                              <text x={pos.x} y={pos.y + AVATAR_R + 12} textAnchor="middle" fill={meta.bg} fontSize="8.5" fontWeight="700">
+                                {meta.short || aid}
+                              </text>
+                              <text x={pos.x} y={pos.y + AVATAR_R + 22} textAnchor="middle" fill="rgba(255,255,255,0.3)" fontSize="6">
+                                {agent.model || ''}
+                              </text>
+                            </g>
                           );
                         })}
 
-                        {/* Add Agent Node */}
-                        {availableAgents.length > 0 && (() => {
-                          const i = team.length;
-                          const angle = (i * 2 * Math.PI) / totalNodes - Math.PI / 2;
-                          const tx = cx + radius * Math.cos(angle);
-                          const ty = cy + radius * Math.sin(angle);
+                        {/* Add Agent node */}
+                        {hasAdd && (
+                          <g style={{ cursor: 'pointer' }} onClick={() => setShowAddMenu(!showAddMenu)}>
+                            <circle cx={addPos.x} cy={addPos.y} r={22}
+                              fill="rgba(255,255,255,0.02)"
+                              stroke="rgba(255,255,255,0.08)"
+                              strokeWidth="1.5"
+                              strokeDasharray="4,4"
+                            />
+                            <text x={addPos.x} y={addPos.y + 4} textAnchor="middle" fill="#8b8fa3" fontSize="18" fontWeight="300">+</text>
+                            <text x={addPos.x} y={addPos.y + 34} textAnchor="middle" fill="#5a5e72" fontSize="7" fontWeight="600">AGGIUNGI</text>
+                          </g>
+                        )}
+
+                        {/* Hover Tooltip (rendered as foreignObject for rich HTML) */}
+                        {hoveredAgent && positions[hoveredAgent] && (() => {
+                          const pos = positions[hoveredAgent];
+                          const meta = getAgentColorWithFallback(hoveredAgent);
+                          const state = agentStates[hoveredAgent] || {};
+                          const agentData = allAgents.find(a => (a.agent_id || a.id) === hoveredAgent);
+                          const role = meta.role || 'agent';
+                          const statusLabel = { working: '⚡ In esecuzione', done: '✅ Completato', error: '❌ Errore', pending: '⏳ In attesa', idle: '💤 Inattivo' }[state.status] || '💤 Inattivo';
+
+                          // Smart tooltip positioning
+                          const ttW = 180, ttH = 115;
+                          let ttX = pos.x - ttW / 2;
+                          let ttY = pos.y - ttH - 52;
+                          if (ttX < 5) ttX = 5;
+                          if (ttX + ttW > W - 5) ttX = W - ttW - 5;
+                          if (ttY < 5) ttY = pos.y + 50;
 
                           return (
-                            <g>
-                              <foreignObject x={tx - 35} y={ty - 35} width="70" height="85" style={{ overflow: 'visible' }}>
-                                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', position: 'relative' }}>
-                                  <div
-                                    className="rl-node-avatar"
-                                    style={{
-                                      '--border-color': 'rgba(255,255,255,0.06)',
-                                      '--glow-color': '#00d2ff',
-                                      borderColor: 'rgba(255,255,255,0.06)',
-                                      borderStyle: 'dashed',
-                                      background: 'rgba(255,255,255,0.02)'
-                                    }}
-                                    onClick={() => handleAddAgent(availableAgents[0])}
-                                    title={`Aggiungi ${AGENTS_META[availableAgents[0]]?.name || availableAgents[0]}`}
-                                  >
-                                    <Plus size={16} style={{ color: '#8b8fa3' }} />
+                            <foreignObject x={ttX} y={ttY} width={ttW} height={ttH + 20} style={{ overflow: 'visible', pointerEvents: 'none' }}>
+                              <div style={{
+                                background: 'rgba(14,16,22,0.97)',
+                                border: `1px solid ${meta.bg}40`,
+                                borderRadius: '10px',
+                                padding: '10px 12px',
+                                boxShadow: `0 8px 32px rgba(0,0,0,0.6), 0 0 0 1px ${meta.bg}20`,
+                                backdropFilter: 'blur(12px)',
+                                fontFamily: 'Inter, sans-serif',
+                                minWidth: '160px'
+                              }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
+                                  <div style={{
+                                    width: '32px', height: '32px', borderRadius: '50%',
+                                    background: `${meta.bg}22`, border: `1.5px solid ${meta.bg}`,
+                                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                    fontSize: '14px', flexShrink: 0
+                                  }}>{meta.icon}</div>
+                                  <div>
+                                    <div style={{ fontSize: '0.72rem', fontWeight: '800', color: '#fff', lineHeight: 1.2 }}>{meta.name || hoveredAgent}</div>
+                                    <div style={{ fontSize: '0.58rem', color: meta.bg, fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.5px' }}>{role}</div>
                                   </div>
-                                  <span className="rl-node-label" style={{ color: '#5a5e72' }}>Aggiungi</span>
                                 </div>
-                              </foreignObject>
-                            </g>
+                                <div style={{ fontSize: '0.6rem', color: '#8b8fa3', lineHeight: 1.4, marginBottom: '6px' }}>
+                                  {roleDescriptions[role] || 'Agente specializzato del team di ricerca'}
+                                </div>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                  <span style={{ fontSize: '0.58rem', color: '#5a5e72', background: 'rgba(255,255,255,0.04)', padding: '2px 6px', borderRadius: '4px' }}>
+                                    {agentData?.provider || 'deepseek'} · {agentData?.model || '—'}
+                                  </span>
+                                  <span style={{ fontSize: '0.58rem', fontWeight: '700', color: state.status === 'working' ? '#00d2ff' : state.status === 'done' ? '#3fb950' : state.status === 'error' ? '#ff5555' : '#8b8fa3' }}>
+                                    {statusLabel}
+                                  </span>
+                                </div>
+                              </div>
+                            </foreignObject>
                           );
                         })()}
                       </svg>
+
+                      {/* Add Agent Dropdown */}
+                      {showAddMenu && (
+                        <div style={{
+                          position: 'absolute',
+                          bottom: '10px',
+                          left: '50%',
+                          transform: 'translateX(-50%)',
+                          background: '#151726',
+                          border: '1px solid rgba(255,255,255,0.08)',
+                          borderRadius: '10px',
+                          boxShadow: '0 8px 32px rgba(0,0,0,0.6)',
+                          zIndex: 100,
+                          padding: '6px 0',
+                          minWidth: '220px'
+                        }}>
+                          <div style={{ padding: '6px 14px', fontSize: '0.6rem', fontWeight: '700', color: '#8b8fa3', borderBottom: '1px solid rgba(255,255,255,0.04)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                            Aggiungi Agente al Team
+                          </div>
+                          {addAgentOptions.map(opt => (
+                            <button
+                              key={opt.prefix}
+                              onClick={() => { handleAddNewAgentInstance(opt.prefix, opt.baseId); setShowAddMenu(false); }}
+                              style={{
+                                display: 'flex', alignItems: 'center', gap: '8px',
+                                width: '100%', padding: '9px 14px',
+                                background: 'none', border: 'none',
+                                color: '#e2e4eb', textAlign: 'left',
+                                fontSize: '0.72rem', cursor: 'pointer',
+                                transition: 'background 0.12s'
+                              }}
+                              onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,0.05)'}
+                              onMouseLeave={e => e.currentTarget.style.background = 'none'}
+                            >
+                              {opt.label}
+                            </button>
+                          ))}
+                        </div>
+                      )}
                     </div>
                   );
                 })()}
@@ -1037,21 +1353,21 @@ export default function ResearchLab({ onClose, onTasksUpdated, addToast }) {
 
               {/* Goal — editable */}
               <div className="rl-goal-display">
-                <MessageSquare size={14} />
+                <div className="rl-goal-header">
+                  <div className="rl-goal-title">
+                    <Target size={12} style={{ color: '#00d2ff' }} />
+                    <span>Obiettivo Iniziale della Ricerca</span>
+                  </div>
+                  <span className="rl-goal-subtitle">MODIFICABILE</span>
+                </div>
                 <textarea
                   className="rl-goal-edit"
                   value={editingGoal !== null ? editingGoal : (sessionData.goal || '')}
                   onChange={e => setEditingGoal(e.target.value)}
                   onBlur={handleSaveGoal}
                   onFocus={() => setEditingGoal(sessionData.goal || '')}
-                  rows={6}
+                  placeholder="Definisci qui l'obiettivo primario della ricerca..."
                 />
-              </div>
-              <div className="rl-kanban">
-                <div className="rl-kanban-col"><div className="rl-kanban-header" style={{ borderColor: '#5a5e72' }}><Circle size={12} /> Da Fare ({pendingO.length})</div>{pendingO.map(o => <ObjectiveCard key={o.id} obj={o} agentsMeta={AGENTS_META} onClick={() => setSelectedObjective(o)} />)}</div>
-                <div className="rl-kanban-col"><div className="rl-kanban-header" style={{ borderColor: '#00d2ff' }}><RefreshCw size={12} /> In Corso ({progressO.length})</div>{progressO.map(o => <ObjectiveCard key={o.id} obj={o} agentsMeta={AGENTS_META} onClick={() => setSelectedObjective(o)} />)}</div>
-                <div className="rl-kanban-col"><div className="rl-kanban-header" style={{ borderColor: '#3fb950' }}><CheckCircle size={12} /> Completati ({doneO.length})</div>{doneO.map(o => <ObjectiveCard key={o.id} obj={o} agentsMeta={AGENTS_META} onClick={() => setSelectedObjective(o)} />)}</div>
-                <div className="rl-kanban-col"><div className="rl-kanban-header" style={{ borderColor: '#ff5555' }}><AlertTriangle size={12} /> Bloccati ({failedO.length})</div>{failedO.map(o => <ObjectiveCard key={o.id} obj={o} agentsMeta={AGENTS_META} onClick={() => setSelectedObjective(o)} />)}</div>
               </div>
 
               {/* Task Detail Modal */}

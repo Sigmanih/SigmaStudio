@@ -42,6 +42,14 @@ export default function MappaArgomenti({ onOpenFile }) {
   const linksRef = useRef([]);
 
   const [agentColors, setAgentColors] = useState({});
+  const [d3, setD3] = useState(null);
+
+  useEffect(() => {
+    import('d3').then(module => {
+      setD3(module);
+      window.d3 = module;
+    });
+  }, []);
 
   // Fetch data — returns the fetched topics array
   const fetchData = useCallback(async () => {
@@ -76,7 +84,7 @@ export default function MappaArgomenti({ onOpenFile }) {
 
   useEffect(() => { fetchData(); }, [fetchData]);
 
-  // Update dimensions on resize
+  // Update dimensions on resize/load
   useEffect(() => {
     const handleResize = () => {
       if (containerRef.current) {
@@ -87,14 +95,14 @@ export default function MappaArgomenti({ onOpenFile }) {
         }
       }
     };
-    // Delay initial measurement to ensure layout is complete
-    const timer = setTimeout(handleResize, 50);
+    handleResize();
+    const timer = setTimeout(handleResize, 100);
     window.addEventListener('resize', handleResize);
     return () => {
       clearTimeout(timer);
       window.removeEventListener('resize', handleResize);
     };
-  }, []);
+  }, [loading, d3]);
 
   // Compute stats
   useEffect(() => {
@@ -166,265 +174,246 @@ export default function MappaArgomenti({ onOpenFile }) {
 
   // D3 rendering
   useEffect(() => {
-    if (!svgRef.current || topicsData.length === 0) return;
+    if (!d3 || !svgRef.current || topicsData.length === 0) return;
     // Guard against invalid dimensions (NaN/0)
     const width = dimensions.width;
     const height = dimensions.height;
     if (!width || !height || width <= 0 || height <= 0) return;
 
-    let isCancelled = false;
+    const svg = d3.select(svgRef.current);
+    svg.selectAll('*').remove();
 
-    import('d3').then(d3 => {
-      if (isCancelled) return;
+    const graphData = buildGraphData();
+    const { nodes, links } = graphData;
+    if (nodes.length === 0) return;
+    linksRef.current = links;
 
-      const svg = d3.select(svgRef.current);
-      svg.selectAll('*').remove();
+    // Arrow markers
+    const defs = svg.append('defs');
+    defs.selectAll('marker')
+      .data(['topic-module', 'parent-child'])
+      .enter().append('marker')
+      .attr('id', d => d)
+      .attr('viewBox', '0 -5 10 10')
+      .attr('refX', 20)
+      .attr('refY', 0)
+      .attr('markerWidth', 6)
+      .attr('markerHeight', 6)
+      .attr('orient', 'auto')
+      .append('path')
+      .attr('fill', d => d === 'parent-child' ? 'rgba(210,153,34,0.3)' : 'rgba(255,255,255,0.15)')
+      .attr('d', 'M0,-5L10,0L0,5');
 
-      const graphData = buildGraphData();
-      const { nodes, links } = graphData;
-      if (nodes.length === 0) return;
-      linksRef.current = links;
+    // Zoom
+    const g = svg.append('g').attr('class', 'zoom-group');
+    const zoom = d3.zoom()
+      .scaleExtent([0.3, 4])
+      .on('zoom', (event) => { g.attr('transform', event.transform); });
+    svg.call(zoom);
+    zoomRef.current = zoom;
 
-      const width = dimensions.width;
-      const height = dimensions.height;
+    const initialScale = Math.min(width, height) / 600;
+    svg.call(zoom.transform, d3.zoomIdentity.scale(initialScale));
 
-      // Arrow markers
-      const defs = svg.append('defs');
-      defs.selectAll('marker')
-        .data(['topic-module', 'parent-child'])
-        .enter().append('marker')
-        .attr('id', d => d)
-        .attr('viewBox', '0 -5 10 10')
-        .attr('refX', 20)
-        .attr('refY', 0)
-        .attr('markerWidth', 6)
-        .attr('markerHeight', 6)
-        .attr('orient', 'auto')
-        .append('path')
-        .attr('fill', d => d === 'parent-child' ? 'rgba(210,153,34,0.3)' : 'rgba(255,255,255,0.15)')
-        .attr('d', 'M0,-5L10,0L0,5');
-
-      // Zoom
-      const g = svg.append('g').attr('class', 'zoom-group');
-      const zoom = d3.zoom()
-        .scaleExtent([0.3, 4])
-        .on('zoom', (event) => { g.attr('transform', event.transform); });
-      svg.call(zoom);
-      zoomRef.current = zoom;
-
-      const initialScale = Math.min(width, height) / 600;
-      svg.call(zoom.transform, d3.zoomIdentity.scale(initialScale));
-
-      // Link type map
-      const linkTypeMap = {};
-      for (const topic of topicsData) {
-        if (topic.parent_id) {
-          const key = 'topic-' + topic.parent_id + '|topic-' + topic.id;
-          linkTypeMap[key] = true;
-        }
+    // Link type map
+    const linkTypeMap = {};
+    for (const topic of topicsData) {
+      if (topic.parent_id) {
+        const key = 'topic-' + topic.parent_id + '|topic-' + topic.id;
+        linkTypeMap[key] = true;
       }
+    }
 
-      // Links
-      const linkGroup = g.append('g').attr('class', 'links');
-      const linkElements = linkGroup.selectAll('line')
-        .data(links)
-        .enter().append('line')
-        .attr('class', d => {
-          const isParent = linkTypeMap[d.source.id + '|' + d.target.id] || linkTypeMap[d.target.id + '|' + d.source.id];
+    // Links
+    const linkGroup = g.append('g').attr('class', 'links');
+    const linkElements = linkGroup.selectAll('line')
+      .data(links)
+      .enter().append('line')
+      .attr('class', d => {
+        const isParent = linkTypeMap[d.source.id + '|' + d.target.id] || linkTypeMap[d.target.id + '|' + d.source.id];
+        return isParent ? 'graph-link parent-link' : 'graph-link';
+      })
+      .attr('stroke', d => {
+        const isParent = linkTypeMap[d.source.id + '|' + d.target.id] || linkTypeMap[d.target.id + '|' + d.source.id];
+        return isParent ? 'rgba(210,153,34,0.2)' : 'rgba(255,255,255,0.08)';
+      })
+      .attr('stroke-width', d => {
+        const isParent = linkTypeMap[d.source.id + '|' + d.target.id] || linkTypeMap[d.target.id + '|' + d.source.id];
+        return isParent ? 2 : 1.5;
+      })
+      .attr('stroke-dasharray', d => {
+        const isParent = linkTypeMap[d.source.id + '|' + d.target.id] || linkTypeMap[d.target.id + '|' + d.source.id];
+        return isParent ? '4,3' : 'none';
+      })
+      .attr('marker-end', d => {
+        const isParent = linkTypeMap[d.source.id + '|' + d.target.id] || linkTypeMap[d.target.id + '|' + d.source.id];
+        return isParent ? 'url(#parent-child)' : 'url(#topic-module)';
+      });
+
+    // Nodes
+    const nodeGroup = g.append('g').attr('class', 'nodes');
+    const nodeElements = nodeGroup.selectAll('g')
+      .data(nodes)
+      .enter().append('g')
+      .attr('class', d => 'graph-node' + (selectedNode && d.id === (selectedNode.type === 'topic' ? 'topic-' + selectedNode.data.id : 'mod-' + selectedNode.topicId + '-' + selectedNode.data.number) ? ' selected' : ''))
+      .on('click', (event, d) => {
+        event.stopPropagation();
+        if (d.type === 'doc') {
+          if (onOpenFile && d.filePath) onOpenFile(d.filePath);
+          return;
+        }
+        if (d.type === 'topic') {
+          setSelectedNode({ type: 'topic', data: d.data });
+          setActiveTopicId(d.data.id);
+          setSelectedModule(null);
+        } else {
+          setSelectedNode({ type: 'module', data: d.data, topicId: d.topicId });
+          setActiveTopicId(d.topicId);
+          setSelectedModule(d.data.number);
+        }
+      })
+      .on('mouseenter', (event, d) => {
+        if (!simulationRef.current) return;
+        linkElements.attr('class', l => {
+          const sourceId = typeof l.source === 'object' ? l.source.id : l.source;
+          const targetId = typeof l.target === 'object' ? l.target.id : l.target;
+          const isParent = linkTypeMap[sourceId + '|' + targetId] || linkTypeMap[targetId + '|' + sourceId];
+          const baseClass = isParent ? 'graph-link parent-link' : 'graph-link';
+          if (sourceId === d.id || targetId === d.id) return baseClass + ' highlight';
+          return baseClass;
+        });
+        nodeElements.attr('opacity', n => {
+          if (n.id === d.id) return 1;
+          for (const l of links) {
+            const s = typeof l.source === 'object' ? l.source.id : l.source;
+            const t = typeof l.target === 'object' ? l.target.id : l.target;
+            if ((s === d.id && t === n.id) || (t === d.id && s === n.id)) return 1;
+          }
+          return 0.25;
+        });
+      })
+      .on('mouseleave', () => {
+        linkElements.attr('class', l => {
+          const sourceId = typeof l.source === 'object' ? l.source.id : l.source;
+          const targetId = typeof l.target === 'object' ? l.target.id : l.target;
+          const isParent = linkTypeMap[sourceId + '|' + targetId] || linkTypeMap[targetId + '|' + sourceId];
           return isParent ? 'graph-link parent-link' : 'graph-link';
-        })
-        .attr('stroke', d => {
-          const isParent = linkTypeMap[d.source.id + '|' + d.target.id] || linkTypeMap[d.target.id + '|' + d.source.id];
-          return isParent ? 'rgba(210,153,34,0.2)' : 'rgba(255,255,255,0.08)';
-        })
-        .attr('stroke-width', d => {
-          const isParent = linkTypeMap[d.source.id + '|' + d.target.id] || linkTypeMap[d.target.id + '|' + d.source.id];
-          return isParent ? 2 : 1.5;
-        })
-        .attr('stroke-dasharray', d => {
-          const isParent = linkTypeMap[d.source.id + '|' + d.target.id] || linkTypeMap[d.target.id + '|' + d.source.id];
-          return isParent ? '4,3' : 'none';
-        })
-        .attr('marker-end', d => {
-          const isParent = linkTypeMap[d.source.id + '|' + d.target.id] || linkTypeMap[d.target.id + '|' + d.source.id];
-          return isParent ? 'url(#parent-child)' : 'url(#topic-module)';
         });
+        nodeElements.attr('opacity', 1);
+      });
 
-      // Nodes
-      const nodeGroup = g.append('g').attr('class', 'nodes');
-      const nodeElements = nodeGroup.selectAll('g')
-        .data(nodes)
-        .enter().append('g')
-        .attr('class', d => 'graph-node' + (selectedNode && d.id === (selectedNode.type === 'topic' ? 'topic-' + selectedNode.data.id : 'mod-' + selectedNode.topicId + '-' + selectedNode.data.number) ? ' selected' : ''))
-        .on('click', (event, d) => {
-          event.stopPropagation();
-          if (d.type === 'doc') {
-            if (onOpenFile && d.filePath) onOpenFile(d.filePath);
-            return;
-          }
-          if (d.type === 'topic') {
-            setSelectedNode({ type: 'topic', data: d.data });
-            setActiveTopicId(d.data.id);
-            setSelectedModule(null);
-          } else {
-            setSelectedNode({ type: 'module', data: d.data, topicId: d.topicId });
-            // Set active topic to the module's parent topic and filter by this module
-            setActiveTopicId(d.topicId);
-            setSelectedModule(d.data.number);
-          }
-        })
-        .on('mouseenter', (event, d) => {
-          if (!simulationRef.current) return;
-          linkElements.attr('class', l => {
-            const sourceId = typeof l.source === 'object' ? l.source.id : l.source;
-            const targetId = typeof l.target === 'object' ? l.target.id : l.target;
-            const isParent = linkTypeMap[sourceId + '|' + targetId] || linkTypeMap[targetId + '|' + sourceId];
-            const baseClass = isParent ? 'graph-link parent-link' : 'graph-link';
-            if (sourceId === d.id || targetId === d.id) return baseClass + ' highlight';
-            return baseClass;
-          });
-          nodeElements.attr('opacity', n => {
-            if (n.id === d.id) return 1;
-            for (const l of links) {
-              const s = typeof l.source === 'object' ? l.source.id : l.source;
-              const t = typeof l.target === 'object' ? l.target.id : l.target;
-              if ((s === d.id && t === n.id) || (t === d.id && s === n.id)) return 1;
-            }
-            return 0.25;
-          });
-        })
-        .on('mouseleave', () => {
-          linkElements.attr('class', l => {
-            const sourceId = typeof l.source === 'object' ? l.source.id : l.source;
-            const targetId = typeof l.target === 'object' ? l.target.id : l.target;
-            const isParent = linkTypeMap[sourceId + '|' + targetId] || linkTypeMap[targetId + '|' + sourceId];
-            return isParent ? 'graph-link parent-link' : 'graph-link';
-          });
-          nodeElements.attr('opacity', 1);
-        });
+    nodeElements.append('circle')
+      .attr('r', d => d.r)
+      .attr('fill', d => {
+        if (d.type === 'doc') {
+          const c = DOC_COLORS[d.docType] || DOC_COLORS.docs;
+          return c.fill;
+        }
+        const isSelected = selectedNode && d.id === (selectedNode.type === 'topic' ? 'topic-' + selectedNode.data.id : 'mod-' + selectedNode.topicId + '-' + selectedNode.data.number);
+        if (isSelected) return ORANGE_FILL;
+        return d.type === 'topic' ? TOPIC_FILL : MODULE_FILL;
+      })
+      .attr('stroke', d => {
+        if (d.type === 'doc') {
+          const c = DOC_COLORS[d.docType] || DOC_COLORS.docs;
+          return c.stroke;
+        }
+        const isSelected = selectedNode && d.id === (selectedNode.type === 'topic' ? 'topic-' + selectedNode.data.id : 'mod-' + selectedNode.topicId + '-' + selectedNode.data.number);
+        if (isSelected) return ORANGE_COLOR;
+        return d.type === 'topic' ? TOPIC_COLOR : MODULE_COLOR;
+      })
+      .attr('stroke-width', d => {
+        if (d.type === 'doc') return 1.5;
+        const isSelected = selectedNode && d.id === (selectedNode.type === 'topic' ? 'topic-' + selectedNode.data.id : 'mod-' + selectedNode.topicId + '-' + selectedNode.data.number);
+        return isSelected ? 3.5 : 2.5;
+      })
+      .style('filter', d => {
+        if (d.type === 'doc') return 'none';
+        const isSelected = selectedNode && d.id === (selectedNode.type === 'topic' ? 'topic-' + selectedNode.data.id : 'mod-' + selectedNode.topicId + '-' + selectedNode.data.number);
+        if (isSelected) return 'drop-shadow(0 0 12px rgba(210,153,34,0.5))';
+        return d.type === 'topic' ? 'drop-shadow(0 0 8px rgba(188,140,255,0.3))' : 'drop-shadow(0 0 6px rgba(0,210,255,0.2))';
+      });
 
-      nodeElements.append('circle')
-        .attr('r', d => d.r)
-        .attr('fill', d => {
-          if (d.type === 'doc') {
-            const c = DOC_COLORS[d.docType] || DOC_COLORS.docs;
-            return c.fill;
-          }
-          const isSelected = selectedNode && d.id === (selectedNode.type === 'topic' ? 'topic-' + selectedNode.data.id : 'mod-' + selectedNode.topicId + '-' + selectedNode.data.number);
-          if (isSelected) return ORANGE_FILL;
-          return d.type === 'topic' ? TOPIC_FILL : MODULE_FILL;
-        })
-        .attr('stroke', d => {
-          if (d.type === 'doc') {
-            const c = DOC_COLORS[d.docType] || DOC_COLORS.docs;
-            return c.stroke;
-          }
-          const isSelected = selectedNode && d.id === (selectedNode.type === 'topic' ? 'topic-' + selectedNode.data.id : 'mod-' + selectedNode.topicId + '-' + selectedNode.data.number);
-          if (isSelected) return ORANGE_COLOR;
-          return d.type === 'topic' ? TOPIC_COLOR : MODULE_COLOR;
-        })
-        .attr('stroke-width', d => {
-          if (d.type === 'doc') return 1.5;
-          const isSelected = selectedNode && d.id === (selectedNode.type === 'topic' ? 'topic-' + selectedNode.data.id : 'mod-' + selectedNode.topicId + '-' + selectedNode.data.number);
-          return isSelected ? 3.5 : 2.5;
-        })
-        .style('filter', d => {
-          if (d.type === 'doc') return 'none';
-          const isSelected = selectedNode && d.id === (selectedNode.type === 'topic' ? 'topic-' + selectedNode.data.id : 'mod-' + selectedNode.topicId + '-' + selectedNode.data.number);
-          if (isSelected) return 'drop-shadow(0 0 12px rgba(210,153,34,0.5))';
-          return d.type === 'topic' ? 'drop-shadow(0 0 8px rgba(188,140,255,0.3))' : 'drop-shadow(0 0 6px rgba(0,210,255,0.2))';
-        });
+    nodeElements.append('text')
+      .attr('class', d => 'node-label ' + d.type)
+      .attr('dy', d => d.r + 14)
+      .attr('text-anchor', 'middle')
+      .attr('fill', '#8b8fa3')
+      .attr('font-size', d => d.type === 'topic' ? '12px' : '10px')
+      .attr('font-weight', d => d.type === 'topic' ? '700' : '500')
+      .attr('pointer-events', 'none')
+      .text(d => d.label.length > 30 ? d.label.slice(0, 28) + '…' : d.label);
 
-      nodeElements.append('text')
-        .attr('class', d => 'node-label ' + d.type)
-        .attr('dy', d => d.r + 14)
-        .attr('text-anchor', 'middle')
-        .attr('fill', '#8b8fa3')
-        .attr('font-size', d => d.type === 'topic' ? '12px' : '10px')
-        .attr('font-weight', d => d.type === 'topic' ? '700' : '500')
-        .attr('pointer-events', 'none')
-        .text(d => d.label.length > 30 ? d.label.slice(0, 28) + '…' : d.label);
+    // Simulation
+    const simulation = d3.forceSimulation(nodes)
+      .force('link', d3.forceLink(links).id(d => d.id).distance(180).strength(0.4))
+      .force('charge', d3.forceManyBody().strength(d => d.type === 'topic' ? -900 : -450))
+      .force('center', d3.forceCenter(width / 2, height / 2))
+      .force('collision', d3.forceCollide().radius(d => {
+        if (d.type === 'topic') return d.r + 65;
+        if (d.type === 'module') return d.r + 45;
+        return d.r + 35;
+      }).strength(0.85))
+      .on('tick', () => {
+        linkElements
+          .attr('x1', d => d.source.x)
+          .attr('y1', d => d.source.y)
+          .attr('x2', d => d.target.x)
+          .attr('y2', d => d.target.y);
+        nodeElements.attr('transform', d => `translate(${d.x},${d.y})`);
+      });
 
-      // Simulation
-      const simulation = d3.forceSimulation(nodes)
-        .force('link', d3.forceLink(links).id(d => d.id).distance(180).strength(0.4))
-        .force('charge', d3.forceManyBody().strength(d => d.type === 'topic' ? -900 : -450))
-        .force('center', d3.forceCenter(width / 2, height / 2))
-        .force('collision', d3.forceCollide().radius(d => {
-          if (d.type === 'topic') return d.r + 65;
-          if (d.type === 'module') return d.r + 45;
-          return d.r + 35;
-        }).strength(0.85))
-        .on('tick', () => {
-          linkElements
-            .attr('x1', d => d.source.x)
-            .attr('y1', d => d.source.y)
-            .attr('x2', d => d.target.x)
-            .attr('y2', d => d.target.y);
-          nodeElements.attr('transform', d => `translate(${d.x},${d.y})`);
-        });
+    simulationRef.current = simulation;
 
-      simulationRef.current = simulation;
-
-      return () => {
-        simulation.stop();
-      };
-    });
-
-    return () => { isCancelled = true; };
-  }, [topicsData, dimensions, buildGraphData]);
+    return () => {
+      simulation.stop();
+    };
+  }, [d3, topicsData, dimensions, buildGraphData]);
 
   // Update node visuals on selection change without restarting simulation
   useEffect(() => {
-    if (!svgRef.current || topicsData.length === 0) return;
-    import('d3').then(d3 => {
-      const svg = d3.select(svgRef.current);
-      // Update node fills/strokes
-      svg.selectAll('.graph-node circle')
-        .attr('fill', d => {
-          const isSelected = selectedNode && d.id === (selectedNode.type === 'topic' ? 'topic-' + selectedNode.data.id : 'mod-' + selectedNode.topicId + '-' + selectedNode.data.number);
-          if (isSelected) return ORANGE_FILL;
-          return d.type === 'topic' ? TOPIC_FILL : MODULE_FILL;
-        })
-        .attr('stroke', d => {
-          const isSelected = selectedNode && d.id === (selectedNode.type === 'topic' ? 'topic-' + selectedNode.data.id : 'mod-' + selectedNode.topicId + '-' + selectedNode.data.number);
-          if (isSelected) return ORANGE_COLOR;
-          return d.type === 'topic' ? TOPIC_COLOR : MODULE_COLOR;
-        })
-        .attr('stroke-width', d => {
-          const isSelected = selectedNode && d.id === (selectedNode.type === 'topic' ? 'topic-' + selectedNode.data.id : 'mod-' + selectedNode.topicId + '-' + selectedNode.data.number);
-          return isSelected ? 3.5 : 2.5;
-        })
-        .style('filter', d => {
-          const isSelected = selectedNode && d.id === (selectedNode.type === 'topic' ? 'topic-' + selectedNode.data.id : 'mod-' + selectedNode.topicId + '-' + selectedNode.data.number);
-          if (isSelected) return 'drop-shadow(0 0 12px rgba(210,153,34,0.5))';
-          return d.type === 'topic' ? 'drop-shadow(0 0 8px rgba(188,140,255,0.3))' : 'drop-shadow(0 0 6px rgba(0,210,255,0.2))';
-        });
-      // Update node class
-      svg.selectAll('.graph-node')
-        .attr('class', n => 'graph-node' + (selectedNode && n.id === (selectedNode.type === 'topic' ? 'topic-' + selectedNode.data.id : 'mod-' + selectedNode.topicId + '-' + selectedNode.data.number) ? ' selected' : ''));
-    });
-  }, [selectedNode, topicsData]);
+    if (!d3 || !svgRef.current || topicsData.length === 0) return;
+    const svg = d3.select(svgRef.current);
+    // Update node fills/strokes
+    svg.selectAll('.graph-node circle')
+      .attr('fill', d => {
+        const isSelected = selectedNode && d.id === (selectedNode.type === 'topic' ? 'topic-' + selectedNode.data.id : 'mod-' + selectedNode.topicId + '-' + selectedNode.data.number);
+        if (isSelected) return ORANGE_FILL;
+        return d.type === 'topic' ? TOPIC_FILL : MODULE_FILL;
+      })
+      .attr('stroke', d => {
+        const isSelected = selectedNode && d.id === (selectedNode.type === 'topic' ? 'topic-' + selectedNode.data.id : 'mod-' + selectedNode.topicId + '-' + selectedNode.data.number);
+        if (isSelected) return ORANGE_COLOR;
+        return d.type === 'topic' ? TOPIC_COLOR : MODULE_COLOR;
+      })
+      .attr('stroke-width', d => {
+        const isSelected = selectedNode && d.id === (selectedNode.type === 'topic' ? 'topic-' + selectedNode.data.id : 'mod-' + selectedNode.topicId + '-' + selectedNode.data.number);
+        return isSelected ? 3.5 : 2.5;
+      })
+      .style('filter', d => {
+        const isSelected = selectedNode && d.id === (selectedNode.type === 'topic' ? 'topic-' + selectedNode.data.id : 'mod-' + selectedNode.topicId + '-' + selectedNode.data.number);
+        if (isSelected) return 'drop-shadow(0 0 12px rgba(210,153,34,0.5))';
+        return d.type === 'topic' ? 'drop-shadow(0 0 8px rgba(188,140,255,0.3))' : 'drop-shadow(0 0 6px rgba(0,210,255,0.2))';
+      });
+    // Update node class
+    svg.selectAll('.graph-node')
+      .attr('class', n => 'graph-node' + (selectedNode && n.id === (selectedNode.type === 'topic' ? 'topic-' + selectedNode.data.id : 'mod-' + selectedNode.topicId + '-' + selectedNode.data.number) ? ' selected' : ''));
+  }, [d3, selectedNode, topicsData]);
 
   const zoomIn = () => {
-    if (svgRef.current && zoomRef.current) {
-      const sel = window.d3 ? window.d3.select(svgRef.current) : null;
-      if (sel) sel.transition().duration(300).call(zoomRef.current.scaleBy, 1.3);
+    if (svgRef.current && zoomRef.current && d3) {
+      d3.select(svgRef.current).transition().duration(300).call(zoomRef.current.scaleBy, 1.3);
     }
   };
   const zoomOut = () => {
-    if (svgRef.current && zoomRef.current) {
-      const sel = window.d3 ? window.d3.select(svgRef.current) : null;
-      if (sel) sel.transition().duration(300).call(zoomRef.current.scaleBy, 0.7);
+    if (svgRef.current && zoomRef.current && d3) {
+      d3.select(svgRef.current).transition().duration(300).call(zoomRef.current.scaleBy, 0.7);
     }
   };
   const resetZoom = () => {
-    if (svgRef.current && zoomRef.current) {
-      const sel = window.d3 ? window.d3.select(svgRef.current) : null;
-      if (sel) {
-        const initialScale = Math.min(dimensions.width, dimensions.height) / 600;
-        sel.transition().duration(500).call(zoomRef.current.transform, d3.zoomIdentity.scale(initialScale));
-      }
+    if (svgRef.current && zoomRef.current && d3) {
+      const initialScale = Math.min(dimensions.width, dimensions.height) / 600;
+      d3.select(svgRef.current).transition().duration(500).call(zoomRef.current.transform, d3.zoomIdentity.scale(initialScale));
     }
   };
 
@@ -901,15 +890,6 @@ export default function MappaArgomenti({ onOpenFile }) {
   ];
 
   // --- Loading / Error ---
-  if (loading) {
-    return (
-      <div className="mappa-loading">
-        <div className="spinner"></div>
-        <div className="label">Caricamento bacheca…</div>
-      </div>
-    );
-  }
-
   if (error) {
     return (
       <div className="mappa-error">
@@ -920,7 +900,7 @@ export default function MappaArgomenti({ onOpenFile }) {
     );
   }
 
-  if (topicsData.length === 0) {
+  if (topicsData.length === 0 && !loading) {
     return (
       <div className="mappa-loading" style={{ gap: 0, height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
         {/* Hero card */}
@@ -1029,8 +1009,26 @@ export default function MappaArgomenti({ onOpenFile }) {
 
   return (
     <div className="mappa-argomenti">
+      {loading && (
+        <div className="mappa-loading-overlay" style={{
+          position: 'absolute',
+          inset: 0,
+          background: 'rgba(14, 16, 22, 0.8)',
+          backdropFilter: 'blur(4px)',
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          justifyContent: 'center',
+          gap: '12px',
+          zIndex: 1000
+        }}>
+          <div className="spinner"></div>
+          <div className="label" style={{ color: '#8b8fa3', fontSize: '0.75rem' }}>Caricamento bacheca…</div>
+        </div>
+      )}
       <style>{`
         .mappa-argomenti {
+          position: relative;
           display: flex;
           flex-direction: column;
           height: 100%;

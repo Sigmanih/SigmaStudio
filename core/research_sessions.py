@@ -19,39 +19,44 @@ def _session_path(session_id):
     return os.path.join(RESEARCH_SESSIONS_DIR, f"{session_id}.json")
 
 
+_save_lock = threading.RLock()
+
+
 def create_session(name, goal, pipeline_template, agents_config, model_override="", interactive_mode=True) -> dict:
     """Create a new research session."""
-    _ensure_dir()
-    session_id = f"research_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}_{uuid.uuid4().hex[:6]}"
-    now = datetime.datetime.now().isoformat()
-    session = {
-        "id": session_id,
-        "name": name or goal[:80],
-        "goal": goal,
-        "status": "created",
-        "pipeline_template": pipeline_template,
-        "model_override": model_override,
-        "interactive_mode": interactive_mode,
-        "agents": agents_config,
-        "micro_objectives": [],
-        "actions_log": [],
-        "next_steps": [],
-        "report": None,
-        "created_at": now,
-        "updated_at": now,
-    }
-    with open(_session_path(session_id), "w", encoding="utf-8") as f:
-        json.dump(session, f, indent=2)
-    return session
+    with _save_lock:
+        _ensure_dir()
+        session_id = f"research_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}_{uuid.uuid4().hex[:6]}"
+        now = datetime.datetime.now().isoformat()
+        session = {
+            "id": session_id,
+            "name": name or goal[:80],
+            "goal": goal,
+            "status": "created",
+            "pipeline_template": pipeline_template,
+            "model_override": model_override,
+            "interactive_mode": interactive_mode,
+            "agents": agents_config,
+            "micro_objectives": [],
+            "actions_log": [],
+            "next_steps": [],
+            "report": None,
+            "created_at": now,
+            "updated_at": now,
+        }
+        with open(_session_path(session_id), "w", encoding="utf-8") as f:
+            json.dump(session, f, indent=2)
+        return session
 
 
 def get_session(session_id) -> dict:
     """Get a single research session by ID."""
-    path = _session_path(session_id)
-    if not os.path.exists(path):
-        return None
-    with open(path, "r", encoding="utf-8") as f:
-        return json.load(f)
+    with _save_lock:
+        path = _session_path(session_id)
+        if not os.path.exists(path):
+            return None
+        with open(path, "r", encoding="utf-8") as f:
+            return json.load(f)
 
 
 def list_sessions() -> list:
@@ -80,8 +85,6 @@ def list_sessions() -> list:
     return sessions
 
 
-_save_lock = threading.Lock()
-
 def save_session(session: dict):
     """Save/update a research session (thread-safe)."""
     _ensure_dir()
@@ -102,56 +105,60 @@ def delete_session(session_id) -> bool:
 
 def add_micro_objective(session_id, objective: dict) -> dict:
     """Add a micro-objective to a session."""
-    session = get_session(session_id)
-    if not session:
-        return None
-    obj = {
-        "id": f"obj_{len(session['micro_objectives']) + 1}",
-        "title": objective.get("title", ""),
-        "description": objective.get("description", ""),
-        "status": "pending",
-        "assigned_to": objective.get("assigned_to", ""),
-        "actions_hint": objective.get("actions_hint", []),
-        "completion_criteria": objective.get("completion_criteria", ""),
-        "result": None,
-        "iterations": 0,
-    }
-    session["micro_objectives"].append(obj)
-    session["status"] = "active"
-    save_session(session)
-    return obj
+    with _save_lock:
+        session = get_session(session_id)
+        if not session:
+            return None
+        obj = {
+            "id": f"obj_{len(session['micro_objectives']) + 1}",
+            "title": objective.get("title", ""),
+            "description": objective.get("description", ""),
+            "status": "pending",
+            "assigned_to": objective.get("assigned_to", ""),
+            "actions_hint": objective.get("actions_hint", []),
+            "completion_criteria": objective.get("completion_criteria", ""),
+            "result": None,
+            "iterations": 0,
+        }
+        session["micro_objectives"].append(obj)
+        session["status"] = "active"
+        save_session(session)
+        return obj
 
 
 def update_objective(session_id, objective_id, updates: dict):
     """Update a micro-objective status/result."""
-    session = get_session(session_id)
-    if not session:
+    with _save_lock:
+        session = get_session(session_id)
+        if not session:
+            return None
+        for obj in session["micro_objectives"]:
+            if obj["id"] == objective_id:
+                obj.update(updates)
+                save_session(session)
+                return obj
         return None
-    for obj in session["micro_objectives"]:
-        if obj["id"] == objective_id:
-            obj.update(updates)
-            save_session(session)
-            return obj
-    return None
 
 
 def add_actions_log(session_id, actions: list):
     """Append actions to session log."""
-    session = get_session(session_id)
-    if not session:
-        return
-    session["actions_log"].extend(actions)
-    save_session(session)
+    with _save_lock:
+        session = get_session(session_id)
+        if not session:
+            return
+        session["actions_log"].extend(actions)
+        save_session(session)
 
 
 def set_next_steps(session_id, steps: list):
     """Set suggested next steps after research completion."""
-    session = get_session(session_id)
-    if not session:
-        return
-    session["next_steps"] = steps
-    session["status"] = "completed"
-    save_session(session)
+    with _save_lock:
+        session = get_session(session_id)
+        if not session:
+            return
+        session["next_steps"] = steps
+        session["status"] = "completed"
+        save_session(session)
 
 
 def check_all_satisfied(session_id) -> tuple:

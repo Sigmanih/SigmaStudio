@@ -10,14 +10,30 @@
   position: relative; transition: var(--trans-smooth);
   border: 1px solid var(--border);
   z-index: 100;
+  /* Constrain to grid cell height — never grow beyond 100vh */
+  height: 100%;
+  overflow: hidden;
+  min-height: 0;
 }
 .sidebar { border-left: none; }
 .dashboard { border-right: none; }
 
-.sidebar-content, .dashboard-content { 
-  padding: 32px 24px; height: 100%; 
+.sidebar-content { 
+  padding: 32px 24px;
+  flex: 1;
+  min-height: 0;
   display: flex; flex-direction: column; 
   overflow-y: auto; overflow-x: hidden;
+}
+
+/* Dashboard: height-constrained, no global scroll — only tasks-list scrolls */
+.dashboard-content {
+  padding: 24px 16px 16px;
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
 }
 
 /* Sidebar Logo & Navigation */

@@ -169,6 +169,35 @@ def decompose_goal_to_micro_objectives(
 
     fs_context = _build_filesystem_context()
 
+    # Build list of active agents in this session dynamically
+    agents_desc_list = []
+    for a in agents_list:
+        aid = a.get("agent_id") or a.get("id")
+        if not aid:
+            continue
+        role = "Collaboratore di ricerca"
+        if "math" in aid:
+            role = "Ricercatore matematico (teoria, formule, dimostrazioni in teoria/)"
+        elif "test" in aid:
+            role = "Test engineer (verifica computazionale, test in test/)"
+        elif "formulario" in aid:
+            role = "Generatore di formulari (riassunti, formule in docs/)"
+        elif "viz" in aid:
+            role = "Visualizzatore grafico (pagine viz/)"
+        elif "code" in aid:
+            role = "Sviluppatore software (codice e algoritmi in test/)"
+        elif "proof" in aid:
+            role = "Revisore critico (validazione in .system/ o docs/)"
+        agents_desc_list.append(f"- `{aid}` → {role}")
+    
+    if not agents_desc_list:
+        agents_desc_list = [
+            "- `math1` → Teoria formale",
+            "- `test-engineer` → Script Python",
+            "- `formulario` → Formulari riassuntivi",
+            "- `proof-reviewer` → Revisione e validazione"
+        ]
+    agents_list_str = "\n".join(agents_desc_list)
 
     existing_modules_str = (
         "\n".join(f"  - {m}" for m in existing_modules)
@@ -207,19 +236,15 @@ VIETATO:
 - {base_path}/01_argomento/file.py (manca la sezione)
 
 ## TEAM DI AGENTI DISPONIBILI
-- `math1` → Teoria formale: definizioni, teoremi dimostrati passo-passo, esempi, esercizi svolti (.md in teoria/)
-- `test-engineer` → Script Python: verifica computazionale con sympy/numpy, funzioni test_*, eseguibili (.py in test/)
-- `formulario` → Formulari riassuntivi: tabelle definizioni+formule, guida problemi, errori comuni (.md in docs/)
-- `proof-reviewer` → Revisione e validazione: report di qualità critico (.md in docs/)
-- `viz-designer` → Visualizzazioni interattive standalone (.html in viz/)
-- `code_architect` → Implementazioni avanzate, algoritmi, software (.py in test/)
+I seguenti agenti sono attivi e configurati in questa sessione. DEVI assegnare ciascun task esclusivamente a uno di questi agenti usando il rispettivo ID nel campo "assigned_to" per parallelizzare il lavoro:
+{agents_list_str}
 
 {fs_context}
 
 ## ISTRUZIONI DI DECOMPOSIZIONE
 1. Identifica i principali SOTTOARGOMENTI del dominio (almeno 4-6 moduli distinti e descrittivi)
 2. Per ogni sottoargomento, pianifica ALMENO:
-   - Un file di teoria (math1 → teoria/)
+   - Un file di teoria (math1 o altri math attivi → teoria/)
    - Uno script di test (test-engineer → test/)
    - Un formulario (formulario → docs/)
 3. Nella prima decomposizione, copri i primi 3-4 sottoargomenti fondamentali
@@ -575,6 +600,17 @@ def _execute_default_action(self, session_id: str, obj: dict, goal: str, _sse) -
         "type": "create_file",
         "message": f"Creato file di fallback in {target_path} per micro-obiettivo: {title}"
     }
+
+
+def _get_module_id(title: str) -> str:
+    """Extract module identifier (e.g. 'mod_01', 'mod_02') from task title."""
+    m = re.search(r'Modulo\s+(\d+)', title, re.IGNORECASE)
+    if m:
+        return f"mod_{m.group(1)}"
+    m2 = re.search(r'\b(\d{2})_', title)
+    if m2:
+        return f"mod_{m2.group(1)}"
+    return title
 
 
 def handle_research_start(self) -> None:
@@ -1028,62 +1064,110 @@ Format:
                     })
 
 
-            # Esecuzione sequenziale dinamica con loop di espansione gestito dal Coordinatore
-            # max_expansion_cycles elevato: il coordinatore decide quando il dominio è completo
+            # Esecuzione parallela e dinamica dei micro-obiettivi con dipendenze intra-modulo
             expansion_cycle = 0
-            max_expansion_cycles = 10  # Supporto per domini molto estesi (es. corso universitario completo)
+            max_expansion_cycles = 10
             
-            while True:
-                # Carica lo stato più aggiornato della sessione
-                updated_session = get_session(session_id) or {}
-                current_objectives = updated_session.get("micro_objectives", [])
-                pending_objectives = [o for o in current_objectives if o.get("status") != "done"]
+            busy_agents = set()
+            running_futures = {}  # future -> objective_id
+            
+            with ThreadPoolExecutor(max_workers=8) as executor:
+                while True:
+                    # Ricarica lo stato più aggiornato della sessione
+                    updated_session = get_session(session_id) or {}
+                    current_objectives = updated_session.get("micro_objectives", [])
+                    
+                    # Rimuoviamo i future completati e liberiamo gli agenti
+                    for fut in list(running_futures.keys()):
+                        if fut.done():
+                            obj_id = running_futures.pop(fut)
+                            finished_obj = next((o for o in current_objectives if o["id"] == obj_id), None)
+                            if finished_obj:
+                                agent_id = finished_obj.get("assigned_to", SIGMA_ARCHITECT_ID)
+                                busy_agents.discard(agent_id)
+                            try:
+                                fut.result()
+                            except Exception as exc:
+                                log.error("Errore nell'esecuzione parallela del task %s: %s", obj_id, exc)
+                    
+                    pending_objectives = [o for o in current_objectives if o.get("status") not in ("done", "in_progress")]
+                    active_count = len(running_futures)
+                    
+                    if not pending_objectives and active_count == 0:
+                        # Se tutti i compiti sono finiti, l'Architetto valuta se espandere il lavoro
+                        is_first_check = (expansion_cycle == 0)
+                        is_automatic = not updated_session.get("interactive_mode", True)
 
-                if not pending_objectives:
-                    # Se tutti i compiti sono finiti, l'Architetto valuta se espandere il lavoro
-                    is_first_check = (expansion_cycle == 0)
-                    is_automatic = not updated_session.get("interactive_mode", True)
+                        if is_first_check or is_automatic:
+                            if expansion_cycle >= max_expansion_cycles:
+                                break
 
-                    if is_first_check or is_automatic:
-                        if expansion_cycle >= max_expansion_cycles:
-                            break
+                            _sse({
+                                "type": "agent_thinking", "agent_id": "sigma_architect", "agent_name": "Coordinatore",
+                                "thinking": "Valutazione dei risultati attuali per rilevare la necessità di ulteriori approfondimenti, test o correzioni...",
+                                "message": "🧠 Coordinatore: valutazione dei risultati..."
+                            })
 
-                        _sse({
-                            "type": "agent_thinking", "agent_id": "sigma_architect", "agent_name": "Coordinatore",
-                            "thinking": "Valutazione dei risultati attuali per rilevare la necessità di ulteriori approfondimenti, test o correzioni...",
-                            "message": "🧠 Coordinatore: valutazione dei risultati..."
-                        })
-
-                        new_tasks_added = check_and_expand_research_roadmap(session_id, goal, agents_config, ai_cfg, model_override, _sse)
-                        if not new_tasks_added:
-                            break
+                            new_tasks_added = check_and_expand_research_roadmap(session_id, goal, agents_config, ai_cfg, model_override, _sse)
+                            if not new_tasks_added:
+                                break
+                            else:
+                                expansion_cycle += 1
+                                continue
                         else:
-                            expansion_cycle += 1
+                            # In modalità interattiva, ci fermiamo qui per far esaminare i risultati all'utente
+                            updated_session["status"] = "pending_user"
+                            from core.research_sessions import save_session
+                            save_session(updated_session)
+                            _sse({
+                                "type": "agent_thinking", "agent_id": "sigma_architect", "agent_name": "Coordinatore",
+                                "thinking": "Pausa di coordinamento: in attesa di decisione dell'utente.",
+                                "message": "⏸️ Tutti i task completati. Esamina i risultati e premi 'Avvia' per procedere al prossimo ciclo."
+                            })
+                            return
+
+                    # Cerchiamo compiti da avviare
+                    tasks_to_start = []
+                    for obj in pending_objectives:
+                        agent_id = obj.get("assigned_to", SIGMA_ARCHITECT_ID)
+                        if agent_id in busy_agents:
                             continue
+                        
+                        # Verifica dipendenze (nessun task dello stesso modulo precedente a questo nella lista deve essere incompleto)
+                        obj_mod = _get_module_id(obj["title"])
+                        has_dependency = False
+                        for prev_obj in pending_objectives:
+                            if prev_obj["id"] == obj["id"]:
+                                break
+                            if _get_module_id(prev_obj["title"]) == obj_mod:
+                                has_dependency = True
+                                break
+                        
+                        if not has_dependency:
+                            tasks_to_start.append(obj)
+                            busy_agents.add(agent_id)
+                    
+                    # Avvia i compiti idonei in parallelo
+                    for obj in tasks_to_start:
+                        update_objective(session_id, obj["id"], {"status": "in_progress"})
+                        future = executor.submit(process_objective, obj)
+                        running_futures[future] = obj["id"]
+                    
+                    # Se non ci sono nuovi task da avviare e ci sono task in esecuzione, attendi
+                    if not tasks_to_start and active_count > 0:
+                        from concurrent.futures import wait, FIRST_COMPLETED
+                        wait(running_futures.keys(), return_when=FIRST_COMPLETED)
+                    elif not tasks_to_start and active_count == 0 and pending_objectives:
+                        # Fallback di sicurezza per prevenire deadlock
+                        obj = pending_objectives[0]
+                        agent_id = obj.get("assigned_to", SIGMA_ARCHITECT_ID)
+                        busy_agents.add(agent_id)
+                        update_objective(session_id, obj["id"], {"status": "in_progress"})
+                        future = executor.submit(process_objective, obj)
+                        running_futures[future] = obj["id"]
                     else:
-                        # In modalità interattiva, ci fermiamo qui per far esaminare i risultati all'utente
-                        updated_session["status"] = "pending_user"
-                        from core.research_sessions import save_session
-                        save_session(updated_session)
-                        _sse({
-                            "type": "agent_thinking", "agent_id": "sigma_architect", "agent_name": "Coordinatore",
-                            "thinking": "Pausa di coordinamento: in attesa di decisione dell'utente.",
-                            "message": "⏸️ Tutti i task completati. Esamina i risultati e premi 'Avvia' per procedere al prossimo ciclo."
-                        })
-                        return
-                
-                # Prende ed esegue il primo micro-obiettivo non completato
-                obj = pending_objectives[0]
-                try:
-                    process_objective(obj)
-                except Exception as exc:
-                    log.error("Objective processing failed for %s: %s", obj.get("title"), exc)
-                    fallback_res = _execute_default_action(self, session_id, obj, goal, _sse)
-                    update_objective(session_id, obj["id"], {"status": "done", "result": fallback_res["message"]})
-                    _sse({
-                        "type": "objective_complete", "objective_id": obj["id"], "title": obj["title"],
-                        "result": fallback_res["message"], "message": f"✅ Completato con default: {obj['title']}"
-                    })
+                        import time
+                        time.sleep(0.1)
 
 
 

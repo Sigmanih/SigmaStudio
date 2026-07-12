@@ -137,6 +137,7 @@ function AppContent() {
         setEditingTask={setEditingTask}
         setIsTaskModalOpen={setIsTaskModalOpen}
         deleteTask={deleteTask}
+        activeTabId={activeTabId}
       />
 
       <ModuleModal

@@ -42,12 +42,21 @@ def get_all_agents() -> list:
 
 
 def get_agent(agent_id: str) -> dict:
-    """Get a single agent by ID. Returns None if not found."""
+    """Get a single agent by ID. Returns None if not found, supporting cloned/numbered IDs."""
     meta = load_agents_meta()
     agents = meta.get("agents", {})
     if agent_id == "sigma_architect" and "sigma_architect" not in agents and "agente0" in agents:
         return agents.get("agente0")
-    return agents.get(agent_id)
+    if agent_id in agents:
+        return agents.get(agent_id)
+
+    # Support cloned/numbered agents (e.g. math_2, math2, test-engineer_2)
+    prefix = agent_id.split("_")[0].rstrip("0123456789-")
+    for k in agents.keys():
+        k_clean = k.rstrip("0123456789-")
+        if k_clean.startswith(prefix) or prefix in k_clean:
+            return agents.get(k)
+    return None
 
 
 
