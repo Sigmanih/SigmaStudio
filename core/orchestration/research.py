@@ -726,12 +726,12 @@ def handle_research_start(self) -> None:
                     "proof-reviewer": (
                         "Sei Sigma Proof Reviewer, revisore critico del team. "
                         "Verifica la correttezza di teoria e test prodotti dagli altri agenti per QUALSIASI dominio. "
-                        "Per ogni modulo, produci un report in docs/ con: "
+                        "Per ogni modulo, produci un report in .system/ con: "
                         "(1) Tabella file analizzati con stato (✅/❌); "
                         "(2) Problemi trovati: concetto errato, dimostrazione incompleta, script non funzionante; "
                         "(3) Verifiche superate; "
                         "(4) Conclusione e giudizio complessivo. "
-                        "Path: data/<topic>/<NN>_<modulo>/docs/report_validazione.md"
+                        "Path: data/<topic>/<NN>_<modulo>/.system/report_validazione.md"
                     ),
                     "viz-designer": (
                         "Sei Sigma Viz Designer, creatore di visualizzazioni interattive. "

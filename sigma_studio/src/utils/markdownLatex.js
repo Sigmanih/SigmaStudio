@@ -298,6 +298,13 @@ export function renderMarkdownLatex(text) {
       return `%%INLINECODE_${idx}%%`;
     });
 
+    // Convert alternate LaTeX delimiters \(\) and \[\] to standard $$ and $
+    processed = processed
+      .replace(/\\\[/g, '$$$$')
+      .replace(/\\\]/g, '$$$$')
+      .replace(/\\\(/g, '$$')
+      .replace(/\\\)/g, '$$');
+
     // Step 2: Render LaTeX and protect the output in an array
     const katexBlocks = [];
     const lines = processed.split('\n');

@@ -31,7 +31,7 @@ log = get_logger(__name__)
 
 # Sections permitted inside a module (WHITELIST — everything else is denied)
 _ALLOWED_MODULE_SECTIONS: frozenset[str] = frozenset({
-    "teoria", "test", "viz", "docs", "whitepapers",
+    "teoria", "test", "viz", "docs", "whitepapers", ".system",
 })
 
 _VALID_ACTION_TYPES: frozenset[str] = frozenset({

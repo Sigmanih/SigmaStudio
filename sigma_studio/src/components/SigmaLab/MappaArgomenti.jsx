@@ -15,7 +15,7 @@ const DOC_COLORS = {
   teoria: { stroke: '#bc8cff', fill: 'rgba(188,140,255,0.2)' },
   test: { stroke: '#3fb950', fill: 'rgba(63,185,80,0.2)' },
   viz: { stroke: '#d29922', fill: 'rgba(210,153,34,0.2)' },
-  docs: { stroke: '#ffd700', fill: 'rgba(255,215,0,0.2)' },
+  docs: { stroke: '#58a6ff', fill: 'rgba(88,166,255,0.2)' },
   whitepapers: { stroke: '#ffd700', fill: 'rgba(255,215,0,0.2)' },
 };
 const DOC_ICONS = { teoria: '📖', test: '🧪', viz: '📊', docs: '📄', whitepapers: '📜' };
@@ -41,6 +41,8 @@ export default function MappaArgomenti({ onOpenFile }) {
   const zoomRef = useRef(null);
   const linksRef = useRef([]);
 
+  const [agentColors, setAgentColors] = useState({});
+
   // Fetch data — returns the fetched topics array
   const fetchData = useCallback(async () => {
     setLoading(true);
@@ -51,6 +53,18 @@ export default function MappaArgomenti({ onOpenFile }) {
       const data = await res.json();
       if (!data.topics) throw new Error('Formato risposta non valido');
       setTopicsData(data.topics);
+
+      // Reload agent colors dynamically
+      try {
+        const colorsRes = await fetch('/api/agents/colors');
+        if (colorsRes.ok) {
+          const colorsData = await colorsRes.json();
+          if (colorsData.success) {
+            setAgentColors(colorsData.colors);
+          }
+        }
+      } catch (e) {}
+
       return data.topics;
     } catch (err) {
       setError(err.message);
@@ -881,7 +895,7 @@ export default function MappaArgomenti({ onOpenFile }) {
   const columnDefs = [
     { key: 'whitepapers', icon: '📜', label: 'Whitepapers', color: '#ffd700', borderColor: '#ffd700' },
     { key: 'teoria', icon: '📖', label: 'Teoria', color: '#bc8cff', borderColor: 'rgba(188,140,255,0.2)' },
-    { key: 'docs', icon: '📄', label: 'Docs', color: '#ffd700', borderColor: 'rgba(255,215,0,0.2)' },
+    { key: 'docs', icon: '📄', label: 'Docs', color: '#58a6ff', borderColor: 'rgba(88,166,255,0.2)' },
     { key: 'test', icon: '🧪', label: 'Test', color: '#3fb950', borderColor: 'rgba(63,185,80,0.2)' },
     { key: 'viz', icon: '📊', label: 'Visualizzazioni', color: '#d29922', borderColor: 'rgba(210,153,34,0.2)' },
   ];
