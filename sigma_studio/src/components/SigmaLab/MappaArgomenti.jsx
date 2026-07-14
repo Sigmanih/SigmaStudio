@@ -35,6 +35,84 @@ export default function MappaArgomenti({ onOpenFile }) {
   const [showDocs, setShowDocs] = useState(() => {
     return localStorage.getItem('sigma_mappa_explore') === 'true';
   });
+  const [searchQuery, setSearchQuery] = useState('');
+  const [expandedModules, setExpandedModules] = useState({});
+  const [expandedCategories, setExpandedCategories] = useState({});
+  const [expandedTopicsSection, setExpandedTopicsSection] = useState(true);
+
+  // AI Overlay States
+  const [showAiOverlay, setShowAiOverlay] = useState(false);
+  const [overlayNode, setOverlayNode] = useState(null); // the D3 node data
+  const [overlayPos, setOverlayPos] = useState({ x: 0, y: 0 }); // pixel coordinates
+  const [aiModels, setAiModels] = useState([]);
+  const [aiOverlayLoading, setAiOverlayLoading] = useState(false);
+
+  // Form states for the AI Action Overlay
+  const [newFileName, setNewFileName] = useState('');
+  const [newFileCategory, setNewFileCategory] = useState('teoria');
+  const [isAiMode, setIsAiMode] = useState(false);
+  const [selectedAiModel, setSelectedAiModel] = useState('');
+  const [selectedAiRole, setSelectedAiRole] = useState('code_architect');
+  const [aiPromptText, setAiPromptText] = useState('');
+  const [aiError, setAiError] = useState('');
+
+  // Draggable Card States & Handlers
+  const [isDraggingOverlay, setIsDraggingOverlay] = useState(false);
+  const [overlayDragStart, setOverlayDragStart] = useState({ x: 0, y: 0 });
+
+  const handleOverlayHeaderMouseDown = (e) => {
+    if (e.button !== 0) return; // only left click
+    setIsDraggingOverlay(true);
+    setOverlayDragStart({
+      x: e.clientX - overlayPos.x,
+      y: e.clientY - overlayPos.y
+    });
+    e.preventDefault();
+  };
+
+  useEffect(() => {
+    if (!isDraggingOverlay) return;
+
+    const handleMouseMove = (e) => {
+      setOverlayPos({
+        x: e.clientX - overlayDragStart.x,
+        y: e.clientY - overlayDragStart.y
+      });
+    };
+
+    const handleMouseUp = () => {
+      setIsDraggingOverlay(false);
+    };
+
+    window.addEventListener('mousemove', handleMouseMove);
+    window.addEventListener('mouseup', handleMouseUp);
+
+    return () => {
+      window.removeEventListener('mousemove', handleMouseMove);
+      window.removeEventListener('mouseup', handleMouseUp);
+    };
+  }, [isDraggingOverlay, overlayDragStart]);
+
+  useEffect(() => {
+    if (aiModels.length > 0 && !selectedAiModel) {
+      setSelectedAiModel(aiModels[0].name);
+    }
+  }, [aiModels, selectedAiModel]);
+
+  useEffect(() => {
+    const fetchAiModels = async () => {
+      try {
+        const res = await fetch('/api/ollama_models');
+        const data = await res.json();
+        if (data.success && data.models) {
+          setAiModels(data.models);
+        }
+      } catch (err) {
+        console.error('Error fetching AI models:', err);
+      }
+    };
+    fetchAiModels();
+  }, []);
 
   // D3 refs
   const simulationRef = useRef(null);
@@ -50,6 +128,12 @@ export default function MappaArgomenti({ onOpenFile }) {
       window.d3 = module;
     });
   }, []);
+
+  useEffect(() => {
+    if (selectedNode && selectedNode.type === 'module') {
+      setExpandedModules(prev => ({ ...prev, [selectedNode.data.number]: true }));
+    }
+  }, [selectedNode]);
 
   // Fetch data — returns the fetched topics array
   const fetchData = useCallback(async () => {
@@ -126,19 +210,85 @@ export default function MappaArgomenti({ onOpenFile }) {
     const nodes = [];
     const links = [];
     const nodeMap = {};
+
+    // Calculate depths of topics based on parent_id relations
+    const depths = {};
+    const getTopicDepth = (tId) => {
+      if (depths[tId] !== undefined) return depths[tId];
+      const t = topicsData.find(x => x.id === tId);
+      if (!t || !t.parent_id) {
+        depths[tId] = 0;
+        return 0;
+      }
+      depths[tId] = 0; // fallback to avoid infinite recursion
+      const parentDepth = getTopicDepth(t.parent_id);
+      depths[tId] = parentDepth + 1;
+      return depths[tId];
+    };
+    topicsData.forEach(t => getTopicDepth(t.id));
+
+    // Map children for parent topics to compute sibling index and total siblings
+    const parentChildrenMap = {};
+    for (const topic of topicsData) {
+      if (topic.parent_id) {
+        if (!parentChildrenMap[topic.parent_id]) {
+          parentChildrenMap[topic.parent_id] = [];
+        }
+        parentChildrenMap[topic.parent_id].push(topic.id);
+      }
+    }
+
     for (const topic of topicsData) {
       const topicId = 'topic-' + topic.id;
-      nodes.push({ id: topicId, label: topic.name, type: 'topic', data: topic, r: 22 });
+      const topicDepth = depths[topic.id] || 0;
+      
+      let childTopicIndex = 0;
+      let totalChildTopics = 0;
+      if (topic.parent_id && parentChildrenMap[topic.parent_id]) {
+        childTopicIndex = parentChildrenMap[topic.parent_id].indexOf(topic.id);
+        totalChildTopics = parentChildrenMap[topic.parent_id].length;
+      }
+
+      nodes.push({
+        id: topicId,
+        label: topic.name,
+        type: 'topic',
+        data: topic,
+        depth: topicDepth,
+        parentTopicId: topic.parent_id ? 'topic-' + topic.parent_id : null,
+        childTopicIndex,
+        totalChildTopics,
+        r: 22
+      });
       nodeMap[topicId] = true;
+
       if (topic.modules) {
+        let modIndex = 0;
+        const totalMods = topic.modules.length;
         for (const mod of topic.modules) {
           const modId = 'mod-' + topic.id + '-' + mod.number;
-          nodes.push({ id: modId, label: mod.name, type: 'module', data: mod, topicId: topic.id, r: 16 });
+          nodes.push({
+            id: modId,
+            label: mod.name,
+            type: 'module',
+            data: mod,
+            topicId: topic.id,
+            depth: topicDepth + 1,
+            modIndex,
+            totalMods,
+            r: 16
+          });
           nodeMap[modId] = true;
           links.push({ source: topicId, target: modId });
 
           // Optionally add document nodes linked to this module
           if (showDocs) {
+            let totalDocs = 0;
+            for (const docType of ['teoria', 'test', 'viz', 'docs', 'whitepapers']) {
+              totalDocs += (mod[docType] || []).length;
+            }
+
+            let docIndex = 0;
             for (const docType of ['teoria', 'test', 'viz', 'docs', 'whitepapers']) {
               const files = mod[docType] || [];
               for (const f of files) {
@@ -150,13 +300,18 @@ export default function MappaArgomenti({ onOpenFile }) {
                   docType,
                   filePath: f.path,
                   parentModId: modId,
+                  depth: topicDepth + 2,
+                  docIndex,
+                  totalDocs,
                   r: 6
                 });
                 nodeMap[docId] = true;
                 links.push({ source: modId, target: docId });
+                docIndex++;
               }
             }
           }
+          modIndex++;
         }
       }
     }
@@ -182,6 +337,9 @@ export default function MappaArgomenti({ onOpenFile }) {
 
     const svg = d3.select(svgRef.current);
     svg.selectAll('*').remove();
+    svg.on('click', () => {
+      setShowAiOverlay(false);
+    });
 
     const graphData = buildGraphData();
     const { nodes, links } = graphData;
@@ -271,6 +429,32 @@ export default function MappaArgomenti({ onOpenFile }) {
           setActiveTopicId(d.topicId);
           setSelectedModule(d.data.number);
         }
+        if (containerRef.current) {
+          const rect = containerRef.current.getBoundingClientRect();
+          setOverlayPos({ x: event.clientX - rect.left + 15, y: event.clientY - rect.top + 15 });
+        }
+        setOverlayNode(d);
+        setShowAiOverlay(true);
+      })
+      .on('contextmenu', (event, d) => {
+        event.preventDefault();
+        event.stopPropagation();
+        if (d.type === 'doc') return;
+        if (d.type === 'topic') {
+          setSelectedNode({ type: 'topic', data: d.data });
+          setActiveTopicId(d.data.id);
+          setSelectedModule(null);
+        } else {
+          setSelectedNode({ type: 'module', data: d.data, topicId: d.topicId });
+          setActiveTopicId(d.topicId);
+          setSelectedModule(d.data.number);
+        }
+        if (containerRef.current) {
+          const rect = containerRef.current.getBoundingClientRect();
+          setOverlayPos({ x: event.clientX - rect.left + 15, y: event.clientY - rect.top + 15 });
+        }
+        setOverlayNode(d);
+        setShowAiOverlay(true);
       })
       .on('mouseenter', (event, d) => {
         if (!simulationRef.current) return;
@@ -336,25 +520,80 @@ export default function MappaArgomenti({ onOpenFile }) {
 
     nodeElements.append('text')
       .attr('class', d => 'node-label ' + d.type)
-      .attr('dy', d => d.r + 14)
+      .attr('dy', d => d.r + 16)
       .attr('text-anchor', 'middle')
       .attr('fill', '#8b8fa3')
-      .attr('font-size', d => d.type === 'topic' ? '12px' : '10px')
+      .attr('font-size', d => d.type === 'topic' ? '15px' : (d.type === 'module' ? '13px' : '11px'))
       .attr('font-weight', d => d.type === 'topic' ? '700' : '500')
       .attr('pointer-events', 'none')
       .text(d => d.label.length > 30 ? d.label.slice(0, 28) + '…' : d.label);
 
     // Simulation
     const simulation = d3.forceSimulation(nodes)
-      .force('link', d3.forceLink(links).id(d => d.id).distance(180).strength(0.4))
-      .force('charge', d3.forceManyBody().strength(d => d.type === 'topic' ? -900 : -450))
-      .force('center', d3.forceCenter(width / 2, height / 2))
+      .force('link', d3.forceLink(links).id(d => d.id).distance(120).strength(0.5))
+      .force('charge', d3.forceManyBody().strength(d => d.type === 'topic' ? -1200 : -600))
+      .force('x', d3.forceX(width / 2).strength(0.04))
       .force('collision', d3.forceCollide().radius(d => {
-        if (d.type === 'topic') return d.r + 65;
-        if (d.type === 'module') return d.r + 45;
+        if (d.type === 'topic') return d.r + 90;
+        if (d.type === 'module') return d.r + 65;
         return d.r + 35;
       }).strength(0.85))
       .on('tick', () => {
+        // Enforce hierarchical tree structure
+        nodes.forEach(d => {
+          if (d.type === 'topic') {
+            if (d.parentTopicId) {
+              const parentNode = nodes.find(n => n.id === d.parentTopicId);
+              if (parentNode) {
+                const branchLength = 220;
+                let angle = Math.PI / 2; // default straight down
+                if (d.totalChildTopics > 1) {
+                  // Symmetrical fan spread (45 to 135 deg)
+                  angle = 0.78 + (d.childTopicIndex / (d.totalChildTopics - 1)) * 1.57;
+                }
+                const targetX = parentNode.x + Math.cos(angle) * branchLength;
+                const targetY = parentNode.y + Math.sin(angle) * branchLength;
+                d.x += (targetX - d.x) * 0.15;
+                d.y += (targetY - d.y) * 0.15;
+              }
+            } else {
+              // Root topics: place them near the top-center
+              const targetY = 100;
+              d.y += (targetY - d.y) * 0.1;
+            }
+          } else if (d.type === 'module') {
+            // Find parent topic node
+            const parentNode = nodes.find(n => n.id === 'topic-' + d.topicId);
+            if (parentNode) {
+              const branchLength = 160;
+              let angle = Math.PI / 2;
+              if (d.totalMods > 1) {
+                // Symmetrical fan spread (50 to 130 deg)
+                angle = 0.87 + (d.modIndex / (d.totalMods - 1)) * 1.4;
+              }
+              const targetX = parentNode.x + Math.cos(angle) * branchLength;
+              const targetY = parentNode.y + Math.sin(angle) * branchLength;
+              d.x += (targetX - d.x) * 0.2;
+              d.y += (targetY - d.y) * 0.2;
+            }
+          } else if (d.type === 'doc') {
+            // Find parent module node
+            const parentNode = nodes.find(n => n.id === d.parentModId);
+            if (parentNode) {
+              const branchLength = 120; // docs further away
+              let angle = Math.PI / 2;
+              if (d.totalDocs > 1) {
+                // Symmetrical fan spread (35 to 145 deg)
+                angle = 0.61 + (d.docIndex / (d.totalDocs - 1)) * 1.92;
+              }
+              const targetX = parentNode.x + Math.cos(angle) * branchLength;
+              const targetY = parentNode.y + Math.sin(angle) * branchLength;
+              d.x += (targetX - d.x) * 0.25;
+              d.y += (targetY - d.y) * 0.25;
+            }
+          }
+        });
+
         linkElements
           .attr('x1', d => d.source.x)
           .attr('y1', d => d.source.y)
@@ -377,20 +616,30 @@ export default function MappaArgomenti({ onOpenFile }) {
     // Update node fills/strokes
     svg.selectAll('.graph-node circle')
       .attr('fill', d => {
+        if (d.type === 'doc') {
+          const c = DOC_COLORS[d.docType] || DOC_COLORS.docs;
+          return c.fill;
+        }
         const isSelected = selectedNode && d.id === (selectedNode.type === 'topic' ? 'topic-' + selectedNode.data.id : 'mod-' + selectedNode.topicId + '-' + selectedNode.data.number);
         if (isSelected) return ORANGE_FILL;
         return d.type === 'topic' ? TOPIC_FILL : MODULE_FILL;
       })
       .attr('stroke', d => {
+        if (d.type === 'doc') {
+          const c = DOC_COLORS[d.docType] || DOC_COLORS.docs;
+          return c.stroke;
+        }
         const isSelected = selectedNode && d.id === (selectedNode.type === 'topic' ? 'topic-' + selectedNode.data.id : 'mod-' + selectedNode.topicId + '-' + selectedNode.data.number);
         if (isSelected) return ORANGE_COLOR;
         return d.type === 'topic' ? TOPIC_COLOR : MODULE_COLOR;
       })
       .attr('stroke-width', d => {
+        if (d.type === 'doc') return 1.5;
         const isSelected = selectedNode && d.id === (selectedNode.type === 'topic' ? 'topic-' + selectedNode.data.id : 'mod-' + selectedNode.topicId + '-' + selectedNode.data.number);
         return isSelected ? 3.5 : 2.5;
       })
       .style('filter', d => {
+        if (d.type === 'doc') return 'none';
         const isSelected = selectedNode && d.id === (selectedNode.type === 'topic' ? 'topic-' + selectedNode.data.id : 'mod-' + selectedNode.topicId + '-' + selectedNode.data.number);
         if (isSelected) return 'drop-shadow(0 0 12px rgba(210,153,34,0.5))';
         return d.type === 'topic' ? 'drop-shadow(0 0 8px rgba(188,140,255,0.3))' : 'drop-shadow(0 0 6px rgba(0,210,255,0.2))';
@@ -631,6 +880,105 @@ export default function MappaArgomenti({ onOpenFile }) {
     }
   };
 
+  const handleOverlayCreateFile = async (e) => {
+    if (e) e.preventDefault();
+    if (!newFileName.trim()) {
+      setAiError('Inserisci un nome file');
+      return;
+    }
+    
+    // Resolve folder path
+    let baseFolder = '';
+    const activeTopic = topicsData.find(t => t.id === activeTopicId);
+    if (overlayNode.type === 'topic') {
+      baseFolder = overlayNode.data.folder || (activeTopic ? activeTopic.folder : '');
+    } else if (overlayNode.type === 'module') {
+      if (activeTopic) {
+        baseFolder = overlayNode.data.folder || `${activeTopic.folder}/${overlayNode.data.number}_${overlayNode.data.name}`.toLowerCase().replace(/ /g, '_');
+      }
+    }
+    
+    if (!baseFolder) {
+      setAiError('Cartella di destinazione non trovata');
+      return;
+    }
+    
+    const subdirs = {
+      whitepaper: 'whitepapers',
+      teoria: 'teoria',
+      docs: 'docs',
+      test: 'test',
+      viz: 'viz'
+    };
+    const extensions = {
+      whitepaper: '.md',
+      teoria: '.md',
+      test: '.py',
+      viz: '.html',
+      docs: '.md'
+    };
+    
+    const subdir = subdirs[newFileCategory] || newFileCategory;
+    const ext = extensions[newFileCategory] || '.md';
+    
+    let sanitizedName = newFileName.trim();
+    if (newFileCategory === 'whitepaper' && !sanitizedName.toUpperCase().startsWith('WHITEPAPER_')) {
+      sanitizedName = 'WHITEPAPER_' + sanitizedName;
+    }
+    
+    const fullPath = `${baseFolder}/${subdir}/${sanitizedName}${ext}`;
+    
+    setAiOverlayLoading(true);
+    setAiError('');
+    
+    try {
+      let res;
+      if (isAiMode) {
+        // AI creation
+        res = await fetch('/api/ai/action', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            action: 'create_file',
+            path: fullPath,
+            model: selectedAiModel,
+            role: selectedAiRole,
+            prompt: aiPromptText
+          })
+        });
+      } else {
+        // Standard creation (empty template)
+        const template = newFileCategory === 'test'
+          ? `# ${sanitizedName}\n# Test script for Sigma\n\ndef run():\n    print('Running ${sanitizedName}...')\n\nif __name__ == '__main__':\n    run()\n`
+          : `# ${sanitizedName}\n\nContenuto del file ${newFileCategory}.\n`;
+          
+        res = await fetch('/api/create_file', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ path: fullPath, content: template })
+        });
+      }
+      
+      const data = await res.json();
+      if (data.success) {
+        // Clean form states
+        setNewFileName('');
+        setAiPromptText('');
+        setShowAiOverlay(false);
+        
+        // Refresh D3 graph and explorer list
+        await fetchData();
+        if (onOpenFile) onOpenFile(fullPath);
+      } else {
+        setAiError(data.error || 'Errore sconosciuto');
+      }
+    } catch (err) {
+      setAiError('Errore di rete: ' + err.message);
+    } finally {
+      setAiOverlayLoading(false);
+    }
+  };
+
   const handleCreateFile = async (folderPath, fileType) => {
     const subdirs = {
       whitepaper: 'whitepapers',
@@ -730,35 +1078,8 @@ export default function MappaArgomenti({ onOpenFile }) {
         )}
         {filesHtml && <div className="detail-files"><h4>FILE DEI MODULI</h4><div dangerouslySetInnerHTML={{ __html: filesHtml }} /></div>}
         
-        {/* Parent selector */}
-        {topicsData.length > 0 && (
-          <div className="detail-parent-select" style={{ marginTop: '8px' }}>
-            <div style={{ fontSize: '0.5rem', fontWeight: 600, color: '#5a5e72', letterSpacing: '1px', marginBottom: '4px' }}>ARGOMENTO PADRE</div>
-            <select 
-              value={topic.parent_id || ''} 
-              onChange={e => handleUpdateTopicParent(topic, e.target.value)}
-              style={{ width: '100%', padding: '6px 8px', borderRadius: '6px', fontSize: '0.6rem', border: '1px solid #1e2030', background: '#0e1016', color: '#8b8fa3', fontFamily: 'inherit', outline: 'none' }}
-            >
-              <option value="">— Nessun padre —</option>
-              {topicsData.filter(t => t.id !== topic.id).map(t => (
-                <option key={t.id} value={t.id}>{escapeStr(t.name)}</option>
-              ))}
-            </select>
-          </div>
-        )}
 
-        {/* Action buttons */}
-        <div style={{ marginTop: '8px', display: 'flex', flexDirection: 'column', gap: '6px' }}>
-          <button className="detail-action-btn" onClick={() => handleCreateTopic()}>
-            🌐 Nuovo Argomento
-          </button>
-          <button className="detail-action-btn" onClick={() => handleCreateSubTopic(topic)}>
-            ➕ Nuovo Sottoargomento
-          </button>
-          <button className="detail-action-btn" onClick={() => handleDeleteTopic(topic)} style={{ color: '#ff5555' }}>
-            🗑️ Elimina Argomento
-          </button>
-        </div>
+
       </div>
     );
   };
@@ -1007,6 +1328,44 @@ export default function MappaArgomenti({ onOpenFile }) {
 
   const topicFiles = activeTopic ? getTopicFiles(activeTopic) : null;
 
+  const filteredTopics = topicsData.filter(t => 
+    (t.name || '').toLowerCase().includes(searchQuery.toLowerCase()) || 
+    (t.domain || '').toLowerCase().includes(searchQuery.toLowerCase())
+  );
+
+  const filterTopicModules = (topic, query) => {
+    if (!topic || !topic.modules) return [];
+    if (!query) return topic.modules;
+    
+    const cleanQuery = query.toLowerCase();
+    return topic.modules.map(mod => {
+      const modMatches = (mod.name || '').toLowerCase().includes(cleanQuery) || 
+                         (mod.number || '').toLowerCase().includes(cleanQuery);
+      
+      const whitepapers = (mod.whitepapers || []).filter(f => (f.filename || '').toLowerCase().includes(cleanQuery));
+      const docs = (mod.docs || []).filter(f => (f.filename || '').toLowerCase().includes(cleanQuery));
+      const teoria = (mod.teoria || []).filter(f => (f.filename || '').toLowerCase().includes(cleanQuery));
+      const test = (mod.test || []).filter(f => (f.filename || '').toLowerCase().includes(cleanQuery));
+      const viz = (mod.viz || []).filter(f => (f.filename || '').toLowerCase().includes(cleanQuery));
+      
+      const hasMatchingFiles = whitepapers.length > 0 || docs.length > 0 || teoria.length > 0 || test.length > 0 || viz.length > 0;
+      
+      if (modMatches || hasMatchingFiles) {
+        return {
+          ...mod,
+          whitepapers,
+          docs,
+          teoria,
+          test,
+          viz
+        };
+      }
+      return null;
+    }).filter(Boolean);
+  };
+
+  const filteredModules = activeTopic ? filterTopicModules(activeTopic, searchQuery) : [];
+
   return (
     <div className="mappa-argomenti">
       {loading && (
@@ -1053,8 +1412,7 @@ export default function MappaArgomenti({ onOpenFile }) {
         
         /* === TOP: graph + detail panel (35%) === */
         .mappa-top-section {
-          height: 55%; display: flex; flex-shrink: 0;
-          border-bottom: 1px solid #1e2030;
+          height: 100%; display: flex; flex-shrink: 0;
         }
         .mappa-graph-container {
           flex: 1; position: relative; overflow: hidden;
@@ -1084,12 +1442,115 @@ export default function MappaArgomenti({ onOpenFile }) {
         .mappa-zoom-controls .btn-update:hover { background: rgba(0,210,255,0.12); border-color: rgba(0,210,255,0.4); }
         .mappa-zoom-controls .btn-new-topic { padding: 7px 14px; font-size: 0.7rem; font-weight: 600; border-color: rgba(188,140,255,0.25); color: #bc8cff; display: flex; align-items: center; gap: 6px; }
         .mappa-zoom-controls .btn-new-topic:hover { background: rgba(188,140,255,0.12); border-color: rgba(188,140,255,0.4); }
+        .mappa-zoom-controls .btn-new-subtopic { padding: 7px 14px; font-size: 0.7rem; font-weight: 600; border-color: rgba(255,159,67,0.25); color: #ff9f43; display: flex; align-items: center; gap: 6px; }
+        .mappa-zoom-controls .btn-new-subtopic:hover { background: rgba(255,159,67,0.12); border-color: rgba(255,159,67,0.4); }
+        .mappa-zoom-controls .btn-delete-topic { padding: 7px 14px; font-size: 0.7rem; font-weight: 600; border-color: rgba(255,85,85,0.25); color: #ff5555; display: flex; align-items: center; gap: 6px; }
+        .mappa-zoom-controls .btn-delete-topic:hover { background: rgba(255,85,85,0.12); border-color: rgba(255,85,85,0.4); }
+        .mappa-zoom-controls .btn-parent-select-container { display: flex; align-items: center; position: relative; }
+        .mappa-zoom-controls .btn-parent-select-container select {
+          background: rgba(17,19,27,0.92); border: 1px solid rgba(210, 153, 34, 0.25); border-radius: 8px;
+          color: #d29922; cursor: pointer; font-family: inherit; font-size: 0.7rem; font-weight: 600;
+          padding: 7px 24px 7px 12px; outline: none; appearance: none; -webkit-appearance: none;
+          transition: all 0.15s; backdrop-filter: blur(8px);
+          background-image: url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23d29922' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3e%3cpolyline points='6 9 12 15 18 9'%3e%3c/polyline%3e%3c/svg%3e");
+          background-repeat: no-repeat; background-position: right 8px center; background-size: 10px;
+        }
+        .mappa-zoom-controls .btn-parent-select-container select:hover { background-color: rgba(210, 153, 34, 0.12); border-color: rgba(210, 153, 34, 0.4); }
+
 
         /* Detail Panel (side panel in top section) */
         .mappa-detail-panel {
-          width: 350px; border-left: 1px solid #1e2030; overflow-y: auto;
-          padding: 10px 14px; flex-shrink: 0; background: #11131b;
+          width: 380px; border-left: 1px solid #1e2030;
+          padding: 12px 16px; flex-shrink: 0; background: #11131b;
+          display: flex; flex-direction: column; overflow: hidden;
         }
+        .detail-body-scrollable {
+          flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 12px;
+          margin-top: 4px;
+        }
+        
+        /* Search Box in Sidebar */
+        .sidebar-search-box {
+          position: relative; display: flex; align-items: center; margin-bottom: 12px;
+          background: #0e1016; border: 1px solid #1e2030; border-radius: 6px; padding: 6px 10px;
+          flex-shrink: 0;
+        }
+        .sidebar-search-box .search-icon { font-size: 0.65rem; color: #5a5e72; margin-right: 6px; }
+        .sidebar-search-input {
+          flex: 1; background: transparent; border: none; outline: none;
+          color: #e2e4eb; font-size: 0.65rem; font-family: inherit;
+        }
+        .sidebar-search-input::placeholder { color: #5a5e72; }
+        .clear-search-btn {
+          background: none; border: none; color: #5a5e72; cursor: pointer; font-size: 0.6rem; padding: 2px;
+        }
+        .clear-search-btn:hover { color: #ff5555; }
+
+        /* Explorer Sections */
+        .explorer-section {
+          margin-bottom: 10px; border-bottom: 1px solid #1e2030; padding-bottom: 12px;
+        }
+        .explorer-section-header {
+          font-size: 0.5rem; font-weight: 600; color: #5a5e72; letter-spacing: 1px;
+          cursor: pointer; display: flex; align-items: center; justify-content: space-between;
+          padding: 4px 0; user-select: none;
+        }
+        .explorer-section-header:hover { color: #8b8fa3; }
+        .explorer-section-content { display: flex; flex-direction: column; gap: 2px; margin-top: 4px; }
+        
+        /* Topic Item in Explorer */
+        .explorer-topic-item {
+          display: flex; align-items: center; gap: 8px; padding: 6px 8px;
+          border-radius: 6px; cursor: pointer; transition: all 0.15s; font-size: 0.65rem; color: #8b8fa3;
+        }
+        .explorer-topic-item:hover { background: rgba(255,255,255,0.03); color: #e2e4eb; }
+        .explorer-topic-item.active { background: rgba(188,140,255,0.06); color: #bc8cff; border-left: 2px solid #bc8cff; }
+        .explorer-topic-icon { font-size: 0.6rem; width: 18px; height: 18px; display: flex; align-items: center; justify-content: center; background: rgba(255,255,255,0.03); border-radius: 4px; }
+        .explorer-topic-item.active .explorer-topic-icon { background: rgba(188,140,255,0.1); }
+        .explorer-topic-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .explorer-topic-count { font-size: 0.5rem; background: #1e2030; padding: 1px 5px; border-radius: 4px; color: #5a5e72; }
+        .explorer-topic-item.active .explorer-topic-count { color: #bc8cff; background: rgba(188,140,255,0.1); }
+
+        /* Folder Tree Explorer */
+        .folder-tree { display: flex; flex-direction: column; gap: 4px; margin-top: 6px; }
+        .folder-item { display: flex; flex-direction: column; }
+        .folder-header {
+          display: flex; align-items: center; gap: 6px; padding: 6px 8px; border-radius: 6px;
+          cursor: pointer; transition: all 0.12s; font-size: 0.65rem; color: #8b8fa3; position: relative;
+        }
+        .folder-header:hover { background: rgba(255,255,255,0.03); color: #e2e4eb; }
+        .folder-header-title { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: flex; align-items: center; gap: 4px; }
+        .folder-header-count { font-size: 0.5rem; color: #5a5e72; margin-left: 4px; }
+        .folder-actions { display: none; align-items: center; gap: 6px; position: absolute; right: 8px; }
+        .folder-header:hover .folder-actions { display: flex; }
+        .folder-action-btn { background: none; border: none; cursor: pointer; font-size: 0.55rem; color: #5a5e72; padding: 2px; }
+        .folder-action-btn:hover { color: #e2e4eb; }
+        .folder-action-btn.del:hover { color: #ff5555; }
+        .folder-contents { padding-left: 14px; border-left: 1px dashed rgba(255,255,255,0.05); margin: 2px 0 4px 6px; display: flex; flex-direction: column; gap: 2px; }
+
+        /* Category Folder Item */
+        .category-folder-header {
+          display: flex; align-items: center; gap: 4px; padding: 4px 6px; border-radius: 4px;
+          cursor: pointer; transition: all 0.12s; font-size: 0.6rem; color: #8b8fa3; position: relative;
+        }
+        .category-folder-header:hover { background: rgba(255,255,255,0.03); color: #e2e4eb; }
+        .category-folder-actions { display: none; align-items: center; position: absolute; right: 6px; }
+        .category-folder-header:hover .category-folder-actions { display: flex; }
+        .category-folder-add-btn { background: none; border: none; cursor: pointer; font-size: 0.5rem; color: #5a5e72; padding: 1px 3px; border-radius: 3px; }
+        .category-folder-add-btn:hover { color: #e2e4eb; background: rgba(255,255,255,0.05); }
+
+        /* File Item inside Folder */
+        .file-tree-item {
+          display: flex; align-items: center; gap: 6px; padding: 4px 6px; border-radius: 4px;
+          cursor: pointer; transition: all 0.1s; font-size: 0.6rem; color: #8b8fa3; position: relative;
+        }
+        .file-tree-item:hover { background: rgba(255,255,255,0.03); color: #e2e4eb; }
+        .file-tree-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .file-tree-actions { display: none; align-items: center; position: absolute; right: 6px; }
+        .file-tree-item:hover .file-tree-actions { display: flex; }
+        .file-tree-del-btn { background: none; border: none; cursor: pointer; font-size: 0.5rem; color: #ff5555; padding: 1px 3px; border-radius: 3px; }
+        .file-tree-del-btn:hover { background: rgba(255,85,85,0.1); }
+
         .detail-empty { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; gap: 8px; color: #5a5e72; font-size: 0.65rem; text-align: center; }
         .detail-empty-icon { font-size: 1.2rem; }
         .detail-body { flex: 1; display: flex; flex-direction: column; gap: 0; }
@@ -1198,6 +1659,173 @@ export default function MappaArgomenti({ onOpenFile }) {
           font-size: 0.45rem; background: #1e2030; padding: 1px 5px; border-radius: 3px;
           color: #5a5e72; flex-shrink: 0; font-weight: 500;
         }
+
+        /* AI action overlay card styles */
+        .ai-overlay-card {
+          position: absolute;
+          width: 320px;
+          background: rgba(11, 16, 27, 0.96);
+          backdrop-filter: blur(16px);
+          border: 1px solid rgba(0, 210, 255, 0.2);
+          border-radius: 12px;
+          box-shadow: 0 8px 32px rgba(0, 210, 255, 0.12), 0 0 0 1px rgba(0, 210, 255, 0.05);
+          z-index: 1000;
+          padding: 12px 14px;
+          color: #e2e4eb;
+          display: flex;
+          flex-direction: column;
+          gap: 10px;
+        }
+        .ai-overlay-header {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+          padding-bottom: 6px;
+          cursor: grab;
+          user-select: none;
+        }
+        .ai-overlay-header:active {
+          cursor: grabbing;
+        }
+        .ai-overlay-title {
+          font-size: 0.7rem;
+          font-weight: 700;
+          color: #00d2ff;
+          white-space: nowrap;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          max-width: 250px;
+        }
+        .ai-overlay-close {
+          background: none;
+          border: none;
+          color: #5a5e72;
+          cursor: pointer;
+          font-size: 0.75rem;
+          padding: 2px;
+        }
+        .ai-overlay-close:hover {
+          color: #ff5555;
+        }
+        .ai-overlay-tabs {
+          display: flex;
+          background: #0e1016;
+          border-radius: 6px;
+          padding: 2px;
+          gap: 2px;
+        }
+        .ai-overlay-tab {
+          flex: 1;
+          background: none;
+          border: none;
+          border-radius: 4px;
+          color: #8b8fa3;
+          font-size: 0.6rem;
+          font-weight: 600;
+          padding: 5px;
+          cursor: pointer;
+          transition: all 0.12s;
+          text-align: center;
+        }
+        .ai-overlay-tab.active {
+          background: rgba(0, 210, 255, 0.12);
+          color: #00d2ff;
+          border: 1px solid rgba(0, 210, 255, 0.15);
+        }
+        .ai-overlay-form {
+          display: flex;
+          flex-direction: column;
+          gap: 8px;
+        }
+        .ai-overlay-group {
+          display: flex;
+          flex-direction: column;
+          gap: 4px;
+        }
+        .ai-overlay-label {
+          font-size: 0.5rem;
+          font-weight: 600;
+          color: #5a5e72;
+          letter-spacing: 0.5px;
+          text-transform: uppercase;
+        }
+        .ai-overlay-input, .ai-overlay-select, .ai-overlay-textarea {
+          background: #0e1016;
+          border: 1px solid #1e2030;
+          border-radius: 6px;
+          color: #e2e4eb;
+          font-size: 0.65rem;
+          font-family: inherit;
+          padding: 6px 8px;
+          outline: none;
+          transition: border-color 0.12s;
+        }
+        .ai-overlay-input:focus, .ai-overlay-select:focus, .ai-overlay-textarea:focus {
+          border-color: #00d2ff;
+        }
+        .ai-overlay-textarea {
+          resize: vertical;
+          min-height: 50px;
+          line-height: 1.4;
+        }
+        .ai-overlay-error {
+          font-size: 0.6rem;
+          color: #ff5555;
+          background: rgba(255, 85, 85, 0.08);
+          border-radius: 6px;
+          padding: 6px;
+        }
+        .ai-overlay-footer {
+          display: flex;
+          gap: 6px;
+          margin-top: 4px;
+        }
+        .ai-overlay-btn {
+          flex: 1;
+          padding: 8px;
+          border-radius: 6px;
+          font-size: 0.65rem;
+          font-weight: 600;
+          cursor: pointer;
+          border: 1px solid #1e2030;
+          background: #1e2030;
+          color: #e2e4eb;
+          transition: all 0.12s;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          gap: 6px;
+        }
+        .ai-overlay-btn.primary {
+          background: rgba(0, 210, 255, 0.10);
+          border-color: rgba(0, 210, 255, 0.25);
+          color: #00d2ff;
+        }
+        .ai-overlay-btn.primary:hover:not(:disabled) {
+          background: rgba(0, 210, 255, 0.18);
+          border-color: rgba(0, 210, 255, 0.45);
+        }
+        .ai-overlay-btn.secondary {
+          background: transparent;
+          color: #8b8fa3;
+        }
+        .ai-overlay-btn.secondary:hover {
+          background: rgba(255, 255, 255, 0.03);
+          color: #e2e4eb;
+        }
+        .ai-overlay-btn:disabled {
+          opacity: 0.5;
+          cursor: not-allowed;
+        }
+        .ai-overlay-spinner {
+          width: 12px;
+          height: 12px;
+          border: 2px solid transparent;
+          border-top-color: currentColor;
+          border-radius: 50%;
+          animation: spin 0.8s linear infinite;
+        }
       `}</style>
       
       {/* TOP SECTION — graph + detail panel */}
@@ -1220,80 +1848,353 @@ export default function MappaArgomenti({ onOpenFile }) {
             <button className="btn-new-topic" onClick={handleCreateTopic} title="Crea nuovo argomento">
               🌐 Nuovo Argomento
             </button>
+            {activeTopic && (
+              <>
+                <button className="btn-new-subtopic" onClick={() => handleCreateSubTopic(activeTopic)} title="Crea nuovo sottoargomento">
+                  ➕ Nuovo Sottoargomento
+                </button>
+                <button className="btn-delete-topic" onClick={() => handleDeleteTopic(activeTopic)} title="Elimina argomento selezionato">
+                  🗑️ Elimina Argomento
+                </button>
+                {topicsData.length > 0 && (
+                  <div className="btn-parent-select-container">
+                    <select 
+                      value={activeTopic.parent_id || ''} 
+                      onChange={e => handleUpdateTopicParent(activeTopic, e.target.value)}
+                      title="Assegna argomento padre"
+                    >
+                      <option value="">— Nessun padre —</option>
+                      {topicsData.filter(t => t.id !== activeTopic.id).map(t => (
+                        <option key={t.id} value={t.id}>⬆ {escapeStr(t.name)}</option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+              </>
+            )}
           </div>
-        </div>
-        <div className="mappa-detail-panel">
-          {renderDetail()}
-        </div>
-      </div>
 
-      {/* BOTTOM SECTION — tab bar + file columns (65%) */}
-      <div className="mappa-bottom-section">
-        {/* Topic Tab Bar */}
-        <div className="topic-tab-bar">
-          {topicsData.map(topic => (
-            <button key={topic.id} className={`topic-tab ${activeTopicId === topic.id ? 'active' : ''}`} onClick={() => selectTopic(topic)}>
-              <span className="tab-icon">{topicIcon(topic.domain)}</span>
-              <span>{escapeStr(topic.name)}</span>
-              <span className="tab-count">{(topic.modules || []).length}</span>
-            </button>
-          ))}
-        </div>
-
-        {/* Module Filter Bar */}
-        {activeTopic && activeTopic.modules && activeTopic.modules.length > 1 && (
-          <div className="module-filter-bar">
-            <span className="mfb-label">Sottoargomento:</span>
-            <button className={`mfb-btn ${selectedModule === null ? 'active' : ''}`} onClick={() => setSelectedModule(null)}>
-              Tutti
-            </button>
-            {activeTopic.modules.map(mod => (
-              <button key={mod.number} className={`mfb-btn ${selectedModule === mod.number ? 'active' : ''}`} onClick={() => setSelectedModule(mod.number)}>
-                M{mod.number} — {escapeStr(mod.name)}
-              </button>
-            ))}
-          </div>
-        )}
-
-        {/* File Columns — filtered by selectedModule */}
-        <div className="file-columns-area">
-          {topicFiles && columnDefs.map(col => {
-            let files = topicFiles[col.key] || [];
-            // Filter by selected module
-            if (selectedModule) {
-              files = files.filter(f => f.modNum === selectedModule);
-            }
-            return (
-              <div key={col.key} className="file-column">
-                <div className="file-column-header" style={{ color: col.color }}>
-                  <span>{col.icon}</span> {col.label}
-                  <span style={{ marginLeft: 'auto', fontSize: '0.5rem', opacity: 0.6 }}>{files.length}</span>
-                </div>
-                <div className="file-column-list">
-                  {files.length === 0 && <div className="empty-col-hint">Nessun file</div>}
-                  {files.map((f, idx) => (
-                    <div key={f.path || idx} className="col-file-item" style={{ borderLeftColor: col.borderColor }}>
-                      <span className="col-file-icon">{col.icon}</span>
-                      <span className="col-file-name" onClick={() => onOpenFile && onOpenFile(f.path)}>{escapeStr(f.filename)}</span>
-                      <span className="col-file-del" onClick={(e) => { e.stopPropagation(); handleDeleteFile(f.path); }} title="Elimina file">🗑️</span>
-                      <span className="col-mod-badge" style={{ cursor: 'pointer', background: selectedModule === f.modNum ? 'rgba(0,210,255,0.15)' : '#1e2030', color: selectedModule === f.modNum ? '#00d2ff' : '#5a5e72' }}
-                        onClick={(e) => { e.stopPropagation(); setSelectedModule(selectedModule === f.modNum ? null : f.modNum); }}
-                        title={selectedModule === f.modNum ? 'Mostra tutti' : `Filtra per M${f.modNum}`}>
-                        {f.modNum}
-                      </span>
-                    </div>
-                  ))}
-                </div>
+          {/* AI Overlay Menu */}
+          {showAiOverlay && overlayNode && (
+            <div 
+              className="ai-overlay-card" 
+              style={{ left: `${overlayPos.x}px`, top: `${overlayPos.y}px` }}
+              onClick={e => e.stopPropagation()} // prevent clicking card from closing it
+            >
+              <div className="ai-overlay-header" onMouseDown={handleOverlayHeaderMouseDown}>
+                <span className="ai-overlay-title">
+                  {overlayNode.type === 'topic' ? '🌐 ' : '➕ '}
+                  {escapeStr(overlayNode.label)}
+                </span>
+                <button className="ai-overlay-close" type="button" onClick={() => setShowAiOverlay(false)} onMouseDown={e => e.stopPropagation()}>✕</button>
               </div>
-            );
-          })}
-          {topicsData.length === 0 && (
-            <div className="mappa-loading" style={{ flex: 1 }}>
-              <div className="label">Nessun argomento disponibile.</div>
+
+              <div className="ai-overlay-tabs">
+                <button 
+                  type="button"
+                  className={`ai-overlay-tab ${!isAiMode ? 'active' : ''}`}
+                  onClick={() => { setIsAiMode(false); setAiError(''); }}
+                >
+                  Standard
+                </button>
+                <button 
+                  type="button"
+                  className={`ai-overlay-tab ${isAiMode ? 'active' : ''}`}
+                  onClick={() => { setIsAiMode(true); setAiError(''); }}
+                >
+                  🤖 Genera con AI
+                </button>
+              </div>
+
+              <form className="ai-overlay-form" onSubmit={handleOverlayCreateFile}>
+                <div className="ai-overlay-group">
+                  <span className="ai-overlay-label">Categoria File</span>
+                  <select 
+                    className="ai-overlay-select"
+                    value={newFileCategory}
+                    onChange={e => setNewFileCategory(e.target.value)}
+                  >
+                    <option value="teoria">📖 Teoria</option>
+                    <option value="test">🧪 Test</option>
+                    <option value="viz">📊 Visualizzazione (D3)</option>
+                    <option value="docs">📄 Documentazione</option>
+                    <option value="whitepaper">📜 Whitepaper</option>
+                  </select>
+                </div>
+
+                <div className="ai-overlay-group">
+                  <span className="ai-overlay-label">Nome File (senza estensione)</span>
+                  <input 
+                    type="text" 
+                    className="ai-overlay-input"
+                    placeholder="nome_file"
+                    value={newFileName}
+                    onChange={e => setNewFileName(e.target.value.replace(/[^a-zA-Z0-9_-]/g, '_'))}
+                    required
+                  />
+                </div>
+
+                {isAiMode && (
+                  <>
+                    <div className="ai-overlay-group">
+                      <span className="ai-overlay-label">Modello AI</span>
+                      <select 
+                        className="ai-overlay-select"
+                        value={selectedAiModel}
+                        onChange={e => setSelectedAiModel(e.target.value)}
+                      >
+                        {aiModels.length > 0 ? (
+                          aiModels.map(m => (
+                            <option key={m.name} value={m.name}>{m.name} ({m.size})</option>
+                          ))
+                        ) : (
+                          <option value="llama3.2">llama3.2 (default)</option>
+                        )}
+                      </select>
+                    </div>
+
+                    <div className="ai-overlay-group">
+                      <span className="ai-overlay-label">Ruolo Agente</span>
+                      <select 
+                        className="ai-overlay-select"
+                        value={selectedAiRole}
+                        onChange={e => setSelectedAiRole(e.target.value)}
+                      >
+                        <option value="code_architect">💻 Code Architect</option>
+                        <option value="math1">🔬 Math Architect</option>
+                        <option value="test-engineer">🧪 Test Engineer</option>
+                        <option value="viz-designer">🎨 Viz Designer</option>
+                        <option value="proof-reviewer">👁️ Proof Reviewer</option>
+                      </select>
+                    </div>
+
+                    <div className="ai-overlay-group">
+                      <span className="ai-overlay-label">Descrizione per l'AI</span>
+                      <textarea 
+                        className="ai-overlay-textarea"
+                        placeholder="Cosa deve contenere il file..."
+                        value={aiPromptText}
+                        onChange={e => setAiPromptText(e.target.value)}
+                        required
+                      />
+                    </div>
+                  </>
+                )}
+
+                {aiError && <div className="ai-overlay-error">{aiError}</div>}
+
+                <div className="ai-overlay-footer">
+                  <button 
+                    type="button" 
+                    className="ai-overlay-btn secondary"
+                    onClick={() => setShowAiOverlay(false)}
+                    disabled={aiOverlayLoading}
+                  >
+                    Annulla
+                  </button>
+                  <button 
+                    type="submit" 
+                    className="ai-overlay-btn primary"
+                    disabled={aiOverlayLoading}
+                  >
+                    {aiOverlayLoading ? (
+                      <>
+                        <div className="ai-overlay-spinner"></div>
+                        {isAiMode ? 'Generazione...' : 'Creazione...'}
+                      </>
+                    ) : (
+                      isAiMode ? '🤖 Genera' : 'Crea File'
+                    )}
+                  </button>
+                </div>
+              </form>
             </div>
           )}
         </div>
+        <div className="mappa-detail-panel">
+          {/* Search Box */}
+          <div className="sidebar-search-box">
+            <span className="search-icon">🔍</span>
+            <input 
+              type="text" 
+              placeholder="Cerca argomenti, moduli o file..." 
+              value={searchQuery}
+              onChange={e => setSearchQuery(e.target.value)}
+              className="sidebar-search-input"
+            />
+            {searchQuery && (
+              <button className="clear-search-btn" onClick={() => setSearchQuery('')}>✕</button>
+            )}
+          </div>
+
+          <div className="detail-body-scrollable">
+            {/* Topic Selector Section */}
+            <div className="explorer-section">
+              <div className="explorer-section-header" onClick={() => setExpandedTopicsSection(!expandedTopicsSection)}>
+                <span>{expandedTopicsSection ? '▼' : '▶'} 🌐 ARGOMENTI ({topicsData.length})</span>
+              </div>
+              {expandedTopicsSection && (
+                <div className="explorer-section-content">
+                  {filteredTopics.map(topic => (
+                    <div 
+                      key={topic.id} 
+                      className={`explorer-topic-item ${activeTopicId === topic.id ? 'active' : ''}`}
+                      onClick={() => selectTopic(topic)}
+                    >
+                      <span className="explorer-topic-icon">{topicIcon(topic.domain)}</span>
+                      <span className="explorer-topic-name">{escapeStr(topic.name)}</span>
+                      <span className="explorer-topic-count">{(topic.modules || []).length}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Active Topic Folders Section */}
+            {activeTopic && (
+              <div className="explorer-section" style={{ borderBottom: 'none' }}>
+                <div className="detail-header">
+                  <div className="detail-type" style={{ color: '#bc8cff' }}>ARGOMENTO ATTIVO</div>
+                  <div className="detail-title" style={{ color: '#bc8cff', fontSize: '0.85rem' }}>{escapeStr(activeTopic.name)}</div>
+                  {activeTopic.description && (
+                    <div className="detail-desc" style={{ fontSize: '0.65rem', marginTop: '4px', color: '#5a5e72' }}>
+                      {escapeStr(activeTopic.description)}
+                    </div>
+                  )}
+                </div>
+
+                <div className="explorer-section-header" style={{ marginTop: '12px' }}>
+                  <span>📂 FILE E SOTTOARGOMENTI</span>
+                </div>
+
+                <div className="folder-tree">
+                  {filteredModules.length === 0 && (
+                    <div style={{ fontSize: '0.6rem', color: '#5a5e72', padding: '8px 0' }}>
+                      Nessun modulo trovato.
+                    </div>
+                  )}
+                  {filteredModules.map(mod => {
+                    const isModExpanded = searchQuery ? true : expandedModules[mod.number];
+                    const isModSelected = selectedNode && selectedNode.type === 'module' && selectedNode.data.number === mod.number && selectedNode.topicId === activeTopic.id;
+                    
+                    const toggleModule = () => {
+                      setExpandedModules(prev => ({ ...prev, [mod.number]: !prev[mod.number] }));
+                    };
+
+                    const totalFiles = (mod.docs || []).length + (mod.whitepapers || []).length +
+                                      (mod.teoria || []).length + (mod.test || []).length + (mod.viz || []).length;
+
+                    const folderPath = mod.folder || `${activeTopic.folder}/${mod.number}_${mod.name}`.toLowerCase().replace(/ /g, '_');
+
+                    return (
+                      <div key={mod.number} className="folder-item">
+                        <div 
+                          className={`folder-header ${isModSelected ? 'selected-folder' : ''}`}
+                          onClick={toggleModule}
+                          style={{
+                            background: isModSelected ? 'rgba(0,210,255,0.06)' : 'transparent',
+                            color: isModSelected ? '#00d2ff' : '#8b8fa3'
+                          }}
+                        >
+                          <span className="folder-header-title">
+                            <span>{isModExpanded ? '📂' : '📁'}</span>
+                            <span>M{mod.number} — {escapeStr(mod.name)}</span>
+                            <span className="folder-header-count">({totalFiles})</span>
+                          </span>
+                          
+                          <div className="folder-actions">
+                            <button 
+                              className="folder-action-btn"
+                              onClick={(e) => { e.stopPropagation(); handleRenameModule(mod, activeTopic.id); }}
+                              title="Rinomina Sottoargomento"
+                            >
+                              ✏️
+                            </button>
+                            <button 
+                              className="folder-action-btn del"
+                              onClick={(e) => { e.stopPropagation(); handleDeleteModule(mod, activeTopic.id); }}
+                              title="Elimina Sottoargomento"
+                            >
+                              🗑️
+                            </button>
+                          </div>
+                        </div>
+
+                        {isModExpanded && (
+                          <div className="folder-contents">
+                            {columnDefs.map(col => {
+                              const files = mod[col.key] || [];
+                              const catKey = `${mod.number}-${col.key}`;
+                              const isCatExpanded = searchQuery ? true : expandedCategories[catKey];
+                              const fileType = col.key === 'whitepapers' ? 'whitepaper' : col.key;
+
+                              const toggleCat = () => {
+                                setExpandedCategories(prev => ({ ...prev, [catKey]: !prev[catKey] }));
+                              };
+
+                              return (
+                                <div key={col.key} className="category-folder">
+                                  <div className="category-folder-header" onClick={toggleCat}>
+                                    <span style={{ display: 'flex', alignItems: 'center', gap: '4px', color: col.color }}>
+                                      <span>{isCatExpanded ? '📂' : '📁'}</span>
+                                      <span>{col.icon} {col.label}</span>
+                                      <span style={{ fontSize: '0.5rem', opacity: 0.6 }}>({files.length})</span>
+                                    </span>
+
+                                    <div className="category-folder-actions">
+                                      <button 
+                                        className="category-folder-add-btn"
+                                        onClick={(e) => { e.stopPropagation(); handleCreateFile(folderPath, fileType); }}
+                                        title={`Crea nuovo ${col.label}`}
+                                      >
+                                        ➕
+                                      </button>
+                                    </div>
+                                  </div>
+
+                                  {isCatExpanded && (
+                                    <div style={{ paddingLeft: '12px', display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                                      {files.length === 0 && (
+                                        <div style={{ fontStyle: 'italic', color: '#5a5e72', fontSize: '0.55rem', padding: '2px 6px' }}>
+                                          Vuoto
+                                        </div>
+                                      )}
+                                      {files.map((file, idx) => (
+                                        <div key={file.path || idx} className="file-tree-item">
+                                          <span className="explorer-topic-icon" style={{ background: 'none', width: 'auto', height: 'auto' }}>{col.icon}</span>
+                                          <span className="file-tree-name" onClick={() => onOpenFile && onOpenFile(file.path)}>
+                                            {escapeStr(file.filename)}
+                                          </span>
+                                          
+                                          <div className="file-tree-actions">
+                                            <button 
+                                              className="file-tree-del-btn"
+                                              onClick={(e) => { e.stopPropagation(); handleDeleteFile(file.path); }}
+                                              title="Elimina file"
+                                            >
+                                              🗑️
+                                            </button>
+                                          </div>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  )}
+                                </div>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
       </div>
+
+
     </div>
   );
 }

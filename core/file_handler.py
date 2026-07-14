@@ -142,4 +142,94 @@ def handle_run_test(self):
         self.send_json_response({"stdout": res.stdout, "stderr": res.stderr, "exit_code": res.returncode})
     except Exception as exc:
         log.error("handle_run_test: %s", exc)
+        self.send_json_response({"error": str(exc)}, 500)
+
+
+def handle_api_action(self):
+    try:
+        import re
+        from core.ai_providers import load_ai_config, resolve_provider_config, call_ai_model
+        
+        req = self.read_json_body()
+        action = req.get("action", "create_file")
+        path = req.get("path")
+        model_name = req.get("model")
+        role = req.get("role", "code_architect")
+        prompt = req.get("prompt", "").strip()
+        existing_content = req.get("existing_content", "").strip()
+        
+        if not path or not self._is_path_allowed(path):
+            return self.send_json_response({"error": "Path invalido o non consentito"}, 400)
+            
+        if not prompt:
+            return self.send_json_response({"error": "Prompt vuoto non consentito"}, 400)
+            
+        filename = os.path.basename(path)
+        
+        # Load AI configuration
+        ai_cfg = load_ai_config()
+        if not model_name:
+            model_name = ai_cfg.get("active_model", "llama3.2")
+            
+        provider_key, ac = resolve_provider_config(model_name)
+        
+        endpoint = ac.get("endpoint", "http://localhost:11434/api/chat")
+        api_url = ac.get("api_url", "")
+        api_key = ac.get("api_key", "")
+        temperature = ac.get("temperature", 0.7)
+        max_tokens = ac.get("max_tokens", 4096)
+        top_p = ac.get("top_p", 0.9)
+        request_timeout = ac.get("timeout", 300)
+        
+        ROLE_PROMPTS = {
+            "math1": "Sei Math Architect, un matematico esperto in logica formale e dimostrazioni. Usa LaTeX per formattare tutte le equazioni matematiche.",
+            "code_architect": "Sei Code Architect, un ingegnere del software esperto in progettazione di sistemi, refactoring e scrittura di codice pulito ed efficiente.",
+            "test-engineer": "Sei Test Engineer, un esperto in test di integrazione e unit test in Python e JavaScript. Concentrati sulla robustezza e sulla copertura del codice.",
+            "viz-designer": "Sei Viz Designer, un esperto nello sviluppo di visualizzazioni interattive basate su HTML5 e D3.js. Usa sempre layout responsive e tema scuro.",
+            "proof-reviewer": "Sei Proof Reviewer, un recensore critico che analizza codice e logiche matematiche alla ricerca di vulnerabilità, errori di calcolo e bug."
+        }
+        
+        system_instruction = (
+            f"{ROLE_PROMPTS.get(role, 'Sei un assistente esperto.')}\n"
+            f"Il tuo compito è scrivere il contenuto per il file: '{filename}'.\n"
+            f"RELEVANTE: Sei inserito all'interno della directory '{os.path.dirname(path)}'.\n"
+            f"REGOLA FONDAMENTALE: Restituisci SOLO ed esclusivamente il contenuto grezzo del file. Non includere presentazioni, spiegazioni testuali all'inizio o alla fine, o delimitatori di blocco markdown (es. non racchiudere l'intero output in ``` o ```markdown). Scrivi direttamente il codice o il testo del file."
+        )
+        
+        messages = [
+            {"role": "system", "content": system_instruction},
+        ]
+        
+        if existing_content:
+            messages.append({"role": "user", "content": f"Contenuto attuale del file:\n{existing_content}\n\nIstruzioni per la modifica:\n{prompt}"})
+        else:
+            messages.append({"role": "user", "content": f"Istruzioni di creazione del file:\n{prompt}"})
+            
+        content, reasoning, error = call_ai_model(
+            messages, ai_cfg, model_name, provider_key, endpoint,
+            api_url, api_key, temperature, max_tokens, top_p, request_timeout
+        )
+        
+        if error:
+            return self.send_json_response({"error": f"Errore chiamata AI: {error}"}, 500)
+            
+        if not content:
+            return self.send_json_response({"error": "Il modello AI ha restituito un output vuoto"}, 500)
+            
+        # Clean markdown code wrapper blocks if returned
+        content = content.strip()
+        match = re.match(r"^```[a-zA-Z0-9_-]*\n(.*)\n```$", content, re.DOTALL)
+        if match:
+            content = match.group(1).strip()
+        elif content.startswith("```") and content.endswith("```"):
+            content = content[3:-3].strip()
+            
+        # Write to destination
+        os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
+        with open(path, 'w', encoding='utf-8') as fh:
+            fh.write(content)
+            
+        self.send_json_response({"success": True, "path": path.replace('\\', '/')})
+    except Exception as exc:
+        log.error("handle_api_action: %s", exc)
         self.send_json_response({"error": str(exc)}, 500)

@@ -74,6 +74,7 @@ def register_post_handlers(handler_class):
         '/api/research/start': 'handle_research_start',
         '/api/manifesti/update_image': 'handle_update_manifesto_image',
         '/api/agents/upload_image': 'handle_upload_agent_image',
+        '/api/ai/action': 'handle_api_action',
     }
 
 
