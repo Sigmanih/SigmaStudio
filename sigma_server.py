@@ -122,7 +122,8 @@ SigmaAPIHandler.handle_update_module = handle_update_module
 # 3. File CRUD
 from core.file_handler import (
     handle_get_file, handle_create_file, handle_delete_file,
-    handle_upload_file, handle_run_test, handle_api_action
+    handle_upload_file, handle_run_test, handle_api_action,
+    handle_rename_file
 )
 SigmaAPIHandler.handle_get_file = handle_get_file
 SigmaAPIHandler.handle_create_file = handle_create_file
@@ -130,6 +131,7 @@ SigmaAPIHandler.handle_delete_file = handle_delete_file
 SigmaAPIHandler.handle_upload_file = handle_upload_file
 SigmaAPIHandler.handle_run_test = handle_run_test
 SigmaAPIHandler.handle_api_action = handle_api_action
+SigmaAPIHandler.handle_rename_file = handle_rename_file
 
 # 4. Task handlers
 from core.task_handler import (

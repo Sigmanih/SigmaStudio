@@ -232,4 +232,29 @@ def handle_api_action(self):
         self.send_json_response({"success": True, "path": path.replace('\\', '/')})
     except Exception as exc:
         log.error("handle_api_action: %s", exc)
+        self.send_json_response({"error": str(exc)}, 500)
+
+
+def handle_rename_file(self):
+    try:
+        import shutil
+        req = self.read_json_body()
+        old_path = req.get("old_path")
+        new_path = req.get("new_path")
+        
+        if not old_path or not self._is_path_allowed(old_path) or not os.path.exists(old_path):
+            return self.send_json_response({"error": "Sorgente non valida o non consentita"}, 400)
+            
+        if not new_path or not self._is_path_allowed(new_path):
+            return self.send_json_response({"error": "Destinazione non valida o non consentita"}, 400)
+            
+        # Ensure destination directory exists
+        os.makedirs(os.path.dirname(os.path.abspath(new_path)), exist_ok=True)
+        
+        # Move file
+        shutil.move(old_path, new_path)
+        
+        self.send_json_response({"success": True})
+    except Exception as exc:
+        log.error("handle_rename_file: %s", exc)
         self.send_json_response({"error": str(exc)}, 500)

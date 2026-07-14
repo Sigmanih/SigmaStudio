@@ -56,6 +56,62 @@ export default function MappaArgomenti({ onOpenFile }) {
   const [aiPromptText, setAiPromptText] = useState('');
   const [aiError, setAiError] = useState('');
 
+  // File Overlay Specific States
+  const [moveTargetTopicId, setMoveTargetTopicId] = useState('');
+  const [moveTargetModuleNum, setMoveTargetModuleNum] = useState('');
+  const [moveTargetCategory, setMoveTargetCategory] = useState('teoria');
+  const [existingFileContent, setExistingFileContent] = useState('');
+  const [fileTab, setFileTab] = useState('ai_edit'); // 'ai_edit' | 'move' | 'delete'
+
+  useEffect(() => {
+    if (showAiOverlay && overlayNode && overlayNode.type === 'doc') {
+      setFileTab('ai_edit');
+      setAiError('');
+      setAiPromptText('');
+      
+      // Fetch file content
+      const fetchContent = async () => {
+        try {
+          const res = await fetch(`/api/get_file?path=${encodeURIComponent(overlayNode.filePath)}`);
+          const data = await res.json();
+          if (data.success) {
+            setExistingFileContent(data.content || '');
+          }
+        } catch (err) {
+          console.error('Error fetching file content:', err);
+        }
+      };
+      fetchContent();
+
+      // Initialize move dropdown targets
+      if (topicsData.length > 0) {
+        setMoveTargetTopicId(topicsData[0].id);
+        const mods = topicsData[0].modules || [];
+        if (mods.length > 0) {
+          setMoveTargetModuleNum(mods[0].number);
+        } else {
+          setMoveTargetModuleNum('');
+        }
+      }
+      setMoveTargetCategory(overlayNode.docType || 'teoria');
+    } else {
+      setExistingFileContent('');
+    }
+  }, [showAiOverlay, overlayNode]);
+
+  // When move target topic changes, update module select target
+  useEffect(() => {
+    if (moveTargetTopicId) {
+      const topic = topicsData.find(t => t.id === moveTargetTopicId);
+      const mods = topic?.modules || [];
+      if (mods.length > 0) {
+        setMoveTargetModuleNum(mods[0].number);
+      } else {
+        setMoveTargetModuleNum('');
+      }
+    }
+  }, [moveTargetTopicId, topicsData]);
+
   // Draggable Card States & Handlers
   const [isDraggingOverlay, setIsDraggingOverlay] = useState(false);
   const [overlayDragStart, setOverlayDragStart] = useState({ x: 0, y: 0 });
@@ -417,10 +473,8 @@ export default function MappaArgomenti({ onOpenFile }) {
       .on('click', (event, d) => {
         event.stopPropagation();
         if (d.type === 'doc') {
-          if (onOpenFile && d.filePath) onOpenFile(d.filePath);
-          return;
-        }
-        if (d.type === 'topic') {
+          setSelectedNode({ type: 'doc', data: d });
+        } else if (d.type === 'topic') {
           setSelectedNode({ type: 'topic', data: d.data });
           setActiveTopicId(d.data.id);
           setSelectedModule(null);
@@ -439,8 +493,9 @@ export default function MappaArgomenti({ onOpenFile }) {
       .on('contextmenu', (event, d) => {
         event.preventDefault();
         event.stopPropagation();
-        if (d.type === 'doc') return;
-        if (d.type === 'topic') {
+        if (d.type === 'doc') {
+          setSelectedNode({ type: 'doc', data: d });
+        } else if (d.type === 'topic') {
           setSelectedNode({ type: 'topic', data: d.data });
           setActiveTopicId(d.data.id);
           setSelectedModule(null);
@@ -877,6 +932,136 @@ export default function MappaArgomenti({ onOpenFile }) {
       }
     } catch (e) {
       alert('Errore di rete: ' + e.message);
+    }
+  };
+
+  const handleOverlayEditFile = async (e) => {
+    if (e) e.preventDefault();
+    if (!aiPromptText.trim()) {
+      setAiError('Inserisci le istruzioni di modifica');
+      return;
+    }
+    setAiOverlayLoading(true);
+    setAiError('');
+
+    try {
+      const res = await fetch('/api/ai/action', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'edit_file',
+          path: overlayNode.filePath,
+          model: selectedAiModel,
+          role: selectedAiRole,
+          prompt: aiPromptText,
+          existing_content: existingFileContent
+        })
+      });
+      const data = await res.json();
+      if (data.success) {
+        setAiPromptText('');
+        setShowAiOverlay(false);
+        await fetchData();
+        if (onOpenFile) onOpenFile(overlayNode.filePath);
+      } else {
+        setAiError(data.error || 'Errore modifica AI');
+      }
+    } catch (err) {
+      setAiError('Errore di rete: ' + err.message);
+    } finally {
+      setAiOverlayLoading(false);
+    }
+  };
+
+  const handleOverlayMoveFile = async (e) => {
+    if (e) e.preventDefault();
+    if (!moveTargetTopicId) {
+      setAiError('Seleziona un argomento di destinazione');
+      return;
+    }
+
+    setAiOverlayLoading(true);
+    setAiError('');
+
+    try {
+      const targetTopic = topicsData.find(t => t.id === moveTargetTopicId);
+      if (!targetTopic) {
+        setAiError('Argomento di destinazione non trovato');
+        setAiOverlayLoading(false);
+        return;
+      }
+
+      let targetFolder = targetTopic.folder;
+      if (moveTargetModuleNum) {
+        const targetModule = targetTopic.modules?.find(m => m.number === Number(moveTargetModuleNum));
+        if (targetModule) {
+          targetFolder = targetModule.folder || `${targetTopic.folder}/${targetModule.number}_${targetModule.name}`.toLowerCase().replace(/ /g, '_');
+        }
+      }
+
+      const subdirs = {
+        whitepaper: 'whitepapers',
+        teoria: 'teoria',
+        docs: 'docs',
+        test: 'test',
+        viz: 'viz',
+        whitepapers: 'whitepapers'
+      };
+      
+      const subdir = subdirs[moveTargetCategory] || moveTargetCategory;
+      const filename = overlayNode.label; // e.g. "WHITEPAPER_Collatz.md"
+      
+      const newPath = `${targetFolder}/${subdir}/${filename}`;
+
+      const res = await fetch('/api/rename_file', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          old_path: overlayNode.filePath,
+          new_path: newPath
+        })
+      });
+
+      const data = await res.json();
+      if (data.success) {
+        setShowAiOverlay(false);
+        await fetchData();
+        if (onOpenFile) onOpenFile(newPath);
+      } else {
+        setAiError(data.error || 'Errore spostamento file');
+      }
+    } catch (err) {
+      setAiError('Errore di rete: ' + err.message);
+    } finally {
+      setAiOverlayLoading(false);
+    }
+  };
+
+  const handleOverlayDeleteFile = async (e) => {
+    if (e) e.preventDefault();
+    const confirmed = window.confirm(`Sei sicuro di voler eliminare definitivamente il file: ${overlayNode.label}?`);
+    if (!confirmed) return;
+
+    setAiOverlayLoading(true);
+    setAiError('');
+
+    try {
+      const res = await fetch('/api/delete_file', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ path: overlayNode.filePath })
+      });
+      const data = await res.json();
+      if (data.success) {
+        setShowAiOverlay(false);
+        await fetchData();
+      } else {
+        setAiError(data.error || 'Errore eliminazione file');
+      }
+    } catch (err) {
+      setAiError('Errore di rete: ' + err.message);
+    } finally {
+      setAiOverlayLoading(false);
     }
   };
 
@@ -1883,131 +2068,364 @@ export default function MappaArgomenti({ onOpenFile }) {
             >
               <div className="ai-overlay-header" onMouseDown={handleOverlayHeaderMouseDown}>
                 <span className="ai-overlay-title">
-                  {overlayNode.type === 'topic' ? '🌐 ' : '➕ '}
+                  {overlayNode.type === 'doc' ? '📄 ' : overlayNode.type === 'topic' ? '🌐 ' : '➕ '}
                   {escapeStr(overlayNode.label)}
                 </span>
                 <button className="ai-overlay-close" type="button" onClick={() => setShowAiOverlay(false)} onMouseDown={e => e.stopPropagation()}>✕</button>
               </div>
 
-              <div className="ai-overlay-tabs">
-                <button 
-                  type="button"
-                  className={`ai-overlay-tab ${!isAiMode ? 'active' : ''}`}
-                  onClick={() => { setIsAiMode(false); setAiError(''); }}
-                >
-                  Standard
-                </button>
-                <button 
-                  type="button"
-                  className={`ai-overlay-tab ${isAiMode ? 'active' : ''}`}
-                  onClick={() => { setIsAiMode(true); setAiError(''); }}
-                >
-                  🤖 Genera con AI
-                </button>
-              </div>
-
-              <form className="ai-overlay-form" onSubmit={handleOverlayCreateFile}>
-                <div className="ai-overlay-group">
-                  <span className="ai-overlay-label">Categoria File</span>
-                  <select 
-                    className="ai-overlay-select"
-                    value={newFileCategory}
-                    onChange={e => setNewFileCategory(e.target.value)}
+              {overlayNode.type === 'doc' ? (
+                // File Actions Layout
+                <>
+                  <button
+                    type="button"
+                    className="ai-overlay-btn primary"
+                    style={{
+                      width: '100%',
+                      padding: '10px',
+                      marginBottom: '8px',
+                      background: 'rgba(0, 210, 255, 0.15)',
+                      borderColor: 'rgba(0, 210, 255, 0.35)',
+                      color: '#00d2ff',
+                      fontSize: '0.7rem',
+                      borderRadius: '8px',
+                      boxShadow: '0 0 10px rgba(0, 210, 255, 0.15)'
+                    }}
+                    onClick={() => {
+                      if (onOpenFile && overlayNode.filePath) {
+                        onOpenFile(overlayNode.filePath);
+                      }
+                      setShowAiOverlay(false);
+                    }}
                   >
-                    <option value="teoria">📖 Teoria</option>
-                    <option value="test">🧪 Test</option>
-                    <option value="viz">📊 Visualizzazione (D3)</option>
-                    <option value="docs">📄 Documentazione</option>
-                    <option value="whitepaper">📜 Whitepaper</option>
-                  </select>
-                </div>
+                    👁️ Visualizza / Apri File
+                  </button>
 
-                <div className="ai-overlay-group">
-                  <span className="ai-overlay-label">Nome File (senza estensione)</span>
-                  <input 
-                    type="text" 
-                    className="ai-overlay-input"
-                    placeholder="nome_file"
-                    value={newFileName}
-                    onChange={e => setNewFileName(e.target.value.replace(/[^a-zA-Z0-9_-]/g, '_'))}
-                    required
-                  />
-                </div>
+                  <div className="ai-overlay-tabs">
+                    <button 
+                      type="button"
+                      className={`ai-overlay-tab ${fileTab === 'ai_edit' ? 'active' : ''}`}
+                      onClick={() => { setFileTab('ai_edit'); setAiError(''); }}
+                    >
+                      🤖 Modifica AI
+                    </button>
+                    <button 
+                      type="button"
+                      className={`ai-overlay-tab ${fileTab === 'move' ? 'active' : ''}`}
+                      onClick={() => { setFileTab('move'); setAiError(''); }}
+                    >
+                      📦 Sposta
+                    </button>
+                    <button 
+                      type="button"
+                      className={`ai-overlay-tab ${fileTab === 'delete' ? 'active' : ''}`}
+                      onClick={() => { setFileTab('delete'); setAiError(''); }}
+                    >
+                      🗑️ Elimina
+                    </button>
+                  </div>
 
-                {isAiMode && (
-                  <>
+                  {fileTab === 'ai_edit' && (
+                    <form className="ai-overlay-form" onSubmit={handleOverlayEditFile}>
+                      <div className="ai-overlay-group">
+                        <span className="ai-overlay-label">Modello AI</span>
+                        <select 
+                          className="ai-overlay-select"
+                          value={selectedAiModel}
+                          onChange={e => setSelectedAiModel(e.target.value)}
+                        >
+                          {aiModels.length > 0 ? (
+                            aiModels.map(m => (
+                              <option key={m.name} value={m.name}>{m.name} ({m.size})</option>
+                            ))
+                          ) : (
+                            <option value="llama3.2">llama3.2 (default)</option>
+                          )}
+                        </select>
+                      </div>
+
+                      <div className="ai-overlay-group">
+                        <span className="ai-overlay-label">Ruolo Agente</span>
+                        <select 
+                          className="ai-overlay-select"
+                          value={selectedAiRole}
+                          onChange={e => setSelectedAiRole(e.target.value)}
+                        >
+                          <option value="code_architect">💻 Code Architect</option>
+                          <option value="math1">🔬 Math Architect</option>
+                          <option value="test-engineer">🧪 Test Engineer</option>
+                          <option value="viz-designer">🎨 Viz Designer</option>
+                          <option value="proof-reviewer">👁️ Proof Reviewer</option>
+                        </select>
+                      </div>
+
+                      <div className="ai-overlay-group">
+                        <span className="ai-overlay-label">Istruzioni di modifica</span>
+                        <textarea 
+                          className="ai-overlay-textarea"
+                          placeholder="Come vuoi modificare il file..."
+                          value={aiPromptText}
+                          onChange={e => setAiPromptText(e.target.value)}
+                          required
+                        />
+                      </div>
+
+                      {aiError && <div className="ai-overlay-error">{aiError}</div>}
+
+                      <div className="ai-overlay-footer">
+                        <button 
+                          type="button" 
+                          className="ai-overlay-btn secondary"
+                          onClick={() => { if (onOpenFile) onOpenFile(overlayNode.filePath); setShowAiOverlay(false); }}
+                        >
+                          👁️ Visualizza
+                        </button>
+                        <button 
+                          type="submit" 
+                          className="ai-overlay-btn primary"
+                          disabled={aiOverlayLoading}
+                        >
+                          {aiOverlayLoading ? (
+                            <>
+                              <div className="ai-overlay-spinner"></div>
+                              Applicazione...
+                            </>
+                          ) : (
+                            '🤖 Modifica'
+                          )}
+                        </button>
+                      </div>
+                    </form>
+                  )}
+
+                  {fileTab === 'move' && (
+                    <form className="ai-overlay-form" onSubmit={handleOverlayMoveFile}>
+                      <div className="ai-overlay-group">
+                        <span className="ai-overlay-label">Argomento di destinazione</span>
+                        <select 
+                          className="ai-overlay-select"
+                          value={moveTargetTopicId}
+                          onChange={e => setMoveTargetTopicId(e.target.value)}
+                        >
+                          {topicsData.map(t => (
+                            <option key={t.id} value={t.id}>🌐 {escapeStr(t.name)}</option>
+                          ))}
+                        </select>
+                      </div>
+
+                      <div className="ai-overlay-group">
+                        <span className="ai-overlay-label">Sottoargomento (Modulo)</span>
+                        <select 
+                          className="ai-overlay-select"
+                          value={moveTargetModuleNum}
+                          onChange={e => setMoveTargetModuleNum(e.target.value)}
+                        >
+                          <option value="">— Nessun modulo (radice argomento) —</option>
+                          {(() => {
+                            const activeTopic = topicsData.find(t => t.id === moveTargetTopicId);
+                            return (activeTopic?.modules || []).map(m => (
+                              <option key={m.number} value={m.number}>M{m.number} — {escapeStr(m.name)}</option>
+                            ));
+                          })()}
+                        </select>
+                      </div>
+
+                      <div className="ai-overlay-group">
+                        <span className="ai-overlay-label">Categoria File</span>
+                        <select 
+                          className="ai-overlay-select"
+                          value={moveTargetCategory}
+                          onChange={e => setMoveTargetCategory(e.target.value)}
+                        >
+                          <option value="teoria">📖 Teoria</option>
+                          <option value="test">🧪 TestScript</option>
+                          <option value="viz">📊 Visualizzazione</option>
+                          <option value="docs">📄 Documentazione</option>
+                          <option value="whitepaper">📜 Whitepaper</option>
+                        </select>
+                      </div>
+
+                      {aiError && <div className="ai-overlay-error">{aiError}</div>}
+
+                      <div className="ai-overlay-footer">
+                        <button 
+                          type="button" 
+                          className="ai-overlay-btn secondary"
+                          onClick={() => setShowAiOverlay(false)}
+                        >
+                          Annulla
+                        </button>
+                        <button 
+                          type="submit" 
+                          className="ai-overlay-btn primary"
+                          disabled={aiOverlayLoading}
+                        >
+                          {aiOverlayLoading ? (
+                            <>
+                              <div className="ai-overlay-spinner"></div>
+                              Spostamento...
+                            </>
+                          ) : (
+                            '📦 Sposta'
+                          )}
+                        </button>
+                      </div>
+                    </form>
+                  )}
+
+                  {fileTab === 'delete' && (
+                    <div className="ai-overlay-form">
+                      <div style={{ fontSize: '0.65rem', color: '#8b8fa3', margin: '4px 0 8px 0', lineHeight: '1.4' }}>
+                        Sei sicuro di voler eliminare definitivamente questo file? Questa azione non può essere annullata.
+                      </div>
+                      
+                      {aiError && <div className="ai-overlay-error">{aiError}</div>}
+
+                      <div className="ai-overlay-footer">
+                        <button 
+                          type="button" 
+                          className="ai-overlay-btn secondary"
+                          onClick={() => setShowAiOverlay(false)}
+                        >
+                          Annulla
+                        </button>
+                        <button 
+                          type="button" 
+                          className="ai-overlay-btn"
+                          style={{ background: 'rgba(255, 85, 85, 0.1)', borderColor: 'rgba(255, 85, 85, 0.25)', color: '#ff5555' }}
+                          onClick={handleOverlayDeleteFile}
+                          disabled={aiOverlayLoading}
+                        >
+                          {aiOverlayLoading ? 'Eliminazione...' : '🗑️ Elimina Definitivamente'}
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </>
+              ) : (
+                // Topic/Module Creation Layout
+                <>
+                  <div className="ai-overlay-tabs">
+                    <button 
+                      type="button"
+                      className={`ai-overlay-tab ${!isAiMode ? 'active' : ''}`}
+                      onClick={() => { setIsAiMode(false); setAiError(''); }}
+                    >
+                      Standard
+                    </button>
+                    <button 
+                      type="button"
+                      className={`ai-overlay-tab ${isAiMode ? 'active' : ''}`}
+                      onClick={() => { setIsAiMode(true); setAiError(''); }}
+                    >
+                      🤖 Genera con AI
+                    </button>
+                  </div>
+
+                  <form className="ai-overlay-form" onSubmit={handleOverlayCreateFile}>
                     <div className="ai-overlay-group">
-                      <span className="ai-overlay-label">Modello AI</span>
+                      <span className="ai-overlay-label">Categoria File</span>
                       <select 
                         className="ai-overlay-select"
-                        value={selectedAiModel}
-                        onChange={e => setSelectedAiModel(e.target.value)}
+                        value={newFileCategory}
+                        onChange={e => setNewFileCategory(e.target.value)}
                       >
-                        {aiModels.length > 0 ? (
-                          aiModels.map(m => (
-                            <option key={m.name} value={m.name}>{m.name} ({m.size})</option>
-                          ))
-                        ) : (
-                          <option value="llama3.2">llama3.2 (default)</option>
-                        )}
+                        <option value="teoria">📖 Teoria</option>
+                        <option value="test">🧪 Test</option>
+                        <option value="viz">📊 Visualizzazione (D3)</option>
+                        <option value="docs">📄 Documentazione</option>
+                        <option value="whitepaper">📜 Whitepaper</option>
                       </select>
                     </div>
 
                     <div className="ai-overlay-group">
-                      <span className="ai-overlay-label">Ruolo Agente</span>
-                      <select 
-                        className="ai-overlay-select"
-                        value={selectedAiRole}
-                        onChange={e => setSelectedAiRole(e.target.value)}
-                      >
-                        <option value="code_architect">💻 Code Architect</option>
-                        <option value="math1">🔬 Math Architect</option>
-                        <option value="test-engineer">🧪 Test Engineer</option>
-                        <option value="viz-designer">🎨 Viz Designer</option>
-                        <option value="proof-reviewer">👁️ Proof Reviewer</option>
-                      </select>
-                    </div>
-
-                    <div className="ai-overlay-group">
-                      <span className="ai-overlay-label">Descrizione per l'AI</span>
-                      <textarea 
-                        className="ai-overlay-textarea"
-                        placeholder="Cosa deve contenere il file..."
-                        value={aiPromptText}
-                        onChange={e => setAiPromptText(e.target.value)}
+                      <span className="ai-overlay-label">Nome File (senza estensione)</span>
+                      <input 
+                        type="text" 
+                        className="ai-overlay-input"
+                        placeholder="nome_file"
+                        value={newFileName}
+                        onChange={e => setNewFileName(e.target.value.replace(/[^a-zA-Z0-9_-]/g, '_'))}
                         required
                       />
                     </div>
-                  </>
-                )}
 
-                {aiError && <div className="ai-overlay-error">{aiError}</div>}
-
-                <div className="ai-overlay-footer">
-                  <button 
-                    type="button" 
-                    className="ai-overlay-btn secondary"
-                    onClick={() => setShowAiOverlay(false)}
-                    disabled={aiOverlayLoading}
-                  >
-                    Annulla
-                  </button>
-                  <button 
-                    type="submit" 
-                    className="ai-overlay-btn primary"
-                    disabled={aiOverlayLoading}
-                  >
-                    {aiOverlayLoading ? (
+                    {isAiMode && (
                       <>
-                        <div className="ai-overlay-spinner"></div>
-                        {isAiMode ? 'Generazione...' : 'Creazione...'}
+                        <div className="ai-overlay-group">
+                          <span className="ai-overlay-label">Modello AI</span>
+                          <select 
+                            className="ai-overlay-select"
+                            value={selectedAiModel}
+                            onChange={e => setSelectedAiModel(e.target.value)}
+                          >
+                            {aiModels.length > 0 ? (
+                              aiModels.map(m => (
+                                <option key={m.name} value={m.name}>{m.name} ({m.size})</option>
+                              ))
+                            ) : (
+                              <option value="llama3.2">llama3.2 (default)</option>
+                            )}
+                          </select>
+                        </div>
+
+                        <div className="ai-overlay-group">
+                          <span className="ai-overlay-label">Ruolo Agente</span>
+                          <select 
+                            className="ai-overlay-select"
+                            value={selectedAiRole}
+                            onChange={e => setSelectedAiRole(e.target.value)}
+                          >
+                            <option value="code_architect">💻 Code Architect</option>
+                            <option value="math1">🔬 Math Architect</option>
+                            <option value="test-engineer">🧪 Test Engineer</option>
+                            <option value="viz-designer">🎨 Viz Designer</option>
+                            <option value="proof-reviewer">👁️ Proof Reviewer</option>
+                          </select>
+                        </div>
+
+                        <div className="ai-overlay-group">
+                          <span className="ai-overlay-label">Descrizione per l'AI</span>
+                          <textarea 
+                            className="ai-overlay-textarea"
+                            placeholder="Cosa deve contenere il file..."
+                            value={aiPromptText}
+                            onChange={e => setAiPromptText(e.target.value)}
+                            required
+                          />
+                        </div>
                       </>
-                    ) : (
-                      isAiMode ? '🤖 Genera' : 'Crea File'
                     )}
-                  </button>
-                </div>
-              </form>
+
+                    {aiError && <div className="ai-overlay-error">{aiError}</div>}
+
+                    <div className="ai-overlay-footer">
+                      <button 
+                        type="button" 
+                        className="ai-overlay-btn secondary"
+                        onClick={() => setShowAiOverlay(false)}
+                        disabled={aiOverlayLoading}
+                      >
+                        Annulla
+                      </button>
+                      <button 
+                        type="submit" 
+                        className="ai-overlay-btn primary"
+                        disabled={aiOverlayLoading}
+                      >
+                        {aiOverlayLoading ? (
+                          <>
+                            <div className="ai-overlay-spinner"></div>
+                            {isAiMode ? 'Generazione...' : 'Creazione...'}
+                          </>
+                        ) : (
+                          isAiMode ? '🤖 Genera' : 'Crea File'
+                        )}
+                      </button>
+                    </div>
+                  </form>
+                </>
+              )}
             </div>
           )}
         </div>
