@@ -2,7 +2,7 @@
   <h1 align="center">🧬 Σ-SIGMA Studio</h1>
   <p align="center"><strong>Piattaforma AI-Native per l'Orchestrazione Cognitiva e l'Automazione della Ricerca</strong></p>
   <p align="center">
-    <a href="#"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="Licenza MIT"></a>
+    <a href="#"><img src="https://img.shields.io/badge/license-GPLv3%20%2F%20Commercial-blue.svg" alt="Licenza GPL v3 / Commerciale"></a>
     <a href="#"><img src="https://img.shields.io/badge/python-3.10+-blue.svg" alt="Python 3.10+"></a>
     <a href="#"><img src="https://img.shields.io/badge/react-19-61DAFB.svg" alt="React 19"></a>
     <a href="#"><img src="https://img.shields.io/badge/ollama-ready-FF6F00.svg" alt="Ollama Ready"></a>
@@ -188,7 +188,7 @@ Sigma_Studio/
 ├── sigma_server.py                 ← Backend Python — API REST + Orchestrazione AI
 ├── config.json                     ← Configurazione dei provider AI
 ├── .gitignore                      ← Esclusioni git (node_modules, data/, etc.)
-├── LICENSE                         ← Licenza MIT
+├── LICENSE                         ← Licenza GPL v3 / Commerciale
 ├── README.md                       ← Documentazione in inglese
 ├── README_IT.md                    ← Questo file
 │
@@ -249,13 +249,23 @@ Sigma_Studio/
 
 ## 📜 Licenza
 
-```
-Licenza MIT
+Questo progetto è rilasciato con una **Doppia Licenza (Dual Licensing)**:
+1. **GNU GPL v3**: Per la comunità, sviluppatori open-source, ricerca accademica e scopi educativi.
+2. **Licenza Commerciale**: Per aziende, prodotti proprietari e software closed-source.
 
-Copyright (c) 2026 Diego Saitta
-
-Con la presente si concede a chiunque ottenga una copia di questo software e dei file di documentazione associati il permesso di utilizzare il software senza restrizioni, inclusi i diritti di utilizzo, copia, modifica, fusione, pubblicazione, distribuzione, sublicenza e/o vendita di copie del software, alle condizioni descritte nella licenza MIT originale.
 ```
+                 SigmaStudio
+                     |
+        +------------+------------+
+        |                         |
+     GPL v3                  Commercial License
+        |                         |
+ Comunità, ricerca          Aziende, prodotti chiusi
+ gratis                     pagamento
+```
+
+Per informazioni o richieste relative all'acquisto di una licenza commerciale, contattare Diego Saitta.
+Consulta il file [LICENSE](LICENSE) per i termini dettagliati della licenza.
 
 ---
 

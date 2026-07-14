@@ -1,7 +1,7 @@
 {
   "name": "sigma-studio",
   "version": "6.0.0",
-  "license": "MIT",
+  "license": "(GPL-3.0-only OR LicenseRef-Commercial)",
   "private": false,
   "scripts": {
     "dev": "npm --prefix sigma_studio run dev",

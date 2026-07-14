@@ -2,7 +2,7 @@
   <h1 align="center">🧬 Σ-SIGMA Studio</h1>
   <p align="center"><strong>AI-Native Platform for Cognitive Orchestration & Research Automation</strong></p>
   <p align="center">
-    <a href="#"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="License MIT"></a>
+    <a href="#"><img src="https://img.shields.io/badge/license-GPLv3%20%2F%20Commercial-blue.svg" alt="GPL v3 / Commercial License"></a>
     <a href="#"><img src="https://img.shields.io/badge/python-3.10+-blue.svg" alt="Python 3.10+"></a>
     <a href="#"><img src="https://img.shields.io/badge/react-19-61DAFB.svg" alt="React 19"></a>
     <a href="#"><img src="https://img.shields.io/badge/ollama-ready-FF6F00.svg" alt="Ollama Ready"></a>
@@ -222,7 +222,7 @@ Sigma_Studio/
 ├── sigma_server.py                 ← Python Backend — REST API + AI orchestration
 ├── config.json                     ← Multi-provider AI configuration
 ├── .gitignore                      ← Ignores node_modules, .env, dist, data/
-├── LICENSE                         ← MIT License
+├── LICENSE                         ← GPL v3 / Commercial License
 ├── README.md                       ← This file
 │
 ├── core/                           ← Backend modules (separation of concerns)
@@ -289,7 +289,7 @@ Sigma_Studio/
 
 ## 🤝 Contributing
 
-Sigma Studio is **open source** under the **MIT license**. We welcome contributions of all kinds:
+Sigma Studio is licensed under a **Dual License (GPL v3 / Commercial)**. We welcome contributions of all kinds:
 
 - 🐛 **Report bugs** — open a GitHub issue
 - 💡 **Propose features** — discussions and PRs welcome
@@ -317,29 +317,23 @@ python sigma_server.py          # Auto-builds + serves on :8000
 
 ## 📜 License
 
+This project is dual-licensed under:
+1. **GNU GPL v3**: For community, open-source, research, and educational use.
+2. **Commercial License**: For companies, proprietary products, and closed-source software.
+
 ```
-MIT License
-
-Copyright (c) 2026 Diego Saitta
-
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
+                 SigmaStudio
+                     |
+        +------------+------------+
+        |                         |
+     GPL v3                  Commercial License
+        |                         |
+ Comunità, ricerca          Aziende, prodotti chiusi
+ gratis                     pagamento
 ```
+
+For inquiries regarding commercial licensing, please contact Diego Saitta.
+See the [LICENSE](LICENSE) file for the full licensing terms.
 
 ---
 
