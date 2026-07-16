@@ -211,7 +211,7 @@ Se non sei sicuro o se la richiesta riguarda la pianificazione generale del prog
     try:
         response, _, error = call_ai_model(
             messages, ai_cfg, main_model, provider, endpoint, api_url, api_key,
-            0.1, 50, top_p, timeout
+            0.1, 1000, top_p, timeout
         )
         if not error and response:
             chosen = response.strip().lower()

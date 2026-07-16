@@ -86,8 +86,21 @@ def _should_activate_loop(goal: str, ai_cfg: dict, model_override: str) -> bool:
     # 1. Immediate Heuristics
     goal_lower = goal.lower().strip()
     
-    # Saluti e domande semplici su identità
-    if any(w in goal_lower for w in ["ciao", "hello", "hi", "buongiorno", "buonasera", "chi sei", "come ti chiami", "come stai"]):
+    # Check for operational keywords or file references first
+    operational_keywords = [
+        "modifica", "sostituisci", "salva", "crea", "scrivi", "cancella", "elimina", 
+        "rinomina", "sposta", "esegui", "run", "testa", "test", "correggi", "risolvi",
+        "implementa", "aggiungi"
+    ]
+    has_operation = any(w in goal_lower for w in operational_keywords)
+    has_file = any(ext in goal_lower for ext in [".html", ".py", ".js", ".css", ".json", ".txt", "file", "cartella", "modulo"])
+
+    # Saluti e domande semplici su identità (usando regex con word boundary per evitare falsi positivi)
+    greetings = ["ciao", "hello", "hi", "buongiorno", "buonasera", "chi sei", "come ti chiami", "come stai"]
+    is_greeting = any(re.search(rf"\b{re.escape(w)}\b", goal_lower) for w in greetings)
+    
+    # Only bypass the loop if it's a pure greeting/identity check with no operational intent
+    if is_greeting and not (has_operation or has_file):
         log.info("Heuristic INFO match (greeting/identity): %s", goal[:50])
         return False
         
@@ -101,14 +114,6 @@ def _should_activate_loop(goal: str, ai_cfg: dict, model_override: str) -> bool:
         return False
 
     # 2. Fallback check: if there are no file extensions and no command keywords, it's highly likely informational
-    operational_keywords = [
-        "modifica", "sostituisci", "salva", "crea", "scrivi", "cancella", "elimina", 
-        "rinomina", "sposta", "esegui", "run", "testa", "test", "correggi", "risolvi",
-        "implementa", "aggiungi"
-    ]
-    has_operation = any(w in goal_lower for w in operational_keywords)
-    has_file = any(ext in goal_lower for ext in [".html", ".py", ".js", ".css", ".json", ".txt", "file", "cartella", "modulo"])
-    
     if not has_operation and not has_file:
         log.info("Heuristic INFO match (no operational keywords and no file references): %s", goal[:50])
         return False
@@ -135,9 +140,10 @@ Scrivi SOLO LOOP o INFO. Nessun altro commento.
         {"role": "user", "content": f"Richiesta: {goal}"}
     ]
     try:
+        # Aumentato max_tokens a 1000 per supportare modelli con ragionamento/thinking (come DeepSeek)
         response, _, error = call_ai_model(
             messages, ai_cfg, main_model, provider, endpoint, api_url, api_key,
-            0.1, 10, top_p, timeout
+            0.1, 1000, top_p, timeout
         )
         if not error and response:
             res = response.strip().upper()
@@ -154,6 +160,25 @@ Scrivi SOLO LOOP o INFO. Nessun altro commento.
     if has_operation or has_file:
         return True
     return False
+
+
+def _extract_partial_string_field(field_name: str, accumulated: str) -> str:
+    import re
+    # Cerca "field_name": "..." o "field_name": '...' o parziale
+    match = re.search(f'"{field_name}"\\s*:\\s*"(.*?)"', accumulated, re.DOTALL)
+    if match:
+        return match.group(1).replace('\\"', '"').replace('\\n', '\n')
+    
+    # Esempio parziale non ancora chiuso
+    match_open = re.search(f'"{field_name}"\\s*:\\s*"(.*)', accumulated, re.DOTALL)
+    if match_open:
+        text = match_open.group(1)
+        # Tronchiamo all'eventuale virgoletta di chiusura non preceduta da escape
+        parts = re.split(r'(?<!\\)"', text)
+        if parts:
+            text = parts[0]
+        return text.replace('\\"', '"').replace('\\n', '\n')
+    return ""
 
 
 def execute_feedback_loop(self, req, stream_callback=None):
@@ -432,25 +457,6 @@ IMPORTANTE: Rispondi esclusivamente in formato JSON. Nessun testo prima del JSON
             }, "actions_log": []})
             
         return {"response": final_clean_response, "actions_log": [], "iterations": 1, "completed": True}
-
-def _extract_partial_string_field(field_name: str, accumulated: str) -> str:
-    import re
-    # Cerca "field_name": "..." o "field_name": '...' o parziale
-    match = re.search(f'"{field_name}"\\s*:\\s*"(.*?)"', accumulated, re.DOTALL)
-    if match:
-        return match.group(1).replace('\\"', '"').replace('\\n', '\n')
-    
-    # Esempio parziale non ancora chiuso
-    match_open = re.search(f'"{field_name}"\\s*:\\s*"(.*)', accumulated, re.DOTALL)
-    if match_open:
-        text = match_open.group(1)
-        # Tronchiamo all'eventuale virgoletta di chiusura non preceduta da escape
-        parts = re.split(r'(?<!\\)"', text)
-        if parts:
-            text = parts[0]
-        return text.replace('\\"', '"').replace('\\n', '\n')
-    return ""
-
 
     all_actions_log = []
     current_iteration = 0
