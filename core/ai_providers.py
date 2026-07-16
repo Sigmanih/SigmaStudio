@@ -571,7 +571,7 @@ def call_ollama_stream(
         if resp.status_code != 200:
             yield {"error": True, "message": f"Ollama error {resp.status_code}: {resp.text[:200]}"}
             return
-        for line in resp.iter_lines(decode_unicode=True):
+        for line in resp.iter_lines(chunk_size=1, decode_unicode=True):
             if not line:
                 continue
             try:
@@ -673,7 +673,7 @@ def call_openai_compatible_stream(
         if resp.status_code != 200:
             yield {"error": True, "message": f"API error {resp.status_code}: {resp.text[:200]}"}
             return
-        for line in resp.iter_lines(decode_unicode=True):
+        for line in resp.iter_lines(chunk_size=1, decode_unicode=True):
             if not line:
                 continue
             if not line.startswith("data:"):
@@ -754,3 +754,33 @@ def call_anthropic(
         return None, f"Anthropic error {resp.status_code}: {detail}"
     except Exception as e:
         return None, str(e)
+
+
+def call_ai_model_stream(messages, ai_cfg, model, provider, endpoint, api_url, api_key, temperature, max_tokens, top_p, request_timeout):
+    """Unified generator yielding chunks of tokens in the format {'token': '...', 'thinking': '...'} or {'done': True} or {'error': True, 'message': '...'}"""
+    route_provider = provider
+    if route_provider in ('deepseek', 'openai'):
+        route_provider = 'api'
+    elif route_provider not in ('ollama', 'api', 'anthropic'):
+        route_provider = 'api'
+    ac = ai_cfg.get("providers", {}).get(provider, {})
+    try:
+        if route_provider == "ollama":
+            return call_ollama_stream(messages, model, endpoint, temperature, max_tokens, top_p,
+                ac.get("top_k", 40), ac.get("repeat_penalty", 1.1), ac.get("num_ctx", 8192), ac.get("seed", 0), request_timeout)
+        elif route_provider == "api":
+            return call_openai_compatible_stream(messages, model, api_url, api_key, temperature, max_tokens, top_p, request_timeout)
+        elif route_provider == "anthropic":
+            # Anthropic fallback to non-stream, yielding the entire text as a single token
+            content, thinking = call_anthropic(messages, model, api_url, api_key, temperature, max_tokens, top_p)
+            def _single_gen():
+                if content: yield {"token": content}
+                if thinking: yield {"thinking": thinking}
+                yield {"done": True}
+            return _single_gen()
+    except Exception as e:
+        def _exc_gen(): yield {"error": True, "message": str(e)}
+        return _exc_gen()
+    
+    def _unk_gen(): yield {"error": True, "message": "Provider sconosciuto"}
+    return _unk_gen()

@@ -257,4 +257,24 @@ def handle_rename_file(self):
         self.send_json_response({"success": True})
     except Exception as exc:
         log.error("handle_rename_file: %s", exc)
-        self.send_json_response({"error": str(exc)}, 500)
+        self.send_json_response({"error": str(exc)}, 500)
+
+
+def handle_api_rollback(self):
+    """Handle rollback requests for a specific action backup."""
+    try:
+        req = self.read_json_body()
+        backup_id = req.get("backup_id")
+        if not backup_id:
+            return self.send_json_response({"error": "backup_id mancante"}, 400)
+            
+        from core.backup_manager import rollback_backup
+        success, msg = rollback_backup(backup_id)
+        if success:
+            self.send_json_response({"success": True, "message": msg})
+        else:
+            self.send_json_response({"error": msg}, 400)
+    except Exception as exc:
+        log.error("handle_api_rollback error: %s", exc)
+        self.send_json_response({"error": str(exc)}, 500)
+

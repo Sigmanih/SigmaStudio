@@ -42,37 +42,69 @@ export default function ChatInput({
           {attachedFiles.length > 0 && <span className="chat-attach-count">{attachedFiles.length}</span>}
         </button>
         {loading ? (
-          <button className="chat-send-btn stop" onClick={onStop} title="Stop">
+          <button className="chat-send-btn stop" onClick={onStop} title="Ferma esecuzione">
             <Send size={16} />
           </button>
         ) : (
-          <>
-            <button className="chat-send-btn" onClick={onSend} disabled={!input.trim()} title="Invia">
-              <Send size={16} />
-            </button>
-            <div className="chat-loop-wrapper">
+          <div className="chat-input-controls-group" style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+            <div className="chat-loop-wrapper" style={{ display: 'flex', alignItems: 'center' }}>
               <select
                 className="chat-loop-max-select"
                 value={loopMaxIterations}
                 onChange={e => setLoopMaxIterations(parseInt(e.target.value))}
                 disabled={loopActive}
+                style={{
+                  background: '#0e1016',
+                  border: '1px solid #1e2030',
+                  borderRadius: '4px',
+                  color: '#8b8fa3',
+                  fontSize: '0.62rem',
+                  padding: '4px',
+                  outline: 'none',
+                  cursor: 'pointer'
+                }}
               >
-                <option value={1}>1x</option><option value={3}>3x</option>
-                <option value={5}>5x</option><option value={10}>10x</option>
-                <option value={25}>25x</option><option value={50}>50x</option>
-                <option value={100}>100x</option>
+                <option value={1}>1x (Risposta Singola)</option>
+                <option value={3}>3x Loop</option>
+                <option value={5}>5x Loop</option>
+                <option value={10}>10x Loop</option>
+                <option value={25}>25x Loop</option>
+                <option value={50}>50x Loop</option>
+                <option value={999}>∞ Infinito</option>
               </select>
-              <button
-                className="chat-loop-btn"
-                onClick={onSend}
-                disabled={!input.trim() || loading || loopActive}
-                title={`Esegui (max ${loopMaxIterations} iterazioni)`}
-              >
-                <RefreshCw size={14} />
-                <span className="chat-loop-badge">{loopMaxIterations}</span>
-              </button>
             </div>
-          </>
+            
+            <button 
+              className="chat-send-btn" 
+              onClick={onSend} 
+              disabled={!input.trim()} 
+              title={loopMaxIterations > 1 ? `Invia in Loop (max ${loopMaxIterations === 999 ? '∞' : loopMaxIterations} iterazioni)` : 'Invia richiesta'}
+              style={{
+                position: 'relative',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center'
+              }}
+            >
+              <Send size={16} />
+              {loopMaxIterations > 1 && (
+                <span className="chat-loop-badge" style={{
+                  position: 'absolute',
+                  top: '-4px',
+                  right: '-4px',
+                  background: '#00d2ff',
+                  color: '#000',
+                  fontSize: '0.5rem',
+                  fontWeight: '700',
+                  padding: '1px 3px',
+                  borderRadius: '3px',
+                  lineHeight: 1
+                }}>
+                  {loopMaxIterations === 999 ? '∞' : loopMaxIterations}
+                </span>
+              )}
+            </button>
+          </div>
         )}
       </div>
       {children}

@@ -63,6 +63,23 @@ export default function MappaArgomenti({ onOpenFile }) {
   const [existingFileContent, setExistingFileContent] = useState('');
   const [fileTab, setFileTab] = useState('ai_edit'); // 'ai_edit' | 'move' | 'delete'
 
+  // States for file upload integration
+  const [creationTab, setCreationTab] = useState('standard'); // 'standard' | 'ai' | 'upload'
+  const [selectedUploadFile, setSelectedUploadFile] = useState(null);
+  const [isDragActive, setIsDragActive] = useState(false);
+  const fileInputRef = useRef(null);
+
+  // Auto clean upload states when overlay is closed
+  useEffect(() => {
+    if (!showAiOverlay) {
+      setCreationTab('standard');
+      setSelectedUploadFile(null);
+      setIsDragActive(false);
+      setAiError('');
+    }
+  }, [showAiOverlay]);
+
+
   useEffect(() => {
     if (showAiOverlay && overlayNode && overlayNode.type === 'doc') {
       setFileTab('ai_edit');
@@ -148,6 +165,44 @@ export default function MappaArgomenti({ onOpenFile }) {
       window.removeEventListener('mouseup', handleMouseUp);
     };
   }, [isDraggingOverlay, overlayDragStart]);
+
+  // Event handlers for drag & drop file upload
+  const handleDrag = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (e.type === "dragenter" || e.type === "dragover") {
+      setIsDragActive(true);
+    } else if (e.type === "dragleave") {
+      setIsDragActive(false);
+    }
+  };
+
+  const handleDrop = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragActive(false);
+    if (e.dataTransfer.files && e.dataTransfer.files[0]) {
+      const file = e.dataTransfer.files[0];
+      setSelectedUploadFile(file);
+      const nameParts = file.name.split('.');
+      if (nameParts.length > 1) {
+        nameParts.pop();
+      }
+      setNewFileName(nameParts.join('.'));
+    }
+  };
+
+  const handleFileChange = (e) => {
+    if (e.target.files && e.target.files[0]) {
+      const file = e.target.files[0];
+      setSelectedUploadFile(file);
+      const nameParts = file.name.split('.');
+      if (nameParts.length > 1) {
+        nameParts.pop();
+      }
+      setNewFileName(nameParts.join('.'));
+    }
+  };
 
   useEffect(() => {
     if (aiModels.length > 0 && !selectedAiModel) {
@@ -1067,10 +1122,6 @@ export default function MappaArgomenti({ onOpenFile }) {
 
   const handleOverlayCreateFile = async (e) => {
     if (e) e.preventDefault();
-    if (!newFileName.trim()) {
-      setAiError('Inserisci un nome file');
-      return;
-    }
     
     // Resolve folder path
     let baseFolder = '';
@@ -1107,6 +1158,72 @@ export default function MappaArgomenti({ onOpenFile }) {
     const ext = extensions[newFileCategory] || '.md';
     
     let sanitizedName = newFileName.trim();
+    
+    // UPLOAD MODE HANDLER
+    if (creationTab === 'upload') {
+      if (!selectedUploadFile) {
+        setAiError('Seleziona o trascina un file prima di caricarlo');
+        return;
+      }
+      if (!sanitizedName) {
+        setAiError('Inserisci un nome file');
+        return;
+      }
+      
+      setAiOverlayLoading(true);
+      setAiError('');
+      
+      try {
+        // Keep original extension if not manually typed by user
+        const origName = selectedUploadFile.name;
+        const lastDot = origName.lastIndexOf('.');
+        const origExt = lastDot !== -1 ? origName.substring(lastDot) : '';
+        
+        let finalName = sanitizedName;
+        if (!finalName.toLowerCase().endsWith(origExt.toLowerCase())) {
+          finalName = finalName + origExt;
+        }
+        
+        if (newFileCategory === 'whitepaper' && !finalName.toUpperCase().startsWith('WHITEPAPER_')) {
+          finalName = 'WHITEPAPER_' + finalName;
+        }
+        
+        const fullPath = `${baseFolder}/${subdir}/${finalName}`;
+        
+        const formData = new FormData();
+        formData.append('file', selectedUploadFile, finalName);
+        formData.append('folder', baseFolder);
+        formData.append('type', newFileCategory);
+        
+        const res = await fetch('/api/upload_file', {
+          method: 'POST',
+          body: formData
+        });
+        
+        const data = await res.json();
+        if (data.success) {
+          setNewFileName('');
+          setSelectedUploadFile(null);
+          setShowAiOverlay(false);
+          await fetchData();
+          if (onOpenFile) onOpenFile(fullPath);
+        } else {
+          setAiError(data.error || 'Errore durante il caricamento');
+        }
+      } catch (err) {
+        setAiError('Errore di rete: ' + err.message);
+      } finally {
+        setAiOverlayLoading(false);
+      }
+      return;
+    }
+    
+    // STANDARD / AI CREATE MODES
+    if (!sanitizedName) {
+      setAiError('Inserisci un nome file');
+      return;
+    }
+    
     if (newFileCategory === 'whitepaper' && !sanitizedName.toUpperCase().startsWith('WHITEPAPER_')) {
       sanitizedName = 'WHITEPAPER_' + sanitizedName;
     }
@@ -2011,6 +2128,15 @@ export default function MappaArgomenti({ onOpenFile }) {
           border-radius: 50%;
           animation: spin 0.8s linear infinite;
         }
+        .ai-overlay-dropzone:hover {
+          border-color: rgba(0, 210, 255, 0.45) !important;
+          background: rgba(0, 210, 255, 0.04) !important;
+        }
+        .ai-overlay-dropzone.dragging {
+          border-color: #00d2ff !important;
+          background: rgba(0, 210, 255, 0.08) !important;
+          box-shadow: 0 0 12px rgba(0, 210, 255, 0.15);
+        }
       `}</style>
       
       {/* TOP SECTION — graph + detail panel */}
@@ -2308,17 +2434,24 @@ export default function MappaArgomenti({ onOpenFile }) {
                   <div className="ai-overlay-tabs">
                     <button 
                       type="button"
-                      className={`ai-overlay-tab ${!isAiMode ? 'active' : ''}`}
-                      onClick={() => { setIsAiMode(false); setAiError(''); }}
+                      className={`ai-overlay-tab ${creationTab === 'standard' ? 'active' : ''}`}
+                      onClick={() => { setCreationTab('standard'); setIsAiMode(false); setAiError(''); }}
                     >
                       Standard
                     </button>
                     <button 
                       type="button"
-                      className={`ai-overlay-tab ${isAiMode ? 'active' : ''}`}
-                      onClick={() => { setIsAiMode(true); setAiError(''); }}
+                      className={`ai-overlay-tab ${creationTab === 'ai' ? 'active' : ''}`}
+                      onClick={() => { setCreationTab('ai'); setIsAiMode(true); setAiError(''); }}
                     >
                       🤖 Genera con AI
+                    </button>
+                    <button 
+                      type="button"
+                      className={`ai-overlay-tab ${creationTab === 'upload' ? 'active' : ''}`}
+                      onClick={() => { setCreationTab('upload'); setIsAiMode(false); setAiError(''); }}
+                    >
+                      📎 Allega File
                     </button>
                   </div>
 
@@ -2338,19 +2471,114 @@ export default function MappaArgomenti({ onOpenFile }) {
                       </select>
                     </div>
 
-                    <div className="ai-overlay-group">
-                      <span className="ai-overlay-label">Nome File (senza estensione)</span>
-                      <input 
-                        type="text" 
-                        className="ai-overlay-input"
-                        placeholder="nome_file"
-                        value={newFileName}
-                        onChange={e => setNewFileName(e.target.value.replace(/[^a-zA-Z0-9_-]/g, '_'))}
-                        required
-                      />
-                    </div>
+                    {creationTab === 'upload' && (
+                      <div className="ai-overlay-group" style={{ gap: '8px' }}>
+                        <span className="ai-overlay-label">Carica File da PC</span>
+                        
+                        {/* Drag and Drop Zone */}
+                        <div 
+                          className={`ai-overlay-dropzone ${isDragActive ? 'dragging' : ''} ${selectedUploadFile ? 'has-file' : ''}`}
+                          onDragEnter={handleDrag}
+                          onDragOver={handleDrag}
+                          onDragLeave={handleDrag}
+                          onDrop={handleDrop}
+                          onClick={() => fileInputRef.current?.click()}
+                          style={{
+                            border: '1.5px dashed rgba(0, 210, 255, 0.25)',
+                            borderRadius: '8px',
+                            padding: '16px 12px',
+                            textAlign: 'center',
+                            background: isDragActive ? 'rgba(0, 210, 255, 0.08)' : selectedUploadFile ? 'rgba(0, 210, 255, 0.02)' : 'rgba(0,0,0,0.15)',
+                            cursor: 'pointer',
+                            transition: 'all 0.15s ease',
+                            display: 'flex',
+                            flexDirection: 'column',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            gap: '6px'
+                          }}
+                        >
+                          <input 
+                            ref={fileInputRef}
+                            type="file"
+                            style={{ display: 'none' }}
+                            onChange={handleFileChange}
+                          />
+                          
+                          {selectedUploadFile ? (
+                            <>
+                              <span style={{ fontSize: '1.2rem' }}>📎</span>
+                              <div style={{ fontSize: '0.65rem', fontWeight: '600', color: '#00d2ff', maxWidth: '100%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                {selectedUploadFile.name}
+                              </div>
+                              <div style={{ fontSize: '0.5rem', color: '#5a5e72' }}>
+                                {(selectedUploadFile.size / 1024).toFixed(1)} KB
+                              </div>
+                              <button 
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setSelectedUploadFile(null);
+                                  setNewFileName('');
+                                }}
+                                style={{
+                                  background: 'rgba(255,85,85,0.1)',
+                                  border: '1px solid rgba(255,85,85,0.2)',
+                                  color: '#ff5555',
+                                  fontSize: '0.5rem',
+                                  padding: '2px 8px',
+                                  borderRadius: '4px',
+                                  marginTop: '4px',
+                                  cursor: 'pointer'
+                                }}
+                              >
+                                Rimuovi
+                              </button>
+                            </>
+                          ) : (
+                            <>
+                              <span style={{ fontSize: '1.2rem', opacity: 0.6 }}>📥</span>
+                              <div style={{ fontSize: '0.62rem', color: '#8b8fa3' }}>
+                                Trascina qui il file o <span style={{ color: '#00d2ff', textDecoration: 'underline' }}>sfoglia</span>
+                              </div>
+                              <div style={{ fontSize: '0.5rem', color: '#5a5e72' }}>
+                                Supporta qualsiasi tipo di documento
+                              </div>
+                            </>
+                          )}
+                        </div>
 
-                    {isAiMode && (
+                        {selectedUploadFile && (
+                          <div className="ai-overlay-group">
+                            <span className="ai-overlay-label">Nome file sul server (senza estensione)</span>
+                            <input 
+                              type="text" 
+                              className="ai-overlay-input"
+                              placeholder="nome_file_salvato"
+                              value={newFileName}
+                              onChange={e => setNewFileName(e.target.value.replace(/[^a-zA-Z0-9_-]/g, '_'))}
+                              required
+                            />
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {creationTab !== 'upload' && (
+                      <div className="ai-overlay-group">
+                        <span className="ai-overlay-label">Nome File (senza estensione)</span>
+                        <input 
+                          type="text" 
+                          className="ai-overlay-input"
+                          placeholder="nome_file"
+                          value={newFileName}
+                          onChange={e => setNewFileName(e.target.value.replace(/[^a-zA-Z0-9_-]/g, '_'))}
+                          required
+                        />
+                      </div>
+                    )}
+
+                    {creationTab === 'ai' && (
                       <>
                         <div className="ai-overlay-group">
                           <span className="ai-overlay-label">Modello AI</span>
@@ -2411,15 +2639,15 @@ export default function MappaArgomenti({ onOpenFile }) {
                       <button 
                         type="submit" 
                         className="ai-overlay-btn primary"
-                        disabled={aiOverlayLoading}
+                        disabled={aiOverlayLoading || (creationTab === 'upload' && !selectedUploadFile)}
                       >
                         {aiOverlayLoading ? (
                           <>
                             <div className="ai-overlay-spinner"></div>
-                            {isAiMode ? 'Generazione...' : 'Creazione...'}
+                            {creationTab === 'ai' ? 'Generazione...' : creationTab === 'upload' ? 'Caricamento...' : 'Creazione...'}
                           </>
                         ) : (
-                          isAiMode ? '🤖 Genera' : 'Crea File'
+                          creationTab === 'ai' ? '🤖 Genera' : creationTab === 'upload' ? '📎 Carica' : 'Crea File'
                         )}
                       </button>
                     </div>

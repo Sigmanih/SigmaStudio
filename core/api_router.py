@@ -76,6 +76,7 @@ def register_post_handlers(handler_class):
         '/api/agents/upload_image': 'handle_upload_agent_image',
         '/api/ai/action': 'handle_api_action',
         '/api/rename_file': 'handle_rename_file',
+        '/api/rollback': 'handle_api_rollback',
     }
 
 

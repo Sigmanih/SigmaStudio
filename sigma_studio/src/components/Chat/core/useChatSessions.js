@@ -106,6 +106,23 @@ export function useChatSessions({ selectedModel, setSelectedModel, setActionsLog
     if (e.key === 'Escape') setEditingSessionName(null);
   };
 
+  const deleteMessage = (msgIndexOrIndices) => {
+    if (!activeSessionId) return;
+    setSessionMessages(prev => {
+      const msgs = prev[activeSessionId] || [];
+      let newMsgs;
+      if (Array.isArray(msgIndexOrIndices)) {
+        newMsgs = msgs.filter((_, idx) => !msgIndexOrIndices.includes(idx));
+      } else {
+        newMsgs = msgs.filter((_, idx) => idx !== msgIndexOrIndices);
+      }
+      try {
+        localStorage.setItem(`sigma_chat_session_${activeSessionId}`, JSON.stringify(newMsgs));
+      } catch (e) {}
+      return { ...prev, [activeSessionId]: newMsgs };
+    });
+  };
+
   return {
     sessions,
     setSessions,
@@ -125,6 +142,7 @@ export function useChatSessions({ selectedModel, setSelectedModel, setActionsLog
     handleStartRename,
     handleFinishRename,
     handleRenameKeyDown,
+    deleteMessage,
     sessionRefs: refs
   };
 }

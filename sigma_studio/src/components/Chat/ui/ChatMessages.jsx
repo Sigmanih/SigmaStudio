@@ -56,31 +56,50 @@ function groupMessages(messages) {
 export default function ChatMessages({
   messages, loading, actionsLog, expandedThinking, onToggleThinking,
   selectedModel, onDeleteMessage, refs, onStop, agentPipeline,
-  activeManifesto, manifestos,
+  activeManifesto, manifestos, autoScroll, setAutoScroll,
 }) {
   const grouped = groupMessages(messages);
 
+  const handleScroll = (e) => {
+    if (!setAutoScroll) return;
+    const { scrollTop, scrollHeight, clientHeight } = e.currentTarget;
+    // Se la distanza dal fondo è inferiore a 55px, consideriamo che l'utente è alla fine
+    const isAtBottom = scrollHeight - scrollTop - clientHeight < 55;
+    if (isAtBottom && !autoScroll) {
+      setAutoScroll(true);
+    } else if (!isAtBottom && autoScroll) {
+      setAutoScroll(false);
+    }
+  };
+
   return (
-    <div className="chat-messages">
+    <div className="chat-messages" onScroll={handleScroll}>
       {/* Pipeline status bar */}
       <AgentPipelineStatus pipeline={agentPipeline} />
       
-      {grouped.map((msgGroup, i) => (
-        <div key={i} className="chat-message-wrapper">
-          <AgentMessage
-            groupedMessages={msgGroup.length > 1 ? msgGroup : undefined}
-            msg={msgGroup.length === 1 ? msgGroup[0] : undefined}
-            msgId={`msg-${i}`}
-            msgIndex={i}
-            expandedThinking={expandedThinking}
-            onToggleThinking={(id) => onToggleThinking(id)}
-            effectiveModelName={selectedModel}
-            onDeleteMessage={onDeleteMessage}
-            activeManifesto={activeManifesto}
-            manifestos={manifestos}
-          />
-        </div>
-      ))}
+      {grouped.map((msgGroup, i) => {
+        // Calcola l'indice reale di ciascun messaggio del gruppo all'interno dell'array flat 'messages'
+        const realIndices = msgGroup.map(m => messages.indexOf(m)).filter(idx => idx !== -1);
+        const indexValue = realIndices.length === 1 ? realIndices[0] : realIndices;
+        return (
+          <div key={i} className="chat-message-wrapper">
+            <AgentMessage
+              groupedMessages={msgGroup.length > 1 ? msgGroup : undefined}
+              msg={msgGroup.length === 1 ? msgGroup[0] : undefined}
+              msgId={`msg-${i}`}
+              msgIndex={indexValue}
+              expandedThinking={expandedThinking}
+              onToggleThinking={(id) => onToggleThinking(id)}
+              effectiveModelName={selectedModel}
+              onDeleteMessage={onDeleteMessage}
+              activeManifesto={activeManifesto}
+              manifestos={manifestos}
+              autoScroll={autoScroll}
+              setAutoScroll={setAutoScroll}
+            />
+          </div>
+        );
+      })}
       {loading && <AgentMessage msg={{}} loading={true} onStop={onStop} />}
       {actionsLog.length > 0 && !loading && (
         <div className="chat-actions-summary">

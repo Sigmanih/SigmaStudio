@@ -12,16 +12,20 @@ export default function ChatHeader({
   onOpenConfig, onClose, isPanel = false,
 }) {
   return (
-    <div className="chat-header">
-      {isPanel && (
-        <div
-          className="chat-header-drag"
-          onMouseDown={(e) => { e.stopPropagation(); onStartDrag(e); }}
-          style={{ cursor: isDragging ? 'grabbing' : 'grab' }}
-        >
-          <GripVertical size={14} />
-        </div>
-      )}
+    <div 
+      className="chat-header"
+      onMouseDown={(e) => {
+        if (!isPanel || !onStartDrag) return;
+        if (e.target.closest('button') || e.target.closest('.model-selector-popover') || e.target.closest('.model-selector-wrapper')) {
+          return;
+        }
+        onStartDrag(e);
+      }}
+      style={{ 
+        cursor: isPanel && onStartDrag ? (isDragging ? 'grabbing' : 'grab') : 'default',
+        userSelect: 'none'
+      }}
+    >
       <div className="chat-header-left">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
           <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5" />
@@ -69,11 +73,6 @@ export default function ChatHeader({
         </div>
       </div>
       <div className="chat-header-right">
-        {isPanel && (
-          <button className="chat-header-btn" onClick={(e) => { e.stopPropagation(); onDuplicateSession(); }} title="Duplica chat">
-            <FileText size={14} />
-          </button>
-        )}
         <button className="chat-header-btn" onClick={(e) => { e.stopPropagation(); onOpenQuickConfig(); }} title="Parametri rapidi">
           ⚙️
         </button>

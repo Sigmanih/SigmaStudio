@@ -27,6 +27,8 @@ function formatTimestamp(ts) {
 // ==============================================================================
 // Main AgentMessage Component
 // ==============================================================================
+import { useState } from 'react';
+
 export default function AgentMessage({
   msg,
   groupedMessages,
@@ -40,6 +42,34 @@ export default function AgentMessage({
 }) {
   const app = useApp();
   const openTab = app ? app.openTab : null;
+  const [rolledBacks, setRolledBacks] = useState({});
+  const [expandedDiffs, setExpandedDiffs] = useState({});
+  const toggleDiff = (key) => {
+    setExpandedDiffs(prev => ({ ...prev, [key]: !prev[key] }));
+  };
+
+  const handleRollback = async (backupId) => {
+    if (!window.confirm("Sei sicuro di voler annullare questa modifica e ripristinare il file allo stato precedente?")) {
+      return;
+    }
+    try {
+      const res = await fetch('/api/rollback', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ backup_id: backupId })
+      });
+      const data = await res.json();
+      if (data.success) {
+        localStorage.setItem(`sigma_rolled_back_${backupId}`, 'true');
+        setRolledBacks(prev => ({ ...prev, [backupId]: true }));
+        alert(data.message || 'Ripristino completato con successo!');
+      } else {
+        alert('Errore di ripristino: ' + (data.error || 'Errore sconosciuto'));
+      }
+    } catch (e) {
+      alert('Errore di connessione: ' + e.message);
+    }
+  };
 
   const handleFileClick = (path) => {
     if (!path || !openTab) return;
@@ -61,7 +91,7 @@ export default function AgentMessage({
   const first = messages[0];
   const isUser = first.role === 'user';
   const isSystem = first.role === 'system';
-  const agentId = first.agent_id;
+  const agentId = first.agent_id || first.agentId;
   const agentStyle = agentId ? getAgentStyle(agentId) : null;
   const isOrchestrated = first.is_orchestrated;
   const isLoading = standaloneLoading || first.loading;
@@ -71,7 +101,7 @@ export default function AgentMessage({
   const avatarBg = agentId ? agentStyle.bg : 'var(--primary)';
   const roleName = isUser
     ? 'Tu'
-    : (agentId ? (first.agent_name || agentId) : (first.agentRole || 'AI'));
+    : (agentId ? (first.agentRole || first.agent_name || agentId) : (first.agentRole || 'AI'));
 
   const modelName = isUser ? '' : (first.agentName || effectiveModelName || 'AI');
 
@@ -121,10 +151,27 @@ export default function AgentMessage({
           {isOrchestrated && <span className="chat-msg-orchestrated" title="Assegnato dall'Orchestrator">🎯</span>}
           <div className="chat-msg-header-spacer" />
           <div className="chat-msg-time">{formatTimestamp(first.timestamp)}</div>
-          {onDeleteMessage && !isGrouped && (
-            <button className="chat-msg-del-btn" title="Elimina" onClick={() => onDeleteMessage(msgIndex)}>✕</button>
+          {onDeleteMessage && (
+            <button className="chat-msg-delete-btn" title="Elimina" onClick={() => onDeleteMessage(msgIndex)}>✕</button>
           )}
         </div>
+
+        {/* Active agent role banner */}
+        {!isUser && !isSystem && (agentId || first.agentRole) && (
+          <div className="chat-msg-agent-badge" style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px',
+            padding: '8px 12px',
+            background: 'rgba(255,255,255,0.02)',
+            borderBottom: '1px solid rgba(255,255,255,0.04)',
+            fontSize: '0.72rem',
+            color: '#8b8fa3'
+          }}>
+            <span style={{ fontSize: '1rem' }}>{agentStyle?.icon || '🤖'}</span>
+            <span>Ruolo attivo: <strong style={{ color: 'var(--primary)' }}>{first.agentRole || agentStyle?.short || roleName}</strong></span>
+          </div>
+        )}
 
         {/* Content area */}
         <div className="chat-msg-content">
@@ -175,10 +222,141 @@ export default function AgentMessage({
 
                 {/* Content */}
                 {m.isAction ? (
-                  <div className="chat-actions-log">
-                    {(m.content || '').split('\n').map((l, j) => (
-                      <div key={j} className="action-line">{l}</div>
-                    ))}
+                  <div className="chat-actions-log" style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                    {m.actions_log && m.actions_log.length > 0 ? (
+                      m.actions_log.map((action, actionIdx) => {
+                        const isRollbackable = action.success && action.backup_id;
+                        const hasBeenRolledBack = isRollbackable && (rolledBacks[action.backup_id] || localStorage.getItem(`sigma_rolled_back_${action.backup_id}`) === 'true');
+                        const diffKey = `${mid}-${actionIdx}`;
+                        const isDiffExpanded = expandedDiffs[diffKey];
+                        const hasDiff = !!action.diff;
+                        return (
+                          <div key={actionIdx} style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                            <div className="action-log-item" style={{
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'space-between',
+                              padding: '6px 8px',
+                              background: 'rgba(255,255,255,0.02)',
+                              border: '1px solid rgba(255,255,255,0.04)',
+                              borderRadius: '6px',
+                              fontSize: '0.75rem'
+                            }}>
+                              <div className="action-log-item-left" style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0, flex: 1 }}>
+                                <span>{action.success ? '✅' : '❌'}</span>
+                                <span style={{ fontWeight: '600', color: action.success ? 'var(--primary)' : 'var(--error)', flexShrink: 0 }}>
+                                  {action.type}
+                                </span>
+                                <span 
+                                  style={{ color: '#8b8fa3', textOverflow: 'ellipsis', overflow: 'hidden', whiteSpace: 'nowrap', cursor: action.path ? 'pointer' : 'default' }}
+                                  title={action.path || ''}
+                                  onClick={() => action.path && handleFileClick(action.path)}
+                                >
+                                  {action.message || action.error || ''}
+                                </span>
+                              </div>
+                              <div style={{ display: 'flex', gap: '6px', alignItems: 'center', flexShrink: 0 }}>
+                                {action.path && (action.path.toLowerCase().includes('/viz/') || action.path.toLowerCase().endsWith('.html')) && (
+                                  <button
+                                    onClick={() => handleFileClick(action.path)}
+                                    style={{
+                                      background: 'rgba(57,185,80,0.15)',
+                                      border: '1px solid rgba(57,185,80,0.3)',
+                                      color: '#3fb950',
+                                      fontSize: '0.65rem',
+                                      padding: '2px 8px',
+                                      borderRadius: '4px',
+                                      cursor: 'pointer',
+                                      transition: 'all 0.15s ease'
+                                    }}
+                                    title="Apri l'anteprima interattiva nel workspace"
+                                  >
+                                    Anteprima 👁️
+                                  </button>
+                                )}
+                                {hasDiff && (
+                                  <button
+                                    onClick={() => toggleDiff(diffKey)}
+                                    style={{
+                                      background: 'rgba(0,210,255,0.1)',
+                                      border: '1px solid rgba(0,210,255,0.25)',
+                                      color: 'var(--primary)',
+                                      fontSize: '0.65rem',
+                                      padding: '2px 8px',
+                                      borderRadius: '4px',
+                                      cursor: 'pointer',
+                                      transition: 'all 0.15s ease'
+                                    }}
+                                  >
+                                    {isDiffExpanded ? 'Nascondi Modifiche' : 'Visualizza Modifiche'}
+                                  </button>
+                                )}
+                                {isRollbackable && (
+                                  <button
+                                    onClick={() => handleRollback(action.backup_id)}
+                                    disabled={hasBeenRolledBack}
+                                    style={{
+                                      background: hasBeenRolledBack ? 'transparent' : 'rgba(255,85,85,0.15)',
+                                      border: hasBeenRolledBack ? 'none' : '1px solid rgba(255,85,85,0.3)',
+                                      color: hasBeenRolledBack ? '#3fb950' : '#ff5555',
+                                      fontSize: '0.65rem',
+                                      padding: '2px 8px',
+                                      borderRadius: '4px',
+                                      cursor: hasBeenRolledBack ? 'default' : 'pointer',
+                                      transition: 'all 0.15s ease'
+                                    }}
+                                  >
+                                    {hasBeenRolledBack ? 'Annullato ✓' : 'Annulla Modifica'}
+                                  </button>
+                                )}
+                              </div>
+                            </div>
+                            
+                            {hasDiff && isDiffExpanded && (
+                              <div className="action-diff-container" style={{
+                                background: '#090b10',
+                                border: '1px solid rgba(255,255,255,0.06)',
+                                borderRadius: '6px',
+                                padding: '8px 10px',
+                                fontFamily: 'Consolas, Monaco, monospace',
+                                fontSize: '0.7rem',
+                                lineHeight: '1.25rem',
+                                overflowX: 'auto',
+                                whiteSpace: 'pre',
+                                color: '#adbac7',
+                                marginTop: '2px',
+                                maxHeight: '350px',
+                                boxShadow: 'inset 0 0 10px rgba(0,0,0,0.5)'
+                              }}>
+                                {action.diff.split('\n').map((line, lineIdx) => {
+                                  let lineStyle = { padding: '2px 4px', borderRadius: '2px', display: 'block' };
+                                  if (line.startsWith('+') && !line.startsWith('+++')) {
+                                    lineStyle.background = 'rgba(46, 160, 67, 0.15)';
+                                    lineStyle.color = '#3fb950';
+                                  } else if (line.startsWith('-') && !line.startsWith('---')) {
+                                    lineStyle.background = 'rgba(248, 81, 73, 0.15)';
+                                    lineStyle.color = '#f85149';
+                                  } else if (line.startsWith('@@')) {
+                                    lineStyle.color = '#79c0ff';
+                                    lineStyle.background = 'rgba(121, 192, 255, 0.05)';
+                                    lineStyle.fontWeight = 'bold';
+                                  }
+                                  return (
+                                    <span key={lineIdx} style={lineStyle}>
+                                      {line}
+                                    </span>
+                                  );
+                                })}
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })
+                    ) : (
+                      (m.content || '').split('\n').map((l, j) => (
+                        <div key={j} className="action-line">{l}</div>
+                      ))
+                    )}
                   </div>
                 ) : m.content ? (
                   <div

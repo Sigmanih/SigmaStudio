@@ -6,7 +6,7 @@ export default function ChatHistory({
   sessions, groupedSessions,
   activeSessionId, onSwitchSession,
   editingSessionName, editNameValue, onEditNameChange, onFinishRename, onKeyDown,
-  onStartRename, onDeleteSession, onNewSession
+  onStartRename, onDeleteSession, onNewSession, onDuplicateSession
 }) {
   return (
     <>
@@ -16,7 +16,19 @@ export default function ChatHistory({
       <div className={`chat-history-panel ${showHistory ? '' : 'collapsed'}`}>
         <div className="chat-history-header">
           <span className="chat-history-title"><FileText size={12} /> Cronologia</span>
-          {showHistory && <button className="chat-new-session-btn" onClick={onNewSession}><Plus size={12} /> Nuova</button>}
+          {showHistory && (
+            <div style={{ display: 'flex', gap: '5px' }}>
+              <button 
+                className="chat-new-session-btn" 
+                onClick={onDuplicateSession} 
+                title="Duplica chat attiva corrente"
+                style={{ background: 'rgba(255,255,255,0.05)', borderColor: 'rgba(255,255,255,0.1)' }}
+              >
+                Duplica
+              </button>
+              <button className="chat-new-session-btn" onClick={onNewSession}><Plus size={12} /> Nuova</button>
+            </div>
+          )}
         </div>
         {showHistory && (
           <div className="chat-history-list">

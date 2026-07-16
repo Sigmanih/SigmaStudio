@@ -25,7 +25,7 @@ from core.chat.response_parser import (
 )
 from core.chat.prompt_builder import (
     _get_time_context, _get_manifesto_content, _build_filesystem_context,
-    _collect_context_files, _resolve_manifesto_for_model,
+    _collect_context_files, _resolve_manifesto_for_model, _determine_agent_by_request,
 )
 from core.chat.web_search import _perform_web_search
 
@@ -69,12 +69,27 @@ def handle_chat(self):
         history = req.get("context", {}).get("history", [])
         uploaded_files = req.get("uploaded_files", [])
 
-        if not manifesto_path or manifesto_path == "MANIFESTO.md":
-            manifesto_path = _resolve_manifesto_for_model(model_override or req.get("model", ""))
+        ai_cfg = load_ai_config()
+        model = model_override or ai_cfg.get("model", "llama3.2")
+
+        # Automatic Agent Routing
+        if not manifesto_path or manifesto_path in ("auto", "auto.md", "manifesti/auto.md", "MANIFESTO.md"):
+            if manifesto_path in ("auto", "auto.md", "manifesti/auto.md"):
+                manifesto_path = _determine_agent_by_request(message, ai_cfg, model)
+            else:
+                manifesto_path = _resolve_manifesto_for_model(model)
+        
         if not manifesto_path:
             manifesto_path = "MANIFESTO.md"
 
-        ai_cfg = load_ai_config()
+        # Update bot_name based on chosen agent if it was a generic one
+        if bot_name in ("SigmaBot", "Sigma AI Studio", "Sigma Agent", "auto"):
+            agent_id_match = os.path.splitext(os.path.basename(manifesto_path))[0]
+            from core.agent_registry import get_agent
+            ag = get_agent(agent_id_match)
+            if ag:
+                bot_name = ag.get("name", bot_name)
+
         model = model_override or ai_cfg.get("model", "llama3.2")
         provider = ai_cfg.get("active_provider", "ollama")
         providers_config = ai_cfg.get("providers", {})

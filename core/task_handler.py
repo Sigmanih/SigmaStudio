@@ -22,6 +22,7 @@ import shutil
 from core.agent_registry import get_agent, get_specialized_agent
 from core.store import tasks_store, modules_store
 from core.logger import get_logger
+from core.backup_manager import create_backup
 
 log = get_logger(__name__)
 
@@ -381,6 +382,18 @@ def execute_ai_actions(self, actions: list, bot_name: str) -> list:
     return result_log
 
 
+def _compute_diff(old_content: str, new_content: str, filename: str) -> str:
+    import difflib
+    old_lines = old_content.splitlines()
+    new_lines = new_content.splitlines()
+    diff = difflib.unified_diff(
+        old_lines, new_lines,
+        fromfile=f"a/{filename}", tofile=f"b/{filename}",
+        lineterm=""
+    )
+    return "\n".join(diff)
+
+
 def _execute_single_action(self, action: dict, action_type: str, bot_name: str, result_log: list) -> None:
     """Dispatch a single action to its handler and append result to *result_log*."""
 
@@ -396,12 +409,30 @@ def _execute_single_action(self, action: dict, action_type: str, bot_name: str, 
             return
 
         if path and self._is_path_allowed(path):
+            backup_id = create_backup(path, "create_file")
+            
+            # Read old content if exists for diff
+            old_content = ""
+            if os.path.exists(path):
+                try:
+                    with open(path, "r", encoding="utf-8") as fh:
+                        old_content = fh.read()
+                except Exception:
+                    pass
+            
             os.makedirs(os.path.dirname(os.path.abspath(path)) or ".", exist_ok=True)
             with open(path, "w", encoding="utf-8") as fh:
                 fh.write(content)
             _auto_register_file_module(path)
-            result_log.append({"type": "create_file", "success": True, "path": path,
-                                "message": f"File creato: {path}"})
+            
+            # Compute diff
+            file_diff = _compute_diff(old_content, content, os.path.basename(path))
+            
+            result_log.append({
+                "type": "create_file", "success": True, "path": path,
+                "message": f"File creato: {path}", "backup_id": backup_id,
+                "diff": file_diff
+            })
         else:
             result_log.append({"type": "create_file", "success": False, "path": path,
                                 "error": f"Path non consentito: {path}"})
@@ -443,22 +474,45 @@ def _execute_single_action(self, action: dict, action_type: str, bot_name: str, 
         path = _ensure_module_structure(path)
         
         if path and self._is_path_allowed(path) and os.path.exists(path):
-            if search:
+            backup_id = create_backup(path, "edit_file")
+            
+            # Read old content for diff
+            old_content = ""
+            try:
                 with open(path, "r", encoding="utf-8") as fh:
-                    old = fh.read()
-                if search in old:
+                    old_content = fh.read()
+            except Exception:
+                pass
+                
+            if search:
+                if search in old_content:
+                    new_content = old_content.replace(search, content, 1)
                     with open(path, "w", encoding="utf-8") as fh:
-                        fh.write(old.replace(search, content, 1))
-                    result_log.append({"type": "edit_file", "success": True, "path": path,
-                                       "message": f"File modificato: {path}"})
+                        fh.write(new_content)
+                    
+                    # Compute diff
+                    file_diff = _compute_diff(old_content, new_content, os.path.basename(path))
+                    
+                    result_log.append({
+                        "type": "edit_file", "success": True, "path": path,
+                        "message": f"File modificato: {path}", "backup_id": backup_id,
+                        "diff": file_diff
+                    })
                 else:
                     result_log.append({"type": "edit_file", "success": False, "path": path,
                                        "error": f"Testo da cercare non trovato in {path}"})
             else:
                 with open(path, "w", encoding="utf-8") as fh:
                     fh.write(content)
-                result_log.append({"type": "edit_file", "success": True, "path": path,
-                                   "message": f"File sovrascritto: {path}"})
+                
+                # Compute diff
+                file_diff = _compute_diff(old_content, content, os.path.basename(path))
+                
+                result_log.append({
+                    "type": "edit_file", "success": True, "path": path,
+                    "message": f"File sovrascritto: {path}", "backup_id": backup_id,
+                    "diff": file_diff
+                })
         else:
             result_log.append({"type": "edit_file", "success": False, "path": path,
                                 "error": f"Path non trovato o non consentito: {path}"})
@@ -471,11 +525,16 @@ def _execute_single_action(self, action: dict, action_type: str, bot_name: str, 
                 and self._is_path_allowed(old_path)
                 and self._is_path_allowed(new_path)
                 and os.path.exists(old_path)):
+            backup_id = create_backup(old_path, "rename_file")
+            new_backup_id = ""
+            if os.path.exists(new_path):
+                new_backup_id = create_backup(new_path, "rename_file_overwrite")
             os.makedirs(os.path.dirname(os.path.abspath(new_path)) or ".", exist_ok=True)
             os.rename(old_path, new_path)
             result_log.append({"type": "rename_file", "success": True, "old_path": old_path,
                                 "new_path": new_path,
-                                "message": f"File rinominato: {old_path} → {new_path}"})
+                                "message": f"File rinominato: {old_path} → {new_path}",
+                                "backup_id": backup_id, "overwrite_backup_id": new_backup_id})
         else:
             result_log.append({"type": "rename_file", "success": False,
                                 "error": f"Path non trovato/consentito: old={old_path}, new={new_path}"})
@@ -484,9 +543,10 @@ def _execute_single_action(self, action: dict, action_type: str, bot_name: str, 
         path = _normalize_action_path(action.get("path", ""))
         path = _ensure_module_structure(path)
         if path and self._is_path_allowed(path) and os.path.exists(path):
+            backup_id = create_backup(path, "delete_file")
             os.remove(path)
             result_log.append({"type": "delete_file", "success": True, "path": path,
-                                "message": f"File eliminato: {path}"})
+                                "message": f"File eliminato: {path}", "backup_id": backup_id})
         else:
             result_log.append({"type": "delete_file", "success": False, "path": path,
                                 "error": f"Path non trovato o non consentito: {path}"})
@@ -566,12 +626,9 @@ def _execute_single_action(self, action: dict, action_type: str, bot_name: str, 
                 return
             with open(path, "r", encoding="utf-8", errors="replace") as fh:
                 content = fh.read()
-            preview = content[:8000]
-            if len(content) > 8000:
-                preview += f"\n\n... [troncato: {len(preview)}/{len(content)} caratteri]"
             result_log.append({"type": "read_file", "success": True, "path": path,
                                 "message": f"File letto: {path} ({len(content)} caratteri)",
-                                "content": preview})
+                                "content": content})
         else:
             result_log.append({"type": "read_file", "success": False, "path": path,
                                 "error": f"Path non trovato o non consentito: {path}"})

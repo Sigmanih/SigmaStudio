@@ -4,7 +4,7 @@
 // ==============================================================================
 import { useEffect, useCallback } from 'react';
 import { PROVIDER_COLORS, getModelRoutingInfo } from '../modelProviderMap';
-import { loadMessagesFromStorage, saveMessagesToStorage } from '../chatStorage';
+import { loadMessagesFromStorage, saveMessagesToStorage, createSession } from '../chatStorage';
 const saveMessagesImmediately = saveMessagesToStorage;
 
 
@@ -110,7 +110,7 @@ export default function useChatCore(extraProps = {}) {
     }
   }, [sessionsHook.activeSessionId, sessionsHook.sessions, sessionsHook.saveSessionsState]);
 
-  // Sync selected model and active manifesto when activeSessionId changes
+  // Sync selected model and active manifesto when activeSessionId or selectedModel changes
   useEffect(() => {
     if (!sessionsHook.activeSessionId) return;
     const currentSession = sessionsHook.sessions.find(s => s.id === sessionsHook.activeSessionId);
@@ -119,7 +119,7 @@ export default function useChatCore(extraProps = {}) {
         configHook.setSelectedModel(currentSession.model);
       }
 
-      const manifestoPath = currentSession.manifestoPath || 'manifesti/sigma_architect.md';
+      const manifestoPath = currentSession.manifestoPath || 'auto';
       const m = configHook.manifestos.find(x => x.path === manifestoPath || x.filename === manifestoPath.split('/').pop());
       if (m) {
         configHook.setActiveManifesto({
@@ -129,6 +129,14 @@ export default function useChatCore(extraProps = {}) {
           image: m.image || '/images/default.png'
         });
         configHook.setSelectedManifestoPath(m.path);
+      } else if (manifestoPath === 'auto') {
+        configHook.setActiveManifesto({
+          name: 'auto',
+          path: 'auto',
+          exists: true,
+          image: '/images/default.png'
+        });
+        configHook.setSelectedManifestoPath('auto');
       } else {
         const filename = manifestoPath.split('/').pop();
         let name = filename.replace('.md', '');
@@ -141,8 +149,17 @@ export default function useChatCore(extraProps = {}) {
         });
         configHook.setSelectedManifestoPath(manifestoPath);
       }
+    } else {
+      // Safe fallback if the current session is not yet loaded/found
+      configHook.setActiveManifesto({
+        name: 'auto',
+        path: 'auto',
+        exists: true,
+        image: '/images/default.png'
+      });
+      configHook.setSelectedManifestoPath('auto');
     }
-  }, [sessionsHook.activeSessionId, configHook.manifestos]);
+  }, [sessionsHook.activeSessionId, configHook.manifestos, configHook.selectedModel, sessionsHook.sessions]);
 
   // Sync state between config model selection and localStorage
   const handleModelSelectWrapped = async (name) => {
@@ -164,6 +181,19 @@ export default function useChatCore(extraProps = {}) {
     panel: { current: null },
     abort: streamingHook.streamingRefs.abort,
   };
+
+  const handleDuplicateSession = useCallback(() => {
+    const activeModel = configHook.selectedModel || '';
+    const activeName = sessionsHook.sessions.find(s => s.id === sessionsHook.activeSessionId)?.name || 'Chat';
+    const dup = createSession(activeModel, 'Copia di ' + activeName);
+    const msgs = sessionsHook.activeSessionId ? (sessionsHook.sessionMessages[sessionsHook.activeSessionId] || []) : [];
+    
+    sessionsHook.setSessionMessages(prev => ({ ...prev, [dup.id]: [...msgs] }));
+    saveMessagesImmediately(dup.id, [...msgs]);
+    const updated = [dup, ...sessionsHook.sessions].slice(0, 25);
+    sessionsHook.saveSessionsState(updated);
+    sessionsHook.setActiveSessionId(dup.id);
+  }, [configHook.selectedModel, sessionsHook.activeSessionId, sessionsHook.sessions, sessionsHook.sessionMessages, sessionsHook.saveSessionsState, sessionsHook.setSessionMessages, sessionsHook.setActiveSessionId]);
 
   return {
     // --- States ---
@@ -251,8 +281,10 @@ export default function useChatCore(extraProps = {}) {
     handleStartRename: sessionsHook.handleStartRename,
     handleFinishRename: sessionsHook.handleFinishRename,
     handleRenameKeyDown: sessionsHook.handleRenameKeyDown,
+    deleteMessage: sessionsHook.deleteMessage,
     handleModelSelect: handleModelSelectWrapped,
     handleSelectManifesto,
+    handleDuplicateSession,
     openModelDropdown: async () => {
       await configHook.refreshConfig();
       await configHook.fetchOllamaModels();

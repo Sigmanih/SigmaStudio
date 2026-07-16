@@ -6,7 +6,6 @@ import ChatInput from '../ui/ChatInput';
 import ChatHistory from '../ChatHistory';
 import FilePicker from '../FilePicker';
 import ActionsBar from '../ActionsBar';
-import { createSession } from '../chatStorage';
 import useChatResize from '../useChatResize';
 import useChatDrag from '../useChatDrag';
 
@@ -23,24 +22,8 @@ export default function ChatFloatingPanel({ openFiles, onClose, onOpenConfig, on
     width: panelSize.width, height: panelSize.height,
   };
 
-  const handleDeleteMsg = useCallback((i) => {
-    const sid = core.activeSessionId;
-    core.setMessagesForSession(sid, prev => {
-      const newMsgs = prev.filter((_, j) => j !== i);
-      core.saveMessagesImmediately(sid, newMsgs);
-      return newMsgs;
-    });
-  }, [core.activeSessionId]);
 
-  const handleDuplicateSession = useCallback(() => {
-    const dup = createSession(core.selectedModel, 'Copia di ' + (core.sessions.find(s => s.id === core.activeSessionId)?.name || 'Chat'));
-    const msgs = [...core.messages];
-    core.setSessionMessages(prev => ({ ...prev, [dup.id]: msgs }));
-    core.saveMessagesImmediately(dup.id, msgs);
-    const updated = [dup, ...core.sessions].slice(0, 25);
-    core.saveSessionsState(updated);
-    core.setActiveSessionId(dup.id);
-  }, [core.selectedModel, core.activeSessionId, core.sessions, core.messages]);
+
 
   const groupedSessions = (() => {
     if (core.sessions.length === 0) return {};
@@ -86,7 +69,7 @@ export default function ChatFloatingPanel({ openFiles, onClose, onOpenConfig, on
         showManifestoDropdown={core.showManifestoDropdown}
         setShowManifestoDropdown={core.setShowManifestoDropdown}
         onSelectManifesto={core.handleSelectManifesto}
-        onDuplicateSession={handleDuplicateSession}
+        onDuplicateSession={core.handleDuplicateSession}
         onOpenQuickConfig={() => core.setShowQuickConfig(!core.showQuickConfig)}
         showQuickConfig={core.showQuickConfig}
         onOpenConfig={onOpenConfig}
@@ -109,6 +92,7 @@ export default function ChatFloatingPanel({ openFiles, onClose, onOpenConfig, on
           onStartRename={core.handleStartRename}
           onDeleteSession={core.handleDeleteSession}
           onNewSession={core.handleNewSession}
+          onDuplicateSession={core.handleDuplicateSession}
         />
         <ChatMessages
           messages={core.messages}
@@ -117,11 +101,13 @@ export default function ChatFloatingPanel({ openFiles, onClose, onOpenConfig, on
           expandedThinking={core.expandedThinking}
           onToggleThinking={(id) => core.setExpandedThinking(prev => ({ ...prev, [id]: !prev[id] }))}
           selectedModel={core.selectedModel}
-          onDeleteMessage={handleDeleteMsg}
+          onDeleteMessage={core.deleteMessage}
           refs={core.refs}
           onStop={core.stopInference}
           activeManifesto={core.activeManifesto}
           manifestos={core.manifestos}
+          autoScroll={core.autoScroll}
+          setAutoScroll={core.setAutoScroll}
         />
       </div>
 

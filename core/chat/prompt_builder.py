@@ -125,25 +125,105 @@ def _build_filesystem_context() -> str:
 
 
 def _collect_context_files(handler, open_files: list[str]) -> str:
-    """Read and concatenate the content of up to 5 open context files.
+    """Read and concatenate the content of open context files with enhanced limits and style context.
 
     Args:
         handler:    The HTTP handler instance (provides ``_is_path_allowed``).
         open_files: List of file paths sent by the frontend.
 
     Returns:
-        Concatenated file contents as a string (max 5 000 chars per file).
+        Concatenated file contents as a string (max 25,000 chars per file + related styles/scripts).
     """
     context_str = ""
     if not open_files:
         return context_str
 
-    for file_path in open_files[:5]:
+    loaded_paths = set()
+
+    for file_path in open_files[:6]:
+        if not file_path or not isinstance(file_path, str):
+            continue
+        file_path = file_path.replace("\\", "/")
+        if file_path in loaded_paths:
+            continue
         if handler._is_path_allowed(file_path) and os.path.exists(file_path):
             try:
-                with open(file_path, "r", encoding="utf-8") as fh:
+                with open(file_path, "r", encoding="utf-8", errors="replace") as fh:
                     content = fh.read()
-                context_str += f"\n--- FILE: {file_path} ---\n{content[:5000]}\n"
+                context_str += f"\n--- FILE CONTESTO APERTO: {file_path} ---\n{content[:25000]}\n"
+                loaded_paths.add(file_path)
+
+                # Automatic related files injection for visualizers, styling or scripts
+                ext = os.path.splitext(file_path)[1].lower()
+                if ext in ('.html', '.js', '.css'):
+                    dir_name = os.path.dirname(file_path)
+                    if os.path.isdir(dir_name):
+                        for sibling in os.listdir(dir_name):
+                            sibling_ext = os.path.splitext(sibling)[1].lower()
+                            if sibling_ext in ('.css', '.js', '.html') and sibling_ext != ext:
+                                sib_path = os.path.join(dir_name, sibling).replace("\\", "/")
+                                if sib_path not in loaded_paths and handler._is_path_allowed(sib_path):
+                                    try:
+                                        with open(sib_path, "r", encoding="utf-8", errors="replace") as sfh:
+                                            s_content = sfh.read()
+                                        context_str += f"\n--- FILE CORRELATO NELLA STESSA DIRECTORY: {sib_path} ---\n{s_content[:15000]}\n"
+                                        loaded_paths.add(sib_path)
+                                    except Exception:
+                                        pass
             except OSError as exc:
                 log.warning("Cannot read context file %s: %s", file_path, exc)
     return context_str
+
+
+def _determine_agent_by_request(message: str, ai_cfg: dict, model_override: str) -> str:
+    """Query the AI coordinator to decide which manifesto/role is best suited for the user prompt."""
+    import re
+    import json
+    from core.orchestration.agent_config import load_agent_config
+    from core.agent_registry import SIGMA_ARCHITECT_ID, get_all_agents
+    from core.ai_providers import call_ai_model
+
+    # Use default coordinator credentials
+    main_model, provider, endpoint, api_url, api_key, temperature, max_tokens, top_p, timeout = \
+        load_agent_config(ai_cfg, model_override, SIGMA_ARCHITECT_ID)
+        
+    agents = get_all_agents()
+    active_agents = [a for a in agents if a.get("status") == "active"]
+    
+    agents_info = "\n".join([f"- {a['id']}: {a['name']} (Specializzazione: {a.get('specialization', a.get('role', ''))})" for a in active_agents])
+    
+    system_prompt = f"""Sei Sigma AI Architect. Il tuo unico scopo è instradare la richiesta dell'utente all'agente specializzato più efficiente.
+    
+### AGENTI DISPONIBILI:
+{agents_info}
+
+### REGOLA FONDAMENTALE:
+Rispondi SOLO ed ESCLUSIVAMENTE con l'id esatto dell'agente prescelto.
+Non aggiungere introduzioni, non spiegare il motivo, non scrivere nient'altro. Solo l'id dell'agente prescelto (es: math1 o code_architect).
+Se non sei sicuro o se la richiesta riguarda la pianificazione generale del progetto o la gestione della roadmap, rispondi: sigma_architect
+"""
+
+    messages = [
+        {"role": "system", "content": system_prompt},
+        {"role": "user", "content": f"Richiesta utente: {message}"}
+    ]
+    
+    try:
+        response, _, error = call_ai_model(
+            messages, ai_cfg, main_model, provider, endpoint, api_url, api_key,
+            0.1, 50, top_p, timeout
+        )
+        if not error and response:
+            chosen = response.strip().lower()
+            # Clean eventual quotes or formatting
+            chosen = re.sub(r'[^a-z0-9_-]', '', chosen)
+            for a in active_agents:
+                if a['id'].lower() == chosen:
+                    path = f"manifesti/{a['id']}.md"
+                    log.info("Auto-routing to agent: %s (%s)", a['id'], path)
+                    return path
+    except Exception as e:
+        log.error("Error in automatic agent routing: %s", e)
+        
+    return "manifesti/sigma_architect.md"
+

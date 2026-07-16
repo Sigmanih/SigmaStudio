@@ -123,7 +123,7 @@ SigmaAPIHandler.handle_update_module = handle_update_module
 from core.file_handler import (
     handle_get_file, handle_create_file, handle_delete_file,
     handle_upload_file, handle_run_test, handle_api_action,
-    handle_rename_file
+    handle_rename_file, handle_api_rollback
 )
 SigmaAPIHandler.handle_get_file = handle_get_file
 SigmaAPIHandler.handle_create_file = handle_create_file
@@ -132,6 +132,7 @@ SigmaAPIHandler.handle_upload_file = handle_upload_file
 SigmaAPIHandler.handle_run_test = handle_run_test
 SigmaAPIHandler.handle_api_action = handle_api_action
 SigmaAPIHandler.handle_rename_file = handle_rename_file
+SigmaAPIHandler.handle_api_rollback = handle_api_rollback
 
 # 4. Task handlers
 from core.task_handler import (

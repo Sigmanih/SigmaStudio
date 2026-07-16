@@ -91,6 +91,7 @@ export default function ChatWorkspaceTab() {
           onStartRename={core.handleStartRename}
           onDeleteSession={core.handleDeleteSession}
           onNewSession={core.handleNewSession}
+          onDuplicateSession={core.handleDuplicateSession}
         />
         <ChatMessages
           messages={core.messages}
@@ -99,10 +100,13 @@ export default function ChatWorkspaceTab() {
           expandedThinking={core.expandedThinking}
           onToggleThinking={(id) => core.setExpandedThinking(prev => ({ ...prev, [id]: !prev[id] }))}
           selectedModel={core.selectedModel}
+          onDeleteMessage={core.deleteMessage}
           refs={core.refs}
           onStop={core.stopInference}
           activeManifesto={core.activeManifesto}
           manifestos={core.manifestos}
+          autoScroll={core.autoScroll}
+          setAutoScroll={core.setAutoScroll}
         />
       </div>
 

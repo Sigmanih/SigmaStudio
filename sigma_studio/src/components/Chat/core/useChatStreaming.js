@@ -51,7 +51,7 @@ export function useChatStreaming({
 }) {
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
-  const [activeMode, setActiveMode] = useState('ask');
+  const [activeMode, setActiveMode] = useState('execute');
   const [actionsLog, setActionsLog] = useState([]);
   const [attachedFiles, setAttachedFiles] = useState([]);
   const [pcFiles, setPcFiles] = useState([]);
@@ -81,6 +81,14 @@ export function useChatStreaming({
   const loopActiveRef = useRef(loopActive);
   const loopIterationRef = useRef(loopIteration);
   const loopMaxIterationsRef = useRef(loopMaxIterations);
+  const messagesEndRef = useRef(null);
+
+  // Scroll to bottom on message changes if auto-scroll is enabled
+  useEffect(() => {
+    if (autoScroll && messagesEndRef.current) {
+      messagesEndRef.current.scrollIntoView({ behavior: 'smooth' });
+    }
+  }, [sessionMessages, activeSessionId, loading, autoScroll]);
 
   useEffect(() => { loopActiveRef.current = loopActive; }, [loopActive]);
   useEffect(() => { loopIterationRef.current = loopIteration; }, [loopIteration]);
@@ -160,8 +168,13 @@ export function useChatStreaming({
         saveMessagesImmediately(sessionId, finalMessages);
         if (data.actions_log?.length > 0) {
           setActionsLog(data.actions_log);
-          const logStr = data.actions_log.map(a => `  ${a.success ? '✅' : '❌'} ${a.type}: ${a.message || a.error}`).join('\n');
-          const withActions = [...finalMessages, { role: 'system', content: `📋 **Azioni Eseguite:**\n\`\`\`\n${logStr}\n\`\`\``, timestamp: new Date().toISOString(), isAction: true }];
+          const withActions = [...finalMessages, { 
+            role: 'system', 
+            content: `⚡ **Azioni eseguite:**`, 
+            timestamp: new Date().toISOString(), 
+            isAction: true,
+            actions_log: data.actions_log
+          }];
           setMessagesForSession(sessionId, withActions);
           saveMessagesImmediately(sessionId, withActions);
           if (onTasksUpdated) onTasksUpdated();
@@ -185,6 +198,7 @@ export function useChatStreaming({
   const handleExecuteStream = useCallback(async (res, sessionId) => {
     const reader = res.body.getReader();
     const decoder = new TextDecoder();
+    const streamRunId = Math.random().toString(36).substring(7);
     let buffer = '', done = false;
     try {
       while (!done) {
@@ -204,41 +218,59 @@ export function useChatStreaming({
             let msgContent = '', toastType = 'info', toastDuration = 3000;
 
             if (event.type === 'execute_start') {
-              msgContent = `🔄 **Esecuzione continua avviata** con ${selectedModel}`;
+              msgContent = '';
               setLoopIteration(0);
             } else if (event.type === 'iteration_start') {
-              msgContent = `🔄 **Iterazione ${event.iteration}/${event.max_iterations}**`;
+              msgContent = '';
               setLoopIteration(event.iteration);
             } else if (event.type === 'iteration_actions') {
-              const actionNames = (event.actions || []).join(', ');
-              msgContent = `⚡ **Esecuzione ${event.actions_count} azioni:** ${actionNames}`;
+              msgContent = '';
             } else if (event.type === 'iteration_complete') {
-              const logStr = (event.actions_log || []).map(a => `  ${a.success ? '✅' : '❌'} ${a.type}: ${a.message || a.error || ''}`).join('\n');
-              msgContent = `✅ **Iterazione ${event.iteration} completata:** ${event.success_count}/${event.success_count + event.fail_count} azioni riuscite\n${logStr ? '\n' + logStr : ''}`;
-              if (event.actions_log) setActionsLog(event.actions_log);
+              if (event.actions_log && event.actions_log.length > 0) {
+                msgContent = `⚡ **Azioni eseguite (Iterazione ${event.iteration}):**`;
+                if (event.actions_log) setActionsLog(event.actions_log);
+              } else {
+                msgContent = '';
+              }
               if (onTasksUpdated) onTasksUpdated();
               toastType = 'success'; toastDuration = 3000;
             } else if (event.type === 'execute_done') {
-              const s = event.summary || {};
-              msgContent = `🎯 **Task completato in ${event.total_iterations} iterazioni!**\n📊 Riepilogo:\n- 📋 ${s.actions_count || 0} azioni eseguite`;
+              msgContent = '';
               if (onTasksUpdated) onTasksUpdated();
               toastType = 'success'; toastDuration = 5000;
             } else if (event.type === 'execute_timeout') {
               msgContent = `⏱️ **Limite iterazioni raggiunto:** ${event.max_iterations}`;
               toastType = 'warning'; toastDuration = 5000;
             } else if (event.type === 'iteration_plan') {
-              msgContent = `📋 **Pianificazione:** ${event.message || ''}`;
+              msgContent = '';
             } else if (event.type === 'iteration_response') {
               if (event.response && sid) {
+                const iterId = `iter-response-${streamRunId}-${event.iteration || 1}`;
                 const newMsg = {
+                  id: iterId,
                   role: 'assistant',
                   content: event.response,
                   timestamp: new Date().toISOString(),
-                  agentName: selectedModel,
+                  agentName: event.agent_name || selectedModel,
+                  agentId: event.agent_id || undefined,
+                  agentRole: event.agent_name || undefined,
                   thinking: event.thinking || undefined,
                 };
                 setSessionMessages(prev => {
-                  const updated = [...(prev[sid] || []), newMsg];
+                  const currentMsgs = prev[sid] || [];
+                  const existingIdx = currentMsgs.findIndex(m => m.id === iterId);
+                  let updated;
+                  if (existingIdx !== -1) {
+                    updated = [...currentMsgs];
+                    // Mantieni il timestamp originale per non alterare l'ordinamento visivo della chat
+                    updated[existingIdx] = {
+                      ...updated[existingIdx],
+                      content: newMsg.content,
+                      thinking: newMsg.thinking || updated[existingIdx].thinking
+                    };
+                  } else {
+                    updated = [...currentMsgs, newMsg];
+                  }
                   try { localStorage.setItem(`sigma_chat_msgs_${sid}`, JSON.stringify(updated)); } catch (e) {}
                   return { ...prev, [sid]: updated };
                 });
@@ -248,8 +280,7 @@ export function useChatStreaming({
               msgContent = `❌ ${event.message || event.error || 'Errore'}`;
               toastType = 'error'; toastDuration = 8000;
             } else if (event.type === 'done') {
-              const s = event.summary || {};
-              msgContent = `🎯 **Loop completato:** ${s.successful_actions || 0}/${s.total_actions || 0} azioni, ${s.files_created || 0} file, ${s.tests_passed || 0}/${s.tests_run || 0} test`;
+              msgContent = '';
               if (onTasksUpdated) onTasksUpdated();
               toastType = 'success'; toastDuration = 8000;
             } else if (event.type === 'iteration_validation_error') {
@@ -269,7 +300,15 @@ export function useChatStreaming({
             }
 
             if (msgContent && sid) {
-              const newMsg = { role: 'system', content: msgContent, timestamp: new Date().toISOString(), isAction: true };
+              const newMsg = { 
+                role: 'system', 
+                content: msgContent, 
+                timestamp: new Date().toISOString(), 
+                isAction: true,
+                actions_log: event.actions_log || undefined,
+                agentId: event.agent_id || undefined,
+                agentRole: event.agent_name || undefined
+              };
               appendAndSave(sid, newMsg, setSessionMessages);
             }
             if (addToast && msgContent) addToast(msgContent.replace(/\*\*/g, '').split('\n')[0], toastType, toastDuration);
@@ -458,7 +497,8 @@ export function useChatStreaming({
       streamingSessionId: streamingSessionIdRef,
       loopActive: loopActiveRef,
       loopIteration: loopIterationRef,
-      loopMaxIterations: loopMaxIterationsRef
+      loopMaxIterations: loopMaxIterationsRef,
+      messagesEnd: messagesEndRef
     }
   };
 }

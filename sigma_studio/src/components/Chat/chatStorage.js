@@ -35,6 +35,7 @@ export function createSession(model, name) {
     id: generateId(),
     name: name || `Chat ${new Date().toLocaleTimeString()}`,
     model: model || '',
+    manifestoPath: 'auto',
     messages: [],
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString()

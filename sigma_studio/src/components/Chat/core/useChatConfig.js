@@ -8,9 +8,9 @@ export function useChatConfig({ saveSessionsState, sessionRefs }) {
   const [availableModels, setAvailableModels] = useState([]);
   const [loadingModels, setLoadingModels] = useState(false);
   const [providerConfigs, setProviderConfigs] = useState({});
-  const [activeManifesto, setActiveManifesto] = useState({ name: '', path: '', exists: false });
+  const [activeManifesto, setActiveManifesto] = useState({ name: 'auto', path: 'auto', exists: true, image: '/images/default.png' });
   const [manifestos, setManifestos] = useState([]);
-  const [selectedManifestoPath, setSelectedManifestoPath] = useState('');
+  const [selectedManifestoPath, setSelectedManifestoPath] = useState('auto');
   const [manifestoManuallySelected, setManifestoManuallySelected] = useState(false);
   const [showManifestoDropdown, setShowManifestoDropdown] = useState(false);
   const [showModelDropdown, setShowModelDropdown] = useState(false);
@@ -103,12 +103,16 @@ export function useChatConfig({ saveSessionsState, sessionRefs }) {
       const res = await fetch('/api/list_manifesti');
       const data = await res.json();
       if (data.success && data.files) {
-        setManifestos(data.files.map(f => ({
+        const loaded = data.files.map(f => ({
           path: f.path,
           name: f.name.replace('.md', ''),
           filename: f.filename,
           image: f.image || '/images/default.png'
-        })));
+        }));
+        setManifestos([
+          { path: 'auto', name: 'auto', filename: 'auto.md', image: '/images/default.png' },
+          ...loaded
+        ]);
       }
     } catch (e) {}
   }, []);
