@@ -1,44 +1,40 @@
-# 🏗️ Sigma AI Architect (sigma_architect)
+# 🧬 Sigma Studio — AI Agent Manifests
 
-**Agente amministratore e coordinatore principale di Sigma Studio.**
+These Modelfile manifests define the behavior of specialized AI agents in Sigma Studio.
 
-## Ruolo
+## Available Agents
 
-sigma_architect è l'agente principale della piattaforma. Ha un duplice ruolo:
+| File | Model | Temp | num_ctx | Role |
+|------|-------|------|---------|------|
+| `sigma_assistant.md` | llama3.2 | 0.3 | 16384 | Front-desk, routing, chat |
+| `sigma_architect.md` | llama3.2 | 0.55 | 32768 | Research admin, coordinator |
+| `code_architect.md` | llama3.2 | 0.3 | 16384 | Full-stack developer |
+| `math_researcher.md` | llama3.2 | 0.5 | 32768 | Math theory & proofs |
+| `test_engineer.md` | llama3.2 | 0.25 | 16384 | Python test engineering |
+| `viz_designer.md` | llama3.2 | 0.5 | 16384 | D3.js visualizations |
+| `proof_reviewer.md` | llama3.2 | 0.3 | 32768 | Critical review |
 
-1. **Ricercatore Singolo**: Lavora autonomamente su obiettivi di ricerca
-2. **Coordinatore**: Orchestrazione di pipeline multi-agente
+## Architecture
 
-## Come usarlo
+```
+User Request → Sigma Assistant (router)
+                  ├── Direct chat response
+                  ├── switch_agent → sigma_architect
+                  ├── switch_agent → code_architect
+                  ├── switch_agent → math_researcher
+                  ├── switch_agent → test_engineer
+                  ├── switch_agent → viz_designer
+                  └── switch_agent → proof_reviewer
+```
+
+## Usage
 
 ```bash
-# Crea il modello Ollama da questo manifesto
+# Load an agent into Ollama
 curl -X POST http://localhost:8000/api/create_model \
   -H "Content-Type: application/json" \
-  -d "{\"name\": \"sigma0\", \"modelfile\": \"$(cat sigma0/sigma_architect.md)\"}"
+  -d "{\"name\": \"sigma_assistant\", \"modelfile\": \"$(cat sigma0/sigma_assistant.md)\"}"
 ```
 
-Oppure usa l'interfaccia grafica → Tab **Manifesti** → AI Model Lab.
-
-## Struttura che sigma_architect conosce
-
-```
-data/<topic>/
-├── <NN>_nome_modulo/
-│   ├── teoria/         → Documenti teorici (.md)
-│   ├── test/           → Test Python (.py)
-│   ├── viz/            → Visualizzazioni HTML/D3.js
-│   ├── docs/           → Report e documentazione
-│   └── whitepapers/    → Whitepaper formali
-└── <NN>_altro_modulo/
-    └── ...
-```
-
-## Parametri
-
-| Parametro | Valore |
-|-----------|--------|
-| Modello base | `llama3.2` |
-| Temperature | 0.55 |
-| Context window | 32768 |
-| Ruolo | admin / orchestrator |
+Or use the Manifesti Gallery tab in the Sigma Studio UI.
+</write_to_file>

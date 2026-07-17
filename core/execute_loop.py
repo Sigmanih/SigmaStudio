@@ -109,7 +109,10 @@ def _should_activate_loop(goal: str, ai_cfg: dict, model_override: str) -> bool:
         "spiegami", "spiega", "cos'è", "cosa significa", "teoria", "formula", 
         "informazioni", "descrivi", "illustra", "riepilogo", "riassunto"
     ]
-    if any(w in goal_lower for w in informative_keywords) and not any(ext in goal_lower for ext in [".html", ".py", ".js", ".css", ".json", ".txt"]):
+    # Exclusion: if message contains write/create keywords, don't bypass even if informative keywords match
+    write_keywords = ["scrivi", "crea", "creami", "scrivimi", "crea un file", "scrivi un file", "documento su"]
+    has_write_intent = any(w in goal_lower for w in write_keywords)
+    if any(w in goal_lower for w in informative_keywords) and not has_write_intent and not any(ext in goal_lower for ext in [".html", ".py", ".js", ".css", ".json", ".txt"]):
         log.info("Heuristic INFO match (conceptual search without file extensions): %s", goal[:50])
         return False
 

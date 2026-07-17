@@ -256,22 +256,27 @@ export default function AgentMessage({
                                 </span>
                               </div>
                               <div style={{ display: 'flex', gap: '6px', alignItems: 'center', flexShrink: 0 }}>
-                                {action.path && (action.path.toLowerCase().includes('/viz/') || action.path.toLowerCase().endsWith('.html')) && (
+                                {action.path && (
                                   <button
                                     onClick={() => handleFileClick(action.path)}
                                     style={{
-                                      background: 'rgba(57,185,80,0.15)',
-                                      border: '1px solid rgba(57,185,80,0.3)',
-                                      color: '#3fb950',
+                                      background: action.path.toLowerCase().includes('/viz/') || action.path.toLowerCase().endsWith('.html')
+                                        ? 'rgba(57,185,80,0.15)' : 'rgba(0,210,255,0.1)',
+                                      border: action.path.toLowerCase().includes('/viz/') || action.path.toLowerCase().endsWith('.html')
+                                        ? '1px solid rgba(57,185,80,0.3)' : '1px solid rgba(0,210,255,0.25)',
+                                      color: action.path.toLowerCase().includes('/viz/') || action.path.toLowerCase().endsWith('.html')
+                                        ? '#3fb950' : 'var(--primary)',
                                       fontSize: '0.65rem',
                                       padding: '2px 8px',
                                       borderRadius: '4px',
                                       cursor: 'pointer',
                                       transition: 'all 0.15s ease'
                                     }}
-                                    title="Apri l'anteprima interattiva nel workspace"
+                                    title={action.path.toLowerCase().includes('/viz/') || action.path.toLowerCase().endsWith('.html')
+                                      ? "Apri l'anteprima interattiva nel workspace" : "Apri il file nel workspace"}
                                   >
-                                    Anteprima 👁️
+                                    {action.path.toLowerCase().includes('/viz/') || action.path.toLowerCase().endsWith('.html')
+                                      ? 'Anteprima 👁️' : 'Visualizza 📄'}
                                   </button>
                                 )}
                                 {hasDiff && (

@@ -64,6 +64,23 @@ def handle_chat(self):
         model_override = req.get("model", "")
         allow_actions = req.get("allow_actions", True)
         planning_mode = req.get("planning_mode", False)
+
+        # Auto-detect file creation requests: if user asks to create/write a file,
+        # force allow_actions=True even if frontend sent False (Ask mode)
+        if not allow_actions and not planning_mode:
+            _create_keywords = [
+                "creami", "scrivimi", "crea un file", "crea file", "scrivi un file",
+                "scrivi file", "documento su", "documento di", "crea un documento",
+                "crea documento", "genera un file", "genera file",
+                "crea un modulo", "crea modulo", "crea un argomento",
+                "vorrei che mi scrivessi", "puoi scrivermi", "puoi creare",
+            ]
+            msg_lower = message.lower()
+            for kw in _create_keywords:
+                if kw in msg_lower:
+                    allow_actions = True
+                    log.info("Auto-detected file creation request: forcing allow_actions=True")
+                    break
         execute_task_id = req.get("execute_task_id", "")
         context_files = req.get("context", {}).get("open_files", [])
         history = req.get("context", {}).get("history", [])
@@ -98,7 +115,7 @@ def handle_chat(self):
         api_url = active_prov_cfg.get("api_url", "")
         api_key = active_prov_cfg.get("api_key", "")
         temperature = active_prov_cfg.get("temperature", 0.7)
-        max_tokens = active_prov_cfg.get("max_tokens", 4096)
+        max_tokens = active_prov_cfg.get("max_tokens", 16384)
         top_p = active_prov_cfg.get("top_p", 0.9)
         request_timeout = active_prov_cfg.get("timeout", 300)
 
@@ -125,7 +142,7 @@ def handle_chat(self):
                 if detected_prov.get("api_url"): api_url = detected_prov["api_url"]
                 if detected_prov.get("api_key"): api_key = detected_prov["api_key"]
                 temperature = detected_prov.get("temperature", temperature)
-                max_tokens = detected_prov.get("max_tokens", max_tokens)
+                max_tokens = detected_prov.get("max_tokens", 16384)
                 top_p = detected_prov.get("top_p", top_p)
                 request_timeout = detected_prov.get("timeout", request_timeout)
 
@@ -143,70 +160,24 @@ In modalitÃ  CHIEDI rispondi SEMPRE con JSON: {"response": "La risposta all'ut
 - "thinking": il processo logico separato (verrÃ  mostrato con toggle "Mostra ragionamento")
 MAI mischiare thinking e response. MAI usare tag XML."""
 
-        # --- BUILD SYSTEM PROMPT ---
+        # --- BUILD SYSTEM PROMPT (simplified) ---
+        # No JSON requirement — model responds naturally. Backend auto-extracts files.
         if allow_actions or planning_mode:
             action_prompt = """
-## ðŸ›‘ REGOLA PIÃ™ IMPORTANTE â€” FORMATO JSON OBBLIGATORIO + STRUTTURA MODULARE
+## STRUTTURA MODULARE
+Salva i file in: data/<argomento>/<NN_modulo>/{teoria|test|viz|docs|whitepapers}/<file>
+Solo 5 cartelle permesse dentro un modulo: teoria/, test/, viz/, docs/, whitepapers/
+Mai salvare file nella root del topic o del modulo.
 
-SEI IN MODALITÃ€ AZIONI. DEVI RISPONDERE SOLO CON UN OGGETTO JSON VALIDO.
-NON usare <thinking> o <response>. SOLO JSON puro.
-
-### STRUTTURA MODULARE OBBLIGATORIA â€” REGOLA WHITELIST
-Le cartelle dentro i moduli sono SOLO 5, NESSUNA ALTRA:
-
-  âœ… teoria/  âœ… test/  âœ… viz/  âœ… docs/  âœ… whitepapers/
-
-   âŒ QUALSIASI altra cartella Ã¨ automaticamente VIETATA
-
-Struttura corretta:
-  data/<argomento>/<NN_sottoargomento>/<sezione>/<file>
-
-#### FILE VIETATI direttamente nella root del modulo (NON CREARLI MAI):
-  data/argomento/NN_sottoargomento/file.py  âŒ
-  data/argomento/NN_sottoargomento/report.md âŒ
-
-#### FILE VIETATI direttamente nella root del topic (NON CREARLI MAI):
-  data/argomento/report.md âŒ
-
-#### ESEMPI CORRETTI:
-  data/esempio/01_modulo/teoria/analisi.md âœ…
-  data/esempio/01_modulo/test/verifica.py âœ…
-  data/esempio/01_modulo/viz/grafico.html âœ…
-
-### AZIONI
-1. create_module: crea modulo con sottocartelle. "topic", "number", "name"
-2. create_file: crea file DENTRO un modulo. "path", "content"
-3. edit_file, rename_file, delete_file, update_task
-
-### FLUSSO: create_module PRIMA, poi create_file dentro il modulo.
+### COSA PUOI FARE
+- create_module: "topic", "number", "name" — crea un modulo con le 5 sottocartelle
+- create_file: "path", "content" — salva un file
+- edit_file: "path", "content", "search" — modifica un file
+- update_task: "titolo", "status", "notifica" — aggiorna un task
+- run_test: "path" — esegue un test
 
 ### REGOLA VITALE — FILE ESISTENTI VANNO SOVRASCRITTI
-Se un file esiste GIÀ, DEVI comunque eseguire create_file con il contenuto completo per sovrascriverlo.
-MAI limitarti a dire "il file esiste già". POTREBBE essere vecchio, vuoto o troncato.
-L'unico modo per creare/modificare file è eseguire azioni JSON con create_file o edit_file.
-NON dichiarare mai "compito completato" senza aver prima eseguito azioni reali.
-
-### REGOLE PER MODIFICA CODICE (HTML/CSS/JS/PYTHON)
-- Temperatura consigliata: 0.3 (bassa, per preservare struttura e logica esistente)
-- MAI rimuovere: DOCTYPE, <html>, <head>, <title>, <body> da file HTML
-- MAI rompere la struttura DOM: preserva <table>, <colgroup>, <thead>, <tbody> se presenti
-- Quando modifichi HTML: altera SOLO ciÃ² che serve, NON ricostruire da zero
-- Dopo ogni modifica a codice, verifica mentalmente che il file sia valido e funzionante
-- Per file HTML: assicurati che tutti i tag siano chiusi e la struttura sia valida
-
-### REGOLA CRITICA — ESCAPING JSON NEL CAMPO "content"
-Nel campo "content" di create_file/edit_file, tutte le virgolette " e i backslash \ devono essere
-preceduti da backslash. SOSTITUISCI sempre: " → \" e \ → \\ dentro "content".
-Usa \n per rappresentare nuove righe. MAI mettere newline reali nel campo content.
-
-ESEMPIO CORRETTO con escaping:
-{"type": "create_file", "path": "data/topic/01_mod/teoria/file.md", "content": "# Titolo\\n\\nTesto con \"virgolette\" e simboli"}
-
-ESEMPIO:
-{"response": "Creo modulo e file", "actions": [
-  {"type": "create_module", "topic": "Marketing", "number": "01", "name": "Fondamenti"},
-  {"type": "create_file", "path": "data/marketing/01_fondamenti/teoria/intro.md", "content": "# Intro\\n\\n..."}
-]}
+Se un file esiste già, riscrivilo comunque con create_file. Mai dire "il file esiste già".
 """
             full_system = f"{system_prompt}\n\n{action_prompt}"
         else:
@@ -255,8 +226,6 @@ ESEMPIO:
             messages.append({"role": h.get("role", "user"), "content": h.get("content", "")})
 
         user_prompt = message
-        if allow_actions:
-            user_prompt += "\n\nRemember to respond with a JSON object containing 'response' and 'actions' fields."
         if planning_mode:
             user_prompt += """
 ## MODALITÃ€ PIANIFICAZIONE â€” REGOLE OBBLIGATORIE
@@ -500,9 +469,64 @@ IMPORTANTE â€” STRUTTURA MINIMA DI OGNI TASK:
             log.warning("No JSON match found in AI response")
 
         if allow_actions and not actions_log:
-            diag = "\n\n---\nâš ï¸ **Diagnostica:** La risposta dell'AI non conteneva azioni JSON valide."
-            diag += " Riprova riformulando la richiesta in modo piÃ¹ diretto."
-            clean_response += diag
+            log.warning("Agent %s: No valid JSON actions in response (len=%d)", manifesto_name, len(clean_response))
+            
+            # Attempt automatic file extraction from plain text response
+            auto_created = False
+            if len(clean_response) > 200:
+                try:
+                    # Extract a title from the content
+                    title_match = re.search(r'^#\s+(.+)', clean_response, re.MULTILINE)
+                    if title_match:
+                        raw_title = title_match.group(1).strip()
+                    else:
+                        # Use first meaningful line or a default
+                        lines = [l.strip() for l in clean_response.split('\n') if l.strip()]
+                        raw_title = lines[0][:60] if lines else "documento_automatico"
+                    
+                    # Clean title for filename
+                    title_slug = re.sub(r'[^a-zA-Z0-9_]+', '_', raw_title.lower()).strip('_')[:50]
+                    if not title_slug:
+                        title_slug = "documento"
+                    
+                    # Create a unique module for auto-generated content
+                    timestamp = datetime.datetime.now().strftime("%d%m%Y_%H%M%S")
+                    topic_id = f"auto_{timestamp}"
+                    module_folder = f"data/{topic_id}/01_base"
+                    
+                    # Create directories
+                    os.makedirs(f"{module_folder}/teoria", exist_ok=True)
+                    
+                    # Write the file
+                    file_path = f"{module_folder}/teoria/{title_slug}.md"
+                    with open(file_path, "w", encoding="utf-8") as fh:
+                        fh.write(clean_response)
+                    
+                    log.info("Auto-created file from AI text response: %s (%d chars)", file_path, len(clean_response))
+                    actions_log.append({
+                        "type": "create_file", "success": True, "path": file_path,
+                        "message": f"File creato automaticamente: {file_path}"
+                    })
+                    auto_created = True
+                except Exception as exc:
+                    log.error("Auto-create file failed: %s", exc)
+            
+            # Always show the AI response in chat, plus auto-create file if content was long
+            manifesto_name = os.path.basename(manifesto_path).replace('.md', '') if manifesto_path else ''
+            if auto_created:
+                # Append file creation notice to the response shown in chat
+                show_response = clean_response + f"\n\n---\n📄 File salvato automaticamente: `{file_path}`"
+            else:
+                show_response = clean_response
+            
+            self.send_json_response({
+                "response": show_response,
+                "thinking": thinking,
+                "actions_log": actions_log,
+                "error": None,
+                "manifesto_used": manifesto_name
+            })
+            return
 
         manifesto_name = os.path.basename(manifesto_path).replace('.md', '') if manifesto_path else ''
         self.send_json_response({"response": clean_response, "thinking": thinking, "actions_log": actions_log, "error": None, "manifesto_used": manifesto_name})

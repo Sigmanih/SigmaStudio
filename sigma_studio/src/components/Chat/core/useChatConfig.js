@@ -8,9 +8,9 @@ export function useChatConfig({ saveSessionsState, sessionRefs }) {
   const [availableModels, setAvailableModels] = useState([]);
   const [loadingModels, setLoadingModels] = useState(false);
   const [providerConfigs, setProviderConfigs] = useState({});
-  const [activeManifesto, setActiveManifesto] = useState({ name: 'auto', path: 'auto', exists: true, image: '/images/default.png' });
+  const [activeManifesto, setActiveManifesto] = useState({ name: 'Sigma Assistant', path: 'manifesti/sigma_assistant.md', exists: true, image: '/images/default.png' });
   const [manifestos, setManifestos] = useState([]);
-  const [selectedManifestoPath, setSelectedManifestoPath] = useState('auto');
+  const [selectedManifestoPath, setSelectedManifestoPath] = useState('manifesti/sigma_assistant.md');
   const [manifestoManuallySelected, setManifestoManuallySelected] = useState(false);
   const [showManifestoDropdown, setShowManifestoDropdown] = useState(false);
   const [showModelDropdown, setShowModelDropdown] = useState(false);
@@ -68,7 +68,12 @@ export function useChatConfig({ saveSessionsState, sessionRefs }) {
           setActiveManifesto({ ...m, image: m.image || '/images/default.png' });
         }
       }
-    } catch (e) {} finally { fetchOllamaModels(); }
+    } catch (e) {
+      // Fallback defaults if config fetch fails
+      setSelectedModel('llama3.2');
+      setConfigModel('llama3.2');
+      setConfigProvider('ollama');
+    } finally { fetchOllamaModels(); }
   }, [fetchOllamaModels]);
 
   const refreshConfig = useCallback(async () => {
