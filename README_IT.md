@@ -7,7 +7,7 @@
     <a href="#"><img src="https://img.shields.io/badge/react-19-61DAFB.svg" alt="React 19"></a>
     <a href="#"><img src="https://img.shields.io/badge/ollama-ready-FF6F00.svg" alt="Ollama Ready"></a>
     <a href="#"><img src="https://img.shields.io/badge/ai-multi--provider-9B59B6.svg" alt="Multi-Provider AI"></a>
-    <a href="#"><img src="https://img.shields.io/badge/status-v6.0--stable-success.svg" alt="v6.0 Stabile"></a>
+    <a href="#"><img src="https://img.shields.io/badge/status-v7.0--beta-success.svg" alt="v7.0 Beta"></a>
     <a href="#"><img src="https://img.shields.io/badge/PRs-welcome-brightgreen.svg" alt="PRs Welcome"></a>
   </p>
 </p>
@@ -18,7 +18,7 @@
 
 **Sigma Studio è un motore di orchestrazione cognitiva** — un ambiente eseguibile in cui agenti AI creano, verificano, documentano e organizzano la conoscenza, governati da manifesti Modelfile che ne definiscono il comportamento.
 
-Immagina un **team di agenti AI specializzati** (un matematico, un architetto, un test engineer) che lavorano 24 ore su 24 sulla tua ricerca, tracciando ogni azione, testando ogni teorema e costruendo un grafo relazionale navigabile di tutto ciò che producono.
+Immagina un **team di agenti AI specializzati** (un matematico, un architetto, un test engineer, un revisore, un visualizzatore) che lavorano 24 ore su 24 sulla tua ricerca, tracciando ogni azione, testando ogni teorema e costruendo un grafo relazionale navigabile di tutto ciò che producono.
 
 **Questo è Sigma Studio.**
 
@@ -32,6 +32,8 @@ Immagina un **team di agenti AI specializzati** (un matematico, un architetto, u
 | 🏗️ **AI Full-Stack** | Dalla teoria accademica al codice funzionante: teoremi → test → visualizzazioni D3.js → whitepaper |
 | 🔒 **Sicurezza Sandbox** | Ogni operazione è confinata a percorsi autorizzati. Nessun agente tocca i file di sistema |
 | 🧩 **Architettura Modulare** | Backend Python + Frontend React 19 + AI Multi-provider: completamente componibile |
+| 🤖 **Orchestrazione Multi-Agente** | Pipeline parallele con agenti specializzati, condivisione del contesto e delega automatica |
+| 📚 **Sessioni di Ricerca** | Scomposizione di obiettivi complessi in micro-task con tracciabilità completa |
 
 ---
 
@@ -113,8 +115,8 @@ Sigma Studio è un progetto **open-source** in continua evoluzione e accoglie co
 
 ```bash
 # 1. Clona il repository
-git clone https://github.com/your-org/sigma-studio.git
-cd sigma-studio
+git clone https://github.com/Sigmanih/SigmaStudio.git
+cd SigmaStudio
 
 # 2. Installa le dipendenze Python
 pip install -r requirements-backend.txt
@@ -161,6 +163,17 @@ Sigma Studio supporta **6 provider di modelli AI** configurabili dinamicamente t
 | **Groq** ⚡ | Cloud API | `Chiave API` |
 | **OpenRouter** 🌐 | Cloud API (multi-modello) | `Chiave API` |
 
+### 4 Modalità Chat
+
+> Principio Sigma: **"Una notifica non lasciata è un'azione mai avvenuta."**
+
+| Modalità | Parametri Backend | Cosa Fa | Notifiche? |
+|:---------|:------------------|:--------|:-----------|
+| 💬 **Ask** | `allow_actions=false` | L'AI risponde senza modificare nulla | Nessuna (solo chat) |
+| 📋 **Plan** | `planning_mode=true` | Analizza un obiettivo e crea task nella Roadmap | ✅ Ogni task genera notifica |
+| ⚡ **Execute** | `allow_actions=true` | L'AI crea, modifica o elimina file | ✅ **Automatico**: ogni azione file genera notifica |
+| ✅ **Complete Task** | `execute_task_id` + `allow_actions=true` | Esegue un task specifico dalla Roadmap e lo segna completo | ✅ Notifiche per ogni azione + completamento |
+
 ---
 
 ## 📜 Il Sistema dei Manifesti
@@ -173,10 +186,65 @@ Gli agenti AI non sono scatole nere. Sono definiti tramite **Modelfile di Ollama
 
 ### Agenti Disponibili
 
-| Agente | Modello Base | Versione | Ruolo |
-|:-------|:-------------|:---------|:------|
-| `sigma_architect.md` | llama3.2 | **v6.0** | Software Architect — ingegnere full-stack e coordinatore principale |
-| `math1.md` | llama3.2 | v5.0 | Assistente di Ricerca Matematica — modello base per nuovi agenti |
+| File Agente | Modello Base | Versione | Ruolo |
+|:------------|:-------------|:---------|:------|
+| `sigma_architect.md` | llama3.2 / sigma:latest | **v7.0** | Sigma Architect — amministratore, orchestratore principale, coordinatore di ricerca |
+| `agente0.md` | sigma:latest | **v7.2** | Enterprise AI Architect — versione estesa con flusso esecutivo completo |
+| `code_architect.md` | sigma:latest | **v1.0** | Full-Stack Developer — modifica codice React/Python con backup e build check |
+| `math1.md` | llama3.2 | **v6.0** | Assistente di Ricerca Matematica — genera teoria formale, dimostrazioni, esercizi |
+| `math-collatz.md` | llama3.2 | **v1.0** | Specialista Matematico Collatz — teoria dei numeri, analisi mod 6, dimostrazioni formali |
+| `test-engineer.md` | llama3.2 | **v1.0** | Ingegnere dei Test — scrive ed esegue test Python scientifici |
+| `viz-designer.md` | llama3.2 | **v1.0** | Visualizzatore D3.js — crea grafici interattivi e force graphs |
+| `proof-reviewer.md` | llama3.2 | **v1.0** | Revisore Critico — valida dimostrazioni, confuta affermazioni errate |
+
+Tutti i manifesti degli agenti si trovano in `sigma0/` e possono essere caricati tramite API o dalla Galleria Manifesti nell'interfaccia.
+
+### Crea un Nuovo Agente in 30 Secondi
+
+```bash
+# 1. Crea un file manifesto
+cat > sigma0/mio_agente.md << 'EOF'
+FROM llama3.2
+SYSTEM """
+Sei un agente specializzato in biologia molecolare...
+Regole:
+- Modifica solo file dentro data/biology/
+- Usa esclusivamente il provider Ollama per la ricerca
+- Ogni scoperta deve generare una notifica in tasks.json
+"""
+PARAMETER temperature 0.3
+PARAMETER num_ctx 32768
+EOF
+
+# 2. Carica il modello in Ollama
+curl -X POST http://localhost:8000/api/create_model \
+  -H "Content-Type: application/json" \
+  -d "{\"name\": \"mio_agente\", \"modelfile\": \"$(cat sigma0/mio_agente.md)\"}"
+```
+
+---
+
+## 🤖 Orchestrazione Multi-Agente
+
+Sigma Studio supporta collaborazione multi-agente avanzata tramite endpoint dedicati:
+
+- **Orchestrazione Parallela**: Assegna task a più agenti simultaneamente via `/api/chat/orchestrate`
+- **Context Broker** (`core/context_broker.py`): Contesto condiviso SQLite tra agenti, permettendo loro di referenziare il lavoro altrui
+- **Registro Agenti** (`core/agent_registry.py`): Gestione metadati, template agenti e codici colore per l'interfaccia
+- **Sessioni di Ricerca** (`core/research_sessions.py`): Scomposizione autonoma di obiettivi complessi con tracciamento del progresso
+- **Pipeline Engine** (`core/pipeline_engine.py`): Esecuzione di pipeline DAG con monitoraggio dello stato e stop/resume
+
+---
+
+## 🔒 Sistema Sandbox
+
+Tutte le operazioni degli agenti AI sono rigorosamente confinate:
+
+- **Whitelist Percorsi**: `data/`, `manifesti/`, `sigma_studio/src/`, `scratch/`, `core/`
+- **Struttura Moduli**: Solo 5 sottodirectory consentite per modulo: `teoria/`, `test/`, `viz/`, `docs/`, `whitepapers/`
+- **API Sandbox**: Crea ambienti isolati, esegui script, installa pacchetti e distruggi ambienti
+- **Backup Manager** (`core/backup_manager.py`): Backup automatici prima di modifiche critiche ai file
+- **Supporto Rollback**: Annulla modifiche tramite `/api/rollback`
 
 ---
 
@@ -187,6 +255,7 @@ Sigma_Studio/
 │
 ├── sigma_server.py                 ← Backend Python — API REST + Orchestrazione AI
 ├── config.json                     ← Configurazione dei provider AI
+├── config.example.json             ← Template di configurazione AI
 ├── .gitignore                      ← Esclusioni git (node_modules, data/, etc.)
 ├── LICENSE                         ← Licenza GPL v3 / Commerciale
 ├── README.md                       ← Documentazione in inglese
@@ -194,18 +263,31 @@ Sigma_Studio/
 │
 ├── core/                           ← Moduli Backend (separazione delle responsabilità)
 │   ├── sandbox.py                  ← Whitelist e validazione dei percorsi
+│   ├── sandbox_manager.py          ← Gestione ambienti isolati
 │   ├── ai_providers.py             ← Chiamate API ai modelli AI
-│   ├── api_router.py               ← Routing delle chiamate HTTP
+│   ├── api_router.py               ← Routing delle chiamate HTTP (80+ endpoint)
 │   ├── chat_handler.py             ← Gestione delle chat e delle pianificazioni
 │   ├── config_handler.py           ← Configurazione del sistema
+│   ├── data_handler.py             ← Operazioni dati
 │   ├── file_handler.py             ← Gestione dei file sul disco
 │   ├── loop_handler.py             ← Loop di feedback delle azioni
 │   ├── pipeline_engine.py          ← Esecutore di pipeline DAG
 │   ├── context_broker.py           ← DB SQLite del contesto condiviso
 │   ├── agent_orchestrator.py       ← Orchestrazione parallela degli agenti
 │   ├── agent_registry.py           ← Metadati e manifesti degli agenti
+│   ├── agent_templates.py          ← Definizioni template agenti
 │   ├── module_handler.py           ← Creazione e gestione dei moduli
-│   └── task_handler.py             ← Creazione dei task e notifiche
+│   ├── task_handler.py             ← Creazione dei task e notifiche
+│   ├── plan_handler.py             ← Pianificazione e scomposizione
+│   ├── output_validator.py         ← Validazione formato output
+│   ├── execute_loop.py             ← Loop di esecuzione autonomo
+│   ├── research_sessions.py        ← Sessioni di ricerca a lungo termine
+│   ├── tool_registry.py            ← Registrazione e dispatch strumenti
+│   ├── backup_manager.py           ← Backup automatico e rollback
+│   ├── store.py                    ← Archivio stato persistente
+│   ├── logger.py                   ← Logging strutturato
+│   ├── chat/                       ← Sotto-moduli chat
+│   └── orchestration/              ← Sotto-moduli orchestrazione
 │
 ├── sigma_studio/                   ← Frontend React 19 (Vite)
 │   ├── index.html                  ← Entrypoint HTML
@@ -217,10 +299,25 @@ Sigma_Studio/
 │       │   ├── Workspace.jsx       ← Sistema centrale a schede (Tab)
 │       │   ├── Dashboard.jsx       ← Tabella Kanban della Roadmap
 │       │   ├── Chat/               ← Chat e pannello del Research Lab
+│       │   │   ├── core/           ← Hook: useChatCore, useResearchPipeline, usePipelineDesigner
+│       │   │   └── layouts/        ← Pannello flottante e scheda workspace
 │       │   ├── SigmaLab/           ← Editor di testo, visualizzatore e runner
 │       │   └── Workspace/          ← Galleria manifesti e browser moduli
-│       └── styles/                 ← Stili CSS personalizzati (tema scuro)
+│       └── styles/                 ← Stili CSS personalizzati (tema scuro glass)
 │
+├── sigma0/                         ← Manifesti degli agenti AI (Modelfile)
+│   ├── sigma_architect.md          ← Agente orchestratore principale
+│   ├── agente0.md                  ← Enterprise AI Architect (esteso)
+│   ├── code_architect.md           ← Agente sviluppatore full-stack
+│   ├── math1.md                    ← Assistente di ricerca matematica
+│   ├── math-collatz.md             ← Specialista matematico Collatz
+│   ├── test-engineer.md            ← Agente ingegnere dei test
+│   ├── viz-designer.md             ← Agente visualizzatore D3.js
+│   ├── proof-reviewer.md           ← Agente revisore critico
+│   ├── README.md                   ← Documentazione agenti
+│   └── agent_improvements_analysis.md
+│
+├── images/                         ← Screenshot UI e ritratti agenti
 ├── data/                           ← Knowledge Base (sandbox sicura per gli agenti)
 └── scratch/                        ← Directory temporanea per esperimenti e script
 ```
@@ -229,21 +326,80 @@ Sigma_Studio/
 
 ## 🔗 Riferimento API
 
+### Endpoint GET
+
 | Metodo | Endpoint | Funzione |
 |:-------|:---------|:---------|
 | `GET` | `/api/modules` | Elenco dei moduli e dei file per categoria |
-| `GET` | `/api/topics` | Elenco dei percorsi tematici di ricerca |
+| `GET` | `/api/topics` | Argomenti con gerarchia padre/figlio |
 | `GET` | `/api/tasks` | Roadmap dei compiti e notifiche storiche |
+| `GET` | `/api/tasks/by_agent` | Task filtrati per agente |
 | `GET` | `/api/get_file?path=...` | Lettura file (sandbox-safe) |
 | `GET` | `/api/list_manifesti` | Elenco degli agenti AI disponibili |
+| `GET` | `/api/knowledge_db` | Grafo conoscenza per visualizzazione D3 |
 | `GET` | `/api/config` | Configurazione AI (senza chiavi visibili) |
+| `GET` | `/api/ollama_models` | Modelli Ollama installati |
+| `GET` | `/api/sandbox/list` | Elenco ambienti sandbox |
+| `GET` | `/api/agents` | Elenco agenti registrati |
+| `GET` | `/api/agents/get` | Dettagli agente specifico |
+| `GET` | `/api/agents/for_topic` | Agenti assegnati a un argomento |
+| `GET` | `/api/agents/templates` | Elenco template agenti |
+| `GET` | `/api/agents/colors` | Mappatura colori agenti |
+| `GET` | `/api/chat/pipeline/status` | Stato esecuzione pipeline |
+| `GET` | `/api/context/get` | Dati context broker |
+| `GET` | `/api/context/chat_log` | Log chat dal contesto |
+| `GET` | `/api/research/list` | Elenco sessioni di ricerca |
+| `GET` | `/api/research/status` | Stato sessione di ricerca |
+| `GET` | `/api/research/chat_history` | Cronologia chat sessione di ricerca |
+
+### Endpoint POST
+
+| Metodo | Endpoint | Funzione |
+|:-------|:---------|:---------|
 | `POST` | `/api/tasks` | Salvataggio dello stato della Roadmap |
+| `POST` | `/api/tasks/assign` | Assegna task a un agente |
 | `POST` | `/api/create_file` | Scrittura di file su disco |
-| `POST` | `/api/chat` | Esecuzione della chat AI (4 modalità) |
-| `POST` | `/api/chat/orchestrate` | Orchestrazione cooperativa multi-agente |
-| `POST` | `/api/run_test` | Esecuzione di script Python o Node.js |
+| `POST` | `/api/delete_file` | Elimina file |
+| `POST` | `/api/rename_file` | Rinomina file |
+| `POST` | `/api/create_module` | Nuovo modulo con sottocartelle |
+| `POST` | `/api/delete_module` | Elimina modulo |
+| `POST` | `/api/update_module` | Rinomina modulo |
 | `POST` | `/api/create_topic` | Creazione di un nuovo argomento |
-| `POST` | `/api/create_module` | Creazione di un modulo |
+| `POST` | `/api/update_topic` | Aggiorna metadati argomento |
+| `POST` | `/api/delete_topic` | Elimina argomento |
+| `POST` | `/api/upload_file` | Upload multipart di file |
+| `POST` | `/api/chat` | Chat con AI (4 modalità, multi-provider) |
+| `POST` | `/api/chat/loop` | Chat con loop di azioni |
+| `POST` | `/api/chat/execute` | Esecuzione azioni chat |
+| `POST` | `/api/chat/plan` | Modalità pianificazione |
+| `POST` | `/api/chat/execute_plan` | Esecuzione piano salvato |
+| `POST` | `/api/chat/orchestrate` | Orchestrazione multi-agente |
+| `POST` | `/api/chat/pipeline/start` | Avvio esecuzione pipeline DAG |
+| `POST` | `/api/chat/pipeline/stop` | Arresto esecuzione pipeline |
+| `POST` | `/api/create_model` | Creazione modello Ollama da Modelfile |
+| `POST` | `/api/run_test` | Esecuzione di script Python o Node.js |
+| `POST` | `/api/config` | Aggiornamento configurazione AI |
+| `POST` | `/api/ollama_models` | Aggiornamento modelli Ollama |
+| `POST` | `/api/sandbox/create` | Creazione ambiente sandbox |
+| `POST` | `/api/sandbox/run` | Esecuzione comando in sandbox |
+| `POST` | `/api/sandbox/install` | Installazione pacchetti in sandbox |
+| `POST` | `/api/sandbox/destroy` | Distruzione ambiente sandbox |
+| `POST` | `/api/agents/register` | Registrazione nuovo agente |
+| `POST` | `/api/agents/update` | Aggiornamento metadati agente |
+| `POST` | `/api/agents/create` | Creazione agente da template |
+| `POST` | `/api/agents/upload_image` | Upload avatar agente |
+| `POST` | `/api/context/share` | Condivisione contesto tra agenti |
+| `POST` | `/api/context/chat_message` | Salvataggio messaggio chat nel contesto |
+| `POST` | `/api/research/create` | Creazione sessione di ricerca |
+| `POST` | `/api/research/delete` | Eliminazione sessione di ricerca |
+| `POST` | `/api/research/update_objective` | Aggiornamento obiettivo ricerca |
+| `POST` | `/api/research/update_agents` | Aggiornamento agenti nella sessione |
+| `POST` | `/api/research/decompose` | Scomposizione obiettivo |
+| `POST` | `/api/research/next_steps` | Prossimi passi ricerca |
+| `POST` | `/api/research/start` | Avvio esecuzione ricerca |
+| `POST` | `/api/manifesti/update_image` | Aggiornamento immagine manifesto |
+| `POST` | `/api/ai/action` | Dispatcher azioni AI generico |
+| `POST` | `/api/rollback` | Rollback ultime operazioni file |
 
 ---
 

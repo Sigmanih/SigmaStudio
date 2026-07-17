@@ -61,11 +61,8 @@
 .collapse-btn.right { left: -12px; }
 
 .app-container.left-collapsed .sidebar { width: 0; min-width: 0; border: none; overflow: visible; pointer-events: none; }
-.app-container.right-collapsed .dashboard { width: 0; min-width: 0; border: none; overflow: visible; pointer-events: none; }
-.app-container.left-collapsed .sidebar-content,
-.app-container.right-collapsed .dashboard-content { opacity: 0; visibility: hidden; }
+.app-container.left-collapsed .sidebar-content { opacity: 0; visibility: hidden; }
 .app-container.left-collapsed .collapse-btn.left { right: -32px; visibility: visible; opacity: 1; pointer-events: auto; z-index: 2000; }
-.app-container.right-collapsed .collapse-btn.right { left: -32px; visibility: visible; opacity: 1; pointer-events: auto; z-index: 2000; }
 
 /* Sidebar Items */
 .sidebar-item, .module-head {
@@ -80,8 +77,7 @@
 .sidebar-item.active { background: var(--primary-glow); color: var(--primary); border-color: var(--primary-border); }
 .mod-num { background: rgba(0,210,255,0.05); color: var(--primary); font-family: 'JetBrains Mono', monospace; font-size: 0.75rem; font-weight: 700; padding: 3px 7px; border-radius: 6px; border: 1px solid var(--primary-border); }
 
-/* Workspace & Tabs */
-.workspace { background: #010103; display: flex; flex-direction: column; overflow: hidden; position: relative; z-index: 1; }
+/* Tabs */
 .tab-bar { display: flex; background: var(--surface); backdrop-filter: var(--glass); border-bottom: 1px solid var(--border); height: var(--header-h); overflow-x: auto; scrollbar-width: none; }
 .tab-bar::-webkit-scrollbar { display: none; }
 .tab { display: flex; align-items: center; gap: 12px; padding: 0 24px; min-width: 180px; border-right: 1px solid var(--border); cursor: pointer; font-size: 0.8rem; font-weight: 500; color: var(--text-dark); transition: var(--trans-fast); position: relative; border-top: 3px solid transparent; }

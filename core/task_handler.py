@@ -401,6 +401,16 @@ def _execute_single_action(self, action: dict, action_type: str, bot_name: str, 
         path = _normalize_action_path(action.get("path", ""))
         content = action.get("content", "")
 
+        # Validate content is not empty/trivial
+        stripped_content = content.strip().strip('. \t\n\r')
+        if not stripped_content or len(stripped_content) < 5:
+            result_log.append({
+                "type": "create_file", "success": False, "path": path,
+                "error": f"Contenuto troppo corto o vuoto ({len(content)} caratteri). Azione ignorata."
+            })
+            log.warning("Skipped create_file '%s': content too short (%d chars)", path, len(content))
+            return
+
         path = _ensure_module_structure(path)
 
         valid, err = _validate_module_path(path)

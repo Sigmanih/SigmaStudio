@@ -180,6 +180,12 @@ Struttura corretta:
 
 ### FLUSSO: create_module PRIMA, poi create_file dentro il modulo.
 
+### REGOLA VITALE — FILE ESISTENTI VANNO SOVRASCRITTI
+Se un file esiste GIÀ, DEVI comunque eseguire create_file con il contenuto completo per sovrascriverlo.
+MAI limitarti a dire "il file esiste già". POTREBBE essere vecchio, vuoto o troncato.
+L'unico modo per creare/modificare file è eseguire azioni JSON con create_file o edit_file.
+NON dichiarare mai "compito completato" senza aver prima eseguito azioni reali.
+
 ### REGOLE PER MODIFICA CODICE (HTML/CSS/JS/PYTHON)
 - Temperatura consigliata: 0.3 (bassa, per preservare struttura e logica esistente)
 - MAI rimuovere: DOCTYPE, <html>, <head>, <title>, <body> da file HTML
@@ -187,6 +193,14 @@ Struttura corretta:
 - Quando modifichi HTML: altera SOLO ciÃ² che serve, NON ricostruire da zero
 - Dopo ogni modifica a codice, verifica mentalmente che il file sia valido e funzionante
 - Per file HTML: assicurati che tutti i tag siano chiusi e la struttura sia valida
+
+### REGOLA CRITICA — ESCAPING JSON NEL CAMPO "content"
+Nel campo "content" di create_file/edit_file, tutte le virgolette " e i backslash \ devono essere
+preceduti da backslash. SOSTITUISCI sempre: " → \" e \ → \\ dentro "content".
+Usa \n per rappresentare nuove righe. MAI mettere newline reali nel campo content.
+
+ESEMPIO CORRETTO con escaping:
+{"type": "create_file", "path": "data/topic/01_mod/teoria/file.md", "content": "# Titolo\\n\\nTesto con \"virgolette\" e simboli"}
 
 ESEMPIO:
 {"response": "Creo modulo e file", "actions": [
@@ -494,4 +508,4 @@ IMPORTANTE â€” STRUTTURA MINIMA DI OGNI TASK:
         self.send_json_response({"response": clean_response, "thinking": thinking, "actions_log": actions_log, "error": None, "manifesto_used": manifesto_name})
     except Exception as exc:
         log.error("handle_chat unhandled error: %s", exc, exc_info=True)
-        self.send_json_response({"error": str(exc)}, 500)
+        self.send_json_response({"error": str(exc)}, 500)

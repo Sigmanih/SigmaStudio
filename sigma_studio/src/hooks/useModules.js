@@ -9,13 +9,16 @@ export function useModules() {
   const [loading, setLoading] = useState(true);
 
   const fetchModules = useCallback(async () => {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 8000);
     try {
-      const res = await fetch('/api/modules');
+      const res = await fetch('/api/modules', { signal: controller.signal });
       const data = await res.json();
       setModules(data.modules || []);
     } catch (e) {
       console.error("Fetch modules error:", e);
     } finally {
+      clearTimeout(timeout);
       setLoading(false);
     }
   }, []);

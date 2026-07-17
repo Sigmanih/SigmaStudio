@@ -3,17 +3,17 @@ import React, { useEffect } from 'react';
 // Sub-components
 import Sidebar from './components/Sidebar';
 import Workspace from './components/Workspace';
-import Dashboard from './components/Dashboard';
 import ChatPanel from './components/Chat/ChatPanel';
 import AIConfig from './components/AIConfig';
 import ToastNotification from './components/ToastNotification';
+import TaskFloatingPanel from './components/TaskFloatingPanel';
 import { ModuleModal, TaskModal, NewFileModal } from './components/modals';
 
 // Context
 import { AppProvider, useApp } from './contexts/AppContext';
 
 // ==============================================================================
-// SIGMA STUDIO | State Orchestrator v6.2 — Context & Provider Refactored
+// SIGMA STUDIO | State Orchestrator v7.0 — Floating UI Edition
 // ==============================================================================
 
 function AppContent() {
@@ -44,18 +44,17 @@ function AppContent() {
     removeToast,
     manifesti,
     fetchManifesti,
-    topicsCount,
     aiChatOpen,
     setAiChatOpen,
     aiConfigOpen,
     setAiConfigOpen,
     leftVisible,
     setLeftVisible,
-    rightVisible,
-    setRightVisible,
     fileOps,
     moduleOps
   } = useApp();
+
+  const [taskPanelOpen, setTaskPanelOpen] = React.useState(false);
 
   // --- MESSAGE EVENT LISTENERS ---
   useEffect(() => {
@@ -86,10 +85,27 @@ function AppContent() {
     return () => window.removeEventListener('sigma-open-file', handler);
   }, [openTab]);
 
+  const handleDeleteTask = (task) => {
+    if (confirm(`Eliminare il task "${task.titolo}"?`)) {
+      deleteTask(task.titolo);
+    }
+  };
+
+  const handleOpenFileFromTask = (path) => {
+    if (!path) return;
+    const filename = path.split('/').pop() || path;
+    const pathLower = path.toLowerCase();
+    let type = 'teoria';
+    if (pathLower.includes('/test/')) type = 'test';
+    else if (pathLower.includes('/viz/')) type = 'viz';
+    else if (pathLower.includes('/docs/')) type = 'docs';
+    openTab({ path, filename }, type);
+  };
+
   if (loading) return <div className="loading-screen">SIGMA_STUDIO Booting...</div>;
 
   return (
-    <div className={`app-container ${!leftVisible ? 'left-collapsed' : ''} ${!rightVisible ? 'right-collapsed' : ''}`}>
+    <div className={`app-container ${!leftVisible ? 'left-collapsed' : ''}`}>
       <Sidebar
         modules={modules}
         manifestiCount={manifesti.length}
@@ -100,7 +116,7 @@ function AppContent() {
         openTab={openTab}
         goHome={closeAllTabs}
         tasks={tasks}
-        topicsCount={topicsCount}
+        topicsCount={0}
       />
 
       <Workspace
@@ -129,17 +145,6 @@ function AppContent() {
         clearAllTasks={clearAllTasks}
       />
 
-      <Dashboard
-        tasks={tasks}
-        rightVisible={rightVisible}
-        setRightVisible={setRightVisible}
-        toggleTaskStatus={toggleTaskStatus}
-        setEditingTask={setEditingTask}
-        setIsTaskModalOpen={setIsTaskModalOpen}
-        deleteTask={deleteTask}
-        activeTabId={activeTabId}
-      />
-
       <ModuleModal
         isOpen={moduleOps.isModalOpen}
         onClose={() => { moduleOps.setIsModalOpen(false); moduleOps.setEditingModule(null); }}
@@ -161,8 +166,21 @@ function AppContent() {
         type={fileOps.fileModalContext.type}
       />
 
-      {/* AI CHAT TOGGLE BUTTON — FIRST in DOM to stay clickable on all browsers */}
+      {/* FLOATING BUTTONS BAR */}
       <div className="ai-float-bar">
+        {/* Tasks button */}
+        <button
+          className="ai-float-btn"
+          onClick={() => setTaskPanelOpen(!taskPanelOpen)}
+          title={taskPanelOpen ? 'Chiudi Task Roadmap' : 'Apri Task Roadmap'}
+          style={{ background: taskPanelOpen ? 'rgba(0,210,255,0.2)' : 'var(--primary)', border: taskPanelOpen ? '2px solid var(--primary)' : 'none' }}
+        >
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M9 11l3 3L22 4"/>
+            <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/>
+          </svg>
+        </button>
+        {/* AI Chat button */}
         <button
           className="ai-float-btn"
           onClick={() => setAiChatOpen(!aiChatOpen)}
@@ -172,6 +190,7 @@ function AppContent() {
             <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
           </svg>
         </button>
+        {/* AI Config button */}
         <button
           className="ai-float-btn config"
           onClick={() => setAiConfigOpen(true)}
@@ -184,7 +203,21 @@ function AppContent() {
         </button>
       </div>
 
-      {/* AI CHAT PANEL — AFTER the float bar so it doesn't cover the button */}
+      {/* TASK FLOATING PANEL */}
+      {taskPanelOpen && (
+        <TaskFloatingPanel
+          tasks={tasks}
+          onAdd={() => { setEditingTask(null); setIsTaskModalOpen(true); }}
+          onEdit={(task) => { setEditingTask(task); setIsTaskModalOpen(true); }}
+          onDelete={handleDeleteTask}
+          onToggleStatus={toggleTaskStatus}
+          onOpenFile={handleOpenFileFromTask}
+          onClearAll={clearAllTasks}
+          onClose={() => setTaskPanelOpen(false)}
+        />
+      )}
+
+      {/* AI CHAT PANEL */}
       {aiChatOpen && (
         <ChatPanel
           manifesti={manifesti}
