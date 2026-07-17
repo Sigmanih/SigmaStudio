@@ -61,11 +61,8 @@ agent_memory/
 # Research sessions (user-specific)
 research_sessions/
 
-# Agent manifests (user-created agents)
-manifesti/
-
-# Sigma0 — official admin agent (tracked in repo)
-!sigma0/
+# Private/Personal manifests (not tracked in git)
+manifesti/Private/
 
 # Agent metadata (auto-generated from manifesti + API)
 agents_meta.json

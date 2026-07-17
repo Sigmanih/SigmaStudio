@@ -142,6 +142,10 @@ def handle_knowledge_db(self):
 
 
 def handle_list_manifesti(self):
+    """GET /api/list_manifesti — List all available agent manifests from manifesti/.
+    
+    Scans both manifesti/ root and manifesti/Private/ subdirectory for .md files.
+    """
     try:
         manifesto_dir = 'manifesti'
         manifesti = []
@@ -156,34 +160,42 @@ def handle_list_manifesti(self):
                 return "/images/matematicoAi.png"
             if "code" in fn or "program" in fn or "dev" in fn:
                 return "/images/programmatoreAi.png"
-            if "architect" in fn or "agente0" in fn:
+            if "architect" in fn or "admin" in fn:
                 return "/images/agente0.png"
             return "/images/default.png"
 
+        def add_manifesto(fpath, fname):
+            norm_path = fpath.replace('\\', '/')
+            img = manifesto_images.get(norm_path)
+            if not img:
+                for agent_id, agent_data in meta.get("agents", {}).items():
+                    if agent_data.get("manifesto") == norm_path:
+                        img = agent_data.get("image")
+                        break
+            if not img:
+                img = get_fallback_image(fname)
+            manifesti.append({
+                "filename": fname,
+                "path": norm_path,
+                "name": fname.replace('.md', '').replace('_', ' ').title(),
+                "size": os.path.getsize(fpath),
+                "image": img
+            })
+
         if os.path.isdir(manifesto_dir):
+            # Scan main directory for official manifests
             for f in sorted(os.listdir(manifesto_dir)):
                 fpath = os.path.join(manifesto_dir, f)
                 if os.path.isfile(fpath) and f.lower().endswith('.md') and f.lower() != 'readme.md':
-                    norm_path = fpath.replace('\\', '/')
-                    
-                    img = manifesto_images.get(norm_path)
-                    
-                    if not img:
-                        for agent_id, agent_data in meta.get("agents", {}).items():
-                            if agent_data.get("manifesto") == norm_path:
-                                img = agent_data.get("image")
-                                break
-                                
-                    if not img:
-                        img = get_fallback_image(f)
-
-                    manifesti.append({
-                        "filename": f,
-                        "path": norm_path,
-                        "name": f.replace('.md', '').replace('_', ' ').title(),
-                        "size": os.path.getsize(fpath),
-                        "image": img
-                    })
+                    add_manifesto(fpath, f)
+            # Scan Private/ subdirectory for personal manifests
+            private_dir = os.path.join(manifesto_dir, 'Private')
+            if os.path.isdir(private_dir):
+                for f in sorted(os.listdir(private_dir)):
+                    fpath = os.path.join(private_dir, f)
+                    if os.path.isfile(fpath) and f.lower().endswith('.md'):
+                        add_manifesto(fpath, f)
+                        
         self.send_json_response({"success": True, "manifesti": manifesti, "files": manifesti})
     except Exception as exc:
         log.error("handle_list_manifesti: %s", exc)
@@ -225,7 +237,7 @@ def handle_upload_agent_image(self):
         from core.file_handler import _parse_multipart
         parsed = _parse_multipart(self)
         file_item = parsed.get('file')
-        manifesto_path = parsed.get('path') # il percorso del manifesto a cui associare l'immagine
+        manifesto_path = parsed.get('path')
         
         if not file_item or not manifesto_path:
             return self.send_json_response({"error": "Missing file or path fields"}, 400)
@@ -234,16 +246,13 @@ def handle_upload_agent_image(self):
         if '..' in filename or '..' in manifesto_path:
             return self.send_json_response({"error": "Invalid path"}, 400)
             
-        # Percorso di destinazione: images/
         dest_dir = "images"
         os.makedirs(dest_dir, exist_ok=True)
         dest_path = os.path.join(dest_dir, filename)
         
-        # Salva il file immagine
         with open(dest_path, 'wb') as f:
             f.write(file_item['data'])
             
-        # Associa l'immagine al manifesto nel file agents_meta.json
         image_url = f"/images/{filename}"
         manifesto_path = manifesto_path.replace('\\', '/')
         
@@ -266,5 +275,3 @@ def handle_upload_agent_image(self):
     except Exception as exc:
         log.error("handle_upload_agent_image: %s", exc)
         self.send_json_response({"error": str(exc)}, 500)
-
-

@@ -18,6 +18,7 @@ log = logging.getLogger("sigma.orchestrator")
 
 # Agents that can be routed to
 ROUTABLE_AGENTS = {
+    "sigma_admin": "manifesti/sigma_admin.md",
     "sigma_architect": "manifesti/sigma_architect.md",
     "code_architect": "manifesti/code_architect.md",
     "math_researcher": "manifesti/math_researcher.md",
