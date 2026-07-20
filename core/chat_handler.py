@@ -65,22 +65,21 @@ def handle_chat(self):
         allow_actions = req.get("allow_actions", True)
         planning_mode = req.get("planning_mode", False)
 
-        # Auto-detect file creation requests: if user asks to create/write a file,
-        # force allow_actions=True even if frontend sent False (Ask mode)
-        if not allow_actions and not planning_mode:
-            _create_keywords = [
-                "creami", "scrivimi", "crea un file", "crea file", "scrivi un file",
-                "scrivi file", "documento su", "documento di", "crea un documento",
-                "crea documento", "genera un file", "genera file",
-                "crea un modulo", "crea modulo", "crea un argomento",
-                "vorrei che mi scrivessi", "puoi scrivermi", "puoi creare",
-            ]
-            msg_lower = message.lower()
-            for kw in _create_keywords:
-                if kw in msg_lower:
-                    allow_actions = True
-                    log.info("Auto-detected file creation request: forcing allow_actions=True")
-                    break
+        # Auto-detect file creation requests: if user explicitly asks to create/write a file
+        user_requested_file_creation = False
+        _create_keywords = [
+            "crea un file", "crea file", "scrivi un file", "scrivi file",
+            "crea un documento", "crea documento", "genera un file", "genera file",
+            "crea un modulo", "crea modulo", "crea un argomento", "crea argomento",
+            "salva in un file", "salva un file", "salva file", "salva su file",
+        ]
+        msg_lower = message.lower()
+        for kw in _create_keywords:
+            if kw in msg_lower:
+                user_requested_file_creation = True
+                allow_actions = True
+                log.info("Auto-detected file creation request: forcing allow_actions=True")
+                break
         execute_task_id = req.get("execute_task_id", "")
         context_files = req.get("context", {}).get("open_files", [])
         history = req.get("context", {}).get("history", [])
@@ -162,10 +161,13 @@ In modalitÃ  CHIEDI rispondi SEMPRE con JSON: {"response": "La risposta all'ut
 - "thinking": il processo logico separato (verrÃ  mostrato con toggle "Mostra ragionamento")
 MAI mischiare thinking e response. MAI usare tag XML."""
 
-        # --- BUILD SYSTEM PROMPT (simplified) ---
-        # No JSON requirement — model responds naturally. Backend auto-extracts files.
+        # --- BUILD SYSTEM PROMPT ---
         if allow_actions or planning_mode:
             action_prompt = """
+## REGOLE FONDAMENTALI SULLA CREAZIONE DEI FILE ED ESECUZIONE
+1. Rispondi all'utente in modo chiaro, approfondito ed esplicativo in italiano. Spiega SEMPRE cosa stai facendo, come lo stai facendo e le motivazioni delle tue scelte.
+2. Crea o modifica file SOLO se l'utente lo ha esplicitamente richiesto o se è strettamente necessario per completare l'azione. Non salvare mai file per semplici risposte o conversazioni in chat.
+
 ## STRUTTURA MODULARE
 Salva i file in: data/<argomento>/<NN_modulo>/{teoria|test|viz|docs|whitepapers}/<file>
 Solo 5 cartelle permesse dentro un modulo: teoria/, test/, viz/, docs/, whitepapers/
@@ -183,7 +185,7 @@ Se un file esiste già, riscrivilo comunque con create_file. Mai dire "il file e
 """
             full_system = f"{system_prompt}\n\n{action_prompt}"
         else:
-            full_system = system_prompt  # Nessun formato richiesto per risposte normali
+            full_system = f"{system_prompt}\n\nRispondi all'utente in modo chiaro, approfondito ed esplicativo in italiano. Spiega SEMPRE il tuo ragionamento e la soluzione passo-passo."
 
         context_str = _collect_context_files(self, context_files)
         tasks_context = json.dumps(tasks_store.load(), indent=2)
@@ -471,12 +473,12 @@ IMPORTANTE â€” STRUTTURA MINIMA DI OGNI TASK:
             log.warning("No JSON match found in AI response")
 
         if allow_actions and not actions_log:
-            log.warning("Agent %s: No valid JSON actions in response (len=%d)", manifesto_name, len(clean_response))
+            log.info("Agent %s: Text response without JSON actions (len=%d)", manifesto_name, len(clean_response))
             
-            # Attempt automatic file extraction from plain text response
+            # Attempt automatic file extraction ONLY if user explicitly requested file creation
             auto_created = False
             file_path = ""
-            if len(clean_response) > 200:
+            if user_requested_file_creation and len(clean_response) > 200:
                 try:
                     # Extract a title from the content
                     title_match = re.search(r'^#\s+(.+)', clean_response, re.MULTILINE)

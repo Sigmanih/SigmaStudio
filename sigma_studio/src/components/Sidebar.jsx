@@ -1,6 +1,6 @@
 import React from 'react';
 import { 
-  Home, FileText, Activity, PieChart, Layers, ChevronRight, MessageSquare, FlaskConical, Brain
+  Home, FileText, Activity, PieChart, Layers, ChevronRight, MessageSquare, FlaskConical, Brain, Zap
 } from 'lucide-react';
 
 export const SidebarItem = ({ icon: Icon, label, active, onClick, badge, badgeColor, badgeSecondary, badgeSecondaryColor }) => (
@@ -163,6 +163,14 @@ export default function Sidebar({
             badgeColor="rgba(0,210,255,0.15)"
             active={activeTabId != null && activeTabId.startsWith('training_lab')}
             onClick={() => openTab({ name: '🧠 Training Lab' }, 'training_lab')} 
+          />
+          <SidebarItem 
+            icon={Zap} 
+            label="Hardware & GPU" 
+            badge={2}
+            badgeColor="rgba(0,242,254,0.15)"
+            active={activeTabId != null && activeTabId.startsWith('hardware_lab')}
+            onClick={() => openTab({ name: '⚡ Hardware & GPU Monitor' }, 'hardware_lab')} 
           />
         </nav>
 

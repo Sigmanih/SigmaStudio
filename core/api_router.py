@@ -27,19 +27,21 @@ def register_get_handlers(handler_class):
         '/api/research/list': 'handle_research_list',
         '/api/research/status': 'handle_research_status',
         '/api/research/chat_history': 'handle_research_chat_history',
-        # Training Lab
+        # Training & Hardware Lab
         '/api/training/datasets': 'handle_training_list_datasets',
         '/api/training/datasets/search': 'handle_training_dataset_search',
         '/api/training/jobs': 'handle_training_list_jobs',
         '/api/training/job/status': 'handle_training_job_status',
         '/api/training/job/logs': 'handle_training_job_logs',
         '/api/training/hardware': 'handle_training_hardware',
+        '/api/hardware/status': 'handle_hardware_status',
     }
 
 
 def register_post_handlers(handler_class):
     """Register POST API handlers on the handler class."""
     handler_class._POST_HANDLERS = {
+        '/api/hardware/config': 'handle_hardware_config',
         '/api/run_test': 'handle_run_test',
         '/api/create_file': 'handle_create_file',
         '/api/delete_file': 'handle_delete_file',

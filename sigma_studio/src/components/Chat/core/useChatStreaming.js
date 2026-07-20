@@ -214,12 +214,11 @@ export function useChatStreaming({
       const routing = getModelRoutingInfo(selectedModel, providerConfigs);
       const isPlan = activeMode === 'plan';
 
-      // Unified: chat mode (allow_actions=true, auto-detect) or plan mode (planning_mode=true)
       const useStream = !isPlan;
       const body = {
         message: input.trim(), bot_name: selectedModel, model: selectedModel,
         model_provider: routing.provider, model_endpoint: routing.endpoint, model_api_url: routing.api_url,
-        allow_actions: !isPlan, planning_mode: isPlan, stream: useStream,
+        allow_actions: false, planning_mode: isPlan, stream: useStream,
         timeout: quickConfig.timeout || 300, web_search: webSearch,
         context: { open_files: contextFiles, history: updatedMessages.slice(-10).map(m => ({ role: m.role, content: m.content })) },
         uploaded_files: pcFiles.length > 0 ? pcFiles : undefined
@@ -228,7 +227,8 @@ export function useChatStreaming({
       const res = await fetch('/api/chat', {
         method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body), signal: controller.signal
       });
-      if (useStream && res.ok) {
+      const contentType = res.headers.get("content-type") || "";
+      if (res.ok && contentType.includes("text/event-stream")) {
         await handleStreamResponse(res, currentSessionId);
       } else {
         await handleJsonResponse(res, currentSessionId, updatedMessages);

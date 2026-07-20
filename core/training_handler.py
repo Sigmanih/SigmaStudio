@@ -832,6 +832,38 @@ def _query_nvidia_smi():
     return gpus
 
 
+def _query_nvidia_smi_processes():
+    """Query active GPU compute/graphics processes per GPU bus ID."""
+    processes = []
+    try:
+        result = subprocess.run(
+            ["nvidia-smi", "--query-compute-apps=gpu_bus_id,pid,process_name,used_memory", "--format=csv,noheader,nounits"],
+            capture_output=True, text=True, timeout=5, encoding="utf-8"
+        )
+        if result.returncode == 0:
+            for line in result.stdout.strip().split("\n"):
+                line = line.strip()
+                if not line:
+                    continue
+                parts = [p.strip() for p in line.split(",")]
+                if len(parts) >= 3:
+                    proc_name = parts[2]
+                    if proc_name and proc_name != "[Insufficient Permissions]":
+                        clean_name = os.path.basename(proc_name)
+                    else:
+                        clean_name = "System / Process"
+                    processes.append({
+                        "bus_id": parts[0],
+                        "pid": parts[1],
+                        "process_name": clean_name,
+                        "full_path": parts[2],
+                        "used_memory_mb": parts[3] if len(parts) > 3 else "N/A"
+                    })
+    except Exception:
+        pass
+    return processes
+
+
 def _check_torch_cuda():
     """Check PyTorch CUDA availability with detailed diagnostics."""
     result = {
@@ -1038,12 +1070,16 @@ def get_hardware_info():
         "description":   mgpu_desc,
     }
 
+    # 7. Active GPU Processes
+    processes = _query_nvidia_smi_processes()
+
     return {
         "success": True,
         "hardware": {
             # GPU list (always from nvidia-smi, never empty if hardware present)
             "gpu":               smi_gpus,
             "gpu_count":         gpu_count,
+            "processes":         processes,
             # CPU
             "cpu_count":         os.cpu_count() or 1,
             # RAM

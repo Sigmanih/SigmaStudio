@@ -332,6 +332,70 @@ def _handle_training_export_ollama(self):
     ))
 SigmaAPIHandler.handle_training_export_ollama = _handle_training_export_ollama
 
+def _handle_hardware_status(self):
+    from core.training_handler import get_hardware_info
+    hw_res = get_hardware_info()
+    cfg = {}
+    if os.path.exists("config.json"):
+        try:
+            with open("config.json", "r", encoding="utf-8") as f:
+                cfg = json.load(f)
+        except Exception:
+            pass
+    hw_config = cfg.get("hardware", {
+        "cuda_visible_devices": os.environ.get("CUDA_VISIBLE_DEVICES", "0,1"),
+        "ollama_num_parallel": int(os.environ.get("OLLAMA_NUM_PARALLEL", 4)),
+        "ollama_max_loaded_models": int(os.environ.get("OLLAMA_MAX_LOADED_MODELS", 2)),
+        "num_gpu_layers": -1,
+        "preferred_training_gpu": "cuda:0",
+        "fp16_enabled": True,
+    })
+    env_status = {
+        "CUDA_VISIBLE_DEVICES": os.environ.get("CUDA_VISIBLE_DEVICES", "0,1"),
+        "OLLAMA_NUM_PARALLEL": os.environ.get("OLLAMA_NUM_PARALLEL", "4"),
+        "OLLAMA_MAX_LOADED_MODELS": os.environ.get("OLLAMA_MAX_LOADED_MODELS", "2"),
+    }
+    self.send_json_response({
+        "success": True,
+        "hardware": hw_res.get("hardware", {}),
+        "config": hw_config,
+        "env": env_status,
+    })
+SigmaAPIHandler.handle_hardware_status = _handle_hardware_status
+
+def _handle_hardware_config(self):
+    body = self.read_json_body()
+    cfg = {}
+    if os.path.exists("config.json"):
+        try:
+            with open("config.json", "r", encoding="utf-8") as f:
+                cfg = json.load(f)
+        except Exception:
+            pass
+    hw_cfg = cfg.get("hardware", {})
+    hw_cfg.update({
+        "cuda_visible_devices": body.get("cuda_visible_devices", "0,1"),
+        "ollama_num_parallel": int(body.get("ollama_num_parallel", 4)),
+        "ollama_max_loaded_models": int(body.get("ollama_max_loaded_models", 2)),
+        "num_gpu_layers": int(body.get("num_gpu_layers", -1)),
+        "preferred_training_gpu": body.get("preferred_training_gpu", "cuda:0"),
+        "fp16_enabled": bool(body.get("fp16_enabled", True)),
+    })
+    cfg["hardware"] = hw_cfg
+    try:
+        with open("config.json", "w", encoding="utf-8") as f:
+            json.dump(cfg, f, indent=4)
+    except Exception as exc:
+        return self.send_json_response({"success": False, "error": str(exc)}, 500)
+
+    # Apply environment variables
+    os.environ["CUDA_VISIBLE_DEVICES"] = hw_cfg["cuda_visible_devices"]
+    os.environ["OLLAMA_NUM_PARALLEL"] = str(hw_cfg["ollama_num_parallel"])
+    os.environ["OLLAMA_MAX_LOADED_MODELS"] = str(hw_cfg["ollama_max_loaded_models"])
+    
+    self.send_json_response({"success": True, "config": hw_cfg})
+SigmaAPIHandler.handle_hardware_config = _handle_hardware_config
+
 # --- Register routing tables ---
 register_get_handlers(SigmaAPIHandler)
 register_post_handlers(SigmaAPIHandler)
@@ -462,6 +526,26 @@ def _rebuild_modules_meta() -> None:
     log.info("modules_meta.json rebuilt (%d topics, %d modules)", len(topics), len(modules))
 
 
+def _apply_hardware_env():
+    """Apply multi-GPU hardware environment variables from config.json at startup."""
+    try:
+        if os.path.exists("config.json"):
+            with open("config.json", "r", encoding="utf-8") as f:
+                cfg = json.load(f)
+            hw = cfg.get("hardware", {})
+            devices = hw.get("cuda_visible_devices", "0,1")
+            num_parallel = str(hw.get("ollama_num_parallel", 4))
+            max_loaded = str(hw.get("ollama_max_loaded_models", 2))
+            
+            os.environ["CUDA_VISIBLE_DEVICES"] = devices
+            os.environ["OLLAMA_NUM_PARALLEL"] = num_parallel
+            os.environ["OLLAMA_MAX_LOADED_MODELS"] = max_loaded
+            log.info("Multi-GPU hardware env applied: CUDA_VISIBLE_DEVICES=%s OLLAMA_NUM_PARALLEL=%s OLLAMA_MAX_LOADED_MODELS=%s",
+                     devices, num_parallel, max_loaded)
+    except Exception as exc:
+        log.warning("Could not apply hardware env: %s", exc)
+
+
 def graceful_shutdown(signum, frame):
     log.info("Shutting down gracefully...")
     sys.exit(0)
@@ -474,6 +558,9 @@ def graceful_shutdown(signum, frame):
 if __name__ == "__main__":
     signal.signal(signal.SIGINT, graceful_shutdown)
     signal.signal(signal.SIGTERM, graceful_shutdown)
+
+    # Apply Multi-GPU Environment
+    _apply_hardware_env()
 
     # 0. Ensure default manifestos are copied
     _init_manifesti()

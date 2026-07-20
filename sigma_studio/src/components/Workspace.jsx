@@ -1,5 +1,5 @@
 import React from 'react';
-import { X, FileText, Terminal, PieChart, BookOpen, Trash2, ChevronRight, Home, MessageSquare, FlaskConical, Brain } from 'lucide-react';
+import { X, FileText, Terminal, PieChart, BookOpen, Trash2, ChevronRight, Home, MessageSquare, FlaskConical, Brain, Zap } from 'lucide-react';
 import WelcomeDashboard from './WelcomeDashboard';
 import { RoadmapView } from './Dashboard';
 import StudioEditor from './Workspace/StudioEditor';
@@ -9,6 +9,7 @@ import { MarkdownPreview, MappaArgomenti, SigmaLabEditor } from './SigmaLab';
 import ChatWorkspace from './Chat/ChatWorkspace';
 import ResearchLabTab from './Workspace/ResearchLabTab';
 import TrainingLab from './TrainingLab';
+import HardwareLab from './HardwareLab';
 
 // ==============================================================================
 // Workspace — Content area that renders based on active tab type
@@ -24,6 +25,7 @@ const FileIcon = ({ type }) => {
     case 'chat': return <MessageSquare size={16} />;
     case 'research_lab': return <FlaskConical size={16} />;
     case 'training_lab': return <Brain size={16} />;
+    case 'hardware_lab': return <Zap size={16} />;
     default: return <FileText size={16} />;
   }
 };
@@ -160,6 +162,9 @@ export default function Workspace({
           onTasksUpdated={() => {}}
         />
       );
+    }
+    if (tab.type === 'hardware_lab') {
+      return <HardwareLab addToast={(msg, type, dur) => {}} />;
     }
     return <div className="placeholder-content">Content type {tab.type} not implemented in preview.</div>;
   };

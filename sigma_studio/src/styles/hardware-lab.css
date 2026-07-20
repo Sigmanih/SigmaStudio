@@ -1,0 +1,335 @@
+/* ==============================================================================
+   Hardware & GPU Lab — Cyberpunk / Dark Glassmorphic Styling
+   ============================================================================== */
+
+.hardware-lab-container {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow-y: auto;
+  background: var(--bg-primary, #0d0f12);
+  color: var(--text-primary, #e2e8f0);
+  padding: 24px;
+  gap: 24px;
+  font-family: var(--font-sans, system-ui, -apple-system, sans-serif);
+}
+
+.hardware-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  padding-bottom: 16px;
+}
+
+.hardware-header-title {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.hardware-header-title h1 {
+  font-size: 22px;
+  font-weight: 700;
+  margin: 0;
+  background: linear-gradient(135deg, #00f2fe 0%, #4facfe 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.hardware-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.hw-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: 20px;
+  font-size: 12px;
+  font-weight: 600;
+  background: rgba(0, 242, 254, 0.12);
+  color: #00f2fe;
+  border: 1px solid rgba(0, 242, 254, 0.3);
+}
+
+.hw-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 16px;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.05);
+  color: #fff;
+}
+
+.hw-btn:hover {
+  background: rgba(255, 255, 255, 0.1);
+  border-color: rgba(255, 255, 255, 0.25);
+  transform: translateY(-1px);
+}
+
+.hw-btn-primary {
+  background: linear-gradient(135deg, #00c6ff 0%, #0072ff 100%);
+  border: none;
+  box-shadow: 0 4px 14px rgba(0, 114, 255, 0.3);
+}
+
+.hw-btn-primary:hover {
+  background: linear-gradient(135deg, #00d2ff 0%, #0082ff 100%);
+  box-shadow: 0 6px 20px rgba(0, 114, 255, 0.4);
+}
+
+/* GPU Grid */
+.gpu-cards-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
+  gap: 20px;
+}
+
+.gpu-card {
+  background: rgba(22, 27, 34, 0.75);
+  backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 14px;
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+  position: relative;
+  overflow: hidden;
+}
+
+.gpu-card::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  background: linear-gradient(90deg, #00f2fe, #4facfe, #00c6ff);
+}
+
+.gpu-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.gpu-title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.gpu-index-pill {
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  background: rgba(0, 242, 254, 0.15);
+  color: #00f2fe;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  font-size: 14px;
+}
+
+.gpu-name {
+  font-size: 16px;
+  font-weight: 700;
+  color: #f8fafc;
+}
+
+.gpu-bus-info {
+  font-size: 11px;
+  color: #94a3b8;
+  font-family: monospace;
+}
+
+/* Metric Bars */
+.gpu-metrics {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.metric-row {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.metric-label-row {
+  display: flex;
+  justify-content: space-between;
+  font-size: 12px;
+  font-weight: 600;
+  color: #cbd5e1;
+}
+
+.metric-progress-track {
+  height: 8px;
+  background: rgba(255, 255, 255, 0.06);
+  border-radius: 4px;
+  overflow: hidden;
+  position: relative;
+}
+
+.metric-progress-bar {
+  height: 100%;
+  border-radius: 4px;
+  transition: width 0.4s ease, background 0.3s ease;
+}
+
+.bar-cyan {
+  background: linear-gradient(90deg, #00c6ff, #0072ff);
+}
+
+.bar-purple {
+  background: linear-gradient(90deg, #a855f7, #6366f1);
+}
+
+.bar-amber {
+  background: linear-gradient(90deg, #f59e0b, #ef4444);
+}
+
+.gpu-stats-mini {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+  background: rgba(0, 0, 0, 0.25);
+  border-radius: 10px;
+  padding: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.04);
+}
+
+.stat-item {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  align-items: center;
+  text-align: center;
+}
+
+.stat-label {
+  font-size: 11px;
+  color: #94a3b8;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.stat-value {
+  font-size: 14px;
+  font-weight: 700;
+  color: #e2e8f0;
+}
+
+/* Config Section */
+.hw-section {
+  background: rgba(22, 27, 34, 0.75);
+  backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 14px;
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.hw-section-title {
+  font-size: 16px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: #f1f5f9;
+}
+
+.hw-form-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 18px;
+}
+
+.hw-form-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.hw-form-group label {
+  font-size: 12px;
+  font-weight: 600;
+  color: #cbd5e1;
+  display: flex;
+  justify-content: space-between;
+}
+
+.hw-input, .hw-select {
+  padding: 10px 14px;
+  border-radius: 8px;
+  background: rgba(15, 23, 42, 0.8);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  color: #f8fafc;
+  font-size: 13px;
+  outline: none;
+  transition: all 0.2s ease;
+}
+
+.hw-input:focus, .hw-select:focus {
+  border-color: #00f2fe;
+  box-shadow: 0 0 0 2px rgba(0, 242, 254, 0.2);
+}
+
+.hw-help-text {
+  font-size: 11px;
+  color: #94a3b8;
+  line-height: 1.4;
+}
+
+/* Process Table */
+.proc-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.proc-table th {
+  text-align: left;
+  padding: 10px 14px;
+  background: rgba(0, 0, 0, 0.3);
+  color: #94a3b8;
+  font-weight: 600;
+  font-size: 11px;
+  text-transform: uppercase;
+}
+
+.proc-table td {
+  padding: 10px 14px;
+  border-top: 1px solid rgba(255, 255, 255, 0.05);
+  color: #e2e8f0;
+}
+
+.proc-table tr:hover td {
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.proc-pid {
+  font-family: monospace;
+  color: #38bdf8;
+}
+
+.proc-name {
+  font-weight: 600;
+  color: #f1f5f9;
+}
