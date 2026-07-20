@@ -240,6 +240,98 @@ SigmaAPIHandler.handle_research_decompose = handle_research_decompose
 SigmaAPIHandler.handle_research_next_steps = handle_research_next_steps
 SigmaAPIHandler.handle_research_start = handle_research_start
 
+# 18. Training Lab (LLM training, fine-tuning, dataset management)
+from core.training_handler import (
+    search_hf_datasets, get_hf_dataset_info,
+    import_local_dataset, register_hf_dataset, list_datasets, delete_dataset,
+    create_training_job, start_training_job, stop_training_job,
+    get_job_status, get_job_logs, list_jobs, delete_job,
+    export_to_ollama, get_hardware_info
+)
+import json as _json_mod
+from urllib.parse import urlparse as _urlparse, parse_qs as _parse_qs
+
+def _handle_training_list_datasets(self):
+    self.send_json_response(list_datasets())
+SigmaAPIHandler.handle_training_list_datasets = _handle_training_list_datasets
+
+def _handle_training_dataset_search(self):
+    parsed = _urlparse(self.path)
+    qs = _parse_qs(parsed.query)
+    query = qs.get("q", [""])[0] or qs.get("query", [""])[0]
+    limit = int(qs.get("limit", ["20"])[0])
+    self.send_json_response(search_hf_datasets(query, limit=limit))
+SigmaAPIHandler.handle_training_dataset_search = _handle_training_dataset_search
+
+def _handle_training_hardware(self):
+    self.send_json_response(get_hardware_info())
+SigmaAPIHandler.handle_training_hardware = _handle_training_hardware
+
+def _handle_training_list_jobs(self):
+    self.send_json_response(list_jobs())
+SigmaAPIHandler.handle_training_list_jobs = _handle_training_list_jobs
+
+def _handle_training_job_status(self):
+    parsed = _urlparse(self.path)
+    qs = _parse_qs(parsed.query)
+    job_id = qs.get("job_id", [""])[0]
+    self.send_json_response(get_job_status(job_id))
+SigmaAPIHandler.handle_training_job_status = _handle_training_job_status
+
+def _handle_training_job_logs(self):
+    parsed = _urlparse(self.path)
+    qs = _parse_qs(parsed.query)
+    job_id = qs.get("job_id", [""])[0]
+    offset = int(qs.get("offset", ["0"])[0])
+    self.send_json_response(get_job_logs(job_id, offset=offset))
+SigmaAPIHandler.handle_training_job_logs = _handle_training_job_logs
+
+def _handle_training_dataset_import(self):
+    body = self.read_json_body()
+    result = import_local_dataset(
+        body.get("path", ""), body.get("name"), body.get("format")
+    )
+    self.send_json_response(result)
+SigmaAPIHandler.handle_training_dataset_import = _handle_training_dataset_import
+
+def _handle_training_dataset_register_hf(self):
+    body = self.read_json_body()
+    result = register_hf_dataset(body.get("dataset_id", ""), body.get("split", "train"))
+    self.send_json_response(result)
+SigmaAPIHandler.handle_training_dataset_register_hf = _handle_training_dataset_register_hf
+
+def _handle_training_dataset_delete(self):
+    body = self.read_json_body()
+    self.send_json_response(delete_dataset(body.get("dataset_id", "")))
+SigmaAPIHandler.handle_training_dataset_delete = _handle_training_dataset_delete
+
+def _handle_training_job_create(self):
+    body = self.read_json_body()
+    self.send_json_response(create_training_job(body))
+SigmaAPIHandler.handle_training_job_create = _handle_training_job_create
+
+def _handle_training_job_start(self):
+    body = self.read_json_body()
+    self.send_json_response(start_training_job(body.get("job_id", "")))
+SigmaAPIHandler.handle_training_job_start = _handle_training_job_start
+
+def _handle_training_job_stop(self):
+    body = self.read_json_body()
+    self.send_json_response(stop_training_job(body.get("job_id", "")))
+SigmaAPIHandler.handle_training_job_stop = _handle_training_job_stop
+
+def _handle_training_job_delete(self):
+    body = self.read_json_body()
+    self.send_json_response(delete_job(body.get("job_id", "")))
+SigmaAPIHandler.handle_training_job_delete = _handle_training_job_delete
+
+def _handle_training_export_ollama(self):
+    body = self.read_json_body()
+    self.send_json_response(export_to_ollama(
+        body.get("job_id", ""), body.get("model_name", ""), body.get("system_prompt", "")
+    ))
+SigmaAPIHandler.handle_training_export_ollama = _handle_training_export_ollama
+
 # --- Register routing tables ---
 register_get_handlers(SigmaAPIHandler)
 register_post_handlers(SigmaAPIHandler)

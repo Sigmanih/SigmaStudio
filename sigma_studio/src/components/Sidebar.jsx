@@ -1,6 +1,6 @@
 import React from 'react';
 import { 
-  Home, FileText, Activity, PieChart, Layers, ChevronRight, MessageSquare, FlaskConical
+  Home, FileText, Activity, PieChart, Layers, ChevronRight, MessageSquare, FlaskConical, Brain
 } from 'lucide-react';
 
 export const SidebarItem = ({ icon: Icon, label, active, onClick, badge, badgeColor, badgeSecondary, badgeSecondaryColor }) => (
@@ -155,6 +155,14 @@ export default function Sidebar({
             badgeColor="rgba(188,140,255,0.15)"
             active={activeTabId != null && activeTabId.startsWith('research_lab')}
             onClick={() => openTab({ name: '🔬 Sigma Research Lab' }, 'research_lab')} 
+          />
+          <SidebarItem 
+            icon={Brain} 
+            label="Training Lab" 
+            badge={0}
+            badgeColor="rgba(0,210,255,0.15)"
+            active={activeTabId != null && activeTabId.startsWith('training_lab')}
+            onClick={() => openTab({ name: '🧠 Training Lab' }, 'training_lab')} 
           />
         </nav>
 

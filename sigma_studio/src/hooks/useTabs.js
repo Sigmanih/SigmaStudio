@@ -9,7 +9,11 @@ export function useTabs() {
   const [activeTabId, setActiveTabId] = useState(null);
 
   const openTab = useCallback((item, type) => {
-    const tabId = `${type}-${item.path || item.folder}`;
+    // Singleton types (no path needed — one tab per type)
+    const SINGLETON_TYPES = ['chat', 'research_lab', 'training_lab', 'roadmap', 'whitepapers_lib', 'knowledge', 'mappa_argomenti'];
+    const tabId = SINGLETON_TYPES.includes(type)
+      ? `${type}-singleton`
+      : `${type}-${item.path || item.folder || item.name || type}`;
     setOpenTabs(prev => {
       if (prev.find(t => t.id === tabId)) return prev;
       return [...prev, {
@@ -22,6 +26,7 @@ export function useTabs() {
     });
     setActiveTabId(tabId);
   }, []);
+
 
   const removeTab = useCallback((id) => {
     setOpenTabs(prev => {

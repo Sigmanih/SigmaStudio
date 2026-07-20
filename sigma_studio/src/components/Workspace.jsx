@@ -1,5 +1,5 @@
 import React from 'react';
-import { X, FileText, Terminal, PieChart, BookOpen, Trash2, ChevronRight, Home, MessageSquare, FlaskConical } from 'lucide-react';
+import { X, FileText, Terminal, PieChart, BookOpen, Trash2, ChevronRight, Home, MessageSquare, FlaskConical, Brain } from 'lucide-react';
 import WelcomeDashboard from './WelcomeDashboard';
 import { RoadmapView } from './Dashboard';
 import StudioEditor from './Workspace/StudioEditor';
@@ -8,6 +8,7 @@ import ModuleView from './Workspace/ModuleView';
 import { MarkdownPreview, MappaArgomenti, SigmaLabEditor } from './SigmaLab';
 import ChatWorkspace from './Chat/ChatWorkspace';
 import ResearchLabTab from './Workspace/ResearchLabTab';
+import TrainingLab from './TrainingLab';
 
 // ==============================================================================
 // Workspace — Content area that renders based on active tab type
@@ -22,6 +23,7 @@ const FileIcon = ({ type }) => {
     case 'module': return <BookOpen size={16} />;
     case 'chat': return <MessageSquare size={16} />;
     case 'research_lab': return <FlaskConical size={16} />;
+    case 'training_lab': return <Brain size={16} />;
     default: return <FileText size={16} />;
   }
 };
@@ -150,6 +152,14 @@ export default function Workspace({
     }
     if (tab.type === 'research_lab') {
       return <ResearchLabTab onTasksUpdated={() => {}} addToast={(msg, type, duration) => {}} />;
+    }
+    if (tab.type === 'training_lab') {
+      return (
+        <TrainingLab
+          addToast={(msg, type, dur) => {}}
+          onTasksUpdated={() => {}}
+        />
+      );
     }
     return <div className="placeholder-content">Content type {tab.type} not implemented in preview.</div>;
   };

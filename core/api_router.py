@@ -27,6 +27,13 @@ def register_get_handlers(handler_class):
         '/api/research/list': 'handle_research_list',
         '/api/research/status': 'handle_research_status',
         '/api/research/chat_history': 'handle_research_chat_history',
+        # Training Lab
+        '/api/training/datasets': 'handle_training_list_datasets',
+        '/api/training/datasets/search': 'handle_training_dataset_search',
+        '/api/training/jobs': 'handle_training_list_jobs',
+        '/api/training/job/status': 'handle_training_job_status',
+        '/api/training/job/logs': 'handle_training_job_logs',
+        '/api/training/hardware': 'handle_training_hardware',
     }
 
 
@@ -77,6 +84,15 @@ def register_post_handlers(handler_class):
         '/api/ai/action': 'handle_api_action',
         '/api/rename_file': 'handle_rename_file',
         '/api/rollback': 'handle_api_rollback',
+        # Training Lab
+        '/api/training/dataset/import': 'handle_training_dataset_import',
+        '/api/training/dataset/register_hf': 'handle_training_dataset_register_hf',
+        '/api/training/dataset/delete': 'handle_training_dataset_delete',
+        '/api/training/job/create': 'handle_training_job_create',
+        '/api/training/job/start': 'handle_training_job_start',
+        '/api/training/job/stop': 'handle_training_job_stop',
+        '/api/training/job/delete': 'handle_training_job_delete',
+        '/api/training/export/ollama': 'handle_training_export_ollama',
     }
 
 

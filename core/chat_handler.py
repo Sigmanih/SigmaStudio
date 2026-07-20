@@ -99,6 +99,8 @@ def handle_chat(self):
         if not manifesto_path:
             manifesto_path = "MANIFESTO.md"
 
+        manifesto_name = os.path.basename(manifesto_path).replace('.md', '') if manifesto_path else ''
+
         # Update bot_name based on chosen agent if it was a generic one
         if bot_name in ("SigmaBot", "Sigma AI Studio", "Sigma Agent", "auto"):
             agent_id_match = os.path.splitext(os.path.basename(manifesto_path))[0]
@@ -473,6 +475,7 @@ IMPORTANTE â€” STRUTTURA MINIMA DI OGNI TASK:
             
             # Attempt automatic file extraction from plain text response
             auto_created = False
+            file_path = ""
             if len(clean_response) > 200:
                 try:
                     # Extract a title from the content
