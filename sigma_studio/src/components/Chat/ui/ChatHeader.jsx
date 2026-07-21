@@ -9,7 +9,7 @@ export default function ChatHeader({
   showModelDropdown, onToggleDropdown, onSelectModel, providerConfigs, modelBtnRef,
   activeManifesto, manifestos, showManifestoDropdown, setShowManifestoDropdown,
   onSelectManifesto, onDuplicateSession, onOpenQuickConfig, showQuickConfig,
-  onOpenConfig, onClose, isPanel = false,
+  onOpenConfig, onClose, isPanel = false, contextStats,
 }) {
   return (
     <div 
@@ -73,12 +73,16 @@ export default function ChatHeader({
         </div>
       </div>
       <div className="chat-header-right">
-        <button className="chat-header-btn" onClick={(e) => { e.stopPropagation(); onOpenQuickConfig(); }} title="Parametri rapidi">
-          ⚙️
-        </button>
         {onOpenConfig && (
           <button className="chat-header-btn" onClick={(e) => { e.stopPropagation(); onOpenConfig(); }} title="Configurazione completa">
             <Cpu size={14} />
+          </button>
+        )}
+        {onClose && (
+          <button className="chat-header-btn" onClick={(e) => { e.stopPropagation(); onClose(); }} title="Riduci in basso nel dock">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+              <path d="M5 12h14" />
+            </svg>
           </button>
         )}
         {onClose && (

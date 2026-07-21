@@ -19,7 +19,7 @@ from core.logger import get_logger
 log = get_logger(__name__)
 
 # Sections allowed inside a module (same constant as task_handler)
-_ALLOWED_SECTIONS = ("teoria", "test", "viz", "docs", "whitepapers")
+_ALLOWED_SECTIONS = ("teoria", "scripts", "viz", "docs", "whitepapers")
 
 
 # ==============================================================================

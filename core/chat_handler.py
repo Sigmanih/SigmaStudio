@@ -47,8 +47,91 @@ log = get_logger(__name__)
 # All are re-exported via core/chat/__init__.py and imported at the top of this
 # file for full backward compatibility with other modules that imported them
 # directly from core.chat_handler.
-# ==============================================================================
+def _extract_and_create_files_from_text(clean_response: str) -> list[str]:
+    """Extract multiple files from markdown text response and save them cleanly."""
+    created_paths = []
+    from core.data_handler import rebuild_modules_meta
 
+    # Pattern 0: Pseudo-code command create_file path="..." content="..."
+    pseudo_matches = re.findall(
+        r"create_file\s+path=[\"']?(?:📄\s*)?(data/[^\s\"']+)[\"']?\s+content=[\"']([\s\S]*?)(?:[\"']\s*(?:create_file|\Z))",
+        clean_response,
+        re.IGNORECASE
+    )
+    if pseudo_matches:
+        for path_str, file_content in pseudo_matches:
+            clean_path = path_str.strip().replace('\\', '/')
+            if clean_path and file_content.strip():
+                dir_name = os.path.dirname(clean_path)
+                os.makedirs(dir_name, exist_ok=True)
+                with open(clean_path, "w", encoding="utf-8") as f:
+                    f.write(file_content.strip())
+                created_paths.append(clean_path)
+                log.info("Auto-extracted pseudo create_file: %s (%d chars)", clean_path, len(file_content))
+
+    # Pattern 1: Explicit Path markers + codeblock
+    file_matches = re.findall(
+        r"(?:Path|Percorso|File|Salva\s+in):\s*[`'\"]?(data/[a-zA-Z0-9_/-]+\.[a-zA-Z0-9]+)[`'\"]?[\s\S]*?```[a-zA-Z0-9]*\n([\s\S]*?)\n```",
+        clean_response,
+        re.IGNORECASE
+    )
+
+    if file_matches:
+        for path_str, file_content in file_matches:
+            clean_path = path_str.strip().replace('\\', '/')
+            if clean_path and file_content.strip() and clean_path not in created_paths:
+                dir_name = os.path.dirname(clean_path)
+                os.makedirs(dir_name, exist_ok=True)
+                with open(clean_path, "w", encoding="utf-8") as f:
+                    f.write(file_content.strip())
+                created_paths.append(clean_path)
+                log.info("Auto-extracted file from text: %s (%d chars)", clean_path, len(file_content))
+    else:
+        # Pattern 2: Section headers (Teoria, Viz, Test, Docs) + codeblocks
+        blocks = re.findall(
+            r"(?:###|##|\*\*)\s*(?:[0-9\.\s]*)(Teoria|Viz|Test|Docs|Whitepaper)[^\n]*\n(?:[^\n]*\n)*?```([a-zA-Z0-9]*)\n([\s\S]*?)\n```",
+            clean_response,
+            re.IGNORECASE
+        )
+        timestamp = datetime.datetime.now().strftime("%d%m%Y_%H%M%S")
+        topic_id = f"auto_{timestamp}"
+
+        for idx, (section_type, lang, file_content) in enumerate(blocks, start=1):
+            sec = section_type.lower()
+            if "teoria" in sec or lang == "markdown":
+                folder, ext = "teoria", "md"
+            elif "viz" in sec or lang == "html":
+                folder, ext = "viz", "html"
+            elif "test" in sec or lang == "python":
+                folder, ext = "test", "py"
+            else:
+                folder, ext = "docs", "md"
+
+            clean_path = f"data/{topic_id}/01_base/{folder}/documento_{idx}.{ext}"
+            dir_name = os.path.dirname(clean_path)
+            os.makedirs(dir_name, exist_ok=True)
+            with open(clean_path, "w", encoding="utf-8") as f:
+                f.write(file_content.strip())
+            created_paths.append(clean_path)
+            log.info("Auto-extracted section file: %s (%d chars)", clean_path, len(file_content))
+
+    if not created_paths and len(clean_response) > 200:
+        # Fallback for single document
+        title_match = re.search(r'^#\s+(.+)', clean_response, re.MULTILINE)
+        raw_title = title_match.group(1).strip() if title_match else "documento"
+        title_slug = re.sub(r'[^a-zA-Z0-9_]+', '_', raw_title.lower()).strip('_')[:50] or "documento"
+        timestamp = datetime.datetime.now().strftime("%d%m%Y_%H%M%S")
+        clean_path = f"data/auto_{timestamp}/01_base/teoria/{title_slug}.md"
+        dir_name = os.path.dirname(clean_path)
+        os.makedirs(dir_name, exist_ok=True)
+        with open(clean_path, "w", encoding="utf-8") as f:
+            f.write(clean_response)
+        created_paths.append(clean_path)
+
+    if created_paths:
+        rebuild_modules_meta()
+
+    return created_paths
 
 
 def handle_chat(self):
@@ -153,19 +236,15 @@ def handle_chat(self):
 
         system_prompt = _get_manifesto_content(manifesto_path)
         if not system_prompt.strip():
-            system_prompt = """Sei Sigma AI Studio, un assistente AI integrato in Sigma Studio.
-Rispondi in italiano in modo chiaro, diretto e strutturato.
-## FORMATO RISPOSTA
-In modalitÃ  CHIEDI rispondi SEMPRE con JSON: {"response": "La risposta all'utente...", "thinking": "Il tuo ragionamento passo-passo..."}
-- "response": solo la risposta finale, ben formattata
-- "thinking": il processo logico separato (verrÃ  mostrato con toggle "Mostra ragionamento")
-MAI mischiare thinking e response. MAI usare tag XML."""
+            system_prompt = """Sei Sigma AI Studio, un assistente AI avanzato ed elegante integrato in Sigma Studio.
+Rispondi in italiano in modo chiaro, diretto, elegante e ben strutturato.
+Non stampare mai preamboli meta-cognitivi (es. 'Here's a thinking process:', 'Analisi input:'), né sintassi JSON grezza nel messaggio per l'utente."""
 
         # --- BUILD SYSTEM PROMPT ---
         if allow_actions or planning_mode:
             action_prompt = """
 ## REGOLE FONDAMENTALI SULLA CREAZIONE DEI FILE ED ESECUZIONE
-1. Rispondi all'utente in modo chiaro, approfondito ed esplicativo in italiano. Spiega SEMPRE cosa stai facendo, come lo stai facendo e le motivazioni delle tue scelte.
+1. Rispondi all'utente in modo chiaro, pulito, elegante ed esplicativo in italiano.
 2. Crea o modifica file SOLO se l'utente lo ha esplicitamente richiesto o se è strettamente necessario per completare l'azione. Non salvare mai file per semplici risposte o conversazioni in chat.
 
 ## STRUTTURA MODULARE
@@ -185,7 +264,7 @@ Se un file esiste già, riscrivilo comunque con create_file. Mai dire "il file e
 """
             full_system = f"{system_prompt}\n\n{action_prompt}"
         else:
-            full_system = f"{system_prompt}\n\nRispondi all'utente in modo chiaro, approfondito ed esplicativo in italiano. Spiega SEMPRE il tuo ragionamento e la soluzione passo-passo."
+            full_system = f"{system_prompt}\n\nRispondi all'utente in italiano in modo chiaro, naturale, elegante e ben strutturato in Markdown. Evita preamboli meta-cognitivi o prolissità non necessarie."
 
         context_str = _collect_context_files(self, context_files)
         tasks_context = json.dumps(tasks_store.load(), indent=2)
@@ -205,26 +284,7 @@ Se un file esiste già, riscrivilo comunque con create_file. Mai dire "il file e
         if tasks_context: system_parts.append(f"Tasks:\n{tasks_context}")
 
         # --- Inject agent memory context ---
-        # Determine agent ID from model name or manifesto
-        agent_id = None
-        model_lower = model.lower()
-        for candidate_id in ['sigma_architect', 'math1', 'code_architect']:
-            if candidate_id in model_lower:
-                agent_id = candidate_id
-                break
-        if not agent_id and manifesto_path:
-            for candidate_id in ['sigma_architect', 'math1', 'code_architect']:
-                if candidate_id in manifesto_path.lower():
-                    agent_id = candidate_id
-                    break
-        
-        # If we found the agent, inject memory context
-        memory_context = ""
-        if agent_id:
-            memory_context = get_memory_context(agent_id)
-            if memory_context:
-                system_parts.append(memory_context)
-        
+        # Context is strictly isolated per chat session — no cross-chat memory leaks
         messages = [{"role": "system", "content": "\n\n".join(system_parts)}]
         for h in history[-10:]:
             messages.append({"role": h.get("role", "user"), "content": h.get("content", "")})
@@ -281,6 +341,15 @@ IMPORTANTE â€” STRUTTURA MINIMA DI OGNI TASK:
             self.end_headers()
             def _sw(chunks):
                 try:
+                    meta_payload = {
+                        "meta": {
+                            "agent_id": manifesto_name,
+                            "agent_name": bot_name,
+                            "manifesto_used": manifesto_name
+                        }
+                    }
+                    self.wfile.write(f"data: {json.dumps(meta_payload)}\n\n".encode())
+                    self.wfile.flush()
                     for chunk in chunks:
                         if chunk is None: self.wfile.write(b"data: [ERROR]\n\n"); break
                         if chunk.get("error"): self.wfile.write(f"data: {json.dumps({'error': chunk['message']})}\n\n".encode()); self.wfile.flush(); break
@@ -347,7 +416,15 @@ IMPORTANTE â€” STRUTTURA MINIMA DI OGNI TASK:
 
             log.debug("ASK mode: response_len=%d thinking=%s", len(clean_response), 'yes' if thinking else 'none')
             manifesto_name = os.path.basename(manifesto_path).replace('.md', '') if manifesto_path else ''
-            self.send_json_response({"response": clean_response, "thinking": thinking, "actions_log": [], "error": None, "manifesto_used": manifesto_name})
+            self.send_json_response({
+                "response": clean_response,
+                "thinking": thinking,
+                "actions_log": [],
+                "error": None,
+                "manifesto_used": manifesto_name,
+                "agent_name": bot_name,
+                "agent_id": manifesto_name
+            })
             return
 
         # --- From here on: ALLOW ACTIONS or PLANNING mode ---
@@ -475,52 +552,24 @@ IMPORTANTE â€” STRUTTURA MINIMA DI OGNI TASK:
         if allow_actions and not actions_log:
             log.info("Agent %s: Text response without JSON actions (len=%d)", manifesto_name, len(clean_response))
             
-            # Attempt automatic file extraction ONLY if user explicitly requested file creation
-            auto_created = False
-            file_path = ""
+            # Attempt automatic multi-file extraction if user explicitly requested file creation
+            created_files = []
             if user_requested_file_creation and len(clean_response) > 200:
                 try:
-                    # Extract a title from the content
-                    title_match = re.search(r'^#\s+(.+)', clean_response, re.MULTILINE)
-                    if title_match:
-                        raw_title = title_match.group(1).strip()
-                    else:
-                        # Use first meaningful line or a default
-                        lines = [l.strip() for l in clean_response.split('\n') if l.strip()]
-                        raw_title = lines[0][:60] if lines else "documento_automatico"
-                    
-                    # Clean title for filename
-                    title_slug = re.sub(r'[^a-zA-Z0-9_]+', '_', raw_title.lower()).strip('_')[:50]
-                    if not title_slug:
-                        title_slug = "documento"
-                    
-                    # Create a unique module for auto-generated content
-                    timestamp = datetime.datetime.now().strftime("%d%m%Y_%H%M%S")
-                    topic_id = f"auto_{timestamp}"
-                    module_folder = f"data/{topic_id}/01_base"
-                    
-                    # Create directories
-                    os.makedirs(f"{module_folder}/teoria", exist_ok=True)
-                    
-                    # Write the file
-                    file_path = f"{module_folder}/teoria/{title_slug}.md"
-                    with open(file_path, "w", encoding="utf-8") as fh:
-                        fh.write(clean_response)
-                    
-                    log.info("Auto-created file from AI text response: %s (%d chars)", file_path, len(clean_response))
-                    actions_log.append({
-                        "type": "create_file", "success": True, "path": file_path,
-                        "message": f"File creato automaticamente: {file_path}"
-                    })
-                    auto_created = True
+                    created_files = _extract_and_create_files_from_text(clean_response)
+                    for cp in created_files:
+                        actions_log.append({
+                            "type": "create_file", "success": True, "path": cp,
+                            "message": f"File creato: {cp}"
+                        })
                 except Exception as exc:
-                    log.error("Auto-create file failed: %s", exc)
+                    log.error("Auto-create files failed: %s", exc)
             
-            # Always show the AI response in chat, plus auto-create file if content was long
+            # Always show the AI response in chat, plus auto-create file notice if created
             manifesto_name = os.path.basename(manifesto_path).replace('.md', '') if manifesto_path else ''
-            if auto_created:
-                # Append file creation notice to the response shown in chat
-                show_response = clean_response + f"\n\n---\n📄 File salvato automaticamente: `{file_path}`"
+            if created_files:
+                files_str = "\n".join([f"- `{p}`" for p in created_files])
+                show_response = clean_response + f"\n\n---\n📄 File salvati ed integrati:\n{files_str}"
             else:
                 show_response = clean_response
             

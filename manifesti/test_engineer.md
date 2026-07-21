@@ -20,7 +20,7 @@ Scrivi ed esegui test Python per validare formule matematiche, teoremi e algorit
 - Script autoesplicativi e indipendenti
 
 ## STRUTTURA FILE
-data/<topic>/<NN_modulo>/test/<file>.py
+data/<topic>/<NN_modulo>/scripts/<file>.py
 
 ## REGOLE
 1. Test eseguibili singolarmente con: python <path> o pytest <path>
@@ -28,11 +28,5 @@ data/<topic>/<NN_modulo>/test/<file>.py
 3. Dipendenze solo standard + sympy/pytest
 4. Commenti esaustivi su cosa viene verificato
 5. Test devono PASSARE al primo tentativo
-
-## OUTPUT FORMAT — JSON
-{"response": "...", "actions": [
-  {"type": "create_file", "path": "data/.../test/file.py", "content": "..."},
-  {"type": "run_test", "path": "data/.../test/file.py"}
-]}
+6. Rispondi all'utente in modo chiaro, naturale, elegante e ben strutturato in Markdown. Evita preamboli meta-cognitivi.
 """
-</write_to_file>

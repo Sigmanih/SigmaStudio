@@ -27,17 +27,9 @@ export default function ActionsBar({
   availableTasks, onExecuteTask,
   executingAll, onExecuteAll,
   taskDone, taskTotal, taskProgress, maxTaskIterations,
+  contextStats, onOpenQuickConfig, showQuickConfig,
 }) {
   const activeModeData = MODES.find(m => m.key === activeMode) || MODES[0];
-  const [selectedTaskIdx, setSelectedTaskIdx] = useState('');
-
-  const handleExecuteSelected = () => {
-    const idx = parseInt(selectedTaskIdx, 10);
-    if (idx >= 0 && availableTasks[idx]) {
-      onExecuteTask(availableTasks[idx]);
-      setSelectedTaskIdx('');
-    }
-  };
 
   return (
     <div className="chat-actions-bar">
@@ -55,7 +47,35 @@ export default function ActionsBar({
         ))}
       </div>
 
-      <div className="chat-mode-description">{activeModeData.desc}</div>
+      <div className="chat-actions-right">
+        {contextStats && (
+          <div
+            className="context-gauge-pill"
+            onClick={(e) => { e.stopPropagation(); onOpenQuickConfig(); }}
+            title={`Finestra di Contesto: ${contextStats.usedTokens?.toLocaleString() || 0} / ${contextStats.numCtx?.toLocaleString() || 32768} Token (${contextStats.pct || 0}% in uso)\n• Conversazione: ~${contextStats.messagesTokens || 0} token\n• Allegati: ~${contextStats.attachedTokens || 0} token\n• Sistema: ~${contextStats.systemTokens || 1500} token`}
+          >
+            <div className="context-gauge-bar-outer">
+              <div
+                className="context-gauge-bar-inner"
+                style={{
+                  width: `${contextStats.pct || 0}%`,
+                  backgroundColor: (contextStats.pct || 0) > 85 ? '#ef4444' : (contextStats.pct || 0) > 60 ? '#f59e0b' : '#00f2fe'
+                }}
+              />
+            </div>
+            <span className="context-gauge-text">
+              {contextStats.usedTokens >= 1000 ? `${(contextStats.usedTokens / 1000).toFixed(1)}K` : contextStats.usedTokens} / {contextStats.numCtx >= 1000 ? `${Math.round(contextStats.numCtx / 1000)}K` : contextStats.numCtx}
+            </span>
+          </div>
+        )}
+        <button
+          className={`chat-header-btn ${showQuickConfig ? 'active' : ''}`}
+          onClick={(e) => { e.stopPropagation(); onOpenQuickConfig(); }}
+          title="Impostazioni di interazione e parametri modello"
+        >
+          ⚙️
+        </button>
+      </div>
     </div>
   );
 }

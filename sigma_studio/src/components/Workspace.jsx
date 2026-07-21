@@ -71,7 +71,7 @@ export default function Workspace({
     const filename = path.split('/').pop() || path;
     const pathLower = path.toLowerCase();
     let type = 'teoria';
-    if (pathLower.includes('/test/')) type = 'test';
+    if (pathLower.includes('/scripts/') || pathLower.includes('/test/')) type = 'scripts';
     else if (pathLower.includes('/viz/')) type = 'viz';
     else if (pathLower.includes('/docs/')) {
       type = path.split('/').pop()?.toUpperCase().startsWith('WHITEPAPER_') ? 'whitepaper' : 'docs';
@@ -105,8 +105,8 @@ export default function Workspace({
       );
     }
     
-    // All file types (teoria, docs, whitepaper, manifesti, test, viz) use the unified SigmaLabEditor
-    if (tab.type === 'teoria' || tab.type === 'docs' || tab.type === 'whitepaper' || tab.type === 'manifesti' || tab.type === 'test' || tab.type === 'viz') {
+    // All file types (teoria, docs, whitepaper, manifesti, scripts, test, viz) use the unified SigmaLabEditor
+    if (tab.type === 'teoria' || tab.type === 'docs' || tab.type === 'whitepaper' || tab.type === 'manifesti' || tab.type === 'scripts' || tab.type === 'test' || tab.type === 'viz') {
       return (
         <SigmaLabEditor
           tab={tab}

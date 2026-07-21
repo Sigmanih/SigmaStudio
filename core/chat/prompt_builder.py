@@ -111,7 +111,7 @@ def _build_filesystem_context() -> str:
                 continue
             mod_label = mod[3:] if mod[:2].isdigit() and len(mod) > 3 else mod
             lines.append(f"  📁 {mod} ({mod_label})")
-            for section in ("teoria", "test", "viz", "docs"):
+            for section in ("teoria", "scripts", "viz", "docs"):
                 sec_path = os.path.join(mod_path, section)
                 if os.path.isdir(sec_path):
                     files = sorted(os.listdir(sec_path))
@@ -176,12 +176,84 @@ def _collect_context_files(handler, open_files: list[str]) -> str:
 
 
 def _determine_agent_by_request(message: str, ai_cfg: dict, model_override: str) -> str:
-    """Query the AI coordinator to decide which manifesto/role is best suited for the user prompt."""
+    """Determine the specialized agent manifesto based on prompt keywords & LLM routing."""
     import re
     import json
+    import os
     from core.orchestration.agent_config import load_agent_config
     from core.agent_registry import SIGMA_ARCHITECT_ID, get_all_agents
     from core.ai_providers import call_ai_model
+
+    msg_lower = message.lower().strip()
+
+    # 1. Simple Greetings & General Front-Desk Chat -> sigma_assistant
+    simple_greetings = [
+        "ciao", "salve", "buongiorno", "buonasera", "chi sei", "chi sei?",
+        "cosa fai", "cosa puoi fare", "grazie", "help", "aiuto", "come stai",
+        "come funzioni", "cosa sei", "hey", "hola"
+    ]
+    if msg_lower in simple_greetings or (len(msg_lower.split()) <= 3 and any(w in msg_lower for w in ["ciao", "salve", "buongiorno", "grazie", "hey"])):
+        if os.path.exists("manifesti/sigma_assistant.md"):
+            log.info("Auto-routing (keyword match: simple chat) -> manifesti/sigma_assistant.md")
+            return "manifesti/sigma_assistant.md"
+
+    # 2. Explicit Script / Code Creation -> code_architect
+    script_keywords = ["script", "script python", "scrivi uno script", "crea uno script", "programma python", "codice python", "scrivi codice", "fai uno script"]
+    if any(kw in msg_lower for kw in script_keywords):
+        if os.path.exists("manifesti/code_architect.md"):
+            log.info("Auto-routing (keyword match: script/code) -> manifesti/code_architect.md")
+            return "manifesti/code_architect.md"
+
+    # 3. Math, Fractals, Geometry & Analysis -> math_researcher
+    math_keywords = [
+        "frattali", "frattale", "matematica", "teorema", "dimostrazione", "calcolo",
+        "equazione", "formula", "geometria", "algebra", "limite", "integrale",
+        "derivata", "funzione", "ricorsione", "mandelbrot", "sierpinski", "koch",
+        "collatz", "spazio metrico", "hausdorff", "fibonacci", "matrice", "vettore"
+    ]
+    if any(kw in msg_lower for kw in math_keywords) and "d3" not in msg_lower and "canvas" not in msg_lower:
+        if os.path.exists("manifesti/math_researcher.md"):
+            log.info("Auto-routing (keyword match: math) -> manifesti/math_researcher.md")
+            return "manifesti/math_researcher.md"
+
+    # 3. Code, Refactoring & Web Apps -> code_architect
+    code_keywords = [
+        "codice", "react", "jsx", "css", "backend", "frontend", "refactoring",
+        "componente", "html", "script", "python", "bug", "errore nel codice",
+        "funzione python", "api", "endpoint", "javascript", "typescript"
+    ]
+    if any(kw in msg_lower for kw in code_keywords):
+        if os.path.exists("manifesti/code_architect.md"):
+            log.info("Auto-routing (keyword match: code) -> manifesti/code_architect.md")
+            return "manifesti/code_architect.md"
+
+    # 4. Visualizations, D3.js & Charts -> viz_designer
+    viz_keywords = ["grafico", "visualizzaz", "d3", "canvas", "diagramma", "disegna", "mappa", "chart"]
+    if any(kw in msg_lower for kw in viz_keywords):
+        if os.path.exists("manifesti/viz_designer.md"):
+            log.info("Auto-routing (keyword match: viz) -> manifesti/viz_designer.md")
+            return "manifesti/viz_designer.md"
+
+    # 5. Testing & Pytest -> test_engineer
+    test_keywords = ["test", "pytest", "unit test", "asserzione", "coverage"]
+    if any(kw in msg_lower for kw in test_keywords):
+        if os.path.exists("manifesti/test_engineer.md"):
+            log.info("Auto-routing (keyword match: test) -> manifesti/test_engineer.md")
+            return "manifesti/test_engineer.md"
+
+    # 6. Proof Review & Verification -> proof_reviewer
+    proof_keywords = ["revisione", "verifica dimostrazione", "confuta", "peer review"]
+    if any(kw in msg_lower for kw in proof_keywords):
+        if os.path.exists("manifesti/proof_reviewer.md"):
+            log.info("Auto-routing (keyword match: proof) -> manifesti/proof_reviewer.md")
+            return "manifesti/proof_reviewer.md"
+
+    # 7. System Architecture & Project Management -> sigma_architect
+    arch_keywords = ["architettura", "roadmap", "pianifica", "moduli", "struttura progetto"]
+    if any(kw in msg_lower for kw in arch_keywords):
+        if os.path.exists("manifesti/sigma_architect.md"):
+            log.info("Auto-routing (keyword match: architect) -> manifesti/sigma_architect.md")
+            return "manifesti/sigma_architect.md"
 
     # Use default coordinator credentials
     main_model, provider, endpoint, api_url, api_key, temperature, max_tokens, top_p, timeout = \
@@ -198,9 +270,9 @@ def _determine_agent_by_request(message: str, ai_cfg: dict, model_override: str)
 {agents_info}
 
 ### REGOLA FONDAMENTALE:
-Rispondi SOLO ed ESCLUSIVAMENTE con l'id esatto dell'agente prescelto.
-Non aggiungere introduzioni, non spiegare il motivo, non scrivere nient'altro. Solo l'id dell'agente prescelto (es: math1 o code_architect).
-Se non sei sicuro o se la richiesta riguarda la pianificazione generale del progetto o la gestione della roadmap, rispondi: sigma_architect
+Rispondi SOLO ed ESCLUSIVAMENTE con l'id esatto dell'agente prescelto (es: sigma_assistant, math_researcher, code_architect).
+Non aggiungere introduzioni, non spiegare il motivo, non scrivere nient'altro. Solo l'id dell'agente prescelto.
+Se la richiesta è una conversazione generale, rispondi: sigma_assistant
 """
 
     messages = [
@@ -215,15 +287,15 @@ Se non sei sicuro o se la richiesta riguarda la pianificazione generale del prog
         )
         if not error and response:
             chosen = response.strip().lower()
-            # Clean eventual quotes or formatting
             chosen = re.sub(r'[^a-z0-9_-]', '', chosen)
             for a in active_agents:
-                if a['id'].lower() == chosen:
+                if a['id'].lower() == chosen or a['id'].lower().replace('-', '_') == chosen.replace('-', '_'):
                     path = f"manifesti/{a['id']}.md"
-                    log.info("Auto-routing to agent: %s (%s)", a['id'], path)
-                    return path
+                    if os.path.exists(path):
+                        log.info("Auto-routing to agent: %s (%s)", a['id'], path)
+                        return path
     except Exception as e:
         log.error("Error in automatic agent routing: %s", e)
         
-    return "manifesti/sigma_architect.md"
+    return "manifesti/sigma_assistant.md"
 

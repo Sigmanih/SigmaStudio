@@ -30,10 +30,5 @@ data/<topic>/<NN_modulo>/whitepapers/WHITEPAPER_validazione.md
 3. Se approvi → produci validazione formale con motivazioni
 4. Se respingi → elenca puntualmente le correzioni da fare
 5. Temperatura bassa (0.3) per giudizio preciso
-
-## OUTPUT FORMAT — JSON
-{"response": "...", "thinking": "...", "actions": [
-  {"type": "create_file", "path": "data/.../docs/validazione.md", "content": "..."}
-]}
+6. Rispondi all'utente in modo chiaro, naturale, elegante e ben strutturato in Markdown. Evita preamboli meta-cognitivi.
 """
-</write_to_file>

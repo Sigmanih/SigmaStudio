@@ -478,52 +478,7 @@ def _init_manifesti() -> None:
                         log.error("Failed to copy manifesto %s to %s: %s", src_path, dest_path, exc)
 
 
-def _rebuild_modules_meta() -> None:
-
-    """Synchronise modules_meta.json from the filesystem at startup.
-
-    Merges existing custom fields (parent_id, description, domain) with
-    the current directory layout.  Removes stale parent references.
-    """
-    data_dir = "data"
-    if not os.path.isdir(data_dir):
-        return
-
-    existing = modules_store.load()
-    existing_topics = existing.get("topics", {})
-
-    topics: dict = {}
-    modules: dict = {}
-    valid_topic_ids: set = set()
-
-    for topic in sorted(os.listdir(data_dir)):
-        tp = os.path.join(data_dir, topic)
-        if not os.path.isdir(tp):
-            continue
-        valid_topic_ids.add(topic)
-        topic_modules = []
-        for mod in sorted(os.listdir(tp)):
-            mp = os.path.join(tp, mod)
-            if not os.path.isdir(mp) or not mod[:2].isdigit():
-                continue
-            num = mod[:2]
-            mname = mod[3:].replace("_", " ").title()
-            modules[num] = mname
-            topic_modules.append(num)
-
-        topics[topic] = existing_topics.get(topic, {}).copy()
-        topics[topic]["folder"] = tp.replace("\\", "/")
-        topics[topic]["modules"] = topic_modules
-        topics[topic].setdefault("name", topic)
-        topics[topic].setdefault("description", "")
-
-    # Remove stale parent_id references
-    for tdata in topics.values():
-        if tdata.get("parent_id") and tdata["parent_id"] not in valid_topic_ids:
-            tdata.pop("parent_id", None)
-
-    modules_store.save({"topics": topics, "modules": modules})
-    log.info("modules_meta.json rebuilt (%d topics, %d modules)", len(topics), len(modules))
+from core.data_handler import rebuild_modules_meta as _rebuild_modules_meta
 
 
 def _apply_hardware_env():

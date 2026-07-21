@@ -10,13 +10,21 @@ import 'katex/dist/katex.min.css';
 // ==============================================================================
 
 const AGENT_COLORS = {
-  sigma_architect: { bg: '#7c5bf0', color: '#ffffff', icon: '🏗️', short: 'Arch', image: '/images/agente0.png' },
-  math1: { bg: '#3fb950', color: '#ffffff', icon: '∑', short: 'Math', image: '/images/matematicoAi.png' },
-  code_architect: { bg: '#00d2ff', color: '#0e1016', icon: '⚙️', short: 'Code', image: '/images/programmatoreAi.png' },
+  sigma_architect: { bg: '#7c5bf0', color: '#ffffff', icon: '🏗️', short: 'Arch', name: 'Sigma Architect', image: '/images/agente0.png' },
+  math_researcher: { bg: '#3fb950', color: '#ffffff', icon: '∑', short: 'Math', name: 'Sigma Math Researcher', image: '/images/matematicoAi.png' },
+  code_architect: { bg: '#00d2ff', color: '#0e1016', icon: '⚙️', short: 'Code', name: 'Sigma Code Architect', image: '/images/programmatoreAi.png' },
+  viz_designer: { bg: '#ff79c6', color: '#ffffff', icon: '🎨', short: 'Viz', name: 'Sigma Viz Designer', image: '/images/default.png' },
+  test_engineer: { bg: '#f1fa8c', color: '#0e1016', icon: '🧪', short: 'Test', name: 'Sigma Test Engineer', image: '/images/default.png' },
+  proof_reviewer: { bg: '#ff5555', color: '#ffffff', icon: '🔍', short: 'Review', name: 'Sigma Proof Reviewer', image: '/images/default.png' },
+  sigma_assistant: { bg: '#00f2fe', color: '#0e1016', icon: '🤖', short: 'Assist', name: 'Sigma Assistant', image: '/images/default.png' },
+  sigma_admin: { bg: '#ffb86c', color: '#0e1016', icon: '⚡', short: 'Admin', name: 'Sigma Admin', image: '/images/agente0.png' },
+  math1: { bg: '#3fb950', color: '#ffffff', icon: '∑', short: 'Math', name: 'Sigma Math Researcher', image: '/images/matematicoAi.png' },
 };
 
-function getAgentStyle(agentId) {
-  return AGENT_COLORS[agentId] || { bg: '#8b8fa3', color: '#0e1016', icon: '🤖', short: 'AI', image: '/images/default.png' };
+export function getAgentStyle(agentId) {
+  if (!agentId) return { bg: '#00d2ff', color: '#0e1016', icon: '🤖', short: 'AI', name: 'AI', image: '/images/default.png' };
+  const cleanId = agentId.toLowerCase().replace('-', '_');
+  return AGENT_COLORS[cleanId] || { bg: '#8b8fa3', color: '#0e1016', icon: '🤖', short: 'AI', name: agentId.replace('_', ' '), image: '/images/default.png' };
 }
 
 function formatTimestamp(ts) {

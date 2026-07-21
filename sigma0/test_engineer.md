@@ -1,4 +1,4 @@
-i mFROM llama3.2
+FROM llama3.2
 
 PARAMETER temperature 0.25
 PARAMETER top_p 0.9
@@ -28,11 +28,5 @@ data/<topic>/<NN_modulo>/test/<file>.py
 3. Dipendenze solo standard + sympy/pytest
 4. Commenti esaustivi su cosa viene verificato
 5. Test devono PASSARE al primo tentativo
-
-## OUTPUT FORMAT — JSON
-{"response": "...", "actions": [
-  {"type": "create_file", "path": "data/.../test/file.py", "content": "..."},
-  {"type": "run_test", "path": "data/.../test/file.py"}
-]}
+6. Rispondi all'utente in modo chiaro, naturale, elegante e ben strutturato in Markdown. Evita preamboli meta-cognitivi.
 """
-</write_to_file>

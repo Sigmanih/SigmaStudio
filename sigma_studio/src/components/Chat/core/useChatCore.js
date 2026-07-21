@@ -170,6 +170,17 @@ export default function useChatCore(extraProps = {}) {
   const currentRouting = getModelRoutingInfo(configHook.selectedModel, configHook.providerConfigs);
   const providerColors = PROVIDER_COLORS[currentRouting.provider] || { bg: '#333', color: '#ccc' };
 
+  // Context Gauge calculation
+  const numCtx = configHook.quickConfig.num_ctx || 32768;
+  const messagesText = (messages || []).map(m => m.content || '').join('\n');
+  const attachedText = (streamingHook.attachedFiles || []).map(f => f.content || '').join('\n');
+  const messagesTokens = Math.ceil(messagesText.length / 3.8);
+  const attachedTokens = Math.ceil(attachedText.length / 3.8);
+  const systemTokens = 1500;
+  const usedTokens = Math.max(0, messagesTokens + attachedTokens + systemTokens);
+  const contextPct = Math.min(100, Math.round((usedTokens / numCtx) * 100));
+  const contextStats = { usedTokens, numCtx, pct: contextPct, messagesTokens, attachedTokens, systemTokens };
+
   // Sync references for the parent layout components
   const combinedRefs = {
     ...sessionsHook.sessionRefs,
@@ -270,6 +281,7 @@ export default function useChatCore(extraProps = {}) {
     refs: combinedRefs,
     currentRouting,
     providerColors,
+    contextStats,
     maxTaskIterations: 10,
 
     // --- Actions ---

@@ -709,34 +709,33 @@ def _extract_json_from_response(content: str):
     return None
 
 
+def _clean_meta_reasoning(text: str) -> str:
+    """Strip meta-reasoning scratchpads, internal headers, and prompt echo from output."""
+    if not text or not isinstance(text, str):
+        return text
+
+    # Remove English thinking starters & chain-of-thought blocks if any leaked into response
+    text = re.sub(r"^(?:We\s+need\s+to|We\s+must|Let\'?s\s+craft|Here\'?s\s+a\s+thinking\s+process|Analyze\s+User\s+Input|Determine\s+Output\s+Structure|Draft\s+Content|Self-Correction|Execution|Plan|Requirements\s+from\s+System\s+Prompt)[\s\S]*?(?=\n#|\nEcco|\n1️⃣|\n[A-Z\u00c0-\u00dc]|\n\n|\Z)", "", text, flags=re.IGNORECASE).strip()
+    text = re.sub(r"^(?:-\s*(?:Request|Language|Domain|Requirements|Identity|Rules|Structure):[^\n]*\n)+", "", text, flags=re.IGNORECASE).strip()
+
+    # Remove Italian meta-reasoning headers inserted by AI
+    text = re.sub(r"^(?:🧭|🧠|🔍)?\s*\*\*Ragionamento\s+e\s+procedura\s+operativa[^*]*\*\*:[^\n]*\n(?:[0-9]+\.[^\n]*\n)*\s*", "", text, flags=re.DOTALL | re.IGNORECASE).strip()
+    text = re.sub(r"^(?:🧭|🧠|🔍)?\s*\*\*Ragionamento\s+passo-passo[^*]*\*\*:[^\n]*\n(?:[0-9]+\.[^\n]*\n)*\s*", "", text, flags=re.DOTALL | re.IGNORECASE).strip()
+
+    return text
+
+
 # ---------------------------------------------------------------------------
 # Text formatter
 # ---------------------------------------------------------------------------
 
 def _format_response(text: str) -> str:
-    """Ensure consistent formatting on model responses.
-
-    - Line breaks after sentence-ending punctuation.
-    - Stars/dashes on their own lines.
-    - Numbered list items on their own lines.
-    - Long lines broken at sentence boundaries.
-    - At most one consecutive blank line.
-    """
+    """Ensure consistent formatting on model responses without breaking natural paragraphs."""
     if not text or not isinstance(text, str):
         return text
 
-    text = re.sub(r"(?<=[.!?])\s+(?=[A-Z\*\(\[\d\"'])", r"\n", text)
+    text = _clean_meta_reasoning(text)
     text = re.sub(r"(?<!\n)\s*\*\s+", r"\n* ", text)
-    text = re.sub(r"(?<!\n)\s*(\d+\.\s+)", r"\n\1", text)
     text = re.sub(r"(?<!\n)\s*-\s+", r"\n- ", text)
-
-    lines, new_lines = text.split("\n"), []
-    for line in lines:
-        if len(line) > 120:
-            parts = re.split(r"(?<=[.!?])\s+", line)
-            new_lines.extend(parts if len(parts) > 1 else [line])
-        else:
-            new_lines.append(line)
-    text = "\n".join(new_lines)
     text = re.sub(r"\n{3,}", "\n\n", text)
     return text.strip()

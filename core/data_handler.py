@@ -3,20 +3,72 @@ import os
 import glob
 import json
 from core.logger import get_logger
+from core.store import modules_store
 
 log = get_logger(__name__)
 
+
+def rebuild_modules_meta() -> dict:
+    """Synchronise modules_meta.json from the filesystem in real time.
+    
+    Merges existing custom fields (parent_id, description, domain) with
+    the current directory layout. Removes stale parent references.
+    """
+    data_dir = "data"
+    if not os.path.isdir(data_dir):
+        return {"topics": {}, "modules": {}}
+
+    existing = modules_store.load()
+    existing_topics = existing.get("topics", {})
+
+    topics: dict = {}
+    modules: dict = {}
+    valid_topic_ids: set = set()
+
+    for topic in sorted(os.listdir(data_dir)):
+        tp = os.path.join(data_dir, topic)
+        if not os.path.isdir(tp):
+            continue
+        valid_topic_ids.add(topic)
+        topic_modules = []
+        for mod in sorted(os.listdir(tp)):
+            mp = os.path.join(tp, mod)
+            if not os.path.isdir(mp):
+                continue
+            num = mod[:2] if mod[:2].isdigit() else mod
+            mname = mod[3:].replace("_", " ").title() if mod[:2].isdigit() else mod.replace("_", " ").title()
+            mod_key = f"{topic}/{mod}" if not mod[:2].isdigit() else num
+            modules[mod_key] = mname
+            topic_modules.append(mod_key)
+
+        topics[topic] = existing_topics.get(topic, {}).copy()
+        topics[topic]["folder"] = tp.replace("\\", "/")
+        topics[topic]["modules"] = topic_modules
+        topics[topic].setdefault("name", topic.replace("_", " ").title())
+        topics[topic].setdefault("description", "")
+
+    # Remove stale parent_id references
+    for tdata in topics.values():
+        if tdata.get("parent_id") and tdata["parent_id"] not in valid_topic_ids:
+            tdata.pop("parent_id", None)
+
+    meta_data = {"topics": topics, "modules": modules}
+    modules_store.save(meta_data)
+    log.info("modules_meta.json rebuilt (%d topics, %d modules)", len(topics), len(modules))
+    return meta_data
+
+
 def get_all_module_folders(self):
     """Scan topic folders for nested module folders."""
-    meta = self.get_module_meta()
+    meta = rebuild_modules_meta()
     topics = meta.get("topics", {})
     result = []
     for topic_id, topic_data in topics.items():
-        topic_folder = topic_data.get("folder", topic_id)
+        topic_folder = topic_data.get("folder", os.path.join("data", topic_id))
         if os.path.isdir(topic_folder):
             for d in sorted(os.listdir(topic_folder)):
                 full = os.path.join(topic_folder, d)
-                if os.path.isdir(full) and d[:2].isdigit():
+                if os.path.isdir(full):
                     result.append(full)
     return result
 
@@ -31,32 +83,37 @@ def get_topic_for_module(self, module_num):
 
 def load_module_files(self, folder_path):
     """Load files from subfolders of a module folder."""
-    res = {"teoria": [], "test": [], "viz": [], "docs": [], "whitepapers": []}
-    for key in ['teoria', 'test', 'viz', 'docs', 'whitepapers']:
+    res = {"teoria": [], "scripts": [], "viz": [], "docs": [], "whitepapers": []}
+    for key in ['teoria', 'scripts', 'test', 'viz', 'docs', 'whitepapers']:
         p = os.path.join(folder_path, key)
         if os.path.isdir(p):
             files = [{"filename": os.path.basename(f), "path": f.replace('\\', '/')}
                      for f in glob.glob(os.path.join(p, "*")) if os.path.isfile(f)]
-            res[key] = files
+            if key == 'test':
+                res['scripts'] = res.get('scripts', []) + files
+            else:
+                res[key] = res.get(key, []) + files
     wp_from_docs = [f for f in res["docs"] if "WHITEPAPER" in f["filename"].upper()]
     res["whitepapers"] = res["whitepapers"] + wp_from_docs
     res["docs"] = [f for f in res["docs"] if "WHITEPAPER" not in f["filename"].upper()]
+    # Keep 'test' alias pointing to 'scripts' for full backward compatibility
+    res["test"] = res["scripts"]
     return res
 
 
 def handle_api_modules(self):
     try:
-        meta = self.get_module_meta()
+        meta = rebuild_modules_meta()
         data = {"modules": []}
         mod_folders = get_all_module_folders(self)
         for mod in mod_folders:
             basename = os.path.basename(mod)
             res = {
                 "folder": mod.replace('\\', '/'),
-                "number": basename[:2],
-                "name": basename[3:].replace('_', ' ').title(),
+                "number": basename[:2] if basename[:2].isdigit() else "01",
+                "name": basename[3:].replace('_', ' ').title() if basename[:2].isdigit() else basename.replace('_', ' ').title(),
                 "description": meta.get("modules", {}).get(basename[:2], ""),
-                "teoria": [], "test": [], "viz": [], "docs": [], "whitepapers": []
+                "teoria": [], "scripts": [], "test": [], "viz": [], "docs": [], "whitepapers": []
             }
             files_data = load_module_files(self, mod)
             res.update(files_data)
@@ -69,14 +126,14 @@ def handle_api_modules(self):
 
 def handle_api_topics(self):
     try:
-        meta = self.get_module_meta()
+        meta = rebuild_modules_meta()
         result = {"topics": []}
         topics = meta.get("topics", {})
         for topic_id, topic_data in topics.items():
-            topic_folder = topic_data.get("folder", topic_id)
+            topic_folder = topic_data.get("folder", os.path.join("data", topic_id))
             topic_info = {
                 "id": topic_id,
-                "name": topic_data.get("name", topic_id),
+                "name": topic_data.get("name", topic_id).replace("_", " ").title(),
                 "description": topic_data.get("description", ""),
                 "domain": topic_data.get("domain", ""),
                 "manifesto_ref": topic_data.get("manifesto_ref", ""),
@@ -84,28 +141,21 @@ def handle_api_topics(self):
                 "modules": []
             }
             seen_modules: set = set()
-            for mod_num in topic_data.get("modules", []):
-                if mod_num in seen_modules:
-                    continue
-                seen_modules.add(mod_num)
-                mod_folder = None
-                if os.path.isdir(topic_folder):
-                    for d in sorted(os.listdir(topic_folder)):
-                        if d.startswith(mod_num + "_"):
-                            mod_folder = os.path.join(topic_folder, d)
-                            break
-                if mod_folder and os.path.isdir(mod_folder):
-                    stored_name = meta.get("modules", {}).get(mod_num, "")
-                    display_name = stored_name or os.path.basename(mod_folder)[3:].replace('_', ' ').title()
-                    mod_info = {
-                        "number": mod_num,
-                        "folder": mod_folder.replace('\\', '/'),
-                        "name": display_name,
-                        "description": stored_name,
-                        "teoria": [], "test": [], "viz": [], "docs": [], "whitepapers": []
-                    }
-                    mod_info.update(load_module_files(self, mod_folder))
-                    topic_info["modules"].append(mod_info)
+            if os.path.isdir(topic_folder):
+                for d in sorted(os.listdir(topic_folder)):
+                    mod_folder = os.path.join(topic_folder, d)
+                    if os.path.isdir(mod_folder):
+                        display_name = os.path.basename(mod_folder)[3:].replace('_', ' ').title() if d[:2].isdigit() else d.replace('_', ' ').title()
+                        num = d[:2] if d[:2].isdigit() else "01"
+                        mod_info = {
+                            "number": num,
+                            "folder": mod_folder.replace('\\', '/'),
+                            "name": display_name,
+                            "description": display_name,
+                            "teoria": [], "scripts": [], "test": [], "viz": [], "docs": [], "whitepapers": []
+                        }
+                        mod_info.update(load_module_files(self, mod_folder))
+                        topic_info["modules"].append(mod_info)
             result["topics"].append(topic_info)
         self.send_json_response(result)
     except Exception as exc:

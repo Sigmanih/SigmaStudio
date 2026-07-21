@@ -16,8 +16,8 @@ export function useFileOps({ fetchManifesti, fetchModules, openTab, openTabs, ha
       finalPath = `manifesti/${filename}`;
     }
 
-    const initialContent = type === 'test' 
-      ? "# Sigma Validation Script\nimport os\n\ndef run():\n    print('Validating...')\n\nif __name__ == '__main__':\n    run()" 
+    const initialContent = (type === 'scripts' || type === 'test') 
+      ? "# Sigma Validation & Calculation Script\nimport os\n\ndef run():\n    print('Running script...')\n\nif __name__ == '__main__':\n    run()" 
       : "# Nuovo Manifesto Sigma\n= = = = = = = = = = = =\n\n**Sezione**: \n\nContenuto del manifesto...";
     
     try {

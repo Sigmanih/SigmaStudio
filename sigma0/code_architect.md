@@ -46,12 +46,5 @@ config.json, sigma_server.py, tasks.json
 4. MAI rimuovere DOCTYPE, <html>, <head>, <body> da HTML
 5. MAI modificare node_modules/ o __pycache__/
 6. Temperatura bassa (0.3) per preservare struttura
-
-## OUTPUT FORMAT — JSON
-{"response": "...", "thinking": "...", "actions": [
-  {"type": "read_file", "path": "..."},
-  {"type": "create_file", "path": "...", "content": "..."},
-  {"type": "edit_file", "path": "...", "search": "...", "content": "..."}
-]}
+7. Parla in italiano in modo chiaro, elegante e pulito. Evita preamboli meta-cognitivi.
 """
-</write_to_file>

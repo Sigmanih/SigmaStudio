@@ -6,6 +6,7 @@ import ChatInput from '../ui/ChatInput';
 import ChatHistory from '../ChatHistory';
 import FilePicker from '../FilePicker';
 import ActionsBar from '../ActionsBar';
+import QuickConfigPanel from '../ui/QuickConfigPanel';
 import useChatResize from '../useChatResize';
 import useChatDrag from '../useChatDrag';
 
@@ -74,6 +75,7 @@ export default function ChatFloatingPanel({ openFiles, onClose, onOpenConfig, on
         showQuickConfig={core.showQuickConfig}
         onOpenConfig={onOpenConfig}
         onClose={onClose}
+        contextStats={core.contextStats}
       />
 
       <div className="chat-body">
@@ -111,6 +113,14 @@ export default function ChatFloatingPanel({ openFiles, onClose, onOpenConfig, on
         />
       </div>
 
+      {core.showQuickConfig && (
+        <QuickConfigPanel
+          quickConfig={core.quickConfig}
+          setQuickConfig={core.setQuickConfig}
+          onClose={() => core.setShowQuickConfig(false)}
+        />
+      )}
+
       <ActionsBar
         activeMode={core.activeMode}
         onSetMode={core.setActiveMode}
@@ -122,6 +132,9 @@ export default function ChatFloatingPanel({ openFiles, onClose, onOpenConfig, on
         taskTotal={0}
         taskProgress={0}
         maxTaskIterations={core.maxTaskIterations}
+        contextStats={core.contextStats}
+        onOpenQuickConfig={() => core.setShowQuickConfig(!core.showQuickConfig)}
+        showQuickConfig={core.showQuickConfig}
       />
 
       <ChatInput

@@ -6,6 +6,7 @@ import ChatInput from '../ui/ChatInput';
 import ChatHistory from '../ChatHistory';
 import FilePicker from '../FilePicker';
 import ActionsBar from '../ActionsBar';
+import QuickConfigPanel from '../ui/QuickConfigPanel';
 
 export default function ChatWorkspaceTab() {
   const core = useChatCore({});
@@ -39,41 +40,8 @@ export default function ChatWorkspaceTab() {
         onSelectManifesto={core.handleSelectManifesto}
         onOpenQuickConfig={() => core.setShowQuickConfig(!core.showQuickConfig)}
         showQuickConfig={core.showQuickConfig}
+        contextStats={core.contextStats}
       />
-
-      {core.showQuickConfig && (
-        <div className="chat-quick-config">
-          <div className="chat-quick-config-grid">
-            {[
-              { label: '🌡️ Temp', key: 'temperature', min: 0, max: 2, step: 0.05, type: 'range' },
-              { label: '🎯 Top P', key: 'top_p', min: 0, max: 1, step: 0.05, type: 'range' },
-              { label: '🔝 Top K', key: 'top_k', min: 1, max: 100, step: 1, type: 'range' },
-              { label: '🔁 RPen', key: 'repeat_penalty', min: 0, max: 2, step: 0.05, type: 'range' },
-            ].map(cfg => (
-              <div key={cfg.key} className="qc-item">
-                <div className="qc-label">{cfg.label}</div>
-                <input type={cfg.type} min={cfg.min} max={cfg.max} step={cfg.step}
-                  value={core.quickConfig[cfg.key]}
-                  onChange={e => core.setQuickConfig(prev => ({ ...prev, [cfg.key]: parseFloat(e.target.value) }))} />
-              </div>
-            ))}
-            <div className="qc-item">
-              <div className="qc-label">📝 MaxT</div>
-              <select className="qc-select" value={core.quickConfig.max_tokens}
-                onChange={e => core.setQuickConfig(prev => ({ ...prev, max_tokens: parseInt(e.target.value) }))}>
-                {[512, 1024, 2048, 4096, 8192, 16384, 32768].map(v => <option key={v} value={v}>{v >= 1024 ? `${v/1024}K` : v}</option>)}
-              </select>
-            </div>
-            <div className="qc-item">
-              <div className="qc-label">🧠 Ctx</div>
-              <select className="qc-select" value={core.quickConfig.num_ctx}
-                onChange={e => core.setQuickConfig(prev => ({ ...prev, num_ctx: parseInt(e.target.value) }))}>
-                {[2048, 4096, 8192, 16384, 32768, 65536, 131072].map(v => <option key={v} value={v}>{v >= 1024 ? `${v/1024}K` : v}</option>)}
-              </select>
-            </div>
-          </div>
-        </div>
-      )}
 
       <div className="chat-workspace-body">
         <ChatHistory
@@ -110,6 +78,14 @@ export default function ChatWorkspaceTab() {
         />
       </div>
 
+      {core.showQuickConfig && (
+        <QuickConfigPanel
+          quickConfig={core.quickConfig}
+          setQuickConfig={core.setQuickConfig}
+          onClose={() => core.setShowQuickConfig(false)}
+        />
+      )}
+
       <ActionsBar
         activeMode={core.activeMode}
         onSetMode={core.setActiveMode}
@@ -121,6 +97,9 @@ export default function ChatWorkspaceTab() {
         taskTotal={0}
         taskProgress={0}
         maxTaskIterations={core.maxTaskIterations}
+        contextStats={core.contextStats}
+        onOpenQuickConfig={() => core.setShowQuickConfig(!core.showQuickConfig)}
+        showQuickConfig={core.showQuickConfig}
       />
 
       <ChatInput

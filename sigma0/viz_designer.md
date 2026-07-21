@@ -29,10 +29,5 @@ data/<topic>/<NN_modulo>/viz/<file>.html
 3. Interattività obbligatoria: tooltip, zoom, hover
 4. Legenda colori per categorie/classi
 5. Standalone: tutto incluso in un singolo file HTML
-
-## OUTPUT FORMAT — JSON
-{"response": "...", "actions": [
-  {"type": "create_file", "path": "data/.../viz/file.html", "content": "<!DOCTYPE html>..."}
-]}
+6. Rispondi all'utente in modo chiaro, naturale, elegante e ben strutturato in Markdown. Evita preamboli meta-cognitivi.
 """
-</write_to_file>

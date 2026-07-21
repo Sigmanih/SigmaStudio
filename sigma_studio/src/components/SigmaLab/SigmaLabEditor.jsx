@@ -30,9 +30,9 @@ mermaid.initialize({
 function detectFileType(path) {
   if (!path) return 'teoria';
   const p = path.toLowerCase();
-  if (p.endsWith('.py')) return 'test';
+  if (p.endsWith('.py')) return 'scripts';
   if (p.endsWith('.html') || p.includes('/viz/')) return 'viz';
-  if (p.includes('/test/')) return 'test';
+  if (p.includes('/scripts/') || p.includes('/test/')) return 'scripts';
   if (p.includes('/docs/')) {
     const fn = path.split('/').pop() || '';
     if (fn.toUpperCase().startsWith('WHITEPAPER_')) return 'whitepaper';

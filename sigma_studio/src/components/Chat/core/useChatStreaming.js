@@ -1,6 +1,7 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
 import { MAX_ATTACHMENTS, createSession, MAX_HISTORY } from '../chatStorage';
 import { getModelRoutingInfo } from '../modelProviderMap';
+import { getAgentStyle } from '../AgentMessage';
 
 let globalAbortController = null;
 
@@ -14,7 +15,35 @@ function appendAndSave(sid, msg, setFn) {
 
 function cleanModelTags(text) {
   if (!text) return text;
-  let cleaned = text.replace(/<(thinking|Thought|reasoning|Rationale|scratchpad)>[\s\S]*?<\/\1>/gi, '');
+  let cleaned = text;
+
+  // 1. Remove XML thinking tags
+  cleaned = cleaned.replace(/<(thinking|Thought|reasoning|Rationale|scratchpad)>[\s\S]*?<\/\1>/gi, '');
+
+  // 2. Remove "Here's a thinking process:" English self-analysis blocks
+  cleaned = cleaned.replace(/^(?:We\s+need\s+to|We\s+must|Let'?s\s+craft|Here'?s\s+a\s+thinking\s+process|Analyze\s+User\s+Input|Determine\s+Output\s+Structure|Draft\s+Content|Self-Correction|Execution|Plan|Requirements\s+from\s+System\s+Prompt)[\s\S]*?(?=\n#|\nEcco|\n1️⃣|\n[A-ZÀ-Ü]|\n\{|\n\n|\Z)/gi, '');
+  cleaned = cleaned.replace(/^(?:-\s*(?:Request|Language|Domain|Requirements|Identity|Rules|Structure):[^\n]*\n)+/gi, '');
+
+  // 3. Extract "response" value if raw JSON object string was outputted by LLM
+  if (cleaned.trim().startsWith('{') && cleaned.includes('"response"')) {
+    try {
+      const parsed = JSON.parse(cleaned.trim());
+      if (parsed.response && typeof parsed.response === 'string') {
+        cleaned = parsed.response;
+      }
+    } catch (e) {
+      const match = cleaned.match(/"response"\s*:\s*"([\s\S]*?)"\s*,\s*"thinking"/);
+      if (match && match[1]) {
+        cleaned = match[1].replace(/\\n/g, '\n').replace(/\\"/g, '"');
+      }
+    }
+  }
+
+  // 4. Remove meta-reasoning headers (e.g. "🧭 **Ragionamento e procedura operativa:**")
+  cleaned = cleaned.replace(/^(?:🧭|🧠|🔍)?\s*\*\*Ragionamento\s+e\s+procedura\s+operativa[^*]*\*\*:[^\n]*\n(?:[0-9]+\.[^\n]*\n)*/gi, '');
+  cleaned = cleaned.replace(/^(?:🧭|🧠|🔍)?\s*\*\*Ragionamento\s+passo-passo[^*]*\*\*:[^\n]*\n(?:[0-9]+\.[^\n]*\n)*/gi, '');
+
+  // 5. Remove container tags and cleanup
   cleaned = cleaned.replace(/<\/?(response|Response|output|Output|answer|Answer|result|Result|tool_call|ToolCall|function_call|FunctionCall)>/gi, '');
   cleaned = cleaned.replace(/<\/?[a-zA-Z_][a-zA-Z0-9_]*>/g, '');
   cleaned = cleaned.replace(/\n{3,}/g, '\n\n');
@@ -98,6 +127,11 @@ export function useChatStreaming({
     let fullText = '', fullThinking = '', buffer = '';
     let firstToken = true, hasThinking = false;
     const modelName = selectedModel;
+    
+    let streamAgentId = activeManifesto?.path?.replace('manifesti/', '')?.replace('.md', '') || '';
+    let streamAgentName = activeManifesto?.name || '';
+    let streamAgentStyle = getAgentStyle(streamAgentId);
+
     try {
       let streamDone = false, hasError = false, streamErrorMsg = '';
       while (!streamDone) {
@@ -114,15 +148,49 @@ export function useChatStreaming({
             if (payload === '[ERROR]') { hasError = true; streamDone = true; break; }
             try {
               const p = JSON.parse(payload);
+              if (p.meta) {
+                streamAgentId = p.meta.agent_id || p.meta.manifesto_used;
+                streamAgentName = p.meta.agent_name || streamAgentId;
+                streamAgentStyle = getAgentStyle(streamAgentId);
+                setSessionMessages(prev => {
+                  const n = [...(prev[sessionId] || [])];
+                  if (n.length > 0 && n[n.length - 1].role === 'assistant') {
+                    n[n.length - 1] = {
+                      ...n[n.length - 1],
+                      agent_id: streamAgentId,
+                      agentRole: streamAgentStyle.name || streamAgentName,
+                      agentName: `${streamAgentStyle.name || streamAgentName} (${selectedModel})`,
+                      agentImage: streamAgentStyle.image || '/images/default.png'
+                    };
+                  }
+                  return { ...prev, [sessionId]: n };
+                });
+              }
               if (p.thinking) { hasThinking = true; fullThinking += p.thinking; }
               if (p.token) { fullText += p.token; }
               if (firstToken) {
                 firstToken = false;
-                setSessionMessages(prev => ({ ...prev, [sessionId]: [...(prev[sessionId] || []), { role: 'assistant', content: fullText, agentName: modelName, timestamp: new Date().toISOString(), streaming: true, thinking: hasThinking ? fullThinking : undefined, streamingThinking: hasThinking, agentImage: activeManifesto?.image || '/images/default.png', agentRole: activeManifesto?.name || '' }] }));
+                setSessionMessages(prev => ({
+                  ...prev,
+                  [sessionId]: [...(prev[sessionId] || []), {
+                    role: 'assistant',
+                    content: fullText,
+                    agent_id: streamAgentId,
+                    agentName: `${streamAgentStyle.name || streamAgentName || selectedModel} (${selectedModel})`,
+                    agentRole: streamAgentStyle.name || streamAgentName || activeManifesto?.name || '',
+                    agentImage: streamAgentStyle.image || activeManifesto?.image || '/images/default.png',
+                    timestamp: new Date().toISOString(),
+                    streaming: true,
+                    thinking: hasThinking ? fullThinking : undefined,
+                    streamingThinking: hasThinking
+                  }]
+                }));
               } else {
                 setSessionMessages(prev => {
                   const n = [...(prev[sessionId] || [])];
-                  if (n.length > 0 && n[n.length - 1].role === 'assistant') n[n.length - 1] = { ...n[n.length - 1], content: fullText, thinking: hasThinking ? fullThinking : n[n.length - 1].thinking, streamingThinking: hasThinking };
+                  if (n.length > 0 && n[n.length - 1].role === 'assistant') {
+                    n[n.length - 1] = { ...n[n.length - 1], content: fullText, thinking: hasThinking ? fullThinking : n[n.length - 1].thinking, streamingThinking: hasThinking };
+                  }
                   return { ...prev, [sessionId]: n };
                 });
               }
@@ -148,10 +216,24 @@ export function useChatStreaming({
   const handleJsonResponse = async (res, sessionId, updatedMessages) => {
     try {
       const data = await res.json();
-      const assistant = { role: 'assistant', content: data.response || '⚠️ Nessuna risposta.', thinking: data.thinking || null, timestamp: new Date().toISOString(), error: data.error || null, agentName: selectedModel, agentImage: activeManifesto?.image || '/images/default.png', agentRole: activeManifesto?.name || '' };
+      const routedAgentId = data.agent_id || data.manifesto_used;
+      const routedAgentName = data.agent_name || data.bot_name;
+      const style = getAgentStyle(routedAgentId);
+      const assistant = {
+        role: 'assistant',
+        content: cleanModelTags(data.response) || '⚠️ Nessuna risposta.',
+        thinking: data.thinking || null,
+        timestamp: new Date().toISOString(),
+        error: data.error || null,
+        agent_id: routedAgentId,
+        agentName: `${style.name || routedAgentName || selectedModel} (${selectedModel})`,
+        agentRole: style.name || routedAgentName || activeManifesto?.name || 'AI',
+        agentImage: style.image || activeManifesto?.image || '/images/default.png'
+      };
       if (sessionRefs.activeSessionId.current === sessionId) {
         const finalMessages = [...updatedMessages, assistant];
         setMessagesForSession(sessionId, finalMessages);
+        saveMessagesImmediately(sessionId, finalMessages);
         saveMessagesImmediately(sessionId, finalMessages);
         if (data.actions_log?.length > 0) {
           setActionsLog(data.actions_log);

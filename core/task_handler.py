@@ -32,7 +32,7 @@ log = get_logger(__name__)
 
 # Sections permitted inside a module (WHITELIST — everything else is denied)
 _ALLOWED_MODULE_SECTIONS: frozenset[str] = frozenset({
-    "teoria", "test", "viz", "docs", "whitepapers", ".system",
+    "teoria", "scripts", "test", "viz", "docs", "whitepapers", ".system",
 })
 
 _VALID_ACTION_TYPES: frozenset[str] = frozenset({
@@ -207,17 +207,10 @@ def _sync_module_meta(topic_id: str, topic_folder: str, mod_num: str, mod_name: 
 
 
 def _auto_register_file_module(path: str) -> None:
-    """Ensure the module containing *path* is registered in modules_meta.json."""
+    """Ensure modules_meta.json is synchronized in real time whenever files/modules change."""
     try:
-        if not path or not path.startswith("data/"):
-            return
-        parts = path.replace("\\", "/").split("/")
-        if len(parts) >= 5 and parts[2][:2].isdigit() and "_" in parts[2]:
-            topic_id = parts[1]
-            mod_folder = parts[2]
-            mod_num = mod_folder[:2]
-            mod_name = mod_folder[3:].replace("_", " ").title()
-            _sync_module_meta(topic_id, f"data/{topic_id}", mod_num, mod_name)
+        from core.data_handler import rebuild_modules_meta
+        rebuild_modules_meta()
     except Exception as exc:
         log.error("_auto_register_file_module error: %s", exc)
 

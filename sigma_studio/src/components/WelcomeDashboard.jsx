@@ -724,8 +724,8 @@ export default function WelcomeDashboard({ modules, openTab }) {
     for (const m of (t.modules || [])) acc += (m.teoria?.length || 0);
     return acc;
   }, 0);
-  const countTest = topics.reduce((acc, t) => {
-    for (const m of (t.modules || [])) acc += (m.test?.length || 0);
+  const countScripts = topics.reduce((acc, t) => {
+    for (const m of (t.modules || [])) acc += (m.scripts?.length || m.test?.length || 0);
     return acc;
   }, 0);
   const countViz = topics.reduce((acc, t) => {
@@ -742,7 +742,7 @@ export default function WelcomeDashboard({ modules, openTab }) {
           Sigma <span className="wg-hero-accent">Research</span> Studio
         </h1>
         <p className="wg-hero-sub">
-          Piattaforma modulare per la ricerca assistita dall'AI — organizza argomenti, scrivi teoria, esegui test, visualizza dati e collabora con modelli linguistici avanzati.
+          Piattaforma modulare per la ricerca assistita dall'AI — organizza argomenti, scrivi teoria, esegui scripts Python, visualizza dati e collabora con modelli linguistici avanzati.
         </p>
       </div>
 
@@ -761,8 +761,8 @@ export default function WelcomeDashboard({ modules, openTab }) {
           <span className="wg-metric-label">Documenti Teorici</span>
         </div>
         <div className="wg-metric">
-          <span className="wg-metric-value">{countTest}</span>
-          <span className="wg-metric-label">Test Computazionali</span>
+          <span className="wg-metric-value">{countScripts}</span>
+          <span className="wg-metric-label">Scripts Python</span>
         </div>
         <div className="wg-metric">
           <span className="wg-metric-value">{countViz}</span>
@@ -778,7 +778,7 @@ export default function WelcomeDashboard({ modules, openTab }) {
         <QuickFeature
           icon="🧬"
           title="Argomenti & Moduli"
-          desc="Organizza la tua ricerca in argomenti strutturati con moduli numerati. Ogni modulo contiene teoria, test, visualizzazioni e documenti."
+          desc="Organizza la tua ricerca in argomenti strutturati con moduli numerati. Ogni modulo contiene teoria, scripts Python, visualizzazioni e documenti."
           color="#bc8cff"
         />
         <QuickFeature

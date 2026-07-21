@@ -233,7 +233,15 @@ export default function TaskFloatingPanel({ tasks, onAdd, onEdit, onDelete, onTo
           }}>
             <Plus size={14} /> Nuovo Task
           </button>
-          <button onClick={onClose} style={{
+          <button onClick={onClose} title="Riduci in basso nel dock" style={{
+            padding: '4px', borderRadius: '4px', border: 'none', background: 'transparent',
+            color: '#5a5a6a', cursor: 'pointer', display: 'flex', alignItems: 'center'
+          }}>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+              <path d="M5 12h14" />
+            </svg>
+          </button>
+          <button onClick={onClose} title="Chiudi" style={{
             padding: '4px', borderRadius: '4px', border: 'none', background: 'transparent',
             color: '#5a5a6a', cursor: 'pointer', display: 'flex', alignItems: 'center'
           }}>

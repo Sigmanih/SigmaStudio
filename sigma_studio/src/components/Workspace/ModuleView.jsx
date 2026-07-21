@@ -69,11 +69,11 @@ class ModuleView extends React.Component {
             <ColumnActions label="Teoria" columnType="teoria" moduleFolder={mod.folder} onAddFile={openAddFile} onRefresh={this.refresh} />
           </div>
 
-          {/* --- Test --- */}
+          {/* --- Scripts --- */}
           <div className="res-column">
-            <h4>🧪 Validazione Computazionale</h4>
-            {mod.test?.map(f => (
-              <div key={f.path} className="res-item test-item" onClick={() => openTab(f, 'test')}>
+            <h4>⚙️ Scripts Python & Calcolo</h4>
+            {(mod.scripts || mod.test)?.map(f => (
+              <div key={f.path} className="res-item test-item" onClick={() => openTab(f, 'scripts')}>
                 <div className="item-info">
                   <Terminal size={14} className="icon accent" />
                   <span>{f.filename}</span>
@@ -83,8 +83,8 @@ class ModuleView extends React.Component {
                 </div>
               </div>
             ))}
-            {!mod.test?.length && <p className="empty-hint">Nessun test script.</p>}
-            <ColumnActions label="Test" columnType="test" moduleFolder={mod.folder} onAddFile={openAddFile} onRefresh={this.refresh} />
+            {!(mod.scripts || mod.test)?.length && <p className="empty-hint">Nessun script Python.</p>}
+            <ColumnActions label="Scripts" columnType="scripts" moduleFolder={mod.folder} onAddFile={openAddFile} onRefresh={this.refresh} />
           </div>
 
           {/* --- Viz e Docs --- */}
