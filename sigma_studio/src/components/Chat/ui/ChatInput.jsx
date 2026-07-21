@@ -17,9 +17,13 @@ export default function ChatInput({
         >
           {currentRouting.provider || 'ollama'}
         </div>
-        <label className="chat-websearch-toggle" title="Cerca su Internet">
+        <label
+          className={`chat-websearch-toggle ${webSearch ? 'active' : ''}`}
+          title={webSearch ? 'Ricerca Web Attiva: gli agenti consultano la rete per verificare informazioni e fonti' : 'Attiva Ricerca Web per consultare la rete'}
+        >
           <input type="checkbox" checked={webSearch} onChange={e => setWebSearch(e.target.checked)} />
-          <span>🔍 Web Search</span>
+          <span className="websearch-indicator" />
+          <span>🌐 Web Search</span>
         </label>
         <label className="chat-scroll-toggle" title="Auto-scroll">
           <input type="checkbox" checked={autoScroll} onChange={e => setAutoScroll(e.target.checked)} />

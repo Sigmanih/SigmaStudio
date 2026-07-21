@@ -321,13 +321,21 @@ IMPORTANTE â€” STRUTTURA MINIMA DI OGNI TASK:
             route_provider = 'api' if 'anthropic' not in api_url.lower() else 'anthropic'
 
         web_search = req.get("web_search", False)
+        web_sources_list = []
         if web_search and not planning_mode:
             search_results = _perform_web_search(message)
             if search_results and not search_results[0].get("body", "").startswith("Nessun risultato"):
+                web_sources_list = [r for r in search_results if r.get("href")]
                 st = "\n\n====================================================\n"
-                st += "## ðŸŒ RICERCA WEB COMPLETATA\n"
-                for i, r in enumerate(search_results[:5], 1):
-                    st += f"\n{i}. **{r['title']}**\n   {r['body'][:300]}\n   {r['href']}\n"
+                st += "## 🌐 RISULTATI RICERCA WEB & BROWSING (FONTI E LINK REALI)\n"
+                st += "L'utente ha attivato la Ricerca Web. DEVI utilizzare le informazioni e i link sottostanti per la tua risposta.\n"
+                st += "REGOLE TASSATIVE SULLE CITAZIONI E LINK:\n"
+                st += "1. PER OGNI CANALE, VIDEO, ARTICOLO O RISULTATO MENZIONATO, INCLUDI OBBLIGATORIAMENTE IL LINK MARKDOWN CLICCABILE nel formato `[Titolo/Canale](URL)`.\n"
+                st += "2. NON elencare MAI nomi di video, canali o siti web senza il relativo link Markdown `[Nome](https://...)`.\n"
+                st += "3. RISPONDI DIRETTAMENTE ED IMMEDIATAMENTE ALL'UTENTE CON I LINK ED I DETTAGLI. NON SCRIVERE MAI PREAMBOLI META-COGNITIVI (Es: 'L'utente chiede... devo usare la funzione...').\n\n"
+                st += "FONTI TROVATE SULLA RETE:\n"
+                for i, r in enumerate(web_sources_list[:7], 1):
+                    st += f"{i}. **[{r['title']}]({r['href']})**\n   Descrizione: {r['body'][:400]}\n   URL Diretto: {r['href']}\n\n"
                 st += "====================================================\n"
                 messages[0]["content"] += st
 
@@ -345,7 +353,9 @@ IMPORTANTE â€” STRUTTURA MINIMA DI OGNI TASK:
                         "meta": {
                             "agent_id": manifesto_name,
                             "agent_name": bot_name,
-                            "manifesto_used": manifesto_name
+                            "manifesto_used": manifesto_name,
+                            "web_search_active": web_search,
+                            "web_sources": [{"title": r["title"], "href": r["href"]} for r in web_sources_list]
                         }
                     }
                     self.wfile.write(f"data: {json.dumps(meta_payload)}\n\n".encode())

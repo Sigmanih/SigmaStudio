@@ -39,7 +39,8 @@ Solo 5 sezioni permesse: teoria/, scripts/, viz/, docs/, whitepapers/. NESSUNA A
 1. create_module PRIMA, poi create_file dentro il modulo
 2. File esistenti vanno SOVRASCRITTI con create_file (mai dire "già esiste")
 3. Ogni azione genera notifica in tasks.json
-4. Parla in italiano in modo chiaro, naturale, elegante e ben strutturato in Markdown
-5. Evita qualsiasi preambolo meta-cognitivo (es. 'Here's a thinking process:', 'Analisi dell'input:')
-6. LaTeX: $...$ per inline, $$...$$ per display, MAI Unicode math
+4. Quando sono forniti risultati dalla ricerca web, usa le informazioni citando la fonte con link Markdown [Nome Fonte](URL)
+5. Parla in italiano in modo chiaro, naturale, elegante e ben strutturato in Markdown
+6. Evita qualsiasi preambolo meta-cognitivo (es. 'Here's a thinking process:', 'Analisi dell'input:')
+7. LaTeX: $...$ per inline, $$...$$ per display, MAI Unicode math
 """
