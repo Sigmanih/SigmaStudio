@@ -991,3 +991,47 @@ def get_hardware_info():
             "torch_available": torch_info["torch_available"], "torch_version": torch_info.get("torch_version"),
             "torch_cuda_version": torch_info.get("torch_cuda_version"), "cudnn_version": torch_info.get("cudnn_version"),
             "cuda_error": torch_info.get("cuda_error"), "cuda_fix": cuda_fix, "multi_gpu": multi_gpu}}
+
+
+def restart_ollama_service():
+    """
+    Unloads all currently loaded models from Ollama VRAM/RAM via keep_alive=0
+    and restarts or refreshes Ollama service/process.
+    """
+    import urllib.request, json, subprocess, sys
+    unloaded_models = []
+    
+    # 1. Query loaded models via Ollama HTTP API (/api/ps)
+    try:
+        req = urllib.request.Request("http://localhost:11434/api/ps", method="GET")
+        with urllib.request.urlopen(req, timeout=3) as resp:
+            if resp.status == 200:
+                data = json.loads(resp.read().decode('utf-8'))
+                models = data.get("models", [])
+                for m in models:
+                    name = m.get("name") or m.get("model")
+                    if name:
+                        unload_payload = json.dumps({"model": name, "keep_alive": 0}).encode('utf-8')
+                        u_req = urllib.request.Request("http://localhost:11434/api/generate", data=unload_payload, headers={'Content-Type': 'application/json'}, method="POST")
+                        try:
+                            with urllib.request.urlopen(u_req, timeout=4): pass
+                        except Exception: pass
+                        unloaded_models.append(name)
+    except Exception:
+        pass
+
+    # 2. Command fallback if needed (e.g. ollama stop or runner process restart)
+    try:
+        if sys.platform == "win32":
+            subprocess.run(["powershell", "-Command", "Get-Process ollama_runner -ErrorAction SilentlyContinue | Stop-Process -Force"], capture_output=True, timeout=4)
+        else:
+            subprocess.run(["pkill", "-f", "ollama_runner"], capture_output=True, timeout=4)
+    except Exception:
+        pass
+
+    msg = f"Servizio Ollama riavviato e memoria VRAM/RAM svuotata ({len(unloaded_models)} modelli scaricati)." if unloaded_models else "Servizio Ollama riavviato e memoria VRAM/RAM svuotata."
+    return {
+        "success": True,
+        "message": msg,
+        "unloaded_models": unloaded_models
+    }

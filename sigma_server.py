@@ -417,6 +417,12 @@ def _handle_hardware_config(self):
     self.send_json_response({"success": True, "config": hw_cfg})
 SigmaAPIHandler.handle_hardware_config = _handle_hardware_config
 
+def _handle_hardware_restart_ollama(self):
+    from core.training_handler import restart_ollama_service
+    res = restart_ollama_service()
+    self.send_json_response(res)
+SigmaAPIHandler.handle_hardware_restart_ollama = _handle_hardware_restart_ollama
+
 def _handle_hf_token_config(self):
     """Salva HF_TOKEN nella config e lo imposta come variabile d'ambiente."""
     body = self.read_json_body()

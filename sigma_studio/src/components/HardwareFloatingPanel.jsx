@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { 
-  Zap, Activity, ShieldCheck, Play, Pause, X, GripVertical, Maximize2,
-  HardDrive, Cpu, Thermometer, Flame, Gauge, Sliders, BarChart2, ChevronDown, ChevronUp
+  Zap, Activity, ShieldCheck, Play, Pause, X, GripVertical, Maximize2, RotateCcw,
+  HardDrive, Cpu, Thermometer, Flame, Gauge, Sliders, BarChart2, AlertTriangle
 } from 'lucide-react';
 import RealtimeTelemetryChart from './HardwareLab/RealtimeTelemetryChart';
 import '../styles/hardware-lab.css';
@@ -27,6 +27,8 @@ export default function HardwareFloatingPanel({ onClose, onOpenTab, addToast }) 
   const [autoRefresh, setAutoRefresh] = useState(true);
   const [refreshInterval, setRefreshInterval] = useState(2000);
   const [showCharts, setShowCharts] = useState(false); // Collapsible charts state
+  const [showRestartAlert, setShowRestartAlert] = useState(false);
+  const [restartingOllama, setRestartingOllama] = useState(false);
 
   // History buffers per GPU index & System
   const [historyData, setHistoryData] = useState({});
@@ -105,6 +107,25 @@ export default function HardwareFloatingPanel({ onClose, onOpenTab, addToast }) 
     const interval = setInterval(fetchHardwareStatus, refreshInterval);
     return () => clearInterval(interval);
   }, [fetchHardwareStatus, autoRefresh, refreshInterval]);
+
+  const handleRestartOllama = async () => {
+    setRestartingOllama(true);
+    try {
+      const res = await fetch('/api/hardware/restart-ollama', { method: 'POST' });
+      const json = await res.json();
+      if (json.success) {
+        if (addToast) addToast(`🧹 ${json.message}`, 'success', 5000);
+        fetchHardwareStatus();
+      } else {
+        if (addToast) addToast(`❌ Errore riavvio: ${json.error}`, 'error', 5000);
+      }
+    } catch (err) {
+      if (addToast) addToast(`❌ Errore di connessione: ${err.message}`, 'error', 5000);
+    } finally {
+      setRestartingOllama(false);
+      setShowRestartAlert(false);
+    }
+  };
 
   // Drag logic
   useEffect(() => {
@@ -218,6 +239,61 @@ export default function HardwareFloatingPanel({ onClose, onOpenTab, addToast }) 
         animation: 'slideUp 0.25s cubic-bezier(0.16, 1, 0.3, 1)',
       }}
     >
+      {/* CONFIRMATION ALERT MODAL */}
+      {showRestartAlert && (
+        <div style={{
+          position: 'absolute',
+          inset: 0,
+          background: 'rgba(0, 0, 0, 0.8)',
+          backdropFilter: 'blur(8px)',
+          WebkitBackdropFilter: 'blur(8px)',
+          zIndex: 10020,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          padding: '16px'
+        }}>
+          <div style={{
+            maxWidth: '420px',
+            width: '100%',
+            background: 'rgba(15, 23, 42, 0.98)',
+            border: '1px solid rgba(239, 68, 68, 0.4)',
+            borderRadius: '14px',
+            padding: '18px',
+            boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.9)'
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '12px' }}>
+              <div style={{ background: 'rgba(239, 68, 68, 0.15)', padding: '8px', borderRadius: '10px', display: 'flex' }}>
+                <AlertTriangle size={20} color="#ef4444" />
+              </div>
+              <div>
+                <h3 style={{ margin: 0, fontSize: '15px', fontWeight: 700, color: '#fff' }}>Riavvio & Pulizia VRAM</h3>
+                <div style={{ fontSize: '11px', color: 'var(--text-dim)' }}>Svuota modelli in memoria</div>
+              </div>
+            </div>
+
+            <div style={{ fontSize: '12px', color: '#cbd5e1', lineHeight: '1.5', marginBottom: '16px', background: 'rgba(0,0,0,0.3)', padding: '12px', borderRadius: '8px', borderLeft: '3px solid #ef4444' }}>
+              ⚠️ Scaricherà tutti i modelli da VRAM/RAM e riavvierà Ollama. Continuare?
+            </div>
+
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px' }}>
+              <button className="hw-btn" onClick={() => setShowRestartAlert(false)} disabled={restartingOllama} style={{ fontSize: '12px', padding: '6px 12px' }}>
+                Annulla
+              </button>
+              <button 
+                className="hw-btn" 
+                onClick={handleRestartOllama} 
+                disabled={restartingOllama}
+                style={{ background: 'linear-gradient(135deg, #ef4444, #dc2626)', color: '#fff', border: 'none', fontWeight: 700, fontSize: '12px', padding: '6px 12px', display: 'flex', alignItems: 'center', gap: '5px' }}
+              >
+                {restartingOllama ? <Activity className="spin" size={13} /> : <RotateCcw size={13} />}
+                {restartingOllama ? 'Svuotamento...' : 'Svuota VRAM'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Resize handles */}
       {resizeHandles.map(rh => (
         <div key={rh.dir} style={{
@@ -265,6 +341,15 @@ export default function HardwareFloatingPanel({ onClose, onOpenTab, addToast }) 
 
         <div className="task-floating-actions" style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
           <button 
+            onClick={() => setShowRestartAlert(true)} 
+            className="chat-header-btn" 
+            title="Svuota la memoria VRAM/RAM scaricando tutti i modelli da Ollama"
+            style={{ background: 'rgba(239, 68, 68, 0.15)', border: '1px solid rgba(239, 68, 68, 0.3)', borderRadius: '6px', padding: '4px 8px', cursor: 'pointer', color: '#fca5a5', fontSize: '11px', display: 'flex', alignItems: 'center', gap: '4px' }}
+          >
+            <RotateCcw size={12} color="#ef4444" />
+            <span>Svuota VRAM</span>
+          </button>
+          <button 
             onClick={() => setShowCharts(!showCharts)} 
             className="chat-header-btn" 
             title={showCharts ? 'Nascondi i grafici per compattare' : 'Mostra grafici storici'}
@@ -305,9 +390,7 @@ export default function HardwareFloatingPanel({ onClose, onOpenTab, addToast }) 
       {/* Floating Panel Body */}
       <div className="task-floating-body" style={{ padding: '12px 14px', overflowY: 'auto', flex: 1, display: 'flex', flexDirection: 'column', gap: '10px' }}>
         
-        {/* ==================================================================== */}
-        {/* SYSTEM CPU & RAM CARD (LEFT = COMPUTE, RIGHT = MEMORY) */}
-        {/* ==================================================================== */}
+        {/* SYSTEM CPU & RAM CARD */}
         <div className="gpu-card" style={{ padding: '12px 14px', borderRadius: '12px', background: 'rgba(15, 23, 42, 0.7)' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
@@ -329,10 +412,7 @@ export default function HardwareFloatingPanel({ onClose, onOpenTab, addToast }) 
             </div>
           </div>
 
-          {/* 2-COLUMN SPLIT: LEFT = CPU COMPUTE, RIGHT = RAM MEMORY */}
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
-            
-            {/* LEFT: CPU COMPUTE */}
             <div style={{ background: 'rgba(0, 242, 254, 0.04)', border: '1px solid rgba(0, 242, 254, 0.15)', borderRadius: '8px', padding: '8px 10px' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px', fontSize: '11px' }}>
                 <span style={{ fontWeight: 700, color: '#00f2fe', display: 'flex', alignItems: 'center', gap: '4px' }}>
@@ -345,7 +425,6 @@ export default function HardwareFloatingPanel({ onClose, onOpenTab, addToast }) 
               </div>
             </div>
 
-            {/* RIGHT: RAM MEMORY */}
             <div style={{ background: 'rgba(16, 185, 129, 0.04)', border: '1px solid rgba(16, 185, 129, 0.15)', borderRadius: '8px', padding: '8px 10px' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px', fontSize: '11px' }}>
                 <span style={{ fontWeight: 700, color: '#10b981', display: 'flex', alignItems: 'center', gap: '4px' }}>
@@ -357,10 +436,8 @@ export default function HardwareFloatingPanel({ onClose, onOpenTab, addToast }) 
                 <div className="metric-progress-bar" style={{ width: `${Math.min(100, hw.ram?.util_pct || 0)}%`, background: 'linear-gradient(90deg, #10b981, #059669)' }} />
               </div>
             </div>
-
           </div>
 
-          {/* COLLAPSIBLE SYSTEM CHARTS */}
           {showCharts && (
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', marginTop: '10px', paddingTop: '10px', borderTop: '1px solid rgba(255,255,255,0.08)' }}>
               <RealtimeTelemetryChart 
@@ -386,9 +463,7 @@ export default function HardwareFloatingPanel({ onClose, onOpenTab, addToast }) 
           )}
         </div>
 
-        {/* ==================================================================== */}
-        {/* MULTI-VENDOR GPU CARDS (LEFT = COMPUTE, RIGHT = VRAM) */}
-        {/* ==================================================================== */}
+        {/* MULTI-VENDOR GPU CARDS */}
         {gpus.length === 0 ? (
           <div style={{ textAlign: 'center', padding: '30px 16px', color: '#94a3b8' }}>
             {loading ? (
@@ -414,7 +489,6 @@ export default function HardwareFloatingPanel({ onClose, onOpenTab, addToast }) 
 
             return (
               <div key={idx} className="gpu-card" style={{ padding: '12px 14px', borderRadius: '12px', background: 'rgba(15, 23, 42, 0.7)' }}>
-                {/* GPU Info Row */}
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                     <span className="gpu-index-pill" style={{ height: '22px', minWidth: '22px', fontSize: '10px' }}>GPU {idx}</span>
@@ -441,10 +515,7 @@ export default function HardwareFloatingPanel({ onClose, onOpenTab, addToast }) 
                   </span>
                 </div>
 
-                {/* 2-COLUMN SPLIT: LEFT = GPU COMPUTE, RIGHT = GPU VRAM */}
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
-                  
-                  {/* LEFT: GPU COMPUTE */}
                   <div style={{ background: 'rgba(188, 140, 255, 0.04)', border: '1px solid rgba(188, 140, 255, 0.18)', borderRadius: '8px', padding: '8px 10px' }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px', fontSize: '11px' }}>
                       <span style={{ fontWeight: 700, color: '#bc8cff', display: 'flex', alignItems: 'center', gap: '4px' }}>
@@ -457,7 +528,6 @@ export default function HardwareFloatingPanel({ onClose, onOpenTab, addToast }) 
                     </div>
                   </div>
 
-                  {/* RIGHT: GPU VRAM */}
                   <div style={{ background: 'rgba(0, 210, 255, 0.04)', border: '1px solid rgba(0, 210, 255, 0.18)', borderRadius: '8px', padding: '8px 10px' }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px', fontSize: '11px' }}>
                       <span style={{ fontWeight: 700, color: '#00d2ff', display: 'flex', alignItems: 'center', gap: '4px' }}>
@@ -469,10 +539,8 @@ export default function HardwareFloatingPanel({ onClose, onOpenTab, addToast }) 
                       <div className="metric-progress-bar bar-cyan" style={{ width: `${vramPct}%` }} />
                     </div>
                   </div>
-
                 </div>
 
-                {/* COLLAPSIBLE GPU CHARTS */}
                 {showCharts && (
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', marginTop: '10px', paddingTop: '10px', borderTop: '1px solid rgba(255,255,255,0.08)' }}>
                     <RealtimeTelemetryChart 

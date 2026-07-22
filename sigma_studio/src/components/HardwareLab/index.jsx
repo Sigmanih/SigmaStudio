@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { 
-  Activity, Zap, HardDrive, Save, ChevronDown, ChevronUp,
+  Activity, Zap, HardDrive, Save, ChevronDown, ChevronUp, RotateCcw, Trash2,
   ShieldCheck, Sliders, Play, Pause, TrendingUp, BarChart2,
-  Cpu, Thermometer, Flame, Gauge
+  Cpu, Thermometer, Flame, Gauge, AlertTriangle
 } from 'lucide-react';
 import RealtimeTelemetryChart from './RealtimeTelemetryChart';
 import '../../styles/hardware-lab.css';
@@ -16,7 +16,9 @@ export default function HardwareLab({ addToast }) {
   const [autoRefresh, setAutoRefresh] = useState(true);
   const [refreshInterval, setRefreshInterval] = useState(2000);
   const [showCharts, setShowCharts] = useState(false); // Collapsible charts
-  
+  const [showRestartAlert, setShowRestartAlert] = useState(false); // Alert modal
+  const [restartingOllama, setRestartingOllama] = useState(false);
+
   // History buffers per GPU index & System (CPU/RAM)
   const [historyData, setHistoryData] = useState({});
   const historyRef = useRef({});
@@ -144,6 +146,25 @@ export default function HardwareLab({ addToast }) {
     }
   };
 
+  const handleRestartOllama = async () => {
+    setRestartingOllama(true);
+    try {
+      const res = await fetch('/api/hardware/restart-ollama', { method: 'POST' });
+      const json = await res.json();
+      if (json.success) {
+        if (addToast) addToast(`🧹 ${json.message}`, 'success', 5000);
+        fetchHardwareStatus();
+      } else {
+        if (addToast) addToast(`❌ Errore riavvio: ${json.error}`, 'error', 5000);
+      }
+    } catch (err) {
+      if (addToast) addToast(`❌ Errore di connessione: ${err.message}`, 'error', 5000);
+    } finally {
+      setRestartingOllama(false);
+      setShowRestartAlert(false);
+    }
+  };
+
   const hw = data?.hardware || {};
   const gpus = hw.gpu || [];
   const history = historyData;
@@ -151,7 +172,70 @@ export default function HardwareLab({ addToast }) {
   const totalVramGb = hw.multi_gpu?.total_vram_gb || (gpus.reduce((acc, g) => acc + (g.vram_total_gb || 0), 0)).toFixed(1);
 
   return (
-    <div className="hardware-lab-container" style={{ padding: '16px 20px' }}>
+    <div className="hardware-lab-container" style={{ padding: '16px 20px', position: 'relative' }}>
+      
+      {/* CONFIRMATION ALERT MODAL FOR RESTART OLLAMA */}
+      {showRestartAlert && (
+        <div style={{
+          position: 'fixed',
+          inset: 0,
+          background: 'rgba(0, 0, 0, 0.75)',
+          backdropFilter: 'blur(8px)',
+          WebkitBackdropFilter: 'blur(8px)',
+          zIndex: 10020,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          padding: '16px'
+        }}>
+          <div style={{
+            maxWidth: '460px',
+            width: '100%',
+            background: 'rgba(15, 23, 42, 0.98)',
+            border: '1px solid rgba(239, 68, 68, 0.4)',
+            borderRadius: '16px',
+            padding: '22px',
+            boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.8), 0 0 25px rgba(239, 68, 68, 0.2)',
+            animation: 'slideUp 0.2s cubic-bezier(0.16, 1, 0.3, 1)'
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '14px' }}>
+              <div style={{ background: 'rgba(239, 68, 68, 0.15)', padding: '10px', borderRadius: '12px', display: 'flex' }}>
+                <AlertTriangle size={24} color="#ef4444" />
+              </div>
+              <div>
+                <h3 style={{ margin: 0, fontSize: '17px', fontWeight: 700, color: '#fff' }}>Riavvio & Pulizia VRAM Ollama</h3>
+                <div style={{ fontSize: '12px', color: 'var(--text-dim)' }}>Svuotamento modelli caricati in memoria</div>
+              </div>
+            </div>
+
+            <div style={{ fontSize: '13px', color: '#cbd5e1', lineHeight: '1.6', marginBottom: '20px', background: 'rgba(0,0,0,0.3)', padding: '14px', borderRadius: '10px', borderLeft: '4px solid #ef4444' }}>
+              ⚠️ <b>Confermi la pulizia della memoria?</b><br />
+              Questa operazione scaricherà immediatamente tutti i modelli caricati da Ollama in VRAM/RAM e riavvierà il servizio di inferenza. Eventuali chat o task in corso verranno interrotti.
+            </div>
+
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
+              <button 
+                className="hw-btn" 
+                onClick={() => setShowRestartAlert(false)} 
+                disabled={restartingOllama}
+                style={{ fontSize: '13px', padding: '8px 16px' }}
+              >
+                Annulla
+              </button>
+              <button 
+                className="hw-btn" 
+                onClick={handleRestartOllama} 
+                disabled={restartingOllama}
+                style={{ background: 'linear-gradient(135deg, #ef4444, #dc2626)', color: '#fff', border: 'none', fontWeight: 700, fontSize: '13px', padding: '8px 16px', display: 'flex', alignItems: 'center', gap: '6px' }}
+              >
+                {restartingOllama ? <Activity className="spin" size={15} /> : <RotateCcw size={15} />}
+                {restartingOllama ? 'Svuotamento VRAM in corso...' : '⚡ Svuota VRAM & Riavvia Ollama'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Top Header */}
       <div className="hardware-header" style={{ marginBottom: '16px' }}>
         <div className="hardware-header-title">
@@ -171,6 +255,17 @@ export default function HardwareLab({ addToast }) {
         </div>
 
         <div className="hardware-header-actions" style={{ gap: '8px' }}>
+          {/* RESTART OLLAMA BUTTON */}
+          <button 
+            className="hw-btn"
+            onClick={() => setShowRestartAlert(true)}
+            title="Svuota la memoria VRAM/RAM scaricando tutti i modelli caricati da Ollama"
+            style={{ fontSize: '12px', padding: '6px 12px', border: '1px solid rgba(239, 68, 68, 0.4)', background: 'rgba(239, 68, 68, 0.12)', color: '#fca5a5' }}
+          >
+            <RotateCcw size={14} color="#ef4444" />
+            <span>Svuota VRAM / Riavvia Ollama</span>
+          </button>
+
           <button 
             className={`hw-btn ${showCharts ? 'hw-btn-primary' : ''}`}
             onClick={() => setShowCharts(!showCharts)}
