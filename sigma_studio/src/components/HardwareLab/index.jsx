@@ -10,6 +10,9 @@ export default function HardwareLab({ addToast }) {
   const [saving, setSaving] = useState(false);
   const [autoRefresh, setAutoRefresh] = useState(true);
   const [refreshInterval, setRefreshInterval] = useState(2000);
+  const [hfToken, setHfToken] = useState('');
+  const [hfHasToken, setHfHasToken] = useState(false);
+  const [savingHfToken, setSavingHfToken] = useState(false);
 
   // Editable Form Config
   const [cudaDevices, setCudaDevices] = useState('0,1');
@@ -36,6 +39,8 @@ export default function HardwareLab({ addToast }) {
             if (cfg.preferred_training_gpu !== undefined) setPreferredGpu(cfg.preferred_training_gpu);
             if (cfg.fp16_enabled !== undefined) setFp16Enabled(cfg.fp16_enabled);
           }
+          // Update HF token status from response
+          if (json.hf_has_token !== undefined) setHfHasToken(json.hf_has_token);
         }
       }
     } catch (err) {
@@ -318,6 +323,64 @@ export default function HardwareLab({ addToast }) {
             <Save size={16} />
             {saving ? 'Salvataggio...' : 'Applica e Salva Impostazioni Multi-GPU'}
           </button>
+        </div>
+      </div>
+
+      {/* ── HuggingFace Token Configuration ── */}
+      <div className="hw-section">
+        <div className="hw-section-title">
+          <ShieldCheck size={20} color="#6366f1" />
+          <span>🔑 HuggingFace Token (HF_TOKEN)</span>
+        </div>
+        <div style={{
+          background: 'rgba(99,102,241,0.04)', border: '1px solid rgba(99,102,241,0.12)',
+          borderRadius: '12px', padding: '14px 16px',
+        }}>
+          <div style={{ fontSize: '0.7rem', color: 'var(--text-dim)', marginBottom: '10px', lineHeight: 1.5 }}>
+            Imposta il tuo <strong>HuggingFace Token</strong> per velocizzare i download dei modelli (fino a 10x).
+            <br />Senza token, HuggingFace limita la velocità a ~50KB/s — con token arrivi a 5-50MB/s.
+          </div>
+          <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+            <input
+              type="password"
+              className="hw-input"
+              placeholder="hf_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+              value={hfToken}
+              onChange={(e) => setHfToken(e.target.value)}
+              style={{ flex: 1, fontFamily: 'monospace', fontSize: '13px' }}
+            />
+            <button
+              className="hw-btn hw-btn-primary"
+              onClick={async () => {
+                setSavingHfToken(true);
+                try {
+                  const res = await fetch('/api/config/hf_token', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ hf_token: hfToken }),
+                  });
+                  const json = await res.json();
+                  if (json.success) {
+                    setHfHasToken(json.hf_has_token);
+                    if (addToast) addToast('🔑 HF_TOKEN salvato! I download saranno molto più veloci.', 'success', 5000);
+                  }
+                } catch (err) {
+                  if (addToast) addToast('❌ Errore salvataggio HF_TOKEN', 'error');
+                } finally {
+                  setSavingHfToken(false);
+                }
+              }}
+              disabled={savingHfToken}
+            >
+              <CheckCircle2 size={14} />
+              {savingHfToken ? 'Salvataggio...' : hfHasToken ? 'Aggiorna Token' : 'Salva Token'}
+            </button>
+            {hfHasToken && (
+              <span style={{ color: '#3fb950', fontSize: '12px', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                <CheckCircle2 size={14} /> Token configurato
+              </span>
+            )}
+          </div>
         </div>
       </div>
 

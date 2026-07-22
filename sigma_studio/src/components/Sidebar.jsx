@@ -53,6 +53,8 @@ export default function Sidebar({
 }) {
   const [chatCount, setChatCount] = React.useState(0);
   const [researchCount, setResearchCount] = React.useState(0);
+  const [trainingCompleted, setTrainingCompleted] = React.useState(0);
+  const [localTopicsCount, setLocalTopicsCount] = React.useState(0);
 
   React.useEffect(() => {
     const updateCounts = () => {
@@ -78,6 +80,34 @@ export default function Sidebar({
           }
         })
         .catch(() => {});
+
+      fetch('/api/training/jobs')
+        .then(res => res.json())
+        .then(data => {
+          if (data.success && Array.isArray(data.jobs)) {
+            setTrainingCompleted(data.jobs.filter(j => j.status === 'completed' || j.status === 'running').length);
+          }
+        })
+        .catch(() => {});
+
+      // Argomenti: fetch da /api/topics (endpoint corretto)
+      fetch('/api/topics')
+        .then(res => res.json())
+        .then(data => {
+          if (data.topics && Array.isArray(data.topics)) {
+            setLocalTopicsCount(data.topics.length);
+          }
+        })
+        .catch(() => {
+          // fallback: prova localStorage
+          try {
+            const k = localStorage.getItem('sigma_knowledge_topics');
+            if (k) {
+              const parsed = JSON.parse(k);
+              if (Array.isArray(parsed)) setLocalTopicsCount(parsed.length);
+            }
+          } catch (e) {}
+        });
     };
 
     updateCounts();
@@ -131,7 +161,7 @@ export default function Sidebar({
           <SidebarItem 
             icon={PieChart} 
             label="Argomenti" 
-            badge={topicsCount > 0 ? topicsCount : 0}
+            badge={localTopicsCount > 0 || topicsCount > 0 ? Math.max(localTopicsCount, topicsCount) : 0}
             badgeColor="rgba(0,210,255,0.15)"
             active={activeTabId != null && activeTabId.startsWith('knowledge')}
             onClick={() => openTab({ name: 'Argomenti' }, 'knowledge')} 
@@ -159,7 +189,7 @@ export default function Sidebar({
           <SidebarItem 
             icon={Brain} 
             label="Training Lab" 
-            badge={0}
+            badge={trainingCompleted > 0 ? trainingCompleted : 0}
             badgeColor="rgba(0,210,255,0.15)"
             active={activeTabId != null && activeTabId.startsWith('training_lab')}
             onClick={() => openTab({ name: '🧠 Training Lab' }, 'training_lab')} 

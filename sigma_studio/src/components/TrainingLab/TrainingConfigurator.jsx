@@ -14,6 +14,7 @@ const METHODS = [
     req: 'Richiede: unsloth, trl',
     color: '#00d2ff',
     icon: '⚡',
+    isFinetune: true,
   },
   {
     id: 'trl_sft',
@@ -23,6 +24,17 @@ const METHODS = [
     req: 'Richiede: trl, peft',
     color: '#bc8cff',
     icon: '🔬',
+    isFinetune: true,
+  },
+  {
+    id: 'full_pretrain',
+    name: 'Pre-Training',
+    fullName: 'Full Pre-Training da Zero',
+    desc: 'Da Zero',
+    req: '≥8GB VRAM (Tiny) / 24GB+',
+    color: '#ffa600',
+    icon: '🌐',
+    isFinetune: false,
   },
   {
     id: 'script_custom',
@@ -30,12 +42,15 @@ const METHODS = [
     fullName: 'Script Custom',
     desc: 'Flessibile',
     req: 'Script Python tuo',
-    color: '#ffa600',
+    color: '#ff7043',
     icon: '🛠️',
+    isFinetune: true,
   },
 ];
 
+
 const POPULAR_MODELS = [
+  // Fine-tuning (Unsloth optimized)
   'unsloth/llama-3.2-3b-instruct',
   'unsloth/llama-3.2-1b-instruct',
   'unsloth/llama-3.1-8b-instruct',
@@ -45,7 +60,15 @@ const POPULAR_MODELS = [
   'meta-llama/Llama-3.2-3B-Instruct',
   'microsoft/Phi-3-mini-4k-instruct',
   'mistralai/Mistral-7B-Instruct-v0.3',
+  // Pre-training base architectures
+  'gpt2',
+  'gpt2-medium',
+  'openai-community/gpt2-xl',
+  'EleutherAI/gpt-neo-125m',
+  'EleutherAI/pythia-160m',
+  'from_scratch',  // GPT-2 style from scratch
 ];
+
 
 function HyperParam({ label, desc, value, min, max, step, onChange, display }) {
   return (
@@ -68,17 +91,29 @@ function HyperParam({ label, desc, value, min, max, step, onChange, display }) {
   );
 }
 
-export default function TrainingConfigurator({ myDatasets, onJobCreated, addToast }) {
+export default function TrainingConfigurator({ myDatasets, selectedDatasetId: propDatasetId, onDatasetSelect: propOnDatasetSelect, onJobCreated, addToast }) {
   const [method, setMethod] = useState('lora_unsloth');
   const [baseModel, setBaseModel] = useState('unsloth/llama-3.2-3b-instruct');
   const [customModel, setCustomModel] = useState('');
   const [useCustomModel, setUseCustomModel] = useState(false);
-  const [selectedDatasetId, setSelectedDatasetId] = useState('');
+  const [selectedDatasetId, setSelectedDatasetId] = useState(propDatasetId || '');
   const [outputName, setOutputName] = useState('');
   const [textField, setTextField] = useState('text');
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [creating, setCreating] = useState(false);
   const [ollamaModels, setOllamaModels] = useState([]);
+
+  // Sync selected dataset from parent (when user adds from DatasetBrowser tab)
+  useEffect(() => {
+    if (propDatasetId && propDatasetId !== selectedDatasetId) {
+      setSelectedDatasetId(propDatasetId);
+    }
+  }, [propDatasetId]);
+
+  const handleDatasetChange = (id) => {
+    setSelectedDatasetId(id);
+    if (propOnDatasetSelect) propOnDatasetSelect(id);
+  };
 
   // Hyperparams
   const [numEpochs, setNumEpochs] = useState(3);
@@ -90,6 +125,8 @@ export default function TrainingConfigurator({ myDatasets, onJobCreated, addToas
   const [gradAccum, setGradAccum] = useState(4);
 
   const [hardware, setHardware] = useState(null);
+  const [dependencies, setDependencies] = useState(null);
+  const [checkingDeps, setCheckingDeps] = useState(false);
 
   // Load Ollama models and Hardware info
   useEffect(() => {
@@ -109,6 +146,25 @@ export default function TrainingConfigurator({ myDatasets, onJobCreated, addToas
       })
       .catch(() => {});
   }, []);
+
+  // Check dependencies when method changes
+  useEffect(() => {
+    if (!method) return;
+    setCheckingDeps(true);
+    setDependencies(null);
+    fetch('/api/training/dependencies', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ method }),
+    })
+      .then(r => r.json())
+      .then(d => {
+        if (d.success) setDependencies(d);
+        else setDependencies(null);
+      })
+      .catch(() => setDependencies(null))
+      .finally(() => setCheckingDeps(false));
+  }, [method]);
 
   // Auto-detect text_field from selected dataset
   useEffect(() => {
@@ -213,14 +269,31 @@ export default function TrainingConfigurator({ myDatasets, onJobCreated, addToas
               Installa con: <code style={{ color: 'var(--primary)', fontFamily: 'JetBrains Mono' }}>pip install unsloth trl</code>
             </div>
           )}
-          {method === 'script_custom' && (
+          {method === 'full_pretrain' && (
             <div style={{
-              marginTop: '8px', padding: '8px 12px', background: 'rgba(255,166,0,0.05)',
-              border: '1px solid rgba(255,166,0,0.12)', borderRadius: '8px', fontSize: '0.62rem', color: 'var(--text-dim)'
+              marginTop: '8px', padding: '10px 14px',
+              background: 'rgba(255,166,0,0.06)', border: '1px solid rgba(255,166,0,0.2)',
+              borderRadius: '10px', fontSize: '0.65rem', color: 'var(--text-dim)', lineHeight: 1.6
             }}>
-              🛠️ <strong style={{ color: '#ffa600' }}>Modalità Custom</strong> — Sigma genera un template Python che puoi modificare prima di avviare.
+              <div style={{ color: '#ffa600', fontWeight: 700, marginBottom: '4px' }}>🌐 Full Pre-Training da Zero</div>
+              Addestra un modello <strong>da zero</strong> su testo grezzo. Non richiede un modello base istruito.
+              <ul style={{ margin: '6px 0 0 14px', padding: 0, fontSize: '0.6rem' }}>
+                <li><strong>TinyStories</strong>: 4-8GB VRAM — ottimo per iniziare</li>
+                <li><strong>OpenWebText</strong>: 24GB+ VRAM — qualità GPT-2</li>
+                <li>Usa <code style={{ color: '#ffa600', fontFamily: 'JetBrains Mono' }}>from_scratch</code> come modello per architettura custom GPT-2 mini</li>
+              </ul>
+              Installa: <code style={{ color: '#ffa600', fontFamily: 'JetBrains Mono', fontSize: '0.58rem' }}>pip install transformers datasets accelerate</code>
             </div>
           )}
+          {method === 'script_custom' && (
+            <div style={{
+              marginTop: '8px', padding: '8px 12px', background: 'rgba(255,112,67,0.05)',
+              border: '1px solid rgba(255,112,67,0.12)', borderRadius: '8px', fontSize: '0.62rem', color: 'var(--text-dim)'
+            }}>
+              🛠️ <strong style={{ color: '#ff7043' }}>Modalità Custom</strong> — Sigma genera un template Python che puoi modificare prima di avviare.
+            </div>
+          )}
+
         </div>
 
         <div className="training-divider" />
@@ -261,21 +334,22 @@ export default function TrainingConfigurator({ myDatasets, onJobCreated, addToas
                 </button>
               </div>
               {!useCustomModel ? (
-                <select
-                  className="training-select"
-                  value={baseModel}
-                  onChange={e => setBaseModel(e.target.value)}
-                  style={{ marginTop: '6px' }}
-                >
-                  <optgroup label="🤗 HuggingFace (Unsloth optimized)">
-                    {POPULAR_MODELS.map(m => <option key={m} value={m}>{m}</option>)}
-                  </optgroup>
-                  {ollamaModels.length > 0 && (
-                    <optgroup label="🦙 Ollama (locale)">
-                      {ollamaModels.map(m => <option key={`ollama:${m}`} value={m}>{m}</option>)}
+                <div className="training-select-wrapper" style={{ marginTop: '6px' }}>
+                  <select
+                    className="training-select"
+                    value={baseModel}
+                    onChange={e => setBaseModel(e.target.value)}
+                  >
+                    <optgroup label="🤗 HuggingFace (Unsloth optimized)">
+                      {POPULAR_MODELS.map(m => <option key={m} value={m}>{m}</option>)}
                     </optgroup>
-                  )}
-                </select>
+                    {ollamaModels.length > 0 && (
+                      <optgroup label="🦙 Ollama (locale)">
+                        {ollamaModels.map(m => <option key={`ollama:${m}`} value={m}>{m}</option>)}
+                      </optgroup>
+                    )}
+                  </select>
+                </div>
               ) : (
                 <input
                   className="training-input"
@@ -318,7 +392,7 @@ export default function TrainingConfigurator({ myDatasets, onJobCreated, addToas
                   <div
                     key={ds.id}
                     className={`training-ds-option ${selectedDatasetId === ds.id ? 'selected' : ''}`}
-                    onClick={() => setSelectedDatasetId(ds.id)}
+                    onClick={() => handleDatasetChange(ds.id)}
                   >
                     <span style={{ fontSize: '16px' }}>
                       {ds.source === 'huggingface' ? '🤗' : '📁'}

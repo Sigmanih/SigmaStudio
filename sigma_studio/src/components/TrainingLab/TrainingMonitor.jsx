@@ -176,11 +176,23 @@ export default function TrainingMonitor({ onAddToast }) {
     };
 
     fetchLogs();
-    if (selectedJob?.status === 'running') {
-      pollRef.current = setInterval(fetchLogs, 2000);
+
+    // Poll ONLY if job is running, stop polling for completed/failed/ready/stopped
+    if (selectedJob && (selectedJob.status === 'running' || selectedJob.status === 'ready')) {
+      pollRef.current = setInterval(() => {
+        // Check current status before polling logs
+        loadJobs().then(() => {});
+        fetchLogs();
+      }, 2000);
     }
-    return () => clearInterval(pollRef.current);
-  }, [selectedJobId, selectedJob?.status]);
+
+    return () => {
+      if (pollRef.current) {
+        clearInterval(pollRef.current);
+        pollRef.current = null;
+      }
+    };
+  }, [selectedJobId]);
 
   // Auto-scroll log terminal
   useEffect(() => {

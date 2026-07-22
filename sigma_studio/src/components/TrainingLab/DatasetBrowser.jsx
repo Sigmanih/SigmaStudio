@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { Search, Download, Database, Trash2, Upload, Star, RefreshCw, Brain, ExternalLink } from 'lucide-react';
+import { Search, Download, Database, Trash2, Upload, Star, RefreshCw, Brain, ExternalLink, Award, Zap } from 'lucide-react';
 
 // ==============================================================================
-// DatasetBrowser — HuggingFace search + local import + My Datasets list
+// DatasetBrowser — HuggingFace search + Featured + local import + My Datasets
 // ==============================================================================
 
 const SOURCE_ICON = {
@@ -10,6 +10,75 @@ const SOURCE_ICON = {
   local: '📁',
   sigma: '🧬',
 };
+
+const DIFFICULTY_COLOR = {
+  beginner:     { bg: 'rgba(63,185,80,0.12)',  color: '#3fb950', label: 'Beginner' },
+  intermediate: { bg: 'rgba(0,210,255,0.10)',  color: '#00d2ff', label: 'Intermedio' },
+  advanced:     { bg: 'rgba(255,100,100,0.12)', color: '#ff6464', label: 'Avanzato' },
+};
+
+const METHOD_BADGE = {
+  lora_unsloth: { label: 'LoRA', color: '#00d2ff' },
+  trl_sft:      { label: 'SFT',  color: '#bc8cff' },
+  full_pretrain:{ label: 'Pretrain', color: '#ffa600' },
+};
+
+function FeaturedCard({ ds, onAdd, added }) {
+  const dlFmt = (n) => n >= 1e6 ? `${(n/1e6).toFixed(1)}M` : n >= 1e3 ? `${(n/1e3).toFixed(0)}K` : String(n);
+  const diff = DIFFICULTY_COLOR[ds.difficulty] || DIFFICULTY_COLOR.beginner;
+  const method = METHOD_BADGE[ds.recommended_method] || { label: ds.recommended_method, color: '#aaa' };
+
+  return (
+    <div className="training-featured-card">
+      <div className="training-featured-card-top">
+        <div className="training-featured-card-name">{ds.name}</div>
+        <div className="training-featured-card-author">by {ds.author}</div>
+        <div className="training-featured-card-badges">
+          <span className="training-featured-badge" style={{ background: diff.bg, color: diff.color }}>
+            {diff.label}
+          </span>
+          <span className="training-featured-badge" style={{ background: `${method.color}18`, color: method.color }}>
+            {method.label}
+          </span>
+          {ds.vram_min_gb && (
+            <span className="training-featured-badge" style={{ background: 'rgba(255,255,255,0.05)', color: 'var(--text-dim)' }}>
+              ≥{ds.vram_min_gb}GB
+            </span>
+          )}
+        </div>
+      </div>
+      <div className="training-featured-card-desc">{ds.description}</div>
+      <div className="training-featured-card-footer">
+        <span className="training-dataset-stat">
+          <Download size={9} /> {dlFmt(ds.downloads || 0)}
+        </span>
+        <span className="training-dataset-stat">
+          <Star size={9} /> {(ds.likes || 0).toLocaleString()}
+        </span>
+        {ds.size_category && ds.size_category !== 'unknown' && (
+          <span className="training-dataset-stat">{ds.size_category}</span>
+        )}
+        <a
+          href={ds.url}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="training-featured-link"
+          onClick={e => e.stopPropagation()}
+          title="Apri su HuggingFace"
+        >
+          <ExternalLink size={10} />
+        </a>
+        <button
+          className={`training-dataset-add-btn ${added ? 'added' : ''}`}
+          onClick={() => onAdd(ds)}
+          disabled={added}
+        >
+          {added ? '✓ Aggiunto' : '+ Aggiungi'}
+        </button>
+      </div>
+    </div>
+  );
+}
 
 function DatasetCard({ ds, onAdd, added }) {
   const icon = SOURCE_ICON[ds.source || 'huggingface'] || '📊';
@@ -86,19 +155,30 @@ function MyDatasetItem({ ds, selected, onSelect, onDelete }) {
   );
 }
 
-export default function DatasetBrowser({ onDatasetSelect, selectedDatasetId }) {
-  const [searchQuery, setSearchQuery] = useState('');
+// Category icons
+const CAT_ICONS = {
+  instruction:  '📋',
+  code:         '💻',
+  math:         '🔢',
+  pretrain:     '🌐',
+  multilingual: '🌍',
+};
+
+export default function DatasetBrowser({ onDatasetSelect, onDatasetAdded, selectedDatasetId }) {
+  const [searchQuery, setSearchQuery]   = useState('');
   const [searchResults, setSearchResults] = useState([]);
-  const [searching, setSearching] = useState(false);
-  const [myDatasets, setMyDatasets] = useState([]);
-  const [addedIds, setAddedIds] = useState(new Set());
-  const [activeTab, setActiveTab] = useState('search'); // 'search' | 'mine' | 'import'
-  const [dragOver, setDragOver] = useState(false);
-  const [importing, setImporting] = useState(false);
+  const [searching, setSearching]       = useState(false);
+  const [myDatasets, setMyDatasets]     = useState([]);
+  const [addedIds, setAddedIds]         = useState(new Set());
+  const [activeTab, setActiveTab]       = useState('featured'); // 'featured' | 'search' | 'mine' | 'import'
+  const [dragOver, setDragOver]         = useState(false);
+  const [importing, setImporting]       = useState(false);
   const [importStatus, setImportStatus] = useState(null);
   const [aiPromptOpen, setAiPromptOpen] = useState(false);
+  const [featuredCategories, setFeaturedCategories] = useState([]);
+  const [featuredLoading, setFeaturedLoading] = useState(false);
+  const [addingId, setAddingId]         = useState(null);
   const fileInputRef = useRef();
-  const searchTimeout = useRef();
 
   // Load my datasets on mount
   const loadMyDatasets = useCallback(async () => {
@@ -109,7 +189,30 @@ export default function DatasetBrowser({ onDatasetSelect, selectedDatasetId }) {
     } catch (e) {}
   }, []);
 
-  useEffect(() => { loadMyDatasets(); }, [loadMyDatasets]);
+  // Load featured datasets on mount
+  const loadFeatured = useCallback(async () => {
+    setFeaturedLoading(true);
+    try {
+      const res = await fetch('/api/training/datasets/featured');
+      const data = await res.json();
+      if (data.success) setFeaturedCategories(data.categories || []);
+    } catch (e) {
+      setFeaturedCategories([]);
+    } finally {
+      setFeaturedLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadMyDatasets();
+    loadFeatured();
+  }, [loadMyDatasets, loadFeatured]);
+
+  // Keep addedIds in sync with myDatasets
+  useEffect(() => {
+    const ids = new Set(myDatasets.map(d => d.hf_id || d.id));
+    setAddedIds(ids);
+  }, [myDatasets]);
 
   const handleSearch = useCallback(async (q = searchQuery) => {
     if (!q.trim()) return;
@@ -126,26 +229,29 @@ export default function DatasetBrowser({ onDatasetSelect, selectedDatasetId }) {
     }
   }, [searchQuery]);
 
-  // Debounced search on enter
   const handleKeyDown = (e) => {
     if (e.key === 'Enter') handleSearch();
   };
 
   const handleAddHF = async (ds) => {
+    const dsId = ds.id || ds.name;
+    setAddingId(dsId);
     try {
       const res = await fetch('/api/training/dataset/register_hf', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ dataset_id: ds.id || ds.name, split: 'train' }),
+        body: JSON.stringify({ dataset_id: dsId, split: ds.split || 'train' }),
       });
       const data = await res.json();
       if (data.success) {
-        setAddedIds(prev => new Set([...prev, ds.id]));
+        setAddedIds(prev => new Set([...prev, dsId]));
         setMyDatasets(prev => [...prev, data.dataset]);
         if (onDatasetSelect) onDatasetSelect(data.dataset.id);
+        if (onDatasetAdded) onDatasetAdded();  // Notifica il padre di ricaricare
         setActiveTab('mine');
       }
     } catch (e) {}
+    setAddingId(null);
   };
 
   const handleFileImport = async (file) => {
@@ -159,14 +265,10 @@ export default function DatasetBrowser({ onDatasetSelect, selectedDatasetId }) {
       return;
     }
 
-    // Read file content and upload via JSON (base64 for binary safety)
     const reader = new FileReader();
     reader.onload = async (ev) => {
       try {
-        // We save the file via the backend import endpoint 
-        // For simplicity we send the file name + content as text
         const content = ev.target.result;
-        // Write file to scratch area first, then import
         const uploadRes = await fetch('/api/create_file', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -178,7 +280,6 @@ export default function DatasetBrowser({ onDatasetSelect, selectedDatasetId }) {
         const uploadData = await uploadRes.json();
         if (!uploadData.success) throw new Error(uploadData.error || 'Upload failed');
 
-        // Now import from the scratch path
         const importRes = await fetch('/api/training/dataset/import', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -228,12 +329,18 @@ export default function DatasetBrowser({ onDatasetSelect, selectedDatasetId }) {
     } catch (e) {}
   };
 
-  // Suggested searches (popular LLM training datasets)
   const SUGGESTED = ['alpaca', 'dolly', 'openhermes', 'sharegpt', 'math', 'code', 'instruct', 'chat'];
+
+  const TABS = [
+    { id: 'featured', label: '⭐ Consigliati' },
+    { id: 'search',   label: '🔍 HuggingFace' },
+    { id: 'mine',     label: `🗂️ I Miei (${myDatasets.length})` },
+    { id: 'import',   label: '📂 Import Locale' },
+  ];
 
   return (
     <div className="training-panel">
-      {/* AI Generate hint */}
+      {/* AI Generate bar */}
       <div style={{ padding: '12px 16px 0' }}>
         <div className="training-ai-generate-bar">
           <div className="training-ai-generate-icon">🧬</div>
@@ -268,12 +375,8 @@ export default function DatasetBrowser({ onDatasetSelect, selectedDatasetId }) {
       </div>
 
       {/* Sub-tabs */}
-      <div style={{ display: 'flex', gap: '4px', padding: '0 16px 10px', borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
-        {[
-          { id: 'search', label: '🔍 HuggingFace' },
-          { id: 'mine', label: `🗂️ I Miei (${myDatasets.length})` },
-          { id: 'import', label: '📂 Import Locale' },
-        ].map(t => (
+      <div style={{ display: 'flex', gap: '4px', padding: '0 16px 10px', borderBottom: '1px solid rgba(255,255,255,0.04)', flexWrap: 'wrap' }}>
+        {TABS.map(t => (
           <button
             key={t.id}
             onClick={() => setActiveTab(t.id)}
@@ -295,6 +398,56 @@ export default function DatasetBrowser({ onDatasetSelect, selectedDatasetId }) {
       </div>
 
       <div className="training-scroll-area">
+
+        {/* ── Featured / Consigliati ── */}
+        {activeTab === 'featured' && (
+          <>
+            <div style={{ marginBottom: '16px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px' }}>
+                <Award size={13} style={{ color: '#ffa600' }} />
+                <span style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--text)' }}>
+                  Top Dataset Open Source per LLM Training
+                </span>
+                <span style={{ fontSize: '0.6rem', color: 'var(--text-dark)', marginLeft: 'auto' }}>
+                  {featuredCategories.reduce((acc, c) => acc + c.datasets.length, 0)} dataset curati
+                </span>
+              </div>
+              <div style={{ fontSize: '0.62rem', color: 'var(--text-dark)', lineHeight: 1.5 }}>
+                Seleziona un dataset per aggiungerlo alla tua libreria e usarlo nel configuratore di training.
+                I badge indicano: difficoltà, metodo consigliato e VRAM minima richiesta.
+              </div>
+            </div>
+
+            {featuredLoading && (
+              <div className="training-empty">
+                <div className="training-spinner" />
+                <div className="training-empty-sub">Caricamento dataset consigliati...</div>
+              </div>
+            )}
+
+            {!featuredLoading && featuredCategories.map(cat => (
+              <div key={cat.id} style={{ marginBottom: '24px' }}>
+                <div className="training-featured-category-header">
+                  <span>{CAT_ICONS[cat.id] || '📊'}</span>
+                  <span>{cat.label}</span>
+                  <span style={{ marginLeft: 'auto', fontSize: '0.58rem', color: 'var(--text-dark)' }}>
+                    {cat.datasets.length} dataset
+                  </span>
+                </div>
+                <div className="training-featured-grid">
+                  {cat.datasets.map(ds => (
+                    <FeaturedCard
+                      key={ds.id}
+                      ds={ds}
+                      onAdd={handleAddHF}
+                      added={addedIds.has(ds.id) || addingId === ds.id}
+                    />
+                  ))}
+                </div>
+              </div>
+            ))}
+          </>
+        )}
 
         {/* ── HuggingFace Search ── */}
         {activeTab === 'search' && (
@@ -392,7 +545,7 @@ export default function DatasetBrowser({ onDatasetSelect, selectedDatasetId }) {
                 <div className="training-empty-icon">🗂️</div>
                 <div className="training-empty-title">Nessun dataset ancora</div>
                 <div className="training-empty-sub">
-                  Cerca su HuggingFace o importa un file locale
+                  Aggiungi un dataset dai Consigliati, cerca su HuggingFace o importa un file locale
                 </div>
               </div>
             ) : (

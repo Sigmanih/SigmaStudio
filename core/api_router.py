@@ -30,6 +30,7 @@ def register_get_handlers(handler_class):
         # Training & Hardware Lab
         '/api/training/datasets': 'handle_training_list_datasets',
         '/api/training/datasets/search': 'handle_training_dataset_search',
+        '/api/training/datasets/featured': 'handle_training_featured_datasets',
         '/api/training/jobs': 'handle_training_list_jobs',
         '/api/training/job/status': 'handle_training_job_status',
         '/api/training/job/logs': 'handle_training_job_logs',
@@ -95,6 +96,9 @@ def register_post_handlers(handler_class):
         '/api/training/job/stop': 'handle_training_job_stop',
         '/api/training/job/delete': 'handle_training_job_delete',
         '/api/training/export/ollama': 'handle_training_export_ollama',
+        '/api/training/dependencies': 'handle_training_dependencies',
+        '/api/training/job/clear_logs': 'handle_training_clear_logs',
+        '/api/config/hf_token': 'handle_hf_token_config',
     }
 
 
@@ -169,4 +173,4 @@ def route_patch(self) -> None:
     handler_name = _PATCH_HANDLERS.get(parsed.path)
     if handler_name and hasattr(self, handler_name):
         return getattr(self, handler_name)()
-    self.send_error(405, "Method Not Allowed")
+    self.send_error(405, "Method Not Allowed")

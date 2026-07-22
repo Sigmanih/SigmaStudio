@@ -245,8 +245,9 @@ from core.training_handler import (
     search_hf_datasets, get_hf_dataset_info,
     import_local_dataset, register_hf_dataset, list_datasets, delete_dataset,
     create_training_job, start_training_job, stop_training_job,
-    get_job_status, get_job_logs, list_jobs, delete_job,
-    export_to_ollama, get_hardware_info
+    get_job_status, get_job_logs, list_jobs, delete_job, clear_job_logs,
+    export_to_ollama, get_hardware_info, get_featured_datasets,
+    check_training_dependencies,
 )
 import json as _json_mod
 from urllib.parse import urlparse as _urlparse, parse_qs as _parse_qs
@@ -262,6 +263,10 @@ def _handle_training_dataset_search(self):
     limit = int(qs.get("limit", ["20"])[0])
     self.send_json_response(search_hf_datasets(query, limit=limit))
 SigmaAPIHandler.handle_training_dataset_search = _handle_training_dataset_search
+
+def _handle_training_featured_datasets(self):
+    self.send_json_response(get_featured_datasets())
+SigmaAPIHandler.handle_training_featured_datasets = _handle_training_featured_datasets
 
 def _handle_training_hardware(self):
     self.send_json_response(get_hardware_info())
@@ -332,6 +337,16 @@ def _handle_training_export_ollama(self):
     ))
 SigmaAPIHandler.handle_training_export_ollama = _handle_training_export_ollama
 
+def _handle_training_dependencies(self):
+    body = self.read_json_body()
+    self.send_json_response(check_training_dependencies(body.get("method", "")))
+SigmaAPIHandler.handle_training_dependencies = _handle_training_dependencies
+
+def _handle_training_clear_logs(self):
+    body = self.read_json_body()
+    self.send_json_response(clear_job_logs(body.get("job_id", "")))
+SigmaAPIHandler.handle_training_clear_logs = _handle_training_clear_logs
+
 def _handle_hardware_status(self):
     from core.training_handler import get_hardware_info
     hw_res = get_hardware_info()
@@ -350,16 +365,22 @@ def _handle_hardware_status(self):
         "preferred_training_gpu": "cuda:0",
         "fp16_enabled": True,
     })
+    hf_token = cfg.get("hf_token", "")
+    masked_token = hf_token[:8] + "..." if len(hf_token) > 8 else ""
     env_status = {
         "CUDA_VISIBLE_DEVICES": os.environ.get("CUDA_VISIBLE_DEVICES", "0,1"),
         "OLLAMA_NUM_PARALLEL": os.environ.get("OLLAMA_NUM_PARALLEL", "4"),
         "OLLAMA_MAX_LOADED_MODELS": os.environ.get("OLLAMA_MAX_LOADED_MODELS", "2"),
+        "HF_TOKEN": masked_token,
+        "HF_HAS_TOKEN": bool(hf_token),
     }
     self.send_json_response({
         "success": True,
         "hardware": hw_res.get("hardware", {}),
         "config": hw_config,
         "env": env_status,
+        "hf_token": masked_token,
+        "hf_has_token": bool(hf_token),
     })
 SigmaAPIHandler.handle_hardware_status = _handle_hardware_status
 
@@ -395,6 +416,29 @@ def _handle_hardware_config(self):
     
     self.send_json_response({"success": True, "config": hw_cfg})
 SigmaAPIHandler.handle_hardware_config = _handle_hardware_config
+
+def _handle_hf_token_config(self):
+    """Salva HF_TOKEN nella config e lo imposta come variabile d'ambiente."""
+    body = self.read_json_body()
+    token = body.get("hf_token", "")
+    cfg = {}
+    if os.path.exists("config.json"):
+        try:
+            with open("config.json", "r", encoding="utf-8") as f:
+                cfg = json.load(f)
+        except Exception:
+            pass
+    cfg["hf_token"] = token
+    os.environ["HF_TOKEN"] = token
+    os.environ["HUGGINGFACE_TOKEN"] = token
+    try:
+        with open("config.json", "w", encoding="utf-8") as f:
+            json.dump(cfg, f, indent=4)
+        masked = token[:8] + "..." if len(token) > 8 else ""
+        return self.send_json_response({"success": True, "hf_token": masked, "hf_has_token": bool(token)})
+    except Exception as exc:
+        return self.send_json_response({"success": False, "error": str(exc)}, 500)
+SigmaAPIHandler.handle_hf_token_config = _handle_hf_token_config
 
 # --- Register routing tables ---
 register_get_handlers(SigmaAPIHandler)
@@ -482,7 +526,7 @@ from core.data_handler import rebuild_modules_meta as _rebuild_modules_meta
 
 
 def _apply_hardware_env():
-    """Apply multi-GPU hardware environment variables from config.json at startup."""
+    """Apply multi-GPU hardware + HF_TOKEN environment variables from config.json at startup."""
     try:
         if os.path.exists("config.json"):
             with open("config.json", "r", encoding="utf-8") as f:
@@ -497,6 +541,13 @@ def _apply_hardware_env():
             os.environ["OLLAMA_MAX_LOADED_MODELS"] = max_loaded
             log.info("Multi-GPU hardware env applied: CUDA_VISIBLE_DEVICES=%s OLLAMA_NUM_PARALLEL=%s OLLAMA_MAX_LOADED_MODELS=%s",
                      devices, num_parallel, max_loaded)
+            
+            # Apply HF_TOKEN if present
+            hf_token = cfg.get("hf_token", "")
+            if hf_token:
+                os.environ["HF_TOKEN"] = hf_token
+                os.environ["HUGGINGFACE_TOKEN"] = hf_token
+                log.info("HF_TOKEN loaded from config (masked: %s...)", hf_token[:8] if len(hf_token) > 8 else "")
     except Exception as exc:
         log.warning("Could not apply hardware env: %s", exc)
 
