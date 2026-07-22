@@ -1,24 +1,24 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { 
   Zap, Activity, ShieldCheck, Play, Pause, X, GripVertical, Maximize2,
-  HardDrive, Cpu, Thermometer, Flame, Gauge, Sliders
+  HardDrive, Cpu, Thermometer, Flame, Gauge, Sliders, BarChart2, ChevronDown, ChevronUp
 } from 'lucide-react';
 import RealtimeTelemetryChart from './HardwareLab/RealtimeTelemetryChart';
 import '../styles/hardware-lab.css';
 import '../styles/chat.css';
 
-const MIN_WIDTH = 500;
-const MIN_HEIGHT = 400;
+const MIN_WIDTH = 480;
+const MIN_HEIGHT = 380;
 const MAX_HISTORY = 900;
 
 export default function HardwareFloatingPanel({ onClose, onOpenTab, addToast }) {
   const [panelPos, setPanelPos] = useState({ x: undefined, y: undefined });
-  const [panelSize, setPanelSize] = useState({ width: 680, height: 540 });
+  const [panelSize, setPanelSize] = useState({ width: 660, height: 520 });
   const [isDragging, setIsDragging] = useState(false);
   const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
   const [resizing, setResizing] = useState(null);
   const [resizeStart, setResizeStart] = useState({ x: 0, y: 0 });
-  const resizeSizeStart = useRef({ width: 680, height: 540 });
+  const resizeSizeStart = useRef({ width: 660, height: 520 });
   const resizePosStart = useRef({ x: 0, y: 0 });
   const panelRef = useRef(null);
 
@@ -26,10 +26,13 @@ export default function HardwareFloatingPanel({ onClose, onOpenTab, addToast }) 
   const [loading, setLoading] = useState(true);
   const [autoRefresh, setAutoRefresh] = useState(true);
   const [refreshInterval, setRefreshInterval] = useState(2000);
+  const [showCharts, setShowCharts] = useState(false); // Collapsible charts state
 
-  // History buffers per GPU index
+  // History buffers per GPU index & System
   const [historyData, setHistoryData] = useState({});
   const historyRef = useRef({});
+  const [systemHistory, setSystemHistory] = useState({ cpu: [], ram: [] });
+  const systemHistoryRef = useRef({ cpu: [], ram: [] });
 
   // Fetch telemetry status
   const fetchHardwareStatus = useCallback(async () => {
@@ -39,6 +42,8 @@ export default function HardwareFloatingPanel({ onClose, onOpenTab, addToast }) 
         const json = await res.json();
         if (json.success) {
           setData(json);
+
+          // 1. Accumulate GPU history
           const gpus = json.hardware?.gpu || [];
           const currentHist = { ...historyRef.current };
 
@@ -71,6 +76,20 @@ export default function HardwareFloatingPanel({ onClose, onOpenTab, addToast }) 
 
           historyRef.current = currentHist;
           setHistoryData(currentHist);
+
+          // 2. Accumulate System CPU & RAM History
+          const cpuUtil = Number(json.hardware?.cpu?.util_pct) || 0;
+          const ramUsed = Number(json.hardware?.ram?.used_gb) || Number(json.hardware?.ram_used_gb) || 0;
+
+          const currentSysHist = { ...systemHistoryRef.current };
+          const newCpu = [...(currentSysHist.cpu || []), cpuUtil];
+          const newRam = [...(currentSysHist.ram || []), ramUsed];
+
+          if (newCpu.length > MAX_HISTORY) newCpu.shift();
+          if (newRam.length > MAX_HISTORY) newRam.shift();
+
+          systemHistoryRef.current = { cpu: newCpu, ram: newRam };
+          setSystemHistory({ cpu: newCpu, ram: newRam });
         }
       }
     } catch (err) {
@@ -223,8 +242,8 @@ export default function HardwareFloatingPanel({ onClose, onOpenTab, addToast }) 
         onMouseDown={handleMouseDownHeader}
         style={{ 
           cursor: isDragging ? 'grabbing' : 'grab',
-          padding: '12px 16px',
-          background: 'rgba(15, 23, 42, 0.6)',
+          padding: '10px 14px',
+          background: 'rgba(15, 23, 42, 0.75)',
           borderBottom: '1px solid rgba(255, 255, 255, 0.08)',
           display: 'flex',
           justifyContent: 'space-between',
@@ -234,11 +253,11 @@ export default function HardwareFloatingPanel({ onClose, onOpenTab, addToast }) 
       >
         <div className="task-floating-title" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
           <GripVertical size={16} color="var(--text-dim)" />
-          <Zap size={18} color="#00f2fe" />
-          <span style={{ fontWeight: 700, fontSize: '14px', background: 'linear-gradient(135deg, #00f2fe, #bc8cff)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>
+          <Zap size={16} color="#00f2fe" />
+          <span style={{ fontWeight: 700, fontSize: '13px', background: 'linear-gradient(135deg, #00f2fe, #bc8cff)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>
             Hardware & GPU Monitor
           </span>
-          <span className="hw-badge hw-badge-live" style={{ fontSize: '10px', padding: '2px 8px', marginLeft: '6px' }}>
+          <span className="hw-badge hw-badge-live" style={{ fontSize: '10px', padding: '2px 8px', marginLeft: '4px' }}>
             <span className="hw-badge-dot" />
             {gpus.length} GPU Live
           </span>
@@ -246,12 +265,21 @@ export default function HardwareFloatingPanel({ onClose, onOpenTab, addToast }) 
 
         <div className="task-floating-actions" style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
           <button 
+            onClick={() => setShowCharts(!showCharts)} 
+            className="chat-header-btn" 
+            title={showCharts ? 'Nascondi i grafici per compattare' : 'Mostra grafici storici'}
+            style={{ background: showCharts ? 'rgba(0, 242, 254, 0.2)' : 'rgba(255,255,255,0.05)', border: '1px solid rgba(0, 242, 254, 0.3)', borderRadius: '6px', padding: '4px 8px', cursor: 'pointer', color: '#fff', fontSize: '11px', display: 'flex', alignItems: 'center', gap: '4px' }}
+          >
+            <BarChart2 size={12} color="#00f2fe" />
+            {showCharts ? 'Grafici ON' : 'Grafici OFF'}
+          </button>
+          <button 
             onClick={() => setAutoRefresh(!autoRefresh)} 
             className="chat-header-btn" 
             title={autoRefresh ? 'Pausa refresh' : 'Riprendi refresh'}
             style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '6px', padding: '4px 8px', cursor: 'pointer', color: '#fff' }}
           >
-            {autoRefresh ? <Pause size={13} color="#00f2fe" /> : <Play size={13} />}
+            {autoRefresh ? <Pause size={12} color="#00f2fe" /> : <Play size={12} />}
           </button>
           {onOpenTab && (
             <button 
@@ -260,7 +288,7 @@ export default function HardwareFloatingPanel({ onClose, onOpenTab, addToast }) 
               title="Espandi in Tab Workspace"
               style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '6px', padding: '4px 8px', cursor: 'pointer', color: '#fff' }}
             >
-              <Maximize2 size={13} color="#00f2fe" />
+              <Maximize2 size={12} color="#00f2fe" />
             </button>
           )}
           <button 
@@ -269,22 +297,107 @@ export default function HardwareFloatingPanel({ onClose, onOpenTab, addToast }) 
             title="Chiudi pannello"
             style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '6px', padding: '4px 8px', cursor: 'pointer', color: '#fff' }}
           >
-            <X size={15} />
+            <X size={14} />
           </button>
         </div>
       </div>
 
       {/* Floating Panel Body */}
-      <div className="task-floating-body" style={{ padding: '16px', overflowY: 'auto', flex: 1, display: 'flex', flexDirection: 'column', gap: '16px' }}>
+      <div className="task-floating-body" style={{ padding: '12px 14px', overflowY: 'auto', flex: 1, display: 'flex', flexDirection: 'column', gap: '10px' }}>
+        
+        {/* ==================================================================== */}
+        {/* SYSTEM CPU & RAM CARD (LEFT = COMPUTE, RIGHT = MEMORY) */}
+        {/* ==================================================================== */}
+        <div className="gpu-card" style={{ padding: '12px 14px', borderRadius: '12px', background: 'rgba(15, 23, 42, 0.7)' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <span className="gpu-index-pill" style={{ background: 'rgba(16, 185, 129, 0.15)', color: '#10b981', border: '1px solid rgba(16, 185, 129, 0.3)', height: '22px', minWidth: '22px', fontSize: '10px' }}>SYS</span>
+              <div>
+                <div style={{ fontWeight: 700, fontSize: '13px', color: '#fff' }}>Sistema (CPU & RAM)</div>
+                <div style={{ fontSize: '10px', color: 'var(--text-dim)', fontFamily: 'monospace' }}>
+                  {hw.cpu?.logical_count || hw.cpu_count || '?'} Threads • {hw.cpu?.freq_mhz ? `${(hw.cpu.freq_mhz / 1000).toFixed(1)} GHz` : 'N/A'}
+                </div>
+              </div>
+            </div>
+            <div style={{ display: 'flex', gap: '6px' }}>
+              <span className="hw-badge" style={{ fontSize: '10px', padding: '2px 6px', color: '#00f2fe', borderColor: 'rgba(0,242,254,0.3)' }}>
+                CPU: {hw.cpu?.util_pct ?? 0}%
+              </span>
+              <span className="hw-badge" style={{ fontSize: '10px', padding: '2px 6px', color: '#10b981', borderColor: 'rgba(16, 185, 129, 0.3)' }}>
+                RAM: {hw.ram?.used_gb || 0}/{hw.ram?.total_gb || 0} GB
+              </span>
+            </div>
+          </div>
+
+          {/* 2-COLUMN SPLIT: LEFT = CPU COMPUTE, RIGHT = RAM MEMORY */}
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+            
+            {/* LEFT: CPU COMPUTE */}
+            <div style={{ background: 'rgba(0, 242, 254, 0.04)', border: '1px solid rgba(0, 242, 254, 0.15)', borderRadius: '8px', padding: '8px 10px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px', fontSize: '11px' }}>
+                <span style={{ fontWeight: 700, color: '#00f2fe', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                  <Cpu size={12} /> ⚡ COMPUTE
+                </span>
+                <span style={{ fontWeight: 800, color: '#00f2fe' }}>{hw.cpu?.util_pct ?? 0}%</span>
+              </div>
+              <div className="metric-progress-track" style={{ height: '6px' }}>
+                <div className="metric-progress-bar bar-cyan" style={{ width: `${Math.min(100, hw.cpu?.util_pct ?? 0)}%` }} />
+              </div>
+            </div>
+
+            {/* RIGHT: RAM MEMORY */}
+            <div style={{ background: 'rgba(16, 185, 129, 0.04)', border: '1px solid rgba(16, 185, 129, 0.15)', borderRadius: '8px', padding: '8px 10px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px', fontSize: '11px' }}>
+                <span style={{ fontWeight: 700, color: '#10b981', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                  <HardDrive size={12} /> 🧠 MEMORIA
+                </span>
+                <span style={{ fontWeight: 800, color: '#10b981' }}>{hw.ram?.util_pct || 0}%</span>
+              </div>
+              <div className="metric-progress-track" style={{ height: '6px' }}>
+                <div className="metric-progress-bar" style={{ width: `${Math.min(100, hw.ram?.util_pct || 0)}%`, background: 'linear-gradient(90deg, #10b981, #059669)' }} />
+              </div>
+            </div>
+
+          </div>
+
+          {/* COLLAPSIBLE SYSTEM CHARTS */}
+          {showCharts && (
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', marginTop: '10px', paddingTop: '10px', borderTop: '1px solid rgba(255,255,255,0.08)' }}>
+              <RealtimeTelemetryChart 
+                data={systemHistory.cpu} 
+                label="Carico CPU (%)" 
+                icon={Cpu}
+                color="#00f2fe" 
+                unit="%" 
+                maxVal={100} 
+                height={70}
+              />
+              <RealtimeTelemetryChart 
+                data={systemHistory.ram} 
+                label="RAM (GB)" 
+                icon={HardDrive}
+                color="#10b981" 
+                unit="GB" 
+                maxVal={hw.ram?.total_gb || 64} 
+                height={70}
+                formatVal={(val) => `${typeof val === 'number' ? val.toFixed(1) : val}`}
+              />
+            </div>
+          )}
+        </div>
+
+        {/* ==================================================================== */}
+        {/* MULTI-VENDOR GPU CARDS (LEFT = COMPUTE, RIGHT = VRAM) */}
+        {/* ==================================================================== */}
         {gpus.length === 0 ? (
-          <div style={{ textAlign: 'center', padding: '40px 16px', color: '#94a3b8' }}>
+          <div style={{ textAlign: 'center', padding: '30px 16px', color: '#94a3b8' }}>
             {loading ? (
               <>
-                <Activity className="spin" size={32} color="#00f2fe" style={{ margin: '0 auto 12px' }} />
-                <div>Rilevamento telemetria GPU in corso...</div>
+                <Activity className="spin" size={28} color="#00f2fe" style={{ margin: '0 auto 10px' }} />
+                <div style={{ fontSize: '13px' }}>Rilevamento telemetria hardware in corso...</div>
               </>
             ) : (
-              <div>⚠️ Nessuna GPU NVIDIA rilevata o runtime CUDA non attivo.</div>
+              <div style={{ fontSize: '13px' }}>⚠️ Nessuna GPU rilevata nel sistema.</div>
             )}
           </div>
         ) : (
@@ -300,67 +413,88 @@ export default function HardwareFloatingPanel({ onClose, onOpenTab, addToast }) 
             const hist = history[idx] || { vram: [], compute: [], temp: [], power: [] };
 
             return (
-              <div key={idx} className="gpu-card" style={{ padding: '16px', borderRadius: '12px', background: 'rgba(15, 23, 42, 0.65)' }}>
+              <div key={idx} className="gpu-card" style={{ padding: '12px 14px', borderRadius: '12px', background: 'rgba(15, 23, 42, 0.7)' }}>
                 {/* GPU Info Row */}
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                    <span className="gpu-index-pill" style={{ height: '26px', minWidth: '26px', fontSize: '11px' }}>GPU {idx}</span>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <span className="gpu-index-pill" style={{ height: '22px', minWidth: '22px', fontSize: '10px' }}>GPU {idx}</span>
                     <div>
-                      <div style={{ fontWeight: 700, fontSize: '14px', color: '#fff' }}>{gpu.name}</div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <div style={{ fontWeight: 700, fontSize: '13px', color: '#fff' }}>{gpu.name}</div>
+                        <span className="hw-badge" style={{ 
+                          background: `${gpu.vendor_color || '#00f2fe'}18`, 
+                          color: gpu.vendor_color || '#00f2fe',
+                          borderColor: `${gpu.vendor_color || '#00f2fe'}44`,
+                          fontSize: '9px',
+                          padding: '1px 5px'
+                        }}>
+                          {gpu.vendor || 'GPU'}
+                        </span>
+                      </div>
                       <div style={{ fontSize: '10px', color: 'var(--text-dim)', fontFamily: 'monospace' }}>
-                        Driver {gpu.driver_version || 'N/A'} • {gpu.temp_c ? `${gpu.temp_c}°C` : ''} • {pwrDraw}W
+                        Driver {gpu.driver_version || 'N/A'} • {gpu.temp_c ? `${gpu.temp_c}°C` : 'N/A'} • {pwrDraw}W
                       </div>
                     </div>
                   </div>
-                  <span className="hw-badge" style={{ fontSize: '11px', padding: '4px 8px', color: utilPct > 80 ? '#ef4444' : '#00f2fe' }}>
+                  <span className="hw-badge" style={{ fontSize: '10px', padding: '2px 6px', color: utilPct > 80 ? '#ef4444' : '#00f2fe' }}>
                     {utilPct}% Utilizzo
                   </span>
                 </div>
 
-                {/* Gauges */}
-                <div className="gpu-metrics-grid" style={{ padding: '12px', gap: '10px', gridTemplateColumns: '1fr 1fr' }}>
-                  <div className="metric-row">
-                    <div className="metric-label-row" style={{ fontSize: '11px' }}>
-                      <span>VRAM</span>
-                      <span>{vramUsed} / {vramTotal} MB</span>
-                    </div>
-                    <div className="metric-progress-track" style={{ height: '6px' }}>
-                      <div className="metric-progress-bar bar-cyan" style={{ width: `${vramPct}%` }} />
-                    </div>
-                  </div>
-                  <div className="metric-row">
-                    <div className="metric-label-row" style={{ fontSize: '11px' }}>
-                      <span>Compute</span>
-                      <span>{utilPct}%</span>
+                {/* 2-COLUMN SPLIT: LEFT = GPU COMPUTE, RIGHT = GPU VRAM */}
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                  
+                  {/* LEFT: GPU COMPUTE */}
+                  <div style={{ background: 'rgba(188, 140, 255, 0.04)', border: '1px solid rgba(188, 140, 255, 0.18)', borderRadius: '8px', padding: '8px 10px' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px', fontSize: '11px' }}>
+                      <span style={{ fontWeight: 700, color: '#bc8cff', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                        <Gauge size={12} /> ⚡ COMPUTE
+                      </span>
+                      <span style={{ fontWeight: 800, color: '#bc8cff' }}>{utilPct}%</span>
                     </div>
                     <div className="metric-progress-track" style={{ height: '6px' }}>
                       <div className="metric-progress-bar bar-purple" style={{ width: `${utilPct}%` }} />
                     </div>
                   </div>
+
+                  {/* RIGHT: GPU VRAM */}
+                  <div style={{ background: 'rgba(0, 210, 255, 0.04)', border: '1px solid rgba(0, 210, 255, 0.18)', borderRadius: '8px', padding: '8px 10px' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px', fontSize: '11px' }}>
+                      <span style={{ fontWeight: 700, color: '#00d2ff', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                        <HardDrive size={12} /> 🧠 VRAM
+                      </span>
+                      <span style={{ fontWeight: 800, color: '#00d2ff' }}>{vramUsed} / {vramTotal} MB</span>
+                    </div>
+                    <div className="metric-progress-track" style={{ height: '6px' }}>
+                      <div className="metric-progress-bar bar-cyan" style={{ width: `${vramPct}%` }} />
+                    </div>
+                  </div>
+
                 </div>
 
-                {/* Realtime Charts */}
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', marginTop: '10px' }}>
-                  <RealtimeTelemetryChart 
-                    data={hist.vram} 
-                    label="VRAM nel tempo" 
-                    icon={HardDrive}
-                    color="#00d2ff" 
-                    unit="MB" 
-                    maxVal={vramTotal} 
-                    height={85}
-                  />
-
-                  <RealtimeTelemetryChart 
-                    data={hist.compute} 
-                    label="Compute nel tempo" 
-                    icon={Cpu}
-                    color="#bc8cff" 
-                    unit="%" 
-                    maxVal={100} 
-                    height={85}
-                  />
-                </div>
+                {/* COLLAPSIBLE GPU CHARTS */}
+                {showCharts && (
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', marginTop: '10px', paddingTop: '10px', borderTop: '1px solid rgba(255,255,255,0.08)' }}>
+                    <RealtimeTelemetryChart 
+                      data={hist.compute} 
+                      label="Compute GPU nel tempo" 
+                      icon={Cpu}
+                      color="#bc8cff" 
+                      unit="%" 
+                      maxVal={100} 
+                      height={75}
+                    />
+                    <RealtimeTelemetryChart 
+                      data={hist.vram} 
+                      label="VRAM nel tempo" 
+                      icon={HardDrive}
+                      color="#00d2ff" 
+                      unit="MB" 
+                      maxVal={vramTotal} 
+                      height={75}
+                    />
+                  </div>
+                )}
               </div>
             );
           })

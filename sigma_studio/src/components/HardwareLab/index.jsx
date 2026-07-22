@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { 
-  Activity, Zap, HardDrive, Save, 
-  ShieldCheck, Sliders, Play, Pause, TrendingUp,
+  Activity, Zap, HardDrive, Save, ChevronDown, ChevronUp,
+  ShieldCheck, Sliders, Play, Pause, TrendingUp, BarChart2,
   Cpu, Thermometer, Flame, Gauge
 } from 'lucide-react';
 import RealtimeTelemetryChart from './RealtimeTelemetryChart';
@@ -15,10 +15,14 @@ export default function HardwareLab({ addToast }) {
   const [saving, setSaving] = useState(false);
   const [autoRefresh, setAutoRefresh] = useState(true);
   const [refreshInterval, setRefreshInterval] = useState(2000);
+  const [showCharts, setShowCharts] = useState(false); // Collapsible charts
   
-  // History buffers per GPU index
+  // History buffers per GPU index & System (CPU/RAM)
   const [historyData, setHistoryData] = useState({});
   const historyRef = useRef({});
+  const [systemHistory, setSystemHistory] = useState({ cpu: [], ram: [] });
+  const systemHistoryRef = useRef({ cpu: [], ram: [] });
+
   const initialConfigLoadedRef = useRef(false);
 
   const [cudaDevices, setCudaDevices] = useState('0,1');
@@ -35,7 +39,8 @@ export default function HardwareLab({ addToast }) {
         const json = await res.json();
         if (json.success) {
           setData(json);
-          // Accumulate history safely for each GPU
+
+          // 1. Accumulate GPU history
           const gpus = json.hardware?.gpu || [];
           const currentHist = { ...historyRef.current };
 
@@ -69,7 +74,21 @@ export default function HardwareLab({ addToast }) {
           historyRef.current = currentHist;
           setHistoryData(currentHist);
 
-          // Populate initial configuration fields once
+          // 2. Accumulate System CPU & RAM History
+          const cpuUtil = Number(json.hardware?.cpu?.util_pct) || 0;
+          const ramUsed = Number(json.hardware?.ram?.used_gb) || Number(json.hardware?.ram_used_gb) || 0;
+
+          const currentSysHist = { ...systemHistoryRef.current };
+          const newCpu = [...(currentSysHist.cpu || []), cpuUtil];
+          const newRam = [...(currentSysHist.ram || []), ramUsed];
+
+          if (newCpu.length > MAX_HISTORY) newCpu.shift();
+          if (newRam.length > MAX_HISTORY) newRam.shift();
+
+          systemHistoryRef.current = { cpu: newCpu, ram: newRam };
+          setSystemHistory({ cpu: newCpu, ram: newRam });
+
+          // 3. Populate initial configuration fields once
           if (!initialConfigLoadedRef.current) {
             initialConfigLoadedRef.current = true;
             const cfg = json.config || {};
@@ -132,51 +151,164 @@ export default function HardwareLab({ addToast }) {
   const totalVramGb = hw.multi_gpu?.total_vram_gb || (gpus.reduce((acc, g) => acc + (g.vram_total_gb || 0), 0)).toFixed(1);
 
   return (
-    <div className="hardware-lab-container">
+    <div className="hardware-lab-container" style={{ padding: '16px 20px' }}>
       {/* Top Header */}
-      <div className="hardware-header">
+      <div className="hardware-header" style={{ marginBottom: '16px' }}>
         <div className="hardware-header-title">
           <div className="hardware-header-icon">
-            <Zap size={24} color="#00f2fe" />
+            <Zap size={22} color="#00f2fe" />
           </div>
           <div>
-            <h1>Hardware & Multi-GPU Lab</h1>
-            <div className="hardware-header-subtitle">
-              <span>Monitoraggio real-time con grafici ad alta definizione</span>
+            <h1 style={{ fontSize: '20px' }}>Hardware & Multi-GPU Lab</h1>
+            <div className="hardware-header-subtitle" style={{ fontSize: '12px' }}>
+              <span>Telemetria in tempo reale</span>
               <span>•</span>
-              <span style={{ color: '#00f2fe', fontFamily: 'JetBrains Mono, monospace' }}>{gpus.length} GPU Attive ({totalVramGb} GB VRAM Totali)</span>
+              <span style={{ color: '#00f2fe', fontFamily: 'JetBrains Mono, monospace' }}>
+                {gpus.length} GPU ({totalVramGb} GB VRAM) • RAM {hw.ram?.used_gb || 0}/{hw.ram?.total_gb || 0} GB
+              </span>
             </div>
           </div>
         </div>
 
-        <div className="hardware-header-actions">
-          <span className={`hw-badge ${autoRefresh ? 'hw-badge-live' : ''}`}>
-            <span className="hw-badge-dot" />
-            {autoRefresh ? 'FEED LIVE ON (2s)' : 'PAUSA'}
-          </span>
+        <div className="hardware-header-actions" style={{ gap: '8px' }}>
+          <button 
+            className={`hw-btn ${showCharts ? 'hw-btn-primary' : ''}`}
+            onClick={() => setShowCharts(!showCharts)}
+            title={showCharts ? 'Nascondi i grafici per compattare la vista' : 'Mostra i grafici storici in tempo reale'}
+            style={{ fontSize: '12px', padding: '6px 12px' }}
+          >
+            <BarChart2 size={14} color={showCharts ? '#fff' : '#00f2fe'} />
+            {showCharts ? 'Nascondi Grafici' : 'Mostra Grafici Storici'}
+            {showCharts ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+          </button>
+
           <button 
             className="hw-btn" 
             onClick={() => setAutoRefresh(!autoRefresh)}
             title={autoRefresh ? 'Metti in pausa il refresh' : 'Riprendi refresh automatico'}
+            style={{ fontSize: '12px', padding: '6px 12px' }}
           >
-            {autoRefresh ? <Pause size={14} color="#00f2fe" /> : <Play size={14} />}
-            {autoRefresh ? 'Pausa' : 'Riprendi'}
+            {autoRefresh ? <Pause size={13} color="#00f2fe" /> : <Play size={13} />}
+            {autoRefresh ? 'Pausa (2s)' : 'Riprendi'}
           </button>
         </div>
       </div>
 
-      {/* Main GPU Cards Grid */}
-      <div className="gpu-cards-container">
+      {/* Main Cards Container */}
+      <div className="gpu-cards-container" style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+        
+        {/* ==================================================================== */}
+        {/* SYSTEM OVERVIEW CARD (LEFT = COMPUTE, RIGHT = MEMORY) */}
+        {/* ==================================================================== */}
+        <div className="gpu-card" style={{ padding: '14px 18px', background: 'rgba(15, 23, 42, 0.75)' }}>
+          <div className="gpu-card-header" style={{ marginBottom: '12px' }}>
+            <div className="gpu-title">
+              <div className="gpu-index-pill" style={{ background: 'rgba(16, 185, 129, 0.15)', color: '#10b981', border: '1px solid rgba(16, 185, 129, 0.3)', padding: '2px 8px', fontSize: '11px' }}>
+                SYS
+              </div>
+              <div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <div className="gpu-name" style={{ fontSize: '15px' }}>Sistema Principale (CPU & RAM)</div>
+                  <span className="hw-badge" style={{ background: 'rgba(16, 185, 129, 0.15)', color: '#10b981', borderColor: 'rgba(16, 185, 129, 0.3)', fontSize: '10px', padding: '2px 8px' }}>
+                    SISTEMA
+                  </span>
+                </div>
+                <div className="gpu-bus-info" style={{ fontSize: '11px' }}>
+                  {hw.cpu?.logical_count || hw.cpu_count || '?'} Thread Logici ({hw.cpu?.physical_count || '?'} Cores) • {hw.cpu?.freq_mhz ? `${(hw.cpu.freq_mhz / 1000).toFixed(1)} GHz` : 'N/A'}
+                </div>
+              </div>
+            </div>
+
+            <div className="gpu-header-badges">
+              <div className="gpu-stat-badge" style={{ padding: '4px 10px', fontSize: '12px' }}>
+                <Cpu size={14} color="#00f2fe" />
+                <span style={{ fontWeight: 700, color: '#00f2fe' }}>CPU: {hw.cpu?.util_pct ?? 0}%</span>
+              </div>
+              <div className="gpu-stat-badge" style={{ padding: '4px 10px', fontSize: '12px' }}>
+                <HardDrive size={14} color="#10b981" />
+                <span style={{ fontWeight: 700, color: '#10b981' }}>RAM: {hw.ram?.used_gb || hw.ram_used_gb || 0} / {hw.ram?.total_gb || hw.ram_gb || 0} GB</span>
+              </div>
+            </div>
+          </div>
+
+          {/* 2-COLUMN SPLIT: LEFT = COMPUTE, RIGHT = MEMORY */}
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
+            
+            {/* LEFT SIDE: CPU COMPUTE */}
+            <div style={{ background: 'rgba(0, 242, 254, 0.04)', border: '1px solid rgba(0, 242, 254, 0.15)', borderRadius: '10px', padding: '12px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontWeight: 700, fontSize: '12px', color: '#00f2fe' }}>
+                  <Cpu size={14} /> ⚡ COMPUTE (CPU System Load)
+                </div>
+                <span style={{ fontSize: '12px', fontWeight: 800, color: '#00f2fe' }}>{hw.cpu?.util_pct ?? 0}%</span>
+              </div>
+              <div className="metric-progress-track" style={{ height: '8px', marginBottom: '8px' }}>
+                <div className="metric-progress-bar bar-cyan" style={{ width: `${Math.min(100, hw.cpu?.util_pct ?? 0)}%` }} />
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '10px', color: 'var(--text-dim)' }}>
+                <span>Max Core Load: {hw.cpu?.max_core_pct || 0}%</span>
+                <span>Frequenza: {hw.cpu?.freq_mhz ? `${(hw.cpu.freq_mhz / 1000).toFixed(2)} GHz` : 'N/A'}</span>
+              </div>
+            </div>
+
+            {/* RIGHT SIDE: MEMORY & STORAGE */}
+            <div style={{ background: 'rgba(16, 185, 129, 0.04)', border: '1px solid rgba(16, 185, 129, 0.15)', borderRadius: '10px', padding: '12px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontWeight: 700, fontSize: '12px', color: '#10b981' }}>
+                  <HardDrive size={14} /> 🧠 MEMORIA (System RAM & Disco)
+                </div>
+                <span style={{ fontSize: '12px', fontWeight: 800, color: '#10b981' }}>{hw.ram?.util_pct || hw.ram_pct || 0}%</span>
+              </div>
+              <div className="metric-progress-track" style={{ height: '8px', marginBottom: '8px' }}>
+                <div className="metric-progress-bar" style={{ width: `${Math.min(100, hw.ram?.util_pct || hw.ram_pct || 0)}%`, background: 'linear-gradient(90deg, #10b981, #059669)' }} />
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '10px', color: 'var(--text-dim)' }}>
+                <span>RAM Libera: {hw.ram?.free_gb || 0} GB</span>
+                <span>Disco: {hw.disk?.used_gb || 0} / {hw.disk?.total_gb || 0} GB ({hw.disk?.util_pct || 0}%)</span>
+              </div>
+            </div>
+
+          </div>
+
+          {/* COLLAPSIBLE SYSTEM CHARTS */}
+          {showCharts && (
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', marginTop: '14px', paddingTop: '14px', borderTop: '1px solid rgba(255,255,255,0.08)' }}>
+              <RealtimeTelemetryChart 
+                data={systemHistory.cpu} 
+                label="Storico Carico CPU (%)" 
+                icon={Cpu}
+                color="#00f2fe" 
+                unit="%" 
+                maxVal={100} 
+                height={80}
+              />
+              <RealtimeTelemetryChart 
+                data={systemHistory.ram} 
+                label="Storico RAM Utilizzata (GB)" 
+                icon={HardDrive}
+                color="#10b981" 
+                unit="GB" 
+                maxVal={hw.ram?.total_gb || hw.ram_gb || 64} 
+                height={80}
+                formatVal={(val) => `${typeof val === 'number' ? val.toFixed(1) : val}`}
+              />
+            </div>
+          )}
+        </div>
+
+        {/* ==================================================================== */}
+        {/* MULTI-VENDOR GPU CARDS (LEFT = COMPUTE, RIGHT = VRAM) */}
+        {/* ==================================================================== */}
         {gpus.length === 0 ? (
-          <div className="gpu-card" style={{ textAlign: 'center', padding: '60px 20px' }}>
+          <div className="gpu-card" style={{ textAlign: 'center', padding: '40px 20px' }}>
             {loading ? (
               <>
-                <Activity className="spin" size={36} color="#00f2fe" style={{ margin: '0 auto 16px' }} />
-                <div style={{ fontSize: '15px', fontWeight: 600 }}>Inizializzazione telemetria GPU da nvidia-smi / PyTorch...</div>
+                <Activity className="spin" size={32} color="#00f2fe" style={{ margin: '0 auto 12px' }} />
+                <div style={{ fontSize: '14px' }}>Rilevamento telemetria hardware in corso...</div>
               </>
             ) : (
               <div style={{ color: '#94a3b8', fontSize: '14px' }}>
-                ⚠️ Nessuna GPU NVIDIA rilevata o runtime CUDA non disponibile.
+                ⚠️ Nessuna GPU rilevata nel sistema.
               </div>
             )}
           </div>
@@ -188,130 +320,110 @@ export default function HardwareLab({ addToast }) {
             const utilPct = Math.min(100, Math.round(Number(gpu.gpu_util_pct) || 0));
             const pwrLimit = Number(gpu.power_limit_w) || 0;
             const pwrDraw = Number(gpu.power_draw_w) || 0;
-            const pwrPct = pwrLimit > 0 ? Math.min(100, Math.round((pwrDraw / pwrLimit) * 100)) : 0;
 
             const idx = gpu.index;
             const hist = history[idx] || { vram: [], compute: [], temp: [], power: [] };
 
             return (
-              <div key={idx} className="gpu-card">
+              <div key={idx} className="gpu-card" style={{ padding: '14px 18px', background: 'rgba(15, 23, 42, 0.75)' }}>
                 {/* GPU Card Top Title Bar */}
-                <div className="gpu-card-header">
+                <div className="gpu-card-header" style={{ marginBottom: '12px' }}>
                   <div className="gpu-title">
-                    <div className="gpu-index-pill">GPU {idx}</div>
+                    <div className="gpu-index-pill" style={{ padding: '2px 8px', fontSize: '11px' }}>GPU {idx}</div>
                     <div>
-                      <div className="gpu-name">{gpu.name}</div>
-                      <div className="gpu-bus-info">
-                        Driver v{gpu.driver_version || 'N/A'} • PCIe Gen{gpu.pcie_gen || '?'} x{gpu.pcie_width || '?'} • Compute Cap {gpu.compute_cap || 'v9.0+'}
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <div className="gpu-name" style={{ fontSize: '15px' }}>{gpu.name}</div>
+                        <span className="hw-badge" style={{ 
+                          background: `${gpu.vendor_color || '#00f2fe'}18`, 
+                          color: gpu.vendor_color || '#00f2fe',
+                          borderColor: `${gpu.vendor_color || '#00f2fe'}44`,
+                          fontSize: '10px',
+                          padding: '2px 8px'
+                        }}>
+                          {gpu.vendor || 'GPU'}
+                        </span>
+                      </div>
+                      <div className="gpu-bus-info" style={{ fontSize: '11px' }}>
+                        Driver v{gpu.driver_version || 'N/A'} • Compute Cap {gpu.compute_cap || 'v9.0+'} • Temp {gpu.temp_c ? `${gpu.temp_c}°C` : 'N/A'} • Potenza {pwrDraw}W
                       </div>
                     </div>
                   </div>
 
                   <div className="gpu-header-badges">
-                    <div className="gpu-stat-badge">
+                    <div className="gpu-stat-badge" style={{ padding: '4px 10px', fontSize: '12px' }}>
                       <Thermometer size={14} color="#ffb86c" />
                       <span>{gpu.temp_c ? `${gpu.temp_c}°C` : 'N/A'}</span>
                     </div>
-                    <div className="gpu-stat-badge">
+                    <div className="gpu-stat-badge" style={{ padding: '4px 10px', fontSize: '12px' }}>
                       <Flame size={14} color="#ff5555" />
-                      <span>{pwrDraw}W / {pwrLimit > 0 ? `${pwrLimit}W` : 'N/A'}</span>
+                      <span>{pwrDraw}W</span>
                     </div>
-                    <span className="hw-badge" style={{ 
-                      background: utilPct > 80 ? 'rgba(239,68,68,0.15)' : 'rgba(0,242,254,0.15)', 
-                      color: utilPct > 80 ? '#ef4444' : '#00f2fe',
-                      borderColor: utilPct > 80 ? 'rgba(239,68,68,0.3)' : 'rgba(0,242,254,0.3)'
-                    }}>
-                      <Gauge size={14} />
-                      {utilPct}% Utilizzo Compute
-                    </span>
                   </div>
                 </div>
 
-                {/* Instant Metrics Progress Gauges */}
-                <div className="gpu-metrics-grid">
-                  <div className="metric-row">
-                    <div className="metric-label-row">
-                      <span className="metric-label-title"><HardDrive size={12} color="#00d2ff" /> Memoria VRAM</span>
-                      <span className="metric-label-value" style={{ color: '#00d2ff' }}>{vramUsed} MB / {vramTotal} MB ({gpu.vram_total_gb || (vramTotal / 1024).toFixed(1)} GB)</span>
+                {/* 2-COLUMN SPLIT: LEFT = COMPUTE, RIGHT = VRAM */}
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
+                  
+                  {/* LEFT SIDE: GPU COMPUTE */}
+                  <div style={{ background: 'rgba(188, 140, 255, 0.04)', border: '1px solid rgba(188, 140, 255, 0.18)', borderRadius: '10px', padding: '12px' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontWeight: 700, fontSize: '12px', color: '#bc8cff' }}>
+                        <Gauge size={14} /> ⚡ COMPUTE (Utilizzo GPU)
+                      </div>
+                      <span style={{ fontSize: '12px', fontWeight: 800, color: '#bc8cff' }}>{utilPct}%</span>
                     </div>
-                    <div className="metric-progress-track">
-                      <div className="metric-progress-bar bar-cyan" style={{ width: `${vramPct}%` }} />
-                    </div>
-                  </div>
-
-                  <div className="metric-row">
-                    <div className="metric-label-row">
-                      <span className="metric-label-title"><Cpu size={12} color="#bc8cff" /> Carico Compute</span>
-                      <span className="metric-label-value" style={{ color: '#bc8cff' }}>{utilPct}%</span>
-                    </div>
-                    <div className="metric-progress-track">
+                    <div className="metric-progress-track" style={{ height: '8px', marginBottom: '8px' }}>
                       <div className="metric-progress-bar bar-purple" style={{ width: `${utilPct}%` }} />
                     </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '10px', color: 'var(--text-dim)' }}>
+                      <span>Stato: {utilPct > 80 ? '🔥 Alto Carico' : utilPct > 20 ? '⚡ Attivo' : '💤 Idle'}</span>
+                      <span>Potenza: {pwrDraw}W / {pwrLimit > 0 ? `${pwrLimit}W` : 'N/A'}</span>
+                    </div>
                   </div>
 
-                  <div className="metric-row">
-                    <div className="metric-label-row">
-                      <span className="metric-label-title"><Zap size={12} color="#ffb86c" /> Potenza assorbita</span>
-                      <span className="metric-label-value" style={{ color: '#ffb86c' }}>{pwrDraw}W ({pwrPct}%)</span>
+                  {/* RIGHT SIDE: GPU VRAM MEMORY */}
+                  <div style={{ background: 'rgba(0, 210, 255, 0.04)', border: '1px solid rgba(0, 210, 255, 0.18)', borderRadius: '10px', padding: '12px' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontWeight: 700, fontSize: '12px', color: '#00d2ff' }}>
+                        <HardDrive size={14} /> 🧠 MEMORIA VRAM
+                      </div>
+                      <span style={{ fontSize: '12px', fontWeight: 800, color: '#00d2ff' }}>{vramUsed} / {vramTotal} MB ({vramPct}%)</span>
                     </div>
-                    <div className="metric-progress-track">
-                      <div className="metric-progress-bar bar-amber" style={{ width: `${pwrPct}%` }} />
+                    <div className="metric-progress-track" style={{ height: '8px', marginBottom: '8px' }}>
+                      <div className="metric-progress-bar bar-cyan" style={{ width: `${vramPct}%` }} />
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '10px', color: 'var(--text-dim)' }}>
+                      <span>Libera: {gpu.vram_free_mb || Math.max(0, vramTotal - vramUsed)} MB</span>
+                      <span>VRAM Totale: {gpu.vram_total_gb || (vramTotal / 1024).toFixed(1)} GB</span>
                     </div>
                   </div>
+
                 </div>
 
-                {/* Dedicated Realtime Telemetry Charts Section */}
-                <div style={{ marginTop: '8px' }}>
-                  <div className="charts-section-header">
-                    <div className="charts-section-title">
-                      <TrendingUp size={14} color="#00f2fe" />
-                      <span>Grafici Storici in Tempo Reale (Avvio ~30 min)</span>
-                    </div>
-                  </div>
-
-                  {/* Primary 2-Column Hero Charts: VRAM & Compute */}
-                  <div className="charts-grid-main">
-                    <RealtimeTelemetryChart 
-                      data={hist.vram} 
-                      label="Occupazione VRAM nel tempo" 
-                      icon={HardDrive}
-                      color="#00d2ff" 
-                      unit="MB" 
-                      maxVal={vramTotal} 
-                      formatVal={(val) => `${typeof val === 'number' ? Math.round(val) : val}`}
-                    />
-
+                {/* COLLAPSIBLE GPU CHARTS */}
+                {showCharts && (
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', marginTop: '14px', paddingTop: '14px', borderTop: '1px solid rgba(255,255,255,0.08)' }}>
                     <RealtimeTelemetryChart 
                       data={hist.compute} 
-                      label="Utilizzo Compute GPU nel tempo" 
+                      label="Storico Compute GPU (%)" 
                       icon={Cpu}
                       color="#bc8cff" 
                       unit="%" 
                       maxVal={100} 
+                      height={80}
+                    />
+                    <RealtimeTelemetryChart 
+                      data={hist.vram} 
+                      label="Storico Occupazione VRAM (MB)" 
+                      icon={HardDrive}
+                      color="#00d2ff" 
+                      unit="MB" 
+                      maxVal={vramTotal} 
+                      height={80}
+                      formatVal={(val) => `${typeof val === 'number' ? Math.round(val) : val}`}
                     />
                   </div>
-
-                  {/* Secondary 2-Column Sparklines: Temperature & Power */}
-                  <div className="charts-grid-secondary">
-                    <RealtimeTelemetryChart 
-                      data={hist.temp} 
-                      label="Temperatura GPU nel tempo" 
-                      icon={Thermometer}
-                      color="#ffb86c" 
-                      unit="°C" 
-                      maxVal={100} 
-                    />
-
-                    <RealtimeTelemetryChart 
-                      data={hist.power} 
-                      label="Potenza Assorbita nel tempo" 
-                      icon={Zap}
-                      color="#ff5555" 
-                      unit="W" 
-                      maxVal={pwrLimit || 300} 
-                    />
-                  </div>
-                </div>
+                )}
 
               </div>
             );
@@ -319,43 +431,37 @@ export default function HardwareLab({ addToast }) {
         )}
       </div>
 
-      {/* Multi-GPU Tuning & Ollama Configuration */}
-      <div className="hw-section">
+      {/* Multi-GPU Tuning Controls */}
+      <div className="hw-section" style={{ marginTop: '16px' }}>
         <div className="hw-section-title">
-          <Sliders size={20} color="#00f2fe" />
-          <span>Configurazione Multi-GPU & Parallelismo Ollama</span>
+          <Sliders size={18} color="#00f2fe" />
+          <span style={{ fontSize: '15px' }}>Configurazione Multi-GPU & Parallelismo Ollama</span>
         </div>
 
         <div className="hw-form-grid">
           <div className="hw-form-group">
             <label>
               <span>CUDA_VISIBLE_DEVICES</span>
-              <span style={{ color: '#00f2fe' }}>Ollama / PyTorch Target</span>
+              <span style={{ color: '#00f2fe' }}>Target GPU</span>
             </label>
             <select className="hw-select" value={cudaDevices} onChange={(e) => setCudaDevices(e.target.value)}>
               <option value="0,1">0,1 — Parallelismo su entrambe le GPU (RTX 5070 Ti + RTX 5060)</option>
               <option value="0">0 — Solo GPU 0 (RTX 5070 Ti - 16GB VRAM)</option>
               <option value="1">1 — Solo GPU 1 (RTX 5060 - 8GB VRAM)</option>
             </select>
-            <div className="hw-help-text">
-              Definisce quali GPU sono visibili ai modelli AI per l'inferenza e il training.
-            </div>
           </div>
 
           <div className="hw-form-group">
             <label>
               <span>OLLAMA_NUM_PARALLEL</span>
-              <span style={{ color: '#00f2fe' }}>Slot Richieste Simultanee</span>
+              <span style={{ color: '#00f2fe' }}>Slot Paralleli</span>
             </label>
             <select className="hw-select" value={numParallel} onChange={(e) => setNumParallel(Number(e.target.value))}>
               <option value={1}>1 — Singolo stream</option>
               <option value={2}>2 — 2 stream paralleli</option>
-              <option value={4}>4 — 4 stream paralleli (Ottimale per Multi-Agenti)</option>
+              <option value={4}>4 — 4 stream paralleli (Ottimale Multi-Agenti)</option>
               <option value={8}>8 — 8 stream paralleli (Massimo throughput)</option>
             </select>
-            <div className="hw-help-text">
-              Richieste di inferenza simultanee che Ollama può elaborare in parallelo.
-            </div>
           </div>
 
           <div className="hw-form-group">
@@ -367,32 +473,25 @@ export default function HardwareLab({ addToast }) {
               <option value={1}>1 modello alla volta</option>
               <option value={2}>2 modelli contemporaneamente (Consigliato)</option>
               <option value={3}>3 modelli contemporaneamente</option>
-              <option value={4}>4 modelli contemporaneamente</option>
             </select>
-            <div className="hw-help-text">
-              Modelli mantenuti contemporaneamente in VRAM senza swap su disco.
-            </div>
           </div>
 
           <div className="hw-form-group">
             <label>
               <span>GPU Preferita Training Lab</span>
-              <span style={{ color: '#00f2fe' }}>Fine-Tuning Target</span>
+              <span style={{ color: '#00f2fe' }}>Fine-Tuning</span>
             </label>
             <select className="hw-select" value={preferredGpu} onChange={(e) => setPreferredGpu(e.target.value)}>
               <option value="cuda:0">cuda:0 (RTX 5070 Ti — 16GB VRAM)</option>
               <option value="cuda:1">cuda:1 (RTX 5060 — 8GB VRAM)</option>
               <option value="cuda:0,1">cuda:0,1 (DataParallel Dual-GPU)</option>
             </select>
-            <div className="hw-help-text">
-              Scheda target predefinita per job di fine-tuning PyTorch / Unsloth.
-            </div>
           </div>
         </div>
 
-        <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '10px' }}>
-          <button className="hw-btn hw-btn-primary" onClick={handleSaveConfig} disabled={saving}>
-            <Save size={16} />
+        <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '12px' }}>
+          <button className="hw-btn hw-btn-primary" onClick={handleSaveConfig} disabled={saving} style={{ fontSize: '13px', padding: '8px 16px' }}>
+            <Save size={15} />
             {saving ? 'Salvataggio in corso...' : 'Applica e Salva Impostazioni Multi-GPU'}
           </button>
         </div>

@@ -1,5 +1,7 @@
 # 🧬 Sigma Studio — AI Agent Manifests
 
+Tutti i manifesti sono creati da **Ing. Diego Saitta** — Sigma Studio.
+
 This directory contains the official Modelfile manifests for Sigma Studio's AI agents.
 
 ## Available Agents

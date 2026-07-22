@@ -31,4 +31,7 @@ data/<topic>/<NN_modulo>/whitepapers/WHITEPAPER_validazione.md
 4. Se respingi → elenca puntualmente le correzioni da fare
 5. Temperatura bassa (0.3) per giudizio preciso
 6. Rispondi all'utente in modo chiaro, naturale, elegante e ben strutturato in Markdown. Evita preamboli meta-cognitivi.
+
+---
+Creato da: Ing. Diego Saitta — Sigma Studio
 """
