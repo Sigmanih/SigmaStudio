@@ -198,10 +198,29 @@ export default function AgentMessage({
           {messages.map((m, idx) => {
             const mid = msgId || `msg-${idx}`;
             const isLast = idx === messages.length - 1;
+
+            let displayContent = m.content || '';
+            let displayThinking = m.thinking || '';
+
+            if (!isUser && !isSystem && !displayThinking && displayContent && (displayContent.includes('<think>') || displayContent.includes('Analyze User Input'))) {
+              const thinkMatch = displayContent.match(/<think>(.*?)<\/think>/s);
+              if (thinkMatch) {
+                displayThinking = thinkMatch[1].trim();
+                displayContent = displayContent.replace(/<think>.*?<\/think>/gs, '').trim();
+              } else {
+                const splitMatch = displayContent.match(/✅|\bFinal Polish:.*?\n/s);
+                if (splitMatch) {
+                  const splitPos = splitMatch.index + splitMatch[0].length;
+                  displayThinking = displayContent.substring(0, splitPos).trim();
+                  displayContent = displayContent.substring(splitPos).replace(/^[🤖✅\s]+/, '').trim();
+                }
+              }
+            }
+
             return (
               <div key={idx} className={isGrouped && !isLast ? 'chat-msg-grouped-item chat-msg-grouped-border' : 'chat-msg-grouped-item'}>
                 {/* Thinking toggle */}
-                {!isUser && !isSystem && m.thinking && (
+                {!isUser && !isSystem && displayThinking && (
                   <div className={`chat-thinking ${m.streamingThinking ? 'chat-thinking-streaming' : ''}`}>
                     <button className="chat-thinking-toggle" onClick={() => onToggleThinking(mid)}>
                       <span>
@@ -222,7 +241,7 @@ export default function AgentMessage({
                             handleFileClick(path);
                           }
                         }}
-                        dangerouslySetInnerHTML={{ __html: renderMarkdownLatex(m.thinking) }}
+                        dangerouslySetInnerHTML={{ __html: renderMarkdownLatex(displayThinking) }}
                       />
                     )}
                   </div>
@@ -371,7 +390,7 @@ export default function AgentMessage({
                       ))
                     )}
                   </div>
-                ) : m.content ? (
+                ) : displayContent ? (
                   <div
                     className="chat-content chat-md"
                     onClick={e => {
@@ -382,7 +401,7 @@ export default function AgentMessage({
                         handleFileClick(path);
                       }
                     }}
-                    dangerouslySetInnerHTML={{ __html: renderMarkdownLatex(m.content) }}
+                    dangerouslySetInnerHTML={{ __html: renderMarkdownLatex(displayContent) }}
                   />
                 ) : null}
 

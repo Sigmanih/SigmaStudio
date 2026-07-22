@@ -467,6 +467,44 @@ def call_ai_model(messages, ai_cfg, model, provider, endpoint, api_url, api_key,
         return None, None, str(e)
     return None, None, "Provider sconosciuto"
 
+def parse_thinking_and_content(raw_text: str, provider_thinking: str = None) -> tuple:
+    """
+    Robustly separates thinking/reasoning blocks from user-facing Markdown content.
+    Handles XML <think>...</think> tags and meta-cognitive reasoning headers
+    (e.g., 'Analyze User Input:', 'Draft Construction:', 'Check System Prompt').
+    """
+    if not raw_text:
+        return "", provider_thinking
+        
+    thinking = provider_thinking or ""
+    content = str(raw_text).strip()
+    
+    # 1. XML <think>...</think> tags
+    think_match = re.search(r'<think>(.*?)</think>', content, re.DOTALL | re.IGNORECASE)
+    if think_match:
+        extracted = think_match.group(1).strip()
+        thinking = f"{thinking}\n{extracted}".strip() if thinking else extracted
+        content = re.sub(r'<think>.*?</think>', '', content, flags=re.DOTALL | re.IGNORECASE).strip()
+        
+    # 2. Heuristic reasoning headers (Analyze User Input, Draft Construction, etc.)
+    reasoning_keywords = ['Analyze User Input', 'Draft Construction', 'Check System Prompt', 'Determine Response Strategy', 'Mental Refinement', 'Final Polish']
+    if not thinking and any(kw in content for kw in reasoning_keywords):
+        split_match = re.search(r'✅|\bFinal Polish:.*?\n', content, re.DOTALL)
+        if split_match:
+            split_pos = split_match.end()
+            extracted_think = content[:split_pos].strip()
+            thinking = f"{thinking}\n{extracted_think}".strip() if thinking else extracted_think
+            content = content[split_pos:].strip()
+            content = re.sub(r'^[🤖✅\s]+', '', content).strip()
+        else:
+            parts = re.split(r'\n(?=Ciao|Benvenuto|Salute|Ecco)', content, maxsplit=1)
+            if len(parts) == 2:
+                thinking = parts[0].strip()
+                content = parts[1].strip()
+                
+    return content, thinking
+
+
 def call_ollama(
     messages: list,
     model: str,
@@ -521,6 +559,7 @@ def call_ollama(
             msg = data.get("message", {})
             content = msg.get("content", "")
             thinking = msg.get("thinking", msg.get("reasoning_content", None))
+            content, thinking = parse_thinking_and_content(content, thinking)
             if not content and thinking:
                 content = thinking
                 thinking = None
@@ -630,11 +669,10 @@ def call_openai_compatible(
             data = resp.json()
             choice = data.get("choices", [{}])[0]
             msg = choice.get("message", {})
-            content = msg.get("content", "")
-            thinking = msg.get("reasoning_content", msg.get("reasoning", None))
-            if not thinking:
-                thinking = data.get("reasoning_content", data.get("thinking", None))
-            return content or data.get("response", ""), thinking, None
+            content = msg.get("content", "") or data.get("response", "")
+            thinking = msg.get("reasoning_content", msg.get("reasoning", None)) or data.get("reasoning_content", data.get("thinking", None))
+            content, thinking = parse_thinking_and_content(content, thinking)
+            return content, thinking, None
         return None, None, f"API error {resp.status_code}: {resp.text}"
     except Exception as e:
         return None, None, str(e)
