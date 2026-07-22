@@ -2,28 +2,53 @@
    CHAT — AI Chat Panel & Config (v6.2)
    ============================================================================== */
 
-/* Bottom-Left Floating Dock Bar */
+/* Modern Draggable Floating Dock Bar */
 .ai-float-dock-bar {
   position: fixed;
-  bottom: 20px;
-  left: 20px;
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 6px 10px;
-  background: rgba(18, 20, 29, 0.88);
-  border: 1px solid rgba(0, 210, 255, 0.25);
+  padding: 6px 12px;
+  background: rgba(10, 14, 23, 0.88);
+  border: 1px solid rgba(0, 242, 254, 0.3);
   border-radius: 30px;
-  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5), 0 0 15px rgba(0, 210, 255, 0.15);
-  backdrop-filter: blur(16px);
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.6), 0 0 20px rgba(0, 242, 254, 0.15);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
   z-index: 10001;
-  transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+  user-select: none;
+  transition: border-color 0.3s ease, box-shadow 0.3s ease, padding 0.25s ease;
+}
+
+.ai-float-dock-bar:hover {
+  border-color: rgba(0, 242, 254, 0.5);
+  box-shadow: 0 20px 48px rgba(0, 0, 0, 0.7), 0 0 25px rgba(0, 242, 254, 0.25);
 }
 
 .ai-float-dock-bar.minimized {
   padding: 4px;
   border-radius: 50%;
-  background: rgba(18, 20, 29, 0.95);
+  background: rgba(10, 14, 23, 0.95);
+}
+
+.dock-drag-handle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: grab;
+  color: var(--text-dim, #94a3b8);
+  padding: 2px;
+  border-radius: 6px;
+  transition: all 0.15s ease;
+}
+
+.dock-drag-handle:hover {
+  color: #00f2fe;
+  background: rgba(0, 242, 254, 0.15);
+}
+
+.dock-drag-handle:active {
+  cursor: grabbing;
 }
 
 .dock-toggle-btn {
@@ -32,7 +57,7 @@
   border-radius: 50%;
   background: rgba(255, 255, 255, 0.06);
   border: 1px solid rgba(255, 255, 255, 0.12);
-  color: var(--primary, #00d2ff);
+  color: var(--primary, #00f2fe);
   font-size: 0.8rem;
   font-weight: bold;
   cursor: pointer;
@@ -44,27 +69,28 @@
 }
 
 .dock-toggle-btn:hover {
-  background: rgba(0, 210, 255, 0.2);
+  background: rgba(0, 242, 254, 0.25);
   color: #fff;
   transform: scale(1.08);
+  box-shadow: 0 0 12px rgba(0, 242, 254, 0.4);
 }
 
 .dock-buttons-row {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 8px;
 }
 
 .dock-btn {
   display: flex;
   align-items: center;
-  gap: 6px;
-  padding: 6px 12px;
+  gap: 7px;
+  padding: 6px 14px;
   border-radius: 20px;
   background: rgba(255, 255, 255, 0.04);
   border: 1px solid rgba(255, 255, 255, 0.08);
-  color: var(--text-dim, #8b8fa3);
-  font-size: 0.72rem;
+  color: var(--text-dim, #94a3b8);
+  font-size: 0.75rem;
   font-weight: 600;
   cursor: pointer;
   transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
@@ -72,17 +98,25 @@
 }
 
 .dock-btn:hover {
-  background: rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.12);
   color: #fff;
-  border-color: rgba(255, 255, 255, 0.2);
+  border-color: rgba(255, 255, 255, 0.25);
   transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
 }
 
 .dock-btn.active {
-  background: rgba(0, 210, 255, 0.15);
-  border-color: rgba(0, 210, 255, 0.4);
-  color: var(--primary, #00d2ff);
-  box-shadow: 0 0 12px rgba(0, 210, 255, 0.2);
+  background: rgba(0, 242, 254, 0.15);
+  border-color: rgba(0, 242, 254, 0.4);
+  color: #00f2fe;
+  box-shadow: 0 0 16px rgba(0, 242, 254, 0.25);
+}
+
+.dock-btn.hardware-btn.active {
+  background: rgba(16, 185, 129, 0.15);
+  border-color: rgba(16, 185, 129, 0.4);
+  color: #10b981;
+  box-shadow: 0 0 16px rgba(16, 185, 129, 0.25);
 }
 
 .dock-btn-icon {
@@ -90,24 +124,24 @@
 }
 
 .dock-btn-label {
-  font-size: 0.72rem;
+  font-size: 0.75rem;
   font-weight: 600;
 }
 
 .dock-btn-badge {
-  font-size: 0.6rem;
-  font-weight: 700;
-  background: var(--primary, #00d2ff);
-  color: #000;
+  font-size: 0.62rem;
+  font-weight: 800;
+  background: #00f2fe;
+  color: #0b0f19;
   padding: 1px 6px;
   border-radius: 10px;
 }
 
 .dock-btn-dot {
-  width: 6px;
-  height: 6px;
+  width: 7px;
+  height: 7px;
   border-radius: 50%;
-  box-shadow: 0 0 6px currentColor;
+  box-shadow: 0 0 8px currentColor;
 }
 
 /* Panel */

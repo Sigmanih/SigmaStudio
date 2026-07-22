@@ -660,21 +660,6 @@ def _query_nvidia_smi():
     except: pass
     return gpus
 
-def _query_nvidia_smi_processes():
-    processes = []
-    try:
-        result = subprocess.run(["nvidia-smi","--query-compute-apps=gpu_bus_id,pid,process_name,used_memory","--format=csv,noheader,nounits"], capture_output=True, text=True, timeout=5, encoding="utf-8")
-        if result.returncode == 0:
-            for line in result.stdout.strip().split("\n"):
-                line = line.strip()
-                if not line: continue
-                parts = [p.strip() for p in line.split(",")]
-                if len(parts) >= 3:
-                    proc_name = parts[2]
-                    clean_name = os.path.basename(proc_name) if proc_name and proc_name != "[Insufficient Permissions]" else "System/Process"
-                    processes.append({"bus_id": parts[0], "pid": parts[1], "process_name": clean_name, "full_path": parts[2], "used_memory_mb": parts[3] if len(parts) > 3 else "N/A"})
-    except: pass
-    return processes
 
 def _check_torch_cuda():
     result = {"torch_available": False, "torch_version": None, "torch_cuda_version": None, "cuda_available": False, "cuda_device_count": 0, "torch_gpu_list": [], "cuda_error": None, "cudnn_version": None}
@@ -742,13 +727,47 @@ def get_hardware_info():
         except: pass
     if torch_info["cuda_available"] and torch_info["torch_gpu_list"]:
         torch_by_idx = {g["index"]: g for g in torch_info["torch_gpu_list"]}
-        for sg in smi_gpus:
-            t = torch_by_idx.get(sg["index"])
-            if t:
-                sg["compute_capability"] = t.get("compute_capability", sg.get("compute_cap","?"))
-                sg["multi_processor_count"] = t.get("multi_processor_count", 0)
-                sg["cuda_visible"] = True
-            else: sg["cuda_visible"] = False
+        if not smi_gpus:
+            # Fallback: Build telemetry list directly from PyTorch CUDA
+            try:
+                import torch
+                for tg in torch_info["torch_gpu_list"]:
+                    idx = tg["index"]
+                    alloc_bytes = torch.cuda.memory_allocated(idx) if torch.cuda.is_available() else 0
+                    reserved_bytes = torch.cuda.memory_reserved(idx) if torch.cuda.is_available() else 0
+                    props = torch.cuda.get_device_properties(idx)
+                    total_bytes = props.total_memory
+                    used_mb = round(alloc_bytes / (1024**2), 1)
+                    total_mb = round(total_bytes / (1024**2), 1)
+                    free_mb = round((total_bytes - reserved_bytes) / (1024**2), 1)
+                    smi_gpus.append({
+                        "index": idx,
+                        "name": props.name,
+                        "vram_total_mb": total_mb,
+                        "vram_free_mb": free_mb,
+                        "vram_used_mb": used_mb,
+                        "vram_total_gb": tg.get("vram_gb", round(total_mb / 1024, 1)),
+                        "vram_free_gb": round(free_mb / 1024, 1),
+                        "driver_version": torch_info.get("torch_cuda_version", "PyTorch CUDA"),
+                        "pcie_gen": 4,
+                        "pcie_width": 16,
+                        "compute_cap": tg.get("compute_capability", "8.0"),
+                        "gpu_util_pct": round((alloc_bytes / max(1, total_bytes)) * 100, 1),
+                        "temp_c": 0,
+                        "power_draw_w": 0,
+                        "power_limit_w": 0,
+                        "cuda_visible": True,
+                    })
+            except Exception:
+                pass
+        else:
+            for sg in smi_gpus:
+                t = torch_by_idx.get(sg["index"])
+                if t:
+                    sg["compute_capability"] = t.get("compute_capability", sg.get("compute_cap","?"))
+                    sg["multi_processor_count"] = t.get("multi_processor_count", 0)
+                    sg["cuda_visible"] = True
+                else: sg["cuda_visible"] = False
     else:
         for sg in smi_gpus: sg["cuda_visible"] = torch_info["cuda_available"]
     cuda_fix = _build_cuda_fix(smi_gpus, torch_info)
@@ -758,8 +777,7 @@ def get_hardware_info():
     elif smi_gpus: mgpu_desc = f"1 GPU: {smi_gpus[0]['name']} ({smi_gpus[0].get('vram_total_gb',0)} GB VRAM)"
     else: mgpu_desc = "Nessuna GPU hardware rilevata"
     multi_gpu = {"available": gpu_count > 1, "gpu_count": gpu_count, "total_vram_gb": round(total_vram,1), "strategy": "device_map_auto" if gpu_count > 1 else "single", "description": mgpu_desc}
-    processes = _query_nvidia_smi_processes()
-    return {"success": True, "hardware": {"gpu": smi_gpus, "gpu_count": gpu_count, "processes": processes, "cpu_count": os.cpu_count() or 1,
+    return {"success": True, "hardware": {"gpu": smi_gpus, "gpu_count": gpu_count, "cpu_count": os.cpu_count() or 1,
             "ram_gb": ram_total_gb, "ram_used_gb": ram_used_gb, "ram_free_gb": ram_free_gb,
             "cuda_available": torch_info["cuda_available"], "cuda_device_count": torch_info["cuda_device_count"],
             "torch_available": torch_info["torch_available"], "torch_version": torch_info.get("torch_version"),

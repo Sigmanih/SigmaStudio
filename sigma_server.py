@@ -497,9 +497,8 @@ def _write_build_stamp() -> None:
 
 
 def _init_manifesti() -> None:
-    """Ensure the manifesti/ directory exists and copy default manifestos from sigma0/."""
+    """Ensure the manifesti/ directory exists (default manifestos are already stored here)."""
     manifesti_dir = "manifesti"
-    sigma0_dir = "sigma0"
 
     if not os.path.exists(manifesti_dir):
         try:
@@ -507,19 +506,6 @@ def _init_manifesti() -> None:
             log.info("Created directory %s/", manifesti_dir)
         except OSError as exc:
             log.error("Failed to create directory %s: %s", manifesti_dir, exc)
-            return
-
-    if os.path.exists(sigma0_dir):
-        for fname in os.listdir(sigma0_dir):
-            if fname.endswith(".md") and fname.lower() != "readme.md":
-                dest_path = os.path.join(manifesti_dir, fname)
-                src_path = os.path.join(sigma0_dir, fname)
-                if not os.path.exists(dest_path):
-                    try:
-                        shutil.copy2(src_path, dest_path)
-                        log.info("Copied default manifesto %s -> %s", src_path, dest_path)
-                    except OSError as exc:
-                        log.error("Failed to copy manifesto %s to %s: %s", src_path, dest_path, exc)
 
 
 from core.data_handler import rebuild_modules_meta as _rebuild_modules_meta

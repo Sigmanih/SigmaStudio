@@ -1,9 +1,10 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { BookOpen, Database, Cpu, BarChart2, Brain, X } from 'lucide-react';
+import { BookOpen, Database, Cpu, BarChart2, Brain, ShieldCheck, X } from 'lucide-react';
 import TrainingDocs from './TrainingDocs';
 import DatasetBrowser from './DatasetBrowser';
 import TrainingConfigurator from './TrainingConfigurator';
 import TrainingMonitor from './TrainingMonitor';
+import TrainingHFToken from './TrainingHFToken';
 import '../../styles/training-lab.css';
 
 // ==============================================================================
@@ -16,6 +17,7 @@ const MODES = [
   { id: 'dataset', label: '🗃️ Dataset', icon: Database, desc: 'HuggingFace + Import locale' },
   { id: 'training', label: '⚙️ Configurazione', icon: Cpu, desc: 'Modello, metodo, iperparametri' },
   { id: 'monitor', label: '📊 Monitor', icon: BarChart2, desc: 'Log live, loss chart, export' },
+  { id: 'token', label: '🔑 HF Token', icon: ShieldCheck, desc: 'Configura HuggingFace Token' },
 ];
 
 function Toast({ toast, onClose }) {
@@ -186,6 +188,10 @@ export default function TrainingLab({ addToast: _addToast, onTasksUpdated }) {
             activeJobId={activeJobId}
             onAddToast={showToast}
           />
+        )}
+
+        {mode === 'token' && (
+          <TrainingHFToken addToast={showToast} />
         )}
       </div>
     </div>

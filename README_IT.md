@@ -34,6 +34,8 @@ Immagina un **team di agenti AI specializzati** (un matematico, un architetto, u
 | 🧩 **Architettura Modulare** | Backend Python + Frontend React 19 + AI Multi-provider: completamente componibile |
 | 🤖 **Orchestrazione Multi-Agente** | Pipeline parallele con agenti specializzati, condivisione del contesto e delega automatica |
 | 📚 **Sessioni di Ricerca** | Scomposizione di obiettivi complessi in micro-task con tracciabilità completa |
+| 🧠 **Training Lab** | Fine-tuning e pre-training di LLM con interfaccia completa — dataset, metodi, monitoraggio live |
+| ⚡ **Hardware & GPU Monitor** | Monitoraggio real-time GPU, configurazione multi-GPU e parallelismo Ollama |
 
 ---
 
@@ -60,7 +62,7 @@ Immagina un **team di agenti AI specializzati** (un matematico, un architetto, u
   <img src="images/screenshots/visualizzazioni.png" alt="Visualizzazioni Interattive Generate" width="48%" />
 </p>
 <p align="center">
-  <em>Sigma Lab Editor per la redazione e modifica dei file (sinistra) e le Visualizzazioni interattive ed editoriali D3.js generate dagli agenti (destra).</em>
+  <em>Sigma Lab Editor per la redazione e modifica dei file (sinistra) e le Visualizzazioni interattive D3.js generate dagli agenti (destra).</em>
 </p>
 
 ### 💡 Da un singolo Prompt a una Knowledge Base Completa
@@ -92,6 +94,118 @@ La chat di Sigma Studio non è un semplice chatbot, ma un pannello di controllo 
 
 ---
 
+## 🧠 Training Lab
+
+Il **Training Lab** è un ambiente completo per il fine-tuning e il pre-training di modelli linguistici, accessibile dal menu laterale `🧠 Training Lab` e organizzato in 4 sezioni:
+
+### 📖 Documentazione
+Guida completa ai metodi di training supportati, requisiti hardware e best practice.
+
+### 🗃️ Dataset
+Navigazione, ricerca e gestione dei dataset di training:
+- **⭐ Consigliati**: 15 dataset open-source curati per LLM training, organizzati per categoria:
+  - *Instruction Tuning*: Alpaca (52K), Dolly (15K), OpenHermes 2.5 (1M+), UltraChat 200K, OpenOrca (3.2M)
+  - *Code Training*: CodeAlpaca 20K, Python Code Instructions 18K, StarCoder Data (783GB)
+  - *Math & Reasoning*: MetaMathQA (395K), GSM8K (8.5K), MATH (12.5K)
+  - *Pre-Training*: TinyStories (2M+), OpenWebText, The Pile (825GB)
+  - *Multilingue / ITA*: Italian Dolly, OPUS-100
+- **🔍 Ricerca HuggingFace**: Cerca tra 100.000+ dataset su HuggingFace Hub con preview e metadati
+- **📂 Import Locale**: Trascina e rilascia file JSONL, JSON, CSV o TXT — parsing automatico
+- **🗂️ I Miei Dataset**: Gestione dei dataset importati con selezione per il training
+
+### ⚙️ Configurazione
+Configuratore completo per i job di training con:
+- **4 Metodi di Training**:
+  | Metodo | Descrizione | VRAM Min | Quando Usarlo |
+  |:-------|:------------|:---------|:--------------|
+  | ⚡ **LoRA (Unsloth)** | Fine-tuning efficiente con LoRA 4-bit | 8 GB | Consigliato per la maggior parte dei casi — 2x più veloce, 60% meno VRAM |
+  | 🔬 **SFT (TRL)** | Supervised Fine-Tuning con PEFT | 12 GB | Stabile e versatile, supporta tutti i modelli HuggingFace |
+  | 🌐 **Full Pre-Training** | Training da zero su testo grezzo | 4-80 GB | Per addestrare modelli da zero (es. TinyStories 4GB, The Pile 80GB) |
+  | 🛠️ **Script Custom** | Template Python personalizzabile | — | Massima flessibilità, modifica lo script prima di avviare |
+- **Selezione Modello Base**: Popolari modelli HuggingFace (LLaMA 3.2, Mistral, Phi-3, Gemma) + modelli Ollama locali + modello custom
+- **Iperparametri regolabili**: Epoche, Batch Size, Learning Rate, Max Sequence Length, LoRA Rank/Alpha, Gradient Accumulation
+- **Riepilogo Job**: Riepilogo visivo di tutti i parametri prima del lancio
+
+### 📊 Monitor
+Monitoraggio in tempo reale dei job di training:
+- **Hardware Strip**: Stato CUDA, GPU rilevate (nome, VRAM, temperatura), RAM, versione PyTorch
+- **Diagnostica CUDA**: Rilevamento automatico di mismatch CUDA/driver con comandi di fix consigliati
+- **Selettore Job**: Cronologia di tutti i job con stato (Pronto/In esecuzione/Completato/Fallito/Fermato)
+- **Grafico Loss**: Visualizzazione SVG interattiva della loss nel tempo con parsing automatico dal log
+- **Terminale Live**: Output streaming con colorazione per SIGMA/Error/Warning/Success
+- **Controlli**: Avvia, Ferma, Elimina job — Auto-scroll, Copia log, Pulisci output
+- **Export → Ollama**: Modale di export per trasformare il modello addestrato in un Modelfile Ollama pronto all'uso
+  - Generazione automatica del Modelfile
+  - System Prompt personalizzabile
+  - Comando `ollama create` / `ollama run` integrato
+
+### API Training Lab
+
+| Metodo | Endpoint | Funzione |
+|:-------|:---------|:---------|
+| `GET` | `/api/training/datasets` | Elenco dataset importati |
+| `GET` | `/api/training/datasets/search?q=...` | Ricerca HuggingFace |
+| `GET` | `/api/training/datasets/featured` | Dataset consigliati |
+| `GET` | `/api/training/jobs` | Elenco job di training |
+| `GET` | `/api/training/job/status?job_id=...` | Stato specifico job |
+| `GET` | `/api/training/job/logs?job_id=...&offset=0` | Log live del job |
+| `GET` | `/api/training/hardware` | Stato hardware per training |
+| `POST` | `/api/training/dataset/import` | Import dataset locale |
+| `POST` | `/api/training/dataset/register_hf` | Registra dataset HuggingFace |
+| `POST` | `/api/training/dataset/delete` | Elimina dataset |
+| `POST` | `/api/training/job/create` | Crea job di training |
+| `POST` | `/api/training/job/start` | Avvia job |
+| `POST` | `/api/training/job/stop` | Ferma job |
+| `POST` | `/api/training/job/delete` | Elimina job |
+| `POST` | `/api/training/export/ollama` | Export modello → Ollama |
+| `POST` | `/api/training/dependencies` | Verifica dipendenze per metodo |
+| `POST` | `/api/training/job/clear_logs` | Pulisce log del job |
+
+---
+
+## ⚡ Hardware & GPU Monitor
+
+L'**Hardware & GPU Monitor** è un pannello di controllo completo per il monitoraggio e la configurazione dell'hardware GPU, accessibile dal menu laterale `⚡ Hardware & GPU`.
+
+### Monitoraggio GPU in Tempo Reale
+- **Card GPU Dettagliate**: Per ogni GPU rilevata mostra:
+  - Nome modello, driver, bus PCIe (Gen/Width)
+  - **VRAM**: Barra di occupazione con valori MB/GB e percentuale
+  - **Carico Compute**: Percentuale di utilizzo GPU
+  - **Consumo Elettrico**: Watt attuali vs limite, con barra proporzionale
+  - **Temperatura**, VRAM libera, Compute Capability
+- **Aggiornamento Automatico**: Polling configurabile ogni 2 secondi con pausa/ripresa
+- **Badge Riepilogo**: Numero GPU attive, stato auto-refresh
+
+### Configurazione Multi-GPU
+Pannello di controllo per ottimizzare il parallelismo su sistemi multi-GPU:
+
+| Parametro | Opzioni | Descrizione |
+|:----------|:--------|:------------|
+| **CUDA_VISIBLE_DEVICES** | `0,1` (entrambe), `0` (solo GPU0), `1` (solo GPU1) | Definisce quali GPU sono visibili ai modelli |
+| **OLLAMA_NUM_PARALLEL** | 1/2/4/8 slot | Richieste simultanee che Ollama può elaborare |
+| **OLLAMA_MAX_LOADED_MODELS** | 1/2/3/4 modelli | Modelli mantenuti in VRAM senza ricaricarli |
+| **GPU Preferita Training Lab** | cuda:0 / cuda:1 / cuda:0,1 | Scheda target per job di training PyTorch |
+
+### HuggingFace Token Configuration
+- Imposta il token HF per velocizzare i download dei modelli (fino a 10x)
+- Salvataggio persistente su server
+- Indicatore visivo "Token configurato"
+
+### Processi Attivi GPU
+Tabella dei processi in esecuzione sulla GPU (Ollama, PyTorch, system) con:
+- Bus ID, PID, nome processo, percorso eseguibile, VRAM utilizzata
+
+### API Hardware
+
+| Metodo | Endpoint | Funzione |
+|:-------|:---------|:---------|
+| `GET` | `/api/hardware/status` | Stato completo hardware + configurazione attuale |
+| `POST` | `/api/hardware/config` | Salva e applica configurazione multi-GPU |
+| `POST` | `/api/config/hf_token` | Salva HuggingFace Token |
+
+---
+
 ## 🤝 Aperto ai Contributi!
 
 Sigma Studio è un progetto **open-source** in continua evoluzione e accoglie con entusiasmo contributi da parte della community! Puoi collaborare in molti modi:
@@ -100,6 +214,8 @@ Sigma Studio è un progetto **open-source** in continua evoluzione e accoglie co
 - 🎨 **Miglioramenti UI/UX**: Estendi il design system in vetro (glassmorphism) in React 19.
 - 🔧 **Estensioni Backend**: Aggiungi nuovi provider AI, ottimizza la pipeline di test o arricchisci le API REST.
 - 🔬 **Pipeline di Ricerca**: Integra nuovi strumenti di validazione o template di orchestrazione multi-agente.
+- 🧠 **Training Lab**: Nuovi metodi di training, supporto per quantization (GGUF, AWQ), nuovi template di dataset.
+- ⚡ **Hardware Monitor**: Integrazione AMD ROCm, metriche aggiuntive (fan speed, clock memory).
 
 ---
 
@@ -146,6 +262,12 @@ curl http://localhost:8000/api/tasks
 curl -X POST http://localhost:8000/api/create_model \
   -H "Content-Type: application/json" \
   -d '{"name": "sigma_architect", "modelfile": "FROM llama3.2\nSYSTEM \"\"\"You are a software architect...\"\"\""}'
+
+# Verifica Training Lab
+curl http://localhost:8000/api/training/datasets/featured
+
+# Verifica Hardware Monitor
+curl http://localhost:8000/api/hardware/status
 ```
 
 ---
@@ -197,13 +319,13 @@ Gli agenti AI non sono scatole nere. Sono definiti tramite **Modelfile di Ollama
 | `viz-designer.md` | llama3.2 | **v1.0** | Visualizzatore D3.js — crea grafici interattivi e force graphs |
 | `proof-reviewer.md` | llama3.2 | **v1.0** | Revisore Critico — valida dimostrazioni, confuta affermazioni errate |
 
-Tutti i manifesti degli agenti si trovano in `sigma0/` e possono essere caricati tramite API o dalla Galleria Manifesti nell'interfaccia.
+Tutti i manifesti degli agenti si trovano in `manifesti/` e possono essere caricati tramite API o dalla Galleria Manifesti nell'interfaccia.
 
 ### Crea un Nuovo Agente in 30 Secondi
 
 ```bash
 # 1. Crea un file manifesto
-cat > sigma0/mio_agente.md << 'EOF'
+cat > manifesti/mio_agente.md << 'EOF'
 FROM llama3.2
 SYSTEM """
 Sei un agente specializzato in biologia molecolare...
@@ -219,7 +341,7 @@ EOF
 # 2. Carica il modello in Ollama
 curl -X POST http://localhost:8000/api/create_model \
   -H "Content-Type: application/json" \
-  -d "{\"name\": \"mio_agente\", \"modelfile\": \"$(cat sigma0/mio_agente.md)\"}"
+  -d "{\"name\": \"mio_agente\", \"modelfile\": \"$(cat manifesti/mio_agente.md)\"}"
 ```
 
 ---
@@ -286,6 +408,7 @@ Sigma_Studio/
 │   ├── backup_manager.py           ← Backup automatico e rollback
 │   ├── store.py                    ← Archivio stato persistente
 │   ├── logger.py                   ← Logging strutturato
+│   ├── training_handler.py         ← Training Lab — ciclo vita completo training/fine-tuning
 │   ├── chat/                       ← Sotto-moduli chat
 │   └── orchestration/              ← Sotto-moduli orchestrazione
 │
@@ -295,30 +418,40 @@ Sigma_Studio/
 │   └── src/
 │       ├── App.jsx                 ← Componente principale
 │       ├── components/
-│       │   ├── Sidebar.jsx         ← Navigazione e contatori sessioni
+│       │   ├── Sidebar.jsx         ← Navigazione con badge Research/Training/Hardware Lab
 │       │   ├── Workspace.jsx       ← Sistema centrale a schede (Tab)
 │       │   ├── Dashboard.jsx       ← Tabella Kanban della Roadmap
 │       │   ├── Chat/               ← Chat e pannello del Research Lab
 │       │   │   ├── core/           ← Hook: useChatCore, useResearchPipeline, usePipelineDesigner
 │       │   │   └── layouts/        ← Pannello flottante e scheda workspace
+│       │   ├── TrainingLab/        ← Training Lab (4 sub-tab: Docs, Dataset, Config, Monitor)
+│       │   │   ├── TrainingLab.jsx      ← Orchestratore principale Training Lab
+│       │   │   ├── TrainingDocs.jsx     ← Guida completa ai metodi di training
+│       │   │   ├── DatasetBrowser.jsx   ← Esplorazione HuggingFace + import locale
+│       │   │   ├── TrainingConfigurator.jsx ← Configuratore modelli, metodi, iperparametri
+│       │   │   └── TrainingMonitor.jsx  ← Log live, loss chart, export Ollama
+│       │   ├── HardwareLab/         ← Hardware & GPU Monitor
+│       │   │   └── index.jsx        ← GPU telemetry, multi-GPU config, HF token setup
 │       │   ├── SigmaLab/           ← Editor di testo, visualizzatore e runner
 │       │   └── Workspace/          ← Galleria manifesti e browser moduli
 │       └── styles/                 ← Stili CSS personalizzati (tema scuro glass)
 │
-├── sigma0/                         ← Manifesti degli agenti AI (Modelfile)
-│   ├── sigma_architect.md          ← Agente orchestratore principale
-│   ├── agente0.md                  ← Enterprise AI Architect (esteso)
-│   ├── code_architect.md           ← Agente sviluppatore full-stack
-│   ├── math1.md                    ← Assistente di ricerca matematica
-│   ├── math-collatz.md             ← Specialista matematico Collatz
-│   ├── test-engineer.md            ← Agente ingegnere dei test
-│   ├── viz-designer.md             ← Agente visualizzatore D3.js
-│   ├── proof-reviewer.md           ← Agente revisore critico
-│   ├── README.md                   ← Documentazione agenti
-│   └── agent_improvements_analysis.md
+├── manifesti/                      ← Manifesti degli agenti AI (Modelfile)
+│   ├── sigma_architect.md          ← Orchestratore principale
+│   ├── sigma_admin.md              ← Amministratore sistema
+│   ├── sigma_assistant.md          ← Assistente generale
+│   ├── code_architect.md           ← Sviluppatore full-stack
+│   ├── math_researcher.md          ← Ricercatore matematico
+│   ├── test_engineer.md            ← Ingegnere dei test
+│   ├── viz_designer.md             ← Visualizzatore D3.js
+│   └── proof_reviewer.md           ← Revisore critico
 │
 ├── images/                         ← Screenshot UI e ritratti agenti
 ├── data/                           ← Knowledge Base (sandbox sicura per gli agenti)
+├── training/                       ← Dati di training (dataset, job, script)
+│   ├── datasets/                   ← Dataset importati (meta.json + file dati)
+│   ├── jobs/                       ← Job di training (script, output, log)
+│   └── scripts/                    ← Script template per training
 └── scratch/                        ← Directory temporanea per esperimenti e script
 ```
 
@@ -351,6 +484,14 @@ Sigma_Studio/
 | `GET` | `/api/research/list` | Elenco sessioni di ricerca |
 | `GET` | `/api/research/status` | Stato sessione di ricerca |
 | `GET` | `/api/research/chat_history` | Cronologia chat sessione di ricerca |
+| `GET` | `/api/training/datasets` | Elenco dataset importati (Training Lab) |
+| `GET` | `/api/training/datasets/search?q=...` | Ricerca HuggingFace (Training Lab) |
+| `GET` | `/api/training/datasets/featured` | Dataset consigliati (Training Lab) |
+| `GET` | `/api/training/jobs` | Elenco job (Training Lab) |
+| `GET` | `/api/training/job/status` | Stato job (Training Lab) |
+| `GET` | `/api/training/job/logs` | Log job (Training Lab) |
+| `GET` | `/api/training/hardware` | Hardware info (Training Lab) |
+| `GET` | `/api/hardware/status` | Stato hardware + config (Hardware Lab) |
 
 ### Endpoint POST
 
@@ -400,6 +541,18 @@ Sigma_Studio/
 | `POST` | `/api/manifesti/update_image` | Aggiornamento immagine manifesto |
 | `POST` | `/api/ai/action` | Dispatcher azioni AI generico |
 | `POST` | `/api/rollback` | Rollback ultime operazioni file |
+| `POST` | `/api/hardware/config` | Salva configurazione multi-GPU |
+| `POST` | `/api/config/hf_token` | Salva HuggingFace Token |
+| `POST` | `/api/training/dataset/import` | Import dataset locale |
+| `POST` | `/api/training/dataset/register_hf` | Registra dataset HuggingFace |
+| `POST` | `/api/training/dataset/delete` | Elimina dataset |
+| `POST` | `/api/training/job/create` | Crea job di training |
+| `POST` | `/api/training/job/start` | Avvia job |
+| `POST` | `/api/training/job/stop` | Ferma job |
+| `POST` | `/api/training/job/delete` | Elimina job |
+| `POST` | `/api/training/export/ollama` | Export modello → Ollama |
+| `POST` | `/api/training/dependencies` | Verifica dipendenze |
+| `POST` | `/api/training/job/clear_logs` | Pulisce log job |
 
 ---
 

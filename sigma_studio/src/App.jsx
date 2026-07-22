@@ -1,4 +1,5 @@
 import React, { useEffect } from 'react';
+import { GripVertical } from 'lucide-react';
 
 // Sub-components
 import Sidebar from './components/Sidebar';
@@ -7,6 +8,7 @@ import ChatPanel from './components/Chat/ChatPanel';
 import AIConfig from './components/AIConfig';
 import ToastNotification from './components/ToastNotification';
 import TaskFloatingPanel from './components/TaskFloatingPanel';
+import HardwareFloatingPanel from './components/HardwareFloatingPanel';
 import { ModuleModal, TaskModal, NewFileModal } from './components/modals';
 
 // Context
@@ -55,7 +57,44 @@ function AppContent() {
   } = useApp();
 
   const [taskPanelOpen, setTaskPanelOpen] = React.useState(false);
+  const [hardwarePanelOpen, setHardwarePanelOpen] = React.useState(false);
   const [dockMinimized, setDockMinimized] = React.useState(false);
+
+  // Floating dock bar drag state
+  const [dockPos, setDockPos] = React.useState({ x: undefined, y: undefined });
+  const [dockDragging, setDockDragging] = React.useState(false);
+  const [dockDragStart, setDockDragStart] = React.useState({ x: 0, y: 0 });
+
+  useEffect(() => {
+    if (!dockDragging) return;
+    const hMM = (e) => {
+      const dx = e.clientX - dockDragStart.x;
+      const dy = e.clientY - dockDragStart.y;
+      if (Math.abs(dx) > 2 || Math.abs(dy) > 2) {
+        setDockPos(prev => ({
+          x: (prev.x !== undefined ? prev.x : 20) + dx,
+          y: (prev.y !== undefined ? prev.y : window.innerHeight - 70) + dy
+        }));
+        setDockDragStart({ x: e.clientX, y: e.clientY });
+      }
+    };
+    const hMU = () => setDockDragging(false);
+    document.addEventListener('mousemove', hMM);
+    document.addEventListener('mouseup', hMU);
+    return () => {
+      document.removeEventListener('mousemove', hMM);
+      document.removeEventListener('mouseup', hMU);
+    };
+  }, [dockDragging, dockDragStart]);
+
+  const handleDockMouseDown = (e) => {
+    if (e.target.closest('button')) return;
+    const initialX = dockPos.x !== undefined ? dockPos.x : 20;
+    const initialY = dockPos.y !== undefined ? dockPos.y : window.innerHeight - 70;
+    setDockPos({ x: initialX, y: initialY });
+    setDockDragStart({ x: e.clientX, y: e.clientY });
+    setDockDragging(true);
+  };
 
   // --- MESSAGE EVENT LISTENERS ---
   useEffect(() => {
@@ -167,8 +206,23 @@ function AppContent() {
         type={fileOps.fileModalContext.type}
       />
 
-      {/* FLOATING DOCK BAR — BOTTOM LEFT */}
-      <div className={`ai-float-dock-bar ${dockMinimized ? 'minimized' : ''}`}>
+      {/* FLOATING DOCK BAR — DRAGGABLE */}
+      <div 
+        className={`ai-float-dock-bar ${dockMinimized ? 'minimized' : ''}`}
+        style={{
+          left: dockPos.x !== undefined ? `${dockPos.x}px` : '20px',
+          top: dockPos.y !== undefined ? `${dockPos.y}px` : undefined,
+          bottom: dockPos.y !== undefined ? 'auto' : '20px',
+        }}
+      >
+        <div 
+          className="dock-drag-handle" 
+          onMouseDown={handleDockMouseDown} 
+          title="Trascina la barra strumenti in qualsiasi posizione"
+        >
+          <GripVertical size={16} />
+        </div>
+
         <button
           className="dock-toggle-btn"
           onClick={() => setDockMinimized(!dockMinimized)}
@@ -188,6 +242,17 @@ function AppContent() {
               <span className="dock-btn-icon">📋</span>
               <span className="dock-btn-label">Roadmap</span>
               {tasks?.length > 0 && <span className="dock-btn-badge">{tasks.length}</span>}
+            </button>
+
+            {/* Hardware GPU button */}
+            <button
+              className={`dock-btn hardware-btn ${hardwarePanelOpen ? 'active' : ''}`}
+              onClick={() => setHardwarePanelOpen(!hardwarePanelOpen)}
+              title={hardwarePanelOpen ? 'Riduci Hardware & GPU Monitor' : 'Apri Hardware & GPU Monitor'}
+            >
+              <span className="dock-btn-icon">⚡</span>
+              <span className="dock-btn-label">Hardware GPU</span>
+              <span className="dock-btn-dot" style={{ backgroundColor: hardwarePanelOpen ? '#10b981' : '#555' }} />
             </button>
 
             {/* AI Chat button */}
@@ -228,6 +293,14 @@ function AppContent() {
         />
       )}
 
+      {/* HARDWARE FLOATING PANEL */}
+      {hardwarePanelOpen && (
+        <HardwareFloatingPanel
+          onClose={() => setHardwarePanelOpen(false)}
+          addToast={addToast}
+        />
+      )}
+
       {/* AI CHAT PANEL */}
       {aiChatOpen && (
         <ChatPanel
@@ -241,9 +314,14 @@ function AppContent() {
       )}
 
       {/* AI CONFIG MODAL */}
-      <AIConfig isOpen={aiConfigOpen} onClose={() => setAiConfigOpen(false)} />
-      
-      {/* Toast Notifications */}
+      {aiConfigOpen && (
+        <AIConfig
+          isOpen={aiConfigOpen}
+          onClose={() => setAiConfigOpen(false)}
+          addToast={addToast}
+        />
+      )}
+
       <ToastNotification toasts={toasts} removeToast={removeToast} />
     </div>
   );
