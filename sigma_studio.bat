@@ -49,8 +49,18 @@ for /f "tokens=5" %%a in ('netstat -ano ^| findstr ":8000"') do (
 )
 timeout /t 1 >nul
 
+:: High-Performance Hardware Acceleration Environment
+set CUDA_VISIBLE_DEVICES=0,1
+set OLLAMA_NUM_PARALLEL=4
+set OLLAMA_MAX_LOADED_MODELS=2
+set OLLAMA_FLASH_ATTENTION=1
+set OLLAMA_KEEP_ALIVE=24h
+set PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
+set OMP_NUM_THREADS=12
+set MKL_NUM_THREADS=12
+
 :: Run server
-echo [SIGMA_SERVER] Starting fresh server on http://localhost:8000
+echo [SIGMA_SERVER] Starting fresh server with Multi-GPU and FlashAttention on http://localhost:8000
 python sigma_server.py
 
 :: Deactivate venv automatically when server exits

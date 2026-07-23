@@ -423,6 +423,24 @@ def _handle_hardware_restart_ollama(self):
     self.send_json_response(res)
 SigmaAPIHandler.handle_hardware_restart_ollama = _handle_hardware_restart_ollama
 
+def handle_router_train(self):
+    """API Endpoint to rebuild the sigma-router model and generate training dataset."""
+    try:
+        from core.router_trainer import ensure_sigma_router_model, generate_routing_dataset
+        dataset_count = generate_routing_dataset()
+        model_ok = ensure_sigma_router_model()
+        return self.send_json_response({
+            "success": True,
+            "message": f"Modello router 'sigma-router' inizializzato con successo. Generati {dataset_count} esempi nel dataset.",
+            "dataset_path": "data/router_dataset.jsonl",
+            "model": "sigma-router",
+            "status": "ready"
+        })
+    except Exception as exc:
+        return self.send_json_response({"success": False, "error": str(exc)}, status=500)
+
+SigmaAPIHandler.handle_router_train = handle_router_train
+
 def _handle_hf_token_config(self):
     """Salva HF_TOKEN nella config e lo imposta come variabile d'ambiente."""
     body = self.read_json_body()
@@ -518,28 +536,41 @@ from core.data_handler import rebuild_modules_meta as _rebuild_modules_meta
 
 
 def _apply_hardware_env():
-    """Apply multi-GPU hardware + HF_TOKEN environment variables from config.json at startup."""
+    """Apply multi-GPU hardware + high-performance execution variables at startup."""
     try:
+        cfg = {}
         if os.path.exists("config.json"):
             with open("config.json", "r", encoding="utf-8") as f:
                 cfg = json.load(f)
-            hw = cfg.get("hardware", {})
-            devices = hw.get("cuda_visible_devices", "0,1")
-            num_parallel = str(hw.get("ollama_num_parallel", 4))
-            max_loaded = str(hw.get("ollama_max_loaded_models", 2))
-            
-            os.environ["CUDA_VISIBLE_DEVICES"] = devices
-            os.environ["OLLAMA_NUM_PARALLEL"] = num_parallel
-            os.environ["OLLAMA_MAX_LOADED_MODELS"] = max_loaded
-            log.info("Multi-GPU hardware env applied: CUDA_VISIBLE_DEVICES=%s OLLAMA_NUM_PARALLEL=%s OLLAMA_MAX_LOADED_MODELS=%s",
-                     devices, num_parallel, max_loaded)
-            
-            # Apply HF_TOKEN if present
-            hf_token = cfg.get("hf_token", "")
-            if hf_token:
-                os.environ["HF_TOKEN"] = hf_token
-                os.environ["HUGGINGFACE_TOKEN"] = hf_token
-                log.info("HF_TOKEN loaded from config (masked: %s...)", hf_token[:8] if len(hf_token) > 8 else "")
+        
+        hw = cfg.get("hardware", {})
+        devices = hw.get("cuda_visible_devices", "0,1")
+        num_parallel = str(hw.get("ollama_num_parallel", 4))
+        max_loaded = str(hw.get("ollama_max_loaded_models", 2))
+        
+        # 1. Multi-GPU & Ollama Concurrency Optimization
+        os.environ["CUDA_VISIBLE_DEVICES"] = devices
+        os.environ["OLLAMA_NUM_PARALLEL"] = num_parallel
+        os.environ["OLLAMA_MAX_LOADED_MODELS"] = max_loaded
+        os.environ["OLLAMA_FLASH_ATTENTION"] = "1"
+        os.environ["OLLAMA_KEEP_ALIVE"] = "24h"
+        
+        # 2. PyTorch & CUDA Memory Allocation Optimization
+        os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:True"
+        
+        # 3. CPU Core Multi-threading Optimization (12 physical cores)
+        os.environ["OMP_NUM_THREADS"] = "12"
+        os.environ["MKL_NUM_THREADS"] = "12"
+        
+        log.info("⚡ Hardware Acceleration active: GPUs=%s | Parallel Slots=%s | FlashAttention=1 | VRAM Warm Cache=24h | CPU Threads=12",
+                 devices, num_parallel)
+        
+        # 4. Apply HF_TOKEN if present
+        hf_token = cfg.get("hf_token", "")
+        if hf_token:
+            os.environ["HF_TOKEN"] = hf_token
+            os.environ["HUGGINGFACE_TOKEN"] = hf_token
+            log.info("HF_TOKEN loaded from config (masked: %s...)", hf_token[:8] if len(hf_token) > 8 else "")
     except Exception as exc:
         log.warning("Could not apply hardware env: %s", exc)
 
@@ -565,6 +596,14 @@ if __name__ == "__main__":
 
     # 1. Rebuild modules_meta.json from filesystem
     _rebuild_modules_meta()
+
+    # 1b. Initialize Dedicated LLM Router Model and Dataset
+    try:
+        from core.router_trainer import ensure_sigma_router_model, generate_routing_dataset
+        ensure_sigma_router_model()
+        generate_routing_dataset()
+    except Exception as exc:
+        log.warning("Router model initialization skipped: %s", exc)
 
 
     # 2. Ensure virtual environment exists (for AI terminal access)

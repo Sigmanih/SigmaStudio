@@ -176,7 +176,7 @@ def _collect_context_files(handler, open_files: list[str]) -> str:
 
 
 def _determine_agent_by_request(message: str, ai_cfg: dict, model_override: str) -> str:
-    """Determine the specialized agent manifesto based on prompt keywords & LLM routing."""
+    """Determine the specialized agent manifesto based on semantic domain patterns & LLM intent classification."""
     import re
     import json
     import os
@@ -194,68 +194,65 @@ def _determine_agent_by_request(message: str, ai_cfg: dict, model_override: str)
     ]
     if msg_lower in simple_greetings or (len(msg_lower.split()) <= 3 and any(w in msg_lower for w in ["ciao", "salve", "buongiorno", "grazie", "hey"])):
         if os.path.exists("manifesti/sigma_assistant.md"):
-            log.info("Auto-routing (keyword match: simple chat) -> manifesti/sigma_assistant.md")
+            log.info("Centralino Switchboard (Front-Desk Chat) -> manifesti/sigma_assistant.md")
             return "manifesti/sigma_assistant.md"
 
-    # 2. Explicit Script / Code Creation -> code_architect
-    script_keywords = ["script", "script python", "scrivi uno script", "crea uno script", "programma python", "codice python", "scrivi codice", "fai uno script"]
-    if any(kw in msg_lower for kw in script_keywords):
-        if os.path.exists("manifesti/code_architect.md"):
-            log.info("Auto-routing (keyword match: script/code) -> manifesti/code_architect.md")
-            return "manifesti/code_architect.md"
+    # 2. Primary Intent Classifier using dedicated lightweight 'sigma-router' model (<200ms)
+    try:
+        from core.router_trainer import classify_agent_with_router
+        model_routed_path = classify_agent_with_router(message)
+        if model_routed_path:
+            return model_routed_path
+    except Exception as exc:
+        log.debug("Dedicated model router skipped: %s", exc)
 
-    # 3. Math, Fractals, Geometry & Analysis -> math_researcher
-    math_keywords = [
-        "frattali", "frattale", "matematica", "teorema", "dimostrazione", "calcolo",
-        "equazione", "formula", "geometria", "algebra", "limite", "integrale",
-        "derivata", "funzione", "ricorsione", "mandelbrot", "sierpinski", "koch",
-        "collatz", "spazio metrico", "hausdorff", "fibonacci", "matrice", "vettore"
-    ]
-    if any(kw in msg_lower for kw in math_keywords) and "d3" not in msg_lower and "canvas" not in msg_lower:
-        if os.path.exists("manifesti/math_researcher.md"):
-            log.info("Auto-routing (keyword match: math) -> manifesti/math_researcher.md")
-            return "manifesti/math_researcher.md"
-
-    # 3. Code, Refactoring & Web Apps -> code_architect
-    code_keywords = [
-        "codice", "react", "jsx", "css", "backend", "frontend", "refactoring",
-        "componente", "html", "script", "python", "bug", "errore nel codice",
-        "funzione python", "api", "endpoint", "javascript", "typescript"
-    ]
-    if any(kw in msg_lower for kw in code_keywords):
-        if os.path.exists("manifesti/code_architect.md"):
-            log.info("Auto-routing (keyword match: code) -> manifesti/code_architect.md")
-            return "manifesti/code_architect.md"
-
-    # 4. Visualizations, D3.js & Charts -> viz_designer
-    viz_keywords = ["grafico", "visualizzaz", "d3", "canvas", "diagramma", "disegna", "mappa", "chart"]
-    if any(kw in msg_lower for kw in viz_keywords):
+    # 2. Visualizations, D3.js & Charts -> viz_designer
+    viz_patterns = [r'\b(d3|canvas|grafic|diagramm|plot|chart|visualizz)\w*']
+    if any(re.search(p, msg_lower, re.IGNORECASE) for p in viz_patterns):
         if os.path.exists("manifesti/viz_designer.md"):
-            log.info("Auto-routing (keyword match: viz) -> manifesti/viz_designer.md")
+            log.info("Centralino Switchboard (Semantic match: Viz & Charts) -> manifesti/viz_designer.md")
             return "manifesti/viz_designer.md"
 
-    # 5. Testing & Pytest -> test_engineer
-    test_keywords = ["test", "pytest", "unit test", "asserzione", "coverage"]
-    if any(kw in msg_lower for kw in test_keywords):
+    # 3. Testing & Pytest -> test_engineer
+    test_patterns = [r'\b(pytest|unit\s*test|asserzion|coverag)\w*']
+    if any(re.search(p, msg_lower, re.IGNORECASE) for p in test_patterns):
         if os.path.exists("manifesti/test_engineer.md"):
-            log.info("Auto-routing (keyword match: test) -> manifesti/test_engineer.md")
+            log.info("Centralino Switchboard (Semantic match: Testing) -> manifesti/test_engineer.md")
             return "manifesti/test_engineer.md"
 
-    # 6. Proof Review & Verification -> proof_reviewer
-    proof_keywords = ["revisione", "verifica dimostrazione", "confuta", "peer review"]
-    if any(kw in msg_lower for kw in proof_keywords):
-        if os.path.exists("manifesti/proof_reviewer.md"):
-            log.info("Auto-routing (keyword match: proof) -> manifesti/proof_reviewer.md")
-            return "manifesti/proof_reviewer.md"
+    # 4. Explicit Code & Software Engineering -> code_architect
+    code_patterns = [
+        r'```', r'def\s+\w+', r'class\s+\w+', r'import\s+\w+', r'function\s+\w+',
+        r'const\s+\w+', r'let\s+\w+', r'var\s+\w+', r'\.\w{2,4}\b',
+        r'\b(funzione\s+python|scrivi\s+codice|crea\s+script|programma\s+python|scrivi\s+script|script\s+python|refactor|bug|fix|endpoint|react|jsx|python|javascript|css|html|backend|frontend)\w*'
+    ]
+    if any(re.search(p, msg_lower, re.IGNORECASE) for p in code_patterns):
+        if os.path.exists("manifesti/code_architect.md"):
+            log.info("Centralino Switchboard (Semantic match: Code & Software) -> manifesti/code_architect.md")
+            return "manifesti/code_architect.md"
 
-    # 7. System Architecture & Project Management -> sigma_architect
-    arch_keywords = ["architettura", "roadmap", "pianifica", "moduli", "struttura progetto"]
-    if any(kw in msg_lower for kw in arch_keywords):
+    # 5. Pure & Applied Mathematics, Physics & Theory -> math_researcher
+    math_stems = [
+        r'[\$∑∫√π∂∈∀∃≠≤≥∞]',
+        r'\b(lim|det|mod|log|exp|sin|cos|tan|matrix|vector|bayes|markov|poisson|bernoulli|fourier|laplace|cauchy|euler|gauss|riemann|hilbert|banach|lebesgue)\b',
+        r'[a-z]\([a-z0-9,\s]+\)\s*=',
+        r'[a-z]_[0-9n]',
+        r'r\^[0-9n]',
+        r'\b(matemat|frattal|dimostr|teorem|lemm|congett|equazion|disequazion|formul|integr|derivat|esponenz|logarit|matric|vettor|probabil|statist|topolog|algebra|geometri|calcol|analis|spazi|misura|induzion|ricorsio|invers|inclusio|insiem|combinator|convergenz|serie|successio|funzion|grado|parabol|polinom|zeri|radic|frazion|aritmetic|numerat|denominat|divis)\w*'
+    ]
+    if any(re.search(p, msg_lower, re.IGNORECASE) for p in math_stems):
+        if os.path.exists("manifesti/math_researcher.md"):
+            log.info("Centralino Switchboard (Semantic match: Pure & Applied Math) -> manifesti/math_researcher.md")
+            return "manifesti/math_researcher.md"
+
+    # 6. System Architecture & Roadmap -> sigma_architect
+    arch_patterns = [r'\b(architettur|roadmap|pianific|modul|struttura\s+progetto)\w*']
+    if any(re.search(p, msg_lower, re.IGNORECASE) for p in arch_patterns):
         if os.path.exists("manifesti/sigma_architect.md"):
-            log.info("Auto-routing (keyword match: architect) -> manifesti/sigma_architect.md")
+            log.info("Centralino Switchboard (Semantic match: Architecture) -> manifesti/sigma_architect.md")
             return "manifesti/sigma_architect.md"
 
-    # Use default coordinator credentials
+    # 7. Fallback Semantic LLM Classifier Router
     main_model, provider, endpoint, api_url, api_key, temperature, max_tokens, top_p, timeout = \
         load_agent_config(ai_cfg, model_override, SIGMA_ARCHITECT_ID)
         
@@ -264,15 +261,15 @@ def _determine_agent_by_request(message: str, ai_cfg: dict, model_override: str)
     
     agents_info = "\n".join([f"- {a['id']}: {a['name']} (Specializzazione: {a.get('specialization', a.get('role', ''))})" for a in active_agents])
     
-    system_prompt = f"""Sei Sigma AI Architect. Il tuo unico scopo è instradare la richiesta dell'utente all'agente specializzato più efficiente.
-    
+    system_prompt = f"""Sei l'Orchestratore e Centralino Intelligente di Sigma Studio.
+Il tuo unico compito è analizzare il senso semantico della richiesta dell'utente e rispondi ESCLUSIVAMENTE con l'ID dell'agente più idoneo:
+
 ### AGENTI DISPONIBILI:
 {agents_info}
 
-### REGOLA FONDAMENTALE:
-Rispondi SOLO ed ESCLUSIVAMENTE con l'id esatto dell'agente prescelto (es: sigma_assistant, math_researcher, code_architect).
-Non aggiungere introduzioni, non spiegare il motivo, non scrivere nient'altro. Solo l'id dell'agente prescelto.
-Se la richiesta è una conversazione generale, rispondi: sigma_assistant
+### REGOLE:
+- Rispondi SOLO ed ESCLUSIVAMENTE con l'id esatto dell'agente (es: math_researcher, code_architect, viz_designer, sigma_assistant).
+- Non aggiungere spiegazioni, punteggiatura o altri testi.
 """
 
     messages = [
@@ -292,10 +289,10 @@ Se la richiesta è una conversazione generale, rispondi: sigma_assistant
                 if a['id'].lower() == chosen or a['id'].lower().replace('-', '_') == chosen.replace('-', '_'):
                     path = f"manifesti/{a['id']}.md"
                     if os.path.exists(path):
-                        log.info("Auto-routing to agent: %s (%s)", a['id'], path)
+                        log.info("Centralino Switchboard (LLM Classifier) -> agent: %s (%s)", a['id'], path)
                         return path
     except Exception as e:
-        log.error("Error in automatic agent routing: %s", e)
+        log.error("Error in LLM agent routing: %s", e)
         
     return "manifesti/sigma_assistant.md"
 

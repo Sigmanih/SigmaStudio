@@ -42,6 +42,7 @@ def register_get_handlers(handler_class):
 def register_post_handlers(handler_class):
     """Register POST API handlers on the handler class."""
     handler_class._POST_HANDLERS = {
+        '/api/router/train': 'handle_router_train',
         '/api/hardware/config': 'handle_hardware_config',
         '/api/hardware/restart-ollama': 'handle_hardware_restart_ollama',
         '/api/run_test': 'handle_run_test',

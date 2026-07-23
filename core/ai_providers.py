@@ -6,6 +6,7 @@
 
 import json
 import os
+import re
 import copy
 
 try:
@@ -486,18 +487,24 @@ def parse_thinking_and_content(raw_text: str, provider_thinking: str = None) -> 
         thinking = f"{thinking}\n{extracted}".strip() if thinking else extracted
         content = re.sub(r'<think>.*?</think>', '', content, flags=re.DOTALL | re.IGNORECASE).strip()
         
-    # 2. Heuristic reasoning headers (Analyze User Input, Draft Construction, etc.)
-    reasoning_keywords = ['Analyze User Input', 'Draft Construction', 'Check System Prompt', 'Determine Response Strategy', 'Mental Refinement', 'Final Polish']
-    if not thinking and any(kw in content for kw in reasoning_keywords):
-        split_match = re.search(r'✅|\bFinal Polish:.*?\n', content, re.DOTALL)
-        if split_match:
-            split_pos = split_match.end()
+    # 2. Heuristic reasoning headers (Analyze User Input, Identify Intent, Persona Check, Draft, etc.)
+    reasoning_keywords = [
+        'Analyze User Input', 'Identify Key Concepts', 'Structure the Response',
+        'Draft Construction', 'Draft the Content', 'Self-Correction', 'Check System Prompt',
+        'Determine Response Strategy', 'Mental Refinement', 'Final Polish',
+        'The user is asking', 'The user said', 'Identify Intent:', 'Determine Response Mode:',
+        'Persona Check:', 'Response Plan:', 'Drafting the response:', 'Refining tone:', 'Plan:'
+    ]
+    if any(kw in content for kw in reasoning_keywords):
+        end_match = re.search(r'(?:Output matches[^\n]*✅?|✅|\bProceed\.|\bFinal Polish:.*?\n|\bThis fits perfectly[^\n]*\n|\bThis sounds professional[^\n]*\n|\bUse this approach\.[^\n]*\n|\bProceed with this response\.[^\n]*\n)', content, re.IGNORECASE)
+        if end_match:
+            split_pos = end_match.end()
             extracted_think = content[:split_pos].strip()
             thinking = f"{thinking}\n{extracted_think}".strip() if thinking else extracted_think
             content = content[split_pos:].strip()
             content = re.sub(r'^[🤖✅\s]+', '', content).strip()
         else:
-            parts = re.split(r'\n(?=Ciao|Benvenuto|Salute|Ecco)', content, maxsplit=1)
+            parts = re.split(r'\n(?=Le\s|I\s|Un\s|Una\s|Il\s|La\s|#|\*\*|Ciao|Salute|Benvenuto|Ecco|Certamente|Sicuramente)', content, maxsplit=1)
             if len(parts) == 2:
                 thinking = parts[0].strip()
                 content = parts[1].strip()
@@ -523,11 +530,13 @@ def call_ollama(
     try:
         options = {
             "temperature": temperature,
-            "num_predict": max_tokens,
+            "num_predict": max(max_tokens or 8192, 16384), # Generous token limit to prevent truncation during reasoning monologues
             "top_p": top_p,
             "top_k": top_k,
             "repeat_penalty": repeat_penalty,
-            "num_ctx": num_ctx,
+            "num_ctx": max(num_ctx or 16384, 32768),       # Expanded context window
+            "num_thread": 12,                              # Use 12 physical CPU threads for prompt prefill
+            "use_mmap": True,                              # Memory-mapped weights for high memory bandwidth
         }
         if seed:
             options["seed"] = seed
@@ -592,11 +601,13 @@ def call_ollama_stream(
     try:
         options = {
             "temperature": temperature,
-            "num_predict": max_tokens,
+            "num_predict": max(max_tokens or 8192, 16384), # Generous token limit to prevent truncation during reasoning monologues
             "top_p": top_p,
             "top_k": top_k,
             "repeat_penalty": repeat_penalty,
-            "num_ctx": num_ctx,
+            "num_ctx": max(num_ctx or 16384, 32768),       # Expanded context window
+            "num_thread": 12,                              # Use 12 physical CPU threads for prompt prefill
+            "use_mmap": True,                              # Memory-mapped weights for high memory bandwidth
         }
         if seed:
             options["seed"] = seed

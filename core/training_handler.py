@@ -446,9 +446,9 @@ def create_training_job(config: dict) -> dict:
     hyperparams = config.get("hyperparams", {})
     method = config.get("method", "script_custom")
     base_model = config.get("base_model", "unsloth/llama-3.2-3b-instruct")
-    # Validazione: base_model deve essere un ID HuggingFace valido (no ":")
-    if ":" in base_model or not base_model or "/" not in base_model:
-        return {"success": False, "error": f"base_model '{base_model}' non valido. Usa formato HuggingFace 'autore/modello' (es. unsloth/llama-3.2-3b-instruct)."}
+    # Validazione: base_model non deve contenere ":"
+    if ":" in base_model or not base_model:
+        return {"success": False, "error": f"base_model '{base_model}' non valido."}
     if dataset_meta.get("source") == "huggingface":
         dataset_path = f"hf:{dataset_meta.get('hf_id', dataset_id)}"
         dataset_split = dataset_meta.get("split", "train")

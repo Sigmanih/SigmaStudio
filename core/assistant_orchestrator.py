@@ -7,6 +7,7 @@ This module intercepts that action and re-routes the request.
 
 import os
 import json
+import re
 import logging
 
 from core.ai_providers import load_ai_config, call_ollama, call_openai_compatible, call_anthropic
@@ -74,16 +75,34 @@ def handle_switch_agent(self, agent_name: str, message: str, history: list, bot_
     endpoint = active_prov_cfg.get("endpoint", "http://localhost:11434/api/chat")
     api_url = active_prov_cfg.get("api_url", "")
     api_key = active_prov_cfg.get("api_key", "")
-    temperature = active_prov_cfg.get("temperature", 0.5)
-    max_tokens = active_prov_cfg.get("max_tokens", 4096)
-    top_p = active_prov_cfg.get("top_p", 0.9)
-    timeout = active_prov_cfg.get("timeout", 120)
-    
+    # Dynamic Execution Profile Tuning ("Intensità" dell'Agente)
+    AGENT_PROFILE_MAP = {
+        "math_researcher": "mathematics",
+        "code_architect": "code",
+        "viz_designer": "creative",
+        "proof_reviewer": "analysis",
+        "test_engineer": "code",
+        "sigma_architect": "analysis",
+        "sigma_admin": "conversation",
+        "sigma_assistant": "conversation",
+    }
+    profile_key = AGENT_PROFILE_MAP.get(agent_name, "code")
+    from core.ai_providers import apply_execution_profile
+    tuned_cfg = apply_execution_profile(profile_key, active_prov_cfg)
+
+    temperature = tuned_cfg.get("temperature", 0.3)
+    max_tokens = tuned_cfg.get("max_tokens", 8192)
+    top_p = tuned_cfg.get("top_p", 0.9)
+    num_ctx = tuned_cfg.get("num_ctx", 16384)
+    top_k = tuned_cfg.get("top_k", 40)
+    repeat_penalty = tuned_cfg.get("repeat_penalty", 1.1)
+    timeout = tuned_cfg.get("timeout", 120)
+
+    log.info("Centralino Switchboard -> Agent '%s' | Profilo: '%s' | Temp: %.2f | Ctx: %d",
+             agent_name, profile_key, temperature, num_ctx)
+
     if provider == "ollama":
-        num_ctx = active_prov_cfg.get("num_ctx", 16384)
-        top_k = active_prov_cfg.get("top_k", 40)
-        repeat_penalty = active_prov_cfg.get("repeat_penalty", 1.1)
-        seed = active_prov_cfg.get("seed", 0)
+        seed = tuned_cfg.get("seed", 0)
         ai_response, ai_thinking, error = call_ollama(
             messages, model, endpoint, temperature, max_tokens, top_p,
             top_k, repeat_penalty, num_ctx, seed, timeout
@@ -127,6 +146,19 @@ def handle_switch_agent(self, agent_name: str, message: str, history: list, bot_
         except Exception as e:
             log.error("Parse error for agent %s: %s", agent_name, e)
     
+    # Auto-extract text files if agent generated text without JSON actions
+    if not any(a.get("type") in ("create_file", "edit_file") for a in actions_log) and len(clean_response) > 50:
+        try:
+            from core.chat_handler import _extract_and_create_files_from_text
+            created = _extract_and_create_files_from_text(clean_response, message)
+            for cp in created:
+                actions_log.append({
+                    "type": "create_file", "success": True, "path": cp,
+                    "message": f"File creato da {agent_name}: {cp}"
+                })
+        except Exception as exc:
+            log.error("Agent %s auto file extraction error: %s", agent_name, exc)
+
     return {
         "response": clean_response,
         "thinking": thinking,

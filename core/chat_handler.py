@@ -47,7 +47,7 @@ log = get_logger(__name__)
 # All are re-exported via core/chat/__init__.py and imported at the top of this
 # file for full backward compatibility with other modules that imported them
 # directly from core.chat_handler.
-def _extract_and_create_files_from_text(clean_response: str) -> list[str]:
+def _extract_and_create_files_from_text(clean_response: str, prompt_topic: str = "") -> list[str]:
     """Extract multiple files from markdown text response and save them cleanly."""
     created_paths = []
     from core.data_handler import rebuild_modules_meta
@@ -87,46 +87,67 @@ def _extract_and_create_files_from_text(clean_response: str) -> list[str]:
                 created_paths.append(clean_path)
                 log.info("Auto-extracted file from text: %s (%d chars)", clean_path, len(file_content))
     else:
+        # Pattern 1b: Explicit inline file path markers (e.g. "nella directory: 📄 data/studiare/02_approfondimenti/teoria/serie_numeriche.md")
+        inline_paths = re.findall(
+            r"(?:directory|percorso|cartella|path|file):\s*(?:📄\s*)?[`'\"]?(data/[a-zA-Z0-9_/-]+\.[a-zA-Z0-9]+)[`'\"]?",
+            clean_response,
+            re.IGNORECASE
+        )
+        if inline_paths:
+            for clean_path in inline_paths:
+                clean_path = clean_path.strip().replace('\\', '/')
+                if clean_path and clean_path not in created_paths:
+                    dir_name = os.path.dirname(clean_path)
+                    os.makedirs(dir_name, exist_ok=True)
+                    with open(clean_path, "w", encoding="utf-8") as f:
+                        f.write(clean_response)
+                    created_paths.append(clean_path)
+                    log.info("Auto-extracted inline path file: %s (%d chars)", clean_path, len(clean_response))
         # Pattern 2: Section headers (Teoria, Viz, Test, Docs) + codeblocks
         blocks = re.findall(
             r"(?:###|##|\*\*)\s*(?:[0-9\.\s]*)(Teoria|Viz|Test|Docs|Whitepaper)[^\n]*\n(?:[^\n]*\n)*?```([a-zA-Z0-9]*)\n([\s\S]*?)\n```",
             clean_response,
             re.IGNORECASE
         )
-        timestamp = datetime.datetime.now().strftime("%d%m%Y_%H%M%S")
-        topic_id = f"auto_{timestamp}"
+        if blocks:
+            topic_id = re.sub(r'[^a-zA-Z0-9_]+', '_', prompt_topic.lower()).strip('_') if prompt_topic else ""
+            if not topic_id:
+                timestamp = datetime.datetime.now().strftime("%d%m%Y_%H%M%S")
+                topic_id = f"auto_{timestamp}"
 
-        for idx, (section_type, lang, file_content) in enumerate(blocks, start=1):
-            sec = section_type.lower()
-            if "teoria" in sec or lang == "markdown":
-                folder, ext = "teoria", "md"
-            elif "viz" in sec or lang == "html":
-                folder, ext = "viz", "html"
-            elif "test" in sec or lang == "python":
-                folder, ext = "test", "py"
-            else:
-                folder, ext = "docs", "md"
+            for idx, (section_type, lang, file_content) in enumerate(blocks, start=1):
+                sec = section_type.lower()
+                if "teoria" in sec or lang == "markdown":
+                    folder, ext = "teoria", "md"
+                elif "viz" in sec or lang == "html":
+                    folder, ext = "viz", "html"
+                elif "test" in sec or lang == "python":
+                    folder, ext = "test", "py"
+                else:
+                    folder, ext = "docs", "md"
 
-            clean_path = f"data/{topic_id}/01_base/{folder}/documento_{idx}.{ext}"
-            dir_name = os.path.dirname(clean_path)
-            os.makedirs(dir_name, exist_ok=True)
-            with open(clean_path, "w", encoding="utf-8") as f:
-                f.write(file_content.strip())
-            created_paths.append(clean_path)
-            log.info("Auto-extracted section file: %s (%d chars)", clean_path, len(file_content))
+                clean_path = f"data/{topic_id}/01_base/{folder}/documento_{idx}.{ext}"
+                dir_name = os.path.dirname(clean_path)
+                os.makedirs(dir_name, exist_ok=True)
+                with open(clean_path, "w", encoding="utf-8") as f:
+                    f.write(file_content.strip())
+                created_paths.append(clean_path)
+                log.info("Auto-extracted section file: %s (%d chars)", clean_path, len(file_content))
 
-    if not created_paths and len(clean_response) > 200:
+    if not created_paths and len(clean_response) > 50:
         # Fallback for single document
         title_match = re.search(r'^#\s+(.+)', clean_response, re.MULTILINE)
-        raw_title = title_match.group(1).strip() if title_match else "documento"
-        title_slug = re.sub(r'[^a-zA-Z0-9_]+', '_', raw_title.lower()).strip('_')[:50] or "documento"
-        timestamp = datetime.datetime.now().strftime("%d%m%Y_%H%M%S")
-        clean_path = f"data/auto_{timestamp}/01_base/teoria/{title_slug}.md"
+        raw_title = title_match.group(1).strip() if title_match else prompt_topic or "documento"
+        topic_slug = re.sub(r'[^a-zA-Z0-9_]+', '_', prompt_topic.lower()).strip('_') if prompt_topic else "matematica"
+        file_slug = re.sub(r'[^a-zA-Z0-9_]+', '_', raw_title.lower()).strip('_')[:40] or "documento"
+        
+        clean_path = f"data/{topic_slug}/01_base/teoria/{file_slug}.md"
         dir_name = os.path.dirname(clean_path)
         os.makedirs(dir_name, exist_ok=True)
         with open(clean_path, "w", encoding="utf-8") as f:
             f.write(clean_response)
         created_paths.append(clean_path)
+        log.info("Auto-extracted fallback topic file: %s (%d chars)", clean_path, len(clean_response))
 
     if created_paths:
         rebuild_modules_meta()
@@ -171,11 +192,12 @@ def handle_chat(self):
         ai_cfg = load_ai_config()
         model = model_override or ai_cfg.get("model", "llama3.2")
 
-        # Automatic Agent Routing
-        if not manifesto_path or manifesto_path in ("auto", "auto.md", "manifesti/auto.md", "MANIFESTO.md"):
-            if manifesto_path in ("auto", "auto.md", "manifesti/auto.md"):
-                manifesto_path = _determine_agent_by_request(message, ai_cfg, model)
-            else:
+        # Automatic Agent Routing: Front-Desk Switchboard evaluates domain & intent
+        if not manifesto_path or manifesto_path in ("auto", "auto.md", "manifesti/auto.md", "MANIFESTO.md", "manifesti/sigma_assistant.md"):
+            determined = _determine_agent_by_request(message, ai_cfg, model)
+            if determined:
+                manifesto_path = determined
+            elif not manifesto_path:
                 manifesto_path = _resolve_manifesto_for_model(model)
         
         if not manifesto_path:
@@ -183,8 +205,8 @@ def handle_chat(self):
 
         manifesto_name = os.path.basename(manifesto_path).replace('.md', '') if manifesto_path else ''
 
-        # Update bot_name based on chosen agent if it was a generic one
-        if bot_name in ("SigmaBot", "Sigma AI Studio", "Sigma Agent", "auto"):
+        # Update bot_name based on chosen agent
+        if bot_name in ("SigmaBot", "Sigma AI Studio", "Sigma Agent", "Sigma Assistant", "auto"):
             agent_id_match = os.path.splitext(os.path.basename(manifesto_path))[0]
             from core.agent_registry import get_agent
             ag = get_agent(agent_id_match)
@@ -233,6 +255,33 @@ def handle_chat(self):
         frontend_timeout = req.get("timeout", 0)
         if frontend_timeout and frontend_timeout > 0:
             request_timeout = int(frontend_timeout)
+
+        # Centralino Switchboard: Apply dynamic "Intensità" (Execution Profile Tuning) based on active Agent & Prompt Domain
+        AGENT_PROFILE_MAP = {
+            "math_researcher": "mathematics",
+            "code_architect": "code",
+            "viz_designer": "creative",
+            "proof_reviewer": "analysis",
+            "test_engineer": "code",
+            "sigma_architect": "analysis",
+            "sigma_admin": "conversation",
+            "sigma_assistant": "conversation",
+        }
+        agent_key = manifesto_name.lower().replace('.md', '')
+        profile_key = AGENT_PROFILE_MAP.get(agent_key, detect_execution_profile(message))
+        
+        prov_dict = {"temperature": temperature, "max_tokens": max_tokens, "top_p": top_p, "num_ctx": active_prov_cfg.get("num_ctx", 16384)}
+        tuned_cfg = apply_execution_profile(profile_key, prov_dict)
+        
+        temperature = tuned_cfg.get("temperature", temperature)
+        max_tokens = tuned_cfg.get("max_tokens", max_tokens)
+        top_p = tuned_cfg.get("top_p", top_p)
+        active_prov_cfg["num_ctx"] = tuned_cfg.get("num_ctx", active_prov_cfg.get("num_ctx", 16384))
+        active_prov_cfg["top_k"] = tuned_cfg.get("top_k", active_prov_cfg.get("top_k", 40))
+        active_prov_cfg["repeat_penalty"] = tuned_cfg.get("repeat_penalty", active_prov_cfg.get("repeat_penalty", 1.1))
+
+        log.info("Centralino Switchboard -> Agent '%s' | Profilo: '%s' | Temp: %.2f | Ctx: %d",
+                 manifesto_name, profile_key, temperature, active_prov_cfg["num_ctx"])
 
         system_prompt = _get_manifesto_content(manifesto_path)
         if not system_prompt.strip():
@@ -559,14 +608,21 @@ IMPORTANTE â€” STRUTTURA MINIMA DI OGNI TASK:
         elif allow_actions or planning_mode:
             log.warning("No JSON match found in AI response")
 
-        if allow_actions and not actions_log:
-            log.info("Agent %s: Text response without JSON actions (len=%d)", manifesto_name, len(clean_response))
-            
-            # Attempt automatic multi-file extraction if user explicitly requested file creation
+            # Pseudo switch_agent interception: if text output mentions a target agent and file creation
+            pseudo_agent = re.search(r'\b(math_researcher|code_architect|viz_designer|test_engineer|proof_reviewer|sigma_architect)\b', clean_response, re.IGNORECASE)
+            if pseudo_agent and ("data/" in clean_response or "crea" in clean_response.lower() or "file" in clean_response.lower()):
+                target_agent = pseudo_agent.group(1).lower()
+                log.info("Intercepted pseudo switch_agent to '%s' in text response", target_agent)
+                from core.assistant_orchestrator import handle_switch_agent
+                switch_res = handle_switch_agent(self, target_agent, message, history, bot_name)
+                if switch_res and switch_res.get("response"):
+                    return self.send_json_response(switch_res)
+
+            # Attempt automatic file extraction if user explicitly requested file creation or text contains files
             created_files = []
-            if user_requested_file_creation and len(clean_response) > 200:
+            if (user_requested_file_creation or "data/" in clean_response or "Path:" in clean_response) and len(clean_response) > 30:
                 try:
-                    created_files = _extract_and_create_files_from_text(clean_response)
+                    created_files = _extract_and_create_files_from_text(clean_response, prompt_topic=message[:60])
                     for cp in created_files:
                         actions_log.append({
                             "type": "create_file", "success": True, "path": cp,
@@ -578,8 +634,8 @@ IMPORTANTE â€” STRUTTURA MINIMA DI OGNI TASK:
             # Always show the AI response in chat, plus auto-create file notice if created
             manifesto_name = os.path.basename(manifesto_path).replace('.md', '') if manifesto_path else ''
             if created_files:
-                files_str = "\n".join([f"- `{p}`" for p in created_files])
-                show_response = clean_response + f"\n\n---\n📄 File salvati ed integrati:\n{files_str}"
+                files_str = "\n".join([f"- 📄 **`{p}`**" for p in created_files])
+                show_response = clean_response + f"\n\n---\n### 📄 File Creato con Successo nel Sistema!\n{files_str}\n\n*Il file è stato salvato nel tuo workspace ed è subito accessibile.*"
             else:
                 show_response = clean_response
             
@@ -587,6 +643,7 @@ IMPORTANTE â€” STRUTTURA MINIMA DI OGNI TASK:
                 "response": show_response,
                 "thinking": thinking,
                 "actions_log": actions_log,
+                "created_files": created_files,
                 "error": None,
                 "manifesto_used": manifesto_name
             })
