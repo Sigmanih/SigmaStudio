@@ -48,7 +48,10 @@ def create_backup(file_path: str, action_type: str) -> str:
             filename = os.path.basename(file_path)
             backup_filename = f"{backup_id}_{filename}.bak"
             backup_file_path = os.path.join(BACKUP_DIR, backup_filename).replace("\\", "/")
-            shutil.copy2(file_path, backup_file_path)
+            if os.path.isdir(file_path):
+                shutil.copytree(file_path, backup_file_path)
+            else:
+                shutil.copy2(file_path, backup_file_path)
             
         registry = _load_registry()
         registry[backup_id] = {
@@ -85,9 +88,14 @@ def rollback_backup(backup_id: str) -> tuple[bool, str]:
         if exists_before:
             if not backup_path or not os.path.exists(backup_path):
                 return False, f"File di backup '{backup_path}' non trovato sul disco."
-            # Restore original file
+            # Restore original file or directory
             os.makedirs(os.path.dirname(os.path.abspath(original_path)) or ".", exist_ok=True)
-            shutil.copy2(backup_path, original_path)
+            if os.path.isdir(backup_path):
+                if os.path.exists(original_path):
+                    shutil.rmtree(original_path)
+                shutil.copytree(backup_path, original_path)
+            else:
+                shutil.copy2(backup_path, original_path)
             log.info("Rollback: restored %s from backup %s", original_path, backup_path)
         else:
             # File was created, so rollback means removing it

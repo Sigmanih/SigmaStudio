@@ -146,8 +146,11 @@ def handle_switch_agent(self, agent_name: str, message: str, history: list, bot_
         except Exception as e:
             log.error("Parse error for agent %s: %s", agent_name, e)
     
-    # Auto-extract text files if agent generated text without JSON actions
-    if not any(a.get("type") in ("create_file", "edit_file") for a in actions_log) and len(clean_response) > 50:
+    # Auto-extract text files only if the user explicitly requested file creation
+    _create_keywords = ['crea', 'scrivi', 'genera', 'salva', 'file', 'documento', 'modulo', 'argomento']
+    user_requested_creation = any(kw in message.lower() for kw in _create_keywords)
+    
+    if user_requested_creation and not any(a.get("type") in ("create_file", "edit_file") for a in actions_log) and len(clean_response) > 50:
         try:
             from core.chat_handler import _extract_and_create_files_from_text
             created = _extract_and_create_files_from_text(clean_response, message)

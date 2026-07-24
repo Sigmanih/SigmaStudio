@@ -583,16 +583,16 @@ def call_ollama(
                 base_url = endpoint.rsplit('/', 1)[0]
                 tags_url = f"{base_url}/tags"
                 tags_resp = requests.get(tags_url, timeout=5)
+                available_models = []
                 if tags_resp.status_code == 200:
                     models_data = tags_resp.json()
-                    models_list = [m.get("name") for m in models_data.get("models", [])]
-                    if models_list:
-                        fallback_model = models_list[0]
-                        log.warning("Ollama model '%s' not found. Falling back to first available model: '%s'", model, fallback_model)
-                        payload["model"] = fallback_model
-                        resp = requests.post(endpoint, json=payload, timeout=timeout)
+                    available_models = [m.get("name") for m in models_data.get("models", [])]
+                error_msg = f"Modello '{model}' non trovato in Ollama. Modelli disponibili: {', '.join(available_models[:10]) if available_models else 'nessuno'}"
+                log.error(error_msg)
+                return None, None, error_msg
             except Exception as ex:
-                log.error("Failed to query Ollama tags for fallback: %s", ex)
+                log.error("Failed to query Ollama tags: %s", ex)
+                return None, None, f"Modello '{model}' non trovato in Ollama."
 
         if resp.status_code == 200:
             data = resp.json()
