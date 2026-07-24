@@ -106,19 +106,21 @@ def _validate_module_path(path: str) -> tuple[bool, str]:
 
 
 def _normalize_action_path(path: str, auto_module: bool = False) -> str:
-    """Normalise a raw AI-generated path.
-
-    * Bare filenames (no slashes) → ``data/scratch/<name>``
-    * Relative paths without a recognised prefix → ``data/<path>``
-    * Recognised prefixes are left unchanged.
-    """
-    if not path:
-        return path
-    if "/" not in path and "\\" not in path:
-        return f"data/scratch/{path}"
-    if path.startswith(("data/", "manifesti/", "sigma_studio/", "core/", "scratch/")):
-        return path
-    return f"data/{path}"
+    """Normalise a raw AI-generated path, stripping backticks, emojis, and quotes."""
+    if not path or not isinstance(path, str):
+        return ""
+    clean = path.strip().replace('\\', '/')
+    clean = re.sub(r'^[📄\s`\'"]+', '', clean)
+    clean = re.sub(r'[`\'"]+$', '', clean)
+    if clean.startswith('./data/'):
+        clean = clean[2:]
+    if not clean:
+        return ""
+    if "/" not in clean:
+        return f"data/scratch/{clean}"
+    if clean.startswith(("data/", "manifesti/", "sigma_studio/", "core/", "scratch/")):
+        return clean
+    return f"data/{clean}"
 
 
 def _ensure_module_structure(path: str) -> str:
@@ -476,25 +478,27 @@ def _execute_single_action(self, action: dict, action_type: str, bot_name: str, 
         
         path = _ensure_module_structure(path)
         
-        if path and self._is_path_allowed(path) and os.path.exists(path):
+        if path and self._is_path_allowed(path):
             backup_id = create_backup(path, "edit_file")
             
             # Read old content for diff
             old_content = ""
-            try:
-                with open(path, "r", encoding="utf-8") as fh:
-                    old_content = fh.read()
-            except Exception:
-                pass
-                
-            if search:
+            if os.path.exists(path):
+                try:
+                    with open(path, "r", encoding="utf-8") as fh:
+                        old_content = fh.read()
+                except Exception:
+                    pass
+            
+            os.makedirs(os.path.dirname(os.path.abspath(path)) or ".", exist_ok=True)
+            if search and os.path.exists(path):
                 if search in old_content:
                     new_content = old_content.replace(search, content, 1)
                     with open(path, "w", encoding="utf-8") as fh:
                         fh.write(new_content)
                     
-                    # Compute diff
                     file_diff = _compute_diff(old_content, new_content, os.path.basename(path))
+                    _auto_register_file_module(path)
                     
                     result_log.append({
                         "type": "edit_file", "success": True, "path": path,
@@ -508,17 +512,17 @@ def _execute_single_action(self, action: dict, action_type: str, bot_name: str, 
                 with open(path, "w", encoding="utf-8") as fh:
                     fh.write(content)
                 
-                # Compute diff
                 file_diff = _compute_diff(old_content, content, os.path.basename(path))
+                _auto_register_file_module(path)
                 
                 result_log.append({
                     "type": "edit_file", "success": True, "path": path,
-                    "message": f"File sovrascritto: {path}", "backup_id": backup_id,
+                    "message": f"File scritto: {path}", "backup_id": backup_id,
                     "diff": file_diff
                 })
         else:
             result_log.append({"type": "edit_file", "success": False, "path": path,
-                                "error": f"Path non trovato o non consentito: {path}"})
+                                "error": f"Path non consentito: {path}"})
 
 
     elif action_type == "rename_file":
@@ -534,6 +538,7 @@ def _execute_single_action(self, action: dict, action_type: str, bot_name: str, 
                 new_backup_id = create_backup(new_path, "rename_file_overwrite")
             os.makedirs(os.path.dirname(os.path.abspath(new_path)) or ".", exist_ok=True)
             os.rename(old_path, new_path)
+            _auto_register_file_module(new_path)
             result_log.append({"type": "rename_file", "success": True, "old_path": old_path,
                                 "new_path": new_path,
                                 "message": f"File rinominato: {old_path} → {new_path}",
@@ -547,7 +552,11 @@ def _execute_single_action(self, action: dict, action_type: str, bot_name: str, 
         path = _ensure_module_structure(path)
         if path and self._is_path_allowed(path) and os.path.exists(path):
             backup_id = create_backup(path, "delete_file")
-            os.remove(path)
+            if os.path.isdir(path):
+                shutil.rmtree(path)
+            else:
+                os.remove(path)
+            _auto_register_file_module(path)
             result_log.append({"type": "delete_file", "success": True, "path": path,
                                 "message": f"File eliminato: {path}", "backup_id": backup_id})
         else:

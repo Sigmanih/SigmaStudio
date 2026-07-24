@@ -47,112 +47,263 @@ log = get_logger(__name__)
 # All are re-exported via core/chat/__init__.py and imported at the top of this
 # file for full backward compatibility with other modules that imported them
 # directly from core.chat_handler.
-def _extract_and_create_files_from_text(clean_response: str, prompt_topic: str = "") -> list[str]:
-    """Extract multiple files from markdown text response and save them cleanly."""
+def _normalize_data_path(path_str: str) -> str:
+    """Coerce and normalize any file path to strictly reside inside `./data/`."""
+    if not path_str:
+        return ""
+    clean = path_str.strip().replace('\\', '/')
+    clean = re.sub(r'^[📄\s`\'"]+', '', clean)
+    clean = re.sub(r'[`\'"]+$', '', clean)
+    clean = re.sub(r'/+', '/', clean)
+    if clean.startswith('./data/'):
+        clean = clean[2:]
+    elif not clean.startswith('data/'):
+        clean = re.sub(r'^(?:[a-zA-Z]:/|/)+', '', clean)
+        if not clean.startswith('data/'):
+            clean = f"data/{clean}"
+    return clean
+
+
+def _sanitize_history_message(content: str) -> str:
+    """Sanitize history messages to remove old system prompts, role headers, welcome badges, and reasoning monologues.
+    Prevents Ollama models from getting trapped in identity-conflict loops or referencing deleted topics.
+    """
+    if not content:
+        return ""
+    if "Chat pronta." in content or "🤖 **Sigma AI Studio**" in content:
+        return ""
+    clean = re.sub(r'FROM\s+[a-zA-Z0-9_\.\:]+[\s\S]*?SYSTEM\s+"""[\s\S]*?"""', '', content, flags=re.IGNORECASE)
+    clean = re.sub(r'SYSTEM\s+"""[\s\S]*?"""', '', clean, flags=re.IGNORECASE)
+    clean = re.sub(r'Ruolo\s+attivo:[\s\S]*?\n', '', clean, flags=re.IGNORECASE)
+    clean = re.sub(r'Analyze\s+User\s+Input:[\s\S]*?(?:Final\s+Output\s+Generation:|Proceeds\.?|✅|\n\n)', '', clean, flags=re.IGNORECASE)
+    clean = re.sub(r'<think>[\s\S]*?</think>', '', clean, flags=re.IGNORECASE)
+    clean = re.sub(r'📁\s*\*\*File salvati con successo su disco:\*\*[\s\S]*$', '', clean, flags=re.IGNORECASE)
+    return clean.strip()
+
+
+def _ensure_module_subfolders(clean_path: str):
+    """Ensure that standard subfolders (teoria, scripts, viz, test, docs) are automatically created
+    under the target module folder, even if empty.
+    """
+    parts = clean_path.split('/')
+    if len(parts) >= 3 and parts[0] == 'data':
+        module_dir = os.path.join(parts[0], parts[1], parts[2])
+        for sub in ('teoria', 'scripts', 'viz', 'test', 'docs'):
+            sub_path = os.path.join(module_dir, sub)
+            os.makedirs(sub_path, exist_ok=True)
+
+
+def _format_conversational_summary(ai_response: str, created_paths: list[str]) -> str:
+    """Preserve AI conversational response/summary and attach file creation details."""
+    if not created_paths:
+        return ai_response
+    
+    # Strip explicit Path headers and saved codeblocks to prevent giant code dumps in chat
+    text = ai_response
+    text = re.sub(r'(?:Path|Percorso|File)[:\s]+`?(?:data/|\./data/)[^`\n]+`?[^\n]*', '', text, flags=re.IGNORECASE)
+    text = re.sub(r'```[a-zA-Z0-9]*[\s\S]*?```', '', text)
+    text = re.sub(r'\n{3,}', '\n\n', text)
+    
+    clean_text = text.strip()
+    if len(clean_text) < 20:
+        clean_text = "Ho elaborato la tua richiesta e generato la documentazione formale su disco."
+        
+    file_summary = _generate_files_summary(created_paths, ai_response)
+    return f"{clean_text}\n\n{file_summary}".strip()
+
+
+def _generate_files_summary(created_paths: list[str], full_response: str) -> str:
+    """Generate an elegant markdown summary description of the created files."""
+    if not created_paths:
+        return ""
+    
+    summary_parts = []
+    
+    # Try extracting main introduction or summary from the full response first
+    intro_match = re.search(r'^(?:#\s+[^\n]+\n+)?([\s\S]{30,300}?)(?=\n##|\n```|\Z)', full_response)
+    if intro_match and len(full_response) > 350:
+        clean_intro = intro_match.group(1).strip()
+        summary_parts.append(f"### 📋 Sintesi dei Contenuti Generati\n{clean_intro}\n")
+
+    summary_parts.append("📁 **File creati e salvati su disco:**")
+    
+    for path in created_paths:
+        file_desc = ""
+        if os.path.exists(path):
+            try:
+                with open(path, "r", encoding="utf-8") as fh:
+                    content = fh.read()
+                # Extract H1 title
+                h_match = re.search(r'^#\s+(.+)', content, re.MULTILINE)
+                title = h_match.group(1).strip() if h_match else os.path.basename(path)
+                
+                # Extract first short paragraph
+                para_match = re.search(r'^(?:#+\s+[^\n]+\n+)+([\s\S]{20,120}?)(?=\n#|\Z)', content)
+                short_text = para_match.group(1).replace('\n', ' ').strip() if para_match else ""
+                if short_text:
+                    file_desc = f" — *{short_text[:100]}...*"
+                summary_parts.append(f"- **{title}**: `{path}`{file_desc}")
+            except Exception:
+                summary_parts.append(f"- `{path}`")
+        else:
+            summary_parts.append(f"- `{path}`")
+            
+    return "\n\n" + "\n".join(summary_parts)
+
+
+def _determine_default_module_path(topic_slug: str, folder: str, fname: str) -> str:
+    """Determine clean module path using existing topic module folders or fallback to 01_base."""
+    topic_dir = os.path.join("data", topic_slug)
+    if os.path.isdir(topic_dir):
+        subdirs = [d for d in sorted(os.listdir(topic_dir)) if os.path.isdir(os.path.join(topic_dir, d))]
+        if subdirs:
+            return f"data/{topic_slug}/{subdirs[0]}/{folder}/{fname}"
+    return f"data/{topic_slug}/01_base/{folder}/{fname}"
+
+
+def _extract_and_create_files_from_text(clean_response: str, prompt_topic: str = "", force_save: bool = False) -> tuple[list[str], list[dict]]:
+    """Extract multiple files from markdown text response, save them with backup and diff tracking.
+    
+    Returns:
+        tuple of (created_paths, actions_log) where each action contains backup_id and diff.
+    """
     created_paths = []
+    actions_log = []
     from core.data_handler import rebuild_modules_meta
+    from core.backup_manager import create_backup
+    from core.task_handler import _compute_diff
+
+    def _save_file_with_backup(clean_path: str, file_content: str):
+        if not clean_path or not file_content.strip():
+            return
+        
+        clean_path = _normalize_data_path(clean_path)
+        filename = os.path.basename(clean_path)
+        
+        # Strict validation: reject placeholders, dot-only extensions, double slashes, instructions
+        if (
+            '<' in clean_path or '>' in clean_path
+            or filename.startswith('.')
+            or len(filename.split('.')[0]) < 2
+            or clean_path.endswith('/.md')
+            or clean_path.endswith('/.py')
+            or clean_path.endswith('/.html')
+            or '01_...' in clean_path
+            or clean_path in created_paths
+        ):
+            log.warning("Rejected invalid/placeholder file path extraction: %s", clean_path)
+            return
+
+        backup_id = create_backup(clean_path, "chat_save")
+        old_content = ""
+        if os.path.exists(clean_path):
+            try:
+                with open(clean_path, "r", encoding="utf-8") as fh:
+                    old_content = fh.read()
+            except Exception:
+                pass
+        
+        dir_name = os.path.dirname(clean_path)
+        if dir_name:
+            os.makedirs(dir_name, exist_ok=True)
+        _ensure_module_subfolders(clean_path)
+        with open(clean_path, "w", encoding="utf-8") as f:
+            f.write(file_content.strip())
+        
+        file_diff = _compute_diff(old_content, file_content.strip(), os.path.basename(clean_path))
+        created_paths.append(clean_path)
+        actions_log.append({
+            "type": "edit_file" if old_content else "create_file",
+            "success": True,
+            "path": clean_path,
+            "message": f"File {'modificato' if old_content else 'creato'}: {clean_path}",
+            "backup_id": backup_id,
+            "diff": file_diff
+        })
+        log.info("Auto-extracted & backed-up file: %s (%d chars)", clean_path, len(file_content))
+
+    # Infer topic slug cleanly without command verbs
+    raw_prompt = prompt_topic.lower() if prompt_topic else ""
+    raw_prompt = re.sub(r'^(?:crea(?:mi)?|scrivi(?:mi)?|genera|sviluppa)\s+(?:un|l[\'\"]|il|lo|la|i|gli|le)?\s*(?:argomento|modulo|documento|file|teoria)?\s*(?:su(?:gli)?|di|per)?\s*', '', raw_prompt).strip()
+    topic_slug = re.sub(r'[^a-zA-Z0-9_]+', '_', raw_prompt).strip('_') if raw_prompt else ""
+    if not topic_slug or len(topic_slug) < 2 or topic_slug in ('ciao', 'ok', 'test', 'analyze_user_input'):
+        t_match = re.search(r'^#\s+(.+)', clean_response, re.MULTILINE)
+        if t_match:
+            topic_slug = re.sub(r'[^a-zA-Z0-9_]+', '_', t_match.group(1).lower()).strip('_')
+    if not topic_slug or topic_slug in ('ciao', 'ok', 'test', 'analyze_user_input'):
+        topic_slug = "matematica"
 
     # Pattern 0: Pseudo-code command create_file path="..." content="..."
     pseudo_matches = re.findall(
-        r"create_file\s+path=[\"']?(?:📄\s*)?(data/[^\s\"']+)[\"']?\s+content=[\"']([\s\S]*?)(?:[\"']\s*(?:create_file|\Z))",
+        r"create_file\s+path=[\"']?(?:📄\s*)?([^\s\"']+)[\"']?\s+content=[\"']([\s\S]*?)(?:[\"']\s*(?:create_file|\Z))",
         clean_response,
         re.IGNORECASE
     )
     if pseudo_matches:
         for path_str, file_content in pseudo_matches:
-            clean_path = path_str.strip().replace('\\', '/')
-            if clean_path and file_content.strip():
-                dir_name = os.path.dirname(clean_path)
-                os.makedirs(dir_name, exist_ok=True)
-                with open(clean_path, "w", encoding="utf-8") as f:
-                    f.write(file_content.strip())
-                created_paths.append(clean_path)
-                log.info("Auto-extracted pseudo create_file: %s (%d chars)", clean_path, len(file_content))
+            clean_path = _normalize_data_path(path_str)
+            _save_file_with_backup(clean_path, file_content)
 
-    # Pattern 1: Explicit Path markers + codeblock
-    file_matches = re.findall(
-        r"(?:Path|Percorso|File|Salva\s+in):\s*[`'\"]?(data/[a-zA-Z0-9_/-]+\.[a-zA-Z0-9]+)[`'\"]?[\s\S]*?```[a-zA-Z0-9]*\n([\s\S]*?)\n```",
+    # Pattern 0.5: math_researcher manifesto format — Path: `data/...` followed by ```markdown block
+    backtick_path_matches = re.findall(
+        r"(?:Path|Percorso|File)[:\s]+`((?:data/|\./data/)[^`]+\.[a-zA-Z0-9]+)`[^\n]*\n+```[a-zA-Z0-9]*\n([\s\S]*?)\n```",
         clean_response,
         re.IGNORECASE
     )
+    if backtick_path_matches:
+        for path_str, file_content in backtick_path_matches:
+            clean_path = _normalize_data_path(path_str)
+            if clean_path and clean_path not in created_paths:
+                _save_file_with_backup(clean_path, file_content)
 
+    # Pattern 1: Explicit Path markers + codeblock (supports 📄, ./data/, backticks, quotes)
+    file_matches = re.findall(
+        r"(?:Path|Percorso|File|Salva\s+in|###|##|\*\*|-|\*|\b)?\s*[`'\"]?(?:📄\s*)?((?:data/|\./data/)[^\s`'\"]+\.[a-zA-Z0-9]+)[`'\"]?[\s\S]*?```[a-zA-Z0-9]*\n([\s\S]*?)\n```",
+        clean_response,
+        re.IGNORECASE
+    )
     if file_matches:
         for path_str, file_content in file_matches:
-            clean_path = path_str.strip().replace('\\', '/')
-            if clean_path and file_content.strip() and clean_path not in created_paths:
-                dir_name = os.path.dirname(clean_path)
-                os.makedirs(dir_name, exist_ok=True)
-                with open(clean_path, "w", encoding="utf-8") as f:
-                    f.write(file_content.strip())
-                created_paths.append(clean_path)
-                log.info("Auto-extracted file from text: %s (%d chars)", clean_path, len(file_content))
-    else:
-        # Pattern 1b: Explicit inline file path markers (e.g. "nella directory: 📄 data/studiare/02_approfondimenti/teoria/serie_numeriche.md")
-        inline_paths = re.findall(
-            r"(?:directory|percorso|cartella|path|file):\s*(?:📄\s*)?[`'\"]?(data/[a-zA-Z0-9_/-]+\.[a-zA-Z0-9]+)[`'\"]?",
-            clean_response,
-            re.IGNORECASE
-        )
-        if inline_paths:
-            for clean_path in inline_paths:
-                clean_path = clean_path.strip().replace('\\', '/')
-                if clean_path and clean_path not in created_paths:
-                    dir_name = os.path.dirname(clean_path)
-                    os.makedirs(dir_name, exist_ok=True)
-                    with open(clean_path, "w", encoding="utf-8") as f:
-                        f.write(clean_response)
-                    created_paths.append(clean_path)
-                    log.info("Auto-extracted inline path file: %s (%d chars)", clean_path, len(clean_response))
-        # Pattern 2: Section headers (Teoria, Viz, Test, Docs) + codeblocks
-        blocks = re.findall(
-            r"(?:###|##|\*\*)\s*(?:[0-9\.\s]*)(Teoria|Viz|Test|Docs|Whitepaper)[^\n]*\n(?:[^\n]*\n)*?```([a-zA-Z0-9]*)\n([\s\S]*?)\n```",
-            clean_response,
-            re.IGNORECASE
-        )
-        if blocks:
-            topic_id = re.sub(r'[^a-zA-Z0-9_]+', '_', prompt_topic.lower()).strip('_') if prompt_topic else ""
-            if not topic_id:
-                timestamp = datetime.datetime.now().strftime("%d%m%Y_%H%M%S")
-                topic_id = f"auto_{timestamp}"
+            clean_path = _normalize_data_path(path_str)
+            if clean_path and clean_path not in created_paths:
+                _save_file_with_backup(clean_path, file_content)
 
-            for idx, (section_type, lang, file_content) in enumerate(blocks, start=1):
-                sec = section_type.lower()
-                if "teoria" in sec or lang == "markdown":
-                    folder, ext = "teoria", "md"
-                elif "viz" in sec or lang == "html":
-                    folder, ext = "viz", "html"
-                elif "test" in sec or lang == "python":
-                    folder, ext = "test", "py"
-                else:
-                    folder, ext = "docs", "md"
+    # Pattern 2: Standalone Codeblocks paired with preceding filenames or headers
+    if not created_paths:
+        codeblocks = re.findall(r"(?:###|##|\*\*|[a-zA-Z0-9_\-\./]+)?\s*([a-zA-Z0-9_\-\./]+\.(?:md|py|html|js|css|json))?[^\n]*\n```([a-zA-Z0-9]*)\n([\s\S]*?)\n```", clean_response, re.IGNORECASE)
+        if codeblocks:
+            for idx, (filename_hint, lang, file_content) in enumerate(codeblocks, start=1):
+                if file_content.strip():
+                    if filename_hint and (filename_hint.endswith('.md') or filename_hint.endswith('.py') or filename_hint.endswith('.html')):
+                        fname = os.path.basename(filename_hint)
+                    else:
+                        fname = f"modulo_{idx}.{'py' if lang == 'python' else ('html' if lang == 'html' else 'md')}"
+                    
+                    folder = "scripts" if lang == "python" else ("viz" if lang == "html" else "teoria")
+                    clean_path = _determine_default_module_path(topic_slug, folder, fname)
+                    _save_file_with_backup(clean_path, file_content)
 
-                clean_path = f"data/{topic_id}/01_base/{folder}/documento_{idx}.{ext}"
-                dir_name = os.path.dirname(clean_path)
-                os.makedirs(dir_name, exist_ok=True)
-                with open(clean_path, "w", encoding="utf-8") as f:
-                    f.write(file_content.strip())
-                created_paths.append(clean_path)
-                log.info("Auto-extracted section file: %s (%d chars)", clean_path, len(file_content))
-
-    if not created_paths and len(clean_response) > 50:
-        # Fallback for single document
+    # Pattern 4: Fallback — save entire response as a structured topic file
+    is_reasoning_only = clean_response.strip().startswith("Analyze User Input:") or clean_response.strip().startswith("Identify Constraints")
+    should_fallback = not is_reasoning_only and (force_save or (
+        len(clean_response) > 50
+        and any(w in (prompt_topic + " " + clean_response[:200]).lower()
+                for w in ('crea', 'genera', 'scrivi', 'file', 'argomento', 'modulo', 'teoria', 'script', 'documento'))
+    ))
+    if not created_paths and should_fallback:
         title_match = re.search(r'^#\s+(.+)', clean_response, re.MULTILINE)
-        raw_title = title_match.group(1).strip() if title_match else prompt_topic or "documento"
-        topic_slug = re.sub(r'[^a-zA-Z0-9_]+', '_', prompt_topic.lower()).strip('_') if prompt_topic else "matematica"
-        file_slug = re.sub(r'[^a-zA-Z0-9_]+', '_', raw_title.lower()).strip('_')[:40] or "documento"
+        raw_title = title_match.group(1).strip() if title_match else raw_prompt or topic_slug
+        file_slug = re.sub(r'[^a-zA-Z0-9_]+', '_', raw_title.lower()).strip('_')[:40] or topic_slug
+        if file_slug in ('analyze_user_input', 'identify_constraints', 'documento'):
+            file_slug = topic_slug
         
-        clean_path = f"data/{topic_slug}/01_base/teoria/{file_slug}.md"
-        dir_name = os.path.dirname(clean_path)
-        os.makedirs(dir_name, exist_ok=True)
-        with open(clean_path, "w", encoding="utf-8") as f:
-            f.write(clean_response)
-        created_paths.append(clean_path)
-        log.info("Auto-extracted fallback topic file: %s (%d chars)", clean_path, len(clean_response))
+        clean_path = _determine_default_module_path(topic_slug, "teoria", f"{file_slug}.md")
+        _save_file_with_backup(clean_path, clean_response)
 
     if created_paths:
         rebuild_modules_meta()
 
-    return created_paths
+    return created_paths, actions_log
 
 
 def handle_chat(self):
@@ -169,7 +320,80 @@ def handle_chat(self):
         allow_actions = req.get("allow_actions", True)
         planning_mode = req.get("planning_mode", False)
 
+        msg_lower = message.lower().strip()
+
+        # -------------------------------------------------------------------
+        # DETERMINISTIC HANDLER 1: Deletion Requests (elimina / cancella / rimuovi)
+        # -------------------------------------------------------------------
+        _delete_keywords = ["elimina", "cancella", "rimuovi", "delete", "remove"]
+        is_deletion = any(re.search(rf"\b{re.escape(w)}\b", msg_lower) for w in _delete_keywords)
+        
+        if is_deletion:
+            log.info("Deterministic Deletion Request detected for prompt: %s", message)
+            import shutil
+            from core.data_handler import rebuild_modules_meta
+
+            # Extract target name (e.g. "elimina l'argomento frattali" -> "frattali")
+            raw_target = re.sub(
+                r"^(?:elimina|cancella|rimuovi|delete|remove)\s+(?:l[\'\"]|il|lo|la|i|gli|le)?\s*(?:argomento|topic|modulo|file|cartella)?\s*(?:di|su)?\s*",
+                "", msg_lower, flags=re.IGNORECASE
+            ).strip()
+            target_slug = re.sub(r'[^a-zA-Z0-9_]+', '_', raw_target).strip('_')
+
+            deleted_paths = []
+            if target_slug:
+                # Check 1: Topic folder directly inside data/
+                possible_topic = os.path.join("data", target_slug)
+                if os.path.exists(possible_topic):
+                    try:
+                        shutil.rmtree(possible_topic)
+                        deleted_paths.append(possible_topic.replace('\\', '/'))
+                    except Exception as e:
+                        log.error("Failed to delete topic folder %s: %s", possible_topic, e)
+                
+                # Check 2: Partial matches inside data/
+                if not deleted_paths and os.path.exists("data"):
+                    for entry in os.listdir("data"):
+                        if entry.lower() == target_slug or target_slug in entry.lower():
+                            full_p = os.path.join("data", entry)
+                            try:
+                                if os.path.isdir(full_p):
+                                    shutil.rmtree(full_p)
+                                else:
+                                    os.remove(full_p)
+                                deleted_paths.append(full_p.replace('\\', '/'))
+                            except Exception as e:
+                                log.error("Failed to delete %s: %s", full_p, e)
+
+            if deleted_paths:
+                rebuild_modules_meta()
+                del_msg = f"🗑️ **Eliminazione completata su disco:**\n" + "\n".join([f"- Eliminata cartella/file `{p}`" for p in deleted_paths])
+                actions_log = [{"type": "delete_file", "success": True, "path": p, "message": f"Eliminato {p}"} for p in deleted_paths]
+                return self.send_json_response({
+                    "response": del_msg,
+                    "thinking": f"Richiesta di eliminazione eseguita con successo per: {raw_target}",
+                    "actions_log": actions_log,
+                    "created_files": [],
+                    "error": None,
+                    "manifesto_used": "sigma_architect",
+                    "agent_name": "Sigma AI Architect",
+                    "agent_id": "sigma_architect"
+                })
+            else:
+                return self.send_json_response({
+                    "response": f"⚠️ **Nessun elemento trovato:** Non è stato trovato alcun argomento o file corrispondente a `{raw_target or message}` nella cartella `data/`.",
+                    "thinking": f"Ricerca elemento da eliminare fallita per: {message}",
+                    "actions_log": [],
+                    "created_files": [],
+                    "error": None,
+                    "manifesto_used": "sigma_architect",
+                    "agent_name": "Sigma AI Architect",
+                    "agent_id": "sigma_architect"
+                })
+
+        # -------------------------------------------------------------------
         # Auto-detect file creation requests: if user explicitly asks to create/write a file
+        # -------------------------------------------------------------------
         user_requested_file_creation = False
         _create_keywords = [
             "crea un file", "crea file", "scrivi un file", "scrivi file",
@@ -177,7 +401,6 @@ def handle_chat(self):
             "crea un modulo", "crea modulo", "crea un argomento", "crea argomento",
             "salva in un file", "salva un file", "salva file", "salva su file",
         ]
-        msg_lower = message.lower()
         for kw in _create_keywords:
             if kw in msg_lower:
                 user_requested_file_creation = True
@@ -332,11 +555,15 @@ Se un file esiste già, riscrivilo comunque con create_file. Mai dire "il file e
         if topics_context: system_parts.append(f"Struttura:\n{topics_context}")
         if tasks_context: system_parts.append(f"Tasks:\n{tasks_context}")
 
-        # --- Inject agent memory context ---
-        # Context is strictly isolated per chat session — no cross-chat memory leaks
+        # --- Inject agent memory context with Sanitization & Role Isolation ---
+        role_isolation = f"\n\nTASSATIVO: Il tuo UNICO ed ESCLUSIVO ruolo per questa risposta è l'agente '{manifesto_name}' come espresso nel System Prompt soprastante. Ignora qualsiasi nome di ruolo o istruzione di ruoli passati presente nella cronologia dei messaggi."
+        system_parts.append(role_isolation)
         messages = [{"role": "system", "content": "\n\n".join(system_parts)}]
         for h in history[-10:]:
-            messages.append({"role": h.get("role", "user"), "content": h.get("content", "")})
+            raw_c = h.get("content", "")
+            sanitized_c = _sanitize_history_message(raw_c)
+            if sanitized_c:
+                messages.append({"role": h.get("role", "user"), "content": sanitized_c})
 
         user_prompt = message
         if planning_mode:
@@ -398,27 +625,58 @@ IMPORTANTE â€” STRUTTURA MINIMA DI OGNI TASK:
             self.end_headers()
             def _sw(chunks):
                 try:
+                    from core.ai_providers import check_ollama_vram_status
+                    vram_info = check_ollama_vram_status(model, endpoint) if route_provider == "ollama" else {"loaded": True, "status_message": "⚡ Modello pronto"}
                     meta_payload = {
                         "meta": {
                             "agent_id": manifesto_name,
                             "agent_name": bot_name,
                             "manifesto_used": manifesto_name,
                             "web_search_active": web_search,
+                            "model_status": vram_info.get("status_message", ""),
+                            "model_loaded": vram_info.get("loaded", False),
                             "web_sources": [{"title": r["title"], "href": r["href"]} for r in web_sources_list]
                         }
                     }
                     self.wfile.write(f"data: {json.dumps(meta_payload)}\n\n".encode())
                     self.wfile.flush()
+                    accumulated_response = ""
                     for chunk in chunks:
                         if chunk is None: self.wfile.write(b"data: [ERROR]\n\n"); break
                         if chunk.get("error"): self.wfile.write(f"data: {json.dumps({'error': chunk['message']})}\n\n".encode()); self.wfile.flush(); break
-                        if chunk.get("done"): self.wfile.write(b"data: [DONE]\n\n"); self.wfile.flush(); break
+                        if "token" in chunk:
+                            accumulated_response += chunk["token"]
+                        if chunk.get("done"):
+                            clean_res, _ = _clean_all_tags(accumulated_response)
+                            created_paths, extracted_actions = _extract_and_create_files_from_text(clean_res, message, force_save=True)
+                            if created_paths:
+                                file_links = _format_conversational_summary(clean_res, created_paths)
+                                self.wfile.write(f"data: {json.dumps({'token': file_links, 'created_files': created_paths, 'actions_log': extracted_actions})}\n\n".encode())
+                                self.wfile.flush()
+                            if chunk.get("truncated") or chunk.get("done_reason") == "length":
+                                self.wfile.write(f"data: {json.dumps({'done': True, 'truncated': True, 'done_reason': 'length'})}\n\n".encode())
+                            self.wfile.write(b"data: [DONE]\n\n")
+                            self.wfile.flush()
+                            break
                         payload = {}
-                        if "token" in chunk: payload["token"] = chunk["token"]
-                        if "thinking" in chunk: payload["thinking"] = chunk["thinking"]
                         if payload: self.wfile.write(f"data: {json.dumps(payload)}\n\n".encode()); self.wfile.flush()
-                    else: self.wfile.write(b"data: [DONE]\n\n"); self.wfile.flush()
-                except: self.wfile.write(b"data: [ERROR]\n\n"); self.wfile.flush()
+                    else:
+                        clean_res, _ = _clean_all_tags(accumulated_response)
+                        created_paths, extracted_actions = _extract_and_create_files_from_text(clean_res, message, force_save=True)
+                        if created_paths:
+                            file_links = _format_conversational_summary(clean_res, created_paths)
+                            self.wfile.write(f"data: {json.dumps({'token': file_links, 'created_files': created_paths, 'actions_log': extracted_actions})}\n\n".encode())
+                            self.wfile.flush()
+                        self.wfile.write(b"data: [DONE]\n\n"); self.wfile.flush()
+                except (ConnectionAbortedError, ConnectionResetError, BrokenPipeError, OSError) as sock_err:
+                    log.info("Client disconnected during SSE stream: %s", sock_err)
+                except Exception as ex:
+                    log.warning("SSE Stream write error: %s", ex)
+                    try:
+                        self.wfile.write(b"data: [ERROR]\n\n")
+                        self.wfile.flush()
+                    except Exception:
+                        pass
             if route_provider == "ollama":
                 num_ctx = active_prov_cfg.get("num_ctx", 8192)
                 top_k = active_prov_cfg.get("top_k", 40)
@@ -445,7 +703,7 @@ IMPORTANTE â€” STRUTTURA MINIMA DI OGNI TASK:
 
         if error:
             manifesto_name = os.path.basename(manifesto_path).replace('.md', '') if manifesto_path else ''
-            return self.send_json_response({"response": f"âš ï¸ Errore IA ({provider}): {error}", "actions_log": [], "error": error, "manifesto_used": manifesto_name})
+            return self.send_json_response({"response": f"âš ï¸  Errore IA ({provider}): {error}", "actions_log": [], "error": error, "manifesto_used": manifesto_name})
 
         actions_log = []
         clean_response = ai_response
@@ -473,12 +731,19 @@ IMPORTANTE â€” STRUTTURA MINIMA DI OGNI TASK:
                 clean_response, extracted_tags_thinking = _clean_all_tags(clean_response)
                 thinking = extracted_tags_thinking
 
-            log.debug("ASK mode: response_len=%d thinking=%s", len(clean_response), 'yes' if thinking else 'none')
+            # Extract and save files automatically from plain chat response with backup & diff
+            created_paths, extracted_actions = _extract_and_create_files_from_text(clean_response, message, force_save=True)
+            actions_log = extracted_actions
+            if created_paths:
+                clean_response = _format_conversational_summary(clean_response, created_paths)
+
+            log.debug("ASK mode: response_len=%d thinking=%s created_files=%d", len(clean_response), 'yes' if thinking else 'none', len(created_paths))
             manifesto_name = os.path.basename(manifesto_path).replace('.md', '') if manifesto_path else ''
             self.send_json_response({
                 "response": clean_response,
                 "thinking": thinking,
-                "actions_log": [],
+                "actions_log": actions_log,
+                "created_files": created_paths,
                 "error": None,
                 "manifesto_used": manifesto_name,
                 "agent_name": bot_name,
@@ -546,11 +811,13 @@ IMPORTANTE â€” STRUTTURA MINIMA DI OGNI TASK:
                     log.debug("Actions result: %s", actions_log)
                     
                     # Save session memory for the agent
-                    if agent_id:
+                    # FIX: use manifesto_name (agent_id was never defined in this scope)
+                    _agent_mem_id = manifesto_name
+                    if _agent_mem_id:
                         success_count = sum(1 for a in actions_log if a.get("success"))
                         fail_count = sum(1 for a in actions_log if not a.get("success"))
                         try:
-                            save_session_memory(agent_id, {
+                            save_session_memory(_agent_mem_id, {
                                 "goal": message[:200],
                                 "actions_performed": actions_log,
                                 "success_count": success_count,
@@ -559,7 +826,7 @@ IMPORTANTE â€” STRUTTURA MINIMA DI OGNI TASK:
                                 "summary": f"{success_count} azioni riuscite, {fail_count} fallite"
                             })
                             # Update agent usage stats
-                            increment_usage(agent_id, success=fail_count == 0)
+                            increment_usage(_agent_mem_id, success=fail_count == 0)
                         except Exception as mem_err:
                             log.error("Memory save error: %s", mem_err)
                     
@@ -619,17 +886,25 @@ IMPORTANTE â€” STRUTTURA MINIMA DI OGNI TASK:
                     return self.send_json_response(switch_res)
 
             # Attempt automatic file extraction if user explicitly requested file creation or text contains files
+            # FIX: force_save=True when user explicitly asked to create/write a file, so Pattern 4 fallback always fires
             created_files = []
-            if (user_requested_file_creation or "data/" in clean_response or "Path:" in clean_response) and len(clean_response) > 30:
-                try:
-                    created_files = _extract_and_create_files_from_text(clean_response, prompt_topic=message[:60])
-                    for cp in created_files:
-                        actions_log.append({
-                            "type": "create_file", "success": True, "path": cp,
-                            "message": f"File creato: {cp}"
-                        })
-                except Exception as exc:
-                    log.error("Auto-create files failed: %s", exc)
+            if len(clean_response) > 30:
+                has_path_marker = ("data/" in clean_response or "Path:" in clean_response or "Percorso:" in clean_response)
+                should_extract = user_requested_file_creation or has_path_marker
+                if should_extract:
+                    try:
+                        created_files = _extract_and_create_files_from_text(
+                            clean_response,
+                            prompt_topic=message[:60],
+                            force_save=user_requested_file_creation,
+                        )
+                        for cp in created_files:
+                            actions_log.append({
+                                "type": "create_file", "success": True, "path": cp,
+                                "message": f"File creato: {cp}"
+                            })
+                    except Exception as exc:
+                        log.error("Auto-create files failed: %s", exc)
             
             # Always show the AI response in chat, plus auto-create file notice if created
             manifesto_name = os.path.basename(manifesto_path).replace('.md', '') if manifesto_path else ''

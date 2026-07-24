@@ -115,17 +115,40 @@ export function useChatStreaming({
   const stopInference = useCallback(() => {
     if (abortRef.current) { abortRef.current.abort(); abortRef.current = null; }
     if (globalAbortController) { globalAbortController.abort(); globalAbortController = null; }
+    
+    const sid = streamingSessionIdRef.current || sessionRefs.activeSessionId.current;
+    if (sid) {
+      setSessionMessages(prev => {
+        const msgs = [...(prev[sid] || [])];
+        if (msgs.length > 0) {
+          const last = msgs[msgs.length - 1];
+          if (last.role === 'assistant') {
+            msgs[msgs.length - 1] = {
+              ...last,
+              streaming: false,
+              streamingThinking: false,
+              statusMessage: undefined,
+              content: last.content?.trim() || '🛑 *Generazione interrotta dall\'utente.*'
+            };
+          }
+          saveMessagesImmediately(sid, msgs);
+          try { localStorage.setItem(`sigma_chat_msgs_${sid}`, JSON.stringify(msgs)); } catch (e) {}
+        }
+        return { ...prev, [sid]: msgs };
+      });
+    }
+
     setLoopActive(false);
     setLoading(false);
     streamingSessionIdRef.current = null;
     sessionStorage.removeItem('sigma_pending_chat');
-  }, []);
+  }, [saveMessagesImmediately, sessionRefs]);
 
-  const handleStreamResponse = async (res, sessionId) => {
+  const handleStreamResponse = async (res, sessionId, continuationCount = 0) => {
     const reader = res.body.getReader();
     const decoder = new TextDecoder();
     let fullText = '', fullThinking = '', buffer = '';
-    let firstToken = true, hasThinking = false;
+    let firstToken = true, hasThinking = false, wasTruncated = false;
     const modelName = selectedModel;
     
     let streamAgentId = activeManifesto?.path?.replace('manifesti/', '')?.replace('.md', '') || '';
@@ -148,10 +171,14 @@ export function useChatStreaming({
             if (payload === '[ERROR]') { hasError = true; streamDone = true; break; }
             try {
               const p = JSON.parse(payload);
+              if (p.truncated || p.done_reason === 'length') {
+                wasTruncated = true;
+              }
               if (p.meta) {
                 streamAgentId = p.meta.agent_id || p.meta.manifesto_used;
                 streamAgentName = p.meta.agent_name || streamAgentId;
                 streamAgentStyle = getAgentStyle(streamAgentId);
+                const modelStatus = p.meta.model_status;
                 setSessionMessages(prev => {
                   const n = [...(prev[sessionId] || [])];
                   if (n.length > 0 && n[n.length - 1].role === 'assistant') {
@@ -160,7 +187,8 @@ export function useChatStreaming({
                       agent_id: streamAgentId,
                       agentRole: streamAgentStyle.name || streamAgentName,
                       agentName: `${streamAgentStyle.name || streamAgentName} (${selectedModel})`,
-                      agentImage: streamAgentStyle.image || '/images/default.png'
+                      agentImage: streamAgentStyle.image || '/images/default.png',
+                      statusMessage: modelStatus || n[n.length - 1].statusMessage
                     };
                   }
                   return { ...prev, [sessionId]: n };
@@ -168,7 +196,7 @@ export function useChatStreaming({
               }
               if (p.thinking) { hasThinking = true; fullThinking += p.thinking; }
               if (p.token) { fullText += p.token; }
-              if (firstToken) {
+              if (firstToken && continuationCount === 0) {
                 firstToken = false;
                 setSessionMessages(prev => ({
                   ...prev,
@@ -189,7 +217,14 @@ export function useChatStreaming({
                 setSessionMessages(prev => {
                   const n = [...(prev[sessionId] || [])];
                   if (n.length > 0 && n[n.length - 1].role === 'assistant') {
-                    n[n.length - 1] = { ...n[n.length - 1], content: fullText, thinking: hasThinking ? fullThinking : n[n.length - 1].thinking, streamingThinking: hasThinking };
+                    const existingContent = continuationCount > 0 ? n[n.length - 1].content : '';
+                    const updatedContent = continuationCount > 0 ? existingContent + fullText : fullText;
+                    n[n.length - 1] = {
+                      ...n[n.length - 1],
+                      content: updatedContent,
+                      thinking: hasThinking ? fullThinking : n[n.length - 1].thinking,
+                      streamingThinking: hasThinking
+                    };
                   }
                   return { ...prev, [sessionId]: n };
                 });
@@ -199,11 +234,46 @@ export function useChatStreaming({
           if (streamDone) break;
         }
       }
+
+      if (wasTruncated && continuationCount < 3) {
+        setSessionMessages(prev => {
+          const n = [...(prev[sessionId] || [])];
+          if (n.length > 0 && n[n.length - 1].role === 'assistant') {
+            n[n.length - 1] = {
+              ...n[n.length - 1],
+              statusMessage: '⚡ Token massimi raggiunti: Auto-continuazione in corso...'
+            };
+          }
+          return { ...prev, [sessionId]: n };
+        });
+
+        try {
+          const contRes = await fetch('/api/chat', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              message: "Continua esattamente da dove ti sei fermato nell'ultimo messaggio, senza ripetere il testo già scritto.",
+              history: sessionRefs.sessionMessages.current[sessionId] || [],
+              stream: true,
+              provider: activeProvider,
+              model: selectedModel,
+              manifesto: activeManifesto?.path
+            })
+          });
+          if (contRes.ok) {
+            await handleStreamResponse(contRes, sessionId, continuationCount + 1);
+            return;
+          }
+        } catch (contErr) {
+          console.warn("Auto-continuation fetch failed:", contErr);
+        }
+      }
+
       setLoading(false);
       const finalContent = cleanModelTags(fullText) || (fullThinking ? cleanModelTags(fullThinking) : (hasError ? streamErrorMsg || '⚠️ Error' : '⚠️ Nessuna risposta.'));
       setSessionMessages(prev => {
         const n = [...(prev[sessionId] || [])];
-        if (n.length > 0 && n[n.length - 1].role === 'assistant') n[n.length - 1] = { ...n[n.length - 1], content: finalContent, streaming: false, streamingThinking: false };
+        if (n.length > 0 && n[n.length - 1].role === 'assistant') n[n.length - 1] = { ...n[n.length - 1], content: finalContent, streaming: false, streamingThinking: false, statusMessage: undefined };
         return { ...prev, [sessionId]: n };
       });
       saveMessagesImmediately(sessionId, sessionRefs.sessionMessages.current[sessionId] || []);
@@ -223,6 +293,7 @@ export function useChatStreaming({
         role: 'assistant',
         content: cleanModelTags(data.response) || '⚠️ Nessuna risposta.',
         thinking: data.thinking || null,
+        actions_log: data.actions_log || [],
         timestamp: new Date().toISOString(),
         error: data.error || null,
         agent_id: routedAgentId,
@@ -234,12 +305,8 @@ export function useChatStreaming({
         const finalMessages = [...updatedMessages, assistant];
         setMessagesForSession(sessionId, finalMessages);
         saveMessagesImmediately(sessionId, finalMessages);
-        saveMessagesImmediately(sessionId, finalMessages);
         if (data.actions_log?.length > 0) {
           setActionsLog(data.actions_log);
-          const withActions = [...finalMessages, { role: 'system', content: `⚡ **Azioni eseguite:**`, timestamp: new Date().toISOString(), isAction: true, actions_log: data.actions_log }];
-          setMessagesForSession(sessionId, withActions);
-          saveMessagesImmediately(sessionId, withActions);
           if (onTasksUpdated) onTasksUpdated();
         }
       } else {
@@ -316,7 +383,18 @@ export function useChatStreaming({
         await handleJsonResponse(res, currentSessionId, updatedMessages);
       }
     } catch (e) {
-      if (e.name === 'AbortError') { sessionStorage.removeItem('sigma_pending_chat'); return; }
+      if (e.name === 'AbortError') {
+        sessionStorage.removeItem('sigma_pending_chat');
+        const sid = currentSessionId || sessionRefs.activeSessionId.current;
+        if (sid) {
+          const msgs = sessionRefs.sessionMessages.current[sid] || [];
+          if (msgs.length > 0) {
+            saveMessagesImmediately(sid, msgs);
+            try { localStorage.setItem(`sigma_chat_msgs_${sid}`, JSON.stringify(msgs)); } catch (err) {}
+          }
+        }
+        return;
+      }
       if (sessionRefs.activeSessionId.current === currentSessionId) {
         const errorMsg = { role: 'assistant', content: `❌ **Errore di connessione:** ${e.message}`, timestamp: new Date().toISOString(), error: true };
         const finalMsgs = [...(sessionRefs.sessionMessages.current[currentSessionId] || []), errorMsg];

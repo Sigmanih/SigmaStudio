@@ -58,7 +58,25 @@ export default function ChatMessages({
   selectedModel, onDeleteMessage, refs, onStop, agentPipeline,
   activeManifesto, manifestos, autoScroll, setAutoScroll,
 }) {
-  const grouped = groupMessages(messages);
+  let displayMessages = messages || [];
+  if (loading && displayMessages.length > 0) {
+    const lastMsg = displayMessages[displayMessages.length - 1];
+    if (lastMsg.role === 'user') {
+      displayMessages = [
+        ...displayMessages,
+        {
+          role: 'assistant',
+          loading: true,
+          agent_id: activeManifesto?.path?.replace('manifesti/', '')?.replace('.md', '') || selectedModel,
+          agentRole: activeManifesto?.name || selectedModel,
+          agentName: selectedModel,
+          timestamp: new Date().toISOString()
+        }
+      ];
+    }
+  }
+
+  const grouped = groupMessages(displayMessages);
 
   const handleScroll = (e) => {
     if (!setAutoScroll) return;
@@ -100,7 +118,6 @@ export default function ChatMessages({
           </div>
         );
       })}
-      {loading && <AgentMessage msg={{}} loading={true} onStop={onStop} />}
       {actionsLog.length > 0 && !loading && (
         <div className="chat-actions-summary">
           <FileText size={12} />

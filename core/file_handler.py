@@ -6,15 +6,64 @@ from core.logger import get_logger
 
 log = get_logger(__name__)
 
+def _resolve_real_file_path(path: str) -> str:
+    """Resolve AI-generated placeholders (like 01_...), directory paths, and missing files."""
+    if not path or not isinstance(path, str):
+        return ""
+    import re
+    clean = path.strip().replace('\\', '/')
+    clean = re.sub(r'^[📄\s`\'"]+', '', clean)
+    clean = re.sub(r'[`\'"]+$', '', clean)
+    if clean.startswith('./data/'):
+        clean = clean[2:]
+    
+    # Replace literal AI placeholders like 01_... or 01_ with 01_base
+    clean = re.sub(r'/(?:[0-9]{2}|\.\.)_\.\.\./', '/01_base/', clean)
+    clean = re.sub(r'/(?:[0-9]{2}|\.\.)_\.\.\.', '/01_base', clean)
+    clean = re.sub(r'/01_/', '/01_base/', clean)
+    
+    parts = clean.split('/')
+    
+    # Handle wildcard/placeholder modules like 01_... or NN_...
+    if len(parts) >= 3 and parts[0] == 'data':
+        topic = parts[1]
+        topic_dir = os.path.join('data', topic)
+        if os.path.isdir(topic_dir):
+            mod_part = parts[2]
+            if "..." in mod_part or not os.path.exists(os.path.join(topic_dir, mod_part)):
+                subdirs = [d for d in sorted(os.listdir(topic_dir)) if os.path.isdir(os.path.join(topic_dir, d))]
+                if subdirs:
+                    parts[2] = subdirs[0]
+                    clean = "/".join(parts)
+
+    # If target file doesn't exist directly, try resolving to an existing file in the directory
+    if not os.path.exists(clean) and len(parts) >= 4:
+        folder_path = "/".join(parts[:-1])
+        if os.path.isdir(folder_path):
+            files = [f for f in sorted(os.listdir(folder_path)) if os.path.isfile(os.path.join(folder_path, f))]
+            if files:
+                clean = f"{folder_path}/{files[0]}"
+
+    # If clean is a directory, resolve to the primary file inside it
+    if os.path.isdir(clean):
+        for root, dirs, files in os.walk(clean):
+            for f in sorted(files):
+                if f.endswith(('.md', '.html', '.py', '.json')):
+                    return os.path.join(root, f).replace('\\', '/')
+
+    return clean
+
+
 def handle_get_file(self):
     from urllib.parse import parse_qs, urlparse
     try:
         query = parse_qs(urlparse(self.path).query)
-        path = query.get('path', [None])[0]
-        if not path or not self._is_path_allowed(path) or not os.path.exists(path):
-            return self.send_json_response({"success": False, "error": "Path invalido o non consentito"}, 400)
+        raw_path = query.get('path', [None])[0]
+        path = _resolve_real_file_path(raw_path)
+        if not path or not self._is_path_allowed(path) or not os.path.exists(path) or os.path.isdir(path):
+            return self.send_json_response({"success": False, "error": f"Path invalido o non trovato: {raw_path}"}, 400)
         with open(path, 'r', encoding='utf-8') as fh:
-            self.send_json_response({"success": True, "content": fh.read()})
+            self.send_json_response({"success": True, "content": fh.read(), "resolved_path": path})
     except Exception as exc:
         log.error("handle_get_file: %s", exc)
         self.send_json_response({"error": str(exc)}, 500)
@@ -23,13 +72,16 @@ def handle_get_file(self):
 def handle_create_file(self):
     try:
         req = self.read_json_body()
-        path = req.get('path')
+        raw_path = req.get('path', '')
+        path = _resolve_real_file_path(raw_path)
         if not path or not self._is_path_allowed(path):
             return self.send_json_response({"error": "Path invalido o non consentito"}, 400)
         os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
         with open(path, 'w', encoding='utf-8') as fh:
             fh.write(req.get('content', ''))
-        self.send_json_response({"success": True})
+        from core.data_handler import rebuild_modules_meta
+        rebuild_modules_meta()
+        self.send_json_response({"success": True, "path": path})
     except Exception as exc:
         log.error("handle_create_file: %s", exc)
         self.send_json_response({"error": str(exc)}, 500)
@@ -38,10 +90,17 @@ def handle_create_file(self):
 def handle_delete_file(self):
     try:
         req = self.read_json_body()
-        path = req.get('path')
+        raw_path = req.get('path', '')
+        path = _resolve_real_file_path(raw_path)
         if not path or not self._is_path_allowed(path) or not os.path.exists(path):
-            return self.send_json_response({"error": "Path invalido o non consentito"}, 400)
-        os.remove(path)
+            return self.send_json_response({"error": "Path invalido o non trovato"}, 400)
+        import shutil
+        if os.path.isdir(path):
+            shutil.rmtree(path)
+        else:
+            os.remove(path)
+        from core.data_handler import rebuild_modules_meta
+        rebuild_modules_meta()
         self.send_json_response({"success": True})
     except Exception as exc:
         log.error("handle_delete_file: %s", exc)

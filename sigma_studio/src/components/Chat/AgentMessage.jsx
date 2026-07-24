@@ -35,7 +35,7 @@ function formatTimestamp(ts) {
 // ==============================================================================
 // Main AgentMessage Component
 // ==============================================================================
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 
 export default function AgentMessage({
   msg,
@@ -52,6 +52,8 @@ export default function AgentMessage({
   const openTab = app ? app.openTab : null;
   const [rolledBacks, setRolledBacks] = useState({});
   const [expandedDiffs, setExpandedDiffs] = useState({});
+  const [loadingStep, setLoadingStep] = useState(0);
+
   const toggleDiff = (key) => {
     setExpandedDiffs(prev => ({ ...prev, [key]: !prev[key] }));
   };
@@ -79,7 +81,15 @@ export default function AgentMessage({
     }
   };
 
-  const handleFileClick = (path) => {
+  const getCleanPathStr = (p) => {
+    if (!p) return '';
+    if (typeof p === 'string') return p;
+    if (typeof p === 'object' && p !== null) return p.path || p.file || p.filename || String(p);
+    return String(p);
+  };
+
+  const handleFileClick = (rawPath) => {
+    const path = getCleanPathStr(rawPath);
     if (!path || !openTab) return;
     const filename = path.split('/').pop() || path;
     const pathLower = path.toLowerCase();
@@ -113,30 +123,23 @@ export default function AgentMessage({
 
   const modelName = isUser ? '' : (first.agentName || effectiveModelName || 'AI');
 
-  if (isLoading && !first.content && !first.thinking && messages.length === 1) {
-    return (
-      <div className={`chat-message chat-assistant ${isGrouped ? 'chat-message-grouped' : ''}`}>
-        <div className="chat-bubble">
-          <div className="chat-msg-header">
-            <div className="chat-msg-avatar" style={{ borderColor: avatarBg }}>
-              <img
-                src={avatarSrc}
-                alt={roleName}
-                className="chat-msg-avatar-img"
-                onError={(e) => { e.target.style.display = 'none'; }}
-              />
-            </div>
-            <div className="chat-msg-role">{roleName}</div>
-            {modelName && <div className="chat-msg-model">· {modelName}</div>}
-          </div>
-          <div className="chat-loading">
-            <span className="chat-loading-cursor">●</span>
-            <span>Sto pensando...</span>
-          </div>
-        </div>
-      </div>
-    );
-  }
+  const loadingSteps = [
+    "Sto pensando...",
+    "🎯 Analisi richiesta ed instradamento agente...",
+    "🧠 Elaborazione contenuto ed esecuzione azioni...",
+    "📄 Generazione e sincronizzazione file nel workspace..."
+  ];
+
+  useEffect(() => {
+    if (!isLoading) {
+      setLoadingStep(0);
+      return;
+    }
+    const interval = setInterval(() => {
+      setLoadingStep(prev => (prev + 1) % loadingSteps.length);
+    }, 2800);
+    return () => clearInterval(interval);
+  }, [isLoading]);
 
   return (
     <div
@@ -194,19 +197,50 @@ export default function AgentMessage({
             </div>
           )}
 
-          {/* Rendered messages (single or grouped) */}
-          {messages.map((m, idx) => {
+          {/* Loading indicator directly inside chat-msg-content */}
+          {isLoading && messages.every(m => !m.content && !m.thinking) ? (
+            <div className="chat-loading" style={{ padding: '6px 0', display: 'flex', flexDirection: 'column', gap: '4px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <span className="chat-loading-cursor">●</span>
+                <span style={{ transition: 'all 0.3s ease', fontWeight: '500' }}>
+                  {first.statusMessage || loadingSteps[loadingStep]}
+                </span>
+              </div>
+              {first.modelStatus && (
+                <div style={{ fontSize: '0.72rem', color: '#8b8fa3', paddingLeft: '18px' }}>
+                  {first.modelStatus}
+                </div>
+              )}
+            </div>
+          ) : (
+            messages.map((m, idx) => {
             const mid = msgId || `msg-${idx}`;
             const isLast = idx === messages.length - 1;
 
             let displayContent = m.content || '';
             let displayThinking = m.thinking || '';
 
-            if (!isUser && !isSystem && !displayThinking && displayContent && (displayContent.includes('<think>') || displayContent.includes('Analyze User Input'))) {
+            if (!isUser && !isSystem && !displayThinking && displayContent) {
               const thinkMatch = displayContent.match(/<think>(.*?)<\/think>/s);
               if (thinkMatch) {
                 displayThinking = thinkMatch[1].trim();
                 displayContent = displayContent.replace(/<think>.*?<\/think>/gs, '').trim();
+              } else if (/^(?:Analyze User Input|Identify Key Constraints|Context:|Thinking:|Role:|\*\*Analyze)/i.test(displayContent.trim()) || displayContent.includes('Analyze User Input')) {
+                const monologueMatch = displayContent.match(/^(Analyze\s+User\s+Input:[\s\S]*?(?:Final\s+Output\s+Generation:[^\n]*|Proceeds\.?|✅)+)\s*([\s\S]+)$/i);
+                if (monologueMatch) {
+                  displayThinking = monologueMatch[1].trim();
+                  displayContent = monologueMatch[2].trim();
+                } else {
+                  const responseMarker = displayContent.match(/(?:\n|^|\b)(?:Ciao!|Ciao\b|Path:|#\s+|Ecco\s+|Ho\s+|Per\s+|---|Sono\s+Sigma|\*\*Risposta|\*\*Struttura|Dimmi\s+pure)/i);
+                  if (responseMarker) {
+                    const splitPos = responseMarker.index;
+                    displayThinking = displayContent.substring(0, splitPos).trim();
+                    displayContent = displayContent.substring(splitPos).trim();
+                  } else {
+                    displayThinking = displayContent.trim();
+                    displayContent = '';
+                  }
+                }
               } else {
                 const splitMatch = displayContent.match(/✅|\bFinal Polish:.*?\n/s);
                 if (splitMatch) {
@@ -247,8 +281,8 @@ export default function AgentMessage({
                   </div>
                 )}
 
-                {/* Content */}
-                {m.isAction ? (
+                {/* Content & Actions */}
+                {(m.isAction || (m.actions_log && m.actions_log.length > 0)) ? (
                   <div className="chat-actions-log" style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
                     {m.actions_log && m.actions_log.length > 0 ? (
                       m.actions_log.map((action, actionIdx) => {
@@ -283,29 +317,28 @@ export default function AgentMessage({
                                 </span>
                               </div>
                               <div style={{ display: 'flex', gap: '6px', alignItems: 'center', flexShrink: 0 }}>
-                                {action.path && (
-                                  <button
-                                    onClick={() => handleFileClick(action.path)}
-                                    style={{
-                                      background: action.path.toLowerCase().includes('/viz/') || action.path.toLowerCase().endsWith('.html')
-                                        ? 'rgba(57,185,80,0.15)' : 'rgba(0,210,255,0.1)',
-                                      border: action.path.toLowerCase().includes('/viz/') || action.path.toLowerCase().endsWith('.html')
-                                        ? '1px solid rgba(57,185,80,0.3)' : '1px solid rgba(0,210,255,0.25)',
-                                      color: action.path.toLowerCase().includes('/viz/') || action.path.toLowerCase().endsWith('.html')
-                                        ? '#3fb950' : 'var(--primary)',
-                                      fontSize: '0.65rem',
-                                      padding: '2px 8px',
-                                      borderRadius: '4px',
-                                      cursor: 'pointer',
-                                      transition: 'all 0.15s ease'
-                                    }}
-                                    title={action.path.toLowerCase().includes('/viz/') || action.path.toLowerCase().endsWith('.html')
-                                      ? "Apri l'anteprima interattiva nel workspace" : "Apri il file nel workspace"}
-                                  >
-                                    {action.path.toLowerCase().includes('/viz/') || action.path.toLowerCase().endsWith('.html')
-                                      ? 'Anteprima 👁️' : 'Visualizza 📄'}
-                                  </button>
-                                )}
+                                {action.path && (() => {
+                                  const aPStr = getCleanPathStr(action.path);
+                                  const isAViz = aPStr.toLowerCase().includes('/viz/') || aPStr.toLowerCase().endsWith('.html');
+                                  return (
+                                    <button
+                                      onClick={() => handleFileClick(aPStr)}
+                                      style={{
+                                        background: isAViz ? 'rgba(57,185,80,0.15)' : 'rgba(0,210,255,0.1)',
+                                        border: isAViz ? '1px solid rgba(57,185,80,0.3)' : '1px solid rgba(0,210,255,0.25)',
+                                        color: isAViz ? '#3fb950' : 'var(--primary)',
+                                        fontSize: '0.65rem',
+                                        padding: '2px 8px',
+                                        borderRadius: '4px',
+                                        cursor: 'pointer',
+                                        transition: 'all 0.15s ease'
+                                      }}
+                                      title={isAViz ? "Apri l'anteprima interattiva nel workspace" : "Apri il file nel workspace"}
+                                    >
+                                      {isAViz ? 'Anteprima 👁️' : 'Visualizza 📄'}
+                                    </button>
+                                  );
+                                })()}
                                 {hasDiff && (
                                   <button
                                     onClick={() => toggleDiff(diffKey)}
@@ -390,20 +423,168 @@ export default function AgentMessage({
                       ))
                     )}
                   </div>
-                ) : displayContent ? (
-                  <div
-                    className="chat-content chat-md"
-                    onClick={e => {
-                      const link = e.target.closest('.chat-file-link');
-                      if (link) {
-                        e.preventDefault();
-                        const path = link.getAttribute('data-path') || link.dataset.path;
-                        handleFileClick(path);
-                      }
-                    }}
-                    dangerouslySetInnerHTML={{ __html: renderMarkdownLatex(displayContent) }}
-                  />
-                ) : null}
+                ) : (
+                  <>
+                    {displayContent && (
+                      <div
+                        className="chat-content chat-md"
+                        onClick={e => {
+                          const link = e.target.closest('.chat-file-link');
+                          if (link) {
+                            e.preventDefault();
+                            const path = link.getAttribute('data-path') || link.dataset.path;
+                            handleFileClick(path);
+                          }
+                        }}
+                        dangerouslySetInnerHTML={{ __html: renderMarkdownLatex(displayContent) }}
+                      />
+                    )}
+                    {(m.streaming || (isLoading && isLast && (!displayContent || displayContent.length < 10))) && (
+                      <div className="chat-generating-indicator" style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '8px', color: 'var(--primary)', fontSize: '0.78rem' }}>
+                        <span className="chat-loading-cursor">●</span>
+                        <span style={{ fontStyle: 'italic', fontWeight: '500' }}>Generazione risposta ed elaborazione in corso...</span>
+                      </div>
+                    )}
+                    {/* Render action cards or created file buttons */}
+                    {((!m.isAction && m.actions_log && m.actions_log.length > 0) || m.created_files?.length > 0) && (
+                      <div className="chat-actions-log" style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginTop: '10px' }}>
+                        {m.created_files?.map((filePath, fIdx) => {
+                          const pStr = getCleanPathStr(filePath);
+                          const isViz = pStr.toLowerCase().includes('/viz/') || pStr.toLowerCase().endsWith('.html');
+                          return (
+                          <div key={`cf-${fIdx}`} className="action-log-item" style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'space-between',
+                            padding: '6px 8px',
+                            background: 'rgba(0, 210, 255, 0.04)',
+                            border: '1px solid rgba(0, 210, 255, 0.15)',
+                            borderRadius: '6px',
+                            fontSize: '0.75rem'
+                          }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0, flex: 1 }}>
+                              <span>📁</span>
+                              <span style={{ fontWeight: '600', color: 'var(--primary)', flexShrink: 0 }}>
+                                File salvato
+                              </span>
+                              <span style={{ color: '#8b8fa3', textOverflow: 'ellipsis', overflow: 'hidden', whiteSpace: 'nowrap' }}>
+                                {pStr}
+                              </span>
+                            </div>
+                            <button
+                              onClick={() => handleFileClick(pStr)}
+                              style={{
+                                background: isViz ? 'rgba(57,185,80,0.15)' : 'rgba(0,210,255,0.15)',
+                                border: isViz ? '1px solid rgba(57,185,80,0.4)' : '1px solid rgba(0,210,255,0.3)',
+                                color: isViz ? '#3fb950' : 'var(--primary)',
+                                fontSize: '0.7rem',
+                                padding: '3px 10px',
+                                borderRadius: '4px',
+                                cursor: 'pointer',
+                                fontWeight: '600'
+                              }}
+                            >
+                              {isViz ? 'Anteprima 👁️' : 'Visualizza 📄'}
+                            </button>
+                          </div>
+                          );
+                        })}
+                        {m.actions_log && m.actions_log.length > 0 && m.actions_log.map((action, actionIdx) => {
+                          const isRollbackable = action.success && action.backup_id;
+                          const hasBeenRolledBack = isRollbackable && (rolledBacks[action.backup_id] || localStorage.getItem(`sigma_rolled_back_${action.backup_id}`) === 'true');
+                          const diffKey = `${mid}-${actionIdx}`;
+                          const isDiffExpanded = expandedDiffs[diffKey];
+                          const hasDiff = !!action.diff;
+                          const actPathStr = getCleanPathStr(action.path);
+                          const isActViz = actPathStr.toLowerCase().includes('/viz/') || actPathStr.toLowerCase().endsWith('.html');
+                          return (
+                            <div key={actionIdx} style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                              <div className="action-log-item" style={{
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'space-between',
+                                padding: '6px 8px',
+                                background: 'rgba(255,255,255,0.02)',
+                                border: '1px solid rgba(255,255,255,0.04)',
+                                borderRadius: '6px',
+                                fontSize: '0.75rem'
+                              }}>
+                                <div className="action-log-item-left" style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0, flex: 1 }}>
+                                  <span>{action.success ? '✅' : '❌'}</span>
+                                  <span style={{ fontWeight: '600', color: action.success ? 'var(--primary)' : 'var(--error)', flexShrink: 0 }}>
+                                    {action.type}
+                                  </span>
+                                  <span 
+                                    style={{ color: '#8b8fa3', textOverflow: 'ellipsis', overflow: 'hidden', whiteSpace: 'nowrap', cursor: actPathStr ? 'pointer' : 'default' }}
+                                    title={actPathStr}
+                                    onClick={() => actPathStr && handleFileClick(actPathStr)}
+                                  >
+                                    {action.message || action.error || ''}
+                                  </span>
+                                </div>
+                                <div style={{ display: 'flex', gap: '6px', alignItems: 'center', flexShrink: 0 }}>
+                                  {actPathStr && (
+                                    <button
+                                      onClick={() => handleFileClick(actPathStr)}
+                                      style={{
+                                        background: isActViz ? 'rgba(57,185,80,0.15)' : 'rgba(0,210,255,0.1)',
+                                        border: isActViz ? '1px solid rgba(57,185,80,0.3)' : '1px solid rgba(0,210,255,0.25)',
+                                        color: isActViz ? '#3fb950' : 'var(--primary)',
+                                        fontSize: '0.65rem',
+                                        padding: '2px 8px',
+                                        borderRadius: '4px',
+                                        cursor: 'pointer',
+                                        transition: 'all 0.15s ease'
+                                      }}
+                                      title={isActViz ? "Apri l'anteprima interattiva nel workspace" : "Apri il file nel workspace"}
+                                    >
+                                      {isActViz ? 'Anteprima 👁️' : 'Visualizza 📄'}
+                                    </button>
+                                  )}
+                                  {hasDiff && (
+                                    <button
+                                      onClick={() => toggleDiff(diffKey)}
+                                      style={{
+                                        background: 'rgba(0,210,255,0.1)',
+                                        border: '1px solid rgba(0,210,255,0.25)',
+                                        color: 'var(--primary)',
+                                        fontSize: '0.65rem',
+                                        padding: '2px 8px',
+                                        borderRadius: '4px',
+                                        cursor: 'pointer',
+                                        transition: 'all 0.15s ease'
+                                      }}
+                                    >
+                                      {isDiffExpanded ? 'Nascondi Modifiche' : 'Visualizza Modifiche'}
+                                    </button>
+                                  )}
+                                  {isRollbackable && (
+                                    <button
+                                      onClick={() => handleRollback(action.backup_id)}
+                                      disabled={hasBeenRolledBack}
+                                      style={{
+                                        background: hasBeenRolledBack ? 'transparent' : 'rgba(255,85,85,0.15)',
+                                        border: hasBeenRolledBack ? 'none' : '1px solid rgba(255,85,85,0.3)',
+                                        color: hasBeenRolledBack ? '#3fb950' : '#ff5555',
+                                        fontSize: '0.65rem',
+                                        padding: '2px 8px',
+                                        borderRadius: '4px',
+                                        cursor: hasBeenRolledBack ? 'default' : 'pointer',
+                                        transition: 'all 0.15s ease'
+                                      }}
+                                    >
+                                      {hasBeenRolledBack ? 'Annullato ✓' : 'Annulla Modifica'}
+                                    </button>
+                                  )}
+                                </div>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </>
+                )}
 
                 {/* Error */}
                 {m.error && <div className="chat-error">⚠️ {m.error}</div>}
@@ -419,7 +600,7 @@ export default function AgentMessage({
                 )}
               </div>
             );
-          })}
+          }))}
         </div>
       </div>
     </div>

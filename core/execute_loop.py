@@ -79,90 +79,56 @@ def _detect_and_add_mentioned_files(goal: str) -> str:
     return ""
 
 
+# Module-level cache for the last Ailo intent result so execute_feedback_loop
+# can consume it without re-running inference.
+_last_ailo_intent: dict | None = None
+
+
 def _should_activate_loop(goal: str, ai_cfg: dict, model_override: str) -> bool:
-    """Classify the user's intent to decide whether to activate loop execution or direct text mode."""
-    import re
-    
-    # 1. Immediate Heuristics
-    goal_lower = goal.lower().strip()
-    
-    # Check for operational keywords or file references first
-    operational_keywords = [
-        "modifica", "sostituisci", "salva", "crea", "scrivi", "cancella", "elimina", 
-        "rinomina", "sposta", "esegui", "run", "testa", "test", "correggi", "risolvi",
-        "implementa", "aggiungi"
-    ]
-    has_operation = any(w in goal_lower for w in operational_keywords)
-    has_file = any(ext in goal_lower for ext in [".html", ".py", ".js", ".css", ".json", ".txt", "file", "cartella", "modulo"])
+    """Classify intent: activate loop (LOOP) or direct text reply (INFO/PLAN).
 
-    # Saluti e domande semplici su identità (usando regex con word boundary per evitare falsi positivi)
-    greetings = ["ciao", "hello", "hi", "buongiorno", "buonasera", "chi sei", "come ti chiami", "come stai"]
-    is_greeting = any(re.search(rf"\b{re.escape(w)}\b", goal_lower) for w in greetings)
-    
-    # Only bypass the loop if it's a pure greeting/identity check with no operational intent
-    if is_greeting and not (has_operation or has_file):
-        log.info("Heuristic INFO match (greeting/identity): %s", goal[:50])
-        return False
-        
-    # Richieste informative chiare
-    informative_keywords = [
-        "spiegami", "spiega", "cos'è", "cosa significa", "teoria", "formula", 
-        "informazioni", "descrivi", "illustra", "riepilogo", "riassunto"
-    ]
-    # Exclusion: if message contains write/create keywords, don't bypass even if informative keywords match
-    write_keywords = ["scrivi", "crea", "creami", "scrivimi", "crea un file", "scrivi un file", "documento su"]
-    has_write_intent = any(w in goal_lower for w in write_keywords)
-    if any(w in goal_lower for w in informative_keywords) and not has_write_intent and not any(ext in goal_lower for ext in [".html", ".py", ".js", ".css", ".json", ".txt"]):
-        log.info("Heuristic INFO match (conceptual search without file extensions): %s", goal[:50])
-        return False
+    PRIMARY:  classify_intent_with_ailo() — fine-tuned Ailo-152M router (~100ms, CPU)
+    FALLBACK: minimal emergency heuristics when Ailo is not yet trained/loaded
+    """
+    global _last_ailo_intent
+    _last_ailo_intent = None  # reset for this call
 
-    # 2. Fallback check: if there are no file extensions and no command keywords, it's highly likely informational
-    if not has_operation and not has_file:
-        log.info("Heuristic INFO match (no operational keywords and no file references): %s", goal[:50])
-        return False
-
-    # 3. LLM-based classification as a fallback
-    from core.orchestration.agent_config import load_agent_config
-    from core.agent_registry import SIGMA_ARCHITECT_ID
-    from core.ai_providers import call_ai_model
-
-    # Use default coordinator credentials
-    main_model, provider, endpoint, api_url, api_key, temperature, max_tokens, top_p, timeout = \
-        load_agent_config(ai_cfg, model_override, SIGMA_ARCHITECT_ID)
-        
-    system_prompt = """Sei Sigma AI Architect. Analizza la richiesta dell'utente e stabilisci se richiede di EFFETTUARE MODIFICHE (scrivere file, modificare codice, eseguire test, creare moduli, cancellare file, o agire sulla sandbox/sistema) o se è puramente INFORMATIVA/TEORICA (domande matematiche, richieste di spiegazione di formule, spiegazione del codice, saluti o riepiloghi).
-    
-Rispondi esclusivamente con:
-- LOOP: se l'utente chiede modifiche fisiche a file o azioni operative.
-- INFO: se l'utente fa una domanda teorica, chiede spiegazioni o informazioni.
-
-Scrivi SOLO LOOP o INFO. Nessun altro commento.
-"""
-    messages = [
-        {"role": "system", "content": system_prompt},
-        {"role": "user", "content": f"Richiesta: {goal}"}
-    ]
+    # -----------------------------------------------------------------------
+    # PRIMARY: Ailo-152M fine-tuned router
+    # -----------------------------------------------------------------------
     try:
-        # Aumentato max_tokens a 1000 per supportare modelli con ragionamento/thinking (come DeepSeek)
-        response, _, error = call_ai_model(
-            messages, ai_cfg, main_model, provider, endpoint, api_url, api_key,
-            0.1, 1000, top_p, timeout
-        )
-        if not error and response:
-            res = response.strip().upper()
-            if "INFO" in res:
-                log.info("Direct INFO response classified by LLM for goal: %s", goal[:50])
-                return False
-            elif "LOOP" in res:
-                log.info("LLM classified request as LOOP for goal: %s", goal[:50])
-                return True
+        from core.router_trainer import classify_intent_with_ailo
+        intent = classify_intent_with_ailo(goal)
+        if intent:
+            _last_ailo_intent = intent
+            is_loop = intent["mode"] == "LOOP"
+            log.info(
+                "Ailo Router → mode=%s agent=%s intent=%s [loop=%s]",
+                intent["mode"], intent["agent"], intent["intent"], is_loop
+            )
+            return is_loop
     except Exception as e:
-        log.error("Error in LLM loop classification: %s", e)
-        
-    # Default fallback: if LLM call fails, use the structural heuristics
-    if has_operation or has_file:
-        return True
-    return False
+        log.debug("Ailo router unavailable (%s), using emergency fallback", e)
+
+    # -----------------------------------------------------------------------
+    # EMERGENCY FALLBACK: minimal heuristics (Ailo not trained yet)
+    # Only 2 rules: greetings → INFO, everything else → LOOP
+    # (safe default: better to over-activate loop than miss a file creation)
+    # -----------------------------------------------------------------------
+    import re
+    goal_lower = goal.lower().strip()
+    greetings = ["ciao", "hello", "hi", "buongiorno", "buonasera", "chi sei", "come stai"]
+    is_greeting = any(re.search(rf"\b{re.escape(w)}\b", goal_lower) for w in greetings)
+    write_hints = ["scrivi", "crea", "genera", "modifica", "elimina", "implementa"]
+    has_write = any(w in goal_lower for w in write_hints)
+
+    if is_greeting and not has_write:
+        log.info("Emergency heuristic: greeting → INFO for '%s'", goal[:40])
+        return False
+
+    log.info("Emergency heuristic: defaulting to LOOP for '%s'", goal[:40])
+    return True
+
 
 
 def _extract_partial_string_field(field_name: str, accumulated: str) -> str:
@@ -224,13 +190,24 @@ def execute_feedback_loop(self, req, stream_callback=None):
     if t and t > 0: request_timeout = int(t)
 
     # Automatic Agent Routing in Loop Mode
+    # Priority: 1) Explicit manifesto in request, 2) Ailo intent (already computed), 3) Fallback routing
     if not manifesto_path or manifesto_path in ("auto", "auto.md", "manifesti/auto.md", "MANIFESTO.md"):
-        if manifesto_path in ("auto", "auto.md", "manifesti/auto.md"):
-            manifesto_path = _determine_agent_by_request(goal, ai_cfg, model)
-        else:
-            from core.chat.prompt_builder import _resolve_manifesto_for_model
-            manifesto_path = _resolve_manifesto_for_model(model)
-            
+        # Check if Ailo already determined the agent during _should_activate_loop
+        if _last_ailo_intent and _last_ailo_intent.get("agent"):
+            ailo_agent = _last_ailo_intent["agent"]
+            candidate = f"manifesti/{ailo_agent}.md"
+            if os.path.exists(candidate):
+                manifesto_path = candidate
+                log.info("Ailo agent routing → %s", ailo_agent)
+        
+        # Fallback: classic routing if Ailo didn't set an agent
+        if not manifesto_path or manifesto_path in ("auto", "auto.md", "manifesti/auto.md", "MANIFESTO.md"):
+            if manifesto_path in ("auto", "auto.md", "manifesti/auto.md"):
+                manifesto_path = _determine_agent_by_request(goal, ai_cfg, model)
+            else:
+                from core.chat.prompt_builder import _resolve_manifesto_for_model
+                manifesto_path = _resolve_manifesto_for_model(model)
+
     if not manifesto_path:
         manifesto_path = "MANIFESTO.md"
 

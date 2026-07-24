@@ -432,7 +432,7 @@ def handle_router_train(self):
         return self.send_json_response({
             "success": True,
             "message": f"Modello router 'sigma-router' inizializzato con successo. Generati {dataset_count} esempi nel dataset.",
-            "dataset_path": "data/router_dataset.jsonl",
+            "dataset_path": "training/datasets/router_dataset.jsonl",
             "model": "sigma-router",
             "status": "ready"
         })

@@ -78,7 +78,7 @@ export default function FilePicker({ onSelect, onClose, attachedFiles, pcFiles: 
     if (onPcFilesChange) onPcFilesChange(pcFiles);
   };
 
-  const filtered = search ? files.filter(f => f.name.toLowerCase().includes(search.toLowerCase()) || f.path.toLowerCase().includes(search.toLowerCase())) : files;
+  const filtered = search ? files.filter(f => (f.name || '').toString().toLowerCase().includes(search.toLowerCase()) || (f.path || '').toString().toLowerCase().includes(search.toLowerCase())) : files;
   const grouped = filtered.reduce((acc, f) => { if (!acc[f.group]) acc[f.group] = []; acc[f.group].push(f); return acc; }, {});
 
   return (

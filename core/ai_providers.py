@@ -212,31 +212,41 @@ def save_ai_config(ai_config: dict, config_path: str = "config.json") -> None:
 # ---------------------------------------------------------------------------
 
 EXECUTION_PROFILES = {
-    "code": {
-        "label": "Codice / Sviluppo",
-        "temperature": 0.3,
-        "max_tokens": 4096,
-        "num_ctx": 8192,
-        "top_p": 0.85,
-        "top_k": 30,
-        "repeat_penalty": 1.2,
-        "description": "Preciso, deterministico, ideale per generare e modificare codice"
-    },
-    "mathematics": {
-        "label": "Matematica / Ricerca",
-        "temperature": 0.4,
-        "max_tokens": 8192,
-        "num_ctx": 16384,
+    "fast_chat": {
+        "label": "Chat Veloce / Sintetica",
+        "temperature": 0.5,
+        "max_tokens": 1024,
+        "num_ctx": 4096,
         "top_p": 0.9,
         "top_k": 40,
         "repeat_penalty": 1.1,
-        "description": "Ragionamento logico, dimostrazioni, analisi formale"
+        "description": "Risposta velocissima a bassissima latenza per saluti e domande brevi"
+    },
+    "code": {
+        "label": "Codice / Sviluppo Deep",
+        "temperature": 0.2,
+        "max_tokens": 16384,
+        "num_ctx": 32768,
+        "top_p": 0.85,
+        "top_k": 30,
+        "repeat_penalty": 1.1,
+        "description": "Preciso, deterministico, ideale per generare e modificare codice completo"
+    },
+    "mathematics": {
+        "label": "Matematica / Ricerca Deep",
+        "temperature": 0.2,
+        "max_tokens": 16384,
+        "num_ctx": 32768,
+        "top_p": 0.9,
+        "top_k": 40,
+        "repeat_penalty": 1.1,
+        "description": "Ragionamento logico profondo, dimostrazioni formali e trattazioni complete"
     },
     "creative": {
         "label": "Creativo / Brainstorming",
-        "temperature": 0.9,
-        "max_tokens": 2048,
-        "num_ctx": 4096,
+        "temperature": 0.8,
+        "max_tokens": 4096,
+        "num_ctx": 16384,
         "top_p": 0.95,
         "top_k": 50,
         "repeat_penalty": 1.0,
@@ -245,28 +255,28 @@ EXECUTION_PROFILES = {
     "analysis": {
         "label": "Analisi Dati",
         "temperature": 0.2,
-        "max_tokens": 4096,
+        "max_tokens": 8192,
         "num_ctx": 32768,
         "top_p": 0.8,
         "top_k": 25,
-        "repeat_penalty": 1.3,
+        "repeat_penalty": 1.2,
         "description": "Analitico, contesto ampio, preciso"
     },
     "conversation": {
-        "label": "Conversazione / Chat",
-        "temperature": 0.7,
-        "max_tokens": 2048,
-        "num_ctx": 4096,
+        "label": "Conversazione Standard",
+        "temperature": 0.6,
+        "max_tokens": 4096,
+        "num_ctx": 16384,
         "top_p": 0.9,
         "top_k": 40,
         "repeat_penalty": 1.1,
-        "description": "Bilanciato per conversazione generale"
+        "description": "Bilanciato per conversazione generale approfondita"
     },
     "web_search": {
         "label": "Ricerca Web",
-        "temperature": 0.5,
-        "max_tokens": 2048,
-        "num_ctx": 4096,
+        "temperature": 0.4,
+        "max_tokens": 4096,
+        "num_ctx": 16384,
         "top_p": 0.85,
         "top_k": 35,
         "repeat_penalty": 1.1,
@@ -278,13 +288,17 @@ EXECUTION_PROFILES = {
 def detect_execution_profile(message: str, context: str = "") -> str:
     """Detect the most appropriate execution profile based on message content.
 
-    Analyzes the user message for keywords to determine if the task is
-    code-related, mathematical, creative, analytical, or general conversation.
-
-    Returns:
-        Profile key: 'code', 'mathematics', 'creative', 'analysis',
-                    'conversation', or 'web_search'
+    Analyzes prompt complexity to return fast_chat for quick queries,
+    or deep generation profiles for math, code, analysis, etc.
     """
+    msg_strip = message.strip().lower()
+    words = msg_strip.split()
+    
+    # Fast chat check for short greetings or trivial questions
+    greetings = {'ciao', 'buongiorno', 'buonasera', 'salve', 'chi sei', 'come stai', 'grazie', 'ok', 'perfetto', 'test'}
+    if len(words) <= 4 and (msg_strip in greetings or any(w in greetings for w in words)):
+        return "fast_chat"
+
     msg_lower = (message + " " + context).lower()
 
     code_keywords = [
@@ -301,7 +315,7 @@ def detect_execution_profile(message: str, context: str = "") -> str:
         'equazione', 'formula', 'numeri', 'primi', 'fattori',
         'dimostrazione', 'prova che', 'verifica che', 'calcolo',
         'modulo', 'distribuzione', 'pattern', 'sequenza',
-        'teorema', 'lemma', 'dimostrazione',
+        'analisi', 'limiti', 'derivate', 'integrali', 'funzioni',
     ]
     math_score = sum(1 for kw in math_keywords if kw in msg_lower)
 
@@ -512,6 +526,23 @@ def parse_thinking_and_content(raw_text: str, provider_thinking: str = None) -> 
     return content, thinking
 
 
+def check_ollama_vram_status(model_name: str, endpoint: str = "http://localhost:11434/api/chat") -> dict:
+    """Check if model is currently loaded in Ollama VRAM/RAM or needs cold load."""
+    if not REQUESTS_AVAILABLE:
+        return {"loaded": False, "status_message": f"⏳ Avvio inferenza con {model_name}..."}
+    try:
+        base_url = endpoint.rsplit('/', 1)[0]
+        ps_url = f"{base_url}/ps"
+        resp = requests.get(ps_url, timeout=2)
+        if resp.status_code == 200:
+            loaded_models = [m.get("name", "") for m in resp.json().get("models", [])]
+            if any(model_name in m or m in model_name for m in loaded_models):
+                return {"loaded": True, "status_message": f"⚡ Modello `{model_name}` pronto in VRAM GPU (Warm Cache)"}
+    except Exception:
+        pass
+    return {"loaded": False, "status_message": f"⏳ Caricamento del modello `{model_name}` in VRAM GPU (Cold Start)..."}
+
+
 def call_ollama(
     messages: list,
     model: str,
@@ -640,7 +671,8 @@ def call_ollama_stream(
                 if result:
                     yield result
                 if data.get("done", False):
-                    yield {"done": True}
+                    done_reason = data.get("done_reason", "stop")
+                    yield {"done": True, "done_reason": done_reason, "truncated": done_reason == "length"}
                     break
             except json.JSONDecodeError:
                 continue
@@ -680,11 +712,16 @@ def call_openai_compatible(
             data = resp.json()
             choice = data.get("choices", [{}])[0]
             msg = choice.get("message", {})
-            content = msg.get("content", "") or data.get("response", "")
-            thinking = msg.get("reasoning_content", msg.get("reasoning", None)) or data.get("reasoning_content", data.get("thinking", None))
+            content = msg.get("content", "")
+            thinking = msg.get("reasoning_content", msg.get("reasoning", None))
             content, thinking = parse_thinking_and_content(content, thinking)
+            if not content and thinking:
+                content = thinking
+                thinking = None
             return content, thinking, None
         return None, None, f"API error {resp.status_code}: {resp.text}"
+    except requests.exceptions.Timeout:
+        return None, None, f"Timeout ({timeout}s) nel contattare l'API."
     except Exception as e:
         return None, None, str(e)
 
@@ -744,8 +781,9 @@ def call_openai_compatible_stream(
                     result["thinking"] = thinking
                 if result:
                     yield result
-                if choice.get("finish_reason"):
-                    yield {"done": True}
+                finish_reason = choice.get("finish_reason")
+                if finish_reason:
+                    yield {"done": True, "done_reason": finish_reason, "truncated": finish_reason == "length"}
                     break
             except json.JSONDecodeError:
                 continue

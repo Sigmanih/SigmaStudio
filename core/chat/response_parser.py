@@ -47,6 +47,10 @@ _THINKING_STARTERS: list[str] = [
     r"^Let\s+me\s+think\s+(?:about|through|step\s+by\s+step)",
     r"^I\'?ll\s+approach\s+this\s+",
     r"^Let\s+me\s+analyze\s+",
+    r"^Analyze\s+User\s+Input:",
+    r"^Identify\s+Constraints",
+    r"^Draft\s*-\s*Mental\s+Refinement",
+    r"^Write\s+Content\s*\(Mental",
 ]
 
 
@@ -299,19 +303,28 @@ def _extract_done_thinking(content: str) -> tuple[str, str | None]:
 # ---------------------------------------------------------------------------
 
 def _extract_thinking_process(content: str) -> tuple[str, str | None]:
-    """Detect 'Here's a thinking process:' / 'Here is the thinking process' block
-    and extract everything before the JSON as thinking.
-    
-    This is the main pattern used by qwen/deepseek models — they output
-    a long English analysis before the Italian response JSON.
-    
-    Strategy: Find the LAST occurrence of '{"response"' in the content.
-    Everything before it is thinking, everything from it onward is the response JSON.
+    """Detect unformatted English reasoning monologues (Analyze User Input... etc.)
+    and extract them cleanly as thinking text.
     """
     if not content or not isinstance(content, str):
         return content, None
     
-    # Check if there's a thinking starter
+    # Pattern A: Monologue starting with 'Analyze User Input:' or similar, followed by response or Path:
+    monologue_match = re.search(
+        r"^(Analyze\s+User\s+Input:[\s\S]*?)(?=(?:Path:|\*?\s*Path:\*?|Percorso:|\bEcco\b|\bHo\s+creato\b|\b#\s+|\{\s*\"response\")|$)",
+        content.strip(),
+        re.IGNORECASE
+    )
+    if monologue_match:
+        thinking_text = monologue_match.group(1).strip()
+        response_text = content.strip()[len(thinking_text):].strip()
+        if thinking_text and response_text:
+            return response_text, thinking_text
+        elif thinking_text and not response_text:
+            # If the entire response was just reasoning
+            return "", thinking_text
+
+    # Pattern B: Check if there's a thinking starter
     has_starter = False
     for starter in _THINKING_STARTERS:
         if re.search(starter, content.strip(), re.IGNORECASE):
@@ -321,23 +334,25 @@ def _extract_thinking_process(content: str) -> tuple[str, str | None]:
     if not has_starter:
         return content, None
     
-    # Find the LAST occurrence of {"response"  — that's where the real JSON starts
+    # Find the LAST occurrence of {"response" or Path:
     resp_pos = content.rfind('{"response"')
     if resp_pos < 0:
-        # Try just the last {" that precedes a "response" somewhere after
-        # Or try to find "response" and work backwards to the nearest {
+        p_match = re.search(r'(?:Path|Percorso)[:\s]+[`\'"]?data/', content, re.IGNORECASE)
+        if p_match:
+            resp_pos = p_match.start()
+    
+    if resp_pos < 0:
         resp_keyword = content.rfind('"response"')
         if resp_keyword >= 0:
-            # Find the { that opens this JSON by scanning backwards
             for p in range(resp_keyword, -1, -1):
                 if content[p] == '{':
                     resp_pos = p
                     break
     
-    if resp_pos > 50:  # Must have significant thinking text before
+    if resp_pos > 30:  # Must have significant thinking text before
         thinking_text = content[:resp_pos].strip()
         response_text = content[resp_pos:].strip()
-        if thinking_text and response_text and len(response_text) > 50:
+        if thinking_text and response_text:
             return response_text, thinking_text
     
     return content, None
