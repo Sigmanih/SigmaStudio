@@ -199,6 +199,7 @@ def list_imported_datasets() -> dict:
     th = sys.modules.get("core.training_handler")
     target_datasets_dir = getattr(th, "DATASETS_DIR", DATASETS_DIR) if th else DATASETS_DIR
     search_dirs = [target_datasets_dir, target_datasets_dir.parent / "Private", target_datasets_dir.parent / "Private" / "datasets"]
+    datasets = []
     seen_ids = set()
     for s_dir in search_dirs:
         if s_dir.exists():

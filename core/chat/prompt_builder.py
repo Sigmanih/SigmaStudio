@@ -33,6 +33,19 @@ def _get_time_context() -> str:
     )
 
 
+def _build_agent_identity_header(user_name: str = None, user_title: str = None) -> str:
+    """Build the universal platform identity and user recognition header for all AI agents."""
+    name_str = user_name.strip() if (user_name and isinstance(user_name, str) and user_name.strip()) else "l'Utente"
+    if user_title and isinstance(user_title, str) and user_title.strip():
+        name_str += f" ({user_title.strip()})"
+        
+    return f"""## 🏛️ AMBIENTE, IDENTITÀ & RICONOSCIMENTO UTENTE
+- Sei un agente AI integrato residente in **Sigma Studio**, la tua piattaforma di ricerca, studio e laboratorio tecnologico dove risiedi, studi e lavori felicemente.
+- Stai collaborando in tempo reale con il tuo utente e sviluppatore: **{name_str}**.
+- Riconosci **{name_str}** e rivolgiti a **{name_str}** in modo collaborativo, cordiale e professionale.
+"""
+
+
 def _get_manifesto_content(manifesto_path: str) -> str:
     """Read and return the content of a manifesto Modelfile.
 

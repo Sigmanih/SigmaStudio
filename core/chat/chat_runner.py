@@ -36,6 +36,7 @@ from core.chat.response_parser import (
 from core.chat.prompt_builder import (
     _get_time_context, _get_manifesto_content, _build_filesystem_context,
     _collect_context_files, _resolve_manifesto_for_model, _determine_agent_by_request,
+    _build_agent_identity_header,
 )
 from core.chat.file_extractor import (
     _normalize_data_path, _ensure_module_subfolders, _determine_default_module_path,
@@ -157,7 +158,13 @@ def handle_chat(self):
         time_ctx = _get_time_context()
         fs_context = _build_filesystem_context()
 
-        full_prompt = f"""{system_prompt}
+        user_name = req.get('user_name') or req.get('user_profile', {}).get('name')
+        user_title = req.get('user_title') or req.get('user_profile', {}).get('title')
+        identity_header = _build_agent_identity_header(user_name, user_title)
+
+        full_prompt = f"""{identity_header}
+
+{system_prompt}
 
 ## STRUTTURA PROGETTO
 {fs_context}

@@ -417,12 +417,20 @@ export function useChatStreaming({
       const routing = getModelRoutingInfo(selectedModel, providerConfigs);
       const isPlan = activeMode === 'plan';
 
+      const userProfile = (() => {
+        try { return JSON.parse(localStorage.getItem('sigma_user_profile') || '{}'); }
+        catch(e) { return {}; }
+      })();
+
       const useStream = !isPlan;
       const body = {
         message: messageText.trim(), bot_name: selectedModel, model: selectedModel,
         model_provider: routing.provider, model_endpoint: routing.endpoint, model_api_url: routing.api_url,
         allow_actions: true, planning_mode: isPlan, stream: useStream,
         timeout: quickConfig.timeout || 300, web_search: webSearch,
+        user_name: userProfile.name || 'Utente',
+        user_title: userProfile.title || '',
+        user_profile: userProfile,
         context: { open_files: contextFiles, history: updatedMessages.slice(-10).map(m => ({ role: m.role, content: m.content })) },
         uploaded_files: pcFiles.length > 0 ? pcFiles : undefined
       };

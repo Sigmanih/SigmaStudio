@@ -148,20 +148,18 @@ export default function AccountTab() {
     });
   };
 
-  // Image Upload Handler with compression to avoid QuotaExceededError
+  // Image / GIF Upload Handler via Backend API (supports ANY file size, including animated GIFs)
   const handlePhotoUpload = async (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    // Reset input so same file can be re-selected
-    e.target.value = '';
-
     try {
-      const reader = new FileReader();
-      const dataUrl = await new Promise((resolve, reject) => {
-        reader.onload = (ev) => resolve(ev.target?.result);
-        reader.onerror = () => reject(new Error('Failed to read file'));
-        reader.readAsDataURL(file);
+      const formData = new FormData();
+      formData.append('file', file);
+
+      const res = await fetch('/api/upload_user_avatar', {
+        method: 'POST',
+        body: formData
       });
 
       // Compress the image to a thumbnail

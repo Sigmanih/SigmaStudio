@@ -103,7 +103,7 @@ class FastAPIHandlerAdapter:
 # Register all handler methods onto the FastAPIHandlerAdapter
 from core.data_handler import (
     handle_api_modules, handle_api_topics, handle_knowledge_db, handle_list_manifesti,
-    handle_update_manifesto_image, handle_upload_agent_image
+    handle_update_manifesto_image, handle_upload_agent_image, handle_upload_user_avatar
 )
 FastAPIHandlerAdapter.handle_api_modules = handle_api_modules
 FastAPIHandlerAdapter.handle_api_topics = handle_api_topics
@@ -111,6 +111,7 @@ FastAPIHandlerAdapter.handle_knowledge_db = handle_knowledge_db
 FastAPIHandlerAdapter.handle_list_manifesti = handle_list_manifesti
 FastAPIHandlerAdapter.handle_update_manifesto_image = handle_update_manifesto_image
 FastAPIHandlerAdapter.handle_upload_agent_image = handle_upload_agent_image
+FastAPIHandlerAdapter.handle_upload_user_avatar = handle_upload_user_avatar
 
 from core.module_handler import (
     handle_create_topic, handle_update_topic, handle_delete_topic,

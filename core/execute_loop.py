@@ -243,7 +243,12 @@ def execute_feedback_loop(self, req, stream_callback=None):
                 tasks_context = json.dumps(json.load(f), indent=2)
         except: tasks_context = "[]"
 
-    full_system = system_prompt + "\n\n" + time_ctx
+    from core.chat.prompt_builder import _build_agent_identity_header
+    user_name = kwargs.get('user_name') or kwargs.get('user_profile', {}).get('name')
+    user_title = kwargs.get('user_title') or kwargs.get('user_profile', {}).get('title')
+    identity_hdr = _build_agent_identity_header(user_name, user_title)
+
+    full_system = identity_hdr + "\n\n" + system_prompt + "\n\n" + time_ctx
     if fs_context:
         from core.chat_handler import _build_filesystem_context as bfc
         full_system += "\n\nStruttura:\n" + bfc()[:3000]

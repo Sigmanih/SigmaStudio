@@ -325,3 +325,42 @@ def handle_upload_agent_image(self):
     except Exception as exc:
         log.error("handle_upload_agent_image: %s", exc)
         self.send_json_response({"error": str(exc)}, 500)
+
+
+def handle_upload_user_avatar(self):
+    try:
+        ct = self.headers.get('Content-Type', '')
+        if 'multipart/form-data' not in ct:
+            return self.send_json_response({"error": "Content-Type must be multipart/form-data"}, 400)
+            
+        from core.file_handler import _parse_multipart
+        parsed = _parse_multipart(self)
+        file_item = parsed.get('file')
+        
+        if not file_item:
+            return self.send_json_response({"error": "Missing file field"}, 400)
+            
+        filename = file_item.get('filename', 'avatar.png')
+        ext = os.path.splitext(filename)[1].lower()
+        if not ext or ext not in ['.png', '.jpg', '.jpeg', '.gif', '.webp', '.svg']:
+            ext = '.png'
+            
+        import time
+        clean_name = f"user_avatar_{int(time.time())}{ext}"
+        dest_dir = "images"
+        os.makedirs(dest_dir, exist_ok=True)
+        dest_path = os.path.join(dest_dir, clean_name)
+        
+        with open(dest_path, 'wb') as f:
+            f.write(file_item['data'])
+            
+        avatar_url = f"/images/{clean_name}"
+        
+        self.send_json_response({
+            "success": True, 
+            "avatar_url": avatar_url, 
+            "message": "Foto profilata salvata con successo!"
+        })
+    except Exception as exc:
+        log.error("handle_upload_user_avatar: %s", exc)
+        self.send_json_response({"error": str(exc)}, 500)
