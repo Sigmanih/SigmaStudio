@@ -115,6 +115,52 @@ export default function MappaArgomenti({ onOpenFile }) {
     try { localStorage.setItem('sigma_graph_branch_length', String(newLen)); } catch (e) {}
   };
 
+  const handleSaveLayout = () => {
+    if (!simulationRef.current) return;
+    const currentNodes = simulationRef.current.nodes();
+    const positions = {};
+    currentNodes.forEach(node => {
+      const x = node.fx != null ? node.fx : node.x;
+      const y = node.fy != null ? node.fy : node.y;
+      positions[node.id] = { fx: x, fy: y, x, y };
+      node.fx = x;
+      node.fy = y;
+    });
+    try {
+      localStorage.setItem('sigma_graph_custom_positions', JSON.stringify(positions));
+      window.dispatchEvent(new CustomEvent('sigma_toast', {
+        detail: {
+          message: '💾 Layout del grafo salvato con successo!',
+          type: 'success',
+          duration: 5000
+        }
+      }));
+    } catch (e) {
+      console.error("Error saving layout positions:", e);
+    }
+  };
+
+  const handleResetLayout = () => {
+    try {
+      localStorage.removeItem('sigma_graph_custom_positions');
+    } catch (e) {}
+    if (simulationRef.current) {
+      const currentNodes = simulationRef.current.nodes();
+      currentNodes.forEach(node => {
+        node.fx = null;
+        node.fy = null;
+      });
+      simulationRef.current.alpha(1).restart();
+    }
+    window.dispatchEvent(new CustomEvent('sigma_toast', {
+      detail: {
+        message: '🔄 Layout del grafo ripristinato ai valori predefiniti!',
+        type: 'info',
+        duration: 5000
+      }
+    }));
+  };
+
   useEffect(() => {
     if (!showAiOverlay) {
       setCreationTab('standard');
@@ -491,6 +537,22 @@ export default function MappaArgomenti({ onOpenFile }) {
         }
       }
     }
+    try {
+      const saved = localStorage.getItem('sigma_graph_custom_positions');
+      if (saved) {
+        const positions = JSON.parse(saved);
+        nodes.forEach(node => {
+          if (positions[node.id]) {
+            node.fx = positions[node.id].fx ?? positions[node.id].x;
+            node.fy = positions[node.id].fy ?? positions[node.id].y;
+            node.x = positions[node.id].x;
+            node.y = positions[node.id].y;
+          }
+        });
+      }
+    } catch (e) {
+      console.error("Error restoring graph positions:", e);
+    }
     return { nodes, links };
   }, [topicsData, showDocs]);
 
@@ -713,8 +775,13 @@ export default function MappaArgomenti({ onOpenFile }) {
         return d.r + 45;
       }).strength(0.85))
       .on('tick', () => {
-        // Enforce hierarchical tree structure with dynamic branch lengths
+        // Enforce hierarchical tree structure with dynamic branch lengths unless node position is fixed
         nodes.forEach(d => {
+          if (d.fx != null && d.fy != null) {
+            d.x = d.fx;
+            d.y = d.fy;
+            return;
+          }
           if (d.type === 'topic') {
             if (d.parentTopicId) {
               const parentNode = nodes.find(n => n.id === d.parentTopicId);
@@ -775,6 +842,23 @@ export default function MappaArgomenti({ onOpenFile }) {
           .attr('y2', d => d.target.y);
         nodeElements.attr('transform', d => `translate(${d.x},${d.y})`);
       });
+
+    // Drag Behavior — Allow free repositioning of nodes
+    const drag = d3.drag()
+      .on('start', (event, d) => {
+        if (!event.active) simulation.alphaTarget(0.3).restart();
+        d.fx = d.x;
+        d.fy = d.y;
+      })
+      .on('drag', (event, d) => {
+        d.fx = event.x;
+        d.fy = event.y;
+      })
+      .on('end', (event, d) => {
+        if (!event.active) simulation.alphaTarget(0);
+      });
+
+    nodeElements.call(drag);
 
     simulationRef.current = simulation;
 
@@ -2475,6 +2559,26 @@ export default function MappaArgomenti({ onOpenFile }) {
             style={{ padding: '6px 12px', fontSize: '0.72rem', borderRadius: '8px' }}
           >
             🔄 Aggiorna
+          </button>
+
+          {/* Salva Layout Button */}
+          <button 
+            className="btn-update" 
+            onClick={handleSaveLayout} 
+            title="Salva le posizioni trascinate dei nodi del grafo"
+            style={{ padding: '6px 12px', fontSize: '0.72rem', borderRadius: '8px', background: 'rgba(63, 185, 80, 0.12)', borderColor: 'rgba(63, 185, 80, 0.3)', color: '#3fb950' }}
+          >
+            💾 Salva Layout
+          </button>
+
+          {/* Reset Layout Default Button */}
+          <button 
+            className="btn-update" 
+            onClick={handleResetLayout} 
+            title="Ripristina il layout predefinito con calcolo automatico della forza"
+            style={{ padding: '6px 12px', fontSize: '0.72rem', borderRadius: '8px', background: 'rgba(210, 153, 34, 0.12)', borderColor: 'rgba(210, 153, 34, 0.3)', color: '#d29922' }}
+          >
+            🔄 Layout Default
           </button>
 
           {/* Nuovo Argomento Button */}
