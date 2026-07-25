@@ -221,16 +221,18 @@ def handle_api_topics(self):
         for node_id, node_data in nodes.items():
             folder_path = node_data.get("folder", f"data/{node_id}")
             
-            # Build module info containing all files inside this specific node folder
+            # Load files directly inside this topic folder
+            files_dict = {"teoria": [], "scripts": [], "test": [], "viz": [], "docs": [], "whitepapers": [], "pdf": [], "media": []}
+            if os.path.isdir(folder_path):
+                files_dict.update(load_module_files(self, folder_path))
+
             mod_info = {
                 "number": "01",
                 "folder": folder_path,
                 "name": node_data.get("name", node_id),
                 "description": node_data.get("description", ""),
-                "teoria": [], "scripts": [], "test": [], "viz": [], "docs": [], "whitepapers": [], "pdf": [], "media": []
             }
-            if os.path.isdir(folder_path):
-                mod_info.update(load_module_files(self, folder_path))
+            mod_info.update(files_dict)
 
             topic_info = {
                 "id": node_id,
@@ -240,6 +242,17 @@ def handle_api_topics(self):
                 "manifesto_ref": node_data.get("manifesto_ref", ""),
                 "parent_id": node_data.get("parent_id"),
                 "children": node_data.get("children", []),
+                "folder": folder_path,
+                # Direct file attachments on Topic Node
+                "teoria": files_dict["teoria"],
+                "scripts": files_dict["scripts"],
+                "test": files_dict["test"],
+                "viz": files_dict["viz"],
+                "docs": files_dict["docs"],
+                "whitepapers": files_dict["whitepapers"],
+                "pdf": files_dict["pdf"],
+                "media": files_dict["media"],
+                # Module alias for legacy graph compatibility
                 "modules": [mod_info]
             }
             result["topics"].append(topic_info)

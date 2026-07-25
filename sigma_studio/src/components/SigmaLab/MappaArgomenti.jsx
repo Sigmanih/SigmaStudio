@@ -1602,29 +1602,48 @@ export default function MappaArgomenti({ onOpenFile }) {
   };
 
   const renderTopicDetail = (topic) => {
-    const modCount = (topic.modules || []).length;
     let totalFiles = 0;
     let filesHtml = '';
-    if (topic.modules) {
-      for (const mod of topic.modules) {
-        for (const key of ['teoria', 'test', 'viz']) {
-          const files = mod[key] || [];
-          for (const f of files) {
-            totalFiles++;
-            filesHtml += `<div class="detail-file-item" onclick="${onOpenFile ? `window.__openFile('${escapeStr(f.path)}')` : ''}">
-              <span class="icon">${key === 'teoria' ? '📖' : key === 'test' ? '🧪' : '📊'}</span>
-              <span class="fname">${escapeStr(f.filename)}</span>
-            </div>`;
-          }
-        }
-        for (const f of [...(mod.docs || []), ...(mod.whitepapers || [])]) {
-          totalFiles++;
-          filesHtml += `<div class="detail-file-item" onclick="${onOpenFile ? `window.__openFile('${escapeStr(f.path)}')` : ''}">
-            <span class="icon">📄</span>
-            <span class="fname">${escapeStr(f.filename)}</span>
-          </div>`;
-        }
-      }
+
+    const categoryIcons = {
+      teoria: '📖', scripts: '⚡', test: '🧪', viz: '📊', docs: '📄', whitepapers: '📜', pdf: '📕', media: '🎵'
+    };
+
+    const directFiles = [
+      ...(topic.teoria || []),
+      ...(topic.scripts || []),
+      ...(topic.viz || []),
+      ...(topic.docs || []),
+      ...(topic.whitepapers || []),
+      ...(topic.pdf || []),
+      ...(topic.media || [])
+    ];
+
+    // Fallback to modules[0] if direct files empty
+    const fileSource = directFiles.length > 0 ? directFiles : (topic.modules && topic.modules[0] ? [
+      ...(topic.modules[0].teoria || []),
+      ...(topic.modules[0].scripts || []),
+      ...(topic.modules[0].viz || []),
+      ...(topic.modules[0].docs || []),
+      ...(topic.modules[0].whitepapers || []),
+      ...(topic.modules[0].pdf || []),
+      ...(topic.modules[0].media || [])
+    ] : []);
+
+    for (const f of fileSource) {
+      totalFiles++;
+      const ext = (f.filename || f.name || '').split('.').pop().toLowerCase();
+      let icon = '📄';
+      if (ext === 'pdf') icon = '📕';
+      else if (['png', 'jpg', 'jpeg', 'svg', 'webp', 'gif'].includes(ext)) icon = '🖼️';
+      else if (['mp3', 'wav', 'mp4', 'webm'].includes(ext)) icon = '🎵';
+      else if (['py', 'js', 'jsx', 'ts'].includes(ext)) icon = '⚡';
+      else if (ext === 'md') icon = '📖';
+
+      filesHtml += `<div class="detail-file-item" onclick="${onOpenFile ? `window.__openFile('${escapeStr(f.path)}')` : ''}">
+        <span class="icon">${icon}</span>
+        <span class="fname">${escapeStr(f.filename || f.name)}</span>
+      </div>`;
     }
 
     const parentTopic = topic.parent_id ? topicsData.find(t => t.id === topic.parent_id) : null;
@@ -1633,20 +1652,20 @@ export default function MappaArgomenti({ onOpenFile }) {
     return (
       <div className="detail-body">
         <div className="detail-header">
-          <div className="detail-type">ARGOMENTO</div>
+          <div className="detail-type">ARGOMENTO DI CONOSCENZA</div>
           <div className="detail-title" style={{ color: '#bc8cff' }}>{escapeStr(topic.name)}</div>
         </div>
         <div className="detail-desc">{escapeStr(topic.description)}</div>
 
-        {/* Pulsante Nuovo Sottoargomento e Selettore Argomento Padre DENTRO l'Argomento */}
+        {/* Pulsante Nuovo Argomento Collegato e Selettore Argomento Padre DENTRO l'Argomento */}
         <div className="topic-inside-controls" style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', margin: '8px 0 12px', alignItems: 'center' }}>
           <button 
             className="btn-new-subtopic" 
             onClick={() => handleCreateSubTopic(topic)} 
-            title="Crea nuovo sottoargomento dentro questo argomento"
+            title="Crea nuovo argomento collegato dentro questo nodo"
             style={{ padding: '6px 12px', fontSize: '0.65rem', background: 'rgba(0,210,255,0.12)', color: '#00d2ff', border: '1px solid rgba(0,210,255,0.3)', borderRadius: '6px', cursor: 'pointer', fontWeight: 600 }}
           >
-            ➕ Nuovo Sottoargomento
+            ➕ Nuovo Argomento Collegato
           </button>
           {topicsData.length > 1 && (
             <select
@@ -1664,8 +1683,7 @@ export default function MappaArgomenti({ onOpenFile }) {
         </div>
 
         <div className="detail-meta">
-          <span className="tag modules-tag">{modCount} moduli</span>
-          <span className="tag">{totalFiles} file</span>
+          <span className="tag">{totalFiles} file integrati</span>
           <span className="tag">{escapeStr(topic.domain)}</span>
         </div>
         {topic.manifesto_ref && <div className="detail-meta manifesto-ref">📜 {escapeStr(topic.manifesto_ref)}</div>}
