@@ -13,13 +13,14 @@ const ORANGE_COLOR = '#d29922';
 const ORANGE_FILL = 'rgba(210,153,34,0.25)';
 const DOC_COLORS = {
   teoria: { stroke: '#bc8cff', fill: 'rgba(188,140,255,0.2)' },
+  scripts: { stroke: '#3fb950', fill: 'rgba(63,185,80,0.2)' },
   test: { stroke: '#3fb950', fill: 'rgba(63,185,80,0.2)' },
   viz: { stroke: '#d29922', fill: 'rgba(210,153,34,0.2)' },
   docs: { stroke: '#58a6ff', fill: 'rgba(88,166,255,0.2)' },
   whitepapers: { stroke: '#ffd700', fill: 'rgba(255,215,0,0.2)' },
 };
-const DOC_ICONS = { teoria: '📖', test: '🧪', viz: '📊', docs: '📄', whitepapers: '📜' };
-const DOC_PATHS = { teoria: 'teoria', test: 'test', viz: 'viz', docs: 'docs', whitepapers: 'whitepapers' };
+const DOC_ICONS = { teoria: '📖', scripts: '⚡', test: '⚡', viz: '📊', docs: '📄', whitepapers: '📜' };
+const DOC_PATHS = { teoria: 'teoria', scripts: 'scripts', test: 'scripts', viz: 'viz', docs: 'docs', whitepapers: 'whitepapers' };
 
 export default function MappaArgomenti({ onOpenFile }) {
   const svgRef = useRef(null);
@@ -83,6 +84,21 @@ export default function MappaArgomenti({ onOpenFile }) {
   const handleFontSizeChange = (newSize) => {
     setLabelFontSize(newSize);
     try { localStorage.setItem('sigma_graph_font_size', String(newSize)); } catch (e) {}
+  };
+
+  // Configurable Branch Length state (persisted in localStorage)
+  const [branchLength, setBranchLength] = useState(() => {
+    try {
+      const saved = localStorage.getItem('sigma_graph_branch_length');
+      return saved ? parseInt(saved, 10) : 240;
+    } catch (e) {
+      return 240;
+    }
+  });
+
+  const handleBranchLengthChange = (newLen) => {
+    setBranchLength(newLen);
+    try { localStorage.setItem('sigma_graph_branch_length', String(newLen)); } catch (e) {}
   };
 
   useEffect(() => {
@@ -292,7 +308,18 @@ export default function MappaArgomenti({ onOpenFile }) {
     }
   }, []);
 
-  useEffect(() => { fetchData(); }, [fetchData]);
+  useEffect(() => { 
+    fetchData(); 
+    const handleTopicsUpdated = () => {
+      fetchData();
+    };
+    window.addEventListener('sigma_topics_updated', handleTopicsUpdated);
+    window.addEventListener('sigma_file_created', handleTopicsUpdated);
+    return () => {
+      window.removeEventListener('sigma_topics_updated', handleTopicsUpdated);
+      window.removeEventListener('sigma_file_created', handleTopicsUpdated);
+    };
+  }, [fetchData]);
 
   // Update dimensions on resize/load
   useEffect(() => {
@@ -649,7 +676,7 @@ export default function MappaArgomenti({ onOpenFile }) {
 
     nodeElements.append('text')
       .attr('class', d => 'node-label ' + d.type)
-      .attr('dy', d => d.r + (d.type === 'topic' ? 22 : d.type === 'module' ? 18 : 14))
+      .attr('dy', d => d.r + Math.round(d.type === 'topic' ? Math.max(22, labelFontSize * 1.05) : d.type === 'module' ? Math.max(18, labelFontSize * 0.95) : Math.max(14, labelFontSize * 0.85)))
       .attr('text-anchor', 'middle')
       .attr('fill', '#e2e4eb')
       .attr('font-size', d => {
@@ -661,9 +688,9 @@ export default function MappaArgomenti({ onOpenFile }) {
       .attr('pointer-events', 'none')
       .text(d => d.label.length > 35 ? d.label.slice(0, 33) + '…' : d.label);
 
-    // Simulation with longer branch distances and stronger repulsion
+    // Simulation with configurable branch distances and stronger repulsion
     const simulation = d3.forceSimulation(nodes)
-      .force('link', d3.forceLink(links).id(d => d.id).distance(240).strength(0.5))
+      .force('link', d3.forceLink(links).id(d => d.id).distance(branchLength).strength(0.5))
       .force('charge', d3.forceManyBody().strength(d => d.type === 'topic' ? -2400 : -1000))
       .force('x', d3.forceX(width / 2).strength(0.03))
       .force('collision', d3.forceCollide().radius(d => {
@@ -672,20 +699,20 @@ export default function MappaArgomenti({ onOpenFile }) {
         return d.r + 45;
       }).strength(0.85))
       .on('tick', () => {
-        // Enforce hierarchical tree structure with longer branches
+        // Enforce hierarchical tree structure with dynamic branch lengths
         nodes.forEach(d => {
           if (d.type === 'topic') {
             if (d.parentTopicId) {
               const parentNode = nodes.find(n => n.id === d.parentTopicId);
               if (parentNode) {
-                const branchLength = 340; // longer topic branches
+                const topicBranchLen = Math.round(branchLength * 1.35); // topic branch length
                 let angle = Math.PI / 2; // default straight down
                 if (d.totalChildTopics > 1) {
                   // Symmetrical fan spread (35 to 145 deg)
                   angle = 0.61 + (d.childTopicIndex / (d.totalChildTopics - 1)) * 1.92;
                 }
-                const targetX = parentNode.x + Math.cos(angle) * branchLength;
-                const targetY = parentNode.y + Math.sin(angle) * branchLength;
+                const targetX = parentNode.x + Math.cos(angle) * topicBranchLen;
+                const targetY = parentNode.y + Math.sin(angle) * topicBranchLen;
                 d.x += (targetX - d.x) * 0.15;
                 d.y += (targetY - d.y) * 0.15;
               }
@@ -698,14 +725,14 @@ export default function MappaArgomenti({ onOpenFile }) {
             // Find parent topic node
             const parentNode = nodes.find(n => n.id === 'topic-' + d.topicId);
             if (parentNode) {
-              const branchLength = 240; // longer module branches
+              const moduleBranchLen = branchLength; // module branch length
               let angle = Math.PI / 2;
               if (d.totalMods > 1) {
                 // Symmetrical fan spread (45 to 135 deg)
                 angle = 0.78 + (d.modIndex / (d.totalMods - 1)) * 1.57;
               }
-              const targetX = parentNode.x + Math.cos(angle) * branchLength;
-              const targetY = parentNode.y + Math.sin(angle) * branchLength;
+              const targetX = parentNode.x + Math.cos(angle) * moduleBranchLen;
+              const targetY = parentNode.y + Math.sin(angle) * moduleBranchLen;
               d.x += (targetX - d.x) * 0.2;
               d.y += (targetY - d.y) * 0.2;
             }
@@ -713,14 +740,14 @@ export default function MappaArgomenti({ onOpenFile }) {
             // Find parent module node
             const parentNode = nodes.find(n => n.id === d.parentModId);
             if (parentNode) {
-              const branchLength = 170; // longer doc branches
+              const docBranchLen = Math.round(branchLength * 0.65); // doc branch length
               let angle = Math.PI / 2;
               if (d.totalDocs > 1) {
                 // Symmetrical fan spread (30 to 150 deg)
                 angle = 0.52 + (d.docIndex / (d.totalDocs - 1)) * 2.09;
               }
-              const targetX = parentNode.x + Math.cos(angle) * branchLength;
-              const targetY = parentNode.y + Math.sin(angle) * branchLength;
+              const targetX = parentNode.x + Math.cos(angle) * docBranchLen;
+              const targetY = parentNode.y + Math.sin(angle) * docBranchLen;
               d.x += (targetX - d.x) * 0.25;
               d.y += (targetY - d.y) * 0.25;
             }
@@ -740,7 +767,7 @@ export default function MappaArgomenti({ onOpenFile }) {
     return () => {
       simulation.stop();
     };
-  }, [d3, topicsData, dimensions, buildGraphData]);
+  }, [d3, topicsData, dimensions, buildGraphData, branchLength]);
 
   // Update node visuals on selection change without restarting simulation
   useEffect(() => {
@@ -1851,34 +1878,63 @@ export default function MappaArgomenti({ onOpenFile }) {
         .mappa-zoom-controls {
           position: absolute; bottom: 12px; left: 12px; display: flex; gap: 6px; align-items: center;
         }
-        .mappa-zoom-controls button {
-          background: rgba(17,19,27,0.92); border: 1px solid #1e2030; border-radius: 8px;
-          color: #8b8fa3; cursor: pointer; font-family: inherit;
-          transition: all 0.15s; backdrop-filter: blur(8px);
-          display: flex; align-items: center; justify-content: center;
+        .mappa-header-bar button {
+          background: rgba(22, 27, 40, 0.75);
+          border: 1px solid rgba(255, 255, 255, 0.1);
+          border-radius: 8px;
+          color: #e2e4eb;
+          cursor: pointer;
+          font-family: inherit;
+          font-weight: 600;
+          transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+          backdrop-filter: blur(8px);
+          display: flex;
+          align-items: center;
+          gap: 6px;
         }
-        .mappa-zoom-controls button:hover { background: #1e2030; color: #e2e4eb; border-color: #2a2d3e; }
-        .mappa-zoom-controls .btn-explore { padding: 7px 14px; font-size: 0.7rem; font-weight: 600; gap: 6px; border-color: rgba(63,185,80,0.25); color: #3fb950; }
-        .mappa-zoom-controls .btn-explore:hover { background: rgba(63,185,80,0.12); border-color: rgba(63,185,80,0.4); }
-        .mappa-zoom-controls .btn-explore.active { background: rgba(255,85,85,0.1); border-color: rgba(255,85,85,0.25); color: #ff5555; }
-        .mappa-zoom-controls .btn-update { padding: 7px 14px; font-size: 0.7rem; font-weight: 600; border-color: rgba(0,210,255,0.25); color: #00d2ff; display: flex; align-items: center; gap: 6px; }
-        .mappa-zoom-controls .btn-update:hover { background: rgba(0,210,255,0.12); border-color: rgba(0,210,255,0.4); }
-        .mappa-zoom-controls .btn-new-topic { padding: 7px 14px; font-size: 0.7rem; font-weight: 600; border-color: rgba(188,140,255,0.25); color: #bc8cff; display: flex; align-items: center; gap: 6px; }
-        .mappa-zoom-controls .btn-new-topic:hover { background: rgba(188,140,255,0.12); border-color: rgba(188,140,255,0.4); }
-        .mappa-zoom-controls .btn-new-subtopic { padding: 7px 14px; font-size: 0.7rem; font-weight: 600; border-color: rgba(255,159,67,0.25); color: #ff9f43; display: flex; align-items: center; gap: 6px; }
-        .mappa-zoom-controls .btn-new-subtopic:hover { background: rgba(255,159,67,0.12); border-color: rgba(255,159,67,0.4); }
-        .mappa-zoom-controls .btn-delete-topic { padding: 7px 14px; font-size: 0.7rem; font-weight: 600; border-color: rgba(255,85,85,0.25); color: #ff5555; display: flex; align-items: center; gap: 6px; }
-        .mappa-zoom-controls .btn-delete-topic:hover { background: rgba(255,85,85,0.12); border-color: rgba(255,85,85,0.4); }
-        .mappa-zoom-controls .btn-parent-select-container { display: flex; align-items: center; position: relative; }
-        .mappa-zoom-controls .btn-parent-select-container select {
-          background: rgba(17,19,27,0.92); border: 1px solid rgba(210, 153, 34, 0.25); border-radius: 8px;
-          color: #d29922; cursor: pointer; font-family: inherit; font-size: 0.7rem; font-weight: 600;
-          padding: 7px 24px 7px 12px; outline: none; appearance: none; -webkit-appearance: none;
-          transition: all 0.15s; backdrop-filter: blur(8px);
-          background-image: url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23d29922' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3e%3cpolyline points='6 9 12 15 18 9'%3e%3c/polyline%3e%3c/svg%3e");
-          background-repeat: no-repeat; background-position: right 8px center; background-size: 10px;
+        .mappa-header-bar .btn-explore {
+          background: rgba(46, 160, 67, 0.12);
+          border-color: rgba(46, 160, 67, 0.35);
+          color: #3fb950;
         }
-        .mappa-zoom-controls .btn-parent-select-container select:hover { background-color: rgba(210, 153, 34, 0.12); border-color: rgba(210, 153, 34, 0.4); }
+        .mappa-header-bar .btn-explore:hover {
+          background: rgba(46, 160, 67, 0.22);
+          border-color: rgba(46, 160, 67, 0.6);
+          box-shadow: 0 0 12px rgba(46, 160, 67, 0.25);
+          transform: translateY(-1px);
+        }
+        .mappa-header-bar .btn-explore.active {
+          background: rgba(255, 85, 85, 0.12);
+          border-color: rgba(255, 85, 85, 0.35);
+          color: #ff5555;
+        }
+        .mappa-header-bar .btn-explore.active:hover {
+          background: rgba(255, 85, 85, 0.22);
+          border-color: rgba(255, 85, 85, 0.6);
+          box-shadow: 0 0 12px rgba(255, 85, 85, 0.25);
+        }
+        .mappa-header-bar .btn-update {
+          background: rgba(0, 210, 255, 0.12);
+          border-color: rgba(0, 210, 255, 0.35);
+          color: #00d2ff;
+        }
+        .mappa-header-bar .btn-update:hover {
+          background: rgba(0, 210, 255, 0.22);
+          border-color: rgba(0, 210, 255, 0.6);
+          box-shadow: 0 0 14px rgba(0, 210, 255, 0.3);
+          transform: translateY(-1px);
+        }
+        .mappa-header-bar .btn-new-topic {
+          background: linear-gradient(135deg, rgba(188, 140, 255, 0.2), rgba(137, 87, 229, 0.14));
+          border-color: rgba(188, 140, 255, 0.4);
+          color: #d2a8ff;
+        }
+        .mappa-header-bar .btn-new-topic:hover {
+          background: linear-gradient(135deg, rgba(188, 140, 255, 0.3), rgba(137, 87, 229, 0.25));
+          border-color: rgba(188, 140, 255, 0.65);
+          box-shadow: 0 0 14px rgba(188, 140, 255, 0.35);
+          transform: translateY(-1px);
+        }
 
 
         /* Detail Panel (side panel in top section) */
@@ -2260,67 +2316,111 @@ export default function MappaArgomenti({ onOpenFile }) {
         }
       `}</style>
       
-      {/* TOP SECTION — graph + detail panel */}
-      <div className="mappa-top-section">
-        <div ref={containerRef} className="mappa-graph-container" style={{ display: 'flex' }}>
-          <svg ref={svgRef} className="mappa-graph-svg" style={{ flex: 1 }}></svg>
-          <div className="mappa-zoom-controls">
-            <button className={`btn-explore ${showDocs ? 'active' : ''}`} onClick={() => {
+      {/* HEADER SECTION — Title, Description & Controls Toolbar */}
+      <div 
+        className="mappa-header-bar" 
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          flexWrap: 'wrap',
+          gap: '12px',
+          padding: '14px 20px',
+          background: 'linear-gradient(135deg, rgba(17, 19, 27, 0.95), rgba(24, 27, 40, 0.85))',
+          border: '1px solid rgba(255, 255, 255, 0.08)',
+          borderRadius: '12px',
+          marginBottom: '14px',
+          backdropFilter: 'blur(12px)',
+          boxShadow: '0 4px 20px rgba(0, 0, 0, 0.25)'
+        }}
+      >
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <h2 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 700, color: '#f0f2f8', letterSpacing: '-0.2px' }}>
+              🌐 Grafo degli Argomenti
+            </h2>
+            <span style={{ fontSize: '0.65rem', padding: '2px 8px', borderRadius: '12px', background: 'rgba(0, 210, 255, 0.12)', color: '#00d2ff', border: '1px solid rgba(0, 210, 255, 0.25)', fontWeight: 600 }}>
+              Mappa Concettuale
+            </span>
+          </div>
+          <p style={{ margin: 0, fontSize: '0.72rem', color: '#8b8fa3', fontWeight: 400 }}>
+            Visualizzazione dinamica ed interattiva della mappa concettuale, dei moduli di studio e della struttura relazionale del tuo workspace.
+          </p>
+        </div>
+
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+          {/* Slider Dimensione Testo Nodi */}
+          <div className="font-size-control" style={{ display: 'flex', alignItems: 'center', gap: '6px', background: '#11131b', border: '1px solid #1e2030', padding: '5px 10px', borderRadius: '8px', fontSize: '0.68rem', color: '#8b8fa3' }} title="Regola la dimensione del testo dei nodi">
+            <span>🔤 Testo:</span>
+            <input
+              type="range"
+              min="10"
+              max="50"
+              step="1"
+              value={labelFontSize}
+              onChange={e => handleFontSizeChange(parseInt(e.target.value, 10))}
+              style={{ width: '65px', accentColor: '#00d2ff', cursor: 'pointer' }}
+            />
+            <span style={{ color: '#00d2ff', fontWeight: 600, minWidth: '32px' }}>{labelFontSize}px</span>
+          </div>
+
+          {/* Slider Lunghezza Rami */}
+          <div className="branch-length-control" style={{ display: 'flex', alignItems: 'center', gap: '6px', background: '#11131b', border: '1px solid #1e2030', padding: '5px 10px', borderRadius: '8px', fontSize: '0.68rem', color: '#8b8fa3' }} title="Regola la lunghezza dei rami del grafico">
+            <span>🌿 Rami:</span>
+            <input
+              type="range"
+              min="120"
+              max="450"
+              step="10"
+              value={branchLength}
+              onChange={e => handleBranchLengthChange(parseInt(e.target.value, 10))}
+              style={{ width: '60px', accentColor: '#bc8cff', cursor: 'pointer' }}
+            />
+            <span style={{ color: '#bc8cff', fontWeight: 600, minWidth: '32px' }}>{branchLength}px</span>
+          </div>
+
+          {/* Esplora Button */}
+          <button 
+            className={`btn-explore ${showDocs ? 'active' : ''}`} 
+            onClick={() => {
               setShowDocs(prev => {
                 const next = !prev;
                 localStorage.setItem('sigma_mappa_explore', String(next));
                 return next;
               });
-            }} title={showDocs ? 'Collidi' : 'Esplora'}>
-              {showDocs ? '✕ Collidi' : '🔍 Esplora'}
-            </button>
-            <button className="btn-update" onClick={fetchData} title="Aggiorna dati e grafico">
-              🔄 Aggiorna
-            </button>
+            }} 
+            title={showDocs ? 'Collidi' : 'Esplora'}
+            style={{ padding: '6px 12px', fontSize: '0.72rem', borderRadius: '8px' }}
+          >
+            {showDocs ? '✕ Collidi' : '🔍 Esplora'}
+          </button>
 
-            {/* Slider Dimensione Testo Nodi */}
-            <div className="font-size-control" style={{ display: 'flex', alignItems: 'center', gap: '6px', background: '#11131b', border: '1px solid #1e2030', padding: '4px 10px', borderRadius: '6px', fontSize: '0.65rem', color: '#8b8fa3' }} title="Regola la dimensione delle scritte dei nodi">
-              <span>🔤 Testo:</span>
-              <input
-                type="range"
-                min="10"
-                max="28"
-                step="1"
-                value={labelFontSize}
-                onChange={e => handleFontSizeChange(parseInt(e.target.value, 10))}
-                style={{ width: '65px', accentColor: '#00d2ff', cursor: 'pointer' }}
-              />
-              <span style={{ color: '#00d2ff', fontWeight: 600, minWidth: '28px' }}>{labelFontSize}px</span>
-            </div>
+          {/* Refresh Button */}
+          <button 
+            className="btn-update" 
+            onClick={fetchData} 
+            title="Aggiorna dati e grafico"
+            style={{ padding: '6px 12px', fontSize: '0.72rem', borderRadius: '8px' }}
+          >
+            🔄 Aggiorna
+          </button>
 
-            <button className="btn-new-topic" onClick={handleCreateTopic} title="Crea nuovo argomento">
-              🌐 Nuovo Argomento
-            </button>
-            {activeTopic && (
-              <>
-                <button className="btn-new-subtopic" onClick={() => handleCreateSubTopic(activeTopic)} title="Crea nuovo sottoargomento">
-                  ➕ Nuovo Sottoargomento
-                </button>
-                <button className="btn-delete-topic" onClick={() => handleDeleteTopic(activeTopic)} title="Elimina argomento selezionato">
-                  🗑️ Elimina Argomento
-                </button>
-                {topicsData.length > 0 && (
-                  <div className="btn-parent-select-container">
-                    <select 
-                      value={activeTopic.parent_id || ''} 
-                      onChange={e => handleUpdateTopicParent(activeTopic, e.target.value)}
-                      title="Assegna argomento padre"
-                    >
-                      <option value="">— Nessun padre —</option>
-                      {topicsData.filter(t => t.id !== activeTopic.id).map(t => (
-                        <option key={t.id} value={t.id}>⬆ {escapeStr(t.name)}</option>
-                      ))}
-                    </select>
-                  </div>
-                )}
-              </>
-            )}
-          </div>
+          {/* Nuovo Argomento Button */}
+          <button 
+            className="btn-new-topic" 
+            onClick={handleCreateTopic} 
+            title="Crea nuovo argomento"
+            style={{ padding: '6px 12px', fontSize: '0.72rem', borderRadius: '8px' }}
+          >
+            🌐 Nuovo Argomento
+          </button>
+        </div>
+      </div>
+
+      {/* TOP SECTION — graph + detail panel */}
+      <div className="mappa-top-section">
+        <div ref={containerRef} className="mappa-graph-container" style={{ display: 'flex' }}>
+          <svg ref={svgRef} className="mappa-graph-svg" style={{ flex: 1 }}></svg>
 
           {/* AI Overlay Menu */}
           {showAiOverlay && overlayNode && (
@@ -2334,35 +2434,73 @@ export default function MappaArgomenti({ onOpenFile }) {
                   {overlayNode.type === 'doc' ? '📄 ' : overlayNode.type === 'topic' ? '🌐 ' : '➕ '}
                   {escapeStr(overlayNode.label)}
                 </span>
-                <button className="ai-overlay-close" type="button" onClick={() => setShowAiOverlay(false)} onMouseDown={e => e.stopPropagation()}>✕</button>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                  {overlayNode.type === 'doc' && (
+                    <button 
+                      className="ai-overlay-close" 
+                      type="button" 
+                      style={{ color: '#ff5555', background: 'rgba(255,85,85,0.1)', border: '1px solid rgba(255,85,85,0.2)', padding: '2px 6px', borderRadius: '4px', fontSize: '0.65rem' }} 
+                      onClick={() => { setFileTab('delete'); setAiError(''); }} 
+                      onMouseDown={e => e.stopPropagation()}
+                      title="Elimina questo file"
+                    >
+                      🗑️
+                    </button>
+                  )}
+                  <button className="ai-overlay-close" type="button" onClick={() => setShowAiOverlay(false)} onMouseDown={e => e.stopPropagation()}>✕</button>
+                </div>
               </div>
 
               {overlayNode.type === 'doc' ? (
                 // File Actions Layout
                 <>
-                  <button
-                    type="button"
-                    className="ai-overlay-btn primary"
-                    style={{
-                      width: '100%',
-                      padding: '10px',
-                      marginBottom: '8px',
-                      background: 'rgba(0, 210, 255, 0.15)',
-                      borderColor: 'rgba(0, 210, 255, 0.35)',
-                      color: '#00d2ff',
-                      fontSize: '0.7rem',
-                      borderRadius: '8px',
-                      boxShadow: '0 0 10px rgba(0, 210, 255, 0.15)'
-                    }}
-                    onClick={() => {
-                      if (onOpenFile && overlayNode.filePath) {
-                        onOpenFile(overlayNode.filePath);
-                      }
-                      setShowAiOverlay(false);
-                    }}
-                  >
-                    👁️ Visualizza / Apri File
-                  </button>
+                  <div style={{ display: 'flex', gap: '6px', marginBottom: '8px' }}>
+                    <button
+                      type="button"
+                      className="ai-overlay-btn primary"
+                      style={{
+                        flex: 1,
+                        padding: '8px 10px',
+                        background: 'rgba(0, 210, 255, 0.15)',
+                        borderColor: 'rgba(0, 210, 255, 0.35)',
+                        color: '#00d2ff',
+                        fontSize: '0.68rem',
+                        borderRadius: '8px',
+                        fontWeight: 600,
+                        boxShadow: '0 0 10px rgba(0, 210, 255, 0.15)'
+                      }}
+                      onClick={() => {
+                        if (onOpenFile && overlayNode.filePath) {
+                          onOpenFile(overlayNode.filePath);
+                        }
+                        setShowAiOverlay(false);
+                      }}
+                    >
+                      👁️ Visualizza
+                    </button>
+
+                    <button
+                      type="button"
+                      className="ai-overlay-btn"
+                      style={{
+                        flex: 1,
+                        padding: '8px 10px',
+                        background: 'rgba(255, 85, 85, 0.12)',
+                        borderColor: 'rgba(255, 85, 85, 0.3)',
+                        color: '#ff5555',
+                        fontSize: '0.68rem',
+                        borderRadius: '8px',
+                        fontWeight: 600,
+                        cursor: 'pointer'
+                      }}
+                      onClick={() => {
+                        setFileTab('delete');
+                        setAiError('');
+                      }}
+                    >
+                      🗑️ Elimina
+                    </button>
+                  </div>
 
                   <div className="ai-overlay-tabs">
                     <button 
@@ -2501,7 +2639,7 @@ export default function MappaArgomenti({ onOpenFile }) {
                           onChange={e => setMoveTargetCategory(e.target.value)}
                         >
                           <option value="teoria">📖 Teoria</option>
-                          <option value="test">🧪 TestScript</option>
+                          <option value="scripts">⚡ Script / Codice</option>
                           <option value="viz">📊 Visualizzazione</option>
                           <option value="docs">📄 Documentazione</option>
                           <option value="whitepaper">📜 Whitepaper</option>
@@ -2658,6 +2796,67 @@ export default function MappaArgomenti({ onOpenFile }) {
                     </div>
                   )}
 
+                  {/* Lista File Esistenti nel Nodo */}
+                  {(() => {
+                    const nodeFiles = [];
+                    const processMod = (mod, modName = '') => {
+                      ['teoria', 'test', 'viz', 'docs', 'whitepapers'].forEach(cat => {
+                        (mod[cat] || []).forEach(f => {
+                          const path = typeof f === 'string' ? f : f.path || f.filePath;
+                          const name = path ? path.split('/').pop() : f.name || f;
+                          if (path) nodeFiles.push({ name, path, category: cat, modName });
+                        });
+                      });
+                    };
+
+                    if (overlayNode.type === 'module' && overlayNode.data) {
+                      processMod(overlayNode.data, overlayNode.data.name);
+                    } else if (overlayNode.type === 'topic' && overlayNode.data?.modules) {
+                      overlayNode.data.modules.forEach(m => processMod(m, m.name));
+                    }
+
+                    if (nodeFiles.length === 0) return null;
+
+                    return (
+                      <div className="ai-overlay-group" style={{ marginBottom: '10px', paddingBottom: '8px', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+                        <span className="ai-overlay-label">📄 File Esistenti ({nodeFiles.length})</span>
+                        <div style={{ maxHeight: '110px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '4px', background: 'rgba(0,0,0,0.2)', padding: '6px', borderRadius: '6px' }}>
+                          {nodeFiles.map((fileItem, i) => (
+                            <div key={i} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: '0.6rem', color: '#c5c9db', background: 'rgba(255,255,255,0.03)', padding: '3px 6px', borderRadius: '4px' }}>
+                              <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '140px' }} title={fileItem.path}>
+                                📄 {escapeStr(fileItem.name)}
+                              </span>
+                              <div style={{ display: 'flex', gap: '4px' }}>
+                                <button
+                                  type="button"
+                                  style={{ background: 'rgba(0,210,255,0.12)', border: '1px solid rgba(0,210,255,0.25)', color: '#00d2ff', padding: '1px 5px', borderRadius: '3px', cursor: 'pointer', fontSize: '0.55rem' }}
+                                  onClick={() => {
+                                    if (onOpenFile) onOpenFile(fileItem.path);
+                                    setShowAiOverlay(false);
+                                  }}
+                                  title="Apri file"
+                                >
+                                  👁️
+                                </button>
+                                <button
+                                  type="button"
+                                  style={{ background: 'rgba(255,85,85,0.12)', border: '1px solid rgba(255,85,85,0.25)', color: '#ff5555', padding: '1px 5px', borderRadius: '3px', cursor: 'pointer', fontSize: '0.55rem' }}
+                                  onClick={async () => {
+                                    await handleDeleteFile(fileItem.path);
+                                    setShowAiOverlay(false);
+                                  }}
+                                  title="Elimina file"
+                                >
+                                  🗑️
+                                </button>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    );
+                  })()}
+
                   <div style={{ fontSize: '0.5rem', fontWeight: 600, color: '#5a5e72', letterSpacing: '0.5px', marginBottom: '6px', textTransform: 'uppercase' }}>
                     CREA NUOVO FILE DENTRO QUESTO {overlayNode.type === 'topic' ? 'ARGOMENTO' : 'SOTTOARGOMENTO'}
                   </div>
@@ -2695,7 +2894,7 @@ export default function MappaArgomenti({ onOpenFile }) {
                         onChange={e => setNewFileCategory(e.target.value)}
                       >
                         <option value="teoria">📖 Teoria</option>
-                        <option value="test">🧪 Test</option>
+                        <option value="scripts">⚡ Script / Codice</option>
                         <option value="viz">📊 Visualizzazione (D3)</option>
                         <option value="docs">📄 Documentazione</option>
                         <option value="whitepaper">📜 Whitepaper</option>

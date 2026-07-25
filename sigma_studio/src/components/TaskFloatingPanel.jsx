@@ -148,6 +148,7 @@ export default function TaskFloatingPanel({ tasks, onAdd, onEdit, onDelete, onTo
 
   const getFileIcon = (type) => {
     switch (type) {
+      case 'scripts':
       case 'test': return <Terminal size={14} />;
       case 'viz': return <PieChart size={14} />;
       case 'whitepaper': return <BookOpen size={14} />;

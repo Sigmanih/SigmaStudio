@@ -63,7 +63,7 @@ export default function SigmaLab({ initialPath, initialType }) {
       {expandedModules[mod.number] && (
         <div className="sigma-lab-module-files">
           {mod.teoria?.map(f => renderFileItem(f, 'teoria'))}
-          {mod.test?.map(f => renderFileItem(f, 'test'))}
+          {mod.scripts?.map(f => renderFileItem(f, 'scripts'))}
           {mod.viz?.map(f => renderFileItem(f, 'viz'))}
           {mod.docs?.map(f => renderFileItem(f, 'whitepaper'))}
         </div>
@@ -82,6 +82,7 @@ export default function SigmaLab({ initialPath, initialType }) {
     }
 
     switch (activeType) {
+      case 'scripts':
       case 'test':
         return <CodeRunner scriptPath={activePath} />;
       case 'viz':
@@ -122,6 +123,7 @@ export default function SigmaLab({ initialPath, initialType }) {
 // Helper component for file icons
 function FileIcon({ type }) {
   switch (type) {
+    case 'scripts':
     case 'test': return <Terminal size={14} className="icon-accent" />;
     case 'viz': return <Globe size={14} className="icon-success" />;
     case 'whitepaper': return <BookOpen size={14} className="icon-gold" />;

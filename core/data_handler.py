@@ -177,7 +177,7 @@ def handle_knowledge_db(self):
                           "path": f"module-{mod.replace(os.sep, '/')}",
                           "desc": meta.get("modules", {}).get(num, ""), "type": "module"})
             links.append({"source": "Dashboard", "target": mod_id})
-            for folder_name in ['teoria', 'test', 'viz', 'docs']:
+            for folder_name in ['teoria', 'scripts', 'viz', 'docs']:
                 fp = os.path.join(mod, folder_name)
                 if os.path.isdir(fp):
                     for f in glob.glob(os.path.join(fp, "*")):

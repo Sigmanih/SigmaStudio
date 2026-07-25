@@ -55,7 +55,7 @@ export function RoadmapView({ tasks, onEdit, onAdd, onDelete, onToggleStatus, on
 
   const getFileIcon = (type) => {
     switch (type) {
-      case 'test': return <Terminal size={14} />;
+      case 'scripts': return <Terminal size={14} />;
       case 'viz': return <PieChart size={14} />;
       case 'whitepaper': return <BookOpen size={14} />;
       default: return <FileText size={14} />;

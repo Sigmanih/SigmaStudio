@@ -377,20 +377,30 @@ def apply_execution_profile(profile: str, config: dict) -> dict:
 # Provider resolution
 # ---------------------------------------------------------------------------
 
-def resolve_provider_config(ai_cfg: dict, model_name: str):
+def resolve_provider_config(ai_cfg_or_model, model_name: str = None):
     """Find the provider configuration that should handle the given model.
 
-    Strategy:
-    1. Exact match in any provider's models[] list
-    2. Match against provider's default model
-    3. Prefix match (e.g. 'deepseek-chat' starts with 'deepseek')
-    4. Cloud providers have well-known prefixes → if matched, use that provider
-    5. FALLBACK: anything unknown is Ollama (local), never route unknowns to cloud
+    Supports both signatures:
+    - resolve_provider_config(ai_cfg, model_name)
+    - resolve_provider_config(model_name)
 
     Returns:
         Tuple of (provider_key, provider_config). Always returns a valid tuple.
     """
-    providers = ai_cfg.get("providers", {})
+    if model_name is None and isinstance(ai_cfg_or_model, str):
+        model_name = ai_cfg_or_model
+        ai_cfg = load_ai_config()
+    elif isinstance(ai_cfg_or_model, dict):
+        ai_cfg = ai_cfg_or_model
+    else:
+        ai_cfg = load_ai_config()
+        if not model_name and isinstance(ai_cfg_or_model, str):
+            model_name = ai_cfg_or_model
+
+    if not model_name:
+        model_name = (ai_cfg or {}).get("active_model", "llama3.2")
+
+    providers = (ai_cfg or {}).get("providers", {})
     best_match = None
 
     cloud_prefixes = {

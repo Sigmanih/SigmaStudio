@@ -25,7 +25,7 @@ Competenze:
 
 Regole:
 - Usa SEMPRE percorsi validi: data/<topic>/<NN_modulo>/<sezione>/<file>
-- Le uniche sezioni permesse sono: teoria/, test/, viz/, docs/, whitepapers/
+- Le uniche sezioni permesse sono: teoria/, scripts/, viz/, docs/, whitepapers/
 - Prima di creare un file, verifica che il modulo esista
 - Per ogni file creato, aggiorna il task corrispondente
 """

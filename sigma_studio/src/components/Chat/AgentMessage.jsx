@@ -105,7 +105,7 @@ export default function AgentMessage({
     const filename = path.split('/').pop() || path;
     const pathLower = path.toLowerCase();
     let type = 'teoria';
-    if (pathLower.includes('/test/')) type = 'test';
+    if (pathLower.includes('/scripts/') || pathLower.includes('/test/')) type = 'scripts';
     else if (pathLower.includes('/viz/')) type = 'viz';
     else if (pathLower.includes('/docs/')) {
       type = path.split('/').pop()?.toUpperCase().startsWith('WHITEPAPER_') ? 'whitepaper' : 'docs';

@@ -33,7 +33,7 @@ def _ensure_module_subfolders(file_path: str) -> None:
     parts = file_path.replace("\\", "/").split("/")
     if len(parts) >= 3 and parts[0] == "data":
         module_dir = os.path.join(parts[0], parts[1], parts[2])
-        for subfolder in ("teoria", "scripts", "viz", "test", "docs"):
+        for subfolder in ("teoria", "scripts", "viz", "docs", "whitepapers"):
             os.makedirs(os.path.join(module_dir, subfolder), exist_ok=True)
 
 

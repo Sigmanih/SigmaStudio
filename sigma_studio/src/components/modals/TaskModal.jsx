@@ -80,7 +80,7 @@ export default function TaskModal({ isOpen, onClose, onSave, initialData = null,
       const subdirs = [
         { key: 'whitepapers', label: 'Whitepaper', icon: '📜', filesList: mod.whitepapers || [] },
         { key: 'teoria', label: 'Teoria', icon: '📖', filesList: mod.teoria || [] },
-        { key: 'test', label: 'Test', icon: '🧪', filesList: mod.test || [] },
+        { key: 'scripts', label: 'Scripts', icon: '⚡', filesList: mod.scripts || mod.test || [] },
         { key: 'viz', label: 'Viz', icon: '📊', filesList: mod.viz || [] },
         { key: 'docs', label: 'Docs', icon: '📄', filesList: mod.docs || [] },
       ];
@@ -89,7 +89,7 @@ export default function TaskModal({ isOpen, onClose, onSave, initialData = null,
           const files = sd.filesList.map(f => ({
             path: f.path,
             filename: f.filename,
-            type: sd.key === 'whitepapers' ? 'whitepaper' : sd.key === 'teoria' ? 'teoria' : sd.key === 'test' ? 'test' : sd.key === 'viz' ? 'viz' : 'docs'
+            type: sd.key === 'whitepapers' ? 'whitepaper' : sd.key === 'teoria' ? 'teoria' : (sd.key === 'scripts' || sd.key === 'test') ? 'scripts' : sd.key === 'viz' ? 'viz' : 'docs'
           }));
           modEntry.types.push({ key: sd.key, label: sd.label, icon: sd.icon, files });
         }

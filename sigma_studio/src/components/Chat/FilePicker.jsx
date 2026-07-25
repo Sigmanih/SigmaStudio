@@ -23,7 +23,7 @@ export default function FilePicker({ onSelect, onClose, attachedFiles, pcFiles: 
       const allFiles = [];
       if (manifestiData.success) (manifestiData.files || []).forEach(f => allFiles.push({ path: f.path, name: f.filename, group: 'manifesti' }));
       (modulesData.modules || []).forEach(mod => {
-        ['teoria','test','viz','docs','whitepapers'].forEach(section => {
+        ['teoria','scripts','viz','docs','whitepapers'].forEach(section => {
           (mod[section] || []).forEach(f => allFiles.push({ path: f.path, name: f.filename, group: `${mod.name}/${section}` }));
         });
       });

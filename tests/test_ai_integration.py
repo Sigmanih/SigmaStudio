@@ -110,7 +110,7 @@ class TestLocalAITopicCreation:
         target_file = f"{TEST_MODULE_DIR}/teoria/limiti.md"
         _ensure_module_subfolders(target_file)
         
-        for sub in ("teoria", "scripts", "viz", "test", "docs"):
+        for sub in ("teoria", "scripts", "viz", "whitepapers", "docs"):
             sub_dir = f"{TEST_MODULE_DIR}/{sub}".replace("/", os.sep)
             assert os.path.exists(sub_dir)
 
@@ -184,7 +184,7 @@ Path: {TEST_MODULE_DIR}/viz/01_grafico.html
             assert os.path.exists(norm_p)
             
         # Verify 5 mandatory subdirectories exist under module folder
-        for sub in ("teoria", "scripts", "viz", "test", "docs"):
+        for sub in ("teoria", "scripts", "viz", "whitepapers", "docs"):
             sub_p = os.path.join(TEST_MODULE_DIR.replace("/", os.sep), sub)
             assert os.path.exists(sub_p)
 

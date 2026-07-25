@@ -31,7 +31,7 @@ def _build_loop_filesystem_context() -> str:
                 continue
             mod_label = mod[3:] if len(mod) > 3 else mod
             lines.append(f"  📁 {mod} ({mod_label})")
-            for section in ['teoria', 'test', 'viz', 'docs']:
+            for section in ['teoria', 'scripts', 'viz', 'docs']:
                 sec_path = os.path.join(mod_path, section)
                 if os.path.isdir(sec_path):
                     files = sorted(os.listdir(sec_path))

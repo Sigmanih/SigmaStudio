@@ -115,7 +115,7 @@ function AppContent() {
         const path = e.detail.path;
         const filename = path.split('/').pop();
         const section = path.includes('/teoria/') ? 'teoria'
-          : path.includes('/test/') ? 'test'
+          : (path.includes('/scripts/') || path.includes('/test/')) ? 'scripts'
           : path.includes('/viz/') ? 'viz'
           : path.includes('/docs/') ? 'docs' : 'teoria';
         openTab({ path, filename }, section);
@@ -136,7 +136,7 @@ function AppContent() {
     const filename = path.split('/').pop() || path;
     const pathLower = path.toLowerCase();
     let type = 'teoria';
-    if (pathLower.includes('/test/')) type = 'test';
+    if (pathLower.includes('/scripts/') || pathLower.includes('/test/')) type = 'scripts';
     else if (pathLower.includes('/viz/')) type = 'viz';
     else if (pathLower.includes('/docs/')) type = 'docs';
     openTab({ path, filename }, type);

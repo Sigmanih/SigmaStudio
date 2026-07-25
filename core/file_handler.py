@@ -230,7 +230,7 @@ def handle_api_action(self):
         if not model_name:
             model_name = ai_cfg.get("active_model", "llama3.2")
             
-        provider_key, ac = resolve_provider_config(model_name)
+        provider_key, ac = resolve_provider_config(ai_cfg, model_name)
         
         endpoint = ac.get("endpoint", "http://localhost:11434/api/chat")
         api_url = ac.get("api_url", "")

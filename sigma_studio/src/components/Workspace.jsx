@@ -18,8 +18,7 @@ import HardwareLab from './HardwareLab';
 const FileIcon = ({ type }) => {
   switch (type) {
     case 'manifesti': case 'manifesto':
-    case 'teoria': case 'docs': case 'whitepaper': return <FileText size={16} />;
-    case 'test': return <Terminal size={16} />;
+    case 'scripts': case 'test': return <Terminal size={16} />;
     case 'viz': return <PieChart size={16} />;
     case 'module': return <BookOpen size={16} />;
     case 'chat': return <MessageSquare size={16} />;

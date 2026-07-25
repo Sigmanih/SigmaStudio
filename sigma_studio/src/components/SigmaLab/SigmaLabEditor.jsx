@@ -222,7 +222,8 @@ export default function SigmaLabEditor({
     const hierarchy = [];
     if (mod.whitepapers) mod.whitepapers.forEach(f => hierarchy.push({ ...f, level: 'whitepaper', color: '#ffd700', lvlLabel: 'LIVELLO 1 • Whitepaper' }));
     if (mod.teoria) mod.teoria.forEach(f => hierarchy.push({ ...f, level: 'teoria', color: '#bc8cff', lvlLabel: 'LIVELLO 2 • Teoria' }));
-    if (mod.test) mod.test.forEach(f => hierarchy.push({ ...f, level: 'test', color: '#3fb950', lvlLabel: 'LIVELLO 3 • Test' }));
+    if (mod.scripts) mod.scripts.forEach(f => hierarchy.push({ ...f, level: 'scripts', color: '#3fb950', lvlLabel: 'LIVELLO 3 • Scripts' }));
+    if (mod.test) mod.test.forEach(f => hierarchy.push({ ...f, level: 'scripts', color: '#3fb950', lvlLabel: 'LIVELLO 3 • Scripts' }));
     if (mod.viz) mod.viz.forEach(f => hierarchy.push({ ...f, level: 'viz', color: '#d29922', lvlLabel: 'LIVELLO 4 • Visualizzazione' }));
     if (mod.docs) mod.docs.forEach(f => hierarchy.push({ ...f, level: 'docs', color: '#ffd700', lvlLabel: 'LIVELLO 1 • Docs' }));
     return hierarchy;
