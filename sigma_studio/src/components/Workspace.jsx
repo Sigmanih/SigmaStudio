@@ -12,6 +12,8 @@ import TrainingLab from './TrainingLab';
 import HardwareLab from './HardwareLab';
 
 import AccountTab from './AccountTab';
+import McpHubTab from './McpHubTab';
+import McpStatusBar from './McpStatusBar';
 
 // ==============================================================================
 // Workspace — Content area that renders based on active tab type
@@ -168,6 +170,9 @@ export default function Workspace({
     if (tab.type === 'hardware_lab') {
       return <HardwareLab addToast={(msg, type, dur) => {}} />;
     }
+    if (tab.type === 'mcp_hub') {
+      return <McpHubTab />;
+    }
     if (tab.type === 'account') {
       return <AccountTab />;
     }
@@ -201,6 +206,7 @@ export default function Workspace({
           )}
         </div>
       </div>
+      <McpStatusBar />
       <div className="content-area">
         {getActiveContent()}
       </div>

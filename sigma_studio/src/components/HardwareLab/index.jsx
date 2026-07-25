@@ -152,16 +152,37 @@ export default function HardwareLab({ addToast }) {
       const res = await fetch('/api/hardware/restart-ollama', { method: 'POST' });
       const json = await res.json();
       if (json.success) {
-        if (addToast) addToast(`🧹 ${json.message}`, 'success', 5000);
+        if (addToast) addToast('⚡ VRAM svuotata e Ollama riavviato con successo!', 'success');
         fetchHardwareStatus();
       } else {
-        if (addToast) addToast(`❌ Errore riavvio: ${json.error}`, 'error', 5000);
+        if (addToast) addToast(`Errore riavvio: ${json.error}`, 'error');
       }
-    } catch (err) {
-      if (addToast) addToast(`❌ Errore di connessione: ${err.message}`, 'error', 5000);
+    } catch (e) {
+      if (addToast) addToast(`Errore di rete: ${e.message}`, 'error');
     } finally {
       setRestartingOllama(false);
       setShowRestartAlert(false);
+    }
+  };
+
+  const handleClearVramMcp = async () => {
+    try {
+      const res = await fetch('/api/mcp/rpc', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          jsonrpc: '2.0',
+          id: 'clear-vram-mcp',
+          method: 'tools/call',
+          params: { name: 'clear_vram_cache', arguments: {} }
+        })
+      });
+      if (res.ok) {
+        if (addToast) addToast('⚡ Cache VRAM CUDA pulita tramite Hardware MCP!', 'success');
+        fetchHardwareStatus();
+      }
+    } catch (e) {
+      console.error("VRAM clear error via Hardware MCP:", e);
     }
   };
 
@@ -255,6 +276,16 @@ export default function HardwareLab({ addToast }) {
         </div>
 
         <div className="hardware-header-actions" style={{ gap: '8px' }}>
+          <button 
+            className="hw-btn"
+            onClick={handleClearVramMcp}
+            title="Pulisci la VRAM CUDA via Hardware MCP"
+            style={{ fontSize: '12px', padding: '6px 12px', border: '1px solid rgba(0, 210, 255, 0.4)', background: 'rgba(0, 210, 255, 0.12)', color: '#00d2ff' }}
+          >
+            <Zap size={14} color="#00d2ff" />
+            <span>Pulisci VRAM (Hardware MCP)</span>
+          </button>
+
           {/* RESTART OLLAMA BUTTON */}
           <button 
             className="hw-btn"
@@ -540,9 +571,17 @@ export default function HardwareLab({ addToast }) {
               <span style={{ color: '#00f2fe' }}>Target GPU</span>
             </label>
             <select className="hw-select" value={cudaDevices} onChange={(e) => setCudaDevices(e.target.value)}>
-              <option value="0,1">0,1 — Parallelismo su entrambe le GPU (RTX 5070 Ti + RTX 5060)</option>
-              <option value="0">0 — Solo GPU 0 (RTX 5070 Ti - 16GB VRAM)</option>
-              <option value="1">1 — Solo GPU 1 (RTX 5060 - 8GB VRAM)</option>
+              {gpus.length > 1 && (
+                <option value={gpus.map(g => g.index).join(',')}>
+                  {gpus.map(g => g.index).join(',')} — Parallelismo Multi-GPU ({gpus.map(g => g.name || `GPU ${g.index}`).join(' + ')})
+                </option>
+              )}
+              {gpus.map(g => (
+                <option key={g.index} value={String(g.index)}>
+                  {g.index} — Solo GPU {g.index} ({g.name || `GPU ${g.index}`} {g.vram_total_gb ? `- ${g.vram_total_gb}GB VRAM` : ''})
+                </option>
+              ))}
+              {gpus.length === 0 && <option value="0">0 — GPU predefinita del sistema</option>}
             </select>
           </div>
 
@@ -577,9 +616,17 @@ export default function HardwareLab({ addToast }) {
               <span style={{ color: '#00f2fe' }}>Fine-Tuning</span>
             </label>
             <select className="hw-select" value={preferredGpu} onChange={(e) => setPreferredGpu(e.target.value)}>
-              <option value="cuda:0">cuda:0 (RTX 5070 Ti — 16GB VRAM)</option>
-              <option value="cuda:1">cuda:1 (RTX 5060 — 8GB VRAM)</option>
-              <option value="cuda:0,1">cuda:0,1 (DataParallel Dual-GPU)</option>
+              {gpus.map(g => (
+                <option key={g.index} value={`cuda:${g.index}`}>
+                  cuda:{g.index} ({g.name || `GPU ${g.index}`} {g.vram_total_gb ? `— ${g.vram_total_gb}GB VRAM` : ''})
+                </option>
+              ))}
+              {gpus.length > 1 && (
+                <option value={`cuda:${gpus.map(g => g.index).join(',')}`}>
+                  cuda:{gpus.map(g => g.index).join(',')} (DataParallel Multi-GPU)
+                </option>
+              )}
+              {gpus.length === 0 && <option value="cuda:0">cuda:0 (GPU predefinita del sistema)</option>}
             </select>
           </div>
         </div>

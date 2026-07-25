@@ -1,5 +1,5 @@
 import React from 'react';
-import { Bot, User, Terminal, FileText } from 'lucide-react';
+import { Bot, User, Terminal, FileText, Zap } from 'lucide-react';
 import { renderMarkdownLatex } from '../../utils/markdownLatex';
 import { useApp } from '../../contexts/AppContext';
 import 'katex/dist/katex.min.css';
@@ -373,6 +373,29 @@ export default function AgentMessage({
                   <div className="chat-actions-log" style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
                     {m.actions_log && m.actions_log.length > 0 ? (
                       m.actions_log.map((action, actionIdx) => {
+                        if (action.type === 'mcp_tool_call') {
+                          return (
+                            <div 
+                              key={actionIdx}
+                              style={{
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '8px',
+                                padding: '6px 12px',
+                                borderRadius: '8px',
+                                background: 'rgba(0, 210, 255, 0.08)',
+                                border: '1px solid rgba(0, 210, 255, 0.2)',
+                                color: '#00d2ff',
+                                fontSize: '0.75rem',
+                                fontWeight: 600
+                              }}
+                            >
+                              <Zap size={14} style={{ color: '#00d2ff' }} />
+                              <span>{action.message}</span>
+                              {action.success && <span style={{ marginLeft: 'auto', color: '#3fb950', fontSize: '0.7rem' }}>✓ Eseguito MCP</span>}
+                            </div>
+                          );
+                        }
                         const isRollbackable = action.success && action.backup_id;
                         const hasBeenRolledBack = isRollbackable && (rolledBacks[action.backup_id] || localStorage.getItem(`sigma_rolled_back_${action.backup_id}`) === 'true');
                         const diffKey = `${mid}-${actionIdx}`;

@@ -113,6 +113,21 @@ FastAPIHandlerAdapter.handle_update_manifesto_image = handle_update_manifesto_im
 FastAPIHandlerAdapter.handle_upload_agent_image = handle_upload_agent_image
 FastAPIHandlerAdapter.handle_upload_user_avatar = handle_upload_user_avatar
 
+from core.mcp_handler import (
+    handle_mcp_servers, handle_mcp_tools, handle_mcp_resources, handle_mcp_rpc
+)
+FastAPIHandlerAdapter.handle_mcp_servers = handle_mcp_servers
+FastAPIHandlerAdapter.handle_mcp_tools = handle_mcp_tools
+FastAPIHandlerAdapter.handle_mcp_resources = handle_mcp_resources
+FastAPIHandlerAdapter.handle_mcp_rpc = handle_mcp_rpc
+
+from core.swarm_handler import (
+    handle_swarm_agents, handle_swarm_plan, handle_swarm_execute
+)
+FastAPIHandlerAdapter.handle_swarm_agents = handle_swarm_agents
+FastAPIHandlerAdapter.handle_swarm_plan = handle_swarm_plan
+FastAPIHandlerAdapter.handle_swarm_execute = handle_swarm_execute
+
 from core.module_handler import (
     handle_create_topic, handle_update_topic, handle_delete_topic,
     handle_create_module, handle_delete_module, handle_update_module

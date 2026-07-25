@@ -323,6 +323,17 @@ export function useChatStreaming({
         }
         saveMessagesImmediately(sessionId, n);
         try { localStorage.setItem(`sigma_chat_msgs_${sessionId}`, JSON.stringify(n)); } catch (err) {}
+        if (addToast && streamActionsLog.length > 0) {
+          streamActionsLog.forEach(act => {
+            if (act.type === 'create_file') {
+              addToast(`📄 Nuovo file creato: ${act.path}`, 'success', 4000);
+            } else if (act.type === 'edit_file') {
+              addToast(`✏️ File modificato: ${act.path}`, 'info', 4000);
+            } else if (act.type === 'mcp_tool_call') {
+              addToast(act.message || '⚡ Strumento MCP eseguito', 'info', 4000);
+            }
+          });
+        }
         if (speakerEnabled && finalContent && !hasError) {
           speakAgentMessage(finalContent);
         }
@@ -363,6 +374,17 @@ export function useChatStreaming({
         if (data.actions_log?.length > 0) {
           setActionsLog(data.actions_log);
           if (onTasksUpdated) onTasksUpdated();
+          if (addToast) {
+            data.actions_log.forEach(act => {
+              if (act.type === 'create_file') {
+                addToast(`📄 Nuovo file creato: ${act.path}`, 'success', 4000);
+              } else if (act.type === 'edit_file') {
+                addToast(`✏️ File modificato: ${act.path}`, 'info', 4000);
+              } else if (act.type === 'mcp_tool_call') {
+                addToast(act.message || '⚡ Strumento MCP eseguito', 'info', 4000);
+              }
+            });
+          }
         }
       } else {
         const prevForSession = sessionRefs.sessionMessages.current[sessionId] || [];

@@ -207,6 +207,24 @@ def _extract_and_create_files_from_text(clean_response: str, prompt_topic: str =
             "backup_id": backup_id,
             "diff": file_diff
         })
+
+        # Developer MCP Verification for Python files
+        if clean_path.endswith('.py'):
+            try:
+                from core.mcp import mcp_hub
+                dev_mcp = mcp_hub.get_server("Developer MCP")
+                if dev_mcp:
+                    test_res = dev_mcp.call_tool("run_pytest", {"test_path": clean_path})
+                    actions_log.append({
+                        "type": "mcp_tool_call",
+                        "server": "Developer MCP",
+                        "tool": "run_pytest",
+                        "success": test_res.get("isError", False) is False,
+                        "message": f"🛠️ Developer MCP Pytest: {clean_path}"
+                    })
+            except Exception as mcp_err:
+                log.debug("Developer MCP validation skipped: %s", mcp_err)
+
         log.info("Auto-extracted & backed-up file: %s (%d chars)", clean_path, len(file_content))
 
     _creation_keywords_re = re.compile(r'\b(crea|scrivi|genera|salva|fammi|modifica|aggiorna|sviluppa|aggiungi|create|write|generate|save|file|documento|modulo|teoria|script|codice)\b', re.IGNORECASE)

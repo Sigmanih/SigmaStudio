@@ -37,12 +37,21 @@ def register_get_handlers(handler_class):
         '/api/training/hardware': 'handle_training_hardware',
         '/api/hardware/status': 'handle_hardware_status',
         '/api/hardware/restart-ollama': 'handle_hardware_restart_ollama',
+        # MCP Endpoints
+        '/api/mcp/servers': 'handle_mcp_servers',
+        '/api/mcp/tools': 'handle_mcp_tools',
+        '/api/mcp/resources': 'handle_mcp_resources',
+        # Swarm Endpoints
+        '/api/swarm/agents': 'handle_swarm_agents',
     }
 
 
 def register_post_handlers(handler_class):
     """Register POST API handlers on the handler class."""
     handler_class._POST_HANDLERS = {
+        '/api/mcp/rpc': 'handle_mcp_rpc',
+        '/api/swarm/plan': 'handle_swarm_plan',
+        '/api/swarm/execute': 'handle_swarm_execute',
         '/api/router/train': 'handle_router_train',
         '/api/hardware/config': 'handle_hardware_config',
         '/api/hardware/restart-ollama': 'handle_hardware_restart_ollama',

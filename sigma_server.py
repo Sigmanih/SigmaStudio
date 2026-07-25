@@ -106,6 +106,21 @@ SigmaAPIHandler.handle_update_manifesto_image = handle_update_manifesto_image
 SigmaAPIHandler.handle_upload_agent_image = handle_upload_agent_image
 SigmaAPIHandler.handle_upload_user_avatar = handle_upload_user_avatar
 
+from core.mcp_handler import (
+    handle_mcp_servers, handle_mcp_tools, handle_mcp_resources, handle_mcp_rpc
+)
+SigmaAPIHandler.handle_mcp_servers = handle_mcp_servers
+SigmaAPIHandler.handle_mcp_tools = handle_mcp_tools
+SigmaAPIHandler.handle_mcp_resources = handle_mcp_resources
+SigmaAPIHandler.handle_mcp_rpc = handle_mcp_rpc
+
+from core.swarm_handler import (
+    handle_swarm_agents, handle_swarm_plan, handle_swarm_execute
+)
+SigmaAPIHandler.handle_swarm_agents = handle_swarm_agents
+SigmaAPIHandler.handle_swarm_plan = handle_swarm_plan
+SigmaAPIHandler.handle_swarm_execute = handle_swarm_execute
+
 
 
 # 2. Module and Topic CRUD
@@ -559,12 +574,13 @@ def _apply_hardware_env():
         # 2. PyTorch & CUDA Memory Allocation Optimization
         os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:True"
         
-        # 3. CPU Core Multi-threading Optimization (12 physical cores)
-        os.environ["OMP_NUM_THREADS"] = "12"
-        os.environ["MKL_NUM_THREADS"] = "12"
+        # 3. CPU Core Multi-threading Optimization (Dynamic detection)
+        cpu_threads = str(os.cpu_count() or 8)
+        os.environ["OMP_NUM_THREADS"] = cpu_threads
+        os.environ["MKL_NUM_THREADS"] = cpu_threads
         
-        log.info("⚡ Hardware Acceleration active: GPUs=%s | Parallel Slots=%s | FlashAttention=1 | VRAM Warm Cache=24h | CPU Threads=12",
-                 devices, num_parallel)
+        log.info("Hardware Acceleration active: GPUs=%s | Parallel Slots=%s | FlashAttention=1 | VRAM Warm Cache=24h | CPU Threads=%s",
+                 devices, num_parallel, cpu_threads)
         
         # 4. Apply HF_TOKEN if present
         hf_token = cfg.get("hf_token", "")

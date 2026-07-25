@@ -162,6 +162,30 @@ def handle_chat(self):
         user_title = req.get('user_title') or req.get('user_profile', {}).get('title')
         identity_header = _build_agent_identity_header(user_name, user_title)
 
+        # Integration with MCP Hub (Hardware VRAM Guard & Memory MCP RAG)
+        mcp_context_info = ""
+        try:
+            from core.mcp import mcp_hub
+            # 1. Hardware MCP VRAM Check
+            hw_server = mcp_hub.get_server("Hardware MCP")
+            if hw_server:
+                hw_status = hw_server.call_tool("get_hardware_status")
+                # Pre-warm or clean VRAM if needed
+
+            # 2. Memory MCP Context Retrieval
+            mem_server = mcp_hub.get_server("Memory MCP")
+            if mem_server and message:
+                rag_res = mem_server.call_tool("query_vector_db", {"query": message, "limit": 3})
+                if rag_res and not rag_res.get("isError"):
+                    mcp_context_info += f"\n\n## 🧠 CONTESTO RECUPERATO DA MEMORY MCP:\n{json.dumps(rag_res.get('results', []), indent=2)}\n"
+
+            # 3. Available MCP Tools List Injection
+            mcp_tools = mcp_hub.get_aggregated_tools()
+            tools_desc = "\n".join([f"- {t['name']} [{t.get('server', 'MCP')}]: {t['description']}" for t in mcp_tools[:8]])
+            mcp_context_info += f"\n\n## ⚡ MCP TOOLS & STRUMENTI ATTIVI NELL'HUB:\n{tools_desc}\n"
+        except Exception as mcp_err:
+            log.debug("MCP Hub chat pipeline enrichment skipped: %s", mcp_err)
+
         full_prompt = f"""{identity_header}
 
 {system_prompt}
@@ -170,7 +194,7 @@ def handle_chat(self):
 {fs_context}
 
 ## ORA CORRENTE
-{time_ctx}
+{time_ctx}{mcp_context_info}
 
 ## ISTRUZIONI CREAZIONE E SALVATAGGIO FILE SU DISCO
 Quando l'utente ti chiede di creare, scrivere o generare un file o un argomento, DEVI SEMPRE specificare il percorso relativo esplicito (es. `data/ARGOMENTO/01_base/teoria/NOME_FILE.md`) e racchiudere il contenuto completo all'interno di un blocco di codice markdown:

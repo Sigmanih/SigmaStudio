@@ -1,6 +1,6 @@
 import React from 'react';
 import { 
-  Home, FileText, Activity, PieChart, Layers, ChevronRight, MessageSquare, FlaskConical, Brain, Zap, User
+  Home, FileText, Activity, PieChart, Layers, ChevronRight, MessageSquare, FlaskConical, Brain, Zap, User, Server
 } from 'lucide-react';
 
 export const SidebarItem = ({ icon: Icon, label, active, onClick, badge, badgeColor, badgeSecondary, badgeSecondaryColor }) => (
@@ -201,6 +201,14 @@ export default function Sidebar({
             badgeColor="rgba(0,242,254,0.15)"
             active={activeTabId != null && activeTabId.startsWith('hardware_lab')}
             onClick={() => openTab({ name: '⚡ Hardware & GPU Monitor' }, 'hardware_lab')} 
+          />
+          <SidebarItem 
+            icon={Server} 
+            label="MCP Server Hub" 
+            badge={6}
+            badgeColor="rgba(63,185,80,0.15)"
+            active={activeTabId != null && activeTabId.startsWith('mcp_hub')}
+            onClick={() => openTab({ name: '⚡ MCP Server Hub' }, 'mcp_hub')} 
           />
           <SidebarItem 
             icon={User} 

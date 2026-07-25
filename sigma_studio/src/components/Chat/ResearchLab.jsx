@@ -7,25 +7,30 @@ import {
 import useResearchPipeline from './core/useResearchPipeline';
 
 const PIPELINE_TEMPLATES = {
+  universal_swarm: {
+    id: 'universal_swarm', name: '🌐 Swarm Multidisciplinare Universale',
+    description: 'Studio di qualsiasi materia con orchestrazione dinamica, web search ed MCP Hub',
+    agents: ['sigma_assistant', 'sigma_architect', 'code_architect', 'proof-reviewer'],
+  },
+  general_research: {
+    id: 'general_research', name: '🔬 Ricerca Universale & Sintesi',
+    description: 'Ricerca scientifica/umanistica completa su qualsiasi argomento con validazione',
+    agents: ['sigma_assistant', 'sigma_architect', 'test-engineer', 'proof-reviewer'],
+  },
+  cs_software: {
+    id: 'cs_software', name: '💻 Software & Architettura',
+    description: 'Analisi requisiti, sviluppo codice, test Pytest e documentazione',
+    agents: ['code_architect', 'sigma_architect', 'test-engineer', 'proof-reviewer'],
+  },
   math_research: {
-    id: 'math_research', name: '∑ Ricerca Matematica',
+    id: 'math_research', name: '∑ Ricerca Matematica & Logica',
     description: 'Teoria, test computazionali, visualizzazioni D3 e revisione formale',
     agents: ['math1', 'test-engineer', 'viz-designer', 'proof-reviewer'],
   },
-  full_analysis: {
-    id: 'full_analysis', name: '📋 Analisi Completa',
-    description: 'Coordinamento, ricerca, sviluppo test, visualizzazione e revisione',
-    agents: ['sigma_architect', 'math1', 'code_architect', 'viz-designer', 'proof-reviewer'],
-  },
-  code_review: {
-    id: 'code_review', name: '⚙️ Code Review',
-    description: 'Analisi codice, refactoring, test, ottimizzazione e documentazione',
-    agents: ['code_architect', 'sigma_architect', 'proof-reviewer'],
-  },
-  general_research: {
-    id: 'general_research', name: '🔬 Ricerca Generale',
-    description: 'Ricerca scientifica completa con validazione e documentazione',
-    agents: ['sigma_architect', 'math1', 'test-engineer', 'proof-reviewer'],
+  science_physics: {
+    id: 'science_physics', name: '⚛️ Fisica & Scienze Applicate',
+    description: 'Modellazione teorica, simulazioni Python e validazione dati',
+    agents: ['sigma_architect', 'math1', 'code_architect', 'proof-reviewer'],
   },
 };
 
