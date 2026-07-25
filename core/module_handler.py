@@ -168,8 +168,6 @@ def handle_create_module(self) -> None:
             return self.send_json_response({"error": "Modulo già esistente"}, 400)
 
         os.makedirs(module_path, exist_ok=True)
-        for sub in _ALLOWED_SECTIONS:
-            os.makedirs(os.path.join(module_path, sub), exist_ok=True)
 
         def _register(m: dict) -> dict:
             m.setdefault("modules", {})[num] = original_name

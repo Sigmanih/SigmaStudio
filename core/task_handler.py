@@ -161,8 +161,6 @@ def _get_or_create_default_module(topic_folder: str) -> str:
     mod_num, mod_name = "01", "base"
     abs_module_path = os.path.join(abs_topic_folder, f"{mod_num}_{mod_name}")
     os.makedirs(abs_module_path, exist_ok=True)
-    for sub in _ALLOWED_MODULE_SECTIONS:
-        os.makedirs(os.path.join(abs_module_path, sub), exist_ok=True)
 
     # Update modules_meta.json via thread-safe store
     try:
@@ -465,8 +463,6 @@ def _execute_single_action(self, action: dict, action_type: str, bot_name: str, 
                                 "message": f"Modulo già esistente: {module_folder}"})
         else:
             os.makedirs(module_folder, exist_ok=True)
-            for sub in _ALLOWED_MODULE_SECTIONS:
-                os.makedirs(os.path.join(module_folder, sub), exist_ok=True)
             _sync_module_meta(topic_id, topic_folder, mod_num, mod_name)
             result_log.append({"type": "create_module", "success": True, "path": module_folder,
                                 "message": f"Modulo creato: {module_folder}"})

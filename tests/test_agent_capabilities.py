@@ -60,9 +60,6 @@ class TestModuleAndFolderCreation:
 
         norm_module_path = TEST_MODULE_PATH.replace("/", os.sep)
         assert os.path.exists(norm_module_path)
-        for section in ["teoria", "scripts", "viz", "docs"]:
-            sec_path = os.path.join(norm_module_path, section)
-            assert os.path.exists(sec_path), f"Sezione mancante: {sec_path}"
 
     def test_create_module_meta_json_sync(self):
         handler = DummyHandler()

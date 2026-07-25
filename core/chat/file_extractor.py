@@ -29,22 +29,15 @@ def _normalize_data_path(raw_path: str) -> str:
 
 
 def _ensure_module_subfolders(file_path: str) -> None:
-    """Ensure the 5 standard module subdirectories exist for the module containing file_path."""
-    parts = file_path.replace("\\", "/").split("/")
-    if len(parts) >= 3 and parts[0] == "data":
-        module_dir = os.path.join(parts[0], parts[1], parts[2])
-        for subfolder in ("teoria", "scripts", "viz", "docs", "whitepapers"):
-            os.makedirs(os.path.join(module_dir, subfolder), exist_ok=True)
+    """Ensure the target directory for file_path exists dynamically."""
+    parent_dir = os.path.dirname(os.path.abspath(file_path))
+    if parent_dir:
+        os.makedirs(parent_dir, exist_ok=True)
 
 
 def _determine_default_module_path(topic_slug: str, folder: str, fname: str) -> str:
-    """Determine clean module path using existing topic module folders or fallback to 01_base."""
-    topic_dir = os.path.join("data", topic_slug)
-    if os.path.isdir(topic_dir):
-        subdirs = [d for d in sorted(os.listdir(topic_dir)) if os.path.isdir(os.path.join(topic_dir, d))]
-        if subdirs:
-            return f"data/{topic_slug}/{subdirs[0]}/{folder}/{fname}"
-    return f"data/{topic_slug}/01_base/{folder}/{fname}"
+    """Determine clean dynamic path for a topic file."""
+    return f"data/{topic_slug}/{fname}"
 
 
 def _generate_files_summary(created_paths: list[str], full_response: str) -> str:
