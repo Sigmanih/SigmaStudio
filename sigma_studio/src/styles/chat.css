@@ -2341,18 +2341,19 @@
 /* Toast Notifications — Modern Sigma Studio Style */
 .toast-container {
   position: fixed;
-  bottom: 80px;
-  right: calc(24px + 800px + 16px);
-  z-index: 9999;
+  bottom: 24px;
+  right: 24px;
+  z-index: 999999;
   display: flex;
   flex-direction: column-reverse;
-  gap: 6px;
-  max-width: 340px;
+  gap: 8px;
+  max-width: 380px;
   pointer-events: none;
 }
 @media (max-width: 1300px) {
   .toast-container {
     right: 24px;
+    bottom: 24px;
   }
 }
 .toast-item {

@@ -11,10 +11,22 @@ export function useToast() {
   const [toasts, setToasts] = useState([]);
   const timersRef = useRef({});
 
-  const addToast = useCallback((message, type = 'info', duration = 5000) => {
-    const id = ++toastIdCounter;
-    setToasts(prev => [...prev, { id, message, type, timestamp: Date.now() }]);
+  const addToast = useCallback((message, type = 'info', duration = 5000, keyId = null) => {
+    const id = keyId || ++toastIdCounter;
     
+    setToasts(prev => {
+      const exists = prev.some(t => t.id === id);
+      if (exists) {
+        return prev.map(t => t.id === id ? { id, message, type, timestamp: Date.now() } : t);
+      }
+      return [...prev, { id, message, type, timestamp: Date.now() }];
+    });
+    
+    if (timersRef.current[id]) {
+      clearTimeout(timersRef.current[id]);
+      delete timersRef.current[id];
+    }
+
     if (duration > 0) {
       timersRef.current[id] = setTimeout(() => {
         setToasts(prev => prev.filter(t => t.id !== id));
@@ -40,10 +52,27 @@ export function useToast() {
   }, []);
 
   useEffect(() => {
+    const handleToastEvent = (e) => {
+      if (!e.detail) return;
+      if (e.detail.action === 'close' && e.detail.id) {
+        removeToast(e.detail.id);
+        return;
+      }
+      if (e.detail.message) {
+        addToast(
+          e.detail.message,
+          e.detail.type || 'info',
+          e.detail.duration !== undefined ? e.detail.duration : 5000,
+          e.detail.id || null
+        );
+      }
+    };
+    window.addEventListener('sigma_toast', handleToastEvent);
     return () => {
+      window.removeEventListener('sigma_toast', handleToastEvent);
       Object.values(timersRef.current).forEach(clearTimeout);
     };
-  }, []);
+  }, [addToast, removeToast]);
 
   return { toasts, addToast, removeToast, clearAll };
 }

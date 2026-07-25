@@ -21,6 +21,13 @@ const DOC_COLORS = {
 };
 const DOC_ICONS = { teoria: '📖', scripts: '⚡', test: '⚡', viz: '📊', docs: '📄', whitepapers: '📜' };
 const DOC_PATHS = { teoria: 'teoria', scripts: 'scripts', test: 'scripts', viz: 'viz', docs: 'docs', whitepapers: 'whitepapers' };
+const CATEGORY_AGENT_MAP = {
+  teoria: 'math1',
+  scripts: 'code_architect',
+  viz: 'viz-designer',
+  docs: 'proof-reviewer',
+  whitepaper: 'proof-reviewer'
+};
 
 export default function MappaArgomenti({ onOpenFile }) {
   const svgRef = useRef(null);
@@ -53,9 +60,16 @@ export default function MappaArgomenti({ onOpenFile }) {
   const [newFileCategory, setNewFileCategory] = useState('teoria');
   const [isAiMode, setIsAiMode] = useState(false);
   const [selectedAiModel, setSelectedAiModel] = useState('');
-  const [selectedAiRole, setSelectedAiRole] = useState('code_architect');
+  const [selectedAiRole, setSelectedAiRole] = useState('math1');
   const [aiPromptText, setAiPromptText] = useState('');
   const [aiError, setAiError] = useState('');
+
+  // Auto-assign Agent Role when File Category changes
+  useEffect(() => {
+    if (CATEGORY_AGENT_MAP[newFileCategory]) {
+      setSelectedAiRole(CATEGORY_AGENT_MAP[newFileCategory]);
+    }
+  }, [newFileCategory]);
 
   // File Overlay Specific States
   const [moveTargetTopicId, setMoveTargetTopicId] = useState('');
@@ -1349,46 +1363,104 @@ export default function MappaArgomenti({ onOpenFile }) {
     
     const fullPath = `${baseFolder}/${subdir}/${sanitizedName}${ext}`;
     
+    if (isAiMode) {
+      // AI creation — Close overlay immediately and send persistent start toast
+      const targetFileName = `${sanitizedName}${ext}`;
+      const roleToUse = selectedAiRole || CATEGORY_AGENT_MAP[newFileCategory] || 'code_architect';
+      const toastKeyId = `ai-gen-${Date.now()}`;
+      
+      setNewFileName('');
+      setAiPromptText('');
+      setShowAiOverlay(false);
+
+      // Persistent start notification (duration: 0 keeps it active until completed)
+      window.dispatchEvent(new CustomEvent('sigma_toast', {
+        detail: {
+          id: toastKeyId,
+          message: `⏳ Generazione AI in corso per "${targetFileName}"...`,
+          type: 'loop',
+          duration: 0
+        }
+      }));
+
+      (async () => {
+        try {
+          const res = await fetch('/api/ai/action', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              action: 'create_file',
+              path: fullPath,
+              model: selectedAiModel,
+              role: roleToUse,
+              prompt: aiPromptText
+            })
+          });
+          const data = await res.json();
+          // Remove progress toast
+          window.dispatchEvent(new CustomEvent('sigma_toast', {
+            detail: { id: toastKeyId, action: 'close' }
+          }));
+
+          if (data.success) {
+            window.dispatchEvent(new CustomEvent('sigma_toast', {
+              detail: {
+                message: `✅ File "${targetFileName}" generato con successo!`,
+                type: 'success',
+                duration: 7000
+              }
+            }));
+            await fetchData();
+            window.dispatchEvent(new Event('sigma_topics_updated'));
+            if (onOpenFile) onOpenFile(fullPath);
+          } else {
+            window.dispatchEvent(new CustomEvent('sigma_toast', {
+              detail: {
+                message: `❌ Errore generazione AI per "${targetFileName}": ${data.error || 'Errore sconosciuto'}`,
+                type: 'error',
+                duration: 8000
+              }
+            }));
+          }
+        } catch (err) {
+          window.dispatchEvent(new CustomEvent('sigma_toast', {
+            detail: { id: toastKeyId, action: 'close' }
+          }));
+          window.dispatchEvent(new CustomEvent('sigma_toast', {
+            detail: {
+              message: `❌ Errore di rete durante la generazione: ${err.message}`,
+              type: 'error',
+              duration: 8000
+            }
+          }));
+        } finally {
+          setAiOverlayLoading(false);
+        }
+      })();
+      return;
+    }
+
+    // Standard creation (empty template)
     setAiOverlayLoading(true);
     setAiError('');
-    
     try {
-      let res;
-      if (isAiMode) {
-        // AI creation
-        res = await fetch('/api/ai/action', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            action: 'create_file',
-            path: fullPath,
-            model: selectedAiModel,
-            role: selectedAiRole,
-            prompt: aiPromptText
-          })
-        });
-      } else {
-        // Standard creation (empty template)
-        const template = newFileCategory === 'test'
-          ? `# ${sanitizedName}\n# Test script for Sigma\n\ndef run():\n    print('Running ${sanitizedName}...')\n\nif __name__ == '__main__':\n    run()\n`
-          : `# ${sanitizedName}\n\nContenuto del file ${newFileCategory}.\n`;
-          
-        res = await fetch('/api/create_file', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ path: fullPath, content: template })
-        });
-      }
+      const template = (newFileCategory === 'scripts' || newFileCategory === 'test')
+        ? `# ${sanitizedName}\n# Script per Sigma\n\ndef run():\n    print('Running ${sanitizedName}...')\n\nif __name__ == '__main__':\n    run()\n`
+        : `# ${sanitizedName}\n\nContenuto del file ${newFileCategory}.\n`;
+        
+      const res = await fetch('/api/create_file', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ path: fullPath, content: template })
+      });
       
       const data = await res.json();
       if (data.success) {
-        // Clean form states
         setNewFileName('');
         setAiPromptText('');
         setShowAiOverlay(false);
-        
-        // Refresh D3 graph and explorer list
         await fetchData();
+        window.dispatchEvent(new Event('sigma_topics_updated'));
         if (onOpenFile) onOpenFile(fullPath);
       } else {
         setAiError(data.error || 'Errore sconosciuto');
@@ -2857,231 +2929,232 @@ export default function MappaArgomenti({ onOpenFile }) {
                     );
                   })()}
 
-                  <div style={{ fontSize: '0.5rem', fontWeight: 600, color: '#5a5e72', letterSpacing: '0.5px', marginBottom: '6px', textTransform: 'uppercase' }}>
-                    CREA NUOVO FILE DENTRO QUESTO {overlayNode.type === 'topic' ? 'ARGOMENTO' : 'SOTTOARGOMENTO'}
-                  </div>
+                  {/* Creazione File abilitata ESCLUSIVAMENTE per i Sottoargomenti (Moduli) */}
+                  {overlayNode.type === 'module' ? (
+                    <>
+                      <div style={{ fontSize: '0.5rem', fontWeight: 600, color: '#5a5e72', letterSpacing: '0.5px', marginBottom: '6px', textTransform: 'uppercase' }}>
+                        CREA NUOVO FILE DENTRO QUESTO SOTTOARGOMENTO
+                      </div>
 
-                  <div className="ai-overlay-tabs">
-                    <button 
-                      type="button"
-                      className={`ai-overlay-tab ${creationTab === 'standard' ? 'active' : ''}`}
-                      onClick={() => { setCreationTab('standard'); setIsAiMode(false); setAiError(''); }}
-                    >
-                      Standard
-                    </button>
-                    <button 
-                      type="button"
-                      className={`ai-overlay-tab ${creationTab === 'ai' ? 'active' : ''}`}
-                      onClick={() => { setCreationTab('ai'); setIsAiMode(true); setAiError(''); }}
-                    >
-                      🤖 Genera con AI
-                    </button>
-                    <button 
-                      type="button"
-                      className={`ai-overlay-tab ${creationTab === 'upload' ? 'active' : ''}`}
-                      onClick={() => { setCreationTab('upload'); setIsAiMode(false); setAiError(''); }}
-                    >
-                      📎 Allega File
-                    </button>
-                  </div>
-
-                  <form className="ai-overlay-form" onSubmit={handleOverlayCreateFile}>
-                    <div className="ai-overlay-group">
-                      <span className="ai-overlay-label">Categoria File</span>
-                      <select 
-                        className="ai-overlay-select"
-                        value={newFileCategory}
-                        onChange={e => setNewFileCategory(e.target.value)}
-                      >
-                        <option value="teoria">📖 Teoria</option>
-                        <option value="scripts">⚡ Script / Codice</option>
-                        <option value="viz">📊 Visualizzazione (D3)</option>
-                        <option value="docs">📄 Documentazione</option>
-                        <option value="whitepaper">📜 Whitepaper</option>
-                      </select>
-                    </div>
-
-                    {creationTab === 'upload' && (
-                      <div className="ai-overlay-group" style={{ gap: '8px' }}>
-                        <span className="ai-overlay-label">Carica File da PC</span>
-                        
-                        {/* Drag and Drop Zone */}
-                        <div 
-                          className={`ai-overlay-dropzone ${isDragActive ? 'dragging' : ''} ${selectedUploadFile ? 'has-file' : ''}`}
-                          onDragEnter={handleDrag}
-                          onDragOver={handleDrag}
-                          onDragLeave={handleDrag}
-                          onDrop={handleDrop}
-                          onClick={() => fileInputRef.current?.click()}
-                          style={{
-                            border: '1.5px dashed rgba(0, 210, 255, 0.25)',
-                            borderRadius: '8px',
-                            padding: '16px 12px',
-                            textAlign: 'center',
-                            background: isDragActive ? 'rgba(0, 210, 255, 0.08)' : selectedUploadFile ? 'rgba(0, 210, 255, 0.02)' : 'rgba(0,0,0,0.15)',
-                            cursor: 'pointer',
-                            transition: 'all 0.15s ease',
-                            display: 'flex',
-                            flexDirection: 'column',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            gap: '6px'
-                          }}
+                      <div className="ai-overlay-tabs">
+                        <button 
+                          type="button"
+                          className={`ai-overlay-tab ${creationTab === 'standard' ? 'active' : ''}`}
+                          onClick={() => { setCreationTab('standard'); setIsAiMode(false); setAiError(''); }}
                         >
-                          <input 
-                            ref={fileInputRef}
-                            type="file"
-                            style={{ display: 'none' }}
-                            onChange={handleFileChange}
-                          />
-                          
-                          {selectedUploadFile ? (
-                            <>
-                              <span style={{ fontSize: '1.2rem' }}>📎</span>
-                              <div style={{ fontSize: '0.65rem', fontWeight: '600', color: '#00d2ff', maxWidth: '100%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                                {selectedUploadFile.name}
-                              </div>
-                              <div style={{ fontSize: '0.5rem', color: '#5a5e72' }}>
-                                {(selectedUploadFile.size / 1024).toFixed(1)} KB
-                              </div>
-                              <button 
-                                type="button"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  setSelectedUploadFile(null);
-                                  setNewFileName('');
-                                }}
-                                style={{
-                                  background: 'rgba(255,85,85,0.1)',
-                                  border: '1px solid rgba(255,85,85,0.2)',
-                                  color: '#ff5555',
-                                  fontSize: '0.5rem',
-                                  padding: '2px 8px',
-                                  borderRadius: '4px',
-                                  marginTop: '4px',
-                                  cursor: 'pointer'
-                                }}
-                              >
-                                Rimuovi
-                              </button>
-                            </>
-                          ) : (
-                            <>
-                              <span style={{ fontSize: '1.2rem', opacity: 0.6 }}>📥</span>
-                              <div style={{ fontSize: '0.62rem', color: '#8b8fa3' }}>
-                                Trascina qui il file o <span style={{ color: '#00d2ff', textDecoration: 'underline' }}>sfoglia</span>
-                              </div>
-                              <div style={{ fontSize: '0.5rem', color: '#5a5e72' }}>
-                                Supporta qualsiasi tipo di documento
-                              </div>
-                            </>
-                          )}
+                          Standard
+                        </button>
+                        <button 
+                          type="button"
+                          className={`ai-overlay-tab ${creationTab === 'ai' ? 'active' : ''}`}
+                          onClick={() => { setCreationTab('ai'); setIsAiMode(true); setAiError(''); }}
+                        >
+                          🤖 Genera con AI
+                        </button>
+                        <button 
+                          type="button"
+                          className={`ai-overlay-tab ${creationTab === 'upload' ? 'active' : ''}`}
+                          onClick={() => { setCreationTab('upload'); setIsAiMode(false); setAiError(''); }}
+                        >
+                          📎 Allega File
+                        </button>
+                      </div>
+
+                      <form className="ai-overlay-form" onSubmit={handleOverlayCreateFile}>
+                        <div className="ai-overlay-group">
+                          <span className="ai-overlay-label">Categoria File</span>
+                          <select 
+                            className="ai-overlay-select"
+                            value={newFileCategory}
+                            onChange={e => setNewFileCategory(e.target.value)}
+                          >
+                            <option value="teoria">📖 Teoria</option>
+                            <option value="scripts">⚡ Script / Codice</option>
+                            <option value="viz">📊 Visualizzazione (D3)</option>
+                            <option value="docs">📄 Documentazione</option>
+                            <option value="whitepaper">📜 Whitepaper</option>
+                          </select>
                         </div>
 
-                        {selectedUploadFile && (
+                        {creationTab === 'upload' && (
+                          <div className="ai-overlay-group" style={{ gap: '8px' }}>
+                            <span className="ai-overlay-label">Carica File da PC</span>
+                            
+                            {/* Drag and Drop Zone */}
+                            <div 
+                              className={`ai-overlay-dropzone ${isDragActive ? 'dragging' : ''} ${selectedUploadFile ? 'has-file' : ''}`}
+                              onDragEnter={handleDrag}
+                              onDragOver={handleDrag}
+                              onDragLeave={handleDrag}
+                              onDrop={handleDrop}
+                              onClick={() => fileInputRef.current?.click()}
+                              style={{
+                                border: '1.5px dashed rgba(0, 210, 255, 0.25)',
+                                borderRadius: '8px',
+                                padding: '16px 12px',
+                                textAlign: 'center',
+                                background: isDragActive ? 'rgba(0, 210, 255, 0.08)' : selectedUploadFile ? 'rgba(0, 210, 255, 0.02)' : 'rgba(0,0,0,0.15)',
+                                cursor: 'pointer',
+                                transition: 'all 0.15s ease',
+                                display: 'flex',
+                                flexDirection: 'column',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                gap: '6px'
+                              }}
+                            >
+                              <input 
+                                ref={fileInputRef}
+                                type="file"
+                                style={{ display: 'none' }}
+                                onChange={handleFileChange}
+                              />
+                              
+                              {selectedUploadFile ? (
+                                <>
+                                  <span style={{ fontSize: '1.2rem' }}>📎</span>
+                                  <div style={{ fontSize: '0.65rem', fontWeight: '600', color: '#00d2ff', maxWidth: '100%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                    {selectedUploadFile.name}
+                                  </div>
+                                  <div style={{ fontSize: '0.5rem', color: '#5a5e72' }}>
+                                    {(selectedUploadFile.size / 1024).toFixed(1)} KB
+                                  </div>
+                                  <button 
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      setSelectedUploadFile(null);
+                                      setNewFileName('');
+                                    }}
+                                    style={{
+                                      background: 'rgba(255,85,85,0.1)',
+                                      border: '1px solid rgba(255,85,85,0.2)',
+                                      color: '#ff5555',
+                                      fontSize: '0.5rem',
+                                      padding: '2px 8px',
+                                      borderRadius: '4px',
+                                      marginTop: '4px',
+                                      cursor: 'pointer'
+                                    }}
+                                  >
+                                    Rimuovi
+                                  </button>
+                                </>
+                              ) : (
+                                <>
+                                  <span style={{ fontSize: '1.2rem', opacity: 0.6 }}>📥</span>
+                                  <div style={{ fontSize: '0.62rem', color: '#8b8fa3' }}>
+                                    Trascina qui il file o <span style={{ color: '#00d2ff', textDecoration: 'underline' }}>sfoglia</span>
+                                  </div>
+                                  <div style={{ fontSize: '0.5rem', color: '#5a5e72' }}>
+                                    Supporta qualsiasi tipo di documento
+                                  </div>
+                                </>
+                              )}
+                            </div>
+
+                            {selectedUploadFile && (
+                              <div className="ai-overlay-group">
+                                <span className="ai-overlay-label">Nome file sul server (senza estensione)</span>
+                                <input 
+                                  type="text" 
+                                  className="ai-overlay-input"
+                                  placeholder="nome_file_salvato"
+                                  value={newFileName}
+                                  onChange={e => setNewFileName(e.target.value.replace(/[^a-zA-Z0-9_-]/g, '_'))}
+                                  required
+                                />
+                              </div>
+                            )}
+                          </div>
+                        )}
+
+                        {creationTab !== 'upload' && (
                           <div className="ai-overlay-group">
-                            <span className="ai-overlay-label">Nome file sul server (senza estensione)</span>
+                            <span className="ai-overlay-label">Nome File (senza estensione)</span>
                             <input 
                               type="text" 
                               className="ai-overlay-input"
-                              placeholder="nome_file_salvato"
+                              placeholder="nome_file"
                               value={newFileName}
                               onChange={e => setNewFileName(e.target.value.replace(/[^a-zA-Z0-9_-]/g, '_'))}
                               required
                             />
                           </div>
                         )}
-                      </div>
-                    )}
 
-                    {creationTab !== 'upload' && (
-                      <div className="ai-overlay-group">
-                        <span className="ai-overlay-label">Nome File (senza estensione)</span>
-                        <input 
-                          type="text" 
-                          className="ai-overlay-input"
-                          placeholder="nome_file"
-                          value={newFileName}
-                          onChange={e => setNewFileName(e.target.value.replace(/[^a-zA-Z0-9_-]/g, '_'))}
-                          required
-                        />
-                      </div>
-                    )}
-
-                    {creationTab === 'ai' && (
-                      <>
-                        <div className="ai-overlay-group">
-                          <span className="ai-overlay-label">Modello AI</span>
-                          <select 
-                            className="ai-overlay-select"
-                            value={selectedAiModel}
-                            onChange={e => setSelectedAiModel(e.target.value)}
-                          >
-                            {aiModels.length > 0 ? (
-                              aiModels.map(m => (
-                                <option key={m.name} value={m.name}>{m.name} ({m.size})</option>
-                              ))
-                            ) : (
-                              <option value="llama3.2">llama3.2 (default)</option>
-                            )}
-                          </select>
-                        </div>
-
-                        <div className="ai-overlay-group">
-                          <span className="ai-overlay-label">Ruolo Agente</span>
-                          <select 
-                            className="ai-overlay-select"
-                            value={selectedAiRole}
-                            onChange={e => setSelectedAiRole(e.target.value)}
-                          >
-                            <option value="code_architect">💻 Code Architect</option>
-                            <option value="math1">🔬 Math Architect</option>
-                            <option value="test-engineer">🧪 Test Engineer</option>
-                            <option value="viz-designer">🎨 Viz Designer</option>
-                            <option value="proof-reviewer">👁️ Proof Reviewer</option>
-                          </select>
-                        </div>
-
-                        <div className="ai-overlay-group">
-                          <span className="ai-overlay-label">Descrizione per l'AI</span>
-                          <textarea 
-                            className="ai-overlay-textarea"
-                            placeholder="Cosa deve contenere il file..."
-                            value={aiPromptText}
-                            onChange={e => setAiPromptText(e.target.value)}
-                            required
-                          />
-                        </div>
-                      </>
-                    )}
-
-                    {aiError && <div className="ai-overlay-error">{aiError}</div>}
-
-                    <div className="ai-overlay-footer">
-                      <button 
-                        type="button" 
-                        className="ai-overlay-btn secondary"
-                        onClick={() => setShowAiOverlay(false)}
-                        disabled={aiOverlayLoading}
-                      >
-                        Annulla
-                      </button>
-                      <button 
-                        type="submit" 
-                        className="ai-overlay-btn primary"
-                        disabled={aiOverlayLoading || (creationTab === 'upload' && !selectedUploadFile)}
-                      >
-                        {aiOverlayLoading ? (
+                        {creationTab === 'ai' && (
                           <>
-                            <div className="ai-overlay-spinner"></div>
-                            {creationTab === 'ai' ? 'Generazione...' : creationTab === 'upload' ? 'Caricamento...' : 'Creazione...'}
+                            <div className="ai-overlay-group">
+                              <span className="ai-overlay-label">Modello AI</span>
+                              <select 
+                                className="ai-overlay-select"
+                                value={selectedAiModel}
+                                onChange={e => setSelectedAiModel(e.target.value)}
+                              >
+                                {aiModels.length > 0 ? (
+                                  aiModels.map(m => (
+                                    <option key={m.name} value={m.name}>{m.name} ({m.size})</option>
+                                  ))
+                                ) : (
+                                  <option value="llama3.2">llama3.2 (default)</option>
+                                )}
+                              </select>
+                            </div>
+
+                            <div className="ai-overlay-group">
+                              <span className="ai-overlay-label">Ruolo Agente (Associato Automaticamente)</span>
+                              <div style={{ padding: '6px 10px', background: 'rgba(0, 210, 255, 0.08)', border: '1px solid rgba(0, 210, 255, 0.25)', borderRadius: '6px', fontSize: '0.68rem', color: '#00d2ff', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                🤖 {selectedAiRole === 'math1' ? '🔬 Math Architect (Teoria)' : selectedAiRole === 'code_architect' ? '💻 Code Architect (Script)' : selectedAiRole === 'viz-designer' ? '🎨 Viz Designer (Visualizzazione)' : '👁️ Proof Reviewer (Documentazione)'}
+                              </div>
+                            </div>
+
+                            <div className="ai-overlay-group">
+                              <span className="ai-overlay-label">Descrizione per l'AI</span>
+                              <textarea 
+                                className="ai-overlay-textarea"
+                                placeholder="Cosa deve contenere il file..."
+                                value={aiPromptText}
+                                onChange={e => setAiPromptText(e.target.value)}
+                                required
+                              />
+                            </div>
                           </>
-                        ) : (
-                          creationTab === 'ai' ? '🤖 Genera' : creationTab === 'upload' ? '📎 Carica' : 'Crea File'
                         )}
-                      </button>
+
+                        {aiError && <div className="ai-overlay-error">{aiError}</div>}
+
+                        <div className="ai-overlay-footer">
+                          <button 
+                            type="button" 
+                            className="ai-overlay-btn secondary"
+                            onClick={() => setShowAiOverlay(false)}
+                            disabled={aiOverlayLoading}
+                          >
+                            Annulla
+                          </button>
+                          <button 
+                            type="submit" 
+                            className="ai-overlay-btn primary"
+                            disabled={aiOverlayLoading || (creationTab === 'upload' && !selectedUploadFile)}
+                          >
+                            {aiOverlayLoading ? (
+                              <>
+                                <div className="ai-overlay-spinner"></div>
+                                {creationTab === 'ai' ? 'Generazione...' : creationTab === 'upload' ? 'Caricamento...' : 'Creazione...'}
+                              </>
+                            ) : (
+                              creationTab === 'ai' ? '🤖 Genera' : creationTab === 'upload' ? '📎 Carica' : '📄 Crea File'
+                            )}
+                          </button>
+                        </div>
+                      </form>
+                    </>
+                  ) : (
+                    <div style={{ fontSize: '0.65rem', color: '#8b8fa3', padding: '10px', background: 'rgba(255,255,255,0.02)', borderRadius: '6px', border: '1px solid rgba(255,255,255,0.05)', textAlign: 'center', marginTop: '6px' }}>
+                      💡 Gli argomenti contengono sottoargomenti. Seleziona o apri un sottoargomento per creare o generare file al suo interno.
                     </div>
-                  </form>
+                  )}
                 </>
               )}
             </div>
