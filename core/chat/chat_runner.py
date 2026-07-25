@@ -197,9 +197,9 @@ def handle_chat(self):
 {time_ctx}{mcp_context_info}
 
 ## ISTRUZIONI CREAZIONE E SALVATAGGIO FILE SU DISCO
-Quando l'utente ti chiede di creare, scrivere o generare un file o un argomento, DEVI SEMPRE specificare il percorso relativo esplicito (es. `data/ARGOMENTO/01_base/teoria/NOME_FILE.md`) e racchiudere il contenuto completo all'interno di un blocco di codice markdown:
+Quando l'utente ti chiede di creare, scrivere o generare un file o un argomento, DEVI SEMPRE specificare il percorso relativo esplicito direttamente nella cartella dell'argomento (es. `data/ARGOMENTO/NOME_FILE.md`) e racchiudere il contenuto completo all'interno di un blocco di codice markdown:
 
-Path: `data/ARGOMENTO/01_base/teoria/NOME_FILE.md`
+Path: `data/ARGOMENTO/NOME_FILE.md`
 ```markdown
 # Titolo del Documento
 Contenuto completo...

@@ -124,17 +124,9 @@ def _normalize_action_path(path: str, auto_module: bool = False) -> str:
 
 
 def _ensure_module_structure(path: str) -> str:
-    """Auto-wrap flat topic paths into the module structure.
-
-    ``data/topic/teoria/file.md``  →  ``data/topic/01_base/teoria/file.md``
-    """
+    """Return flat topic file paths directly inside the topic folder without wrapping in 01_base."""
     if not path or not path.startswith("data/"):
         return path
-    parts = path.replace("\\", "/").split("/")
-    if len(parts) == 4 and parts[2] in _ALLOWED_MODULE_SECTIONS:
-        topic_folder = f"data/{parts[1]}"
-        default_mod = _get_or_create_default_module(topic_folder)
-        return f"{default_mod.replace(chr(92), '/')}/{parts[2]}/{parts[3]}"
     return path
 
 

@@ -17,10 +17,9 @@ def _resolve_real_file_path(path: str) -> str:
     if clean.startswith('./data/'):
         clean = clean[2:]
     
-    # Replace literal AI placeholders like 01_... or 01_ with 01_base
-    clean = re.sub(r'/(?:[0-9]{2}|\.\.)_\.\.\./', '/01_base/', clean)
-    clean = re.sub(r'/(?:[0-9]{2}|\.\.)_\.\.\.', '/01_base', clean)
-    clean = re.sub(r'/01_/', '/01_base/', clean)
+    # Normalize path formatting
+    clean = re.sub(r'/(?:[0-9]{2}|\.\.)_\.\.\./', '/', clean)
+    clean = re.sub(r'/(?:[0-9]{2}|\.\.)_\.\.\.', '', clean)
     
     parts = clean.split('/')
     
