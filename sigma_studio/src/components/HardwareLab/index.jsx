@@ -417,7 +417,7 @@ export default function HardwareLab({ addToast }) {
             const pwrDraw = Number(gpu.power_draw_w) || 0;
 
             const idx = gpu.index;
-            const hist = history[idx] || { vram: [], compute: [], temp: [], power: [] };
+            const hist = historyData[idx] || { vram: [], compute: [], temp: [], power: [] };
 
             return (
               <div key={idx} className="gpu-card" style={{ padding: '14px 18px', background: 'rgba(15, 23, 42, 0.75)' }}>

@@ -70,6 +70,21 @@ export default function MappaArgomenti({ onOpenFile }) {
   const fileInputRef = useRef(null);
 
   // Auto clean upload states when overlay is closed
+  // Configurable Font Size state (persisted in localStorage)
+  const [labelFontSize, setLabelFontSize] = useState(() => {
+    try {
+      const saved = localStorage.getItem('sigma_graph_font_size');
+      return saved ? parseInt(saved, 10) : 16;
+    } catch (e) {
+      return 16;
+    }
+  });
+
+  const handleFontSizeChange = (newSize) => {
+    setLabelFontSize(newSize);
+    try { localStorage.setItem('sigma_graph_font_size', String(newSize)); } catch (e) {}
+  };
+
   useEffect(() => {
     if (!showAiOverlay) {
       setCreationTab('standard');
@@ -476,13 +491,17 @@ export default function MappaArgomenti({ onOpenFile }) {
     // Zoom
     const g = svg.append('g').attr('class', 'zoom-group');
     const zoom = d3.zoom()
-      .scaleExtent([0.3, 4])
+      .scaleExtent([0.05, 5])
       .on('zoom', (event) => { g.attr('transform', event.transform); });
     svg.call(zoom);
     zoomRef.current = zoom;
 
-    const initialScale = Math.min(width, height) / 600;
-    svg.call(zoom.transform, d3.zoomIdentity.scale(initialScale));
+    // Initial scale: zoomed out farther by default so the entire tree is comfortably visible
+    const initialScale = Math.min(width, height) / 950;
+    const initialTransform = d3.zoomIdentity
+      .translate(width / 2, 80)
+      .scale(Math.max(0.35, Math.min(0.7, initialScale)));
+    svg.call(zoom.transform, initialTransform);
 
     // Link type map
     const linkTypeMap = {};
@@ -504,15 +523,15 @@ export default function MappaArgomenti({ onOpenFile }) {
       })
       .attr('stroke', d => {
         const isParent = linkTypeMap[d.source.id + '|' + d.target.id] || linkTypeMap[d.target.id + '|' + d.source.id];
-        return isParent ? 'rgba(210,153,34,0.2)' : 'rgba(255,255,255,0.08)';
+        return isParent ? 'rgba(210,153,34,0.3)' : 'rgba(255,255,255,0.12)';
       })
       .attr('stroke-width', d => {
         const isParent = linkTypeMap[d.source.id + '|' + d.target.id] || linkTypeMap[d.target.id + '|' + d.source.id];
-        return isParent ? 2 : 1.5;
+        return isParent ? 2.5 : 1.8;
       })
       .attr('stroke-dasharray', d => {
         const isParent = linkTypeMap[d.source.id + '|' + d.target.id] || linkTypeMap[d.target.id + '|' + d.source.id];
-        return isParent ? '4,3' : 'none';
+        return isParent ? '5,4' : 'none';
       })
       .attr('marker-end', d => {
         const isParent = linkTypeMap[d.source.id + '|' + d.target.id] || linkTypeMap[d.target.id + '|' + d.source.id];
@@ -630,36 +649,40 @@ export default function MappaArgomenti({ onOpenFile }) {
 
     nodeElements.append('text')
       .attr('class', d => 'node-label ' + d.type)
-      .attr('dy', d => d.r + 16)
+      .attr('dy', d => d.r + (d.type === 'topic' ? 22 : d.type === 'module' ? 18 : 14))
       .attr('text-anchor', 'middle')
-      .attr('fill', '#8b8fa3')
-      .attr('font-size', d => d.type === 'topic' ? '15px' : (d.type === 'module' ? '13px' : '11px'))
-      .attr('font-weight', d => d.type === 'topic' ? '700' : '500')
+      .attr('fill', '#e2e4eb')
+      .attr('font-size', d => {
+        if (d.type === 'topic') return Math.round(labelFontSize * 1.15) + 'px';
+        if (d.type === 'module') return labelFontSize + 'px';
+        return Math.max(10, Math.round(labelFontSize * 0.85)) + 'px';
+      })
+      .attr('font-weight', d => d.type === 'topic' ? '700' : '600')
       .attr('pointer-events', 'none')
-      .text(d => d.label.length > 30 ? d.label.slice(0, 28) + '…' : d.label);
+      .text(d => d.label.length > 35 ? d.label.slice(0, 33) + '…' : d.label);
 
-    // Simulation
+    // Simulation with longer branch distances and stronger repulsion
     const simulation = d3.forceSimulation(nodes)
-      .force('link', d3.forceLink(links).id(d => d.id).distance(120).strength(0.5))
-      .force('charge', d3.forceManyBody().strength(d => d.type === 'topic' ? -1200 : -600))
-      .force('x', d3.forceX(width / 2).strength(0.04))
+      .force('link', d3.forceLink(links).id(d => d.id).distance(240).strength(0.5))
+      .force('charge', d3.forceManyBody().strength(d => d.type === 'topic' ? -2400 : -1000))
+      .force('x', d3.forceX(width / 2).strength(0.03))
       .force('collision', d3.forceCollide().radius(d => {
-        if (d.type === 'topic') return d.r + 90;
-        if (d.type === 'module') return d.r + 65;
-        return d.r + 35;
+        if (d.type === 'topic') return d.r + 130;
+        if (d.type === 'module') return d.r + 85;
+        return d.r + 45;
       }).strength(0.85))
       .on('tick', () => {
-        // Enforce hierarchical tree structure
+        // Enforce hierarchical tree structure with longer branches
         nodes.forEach(d => {
           if (d.type === 'topic') {
             if (d.parentTopicId) {
               const parentNode = nodes.find(n => n.id === d.parentTopicId);
               if (parentNode) {
-                const branchLength = 220;
+                const branchLength = 340; // longer topic branches
                 let angle = Math.PI / 2; // default straight down
                 if (d.totalChildTopics > 1) {
-                  // Symmetrical fan spread (45 to 135 deg)
-                  angle = 0.78 + (d.childTopicIndex / (d.totalChildTopics - 1)) * 1.57;
+                  // Symmetrical fan spread (35 to 145 deg)
+                  angle = 0.61 + (d.childTopicIndex / (d.totalChildTopics - 1)) * 1.92;
                 }
                 const targetX = parentNode.x + Math.cos(angle) * branchLength;
                 const targetY = parentNode.y + Math.sin(angle) * branchLength;
@@ -667,7 +690,7 @@ export default function MappaArgomenti({ onOpenFile }) {
                 d.y += (targetY - d.y) * 0.15;
               }
             } else {
-              // Root topics: place them near the top-center
+              // Root topics: place them near top-center
               const targetY = 100;
               d.y += (targetY - d.y) * 0.1;
             }
@@ -675,11 +698,11 @@ export default function MappaArgomenti({ onOpenFile }) {
             // Find parent topic node
             const parentNode = nodes.find(n => n.id === 'topic-' + d.topicId);
             if (parentNode) {
-              const branchLength = 160;
+              const branchLength = 240; // longer module branches
               let angle = Math.PI / 2;
               if (d.totalMods > 1) {
-                // Symmetrical fan spread (50 to 130 deg)
-                angle = 0.87 + (d.modIndex / (d.totalMods - 1)) * 1.4;
+                // Symmetrical fan spread (45 to 135 deg)
+                angle = 0.78 + (d.modIndex / (d.totalMods - 1)) * 1.57;
               }
               const targetX = parentNode.x + Math.cos(angle) * branchLength;
               const targetY = parentNode.y + Math.sin(angle) * branchLength;
@@ -690,11 +713,11 @@ export default function MappaArgomenti({ onOpenFile }) {
             // Find parent module node
             const parentNode = nodes.find(n => n.id === d.parentModId);
             if (parentNode) {
-              const branchLength = 120; // docs further away
+              const branchLength = 170; // longer doc branches
               let angle = Math.PI / 2;
               if (d.totalDocs > 1) {
-                // Symmetrical fan spread (35 to 145 deg)
-                angle = 0.61 + (d.docIndex / (d.totalDocs - 1)) * 1.92;
+                // Symmetrical fan spread (30 to 150 deg)
+                angle = 0.52 + (d.docIndex / (d.totalDocs - 1)) * 2.09;
               }
               const targetX = parentNode.x + Math.cos(angle) * branchLength;
               const targetY = parentNode.y + Math.sin(angle) * branchLength;
@@ -758,6 +781,19 @@ export default function MappaArgomenti({ onOpenFile }) {
     svg.selectAll('.graph-node')
       .attr('class', n => 'graph-node' + (selectedNode && n.id === (selectedNode.type === 'topic' ? 'topic-' + selectedNode.data.id : 'mod-' + selectedNode.topicId + '-' + selectedNode.data.number) ? ' selected' : ''));
   }, [d3, selectedNode, topicsData]);
+
+  // Dynamic font-size update on label elements
+  useEffect(() => {
+    if (!d3 || !svgRef.current) return;
+    const svg = d3.select(svgRef.current);
+    svg.selectAll('.node-label')
+      .attr('font-size', d => {
+        if (!d) return labelFontSize + 'px';
+        if (d.type === 'topic') return Math.round(labelFontSize * 1.15) + 'px';
+        if (d.type === 'module') return labelFontSize + 'px';
+        return Math.max(10, Math.round(labelFontSize * 0.85)) + 'px';
+      });
+  }, [d3, labelFontSize]);
 
   const zoomIn = () => {
     if (svgRef.current && zoomRef.current && d3) {
@@ -829,6 +865,62 @@ export default function MappaArgomenti({ onOpenFile }) {
         }
       } else {
         alert('Errore: ' + (data.error || 'sconosciuto'));
+      }
+    } catch (e) {
+      alert('Errore di rete: ' + e.message);
+    }
+  };
+
+  const handleMoveModule = async (mod, currentTopicId, targetTopicIdOverride) => {
+    let targetTopicId = targetTopicIdOverride;
+    if (!targetTopicId) {
+      const availableTopics = topicsData.filter(t => t.id !== currentTopicId);
+      if (availableTopics.length === 0) {
+        alert('Non ci sono altri argomenti in cui spostare questo sottoargomento.');
+        return;
+      }
+      const topicOptionsStr = availableTopics.map((t, idx) => `${idx + 1}. ${t.name} (${t.id})`).join('\n');
+      const choiceStr = prompt(`Seleziona il numero dell'argomento di destinazione per il sottoargomento "${mod.name}":\n\n${topicOptionsStr}`);
+      if (!choiceStr) return;
+      const choiceIdx = parseInt(choiceStr.trim(), 10) - 1;
+      if (isNaN(choiceIdx) || choiceIdx < 0 || choiceIdx >= availableTopics.length) {
+        alert('Selezione non valida.');
+        return;
+      }
+      targetTopicId = availableTopics[choiceIdx].id;
+    }
+
+    const parentTopic = topicsData.find(t => t.id === currentTopicId);
+    const oldFolder = mod.folder || (parentTopic ? `${parentTopic.folder}/${mod.number}_${mod.name}`.toLowerCase().replace(/ /g, '_') : '');
+
+    try {
+      const res = await fetch('/api/update_module', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          old_folder: oldFolder,
+          number: mod.number,
+          name: mod.name,
+          topic_id: targetTopicId
+        })
+      });
+      const data = await res.json();
+      if (data.success) {
+        const freshTopics = await fetchData();
+        if (freshTopics) {
+          setActiveTopicId(targetTopicId);
+          const updatedTopic = freshTopics.find(t => t.id === targetTopicId);
+          if (updatedTopic) {
+            const targetNum = data.number || mod.number;
+            const movedMod = updatedTopic.modules?.find(m => m.number === targetNum || m.name.toLowerCase() === mod.name.toLowerCase());
+            if (movedMod) {
+              setSelectedNode({ type: 'module', data: movedMod, topicId: targetTopicId });
+              setSelectedModule(movedMod.number);
+            }
+          }
+        }
+      } else {
+        alert('Errore spostamento sottoargomento: ' + (data.error || 'sconosciuto'));
       }
     } catch (e) {
       alert('Errore di rete: ' + e.message);
@@ -1358,6 +1450,32 @@ export default function MappaArgomenti({ onOpenFile }) {
           <div className="detail-title" style={{ color: '#bc8cff' }}>{escapeStr(topic.name)}</div>
         </div>
         <div className="detail-desc">{escapeStr(topic.description)}</div>
+
+        {/* Pulsante Nuovo Sottoargomento e Selettore Argomento Padre DENTRO l'Argomento */}
+        <div className="topic-inside-controls" style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', margin: '8px 0 12px', alignItems: 'center' }}>
+          <button 
+            className="btn-new-subtopic" 
+            onClick={() => handleCreateSubTopic(topic)} 
+            title="Crea nuovo sottoargomento dentro questo argomento"
+            style={{ padding: '6px 12px', fontSize: '0.65rem', background: 'rgba(0,210,255,0.12)', color: '#00d2ff', border: '1px solid rgba(0,210,255,0.3)', borderRadius: '6px', cursor: 'pointer', fontWeight: 600 }}
+          >
+            ➕ Nuovo Sottoargomento
+          </button>
+          {topicsData.length > 1 && (
+            <select
+              value={topic.parent_id || ''}
+              onChange={e => handleUpdateTopicParent(topic, e.target.value)}
+              title="Seleziona argomento padre"
+              style={{ background: '#0e1016', color: '#bc8cff', border: '1px solid rgba(188,140,255,0.3)', borderRadius: '6px', padding: '5px 10px', fontSize: '0.65rem', outline: 'none' }}
+            >
+              <option value="">— Nessun Argomento Padre —</option>
+              {topicsData.filter(t => t.id !== topic.id).map(t => (
+                <option key={t.id} value={t.id}>⬆ Padre: {escapeStr(t.name)}</option>
+              ))}
+            </select>
+          )}
+        </div>
+
         <div className="detail-meta">
           <span className="tag modules-tag">{modCount} moduli</span>
           <span className="tag">{totalFiles} file</span>
@@ -1439,6 +1557,9 @@ export default function MappaArgomenti({ onOpenFile }) {
         
         {/* Rename & Action buttons */}
         <div style={{ marginTop: '4px', display: 'flex', flexDirection: 'column', gap: '4px' }}>
+          <button className="detail-action-btn" onClick={() => handleMoveModule(mod, topicId)} style={{ color: '#00d2ff', borderColor: 'rgba(0,210,255,0.2)' }}>
+            ⇄ Sposta in un altro Argomento
+          </button>
           <button className="detail-action-btn" onClick={() => handleRenameModule(mod, topicId)} style={{ color: '#d29922' }}>
             ✏️ Rinomina Sottoargomento
           </button>
@@ -2156,6 +2277,22 @@ export default function MappaArgomenti({ onOpenFile }) {
             <button className="btn-update" onClick={fetchData} title="Aggiorna dati e grafico">
               🔄 Aggiorna
             </button>
+
+            {/* Slider Dimensione Testo Nodi */}
+            <div className="font-size-control" style={{ display: 'flex', alignItems: 'center', gap: '6px', background: '#11131b', border: '1px solid #1e2030', padding: '4px 10px', borderRadius: '6px', fontSize: '0.65rem', color: '#8b8fa3' }} title="Regola la dimensione delle scritte dei nodi">
+              <span>🔤 Testo:</span>
+              <input
+                type="range"
+                min="10"
+                max="28"
+                step="1"
+                value={labelFontSize}
+                onChange={e => handleFontSizeChange(parseInt(e.target.value, 10))}
+                style={{ width: '65px', accentColor: '#00d2ff', cursor: 'pointer' }}
+              />
+              <span style={{ color: '#00d2ff', fontWeight: 600, minWidth: '28px' }}>{labelFontSize}px</span>
+            </div>
+
             <button className="btn-new-topic" onClick={handleCreateTopic} title="Crea nuovo argomento">
               🌐 Nuovo Argomento
             </button>
@@ -2429,8 +2566,102 @@ export default function MappaArgomenti({ onOpenFile }) {
                   )}
                 </>
               ) : (
-                // Topic/Module Creation Layout
+                // Topic/Module Overlay Layout
                 <>
+                  {/* Pulsanti Azione per Argomento nel div Overlay */}
+                  {overlayNode.type === 'topic' && (
+                    <div className="ai-overlay-actions-section" style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginBottom: '10px', paddingBottom: '8px', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+                      <button
+                        type="button"
+                        className="ai-overlay-btn"
+                        style={{ background: 'rgba(0, 210, 255, 0.12)', borderColor: 'rgba(0, 210, 255, 0.3)', color: '#00d2ff', fontSize: '0.65rem', padding: '6px 10px', borderRadius: '6px', cursor: 'pointer', fontWeight: 600, width: '100%' }}
+                        onClick={() => {
+                          handleCreateSubTopic(overlayNode.data);
+                          setShowAiOverlay(false);
+                        }}
+                      >
+                        ➕ Nuovo Sottoargomento
+                      </button>
+
+                      {topicsData.length > 1 && (
+                        <div className="ai-overlay-group">
+                          <span className="ai-overlay-label">Argomento Padre</span>
+                          <select
+                            className="ai-overlay-select"
+                            value={overlayNode.data.parent_id || ''}
+                            onChange={e => {
+                              handleUpdateTopicParent(overlayNode.data, e.target.value);
+                              setShowAiOverlay(false);
+                            }}
+                          >
+                            <option value="">— Nessun Argomento Padre —</option>
+                            {topicsData.filter(t => t.id !== overlayNode.data.id).map(t => (
+                              <option key={t.id} value={t.id}>⬆ {escapeStr(t.name)}</option>
+                            ))}
+                          </select>
+                        </div>
+                      )}
+
+                      <button
+                        type="button"
+                        className="ai-overlay-btn"
+                        style={{ background: 'rgba(255, 85, 85, 0.08)', borderColor: 'rgba(255, 85, 85, 0.2)', color: '#ff5555', fontSize: '0.6rem', padding: '4px 8px', borderRadius: '6px', cursor: 'pointer', marginTop: '2px' }}
+                        onClick={() => {
+                          handleDeleteTopic(overlayNode.data);
+                          setShowAiOverlay(false);
+                        }}
+                      >
+                        🗑️ Elimina Argomento
+                      </button>
+                    </div>
+                  )}
+
+                  {/* Pulsanti Azione per Sottoargomento (Modulo) nel div Overlay */}
+                  {overlayNode.type === 'module' && (
+                    <div className="ai-overlay-actions-section" style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginBottom: '10px', paddingBottom: '8px', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+                      <button
+                        type="button"
+                        className="ai-overlay-btn"
+                        style={{ background: 'rgba(0, 210, 255, 0.12)', borderColor: 'rgba(0, 210, 255, 0.3)', color: '#00d2ff', fontSize: '0.65rem', padding: '6px 10px', borderRadius: '6px', cursor: 'pointer', fontWeight: 600, width: '100%' }}
+                        onClick={() => {
+                          handleMoveModule(overlayNode.data, overlayNode.topicId);
+                          setShowAiOverlay(false);
+                        }}
+                      >
+                        ⇄ Sposta in altro Argomento
+                      </button>
+
+                      <div style={{ display: 'flex', gap: '6px' }}>
+                        <button
+                          type="button"
+                          className="ai-overlay-btn"
+                          style={{ flex: 1, background: 'rgba(210, 153, 34, 0.1)', borderColor: 'rgba(210, 153, 34, 0.25)', color: '#d29922', fontSize: '0.6rem', padding: '5px', borderRadius: '6px', cursor: 'pointer' }}
+                          onClick={() => {
+                            handleRenameModule(overlayNode.data, overlayNode.topicId);
+                            setShowAiOverlay(false);
+                          }}
+                        >
+                          ✏️ Rinomina
+                        </button>
+                        <button
+                          type="button"
+                          className="ai-overlay-btn"
+                          style={{ flex: 1, background: 'rgba(255, 85, 85, 0.08)', borderColor: 'rgba(255, 85, 85, 0.2)', color: '#ff5555', fontSize: '0.6rem', padding: '5px', borderRadius: '6px', cursor: 'pointer' }}
+                          onClick={() => {
+                            handleDeleteModule(overlayNode.data, overlayNode.topicId);
+                            setShowAiOverlay(false);
+                          }}
+                        >
+                          🗑️ Elimina
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
+                  <div style={{ fontSize: '0.5rem', fontWeight: 600, color: '#5a5e72', letterSpacing: '0.5px', marginBottom: '6px', textTransform: 'uppercase' }}>
+                    CREA NUOVO FILE DENTRO QUESTO {overlayNode.type === 'topic' ? 'ARGOMENTO' : 'SOTTOARGOMENTO'}
+                  </div>
+
                   <div className="ai-overlay-tabs">
                     <button 
                       type="button"
@@ -2707,6 +2938,31 @@ export default function MappaArgomenti({ onOpenFile }) {
                       {escapeStr(activeTopic.description)}
                     </div>
                   )}
+
+                  {/* Pulsante ed il selettore padre integrati nell'Argomento */}
+                  <div className="active-topic-controls" style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', marginTop: '8px', alignItems: 'center' }}>
+                    <button 
+                      className="btn-new-subtopic" 
+                      onClick={() => handleCreateSubTopic(activeTopic)} 
+                      title="Crea nuovo sottoargomento dentro questo argomento"
+                      style={{ padding: '4px 8px', fontSize: '0.6rem', background: 'rgba(0,210,255,0.12)', color: '#00d2ff', border: '1px solid rgba(0,210,255,0.3)', borderRadius: '6px', cursor: 'pointer', fontWeight: 600 }}
+                    >
+                      ➕ Nuovo Sottoargomento
+                    </button>
+                    {topicsData.length > 1 && (
+                      <select 
+                        value={activeTopic.parent_id || ''} 
+                        onChange={e => handleUpdateTopicParent(activeTopic, e.target.value)}
+                        title="Seleziona argomento padre"
+                        style={{ background: '#0e1016', color: '#bc8cff', border: '1px solid rgba(188,140,255,0.3)', borderRadius: '6px', padding: '3px 6px', fontSize: '0.6rem', outline: 'none' }}
+                      >
+                        <option value="">— Nessun Padre —</option>
+                        {topicsData.filter(t => t.id !== activeTopic.id).map(t => (
+                          <option key={t.id} value={t.id}>⬆ Padre: {escapeStr(t.name)}</option>
+                        ))}
+                      </select>
+                    )}
+                  </div>
                 </div>
 
                 <div className="explorer-section-header" style={{ marginTop: '12px' }}>
@@ -2749,6 +3005,13 @@ export default function MappaArgomenti({ onOpenFile }) {
                           </span>
                           
                           <div className="folder-actions">
+                            <button 
+                              className="folder-action-btn"
+                              onClick={(e) => { e.stopPropagation(); handleMoveModule(mod, activeTopic.id); }}
+                              title="Sposta sottoargomento in un altro Argomento"
+                            >
+                              ⇄
+                            </button>
                             <button 
                               className="folder-action-btn"
                               onClick={(e) => { e.stopPropagation(); handleRenameModule(mod, activeTopic.id); }}

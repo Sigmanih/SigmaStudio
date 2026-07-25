@@ -632,8 +632,11 @@ if __name__ == "__main__":
     else:
         log.warning("npm not found — skipping frontend build.")
 
-    log.info("Listening on http://localhost:8000")
+    log.info("Listening on http://localhost:8000 (FastAPI ASGI v8.0)")
+    log.info("Interactive OpenAPI Docs available at http://localhost:8000/docs")
     try:
-        ThreadedHTTPServer(("", 8000), SigmaAPIHandler).serve_forever()
+        import uvicorn
+        from core.fastapi_app import app
+        uvicorn.run(app, host="0.0.0.0", port=8000, log_level="info")
     except KeyboardInterrupt:
         graceful_shutdown(None, None)

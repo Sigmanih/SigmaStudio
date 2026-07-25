@@ -1,12 +1,12 @@
 # 🧬 Σ-SIGMA Studio — Architettura Completa della Piattaforma
 
 ```
-Versione: 6.2
-Backend: Python HTTP Server custom (porta 8000)
+Versione: 8.1
+Backend: FastAPI + Uvicorn High-Performance ASGI Server (porta 8000) con 4 sotto-pacchetti modulari
 Frontend: React 19 + Vite 6
 AI: Multi-Provider (Ollama, DeepSeek, OpenAI, Anthropic, Groq, OpenRouter)
-Dati: File system modulare JSON-based
-Totale: ~11.000+ righe di codice
+Dati: File system modulare JSON-based e Sandboxing avanzato
+Totale: ~13.500+ righe di codice (bonifica completa codice duplicato)
 ```
 
 ---
@@ -17,11 +17,11 @@ Sigma Studio è un **motore di orchestrazione cognitiva AI-native** per ricerca 
 
 ```
 ┌───────────────────────────────────────────────────────────────────────────────┐
-│                              Σ-SIGMA STUDIO v6                               │
+│                             Σ-SIGMA STUDIO v8.1                               │
 │                                                                               │
 │  ┌──────────────────────────┐     ┌───────────────────┐    ┌───────────────┐  │
-│  │    sigma_server.py       │     │  sigma_studio/    │    │  manifesti/   │  │
-│  │    (Backend Python)      │◄──► │  (Frontend React) │    │  (Modelfile)  │  │
+│  │    FastAPI + Uvicorn     │     │  sigma_studio/    │    │  manifesti/   │  │
+│  │    (Backend ASGI)        │◄──► │  (Frontend React) │    │  (Modelfile)  │  │
 │  └──────────┬───────────────┘     └───────────────────┘    └───────────────┘  │
 │             │                                                                  │
 │             ▼                                                                  │
@@ -31,18 +31,16 @@ Sigma Studio è un **motore di orchestrazione cognitiva AI-native** per ricerca 
 │  └──────────────────────────────────────────────────────────────────┘         │
 │             │                                                                  │
 │             ▼                                                                  │
-│  ┌──────────────────────────────────────────────────────────────────┐         │
-│  │              core/  (10 moduli backend — Separation of Concerns) │         │
-│  │  sandbox.py  │  ai_providers.py  │  chat_handler.py  │  api_router.py     │
-│  │  task_handler.py │ file_handler.py │ data_handler.py │ module_handler.py  │
-│  │  config_handler.py │ loop_handler.py │ execute_loop.py │ plan_handler.py  │
-│  │  sandbox_manager.py                                                  │    │
-│  └──────────────────────────────────────────────────────────────────┘         │
-│                                                                               │
-│  ┌──────────────────────────────────────────────────────────────────┐         │
-│  │              File di Sistema (Project Root)                       │         │
-│  │  tasks.json  │  modules_meta.json  │  config.json               │         │
-│  └──────────────────────────────────────────────────────────────────┘         │
+│  ┌──────────────────────────────────────────────────────────────────────────┐ │
+│  │              core/  (Pacchetti Backend Modulari Bonificati)              │ │
+│  │  ┌───────────────┐ ┌───────────────┐ ┌──────────────────┐ ┌────────────┐ │ │
+│  │  │  core/chat/   │ │core/training/ │ │  core/pipeline/  │ │ core/loop/ │ │ │
+│  │  │ chat_runner   │ │ datasets.py   │ │ runner.py (DAG)  │ │ runner.py  │ │ │
+│  │  │ file_extract  │ │ hardware.py   │ │ self_healing.py  │ │ verif.py   │ │ │
+│  │  │ prompt_build  │ │ jobs.py       │ │ report_builder.py│ └────────────┘ │ │
+│  │  │ response_par  │ └───────────────┘ └──────────────────┘                │ │
+│  │  └───────────────┘                                                       │ │
+│  └──────────────────────────────────────────────────────────────────────────┘ │
 └───────────────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -50,10 +48,11 @@ Sigma Studio è un **motore di orchestrazione cognitiva AI-native** per ricerca 
 
 | Principio | Descrizione |
 |-----------|-------------|
-| 🔒 **Sandbox Security** | Ogni operazione confinata in path whitelist (`data/`, `manifesti/`, `sigma_studio/`, `core/`, `scratch/`) |
+| ⚡ **FastAPI + Uvicorn ASGI Server** | High-performance async server con concorrenza non-bloccante, supporto SSE nativo e docs `/docs` |
+| 🔒 **Sandbox Security & Hardening** | Operazioni confinate con `pathlib.Path.resolve()` e comandi sanificati con `shlex.split` senza `shell=True` |
 | 📜 **Manifesti Modelfile** | Agenti AI definiti come Modelfile Ollama con identità, regole, parametri |
-| 📋 **Notifiche Obbligatorie** | "Una notifica non lasciata è un'azione mai avvenuta" — ogni azione genera traccia in `tasks.json` |
-| 🧩 **Modularità** | Separation of concerns in 10 moduli core + componenti React indipendenti |
+| 🧪 **AST Code Validation & Self-Healing** | Validazione statica `ast.parse()` e circuito di riparazione automatica dei test di validazione falliti |
+| 🧩 **Sotto-pacchetti Modulari Bonificati** | Decomposizione dei file monolitici e totale bonifica del codice duplicato (`core/chat/`, `core/training/`, `core/pipeline/`, `core/loop/`) |
 | 🧠 **Multi-Provider AI** | Supporto per 6 provider con routing intelligente basato sul nome del modello |
 | 🏗️ **Full-Stack AI** | Dalla teoria accademica al software funzionante: teoremi → test → visualizzazioni → whitepaper |
 | 🚫 **Niente Dati nel Frontend** | Il frontend React è "stupido" — fa fetch da `/api/*` |
@@ -62,66 +61,33 @@ Sigma Studio è un **motore di orchestrazione cognitiva AI-native** per ricerca 
 
 ## 2. 🏗️ Backend (`sigma_server.py` + `core/`)
 
-### 2.1 Server HTTP Custom
+### 2.1 Moduli Core e Sotto-pacchetti
 
-| Proprietà | Valore |
-|-----------|--------|
-| **File** | `sigma_server.py` (248 righe) |
-| **Stack** | Python HTTP server puro con `ThreadingMixIn` (multi-thread) |
-| **Porta** | 8000 |
-| **Architettura** | Handler HTTP leggero (`SigmaAPIHandler`) che delega a moduli esterni |
-| **Pattern** | Monkey-patching dei metodi handler sulla classe server |
-| **Auto-build** | Esegue `npm run build` all'avvio in `sigma_studio/` |
-| **Startup** | Ricostruisce `modules_meta.json` dal filesystem al boot |
-| **Shutdown** | Graceful con `signal.SIGINT`/`SIGTERM` |
+| # | Modulo / Pacchetto | Percorso | Funzione |
+|---|--------------------|----------|----------|
+| 1 | **Sandbox** | `core/sandbox.py` | Validazione path, whitelist `ALLOWED_DIRS` |
+| 2 | **Sandbox Manager** | `core/sandbox_manager.py` | Gestione venv, npm, esecuzione comandi senza `shell=True` tramite `shlex` |
+| 3 | **Chat Sub-package** | `core/chat/` | Sotto-pacchetto per l'orchestrazione chat, parsing, validazione AST ed estrazione file |
+|   | └ *Chat Runner* | `core/chat/chat_runner.py` | Motore esecutivo conversazionale, streaming ed eliminazione deterministica |
+|   | └ *File Extractor* | `core/chat/file_extractor.py` | Estrazione file markdown, backup automatico e validazione `ast.parse()` |
+|   | └ *Prompt Builder* | `core/chat/prompt_builder.py` | Costruzione contesti, manifesti e sistema prompt |
+|   | └ *Response Parser* | `core/chat/response_parser.py` | Pulizia tag, monologo interiore e filtro transizioni linguistiche |
+|   | └ *Web Search* | `core/chat/web_search.py` | Integrazione ricerca sul web |
+| 4 | **Training Sub-package**| `core/training/` | Sotto-pacchetto per Training Lab |
+|   | └ *Datasets* | `core/training/datasets.py` | Ricerca HuggingFace, dataset consigliati, import locale |
+|   | └ *Hardware* | `core/training/hardware.py` | Telemetria CUDA, VRAM e diagnostica GPU PyTorch |
+|   | └ *Jobs* | `core/training/jobs.py` | Ciclo di vita dei job di training, streaming log ed export Ollama |
+| 5 | **Pipeline Sub-package**| `core/pipeline/` | Sotto-pacchetto per l'orchestrazione DAG delle pipeline di ricerca |
+|   | └ *Runner* | `core/pipeline/runner.py` | Esecuzione grafi DAG, ordinamento topologico, streaming SSE |
+|   | └ *Self Healing* | `core/pipeline/self_healing.py` | Cicli di revisione, condizioni di branching e istruzioni di ruolo |
+|   | └ *Report Builder* | `core/pipeline/report_builder.py` | Checkpoint su disco, persistenza stato e sintesi report |
+| 6 | **Loop Sub-package** | `core/loop/` | Sotto-pacchetto per il loop autonomo task-driven |
+|   | └ *Autonomous Runner*| `core/loop/autonomous_runner.py`| Loop a 3 fasi (Plan -> Execute -> Report) con notifiche |
+|   | └ *Verification* | `core/loop/verification.py` | Ispezione contesti, validazione filesystem e parsing JSON |
+| 7 | **AI Providers** | `core/ai_providers.py` | Resolver provider (Ollama/OpenAI/Anthropic/DeepSeek/Groq/OpenRouter) |
+| 8 | **Execute Loop** | `core/execute_loop.py` | Loop iterativo autonomo AI → azione → verifica |
+| 9 | **Task Handler** | `core/task_handler.py` | Esecuzione azioni AI, notifiche automatiche in `tasks.json` |
 
-**Struttura della classe server:**
-
-```python
-class ThreadedHTTPServer(ThreadingMixIn, HTTPServer):
-    daemon_threads = True
-
-class SigmaAPIHandler(SimpleHTTPRequestHandler):
-    _is_path_allowed = staticmethod(is_path_allowed)
-
-    def do_GET(self):    route_get(self)
-    def do_POST(self):   route_post(self)
-    def read_json_body(self):    ...
-    def send_json_response(self): ...
-    def serve_static_file(self): ...
-    def get_module_meta(self):   ...
-    def save_module_meta(self):  ...
-```
-
-**Importazione handler esterni (monkey-patching):**
-
-```python
-from core.data_handler import handle_api_modules, ...
-SigmaAPIHandler.handle_api_modules = handle_api_modules
-
-from core.chat_handler import handle_chat
-SigmaAPIHandler.handle_chat = handle_chat
-
-# ... 10 moduli caricati così
-```
-
-### 2.2 Moduli Core (10 file in `core/`)
-
-| # | Modulo | File | Funzione | Righe |
-|---|--------|------|----------|-------|
-| 1 | **Sandbox** | `sandbox.py` | Validazione path, whitelist `ALLOWED_PREFIXES` | 42 |
-| 2 | **AI Providers** | `ai_providers.py` | Config loader, provider resolver, chiamate API (Ollama/OpenAI/Anthropic) | 501 |
-| 3 | **API Router** | `api_router.py` | Routing GET/POST, serving static files da `sigma_studio/dist/` | 91 |
-| 4 | **Chat Handler** | `chat_handler.py` | Orchestrazione chat, 4 modalità, streaming SSE, web search | 766 |
-| 5 | **Execute Loop** | `execute_loop.py` | Loop iterativo AI → azioni → risultati → AI (Cline-style) | 341 |
-| 6 | **Plan Handler** | `plan_handler.py` | Plan → Act workflow: genera piano strutturato, esegue step-by-step | 397 |
-| 7 | **Loop Handler** | `loop_handler.py` | Loop autonomo: pianifica task → esegue → verifica → report | 551 |
-| 8 | **Task Handler** | `task_handler.py` | Esecuzione azioni AI, validazione moduli, notifiche automatiche | 516 |
-| 9 | **Config Handler** | `config_handler.py` | CRUD configurazione AI, lista modelli Ollama, creazione modelli | 120 |
-| 10 | **File Handler** | `file_handler.py` | CRUD file, upload multipart, esecuzione test | 139 |
-| 11 | **Data Handler** | `data_handler.py` | Lettura moduli/topics, knowledge graph D3, lista manifesti | 158 |
-| 12 | **Module Handler** | `module_handler.py` | CRUD topics e moduli, creazione cartella con sottocartelle | 168 |
-| 13 | **Sandbox Manager** | `sandbox_manager.py` | Gestione venv, npm, sandbox isolate per progetti | 451 |
 
 ### 2.3 Sistema API — Endpoint Completi
 

@@ -144,7 +144,7 @@ export function useChatStreaming({
     sessionStorage.removeItem('sigma_pending_chat');
   }, [saveMessagesImmediately, sessionRefs]);
 
-  const handleStreamResponse = async (res, sessionId, continuationCount = 0) => {
+  const handleStreamResponse = async (res, sessionId, continuationCount = 0, userPrompt = '') => {
     const reader = res.body.getReader();
     const decoder = new TextDecoder();
     let fullText = '', fullThinking = '', buffer = '';
@@ -154,6 +154,9 @@ export function useChatStreaming({
     let streamAgentId = activeManifesto?.path?.replace('manifesti/', '')?.replace('.md', '') || '';
     let streamAgentName = activeManifesto?.name || '';
     let streamAgentStyle = getAgentStyle(streamAgentId);
+
+    let streamCreatedFiles = [];
+    let streamActionsLog = [];
 
     try {
       let streamDone = false, hasError = false, streamErrorMsg = '';
@@ -173,6 +176,12 @@ export function useChatStreaming({
               const p = JSON.parse(payload);
               if (p.truncated || p.done_reason === 'length') {
                 wasTruncated = true;
+              }
+              if (p.created_files && Array.isArray(p.created_files)) {
+                streamCreatedFiles = p.created_files;
+              }
+              if (p.actions_log && Array.isArray(p.actions_log)) {
+                streamActionsLog = p.actions_log;
               }
               if (p.meta) {
                 streamAgentId = p.meta.agent_id || p.meta.manifesto_used;
@@ -196,6 +205,7 @@ export function useChatStreaming({
               }
               if (p.thinking) { hasThinking = true; fullThinking += p.thinking; }
               if (p.token) { fullText += p.token; }
+              else if (p.response) { fullText += p.response; }
               if (firstToken && continuationCount === 0) {
                 firstToken = false;
                 setSessionMessages(prev => ({
@@ -210,7 +220,9 @@ export function useChatStreaming({
                     timestamp: new Date().toISOString(),
                     streaming: true,
                     thinking: hasThinking ? fullThinking : undefined,
-                    streamingThinking: hasThinking
+                    streamingThinking: hasThinking,
+                    created_files: streamCreatedFiles,
+                    actions_log: streamActionsLog
                   }]
                 }));
               } else {
@@ -223,7 +235,9 @@ export function useChatStreaming({
                       ...n[n.length - 1],
                       content: updatedContent,
                       thinking: hasThinking ? fullThinking : n[n.length - 1].thinking,
-                      streamingThinking: hasThinking
+                      streamingThinking: hasThinking,
+                      created_files: streamCreatedFiles.length > 0 ? streamCreatedFiles : n[n.length - 1].created_files,
+                      actions_log: streamActionsLog.length > 0 ? streamActionsLog : n[n.length - 1].actions_log
                     };
                   }
                   return { ...prev, [sessionId]: n };
@@ -261,7 +275,7 @@ export function useChatStreaming({
             })
           });
           if (contRes.ok) {
-            await handleStreamResponse(contRes, sessionId, continuationCount + 1);
+            await handleStreamResponse(contRes, sessionId, continuationCount + 1, userPrompt);
             return;
           }
         } catch (contErr) {
@@ -271,15 +285,51 @@ export function useChatStreaming({
 
       setLoading(false);
       const finalContent = cleanModelTags(fullText) || (fullThinking ? cleanModelTags(fullThinking) : (hasError ? streamErrorMsg || '⚠️ Error' : '⚠️ Nessuna risposta.'));
+
+      if (streamCreatedFiles.length === 0 && finalContent && !hasError) {
+        try {
+          const extRes = await fetch('/api/chat/extract_files', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ text: finalContent, prompt_topic: userPrompt || '' })
+          });
+          if (extRes.ok) {
+            const extData = await extRes.json();
+            if (extData.created_files?.length > 0) {
+              streamCreatedFiles = extData.created_files;
+              streamActionsLog = extData.actions_log || [];
+              window.dispatchEvent(new Event('sigma_topics_updated'));
+            }
+          }
+        } catch (extErr) {
+          console.warn("Post-stream file extraction failed:", extErr);
+        }
+      }
+
       setSessionMessages(prev => {
         const n = [...(prev[sessionId] || [])];
-        if (n.length > 0 && n[n.length - 1].role === 'assistant') n[n.length - 1] = { ...n[n.length - 1], content: finalContent, streaming: false, streamingThinking: false, statusMessage: undefined };
+        if (n.length > 0 && n[n.length - 1].role === 'assistant') {
+          n[n.length - 1] = { 
+            ...n[n.length - 1], 
+            content: finalContent, 
+            streaming: false, 
+            streamingThinking: false, 
+            statusMessage: undefined,
+            created_files: streamCreatedFiles.length > 0 ? streamCreatedFiles : n[n.length - 1].created_files,
+            actions_log: streamActionsLog.length > 0 ? streamActionsLog : n[n.length - 1].actions_log
+          };
+        }
+        saveMessagesImmediately(sessionId, n);
+        try { localStorage.setItem(`sigma_chat_msgs_${sessionId}`, JSON.stringify(n)); } catch (err) {}
         return { ...prev, [sessionId]: n };
       });
-      saveMessagesImmediately(sessionId, sessionRefs.sessionMessages.current[sessionId] || []);
     } catch (e) {
       setLoading(false);
-      setSessionMessages(prev => [...(prev[sessionId] || []), { role: 'assistant', content: `⚠️ **Errore:** ${e.message}`, timestamp: new Date().toISOString(), error: true, agentImage: activeManifesto?.image || '/images/default.png', agentRole: activeManifesto?.name || '' }]);
+      setSessionMessages(prev => {
+        const msgs = [...(prev[sessionId] || []), { role: 'assistant', content: `⚠️ **Errore:** ${e.message}`, timestamp: new Date().toISOString(), error: true, agentImage: activeManifesto?.image || '/images/default.png', agentRole: activeManifesto?.name || '' }];
+        saveMessagesImmediately(sessionId, msgs);
+        return { ...prev, [sessionId]: msgs };
+      });
     }
   };
 
@@ -318,7 +368,7 @@ export function useChatStreaming({
     } catch (e) {
       if (sessionRefs.activeSessionId.current === sessionId) {
         const errorMsg = { role: 'assistant', content: `❌ **Errore nella risposta del server:** ${e.message}`, timestamp: new Date().toISOString(), error: true };
-        const finalMsgs = [...updatedMessages, errorMsg];
+        const finalMsgs = [...(sessionRefs.sessionMessages.current[sessionId] || []), errorMsg];
         setMessagesForSession(sessionId, finalMsgs);
         saveMessagesImmediately(sessionId, finalMsgs);
       }
@@ -326,29 +376,25 @@ export function useChatStreaming({
   };
 
   // --- Send Message (unified: chat + plan) ---
-  const sendMessage = useCallback(async () => {
-    if (!input.trim() || loading) return;
-    if (refreshConfig) await refreshConfig();
-    let currentSessionId = sessionRefs.activeSessionId.current;
-    let currentSessions = sessionRefs.sessions.current;
-    if (!currentSessionId) {
-      const session = createSession(selectedModel);
-      currentSessions = [session, ...currentSessions].slice(0, MAX_HISTORY);
-      saveSessionsState(currentSessions);
-      currentSessionId = session.id;
-      setActiveSessionId(currentSessionId);
-    }
+  const sendMessage = useCallback(async (textOverride, extraParams = {}) => {
+    if (loading) return;
+    const currentSessionId = sessionRefs.activeSessionId.current;
+    if (!currentSessionId) return;
+
+    const messageText = textOverride || input;
+    if (!messageText.trim() && attachedFiles.length === 0) return;
+
     streamingSessionIdRef.current = currentSessionId;
     const openFiles = externalOpenFiles || [];
     const contextFiles = [...(openFiles || []), ...attachedFiles].slice(0, MAX_ATTACHMENTS);
-    const userMsg = { role: 'user', content: input.trim(), timestamp: new Date().toISOString(), attachments: attachedFiles.length > 0 ? [...attachedFiles] : undefined, agentName: selectedModel };
+    const userMsg = { role: 'user', content: messageText.trim(), timestamp: new Date().toISOString(), attachments: attachedFiles.length > 0 ? [...attachedFiles] : undefined, agentName: selectedModel };
     const currentMsgs = sessionRefs.sessionMessages.current[currentSessionId] || [];
     const updatedMessages = [...currentMsgs, userMsg];
     setMessagesForSession(currentSessionId, updatedMessages);
     saveMessagesImmediately(currentSessionId, updatedMessages);
     const sessionName = sessionRefs.sessions.current.find(s => s.id === currentSessionId)?.name;
     if (sessionName && sessionName.startsWith('Chat ')) {
-      const firstWords = input.trim().slice(0, 50).replace(/\n/g, ' ');
+      const firstWords = messageText.trim().slice(0, 50).replace(/\n/g, ' ');
       const newName = `${firstWords}... (${selectedModel.split(':')[0]})`;
       saveSessionsState(sessionRefs.sessions.current.map(s => s.id === currentSessionId ? { ...s, name: newName } : s));
     }
@@ -365,9 +411,9 @@ export function useChatStreaming({
 
       const useStream = !isPlan;
       const body = {
-        message: input.trim(), bot_name: selectedModel, model: selectedModel,
+        message: messageText.trim(), bot_name: selectedModel, model: selectedModel,
         model_provider: routing.provider, model_endpoint: routing.endpoint, model_api_url: routing.api_url,
-        allow_actions: false, planning_mode: isPlan, stream: useStream,
+        allow_actions: true, planning_mode: isPlan, stream: useStream,
         timeout: quickConfig.timeout || 300, web_search: webSearch,
         context: { open_files: contextFiles, history: updatedMessages.slice(-10).map(m => ({ role: m.role, content: m.content })) },
         uploaded_files: pcFiles.length > 0 ? pcFiles : undefined
@@ -378,7 +424,7 @@ export function useChatStreaming({
       });
       const contentType = res.headers.get("content-type") || "";
       if (res.ok && contentType.includes("text/event-stream")) {
-        await handleStreamResponse(res, currentSessionId);
+        await handleStreamResponse(res, currentSessionId, 0, messageText);
       } else {
         await handleJsonResponse(res, currentSessionId, updatedMessages);
       }
@@ -387,11 +433,22 @@ export function useChatStreaming({
         sessionStorage.removeItem('sigma_pending_chat');
         const sid = currentSessionId || sessionRefs.activeSessionId.current;
         if (sid) {
-          const msgs = sessionRefs.sessionMessages.current[sid] || [];
-          if (msgs.length > 0) {
+          setSessionMessages(prev => {
+            const msgs = [...(prev[sid] || [])];
+            if (msgs.length > 0 && msgs[msgs.length - 1].role === 'assistant') {
+              const curContent = msgs[msgs.length - 1].content || (msgs[msgs.length - 1].thinking ? cleanModelTags(msgs[msgs.length - 1].thinking) : '');
+              msgs[msgs.length - 1] = {
+                ...msgs[msgs.length - 1],
+                content: curContent ? `${curContent}\n\n*⏹️ Generazione interrotta dall'utente.*` : '⏹️ Generazione interrotta dall\'utente.',
+                streaming: false,
+                streamingThinking: false,
+                statusMessage: undefined
+              };
+            }
             saveMessagesImmediately(sid, msgs);
             try { localStorage.setItem(`sigma_chat_msgs_${sid}`, JSON.stringify(msgs)); } catch (err) {}
-          }
+            return { ...prev, [sid]: msgs };
+          });
         }
         return;
       }

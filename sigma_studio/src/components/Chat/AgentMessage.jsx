@@ -53,6 +53,17 @@ export default function AgentMessage({
   const [rolledBacks, setRolledBacks] = useState({});
   const [expandedDiffs, setExpandedDiffs] = useState({});
   const [loadingStep, setLoadingStep] = useState(0);
+  const [copiedMsg, setCopiedMsg] = useState(false);
+
+  const handleCopyMessage = (e) => {
+    e.stopPropagation();
+    const textToCopy = messages.map(m => m.content || m.thinking || '').filter(Boolean).join('\n\n');
+    if (textToCopy) {
+      navigator.clipboard.writeText(textToCopy);
+      setCopiedMsg(true);
+      setTimeout(() => setCopiedMsg(false), 2000);
+    }
+  };
 
   const toggleDiff = (key) => {
     setExpandedDiffs(prev => ({ ...prev, [key]: !prev[key] }));
@@ -162,6 +173,27 @@ export default function AgentMessage({
           {isOrchestrated && <span className="chat-msg-orchestrated" title="Assegnato dall'Orchestrator">🎯</span>}
           <div className="chat-msg-header-spacer" />
           <div className="chat-msg-time">{formatTimestamp(first.timestamp)}</div>
+          <button
+            className={`chat-msg-copy-btn ${copiedMsg ? 'copied' : ''}`}
+            title="Copia messaggio negli appunti"
+            onClick={handleCopyMessage}
+            style={{
+              background: copiedMsg ? 'rgba(74, 222, 128, 0.15)' : 'rgba(255,255,255,0.04)',
+              border: copiedMsg ? '1px solid rgba(74, 222, 128, 0.3)' : '1px solid rgba(255,255,255,0.08)',
+              color: copiedMsg ? '#4ade80' : 'var(--text-muted, #8b8fa3)',
+              fontSize: '0.68rem',
+              cursor: 'pointer',
+              padding: '2px 7px',
+              borderRadius: '4px',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '4px',
+              marginLeft: '8px',
+              transition: 'all 0.2s ease'
+            }}
+          >
+            {copiedMsg ? '✓ Copiato!' : '📋 Copia'}
+          </button>
           {onDeleteMessage && (
             <button className="chat-msg-delete-btn" title="Elimina" onClick={() => onDeleteMessage(msgIndex)}>✕</button>
           )}

@@ -485,7 +485,7 @@ export default function HardwareFloatingPanel({ onClose, onOpenTab, addToast }) 
             const pwrDraw = Number(gpu.power_draw_w) || 0;
 
             const idx = gpu.index;
-            const hist = history[idx] || { vram: [], compute: [], temp: [], power: [] };
+            const hist = historyData[idx] || { vram: [], compute: [], temp: [], power: [] };
 
             return (
               <div key={idx} className="gpu-card" style={{ padding: '12px 14px', borderRadius: '12px', background: 'rgba(15, 23, 42, 0.7)' }}>

@@ -35,7 +35,9 @@ export function useChatSessions({ selectedModel, setSelectedModel, setActionsLog
     setSessionMessages(prev => {
       const existing = prev[sessionId] || [];
       const next = typeof msgsOrUpdater === 'function' ? msgsOrUpdater(existing) : msgsOrUpdater;
-      return { ...prev, [sessionId]: next };
+      const updated = { ...prev, [sessionId]: next };
+      refs.sessionMessages.current = updated;
+      return updated;
     });
   }, []);
 

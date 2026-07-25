@@ -9,8 +9,19 @@ export default function ChatHeader({
   showModelDropdown, onToggleDropdown, onSelectModel, providerConfigs, modelBtnRef,
   activeManifesto, manifestos, showManifestoDropdown, setShowManifestoDropdown,
   onSelectManifesto, onDuplicateSession, onOpenQuickConfig, showQuickConfig,
-  onOpenConfig, onClose, isPanel = false, contextStats,
+  onOpenConfig, onClose, isPanel = false, contextStats, onCopyAll,
 }) {
+  const [copiedAll, setCopiedAll] = React.useState(false);
+
+  const handleCopyAll = (e) => {
+    e.stopPropagation();
+    if (onCopyAll) {
+      onCopyAll();
+      setCopiedAll(true);
+      setTimeout(() => setCopiedAll(false), 2000);
+    }
+  };
+
   return (
     <div 
       className="chat-header"
@@ -73,6 +84,28 @@ export default function ChatHeader({
         </div>
       </div>
       <div className="chat-header-right">
+        {onCopyAll && (
+          <button
+            className={`chat-header-btn ${copiedAll ? 'copied' : ''}`}
+            onClick={handleCopyAll}
+            title="Copia l'intera conversazione negli appunti"
+            style={{
+              gap: '4px',
+              fontSize: '0.72rem',
+              padding: '3px 8px',
+              background: copiedAll ? 'rgba(74, 222, 128, 0.15)' : 'rgba(255,255,255,0.05)',
+              color: copiedAll ? '#4ade80' : 'var(--text-muted, #8b8fa3)',
+              border: copiedAll ? '1px solid rgba(74, 222, 128, 0.3)' : '1px solid rgba(255,255,255,0.08)',
+              borderRadius: '4px',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              transition: 'all 0.2s ease'
+            }}
+          >
+            {copiedAll ? '✓ Copiato!' : '📋 Copia Tutto'}
+          </button>
+        )}
         {onOpenConfig && (
           <button className="chat-header-btn" onClick={(e) => { e.stopPropagation(); onOpenConfig(); }} title="Configurazione completa">
             <Cpu size={14} />

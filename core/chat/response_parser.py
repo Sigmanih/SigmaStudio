@@ -311,7 +311,7 @@ def _extract_thinking_process(content: str) -> tuple[str, str | None]:
     
     # Pattern A: Monologue starting with 'Analyze User Input:' or similar, followed by response or Path:
     monologue_match = re.search(
-        r"^(Analyze\s+User\s+Input:[\s\S]*?)(?=(?:Path:|\*?\s*Path:\*?|Percorso:|\bEcco\b|\bHo\s+creato\b|\b#\s+|\{\s*\"response\")|$)",
+        r"^(Analyze\s+User\s+Input:[\s\S]*?)(?=(?:Path:|\*?\s*Path:\*?|Percorso:|\bCiao\b|\bSalve\b|\bBuongiorno\b|\bEcco\b|\bHo\s+creato\b|\b#\s+|\{\s*\"response\")|$)",
         content.strip(),
         re.IGNORECASE
     )

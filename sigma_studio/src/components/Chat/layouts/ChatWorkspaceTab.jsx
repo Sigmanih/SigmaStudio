@@ -41,6 +41,16 @@ export default function ChatWorkspaceTab() {
         onOpenQuickConfig={() => core.setShowQuickConfig(!core.showQuickConfig)}
         showQuickConfig={core.showQuickConfig}
         contextStats={core.contextStats}
+        onCopyAll={() => {
+          const msgs = core.messages || [];
+          if (msgs.length === 0) return;
+          const formatted = msgs.map(m => {
+            const role = m.role === 'user' ? '👤 Tu' : `🤖 ${m.agentRole || m.agentName || 'AI'}`;
+            const text = m.content || m.thinking || '';
+            return `${role}:\n${text}`;
+          }).join('\n\n---\n\n');
+          navigator.clipboard.writeText(formatted);
+        }}
       />
 
       <div className="chat-workspace-body">

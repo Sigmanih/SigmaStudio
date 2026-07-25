@@ -119,3 +119,39 @@ class TestFormatResponse:
 
     def test_none_returns_none(self):
         assert _format_response(None) is None
+
+
+class TestFileExtractorDirectPath:
+    def test_extract_direct_path_without_backticks(self, tmp_path):
+        from core.chat.file_extractor import _extract_and_create_files_from_text
+        text = """Ecco una documentazione strutturata per il modulo analisi_1/01_base, pronta da salvare in 📄 data/analisi_1/01_base/teoria/esponenziali.md. Il contenuto è calibrato sul livello di Analisi Matematica I.
+
+# Funzioni Esponenziali in Analisi Matematica I
+📌 *Modulo: analisi_1/01_base | Argomento: Teoria delle funzioni elementari
+"""
+        created, actions = _extract_and_create_files_from_text(text, prompt_topic="scrivimi una documentazione sugli esponenziali")
+        assert len(created) > 0
+        assert "esponenziali.md" in created[0]
+        assert os.path.exists(created[0])
+
+    def test_extract_with_reasoning_monologue(self, tmp_path):
+        from core.chat.file_extractor import _extract_and_create_files_from_text
+        text = """Here's a thinking process:
+Analyze User Input:
+- I'll use: 📄 data/frattali/01_base/teoria/frattali.md
+Final Output Generation: ✅
+Path: 📄 data/frattali/01_base/teoria/frattali.md
+
+# Frattali: Introduzione, Proprietà e Applicazioni
+
+## 📌 Cos'è un frattale?
+Un frattale è una figura geometrica...
+"""
+        created, actions = _extract_and_create_files_from_text(text, prompt_topic="scrivimi un file sui frattali")
+        assert len(created) > 0
+        assert "frattali.md" in created[0]
+        assert os.path.exists(created[0])
+        with open(created[0], "r", encoding="utf-8") as f:
+            content = f.read()
+        assert "Frattali: Introduzione" in content
+        assert "thinking process" not in content

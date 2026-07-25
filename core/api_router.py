@@ -36,6 +36,7 @@ def register_get_handlers(handler_class):
         '/api/training/job/logs': 'handle_training_job_logs',
         '/api/training/hardware': 'handle_training_hardware',
         '/api/hardware/status': 'handle_hardware_status',
+        '/api/hardware/restart-ollama': 'handle_hardware_restart_ollama',
     }
 
 
@@ -58,6 +59,7 @@ def register_post_handlers(handler_class):
         '/api/delete_topic': 'handle_delete_topic',
         '/api/config': 'handle_api_config_post',
         '/api/chat': 'handle_chat',
+        '/api/chat/extract_files': 'handle_chat_extract_files',
         '/api/chat/loop': 'handle_chat_loop',
         '/api/chat/execute': 'handle_chat_execute',
         '/api/chat/plan': 'handle_chat_plan',

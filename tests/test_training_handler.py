@@ -561,10 +561,12 @@ class TestOllamaExport:
 class TestHardwareInfo:
     """Test rilevamento hardware e diagnostica CUDA."""
 
+    @patch("core.training_handler._query_wmi_gpus")
     @patch("core.training_handler._query_nvidia_smi")
     @patch("core.training_handler._check_torch_cuda")
-    def test_hardware_info_structure(self, mock_torch, mock_smi):
+    def test_hardware_info_structure(self, mock_torch, mock_smi, mock_wmi):
         """Struttura informazione hardware è completa."""
+        mock_wmi.return_value = []
         mock_smi.return_value = [
             {
                 "index": 0, "name": "NVIDIA RTX 5090", "vram_total_mb": 24576,
@@ -596,10 +598,12 @@ class TestHardwareInfo:
         assert hw["cpu_count"] > 0
         assert hw["ram_gb"] > 0
 
+    @patch("core.training_handler._query_wmi_gpus")
     @patch("core.training_handler._query_nvidia_smi")
     @patch("core.training_handler._check_torch_cuda")
-    def test_multi_gpu_detection(self, mock_torch, mock_smi):
+    def test_multi_gpu_detection(self, mock_torch, mock_smi, mock_wmi):
         """Rilevamento multi-GPU corretto."""
+        mock_wmi.return_value = []
         mock_smi.return_value = [
             {"index": 0, "name": "RTX 4090", "vram_total_gb": 24.0, "vram_total_mb": 24576, **{k: 0 for k in ["vram_free_mb","vram_used_mb","vram_free_gb","driver_version","pcie_gen","pcie_width","compute_cap","gpu_util_pct","temp_c","power_draw_w","power_limit_w"]}},
             {"index": 1, "name": "RTX 4090", "vram_total_gb": 24.0, "vram_total_mb": 24576, **{k: 0 for k in ["vram_free_mb","vram_used_mb","vram_free_gb","driver_version","pcie_gen","pcie_width","compute_cap","gpu_util_pct","temp_c","power_draw_w","power_limit_w"]}},
@@ -618,10 +622,12 @@ class TestHardwareInfo:
         assert hw["multi_gpu"]["total_vram_gb"] == 48.0
         assert "device_map" in hw["multi_gpu"]["strategy"]
 
+    @patch("core.training_handler._query_wmi_gpus")
     @patch("core.training_handler._query_nvidia_smi")
     @patch("core.training_handler._check_torch_cuda")
-    def test_no_gpu_detection(self, mock_torch, mock_smi):
+    def test_no_gpu_detection(self, mock_torch, mock_smi, mock_wmi):
         """Nessuna GPU rilevata → diagnostica."""
+        mock_wmi.return_value = []
         mock_smi.return_value = []
         mock_torch.return_value = {
             "torch_available": False, "cuda_available": False,

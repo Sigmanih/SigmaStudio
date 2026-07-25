@@ -127,7 +127,7 @@ Path: {TEST_MODULE_DIR}/teoria/limiti.md
 Sia $f: A \\to \\mathbb{{R}}$ una funzione.
 ```
 """
-        created = _extract_and_create_files_from_text(ai_response, TEST_TOPIC)
+        created, _ = _extract_and_create_files_from_text(ai_response, TEST_TOPIC)
         assert len(created) > 0
         file_path = created[0].replace("/", os.sep)
         assert os.path.exists(file_path)
@@ -145,7 +145,7 @@ def calcola_limite(x):
     return 1 / x
 ```
 """
-        created = _extract_and_create_files_from_text(ai_response, TEST_TOPIC)
+        created, _ = _extract_and_create_files_from_text(ai_response, TEST_TOPIC)
         assert len(created) > 0
         file_path = created[0].replace("/", os.sep)
         assert os.path.exists(file_path)
@@ -154,7 +154,7 @@ def calcola_limite(x):
         ai_response = """# Analisi Matematica 1
 Trattazione approfondita sulle successioni e serie numeriche."""
         
-        created = _extract_and_create_files_from_text(ai_response, "crea l'argomento analisi 1")
+        created, _ = _extract_and_create_files_from_text(ai_response, "crea l'argomento analisi 1")
         assert len(created) > 0
         assert os.path.exists(created[0].replace("/", os.sep))
 
@@ -177,7 +177,7 @@ Path: {TEST_MODULE_DIR}/viz/01_grafico.html
 <!DOCTYPE html><html><body>Grafico</body></html>
 ```
 """
-        created = _extract_and_create_files_from_text(ai_response, TEST_TOPIC)
+        created, _ = _extract_and_create_files_from_text(ai_response, TEST_TOPIC)
         assert len(created) == 3
         for path in created:
             norm_p = path.replace("/", os.sep)

@@ -1,0 +1,25 @@
+# ==============================================================================
+# Sigma Studio v8 — Python Dependencies
+# ==============================================================================
+
+# Core Web Framework & ASGI Server
+fastapi>=0.100.0
+uvicorn[standard]>=0.22.0
+requests>=2.31.0
+psutil>=5.9.0
+beautifulsoup4>=4.12.0
+python-dateutil>=2.8.2
+pydantic>=2.0.0
+jinja2>=3.1.0
+
+# Testing Framework
+pytest>=7.4.0
+
+# AI / ML Frameworks & HuggingFace Tooling
+torch>=2.0.0
+transformers>=4.40.0
+datasets>=2.18.0
+peft>=0.10.0
+accelerate>=0.28.0
+huggingface_hub>=0.22.0
+safetensors>=0.4.0

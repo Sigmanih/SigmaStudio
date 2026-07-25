@@ -231,23 +231,38 @@ def run_in_sandbox(sandbox_id, cmd, cwd=None, timeout=120):
     if not os.path.isdir(base_dir):
         return False, {"error": f"Directory {base_dir} non trovata"}
     
-    # Activate venv if Python template
-    shell_cmd = cmd
-    if sandbox["template"] in ("python", "fullstack") and sandbox.get("venv_created"):
-        venv_activate = os.path.join(sandbox["dir"], '.venv', 'Scripts' if os.name == 'nt' else 'bin', 'activate')
-        if os.name == 'nt':
-            # Windows: use the venv python directly
-            python_path = os.path.join(sandbox["dir"], '.venv', 'Scripts', 'python.exe')
-            if os.path.isfile(python_path):
-                shell_cmd = f'"{python_path}" -c "{cmd}"' if '"' not in cmd else cmd
+    import shlex
+
+    # Prepare command args array to avoid shell=True injection
+    use_shell = False
+    if isinstance(cmd, list):
+        args = cmd
+    else:
+        # Check if venv python path can be resolved directly
+        python_path = None
+        if sandbox["template"] in ("python", "fullstack") and sandbox.get("venv_created"):
+            py_bin = os.path.join(sandbox["dir"], '.venv', 'Scripts' if os.name == 'nt' else 'bin', 'python' + ('.exe' if os.name == 'nt' else ''))
+            if os.path.isfile(py_bin):
+                python_path = py_bin
+
+        cmd_str = cmd.strip()
+        if python_path and (cmd_str.startswith("python ") or cmd_str.startswith("python3 ")):
+            parts = shlex.split(cmd_str, posix=(os.name != 'nt'))
+            args = [python_path] + parts[1:]
+        elif python_path and (cmd_str.startswith("pytest ") or cmd_str.startswith("pip ")):
+            parts = shlex.split(cmd_str, posix=(os.name != 'nt'))
+            args = [python_path, "-m"] + parts
         else:
-            # Unix: source activate then run
-            shell_cmd = f'. "{venv_activate}" && {cmd}'
-    
+            try:
+                args = shlex.split(cmd_str, posix=(os.name != 'nt'))
+            except Exception:
+                args = cmd_str
+                use_shell = True
+
     try:
         result = subprocess.run(
-            shell_cmd if isinstance(shell_cmd, str) else shell_cmd,
-            shell=True, capture_output=True, text=True, timeout=timeout,
+            args,
+            shell=use_shell, capture_output=True, text=True, timeout=timeout,
             cwd=base_dir, encoding='utf-8', errors='replace'
         )
         return result.returncode == 0, {

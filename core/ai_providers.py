@@ -404,54 +404,24 @@ def resolve_provider_config(ai_cfg: dict, model_name: str):
         'mixtral-8x7b': 'groq',
         'gemma2-9b': 'groq',
         'deepseek-r1-distill': 'groq',
-        'openai/': 'openrouter',
-        'anthropic/': 'openrouter',
-        'google/': 'openrouter',
-        'mistral/': 'openrouter',
-        'gemini-': 'google',
-        'gemma-3': 'google',
-        'mistral-': 'mistral',
-        'mistralai/': 'together',
+        'deepseek': 'deepseek',
+        'gemini': 'google',
+        'mistral': 'mistral',
         'codestral': 'mistral',
-        'open-mistral': 'mistral',
-        'grok-': 'xai',
+        'grok': 'xai',
         'sonar': 'perplexity',
-        'meta-llama/': 'together',
-        'deepseek-ai/': 'together',
-        'Qwen/': 'together',
         'qwen-': 'qwen',
-        'qwen2': 'qwen',
         'glm-': 'glm',
         'moonshot': 'moonshot',
         'yi-': 'yi',
     }
+    for prefix, pk in cloud_prefixes.items():
+        if model_name.lower().startswith(prefix):
+            pv = providers.get(pk, {})
+            if pv.get("api_key", "").strip():
+                return pk, pv
 
-    for pk, pv in providers.items():
-        model_list = pv.get("models", [])
-        default_model = pv.get("model", "")
-
-        if model_name in model_list:
-            return pk, pv
-        if model_name == default_model:
-            best_match = (pk, pv)
-        if not best_match:
-            for known in model_list:
-                if model_name.startswith(known.split("-")[0]) or known.startswith(
-                    model_name.split("-")[0]
-                ):
-                    best_match = (pk, pv)
-                    break
-
-    if best_match:
-        return best_match
-
-    for prefix, provider_key in cloud_prefixes.items():
-        if model_name.startswith(prefix):
-            if provider_key in providers:
-                return provider_key, providers[provider_key]
-            return provider_key, providers.get(provider_key, {})
-
-    # FALLBACK: unknown models are ALWAYS Ollama (local)
+    # Rule 4: Fallback to Ollama local
     return "ollama", providers.get("ollama", {})
 
 
@@ -586,10 +556,16 @@ def call_ollama(
                 available_models = []
                 if tags_resp.status_code == 200:
                     models_data = tags_resp.json()
-                    available_models = [m.get("name") for m in models_data.get("models", [])]
-                error_msg = f"Modello '{model}' non trovato in Ollama. Modelli disponibili: {', '.join(available_models[:10]) if available_models else 'nessuno'}"
-                log.error(error_msg)
-                return None, None, error_msg
+                    available_models = [m.get("name") for m in models_data.get("models", []) if m.get("name")]
+                if available_models and available_models[0] != model:
+                    fallback_model = available_models[0]
+                    log.warning("Model '%s' not found in Ollama. Falling back to '%s'", model, fallback_model)
+                    payload["model"] = fallback_model
+                    resp = requests.post(endpoint, json=payload, timeout=timeout)
+                if resp.status_code != 200:
+                    error_msg = f"Modello '{model}' non trovato in Ollama. Modelli disponibili: {', '.join(available_models[:10]) if available_models else 'nessuno'}"
+                    log.error(error_msg)
+                    return None, None, error_msg
             except Exception as ex:
                 log.error("Failed to query Ollama tags: %s", ex)
                 return None, None, f"Modello '{model}' non trovato in Ollama."

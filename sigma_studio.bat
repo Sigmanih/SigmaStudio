@@ -11,11 +11,18 @@ if not exist ".venv\Scripts\activate.bat" (
         pause >nul
         exit /b 1
     )
+    set REQ_NEED_INSTALL=1
 )
 
 :: Activate virtual environment
 echo [SIGMA_SERVER] Activating virtual environment...
 call .venv\Scripts\activate.bat
+
+:: Install requirements if missing or newly created
+if "%REQ_NEED_INSTALL%"=="1" (
+    echo [SIGMA_SERVER] Installing requirements from requirements.txt...
+    pip install -r requirements.txt
+)
 
 :: Check for Python
 where python >nul 2>nul
