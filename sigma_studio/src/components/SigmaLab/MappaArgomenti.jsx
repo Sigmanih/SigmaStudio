@@ -18,15 +18,19 @@ const DOC_COLORS = {
   viz: { stroke: '#d29922', fill: 'rgba(210,153,34,0.2)' },
   docs: { stroke: '#58a6ff', fill: 'rgba(88,166,255,0.2)' },
   whitepapers: { stroke: '#ffd700', fill: 'rgba(255,215,0,0.2)' },
+  pdf: { stroke: '#ff5555', fill: 'rgba(255,85,85,0.2)' },
+  media: { stroke: '#bd93f9', fill: 'rgba(189,147,249,0.2)' },
 };
-const DOC_ICONS = { teoria: '📖', scripts: '⚡', test: '⚡', viz: '📊', docs: '📄', whitepapers: '📜' };
-const DOC_PATHS = { teoria: 'teoria', scripts: 'scripts', test: 'scripts', viz: 'viz', docs: 'docs', whitepapers: 'whitepapers' };
+const DOC_ICONS = { teoria: '📖', scripts: '⚡', test: '⚡', viz: '📊', docs: '📄', whitepapers: '📜', pdf: '📕', media: '🎵' };
+const DOC_PATHS = { teoria: 'teoria', scripts: 'scripts', test: 'scripts', viz: 'viz', docs: 'docs', whitepapers: 'whitepapers', pdf: 'pdf', media: 'media' };
 const CATEGORY_AGENT_MAP = {
   teoria: 'math1',
   scripts: 'code_architect',
   viz: 'viz-designer',
   docs: 'proof-reviewer',
-  whitepaper: 'proof-reviewer'
+  whitepaper: 'proof-reviewer',
+  pdf: 'online_journalist',
+  media: 'online_journalist'
 };
 
 export default function MappaArgomenti({ onOpenFile }) {

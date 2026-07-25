@@ -14,7 +14,9 @@ def _infer_file_type(filename: str) -> dict:
     base = os.path.basename(filename).lower()
     
     file_type = 'text'
-    if ext == '.md':
+    if ext == '.pdf':
+        file_type = 'pdf'
+    elif ext == '.md':
         file_type = 'markdown'
     elif ext in ['.py', '.pyw']:
         file_type = 'python'
@@ -26,6 +28,8 @@ def _infer_file_type(filename: str) -> dict:
         file_type = 'json'
     elif ext in ['.png', '.jpg', '.jpeg', '.gif', '.svg', '.webp']:
         file_type = 'image'
+    elif ext in ['.mp3', '.wav', '.mp4', '.webm', '.ogg']:
+        file_type = 'media'
     elif ext in ['.css', '.scss']:
         file_type = 'stylesheet'
 
@@ -133,10 +137,10 @@ def get_topic_for_module(self, module_num):
 
 def load_module_files(self, folder_path):
     """Load files from subfolders and direct files inside any module or node folder."""
-    res = {"teoria": [], "scripts": [], "viz": [], "docs": [], "whitepapers": []}
+    res = {"teoria": [], "scripts": [], "viz": [], "docs": [], "whitepapers": [], "pdf": [], "media": []}
     
     # 1. Standard subfolders
-    for key in ['teoria', 'scripts', 'test', 'viz', 'docs', 'whitepapers']:
+    for key in ['teoria', 'scripts', 'test', 'viz', 'docs', 'whitepapers', 'pdf', 'media']:
         p = os.path.join(folder_path, key)
         if os.path.isdir(p):
             files = [{"filename": os.path.basename(f), "path": f.replace('\\', '/')}
@@ -155,15 +159,20 @@ def load_module_files(self, folder_path):
                 ext = os.path.splitext(f)[1].lower()
                 file_obj = {"filename": f, "path": rel_p}
 
-                if ext == '.md':
+                if ext == '.pdf':
+                    res["pdf"].append(file_obj)
+                    res["docs"].append(file_obj)
+                elif ext == '.md':
                     if "WHITEPAPER" in f.upper():
                         res["whitepapers"].append(file_obj)
                     else:
                         res["teoria"].append(file_obj)
                 elif ext in ['.py', '.js', '.jsx', '.ts', '.tsx']:
                     res["scripts"].append(file_obj)
-                elif ext in ['.html', '.htm', '.png', '.jpg', '.jpeg', '.svg']:
+                elif ext in ['.html', '.htm', '.png', '.jpg', '.jpeg', '.svg', '.webp']:
                     res["viz"].append(file_obj)
+                elif ext in ['.mp3', '.wav', '.mp4', '.webm']:
+                    res["media"].append(file_obj)
                 elif ext in ['.json', '.txt']:
                     res["docs"].append(file_obj)
 
