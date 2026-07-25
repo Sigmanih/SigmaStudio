@@ -35,6 +35,15 @@ if errorlevel 1 (
 :: Check for npm
 where npm >nul 2>nul
 if not errorlevel 1 (
+    if not exist "sigma_studio\node_modules" (
+        echo [SIGMA_SERVER] Installing Frontend dependencies - npm install...
+        cd sigma_studio
+        call npm install
+        if errorlevel 1 (
+            echo [SIGMA_SERVER] WARNING: npm install returned an error.
+        )
+        cd ..
+    )
     echo [SIGMA_SERVER] Cleaning Vite cache...
     if exist sigma_studio\node_modules\.vite (
         rmdir /s /q sigma_studio\node_modules\.vite
@@ -45,8 +54,19 @@ if not errorlevel 1 (
     )
     echo [SIGMA_SERVER] Building frontend assets...
     cd sigma_studio
-    call npx vite build
+    call npm run build
+    if errorlevel 1 (
+        echo [SIGMA_SERVER] WARNING: Frontend build failed.
+    )
     cd ..
+) else (
+    echo [SIGMA_SERVER] WARNING: Node.js/npm not found. Skipping automatic frontend build.
+    if not exist "sigma_studio\dist" (
+        echo [SIGMA_SERVER] ERROR: Frontend build folder sigma_studio\dist is missing and Node.js/npm is not installed.
+        echo [SIGMA_SERVER] Please install Node.js to build the frontend.
+        pause
+        exit /b 1
+    )
 )
 
 :: Kill any existing Python server on port 8000

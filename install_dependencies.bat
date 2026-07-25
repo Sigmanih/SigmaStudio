@@ -33,9 +33,11 @@ if errorlevel 1 (
 :: 2. Controllo ed Installazione Dipendenze Frontend Node.js
 where npm >nul 2>nul
 if not errorlevel 1 (
-    echo [SIGMA_INSTALL] Installazione dipendenze Frontend Node.js (npm)...
+    echo [SIGMA_INSTALL] Installazione dipendenze Frontend Node.js - npm...
     cd sigma_studio
     call npm install
+    echo [SIGMA_INSTALL] Compilazione frontend assets - npm run build...
+    call npm run build
     cd ..
 ) else (
     echo [SIGMA_INSTALL] NOTA: Node.js/npm non trovato. Verra utilizzata la build pre-compilata in sigma_studio/dist.

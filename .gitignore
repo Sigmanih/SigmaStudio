@@ -61,8 +61,12 @@ agent_memory/
 # Research sessions (user-specific)
 research_sessions/
 
-# Private/Personal manifests (not tracked in git)
+# Private/Personal manifests & training data (not tracked in git)
 manifesti/Private/
+!manifesti/Private/.gitkeep
+training/Private/*
+!training/Private/.gitkeep
+!training/Private/*/.gitkeep
 
 # Agent metadata (auto-generated from manifesti + API)
 agents_meta.json
@@ -73,9 +77,20 @@ sigma_studio/modules_meta.json
 modules_meta.json
 tasks.json
 
-# Training data (user-specific, too large)
-training/
+# Training job outputs (personal/study specific)
+training/jobs/*
+!training/jobs/.gitkeep
+
+# Temporary/downloaded user test datasets
+training/datasets/hf_*
+training/datasets/local_*
+!training/datasets/.gitkeep
+
+# Training python cache
+training/__pycache__/
+training/*/__pycache__/
 !training/.gitkeep
+!training/scripts/.gitkeep
 
 # Unsloth compiled cache (auto-generated, user-specific)
 unsloth_compiled_cache/
