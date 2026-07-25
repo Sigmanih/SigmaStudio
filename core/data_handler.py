@@ -208,38 +208,42 @@ def handle_api_modules(self):
 
 
 def handle_api_topics(self):
+    """
+    POST / GET /api/topics — Return unified topic nodes for ALL folders and subfolders under ./data/.
+    Eliminates the distinction between topics and subtopics: every subfolder is a topic node in the graph,
+    and files are attached directly to the node that contains them.
+    """
     try:
         meta = rebuild_modules_meta()
         result = {"topics": []}
-        topics = meta.get("topics", {})
-        for topic_id, topic_data in topics.items():
-            topic_folder = topic_data.get("folder", os.path.join("data", topic_id))
-            topic_info = {
-                "id": topic_id,
-                "name": topic_data.get("name", topic_id).replace("_", " ").title(),
-                "description": topic_data.get("description", ""),
-                "domain": topic_data.get("domain", ""),
-                "manifesto_ref": topic_data.get("manifesto_ref", ""),
-                "parent_id": topic_data.get("parent_id", None),
-                "modules": []
+        nodes = meta.get("nodes", {})
+        
+        for node_id, node_data in nodes.items():
+            folder_path = node_data.get("folder", f"data/{node_id}")
+            
+            # Build module info containing all files inside this specific node folder
+            mod_info = {
+                "number": "01",
+                "folder": folder_path,
+                "name": node_data.get("name", node_id),
+                "description": node_data.get("description", ""),
+                "teoria": [], "scripts": [], "test": [], "viz": [], "docs": [], "whitepapers": [], "pdf": [], "media": []
             }
-            seen_modules: set = set()
-            if os.path.isdir(topic_folder):
-                for d in sorted(os.listdir(topic_folder)):
-                    mod_folder = os.path.join(topic_folder, d)
-                    if os.path.isdir(mod_folder):
-                        display_name = os.path.basename(mod_folder)[3:].replace('_', ' ').title() if d[:2].isdigit() else d.replace('_', ' ').title()
-                        num = d[:2] if d[:2].isdigit() else "01"
-                        mod_info = {
-                            "number": num,
-                            "folder": mod_folder.replace('\\', '/'),
-                            "name": display_name,
-                            "description": display_name,
-                            "teoria": [], "scripts": [], "test": [], "viz": [], "docs": [], "whitepapers": []
-                        }
-                        mod_info.update(load_module_files(self, mod_folder))
-                        topic_info["modules"].append(mod_info)
+            if os.path.isdir(folder_path):
+                mod_info.update(load_module_files(self, folder_path))
+
+            topic_info = {
+                "id": node_id,
+                "name": node_data.get("name", os.path.basename(node_id).replace("_", " ").title()),
+                "description": node_data.get("description", ""),
+                "domain": node_data.get("domain", ""),
+                "manifesto_ref": node_data.get("manifesto_ref", ""),
+                "parent_id": node_data.get("parent_id"),
+                "children": node_data.get("children", []),
+                "modules": [mod_info]
+            }
             result["topics"].append(topic_info)
+
         self.send_json_response(result)
     except Exception as exc:
         log.error("handle_api_topics: %s", exc, exc_info=True)
