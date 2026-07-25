@@ -132,8 +132,10 @@ def get_topic_for_module(self, module_num):
 
 
 def load_module_files(self, folder_path):
-    """Load files from subfolders of a module folder."""
+    """Load files from subfolders and direct files inside any module or node folder."""
     res = {"teoria": [], "scripts": [], "viz": [], "docs": [], "whitepapers": []}
+    
+    # 1. Standard subfolders
     for key in ['teoria', 'scripts', 'test', 'viz', 'docs', 'whitepapers']:
         p = os.path.join(folder_path, key)
         if os.path.isdir(p):
@@ -143,6 +145,28 @@ def load_module_files(self, folder_path):
                 res['scripts'] = res.get('scripts', []) + files
             else:
                 res[key] = res.get(key, []) + files
+
+    # 2. Direct files inside the node folder
+    if os.path.isdir(folder_path):
+        for f in os.listdir(folder_path):
+            full_f = os.path.join(folder_path, f)
+            if os.path.isfile(full_f):
+                rel_p = full_f.replace('\\', '/')
+                ext = os.path.splitext(f)[1].lower()
+                file_obj = {"filename": f, "path": rel_p}
+
+                if ext == '.md':
+                    if "WHITEPAPER" in f.upper():
+                        res["whitepapers"].append(file_obj)
+                    else:
+                        res["teoria"].append(file_obj)
+                elif ext in ['.py', '.js', '.jsx', '.ts', '.tsx']:
+                    res["scripts"].append(file_obj)
+                elif ext in ['.html', '.htm', '.png', '.jpg', '.jpeg', '.svg']:
+                    res["viz"].append(file_obj)
+                elif ext in ['.json', '.txt']:
+                    res["docs"].append(file_obj)
+
     wp_from_docs = [f for f in res["docs"] if "WHITEPAPER" in f["filename"].upper()]
     res["whitepapers"] = res["whitepapers"] + wp_from_docs
     res["docs"] = [f for f in res["docs"] if "WHITEPAPER" not in f["filename"].upper()]

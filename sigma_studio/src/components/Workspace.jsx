@@ -127,7 +127,7 @@ export default function Workspace({
       );
     }
     if (tab.type === 'mappa_argomenti' || tab.type === 'knowledge') {
-      return <KnowledgeNodeExplorer />;
+      return <MappaArgomenti onOpenFile={openTabFromMappa} />;
     }
     if (tab.type === 'whitepapers_lib') {
       return (
