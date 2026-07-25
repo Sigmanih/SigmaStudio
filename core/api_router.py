@@ -43,6 +43,8 @@ def register_get_handlers(handler_class):
         '/api/mcp/resources': 'handle_mcp_resources',
         # Swarm Endpoints
         '/api/swarm/agents': 'handle_swarm_agents',
+        # Knowledge Nodes Endpoints
+        '/api/nodes': 'handle_get_nodes',
     }
 
 
@@ -52,6 +54,8 @@ def register_post_handlers(handler_class):
         '/api/mcp/rpc': 'handle_mcp_rpc',
         '/api/swarm/plan': 'handle_swarm_plan',
         '/api/swarm/execute': 'handle_swarm_execute',
+        '/api/nodes/create': 'handle_create_node',
+        '/api/nodes/delete': 'handle_delete_node',
         '/api/router/train': 'handle_router_train',
         '/api/hardware/config': 'handle_hardware_config',
         '/api/hardware/restart-ollama': 'handle_hardware_restart_ollama',

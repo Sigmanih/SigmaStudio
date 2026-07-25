@@ -13,6 +13,7 @@ import HardwareLab from './HardwareLab';
 
 import AccountTab from './AccountTab';
 import McpHubTab from './McpHubTab';
+import KnowledgeNodeExplorer from './KnowledgeNodeExplorer';
 import McpStatusBar from './McpStatusBar';
 
 // ==============================================================================
@@ -126,7 +127,7 @@ export default function Workspace({
       );
     }
     if (tab.type === 'mappa_argomenti' || tab.type === 'knowledge') {
-      return <MappaArgomenti onOpenFile={openTabFromMappa} />;
+      return <KnowledgeNodeExplorer />;
     }
     if (tab.type === 'whitepapers_lib') {
       return (

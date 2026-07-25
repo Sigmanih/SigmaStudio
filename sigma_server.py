@@ -121,6 +121,13 @@ SigmaAPIHandler.handle_swarm_agents = handle_swarm_agents
 SigmaAPIHandler.handle_swarm_plan = handle_swarm_plan
 SigmaAPIHandler.handle_swarm_execute = handle_swarm_execute
 
+from core.node_handler import (
+    handle_get_nodes, handle_create_node, handle_delete_node
+)
+SigmaAPIHandler.handle_get_nodes = handle_get_nodes
+SigmaAPIHandler.handle_create_node = handle_create_node
+SigmaAPIHandler.handle_delete_node = handle_delete_node
+
 
 
 # 2. Module and Topic CRUD

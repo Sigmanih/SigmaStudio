@@ -8,53 +8,103 @@ from core.store import modules_store
 log = get_logger(__name__)
 
 
-def rebuild_modules_meta() -> dict:
-    """Synchronise modules_meta.json from the filesystem in real time.
+def _infer_file_type(filename: str) -> dict:
+    """Infer file classification and entrypoint status."""
+    ext = os.path.splitext(filename)[1].lower()
+    base = os.path.basename(filename).lower()
     
-    Merges existing custom fields (parent_id, description, domain) with
-    the current directory layout. Removes stale parent references.
+    file_type = 'text'
+    if ext == '.md':
+        file_type = 'markdown'
+    elif ext in ['.py', '.pyw']:
+        file_type = 'python'
+    elif ext in ['.js', '.jsx', '.ts', '.tsx']:
+        file_type = 'javascript'
+    elif ext in ['.html', '.htm']:
+        file_type = 'html'
+    elif ext == '.json':
+        file_type = 'json'
+    elif ext in ['.png', '.jpg', '.jpeg', '.gif', '.svg', '.webp']:
+        file_type = 'image'
+    elif ext in ['.css', '.scss']:
+        file_type = 'stylesheet'
+
+    is_entrypoint = base in ['index.html', 'app.py', 'main.py', 'index.js', 'app.js']
+    return {"type": file_type, "is_entrypoint": is_entrypoint}
+
+
+def rebuild_modules_meta() -> dict:
+    """
+    Synchronise modules_meta.json from the filesystem in real time.
+    Scans the entire ./data/ tree recursively into a Universal Knowledge Node Graph (TopicNodes).
+    Supports arbitrary folder depth, attached multi-type files, and embedded web applications.
     """
     data_dir = "data"
     if not os.path.isdir(data_dir):
-        return {"topics": {}, "modules": {}}
+        os.makedirs(data_dir, exist_ok=True)
+        return {"topics": {}, "nodes": {}, "modules": {}}
 
     existing = modules_store.load()
     existing_topics = existing.get("topics", {})
+    existing_nodes = existing.get("nodes", {})
 
+    nodes: dict = {}
     topics: dict = {}
     modules: dict = {}
-    valid_topic_ids: set = set()
 
-    for topic in sorted(os.listdir(data_dir)):
-        tp = os.path.join(data_dir, topic)
-        if not os.path.isdir(tp):
+    for root, dirs, files in os.walk(data_dir):
+        rel_path = os.path.relpath(root, data_dir).replace("\\", "/")
+        if rel_path == ".":
             continue
-        valid_topic_ids.add(topic)
-        topic_modules = []
-        for mod in sorted(os.listdir(tp)):
-            mp = os.path.join(tp, mod)
-            if not os.path.isdir(mp):
-                continue
-            num = mod[:2] if mod[:2].isdigit() else mod
-            mname = mod[3:].replace("_", " ").title() if mod[:2].isdigit() else mod.replace("_", " ").title()
-            mod_key = f"{topic}/{mod}" if not mod[:2].isdigit() else num
-            modules[mod_key] = mname
-            topic_modules.append(mod_key)
 
-        topics[topic] = existing_topics.get(topic, {}).copy()
-        topics[topic]["folder"] = tp.replace("\\", "/")
-        topics[topic]["modules"] = topic_modules
-        topics[topic].setdefault("name", topic.replace("_", " ").title())
-        topics[topic].setdefault("description", "")
+        node_id = rel_path
+        parent_id = os.path.dirname(rel_path).replace("\\", "/")
+        if parent_id == "." or not parent_id:
+            parent_id = None
 
-    # Remove stale parent_id references
-    for tdata in topics.values():
-        if tdata.get("parent_id") and tdata["parent_id"] not in valid_topic_ids:
-            tdata.pop("parent_id", None)
+        node_name = os.path.basename(root).replace("_", " ").title()
 
-    meta_data = {"topics": topics, "modules": modules}
+        # Classify files inside this node
+        file_entries = []
+        has_app = False
+        app_entrypoint = None
+
+        for f in sorted(files):
+            f_rel = os.path.join(rel_path, f).replace("\\", "/")
+            f_meta = _infer_file_type(f)
+            if f_meta["file_type" if "file_type" in f_meta else "type"] in ['html', 'python', 'javascript'] and f_meta["is_entrypoint"]:
+                has_app = True
+                app_entrypoint = f_rel
+
+            file_entries.append({
+                "name": f,
+                "path": f"data/{f_rel}",
+                "type": f_meta.get("type", "text"),
+                "is_entrypoint": f_meta.get("is_entrypoint", False)
+            })
+
+        existing_meta = existing_nodes.get(node_id, existing_topics.get(node_id, {}))
+
+        nodes[node_id] = {
+            "id": node_id,
+            "name": existing_meta.get("name", node_name),
+            "parent_id": parent_id,
+            "folder": f"data/{rel_path}",
+            "description": existing_meta.get("description", f"Nodo di conoscenza per {node_name}"),
+            "files": file_entries,
+            "has_app": has_app,
+            "app_entrypoint": app_entrypoint,
+            "children": [os.path.join(rel_path, d).replace("\\", "/") for d in sorted(dirs)]
+        }
+
+        # Backward compatibility for legacy topics structure
+        if not parent_id:
+            topics[node_id] = nodes[node_id].copy()
+            topics[node_id]["modules"] = [f["name"] for f in file_entries]
+
+    meta_data = {"topics": topics, "nodes": nodes, "modules": modules}
     modules_store.save(meta_data)
-    log.info("modules_meta.json rebuilt (%d topics, %d modules)", len(topics), len(modules))
+    log.info("modules_meta.json rebuilt (%d nodes, %d topics)", len(nodes), len(topics))
     return meta_data
 
 
