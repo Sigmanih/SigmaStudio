@@ -36,6 +36,22 @@ export default function MessageBubble({ msg, isLast, onStop, onFileLinkClick }) 
   const isSystem = msg.role === 'system';
   const agentInfo = !isUser && !isSystem ? getAgentAvatar(msg.agentName || msg.manifesto_used) : null;
 
+  const [userProfile, setUserProfile] = React.useState(() => {
+    try {
+      const saved = localStorage.getItem('sigma_user_profile');
+      if (saved) return JSON.parse(saved);
+    } catch (e) {}
+    return { name: 'Tu', avatar: '/images/default.png' };
+  });
+
+  React.useEffect(() => {
+    const handleProfileUpdate = (e) => {
+      if (e.detail) setUserProfile(e.detail);
+    };
+    window.addEventListener('sigma_profile_updated', handleProfileUpdate);
+    return () => window.removeEventListener('sigma_profile_updated', handleProfileUpdate);
+  }, []);
+
   const renderContent = (text) => {
     if (text == null) return '';
     return renderMarkdownLatex(text);
@@ -54,21 +70,33 @@ export default function MessageBubble({ msg, isLast, onStop, onFileLinkClick }) 
     );
   }
 
+  const userAvatarSrc = userProfile.avatar || '/images/default.png';
+  const userName = userProfile.name || 'Tu';
+
   return (
     <div className={`chat-message ${isUser ? 'user-message' : 'ai-message'} ${agentInfo ? 'chat-agent-message' : ''}`}>
       <div className="message-avatar">
-        {isUser ? <User size={16} /> : agentInfo ? (
+        {isUser ? (
+          <img
+            key={userAvatarSrc}
+            src={userAvatarSrc}
+            alt={userName}
+            className="message-agent-avatar-img"
+            style={{ width: '28px', height: '28px', borderRadius: '50%', objectFit: 'cover' }}
+            onError={(e) => { e.target.src = '/images/default.png'; }}
+          />
+        ) : agentInfo ? (
           <img
             src={agentInfo.image}
             alt={agentInfo.name}
             className="message-agent-avatar-img"
-            onError={(e) => { e.target.style.display = 'none'; }}
+            onError={(e) => { e.target.src = '/images/default.png'; }}
           />
         ) : <Bot size={16} />}
       </div>
       <div className="message-content">
         <div className="message-header">
-          <span className="message-role">{isUser ? 'Tu' : msg.agentName || 'Sigma AI'}</span>
+          <span className="message-role">{isUser ? userName : msg.agentName || 'Sigma AI'}</span>
           {msg.timestamp && <span className="message-time">{new Date(msg.timestamp).toLocaleTimeString()}</span>}
         </div>
 

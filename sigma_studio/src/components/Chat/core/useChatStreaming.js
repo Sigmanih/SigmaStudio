@@ -2,6 +2,7 @@ import { useState, useCallback, useRef, useEffect } from 'react';
 import { MAX_ATTACHMENTS, createSession, MAX_HISTORY } from '../chatStorage';
 import { getModelRoutingInfo } from '../modelProviderMap';
 import { getAgentStyle } from '../AgentMessage';
+import { speakAgentMessage } from '../audioSpeech';
 
 let globalAbortController = null;
 
@@ -57,6 +58,7 @@ export function useChatStreaming({
   sessions,
   activeSessionId,
   setActiveSessionId,
+  speakerEnabled,
   sessionMessages,
   setSessionMessages,
   saveSessionsState,
@@ -321,6 +323,9 @@ export function useChatStreaming({
         }
         saveMessagesImmediately(sessionId, n);
         try { localStorage.setItem(`sigma_chat_msgs_${sessionId}`, JSON.stringify(n)); } catch (err) {}
+        if (speakerEnabled && finalContent && !hasError) {
+          speakAgentMessage(finalContent);
+        }
         return { ...prev, [sessionId]: n };
       });
     } catch (e) {
@@ -364,6 +369,9 @@ export function useChatStreaming({
         const finalMessages = [...prevForSession, ...updatedMessages.slice(prevForSession.length), assistant];
         setSessionMessages(prev => ({ ...prev, [sessionId]: finalMessages }));
         saveMessagesImmediately(sessionId, finalMessages);
+      }
+      if (speakerEnabled && data.response) {
+        speakAgentMessage(data.response);
       }
     } catch (e) {
       if (sessionRefs.activeSessionId.current === sessionId) {

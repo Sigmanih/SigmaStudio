@@ -2,9 +2,10 @@
 // useChatCore.js — Central hook orchestrating refactored composite hooks
 // Sigma Studio v7 — Refactored to compose useChatSessions, useChatConfig & useChatStreaming
 // ==============================================================================
-import { useEffect, useCallback } from 'react';
+import { useEffect, useCallback, useState, useRef } from 'react';
 import { PROVIDER_COLORS, getModelRoutingInfo } from '../modelProviderMap';
 import { loadMessagesFromStorage, saveMessagesToStorage, createSession } from '../chatStorage';
+import { initSpeechRecognition, stopSpeech } from '../audioSpeech';
 const saveMessagesImmediately = saveMessagesToStorage;
 
 
@@ -16,6 +17,25 @@ import { useChatStreaming } from './useChatStreaming';
 export default function useChatCore(extraProps = {}) {
   const { openFiles: externalOpenFiles, onTasksUpdated, addToast } = extraProps;
   
+  // Speaker Agente State (TTS)
+  const [speakerEnabled, setSpeakerEnabledState] = useState(() => {
+    try {
+      return localStorage.getItem('sigma_speaker_agent_enabled') === 'true';
+    } catch (e) {
+      return false;
+    }
+  });
+
+  const setSpeakerEnabled = useCallback((enabled) => {
+    setSpeakerEnabledState(enabled);
+    try {
+      localStorage.setItem('sigma_speaker_agent_enabled', String(enabled));
+    } catch (e) {}
+    if (!enabled) {
+      stopSpeech();
+    }
+  }, []);
+
   const welcomeMessageObj = {
     role: 'assistant',
     content: '# 🤖 Sigma AI Studio\n\nChat pronta.',
@@ -46,6 +66,7 @@ export default function useChatCore(extraProps = {}) {
     openFiles: externalOpenFiles,
     onTasksUpdated,
     addToast,
+    speakerEnabled,
     
     // Sessions bindings
     sessions: sessionsHook.sessions,
@@ -206,6 +227,57 @@ export default function useChatCore(extraProps = {}) {
     sessionsHook.setActiveSessionId(dup.id);
   }, [configHook.selectedModel, sessionsHook.activeSessionId, sessionsHook.sessions, sessionsHook.sessionMessages, sessionsHook.saveSessionsState, sessionsHook.setSessionMessages, sessionsHook.setActiveSessionId]);
 
+  // Voice Command Audio Recording State
+  const [isRecording, setIsRecording] = useState(false);
+  const recognitionRef = useRef(null);
+  const initialInputRef = useRef('');
+
+  const toggleRecording = useCallback(() => {
+    if (isRecording) {
+      if (recognitionRef.current) {
+        try { recognitionRef.current.stop(); } catch (e) {}
+      }
+      setIsRecording(false);
+      return;
+    }
+
+    initialInputRef.current = streamingHook.input || '';
+
+    const recognition = initSpeechRecognition({
+      lang: 'it-IT',
+      onResult: (accumulatedText) => {
+        if (accumulatedText) {
+          const prefix = initialInputRef.current ? initialInputRef.current.trim() : '';
+          const newText = prefix ? `${prefix} ${accumulatedText}` : accumulatedText;
+          streamingHook.setInput(newText);
+        }
+      },
+      onError: (err) => {
+        console.warn('SpeechRecognition error:', err);
+        setIsRecording(false);
+        if (addToast) addToast('⚠️ Errore durante la registrazione vocale.', 'warning');
+      },
+      onEnd: () => {
+        setIsRecording(false);
+      }
+    });
+
+    if (!recognition) {
+      if (addToast) addToast('⚠️ Registrazione vocale non supportata dal browser.', 'warning');
+      return;
+    }
+
+    recognitionRef.current = recognition;
+    try {
+      recognition.start();
+      setIsRecording(true);
+      if (addToast) addToast('🎙️ Registrazione vocale avviata... Parla adesso!', 'info');
+    } catch (err) {
+      console.error('Start recognition error:', err);
+      setIsRecording(false);
+    }
+  }, [isRecording, streamingHook.input, streamingHook.setInput, addToast]);
+
   return {
     // --- States ---
     sessions: sessionsHook.sessions,
@@ -218,6 +290,10 @@ export default function useChatCore(extraProps = {}) {
     setLoading: streamingHook.setLoading,
     selectedModel: configHook.selectedModel,
     setSelectedModel: configHook.setSelectedModel,
+    speakerEnabled,
+    setSpeakerEnabled,
+    isRecording,
+    onToggleRecording: toggleRecording,
     configModel: configHook.configModel,
     configProvider: configHook.configProvider,
     availableModels: configHook.availableModels,

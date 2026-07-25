@@ -36,6 +36,7 @@ function formatTimestamp(ts) {
 // Main AgentMessage Component
 // ==============================================================================
 import { useState, useEffect } from 'react';
+import { speakAgentMessage, stopSpeech } from './audioSpeech';
 
 export default function AgentMessage({
   msg,
@@ -50,6 +51,7 @@ export default function AgentMessage({
 }) {
   const app = useApp();
   const openTab = app ? app.openTab : null;
+  const [isPlayingAudio, setIsPlayingAudio] = useState(false);
   const [rolledBacks, setRolledBacks] = useState({});
   const [expandedDiffs, setExpandedDiffs] = useState({});
   const [loadingStep, setLoadingStep] = useState(0);
@@ -126,10 +128,28 @@ export default function AgentMessage({
   const isLoading = standaloneLoading || first.loading;
   const isGrouped = messages.length > 1;
 
-  const avatarSrc = agentId ? agentStyle.image : (first.agentImage || '/images/default.png');
-  const avatarBg = agentId ? agentStyle.bg : 'var(--primary)';
+  const [userProfile, setUserProfile] = useState(() => {
+    try {
+      const saved = localStorage.getItem('sigma_user_profile');
+      if (saved) return JSON.parse(saved);
+    } catch (e) {}
+    return { name: 'Tu', avatar: '/images/default.png' };
+  });
+
+  useEffect(() => {
+    const handleProfileUpdate = (e) => {
+      if (e.detail) setUserProfile(e.detail);
+    };
+    window.addEventListener('sigma_profile_updated', handleProfileUpdate);
+    return () => window.removeEventListener('sigma_profile_updated', handleProfileUpdate);
+  }, []);
+
+  const avatarSrc = isUser
+    ? (userProfile.avatar || '/images/default.png')
+    : (agentId ? agentStyle.image : (first.agentImage || '/images/default.png'));
+  const avatarBg = isUser ? 'rgba(0, 210, 255, 0.5)' : (agentId ? agentStyle.bg : 'var(--primary)');
   const roleName = isUser
-    ? 'Tu'
+    ? (userProfile.name || 'Tu')
     : (agentId ? (first.agentRole || first.agent_name || agentId) : (first.agentRole || 'AI'));
 
   const modelName = isUser ? '' : (first.agentName || effectiveModelName || 'AI');
@@ -194,6 +214,41 @@ export default function AgentMessage({
           >
             {copiedMsg ? '✓ Copiato!' : '📋 Copia'}
           </button>
+          {!isUser && !isSystem && (
+            <button
+              onClick={() => {
+                if (isPlayingAudio) {
+                  stopSpeech();
+                  setIsPlayingAudio(false);
+                } else {
+                  const textToRead = messages.map(m => m.content || m.text || '').join(' ');
+                  const started = speakAgentMessage(
+                    textToRead,
+                    () => setIsPlayingAudio(true),
+                    () => setIsPlayingAudio(false)
+                  );
+                  if (!started) setIsPlayingAudio(false);
+                }
+              }}
+              title={isPlayingAudio ? 'Ferma lettura' : 'Ascolta risposta vocale (TTS)'}
+              style={{
+                background: isPlayingAudio ? 'rgba(0,210,255,0.2)' : 'rgba(255,255,255,0.04)',
+                border: isPlayingAudio ? '1px solid rgba(0,210,255,0.4)' : '1px solid rgba(255,255,255,0.08)',
+                color: isPlayingAudio ? '#00d2ff' : 'var(--text-muted, #8b8fa3)',
+                fontSize: '0.68rem',
+                cursor: 'pointer',
+                padding: '2px 7px',
+                borderRadius: '4px',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '4px',
+                marginLeft: '6px',
+                transition: 'all 0.2s ease'
+              }}
+            >
+              {isPlayingAudio ? '⏹️ Ferma' : '🔊 Ascolta'}
+            </button>
+          )}
           {onDeleteMessage && (
             <button className="chat-msg-delete-btn" title="Elimina" onClick={() => onDeleteMessage(msgIndex)}>✕</button>
           )}

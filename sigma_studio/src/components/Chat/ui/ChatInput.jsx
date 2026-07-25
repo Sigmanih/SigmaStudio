@@ -1,9 +1,11 @@
 import React from 'react';
-import { Send, Paperclip, RefreshCw, StopCircle } from 'lucide-react';
+import { Send, Paperclip, RefreshCw, StopCircle, Mic, MicOff, Volume2, VolumeX } from 'lucide-react';
 
 export default function ChatInput({
   input, setInput, loading, selectedModel, refs, providerColors, currentRouting,
   webSearch, setWebSearch, autoScroll, setAutoScroll,
+  speakerEnabled, setSpeakerEnabled,
+  isRecording, onToggleRecording,
   loopMaxIterations, setLoopMaxIterations, loopActive,
   onSend, onStop, onOpenFilePicker, attachedFiles,
   children,
@@ -29,18 +31,64 @@ export default function ChatInput({
           <input type="checkbox" checked={autoScroll} onChange={e => setAutoScroll(e.target.checked)} />
           <span>📜 Auto Scroll</span>
         </label>
+        {setSpeakerEnabled !== undefined && (
+          <label 
+            className={`chat-speaker-toggle ${speakerEnabled ? 'active' : ''}`} 
+            title={speakerEnabled ? 'Speaker Agente Attivo: la voce dell\'agente riproduce la risposta' : 'Attiva lettura vocale della risposta dell\'agente (TTS)'}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '5px',
+              fontSize: '0.68rem',
+              color: speakerEnabled ? '#00d2ff' : '#8b8fa3',
+              background: speakerEnabled ? 'rgba(0, 210, 255, 0.12)' : 'rgba(255, 255, 255, 0.03)',
+              border: speakerEnabled ? '1px solid rgba(0, 210, 255, 0.3)' : '1px solid rgba(255, 255, 255, 0.08)',
+              padding: '2px 8px',
+              borderRadius: '12px',
+              cursor: 'pointer',
+              fontWeight: 600,
+              transition: 'all 0.2s ease',
+              marginLeft: 'auto'
+            }}
+          >
+            <input 
+              type="checkbox" 
+              checked={speakerEnabled} 
+              onChange={e => setSpeakerEnabled(e.target.checked)} 
+              style={{ display: 'none' }}
+            />
+            {speakerEnabled ? <Volume2 size={13} style={{ color: '#00d2ff' }} /> : <VolumeX size={13} style={{ color: '#5a5e72' }} />}
+            <span>Speaker Agente: {speakerEnabled ? 'ON' : 'OFF'}</span>
+          </label>
+        )}
       </div>
       <div className="chat-input-row">
         <textarea
           ref={refs.input}
           className="chat-input"
-          placeholder={`Chiedi qualcosa a ${selectedModel}...`}
+          placeholder={isRecording ? "🔴 Registrazione in corso... Parla adesso..." : `Chiedi qualcosa a ${selectedModel}...`}
           value={input}
           onChange={e => setInput(e.target.value)}
           onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); onSend(); } }}
           rows={1}
           disabled={loading}
+          style={isRecording ? { borderColor: '#ff5555', background: 'rgba(255, 85, 85, 0.06)' } : {}}
         />
+        {onToggleRecording && (
+          <button 
+            className={`chat-attach-inline-btn ${isRecording ? 'recording' : ''}`} 
+            onClick={onToggleRecording} 
+            title={isRecording ? 'Interrompi registrazione comando vocale' : 'Registra comando vocale (STT)'}
+            style={{
+              color: isRecording ? '#ff5555' : 'var(--text-muted)',
+              background: isRecording ? 'rgba(255, 85, 85, 0.15)' : 'transparent',
+              borderColor: isRecording ? 'rgba(255, 85, 85, 0.4)' : 'transparent',
+              animation: isRecording ? 'pulseMic 1.2s infinite' : 'none'
+            }}
+          >
+            {isRecording ? <MicOff size={14} /> : <Mic size={14} />}
+          </button>
+        )}
         <button className="chat-attach-inline-btn" onClick={onOpenFilePicker} title="Allega file">
           <Paperclip size={14} />
           {attachedFiles.length > 0 && <span className="chat-attach-count">{attachedFiles.length}</span>}
