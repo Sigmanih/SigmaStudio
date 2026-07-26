@@ -1,5 +1,20 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Play, Activity, Zap, CheckCircle2, XCircle, Clock, Trash2, Cpu, Award, RefreshCw, BarChart2, Shield } from 'lucide-react';
+import { Play, Activity, Zap, CheckCircle2, XCircle, Clock, Trash2, Cpu, Award, RefreshCw, BarChart2, Shield, HelpCircle, ChevronDown, ChevronUp, Code, BookOpen, Brain, Compass, AlertTriangle } from 'lucide-react';
+
+const OFFICIAL_SUITES = [
+  { id: 'all', name: '🌐 Tutti i Benchmark Ufficiali', desc: 'Esegue una selezione combinata da tutte le suite ufficiali', badge: 'FULL' },
+  { id: 'mmlu', name: '🏆 MMLU', desc: 'Massive Multitask Language Understanding (57 materie: medicina, legge, fisica, CS...)', badge: '57 Materie' },
+  { id: 'mmlu_pro', name: '🧠 MMLU-Pro', desc: 'Versione avanzata ad alto ragionamento con opzioni multiple e problemi complessi', badge: 'Ragionamento Hard' },
+  { id: 'gsm8k', name: '🧮 GSM8K', desc: 'Grade School Math 8K: problemi matematici a parole con passaggi di ragionamento', badge: 'Math 8.5K' },
+  { id: 'math', name: '📐 MATH', desc: 'Problemi matematici olimpici e universitari avanzati (algebra, calcolo, dimostrazioni)', badge: 'Olimpico' },
+  { id: 'humaneval', name: '💻 HumanEval', desc: 'Completamento ed esecuzione di codice Python con verifica su test unitari', badge: 'Coding Eval' },
+  { id: 'mbpp', name: '🐍 MBPP', desc: 'Mostly Basic Python Problems: sfide pratiche di programmazione in Python', badge: 'Python Base' },
+  { id: 'arc', name: '🔬 ARC Science', desc: 'AI2 Reasoning Challenge: quesiti scientifici e di ragionamento empirico', badge: 'Scienze' },
+  { id: 'hellaswag', name: '💡 HellaSwag', desc: 'Valutazione del buon senso e continuazione naturale degli eventi della vita', badge: 'Buon Senso' },
+  { id: 'truthfulqa', name: '🛡️ TruthfulQA', desc: 'Rilevamento allucinazioni e misurazione della veridicità vs falsi miti', badge: 'Anti-Allucinazione' },
+  { id: 'gpqa', name: '🎓 GPQA', desc: 'Graduate-Level Google-Proof Q&A (domande di livello specialistico universitario)', badge: 'Expert Level' },
+  { id: 'bbh', name: '⚙️ BIG-Bench Hard', desc: '23 task complessi di ragionamento multi-step e logica simbolica', badge: 'BBH Multi-step' },
+];
 
 export default function TrainingBenchmark({ addToast }) {
   const [models, setModels] = useState([]);
@@ -9,6 +24,7 @@ export default function TrainingBenchmark({ addToast }) {
   const [isEvaluating, setIsEvaluating] = useState(false);
   const [jobs, setJobs] = useState([]);
   const [selectedJob, setSelectedJob] = useState(null);
+  const [expandedItem, setExpandedItem] = useState(null);
 
   // Load available models and benchmark jobs
   const loadModelsAndJobs = useCallback(async () => {
@@ -59,7 +75,7 @@ export default function TrainingBenchmark({ addToast }) {
               setSelectedJob(updatedActive);
               if (updatedActive.status === 'completed') {
                 setIsEvaluating(false);
-                if (addToast) addToast('✅ Test di Benchmark completato con successo!', 'success');
+                if (addToast) addToast('✅ Benchmark Ufficiale completato con successo!', 'success');
               }
             }
           }
@@ -92,7 +108,8 @@ export default function TrainingBenchmark({ addToast }) {
       });
       const data = await res.json();
       if (data.success) {
-        if (addToast) addToast(`🚀 Benchmark avviato per ${selectedModel}`, 'info');
+        const suiteObj = OFFICIAL_SUITES.find(s => s.id === selectedSuite);
+        if (addToast) addToast(`🚀 Benchmark Ufficiale [${suiteObj?.name || selectedSuite}] avviato per ${selectedModel}`, 'info');
         setSelectedJob(data.job);
         loadModelsAndJobs();
       } else {
@@ -128,36 +145,37 @@ export default function TrainingBenchmark({ addToast }) {
 
   const activeJob = selectedJob || (jobs.length > 0 ? jobs[0] : null);
   const metrics = activeJob?.metrics || {};
+  const currentSuiteObj = OFFICIAL_SUITES.find(s => s.id === selectedSuite);
 
   return (
     <div style={{ padding: '20px', height: '100%', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '20px' }}>
       
-      {/* ── Header Card ── */}
+      {/* ── Header Banner ── */}
       <div style={{
-        background: 'linear-gradient(135deg, rgba(30,34,60,0.8), rgba(15,18,35,0.9))',
-        border: '1px solid rgba(0,210,255,0.2)',
+        background: 'linear-gradient(135deg, rgba(30,34,60,0.85), rgba(15,18,35,0.95))',
+        border: '1px solid rgba(0,210,255,0.25)',
         borderRadius: '16px',
         padding: '20px 24px',
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'space-between',
-        boxShadow: '0 8px 32px rgba(0,0,0,0.3)',
+        boxShadow: '0 8px 32px rgba(0,0,0,0.4)',
       }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
           <div style={{
-            width: '48px', height: '48px', borderRadius: '12px',
-            background: 'linear-gradient(135deg, rgba(0,210,255,0.2), rgba(188,140,255,0.2))',
-            border: '1px solid rgba(0,210,255,0.4)',
+            width: '52px', height: '52px', borderRadius: '14px',
+            background: 'linear-gradient(135deg, rgba(0,210,255,0.25), rgba(188,140,255,0.25))',
+            border: '1px solid rgba(0,210,255,0.5)',
             display: 'flex', alignItems: 'center', justifyContent: 'center'
           }}>
-            <Award size={24} style={{ color: '#00d2ff' }} />
+            <Award size={26} style={{ color: '#00d2ff' }} />
           </div>
           <div>
-            <h2 style={{ margin: 0, fontSize: '1.25rem', fontWeight: 700, color: 'var(--text)' }}>
-              Model Benchmark & Evaluation Lab
+            <h2 style={{ margin: 0, fontSize: '1.3rem', fontWeight: 700, color: 'var(--text)' }}>
+              Official AI Benchmark & Evaluation Suite
             </h2>
             <p style={{ margin: '4px 0 0', fontSize: '0.8rem', color: 'var(--text-dark)' }}>
-              Testa la precisione matematica, velocità di generazione (tok/s), latenza e stabilità del codice per i tuoi modelli.
+              Esegui i benchmark standard internazionali (MMLU, MMLU-Pro, GSM8K, MATH, HumanEval, MBPP, ARC, HellaSwag, TruthfulQA, GPQA, BBH) con risposte visibili ed opzioni a confronto.
             </p>
           </div>
         </div>
@@ -179,128 +197,164 @@ export default function TrainingBenchmark({ addToast }) {
         </button>
       </div>
 
-      {/* ── Configurator Panel ── */}
+      {/* ── Official Suite Selector Grid ── */}
       <div style={{
         background: 'rgba(15,18,35,0.6)',
         border: '1px solid var(--border)',
         borderRadius: '16px',
         padding: '20px',
-        display: 'grid',
-        gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))',
+        display: 'flex',
+        flexDirection: 'column',
         gap: '16px',
-        alignItems: 'end',
       }}>
-        {/* Model Select */}
-        <div>
-          <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-dark)', marginBottom: '8px' }}>
-            <Cpu size={14} style={{ inlineSize: '14px', marginRight: '6px', verticalAlign: 'middle' }} />
-            Modello da Testare
-          </label>
-          <select
-            value={selectedModel}
-            onChange={(e) => setSelectedModel(e.target.value)}
-            disabled={isEvaluating}
-            style={{
-              width: '100%',
-              background: 'rgba(10,12,26,0.8)',
-              border: '1px solid var(--border)',
-              borderRadius: '10px',
-              padding: '10px 14px',
-              color: 'var(--text)',
-              fontSize: '0.85rem',
-              outline: 'none',
-            }}
-          >
-            {models.map(m => (
-              <option key={m.id} value={m.id}>
-                {m.name} ({m.provider} — {m.size_gb} GB)
-              </option>
-            ))}
-          </select>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <h3 style={{ margin: 0, fontSize: '0.95rem', fontWeight: 700, color: 'var(--text)', display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <Compass size={16} style={{ color: 'var(--accent)' }} /> Selezione Benchmark Ufficiale (11 Test Standard)
+          </h3>
+          <span style={{ fontSize: '0.75rem', color: 'var(--accent)', fontWeight: 600 }}>
+            {currentSuiteObj?.name}
+          </span>
         </div>
 
-        {/* Suite Select */}
-        <div>
-          <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-dark)', marginBottom: '8px' }}>
-            <BarChart2 size={14} style={{ inlineSize: '14px', marginRight: '6px', verticalAlign: 'middle' }} />
-            Suite di Test
-          </label>
-          <select
-            value={selectedSuite}
-            onChange={(e) => setSelectedSuite(e.target.value)}
-            disabled={isEvaluating}
-            style={{
-              width: '100%',
-              background: 'rgba(10,12,26,0.8)',
-              border: '1px solid var(--border)',
-              borderRadius: '10px',
-              padding: '10px 14px',
-              color: 'var(--text)',
-              fontSize: '0.85rem',
-              outline: 'none',
-            }}
-          >
-            <option value="all">🌐 Full Suite (Math + Code + Speed)</option>
-            <option value="math">🧠 Math & Reasoning (MMLU/GSM8K)</option>
-            <option value="code">💻 Code Generation & AST Syntax</option>
-            <option value="speed">⚡ Speed & Throughput (Tok/s)</option>
-          </select>
+        <div style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
+          gap: '12px',
+          maxHeight: '260px',
+          overflowY: 'auto',
+          paddingRight: '4px',
+        }}>
+          {OFFICIAL_SUITES.map(s => (
+            <div
+              key={s.id}
+              onClick={() => !isEvaluating && setSelectedSuite(s.id)}
+              style={{
+                background: selectedSuite === s.id ? 'rgba(0,210,255,0.12)' : 'rgba(10,12,26,0.6)',
+                border: `1px solid ${selectedSuite === s.id ? 'rgba(0,210,255,0.4)' : 'var(--border)'}`,
+                borderRadius: '12px',
+                padding: '12px 14px',
+                cursor: isEvaluating ? 'not-allowed' : 'pointer',
+                transition: 'all 0.2s ease',
+                display: 'flex',
+                flexDirection: 'column',
+                justifyContent: 'space-between',
+              }}
+            >
+              <div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+                  <span style={{ fontSize: '0.85rem', fontWeight: 700, color: selectedSuite === s.id ? '#00d2ff' : 'var(--text)' }}>
+                    {s.name}
+                  </span>
+                  <span style={{
+                    fontSize: '0.62rem', fontWeight: 700,
+                    padding: '2px 6px', borderRadius: '6px',
+                    background: selectedSuite === s.id ? 'rgba(0,210,255,0.2)' : 'rgba(255,255,255,0.06)',
+                    color: selectedSuite === s.id ? '#00d2ff' : 'var(--text-dark)',
+                  }}>
+                    {s.badge}
+                  </span>
+                </div>
+                <div style={{ fontSize: '0.72rem', color: 'var(--text-dark)', lineHeight: 1.4 }}>
+                  {s.desc}
+                </div>
+              </div>
+            </div>
+          ))}
         </div>
 
-        {/* Samples */}
-        <div>
-          <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-dark)', marginBottom: '8px' }}>
-            <Activity size={14} style={{ inlineSize: '14px', marginRight: '6px', verticalAlign: 'middle' }} />
-            Campioni di Test: {sampleCount}
-          </label>
-          <input
-            type="range"
-            min="3"
-            max="10"
-            step="1"
-            value={sampleCount}
-            onChange={(e) => setSampleCount(Number(e.target.value))}
-            disabled={isEvaluating}
-            style={{ width: '100%', accentColor: 'var(--accent)' }}
-          />
-        </div>
+        {/* Configuration Toolbar */}
+        <div style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
+          gap: '16px',
+          marginTop: '8px',
+          paddingTop: '16px',
+          borderTop: '1px solid rgba(255,255,255,0.06)',
+          alignItems: 'end',
+        }}>
+          {/* Model */}
+          <div>
+            <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-dark)', marginBottom: '8px' }}>
+              <Cpu size={14} style={{ inlineSize: '14px', marginRight: '6px', verticalAlign: 'middle' }} />
+              Modello da Valutare
+            </label>
+            <select
+              value={selectedModel}
+              onChange={(e) => setSelectedModel(e.target.value)}
+              disabled={isEvaluating}
+              style={{
+                width: '100%',
+                background: 'rgba(10,12,26,0.8)',
+                border: '1px solid var(--border)',
+                borderRadius: '10px',
+                padding: '10px 14px',
+                color: 'var(--text)',
+                fontSize: '0.85rem',
+                outline: 'none',
+              }}
+            >
+              {models.map(m => (
+                <option key={m.id} value={m.id}>
+                  {m.name} ({m.provider} — {m.size_gb} GB)
+                </option>
+              ))}
+            </select>
+          </div>
 
-        {/* Run Button */}
-        <div>
-          <button
-            onClick={handleStartBenchmark}
-            disabled={isEvaluating || !selectedModel}
-            style={{
-              width: '100%',
-              height: '42px',
-              background: isEvaluating
-                ? 'rgba(255,255,255,0.1)'
-                : 'linear-gradient(135deg, #00d2ff 0%, #0072ff 100%)',
-              border: 'none',
-              borderRadius: '10px',
-              color: '#fff',
-              fontWeight: 700,
-              fontSize: '0.85rem',
-              cursor: isEvaluating ? 'not-allowed' : 'pointer',
-              display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px',
-              boxShadow: isEvaluating ? 'none' : '0 4px 20px rgba(0,210,255,0.3)',
-              transition: 'all 0.2s ease',
-            }}
-          >
-            {isEvaluating ? (
-              <>
-                <RefreshCw size={16} className="spin-icon" /> Valutazione in corso...
-              </>
-            ) : (
-              <>
-                <Play size={16} /> Avvia Test Benchmark
-              </>
-            )}
-          </button>
+          {/* Sample count */}
+          <div>
+            <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-dark)', marginBottom: '8px' }}>
+              <Activity size={14} style={{ inlineSize: '14px', marginRight: '6px', verticalAlign: 'middle' }} />
+              Campioni per Benchmark: {sampleCount}
+            </label>
+            <input
+              type="range"
+              min="2"
+              max="10"
+              step="1"
+              value={sampleCount}
+              onChange={(e) => setSampleCount(Number(e.target.value))}
+              disabled={isEvaluating}
+              style={{ width: '100%', accentColor: 'var(--accent)' }}
+            />
+          </div>
+
+          {/* Run button */}
+          <div>
+            <button
+              onClick={handleStartBenchmark}
+              disabled={isEvaluating || !selectedModel}
+              style={{
+                width: '100%',
+                height: '42px',
+                background: isEvaluating
+                  ? 'rgba(255,255,255,0.1)'
+                  : 'linear-gradient(135deg, #00d2ff 0%, #0072ff 100%)',
+                border: 'none',
+                borderRadius: '10px',
+                color: '#fff',
+                fontWeight: 700,
+                fontSize: '0.85rem',
+                cursor: isEvaluating ? 'not-allowed' : 'pointer',
+                display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px',
+                boxShadow: isEvaluating ? 'none' : '0 4px 20px rgba(0,210,255,0.3)',
+              }}
+            >
+              {isEvaluating ? (
+                <>
+                  <RefreshCw size={16} className="spin-icon" /> Valutazione Ufficiale in corso...
+                </>
+              ) : (
+                <>
+                  <Play size={16} /> Avvia Benchmark Ufficiale
+                </>
+              )}
+            </button>
+          </div>
         </div>
       </div>
 
-      {/* ── Active Benchmark Metrics Cards ── */}
+      {/* ── Active Benchmark Overview Cards ── */}
       {activeJob && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
           
@@ -308,7 +362,7 @@ export default function TrainingBenchmark({ addToast }) {
           {activeJob.status === 'running' && (
             <div style={{ background: 'rgba(15,18,35,0.8)', border: '1px solid rgba(0,210,255,0.3)', borderRadius: '12px', padding: '16px' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem', color: 'var(--text)', marginBottom: '8px' }}>
-                <span>🚀 Esecuzione benchmark per <strong>{activeJob.model}</strong>...</span>
+                <span>🚀 Esecuzione benchmark <strong>{activeJob.suite_name}</strong> per <strong>{activeJob.model}</strong>...</span>
                 <span>{activeJob.progress}%</span>
               </div>
               <div style={{ width: '100%', height: '8px', background: 'rgba(255,255,255,0.1)', borderRadius: '4px', overflow: 'hidden' }}>
@@ -330,13 +384,13 @@ export default function TrainingBenchmark({ addToast }) {
             {/* Score */}
             <div style={{ background: 'rgba(15,18,35,0.6)', border: '1px solid var(--border)', borderRadius: '14px', padding: '16px' }}>
               <div style={{ fontSize: '0.7rem', color: 'var(--text-dark)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                Accuratezza Globale
+                Punteggio Benchmark
               </div>
               <div style={{ fontSize: '1.8rem', fontWeight: 800, color: 'var(--success)', marginTop: '4px' }}>
-                {metrics.overall_score || 0}%
+                {activeJob.suite_name} = {metrics.overall_score || 0}%
               </div>
               <div style={{ fontSize: '0.7rem', color: 'var(--text-dark)', marginTop: '4px' }}>
-                {metrics.tests_passed || 0} / {metrics.tests_total || 0} test superati
+                {metrics.tests_passed || 0} / {metrics.tests_total || 0} quesiti superati
               </div>
             </div>
 
@@ -349,7 +403,7 @@ export default function TrainingBenchmark({ addToast }) {
                 {metrics.tokens_per_sec || 0} <span style={{ fontSize: '0.9rem', fontWeight: 500 }}>tok/s</span>
               </div>
               <div style={{ fontSize: '0.7rem', color: 'var(--text-dark)', marginTop: '4px' }}>
-                {metrics.total_tokens || 0} token generati totali
+                {metrics.total_tokens || 0} token totali
               </div>
             </div>
 
@@ -362,74 +416,140 @@ export default function TrainingBenchmark({ addToast }) {
                 {metrics.avg_latency_ms || 0} <span style={{ fontSize: '0.9rem', fontWeight: 500 }}>ms</span>
               </div>
               <div style={{ fontSize: '0.7rem', color: 'var(--text-dark)', marginTop: '4px' }}>
-                Tempo medio risposta per prompt
+                Tempo di risposta per quesito
               </div>
             </div>
 
             {/* Model Info */}
             <div style={{ background: 'rgba(15,18,35,0.6)', border: '1px solid var(--border)', borderRadius: '14px', padding: '16px' }}>
               <div style={{ fontSize: '0.7rem', color: 'var(--text-dark)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                <Shield size={12} style={{ marginRight: '4px', verticalAlign: 'middle' }} /> Modello In Prova
+                <Shield size={12} style={{ marginRight: '4px', verticalAlign: 'middle' }} /> Modello Testato
               </div>
               <div style={{ fontSize: '1.1rem', fontWeight: 700, color: 'var(--text)', marginTop: '6px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                 {activeJob.model}
               </div>
               <div style={{ fontSize: '0.7rem', color: 'var(--accent)', marginTop: '6px' }}>
-                ID Job: {activeJob.id}
+                Suite: {activeJob.suite_name}
               </div>
             </div>
           </div>
 
-          {/* Test Items Table */}
+          {/* ── Detailed Questions & Responses Table (CON OPZIONI E RISPOSTE VISIBILI) ── */}
           {activeJob.test_results && activeJob.test_results.length > 0 && (
             <div style={{ background: 'rgba(15,18,35,0.6)', border: '1px solid var(--border)', borderRadius: '16px', padding: '20px' }}>
-              <h3 style={{ margin: '0 0 16px', fontSize: '0.95rem', fontWeight: 700, color: 'var(--text)' }}>
-                📋 Dettaglio Risultati dei Test di Valutazione
+              <h3 style={{ margin: '0 0 16px', fontSize: '0.95rem', fontWeight: 700, color: 'var(--text)', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <BookOpen size={16} style={{ color: 'var(--accent)' }} />
+                Dettaglio Quesiti, Opzioni Disponibili e Risposte Date dal Modello
               </h3>
-              <div style={{ overflowX: 'auto' }}>
-                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.8rem', color: 'var(--text)' }}>
-                  <thead>
-                    <tr style={{ borderBottom: '1px solid var(--border)', color: 'var(--text-dark)', textAlign: 'left' }}>
-                      <th style={{ padding: '8px 12px' }}>Stato</th>
-                      <th style={{ padding: '8px 12px' }}>Categoria</th>
-                      <th style={{ padding: '8px 12px' }}>Prompt di Test</th>
-                      <th style={{ padding: '8px 12px' }}>Velocità</th>
-                      <th style={{ padding: '8px 12px' }}>Latenza</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {activeJob.test_results.map((tr, i) => (
-                      <tr key={i} style={{ borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
-                        <td style={{ padding: '10px 12px' }}>
+
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                {activeJob.test_results.map((tr, idx) => {
+                  const isExpanded = expandedItem === idx;
+                  return (
+                    <div
+                      key={idx}
+                      style={{
+                        background: tr.passed ? 'rgba(63,185,80,0.04)' : 'rgba(255,85,85,0.04)',
+                        border: `1px solid ${tr.passed ? 'rgba(63,185,80,0.2)' : 'rgba(255,85,85,0.2)'}`,
+                        borderRadius: '12px',
+                        padding: '14px 16px',
+                      }}
+                    >
+                      {/* Summary Row */}
+                      <div
+                        onClick={() => setExpandedItem(isExpanded ? null : idx)}
+                        style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer' }}
+                      >
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
                           {tr.passed ? (
-                            <span style={{ color: 'var(--success)', display: 'inline-flex', alignItems: 'center', gap: '4px', fontWeight: 600 }}>
-                              <CheckCircle2 size={14} /> PASS
+                            <span style={{ color: 'var(--success)', display: 'flex', alignItems: 'center', gap: '4px', fontWeight: 700, fontSize: '0.85rem' }}>
+                              <CheckCircle2 size={16} /> PASS
                             </span>
                           ) : (
-                            <span style={{ color: '#ff5555', display: 'inline-flex', alignItems: 'center', gap: '4px', fontWeight: 600 }}>
-                              <XCircle size={14} /> FAIL
+                            <span style={{ color: '#ff5555', display: 'flex', alignItems: 'center', gap: '4px', fontWeight: 700, fontSize: '0.85rem' }}>
+                              <XCircle size={16} /> FAIL
                             </span>
                           )}
-                        </td>
-                        <td style={{ padding: '10px 12px', fontWeight: 600, color: 'var(--accent)' }}>
-                          {tr.category}
-                        </td>
-                        <td style={{ padding: '10px 12px', maxWidth: '300px' }}>
-                          <div style={{ fontWeight: 600, color: 'var(--text)' }}>{tr.prompt}</div>
-                          <div style={{ fontSize: '0.72rem', color: 'var(--text-dark)', marginTop: '4px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                            {tr.response}
+
+                          <span style={{
+                            fontSize: '0.7rem', fontWeight: 700,
+                            padding: '2px 8px', borderRadius: '6px',
+                            background: 'rgba(0,210,255,0.1)', color: '#00d2ff'
+                          }}>
+                            {tr.suite_name || tr.suite}
+                          </span>
+
+                          <span style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-dark)' }}>
+                            {tr.category}
+                          </span>
+                        </div>
+
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+                          <span style={{ fontSize: '0.75rem', fontFamily: 'monospace', color: '#00d2ff' }}>
+                            {tr.tokens_per_sec} tok/s
+                          </span>
+                          <span style={{ fontSize: '0.75rem', fontFamily: 'monospace', color: '#ffb86c' }}>
+                            {tr.latency_ms} ms
+                          </span>
+                          {isExpanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+                        </div>
+                      </div>
+
+                      {/* Prompt Title */}
+                      <div style={{ fontSize: '0.85rem', fontWeight: 700, color: 'var(--text)', marginTop: '8px' }}>
+                        Quesito #{idx + 1}: {tr.prompt}
+                      </div>
+
+                      {/* Expanded Details: Opzioni Disponibili + Risposta Data + Risposta Attesa */}
+                      <div style={{
+                        marginTop: '12px',
+                        paddingTop: '12px',
+                        borderTop: '1px dashed rgba(255,255,255,0.08)',
+                        display: 'grid',
+                        gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))',
+                        gap: '16px',
+                      }}>
+                        {/* Opzioni Disponibili */}
+                        <div style={{ background: 'rgba(10,12,26,0.6)', padding: '12px', borderRadius: '8px', border: '1px solid var(--border)' }}>
+                          <div style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--text-dark)', textTransform: 'uppercase', marginBottom: '6px' }}>
+                            📋 Opzioni Disponibili nel Test:
                           </div>
-                        </td>
-                        <td style={{ padding: '10px 12px', fontFamily: 'monospace', color: '#00d2ff' }}>
-                          {tr.tokens_per_sec} tok/s
-                        </td>
-                        <td style={{ padding: '10px 12px', fontFamily: 'monospace', color: '#ffb86c' }}>
-                          {tr.latency_ms} ms
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+                          {tr.options && tr.options.length > 0 ? (
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                              {tr.options.map((opt, oIdx) => (
+                                <div key={oIdx} style={{ fontSize: '0.78rem', color: opt.includes(tr.correct_choice) ? 'var(--success)' : 'var(--text)' }}>
+                                  {opt}
+                                </div>
+                              ))}
+                            </div>
+                          ) : (
+                            <div style={{ fontSize: '0.78rem', color: 'var(--text-dark)' }}>Formato a risposta aperta / script</div>
+                          )}
+                        </div>
+
+                        {/* Risposta Data dal Modello */}
+                        <div style={{ background: 'rgba(10,12,26,0.6)', padding: '12px', borderRadius: '8px', border: `1px solid ${tr.passed ? 'rgba(63,185,80,0.3)' : 'rgba(255,85,85,0.3)'}` }}>
+                          <div style={{ fontSize: '0.72rem', fontWeight: 700, color: tr.passed ? 'var(--success)' : '#ff5555', textTransform: 'uppercase', marginBottom: '6px' }}>
+                            🤖 Risposta Data dal Modello ({activeJob.model}):
+                          </div>
+                          <div style={{ fontSize: '0.78rem', color: 'var(--text)', whiteSpace: 'pre-wrap', maxHeight: '160px', overflowY: 'auto', fontFamily: 'monospace' }}>
+                            {tr.given_answer}
+                          </div>
+                        </div>
+
+                        {/* Risposta Corretta Attesa */}
+                        <div style={{ background: 'rgba(10,12,26,0.6)', padding: '12px', borderRadius: '8px', border: '1px solid rgba(63,185,80,0.3)' }}>
+                          <div style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--success)', textTransform: 'uppercase', marginBottom: '6px' }}>
+                            ✅ Risposta Attesa / Soluzione Corretta:
+                          </div>
+                          <div style={{ fontSize: '0.8rem', fontWeight: 700, color: 'var(--success)' }}>
+                            {tr.correct_answer}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
             </div>
           )}
@@ -440,7 +560,7 @@ export default function TrainingBenchmark({ addToast }) {
       {jobs.length > 0 && (
         <div style={{ background: 'rgba(15,18,35,0.6)', border: '1px solid var(--border)', borderRadius: '16px', padding: '20px' }}>
           <h3 style={{ margin: '0 0 16px', fontSize: '0.95rem', fontWeight: 700, color: 'var(--text)' }}>
-            📜 Storico Sessioni di Benchmark
+            📜 Storico Valutazioni Benchmark Ufficiali
           </h3>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
             {jobs.map(j => (
@@ -462,10 +582,10 @@ export default function TrainingBenchmark({ addToast }) {
                   <Cpu size={16} style={{ color: 'var(--accent)' }} />
                   <div>
                     <div style={{ fontSize: '0.85rem', fontWeight: 700, color: 'var(--text)' }}>
-                      {j.model}
+                      {j.model} — <span style={{ color: '#00d2ff' }}>{j.suite_name || j.suite}</span>
                     </div>
                     <div style={{ fontSize: '0.7rem', color: 'var(--text-dark)' }}>
-                      Data: {new Date(j.created_at).toLocaleString()} | Suite: {j.suite}
+                      Data: {new Date(j.created_at).toLocaleString()}
                     </div>
                   </div>
                 </div>
@@ -473,10 +593,10 @@ export default function TrainingBenchmark({ addToast }) {
                 <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
                   <div style={{ textAlign: 'right' }}>
                     <div style={{ fontSize: '0.85rem', fontWeight: 700, color: 'var(--success)' }}>
-                      {j.metrics?.overall_score || 0}% Score
+                      {j.suite_name || j.suite} = {j.metrics?.overall_score || 0}%
                     </div>
                     <div style={{ fontSize: '0.7rem', color: '#00d2ff' }}>
-                      {j.metrics?.tokens_per_sec || 0} tok/s
+                      {j.metrics?.tokens_per_sec || 0} tok/s | {j.metrics?.tests_passed || 0}/{j.metrics?.tests_total || 0} Pass
                     </div>
                   </div>
 
