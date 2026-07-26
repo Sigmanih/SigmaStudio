@@ -1016,6 +1016,345 @@
                     "timestamp": "2026-07-26T03:01:41.279418"
                 }
             ]
+        },
+        {
+            "titolo": "Operazioni Agente - 26/07/2026 03:14",
+            "status": "completato",
+            "notifiche": [
+                {
+                    "da": "sigma_architect",
+                    "messaggio": "[create_module] Modulo creato: data/test_capability_topic\\01_test_module",
+                    "timestamp": "2026-07-26T03:14:11.763991"
+                }
+            ]
+        },
+        {
+            "titolo": "Operazioni Agente - 26/07/2026 03:14",
+            "status": "completato",
+            "notifiche": [
+                {
+                    "da": "sigma_architect",
+                    "messaggio": "[create_module] Modulo creato: data/test_capability_topic\\01_test_module",
+                    "timestamp": "2026-07-26T03:14:11.772781"
+                }
+            ]
+        },
+        {
+            "titolo": "Operazioni Agente - 26/07/2026 03:14",
+            "status": "completato",
+            "notifiche": [
+                {
+                    "da": "sigma_architect",
+                    "messaggio": "[create_module] Modulo creato: data/test_capability_topic\\01_test_module",
+                    "timestamp": "2026-07-26T03:14:11.786550"
+                }
+            ]
+        },
+        {
+            "titolo": "Operazioni Agente - 26/07/2026 03:14",
+            "status": "completato",
+            "notifiche": [
+                {
+                    "da": "sigma_architect",
+                    "messaggio": "[create_module] Modulo creato: data/test_capability_topic\\01_test_module",
+                    "timestamp": "2026-07-26T03:14:11.797403"
+                }
+            ]
+        },
+        {
+            "titolo": "Operazioni Agente - 26/07/2026 03:14",
+            "status": "completato",
+            "notifiche": [
+                {
+                    "da": "sigma_architect",
+                    "messaggio": "[create_module] Modulo creato: data/test_capability_topic\\01_test_module",
+                    "timestamp": "2026-07-26T03:14:11.814225"
+                }
+            ]
+        },
+        {
+            "titolo": "Operazioni Agente - 26/07/2026 03:14",
+            "status": "completato",
+            "notifiche": [
+                {
+                    "da": "sigma_architect",
+                    "messaggio": "[create_module] Modulo creato: data/test_capability_topic\\01_test_module",
+                    "timestamp": "2026-07-26T03:14:11.825610"
+                }
+            ]
+        },
+        {
+            "titolo": "Operazioni Agente - 26/07/2026 03:14",
+            "status": "completato",
+            "notifiche": [
+                {
+                    "da": "math_researcher",
+                    "messaggio": "[create_file] File creato: data/test_capability_topic/01_test_module/teoria/definizione.md",
+                    "timestamp": "2026-07-26T03:14:11.849488"
+                }
+            ]
+        },
+        {
+            "titolo": "Operazioni Agente - 26/07/2026 03:14",
+            "status": "completato",
+            "notifiche": [
+                {
+                    "da": "math_researcher",
+                    "messaggio": "[create_file] File creato: data/test_capability_topic/01_test_module/teoria/definizione.md",
+                    "timestamp": "2026-07-26T03:14:11.858192"
+                }
+            ]
+        },
+        {
+            "titolo": "Operazioni Agente - 26/07/2026 03:14",
+            "status": "completato",
+            "notifiche": [
+                {
+                    "da": "math_researcher",
+                    "messaggio": "[create_file] File creato: data/test_capability_topic/01_test_module/scripts/calcolo.py",
+                    "timestamp": "2026-07-26T03:14:11.885836"
+                }
+            ]
+        },
+        {
+            "titolo": "Operazioni Agente - 26/07/2026 03:14",
+            "status": "completato",
+            "notifiche": [
+                {
+                    "da": "math_researcher",
+                    "messaggio": "[create_file] File creato: data/test_capability_topic/01_test_module/scripts/calcolo.py",
+                    "timestamp": "2026-07-26T03:14:11.894401"
+                }
+            ]
+        },
+        {
+            "titolo": "Operazioni Agente - 26/07/2026 03:14",
+            "status": "completato",
+            "notifiche": [
+                {
+                    "da": "math_researcher",
+                    "messaggio": "[create_file] File creato: data/test_capability_topic/01_test_module/viz/grafico.html",
+                    "timestamp": "2026-07-26T03:14:11.920028"
+                }
+            ]
+        },
+        {
+            "titolo": "Operazioni Agente - 26/07/2026 03:14",
+            "status": "completato",
+            "notifiche": [
+                {
+                    "da": "math_researcher",
+                    "messaggio": "[create_file] File creato: data/test_capability_topic/01_test_module/viz/grafico.html",
+                    "timestamp": "2026-07-26T03:14:11.929917"
+                }
+            ]
+        },
+        {
+            "titolo": "Operazioni Agente - 26/07/2026 03:14",
+            "status": "completato",
+            "notifiche": [
+                {
+                    "da": "math_researcher",
+                    "messaggio": "[create_file] File creato: data/test_capability_topic/01_test_module/docs/appunti.md",
+                    "timestamp": "2026-07-26T03:14:11.954413"
+                }
+            ]
+        },
+        {
+            "titolo": "Operazioni Agente - 26/07/2026 03:14",
+            "status": "completato",
+            "notifiche": [
+                {
+                    "da": "math_researcher",
+                    "messaggio": "[create_file] File creato: data/test_capability_topic/01_test_module/docs/appunti.md",
+                    "timestamp": "2026-07-26T03:14:11.963903"
+                }
+            ]
+        },
+        {
+            "titolo": "Operazioni Agente - 26/07/2026 03:14",
+            "status": "completato",
+            "notifiche": [
+                {
+                    "da": "code_architect",
+                    "messaggio": "[create_module] Modulo creato: data/test_capability_topic\\01_test_module",
+                    "timestamp": "2026-07-26T03:14:11.977209"
+                }
+            ]
+        },
+        {
+            "titolo": "Operazioni Agente - 26/07/2026 03:14",
+            "status": "completato",
+            "notifiche": [
+                {
+                    "da": "code_architect",
+                    "messaggio": "[create_module] Modulo creato: data/test_capability_topic\\01_test_module",
+                    "timestamp": "2026-07-26T03:14:12.000392"
+                },
+                {
+                    "da": "code_architect",
+                    "messaggio": "[create_file] File creato: data/test_capability_topic/01_test_module/scripts/sim.py",
+                    "timestamp": "2026-07-26T03:14:12.000392"
+                }
+            ]
+        },
+        {
+            "titolo": "Operazioni Agente - 26/07/2026 03:14",
+            "status": "completato",
+            "notifiche": [
+                {
+                    "da": "code_architect",
+                    "messaggio": "[create_module] Modulo creato: data/test_capability_topic\\01_test_module",
+                    "timestamp": "2026-07-26T03:14:12.009553"
+                },
+                {
+                    "da": "code_architect",
+                    "messaggio": "[create_file] File creato: data/test_capability_topic/01_test_module/scripts/sim.py",
+                    "timestamp": "2026-07-26T03:14:12.009553"
+                }
+            ]
+        },
+        {
+            "titolo": "Operazioni Agente - 26/07/2026 03:14",
+            "status": "completato",
+            "notifiche": [
+                {
+                    "da": "code_architect",
+                    "messaggio": "[edit_file] File scritto: data/test_capability_topic/01_test_module/scripts/sim.py",
+                    "timestamp": "2026-07-26T03:14:12.031675"
+                }
+            ]
+        },
+        {
+            "titolo": "Operazioni Agente - 26/07/2026 03:14",
+            "status": "completato",
+            "notifiche": [
+                {
+                    "da": "code_architect",
+                    "messaggio": "[edit_file] File scritto: data/test_capability_topic/01_test_module/scripts/sim.py",
+                    "timestamp": "2026-07-26T03:14:12.040303"
+                }
+            ]
+        },
+        {
+            "titolo": "Operazioni Agente - 26/07/2026 03:14",
+            "status": "completato",
+            "notifiche": [
+                {
+                    "da": "code_architect",
+                    "messaggio": "[rename_file] File rinominato: data/test_capability_topic/01_test_module/scripts/sim.py → data/test_capability_topic/01_test_module/scripts/sim_v2.py",
+                    "timestamp": "2026-07-26T03:14:12.062902"
+                }
+            ]
+        },
+        {
+            "titolo": "Operazioni Agente - 26/07/2026 03:14",
+            "status": "completato",
+            "notifiche": [
+                {
+                    "da": "code_architect",
+                    "messaggio": "[rename_file] File rinominato: data/test_capability_topic/01_test_module/scripts/sim.py → data/test_capability_topic/01_test_module/scripts/sim_v2.py",
+                    "timestamp": "2026-07-26T03:14:12.071671"
+                }
+            ]
+        },
+        {
+            "titolo": "Operazioni Agente - 26/07/2026 03:14",
+            "status": "completato",
+            "notifiche": [
+                {
+                    "da": "code_architect",
+                    "messaggio": "[delete_file] File eliminato: data/test_capability_topic/01_test_module/scripts/sim_v2.py",
+                    "timestamp": "2026-07-26T03:14:12.093893"
+                }
+            ]
+        },
+        {
+            "titolo": "Operazioni Agente - 26/07/2026 03:14",
+            "status": "completato",
+            "notifiche": [
+                {
+                    "da": "code_architect",
+                    "messaggio": "[delete_file] File eliminato: data/test_capability_topic/01_test_module/scripts/sim_v2.py",
+                    "timestamp": "2026-07-26T03:14:12.101390"
+                }
+            ]
+        },
+        {
+            "titolo": "Operazioni Agente - 26/07/2026 03:14",
+            "status": "completato",
+            "notifiche": []
+        },
+        {
+            "titolo": "Operazioni Agente - 26/07/2026 03:14",
+            "status": "completato",
+            "notifiche": []
+        },
+        {
+            "titolo": "Operazioni Agente - 26/07/2026 03:14",
+            "status": "completato",
+            "notifiche": [
+                {
+                    "da": "sigma_architect",
+                    "messaggio": "[create_module] Modulo creato: data/test_ai_topic\\01_limiti_e_continuita",
+                    "timestamp": "2026-07-26T03:14:17.958698"
+                }
+            ]
+        },
+        {
+            "titolo": "Operazioni Agente - 26/07/2026 03:14",
+            "status": "completato",
+            "notifiche": [
+                {
+                    "da": "sigma_architect",
+                    "messaggio": "[create_module] Modulo creato: data/test_ai_topic\\01_limiti_e_continuita",
+                    "timestamp": "2026-07-26T03:14:17.968095"
+                }
+            ]
+        },
+        {
+            "titolo": "Operazioni Agente - 26/07/2026 03:14",
+            "status": "completato",
+            "notifiche": [
+                {
+                    "da": "math_researcher",
+                    "messaggio": "[edit_file] File scritto: data/test_ai_topic/01_limiti_e_continuita/teoria/limiti.md",
+                    "timestamp": "2026-07-26T03:14:19.047226"
+                }
+            ]
+        },
+        {
+            "titolo": "Operazioni Agente - 26/07/2026 03:14",
+            "status": "completato",
+            "notifiche": [
+                {
+                    "da": "math_researcher",
+                    "messaggio": "[edit_file] File scritto: data/test_ai_topic/01_limiti_e_continuita/teoria/limiti.md",
+                    "timestamp": "2026-07-26T03:14:19.055782"
+                }
+            ]
+        },
+        {
+            "titolo": "Operazioni Agente - 26/07/2026 03:14",
+            "status": "completato",
+            "notifiche": [
+                {
+                    "da": "sigma_architect",
+                    "messaggio": "[delete_file] File eliminato: data/test_ai_topic/01_limiti_e_continuita/teoria/limiti_temp.md",
+                    "timestamp": "2026-07-26T03:14:19.082803"
+                }
+            ]
+        },
+        {
+            "titolo": "Operazioni Agente - 26/07/2026 03:14",
+            "status": "completato",
+            "notifiche": [
+                {
+                    "da": "sigma_architect",
+                    "messaggio": "[delete_file] File eliminato: data/test_ai_topic/01_limiti_e_continuita/teoria/limiti_temp.md",
+                    "timestamp": "2026-07-26T03:14:19.091165"
+                }
+            ]
         }
     ]
 }

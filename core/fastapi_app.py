@@ -320,6 +320,32 @@ FastAPIHandlerAdapter.handle_hardware_status = lambda self: self.send_json_respo
 FastAPIHandlerAdapter.handle_training_job_status = lambda self: self.send_json_response(get_job_status(self.read_json_body().get("id", "")))
 FastAPIHandlerAdapter.handle_training_job_logs = lambda self: self.send_json_response(get_job_logs(self.read_json_body().get("id", "")))
 
+from core.training.benchmarks import (
+    get_available_models_for_benchmark, start_benchmark_run,
+    list_benchmark_jobs, delete_benchmark_job
+)
+
+FastAPIHandlerAdapter.handle_training_benchmark_models = lambda self: self.send_json_response(get_available_models_for_benchmark())
+FastAPIHandlerAdapter.handle_training_benchmark_jobs = lambda self: self.send_json_response(list_benchmark_jobs())
+
+def _handle_training_benchmark_run(self):
+    body = self.read_json_body()
+    model = body.get("model", "qwen2.5-coder:14b")
+    suite_id = body.get("suite", "all")
+    num_samples = int(body.get("samples", 5))
+    job = start_benchmark_run(model, suite_id, num_samples)
+    self.send_json_response({"success": True, "job": job})
+
+FastAPIHandlerAdapter.handle_training_benchmark_run = _handle_training_benchmark_run
+
+def _handle_training_benchmark_delete(self):
+    body = self.read_json_body()
+    job_id = body.get("id", "")
+    ok = delete_benchmark_job(job_id)
+    self.send_json_response({"success": ok})
+
+FastAPIHandlerAdapter.handle_training_benchmark_delete = _handle_training_benchmark_delete
+
 register_get_handlers(FastAPIHandlerAdapter)
 register_post_handlers(FastAPIHandlerAdapter)
 

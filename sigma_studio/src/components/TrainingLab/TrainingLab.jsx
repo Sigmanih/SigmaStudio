@@ -1,15 +1,16 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { BookOpen, Database, Cpu, BarChart2, Brain, ShieldCheck, X } from 'lucide-react';
+import { BookOpen, Database, Cpu, BarChart2, Brain, ShieldCheck, Award, X } from 'lucide-react';
 import TrainingDocs from './TrainingDocs';
 import DatasetBrowser from './DatasetBrowser';
 import TrainingConfigurator from './TrainingConfigurator';
 import TrainingMonitor from './TrainingMonitor';
+import TrainingBenchmark from './TrainingBenchmark';
 import TrainingHFToken from './TrainingHFToken';
 import '../../styles/training-lab.css';
 
 // ==============================================================================
 // TRAINING LAB — Sigma Studio v7.0
-// 4 sub-tab: Documentazione | Dataset | Training | Monitor
+// 6 sub-tab: Documentazione | Dataset | Training | Monitor | Benchmark | HF Token
 // ==============================================================================
 
 const MODES = [
@@ -17,6 +18,7 @@ const MODES = [
   { id: 'dataset', label: '🗃️ Dataset', icon: Database, desc: 'HuggingFace + Import locale' },
   { id: 'training', label: '⚙️ Configurazione', icon: Cpu, desc: 'Modello, metodo, iperparametri' },
   { id: 'monitor', label: '📊 Monitor', icon: BarChart2, desc: 'Log live, loss chart, export' },
+  { id: 'benchmark', label: '🧪 Benchmark Test', icon: Award, desc: 'Test & valutazione modelli' },
   { id: 'token', label: '🔑 HF Token', icon: ShieldCheck, desc: 'Configura HuggingFace Token' },
 ];
 
@@ -188,6 +190,10 @@ export default function TrainingLab({ addToast: _addToast, onTasksUpdated }) {
             activeJobId={activeJobId}
             onAddToast={showToast}
           />
+        )}
+
+        {mode === 'benchmark' && (
+          <TrainingBenchmark addToast={showToast} />
         )}
 
         {mode === 'token' && (

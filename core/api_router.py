@@ -43,6 +43,9 @@ def register_get_handlers(handler_class):
         '/api/mcp/resources': 'handle_mcp_resources',
         # Swarm Endpoints
         '/api/swarm/agents': 'handle_swarm_agents',
+        # Benchmark Endpoints
+        '/api/training/benchmark/models': 'handle_training_benchmark_models',
+        '/api/training/benchmark/jobs': 'handle_training_benchmark_jobs',
         # Knowledge Nodes Endpoints
         '/api/nodes': 'handle_get_nodes',
     }
@@ -116,6 +119,8 @@ def register_post_handlers(handler_class):
         '/api/training/export/ollama': 'handle_training_export_ollama',
         '/api/training/dependencies': 'handle_training_dependencies',
         '/api/training/job/clear_logs': 'handle_training_clear_logs',
+        '/api/training/benchmark/run': 'handle_training_benchmark_run',
+        '/api/training/benchmark/delete': 'handle_training_benchmark_delete',
         '/api/config/hf_token': 'handle_hf_token_config',
     }
 
