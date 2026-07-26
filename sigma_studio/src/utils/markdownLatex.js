@@ -134,7 +134,51 @@ function escapeHtml(text) {
 }
 
 /**
- * Process inline formatting: bold, italic, inline code, links.
+ * Extract YouTube video IDs from text or URLs.
+ */
+function extractYouTubeVideoIds(text) {
+  if (!text || typeof text !== 'string') return [];
+  const regex = /(?:https?:\/\/)?(?:www\.)?(?:youtube\.com\/(?:watch\?v=|embed\/)|youtu\.be\/)([a-zA-Z0-9_-]{11})/gi;
+  const ids = [];
+  let match;
+  while ((match = regex.exec(text)) !== null) {
+    if (match[1] && !ids.includes(match[1])) {
+      ids.push(match[1]);
+    }
+  }
+  return ids;
+}
+
+/**
+ * Generate YouTube responsive video preview HTML block for a list of video IDs.
+ */
+function generateYouTubePreviewsHtml(videoIds) {
+  if (!videoIds || videoIds.length === 0) return '';
+  
+  const cards = videoIds.map(id => `
+<div class="youtube-preview-card" style="margin: 14px 0; border-radius: 10px; overflow: hidden; background: #090a0f; border: 1px solid rgba(0, 210, 255, 0.3); max-width: 560px; box-shadow: 0 6px 20px rgba(0,0,0,0.45); transition: transform 0.2s ease, border-color 0.2s ease;">
+  <div style="position: relative; padding-bottom: 56.25%; height: 0; overflow: hidden; background: #000;">
+    <iframe
+      src="https://www.youtube.com/embed/${id}"
+      title="YouTube Video Preview"
+      frameborder="0"
+      allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+      allowfullscreen
+      style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; border: 0;"
+    ></iframe>
+  </div>
+  <div style="padding: 8px 12px; font-size: 0.78rem; color: #8b8fa3; display: flex; align-items: center; justify-content: space-between; background: #0e1016; border-top: 1px solid #1e2030;">
+    <span style="display: flex; align-items: center; gap: 6px; font-weight: 600; color: #e2e8f0;"><span style="color: #ff0000; font-size: 0.9rem;">▶</span> Anteprima Video YouTube</span>
+    <a href="https://www.youtube.com/watch?v=${id}" target="_blank" rel="noopener noreferrer" class="chat-external-link" style="color: #00d2ff; text-decoration: none; font-weight: 600;">Apri su YouTube ↗</a>
+  </div>
+</div>
+`).join('');
+
+  return `<div class="youtube-preview-container" style="display: flex; flex-direction: column; gap: 10px; margin-top: 10px;">${cards}</div>`;
+}
+
+/**
+ * Process inline formatting: bold, italic, inline code, links, raw URLs.
  * Must be called AFTER LaTeX rendering so we don't process $ inside KaTeX HTML.
  */
 function processInlineFormatting(text) {
@@ -144,8 +188,15 @@ function processInlineFormatting(text) {
   text = text.replace(/(?<!\*)\*(?!\*)(.+?)(?<!\*)\*(?!\*)/g, '<em>$1</em>');
   // Inline code: `text`
   text = text.replace(/`([^`]+)`/g, '<code>$1</code>');
-  // Links: [text](url)
-  text = text.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>');
+  // Markdown links: [text](url)
+  text = text.replace(/\[([^\]]+)\]\(([^)]+)\)/g, (match, linkText, url) => {
+    return `<a href="${url}" target="_blank" rel="noopener noreferrer" class="chat-external-link" style="color: #00d2ff; text-decoration: underline; text-underline-offset: 3px; word-break: break-all;">${linkText}</a>`;
+  });
+  // Auto-linkify raw URLs (https://... or http://...) that are NOT inside href="..." or existing <a> tags
+  text = text.replace(
+    /(?<!href="|href='|">)(https?:\/\/[^\s<>"'`\)]+?)(?=[.,;:!?\)]?(?:\s|$|<|"|'))/gi,
+    '<a href="$1" target="_blank" rel="noopener noreferrer" class="chat-external-link" style="color: #00d2ff; text-decoration: underline; text-underline-offset: 3px; word-break: break-all;">$1</a>'
+  );
   // Strikethrough: ~~text~~
   text = text.replace(/~~(.+?)~~/g, '<del>$1</del>');
   return text;
@@ -349,6 +400,12 @@ export function renderMarkdownLatex(text) {
 
     // Step 7: Linkify file paths
     processed = linkifyPaths(processed);
+
+    // Step 8: Extract YouTube videos and append responsive video previews
+    const ytVideoIds = extractYouTubeVideoIds(text);
+    if (ytVideoIds.length > 0) {
+      processed += generateYouTubePreviewsHtml(ytVideoIds);
+    }
 
     return processed;
   } catch (e) {
