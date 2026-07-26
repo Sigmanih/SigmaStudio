@@ -45,11 +45,17 @@ class DummyHandler:
 @pytest.fixture(autouse=True)
 def cleanup_test_environment():
     """Clean up test_ai_topic directory before and after each test."""
-    if os.path.exists(TEST_TOPIC_DIR):
-        shutil.rmtree(TEST_TOPIC_DIR, ignore_errors=True)
+    def _clean():
+        if os.path.exists(TEST_TOPIC_DIR):
+            shutil.rmtree(TEST_TOPIC_DIR, ignore_errors=True)
+        if os.path.exists("data"):
+            for d in os.listdir("data"):
+                if d.startswith("test_") or d in ("analisi_1", "frattali", "esponenziali"):
+                    shutil.rmtree(os.path.join("data", d), ignore_errors=True)
+
+    _clean()
     yield
-    if os.path.exists(TEST_TOPIC_DIR):
-        shutil.rmtree(TEST_TOPIC_DIR, ignore_errors=True)
+    _clean()
 
 
 class TestLocalAIChatResponse:
@@ -147,9 +153,11 @@ def calcola_limite(x):
         ai_response = """# Analisi Matematica 1
 Trattazione approfondita sulle successioni e serie numeriche."""
         
-        created, _ = _extract_and_create_files_from_text(ai_response, "crea l'argomento analisi 1")
+        created, _ = _extract_and_create_files_from_text(ai_response, "crea l'argomento test_temp_analisi_1")
         assert len(created) > 0
         assert os.path.exists(created[0].replace("/", os.sep))
+        if os.path.exists("data/test_temp_analisi_1"):
+            shutil.rmtree("data/test_temp_analisi_1", ignore_errors=True)
 
     def test_self_healing_multi_language_extraction(self):
         ai_response = f"""Ecco la documentazione ed i file per lo studio di funzioni:
