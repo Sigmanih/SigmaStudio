@@ -237,14 +237,16 @@ def execute_feedback_loop(self, req, stream_callback=None):
     context_str = _collect_context_files(self, context_files)
 
     tasks_context = ""
-    if os.path.exists('tasks.json'):
-        try:
-            with open('tasks.json', 'r', encoding='utf-8') as f:
-                all_t = json.load(f)
-                active_t = [t for t in all_t if t.get("status") in ["in_corso", "pending"]]
-                if active_t:
-                    tasks_context = json.dumps(active_t, indent=2)
-        except: tasks_context = "[]"
+    try:
+        from core.store import agent_tasks_store
+        store_data = agent_tasks_store.load()
+        if isinstance(store_data, dict):
+            sess_tasks = store_data.get("default", [])
+            active_t = [t for t in sess_tasks if t.get("status") in ["in_corso", "pending"]]
+            if active_t:
+                tasks_context = json.dumps(active_t, indent=2)
+    except Exception:
+        tasks_context = "[]"
 
     from core.chat.prompt_builder import _build_agent_identity_header
     user_name = kwargs.get('user_name') or kwargs.get('user_profile', {}).get('name')

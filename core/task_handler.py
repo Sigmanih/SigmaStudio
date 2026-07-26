@@ -252,11 +252,11 @@ def handle_api_tasks_assign(self) -> None:
 # Notifications
 # ==============================================================================
 
-def _add_action_notifications(action_log: list, bot_name: str) -> None:
-    """Auto-add notifications to the active task for every successful action.
+from core.store import tasks_store, agent_tasks_store, modules_store
 
-    Principio Sigma: "Una notifica non lasciata è un'azione mai avvenuta."
-    """
+
+def _add_action_notifications(action_log: list, bot_name: str, session_id: str = "default") -> None:
+    """Record internal agent action execution notifications in agent_tasks_store (cache), keeping user roadmap clean."""
     if not action_log:
         return
 
@@ -266,20 +266,18 @@ def _add_action_notifications(action_log: list, bot_name: str) -> None:
     })
 
     try:
-        def _update_tasks(tasks: list) -> list:
-            # Find or create the active task
-            active = next((t for t in tasks if t.get("status") == "in_corso"), None)
+        def _update_agent_cache(store_data: dict) -> dict:
+            if not isinstance(store_data, dict):
+                store_data = {}
+            sess_tasks = store_data.setdefault(session_id, [])
+            active = next((t for t in sess_tasks if t.get("status") == "in_corso"), None)
             if not active:
                 active = {
-                    "titolo": f"Operazioni AI - {datetime.datetime.now().strftime('%d/%m/%Y %H:%M')}",
-                    "descrizione": "Operazioni automatiche eseguite dall'agente AI",
-                    "status": "in_corso",
-                    "priorita": "media",
-                    "moduli": [],
-                    "id": int(datetime.datetime.now().timestamp() * 1000),
+                    "titolo": f"Operazioni Agente - {datetime.datetime.now().strftime('%d/%m/%Y %H:%M')}",
+                    "status": "completato",
                     "notifiche": [],
                 }
-                tasks.append(active)
+                sess_tasks.append(active)
 
             now = datetime.datetime.now().isoformat()
             for entry in action_log:
@@ -289,11 +287,23 @@ def _add_action_notifications(action_log: list, bot_name: str) -> None:
                         "messaggio": f"[{entry['type']}] {entry.get('message', '')}",
                         "timestamp": now,
                     })
-            return tasks
+            return store_data
 
-        tasks_store.update(_update_tasks)
+        agent_tasks_store.update(_update_agent_cache)
     except Exception as exc:
         log.error("_add_action_notifications error: %s", exc)
+
+
+def clear_agent_session_tasks(session_id: str) -> None:
+    """Clear internal agent tasks cache when a chat or research session is deleted."""
+    try:
+        def _clear(store_data: dict) -> dict:
+            if isinstance(store_data, dict) and session_id in store_data:
+                del store_data[session_id]
+            return store_data
+        agent_tasks_store.update(_clear)
+    except Exception as exc:
+        log.error("clear_agent_session_tasks error: %s", exc)
 
 
 def _finalize_auto_tasks() -> None:

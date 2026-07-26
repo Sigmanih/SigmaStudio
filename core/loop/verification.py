@@ -44,13 +44,14 @@ def _build_loop_filesystem_context() -> str:
     return '\n'.join(lines)
 
 
-def _get_tasks_context() -> str:
-    """Get active/pending tasks from tasks.json as formatted string for context."""
+def _get_tasks_context(session_id: str = "default") -> str:
+    """Get active/pending tasks from agent_tasks_store cache as formatted string for context."""
     try:
-        if os.path.exists('tasks.json'):
-            with open('tasks.json', 'r', encoding='utf-8') as f:
-                tasks = json.load(f)
-            active_tasks = [t for t in tasks if t.get("status") in ["in_corso", "pending"]]
+        from core.store import agent_tasks_store
+        store_data = agent_tasks_store.load()
+        if isinstance(store_data, dict):
+            sess_tasks = store_data.get(session_id, [])
+            active_tasks = [t for t in sess_tasks if t.get("status") in ["in_corso", "pending"]]
             if active_tasks:
                 return json.dumps(active_tasks, indent=2)
     except Exception:
