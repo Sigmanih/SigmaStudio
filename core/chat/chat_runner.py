@@ -206,10 +206,32 @@ Contenuto completo...
 ```
 """
 
-        messages = [
-            {"role": "system", "content": full_prompt},
-            {"role": "user", "content": message}
-        ]
+        # Extract and sanitize past chat history context
+        raw_history = req.get("history") or req.get("context", {}).get("history", []) or req.get("messages", [])
+        history_messages = []
+        if isinstance(raw_history, list):
+            for h in raw_history:
+                if isinstance(h, dict):
+                    role = h.get("role", "")
+                    content = h.get("content", "")
+                    if role in ["user", "assistant"] and content:
+                        clean_content = _sanitize_history_message(content)
+                        if clean_content:
+                            history_messages.append({"role": role, "content": clean_content})
+
+        messages = [{"role": "system", "content": full_prompt}]
+
+        # Include recent conversation history (last 10 messages)
+        recent_history = history_messages[-10:] if len(history_messages) > 10 else history_messages
+
+        for h in recent_history:
+            # Prevent duplicating current user message if it was appended to history in frontend
+            if h.get("role") == "user" and h.get("content") == message:
+                continue
+            messages.append(h)
+
+        if not messages or messages[-1].get("content") != message:
+            messages.append({"role": "user", "content": message})
 
         if active_provider == "ollama":
             ai_response, thinking, err = call_ollama(
