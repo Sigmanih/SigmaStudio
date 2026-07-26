@@ -94,7 +94,7 @@ export default function ChatInput({
           {attachedFiles.length > 0 && <span className="chat-attach-count">{attachedFiles.length}</span>}
         </button>
         {loading ? (
-          <button className="chat-send-btn stop" onClick={onStop} title="Ferma esecuzione">
+          <button className="chat-send-btn stop" onClick={(e) => { e.preventDefault(); onStop && onStop(e); }} title="Ferma esecuzione">
             <Send size={16} />
           </button>
         ) : (

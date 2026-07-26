@@ -114,7 +114,10 @@ export function useChatStreaming({
   useEffect(() => { loopIterationRef.current = loopIteration; }, [loopIteration]);
   useEffect(() => { loopMaxIterationsRef.current = loopMaxIterations; }, [loopMaxIterations]);
 
-  const stopInference = useCallback(() => {
+  const stopInference = useCallback((e) => {
+    if (e && typeof e.preventDefault === 'function') {
+      try { e.preventDefault(); } catch (err) {}
+    }
     if (abortRef.current) { abortRef.current.abort(); abortRef.current = null; }
     if (globalAbortController) { globalAbortController.abort(); globalAbortController = null; }
     
@@ -125,16 +128,17 @@ export function useChatStreaming({
         if (msgs.length > 0) {
           const last = msgs[msgs.length - 1];
           if (last.role === 'assistant') {
+            const curContent = typeof last.content === 'string' ? last.content.trim() : '';
             msgs[msgs.length - 1] = {
               ...last,
               streaming: false,
               streamingThinking: false,
               statusMessage: undefined,
-              content: last.content?.trim() || '🛑 *Generazione interrotta dall\'utente.*'
+              content: curContent ? `${curContent}\n\n*🛑 Generazione interrotta dall'utente.*` : '🛑 *Generazione interrotta dall\'utente.*'
             };
           }
           saveMessagesImmediately(sid, msgs);
-          try { localStorage.setItem(`sigma_chat_msgs_${sid}`, JSON.stringify(msgs)); } catch (e) {}
+          try { localStorage.setItem(`sigma_chat_msgs_${sid}`, JSON.stringify(msgs)); } catch (err) {}
         }
         return { ...prev, [sid]: msgs };
       });
@@ -411,8 +415,9 @@ export function useChatStreaming({
     const currentSessionId = sessionRefs.activeSessionId.current;
     if (!currentSessionId) return;
 
-    const messageText = textOverride || input;
-    if (!messageText.trim() && attachedFiles.length === 0) return;
+    const rawText = (typeof textOverride === 'string' ? textOverride : '') || input || '';
+    const messageText = typeof rawText === 'string' ? rawText.trim() : '';
+    if (!messageText && attachedFiles.length === 0) return;
 
     streamingSessionIdRef.current = currentSessionId;
     const openFiles = externalOpenFiles || [];
