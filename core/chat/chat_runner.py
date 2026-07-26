@@ -197,13 +197,18 @@ def handle_chat(self):
 {time_ctx}{mcp_context_info}
 
 ## ISTRUZIONI CREAZIONE E SALVATAGGIO FILE SU DISCO
-Quando l'utente ti chiede di creare, scrivere o generare un file o un argomento, DEVI SEMPRE specificare il percorso relativo esplicito direttamente nella cartella dell'argomento (es. `data/ARGOMENTO/NOME_FILE.md`) e racchiudere il contenuto completo all'interno di un blocco di codice markdown:
+1. Quando l'utente ti chiede di creare, scrivere o generare un file per un Argomento, DEVI SEMPRE specificare il percorso relativo esplicito collegandolo DIRETTAMENTE all'argomento (es. `data/ARGOMENTO/NOME_FILE.md`) e racchiudere il contenuto completo all'interno di un blocco di codice markdown:
 
 Path: `data/ARGOMENTO/NOME_FILE.md`
 ```markdown
 # Titolo del Documento
 Contenuto completo...
 ```
+
+2. REGOLE FONDAMENTALI STRUTTURA A NODI:
+   - I file appartengono direttamente al nodo dell'Argomento (es. `data/analisi_1/teoria.md`, `data/analisi_1/grafico.html`).
+   - MAI creare un sottoargomento con lo stesso nome dell'argomento padre (es. NON creare mai `data/analisi_1/01_analisi_1`).
+   - Sottoargomenti distinti sono permessi SOLO se suddividono un argomento in sotto-concetti specifici e separati (es. `data/analisi_1/insiemi_numerici/spiegazione.md`).
 """
 
         # Extract and sanitize past chat history context

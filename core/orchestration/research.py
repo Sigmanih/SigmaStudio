@@ -88,50 +88,50 @@ def _fallback_objectives(session_id: str, agents_list: list[dict], goal: str) ->
 
     fallback_templates = [
         {
-            "title": f"Teoria: {topic_name} — Fondamenti (Modulo 01)",
+            "title": f"Teoria: {topic_name} — Fondamenti",
             "description": (
-                f"Crea il file {base_path}/01_fondamenti/teoria/fondamenti.md con: "
+                f"Crea il file {base_path}/fondamenti.md con: "
                 f"introduzione al dominio, definizioni fondamentali, concetti base strutturati, "
                 f"esempi concreti e spiegazioni dettagliate. "
                 f"File COMPLETO, almeno 300 righe, per l'obiettivo: {goal[:200]}"
             ),
             "assigned_to": "math1",
             "actions_hint": ["create_file"],
-            "completion_criteria": f"File {base_path}/01_fondamenti/teoria/fondamenti.md creato con contenuto completo."
+            "completion_criteria": f"File {base_path}/fondamenti.md creato con contenuto completo."
         },
         {
-            "title": f"Test computazionali: {topic_name} — Fondamenti (Modulo 01)",
+            "title": f"Test computazionali: {topic_name} — Fondamenti",
             "description": (
-                f"Crea lo script {base_path}/01_fondamenti/test/test_fondamenti.py con: "
+                f"Crea lo script {base_path}/test_fondamenti.py con: "
                 f"import sympy, numpy; funzioni test_* con assert e print; blocco main. "
                 f"Verifica computazionale dei concetti fondamentali del dominio. "
                 f"Script ESEGUIBILE con: python test_fondamenti.py"
             ),
             "assigned_to": "test-engineer",
             "actions_hint": ["create_file"],
-            "completion_criteria": f"Script {base_path}/01_fondamenti/test/test_fondamenti.py funzionante."
+            "completion_criteria": f"Script {base_path}/test_fondamenti.py funzionante."
         },
         {
-            "title": f"Formulario: {topic_name} — Fondamenti (Modulo 01)",
+            "title": f"Formulario: {topic_name} — Fondamenti",
             "description": (
-                f"Crea il formulario {base_path}/01_fondamenti/docs/formulario_fondamenti.md con: "
+                f"Crea il formulario {base_path}/formulario_fondamenti.md con: "
                 f"tabelle di definizioni, formule/concetti chiave, guida al riconoscimento del problema, "
                 f"errori comuni. Formulario COMPATTO e NAVIGABILE."
             ),
             "assigned_to": "formulario",
             "actions_hint": ["create_file"],
-            "completion_criteria": f"Formulario creato in {base_path}/01_fondamenti/docs/."
+            "completion_criteria": f"Formulario creato in {base_path}/formulario_fondamenti.md."
         },
         {
-            "title": f"Teoria: {topic_name} — Approfondimenti (Modulo 02)",
+            "title": f"Teoria: {topic_name} — Approfondimenti",
             "description": (
-                f"Crea il file {base_path}/02_approfondimenti/teoria/approfondimenti.md con: "
+                f"Crea il file {base_path}/approfondimenti.md con: "
                 f"argomenti di secondo livello del dominio, teoremi/leggi avanzate, casi speciali. "
                 f"Contenuto basato su: {goal[:200]}"
             ),
             "assigned_to": "math1",
             "actions_hint": ["create_file"],
-            "completion_criteria": f"File {base_path}/02_approfondimenti/teoria/approfondimenti.md creato."
+            "completion_criteria": f"File {base_path}/approfondimenti.md creato."
         },
     ]
 
@@ -217,23 +217,16 @@ Moduli già presenti sul disco:
 {existing_modules_str}
 
 ## REGOLA STRUTTURA PATH — CRITICA
-Ogni file DEVE avere esattamente questa struttura a 5 parti:
-  {base_path}/<NN>_<nome_modulo>/<sezione>/<nome_file>
-Dove:
-- <NN> = numero progressivo a due cifre (01, 02, 03, ...)
-- <nome_modulo> = nome descrittivo del sottoargomento (underscore, niente spazi)
-- <sezione> = SOLO una tra: teoria, test, docs, viz, whitepapers
-- <nome_file> = nome del file con estensione (.md per teoria/docs, .py per test, .html per viz)
+1. I file dell'Argomento DEVONO essere associati direttamente all'Argomento principale:
+   {base_path}/<nome_file>
+   Esempi: {base_path}/teoria.md, {base_path}/esercizi.py, {base_path}/grafico.html
+2. Se un argomento è complesso, può essere suddiviso in SOTTOARGOMENTI SPECIFICI per organizzare meglio il discorso:
+   {base_path}/<sottoargomento_specifico>/<nome_file>
+   Esempio: {base_path}/insiemi_numerici/spiegazione.md
 
-ESEMPI CORRETTI per qualsiasi dominio:
-- {base_path}/01_fondamenti/teoria/introduzione.md
-- {base_path}/02_argomento_2/test/test_argomento_2.py
-- {base_path}/03_argomento_3/docs/formulario_argomento_3.md
-
-VIETATO:
-- {base_path}/01_base/teoria/file.md (modulo troppo generico, usa nome descrittivo)
-- {base_path}/teoria/file.md (manca il modulo numerato)
-- {base_path}/01_argomento/file.py (manca la sezione)
+VIETATO ASSOLUTAMENTE:
+- MAI creare un sottoargomento con lo stesso nome dell'argomento principale (es. {base_path}/01_analisi_1/...)
+- MAI usare sottocartelle prefissate generiche come 01_base o 01_fondamenti.
 
 ## TEAM DI AGENTI DISPONIBILI
 I seguenti agenti sono attivi e configurati in questa sessione. DEVI assegnare ciascun task esclusivamente a uno di questi agenti usando il rispettivo ID nel campo "assigned_to" per parallelizzare il lavoro:

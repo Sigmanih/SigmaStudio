@@ -131,47 +131,11 @@ def _ensure_module_structure(path: str) -> str:
 
 
 def _get_or_create_default_module(topic_folder: str) -> str:
-    """Return an existing module folder or create ``01_base`` as default."""
+    """Return the flat topic folder directly without creating 01_base or redundant subfolders."""
     rel_folder = topic_folder.replace("\\", "/").rstrip("/")
     abs_topic_folder = os.path.abspath(topic_folder)
-
-    # Remove conflicting flat file if it has the same name as the expected directory
-    if os.path.exists(abs_topic_folder) and not os.path.isdir(abs_topic_folder):
-        log.warning("Collision detected: file '%s' exists but directory expected. Removing file.", abs_topic_folder)
-        try:
-            os.remove(abs_topic_folder)
-        except Exception as err:
-            log.error("Failed to remove conflicting file '%s': %s", abs_topic_folder, err)
-
-    if os.path.isdir(abs_topic_folder):
-        for entry in sorted(os.listdir(abs_topic_folder)):
-
-            full = os.path.join(abs_topic_folder, entry)
-            if os.path.isdir(full) and entry[:2].isdigit() and "_" in entry:
-                return os.path.relpath(full).replace("\\", "/")
-
-    mod_num, mod_name = "01", "base"
-    abs_module_path = os.path.join(abs_topic_folder, f"{mod_num}_{mod_name}")
-    os.makedirs(abs_module_path, exist_ok=True)
-
-    # Update modules_meta.json via thread-safe store
-    try:
-        def _add_module(meta: dict) -> dict:
-            meta.setdefault("modules", {})[mod_num] = mod_name.title()
-            for tid, tdata in meta.get("topics", {}).items():
-                tf = tdata.get("folder", "").replace("\\", "/").rstrip("/")
-                if tf == rel_folder:
-                    if mod_num not in tdata.get("modules", []):
-                        tdata.setdefault("modules", []).append(mod_num)
-                    break
-            return meta
-
-        modules_store.update(_add_module)
-        log.debug("Created default module: %s", abs_module_path)
-    except Exception as exc:
-        log.error("Failed to update modules metadata: %s", exc)
-
-    return os.path.relpath(abs_module_path).replace("\\", "/")
+    os.makedirs(abs_topic_folder, exist_ok=True)
+    return rel_folder
 
 
 def _sync_module_meta(topic_id: str, topic_folder: str, mod_num: str, mod_name: str) -> None:

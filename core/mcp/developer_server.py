@@ -40,7 +40,7 @@ class DeveloperMCPServer(BaseMCPServer):
             input_schema={
                 "type": "object",
                 "properties": {
-                    "path": {"type": "string", "description": "Relative file path (e.g. data/Topic/01_base/file.md)"},
+                    "path": {"type": "string", "description": "Relative file path (e.g. data/Topic/file.md)"},
                     "content": {"type": "string", "description": "File content text"}
                 },
                 "required": ["path", "content"]

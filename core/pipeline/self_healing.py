@@ -47,26 +47,26 @@ def _get_role_instructions(role: str, node_label: str) -> str:
     r_lower = role.lower()
     if "architect" in r_lower or "pianificat" in r_lower:
         return (
-            "Il tuo compito è analizzare l'obiettivo globale e scomporlo in file e moduli concreti.\n"
+            "Il tuo compito è analizzare l'obiettivo globale e scomporlo in file concreti.\n"
             "Produce un piano strutturato indicando i file da creare sotto data/\n"
-            "Formato file consigliato: Path: `data/<topic_slug>/01_modulo/teoria/<nome>.md`"
+            "Formato file consigliato: Path: `data/<topic_slug>/<nome>.md`"
         )
     elif "test" in r_lower or "coder" in r_lower or "programmat" in r_lower:
         return (
             "Il tuo compito è scrivere ed eseguire test unitari in Python per validare la teoria.\n"
             "Usa sympy e numpy per le verifiche matematiche.\n"
-            "Formatta i file con: Path: `data/<topic_slug>/01_modulo/test/test_<nome>.py` e blocco ```python"
+            "Formatta i file con: Path: `data/<topic_slug>/test_<nome>.py` e blocco ```python"
         )
     elif "engineer" in r_lower or "matematic" in r_lower or "teoric" in r_lower:
         return (
             "Il tuo compito è scrivere la trattazione formale completa in Markdown LaTeX.\n"
             "Includi definizioni, teoremi, dimostrazioni ed esempi.\n"
-            "Formatta i file con: Path: `data/<topic_slug>/01_modulo/teoria/<nome>.md` e blocco ```markdown"
+            "Formatta i file con: Path: `data/<topic_slug>/<nome>.md` e blocco ```markdown"
         )
     elif "viz" in r_lower or "disegn" in r_lower or "grafic" in r_lower:
         return (
             "Il tuo compito è creare visualizzazioni interattive in HTML/JS (D3.js / Chart.js).\n"
-            "Formatta i file con: Path: `data/<topic_slug>/01_modulo/viz/<nome>.html` e blocco ```html"
+            "Formatta i file con: Path: `data/<topic_slug>/<nome>.html` e blocco ```html"
         )
     elif "revis" in r_lower or "review" in r_lower:
         return (
