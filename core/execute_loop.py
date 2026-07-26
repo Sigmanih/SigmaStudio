@@ -240,7 +240,10 @@ def execute_feedback_loop(self, req, stream_callback=None):
     if os.path.exists('tasks.json'):
         try:
             with open('tasks.json', 'r', encoding='utf-8') as f:
-                tasks_context = json.dumps(json.load(f), indent=2)
+                all_t = json.load(f)
+                active_t = [t for t in all_t if t.get("status") in ["in_corso", "pending"]]
+                if active_t:
+                    tasks_context = json.dumps(active_t, indent=2)
         except: tasks_context = "[]"
 
     from core.chat.prompt_builder import _build_agent_identity_header

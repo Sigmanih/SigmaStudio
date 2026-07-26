@@ -332,6 +332,19 @@ def _add_action_notifications(action_log: list, bot_name: str) -> None:
         log.error("_add_action_notifications error: %s", exc)
 
 
+def _finalize_auto_tasks() -> None:
+    """Mark finished automatic operations tasks as completato so they don't remain appesi."""
+    try:
+        def _finish(tasks: list) -> list:
+            for t in tasks:
+                if t.get("status") == "in_corso" and t.get("titolo", "").startswith("Operazioni AI"):
+                    t["status"] = "completato"
+            return tasks
+        tasks_store.update(_finish)
+    except Exception as exc:
+        log.error("_finalize_auto_tasks error: %s", exc)
+
+
 # ==============================================================================
 # AI Action Executor
 # ==============================================================================
@@ -684,3 +697,7 @@ def _execute_single_action(self, action: dict, action_type: str, bot_name: str, 
         log.warning("Unknown action type: '%s'", action_type)
         result_log.append({"type": action_type, "success": False,
                             "error": f"Tipo azione sconosciuto: {action_type}"})
+
+    _add_action_notifications(result_log, bot_name)
+    _finalize_auto_tasks()
+    return result_log

@@ -45,12 +45,14 @@ def _build_loop_filesystem_context() -> str:
 
 
 def _get_tasks_context() -> str:
-    """Get tasks.json as formatted string for context."""
+    """Get active/pending tasks from tasks.json as formatted string for context."""
     try:
         if os.path.exists('tasks.json'):
             with open('tasks.json', 'r', encoding='utf-8') as f:
                 tasks = json.load(f)
-            return json.dumps(tasks, indent=2)
+            active_tasks = [t for t in tasks if t.get("status") in ["in_corso", "pending"]]
+            if active_tasks:
+                return json.dumps(active_tasks, indent=2)
     except Exception:
         pass
     return "[]"
