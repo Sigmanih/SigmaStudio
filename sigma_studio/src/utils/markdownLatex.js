@@ -159,10 +159,11 @@ function generateYouTubePreviewsHtml(videoIds) {
 <div class="youtube-preview-card" style="margin: 14px 0; border-radius: 10px; overflow: hidden; background: #090a0f; border: 1px solid rgba(0, 210, 255, 0.3); max-width: 560px; box-shadow: 0 6px 20px rgba(0,0,0,0.45); transition: transform 0.2s ease, border-color 0.2s ease;">
   <div style="position: relative; padding-bottom: 56.25%; height: 0; overflow: hidden; background: #000;">
     <iframe
-      src="https://www.youtube.com/embed/${id}"
+      src="https://www.youtube-nocookie.com/embed/${id}?rel=0&modestbranding=1"
       title="YouTube Video Preview"
       frameborder="0"
-      allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+      allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share; compute-pressure"
+      referrerpolicy="strict-origin-when-cross-origin"
       allowfullscreen
       style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; border: 0;"
     ></iframe>
