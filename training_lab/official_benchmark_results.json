@@ -1,0 +1,160 @@
+[
+  {
+    "id": "bm_20260726_032309_c7a1",
+    "model": "qwen3.6:35b",
+    "suite": "all",
+    "suite_name": "Tutti i Benchmark Ufficiali",
+    "status": "running",
+    "progress": 70,
+    "created_at": "2026-07-26T03:23:09.837335",
+    "updated_at": "2026-07-26T03:23:09.837335",
+    "metrics": {
+      "overall_score": 0,
+      "accuracy_pct": 0,
+      "tokens_per_sec": 29.7,
+      "avg_latency_ms": 10117,
+      "total_tokens": 2100,
+      "tests_passed": 0,
+      "tests_total": 7
+    },
+    "test_results": [
+      {
+        "id": "mmlu_med_1",
+        "suite": "mmlu",
+        "suite_name": "MMLU",
+        "category": "Medicina & Biologia",
+        "prompt": "Quale organello cellulare \u00e8 responsabile della produzione primaria di ATP mediante la respirazione cellulare?",
+        "options": [
+          "A) Reticolo Endoplasmatico",
+          "B) Mitocondrio",
+          "C) Apparato di Golgi",
+          "D) Lisosoma"
+        ],
+        "given_answer": "",
+        "correct_answer": "B) Mitocondrio",
+        "correct_choice": "B",
+        "passed": false,
+        "tokens_per_sec": 61.67,
+        "latency_ms": 33861,
+        "tokens": 300
+      },
+      {
+        "id": "mmlu_phys_1",
+        "suite": "mmlu",
+        "suite_name": "MMLU",
+        "category": "Fisica Classica",
+        "prompt": "Secondo la seconda legge della termodinamica, in un sistema isolato l'entropia totale:",
+        "options": [
+          "A) Diminuisce sempre nel tempo",
+          "B) Rimane esattamente costante",
+          "C) Aumenta o rimane costante in processi reversibili",
+          "D) Oscillazioni periodiche verso lo zero"
+        ],
+        "given_answer": "",
+        "correct_answer": "C) Aumenta o rimane costante in processi reversibili",
+        "correct_choice": "C",
+        "passed": false,
+        "tokens_per_sec": 59.27,
+        "latency_ms": 6269,
+        "tokens": 300
+      },
+      {
+        "id": "mmlu_pro_cs_1",
+        "suite": "mmlu_pro",
+        "suite_name": "MMLU-Pro",
+        "category": "Informatica Teorica & Algoritmi",
+        "prompt": "Qual \u00e8 la complessit\u00e0 temporale nel caso peggiore dell'algoritmo QuickSort senza pivot casuale su un array gi\u00e0 ordinato?",
+        "options": [
+          "A) O(N)",
+          "B) O(N log N)",
+          "C) O(N^2)",
+          "D) O(2^N)"
+        ],
+        "given_answer": "",
+        "correct_answer": "C) O(N^2)",
+        "correct_choice": "C",
+        "passed": false,
+        "tokens_per_sec": 63.1,
+        "latency_ms": 6026,
+        "tokens": 300
+      },
+      {
+        "id": "gsm8k_1",
+        "suite": "gsm8k",
+        "suite_name": "GSM8K",
+        "category": "Matematica Elementare & Ragionamento",
+        "prompt": "John compra 4 mele a 2 euro l'una e 3 arance a 3 euro l'una. Se paga con una banconota da 20 euro, quanto riceve di resto?",
+        "options": [
+          "Passaggio 1: Calcolare mele (4 * 2 = 8)",
+          "Passaggio 2: Calcolare arance (3 * 3 = 9)",
+          "Passaggio 3: Totale spesa = 17 euro",
+          "Risultato finale: 20 - 17 = 3 euro"
+        ],
+        "given_answer": "",
+        "correct_answer": "3 euro (Resto = 20 - (4*2 + 3*3) = 3)",
+        "correct_choice": "3",
+        "passed": false,
+        "tokens_per_sec": 63.49,
+        "latency_ms": 6087,
+        "tokens": 300
+      },
+      {
+        "id": "math_1",
+        "suite": "math",
+        "suite_name": "MATH",
+        "category": "Matematica Olimpica & Calcolo",
+        "prompt": "Risolvi l'equazione polinomiale $2x^2 + 5x - 3 = 0$ trovando entrambe le radici $x_1, x_2$.",
+        "options": [
+          "Opzione A: x = 1, x = -3",
+          "Opzione B: x = 1/2 (0.5), x = -3",
+          "Opzione C: x = -1/2, x = 3",
+          "Opzione D: x = 2, x = -1.5"
+        ],
+        "given_answer": "",
+        "correct_answer": "B) x = 1/2 (0.5) e x = -3",
+        "correct_choice": "B",
+        "passed": false,
+        "tokens_per_sec": 62.19,
+        "latency_ms": 6174,
+        "tokens": 300
+      },
+      {
+        "id": "humaneval_1",
+        "suite": "humaneval",
+        "suite_name": "HumanEval",
+        "category": "Coding Python",
+        "prompt": "Completa la funzione Python `reverse_string(s: str) -> str` che restituisce la stringa invertita.\n\ndef reverse_string(s: str) -> str:\n    \"\"\"Inverte la stringa s.\"\"\"",
+        "options": [
+          "Test 1: assert reverse_string('hello') == 'olleh'",
+          "Test 2: assert reverse_string('Sigma') == 'amgiS'",
+          "Test 3: assert reverse_string('') == ''"
+        ],
+        "given_answer": "",
+        "correct_answer": "def reverse_string(s: str) -> str:\n    return s[::-1]",
+        "correct_choice": "def reverse_string(s: str) -> str:\n    return s[::-1]",
+        "passed": false,
+        "tokens_per_sec": 59.1,
+        "latency_ms": 6366,
+        "tokens": 300
+      },
+      {
+        "id": "mbpp_1",
+        "suite": "mbpp",
+        "suite_name": "MBPP",
+        "category": "Basic Python Coding",
+        "prompt": "Scrivi una funzione Python `is_even(n: int) -> bool` che verifica se un numero n \u00e8 pari.",
+        "options": [
+          "Test 1: assert is_even(4) == True",
+          "Test 2: assert is_even(7) == False"
+        ],
+        "given_answer": "",
+        "correct_answer": "def is_even(n: int) -> bool:\n    return n % 2 == 0",
+        "correct_choice": "def is_even(n: int) -> bool:\n    return n % 2 == 0",
+        "passed": false,
+        "tokens_per_sec": 62.51,
+        "latency_ms": 6035,
+        "tokens": 300
+      }
+    ]
+  }
+]

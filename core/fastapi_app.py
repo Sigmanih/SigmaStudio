@@ -332,8 +332,9 @@ def _handle_training_benchmark_run(self):
     body = self.read_json_body()
     model = body.get("model", "qwen2.5-coder:14b")
     suite_id = body.get("suite", "all")
-    num_samples = int(body.get("samples", 5))
-    job = start_benchmark_run(model, suite_id, num_samples)
+    num_samples = int(body.get("samples", 0))
+    mode = body.get("mode", "full")
+    job = start_benchmark_run(model, suite_id, num_samples, mode=mode)
     self.send_json_response({"success": True, "job": job})
 
 FastAPIHandlerAdapter.handle_training_benchmark_run = _handle_training_benchmark_run
