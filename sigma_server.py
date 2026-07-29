@@ -263,188 +263,13 @@ SigmaAPIHandler.handle_research_decompose = handle_research_decompose
 SigmaAPIHandler.handle_research_next_steps = handle_research_next_steps
 SigmaAPIHandler.handle_research_start = handle_research_start
 
-# 18. Training Lab (LLM training, fine-tuning, dataset management)
-from core.training_handler import (
-    search_hf_datasets, get_hf_dataset_info,
-    import_local_dataset, register_hf_dataset, list_datasets, delete_dataset,
-    create_training_job, start_training_job, stop_training_job,
-    get_job_status, get_job_logs, list_jobs, delete_job, clear_job_logs,
-    export_to_ollama, get_hardware_info, get_featured_datasets,
-    check_training_dependencies,
-)
-import json as _json_mod
-from urllib.parse import urlparse as _urlparse, parse_qs as _parse_qs
+# 18. Training Lab & Hardware Lab — handler condivisi con il server FastAPI
+# (definizione unica in core/training_api.py: le due pipeline devono esporre
+#  esattamente gli stessi endpoint)
+from core.training_handler import reconcile_jobs
+from core.training_api import register_training_handlers
 
-def _handle_training_list_datasets(self):
-    self.send_json_response(list_datasets())
-SigmaAPIHandler.handle_training_list_datasets = _handle_training_list_datasets
-
-def _handle_training_dataset_search(self):
-    parsed = _urlparse(self.path)
-    qs = _parse_qs(parsed.query)
-    query = qs.get("q", [""])[0] or qs.get("query", [""])[0]
-    limit = int(qs.get("limit", ["20"])[0])
-    self.send_json_response(search_hf_datasets(query, limit=limit))
-SigmaAPIHandler.handle_training_dataset_search = _handle_training_dataset_search
-
-def _handle_training_featured_datasets(self):
-    self.send_json_response(get_featured_datasets())
-SigmaAPIHandler.handle_training_featured_datasets = _handle_training_featured_datasets
-
-def _handle_training_hardware(self):
-    self.send_json_response(get_hardware_info())
-SigmaAPIHandler.handle_training_hardware = _handle_training_hardware
-
-def _handle_training_list_jobs(self):
-    self.send_json_response(list_jobs())
-SigmaAPIHandler.handle_training_list_jobs = _handle_training_list_jobs
-
-def _handle_training_job_status(self):
-    parsed = _urlparse(self.path)
-    qs = _parse_qs(parsed.query)
-    job_id = qs.get("job_id", [""])[0]
-    self.send_json_response(get_job_status(job_id))
-SigmaAPIHandler.handle_training_job_status = _handle_training_job_status
-
-def _handle_training_job_logs(self):
-    parsed = _urlparse(self.path)
-    qs = _parse_qs(parsed.query)
-    job_id = qs.get("job_id", [""])[0]
-    offset = int(qs.get("offset", ["0"])[0])
-    self.send_json_response(get_job_logs(job_id, offset=offset))
-SigmaAPIHandler.handle_training_job_logs = _handle_training_job_logs
-
-def _handle_training_dataset_import(self):
-    body = self.read_json_body()
-    result = import_local_dataset(
-        body.get("path", ""), body.get("name"), body.get("format")
-    )
-    self.send_json_response(result)
-SigmaAPIHandler.handle_training_dataset_import = _handle_training_dataset_import
-
-def _handle_training_dataset_register_hf(self):
-    body = self.read_json_body()
-    result = register_hf_dataset(body.get("dataset_id", ""), body.get("split", "train"))
-    self.send_json_response(result)
-SigmaAPIHandler.handle_training_dataset_register_hf = _handle_training_dataset_register_hf
-
-def _handle_training_dataset_delete(self):
-    body = self.read_json_body()
-    self.send_json_response(delete_dataset(body.get("dataset_id", "")))
-SigmaAPIHandler.handle_training_dataset_delete = _handle_training_dataset_delete
-
-def _handle_training_job_create(self):
-    body = self.read_json_body()
-    self.send_json_response(create_training_job(body))
-SigmaAPIHandler.handle_training_job_create = _handle_training_job_create
-
-def _handle_training_job_start(self):
-    body = self.read_json_body()
-    self.send_json_response(start_training_job(body.get("job_id", "")))
-SigmaAPIHandler.handle_training_job_start = _handle_training_job_start
-
-def _handle_training_job_stop(self):
-    body = self.read_json_body()
-    self.send_json_response(stop_training_job(body.get("job_id", "")))
-SigmaAPIHandler.handle_training_job_stop = _handle_training_job_stop
-
-def _handle_training_job_delete(self):
-    body = self.read_json_body()
-    self.send_json_response(delete_job(body.get("job_id", "")))
-SigmaAPIHandler.handle_training_job_delete = _handle_training_job_delete
-
-def _handle_training_export_ollama(self):
-    body = self.read_json_body()
-    self.send_json_response(export_to_ollama(
-        body.get("job_id", ""), body.get("model_name", ""), body.get("system_prompt", "")
-    ))
-SigmaAPIHandler.handle_training_export_ollama = _handle_training_export_ollama
-
-def _handle_training_dependencies(self):
-    body = self.read_json_body()
-    self.send_json_response(check_training_dependencies(body.get("method", "")))
-SigmaAPIHandler.handle_training_dependencies = _handle_training_dependencies
-
-def _handle_training_clear_logs(self):
-    body = self.read_json_body()
-    self.send_json_response(clear_job_logs(body.get("job_id", "")))
-SigmaAPIHandler.handle_training_clear_logs = _handle_training_clear_logs
-
-def _handle_hardware_status(self):
-    from core.training_handler import get_hardware_info
-    hw_res = get_hardware_info()
-    cfg = {}
-    if os.path.exists("config.json"):
-        try:
-            with open("config.json", "r", encoding="utf-8") as f:
-                cfg = json.load(f)
-        except Exception:
-            pass
-    hw_config = cfg.get("hardware", {
-        "cuda_visible_devices": os.environ.get("CUDA_VISIBLE_DEVICES", "0,1"),
-        "ollama_num_parallel": int(os.environ.get("OLLAMA_NUM_PARALLEL", 4)),
-        "ollama_max_loaded_models": int(os.environ.get("OLLAMA_MAX_LOADED_MODELS", 2)),
-        "num_gpu_layers": -1,
-        "preferred_training_gpu": "cuda:0",
-        "fp16_enabled": True,
-    })
-    hf_token = cfg.get("hf_token", "")
-    masked_token = hf_token[:8] + "..." if len(hf_token) > 8 else ""
-    env_status = {
-        "CUDA_VISIBLE_DEVICES": os.environ.get("CUDA_VISIBLE_DEVICES", "0,1"),
-        "OLLAMA_NUM_PARALLEL": os.environ.get("OLLAMA_NUM_PARALLEL", "4"),
-        "OLLAMA_MAX_LOADED_MODELS": os.environ.get("OLLAMA_MAX_LOADED_MODELS", "2"),
-        "HF_TOKEN": masked_token,
-        "HF_HAS_TOKEN": bool(hf_token),
-    }
-    self.send_json_response({
-        "success": True,
-        "hardware": hw_res.get("hardware", {}),
-        "config": hw_config,
-        "env": env_status,
-        "hf_token": masked_token,
-        "hf_has_token": bool(hf_token),
-    })
-SigmaAPIHandler.handle_hardware_status = _handle_hardware_status
-
-def _handle_hardware_config(self):
-    body = self.read_json_body()
-    cfg = {}
-    if os.path.exists("config.json"):
-        try:
-            with open("config.json", "r", encoding="utf-8") as f:
-                cfg = json.load(f)
-        except Exception:
-            pass
-    hw_cfg = cfg.get("hardware", {})
-    hw_cfg.update({
-        "cuda_visible_devices": body.get("cuda_visible_devices", "0,1"),
-        "ollama_num_parallel": int(body.get("ollama_num_parallel", 4)),
-        "ollama_max_loaded_models": int(body.get("ollama_max_loaded_models", 2)),
-        "num_gpu_layers": int(body.get("num_gpu_layers", -1)),
-        "preferred_training_gpu": body.get("preferred_training_gpu", "cuda:0"),
-        "fp16_enabled": bool(body.get("fp16_enabled", True)),
-    })
-    cfg["hardware"] = hw_cfg
-    try:
-        with open("config.json", "w", encoding="utf-8") as f:
-            json.dump(cfg, f, indent=4)
-    except Exception as exc:
-        return self.send_json_response({"success": False, "error": str(exc)}, 500)
-
-    # Apply environment variables
-    os.environ["CUDA_VISIBLE_DEVICES"] = hw_cfg["cuda_visible_devices"]
-    os.environ["OLLAMA_NUM_PARALLEL"] = str(hw_cfg["ollama_num_parallel"])
-    os.environ["OLLAMA_MAX_LOADED_MODELS"] = str(hw_cfg["ollama_max_loaded_models"])
-    
-    self.send_json_response({"success": True, "config": hw_cfg})
-SigmaAPIHandler.handle_hardware_config = _handle_hardware_config
-
-def _handle_hardware_restart_ollama(self):
-    from core.training_handler import restart_ollama_service
-    res = restart_ollama_service()
-    self.send_json_response(res)
-SigmaAPIHandler.handle_hardware_restart_ollama = _handle_hardware_restart_ollama
+register_training_handlers(SigmaAPIHandler)
 
 def handle_router_train(self):
     """API Endpoint to rebuild the sigma-router model and generate training dataset."""
@@ -463,29 +288,6 @@ def handle_router_train(self):
         return self.send_json_response({"success": False, "error": str(exc)}, status=500)
 
 SigmaAPIHandler.handle_router_train = handle_router_train
-
-def _handle_hf_token_config(self):
-    """Salva HF_TOKEN nella config e lo imposta come variabile d'ambiente."""
-    body = self.read_json_body()
-    token = body.get("hf_token", "")
-    cfg = {}
-    if os.path.exists("config.json"):
-        try:
-            with open("config.json", "r", encoding="utf-8") as f:
-                cfg = json.load(f)
-        except Exception:
-            pass
-    cfg["hf_token"] = token
-    os.environ["HF_TOKEN"] = token
-    os.environ["HUGGINGFACE_TOKEN"] = token
-    try:
-        with open("config.json", "w", encoding="utf-8") as f:
-            json.dump(cfg, f, indent=4)
-        masked = token[:8] + "..." if len(token) > 8 else ""
-        return self.send_json_response({"success": True, "hf_token": masked, "hf_has_token": bool(token)})
-    except Exception as exc:
-        return self.send_json_response({"success": False, "error": str(exc)}, 500)
-SigmaAPIHandler.handle_hf_token_config = _handle_hf_token_config
 
 # --- Register routing tables ---
 register_get_handlers(SigmaAPIHandler)
@@ -614,6 +416,16 @@ if __name__ == "__main__":
 
     # Apply Multi-GPU Environment
     _apply_hardware_env()
+
+    # 0a. Training jobs left "running" by a previous session: reattach those still
+    # alive (the child process survives a Sigma restart), close out the others.
+    try:
+        _rec = reconcile_jobs()
+        if _rec["reattached"] or _rec["closed"]:
+            log.info("Training jobs: %d riagganciati, %d chiusi",
+                     len(_rec["reattached"]), len(_rec["closed"]))
+    except Exception as exc:
+        log.warning("reconcile_jobs skipped: %s", exc)
 
     # 0. Ensure default manifestos are copied
     _init_manifesti()

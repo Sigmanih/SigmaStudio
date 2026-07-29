@@ -1,260 +1,145 @@
 # ==============================================================================
-# core/training/hardware.py — CUDA Hardware & VRAM Telemetry
+# core/training/hardware.py — GPU Telemetry & Training Capability Report
 # Sigma Studio v7 — Modular Training Sub-package
 # ==============================================================================
-"""GPU Hardware telemetry, PyTorch CUDA capability detection, multi-GPU
-configuration, and driver diagnostic helpers.
+"""Hardware telemetry for the Training Lab.
+
+Thin presentation layer on top of `core.training.gpu`, which owns the actual
+multi-vendor detection (CUDA, ROCm, XPU, MPS, DirectML, CPU). This module keeps
+the historical payload shape the UI and the test-suite rely on, and enriches it
+with the capability/auto-tune data the Training Lab now shows.
 """
 
 import os
 import sys
-import json
-import subprocess
 import shutil
+import subprocess
+
 from core.logger import get_logger
+from core.training import gpu as gpu_layer
 
 log = get_logger(__name__)
 
 
+# ---------------------------------------------------------------- probes
+# NOTE: these three keep their historical names and payload shape — the test
+# suite patches them on `core.training_handler` and `get_hardware_info` resolves
+# them dynamically through that module.
+
 def _check_torch_cuda() -> dict:
-    try:
-        import torch
-        avail = torch.cuda.is_available()
-        count = torch.cuda.device_count() if avail else 0
-        gpus = []
-        if avail:
-            for i in range(count):
-                props = torch.cuda.get_device_properties(i)
-                tot_mb = round(props.total_memory / (1024**2), 1)
-                # Attempt to read allocated memory
-                try:
-                    used_bytes = torch.cuda.memory_allocated(i)
-                    used_mb = round(used_bytes / (1024**2), 1)
-                except Exception:
-                    used_mb = 0.0
-                free_mb = max(0.0, tot_mb - used_mb)
-                gpus.append({
-                    "index": i,
-                    "name": props.name,
-                    "vendor": "NVIDIA",
-                    "vendor_color": "#76b900" if "NVIDIA" in props.name.upper() else "#00f2fe",
-                    "vram_total_mb": tot_mb,
-                    "vram_used_mb": used_mb,
-                    "vram_free_mb": free_mb,
-                    "vram_total_gb": round(tot_mb / 1024, 1),
-                    "vram_used_gb": round(used_mb / 1024, 1),
-                    "vram_free_gb": round(free_mb / 1024, 1),
-                    "vram_pct": round((used_mb / tot_mb) * 100, 1) if tot_mb > 0 else 0,
-                    "compute_capability": f"{props.major}.{props.minor}",
-                    "compute_cap": f"{props.major}.{props.minor}",
-                    "multi_processor_count": getattr(props, "multi_processor_count", 0),
-                    "gpu_util_pct": 0.0,
-                    "temp_c": 45.0,
-                    "power_draw_w": 0.0,
-                    "power_limit_w": 0.0,
-                })
-        return {
-            "torch_available": True,
-            "cuda_available": avail,
-            "cuda_device_count": count,
-            "torch_version": torch.__version__,
-            "torch_cuda_version": getattr(torch.version, "cuda", None),
-            "torch_gpu_list": gpus,
-            "cudnn_version": str(torch.backends.cudnn.version()) if torch.backends.cudnn.is_available() else None,
-            "cuda_error": None,
-        }
-    except Exception as e:
-        return {
-            "torch_available": False,
-            "cuda_available": False,
-            "cuda_device_count": 0,
-            "torch_version": None,
-            "torch_cuda_version": None,
-            "torch_gpu_list": [],
-            "cudnn_version": None,
-            "cuda_error": str(e),
-        }
+    """Torch/CUDA capability probe (also reports ROCm, XPU, MPS, DirectML)."""
+    info = gpu_layer.probe_torch()
+    return {
+        "torch_available": info["torch_available"],
+        "cuda_available": info["cuda_available"],
+        "cuda_device_count": info["cuda_device_count"],
+        "torch_version": info["torch_version"],
+        "torch_cuda_version": info["torch_cuda_version"],
+        "torch_gpu_list": info["torch_gpu_list"],
+        "cudnn_version": info["cudnn_version"],
+        "cuda_error": info["cuda_error"],
+        "hip_version": info["hip_version"],
+        "xpu_available": info["xpu_available"],
+        "mps_available": info["mps_available"],
+        "directml_available": info["directml_available"],
+        "arch_list": info["arch_list"],
+    }
 
 
 def _query_nvidia_smi() -> list[dict]:
-    nvidia_smi = shutil.which("nvidia-smi")
-    if not nvidia_smi:
-        return []
-    try:
-        res = subprocess.run(
-            [nvidia_smi, "--query-gpu=index,name,memory.total,memory.used,memory.free,driver_version,utilization.gpu,temperature.gpu,power.draw,power.limit,compute_cap", "--format=csv,noheader,nounits"],
-            capture_output=True, text=True, timeout=5
-        )
-        if res.returncode != 0:
-            return []
-        gpus = []
-        for line in res.stdout.strip().split("\n"):
-            if not line.strip():
-                continue
-            parts = [p.strip() for p in line.split(",")]
-            if len(parts) >= 6:
-                tot_mb = float(parts[2])
-                used_mb = float(parts[3])
-                free_mb = float(parts[4])
-                
-                util_pct = 0.0
-                if len(parts) > 6:
-                    try: util_pct = float(parts[6])
-                    except ValueError: pass
-                
-                temp_c = 45.0
-                if len(parts) > 7:
-                    try: temp_c = float(parts[7])
-                    except ValueError: pass
-                
-                pwr_draw = 0.0
-                if len(parts) > 8:
-                    try: pwr_draw = float(parts[8])
-                    except ValueError: pass
-                
-                pwr_limit = 0.0
-                if len(parts) > 9:
-                    try: pwr_limit = float(parts[9])
-                    except ValueError: pass
+    """Live NVIDIA telemetry via nvidia-smi."""
+    return gpu_layer.probe_nvidia_smi()
 
-                comp_cap = parts[10] if len(parts) > 10 else "N/A"
-                gpu_name = parts[1]
-                vendor = "NVIDIA" if "NVIDIA" in gpu_name.upper() else "GPU"
-                vendor_color = "#76b900" if "NVIDIA" in gpu_name.upper() else "#00f2fe"
 
-                gpus.append({
-                    "index": int(parts[0]),
-                    "name": gpu_name,
-                    "vendor": vendor,
-                    "vendor_color": vendor_color,
-                    "vram_total_mb": tot_mb,
-                    "vram_used_mb": used_mb,
-                    "vram_free_mb": free_mb,
-                    "vram_total_gb": round(tot_mb / 1024, 1),
-                    "vram_used_gb": round(used_mb / 1024, 1),
-                    "vram_free_gb": round(free_mb / 1024, 1),
-                    "vram_pct": round((used_mb / tot_mb) * 100, 1) if tot_mb > 0 else 0,
-                    "driver_version": parts[5],
-                    "compute_cap": comp_cap,
-                    "compute_capability": comp_cap,
-                    "gpu_util_pct": round(util_pct, 1),
-                    "temp_c": round(temp_c, 1),
-                    "power_draw_w": round(pwr_draw, 1),
-                    "power_limit_w": round(pwr_limit, 1),
-                })
-        return gpus
-    except Exception as exc:
-        log.warning("_query_nvidia_smi error: %s", exc)
-        return []
+def _query_rocm_smi() -> list[dict]:
+    """Live AMD telemetry via rocm-smi."""
+    return gpu_layer.probe_rocm_smi()
 
 
 def _query_wmi_gpus() -> list[dict]:
-    """Query system video controllers (AMD, Intel, NVIDIA) via PowerShell WMI on Windows."""
-    if sys.platform != "win32":
-        return []
-    try:
-        cmd = ["powershell", "-NoProfile", "-Command", "Get-CimInstance Win32_VideoController | Select-Object Name, AdapterRAM, DriverVersion | ConvertTo-Json"]
-        res = subprocess.run(cmd, capture_output=True, text=True, timeout=4)
-        if res.returncode != 0 or not res.stdout.strip():
-            return []
-        
-        data = json.loads(res.stdout.strip())
-        if isinstance(data, dict):
-            data = [data]
-            
-        gpus = []
-        for idx, item in enumerate(data):
-            name = item.get("Name") or f"GPU {idx}"
-            ram_bytes = item.get("AdapterRAM") or 0
-            tot_mb = round(ram_bytes / (1024**2), 1) if ram_bytes > 0 else 2048.0
-            driver = item.get("DriverVersion") or "N/A"
-            
-            vendor = "GPU"
-            vendor_color = "#00f2fe"
-            name_u = name.upper()
-            if "NVIDIA" in name_u:
-                vendor = "NVIDIA"
-                vendor_color = "#76b900"
-            elif "AMD" in name_u or "RADEON" in name_u:
-                vendor = "AMD"
-                vendor_color = "#ff4444"
-            elif "INTEL" in name_u or "ARC" in name_u:
-                vendor = "INTEL"
-                vendor_color = "#0071c5"
+    """Windows display adapters (iGPU included) via WMI."""
+    return gpu_layer.probe_wmi()
 
-            gpus.append({
-                "index": idx,
-                "name": name,
-                "vendor": vendor,
-                "vendor_color": vendor_color,
-                "vram_total_mb": tot_mb,
-                "vram_used_mb": 0.0,
-                "vram_free_mb": tot_mb,
-                "vram_total_gb": round(tot_mb / 1024, 1),
-                "vram_used_gb": 0.0,
-                "vram_free_gb": round(tot_mb / 1024, 1),
-                "vram_pct": 0.0,
-                "driver_version": driver,
-                "compute_cap": "DirectX/WMI",
-                "compute_capability": "DirectX/WMI",
-                "gpu_util_pct": 0.0,
-                "temp_c": 40.0,
-                "power_draw_w": 0.0,
-                "power_limit_w": 0.0,
-            })
-        return gpus
-    except Exception as exc:
-        log.warning("_query_wmi_gpus error: %s", exc)
-        return []
+
+# ---------------------------------------------------------------- report
+
+def _resolve(name: str, default):
+    """Resolve a probe through core.training_handler so patches apply."""
+    th = sys.modules.get("core.training_handler")
+    return getattr(th, name, default) if th else default
+
+
+def _multi_gpu_strategy(gpus: list[dict]) -> str:
+    if len(gpus) < 2:
+        return "device_map single"
+    names = {g.get("name") for g in gpus}
+    vrams = {round(g.get("vram_total_gb", g.get("vram_gb", 0)), 1) for g in gpus}
+    if len(names) == 1 and len(vrams) == 1:
+        return "DDP data parallel (device_map auto per modelli grandi)"
+    return "device_map auto — model parallel (GPU eterogenee: DDP non applicabile)"
 
 
 def get_hardware_info() -> dict:
-    th = sys.modules.get("core.training_handler")
-    fn_torch = getattr(th, "_check_torch_cuda", _check_torch_cuda)
-    fn_smi = getattr(th, "_query_nvidia_smi", _query_nvidia_smi)
-    fn_wmi = getattr(th, "_query_wmi_gpus", _query_wmi_gpus)
+    """Full hardware snapshot: GPUs, CPU, RAM, disk, capabilities, auto-tune."""
+    fn_torch = _resolve("_check_torch_cuda", _check_torch_cuda)
+    fn_smi = _resolve("_query_nvidia_smi", _query_nvidia_smi)
+    fn_rocm = _resolve("_query_rocm_smi", _query_rocm_smi)
+    fn_wmi = _resolve("_query_wmi_gpus", _query_wmi_gpus)
 
     torch_info = fn_torch()
     smi_gpus = fn_smi()
+    rocm_gpus = fn_rocm()
     wmi_gpus = fn_wmi()
 
-    # Merge GPUs: 1) Non-NVIDIA GPUs from WMI (AMD iGPU, Intel, etc.)
-    gpus = [g.copy() for g in wmi_gpus if g.get("vendor", "").upper() != "NVIDIA" and "NVIDIA" not in g.get("name", "").upper()]
+    def is_nvidia(g: dict) -> bool:
+        return g.get("vendor", "").upper() == "NVIDIA" or "NVIDIA" in g.get("name", "").upper()
 
-    # 2) Dedicated NVIDIA GPUs from nvidia-smi (live telemetry)
+    # 1) non-NVIDIA adapters seen only by WMI (Intel/AMD iGPU) …
+    gpus = [g.copy() for g in wmi_gpus
+            if not is_nvidia(g) and not any(
+                g.get("name", "").upper() == r.get("name", "").upper() for r in rocm_gpus)]
+    # 2) … AMD cards with live ROCm telemetry …
+    gpus.extend(g.copy() for g in rocm_gpus)
+    # 3) … NVIDIA cards with live nvidia-smi telemetry (fallback: WMI) …
     if smi_gpus:
-        gpus.extend([g.copy() for g in smi_gpus])
+        gpus.extend(g.copy() for g in smi_gpus)
     else:
-        # Fallback to WMI for NVIDIA if nvidia-smi is not available
-        gpus.extend([g.copy() for g in wmi_gpus if g.get("vendor", "").upper() == "NVIDIA" or "NVIDIA" in g.get("name", "").upper()])
-
-    # 3) Fallback to PyTorch list if still empty
+        gpus.extend(g.copy() for g in wmi_gpus if is_nvidia(g))
+    # 4) … last resort: whatever torch enumerated.
     if not gpus and torch_info.get("torch_gpu_list"):
-        gpus = [g.copy() for g in torch_info.get("torch_gpu_list")]
+        gpus = [g.copy() for g in torch_info["torch_gpu_list"]]
 
-    # Re-index GPUs cleanly 0..N-1
     for idx, g in enumerate(gpus):
         g["index"] = idx
+        g.setdefault("vram_total_gb", round(g.get("vram_total_mb", 0) / 1024, 1))
 
     gpu_count = len(gpus)
     total_vram = sum(g.get("vram_total_gb", g.get("vram_gb", 0)) for g in gpus)
+    trainable = [g for g in gpus if g.get("trainable")]
 
-    # Detailed System (CPU / RAM / Disk) via psutil
+    # Capabilities + auto-tune come from the live accelerator layer.
+    try:
+        report = gpu_layer.get_accelerator_report()
+        capabilities = report["capabilities"]
+        backend = report["backend"]
+        autotune = gpu_layer.recommend_training_config(report=report)
+    except Exception as exc:                                    # pragma: no cover
+        log.warning("capability report: %s", exc)
+        capabilities, backend, autotune = {}, "cpu", {}
+
+    # System (CPU / RAM / disk)
     try:
         import psutil
         vm = psutil.virtual_memory()
-        ram_total = round(vm.total / (1024**3), 1)
-        ram_used = round(vm.used / (1024**3), 1)
-        ram_free = round(vm.available / (1024**3), 1)
-        ram_pct = round(vm.percent, 1)
+        ram_total, ram_used = round(vm.total / (1024 ** 3), 1), round(vm.used / (1024 ** 3), 1)
+        ram_free, ram_pct = round(vm.available / (1024 ** 3), 1), round(vm.percent, 1)
         cpu_util = round(psutil.cpu_percent(interval=None), 1)
         cpu_logical = psutil.cpu_count(logical=True) or os.cpu_count() or 4
         cpu_physical = psutil.cpu_count(logical=False) or cpu_logical
-
-        disk = psutil.disk_usage("/")
-        disk_total = round(disk.total / (1024**3), 1)
-        disk_used = round(disk.used / (1024**3), 1)
-        disk_pct = round(disk.percent, 1)
+        disk = psutil.disk_usage(os.path.abspath(os.sep))
+        disk_total, disk_used, disk_pct = (round(disk.total / (1024 ** 3), 1),
+                                          round(disk.used / (1024 ** 3), 1),
+                                          round(disk.percent, 1))
     except Exception:
         ram_total, ram_used, ram_free, ram_pct = 16.0, 4.0, 12.0, 25.0
         cpu_util, cpu_logical, cpu_physical = 10.0, os.cpu_count() or 4, 4
@@ -265,8 +150,17 @@ def get_hardware_info() -> dict:
         "hardware": {
             "gpu": gpus,
             "gpu_count": gpu_count,
+            "backend": backend,
+            "capabilities": capabilities,
+            "autotune": autotune,
+            "trainable_gpu_count": len(trainable),
             "torch_available": torch_info.get("torch_available", False),
             "cuda_available": torch_info.get("cuda_available", False),
+            "torch_version": torch_info.get("torch_version"),
+            "cuda_version": torch_info.get("torch_cuda_version"),
+            "hip_version": torch_info.get("hip_version"),
+            "cudnn_version": torch_info.get("cudnn_version"),
+            "arch_list": torch_info.get("arch_list", []),
             "cpu_count": cpu_logical,
             "ram_gb": ram_total,
             "ram_used_gb": ram_used,
@@ -290,47 +184,89 @@ def get_hardware_info() -> dict:
                 "available": gpu_count > 1,
                 "gpu_count": gpu_count,
                 "total_vram_gb": total_vram,
-                "strategy": "device_map auto",
+                "strategy": _multi_gpu_strategy(gpus),
             },
             "cuda_fix": {
                 "has_issue": not torch_info.get("cuda_available", False) and gpu_count == 0,
+                "torch_error": torch_info.get("cuda_error"),
+                "hint": _cuda_hint(torch_info, gpus),
             },
         },
     }
 
 
-def restart_ollama_service() -> dict:
-    """Restart Ollama service or unload models to free VRAM."""
-    messages = []
-    
-    # 1. Clear PyTorch CUDA cache if available
-    try:
-        import torch
-        if torch.cuda.is_available():
-            torch.cuda.empty_cache()
-            messages.append("Cache PyTorch CUDA svuotata")
-    except Exception:
-        pass
+def _cuda_hint(torch_info: dict, gpus: list[dict]) -> str:
+    """Actionable diagnosis when torch cannot use the GPUs that are present."""
+    if torch_info.get("cuda_available"):
+        arch_list = torch_info.get("arch_list") or []
+        missing = [g for g in gpus
+                   if g.get("sm") and arch_list and g["sm"] not in arch_list]
+        if missing:
+            names = ", ".join(f"{g['name']} ({g['sm']})" for g in missing)
+            return (f"PyTorch non è compilato per {names}. Installa una build che includa "
+                    f"quell'architettura (build attuali: {', '.join(arch_list)}).")
+        return ""
+    if not torch_info.get("torch_available"):
+        return "PyTorch non installato: pip install torch --index-url https://download.pytorch.org/whl/cu128"
+    if gpus and any(g.get("vendor") == "NVIDIA" for g in gpus):
+        return ("GPU NVIDIA rilevata ma CUDA non disponibile in PyTorch: probabilmente è "
+                "installata la build CPU. Reinstalla torch con l'indice cu128.")
+    if torch_info.get("directml_available"):
+        return "Nessuna CUDA: verrà usato DirectML (GPU AMD/Intel su Windows)."
+    return "Nessun acceleratore disponibile: il training userà la CPU."
 
-    # 2. Try Ollama CLI stop / model unload
+
+def get_hardware_status() -> dict:
+    return get_hardware_info()
+
+
+def get_gpu_capabilities() -> dict:
+    """Capabilities + per-GPU detail + auto-tune recipe (API endpoint payload)."""
+    report = gpu_layer.get_accelerator_report(refresh=True)
+    return {
+        "success": True,
+        "backend": report["backend"],
+        "capabilities": report["capabilities"],
+        "gpus": report["gpus"],
+        "trainable_gpus": report["trainable_gpus"],
+        "total_vram_gb": report["total_vram_gb"],
+        "torch": report["torch"],
+    }
+
+
+def get_autotune(method: str = "lora_unsloth", base_model: str = "",
+                 seq_len: int = 2048) -> dict:
+    """Recommended training settings for a given model/method on this rig."""
+    return {
+        "success": True,
+        "method": method,
+        "base_model": base_model,
+        "config": gpu_layer.recommend_training_config(method, base_model, seq_len),
+    }
+
+
+def restart_ollama_service() -> dict:
+    """Free VRAM: empty the torch caches and unload Ollama models."""
+    messages = []
+
+    res = gpu_layer.empty_cache()
+    if res.get("freed"):
+        messages.append(f"Cache {'/'.join(res['freed'])} svuotata")
+
     ollama_bin = shutil.which("ollama")
     if ollama_bin:
         try:
-            res = subprocess.run([ollama_bin, "stop"], capture_output=True, text=True, timeout=10)
+            subprocess.run([ollama_bin, "stop"], capture_output=True, text=True, timeout=10)
             messages.append("Servizio/Modelli Ollama arrestati con successo")
         except Exception as exc:
             log.warning("Ollama stop command: %s", exc)
 
-    # 3. HTTP Request to Ollama unload endpoint if Ollama server is running
     try:
         import requests
-        requests.post("http://localhost:11434/api/generate", json={"model": "", "keep_alive": 0}, timeout=2)
+        requests.post("http://localhost:11434/api/generate",
+                      json={"model": "", "keep_alive": 0}, timeout=2)
     except Exception:
         pass
 
     msg = " • ".join(messages) if messages else "VRAM liberata e cache resettata con successo."
     return {"success": True, "message": msg}
-
-
-def get_hardware_status() -> dict:
-    return get_hardware_info()

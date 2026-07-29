@@ -201,21 +201,40 @@ export default function TrainingMonitor({ onAddToast }) {
     }
   }, [logs, autoScroll]);
 
-  const handleStart = async (jobId) => {
+  const handleStart = async (jobId, totalSteps = null) => {
     try {
       const res = await fetch('/api/training/job/start', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ job_id: jobId }),
+        body: JSON.stringify({ job_id: jobId, ...(totalSteps ? { total_steps: totalSteps } : {}) }),
       });
       const data = await res.json();
       if (data.success) {
-        onAddToast && onAddToast('🚀 Training avviato!', 'success');
+        onAddToast && onAddToast(
+          totalSteps ? `▶ Ripreso dal checkpoint fino a ${totalSteps} step` : '🚀 Training avviato!',
+          'success');
         loadJobs();
       } else {
         onAddToast && onAddToast(`Errore: ${data.error}`, 'error');
       }
     } catch (e) {}
+  };
+
+  // Un run FWE riparte dal proprio checkpoint: per proseguire basta alzare il
+  // totale degli step (col totale attuale il ciclo sarebbe vuoto).
+  const handleContinue = (job) => {
+    const current = Number(job.hyperparams?.fwe_steps || job.total_steps || 0);
+    const answer = prompt(
+      `Il job è a ${current} step. Fino a quanti step vuoi continuare?\n` +
+      `(riprende dal checkpoint, non ricomincia)`,
+      String(current + 600));
+    if (!answer) return;
+    const target = parseInt(answer, 10);
+    if (!Number.isFinite(target) || target <= current) {
+      onAddToast && onAddToast(`Indica un totale maggiore di ${current}`, 'warning');
+      return;
+    }
+    handleStart(job.id, target);
   };
 
   const handleStop = async (jobId) => {
@@ -456,6 +475,16 @@ export default function TrainingMonitor({ onAddToast }) {
                 {selectedJob.status === 'running' && (
                   <button className="training-btn danger" onClick={() => handleStop(selectedJob.id)}>
                     <Square size={12} /> Stop
+                  </button>
+                )}
+                {selectedJob.method === 'fwe_gradus'
+                  && ['completed', 'stopped', 'failed'].includes(selectedJob.status) && (
+                  <button
+                    className="training-btn"
+                    title="Riprende dal checkpoint del generatore e prosegue fino a un totale maggiore"
+                    onClick={() => handleContinue(selectedJob)}
+                  >
+                    <Play size={12} /> Continua
                   </button>
                 )}
                 {selectedJob.status === 'completed' && (

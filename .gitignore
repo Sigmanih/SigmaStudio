@@ -79,6 +79,9 @@ tasks.json
 
 # Training job outputs (personal/study specific)
 training/jobs/*
+
+# Backbone AILO del motore Gradus (~600 MB, scaricato al primo run)
+training/backbones/
 !training/jobs/.gitkeep
 
 # Temporary/downloaded user test datasets

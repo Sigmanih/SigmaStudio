@@ -37,6 +37,16 @@ const METHODS = [
     isFinetune: false,
   },
   {
+    id: 'fwe_gradus',
+    name: 'FWE',
+    fullName: 'Gradus — Functional Weight Engine',
+    desc: 'Compressione',
+    req: 'Genera i pesi, non li salva',
+    color: '#3fb950',
+    icon: '🧬',
+    isFinetune: false,
+  },
+  {
     id: 'script_custom',
     name: 'Custom',
     fullName: 'Script Custom',
@@ -46,6 +56,13 @@ const METHODS = [
     icon: '🛠️',
     isFinetune: true,
   },
+];
+
+// Modelli target supportati dal motore FWE (architettura Qwen2 manuale)
+const FWE_MODELS = [
+  'qwen0.5b-instruct',
+  'qwen0.5b',
+  'qwen1.5b',
 ];
 
 
@@ -128,6 +145,28 @@ export default function TrainingConfigurator({ myDatasets, selectedDatasetId: pr
   const [dependencies, setDependencies] = useState(null);
   const [checkingDeps, setCheckingDeps] = useState(false);
 
+  // Auto-tune calcolato dal backend sull'hardware reale
+  const [autotune, setAutotune] = useState(null);
+  const [autoApplied, setAutoApplied] = useState(false);
+
+  // Gradus FWE
+  const [fweInfo, setFweInfo] = useState(null);
+  const [fwe, setFwe] = useState({
+    fwe_include: '_proj',
+    fwe_block_size: 32,
+    fwe_latent_dim: 64,
+    fwe_steps: 600,
+    fwe_vq: 512,
+    fwe_dataset: 'wikitext',
+    fwe_max_layers: -1,
+    fwe_save_every: 25,
+    fwe_devices: '',
+  });
+  const [selftest, setSelftest] = useState(null);
+  const [runningSelftest, setRunningSelftest] = useState(false);
+
+  const isFwe = method === 'fwe_gradus';
+
   // Load Ollama models and Hardware info
   useEffect(() => {
     fetch('/api/ollama_models')
@@ -166,6 +205,74 @@ export default function TrainingConfigurator({ myDatasets, selectedDatasetId: pr
       .finally(() => setCheckingDeps(false));
   }, [method]);
 
+  // Auto-tune: chiede al backend la ricetta ottimale per hardware + modello + metodo
+  useEffect(() => {
+    const model = (useCustomModel ? customModel : baseModel).trim();
+    if (!model) return;
+    const params = new URLSearchParams({ method, base_model: model, seq_len: String(maxSeqLen) });
+    const timer = setTimeout(() => {
+      fetch(`/api/training/gpu/autotune?${params}`)
+        .then(r => r.json())
+        .then(d => { if (d.success) { setAutotune(d.config); setAutoApplied(false); } })
+        .catch(() => setAutotune(null));
+    }, 250);
+    return () => clearTimeout(timer);
+  }, [method, baseModel, customModel, useCustomModel, maxSeqLen]);
+
+  // Stato del motore Gradus + default per questa GPU
+  useEffect(() => {
+    if (!isFwe || fweInfo) return;
+    fetch('/api/training/fwe/status')
+      .then(r => r.json())
+      .then(d => {
+        if (!d.success) return;
+        setFweInfo(d);
+        const def = d.defaults || {};
+        setFwe(prev => ({
+          ...prev,
+          fwe_include: def.fwe_include ?? prev.fwe_include,
+          fwe_latent_dim: def.fwe_latent_dim ?? prev.fwe_latent_dim,
+          fwe_steps: def.fwe_steps ?? prev.fwe_steps,
+          fwe_vq: def.fwe_vq ?? prev.fwe_vq,
+          fwe_devices: def.fwe_devices ?? prev.fwe_devices,
+        }));
+        if (def.batch_size) setBatchSize(def.batch_size);
+        if (def.learning_rate) setLr(def.learning_rate);
+        if (!FWE_MODELS.includes(baseModel)) setBaseModel(def.base_model || FWE_MODELS[0]);
+      })
+      .catch(() => {});
+  }, [isFwe]);
+
+  const applyAutotune = () => {
+    if (!autotune) return;
+    setBatchSize(autotune.batch_size);
+    setGradAccum(autotune.gradient_accumulation);
+    setAutoApplied(true);
+    addToast && addToast('Iperparametri allineati alla ricetta hardware', 'success');
+  };
+
+  const runSelftest = async (brick) => {
+    setRunningSelftest(true);
+    setSelftest(null);
+    try {
+      const res = await fetch('/api/training/fwe/selftest', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ brick, device: 'auto', steps: 150 }),
+      });
+      const d = await res.json();
+      setSelftest(d);
+      addToast && addToast(
+        d.passed ? `✅ Gradient-check brick ${brick} superato (${d.elapsed_s}s)`
+                 : `❌ Gradient-check brick ${brick} fallito`,
+        d.passed ? 'success' : 'error');
+    } catch {
+      addToast && addToast('Errore durante il self-test del motore', 'error');
+    } finally {
+      setRunningSelftest(false);
+    }
+  };
+
   // Auto-detect text_field from selected dataset
   useEffect(() => {
     if (selectedDatasetId && myDatasets) {
@@ -194,7 +301,8 @@ export default function TrainingConfigurator({ myDatasets, selectedDatasetId: pr
       addToast && addToast('Seleziona un modello base', 'error');
       return;
     }
-    if (!selectedDatasetId) {
+    // Il motore FWE usa il proprio corpus (wikitext / interno): nessun dataset richiesto
+    if (!selectedDatasetId && !isFwe) {
       addToast && addToast('Seleziona un dataset prima di avviare il training', 'warning');
       return;
     }
@@ -205,7 +313,7 @@ export default function TrainingConfigurator({ myDatasets, selectedDatasetId: pr
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           base_model: finalModel.trim(),
-          dataset_id: selectedDatasetId,
+          dataset_id: selectedDatasetId || '',
           method,
           output_name: outputName || 'sigma_model',
           hyperparams: {
@@ -217,6 +325,7 @@ export default function TrainingConfigurator({ myDatasets, selectedDatasetId: pr
             lora_alpha: loraAlpha,
             gradient_accumulation: gradAccum,
             text_field: textField,
+            ...(isFwe ? fwe : {}),
           },
         }),
       });
@@ -227,14 +336,13 @@ export default function TrainingConfigurator({ myDatasets, selectedDatasetId: pr
       } else {
         addToast && addToast(`Errore: ${data.error}`, 'error');
       }
-    } catch (e) {
+    } catch {
       addToast && addToast('Errore di rete', 'error');
     } finally {
       setCreating(false);
     }
   };
 
-  const allModels = [...new Set([...POPULAR_MODELS, ...ollamaModels])];
 
   return (
     <div className="training-panel">
@@ -290,7 +398,99 @@ export default function TrainingConfigurator({ myDatasets, selectedDatasetId: pr
               marginTop: '8px', padding: '8px 12px', background: 'rgba(255,112,67,0.05)',
               border: '1px solid rgba(255,112,67,0.12)', borderRadius: '8px', fontSize: '0.62rem', color: 'var(--text-dim)'
             }}>
-              🛠️ <strong style={{ color: '#ff7043' }}>Modalità Custom</strong> — Sigma genera un template Python che puoi modificare prima di avviare.
+              🛠️ <strong style={{ color: '#ff7043' }}>Modalità Custom</strong> — Sigma genera un template Python (con preambolo CUDA già pronto: DEVICE, DTYPE, TUNE) che puoi modificare prima di avviare.
+            </div>
+          )}
+          {/* Stato dipendenze del metodo scelto */}
+          {(checkingDeps || dependencies) && (
+            <div style={{
+              marginTop: '8px', padding: '6px 12px', borderRadius: '8px',
+              fontSize: '0.6rem', display: 'flex', alignItems: 'center', gap: '8px',
+              background: dependencies?.all_installed ? 'rgba(63,185,80,0.05)' : 'rgba(255,166,0,0.05)',
+              border: `1px solid ${dependencies?.all_installed ? 'rgba(63,185,80,0.15)' : 'rgba(255,166,0,0.15)'}`,
+              color: 'var(--text-dim)',
+            }}>
+              {checkingDeps ? (
+                <span>Verifica dipendenze…</span>
+              ) : dependencies?.all_installed ? (
+                <span style={{ color: 'var(--success)' }}>
+                  ✓ Dipendenze installate: {dependencies.dependencies.join(', ') || 'nessuna richiesta'}
+                </span>
+              ) : (
+                <>
+                  <span style={{ color: 'var(--warning)' }}>
+                    ⚠️ Mancano: {dependencies.missing.join(', ')}
+                  </span>
+                  <code style={{
+                    fontFamily: 'JetBrains Mono', color: 'var(--primary)',
+                    fontSize: '0.56rem', marginLeft: 'auto',
+                  }}>
+                    {dependencies.install_command}
+                  </code>
+                </>
+              )}
+            </div>
+          )}
+
+          {isFwe && (
+            <div style={{
+              marginTop: '8px', padding: '10px 14px',
+              background: 'rgba(63,185,80,0.06)', border: '1px solid rgba(63,185,80,0.2)',
+              borderRadius: '10px', fontSize: '0.65rem', color: 'var(--text-dim)', lineHeight: 1.6
+            }}>
+              <div style={{ color: '#3fb950', fontWeight: 700, marginBottom: '4px' }}>
+                🧬 Gradus — Functional Weight Engine
+              </div>
+              I pesi del modello non vengono <strong>memorizzati</strong> ma <strong>generati</strong>:
+              un decoder AILO da 152M congelato, guidato da un codebook VQ e dalle coordinate
+              semantiche del blocco (tipo di tensore, layer, posizione), produce i blocchi di pesi
+              su richiesta. Il payload per-modello scende a ~0.5 MB.
+              <ul style={{ margin: '6px 0 0 14px', padding: 0, fontSize: '0.6rem' }}>
+                <li>Obiettivo <strong>task-fidelity</strong>: mantenere la perplexity, non copiare i pesi</li>
+                <li>Motore con forward e backward <strong>scritti a mano</strong> (nessun autograd), percorsi CUDA ottimizzati</li>
+                <li>Checkpoint automatico: i run lunghi riprendono dopo un riavvio</li>
+              </ul>
+              {fweInfo?.engine && !fweInfo.engine.available && (
+                <div style={{ marginTop: '6px', color: 'var(--warning)' }}>
+                  ⚠️ Motore non disponibile — mancano: {fweInfo.engine.missing.join(', ')}
+                </div>
+              )}
+              {fweInfo?.engine?.backbone && (
+                <div style={{ marginTop: '6px', fontSize: '0.6rem' }}>
+                  {fweInfo.engine.backbone.ready ? (
+                    <span style={{ color: 'var(--success)' }}>
+                      ✓ Decoder AILO pronto ({fweInfo.engine.backbone.size_mb} MB)
+                    </span>
+                  ) : (
+                    <span style={{ color: 'var(--warning)' }}>
+                      ⓘ Decoder AILO non ancora scaricato: al primo avvio Sigma preleva
+                      ~600 MB da <code style={{ fontFamily: 'JetBrains Mono' }}>{fweInfo.engine.backbone.repo_id}</code>{' '}
+                      (una sola volta, riusato da tutti i job).
+                    </span>
+                  )}
+                </div>
+              )}
+              <div style={{ display: 'flex', gap: '6px', marginTop: '8px', flexWrap: 'wrap' }}>
+                {[1, 2, 3].map(b => (
+                  <button
+                    key={b}
+                    onClick={() => runSelftest(b)}
+                    disabled={runningSelftest}
+                    style={{
+                      padding: '3px 9px', borderRadius: '6px', cursor: 'pointer',
+                      border: '1px solid rgba(63,185,80,0.25)', background: 'rgba(63,185,80,0.06)',
+                      color: '#3fb950', fontSize: '0.58rem',
+                    }}
+                  >
+                    {runningSelftest ? '…' : `Gradient-check ${b}`}
+                  </button>
+                ))}
+                {selftest && (
+                  <span style={{ fontSize: '0.58rem', color: selftest.passed ? 'var(--success)' : 'var(--danger)', alignSelf: 'center' }}>
+                    {selftest.passed ? '✅' : '❌'} brick {selftest.brick} · {selftest.elapsed_s}s
+                  </span>
+                )}
+              </div>
             </div>
           )}
 
@@ -340,13 +540,21 @@ export default function TrainingConfigurator({ myDatasets, selectedDatasetId: pr
                     value={baseModel}
                     onChange={e => setBaseModel(e.target.value)}
                   >
-                    <optgroup label="🤗 HuggingFace (Unsloth optimized)">
-                      {POPULAR_MODELS.map(m => <option key={m} value={m}>{m}</option>)}
-                    </optgroup>
-                    {ollamaModels.length > 0 && (
-                      <optgroup label="🦙 Ollama (locale)">
-                        {ollamaModels.map(m => <option key={`ollama:${m}`} value={m}>{m}</option>)}
+                    {isFwe ? (
+                      <optgroup label="🧬 Target FWE (architettura Qwen2)">
+                        {FWE_MODELS.map(m => <option key={m} value={m}>{m}</option>)}
                       </optgroup>
+                    ) : (
+                      <>
+                        <optgroup label="🤗 HuggingFace (Unsloth optimized)">
+                          {POPULAR_MODELS.map(m => <option key={m} value={m}>{m}</option>)}
+                        </optgroup>
+                        {ollamaModels.length > 0 && (
+                          <optgroup label="🦙 Ollama (locale)">
+                            {ollamaModels.map(m => <option key={`ollama:${m}`} value={m}>{m}</option>)}
+                          </optgroup>
+                        )}
+                      </>
                     )}
                   </select>
                 </div>
@@ -370,14 +578,24 @@ export default function TrainingConfigurator({ myDatasets, selectedDatasetId: pr
           <div className="training-section-header">
             <Database size={14} />
             <h3>Dataset</h3>
-            {selectedDs && (
+            {selectedDs && !isFwe && (
               <span className="training-section-sub">
                 ✓ {selectedDs.name}
                 {selectedDs.row_count && ` (${selectedDs.row_count.toLocaleString()} esempi)`}
               </span>
             )}
           </div>
-          {(!myDatasets || myDatasets.length === 0) ? (
+          {isFwe ? (
+            <div style={{
+              padding: '12px 14px', background: 'rgba(63,185,80,0.05)',
+              border: '1px solid rgba(63,185,80,0.15)', borderRadius: '10px',
+              fontSize: '0.65rem', color: 'var(--text-dim)', lineHeight: 1.6,
+            }}>
+              Il motore FWE non fa fine-tuning su un dataset di istruzioni: comprime i pesi
+              del modello target e misura la <strong>perplexity su testo held-out</strong>.
+              Il corpus si sceglie nella sezione <em>Motore FWE</em> qui sotto.
+            </div>
+          ) : (!myDatasets || myDatasets.length === 0) ? (
             <div style={{
               padding: '14px', background: 'rgba(255,166,0,0.05)', border: '1px solid rgba(255,166,0,0.15)',
               borderRadius: '10px', fontSize: '0.68rem', color: 'var(--warning)', display: 'flex', gap: '8px'
@@ -437,6 +655,160 @@ export default function TrainingConfigurator({ myDatasets, selectedDatasetId: pr
 
         <div className="training-divider" />
 
+        {/* ── Auto-tune hardware ── */}
+        {autotune && (
+          <div style={{
+            marginBottom: '20px', padding: '12px 14px',
+            background: 'rgba(0,210,255,0.04)', border: '1px solid rgba(0,210,255,0.15)',
+            borderRadius: '10px', fontSize: '0.64rem', color: 'var(--text-dim)', lineHeight: 1.6,
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px' }}>
+              <span style={{ color: 'var(--primary)', fontWeight: 700 }}>⚙️ Ricetta hardware</span>
+              <span style={{ fontSize: '0.58rem', opacity: 0.7 }}>
+                {autotune.gpu_names?.length ? autotune.gpu_names.join(' + ') : 'CPU'}
+              </span>
+              <button
+                onClick={applyAutotune}
+                disabled={autoApplied}
+                style={{
+                  marginLeft: 'auto', padding: '3px 10px', borderRadius: '6px',
+                  border: '1px solid rgba(0,210,255,0.3)',
+                  background: autoApplied ? 'transparent' : 'rgba(0,210,255,0.08)',
+                  color: autoApplied ? 'var(--text-dark)' : 'var(--primary)',
+                  fontSize: '0.58rem', cursor: autoApplied ? 'default' : 'pointer',
+                }}
+              >
+                {autoApplied ? '✓ Applicata' : 'Applica ai parametri'}
+              </button>
+            </div>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginBottom: '6px' }}>
+              {[
+                ['dtype', autotune.dtype],
+                ['attention', autotune.attn_implementation],
+                ['optimizer', autotune.optim],
+                ['batch', `${autotune.batch_size} × ${autotune.gradient_accumulation} = ${autotune.effective_batch}`],
+                ['strategia', autotune.strategy],
+                autotune.load_in_4bit ? ['quantizzazione', '4-bit NF4'] : null,
+                autotune.tf32 ? ['TF32', 'on'] : null,
+                autotune.gradient_checkpointing ? ['grad checkpoint', 'on'] : null,
+              ].filter(Boolean).map(([k, v]) => (
+                <span key={k} style={{
+                  padding: '2px 8px', borderRadius: '6px', background: 'rgba(255,255,255,0.03)',
+                  border: '1px solid rgba(255,255,255,0.06)', fontFamily: 'JetBrains Mono',
+                  fontSize: '0.56rem', color: 'var(--text)',
+                }}>
+                  {k}: <span style={{ color: 'var(--primary)' }}>{String(v)}</span>
+                </span>
+              ))}
+            </div>
+            {autotune.notes?.map((n, i) => (
+              <div key={i} style={{ fontSize: '0.58rem', opacity: 0.8 }}>• {n}</div>
+            ))}
+          </div>
+        )}
+
+        {/* ── Parametri FWE ── */}
+        {isFwe && (
+          <div style={{ marginBottom: '20px' }}>
+            <div className="training-section-header">
+              <Sliders size={14} />
+              <h3>Motore FWE</h3>
+              {fweInfo?.defaults?.note && (
+                <span className="training-section-sub">{fweInfo.defaults.note}</span>
+              )}
+            </div>
+            <div className="training-config-grid">
+              <div className="training-field" style={{ gridColumn: '1 / -1' }}>
+                <label>Tensori da comprimere</label>
+                <div className="training-field-desc">Più copertura = più compressione, ma run molto più lunghi</div>
+                <div className="training-select-wrapper">
+                  <select
+                    className="training-select"
+                    value={fwe.fwe_include}
+                    onChange={e => setFwe({ ...fwe, fwe_include: e.target.value })}
+                  >
+                    {(fweInfo?.targets || []).map(t => (
+                      <option key={t.id} value={t.id}>{t.label} — {t.desc}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+              <div className="training-field">
+                <label>Corpus di valutazione</label>
+                <div className="training-field-desc">La perplexity si misura su testo held-out</div>
+                <div className="training-select-wrapper">
+                  <select
+                    className="training-select"
+                    value={fwe.fwe_dataset}
+                    onChange={e => setFwe({ ...fwe, fwe_dataset: e.target.value })}
+                  >
+                    {(fweInfo?.datasets || []).map(d => (
+                      <option key={d.id} value={d.id}>{d.label} — {d.desc}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+              <HyperParam
+                label="Codebook VQ (K atomi)"
+                desc="0 = latent liberi (non comprimono). K basso = più compressione"
+                value={fwe.fwe_vq}
+                min={0} max={2048} step={64}
+                onChange={v => setFwe({ ...fwe, fwe_vq: v })}
+              />
+              <HyperParam
+                label="Dimensione blocco"
+                desc="Lato del blocco quadrato di pesi generato"
+                value={fwe.fwe_block_size}
+                min={16} max={64} step={16}
+                onChange={v => setFwe({ ...fwe, fwe_block_size: v })}
+              />
+              <HyperParam
+                label="Latent dim"
+                desc="Dimensione dell'atomo del codebook"
+                value={fwe.fwe_latent_dim}
+                min={16} max={256} step={16}
+                onChange={v => setFwe({ ...fwe, fwe_latent_dim: v })}
+              />
+              <HyperParam
+                label="Step di training"
+                desc="Checkpoint automatico ogni 25 step"
+                value={fwe.fwe_steps}
+                min={50} max={5000} step={50}
+                onChange={v => setFwe({ ...fwe, fwe_steps: v })}
+              />
+            </div>
+
+            {fweInfo?.defaults?.multi_gpu_available && (
+              <div
+                onClick={() => setFwe({ ...fwe, fwe_devices: fwe.fwe_devices ? '' : 'all' })}
+                style={{
+                  marginTop: '10px', padding: '10px 14px', cursor: 'pointer',
+                  borderRadius: '10px', fontSize: '0.64rem', lineHeight: 1.6,
+                  border: `1px solid ${fwe.fwe_devices ? 'rgba(63,185,80,0.25)' : 'rgba(255,255,255,0.06)'}`,
+                  background: fwe.fwe_devices ? 'rgba(63,185,80,0.06)' : 'rgba(255,255,255,0.02)',
+                  color: 'var(--text-dim)',
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <span style={{ fontSize: '0.85rem' }}>{fwe.fwe_devices ? '☑' : '☐'}</span>
+                  <strong style={{ color: fwe.fwe_devices ? 'var(--success)' : 'var(--text)' }}>
+                    Dividi il generatore su tutte le GPU
+                  </strong>
+                  <span style={{ marginLeft: 'auto', fontSize: '0.58rem', opacity: 0.7 }}>
+                    {fweInfo.defaults.gpu_names?.join(' + ')}
+                  </span>
+                </div>
+                <div style={{ marginTop: '4px', fontSize: '0.58rem', opacity: 0.85 }}>
+                  Il generatore è il 94% del tempo ed è indipendente blocco per blocco.
+                  Le fette sono proporzionali alla throughput <em>misurata</em> di ogni
+                  scheda, quindi funziona anche con GPU di potenza diversa (dove DDP
+                  non sarebbe applicabile). Misurato su questo rig: <strong>1,45×</strong>.
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
         {/* ── Base Hyperparams ── */}
         <div style={{ marginBottom: '20px' }}>
           <div className="training-section-header">
@@ -444,16 +816,18 @@ export default function TrainingConfigurator({ myDatasets, selectedDatasetId: pr
             <h3>Iperparametri</h3>
           </div>
           <div className="training-config-grid">
+            {!isFwe && (
+              <HyperParam
+                label="Epoche"
+                desc="Quante volte passare sul dataset"
+                value={numEpochs}
+                min={1} max={20} step={1}
+                onChange={setNumEpochs}
+              />
+            )}
             <HyperParam
-              label="Epoche"
-              desc="Quante volte passare sul dataset"
-              value={numEpochs}
-              min={1} max={20} step={1}
-              onChange={setNumEpochs}
-            />
-            <HyperParam
-              label="Batch Size"
-              desc="Esempi per step GPU"
+              label={isFwe ? 'Sequenze per step' : 'Batch Size'}
+              desc={isFwe ? 'Batch grande = loss più stabile' : 'Esempi per step GPU'}
               value={batchSize}
               min={1} max={32} step={1}
               onChange={setBatchSize}
@@ -466,17 +840,21 @@ export default function TrainingConfigurator({ myDatasets, selectedDatasetId: pr
               onChange={setLr}
               display={v => v.toExponential(1)}
             />
-            <HyperParam
-              label="Contesto Max (token)"
-              desc="Lunghezza massima sequenza"
-              value={maxSeqLen}
-              min={512} max={8192} step={512}
-              onChange={setMaxSeqLen}
-              display={v => `${v}`}
-            />
+            {!isFwe && (
+              <HyperParam
+                label="Contesto Max (token)"
+                desc="Lunghezza massima sequenza"
+                value={maxSeqLen}
+                min={512} max={8192} step={512}
+                onChange={setMaxSeqLen}
+                display={v => `${v}`}
+              />
+            )}
           </div>
 
           {/* Advanced toggle */}
+          {!isFwe && method !== 'full_pretrain' && (
+          <>
           <button
             style={{
               display: 'flex', alignItems: 'center', gap: '6px', background: 'none',
@@ -514,6 +892,8 @@ export default function TrainingConfigurator({ myDatasets, selectedDatasetId: pr
               />
             </div>
           )}
+          </>
+          )}
         </div>
 
         <div className="training-divider" />
@@ -531,7 +911,7 @@ export default function TrainingConfigurator({ myDatasets, selectedDatasetId: pr
         </div>
 
         {/* ── Summary card ── */}
-        {finalModel && selectedDatasetId && (
+        {finalModel && (selectedDatasetId || isFwe) && (
           <div style={{
             background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.05)',
             borderRadius: '12px', padding: '14px', marginBottom: '16px', fontSize: '0.68rem',
@@ -540,16 +920,24 @@ export default function TrainingConfigurator({ myDatasets, selectedDatasetId: pr
             {[
               ['Metodo', METHODS.find(m => m.id === method)?.fullName],
               ['Base Model', finalModel],
-              ['Dataset', selectedDs?.name || selectedDatasetId],
-              ['Hardware Target', hardware?.gpu_count > 1 
-                ? `⚡ Multi-GPU (${hardware.gpu_count} Schede: ${hardware.multi_gpu?.total_vram_gb} GB VRAM - device_map='auto')`
-                : (hardware?.gpu?.[0]?.name ? `🎮 1 GPU (${hardware.gpu[0].name})` : '💻 CPU Mode')],
-              ['Epoche', numEpochs],
+              ['Dataset', isFwe
+                ? (fwe.fwe_dataset || 'corpus interno')
+                : (selectedDs?.name || selectedDatasetId)],
+              ['Hardware Target', isFwe && fwe.fwe_devices
+                ? `🎮 ${(fweInfo?.defaults?.gpu_names || []).join(' + ')} — sharding blocchi`
+                : (autotune?.gpu_names?.length
+                  ? `🎮 ${autotune.gpu_names.join(' + ')} — ${autotune.strategy}`
+                  : (hardware?.gpu?.[0]?.name ? `🎮 ${hardware.gpu[0].name}` : '💻 CPU Mode'))],
+              ['Precisione', autotune
+                ? `${autotune.dtype}${autotune.load_in_4bit ? ' + 4-bit' : ''}${autotune.tf32 ? ' + TF32' : ''}`
+                : '—'],
+              isFwe ? ['Tensori', fwe.fwe_include] : ['Epoche', numEpochs],
+              isFwe ? ['Step', fwe.fwe_steps] : ['Contesto', `${maxSeqLen} token`],
+              isFwe ? ['Codebook VQ', fwe.fwe_vq ? `K=${fwe.fwe_vq}` : 'latent liberi'] : null,
               ['Learning Rate', lr.toExponential(1)],
-              ['Batch Size', batchSize],
-              ['Contesto', `${maxSeqLen} token`],
+              ['Batch Size', `${batchSize}${!isFwe ? ` × ${gradAccum} accum` : ''}`],
               ['Output', outputName],
-            ].map(([k, v]) => (
+            ].filter(Boolean).map(([k, v]) => (
               <div key={k} style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px', padding: '3px 0', borderBottom: '1px solid rgba(255,255,255,0.03)' }}>
                 <span style={{ color: 'var(--text-dim)' }}>{k}</span>
                 <span style={{ color: 'var(--text)', fontFamily: 'JetBrains Mono', fontSize: '0.62rem' }}>{v}</span>
@@ -562,7 +950,7 @@ export default function TrainingConfigurator({ myDatasets, selectedDatasetId: pr
         <button
           className="training-start-btn"
           onClick={handleCreate}
-          disabled={creating || !finalModel.trim() || !selectedDatasetId}
+          disabled={creating || !finalModel.trim() || (!selectedDatasetId && !isFwe)}
         >
           {creating ? (
             <><div className="training-spinner" style={{ width: '16px', height: '16px', borderColor: 'rgba(0,0,0,0.2)', borderTopColor: '#000' }} /> Creazione Job...</>
@@ -571,9 +959,14 @@ export default function TrainingConfigurator({ myDatasets, selectedDatasetId: pr
           )}
         </button>
 
-        {!selectedDatasetId && (
+        {!selectedDatasetId && !isFwe && (
           <div style={{ textAlign: 'center', fontSize: '0.62rem', color: 'var(--text-dark)', marginTop: '8px' }}>
             Seleziona un dataset per abilitare il training
+          </div>
+        )}
+        {isFwe && (
+          <div style={{ textAlign: 'center', fontSize: '0.62rem', color: 'var(--text-dark)', marginTop: '8px' }}>
+            Il motore FWE usa il proprio corpus: nessun dataset richiesto
           </div>
         )}
 

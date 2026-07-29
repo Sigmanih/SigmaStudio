@@ -253,49 +253,10 @@ FastAPIHandlerAdapter.handle_research_decompose = handle_research_decompose
 FastAPIHandlerAdapter.handle_research_next_steps = handle_research_next_steps
 FastAPIHandlerAdapter.handle_research_start = handle_research_start
 
-from core.training_handler import (
-    search_hf_datasets, get_hf_dataset_info, import_local_dataset,
-    register_hf_dataset, list_datasets, delete_dataset, create_training_job,
-    start_training_job, stop_training_job, get_job_status, get_job_logs,
-    list_jobs, delete_job, export_to_ollama, get_hardware_info, get_featured_datasets
-)
-FastAPIHandlerAdapter.handle_training_list_datasets = lambda self: self.send_json_response(list_datasets())
-FastAPIHandlerAdapter.handle_training_dataset_search = lambda self: self.send_json_response(search_hf_datasets(self.read_json_body().get("query", "")))
-def _handle_hardware_restart_ollama(self):
-    from core.training_handler import restart_ollama_service
-    res = restart_ollama_service()
-    self.send_json_response(res)
-FastAPIHandlerAdapter.handle_hardware_restart_ollama = _handle_hardware_restart_ollama
+# Training Lab & Hardware Lab — definizione unica condivisa col server legacy
+from core.training_api import register_training_handlers
 
-def _handle_hardware_config(self):
-    body = self.read_json_body()
-    cfg = {}
-    if os.path.exists("config.json"):
-        try:
-            with open("config.json", "r", encoding="utf-8") as f:
-                cfg = json.load(f)
-        except Exception:
-            pass
-    hw_cfg = cfg.get("hardware", {})
-    hw_cfg.update({
-        "cuda_visible_devices": body.get("cuda_visible_devices", "0,1"),
-        "ollama_num_parallel": int(body.get("ollama_num_parallel", 4)),
-        "ollama_max_loaded_models": int(body.get("ollama_max_loaded_models", 2)),
-        "num_gpu_layers": int(body.get("num_gpu_layers", -1)),
-        "preferred_training_gpu": body.get("preferred_training_gpu", "cuda:0"),
-        "fp16_enabled": bool(body.get("fp16_enabled", True)),
-    })
-    cfg["hardware"] = hw_cfg
-    try:
-        with open("config.json", "w", encoding="utf-8") as f:
-            json.dump(cfg, f, indent=4)
-    except Exception as exc:
-        return self.send_json_response({"success": False, "error": str(exc)}, 500)
-    os.environ["CUDA_VISIBLE_DEVICES"] = hw_cfg["cuda_visible_devices"]
-    os.environ["OLLAMA_NUM_PARALLEL"] = str(hw_cfg["ollama_num_parallel"])
-    os.environ["OLLAMA_MAX_LOADED_MODELS"] = str(hw_cfg["ollama_max_loaded_models"])
-    self.send_json_response({"success": True, "config": hw_cfg})
-FastAPIHandlerAdapter.handle_hardware_config = _handle_hardware_config
+register_training_handlers(FastAPIHandlerAdapter)
 
 def _handle_router_train(self):
     try:
@@ -312,40 +273,6 @@ def _handle_router_train(self):
     except Exception as exc:
         return self.send_json_response({"success": False, "error": str(exc)}, 500)
 FastAPIHandlerAdapter.handle_router_train = _handle_router_train
-
-FastAPIHandlerAdapter.handle_training_featured_datasets = lambda self: self.send_json_response(get_featured_datasets())
-FastAPIHandlerAdapter.handle_training_list_jobs = lambda self: self.send_json_response(list_jobs())
-FastAPIHandlerAdapter.handle_training_hardware = lambda self: self.send_json_response(get_hardware_info())
-FastAPIHandlerAdapter.handle_hardware_status = lambda self: self.send_json_response(get_hardware_info())
-FastAPIHandlerAdapter.handle_training_job_status = lambda self: self.send_json_response(get_job_status(self.read_json_body().get("id", "")))
-FastAPIHandlerAdapter.handle_training_job_logs = lambda self: self.send_json_response(get_job_logs(self.read_json_body().get("id", "")))
-
-from core.training.benchmarks import (
-    get_available_models_for_benchmark, start_benchmark_run,
-    list_benchmark_jobs, delete_benchmark_job
-)
-
-FastAPIHandlerAdapter.handle_training_benchmark_models = lambda self: self.send_json_response(get_available_models_for_benchmark())
-FastAPIHandlerAdapter.handle_training_benchmark_jobs = lambda self: self.send_json_response(list_benchmark_jobs())
-
-def _handle_training_benchmark_run(self):
-    body = self.read_json_body()
-    model = body.get("model", "qwen2.5-coder:14b")
-    suite_id = body.get("suite", "all")
-    num_samples = int(body.get("samples", 0))
-    mode = body.get("mode", "full")
-    job = start_benchmark_run(model, suite_id, num_samples, mode=mode)
-    self.send_json_response({"success": True, "job": job})
-
-FastAPIHandlerAdapter.handle_training_benchmark_run = _handle_training_benchmark_run
-
-def _handle_training_benchmark_delete(self):
-    body = self.read_json_body()
-    job_id = body.get("id", "")
-    ok = delete_benchmark_job(job_id)
-    self.send_json_response({"success": ok})
-
-FastAPIHandlerAdapter.handle_training_benchmark_delete = _handle_training_benchmark_delete
 
 register_get_handlers(FastAPIHandlerAdapter)
 register_post_handlers(FastAPIHandlerAdapter)

@@ -520,22 +520,59 @@ class TestJobExecution:
 class TestOllamaExport:
     """Test export modello trainato verso Ollama."""
 
-    @patch("core.training_handler.subprocess.Popen")
-    def test_export_creates_modelfile(self, mock_popen):
-        """Export genera Modelfile valido."""
+    @patch("core.training_handler.subprocess.run")
+    def test_export_creates_modelfile(self, mock_run):
+        """Export genera Modelfile valido quando c'e' un artefatto da esportare."""
+        mock_run.return_value = MagicMock(returncode=0, stdout="", stderr="")
         config = {"base_model": "test", "method": "script_custom", "hyperparams": {}}
         create_result = create_training_job(config)
         job_id = create_result["job"]["id"]
 
-        # Marca job come completato
+        # Marca job come completato e crea l'adapter prodotto dal training
         jobs = _load_jobs()
         jobs[job_id]["status"] = "completed"
         _save_jobs(jobs)
+        (Path(jobs[job_id]["dir"]) / "adapter").mkdir(parents=True, exist_ok=True)
 
         result = export_to_ollama(job_id, "sigma-test-model", "Sei un assistente AI.")
         assert result["success"] is True
         assert result["model_name"] == "sigma-test-model"
         assert "Modelfile" in result.get("modelfile_path", "")
+
+    def test_export_fails_when_there_is_nothing_to_export(self):
+        """Senza artefatti l'export deve dirlo, non scrivere un Modelfile rotto.
+
+        Prima scriveva un Modelfile che puntava a un adapter inesistente e
+        riportava successo: l'utente si ritrovava senza modello e senza errore.
+        """
+        config = {"base_model": "test", "method": "script_custom", "hyperparams": {}}
+        create_result = create_training_job(config)
+        job_id = create_result["job"]["id"]
+        jobs = _load_jobs()
+        jobs[job_id]["status"] = "completed"
+        _save_jobs(jobs)
+
+        result = export_to_ollama(job_id, "sigma-test-model")
+        assert result["success"] is False
+        assert "esportabile" in result["error"].lower()
+
+    @patch("core.training_handler.subprocess.run")
+    def test_export_reports_ollama_failure(self, mock_run):
+        """Un `ollama create` fallito non deve passare per riuscito."""
+        mock_run.return_value = MagicMock(returncode=1, stdout="",
+                                          stderr="Error: invalid model reference")
+        config = {"base_model": "test", "method": "script_custom", "hyperparams": {}}
+        create_result = create_training_job(config)
+        job_id = create_result["job"]["id"]
+        jobs = _load_jobs()
+        jobs[job_id]["status"] = "completed"
+        _save_jobs(jobs)
+        (Path(jobs[job_id]["dir"]) / "adapter").mkdir(parents=True, exist_ok=True)
+
+        result = export_to_ollama(job_id, "sigma-test-model")
+        if shutil.which("ollama"):          # senza Ollama il messaggio e' un altro
+            assert result["success"] is False
+            assert "invalid model reference" in result["error"]
 
     def test_export_fails_if_not_completed(self):
         """Export fallisce se job non è completato."""

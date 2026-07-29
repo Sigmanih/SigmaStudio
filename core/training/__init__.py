@@ -18,15 +18,31 @@ from core.training.datasets import (  # noqa: F401
 from core.training.hardware import (  # noqa: F401
     _check_torch_cuda,
     _query_nvidia_smi,
+    _query_rocm_smi,
+    _query_wmi_gpus,
     get_hardware_status,
     get_hardware_info,
+    get_gpu_capabilities,
+    get_autotune,
     restart_ollama_service,
+)
+from core.training.fwe import (  # noqa: F401
+    FWE_TARGETS,
+    FWE_DATASETS,
+    fwe_available,
+    fwe_defaults,
+    fwe_status,
+    list_fwe_runs,
+    run_engine_selftest,
 )
 from core.training.jobs import (  # noqa: F401
     JOBS_DIR,
     SCRIPTS_DIR,
     JOBS_FILE,
     SCRIPT_TEMPLATES,
+    METHOD_LABELS,
+    resolve_dataset,
+    reconcile_jobs,
     check_training_dependencies,
     _load_jobs,
     _save_jobs,

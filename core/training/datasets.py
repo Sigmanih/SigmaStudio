@@ -112,6 +112,40 @@ def get_hf_dataset_info(dataset_id: str) -> dict:
         return {"success": False, "error": str(e)}
 
 
+# HuggingFace ha ritirato gli id "canonici" senza namespace: huggingface_hub
+# pretende 'namespace/name' e un id nudo solleva HfUriError. I dataset sono stati
+# spostati sotto l'organizzazione che li mantiene. Questa mappa permette di
+# accettare comunque il nome storico, ancora presente in guide e tutorial.
+LEGACY_HF_DATASETS = {
+    "wikitext": "Salesforce/wikitext",
+    "openwebtext": "Skylion007/openwebtext",
+    "tiny_shakespeare": "karpathy/tiny_shakespeare",
+    "tiny_stories": "roneneldan/TinyStories",
+    "imdb": "stanfordnlp/imdb",
+    "squad": "rajpurkar/squad",
+    "squad_v2": "rajpurkar/squad_v2",
+    "glue": "nyu-mll/glue",
+    "ag_news": "fancyzhx/ag_news",
+    "xsum": "EdinburghNLP/xsum",
+    "cnn_dailymail": "abisee/cnn_dailymail",
+    "billsum": "FiscalNote/billsum",
+    "gsm8k": "openai/gsm8k",
+    "wikipedia": "wikimedia/wikipedia",
+    "yelp_review_full": "Yelp/yelp_review_full",
+    "daily_dialog": "li2017dailydialog/daily_dialog",
+    "alpaca": "tatsu-lab/alpaca",
+    "dolly": "databricks/databricks-dolly-15k",
+    "oasst1": "OpenAssistant/oasst1",
+}
+
+
+def resolve_hf_dataset_id(dataset_id: str) -> str:
+    """Namespaced id per un dataset HuggingFace, accettando i nomi storici."""
+    if not dataset_id or "/" in dataset_id:
+        return dataset_id
+    return LEGACY_HF_DATASETS.get(dataset_id.lower(), dataset_id)
+
+
 def import_local_dataset(source_path: str, dataset_name: str = None, format_hint: str = "auto") -> dict:
     th = sys.modules.get("core.training_handler")
     target_datasets_dir = getattr(th, "DATASETS_DIR", DATASETS_DIR) if th else DATASETS_DIR
