@@ -98,6 +98,14 @@ training/*/__pycache__/
 # Unsloth compiled cache (auto-generated, user-specific)
 unsloth_compiled_cache/
 
+# Benchmark: dataset ufficiali scaricati da HuggingFace e dettaglio dei run.
+# Sono artefatti rigenerabili (decine di MB per suite, uno JSONL per run);
+# l'indice dei job resta versionato perche' e' piccolo e tiene lo storico.
+training_lab/benchmark_cache/
+training_lab/benchmark_runs/
+# PID e porte dei servitori Ollama avviati da Sigma: stato di questa macchina.
+training_lab/ollama_instances.json
+
 # Notebooks / experiments
 *.ipynb
 sigma_studio/.build_stamp

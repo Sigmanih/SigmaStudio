@@ -139,6 +139,18 @@ LEGACY_HF_DATASETS = {
 }
 
 
+# Config di default per i dataset che ne hanno piu' d'uno. Senza, load_dataset
+# si ferma e chiede quale sottoinsieme usare; il fallback generico del loader
+# prenderebbe il primo in ordine alfabetico, che spesso non e' quello utile
+# (wikitext-2 invece di wikitext-103, 1.0.0 invece di 3.0.0).
+HF_DATASET_CONFIGS = {
+    "openai/gsm8k": "main",
+    "Salesforce/wikitext": "wikitext-103-raw-v1",
+    "abisee/cnn_dailymail": "3.0.0",
+    "wikimedia/wikipedia": "20231101.en",
+}
+
+
 def resolve_hf_dataset_id(dataset_id: str) -> str:
     """Namespaced id per un dataset HuggingFace, accettando i nomi storici."""
     if not dataset_id or "/" in dataset_id:

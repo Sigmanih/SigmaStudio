@@ -42,6 +42,7 @@ from core.training.jobs import (  # noqa: F401
     SCRIPT_TEMPLATES,
     METHOD_LABELS,
     resolve_dataset,
+    resolve_base_model,
     reconcile_jobs,
     check_training_dependencies,
     _load_jobs,

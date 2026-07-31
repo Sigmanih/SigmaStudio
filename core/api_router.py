@@ -58,6 +58,12 @@ def register_get_handlers(handler_class):
         # Benchmark Endpoints
         '/api/training/benchmark/models': 'handle_training_benchmark_models',
         '/api/training/benchmark/jobs': 'handle_training_benchmark_jobs',
+        '/api/training/benchmark/suite_info': 'handle_training_benchmark_suite_info',
+        '/api/training/benchmark/results': 'handle_training_benchmark_results',
+        '/api/training/benchmark/review': 'handle_training_benchmark_review',
+        '/api/training/benchmark/capacity': 'handle_training_benchmark_capacity',
+        '/api/training/benchmark/capacity/status': 'handle_training_benchmark_capacity_status',
+        '/api/training/benchmark/endpoints': 'handle_training_benchmark_endpoints',
         # Knowledge Nodes Endpoints
         '/api/nodes': 'handle_get_nodes',
     }
@@ -136,6 +142,15 @@ def register_post_handlers(handler_class):
         '/api/training/forge/unload': 'handle_training_forge_unload',
         '/api/training/benchmark/run': 'handle_training_benchmark_run',
         '/api/training/benchmark/delete': 'handle_training_benchmark_delete',
+        '/api/training/benchmark/cancel': 'handle_training_benchmark_cancel',
+        '/api/training/benchmark/pause': 'handle_training_benchmark_pause',
+        '/api/training/benchmark/resume': 'handle_training_benchmark_resume',
+        '/api/training/benchmark/download': 'handle_training_benchmark_download',
+        '/api/training/benchmark/capacity/probe': 'handle_training_benchmark_capacity_probe',
+        '/api/training/benchmark/endpoints/start': 'handle_training_benchmark_endpoint_start',
+        '/api/training/benchmark/endpoints/stop': 'handle_training_benchmark_endpoint_stop',
+        '/api/training/benchmark/endpoints/add': 'handle_training_benchmark_endpoint_add',
+        '/api/training/benchmark/endpoints/remove': 'handle_training_benchmark_endpoint_remove',
         '/api/config/hf_token': 'handle_hf_token_config',
     }
 

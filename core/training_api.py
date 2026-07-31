@@ -353,23 +353,157 @@ def handle_training_forge_unload(self):
 # ---------------------------------------------------------------- benchmarks
 
 def handle_training_benchmark_models(self):
-    from core.training.benchmarks import get_available_models_for_benchmark
-    self.send_json_response(get_available_models_for_benchmark())
+    """Modelli valutabili più stato del servizio Ollama.
+
+    Risponde con un oggetto (non piu' un array nudo) perche' la UI deve poter
+    distinguere "nessun modello installato" da "Ollama non raggiungibile": prima
+    entrambi i casi arrivavano come lista vuota.
+    """
+    from core.training.benchmarks import get_benchmark_models_payload
+    self.send_json_response(get_benchmark_models_payload())
 
 
 def handle_training_benchmark_jobs(self):
+    """Elenco job con sole metriche aggregate, senza il dettaglio dei quesiti."""
     from core.training.benchmarks import list_benchmark_jobs
     self.send_json_response(list_benchmark_jobs())
+
+
+def handle_training_benchmark_results(self):
+    """Pagina di esiti di un job, filtrabile per verdetto, suite e testo."""
+    from core.training.benchmarks import get_job_detail
+    self.send_json_response(get_job_detail(
+        job_id=_job_id(self),
+        page=_query_int(self, "page", 1),
+        page_size=_query_int(self, "page_size", 15),
+        verdict=_query(self, "verdict", "all"),
+        suite=_query(self, "suite", "all"),
+        query=_query(self, "q", ""),
+    ))
+
+
+def handle_training_benchmark_review(self):
+    """Quesiti da valutare a parte: risposta duplice, illeggibile o in errore."""
+    from core.training.benchmarks import get_review_queue
+    self.send_json_response(get_review_queue(_job_id(self)))
+
+
+# ---------------------------------------------------------------- capacita' parallela
+
+def handle_training_benchmark_capacity(self):
+    """Quante richieste in parallelo regge un modello: stima e ultima misura."""
+    from core.training.capacity import estimate_capacity, get_profile
+    model = _query(self, "model")
+    if not model:
+        return self.send_json_response({"success": False, "error": "Parametro 'model' mancante"}, 400)
+    self.send_json_response({
+        "success": True,
+        "model": model,
+        "estimate": estimate_capacity(model),
+        "profile": get_profile(model),
+    })
+
+
+def handle_training_benchmark_capacity_probe(self):
+    """Avvia la misura empirica della concorrenza utile per un modello."""
+    from core.training.capacity import DEFAULT_LEVELS, start_capacity_probe
+    body = self.read_json_body()
+    model = body.get("model", "")
+    if not model:
+        return self.send_json_response({"success": False, "error": "Parametro 'model' mancante"}, 400)
+    levels = body.get("levels") or list(DEFAULT_LEVELS)
+    self.send_json_response(start_capacity_probe(model, levels))
+
+
+def handle_training_benchmark_capacity_status(self):
+    """Stato di una misura di capacita' in corso."""
+    from core.training.capacity import get_probe_status
+    self.send_json_response(get_probe_status(_query(self, "probe_id")))
+
+
+# ---------------------------------------------------------------- pool di endpoint
+
+def handle_training_benchmark_endpoints(self):
+    """Servitori Ollama nel pool, GPU disponibili e comandi per aggiungerne."""
+    from core.training.capacity import cuda_devices
+    from core.training.endpoints import active_endpoints, free_port, instance_command, managed_instances
+
+    endpoints = active_endpoints()
+    bound = {e.get("gpu_index") if e.get("gpu_index") is not None else 0
+             for e in endpoints if e.get("reachable")}
+    devices = cuda_devices()
+
+    port = free_port()
+    suggestions = []
+    for device in devices:
+        if device["index"] in bound:
+            continue
+        # Una porta diversa per ogni suggerimento: proporle tutte uguali
+        # farebbe fallire il secondo avvio.
+        suggestions.append({
+            "gpu": device,
+            **instance_command(device["index"], port + len(suggestions), device.get("backend", "cuda")),
+        })
+
+    self.send_json_response({
+        "success": True,
+        "endpoints": endpoints,
+        "gpus": devices,
+        "managed": managed_instances(),
+        "suggestions": suggestions,
+    })
+
+
+def handle_training_benchmark_endpoint_start(self):
+    """Avvia un servitore Ollama legato a una GPU e lo aggiunge al pool."""
+    from core.training.capacity import cuda_devices
+    from core.training.endpoints import start_instance
+
+    body = self.read_json_body()
+    if body.get("gpu_index") is None:
+        return self.send_json_response({"success": False, "error": "Parametro 'gpu_index' mancante"}, 400)
+    gpu_index = int(body["gpu_index"])
+    backend = next((d.get("backend", "cuda") for d in cuda_devices() if d["index"] == gpu_index), "cuda")
+    port = body.get("port")
+    self.send_json_response(start_instance(
+        gpu_index=gpu_index,
+        port=int(port) if port else None,
+        backend=backend,
+    ))
+
+
+def handle_training_benchmark_endpoint_stop(self):
+    from core.training.endpoints import stop_instance
+    port = self.read_json_body().get("port")
+    if not port:
+        return self.send_json_response({"success": False, "error": "Parametro 'port' mancante"}, 400)
+    self.send_json_response(stop_instance(int(port)))
+
+
+def handle_training_benchmark_endpoint_add(self):
+    """Registra un endpoint esterno (altra macchina, servizio già avviato)."""
+    from core.training.endpoints import add_endpoint
+    body = self.read_json_body()
+    self.send_json_response(add_endpoint(
+        body.get("url", ""), body.get("gpu_index"), body.get("label", "")))
+
+
+def handle_training_benchmark_endpoint_remove(self):
+    from core.training.endpoints import remove_endpoint
+    self.send_json_response(remove_endpoint(self.read_json_body().get("url", "")))
 
 
 def handle_training_benchmark_run(self):
     from core.training.benchmarks import start_benchmark_run
     body = self.read_json_body()
     job = start_benchmark_run(
-        body.get("model", "qwen2.5-coder:14b"),
-        body.get("suite", "all"),
-        int(body.get("samples", 0)),
+        model_name=body.get("model", "qwen2.5-coder:14b"),
+        suite_id=body.get("suite", "all"),
+        num_samples=int(body.get("samples", 0)),
         mode=body.get("mode", "full"),
+        # Non convertito a int qui: "auto" e' un valore valido, e la traduzione
+        # in un numero spetta a core.training.capacity, che conosce l'hardware.
+        concurrency=body.get("concurrency", "auto"),
     )
     self.send_json_response({"success": True, "job": job})
 
@@ -380,7 +514,35 @@ def handle_training_benchmark_delete(self):
     self.send_json_response({"success": ok})
 
 
+def handle_training_benchmark_cancel(self):
+    from core.training.benchmarks import cancel_benchmark_job
+    ok = cancel_benchmark_job(self.read_json_body().get("id", ""))
+    self.send_json_response({"success": ok})
+
+
+def handle_training_benchmark_pause(self):
+    from core.training.benchmarks import pause_benchmark_job
+    ok = pause_benchmark_job(self.read_json_body().get("id", ""))
+    self.send_json_response({"success": ok})
+
+
+def handle_training_benchmark_resume(self):
+    from core.training.benchmarks import resume_benchmark_job
+    ok = resume_benchmark_job(self.read_json_body().get("id", ""))
+    self.send_json_response({"success": ok})
+
+
 # ---------------------------------------------------------------- registration
+
+def handle_training_benchmark_suite_info(self):
+    from core.training.benchmarks import get_suite_info
+    self.send_json_response(get_suite_info(_query(self, "suite", "all") or "all"))
+
+
+def handle_training_benchmark_download(self):
+    from core.training.benchmarks import download_suite
+    self.send_json_response(download_suite(self.read_json_body().get("suite", "all")))
+
 
 HANDLERS = {
     name: fn for name, fn in list(globals().items())

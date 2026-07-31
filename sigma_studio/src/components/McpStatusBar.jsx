@@ -56,7 +56,9 @@ export default function McpStatusBar() {
     >
       <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontWeight: 700, color: '#f0f2f8', whiteSpace: 'nowrap' }}>
         <span style={{ display: 'inline-block', width: '8px', height: '8px', borderRadius: '50%', background: '#3fb950', boxShadow: '0 0 8px #3fb950' }} />
-        <span>MCP Hub (6 Server)</span>
+        {/* Contati, non scritti a mano: l'hub ne elenca 7 da quando c'e' il
+            server Benchmark, e un numero fisso resta indietro al prossimo. */}
+        <span>MCP Hub ({servers.length} Server)</span>
       </div>
 
       <div style={{ width: '1px', height: '16px', background: 'rgba(255, 255, 255, 0.1)', margin: '0 4px' }} />

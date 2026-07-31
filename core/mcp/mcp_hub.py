@@ -1,6 +1,6 @@
 # ==============================================================================
 # core/mcp/mcp_hub.py — Central MCP Router & Multiplexer
-# Manages initialization, tool discovery, RPC dispatching for all 6 MCP servers
+# Manages initialization, tool discovery, RPC dispatching for all MCP servers
 # ==============================================================================
 import logging
 from typing import Dict, Any, List, Optional
@@ -11,6 +11,7 @@ from core.mcp.hardware_server import HardwareMCPServer
 from core.mcp.training_server import TrainingMCPServer
 from core.mcp.inference_server import InferenceMCPServer
 from core.mcp.network_server import NetworkMCPServer
+from core.mcp.benchmark_server import BenchmarkMCPServer
 
 log = logging.getLogger(__name__)
 
@@ -25,14 +26,15 @@ class MCPHub:
         self._initialize_servers()
 
     def _initialize_servers(self):
-        """Instantiate and register all 6 specialized MCP servers."""
+        """Instantiate and register every specialized MCP server."""
         instances = [
             MemoryMCPServer(),
             DeveloperMCPServer(),
             HardwareMCPServer(),
             TrainingMCPServer(),
             InferenceMCPServer(),
-            NetworkMCPServer()
+            NetworkMCPServer(),
+            BenchmarkMCPServer(),
         ]
         for server in instances:
             self.servers[server.name] = server

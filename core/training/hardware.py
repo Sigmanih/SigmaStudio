@@ -246,27 +246,88 @@ def get_autotune(method: str = "lora_unsloth", base_model: str = "",
 
 
 def restart_ollama_service() -> dict:
-    """Free VRAM: empty the torch caches and unload Ollama models."""
+    """Free VRAM: empty torch/CUDA caches and unload all active Ollama models."""
+    import gc
     messages = []
 
+    # 1. Force Python garbage collection & Torch CUDA cache empty
+    gc.collect()
     res = gpu_layer.empty_cache()
     if res.get("freed"):
         messages.append(f"Cache {'/'.join(res['freed'])} svuotata")
 
+    # 2. Discover loaded Ollama models via API and unload them
+    ollama_url = os.environ.get("OLLAMA_HOST", "http://localhost:11434").rstrip("/")
+    if not ollama_url.startswith(("http://", "https://")):
+        ollama_url = f"http://{ollama_url}"
+
+    unloaded_models = []
     ollama_bin = shutil.which("ollama")
-    if ollama_bin:
-        try:
-            subprocess.run([ollama_bin, "stop"], capture_output=True, text=True, timeout=10)
-            messages.append("Servizio/Modelli Ollama arrestati con successo")
-        except Exception as exc:
-            log.warning("Ollama stop command: %s", exc)
 
     try:
         import requests
-        requests.post("http://localhost:11434/api/generate",
-                      json={"model": "", "keep_alive": 0}, timeout=2)
-    except Exception:
-        pass
+        # Get list of currently running/loaded models from Ollama /api/ps
+        ps_resp = requests.get(f"{ollama_url}/api/ps", timeout=4)
+        if ps_resp.status_code == 200:
+            ps_data = ps_resp.json()
+            models = ps_data.get("models", [])
+            for m in models:
+                model_name = m.get("name") or m.get("model")
+                if model_name:
+                    # Unload model by setting keep_alive to 0 on /api/generate and /api/chat
+                    try:
+                        requests.post(f"{ollama_url}/api/generate",
+                                      json={"model": model_name, "keep_alive": 0},
+                                      timeout=4)
+                    except Exception:
+                        pass
+                    try:
+                        requests.post(f"{ollama_url}/api/chat",
+                                      json={"model": model_name, "keep_alive": 0},
+                                      timeout=4)
+                    except Exception:
+                        pass
+
+                    # Stop via CLI if binary exists
+                    if ollama_bin:
+                        try:
+                            subprocess.run([ollama_bin, "stop", model_name],
+                                           capture_output=True, text=True, timeout=5)
+                        except Exception as exc:
+                            log.warning("Ollama stop command for %s failed: %s", model_name, exc)
+
+                    unloaded_models.append(model_name)
+    except Exception as exc:
+        log.warning("Failed to reach Ollama API at %s/api/ps: %s", ollama_url, exc)
+
+    # 3. Fallback: if /api/ps returned nothing or failed, but CLI is available, try listing models via CLI or stopping
+    if not unloaded_models and ollama_bin:
+        try:
+            ps_cli = subprocess.run([ollama_bin, "ps"], capture_output=True, text=True, timeout=5)
+            if ps_cli.returncode == 0:
+                lines = [line.strip() for line in ps_cli.stdout.splitlines() if line.strip()]
+                # Skip header line if present
+                for line in lines[1:]:
+                    parts = line.split()
+                    if parts:
+                        model_name = parts[0]
+                        try:
+                            subprocess.run([ollama_bin, "stop", model_name],
+                                           capture_output=True, text=True, timeout=5)
+                            unloaded_models.append(model_name)
+                        except Exception:
+                            pass
+        except Exception as exc:
+            log.warning("Ollama CLI ps/stop fallback failed: %s", exc)
+
+    # 4. Final CUDA cache cleanup after unloading models
+    gpu_layer.empty_cache()
+
+    if unloaded_models:
+        unique_models = list(dict.fromkeys(unloaded_models))
+        messages.append(f"Modelli Ollama scaricati dalla VRAM: {', '.join(unique_models)}")
+    else:
+        messages.append("Nessun modello Ollama attivo in VRAM da scaricare")
 
     msg = " • ".join(messages) if messages else "VRAM liberata e cache resettata con successo."
-    return {"success": True, "message": msg}
+    return {"success": True, "message": msg, "unloaded_models": unloaded_models}

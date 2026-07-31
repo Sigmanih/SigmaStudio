@@ -19,6 +19,7 @@ Everything degrades gracefully: no torch, no driver, no GPU -> CPU recipe.
 
 from __future__ import annotations
 
+import importlib.util
 import json
 import os
 import re
@@ -296,7 +297,13 @@ def probe_torch() -> dict:
         "arch_list": [],
         "torch_gpu_list": [],
         "cuda_error": None,
+        "flash_attn_pkg": False,
     }
+    # La GPU può supportare FlashAttention-2 e il pacchetto non essere
+    # installato: senza questo controllo l'autotune chiede
+    # attn_implementation="flash_attention_2" e il caricamento del modello
+    # fallisce a run avviato.
+    info["flash_attn_pkg"] = importlib.util.find_spec("flash_attn") is not None
     try:
         import torch
     except Exception as exc:
@@ -564,7 +571,9 @@ def aggregate_capabilities(trainable: list[dict], torch_info: dict, backend: str
         "fp16": every("supports_fp16"),
         "tf32": every("supports_tf32") and backend == "cuda",
         "fp8": every("supports_fp8"),
-        "flash_attn": every("supports_flash_attn") and cuda_like,
+        # Anche l'hardware più recente resta su SDPA se flash_attn non c'è.
+        "flash_attn": (every("supports_flash_attn") and cuda_like
+                       and bool(torch_info.get("flash_attn_pkg"))),
         "tensor_cores": every("tensor_cores"),
         # bitsandbytes 4-bit needs a real CUDA/ROCm device
         "bnb_4bit": cuda_like,

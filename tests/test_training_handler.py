@@ -574,6 +574,88 @@ class TestOllamaExport:
             assert result["success"] is False
             assert "invalid model reference" in result["error"]
 
+    def _completed_job_with(self, *subdirs, files=()):
+        config = {"base_model": "test", "method": "script_custom", "hyperparams": {}}
+        job_id = create_training_job(config)["job"]["id"]
+        jobs = _load_jobs()
+        jobs[job_id]["status"] = "completed"
+        _save_jobs(jobs)
+        job_dir = Path(jobs[job_id]["dir"])
+        for sub in subdirs:
+            (job_dir / sub).mkdir(parents=True, exist_ok=True)
+        for rel in files:
+            target = job_dir / rel
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_bytes(b"GGUF")
+        return job_id, job_dir
+
+    @patch("core.training_handler.subprocess.run")
+    def test_an_existing_gguf_wins_over_the_safetensors(self, mock_run):
+        """Ollama carica un .gguf com'e'; sui safetensors deve convertire e puo'
+        non saperlo fare, quindi il .gguf ha la precedenza."""
+        mock_run.return_value = MagicMock(returncode=0, stdout="", stderr="")
+        job_id, job_dir = self._completed_job_with(
+            "output/merged_16bit", files=["output/modello-f16.gguf"])
+
+        result = export_to_ollama(job_id, "sigma-test-model")
+        assert result["success"] is True
+        assert result["source"] == "gguf"
+        assert "modello-f16.gguf" in result["modelfile"]
+
+    @patch("core.training_handler.subprocess.run")
+    def test_ollama_progress_bars_do_not_swallow_the_error(self, mock_run):
+        """Il vero errore va estratto da spinner e sequenze ANSI, non perso."""
+        noisy = ("\x1b[?25lcopying file sha256:abc 100%\x1b[K\r"
+                 "\x1b[1Gconverting model \x1b[K\n"
+                 "Error: improper type for 'qwen35.rope.scaling.factor'\n")
+        mock_run.return_value = MagicMock(returncode=1, stdout="", stderr=noisy)
+        job_id, _ = self._completed_job_with("adapter")
+
+        result = export_to_ollama(job_id, "sigma-test-model")
+        if shutil.which("ollama"):
+            assert result["success"] is False
+            assert result["error"].endswith("improper type for 'qwen35.rope.scaling.factor'")
+            assert "\x1b" not in result["error"] and "copying file" not in result["error"]
+
+    @patch("core.training.jobs._convert_to_gguf")
+    @patch("core.training_handler.subprocess.run")
+    def test_unconvertible_weights_fall_back_to_llama_cpp(self, mock_run, mock_convert):
+        """Se Ollama non sa leggere i pesi si rifa' il giro passando da GGUF."""
+        if not shutil.which("ollama"):
+            pytest.skip("serve il binario ollama")
+        job_id, job_dir = self._completed_job_with("output/merged_16bit")
+        gguf = job_dir / "output" / "convertito-f16.gguf"
+
+        def convert(model_dir, out_dir):
+            gguf.write_bytes(b"GGUF")
+            return {"success": True, "gguf_path": gguf}
+
+        mock_convert.side_effect = convert
+        mock_run.side_effect = [
+            MagicMock(returncode=1, stdout="", stderr="Error: improper type for 'x.rope'"),
+            MagicMock(returncode=0, stdout="", stderr=""),
+        ]
+
+        result = export_to_ollama(job_id, "sigma-test-model")
+        assert result["success"] is True
+        assert result["source"] == "gguf"
+        assert mock_convert.call_count == 1
+        assert "convertito-f16.gguf" in result["modelfile"]
+
+    @patch("core.training.jobs._convert_to_gguf")
+    @patch("core.training_handler.subprocess.run")
+    def test_an_unrelated_failure_does_not_trigger_a_conversion(self, mock_run, mock_convert):
+        """Convertire 18GB per un nome di modello sbagliato sarebbe solo tempo perso."""
+        if not shutil.which("ollama"):
+            pytest.skip("serve il binario ollama")
+        mock_run.return_value = MagicMock(returncode=1, stdout="",
+                                          stderr="Error: invalid model name")
+        job_id, _ = self._completed_job_with("output/merged_16bit")
+
+        result = export_to_ollama(job_id, "sigma-test-model")
+        assert result["success"] is False
+        assert mock_convert.call_count == 0
+
     def test_export_fails_if_not_completed(self):
         """Export fallisce se job non è completato."""
         config = {"base_model": "test", "method": "script_custom", "hyperparams": {}}

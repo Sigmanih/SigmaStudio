@@ -6,6 +6,7 @@ script di training. I test non richiedono una GPU: dove serve, l'hardware viene
 simulato costruendo un report sintetico."""
 
 import ast
+import json
 import sys
 from pathlib import Path
 
@@ -16,7 +17,8 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 import core.training_handler as th
 from core.training import gpu as gpu_layer
 from core.training import fwe as fwe_layer
-from core.training.jobs import SCRIPT_TEMPLATES, _render, resolve_dataset, _parse_progress
+from core.training.jobs import (SCRIPT_TEMPLATES, _render, resolve_dataset,
+                                resolve_base_model, _parse_progress)
 
 
 @pytest.fixture(autouse=True)
@@ -91,10 +93,11 @@ class TestModelSizeEstimate:
 
 # =========================================================== auto-tune
 
-def _fake_report(gpus, backend="cuda"):
+def _fake_report(gpus, backend="cuda", flash_attn_pkg=True):
     """Report sintetico con la stessa forma di get_accelerator_report()."""
     trainable = [g for g in gpus if g.get("trainable")]
-    torch_info = {"torch_version": "2.11.0", "torch_cuda_version": "12.8", "arch_list": []}
+    torch_info = {"torch_version": "2.11.0", "torch_cuda_version": "12.8", "arch_list": [],
+                  "flash_attn_pkg": flash_attn_pkg}
     return {
         "backend": backend,
         "gpus": gpus,
@@ -128,6 +131,12 @@ class TestAutotune:
         assert cfg["bf16"] is True and cfg["fp16"] is False
         assert cfg["attn_implementation"] == "flash_attention_2"
         assert cfg["tf32"] is True
+
+    def test_flash_attention_needs_the_package_installed(self):
+        """Blackwell senza flash_attn deve restare su SDPA, non chiedere FA2."""
+        report = _fake_report([_gpu(0, "RTX 5070 Ti", 16.0)], flash_attn_pkg=False)
+        cfg = gpu_layer.recommend_training_config("lora_unsloth", "llama-3.2-3b", report=report)
+        assert cfg["attn_implementation"] == "sdpa"
 
     def test_turing_falls_back_to_fp16_and_sdpa(self):
         """Su Turing niente bf16 e niente FlashAttention-2."""
@@ -247,6 +256,110 @@ class TestGeneratedScripts:
         """Su Windows num_workers>0 fa rieseguire lo script a ogni worker."""
         assert 'dataloader_num_workers=0 if os.name == "nt" else 4' \
             in SCRIPT_TEMPLATES["full_pretrain"]
+
+
+class TestStaleScriptRegeneration:
+    """Uno script congelato prima di una correzione al template va rigenerato."""
+
+    def _job(self, method="trl_sft"):
+        from core.training.jobs import create_training_job
+        result = create_training_job({
+            "base_model": "gpt2", "method": method, "dataset_id": "x/y",
+            "hyperparams": {"num_epochs": 1},
+        })
+        return result["job"]
+
+    def test_a_fresh_script_is_left_alone(self):
+        from core.training.jobs import _sync_script_template, delete_job
+        job = self._job()
+        try:
+            before = Path(job["script_path"]).read_text(encoding="utf-8")
+            assert _sync_script_template(job) is False
+            assert Path(job["script_path"]).read_text(encoding="utf-8") == before
+        finally:
+            delete_job(job["id"])
+
+    def test_an_outdated_script_is_rebuilt(self):
+        from core.training.jobs import _sync_script_template, delete_job
+        job = self._job()
+        try:
+            path = Path(job["script_path"])
+            path.write_text("# SIGMA_TEMPLATE: 000000000000\nprint('vecchio')\n",
+                            encoding="utf-8")
+            assert _sync_script_template(job) is True
+            rebuilt = path.read_text(encoding="utf-8")
+            assert "vecchio" not in rebuilt
+            ast.parse(rebuilt)
+        finally:
+            delete_job(job["id"])
+
+    def test_an_untagged_script_counts_as_outdated(self):
+        """I job creati prima del tag non hanno modo di dichiararsi aggiornati."""
+        from core.training.jobs import _sync_script_template, delete_job
+        job = self._job()
+        try:
+            path = Path(job["script_path"])
+            path.write_text("print('senza tag')\n", encoding="utf-8")
+            assert _sync_script_template(job) is True
+            assert "senza tag" not in path.read_text(encoding="utf-8")
+        finally:
+            delete_job(job["id"])
+
+    def test_a_hand_edited_custom_script_is_never_overwritten(self):
+        from core.training.jobs import _sync_script_template, delete_job
+        job = self._job(method="script_custom")
+        try:
+            path = Path(job["script_path"])
+            path.write_text("# modificato a mano\n", encoding="utf-8")
+            assert _sync_script_template(job) is False
+            assert path.read_text(encoding="utf-8") == "# modificato a mano\n"
+        finally:
+            delete_job(job["id"])
+
+
+class TestGeneratedDatasetLoader:
+    """Il loader vive dentro lo script generato: lo si estrae e lo si esegue."""
+
+    @staticmethod
+    def _loader(dataset_id):
+        from core.training.jobs import _build_script_values
+        values = _build_script_values(
+            {"base_model": "gpt2", "method": "trl_sft", "dataset_id": dataset_id,
+             "hyperparams": {}}, "tj", Path("unused"))
+        source = _render(SCRIPT_TEMPLATES["trl_sft"], values)
+        fn = next(n for n in ast.parse(source).body
+                  if isinstance(n, ast.FunctionDef) and n.name == "load_training_dataset")
+        ns = {"json": json, "sigma": lambda *a: None}
+        exec(ast.get_source_segment(source, fn), ns)
+        return ns["load_training_dataset"]
+
+    def test_gsm8k_is_loaded_with_its_config_name(self, monkeypatch):
+        """gsm8k ha due sottoinsiemi: senza config load_dataset si rifiuta."""
+        import datasets
+        calls = []
+        monkeypatch.setattr(datasets, "load_dataset", lambda path, name=None, **kw: (
+            calls.append((path, name)),
+            datasets.Dataset.from_dict({"question": ["2+2?"], "answer": ["fa 4"]}))[1])
+        ds = self._loader("gsm8k")()
+        assert calls == [("openai/gsm8k", "main")]
+        # e la risposta deve finire nel testo, non solo la domanda
+        assert ds.column_names == ["text"]
+        assert "2+2?" in ds[0]["text"] and "fa 4" in ds[0]["text"]
+
+    def test_unknown_dataset_falls_back_to_the_first_config(self, monkeypatch):
+        import datasets
+        seen = []
+
+        def fake_load(path, name=None, **kw):
+            seen.append(name)
+            if name is None:
+                raise ValueError("Config name is missing.\nPlease pick one among: ['a', 'b']")
+            return datasets.Dataset.from_dict({"text": ["ciao"]})
+
+        monkeypatch.setattr(datasets, "load_dataset", fake_load)
+        monkeypatch.setattr(datasets, "get_dataset_config_names", lambda p, **kw: ["a", "b"])
+        assert self._loader("tizio/dataset-ignoto")()[0]["text"] == "ciao"
+        assert seen == [None, "a"]
 
 
 # =========================================================== dataset & log
@@ -382,6 +495,45 @@ class TestDatasetResolution:
 
     def test_empty_id_is_not_fatal(self):
         assert resolve_dataset("")["kind"] == "unknown"
+
+
+class TestBaseModelResolution:
+
+    @pytest.mark.parametrize("model_id", [
+        "empero-ai/Qwythos-9B-Claude-Mythos-5-1M",
+        "unsloth/llama-3.2-3b-instruct",
+        "gpt2",
+        "qwen0.5b-instruct",   # target FWE
+        "from_scratch",        # SLM Forge
+    ])
+    def test_valid_ids_pass_through(self, model_id):
+        assert resolve_base_model(model_id) == model_id
+
+    def test_local_weight_directory_is_accepted(self, tmp_path):
+        (tmp_path / "config.json").write_text("{}", encoding="utf-8")
+        assert resolve_base_model(str(tmp_path)) == str(tmp_path).replace("\\", "/")
+
+    def test_ollama_tag_is_rejected_with_an_actionable_message(self):
+        """Il caso vero: un tag scelto dal gruppo Ollama del selettore."""
+        with pytest.raises(ValueError) as err:
+            resolve_base_model("pdurlej/qwythos-9b-claude-mythos-5-1m:latest")
+        msg = str(err.value)
+        assert "Ollama" in msg and "GGUF" in msg
+        # Il messaggio deve suggerire cosa cercare su HuggingFace.
+        assert "qwythos-9b-claude-mythos-5-1m" in msg
+
+    def test_empty_id_is_rejected(self):
+        with pytest.raises(ValueError):
+            resolve_base_model("")
+
+    def test_job_creation_fails_cleanly_on_an_ollama_tag(self):
+        from core.training.jobs import create_training_job
+        result = create_training_job({
+            "base_model": "llama3.2:latest", "method": "trl_sft",
+            "dataset_id": "", "hyperparams": {},
+        })
+        assert result["success"] is False
+        assert "Ollama" in result["error"]
 
 
 class TestProgressParsing:

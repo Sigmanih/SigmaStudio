@@ -10,16 +10,13 @@ from core.mcp import (
 
 class TestMCPServers(unittest.TestCase):
     def test_hub_initialization(self):
-        """Verify that all 6 MCP servers are registered on the hub."""
+        """Verify that every specialized MCP server is registered on the hub."""
         servers = mcp_hub.list_all_servers()
-        self.assertEqual(len(servers), 6)
         names = {s["name"] for s in servers}
-        self.assertIn("Memory MCP", names)
-        self.assertIn("Developer MCP", names)
-        self.assertIn("Hardware MCP", names)
-        self.assertIn("Training MCP", names)
-        self.assertIn("Inference MCP", names)
-        self.assertIn("Network MCP", names)
+        self.assertEqual(len(servers), len(names), "nomi di server duplicati sull'hub")
+        for expected in ("Memory MCP", "Developer MCP", "Hardware MCP", "Training MCP",
+                         "Inference MCP", "Network MCP", "Benchmark MCP"):
+            self.assertIn(expected, names)
 
     def test_tools_aggregation(self):
         """Verify that tools are aggregated across servers."""

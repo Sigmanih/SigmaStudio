@@ -18,6 +18,7 @@ Supported methods:
   script_custom — user-editable template with the CUDA preamble already wired
 """
 
+import hashlib
 import json
 import os
 import re
@@ -31,7 +32,7 @@ from pathlib import Path
 
 from core.logger import get_logger
 from core.training import gpu as gpu_layer
-from core.training.datasets import LEGACY_HF_DATASETS
+from core.training.datasets import HF_DATASET_CONFIGS, LEGACY_HF_DATASETS
 
 log = get_logger(__name__)
 
@@ -86,6 +87,64 @@ def _render(template: str, values: dict) -> str:
         lambda m: str(values[m.group(1)]) if m.group(1) in values else m.group(0),
         template,
     )
+
+
+# Versione del template da cui nasce uno script, scritta come prima riga del
+# file generato: serve a riconoscere gli script vecchi quando il template viene
+# corretto (vedi _sync_script_template).
+_TEMPLATE_TAG_RE = re.compile(r"^# SIGMA_TEMPLATE: ([0-9a-f]+)", re.MULTILINE)
+
+
+def _template_fingerprint(method: str) -> str:
+    template = SCRIPT_TEMPLATES.get(method, SCRIPT_TEMPLATES["script_custom"])
+    return hashlib.sha1(template.encode("utf-8")).hexdigest()[:12]
+
+
+def _render_script(method: str, values: dict) -> str:
+    """Render a job script, tagged with the template version it came from."""
+    template = SCRIPT_TEMPLATES.get(method, SCRIPT_TEMPLATES["script_custom"])
+    return f"# SIGMA_TEMPLATE: {_template_fingerprint(method)}\n" + _render(template, values)
+
+
+# ============================================================ base model
+
+# Repo id HuggingFace: "owner/nome" o "nome". I due punti non sono ammessi —
+# è proprio quello che distingue un repo da un tag Ollama.
+_HF_REPO_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,94}"
+                         r"(?:/[A-Za-z0-9][A-Za-z0-9._-]{0,94})?$")
+
+
+def resolve_base_model(model_id: str) -> str:
+    """Normalise the base model id, or explain why it can't be trained.
+
+    Il selettore elenca anche i modelli installati in Ollama, ma quelli sono
+    blob GGUF: nessun trainer li sa caricare, e un tag Ollama
+    ("owner/nome:latest") non è nemmeno un repo id valido, quindi
+    `from_pretrained` muore con un HFValidationError illeggibile a run già
+    avviato. Meglio intercettarlo qui, mentre l'utente ha ancora il form
+    davanti.
+    """
+    name = (model_id or "").strip().replace("\\", "/").rstrip("/")
+    if not name:
+        raise ValueError("Nessun modello base selezionato.")
+    if Path(name).is_dir():
+        return name
+    if _HF_REPO_RE.match(name):
+        return name
+
+    if ":" in name:
+        stem = name.rsplit(":", 1)[0].rsplit("/", 1)[-1]
+        raise ValueError(
+            f"'{model_id}' è un tag Ollama, non un modello addestrabile. "
+            "Ollama conserva solo pesi GGUF quantizzati, che né TRL+PEFT né "
+            "Unsloth sanno caricare: il fine-tuning parte dai safetensors "
+            f"originali. Cerca '{stem}' su huggingface.co e incolla il repo id "
+            "(es. 'owner/Nome-Modello') in «Modello Custom».")
+
+    raise ValueError(
+        f"'{model_id}' non è un repo id HuggingFace valido né una cartella "
+        "locale di pesi. Usa 'owner/nome' oppure il percorso di una directory "
+        "che contenga config.json.")
 
 
 # ============================================================== datasets
@@ -205,14 +264,33 @@ def load_training_dataset():
         # Gli id senza namespace ('wikitext') non sono piu' risolvibili da
         # huggingface_hub: se il nome storico fallisce si riprova con l'alias.
         legacy = json.loads(r"""{legacy_datasets_json}""")
+        # Molti dataset (gsm8k, wikitext, cnn_dailymail...) sono divisi in
+        # sottoinsiemi e senza config load_dataset si rifiuta di indovinare.
+        configs = json.loads(r"""{dataset_configs_json}""")
+
+        def _load_hf(repo):
+            name = configs.get(repo)
+            try:
+                return load_dataset(repo, name, split="{dataset_split}")
+            except ValueError as exc:
+                if name or "onfig name is missing" not in str(exc):
+                    raise
+                from datasets import get_dataset_config_names
+                available = get_dataset_config_names(repo)
+                if not available:
+                    raise
+                sigma("Dataset '%s' ha piu' config %s: uso '%s'"
+                      % (repo, available, available[0]))
+                return load_dataset(repo, available[0], split="{dataset_split}")
+
         try:
-            ds = load_dataset(path, split="{dataset_split}")
+            ds = _load_hf(path)
         except Exception as exc:
             alt = legacy.get(path.lower())
             if not alt:
                 raise
             sigma("Dataset '%s' spostato su '%s' (%s): riprovo" % (path, alt, type(exc).__name__))
-            ds = load_dataset(alt, split="{dataset_split}")
+            ds = _load_hf(alt)
     elif kind in ("jsonl", "ndjson", "json"):
         ds = load_dataset("json", data_files=path, split="train")
     elif kind == "csv":
@@ -241,6 +319,15 @@ def load_training_dataset():
         sigma("Formato prompt/completion rilevato -> text")
         return ds.map(lambda ex: {"text": str(ex["prompt"]) + str(ex["completion"])},
                       remove_columns=ds.column_names)
+    # gsm8k, squad e simili. Senza questo ramo il fallback prenderebbe la prima
+    # colonna stringa — la domanda — e si addestrerebbe senza mai la risposta.
+    for q, a in (("question", "answer"), ("question", "answers"), ("input", "output")):
+        if {q, a} <= cols:
+            sigma("Formato %s/%s rilevato -> text" % (q, a))
+            return ds.map(
+                lambda ex, q=q, a=a: {
+                    "text": "### Istruzione:\\n" + str(ex[q]) + "\\n\\n### Risposta:\\n" + str(ex[a])},
+                remove_columns=ds.column_names)
     if "messages" in cols or "conversations" in cols:
         key = "messages" if "messages" in cols else "conversations"
         def chat_to_text(ex):
@@ -880,7 +967,8 @@ def _build_script_values(data: dict, job_id: str, job_dir: Path) -> dict:
     so an extended job gets exactly the script it would get if created now.
     """
     method = data.get("method", "lora_unsloth")
-    model_base = data.get("base_model") or data.get("model_base", "unsloth/llama-3.2-3b-instruct")
+    model_base = resolve_base_model(
+        data.get("base_model") or data.get("model_base", "unsloth/llama-3.2-3b-instruct"))
     dataset_id = data.get("dataset_id", "local_dataset")
     hyper = data.get("hyperparams") or data.get("config") or {}
     output_dir = job_dir / "output"
@@ -936,6 +1024,7 @@ def _build_script_values(data: dict, job_id: str, job_dir: Path) -> dict:
         "text_field": hyper.get("text_field", "text"),
         "tune_json": json.dumps(tune, ensure_ascii=False),
         "legacy_datasets_json": json.dumps(LEGACY_HF_DATASETS, ensure_ascii=False),
+        "dataset_configs_json": json.dumps(HF_DATASET_CONFIGS, ensure_ascii=False),
         "cuda_visible_devices": ",".join(str(i) for i in visible_indices),
         # Gradus FWE
         "fwe_device": hyper.get("fwe_device", "auto"),
@@ -967,9 +1056,17 @@ def create_training_job(data: dict) -> dict:
     target_jobs_dir = getattr(th, "JOBS_DIR", JOBS_DIR) if th else JOBS_DIR
 
     method = data.get("method", "lora_unsloth")
-    model_base = data.get("base_model") or data.get("model_base", "unsloth/llama-3.2-3b-instruct")
     dataset_id = data.get("dataset_id", "local_dataset")
     hyper = data.get("hyperparams") or data.get("config") or {}
+
+    # Il modello base va validato prima di creare la cartella del job: un tag
+    # Ollama non è addestrabile e l'utente deve saperlo adesso, non a training
+    # avviato.
+    try:
+        model_base = resolve_base_model(
+            data.get("base_model") or data.get("model_base", "unsloth/llama-3.2-3b-instruct"))
+    except ValueError as exc:
+        return {"success": False, "error": str(exc)}
 
     job_id = uuid.uuid4().hex[:8]
     job_dir = target_jobs_dir / job_id
@@ -982,9 +1079,8 @@ def create_training_job(data: dict) -> dict:
     batch_size, grad_accum = values["batch_size"], values["gradient_accumulation"]
     num_epochs, learning_rate = values["num_epochs"], values["learning_rate"]
 
-    template = SCRIPT_TEMPLATES.get(method, SCRIPT_TEMPLATES["script_custom"])
     script_path = job_dir / "train_script.py"
-    script_path.write_text(_render(template, values), encoding="utf-8")
+    script_path.write_text(_render_script(method, values), encoding="utf-8")
 
     # La richiesta originale serve a rigenerare lo script quando il job va
     # esteso: gli script sono file congelati su disco, quindi un job creato con
@@ -1208,13 +1304,61 @@ def _refresh_script(job: dict, total_steps: int) -> dict:
     data["hyperparams"] = {**data.get("hyperparams", {}), "fwe_steps": int(total_steps)}
     try:
         values = _build_script_values(data, job["id"], Path(job["dir"]))
-        template = SCRIPT_TEMPLATES.get(data.get("method"), SCRIPT_TEMPLATES["script_custom"])
-        script_path.write_text(_render(template, values), encoding="utf-8")
+        script_path.write_text(_render_script(data.get("method"), values), encoding="utf-8")
     except Exception as exc:
         return {"success": False, "error": f"Rigenerazione dello script fallita: {exc}"}
 
     log.info("Job %s: script rigenerato per %d step totali", job["id"], total_steps)
     return {"success": True, "regenerated": True}
+
+
+def _sync_script_template(job: dict) -> bool:
+    """Re-render the job script when it came from an older template version.
+
+    Gli script sono file congelati su disco al momento della creazione: un job
+    creato prima di una correzione al template la riavvia identica, e l'utente
+    rivede lo stesso errore anche dopo aver aggiornato Sigma Studio. Il tag
+    SIGMA_TEMPLATE in testa allo script dice da quale versione del template
+    nasce; se non combacia con quella attuale lo script viene rigenerato dalla
+    richiesta salvata. La cartella del run — e con essa i checkpoint — non viene
+    toccata.
+
+    `script_custom` resta escluso: quel template esiste proprio per essere
+    modificato a mano, sovrascriverlo cancellerebbe il lavoro dell'utente.
+    """
+    method = job.get("method")
+    request = job.get("request")
+    script_path = Path(job.get("script_path", ""))
+    if method == "script_custom" or method not in SCRIPT_TEMPLATES or not request:
+        return False
+    if not script_path.exists():
+        return False
+
+    try:
+        source = script_path.read_text(encoding="utf-8")
+    except Exception as exc:
+        log.warning("Job %s: script illeggibile (%s)", job.get("id"), exc)
+        return False
+
+    tag = _TEMPLATE_TAG_RE.search(source)
+    if tag and tag.group(1) == _template_fingerprint(method):
+        return False
+
+    data = dict(request)
+    # Gli iperparametri salvati nel job includono quelli risolti alla creazione
+    # (batch autotunato, step estesi di un run FWE) e devono avere la meglio.
+    data["hyperparams"] = {**data.get("hyperparams", {}), **(job.get("hyperparams") or {})}
+    try:
+        values = _build_script_values(data, job["id"], Path(job["dir"]))
+        script_path.write_text(_render_script(method, values), encoding="utf-8")
+    except Exception as exc:
+        # Meglio partire con lo script vecchio che non partire affatto.
+        log.warning("Job %s: rigenerazione script fallita (%s), uso quello esistente",
+                    job.get("id"), exc)
+        return False
+
+    log.info("Job %s: script rigenerato dal template aggiornato", job.get("id"))
+    return True
 
 
 def start_training_job(job_id: str, total_steps: int | None = None) -> dict:
@@ -1229,6 +1373,8 @@ def start_training_job(job_id: str, total_steps: int | None = None) -> dict:
     job = jobs[job_id]
     if job["status"] == "running":
         return {"success": False, "error": f"Job '{job_id}' già in esecuzione."}
+
+    regenerated = _sync_script_template(job)
 
     if total_steps:
         done = int(job.get("hyperparams", {}).get("fwe_steps") or 0)
@@ -1261,7 +1407,8 @@ def start_training_job(job_id: str, total_steps: int | None = None) -> dict:
               f"GPU: {', '.join(job.get('gpu_plan', {}).get('devices', [])) or 'CPU'}"
               f" | strategia: {job.get('gpu_plan', {}).get('strategy')}\n"
               f"Avvio: {time.strftime('%Y-%m-%d %H:%M:%S')}\n"
-              f"=====================================\n")
+              + ("Script rigenerato dal template aggiornato.\n" if regenerated else "")
+              + f"=====================================\n")
     try:
         with open(log_path, "a", encoding="utf-8") as fh:
             fh.write(header)
@@ -1296,7 +1443,8 @@ def start_training_job(job_id: str, total_steps: int | None = None) -> dict:
         job.setdefault("hyperparams", {})["fwe_steps"] = int(total_steps)
         job["total_steps"] = int(total_steps)
     _save_jobs(jobs)
-    return {"success": True, "message": f"Job '{job_id}' avviato.", "job": job, "pid": pid}
+    return {"success": True, "message": f"Job '{job_id}' avviato.", "job": job, "pid": pid,
+            "script_regenerated": regenerated}
 
 
 class _AttachedProcess:
@@ -1497,6 +1645,109 @@ def materialize_fwe_model(job_id: str) -> dict:
     return result
 
 
+# `ollama create` disegna la sua barra di avanzamento con sequenze ANSI e
+# riscrive le righe in place: senza ripulirle il messaggio utile resta sepolto.
+_ANSI_RE = re.compile(r"\x1b\[[0-9;?]*[a-zA-Z]|\x1b\][^\x07]*\x07|\x1b[=>]")
+
+
+def _ollama_failure_detail(res) -> str:
+    """The readable reason an `ollama create` failed."""
+    raw = (getattr(res, "stderr", "") or "") + (getattr(res, "stdout", "") or "")
+    clean = _ANSI_RE.sub("", raw).replace("\r", "\n")
+    lines = [ln.strip() for ln in clean.splitlines() if ln.strip()]
+    errors = [ln for ln in lines if ln.lower().startswith("error")]
+    if errors:
+        return errors[-1]
+    return " | ".join(lines[-3:])
+
+
+def find_gguf_converter() -> Path | None:
+    """llama.cpp's HF->GGUF converter, if this machine already has one.
+
+    Unsloth ne installa una copia sotto ~/.unsloth/llama.cpp quando prepara i
+    suoi export: e' esattamente quella che serve qui, quindi nel caso normale
+    non c'e' niente da scaricare.
+    """
+    candidates = [Path.home() / ".unsloth" / "llama.cpp" / "convert_hf_to_gguf.py",
+                  BASE_DIR / "llama.cpp" / "convert_hf_to_gguf.py"]
+    env_dir = os.environ.get("LLAMA_CPP_DIR")
+    if env_dir:
+        candidates.insert(0, Path(env_dir) / "convert_hf_to_gguf.py")
+    return next((p for p in candidates if p.exists()), None)
+
+
+# Errori con cui il convertitore Go di Ollama dichiara di non saper leggere i
+# pesi. Solo su questi vale la pena rifare il giro passando da llama.cpp: un
+# fallimento di altro tipo (nome non valido, disco pieno) si ripeterebbe uguale.
+_OLLAMA_CONVERT_MARKERS = ("improper type", "cannot unmarshal", "parse config.json",
+                           "unsupported architecture", "unknown architecture",
+                           "architecture is not supported")
+
+
+def _declares_unbacked_mtp(model_dir: Path) -> bool:
+    """True if the config announces MTP layers the weights don't actually carry.
+
+    Qwen3.5 dichiara `mtp_num_hidden_layers` anche nei repo da cui la testa MTP
+    e' stata rimossa. Il convertitore si fida della config ed estende
+    block_count, poi llama.cpp cerca `blk.<N>.attn_norm.weight` e non lo trova:
+    il modello si converte "con successo" e poi non si carica.
+    """
+    try:
+        config = json.loads((model_dir / "config.json").read_text(encoding="utf-8"))
+    except Exception:
+        return False
+    hparams = config.get("text_config") or config
+    if int(hparams.get("mtp_num_hidden_layers") or 0) <= 0:
+        return False
+    try:
+        from safetensors import safe_open
+        for shard in model_dir.glob("*.safetensors"):
+            with safe_open(shard, "pt") as handle:
+                if any(k.startswith(("mtp.", "model.mtp.")) for k in handle.keys()):
+                    return False
+    except Exception:
+        return False
+    return True
+
+
+def _convert_to_gguf(model_dir: Path, out_dir: Path) -> dict:
+    """Build a GGUF from HF weights with llama.cpp's converter.
+
+    Il convertitore Go di Ollama copre solo le architetture che conosce: sui
+    modelli recenti si ferma su un campo della config che non sa leggere.
+    llama.cpp le supporta prima, e un .gguf Ollama lo carica cosi' com'e' —
+    quindi la via d'uscita e' produrre il GGUF a parte.
+    """
+    converter = find_gguf_converter()
+    if not converter:
+        return {"success": False,
+                "error": ("Ollama non sa convertire questi pesi e llama.cpp non e' "
+                          "disponibile su questa macchina. Converti il modello in GGUF "
+                          "con `convert_hf_to_gguf.py` e rilancia l'export: un .gguf "
+                          "nella cartella output viene usato direttamente.")}
+
+    target = out_dir / f"{model_dir.name}-f16.gguf"
+    cmd = [sys.executable, str(converter), str(model_dir),
+           "--outfile", str(target), "--outtype", "f16"]
+    if _declares_unbacked_mtp(model_dir):
+        cmd.append("--no-mtp")
+        log.info("conversione GGUF: testa MTP dichiarata ma assente, uso --no-mtp")
+
+    log.info("conversione GGUF di %s -> %s", model_dir, target)
+    try:
+        res = _get_subprocess_run()(cmd, capture_output=True, text=True,
+                                    encoding="utf-8", errors="replace", timeout=3600)
+    except Exception as exc:
+        return {"success": False, "error": f"Conversione in GGUF fallita: {exc}"}
+
+    if getattr(res, "returncode", 0) != 0 or not target.exists():
+        detail = ((getattr(res, "stderr", "") or "") + (getattr(res, "stdout", "") or ""))
+        lines = [ln.strip() for ln in detail.splitlines() if ln.strip()]
+        return {"success": False,
+                "error": f"Conversione in GGUF fallita: {' | '.join(lines[-3:])[:400]}"}
+    return {"success": True, "gguf_path": target}
+
+
 def export_to_ollama(job_id: str, model_name: str = "custom_model",
                      system_prompt: str = "") -> dict:
     """Register the trained model in Ollama via a generated Modelfile."""
@@ -1534,13 +1785,23 @@ def export_to_ollama(job_id: str, model_name: str = "custom_model",
                 "(token ripetuti): non è un problema dell'export, il generatore va "
                 "addestrato di più.")
 
-    if not (merged.exists() or full_model.exists() or adapter.exists()):
+    # Un .gguf gia' pronto ha la precedenza: Ollama lo carica cosi' com'e',
+    # senza far girare il proprio convertitore (che sulle architetture recenti
+    # si ferma). Se ce n'e' piu' d'uno vince il piu' recente.
+    ggufs = sorted(output.glob("*.gguf"), key=lambda p: p.stat().st_mtime, reverse=True)
+
+    if not (ggufs or merged.exists() or full_model.exists() or adapter.exists()):
         return {"success": False,
                 "error": (f"Nessun artefatto esportabile nel job '{job_id}'. "
-                          f"Cercati: {merged.name}/, {full_model.name}/, {adapter.name}/ "
-                          f"sotto {output}.")}
+                          f"Cercati: *.gguf, {merged.name}/, {full_model.name}/, "
+                          f"{adapter.name}/ sotto {output}.")}
 
-    if merged.exists():
+    if ggufs:
+        modelfile_content = (f"FROM {str(ggufs[0]).replace(chr(92), '/')}\n"
+                             f"PARAMETER temperature 0.7\nPARAMETER top_p 0.9\n"
+                             f'SYSTEM """{system_prompt}"""\n')
+        source = "gguf"
+    elif merged.exists():
         modelfile_content = (f"FROM {str(merged).replace(chr(92), '/')}\n"
                              f"PARAMETER temperature 0.7\nPARAMETER top_p 0.9\n"
                              f'SYSTEM """{system_prompt}"""\n')
@@ -1556,6 +1817,13 @@ def export_to_ollama(job_id: str, model_name: str = "custom_model",
                              f"PARAMETER temperature 0.7\nPARAMETER top_p 0.9\n"
                              f'SYSTEM """{system_prompt}"""\n')
         source = "adapter"
+
+    def write_modelfile(from_target: str) -> str:
+        content = (f"FROM {str(from_target).replace(chr(92), '/')}\n"
+                   f"PARAMETER temperature 0.7\nPARAMETER top_p 0.9\n"
+                   f'SYSTEM """{system_prompt}"""\n')
+        (job_dir / "Modelfile").write_text(content, encoding="utf-8")
+        return content
 
     modelfile_path = job_dir / "Modelfile"
     modelfile_path.write_text(modelfile_content, encoding="utf-8")
@@ -1573,20 +1841,54 @@ def export_to_ollama(job_id: str, model_name: str = "custom_model",
     # `ollama create` va atteso e il suo esito riportato: lanciarlo e ignorarlo
     # faceva sembrare riuscito un export che non produceva nulla.
     sub_run = _get_subprocess_run()
+
+    def run_create():
+        # encoding esplicito: `ollama create` scrive spinner e barre in UTF-8, e
+        # con il codepage di default di Windows il thread che legge la pipe muore
+        # su UnicodeDecodeError — lasciando l'errore vero senza alcun dettaglio.
+        return sub_run([ollama_bin, "create", model_name, "-f", str(modelfile_path)],
+                       capture_output=True, text=True, encoding="utf-8",
+                       errors="replace", timeout=600)
+
     try:
-        res = sub_run([ollama_bin, "create", model_name, "-f", str(modelfile_path)],
-                      capture_output=True, text=True, timeout=600)
+        res = run_create()
     except Exception as exc:
         return {"success": False, "error": f"Esecuzione di ollama create fallita: {exc}",
                 "modelfile_path": str(modelfile_path)}
 
     returncode = getattr(res, "returncode", 0)
+    detail = _ollama_failure_detail(res) if returncode != 0 else ""
+
+    # Ollama non sa leggere questi pesi: si riprova passando da llama.cpp, che
+    # copre le architetture recenti prima del convertitore Go.
+    if (returncode != 0 and source in ("merged", "full")
+            and any(m in detail.lower() for m in _OLLAMA_CONVERT_MARKERS)):
+        log.info("ollama create non sa convertire %s (%s): passo da llama.cpp",
+                 source, detail[:120])
+        converted = _convert_to_gguf(merged if source == "merged" else full_model, output)
+        if not converted.get("success"):
+            return {"success": False,
+                    "error": f"ollama create ha restituito {returncode}: {detail[:200]}. "
+                             + converted["error"],
+                    "model_name": model_name, "source": source,
+                    "modelfile_path": str(modelfile_path), "modelfile": modelfile_content}
+        modelfile_content = write_modelfile(str(converted["gguf_path"]))
+        source = "gguf"
+        try:
+            res = run_create()
+        except Exception as exc:
+            return {"success": False, "error": f"Esecuzione di ollama create fallita: {exc}",
+                    "modelfile_path": str(modelfile_path)}
+        returncode = getattr(res, "returncode", 0)
+        detail = _ollama_failure_detail(res) if returncode != 0 else ""
+
     if returncode != 0:
-        detail = ((getattr(res, "stderr", "") or "") + (getattr(res, "stdout", "") or "")).strip()
         return {
             "success": False,
-            "error": f"ollama create ha restituito {returncode}: {detail[-400:] or 'nessun dettaglio'}",
+            "error": f"ollama create ha restituito {returncode}: "
+                     f"{detail[:400] or 'nessun dettaglio'}",
             "model_name": model_name,
+            "source": source,
             "modelfile_path": str(modelfile_path),
             "modelfile": modelfile_content,
         }

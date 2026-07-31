@@ -550,8 +550,10 @@ export default function TrainingConfigurator({ myDatasets, selectedDatasetId: pr
                           {POPULAR_MODELS.map(m => <option key={m} value={m}>{m}</option>)}
                         </optgroup>
                         {ollamaModels.length > 0 && (
-                          <optgroup label="🦙 Ollama (locale)">
-                            {ollamaModels.map(m => <option key={`ollama:${m}`} value={m}>{m}</option>)}
+                          <optgroup label="🦙 Ollama (locale) — GGUF, non addestrabile">
+                            {ollamaModels.map(m => (
+                              <option key={`ollama:${m}`} value={m} disabled>{m}</option>
+                            ))}
                           </optgroup>
                         )}
                       </>
@@ -566,6 +568,13 @@ export default function TrainingConfigurator({ myDatasets, selectedDatasetId: pr
                   onChange={e => setCustomModel(e.target.value)}
                   style={{ marginTop: '6px' }}
                 />
+              )}
+              {!isFwe && (
+                <div className="training-field-desc" style={{ marginTop: '6px' }}>
+                  I modelli Ollama sono GGUF quantizzati: nessun trainer li sa caricare.
+                  Per addestrarne uno parti dai safetensors originali su HuggingFace
+                  («Modello Custom» → <code>owner/Nome-Modello</code>).
+                </div>
               )}
             </div>
           </div>
