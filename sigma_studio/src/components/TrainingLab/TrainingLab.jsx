@@ -1,27 +1,28 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { BookOpen, Database, Cpu, BarChart2, Brain, ShieldCheck, Award, Hammer, X } from 'lucide-react';
+import { BookOpen, Database, Cpu, BarChart2, Brain, Award, Hammer, Layers, X } from 'lucide-react';
 import TrainingDocs from './TrainingDocs';
 import DatasetBrowser from './DatasetBrowser';
 import TrainingConfigurator from './TrainingConfigurator';
 import TrainingMonitor from './TrainingMonitor';
+import TrainingStudio from './TrainingStudio';
 import TrainingBenchmark from './TrainingBenchmark';
 import SlmForge from './SlmForge';
-import TrainingHFToken from './TrainingHFToken';
 import '../../styles/training-lab.css';
 
 // ==============================================================================
 // TRAINING LAB — Sigma Studio v7.0
-// 7 sub-tab: Documentazione | Dataset | Training | Monitor | Forgia SLM | Benchmark | HF Token
+// 6 sub-tab: Documentazione | Dataset | Training | Monitor | Forgia SLM | Benchmark
+// Il token HuggingFace e' un'impostazione d'account, non di training: sta in Account & Voce.
 // ==============================================================================
 
 const MODES = [
+  { id: 'studio', label: '🎛️ Studio', icon: Layers, desc: 'Tutto il processo in una pagina' },
   { id: 'docs', label: '📖 Documentazione', icon: BookOpen, desc: 'Guida completa al training' },
   { id: 'dataset', label: '🗃️ Dataset', icon: Database, desc: 'HuggingFace + Import locale' },
   { id: 'training', label: '⚙️ Configurazione', icon: Cpu, desc: 'Modello, metodo, iperparametri' },
   { id: 'monitor', label: '📊 Monitor', icon: BarChart2, desc: 'Log live, loss chart, export' },
   { id: 'forge', label: '🔨 Forgia SLM', icon: Hammer, desc: 'Modelli piccoli da zero, in italiano' },
   { id: 'benchmark', label: '🧪 Benchmark Test', icon: Award, desc: 'Test & valutazione modelli' },
-  { id: 'token', label: '🔑 HF Token', icon: ShieldCheck, desc: 'Configura HuggingFace Token' },
 ];
 
 function Toast({ toast, onClose }) {
@@ -57,7 +58,7 @@ function Toast({ toast, onClose }) {
 }
 
 export default function TrainingLab({ addToast: _addToast, onTasksUpdated }) {
-  const [mode, setMode] = useState('docs');
+  const [mode, setMode] = useState('studio');
   const [selectedDatasetId, setSelectedDatasetId] = useState(null);
   const [myDatasets, setMyDatasets] = useState([]);
   const [activeJobId, setActiveJobId] = useState(null);
@@ -107,7 +108,9 @@ export default function TrainingLab({ addToast: _addToast, onTasksUpdated }) {
 
   const handleJobCreated = (job) => {
     setActiveJobId(job.id);
-    setTimeout(() => setMode('monitor'), 400);
+    // Dallo Studio non si cambia scheda: l'esecuzione è già in fondo alla
+    // stessa pagina, ed è lì che lo Studio fa scorrere la vista.
+    if (mode !== 'studio') setTimeout(() => setMode('monitor'), 400);
     if (onTasksUpdated) onTasksUpdated();
   };
 
@@ -163,6 +166,16 @@ export default function TrainingLab({ addToast: _addToast, onTasksUpdated }) {
 
       {/* ── Content area ── */}
       <div style={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+        {mode === 'studio' && (
+          <TrainingStudio
+            myDatasets={myDatasets}
+            selectedDatasetId={selectedDatasetId}
+            onDatasetSelect={setSelectedDatasetId}
+            onJobCreated={handleJobCreated}
+            addToast={showToast}
+          />
+        )}
+
         {mode === 'docs' && <TrainingDocs />}
 
         {mode === 'dataset' && (
@@ -200,10 +213,6 @@ export default function TrainingLab({ addToast: _addToast, onTasksUpdated }) {
 
         {mode === 'benchmark' && (
           <TrainingBenchmark addToast={showToast} />
-        )}
-
-        {mode === 'token' && (
-          <TrainingHFToken addToast={showToast} />
         )}
       </div>
     </div>

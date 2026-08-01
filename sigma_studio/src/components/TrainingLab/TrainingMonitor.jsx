@@ -102,7 +102,7 @@ function LossChart({ dataPoints }) {
   );
 }
 
-export default function TrainingMonitor({ onAddToast }) {
+export default function TrainingMonitor({ onAddToast, embedded = false, jobId = null }) {
   const [jobs, setJobs] = useState([]);
   const [selectedJobId, setSelectedJobId] = useState(null);
   const [logs, setLogs] = useState([]);
@@ -129,6 +129,12 @@ export default function TrainingMonitor({ onAddToast }) {
   const pollRef = useRef();
 
   const selectedJob = jobs.find(j => j.id === selectedJobId);
+
+  // Dentro lo Studio la fase la sceglie la catena: il monitor la segue, invece
+  // di tenere una selezione propria che direbbe un'altra cosa nella stessa pagina.
+  useEffect(() => {
+    if (jobId && jobId !== selectedJobId) setSelectedJobId(jobId);
+  }, [jobId]);
 
   // Load jobs list
   const loadJobs = useCallback(async () => {
@@ -368,7 +374,7 @@ export default function TrainingMonitor({ onAddToast }) {
   const lastLoss = lossPoints.length > 0 ? lossPoints[lossPoints.length - 1].loss : null;
 
   return (
-    <div className="training-panel">
+    <div className={embedded ? "" : "training-panel"}>
       <div className="training-monitor">
 
         {/* ── Hardware info strip ── */}
@@ -443,6 +449,10 @@ export default function TrainingMonitor({ onAddToast }) {
         )}
 
         {/* ── Job selector ── */}
+        {/* Nello Studio la fase la sceglie la catena: una seconda lista qui
+            terrebbe una selezione propria e direbbe un'altra cosa nella stessa
+            pagina. */}
+        {!embedded && (
         <div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
             <div style={{ fontSize: '0.65rem', fontWeight: 700, color: 'var(--text-dim)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
@@ -483,6 +493,7 @@ export default function TrainingMonitor({ onAddToast }) {
             </div>
           )}
         </div>
+        )}
 
         {/* ── Selected job controls ── */}
         {selectedJob && (

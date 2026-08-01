@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { User, Volume2, VolumeX, Play, Square, Upload, RefreshCw, Check, Sparkles, Shield, Cpu, AlertTriangle } from 'lucide-react';
+import { User, Volume2, VolumeX, Play, Square, Upload, RefreshCw, Check, Sparkles, Shield, ShieldCheck, Cpu, AlertTriangle } from 'lucide-react';
 import { speakAgentMessage, stopSpeech } from './Chat/audioSpeech';
+import HFTokenSettings from './HFTokenSettings';
 
 const PRESET_AVATARS = [
   { id: 'user_default', name: 'Utente Cyber', url: '/images/default.png' },
@@ -10,6 +11,8 @@ const PRESET_AVATARS = [
 ];
 
 export default function AccountTab() {
+  const [tokenNotice, setTokenNotice] = useState(null);
+
   // --- Profile State ---
   const [profile, setProfile] = useState(() => {
     try {
@@ -558,6 +561,41 @@ export default function AccountTab() {
                   50% { transform: scaleY(1); }
                 }
               `}</style>
+            </div>
+          )}
+        </div>
+
+        {/* SEZIONE 3 — CREDENZIALI ESTERNE */}
+        <div
+          style={{
+            background: '#11131b',
+            border: '1px solid #1e2030',
+            borderRadius: '16px',
+            padding: '24px',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '20px'
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', borderBottom: '1px solid #1e2030', paddingBottom: '14px' }}>
+            <ShieldCheck size={20} style={{ color: '#6366f1' }} />
+            <div>
+              <h3 style={{ margin: 0, fontSize: '1rem', fontWeight: 700, color: '#f0f2f8' }}>
+                HuggingFace Token
+              </h3>
+              <div style={{ fontSize: '0.72rem', color: '#8b8fa3', marginTop: '2px' }}>
+                Vale per tutta l'app: download dei modelli, dataset e training
+              </div>
+            </div>
+          </div>
+          <HFTokenSettings addToast={(message, type) => setTokenNotice({ message, type })} />
+          {tokenNotice && (
+            <div style={{
+              fontSize: '0.75rem', padding: '8px 12px', borderRadius: '8px',
+              color: tokenNotice.type === 'error' ? '#ff5555' : '#3fb950',
+              background: tokenNotice.type === 'error' ? 'rgba(255,85,85,0.08)' : 'rgba(63,185,80,0.08)',
+            }}>
+              {tokenNotice.message}
             </div>
           )}
         </div>

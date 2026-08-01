@@ -31,7 +31,8 @@ from core.training_handler import (
     list_datasets, delete_dataset, get_featured_datasets,
     # job lifecycle
     create_training_job, start_training_job, stop_training_job, delete_job,
-    continue_training_job, CONTINUATION_MODES,
+    pause_training_job, resume_training_job,
+    continue_training_job, merge_job_adapter, get_job_lineage, CONTINUATION_MODES,
     get_job_status, get_job_logs, get_job_metrics, list_jobs, clear_job_logs, export_to_ollama,
     OLLAMA_QUANT_LEVELS, check_training_dependencies,
     # hardware / accelerators
@@ -120,7 +121,7 @@ def handle_training_dataset_import(self):
 def handle_training_dataset_register_hf(self):
     body = self.read_json_body()
     self.send_json_response(register_hf_dataset(
-        body.get("dataset_id", ""), body.get("split", "train")))
+        body.get("dataset_id", ""), body.get("split", "train"), body.get("config", "")))
 
 
 def handle_training_dataset_delete(self):
@@ -161,6 +162,14 @@ def handle_training_continuation_modes(self):
         for key, meta in CONTINUATION_MODES.items()]})
 
 
+def handle_training_job_merge(self):
+    self.send_json_response(merge_job_adapter(_job_id(self), self.read_json_body()))
+
+
+def handle_training_job_lineage(self):
+    self.send_json_response(get_job_lineage(_job_id(self)))
+
+
 def handle_training_job_start(self):
     body = self.read_json_body()
     total = body.get("total_steps") or body.get("continue_to")
@@ -170,6 +179,14 @@ def handle_training_job_start(self):
 
 def handle_training_job_stop(self):
     self.send_json_response(stop_training_job(_job_id(self)))
+
+
+def handle_training_job_pause(self):
+    self.send_json_response(pause_training_job(_job_id(self)))
+
+
+def handle_training_job_resume(self):
+    self.send_json_response(resume_training_job(_job_id(self)))
 
 
 def handle_training_job_delete(self):

@@ -27,6 +27,7 @@ coda di revisione invece di finire fra i fallimenti.
 
 import datetime
 import hashlib
+import random
 import json
 import os
 import re
@@ -592,16 +593,69 @@ def get_suite_info(suite_id: str) -> dict:
     }
 
 
+#: Quesiti minimi che ogni suite ottiene in un campione, quando ce ne stanno.
+#: Sotto questa soglia una suite non dice niente di utile; a zero, sparisce.
+_MIN_PER_SUITE = 5
+
+
+def _stratified_sample(by_suite: dict[str, list[dict]], total: int) -> list[dict]:
+    """A sample where every suite is represented, not just the big ones.
+
+    Un campione casuale sull'unione delle suite le pesa per dimensione: MMLU ha
+    14.042 quesiti e GSM8K 1.319, quindi su 100 estrazioni GSM8K ne prende due
+    — e capita che ne prenda zero. E' successo davvero: un modello messo a punto
+    proprio su GSM8K e' stato confrontato con la sua base su un campione che di
+    GSM8K non conteneva un solo quesito.
+
+    Qui ogni suite riceve prima una quota minima, e il resto viene diviso in
+    proporzione. Il seed e' fisso: due modelli valutati con lo stesso `total`
+    vedono gli stessi quesiti, che e' cio' che rende il confronto appaiato.
+    """
+    rng = random.Random(42)
+    suites = {sid: found for sid, found in by_suite.items() if found}
+    if not suites:
+        return []
+
+    floor = min(_MIN_PER_SUITE, max(1, total // len(suites)))
+    quota = {sid: min(floor, len(found)) for sid, found in suites.items()}
+
+    remaining = total - sum(quota.values())
+    if remaining > 0:
+        spare = {sid: len(found) - quota[sid] for sid, found in suites.items()}
+        pool = sum(spare.values())
+        if pool > 0:
+            for sid, extra in spare.items():
+                quota[sid] += min(extra, int(remaining * extra / pool))
+    # Gli arrotondamenti lasciano qualche posto libero: vanno alle suite che
+    # hanno ancora quesiti da offrire, in ordine di grandezza.
+    leftover = total - sum(quota.values())
+    for sid in sorted(suites, key=lambda s: -len(suites[s])):
+        if leftover <= 0:
+            break
+        room = len(suites[sid]) - quota[sid]
+        take = min(room, leftover)
+        quota[sid] += take
+        leftover -= take
+
+    out: list[dict] = []
+    for sid, found in suites.items():
+        take = min(quota[sid], len(found))
+        if take:
+            out.extend(rng.sample(found, take))
+    return out
+
+
 def get_benchmark_items(suite_id: str, mode: str = "full", num_samples: int = 0) -> list[dict]:
     """Quesiti da valutare; scarica la suite se manca dalla cache."""
-    import random
-
     if suite_id == "all":
-        items: list[dict] = []
+        by_suite: dict[str, list[dict]] = {}
         for sid in OFFICIAL_BENCHMARKS_INFO:
-            items.extend(get_benchmark_items(sid, mode="full", num_samples=0))
+            found = get_benchmark_items(sid, mode="full", num_samples=0)
+            if found:
+                by_suite[sid] = found
+        items = [item for found in by_suite.values() for item in found]
         if mode == "sample" and 0 < num_samples < len(items):
-            items = random.Random(42).sample(items, num_samples)
+            items = _stratified_sample(by_suite, num_samples)
         return items
 
     if not _is_cached(suite_id):

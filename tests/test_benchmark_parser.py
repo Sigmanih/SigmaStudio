@@ -214,6 +214,57 @@ class TestMathGrading(unittest.TestCase):
         self.assertEqual(grade_answer(item, r"\boxed{5}")["verdict"], VERDICT_FAIL)
 
 
+class TestStratifiedSampling(unittest.TestCase):
+    """Un campione deve rappresentare ogni suite, non solo le più grandi.
+
+    Il campionamento casuale sull'unione le pesa per dimensione: MMLU ha 14.042
+    quesiti e GSM8K 1.319, quindi su 100 estrazioni GSM8K ne prende due — e può
+    prenderne zero. È successo: un modello messo a punto proprio su GSM8K è
+    stato confrontato con la sua base su un campione senza un solo GSM8K.
+    """
+
+    SIZES = {"mmlu": 14042, "mmlu_pro": 12032, "math": 12500, "hellaswag": 10042,
+             "bbh": 6511, "gsm8k": 1319, "truthfulqa": 817, "arc": 1172,
+             "gpqa": 448, "humaneval": 164, "mbpp": 500}
+
+    def _suites(self):
+        return {s: [{"id": f"{s}_{i}", "suite": s} for i in range(n)]
+                for s, n in self.SIZES.items()}
+
+    def _sample(self, total):
+        from core.training.benchmarks import _stratified_sample
+        return _stratified_sample(self._suites(), total)
+
+    def test_every_suite_appears_in_a_hundred_item_sample(self):
+        from collections import Counter
+        counts = Counter(i["suite"] for i in self._sample(100))
+        missing = set(self.SIZES) - set(counts)
+        self.assertEqual(missing, set(), f"suite assenti dal campione: {missing}")
+
+    def test_the_small_suites_get_a_usable_share(self):
+        from collections import Counter
+        counts = Counter(i["suite"] for i in self._sample(100))
+        self.assertGreaterEqual(counts["gsm8k"], 5)
+
+    def test_the_sample_has_exactly_the_size_requested(self):
+        for total in (30, 100, 250):
+            self.assertEqual(len(self._sample(total)), total)
+
+    def test_two_calls_give_the_same_sample(self):
+        """Senza questo il confronto fra due modelli non sarebbe appaiato."""
+        first = [i["id"] for i in self._sample(100)]
+        second = [i["id"] for i in self._sample(100)]
+        self.assertEqual(first, second)
+
+    def test_a_suite_smaller_than_the_floor_is_not_over_drawn(self):
+        from core.training.benchmarks import _stratified_sample
+        tiny = {"a": [{"id": f"a{i}"} for i in range(2)],
+                "b": [{"id": f"b{i}"} for i in range(500)]}
+        picked = _stratified_sample(tiny, 50)
+        self.assertEqual(sum(1 for p in picked if p["id"].startswith("a")), 2)
+        self.assertEqual(len(picked), 50)
+
+
 class TestMathPromptProtocol(unittest.TestCase):
     """Il prompt deve far ragionare il modello PRIMA di chiedergli il risultato.
 

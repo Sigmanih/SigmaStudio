@@ -75,6 +75,47 @@
   padding: 16px;
 }
 
+/* Nello Studio tutte le sezioni convivono in una pagina sola: i margini
+   pensati per una tab a sé si sommano in vuoti da scorrere. */
+.training-studio .training-scroll-area { padding: 8px 4px 16px; }
+.training-studio .training-divider { margin: 8px 0 !important; }
+.training-studio .training-section-header { margin-bottom: 9px; }
+.training-studio .training-field { margin-bottom: 9px; }
+.training-studio .training-chart-container { padding: 10px 12px; width: 100%; }
+.training-studio .training-chart-title { margin-bottom: 6px; }
+
+/* Master-detail: a sinistra dov'e' il lavoro (la catena delle fasi, che resta
+   sempre visibile perche' e' la mappa), a destra cosa si fa adesso sulla fase
+   scelta. Sotto i 1150px la colonna della mappa diventerebbe troppo stretta per
+   i suoi pulsanti, quindi torna sopra al contenuto. */
+.training-studio-grid { display: grid; gap: 14px; align-items: start; }
+.training-studio-aside { min-width: 0; }
+.training-studio-main { min-width: 0; }
+@media (min-width: 1150px) {
+  .training-studio-grid { grid-template-columns: minmax(300px, 360px) minmax(0, 1fr); }
+  /* La mappa resta sott'occhio mentre si scorre il dettaglio. */
+  .training-studio-aside { position: sticky; top: 4px; max-height: calc(100vh - 220px); overflow-y: auto; }
+}
+
+/* Numeri a sinistra, giudizi a destra: si leggono insieme, e nessuna delle due
+   colonne diventa una riga larga quanto lo schermo. Sotto i 1100px la lettura
+   a due colonne costringerebbe a righe di tre parole, quindi si impilano. */
+.training-metrics-split { display: grid; gap: 12px; }
+@media (min-width: 1100px) {
+  .training-metrics-split { grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr); }
+}
+
+/* Preparazione a due colonne: a sinistra cosa si addestra (sorgente e dati),
+   a destra come (tecnica e messa a punto). Le colonne hanno un tetto perche'
+   un campo largo 1800px non e' piu' leggibile, e' solo largo. */
+@media (min-width: 1250px) {
+  .training-studio .training-config-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+.training-studio .training-field input[type="text"],
+.training-studio .training-field input[type="password"],
+.training-studio .training-input,
+.training-studio .training-select-wrapper { max-width: 780px; }
+
 /* ── Section header ──────────────────────────────────────────────────────────── */
 .training-section-header {
   display: flex;
@@ -765,8 +806,8 @@
 .training-metrics-svg {
   width: 100%;
   height: auto;
-  aspect-ratio: 760 / 300;
-  max-height: 320px;
+  aspect-ratio: 1120 / 380;
+  max-height: 46vh;
   display: block;
 }
 .training-chart-empty {

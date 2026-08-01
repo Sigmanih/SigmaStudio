@@ -45,6 +45,11 @@ _MEMORIZATION_RATIO = 0.55
 # Sotto questa pendenza relativa la loss e' ferma: continuare non aggiunge nulla.
 _PLATEAU_SLOPE = 0.005
 
+# Sopra questa pendenza la loss sta salendo abbastanza da non essere rumore.
+# Piu' alta della soglia di plateau perche' la loss oscilla sempre un po' e non
+# vale la pena gridare al problema a ogni sussulto.
+_RISING_SLOPE = 0.05
+
 
 # --------------------------------------------------------------- descrizioni
 
@@ -159,6 +164,45 @@ def read_metric_history(log_path) -> list[dict]:
 
     _CACHE[str(path)] = (stamp, records)
     return records
+
+
+#: Riga con cui `start_training_job` apre il log a ogni avvio. Un job fermato e
+#: ripreso scrive nello stesso file, quindi senza questo taglio la serie
+#: incollerebbe di fila run diversi: la loss "risalirebbe" di colpo al valore
+#: iniziale del giro nuovo, e tendenza e media direbbero il falso.
+RUN_HEADER = "===== Sigma Studio Training Lab ====="
+
+
+def split_runs(log_path) -> list[list[dict]]:
+    """Metric records grouped by run, oldest first."""
+    path = Path(log_path)
+    if not path.exists():
+        return []
+    runs: list[list[dict]] = []
+    current: list[dict] = []
+    try:
+        with open(path, "r", encoding="utf-8", errors="replace") as handle:
+            for line in handle:
+                if RUN_HEADER in line:
+                    if current:
+                        runs.append(current)
+                    current = []
+                    continue
+                start = line.find(METRIC_PREFIX)
+                if start < 0:
+                    continue
+                try:
+                    record = json.loads(line[start + len(METRIC_PREFIX):].strip())
+                except ValueError:
+                    continue
+                if isinstance(record, dict):
+                    current.append(record)
+    except OSError as exc:
+        log.warning("lettura run da %s: %s", path, exc)
+        return []
+    if current:
+        runs.append(current)
+    return runs
 
 
 def _series(history: list[dict], key: str) -> list[tuple[float, float]]:
@@ -298,6 +342,18 @@ def diagnose(history: list[dict]) -> list[dict]:
     # problema, la pendenza della training loss non e' piu' la notizia.
     if any(v["level"] in ("warning", "critical") for v in verdicts):
         pass
+    elif trend is not None and trend > _RISING_SLOPE and len(train) > 20:
+        # Caso che prima cadeva nel vuoto: la pendenza positiva non rientrava
+        # ne' in "plateau" ne' in "sta imparando", e il verdetto restava muto
+        # proprio quando c'era la cosa piu' importante da dire.
+        verdicts.append(_verdict(
+            "rising", "warning", "La loss sta risalendo",
+            f"Nella finestra recente la training loss e' salita del "
+            f"{trend * 100:.1f}%: il run sta peggiorando, non migliorando.",
+            "Di solito e' un learning rate troppo alto per questa fase. "
+            "Ferma, dimezzalo e riparti dall'ultimo checkpoint buono. Se la "
+            "loss oscilla senza salire davvero, alza il batch effettivo "
+            "(gradient accumulation) per ridurre il rumore."))
     elif trend is not None and abs(trend) < _PLATEAU_SLOPE and len(train) > 20:
         verdicts.append(_verdict(
             "plateau", "info", "La loss si e' fermata",
@@ -326,12 +382,21 @@ def diagnose(history: list[dict]) -> list[dict]:
 
 
 def job_metrics(job: dict) -> dict:
-    """Everything the Monitor needs for one job, in a single payload."""
-    history = read_metric_history(job.get("log_path", ""))
+    """Everything the Monitor needs for one job, in a single payload.
+
+    Curve e giudizi guardano solo l'ultimo avvio: e' quello in corso, ed e' su
+    quello che si decide se continuare. Gli avvii precedenti restano contati,
+    perche' sapere che un job e' stato ripreso spiega salti altrimenti
+    incomprensibili nel log.
+    """
+    runs = split_runs(job.get("log_path", ""))
+    history = runs[-1] if runs else []
     return {
         "success": True,
         "job_id": job.get("id"),
         "history": history,
+        "run_count": len(runs),
+        "previous_points": sum(len(r) for r in runs[:-1]),
         "summary": summarize(history),
         "diagnostics": diagnose(history),
         "guide": METRIC_GUIDE,

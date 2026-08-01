@@ -155,6 +155,74 @@ class TestDiagnostics:
                                                        "good": 2, "info": 3}[l])
 
 
+class TestRunSeparation:
+    """Un job fermato e ripreso scrive nello stesso log.
+
+    Senza tagliare sugli avvii la serie incolla run diversi di fila: la loss
+    "risale" di colpo al valore iniziale del giro nuovo, e tendenza e media
+    finiscono per descrivere una cosa che non è mai successa.
+    """
+
+    def _log(self, tmp_path, runs):
+        from core.training.metrics import RUN_HEADER
+        lines = []
+        for run in runs:
+            lines.append(RUN_HEADER)
+            lines += [f'{METRIC_PREFIX} {json.dumps(r)}' for r in run]
+        path = tmp_path / "train.log"
+        path.write_text("\n".join(lines), encoding="utf-8")
+        return path
+
+    def test_runs_are_split_on_the_start_header(self, tmp_path):
+        from core.training.metrics import split_runs
+        path = self._log(tmp_path, [
+            [{"step": 1, "loss": 8.0}, {"step": 2, "loss": 4.0}],
+            [{"step": 1, "loss": 0.4}, {"step": 2, "loss": 0.3}],
+        ])
+        runs = split_runs(path)
+        assert [len(r) for r in runs] == [2, 2]
+        assert runs[-1][0]["loss"] == 0.4
+
+    def test_only_the_last_run_drives_the_verdict(self, tmp_path):
+        """Il caso reale: 815 punti di un tentativo precedente falsavano la
+        tendenza del run in corso."""
+        from core.training.metrics import job_metrics
+        noisy = [{"step": i, "loss": 8.0 - i * 0.01} for i in range(1, 300)]
+        calm = [{"step": i, "loss": 0.33} for i in range(1, 60)]
+        path = self._log(tmp_path, [noisy, calm])
+        payload = job_metrics({"id": "x", "log_path": str(path)})
+        assert payload["run_count"] == 2
+        assert payload["previous_points"] == len(noisy)
+        assert payload["summary"]["points"] == len(calm)
+        assert payload["summary"]["last_loss"] == 0.33
+
+    def test_a_log_without_headers_counts_as_one_run(self, tmp_path):
+        from core.training.metrics import split_runs
+        path = tmp_path / "train.log"
+        path.write_text(f'{METRIC_PREFIX} {{"step": 1, "loss": 2.0}}', encoding="utf-8")
+        assert len(split_runs(path)) == 1
+
+
+class TestRisingLoss:
+    """Una loss che risale è la cosa più importante da dire, e il verdetto
+    restava muto: la pendenza positiva non rientrava né in 'plateau' né in
+    'sta ancora imparando'."""
+
+    def test_a_rising_loss_is_reported(self):
+        history = [{"step": i, "loss": 0.3 + i * 0.02} for i in range(40)]
+        verdict = next(v for v in diagnose(history) if v["code"] == "rising")
+        assert verdict["level"] == "warning"
+        assert "learning rate" in verdict["action"]
+
+    def test_small_wobbles_are_not_called_a_problem(self):
+        """La loss oscilla sempre: sotto la soglia resta un plateau."""
+        history = [{"step": i, "loss": 1.0 + (0.002 if i % 2 else 0)} for i in range(40)]
+        assert "rising" not in _codes(history)
+
+    def test_a_descending_run_is_never_called_rising(self):
+        assert "rising" not in _codes(_descending())
+
+
 class TestMetricGuide:
 
     @pytest.mark.parametrize("metric", ["loss", "eval_loss", "perplexity", "gap"])

@@ -9,6 +9,7 @@ import ast
 import json
 import sys
 from pathlib import Path
+from unittest.mock import patch
 
 import pytest
 
@@ -373,6 +374,376 @@ class TestTrainingContinuation:
     def test_an_unknown_job_is_refused(self):
         from core.training.jobs import continue_training_job
         assert continue_training_job("non-esiste", {})["success"] is False
+
+
+class TestDatasetSubset:
+    """Addestrare su una parte del dataset invece che su tutto.
+
+    MetaMathQA sono 395K esempi: due epoche fanno ~98.000 step, ore di GPU per
+    un guadagno che si vede molto prima.
+    """
+
+    def _loader(self, max_examples):
+        from core.training.jobs import SCRIPT_TEMPLATES, _render, _build_script_values
+        values = _build_script_values(
+            {"base_model": "gpt2", "method": "trl_sft", "dataset_id": "x/y",
+             "hyperparams": {"max_examples": max_examples}}, "tj", Path("unused"))
+        source = _render(SCRIPT_TEMPLATES["trl_sft"], values)
+        node = next(n for n in ast.parse(source).body
+                    if isinstance(n, ast.FunctionDef) and n.name == "load_train_and_eval")
+        namespace = {"json": json, "sigma": lambda *a: None,
+                     "VALIDATION_FRACTION": 0.0, "MAX_EXAMPLES": max_examples}
+        exec(ast.get_source_segment(source, node), namespace)
+        return namespace["load_train_and_eval"], namespace
+
+    def _dataset(self, n):
+        from datasets import Dataset
+        return Dataset.from_dict({"text": [f"esempio {i}" for i in range(n)]})
+
+    def test_a_subset_is_taken_when_asked(self):
+        loader, namespace = self._loader(500)
+        namespace["load_training_dataset"] = lambda: self._dataset(5000)
+        train, _ = loader()
+        assert len(train) == 500
+
+    def test_zero_means_the_whole_dataset(self):
+        loader, namespace = self._loader(0)
+        namespace["load_training_dataset"] = lambda: self._dataset(3000)
+        train, _ = loader()
+        assert len(train) == 3000
+
+    def test_a_dataset_smaller_than_the_cap_is_left_alone(self):
+        loader, namespace = self._loader(10_000)
+        namespace["load_training_dataset"] = lambda: self._dataset(400)
+        train, _ = loader()
+        assert len(train) == 400
+
+    def test_the_subset_is_shuffled_not_the_first_n(self):
+        """Molti dataset sono ordinati per categoria: prendere la testa
+        significherebbe allenare su una fetta sola del compito."""
+        loader, namespace = self._loader(50)
+        namespace["load_training_dataset"] = lambda: self._dataset(5000)
+        train, _ = loader()
+        taken = {int(t.split()[-1]) for t in train["text"]}
+        assert taken != set(range(50))
+        assert max(taken) > 500          # pesca in tutto il dataset
+
+    def test_the_same_seed_gives_the_same_subset(self):
+        """Due run confrontabili devono vedere gli stessi esempi."""
+        first, second = [], []
+        for out in (first, second):
+            loader, namespace = self._loader(40)
+            namespace["load_training_dataset"] = lambda: self._dataset(2000)
+            out.extend(loader()[0]["text"])
+        assert first == second
+
+
+class TestCheckpointing:
+    """Un run fermato non deve lasciare le sue ore per terra.
+
+    Salvare a fine epoca sembra ragionevole finché un'epoca non dura 47.000
+    step: il run notturno su MetaMathQA è stato fermato dopo ~850 step e non
+    aveva prodotto un solo checkpoint.
+    """
+
+    def _script(self, method="lora_unsloth", **hyper):
+        from core.training.jobs import SCRIPT_TEMPLATES, _render, _build_script_values
+        values = _build_script_values(
+            {"base_model": "gpt2", "method": method, "dataset_id": "x/y",
+             "hyperparams": {"num_epochs": 2, "batch_size": 2,
+                             "gradient_accumulation": 4, **hyper}},
+            "tj", Path("unused"))
+        return _render(SCRIPT_TEMPLATES[method], values)
+
+    @pytest.mark.parametrize("method", ["lora_unsloth", "trl_sft", "full_pretrain"])
+    def test_checkpoints_are_written_by_step_not_by_epoch(self, method):
+        source = self._script(method)
+        assert 'save_strategy="steps"' in source
+        assert "save_steps=SAVE_EVERY" in source
+        assert 'save_strategy="epoch"' not in source
+
+    @pytest.mark.parametrize("method", ["lora_unsloth", "trl_sft", "full_pretrain"])
+    def test_a_restart_picks_up_the_last_checkpoint(self, method):
+        source = self._script(method)
+        assert "resume_from_checkpoint=RESUME_FROM" in source
+        assert "_last_checkpoint" in source
+
+    def test_the_save_interval_stays_between_its_bounds(self):
+        """Fitti costano tempo di scrittura, radi costano ore di training."""
+        source = self._script()
+        namespace = {}
+        start = source.index("def save_interval")
+        exec(source[start:source.index("\n\n", start)], namespace)
+        save_interval = namespace["save_interval"]
+        # dataset enorme: si ferma al tetto
+        assert save_interval(395_000) == 2000
+        # dataset minuscolo: non scende sotto il pavimento
+        assert save_interval(50) == 100
+        # caso intermedio: ~20 punti di ripresa
+        steps = (20_000 * 2) // 8
+        assert save_interval(20_000) == pytest.approx(steps // 20, abs=1)
+
+    def test_the_last_checkpoint_is_the_one_with_the_highest_step(self, tmp_path):
+        """L'ordinamento alfabetico metterebbe checkpoint-9 dopo checkpoint-40."""
+        source = self._script()
+        namespace = {"os": __import__("os")}
+        start = source.index("def _last_checkpoint")
+        exec(source[start:source.index("RESUME_FROM =", start)], namespace)
+        for step in (9, 40, 100):
+            (tmp_path / f"checkpoint-{step}").mkdir()
+        (tmp_path / "lora_model").mkdir()      # non è un checkpoint
+        assert namespace["_last_checkpoint"](str(tmp_path)).endswith("checkpoint-100")
+
+    def test_no_checkpoint_means_a_clean_start(self, tmp_path):
+        source = self._script()
+        namespace = {"os": __import__("os")}
+        start = source.index("def _last_checkpoint")
+        exec(source[start:source.index("RESUME_FROM =", start)], namespace)
+        assert namespace["_last_checkpoint"](str(tmp_path)) is None
+        assert namespace["_last_checkpoint"](str(tmp_path / "mai-esistita")) is None
+
+
+class TestPauseAndResume:
+    """Sospendere un training senza perdere un solo step.
+
+    Il processo viene congelato dal sistema operativo, quindi riprende
+    esattamente dov'era invece di ripartire da un checkpoint. Il test lo prova
+    su un processo vero, guardando lo stato che il sistema gli attribuisce.
+    """
+
+    def _running_job(self):
+        """Job con uno script che dorme: serve un processo reale da sospendere."""
+        from core.training.jobs import (create_training_job, start_training_job,
+                                        _load_jobs, _save_jobs)
+        job = create_training_job({
+            "base_model": "gpt2", "method": "script_custom",
+            "dataset_id": "", "hyperparams": {},
+        })["job"]
+        Path(job["script_path"]).write_text(
+            "import time\nfor _ in range(600):\n    time.sleep(0.5)\n", encoding="utf-8")
+        # Lo script è già a posto: la risincronizzazione lo rigenererebbe.
+        jobs = _load_jobs()
+        jobs[job["id"]]["method"] = "script_custom"
+        _save_jobs(jobs)
+        assert start_training_job(job["id"])["success"]
+        return job["id"]
+
+    def test_a_running_job_can_be_frozen_and_let_go(self):
+        import psutil
+        from core.training.jobs import (pause_training_job, resume_training_job,
+                                        stop_training_job, _load_jobs, delete_job)
+        job_id = self._running_job()
+        try:
+            pid = _load_jobs()[job_id]["pid"]
+            process = psutil.Process(pid)
+
+            paused = pause_training_job(job_id)
+            assert paused["success"] is True, paused.get("error")
+            assert _load_jobs()[job_id]["status"] == "paused"
+            assert process.status() == psutil.STATUS_STOPPED
+            # e la pausa dice a chiare lettere cosa non fa
+            assert "VRAM" in paused["message"]
+
+            resumed = resume_training_job(job_id)
+            assert resumed["success"] is True, resumed.get("error")
+            assert _load_jobs()[job_id]["status"] == "running"
+            assert process.status() != psutil.STATUS_STOPPED
+        finally:
+            stop_training_job(job_id)
+            delete_job(job_id)
+
+    def test_pausing_something_that_is_not_running_is_refused(self):
+        from core.training.jobs import create_training_job, pause_training_job, delete_job
+        job = create_training_job({"base_model": "gpt2", "method": "script_custom",
+                                   "dataset_id": "", "hyperparams": {}})["job"]
+        try:
+            result = pause_training_job(job["id"])
+            assert result["success"] is False and "esecuzione" in result["error"]
+        finally:
+            delete_job(job["id"])
+
+    def test_resuming_a_job_whose_process_died_says_so(self):
+        """Altrimenti resterebbe 'paused' per sempre, in attesa di nessuno."""
+        from core.training.jobs import (create_training_job, resume_training_job,
+                                        _load_jobs, _save_jobs, delete_job)
+        job = create_training_job({"base_model": "gpt2", "method": "script_custom",
+                                   "dataset_id": "", "hyperparams": {}})["job"]
+        jobs = _load_jobs()
+        jobs[job["id"]].update({"status": "paused", "pid": 999999})
+        _save_jobs(jobs)
+        try:
+            result = resume_training_job(job["id"])
+            assert result["success"] is False
+            assert _load_jobs()[job["id"]]["status"] == "stopped"
+        finally:
+            delete_job(job["id"])
+
+    def test_a_running_stage_offers_pause_and_a_paused_one_offers_resume(self):
+        from core.training.jobs import (create_training_job, get_job_lineage,
+                                        _load_jobs, _save_jobs, delete_job)
+        job = create_training_job({"base_model": "gpt2", "method": "lora_unsloth",
+                                   "dataset_id": "x/y", "hyperparams": {}})["job"]
+        try:
+            for status, expected in (("running", "pause"), ("paused", "resume")):
+                jobs = _load_jobs(); jobs[job["id"]]["status"] = status; _save_jobs(jobs)
+                assert expected in get_job_lineage(job["id"])["stages"][0]["actions"]
+        finally:
+            delete_job(job["id"])
+
+
+class TestSpecialisationChain:
+    """LoRA → merge → nuova base → LoRA: la catena che specializza per fasi.
+
+    Ogni fase è un job a sé, con i suoi artefatti e il suo log, così si può
+    valutare da sola e confrontare con quella prima.
+    """
+
+    def _trained(self, artifacts=("output/lora_model",), method="lora_unsloth"):
+        from core.training.jobs import create_training_job, _load_jobs, _save_jobs
+        job = create_training_job({
+            "base_model": "unsloth/llama-3.2-1b-instruct", "method": method,
+            "dataset_id": "gsm8k", "name": "LoRA GSM8K", "hyperparams": {},
+        })["job"]
+        jobs = _load_jobs()
+        jobs[job["id"]]["status"] = "completed"
+        _save_jobs(jobs)
+        for rel in artifacts:
+            (Path(job["dir"]) / rel).mkdir(parents=True, exist_ok=True)
+        return job["id"]
+
+    def _merge(self, parent, stage_name="Qwythos Reasoning v1", merged=True):
+        """Merge senza lanciare il processo: interessa la struttura, non la GPU."""
+        from core.training.jobs import merge_job_adapter, _load_jobs, _save_jobs
+        with patch("core.training.jobs.start_training_job",
+                   return_value={"success": True}):
+            result = merge_job_adapter(parent, {"stage_name": stage_name})
+        assert result["success"] is True, result.get("error")
+        jobs = _load_jobs()
+        jobs[result["job_id"]]["status"] = "completed"
+        _save_jobs(jobs)
+        if merged:
+            (Path(jobs[result["job_id"]]["dir"]) / "output" / "merged_16bit").mkdir(parents=True)
+        return result["job_id"]
+
+    def test_the_merge_is_its_own_job_with_the_adapter_wired_in(self):
+        from core.training.jobs import _load_jobs, delete_job
+        parent = self._trained()
+        merge_id = self._merge(parent)
+        try:
+            job = _load_jobs()[merge_id]
+            assert job["method"] == "merge_adapter"
+            assert job["stage_name"] == "Qwythos Reasoning v1"
+            assert job["source_job_id"] == parent
+            # il metodo di training si tramanda: il merge non ne ha uno suo
+            assert job["train_method"] == "lora_unsloth"
+            source = Path(job["script_path"]).read_text(encoding="utf-8")
+            assert "lora_model" in source and "merge_and_unload" in source
+        finally:
+            delete_job(merge_id)
+
+    def test_merging_without_an_adapter_is_refused(self):
+        from core.training.jobs import merge_job_adapter
+        parent = self._trained(artifacts=())
+        result = merge_job_adapter(parent, {})
+        assert result["success"] is False
+        assert "adapter" in result["error"]
+
+    def test_a_merged_stage_becomes_the_base_of_the_next_one(self):
+        from core.training.jobs import continue_training_job, _load_jobs, delete_job
+        merge_id = self._merge(self._trained())
+        nxt = continue_training_job(merge_id, {"dataset_id": "x/math",
+                                               "stage_name": "Qwythos Reasoning v2"})
+        try:
+            assert nxt["success"] is True
+            child = _load_jobs()[nxt["job_id"]]
+            # da una fase fusa si riparte per forza con un adapter nuovo
+            assert child["continuation_mode"] == "fresh_adapter"
+            assert child["base_model"].endswith("merged_16bit")
+            assert child["method"] == "lora_unsloth"     # ereditato dal training
+            assert child["stage_name"] == "Qwythos Reasoning v2"
+        finally:
+            delete_job(nxt["job_id"])
+
+    def test_resuming_an_adapter_is_impossible_after_a_merge(self):
+        """Chiedere resume_adapter su una fase fusa non deve rompere: quel
+        lavoro è già dentro i pesi, quindi si ricade su fresh_adapter."""
+        from core.training.jobs import continue_training_job, _load_jobs, delete_job
+        merge_id = self._merge(self._trained())
+        nxt = continue_training_job(merge_id, {"mode": "resume_adapter"})
+        try:
+            assert nxt["success"] is True
+            assert _load_jobs()[nxt["job_id"]]["continuation_mode"] == "fresh_adapter"
+        finally:
+            delete_job(nxt["job_id"])
+
+    def test_the_lineage_reads_the_whole_chain_in_order(self):
+        from core.training.jobs import (continue_training_job, get_job_lineage,
+                                        _load_jobs, _save_jobs, delete_job)
+        first = self._trained()
+        merge1 = self._merge(first, "Qwythos Reasoning v1")
+        second = continue_training_job(merge1, {"dataset_id": "x/math"})["job_id"]
+        jobs = _load_jobs()
+        jobs[second]["status"] = "completed"
+        _save_jobs(jobs)
+        (Path(jobs[second]["dir"]) / "output" / "lora_model").mkdir(parents=True)
+        merge2 = self._merge(second, "Qwythos Reasoning v2")
+        try:
+            chain = get_job_lineage(merge2)
+            assert chain["success"] is True
+            assert [s["id"] for s in chain["stages"]] == [first, merge1, second, merge2]
+            assert [s["kind"] for s in chain["stages"]] == ["train", "merge", "train", "merge"]
+            assert chain["stages"][-1]["stage_name"] == "Qwythos Reasoning v2"
+            assert chain["stages"][-1]["is_current"] is True
+        finally:
+            for jid in (merge2, second, merge1, first):
+                delete_job(jid)
+
+    def test_the_lineage_is_the_same_seen_from_any_stage(self):
+        from core.training.jobs import get_job_lineage, delete_job
+        first = self._trained()
+        merge1 = self._merge(first)
+        try:
+            dal_primo = [s["id"] for s in get_job_lineage(first)["stages"]]
+            dal_merge = [s["id"] for s in get_job_lineage(merge1)["stages"]]
+            assert dal_primo == dal_merge == [first, merge1]
+        finally:
+            delete_job(merge1)
+            delete_job(first)
+
+    def test_the_actions_offered_follow_the_artefacts_on_disk(self):
+        from core.training.jobs import get_job_lineage, delete_job
+        parent = self._trained()
+        try:
+            stage = get_job_lineage(parent)["stages"][0]
+            assert "merge" in stage["actions"] and "continue" in stage["actions"]
+            assert "benchmark" not in stage["actions"]   # nessun modello autonomo
+        finally:
+            delete_job(parent)
+
+    def test_a_stage_without_artefacts_offers_no_next_step(self):
+        from core.training.jobs import get_job_lineage, delete_job
+        parent = self._trained(artifacts=())
+        try:
+            actions = get_job_lineage(parent)["stages"][0]["actions"]
+            assert "merge" not in actions and "continue" not in actions
+            assert "delete" in actions
+        finally:
+            delete_job(parent)
+
+    def test_a_running_stage_can_only_be_paused_or_stopped(self):
+        """Su un run in corso non ha senso offrire merge o continuazione: gli
+        artefatti non sono ancora quelli definitivi."""
+        from core.training.jobs import get_job_lineage, _load_jobs, _save_jobs, delete_job
+        parent = self._trained()
+        jobs = _load_jobs(); jobs[parent]["status"] = "running"; _save_jobs(jobs)
+        try:
+            assert get_job_lineage(parent)["stages"][0]["actions"] == ["pause", "stop"]
+        finally:
+            delete_job(parent)
+
+    def test_an_unknown_job_has_no_lineage(self):
+        from core.training.jobs import get_job_lineage
+        assert get_job_lineage("non-esiste")["success"] is False
 
 
 class TestStaleScriptRegeneration:

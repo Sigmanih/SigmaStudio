@@ -6,6 +6,12 @@
       "runtimeExecutable": ".venv/Scripts/python.exe",
       "runtimeArgs": ["sigma_server.py"],
       "port": 8000
+    },
+    {
+      "name": "sigma-verifica",
+      "runtimeExecutable": ".venv/Scripts/python.exe",
+      "runtimeArgs": ["-m", "uvicorn", "core.fastapi_app:app", "--port", "8123"],
+      "port": 8123
     }
   ]
 }

@@ -56,6 +56,7 @@ METHOD_REQUIREMENTS = {
     "fwe_gradus": ["torch", "transformers", "datasets"],
     "slm_forge": ["torch", "transformers", "datasets", "tokenizers", "gguf"],
     "script_custom": [],
+    "merge_adapter": ["torch", "peft", "transformers"],
 }
 
 METHOD_LABELS = {
@@ -65,6 +66,7 @@ METHOD_LABELS = {
     "fwe_gradus": "Gradus FWE (generatore di pesi)",
     "slm_forge": "SLM Forge (modello da zero)",
     "script_custom": "Script custom",
+    "merge_adapter": "Merge dell'adapter nel modello",
 }
 
 
@@ -179,6 +181,9 @@ def resolve_dataset(dataset_id: str) -> dict:
         return {"id": dataset_id, "name": meta.get("name", dataset_id), "kind": "hf",
                 "path": resolve_hf_dataset_id(meta.get("hf_id", dataset_id)),
                 "split": meta.get("split", "train"),
+                # Config accertato interrogando HuggingFace alla registrazione:
+                # vale piu' della tabella di default, che copre solo i casi noti.
+                "config": meta.get("config", ""),
                 "columns": meta.get("columns", []), "row_count": meta.get("row_count", 0)}
 
     file_path = meta.get("file", "")
@@ -268,8 +273,11 @@ def load_training_dataset():
         # sottoinsiemi e senza config load_dataset si rifiuta di indovinare.
         configs = json.loads(r"""{dataset_configs_json}""")
 
+        # Config accertato alla registrazione del dataset: batte la tabella.
+        declared = "{dataset_config}"
+
         def _load_hf(repo):
-            name = configs.get(repo)
+            name = declared or configs.get(repo)
             try:
                 return load_dataset(repo, name, split="{dataset_split}")
             except ValueError as exc:
@@ -349,6 +357,7 @@ def load_training_dataset():
 
 
 VALIDATION_FRACTION = {validation_fraction}
+MAX_EXAMPLES = {max_examples}
 
 
 def load_train_and_eval():
@@ -360,6 +369,16 @@ def load_train_and_eval():
     due run sullo stesso dataset restano confrontabili fra loro.
     """
     ds = load_training_dataset()
+
+    # Sottoinsieme: su un dataset da centinaia di migliaia di esempi un'epoca
+    # intera dura ore, e per specializzare un modello quasi mai serve tutto.
+    # Il taglio e' deterministico (seed fisso) e mescolato, non i primi N: i
+    # dataset sono spesso ordinati per categoria, e prendere la testa
+    # significherebbe addestrare su una fetta sola del compito.
+    if 0 < MAX_EXAMPLES < len(ds):
+        ds = ds.shuffle(seed=42).select(range(MAX_EXAMPLES))
+        sigma("Sottoinsieme: %d esempi estratti (seed 42)" % len(ds))
+
     if VALIDATION_FRACTION <= 0:
         return ds, None
     # Sotto qualche decina di esempi la fetta di validation sarebbe cosi'
@@ -486,7 +505,33 @@ total = sum(p.numel() for p in model.parameters())
 sigma("LoRA r={lora_r} alpha={lora_alpha} | parametri allenabili %.2fM su %.2fM (%.2f%%)" % (
     trainable / 1e6, total / 1e6, 100.0 * trainable / max(1, total)))
 
+
+# Ogni valutazione e' un passaggio completo sulla fetta di validation: a cadenza
+# fissa, su un run lungo, diventa la voce di costo principale. Qui la cadenza si
+# adatta perche' il numero di valutazioni resti circa costante — abbastanza da
+# vedere la curva, non tante da rallentare il training.
+TARGET_EVALS = 18
+
+
+def eval_interval(n_examples):
+    steps = max(1, (n_examples * {num_epochs}) // max(1, {batch_size} * {gradient_accumulation}))
+    return max({eval_steps}, int(steps / TARGET_EVALS) or {eval_steps})
+
+
+def save_interval(n_examples):
+    """Ogni quanti step lasciare un checkpoint da cui poter ripartire."""
+    steps = max(1, (n_examples * {num_epochs}) // max(1, {batch_size} * {gradient_accumulation}))
+    # Almeno 20 punti di ripresa, mai piu' fitti di 100 step (scrivere un
+    # checkpoint costa) e mai piu' radi di 2000 (perderne di piu' fa male).
+    return int(min(2000, max(100, steps // 20)))
+
 train_dataset, eval_dataset = load_train_and_eval()
+EVAL_EVERY = eval_interval(len(train_dataset))
+SAVE_EVERY = save_interval(len(train_dataset))
+sigma("Checkpoint ogni %d step in %s" % (SAVE_EVERY, r"{output_dir}"))
+if eval_dataset is not None:
+    sigma("Validation ogni %d step su %d esempi tenuti da parte"
+          % (EVAL_EVERY, len(eval_dataset)))
 
 trainer = SFTTrainer(
     model=model,
@@ -497,8 +542,10 @@ trainer = SFTTrainer(
         output_dir=r"{output_dir}",
         dataset_text_field="text",
         eval_strategy="steps" if eval_dataset is not None else "no",
-        eval_steps={eval_steps},
-        per_device_eval_batch_size=1,
+        eval_steps=EVAL_EVERY,
+        # La valutazione non calcola gradienti: puo' usare batch piu' larghi del
+        # training senza rischiare la VRAM, e ci mette molto meno.
+        per_device_eval_batch_size=max(1, {batch_size} * 2),
         max_length={max_seq_length},
         per_device_train_batch_size={batch_size},
         gradient_accumulation_steps={gradient_accumulation},
@@ -511,7 +558,12 @@ trainer = SFTTrainer(
         bf16=bool(TUNE.get("bf16")),
         fp16=bool(TUNE.get("fp16")),
         logging_steps=1,
-        save_strategy="epoch",
+        # Salvare a fine epoca sembra ragionevole finche' un'epoca non dura
+        # 47.000 step: un run fermato prima non lascia nulla, e ore di GPU
+        # spariscono. Si salva a intervalli di step, calcolati perche' i
+        # checkpoint restino pochi ma non lontanissimi fra loro.
+        save_strategy="steps",
+        save_steps=SAVE_EVERY,
         save_total_limit=2,
         seed=42,
         disable_tqdm=True,
@@ -521,7 +573,23 @@ trainer = SFTTrainer(
 )
 
 sigma("Inizio training LoRA...")
-result = trainer.train()
+# Riavviare un job fermato deve riprendere da dove si era interrotto, non
+# ributtare via le ore gia' fatte: se in output c'e' un checkpoint, si riparte
+# da quello — stato dell'ottimizzatore e scheduler compresi.
+def _last_checkpoint(folder):
+    if not os.path.isdir(folder):
+        return None
+    found = [d for d in os.listdir(folder)
+             if d.startswith("checkpoint-") and d.split("-")[-1].isdigit()]
+    if not found:
+        return None
+    return os.path.join(folder, max(found, key=lambda d: int(d.split("-")[-1])))
+
+
+RESUME_FROM = _last_checkpoint(r"{output_dir}")
+if RESUME_FROM:
+    sigma("Riprendo dal checkpoint %s" % os.path.basename(RESUME_FROM))
+result = trainer.train(resume_from_checkpoint=RESUME_FROM)
 sigma("Training completato - loss finale: %.4f" % result.training_loss)
 
 out = r"{output_dir}" + "/lora_model"
@@ -536,6 +604,58 @@ try:
 except Exception as e:
     sigma("Merge 16-bit non riuscito (opzionale): %s" % e)
 
+sigma("FATTO")
+''',
+
+    # ------------------------------------------------------- merge adapter
+    # Fondere l'adapter nel modello base produce un modello autonomo, che
+    # diventa il punto di partenza della fase successiva della catena. E' un
+    # job come gli altri — ha il suo log, il suo esito e si puo' rifare — invece
+    # di essere una coda opzionale del training, dove un fallimento passava
+    # inosservato e lasciava la catena senza il suo anello.
+    "merge_adapter": _PREAMBLE + '''
+try:
+    from transformers import AutoModelForCausalLM, AutoTokenizer
+    from peft import PeftModel
+except ImportError as e:
+    sigma("ERRORE dipendenza mancante: %s" % e)
+    sigma("Installa con: pip install peft transformers")
+    sys.exit(1)
+
+ADAPTER = r"{resume_adapter}"
+TARGET = r"{output_dir}" + "/merged_16bit"
+
+if not ADAPTER or not os.path.isdir(ADAPTER):
+    sigma("ERRORE: adapter non trovato in %s" % ADAPTER)
+    sys.exit(1)
+
+sigma("Base: {base_model}")
+sigma("Adapter: %s" % ADAPTER)
+
+# Il merge va fatto sui pesi a 16 bit, mai su una base quantizzata a 4: la
+# quantizzazione e' servita per far stare il training in VRAM, ma fondere
+# dentro pesi gia' degradati vi inchioderebbe la perdita per sempre.
+model = AutoModelForCausalLM.from_pretrained(
+    "{base_model}", dtype=DTYPE, device_map="cpu", low_cpu_mem_usage=True)
+sigma("Modello base caricato in %s su CPU" % DTYPE)
+
+model = PeftModel.from_pretrained(model, ADAPTER)
+sigma("Adapter applicato, fusione in corso...")
+model = model.merge_and_unload()
+
+os.makedirs(TARGET, exist_ok=True)
+model.save_pretrained(TARGET, safe_serialization=True)
+
+try:
+    tokenizer = AutoTokenizer.from_pretrained(ADAPTER)
+except Exception:
+    tokenizer = AutoTokenizer.from_pretrained("{base_model}")
+tokenizer.save_pretrained(TARGET)
+
+total = sum(
+    os.path.getsize(os.path.join(TARGET, f))
+    for f in os.listdir(TARGET) if os.path.isfile(os.path.join(TARGET, f)))
+sigma("Modello fuso salvato in %s (%.1f GB)" % (TARGET, total / 1024**3))
 sigma("FATTO")
 ''',
 
@@ -594,7 +714,33 @@ else:
     ))
 model.print_trainable_parameters()
 
+
+# Ogni valutazione e' un passaggio completo sulla fetta di validation: a cadenza
+# fissa, su un run lungo, diventa la voce di costo principale. Qui la cadenza si
+# adatta perche' il numero di valutazioni resti circa costante — abbastanza da
+# vedere la curva, non tante da rallentare il training.
+TARGET_EVALS = 18
+
+
+def eval_interval(n_examples):
+    steps = max(1, (n_examples * {num_epochs}) // max(1, {batch_size} * {gradient_accumulation}))
+    return max({eval_steps}, int(steps / TARGET_EVALS) or {eval_steps})
+
+
+def save_interval(n_examples):
+    """Ogni quanti step lasciare un checkpoint da cui poter ripartire."""
+    steps = max(1, (n_examples * {num_epochs}) // max(1, {batch_size} * {gradient_accumulation}))
+    # Almeno 20 punti di ripresa, mai piu' fitti di 100 step (scrivere un
+    # checkpoint costa) e mai piu' radi di 2000 (perderne di piu' fa male).
+    return int(min(2000, max(100, steps // 20)))
+
 train_dataset, eval_dataset = load_train_and_eval()
+EVAL_EVERY = eval_interval(len(train_dataset))
+SAVE_EVERY = save_interval(len(train_dataset))
+sigma("Checkpoint ogni %d step in %s" % (SAVE_EVERY, r"{output_dir}"))
+if eval_dataset is not None:
+    sigma("Validation ogni %d step su %d esempi tenuti da parte"
+          % (EVAL_EVERY, len(eval_dataset)))
 
 trainer = SFTTrainer(
     model=model,
@@ -605,8 +751,10 @@ trainer = SFTTrainer(
         output_dir=r"{output_dir}",
         dataset_text_field="text",
         eval_strategy="steps" if eval_dataset is not None else "no",
-        eval_steps={eval_steps},
-        per_device_eval_batch_size=1,
+        eval_steps=EVAL_EVERY,
+        # La valutazione non calcola gradienti: puo' usare batch piu' larghi del
+        # training senza rischiare la VRAM, e ci mette molto meno.
+        per_device_eval_batch_size=max(1, {batch_size} * 2),
         max_length={max_seq_length},
         per_device_train_batch_size={batch_size},
         gradient_accumulation_steps={gradient_accumulation},
@@ -620,7 +768,12 @@ trainer = SFTTrainer(
         fp16=bool(TUNE.get("fp16")),
         gradient_checkpointing=bool(TUNE.get("gradient_checkpointing")),
         logging_steps=1,
-        save_strategy="epoch",
+        # Salvare a fine epoca sembra ragionevole finche' un'epoca non dura
+        # 47.000 step: un run fermato prima non lascia nulla, e ore di GPU
+        # spariscono. Si salva a intervalli di step, calcolati perche' i
+        # checkpoint restino pochi ma non lontanissimi fra loro.
+        save_strategy="steps",
+        save_steps=SAVE_EVERY,
         save_total_limit=2,
         seed=42,
         disable_tqdm=True,
@@ -630,7 +783,23 @@ trainer = SFTTrainer(
 )
 
 sigma("Inizio training SFT...")
-result = trainer.train()
+# Riavviare un job fermato deve riprendere da dove si era interrotto, non
+# ributtare via le ore gia' fatte: se in output c'e' un checkpoint, si riparte
+# da quello — stato dell'ottimizzatore e scheduler compresi.
+def _last_checkpoint(folder):
+    if not os.path.isdir(folder):
+        return None
+    found = [d for d in os.listdir(folder)
+             if d.startswith("checkpoint-") and d.split("-")[-1].isdigit()]
+    if not found:
+        return None
+    return os.path.join(folder, max(found, key=lambda d: int(d.split("-")[-1])))
+
+
+RESUME_FROM = _last_checkpoint(r"{output_dir}")
+if RESUME_FROM:
+    sigma("Riprendo dal checkpoint %s" % os.path.basename(RESUME_FROM))
+result = trainer.train(resume_from_checkpoint=RESUME_FROM)
 sigma("Training completato - loss finale: %.4f" % result.training_loss)
 
 out = r"{output_dir}" + "/lora_model"
@@ -709,6 +878,33 @@ if VALIDATION_FRACTION > 0 and len(lm_dataset) >= 40:
     sigma("Split: %d blocchi di training, %d di validation" % (
         len(train_blocks), len(eval_dataset)))
 
+
+# Ogni valutazione e' un passaggio completo sulla fetta di validation: a cadenza
+# fissa, su un run lungo, diventa la voce di costo principale. Qui la cadenza si
+# adatta perche' il numero di valutazioni resti circa costante — abbastanza da
+# vedere la curva, non tante da rallentare il training.
+TARGET_EVALS = 18
+
+
+def eval_interval(n_examples):
+    steps = max(1, (n_examples * {num_epochs}) // max(1, {batch_size} * {gradient_accumulation}))
+    return max({eval_steps}, int(steps / TARGET_EVALS) or {eval_steps})
+
+
+def save_interval(n_examples):
+    """Ogni quanti step lasciare un checkpoint da cui poter ripartire."""
+    steps = max(1, (n_examples * {num_epochs}) // max(1, {batch_size} * {gradient_accumulation}))
+    # Almeno 20 punti di ripresa, mai piu' fitti di 100 step (scrivere un
+    # checkpoint costa) e mai piu' radi di 2000 (perderne di piu' fa male).
+    return int(min(2000, max(100, steps // 20)))
+
+EVAL_EVERY = eval_interval(len(train_blocks))
+SAVE_EVERY = save_interval(len(train_blocks))
+sigma("Checkpoint ogni %d step in %s" % (SAVE_EVERY, r"{output_dir}"))
+if eval_dataset is not None:
+    sigma("Validation ogni %d step su %d blocchi tenuti da parte"
+          % (EVAL_EVERY, len(eval_dataset)))
+
 trainer = Trainer(
     model=model,
     train_dataset=train_blocks,
@@ -717,8 +913,10 @@ trainer = Trainer(
     args=TrainingArguments(
         output_dir=r"{output_dir}",
         eval_strategy="steps" if eval_dataset is not None else "no",
-        eval_steps={eval_steps},
-        per_device_eval_batch_size=1,
+        eval_steps=EVAL_EVERY,
+        # La valutazione non calcola gradienti: puo' usare batch piu' larghi del
+        # training senza rischiare la VRAM, e ci mette molto meno.
+        per_device_eval_batch_size=max(1, {batch_size} * 2),
         per_device_train_batch_size={batch_size},
         gradient_accumulation_steps={gradient_accumulation},
         num_train_epochs={num_epochs},
@@ -735,7 +933,12 @@ trainer = Trainer(
         dataloader_num_workers=0 if os.name == "nt" else 4,
         dataloader_pin_memory=(DEVICE == "cuda"),
         logging_steps=5,
-        save_strategy="epoch",
+        # Salvare a fine epoca sembra ragionevole finche' un'epoca non dura
+        # 47.000 step: un run fermato prima non lascia nulla, e ore di GPU
+        # spariscono. Si salva a intervalli di step, calcolati perche' i
+        # checkpoint restino pochi ma non lontanissimi fra loro.
+        save_strategy="steps",
+        save_steps=SAVE_EVERY,
         save_total_limit=2,
         seed=42,
         disable_tqdm=True,
@@ -745,7 +948,23 @@ trainer = Trainer(
 )
 
 sigma("Inizio pre-training...")
-result = trainer.train()
+# Riavviare un job fermato deve riprendere da dove si era interrotto, non
+# ributtare via le ore gia' fatte: se in output c'e' un checkpoint, si riparte
+# da quello — stato dell'ottimizzatore e scheduler compresi.
+def _last_checkpoint(folder):
+    if not os.path.isdir(folder):
+        return None
+    found = [d for d in os.listdir(folder)
+             if d.startswith("checkpoint-") and d.split("-")[-1].isdigit()]
+    if not found:
+        return None
+    return os.path.join(folder, max(found, key=lambda d: int(d.split("-")[-1])))
+
+
+RESUME_FROM = _last_checkpoint(r"{output_dir}")
+if RESUME_FROM:
+    sigma("Riprendo dal checkpoint %s" % os.path.basename(RESUME_FROM))
+result = trainer.train(resume_from_checkpoint=RESUME_FROM)
 sigma("Training completato - loss finale: %.4f" % result.training_loss)
 try:
     import math
@@ -983,8 +1202,19 @@ def _update_job(job_id: str, **fields):
 
 
 def list_training_jobs() -> dict:
+    """I job dal piu' recente al piu' vecchio.
+
+    L'ordine non era mai stato imposto: la lista usciva nell'ordine di
+    inserimento, cioe' dal piu' vecchio. La UI apriva quindi sul primo job mai
+    creato invece che sull'ultimo, e il test che avrebbe dovuto accorgersene
+    passava per caso — tre job creati nello stesso secondo hanno la stessa data,
+    e qualunque ordine soddisfa il confronto.
+    """
     jobs = _load_jobs()
-    return {"success": True, "jobs": list(jobs.values()), "total": len(jobs)}
+    ordered = sorted(jobs.values(),
+                     key=lambda j: (j.get("created_ts") or 0.0, j.get("created_at") or ""),
+                     reverse=True)
+    return {"success": True, "jobs": ordered, "total": len(ordered)}
 
 
 def list_jobs() -> dict:
@@ -1124,6 +1354,7 @@ def _build_script_values(data: dict, job_id: str, job_dir: Path) -> dict:
         "dataset_path": dataset["path"] or dataset_id,
         "dataset_kind": dataset["kind"],
         "dataset_split": dataset.get("split", "train"),
+        "dataset_config": dataset.get("config", "") or "",
         "output_dir": str(output_dir).replace("\\", "/"),
         "num_epochs": num_epochs,
         "learning_rate": learning_rate,
@@ -1134,6 +1365,7 @@ def _build_script_values(data: dict, job_id: str, job_dir: Path) -> dict:
         "lora_alpha": hyper.get("lora_alpha", 16),
         "resume_adapter": str(hyper.get("resume_adapter") or "").replace("\\", "/"),
         "validation_fraction": float(hyper.get("validation_fraction", 0.05)),
+        "max_examples": int(hyper.get("max_examples") or 0),
         "eval_steps": int(hyper.get("eval_steps") or _default_eval_steps(hyper)),
         "text_field": hyper.get("text_field", "text"),
         "tune_json": json.dumps(tune, ensure_ascii=False),
@@ -1223,6 +1455,10 @@ def create_training_job(data: dict) -> dict:
         "total_steps": 0,
         "last_loss": None,
         "created_at": time.strftime("%Y-%m-%d %H:%M:%S"),
+        # `created_at` ha la granularita' del secondo: due job creati di fila
+        # hanno la stessa stringa e l'ordinamento fra loro sarebbe arbitrario.
+        # L'id non aiuta, e' un esadecimale casuale senza senso cronologico.
+        "created_ts": time.time(),
         "started_at": None,
         "completed_at": None,
         "error": None,
@@ -1460,6 +1696,169 @@ CONTINUATION_MODES = {
 }
 
 
+def _available_actions(job: dict, artifacts: dict) -> list[str]:
+    """What can still be done to a stage, given what it produced."""
+    status = job.get("status")
+    method = job.get("method")
+    actions = []
+    if status in ("ready", "stopped", "failed"):
+        actions.append("start")
+    if status == "running":
+        return ["pause", "stop"]
+    if status == "paused":
+        return ["resume", "stop"]
+    if status not in ("completed", "stopped"):
+        return actions
+    if method != "merge_adapter" and artifacts["adapter"]:
+        actions += ["merge", "continue"]
+    if method == "merge_adapter" and artifacts["merged"]:
+        # Da una fase fusa si riparte solo con un adapter nuovo.
+        actions.append("continue")
+    if artifacts["merged"] or artifacts["adapter"] or artifacts["gguf"]:
+        actions.append("export")
+    if artifacts["merged"] or artifacts["gguf"]:
+        actions.append("benchmark")
+    actions.append("delete")
+    return actions
+
+
+def get_job_lineage(job_id: str) -> dict:
+    """The whole chain a stage belongs to, from the first run to the last.
+
+    Una catena di specializzazioni (LoRA, merge, LoRA, merge...) e' leggibile
+    solo tutta insieme: serve a vedere se una fase ha davvero migliorato quella
+    prima, e a sapere cosa si puo' ancora fare su ciascuna.
+    """
+    jobs = _load_jobs()
+    if job_id not in jobs:
+        return {"success": False, "error": f"Job '{job_id}' non trovato."}
+
+    # Si risale al capostipite e poi si ridiscende lungo i figli che stanno
+    # sulla stessa linea, cosi' un ramo abbandonato non sporca la catena.
+    root = job_id
+    seen = set()
+    while root not in seen:
+        seen.add(root)
+        parent = jobs.get(root, {}).get("parent_job_id")
+        if not parent or parent not in jobs:
+            break
+        root = parent
+
+    chain, cursor = [], root
+    visited = set()
+    while cursor and cursor in jobs and cursor not in visited:
+        visited.add(cursor)
+        chain.append(cursor)
+        children = [c for c in jobs[cursor].get("children", []) if c in jobs]
+        if not children:
+            break
+        # Se un ramo e' stato riprovato piu' volte si segue quello che porta al
+        # job richiesto; in mancanza, l'ultimo creato.
+        cursor = next((c for c in children if job_id in
+                       ([c] + jobs[c].get("lineage", []) + jobs[c].get("children", []))),
+                      children[-1])
+
+    if job_id not in chain:
+        chain.append(job_id)
+
+    stages = []
+    for index, jid in enumerate(chain):
+        job = jobs[jid]
+        artifacts = _stage_artifacts(job)
+        stages.append({
+            "index": index,
+            "id": jid,
+            "stage_name": job.get("stage_name") or "",
+            "name": job.get("name") or jid,
+            "kind": "merge" if job.get("method") == "merge_adapter" else "train",
+            "method": job.get("method"),
+            "method_label": job.get("method_label"),
+            "base_model": job.get("base_model"),
+            "dataset_name": job.get("dataset_name") or job.get("dataset_id") or "",
+            "status": job.get("status"),
+            "created_at": job.get("created_at"),
+            "completed_at": job.get("completed_at"),
+            "last_loss": job.get("last_loss"),
+            "artifacts": artifacts,
+            "actions": _available_actions(job, artifacts),
+            "is_current": jid == job_id,
+        })
+
+    return {"success": True, "job_id": job_id, "root": root, "stages": stages}
+
+
+def _stage_artifacts(job: dict) -> dict:
+    """Which artefacts a job actually produced, checked on disk."""
+    output = Path(job.get("dir", "")) / "output"
+    return {
+        "adapter": (output / "lora_model").is_dir(),
+        "merged": (output / "merged_16bit").is_dir(),
+        "gguf": bool(list(output.glob("*.gguf"))) if output.is_dir() else False,
+    }
+
+
+def merge_job_adapter(job_id: str, data: dict | None = None) -> dict:
+    """Fuse a job's LoRA adapter into its base model, as its own job.
+
+    E' l'anello che rende una catena di specializzazioni percorribile: il
+    modello fuso e' autonomo, si puo' valutare da solo e diventa la base della
+    fase seguente. Girando come job separato ha log, stato ed esito propri, e
+    puo' essere rifatto senza ripetere il training.
+    """
+    data = dict(data or {})
+    parent = _load_jobs().get(job_id)
+    if parent is None:
+        return {"success": False, "error": f"Job '{job_id}' non trovato."}
+    if parent.get("status") == "running":
+        return {"success": False,
+                "error": f"Job '{job_id}' è in esecuzione: aspetta che finisca."}
+
+    adapter = Path(parent.get("dir", "")) / "output" / "lora_model"
+    if not adapter.is_dir():
+        return {"success": False,
+                "error": (f"Il job '{job_id}' non ha un adapter da fondere "
+                          f"({adapter} non esiste). Il training è arrivato in fondo?")}
+
+    stage_name = (data.get("stage_name") or "").strip()
+    request = {
+        "base_model": parent.get("base_model"),
+        "method": "merge_adapter",
+        "dataset_id": "",
+        "name": stage_name or f"Merge di {parent.get('name', job_id)}",
+        "output_name": data.get("output_name"),
+        "hyperparams": {"resume_adapter": str(adapter)},
+    }
+    created = create_training_job(request)
+    if not created.get("success"):
+        return created
+
+    jobs = _load_jobs()
+    child = jobs[created["job_id"]]
+    child["parent_job_id"] = job_id
+    child["source_job_id"] = job_id
+    child["stage_name"] = stage_name
+    # Il metodo di training da usare quando questa fase verra' proseguita:
+    # il merge non e' un metodo di addestramento, lo eredita da chi l'ha prodotto.
+    child["train_method"] = parent.get("train_method") or parent.get("method")
+    child["lineage"] = list(parent.get("lineage") or [])
+    if job_id not in child["lineage"]:
+        child["lineage"].append(job_id)
+    jobs[job_id].setdefault("children", []).append(created["job_id"])
+    _save_jobs(jobs)
+
+    started = start_training_job(created["job_id"])
+    if not started.get("success"):
+        return {"success": False,
+                "error": f"Job di merge creato ma non avviato: {started.get('error')}",
+                "job_id": created["job_id"]}
+
+    log.info("Job %s: merge dell'adapter di %s avviato", created["job_id"], job_id)
+    return {"success": True, "job_id": created["job_id"], "job": jobs[created["job_id"]],
+            "parent_job_id": job_id,
+            "message": (f"Merge avviato ({created['job_id']}). Al termine il modello "
+                        f"fuso sarà la base della fase successiva.")}
+
+
 def continue_training_job(job_id: str, data: dict | None = None) -> dict:
     """Chain a new run onto a finished job, keeping what it learned.
 
@@ -1478,16 +1877,23 @@ def continue_training_job(job_id: str, data: dict | None = None) -> dict:
                 "error": f"Job '{job_id}' è ancora in esecuzione: fermalo prima di continuarlo."}
 
     mode = data.get("mode") or "resume_adapter"
+    method = parent.get("method")
+
+    if method == "merge_adapter":
+        # Da una fase fusa non c'e' un adapter da riprendere: quel lavoro e'
+        # gia' dentro i pesi. Si riparte per forza con un adapter nuovo, e il
+        # metodo di training lo si eredita da chi ha prodotto la fase.
+        mode = "fresh_adapter"
+        method = parent.get("train_method") or "lora_unsloth"
+    elif method not in ("lora_unsloth", "trl_sft"):
+        return {"success": False,
+                "error": (f"La continuazione è prevista per i metodi LoRA e SFT; "
+                          f"questo job usa '{method}'.")}
+
     if mode not in CONTINUATION_MODES:
         return {"success": False,
                 "error": (f"Modalità '{mode}' sconosciuta. "
                           f"Disponibili: {', '.join(CONTINUATION_MODES)}.")}
-
-    method = parent.get("method")
-    if method not in ("lora_unsloth", "trl_sft"):
-        return {"success": False,
-                "error": (f"La continuazione è prevista per i metodi LoRA e SFT; "
-                          f"questo job usa '{method}'.")}
 
     output = Path(parent.get("dir", "")) / "output"
     artifact = output / CONTINUATION_MODES[mode]["needs"]
@@ -1500,7 +1906,12 @@ def continue_training_job(job_id: str, data: dict | None = None) -> dict:
         return {"success": False,
                 "error": f"Manca {missing}/ in {output}. {hint}"}
 
-    request = dict(parent.get("request") or {})
+    # Gli iperparametri di partenza sono quelli del training, non quelli del
+    # merge: un job di merge porta in `request` solo il percorso dell'adapter.
+    source = parent
+    if parent.get("method") == "merge_adapter":
+        source = _load_jobs().get(parent.get("source_job_id") or "") or parent
+    request = dict(source.get("request") or {})
     hyper = {**(request.get("hyperparams") or {}), **(data.get("hyperparams") or {})}
     if mode == "resume_adapter":
         hyper["resume_adapter"] = str(artifact)
@@ -1529,6 +1940,8 @@ def continue_training_job(job_id: str, data: dict | None = None) -> dict:
     child = jobs[created["job_id"]]
     child["parent_job_id"] = job_id
     child["continuation_mode"] = mode
+    child["stage_name"] = (data.get("stage_name") or "").strip()
+    child["train_method"] = method
     child["lineage"] = list(parent.get("lineage") or [job_id])
     if job_id not in child["lineage"]:
         child["lineage"].append(job_id)
@@ -1790,6 +2203,87 @@ def stop_training_job(job_id: str) -> dict:
         except Exception as exc:
             log.warning("stop job %s: %s", job_id, exc)
     return {"success": True, "message": f"Job '{job_id}' fermato.", "job": job}
+
+
+def _job_process(job: dict):
+    """Il processo di un job, anche se non l'ha avviato questa sessione."""
+    proc = _ACTIVE_PROCESSES.get(job.get("id", ""))
+    pid = getattr(proc, "pid", None) or job.get("pid")
+    if not pid:
+        return None
+    try:
+        import psutil
+        process = psutil.Process(int(pid))
+        return process if process.is_running() else None
+    except Exception:
+        return None
+
+
+def pause_training_job(job_id: str) -> dict:
+    """Freeze a running job without losing a single step.
+
+    Il processo viene sospeso dal sistema operativo: si ferma esattamente dov'e'
+    e riprende identico, senza ripartire da un checkpoint e senza perdere gli
+    step fatti dall'ultimo salvataggio.
+
+    Attenzione a cosa *non* fa: la VRAM resta allocata. Serve a lasciare la CPU
+    e il disco a qualcos'altro, non a liberare la scheda per un benchmark — per
+    quello va fermato.
+    """
+    jobs = _load_jobs()
+    job = jobs.get(job_id)
+    if job is None:
+        return {"success": False, "error": f"Job '{job_id}' non trovato."}
+    if job.get("status") != "running":
+        return {"success": False,
+                "error": f"Il job non è in esecuzione (stato: {job.get('status')})."}
+
+    process = _job_process(job)
+    if process is None:
+        return {"success": False,
+                "error": "Processo non raggiungibile: potrebbe essere già terminato."}
+    try:
+        process.suspend()
+    except Exception as exc:
+        return {"success": False, "error": f"Sospensione fallita: {exc}"}
+
+    job["status"] = "paused"
+    job["paused_at"] = time.strftime("%Y-%m-%d %H:%M:%S")
+    _save_jobs(jobs)
+    log.info("Job %s sospeso (pid %s)", job_id, getattr(process, "pid", "?"))
+    return {"success": True, "job": job,
+            "message": (f"Job '{job_id}' in pausa. La VRAM resta occupata: "
+                        "per liberare la GPU va fermato.")}
+
+
+def resume_training_job(job_id: str) -> dict:
+    """Let a paused job carry on from exactly where it was suspended."""
+    jobs = _load_jobs()
+    job = jobs.get(job_id)
+    if job is None:
+        return {"success": False, "error": f"Job '{job_id}' non trovato."}
+    if job.get("status") != "paused":
+        return {"success": False,
+                "error": f"Il job non è in pausa (stato: {job.get('status')})."}
+
+    process = _job_process(job)
+    if process is None:
+        # Il processo e' morto mentre era sospeso: lo stato va detto com'e',
+        # altrimenti il job resterebbe "paused" per sempre.
+        job["status"] = "stopped"
+        _save_jobs(jobs)
+        return {"success": False,
+                "error": "Il processo non esiste più: il job è stato marcato come fermato."}
+    try:
+        process.resume()
+    except Exception as exc:
+        return {"success": False, "error": f"Ripresa fallita: {exc}"}
+
+    job["status"] = "running"
+    job.pop("paused_at", None)
+    _save_jobs(jobs)
+    log.info("Job %s ripreso (pid %s)", job_id, getattr(process, "pid", "?"))
+    return {"success": True, "job": job, "message": f"Job '{job_id}' ripreso."}
 
 
 def delete_job(job_id: str) -> dict:

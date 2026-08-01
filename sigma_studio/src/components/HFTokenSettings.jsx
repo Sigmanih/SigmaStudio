@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { ShieldCheck, CheckCircle2 } from 'lucide-react';
 
-export default function TrainingHFToken({ addToast }) {
+export default function HFTokenSettings({ addToast }) {
   const [hfToken, setHfToken] = useState('');
   const [hfHasToken, setHfHasToken] = useState(false);
   const [savingHfToken, setSavingHfToken] = useState(false);
@@ -45,26 +45,8 @@ export default function TrainingHFToken({ addToast }) {
   };
 
   return (
-    <div className="training-panel">
-      <div className="training-scroll-area">
-        <div style={{ maxWidth: '600px', margin: '0 auto', padding: '20px 16px' }}>
-          <div style={{
-            background: 'rgba(99,102,241,0.04)', border: '1px solid rgba(99,102,241,0.15)',
-            borderRadius: '16px', padding: '24px',
-          }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '16px' }}>
-              <ShieldCheck size={24} color="#6366f1" />
-              <div>
-                <div style={{ fontSize: '0.85rem', fontWeight: 700, color: 'var(--text)' }}>
-                  🔑 HuggingFace Token (HF_TOKEN)
-                </div>
-                <div style={{ fontSize: '0.68rem', color: 'var(--text-dim)', marginTop: '2px' }}>
-                  Accelera i download dei modelli fino a 10x
-                </div>
-              </div>
-            </div>
-
-            <div style={{ fontSize: '0.7rem', color: 'var(--text-dim)', marginBottom: '14px', lineHeight: 1.6 }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+            <div style={{ fontSize: '0.7rem', color: 'var(--text-dim)', marginBottom: '2px', lineHeight: 1.6 }}>
               Imposta il tuo <strong>HuggingFace Token</strong> per velocizzare i download dei modelli e dei dataset.
               <br />
               Senza token, HuggingFace limita la velocità a ~50KB/s — con token arrivi a 5-50MB/s.
@@ -109,23 +91,19 @@ export default function TrainingHFToken({ addToast }) {
                 </span>
               )}
             </div>
-          </div>
 
-          {/* Info card */}
-          <div style={{
-            marginTop: '20px',
-            background: 'rgba(0,210,255,0.03)', border: '1px solid rgba(0,210,255,0.1)',
-            borderRadius: '12px', padding: '16px', fontSize: '0.68rem', color: 'var(--text-dim)', lineHeight: 1.6
-          }}>
-            <strong style={{ color: 'var(--primary)' }}>💡 Perché serve il token?</strong>
-            <ul style={{ margin: '8px 0 0 16px', padding: 0 }}>
-              <li>Download dei modelli da HuggingFace 10x più veloci</li>
-              <li>Accesso a modelli con <em>gated access</em> (es. LLaMA, Mistral, Gemma)</li>
-              <li>Necessario per alcuni dataset privati o con restrizioni</li>
-              <li>Il token viene salvato in <code style={{ color: 'var(--primary)', fontFamily: 'JetBrains Mono', fontSize: '0.6rem' }}>config.json</code> e applicato automaticamente a ogni riavvio</li>
-            </ul>
-          </div>
-        </div>
+      <div style={{
+        background: 'rgba(0,210,255,0.03)', border: '1px solid rgba(0,210,255,0.1)',
+        borderRadius: '12px', padding: '16px', fontSize: '0.68rem',
+        color: 'var(--text-dim)', lineHeight: 1.6,
+      }}>
+        <strong style={{ color: 'var(--primary)' }}>💡 Perché serve il token?</strong>
+        <ul style={{ margin: '8px 0 0 16px', padding: 0 }}>
+          <li>Download dei modelli da HuggingFace 10x più veloci</li>
+          <li>Accesso a modelli con <em>gated access</em> (es. LLaMA, Mistral, Gemma)</li>
+          <li>Necessario per alcuni dataset privati o con restrizioni</li>
+          <li>Il token viene salvato in <code style={{ color: 'var(--primary)', fontFamily: 'JetBrains Mono', fontSize: '0.6rem' }}>config.json</code> e applicato automaticamente a ogni riavvio</li>
+        </ul>
       </div>
     </div>
   );

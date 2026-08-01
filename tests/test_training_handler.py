@@ -170,8 +170,14 @@ class TestHuggingFaceSearch:
 
     @patch("core.training_handler.urlopen")
     def test_get_hf_dataset_info_mock(self, mock_urlopen):
-        """Info dettagliate dataset con preview."""
-        # Due chiamate: una per info, una per preview
+        """Info dettagliate dataset con preview.
+
+        Tre chiamate, in quest'ordine: scheda del dataset, struttura
+        (config e split), anteprima. La struttura sta in mezzo perche'
+        l'anteprima va chiesta sul config giusto: darlo per scontato
+        ("default"/"train") la faceva fallire in silenzio su gsm8k,
+        openwebtext e su ogni dataset diviso in sottoinsiemi.
+        """
         responses = [
             json.dumps({
                 "id": "test/dataset",
@@ -180,6 +186,12 @@ class TestHuggingFaceSearch:
                 "likes": 200,
                 "tags": ["test"],
                 "cardData": {"license": "apache-2.0"},
+            }),
+            json.dumps({
+                "splits": [
+                    {"dataset": "test/dataset", "config": "principale", "split": "train"},
+                    {"dataset": "test/dataset", "config": "principale", "split": "test"},
+                ]
             }),
             json.dumps({
                 "rows": [
@@ -199,12 +211,23 @@ class TestHuggingFaceSearch:
                     read=MagicMock(return_value=responses[1].encode("utf-8"))
                 )
             )),
+            MagicMock(__enter__=MagicMock(
+                return_value=MagicMock(
+                    read=MagicMock(return_value=responses[2].encode("utf-8"))
+                )
+            )),
         ]
 
         result = get_hf_dataset_info("test/dataset")
         assert result["success"] is True
         assert result["id"] == "test/dataset"
         assert len(result["preview"]) == 2
+        # struttura scoperta, non assunta
+        assert result["config"] == "principale"
+        assert result["splits"] == ["train", "test"]
+        # e l'anteprima e' stata chiesta proprio su quel config
+        preview_url = mock_urlopen.call_args_list[2][0][0].full_url
+        assert "config=principale" in preview_url and "split=train" in preview_url
 
 
 # ===========================================================================
@@ -396,17 +419,27 @@ class TestTrainingJobCreation:
         assert jobs[job_id]["status"] == "ready"
 
     def test_job_listing(self):
-        """Lista job in ordine cronologico inverso."""
-        for i in range(3):
-            create_training_job({
+        """Lista job dal più recente al più vecchio.
+
+        Confrontare solo le date non bastava: `created_at` ha la granularità
+        del secondo, tre job creati di fila hanno la stessa data e qualunque
+        ordine soddisfaceva il confronto. Il test passava per caso mentre la
+        lista usciva dal più vecchio, e la UI apriva sul primo job mai creato.
+        """
+        created = []
+        for _ in range(3):
+            job_id = create_training_job({
                 "base_model": "test",
                 "method": "lora_unsloth",
                 "hyperparams": {},
-            })
+            })["job_id"]
+            created.append(job_id)
+
         result = list_jobs()
         assert result["success"] is True
-        assert len(result["jobs"]) >= 3
-        # Verifica ordine cronologico (decrescente)
+        listed = [j["id"] for j in result["jobs"] if j["id"] in created]
+        assert listed == list(reversed(created)), "l'ultimo creato deve essere il primo"
+
         dates = [j["created_at"] for j in result["jobs"]]
         assert dates == sorted(dates, reverse=True)
 

@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Play, Square, Cpu, Brain, Sliders, Database, ChevronDown, ChevronUp, AlertTriangle } from 'lucide-react';
+import InfoHint from './InfoHint';
 
 // ==============================================================================
 // TrainingConfigurator — Base model + method + hyperparams + dataset picker + launch
@@ -108,7 +109,10 @@ function HyperParam({ label, desc, value, min, max, step, onChange, display }) {
   );
 }
 
-export default function TrainingConfigurator({ myDatasets, selectedDatasetId: propDatasetId, onDatasetSelect: propOnDatasetSelect, onJobCreated, addToast }) {
+// `embedded`: dentro lo Studio la pagina scorre tutta insieme, quindi il
+// pannello non deve portarsi dietro la propria area di scroll.
+export default function TrainingConfigurator({ myDatasets, selectedDatasetId: propDatasetId, onDatasetSelect: propOnDatasetSelect, onJobCreated, addToast, embedded = false, continueFrom = null }) {
+
   const [method, setMethod] = useState('lora_unsloth');
   const [baseModel, setBaseModel] = useState('unsloth/llama-3.2-3b-instruct');
   const [customModel, setCustomModel] = useState('');
@@ -119,6 +123,21 @@ export default function TrainingConfigurator({ myDatasets, selectedDatasetId: pr
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [creating, setCreating] = useState(false);
   const [ollamaModels, setOllamaModels] = useState([]);
+  // Continuazione: invece di partire da un modello base si riprende un
+  // fine-tuning gia' fatto, tipicamente per specializzarlo su un altro dataset.
+  const [startFrom, setStartFrom] = useState('base');   // 'base' | 'continue'
+  const [continuableJobs, setContinuableJobs] = useState([]);
+  const [continueJobId, setContinueJobId] = useState('');
+  const [continueMode, setContinueMode] = useState('resume_adapter');
+  const [continueModes, setContinueModes] = useState([]);
+
+  // La catena può chiedere di proseguire da una fase precisa: il form ci si
+  // posiziona sopra invece di far ricominciare la scelta a mano.
+  useEffect(() => {
+    if (!continueFrom) return;
+    setStartFrom('continue');
+    setContinueJobId(continueFrom);
+  }, [continueFrom]);
 
   // Sync selected dataset from parent (when user adds from DatasetBrowser tab)
   useEffect(() => {
@@ -140,6 +159,9 @@ export default function TrainingConfigurator({ myDatasets, selectedDatasetId: pr
   const [loraR, setLoraR] = useState(16);
   const [loraAlpha, setLoraAlpha] = useState(16);
   const [gradAccum, setGradAccum] = useState(4);
+  // 0 = dataset intero. Su un dataset da centinaia di migliaia di esempi
+  // un'epoca dura ore, e per specializzare quasi mai serve tutto.
+  const [maxExamples, setMaxExamples] = useState(0);
 
   const [hardware, setHardware] = useState(null);
   const [dependencies, setDependencies] = useState(null);
@@ -166,6 +188,9 @@ export default function TrainingConfigurator({ myDatasets, selectedDatasetId: pr
   const [runningSelftest, setRunningSelftest] = useState(false);
 
   const isFwe = method === 'fwe_gradus';
+  // Nello Studio le sezioni stanno una sotto l'altra nella stessa pagina:
+  // i respiri pensati per una tab a sé diventano vuoti da scorrere.
+  const blockGap = embedded ? '11px' : '20px';
 
   // Load Ollama models and Hardware info
   useEffect(() => {
@@ -182,6 +207,24 @@ export default function TrainingConfigurator({ myDatasets, selectedDatasetId: pr
       .then(r => r.json())
       .then(d => {
         if (d.success) setHardware(d.hardware);
+      })
+      .catch(() => {});
+
+    fetch('/api/training/job/continuation_modes')
+      .then(r => r.json())
+      .then(d => { if (d.success) setContinueModes(d.modes || []); })
+      .catch(() => {});
+
+    // Solo i job che hanno davvero prodotto un adapter da riprendere.
+    fetch('/api/training/jobs')
+      .then(r => r.json())
+      .then(d => {
+        if (!d.success) return;
+        const usable = (d.jobs || []).filter(j =>
+          ['lora_unsloth', 'trl_sft'].includes(j.method)
+          && ['completed', 'stopped'].includes(j.status));
+        setContinuableJobs(usable);
+        if (usable.length && !continueJobId) setContinueJobId(usable[0].id);
       })
       .catch(() => {});
   }, []);
@@ -296,8 +339,14 @@ export default function TrainingConfigurator({ myDatasets, selectedDatasetId: pr
   const selectedDs = myDatasets?.find(d => d.id === selectedDatasetId);
   const finalModel = useCustomModel ? customModel : baseModel;
 
+  const isContinuation = startFrom === 'continue' && !isFwe;
+
   const handleCreate = async () => {
-    if (!finalModel.trim()) {
+    if (isContinuation && !continueJobId) {
+      addToast && addToast('Scegli il training da continuare', 'error');
+      return;
+    }
+    if (!isContinuation && !finalModel.trim()) {
       addToast && addToast('Seleziona un modello base', 'error');
       return;
     }
@@ -307,27 +356,43 @@ export default function TrainingConfigurator({ myDatasets, selectedDatasetId: pr
       return;
     }
     setCreating(true);
+    const hyperparams = {
+      num_epochs: numEpochs,
+      learning_rate: lr,
+      batch_size: batchSize,
+      max_seq_length: maxSeqLen,
+      max_examples: maxExamples,
+      lora_r: loraR,
+      lora_alpha: loraAlpha,
+      gradient_accumulation: gradAccum,
+      text_field: textField,
+      ...(isFwe ? fwe : {}),
+    };
     try {
-      const res = await fetch('/api/training/job/create', {
+      // La continuazione ha il suo endpoint: e' il backend a risalire
+      // all'adapter (o ai pesi fusi) del job padre e a registrare la catena.
+      const url = isContinuation
+        ? '/api/training/job/continue'
+        : '/api/training/job/create';
+      const body = isContinuation
+        ? {
+            job_id: continueJobId,
+            mode: continueMode,
+            dataset_id: selectedDatasetId || '',
+            output_name: outputName || 'sigma_model',
+            hyperparams,
+          }
+        : {
+            base_model: finalModel.trim(),
+            dataset_id: selectedDatasetId || '',
+            method,
+            output_name: outputName || 'sigma_model',
+            hyperparams,
+          };
+      const res = await fetch(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          base_model: finalModel.trim(),
-          dataset_id: selectedDatasetId || '',
-          method,
-          output_name: outputName || 'sigma_model',
-          hyperparams: {
-            num_epochs: numEpochs,
-            learning_rate: lr,
-            batch_size: batchSize,
-            max_seq_length: maxSeqLen,
-            lora_r: loraR,
-            lora_alpha: loraAlpha,
-            gradient_accumulation: gradAccum,
-            text_field: textField,
-            ...(isFwe ? fwe : {}),
-          },
-        }),
+        body: JSON.stringify(body),
       });
       const data = await res.json();
       if (data.success) {
@@ -345,11 +410,11 @@ export default function TrainingConfigurator({ myDatasets, selectedDatasetId: pr
 
 
   return (
-    <div className="training-panel">
-      <div className="training-scroll-area">
+    <div className={embedded ? "" : "training-panel"}>
+      <div className={embedded ? "" : "training-scroll-area"}>
 
         {/* ── Method selector ── */}
-        <div style={{ marginBottom: '20px' }}>
+        <div style={{ marginBottom: blockGap }}>
           <div className="training-section-header">
             <Brain size={14} />
             <h3>Metodo di Training</h3>
@@ -499,12 +564,116 @@ export default function TrainingConfigurator({ myDatasets, selectedDatasetId: pr
         <div className="training-divider" />
 
         {/* ── Base Model ── */}
-        <div style={{ marginBottom: '20px' }}>
+        <div style={{ marginBottom: blockGap }}>
           <div className="training-section-header">
             <Cpu size={14} />
             <h3>Modello Base</h3>
           </div>
           <div className="training-config-grid">
+            {!isFwe && (
+              <div className="training-field" style={{ gridColumn: '1 / -1' }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+                  Punto di partenza
+                  <InfoHint entry={{
+                    label: 'Da dove partono i pesi',
+                    what: 'Un training può iniziare da un modello pubblico oppure riprendere '
+                        + 'un fine-tuning che hai già fatto qui, per specializzarlo ancora.',
+                    good: 'Continuare serve quando vuoi aggiungere una competenza senza '
+                        + 'ripartire da zero: il modello tiene quello che ha già imparato.',
+                    bad: 'Continuare su un dataset molto diverso dal precedente può fargli '
+                       + 'dimenticare il primo compito.',
+                  }} />
+                </label>
+                <div style={{ display: 'flex', gap: '8px', marginTop: '6px', flexWrap: 'wrap' }}>
+                  {[
+                    { id: 'base', label: '🧊 Modello base' },
+                    { id: 'continue', label: '🔗 Continua un fine-tuning' },
+                  ].map(opt => (
+                    <button
+                      key={opt.id}
+                      onClick={() => setStartFrom(opt.id)}
+                      disabled={opt.id === 'continue' && continuableJobs.length === 0}
+                      title={opt.id === 'continue' && continuableJobs.length === 0
+                        ? 'Nessun job LoRA o SFT completato da cui ripartire'
+                        : undefined}
+                      style={{
+                        padding: '5px 12px', borderRadius: '8px', border: '1px solid',
+                        borderColor: startFrom === opt.id ? 'rgba(0,210,255,0.3)' : 'rgba(255,255,255,0.06)',
+                        background: startFrom === opt.id ? 'rgba(0,210,255,0.06)' : 'transparent',
+                        color: startFrom === opt.id ? 'var(--primary)' : 'var(--text-dim)',
+                        fontSize: '0.64rem', cursor: 'pointer',
+                        opacity: opt.id === 'continue' && continuableJobs.length === 0 ? 0.4 : 1,
+                      }}
+                    >
+                      {opt.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {isContinuation ? (
+              <>
+                <div className="training-field" style={{ gridColumn: '1 / -1' }}>
+                  <label>Training da continuare</label>
+                  <div className="training-select-wrapper" style={{ marginTop: '6px' }}>
+                    <select
+                      className="training-select"
+                      value={continueJobId}
+                      onChange={e => setContinueJobId(e.target.value)}
+                    >
+                      {continuableJobs.map(j => (
+                        <option key={j.id} value={j.id}>
+                          {j.id} · {j.name || j.output_name} — {j.base_model} su {j.dataset_name || j.dataset_id}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="training-field-desc">
+                    Il metodo e il modello base li eredita dal job scelto. Qui sotto
+                    scegli il dataset nuovo e gli iperparametri di questo giro.
+                  </div>
+                </div>
+                <div className="training-field" style={{ gridColumn: '1 / -1' }}>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+                    Da dove ripartono i pesi
+                    <InfoHint entry={{
+                      label: 'Adapter ripreso o adapter nuovo',
+                      what: 'Un adapter LoRA è il pacchetto di pesi aggiuntivi prodotto dal '
+                          + 'fine-tuning. Puoi continuare ad allenare quello, oppure fonderlo '
+                          + 'nel modello e ricominciarne uno pulito.',
+                      good: 'Riprendere l\'adapter è più veloce e non consuma disco.',
+                      bad: 'Fondere costa ~18 GB e diversi minuti, ma tiene le fasi separate '
+                         + 'e ispezionabili una per una.',
+                    }} />
+                  </label>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginTop: '6px' }}>
+                    {continueModes.map(m => (
+                      <button
+                        key={m.id}
+                        onClick={() => setContinueMode(m.id)}
+                        style={{
+                          textAlign: 'left', padding: '9px 11px', borderRadius: '9px',
+                          border: '1px solid', cursor: 'pointer',
+                          borderColor: continueMode === m.id ? 'rgba(0,210,255,0.3)' : 'rgba(255,255,255,0.06)',
+                          background: continueMode === m.id ? 'rgba(0,210,255,0.06)' : 'transparent',
+                        }}
+                      >
+                        <div style={{
+                          fontSize: '0.66rem', fontWeight: 700, marginBottom: '2px',
+                          color: continueMode === m.id ? 'var(--primary)' : 'var(--text)',
+                        }}>
+                          {m.label}
+                        </div>
+                        <div style={{ fontSize: '0.6rem', color: 'var(--text-dim)', lineHeight: 1.45 }}>
+                          {m.detail}
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </>
+            ) : (
             <div className="training-field" style={{ gridColumn: '1 / -1' }}>
               <label>Seleziona Modello</label>
               <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
@@ -577,13 +746,14 @@ export default function TrainingConfigurator({ myDatasets, selectedDatasetId: pr
                 </div>
               )}
             </div>
+            )}
           </div>
         </div>
 
         <div className="training-divider" />
 
         {/* ── Dataset ── */}
-        <div style={{ marginBottom: '20px' }}>
+        <div style={{ marginBottom: blockGap }}>
           <div className="training-section-header">
             <Database size={14} />
             <h3>Dataset</h3>
@@ -667,7 +837,7 @@ export default function TrainingConfigurator({ myDatasets, selectedDatasetId: pr
         {/* ── Auto-tune hardware ── */}
         {autotune && (
           <div style={{
-            marginBottom: '20px', padding: '12px 14px',
+            marginBottom: blockGap, padding: '12px 14px',
             background: 'rgba(0,210,255,0.04)', border: '1px solid rgba(0,210,255,0.15)',
             borderRadius: '10px', fontSize: '0.64rem', color: 'var(--text-dim)', lineHeight: 1.6,
           }}>
@@ -718,7 +888,7 @@ export default function TrainingConfigurator({ myDatasets, selectedDatasetId: pr
 
         {/* ── Parametri FWE ── */}
         {isFwe && (
-          <div style={{ marginBottom: '20px' }}>
+          <div style={{ marginBottom: blockGap }}>
             <div className="training-section-header">
               <Sliders size={14} />
               <h3>Motore FWE</h3>
@@ -819,7 +989,7 @@ export default function TrainingConfigurator({ myDatasets, selectedDatasetId: pr
         )}
 
         {/* ── Base Hyperparams ── */}
-        <div style={{ marginBottom: '20px' }}>
+        <div style={{ marginBottom: blockGap }}>
           <div className="training-section-header">
             <Sliders size={14} />
             <h3>Iperparametri</h3>
@@ -858,6 +1028,42 @@ export default function TrainingConfigurator({ myDatasets, selectedDatasetId: pr
                 onChange={setMaxSeqLen}
                 display={v => `${v}`}
               />
+            )}
+            {!isFwe && (
+              <div className="training-field">
+                <label style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+                  Esempi da usare
+                  <InfoHint entry={{
+                    label: 'Quanta parte del dataset addestrare',
+                    what: 'Il numero di esempi estratti dal dataset. A zero si usa '
+                        + 'tutto. Il taglio è mescolato con seed fisso, non i primi N: '
+                        + 'molti dataset sono ordinati per categoria, e prendere la '
+                        + 'testa significherebbe allenare su una fetta sola del compito.',
+                    good: 'Per specializzare un modello bastano di norma 20-50 mila '
+                        + 'esempi: il grosso del guadagno arriva lì.',
+                    bad: 'Il dataset intero su corpora enormi (MetaMathQA sono 395K, '
+                       + 'quasi 100 mila step) significa ore di GPU per un guadagno '
+                       + 'che si era già visto molto prima.',
+                  }} />
+                </label>
+                <div className="training-field-desc">
+                  {maxExamples > 0
+                    ? `${maxExamples.toLocaleString('it-IT')} esempi estratti a caso`
+                    : "tutto il dataset"}
+                  {selectedDs?.row_count > 0 && ` — disponibili ${selectedDs.row_count.toLocaleString('it-IT')}`}
+                </div>
+                <div className="training-slider-row">
+                  <input
+                    type="range" className="training-slider"
+                    min={0} max={200000} step={5000}
+                    value={maxExamples}
+                    onChange={e => setMaxExamples(parseInt(e.target.value, 10))}
+                  />
+                  <div className="training-slider-val">
+                    {maxExamples > 0 ? `${Math.round(maxExamples / 1000)}k` : 'tutto'}
+                  </div>
+                </div>
+              </div>
             )}
           </div>
 
@@ -908,7 +1114,7 @@ export default function TrainingConfigurator({ myDatasets, selectedDatasetId: pr
         <div className="training-divider" />
 
         {/* ── Output name ── */}
-        <div className="training-field" style={{ marginBottom: '20px' }}>
+        <div className="training-field" style={{ marginBottom: blockGap }}>
           <label>Nome Output Modello</label>
           <div className="training-field-desc">Nome che avrà il modello in Ollama dopo l'export</div>
           <input
@@ -920,7 +1126,7 @@ export default function TrainingConfigurator({ myDatasets, selectedDatasetId: pr
         </div>
 
         {/* ── Summary card ── */}
-        {finalModel && (selectedDatasetId || isFwe) && (
+        {(isContinuation ? continueJobId : finalModel) && (selectedDatasetId || isFwe) && (
           <div style={{
             background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.05)',
             borderRadius: '12px', padding: '14px', marginBottom: '16px', fontSize: '0.68rem',
@@ -928,7 +1134,7 @@ export default function TrainingConfigurator({ myDatasets, selectedDatasetId: pr
             <div style={{ fontWeight: 700, color: 'var(--text)', marginBottom: '8px' }}>📋 Riepilogo Job</div>
             {[
               ['Metodo', METHODS.find(m => m.id === method)?.fullName],
-              ['Base Model', finalModel],
+              ['Base Model', isContinuation ? `continua ${continueJobId} (${continueMode})` : finalModel],
               ['Dataset', isFwe
                 ? (fwe.fwe_dataset || 'corpus interno')
                 : (selectedDs?.name || selectedDatasetId)],
@@ -959,7 +1165,8 @@ export default function TrainingConfigurator({ myDatasets, selectedDatasetId: pr
         <button
           className="training-start-btn"
           onClick={handleCreate}
-          disabled={creating || !finalModel.trim() || (!selectedDatasetId && !isFwe)}
+          disabled={creating || (isContinuation ? !continueJobId : !finalModel.trim())
+                    || (!selectedDatasetId && !isFwe)}
         >
           {creating ? (
             <><div className="training-spinner" style={{ width: '16px', height: '16px', borderColor: 'rgba(0,0,0,0.2)', borderTopColor: '#000' }} /> Creazione Job...</>

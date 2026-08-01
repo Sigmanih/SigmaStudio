@@ -36,15 +36,15 @@ FEATURED_DATASETS = [
     {"id":"Open-Orca/OpenOrca","name":"Open-Orca","author":"Open-Orca","category":"instruction","category_label":"Instruction Tuning","description":"3.2M esempi di reasoning chain-of-thought da GPT-4.","downloads":3_900_000,"likes":2800,"size_category":"1M<n<10M","license":"other","task_categories":["text-generation","question-answering"],"tags":["orca","gpt4","reasoning","chain-of-thought"],"url":"https://huggingface.co/datasets/Open-Orca/OpenOrca","split":"train","text_field":"response","recommended_method":"trl_sft","difficulty":"intermediate","vram_min_gb":16},
     {"id":"sahil2801/CodeAlpaca-20k","name":"CodeAlpaca 20K","author":"sahil2801","category":"code","category_label":"Code Training","description":"20K istruzioni di coding generate con self-instruct.","downloads":820_000,"likes":650,"size_category":"10K<n<100K","license":"cc-by-4.0","task_categories":["text-generation","text2text-generation"],"tags":["code","python","instruction","alpaca"],"url":"https://huggingface.co/datasets/sahil2801/CodeAlpaca-20k","split":"train","text_field":"output","recommended_method":"lora_unsloth","difficulty":"beginner","vram_min_gb":8},
     {"id":"iamtarun/python_code_instructions_18k_alpaca","name":"Python Code Instructions 18K","author":"iamtarun","category":"code","category_label":"Code Training","description":"18K istruzioni Python con output codice completo.","downloads":450_000,"likes":320,"size_category":"10K<n<100K","license":"apache-2.0","task_categories":["text-generation"],"tags":["python","code","instruction"],"url":"https://huggingface.co/datasets/iamtarun/python_code_instructions_18k_alpaca","split":"train","text_field":"prompt","recommended_method":"lora_unsloth","difficulty":"beginner","vram_min_gb":8},
-    {"id":"bigcode/starcoderdata","name":"StarCoder Data","author":"bigcode","category":"code","category_label":"Code Training","description":"783GB di codice sorgente in 86 linguaggi.","downloads":1_800_000,"likes":1200,"size_category":"1M<n<10M","license":"other","task_categories":["text-generation"],"tags":["code","multi-language","pretrain","starcoder"],"url":"https://huggingface.co/datasets/bigcode/starcoderdata","split":"python","text_field":"content","recommended_method":"full_pretrain","difficulty":"advanced","vram_min_gb":40},
+    {"id":"bigcode/starcoderdata","name":"StarCoder Data","author":"bigcode","gated":True,"category":"code","category_label":"Code Training","description":"783GB di codice sorgente in 86 linguaggi.","downloads":1_800_000,"likes":1200,"size_category":"1M<n<10M","license":"other","task_categories":["text-generation"],"tags":["code","multi-language","pretrain","starcoder"],"url":"https://huggingface.co/datasets/bigcode/starcoderdata","split":"python","text_field":"content","recommended_method":"full_pretrain","difficulty":"advanced","vram_min_gb":40},
     {"id":"meta-math/MetaMathQA","name":"MetaMathQA","author":"meta-math","category":"math","category_label":"Math & Reasoning","description":"395K problemi matematici con soluzioni step-by-step.","downloads":2_200_000,"likes":1900,"size_category":"100K<n<1M","license":"mit","task_categories":["question-answering","text-generation"],"tags":["math","reasoning","gsm8k","step-by-step"],"url":"https://huggingface.co/datasets/meta-math/MetaMathQA","split":"train","text_field":"response","recommended_method":"lora_unsloth","difficulty":"intermediate","vram_min_gb":8},
-    {"id":"openai/gsm8k","name":"GSM8K","author":"openai","category":"math","category_label":"Math & Reasoning","description":"8.5K problemi matematici di scuola media di alta qualità.","downloads":3_100_000,"likes":2400,"size_category":"1K<n<10K","license":"mit","task_categories":["question-answering"],"tags":["math","grade-school","benchmark","openai"],"url":"https://huggingface.co/datasets/openai/gsm8k","split":"train","text_field":"answer","recommended_method":"lora_unsloth","difficulty":"beginner","vram_min_gb":4},
-    {"id":"lighteval/MATH","name":"MATH","author":"lighteval","category":"math","category_label":"Math & Reasoning","description":"12.5K problemi di matematica avanzata.","downloads":980_000,"likes":820,"size_category":"10K<n<100K","license":"mit","task_categories":["question-answering"],"tags":["math","olympiad","advanced","algebra"],"url":"https://huggingface.co/datasets/lighteval/MATH","split":"train","text_field":"solution","recommended_method":"trl_sft","difficulty":"advanced","vram_min_gb":12},
+    {"id":"openai/gsm8k","name":"GSM8K","author":"openai","config":"main","category":"math","category_label":"Math & Reasoning","description":"8.5K problemi matematici di scuola media di alta qualità.","downloads":3_100_000,"likes":2400,"size_category":"1K<n<10K","license":"mit","task_categories":["question-answering"],"tags":["math","grade-school","benchmark","openai"],"url":"https://huggingface.co/datasets/openai/gsm8k","split":"train","text_field":"answer","recommended_method":"lora_unsloth","difficulty":"beginner","vram_min_gb":4},
+    {"id":"qwedsacf/competition_math","name":"MATH","author":"qwedsacf","config":"default","category":"math","category_label":"Math & Reasoning","description":"12.5K problemi di matematica avanzata.","downloads":980_000,"likes":820,"size_category":"10K<n<100K","license":"mit","task_categories":["question-answering"],"tags":["math","olympiad","advanced","algebra"],"url":"https://huggingface.co/datasets/qwedsacf/competition_math","split":"train","text_field":"solution","recommended_method":"trl_sft","difficulty":"advanced","vram_min_gb":12},
     {"id":"roneneldan/TinyStories","name":"TinyStories","author":"roneneldan","category":"pretrain","category_label":"Pre-Training","description":"2M+ storie brevi e semplici generate da GPT.","downloads":2_000_000,"likes":1600,"size_category":"1M<n<10M","license":"other","task_categories":["text-generation"],"tags":["pretrain","stories","small-model","consumer-gpu"],"url":"https://huggingface.co/datasets/roneneldan/TinyStories","split":"train","text_field":"text","recommended_method":"full_pretrain","difficulty":"beginner","vram_min_gb":4},
-    {"id":"Skylion007/openwebtext","name":"OpenWebText","author":"Skylion007","category":"pretrain","category_label":"Pre-Training","description":"Open replica di WebText (dataset GPT-2).","downloads":3_000_000,"likes":2100,"size_category":"1M<n<10M","license":"cc-by-4.0","task_categories":["text-generation"],"tags":["pretrain","web","gpt2","general"],"url":"https://huggingface.co/datasets/Skylion007/openwebtext","split":"train","text_field":"text","recommended_method":"full_pretrain","difficulty":"advanced","vram_min_gb":24},
-    {"id":"EleutherAI/pile","name":"The Pile","author":"EleutherAI","category":"pretrain","category_label":"Pre-Training","description":"825GB dataset diversificato.","downloads":4_800_000,"likes":3500,"size_category":"1B<n<10B","license":"mit","task_categories":["text-generation"],"tags":["pretrain","diverse","eleutherai","gpt-j","large"],"url":"https://huggingface.co/datasets/EleutherAI/pile","split":"train","text_field":"text","recommended_method":"full_pretrain","difficulty":"advanced","vram_min_gb":80},
-    {"id":"MichiganNLP/ita_dolly_v2","name":"Italian Dolly","author":"MichiganNLP","category":"multilingual","category_label":"Multilingue / ITA","description":"Versione italiana di Dolly.","downloads":120_000,"likes":95,"size_category":"10K<n<100K","license":"cc-by-sa-3.0","task_categories":["text-generation"],"tags":["italian","instruction","dolly","multilingual"],"url":"https://huggingface.co/datasets/MichiganNLP/ita_dolly_v2","split":"train","text_field":"output","recommended_method":"lora_unsloth","difficulty":"beginner","vram_min_gb":8},
-    {"id":"Helsinki-NLP/opus-100","name":"OPUS-100","author":"Helsinki-NLP","category":"multilingual","category_label":"Multilingue / ITA","description":"100 lingue, coppie di traduzione.","downloads":1_500_000,"likes":980,"size_category":"100K<n<1M","license":"cc-by-4.0","task_categories":["translation"],"tags":["translation","multilingual","100-languages","opus"],"url":"https://huggingface.co/datasets/Helsinki-NLP/opus-100","split":"train","text_field":"translation","recommended_method":"trl_sft","difficulty":"intermediate","vram_min_gb":12},
+    {"id":"Skylion007/openwebtext","name":"OpenWebText","author":"Skylion007","config":"plain_text","category":"pretrain","category_label":"Pre-Training","description":"Open replica di WebText (dataset GPT-2).","downloads":3_000_000,"likes":2100,"size_category":"1M<n<10M","license":"cc-by-4.0","task_categories":["text-generation"],"tags":["pretrain","web","gpt2","general"],"url":"https://huggingface.co/datasets/Skylion007/openwebtext","split":"train","text_field":"text","recommended_method":"full_pretrain","difficulty":"advanced","vram_min_gb":24},
+    {"id":"monology/pile-uncopyrighted","name":"The Pile (uncopyrighted)","author":"monology","config":"default","category":"pretrain","category_label":"Pre-Training","description":"825GB dataset diversificato.","downloads":4_800_000,"likes":3500,"size_category":"1B<n<10B","license":"mit","task_categories":["text-generation"],"tags":["pretrain","diverse","eleutherai","gpt-j","large"],"url":"https://huggingface.co/datasets/monology/pile-uncopyrighted","split":"train","text_field":"text","recommended_method":"full_pretrain","difficulty":"advanced","vram_min_gb":80},
+    {"id":"FreedomIntelligence/alpaca-gpt4-italian","name":"Alpaca GPT-4 Italiano","author":"FreedomIntelligence","config":"default","category":"multilingual","category_label":"Multilingue / ITA","description":"Istruzioni in italiano generate con GPT-4.","downloads":120_000,"likes":95,"size_category":"10K<n<100K","license":"cc-by-sa-3.0","task_categories":["text-generation"],"tags":["italian","instruction","dolly","multilingual"],"url":"https://huggingface.co/datasets/FreedomIntelligence/alpaca-gpt4-italian","split":"train","text_field":"output","recommended_method":"lora_unsloth","difficulty":"beginner","vram_min_gb":8},
+    {"id":"Helsinki-NLP/opus-100","name":"OPUS-100","author":"Helsinki-NLP","config":"en-it","category":"multilingual","category_label":"Multilingue / ITA","description":"100 lingue, coppie di traduzione.","downloads":1_500_000,"likes":980,"size_category":"100K<n<1M","license":"cc-by-4.0","task_categories":["translation"],"tags":["translation","multilingual","100-languages","opus"],"url":"https://huggingface.co/datasets/Helsinki-NLP/opus-100","split":"train","text_field":"translation","recommended_method":"trl_sft","difficulty":"intermediate","vram_min_gb":12},
 ]
 
 
@@ -97,19 +97,79 @@ def get_hf_dataset_info(dataset_id: str) -> dict:
         fn_urlopen = _get_urlopen()
         with fn_urlopen(req, timeout=10) as resp:
             ds = json.loads(resp.read().decode("utf-8"))
+        structure = describe_hf_structure(dataset_id)
         preview = []
-        try:
-            preview_url = f"https://datasets-server.huggingface.co/first-rows?dataset={quote(dataset_id, safe='/')}&config=default&split=train"
-            with fn_urlopen(Request(preview_url, headers={"User-Agent": "SigmaStudio/7.0"}), timeout=8) as prev_resp:
-                rows = json.loads(prev_resp.read().decode("utf-8")).get("rows", [])[:3]
-                preview = [r.get("row", {}) for r in rows]
-        except Exception:
-            pass
+        if structure.get("config"):
+            # L'anteprima va chiesta sul config e sullo split che il dataset ha
+            # davvero: dare per scontato "default/train" la faceva fallire in
+            # silenzio su gsm8k (main/socratic), openwebtext (plain_text) e su
+            # tutti quelli divisi per lingua.
+            try:
+                preview_url = (
+                    "https://datasets-server.huggingface.co/first-rows"
+                    f"?dataset={quote(dataset_id, safe='/')}"
+                    f"&config={quote(structure['config'])}"
+                    f"&split={quote(structure['splits'][0])}")
+                with fn_urlopen(Request(preview_url, headers={"User-Agent": "SigmaStudio/7.0"}),
+                                timeout=8) as prev_resp:
+                    rows = json.loads(prev_resp.read().decode("utf-8")).get("rows", [])[:3]
+                    preview = [r.get("row", {}) for r in rows]
+            except Exception as exc:
+                log.debug("anteprima di %s non disponibile: %s", dataset_id, exc)
         return {"success": True, "id": ds.get("id", dataset_id), "description": ds.get("description") or "",
                 "downloads": ds.get("downloads", 0), "likes": ds.get("likes", 0), "tags": ds.get("tags", []),
-                "cardData": ds.get("cardData", {}), "preview": preview, "url": f"https://huggingface.co/datasets/{dataset_id}"}
+                "cardData": ds.get("cardData", {}), "preview": preview,
+                "gated": bool(ds.get("gated")),
+                **{k: structure[k] for k in ("config", "configs", "splits", "structure_error")
+                   if k in structure},
+                "url": f"https://huggingface.co/datasets/{dataset_id}"}
     except Exception as e:
         return {"success": False, "error": str(e)}
+
+
+def _splits_for(dataset_id: str, config: str) -> list[str]:
+    """Gli split di un config preciso, quando non e' quello dedotto."""
+    url = ("https://datasets-server.huggingface.co/splits"
+           f"?dataset={quote(dataset_id, safe='/')}&config={quote(config)}")
+    try:
+        req = Request(url, headers={"User-Agent": "SigmaStudio/7.0"})
+        with _get_urlopen()(req, timeout=10) as resp:
+            payload = json.loads(resp.read().decode("utf-8"))
+        return [e["split"] for e in payload.get("splits", []) if e.get("split")]
+    except Exception:
+        return []
+
+
+def describe_hf_structure(dataset_id: str) -> dict:
+    """Config e split che un dataset offre davvero, chiesti a HuggingFace.
+
+    Il catalogo scritto a mano invecchia: i dataset vengono spostati, resi
+    gated o divisi in sottoinsiemi, e un id che ieri funzionava oggi risponde
+    401. Interrogare la struttura al momento della registrazione evita di
+    salvarne uno che poi fallirebbe a training avviato.
+    """
+    url = ("https://datasets-server.huggingface.co/splits"
+           f"?dataset={quote(dataset_id, safe='/')}")
+    try:
+        req = Request(url, headers={"User-Agent": "SigmaStudio/7.0"})
+        with _get_urlopen()(req, timeout=10) as resp:
+            payload = json.loads(resp.read().decode("utf-8"))
+    except Exception as exc:
+        return {"structure_error": str(exc)}
+
+    entries = payload.get("splits") or []
+    if not entries:
+        return {"structure_error": payload.get("error") or "nessuno split dichiarato"}
+
+    configs = []
+    for entry in entries:
+        if entry.get("config") and entry["config"] not in configs:
+            configs.append(entry["config"])
+    # "default" quando c'e', altrimenti il primo: e' l'ordine in cui HuggingFace
+    # stessa presenta i sottoinsiemi.
+    config = "default" if "default" in configs else (configs[0] if configs else "")
+    splits = [e["split"] for e in entries if e.get("config") == config and e.get("split")]
+    return {"config": config, "configs": configs, "splits": splits}
 
 
 # HuggingFace ha ritirato gli id "canonici" senza namespace: huggingface_hub
@@ -223,18 +283,55 @@ def import_local_dataset(source_path: str, dataset_name: str = None, format_hint
     return {"success": True, "dataset": meta}
 
 
-def register_hf_dataset(dataset_id: str, split: str = "train") -> dict:
+def register_hf_dataset(dataset_id: str, split: str = "train",
+                        config: str = "") -> dict:
     th = sys.modules.get("core.training_handler")
     fn_get_info = getattr(th, "get_hf_dataset_info", get_hf_dataset_info) if th else get_hf_dataset_info
     target_datasets_dir = getattr(th, "DATASETS_DIR", DATASETS_DIR) if th else DATASETS_DIR
 
     info = fn_get_info(dataset_id)
     if not info["success"]: return info
+
+    # Un dataset che non espone la propria struttura non e' addestrabile:
+    # meglio dirlo adesso che scoprirlo quando il run e' gia' partito.
+    if info.get("structure_error") and not info.get("configs"):
+        gated = info.get("gated")
+        return {"success": False, "error": (
+            f"'{dataset_id}' non è utilizzabile: {info['structure_error']}."
+            + (" Il dataset è ad accesso ristretto: accetta le condizioni su "
+               "huggingface.co e imposta il tuo HF Token in Account & Voce."
+               if gated else
+               " Potrebbe essere stato spostato o ritirato."))}
+
+    configs = info.get("configs") or []
+    # Ordine di precedenza: quello chiesto esplicitamente, poi quello dichiarato
+    # dal catalogo, infine quello dedotto. Serve per i dataset divisi per lingua
+    # come opus-100, dove il primo config in ordine alfabetico e' 'af-en' e non
+    # ha nulla a che fare con quello che si vuole addestrare.
+    featured = next((d for d in FEATURED_DATASETS if d["id"] == dataset_id), {})
+    preferred = config or featured.get("config") or ""
+    config = preferred if (not configs or preferred in configs) else (info.get("config") or "")
+    if not config:
+        config = info.get("config") or ""
+    available = info.get("splits") or []
+    # Lo split chiesto potrebbe non esistere in questo config: si ripiega su
+    # 'train' se c'e', altrimenti sul primo disponibile, e lo si dice.
+    if config != info.get("config"):
+        # Cambiando config cambiano anche gli split disponibili.
+        available = [e for e in _splits_for(dataset_id, config)] or available
+    resolved_split, note = (split or featured.get("split") or "train"), ""
+    if available and resolved_split not in available:
+        split = resolved_split
+        resolved_split = "train" if "train" in available else available[0]
+        note = f"lo split '{split}' non esiste, uso '{resolved_split}'"
+
     ds_id = f"hf_{dataset_id.replace('/', '_')}_{int(time.time())}"
     dest_dir = target_datasets_dir / ds_id
     dest_dir.mkdir(parents=True, exist_ok=True)
     meta = {"id": ds_id, "name": dataset_id.split("/")[-1], "source": "huggingface", "hf_id": dataset_id,
-            "split": split, "description": info.get("description", ""), "downloads": info.get("downloads", 0),
+            "split": resolved_split, "config": config, "configs": configs, "splits": available,
+            "note": note,
+            "description": info.get("description", ""), "downloads": info.get("downloads", 0),
             "likes": info.get("likes", 0), "tags": info.get("tags", []), "preview": info.get("preview", []),
             "created_at": datetime.now().isoformat()}
     (dest_dir / "meta.json").write_text(json.dumps(meta, ensure_ascii=False, indent=2), encoding="utf-8")
