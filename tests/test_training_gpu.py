@@ -258,6 +258,123 @@ class TestGeneratedScripts:
             in SCRIPT_TEMPLATES["full_pretrain"]
 
 
+class TestTrainingContinuation:
+    """Proseguire un fine-tuning senza perdere quello che il job ha imparato."""
+
+    def _finished_job(self, artifacts=("output/lora_model",), method="lora_unsloth",
+                      status="completed"):
+        from core.training.jobs import create_training_job, _load_jobs, _save_jobs
+        job = create_training_job({
+            "base_model": "unsloth/llama-3.2-1b-instruct", "method": method,
+            "dataset_id": "x/y", "name": "Base", "hyperparams": {"num_epochs": 2},
+        })["job"]
+        jobs = _load_jobs()
+        jobs[job["id"]]["status"] = status
+        _save_jobs(jobs)
+        for rel in artifacts:
+            (Path(job["dir"]) / rel).mkdir(parents=True, exist_ok=True)
+        return job["id"]
+
+    def test_resuming_points_the_script_at_the_existing_adapter(self):
+        from core.training.jobs import continue_training_job, _load_jobs, delete_job
+        parent = self._finished_job()
+        result = continue_training_job(parent, {"mode": "resume_adapter"})
+        try:
+            assert result["success"] is True
+            child = _load_jobs()[result["job_id"]]
+            assert child["parent_job_id"] == parent
+            assert child["continuation_mode"] == "resume_adapter"
+            # il modello base non cambia: e' l'adapter a proseguire
+            assert child["base_model"] == "unsloth/llama-3.2-1b-instruct"
+            source = Path(child["script_path"]).read_text(encoding="utf-8")
+            assert "lora_model" in source
+            assert "RESUME_ADAPTER = r\"\"" not in source
+        finally:
+            delete_job(result["job_id"])
+
+    def test_a_fresh_adapter_starts_from_the_merged_weights(self):
+        from core.training.jobs import continue_training_job, _load_jobs, delete_job
+        parent = self._finished_job(artifacts=("output/merged_16bit",))
+        result = continue_training_job(parent, {"mode": "fresh_adapter"})
+        try:
+            assert result["success"] is True
+            child = _load_jobs()[result["job_id"]]
+            assert child["base_model"].endswith("merged_16bit")
+            source = Path(child["script_path"]).read_text(encoding="utf-8")
+            assert 'RESUME_ADAPTER = r""' in source   # nessun adapter da riprendere
+        finally:
+            delete_job(result["job_id"])
+
+    def test_the_dataset_can_change_between_runs(self):
+        from core.training.jobs import continue_training_job, _load_jobs, delete_job
+        parent = self._finished_job()
+        result = continue_training_job(parent, {"mode": "resume_adapter",
+                                                "dataset_id": "tatsu-lab/alpaca"})
+        try:
+            assert _load_jobs()[result["job_id"]]["dataset_id"] == "tatsu-lab/alpaca"
+        finally:
+            delete_job(result["job_id"])
+
+    def test_keeping_the_dataset_is_the_default(self):
+        from core.training.jobs import continue_training_job, _load_jobs, delete_job
+        parent = self._finished_job()
+        result = continue_training_job(parent, {"mode": "resume_adapter"})
+        try:
+            assert _load_jobs()[result["job_id"]]["dataset_id"] == "x/y"
+        finally:
+            delete_job(result["job_id"])
+
+    def test_the_chain_records_both_ends(self):
+        from core.training.jobs import continue_training_job, _load_jobs, delete_job
+        parent = self._finished_job()
+        first = continue_training_job(parent, {"mode": "resume_adapter"})
+        (Path(_load_jobs()[first["job_id"]]["dir"]) / "output" / "lora_model").mkdir(parents=True)
+        second = continue_training_job(first["job_id"], {"mode": "resume_adapter"})
+        try:
+            jobs = _load_jobs()
+            assert jobs[parent]["children"] == [first["job_id"]]
+            assert parent in jobs[second["job_id"]]["lineage"]
+            assert first["job_id"] in jobs[second["job_id"]]["lineage"]
+        finally:
+            delete_job(first["job_id"])
+            delete_job(second["job_id"])
+
+    def test_a_missing_adapter_is_refused_with_the_reason(self):
+        from core.training.jobs import continue_training_job
+        parent = self._finished_job(artifacts=())
+        result = continue_training_job(parent, {"mode": "resume_adapter"})
+        assert result["success"] is False
+        assert "lora_model" in result["error"]
+
+    def test_asking_for_a_fresh_adapter_without_a_merge_says_what_to_do(self):
+        from core.training.jobs import continue_training_job
+        parent = self._finished_job(artifacts=("output/lora_model",))
+        result = continue_training_job(parent, {"mode": "fresh_adapter"})
+        assert result["success"] is False
+        assert "merged_16bit" in result["error"] and "riprendi l'adapter" in result["error"].lower()
+
+    def test_a_running_job_cannot_be_continued(self):
+        from core.training.jobs import continue_training_job
+        parent = self._finished_job(status="running")
+        result = continue_training_job(parent, {"mode": "resume_adapter"})
+        assert result["success"] is False and "esecuzione" in result["error"]
+
+    def test_an_unknown_mode_is_refused(self):
+        from core.training.jobs import continue_training_job
+        result = continue_training_job(self._finished_job(), {"mode": "magia"})
+        assert result["success"] is False and "sconosciuta" in result["error"]
+
+    def test_methods_without_an_adapter_are_refused(self):
+        from core.training.jobs import continue_training_job
+        parent = self._finished_job(method="fwe_gradus")
+        result = continue_training_job(parent, {"mode": "resume_adapter"})
+        assert result["success"] is False and "fwe_gradus" in result["error"]
+
+    def test_an_unknown_job_is_refused(self):
+        from core.training.jobs import continue_training_job
+        assert continue_training_job("non-esiste", {})["success"] is False
+
+
 class TestStaleScriptRegeneration:
     """Uno script congelato prima di una correzione al template va rigenerato."""
 

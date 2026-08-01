@@ -656,6 +656,34 @@ class TestOllamaExport:
         assert result["success"] is False
         assert mock_convert.call_count == 0
 
+    @patch("core.training_handler.subprocess.run")
+    def test_quantization_is_passed_to_ollama(self, mock_run):
+        mock_run.return_value = MagicMock(returncode=0, stdout="", stderr="")
+        job_id, _ = self._completed_job_with("adapter")
+
+        result = export_to_ollama(job_id, "sigma-test-model", "", "q4_K_M")
+        if shutil.which("ollama"):
+            assert result["success"] is True
+            assert result["quantization"] == "q4_K_M"
+            cmd = mock_run.call_args[0][0]
+            assert cmd[cmd.index("--quantize") + 1] == "q4_K_M"
+
+    def test_an_unknown_quantization_is_refused_before_running_anything(self):
+        job_id, _ = self._completed_job_with("adapter")
+        result = export_to_ollama(job_id, "sigma-test-model", "", "q4_0_XL")
+        assert result["success"] is False
+        assert "non riconosciuta" in result["error"]
+
+    @patch("core.training_handler.subprocess.run")
+    def test_no_quantization_leaves_the_command_alone(self, mock_run):
+        mock_run.return_value = MagicMock(returncode=0, stdout="", stderr="")
+        job_id, _ = self._completed_job_with("adapter")
+
+        result = export_to_ollama(job_id, "sigma-test-model")
+        if shutil.which("ollama"):
+            assert result["quantization"] is None
+            assert "--quantize" not in mock_run.call_args[0][0]
+
     def test_export_fails_if_not_completed(self):
         """Export fallisce se job non è completato."""
         config = {"base_model": "test", "method": "script_custom", "hyperparams": {}}

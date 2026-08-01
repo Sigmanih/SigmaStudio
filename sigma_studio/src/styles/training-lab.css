@@ -760,6 +760,15 @@
   width: 100%;
   height: 120px;
 }
+/* Il grafico delle metriche porta due serie e una griglia leggibile: a 120px
+   le curve si schiacciano l'una sull'altra e le etichette si toccano. */
+.training-metrics-svg {
+  width: 100%;
+  height: auto;
+  aspect-ratio: 760 / 300;
+  max-height: 320px;
+  display: block;
+}
 .training-chart-empty {
   display: flex;
   align-items: center;

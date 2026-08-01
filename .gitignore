@@ -111,3 +111,4 @@ training_lab/ollama_instances.json
 sigma_studio/.build_stamp
 .backups/*
 .training/*
+.training_lab/*.json

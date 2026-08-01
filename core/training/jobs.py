@@ -346,11 +346,52 @@ def load_training_dataset():
         sigma("Uso la colonna testuale '%s'" % fallback)
         return ds.rename_column(fallback, "text") if fallback != "text" else ds
     raise SystemExit("[ERRORE] Nessuna colonna di testo utilizzabile in %s" % ds.column_names)
+
+
+VALIDATION_FRACTION = {validation_fraction}
+
+
+def load_train_and_eval():
+    """Dataset di training piu' la fetta tenuta da parte per la validation.
+
+    Senza dati mai visti la loss non distingue fra "ha imparato il compito" e
+    "ha imparato gli esempi": la validation e' l'unico modo per accorgersi
+    dell'overfitting mentre il run e' ancora in corso. Il seed e' fisso, cosi'
+    due run sullo stesso dataset restano confrontabili fra loro.
+    """
+    ds = load_training_dataset()
+    if VALIDATION_FRACTION <= 0:
+        return ds, None
+    # Sotto qualche decina di esempi la fetta di validation sarebbe cosi'
+    # piccola che la sua loss oscillerebbe piu' del segnale che deve misurare.
+    if len(ds) < 40:
+        sigma("Dataset di %d esempi: validation disattivata (troppo pochi)" % len(ds))
+        return ds, None
+    split = ds.train_test_split(test_size=VALIDATION_FRACTION, seed=42)
+    sigma("Split: %d esempi di training, %d di validation (%.0f%%)" % (
+        len(split["train"]), len(split["test"]), VALIDATION_FRACTION * 100))
+    return split["train"], split["test"]
 '''
 
 
 _SIGMA_CALLBACK = '''
+import math
 from transformers import TrainerCallback
+
+
+def sigma_metric(**fields):
+    """Riga machine-readable per il Monitor, accanto a quella leggibile.
+
+    Il Monitor legge questa invece di dedurre i numeri con una regex sul testo:
+    aggiungere una metrica non richiede piu' toccare il parser, e i valori
+    arrivano senza passare da un arrotondamento di formattazione.
+    """
+    clean = {k: v for k, v in fields.items() if v is not None}
+    try:
+        print("[SIGMA-METRIC] " + json.dumps(clean), flush=True)
+    except (TypeError, ValueError):
+        pass
+
 
 class SigmaProgress(TrainerCallback):
     """Log parsabile dal Monitor del Training Lab (loss, epoca, VRAM, ETA)."""
@@ -358,10 +399,29 @@ class SigmaProgress(TrainerCallback):
     def __init__(self):
         self.t0 = time.time()
 
+    def on_evaluate(self, args, state, control, metrics=None, **kw):
+        metrics = metrics or {}
+        eval_loss = metrics.get("eval_loss")
+        if eval_loss is None:
+            return
+        # exp() di una loss grande esplode e il numero smette di dire qualcosa:
+        # oltre 20 la perplexity significa comunque "non ne ha idea".
+        ppl = math.exp(min(float(eval_loss), 20.0)) if eval_loss > 0 else None
+        sigma("Validation step %d - eval_loss: %.4f | perplexity: %s" % (
+            state.global_step, eval_loss, ("%.2f" % ppl) if ppl else "n/d"))
+        sigma_metric(step=state.global_step, epoch=state.epoch,
+                     eval_loss=float(eval_loss), perplexity=ppl,
+                     eval_runtime=metrics.get("eval_runtime"))
+
     def on_log(self, args, state, control, logs=None, **kw):
         logs = logs or {}
         if "loss" not in logs:
             return
+        sigma_metric(step=state.global_step, epoch=logs.get("epoch", state.epoch),
+                     loss=logs.get("loss"),
+                     learning_rate=logs.get("learning_rate"),
+                     grad_norm=logs.get("grad_norm"),
+                     elapsed_s=round(time.time() - self.t0, 1))
         epoch = float(logs.get("epoch", state.epoch or 0))
         total = float(args.num_train_epochs or 1)
         pct = 100.0 * state.global_step / max(1, state.max_steps)
@@ -393,39 +453,52 @@ except ImportError as e:
     sigma("Installa con: pip install unsloth trl transformers datasets")
     sys.exit(1)
 ''' + _SIGMA_CALLBACK + '''
+RESUME_ADAPTER = r"{resume_adapter}"
+
+# Continuazione: si riparte dall'adapter del job precedente invece che da uno
+# nuovo. Unsloth risale da solo al modello base leggendo adapter_config.json,
+# quindi qui basta puntargli la cartella dell'adapter.
 model, tokenizer = FastLanguageModel.from_pretrained(
-    model_name="{base_model}",
+    model_name=RESUME_ADAPTER or "{base_model}",
     max_seq_length={max_seq_length},
     dtype=DTYPE,
     load_in_4bit=bool(TUNE.get("load_in_4bit")),
 )
 sigma("Modello caricato (4-bit=%s)" % TUNE.get("load_in_4bit"))
 
-model = FastLanguageModel.get_peft_model(
-    model,
-    r={lora_r},
-    lora_alpha={lora_alpha},
-    lora_dropout=0,
-    bias="none",
-    target_modules=["q_proj", "k_proj", "v_proj", "o_proj",
-                    "gate_proj", "up_proj", "down_proj"],
-    use_gradient_checkpointing="unsloth" if TUNE.get("gradient_checkpointing") else False,
-    random_state=42,
-)
+if RESUME_ADAPTER:
+    sigma("Riprendo l'adapter LoRA da: %s" % RESUME_ADAPTER)
+    FastLanguageModel.for_training(model)
+else:
+    model = FastLanguageModel.get_peft_model(
+        model,
+        r={lora_r},
+        lora_alpha={lora_alpha},
+        lora_dropout=0,
+        bias="none",
+        target_modules=["q_proj", "k_proj", "v_proj", "o_proj",
+                        "gate_proj", "up_proj", "down_proj"],
+        use_gradient_checkpointing="unsloth" if TUNE.get("gradient_checkpointing") else False,
+        random_state=42,
+    )
 trainable = sum(p.numel() for p in model.parameters() if p.requires_grad)
 total = sum(p.numel() for p in model.parameters())
 sigma("LoRA r={lora_r} alpha={lora_alpha} | parametri allenabili %.2fM su %.2fM (%.2f%%)" % (
     trainable / 1e6, total / 1e6, 100.0 * trainable / max(1, total)))
 
-dataset = load_training_dataset()
+train_dataset, eval_dataset = load_train_and_eval()
 
 trainer = SFTTrainer(
     model=model,
-    train_dataset=dataset,
+    train_dataset=train_dataset,
+    eval_dataset=eval_dataset,
     processing_class=tokenizer,
     args=SFTConfig(
         output_dir=r"{output_dir}",
         dataset_text_field="text",
+        eval_strategy="steps" if eval_dataset is not None else "no",
+        eval_steps={eval_steps},
+        per_device_eval_batch_size=1,
         max_length={max_seq_length},
         per_device_train_batch_size={batch_size},
         gradient_accumulation_steps={gradient_accumulation},
@@ -470,7 +543,8 @@ sigma("FATTO")
     "trl_sft": _PREAMBLE + _DATASET_LOADER + '''
 try:
     from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig
-    from peft import LoraConfig, get_peft_model, prepare_model_for_kbit_training
+    from peft import (LoraConfig, PeftModel, get_peft_model,
+                      prepare_model_for_kbit_training)
     from trl import SFTTrainer, SFTConfig
 except ImportError as e:
     sigma("ERRORE dipendenza mancante: %s" % e)
@@ -504,23 +578,35 @@ if TUNE.get("load_in_4bit"):
     model = prepare_model_for_kbit_training(
         model, use_gradient_checkpointing=bool(TUNE.get("gradient_checkpointing")))
 
-model = get_peft_model(model, LoraConfig(
-    r={lora_r}, lora_alpha={lora_alpha}, lora_dropout=0.05, bias="none",
-    task_type="CAUSAL_LM",
-    target_modules=["q_proj", "k_proj", "v_proj", "o_proj",
-                    "gate_proj", "up_proj", "down_proj"],
-))
+RESUME_ADAPTER = r"{resume_adapter}"
+
+if RESUME_ADAPTER:
+    # Continuazione: `is_trainable` e' obbligatorio, altrimenti PEFT carica
+    # l'adapter in sola inferenza e il run girerebbe senza aggiornare nulla.
+    sigma("Riprendo l'adapter LoRA da: %s" % RESUME_ADAPTER)
+    model = PeftModel.from_pretrained(model, RESUME_ADAPTER, is_trainable=True)
+else:
+    model = get_peft_model(model, LoraConfig(
+        r={lora_r}, lora_alpha={lora_alpha}, lora_dropout=0.05, bias="none",
+        task_type="CAUSAL_LM",
+        target_modules=["q_proj", "k_proj", "v_proj", "o_proj",
+                        "gate_proj", "up_proj", "down_proj"],
+    ))
 model.print_trainable_parameters()
 
-dataset = load_training_dataset()
+train_dataset, eval_dataset = load_train_and_eval()
 
 trainer = SFTTrainer(
     model=model,
-    train_dataset=dataset,
+    train_dataset=train_dataset,
+    eval_dataset=eval_dataset,
     processing_class=tokenizer,
     args=SFTConfig(
         output_dir=r"{output_dir}",
         dataset_text_field="text",
+        eval_strategy="steps" if eval_dataset is not None else "no",
+        eval_steps={eval_steps},
+        per_device_eval_batch_size=1,
         max_length={max_seq_length},
         per_device_train_batch_size={batch_size},
         gradient_accumulation_steps={gradient_accumulation},
@@ -613,12 +699,26 @@ if len(lm_dataset) == 0:
     sigma("ERRORE: dataset troppo piccolo per blocchi da %d token" % BLOCK)
     sys.exit(1)
 
+# Qui lo split va fatto sui blocchi, non sui testi grezzi: e' sui blocchi che
+# il modello viene valutato, e sono loro l'unita' di misura della perplexity.
+eval_dataset = None
+train_blocks = lm_dataset
+if VALIDATION_FRACTION > 0 and len(lm_dataset) >= 40:
+    split = lm_dataset.train_test_split(test_size=VALIDATION_FRACTION, seed=42)
+    train_blocks, eval_dataset = split["train"], split["test"]
+    sigma("Split: %d blocchi di training, %d di validation" % (
+        len(train_blocks), len(eval_dataset)))
+
 trainer = Trainer(
     model=model,
-    train_dataset=lm_dataset,
+    train_dataset=train_blocks,
+    eval_dataset=eval_dataset,
     data_collator=DataCollatorForLanguageModeling(tokenizer, mlm=False),
     args=TrainingArguments(
         output_dir=r"{output_dir}",
+        eval_strategy="steps" if eval_dataset is not None else "no",
+        eval_steps={eval_steps},
+        per_device_eval_batch_size=1,
         per_device_train_batch_size={batch_size},
         gradient_accumulation_steps={gradient_accumulation},
         num_train_epochs={num_epochs},
@@ -960,6 +1060,17 @@ def _forge_config(hyper: dict) -> dict:
     }
 
 
+def _default_eval_steps(hyper: dict) -> int:
+    """How often to evaluate, when the user hasn't said.
+
+    Ogni valutazione e' un passaggio completo sulla fetta di validation: troppo
+    frequente e il run rallenta, troppo rara e l'overfitting si scopre quando e'
+    gia' avvenuto. 50 step e' il compromesso che regge sia i run brevi sia
+    quelli lunghi, e con 3 valutazioni la diagnosi comincia a essere affidabile.
+    """
+    return max(10, int(hyper.get("logging_steps", 1)) * 50)
+
+
 def _build_script_values(data: dict, job_id: str, job_dir: Path) -> dict:
     """Every placeholder the script templates need, for a given job request.
 
@@ -1021,6 +1132,9 @@ def _build_script_values(data: dict, job_id: str, job_dir: Path) -> dict:
         "max_seq_length": seq_len,
         "lora_r": hyper.get("lora_r", 16),
         "lora_alpha": hyper.get("lora_alpha", 16),
+        "resume_adapter": str(hyper.get("resume_adapter") or "").replace("\\", "/"),
+        "validation_fraction": float(hyper.get("validation_fraction", 0.05)),
+        "eval_steps": int(hyper.get("eval_steps") or _default_eval_steps(hyper)),
         "text_field": hyper.get("text_field", "text"),
         "tune_json": json.dumps(tune, ensure_ascii=False),
         "legacy_datasets_json": json.dumps(LEGACY_HF_DATASETS, ensure_ascii=False),
@@ -1238,8 +1352,22 @@ def _finalize_job(job_id: str, code: int, log_path: Path, state: dict | None = N
     job["completed_at"] = time.strftime("%Y-%m-%d %H:%M:%S")
     if final == "failed":
         job["error"] = _tail_error(log_path) or f"Processo terminato con codice {code}"
+    runs = job.get("runs") or []
+    if runs and runs[-1].get("status") == "running":
+        runs[-1].update({"status": final, "completed_at": job["completed_at"],
+                         "final_loss": (state or job).get("last_loss"),
+                         "steps": (state or job).get("current_step")})
     _save_jobs(jobs)
     log.info("Job %s terminato: %s (exit %s)", job_id, final, code)
+
+
+def get_job_metrics(job_id: str) -> dict:
+    """Metric series, aggregates and verdicts for one job."""
+    job = _load_jobs().get(job_id)
+    if job is None:
+        return {"success": False, "error": f"Job '{job_id}' non trovato."}
+    from core.training.metrics import job_metrics
+    return job_metrics(job)
 
 
 def _tail_error(log_path: Path, lines: int = 25) -> str:
@@ -1310,6 +1438,108 @@ def _refresh_script(job: dict, total_steps: int) -> dict:
 
     log.info("Job %s: script rigenerato per %d step totali", job["id"], total_steps)
     return {"success": True, "regenerated": True}
+
+
+# I due modi di proseguire un fine-tuning. Cambiano da dove ripartono i pesi,
+# e quindi cosa il modello si porta dietro del giro precedente.
+CONTINUATION_MODES = {
+    "resume_adapter": {
+        "label": "Riprendi lo stesso adapter LoRA",
+        "detail": ("Il nuovo run continua ad addestrare l'adapter esistente: il "
+                   "modello accumula quello che ha gia' imparato. Con un dataset "
+                   "molto diverso puo' dimenticare il precedente."),
+        "needs": "lora_model",
+    },
+    "fresh_adapter": {
+        "label": "Nuovo adapter sul modello gia' fuso",
+        "detail": ("Riparte da zero con un adapter pulito, ma sopra il modello in "
+                   "cui il lavoro precedente e' gia' stato fuso. Ogni fase resta "
+                   "separata e ispezionabile; serve il merge (~18 GB su disco)."),
+        "needs": "merged_16bit",
+    },
+}
+
+
+def continue_training_job(job_id: str, data: dict | None = None) -> dict:
+    """Chain a new run onto a finished job, keeping what it learned.
+
+    Non si riusa il job di partenza: il suo log, le sue metriche e i suoi
+    checkpoint restano quello che sono stati, e il nuovo giro nasce come job a
+    se' con un riferimento al padre. Cosi' la storia di una catena di training
+    resta leggibile anche a distanza di settimane, invece di essere un unico
+    job che si e' sovrascritto piu' volte.
+    """
+    data = dict(data or {})
+    parent = _load_jobs().get(job_id)
+    if parent is None:
+        return {"success": False, "error": f"Job '{job_id}' non trovato."}
+    if parent.get("status") == "running":
+        return {"success": False,
+                "error": f"Job '{job_id}' è ancora in esecuzione: fermalo prima di continuarlo."}
+
+    mode = data.get("mode") or "resume_adapter"
+    if mode not in CONTINUATION_MODES:
+        return {"success": False,
+                "error": (f"Modalità '{mode}' sconosciuta. "
+                          f"Disponibili: {', '.join(CONTINUATION_MODES)}.")}
+
+    method = parent.get("method")
+    if method not in ("lora_unsloth", "trl_sft"):
+        return {"success": False,
+                "error": (f"La continuazione è prevista per i metodi LoRA e SFT; "
+                          f"questo job usa '{method}'.")}
+
+    output = Path(parent.get("dir", "")) / "output"
+    artifact = output / CONTINUATION_MODES[mode]["needs"]
+    if not artifact.exists():
+        missing = CONTINUATION_MODES[mode]["needs"]
+        hint = ("Il merge a 16 bit non è stato prodotto: riprendi l'adapter, "
+                "oppure rifai l'export dal job padre."
+                if mode == "fresh_adapter" else
+                "Il job non ha salvato un adapter: è arrivato in fondo al training?")
+        return {"success": False,
+                "error": f"Manca {missing}/ in {output}. {hint}"}
+
+    request = dict(parent.get("request") or {})
+    hyper = {**(request.get("hyperparams") or {}), **(data.get("hyperparams") or {})}
+    if mode == "resume_adapter":
+        hyper["resume_adapter"] = str(artifact)
+        base_model = parent.get("base_model")
+    else:
+        # I pesi fusi sono gia' sul disco: il nuovo adapter parte da li'.
+        hyper.pop("resume_adapter", None)
+        base_model = str(artifact)
+
+    child_request = {
+        "base_model": base_model,
+        "method": method,
+        # Cambiare dataset e' il caso d'uso principale: se non ne arriva uno
+        # nuovo si prosegue su quello di prima.
+        "dataset_id": data.get("dataset_id") or parent.get("dataset_id", ""),
+        "name": data.get("name") or f"{parent.get('name', job_id)} · continuazione",
+        "output_name": data.get("output_name"),
+        "hyperparams": hyper,
+    }
+
+    created = create_training_job(child_request)
+    if not created.get("success"):
+        return created
+
+    jobs = _load_jobs()
+    child = jobs[created["job_id"]]
+    child["parent_job_id"] = job_id
+    child["continuation_mode"] = mode
+    child["lineage"] = list(parent.get("lineage") or [job_id])
+    if job_id not in child["lineage"]:
+        child["lineage"].append(job_id)
+    jobs[job_id].setdefault("children", []).append(created["job_id"])
+    _save_jobs(jobs)
+
+    log.info("Job %s continua %s in modalità %s", created["job_id"], job_id, mode)
+    return {"success": True, "job_id": created["job_id"], "job": child,
+            "parent_job_id": job_id, "mode": mode,
+            "message": (f"Nuovo job {created['job_id']} in coda a {job_id} "
+                        f"({CONTINUATION_MODES[mode]['label'].lower()}).")}
 
 
 def _sync_script_template(job: dict) -> bool:
@@ -1439,6 +1669,22 @@ def start_training_job(job_id: str, total_steps: int | None = None) -> dict:
     job["started_at"] = time.strftime("%Y-%m-%d %H:%M:%S")
     job["error"] = None
     job["pid"] = pid
+    # Storia delle esecuzioni: un job puo' essere avviato, fermato e ripreso
+    # piu' volte, e a posteriori serve sapere con che dati e che iperparametri
+    # e' stato addestrato in ciascun giro.
+    job.setdefault("runs", []).append({
+        "index": len(job.get("runs", [])) + 1,
+        "started_at": job["started_at"],
+        "dataset_id": job.get("dataset_id"),
+        "dataset_name": job.get("dataset_name"),
+        "base_model": job.get("base_model"),
+        "method": job.get("method"),
+        "hyperparams": dict(job.get("hyperparams") or {}),
+        "script_regenerated": regenerated,
+        "completed_at": None,
+        "status": "running",
+        "final_loss": None,
+    })
     if total_steps:
         job.setdefault("hyperparams", {})["fwe_steps"] = int(total_steps)
         job["total_steps"] = int(total_steps)
@@ -1748,9 +1994,32 @@ def _convert_to_gguf(model_dir: Path, out_dir: Path) -> dict:
     return {"success": True, "gguf_path": target}
 
 
+# Livelli che `ollama create -q` accetta, dal piu' fedele al piu' compresso.
+# Il moltiplicatore stima la dimensione finale a partire dai pesi in 16 bit.
+OLLAMA_QUANT_LEVELS = {
+    "q8_0":   {"ratio": 0.53, "label": "Q8_0 — quasi identico al 16 bit"},
+    "q6_K":   {"ratio": 0.41, "label": "Q6_K — perdita non percepibile"},
+    "q5_K_M": {"ratio": 0.35, "label": "Q5_K_M — ottimo compromesso"},
+    "q4_K_M": {"ratio": 0.30, "label": "Q4_K_M — lo standard di fatto"},
+    "q4_K_S": {"ratio": 0.28, "label": "Q4_K_S — un filo piu' piccolo di Q4_K_M"},
+    "q3_K_M": {"ratio": 0.24, "label": "Q3_K_M — degrado visibile"},
+}
+
+
 def export_to_ollama(job_id: str, model_name: str = "custom_model",
-                     system_prompt: str = "") -> dict:
-    """Register the trained model in Ollama via a generated Modelfile."""
+                     system_prompt: str = "", quantization: str = "") -> dict:
+    """Register the trained model in Ollama via a generated Modelfile.
+
+    `quantization` e' uno dei livelli di OLLAMA_QUANT_LEVELS: Ollama quantizza
+    lui stesso durante `create`, partendo dai pesi a 16 bit. Vuoto = nessuna
+    quantizzazione.
+    """
+    quantization = (quantization or "").strip()
+    if quantization and quantization not in OLLAMA_QUANT_LEVELS:
+        return {"success": False,
+                "error": (f"Quantizzazione '{quantization}' non riconosciuta. "
+                          f"Disponibili: {', '.join(OLLAMA_QUANT_LEVELS)}.")}
+
     jobs = _load_jobs()
     if job_id not in jobs:
         return {"success": False, "error": f"Job '{job_id}' non trovato."}
@@ -1843,12 +2112,14 @@ def export_to_ollama(job_id: str, model_name: str = "custom_model",
     sub_run = _get_subprocess_run()
 
     def run_create():
+        cmd = [ollama_bin, "create", model_name, "-f", str(modelfile_path)]
+        if quantization:
+            cmd += ["--quantize", quantization]
         # encoding esplicito: `ollama create` scrive spinner e barre in UTF-8, e
         # con il codepage di default di Windows il thread che legge la pipe muore
         # su UnicodeDecodeError — lasciando l'errore vero senza alcun dettaglio.
-        return sub_run([ollama_bin, "create", model_name, "-f", str(modelfile_path)],
-                       capture_output=True, text=True, encoding="utf-8",
-                       errors="replace", timeout=600)
+        return sub_run(cmd, capture_output=True, text=True, encoding="utf-8",
+                       errors="replace", timeout=1800)
 
     try:
         res = run_create()
@@ -1893,13 +2164,15 @@ def export_to_ollama(job_id: str, model_name: str = "custom_model",
             "modelfile": modelfile_content,
         }
 
+    quant_note = f", quantizzato {quantization}" if quantization else ""
     return {
         "success": True,
-        "message": (f"Modello Ollama '{model_name}' registrato (sorgente: {source})."
-                    + fp16_warning),
+        "message": (f"Modello Ollama '{model_name}' registrato "
+                    f"(sorgente: {source}{quant_note})." + fp16_warning),
         "fp16_warning": fp16_warning or None,
         "model_name": model_name,
         "source": source,
+        "quantization": quantization or None,
         "modelfile_path": str(modelfile_path),
         "modelfile": modelfile_content,
     }

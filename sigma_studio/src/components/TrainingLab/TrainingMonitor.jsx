@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Play, Square, Trash2, RefreshCw, Download, Copy, ScrollText, Cpu, Package } from 'lucide-react';
+import TrainingMetrics from './TrainingMetrics';
 
 // ==============================================================================
 // TrainingMonitor — Live log stream, loss chart, hardware info, export panel
@@ -114,6 +115,16 @@ export default function TrainingMonitor({ onAddToast }) {
   const [exportSystemPrompt, setExportSystemPrompt] = useState('');
   const [exporting, setExporting] = useState(false);
   const [exportResult, setExportResult] = useState(null);
+  const [exportQuant, setExportQuant] = useState('');
+  const [quantLevels, setQuantLevels] = useState([]);
+  const [metrics, setMetrics] = useState(null);
+  const [continueModal, setContinueModal] = useState(false);
+  const [continueMode, setContinueMode] = useState('resume_adapter');
+  const [continueDataset, setContinueDataset] = useState('');
+  const [continueModes, setContinueModes] = useState([]);
+  const [continuing, setContinuing] = useState(false);
+  const [continueResult, setContinueResult] = useState(null);
+  const [datasets, setDatasets] = useState([]);
   const logEndRef = useRef();
   const pollRef = useRef();
 
@@ -134,6 +145,50 @@ export default function TrainingMonitor({ onAddToast }) {
       }
     } catch (e) {}
   }, [selectedJobId]);
+
+  // Livelli di quantizzazione, modi di continuazione e dataset disponibili
+  useEffect(() => {
+    fetch('/api/training/export/quant_levels')
+      .then(r => r.json())
+      .then(d => { if (d.success) setQuantLevels(d.levels || []); })
+      .catch(() => {});
+    fetch('/api/training/job/continuation_modes')
+      .then(r => r.json())
+      .then(d => { if (d.success) setContinueModes(d.modes || []); })
+      .catch(() => {});
+    fetch('/api/training/datasets')
+      .then(r => r.json())
+      .then(d => { if (d.success) setDatasets(d.datasets || []); })
+      .catch(() => {});
+  }, []);
+
+  const handleContinueTraining = async () => {
+    if (!selectedJobId) return;
+    setContinuing(true);
+    setContinueResult(null);
+    try {
+      const res = await fetch('/api/training/job/continue', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          job_id: selectedJobId,
+          mode: continueMode,
+          dataset_id: continueDataset || undefined,
+        }),
+      });
+      const data = await res.json();
+      setContinueResult(data);
+      if (data.success) {
+        await loadJobs();
+        setSelectedJobId(data.job_id);
+        onAddToast && onAddToast(data.message, 'success', 6000);
+      }
+    } catch (e) {
+      setContinueResult({ success: false, error: e.message });
+    } finally {
+      setContinuing(false);
+    }
+  };
 
   // Load hardware info
   const loadHardware = useCallback(async () => {
@@ -160,7 +215,8 @@ export default function TrainingMonitor({ onAddToast }) {
         const data = await res.json();
         if (data.success && data.lines) {
           setLogs(data.lines);
-          // Extract loss points
+          // Fallback per i run vecchi, generati prima delle righe [SIGMA-METRIC]:
+          // per loro la loss si può solo ripescare dal testo del log.
           const pts = [];
           data.lines.forEach((line, i) => {
             const loss = parseLoss(line);
@@ -170,6 +226,11 @@ export default function TrainingMonitor({ onAddToast }) {
           });
           if (pts.length > 0) setLossPoints(pts);
         }
+      } catch (e) {}
+      try {
+        const res = await fetch(`/api/training/job/metrics?job_id=${selectedJobId}`);
+        const data = await res.json();
+        if (data.success) setMetrics(data);
       } catch (e) {}
       // Also refresh job status
       loadJobs();
@@ -273,6 +334,7 @@ export default function TrainingMonitor({ onAddToast }) {
           job_id: selectedJobId,
           model_name: exportName.trim(),
           system_prompt: exportSystemPrompt,
+          quantization: exportQuant,
         }),
       });
       const data = await res.json();
@@ -487,6 +549,20 @@ export default function TrainingMonitor({ onAddToast }) {
                     <Play size={12} /> Continua
                   </button>
                 )}
+                {['lora_unsloth', 'trl_sft'].includes(selectedJob.method)
+                  && ['completed', 'stopped'].includes(selectedJob.status) && (
+                  <button
+                    className="training-btn"
+                    title="Prosegue il fine-tuning in un nuovo job, tenendo quello che questo ha imparato"
+                    onClick={() => {
+                      setContinueDataset(selectedJob.dataset_id || '');
+                      setContinueResult(null);
+                      setContinueModal(true);
+                    }}
+                  >
+                    <Play size={12} /> Continua training
+                  </button>
+                )}
                 {selectedJob.status === 'completed' && (
                   <button className="training-btn primary" onClick={() => {
                     setExportName(selectedJob.output_name || `sigma_${selectedJob.id}`);
@@ -503,12 +579,18 @@ export default function TrainingMonitor({ onAddToast }) {
           </div>
         )}
 
-        {/* ── Loss chart ── */}
+        {/* ── Metriche, curve e valutazione automatica ── */}
         {selectedJob && (
-          <div className="training-chart-container">
-            <div className="training-chart-title">📈 Loss nel tempo ({lossPoints.length} datapoint)</div>
-            <LossChart dataPoints={lossPoints} />
-          </div>
+          metrics?.history?.length > 0 ? (
+            <TrainingMetrics metrics={metrics} />
+          ) : (
+            /* Run generati prima delle righe [SIGMA-METRIC]: resta il grafico
+               semplice ricostruito dal testo del log. */
+            <div className="training-chart-container">
+              <div className="training-chart-title">📈 Loss nel tempo ({lossPoints.length} datapoint)</div>
+              <LossChart dataPoints={lossPoints} />
+            </div>
+          )
         )}
 
         {/* ── Log terminal ── */}
@@ -565,6 +647,109 @@ export default function TrainingMonitor({ onAddToast }) {
       </div>
 
       {/* ── Export Modal ── */}
+      {continueModal && (
+        <div
+          style={{
+            position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.7)',
+            backdropFilter: 'blur(8px)', zIndex: 1000, display: 'flex',
+            alignItems: 'center', justifyContent: 'center', padding: '20px',
+          }}
+          onClick={() => setContinueModal(false)}
+        >
+          <div
+            style={{
+              background: 'rgba(15,17,32,0.98)', border: '1px solid rgba(255,255,255,0.08)',
+              borderRadius: '18px', padding: '24px', width: '100%', maxWidth: '520px',
+              maxHeight: '86vh', overflowY: 'auto',
+            }}
+            onClick={e => e.stopPropagation()}
+          >
+            <div style={{ fontSize: '0.85rem', fontWeight: 700, color: 'var(--text)', marginBottom: '4px' }}>
+              ▶️ Continua il training
+            </div>
+            <div style={{ fontSize: '0.65rem', color: 'var(--text-dim)', marginBottom: '16px', lineHeight: 1.55 }}>
+              Nasce un job nuovo agganciato a <code style={{ color: 'var(--primary)' }}>{selectedJobId}</code>.
+              Log, metriche e checkpoint di questo restano intatti.
+            </div>
+
+            <div className="training-field" style={{ marginBottom: '14px' }}>
+              <label>Da dove ripartono i pesi</label>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginTop: '6px' }}>
+                {continueModes.map(m => (
+                  <button
+                    key={m.id}
+                    onClick={() => setContinueMode(m.id)}
+                    style={{
+                      textAlign: 'left', padding: '10px 12px', borderRadius: '10px',
+                      border: '1px solid', cursor: 'pointer',
+                      borderColor: continueMode === m.id ? 'rgba(0,210,255,0.35)' : 'rgba(255,255,255,0.07)',
+                      background: continueMode === m.id ? 'rgba(0,210,255,0.06)' : 'transparent',
+                    }}
+                  >
+                    <div style={{
+                      fontSize: '0.7rem', fontWeight: 700, marginBottom: '3px',
+                      color: continueMode === m.id ? 'var(--primary)' : 'var(--text)',
+                    }}>
+                      {m.label}
+                    </div>
+                    <div style={{ fontSize: '0.62rem', color: 'var(--text-dim)', lineHeight: 1.5 }}>
+                      {m.detail}
+                    </div>
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="training-field" style={{ marginBottom: '16px' }}>
+              <label>Dataset</label>
+              <div className="training-select-wrapper">
+                <select
+                  className="training-select"
+                  value={continueDataset}
+                  onChange={e => setContinueDataset(e.target.value)}
+                >
+                  <option value={selectedJob?.dataset_id || ''}>
+                    Lo stesso di prima — {selectedJob?.dataset_name || selectedJob?.dataset_id || 'n/d'}
+                  </option>
+                  {datasets
+                    .filter(d => d.id !== selectedJob?.dataset_id)
+                    .map(d => <option key={d.id} value={d.id}>{d.name || d.id}</option>)}
+                </select>
+              </div>
+              <div className="training-field-desc">
+                Cambiare dataset insegna un compito nuovo, ma su un adapter ripreso il
+                modello può dimenticare il precedente se i due sono molto diversi.
+              </div>
+            </div>
+
+            {continueResult && (
+              <div style={{
+                padding: '10px 14px', borderRadius: '10px', marginBottom: '14px',
+                background: continueResult.success ? 'rgba(63,185,80,0.08)' : 'rgba(255,85,85,0.08)',
+                border: `1px solid ${continueResult.success ? 'rgba(63,185,80,0.2)' : 'rgba(255,85,85,0.2)'}`,
+                color: continueResult.success ? 'var(--success)' : 'var(--error)',
+                fontSize: '0.68rem', lineHeight: 1.55,
+              }}>
+                {continueResult.success
+                  ? `✅ ${continueResult.message} Premi «Avvia» per farlo partire.`
+                  : `❌ ${continueResult.error}`}
+              </div>
+            )}
+
+            <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
+              <button className="training-btn" onClick={() => setContinueModal(false)}>Chiudi</button>
+              <button
+                className="training-btn primary"
+                onClick={handleContinueTraining}
+                disabled={continuing || continueResult?.success}
+              >
+                {continuing ? 'Creazione...' : 'Crea il job di continuazione'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {exportModal && (
         <div
           style={{
@@ -595,6 +780,28 @@ export default function TrainingMonitor({ onAddToast }) {
               />
               <div className="training-field-desc">
                 Sarà accessibile come: <code style={{ color: 'var(--primary)', fontFamily: 'JetBrains Mono' }}>ollama run {exportName || 'nome'}</code>
+              </div>
+            </div>
+            <div className="training-field" style={{ marginBottom: '12px' }}>
+              <label>Quantizzazione</label>
+              <div className="training-select-wrapper">
+                <select
+                  className="training-select"
+                  value={exportQuant}
+                  onChange={e => setExportQuant(e.target.value)}
+                >
+                  <option value="">Nessuna — 16 bit, qualità piena</option>
+                  {quantLevels.map(q => (
+                    <option key={q.id} value={q.id}>{q.label}</option>
+                  ))}
+                </select>
+              </div>
+              <div className="training-field-desc">
+                {exportQuant
+                  ? `Ollama quantizza durante l'export: il modello occuperà circa il ${
+                      Math.round((quantLevels.find(q => q.id === exportQuant)?.ratio || 1) * 100)
+                    }% dei pesi a 16 bit, e gira su meno VRAM al prezzo di un po' di qualità.`
+                  : 'Pesi a 16 bit: nessuna perdita, ma è il file più grande e il più lento da caricare.'}
               </div>
             </div>
             <div className="training-field" style={{ marginBottom: '16px' }}>

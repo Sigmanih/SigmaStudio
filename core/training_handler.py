@@ -90,11 +90,15 @@ from core.training.jobs import (
     get_job_status,
     create_training_job,
     start_training_job,
+    continue_training_job,
+    CONTINUATION_MODES,
     stop_training_job,
     delete_job,
     get_job_logs,
+    get_job_metrics,
     clear_job_logs,
     export_to_ollama,
+    OLLAMA_QUANT_LEVELS,
 )
 
 __all__ = [
@@ -169,9 +173,13 @@ __all__ = [
     "get_job_status",
     "create_training_job",
     "start_training_job",
+    "continue_training_job",
+    "CONTINUATION_MODES",
     "stop_training_job",
     "delete_job",
     "get_job_logs",
+    "get_job_metrics",
     "clear_job_logs",
     "export_to_ollama",
+    "OLLAMA_QUANT_LEVELS",
 ]

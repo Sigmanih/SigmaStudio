@@ -77,6 +77,40 @@ class TestRouteCoverage:
         assert hasattr(adapter, post_map[path]), f"{path} dichiarata ma non implementata"
 
 
+class TestVerbsMatchTheFrontend:
+    """Una rotta dichiarata sotto il verbo sbagliato risponde 404.
+
+    E' successo con /export/quant_levels: registrata fra le POST mentre la UI la
+    chiama in GET. Il test controlla il verbo effettivo servendo la richiesta,
+    non solo la presenza della rotta in una delle due tabelle.
+    """
+
+    @pytest.fixture
+    def client(self):
+        from fastapi.testclient import TestClient
+        from core.fastapi_app import app
+        return TestClient(app)
+
+    @pytest.mark.parametrize("path", [
+        "/api/training/export/quant_levels",
+        "/api/training/job/continuation_modes",
+    ])
+    def test_read_only_lookups_answer_on_get(self, client, path):
+        response = client.get(path)
+        assert response.status_code == 200, f"{path} non risponde in GET"
+        assert response.json().get("success") is True
+
+    @pytest.mark.parametrize("path", [
+        "/api/training/job/continue",
+        "/api/training/export/ollama",
+    ])
+    def test_write_endpoints_answer_on_post(self, client, path):
+        """Il corpo vuoto fa fallire l'operazione, non il routing."""
+        response = client.post(path, json={})
+        assert response.status_code == 200, f"{path} non risponde in POST"
+        assert response.json().get("success") is False   # manca il job_id
+
+
 class TestSharedRegistration:
 
     def test_registration_attaches_all_handlers(self):

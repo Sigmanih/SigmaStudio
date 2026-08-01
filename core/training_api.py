@@ -31,8 +31,9 @@ from core.training_handler import (
     list_datasets, delete_dataset, get_featured_datasets,
     # job lifecycle
     create_training_job, start_training_job, stop_training_job, delete_job,
-    get_job_status, get_job_logs, list_jobs, clear_job_logs, export_to_ollama,
-    check_training_dependencies,
+    continue_training_job, CONTINUATION_MODES,
+    get_job_status, get_job_logs, get_job_metrics, list_jobs, clear_job_logs, export_to_ollama,
+    OLLAMA_QUANT_LEVELS, check_training_dependencies,
     # hardware / accelerators
     get_hardware_info, get_gpu_capabilities, get_autotune, restart_ollama_service,
     # Gradus FWE
@@ -140,8 +141,24 @@ def handle_training_job_logs(self):
     self.send_json_response(get_job_logs(_job_id(self), offset=_query_int(self, "offset", 0)))
 
 
+def handle_training_job_metrics(self):
+    self.send_json_response(get_job_metrics(_job_id(self)))
+
+
 def handle_training_job_create(self):
     self.send_json_response(create_training_job(self.read_json_body()))
+
+
+def handle_training_job_continue(self):
+    body = self.read_json_body()
+    self.send_json_response(continue_training_job(_job_id(self), body))
+
+
+def handle_training_continuation_modes(self):
+    """Modi di proseguire un training, per popolare la UI."""
+    self.send_json_response({"success": True, "modes": [
+        {"id": key, "label": meta["label"], "detail": meta["detail"], "needs": meta["needs"]}
+        for key, meta in CONTINUATION_MODES.items()]})
 
 
 def handle_training_job_start(self):
@@ -172,7 +189,13 @@ def handle_training_export_ollama(self):
     body = self.read_json_body()
     self.send_json_response(export_to_ollama(
         body.get("job_id", ""), body.get("model_name", "") or "custom_model",
-        body.get("system_prompt", "")))
+        body.get("system_prompt", ""), body.get("quantization", "")))
+
+
+def handle_training_quant_levels(self):
+    """Livelli di quantizzazione offerti dall'export, per popolare la UI."""
+    self.send_json_response({"success": True, "levels": [
+        {"id": key, **meta} for key, meta in OLLAMA_QUANT_LEVELS.items()]})
 
 
 # ---------------------------------------------------------------- accelerators
