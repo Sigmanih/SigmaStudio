@@ -79,7 +79,19 @@ class ParseResult:
 
     @property
     def confidence(self) -> str:
-        return TIER_CONFIDENCE.get(self.tier, "none")
+        """Quanto fidarsi del valore estratto.
+
+        Un valore ricavato scartandone altri resta valido — vince l'ultimo —
+        ma non e' pulito come una risposta dichiarata una volta sola: si scende
+        di un gradino, cosi' la coda di revisione mostra per primi i casi in
+        cui il modello si e' contraddetto.
+        """
+        level = TIER_CONFIDENCE.get(self.tier, "none")
+        if self.rejected and level == "high":
+            return "medium"
+        if self.rejected and level == "medium":
+            return "low"
+        return level
 
     def as_dict(self) -> dict:
         return {
@@ -350,8 +362,9 @@ def _extract_braced(text: str, start: int) -> tuple[str, int] | None:
     return None
 
 
-def _all_boxed(text: str) -> list[str]:
-    out: list[str] = []
+def _boxed_spans(text: str) -> list[tuple[int, str]]:
+    """(posizione, contenuto) di ogni \\boxed / \\fbox, in ordine di apparizione."""
+    out: list[tuple[int, str]] = []
     pos = 0
     while True:
         match = _BOXED.search(text, pos)
@@ -363,7 +376,11 @@ def _all_boxed(text: str) -> list[str]:
         body, pos = braced
         body = body.strip()
         if body:
-            out.append(body)
+            out.append((match.start(), body))
+
+
+def _all_boxed(text: str) -> list[str]:
+    return [body for _pos, body in _boxed_spans(text)]
 
 
 _LATEX_FRAC = re.compile(r"\\[dt]?frac\s*\{([^{}]+)\}\s*\{([^{}]+)\}")
@@ -419,42 +436,91 @@ def numeric_equal(left: str, right: str, tolerance: float = 1e-6) -> bool:
     return normalize_numeric(left) == normalize_numeric(right) != ""
 
 
+#: Marcatore canonico della risposta finale in GSM8K: il dataset chiude ogni
+#: soluzione con "#### 42", e un modello addestrato su GSM8K lo riproduce.
+#: Vincoli stretti per non confondersi con un titolo markdown ("## 3. Passaggi"):
+#: deve aprire la riga, avere almeno tre cancelletti, e dopo il numero puo'
+#: restare solo una coda breve senza altre cifre (un'unita' come "dollars").
+_HASH_FINAL = re.compile(
+    r"^[ \t]*#{3,}[ \t]*\$?[ \t]*"
+    r"(-?[\d.,]*\d(?:[ \t]*/[ \t]*-?\d+)?|-?\.\d+)"
+    r"[ \t]*[^\d\n]{0,15}$",
+    re.M,
+)
+
+# Due risposte sulla stessa riga ("either \boxed{3} or \boxed{4}") non hanno un
+# ordine che dica quale sia definitiva: quelle restano davvero ambigue.
+_SAME_LINE_ALTERNATIVE = re.compile(
+    r"\b(?:or|oppure|either|o\b)\s*[^\n]{0,20}?\\+(?:boxed|fbox)\s*\{", re.I)
+
+
+def _last_conflicting(values: list[str]) -> tuple[str, list[str]]:
+    """The final answer among several, plus the ones it actually contradicts.
+
+    Un modello che ragiona ad alta voce scrive spesso un valore provvisorio e
+    poi si corregge; alcuni, addestrati sul formato di GSM8K, aprono
+    addirittura con la risposta e la ripetono in fondo. In entrambi i casi la
+    risposta buona e' l'**ultima** dichiarata — e' la convenzione dei
+    valutatori standard (lm-evaluation-harness, MATH), non una concessione.
+
+    Ripetere lo stesso numero non e' contraddirsi: negli scartati finiscono
+    solo i valori davvero diversi, perche' e' quello che fa scendere la
+    confidenza e manda l'item in cima alla coda di revisione.
+    """
+    winner = values[-1]
+    chosen = normalize_numeric(winner)
+    return winner, [v for v in values[:-1] if normalize_numeric(v) != chosen]
+
+
 def parse_math(raw_text: str) -> ParseResult:
     """Estrae il risultato finale di un problema matematico.
 
-    Ordine: ``\\boxed{}`` (chiesto esplicitamente nel prompt), poi una
+    Ordine: ``####`` (marcatore di GSM8K), poi ``\\boxed{}``, poi una
     dichiarazione tipo "the answer is 42", infine l'ultimo numero del testo.
-    Piu' valori ``\\boxed`` diversi sono una risposta duplice.
+    Quando la stessa forma compare piu' volte con valori diversi vince
+    l'ultima: e' quella la risposta finale del modello.
     """
     text = normalize_output(raw_text)
     if not text:
         return ParseResult(STATUS_UNPARSABLE, reason="Risposta vuota")
 
-    boxed = _dedupe(_all_boxed(text))
-    if boxed:
-        distinct = _dedupe(normalize_numeric(b) for b in boxed)
-        if len(distinct) > 1:
+    # `####` e `\boxed{}` sono entrambi marcatori espliciti di risposta finale:
+    # si mettono nello stesso insieme e vince quello scritto piu' avanti nel
+    # testo, senza dare per principio la precedenza a una delle due forme — un
+    # modello che apre con \boxed e poi chiude con #### (o viceversa) non deve
+    # dipendere da quale forma abbiamo deciso di preferire.
+    markers = ([(m.start(), m.group(1)) for m in _HASH_FINAL.finditer(text)]
+               + _boxed_spans(text))
+    if markers:
+        markers.sort(key=lambda pair: pair[0])
+        values = [value for _pos, value in markers]
+        distinct = _dedupe(normalize_numeric(v) for v in values)
+        if len(distinct) > 1 and _SAME_LINE_ALTERNATIVE.search(text):
             return ParseResult(
                 STATUS_AMBIGUOUS,
                 tier=TIER_DECLARED,
-                candidates=boxed,
-                reason=f"Risposta duplice: {len(distinct)} valori \\boxed differenti "
-                       f"({', '.join(boxed[:4])})",
+                candidates=_dedupe(values),
+                reason=f"Risposta duplice: {len(distinct)} valori offerti come "
+                       f"alternative ({', '.join(_dedupe(values)[:4])})",
             )
-        return ParseResult(STATUS_RESOLVED, value=boxed[0], tier=TIER_DECLARED, candidates=boxed)
+        value, superseded = _last_conflicting(values)
+        return ParseResult(
+            STATUS_RESOLVED, value=value, tier=TIER_DECLARED,
+            candidates=_dedupe(values), rejected=_dedupe(superseded),
+            reason=(f"{len(distinct)} risposte finali in conflitto: vale l'ultima"
+                    if len(distinct) > 1 else ""),
+        )
 
-    declared = _dedupe(m.group(1) for m in _MATH_DECLARATION.finditer(text))
+    declared = [m.group(1) for m in _MATH_DECLARATION.finditer(text)]
     if declared:
+        value, superseded = _last_conflicting(declared)
         distinct = _dedupe(normalize_numeric(d) for d in declared)
-        if len(distinct) > 1:
-            return ParseResult(
-                STATUS_AMBIGUOUS,
-                tier=TIER_DECLARED,
-                candidates=declared,
-                reason=f"Risposta duplice: {len(distinct)} risultati dichiarati in conflitto "
-                       f"({', '.join(declared[:4])})",
-            )
-        return ParseResult(STATUS_RESOLVED, value=declared[0], tier=TIER_DECLARED, candidates=declared)
+        return ParseResult(
+            STATUS_RESOLVED, value=value, tier=TIER_DECLARED,
+            candidates=_dedupe(declared), rejected=_dedupe(superseded),
+            reason=(f"{len(distinct)} risultati dichiarati in conflitto: vale l'ultimo"
+                    if len(distinct) > 1 else ""),
+        )
 
     numbers = [m.group(0) for m in _NUMBER.finditer(text)]
     if numbers:

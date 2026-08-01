@@ -145,13 +145,55 @@ class TestMathGrading(unittest.TestCase):
         self.assertEqual(result.status, STATUS_RESOLVED)
         self.assertEqual(result.value, "42")
 
-    def test_conflicting_boxed_values(self):
+    def test_a_self_correction_resolves_to_the_last_value(self):
+        """Un modello che si ricrede ha una risposta finale, non due.
+
+        Trattarle come ambigue mandava in revisione — e in pratica contava come
+        fallimento — ogni risposta corretta preceduta da un tentativo.
+        """
         result = parse_math(r"\boxed{18} ... on reflection \boxed{20}")
-        self.assertEqual(result.status, STATUS_AMBIGUOUS)
+        self.assertEqual(result.status, STATUS_RESOLVED)
+        self.assertEqual(result.value, "20")
+        self.assertEqual(result.rejected, ["18"])
+        # la contraddizione resta visibile a chi rivede
+        self.assertEqual(result.confidence, "medium")
+        self.assertIn("conflitto", result.reason)
 
     def test_repeated_identical_boxed_value_is_fine(self):
         result = parse_math(r"\boxed{7} and again \boxed{7}")
         self.assertEqual(result.status, STATUS_RESOLVED)
+        self.assertEqual(result.confidence, "high")   # nessuna contraddizione
+
+    def test_alternatives_offered_on_one_line_stay_ambiguous(self):
+        """"o X o Y" non ha un ordine che dica quale sia definitiva."""
+        result = parse_math(r"The result is either \boxed{3} or \boxed{4}")
+        self.assertEqual(result.status, STATUS_AMBIGUOUS)
+
+    def test_gsm8k_hash_marker_is_the_final_answer(self):
+        result = parse_math("Reasoning here.\n#### 42")
+        self.assertEqual(result.value, "42")
+
+    def test_hash_marker_wins_over_an_earlier_boxed(self):
+        """Il caso reale: il modello apre con un boxed e chiude con ####."""
+        text = "\\boxed{682}\nMary has 80 plants.\n#### 58"
+        self.assertEqual(parse_math(text).value, "58")
+
+    def test_a_later_boxed_wins_over_an_earlier_hash(self):
+        """Nessuna delle due forme ha la precedenza per principio: conta la posizione."""
+        text = "#### 180\nrivedendo i conti...\n\\boxed{720}"
+        self.assertEqual(parse_math(text).value, "720")
+
+    def test_a_markdown_heading_is_not_a_final_answer(self):
+        """'## 2 Passaggi' e' un titolo, non la risposta."""
+        text = "## 2 Passaggi\nIl prodotto e' 3*4.\n\\boxed{12}"
+        self.assertEqual(parse_math(text).value, "12")
+
+    def test_a_wrong_answer_stated_last_still_fails(self):
+        """La regola dell'ultimo non deve regalare punti: se il modello finisce
+        su un valore sbagliato, e' un fallimento anche se prima aveva ragione."""
+        item = {"suite": "gsm8k", "options": [], "correct_choice": "6"}
+        text = "\\boxed{6}\nJana has 27/3 = 9 puppies.\nOf those, 9/3 = 3 are girls.\n#### 3"
+        self.assertEqual(grade_answer(item, text)["verdict"], VERDICT_FAIL)
 
     def test_declared_result(self):
         self.assertEqual(parse_math("The answer is 1,200 euros").value, "1,200")
@@ -170,6 +212,40 @@ class TestMathGrading(unittest.TestCase):
     def test_wrong_math_answer_fails(self):
         item = {"suite": "gsm8k", "options": [], "correct_choice": "3"}
         self.assertEqual(grade_answer(item, r"\boxed{5}")["verdict"], VERDICT_FAIL)
+
+
+class TestMathPromptProtocol(unittest.TestCase):
+    """Il prompt deve far ragionare il modello PRIMA di chiedergli il risultato.
+
+    La versione precedente pretendeva la risposta sulla prima riga e il
+    ragionamento dopo: misurava quanto il modello indovina a freddo, non quanto
+    sa ragionare. Su GSM8K costava 50 punti di accuratezza allo stesso modello.
+    """
+
+    def _payload(self, suite="gsm8k"):
+        from core.training.benchmarks import _prepare_benchmark_payload
+        item = {"suite": suite, "prompt": "Two plus two?", "options": [],
+                "correct_choice": "4"}
+        return _prepare_benchmark_payload(item, "modello-di-prova")
+
+    def test_the_answer_is_asked_for_last(self):
+        payload = self._payload()
+        text = (payload["prompt"] + " " + payload["system"]).lower()
+        self.assertIn("step by step", text)
+        self.assertIn("last line", text)
+        self.assertNotIn("first line", text)
+
+    def test_only_one_final_answer_is_requested(self):
+        payload = self._payload()
+        self.assertIn("exactly one final answer",
+                      (payload["prompt"] + " " + payload["system"]).lower())
+
+    def test_the_protocol_is_recorded_for_reproducibility(self):
+        """Due run con prompt diversi non sono confrontabili: il certificato
+        deve dire quale protocollo ha usato."""
+        from core.training.benchmarks import PROMPT_PROTOCOL, GRADER_VERSION
+        self.assertGreaterEqual(PROMPT_PROTOCOL, 2)
+        self.assertTrue(GRADER_VERSION.startswith("sigma.answer_parser/"))
 
 
 class TestFreeFormGrading(unittest.TestCase):

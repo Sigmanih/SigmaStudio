@@ -646,13 +646,21 @@ def _prepare_benchmark_payload(item: dict, model_name: str) -> dict:
         }
 
     if suite in ("gsm8k", "math"):
+        # Il ragionamento va PRIMA della risposta. Chiedere il risultato sulla
+        # prima riga costringe il modello a sparare un numero senza aver fatto
+        # i conti e poi a giustificarlo: si misura quanto indovina a freddo,
+        # non quanto sa ragionare — ed e' esattamente cio' che GSM8K esiste per
+        # misurare. E' anche la causa delle risposte doppie, una in apertura e
+        # una vera in chiusura.
         prompt = (f"Question: {item['prompt']}\n\n"
-                  "Write your final answer inside \\boxed{...} on the FIRST line "
-                  "(e.g. \\boxed{49}), then show your reasoning.\n\nFirst line:")
+                  "Solve the problem step by step. When you are done, write the final "
+                  "answer on its own last line, inside \\boxed{...} (e.g. \\boxed{49}). "
+                  "Give exactly one final answer and stop there.")
         return {
             "model": model_name,
-            "system": ("You are an expert mathematical problem solver. ALWAYS put the final "
-                       "result inside \\boxed{...} on the very first line, exactly once."),
+            "system": ("You are an expert mathematical problem solver. Reason step by step, "
+                       "then end your reply with the final result inside \\boxed{...} on the "
+                       "last line. Give exactly one final answer and write nothing after it."),
             "prompt": prompt,
             "stream": False,
             "think": False,
@@ -682,6 +690,17 @@ def _prepare_benchmark_payload(item: dict, model_name: str) -> dict:
         "think": False,
         "options": {**base_options, "num_predict": 96, "stop": ["\n\n"]},
     }
+
+
+# Versione del protocollo di prompting. Va nell'impronta di riproducibilita':
+# due run con prompt diversi non sono confrontabili, e senza questo marcatore
+# nulla nel certificato lo direbbe.
+#   1 — risposta sulla prima riga, poi il ragionamento (ritirato: misurava
+#       quanto il modello indovina prima di fare i conti)
+#   2 — ragionamento passo passo, risposta finale in chiusura
+PROMPT_PROTOCOL = 2
+
+GRADER_VERSION = "sigma.answer_parser/3"
 
 
 def _request_timeout(suite: str) -> int:
@@ -955,7 +974,8 @@ def _worker_run_official_benchmark(job_id: str, model_name: str, suite_id: str,
     # riproducono, e un run con conteggi diversi no.
     fingerprint = (f"{model_name}:{suite_id}:{total}:{completed}:"
                    f"{metrics['tests_passed']}:{metrics['tests_failed']}:"
-                   f"{metrics['tests_review']}:{tokens_total}:seed42:temp0.0")
+                   f"{metrics['tests_review']}:{tokens_total}:seed42:temp0.0:"
+                   f"prompt{PROMPT_PROTOCOL}:{GRADER_VERSION}")
     digest = hashlib.sha256(fingerprint.encode("utf-8")).hexdigest()[:16].upper()
 
     _update_job_state(job_id, {
@@ -971,7 +991,8 @@ def _worker_run_official_benchmark(job_id: str, model_name: str, suite_id: str,
             "dataset_items_processed": completed,
             "dataset_coverage": f"{round((completed / total) * 100, 1)}%",
             "mode": "FULL_DATASET_100%_CLEAN" if mode == "full" else "AUDIT_SAMPLE",
-            "grader": "sigma.answer_parser/2",
+            "grader": GRADER_VERSION,
+            "prompt_protocol": PROMPT_PROTOCOL,
         },
     })
     # Deregistrato solo dopo l'ultimo aggiornamento: togliendolo prima, il
