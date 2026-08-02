@@ -45,6 +45,10 @@ _MEMORIZATION_RATIO = 0.55
 # Sotto questa pendenza relativa la loss e' ferma: continuare non aggiunge nulla.
 _PLATEAU_SLOPE = 0.005
 
+# Quante volte piu' lenti devono essere gli ultimi step per parlare di
+# rallentamento. Un training oscilla sempre un po'; un fattore 3 no.
+_SLOWDOWN_FACTOR = 3.0
+
 # Sopra questa pendenza la loss sta salendo abbastanza da non essere rumore.
 # Piu' alta della soglia di plateau perche' la loss oscilla sempre un po' e non
 # vale la pena gridare al problema a ogni sussulto.
@@ -240,6 +244,31 @@ def _relative_slope(points: list[tuple[float, float]]) -> float | None:
     return (last - first) / abs(first)
 
 
+def _throughput_drop(history: list[dict]) -> float | None:
+    """Di quante volte gli ultimi step sono piu' lenti di quelli iniziali.
+
+    Si legge da `elapsed_s`, che e' cumulativo: la differenza fra due record
+    consecutivi e' il tempo di quello step.
+    """
+    stamps = [(r.get("step"), r.get("elapsed_s")) for r in history
+              if isinstance(r.get("elapsed_s"), (int, float)) and r.get("step") is not None]
+    if len(stamps) < 30:
+        return None
+    deltas = [(b[1] - a[1]) / max(1, b[0] - a[0]) for a, b in zip(stamps, stamps[1:])]
+    deltas = [d for d in deltas if d > 0]
+    if len(deltas) < 20:
+        return None
+
+    def median(values):
+        ordered = sorted(values)
+        return ordered[len(ordered) // 2]
+
+    window = max(5, len(deltas) // 10)
+    early = median(deltas[:window])
+    late = median(deltas[-window:])
+    return (late / early) if early > 0 else None
+
+
 def summarize(history: list[dict]) -> dict:
     """Aggregates the Monitor shows next to the chart."""
     train = _series(history, "loss")
@@ -306,6 +335,35 @@ def diagnose(history: list[dict]) -> list[dict]:
         return verdicts
 
     trend = _relative_slope(train)
+
+    # --- la scheda non ce la fa ------------------------------------------
+    # Una VRAM richiesta oltre quella fisica non da' errore su Windows: il
+    # driver riversa in memoria di sistema e il training continua, dieci o
+    # venti volte piu' lento. Senza dirlo, l'unico segnale e' un ETA che
+    # cresce, e chi guarda pensa a un rallentamento passeggero.
+    used = _series(history, "vram_gb")
+    capacity = _series(history, "vram_total_gb")
+    if used and capacity:
+        peak = max(v for _, v in used)
+        limit = capacity[-1][1]
+        if limit and peak > limit:
+            verdicts.append(_verdict(
+                "vram_overcommit", "critical", "VRAM esaurita: la scheda sta paginando",
+                f"Il run ha chiesto {peak:.1f} GB su una scheda da {limit:.1f} GB. "
+                "Quello che non ci sta finisce in memoria di sistema, e ogni step "
+                "paga il trasferimento sul bus.",
+                "Ferma il run e dimezza il batch, oppure riduci il contesto: "
+                "l'occupazione cresce con il prodotto dei due. A parita' di batch "
+                "effettivo, alza il gradient accumulation."))
+
+    slowdown = _throughput_drop(history)
+    if slowdown and slowdown >= _SLOWDOWN_FACTOR:
+        verdicts.append(_verdict(
+            "slowdown", "warning", "Il training e' rallentato",
+            f"Gli ultimi step vanno {slowdown:.0f} volte piu' lenti di quelli "
+            "iniziali. Il tempo stimato alla fine non e' piu' quello di prima.",
+            "Se la VRAM e' al limite e' paginazione: conviene fermarsi. "
+            "Altrimenti guarda se un altro processo sta usando la GPU."))
 
     # --- overfitting: la eval risale mentre la train scende ----------------
     if len(evals) >= _MIN_EVALS_FOR_VERDICT:

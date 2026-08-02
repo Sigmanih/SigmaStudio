@@ -223,6 +223,56 @@ class TestRisingLoss:
         assert "rising" not in _codes(_descending())
 
 
+class TestHardwareTrouble:
+    """La scheda satura non da' errore: rallenta e basta.
+
+    Su Windows una VRAM richiesta oltre quella fisica viene riversata in
+    memoria di sistema. Il training continua, dieci o venti volte più lento, e
+    l'unico segnale è un ETA che cresce. È successo davvero: un run a batch 8 è
+    passato da 5 a 80 secondi per step senza che nulla lo dicesse.
+    """
+
+    def _timed(self, n, early=5.0, late=None):
+        """Serie con `elapsed_s` cumulativo, opzionalmente più lenta in coda."""
+        late = late if late is not None else early
+        history, clock = [], 0.0
+        for step in range(1, n + 1):
+            clock += early if step <= n // 2 else late
+            history.append({"step": step, "loss": 1.0, "elapsed_s": round(clock, 2)})
+        return history
+
+    def test_a_collapse_in_throughput_is_reported(self):
+        codes = _codes(self._timed(80, early=5.0, late=80.0))
+        assert "slowdown" in codes
+
+    def test_a_steady_run_is_not_called_slow(self):
+        assert "slowdown" not in _codes(self._timed(80, early=5.0))
+
+    def test_normal_jitter_is_not_a_collapse(self):
+        """Un run oscilla sempre un po': il doppio non basta a gridare."""
+        assert "slowdown" not in _codes(self._timed(80, early=5.0, late=9.0))
+
+    def test_a_short_run_says_nothing_about_speed(self):
+        """Con pochi step la mediana iniziale è rumore."""
+        assert "slowdown" not in _codes(self._timed(10, early=5.0, late=90.0))
+
+    def test_asking_for_more_vram_than_the_card_has_is_critical(self):
+        history = [{"step": i, "loss": 1.0, "vram_gb": 18.9, "vram_total_gb": 15.9}
+                   for i in range(30)]
+        verdict = next(v for v in diagnose(history) if v["code"] == "vram_overcommit")
+        assert verdict["level"] == "critical"
+        assert "batch" in verdict["action"]
+
+    def test_fitting_inside_the_card_raises_nothing(self):
+        history = [{"step": i, "loss": 1.0, "vram_gb": 12.0, "vram_total_gb": 15.9}
+                   for i in range(30)]
+        assert "vram_overcommit" not in _codes(history)
+
+    def test_a_run_without_vram_data_is_not_judged_on_it(self):
+        """I run precedenti al campo `vram_gb` non devono essere accusati."""
+        assert "vram_overcommit" not in _codes(_descending())
+
+
 class TestMetricGuide:
 
     @pytest.mark.parametrize("metric", ["loss", "eval_loss", "perplexity", "gap"])

@@ -1555,19 +1555,43 @@ function QuestionCard({ result, model, number }) {
       <div style={{
         background: 'rgba(10,12,26,0.7)', padding: compact ? '5px 9px' : '8px 12px',
         borderRadius: '6px', border: `1px solid ${style.border}`,
-        maxHeight: compact ? '60px' : '160px', overflowY: 'auto',
+        maxHeight: compact ? '90px' : '320px', overflowY: 'auto',
       }}>
         <div style={{ fontSize: '0.58rem', fontWeight: 800, color: style.color, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '3px', display: 'flex', alignItems: 'center', gap: '4px' }}>
           <Cpu size={10} /> Risposta di {model}
-          {!result.options?.length && result.correct_answer && (
-            <span style={{ marginLeft: 'auto', color: 'var(--success)', textTransform: 'none' }}>
-              attesa: {String(result.correct_answer).slice(0, 60)}
-            </span>
-          )}
         </div>
         <div style={{ fontSize: '0.73rem', color: 'var(--text)', fontFamily: 'monospace', whiteSpace: 'pre-wrap', lineHeight: 1.35 }}>
           {result.given_answer || result.error || '(nessuna risposta generata)'}
         </div>
+
+        {/* La risposta attesa sta sotto quella del modello, non in alto a
+            destra: lì veniva tagliata a 60 caratteri proprio sulle soluzioni
+            lunghe, che sono quelle in cui serve leggerla per intero. */}
+        {!result.options?.length && result.correct_answer && (
+          <div style={{
+            marginTop: '7px', paddingTop: '6px',
+            borderTop: '1px dashed rgba(255,255,255,0.12)',
+          }}>
+            <div style={{
+              fontSize: '0.58rem', fontWeight: 800, color: 'var(--success)',
+              textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '3px',
+              display: 'flex', alignItems: 'center', gap: '4px',
+            }}>
+              <Check size={10} /> Risposta attesa
+              {result.correct_choice && (
+                <span style={{ textTransform: 'none', color: 'var(--text-dim)', fontWeight: 600 }}>
+                  — valore da estrarre: <b style={{ color: 'var(--success)' }}>{result.correct_choice}</b>
+                </span>
+              )}
+            </div>
+            <div style={{
+              fontSize: '0.73rem', color: 'var(--text-dim)', fontFamily: 'monospace',
+              whiteSpace: 'pre-wrap', lineHeight: 1.35,
+            }}>
+              {String(result.correct_answer)}
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

@@ -67,6 +67,7 @@ __all__ = [
     "download_suite", "start_benchmark_run", "list_benchmark_jobs", "get_job_detail",
     "pause_benchmark_job", "resume_benchmark_job", "cancel_benchmark_job",
     "delete_benchmark_job", "extract_chosen_letter", "OFFICIAL_BENCHMARKS_INFO",
+    "audit_benchmark_job",
 ]
 
 
@@ -1153,3 +1154,28 @@ def delete_benchmark_job(job_id: str) -> bool:
     store.delete_results(job_id)
     _active_threads.pop(job_id, None)
     return True
+
+
+def audit_benchmark_job(job_id: str) -> dict:
+    """Verifica che i verdetti di un run reggano, quesito per quesito.
+
+    Un punteggio si legge solo dopo questo: dice quanti verdetti sono stati
+    dati per il motivo giusto, e mostra quelli che non lo sono.
+    """
+    from core.training.audit import audit_run
+
+    # L'audit guarda il run intero: paginarlo lo renderebbe cieco proprio sui
+    # quesiti che non stanno nella prima pagina. `read_page` limita comunque la
+    # pagina a un tetto suo, quindi si scorre finche' ci sono pagine.
+    rows: list[dict] = []
+    page, pages = 1, 1
+    while page <= pages:
+        chunk = store.read_page(job_id, page=page, page_size=1000)
+        rows.extend(chunk.get("results", []))
+        pages = chunk.get("pages", 1)
+        page += 1
+    if not rows:
+        return {"success": False, "error": f"Nessun esito salvato per il job '{job_id}'."}
+    result = audit_run(rows)
+    result["job_id"] = job_id
+    return result

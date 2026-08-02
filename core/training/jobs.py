@@ -417,6 +417,13 @@ class SigmaProgress(TrainerCallback):
 
     def __init__(self):
         self.t0 = time.time()
+        # Tempi degli ultimi step, per una stima che segua l'andamento reale.
+        self.recent = []
+        # Step visti *da questo processo*. Dopo una ripresa `global_step` parte
+        # dal checkpoint (301, 500...) mentre il cronometro parte da zero:
+        # dividere il tempo per `global_step` dava frazioni di secondo per step
+        # e un "ETA 0m" su un run di ore.
+        self.seen = 0
 
     def on_evaluate(self, args, state, control, metrics=None, **kw):
         metrics = metrics or {}
@@ -436,23 +443,47 @@ class SigmaProgress(TrainerCallback):
         logs = logs or {}
         if "loss" not in logs:
             return
-        sigma_metric(step=state.global_step, epoch=logs.get("epoch", state.epoch),
-                     loss=logs.get("loss"),
-                     learning_rate=logs.get("learning_rate"),
-                     grad_norm=logs.get("grad_norm"),
-                     elapsed_s=round(time.time() - self.t0, 1))
         epoch = float(logs.get("epoch", state.epoch or 0))
         total = float(args.num_train_epochs or 1)
         pct = 100.0 * state.global_step / max(1, state.max_steps)
         vram = ""
+        used_gb = total_gb = None
         if torch.cuda.is_available():
-            vram = " | VRAM %.1f/%.1f GB" % (
-                torch.cuda.max_memory_allocated() / 1024**3,
-                torch.cuda.get_device_properties(0).total_memory / 1024**3)
+            used_gb = torch.cuda.max_memory_allocated() / 1024**3
+            total_gb = torch.cuda.get_device_properties(0).total_memory / 1024**3
+            vram = " | VRAM %.1f/%.1f GB" % (used_gb, total_gb)
+        # La VRAM va nella serie, non solo nel testo: e' l'unico modo perche' il
+        # Monitor possa accorgersi da solo che la scheda e' satura.
+        sigma_metric(step=state.global_step, epoch=logs.get("epoch", state.epoch),
+                     loss=logs.get("loss"),
+                     learning_rate=logs.get("learning_rate"),
+                     grad_norm=logs.get("grad_norm"),
+                     vram_gb=round(used_gb, 2) if used_gb else None,
+                     vram_total_gb=round(total_gb, 2) if total_gb else None,
+                     elapsed_s=round(time.time() - self.t0, 1))
+        now = time.time()
+        self.seen += 1
+        self.recent.append(now)
+        if len(self.recent) > 21:
+            self.recent.pop(0)
         eta = ""
         if state.global_step:
-            per_step = (time.time() - self.t0) / state.global_step
-            eta = " | ETA %dm" % int(per_step * (state.max_steps - state.global_step) / 60)
+            # La stima guarda gli ultimi step, non la media dall'inizio: se il
+            # training rallenta — VRAM esaurita, throttling — una media di vita
+            # continua a promettere il tempo di quando andava bene, e il crollo
+            # resta invisibile proprio quando servirebbe vederlo.
+            if len(self.recent) >= 3:
+                per_step = (self.recent[-1] - self.recent[0]) / (len(self.recent) - 1)
+            elif self.seen > 1:
+                per_step = (now - self.t0) / (self.seen - 1)
+            else:
+                per_step = 0.0
+            eta = (" | ETA %dm" % int(per_step * (state.max_steps - state.global_step) / 60)
+                   if per_step > 0 else " | ETA —")
+            lifetime = (now - self.t0) / max(1, self.seen - 1)
+            # Un rallentamento di questa entita' non e' rumore: va detto.
+            if per_step > lifetime * 2.5 and self.seen > 20:
+                eta += " (RALLENTATO: %.0fs/step contro %.0fs iniziali)" % (per_step, lifetime)
         sigma("Epoch %d/%d step %d/%d (%.1f%%) - loss: %.4f | lr: %.2e%s%s" % (
             min(int(epoch) + 1, int(total)), int(total), state.global_step,
             state.max_steps, pct, logs["loss"], logs.get("learning_rate", 0.0), vram, eta))
@@ -1703,6 +1734,10 @@ def _available_actions(job: dict, artifacts: dict) -> list[str]:
     actions = []
     if status in ("ready", "stopped", "failed"):
         actions.append("start")
+        # I parametri si cambiano solo a run fermo: un processo sospeso
+        # riprende con la configurazione che ha in memoria, non con quella nuova.
+        if method not in ("merge_adapter", "script_custom"):
+            actions.append("tune")
     if status == "running":
         return ["pause", "stop"]
     if status == "paused":
@@ -1779,6 +1814,9 @@ def get_job_lineage(job_id: str) -> dict:
             "created_at": job.get("created_at"),
             "completed_at": job.get("completed_at"),
             "last_loss": job.get("last_loss"),
+            "hyperparams": {k: v for k, v in (job.get("hyperparams") or {}).items()
+                            if k in ("batch_size", "gradient_accumulation",
+                                     "max_seq_length", "num_epochs", "learning_rate")},
             "artifacts": artifacts,
             "actions": _available_actions(job, artifacts),
             "is_current": jid == job_id,
@@ -2203,6 +2241,63 @@ def stop_training_job(job_id: str) -> dict:
         except Exception as exc:
             log.warning("stop job %s: %s", job_id, exc)
     return {"success": True, "message": f"Job '{job_id}' fermato.", "job": job}
+
+
+def update_job_hyperparams(job_id: str, hyper: dict | None = None) -> dict:
+    """Change a stopped job's settings and rewrite its script.
+
+    Serve per il caso che capita davvero: un run parte con un batch che non
+    entra in VRAM, lo si ferma, e lo si vuole riprendere piu' leggero senza
+    ributtare via gli step gia' fatti. I checkpoint restano dove sono, quindi
+    il prossimo avvio riparte da li'.
+
+    Il numero di step totali dipende dal batch **effettivo** (batch x
+    accumulation): finche' quel prodotto non cambia, il checkpoint continua a
+    significare la stessa cosa e la ripresa e' esatta. Se cambia, il conto
+    degli step cambia sotto i piedi dell'ottimizzatore, e la funzione lo dice.
+    """
+    hyper = {k: v for k, v in (hyper or {}).items() if v is not None}
+    if not hyper:
+        return {"success": False, "error": "Nessun iperparametro da aggiornare."}
+
+    jobs = _load_jobs()
+    job = jobs.get(job_id)
+    if job is None:
+        return {"success": False, "error": f"Job '{job_id}' non trovato."}
+    if job.get("status") in ("running", "paused"):
+        return {"success": False,
+                "error": ("Il job è ancora attivo. Fermalo prima di cambiarne i "
+                          "parametri: un processo in pausa riprende con la "
+                          "configurazione che ha in memoria, non con quella nuova.")}
+
+    request = dict(job.get("request") or {})
+    before = {**(request.get("hyperparams") or {})}
+    after = {**before, **hyper}
+    request["hyperparams"] = after
+    job["request"] = request
+    job["hyperparams"] = {**(job.get("hyperparams") or {}), **hyper}
+
+    old_batch = int(before.get("batch_size") or 0) * int(before.get("gradient_accumulation") or 1)
+    new_batch = int(after.get("batch_size") or 0) * int(after.get("gradient_accumulation") or 1)
+    warning = ""
+    if old_batch and new_batch and old_batch != new_batch:
+        warning = (f" Attenzione: il batch effettivo passa da {old_batch} a {new_batch}, "
+                   "quindi cambia il numero di step totali e i checkpoint esistenti "
+                   "non corrispondono più allo stesso punto del training.")
+
+    try:
+        values = _build_script_values(dict(request), job_id, Path(job["dir"]))
+        Path(job["script_path"]).write_text(
+            _render_script(job.get("method"), values), encoding="utf-8")
+    except Exception as exc:
+        return {"success": False, "error": f"Rigenerazione dello script fallita: {exc}"}
+
+    _save_jobs(jobs)
+    changed = ", ".join(f"{k}: {before.get(k, 'n/d')} -> {v}" for k, v in hyper.items())
+    log.info("Job %s: parametri aggiornati (%s)", job_id, changed)
+    return {"success": True, "job": job, "changed": changed,
+            "effective_batch": new_batch,
+            "message": f"Parametri aggiornati ({changed}).{warning}"}
 
 
 def _job_process(job: dict):

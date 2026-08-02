@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { Play, Pause, Square, GitMerge, ArrowDownToLine, Package, Award, Trash2, Layers } from 'lucide-react';
+import { Play, Pause, Square, GitMerge, ArrowDownToLine, Package, Award, Trash2, Layers, Sliders } from 'lucide-react';
 import InfoHint from './InfoHint';
 
 // ==============================================================================
@@ -34,6 +34,19 @@ const ACTIONS = {
   stop: {
     label: 'Ferma', icon: Square, tone: 'danger',
     hint: { label: 'Ferma il run', what: 'Interrompe il processo. I checkpoint già salvati restano.' },
+  },
+  tune: {
+    label: 'Regola', icon: Sliders, tone: 'normal',
+    hint: {
+      label: 'Cambia batch e accumulation prima di ripartire',
+      what: 'Serve quando un run non entra in VRAM: lo si ferma, si alleggerisce '
+          + 'il batch e si riparte dal checkpoint invece che da zero.',
+      good: 'Tenendo costante il batch effettivo (batch x accumulation) il numero '
+          + 'di step non cambia, quindi il checkpoint indica ancora lo stesso '
+          + 'punto e la ripresa è esatta.',
+      bad: 'Cambiando il batch effettivo cambiano gli step totali, e i checkpoint '
+         + 'esistenti non corrispondono più allo stesso punto del training.',
+    },
   },
   merge: {
     label: 'Merge', icon: GitMerge, tone: 'accent',
@@ -195,6 +208,42 @@ export default function PipelinePanel({ jobId, onSelect, onAction, addToast, ref
 
   useEffect(() => { load(); }, [load, refreshKey]);
 
+  const tune = async (stage) => {
+    const hyper = stage.hyperparams || {};
+    const batch = window.prompt(
+      `Batch size per fase ${stage.stage_name || stage.id}`
+      + ` (attuale ${hyper.batch_size ?? '?'}):`, String(hyper.batch_size ?? 2));
+    if (batch === null) return;
+    const accum = window.prompt(
+      'Gradient accumulation — moltiplicato per il batch dà il batch effettivo.'
+      + ` Per non cambiare il numero di step totali, tieni il prodotto uguale a`
+      + ` ${(hyper.batch_size || 1) * (hyper.gradient_accumulation || 1)}.`,
+      String(hyper.gradient_accumulation ?? 4));
+    if (accum === null) return;
+    setBusy(true);
+    try {
+      const res = await fetch('/api/training/job/update', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          job_id: stage.id,
+          hyperparams: {
+            batch_size: parseInt(batch, 10),
+            gradient_accumulation: parseInt(accum, 10),
+          },
+        }),
+      });
+      const data = await res.json();
+      addToast && addToast(data.success ? data.message : `❌ ${data.error}`,
+                           data.success ? 'success' : 'error', 8000);
+      await load();
+    } catch (e) {
+      addToast && addToast(`❌ ${e.message}`, 'error');
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const run = async (action, stage) => {
     // Le azioni che aprono un modale le gestisce lo Studio: qui restano solo
     // quelle che si risolvono con una chiamata sola.
@@ -202,6 +251,7 @@ export default function PipelinePanel({ jobId, onSelect, onAction, addToast, ref
       onAction && onAction(action, stage);
       return;
     }
+    if (action === 'tune') return tune(stage);
     const endpoints = {
       start: '/api/training/job/start',
       pause: '/api/training/job/pause',

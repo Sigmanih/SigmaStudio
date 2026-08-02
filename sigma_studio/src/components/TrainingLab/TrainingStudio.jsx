@@ -196,6 +196,19 @@ export default function TrainingStudio({ myDatasets, selectedDatasetId, onDatase
 
   useEffect(() => { refreshJobs(); }, [refreshJobs]);
 
+  // Con un run in corso la lista va riletta: senza, la barra delle fasi e il
+  // riepilogo restano fermi allo stato del momento in cui la pagina è stata
+  // aperta, anche mentre il training avanza.
+  const running = jobs.some(j => ['running', 'paused'].includes(j.status));
+  useEffect(() => {
+    if (!running) return undefined;
+    const timer = setInterval(() => {
+      refreshJobs();
+      setChainVersion(v => v + 1);
+    }, 5000);
+    return () => clearInterval(timer);
+  }, [running, refreshJobs]);
+
   // All'apertura, se un job c'è già la preparazione parte richiusa: si arriva
   // qui per vedere come sta andando, non per riconfigurare da capo. Succede una
   // volta sola, così una scelta manuale non viene poi ribaltata.

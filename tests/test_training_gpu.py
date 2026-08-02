@@ -503,6 +503,91 @@ class TestCheckpointing:
         assert namespace["_last_checkpoint"](str(tmp_path / "mai-esistita")) is None
 
 
+class TestHyperparamUpdate:
+    """Cambiare batch a run fermo, senza ributtare via gli step già fatti.
+
+    È il caso reale: un run parte con un batch che non entra in VRAM, lo si
+    ferma, e lo si vuole riprendere più leggero dal checkpoint.
+    """
+
+    def _stopped(self, **hyper):
+        from core.training.jobs import create_training_job, _load_jobs, _save_jobs
+        job = create_training_job({
+            "base_model": "gpt2", "method": "lora_unsloth", "dataset_id": "x/y",
+            "hyperparams": {"batch_size": 8, "gradient_accumulation": 4, **hyper},
+        })["job"]
+        jobs = _load_jobs(); jobs[job["id"]]["status"] = "stopped"; _save_jobs(jobs)
+        return job["id"]
+
+    def test_the_new_values_reach_the_script(self):
+        from core.training.jobs import update_job_hyperparams, _load_jobs, delete_job
+        job_id = self._stopped()
+        try:
+            result = update_job_hyperparams(job_id, {"batch_size": 2,
+                                                     "gradient_accumulation": 16})
+            assert result["success"] is True
+            source = Path(_load_jobs()[job_id]["script_path"]).read_text(encoding="utf-8")
+            assert "per_device_train_batch_size=2" in source
+            assert "gradient_accumulation_steps=16" in source
+        finally:
+            delete_job(job_id)
+
+    def test_keeping_the_effective_batch_raises_no_warning(self):
+        """8x4 e 2x16 danno lo stesso numero di step: il checkpoint resta valido."""
+        from core.training.jobs import update_job_hyperparams, delete_job
+        job_id = self._stopped()
+        try:
+            result = update_job_hyperparams(job_id, {"batch_size": 2,
+                                                     "gradient_accumulation": 16})
+            assert result["effective_batch"] == 32
+            assert "Attenzione" not in result["message"]
+        finally:
+            delete_job(job_id)
+
+    def test_changing_the_effective_batch_is_flagged(self):
+        from core.training.jobs import update_job_hyperparams, delete_job
+        job_id = self._stopped()
+        try:
+            result = update_job_hyperparams(job_id, {"batch_size": 2})
+            assert result["effective_batch"] == 8
+            assert "Attenzione" in result["message"]
+            assert "checkpoint" in result["message"]
+        finally:
+            delete_job(job_id)
+
+    def test_a_running_or_paused_job_is_refused(self):
+        from core.training.jobs import (update_job_hyperparams, _load_jobs,
+                                        _save_jobs, delete_job)
+        job_id = self._stopped()
+        try:
+            for status in ("running", "paused"):
+                jobs = _load_jobs(); jobs[job_id]["status"] = status; _save_jobs(jobs)
+                result = update_job_hyperparams(job_id, {"batch_size": 2})
+                assert result["success"] is False
+                assert "Fermalo" in result["error"] or "memoria" in result["error"]
+        finally:
+            delete_job(job_id)
+
+    def test_the_change_survives_in_the_stored_request(self):
+        """Il prossimo `_sync_script_template` deve rigenerare con i valori nuovi."""
+        from core.training.jobs import update_job_hyperparams, _load_jobs, delete_job
+        job_id = self._stopped()
+        try:
+            update_job_hyperparams(job_id, {"batch_size": 2, "gradient_accumulation": 16})
+            stored = _load_jobs()[job_id]["request"]["hyperparams"]
+            assert stored["batch_size"] == 2 and stored["gradient_accumulation"] == 16
+        finally:
+            delete_job(job_id)
+
+    def test_an_empty_update_is_refused(self):
+        from core.training.jobs import update_job_hyperparams, delete_job
+        job_id = self._stopped()
+        try:
+            assert update_job_hyperparams(job_id, {})["success"] is False
+        finally:
+            delete_job(job_id)
+
+
 class TestPauseAndResume:
     """Sospendere un training senza perdere un solo step.
 

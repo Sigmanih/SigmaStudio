@@ -59,6 +59,7 @@ from core.training.jobs import (  # noqa: F401
     stop_training_job,
     pause_training_job,
     resume_training_job,
+    update_job_hyperparams,
     delete_job,
     get_job_logs,
     get_job_metrics,

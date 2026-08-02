@@ -31,7 +31,7 @@ from core.training_handler import (
     list_datasets, delete_dataset, get_featured_datasets,
     # job lifecycle
     create_training_job, start_training_job, stop_training_job, delete_job,
-    pause_training_job, resume_training_job,
+    pause_training_job, resume_training_job, update_job_hyperparams,
     continue_training_job, merge_job_adapter, get_job_lineage, CONTINUATION_MODES,
     get_job_status, get_job_logs, get_job_metrics, list_jobs, clear_job_logs, export_to_ollama,
     OLLAMA_QUANT_LEVELS, check_training_dependencies,
@@ -187,6 +187,12 @@ def handle_training_job_pause(self):
 
 def handle_training_job_resume(self):
     self.send_json_response(resume_training_job(_job_id(self)))
+
+
+def handle_training_job_update(self):
+    body = self.read_json_body()
+    self.send_json_response(update_job_hyperparams(
+        _job_id(self), body.get("hyperparams") or {}))
 
 
 def handle_training_job_delete(self):
@@ -420,6 +426,14 @@ def handle_training_benchmark_results(self):
         suite=_query(self, "suite", "all"),
         query=_query(self, "q", ""),
     ))
+
+
+def handle_training_benchmark_audit(self):
+    """Verifica dei verdetti di un run: falsi positivi e falsi negativi."""
+    from core.training.benchmarks import audit_benchmark_job
+    self.send_json_response(audit_benchmark_job(
+        _query(self, "id") or _query(self, "job_id")
+        or self.read_json_body().get("id", "")))
 
 
 def handle_training_benchmark_review(self):

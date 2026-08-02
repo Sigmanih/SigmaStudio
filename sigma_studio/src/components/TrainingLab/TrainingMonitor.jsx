@@ -245,7 +245,7 @@ export default function TrainingMonitor({ onAddToast, embedded = false, jobId = 
     fetchLogs();
 
     // Poll ONLY if job is running, stop polling for completed/failed/ready/stopped
-    if (selectedJob && (selectedJob.status === 'running' || selectedJob.status === 'ready')) {
+    if (['running', 'ready', 'paused'].includes(selectedJob?.status)) {
       pollRef.current = setInterval(() => {
         // Check current status before polling logs
         loadJobs().then(() => {});
@@ -259,7 +259,12 @@ export default function TrainingMonitor({ onAddToast, embedded = false, jobId = 
         pollRef.current = null;
       }
     };
-  }, [selectedJobId]);
+    // `selectedJob.status` deve stare fra le dipendenze: al primo giro la lista
+    // dei job è ancora vuota (arriva da una fetch), quindi lo stato è
+    // `undefined`, l'intervallo non parte e — non cambiando più
+    // `selectedJobId` — non sarebbe mai partito. La pagina restava ferma
+    // sull'ultimo dato letto mentre il training andava avanti.
+  }, [selectedJobId, selectedJob?.status]);
 
   // Auto-scroll log terminal
   useEffect(() => {
