@@ -112,3 +112,43 @@ sigma_studio/.build_stamp
 .backups/*
 .training/*
 .training_lab/*.json
+# ==============================================================================
+# Dati di questa macchina, non della piattaforma
+# ==============================================================================
+# Tutto quello che nasce eseguendo Sigma — job, pesi, misure, cache — descrive
+# *questo* computer e *queste* sessioni, non il progetto. Su un repo pubblico
+# sono rumore per chi lo clona (e qualche centinaio di MB di storia in piu'),
+# e portano con se' percorsi assoluti locali.
+
+# Esecuzioni di training: script generati, checkpoint, pesi, log
+training/jobs/*
+!training/jobs/.gitkeep
+# Pesi materializzati dagli import HuggingFace (gigabyte di hardlink e GGUF)
+training/imports/
+# Registro dei job: contiene percorsi assoluti di chi lo ha eseguito
+training/training_jobs.json
+
+# Dataset scaricati o importati dall'utente. I due curati del progetto
+# (router e intent) restano versionati: sono contenuto, non dati di esecuzione.
+training/datasets/*
+!training/datasets/.gitkeep
+!training/datasets/router_dataset.jsonl
+!training/datasets/sigma_intent_dataset.jsonl
+
+# Misure e stato del Training Lab
+training_lab/autopilot/
+training_lab/autopilot_state.json
+training_lab/*.json
+
+# Cache delle sessioni degli agenti
+agent_tasks_cache.json
+# Diario di lavoro personale
+task_progress.md
+# Output di calcoli locali
+viz/peaks_*.json
+
+# Modelli e pesi, ovunque finiscano
+*.gguf
+*.safetensors
+*.bin
+!**/tokenizer.bin
