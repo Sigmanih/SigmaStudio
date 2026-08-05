@@ -684,15 +684,25 @@ class TestParallelCapacity(unittest.TestCase):
         self.assertEqual(value, 6)
         self.assertIn("misurato", source)
 
-    def test_auto_without_a_measurement_stays_conservative(self):
+    def test_auto_without_a_measurement_uses_the_measured_ceiling(self):
         from unittest.mock import patch
-        # Senza misura non si sa se il servitore accetta richieste concorrenti:
-        # meglio restare bassi che riempire una coda.
+        # Il tetto non e' un numero di comodo: e' quanto rende questa macchina.
+        # Misurato su 24 richieste a qwen2.5:0.5b-instruct, fermarsi a 4 worker
+        # invece di 8 costava il 42% del throughput (26.5 contro 37.6 req/s).
         estimate = {"max_parallel_now": 32, "endpoint_count": 1}
         with patch.object(self.capacity, "estimate_capacity", return_value=estimate):
             value, source = self.capacity.resolve_concurrency("mai-misurato", "auto")
-        self.assertEqual(value, 4)
+        self.assertEqual(value, 8)
         self.assertIn("stima", source)
+
+    def test_a_big_model_is_still_limited_by_its_vram(self):
+        from unittest.mock import patch
+        # Il tetto alzato non deve travolgere il limite vero: su un modello che
+        # occupa la scheda, le slot in piu' non esistono e chiederle rallenta.
+        estimate = {"max_parallel_now": 2, "endpoint_count": 1}
+        with patch.object(self.capacity, "estimate_capacity", return_value=estimate):
+            value, _ = self.capacity.resolve_concurrency("un-9b", "auto")
+        self.assertEqual(value, 2)
 
     def test_auto_ceiling_grows_with_the_endpoint_pool(self):
         from unittest.mock import patch
@@ -701,7 +711,7 @@ class TestParallelCapacity(unittest.TestCase):
         estimate = {"max_parallel_now": 32, "endpoint_count": 2}
         with patch.object(self.capacity, "estimate_capacity", return_value=estimate):
             value, _ = self.capacity.resolve_concurrency("mai-misurato", "auto")
-        self.assertEqual(value, 8)
+        self.assertEqual(value, 16)
 
     def test_missing_value_means_auto_not_one(self):
         self.capacity._save_profile("m", {"recommended_parallel": 5, "measured_at": "2026-07-30T00:00:00"})

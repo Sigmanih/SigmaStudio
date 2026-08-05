@@ -212,7 +212,94 @@ def handle_training_export_ollama(self):
     body = self.read_json_body()
     self.send_json_response(export_to_ollama(
         body.get("job_id", ""), body.get("model_name", "") or "custom_model",
-        body.get("system_prompt", ""), body.get("quantization", "")))
+        body.get("system_prompt"), body.get("quantization", "")))
+
+
+def handle_training_models_local(self):
+    from core.training.model_catalog import local_models
+    self.send_json_response(local_models())
+
+
+def handle_training_models_search(self):
+    from core.training.model_catalog import search_hf_models
+    query = _query(self, "q") or _query(self, "query") or ""
+    self.send_json_response(search_hf_models(query, limit=_query_int(self, "limit", 25)))
+
+
+def handle_training_models_pull_status(self):
+    from core.training.model_catalog import pull_status
+    self.send_json_response(pull_status())
+
+
+def handle_training_models_import(self):
+    from core.training.model_catalog import import_hf_model
+    body = self.read_json_body()
+    self.send_json_response(import_hf_model(
+        body.get("model", ""), body.get("name", ""),
+        body.get("quantization", "q4_K_M")))
+
+
+def handle_training_models_pull(self):
+    from core.training.model_catalog import pull_to_ollama
+    self.send_json_response(pull_to_ollama(self.read_json_body().get("model", "")))
+
+
+def handle_training_autopilot_status(self):
+    from core.training.autopilot import status
+    self.send_json_response(status(_query(self, "model") or ""))
+
+
+def handle_training_autopilot_start(self):
+    from core.training.autopilot import DEFAULT_ITEMS, start
+    body = self.read_json_body()
+    self.send_json_response(start(
+        body.get("base_model", ""),
+        int(body.get("items") or DEFAULT_ITEMS),
+        int(body.get("max_examples") or 30000),
+        body.get("train_model", ""),
+        bool(body.get("trust_remote_code")),
+        int(body.get("max_seq_length") or 1024)))
+
+
+def handle_training_autopilot_stop(self):
+    from core.training.autopilot import request_stop
+    self.send_json_response(request_stop(self.read_json_body().get("model", "")))
+
+
+def handle_training_autopilot_reopen(self):
+    from core.training.autopilot import reopen_targets
+    self.send_json_response(reopen_targets(self.read_json_body().get("model", "")))
+
+
+def handle_training_autopilot_drop_rounds(self):
+    from core.training.autopilot import drop_rounds
+    body = self.read_json_body()
+    self.send_json_response(drop_rounds(body.get("model", ""), int(body.get("quanti") or 0)))
+
+
+def handle_training_autopilot_reset(self):
+    from core.training.autopilot import reset
+    self.send_json_response(reset(self.read_json_body().get("model", "")))
+
+
+def handle_training_autopilot_cleanup(self):
+    from core.training.autopilot import cleanup, load_state, save_state
+    state = load_state()
+    result = cleanup(state, dry_run=bool(self.read_json_body().get("dry_run")))
+    save_state(state)
+    self.send_json_response(result)
+
+
+def handle_training_identity(self):
+    """Il system prompt con cui esce un modello di Sigma Studio."""
+    from core.training.identity import (SIGMA_CREATOR, SIGMA_NAME, SIGMA_PRODUCT,
+                                        default_system_prompt)
+    self.send_json_response({
+        "success": True, "name": SIGMA_NAME, "creator": SIGMA_CREATOR,
+        "product": SIGMA_PRODUCT,
+        "system_prompt": default_system_prompt(),
+        "system_prompt_short": default_system_prompt(compact=True),
+    })
 
 
 def handle_training_quant_levels(self):

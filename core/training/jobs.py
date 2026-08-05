@@ -309,6 +309,17 @@ def load_training_dataset():
         ds = load_dataset("json", data_files=path, split="train")
     sigma("Dataset caricato: %d esempi | colonne: %s" % (len(ds), ds.column_names))
 
+    # Il taglio va fatto **prima** di formattare, non dopo. OpenMathInstruct-2
+    # ha 13.972.791 righe: trasformarle tutte per tenerne 30.000 sono quattro
+    # minuti di CPU e qualche giga di cache a ogni round, buttati. Il campione
+    # e' mescolato con seme fisso, non i primi N: i dataset sono spesso
+    # ordinati per categoria, e prendere la testa significherebbe addestrare
+    # su una fetta sola del compito.
+    if 0 < MAX_EXAMPLES < len(ds):
+        ds = ds.shuffle(seed=42).select(range(MAX_EXAMPLES))
+        sigma("Sottoinsieme: %d esempi estratti prima della formattazione (seed 42)"
+              % len(ds))
+
     field = "{text_field}"
     if field in ds.column_names:
         if field != "text":
@@ -327,9 +338,21 @@ def load_training_dataset():
         sigma("Formato prompt/completion rilevato -> text")
         return ds.map(lambda ex: {"text": str(ex["prompt"]) + str(ex["completion"])},
                       remove_columns=ds.column_names)
+    # OpenOrca e simili: system_prompt + domanda + risposta. Va prima del loop
+    # Q/A generico perche' question+response matcherebbe e perderebbe il contesto.
+    for sys_col, q, a in (("system_prompt", "question", "response"),):
+        if {sys_col, q, a} <= cols:
+            def orca_to_text(ex, sys_col=sys_col, q=q, a=a):
+                system = ex.get(sys_col) or ""
+                head = (system + "\\n\\n" if system else "") + str(ex[q])
+                return {"text": "### Istruzione:\\n" + head + "\\n\\n### Risposta:\\n" + str(ex[a])}
+            sigma("Formato %s/%s/%s rilevato -> text" % (sys_col, q, a))
+            return ds.map(orca_to_text, remove_columns=ds.column_names)
     # gsm8k, squad e simili. Senza questo ramo il fallback prenderebbe la prima
     # colonna stringa — la domanda — e si addestrerebbe senza mai la risposta.
-    for q, a in (("question", "answer"), ("question", "answers"), ("input", "output")):
+    for q, a in (("question", "answer"), ("question", "answers"), ("question", "response"),
+                 ("problem", "generated_solution"), ("query", "response"),
+                 ("input", "output")):
         if {q, a} <= cols:
             sigma("Formato %s/%s rilevato -> text" % (q, a))
             return ds.map(
@@ -349,11 +372,45 @@ def load_training_dataset():
         sigma("Formato conversazionale rilevato -> text")
         return ds.map(chat_to_text, remove_columns=ds.column_names)
 
-    fallback = next((c for c in ds.column_names if ds.features[c].dtype == "string"), None)
-    if fallback:
-        sigma("Uso la colonna testuale '%s'" % fallback)
-        return ds.rename_column(fallback, "text") if fallback != "text" else ds
-    raise SystemExit("[ERRORE] Nessuna colonna di testo utilizzabile in %s" % ds.column_names)
+    str_cols = [c for c in ds.column_names if ds.features[c].dtype == "string"]
+    if not str_cols:
+        raise SystemExit("[ERRORE] Nessuna colonna di testo utilizzabile in %s" % ds.column_names)
+
+    sample = ds.select(range(min(200, len(ds))))
+    medie = {c: sum(len(str(v)) for v in sample[c]) / max(1, len(sample)) for c in str_cols}
+
+    # Due o piu' colonne di testo corposo, e nessuno degli schemi noti le ha
+    # riconosciute: quasi sempre e' una coppia domanda/risposta con nomi che
+    # non abbiamo previsto. Prenderne una sola e' il caso peggiore, perche' non
+    # somiglia a un errore: OpenMathInstruct-2 (`problem`/`generated_solution`)
+    # cadeva qui e addestrava sulle sole domande, senza mai una risposta.
+    # Fermarsi costa un minuto; non fermarsi costa un ciclo intero.
+    # Una colonna conta come contenuto se e' abbastanza lunga **e** varia: un
+    # `tag` o una `categoria` si ripetono, e non vanno scambiati per la
+    # seconda meta' di una coppia. La soglia della secondaria e' piu' bassa
+    # perche' le domande sono spesso molto piu' corte delle risposte.
+    def e_contenuto(col, minimo):
+        if medie[col] < minimo:
+            return False
+        valori = [str(v) for v in sample[col]]
+        return len(set(valori)) / max(1, len(valori)) > 0.5
+
+    corpose = sorted([c for c in str_cols if e_contenuto(c, 25)],
+                     key=lambda c: medie[c], reverse=True)
+    if corpose and medie[corpose[0]] < 50:
+        corpose = []
+    if len(corpose) >= 2:
+        raise SystemExit(
+            "[ERRORE] Nessun formato riconosciuto, ma ci sono %d colonne di testo "
+            "corposo: %s. Sembra una coppia domanda/risposta con nomi non "
+            "previsti: addestrarne una sola insegnerebbe meta' del compito. "
+            "Indica la colonna giusta con l'iperparametro `text_field`, oppure "
+            "aggiungi la coppia alla catena di riconoscimento."
+            % (len(corpose), ", ".join("%s (%.0f car.)" % (c, medie[c]) for c in corpose)))
+
+    fallback = max(str_cols, key=lambda c: medie[c])
+    sigma("Uso la colonna testuale '%s' (media %.0f car.)" % (fallback, medie[fallback]))
+    return ds.rename_column(fallback, "text") if fallback != "text" else ds
 
 
 VALIDATION_FRACTION = {validation_fraction}
@@ -370,14 +427,29 @@ def load_train_and_eval():
     """
     ds = load_training_dataset()
 
-    # Sottoinsieme: su un dataset da centinaia di migliaia di esempi un'epoca
-    # intera dura ore, e per specializzare un modello quasi mai serve tutto.
-    # Il taglio e' deterministico (seed fisso) e mescolato, non i primi N: i
-    # dataset sono spesso ordinati per categoria, e prendere la testa
-    # significherebbe addestrare su una fetta sola del compito.
-    if 0 < MAX_EXAMPLES < len(ds):
-        ds = ds.shuffle(seed=42).select(range(MAX_EXAMPLES))
-        sigma("Sottoinsieme: %d esempi estratti (seed 42)" % len(ds))
+    # Controllo di sanita': se il testo medio e' troppo corto, probabilmente
+    # e' stata presa la colonna sbagliata (id, source, tag...).
+    sample = ds.select(range(min(200, len(ds))))
+    avg_len = sum(len(str(v)) for v in sample["text"]) / max(1, len(sample))
+    if avg_len < 20:
+        raise SystemExit(
+            "[ERRORE] Il testo di training ha una lunghezza media di %.0f caratteri: "
+            "probabilmente e' stata selezionata la colonna sbagliata. "
+            "Colonne disponibili nel dataset originale: controllare la formattazione." % avg_len)
+    # Un testo lungo ma sempre uguale non e' contenuto, e' un'etichetta:
+    # `type` di MetaMathQA vale "MATH_AnsAug" su meta' del dataset. La
+    # lunghezza da sola non lo distingue da una risposta breve.
+    distinti = len({str(v) for v in sample["text"]})
+    if len(sample) >= 20 and distinti / len(sample) < 0.05:
+        raise SystemExit(
+            "[ERRORE] Il testo di training ha solo %d valori distinti su %d esempi: "
+            "e' una colonna di categorie, non contenuto. Indica la colonna giusta "
+            "con l'iperparametro `text_field`." % (distinti, len(sample)))
+    sigma("Lunghezza media del testo: %.0f caratteri | %d valori distinti su %d"
+          % (avg_len, distinti, len(sample)))
+    # Mostra un esempio per debug rapido.
+    esempio = str(sample["text"][0])[:300]
+    sigma("Esempio testo[0]: %s%s" % (esempio, "..." if len(str(sample["text"][0])) > 300 else ""))
 
     if VALIDATION_FRACTION <= 0:
         return ds, None
@@ -393,7 +465,202 @@ def load_train_and_eval():
 '''
 
 
+
+# Blocco condiviso: completa una classe di modello scritta a mano a cui manca
+# quello che i caricatori danno per scontato.
+_ARCH_SHIM = """
+def completa_architettura(modello_id):
+    '''Alcuni repo con architettura propria non implementano
+    `get_input_embeddings`, e transformers 5 non lo indovina piu' da solo:
+    il caricamento muore con *not auto-handled for <Classe>*.
+
+    Qui si guarda la classe **prima** di istanziarla e, se ha una sola
+    `nn.Embedding` fra i suoi figli diretti, la si dichiara. Una sola: con
+    zero o con due non si tira a indovinare, si lascia fallire il job con il
+    suo errore, che e' meno peggio di addestrare la matrice sbagliata.
+    '''
+    import torch.nn as nn
+    from transformers import AutoConfig
+    from transformers.dynamic_module_utils import get_class_from_dynamic_module
+
+    try:
+        cfg = AutoConfig.from_pretrained(modello_id, trust_remote_code=True)
+        riferimento = (getattr(cfg, "auto_map", None) or {}).get("AutoModelForCausalLM")
+        if not riferimento:
+            return True
+        cls = get_class_from_dynamic_module(riferimento, modello_id)
+    except Exception as exc:
+        sigma("Architettura non ispezionabile (%s): proseguo" % exc)
+        return True
+
+    # "Lo implementa l'autore" vuol dire: in una classe sua, non in una di
+    # transformers. Escludere il solo `PreTrainedModel` non bastava — in
+    # transformers 5 il metodo sta in `EmbeddingAccessMixin`, e il controllo
+    # lo scambiava per un'implementazione vera lasciando il modello rotto.
+    def suo(nome):
+        return any(nome in c.__dict__ for c in cls.__mro__
+                   if not c.__module__.startswith("transformers."))
+
+    def get_input_embeddings(self):
+        trovate = [(n, m) for n, m in self.named_children() if isinstance(m, nn.Embedding)]
+        if len(trovate) != 1:
+            raise NotImplementedError(
+                "%s non dichiara get_input_embeddings e ha %d embedding fra i "
+                "figli diretti: non e' deducibile quale sia quella dei token."
+                % (cls.__name__, len(trovate)))
+        return trovate[0][1]
+
+    def set_input_embeddings(self, nuove):
+        trovate = [n for n, m in self.named_children() if isinstance(m, nn.Embedding)]
+        if len(trovate) != 1:
+            raise NotImplementedError("%s: embedding dei token non deducibile" % cls.__name__)
+        setattr(self, trovate[0], nuove)
+
+    def get_output_embeddings(self):
+        '''La testa che produce i logit. Il predefinito di transformers torna
+        `None`, e chi la usa poi muore su `NoneType has no attribute weight`.'''
+        vocab = getattr(self.config, "vocab_size", None)
+        trovate = [m for _, m in self.named_children()
+                   if isinstance(m, nn.Linear) and m.out_features == vocab]
+        if len(trovate) != 1:
+            raise NotImplementedError(
+                "%s non dichiara get_output_embeddings e ha %d strati lineari "
+                "larghi quanto il vocabolario: non e' deducibile quale sia la "
+                "testa." % (cls.__name__, len(trovate)))
+        return trovate[0]
+
+    def set_output_embeddings(self, nuove):
+        vocab = getattr(self.config, "vocab_size", None)
+        trovate = [n for n, m in self.named_children()
+                   if isinstance(m, nn.Linear) and m.out_features == vocab]
+        if len(trovate) != 1:
+            raise NotImplementedError("%s: testa non deducibile" % cls.__name__)
+        setattr(self, trovate[0], nuove)
+
+    aggiunte = []
+    for nome, funzione in (("get_input_embeddings", get_input_embeddings),
+                           ("set_input_embeddings", set_input_embeddings),
+                           ("get_output_embeddings", get_output_embeddings),
+                           ("set_output_embeddings", set_output_embeddings)):
+        if not suo(nome):
+            setattr(cls, nome, funzione)
+            aggiunte.append(nome)
+    if aggiunte:
+        sigma("Architettura %s completata: %s dedotte"
+              % (cls.__name__, ", ".join(aggiunte)))
+
+    supporta = bool(getattr(cls, "supports_gradient_checkpointing", True))
+    if not supporta:
+        sigma("%s non supporta il gradient checkpointing: disattivato ovunque"
+              % cls.__name__)
+    return supporta
+
+def ripara_frequenze_rotative(model):
+    '''Ricalcola le frequenze RoPE se il checkpoint non le conteneva.
+
+    `inv_freq` di solito e' un buffer **non** persistente: si ricalcola a ogni
+    costruzione e nessuno lo salva. Chi lo registra con il valore predefinito
+    (`register_buffer("inv_freq", ...)`, persistente) si aspetta invece di
+    ritrovarlo nel checkpoint — e se non c'e', transformers lo materializza a
+    zero, perche' il modello nasce su `meta` e i valori calcolati in `__init__`
+    non sopravvivono.
+
+    Con frequenze nulle la rotazione posizionale diventa l'identita': il
+    modello smette di distinguere l'ordine dei token. Non da' nessun errore,
+    da' una loss di 130 dove il caso puro ne farebbe 10,8 — misurato su
+    Ailo340m-v4, che in GGUF funziona perche' llama.cpp le calcola per conto
+    suo invece di leggerle dal file.
+
+    Il controllo e' esatto, non una stima: la prima frequenza di RoPE vale
+    sempre 1 (base elevato a zero). Se non e' 1, quel buffer non e' stato
+    inizializzato.
+    '''
+    import torch
+
+    base = float(getattr(model.config, "rope_theta", 0) or 10000.0)
+    riparati = []
+    for nome, modulo in model.named_modules():
+        buf = getattr(modulo, "inv_freq", None)
+        if not isinstance(buf, torch.Tensor) or buf.numel() == 0:
+            continue
+        if abs(float(buf.reshape(-1)[0]) - 1.0) < 1e-6:
+            continue
+        dim = buf.numel() * 2
+        corrette = 1.0 / (base ** (torch.arange(0, dim, 2, dtype=torch.float32) / dim))
+        with torch.no_grad():
+            buf.copy_(corrette.to(dtype=buf.dtype, device=buf.device))
+        riparati.append(nome)
+    if riparati:
+        sigma("Frequenze rotative ricalcolate su %d moduli (base %g): il "
+              "checkpoint non le conteneva e valevano zero" % (len(riparati), base))
+    return len(riparati)
+
+
+def funziona_in(model, dtype):
+    '''Il modello sopravvive a un forward nella precisione scelta?
+
+    Costa un token e mezzo secondo, e distingue un modello utilizzabile da uno
+    che produrra' numeri senza senso per ore senza sollevare nulla.
+    '''
+    import torch
+
+    try:
+        with torch.no_grad():
+            uno = torch.ones((1, 8), dtype=torch.long, device=model.device)
+            uscita = model(input_ids=uno, labels=uno)
+        perdita = float(uscita.loss)
+        if not (perdita == perdita) or perdita in (float("inf"), float("-inf")):
+            sigma("Prova in %s: loss non finita" % dtype)
+            return False
+        return True
+    except Exception as exc:
+        sigma("Prova in %s fallita: %s" % (dtype, str(exc)[:160]))
+        return False
+
+
+
+def proiezioni_lora(model, preferite):
+    '''I moduli su cui attaccare la LoRA, presi dal modello.
+
+    La lista canonica (`q_proj`, `o_proj`, `gate_proj`...) e' quella di Llama e
+    Qwen, e su chi non segue quella convenzione copre solo la parte che per caso
+    ha lo stesso nome. Misurato su Ailo340m-v4, che chiama le sue
+    `out_proj, w1, w2, w3`: adattatore su 2,36M parametri invece che sui 7M
+    attesi — due terzi del modello restavano fermi senza che niente lo dicesse.
+
+    Se i nomi canonici ci sono si usano quelli, per non cambiare il
+    comportamento su tutto il resto.
+    '''
+    import torch.nn as nn
+
+    presenti = {nome.rsplit(".", 1)[-1] for nome, modulo in model.named_modules()
+                if isinstance(modulo, nn.Linear)}
+    canoniche = [n for n in preferite if n in presenti]
+    if len(canoniche) >= 4:
+        return canoniche
+    # La testa che produce i logit non e' una proiezione interna: adattarla
+    # significa toccare il vocabolario, che non e' quello che si vuole da LoRA.
+    teste = {nome.rsplit(".", 1)[-1] for nome, modulo in model.named_modules()
+             if isinstance(modulo, nn.Linear)
+             and modulo.out_features == getattr(model.config, "vocab_size", -1)}
+    dedotte = sorted(presenti - teste)
+    sigma("Nomi non canonici: LoRA su %s (canoniche trovate: %s)"
+          % (", ".join(dedotte) or "nessuna", ", ".join(canoniche) or "nessuna"))
+    return dedotte or canoniche
+
+"""
+
 _SIGMA_CALLBACK = '''
+# Oltre questa frazione della VRAM della scheda si sta gia' paginando: il 5%
+# di margine copre la contabilita' imprecisa dell'allocatore senza lasciar
+# passare uno sforamento vero.
+VRAM_LIMITE = 1.05
+# Oltre questa percentuale di RAM occupata Windows comincia a non rispondere.
+# Non e' una soglia di comodo: e' il punto oltre il quale l'unica via d'uscita
+# diventa il tasto di reset, e con esso si perde tutto il lavoro del run.
+RAM_LIMITE_PCT = 92.0
+MAX_SEQ_LENGTH = {max_seq_length}
+
 import math
 from transformers import TrainerCallback
 
@@ -424,6 +691,12 @@ class SigmaProgress(TrainerCallback):
         # dividere il tempo per `global_step` dava frazioni di secondo per step
         # e un "ETA 0m" su un run di ore.
         self.seen = 0
+        # Quante letture di fila hanno trovato la memoria sforata. Una sola
+        # puo' essere il picco di un'allocazione transitoria; tre no.
+        self.sforata = 0
+        self.ram_scarsa = 0
+        self.strozzato = 0
+        self.ultima_vram = 0.0
 
     def on_evaluate(self, args, state, control, metrics=None, **kw):
         metrics = metrics or {}
@@ -449,9 +722,61 @@ class SigmaProgress(TrainerCallback):
         vram = ""
         used_gb = total_gb = None
         if torch.cuda.is_available():
-            used_gb = torch.cuda.max_memory_allocated() / 1024**3
-            total_gb = torch.cuda.get_device_properties(0).total_memory / 1024**3
-            vram = " | VRAM %.1f/%.1f GB" % (used_gb, total_gb)
+            # `max_memory_allocated` conta i tensori vivi, non quanto
+            # l'allocatore tiene occupato dal driver: misurati 9,4 GB
+            # dichiarati mentre la scheda ne aveva 15,4 su 16,3. La guardia
+            # dormiva proprio mentre la memoria finiva. `mem_get_info` chiede
+            # al driver, e vede anche cio' che occupano gli altri processi.
+            libera, totale = torch.cuda.mem_get_info()
+            total_gb = totale / 1024**3
+            used_gb = (totale - libera) / 1024**3
+            tensori_gb = torch.cuda.memory_allocated() / 1024**3
+            vram = " | VRAM %.1f/%.1f GB (tensori %.1f)" % (used_gb, total_gb, tensori_gb)
+        # Sforare la VRAM su Windows non produce un errore: il driver pagina in
+        # RAM di sistema e il run continua, quattrocento volte piu' lento. Un
+        # ciclo automatico ci resta dentro per giorni senza che nessuno se ne
+        # accorga — misurato: 47 GB su una scheda da 15,9, 346 s/step contro
+        # 0,72, ETA cinque giorni per un'epoca. Fallire subito e' l'unica
+        # risposta utile: dice cosa cambiare mentre c'e' ancora tempo.
+        # La RAM di sistema e' l'altra meta' del problema, e la piu' grave: con
+        # l'offload dei gradienti Unsloth sposta i tensori nella memoria
+        # dell'host, e Windows non la protegge. Non arriva nessun errore —
+        # arriva che la macchina si pianta e va riavviata, perdendo tutto.
+        ram_libera = None
+        try:
+            import psutil
+            ram = psutil.virtual_memory()
+            ram_libera = ram.available / 1024**3
+            if ram.percent > RAM_LIMITE_PCT:
+                self.ram_scarsa += 1
+                if self.ram_scarsa >= 3:
+                    raise RuntimeError(
+                        "RAM di sistema quasi esaurita: %.0f%% occupata, restano "
+                        "%.1f GB. Fermo il run prima che la macchina si blocchi. "
+                        "Di solito e' l'offload dei gradienti verso la CPU: "
+                        "riduci batch_size (ora %d) o disattiva il gradient "
+                        "checkpointing sull'adapter."
+                        % (ram.percent, ram_libera, args.per_device_train_batch_size))
+            else:
+                self.ram_scarsa = 0
+        except ImportError:
+            pass
+
+        self.ultima_vram = (used_gb / total_gb) if (used_gb and total_gb) else 0.0
+        if used_gb and total_gb and used_gb > total_gb * VRAM_LIMITE:
+            self.sforata += 1
+            if self.sforata >= 3:
+                raise RuntimeError(
+                    "VRAM sforata: %.1f GB allocati su %.1f GB di scheda. Su Windows "
+                    "non e' un errore, e' paginazione in RAM di sistema: il run "
+                    "prosegue centinaia di volte piu' lento. Riduci batch_size "
+                    "(ora %d) o max_seq_length (ora %d), oppure attiva il gradient "
+                    "checkpointing." % (used_gb, total_gb,
+                                        args.per_device_train_batch_size,
+                                        MAX_SEQ_LENGTH))
+        else:
+            self.sforata = 0
+
         # La VRAM va nella serie, non solo nel testo: e' l'unico modo perche' il
         # Monitor possa accorgersi da solo che la scheda e' satura.
         sigma_metric(step=state.global_step, epoch=logs.get("epoch", state.epoch),
@@ -459,6 +784,7 @@ class SigmaProgress(TrainerCallback):
                      learning_rate=logs.get("learning_rate"),
                      grad_norm=logs.get("grad_norm"),
                      vram_gb=round(used_gb, 2) if used_gb else None,
+                     ram_libera_gb=round(ram_libera, 1) if ram_libera else None,
                      vram_total_gb=round(total_gb, 2) if total_gb else None,
                      elapsed_s=round(time.time() - self.t0, 1))
         now = time.time()
@@ -484,6 +810,25 @@ class SigmaProgress(TrainerCallback):
             # Un rallentamento di questa entita' non e' rumore: va detto.
             if per_step > lifetime * 2.5 and self.seen > 20:
                 eta += " (RALLENTATO: %.0fs/step contro %.0fs iniziali)" % (per_step, lifetime)
+            # E se rallenta *mentre* la scheda e' quasi piena, non e' un caso:
+            # e' l'allocatore che non trova piu' blocchi contigui e comincia a
+            # sfogare in RAM di sistema. Misurato: 18 s/step iniziali diventati
+            # 83 con la VRAM al 94%, e una stima di diciotto ore per un'epoca
+            # che ne prometteva quattro. Da li' non si riprende da solo.
+            piena = self.ultima_vram and self.ultima_vram > 0.90
+            if per_step > lifetime * 3 and piena and self.seen > 20:
+                self.strozzato += 1
+                if self.strozzato >= 3:
+                    raise RuntimeError(
+                        "Il run sta rallentando su una scheda piena: %.0f s/step "
+                        "contro %.0f iniziali, VRAM al %.0f%%. L'allocatore non "
+                        "trova piu' blocchi e sfoga in RAM di sistema; da qui non "
+                        "si riprende. Riduci batch_size (ora %d) alzando il "
+                        "gradient accumulation, oppure max_seq_length (ora %d)."
+                        % (per_step, lifetime, self.ultima_vram * 100,
+                           args.per_device_train_batch_size, MAX_SEQ_LENGTH))
+            else:
+                self.strozzato = 0
         sigma("Epoch %d/%d step %d/%d (%.1f%%) - loss: %.4f | lr: %.2e%s%s" % (
             min(int(epoch) + 1, int(total)), int(total), state.global_step,
             state.max_steps, pct, logs["loss"], logs.get("learning_rate", 0.0), vram, eta))
@@ -493,7 +838,7 @@ class SigmaProgress(TrainerCallback):
 SCRIPT_TEMPLATES = {
 
     # ---------------------------------------------------------------- LoRA
-    "lora_unsloth": _PREAMBLE + _DATASET_LOADER + '''
+    "lora_unsloth": _PREAMBLE + _DATASET_LOADER + _ARCH_SHIM + '''
 try:
     import unsloth
     from unsloth import FastLanguageModel
@@ -508,13 +853,79 @@ RESUME_ADAPTER = r"{resume_adapter}"
 # Continuazione: si riparte dall'adapter del job precedente invece che da uno
 # nuovo. Unsloth risale da solo al modello base leggendo adapter_config.json,
 # quindi qui basta puntargli la cartella dell'adapter.
-model, tokenizer = FastLanguageModel.from_pretrained(
-    model_name=RESUME_ADAPTER or "{base_model}",
-    max_seq_length={max_seq_length},
-    dtype=DTYPE,
-    load_in_4bit=bool(TUNE.get("load_in_4bit")),
-)
+TRUST_REMOTE_CODE = {trust_remote_code}
+if TRUST_REMOTE_CODE:
+    sigma("ATTENZIONE: trust_remote_code attivo — eseguo il codice del repo del modello")
+
+# Il gradient checkpointing su Unsloth va lasciato in pace. Misurato tre volte
+# sullo stesso lavoro (Qwen2.5-0.5B, batch 8, seq 1024):
+#
+#   configurazione                                   VRAM      s/step
+#   non passarlo a from_pretrained (come da sempre)   1,1 GB    0,72
+#   passarlo esplicitamente = False                   47 GB     346
+#   passarlo esplicitamente = "unsloth"               23 GB     non parte
+#
+# Unsloth decide da se' al caricamento, e decide bene; dirglielo — con
+# qualunque valore — peggiora le cose. L'unico caso in cui va detto e'
+# un'architettura che il checkpointing non lo supporta affatto: li' va
+# spento ovunque, altrimenti il run si ferma al primo passo.
+SUPPORTA_CHECKPOINTING = True
+if TRUST_REMOTE_CODE:
+    SUPPORTA_CHECKPOINTING = completa_architettura(RESUME_ADAPTER or "{base_model}")
+
+CARICAMENTO = {} if SUPPORTA_CHECKPOINTING else {"use_gradient_checkpointing": False}
+# Sull'adapter comanda l'autotune: li' "unsloth" significa offload dei
+# gradienti verso la RAM di sistema, che su un modello piccolo e' costo puro.
+CHECKPOINTING = ("unsloth" if TUNE.get("gradient_checkpointing")
+                 and SUPPORTA_CHECKPOINTING else False)
+
+# Un'architettura che non regge il checkpointing e' quasi sempre scritta a
+# mano, e chi la scrive a mano di solito scrive anche l'attenzione a mano:
+# `softmax(q @ k.T)` materializza una matrice (batch x teste x T x T) per
+# **ogni livello**, e senza checkpointing restano tutte in memoria fino al
+# backward. Misurato su Ailo340m-v4 — 32 livelli, 12 teste, contesto 1024 —
+# con batch 8 fa 53 GB su una scheda da 15,9 e va in OutOfMemory; con batch 2
+# sta in un paio di GB. L'autotune non puo' saperlo: guarda i parametri (340M,
+# "ci sta comodo") e non come sono implementati. Il batch efficace resta lo
+# stesso, ridistribuito sull'accumulo.
+BATCH = {batch_size}
+ACCUM = {gradient_accumulation}
+if not SUPPORTA_CHECKPOINTING and BATCH > 2:
+    ACCUM = max(1, ACCUM * (BATCH // 2))
+    BATCH = 2
+    sigma("Attenzione non ottimizzata e niente checkpointing: batch %d->2, "
+          "accumulo %d->%d (batch efficace invariato)"
+          % ({batch_size}, {gradient_accumulation}, ACCUM))
+
+def carica(dtype):
+    return FastLanguageModel.from_pretrained(
+        model_name=RESUME_ADAPTER or "{base_model}",
+        max_seq_length={max_seq_length},
+        dtype=dtype,
+        load_in_4bit=bool(TUNE.get("load_in_4bit")),
+        trust_remote_code=TRUST_REMOTE_CODE,
+        **CARICAMENTO,
+    )
+
+
+model, tokenizer = carica(DTYPE)
 sigma("Modello caricato (4-bit=%s)" % TUNE.get("load_in_4bit"))
+ripara_frequenze_rotative(model)
+
+# Una moltiplicazione di prova prima di impegnare ore di GPU. I modelli scritti
+# a mano mescolano spesso float32 e mezza precisione dentro l'attenzione: in
+# bf16 il forward si rompe, o peggio passa e restituisce numeri senza senso.
+# Non e' un'ipotesi: verificato su Ailo340m-v4, che in bf16 solleva "expected
+# scalar type Float but found BFloat16" e in float32 da' una loss di 2,4 dove
+# il caso puro ne farebbe 10,8.
+if not funziona_in(model, DTYPE) and str(DTYPE) != "torch.float32":
+    sigma("Il modello non regge %s: ricarico in float32" % DTYPE)
+    del model
+    torch.cuda.empty_cache()
+    DTYPE = torch.float32
+    TUNE["bf16"], TUNE["fp16"] = False, False
+    model, tokenizer = carica(DTYPE)
+    ripara_frequenze_rotative(model)
 
 if RESUME_ADAPTER:
     sigma("Riprendo l'adapter LoRA da: %s" % RESUME_ADAPTER)
@@ -526,9 +937,9 @@ else:
         lora_alpha={lora_alpha},
         lora_dropout=0,
         bias="none",
-        target_modules=["q_proj", "k_proj", "v_proj", "o_proj",
-                        "gate_proj", "up_proj", "down_proj"],
-        use_gradient_checkpointing="unsloth" if TUNE.get("gradient_checkpointing") else False,
+        target_modules=proiezioni_lora(model, ["q_proj", "k_proj", "v_proj", "o_proj",
+                                              "gate_proj", "up_proj", "down_proj"]),
+        use_gradient_checkpointing=CHECKPOINTING,
         random_state=42,
     )
 trainable = sum(p.numel() for p in model.parameters() if p.requires_grad)
@@ -549,16 +960,25 @@ def eval_interval(n_examples):
     return max({eval_steps}, int(steps / TARGET_EVALS) or {eval_steps})
 
 
-def save_interval(n_examples):
-    """Ogni quanti step lasciare un checkpoint da cui poter ripartire."""
+def save_interval(n_examples, ogni_valutazione):
+    """Ogni quanti step lasciare un checkpoint da cui poter ripartire.
+
+    Deve essere un **multiplo** della cadenza di validazione: con
+    `load_best_model_at_end` il Trainer deve poter far coincidere il
+    checkpoint migliore con una misura, e se i due passi non si allineano si
+    rifiuta di partire — "found 100, which is not a round multiple of 52",
+    che ha fatto fallire due round di fila.
+    """
     steps = max(1, (n_examples * {num_epochs}) // max(1, {batch_size} * {gradient_accumulation}))
     # Almeno 20 punti di ripresa, mai piu' fitti di 100 step (scrivere un
     # checkpoint costa) e mai piu' radi di 2000 (perderne di piu' fa male).
-    return int(min(2000, max(100, steps // 20)))
+    voluto = int(min(2000, max(100, steps // 20)))
+    ogni_valutazione = max(1, int(ogni_valutazione))
+    return ogni_valutazione * max(1, round(voluto / ogni_valutazione))
 
 train_dataset, eval_dataset = load_train_and_eval()
 EVAL_EVERY = eval_interval(len(train_dataset))
-SAVE_EVERY = save_interval(len(train_dataset))
+SAVE_EVERY = save_interval(len(train_dataset), EVAL_EVERY)
 sigma("Checkpoint ogni %d step in %s" % (SAVE_EVERY, r"{output_dir}"))
 if eval_dataset is not None:
     sigma("Validation ogni %d step su %d esempi tenuti da parte"
@@ -576,19 +996,35 @@ trainer = SFTTrainer(
         eval_steps=EVAL_EVERY,
         # La valutazione non calcola gradienti: puo' usare batch piu' larghi del
         # training senza rischiare la VRAM, e ci mette molto meno.
-        per_device_eval_batch_size=max(1, {batch_size} * 2),
+        per_device_eval_batch_size=max(1, BATCH * 2),
         max_length={max_seq_length},
-        per_device_train_batch_size={batch_size},
-        gradient_accumulation_steps={gradient_accumulation},
+        per_device_train_batch_size=BATCH,
+        gradient_accumulation_steps=ACCUM,
+        # Terzo punto che decide la stessa cosa: la SFTConfig di Unsloth ha
+        # `gradient_checkpointing=True` come predefinito, e il Trainer lo
+        # accende all'inizio di `train()` a prescindere da come e' stato
+        # caricato il modello. Senza questa riga la scelta dell'autotune
+        # veniva ignorata: le architetture che non lo supportano si
+        # fermavano, e tutte le altre pagavano il rallentamento.
+        gradient_checkpointing=SUPPORTA_CHECKPOINTING,
         num_train_epochs={num_epochs},
         learning_rate={learning_rate},
-        warmup_steps=10,
+        warmup_ratio=0.05,
         lr_scheduler_type="linear",
         weight_decay=0.01,
         optim=TUNE.get("optim", "adamw_8bit"),
         bf16=bool(TUNE.get("bf16")),
         fp16=bool(TUNE.get("fp16")),
         logging_steps=1,
+        # Su un dataset a lunghezza variabile la maggior parte dei token
+        # elaborati e' riempimento: misurato su competition_math con batch 8,
+        # il 56,7% erano padding, contro il 2% ordinando per lunghezza. Il
+        # rimedio ovvio, `group_by_length=True`, qui non si puo' usare: TRL
+        # 0.24 con transformers 5.0 l'ha tolto da SFTConfig, e passarlo fa
+        # fallire ogni job con un TypeError. L'equivalente moderno e'
+        # `packing=True`, ma impacchetta piu' esempi nella stessa sequenza e
+        # senza flash-attention si contaminano a vicenda: con attn=sdpa non
+        # e' una sostituzione, e' un cambio di semantica. Resta da fare.
         # Salvare a fine epoca sembra ragionevole finche' un'epoca non dura
         # 47.000 step: un run fermato prima non lascia nulla, e ore di GPU
         # spariscono. Si salva a intervalli di step, calcolati perche' i
@@ -596,6 +1032,14 @@ trainer = SFTTrainer(
         save_strategy="steps",
         save_steps=SAVE_EVERY,
         save_total_limit=2,
+        # Con `save_total_limit` da solo restano gli ultimi due checkpoint, che
+        # non sono i migliori: se la validation ha toccato il minimo a meta' run
+        # e poi e' risalita, quel punto e' gia' stato cancellato. Qui il minimo
+        # viene tenuto e ricaricato alla fine, cosi' l'adapter salvato e' il
+        # migliore prodotto dal run, non l'ultimo.
+        load_best_model_at_end=eval_dataset is not None,
+        metric_for_best_model="eval_loss",
+        greater_is_better=False,
         seed=42,
         disable_tqdm=True,
         report_to="none",
@@ -666,8 +1110,10 @@ sigma("Adapter: %s" % ADAPTER)
 # Il merge va fatto sui pesi a 16 bit, mai su una base quantizzata a 4: la
 # quantizzazione e' servita per far stare il training in VRAM, ma fondere
 # dentro pesi gia' degradati vi inchioderebbe la perdita per sempre.
+TRUST_REMOTE_CODE = {trust_remote_code}
 model = AutoModelForCausalLM.from_pretrained(
-    "{base_model}", dtype=DTYPE, device_map="cpu", low_cpu_mem_usage=True)
+    "{base_model}", dtype=DTYPE, device_map="cpu", low_cpu_mem_usage=True,
+    trust_remote_code=TRUST_REMOTE_CODE)
 sigma("Modello base caricato in %s su CPU" % DTYPE)
 
 model = PeftModel.from_pretrained(model, ADAPTER)
@@ -678,9 +1124,9 @@ os.makedirs(TARGET, exist_ok=True)
 model.save_pretrained(TARGET, safe_serialization=True)
 
 try:
-    tokenizer = AutoTokenizer.from_pretrained(ADAPTER)
+    tokenizer = AutoTokenizer.from_pretrained(ADAPTER, trust_remote_code=TRUST_REMOTE_CODE)
 except Exception:
-    tokenizer = AutoTokenizer.from_pretrained("{base_model}")
+    tokenizer = AutoTokenizer.from_pretrained("{base_model}", trust_remote_code=TRUST_REMOTE_CODE)
 tokenizer.save_pretrained(TARGET)
 
 total = sum(
@@ -691,7 +1137,7 @@ sigma("FATTO")
 ''',
 
     # ---------------------------------------------------------------- TRL SFT
-    "trl_sft": _PREAMBLE + _DATASET_LOADER + '''
+    "trl_sft": _PREAMBLE + _DATASET_LOADER + _ARCH_SHIM + '''
 try:
     from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig
     from peft import (LoraConfig, PeftModel, get_peft_model,
@@ -702,11 +1148,19 @@ except ImportError as e:
     sigma("Installa con: pip install trl peft transformers datasets bitsandbytes")
     sys.exit(1)
 ''' + _SIGMA_CALLBACK + '''
-tokenizer = AutoTokenizer.from_pretrained("{base_model}")
+TRUST_REMOTE_CODE = {trust_remote_code}
+if TRUST_REMOTE_CODE:
+    sigma("ATTENZIONE: trust_remote_code attivo — eseguo il codice del repo del modello")
+
+if TRUST_REMOTE_CODE:
+    completa_architettura("{base_model}")
+
+tokenizer = AutoTokenizer.from_pretrained("{base_model}", trust_remote_code=TRUST_REMOTE_CODE)
 if tokenizer.pad_token is None:
     tokenizer.pad_token = tokenizer.eos_token
 
-load_kwargs = dict(dtype=DTYPE, device_map=TUNE.get("device_map") or {"": 0})
+load_kwargs = dict(dtype=DTYPE, device_map=TUNE.get("device_map") or {"": 0},
+                   trust_remote_code=TRUST_REMOTE_CODE)
 attn = TUNE.get("attn_implementation")
 if attn and attn != "eager":
     load_kwargs["attn_implementation"] = attn
@@ -758,16 +1212,25 @@ def eval_interval(n_examples):
     return max({eval_steps}, int(steps / TARGET_EVALS) or {eval_steps})
 
 
-def save_interval(n_examples):
-    """Ogni quanti step lasciare un checkpoint da cui poter ripartire."""
+def save_interval(n_examples, ogni_valutazione):
+    """Ogni quanti step lasciare un checkpoint da cui poter ripartire.
+
+    Deve essere un **multiplo** della cadenza di validazione: con
+    `load_best_model_at_end` il Trainer deve poter far coincidere il
+    checkpoint migliore con una misura, e se i due passi non si allineano si
+    rifiuta di partire — "found 100, which is not a round multiple of 52",
+    che ha fatto fallire due round di fila.
+    """
     steps = max(1, (n_examples * {num_epochs}) // max(1, {batch_size} * {gradient_accumulation}))
     # Almeno 20 punti di ripresa, mai piu' fitti di 100 step (scrivere un
     # checkpoint costa) e mai piu' radi di 2000 (perderne di piu' fa male).
-    return int(min(2000, max(100, steps // 20)))
+    voluto = int(min(2000, max(100, steps // 20)))
+    ogni_valutazione = max(1, int(ogni_valutazione))
+    return ogni_valutazione * max(1, round(voluto / ogni_valutazione))
 
 train_dataset, eval_dataset = load_train_and_eval()
 EVAL_EVERY = eval_interval(len(train_dataset))
-SAVE_EVERY = save_interval(len(train_dataset))
+SAVE_EVERY = save_interval(len(train_dataset), EVAL_EVERY)
 sigma("Checkpoint ogni %d step in %s" % (SAVE_EVERY, r"{output_dir}"))
 if eval_dataset is not None:
     sigma("Validation ogni %d step su %d esempi tenuti da parte"
@@ -791,7 +1254,7 @@ trainer = SFTTrainer(
         gradient_accumulation_steps={gradient_accumulation},
         num_train_epochs={num_epochs},
         learning_rate={learning_rate},
-        warmup_steps=10,
+        warmup_ratio=0.05,
         lr_scheduler_type="cosine",
         weight_decay=0.01,
         optim=TUNE.get("optim", "adamw_torch_fused"),
@@ -799,6 +1262,15 @@ trainer = SFTTrainer(
         fp16=bool(TUNE.get("fp16")),
         gradient_checkpointing=bool(TUNE.get("gradient_checkpointing")),
         logging_steps=1,
+        # Su un dataset a lunghezza variabile la maggior parte dei token
+        # elaborati e' riempimento: misurato su competition_math con batch 8,
+        # il 56,7% erano padding, contro il 2% ordinando per lunghezza. Il
+        # rimedio ovvio, `group_by_length=True`, qui non si puo' usare: TRL
+        # 0.24 con transformers 5.0 l'ha tolto da SFTConfig, e passarlo fa
+        # fallire ogni job con un TypeError. L'equivalente moderno e'
+        # `packing=True`, ma impacchetta piu' esempi nella stessa sequenza e
+        # senza flash-attention si contaminano a vicenda: con attn=sdpa non
+        # e' una sostituzione, e' un cambio di semantica. Resta da fare.
         # Salvare a fine epoca sembra ragionevole finche' un'epoca non dura
         # 47.000 step: un run fermato prima non lascia nulla, e ore di GPU
         # spariscono. Si salva a intervalli di step, calcolati perche' i
@@ -806,6 +1278,14 @@ trainer = SFTTrainer(
         save_strategy="steps",
         save_steps=SAVE_EVERY,
         save_total_limit=2,
+        # Con `save_total_limit` da solo restano gli ultimi due checkpoint, che
+        # non sono i migliori: se la validation ha toccato il minimo a meta' run
+        # e poi e' risalita, quel punto e' gia' stato cancellato. Qui il minimo
+        # viene tenuto e ricaricato alla fine, cosi' l'adapter salvato e' il
+        # migliore prodotto dal run, non l'ultimo.
+        load_best_model_at_end=eval_dataset is not None,
+        metric_for_best_model="eval_loss",
+        greater_is_better=False,
         seed=42,
         disable_tqdm=True,
         report_to="none",
@@ -922,12 +1402,21 @@ def eval_interval(n_examples):
     return max({eval_steps}, int(steps / TARGET_EVALS) or {eval_steps})
 
 
-def save_interval(n_examples):
-    """Ogni quanti step lasciare un checkpoint da cui poter ripartire."""
+def save_interval(n_examples, ogni_valutazione):
+    """Ogni quanti step lasciare un checkpoint da cui poter ripartire.
+
+    Deve essere un **multiplo** della cadenza di validazione: con
+    `load_best_model_at_end` il Trainer deve poter far coincidere il
+    checkpoint migliore con una misura, e se i due passi non si allineano si
+    rifiuta di partire — "found 100, which is not a round multiple of 52",
+    che ha fatto fallire due round di fila.
+    """
     steps = max(1, (n_examples * {num_epochs}) // max(1, {batch_size} * {gradient_accumulation}))
     # Almeno 20 punti di ripresa, mai piu' fitti di 100 step (scrivere un
     # checkpoint costa) e mai piu' radi di 2000 (perderne di piu' fa male).
-    return int(min(2000, max(100, steps // 20)))
+    voluto = int(min(2000, max(100, steps // 20)))
+    ogni_valutazione = max(1, int(ogni_valutazione))
+    return ogni_valutazione * max(1, round(voluto / ogni_valutazione))
 
 EVAL_EVERY = eval_interval(len(train_blocks))
 SAVE_EVERY = save_interval(len(train_blocks))
@@ -952,7 +1441,7 @@ trainer = Trainer(
         gradient_accumulation_steps={gradient_accumulation},
         num_train_epochs={num_epochs},
         learning_rate={learning_rate},
-        warmup_steps=10,
+        warmup_ratio=0.05,
         lr_scheduler_type="cosine",
         weight_decay=0.01,
         optim=TUNE.get("optim", "adamw_torch_fused"),
@@ -971,6 +1460,14 @@ trainer = Trainer(
         save_strategy="steps",
         save_steps=SAVE_EVERY,
         save_total_limit=2,
+        # Con `save_total_limit` da solo restano gli ultimi due checkpoint, che
+        # non sono i migliori: se la validation ha toccato il minimo a meta' run
+        # e poi e' risalita, quel punto e' gia' stato cancellato. Qui il minimo
+        # viene tenuto e ricaricato alla fine, cosi' l'adapter salvato e' il
+        # migliore prodotto dal run, non l'ultimo.
+        load_best_model_at_end=eval_dataset is not None,
+        metric_for_best_model="eval_loss",
+        greater_is_better=False,
         seed=42,
         disable_tqdm=True,
         report_to="none",
@@ -1341,6 +1838,14 @@ def _build_script_values(data: dict, job_id: str, job_dir: Path) -> dict:
     method = data.get("method", "lora_unsloth")
     model_base = resolve_base_model(
         data.get("base_model") or data.get("model_base", "unsloth/llama-3.2-3b-instruct"))
+    # Un repo puo' essere pubblicato senza tokenizer: in quel caso si prepara
+    # una copia locale completa e si addestra da li'. Per i repo a posto —
+    # cioe' quasi tutti — questa riga non fa niente e non costa niente.
+    try:
+        from core.training.model_catalog import prepare_trainable_weights
+        model_base = prepare_trainable_weights(model_base) or model_base
+    except Exception as exc:
+        log.warning("preparazione dei pesi di %s non riuscita: %s", model_base, exc)
     dataset_id = data.get("dataset_id", "local_dataset")
     hyper = data.get("hyperparams") or data.get("config") or {}
     output_dir = job_dir / "output"
@@ -1398,6 +1903,10 @@ def _build_script_values(data: dict, job_id: str, job_dir: Path) -> dict:
         "validation_fraction": float(hyper.get("validation_fraction", 0.05)),
         "max_examples": int(hyper.get("max_examples") or 0),
         "eval_steps": int(hyper.get("eval_steps") or _default_eval_steps(hyper)),
+        # Caricare un modello con architettura propria significa eseguire il
+        # codice Python che sta nel suo repo. E' una scelta di chi lancia il
+        # job, non un default: qui resta spento finche' non lo si accende.
+        "trust_remote_code": bool(hyper.get("trust_remote_code")),
         "text_field": hyper.get("text_field", "text"),
         "tune_json": json.dumps(tune, ensure_ascii=False),
         "legacy_datasets_json": json.dumps(LEGACY_HF_DATASETS, ensure_ascii=False),
@@ -2144,6 +2653,49 @@ def start_training_job(job_id: str, total_steps: int | None = None) -> dict:
             "script_regenerated": regenerated}
 
 
+def _termina_albero(pid: int, attesa: float = 12.0) -> int:
+    """Ferma un processo **e i suoi figli**, e torna quanti ne ha chiusi.
+
+    Non e' un dettaglio di robustezza: il `python.exe` del venv e' un
+    lanciatore che genera l'interprete vero come figlio, ed e' il figlio a
+    tenere i tensori. Terminando solo il padre il training resta vivo,
+    orfano, con decine di GB in mano — misurati 41 GB su due job "fermati"
+    con successo. Bastano tre stop per mandare la macchina al riavvio.
+    """
+    try:
+        import psutil
+    except ImportError:
+        return 0
+    try:
+        radice = psutil.Process(int(pid))
+    except Exception:
+        return 0
+
+    famiglia = []
+    try:
+        famiglia = radice.children(recursive=True)
+    except Exception:
+        pass
+    famiglia.append(radice)
+
+    for proc in famiglia:
+        try:
+            proc.terminate()
+        except Exception:
+            pass
+    _, vivi = psutil.wait_procs(famiglia, timeout=attesa)
+    # Chi non se ne va con le buone: su Windows un processo dentro una kernel
+    # call CUDA ignora il terminate.
+    for proc in vivi:
+        try:
+            proc.kill()
+        except Exception:
+            pass
+    if vivi:
+        psutil.wait_procs(vivi, timeout=5)
+    return len(famiglia)
+
+
 class _AttachedProcess:
     """Minimal Popen-like view of a process Sigma did not spawn in this session."""
 
@@ -2158,11 +2710,7 @@ class _AttachedProcess:
         return self.poll() or 0
 
     def terminate(self):
-        try:
-            import psutil
-            psutil.Process(self.pid).terminate()
-        except Exception as exc:
-            log.warning("terminate pid %s: %s", self.pid, exc)
+        _termina_albero(self.pid)
 
     kill = terminate
 
@@ -2230,17 +2778,20 @@ def stop_training_job(job_id: str) -> dict:
     job["completed_at"] = time.strftime("%Y-%m-%d %H:%M:%S")
     _save_jobs(jobs)
 
+    # Il pid registrato basta: `_termina_albero` scende ai figli, ed e' li'
+    # che vive il training vero.
     proc = _ACTIVE_PROCESSES.pop(job_id, None)
-    if proc is not None:
-        try:
-            proc.terminate()
-            try:
-                proc.wait(timeout=10)
-            except Exception:
-                proc.kill()
-        except Exception as exc:
-            log.warning("stop job %s: %s", job_id, exc)
-    return {"success": True, "message": f"Job '{job_id}' fermato.", "job": job}
+    pid = getattr(proc, "pid", None) or job.get("pid")
+    chiusi = _termina_albero(pid) if pid else 0
+    if pid and _pid_alive(pid):
+        log.warning("job %s: il processo %s non si e' chiuso", job_id, pid)
+        return {"success": False,
+                "error": (f"Il processo {pid} del job '{job_id}' non si e' chiuso. "
+                          "Chiudilo a mano prima di avviarne altri: continua a "
+                          "occupare memoria.")}
+    return {"success": True,
+            "message": f"Job '{job_id}' fermato ({chiusi} processi chiusi).",
+            "job": job, "processi_chiusi": chiusi}
 
 
 def update_job_hyperparams(job_id: str, hyper: dict | None = None) -> dict:
@@ -2595,14 +3146,207 @@ OLLAMA_QUANT_LEVELS = {
 }
 
 
+def formato_chat_di(modello_ollama: str) -> str:
+    """Il TEMPLATE e i token di stop di un modello gia' installato in Ollama.
+
+    Senza questo blocco, un modello esportato riceve il predefinito di Ollama —
+    `TEMPLATE {{ .Prompt }}`, cioe' il prompt passato nudo. Su un modello
+    istruito significa togliergli il formato con cui e' stato addestrato: al
+    posto di una risposta produce una continuazione, e il benchmark la conta
+    come illeggibile. Misurato su qwen2.5:0.5b-instruct — base 79 risposte
+    valide su 300, ogni candidato esportato 0 su 300 con 276 illeggibili, gli
+    stessi numeri a ogni round qualunque fosse l'addestramento.
+
+    Si copia da chi ce l'ha gia' giusto invece di tradurre il template Jinja
+    del tokenizer nel dialetto Go di Ollama: sarebbe una conversione fragile
+    per riottenere qualcosa che e' gia' li'.
+    """
+    binario = shutil.which("ollama")
+    if not binario or not modello_ollama:
+        return ""
+    try:
+        esito = _get_subprocess_run()([binario, "show", "--modelfile", modello_ollama],
+                                      capture_output=True, text=True, encoding="utf-8",
+                                      errors="replace", timeout=60)
+    except Exception as exc:
+        log.warning("template di %s non leggibile: %s", modello_ollama, exc)
+        return ""
+    if getattr(esito, "returncode", 1) != 0:
+        return ""
+
+    righe, tenute, dentro = (getattr(esito, "stdout", "") or "").splitlines(), [], False
+    for riga in righe:
+        if dentro:
+            tenute.append(riga)
+            if riga.rstrip().endswith('"""'):
+                dentro = False
+            continue
+        if riga.startswith("TEMPLATE "):
+            # Un template banale non vale la pena di copiarlo: e' proprio il
+            # predefinito da cui stiamo scappando.
+            if riga.strip() in ('TEMPLATE {{ .Prompt }}', 'TEMPLATE """{{ .Prompt }}"""'):
+                continue
+            tenute.append(riga)
+            dentro = riga.count('"""') == 1
+        elif riga.startswith("PARAMETER stop"):
+            tenute.append(riga)
+    return ("\n".join(tenute) + "\n") if tenute else ""
+
+
+def register_ollama_model(source: Path, model_name: str, system_prompt: str | None = None,
+                          quantization: str = "", workdir: Path | None = None,
+                          adapter_base: str = "", source_label: str = "",
+                          template_from: str = "") -> dict:
+    """Registra in Ollama dei pesi che stanno gia' su disco.
+
+    `source` e' una cartella di pesi in formato HuggingFace oppure un `.gguf`
+    gia' pronto. Se il convertitore interno di Ollama non sa leggere quei pesi
+    — succede regolarmente sulle architetture uscite da poco — si passa da
+    llama.cpp e si riprova, che e' la sola via che funziona su Qwen3.5.
+
+    Vive qui, fuori da `export_to_ollama`, perche' serve identica anche a chi
+    non ha un job: un repo scaricato da HuggingFace va registrato allo stesso
+    modo di un modello che abbiamo addestrato noi.
+    """
+    if system_prompt is None:
+        from core.training.identity import default_system_prompt
+        system_prompt = default_system_prompt()
+    quantization = (quantization or "").strip()
+    if quantization and quantization not in OLLAMA_QUANT_LEVELS:
+        return {"success": False,
+                "error": (f"Quantizzazione '{quantization}' non riconosciuta. "
+                          f"Disponibili: {', '.join(OLLAMA_QUANT_LEVELS)}.")}
+    source = Path(source)
+    if not source.exists():
+        return {"success": False, "error": f"Pesi non trovati in {source}."}
+
+    workdir = Path(workdir) if workdir else (source if source.is_dir() else source.parent)
+    workdir.mkdir(parents=True, exist_ok=True)
+    modelfile_path = workdir / "Modelfile"
+
+    # Il formato di conversazione va portato dietro: e' cio' che distingue una
+    # risposta da una continuazione. Senza, Ollama mette il suo predefinito —
+    # il prompt passato nudo — e un modello istruito smette di rispondere.
+    formato = formato_chat_di(template_from)
+    if formato:
+        log.info("template di chat ereditato da %s", template_from)
+
+    def write_modelfile(from_target) -> str:
+        content = (f"FROM {str(from_target).replace(chr(92), '/')}\n"
+                   + formato
+                   + "PARAMETER temperature 0.7\nPARAMETER top_p 0.9\n"
+                   + f'SYSTEM """{system_prompt}"""\n')
+        modelfile_path.write_text(content, encoding="utf-8")
+        return content
+
+    def write_adapter_modelfile() -> str:
+        # Un adapter non e' un modello: da solo Ollama non saprebbe da dove
+        # partire, e va montato sopra la base con cui e' stato addestrato.
+        content = (f"FROM {adapter_base}" + chr(10)
+                   + f"ADAPTER {str(source).replace(chr(92), '/')}" + chr(10)
+                   + "PARAMETER temperature 0.7" + chr(10)
+                   + "PARAMETER top_p 0.9" + chr(10)
+                   + f'SYSTEM """{system_prompt}"""' + chr(10))
+        modelfile_path.write_text(content, encoding="utf-8")
+        return content
+
+    kind = source_label or ("gguf" if source.suffix == ".gguf" else "weights")
+
+    # Il convertitore di Ollama ha sbagliato tre volte su tre in questa
+    # sessione: si ferma sulle architetture recenti (Qwen3.5, AILO) e — molto
+    # peggio — su un modello con embedding legate riesce, ma produce uno strato
+    # di uscita rotto. Misurato sugli stessi pesi: da Ollama "@@@@@@@@@@",
+    # da llama.cpp una risposta vera. Un guasto che non solleva niente e' il
+    # motivo per cui il ripiego "solo se fallisce" non e' mai scattato.
+    #
+    # Quindi: se llama.cpp c'e', converte lui. Ollama resta la via di scorta.
+    if source.is_dir() and not adapter_base and find_gguf_converter():
+        convertito = _convert_to_gguf(source, workdir)
+        if convertito.get("success"):
+            source = Path(convertito["gguf_path"])
+            kind = "gguf"
+        else:
+            log.warning("llama.cpp non ha convertito %s (%s): provo con Ollama",
+                        source, convertito.get("error", "")[:120])
+
+    modelfile_content = (write_adapter_modelfile() if adapter_base
+                         else write_modelfile(source))
+
+    ollama_bin = shutil.which("ollama")
+    if not ollama_bin:
+        return {"success": False,
+                "error": ("Ollama non trovato nel PATH. Il Modelfile e' comunque pronto: "
+                          f"esegui `ollama create {model_name} -f \"{modelfile_path}\"`."),
+                "modelfile_path": str(modelfile_path), "modelfile": modelfile_content}
+
+    sub_run = _get_subprocess_run()
+
+    def run_create():
+        cmd = [ollama_bin, "create", model_name, "-f", str(modelfile_path)]
+        if quantization:
+            cmd += ["--quantize", quantization]
+        return sub_run(cmd, capture_output=True, text=True, encoding="utf-8",
+                       errors="replace", timeout=3600)
+
+    try:
+        res = run_create()
+    except Exception as exc:
+        return {"success": False, "error": f"Esecuzione di ollama create fallita: {exc}",
+                "modelfile_path": str(modelfile_path)}
+
+    returncode = getattr(res, "returncode", 0)
+    detail = _ollama_failure_detail(res) if returncode != 0 else ""
+
+    if (returncode != 0 and source.is_dir() and not adapter_base
+            and any(m in detail.lower() for m in _OLLAMA_CONVERT_MARKERS)):
+        log.info("ollama create non sa convertire %s (%s): passo da llama.cpp",
+                 source, detail[:120])
+        converted = _convert_to_gguf(source, workdir)
+        if not converted.get("success"):
+            return {"success": False,
+                    "error": f"ollama create ha restituito {returncode}: {detail[:200]}. "
+                             + converted["error"],
+                    "model_name": model_name, "source": kind,
+                    "modelfile_path": str(modelfile_path), "modelfile": modelfile_content}
+        modelfile_content = write_modelfile(converted["gguf_path"])
+        kind = "gguf"
+        try:
+            res = run_create()
+        except Exception as exc:
+            return {"success": False, "error": f"Esecuzione di ollama create fallita: {exc}",
+                    "modelfile_path": str(modelfile_path)}
+        returncode = getattr(res, "returncode", 0)
+        detail = _ollama_failure_detail(res) if returncode != 0 else ""
+
+    if returncode != 0:
+        return {"success": False,
+                "error": (f"ollama create ha restituito {returncode}: "
+                          f"{detail[:400] or 'nessun dettaglio'}"),
+                "model_name": model_name, "source": kind,
+                "modelfile_path": str(modelfile_path), "modelfile": modelfile_content}
+
+    quant_note = f", quantizzato {quantization}" if quantization else ""
+    return {"success": True,
+            "message": f"Modello Ollama '{model_name}' registrato (sorgente: {kind}{quant_note}).",
+            "model_name": model_name, "source": kind,
+            "quantization": quantization or None,
+            "modelfile_path": str(modelfile_path), "modelfile": modelfile_content}
+
+
 def export_to_ollama(job_id: str, model_name: str = "custom_model",
-                     system_prompt: str = "", quantization: str = "") -> dict:
+                     system_prompt: str | None = None, quantization: str = "",
+                     template_from: str = "") -> dict:
     """Register the trained model in Ollama via a generated Modelfile.
 
     `quantization` e' uno dei livelli di OLLAMA_QUANT_LEVELS: Ollama quantizza
     lui stesso durante `create`, partendo dai pesi a 16 bit. Vuoto = nessuna
     quantizzazione.
     """
+    # `None` significa "non specificato" e prende l'identita' di Sigma; una
+    # stringa vuota significa "nessun system prompt", ed e' una scelta diversa.
+    if system_prompt is None:
+        from core.training.identity import default_system_prompt
+        system_prompt = default_system_prompt()
     quantization = (quantization or "").strip()
     if quantization and quantization not in OLLAMA_QUANT_LEVELS:
         return {"success": False,
@@ -2655,113 +3399,25 @@ def export_to_ollama(job_id: str, model_name: str = "custom_model",
                           f"{adapter.name}/ sotto {output}.")}
 
     if ggufs:
-        modelfile_content = (f"FROM {str(ggufs[0]).replace(chr(92), '/')}\n"
-                             f"PARAMETER temperature 0.7\nPARAMETER top_p 0.9\n"
-                             f'SYSTEM """{system_prompt}"""\n')
-        source = "gguf"
+        target, source = ggufs[0], "gguf"
     elif merged.exists():
-        modelfile_content = (f"FROM {str(merged).replace(chr(92), '/')}\n"
-                             f"PARAMETER temperature 0.7\nPARAMETER top_p 0.9\n"
-                             f'SYSTEM """{system_prompt}"""\n')
-        source = "merged"
+        target, source = merged, "merged"
     elif full_model.exists():
-        modelfile_content = (f"FROM {str(full_model).replace(chr(92), '/')}\n"
-                             f"PARAMETER temperature 0.7\nPARAMETER top_p 0.9\n"
-                             f'SYSTEM """{system_prompt}"""\n')
-        source = "full"
+        target, source = full_model, "full"
     else:
-        modelfile_content = (f"FROM {job.get('base_model', 'llama3')}\n"
-                             f"ADAPTER {str(adapter).replace(chr(92), '/')}\n"
-                             f"PARAMETER temperature 0.7\nPARAMETER top_p 0.9\n"
-                             f'SYSTEM """{system_prompt}"""\n')
-        source = "adapter"
+        target, source = adapter, "adapter"
 
-    def write_modelfile(from_target: str) -> str:
-        content = (f"FROM {str(from_target).replace(chr(92), '/')}\n"
-                   f"PARAMETER temperature 0.7\nPARAMETER top_p 0.9\n"
-                   f'SYSTEM """{system_prompt}"""\n')
-        (job_dir / "Modelfile").write_text(content, encoding="utf-8")
-        return content
+    # La registrazione vera — Modelfile, `ollama create`, ripiego su llama.cpp
+    # quando il convertitore interno non sa leggere i pesi — sta in un posto
+    # solo: la usa anche chi importa un modello preso da HuggingFace, e una
+    # correzione qui non deve poter mancare l'altra meta'.
+    result = register_ollama_model(
+        target, model_name, system_prompt, quantization,
+        workdir=job_dir, source_label=source, template_from=template_from,
+        adapter_base=(job.get("base_model", "llama3") if source == "adapter" else ""))
 
-    modelfile_path = job_dir / "Modelfile"
-    modelfile_path.write_text(modelfile_content, encoding="utf-8")
-
-    ollama_bin = shutil.which("ollama")
-    if not ollama_bin:
-        return {
-            "success": False,
-            "error": "Ollama non trovato nel PATH. Il Modelfile è comunque pronto: "
-                     f"esegui `ollama create {model_name} -f \"{modelfile_path}\"`.",
-            "modelfile_path": str(modelfile_path),
-            "modelfile": modelfile_content,
-        }
-
-    # `ollama create` va atteso e il suo esito riportato: lanciarlo e ignorarlo
-    # faceva sembrare riuscito un export che non produceva nulla.
-    sub_run = _get_subprocess_run()
-
-    def run_create():
-        cmd = [ollama_bin, "create", model_name, "-f", str(modelfile_path)]
-        if quantization:
-            cmd += ["--quantize", quantization]
-        # encoding esplicito: `ollama create` scrive spinner e barre in UTF-8, e
-        # con il codepage di default di Windows il thread che legge la pipe muore
-        # su UnicodeDecodeError — lasciando l'errore vero senza alcun dettaglio.
-        return sub_run(cmd, capture_output=True, text=True, encoding="utf-8",
-                       errors="replace", timeout=1800)
-
-    try:
-        res = run_create()
-    except Exception as exc:
-        return {"success": False, "error": f"Esecuzione di ollama create fallita: {exc}",
-                "modelfile_path": str(modelfile_path)}
-
-    returncode = getattr(res, "returncode", 0)
-    detail = _ollama_failure_detail(res) if returncode != 0 else ""
-
-    # Ollama non sa leggere questi pesi: si riprova passando da llama.cpp, che
-    # copre le architetture recenti prima del convertitore Go.
-    if (returncode != 0 and source in ("merged", "full")
-            and any(m in detail.lower() for m in _OLLAMA_CONVERT_MARKERS)):
-        log.info("ollama create non sa convertire %s (%s): passo da llama.cpp",
-                 source, detail[:120])
-        converted = _convert_to_gguf(merged if source == "merged" else full_model, output)
-        if not converted.get("success"):
-            return {"success": False,
-                    "error": f"ollama create ha restituito {returncode}: {detail[:200]}. "
-                             + converted["error"],
-                    "model_name": model_name, "source": source,
-                    "modelfile_path": str(modelfile_path), "modelfile": modelfile_content}
-        modelfile_content = write_modelfile(str(converted["gguf_path"]))
-        source = "gguf"
-        try:
-            res = run_create()
-        except Exception as exc:
-            return {"success": False, "error": f"Esecuzione di ollama create fallita: {exc}",
-                    "modelfile_path": str(modelfile_path)}
-        returncode = getattr(res, "returncode", 0)
-        detail = _ollama_failure_detail(res) if returncode != 0 else ""
-
-    if returncode != 0:
-        return {
-            "success": False,
-            "error": f"ollama create ha restituito {returncode}: "
-                     f"{detail[:400] or 'nessun dettaglio'}",
-            "model_name": model_name,
-            "source": source,
-            "modelfile_path": str(modelfile_path),
-            "modelfile": modelfile_content,
-        }
-
-    quant_note = f", quantizzato {quantization}" if quantization else ""
-    return {
-        "success": True,
-        "message": (f"Modello Ollama '{model_name}' registrato "
-                    f"(sorgente: {source}{quant_note})." + fp16_warning),
-        "fp16_warning": fp16_warning or None,
-        "model_name": model_name,
-        "source": source,
-        "quantization": quantization or None,
-        "modelfile_path": str(modelfile_path),
-        "modelfile": modelfile_content,
-    }
+    if not result.get("success"):
+        return result
+    result["message"] += fp16_warning
+    result["fp16_warning"] = fp16_warning or None
+    return result
