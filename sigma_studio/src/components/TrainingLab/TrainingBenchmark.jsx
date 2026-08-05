@@ -501,42 +501,32 @@ export default function TrainingBenchmark({ addToast }) {
   return (
     <div style={{ padding: '20px', height: '100%', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '20px' }}>
 
-      {/* Intestazione */}
-      <div style={{
-        background: 'linear-gradient(135deg, rgba(0,210,255,0.08) 0%, rgba(188,140,255,0.08) 100%)',
-        border: '1px solid rgba(0,210,255,0.2)', borderRadius: '16px', padding: '18px 22px',
-        display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '16px', flexWrap: 'wrap',
-      }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-          <div style={{
-            width: '46px', height: '46px', borderRadius: '12px', flexShrink: 0,
-            background: 'linear-gradient(135deg, #00d2ff 0%, #0072ff 100%)',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-          }}>
-            <Award size={24} color="#fff" />
+      {/* Intestazione coordinata Stile Hardware & GPU */}
+      <div className="app-page-header">
+        <div className="app-page-header-title">
+          <div className="app-page-header-icon">
+            <Award size={22} color="#00f2fe" />
           </div>
           <div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
-              <h2 style={{ margin: 0, fontSize: '1.15rem', fontWeight: 800, color: 'var(--text)' }}>
-                Valutazione Ufficiale Benchmark LLM
-              </h2>
-              <span style={{ fontSize: '0.62rem', padding: '2px 8px', borderRadius: '12px', background: 'rgba(0,210,255,0.15)', color: ACCENT, fontWeight: 700 }}>
+            <h1>Valutazione Ufficiale Benchmark LLM</h1>
+            <div className="app-page-header-subtitle">
+              <span>11 suite ufficiali, temp 0.0 & seed 42</span>
+              <span>•</span>
+              <span style={{ color: '#00f2fe', fontFamily: 'JetBrains Mono, monospace' }}>
                 {fmt(suiteTotals.count)} QUESITI IN CACHE
               </span>
             </div>
-            <p style={{ margin: '4px 0 0', fontSize: '0.78rem', color: 'var(--text-dark)' }}>
-              11 dataset ufficiali, temperatura 0.0 e seed 42. Le risposte multiple o non
-              interpretabili finiscono nella coda di revisione invece di contare come errori.
-            </p>
           </div>
         </div>
-        <button onClick={() => { loadModels(); loadJobs(); loadSuiteInfo(); loadEngine(); loadCapacity(); }} style={{
-          background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)',
-          borderRadius: '8px', padding: '8px 14px', color: 'var(--text)', cursor: 'pointer',
-          display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.75rem', fontWeight: 600,
-        }}>
-          <RefreshCw size={14} /> Aggiorna
-        </button>
+        <div className="app-page-header-actions">
+          <button onClick={() => { loadModels(); loadJobs(); loadSuiteInfo(); loadEngine(); loadCapacity(); }} style={{
+            background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)',
+            borderRadius: '8px', padding: '6px 12px', color: 'var(--text)', cursor: 'pointer',
+            display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.72rem', fontWeight: 600,
+          }}>
+            <RefreshCw size={13} /> Aggiorna
+          </button>
+        </div>
       </div>
 
       {/* Dataset */}

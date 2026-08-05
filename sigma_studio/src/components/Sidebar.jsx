@@ -150,13 +150,13 @@ export default function Sidebar({
           />
           <SidebarItem 
             icon={Activity} 
-            label="Roadmap" 
+            label="Pianificazione" 
             badge={taskInCorso > 0 ? taskInCorso : (taskTotal === 0 ? 0 : undefined)}
             badgeColor="rgba(210,153,34,0.15)"
             badgeSecondary={taskDone > 0 ? taskDone : undefined}
             badgeSecondaryColor="rgba(63,185,80,0.15)"
             active={activeTabId != null && activeTabId.startsWith('roadmap')}
-            onClick={() => openTab({ name: 'Research Roadmap' }, 'roadmap')} 
+            onClick={() => openTab({ name: '📅 Pianificazione & Audit' }, 'roadmap')} 
           />
           <SidebarItem 
             icon={PieChart} 
@@ -180,11 +180,11 @@ export default function Sidebar({
           />
           <SidebarItem 
             icon={FlaskConical} 
-            label="Research Lab" 
+            label="Pipelines Lab" 
             badge={researchCount > 0 ? researchCount : 0}
             badgeColor="rgba(188,140,255,0.15)"
             active={activeTabId != null && activeTabId.startsWith('research_lab')}
-            onClick={() => openTab({ name: '🔬 Sigma Research Lab' }, 'research_lab')} 
+            onClick={() => openTab({ name: '🔬 Pipelines Lab' }, 'research_lab')} 
           />
           <SidebarItem 
             icon={Brain} 

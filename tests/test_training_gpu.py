@@ -7,6 +7,7 @@ simulato costruendo un report sintetico."""
 
 import ast
 import json
+import os
 import sys
 from pathlib import Path
 from unittest.mock import patch
@@ -1603,6 +1604,244 @@ class TestFermareDavvero:
         out = jobs.stop_training_job("j1")
         assert not out["success"]
         assert "999" in out["error"] and "memoria" in out["error"]
+
+
+class TestProcessiSullaGpu:
+    """Chi occupa la GPU deve essere visibile e chiudibile dalla scheda Hardware.
+
+    Un training rimasto orfano — Sigma chiuso, il figlio ancora vivo — non
+    compariva da nessuna parte: il job non aveva piu' un tasto Stop, e l'unico
+    pulsante della scheda Hardware («Pulisci VRAM») riavvia Ollama e non tocca i
+    processi di training. L'unica via era il Task Manager.
+    """
+
+    def _smi(self, compute_apps):
+        """Finto nvidia-smi: mappa delle schede piu' l'elenco dei processi."""
+        def finto(cmd, timeout=5.0):
+            argomenti = " ".join(cmd)
+            if "--query-gpu=" in argomenti:
+                return "0, GPU-aaa, NVIDIA GeForce RTX 5070 Ti\n1, GPU-bbb, NVIDIA GeForce RTX 5060\n"
+            if "--query-compute-apps=" in argomenti:
+                return compute_apps
+            return ""
+        return finto
+
+    def test_vram_non_disponibile_non_diventa_zero(self, monkeypatch):
+        """Su Windows WDDM il driver non attribuisce la VRAM ai processi.
+
+        Scrivere 0 al posto di `[N/A]` mostrerebbe "0 GB" accanto a un training
+        che ne sta usando cinque: una misura sbagliata e' peggio di nessuna.
+        """
+        monkeypatch.setattr(gpu_layer.shutil, "which", lambda _: "nvidia-smi")
+        monkeypatch.setattr(gpu_layer, "_run", self._smi("111, [N/A], GPU-aaa\n"))
+        monkeypatch.setitem(sys.modules, "psutil", None)
+
+        processi = gpu_layer.probe_gpu_processes()
+        assert len(processi) == 1
+        assert processi[0]["vram_mb"] is None
+        assert processi[0]["vram_gb"] is None
+
+    def test_la_scheda_arriva_come_indice(self, monkeypatch):
+        """nvidia-smi identifica la GPU di un processo per uuid, Sigma per indice."""
+        monkeypatch.setattr(gpu_layer.shutil, "which", lambda _: "nvidia-smi")
+        monkeypatch.setattr(gpu_layer, "_run",
+                            self._smi("111, 4096, GPU-bbb\n222, 8192, GPU-aaa\n"))
+        monkeypatch.setitem(sys.modules, "psutil", None)
+
+        per_pid = {p["pid"]: p for p in gpu_layer.probe_gpu_processes()}
+        assert per_pid[111]["gpu_index"] == 1
+        assert per_pid[222]["gpu_index"] == 0
+        assert per_pid[222]["vram_gb"] == 8.0
+        # Chi occupa piu' memoria per primo: e' quello che si sta cercando.
+        assert gpu_layer.probe_gpu_processes()[0]["pid"] == 222
+
+    def test_il_figlio_risale_al_job_del_padre(self, monkeypatch):
+        """Il pid registrato e' il lanciatore, quello sulla GPU e' il figlio.
+
+        Senza risalire la catena dei processi i due numeri non si incontrano mai
+        e il training risulta "esterno a Sigma", cioe' inattribuibile.
+        """
+        from core.training import jobs
+
+        monkeypatch.setattr(jobs.gpu_layer, "probe_gpu_processes",
+                            lambda: [{"pid": 36672, "cmdline": "", "gpu_index": 0,
+                                      "vram_mb": None, "started_at": ""}])
+        monkeypatch.setattr(jobs, "_catena_di_processi",
+                            lambda pid: [36672, 22648, 20140] if pid == 36672 else [pid])
+        monkeypatch.setattr(jobs, "_load_jobs", lambda: {
+            "dc8286b1": {"id": "dc8286b1", "pid": 22648, "status": "running",
+                         "method": "lora_unsloth", "base_model": "Qwen/Qwen2.5-0.5B"}})
+
+        voce = jobs.gpu_process_inventory()["processes"][0]
+        assert voce["job_id"] == "dc8286b1"
+        assert voce["attribution"] == "pid"
+        assert voce["kind"] == "training"
+        assert voce["killable"]
+
+    def test_un_processo_vivo_su_un_job_finito_e_un_orfano(self, monkeypatch):
+        from core.training import jobs
+
+        monkeypatch.setattr(jobs.gpu_layer, "probe_gpu_processes",
+                            lambda: [{"pid": 500, "cmdline": "", "gpu_index": 0,
+                                      "vram_mb": None, "started_at": ""}])
+        monkeypatch.setattr(jobs, "_catena_di_processi", lambda pid: [pid])
+        monkeypatch.setattr(jobs, "_load_jobs",
+                            lambda: {"j1": {"id": "j1", "pid": 500, "status": "completed"}})
+
+        esito = jobs.gpu_process_inventory()
+        assert esito["orfani"] == 1
+        assert esito["processes"][0]["orphan"] is True
+
+    def test_sigma_non_si_chiude_da_solo(self, monkeypatch):
+        """Il processo di Sigma non deve nemmeno avere il pulsante.
+
+        Liberare la GPU chiudendo il server chiuderebbe anche l'interfaccia da
+        cui e' arrivata la richiesta.
+        """
+        from core.training import jobs
+
+        nostro = os.getpid()
+        monkeypatch.setattr(jobs.gpu_layer, "probe_gpu_processes",
+                            lambda: [{"pid": nostro, "cmdline": "", "gpu_index": 0,
+                                      "vram_mb": None, "started_at": ""}])
+        monkeypatch.setattr(jobs, "_load_jobs", lambda: {})
+
+        voce = jobs.gpu_process_inventory()["processes"][0]
+        assert voce["kind"] == "sigma"
+        assert voce["killable"] is False
+        assert not jobs.terminate_gpu_process(nostro)["success"]
+
+    def test_un_processo_estraneo_resta_estraneo(self, monkeypatch):
+        """`--query-compute-apps` elenca anche i browser: non vanno confusi."""
+        from core.training import jobs
+
+        monkeypatch.setattr(jobs.gpu_layer, "probe_gpu_processes",
+                            lambda: [{"pid": 777, "cmdline": "brave.exe --type=gpu-process",
+                                      "gpu_index": 1, "vram_mb": None, "started_at": ""}])
+        monkeypatch.setattr(jobs, "_catena_di_processi", lambda pid: [pid])
+        monkeypatch.setattr(jobs, "_load_jobs", lambda: {"j1": {"id": "j1", "pid": 22648,
+                                                               "status": "running"}})
+
+        voce = jobs.gpu_process_inventory()["processes"][0]
+        assert voce["kind"] == "esterno"
+        assert voce["job_id"] is None
+
+    def test_se_il_pid_registrato_e_morto_si_chiude_comunque(self, monkeypatch):
+        """`stop_training_job` parte dal pid nel registro; se quello e' vecchio
+        l'albero vero resta in piedi e la GPU occupata."""
+        from core.training import jobs
+
+        vivi = {4242}
+        monkeypatch.setattr(jobs, "_catena_di_processi", lambda pid: [pid])
+        monkeypatch.setattr(jobs, "_pid_alive",
+                            lambda pid, script_path="": int(pid) in vivi)
+        monkeypatch.setattr(jobs, "_load_jobs",
+                            lambda: {"j1": {"id": "j1", "pid": 4242, "status": "running"}})
+        monkeypatch.setattr(jobs, "_save_jobs", lambda j: None)
+        # Lo stop "riesce" senza toccare niente: il pid nel registro era gia' morto.
+        monkeypatch.setattr(jobs, "stop_training_job",
+                            lambda job_id: {"success": True, "message": "fermato"})
+
+        def albero(pid, attesa=12.0):
+            vivi.discard(int(pid))
+            return 2
+
+        monkeypatch.setattr(jobs, "_termina_albero", albero)
+
+        esito = jobs.terminate_gpu_process(4242)
+        assert esito["success"]
+        assert esito["job_id"] == "j1"
+        assert 4242 not in vivi
+
+    def test_un_processo_che_sopravvive_viene_dichiarato_tale(self, monkeypatch):
+        from core.training import jobs
+
+        monkeypatch.setattr(jobs, "_catena_di_processi", lambda pid: [pid])
+        monkeypatch.setattr(jobs, "_pid_alive", lambda pid, script_path="": True)
+        monkeypatch.setattr(jobs, "_load_jobs", lambda: {})
+        monkeypatch.setattr(jobs, "_termina_albero", lambda pid, attesa=12.0: 1)
+
+        esito = jobs.terminate_gpu_process(4242)
+        assert not esito["success"]
+        assert "4242" in esito["error"]
+
+    def test_un_pid_inventato_non_passa(self):
+        from core.training import jobs
+
+        assert not jobs.terminate_gpu_process("pippo")["success"]
+        assert not jobs.terminate_gpu_process(-1)["success"]
+
+    def test_il_compositore_del_desktop_non_si_tocca(self, monkeypatch):
+        """`dwm.exe` disegna il desktop e apre un contesto sulla GPU: compariva
+        nella lista con accanto un pulsante «Termina»."""
+        from core.training import jobs
+
+        monkeypatch.setattr(jobs.gpu_layer, "probe_gpu_processes",
+                            lambda: [{"pid": 2252, "name": "dwm.exe", "cmdline": "",
+                                      "gpu_index": 1, "vram_mb": None, "started_at": ""}])
+        monkeypatch.setattr(jobs, "_catena_di_processi", lambda pid: [pid])
+        monkeypatch.setattr(jobs, "_load_jobs", lambda: {})
+
+        voce = jobs.gpu_process_inventory()["processes"][0]
+        assert voce["kind"] == "sistema"
+        assert voce["killable"] is False
+
+    def test_la_protezione_vale_anche_chiamando_l_endpoint(self, monkeypatch):
+        """Nascondere il pulsante non basta: /gpu/kill accetta un pid qualunque."""
+        from core.training import jobs
+
+        finto_psutil = type("P", (), {
+            "Process": staticmethod(lambda pid: type("X", (), {
+                "name": lambda self: "lsass.exe",
+                "cmdline": lambda self: [],
+            })()),
+        })
+        monkeypatch.setitem(sys.modules, "psutil", finto_psutil)
+        monkeypatch.setattr(jobs, "_catena_di_processi", lambda pid: [pid])
+        monkeypatch.setattr(jobs, "_pid_alive", lambda pid, script_path="": True)
+        monkeypatch.setattr(jobs, "_load_jobs", lambda: {})
+        monkeypatch.setattr(jobs, "_termina_albero",
+                            lambda pid, attesa=12.0: pytest.fail("non deve toccarlo"))
+
+        esito = jobs.terminate_gpu_process(888)
+        assert not esito["success"]
+        assert "lsass.exe" in esito["error"]
+
+    def test_lo_stesso_processo_su_due_schede_e_una_riga_sola(self, monkeypatch):
+        """nvidia-smi elenca un processo una volta per GPU: Sigma, che le
+        interroga entrambe, compariva due volte identico."""
+        from core.training import jobs
+
+        monkeypatch.setattr(jobs.gpu_layer, "probe_gpu_processes", lambda: [
+            {"pid": 9244, "name": "python.exe", "cmdline": "", "gpu_index": 0,
+             "gpu_name": "RTX 5070 Ti", "vram_mb": 2048.0, "vram_gb": 2.0, "started_at": ""},
+            {"pid": 9244, "name": "python.exe", "cmdline": "", "gpu_index": 1,
+             "gpu_name": "RTX 5060", "vram_mb": 1024.0, "vram_gb": 1.0, "started_at": ""},
+        ])
+        monkeypatch.setattr(jobs, "_catena_di_processi", lambda pid: [pid])
+        monkeypatch.setattr(jobs, "_load_jobs", lambda: {})
+
+        processi = jobs.gpu_process_inventory()["processes"]
+        assert len(processi) == 1
+        assert [g["name"] for g in processi[0]["gpus"]] == ["RTX 5070 Ti", "RTX 5060"]
+        # La VRAM del processo e' quella che occupa in tutto, non su una scheda.
+        assert processi[0]["vram_gb"] == 3.0
+
+    def test_due_schede_non_misurabili_restano_non_misurabili(self, monkeypatch):
+        """Sommare dei `None` non deve produrre uno zero che sembra una misura."""
+        from core.training import jobs
+
+        monkeypatch.setattr(jobs.gpu_layer, "probe_gpu_processes", lambda: [
+            {"pid": 9244, "name": "python.exe", "cmdline": "", "gpu_index": 0,
+             "gpu_name": "a", "vram_mb": None, "vram_gb": None, "started_at": ""},
+            {"pid": 9244, "name": "python.exe", "cmdline": "", "gpu_index": 1,
+             "gpu_name": "b", "vram_mb": None, "vram_gb": None, "started_at": ""},
+        ])
+        monkeypatch.setattr(jobs, "_catena_di_processi", lambda pid: [pid])
+        monkeypatch.setattr(jobs, "_load_jobs", lambda: {})
+
+        voce = jobs.gpu_process_inventory()["processes"][0]
+        assert voce["vram_mb"] is None and voce["vram_gb"] is None
 
 
 class TestArchitettureFatteAMano:

@@ -1,4 +1,5 @@
 import React from 'react';
+import { MessageSquare } from 'lucide-react';
 import useChatCore from '../core/useChatCore';
 import ChatHeader from '../ui/ChatHeader';
 import ChatMessages from '../ui/ChatMessages';
@@ -23,6 +24,23 @@ export default function ChatWorkspaceTab() {
 
   return (
     <div className="chat-workspace-root">
+      <div className="app-page-header" style={{ margin: '12px 16px 0 16px', flexShrink: 0 }}>
+        <div className="app-page-header-title">
+          <div className="app-page-header-icon" style={{ width: '40px', height: '40px' }}>
+            <MessageSquare size={20} color="#00f2fe" />
+          </div>
+          <div>
+            <h1 style={{ fontSize: '19px' }}>Chat AI Assistente</h1>
+            <div className="app-page-header-subtitle">
+              <span>Assistente agentico multi-modello con controlli TTS e tool MCP Hub</span>
+              <span>•</span>
+              <span style={{ color: '#00f2fe', fontFamily: 'JetBrains Mono, monospace' }}>
+                {core.selectedModel || 'Modello Attivo'}
+              </span>
+            </div>
+          </div>
+        </div>
+      </div>
       <ChatHeader
         isPanel={false}
         selectedModel={core.selectedModel}

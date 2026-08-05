@@ -340,6 +340,27 @@ export default function DatasetBrowser({ onDatasetSelect, onDatasetAdded, select
 
   return (
     <div className="training-panel">
+      {/* Header coordinato Stile Hardware & GPU */}
+      <div style={{ padding: '16px 20px 0' }}>
+        <div className="app-page-header" style={{ marginBottom: '14px' }}>
+          <div className="app-page-header-title">
+            <div className="app-page-header-icon">
+              <Database size={22} color="#00f2fe" />
+            </div>
+            <div>
+              <h1>Dataset Manager</h1>
+              <div className="app-page-header-subtitle">
+                <span>Esplora, importa e organizza i tuoi dati</span>
+                <span>•</span>
+                <span style={{ color: '#00f2fe', fontFamily: 'JetBrains Mono, monospace' }}>
+                  {myDatasets.length} Dataset registrati
+                </span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
       {/* AI Generate bar */}
       <div style={{ padding: '12px 16px 0' }}>
         <div className="training-ai-generate-bar">

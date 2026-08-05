@@ -94,11 +94,24 @@ class TestVerbsMatchTheFrontend:
     @pytest.mark.parametrize("path", [
         "/api/training/export/quant_levels",
         "/api/training/job/continuation_modes",
+        "/api/hardware/gpu/processes",
     ])
     def test_read_only_lookups_answer_on_get(self, client, path):
         response = client.get(path)
         assert response.status_code == 200, f"{path} non risponde in GET"
         assert response.json().get("success") is True
+
+    def test_kill_senza_pid_non_e_un_404(self, client):
+        """Chiudere un processo e' una scrittura: deve rispondere in POST.
+
+        Il corpo vuoto deve far fallire l'operazione con un messaggio, non il
+        routing con un 404 — la differenza fra "non hai detto quale processo" e
+        "questa funzione non esiste".
+        """
+        response = client.post("/api/hardware/gpu/kill", json={})
+        assert response.status_code == 400
+        assert response.json()["success"] is False
+        assert "pid" in response.json()["error"].lower()
 
     @pytest.mark.parametrize("path", [
         "/api/training/job/continue",

@@ -1,16 +1,97 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { 
-  Plus, Edit, PlusCircle, CheckCircle2, Clock, ChevronRight, Trash2, 
-  AlertCircle, Filter, X, FileText, BookOpen, Terminal, PieChart
+  Plus, Edit, PlusCircle, CheckCircle2, Clock, ChevronRight, ChevronLeft, Trash2, 
+  AlertCircle, Filter, X, FileText, BookOpen, Terminal, PieChart, Calendar, History,
+  ListTodo, Activity, Check, Sparkles, Search, FileCode, Tag, User, Cpu, RefreshCw, Layers
 } from 'lucide-react';
 
 // ==============================================================================
-// RoadmapView — Modern Kanban-style Task Board with filters & file references
+// RoadmapView (Pianificazione & Audit Trail)
+// Calendario Attività, Kanban Task, Audit Log & Registro Modifiche AI
 // ==============================================================================
 
 export function RoadmapView({ tasks, onEdit, onAdd, onDelete, onToggleStatus, onOpenFile, onClearAll }) {
+  const [activeTab, setActiveTab] = useState('calendar'); // 'calendar' | 'kanban' | 'audit'
   const [filterStatus, setFilterStatus] = useState('all');
   const [filterModule, setFilterModule] = useState('all');
+  
+  // Calendar state
+  const [currentDate, setCurrentDate] = useState(new Date());
+  const [selectedDay, setSelectedDay] = useState(new Date().getDate());
+
+  // Audit log mock / local data
+  const [auditLogs, setAuditLogs] = useState([]);
+
+  useEffect(() => {
+    // Generate/Load system audit logs from localStorage or recent activity
+    try {
+      const logs = [];
+      const chatSessions = localStorage.getItem('sigma_chat_sessions');
+      if (chatSessions) {
+        const parsed = JSON.parse(chatSessions);
+        if (Array.isArray(parsed)) {
+          parsed.forEach(s => {
+            logs.push({
+              id: `chat-${s.id || s.timestamp}`,
+              type: 'chat',
+              title: `Sessione Chat: ${s.title || 'Nuova Conversazione'}`,
+              timestamp: s.timestamp || Date.now(),
+              dateStr: new Date(s.timestamp || Date.now()).toISOString().split('T')[0],
+              actor: 'Utente / Assistente AI',
+              details: `${s.messages?.length || 0} messaggi scambiati`
+            });
+          });
+        }
+      }
+
+      // Add task events to audit log
+      tasks.forEach(t => {
+        logs.push({
+          id: `task-${t.id}`,
+          type: 'task',
+          title: `Task: ${t.titolo}`,
+          timestamp: t.timestamp || Date.now(),
+          dateStr: new Date(t.timestamp || Date.now()).toISOString().split('T')[0],
+          actor: t.autore || 'Sistema / Utente',
+          details: `Stato: ${t.status?.toUpperCase() || 'IN CORSO'} • Priorità: ${t.priorita || 'media'}`
+        });
+      });
+
+      logs.sort((a, b) => b.timestamp - a.timestamp);
+      setAuditLogs(logs);
+    } catch (e) {
+      console.error('Failed to parse audit logs:', e);
+    }
+  }, [tasks]);
+
+  const year = currentDate.getFullYear();
+  const month = currentDate.getMonth();
+
+  const monthNames = [
+    'Gennaio', 'Febbraio', 'Marzo', 'Aprile', 'Maggio', 'Giugno',
+    'Luglio', 'Agosto', 'Settembre', 'Ottobre', 'Novembre', 'Dicembre'
+  ];
+
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+  const firstDayIndex = (new Date(year, month, 1).getDay() + 6) % 7; // Monday = 0
+
+  const prevMonth = () => setCurrentDate(new Date(year, month - 1, 1));
+  const nextMonth = () => setCurrentDate(new Date(year, month + 1, 1));
+
+  const selectedDateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(selectedDay).padStart(2, '0')}`;
+
+  // Get events for specific day
+  const getDayEvents = (dayNum) => {
+    const dStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(dayNum).padStart(2, '0')}`;
+    const dayTasks = tasks.filter(t => {
+      if (!t.timestamp) return false;
+      return new Date(t.timestamp).toISOString().split('T')[0] === dStr;
+    });
+    const dayAudits = auditLogs.filter(a => a.dateStr === dStr);
+    return { dayTasks, dayAudits, total: dayTasks.length + dayAudits.length };
+  };
+
+  const selectedEvents = useMemo(() => getDayEvents(selectedDay), [selectedDay, month, year, tasks, auditLogs]);
 
   const modules = useMemo(() => {
     const mods = new Set();
@@ -63,299 +144,408 @@ export function RoadmapView({ tasks, onEdit, onAdd, onDelete, onToggleStatus, on
   };
 
   return (
-    <div className="roadmap-view">
-      <style>{`
-        .roadmap-view {
-          height: 100%; display: flex; flex-direction: column; overflow: hidden;
-          padding: 24px; background: transparent;
-        }
-        .roadmap-header {
-          display: flex; align-items: center; justify-content: space-between;
-          margin-bottom: 20px; flex-shrink: 0;
-        }
-        .roadmap-header h2 {
-          font-size: 1.2rem; font-weight: 700; color: #e2e4eb;
-          display: flex; align-items: center; gap: 10px;
-        }
-        .roadmap-header h2 span { font-size: 0.55rem; color: #5a5e72; font-weight: 400; }
-        .roadmap-header .btn-add-task {
-          padding: 10px 20px; border-radius: 8px; font-size: 0.8rem; font-weight: 600;
-          cursor: pointer; border: 1px solid rgba(0,210,255,0.3);
-          background: rgba(0,210,255,0.1); color: #00d2ff;
-          display: flex; align-items: center; gap: 8px; transition: all 0.15s;
-          font-family: inherit;
-        }
-        .roadmap-header .btn-add-task:hover { background: rgba(0,210,255,0.2); box-shadow: 0 0 20px rgba(0,210,255,0.15); }
-
-        /* Stats bar */
-        .roadmap-stats {
-          display: flex; gap: 12px; margin-bottom: 16px; flex-shrink: 0;
-        }
-        .stat-card {
-          flex: 1; padding: 14px 16px; border-radius: 10px;
-          background: #11131b; border: 1px solid #1e2030;
-          display: flex; flex-direction: column; gap: 4px;
-        }
-        .stat-card .stat-value { font-size: 1.4rem; font-weight: 700; }
-        .stat-card .stat-label { font-size: 0.6rem; color: #5a5e72; text-transform: uppercase; letter-spacing: 1px; }
-        .stat-card .stat-bar { height: 3px; border-radius: 2px; margin-top: 6px; background: #1e2030; overflow: hidden; }
-        .stat-card .stat-bar-fill { height: 100%; border-radius: 2px; transition: width 0.5s ease; }
-
-        /* Filters */
-        .roadmap-filters {
-          display: flex; gap: 8px; margin-bottom: 16px; flex-shrink: 0; align-items: center;
-        }
-        .filter-btn-group { display: flex; gap: 2px; }
-        .filter-btn {
-          padding: 5px 12px; border-radius: 6px; font-size: 0.6rem; cursor: pointer;
-          border: 1px solid #1e2030; background: transparent; color: #5a5e72;
-          font-family: inherit; transition: all 0.12s;
-        }
-        .filter-btn:hover { color: #8b8fa3; border-color: #2a2d3e; }
-        .filter-btn.active { color: #00d2ff; border-color: rgba(0,210,255,0.3); background: rgba(0,210,255,0.08); }
-        .filter-select {
-          padding: 5px 10px; border-radius: 6px; font-size: 0.6rem;
-          border: 1px solid #1e2030; background: #11131b; color: #8b8fa3;
-          font-family: inherit; cursor: pointer; outline: none;
-        }
-
-        /* Task grid */
-        .roadmap-grid {
-          flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 10px;
-          padding-right: 4px;
-        }
-        .roadmap-grid::-webkit-scrollbar { width: 3px; }
-        .roadmap-grid::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.05); border-radius: 2px; }
-
-        /* Task card */
-        .task-card-rd {
-          background: #11131b; border: 1px solid #1e2030; border-radius: 10px;
-          padding: 14px 16px; transition: all 0.15s; cursor: pointer;
-        }
-        .task-card-rd:hover { border-color: #2a2d3e; transform: translateY(-1px); box-shadow: 0 4px 12px rgba(0,0,0,0.2); }
-        .task-card-rd.status-done { opacity: 0.7; }
-        .task-card-rd.status-done:hover { opacity: 0.85; }
-        .task-card-rd.status-blocked { border-left: 3px solid #ff5555; }
-        .task-card-rd.status-done { border-left: 3px solid #3fb950; }
-        .task-card-rd.status-in_corso { border-left: 3px solid #00d2ff; }
-
-        .tc-header { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
-        .tc-mod-badge {
-          font-size: 0.5rem; font-weight: 700; padding: 2px 8px; border-radius: 4px;
-          background: rgba(0,210,255,0.1); color: #00d2ff; letter-spacing: 0.5px;
-        }
-        .tc-priority {
-          font-size: 0.5rem; font-weight: 600; padding: 2px 8px; border-radius: 4px;
-        }
-        .tc-title {
-          font-size: 0.85rem; font-weight: 600; color: #e2e4eb;
-          margin-bottom: 4px; line-height: 1.3;
-        }
-        .tc-desc {
-          font-size: 0.65rem; color: #5a5e72; margin-bottom: 8px;
-          line-height: 1.4; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
-        }
-        .tc-footer {
-          display: flex; align-items: center; justify-content: space-between; gap: 8px;
-        }
-        .tc-status {
-          display: flex; align-items: center; gap: 6px; font-size: 0.6rem; color: #5a5e72;
-        }
-        .tc-actions { display: flex; gap: 4px; }
-        .tc-btn {
-          padding: 4px 8px; border-radius: 4px; font-size: 0.55rem; cursor: pointer;
-          border: 1px solid #1e2030; background: transparent; color: #5a5e72;
-          font-family: inherit; transition: all 0.12s; display: flex; align-items: center; gap: 4px;
-        }
-        .tc-btn:hover { border-color: #2a2d3e; color: #8b8fa3; }
-        .tc-btn.done:hover { border-color: #3fb950; color: #3fb950; background: rgba(63,185,80,0.08); }
-        .tc-btn.del:hover { border-color: #ff5555; color: #ff5555; background: rgba(255,85,85,0.08); }
-
-        /* Reference files in task card */
-        .tc-files {
-          display: flex; gap: 4px; flex-wrap: wrap; margin-top: 6px; padding-top: 6px;
-          border-top: 1px solid rgba(255,255,255,0.03);
-        }
-        .tc-file-link {
-          display: flex; align-items: center; gap: 3px; padding: 2px 6px;
-          border-radius: 4px; font-size: 0.5rem; cursor: pointer;
-          background: rgba(255,255,255,0.03); color: #5a5e72;
-          transition: all 0.12s; border: 1px solid transparent;
-        }
-        .tc-file-link:hover { background: rgba(255,255,255,0.06); color: #8b8fa3; border-color: #1e2030; }
-        .tc-file-link .tc-fl-icon { width: 12px; display: flex; align-items: center; }
-
-        .empty-roadmap {
-          flex: 1; display: flex; flex-direction: column; align-items: center;
-          justify-content: center; gap: 10px; color: #5a5e72; font-size: 0.75rem;
-        }
-        .empty-roadmap .big-icon { font-size: 2rem; opacity: 0.3; }
-      `}</style>
-
-      {/* Header */}
-      <div className="roadmap-header">
-        <h2>
-          🗺️ Research Roadmap
-          <span>{stats.total} tasks</span>
-        </h2>
-        <div style={{ display: 'flex', gap: '8px' }}>
+    <div className="roadmap-view" style={{ height: '100%', display: 'flex', flexDirection: 'column', padding: '20px 24px', background: '#090a0f', color: '#e2e4eb', boxSizing: 'border-box', overflowY: 'auto' }}>
+      
+      {/* 1. TOP HEADER CYBERPUNK */}
+      <div className="app-page-header" style={{ marginBottom: '16px', flexShrink: 0 }}>
+        <div className="app-page-header-title">
+          <div className="app-page-header-icon" style={{ width: '42px', height: '42px' }}>
+            <Calendar size={22} color="#00f2fe" />
+          </div>
+          <div>
+            <h1 style={{ fontSize: '20px' }}>Pianificazione & Audit Trail</h1>
+            <div className="app-page-header-subtitle">
+              <span>Calendario Attività, Kanban Task, Registro Modifiche AI e Controllo Esecuzioni</span>
+              <span>•</span>
+              <span style={{ color: '#00f2fe', fontFamily: 'JetBrains Mono, monospace' }}>
+                {stats.total} Task • {stats.done} Completati ({stats.progress}%)
+              </span>
+            </div>
+          </div>
+        </div>
+        <div className="app-page-header-actions">
           {tasks.length > 1 && (
-            <button className="btn-add-task" onClick={() => {
-              if (confirm(`Eliminare TUTTI i ${tasks.length} task? Opera irreversibile.`)) {
-                onClearAll && onClearAll();
-              }
-            }} style={{ background: 'rgba(255,85,85,0.1)', borderColor: 'rgba(255,85,85,0.3)', color: '#ff5555' }}>
-              <Trash2 size={16} /> Cancella tutti
+            <button 
+              onClick={() => {
+                if (confirm(`Eliminare TUTTI i ${tasks.length} task? Opera irreversibile.`)) {
+                  onClearAll && onClearAll();
+                }
+              }} 
+              style={{
+                display: 'flex', alignItems: 'center', gap: '6px', padding: '7px 14px', borderRadius: '8px',
+                fontSize: '0.75rem', fontWeight: 600, background: 'rgba(255,85,85,0.1)', border: '1px solid rgba(255,85,85,0.3)',
+                color: '#ff5555', cursor: 'pointer'
+              }}
+            >
+              <Trash2 size={14} /> Cancella Tutti
             </button>
           )}
-          <button className="btn-add-task" onClick={onAdd}>
-            <Plus size={18} /> Nuovo Task
+          <button 
+            onClick={onAdd} 
+            style={{
+              display: 'flex', alignItems: 'center', gap: '6px', padding: '7px 16px', borderRadius: '8px',
+              fontSize: '0.78rem', fontWeight: 700, background: 'linear-gradient(135deg, #00d2ff, #0072ff)',
+              border: 'none', color: '#fff', cursor: 'pointer', boxShadow: '0 4px 14px rgba(0,210,255,0.25)'
+            }}
+          >
+            <Plus size={16} /> Nuovo Task
           </button>
         </div>
       </div>
 
-      {/* Stats */}
-      <div className="roadmap-stats">
-        <div className="stat-card">
-          <div className="stat-value" style={{ color: '#e2e4eb' }}>{stats.total}</div>
-          <div className="stat-label">Totale Task</div>
+      {/* 2. STATS WIDGETS BAR */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '12px', marginBottom: '16px', flexShrink: 0 }}>
+        <div style={{ background: '#11131b', border: '1px solid #1e2030', borderRadius: '12px', padding: '12px 16px', display: 'flex', flexDirection: 'column', gap: '4px' }}>
+          <span style={{ fontSize: '0.62rem', color: '#8b8fa3', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Totale Task</span>
+          <span style={{ fontSize: '1.4rem', fontWeight: 700, color: '#fff' }}>{stats.total}</span>
         </div>
-        <div className="stat-card">
-          <div className="stat-value" style={{ color: '#3fb950' }}>{stats.done}</div>
-          <div className="stat-label">Completati</div>
-          <div className="stat-bar"><div className="stat-bar-fill" style={{ width: stats.progress + '%', background: '#3fb950' }} /></div>
+        <div style={{ background: '#11131b', border: '1px solid #1e2030', borderRadius: '12px', padding: '12px 16px', display: 'flex', flexDirection: 'column', gap: '4px' }}>
+          <span style={{ fontSize: '0.62rem', color: '#3fb950', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Completati ({stats.progress}%)</span>
+          <span style={{ fontSize: '1.4rem', fontWeight: 700, color: '#3fb950' }}>{stats.done}</span>
         </div>
-        <div className="stat-card">
-          <div className="stat-value" style={{ color: '#00d2ff' }}>{stats.inCorso}</div>
-          <div className="stat-label">In Corso</div>
+        <div style={{ background: '#11131b', border: '1px solid #1e2030', borderRadius: '12px', padding: '12px 16px', display: 'flex', flexDirection: 'column', gap: '4px' }}>
+          <span style={{ fontSize: '0.62rem', color: '#00d2ff', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.5px' }}>In Corso</span>
+          <span style={{ fontSize: '1.4rem', fontWeight: 700, color: '#00d2ff' }}>{stats.inCorso}</span>
         </div>
-        <div className="stat-card">
-          <div className="stat-value" style={{ color: stats.blocked > 0 ? '#ff5555' : '#5a5e72' }}>{stats.blocked}</div>
-          <div className="stat-label">Bloccati</div>
+        <div style={{ background: '#11131b', border: '1px solid #1e2030', borderRadius: '12px', padding: '12px 16px', display: 'flex', flexDirection: 'column', gap: '4px' }}>
+          <span style={{ fontSize: '0.62rem', color: '#bc8cff', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Registro Modifiche</span>
+          <span style={{ fontSize: '1.4rem', fontWeight: 700, color: '#bc8cff' }}>{auditLogs.length}</span>
         </div>
       </div>
 
-      {/* Filters */}
-      <div className="roadmap-filters">
-        <span style={{ fontSize: '0.6rem', color: '#5a5e72', marginRight: '4px' }}>Filtri:</span>
-        <div className="filter-btn-group">
-          {[
-            { key: 'all', label: 'Tutti' },
-            { key: 'in_corso', label: 'In Corso' },
-            { key: 'done', label: 'Completati' },
-            { key: 'blocked', label: 'Bloccati' },
-          ].map(f => (
-            <button key={f.key} className={`filter-btn ${filterStatus === f.key ? 'active' : ''}`} onClick={() => setFilterStatus(f.key)}>
-              {f.label}
-            </button>
-          ))}
-        </div>
-        <select className="filter-select" value={filterModule} onChange={e => setFilterModule(e.target.value)}>
-          <option value="all">Tutti i moduli</option>
-          {modules.filter(m => m !== 'all').map(m => (
-            <option key={m} value={m}>Modulo {m}</option>
-          ))}
-        </select>
-        {(filterStatus !== 'all' || filterModule !== 'all') && (
-          <button className="filter-btn" onClick={() => { setFilterStatus('all'); setFilterModule('all'); }} style={{ color: '#ff5555' }}>
-            <X size={12} /> Reset
-          </button>
-        )}
+      {/* 3. SUB-TAB SWITCHER */}
+      <div style={{ display: 'flex', gap: '8px', marginBottom: '16px', borderBottom: '1px solid rgba(255,255,255,0.08)', paddingBottom: '10px', flexShrink: 0 }}>
+        <button
+          onClick={() => setActiveTab('calendar')}
+          style={{
+            display: 'flex', alignItems: 'center', gap: '8px', padding: '8px 16px', borderRadius: '8px',
+            fontSize: '0.78rem', fontWeight: 700, cursor: 'pointer',
+            background: activeTab === 'calendar' ? 'rgba(0, 210, 255, 0.15)' : 'rgba(255,255,255,0.03)',
+            border: activeTab === 'calendar' ? '1px solid rgba(0, 210, 255, 0.4)' : '1px solid rgba(255,255,255,0.08)',
+            color: activeTab === 'calendar' ? '#00d2ff' : '#8b8fa3',
+            transition: 'all 0.2s ease'
+          }}
+        >
+          <Calendar size={15} />
+          <span>📅 Calendario & Timeline</span>
+        </button>
+        <button
+          onClick={() => setActiveTab('kanban')}
+          style={{
+            display: 'flex', alignItems: 'center', gap: '8px', padding: '8px 16px', borderRadius: '8px',
+            fontSize: '0.78rem', fontWeight: 700, cursor: 'pointer',
+            background: activeTab === 'kanban' ? 'rgba(188, 140, 255, 0.15)' : 'rgba(255,255,255,0.03)',
+            border: activeTab === 'kanban' ? '1px solid rgba(188, 140, 255, 0.4)' : '1px solid rgba(255,255,255,0.08)',
+            color: activeTab === 'kanban' ? '#bc8cff' : '#8b8fa3',
+            transition: 'all 0.2s ease'
+          }}
+        >
+          <ListTodo size={15} />
+          <span>📋 Gestione Task ({tasks.length})</span>
+        </button>
+        <button
+          onClick={() => setActiveTab('audit')}
+          style={{
+            display: 'flex', alignItems: 'center', gap: '8px', padding: '8px 16px', borderRadius: '8px',
+            fontSize: '0.78rem', fontWeight: 700, cursor: 'pointer',
+            background: activeTab === 'audit' ? 'rgba(63, 185, 80, 0.15)' : 'rgba(255,255,255,0.03)',
+            border: activeTab === 'audit' ? '1px solid rgba(63, 185, 80, 0.4)' : '1px solid rgba(255,255,255,0.08)',
+            color: activeTab === 'audit' ? '#3fb950' : '#8b8fa3',
+            transition: 'all 0.2s ease'
+          }}
+        >
+          <History size={15} />
+          <span>📜 Registro Modifiche ({auditLogs.length})</span>
+        </button>
       </div>
 
-      {/* Task list */}
-      <div className="roadmap-grid">
-        {filteredTasks.length === 0 && (
-          <div className="empty-roadmap" style={{ gap: '20px', padding: '48px 24px' }}>
-            <div style={{
-              width: '64px', height: '64px', borderRadius: '16px',
-              background: 'linear-gradient(135deg, rgba(0,210,255,0.1) 0%, rgba(188,140,255,0.08) 100%)',
-              border: '1px solid rgba(0,210,255,0.15)',
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              fontSize: '1.6rem'
-            }}>
-              📋
-            </div>
-            <div style={{ textAlign: 'center' }}>
-              <div style={{ fontSize: '0.9rem', fontWeight: 600, color: '#e2e4eb', marginBottom: '4px' }}>
-                Nessun task ancora
+      {/* TAB 1: CALENDARIO INTERATTIVO */}
+      {activeTab === 'calendar' && (
+        <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '16px', flex: 1, minHeight: 0 }}>
+          
+          {/* Griglia Calendario Mensile */}
+          <div style={{ background: '#11131b', border: '1px solid #1e2030', borderRadius: '14px', padding: '20px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
+            
+            {/* Header Mese & Navigazione */}
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid rgba(255,255,255,0.06)', paddingBottom: '12px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <Calendar size={18} style={{ color: '#00d2ff' }} />
+                <h3 style={{ margin: 0, fontSize: '1rem', fontWeight: 700, color: '#fff' }}>
+                  {monthNames[month]} {year}
+                </h3>
+                <span style={{ fontSize: '0.65rem', padding: '3px 10px', borderRadius: '12px', background: 'rgba(63,185,80,0.12)', border: '1px solid rgba(63,185,80,0.25)', color: '#3fb950', fontWeight: 700 }}>
+                  🎯 Task Completati: {stats.done} / {stats.total} ({stats.progress}%)
+                </span>
               </div>
-              <div style={{ fontSize: '0.7rem', color: '#5a5e72', lineHeight: 1.5 }}>
-                Crea il tuo primo task per pianificare e tracciare<br />le attività di ricerca della roadmap.
+              <div style={{ display: 'flex', gap: '6px' }}>
+                <button onClick={prevMonth} style={{ background: '#1e2030', border: 'none', color: '#e2e4eb', borderRadius: '6px', padding: '6px 10px', cursor: 'pointer' }}>
+                  <ChevronLeft size={14} />
+                </button>
+                <button onClick={() => setCurrentDate(new Date())} style={{ background: 'rgba(0,210,255,0.1)', border: '1px solid rgba(0,210,255,0.2)', color: '#00d2ff', borderRadius: '6px', padding: '4px 10px', fontSize: '0.72rem', fontWeight: 600, cursor: 'pointer' }}>
+                  Oggi
+                </button>
+                <button onClick={nextMonth} style={{ background: '#1e2030', border: 'none', color: '#e2e4eb', borderRadius: '6px', padding: '6px 10px', cursor: 'pointer' }}>
+                  <ChevronRight size={14} />
+                </button>
               </div>
             </div>
-            <button
-              className="btn-add-task"
-              onClick={onAdd}
-              style={{
-                padding: '10px 22px',
-                fontSize: '0.72rem',
-                background: 'linear-gradient(135deg, #00d2ff 0%, #0099cc 100%)',
-                border: 'none',
-                borderRadius: '8px',
-                color: '#000',
-                cursor: 'pointer',
-                fontWeight: 700,
-                display: 'flex',
-                alignItems: 'center',
-                gap: '8px',
-                boxShadow: '0 4px 20px rgba(0,210,255,0.2)',
-                transition: 'all 0.15s'
-              }}
-              onMouseEnter={e => { e.currentTarget.style.transform = 'translateY(-2px)'; e.currentTarget.style.boxShadow = '0 6px 28px rgba(0,210,255,0.3)'; }}
-              onMouseLeave={e => { e.currentTarget.style.transform = 'translateY(0)'; e.currentTarget.style.boxShadow = '0 4px 20px rgba(0,210,255,0.2)'; }}
+
+            {/* Giorni della Settimana */}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', textAlign: 'center', fontSize: '0.72rem', fontWeight: 700, color: '#8b8fa3', paddingBottom: '4px' }}>
+              <span>Lun</span><span>Mar</span><span>Mer</span><span>Gio</span><span>Ven</span><span>Sab</span><span>Dom</span>
+            </div>
+
+            {/* Griglia Giorni */}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: '6px', flex: 1 }}>
+              {Array.from({ length: firstDayIndex }).map((_, i) => (
+                <div key={`empty-${i}`} style={{ background: 'transparent', borderRadius: '8px' }} />
+              ))}
+              {Array.from({ length: daysInMonth }).map((_, i) => {
+                const dayNum = i + 1;
+                const isSelected = selectedDay === dayNum;
+                const isToday = new Date().getDate() === dayNum && new Date().getMonth() === month && new Date().getFullYear() === year;
+                const events = getDayEvents(dayNum);
+                const dayDoneTasks = events.dayTasks.filter(t => t.status === 'done').length;
+                const dayTotalTasks = events.dayTasks.length;
+                
+                return (
+                  <div
+                    key={dayNum}
+                    onClick={() => setSelectedDay(dayNum)}
+                    style={{
+                      background: isSelected ? 'rgba(0, 210, 255, 0.15)' : '#0e1016',
+                      border: isSelected ? '1px solid #00d2ff' : (isToday ? '1px solid rgba(188, 140, 255, 0.5)' : '1px solid #1e2030'),
+                      borderRadius: '8px',
+                      padding: '8px',
+                      minHeight: '64px',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      justifyContent: 'space-between',
+                      cursor: 'pointer',
+                      transition: 'all 0.15s'
+                    }}
+                  >
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <span style={{ fontSize: '0.78rem', fontWeight: isToday || isSelected ? 700 : 500, color: isToday ? '#bc8cff' : (isSelected ? '#00d2ff' : '#e2e4eb') }}>
+                        {dayNum}
+                      </span>
+                      {isToday ? (
+                        <span style={{ fontSize: '0.5rem', background: 'rgba(188, 140, 255, 0.2)', color: '#bc8cff', padding: '1px 4px', borderRadius: '4px', fontWeight: 700 }}>OGGI</span>
+                      ) : (
+                        dayTotalTasks > 0 && (
+                          <span style={{
+                            fontSize: '0.55rem', fontWeight: 700, padding: '1px 5px', borderRadius: '4px',
+                            background: dayDoneTasks === dayTotalTasks ? 'rgba(63, 185, 80, 0.2)' : 'rgba(0, 210, 255, 0.15)',
+                            color: dayDoneTasks === dayTotalTasks ? '#3fb950' : '#00d2ff'
+                          }}>
+                            ✓ {dayDoneTasks}/{dayTotalTasks}
+                          </span>
+                        )
+                      )}
+                    </div>
+
+                    {/* Indicatori Eventi */}
+                    {events.total > 0 && (
+                      <div style={{ display: 'flex', gap: '3px', flexWrap: 'wrap', marginTop: '4px', alignItems: 'center' }}>
+                        {events.dayTasks.map((t, idx) => (
+                          <span key={idx} style={{ width: '6px', height: '6px', borderRadius: '50%', background: t.status === 'done' ? '#3fb950' : '#00d2ff' }} title={t.titolo} />
+                        ))}
+                        {events.dayAudits.map((a, idx) => (
+                          <span key={`a-${idx}`} style={{ width: '6px', height: '6px', borderRadius: '50%', background: '#bc8cff' }} title={a.title} />
+                        ))}
+                        {isToday && dayTotalTasks > 0 && (
+                          <span style={{ fontSize: '0.55rem', fontWeight: 700, marginLeft: 'auto', color: dayDoneTasks === dayTotalTasks ? '#3fb950' : '#00d2ff' }}>
+                            {dayDoneTasks}/{dayTotalTasks}
+                          </span>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Dettagli Giorno Selezionato */}
+          <div style={{ background: '#11131b', border: '1px solid #1e2030', borderRadius: '14px', padding: '18px', display: 'flex', flexDirection: 'column', gap: '14px', overflowY: 'auto' }}>
+            <div style={{ borderBottom: '1px solid rgba(255,255,255,0.06)', paddingBottom: '10px' }}>
+              <h4 style={{ margin: 0, fontSize: '0.9rem', fontWeight: 700, color: '#fff' }}>
+                Attività del {selectedDay} {monthNames[month]}
+              </h4>
+              <span style={{ fontSize: '0.7rem', color: '#8b8fa3' }}>
+                {selectedEvents.total} eventi registrati in questa data
+              </span>
+            </div>
+
+            {selectedEvents.total === 0 ? (
+              <div style={{ padding: '30px', textAlign: 'center', color: '#5a5e72', fontSize: '0.75rem' }}>
+                Nessuna attività registrata per il giorno selezionato.
+              </div>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                {selectedEvents.dayTasks.map(t => (
+                  <div key={t.id} style={{ background: '#0e1016', border: '1px solid #1e2030', borderRadius: '8px', padding: '10px', display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                      <span style={{ fontSize: '0.75rem', fontWeight: 700, color: '#e2e4eb' }}>{t.titolo}</span>
+                      <span style={{ fontSize: '0.6rem', padding: '2px 6px', borderRadius: '4px', color: t.status === 'done' ? '#3fb950' : '#00d2ff', background: t.status === 'done' ? 'rgba(63,185,80,0.1)' : 'rgba(0,210,255,0.1)' }}>
+                        {t.status?.toUpperCase()}
+                      </span>
+                    </div>
+                    {t.descrizione && <p style={{ fontSize: '0.65rem', color: '#8b8fa3', margin: 0 }}>{t.descrizione}</p>}
+                  </div>
+                ))}
+
+                {selectedEvents.dayAudits.map(a => (
+                  <div key={a.id} style={{ background: '#0e1016', border: '1px solid rgba(188, 140, 255, 0.2)', borderRadius: '8px', padding: '10px', display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                    <span style={{ fontSize: '0.72rem', fontWeight: 600, color: '#bc8cff' }}>{a.title}</span>
+                    <span style={{ fontSize: '0.62rem', color: '#8b8fa3' }}>{a.details}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* TAB 2: GESTIONE TASK KANBAN */}
+      {activeTab === 'kanban' && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '14px', flex: 1, minHeight: 0 }}>
+          {/* Filters */}
+          <div style={{ display: 'flex', gap: '12px', alignItems: 'center', flexShrink: 0 }}>
+            <span style={{ fontSize: '0.72rem', color: '#8b8fa3', fontWeight: 600 }}>Filtra Stato:</span>
+            <div style={{ display: 'flex', gap: '6px' }}>
+              {[
+                { key: 'all', label: 'Tutti' },
+                { key: 'in_corso', label: 'In Corso' },
+                { key: 'done', label: 'Completati' },
+                { key: 'blocked', label: 'Bloccati' },
+              ].map(f => (
+                <button
+                  key={f.key}
+                  onClick={() => setFilterStatus(f.key)}
+                  style={{
+                    padding: '5px 12px', borderRadius: '6px', fontSize: '0.72rem', fontWeight: 600, cursor: 'pointer',
+                    background: filterStatus === f.key ? 'rgba(0,210,255,0.15)' : '#11131b',
+                    border: filterStatus === f.key ? '1px solid rgba(0,210,255,0.3)' : '1px solid #1e2030',
+                    color: filterStatus === f.key ? '#00d2ff' : '#8b8fa3'
+                  }}
+                >
+                  {f.label}
+                </button>
+              ))}
+            </div>
+            <select
+              value={filterModule}
+              onChange={e => setFilterModule(e.target.value)}
+              style={{ padding: '6px 12px', borderRadius: '6px', fontSize: '0.72rem', background: '#11131b', border: '1px solid #1e2030', color: '#e2e4eb', outline: 'none' }}
             >
-              <Plus size={16} /> Crea il primo task
+              <option value="all">Tutti i moduli</option>
+              {modules.filter(m => m !== 'all').map(m => (
+                <option key={m} value={m}>Modulo {m}</option>
+              ))}
+            </select>
+          </div>
+
+          {/* Griglia Kanban */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: '14px', overflowY: 'auto', flex: 1 }}>
+            {filteredTasks.map((task, i) => {
+              const prio = priorityColors[task.priorita] || priorityColors.media;
+              return (
+                <div 
+                  key={task.id || i} 
+                  onClick={() => onEdit(task)}
+                  style={{
+                    background: '#11131b',
+                    border: '1px solid #1e2030',
+                    borderLeft: `4px solid ${task.status === 'done' ? '#3fb950' : (task.status === 'blocked' ? '#ff5555' : '#00d2ff')}`,
+                    borderRadius: '12px',
+                    padding: '16px',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: '10px',
+                    cursor: 'pointer',
+                    transition: 'all 0.15s'
+                  }}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <span style={{ fontSize: '0.65rem', fontWeight: 700, padding: '2px 8px', borderRadius: '4px', background: 'rgba(0,210,255,0.1)', color: '#00d2ff' }}>
+                      MOD {task.moduli?.[0] || '??'}
+                    </span>
+                    <span style={{ fontSize: '0.65rem', fontWeight: 600, padding: '2px 8px', borderRadius: '4px', background: prio.bg, color: prio.color }}>
+                      {prio.label}
+                    </span>
+                  </div>
+
+                  <h4 style={{ margin: 0, fontSize: '0.88rem', fontWeight: 600, color: '#fff' }}>{task.titolo}</h4>
+                  {task.descrizione && <p style={{ margin: 0, fontSize: '0.72rem', color: '#8b8fa3', lineHeight: 1.4 }}>{task.descrizione}</p>}
+
+                  {/* Reference files */}
+                  {task.files && task.files.length > 0 && (
+                    <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', borderTop: '1px solid rgba(255,255,255,0.05)', paddingTop: '8px' }}>
+                      {task.files.map((f, fi) => (
+                        <span key={fi} onClick={(e) => { e.stopPropagation(); onOpenFile && onOpenFile(f.path); }} style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '0.62rem', background: '#0e1016', padding: '3px 8px', borderRadius: '6px', color: '#00d2ff', cursor: 'pointer' }}>
+                          {getFileIcon(f.type)} {f.filename}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: '4px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.7rem', color: '#8b8fa3' }}>
+                      {statusIcons[task.status]} <span>{statusLabels[task.status]}</span>
+                    </div>
+                    <div style={{ display: 'flex', gap: '6px' }}>
+                      <button onClick={(e) => { e.stopPropagation(); onToggleStatus(task); }} style={{ padding: '4px 10px', borderRadius: '6px', fontSize: '0.68rem', background: 'transparent', border: '1px solid #1e2030', color: '#3fb950', cursor: 'pointer' }}>
+                        {task.status === 'done' ? 'Riapri' : 'Completa'}
+                      </button>
+                      <button onClick={(e) => { e.stopPropagation(); onDelete(task); }} style={{ padding: '4px 8px', borderRadius: '6px', fontSize: '0.68rem', background: 'transparent', border: '1px solid #1e2030', color: '#ff5555', cursor: 'pointer' }}>
+                        <Trash2 size={12} />
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* TAB 3: REGISTRO MODIFICHE (AUDIT TRAIL) */}
+      {activeTab === 'audit' && (
+        <div style={{ background: '#11131b', border: '1px solid #1e2030', borderRadius: '14px', padding: '20px', flex: 1, display: 'flex', flexDirection: 'column', gap: '14px', overflowY: 'auto' }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid rgba(255,255,255,0.06)', paddingBottom: '10px' }}>
+            <div>
+              <h3 style={{ margin: 0, fontSize: '0.95rem', fontWeight: 700, color: '#fff' }}>Registro Modifiche & Audit Log</h3>
+              <span style={{ fontSize: '0.7rem', color: '#8b8fa3' }}>Storico in tempo reale di modifiche al codice, sessioni agentiche ed esecuzioni</span>
+            </div>
+            <button onClick={() => window.location.reload()} style={{ padding: '6px 12px', borderRadius: '6px', background: 'rgba(0,210,255,0.1)', border: '1px solid rgba(0,210,255,0.2)', color: '#00d2ff', fontSize: '0.72rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <RefreshCw size={12} /> Aggiorna Log
             </button>
           </div>
-        )}
-        {filteredTasks.map((task, i) => {
-          const prio = priorityColors[task.priorita] || priorityColors.media;
-          return (
-            <div key={task.id || i} className={`task-card-rd status-${task.status}`} onClick={() => onEdit(task)}>
-              <div className="tc-header">
-                <span className="tc-mod-badge">MOD {task.moduli?.[0] || '??'}</span>
-                <span className="tc-priority" style={{ background: prio.bg, color: prio.color }}>{prio.label}</span>
-              </div>
-              <div className="tc-title">{task.titolo}</div>
-              {task.descrizione && <div className="tc-desc">{task.descrizione}</div>}
-              
-              {/* Reference files */}
-              {task.files && task.files.length > 0 && (
-                <div className="tc-files">
-                  {task.files.map((f, fi) => (
-                    <span key={fi} className="tc-file-link" onClick={(e) => { e.stopPropagation(); onOpenFile && onOpenFile(f.path); }} title={f.path}>
-                      <span className="tc-fl-icon">{getFileIcon(f.type)}</span>
-                      {f.filename}
-                    </span>
-                  ))}
-                </div>
-              )}
 
-              <div className="tc-footer">
-                <div className="tc-status">
-                  {statusIcons[task.status]} {statusLabels[task.status]}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+            {auditLogs.map(log => (
+              <div key={log.id} style={{ background: '#0e1016', border: '1px solid #1e2030', borderRadius: '10px', padding: '12px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '14px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                  <div style={{ width: '36px', height: '36px', borderRadius: '8px', background: 'rgba(188, 140, 255, 0.15)', border: '1px solid rgba(188, 140, 255, 0.3)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#bc8cff' }}>
+                    <FileCode size={18} />
+                  </div>
+                  <div>
+                    <h4 style={{ margin: 0, fontSize: '0.82rem', fontWeight: 700, color: '#fff' }}>{log.title}</h4>
+                    <span style={{ fontSize: '0.68rem', color: '#8b8fa3' }}>{log.details}</span>
+                  </div>
                 </div>
-                <div className="tc-actions">
-                  {task.status !== 'done' && (
-                    <button className="tc-btn done" onClick={(e) => { e.stopPropagation(); onToggleStatus(task); }}>
-                      <CheckCircle2 size={12} /> Completa
-                    </button>
-                  )}
-                  {task.status === 'done' && (
-                    <button className="tc-btn" onClick={(e) => { e.stopPropagation(); onToggleStatus(task); }}>
-                      <Clock size={12} /> Riapri
-                    </button>
-                  )}
-                  <button className="tc-btn del" onClick={(e) => { e.stopPropagation(); onDelete(task); }}>
-                    <Trash2 size={12} /> Elimina
-                  </button>
+
+                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '2px' }}>
+                  <span style={{ fontSize: '0.65rem', color: '#00d2ff', fontWeight: 600 }}>{log.actor}</span>
+                  <span style={{ fontSize: '0.6rem', color: '#5a5e72' }}>{log.dateStr}</span>
                 </div>
               </div>
-            </div>
-          );
-        })}
-      </div>
+            ))}
+          </div>
+        </div>
+      )}
+
     </div>
   );
 }

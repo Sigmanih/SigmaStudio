@@ -199,15 +199,26 @@ def known_cycles() -> list:
         except Exception:
             continue
         rounds = data.get("rounds") or []
+        holdout = (data.get("champion") or {}).get("holdout_accuracy")
+        profile = data.get("profile") or {}
+        tot_passed = sum(v.get("passed", 0) for v in profile.values()) if isinstance(profile, dict) else 0
+        tot_items = sum(v.get("total", 0) for v in profile.values()) if isinstance(profile, dict) else 0
+        profile_acc = (tot_passed / tot_items) if tot_items > 0 else None
+        accuracy = holdout if holdout is not None else profile_acc
+        last_run = data.get("last_run_at") or data.get("updated_at") or data.get("created_at") or ""
         out.append({
             "model": data.get("base_model", ""),
+            "train_model": data.get("train_model", ""),
             "status": data.get("status", ""),
             "rounds": len(rounds),
             "accepted": sum(1 for r in rounds if r.get("accepted")),
-            "holdout": (data.get("champion") or {}).get("holdout_accuracy"),
+            "holdout": holdout,
+            "accuracy": accuracy,
+            "accuracy_pct": round(accuracy * 100, 1) if accuracy is not None else None,
             "updated_at": data.get("updated_at", ""),
+            "last_run_at": last_run,
         })
-    out.sort(key=lambda c: c["updated_at"], reverse=True)
+    out.sort(key=lambda c: c["last_run_at"] or c["updated_at"], reverse=True)
     return out
 
 
@@ -1034,6 +1045,7 @@ def start(base_model: str, items: int = DEFAULT_ITEMS,
             state["created_at"] = datetime.now().isoformat(timespec="seconds")
         set_active_model(base_model)
         state["status"] = "running"
+        state["last_run_at"] = datetime.now().isoformat(timespec="seconds")
         # Le impostazioni vivono nello stato, non nella chiamata: alla ripresa
         # il ciclo deve rifare quello che stava facendo, non tornare ai valori
         # di fabbrica perche' chi lo riprende non li ha ridigitati.

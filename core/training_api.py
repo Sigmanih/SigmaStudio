@@ -37,6 +37,7 @@ from core.training_handler import (
     OLLAMA_QUANT_LEVELS, check_training_dependencies,
     # hardware / accelerators
     get_hardware_info, get_gpu_capabilities, get_autotune, restart_ollama_service,
+    gpu_process_inventory, terminate_gpu_process,
     # Gradus FWE
     fwe_status, list_fwe_runs, run_engine_selftest,
     # SLM Forge
@@ -380,6 +381,22 @@ def handle_hardware_config(self):
 
 def handle_hardware_restart_ollama(self):
     self.send_json_response(restart_ollama_service())
+
+
+def handle_hardware_gpu_processes(self):
+    """GET /api/hardware/gpu/processes — chi sta occupando la GPU adesso."""
+    self.send_json_response(gpu_process_inventory())
+
+
+def handle_hardware_gpu_kill(self):
+    """POST /api/hardware/gpu/kill — chiude un processo che occupa la GPU."""
+    body = self.read_json_body()
+    pid = body.get("pid", _query(self, "pid"))
+    if pid in (None, ""):
+        return self.send_json_response(
+            {"success": False, "error": "Manca il pid del processo da chiudere."}, 400)
+    result = terminate_gpu_process(pid)
+    self.send_json_response(result, 200 if result.get("success") else 409)
 
 
 def handle_hf_token_config(self):

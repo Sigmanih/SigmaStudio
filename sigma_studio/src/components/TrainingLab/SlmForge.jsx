@@ -289,6 +289,25 @@ export default function SlmForge({ addToast, onJobCreated }) {
     <div className="training-panel">
       <div className="training-scroll-area">
 
+        {/* Top Header — Stile Hardware & GPU Lab */}
+        <div className="app-page-header" style={{ marginBottom: '18px' }}>
+          <div className="app-page-header-title">
+            <div className="app-page-header-icon">
+              <Hammer size={22} color="#00f2fe" />
+            </div>
+            <div>
+              <h1>Forgia SLM</h1>
+              <div className="app-page-header-subtitle">
+                <span>Costruzione di Small Language Models da zero in italiano</span>
+                <span>•</span>
+                <span style={{ color: '#00f2fe', fontFamily: 'JetBrains Mono, monospace' }}>
+                  Architettura: {architecture}
+                </span>
+              </div>
+            </div>
+          </div>
+        </div>
+
         {/* ── intestazione ── */}
         <div style={{
           ...SECTION, padding: '12px 16px', borderRadius: '12px',

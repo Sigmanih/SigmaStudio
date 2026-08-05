@@ -215,107 +215,93 @@ export default function AccountTab() {
     <div 
       className="account-tab-root"
       style={{
-        padding: '24px',
-        maxWidth: '960px',
-        margin: '0 auto',
+        padding: '16px 20px',
+        width: '100%',
+        height: '100%',
         color: '#e2e4eb',
         display: 'flex',
         flexDirection: 'column',
-        gap: '24px',
-        fontFamily: 'Inter, system-ui, sans-serif'
+        gap: '16px',
+        fontFamily: 'Inter, system-ui, sans-serif',
+        boxSizing: 'border-box',
+        overflow: 'hidden'
       }}
     >
-      {/* Header Banner */}
-      <div 
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          padding: '20px 24px',
-          background: 'linear-gradient(135deg, rgba(17, 19, 27, 0.95), rgba(24, 27, 40, 0.85))',
-          border: '1px solid rgba(255, 255, 255, 0.08)',
-          borderRadius: '16px',
-          backdropFilter: 'blur(12px)',
-          boxShadow: '0 8px 32px rgba(0, 0, 0, 0.3)'
-        }}
-      >
-        <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-          <div 
-            style={{
-              width: '52px',
-              height: '52px',
-              borderRadius: '14px',
-              background: 'rgba(0, 210, 255, 0.12)',
-              border: '1px solid rgba(0, 210, 255, 0.3)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              color: '#00d2ff'
-            }}
-          >
-            <User size={28} />
+      {/* Top Header — Stile Hardware & GPU Lab */}
+      <div className="app-page-header" style={{ marginBottom: '0px', paddingBottom: '12px' }}>
+        <div className="app-page-header-title">
+          <div className="app-page-header-icon" style={{ width: '40px', height: '40px' }}>
+            <User size={20} color="#00f2fe" />
           </div>
           <div>
-            <h2 style={{ margin: 0, fontSize: '1.25rem', fontWeight: 700, color: '#f0f2f8' }}>
-              👤 Account & Voce Assistente
-            </h2>
-            <p style={{ margin: '4px 0 0 0', fontSize: '0.8rem', color: '#8b8fa3' }}>
-              Gestisci il tuo profilo utente, la foto per la chat e personalizza la voce sintetizzata dell'assistente AI.
-            </p>
+            <h1 style={{ fontSize: '20px' }}>Account & Voce Assistente</h1>
+            <div className="app-page-header-subtitle" style={{ fontSize: '11px' }}>
+              <span>Profilo utente, avatar chat e personalizzazione voce TTS</span>
+              <span>•</span>
+              <span style={{ color: '#00f2fe', fontFamily: 'JetBrains Mono, monospace' }}>
+                Speed {voiceConfig.rate}x • Pitch {voiceConfig.pitch}
+              </span>
+            </div>
           </div>
         </div>
 
-        <button
-          onClick={handleSave}
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: '8px',
-            padding: '10px 20px',
-            borderRadius: '10px',
-            fontSize: '0.82rem',
-            fontWeight: 700,
-            background: savedSuccess ? 'rgba(63, 185, 80, 0.2)' : 'linear-gradient(135deg, #00d2ff, #0072ff)',
-            border: savedSuccess ? '1px solid rgba(63, 185, 80, 0.5)' : 'none',
-            color: savedSuccess ? '#3fb950' : '#ffffff',
-            cursor: 'pointer',
-            boxShadow: '0 4px 14px rgba(0, 210, 255, 0.25)',
-            transition: 'all 0.2s ease'
-          }}
-        >
-          {savedSuccess ? <Check size={16} /> : <Sparkles size={16} />}
-          <span>{savedSuccess ? 'Salvato!' : 'Salva Modifiche'}</span>
-        </button>
+        <div className="app-page-header-actions">
+          <button
+            onClick={handleSave}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px',
+              padding: '7px 16px',
+              borderRadius: '8px',
+              fontSize: '0.78rem',
+              fontWeight: 700,
+              background: savedSuccess ? 'rgba(63, 185, 80, 0.2)' : 'linear-gradient(135deg, #00d2ff, #0072ff)',
+              border: savedSuccess ? '1px solid rgba(63, 185, 80, 0.5)' : 'none',
+              color: savedSuccess ? '#3fb950' : '#ffffff',
+              cursor: 'pointer',
+              boxShadow: '0 4px 14px rgba(0, 210, 255, 0.25)',
+              transition: 'all 0.2s ease'
+            }}
+          >
+            {savedSuccess ? <Check size={15} /> : <Sparkles size={15} />}
+            <span>{savedSuccess ? 'Salvato!' : 'Salva Modifiche'}</span>
+          </button>
+        </div>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(420px, 1fr))', gap: '24px' }}>
+      {/* Griglia a 2 Colonne */}
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', flex: 1, minHeight: 0, overflow: 'hidden' }}>
         
-        {/* SEZIONE 1 — PROFILO UTENTE */}
+        {/* COLONNA SINISTRA — PROFILO UTENTE */}
         <div 
           style={{
-            background: '#11131b',
-            border: '1px solid #1e2030',
-            borderRadius: '16px',
-            padding: '24px',
+            background: 'linear-gradient(135deg, rgba(17, 19, 27, 0.95), rgba(13, 15, 23, 0.9))',
+            border: '1px solid rgba(0, 210, 255, 0.15)',
+            borderRadius: '14px',
+            padding: '20px',
             display: 'flex',
             flexDirection: 'column',
-            gap: '20px'
+            gap: '16px',
+            height: 'fit-content',
+            maxHeight: '100%',
+            overflowY: 'auto'
           }}
         >
-          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', borderBottom: '1px solid #1e2030', paddingBottom: '14px' }}>
-            <User size={20} style={{ color: '#00d2ff' }} />
-            <h3 style={{ margin: 0, fontSize: '1rem', fontWeight: 700, color: '#f0f2f8' }}>Profilo Utente</h3>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', borderBottom: '1px solid rgba(255,255,255,0.08)', paddingBottom: '10px' }}>
+            <User size={18} style={{ color: '#00d2ff' }} />
+            <h3 style={{ margin: 0, fontSize: '0.95rem', fontWeight: 700, color: '#f0f2f8' }}>Profilo Utente & Avatar</h3>
           </div>
 
           {/* Foto Profilo Preview & Upload */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '20px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
             <div style={{ position: 'relative' }}>
               <img 
                 src={profile.avatar || '/images/default.png'} 
                 alt="Foto Profilo" 
                 style={{
-                  width: '80px',
-                  height: '80px',
+                  width: '68px',
+                  height: '68px',
                   borderRadius: '50%',
                   objectFit: 'cover',
                   border: '2px solid #00d2ff',
@@ -324,38 +310,38 @@ export default function AccountTab() {
                 }}
               />
             </div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-              <span style={{ fontSize: '0.8rem', fontWeight: 600, color: '#e2e4eb' }}>Foto Profilo Chat</span>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+              <span style={{ fontSize: '0.78rem', fontWeight: 600, color: '#e2e4eb' }}>Foto Profilo Chat</span>
               <div style={{ display: 'flex', gap: '8px' }}>
                 <label 
                   style={{
                     display: 'flex',
                     alignItems: 'center',
-                    gap: '6px',
-                    padding: '6px 14px',
+                    gap: '5px',
+                    padding: '5px 12px',
                     borderRadius: '8px',
                     background: 'rgba(0, 210, 255, 0.1)',
                     border: '1px solid rgba(0, 210, 255, 0.25)',
                     color: '#00d2ff',
-                    fontSize: '0.75rem',
+                    fontSize: '0.72rem',
                     fontWeight: 600,
                     cursor: 'pointer',
                     transition: 'all 0.15s'
                   }}
                 >
-                  <Upload size={14} />
+                  <Upload size={13} />
                   <span>Carica Foto</span>
                   <input type="file" accept="image/*" onChange={handlePhotoUpload} style={{ display: 'none' }} />
                 </label>
                 <button
                   onClick={() => updateProfile(prev => ({ ...prev, avatar: '/images/default.png' }))}
                   style={{
-                    padding: '6px 12px',
+                    padding: '5px 10px',
                     borderRadius: '8px',
                     background: 'transparent',
-                    border: '1px solid #1e2030',
+                    border: '1px solid rgba(255,255,255,0.1)',
                     color: '#8b8fa3',
-                    fontSize: '0.75rem',
+                    fontSize: '0.72rem',
                     cursor: 'pointer'
                   }}
                 >
@@ -366,8 +352,8 @@ export default function AccountTab() {
           </div>
 
           {/* Preset Avatars */}
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-            <span style={{ fontSize: '0.75rem', color: '#8b8fa3', fontWeight: 600 }}>Oppure scegli un avatar preset:</span>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+            <span style={{ fontSize: '0.72rem', color: '#8b8fa3', fontWeight: 600 }}>Oppure scegli un avatar preset:</span>
             <div style={{ display: 'flex', gap: '10px' }}>
               {PRESET_AVATARS.map(av => (
                 <div
@@ -375,22 +361,22 @@ export default function AccountTab() {
                   onClick={() => updateProfile(prev => ({ ...prev, avatar: av.url }))}
                   style={{
                     cursor: 'pointer',
-                    padding: '4px',
+                    padding: '3px',
                     borderRadius: '50%',
                     border: profile.avatar === av.url ? '2px solid #00d2ff' : '2px solid transparent',
                     transition: 'all 0.15s'
                   }}
                   title={av.name}
                 >
-                  <img src={av.url} alt={av.name} style={{ width: '40px', height: '40px', borderRadius: '50%', objectFit: 'cover' }} />
+                  <img src={av.url} alt={av.name} style={{ width: '38px', height: '38px', borderRadius: '50%', objectFit: 'cover' }} />
                 </div>
               ))}
             </div>
           </div>
 
           {/* Input Nome Utente */}
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-            <label style={{ fontSize: '0.78rem', fontWeight: 600, color: '#8b8fa3' }}>Nome Utente (mostrato in chat):</label>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+            <label style={{ fontSize: '0.74rem', fontWeight: 600, color: '#8b8fa3' }}>Nome Utente (mostrato in chat):</label>
             <input
               type="text"
               value={profile.name}
@@ -398,20 +384,20 @@ export default function AccountTab() {
               placeholder="Inserisci il tuo nome..."
               style={{
                 width: '100%',
-                padding: '10px 14px',
+                padding: '8px 12px',
                 borderRadius: '8px',
                 background: '#0e1016',
-                border: '1px solid #1e2030',
+                border: '1px solid rgba(255,255,255,0.08)',
                 color: '#f0f2f8',
-                fontSize: '0.85rem',
+                fontSize: '0.8rem',
                 outline: 'none'
               }}
             />
           </div>
 
           {/* Input Ruolo Utente */}
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-            <label style={{ fontSize: '0.78rem', fontWeight: 600, color: '#8b8fa3' }}>Ruolo / Titolo:</label>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+            <label style={{ fontSize: '0.74rem', fontWeight: 600, color: '#8b8fa3' }}>Ruolo / Titolo:</label>
             <input
               type="text"
               value={profile.title}
@@ -419,185 +405,189 @@ export default function AccountTab() {
               placeholder="es. AI Architect & Developer..."
               style={{
                 width: '100%',
-                padding: '10px 14px',
+                padding: '8px 12px',
                 borderRadius: '8px',
                 background: '#0e1016',
-                border: '1px solid #1e2030',
+                border: '1px solid rgba(255,255,255,0.08)',
                 color: '#f0f2f8',
-                fontSize: '0.85rem',
+                fontSize: '0.8rem',
                 outline: 'none'
               }}
             />
           </div>
         </div>
 
-        {/* SEZIONE 2 — VOCE ASSISTENTE AI */}
-        <div 
-          style={{
-            background: '#11131b',
-            border: '1px solid #1e2030',
-            borderRadius: '16px',
-            padding: '24px',
-            display: 'flex',
-            flexDirection: 'column',
-            gap: '20px'
-          }}
-        >
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid #1e2030', paddingBottom: '14px' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-              <Volume2 size={20} style={{ color: '#bc8cff' }} />
-              <h3 style={{ margin: 0, fontSize: '1rem', fontWeight: 700, color: '#f0f2f8' }}>Voce Assistente AI (TTS)</h3>
-            </div>
-
-            {/* Test Voice Button */}
-            <button
-              onClick={handleTestVoice}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: '6px',
-                padding: '6px 14px',
-                borderRadius: '8px',
-                fontSize: '0.75rem',
-                fontWeight: 600,
-                background: isPlayingTest ? 'rgba(255, 85, 85, 0.15)' : 'rgba(188, 140, 255, 0.15)',
-                border: isPlayingTest ? '1px solid rgba(255, 85, 85, 0.4)' : '1px solid rgba(188, 140, 255, 0.3)',
-                color: isPlayingTest ? '#ff5555' : '#bc8cff',
-                cursor: 'pointer',
-                transition: 'all 0.15s'
-              }}
-            >
-              {isPlayingTest ? <Square size={13} /> : <Play size={13} />}
-              <span>{isPlayingTest ? 'Ferma Test' : '🔊 Test Voce'}</span>
-            </button>
-          </div>
-
-          {/* Voice Dropdown */}
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-            <label style={{ fontSize: '0.78rem', fontWeight: 600, color: '#8b8fa3' }}>Seleziona Voce Sospesa:</label>
-            <select
-              value={voiceConfig.voiceURI}
-              onChange={e => updateVoiceConfig(prev => ({ ...prev, voiceURI: e.target.value }))}
-              style={{
-                width: '100%',
-                padding: '10px 14px',
-                borderRadius: '8px',
-                background: '#0e1016',
-                border: '1px solid #1e2030',
-                color: '#f0f2f8',
-                fontSize: '0.82rem',
-                outline: 'none',
-                cursor: 'pointer'
-              }}
-            >
-              {italianVoices.length > 0 && (
-                <optgroup label="🇮🇹 Voci Italiane Raccomandate">
-                  {italianVoices.map(v => (
-                    <option key={v.voiceURI} value={v.voiceURI}>
-                      🇮🇹 {v.name} ({v.lang})
-                    </option>
-                  ))}
-                </optgroup>
-              )}
-              {otherVoices.length > 0 && (
-                <optgroup label="🌐 Altre Voci del Sistema">
-                  {otherVoices.map(v => (
-                    <option key={v.voiceURI} value={v.voiceURI}>
-                      🌐 {v.name} ({v.lang})
-                    </option>
-                  ))}
-                </optgroup>
-              )}
-            </select>
-          </div>
-
-          {/* Slider Velocità (Rate) */}
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.78rem' }}>
-              <span style={{ fontWeight: 600, color: '#8b8fa3' }}>Velocità di Lettura (Speed):</span>
-              <span style={{ color: '#bc8cff', fontWeight: 700 }}>{voiceConfig.rate}x</span>
-            </div>
-            <input
-              type="range"
-              min="0.7"
-              max="1.6"
-              step="0.05"
-              value={voiceConfig.rate}
-              onChange={e => updateVoiceConfig(prev => ({ ...prev, rate: parseFloat(e.target.value) }))}
-              style={{ accentColor: '#bc8cff', cursor: 'pointer' }}
-            />
-          </div>
-
-          {/* Slider Tono (Pitch) */}
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.78rem' }}>
-              <span style={{ fontWeight: 600, color: '#8b8fa3' }}>Tono della Voce (Pitch):</span>
-              <span style={{ color: '#00d2ff', fontWeight: 700 }}>{voiceConfig.pitch}</span>
-            </div>
-            <input
-              type="range"
-              min="0.6"
-              max="1.4"
-              step="0.05"
-              value={voiceConfig.pitch}
-              onChange={e => updateVoiceConfig(prev => ({ ...prev, pitch: parseFloat(e.target.value) }))}
-              style={{ accentColor: '#00d2ff', cursor: 'pointer' }}
-            />
-          </div>
-
-          {/* Visual Waveform Effect when testing */}
-          {isPlayingTest && (
-            <div style={{ display: 'flex', alignItems: 'center', gap: '4px', justifyContent: 'center', padding: '10px 0' }}>
-              <span style={{ fontSize: '0.75rem', color: '#bc8cff', fontWeight: 600, marginRight: '8px' }}>Riproduzione in corso:</span>
-              <div style={{ display: 'flex', gap: '3px', alignItems: 'center', height: '20px' }}>
-                <span className="wave-bar" style={{ width: '4px', height: '100%', background: '#bc8cff', borderRadius: '2px', animation: 'wave 0.8s infinite ease-in-out' }} />
-                <span className="wave-bar" style={{ width: '4px', height: '60%', background: '#00d2ff', borderRadius: '2px', animation: 'wave 0.6s infinite ease-in-out 0.1s' }} />
-                <span className="wave-bar" style={{ width: '4px', height: '80%', background: '#bc8cff', borderRadius: '2px', animation: 'wave 1.0s infinite ease-in-out 0.2s' }} />
-                <span className="wave-bar" style={{ width: '4px', height: '40%', background: '#00d2ff', borderRadius: '2px', animation: 'wave 0.5s infinite ease-in-out 0.3s' }} />
+        {/* COLONNA DESTRA — VOCE ASSISTENTE AI & HUGGINGFACE TOKEN */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', overflowY: 'auto' }}>
+          
+          {/* SEZIONE 2 — VOCE ASSISTENTE AI */}
+          <div 
+            style={{
+              background: 'linear-gradient(135deg, rgba(17, 19, 27, 0.95), rgba(13, 15, 23, 0.9))',
+              border: '1px solid rgba(188, 140, 255, 0.2)',
+              borderRadius: '14px',
+              padding: '18px',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '14px'
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid rgba(255,255,255,0.08)', paddingBottom: '10px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <Volume2 size={18} style={{ color: '#bc8cff' }} />
+                <h3 style={{ margin: 0, fontSize: '0.95rem', fontWeight: 700, color: '#f0f2f8' }}>Voce Assistente AI (TTS)</h3>
               </div>
-              <style>{`
-                @keyframes wave {
-                  0%, 100% { transform: scaleY(0.3); }
-                  50% { transform: scaleY(1); }
-                }
-              `}</style>
-            </div>
-          )}
-        </div>
 
-        {/* SEZIONE 3 — CREDENZIALI ESTERNE */}
-        <div
-          style={{
-            background: '#11131b',
-            border: '1px solid #1e2030',
-            borderRadius: '16px',
-            padding: '24px',
-            display: 'flex',
-            flexDirection: 'column',
-            gap: '20px'
-          }}
-        >
-          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', borderBottom: '1px solid #1e2030', paddingBottom: '14px' }}>
-            <ShieldCheck size={20} style={{ color: '#6366f1' }} />
-            <div>
-              <h3 style={{ margin: 0, fontSize: '1rem', fontWeight: 700, color: '#f0f2f8' }}>
-                HuggingFace Token
-              </h3>
-              <div style={{ fontSize: '0.72rem', color: '#8b8fa3', marginTop: '2px' }}>
-                Vale per tutta l'app: download dei modelli, dataset e training
+              {/* Test Voice Button */}
+              <button
+                onClick={handleTestVoice}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '5px',
+                  padding: '5px 12px',
+                  borderRadius: '7px',
+                  fontSize: '0.72rem',
+                  fontWeight: 600,
+                  background: isPlayingTest ? 'rgba(255, 85, 85, 0.15)' : 'rgba(188, 140, 255, 0.15)',
+                  border: isPlayingTest ? '1px solid rgba(255, 85, 85, 0.4)' : '1px solid rgba(188, 140, 255, 0.3)',
+                  color: isPlayingTest ? '#ff5555' : '#bc8cff',
+                  cursor: 'pointer',
+                  transition: 'all 0.15s'
+                }}
+              >
+                {isPlayingTest ? <Square size={12} /> : <Play size={12} />}
+                <span>{isPlayingTest ? 'Ferma Test' : '🔊 Test Voce'}</span>
+              </button>
+            </div>
+
+            {/* Voice Dropdown */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+              <label style={{ fontSize: '0.74rem', fontWeight: 600, color: '#8b8fa3' }}>Seleziona Voce Sospesa:</label>
+              <select
+                value={voiceConfig.voiceURI}
+                onChange={e => updateVoiceConfig(prev => ({ ...prev, voiceURI: e.target.value }))}
+                style={{
+                  width: '100%',
+                  padding: '8px 12px',
+                  borderRadius: '8px',
+                  background: '#0e1016',
+                  border: '1px solid rgba(255,255,255,0.08)',
+                  color: '#f0f2f8',
+                  fontSize: '0.78rem',
+                  outline: 'none',
+                  cursor: 'pointer'
+                }}
+              >
+                {italianVoices.length > 0 && (
+                  <optgroup label="🇮🇹 Voci Italiane Raccomandate">
+                    {italianVoices.map(v => (
+                      <option key={v.voiceURI} value={v.voiceURI}>
+                        🇮🇹 {v.name} ({v.lang})
+                      </option>
+                    ))}
+                  </optgroup>
+                )}
+                {otherVoices.length > 0 && (
+                  <optgroup label="🌐 Altre Voci del Sistema">
+                    {otherVoices.map(v => (
+                      <option key={v.voiceURI} value={v.voiceURI}>
+                        🌐 {v.name} ({v.lang})
+                      </option>
+                    ))}
+                  </optgroup>
+                )}
+              </select>
+            </div>
+
+            {/* Slider Velocità (Rate) */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.74rem' }}>
+                <span style={{ fontWeight: 600, color: '#8b8fa3' }}>Velocità di Lettura (Speed):</span>
+                <span style={{ color: '#bc8cff', fontWeight: 700 }}>{voiceConfig.rate}x</span>
+              </div>
+              <input
+                type="range"
+                min="0.7"
+                max="1.6"
+                step="0.05"
+                value={voiceConfig.rate}
+                onChange={e => updateVoiceConfig(prev => ({ ...prev, rate: parseFloat(e.target.value) }))}
+                style={{ accentColor: '#bc8cff', cursor: 'pointer', height: '4px' }}
+              />
+            </div>
+
+            {/* Slider Tono (Pitch) */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.74rem' }}>
+                <span style={{ fontWeight: 600, color: '#8b8fa3' }}>Tono della Voce (Pitch):</span>
+                <span style={{ color: '#00d2ff', fontWeight: 700 }}>{voiceConfig.pitch}</span>
+              </div>
+              <input
+                type="range"
+                min="0.6"
+                max="1.4"
+                step="0.05"
+                value={voiceConfig.pitch}
+                onChange={e => updateVoiceConfig(prev => ({ ...prev, pitch: parseFloat(e.target.value) }))}
+                style={{ accentColor: '#00d2ff', cursor: 'pointer', height: '4px' }}
+              />
+            </div>
+
+            {/* Visual Waveform Effect when testing */}
+            {isPlayingTest && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: '4px', justifyContent: 'center', padding: '6px 0' }}>
+                <span style={{ fontSize: '0.72rem', color: '#bc8cff', fontWeight: 600, marginRight: '6px' }}>Riproduzione in corso:</span>
+                <div style={{ display: 'flex', gap: '3px', alignItems: 'center', height: '16px' }}>
+                  <span className="wave-bar" style={{ width: '3px', height: '100%', background: '#bc8cff', borderRadius: '2px', animation: 'wave 0.8s infinite ease-in-out' }} />
+                  <span className="wave-bar" style={{ width: '3px', height: '60%', background: '#00d2ff', borderRadius: '2px', animation: 'wave 0.6s infinite ease-in-out 0.1s' }} />
+                  <span className="wave-bar" style={{ width: '3px', height: '80%', background: '#bc8cff', borderRadius: '2px', animation: 'wave 1.0s infinite ease-in-out 0.2s' }} />
+                  <span className="wave-bar" style={{ width: '3px', height: '40%', background: '#00d2ff', borderRadius: '2px', animation: 'wave 0.5s infinite ease-in-out 0.3s' }} />
+                </div>
+                <style>{`
+                  @keyframes wave {
+                    0%, 100% { transform: scaleY(0.3); }
+                    50% { transform: scaleY(1); }
+                  }
+                `}</style>
+              </div>
+            )}
+          </div>
+
+          {/* SEZIONE 3 — CREDENZIALI ESTERNE */}
+          <div
+            style={{
+              background: 'linear-gradient(135deg, rgba(17, 19, 27, 0.95), rgba(13, 15, 23, 0.9))',
+              border: '1px solid rgba(99, 102, 241, 0.2)',
+              borderRadius: '14px',
+              padding: '18px',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '12px'
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', borderBottom: '1px solid rgba(255,255,255,0.08)', paddingBottom: '10px' }}>
+              <ShieldCheck size={18} style={{ color: '#6366f1' }} />
+              <div>
+                <h3 style={{ margin: 0, fontSize: '0.95rem', fontWeight: 700, color: '#f0f2f8' }}>
+                  HuggingFace Token
+                </h3>
+                <div style={{ fontSize: '0.7rem', color: '#8b8fa3', marginTop: '1px' }}>
+                  Download modelli, dataset e training su tutta l'app
+                </div>
               </div>
             </div>
+            <HFTokenSettings addToast={(message, type) => setTokenNotice({ message, type })} />
+            {tokenNotice && (
+              <div style={{
+                fontSize: '0.72rem', padding: '6px 10px', borderRadius: '6px',
+                color: tokenNotice.type === 'error' ? '#ff5555' : '#3fb950',
+                background: tokenNotice.type === 'error' ? 'rgba(255,85,85,0.08)' : 'rgba(63,185,80,0.08)',
+              }}>
+                {tokenNotice.message}
+              </div>
+            )}
           </div>
-          <HFTokenSettings addToast={(message, type) => setTokenNotice({ message, type })} />
-          {tokenNotice && (
-            <div style={{
-              fontSize: '0.75rem', padding: '8px 12px', borderRadius: '8px',
-              color: tokenNotice.type === 'error' ? '#ff5555' : '#3fb950',
-              background: tokenNotice.type === 'error' ? 'rgba(255,85,85,0.08)' : 'rgba(63,185,80,0.08)',
-            }}>
-              {tokenNotice.message}
-            </div>
-          )}
         </div>
       </div>
     </div>

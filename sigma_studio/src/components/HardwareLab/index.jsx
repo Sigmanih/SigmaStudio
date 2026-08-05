@@ -19,6 +19,10 @@ export default function HardwareLab({ addToast }) {
   const [showRestartAlert, setShowRestartAlert] = useState(false); // Alert modal
   const [restartingOllama, setRestartingOllama] = useState(false);
 
+  // Chi sta occupando la GPU, e con quale job di Sigma.
+  const [gpuProcs, setGpuProcs] = useState({ processes: [], orfani: 0 });
+  const [killingPid, setKillingPid] = useState(null);
+
   // History buffers per GPU index & System (CPU/RAM)
   const [historyData, setHistoryData] = useState({});
   const historyRef = useRef({});
@@ -117,6 +121,60 @@ export default function HardwareLab({ addToast }) {
     return () => clearInterval(interval);
   }, [fetchHardwareStatus, autoRefresh, refreshInterval]);
 
+  const fetchGpuProcesses = useCallback(async () => {
+    try {
+      const res = await fetch('/api/hardware/gpu/processes');
+      if (!res.ok) return;
+      const json = await res.json();
+      if (json.success) setGpuProcs({ processes: json.processes || [], orfani: json.orfani || 0 });
+    } catch (err) {
+      console.error('Failed to fetch GPU processes:', err);
+    }
+  }, []);
+
+  // Cadenza propria, piu' lenta della telemetria: ogni giro costa due
+  // invocazioni di nvidia-smi, e la lista dei processi cambia di rado.
+  useEffect(() => {
+    fetchGpuProcesses();
+    if (!autoRefresh) return;
+    const interval = setInterval(fetchGpuProcesses, 5000);
+    return () => clearInterval(interval);
+  }, [fetchGpuProcesses, autoRefresh]);
+
+  const handleKillGpuProcess = async (proc) => {
+    // Chiudere un training di Sigma e' l'operazione per cui questa lista
+    // esiste; chiudere un processo estraneo e' una cosa diversa, e la domanda
+    // deve dirlo — dall'altra parte puo' esserci il browser dell'utente.
+    const domanda = proc.job_id
+      ? `Fermare il training del job ${proc.job_id} (PID ${proc.pid})?\n` +
+        `Gli step non ancora salvati in un checkpoint andranno persi.`
+      : `Chiudere ${proc.name || `il processo ${proc.pid}`} (PID ${proc.pid})?\n\n` +
+        `ATTENZIONE: non è un job di Sigma Studio. È un'applicazione esterna ` +
+        `che sta usando la GPU, e chiuderla può farti perdere il lavoro non salvato.`;
+    if (!confirm(domanda)) return;
+
+    setKillingPid(proc.pid);
+    try {
+      const res = await fetch('/api/hardware/gpu/kill', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ pid: proc.pid })
+      });
+      const json = await res.json();
+      if (json.success) {
+        if (addToast) addToast(json.message || `Processo ${proc.pid} terminato.`, 'success');
+      } else if (addToast) {
+        addToast(json.error || `Non sono riuscito a chiudere il processo ${proc.pid}.`, 'error');
+      }
+      fetchGpuProcesses();
+      fetchHardwareStatus();
+    } catch (e) {
+      if (addToast) addToast(`Errore di rete: ${e.message}`, 'error');
+    } finally {
+      setKillingPid(null);
+    }
+  };
+
   const handleSaveConfig = async () => {
     setSaving(true);
     try {
@@ -165,6 +223,10 @@ export default function HardwareLab({ addToast }) {
     }
   };
 
+  // Nome storico: `clear_vram_cache` riavvia il servizio Ollama, e libera la
+  // VRAM solo dei modelli che Ollama teneva caricati. Non ha nessun effetto sui
+  // processi di training, che sono processi a se' — l'etichetta «Pulisci VRAM»
+  // lo faceva sembrare il pulsante da premere su un run appeso, e non lo e'.
   const handleClearVramMcp = async () => {
     try {
       const res = await fetch('/api/mcp/rpc', {
@@ -178,8 +240,9 @@ export default function HardwareLab({ addToast }) {
         })
       });
       if (res.ok) {
-        if (addToast) addToast('⚡ Cache VRAM CUDA pulita tramite Hardware MCP!', 'success');
+        if (addToast) addToast('Modelli Ollama scaricati dalla VRAM.', 'success');
         fetchHardwareStatus();
+        fetchGpuProcesses();
       }
     } catch (e) {
       console.error("VRAM clear error via Hardware MCP:", e);
@@ -279,11 +342,11 @@ export default function HardwareLab({ addToast }) {
           <button 
             className="hw-btn"
             onClick={handleClearVramMcp}
-            title="Pulisci la VRAM CUDA via Hardware MCP"
+            title="Scarica i modelli tenuti in VRAM da Ollama. Non tocca i job di training: per quelli usa «Processi sulla GPU» qui sotto."
             style={{ fontSize: '12px', padding: '6px 12px', border: '1px solid rgba(0, 210, 255, 0.4)', background: 'rgba(0, 210, 255, 0.12)', color: '#00d2ff' }}
           >
             <Zap size={14} color="#00d2ff" />
-            <span>Pulisci VRAM (Hardware MCP)</span>
+            <span>Scarica modelli Ollama</span>
           </button>
 
           {/* RESTART OLLAMA BUTTON */}
@@ -322,7 +385,130 @@ export default function HardwareLab({ addToast }) {
 
       {/* Main Cards Container */}
       <div className="gpu-cards-container" style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-        
+
+        {/* ==================================================================== */}
+        {/* PROCESSI SULLA GPU — chi la sta occupando, e come chiuderlo          */}
+        {/* ==================================================================== */}
+        <div className="gpu-card" style={{
+          padding: '14px 18px',
+          background: 'rgba(15, 23, 42, 0.75)',
+          border: gpuProcs.orfani > 0 ? '1px solid rgba(239, 68, 68, 0.45)' : undefined
+        }}>
+          <div className="gpu-card-header" style={{ marginBottom: gpuProcs.processes.length ? '12px' : 0 }}>
+            <div className="gpu-title">
+              <div className="gpu-index-pill" style={{ background: 'rgba(168, 85, 247, 0.15)', color: '#a855f7', border: '1px solid rgba(168, 85, 247, 0.3)', padding: '2px 8px', fontSize: '11px' }}>
+                PID
+              </div>
+              <div>
+                <div className="gpu-name" style={{ fontSize: '15px' }}>Processi sulla GPU</div>
+                <div className="gpu-bus-info" style={{ fontSize: '11px' }}>
+                  {gpuProcs.processes.length === 0
+                    ? 'Nessun processo sta usando la GPU per il calcolo'
+                    : `${gpuProcs.processes.length} processi • i job di Sigma si fermano da qui`}
+                </div>
+              </div>
+            </div>
+            {gpuProcs.orfani > 0 && (
+              <div className="gpu-header-badges">
+                <div className="gpu-stat-badge" style={{ padding: '4px 10px', fontSize: '12px', background: 'rgba(239, 68, 68, 0.15)', border: '1px solid rgba(239, 68, 68, 0.35)' }}>
+                  <AlertTriangle size={14} color="#ef4444" />
+                  <span style={{ fontWeight: 700, color: '#ef4444' }}>
+                    {gpuProcs.orfani} orfan{gpuProcs.orfani === 1 ? 'o' : 'i'}
+                  </span>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {gpuProcs.processes.length > 0 && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+              {gpuProcs.processes.map(proc => {
+                const isTraining = proc.kind === 'training';
+                const accent = proc.orphan ? '#ef4444' : (isTraining ? '#00d2ff' : 'var(--text-dim)');
+                return (
+                  <div key={proc.pid} style={{
+                    display: 'flex', alignItems: 'center', gap: '12px',
+                    padding: '8px 12px', borderRadius: '8px',
+                    background: isTraining ? 'rgba(0, 210, 255, 0.05)' : 'rgba(148, 163, 184, 0.04)',
+                    border: `1px solid ${proc.orphan ? 'rgba(239, 68, 68, 0.35)' : (isTraining ? 'rgba(0, 210, 255, 0.2)' : 'rgba(148, 163, 184, 0.12)')}`
+                  }}>
+                    <div style={{ minWidth: 0, flex: 1 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                        <span style={{ fontWeight: 700, fontSize: '13px', color: accent }}>
+                          {proc.name || `PID ${proc.pid}`}
+                        </span>
+                        <span style={{ fontSize: '10px', color: 'var(--text-dim)' }}>PID {proc.pid}</span>
+                        {proc.job_id && (
+                          <span className="hw-badge" style={{ fontSize: '10px', padding: '2px 8px', background: 'rgba(0, 210, 255, 0.15)', color: '#00d2ff', borderColor: 'rgba(0, 210, 255, 0.3)' }}>
+                            job {proc.job_id}
+                          </span>
+                        )}
+                        {proc.orphan && (
+                          <span className="hw-badge" style={{ fontSize: '10px', padding: '2px 8px', background: 'rgba(239, 68, 68, 0.15)', color: '#ef4444', borderColor: 'rgba(239, 68, 68, 0.35)' }}>
+                            ORFANO — il job risulta {proc.job_status}
+                          </span>
+                        )}
+                        {proc.kind === 'esterno' && (
+                          <span className="hw-badge" style={{ fontSize: '10px', padding: '2px 8px', color: 'var(--text-dim)' }}>
+                            esterno a Sigma
+                          </span>
+                        )}
+                        {proc.kind === 'sigma' && (
+                          <span className="hw-badge" style={{ fontSize: '10px', padding: '2px 8px', background: 'rgba(16, 185, 129, 0.15)', color: '#10b981', borderColor: 'rgba(16, 185, 129, 0.3)' }}>
+                            Sigma Studio
+                          </span>
+                        )}
+                        {proc.kind === 'sistema' && (
+                          <span className="hw-badge" style={{ fontSize: '10px', padding: '2px 8px', background: 'rgba(245, 158, 11, 0.15)', color: '#f59e0b', borderColor: 'rgba(245, 158, 11, 0.3)' }}>
+                            processo di Windows
+                          </span>
+                        )}
+                      </div>
+                      <div style={{ fontSize: '10px', color: 'var(--text-dim)', marginTop: '3px' }}>
+                        {/* Il nome della scheda, non il suo numero: la numerazione
+                            di nvidia-smi conta solo le GPU NVIDIA, mentre le card
+                            qui sotto contano anche la iGPU, e i due numeri non
+                            coincidono. Meglio nessun indice di uno che contraddice
+                            il resto della pagina. */}
+                        {(proc.gpus || []).map(g => g.name || `GPU ${g.index}`).join(' + ') || 'GPU sconosciuta'}
+                        {/* Su Windows in modalita' WDDM il driver non attribuisce la
+                            VRAM ai singoli processi: meglio "n/d" di uno zero falso. */}
+                        {' • VRAM '}{proc.vram_gb != null ? `${proc.vram_gb} GB` : 'n/d'}
+                        {proc.started_at ? ` • dalle ${proc.started_at.slice(11)}` : ''}
+                        {proc.base_model ? ` • ${proc.base_model}` : ''}
+                      </div>
+                    </div>
+                    {proc.killable ? (
+                      <button
+                        className="hw-btn"
+                        onClick={() => handleKillGpuProcess(proc)}
+                        disabled={killingPid === proc.pid}
+                        title={isTraining ? 'Ferma il job e libera la GPU' : 'Chiudi questo processo esterno'}
+                        style={{
+                          fontSize: '11px', padding: '5px 10px', flexShrink: 0,
+                          border: '1px solid rgba(239, 68, 68, 0.4)',
+                          background: 'rgba(239, 68, 68, 0.12)', color: '#ef4444'
+                        }}
+                      >
+                        <Trash2 size={12} color="#ef4444" />
+                        <span>{killingPid === proc.pid ? 'Chiudo…' : 'Termina'}</span>
+                      </button>
+                    ) : (
+                      <span style={{ fontSize: '10px', color: 'var(--text-dim)', flexShrink: 0 }}
+                            title={proc.kind === 'sistema'
+                              ? 'Processo di sistema: chiuderlo comprometterebbe la sessione di Windows'
+                              : 'È Sigma Studio: chiuderlo spegnerebbe questa interfaccia'}>
+                        non chiudibile
+                      </span>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+
+
         {/* ==================================================================== */}
         {/* SYSTEM OVERVIEW CARD (LEFT = COMPUTE, RIGHT = MEMORY) */}
         {/* ==================================================================== */}

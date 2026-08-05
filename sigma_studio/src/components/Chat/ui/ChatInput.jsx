@@ -1,5 +1,5 @@
-import React from 'react';
-import { Send, Paperclip, RefreshCw, StopCircle, Mic, MicOff, Volume2, VolumeX } from 'lucide-react';
+import React, { useState } from 'react';
+import { Send, Paperclip, RefreshCw, StopCircle, Mic, MicOff, Volume2, VolumeX, Sliders } from 'lucide-react';
 
 export default function ChatInput({
   input, setInput, loading, selectedModel, refs, providerColors, currentRouting,
@@ -10,6 +10,25 @@ export default function ChatInput({
   onSend, onStop, onOpenFilePicker, attachedFiles,
   children,
 }) {
+  const [showVoicePopover, setShowVoicePopover] = useState(false);
+  const [voiceConfig, setVoiceConfig] = useState(() => {
+    try {
+      const saved = localStorage.getItem('sigma_assistant_voice_config');
+      if (saved) return JSON.parse(saved);
+    } catch (e) {}
+    return { rate: 1.05, pitch: 1.0 };
+  });
+
+  const updateVoiceConfig = (updater) => {
+    setVoiceConfig(prev => {
+      const updated = typeof updater === 'function' ? updater(prev) : updater;
+      try {
+        localStorage.setItem('sigma_assistant_voice_config', JSON.stringify(updated));
+      } catch (e) {}
+      return updated;
+    });
+  };
+
   return (
     <div className="chat-input-area">
       <div className="chat-input-top-row">
@@ -32,34 +51,130 @@ export default function ChatInput({
           <span>📜 Auto Scroll</span>
         </label>
         {setSpeakerEnabled !== undefined && (
-          <label 
-            className={`chat-speaker-toggle ${speakerEnabled ? 'active' : ''}`} 
-            title={speakerEnabled ? 'Speaker Agente Attivo: la voce dell\'agente riproduce la risposta' : 'Attiva lettura vocale della risposta dell\'agente (TTS)'}
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: '5px',
-              fontSize: '0.68rem',
-              color: speakerEnabled ? '#00d2ff' : '#8b8fa3',
-              background: speakerEnabled ? 'rgba(0, 210, 255, 0.12)' : 'rgba(255, 255, 255, 0.03)',
-              border: speakerEnabled ? '1px solid rgba(0, 210, 255, 0.3)' : '1px solid rgba(255, 255, 255, 0.08)',
-              padding: '2px 8px',
-              borderRadius: '12px',
-              cursor: 'pointer',
-              fontWeight: 600,
-              transition: 'all 0.2s ease',
-              marginLeft: 'auto'
-            }}
-          >
-            <input 
-              type="checkbox" 
-              checked={speakerEnabled} 
-              onChange={e => setSpeakerEnabled(e.target.checked)} 
-              style={{ display: 'none' }}
-            />
-            {speakerEnabled ? <Volume2 size={13} style={{ color: '#00d2ff' }} /> : <VolumeX size={13} style={{ color: '#5a5e72' }} />}
-            <span>Speaker Agente: {speakerEnabled ? 'ON' : 'OFF'}</span>
-          </label>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginLeft: 'auto', position: 'relative' }}>
+            <label 
+              className={`chat-speaker-toggle ${speakerEnabled ? 'active' : ''}`} 
+              title={speakerEnabled ? 'Speaker Agente Attivo: la voce dell\'agente riproduce la risposta' : 'Attiva lettura vocale della risposta dell\'agente (TTS)'}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '5px',
+                fontSize: '0.68rem',
+                color: speakerEnabled ? '#00d2ff' : '#8b8fa3',
+                background: speakerEnabled ? 'rgba(0, 210, 255, 0.12)' : 'rgba(255, 255, 255, 0.03)',
+                border: speakerEnabled ? '1px solid rgba(0, 210, 255, 0.3)' : '1px solid rgba(255, 255, 255, 0.08)',
+                padding: '2px 8px',
+                borderRadius: '12px',
+                cursor: 'pointer',
+                fontWeight: 600,
+                transition: 'all 0.2s ease',
+              }}
+            >
+              <input 
+                type="checkbox" 
+                checked={speakerEnabled} 
+                onChange={e => setSpeakerEnabled(e.target.checked)} 
+                style={{ display: 'none' }}
+              />
+              {speakerEnabled ? <Volume2 size={13} style={{ color: '#00d2ff' }} /> : <VolumeX size={13} style={{ color: '#5a5e72' }} />}
+              <span>Speaker Agente: {speakerEnabled ? 'ON' : 'OFF'}</span>
+            </label>
+
+            {/* Voice Tuning Button */}
+            <button
+              type="button"
+              className={`chat-voice-tune-btn ${showVoicePopover ? 'active' : ''}`}
+              onClick={(e) => { e.stopPropagation(); setShowVoicePopover(!showVoicePopover); }}
+              title="Regola Velocità di Lettura (Speed) e Tono (Pitch) della voce dell'agente"
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '4px',
+                padding: '2px 7px',
+                fontSize: '0.66rem',
+                fontWeight: 600,
+                color: showVoicePopover ? '#bc8cff' : '#8b8fa3',
+                background: showVoicePopover ? 'rgba(188, 140, 255, 0.15)' : 'rgba(255, 255, 255, 0.03)',
+                border: showVoicePopover ? '1px solid rgba(188, 140, 255, 0.4)' : '1px solid rgba(255, 255, 255, 0.08)',
+                borderRadius: '12px',
+                cursor: 'pointer',
+                transition: 'all 0.2s ease'
+              }}
+            >
+              <Sliders size={12} color={showVoicePopover ? '#bc8cff' : '#00d2ff'} />
+              <span>{voiceConfig.rate || 1.05}x</span>
+            </button>
+
+            {/* Popover Regolazione Voce */}
+            {showVoicePopover && (
+              <div 
+                style={{
+                  position: 'absolute',
+                  bottom: '100%',
+                  right: 0,
+                  marginBottom: '8px',
+                  width: '240px',
+                  padding: '14px',
+                  background: 'rgba(15, 17, 26, 0.95)',
+                  border: '1px solid rgba(0, 210, 255, 0.3)',
+                  borderRadius: '12px',
+                  backdropFilter: 'blur(16px)',
+                  boxShadow: '0 8px 32px rgba(0,0,0,0.5)',
+                  zIndex: 2000,
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '12px'
+                }}
+                onClick={(e) => e.stopPropagation()}
+              >
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid rgba(255,255,255,0.08)', paddingBottom: '6px' }}>
+                  <span style={{ fontSize: '0.75rem', fontWeight: 700, color: '#f0f2f8', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <Sliders size={13} color="#00f2fe" /> Regolazione Voce TTS
+                  </span>
+                  <button 
+                    onClick={() => setShowVoicePopover(false)} 
+                    style={{ background: 'none', border: 'none', color: '#8b8fa3', cursor: 'pointer', fontSize: '0.8rem' }}
+                  >
+                    ✕
+                  </button>
+                </div>
+
+                {/* Slider Velocità */}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.7rem' }}>
+                    <span style={{ color: '#8b8fa3', fontWeight: 600 }}>Velocità Lettura:</span>
+                    <span style={{ color: '#bc8cff', fontWeight: 700 }}>{voiceConfig.rate || 1.05}x</span>
+                  </div>
+                  <input
+                    type="range"
+                    min="0.7"
+                    max="1.6"
+                    step="0.05"
+                    value={voiceConfig.rate || 1.05}
+                    onChange={e => updateVoiceConfig(prev => ({ ...prev, rate: parseFloat(e.target.value) }))}
+                    style={{ accentColor: '#bc8cff', cursor: 'pointer', height: '4px' }}
+                  />
+                </div>
+
+                {/* Slider Tono */}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.7rem' }}>
+                    <span style={{ color: '#8b8fa3', fontWeight: 600 }}>Tono Voce (Pitch):</span>
+                    <span style={{ color: '#00d2ff', fontWeight: 700 }}>{voiceConfig.pitch || 1.0}</span>
+                  </div>
+                  <input
+                    type="range"
+                    min="0.6"
+                    max="1.4"
+                    step="0.05"
+                    value={voiceConfig.pitch || 1.0}
+                    onChange={e => updateVoiceConfig(prev => ({ ...prev, pitch: parseFloat(e.target.value) }))}
+                    style={{ accentColor: '#00d2ff', cursor: 'pointer', height: '4px' }}
+                  />
+                </div>
+              </div>
+            )}
+          </div>
         )}
       </div>
       <div className="chat-input-row">

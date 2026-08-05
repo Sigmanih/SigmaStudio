@@ -1,4 +1,5 @@
 import React, { useRef, useEffect, useState, useCallback } from 'react';
+import { PieChart, BookOpen, Layers } from 'lucide-react';
 
 // ==============================================================================
 // MappaArgomenti — Mappa interattiva degli argomenti con D3 force-directed graph
@@ -2494,7 +2495,26 @@ export default function MappaArgomenti({ onOpenFile }) {
         }
       `}</style>
       
-      {/* HEADER SECTION — Title, Description & Controls Toolbar */}
+      {/* Top Cyberpunk Header */}
+      <div className="app-page-header" style={{ margin: '12px 16px 14px 16px', flexShrink: 0 }}>
+        <div className="app-page-header-title">
+          <div className="app-page-header-icon" style={{ width: '42px', height: '42px' }}>
+            <PieChart size={22} color="#00f2fe" />
+          </div>
+          <div>
+            <h1 style={{ fontSize: '20px' }}>Argomenti & Mappa della Conoscenza</h1>
+            <div className="app-page-header-subtitle">
+              <span>Mappe concettuali, grafi della conoscenza e risorse di studio</span>
+              <span>•</span>
+              <span style={{ color: '#00f2fe', fontFamily: 'JetBrains Mono, monospace' }}>
+                {stats.topics || 0} Argomenti • {stats.modules || 0} Moduli • {stats.docs || 0} Documenti
+              </span>
+            </div>
+          </div>
+        </div>
+      </div>
+      
+      {/* HEADER CONTROLS BAR */}
       <div 
         className="mappa-header-bar" 
         style={{
@@ -2503,28 +2523,16 @@ export default function MappaArgomenti({ onOpenFile }) {
           justifyContent: 'space-between',
           flexWrap: 'wrap',
           gap: '12px',
-          padding: '14px 20px',
+          padding: '10px 16px',
+          margin: '0 16px 14px 16px',
           background: 'linear-gradient(135deg, rgba(17, 19, 27, 0.95), rgba(24, 27, 40, 0.85))',
           border: '1px solid rgba(255, 255, 255, 0.08)',
-          borderRadius: '12px',
+          borderRadius: '10px',
           marginBottom: '14px',
           backdropFilter: 'blur(12px)',
           boxShadow: '0 4px 20px rgba(0, 0, 0, 0.25)'
         }}
       >
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <h2 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 700, color: '#f0f2f8', letterSpacing: '-0.2px' }}>
-              🌐 Grafo degli Argomenti
-            </h2>
-            <span style={{ fontSize: '0.65rem', padding: '2px 8px', borderRadius: '12px', background: 'rgba(0, 210, 255, 0.12)', color: '#00d2ff', border: '1px solid rgba(0, 210, 255, 0.25)', fontWeight: 600 }}>
-              Mappa Concettuale
-            </span>
-          </div>
-          <p style={{ margin: 0, fontSize: '0.72rem', color: '#8b8fa3', fontWeight: 400 }}>
-            Visualizzazione dinamica ed interattiva della mappa concettuale, dei moduli di studio e della struttura relazionale del tuo workspace.
-          </p>
-        </div>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
           {/* Slider Dimensione Testo Nodi */}

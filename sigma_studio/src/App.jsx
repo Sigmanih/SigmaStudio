@@ -1,5 +1,5 @@
 import React, { useEffect } from 'react';
-import { GripVertical } from 'lucide-react';
+import { GripVertical, Sparkles, X, Calendar, Cpu, MessageSquare, Settings } from 'lucide-react';
 
 // Sub-components
 import Sidebar from './components/Sidebar';
@@ -58,19 +58,21 @@ function AppContent() {
 
   const [taskPanelOpen, setTaskPanelOpen] = React.useState(false);
   const [hardwarePanelOpen, setHardwarePanelOpen] = React.useState(false);
-  const [dockMinimized, setDockMinimized] = React.useState(false);
+  const [dockMinimized, setDockMinimized] = React.useState(true);
 
   // Floating dock bar drag state
   const [dockPos, setDockPos] = React.useState({ x: undefined, y: undefined });
   const [dockDragging, setDockDragging] = React.useState(false);
   const [dockDragStart, setDockDragStart] = React.useState({ x: 0, y: 0 });
+  const hasMovedRef = React.useRef(false);
 
   useEffect(() => {
     if (!dockDragging) return;
     const hMM = (e) => {
       const dx = e.clientX - dockDragStart.x;
       const dy = e.clientY - dockDragStart.y;
-      if (Math.abs(dx) > 2 || Math.abs(dy) > 2) {
+      if (Math.abs(dx) > 3 || Math.abs(dy) > 3) {
+        hasMovedRef.current = true;
         setDockPos(prev => ({
           x: (prev.x !== undefined ? prev.x : 20) + dx,
           y: (prev.y !== undefined ? prev.y : window.innerHeight - 70) + dy
@@ -88,7 +90,8 @@ function AppContent() {
   }, [dockDragging, dockDragStart]);
 
   const handleDockMouseDown = (e) => {
-    if (e.target.closest('button')) return;
+    if (e.button !== 0) return;
+    hasMovedRef.current = false;
     const initialX = dockPos.x !== undefined ? dockPos.x : 20;
     const initialY = dockPos.y !== undefined ? dockPos.y : window.innerHeight - 70;
     setDockPos({ x: initialX, y: initialY });
@@ -206,77 +209,243 @@ function AppContent() {
         type={fileOps.fileModalContext.type}
       />
 
-      {/* FLOATING DOCK BAR — DRAGGABLE */}
+      {/* FLOATING ACTION SPEED-DIAL CONTAINER */}
       <div 
-        className={`ai-float-dock-bar ${dockMinimized ? 'minimized' : ''}`}
+        className="ai-float-dock-container"
         style={{
+          position: 'fixed',
+          zIndex: 9990,
           left: dockPos.x !== undefined ? `${dockPos.x}px` : '20px',
           top: dockPos.y !== undefined ? `${dockPos.y}px` : undefined,
           bottom: dockPos.y !== undefined ? 'auto' : '20px',
+          display: 'flex',
+          alignItems: 'center'
         }}
       >
-        <div 
-          className="dock-drag-handle" 
-          onMouseDown={handleDockMouseDown} 
-          title="Trascina la barra strumenti in qualsiasi posizione"
-        >
-          <GripVertical size={16} />
+        {/* TRIGGER FLOATING ACTION BUTTON (FAB) — STATIONARY ANCHOR */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', position: 'relative' }}>
+          
+          {/* EXPANDED SPEED-DIAL MENU CARD POPOVER — ABSOLUTE ABOVE FAB */}
+          {!dockMinimized && (
+            <div 
+              style={{
+                position: 'absolute',
+                bottom: 'calc(100% + 12px)',
+                left: 0,
+                background: 'linear-gradient(135deg, rgba(14, 16, 26, 0.96), rgba(20, 24, 38, 0.92))',
+                border: '1px solid rgba(0, 242, 254, 0.25)',
+                borderRadius: '16px',
+                padding: '14px',
+                boxShadow: '0 20px 50px rgba(0, 0, 0, 0.5), 0 0 30px rgba(0, 242, 254, 0.12)',
+                backdropFilter: 'blur(20px) saturate(180%)',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '10px',
+                minWidth: '270px',
+                zIndex: 9995,
+                animation: 'fadeInUp 0.22s cubic-bezier(0.16, 1, 0.3, 1)'
+              }}
+            >
+              {/* Header / Drag handle */}
+              <div 
+                onMouseDown={handleDockMouseDown}
+                style={{
+                  display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                  paddingBottom: '8px', borderBottom: '1px solid rgba(255,255,255,0.08)',
+                  cursor: 'grab', userSelect: 'none'
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <GripVertical size={14} color="#8b8fa3" />
+                  <span style={{ fontSize: '0.68rem', fontWeight: 700, color: '#00f2fe', textTransform: 'uppercase', letterSpacing: '0.8px' }}>
+                    ⚡ Strumenti Rapidi
+                  </span>
+                </div>
+                <button 
+                  onClick={() => setDockMinimized(true)}
+                  style={{ background: 'none', border: 'none', color: '#8b8fa3', cursor: 'pointer', padding: '2px', display: 'flex' }}
+                  title="Chiudi menu"
+                >
+                  <X size={14} />
+                </button>
+              </div>
+
+              {/* Menu Items Stack */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                
+                {/* Item 1: Pianificazione & Task */}
+                <button
+                  onClick={() => {
+                    setTaskPanelOpen(!taskPanelOpen);
+                  }}
+                  style={{
+                    display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                    padding: '10px 12px', borderRadius: '10px',
+                    background: taskPanelOpen ? 'rgba(0, 242, 254, 0.15)' : 'rgba(255, 255, 255, 0.03)',
+                    border: taskPanelOpen ? '1px solid rgba(0, 242, 254, 0.4)' : '1px solid rgba(255, 255, 255, 0.06)',
+                    color: taskPanelOpen ? '#00f2fe' : '#e2e4eb',
+                    cursor: 'pointer', transition: 'all 0.18s ease', textAlign: 'left'
+                  }}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                    <div style={{ width: '32px', height: '32px', borderRadius: '8px', background: 'rgba(0, 242, 254, 0.15)', border: '1px solid rgba(0, 242, 254, 0.3)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                      <Calendar size={16} color="#00f2fe" />
+                    </div>
+                    <div>
+                      <div style={{ fontSize: '0.8rem', fontWeight: 700 }}>Pianificazione</div>
+                      <div style={{ fontSize: '0.62rem', color: '#8b8fa3' }}>Task board, calendario e log</div>
+                    </div>
+                  </div>
+                  {tasks?.length > 0 && (
+                    <span style={{ fontSize: '0.65rem', fontWeight: 700, background: 'rgba(0, 242, 254, 0.2)', color: '#00f2fe', padding: '2px 8px', borderRadius: '10px', border: '1px solid rgba(0, 242, 254, 0.3)' }}>
+                      {tasks.length}
+                    </span>
+                  )}
+                </button>
+
+                {/* Item 2: Hardware & GPU Monitor */}
+                <button
+                  onClick={() => setHardwarePanelOpen(!hardwarePanelOpen)}
+                  style={{
+                    display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                    padding: '10px 12px', borderRadius: '10px',
+                    background: hardwarePanelOpen ? 'rgba(63, 185, 80, 0.15)' : 'rgba(255, 255, 255, 0.03)',
+                    border: hardwarePanelOpen ? '1px solid rgba(63, 185, 80, 0.4)' : '1px solid rgba(255, 255, 255, 0.06)',
+                    color: hardwarePanelOpen ? '#3fb950' : '#e2e4eb',
+                    cursor: 'pointer', transition: 'all 0.18s ease', textAlign: 'left'
+                  }}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                    <div style={{ width: '32px', height: '32px', borderRadius: '8px', background: 'rgba(63, 185, 80, 0.15)', border: '1px solid rgba(63, 185, 80, 0.3)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                      <Cpu size={16} color="#3fb950" />
+                    </div>
+                    <div>
+                      <div style={{ fontSize: '0.8rem', fontWeight: 700 }}>Hardware & GPU</div>
+                      <div style={{ fontSize: '0.62rem', color: '#8b8fa3' }}>VRAM, Telemetria & VLLM</div>
+                    </div>
+                  </div>
+                  <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: hardwarePanelOpen ? '#3fb950' : '#555' }} />
+                </button>
+
+                {/* Item 3: Chat AI Assistente */}
+                <button
+                  onClick={() => setAiChatOpen(!aiChatOpen)}
+                  style={{
+                    display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                    padding: '10px 12px', borderRadius: '10px',
+                    background: aiChatOpen ? 'rgba(188, 140, 255, 0.15)' : 'rgba(255, 255, 255, 0.03)',
+                    border: aiChatOpen ? '1px solid rgba(188, 140, 255, 0.4)' : '1px solid rgba(255, 255, 255, 0.06)',
+                    color: aiChatOpen ? '#bc8cff' : '#e2e4eb',
+                    cursor: 'pointer', transition: 'all 0.18s ease', textAlign: 'left'
+                  }}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                    <div style={{ width: '32px', height: '32px', borderRadius: '8px', background: 'rgba(188, 140, 255, 0.15)', border: '1px solid rgba(188, 140, 255, 0.3)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                      <MessageSquare size={16} color="#bc8cff" />
+                    </div>
+                    <div>
+                      <div style={{ fontSize: '0.8rem', fontWeight: 700 }}>AI Chat Assistente</div>
+                      <div style={{ fontSize: '0.62rem', color: '#8b8fa3' }}>Finestra di chat agentica</div>
+                    </div>
+                  </div>
+                  <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: aiChatOpen ? '#bc8cff' : '#555' }} />
+                </button>
+
+                {/* Item 4: Configurazione AI */}
+                <button
+                  onClick={() => setAiConfigOpen(true)}
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: '10px',
+                    padding: '10px 12px', borderRadius: '10px',
+                    background: 'rgba(255, 255, 255, 0.03)',
+                    border: '1px solid rgba(255, 255, 255, 0.06)',
+                    color: '#e2e4eb', cursor: 'pointer', transition: 'all 0.18s ease', textAlign: 'left'
+                  }}
+                >
+                  <div style={{ width: '32px', height: '32px', borderRadius: '8px', background: 'rgba(255, 184, 108, 0.15)', border: '1px solid rgba(255, 184, 108, 0.3)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <Settings size={16} color="#ffb86c" />
+                  </div>
+                  <div>
+                    <div style={{ fontSize: '0.8rem', fontWeight: 700 }}>Configurazione AI</div>
+                    <div style={{ fontSize: '0.62rem', color: '#8b8fa3' }}>Modelli, API & Parametri</div>
+                  </div>
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* STATIONARY & DRAGGABLE FAB TRIGGER BUTTON */}
+          <button
+            onMouseDown={handleDockMouseDown}
+            onClick={(e) => {
+              if (hasMovedRef.current) {
+                e.stopPropagation();
+                return;
+              }
+              setDockMinimized(!dockMinimized);
+            }}
+            style={{
+              width: '46px',
+              height: '46px',
+              borderRadius: '50%',
+              background: dockMinimized 
+                ? 'linear-gradient(135deg, #00f2fe 0%, #0072ff 100%)' 
+                : 'linear-gradient(135deg, rgba(255, 85, 85, 0.9), rgba(220, 38, 38, 0.9))',
+              border: 'none',
+              color: '#fff',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              cursor: dockDragging ? 'grabbing' : 'grab',
+              boxShadow: dockMinimized 
+                ? '0 6px 24px rgba(0, 242, 254, 0.45), 0 0 0 2px rgba(0, 242, 254, 0.3)' 
+                : '0 6px 24px rgba(255, 85, 85, 0.45), 0 0 0 2px rgba(255, 85, 85, 0.3)',
+              transition: dockDragging ? 'none' : 'all 0.25s cubic-bezier(0.16, 1, 0.3, 1)',
+              transform: dockMinimized ? 'scale(1)' : 'scale(1.05)',
+              userSelect: 'none'
+            }}
+            title={dockMinimized ? 'Trascina o premi per aprire il Menu' : 'Chiudi Menu'}
+          >
+            {dockMinimized ? <Sparkles size={22} /> : <X size={22} />}
+          </button>
+
+          {dockMinimized && (
+            <div 
+              onMouseDown={handleDockMouseDown}
+              onClick={(e) => {
+                if (hasMovedRef.current) {
+                  e.stopPropagation();
+                  return;
+                }
+                setDockMinimized(false);
+              }}
+              style={{
+                background: 'rgba(14, 16, 26, 0.9)',
+                border: '1px solid rgba(0, 242, 254, 0.3)',
+                padding: '6px 12px',
+                borderRadius: '20px',
+                fontSize: '0.75rem',
+                fontWeight: 700,
+                color: '#00f2fe',
+                backdropFilter: 'blur(10px)',
+                cursor: dockDragging ? 'grabbing' : 'grab',
+                boxShadow: '0 4px 14px rgba(0, 0, 0, 0.3)',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px',
+                userSelect: 'none'
+              }}
+            >
+              <GripVertical size={14} color="#00f2fe" />
+              <span>Strumenti AI</span>
+              {tasks?.length > 0 && (
+                <span style={{ fontSize: '0.62rem', background: '#00f2fe', color: '#000', padding: '1px 6px', borderRadius: '10px', fontWeight: 800 }}>
+                  {tasks.length}
+                </span>
+              )}
+            </div>
+          )}
         </div>
-
-        <button
-          className="dock-toggle-btn"
-          onClick={() => setDockMinimized(!dockMinimized)}
-          title={dockMinimized ? 'Espandi barra strumenti' : 'Nascondi in basso'}
-        >
-          {dockMinimized ? '⚡' : '❮'}
-        </button>
-
-        {!dockMinimized && (
-          <div className="dock-buttons-row">
-            {/* Task Roadmap button */}
-            <button
-              className={`dock-btn ${taskPanelOpen ? 'active' : ''}`}
-              onClick={() => setTaskPanelOpen(!taskPanelOpen)}
-              title={taskPanelOpen ? 'Riduci Task Roadmap' : 'Apri Task Roadmap'}
-            >
-              <span className="dock-btn-icon">📋</span>
-              <span className="dock-btn-label">Roadmap</span>
-              {tasks?.length > 0 && <span className="dock-btn-badge">{tasks.length}</span>}
-            </button>
-
-            {/* Hardware GPU button */}
-            <button
-              className={`dock-btn hardware-btn ${hardwarePanelOpen ? 'active' : ''}`}
-              onClick={() => setHardwarePanelOpen(!hardwarePanelOpen)}
-              title={hardwarePanelOpen ? 'Riduci Hardware & GPU Monitor' : 'Apri Hardware & GPU Monitor'}
-            >
-              <span className="dock-btn-icon">⚡</span>
-              <span className="dock-btn-label">Hardware GPU</span>
-              <span className="dock-btn-dot" style={{ backgroundColor: hardwarePanelOpen ? '#10b981' : '#555' }} />
-            </button>
-
-            {/* AI Chat button */}
-            <button
-              className={`dock-btn chat-btn ${aiChatOpen ? 'active' : ''}`}
-              onClick={() => setAiChatOpen(!aiChatOpen)}
-              title={aiChatOpen ? 'Riduci AI Chat' : 'Apri AI Chat'}
-            >
-              <span className="dock-btn-icon">💬</span>
-              <span className="dock-btn-label">AI Chat</span>
-              <span className="dock-btn-dot" style={{ backgroundColor: aiChatOpen ? '#00f2fe' : '#555' }} />
-            </button>
-
-            {/* AI Config button */}
-            <button
-              className={`dock-btn config-btn ${aiConfigOpen ? 'active' : ''}`}
-              onClick={() => setAiConfigOpen(true)}
-              title="Configurazione AI"
-            >
-              <span className="dock-btn-icon">⚙️</span>
-              <span className="dock-btn-label">Config AI</span>
-            </button>
-          </div>
-        )}
       </div>
 
       {/* TASK FLOATING PANEL */}

@@ -225,6 +225,106 @@ def probe_nvidia_smi() -> list[dict]:
     return gpus
 
 
+def probe_gpu_processes() -> list[dict]:
+    """Chi sta tenendo memoria sulla GPU, non solo quanta ne e' occupata.
+
+    `probe_nvidia_smi` risponde "5 GB su 16"; questa risponde "il pid 36672".
+    La differenza conta quando un processo resta appeso: senza il pid non c'e'
+    niente su cui agire, e la VRAM occupata da sola non dice nemmeno se sia il
+    training di Sigma o qualcos'altro.
+
+    Due limiti del driver da tenere presenti, perche' cambiano cosa si puo'
+    mostrare:
+
+    * `used_gpu_memory` vale `[N/A]` su Windows in modalita' WDDM — li' e' il
+      sistema operativo a gestire la memoria video, non il driver, che quindi
+      non sa attribuirla ai singoli processi. Quel `None` va portato fino in
+      fondo: scriverlo come 0 significherebbe mostrare "0 GB" accanto a un
+      training che ne sta usando cinque.
+    * `--query-compute-apps` non elenca i soli contesti di calcolo. Le
+      applicazioni che ne aprono uno accanto a quello grafico — i browser
+      basati su Chromium, i launcher di giochi — compaiono qui esattamente come
+      un training. Distinguerle non e' possibile da questa sonda: se ne occupa
+      `gpu_process_inventory`, che sa quali pid appartengono a Sigma.
+    """
+    binary = shutil.which("nvidia-smi")
+    if not binary:
+        return []
+
+    # nvidia-smi identifica la scheda di un processo per uuid; tutto il resto di
+    # Sigma la identifica per indice.
+    schede: dict[str, tuple[int, str]] = {}
+    mappa = _run([binary, "--query-gpu=index,uuid,name", "--format=csv,noheader"])
+    for riga in (mappa or "").strip().splitlines():
+        parti = [p.strip() for p in riga.split(",")]
+        if len(parti) >= 3:
+            try:
+                schede[parti[1]] = (int(parti[0]), parti[2])
+            except ValueError:
+                continue
+
+    out = _run([binary, "--query-compute-apps=pid,used_gpu_memory,gpu_uuid",
+                "--format=csv,noheader,nounits"])
+    if not out:
+        return []
+
+    try:
+        import psutil
+    except ImportError:
+        psutil = None
+
+    processi = []
+    for riga in out.strip().splitlines():
+        parti = [p.strip() for p in riga.split(",")]
+        if len(parti) < 2:
+            continue
+        try:
+            pid = int(parti[0])
+        except ValueError:
+            continue
+        try:
+            vram_mb = float(parti[1])
+        except ValueError:
+            vram_mb = None          # "[N/A]": il driver non la sa, non e' zero
+        indice, nome_gpu = schede.get(parti[2] if len(parti) > 2 else "", (-1, ""))
+
+        voce = {
+            "pid": pid,
+            "gpu_index": indice,
+            "gpu_name": nome_gpu,
+            "vram_mb": round(vram_mb, 1) if vram_mb is not None else None,
+            "vram_gb": round(vram_mb / 1024, 2) if vram_mb is not None else None,
+            "name": "",
+            "cmdline": "",
+            "started_at": "",
+            "ram_gb": 0.0,
+            "alive": True,
+        }
+        if psutil is not None:
+            try:
+                proc = psutil.Process(pid)
+                with proc.oneshot():
+                    voce["name"] = proc.name()
+                    voce["cmdline"] = " ".join(proc.cmdline())
+                    voce["started_at"] = time.strftime(
+                        "%Y-%m-%d %H:%M:%S", time.localtime(proc.create_time()))
+                    voce["ram_gb"] = round(proc.memory_info().rss / 1024**3, 2)
+            except Exception:
+                # Il driver lo elenca ma il processo e' gia' sparito, oppure e'
+                # di un altro utente e non e' ispezionabile.
+                voce["alive"] = False
+        processi.append(voce)
+
+    # Il criterio giusto sarebbe la VRAM, ma su WDDM e' quasi sempre `None`: li'
+    # decide l'eta', che c'e' sempre, con il piu' recente in testa — e' quello
+    # che l'utente ha appena avviato e sta cercando. Due passate invece di una
+    # chiave sola perche' l'ordinamento di Python e' stabile: la prima fissa il
+    # criterio di scorta, la seconda gli antepone la VRAM dove esiste.
+    processi.sort(key=lambda p: p["started_at"] or "", reverse=True)
+    processi.sort(key=lambda p: p["vram_mb"] or 0.0, reverse=True)
+    return processi
+
+
 def probe_rocm_smi() -> list[dict]:
     """Live AMD telemetry via rocm-smi (Linux ROCm installs)."""
     binary = shutil.which("rocm-smi")

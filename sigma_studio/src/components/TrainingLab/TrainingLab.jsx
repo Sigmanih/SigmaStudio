@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { BookOpen, Database, Cpu, BarChart2, Brain, Award, Hammer, Layers, Bot, X } from 'lucide-react';
+import { BookOpen, Database, Cpu, BarChart2, Brain, Award, Hammer, Layers, Bot, Wrench, X } from 'lucide-react';
 import TrainingDocs from './TrainingDocs';
 import DatasetBrowser from './DatasetBrowser';
 import TrainingConfigurator from './TrainingConfigurator';
@@ -12,20 +12,23 @@ import '../../styles/training-lab.css';
 
 // ==============================================================================
 // TRAINING LAB — Sigma Studio v7.0
-// Sub-tab: Studio (il percorso manuale) | Autopilota (il ciclo che lavora da
-// solo) | Documentazione | Dataset | Configurazione | Monitor | Forgia | Benchmark
-// Il token HuggingFace e' un'impostazione d'account, non di training: sta in Account & Voce.
+// Main modes: Documentazione (1st) | Autopilota (2nd) | Semi-assistito (3rd) | Manuale (4th)
+// Inside Manuale: Dataset | Training | Forgia SLM | Benchmark Test | Monitor
 // ==============================================================================
 
-const MODES = [
-  { id: 'studio', label: '🎛️ Studio', icon: Layers, desc: 'Tutto il processo in una pagina' },
-  { id: 'autopilot', label: '🤖 Autopilota', icon: Bot, desc: 'Scegli un modello e lascialo migliorare da solo' },
+const MAIN_MODES = [
   { id: 'docs', label: '📖 Documentazione', icon: BookOpen, desc: 'Guida completa al training' },
+  { id: 'autopilot', label: '🤖 Autopilota', icon: Bot, desc: 'Scegli un modello e lascialo migliorare da solo' },
+  { id: 'studio', label: '🎛️ Semi-assistito', icon: Layers, desc: 'Percorso guidato per il fine-tuning' },
+  { id: 'manual', label: '🧰 Manuale', icon: Wrench, desc: 'Dataset, Training, Forgia, Benchmark e Monitor' },
+];
+
+const MANUAL_SUBMODES = [
   { id: 'dataset', label: '🗃️ Dataset', icon: Database, desc: 'HuggingFace + Import locale' },
-  { id: 'training', label: '⚙️ Configurazione', icon: Cpu, desc: 'Modello, metodo, iperparametri' },
-  { id: 'monitor', label: '📊 Monitor', icon: BarChart2, desc: 'Log live, loss chart, export' },
+  { id: 'training', label: '⚙️ Training', icon: Cpu, desc: 'Modello, metodo, iperparametri' },
   { id: 'forge', label: '🔨 Forgia SLM', icon: Hammer, desc: 'Modelli piccoli da zero, in italiano' },
   { id: 'benchmark', label: '🧪 Benchmark Test', icon: Award, desc: 'Test & valutazione modelli' },
+  { id: 'monitor', label: '📊 Monitor', icon: BarChart2, desc: 'Log live, loss chart, export' },
 ];
 
 function Toast({ toast, onClose }) {
@@ -61,7 +64,9 @@ function Toast({ toast, onClose }) {
 }
 
 export default function TrainingLab({ addToast: _addToast, onTasksUpdated }) {
-  const [mode, setMode] = useState('studio');
+  // Impostiamo 'docs' (Documentazione) come scheda iniziale predefinita
+  const [mode, setMode] = useState('docs');
+  const [manualSubMode, setManualSubMode] = useState('dataset');
   const [selectedDatasetId, setSelectedDatasetId] = useState(null);
   const [myDatasets, setMyDatasets] = useState([]);
   const [activeJobId, setActiveJobId] = useState(null);
@@ -88,8 +93,8 @@ export default function TrainingLab({ addToast: _addToast, onTasksUpdated }) {
 
   // Reload when switching to training tab
   useEffect(() => {
-    if (mode === 'training') loadMyDatasets();
-  }, [mode, loadMyDatasets]);
+    if (mode === 'training' || (mode === 'manual' && manualSubMode === 'training')) loadMyDatasets();
+  }, [mode, manualSubMode, loadMyDatasets]);
 
   // Toast system
   const showToast = (message, type = 'info', dur = 3500) => {
@@ -98,12 +103,15 @@ export default function TrainingLab({ addToast: _addToast, onTasksUpdated }) {
     toastTimer.current = setTimeout(() => setToast(null), dur);
   };
 
-  // Handler: dataset aggiunto → carica → naviga
+  // Handler: dataset aggiunto → carica → naviga a training
   const handleDatasetAdded = async () => {
-    const datasets = await loadMyDatasets();  // <-- ASPETTA che la fetch finisca!
+    const datasets = await loadMyDatasets();
     if (datasets.length > 0) {
       showToast('✅ Dataset aggiunto con successo! Ora configura il training.', 'success', 5000);
-      setTimeout(() => setMode('training'), 300);
+      setTimeout(() => {
+        setMode('manual');
+        setManualSubMode('training');
+      }, 300);
     } else {
       showToast('⚠️ Dataset aggiunto ma non trovato nella lista. Ricarica la pagina.', 'warning', 5000);
     }
@@ -111,10 +119,29 @@ export default function TrainingLab({ addToast: _addToast, onTasksUpdated }) {
 
   const handleJobCreated = (job) => {
     setActiveJobId(job.id);
-    // Dallo Studio non si cambia scheda: l'esecuzione è già in fondo alla
-    // stessa pagina, ed è lì che lo Studio fa scorrere la vista.
-    if (mode !== 'studio') setTimeout(() => setMode('monitor'), 400);
+    if (mode !== 'studio') {
+      setTimeout(() => {
+        setMode('manual');
+        setManualSubMode('monitor');
+      }, 400);
+    }
     if (onTasksUpdated) onTasksUpdated();
+  };
+
+  const isManualActive = mode === 'manual' || ['dataset', 'training', 'forge', 'benchmark', 'monitor'].includes(mode);
+  const currentActiveTab = isManualActive ? manualSubMode : mode;
+
+  const handleMainTabClick = (id) => {
+    if (id === 'manual') {
+      setMode('manual');
+    } else {
+      setMode(id);
+    }
+  };
+
+  const handleSubTabClick = (subId) => {
+    setMode('manual');
+    setManualSubMode(subId);
   };
 
   const selectedDs = myDatasets.find(d => d.id === selectedDatasetId);
@@ -123,7 +150,7 @@ export default function TrainingLab({ addToast: _addToast, onTasksUpdated }) {
     <div className="training-lab">
       <Toast toast={toast} onClose={() => setToast(null)} />
 
-      {/* ── Mode switcher ── */}
+      {/* ── Top Level Bar ── */}
       <div className="training-mode-switcher">
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginRight: '12px' }}>
           <Brain size={16} style={{ color: 'var(--accent)' }} />
@@ -131,29 +158,26 @@ export default function TrainingLab({ addToast: _addToast, onTasksUpdated }) {
             TRAINING LAB
           </span>
         </div>
-        {MODES.map(m => (
-          <button
-            key={m.id}
-            className={`training-mode-btn ${mode === m.id ? 'active' : ''}`}
-            onClick={() => setMode(m.id)}
-          >
-            <m.icon size={13} />
-            <span>{m.label}</span>
-            {m.id === 'dataset' && myDatasets.length > 0 && (
-              <span className="training-mode-badge">{myDatasets.length}</span>
-            )}
-            {m.id === 'training' && selectedDs && (
-              <span className="training-mode-badge" style={{ background: 'rgba(63,185,80,0.12)', color: 'var(--success)' }}>
-                ✓
-              </span>
-            )}
-            {m.id === 'monitor' && activeJobId && (
-              <span className="training-mode-badge" style={{ background: 'rgba(188,140,255,0.12)', color: 'var(--accent)' }}>
-                ▶
-              </span>
-            )}
-          </button>
-        ))}
+
+        {MAIN_MODES.map(m => {
+          const active = (m.id === 'manual' && isManualActive) || (m.id === mode && !isManualActive);
+          return (
+            <button
+              key={m.id}
+              className={`training-mode-btn ${active ? 'active' : ''}`}
+              onClick={() => handleMainTabClick(m.id)}
+            >
+              <m.icon size={13} />
+              <span>{m.label}</span>
+              {m.id === 'manual' && (
+                <span className="training-mode-badge" style={{ background: 'rgba(188,140,255,0.12)', color: '#bc8cff' }}>
+                  5 strumenti
+                </span>
+              )}
+            </button>
+          );
+        })}
+
         <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.62rem', color: 'var(--text-dark)' }}>
           {selectedDs && (
             <>
@@ -167,8 +191,42 @@ export default function TrainingLab({ addToast: _addToast, onTasksUpdated }) {
         </div>
       </div>
 
+      {/* ── Sub-navigation Bar per la modalità Manuale ── */}
+      {isManualActive && (
+        <div className="training-manual-subbar">
+          <span style={{ fontSize: '0.64rem', color: 'var(--text-dark)', fontWeight: 700, marginRight: '4px', letterSpacing: '0.04em' }}>
+            STRUMENTI MANUALE ›
+          </span>
+          {MANUAL_SUBMODES.map(sm => (
+            <button
+              key={sm.id}
+              className={`training-manual-subbtn ${manualSubMode === sm.id ? 'active' : ''}`}
+              onClick={() => handleSubTabClick(sm.id)}
+            >
+              <sm.icon size={12} />
+              <span>{sm.label}</span>
+              {sm.id === 'dataset' && myDatasets.length > 0 && (
+                <span style={{ fontSize: '0.55rem', background: 'rgba(0,210,255,0.12)', color: 'var(--primary)', borderRadius: '6px', padding: '1px 5px', fontWeight: 700 }}>
+                  {myDatasets.length}
+                </span>
+              )}
+              {sm.id === 'training' && selectedDs && (
+                <span style={{ fontSize: '0.55rem', color: 'var(--success)', fontWeight: 700 }}>✓</span>
+              )}
+              {sm.id === 'monitor' && activeJobId && (
+                <span style={{ fontSize: '0.55rem', color: 'var(--accent)', fontWeight: 700 }}>▶</span>
+              )}
+            </button>
+          ))}
+        </div>
+      )}
+
       {/* ── Content area ── */}
       <div style={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+        {mode === 'docs' && <TrainingDocs />}
+
+        {mode === 'autopilot' && <AutopilotStudio addToast={showToast} />}
+
         {mode === 'studio' && (
           <TrainingStudio
             myDatasets={myDatasets}
@@ -179,23 +237,19 @@ export default function TrainingLab({ addToast: _addToast, onTasksUpdated }) {
           />
         )}
 
-        {mode === 'autopilot' && <AutopilotStudio addToast={showToast} />}
-
-        {mode === 'docs' && <TrainingDocs />}
-
-        {mode === 'dataset' && (
+        {isManualActive && currentActiveTab === 'dataset' && (
           <DatasetBrowser
             onDatasetSelect={(id) => {
               setSelectedDatasetId(id);
               loadMyDatasets();
-              if (id) setTimeout(() => setMode('training'), 400);
+              if (id) setTimeout(() => { setMode('manual'); setManualSubMode('training'); }, 400);
             }}
             onDatasetAdded={handleDatasetAdded}
             selectedDatasetId={selectedDatasetId}
           />
         )}
 
-        {mode === 'training' && (
+        {isManualActive && currentActiveTab === 'training' && (
           <TrainingConfigurator
             myDatasets={myDatasets}
             selectedDatasetId={selectedDatasetId}
@@ -205,19 +259,19 @@ export default function TrainingLab({ addToast: _addToast, onTasksUpdated }) {
           />
         )}
 
-        {mode === 'monitor' && (
+        {isManualActive && currentActiveTab === 'forge' && (
+          <SlmForge addToast={showToast} onJobCreated={handleJobCreated} />
+        )}
+
+        {isManualActive && currentActiveTab === 'benchmark' && (
+          <TrainingBenchmark addToast={showToast} />
+        )}
+
+        {isManualActive && currentActiveTab === 'monitor' && (
           <TrainingMonitor
             activeJobId={activeJobId}
             onAddToast={showToast}
           />
-        )}
-
-        {mode === 'forge' && (
-          <SlmForge addToast={showToast} onJobCreated={handleJobCreated} />
-        )}
-
-        {mode === 'benchmark' && (
-          <TrainingBenchmark addToast={showToast} />
         )}
       </div>
     </div>

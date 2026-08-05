@@ -1949,6 +1949,17 @@ def list_training_jobs() -> dict:
     passava per caso — tre job creati nello stesso secondo hanno la stessa data,
     e qualunque ordine soddisfa il confronto.
     """
+    # Un job il cui processo muore mentre Sigma e' acceso — ucciso da fuori,
+    # OOM, riavvio del driver — restava "running" nell'interfaccia fino al
+    # riavvio successivo, perche' la riconciliazione girava solo all'avvio.
+    # Farla anche qui costa una lettura di psutil per job in corso, che sono
+    # zero o uno quasi sempre, e chiude il caso in cui l'utente vede un run
+    # attivo che non esiste piu'.
+    try:
+        reconcile_jobs()
+    except Exception as exc:
+        log.debug("riconciliazione durante la lista: %s", exc)
+
     jobs = _load_jobs()
     ordered = sorted(jobs.values(),
                      key=lambda j: (j.get("created_ts") or 0.0, j.get("created_at") or ""),
@@ -2945,6 +2956,233 @@ def _pid_alive(pid: int | None, script_path: str = "") -> bool:
         return True
     except Exception:
         return False
+
+
+def _catena_di_processi(pid: int) -> list[int]:
+    """Il pid e tutti i suoi antenati, dal piu' vicino al piu' lontano.
+
+    Serve perche' il pid che il driver vede sulla GPU quasi mai e' quello che
+    Sigma ha registrato: il `python.exe` del venv e' un lanciatore, ed e' il
+    **figlio** a prendere il contesto CUDA. Cercare il job partendo dal figlio
+    e risalendo e' l'unico modo per collegare i due numeri.
+    """
+    try:
+        import psutil
+    except ImportError:
+        return [int(pid)]
+    catena = [int(pid)]
+    try:
+        proc = psutil.Process(int(pid))
+        for antenato in proc.parents():
+            catena.append(antenato.pid)
+    except Exception:
+        pass
+    return catena
+
+
+def _job_del_processo(pid: int, cmdline: str, jobs: dict) -> dict | None:
+    """Il job di Sigma a cui appartiene un processo sulla GPU, se c'e'."""
+    catena = set(_catena_di_processi(pid))
+    for job_id, job in jobs.items():
+        registrato = job.get("pid")
+        if registrato and int(registrato) in catena:
+            return {"id": job_id, "job": job, "match": "pid"}
+    # Nessun pid combacia: puo' essere un job avviato da una sessione in cui il
+    # numero non e' stato salvato, o un record sovrascritto da un riavvio. Lo
+    # script pero' e' in una cartella che porta l'id del job, e quello resta.
+    if cmdline:
+        for job_id, job in jobs.items():
+            script = job.get("script_path") or ""
+            if script and script.replace("\\", "/") in cmdline.replace("\\", "/"):
+                return {"id": job_id, "job": job, "match": "script"}
+    return None
+
+
+#: Processi di Windows che compaiono fra quelli con un contesto sulla GPU e che
+#: non vanno mai offerti come chiudibili. `dwm.exe` e' il compositore del
+#: desktop: e' comparso davvero nella lista, con accanto un pulsante «Termina»
+#: che avrebbe spento l'interfaccia grafica dell'utente. Gli altri sono peggio —
+#: `csrss`, `lsass`, `winlogon` e compagnia terminano la sessione o la macchina.
+#: Nessuno di questi sara' mai un training, quindi escluderli non costa niente.
+_PROCESSI_DI_SISTEMA = frozenset({
+    "dwm.exe", "csrss.exe", "winlogon.exe", "wininit.exe", "smss.exe",
+    "services.exe", "lsass.exe", "explorer.exe", "system", "registry",
+    "sihost.exe", "fontdrvhost.exe", "logonui.exe",
+})
+
+
+def _e_processo_di_sistema(nome: str) -> bool:
+    return (nome or "").strip().lower() in _PROCESSI_DI_SISTEMA
+
+
+def _unisci_per_pid(processi: list[dict]) -> list[dict]:
+    """Una riga per processo, non una per coppia (processo, scheda).
+
+    `nvidia-smi` elenca un processo una volta per ogni GPU su cui ha aperto un
+    contesto: Sigma stesso compariva due volte, identico, perche' interroga
+    entrambe le schede. Due righe per la stessa cosa sono solo confusione — e
+    due pulsanti «Termina» che fanno la stessa identica cosa.
+    """
+    unito: dict[int, dict] = {}
+    for voce in processi:
+        pid = voce["pid"]
+        scheda = {"index": voce.get("gpu_index", -1), "name": voce.get("gpu_name", ""),
+                  "vram_mb": voce.get("vram_mb"), "vram_gb": voce.get("vram_gb")}
+        if pid not in unito:
+            primo = dict(voce)
+            primo["gpus"] = [scheda]
+            unito[pid] = primo
+            continue
+        gia = unito[pid]
+        gia["gpus"].append(scheda)
+        # La VRAM totale del processo e' la somma su tutte le schede; resta
+        # `None` se nessuna delle due era misurabile (il caso di Windows WDDM).
+        misurate = [g["vram_mb"] for g in gia["gpus"] if g["vram_mb"] is not None]
+        gia["vram_mb"] = round(sum(misurate), 1) if misurate else None
+        gia["vram_gb"] = round(sum(misurate) / 1024, 2) if misurate else None
+    return list(unito.values())
+
+
+def gpu_process_inventory() -> dict:
+    """I processi che occupano la GPU, con il job di Sigma a cui appartengono.
+
+    E' la risposta alla domanda che la scheda Hardware non sapeva rispondere:
+    *cosa* tiene occupata la GPU, e posso chiuderlo da qui. Fino a ieri quella
+    scheda offriva un solo pulsante — «Pulisci VRAM» — che scarica i modelli di
+    Ollama e non tocca il training: premuto su un run appeso non fa niente, e
+    non lo dice.
+
+    Ogni processo esce classificato, perche' la lista del driver mette sullo
+    stesso piano il training e il browser (vedi `probe_gpu_processes`) e un
+    pulsante «Termina» indifferenziato sarebbe piu' pericoloso del problema che
+    risolve:
+
+      training — appartiene a un job di Sigma: e' cio' che si vuole poter chiudere
+      sigma    — Sigma Studio stesso: mai chiudibile da qui
+      sistema  — processi di Windows senza cui la sessione non sta in piedi
+      esterno  — tutto il resto: mostrato perche' occupa la scheda, ma non e'
+                 roba nostra e va trattato come tale
+    """
+    processi = _unisci_per_pid(gpu_layer.probe_gpu_processes())
+    if not processi:
+        return {"success": True, "processes": [], "total": 0, "orfani": 0}
+
+    jobs = _load_jobs()
+    protetti = set(_catena_di_processi(os.getpid()))
+
+    orfani = 0
+    for voce in processi:
+        collegato = _job_del_processo(voce["pid"], voce.get("cmdline", ""), jobs)
+        if collegato:
+            job = collegato["job"]
+            # Un processo che il driver mostra vivo mentre il registro da' il
+            # job per finito e' esattamente l'orfano da cui nasce il problema:
+            # nessuna schermata lo elencava, e il job non aveva piu' un tasto
+            # Stop da premere.
+            orfano = job.get("status") != "running"
+            orfani += int(orfano)
+            voce.update({
+                "job_id": collegato["id"],
+                "job_status": job.get("status"),
+                "job_label": job.get("method_label") or job.get("method"),
+                "base_model": job.get("base_model"),
+                "orphan": orfano,
+                "attribution": collegato["match"],
+            })
+        else:
+            voce.update({"job_id": None, "job_status": None, "job_label": None,
+                         "base_model": None, "orphan": False, "attribution": None})
+
+        if voce["pid"] in protetti:
+            voce["kind"] = "sigma"
+        elif collegato:
+            voce["kind"] = "training"
+        elif _e_processo_di_sistema(voce.get("name", "")):
+            voce["kind"] = "sistema"
+        else:
+            voce["kind"] = "esterno"
+        voce["protected"] = voce["kind"] in ("sigma", "sistema")
+        voce["killable"] = not voce["protected"]
+
+    # I job di Sigma per primi: sono l'unica cosa per cui questa lista esiste.
+    ordine = {"training": 0, "esterno": 1, "sigma": 2, "sistema": 3}
+    processi.sort(key=lambda p: ordine[p["kind"]])
+    return {"success": True, "processes": processi, "total": len(processi),
+            "orfani": orfani}
+
+
+def terminate_gpu_process(pid: int | str) -> dict:
+    """Chiude un processo che occupa la GPU, con l'albero dei suoi figli.
+
+    Se appartiene a un job di Sigma passa da `stop_training_job`, cosi' il
+    registro resta coerente con la realta'; altrimenti termina l'albero e
+    basta. In entrambi i casi verifica che il processo sia davvero sparito:
+    dire "fermato" quando non lo e' e' il difetto che ha reso questa scheda
+    inutile.
+    """
+    try:
+        pid = int(pid)
+    except (TypeError, ValueError):
+        return {"success": False, "error": f"PID non valido: {pid!r}"}
+    if pid <= 0:
+        return {"success": False, "error": f"PID non valido: {pid}"}
+
+    if pid in set(_catena_di_processi(os.getpid())):
+        return {"success": False,
+                "error": (f"Il processo {pid} è Sigma Studio stesso (o il suo "
+                          "lanciatore): chiuderlo da qui spegnerebbe anche "
+                          "l'interfaccia che te lo sta chiedendo.")}
+
+    if not _pid_alive(pid):
+        return {"success": False, "error": f"Il processo {pid} non esiste più."}
+
+    jobs = _load_jobs()
+    nome, cmdline = "", ""
+    try:
+        import psutil
+        proc = psutil.Process(pid)
+        nome, cmdline = proc.name(), " ".join(proc.cmdline())
+    except Exception:
+        pass
+
+    # Il controllo sta anche qui, non solo nell'inventario: l'endpoint accetta
+    # un pid qualunque, e un pulsante nascosto non e' una protezione.
+    if _e_processo_di_sistema(nome):
+        return {"success": False,
+                "error": (f"'{nome}' (PID {pid}) è un processo di Windows, non un "
+                          "training: chiuderlo comprometterebbe la sessione. "
+                          "Se occupa la GPU è perché disegna il desktop.")}
+
+    collegato = _job_del_processo(pid, cmdline, jobs)
+
+    if collegato:
+        job_id = collegato["id"]
+        esito = stop_training_job(job_id)
+        # `stop_training_job` parte dal pid *registrato*. Se quello era gia'
+        # morto — record vecchio, riavvio di mezzo — l'albero vero non e' stato
+        # toccato e il processo sulla GPU e' ancora li'.
+        if _pid_alive(pid):
+            chiusi = _termina_albero(pid)
+            esito = {"success": not _pid_alive(pid),
+                     "message": (f"Job '{job_id}' fermato dal processo sulla GPU "
+                                 f"({chiusi} processi chiusi)."),
+                     "job_id": job_id, "processi_chiusi": chiusi}
+            if not esito["success"]:
+                esito["error"] = (f"Il processo {pid} non si è chiuso: continua a "
+                                  "occupare la GPU.")
+        esito.setdefault("job_id", job_id)
+        esito["pid"] = pid
+        return esito
+
+    chiusi = _termina_albero(pid)
+    if _pid_alive(pid):
+        return {"success": False, "pid": pid,
+                "error": (f"Il processo {pid} non si è chiuso. Su Windows un "
+                          "processo dentro una chiamata CUDA può ignorare il "
+                          "terminate: riprova, o chiudilo dal Task Manager.")}
+    log.info("Processo GPU %s terminato a mano (%d processi chiusi)", pid, chiusi)
+    return {"success": True, "pid": pid, "processi_chiusi": chiusi,
+            "message": f"Processo {pid} terminato ({chiusi} processi chiusi)."}
 
 
 def reconcile_jobs() -> dict:

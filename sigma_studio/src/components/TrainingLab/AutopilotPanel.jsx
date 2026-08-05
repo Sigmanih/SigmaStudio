@@ -327,7 +327,7 @@ export default function AutopilotPanel({ addToast, onModelloScelto, onRoundScelt
 
       {!running && (
         <div style={{ marginBottom: '11px' }}>
-          <ModelPicker value={picked} onChange={pick} addToast={addToast} />
+          <ModelPicker value={picked} onChange={pick} addToast={addToast} cycles={data?.cycles} />
           <input
             className="training-input" value={weights}
             onChange={e => setWeights(e.target.value)}
