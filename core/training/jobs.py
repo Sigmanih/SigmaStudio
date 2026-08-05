@@ -70,6 +70,31 @@ METHOD_LABELS = {
 }
 
 
+def metodo_effettivo(method: str, hyper: dict) -> str:
+    """Il metodo che il job usera' davvero, non quello chiesto.
+
+    `lora_r = 0` significa "niente adapter, addestra i pesi": e' il regime
+    sensato sotto il miliardo di parametri, dove un adapter da rank 16 vincola
+    l'aggiornamento senza il vantaggio che su un modello grande lo giustifica.
+
+    Solo `trl_sft` sa farlo. Chiederlo su Unsloth passerebbe `r=0` a PEFT, che
+    e' un adapter di dimensione nulla: il run girerebbe fino in fondo senza
+    aggiornare niente. La scelta va risolta qui e non nell'interfaccia, perche'
+    l'autopilota e le API creano job senza passarci.
+    """
+    if method != "lora_unsloth":
+        return method
+    try:
+        rank = int(hyper.get("lora_r", 16))
+    except (TypeError, ValueError):
+        return method
+    if rank > 0:
+        return method
+    log.info("lora_r=0: passo da lora_unsloth a trl_sft, l'unico che addestra "
+             "i pesi veri invece di un adapter")
+    return "trl_sft"
+
+
 # ============================================================== rendering
 
 _PLACEHOLDER_RE = re.compile(r"\{([a-z_][a-z0-9_]*)\}")
@@ -331,7 +356,7 @@ def load_training_dataset():
         def to_text(ex):
             inp = ex.get("input") or ""
             head = ex["instruction"] + (("\\n\\n### Input:\\n" + inp) if inp else "")
-            return {"text": "### Istruzione:\\n" + head + "\\n\\n### Risposta:\\n" + str(ex["output"])}
+            return {"text": coppia_a_testo(head, ex["output"])}
         sigma("Formato Alpaca rilevato: instruction/input/output -> text")
         return ds.map(to_text, remove_columns=ds.column_names)
     if {"prompt", "completion"} <= cols:
@@ -344,8 +369,8 @@ def load_training_dataset():
         if {sys_col, q, a} <= cols:
             def orca_to_text(ex, sys_col=sys_col, q=q, a=a):
                 system = ex.get(sys_col) or ""
-                head = (system + "\\n\\n" if system else "") + str(ex[q])
-                return {"text": "### Istruzione:\\n" + head + "\\n\\n### Risposta:\\n" + str(ex[a])}
+                system = str(system)
+                return {"text": coppia_a_testo(ex[q], ex[a], sistema=system)}
             sigma("Formato %s/%s/%s rilevato -> text" % (sys_col, q, a))
             return ds.map(orca_to_text, remove_columns=ds.column_names)
     # gsm8k, squad e simili. Senza questo ramo il fallback prenderebbe la prima
@@ -357,18 +382,12 @@ def load_training_dataset():
             sigma("Formato %s/%s rilevato -> text" % (q, a))
             return ds.map(
                 lambda ex, q=q, a=a: {
-                    "text": "### Istruzione:\\n" + str(ex[q]) + "\\n\\n### Risposta:\\n" + str(ex[a])},
+                    "text": coppia_a_testo(ex[q], ex[a])},
                 remove_columns=ds.column_names)
     if "messages" in cols or "conversations" in cols:
         key = "messages" if "messages" in cols else "conversations"
         def chat_to_text(ex):
-            turns = ex[key] or []
-            parts = []
-            for t in turns:
-                role = t.get("role") or t.get("from") or "user"
-                content = t.get("content") or t.get("value") or ""
-                parts.append(str(role) + ": " + str(content))
-            return {"text": "\\n".join(parts)}
+            return {"text": turni_a_testo(ex[key])}
         sigma("Formato conversazionale rilevato -> text")
         return ds.map(chat_to_text, remove_columns=ds.column_names)
 
@@ -447,6 +466,8 @@ def load_train_and_eval():
             "con l'iperparametro `text_field`." % (distinti, len(sample)))
     sigma("Lunghezza media del testo: %.0f caratteri | %d valori distinti su %d"
           % (avg_len, distinti, len(sample)))
+    for riga in composizione_del_dataset(sample["text"]):
+        sigma(riga)
     # Mostra un esempio per debug rapido.
     esempio = str(sample["text"][0])[:300]
     sigma("Esempio testo[0]: %s%s" % (esempio, "..." if len(str(sample["text"][0])) > 300 else ""))
@@ -462,6 +483,98 @@ def load_train_and_eval():
     sigma("Split: %d esempi di training, %d di validation (%.0f%%)" % (
         len(split["train"]), len(split["test"]), VALIDATION_FRACTION * 100))
     return split["train"], split["test"]
+
+# Il formato con cui si addestra dev'essere quello con cui si interroga.
+# Questa non e' una raffinatezza: e' il difetto che ha reso inservibili giorni
+# di round. Il modello imparava a continuare "### Istruzione: ... ### Risposta:"
+# e poi il benchmark lo interrogava con i marcatori di chat del suo tokenizer.
+# Due lingue diverse, e le risposte diventavano illeggibili.
+#
+# Quando il modello ha un suo template lo si usa. Quando non ce l'ha — i modelli
+# base, non istruiti — resta lo schema testuale, che per loro e' corretto.
+_TEMPLATE_PROPRIO = [None]
+
+
+def usa_template_del_modello(tokenizer):
+    """Registra il tokenizer, se ha un formato di conversazione suo."""
+    proprio = getattr(tokenizer, "chat_template", None)
+    _TEMPLATE_PROPRIO[0] = tokenizer if proprio else None
+    if proprio:
+        sigma("Formato di addestramento: template di chat del modello")
+    else:
+        sigma("Il modello non ha un template di chat: uso lo schema istruzione/risposta")
+    return bool(proprio)
+
+
+def coppia_a_testo(domanda, risposta, sistema=""):
+    """Un esempio nel formato che il modello si aspetta di ricevere."""
+    tokenizer = _TEMPLATE_PROPRIO[0]
+    if tokenizer is not None:
+        messaggi = ([{"role": "system", "content": str(sistema)}] if sistema else [])
+        messaggi += [{"role": "user", "content": str(domanda)},
+                     {"role": "assistant", "content": str(risposta)}]
+        try:
+            return tokenizer.apply_chat_template(messaggi, tokenize=False)
+        except Exception as exc:
+            sigma("Template del modello non applicabile (%s): uso lo schema testuale"
+                  % str(exc)[:90])
+            _TEMPLATE_PROPRIO[0] = None
+    testa = (str(sistema) + "\\n\\n" if sistema else "") + str(domanda)
+    return "### Istruzione:\\n" + testa + "\\n\\n### Risposta:\\n" + str(risposta)
+
+
+def turni_a_testo(turni):
+    """Una conversazione nel formato del modello."""
+    tokenizer = _TEMPLATE_PROPRIO[0]
+    normalizzati = []
+    for t in turni or []:
+        ruolo = t.get("role") or t.get("from") or "user"
+        ruolo = {"human": "user", "gpt": "assistant", "system": "system"}.get(ruolo, ruolo)
+        normalizzati.append({"role": ruolo,
+                             "content": str(t.get("content") or t.get("value") or "")})
+    if tokenizer is not None and normalizzati:
+        try:
+            return tokenizer.apply_chat_template(normalizzati, tokenize=False)
+        except Exception:
+            _TEMPLATE_PROPRIO[0] = None
+    return "\\n".join(m["role"] + ": " + m["content"] for m in normalizzati)
+
+#: Indizi per riconoscere di cosa parla un esempio. Non e' un classificatore:
+#: e' un conteggio di parole spia, che basta a dire se un dataset copre la
+#: competenza che stiamo cercando di migliorare. Oggi il ciclo lo assume — e
+#: quando l'assunzione era sbagliata (OpenOrca per la matematica) se ne
+#: accorgeva solo dopo un round intero.
+INDIZI_DOMINIO = {
+    "matematica": ("\frac", "equation", "solve for", "theorem", "integral",
+                   "derivative", "equazione", "teorema", "calcola", "somma"),
+    "codice": ("def ", "class ", "import ", "function", "return ", "```python",
+               "```js", "SELECT ", "for (", "public static"),
+    "ragionamento": ("therefore", "because", "step by step", "reasoning",
+                     "quindi", "perche'", "ne segue", "passo dopo passo"),
+    "dialogo": ("<|user|>", "<|im_start|>", "user:", "assistant:", "human:"),
+}
+
+
+def composizione_del_dataset(testi):
+    """Di cosa parla questo dataset, in righe pronte per il log.
+
+    Un esempio puo' contare in piu' domini: un problema di matematica spiegato
+    passo per passo e' matematica *e* ragionamento, e fingere che sia una cosa
+    sola darebbe percentuali piu' pulite e piu' false.
+    """
+    conteggi = dict.fromkeys(INDIZI_DOMINIO, 0)
+    for testo in testi:
+        minuscolo = str(testo).lower()
+        for dominio, indizi in INDIZI_DOMINIO.items():
+            if any(i.lower() in minuscolo for i in indizi):
+                conteggi[dominio] += 1
+    totale = max(1, len(testi))
+    presenti = [(d, n) for d, n in conteggi.items() if n]
+    if not presenti:
+        return ["Composizione: nessun dominio riconosciuto sul campione"]
+    presenti.sort(key=lambda x: -x[1])
+    parti = ", ".join("%s %d%%" % (d, round(100 * n / totale)) for d, n in presenti)
+    return ["Composizione del campione (%d esempi): %s" % (len(testi), parti)]
 '''
 
 
@@ -648,7 +761,67 @@ def proiezioni_lora(model, preferite):
           % (", ".join(dedotte) or "nessuna", ", ".join(canoniche) or "nessuna"))
     return dedotte or canoniche
 
+
+def normalizza_la_perdita(trainer):
+    '''Chi divide la loss per l'accumulo: il modello o il Trainer?
+
+    Dalla 4.46 il Trainer non divide piu' la loss per il numero di passi di
+    accumulo. Passa invece `num_items_in_batch` al forward e si aspetta che sia
+    il modello a normalizzare sul conteggio vero dei token — cosi' l'ultimo
+    micro-batch, che spesso e' piu' corto, non pesa quanto uno pieno.
+
+    Decide chi fa cosa guardando **solo** se il forward ha un `**kwargs`
+    (`trainer.py`, `model_accepts_loss_kwargs`). I modelli di transformers ce
+    l'hanno e onorano il conteggio; un'architettura scritta a mano ce l'ha
+    quasi sempre per comodita' e il conteggio lo butta via, restituendo una
+    media. Allora nessuno dei due divide, e la loss riportata esce
+    moltiplicata per l'accumulo — con i gradienti, che e' la parte che fa
+    danno: 16 volte troppo grandi, tosati dal clipping a ogni passo, quindi
+    ogni aggiornamento ha la stessa lunghezza a prescindere dalla pendenza.
+
+    Misurato su Ailo340m-v4: loss riportata 63 dove quella vera era 3,97, con
+    accumulo 16. Nessun errore, nessun avviso — solo un numero sei volte sopra
+    il tetto del caso puro, che sembra un modello che non impara.
+
+    Il controllo e' esatto: si chiede la stessa loss con due conteggi diversi.
+    Se il numero non cambia, quel parametro il modello non lo guarda.
+    '''
+    import torch
+
+    model = trainer.model
+    try:
+        device = next(model.parameters()).device
+    except StopIteration:
+        return True
+    ids = torch.tensor([[1, 2, 3, 4]], device=device)
+    # Con il dropout attivo due chiamate identiche danno numeri diversi e la
+    # sonda leggerebbe rumore come se fosse normalizzazione.
+    era_in_training = model.training
+    model.eval()
+    try:
+        with torch.no_grad():
+            poco = model(input_ids=ids, labels=ids, num_items_in_batch=3).loss
+            tanto = model(input_ids=ids, labels=ids, num_items_in_batch=300).loss
+        onora = abs(float(poco) - float(tanto)) > 1e-6
+    except Exception as exc:
+        sigma("Non ho potuto verificare la normalizzazione della loss (%s): "
+              "la divido io, che e' il comportamento prudente" % exc)
+        onora = False
+    finally:
+        model.train(era_in_training)
+
+    if not onora:
+        # Il Trainer torna a dividere per l'accumulo: non e' la normalizzazione
+        # sul conteggio dei token, ma e' quella giusta come ordine di grandezza
+        # ed e' quella che tutti hanno usato fino alla 4.46.
+        trainer.model_accepts_loss_kwargs = False
+        sigma("Il modello ignora num_items_in_batch: normalizzo la loss "
+              "sull'accumulo (senza, loss e gradienti sarebbero %dx)"
+              % trainer.args.gradient_accumulation_steps)
+    return onora
+
 """
+
 
 _SIGMA_CALLBACK = '''
 # Oltre questa frazione della VRAM della scheda si sta gia' paginando: il 5%
@@ -910,6 +1083,7 @@ def carica(dtype):
 
 model, tokenizer = carica(DTYPE)
 sigma("Modello caricato (4-bit=%s)" % TUNE.get("load_in_4bit"))
+usa_template_del_modello(tokenizer)
 ripara_frequenze_rotative(model)
 
 # Una moltiplicazione di prova prima di impegnare ore di GPU. I modelli scritti
@@ -1047,6 +1221,8 @@ trainer = SFTTrainer(
     callbacks=[SigmaProgress()],
 )
 
+normalizza_la_perdita(trainer)
+
 sigma("Inizio training LoRA...")
 # Riavviare un job fermato deve riprendere da dove si era interrotto, non
 # ributtare via le ore gia' fatte: se in output c'e' un checkpoint, si riparte
@@ -1156,6 +1332,7 @@ if TRUST_REMOTE_CODE:
     completa_architettura("{base_model}")
 
 tokenizer = AutoTokenizer.from_pretrained("{base_model}", trust_remote_code=TRUST_REMOTE_CODE)
+usa_template_del_modello(tokenizer)
 if tokenizer.pad_token is None:
     tokenizer.pad_token = tokenizer.eos_token
 
@@ -1185,19 +1362,48 @@ if TUNE.get("load_in_4bit"):
 
 RESUME_ADAPTER = r"{resume_adapter}"
 
-if RESUME_ADAPTER:
+# rank 0 = niente LoRA, si toccano i pesi veri.
+#
+# LoRA nasce per i modelli grandi: la conoscenza c'e' gia' e la si sposta di
+# poco, spendendo l'1% dei parametri. Sotto il miliardo la premessa cade — il
+# modello e' poco addestrato, non c'e' molto da spostare di poco, e vincolare
+# l'aggiornamento a rank 16 su un decimo dei moduli e' una gabbia senza il
+# vantaggio che la giustifica. Un modello da 340M in float32 costa 1,5 GB di
+# pesi, altri 1,5 di gradienti e 3 di stati Adam: sei GB, che ci stanno.
+ADDESTRAMENTO_COMPLETO = int({lora_r}) <= 0
+
+PASSO = float({learning_rate})
+
+if ADDESTRAMENTO_COMPLETO:
+    intero = sum(p.numel() for p in model.parameters())
+    for p in model.parameters():
+        p.requires_grad_(True)
+    sigma("Addestramento completo: tutti i %.2fM parametri sono allenabili "
+          "(niente LoRA)" % (intero / 1e6))
+    # Un passo tarato su LoRA e' da una a due decadi troppo lungo per i pesi
+    # veri: LoRA aggiorna una matrice piccola partendo da zero e sopporta
+    # 2e-4, mentre qui si muovono pesi gia' addestrati, dove lo stesso passo
+    # cancella quello che c'era. Il tetto e' dichiarato nel log, non applicato
+    # di nascosto.
+    TETTO = 5e-5
+    if PASSO > TETTO:
+        sigma("Passo %.1e troppo lungo per l'addestramento completo: sceso a "
+              "%.1e (con LoRA sarebbe stato corretto)" % (PASSO, TETTO))
+        PASSO = TETTO
+elif RESUME_ADAPTER:
     # Continuazione: `is_trainable` e' obbligatorio, altrimenti PEFT carica
     # l'adapter in sola inferenza e il run girerebbe senza aggiornare nulla.
     sigma("Riprendo l'adapter LoRA da: %s" % RESUME_ADAPTER)
     model = PeftModel.from_pretrained(model, RESUME_ADAPTER, is_trainable=True)
+    model.print_trainable_parameters()
 else:
     model = get_peft_model(model, LoraConfig(
         r={lora_r}, lora_alpha={lora_alpha}, lora_dropout=0.05, bias="none",
         task_type="CAUSAL_LM",
-        target_modules=["q_proj", "k_proj", "v_proj", "o_proj",
-                        "gate_proj", "up_proj", "down_proj"],
+        target_modules=proiezioni_lora(model, ["q_proj", "k_proj", "v_proj", "o_proj",
+                                               "gate_proj", "up_proj", "down_proj"]),
     ))
-model.print_trainable_parameters()
+    model.print_trainable_parameters()
 
 
 # Ogni valutazione e' un passaggio completo sulla fetta di validation: a cadenza
@@ -1253,7 +1459,7 @@ trainer = SFTTrainer(
         per_device_train_batch_size={batch_size},
         gradient_accumulation_steps={gradient_accumulation},
         num_train_epochs={num_epochs},
-        learning_rate={learning_rate},
+        learning_rate=PASSO,
         warmup_ratio=0.05,
         lr_scheduler_type="cosine",
         weight_decay=0.01,
@@ -1293,6 +1499,8 @@ trainer = SFTTrainer(
     callbacks=[SigmaProgress()],
 )
 
+normalizza_la_perdita(trainer)
+
 sigma("Inizio training SFT...")
 # Riavviare un job fermato deve riprendere da dove si era interrotto, non
 # ributtare via le ore gia' fatte: se in output c'e' un checkpoint, si riparte
@@ -1313,10 +1521,13 @@ if RESUME_FROM:
 result = trainer.train(resume_from_checkpoint=RESUME_FROM)
 sigma("Training completato - loss finale: %.4f" % result.training_loss)
 
-out = r"{output_dir}" + "/lora_model"
+# Un adapter va in "lora_model" e chiede il merge prima di poter essere usato;
+# un modello addestrato per intero e' gia' autonomo e va in "model", che
+# l'export riconosce come sorgente completa e manda a Ollama senza altri passi.
+out = r"{output_dir}" + ("/model" if ADDESTRAMENTO_COMPLETO else "/lora_model")
 trainer.model.save_pretrained(out)
 tokenizer.save_pretrained(out)
-sigma("Adapter salvato in: %s" % out)
+sigma("%s salvato in: %s" % ("Modello" if ADDESTRAMENTO_COMPLETO else "Adapter", out))
 sigma("FATTO")
 ''',
 
@@ -1835,7 +2046,8 @@ def _build_script_values(data: dict, job_id: str, job_dir: Path) -> dict:
     Shared by job creation and by the regeneration that extends an existing run,
     so an extended job gets exactly the script it would get if created now.
     """
-    method = data.get("method", "lora_unsloth")
+    method = metodo_effettivo(data.get("method", "lora_unsloth"),
+                              data.get("hyperparams") or data.get("config") or {})
     model_base = resolve_base_model(
         data.get("base_model") or data.get("model_base", "unsloth/llama-3.2-3b-instruct"))
     # Un repo puo' essere pubblicato senza tokenizer: in quel caso si prepara
@@ -1941,9 +2153,9 @@ def create_training_job(data: dict) -> dict:
     th = sys.modules.get("core.training_handler")
     target_jobs_dir = getattr(th, "JOBS_DIR", JOBS_DIR) if th else JOBS_DIR
 
-    method = data.get("method", "lora_unsloth")
     dataset_id = data.get("dataset_id", "local_dataset")
     hyper = data.get("hyperparams") or data.get("config") or {}
+    method = metodo_effettivo(data.get("method", "lora_unsloth"), hyper)
 
     # Il modello base va validato prima di creare la cartella del job: un tag
     # Ollama non è addestrabile e l'utente deve saperlo adesso, non a training

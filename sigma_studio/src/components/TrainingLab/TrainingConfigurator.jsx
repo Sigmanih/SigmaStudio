@@ -1086,9 +1086,14 @@ export default function TrainingConfigurator({ myDatasets, selectedDatasetId: pr
             <div className="training-config-grid" style={{ marginTop: '10px' }}>
               <HyperParam
                 label="LoRA Rank (r)"
-                desc="Grado del decomposizione LoRA"
+                desc={loraR === 0
+                  ? 'Zero = niente LoRA: si addestrano i pesi veri. Ha senso '
+                    + 'sotto il miliardo di parametri, dove un adapter da '
+                    + 'rank 16 è una gabbia senza il vantaggio che la giustifica.'
+                  : 'Grado della decomposizione LoRA. A zero si addestra il '
+                    + 'modello intero invece di un adapter.'}
                 value={loraR}
-                min={4} max={128} step={4}
+                min={0} max={128} step={4}
                 onChange={setLoraR}
               />
               <HyperParam
