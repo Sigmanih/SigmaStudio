@@ -245,6 +245,55 @@ class TestGeneratedScripts:
         finally:
             delete_job(result["job_id"])
 
+    @pytest.mark.parametrize("method", ["lora_unsloth", "trl_sft", "full_pretrain"])
+    def test_every_config_argument_exists_in_the_installed_library(self, method):
+        """Ogni chiave passata a SFTConfig/TrainingArguments deve esistere davvero.
+
+        Un template compila anche quando gli si passa un argomento che la
+        libreria non conosce: l'errore arriva a runtime, dopo che il job e'
+        partito. E' successo con `group_by_length`, tolto da SFTConfig in TRL
+        0.24, e ha fatto fallire quattro round consecutivi del ciclo
+        automatico prima che qualcuno leggesse il traceback.
+        """
+        import dataclasses
+
+        from core.training.jobs import _build_script_values
+
+        values = _build_script_values(
+            {"base_model": "gpt2", "method": method, "dataset_id": "x/y",
+             "hyperparams": {"num_epochs": 1, "max_seq_length": 512}}, "tj", Path("unused"))
+        source = _render(SCRIPT_TEMPLATES[method], values)
+
+        classi = {}
+        try:
+            from trl import SFTConfig
+            classi["SFTConfig"] = SFTConfig
+        except ImportError:
+            pass
+        try:
+            from transformers import TrainingArguments
+            classi["TrainingArguments"] = TrainingArguments
+        except ImportError:
+            pass
+        if not classi:
+            pytest.skip("trl/transformers non installati")
+
+        visti = 0
+        for nodo in ast.walk(ast.parse(source)):
+            if not (isinstance(nodo, ast.Call) and isinstance(nodo.func, ast.Name)):
+                continue
+            cls = classi.get(nodo.func.id)
+            if cls is None:
+                continue
+            visti += 1
+            campi = {f.name for f in dataclasses.fields(cls)}
+            passati = {k.arg for k in nodo.keywords if k.arg}
+            ignoti = passati - campi
+            assert not ignoti, (
+                f"{method}: {nodo.func.id} non accetta {sorted(ignoti)} "
+                f"in {cls.__module__}")
+        assert visti, f"{method}: nessuna configurazione trovata da controllare"
+
     def test_render_leaves_python_braces_untouched(self):
         """Il renderer non deve toccare dict/f-string dello script."""
         template = 'x = {"a": 1}\nname = "{base_model}"\nf = f"{x}"'
@@ -384,37 +433,62 @@ class TestDatasetSubset:
     """
 
     def _loader(self, max_examples):
+        """Prepara le due funzioni vere.
+
+        Il taglio vive in `load_training_dataset`, non piu' in
+        `load_train_and_eval`: sostituire la prima con un finto — come faceva
+        questa prova — significherebbe saltare proprio cio' che si vuole
+        verificare.
+        """
         from core.training.jobs import SCRIPT_TEMPLATES, _render, _build_script_values
         values = _build_script_values(
             {"base_model": "gpt2", "method": "trl_sft", "dataset_id": "x/y",
              "hyperparams": {"max_examples": max_examples}}, "tj", Path("unused"))
         source = _render(SCRIPT_TEMPLATES["trl_sft"], values)
-        node = next(n for n in ast.parse(source).body
-                    if isinstance(n, ast.FunctionDef) and n.name == "load_train_and_eval")
-        namespace = {"json": json, "sigma": lambda *a: None,
-                     "VALIDATION_FRACTION": 0.0, "MAX_EXAMPLES": max_examples}
-        exec(ast.get_source_segment(source, node), namespace)
+        namespace = {"json": json, "os": __import__("os"), "sigma": lambda *a: None,
+                     "VALIDATION_FRACTION": 0.0, "MAX_EXAMPLES": max_examples,
+                     "DATASET_KIND": "hf", "DATASET_PATH": "x/y",
+                     "DATASET_SPLIT": "train", "DATASET_CONFIG": "",
+                     "LEGACY_HF_DATASETS": {}, "HF_DATASET_CONFIGS": {}}
+        albero = ast.parse(source)
+        for nome in ("load_training_dataset", "load_train_and_eval"):
+            node = next(n for n in albero.body
+                        if isinstance(n, ast.FunctionDef) and n.name == nome)
+            exec(ast.get_source_segment(source, node), namespace)
         return namespace["load_train_and_eval"], namespace
+
+    def _sorgente(self, namespace, n):
+        """Fa restituire il dataset di prova al vero caricatore."""
+        import datasets as D
+        D.load_dataset = lambda *a, **k: self._dataset(n)
 
     def _dataset(self, n):
         from datasets import Dataset
-        return Dataset.from_dict({"text": [f"esempio {i}" for i in range(n)]})
+
+        # Testi realistici, non "esempio 3": il controllo di sanita' rifiuta i
+        # testi troppo corti, ed e' giusto che lo faccia — un dataset con
+        # dieci caratteri per esempio e' una colonna sbagliata, non dati.
+        return Dataset.from_dict({"text": [
+            f"### Istruzione:\nDomanda numero {i} sul contenuto del corso.\n\n"
+            f"### Risposta:\nUna spiegazione articolata, diversa per ogni "
+            f"esempio, che porta alla conclusione numero {i}."
+            for i in range(n)]})
 
     def test_a_subset_is_taken_when_asked(self):
         loader, namespace = self._loader(500)
-        namespace["load_training_dataset"] = lambda: self._dataset(5000)
+        self._sorgente(namespace, 5000)
         train, _ = loader()
         assert len(train) == 500
 
     def test_zero_means_the_whole_dataset(self):
         loader, namespace = self._loader(0)
-        namespace["load_training_dataset"] = lambda: self._dataset(3000)
+        self._sorgente(namespace, 3000)
         train, _ = loader()
         assert len(train) == 3000
 
     def test_a_dataset_smaller_than_the_cap_is_left_alone(self):
         loader, namespace = self._loader(10_000)
-        namespace["load_training_dataset"] = lambda: self._dataset(400)
+        self._sorgente(namespace, 400)
         train, _ = loader()
         assert len(train) == 400
 
@@ -422,9 +496,11 @@ class TestDatasetSubset:
         """Molti dataset sono ordinati per categoria: prendere la testa
         significherebbe allenare su una fetta sola del compito."""
         loader, namespace = self._loader(50)
-        namespace["load_training_dataset"] = lambda: self._dataset(5000)
+        self._sorgente(namespace, 5000)
         train, _ = loader()
-        taken = {int(t.split()[-1]) for t in train["text"]}
+        # Il numero d'ordine chiude il testo con un punto: va tolto prima di
+        # leggerlo come intero.
+        taken = {int(t.rsplit(" ", 1)[-1].rstrip(".")) for t in train["text"]}
         assert taken != set(range(50))
         assert max(taken) > 500          # pesca in tutto il dataset
 
@@ -433,7 +509,7 @@ class TestDatasetSubset:
         first, second = [], []
         for out in (first, second):
             loader, namespace = self._loader(40)
-            namespace["load_training_dataset"] = lambda: self._dataset(2000)
+            self._sorgente(namespace, 2000)
             out.extend(loader()[0]["text"])
         assert first == second
 
@@ -469,19 +545,27 @@ class TestCheckpointing:
         assert "_last_checkpoint" in source
 
     def test_the_save_interval_stays_between_its_bounds(self):
-        """Fitti costano tempo di scrittura, radi costano ore di training."""
+        """Fitti costano tempo di scrittura, radi costano ore di training.
+
+        La cadenza viene poi arrotondata al multiplo della validazione: qui si
+        passa 1 come cadenza di validazione, cosi' si misura il criterio e non
+        l'arrotondamento.
+        """
         source = self._script()
+        # Estrazione con l'AST: tagliare alla prima riga vuota spezzava la
+        # funzione a meta' docstring appena questa e' cresciuta.
         namespace = {}
-        start = source.index("def save_interval")
-        exec(source[start:source.index("\n\n", start)], namespace)
+        nodo = next(n for n in ast.parse(source).body
+                    if isinstance(n, ast.FunctionDef) and n.name == "save_interval")
+        exec(ast.get_source_segment(source, nodo), namespace)
         save_interval = namespace["save_interval"]
         # dataset enorme: si ferma al tetto
-        assert save_interval(395_000) == 2000
+        assert save_interval(395_000, 1) == 2000
         # dataset minuscolo: non scende sotto il pavimento
-        assert save_interval(50) == 100
+        assert save_interval(50, 1) == 100
         # caso intermedio: ~20 punti di ripresa
         steps = (20_000 * 2) // 8
-        assert save_interval(20_000) == pytest.approx(steps // 20, abs=1)
+        assert save_interval(20_000, 1) == pytest.approx(steps // 20, abs=1)
 
     def test_the_last_checkpoint_is_the_one_with_the_highest_step(self, tmp_path):
         """L'ordinamento alfabetico metterebbe checkpoint-9 dopo checkpoint-40."""
@@ -527,8 +611,13 @@ class TestHyperparamUpdate:
                                                      "gradient_accumulation": 16})
             assert result["success"] is True
             source = Path(_load_jobs()[job_id]["script_path"]).read_text(encoding="utf-8")
-            assert "per_device_train_batch_size=2" in source
-            assert "gradient_accumulation_steps=16" in source
+            # Batch e accumulo passano da due variabili, perche' lo script puo'
+            # doverli ridurre da solo su un'architettura che non regge il
+            # checkpointing: il valore scelto resta quello, la config lo legge.
+            assert "BATCH = 2" in source
+            assert "ACCUM = 16" in source
+            assert "per_device_train_batch_size=BATCH" in source
+            assert "gradient_accumulation_steps=ACCUM" in source
         finally:
             delete_job(job_id)
 
@@ -902,7 +991,9 @@ class TestGeneratedDatasetLoader:
         source = _render(SCRIPT_TEMPLATES["trl_sft"], values)
         fn = next(n for n in ast.parse(source).body
                   if isinstance(n, ast.FunctionDef) and n.name == "load_training_dataset")
-        ns = {"json": json, "sigma": lambda *a: None}
+        # Il caricatore taglia il dataset prima di formattarlo, quindi legge
+        # la costante: 0 significa "prendi tutto", che e' quello che serve qui.
+        ns = {"json": json, "sigma": lambda *a: None, "MAX_EXAMPLES": 0}
         exec(ast.get_source_segment(source, fn), ns)
         return ns["load_training_dataset"]
 
@@ -1154,3 +1245,626 @@ class TestFweIntegration:
         assert status["success"] is True
         assert {"engine", "defaults", "runs", "targets", "datasets"} <= set(status)
         assert all("id" in t and "label" in t for t in status["targets"])
+
+
+class TestTrustRemoteCode:
+    """Caricare un modello con architettura propria significa eseguire il
+    codice Python del suo repo. E' una scelta di chi lancia il job."""
+
+    def _render(self, method, hyper):
+        from core.training.jobs import _build_script_values
+        values = _build_script_values(
+            {"base_model": "org/strano", "method": method, "dataset_id": "x/y",
+             "hyperparams": hyper}, "tj", Path("unused"))
+        return _render(SCRIPT_TEMPLATES[method], values)
+
+    @pytest.mark.parametrize("method", ["lora_unsloth", "trl_sft"])
+    def test_spento_se_non_lo_si_chiede(self, method):
+        source = self._render(method, {"num_epochs": 1})
+        assert "TRUST_REMOTE_CODE = False" in source
+
+    @pytest.mark.parametrize("method", ["lora_unsloth", "trl_sft"])
+    def test_acceso_solo_su_richiesta(self, method):
+        source = self._render(method, {"num_epochs": 1, "trust_remote_code": True})
+        assert "TRUST_REMOTE_CODE = True" in source
+        assert "trust_remote_code=TRUST_REMOTE_CODE" in source
+
+    def test_il_caricamento_lo_annuncia_nel_log(self):
+        """Un job che esegue codice di terzi deve dirlo dove qualcuno lo legge."""
+        source = self._render("lora_unsloth", {"trust_remote_code": True})
+        assert "ATTENZIONE: trust_remote_code attivo" in source
+
+
+class TestGradientCheckpointing:
+    """Unsloth attiva il checkpointing per conto suo in `from_pretrained`:
+    `use_gradient_checkpointing` ha "unsloth" come valore predefinito, e da li'
+    chiama `_set_gradient_checkpointing` sul modello. Passarlo solo a
+    `get_peft_model` non bastava — le architetture che non lo supportano si
+    fermavano, e su tutte le altre si pagava il rallentamento anche quando
+    l'autotune aveva deciso di non usarlo."""
+
+    def _sorgente(self):
+        from core.training.jobs import _build_script_values
+        values = _build_script_values(
+            {"base_model": "gpt2", "method": "lora_unsloth", "dataset_id": "x/y",
+             "hyperparams": {"num_epochs": 1}}, "tj", Path("unused"))
+        return _render(SCRIPT_TEMPLATES["lora_unsloth"], values)
+
+    def test_al_caricamento_non_si_dice_niente_a_unsloth(self):
+        """Misurato tre volte sullo stesso lavoro (Qwen2.5-0.5B, batch 8, seq
+        1024): non passare il parametro da' 1,1 GB e 0,72 s/step; passarlo
+        `False` da' 47 GB e 346 s/step; passarlo `"unsloth"` da' 23 GB e un run
+        che non parte. Unsloth decide da se', e decide meglio."""
+        source = self._sorgente()
+        # Il caricamento vive in una funzione, perche' va rifatto se il modello
+        # non regge la precisione scelta: la finestra si chiude sulla parentesi
+        # indentata, non sulla prima `)` — quella cadrebbe dentro
+        # `bool(TUNE.get(...))`.
+        blocco = source.split("FastLanguageModel.from_pretrained(")[1].split("\n    )")[0]
+        assert "use_gradient_checkpointing" not in blocco
+        assert "**CARICAMENTO" in blocco
+
+    def test_ma_si_puo_forzare_a_spegnerlo(self):
+        """L'unica eccezione: un'architettura che non lo supporta affatto."""
+        source = self._sorgente()
+        assert ('CARICAMENTO = {} if SUPPORTA_CHECKPOINTING '
+                'else {"use_gradient_checkpointing": False}') in source
+
+    def test_il_trainer_si_spegne_solo_dove_serve(self):
+        """`SFTConfig` di Unsloth ha `gradient_checkpointing=True` come
+        predefinito, ed e' il valore con cui i run buoni hanno sempre girato:
+        va lasciato, tranne sulle architetture che non lo reggono."""
+        source = self._sorgente()
+        assert "gradient_checkpointing=SUPPORTA_CHECKPOINTING" in source
+
+    def test_il_trainer_non_lo_riaccende_da_solo(self):
+        """`SFTConfig` di Unsloth ha `gradient_checkpointing=True` come
+        predefinito, e il Trainer lo attiva all'inizio di `train()` comunque
+        sia stato caricato il modello."""
+        source = self._sorgente()
+        blocco = source.split("args=SFTConfig(")[1].split("\n    )")[0]
+        assert "gradient_checkpointing=" in blocco
+
+
+class TestArchitetturaIncompleta:
+    """Alcuni repo con architettura propria non implementano
+    `get_input_embeddings`, e transformers 5 non lo indovina piu' da solo."""
+
+    def _shim(self):
+        """Estrae la funzione dal template e la esegue in un ambiente pulito."""
+        from core.training.jobs import _build_script_values
+        values = _build_script_values(
+            {"base_model": "org/strano", "method": "lora_unsloth", "dataset_id": "x/y",
+             "hyperparams": {"trust_remote_code": True}}, "tj", Path("unused"))
+        source = _render(SCRIPT_TEMPLATES["lora_unsloth"], values)
+        nodo = next(n for n in ast.parse(source).body
+                    if isinstance(n, ast.FunctionDef) and n.name == "completa_architettura")
+        detto = []
+        ns = {"sigma": lambda m: detto.append(m)}
+        exec(ast.get_source_segment(source, nodo), ns)
+        return ns["completa_architettura"], detto
+
+    def test_riconosce_chi_lo_implementa_davvero(self, monkeypatch):
+        """In transformers 5 il metodo sta in `EmbeddingAccessMixin`: escludere
+        il solo `PreTrainedModel` faceva scambiare il fallback della libreria
+        per un'implementazione dell'autore, e il modello restava rotto."""
+        import transformers
+
+        class MixinDiLibreria:
+            def get_input_embeddings(self):
+                raise NotImplementedError
+        MixinDiLibreria.__module__ = "transformers.modeling_utils"
+
+        class ModelloAltrui(MixinDiLibreria):
+            pass
+        ModelloAltrui.__module__ = "transformers_modules.org.strano"
+
+        completa, detto = self._shim()
+        monkeypatch.setattr(transformers.AutoConfig, "from_pretrained",
+                            classmethod(lambda cls, *a, **k: type(
+                                "C", (), {"auto_map": {"AutoModelForCausalLM": "x.Y"}})()))
+        monkeypatch.setattr("transformers.dynamic_module_utils.get_class_from_dynamic_module",
+                            lambda ref, mid, **k: ModelloAltrui)
+        completa("org/strano")
+        assert "get_input_embeddings" in ModelloAltrui.__dict__, \
+            "il metodo della libreria non conta come implementazione"
+
+    def test_non_tocca_chi_lo_dichiara(self, monkeypatch):
+        import transformers
+
+        class ModelloCompleto:
+            def get_input_embeddings(self):
+                return "la mia"
+        ModelloCompleto.__module__ = "transformers_modules.org.strano"
+        originale = ModelloCompleto.get_input_embeddings
+
+        completa, _ = self._shim()
+        monkeypatch.setattr(transformers.AutoConfig, "from_pretrained",
+                            classmethod(lambda cls, *a, **k: type(
+                                "C", (), {"auto_map": {"AutoModelForCausalLM": "x.Y"}})()))
+        monkeypatch.setattr("transformers.dynamic_module_utils.get_class_from_dynamic_module",
+                            lambda ref, mid, **k: ModelloCompleto)
+        completa("org/strano")
+        assert ModelloCompleto.get_input_embeddings is originale
+
+    def test_con_due_embedding_non_tira_a_indovinare(self, monkeypatch):
+        """Addestrare la matrice sbagliata e' peggio di un errore chiaro."""
+        import torch.nn as nn
+        import transformers
+
+        class Ambiguo(nn.Module):
+            def __init__(self):
+                super().__init__()
+                self.una = nn.Embedding(4, 2)
+                self.altra = nn.Embedding(4, 2)
+        Ambiguo.__module__ = "transformers_modules.org.strano"
+
+        completa, _ = self._shim()
+        monkeypatch.setattr(transformers.AutoConfig, "from_pretrained",
+                            classmethod(lambda cls, *a, **k: type(
+                                "C", (), {"auto_map": {"AutoModelForCausalLM": "x.Y"}})()))
+        monkeypatch.setattr("transformers.dynamic_module_utils.get_class_from_dynamic_module",
+                            lambda ref, mid, **k: Ambiguo)
+        completa("org/strano")
+        with pytest.raises(NotImplementedError, match="2 embedding"):
+            Ambiguo().get_input_embeddings()
+
+
+class TestGuardiaVram:
+    """Sforare la VRAM su Windows non produce un errore: il driver pagina in
+    RAM di sistema e il run continua, centinaia di volte piu' lento. Un ciclo
+    automatico ci resta dentro per giorni senza che nessuno se ne accorga."""
+
+    def _callback(self, method="lora_unsloth"):
+        from core.training.jobs import _build_script_values
+        values = _build_script_values(
+            {"base_model": "gpt2", "method": method, "dataset_id": "x/y",
+             "hyperparams": {"max_seq_length": 1024}}, "tj", Path("unused"))
+        source = _render(SCRIPT_TEMPLATES[method], values)
+        limite = next(n for n in ast.parse(source).body
+                      if isinstance(n, ast.Assign)
+                      and getattr(n.targets[0], "id", "") == "VRAM_LIMITE")
+        return limite, source
+
+    def test_il_limite_lascia_un_margine_ma_non_troppo(self):
+        limite, _ = self._callback()
+        valore = limite.value.value
+        assert 1.0 < valore <= 1.15, "un margine, non una scappatoia"
+
+    def test_un_picco_isolato_non_ferma_il_run(self):
+        """Una lettura sola puo' essere un'allocazione transitoria."""
+        _, source = self._callback()
+        assert "self.sforata >= 3" in source
+
+    @pytest.mark.parametrize("method", ["lora_unsloth", "trl_sft", "full_pretrain"])
+    def test_la_guardia_c_e_in_ogni_metodo(self, method):
+        _, source = self._callback(method)
+        assert '"VRAM sforata: ' in source
+
+    def test_il_messaggio_dice_cosa_cambiare(self):
+        """Un errore che non suggerisce la mossa successiva costa un altro giro."""
+        _, source = self._callback()
+        # Il commento nel costruttore contiene la stessa parola: si cerca il
+        # testo del messaggio vero, non la prima occorrenza.
+        blocco = source.split('"VRAM sforata: ')[1][:600]
+        assert "batch_size" in blocco and "max_seq_length" in blocco
+
+
+class TestCheckpointingSuUnsloth:
+
+    def test_un_modello_piccolo_non_ha_bisogno_del_checkpointing(self):
+        """Sull'adapter il checkpointing di Unsloth significa offload verso la
+        RAM di sistema: su un modello che nella scheda ci sta comodo e' un
+        costo puro, e su Windows arriva a bloccare la macchina."""
+        report = _fake_report([_gpu(0, "RTX 5070 Ti", 16.0)])
+        cfg = gpu_layer.recommend_training_config(
+            "lora_unsloth", "Qwen/Qwen2.5-0.5B", 1024, report=report)
+        assert cfg["gradient_checkpointing"] is False
+
+    def test_gli_altri_metodi_decidono_come_prima(self):
+        report = _fake_report([_gpu(0, "RTX 5070 Ti", 16.0)])
+        piccolo = gpu_layer.recommend_training_config(
+            "trl_sft", "Qwen/Qwen2.5-0.5B", 1024, report=report)
+        grande = gpu_layer.recommend_training_config(
+            "trl_sft", "meta-llama/Llama-3.1-8B", 1024, report=report)
+        assert piccolo["gradient_checkpointing"] is False
+        assert grande["gradient_checkpointing"] is True
+
+
+class TestGuardiaRam:
+    """La RAM di sistema e' la meta' piu' grave del problema: con l'offload dei
+    gradienti Unsloth sposta i tensori nella memoria dell'host, Windows non la
+    protegge, e non arriva nessun errore — arriva che la macchina si pianta e
+    va riavviata, perdendo tutto il lavoro del run."""
+
+    def _sorgente(self, method="lora_unsloth"):
+        from core.training.jobs import _build_script_values
+        values = _build_script_values(
+            {"base_model": "gpt2", "method": method, "dataset_id": "x/y",
+             "hyperparams": {"max_seq_length": 1024}}, "tj", Path("unused"))
+        return _render(SCRIPT_TEMPLATES[method], values)
+
+    @pytest.mark.parametrize("method", ["lora_unsloth", "trl_sft", "full_pretrain"])
+    def test_c_e_in_ogni_metodo(self, method):
+        assert "RAM di sistema quasi esaurita" in self._sorgente(method)
+
+    def test_la_soglia_lascia_margine_per_reagire(self):
+        limite = next(n for n in ast.parse(self._sorgente()).body
+                      if isinstance(n, ast.Assign)
+                      and getattr(n.targets[0], "id", "") == "RAM_LIMITE_PCT")
+        assert 85.0 <= limite.value.value <= 95.0, \
+            "sotto si ferma per niente, sopra si ferma quando e' gia' tardi"
+
+    def test_un_picco_isolato_non_ferma_il_run(self):
+        assert "self.ram_scarsa >= 3" in self._sorgente()
+
+    def test_psutil_assente_non_fa_fallire_il_training(self):
+        """La guardia e' un di piu': se manca la libreria il run prosegue."""
+        source = self._sorgente()
+        blocco = source.split("import psutil")[1][:900]
+        assert "except ImportError" in blocco
+
+    def test_il_messaggio_nomina_la_causa_probabile(self):
+        blocco = self._sorgente().split('"RAM di sistema quasi esaurita')[1][:400]
+        assert "offload" in blocco and "batch_size" in blocco
+
+
+class TestFermareDavvero:
+    """Fermare un job deve fermarlo davvero.
+
+    Il `python.exe` del venv e' un lanciatore che genera l'interprete vero come
+    figlio, ed e' il figlio a tenere i tensori. Terminando solo il padre il
+    training resta vivo, orfano, con decine di GB in mano: misurati 41 GB su
+    due job che avevano risposto "fermato con successo". Bastano tre stop per
+    mandare la macchina al riavvio.
+    """
+
+    def test_ai_figli_ci_si_arriva(self, monkeypatch):
+        from core.training import jobs
+
+        terminati = []
+
+        class FintoProc:
+            def __init__(self, nome):
+                self.nome = nome
+
+            def terminate(self):
+                terminati.append(self.nome)
+
+            def kill(self):
+                terminati.append(self.nome + "!")
+
+        figli = [FintoProc("figlio1"), FintoProc("figlio2")]
+        radice = FintoProc("padre")
+        radice.children = lambda recursive=False: figli
+
+        finto_psutil = type("P", (), {
+            "Process": staticmethod(lambda pid: radice),
+            "wait_procs": staticmethod(lambda procs, timeout=None: (procs, [])),
+        })
+        monkeypatch.setitem(sys.modules, "psutil", finto_psutil)
+
+        assert jobs._termina_albero(123) == 3
+        assert terminati == ["figlio1", "figlio2", "padre"]
+
+    def test_chi_resiste_viene_ucciso(self, monkeypatch):
+        """Su Windows un processo dentro una chiamata CUDA ignora il terminate."""
+        from core.training import jobs
+
+        uccisi = []
+
+        class Testardo:
+            def terminate(self):
+                pass
+
+            def kill(self):
+                uccisi.append("kill")
+
+        ostinato = Testardo()
+        ostinato.children = lambda recursive=False: []
+        finto_psutil = type("P", (), {
+            "Process": staticmethod(lambda pid: ostinato),
+            "wait_procs": staticmethod(lambda procs, timeout=None: ([], list(procs))),
+        })
+        monkeypatch.setitem(sys.modules, "psutil", finto_psutil)
+
+        jobs._termina_albero(123)
+        assert uccisi == ["kill"]
+
+    def test_uno_stop_che_non_ferma_niente_lo_dice(self, monkeypatch, tmp_path):
+        """Rispondere "fermato" a un processo ancora vivo e' il modo in cui si
+        accumulano orfani senza che nessuno se ne accorga."""
+        from core.training import jobs
+
+        monkeypatch.setattr(jobs, "_load_jobs", lambda: {"j1": {"id": "j1", "pid": 999}})
+        monkeypatch.setattr(jobs, "_save_jobs", lambda j: None)
+        monkeypatch.setattr(jobs, "_termina_albero", lambda pid, attesa=12.0: 1)
+        monkeypatch.setattr(jobs, "_pid_alive", lambda pid, script_path="": True)
+
+        out = jobs.stop_training_job("j1")
+        assert not out["success"]
+        assert "999" in out["error"] and "memoria" in out["error"]
+
+
+class TestArchitettureFatteAMano:
+    """Un'architettura che non regge il checkpointing e' quasi sempre scritta a
+    mano, e chi la scrive a mano scrive anche l'attenzione a mano: `softmax(q @
+    k.T)` materializza una matrice (batch x teste x T x T) per **ogni**
+    livello, e senza checkpointing restano tutte fino al backward.
+
+    Misurato su Ailo340m-v4 (32 livelli, 12 teste, contesto 1024): batch 8 =
+    53 GB su una scheda da 15,9 e OutOfMemory; batch 2 = un paio di GB.
+    """
+
+    def _esegui(self, supporta, batch=8, accum=4):
+        """Esegue il pezzo di script che decide batch e accumulo."""
+        from core.training.jobs import _build_script_values
+        values = _build_script_values(
+            {"base_model": "gpt2", "method": "lora_unsloth", "dataset_id": "x/y",
+             "hyperparams": {"batch_size": batch, "gradient_accumulation": accum}},
+            "tj", Path("unused"))
+        source = _render(SCRIPT_TEMPLATES["lora_unsloth"], values)
+        inizio = source.index("BATCH = ")
+        pezzo = source[inizio:source.index("model, tokenizer =", inizio)]
+        ns = {"SUPPORTA_CHECKPOINTING": supporta, "sigma": lambda m: None}
+        exec(pezzo, ns)
+        return ns["BATCH"], ns["ACCUM"]
+
+    def test_un_architettura_normale_non_viene_toccata(self):
+        assert self._esegui(supporta=True) == (8, 4)
+
+    def test_senza_checkpointing_il_batch_si_riduce(self):
+        batch, _ = self._esegui(supporta=False)
+        assert batch == 2
+
+    def test_il_batch_efficace_resta_lo_stesso(self):
+        """Ridurre il batch senza compensare cambierebbe l'addestramento, non
+        solo la memoria: il gradiente verrebbe da un campione piu' piccolo."""
+        prima = 8 * 4
+        batch, accum = self._esegui(supporta=False, batch=8, accum=4)
+        assert batch * accum == prima
+
+    def test_un_batch_gia_piccolo_non_si_tocca(self):
+        assert self._esegui(supporta=False, batch=2, accum=16) == (2, 16)
+        assert self._esegui(supporta=False, batch=1, accum=32) == (1, 32)
+
+
+class TestFormatiDataset:
+    """Riconoscere il formato di un dataset, o fermarsi.
+
+    E' il difetto piu' costoso trovato finora, perche' non somigliava a un
+    errore: il ripiego prendeva la prima colonna di testo e il training partiva.
+    Su OpenOrca quella colonna era `id`, e il modello ha passato ore a imparare
+    stringhe come "niv.242684"; su MetaMathQA era `type`, cioe' una dozzina di
+    etichette; su OpenMathInstruct-2 era `problem`, cioe' le domande senza mai
+    una risposta. I benchmark successivi davano 100% di risposte illeggibili, e
+    ogni round veniva scartato — il ciclo funzionava, i dati no.
+    """
+
+    def _formatta(self, colonne):
+        """Fa girare la catena di riconoscimento su uno schema di colonne."""
+        import datasets as D
+        from datasets import Dataset
+
+        from core.training.jobs import _build_script_values
+
+        values = _build_script_values(
+            {"base_model": "gpt2", "method": "trl_sft", "dataset_id": "x/y",
+             "hyperparams": {}}, "tj", Path("unused"))
+        source = _render(SCRIPT_TEMPLATES["trl_sft"], values)
+        albero = ast.parse(source)
+        pezzi = {n.name: ast.get_source_segment(source, n) for n in albero.body
+                 if isinstance(n, ast.FunctionDef)
+                 and n.name in ("load_training_dataset", "load_train_and_eval")}
+
+        n = max(len(v) for v in colonne.values())
+        ds = Dataset.from_dict({k: (v * n)[:n] for k, v in colonne.items()})
+        vecchio = D.load_dataset
+        D.load_dataset = lambda *a, **k: ds
+        try:
+            ns = {"sigma": lambda m: None, "json": json, "os": __import__("os"),
+                  "DATASET_KIND": "hf", "DATASET_PATH": "x/y", "DATASET_SPLIT": "train",
+                  "DATASET_CONFIG": "", "LEGACY_HF_DATASETS": {}, "HF_DATASET_CONFIGS": {},
+                  "VALIDATION_FRACTION": 0.0, "MAX_EXAMPLES": 0}
+            exec(pezzi["load_training_dataset"], ns)
+            exec(pezzi["load_train_and_eval"], ns)
+            train, _ = ns["load_train_and_eval"]()
+            return str(train["text"][0])
+        finally:
+            D.load_dataset = vecchio
+
+    LUNGA = ["Una risposta articolata che spiega il ragionamento fino alla conclusione."]
+
+    def test_openorca_usa_domanda_e_risposta_non_l_id(self):
+        testo = self._formatta({"id": ["niv.242684"], "system_prompt": ["Sei un assistente."],
+                                "question": ["Quanto fa 2+2?"], "response": self.LUNGA})
+        assert "niv.242684" not in testo
+        assert "Quanto fa 2+2?" in testo and "ragionamento" in testo
+
+    def test_openmathinstruct_include_la_soluzione(self):
+        testo = self._formatta({"problem": ["Ava ha tre mele e ne compra altre due."],
+                                "generated_solution": self.LUNGA,
+                                "expected_answer": ["5"], "problem_source": ["aug"]})
+        assert "ragionamento" in testo, "senza la soluzione impara solo le domande"
+
+    def test_metamathqa_non_si_addestra_sulle_etichette(self):
+        testo = self._formatta({"type": ["MATH_AnsAug"], "query": ["Quanto fa 5*6?"],
+                                "original_question": ["5*6?"], "response": self.LUNGA})
+        assert "MATH_AnsAug" not in testo
+        assert "Quanto fa 5*6?" in testo and "ragionamento" in testo
+
+    def test_una_coppia_non_prevista_ferma_il_run(self):
+        """Prenderne una sola insegnerebbe meta' del compito, e in silenzio."""
+        with pytest.raises(SystemExit, match="coppia domanda/risposta"):
+            self._formatta({"domanda": ["Perche' il cielo e' blu e come si spiega?"],
+                            "spiegazione": self.LUNGA, "tag": ["fisica"]})
+
+    def test_una_colonna_di_etichette_ferma_il_run(self):
+        with pytest.raises(SystemExit):
+            self._formatta({"categoria": ["sport"] * 30 + ["musica"] * 30})
+
+    def test_una_colonna_di_identificativi_ferma_il_run(self):
+        with pytest.raises(SystemExit):
+            self._formatta({"chiave": ["ab.%d" % i for i in range(60)]})
+
+    def test_un_tag_non_viene_scambiato_per_meta_di_una_coppia(self):
+        """Una colonna corta e ripetuta e' un'etichetta: se contasse come
+        contenuto, ogni dataset con un `source` si fermerebbe per niente."""
+        testo = self._formatta({"instruction": ["Scrivi una funzione"], "input": [""],
+                                "output": ["def f(): pass"], "source": ["github"]})
+        assert "def f(): pass" in testo
+
+
+class TestMemoriaRealistica:
+    """La memoria che conta e' quella che il driver vede, non quella che
+    PyTorch dichiara.
+
+    `max_memory_allocated` conta i tensori vivi: misurati 9,4 GB dichiarati
+    mentre la scheda ne aveva 15,4 su 16,3. La guardia contro lo sforamento
+    dormiva proprio mentre la memoria finiva, e il run degradava da 18 a 83
+    secondi per passo senza che nulla si fermasse.
+    """
+
+    def _sorgente(self, method="lora_unsloth"):
+        from core.training.jobs import _build_script_values
+        values = _build_script_values(
+            {"base_model": "gpt2", "method": method, "dataset_id": "x/y",
+             "hyperparams": {"max_seq_length": 1024}}, "tj", Path("unused"))
+        return _render(SCRIPT_TEMPLATES[method], values)
+
+    @pytest.mark.parametrize("method", ["lora_unsloth", "trl_sft", "full_pretrain"])
+    def test_si_chiede_al_driver_non_all_allocatore(self, method):
+        source = self._sorgente(method)
+        assert "torch.cuda.mem_get_info()" in source
+        # Il nome compare ancora nel commento che spiega perche' non si usa:
+        # quello che conta e' che non sia piu' chiamato.
+        assert "torch.cuda.max_memory_allocated()" not in source
+
+    def test_un_run_che_rallenta_su_scheda_piena_si_ferma(self):
+        """Rallentare *mentre* la scheda e' quasi piena non e' un caso: e'
+        l'allocatore che sfoga in RAM di sistema, e da li' non si riprende."""
+        source = self._sorgente()
+        assert "self.strozzato >= 3" in source
+        blocco = source.split("Il run sta rallentando su una scheda piena")[1][:400]
+        assert "batch_size" in blocco and "max_seq_length" in blocco
+
+    def test_un_rallentamento_su_scheda_libera_non_ferma_niente(self):
+        """Un run lento ma con memoria disponibile ha un'altra causa: fermarlo
+        toglierebbe lavoro buono."""
+        source = self._sorgente()
+        assert "self.ultima_vram > 0.90" in source
+
+
+class TestStimaAttivazioni:
+
+    def test_la_stima_riflette_la_misura(self):
+        """La costante veniva da run su dati poi rivelatisi sbagliati:
+        sequenze di dieci caratteri, che dopo la tokenizzazione non riempivano
+        niente. Con testo vero da 1024 token e un modello da 0,5B la spesa e'
+        ~1,8 GB a sequenza."""
+        report = _fake_report([_gpu(0, "RTX 5070 Ti", 16.0)])
+        cfg = gpu_layer.recommend_training_config(
+            "lora_unsloth", "Qwen/Qwen2.5-0.5B", 1024, report=report)
+        per_seq = 5.5 * (1024 / 2048.0) * max(0.35, cfg["params_b"]) ** 0.7
+        assert 1.5 <= per_seq <= 2.2, "la stima deve stare vicino alla misura"
+        # E il batch che ne deriva deve lasciare margine sulla scheda.
+        assert cfg["batch_size"] * per_seq < 16.0 * 0.85
+
+    def test_il_batch_efficace_resta_quello_voluto(self):
+        report = _fake_report([_gpu(0, "RTX 5070 Ti", 16.0)])
+        cfg = gpu_layer.recommend_training_config(
+            "lora_unsloth", "Qwen/Qwen2.5-0.5B", 1024, report=report)
+        effettivo = cfg["batch_size"] * cfg["gradient_accumulation"]
+        assert 24 <= effettivo <= 40, "ridurre il batch senza compensare cambia l'addestramento"
+
+    def test_una_scheda_occupata_abbassa_il_batch(self):
+        """Ma non fino a uno: chi la occupa spesso la libera fra un minuto."""
+        piena = _fake_report([dict(_gpu(0, "RTX 5070 Ti", 16.0), vram_free_gb=0.4)])
+        vuota = _fake_report([dict(_gpu(0, "RTX 5070 Ti", 16.0), vram_free_gb=15.5)])
+        con = gpu_layer.recommend_training_config("lora_unsloth", "Qwen/Qwen2.5-0.5B",
+                                                  1024, report=piena)["batch_size"]
+        senza = gpu_layer.recommend_training_config("lora_unsloth", "Qwen/Qwen2.5-0.5B",
+                                                    1024, report=vuota)["batch_size"]
+        assert 1 < con < senza
+
+
+class TestCadenzeAllineate:
+    """Salvataggio e validazione devono cadere insieme.
+
+    Con `load_best_model_at_end` il Trainer deve poter far coincidere il
+    checkpoint migliore con una misura: se i due passi non si allineano si
+    rifiuta di partire — *"found 100, which is not a round multiple of 52"* —
+    e il round fallisce prima ancora del primo step. E' successo due volte di
+    fila, fermando il ciclo.
+    """
+
+    def _cadenze(self, esempi, method="lora_unsloth"):
+        from core.training.jobs import _build_script_values
+
+        values = _build_script_values(
+            {"base_model": "gpt2", "method": method, "dataset_id": "x/y",
+             "hyperparams": {"num_epochs": 1, "batch_size": 8,
+                             "gradient_accumulation": 4}}, "tj", Path("unused"))
+        source = _render(SCRIPT_TEMPLATES[method], values)
+        # `eval_interval` legge una costante definita altrove nello script.
+        costante = next(n for n in ast.parse(source).body
+                        if isinstance(n, ast.Assign)
+                        and getattr(n.targets[0], "id", "") == "TARGET_EVALS")
+        ns = {"TARGET_EVALS": costante.value.value}
+        for nome in ("eval_interval", "save_interval"):
+            nodo = next(n for n in ast.parse(source).body
+                        if isinstance(n, ast.FunctionDef) and n.name == nome)
+            exec(ast.get_source_segment(source, nodo), ns)
+        ogni = ns["eval_interval"](esempi)
+        return ogni, ns["save_interval"](esempi, ogni)
+
+    @pytest.mark.parametrize("esempi", [1000, 5000, 30000, 100000, 395000])
+    def test_il_salvataggio_e_multiplo_della_validazione(self, esempi):
+        ogni, salva = self._cadenze(esempi)
+        assert salva % ogni == 0, f"{salva} non e' multiplo di {ogni}"
+
+    def test_resta_una_cadenza_sensata(self):
+        """Allineare non deve stravolgere: i checkpoint restano abbastanza
+        fitti da non perdere ore di lavoro, e abbastanza radi da non costare
+        piu' del training."""
+        _, salva = self._cadenze(30000)
+        assert 50 <= salva <= 2500
+
+    @pytest.mark.parametrize("method", ["lora_unsloth", "trl_sft"])
+    def test_vale_per_ogni_metodo(self, method):
+        ogni, salva = self._cadenze(30000, method)
+        assert salva % ogni == 0
+
+
+class TestTaglioPrimaDellaFormattazione:
+    """Il sottoinsieme va estratto prima di trasformare il dataset.
+
+    OpenMathInstruct-2 ha 13.972.791 righe. Formattarle tutte per tenerne
+    30.000 sono minuti di CPU e qualche giga di cache a ogni round, buttati —
+    e il progresso a schermo dice 8% quando il lavoro utile e' gia' finito.
+    """
+
+    def _sorgente(self, method="trl_sft"):
+        from core.training.jobs import _build_script_values
+        values = _build_script_values(
+            {"base_model": "gpt2", "method": method, "dataset_id": "x/y",
+             "hyperparams": {"max_examples": 30000}}, "tj", Path("unused"))
+        return _render(SCRIPT_TEMPLATES[method], values)
+
+    @pytest.mark.parametrize("method", ["lora_unsloth", "trl_sft", "full_pretrain"])
+    def test_il_taglio_precede_la_trasformazione(self, method):
+        source = self._sorgente(method)
+        taglio = source.index("prima della formattazione")
+        assert 0 < taglio < source.index(".map(")
+
+    def test_il_taglio_avviene_una_volta_sola(self):
+        """Tagliare due volte non sbaglia il risultato, ma rimescolare un
+        campione gia' estratto e' lavoro che non serve a nessuno."""
+        source = self._sorgente()
+        assert source.count("shuffle(seed=42).select(range(MAX_EXAMPLES))") == 1
+
+    def test_il_campione_resta_mescolato(self):
+        """I dataset sono spesso ordinati per categoria: prendere la testa
+        significherebbe addestrare su una fetta sola del compito."""
+        source = self._sorgente()
+        assert "shuffle(seed=42)" in source

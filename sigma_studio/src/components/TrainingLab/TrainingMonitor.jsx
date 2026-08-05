@@ -118,6 +118,9 @@ export default function TrainingMonitor({ onAddToast, embedded = false, jobId = 
   const [exportQuant, setExportQuant] = useState('');
   const [quantLevels, setQuantLevels] = useState([]);
   const [metrics, setMetrics] = useState(null);
+  // 'output' = il log grezzo, 'riepilogo' = ciò che serve per capire
+  // com'è andata, in una forma incollabile.
+  const [consoleTab, setConsoleTab] = useState('output');
   const [continueModal, setContinueModal] = useState(false);
   const [continueMode, setContinueMode] = useState('resume_adapter');
   const [continueDataset, setContinueDataset] = useState('');
@@ -356,6 +359,65 @@ export default function TrainingMonitor({ onAddToast, embedded = false, jobId = 
       setExporting(false);
     }
   };
+
+  // Le righe del log utili a una diagnosi, senza le barre di avanzamento e i
+  // duplicati di transformers che occupano il 90% dell'output.
+  const meaningfulLines = () => logs.filter(l =>
+    /\[SIGMA\]|error|errore|traceback|warning|exception|failed/i.test(l)
+    && !/\[SIGMA-METRIC\]/.test(l));
+
+  const summary = () => {
+    const j = selectedJob || {};
+    const s = metrics?.summary || {};
+    const plan = j.gpu_plan || {};
+    const hyper = j.hyperparams || {};
+    // 0.6723926663398743 non si legge e non si confronta a occhio: 4 decimali
+    // bastano per distinguere due run.
+    const n = (v, dec = 4) => (typeof v === 'number' ? v.toFixed(dec) : (v ?? '—'));
+    const lines = [
+      `# Riepilogo job ${j.id || '—'}`,
+      `modello    ${j.base_model || '—'}`,
+      `dataset    ${j.dataset_name || j.dataset_id || '—'}`,
+      `metodo     ${j.method_label || j.method || '—'}`,
+      `stato      ${j.status || '—'}${j.exit_code != null ? ` (exit ${j.exit_code})` : ''}`,
+      // I job di merge/export non hanno step: la riga direbbe solo "0/0".
+      ...(j.total_steps ? [`progresso  step ${j.current_step ?? '—'}/${j.total_steps}`
+        + `  epoca ${j.current_epoch ?? '—'}/${j.total_epochs ?? '—'}`] : []),
+      '',
+      '## Iperparametri',
+      Object.entries(hyper)
+        .filter(([, v]) => v !== null && v !== undefined && typeof v !== 'object')
+        .map(([k, v]) => `${k.padEnd(24)} ${v}`).join('\n') || '(nessuno)',
+      '',
+      '## Hardware',
+      `strategia  ${plan.strategy || '—'}  ${(plan.devices || []).join(', ')}`,
+      `precisione ${plan.dtype || '—'}  attn ${plan.attn || '—'}  4bit ${plan.load_in_4bit ?? '—'}`,
+      ...(plan.notes || []).map(n => `  · ${n}`),
+      '',
+      '## Metriche',
+      `run nel log    ${metrics?.run_count ?? '—'}`
+        + (metrics?.previous_points ? ` (${metrics.previous_points} punti da avvii precedenti, esclusi)` : ''),
+      `punti          ${s.points ?? '—'}   valutazioni ${s.eval_points ?? '—'}`,
+      `loss           ultima ${n(s.last_loss)}  minima ${n(s.min_loss)}  media ${n(s.avg_loss)}`,
+      `validation     ultima ${n(s.last_eval_loss)}  migliore ${n(s.best_eval_loss)}`
+        + `${s.best_eval_step != null ? ` allo step ${Math.round(s.best_eval_step)}` : ''}`,
+      `perplexity     ${n(s.perplexity, 3)}   divario ${n(s.gap)}`,
+      `tendenza       ${s.trend != null ? (s.trend * 100).toFixed(2) + '%' : '—'}`,
+      '',
+      '## Valutazione automatica',
+      (metrics?.diagnostics || []).map(v =>
+        `[${v.level}] ${v.title}
+  ${v.detail}${v.action ? `
+  -> ${v.action}` : ''}`
+      ).join('\n') || '(nessun verdetto)',
+      '',
+      '## Righe di log rilevanti (ultime 25)',
+      meaningfulLines().slice(-25).join('\n') || '(nessuna)',
+    ];
+    return lines.join('\n');
+  };
+
+  const copySummary = () => navigator.clipboard?.writeText(summary());
 
   const copyLogs = () => {
     navigator.clipboard?.writeText(logs.join('\n'));
@@ -613,24 +675,58 @@ export default function TrainingMonitor({ onAddToast, embedded = false, jobId = 
         {selectedJob && (
           <div>
             <div className="training-log-controls">
-              <div className="training-log-label">
-                <ScrollText size={12} style={{ display: 'inline', marginRight: '5px' }} />
-                Output — {logs.length} righe
+              {/* Il log grezzo è migliaia di righe di barre di avanzamento: per
+                  capire com'è andato un run, o per farlo leggere a qualcun
+                  altro, serve un riepilogo, non l'output. */}
+              {[['output', `Output — ${logs.length} righe`],
+                ['riepilogo', 'Riepilogo']].map(([id, label]) => (
+                <button
+                  key={id}
+                  className="training-log-ctrl-btn"
+                  onClick={() => setConsoleTab(id)}
+                  style={{
+                    color: consoleTab === id ? 'var(--primary)' : 'var(--text-dim)',
+                    borderColor: consoleTab === id ? 'rgba(0,210,255,0.3)' : undefined,
+                    background: consoleTab === id ? 'rgba(0,210,255,0.06)' : undefined,
+                    fontWeight: consoleTab === id ? 700 : 500,
+                  }}
+                >
+                  {id === 'output' && <ScrollText size={10} style={{ marginRight: '4px' }} />}
+                  {label}
+                </button>
+              ))}
+              <div style={{ marginLeft: 'auto', display: 'flex', gap: '5px' }}>
+                {consoleTab === 'output' ? (
+                  <>
+                    <button
+                      className="training-log-ctrl-btn"
+                      onClick={() => setAutoScroll(!autoScroll)}
+                      style={{ color: autoScroll ? 'var(--primary)' : 'var(--text-dim)' }}
+                    >
+                      {autoScroll ? '⬇ Auto-scroll' : '⬇ Auto-scroll OFF'}
+                    </button>
+                    <button className="training-log-ctrl-btn" onClick={copyLogs}>
+                      <Copy size={10} /> Copia
+                    </button>
+                    <button className="training-log-ctrl-btn" onClick={() => setLogs([])}>
+                      Pulisci
+                    </button>
+                  </>
+                ) : (
+                  <button className="training-log-ctrl-btn" onClick={copySummary}
+                          style={{ color: 'var(--primary)' }}>
+                    <Copy size={10} /> Copia riepilogo
+                  </button>
+                )}
               </div>
-              <button
-                className="training-log-ctrl-btn"
-                onClick={() => setAutoScroll(!autoScroll)}
-                style={{ color: autoScroll ? 'var(--primary)' : 'var(--text-dim)' }}
-              >
-                {autoScroll ? '⬇ Auto-scroll' : '⬇ Auto-scroll OFF'}
-              </button>
-              <button className="training-log-ctrl-btn" onClick={copyLogs}>
-                <Copy size={10} /> Copia
-              </button>
-              <button className="training-log-ctrl-btn" onClick={() => setLogs([])}>
-                Pulisci
-              </button>
             </div>
+            {consoleTab === 'riepilogo' ? (
+              <pre className="training-log-terminal" style={{
+                whiteSpace: 'pre-wrap', margin: 0, fontSize: '0.68rem', lineHeight: 1.5,
+              }}>
+                {summary()}
+              </pre>
+            ) : (
             <div className="training-log-terminal">
               {logs.length === 0 ? (
                 <span className="log-empty">
@@ -649,6 +745,7 @@ export default function TrainingMonitor({ onAddToast, embedded = false, jobId = 
               )}
               <div ref={logEndRef} />
             </div>
+            )}
           </div>
         )}
 

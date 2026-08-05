@@ -619,10 +619,14 @@ def resolve_concurrency(model: str, requested) -> tuple[int, str]:
             value = int(profile["recommended_parallel"])
             return max(1, value), f"auto: misurato il {profile.get('measured_at', '')[:10]}"
         estimate = estimate_capacity(model)
-        # Senza misura si resta prudenti: la stima da VRAM non sa se il
-        # servitore e' configurato per servire piu' richieste insieme. Il tetto
-        # cresce col numero di endpoint, perche' ognuno ha la sua coda.
-        ceiling = 4 * max(1, int(estimate.get("endpoint_count", 1) or 1))
+        # Il tetto e' prudenza contro un servitore che accoda: se Ollama serve
+        # una richiesta alla volta, alzare i worker non serve a niente. Ma su
+        # questa macchina non e' cosi', misurato il 2026-08-02 su 24 richieste
+        # a qwen2.5:0.5b-instruct: 1w 7.7 req/s, 4w 26.5, 8w 37.6, 16w 41.8.
+        # Fermarsi a 4 costava il 42% del throughput. Per i modelli grandi il
+        # limite lo mette comunque la VRAM (`max_parallel_now`), e li' 4 e 2
+        # rendono uguale — Qwythos 9B: 2w 2.66 req/s, 4w 2.65.
+        ceiling = 8 * max(1, int(estimate.get("endpoint_count", 1) or 1))
         value = min(int(estimate.get("max_parallel_now", 1) or 1), ceiling)
         return max(1, value), "auto: stima da VRAM (nessuna misura disponibile)"
 

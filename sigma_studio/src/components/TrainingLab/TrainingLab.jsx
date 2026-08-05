@@ -1,22 +1,25 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { BookOpen, Database, Cpu, BarChart2, Brain, Award, Hammer, Layers, X } from 'lucide-react';
+import { BookOpen, Database, Cpu, BarChart2, Brain, Award, Hammer, Layers, Bot, X } from 'lucide-react';
 import TrainingDocs from './TrainingDocs';
 import DatasetBrowser from './DatasetBrowser';
 import TrainingConfigurator from './TrainingConfigurator';
 import TrainingMonitor from './TrainingMonitor';
 import TrainingStudio from './TrainingStudio';
+import AutopilotStudio from './AutopilotStudio';
 import TrainingBenchmark from './TrainingBenchmark';
 import SlmForge from './SlmForge';
 import '../../styles/training-lab.css';
 
 // ==============================================================================
 // TRAINING LAB — Sigma Studio v7.0
-// 6 sub-tab: Documentazione | Dataset | Training | Monitor | Forgia SLM | Benchmark
+// Sub-tab: Studio (il percorso manuale) | Autopilota (il ciclo che lavora da
+// solo) | Documentazione | Dataset | Configurazione | Monitor | Forgia | Benchmark
 // Il token HuggingFace e' un'impostazione d'account, non di training: sta in Account & Voce.
 // ==============================================================================
 
 const MODES = [
   { id: 'studio', label: '🎛️ Studio', icon: Layers, desc: 'Tutto il processo in una pagina' },
+  { id: 'autopilot', label: '🤖 Autopilota', icon: Bot, desc: 'Scegli un modello e lascialo migliorare da solo' },
   { id: 'docs', label: '📖 Documentazione', icon: BookOpen, desc: 'Guida completa al training' },
   { id: 'dataset', label: '🗃️ Dataset', icon: Database, desc: 'HuggingFace + Import locale' },
   { id: 'training', label: '⚙️ Configurazione', icon: Cpu, desc: 'Modello, metodo, iperparametri' },
@@ -175,6 +178,8 @@ export default function TrainingLab({ addToast: _addToast, onTasksUpdated }) {
             addToast={showToast}
           />
         )}
+
+        {mode === 'autopilot' && <AutopilotStudio addToast={showToast} />}
 
         {mode === 'docs' && <TrainingDocs />}
 

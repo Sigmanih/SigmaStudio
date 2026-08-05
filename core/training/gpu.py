@@ -677,11 +677,29 @@ def recommend_training_config(method: str = "lora_unsloth",
     if gradient_checkpointing:
         notes.append("Gradient checkpointing attivo: ~30-50% meno VRAM, ~20% più lento.")
 
-    # Empirical activation cost per sequence; checkpointing recomputes most of it.
-    per_seq_gb = 0.55 * (seq_len / 2048.0) * max(0.35, params_b) ** 0.7
+    # Costo delle attivazioni per sequenza, tarato su una misura e non a
+    # intuito. La costante precedente (0,55) veniva da run su dati che si
+    # erano poi rivelati sbagliati: sequenze di dieci caratteri, che dopo la
+    # tokenizzazione non riempivano niente. Con testo vero da 1024 token e un
+    # modello da 0,5B la spesa reale e' ~1,8 GB a sequenza — dieci volte la
+    # stima — e il batch 8 che ne derivava portava la scheda al 94%, con il
+    # passo degradato da 18 a 83 secondi.
+    per_seq_gb = 5.5 * (seq_len / 2048.0) * max(0.35, params_b) ** 0.7
     if gradient_checkpointing:
         per_seq_gb *= 0.45
-    headroom = max(0.4, vram * 0.85 - budget - 1.2)   # 15% safety margin + CUDA context
+    # Quanto c'e' davvero, non quanto c'e' scritto sulla scatola: browser,
+    # editor e il resto del desktop tengono qualche GB, e la scheda che il
+    # training trova non e' mai quella nominale. Se la lettura non e'
+    # disponibile si resta sul totale, come prima.
+    # Chi occupa la scheda adesso spesso non ci sara' fra un minuto: Ollama
+    # rilascia il modello dopo il keep-alive, un job che sta finendo libera
+    # tutto. Prendere la lettura alla lettera farebbe pianificare a batch 1 un
+    # run che poi girera' su una scheda vuota. Il pavimento al 60% e' il
+    # compromesso: una scheda davvero occupata abbassa il batch, un occupante
+    # di passaggio no.
+    libera = (primary or {}).get("vram_free_gb") or 0.0
+    disponibile = max(min(vram, libera), vram * 0.6) if libera > 0 else vram
+    headroom = max(0.4, disponibile * 0.85 - budget - 1.2)  # margine 15% + contesto CUDA
     batch = int(max(1, min(8, headroom / per_seq_gb)))
     target_batch = 32                                  # effective batch in sequences
     grad_accum = max(1, round(target_batch / max(1, batch)))

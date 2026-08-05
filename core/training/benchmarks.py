@@ -594,6 +594,37 @@ def get_suite_info(suite_id: str) -> dict:
     }
 
 
+#: Frazione del campione riservata alla **verifica**. Un ciclo automatico che
+#: decide guardando gli stessi quesiti su cui poi riporta il punteggio non
+#: migliora il modello: scala quella classifica. Il set di selezione guida le
+#: decisioni, il set di verifica non viene mai guardato durante il ciclo ed e'
+#: l'unico numero che si comunica.
+HOLDOUT_FRACTION = 0.5
+
+
+def split_selection_holdout(items: list[dict], fraction: float = HOLDOUT_FRACTION
+                            ) -> tuple[list[dict], list[dict]]:
+    """Divide i quesiti in set di selezione e set di verifica.
+
+    La divisione e' deterministica e stratificata per suite: due modelli
+    valutati sullo stesso campione vedono la stessa partizione, altrimenti il
+    confronto appaiato non sarebbe piu' appaiato.
+    """
+    rng = random.Random(1337)
+    by_suite: dict[str, list[dict]] = {}
+    for item in items:
+        by_suite.setdefault(item.get("suite", "?"), []).append(item)
+
+    selection, holdout = [], []
+    for suite in sorted(by_suite):
+        pool = sorted(by_suite[suite], key=lambda i: str(i.get("id", "")))
+        rng.shuffle(pool)
+        cut = int(len(pool) * (1 - fraction))
+        selection.extend(pool[:cut])
+        holdout.extend(pool[cut:])
+    return selection, holdout
+
+
 #: Quesiti minimi che ogni suite ottiene in un campione, quando ce ne stanno.
 #: Sotto questa soglia una suite non dice niente di utile; a zero, sparisce.
 _MIN_PER_SUITE = 5
@@ -939,28 +970,35 @@ def _worker_run_official_benchmark(job_id: str, model_name: str, suite_id: str,
         started = time.time()
         output_text, tok_per_sec, tokens = "", 0, 0
         transport_error = ""
-        endpoint = pool_endpoints.next()
-
-        try:
-            payload = _prepare_benchmark_payload(item, model_name)
-            resp = requests.post(f"{endpoint}/api/generate", json=payload,
-                                 timeout=_request_timeout(item.get("suite", "")))
-            elapsed = time.time() - started
-            if resp.status_code == 200:
-                data = resp.json()
-                output_text = (data.get("response") or "").strip()
-                if not output_text:
-                    output_text = (data.get("thinking") or "").strip()
-                eval_count = data.get("eval_count") or len(output_text.split())
-                eval_ns = data.get("eval_duration") or 0
-                tok_per_sec = (round(eval_count / (eval_ns / 1e9), 2) if eval_ns > 0
-                               else round(eval_count / max(elapsed, 0.01), 2))
-                tokens = eval_count
-            else:
-                transport_error = f"HTTP {resp.status_code}: {resp.text[:200]}"
-        except Exception as err:
-            elapsed = time.time() - started
-            transport_error = str(err)[:200]
+        # `lease` tiene conto di quante richieste ha in volo ogni servitore e
+        # sceglie il piu' scarico: con schede di velocita' diversa e' cio' che
+        # impedisce alla piu' lenta di diventare il freno di tutte.
+        # `lease` conta quante richieste ha in volo ogni servitore e sceglie il
+        # piu' scarico: con schede di velocita' diversa e' cio' che impedisce
+        # alla piu' lenta di diventare il freno di tutte. Il rilascio avviene
+        # anche se la richiesta esplode, altrimenti quell'endpoint resterebbe
+        # "occupato" per sempre e smetterebbe di ricevere lavoro.
+        with pool_endpoints.lease() as endpoint:
+            try:
+                payload = _prepare_benchmark_payload(item, model_name)
+                resp = requests.post(f"{endpoint}/api/generate", json=payload,
+                                     timeout=_request_timeout(item.get("suite", "")))
+                elapsed = time.time() - started
+                if resp.status_code == 200:
+                    data = resp.json()
+                    output_text = (data.get("response") or "").strip()
+                    if not output_text:
+                        output_text = (data.get("thinking") or "").strip()
+                    eval_count = data.get("eval_count") or len(output_text.split())
+                    eval_ns = data.get("eval_duration") or 0
+                    tok_per_sec = (round(eval_count / (eval_ns / 1e9), 2) if eval_ns > 0
+                                   else round(eval_count / max(elapsed, 0.01), 2))
+                    tokens = eval_count
+                else:
+                    transport_error = f"HTTP {resp.status_code}: {resp.text[:200]}"
+            except Exception as err:
+                elapsed = time.time() - started
+                transport_error = str(err)[:200]
 
         if transport_error:
             # Nessuna risposta dal modello: l'item va segnato come errore di

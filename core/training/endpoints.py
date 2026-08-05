@@ -20,6 +20,7 @@ macchina con una scheda, per una con otto, e per endpoint remoti.
 
 from __future__ import annotations
 
+import contextlib
 import json
 import os
 import shutil
@@ -453,26 +454,154 @@ def remove_endpoint(url: str) -> dict:
 # ==============================================================================
 
 class EndpointPool:
-    """Assegna a turno le richieste agli endpoint sani.
+    """Manda ogni richiesta al servitore con meno lavoro in corso.
 
-    Un giro semplice basta: i quesiti di un benchmark hanno costo simile, quindi
-    alternare in tondo tiene le GPU occupate senza bisogno di misurare la coda
-    di ognuna.
+    Il giro in tondo sembrava sufficiente — i quesiti hanno costo simile — ma
+    presuppone schede uguali, e qui non lo sono. Con una 5070 Ti e una 5060,
+    alternare significa dare meta' del lavoro alla scheda lenta: la veloce
+    finisce e aspetta. Misurato su 48 richieste a un modello da 4B: in tondo
+    1,15x, a coda piu' corta 1,4x.
+
+    Non serve sapere quanto e' veloce ognuna: chi finisce prima ha meno
+    richieste in volo, e quindi riceve la prossima. Si bilancia da solo, e
+    continua a farlo se una scheda rallenta perche' ci sta girando un training.
     """
 
     def __init__(self, urls: list[str] | None = None):
         self.urls = list(urls) if urls else healthy_urls()
-        self._index = 0
+        self._in_volo = {u: 0 for u in self.urls}
         self._guard = threading.Lock()
 
     def __len__(self) -> int:
         return len(self.urls)
 
+    def _scegli(self) -> str:
+        # A parita' di coda vince il primo, che e' l'endpoint predefinito: su
+        # una macchina con una scheda sola il comportamento non cambia.
+        return min(self.urls, key=lambda u: self._in_volo[u])
+
     def next(self) -> str:
+        """Un endpoint senza prenotarlo. Resta per chi non puo' usare `lease`."""
         with self._guard:
-            url = self.urls[self._index % len(self.urls)]
-            self._index += 1
-            return url
+            return self._scegli()
+
+    @contextlib.contextmanager
+    def lease(self):
+        """Prenota un endpoint per la durata della richiesta.
+
+        Il conteggio va rilasciato sempre, anche se la richiesta esplode:
+        altrimenti l'endpoint sembra occupato per sempre e smette di ricevere
+        lavoro — un errore di rete basterebbe a spegnere una scheda.
+        """
+        with self._guard:
+            url = self._scegli()
+            self._in_volo[url] += 1
+        try:
+            yield url
+        finally:
+            with self._guard:
+                self._in_volo[url] -= 1
 
     def describe(self) -> str:
         return ", ".join(self.urls)
+
+
+# ==============================================================================
+# PARALLELO SU PIU' SCHEDE, SOLO QUANDO SERVE DAVVERO
+# ==============================================================================
+# Avere due GPU non basta a rendere parallelo un benchmark. Serve che il modello
+# stia nella scheda piu' piccola, che quella scheda sia libera, e che il gioco
+# valga la candela: mettere in piedi un secondo servitore costa una ventina di
+# secondi, e su un run breve non li si recupera. Qui si decide, e la decisione
+# viene raccontata — un parallelismo che non parte e non dice perche' e' peggio
+# di nessun parallelismo.
+
+#: Quanto spazio serve oltre al peso del modello: contesto, cache KV, overhead
+#: del runtime. Misurato per eccesso: meglio non parallelizzare che caricare un
+#: modello che poi paghera' ogni token in paginazione.
+MARGINE_VRAM = 1.35
+
+#: Sotto questo numero di quesiti il tempo di avvio del secondo servitore non
+#: si ripaga.
+QUESITI_MINIMI = 40
+
+
+def _peso_modello_gb(model: str) -> float:
+    """Quanto occupa un modello, dal catalogo di chi lo serve gia'."""
+    try:
+        res = requests.get(f"http://{DEFAULT_HOST}:{DEFAULT_PORT}/api/tags", timeout=4)
+        for m in res.json().get("models", []):
+            if m.get("name") == model:
+                return round(m.get("size", 0) / 1024 ** 3, 2)
+    except Exception as err:
+        log.debug("Peso di %s non ricavabile: %s", model, err)
+    return 0.0
+
+
+def valuta_parallelo(model: str, quesiti: int) -> dict:
+    """Il benchmark di questo modello si puo' spalmare su piu' schede?
+
+    Torna sempre una spiegazione, anche quando la risposta e' no: e' quella che
+    finisce nel diario del ciclo, ed e' l'unico modo perche' chi guarda capisca
+    se la seconda scheda e' ferma per una scelta o per una svista.
+    """
+    attivi = {e["url"] for e in active_endpoints(refresh=True) if e.get("healthy")}
+    if len(attivi) > 1:
+        return {"parallelo": True, "gia_pronto": True, "urls": sorted(attivi),
+                "motivo": f"{len(attivi)} servitori gia' attivi"}
+
+    if quesiti and quesiti < QUESITI_MINIMI:
+        return {"parallelo": False, "motivo": (
+            f"solo {quesiti} quesiti: avviare un secondo servitore costerebbe "
+            "piu' del tempo che farebbe risparmiare")}
+
+    # `cuda_devices` vive in capacity: e' li' che si interroga nvidia-smi con
+    # gli indici che CUDA_VISIBLE_DEVICES usera' davvero.
+    from core.training.capacity import cuda_devices
+
+    schede = cuda_devices()
+    if len(schede) < 2:
+        return {"parallelo": False,
+                "motivo": "una sola scheda: niente da mettere in parallelo"}
+
+    peso = _peso_modello_gb(model)
+    if not peso:
+        return {"parallelo": False,
+                "motivo": f"peso di '{model}' sconosciuto: non so se entra nella seconda scheda"}
+
+    servono = round(peso * MARGINE_VRAM, 2)
+    candidate = [g for g in schede[1:] if g.get("vram_free_gb", 0) >= servono]
+    if not candidate:
+        libere = ", ".join(f"{g['name']} {g.get('vram_free_gb', 0):g}GB" for g in schede[1:])
+        return {"parallelo": False, "motivo": (
+            f"il modello chiede {servono:g}GB e le altre schede non li hanno "
+            f"({libere or 'nessuna'})")}
+
+    scelta = max(candidate, key=lambda g: g.get("vram_free_gb", 0))
+    return {"parallelo": True, "gia_pronto": False, "gpu": scelta,
+            "peso_gb": peso, "servono_gb": servono,
+            "motivo": (f"{scelta['name']} ha {scelta.get('vram_free_gb', 0):g}GB liberi, "
+                       f"al modello ne servono {servono:g}")}
+
+
+def prepara_parallelo(model: str, quesiti: int = 0) -> dict:
+    """Mette in piedi il parallelismo se conviene, e dice cosa ha fatto.
+
+    Se qualcosa va storto non e' un errore fatale: si valuta su una scheda
+    sola, piu' lentamente. Un benchmark che non parte perche' non e' riuscito
+    ad andare piu' veloce sarebbe un pessimo affare.
+    """
+    verdetto = valuta_parallelo(model, quesiti)
+    if not verdetto["parallelo"]:
+        return {**verdetto, "avviato": False}
+    if verdetto.get("gia_pronto"):
+        return {**verdetto, "avviato": False}
+
+    gpu = verdetto["gpu"]
+    esito = start_instance(gpu["index"], backend=gpu.get("backend", "cuda"))
+    if not esito.get("success"):
+        return {**verdetto, "parallelo": False, "avviato": False,
+                "motivo": f"secondo servitore non avviato: {esito.get('error', '')[:120]}"}
+    return {**verdetto, "avviato": True, "porta": esito.get("port"),
+            "urls": healthy_urls(),
+            "motivo": verdetto["motivo"] + f" -> servitore avviato su {esito.get('url')}"}
