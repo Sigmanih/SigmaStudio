@@ -209,7 +209,7 @@ export default function TaskFloatingPanel({ tasks, onAdd, onEdit, onDelete, onTo
         <div onMouseDown={startDrag} style={{ cursor: 'grab', display: 'flex', alignItems: 'center', gap: '8px', flex: 1 }}>
           <GripVertical size={14} color="#5a5a6a" />
           <span style={{ fontSize: '0.85rem', fontWeight: 700, color: '#00d2ff' }}>
-            🗺️ Task Roadmap
+            📅 Pianificazione & Task
           </span>
           <span style={{ fontSize: '0.6rem', color: '#5a5a6a', fontWeight: 400 }}>
             {stats.total} tasks

@@ -44,6 +44,8 @@ from core.training.jobs import (  # noqa: F401
     resolve_dataset,
     resolve_base_model,
     reconcile_jobs,
+    gpu_process_inventory,
+    terminate_gpu_process,
     check_training_dependencies,
     _load_jobs,
     _save_jobs,

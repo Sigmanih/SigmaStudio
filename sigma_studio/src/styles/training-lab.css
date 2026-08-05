@@ -60,6 +60,46 @@
   font-weight: 600;
 }
 
+/* ── Manual sub-mode bar ─────────────────────────────────────────────────── */
+.training-manual-subbar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 16px;
+  background: rgba(0, 0, 0, 0.2);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+  animation: fadeIn 0.2s ease;
+}
+
+.training-manual-subbtn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 12px;
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text-dim);
+  font-size: 0.68rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: var(--trans-fast);
+}
+
+.training-manual-subbtn:hover {
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--text);
+  border-color: rgba(255, 255, 255, 0.1);
+}
+
+.training-manual-subbtn.active {
+  background: rgba(188, 140, 255, 0.12);
+  border-color: rgba(188, 140, 255, 0.35);
+  color: #bc8cff;
+  font-weight: 600;
+  box-shadow: 0 0 10px rgba(188, 140, 255, 0.1);
+}
+
 /* ── Shared panel layout ─────────────────────────────────────────────────────── */
 .training-panel {
   flex: 1;
@@ -93,6 +133,7 @@
 .training-studio-main { min-width: 0; }
 @media (min-width: 1150px) {
   .training-studio-grid { grid-template-columns: minmax(300px, 360px) minmax(0, 1fr); }
+  .autopilot-studio-grid { grid-template-columns: minmax(420px, 480px) minmax(0, 1fr); }
   /* La mappa resta sott'occhio mentre si scorre il dettaglio. */
   .training-studio-aside { position: sticky; top: 4px; max-height: calc(100vh - 220px); overflow-y: auto; }
 }

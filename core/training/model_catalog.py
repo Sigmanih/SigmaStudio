@@ -289,10 +289,87 @@ def local_models() -> dict:
     for e in cached + produced:
         taken.add(_fingerprint(e["label"]))
         taken.add(_fingerprint(ollama_name_for(e["label"])))
-    models = produced + cached + _ollama_models(ollama, taken)
-    # Prima quelli utilizzabili subito: la lista serve a partire, non a leggere.
-    models.sort(key=lambda m: (not m["ready"], not m["can_train"], m["label"].lower()))
-    return {"success": True, "models": models, "total": len(models),
+    raw_models = produced + cached + _ollama_models(ollama, taken)
+
+    # Fetch autopilot cycle history and benchmark scores for accuracy & timestamps
+    cycles_map = {}
+    try:
+        from core.training.autopilot import known_cycles
+        for c in known_cycles():
+            fp = _fingerprint(c["model"])
+            if fp:
+                cycles_map[fp] = c
+    except Exception as err:
+        log.debug("Known cycles error: %s", err)
+
+    # Benchmark results map
+    bench_map = {}
+    bench_file = BASE_DIR / "training_lab" / "official_benchmark_results.json"
+    if bench_file.exists():
+        try:
+            b_data = json.loads(bench_file.read_text(encoding="utf-8"))
+            if isinstance(b_data, list):
+                for res in b_data:
+                    m_name = res.get("model") or ""
+                    metrics = res.get("metrics") or {}
+                    acc = metrics.get("accuracy_pct") or metrics.get("overall_score")
+                    if m_name and acc is not None:
+                        fp = _fingerprint(m_name)
+                        if fp not in bench_map or (res.get("updated_at") or "") > (bench_map[fp].get("updated_at") or ""):
+                            bench_map[fp] = {"accuracy_pct": round(float(acc), 1), "updated_at": res.get("updated_at")}
+        except Exception:
+            pass
+
+    # Deduplicate models by fingerprint
+    merged_models = {}
+    for m in raw_models:
+        fp = _fingerprint(m.get("label") or m.get("eval_model") or m.get("train_model") or "")
+        if not fp:
+            fp = m.get("key", "")
+
+        if fp not in merged_models:
+            item = dict(m)
+            item["sources"] = [m["source"]]
+            merged_models[fp] = item
+        else:
+            item = merged_models[fp]
+            if m["source"] not in item["sources"]:
+                item["sources"].append(m["source"])
+            if not item.get("eval_model") and m.get("eval_model"):
+                item["eval_model"] = m["eval_model"]
+            if not item.get("train_model") and m.get("train_model"):
+                item["train_model"] = m["train_model"]
+            if m.get("can_train"):
+                item["can_train"] = True
+            if m.get("can_eval"):
+                item["can_eval"] = True
+            if m.get("custom_code"):
+                item["custom_code"] = True
+            item["size_gb"] = max(item.get("size_gb") or 0.0, m.get("size_gb") or 0.0)
+
+    # Finalize attributes for each merged model
+    final_list = []
+    for fp, item in merged_models.items():
+        item["ready"] = bool(item.get("can_train") and item.get("can_eval"))
+        if item["ready"]:
+            item["missing"] = ""
+        elif item.get("can_eval"):
+            item["missing"] = ("Pesi non individuati: si può misurare ma non specializzare "
+                               "finché non indichi il repo HuggingFace corrispondente.")
+        elif item.get("can_train"):
+            item["missing"] = "Non è in Ollama: lo importa il ciclo prima di profilarlo."
+        else:
+            item["missing"] = "Non è in Ollama e non ha pesi addestrabili."
+
+        cycle_info = cycles_map.get(fp) or {}
+        bench_info = bench_map.get(fp) or {}
+
+        item["accuracy_pct"] = cycle_info.get("accuracy_pct") or bench_info.get("accuracy_pct")
+        item["last_run_at"] = cycle_info.get("last_run_at") or cycle_info.get("updated_at") or ""
+        final_list.append(item)
+
+    final_list.sort(key=lambda m: (not m["ready"], not m["can_train"], m["label"].lower()))
+    return {"success": True, "models": final_list, "total": len(final_list),
             "ollama_count": len(ollama)}
 
 

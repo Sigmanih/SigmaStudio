@@ -1,16 +1,17 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { 
   ArrowRight, BookOpen, FileText, FileSignature, Layers, FileDown, 
   Sparkles, ScrollText, Eye, Plus, Cpu, Play, CheckCircle, AlertCircle, Loader,
-  Info, Code, GitBranch, Wand2, Upload
+  Info, Code, GitBranch, Wand2, Upload, Brain, Target, Award, Zap, RefreshCw, User
 } from 'lucide-react';
 
 // ==============================================================================
 // ManifestiGallery — Manifesto Editor & AI Model Lab
-// Gestisce i manifesti Modelfile per agenti AI su Ollama
+// Gestisce i manifesti Modelfile per agenti AI ed i modelli addestrati nel Training Lab
 // ==============================================================================
 
 export default function ManifestiGallery({ modules, manifesti, openTab, setFileModalContext, setIsFileModalOpen, fetchManifesti }) {
+  const [activeSubTab, setActiveSubTab] = useState('standard'); // 'standard' | 'trained'
   const [manifestoText, setManifestoText] = useState('');
   const [manifestoLoading, setManifestoLoading] = useState(true);
   const [ollamaModels, setOllamaModels] = useState([]);
@@ -21,7 +22,35 @@ export default function ManifestiGallery({ modules, manifesti, openTab, setFileM
   const [modelName, setModelName] = useState('sigma-agent');
   const [baseModel, setBaseModel] = useState('llama3.2');
 
+  // Trained models state
+  const [trainedModels, setTrainedModels] = useState([]);
+  const [trainingJobs, setTrainingJobs] = useState([]);
+  const [loadingTrained, setLoadingTrained] = useState(false);
+
   const fileInputRefs = useRef({});
+
+  // Fetch trained models from Training Lab
+  const fetchTrainedData = useCallback(async () => {
+    setLoadingTrained(true);
+    try {
+      const [resM, resJ] = await Promise.all([
+        fetch('/api/training/models'),
+        fetch('/api/training/jobs')
+      ]);
+      const dataM = await resM.json();
+      const dataJ = await resJ.json();
+      if (dataM.success) setTrainedModels(dataM.models || []);
+      if (dataJ.success) setTrainingJobs(dataJ.jobs || []);
+    } catch (e) {
+      console.error("Failed to load trained models:", e);
+    } finally {
+      setLoadingTrained(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchTrainedData();
+  }, [fetchTrainedData]);
 
   // Load the first available manifesto on mount (or the default fallback)
   useEffect(() => {
@@ -100,6 +129,18 @@ export default function ManifestiGallery({ modules, manifesti, openTab, setFileM
   const handleNewManifesto = () => {
     setFileModalContext({ folder: 'manifesti', type: 'manifesti' });
     setIsFileModalOpen(true);
+  };
+
+  const handleSelectAsChatModel = (modelName) => {
+    try {
+      localStorage.setItem('sigma_selected_model', modelName);
+      window.dispatchEvent(new CustomEvent('sigma_model_selected', { detail: { model: modelName } }));
+      window.dispatchEvent(new CustomEvent('sigma_toast', {
+        detail: { message: `⚡ Modello '${modelName}' impostato come attivo per la Chat AI!`, type: 'success' }
+      }));
+    } catch (e) {
+      console.error("Failed to select chat model:", e);
+    }
   };
 
   const handleCreateModel = async () => {
@@ -193,239 +234,438 @@ export default function ManifestiGallery({ modules, manifesti, openTab, setFileM
         .upload-icon-btn:hover { background: rgba(124,91,240,0.2); color: #ffffff; }
       `}</style>
 
-      {/* === Hero Section ========================================== */}
-      <div className="mg-hero mg-section">
-        <div className="mg-hero-badge">
-          <Sparkles size={12} />
-          Modalità Agentica per Ruoli
-        </div>
-        <div className="mg-hero-title">
-          Σ-SIGMA Manifesti degli Agenti
-          <span className="mg-hero-version">v6.2</span>
-        </div>
-        <p className="mg-hero-sub">
-          I manifesti degli agenti permettono di definire l'identità, il dominio, le regole comportamentali 
-          e i parametri dedicati per ciascun ruolo AI del team di ricerca Sigma Studio. 
-          Questo approccio consente di specializzare i singoli membri e di massimizzarne l'efficacia 
-          nella scomposizione, esecuzione e verifica dei complessi compiti scientifici.
-        </p>
-
-        <div className="mg-guide-grid">
-          <div className="mg-guide-card">
-            <div className="mg-guide-card-title">
-              <div style={{width:'24px',height:'24px',borderRadius:'6px',background:'rgba(188,140,255,0.1)',display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0}}>
-                <ScrollText size={12} style={{color:'#bc8cff'}} />
-              </div>
-              System Prompt Persistente
-            </div>
-            <p>Il manifesto definisce il comportamento e le regole comportamentali <strong style={{color:'#bc8cff'}}>permanentemente</strong>, offrendo una linea guida stabile per i compiti e l'output dell'agente.</p>
+      {/* Top Header — Stile Hardware & GPU Lab */}
+      <div className="app-page-header" style={{ marginBottom: '16px' }}>
+        <div className="app-page-header-title">
+          <div className="app-page-header-icon">
+            <ScrollText size={22} color="#00f2fe" />
           </div>
-          <div className="mg-guide-card">
-            <div className="mg-guide-card-title">
-              <div style={{width:'24px',height:'24px',borderRadius:'6px',background:'rgba(0,210,255,0.1)',display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0}}>
-                <GitBranch size={12} style={{color:'#00d2ff'}} />
-              </div>
-              Specializzazione per Ambiti
-            </div>
-            <p>Ogni dominio di ricerca dispone di un manifesto dedicato. L'agente matematico segue logiche formali in LaTeX, mentre lo sviluppatore predilige codice documentato.</p>
-          </div>
-          <div className="mg-guide-card">
-            <div className="mg-guide-card-title">
-              <div style={{width:'24px',height:'24px',borderRadius:'6px',background:'rgba(63,185,80,0.1)',display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0}}>
-                <Wand2 size={12} style={{color:'#3fb950'}} />
-              </div>
-              Parametri Ottimizzati
-            </div>
-            <p>Configura <strong style={{color:'#3fb950'}}>temperature</strong>, penalità e <strong style={{color:'#3fb950'}}>finestre di contesto</strong> una volta sola. L'agente risponde sempre con il livello ideale di creatività e memoria.</p>
-          </div>
-        </div>
-
-        <div className="mg-howto">
-          <h4 className="mg-howto-title">
-            <Code size={16} />
-            La creazione di un Manifesto in 5 passi
-          </h4>
-          <div className="mg-howto-steps">
-            <div className="mg-step">
-              <div className="mg-step-num">1</div>
-              <p><strong style={{color:'#e2e4eb'}}>Definisci il Ruolo</strong> — Identifica l'identità dell'agente e la sua area d'azione.</p>
-            </div>
-            <div className="mg-step">
-              <div className="mg-step-num">2</div>
-              <p><strong style={{color:'#e2e4eb'}}>Scrivi le Istruzioni</strong> — Formula regole ferree, vincoli e il formato di output richiesto.</p>
-            </div>
-            <div className="mg-step">
-              <div className="mg-step-num">3</div>
-              <p><strong style={{color:'#e2e4eb'}}>Ottimizza i Parametri</strong> — Configura temperature, finestre di contesto e penalità.</p>
-            </div>
-            <div className="mg-step">
-              <div className="mg-step-num">4</div>
-              <p><strong style={{color:'#e2e4eb'}}>Assegna l'Avatar</strong> — Carica dal tuo PC un'immagine da associare al manifesto dell'agente.</p>
-            </div>
-            <div className="mg-step">
-              <div className="mg-step-num" style={{background:'rgba(63,185,80,0.12)', color:'#3fb950'}}>5</div>
-              <p><strong style={{color:'#3fb950'}}>Compila il Modello</strong> — Invia il Modelfile a Ollama che lo compila, rendendo l'agente pronto per la chat.</p>
+          <div>
+            <h1>Galleria Manifesti & Agenti AI</h1>
+            <div className="app-page-header-subtitle">
+              <span>Identità agentiche, Modelfile Ollama e Agenti Addestrati</span>
+              <span>•</span>
+              <span style={{ color: '#00f2fe', fontFamily: 'JetBrains Mono, monospace' }}>
+                {manifesti.length} Manifesti Standard • {trainedModels.length} Agenti Addestrati
+              </span>
             </div>
           </div>
         </div>
-
-        <div style={{ display: 'flex', gap: '8px', marginTop: '16px' }}>
-          <button className="mg-btn-primary" onClick={() => {
-            const path = manifesti.length > 0 ? manifesti[0].path : 'manifesti/sigma_architect.md';
-            const name = manifesti.length > 0 ? manifesti[0].filename : 'sigma_architect.md';
-            openTab({ name, path }, 'manifesti');
-          }}>
-            <Eye size={14} />
-            Leggi il Manifesto Principale
-          </button>
-          <button className="mg-btn" onClick={handleNewManifesto}>
-            <FileSignature size={14} />
-            Nuovo Manifesto
+        <div className="app-page-header-actions">
+          <button className="mg-btn" onClick={handleNewManifesto} style={{ background: 'rgba(0,210,255,0.12)', border: '1px solid rgba(0,210,255,0.3)', color: '#00d2ff', fontWeight: 600 }}>
+            <Plus size={14} /> Nuovo Manifesto
           </button>
         </div>
       </div>
 
-      {/* === MANIFESTI COLLECTION ================================== */}
-      <div className="mg-section">
-        <div className="mg-toolbar">
-          <div>
-            <div className="mg-section-title">
-              <Layers size={16} />
-              Collezione Manifesti Agenti
+      {/* Sub-Tab Switcher */}
+      <div style={{ display: 'flex', gap: '8px', marginBottom: '20px', borderBottom: '1px solid rgba(255,255,255,0.08)', paddingBottom: '10px' }}>
+        <button
+          onClick={() => setActiveSubTab('standard')}
+          style={{
+            display: 'flex', alignItems: 'center', gap: '8px', padding: '8px 16px', borderRadius: '8px',
+            fontSize: '0.78rem', fontWeight: 700, cursor: 'pointer',
+            background: activeSubTab === 'standard' ? 'rgba(188, 140, 255, 0.15)' : 'rgba(255,255,255,0.03)',
+            border: activeSubTab === 'standard' ? '1px solid rgba(188, 140, 255, 0.4)' : '1px solid rgba(255,255,255,0.08)',
+            color: activeSubTab === 'standard' ? '#bc8cff' : '#8b8fa3',
+            transition: 'all 0.2s ease'
+          }}
+        >
+          <FileText size={15} />
+          <span>📄 Manifesti Standard ({manifesti.length})</span>
+        </button>
+        <button
+          onClick={() => setActiveSubTab('trained')}
+          style={{
+            display: 'flex', alignItems: 'center', gap: '8px', padding: '8px 16px', borderRadius: '8px',
+            fontSize: '0.78rem', fontWeight: 700, cursor: 'pointer',
+            background: activeSubTab === 'trained' ? 'rgba(0, 210, 255, 0.15)' : 'rgba(255,255,255,0.03)',
+            border: activeSubTab === 'trained' ? '1px solid rgba(0, 210, 255, 0.4)' : '1px solid rgba(255,255,255,0.08)',
+            color: activeSubTab === 'trained' ? '#00d2ff' : '#8b8fa3',
+            transition: 'all 0.2s ease'
+          }}
+        >
+          <Brain size={15} />
+          <span>🤖 Agenti Addestrati (Training Lab) ({trainedModels.length})</span>
+        </button>
+      </div>
+
+      {activeSubTab === 'standard' && (
+        <>
+          {/* === Hero Section ========================================== */}
+          <div className="mg-hero mg-section">
+            <div className="mg-hero-badge">
+              <Sparkles size={12} />
+              Modalità Agentica per Ruoli
             </div>
-            <div className="mg-section-desc">
-              {manifesti.length} manifesti degli agenti disponibili nella cartella manifesti/
+            <div className="mg-hero-title">
+              Σ-SIGMA Manifesti degli Agenti
+              <span className="mg-hero-version">v6.2</span>
             </div>
-          </div>
-          <button className="mg-btn" onClick={handleNewManifesto}>
-            <Plus size={12} />
-            Nuovo
-          </button>
-        </div>
-        <div className="mg-grid">
-          {manifesti.map((mf, i) => (
-            <div key={i} className="mg-card" onClick={() => openTab(mf, 'manifesti')}>
-              <div className="mg-card-header">
-                <div className="mg-card-icon" style={{overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#0e1016'}}>
-                  {mf.image ? (
-                    <img src={mf.image} alt={mf.name} style={{width: '100%', height: '100%', objectFit: 'cover'}} />
-                  ) : (
-                    <ScrollText size={22} style={{color: '#bc8cff'}} />
-                  )}
+            <p className="mg-hero-sub">
+              I manifesti degli agenti permettono di definire l'identità, il dominio, le regole comportamentali 
+              e i parametri dedicati per ciascun ruolo AI del team di ricerca Sigma Studio. 
+              Questo approccio consente di specializzare i singoli membri e di massimizzarne l'efficacia 
+              nella scomposizione, esecuzione e verifica dei complessi compiti scientifici.
+            </p>
+
+            <div className="mg-guide-grid">
+              <div className="mg-guide-card">
+                <div className="mg-guide-card-title">
+                  <div style={{width:'24px',height:'24px',borderRadius:'6px',background:'rgba(188,140,255,0.1)',display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0}}>
+                    <ScrollText size={12} style={{color:'#bc8cff'}} />
+                  </div>
+                  System Prompt Persistente
                 </div>
-                <span className="mg-card-name" title={mf.name}>{mf.name}</span>
+                <p>Il manifesto definisce il comportamento e le regole comportamentali <strong style={{color:'#bc8cff'}}>permanentemente</strong>, offrendo una linea guida stabile per i compiti e l'output dell'agente.</p>
               </div>
-              <div className="mg-card-meta" onClick={(e) => e.stopPropagation()}>
-                <span style={{marginRight: 'auto', color: '#5a5e72'}}>Avatar:</span>
-                <button 
-                  className="upload-icon-btn" 
-                  onClick={(e) => triggerFileInput(e, mf.path)}
-                  title="Carica immagine da PC"
-                  style={{marginRight: '4px'}}
-                >
-                  <Upload size={10} />
-                </button>
-                <input 
-                  type="file" 
-                  ref={el => fileInputRefs.current[mf.path] = el}
-                  onChange={(e) => handleFileUpload(e, mf.path)}
-                  accept="image/*"
-                  style={{display: 'none'}}
-                />
-                <select 
-                  value={mf.image || '/images/default.png'} 
-                  onChange={(e) => handleUpdateImage(mf.path, e.target.value)}
-                  style={{fontSize: '0.55rem', background: '#0e1016', border: '1px solid #1e2030', color: '#e2e4eb', borderRadius: '4px', padding: '2px 4px', cursor: 'pointer', outline: 'none', maxWidth: '85px'}}
-                >
-                  <option value="/images/default.png">🤖 Default</option>
-                  <option value="/images/agente0.png">🏗️ Architect</option>
-                  <option value="/images/matematicoAi.png">∑ Math</option>
-                  <option value="/images/programmatoreAi.png">⚙️ Code</option>
-                </select>
+              <div className="mg-guide-card">
+                <div className="mg-guide-card-title">
+                  <div style={{width:'24px',height:'24px',borderRadius:'6px',background:'rgba(0,210,255,0.1)',display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0}}>
+                    <GitBranch size={12} style={{color:'#00d2ff'}} />
+                  </div>
+                  Specializzazione per Ambiti
+                </div>
+                <p>Ogni dominio di ricerca dispone di un manifesto dedicato. L'agente matematico segue logiche formali in LaTeX, mentre lo sviluppatore predilige codice documentato.</p>
+              </div>
+              <div className="mg-guide-card">
+                <div className="mg-guide-card-title">
+                  <div style={{width:'24px',height:'24px',borderRadius:'6px',background:'rgba(63,185,80,0.1)',display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0}}>
+                    <Wand2 size={12} style={{color:'#3fb950'}} />
+                  </div>
+                  Parametri Ottimizzati
+                </div>
+                <p>Configura <strong style={{color:'#3fb950'}}>temperature</strong>, penalità e <strong style={{color:'#3fb950'}}>finestre di contesto</strong> una volta sola. L'agente risponde sempre con il livello ideale di creatività e memoria.</p>
               </div>
             </div>
-          ))}
-          {manifesti.length === 0 && (
-            <div className="mg-empty" style={{gridColumn: '1 / -1', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '8px', padding: '30px', color: '#5a5e72', fontSize: '0.7rem'}}>
-              <Layers size={36} />
-              <p>Nessun manifesto trovato</p>
+
+            <div className="mg-howto">
+              <h4 className="mg-howto-title">
+                <Code size={16} />
+                La creazione di un Manifesto in 5 passi
+              </h4>
+              <div className="mg-howto-steps">
+                <div className="mg-step">
+                  <div className="mg-step-num">1</div>
+                  <p><strong style={{color:'#e2e4eb'}}>Definisci il Ruolo</strong> — Identifica l'identità dell'agente e la sua area d'azione.</p>
+                </div>
+                <div className="mg-step">
+                  <div className="mg-step-num">2</div>
+                  <p><strong style={{color:'#e2e4eb'}}>Scrivi le Istruzioni</strong> — Formula regole ferree, vincoli e il formato di output richiesto.</p>
+                </div>
+                <div className="mg-step">
+                  <div className="mg-step-num">3</div>
+                  <p><strong style={{color:'#e2e4eb'}}>Ottimizza i Parametri</strong> — Configura temperature, finestre di contesto e penalità.</p>
+                </div>
+                <div className="mg-step">
+                  <div className="mg-step-num">4</div>
+                  <p><strong style={{color:'#e2e4eb'}}>Assegna l'Avatar</strong> — Carica dal tuo PC un'immagine da associare al manifesto dell'agente.</p>
+                </div>
+                <div className="mg-step">
+                  <div className="mg-step-num" style={{background:'rgba(63,185,80,0.12)', color:'#3fb950'}}>5</div>
+                  <p><strong style={{color:'#3fb950'}}>Compila il Modello</strong> — Invia il Modelfile a Ollama che lo compila, rendendo l'agente pronto per la chat.</p>
+                </div>
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', gap: '8px', marginTop: '16px' }}>
+              <button className="mg-btn-primary" onClick={() => {
+                const path = manifesti.length > 0 ? manifesti[0].path : 'manifesti/sigma_architect.md';
+                const name = manifesti.length > 0 ? manifesti[0].filename : 'sigma_architect.md';
+                openTab({ name, path }, 'manifesti');
+              }}>
+                <Eye size={14} />
+                Leggi il Manifesto Principale
+              </button>
               <button className="mg-btn" onClick={handleNewManifesto}>
                 <FileSignature size={14} />
-                Crea il primo Manifesto
+                Nuovo Manifesto
               </button>
+            </div>
+          </div>
+
+          {/* === MANIFESTI COLLECTION ================================== */}
+          <div className="mg-section">
+            <div className="mg-toolbar">
+              <div>
+                <div className="mg-section-title">
+                  <Layers size={16} />
+                  Collezione Manifesti Agenti
+                </div>
+                <div className="mg-section-desc">
+                  {manifesti.length} manifesti degli agenti disponibili nella cartella manifesti/
+                </div>
+              </div>
+              <button className="mg-btn" onClick={handleNewManifesto}>
+                <Plus size={12} />
+                Nuovo
+              </button>
+            </div>
+            <div className="mg-grid">
+              {manifesti.map((mf, i) => (
+                <div key={i} className="mg-card" onClick={() => openTab(mf, 'manifesti')}>
+                  <div className="mg-card-header">
+                    <div className="mg-card-icon" style={{overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#0e1016'}}>
+                      {mf.image ? (
+                        <img src={mf.image} alt={mf.name} style={{width: '100%', height: '100%', objectFit: 'cover'}} />
+                      ) : (
+                        <ScrollText size={22} style={{color: '#bc8cff'}} />
+                      )}
+                    </div>
+                    <span className="mg-card-name" title={mf.name}>{mf.name}</span>
+                  </div>
+                  <div className="mg-card-meta" onClick={(e) => e.stopPropagation()}>
+                    <span style={{marginRight: 'auto', color: '#5a5e72'}}>Avatar:</span>
+                    <button 
+                      className="upload-icon-btn" 
+                      onClick={(e) => triggerFileInput(e, mf.path)}
+                      title="Carica immagine da PC"
+                      style={{marginRight: '4px'}}
+                    >
+                      <Upload size={10} />
+                    </button>
+                    <input 
+                      type="file" 
+                      ref={el => fileInputRefs.current[mf.path] = el}
+                      onChange={(e) => handleFileUpload(e, mf.path)}
+                      accept="image/*"
+                      style={{display: 'none'}}
+                    />
+                    <select 
+                      value={mf.image || '/images/default.png'} 
+                      onChange={(e) => handleUpdateImage(mf.path, e.target.value)}
+                      style={{fontSize: '0.55rem', background: '#0e1016', border: '1px solid #1e2030', color: '#e2e4eb', borderRadius: '4px', padding: '2px 4px', cursor: 'pointer', outline: 'none', maxWidth: '85px'}}
+                    >
+                      <option value="/images/default.png">🤖 Default</option>
+                      <option value="/images/agente0.png">🏗️ Architect</option>
+                      <option value="/images/matematicoAi.png">∑ Math</option>
+                      <option value="/images/programmatoreAi.png">⚙️ Code</option>
+                    </select>
+                  </div>
+                </div>
+              ))}
+              {manifesti.length === 0 && (
+                <div className="mg-empty" style={{gridColumn: '1 / -1', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '8px', padding: '30px', color: '#5a5e72', fontSize: '0.7rem'}}>
+                  <Layers size={36} />
+                  <p>Nessun manifesto trovato</p>
+                  <button className="mg-btn" onClick={handleNewManifesto}>
+                    <FileSignature size={14} />
+                    Crea il primo Manifesto
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* === OLLAMA MODEL LAB ====================================== */}
+          <div className="mg-section mg-lab">
+            <div className="mg-lab-title"><Cpu size={18} /> Ollama Model Lab — Compila un Modello Locale</div>
+            <div className="mg-lab-row">
+              <div className="mg-lab-col">
+                <label>Manifesto base</label>
+                <select value={selectedManifesto} onChange={e => setSelectedManifesto(e.target.value)}>
+                  {manifesti.length === 0 && (
+                    <option value="manifesti/sigma_architect.md">sigma_architect.md (default)</option>
+                  )}
+                  {manifesti.map((mf, i) => (
+                    <option key={i} value={mf.path}>{mf.filename}</option>
+                  ))}
+                </select>
+              </div>
+              <div className="mg-lab-col">
+                <label>Modello base Ollama</label>
+                <select value={baseModel} onChange={e => setBaseModel(e.target.value)}>
+                  <option value="">— Seleziona un modello —</option>
+                  {ollamaModels.map((m, i) => (
+                    <option key={i} value={m.name}>{m.name}</option>
+                  ))}
+                </select>
+              </div>
+              <div className="mg-lab-col">
+                <label>Nome del nuovo modello</label>
+                <input value={modelName} onChange={e => setModelName(e.target.value)} placeholder="es. sigma-agent" />
+              </div>
+            </div>
+            <button className="mg-btn-create-model" onClick={handleCreateModel} disabled={creatingModel || !modelName.trim()}>
+              {creatingModel ? <><Loader size={14} /> Creazione...</> : <><Play size={14} /> Compila Modello su Ollama</>}
+            </button>
+            {createResult && (
+              <div className={`mg-result ${createResult.success ? 'success' : 'error'}`}>
+                {createResult.success ? <CheckCircle size={14} /> : <AlertCircle size={14} />}
+                {createResult.message}
+              </div>
+            )}
+          </div>
+
+          {/* === Ollama Models Installed =============================== */}
+          <div className="mg-section mg-lab">
+            <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:'8px'}}>
+              <div className="mg-lab-title" style={{margin:0}}><Cpu size={14} /> Modelli Ollama installati localmente</div>
+              <button className="mg-btn" onClick={fetchOllamaModels} style={{fontSize:'0.55rem',padding:'3px 8px'}}>
+                <ArrowRight size={10} /> Aggiorna
+              </button>
+            </div>
+            {modelsLoading ? (
+              <div style={{fontSize:'0.65rem',color:'#5a5e72',padding:'8px'}}>Caricamento...</div>
+            ) : ollamaModels.length === 0 ? (
+              <div style={{fontSize:'0.65rem',color:'#5a5e72',padding:'8px'}}>
+                Nessun modello locale trovato.
+              </div>
+            ) : (
+              <div className="mg-models-grid">
+                {ollamaModels.map((m, i) => (
+                  <div key={i} className="mg-model-chip">
+                    <span className="dot" />
+                    <span style={{fontWeight:600}}>{m.name}</span>
+                    <span style={{marginLeft:'auto',opacity:0.5,fontSize:'0.5rem'}}>
+                      {m.size ? `${(m.size / 1e9).toFixed(1)}GB` : ''}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </>
+      )}
+
+      {/* === SUB TAB: AGENTI ADDESTRATI (TRAINING LAB) ================= */}
+      {activeSubTab === 'trained' && (
+        <div className="mg-section">
+          <div className="mg-toolbar" style={{ marginBottom: '16px' }}>
+            <div>
+              <div className="mg-section-title" style={{ fontSize: '0.95rem' }}>
+                <Brain size={18} style={{ color: '#00d2ff' }} />
+                Agenti e Modelli Addestrati nel Training Lab
+              </div>
+              <div className="mg-section-desc">
+                Modelli personalizzati, adapter LoRA, checkpoint Forgia SLM ed Autopilota registrati localmente
+              </div>
+            </div>
+            <button className="mg-btn-primary" onClick={fetchTrainedData}>
+              <RefreshCw size={13} className={loadingTrained ? 'spin' : ''} />
+              Aggiorna Catalogo
+            </button>
+          </div>
+
+          {loadingTrained ? (
+            <div style={{ padding: '40px', textAlign: 'center', color: '#8b8fa3' }}>
+              <Loader size={24} className="spin" />
+              <p style={{ marginTop: '8px', fontSize: '0.8rem' }}>Caricamento agenti addestrati...</p>
+            </div>
+          ) : trainedModels.length === 0 ? (
+            <div className="mg-hero" style={{ textAlign: 'center', padding: '40px' }}>
+              <Brain size={40} style={{ color: '#00d2ff', opacity: 0.6, marginBottom: '12px' }} />
+              <h3 style={{ margin: '0 0 8px 0', fontSize: '1.1rem', color: '#fff' }}>Nessun Agente Addestrato trovato</h3>
+              <p style={{ fontSize: '0.78rem', color: '#8b8fa3', maxWidth: '500px', margin: '0 auto 16px auto' }}>
+                Non sono ancora presenti modelli personalizzati completati nel Training Lab. Avvia un job con Autopilota o Forgia SLM per addestrare il tuo primo agente!
+              </p>
+              <button 
+                className="mg-btn-primary" 
+                onClick={() => openTab({ name: '🧠 Training Lab' }, 'training_lab')}
+              >
+                <Zap size={14} /> Vai al Training Lab
+              </button>
+            </div>
+          ) : (
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: '16px' }}>
+              {trainedModels.map((m, idx) => {
+                const acc = m.accuracy_pct || m.accuracy;
+                const sources = m.sources || ['job'];
+                return (
+                  <div
+                    key={m.id || idx}
+                    style={{
+                      background: 'linear-gradient(135deg, rgba(17, 19, 27, 0.95), rgba(10, 12, 20, 0.9))',
+                      border: '1px solid rgba(0, 210, 255, 0.2)',
+                      borderRadius: '14px',
+                      padding: '18px',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      gap: '12px',
+                      position: 'relative',
+                      boxShadow: '0 8px 24px rgba(0,0,0,0.3)',
+                      transition: 'all 0.2s ease'
+                    }}
+                  >
+                    <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '10px' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                        <div style={{
+                          width: '42px', height: '42px', borderRadius: '12px',
+                          background: 'radial-gradient(circle at 30% 30%, rgba(0, 242, 254, 0.2), rgba(0, 210, 255, 0.05))',
+                          border: '1px solid rgba(0, 242, 254, 0.3)',
+                          display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#00f2fe'
+                        }}>
+                          <Brain size={22} />
+                        </div>
+                        <div>
+                          <h4 style={{ margin: 0, fontSize: '0.9rem', fontWeight: 700, color: '#fff', wordBreak: 'break-all' }}>
+                            {m.display_name || m.name}
+                          </h4>
+                          <span style={{ fontSize: '0.65rem', color: '#8b8fa3', fontFamily: 'JetBrains Mono, monospace' }}>
+                            {m.base_model || m.name}
+                          </span>
+                        </div>
+                      </div>
+
+                      {acc !== undefined && acc !== null && (
+                        <div style={{
+                          padding: '3px 8px', borderRadius: '12px',
+                          background: 'rgba(63, 185, 80, 0.15)', border: '1px solid rgba(63, 185, 80, 0.3)',
+                          color: '#3fb950', fontSize: '0.7rem', fontWeight: 700, flexShrink: 0
+                        }}>
+                          🎯 {acc}%
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Sources Tags */}
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginTop: '2px' }}>
+                      {sources.map(s => (
+                        <span key={s} style={{
+                          fontSize: '0.6rem', padding: '2px 7px', borderRadius: '6px',
+                          background: s === 'ollama' ? 'rgba(0,210,255,0.12)' : s === 'cache' ? 'rgba(188,140,255,0.12)' : 'rgba(63,185,80,0.12)',
+                          color: s === 'ollama' ? '#00d2ff' : s === 'cache' ? '#bc8cff' : '#3fb950',
+                          border: `1px solid ${s === 'ollama' ? 'rgba(0,210,255,0.25)' : s === 'cache' ? 'rgba(188,140,255,0.25)' : 'rgba(63,185,80,0.25)'}`
+                        }}>
+                          [{s.toUpperCase()}]
+                        </span>
+                      ))}
+                      {m.last_run_at && (
+                        <span style={{ fontSize: '0.6rem', color: '#8b8fa3', marginLeft: 'auto' }}>
+                          🕒 {m.last_run_at}
+                        </span>
+                      )}
+                    </div>
+
+                    {/* Action buttons */}
+                    <div style={{ display: 'flex', gap: '8px', marginTop: '8px', borderTop: '1px solid rgba(255,255,255,0.06)', paddingTop: '10px' }}>
+                      <button
+                        className="mg-btn-primary"
+                        onClick={() => handleSelectAsChatModel(m.name)}
+                        style={{ flex: 1, padding: '6px 10px', fontSize: '0.68rem', justifyContent: 'center' }}
+                      >
+                        <Zap size={12} /> Seleziona in Chat
+                      </button>
+                      <button
+                        className="mg-btn"
+                        onClick={() => {
+                          setModelName(`sigma-${(m.name || 'agent').replace(/[^a-zA-Z0-9_-]/g, '-').toLowerCase()}`);
+                          setBaseModel(m.name);
+                          setActiveSubTab('standard');
+                        }}
+                        style={{ padding: '6px 10px', fontSize: '0.68rem' }}
+                        title="Crea un Modelfile basato su questo modello addestrato"
+                      >
+                        <FileSignature size={12} /> Manifesto
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
             </div>
           )}
         </div>
-      </div>
-
-      {/* === OLLAMA MODEL LAB ====================================== */}
-      <div className="mg-section mg-lab">
-        <div className="mg-lab-title"><Cpu size={18} /> Ollama Model Lab — Compila un Modello Locale</div>
-        <div className="mg-lab-row">
-          <div className="mg-lab-col">
-            <label>Manifesto base</label>
-            <select value={selectedManifesto} onChange={e => setSelectedManifesto(e.target.value)}>
-              {manifesti.length === 0 && (
-                <option value="manifesti/sigma_architect.md">sigma_architect.md (default)</option>
-              )}
-              {manifesti.map((mf, i) => (
-                <option key={i} value={mf.path}>{mf.filename}</option>
-              ))}
-            </select>
-          </div>
-          <div className="mg-lab-col">
-            <label>Modello base Ollama</label>
-            <select value={baseModel} onChange={e => setBaseModel(e.target.value)}>
-              <option value="">— Seleziona un modello —</option>
-              {ollamaModels.map((m, i) => (
-                <option key={i} value={m.name}>{m.name}</option>
-              ))}
-            </select>
-          </div>
-          <div className="mg-lab-col">
-            <label>Nome del nuovo modello</label>
-            <input value={modelName} onChange={e => setModelName(e.target.value)} placeholder="es. sigma-agent" />
-          </div>
-        </div>
-        <button className="mg-btn-create-model" onClick={handleCreateModel} disabled={creatingModel || !modelName.trim()}>
-          {creatingModel ? <><Loader size={14} /> Creazione...</> : <><Play size={14} /> Compila Modello su Ollama</>}
-        </button>
-        {createResult && (
-          <div className={`mg-result ${createResult.success ? 'success' : 'error'}`}>
-            {createResult.success ? <CheckCircle size={14} /> : <AlertCircle size={14} />}
-            {createResult.message}
-          </div>
-        )}
-      </div>
-
-      {/* === Ollama Models Installed =============================== */}
-      <div className="mg-section mg-lab">
-        <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:'8px'}}>
-          <div className="mg-lab-title" style={{margin:0}}><Cpu size={14} /> Modelli Ollama installati localmente</div>
-          <button className="mg-btn" onClick={fetchOllamaModels} style={{fontSize:'0.55rem',padding:'3px 8px'}}>
-            <ArrowRight size={10} /> Aggiorna
-          </button>
-        </div>
-        {modelsLoading ? (
-          <div style={{fontSize:'0.65rem',color:'#5a5e72',padding:'8px'}}>Caricamento...</div>
-        ) : ollamaModels.length === 0 ? (
-          <div style={{fontSize:'0.65rem',color:'#5a5e72',padding:'8px'}}>
-            Nessun modello locale trovato.
-          </div>
-        ) : (
-          <div className="mg-models-grid">
-            {ollamaModels.map((m, i) => (
-              <div key={i} className="mg-model-chip">
-                <span className="dot" />
-                <span style={{fontWeight:600}}>{m.name}</span>
-                <span style={{marginLeft:'auto',opacity:0.5,fontSize:'0.5rem'}}>
-                  {m.size ? `${(m.size / 1e9).toFixed(1)}GB` : ''}
-                </span>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
+      )}
     </div>
   );
 }

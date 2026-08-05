@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { Play, Square, Trash2, RefreshCw, Download, Copy, ScrollText, Cpu, Package } from 'lucide-react';
+import { Play, Square, Trash2, RefreshCw, Download, Copy, ScrollText, Cpu, Package, BarChart2 } from 'lucide-react';
 import TrainingMetrics from './TrainingMetrics';
 
 // ==============================================================================
@@ -443,6 +443,26 @@ export default function TrainingMonitor({ onAddToast, embedded = false, jobId = 
   return (
     <div className={embedded ? "" : "training-panel"}>
       <div className="training-monitor">
+
+        {!embedded && (
+          <div className="app-page-header" style={{ marginBottom: '16px' }}>
+            <div className="app-page-header-title">
+              <div className="app-page-header-icon">
+                <BarChart2 size={22} color="#00f2fe" />
+              </div>
+              <div>
+                <h1>Monitor Training</h1>
+                <div className="app-page-header-subtitle">
+                  <span>Telemetria in tempo reale, curve di loss e log live</span>
+                  <span>•</span>
+                  <span style={{ color: '#00f2fe', fontFamily: 'JetBrains Mono, monospace' }}>
+                    {selectedJob ? `Job ${selectedJob.id} (${selectedJob.status || 'pronto'})` : `${jobs.length} Job registrati`}
+                  </span>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* ── Hardware info strip ── */}
         {hardware && (

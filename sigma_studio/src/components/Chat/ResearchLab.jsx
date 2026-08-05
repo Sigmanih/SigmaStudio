@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { 
   Play, Square, RotateCcw, ChevronRight, Cpu, Target, Layers, RefreshCw, 
   Database, GitCompare, Settings, Wifi, WifiOff, X, Sliders, MessageSquare, Send,
-  Plus, Trash2, CheckCircle, Circle, ArrowRight, GitBranch, StopCircle, AlertTriangle
+  Plus, Trash2, CheckCircle, Circle, ArrowRight, GitBranch, StopCircle, AlertTriangle, FlaskConical
 } from 'lucide-react';
 import useResearchPipeline from './core/useResearchPipeline';
 
@@ -803,6 +803,7 @@ export default function ResearchLab({ onClose, onTasksUpdated, addToast }) {
 
       {/* MAIN */}
       <div className="rl-main">
+
         {/* New Session Modal */}
         {showNewSession && (
           <div className="rl-new-session-overlay" onClick={() => setShowNewSession(false)}>

@@ -58,6 +58,7 @@ def register_get_handlers(handler_class):
         '/api/training/forge/verify_model': 'handle_training_forge_verify_model',
         '/api/hardware/status': 'handle_hardware_status',
         '/api/hardware/restart-ollama': 'handle_hardware_restart_ollama',
+        '/api/hardware/gpu/processes': 'handle_hardware_gpu_processes',
         # MCP Endpoints
         '/api/mcp/servers': 'handle_mcp_servers',
         '/api/mcp/tools': 'handle_mcp_tools',
@@ -90,6 +91,7 @@ def register_post_handlers(handler_class):
         '/api/router/train': 'handle_router_train',
         '/api/hardware/config': 'handle_hardware_config',
         '/api/hardware/restart-ollama': 'handle_hardware_restart_ollama',
+        '/api/hardware/gpu/kill': 'handle_hardware_gpu_kill',
         '/api/run_test': 'handle_run_test',
         '/api/create_file': 'handle_create_file',
         '/api/delete_file': 'handle_delete_file',

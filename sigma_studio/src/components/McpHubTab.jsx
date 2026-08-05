@@ -186,21 +186,24 @@ export default function McpHubTab() {
   return (
     <div style={{ padding: '24px', background: '#0a0c14', color: '#e2e4eb', minHeight: '100%', display: 'flex', flexDirection: 'column', gap: '20px' }}>
       
-      {/* Header */}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid rgba(255, 255, 255, 0.08)', paddingBottom: '16px' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-          <div style={{ padding: '10px', background: 'rgba(0, 210, 255, 0.1)', borderRadius: '12px', border: '1px solid rgba(0, 210, 255, 0.2)' }}>
-            <Server size={24} color="#00d2ff" />
+      {/* Header coordinato Stile Hardware & GPU */}
+      <div className="app-page-header">
+        <div className="app-page-header-title">
+          <div className="app-page-header-icon">
+            <Server size={22} color="#00f2fe" />
           </div>
           <div>
-            <h1 style={{ margin: 0, fontSize: '1.4rem', fontWeight: 700, color: '#fff' }}>MCP Server Hub & Tools Catalog</h1>
-            <div style={{ fontSize: '0.8rem', color: '#8b8fa3' }}>
-              Gestione, collaudo ed orchestrazione dei 6 MCP Server integrati in Sigma Studio (JSON-RPC 2.0)
+            <h1>MCP Server Hub & Tools Catalog</h1>
+            <div className="app-page-header-subtitle">
+              <span>Gestione, collaudo e orchestrazione dei 6 MCP Server integrati</span>
+              <span>•</span>
+              <span style={{ color: '#00f2fe', fontFamily: 'JetBrains Mono, monospace' }}>
+                JSON-RPC 2.0 • {tools.length} Tool attivi
+              </span>
             </div>
           </div>
         </div>
-
-        <div style={{ display: 'flex', gap: '10px' }}>
+        <div className="app-page-header-actions">
           <button
             onClick={handleTestAllTools}
             disabled={runningFullTest}
@@ -208,20 +211,19 @@ export default function McpHubTab() {
               background: 'linear-gradient(135deg, #00d2ff, #0072ff)',
               border: 'none',
               color: '#fff',
-              padding: '8px 16px',
+              padding: '7px 14px',
               borderRadius: '8px',
               fontWeight: 700,
               cursor: 'pointer',
               display: 'flex',
               alignItems: 'center',
               gap: '6px',
-              fontSize: '0.85rem'
+              fontSize: '0.78rem'
             }}
           >
-            {runningFullTest ? <RefreshCw className="spin" size={14} /> : <CheckCircle2 size={14} />}
-            <span>{runningFullTest ? 'Collaudo in corso...' : '🧪 Collauda Tutti i Server & Tool MCP'}</span>
+            {runningFullTest ? <RefreshCw className="spin" size={14} /> : <Play size={14} />}
+            <span>{runningFullTest ? 'Collaudo in corso...' : '⚡ Collauda 6 MCP Server'}</span>
           </button>
-
           <button
             onClick={loadMcpData}
             style={{

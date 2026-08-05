@@ -330,7 +330,7 @@ export default function AutopilotStudio({ addToast }) {
   }, [jobId, isTraining]);
 
   return (
-    <div className="training-scroll-area training-studio-grid" style={{ paddingTop: '14px' }}>
+    <div className="training-scroll-area training-studio-grid autopilot-studio-grid" style={{ paddingTop: '14px' }}>
       <aside className="training-studio-aside">
         <AutopilotPanel addToast={addToast} onModelloScelto={setModello}
                         onRoundScelto={setRoundScelto} />

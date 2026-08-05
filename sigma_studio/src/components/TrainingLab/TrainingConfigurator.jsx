@@ -413,6 +413,26 @@ export default function TrainingConfigurator({ myDatasets, selectedDatasetId: pr
     <div className={embedded ? "" : "training-panel"}>
       <div className={embedded ? "" : "training-scroll-area"}>
 
+        {!embedded && (
+          <div className="app-page-header" style={{ marginBottom: '18px' }}>
+            <div className="app-page-header-title">
+              <div className="app-page-header-icon">
+                <Cpu size={22} color="#00f2fe" />
+              </div>
+              <div>
+                <h1>Training Studio</h1>
+                <div className="app-page-header-subtitle">
+                  <span>Configurazione iperparametri e modello</span>
+                  <span>•</span>
+                  <span style={{ color: '#00f2fe', fontFamily: 'JetBrains Mono, monospace' }}>
+                    Metodo attivo: {method}
+                  </span>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* ── Method selector ── */}
         <div style={{ marginBottom: blockGap }}>
           <div className="training-section-header">
