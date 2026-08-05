@@ -449,9 +449,17 @@ class TestDatasetSubset:
                      "VALIDATION_FRACTION": 0.0, "MAX_EXAMPLES": max_examples,
                      "DATASET_KIND": "hf", "DATASET_PATH": "x/y",
                      "DATASET_SPLIT": "train", "DATASET_CONFIG": "",
-                     "LEGACY_HF_DATASETS": {}, "HF_DATASET_CONFIGS": {}}
+                     "LEGACY_HF_DATASETS": {}, "HF_DATASET_CONFIGS": {},
+                     "_TEMPLATE_PROPRIO": [None]}
         albero = ast.parse(source)
-        for nome in ("load_training_dataset", "load_train_and_eval"):
+        namespace["INDIZI_DOMINIO"] = next(
+            ast.literal_eval(n.value) for n in albero.body
+            if isinstance(n, ast.Assign)
+            and getattr(n.targets[0], "id", "") == "INDIZI_DOMINIO")
+        # Il caricatore chiama i formattatori e il rapporto sulla composizione:
+        # eseguirlo senza di loro proverebbe solo che mancano.
+        for nome in ("coppia_a_testo", "turni_a_testo", "composizione_del_dataset",
+                     "load_training_dataset", "load_train_and_eval"):
             node = next(n for n in albero.body
                         if isinstance(n, ast.FunctionDef) and n.name == nome)
             exec(ast.get_source_segment(source, node), namespace)
@@ -991,9 +999,20 @@ class TestGeneratedDatasetLoader:
         source = _render(SCRIPT_TEMPLATES["trl_sft"], values)
         fn = next(n for n in ast.parse(source).body
                   if isinstance(n, ast.FunctionDef) and n.name == "load_training_dataset")
-        # Il caricatore taglia il dataset prima di formattarlo, quindi legge
-        # la costante: 0 significa "prendi tutto", che e' quello che serve qui.
-        ns = {"json": json, "sigma": lambda *a: None, "MAX_EXAMPLES": 0}
+        # Il caricatore taglia il dataset prima di formattarlo (legge
+        # MAX_EXAMPLES: 0 significa "prendi tutto") e formatta con i due
+        # helper, che vanno portati nello stesso ambiente.
+        ns = {"json": json, "sigma": lambda *a: None, "MAX_EXAMPLES": 0,
+              "_TEMPLATE_PROPRIO": [None]}
+        albero = ast.parse(source)
+        ns["INDIZI_DOMINIO"] = next(
+            ast.literal_eval(n.value) for n in albero.body
+            if isinstance(n, ast.Assign)
+            and getattr(n.targets[0], "id", "") == "INDIZI_DOMINIO")
+        for nome in ("coppia_a_testo", "turni_a_testo", "composizione_del_dataset"):
+            aiuto = next(n for n in albero.body
+                         if isinstance(n, ast.FunctionDef) and n.name == nome)
+            exec(ast.get_source_segment(source, aiuto), ns)
         exec(ast.get_source_segment(source, fn), ns)
         return ns["load_training_dataset"]
 
@@ -1655,7 +1674,9 @@ class TestFormatiDataset:
         albero = ast.parse(source)
         pezzi = {n.name: ast.get_source_segment(source, n) for n in albero.body
                  if isinstance(n, ast.FunctionDef)
-                 and n.name in ("load_training_dataset", "load_train_and_eval")}
+                 and n.name in ("load_training_dataset", "load_train_and_eval",
+                                "coppia_a_testo", "turni_a_testo",
+                                "composizione_del_dataset")}
 
         n = max(len(v) for v in colonne.values())
         ds = Dataset.from_dict({k: (v * n)[:n] for k, v in colonne.items()})
@@ -1665,9 +1686,17 @@ class TestFormatiDataset:
             ns = {"sigma": lambda m: None, "json": json, "os": __import__("os"),
                   "DATASET_KIND": "hf", "DATASET_PATH": "x/y", "DATASET_SPLIT": "train",
                   "DATASET_CONFIG": "", "LEGACY_HF_DATASETS": {}, "HF_DATASET_CONFIGS": {},
-                  "VALIDATION_FRACTION": 0.0, "MAX_EXAMPLES": 0}
-            exec(pezzi["load_training_dataset"], ns)
-            exec(pezzi["load_train_and_eval"], ns)
+                  "VALIDATION_FRACTION": 0.0, "MAX_EXAMPLES": 0,
+                  # Senza template di chat i formattatori usano lo schema
+                  # testuale: e' quello che questi test verificano.
+                  "_TEMPLATE_PROPRIO": [None]}
+            ns["INDIZI_DOMINIO"] = next(
+                ast.literal_eval(n.value) for n in albero.body
+                if isinstance(n, ast.Assign)
+                and getattr(n.targets[0], "id", "") == "INDIZI_DOMINIO")
+            for nome in ("coppia_a_testo", "turni_a_testo", "composizione_del_dataset",
+                         "load_training_dataset", "load_train_and_eval"):
+                exec(pezzi[nome], ns)
             train, _ = ns["load_train_and_eval"]()
             return str(train["text"][0])
         finally:
@@ -1868,3 +1897,355 @@ class TestTaglioPrimaDellaFormattazione:
         significherebbe addestrare su una fetta sola del compito."""
         source = self._sorgente()
         assert "shuffle(seed=42)" in source
+
+
+class TestFormatoCoerente:
+    """Il formato con cui si addestra dev'essere quello con cui si interroga.
+
+    Non e' una raffinatezza: e' il difetto che ha reso inservibili giorni di
+    round. Il modello imparava a continuare "### Istruzione: ... ### Risposta:"
+    e il benchmark lo interrogava con i marcatori di chat del suo tokenizer.
+    Due lingue diverse, e le risposte diventavano illeggibili.
+    """
+
+    def _pezzi(self):
+        from core.training.jobs import _build_script_values
+
+        values = _build_script_values(
+            {"base_model": "gpt2", "method": "trl_sft", "dataset_id": "x/y",
+             "hyperparams": {}}, "tj", Path("unused"))
+        source = _render(SCRIPT_TEMPLATES["trl_sft"], values)
+        ns = {"sigma": lambda m: None, "_TEMPLATE_PROPRIO": [None]}
+        for nome in ("usa_template_del_modello", "coppia_a_testo", "turni_a_testo"):
+            nodo = next(n for n in ast.parse(source).body
+                        if isinstance(n, ast.FunctionDef) and n.name == nome)
+            exec(ast.get_source_segment(source, nodo), ns)
+        return ns
+
+    class FintoTokenizer:
+        def __init__(self, template="{{ messaggi }}"):
+            self.chat_template = template
+
+        def apply_chat_template(self, messaggi, tokenize=False):
+            return "".join(f"<|{m['role']}|>{m['content']}" for m in messaggi)
+
+    def test_un_modello_istruito_usa_il_suo_formato(self):
+        ns = self._pezzi()
+        assert ns["usa_template_del_modello"](self.FintoTokenizer()) is True
+        testo = ns["coppia_a_testo"]("Quanto fa 2+2?", "Fa quattro.")
+        assert testo == "<|user|>Quanto fa 2+2?<|assistant|>Fa quattro."
+        assert "### Istruzione" not in testo
+
+    def test_un_modello_base_resta_sullo_schema_testuale(self):
+        """Senza template di chat, i marcatori non esistono: inventarli
+        insegnerebbe un formato che il modello non conosce."""
+        ns = self._pezzi()
+        assert ns["usa_template_del_modello"](self.FintoTokenizer(template=None)) is False
+        testo = ns["coppia_a_testo"]("Quanto fa 2+2?", "Fa quattro.")
+        assert "### Istruzione:" in testo and "### Risposta:" in testo
+
+    def test_il_prompt_di_sistema_diventa_un_turno(self):
+        ns = self._pezzi()
+        ns["usa_template_del_modello"](self.FintoTokenizer())
+        testo = ns["coppia_a_testo"]("Domanda", "Risposta", sistema="Sei un assistente.")
+        assert testo.startswith("<|system|>Sei un assistente.")
+
+    def test_i_ruoli_dei_dataset_si_normalizzano(self):
+        """`human`/`gpt` di OpenHermes non sono ruoli validi per un template:
+        vanno tradotti, o il tokenizer li rifiuta."""
+        ns = self._pezzi()
+        ns["usa_template_del_modello"](self.FintoTokenizer())
+        testo = ns["turni_a_testo"]([{"from": "human", "value": "Ciao"},
+                                     {"from": "gpt", "value": "Ciao a te"}])
+        assert testo == "<|user|>Ciao<|assistant|>Ciao a te"
+
+    def test_un_template_che_esplode_non_ferma_il_training(self):
+        """Meglio addestrare sullo schema testuale che non addestrare."""
+        ns = self._pezzi()
+
+        class Rotto:
+            chat_template = "{{ rotto"
+
+            def apply_chat_template(self, messaggi, tokenize=False):
+                raise ValueError("template non valido")
+
+        ns["usa_template_del_modello"](Rotto())
+        testo = ns["coppia_a_testo"]("Domanda", "Risposta")
+        assert "### Istruzione:" in testo
+
+    @pytest.mark.parametrize("method", ["lora_unsloth", "trl_sft"])
+    def test_il_tokenizer_viene_registrato_prima_del_dataset(self, method):
+        """Registrarlo dopo significherebbe formattare gli esempi senza sapere
+        che formato usa il modello."""
+        from core.training.jobs import _build_script_values
+
+        values = _build_script_values(
+            {"base_model": "gpt2", "method": method, "dataset_id": "x/y",
+             "hyperparams": {}}, "tj", Path("unused"))
+        source = _render(SCRIPT_TEMPLATES[method], values)
+        assert (source.index("usa_template_del_modello(tokenizer)")
+                < source.index("train_dataset, eval_dataset = load_train_and_eval()"))
+
+
+class TestComposizioneDataset:
+    """Di cosa parla un dataset, prima di addestrarci sopra.
+
+    Il ciclo assume che il dataset scelto copra la competenza che vuole
+    migliorare. Quando l'assunzione e' sbagliata se ne accorge dopo un round
+    intero — misurato su OpenOrca, che il ciclo usa per il ragionamento (26%,
+    giusto) ma che di matematica ne ha l'1%.
+    """
+
+    def _funzione(self):
+        from core.training.jobs import _build_script_values
+
+        values = _build_script_values(
+            {"base_model": "gpt2", "method": "trl_sft", "dataset_id": "x/y",
+             "hyperparams": {}}, "tj", Path("unused"))
+        source = _render(SCRIPT_TEMPLATES["trl_sft"], values)
+        albero = ast.parse(source)
+        ns = {"INDIZI_DOMINIO": next(
+            ast.literal_eval(n.value) for n in albero.body
+            if isinstance(n, ast.Assign) and getattr(n.targets[0], "id", "") == "INDIZI_DOMINIO")}
+        nodo = next(n for n in albero.body if isinstance(n, ast.FunctionDef)
+                    and n.name == "composizione_del_dataset")
+        exec(ast.get_source_segment(source, nodo), ns)
+        return ns["composizione_del_dataset"]
+
+    def test_riconosce_la_matematica(self):
+        composizione = self._funzione()
+        righe = composizione(["Calcola l'integral di x^2", "solve for x nell'equazione"])
+        assert "matematica" in righe[0]
+
+    def test_riconosce_il_codice(self):
+        composizione = self._funzione()
+        righe = composizione(["def somma(a, b):\n    return a + b", "import os"])
+        assert "codice 100%" in righe[0]
+
+    def test_un_esempio_puo_contare_in_piu_domini(self):
+        """Un problema di matematica spiegato passo per passo e' matematica *e*
+        ragionamento: fingere che sia una cosa sola darebbe percentuali piu'
+        pulite e piu' false."""
+        composizione = self._funzione()
+        righe = composizione(["Calcola l'integral, therefore il risultato e' due"])
+        assert "matematica" in righe[0] and "ragionamento" in righe[0]
+
+    def test_un_dataset_irriconoscibile_lo_dice(self):
+        composizione = self._funzione()
+        righe = composizione(["Il gatto dorme sul divano.", "Domani piove."])
+        assert "nessun dominio riconosciuto" in righe[0]
+
+    def test_le_percentuali_stanno_sul_campione(self):
+        composizione = self._funzione()
+        righe = composizione(["def f(): pass"] + ["testo neutro"] * 3)
+        assert "codice 25%" in righe[0]
+
+
+class TestNormalizzazioneDellaPerdita:
+    """Dalla 4.46 il Trainer smette di dividere la loss per l'accumulo se il
+    forward del modello ha un `**kwargs`, dando per scontato che dentro ci
+    finisca `num_items_in_batch` e che il modello lo usi. Un'architettura
+    scritta a mano quel parametro lo ingoia, e allora non normalizza nessuno
+    dei due: loss e gradienti escono moltiplicati per l'accumulo.
+
+    Misurato su Ailo340m-v4 con accumulo 16: loss riportata 63,5 al primo
+    passo dove quella vera era 3,97 — sopra il tetto del caso puro (10,8),
+    quindi indistinguibile da un modello che non impara affatto.
+    """
+
+    def _sonda(self):
+        from core.training.jobs import _ARCH_SHIM
+        inizio = _ARCH_SHIM.index("def normalizza_la_perdita")
+        detto = []
+        ns = {"sigma": lambda m: detto.append(m)}
+        exec(compile(_ARCH_SHIM[inizio:], "shim", "exec"), ns)
+        return ns["normalizza_la_perdita"], detto
+
+    def _finto_trainer(self, model, accumulo=16):
+        import types
+
+        class FintoTrainer:
+            def __init__(self):
+                self.model = model
+                self.model_accepts_loss_kwargs = True
+                self.args = types.SimpleNamespace(
+                    gradient_accumulation_steps=accumulo)
+        return FintoTrainer()
+
+    def _modello(self, onora):
+        """Un modello minimo che onora o ignora `num_items_in_batch`."""
+        import types
+        import torch.nn as nn
+        import torch.nn.functional as F
+
+        class Modellino(nn.Module):
+            def __init__(self):
+                super().__init__()
+                self.emb = nn.Embedding(16, 8)
+                self.testa = nn.Linear(8, 16)
+
+            def forward(self, input_ids, labels=None, **kwargs):
+                logits = self.testa(self.emb(input_ids))
+                perdita = F.cross_entropy(
+                    logits.view(-1, 16), labels.view(-1),
+                    reduction="sum" if onora else "mean")
+                if onora:
+                    perdita = perdita / kwargs["num_items_in_batch"]
+                return types.SimpleNamespace(loss=perdita)
+
+        return Modellino()
+
+    def test_chi_ignora_il_conteggio_viene_normalizzato_dal_trainer(self):
+        normalizza, detto = self._sonda()
+        trainer = self._finto_trainer(self._modello(onora=False))
+        assert normalizza(trainer) is False
+        assert trainer.model_accepts_loss_kwargs is False, \
+            "senza questo la loss riportata resta moltiplicata per l'accumulo"
+        assert any("16x" in m for m in detto), \
+            "il log deve dire di quanto sarebbe stato l'errore"
+
+    def test_chi_lo_onora_resta_intoccato(self):
+        """I modelli di transformers normalizzano sul conteggio dei token, che
+        e' piu' preciso della divisione per l'accumulo: togliergliela sarebbe
+        un peggioramento."""
+        normalizza, detto = self._sonda()
+        trainer = self._finto_trainer(self._modello(onora=True))
+        assert normalizza(trainer) is True
+        assert trainer.model_accepts_loss_kwargs is True
+        assert detto == []
+
+    def test_il_dropout_non_viene_scambiato_per_normalizzazione(self):
+        """La sonda confronta due chiamate: con il dropout acceso darebbero
+        numeri diversi anche a un modello che il conteggio lo ignora, e la
+        sonda leggerebbe rumore come se fosse la normalizzazione giusta."""
+        import torch.nn as nn
+        normalizza, _ = self._sonda()
+        modello = self._modello(onora=False)
+        modello.buco = nn.Dropout(0.9)
+        originale = modello.forward
+
+        def con_dropout(input_ids, labels=None, **kwargs):
+            fuori = originale(input_ids, labels=labels, **kwargs)
+            rumore = modello.buco(fuori.loss.new_ones(64)).sum()
+            fuori.loss = fuori.loss + rumore
+            return fuori
+
+        modello.forward = con_dropout
+        modello.train()
+        trainer = self._finto_trainer(modello)
+        assert normalizza(trainer) is False, \
+            "la sonda deve misurare in eval, altrimenti legge il dropout"
+        assert modello.training, "lo stato del modello va restituito com'era"
+
+    def test_un_forward_che_rifiuta_il_parametro_non_ferma_il_job(self):
+        """Meglio la normalizzazione prudente di un'eccezione a meta' avvio."""
+        import torch.nn as nn
+        normalizza, detto = self._sonda()
+
+        class Rigido(nn.Module):
+            def __init__(self):
+                super().__init__()
+                self.p = nn.Linear(2, 2)
+
+            def forward(self, input_ids, labels=None):
+                raise TypeError("num_items_in_batch non previsto")
+
+        trainer = self._finto_trainer(Rigido())
+        assert normalizza(trainer) is False
+        assert trainer.model_accepts_loss_kwargs is False
+        assert any("prudente" in m for m in detto)
+
+    def test_e_agganciata_prima_di_ogni_training(self):
+        """Una sonda che nessuno chiama non corregge niente."""
+        from core.training.jobs import SCRIPT_TEMPLATES
+        for nome in ("lora_unsloth", "trl_sft"):
+            corpo = SCRIPT_TEMPLATES[nome]
+            assert "normalizza_la_perdita(trainer)" in corpo, nome
+            assert (corpo.index("normalizza_la_perdita(trainer)")
+                    < corpo.index("trainer.train(")), \
+                nome + ": la sonda deve girare prima del training"
+
+
+class TestAddestramentoCompleto:
+    """Sotto il miliardo di parametri LoRA e' una gabbia senza il vantaggio che
+    la giustifica: il modello e' poco addestrato e i pesi vanno mossi davvero.
+    `lora_r = 0` significa niente LoRA."""
+
+    def _sorgente(self, lora_r, learning_rate=2e-4):
+        from core.training.jobs import _build_script_values, SCRIPT_TEMPLATES
+        values = _build_script_values(
+            {"base_model": "org/piccolo", "method": "trl_sft", "dataset_id": "x/y",
+             "hyperparams": {"lora_r": lora_r, "learning_rate": learning_rate}},
+            "tj", Path("unused"))
+        return _render(SCRIPT_TEMPLATES["trl_sft"], values)
+
+    def test_rank_zero_sceglie_i_pesi_veri(self):
+        sorgente = self._sorgente(0)
+        assert "ADDESTRAMENTO_COMPLETO = int(0) <= 0" in sorgente
+        albero = ast.parse(sorgente)
+        assert albero is not None, "il sorgente reso deve restare valido"
+
+    def test_rank_positivo_resta_lora(self):
+        sorgente = self._sorgente(16)
+        assert "ADDESTRAMENTO_COMPLETO = int(16) <= 0" in sorgente
+        assert "get_peft_model" in sorgente
+
+    def test_il_passo_di_lora_viene_abbassato_sui_pesi_veri(self):
+        """2e-4 e' corretto per una matrice che parte da zero ed e' distruttivo
+        su pesi gia' addestrati. Il tetto e' dichiarato nel log."""
+        sorgente = self._sorgente(0)
+        assert "TETTO = 5e-5" in sorgente
+        assert "PASSO = TETTO" in sorgente
+        assert "learning_rate=PASSO" in sorgente
+
+    def test_un_passo_gia_prudente_non_viene_toccato(self):
+        sorgente = self._sorgente(0, learning_rate=1e-5)
+        assert "PASSO = float(1e-05)" in sorgente
+
+    def test_il_modello_intero_non_finisce_in_lora_model(self):
+        """L'export cerca `model/` come sorgente autonoma e `lora_model/` come
+        adapter da fondere: sbagliare cartella manderebbe a Ollama un modello
+        intero spacciato per adapter."""
+        sorgente = self._sorgente(0)
+        assert 'ADDESTRAMENTO_COMPLETO else "/lora_model"' in sorgente
+        assert '"/model" if ADDESTRAMENTO_COMPLETO' in sorgente
+
+    def test_le_proiezioni_lora_sono_dedotte_anche_qui(self):
+        """`trl_sft` aveva i nomi canonici scritti a mano: su un'architettura
+        che chiama le sue proiezioni `out_proj`/`w1`/`w2` PEFT non trovava
+        nessun bersaglio e il run girava senza imparare niente."""
+        assert "proiezioni_lora(model," in self._sorgente(16)
+
+
+class TestGuardiaRankZero:
+    """`lora_r = 0` vuol dire "addestra i pesi", e solo `trl_sft` lo sa fare.
+    Chiederlo su Unsloth passerebbe rank 0 a PEFT — un adapter di dimensione
+    nulla — e il run arriverebbe in fondo senza aver aggiornato niente."""
+
+    def test_rank_zero_sposta_il_metodo(self):
+        from core.training.jobs import metodo_effettivo
+        assert metodo_effettivo("lora_unsloth", {"lora_r": 0}) == "trl_sft"
+
+    def test_rank_normale_resta_dov_era(self):
+        from core.training.jobs import metodo_effettivo
+        assert metodo_effettivo("lora_unsloth", {"lora_r": 16}) == "lora_unsloth"
+        assert metodo_effettivo("lora_unsloth", {}) == "lora_unsloth"
+
+    def test_gli_altri_metodi_non_si_toccano(self):
+        from core.training.jobs import metodo_effettivo
+        for metodo in ("full_pretrain", "slm_forge", "script_custom", "trl_sft"):
+            assert metodo_effettivo(metodo, {"lora_r": 0}) == metodo
+
+    def test_un_rank_illeggibile_non_fa_esplodere_la_creazione(self):
+        from core.training.jobs import metodo_effettivo
+        assert metodo_effettivo("lora_unsloth", {"lora_r": "boh"}) == "lora_unsloth"
+        assert metodo_effettivo("lora_unsloth", {"lora_r": None}) == "lora_unsloth"
+
+    def test_il_job_creato_riceve_davvero_lo_script_giusto(self):
+        """Il guardrail deve valere anche per chi crea job dalle API o
+        dall'autopilota, che l'interfaccia non la attraversano."""
+        from core.training.jobs import _build_script_values, SCRIPT_TEMPLATES
+        values = _build_script_values(
+            {"base_model": "org/piccolo", "method": "lora_unsloth", "dataset_id": "x/y",
+             "hyperparams": {"lora_r": 0}}, "tj", Path("unused"))
+        assert values["method_label"] == "SFT (TRL + PEFT)"

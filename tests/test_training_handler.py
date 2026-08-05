@@ -377,7 +377,11 @@ class TestTrainingJobCreation:
         # Verifica che il template contenga i valori corretti
         script_content = Path(job["script_path"]).read_text(encoding="utf-8")
         assert "num_train_epochs=10" in script_content or "num_epochs=10" in script_content
-        assert "learning_rate=1e-05" in script_content
+        # In `trl_sft` il passo non finisce piu' dritto in SFTConfig: ci passa
+        # attraverso `PASSO`, che l'addestramento completo puo' abbassare.
+        # Quello che conta e' che il valore chiesto arrivi nello script.
+        assert ("learning_rate=1e-05" in script_content
+                or "PASSO = float(1e-05)" in script_content)
 
     def test_create_all_method_jobs(self):
         """Crea job per ogni metodo di training disponibile."""
