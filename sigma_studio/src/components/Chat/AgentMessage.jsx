@@ -36,7 +36,7 @@ function formatTimestamp(ts) {
 // Main AgentMessage Component
 // ==============================================================================
 import { useState, useEffect } from 'react';
-import { speakAgentMessage, stopSpeech } from './audioSpeech';
+import { speakAgentMessage, stopSpeech, subscribeSpeech, getActiveSpeechId } from './audioSpeech';
 
 export default function AgentMessage({
   msg,
@@ -144,6 +144,14 @@ export default function AgentMessage({
     return () => window.removeEventListener('sigma_profile_updated', handleProfileUpdate);
   }, []);
 
+  // The button mirrors the global TTS state, so a message auto-played by the
+  // chat stream already shows "Ferma" and stops on the first click.
+  const speechId = first.timestamp;
+  useEffect(() => {
+    setIsPlayingAudio(getActiveSpeechId() === speechId);
+    return subscribeSpeech(activeId => setIsPlayingAudio(activeId === speechId));
+  }, [speechId]);
+
   const avatarSrc = isUser
     ? (userProfile.avatar || '/images/default.png')
     : (agentId ? agentStyle.image : (first.agentImage || '/images/default.png'));
@@ -219,15 +227,10 @@ export default function AgentMessage({
               onClick={() => {
                 if (isPlayingAudio) {
                   stopSpeech();
-                  setIsPlayingAudio(false);
                 } else {
+                  // Answer only: `m.thinking` is deliberately left out.
                   const textToRead = messages.map(m => m.content || m.text || '').join(' ');
-                  const started = speakAgentMessage(
-                    textToRead,
-                    () => setIsPlayingAudio(true),
-                    () => setIsPlayingAudio(false)
-                  );
-                  if (!started) setIsPlayingAudio(false);
+                  speakAgentMessage(textToRead, null, null, speechId);
                 }
               }}
               title={isPlayingAudio ? 'Ferma lettura' : 'Ascolta risposta vocale (TTS)'}
