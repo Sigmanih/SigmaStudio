@@ -278,6 +278,18 @@ register_get_handlers(FastAPIHandlerAdapter)
 register_post_handlers(FastAPIHandlerAdapter)
 
 
+# Endpoints whose handlers push SSE events on `wfile` instead of returning JSON.
+# Missing entries here are silently swallowed: the handler writes into the queue,
+# nobody drains it, and the client receives an empty 200.
+SSE_ENDPOINTS = (
+    "/api/chat",
+    "/api/chat/loop",
+    "/api/chat/orchestrate",
+    "/api/chat/pipeline/start",
+    "/api/research/start",
+)
+
+
 # Helper function to execute a route via the adapter
 async def _dispatch_route(request: Request, method: str):
     url_path = request.url.path
@@ -300,7 +312,7 @@ async def _dispatch_route(request: Request, method: str):
     handler_fn = getattr(adapter, handler_name)
 
     # Check if SSE streaming is expected
-    if request.url.path in ("/api/chat", "/api/chat/loop", "/api/chat/pipeline/start", "/api/research/start"):
+    if request.url.path in SSE_ENDPOINTS:
         def _run_in_thread():
             try:
                 handler_fn()

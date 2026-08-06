@@ -646,14 +646,14 @@ def call_ollama_stream(
                 msg = data.get("message", {})
                 content = msg.get("content", "")
                 thinking = msg.get("thinking", msg.get("reasoning_content", ""))
+                # Reasoning stays on its own channel: routing it into "token"
+                # dumps the whole chain-of-thought into the answer bubble.
+                # Consumers fall back to thinking when no content ever arrives.
                 result = {}
-                if not content and thinking:
-                    result["token"] = thinking
-                else:
-                    if content:
-                        result["token"] = content
-                    if thinking:
-                        result["thinking"] = thinking
+                if content:
+                    result["token"] = content
+                if thinking:
+                    result["thinking"] = thinking
                 if result:
                     yield result
                 if data.get("done", False):

@@ -7,7 +7,7 @@
     <a href="#"><img src="https://img.shields.io/badge/react-19-61DAFB.svg" alt="React 19"></a>
     <a href="#"><img src="https://img.shields.io/badge/ollama-ready-FF6F00.svg" alt="Ollama Ready"></a>
     <a href="#"><img src="https://img.shields.io/badge/ai-multi--provider-9B59B6.svg" alt="Multi-Provider AI"></a>
-    <a href="#"><img src="https://img.shields.io/badge/status-v7.0--beta-success.svg" alt="v7.0 Beta"></a>
+    <a href="#"><img src="https://img.shields.io/badge/status-v8.1--beta-success.svg" alt="v8.1 Beta"></a>
     <a href="#"><img src="https://img.shields.io/badge/PRs-welcome-brightgreen.svg" alt="PRs Welcome"></a>
   </p>
 </p>
@@ -28,14 +28,16 @@ Immagina un **team di agenti AI specializzati** (un matematico, un architetto, u
 |:---------------|:--------------------|
 | 🧠 **AI Multi-Provider** | Ollama (locale), DeepSeek, OpenAI, Anthropic, Groq, OpenRouter — scegli tu il cervello |
 | 📜 **Sistema dei Manifesti** | Ogni agente ha un "codice di condotta" scritto come Modelfile di Ollama. Contratti eseguibili, non semplici istruzioni |
-| 🔬 **Ricerca Automatizzata** | L'AI esplora, dimostra, confuta e documenta — senza che tu debba muovere un dito |
+| 🏃 **Autopilota** | Scegli un modello e lascialo migliorare da solo: round di valutazione, test statistici e specializzazione automatica |
+| 🔬 **Motore Benchmark Ufficiale** | Valuta i modelli su 11 suite ufficiali (MMLU, GSM8K, HumanEval, ARC, BBH…) con coda di revisione e audit |
+| 🔨 **Forgia SLM** | Costruisci piccoli modelli linguistici da zero, in italiano — pre-training, distillazione, export GGUF |
+| 🔌 **MCP Server Hub** | 6 server MCP integrati (Memory, Developer, Hardware, Training, Inference, Network) |
+| 🤖 **Orchestrazione Multi-Agente** | Pipeline parallele, condivisione del contesto, sciami dinamici e delega automatica |
 | 🏗️ **AI Full-Stack** | Dalla teoria accademica al codice funzionante: teoremi → test → visualizzazioni D3.js → whitepaper |
 | 🔒 **Sicurezza Sandbox** | Ogni operazione è confinata a percorsi autorizzati. Nessun agente tocca i file di sistema |
 | 🧩 **Architettura Modulare** | Backend Python + Frontend React 19 + AI Multi-provider: completamente componibile |
-| 🤖 **Orchestrazione Multi-Agente** | Pipeline parallele con agenti specializzati, condivisione del contesto e delega automatica |
-| 📚 **Sessioni di Ricerca** | Scomposizione di obiettivi complessi in micro-task con tracciabilità completa |
-| 🧠 **Training Lab** | Fine-tuning e pre-training di LLM con interfaccia completa — dataset, metodi, monitoraggio live |
-| ⚡ **Hardware & GPU Monitor** | Monitoraggio real-time GPU, configurazione multi-GPU e parallelismo Ollama |
+
+> 📐 **Vuoi i dettagli tecnici approfonditi?** L'architettura completa, il riferimento degli endpoint, le strutture dati e gli internals del backend vivono in **[`architettura.md`](architettura.md)**. Questo README parla di cosa puoi fare con la piattaforma e di come avviarla.
 
 ---
 
@@ -65,6 +67,32 @@ Immagina un **team di agenti AI specializzati** (un matematico, un architetto, u
   <em>Sigma Lab Editor per la redazione e modifica dei file (sinistra) e le Visualizzazioni interattive D3.js generate dagli agenti (destra).</em>
 </p>
 
+### 🆕 Training Lab — guardalo in azione
+
+<p align="center">
+  <img src="images/screenshots/autopilot.png" alt="Autopilota — specializzazione automatica del modello" width="48%" />
+  <img src="images/screenshots/benchmark.png" alt="Benchmark Test ufficiale" width="48%" />
+</p>
+<p align="center">
+  <em>Ciclo Autopilota con profilo per competenza e verdetti statistici (sinistra) e Benchmark Test ufficiale su 11 suite (destra).</em>
+</p>
+
+<p align="center">
+  <img src="images/screenshots/mcphub.png" alt="MCP Server Hub" width="48%" />
+  <img src="images/screenshots/slmforge.png" alt="Forgia SLM" width="48%" />
+</p>
+<p align="center">
+  <em>MCP Server Hub con 6 server specializzati e console JSON-RPC (sinistra) e Forgia SLM per costruire piccoli modelli da zero (destra).</em>
+</p>
+
+<p align="center">
+  <img src="images/screenshots/trainingstudio.png" alt="Training Studio — fine-tuning semi-assistito" width="48%" />
+  <img src="images/screenshots/pipelinedesigner.png" alt="Pipelines Lab — progettazione pipeline DAG" width="48%" />
+</p>
+<p align="center">
+  <em>Training Studio percorso guidato di fine-tuning (sinistra) e Pipelines Lab con designer DAG (destra).</em>
+</p>
+
 ### 💡 Da un singolo Prompt a una Knowledge Base Completa
 
 Tutti i file di teoria, i formulari, i grafici interattivi D3.js e gli script di test visibili negli screenshot sono stati generati a partire da **un unico, singolo prompt iniziale** inserito nel **Research Lab**:
@@ -91,131 +119,208 @@ La chat di Sigma Studio non è un semplice chatbot, ma un pannello di controllo 
   - **Complete Task**: Risoluzione assistita o autonoma di compiti specifici della Roadmap.
 - **Associazione del Manifesto**: Cambio al volo del comportamento dell'agente associando i Manifesti di configurazione, con ripristino automatico quando si naviga tra sessioni diverse.
 - **Tracciamento in Tempo Reale**: Ogni azione (creazione di file, esecuzione di comandi, test di validazione) lascia una notifica strutturata per la massima trasparenza operativa.
+- **Ricerca Web**: Ricerca integrata (DuckDuckGo + Wikipedia) per fondare le risposte degli agenti su fonti esterne.
+- **Pipelines Lab**: Progetta ed esegui pipeline DAG con condizioni di branching, loop self-healing e streaming di avanzamento SSE.
 
 ---
 
-## 🧠 Training Lab
+## 🏃 Autopilota — Lascia che il Modello Migliori Da Sè
 
-Il **Training Lab** è un ambiente completo per il fine-tuning e il pre-training di modelli linguistici, accessibile dal menu laterale `🧠 Training Lab` e organizzato in 4 sezioni:
+L'**Autopilota** è il modo più nuovo di addestrare dentro Sigma Studio: scegli un modello e lascialo specializzare da solo.
 
-### 📖 Documentazione
-Guida completa ai metodi di training supportati, requisiti hardware e best practice.
+- **Cicli automatici**: il modello viene valutato, vengono identificate le competenze deboli, viene generato un round di fine-tuning e il risultato viene valutato di nuovo.
+- **Profilo per competenza**: 19 competenze con doppia barra — il modello standard in azzurro, il miglioramento guadagnato in verde — così il guadagno si legge come uno spessore, non come due numeri da sottrarre a mente.
+- **Verdetti statistici**: ogni round riporta vittorie, sconfitte e un p-value su uno split di holdout dedicato, così poche decine di quesiti non possono essere scambiati per un miglioramento reale.
+- **Diario e curva di loss live**: guarda la loss del training e l'avanzamento della valutazione in tempo reale mentre il ciclo gira.
+- **Sicuro per progettazione**: lo split di training è deliberatamente **diverso** dalle suite di benchmark usate per giudicare — niente barare sulle metriche.
+
+Accesso: barra laterale → `🧠 Training Lab` → **🤖 Autopilota**.
+
+---
+
+## 🎛️ Training Studio — Fine-Tuning Semi-Assistito
+
+Il **Training Studio** è il percorso guidato tra configurazione manuale e automazione totale:
+
+- Workflow passo-passo di fine-tuning (dataset → metodo → modello → iperparametri → lancio).
+- Preset best-practice e controlli di validazione in ogni fase.
+- Si collega automaticamente al Monitor dei job quando viene creato un job di training.
+
+Accesso: barra laterale → `🧠 Training Lab` → **🎛️ Semi-assistito**.
+
+---
+
+## 🧠 Training Lab — Cassetta degli Attrezzi Manuale
+
+Il **Training Lab** espone anche la cassetta degli attrezzi manuale completa, organizzata in 5 strumenti:
+
+| Strumento | Cosa Fa |
+|:----------|:--------|
+| 🗃️ **Dataset** | 15+ dataset open-source curati, ricerca HuggingFace (100K+), import locale drag & drop |
+| ⚙️ **Training** | 4 metodi (LoRA/Unsloth, SFT/TRL, Full Pre-Training, Script Custom), model picker, controllo completo degli iperparametri |
+| 🔨 **Forgia SLM** | Costruisci piccoli modelli da zero — dataset italiani, pre-training e/o distillazione, export GGUF, chat sui checkpoint |
+| 🧪 **Benchmark Test** | Valutazione ufficiale su 11 suite con grader, coda di revisione, audit e capacity probe multi-GPU |
+| 📊 **Monitor** | Log live, grafico interattivo della loss, diagnostica CUDA, controlli job, **Export → Ollama** |
 
 ### 🗃️ Dataset
-Navigazione, ricerca e gestione dei dataset di training:
-- **⭐ Consigliati**: 15 dataset open-source curati per LLM training, organizzati per categoria:
-  - *Instruction Tuning*: Alpaca (52K), Dolly (15K), OpenHermes 2.5 (1M+), UltraChat 200K, OpenOrca (3.2M)
-  - *Code Training*: CodeAlpaca 20K, Python Code Instructions 18K, StarCoder Data (783GB)
-  - *Math & Reasoning*: MetaMathQA (395K), GSM8K (8.5K), MATH (12.5K)
-  - *Pre-Training*: TinyStories (2M+), OpenWebText, The Pile (825GB)
-  - *Multilingue / ITA*: Italian Dolly, OPUS-100
-- **🔍 Ricerca HuggingFace**: Cerca tra 100.000+ dataset su HuggingFace Hub con preview e metadati
-- **📂 Import Locale**: Trascina e rilascia file JSONL, JSON, CSV o TXT — parsing automatico
-- **🗂️ I Miei Dataset**: Gestione dei dataset importati con selezione per il training
+
+- **⭐ Consigliati**: 15 dataset open-source curati per LLM training (Alpaca, Dolly, OpenHermes, UltraChat, OpenOrca, CodeAlpaca, MetaMathQA, GSM8K, MATH, TinyStories, The Pile, Italian Dolly, OPUS-100…).
+- **🔍 Ricerca HuggingFace**: 100.000+ dataset con preview e metadati.
+- **📂 Import Locale**: trascina e rilascia file JSONL, JSON, CSV o TXT — parsing automatico.
+- **🗂️ I Miei Dataset**: gestisci i dataset importati e selezionali per il training.
 
 ### ⚙️ Configurazione
-Configuratore completo per i job di training con:
-- **4 Metodi di Training**:
-  | Metodo | Descrizione | VRAM Min | Quando Usarlo |
-  |:-------|:------------|:---------|:--------------|
-  | ⚡ **LoRA (Unsloth)** | Fine-tuning efficiente con LoRA 4-bit | 8 GB | Consigliato per la maggior parte dei casi — 2x più veloce, 60% meno VRAM |
-  | 🔬 **SFT (TRL)** | Supervised Fine-Tuning con PEFT | 12 GB | Stabile e versatile, supporta tutti i modelli HuggingFace |
-  | 🌐 **Full Pre-Training** | Training da zero su testo grezzo | 4-80 GB | Per addestrare modelli da zero (es. TinyStories 4GB, The Pile 80GB) |
-  | 🛠️ **Script Custom** | Template Python personalizzabile | — | Massima flessibilità, modifica lo script prima di avviare |
-- **Selezione Modello Base**: Popolari modelli HuggingFace (LLaMA 3.2, Mistral, Phi-3, Gemma) + modelli Ollama locali + modello custom
-- **Iperparametri regolabili**: Epoche, Batch Size, Learning Rate, Max Sequence Length, LoRA Rank/Alpha, Gradient Accumulation
-- **Riepilogo Job**: Riepilogo visivo di tutti i parametri prima del lancio
+
+| Metodo | Descrizione | VRAM Min | Quando Usarlo |
+|:-------|:------------|:---------|:--------------|
+| ⚡ **LoRA (Unsloth)** | Fine-tuning efficiente con LoRA 4-bit | 8 GB | Consigliato per la maggior parte dei casi — 2x più veloce, 60% meno VRAM |
+| 🔬 **SFT (TRL)** | Supervised Fine-Tuning con PEFT | 12 GB | Stabile e versatile, supporta tutti i modelli HuggingFace |
+| 🌐 **Full Pre-Training** | Training da zero su testo grezzo | 4-80 GB | Per addestrare modelli da zero |
+| 🛠️ **Script Custom** | Template Python personalizzabile | — | Massima flessibilità, modifica lo script prima di avviare |
+
+Modelli base: LLaMA 3.2, Mistral, Phi-3, Gemma + modelli Ollama locali + modello custom. Iperparametri: epoche, batch size, learning rate, max sequence length, LoRA rank/alpha, gradient accumulation.
+
+### 🔨 Forgia SLM
+
+Costruisci **piccoli modelli linguistici da zero**:
+- Dataset italiani da HuggingFace, pre-training e/o distillazione da un modello insegnante.
+- Training del tokenizer, preset di architettura (micro/mini), vocab size, sequence length.
+- Formati di export GGUF e altri, e una **chat sui checkpoint** per provare il modello mentre si allena.
+
+### 🧪 Benchmark Test
+
+Il **motore di valutazione ufficiale dei modelli**:
+- **11 suite ufficiali** (MMLU, GSM8K, HumanEval, ARC, BBH…) con dataset in cache.
+- Grader robusto con **coda di revisione** per risposte doppie, illeggibili o in errore.
+- **Audit** che verifica i verdetti quesito per quesito (falsi positivi / falsi negativi).
+- **Capacity probe**: misura quanto carico parallelo regge davvero un modello sulla tua GPU.
+- **Endpoint multi-GPU**: avvia server Ollama legati a singole GPU e distribuisci la valutazione su tutte.
 
 ### 📊 Monitor
-Monitoraggio in tempo reale dei job di training:
-- **Hardware Strip**: Stato CUDA, GPU rilevate (nome, VRAM, temperatura), RAM, versione PyTorch
-- **Diagnostica CUDA**: Rilevamento automatico di mismatch CUDA/driver con comandi di fix consigliati
-- **Selettore Job**: Cronologia di tutti i job con stato (Pronto/In esecuzione/Completato/Fallito/Fermato)
-- **Grafico Loss**: Visualizzazione SVG interattiva della loss nel tempo con parsing automatico dal log
-- **Terminale Live**: Output streaming con colorazione per SIGMA/Error/Warning/Success
-- **Controlli**: Avvia, Ferma, Elimina job — Auto-scroll, Copia log, Pulisci output
-- **Export → Ollama**: Modale di export per trasformare il modello addestrato in un Modelfile Ollama pronto all'uso
-  - Generazione automatica del Modelfile
-  - System Prompt personalizzabile
-  - Comando `ollama create` / `ollama run` integrato
 
-### API Training Lab
+- Hardware strip (CUDA, GPU, VRAM, temperatura, RAM, versione PyTorch) + diagnostica CUDA.
+- Selettore job con cronologia completa e stati (Pronto/In esecuzione/Completato/Fallito/Fermato).
+- Grafico SVG interattivo della loss con parsing automatico dal log.
+- Terminale live con colorazione per righe SIGMA/Error/Warning/Success.
+- **Export → Ollama**: generazione automatica del Modelfile, system prompt personalizzabile, comandi `ollama create` / `ollama run` integrati.
 
-| Metodo | Endpoint | Funzione |
-|:-------|:---------|:---------|
-| `GET` | `/api/training/datasets` | Elenco dataset importati |
-| `GET` | `/api/training/datasets/search?q=...` | Ricerca HuggingFace |
-| `GET` | `/api/training/datasets/featured` | Dataset consigliati |
-| `GET` | `/api/training/jobs` | Elenco job di training |
-| `GET` | `/api/training/job/status?job_id=...` | Stato specifico job |
-| `GET` | `/api/training/job/logs?job_id=...&offset=0` | Log live del job |
-| `GET` | `/api/training/hardware` | Stato hardware per training |
-| `POST` | `/api/training/dataset/import` | Import dataset locale |
-| `POST` | `/api/training/dataset/register_hf` | Registra dataset HuggingFace |
-| `POST` | `/api/training/dataset/delete` | Elimina dataset |
-| `POST` | `/api/training/job/create` | Crea job di training |
-| `POST` | `/api/training/job/start` | Avvia job |
-| `POST` | `/api/training/job/stop` | Ferma job |
-| `POST` | `/api/training/job/delete` | Elimina job |
-| `POST` | `/api/training/export/ollama` | Export modello → Ollama |
-| `POST` | `/api/training/dependencies` | Verifica dipendenze per metodo |
-| `POST` | `/api/training/job/clear_logs` | Pulisce log del job |
+---
+
+## 🔌 MCP Server Hub
+
+Sigma Studio include **6 server MCP integrati**, che espongono i loro strumenti e risorse attraverso un hub unificato con console di test JSON-RPC:
+
+| Server | Strumenti |
+|:-------|:----------|
+| 🧠 **Memory MCP** | Query su vector DB, memoria episodica, ricerca nel knowledge graph |
+| 👨‍💻 **Developer MCP** | Esecuzione pytest, file del workspace, codice in sandbox, git status |
+| ⚙️ **Hardware MCP** | Stato hardware, pulizia cache VRAM, benchmark GPU |
+| 🎓 **Training MCP** | Import dataset, training LoRA, export modello Ollama |
+| ⚡ **Inference MCP** | Selezione modello routato, swap KV-cache, ensemble di logits |
+| 🌐 **Network MCP** | Scoperta peer, broadcast task allo sciame, ricerca web & fetch pagine |
+
+L'hub espone anche gli strumenti del **Benchmark MCP** (lista/scarica suite, avvia benchmark, stato, coda di revisione) così gli agenti possono guidare le valutazioni in modo programmatico.
+
+Accesso: barra laterale → `⚡ MCP Server Hub`.
+
+---
+
+## 🧩 Knowledge Nodes
+
+Il sistema dei **Knowledge Nodes** aggiunge un albero universale di nodi di conoscenza (cartelle + file sub-app) sopra la classica struttura a moduli — navigabile dall'interfaccia con anteprima codice/visualizzazione e percorribile nodo per nodo.
 
 ---
 
 ## ⚡ Hardware & GPU Monitor
 
-L'**Hardware & GPU Monitor** è un pannello di controllo completo per il monitoraggio e la configurazione dell'hardware GPU, accessibile dal menu laterale `⚡ Hardware & GPU`.
+L'**Hardware & GPU Monitor** è un pannello di controllo completo per il monitoraggio e la configurazione della GPU.
 
-### Monitoraggio GPU in Tempo Reale
-- **Card GPU Dettagliate**: Per ogni GPU rilevata mostra:
-  - Nome modello, driver, bus PCIe (Gen/Width)
-  - **VRAM**: Barra di occupazione con valori MB/GB e percentuale
-  - **Carico Compute**: Percentuale di utilizzo GPU
-  - **Consumo Elettrico**: Watt attuali vs limite, con barra proporzionale
-  - **Temperatura**, VRAM libera, Compute Capability
-- **Aggiornamento Automatico**: Polling configurabile ogni 2 secondi con pausa/ripresa
-- **Badge Riepilogo**: Numero GPU attive, stato auto-refresh
+- **Card GPU in tempo reale**: modello, driver, bus PCIe, barra VRAM, carico compute, consumo, temperatura, compute capability.
+- **Configurazione multi-GPU**: `CUDA_VISIBLE_DEVICES`, `OLLAMA_NUM_PARALLEL`, `OLLAMA_MAX_LOADED_MODELS`, GPU preferita per il Training Lab.
+- **HuggingFace Token**: imposta il token HF per velocizzare i download (fino a 10x), con indicatore "token configurato".
+- **Processi attivi GPU**: tabella dei processi con bus ID, PID, eseguibile, VRAM usata.
 
-### Configurazione Multi-GPU
-Pannello di controllo per ottimizzare il parallelismo su sistemi multi-GPU:
-
-| Parametro | Opzioni | Descrizione |
-|:----------|:--------|:------------|
-| **CUDA_VISIBLE_DEVICES** | `0,1` (entrambe), `0` (solo GPU0), `1` (solo GPU1) | Definisce quali GPU sono visibili ai modelli |
-| **OLLAMA_NUM_PARALLEL** | 1/2/4/8 slot | Richieste simultanee che Ollama può elaborare |
-| **OLLAMA_MAX_LOADED_MODELS** | 1/2/3/4 modelli | Modelli mantenuti in VRAM senza ricaricarli |
-| **GPU Preferita Training Lab** | cuda:0 / cuda:1 / cuda:0,1 | Scheda target per job di training PyTorch |
-
-### HuggingFace Token Configuration
-- Imposta il token HF per velocizzare i download dei modelli (fino a 10x)
-- Salvataggio persistente su server
-- Indicatore visivo "Token configurato"
-
-### Processi Attivi GPU
-Tabella dei processi in esecuzione sulla GPU (Ollama, PyTorch, system) con:
-- Bus ID, PID, nome processo, percorso eseguibile, VRAM utilizzata
-
-### API Hardware
-
-| Metodo | Endpoint | Funzione |
-|:-------|:---------|:---------|
-| `GET` | `/api/hardware/status` | Stato completo hardware + configurazione attuale |
-| `POST` | `/api/hardware/config` | Salva e applica configurazione multi-GPU |
-| `POST` | `/api/config/hf_token` | Salva HuggingFace Token |
+Accesso: barra laterale → `⚡ Hardware & GPU`.
 
 ---
 
-## 🤝 Aperto ai Contributi!
+## 📜 Il Sistema dei Manifesti
 
-Sigma Studio è un progetto **open-source** in continua evoluzione e accoglie con entusiasmo contributi da parte della community! Puoi collaborare in molti modi:
+Gli agenti AI non sono scatole nere. Sono definiti tramite **Modelfile di Ollama** che specificano:
+- **Identità**: "Sei un matematico specializzato in teoria dei numeri..."
+- **Regole**: "Non modificare mai i file esterni a `data/`..."
+- **Protocollo**: "Prima di agire, analizza il contesto..."
+- **Parametri**: Temperatura, finestra di contesto, template di conversazione
 
-- 📜 **Nuovi Manifesti**: Crea e condividi nuovi ruoli di agenti (`manifesti/*.md`) specializzati in campi scientifici, ingegneristici o creativi.
-- 🎨 **Miglioramenti UI/UX**: Estendi il design system in vetro (glassmorphism) in React 19.
-- 🔧 **Estensioni Backend**: Aggiungi nuovi provider AI, ottimizza la pipeline di test o arricchisci le API REST.
-- 🔬 **Pipeline di Ricerca**: Integra nuovi strumenti di validazione o template di orchestrazione multi-agente.
-- 🧠 **Training Lab**: Nuovi metodi di training, supporto per quantization (GGUF, AWQ), nuovi template di dataset.
-- ⚡ **Hardware Monitor**: Integrazione AMD ROCm, metriche aggiuntive (fan speed, clock memory).
+### Agenti Disponibili
+
+| File Agente | Modello Base | Versione | Ruolo |
+|:------------|:-------------|:---------|:------|
+| `sigma_architect.md` | llama3.2 / sigma:latest | **v7.0** | Sigma Architect — amministratore, orchestratore principale, coordinatore di ricerca |
+| `agente0.md` | sigma:latest | **v7.2** | Enterprise AI Architect — versione estesa con flusso esecutivo completo |
+| `code_architect.md` | sigma:latest | **v1.0** | Full-Stack Developer — modifica codice React/Python con backup e build check |
+| `math1.md` | llama3.2 | **v6.0** | Assistente di Ricerca Matematica — genera teoria formale, dimostrazioni, esercizi |
+| `math-collatz.md` | llama3.2 | **v1.0** | Specialista Matematico Collatz — teoria dei numeri, analisi mod 6, dimostrazioni formali |
+| `test-engineer.md` | llama3.2 | **v1.0** | Ingegnere dei Test — scrive ed esegue test Python scientifici |
+| `viz-designer.md` | llama3.2 | **v1.0** | Visualizzatore D3.js — crea grafici interattivi e force graphs |
+| `proof-reviewer.md` | llama3.2 | **v1.0** | Revisore Critico — valida dimostrazioni, confuta affermazioni errate |
+
+Tutti i manifesti degli agenti si trovano in `manifesti/` e possono essere caricati tramite API o dalla **Galleria Manifesti** nell'interfaccia.
+
+### Crea un Nuovo Agente in 30 Secondi
+
+```bash
+# 1. Crea un file manifesto
+cat > manifesti/mio_agente.md << 'EOF'
+FROM llama3.2
+SYSTEM """
+Sei un agente specializzato in biologia molecolare...
+Regole:
+- Modifica solo file dentro data/biology/
+- Usa esclusivamente il provider Ollama per la ricerca
+- Ogni scoperta deve generare una notifica in tasks.json
+"""
+PARAMETER temperature 0.3
+PARAMETER num_ctx 32768
+EOF
+
+# 2. Carica il modello in Ollama
+curl -X POST http://localhost:8000/api/create_model \
+  -H "Content-Type: application/json" \
+  -d "{\"name\": \"mio_agente\", \"modelfile\": \"$(cat manifesti/mio_agente.md)\"}"
+```
+
+---
+
+## 🤖 Orchestrazione Multi-Agente
+
+Sigma Studio supporta collaborazione multi-agente avanzata:
+
+- **Orchestrazione Parallela**: assegna task a più agenti simultaneamente via `/api/chat/orchestrate`.
+- **Context Broker**: contesto condiviso SQLite tra agenti, permettendo loro di referenziare il lavoro altrui.
+- **Registro Agenti**: gestione metadati, template agenti e codici colore per l'interfaccia.
+- **Sessioni di Ricerca**: scomposizione autonoma di obiettivi complessi con tracciamento del progresso.
+- **Pipeline Engine**: esecuzione di pipeline DAG con monitoraggio dello stato e stop/resume.
+- **Swarm**: sciami dinamici di agenti con endpoint plan/execute (`/api/swarm/plan`, `/api/swarm/execute`).
+
+---
+
+## 🔒 Sistema Sandbox
+
+Tutte le operazioni degli agenti AI sono rigorosamente confinate:
+
+- **Whitelist Percorsi**: `data/`, `manifesti/`, `sigma_studio/src/`, `scratch/`, `core/`.
+- **Struttura Moduli**: solo 5 sottodirectory consentite per modulo: `teoria/`, `test/`, `viz/`, `docs/`, `whitepapers/`.
+- **API Sandbox**: crea ambienti isolati, esegui script, installa pacchetti e distruggi ambienti (python/node/fullstack).
+- **Backup Manager**: backup automatici prima di modifiche critiche ai file.
+- **Supporto Rollback**: annulla modifiche tramite `/api/rollback`.
+
+---
+
+## 📐 Architettura e Documentazione
+
+- **📐 [architettura.md](architettura.md)** — l'architettura completa della piattaforma: internals del backend, layout dei moduli, strutture dati, modello di sicurezza, riferimento endpoint, grafo delle dipendenze e flussi operativi.
+- **`manifesti/README.md`** — il sistema dei manifesti per gli agenti AI.
 
 ---
 
@@ -227,7 +332,23 @@ Sigma Studio è un progetto **open-source** in continua evoluzione e accoglie co
 - **Node.js / npm**
 - **Ollama** (per l'AI locale — [scarica qui](https://ollama.com))
 
-### Configurazione ed Esecuzione
+### 🚀 Opzione A — Avvio con un clic (consigliata)
+
+```bash
+# 1. Clona il repository
+git clone https://github.com/Sigmanih/SigmaStudio.git
+cd SigmaStudio
+
+# 2. (Opzionale, su Windows) Installa tutte le dipendenze una sola volta
+install_dependencies.bat   # crea .venv, installa dipendenze Python + npm, build frontend
+
+# 3. Avvia Sigma Studio — crea venv, installa dipendenze, build frontend, avvia il server
+sigma_studio.bat
+```
+
+`sigma_studio.bat` gestisce tutto: creazione dell'ambiente virtuale, dipendenze Python, npm install + build e avvio del server su **http://localhost:8000** — con l'ambiente di accelerazione hardware ottimale (CUDA, parallelismo Ollama, FlashAttention).
+
+### ⌨️ Opzione B — Configurazione Manuale
 
 ```bash
 # 1. Clona il repository
@@ -235,21 +356,21 @@ git clone https://github.com/Sigmanih/SigmaStudio.git
 cd SigmaStudio
 
 # 2. Installa le dipendenze Python
-pip install -r requirements-backend.txt
+pip install -r requirements.txt
 
-# 3. Installa le dipendenze del frontend
-cd sigma_studio && npm install && cd ..
+# 3. Installa e compila il frontend
+cd sigma_studio
+npm install
+npm run build
+cd ..
 
-# 4. Avvia il server backend (compila automaticamente il frontend)
+# 4. Avvia il backend (serve il frontend compilato)
 python sigma_server.py
-
-# 5. (Opzionale) Avvia il frontend in modalità sviluppo
-cd sigma_studio && npm run dev
 ```
 
-Il backend è ora attivo su **http://localhost:8000** ed il frontend su **http://localhost:5173**.
+Il backend è ora attivo su **http://localhost:8000**.
 
-### Verifica Rapida
+### 🧪 Verifica Rapida
 
 ```bash
 # Verifica i moduli core
@@ -258,16 +379,14 @@ python -c "from core.sandbox import is_path_allowed; from core.ai_providers impo
 # Verifica l'API delle attività
 curl http://localhost:8000/api/tasks
 
-# Crea un modello Ollama da un manifesto
-curl -X POST http://localhost:8000/api/create_model \
-  -H "Content-Type: application/json" \
-  -d '{"name": "sigma_architect", "modelfile": "FROM llama3.2\nSYSTEM \"\"\"You are a software architect...\"\"\""}'
-
 # Verifica Training Lab
 curl http://localhost:8000/api/training/datasets/featured
 
 # Verifica Hardware Monitor
 curl http://localhost:8000/api/hardware/status
+
+# Verifica MCP Hub
+curl http://localhost:8000/api/mcp/servers
 ```
 
 ---
@@ -298,261 +417,26 @@ Sigma Studio supporta **6 provider di modelli AI** configurabili dinamicamente t
 
 ---
 
-## 📜 Il Sistema dei Manifesti
+## 🤝 Aperto ai Contributi!
 
-Gli agenti AI non sono scatole nere. Sono definiti tramite **Modelfile di Ollama** che specificano:
-- **Identità**: "Sei un matematico specializzato in teoria dei numeri..."
-- **Regole**: "Non modificare mai i file esterni a `data/`..."
-- **Protocollo**: "Prima di agire, analizza il contesto..."
-- **Parametri**: Temperatura, finestra di contesto, template di conversazione.
+Sigma Studio è un progetto **open-source** in continua evoluzione e accoglie con entusiasmo contributi da parte della community! Puoi collaborare in molti modi:
 
-### Agenti Disponibili
+- 📜 **Nuovi Manifesti**: crea e condividi nuovi ruoli di agenti (`manifesti/*.md`) specializzati in campi scientifici, ingegneristici o creativi.
+- 🎨 **Miglioramenti UI/UX**: estendi il design system in vetro (glassmorphism) in React 19.
+- 🔧 **Estensioni Backend**: aggiungi nuovi provider AI, ottimizza la pipeline di test o arricchisci le API REST.
+- 🔬 **Pipeline di Ricerca**: integra nuovi strumenti di validazione o template di orchestrazione multi-agente.
+- 🧠 **Training Lab**: nuovi metodi di training, supporto per quantization (GGUF, AWQ), nuovi template di dataset, nuove suite di benchmark.
+- ⚡ **Hardware & MCP**: integrazione AMD ROCm, nuovi server MCP, metriche aggiuntive.
 
-| File Agente | Modello Base | Versione | Ruolo |
-|:------------|:-------------|:---------|:------|
-| `sigma_architect.md` | llama3.2 / sigma:latest | **v7.0** | Sigma Architect — amministratore, orchestratore principale, coordinatore di ricerca |
-| `agente0.md` | sigma:latest | **v7.2** | Enterprise AI Architect — versione estesa con flusso esecutivo completo |
-| `code_architect.md` | sigma:latest | **v1.0** | Full-Stack Developer — modifica codice React/Python con backup e build check |
-| `math1.md` | llama3.2 | **v6.0** | Assistente di Ricerca Matematica — genera teoria formale, dimostrazioni, esercizi |
-| `math-collatz.md` | llama3.2 | **v1.0** | Specialista Matematico Collatz — teoria dei numeri, analisi mod 6, dimostrazioni formali |
-| `test-engineer.md` | llama3.2 | **v1.0** | Ingegnere dei Test — scrive ed esegue test Python scientifici |
-| `viz-designer.md` | llama3.2 | **v1.0** | Visualizzatore D3.js — crea grafici interattivi e force graphs |
-| `proof-reviewer.md` | llama3.2 | **v1.0** | Revisore Critico — valida dimostrazioni, confuta affermazioni errate |
-
-Tutti i manifesti degli agenti si trovano in `manifesti/` e possono essere caricati tramite API o dalla Galleria Manifesti nell'interfaccia.
-
-### Crea un Nuovo Agente in 30 Secondi
+### Setup di Sviluppo
 
 ```bash
-# 1. Crea un file manifesto
-cat > manifesti/mio_agente.md << 'EOF'
-FROM llama3.2
-SYSTEM """
-Sei un agente specializzato in biologia molecolare...
-Regole:
-- Modifica solo file dentro data/biology/
-- Usa esclusivamente il provider Ollama per la ricerca
-- Ogni scoperta deve generare una notifica in tasks.json
-"""
-PARAMETER temperature 0.3
-PARAMETER num_ctx 32768
-EOF
-
-# 2. Carica il modello in Ollama
-curl -X POST http://localhost:8000/api/create_model \
-  -H "Content-Type: application/json" \
-  -d "{\"name\": \"mio_agente\", \"modelfile\": \"$(cat manifesti/mio_agente.md)\"}"
+# Clona e installa come sopra, poi:
+python sigma_server.py          # Backend su :8000
+cd sigma_studio && npm run dev  # Hot-reload frontend su :5173
 ```
 
----
-
-## 🤖 Orchestrazione Multi-Agente
-
-Sigma Studio supporta collaborazione multi-agente avanzata tramite endpoint dedicati:
-
-- **Orchestrazione Parallela**: Assegna task a più agenti simultaneamente via `/api/chat/orchestrate`
-- **Context Broker** (`core/context_broker.py`): Contesto condiviso SQLite tra agenti, permettendo loro di referenziare il lavoro altrui
-- **Registro Agenti** (`core/agent_registry.py`): Gestione metadati, template agenti e codici colore per l'interfaccia
-- **Sessioni di Ricerca** (`core/research_sessions.py`): Scomposizione autonoma di obiettivi complessi con tracciamento del progresso
-- **Pipeline Engine** (`core/pipeline_engine.py`): Esecuzione di pipeline DAG con monitoraggio dello stato e stop/resume
-
----
-
-## 🔒 Sistema Sandbox
-
-Tutte le operazioni degli agenti AI sono rigorosamente confinate:
-
-- **Whitelist Percorsi**: `data/`, `manifesti/`, `sigma_studio/src/`, `scratch/`, `core/`
-- **Struttura Moduli**: Solo 5 sottodirectory consentite per modulo: `teoria/`, `test/`, `viz/`, `docs/`, `whitepapers/`
-- **API Sandbox**: Crea ambienti isolati, esegui script, installa pacchetti e distruggi ambienti
-- **Backup Manager** (`core/backup_manager.py`): Backup automatici prima di modifiche critiche ai file
-- **Supporto Rollback**: Annulla modifiche tramite `/api/rollback`
-
----
-
-## 🏛️ Architettura
-
-```
-Sigma_Studio/
-│
-├── sigma_server.py                 ← Backend Python — API REST + Orchestrazione AI
-├── config.json                     ← Configurazione dei provider AI
-├── config.example.json             ← Template di configurazione AI
-├── .gitignore                      ← Esclusioni git (node_modules, data/, etc.)
-├── LICENSE                         ← Licenza GPL v3 / Commerciale
-├── README.md                       ← Documentazione in inglese
-├── README_IT.md                    ← Questo file
-│
-├── core/                           ← Moduli Backend (separazione delle responsabilità)
-│   ├── sandbox.py                  ← Whitelist e validazione dei percorsi
-│   ├── sandbox_manager.py          ← Gestione ambienti isolati
-│   ├── ai_providers.py             ← Chiamate API ai modelli AI
-│   ├── api_router.py               ← Routing delle chiamate HTTP (80+ endpoint)
-│   ├── chat_handler.py             ← Gestione delle chat e delle pianificazioni
-│   ├── config_handler.py           ← Configurazione del sistema
-│   ├── data_handler.py             ← Operazioni dati
-│   ├── file_handler.py             ← Gestione dei file sul disco
-│   ├── loop_handler.py             ← Loop di feedback delle azioni
-│   ├── pipeline_engine.py          ← Esecutore di pipeline DAG
-│   ├── context_broker.py           ← DB SQLite del contesto condiviso
-│   ├── agent_orchestrator.py       ← Orchestrazione parallela degli agenti
-│   ├── agent_registry.py           ← Metadati e manifesti degli agenti
-│   ├── agent_templates.py          ← Definizioni template agenti
-│   ├── module_handler.py           ← Creazione e gestione dei moduli
-│   ├── task_handler.py             ← Creazione dei task e notifiche
-│   ├── plan_handler.py             ← Pianificazione e scomposizione
-│   ├── output_validator.py         ← Validazione formato output
-│   ├── execute_loop.py             ← Loop di esecuzione autonomo
-│   ├── research_sessions.py        ← Sessioni di ricerca a lungo termine
-│   ├── tool_registry.py            ← Registrazione e dispatch strumenti
-│   ├── backup_manager.py           ← Backup automatico e rollback
-│   ├── store.py                    ← Archivio stato persistente
-│   ├── logger.py                   ← Logging strutturato
-│   ├── training_handler.py         ← Training Lab — ciclo vita completo training/fine-tuning
-│   ├── chat/                       ← Sotto-moduli chat
-│   └── orchestration/              ← Sotto-moduli orchestrazione
-│
-├── sigma_studio/                   ← Frontend React 19 (Vite)
-│   ├── index.html                  ← Entrypoint HTML
-│   ├── vite.config.js              ← Proxy di sviluppo per /api/*
-│   └── src/
-│       ├── App.jsx                 ← Componente principale
-│       ├── components/
-│       │   ├── Sidebar.jsx         ← Navigazione con badge Research/Training/Hardware Lab
-│       │   ├── Workspace.jsx       ← Sistema centrale a schede (Tab)
-│       │   ├── Dashboard.jsx       ← Tabella Kanban della Roadmap
-│       │   ├── Chat/               ← Chat e pannello del Research Lab
-│       │   │   ├── core/           ← Hook: useChatCore, useResearchPipeline, usePipelineDesigner
-│       │   │   └── layouts/        ← Pannello flottante e scheda workspace
-│       │   ├── TrainingLab/        ← Training Lab (4 sub-tab: Docs, Dataset, Config, Monitor)
-│       │   │   ├── TrainingLab.jsx      ← Orchestratore principale Training Lab
-│       │   │   ├── TrainingDocs.jsx     ← Guida completa ai metodi di training
-│       │   │   ├── DatasetBrowser.jsx   ← Esplorazione HuggingFace + import locale
-│       │   │   ├── TrainingConfigurator.jsx ← Configuratore modelli, metodi, iperparametri
-│       │   │   └── TrainingMonitor.jsx  ← Log live, loss chart, export Ollama
-│       │   ├── HardwareLab/         ← Hardware & GPU Monitor
-│       │   │   └── index.jsx        ← GPU telemetry, multi-GPU config, HF token setup
-│       │   ├── SigmaLab/           ← Editor di testo, visualizzatore e runner
-│       │   └── Workspace/          ← Galleria manifesti e browser moduli
-│       └── styles/                 ← Stili CSS personalizzati (tema scuro glass)
-│
-├── manifesti/                      ← Manifesti degli agenti AI (Modelfile)
-│   ├── sigma_architect.md          ← Orchestratore principale
-│   ├── sigma_admin.md              ← Amministratore sistema
-│   ├── sigma_assistant.md          ← Assistente generale
-│   ├── code_architect.md           ← Sviluppatore full-stack
-│   ├── math_researcher.md          ← Ricercatore matematico
-│   ├── test_engineer.md            ← Ingegnere dei test
-│   ├── viz_designer.md             ← Visualizzatore D3.js
-│   └── proof_reviewer.md           ← Revisore critico
-│
-├── images/                         ← Screenshot UI e ritratti agenti
-├── data/                           ← Knowledge Base (sandbox sicura per gli agenti)
-├── training/                       ← Dati di training (dataset, job, script)
-│   ├── datasets/                   ← Dataset importati (meta.json + file dati)
-│   ├── jobs/                       ← Job di training (script, output, log)
-│   └── scripts/                    ← Script template per training
-└── scratch/                        ← Directory temporanea per esperimenti e script
-```
-
----
-
-## 🔗 Riferimento API
-
-### Endpoint GET
-
-| Metodo | Endpoint | Funzione |
-|:-------|:---------|:---------|
-| `GET` | `/api/modules` | Elenco dei moduli e dei file per categoria |
-| `GET` | `/api/topics` | Argomenti con gerarchia padre/figlio |
-| `GET` | `/api/tasks` | Roadmap dei compiti e notifiche storiche |
-| `GET` | `/api/tasks/by_agent` | Task filtrati per agente |
-| `GET` | `/api/get_file?path=...` | Lettura file (sandbox-safe) |
-| `GET` | `/api/list_manifesti` | Elenco degli agenti AI disponibili |
-| `GET` | `/api/knowledge_db` | Grafo conoscenza per visualizzazione D3 |
-| `GET` | `/api/config` | Configurazione AI (senza chiavi visibili) |
-| `GET` | `/api/ollama_models` | Modelli Ollama installati |
-| `GET` | `/api/sandbox/list` | Elenco ambienti sandbox |
-| `GET` | `/api/agents` | Elenco agenti registrati |
-| `GET` | `/api/agents/get` | Dettagli agente specifico |
-| `GET` | `/api/agents/for_topic` | Agenti assegnati a un argomento |
-| `GET` | `/api/agents/templates` | Elenco template agenti |
-| `GET` | `/api/agents/colors` | Mappatura colori agenti |
-| `GET` | `/api/chat/pipeline/status` | Stato esecuzione pipeline |
-| `GET` | `/api/context/get` | Dati context broker |
-| `GET` | `/api/context/chat_log` | Log chat dal contesto |
-| `GET` | `/api/research/list` | Elenco sessioni di ricerca |
-| `GET` | `/api/research/status` | Stato sessione di ricerca |
-| `GET` | `/api/research/chat_history` | Cronologia chat sessione di ricerca |
-| `GET` | `/api/training/datasets` | Elenco dataset importati (Training Lab) |
-| `GET` | `/api/training/datasets/search?q=...` | Ricerca HuggingFace (Training Lab) |
-| `GET` | `/api/training/datasets/featured` | Dataset consigliati (Training Lab) |
-| `GET` | `/api/training/jobs` | Elenco job (Training Lab) |
-| `GET` | `/api/training/job/status` | Stato job (Training Lab) |
-| `GET` | `/api/training/job/logs` | Log job (Training Lab) |
-| `GET` | `/api/training/hardware` | Hardware info (Training Lab) |
-| `GET` | `/api/hardware/status` | Stato hardware + config (Hardware Lab) |
-
-### Endpoint POST
-
-| Metodo | Endpoint | Funzione |
-|:-------|:---------|:---------|
-| `POST` | `/api/tasks` | Salvataggio dello stato della Roadmap |
-| `POST` | `/api/tasks/assign` | Assegna task a un agente |
-| `POST` | `/api/create_file` | Scrittura di file su disco |
-| `POST` | `/api/delete_file` | Elimina file |
-| `POST` | `/api/rename_file` | Rinomina file |
-| `POST` | `/api/create_module` | Nuovo modulo con sottocartelle |
-| `POST` | `/api/delete_module` | Elimina modulo |
-| `POST` | `/api/update_module` | Rinomina modulo |
-| `POST` | `/api/create_topic` | Creazione di un nuovo argomento |
-| `POST` | `/api/update_topic` | Aggiorna metadati argomento |
-| `POST` | `/api/delete_topic` | Elimina argomento |
-| `POST` | `/api/upload_file` | Upload multipart di file |
-| `POST` | `/api/chat` | Chat con AI (4 modalità, multi-provider) |
-| `POST` | `/api/chat/loop` | Chat con loop di azioni |
-| `POST` | `/api/chat/execute` | Esecuzione azioni chat |
-| `POST` | `/api/chat/plan` | Modalità pianificazione |
-| `POST` | `/api/chat/execute_plan` | Esecuzione piano salvato |
-| `POST` | `/api/chat/orchestrate` | Orchestrazione multi-agente |
-| `POST` | `/api/chat/pipeline/start` | Avvio esecuzione pipeline DAG |
-| `POST` | `/api/chat/pipeline/stop` | Arresto esecuzione pipeline |
-| `POST` | `/api/create_model` | Creazione modello Ollama da Modelfile |
-| `POST` | `/api/run_test` | Esecuzione di script Python o Node.js |
-| `POST` | `/api/config` | Aggiornamento configurazione AI |
-| `POST` | `/api/ollama_models` | Aggiornamento modelli Ollama |
-| `POST` | `/api/sandbox/create` | Creazione ambiente sandbox |
-| `POST` | `/api/sandbox/run` | Esecuzione comando in sandbox |
-| `POST` | `/api/sandbox/install` | Installazione pacchetti in sandbox |
-| `POST` | `/api/sandbox/destroy` | Distruzione ambiente sandbox |
-| `POST` | `/api/agents/register` | Registrazione nuovo agente |
-| `POST` | `/api/agents/update` | Aggiornamento metadati agente |
-| `POST` | `/api/agents/create` | Creazione agente da template |
-| `POST` | `/api/agents/upload_image` | Upload avatar agente |
-| `POST` | `/api/context/share` | Condivisione contesto tra agenti |
-| `POST` | `/api/context/chat_message` | Salvataggio messaggio chat nel contesto |
-| `POST` | `/api/research/create` | Creazione sessione di ricerca |
-| `POST` | `/api/research/delete` | Eliminazione sessione di ricerca |
-| `POST` | `/api/research/update_objective` | Aggiornamento obiettivo ricerca |
-| `POST` | `/api/research/update_agents` | Aggiornamento agenti nella sessione |
-| `POST` | `/api/research/decompose` | Scomposizione obiettivo |
-| `POST` | `/api/research/next_steps` | Prossimi passi ricerca |
-| `POST` | `/api/research/start` | Avvio esecuzione ricerca |
-| `POST` | `/api/manifesti/update_image` | Aggiornamento immagine manifesto |
-| `POST` | `/api/ai/action` | Dispatcher azioni AI generico |
-| `POST` | `/api/rollback` | Rollback ultime operazioni file |
-| `POST` | `/api/hardware/config` | Salva configurazione multi-GPU |
-| `POST` | `/api/config/hf_token` | Salva HuggingFace Token |
-| `POST` | `/api/training/dataset/import` | Import dataset locale |
-| `POST` | `/api/training/dataset/register_hf` | Registra dataset HuggingFace |
-| `POST` | `/api/training/dataset/delete` | Elimina dataset |
-| `POST` | `/api/training/job/create` | Crea job di training |
-| `POST` | `/api/training/job/start` | Avvia job |
-| `POST` | `/api/training/job/stop` | Ferma job |
-| `POST` | `/api/training/job/delete` | Elimina job |
-| `POST` | `/api/training/export/ollama` | Export modello → Ollama |
-| `POST` | `/api/training/dependencies` | Verifica dipendenze |
-| `POST` | `/api/training/job/clear_logs` | Pulisce log job |
+Consulta **[architettura.md](architettura.md)** per la struttura completa del progetto e la mappa dei moduli backend.
 
 ---
 

@@ -62,6 +62,177 @@ def _sanitize_history_message(content: str) -> str:
     return clean.strip()
 
 
+_THINK_TAG_RE = re.compile(r"</?(?:think|thinking|reasoning|rationale|scratchpad)>", re.IGNORECASE)
+
+
+class _ThinkTagRouter:
+    """Split a token stream into answer text and reasoning text on the fly.
+
+    Models that wrap their chain-of-thought in `<think>…</think>` deliver it on the
+    same channel as the answer. Cleaning it only once the stream is over means the
+    user watches the reasoning being typed into the answer bubble (and the TTS
+    reads it out loud). This routes each token to the right channel as it arrives,
+    holding back any trailing fragment that might turn out to be a tag.
+    """
+
+    def __init__(self):
+        self._buffer = ""
+        self._in_thinking = False
+
+    def feed(self, text: str) -> list[tuple[str, str]]:
+        """Return [(channel, text), …] where channel is 'token' or 'thinking'."""
+        self._buffer += text
+        out = []
+        while True:
+            match = _THINK_TAG_RE.search(self._buffer)
+            if not match:
+                break
+            before = self._buffer[:match.start()]
+            if before:
+                out.append(("thinking" if self._in_thinking else "token", before))
+            self._in_thinking = not match.group().startswith("</")
+            self._buffer = self._buffer[match.end():]
+
+        # A trailing '<' may be the start of a tag still being streamed: keep it
+        # buffered until we see enough characters to decide.
+        cut = self._buffer.rfind("<")
+        if cut != -1 and len(self._buffer) - cut <= 12:
+            emit, self._buffer = self._buffer[:cut], self._buffer[cut:]
+        else:
+            emit, self._buffer = self._buffer, ""
+
+        if emit:
+            out.append(("thinking" if self._in_thinking else "token", emit))
+        return out
+
+    def flush(self) -> list[tuple[str, str]]:
+        """Emit whatever is left once the stream is over."""
+        if not self._buffer:
+            return []
+        out = [("thinking" if self._in_thinking else "token", self._buffer)]
+        self._buffer = ""
+        return out
+
+
+def _sse_send(handler, payload: dict) -> None:
+    """Write one SSE event. Works both on the legacy HTTP server (real socket)
+    and on the FastAPI adapter, whose wfile pushes into the streaming queue."""
+    try:
+        handler.wfile.write(f"data: {json.dumps(payload, ensure_ascii=False)}\n\n".encode("utf-8"))
+        handler.wfile.flush()
+    except Exception:
+        pass
+
+
+def _stream_chat_response(handler, messages, ai_cfg, model, provider,
+                          endpoint, api_url, api_key, temperature, max_tokens,
+                          top_p, timeout, message, bot_name, manifesto_path,
+                          allow_actions):
+    """Stream a chat completion as SSE, then run file extraction on the full text."""
+    from core.ai_providers import call_ai_model_stream
+
+    handler.send_response(200)
+    handler.send_header("Content-Type", "text/event-stream")
+    handler.send_header("Cache-Control", "no-cache")
+    handler.send_header("Connection", "keep-alive")
+    handler.send_header("Access-Control-Allow-Origin", "*")
+    handler.end_headers()
+
+    agent_id = (manifesto_path or "").replace("manifesti/", "").replace(".md", "") \
+        or bot_name.lower().replace(" ", "_")
+
+    # Sent before the first token so the client paints the agent bubble immediately.
+    _sse_send(handler, {"meta": {
+        "agent_id": agent_id,
+        "agent_name": bot_name,
+        "manifesto_used": manifesto_path,
+        "model_status": f"⚡ {model} sta generando...",
+    }})
+
+    full_text = ""
+    full_thinking = ""
+    error_msg = None
+    router = _ThinkTagRouter()
+
+    def _emit(channel: str, text: str) -> None:
+        nonlocal full_text, full_thinking
+        if not text:
+            return
+        if channel == "thinking":
+            full_thinking += text
+            _sse_send(handler, {"thinking": text})
+        else:
+            full_text += text
+            _sse_send(handler, {"token": text})
+
+    try:
+        for chunk in call_ai_model_stream(
+            messages, ai_cfg, model, provider, endpoint, api_url, api_key,
+            temperature, max_tokens, top_p, timeout
+        ):
+            if chunk.get("error"):
+                error_msg = chunk.get("message", "Errore sconosciuto")
+                break
+            # Native reasoning channel: already separated by the provider.
+            _emit("thinking", chunk.get("thinking", ""))
+            # Answer channel: may still carry inline <think> blocks.
+            for channel, text in router.feed(chunk.get("token", "")):
+                _emit(channel, text)
+            if chunk.get("done"):
+                for channel, text in router.flush():
+                    _emit(channel, text)
+                # Forwarded so the client can trigger auto-continuation on truncation.
+                _sse_send(handler, {
+                    "done_reason": chunk.get("done_reason", "stop"),
+                    "truncated": chunk.get("truncated", False),
+                })
+                break
+    except Exception as exc:
+        log.error("Streaming chat failed: %s", exc, exc_info=True)
+        error_msg = str(exc)
+
+    if error_msg:
+        _sse_send(handler, {"error": error_msg, "token": f"\n\n⚠️ **Errore:** {error_msg}"})
+    else:
+        for channel, text in router.flush():
+            _emit(channel, text)
+
+        # Second pass for reasoning shapes no tag can catch (bullet monologues,
+        # "done thinking." markers, English self-analysis preambles).
+        clean_text, extracted_thinking = _clean_all_tags(full_text)
+        thinking_out = "\n\n".join(t for t in (full_thinking, extracted_thinking) if t and t.strip())
+
+        # A reasoning-only answer is still an answer: don't leave the bubble empty.
+        if not clean_text.strip() and thinking_out.strip():
+            clean_text, thinking_out = thinking_out, ""
+
+        created_files, actions_log = [], []
+        if allow_actions and clean_text:
+            try:
+                created_files, actions_log = _extract_and_create_files_from_text(
+                    clean_text, prompt_topic=message
+                )
+            except Exception as exc:
+                log.error("Post-stream file extraction failed: %s", exc, exc_info=True)
+
+        final_content = _format_response(clean_text)
+        if created_files:
+            final_content = _format_conversational_summary(final_content, created_files)
+
+        _sse_send(handler, {
+            "final_content": final_content,
+            "final_thinking": thinking_out,
+            "created_files": created_files,
+            "actions_log": actions_log,
+        })
+
+    try:
+        handler.wfile.write(b"data: [DONE]\n\n")
+        handler.wfile.flush()
+    except Exception:
+        pass
+
+
 def handle_chat(self):
     """POST /api/chat — Send message to AI agent and execute actions."""
     try:
@@ -238,32 +409,52 @@ Contenuto completo...
         if not messages or messages[-1].get("content") != message:
             messages.append({"role": "user", "content": message})
 
+        prov_endpoint = active_prov_cfg.get("endpoint", "http://localhost:11434/api/chat")
+        prov_api_url = active_prov_cfg.get("api_url") or active_prov_cfg.get("endpoint", "")
+        prov_api_key = active_prov_cfg.get("api_key", "")
+        prov_temperature = active_prov_cfg.get("temperature", 0.7)
+        prov_max_tokens = active_prov_cfg.get("max_tokens", 4096)
+        prov_top_p = active_prov_cfg.get("top_p", 0.9)
+        prov_timeout = req.get("timeout") or active_prov_cfg.get("timeout", 300)
+
+        # Token-by-token SSE: the user reads the answer as it is produced instead of
+        # waiting for the whole generation. Planning mode stays on the JSON path
+        # because the frontend needs the complete plan object before rendering it.
+        if req.get("stream") and not planning_mode:
+            return _stream_chat_response(
+                self, messages, ai_cfg, model, active_provider,
+                prov_endpoint, prov_api_url, prov_api_key,
+                prov_temperature, prov_max_tokens, prov_top_p, prov_timeout,
+                message=message, bot_name=bot_name,
+                manifesto_path=manifesto_path, allow_actions=allow_actions,
+            )
+
         if active_provider == "ollama":
             ai_response, thinking, err = call_ollama(
                 messages, model,
-                endpoint=active_prov_cfg.get("endpoint", "http://localhost:11434/api/chat"),
-                temperature=active_prov_cfg.get("temperature", 0.7),
-                max_tokens=active_prov_cfg.get("max_tokens", 4096),
-                top_p=active_prov_cfg.get("top_p", 0.9),
-                timeout=active_prov_cfg.get("timeout", 300)
+                endpoint=prov_endpoint,
+                temperature=prov_temperature,
+                max_tokens=prov_max_tokens,
+                top_p=prov_top_p,
+                timeout=prov_timeout
             )
         elif active_provider == "anthropic":
             ai_response, thinking, err = call_anthropic(
                 messages, model,
-                api_key=active_prov_cfg.get("api_key", ""),
-                temperature=active_prov_cfg.get("temperature", 0.7),
-                max_tokens=active_prov_cfg.get("max_tokens", 4096),
-                timeout=active_prov_cfg.get("timeout", 300)
+                api_key=prov_api_key,
+                temperature=prov_temperature,
+                max_tokens=prov_max_tokens,
+                timeout=prov_timeout
             )
         else:
             ai_response, thinking, err = call_openai_compatible(
                 messages, model,
-                api_url=active_prov_cfg.get("api_url") or active_prov_cfg.get("endpoint", ""),
-                api_key=active_prov_cfg.get("api_key", ""),
-                temperature=active_prov_cfg.get("temperature", 0.7),
-                max_tokens=active_prov_cfg.get("max_tokens", 4096),
-                top_p=active_prov_cfg.get("top_p", 0.9),
-                timeout=active_prov_cfg.get("timeout", 300)
+                api_url=prov_api_url,
+                api_key=prov_api_key,
+                temperature=prov_temperature,
+                max_tokens=prov_max_tokens,
+                top_p=prov_top_p,
+                timeout=prov_timeout
             )
 
         if err:

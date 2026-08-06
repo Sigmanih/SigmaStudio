@@ -2,7 +2,10 @@ import { useState, useCallback, useRef, useEffect } from 'react';
 import { MAX_ATTACHMENTS, createSession, MAX_HISTORY } from '../chatStorage';
 import { getModelRoutingInfo } from '../modelProviderMap';
 import { getAgentStyle } from '../AgentMessage';
-import { speakAgentMessage } from '../audioSpeech';
+import {
+  speakAgentMessage, stopSpeech,
+  startSpeechStream, pushSpeechStream, endSpeechStream,
+} from '../audioSpeech';
 
 let globalAbortController = null;
 
@@ -19,7 +22,9 @@ function cleanModelTags(text) {
   let cleaned = text;
 
   // 1. Remove XML thinking tags
-  cleaned = cleaned.replace(/<(thinking|Thought|reasoning|Rationale|scratchpad)>[\s\S]*?<\/\1>/gi, '');
+  cleaned = cleaned.replace(/<(think|thinking|Thought|reasoning|Rationale|scratchpad)>[\s\S]*?<\/\1>/gi, '');
+  // Unclosed reasoning block (stream cut short): drop it rather than render it.
+  cleaned = cleaned.replace(/<(think|thinking|reasoning|scratchpad)>[\s\S]*$/gi, '');
 
   // 2. Remove "Here's a thinking process:" English self-analysis blocks
   cleaned = cleaned.replace(/^(?:We\s+need\s+to|We\s+must|Let'?s\s+craft|Here'?s\s+a\s+thinking\s+process|Analyze\s+User\s+Input|Determine\s+Output\s+Structure|Draft\s+Content|Self-Correction|Execution|Plan|Requirements\s+from\s+System\s+Prompt)[\s\S]*?(?=\n#|\nEcco|\n1️⃣|\n[A-ZÀ-Ü]|\n\{|\n\n|\Z)/gi, '');
@@ -120,6 +125,8 @@ export function useChatStreaming({
     }
     if (abortRef.current) { abortRef.current.abort(); abortRef.current = null; }
     if (globalAbortController) { globalAbortController.abort(); globalAbortController = null; }
+    // Stopping generation stops the reading too, queued sentences included.
+    stopSpeech();
     
     const sid = streamingSessionIdRef.current || sessionRefs.activeSessionId.current;
     if (sid) {
@@ -155,6 +162,14 @@ export function useChatStreaming({
     const decoder = new TextDecoder();
     let fullText = '', fullThinking = '', buffer = '';
     let firstToken = true, hasThinking = false, wasTruncated = false;
+    // Server-side formatted version of the answer (code blocks stripped, file
+    // summary appended). Replaces the streamed text once the stream is over.
+    let finalOverride = null;
+    let finalThinkingOverride = null;
+    // Identifies this message for the TTS: lets the per-message button know it
+    // is the one being read, and lets a single click stop it.
+    const assistantTimestamp = new Date().toISOString();
+    let speechStarted = false;
     const modelName = selectedModel;
     
     let streamAgentId = activeManifesto?.path?.replace('manifesti/', '')?.replace('.md', '') || '';
@@ -189,6 +204,12 @@ export function useChatStreaming({
               if (p.actions_log && Array.isArray(p.actions_log)) {
                 streamActionsLog = p.actions_log;
               }
+              if (p.final_content && continuationCount === 0) {
+                finalOverride = p.final_content;
+              }
+              if (p.final_thinking !== undefined && continuationCount === 0) {
+                finalThinkingOverride = p.final_thinking;
+              }
               if (p.meta) {
                 streamAgentId = p.meta.agent_id || p.meta.manifesto_used;
                 streamAgentName = p.meta.agent_name || streamAgentId;
@@ -210,7 +231,17 @@ export function useChatStreaming({
                 });
               }
               if (p.thinking) { hasThinking = true; fullThinking += p.thinking; }
-              if (p.token) { fullText += p.token; }
+              if (p.token) {
+                fullText += p.token;
+                // Read along as the answer is written — reasoning is on its own
+                // channel and never reaches this branch, so it is never spoken.
+                if (speakerEnabled) {
+                  if (!speechStarted) {
+                    speechStarted = startSpeechStream(assistantTimestamp);
+                  }
+                  pushSpeechStream(p.token);
+                }
+              }
               else if (p.response) { fullText += p.response; }
               if (firstToken && continuationCount === 0) {
                 firstToken = false;
@@ -223,7 +254,7 @@ export function useChatStreaming({
                     agentName: `${streamAgentStyle.name || streamAgentName || selectedModel} (${selectedModel})`,
                     agentRole: streamAgentStyle.name || streamAgentName || activeManifesto?.name || '',
                     agentImage: streamAgentStyle.image || activeManifesto?.image || '/images/default.png',
-                    timestamp: new Date().toISOString(),
+                    timestamp: assistantTimestamp,
                     streaming: true,
                     thinking: hasThinking ? fullThinking : undefined,
                     streamingThinking: hasThinking,
@@ -275,7 +306,6 @@ export function useChatStreaming({
               message: "Continua esattamente da dove ti sei fermato nell'ultimo messaggio, senza ripetere il testo già scritto.",
               history: sessionRefs.sessionMessages.current[sessionId] || [],
               stream: true,
-              provider: activeProvider,
               model: selectedModel,
               manifesto: activeManifesto?.path
             })
@@ -290,7 +320,7 @@ export function useChatStreaming({
       }
 
       setLoading(false);
-      const finalContent = cleanModelTags(fullText) || (fullThinking ? cleanModelTags(fullThinking) : (hasError ? streamErrorMsg || '⚠️ Error' : '⚠️ Nessuna risposta.'));
+      const finalContent = cleanModelTags(finalOverride || fullText) || (fullThinking ? cleanModelTags(fullThinking) : (hasError ? streamErrorMsg || '⚠️ Error' : '⚠️ Nessuna risposta.'));
 
       if (streamCreatedFiles.length === 0 && finalContent && !hasError) {
         try {
@@ -315,11 +345,15 @@ export function useChatStreaming({
       setSessionMessages(prev => {
         const n = [...(prev[sessionId] || [])];
         if (n.length > 0 && n[n.length - 1].role === 'assistant') {
-          n[n.length - 1] = { 
-            ...n[n.length - 1], 
-            content: finalContent, 
-            streaming: false, 
-            streamingThinking: false, 
+          const resolvedThinking = finalThinkingOverride !== null
+            ? (finalThinkingOverride || undefined)
+            : (hasThinking ? fullThinking : n[n.length - 1].thinking);
+          n[n.length - 1] = {
+            ...n[n.length - 1],
+            content: finalContent,
+            thinking: resolvedThinking,
+            streaming: false,
+            streamingThinking: false,
             statusMessage: undefined,
             created_files: streamCreatedFiles.length > 0 ? streamCreatedFiles : n[n.length - 1].created_files,
             actions_log: streamActionsLog.length > 0 ? streamActionsLog : n[n.length - 1].actions_log
@@ -338,13 +372,18 @@ export function useChatStreaming({
             }
           });
         }
-        if (speakerEnabled && finalContent && !hasError) {
-          speakAgentMessage(finalContent);
+        if (speechStarted) {
+          // Already reading along: just flush the tail of the sentence buffer.
+          endSpeechStream();
+        } else if (speakerEnabled && finalContent && !hasError) {
+          // No progressive reading happened (non-streaming provider): read it now.
+          speakAgentMessage(finalContent, null, null, assistantTimestamp);
         }
         return { ...prev, [sessionId]: n };
       });
     } catch (e) {
       setLoading(false);
+      stopSpeech();
       setSessionMessages(prev => {
         const msgs = [...(prev[sessionId] || []), { role: 'assistant', content: `⚠️ **Errore:** ${e.message}`, timestamp: new Date().toISOString(), error: true, agentImage: activeManifesto?.image || '/images/default.png', agentRole: activeManifesto?.name || '' }];
         saveMessagesImmediately(sessionId, msgs);
@@ -397,7 +436,8 @@ export function useChatStreaming({
         saveMessagesImmediately(sessionId, finalMessages);
       }
       if (speakerEnabled && data.response) {
-        speakAgentMessage(data.response);
+        // Read the answer only — never `data.thinking`.
+        speakAgentMessage(assistant.content, null, null, assistant.timestamp);
       }
     } catch (e) {
       if (sessionRefs.activeSessionId.current === sessionId) {

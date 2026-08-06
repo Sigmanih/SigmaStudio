@@ -397,7 +397,9 @@ IMPORTANTE: Rispondi esclusivamente in formato JSON. Nessun testo prima del JSON
                 break
                 
         # Alla fine, se abbiamo rilevato un JSON, facciamo il parsing ed estraiamo la risposta
-        final_clean_response = accumulated_response
+        # Reasoning models can emit thinking only and no content: usarlo come risposta
+        # evita una bolla vuota.
+        final_clean_response = accumulated_response or accumulated_thinking
         final_clean_thinking = accumulated_thinking
         
         if is_json_detected:
@@ -536,7 +538,9 @@ IMPORTANTE: Rispondi esclusivamente in formato JSON. Nessun testo prima del JSON
                 callback({"type": "error", "iteration": current_iteration, "error": f"Errore AI: {error}"})
             break
 
-        response = response_accumulated
+        # Same fallback as the direct-reply path: a reasoning-only stream still
+        # carries the answer, just on the thinking channel.
+        response = response_accumulated or thinking_accumulated
         thinking = thinking_accumulated
 
         if not response:
