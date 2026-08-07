@@ -365,25 +365,71 @@ export function speakAgentMessage(text, onStart = null, onEnd = null, speechId =
 
 export function pauseSpeech() {
   if (typeof window === 'undefined' || !window.speechSynthesis) return;
-  if (window.speechSynthesis.speaking && !window.speechSynthesis.paused) {
-    window.speechSynthesis.pause();
-    updateSpeechProgress({ paused: true });
+
+  const currentIdx = speechProgressState.charIndex || 0;
+  const currentText = speechProgressState.fullText || '';
+  const currentId = speechProgressState.speechId || activeSpeechId;
+
+  stopUtteranceSync();
+  stopKeepAlive();
+
+  if (speechStream) {
+    speechStream.isPaused = true;
+    speechStream.busy = false;
+    speechStream.chromeActive = 0;
+    if (speechStream.browserQueue) speechStream.browserQueue = [];
+    // Immediately halt neural audio playback
+    if (speechStream.audio) {
+      speechStream.audio.pause();
+    }
   }
+
+  // Freeze position snapshot
+  speechProgressState = {
+    speechId: currentId,
+    fullText: currentText,
+    charIndex: currentIdx,
+    charLength: 5,
+    progress: currentText.length > 0 ? Math.min(1, currentIdx / currentText.length) : 0,
+    paused: true,
+    isSpeaking: true,
+    savedPauseIndex: currentIdx,
+    savedPauseId: currentId,
+    savedPauseText: currentText,
+  };
+
+  // Detach handlers from active utterances to prevent Chrome's onend/onerror callbacks from wiping state
+  activeUtterances.forEach(u => {
+    u.onend = null;
+    u.onerror = null;
+    u.onboundary = null;
+    u.onstart = null;
+  });
+  activeUtterances.clear();
+
+  try { window.speechSynthesis.cancel(); } catch (e) {}
+
+  // Broadcast paused state to all subscribers
+  progressSubscribers.forEach(fn => { try { fn(speechProgressState); } catch (e) {} });
 }
 
 export function resumeSpeech() {
   if (typeof window === 'undefined' || !window.speechSynthesis) return;
-  if (window.speechSynthesis.paused) {
-    window.speechSynthesis.resume();
-    updateSpeechProgress({ paused: false });
+
+  const targetId = speechProgressState.savedPauseId || speechProgressState.speechId || activeSpeechId;
+  const targetText = speechProgressState.savedPauseText || speechProgressState.fullText;
+  const targetIndex = speechProgressState.savedPauseIndex !== undefined ? speechProgressState.savedPauseIndex : (speechProgressState.charIndex || 0);
+
+  if (targetId && targetText) {
+    seekSpeech(targetId, targetIndex, targetText);
   }
 }
 
 export function togglePauseSpeech() {
   if (typeof window === 'undefined' || !window.speechSynthesis) return;
-  if (window.speechSynthesis.paused) {
+  if (speechProgressState.paused) {
     resumeSpeech();
-  } else if (window.speechSynthesis.speaking) {
+  } else {
     pauseSpeech();
   }
 }
@@ -395,7 +441,9 @@ export function seekSpeech(speechId, targetCharIndex, fullText = null) {
 
   const clampedIndex = Math.max(0, Math.min(text.length - 1, Math.round(targetCharIndex)));
   stopSpeech();
-  speakAgentMessage(text, null, null, speechId, clampedIndex);
+  setTimeout(() => {
+    speakAgentMessage(text, null, null, speechId, clampedIndex);
+  }, 60);
 }
 
 export function seekSpeechRelative(speechId, charDelta, fullText = null) {
@@ -408,6 +456,121 @@ export function seekSpeechPercent(speechId, percent, fullText = null) {
   if (!text) return;
   const targetIdx = Math.round(Math.max(0, Math.min(1, percent)) * text.length);
   seekSpeech(speechId, targetIdx, text);
+}
+
+let audioSyncInterval = null;
+let activeUtteranceStart = 0;
+let activeChunkOffset = 0;
+
+function startUtteranceSync(state, chunkOffset, textLength) {
+  stopUtteranceSync();
+  if (!state) return;
+
+  activeChunkOffset = chunkOffset;
+  activeUtteranceStart = Date.now();
+
+  const cfg = getVoiceConfig();
+  const rate = parseFloat(cfg.rate) || 1.0;
+  // Average speaking speed in Italian: ~14.5 characters per second at rate 1.0
+  const charsPerSec = 14.5 * rate;
+
+  audioSyncInterval = setInterval(() => {
+    if (!speechStream || speechStream !== state || !window.speechSynthesis) {
+      stopUtteranceSync();
+      return;
+    }
+    if (speechProgressState.paused) {
+      return;
+    }
+
+    const elapsed = (Date.now() - activeUtteranceStart) / 1000;
+    const spokenChars = Math.round(elapsed * charsPerSec);
+    const clampedChunkPos = Math.min(textLength, spokenChars);
+    const currentCharIdx = activeChunkOffset + clampedChunkPos;
+    const totalLen = (state.fullCleanText || '').length || 1;
+
+    const prog = Math.min(1, Math.max(0, currentCharIdx / totalLen));
+
+    updateSpeechProgress({
+      speechId: state.id,
+      fullText: state.fullCleanText || '',
+      charIndex: currentCharIdx,
+      charLength: 5,
+      progress: prog,
+      paused: false,
+      isSpeaking: true,
+    });
+  }, 100);
+}
+
+// --- Neural engine progress sync -----------------------------------------------
+let neuralSyncRAF = null;
+let neuralClipStartTime = 0;
+let neuralClipDuration = 0;
+let neuralClipCharOffset = 0;
+let neuralClipCharLength = 0;
+
+function startNeuralSync(state, audio, charOffsetInCleanedText, charLengthOfClip) {
+  stopNeuralSync();
+  if (!state || !audio) return;
+
+  neuralClipCharOffset = charOffsetInCleanedText;
+  neuralClipCharLength = charLengthOfClip || 1;
+  neuralClipStartTime = performance.now();
+  neuralClipDuration = (audio.duration && isFinite(audio.duration)) ? audio.duration * 1000 : 0;
+
+  const tick = () => {
+    if (speechProgressState.paused) {
+      neuralSyncRAF = requestAnimationFrame(tick);
+      return;
+    }
+
+    // Use audio.currentTime when available, otherwise estimate from elapsed wall clock
+    let progressFraction = 0;
+    if (audio.currentTime !== undefined && audio.duration && isFinite(audio.duration) && audio.duration > 0) {
+      progressFraction = Math.min(1, audio.currentTime / audio.duration);
+    } else if (neuralClipDuration > 0) {
+      const elapsed = performance.now() - neuralClipStartTime;
+      progressFraction = Math.min(1, elapsed / neuralClipDuration);
+    }
+
+    const currentCharIdx = neuralClipCharOffset + Math.round(progressFraction * neuralClipCharLength);
+    const totalLen = (state.fullCleanText || '').length || 1;
+    const prog = Math.min(1, Math.max(0, currentCharIdx / totalLen));
+
+    updateSpeechProgress({
+      speechId: state.id,
+      fullText: state.fullCleanText || '',
+      charIndex: currentCharIdx,
+      charLength: 5,
+      progress: prog,
+      paused: false,
+      isSpeaking: true,
+    });
+
+    if (audio.paused || audio.ended || progressFraction >= 1) {
+      stopNeuralSync();
+      return;
+    }
+    neuralSyncRAF = requestAnimationFrame(tick);
+  };
+
+  neuralSyncRAF = requestAnimationFrame(tick);
+}
+
+function stopNeuralSync() {
+  if (neuralSyncRAF) {
+    cancelAnimationFrame(neuralSyncRAF);
+    neuralSyncRAF = null;
+  }
+}
+
+function stopUtteranceSync() {
+  if (audioSyncInterval) {
+    clearInterval(audioSyncInterval);
+    audioSyncInterval = null;
+  }
+  stopNeuralSync();
 }
 
 // --- Sentence-level streaming playback ---------------------------------------
@@ -473,6 +636,7 @@ function isMidFormula(chunk) {
 
 function settleChunk(state) {
   if (speechStream !== state) return;
+  if (speechProgressState && speechProgressState.paused) return;
   state.pending = Math.max(0, state.pending - 1);
   const queueEmpty = !state.browserQueue || state.browserQueue.length === 0;
   if (state.started && state.ended && state.pending === 0 && queueEmpty) {
@@ -500,16 +664,22 @@ function playNextClip(state) {
   if (speechStream !== state || state.busy) return;
   if (!state.queue.has(state.playSeq)) return;
 
-  const url = state.queue.get(state.playSeq);
+  const entry = state.queue.get(state.playSeq);
   state.queue.delete(state.playSeq);
+  const seq = state.playSeq;
   state.playSeq += 1;
 
-  if (!url) {                        // sentence with no audio: skip its slot
+  if (!entry || !entry.url) {        // sentence with no audio: skip its slot
+    // Still advance processedChars for skipped neural chunks
+    if (entry && entry.charLength) {
+      state.processedChars = (state.processedChars || 0) + entry.charLength;
+    }
     settleChunk(state);
     playNextClip(state);
     return;
   }
 
+  const url = entry.url;
   state.busy = true;
   markStarted(state);
 
@@ -518,11 +688,21 @@ function playNextClip(state) {
   audio.volume = cfg.volume !== undefined ? Math.max(0, Math.min(1, parseFloat(cfg.volume))) : 1.0;
   state.audio = audio;
 
+  // Start neural progress sync so the slider moves during neural playback
+  if (entry.charOffset !== undefined && entry.charLength) {
+    startNeuralSync(state, audio, entry.charOffset, entry.charLength);
+  }
+
   const done = () => {
     if (!state.busy) return;         // guard against a doubled end/error event
     state.busy = false;
+    stopNeuralSync();
     URL.revokeObjectURL(url);
     state.audio = null;
+    // Advance processedChars on clip completion
+    if (entry.charLength) {
+      state.processedChars = (state.processedChars || 0) + entry.charLength;
+    }
     settleChunk(state);
     playNextClip(state);
   };
@@ -535,6 +715,11 @@ function enqueueNeural(state, clean, engine, voice) {
   const seq = state.nextSeq++;
   state.pending += 1;
 
+  // Track offset in the cleaned text for this chunk
+  const charOffset = state.processedChars || 0;
+  const charLen = clean.length;
+  state.processedChars = charOffset + charLen;
+
   fetch('/api/tts/speak', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -546,7 +731,11 @@ function enqueueNeural(state, clean, engine, voice) {
       if (speechStream !== state) return;
       if (!data.audio) throw new Error(data.error || 'Sintesi fallita');
       const bytes = Uint8Array.from(atob(data.audio), c => c.charCodeAt(0));
-      state.queue.set(seq, URL.createObjectURL(new Blob([bytes], { type: 'audio/wav' })));
+      state.queue.set(seq, {
+        url: URL.createObjectURL(new Blob([bytes], { type: 'audio/wav' })),
+        charOffset,
+        charLength: charLen,
+      });
       playNextClip(state);
     })
     .catch(err => {
@@ -558,7 +747,7 @@ function enqueueNeural(state, clean, engine, voice) {
       }
       // Deliberately silent for this sentence rather than starting a system
       // voice on top of the clips still playing: one reading, one voice.
-      state.queue.set(seq, null);
+      state.queue.set(seq, { url: null, charOffset, charLength: charLen });
       playNextClip(state);
     });
 }
@@ -594,34 +783,28 @@ function feedChromeQueue(state) {
     activeUtterances.add(utterance);
     state.chromeActive += 1;
 
+    utterance.onstart = () => {
+      markStarted(state);
+      startKeepAlive();
+      startUtteranceSync(state, chunkOffset, clean.length);
+    };
+
     utterance.onboundary = (event) => {
-      if (event.name === 'word' || !event.name) {
-        const charIdx = chunkOffset + (event.charIndex || 0);
-        const charLen = event.charLength || 5;
-        const totalLen = (state.fullCleanText || '').length || 1;
-        updateSpeechProgress({
-          speechId: state.id,
-          fullText: state.fullCleanText || '',
-          charIndex: charIdx,
-          charLength: charLen,
-          progress: Math.min(1, Math.max(0, charIdx / totalLen)),
-          paused: false,
-          isSpeaking: true,
-        });
+      if (event.charIndex !== undefined && event.charIndex >= 0) {
+        const rate = parseFloat(getVoiceConfig().rate) || 1.0;
+        const charsPerSec = 14.5 * rate;
+        activeUtteranceStart = Date.now() - (event.charIndex / charsPerSec) * 1000;
       }
     };
 
     const handleFinish = () => {
+      stopUtteranceSync();
       activeUtterances.delete(utterance);
       state.chromeActive = Math.max(0, state.chromeActive - 1);
       settleChunk(state);
       feedChromeQueue(state);
     };
 
-    utterance.onstart = () => {
-      markStarted(state);
-      startKeepAlive();
-    };
     utterance.onend = handleFinish;
     utterance.onerror = handleFinish;
 
@@ -645,6 +828,12 @@ function enqueueSpeech(state, rawText) {
   const clean = cleanTextForSpeech(stripFencedCode(state, rawText));
   // Punctuation-only leftovers would be spoken as an audible hiccup.
   if (!clean || !HAS_LETTERS.test(clean)) return;
+
+  // In streaming mode (answer still arriving), accumulate cleaned text
+  // so the progress bar can display a meaningful percentage.
+  if (state.isStreaming) {
+    state.fullCleanText = (state.fullCleanText || '') + clean;
+  }
 
   state.chunkCount += 1;
   if (state.engine && state.engine !== 'browser') {
@@ -720,10 +909,23 @@ export function startSpeechStream(speechId, { onStart = null, onEnd = null, init
     browserQueue: [], chromeActive: 0,
     processedChars: initialOffset,
     fullCleanText: fullCleanText,
+    isStreaming: fullCleanText === '' && initialOffset === 0,
     abort: new AbortController(),
     onStart, onEnd,
   };
   setActiveSpeechId(speechId);
+
+  const initialProgress = fullCleanText.length > 0 ? Math.min(1, initialOffset / fullCleanText.length) : 0;
+  updateSpeechProgress({
+    speechId: speechId,
+    fullText: fullCleanText,
+    charIndex: initialOffset,
+    charLength: 5,
+    progress: initialProgress,
+    paused: false,
+    isSpeaking: true,
+  });
+
   return true;
 }
 
@@ -755,6 +957,7 @@ export function stopSpeech() {
   if (typeof window === 'undefined') return;
 
   stopKeepAlive();
+  stopUtteranceSync();
   activeUtterances.clear();
 
   const state = speechStream;
@@ -772,7 +975,9 @@ export function stopSpeech() {
       state.audio.pause();
       state.audio = null;
     }
-    state.queue.forEach(url => { if (url) URL.revokeObjectURL(url); });
+    state.queue.forEach(entry => {
+      if (entry && entry.url) URL.revokeObjectURL(entry.url);
+    });
     state.queue.clear();
   }
 

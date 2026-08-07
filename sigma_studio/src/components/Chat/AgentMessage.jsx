@@ -35,14 +35,60 @@ function formatTimestamp(ts) {
 function highlightCurrentWordInHtml(htmlContent, fullCleanText, charIndex, charLength) {
   if (!htmlContent || charIndex === undefined || charIndex < 0 || !fullCleanText) return htmlContent;
 
-  const wordLen = Math.max(2, charLength || 4);
-  const rawTargetWord = fullCleanText.slice(charIndex, charIndex + wordLen).trim();
-  const cleanWord = rawTargetWord.replace(/[^\p{L}\p{N}]/gu, '');
-  if (!cleanWord || cleanWord.length < 2) return htmlContent;
+  let validCharIdx = Math.min(fullCleanText.length - 1, Math.max(0, charIndex));
 
-  const escaped = cleanWord.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  const regex = new RegExp(`(?<!<[^>]*)\\b(${escaped})\\b(?![^<]*>)`, 'i');
-  return htmlContent.replace(regex, '<mark class="speech-word-highlight">$1</mark>');
+  // If validCharIdx lands on whitespace/punctuation, look forward up to 15 chars for a word char
+  if (!/[\p{L}\p{N}]/u.test(fullCleanText[validCharIdx])) {
+    let forward = validCharIdx;
+    while (forward < fullCleanText.length && !/[\p{L}\p{N}]/u.test(fullCleanText[forward])) {
+      forward++;
+    }
+    if (forward < fullCleanText.length) {
+      validCharIdx = forward;
+    } else {
+      let backward = validCharIdx;
+      while (backward > 0 && !/[\p{L}\p{N}]/u.test(fullCleanText[backward])) {
+        backward--;
+      }
+      validCharIdx = backward;
+    }
+  }
+
+  if (!/[\p{L}\p{N}]/u.test(fullCleanText[validCharIdx])) return htmlContent;
+
+  // Find exact word boundaries around validCharIdx in fullCleanText
+  let start = validCharIdx;
+  while (start > 0 && /[\p{L}\p{N}]/u.test(fullCleanText[start - 1])) {
+    start--;
+  }
+  let end = validCharIdx;
+  while (end < fullCleanText.length && /[\p{L}\p{N}]/u.test(fullCleanText[end])) {
+    end++;
+  }
+
+  const activeWord = fullCleanText.slice(start, end).trim().replace(/[^\p{L}\p{N}]/gu, '');
+  if (!activeWord || activeWord.length < 2) return htmlContent;
+
+  const escapedWord = activeWord.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const textBefore = fullCleanText.slice(0, start);
+  const targetOccurrence = (textBefore.match(new RegExp(`\\b${escapedWord}\\b`, 'gi')) || []).length;
+
+  let currentOccurrence = 0;
+
+  // Replace target occurrence inside HTML text nodes only (safe against tags)
+  return htmlContent.replace(/(<[^>]+>)|([^<]+)/g, (match, tag, textNode) => {
+    if (tag) return tag;
+    if (!textNode) return match;
+
+    return textNode.replace(new RegExp(`\\b${escapedWord}\\b`, 'gi'), (wordMatch) => {
+      if (currentOccurrence === targetOccurrence) {
+        currentOccurrence++;
+        return `<mark class="speech-word-highlight">${wordMatch}</mark>`;
+      }
+      currentOccurrence++;
+      return wordMatch;
+    });
+  });
 }
 
 // ==============================================================================
@@ -160,12 +206,12 @@ export default function AgentMessage({
     return () => window.removeEventListener('sigma_profile_updated', handleProfileUpdate);
   }, []);
 
-  const speechId = first.timestamp;
+  const speechId = String(first.timestamp || first.id || msgId || 'agent-msg');
   useEffect(() => {
-    setIsPlayingAudio(getActiveSpeechId() === speechId);
-    const unsubSpeech = subscribeSpeech(activeId => setIsPlayingAudio(activeId === speechId));
+    setIsPlayingAudio(String(getActiveSpeechId()) === String(speechId));
+    const unsubSpeech = subscribeSpeech(activeId => setIsPlayingAudio(String(activeId) === String(speechId)));
     const unsubProgress = subscribeSpeechProgress(p => {
-      if (p && p.speechId === speechId) setSpeechProgress({ ...p });
+      if (p && String(p.speechId) === String(speechId)) setSpeechProgress({ ...p });
     });
     return () => { unsubSpeech(); unsubProgress(); };
   }, [speechId]);
@@ -637,13 +683,38 @@ export default function AgentMessage({
                           }
                         }}
                         dangerouslySetInnerHTML={{ 
-                          __html: (isPlayingAudio && speechProgress.speechId === speechId && speechProgress.charIndex >= 0)
-                            ? highlightCurrentWordInHtml(
-                                renderMarkdownLatex(displayContent),
-                                cleanTextForSpeech(messages.map(msgItem => msgItem.content || msgItem.text || '').join(' ')),
-                                speechProgress.charIndex,
-                                speechProgress.charLength
-                              )
+                          __html: (isPlayingAudio && speechProgress && String(speechProgress.speechId) === String(speechId) && speechProgress.charIndex >= 0)
+                            ? (() => {
+                                // Calculate per-message charIndex: subtract cleaned lengths
+                                // of all previous messages in the group.
+                                let localIdx = speechProgress.charIndex;
+                                const singleClean = cleanTextForSpeech(displayContent);
+                                for (let pi = 0; pi < idx; pi++) {
+                                  const prev = messages[pi];
+                                  const prevText = prev.content || prev.text || '';
+                                  if (prevText) {
+                                    localIdx -= cleanTextForSpeech(prevText).length;
+                                  }
+                                }
+                                if (localIdx < 0) localIdx = 0;
+                                // Advance to the next word for a "reading ahead" karaoke effect
+                                if (localIdx < singleClean.length) {
+                                  // Skip the current word (if positioned on one)
+                                  while (localIdx < singleClean.length && /[\p{L}\p{N}]/u.test(singleClean[localIdx])) {
+                                    localIdx++;
+                                  }
+                                  // Skip whitespace/punctuation to land on the next word
+                                  while (localIdx < singleClean.length && !/[\p{L}\p{N}]/u.test(singleClean[localIdx])) {
+                                    localIdx++;
+                                  }
+                                }
+                                return highlightCurrentWordInHtml(
+                                  renderMarkdownLatex(displayContent),
+                                  singleClean,
+                                  localIdx,
+                                  speechProgress.charLength
+                                );
+                              })()
                             : renderMarkdownLatex(displayContent)
                         }}
                       />
