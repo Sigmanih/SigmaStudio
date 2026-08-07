@@ -578,10 +578,8 @@ function stopUtteranceSync() {
 let speechStream = null;
 
 const SENTENCE_ENDINGS = '.!?…\n';
-const CLAUSE_ENDINGS = ',;:';
-const MIN_FIRST_CHUNK = 20;
-const MIN_CLAUSE_CHUNK = 35;
-const MAX_UNPUNCTUATED = 100;
+const MIN_FIRST_CHUNK = 60;
+const MAX_UNPUNCTUATED = 200;
 const HAS_LETTERS = /[a-zA-ZÀ-ÿ]/;
 
 // Hold active SpeechSynthesisUtterance references to prevent V8 garbage collection mid-speech
@@ -853,10 +851,10 @@ function enqueueSpeech(state, rawText) {
 function findSentenceCut(buffer, force, first) {
   for (let i = 0; i < buffer.length; i++) {
     const char = buffer[i];
-    const strong = SENTENCE_ENDINGS.includes(char);
-    const minLen = first ? MIN_FIRST_CHUNK : MIN_CLAUSE_CHUNK;
-    const weak = i >= minLen && CLAUSE_ENDINGS.includes(char);
-    if (!strong && !weak) continue;
+    // Only cut on real sentence endings: . ! ? … \n
+    if (!SENTENCE_ENDINGS.includes(char)) continue;
+    // Don't cut the first chunk until we have at least MIN_FIRST_CHUNK chars
+    if (first && i < MIN_FIRST_CHUNK) continue;
     if (char === '.') {
       // A real full stop is followed by a space. Without this check the dot in
       // "example.com" or "1.5" splits the text and the markdown link (or the
