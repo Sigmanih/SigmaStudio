@@ -146,6 +146,8 @@ export default function ChatWorkspaceTab() {
         setSpeakerEnabled={core.setSpeakerEnabled}
         isRecording={core.isRecording}
         onToggleRecording={core.onToggleRecording}
+        smartMicState={core.smartMicState}
+        onToggleSmartMic={core.onToggleSmartMic}
         loopMaxIterations={core.loopMaxIterations}
         setLoopMaxIterations={core.setLoopMaxIterations}
         loopActive={core.loopActive}

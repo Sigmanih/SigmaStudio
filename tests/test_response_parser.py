@@ -120,6 +120,28 @@ class TestFormatResponse:
     def test_none_returns_none(self):
         assert _format_response(None) is None
 
+    def test_bold_span_survives_bullet_normalisation(self):
+        """The closing '**' must not be rewritten into a new list item.
+
+        Regression: '* **progetto** — descrizione' came out as
+        '* **progetto*' + newline + '* — descrizione', losing one asterisk and
+        splitting the line in two.
+        """
+        text = "* **congettura_di_collatz** — il celebre problema matematico"
+        assert _format_response(text) == text
+
+    def test_multiple_bold_spans_in_a_sentence_are_untouched(self):
+        text = "Progetti: **sigma_studio** e **formazione_ines** sono attivi."
+        assert _format_response(text) == text
+
+    def test_arithmetic_is_not_turned_into_a_list(self):
+        text = "Il risultato di 2 * 3 = 6 e l'intervallo 2020 - 2021."
+        assert _format_response(text) == text
+
+    def test_inline_bullets_are_still_promoted_to_their_own_line(self):
+        assert _format_response("Elenco: * uno * due") == "Elenco:\n* uno\n* due"
+        assert _format_response("Voci: - alfa - beta") == "Voci:\n- alfa\n- beta"
+
 
 class TestFileExtractorDirectPath:
     def test_extract_direct_path_without_backticks(self, tmp_path):

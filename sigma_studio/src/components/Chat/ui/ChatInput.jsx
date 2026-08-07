@@ -1,11 +1,12 @@
 import React, { useState } from 'react';
-import { Send, Paperclip, RefreshCw, StopCircle, Mic, MicOff, Volume2, VolumeX, Sliders } from 'lucide-react';
+import { Send, Paperclip, RefreshCw, StopCircle, Mic, MicOff, AudioLines, Volume2, VolumeX, Sliders } from 'lucide-react';
 
 export default function ChatInput({
   input, setInput, loading, selectedModel, refs, providerColors, currentRouting,
   webSearch, setWebSearch, autoScroll, setAutoScroll,
   speakerEnabled, setSpeakerEnabled,
   isRecording, onToggleRecording,
+  smartMicState = 'off', onToggleSmartMic,
   loopMaxIterations, setLoopMaxIterations, loopActive,
   onSend, onStop, onOpenFilePicker, attachedFiles,
   children,
@@ -181,13 +182,23 @@ export default function ChatInput({
         <textarea
           ref={refs.input}
           className="chat-input"
-          placeholder={isRecording ? "🔴 Registrazione in corso... Parla adesso..." : `Chiedi qualcosa a ${selectedModel}...`}
+          placeholder={
+            isRecording ? "🔴 Registrazione in corso... Parla adesso..."
+            : smartMicState === 'listening' ? "🎤 Ti ascolto... invio dopo 3 secondi di silenzio"
+            : smartMicState === 'waiting' ? '👂 In attesa della parola "Sigma"...'
+            : `Chiedi qualcosa a ${selectedModel}...`
+          }
           value={input}
           onChange={e => setInput(e.target.value)}
           onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); onSend(); } }}
           rows={1}
           disabled={loading}
-          style={isRecording ? { borderColor: '#ff5555', background: 'rgba(255, 85, 85, 0.06)' } : {}}
+          style={
+            isRecording ? { borderColor: '#ff5555', background: 'rgba(255, 85, 85, 0.06)' }
+            : smartMicState === 'listening' ? { borderColor: '#4ade80', background: 'rgba(74, 222, 128, 0.06)' }
+            : smartMicState === 'waiting' ? { borderColor: 'rgba(0, 210, 255, 0.4)' }
+            : {}
+          }
         />
         {onToggleRecording && (
           <button 
@@ -202,6 +213,31 @@ export default function ChatInput({
             }}
           >
             {isRecording ? <MicOff size={14} /> : <Mic size={14} />}
+          </button>
+        )}
+        {onToggleSmartMic && (
+          <button
+            className={`chat-attach-inline-btn ${smartMicState !== 'off' ? 'recording' : ''}`}
+            onClick={onToggleSmartMic}
+            title={
+              smartMicState === 'listening' ? 'Ti sto ascoltando — invio automatico dopo 3 secondi di silenzio'
+              : smartMicState === 'waiting' ? 'Microfono intelligente attivo — di\' "Sigma" per parlare'
+              : 'Microfono intelligente: si attiva dicendo "Sigma" e invia dopo 3 secondi di silenzio'
+            }
+            style={{
+              color: smartMicState === 'listening' ? '#4ade80'
+                : smartMicState === 'waiting' ? '#00d2ff'
+                : 'var(--text-muted)',
+              background: smartMicState === 'listening' ? 'rgba(74, 222, 128, 0.15)'
+                : smartMicState === 'waiting' ? 'rgba(0, 210, 255, 0.12)'
+                : 'transparent',
+              borderColor: smartMicState === 'listening' ? 'rgba(74, 222, 128, 0.4)'
+                : smartMicState === 'waiting' ? 'rgba(0, 210, 255, 0.35)'
+                : 'transparent',
+              animation: smartMicState === 'listening' ? 'pulseMic 1.2s infinite' : 'none'
+            }}
+          >
+            <AudioLines size={14} />
           </button>
         )}
         <button className="chat-attach-inline-btn" onClick={onOpenFilePicker} title="Allega file">

@@ -750,7 +750,12 @@ def _format_response(text: str) -> str:
         return text
 
     text = _clean_meta_reasoning(text)
-    text = re.sub(r"(?<!\n)\s*\*\s+", r"\n* ", text)
-    text = re.sub(r"(?<!\n)\s*-\s+", r"\n- ", text)
+    # Promote an inline bullet to its own line, but only when the marker really is
+    # a bullet: a lone '*' or '-' surrounded by whitespace. The previous pattern
+    # matched any '*' followed by a space, so it rewrote the closing marker of
+    # '**grassetto**' into a new list item and split the sentence in half.
+    # The leading lookbehind also keeps '2 * 3' and '2020 - 2021' intact.
+    text = re.sub(r"(?<!\n)(?<![*\d])\s+\*(?!\*)\s+(?=\D)", r"\n* ", text)
+    text = re.sub(r"(?<!\n)(?<![-\d])\s+-(?!-)\s+(?=\D)", r"\n- ", text)
     text = re.sub(r"\n{3,}", "\n\n", text)
     return text.strip()

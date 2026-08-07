@@ -59,6 +59,8 @@ def register_get_handlers(handler_class):
         '/api/hardware/status': 'handle_hardware_status',
         '/api/hardware/restart-ollama': 'handle_hardware_restart_ollama',
         '/api/hardware/gpu/processes': 'handle_hardware_gpu_processes',
+        # Voice Synthesis Endpoints
+        '/api/tts/engines': 'handle_tts_engines',
         # MCP Endpoints
         '/api/mcp/servers': 'handle_mcp_servers',
         '/api/mcp/tools': 'handle_mcp_tools',
@@ -111,6 +113,7 @@ def register_post_handlers(handler_class):
         '/api/chat/plan': 'handle_chat_plan',
         '/api/chat/execute_plan': 'handle_chat_execute_plan',
         '/api/chat/orchestrate': 'handle_chat_orchestrate',
+        '/api/tts/speak': 'handle_tts_speak',
         '/api/create_model': 'handle_api_create_model',
         '/api/ollama_models': 'handle_api_ollama_models',
         '/api/sandbox/create': 'handle_sandbox_create',
