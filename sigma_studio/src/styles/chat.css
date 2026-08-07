@@ -1691,42 +1691,101 @@ mark.speech-word-highlight,
   letter-spacing: -0.01em;
 }
 
-/* Tables */
-.chat-content table,
-.chat-md table {
+/* Tables & Matrices */
+.chat-table-wrapper {
   width: 100%;
-  border-collapse: collapse;
-  margin: 10px 0;
-  font-size: 0.72rem;
-  border: 1px solid rgba(188,140,255,0.06);
+  max-width: 100%;
+  overflow-x: auto;
+  margin: 12px 0;
   border-radius: 10px;
+  border: 1px solid rgba(0, 210, 255, 0.25);
+  background: rgba(15, 23, 42, 0.7);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.35);
+  backdrop-filter: blur(10px);
+}
+
+.chat-table-wrapper::-webkit-scrollbar {
+  height: 6px;
+}
+.chat-table-wrapper::-webkit-scrollbar-track {
+  background: rgba(15, 23, 42, 0.4);
+  border-radius: 3px;
+}
+.chat-table-wrapper::-webkit-scrollbar-thumb {
+  background: rgba(0, 210, 255, 0.35);
+  border-radius: 3px;
+}
+.chat-table-wrapper::-webkit-scrollbar-thumb:hover {
+  background: rgba(0, 210, 255, 0.6);
+}
+
+.chat-content table,
+.chat-md table,
+table.chat-table {
+  width: 100%;
+  min-width: 480px;
+  border-collapse: collapse;
+  margin: 0;
+  font-size: 0.76rem;
+  line-height: 1.55;
+  border: none;
   overflow: hidden;
 }
+
 .chat-content th,
-.chat-md th {
-  background: linear-gradient(135deg, rgba(0,210,255,0.06), rgba(188,140,255,0.04));
-  color: var(--primary);
+.chat-md th,
+table.chat-table th {
+  background: linear-gradient(135deg, rgba(0, 210, 255, 0.14), rgba(124, 91, 240, 0.1));
+  color: #00d2ff;
   font-weight: 700;
   text-transform: uppercase;
-  letter-spacing: 0.5px;
-  font-size: 0.62rem;
-  padding: 8px 12px;
+  letter-spacing: 0.6px;
+  font-size: 0.68rem;
+  padding: 10px 14px;
   text-align: left;
-  border-bottom: 1px solid rgba(0,210,255,0.08);
+  border-bottom: 1px solid rgba(0, 210, 255, 0.25);
+  white-space: nowrap;
 }
+
 .chat-content td,
-.chat-md td {
-  padding: 6px 12px;
-  border-bottom: 1px solid rgba(255,255,255,0.02);
-  color: var(--text-dim);
+.chat-md td,
+table.chat-table td {
+  padding: 10px 14px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+  color: #d4d6de;
+  vertical-align: top;
+  word-break: break-word;
 }
+
+.chat-content tr:nth-child(even) td,
+.chat-md tr:nth-child(even) td,
+table.chat-table tr:nth-child(even) td {
+  background: rgba(255, 255, 255, 0.015);
+}
+
 .chat-content tr:last-child td,
-.chat-md tr:last-child td {
+.chat-md tr:last-child td,
+table.chat-table tr:last-child td {
   border-bottom: none;
 }
+
 .chat-content tr:hover td,
-.chat-md tr:hover td {
-  background: rgba(255,255,255,0.015);
+.chat-md tr:hover td,
+table.chat-table tr:hover td {
+  background: rgba(0, 210, 255, 0.05);
+}
+
+/* KaTeX Display Matrices & Block Math */
+.chat-content .katex-display,
+.chat-md .katex-display {
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding: 10px 14px;
+  margin: 12px 0;
+  background: rgba(15, 23, 42, 0.65);
+  border-radius: 10px;
+  border: 1px solid rgba(124, 91, 240, 0.25);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25);
 }
 
 /* Links — beautiful underline animation */

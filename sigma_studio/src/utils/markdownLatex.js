@@ -203,6 +203,18 @@ function processInlineFormatting(text) {
   return text;
 }
 
+function isTableStart(lines, index) {
+  if (index + 1 >= lines.length) return false;
+  const current = lines[index].trim();
+  const next = lines[index + 1].trim();
+
+  // Current line contains pipes and next line is divider line like |---|---| or |:---|---:| or ---|---
+  const isHeader = /^\|?.*\|.*\|?$/.test(current) && current.includes('|');
+  const isDivider = /^\|?\s*:?-+:?\s*(\|\s*:?-+:?\s*)+\|?\s*$/.test(next);
+
+  return isHeader && isDivider;
+}
+
 /**
  * Process block-level markdown elements.
  * Must be called AFTER LaTeX rendering so delimiters inside KaTeX are preserved.
@@ -239,6 +251,53 @@ function processBlocks(text) {
     if (inCodeBlock) {
       codeBlockContent += (codeBlockContent ? '\n' : '') + line;
       i++;
+      continue;
+    }
+
+    // Markdown Table parsing
+    if (isTableStart(lines, i)) {
+      const headerLine = lines[i];
+      i += 2; // Skip header and divider row
+
+      const dataRows = [];
+      while (i < lines.length) {
+        const trimmed = lines[i].trim();
+        if (/^\|.*\|?$/.test(trimmed) || (trimmed.includes('|') && trimmed.length > 2)) {
+          dataRows.push(lines[i]);
+          i++;
+        } else if (trimmed === '' && i + 1 < lines.length && (lines[i + 1].trim().startsWith('|') || lines[i + 1].trim().includes('|'))) {
+          i++; // Skip empty line between table rows
+        } else {
+          break;
+        }
+      }
+
+      const parseCells = (rowStr) => {
+        let clean = rowStr.trim();
+        if (clean.startsWith('|')) clean = clean.slice(1);
+        if (clean.endsWith('|')) clean = clean.slice(0, -1);
+        return clean.split('|').map(c => c.trim());
+      };
+
+      const headers = parseCells(headerLine);
+      const rows = dataRows.map(parseCells);
+
+      let tableHtml = '<div class="chat-table-wrapper"><table class="chat-table"><thead><tr>';
+      headers.forEach(h => {
+        tableHtml += `<th>${processInlineFormatting(h)}</th>`;
+      });
+      tableHtml += '</tr></thead><tbody>';
+
+      rows.forEach(row => {
+        tableHtml += '<tr>';
+        row.forEach(cell => {
+          tableHtml += `<td>${processInlineFormatting(cell)}</td>`;
+        });
+        tableHtml += '</tr>';
+      });
+
+      tableHtml += '</tbody></table></div>';
+      result.push(tableHtml);
       continue;
     }
 
@@ -365,6 +424,10 @@ export function renderMarkdownLatex(text) {
       .replace(/\\\]/g, '$$$$')
       .replace(/\\\(/g, '$$')
       .replace(/\\\)/g, '$$');
+
+    // Pre-pass: collapse empty lines between markdown table rows (| ... |)
+    processed = processed.replace(/^([ \t]*\|.*\|[ \t]*\n)(?:[ \t]*\n)+([ \t]*\|.*\|[ \t]*)/gm, '$1$2');
+    processed = processed.replace(/^([ \t]*\|.*\|[ \t]*\n)(?:[ \t]*\n)+([ \t]*\|.*\|[ \t]*)/gm, '$1$2');
 
     // Step 2: Render LaTeX and protect the output in an array
     const katexBlocks = [];
