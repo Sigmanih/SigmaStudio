@@ -110,14 +110,74 @@ export function useChatSessions({ selectedModel, setSelectedModel, setActionsLog
 
   const deleteMessage = (msgIndexOrIndices) => {
     if (!activeSessionId) return;
+
+    const currentMsgs = sessionMessages[activeSessionId] || [];
+    const indices = Array.isArray(msgIndexOrIndices) ? msgIndexOrIndices : [msgIndexOrIndices];
+    
+    // Raccoglie PID e Job ID associati ai messaggi che si stanno eliminando
+    const pidsToKill = new Set();
+    const jobIdsToKill = new Set();
+
+    indices.forEach(idx => {
+      const msg = currentMsgs[idx];
+      if (msg) {
+        if (msg.pid) pidsToKill.add(msg.pid);
+        if (msg.process_id) pidsToKill.add(msg.process_id);
+        if (msg.processId) pidsToKill.add(msg.processId);
+        if (msg.meta?.pid) pidsToKill.add(msg.meta.pid);
+        if (msg.meta?.process_id) pidsToKill.add(msg.meta.process_id);
+
+        if (msg.job_id) jobIdsToKill.add(msg.job_id);
+        if (msg.jobId) jobIdsToKill.add(msg.jobId);
+        if (msg.meta?.job_id) jobIdsToKill.add(msg.meta.job_id);
+        if (msg.meta?.jobId) jobIdsToKill.add(msg.meta.jobId);
+
+        const actionsList = [...(msg.actions || []), ...(msg.actionsLog || [])];
+        actionsList.forEach(act => {
+          if (act && typeof act === 'object') {
+            if (act.pid) pidsToKill.add(act.pid);
+            if (act.process_id) pidsToKill.add(act.process_id);
+            if (act.processId) pidsToKill.add(act.processId);
+          }
+        });
+      }
+    });
+
+    const killPid = (pid) => {
+      fetch('/api/hardware/gpu/kill', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ pid })
+      }).then(res => res.json())
+        .then(data => {
+          if (data.success) {
+            console.log(`[deleteMessage] Processo ${pid} terminato.`);
+          }
+        }).catch(err => {
+          console.warn(`[deleteMessage] Impossibile terminare il processo ${pid}:`, err);
+        });
+    };
+
+    pidsToKill.forEach(pid => killPid(pid));
+
+    if (jobIdsToKill.size > 0) {
+      fetch('/api/hardware/gpu/processes')
+        .then(res => res.json())
+        .then(data => {
+          if (data.success && Array.isArray(data.processes)) {
+            data.processes.forEach(proc => {
+              if (proc.job_id && jobIdsToKill.has(proc.job_id) && proc.killable) {
+                killPid(proc.pid);
+              }
+            });
+          }
+        })
+        .catch(() => {});
+    }
+
     setSessionMessages(prev => {
       const msgs = prev[activeSessionId] || [];
-      let newMsgs;
-      if (Array.isArray(msgIndexOrIndices)) {
-        newMsgs = msgs.filter((_, idx) => !msgIndexOrIndices.includes(idx));
-      } else {
-        newMsgs = msgs.filter((_, idx) => idx !== msgIndexOrIndices);
-      }
+      const newMsgs = msgs.filter((_, idx) => !indices.includes(idx));
       try {
         localStorage.setItem(`sigma_chat_session_${activeSessionId}`, JSON.stringify(newMsgs));
       } catch (e) {}
