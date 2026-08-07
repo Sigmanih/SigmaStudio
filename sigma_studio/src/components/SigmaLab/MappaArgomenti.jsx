@@ -89,6 +89,10 @@ export default function MappaArgomenti({ onOpenFile }) {
   const [isDragActive, setIsDragActive] = useState(false);
   const fileInputRef = useRef(null);
 
+  // Modern Overlay Move Tab State
+  const [topicOverlayTab, setTopicOverlayTab] = useState('create'); // 'create' | 'move'
+  const [overlayMoveParentId, setOverlayMoveParentId] = useState('');
+
   // Auto clean upload states when overlay is closed
   // Configurable Font Size state (persisted in localStorage)
   const [labelFontSize, setLabelFontSize] = useState(() => {
@@ -119,6 +123,29 @@ export default function MappaArgomenti({ onOpenFile }) {
     setBranchLength(newLen);
     try { localStorage.setItem('sigma_graph_branch_length', String(newLen)); } catch (e) {}
   };
+
+  // Argomenti Visualization Theme State
+  const [argomentiTheme, setArgomentiTheme] = useState(() => {
+    try {
+      return localStorage.getItem('sigma_argomenti_theme') || 'costellazione';
+    } catch (e) {
+      return 'costellazione';
+    }
+  });
+
+  const handleThemeChange = (newTheme) => {
+    setArgomentiTheme(newTheme);
+    try { localStorage.setItem('sigma_argomenti_theme', newTheme); } catch (e) {}
+    window.dispatchEvent(new CustomEvent('sigma_argomenti_theme_changed', { detail: newTheme }));
+  };
+
+  useEffect(() => {
+    const onThemeChange = (e) => {
+      if (e.detail) setArgomentiTheme(e.detail);
+    };
+    window.addEventListener('sigma_argomenti_theme_changed', onThemeChange);
+    return () => window.removeEventListener('sigma_argomenti_theme_changed', onThemeChange);
+  }, []);
 
   const handleSaveLayout = () => {
     if (!simulationRef.current) return;
@@ -457,6 +484,7 @@ export default function MappaArgomenti({ onOpenFile }) {
     }
 
     for (const topic of topicsData) {
+      const isTopLevel = !topic.parent_id;
       const topicId = 'topic-' + topic.id;
       const topicDepth = depths[topic.id] || 0;
       
@@ -470,69 +498,50 @@ export default function MappaArgomenti({ onOpenFile }) {
       nodes.push({
         id: topicId,
         label: topic.name,
-        type: 'topic',
+        type: isTopLevel ? 'topic' : 'module',
         data: topic,
-        depth: topicDepth,
+        topicId: topic.id,
         parentTopicId: topic.parent_id ? 'topic-' + topic.parent_id : null,
+        depth: topicDepth,
         childTopicIndex,
         totalChildTopics,
-        r: 22
+        r: isTopLevel ? 22 : 16
       });
       nodeMap[topicId] = true;
 
-      if (topic.modules) {
-        let modIndex = 0;
-        const totalMods = topic.modules.length;
-        for (const mod of topic.modules) {
-          const modId = 'mod-' + topic.id + '-' + mod.number;
-          nodes.push({
-            id: modId,
-            label: mod.name,
-            type: 'module',
-            data: mod,
-            topicId: topic.id,
-            depth: topicDepth + 1,
-            modIndex,
-            totalMods,
-            r: 16
-          });
-          nodeMap[modId] = true;
-          links.push({ source: topicId, target: modId });
+      // Add document nodes directly linked to this topic or subtopic node
+      if (showDocs) {
+        let totalDocs = 0;
+        for (const docType of ['teoria', 'scripts', 'test', 'viz', 'docs', 'whitepapers', 'pdf', 'media']) {
+          totalDocs += (topic[docType] || []).length;
+        }
 
-          // Optionally add document nodes linked to this module
-          if (showDocs) {
-            let totalDocs = 0;
-            for (const docType of ['teoria', 'test', 'viz', 'docs', 'whitepapers']) {
-              totalDocs += (mod[docType] || []).length;
-            }
-
-            let docIndex = 0;
-            for (const docType of ['teoria', 'test', 'viz', 'docs', 'whitepapers']) {
-              const files = mod[docType] || [];
-              for (const f of files) {
-                const docId = 'doc-' + topic.id + '-' + mod.number + '-' + f.path.replace(/[^a-zA-Z0-9_-]/g, '_');
-                nodes.push({
-                  id: docId,
-                  label: f.filename,
-                  type: 'doc',
-                  docType,
-                  filePath: f.path,
-                  parentModId: modId,
-                  depth: topicDepth + 2,
-                  docIndex,
-                  totalDocs,
-                  r: 6
-                });
-                nodeMap[docId] = true;
-                links.push({ source: modId, target: docId });
-                docIndex++;
-              }
-            }
+        let docIndex = 0;
+        for (const docType of ['teoria', 'scripts', 'test', 'viz', 'docs', 'whitepapers', 'pdf', 'media']) {
+          const files = topic[docType] || [];
+          for (const f of files) {
+            const docId = 'doc-' + topic.id + '-' + f.path.replace(/[^a-zA-Z0-9_-]/g, '_');
+            nodes.push({
+              id: docId,
+              label: f.name || f.filename,
+              type: 'doc',
+              docType,
+              filePath: f.path,
+              parentModId: topicId,
+              depth: topicDepth + 1,
+              docIndex,
+              totalDocs,
+              r: 6
+            });
+            nodeMap[docId] = true;
+            links.push({ source: topicId, target: docId });
+            docIndex++;
           }
-          modIndex++;
         }
       }
     }
+
+    // Connect parent topic / subtopic to child subtopic
     for (const topic of topicsData) {
       if (topic.parent_id) {
         const parentId = 'topic-' + topic.parent_id;
@@ -542,6 +551,69 @@ export default function MappaArgomenti({ onOpenFile }) {
         }
       }
     }
+
+    // Calculate directional fractal tree angles & initial coordinates
+    const topLevelNodes = nodes.filter(n => n.type === 'topic');
+    const totalTop = topLevelNodes.length || 1;
+    const centerX = (dimensions.width || 800) / 2;
+    const centerY = (dimensions.height || 600) / 2.5;
+
+    topLevelNodes.forEach((node, idx) => {
+      const topAngle = (idx / totalTop) * (2 * Math.PI) - (Math.PI / 2);
+      node.angle = topAngle;
+      const topDist = Math.round(branchLength * 1.35);
+      node.targetX = centerX + Math.cos(topAngle) * topDist;
+      node.targetY = centerY + Math.sin(topAngle) * topDist;
+      if (node.x == null) node.x = node.targetX;
+      if (node.y == null) node.y = node.targetY;
+    });
+
+    const nodeByIdMap = {};
+    nodes.forEach(n => { nodeByIdMap[n.id] = n; });
+
+    nodes.forEach(node => {
+      if (node.type === 'module' && node.parentTopicId) {
+        const parentNode = nodeByIdMap[node.parentTopicId];
+        const parentAngle = parentNode?.angle ?? -Math.PI / 2;
+        const totalSiblings = node.totalChildTopics || 1;
+        const sibIndex = node.childTopicIndex || 0;
+        
+        // Spread subtopics in a symmetrical fan around parentAngle
+        const spreadArc = Math.min(Math.PI * 1.1, Math.max(Math.PI * 0.45, totalSiblings * 0.5));
+        const angle = totalSiblings > 1 
+          ? parentAngle - (spreadArc / 2) + (sibIndex / (totalSiblings - 1)) * spreadArc 
+          : parentAngle;
+        
+        node.angle = angle;
+        const dist = Math.round(branchLength * (1 + 0.12 * (node.depth || 1)));
+        const px = parentNode ? (parentNode.targetX ?? parentNode.x) : centerX;
+        const py = parentNode ? (parentNode.targetY ?? parentNode.y) : centerY;
+        node.targetX = px + Math.cos(angle) * dist;
+        node.targetY = py + Math.sin(angle) * dist;
+        if (node.x == null) node.x = node.targetX;
+        if (node.y == null) node.y = node.targetY;
+      } else if (node.type === 'doc' && node.parentModId) {
+        const parentNode = nodeByIdMap[node.parentModId];
+        const parentAngle = parentNode?.angle ?? 0;
+        const totalDocs = node.totalDocs || 1;
+        const docIdx = node.docIndex || 0;
+        
+        const docArc = Math.min(Math.PI * 0.9, Math.max(Math.PI * 0.35, totalDocs * 0.35));
+        const angle = totalDocs > 1 
+          ? parentAngle - (docArc / 2) + (docIdx / (totalDocs - 1)) * docArc 
+          : parentAngle + 0.25;
+
+        node.angle = angle;
+        const dist = Math.round(branchLength * 0.55);
+        const px = parentNode ? (parentNode.targetX ?? parentNode.x) : centerX;
+        const py = parentNode ? (parentNode.targetY ?? parentNode.y) : centerY;
+        node.targetX = px + Math.cos(angle) * dist;
+        node.targetY = py + Math.sin(angle) * dist;
+        if (node.x == null) node.x = node.targetX;
+        if (node.y == null) node.y = node.targetY;
+      }
+    });
+
     try {
       const saved = localStorage.getItem('sigma_graph_custom_positions');
       if (saved) {
@@ -580,21 +652,110 @@ export default function MappaArgomenti({ onOpenFile }) {
     if (nodes.length === 0) return;
     linksRef.current = links;
 
-    // Arrow markers
+    const isConstellation = argomentiTheme === 'costellazione';
+    const isClassico = argomentiTheme === 'classico';
+    const isMinimal = argomentiTheme === 'minimal';
+
+    // Define SVGs: Defs, Gradients & Glow Filters
     const defs = svg.append('defs');
-    defs.selectAll('marker')
-      .data(['topic-module', 'parent-child'])
-      .enter().append('marker')
-      .attr('id', d => d)
-      .attr('viewBox', '0 -5 10 10')
-      .attr('refX', 20)
-      .attr('refY', 0)
-      .attr('markerWidth', 6)
-      .attr('markerHeight', 6)
-      .attr('orient', 'auto')
-      .append('path')
-      .attr('fill', d => d === 'parent-child' ? 'rgba(210,153,34,0.3)' : 'rgba(255,255,255,0.15)')
-      .attr('d', 'M0,-5L10,0L0,5');
+
+    if (isConstellation) {
+      // Glow Filter
+      const glowFilter = defs.append('filter')
+        .attr('id', 'constellation-glow')
+        .attr('x', '-50%').attr('y', '-50%')
+        .attr('width', '200%').attr('height', '200%');
+      glowFilter.append('feGaussianBlur')
+        .attr('stdDeviation', '3.5')
+        .attr('result', 'coloredBlur');
+      const feMerge = glowFilter.append('feMerge');
+      feMerge.append('feMergeNode').attr('in', 'coloredBlur');
+      feMerge.append('feMergeNode').attr('in', 'SourceGraphic');
+
+      // Topic Star Gradient
+      const topicGrad = defs.append('radialGradient').attr('id', 'constellation-star-topic');
+      topicGrad.append('stop').attr('offset', '0%').attr('stop-color', '#ffffff');
+      topicGrad.append('stop').attr('offset', '35%').attr('stop-color', '#d2a8ff');
+      topicGrad.append('stop').attr('offset', '75%').attr('stop-color', '#8957e5');
+      topicGrad.append('stop').attr('offset', '100%').attr('stop-color', 'rgba(137, 87, 229, 0.3)');
+
+      // Module Star Gradient
+      const modGrad = defs.append('radialGradient').attr('id', 'constellation-star-module');
+      modGrad.append('stop').attr('offset', '0%').attr('stop-color', '#ffffff');
+      modGrad.append('stop').attr('offset', '35%').attr('stop-color', '#7dd3fc');
+      modGrad.append('stop').attr('offset', '75%').attr('stop-color', '#0284c7');
+      modGrad.append('stop').attr('offset', '100%').attr('stop-color', 'rgba(2, 132, 199, 0.3)');
+
+      // Orange Star Gradient
+      const orangeGrad = defs.append('radialGradient').attr('id', 'constellation-star-orange');
+      orangeGrad.append('stop').attr('offset', '0%').attr('stop-color', '#ffffff');
+      orangeGrad.append('stop').attr('offset', '35%').attr('stop-color', '#fbbf24');
+      orangeGrad.append('stop').attr('offset', '75%').attr('stop-color', '#d97706');
+      orangeGrad.append('stop').attr('offset', '100%').attr('stop-color', 'rgba(217, 119, 6, 0.3)');
+
+      // Starlight Link Gradients
+      const linkGrad = defs.append('linearGradient').attr('id', 'constellation-link-grad')
+        .attr('x1', '0%').attr('y1', '0%').attr('x2', '100%').attr('y2', '100%');
+      linkGrad.append('stop').attr('offset', '0%').attr('stop-color', '#bc8cff').attr('stop-opacity', '0.75');
+      linkGrad.append('stop').attr('offset', '100%').attr('stop-color', '#00d2ff').attr('stop-opacity', '0.75');
+
+      const parentGrad = defs.append('linearGradient').attr('id', 'parent-link-grad')
+        .attr('x1', '0%').attr('y1', '0%').attr('x2', '100%').attr('y2', '100%');
+      parentGrad.append('stop').attr('offset', '0%').attr('stop-color', '#fbbf24').attr('stop-opacity', '0.85');
+      parentGrad.append('stop').attr('offset', '100%').attr('stop-color', '#ec4899').attr('stop-opacity', '0.85');
+
+      // Background Twinkling Starfield Layer
+      const starfieldLayer = svg.append('g').attr('class', 'background-starfield');
+      const starCount = 100;
+      for (let i = 0; i < starCount; i++) {
+        const sx = (Math.sin(i * 997 + 12) * 0.5 + 0.5) * (width * 1.8) - width * 0.4;
+        const sy = (Math.cos(i * 613 + 45) * 0.5 + 0.5) * (height * 1.8) - height * 0.4;
+        const sr = (i % 5 === 0) ? 2.4 : (i % 3 === 0) ? 1.8 : 1.0;
+        const opacity = 0.2 + (i % 7) * 0.1;
+        const duration = 2 + (i % 5) * 1.2;
+        const delay = (i % 9) * 0.4;
+        
+        starfieldLayer.append('circle')
+          .attr('cx', sx)
+          .attr('cy', sy)
+          .attr('r', sr)
+          .attr('fill', i % 4 === 0 ? '#7dd3fc' : i % 3 === 0 ? '#c084fc' : i % 5 === 0 ? '#fde047' : '#ffffff')
+          .attr('opacity', opacity)
+          .style('animation', `constellation-twinkle ${duration}s ease-in-out ${delay}s infinite alternate`);
+      }
+    } else if (isClassico) {
+      // Arrow Markers for Tech Graph
+      defs.selectAll('marker')
+        .data(['topic-module', 'parent-child'])
+        .enter().append('marker')
+        .attr('id', d => d)
+        .attr('viewBox', '0 -5 10 10')
+        .attr('refX', 22)
+        .attr('refY', 0)
+        .attr('markerWidth', 6)
+        .attr('markerHeight', 6)
+        .attr('orient', 'auto')
+        .append('path')
+        .attr('fill', d => d === 'parent-child' ? 'rgba(210,153,34,0.5)' : 'rgba(0,210,255,0.4)')
+        .attr('d', 'M0,-5L10,0L0,5');
+
+      // Tech Grid Pattern Background
+      const pattern = defs.append('pattern')
+        .attr('id', 'tech-grid-pattern')
+        .attr('width', 36)
+        .attr('height', 36)
+        .attr('patternUnits', 'userSpaceOnUse');
+      pattern.append('path')
+        .attr('d', 'M 36 0 L 0 0 0 36')
+        .attr('fill', 'none')
+        .attr('stroke', 'rgba(0, 210, 255, 0.06)')
+        .attr('stroke-width', 1);
+      
+      svg.append('rect')
+        .attr('width', '100%')
+        .attr('height', '100%')
+        .attr('fill', 'url(#tech-grid-pattern)');
+    }
 
     // Zoom
     const g = svg.append('g').attr('class', 'zoom-group');
@@ -604,11 +765,11 @@ export default function MappaArgomenti({ onOpenFile }) {
     svg.call(zoom);
     zoomRef.current = zoom;
 
-    // Initial scale: zoomed out farther by default so the entire tree is comfortably visible
-    const initialScale = Math.min(width, height) / 950;
+    // Initial scale: centered in viewport with comfortable scale
+    const initialScale = Math.min(width, height) / 900;
     const initialTransform = d3.zoomIdentity
-      .translate(width / 2, 80)
-      .scale(Math.max(0.35, Math.min(0.7, initialScale)));
+      .translate(width / 2, height / 2.5)
+      .scale(Math.max(0.4, Math.min(0.85, initialScale)));
     svg.call(zoom.transform, initialTransform);
 
     // Link type map
@@ -620,7 +781,7 @@ export default function MappaArgomenti({ onOpenFile }) {
       }
     }
 
-    // Links
+    // Links Rendering
     const linkGroup = g.append('g').attr('class', 'links');
     const linkElements = linkGroup.selectAll('line')
       .data(links)
@@ -631,22 +792,28 @@ export default function MappaArgomenti({ onOpenFile }) {
       })
       .attr('stroke', d => {
         const isParent = linkTypeMap[d.source.id + '|' + d.target.id] || linkTypeMap[d.target.id + '|' + d.source.id];
-        return isParent ? 'rgba(210,153,34,0.3)' : 'rgba(255,255,255,0.12)';
+        if (isConstellation) return isParent ? 'url(#parent-link-grad)' : 'url(#constellation-link-grad)';
+        if (isClassico) return isParent ? '#d29922' : 'rgba(0, 210, 255, 0.4)';
+        return isParent ? '#bc8cff' : 'rgba(255, 255, 255, 0.18)';
       })
       .attr('stroke-width', d => {
         const isParent = linkTypeMap[d.source.id + '|' + d.target.id] || linkTypeMap[d.target.id + '|' + d.source.id];
-        return isParent ? 2.5 : 1.8;
+        if (isConstellation) return isParent ? 2.6 : 1.8;
+        if (isClassico) return isParent ? 2.2 : 1.6;
+        return 1.4;
       })
       .attr('stroke-dasharray', d => {
         const isParent = linkTypeMap[d.source.id + '|' + d.target.id] || linkTypeMap[d.target.id + '|' + d.source.id];
-        return isParent ? '5,4' : 'none';
+        return isParent ? (isConstellation ? '6,4' : '4,3') : 'none';
       })
       .attr('marker-end', d => {
+        if (!isClassico) return null;
         const isParent = linkTypeMap[d.source.id + '|' + d.target.id] || linkTypeMap[d.target.id + '|' + d.source.id];
         return isParent ? 'url(#parent-child)' : 'url(#topic-module)';
-      });
+      })
+      .style('filter', isConstellation ? 'url(#constellation-glow)' : 'none');
 
-    // Nodes
+    // Nodes Rendering
     const nodeGroup = g.append('g').attr('class', 'nodes');
     const nodeElements = nodeGroup.selectAll('g')
       .data(nodes)
@@ -723,42 +890,115 @@ export default function MappaArgomenti({ onOpenFile }) {
         nodeElements.attr('opacity', 1);
       });
 
-    nodeElements.append('circle')
-      .attr('r', d => d.r)
-      .attr('fill', d => {
-        if (d.type === 'doc') {
-          const c = DOC_COLORS[d.docType] || DOC_COLORS.docs;
-          return c.fill;
-        }
-        const isSelected = selectedNode && d.id === (selectedNode.type === 'topic' ? 'topic-' + selectedNode.data.id : 'mod-' + selectedNode.topicId + '-' + selectedNode.data.number);
-        if (isSelected) return ORANGE_FILL;
-        return d.type === 'topic' ? TOPIC_FILL : MODULE_FILL;
-      })
-      .attr('stroke', d => {
-        if (d.type === 'doc') {
-          const c = DOC_COLORS[d.docType] || DOC_COLORS.docs;
-          return c.stroke;
-        }
-        const isSelected = selectedNode && d.id === (selectedNode.type === 'topic' ? 'topic-' + selectedNode.data.id : 'mod-' + selectedNode.topicId + '-' + selectedNode.data.number);
-        if (isSelected) return ORANGE_COLOR;
-        return d.type === 'topic' ? TOPIC_COLOR : MODULE_COLOR;
-      })
-      .attr('stroke-width', d => {
-        if (d.type === 'doc') return 1.5;
-        const isSelected = selectedNode && d.id === (selectedNode.type === 'topic' ? 'topic-' + selectedNode.data.id : 'mod-' + selectedNode.topicId + '-' + selectedNode.data.number);
-        return isSelected ? 3.5 : 2.5;
-      })
-      .style('filter', d => {
-        if (d.type === 'doc') return 'none';
-        const isSelected = selectedNode && d.id === (selectedNode.type === 'topic' ? 'topic-' + selectedNode.data.id : 'mod-' + selectedNode.topicId + '-' + selectedNode.data.number);
-        if (isSelected) return 'drop-shadow(0 0 12px rgba(210,153,34,0.5))';
-        return d.type === 'topic' ? 'drop-shadow(0 0 8px rgba(188,140,255,0.3))' : 'drop-shadow(0 0 6px rgba(0,210,255,0.2))';
-      });
+    if (isConstellation) {
+      // 1. Constellation Star Orbit Rings
+      nodeElements.append('circle')
+        .attr('class', 'constellation-orbit-ring')
+        .attr('r', d => d.r + (d.type === 'topic' ? 12 : d.type === 'module' ? 8 : 4))
+        .attr('fill', 'none')
+        .attr('stroke', d => d.type === 'topic' ? 'rgba(188,140,255,0.3)' : d.type === 'module' ? 'rgba(0,210,255,0.25)' : 'none')
+        .attr('stroke-width', 1)
+        .attr('stroke-dasharray', '3,3');
 
+      // 2. Constellation Star Flare Sparkles (8-point for topics, 4-point for modules)
+      nodeElements.filter(d => d.type !== 'doc').append('path')
+        .attr('class', 'constellation-star-flare')
+        .attr('d', d => {
+          const fl = d.r + (d.type === 'topic' ? 16 : 9);
+          if (d.type === 'topic') {
+            const s = fl * 0.42;
+            const m = fl * 0.18;
+            return `M 0,${-fl} Q 0,0 ${m},${-m} L ${s},${-s} Q 0,0 ${fl},0 Q 0,0 ${s},${s} L ${m},${m} Q 0,0 0,${fl} Q 0,0 ${-m},${m} L ${-s},${s} Q 0,0 ${-fl},0 Q 0,0 ${-s},${-s} L ${-m},${-m} Z`;
+          }
+          return `M 0,${-fl} Q 0,0 ${fl},0 Q 0,0 0,${fl} Q 0,0 ${-fl},0 Q 0,0 0,${-fl} Z`;
+        })
+        .attr('fill', d => {
+          const isSelected = selectedNode && d.id === (selectedNode.type === 'topic' ? 'topic-' + selectedNode.data.id : 'mod-' + selectedNode.topicId + '-' + selectedNode.data.number);
+          if (isSelected) return 'rgba(251, 191, 36, 0.75)';
+          return d.type === 'topic' ? 'rgba(188, 140, 255, 0.65)' : 'rgba(0, 210, 255, 0.65)';
+        })
+        .style('filter', 'url(#constellation-glow)');
+
+      // 3. Central Constellation Star Core
+      nodeElements.append('circle')
+        .attr('class', 'constellation-star-core')
+        .attr('r', d => d.r)
+        .attr('fill', d => {
+          if (d.type === 'doc') {
+            const c = DOC_COLORS[d.docType] || DOC_COLORS.docs;
+            return c.fill;
+          }
+          const isSelected = selectedNode && d.id === (selectedNode.type === 'topic' ? 'topic-' + selectedNode.data.id : 'mod-' + selectedNode.topicId + '-' + selectedNode.data.number);
+          if (isSelected) return 'url(#constellation-star-orange)';
+          return d.type === 'topic' ? 'url(#constellation-star-topic)' : 'url(#constellation-star-module)';
+        })
+        .attr('stroke', d => {
+          if (d.type === 'doc') {
+            const c = DOC_COLORS[d.docType] || DOC_COLORS.docs;
+            return c.stroke;
+          }
+          const isSelected = selectedNode && d.id === (selectedNode.type === 'topic' ? 'topic-' + selectedNode.data.id : 'mod-' + selectedNode.topicId + '-' + selectedNode.data.number);
+          if (isSelected) return '#fbbf24';
+          return d.type === 'topic' ? '#bc8cff' : '#00d2ff';
+        })
+        .attr('stroke-width', d => d.type === 'doc' ? 1.5 : 2.5)
+        .style('filter', 'url(#constellation-glow)');
+
+      // 4. Center Bright White Star Point
+      nodeElements.filter(d => d.type !== 'doc').append('circle')
+        .attr('class', 'constellation-center-dot')
+        .attr('r', d => d.type === 'topic' ? 4 : 3)
+        .attr('fill', '#ffffff');
+    } else {
+      // CLASSICO & MINIMAL Node Rendering
+      nodeElements.append('circle')
+        .attr('class', 'theme-node-circle')
+        .attr('r', d => d.r)
+        .attr('fill', d => {
+          if (d.type === 'doc') {
+            const c = DOC_COLORS[d.docType] || DOC_COLORS.docs;
+            return c.fill;
+          }
+          const isSelected = selectedNode && d.id === (selectedNode.type === 'topic' ? 'topic-' + selectedNode.data.id : 'mod-' + selectedNode.topicId + '-' + selectedNode.data.number);
+          if (isSelected) return 'rgba(210,153,34,0.25)';
+          if (isClassico) return d.type === 'topic' ? 'rgba(188,140,255,0.18)' : 'rgba(0,210,255,0.15)';
+          return d.type === 'topic' ? '#1e1633' : '#102233';
+        })
+        .attr('stroke', d => {
+          if (d.type === 'doc') {
+            const c = DOC_COLORS[d.docType] || DOC_COLORS.docs;
+            return c.stroke;
+          }
+          const isSelected = selectedNode && d.id === (selectedNode.type === 'topic' ? 'topic-' + selectedNode.data.id : 'mod-' + selectedNode.topicId + '-' + selectedNode.data.number);
+          if (isSelected) return '#d29922';
+          return d.type === 'topic' ? '#bc8cff' : '#00d2ff';
+        })
+        .attr('stroke-width', d => d.type === 'doc' ? 1.5 : (isClassico ? 2.5 : 2))
+        .style('filter', isClassico ? d => d.type === 'topic' ? 'drop-shadow(0 0 6px rgba(188,140,255,0.4))' : 'drop-shadow(0 0 6px rgba(0,210,255,0.3))' : 'none');
+    }
+
+    // Node Labels — Dynamic radial orientation to radiate text outwards away from neighbors
     nodeElements.append('text')
       .attr('class', d => 'node-label ' + d.type)
-      .attr('dy', d => d.r + Math.round(d.type === 'topic' ? Math.max(22, labelFontSize * 1.05) : d.type === 'module' ? Math.max(18, labelFontSize * 0.95) : Math.max(14, labelFontSize * 0.85)))
-      .attr('text-anchor', 'middle')
+      .attr('text-anchor', d => {
+        const cos = Math.cos(d.angle || 0);
+        if (cos > 0.25) return 'start';
+        if (cos < -0.25) return 'end';
+        return 'middle';
+      })
+      .attr('dx', d => {
+        const cos = Math.cos(d.angle || 0);
+        if (cos > 0.25) return d.r + 8;
+        if (cos < -0.25) return -(d.r + 8);
+        return 0;
+      })
+      .attr('dy', d => {
+        const cos = Math.cos(d.angle || 0);
+        const sin = Math.sin(d.angle || 0);
+        if (Math.abs(cos) > 0.25) return 4;
+        if (sin < -0.25) return -(d.r + 8);
+        return d.r + Math.round(d.type === 'topic' ? labelFontSize * 1.1 : labelFontSize * 0.95) + 2;
+      })
       .attr('fill', '#e2e4eb')
       .attr('font-size', d => {
         if (d.type === 'topic') return Math.round(labelFontSize * 1.15) + 'px';
@@ -767,76 +1007,36 @@ export default function MappaArgomenti({ onOpenFile }) {
       })
       .attr('font-weight', d => d.type === 'topic' ? '700' : '600')
       .attr('pointer-events', 'none')
-      .text(d => d.label.length > 35 ? d.label.slice(0, 33) + '…' : d.label);
+      .attr('stroke', '#050612')
+      .attr('stroke-width', '3.5px')
+      .attr('stroke-linejoin', 'round')
+      .style('paint-order', 'stroke fill')
+      .style('text-shadow', d => isConstellation ? (d.type === 'topic' ? '0 0 10px rgba(188,140,255,0.8)' : '0 0 8px rgba(0,210,255,0.7)') : 'none')
+      .text(d => d.label.length > 40 ? d.label.slice(0, 38) + '…' : d.label);
 
-    // Simulation with configurable branch distances and stronger repulsion
+    // Simulation with harmonious fractal tree positioning & collision forces
     const simulation = d3.forceSimulation(nodes)
-      .force('link', d3.forceLink(links).id(d => d.id).distance(branchLength).strength(0.5))
-      .force('charge', d3.forceManyBody().strength(d => d.type === 'topic' ? -2400 : -1000))
-      .force('x', d3.forceX(width / 2).strength(0.03))
+      .force('link', d3.forceLink(links).id(d => d.id).distance(d => d.type === 'doc' ? Math.round(branchLength * 0.55) : Math.round(branchLength * 1.15)).strength(0.35))
+      .force('charge', d3.forceManyBody().strength(d => d.type === 'topic' ? -1800 : d.type === 'module' ? -1000 : -250))
+      .force('center', d3.forceCenter(width / 2, height / 2.5).strength(0.02))
       .force('collision', d3.forceCollide().radius(d => {
-        if (d.type === 'topic') return d.r + 130;
-        if (d.type === 'module') return d.r + 85;
-        return d.r + 45;
-      }).strength(0.85))
+        const textLen = (d.label || '').length;
+        const textWidthEst = Math.min(180, textLen * (labelFontSize * 0.32));
+        if (d.type === 'topic') return Math.max(d.r + 65, textWidthEst + 25);
+        if (d.type === 'module') return Math.max(d.r + 45, textWidthEst + 15);
+        return d.r + 20;
+      }).strength(0.9))
       .on('tick', () => {
-        // Enforce hierarchical tree structure with dynamic branch lengths unless node position is fixed
         nodes.forEach(d => {
           if (d.fx != null && d.fy != null) {
             d.x = d.fx;
             d.y = d.fy;
             return;
           }
-          if (d.type === 'topic') {
-            if (d.parentTopicId) {
-              const parentNode = nodes.find(n => n.id === d.parentTopicId);
-              if (parentNode) {
-                const topicBranchLen = Math.round(branchLength * 1.35); // topic branch length
-                let angle = Math.PI / 2; // default straight down
-                if (d.totalChildTopics > 1) {
-                  // Symmetrical fan spread (35 to 145 deg)
-                  angle = 0.61 + (d.childTopicIndex / (d.totalChildTopics - 1)) * 1.92;
-                }
-                const targetX = parentNode.x + Math.cos(angle) * topicBranchLen;
-                const targetY = parentNode.y + Math.sin(angle) * topicBranchLen;
-                d.x += (targetX - d.x) * 0.15;
-                d.y += (targetY - d.y) * 0.15;
-              }
-            } else {
-              // Root topics: place them near top-center
-              const targetY = 100;
-              d.y += (targetY - d.y) * 0.1;
-            }
-          } else if (d.type === 'module') {
-            // Find parent topic node
-            const parentNode = nodes.find(n => n.id === 'topic-' + d.topicId);
-            if (parentNode) {
-              const moduleBranchLen = branchLength; // module branch length
-              let angle = Math.PI / 2;
-              if (d.totalMods > 1) {
-                // Symmetrical fan spread (45 to 135 deg)
-                angle = 0.78 + (d.modIndex / (d.totalMods - 1)) * 1.57;
-              }
-              const targetX = parentNode.x + Math.cos(angle) * moduleBranchLen;
-              const targetY = parentNode.y + Math.sin(angle) * moduleBranchLen;
-              d.x += (targetX - d.x) * 0.2;
-              d.y += (targetY - d.y) * 0.2;
-            }
-          } else if (d.type === 'doc') {
-            // Find parent module node
-            const parentNode = nodes.find(n => n.id === d.parentModId);
-            if (parentNode) {
-              const docBranchLen = Math.round(branchLength * 0.65); // doc branch length
-              let angle = Math.PI / 2;
-              if (d.totalDocs > 1) {
-                // Symmetrical fan spread (30 to 150 deg)
-                angle = 0.52 + (d.docIndex / (d.totalDocs - 1)) * 2.09;
-              }
-              const targetX = parentNode.x + Math.cos(angle) * docBranchLen;
-              const targetY = parentNode.y + Math.sin(angle) * docBranchLen;
-              d.x += (targetX - d.x) * 0.25;
-              d.y += (targetY - d.y) * 0.25;
-            }
+          if (d.targetX != null && d.targetY != null) {
+            // Gentle spring pull towards directional fractal tree position
+            d.x += (d.targetX - d.x) * 0.12;
+            d.y += (d.targetY - d.y) * 0.12;
           }
         });
 
@@ -848,44 +1048,132 @@ export default function MappaArgomenti({ onOpenFile }) {
         nodeElements.attr('transform', d => `translate(${d.x},${d.y})`);
       });
 
-    // Drag Behavior — Allow free repositioning of nodes
+    // Helper to find all descendant nodes (child subtopics & files) of a node
+    const getSubtreeNodes = (rootNode, allNodes) => {
+      const descendants = [];
+      const queue = [rootNode.id];
+      const visited = new Set([rootNode.id]);
+
+      while (queue.length > 0) {
+        const currId = queue.shift();
+        allNodes.forEach(n => {
+          if (!visited.has(n.id)) {
+            if (n.parentTopicId === currId || n.parentModId === currId) {
+              visited.add(n.id);
+              descendants.push(n);
+              queue.push(n.id);
+            }
+          }
+        });
+      }
+      return descendants;
+    };
+
+    let prevDragX = 0;
+    let prevDragY = 0;
+    let draggedDescendants = [];
+
+    // Helper to persist custom positions of a dragged node & all its descendants
+    const saveNodePositions = (draggedRoot, descendants) => {
+      try {
+        const saved = localStorage.getItem('sigma_graph_custom_positions');
+        const positions = saved ? JSON.parse(saved) : {};
+
+        // Save root node position
+        positions[draggedRoot.id] = {
+          x: draggedRoot.x,
+          y: draggedRoot.y,
+          fx: draggedRoot.fx ?? draggedRoot.x,
+          fy: draggedRoot.fy ?? draggedRoot.y
+        };
+
+        // Save all descendant nodes' positions & pin them with fx, fy
+        descendants.forEach(child => {
+          child.fx = child.x;
+          child.fy = child.y;
+          positions[child.id] = {
+            x: child.x,
+            y: child.y,
+            fx: child.fx,
+            fy: child.fy
+          };
+        });
+
+        localStorage.setItem('sigma_graph_custom_positions', JSON.stringify(positions));
+      } catch (e) {
+        console.error("Error saving custom graph positions:", e);
+      }
+    };
+
+    // Drag Behavior — Hierarchical dragging (parent drags all child folders & files)
     const drag = d3.drag()
       .on('start', (event, d) => {
         if (!event.active) simulation.alphaTarget(0.3).restart();
         d.fx = d.x;
         d.fy = d.y;
+        prevDragX = event.x;
+        prevDragY = event.y;
+        draggedDescendants = getSubtreeNodes(d, nodes);
       })
       .on('drag', (event, d) => {
+        const deltaX = event.x - prevDragX;
+        const deltaY = event.y - prevDragY;
+        prevDragX = event.x;
+        prevDragY = event.y;
+
         d.fx = event.x;
         d.fy = event.y;
+
+        // Simultaneously translate all child subtopic and document nodes in the subtree
+        draggedDescendants.forEach(child => {
+          if (child.targetX != null) child.targetX += deltaX;
+          if (child.targetY != null) child.targetY += deltaY;
+          child.x += deltaX;
+          child.y += deltaY;
+          if (child.fx != null) child.fx += deltaX;
+          if (child.fy != null) child.fy += deltaY;
+        });
       })
       .on('end', (event, d) => {
         if (!event.active) simulation.alphaTarget(0);
+        saveNodePositions(d, draggedDescendants);
       });
 
     nodeElements.call(drag);
 
     simulationRef.current = simulation;
 
+    // Auto-focus camera on the first main topic on initial graph load
+    const firstTop = topicsData.find(t => !t.parent_id) || topicsData[0];
+    if (firstTop) {
+      if (!selectedNode) {
+        setSelectedNode({ type: 'topic', data: firstTop });
+        setActiveTopicId(firstTop.id);
+      }
+      setTimeout(() => {
+        focusNodeOnGraph(firstTop.id, 0.82);
+      }, 250);
+    }
+
     return () => {
       simulation.stop();
     };
-  }, [d3, topicsData, dimensions, buildGraphData, branchLength]);
+  }, [d3, topicsData, dimensions, buildGraphData, branchLength, argomentiTheme]);
 
   // Update node visuals on selection change without restarting simulation
   useEffect(() => {
     if (!d3 || !svgRef.current || topicsData.length === 0) return;
     const svg = d3.select(svgRef.current);
-    // Update node fills/strokes
-    svg.selectAll('.graph-node circle')
+    // Update constellation star fills/strokes and flares
+    svg.selectAll('.graph-node .constellation-star-core')
       .attr('fill', d => {
         if (d.type === 'doc') {
           const c = DOC_COLORS[d.docType] || DOC_COLORS.docs;
           return c.fill;
         }
         const isSelected = selectedNode && d.id === (selectedNode.type === 'topic' ? 'topic-' + selectedNode.data.id : 'mod-' + selectedNode.topicId + '-' + selectedNode.data.number);
-        if (isSelected) return ORANGE_FILL;
-        return d.type === 'topic' ? TOPIC_FILL : MODULE_FILL;
+        if (isSelected) return 'url(#constellation-star-orange)';
+        return d.type === 'topic' ? 'url(#constellation-star-topic)' : 'url(#constellation-star-module)';
       })
       .attr('stroke', d => {
         if (d.type === 'doc') {
@@ -893,19 +1181,15 @@ export default function MappaArgomenti({ onOpenFile }) {
           return c.stroke;
         }
         const isSelected = selectedNode && d.id === (selectedNode.type === 'topic' ? 'topic-' + selectedNode.data.id : 'mod-' + selectedNode.topicId + '-' + selectedNode.data.number);
-        if (isSelected) return ORANGE_COLOR;
-        return d.type === 'topic' ? TOPIC_COLOR : MODULE_COLOR;
-      })
-      .attr('stroke-width', d => {
-        if (d.type === 'doc') return 1.5;
+        if (isSelected) return '#fbbf24';
+        return d.type === 'topic' ? '#bc8cff' : '#00d2ff';
+      });
+
+    svg.selectAll('.graph-node .constellation-star-flare')
+      .attr('fill', d => {
         const isSelected = selectedNode && d.id === (selectedNode.type === 'topic' ? 'topic-' + selectedNode.data.id : 'mod-' + selectedNode.topicId + '-' + selectedNode.data.number);
-        return isSelected ? 3.5 : 2.5;
-      })
-      .style('filter', d => {
-        if (d.type === 'doc') return 'none';
-        const isSelected = selectedNode && d.id === (selectedNode.type === 'topic' ? 'topic-' + selectedNode.data.id : 'mod-' + selectedNode.topicId + '-' + selectedNode.data.number);
-        if (isSelected) return 'drop-shadow(0 0 12px rgba(210,153,34,0.5))';
-        return d.type === 'topic' ? 'drop-shadow(0 0 8px rgba(188,140,255,0.3))' : 'drop-shadow(0 0 6px rgba(0,210,255,0.2))';
+        if (isSelected) return 'rgba(251, 191, 36, 0.85)';
+        return d.type === 'topic' ? 'rgba(188, 140, 255, 0.65)' : 'rgba(0, 210, 255, 0.65)';
       });
     // Update node class
     svg.selectAll('.graph-node')
@@ -924,6 +1208,29 @@ export default function MappaArgomenti({ onOpenFile }) {
         return Math.max(10, Math.round(labelFontSize * 0.85)) + 'px';
       });
   }, [d3, labelFontSize]);
+
+  const focusNodeOnGraph = useCallback((targetId, forceScale = null) => {
+    if (!simulationRef.current || !svgRef.current || !zoomRef.current || !window.d3) return;
+    const d3Obj = window.d3;
+    const currentNodes = simulationRef.current.nodes();
+    const targetNode = currentNodes.find(n => n.id === targetId || n.id === 'topic-' + targetId || n.topicId === targetId);
+    if (targetNode && targetNode.x != null && targetNode.y != null) {
+      const width = dimensions.width || 800;
+      const height = dimensions.height || 600;
+      const currentTransform = d3Obj.zoomTransform(svgRef.current);
+      // Maintain user's exact current zoom scale unless explicitly forced
+      const targetScale = forceScale || currentTransform.k || 0.82;
+      const transform = d3Obj.zoomIdentity
+        .translate(width / 2 - targetNode.x * targetScale, height / 2.5 - targetNode.y * targetScale)
+        .scale(targetScale);
+
+      d3Obj.select(svgRef.current)
+        .transition()
+        .duration(700)
+        .ease(d3Obj.easeCubicInOut)
+        .call(zoomRef.current.transform, transform);
+    }
+  }, [dimensions]);
 
   const zoomIn = () => {
     if (svgRef.current && zoomRef.current && d3) {
@@ -964,97 +1271,95 @@ export default function MappaArgomenti({ onOpenFile }) {
     return renderModuleDetail(selectedNode.data, selectedNode.topicId);
   };
 
-  const handleCreateSubTopic = async (topic, modNum, modName) => {
-    const name = prompt('Nome del nuovo sottoargomento:', 'nuovo_modulo');
-    if (!name) return;
-    const num = modNum || String(Date.now()).slice(-2);
+  const handleCreateSubTopic = async (parentTarget) => {
+    let parentId = null;
+    let parentName = 'Argomento';
+    
+    if (typeof parentTarget === 'string') {
+      parentId = parentTarget;
+    } else if (parentTarget) {
+      parentId = parentTarget.id || (parentTarget.folder ? parentTarget.folder.replace(/^data\//, '') : null);
+      parentName = parentTarget.name || parentTarget.label || parentId || 'Argomento';
+      if (!parentId && parentTarget.number && parentTarget.name) {
+        parentId = parentTarget.folder ? parentTarget.folder.replace(/^data\//, '') : `${parentTarget.topicId || activeTopicId}/${parentTarget.number}_${parentTarget.name}`.toLowerCase().replace(/ /g, '_');
+      }
+    }
+
+    const name = prompt(`Nome del nuovo sottoargomento (cartella) dentro "${parentName}":`);
+    if (!name || !name.trim()) return;
+
+    const rawSlug = name.trim().toLowerCase().replace(/[^a-z0-9_]+/g, '_').replace(/^_+|_+$/g, '');
+    if (!rawSlug) return;
+
     try {
-      const res = await fetch('/api/create_module', {
+      const res = await fetch('/api/create_topic', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          topic_id: topic.id,
-          number: num,
-          name: name,
-          description: ''
+          id: rawSlug,
+          parent_id: parentId,
+          name: name.trim(),
+          description: `Sottoargomento di ${parentName}`
         })
       });
       const data = await res.json();
       if (data.success) {
-        const freshTopics = await fetchData(); // refresh graph + columns, returns fresh data
-        if (freshTopics) {
-          const updatedTopic = freshTopics.find(t => t.id === topic.id);
-          if (updatedTopic) {
-            const newMod = updatedTopic.modules?.find(m => m.number === num);
-            if (newMod) {
-              setSelectedNode({ type: 'module', data: newMod, topicId: topic.id });
-              setActiveTopicId(topic.id);
-              setSelectedModule(newMod.number);
-            }
+        window.dispatchEvent(new CustomEvent('sigma_toast', {
+          detail: {
+            message: `✨ Sottoargomento "${name}" creato in costellazione!`,
+            type: 'success',
+            duration: 4000
           }
-        }
+        }));
+        await fetchData();
       } else {
-        alert('Errore: ' + (data.error || 'sconosciuto'));
+        alert('Errore creazione sottoargomento: ' + (data.error || 'sconosciuto'));
       }
     } catch (e) {
       alert('Errore di rete: ' + e.message);
     }
   };
 
-  const handleMoveModule = async (mod, currentTopicId, targetTopicIdOverride) => {
-    let targetTopicId = targetTopicIdOverride;
-    if (!targetTopicId) {
-      const availableTopics = topicsData.filter(t => t.id !== currentTopicId);
-      if (availableTopics.length === 0) {
-        alert('Non ci sono altri argomenti in cui spostare questo sottoargomento.');
-        return;
-      }
-      const topicOptionsStr = availableTopics.map((t, idx) => `${idx + 1}. ${t.name} (${t.id})`).join('\n');
-      const choiceStr = prompt(`Seleziona il numero dell'argomento di destinazione per il sottoargomento "${mod.name}":\n\n${topicOptionsStr}`);
-      if (!choiceStr) return;
-      const choiceIdx = parseInt(choiceStr.trim(), 10) - 1;
-      if (isNaN(choiceIdx) || choiceIdx < 0 || choiceIdx >= availableTopics.length) {
-        alert('Selezione non valida.');
-        return;
-      }
-      targetTopicId = availableTopics[choiceIdx].id;
-    }
-
-    const parentTopic = topicsData.find(t => t.id === currentTopicId);
-    const oldFolder = mod.folder || (parentTopic ? `${parentTopic.folder}/${mod.number}_${mod.name}`.toLowerCase().replace(/ /g, '_') : '');
-
-    try {
-      const res = await fetch('/api/update_module', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          old_folder: oldFolder,
-          number: mod.number,
-          name: mod.name,
-          topic_id: targetTopicId
-        })
-      });
-      const data = await res.json();
-      if (data.success) {
-        const freshTopics = await fetchData();
-        if (freshTopics) {
-          setActiveTopicId(targetTopicId);
-          const updatedTopic = freshTopics.find(t => t.id === targetTopicId);
-          if (updatedTopic) {
-            const targetNum = data.number || mod.number;
-            const movedMod = updatedTopic.modules?.find(m => m.number === targetNum || m.name.toLowerCase() === mod.name.toLowerCase());
-            if (movedMod) {
-              setSelectedNode({ type: 'module', data: movedMod, topicId: targetTopicId });
-              setSelectedModule(movedMod.number);
-            }
-          }
+  // Recursive descendant calculation to prevent cyclic parent-child assignments
+  const getDescendantIds = (rootId, allTopics) => {
+    const descendants = new Set([rootId]);
+    const queue = [rootId];
+    while (queue.length > 0) {
+      const currentId = queue.shift();
+      const children = allTopics.filter(t => t.parent_id === currentId);
+      for (const child of children) {
+        if (!descendants.has(child.id)) {
+          descendants.add(child.id);
+          queue.push(child.id);
         }
-      } else {
-        alert('Errore spostamento sottoargomento: ' + (data.error || 'sconosciuto'));
       }
-    } catch (e) {
-      alert('Errore di rete: ' + e.message);
     }
+    return descendants;
+  };
+
+  const getValidMoveDestinations = (nodeToMove) => {
+    if (!nodeToMove) return [];
+    // Exclude nodeToMove itself and all of its descendants
+    const invalidIds = getDescendantIds(nodeToMove.id, topicsData);
+    return topicsData.filter(t => !invalidIds.has(t.id));
+  };
+
+  const handleMoveModule = (mod) => {
+    const node = (mod && mod.id) ? mod : topicsData.find(t => t.id === mod.id || t.name === mod.name) || mod;
+    if (!node) return;
+    const graphNode = simulationRef.current?.nodes().find(n => n.data?.id === node.id || n.id === 'topic-' + node.id);
+    if (graphNode && containerRef.current) {
+      setOverlayPos({ x: Math.min((graphNode.x || 300) + 15, (dimensions.width || 800) - 320), y: Math.max((graphNode.y || 200) - 20, 20) });
+      setOverlayNode(graphNode);
+    } else {
+      setOverlayNode({ type: node.parent_id ? 'module' : 'topic', data: node, label: node.name });
+      setOverlayPos({ x: 200, y: 150 });
+    }
+    setOverlayMoveParentId(node.parent_id || '');
+    setTopicOverlayTab('move');
+    setShowAiOverlay(true);
+    setAiError('');
+    focusNodeOnGraph(node.id);
   };
 
   const handleCreateTopic = async () => {
@@ -1346,15 +1651,7 @@ export default function MappaArgomenti({ onOpenFile }) {
     if (e) e.preventDefault();
     
     // Resolve folder path
-    let baseFolder = '';
-    const activeTopic = topicsData.find(t => t.id === activeTopicId);
-    if (overlayNode.type === 'topic') {
-      baseFolder = overlayNode.data.folder || (activeTopic ? activeTopic.folder : '');
-    } else if (overlayNode.type === 'module') {
-      if (activeTopic) {
-        baseFolder = overlayNode.data.folder || `${activeTopic.folder}/${overlayNode.data.number}_${overlayNode.data.name}`.toLowerCase().replace(/ /g, '_');
-      }
-    }
+    let baseFolder = overlayNode.data?.folder || (overlayNode.data?.id ? `data/${overlayNode.data.id}` : '');
     
     if (!baseFolder) {
       setAiError('Cartella di destinazione non trovata');
@@ -1763,6 +2060,9 @@ export default function MappaArgomenti({ onOpenFile }) {
         
         {/* Rename & Action buttons */}
         <div style={{ marginTop: '4px', display: 'flex', flexDirection: 'column', gap: '4px' }}>
+          <button className="detail-action-btn" onClick={() => handleCreateSubTopic(mod)} style={{ color: '#00d2ff', borderColor: 'rgba(0,210,255,0.4)', background: 'rgba(0,210,255,0.08)', fontWeight: 600 }}>
+            ➕ Nuovo Sottoargomento (Sotto-cartella)
+          </button>
           <button className="detail-action-btn" onClick={() => handleMoveModule(mod, topicId)} style={{ color: '#00d2ff', borderColor: 'rgba(0,210,255,0.2)' }}>
             ⇄ Sposta in un altro Argomento
           </button>
@@ -1824,19 +2124,23 @@ export default function MappaArgomenti({ onOpenFile }) {
   };
   const topicIcon = (domain) => iconMap[domain] || '🔬';
 
-  // Reset module filter when topic tab changes
+  // Select topic and center graph focus on target node
   const selectTopic = (topic) => {
     setActiveTopicId(topic.id);
     setSelectedModule(null);
-    setSelectedNode({ type: 'topic', data: topic });
+    setSelectedNode({ type: topic.parent_id ? 'module' : 'topic', data: topic });
+    focusNodeOnGraph(topic.id);
   };
 
   const columnDefs = [
-    { key: 'whitepapers', icon: '📜', label: 'Whitepapers', color: '#ffd700', borderColor: '#ffd700' },
-    { key: 'teoria', icon: '📖', label: 'Teoria', color: '#bc8cff', borderColor: 'rgba(188,140,255,0.2)' },
+    { key: 'teoria', icon: '📄', label: 'Docs', color: '#bc8cff', borderColor: 'rgba(188,140,255,0.2)' },
     { key: 'docs', icon: '📄', label: 'Docs', color: '#58a6ff', borderColor: 'rgba(88,166,255,0.2)' },
+    { key: 'scripts', icon: '⚡', label: 'Scripts', color: '#00d2ff', borderColor: 'rgba(0,210,255,0.2)' },
+    { key: 'whitepapers', icon: '📜', label: 'Whitepapers', color: '#ffd700', borderColor: '#ffd700' },
     { key: 'test', icon: '🧪', label: 'Test', color: '#3fb950', borderColor: 'rgba(63,185,80,0.2)' },
     { key: 'viz', icon: '📊', label: 'Visualizzazioni', color: '#d29922', borderColor: 'rgba(210,153,34,0.2)' },
+    { key: 'pdf', icon: '📜', label: 'PDF', color: '#ff7b72', borderColor: 'rgba(255,123,114,0.2)' },
+    { key: 'media', icon: '🎥', label: 'Media', color: '#d2a8ff', borderColor: 'rgba(210,168,255,0.2)' },
   ];
 
   // --- Loading / Error ---
@@ -1957,43 +2261,20 @@ export default function MappaArgomenti({ onOpenFile }) {
 
   const topicFiles = activeTopic ? getTopicFiles(activeTopic) : null;
 
-  const filteredTopics = topicsData.filter(t => 
+  // Filter ONLY top-level main topics (where parent_id is null/empty)
+  const topLevelTopics = topicsData.filter(t => !t.parent_id);
+
+  const filteredTopLevelTopics = topLevelTopics.filter(t => 
     (t.name || '').toLowerCase().includes(searchQuery.toLowerCase()) || 
     (t.domain || '').toLowerCase().includes(searchQuery.toLowerCase())
   );
 
-  const filterTopicModules = (topic, query) => {
-    if (!topic || !topic.modules) return [];
-    if (!query) return topic.modules;
-    
-    const cleanQuery = query.toLowerCase();
-    return topic.modules.map(mod => {
-      const modMatches = (mod.name || '').toLowerCase().includes(cleanQuery) || 
-                         (mod.number || '').toLowerCase().includes(cleanQuery);
-      
-      const whitepapers = (mod.whitepapers || []).filter(f => (f.filename || '').toLowerCase().includes(cleanQuery));
-      const docs = (mod.docs || []).filter(f => (f.filename || '').toLowerCase().includes(cleanQuery));
-      const teoria = (mod.teoria || []).filter(f => (f.filename || '').toLowerCase().includes(cleanQuery));
-      const test = (mod.test || []).filter(f => (f.filename || '').toLowerCase().includes(cleanQuery));
-      const viz = (mod.viz || []).filter(f => (f.filename || '').toLowerCase().includes(cleanQuery));
-      
-      const hasMatchingFiles = whitepapers.length > 0 || docs.length > 0 || teoria.length > 0 || test.length > 0 || viz.length > 0;
-      
-      if (modMatches || hasMatchingFiles) {
-        return {
-          ...mod,
-          whitepapers,
-          docs,
-          teoria,
-          test,
-          viz
-        };
-      }
-      return null;
-    }).filter(Boolean);
-  };
-
-  const filteredModules = activeTopic ? filterTopicModules(activeTopic, searchQuery) : [];
+  // Filter ONLY subtopics belonging directly to the active topic
+  const activeTopicSubtopics = activeTopic 
+    ? topicsData.filter(t => t.parent_id === activeTopic.id && (
+        !searchQuery || (t.name || '').toLowerCase().includes(searchQuery.toLowerCase())
+      ))
+    : [];
 
   return (
     <div className="mappa-argomenti">
@@ -2015,12 +2296,20 @@ export default function MappaArgomenti({ onOpenFile }) {
         </div>
       )}
       <style>{`
+        @keyframes constellation-twinkle {
+          0%, 100% { opacity: 0.2; transform: scale(0.85); }
+          50% { opacity: 0.95; transform: scale(1.25); }
+        }
+        @keyframes constellation-orbit-spin {
+          0% { transform: rotate(0deg); }
+          100% { transform: rotate(360deg); }
+        }
         .mappa-argomenti {
           position: relative;
           display: flex;
           flex-direction: column;
           height: 100%;
-          background: #0e1016;
+          background: radial-gradient(ellipse at 50% 30%, #10132b 0%, #080918 60%, #03040b 100%);
           color: #e2e4eb;
           font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
           font-size: 15px;
@@ -2046,13 +2335,21 @@ export default function MappaArgomenti({ onOpenFile }) {
         .mappa-graph-container {
           flex: 1; position: relative; overflow: hidden;
           min-width: 0;
-          background: radial-gradient(circle at 30% 40%, rgba(188,140,255,0.02) 0%, transparent 60%);
+          background: radial-gradient(ellipse at 40% 40%, rgba(137, 87, 229, 0.09) 0%, rgba(0, 210, 255, 0.04) 45%, transparent 85%);
+        }
+        .constellation-orbit-ring {
+          transform-origin: center;
+          animation: constellation-orbit-spin 30s linear infinite;
+        }
+        .graph-node:hover .constellation-star-flare {
+          transform: scale(1.35);
+          transition: transform 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
         }
         .mappa-graph-svg { width: 100%; height: 100%; display: block; }
-        .graph-link { stroke: rgba(255,255,255,0.08); stroke-width: 1.5; transition: opacity 0.2s; }
-        .graph-link.parent-link { stroke: rgba(210,153,34,0.2); stroke-dasharray: 4,3; }
-        .graph-link.highlight { stroke: rgba(255,255,255,0.25) !important; stroke-width: 2.5 !important; }
-        .graph-link.parent-link.highlight { stroke: rgba(210,153,34,0.5) !important; }
+        .graph-link { stroke-width: 1.8; transition: opacity 0.2s; }
+        .graph-link.parent-link { stroke-dasharray: 6,4; }
+        .graph-link.highlight { stroke: #00d2ff !important; stroke-width: 3 !important; }
+        .graph-link.parent-link.highlight { stroke: #fbbf24 !important; stroke-width: 3.5 !important; }
         .graph-node { cursor: pointer; transition: opacity 0.2s; }
         .mappa-zoom-controls {
           position: absolute; bottom: 12px; left: 12px; display: flex; gap: 6px; align-items: center;
@@ -2514,118 +2811,174 @@ export default function MappaArgomenti({ onOpenFile }) {
         </div>
       </div>
       
-      {/* HEADER CONTROLS BAR */}
-      <div 
-        className="mappa-header-bar" 
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          flexWrap: 'wrap',
-          gap: '12px',
-          padding: '10px 16px',
-          margin: '0 16px 14px 16px',
-          background: 'linear-gradient(135deg, rgba(17, 19, 27, 0.95), rgba(24, 27, 40, 0.85))',
-          border: '1px solid rgba(255, 255, 255, 0.08)',
-          borderRadius: '10px',
-          marginBottom: '14px',
-          backdropFilter: 'blur(12px)',
-          boxShadow: '0 4px 20px rgba(0, 0, 0, 0.25)'
-        }}
-      >
+      {/* TOP SECTION — left column (controls + graph) & right column (detail panel) */}
+      <div className="mappa-top-section" style={{ flex: 1, minHeight: 0, display: 'flex', gap: '14px', margin: '0 16px 14px 16px' }}>
+        {/* COLONNA SINISTRA — BARRA DEI CONTROLLI + CANVAS GRAFO */}
+        <div 
+          className="mappa-left-column" 
+          style={{ 
+            flex: 1, 
+            minWidth: 0, 
+            display: 'flex', 
+            flexDirection: 'column', 
+            position: 'relative',
+            overflow: 'hidden',
+            borderRadius: '10px'
+          }}
+        >
+          {/* HEADER CONTROLS BAR (Posizionata sopra il grafo nella colonna di sinistra) */}
+          <div 
+            className="mappa-header-bar" 
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              flexWrap: 'wrap',
+              gap: '10px',
+              padding: '8px 12px',
+              margin: '0 0 10px 0',
+              background: 'linear-gradient(135deg, rgba(17, 19, 27, 0.95), rgba(24, 27, 40, 0.85))',
+              border: '1px solid rgba(255, 255, 255, 0.08)',
+              borderRadius: '10px',
+              backdropFilter: 'blur(12px)',
+              boxShadow: '0 4px 20px rgba(0, 0, 0, 0.25)',
+              zIndex: 5,
+              flexShrink: 0
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+              {/* Selettore Tema Visualizzazione */}
+              <div className="theme-control" style={{ display: 'flex', alignItems: 'center', gap: '6px', background: '#11131b', border: '1px solid rgba(0, 210, 255, 0.25)', padding: '4px 10px', borderRadius: '8px', fontSize: '0.68rem', color: '#8b8fa3', boxShadow: '0 2px 10px rgba(0,0,0,0.3)', transition: 'border-color 0.2s' }} title="Cambia tema della Mappa Argomenti">
+                <span style={{ fontSize: '0.72rem' }}>🎨 Tema:</span>
+                <select
+                  value={argomentiTheme}
+                  onChange={e => handleThemeChange(e.target.value)}
+                  style={{
+                    background: 'rgba(14, 16, 22, 0.95)',
+                    color: argomentiTheme === 'costellazione' ? '#bc8cff' : argomentiTheme === 'classico' ? '#00d2ff' : '#fbbf24',
+                    border: '1px solid ' + (argomentiTheme === 'costellazione' ? 'rgba(188, 140, 255, 0.4)' : argomentiTheme === 'classico' ? 'rgba(0, 210, 255, 0.4)' : 'rgba(251, 191, 36, 0.4)'),
+                    borderRadius: '6px',
+                    padding: '4px 8px',
+                    outline: 'none',
+                    fontSize: '0.68rem',
+                    fontWeight: 700,
+                    cursor: 'pointer',
+                    boxShadow: argomentiTheme === 'costellazione' ? '0 0 10px rgba(188, 140, 255, 0.2)' : argomentiTheme === 'classico' ? '0 0 10px rgba(0, 210, 255, 0.2)' : '0 0 10px rgba(251, 191, 36, 0.2)',
+                    transition: 'all 0.2s ease'
+                  }}
+                >
+                  <option value="costellazione" style={{ background: '#0e1016', color: '#bc8cff' }}>🌌 Costellazione Spaziale</option>
+                  <option value="classico" style={{ background: '#0e1016', color: '#00d2ff' }}>📊 Grafo Tecnologico</option>
+                  <option value="minimal" style={{ background: '#0e1016', color: '#fbbf24' }}>✨ Minimal & Contrast</option>
+                </select>
+              </div>
 
-        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
-          {/* Slider Dimensione Testo Nodi */}
-          <div className="font-size-control" style={{ display: 'flex', alignItems: 'center', gap: '6px', background: '#11131b', border: '1px solid #1e2030', padding: '5px 10px', borderRadius: '8px', fontSize: '0.68rem', color: '#8b8fa3' }} title="Regola la dimensione del testo dei nodi">
-            <span>🔤 Testo:</span>
-            <input
-              type="range"
-              min="10"
-              max="50"
-              step="1"
-              value={labelFontSize}
-              onChange={e => handleFontSizeChange(parseInt(e.target.value, 10))}
-              style={{ width: '65px', accentColor: '#00d2ff', cursor: 'pointer' }}
-            />
-            <span style={{ color: '#00d2ff', fontWeight: 600, minWidth: '32px' }}>{labelFontSize}px</span>
+              {/* Slider Dimensione Testo Nodi (Espanso: 6px - 90px) */}
+              <div className="font-size-control" style={{ display: 'flex', alignItems: 'center', gap: '6px', background: '#11131b', border: '1px solid #1e2030', padding: '5px 10px', borderRadius: '8px', fontSize: '0.68rem', color: '#8b8fa3' }} title="Regola la dimensione del testo dei nodi (da 6px a 90px)">
+                <span>🔤 Testo:</span>
+                <input
+                  type="range"
+                  min="6"
+                  max="90"
+                  step="1"
+                  value={labelFontSize}
+                  onChange={e => handleFontSizeChange(parseInt(e.target.value, 10))}
+                  style={{ width: '85px', accentColor: '#00d2ff', cursor: 'pointer' }}
+                />
+                <span style={{ color: '#00d2ff', fontWeight: 600, minWidth: '32px' }}>{labelFontSize}px</span>
+              </div>
+
+              {/* Slider Lunghezza Rami (Espanso: 40px - 800px) */}
+              <div className="branch-length-control" style={{ display: 'flex', alignItems: 'center', gap: '6px', background: '#11131b', border: '1px solid #1e2030', padding: '5px 10px', borderRadius: '8px', fontSize: '0.68rem', color: '#8b8fa3' }} title="Regola la lunghezza dei rami del grafico (da 40px a 800px)">
+                <span>🌿 Rami:</span>
+                <input
+                  type="range"
+                  min="40"
+                  max="800"
+                  step="10"
+                  value={branchLength}
+                  onChange={e => handleBranchLengthChange(parseInt(e.target.value, 10))}
+                  style={{ width: '85px', accentColor: '#bc8cff', cursor: 'pointer' }}
+                />
+                <span style={{ color: '#bc8cff', fontWeight: 600, minWidth: '36px' }}>{branchLength}px</span>
+              </div>
+
+              {/* Esplora Button */}
+              <button 
+                className={`btn-explore ${showDocs ? 'active' : ''}`} 
+                onClick={() => {
+                  setShowDocs(prev => {
+                    const next = !prev;
+                    localStorage.setItem('sigma_mappa_explore', String(next));
+                    return next;
+                  });
+                }} 
+                title={showDocs ? 'Collidi' : 'Esplora'}
+                style={{ padding: '6px 12px', fontSize: '0.72rem', borderRadius: '8px' }}
+              >
+                {showDocs ? '✕ Collidi' : '🔍 Esplora'}
+              </button>
+
+              {/* Refresh Button */}
+              <button 
+                className="btn-update" 
+                onClick={fetchData} 
+                title="Aggiorna dati e grafico"
+                style={{ padding: '6px 12px', fontSize: '0.72rem', borderRadius: '8px' }}
+              >
+                🔄 Aggiorna
+              </button>
+
+              {/* Salva Layout Button */}
+              <button 
+                className="btn-update" 
+                onClick={handleSaveLayout} 
+                title="Salva le posizioni trascinate dei nodi del grafo"
+                style={{ padding: '6px 12px', fontSize: '0.72rem', borderRadius: '8px', background: 'rgba(63, 185, 80, 0.12)', borderColor: 'rgba(63, 185, 80, 0.3)', color: '#3fb950' }}
+              >
+                💾 Salva Layout
+              </button>
+
+              {/* Reset Layout Default Button */}
+              <button 
+                className="btn-update" 
+                onClick={handleResetLayout} 
+                title="Ripristina il layout predefinito con calcolo automatico della forza"
+                style={{ padding: '6px 12px', fontSize: '0.72rem', borderRadius: '8px', background: 'rgba(210, 153, 34, 0.12)', borderColor: 'rgba(210, 153, 34, 0.3)', color: '#d29922' }}
+              >
+                🔄 Layout Default
+              </button>
+
+              {/* Nuovo Argomento Button */}
+              <button 
+                className="btn-new-topic" 
+                onClick={handleCreateTopic} 
+                title="Crea nuovo argomento"
+                style={{ padding: '6px 12px', fontSize: '0.72rem', borderRadius: '8px' }}
+              >
+                🌐 Nuovo Argomento
+              </button>
+            </div>
           </div>
 
-          {/* Slider Lunghezza Rami */}
-          <div className="branch-length-control" style={{ display: 'flex', alignItems: 'center', gap: '6px', background: '#11131b', border: '1px solid #1e2030', padding: '5px 10px', borderRadius: '8px', fontSize: '0.68rem', color: '#8b8fa3' }} title="Regola la lunghezza dei rami del grafico">
-            <span>🌿 Rami:</span>
-            <input
-              type="range"
-              min="120"
-              max="450"
-              step="10"
-              value={branchLength}
-              onChange={e => handleBranchLengthChange(parseInt(e.target.value, 10))}
-              style={{ width: '60px', accentColor: '#bc8cff', cursor: 'pointer' }}
-            />
-            <span style={{ color: '#bc8cff', fontWeight: 600, minWidth: '32px' }}>{branchLength}px</span>
-          </div>
-
-          {/* Esplora Button */}
-          <button 
-            className={`btn-explore ${showDocs ? 'active' : ''}`} 
-            onClick={() => {
-              setShowDocs(prev => {
-                const next = !prev;
-                localStorage.setItem('sigma_mappa_explore', String(next));
-                return next;
-              });
-            }} 
-            title={showDocs ? 'Collidi' : 'Esplora'}
-            style={{ padding: '6px 12px', fontSize: '0.72rem', borderRadius: '8px' }}
+          {/* CANVAS DEL GRAFO */}
+          <div 
+            ref={containerRef} 
+            className="mappa-graph-container" 
+            style={{ 
+              flex: 1,
+              minHeight: 0,
+              display: 'flex',
+              position: 'relative',
+              overflow: 'hidden',
+              borderRadius: '10px',
+              background: argomentiTheme === 'costellazione' 
+                ? 'radial-gradient(ellipse at 40% 40%, rgba(137, 87, 229, 0.14) 0%, rgba(0, 210, 255, 0.06) 45%, #050612 90%)' 
+                : argomentiTheme === 'classico' 
+                ? 'radial-gradient(circle at 50% 50%, rgba(0, 210, 255, 0.08) 0%, #090b14 85%)' 
+                : '#0e1018'
+            }}
           >
-            {showDocs ? '✕ Collidi' : '🔍 Esplora'}
-          </button>
-
-          {/* Refresh Button */}
-          <button 
-            className="btn-update" 
-            onClick={fetchData} 
-            title="Aggiorna dati e grafico"
-            style={{ padding: '6px 12px', fontSize: '0.72rem', borderRadius: '8px' }}
-          >
-            🔄 Aggiorna
-          </button>
-
-          {/* Salva Layout Button */}
-          <button 
-            className="btn-update" 
-            onClick={handleSaveLayout} 
-            title="Salva le posizioni trascinate dei nodi del grafo"
-            style={{ padding: '6px 12px', fontSize: '0.72rem', borderRadius: '8px', background: 'rgba(63, 185, 80, 0.12)', borderColor: 'rgba(63, 185, 80, 0.3)', color: '#3fb950' }}
-          >
-            💾 Salva Layout
-          </button>
-
-          {/* Reset Layout Default Button */}
-          <button 
-            className="btn-update" 
-            onClick={handleResetLayout} 
-            title="Ripristina il layout predefinito con calcolo automatico della forza"
-            style={{ padding: '6px 12px', fontSize: '0.72rem', borderRadius: '8px', background: 'rgba(210, 153, 34, 0.12)', borderColor: 'rgba(210, 153, 34, 0.3)', color: '#d29922' }}
-          >
-            🔄 Layout Default
-          </button>
-
-          {/* Nuovo Argomento Button */}
-          <button 
-            className="btn-new-topic" 
-            onClick={handleCreateTopic} 
-            title="Crea nuovo argomento"
-            style={{ padding: '6px 12px', fontSize: '0.72rem', borderRadius: '8px' }}
-          >
-            🌐 Nuovo Argomento
-          </button>
-        </div>
-      </div>
-
-      {/* TOP SECTION — graph + detail panel */}
-      <div className="mappa-top-section">
-        <div ref={containerRef} className="mappa-graph-container" style={{ display: 'flex' }}>
           <svg ref={svgRef} className="mappa-graph-svg" style={{ flex: 1 }}></svg>
 
           {/* AI Overlay Menu */}
@@ -2912,113 +3265,200 @@ export default function MappaArgomenti({ onOpenFile }) {
               ) : (
                 // Topic/Module Overlay Layout
                 <>
-                  {/* Pulsanti Azione per Argomento nel div Overlay */}
-                  {overlayNode.type === 'topic' && (
-                    <div className="ai-overlay-actions-section" style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginBottom: '10px', paddingBottom: '8px', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
-                      <button
-                        type="button"
-                        className="ai-overlay-btn"
-                        style={{ background: 'rgba(0, 210, 255, 0.12)', borderColor: 'rgba(0, 210, 255, 0.3)', color: '#00d2ff', fontSize: '0.65rem', padding: '6px 10px', borderRadius: '6px', cursor: 'pointer', fontWeight: 600, width: '100%' }}
-                        onClick={() => {
-                          handleCreateSubTopic(overlayNode.data);
-                          setShowAiOverlay(false);
-                        }}
-                      >
-                        ➕ Nuovo Sottoargomento
-                      </button>
+                  {/* Tabs per Argomento / Sottoargomento nel div Overlay */}
+                  <div className="ai-overlay-tabs" style={{ marginBottom: '10px' }}>
+                    <button 
+                      type="button"
+                      className={`ai-overlay-tab ${topicOverlayTab === 'create' ? 'active' : ''}`}
+                      onClick={() => { setTopicOverlayTab('create'); setAiError(''); }}
+                    >
+                      ➕ Contenuti & Azioni
+                    </button>
+                    <button 
+                      type="button"
+                      className={`ai-overlay-tab ${topicOverlayTab === 'move' ? 'active' : ''}`}
+                      onClick={() => { 
+                        setTopicOverlayTab('move'); 
+                        setOverlayMoveParentId(overlayNode.data?.parent_id || '');
+                        setAiError(''); 
+                      }}
+                    >
+                      📦 Sposta
+                    </button>
+                  </div>
 
-                      {topicsData.length > 1 && (
-                        <div className="ai-overlay-group">
-                          <span className="ai-overlay-label">Argomento Padre</span>
-                          <select
-                            className="ai-overlay-select"
-                            value={overlayNode.data.parent_id || ''}
-                            onChange={e => {
-                              handleUpdateTopicParent(overlayNode.data, e.target.value);
+                  {topicOverlayTab === 'move' ? (
+                    /* TAB SPOSTA SOTTOARGOMENTO NEL DIV OVERLAY */
+                    <div className="ai-overlay-form" style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                      {(() => {
+                        const nodeToMove = overlayNode.data;
+                        const validDestinations = getValidMoveDestinations(nodeToMove);
+                        const currentParent = topicsData.find(t => t.id === nodeToMove?.parent_id);
+
+                        return (
+                          <>
+                            <div style={{ fontSize: '0.62rem', background: 'rgba(255, 255, 255, 0.03)', border: '1px solid rgba(255, 255, 255, 0.06)', borderRadius: '6px', padding: '6px 8px', color: '#8b8fa3' }}>
+                              📍 Posizione Attuale: <strong style={{ color: '#bc8cff' }}>{currentParent ? escapeStr(currentParent.name) : '🌐 Cartella Principale (1° Livello)'}</strong>
+                            </div>
+
+                            <div className="ai-overlay-group">
+                              <span className="ai-overlay-label">Seleziona Destinazione</span>
+                              <select 
+                                className="ai-overlay-select"
+                                value={overlayMoveParentId}
+                                onChange={e => setOverlayMoveParentId(e.target.value)}
+                              >
+                                <option value="">🌐 Cartella Principale (1° Livello)</option>
+                                {validDestinations.map(dest => (
+                                  <option key={dest.id} value={dest.id}>
+                                    {dest.parent_id ? '📂 ' : '🌐 '}{escapeStr(dest.name)}
+                                  </option>
+                                ))}
+                              </select>
+                              <div style={{ fontSize: '0.55rem', color: '#5a5e72', marginTop: '2px', fontStyle: 'italic' }}>
+                                * I sottoargomenti figli di questo nodo sono stati nascosti per evitare cicli.
+                              </div>
+                            </div>
+
+                            {aiError && <div className="ai-overlay-error">{aiError}</div>}
+
+                            <div className="ai-overlay-footer" style={{ marginTop: '8px', display: 'flex', gap: '6px', justifyContent: 'flex-end' }}>
+                              <button 
+                                type="button"
+                                className="ai-overlay-btn secondary"
+                                onClick={() => setTopicOverlayTab('create')}
+                              >
+                                Annulla
+                              </button>
+                              <button 
+                                type="button"
+                                className="ai-overlay-btn primary"
+                                disabled={aiOverlayLoading}
+                                onClick={async () => {
+                                  setAiOverlayLoading(true);
+                                  setAiError('');
+                                  try {
+                                    const res = await fetch('/api/update_topic', {
+                                      method: 'POST',
+                                      headers: { 'Content-Type': 'application/json' },
+                                      body: JSON.stringify({ topic_id: nodeToMove.id, parent_id: overlayMoveParentId || null })
+                                    });
+                                    const data = await res.json();
+                                    if (data.success) {
+                                      const freshTopics = await fetchData();
+                                      setShowAiOverlay(false);
+                                      if (freshTopics) {
+                                        const freshNode = freshTopics.find(t => t.id === nodeToMove.id);
+                                        if (freshNode) {
+                                          setSelectedNode({ type: freshNode.parent_id ? 'module' : 'topic', data: freshNode });
+                                          if (freshNode.parent_id) setActiveTopicId(freshNode.parent_id);
+                                          focusNodeOnGraph(freshNode.id);
+                                        }
+                                      }
+                                      window.dispatchEvent(new CustomEvent('sigma_toast', {
+                                        detail: { message: `📦 "${nodeToMove.name}" spostato con successo!`, type: 'success', duration: 3500 }
+                                      }));
+                                    } else {
+                                      setAiError(data.error || 'Errore durante lo spostamento');
+                                    }
+                                  } catch (err) {
+                                    setAiError('Errore di connessione: ' + err.message);
+                                  } finally {
+                                    setAiOverlayLoading(false);
+                                  }
+                                }}
+                              >
+                                {aiOverlayLoading ? 'Spostamento...' : '📦 Conferma Spostamento'}
+                              </button>
+                            </div>
+                          </>
+                        );
+                      })()}
+                    </div>
+                  ) : (
+                    <>
+                      {/* Pulsanti Azione per Argomento nel div Overlay */}
+                      {overlayNode.type === 'topic' && (
+                        <div className="ai-overlay-actions-section" style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginBottom: '10px', paddingBottom: '8px', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+                          <button
+                            type="button"
+                            className="ai-overlay-btn"
+                            style={{ background: 'rgba(0, 210, 255, 0.16)', borderColor: 'rgba(0, 210, 255, 0.4)', color: '#00d2ff', fontSize: '0.65rem', padding: '6px 10px', borderRadius: '6px', cursor: 'pointer', fontWeight: 600, width: '100%' }}
+                            onClick={() => {
+                              handleCreateSubTopic(overlayNode.data);
                               setShowAiOverlay(false);
                             }}
                           >
-                            <option value="">— Nessun Argomento Padre —</option>
-                            {topicsData.filter(t => t.id !== overlayNode.data.id).map(t => (
-                              <option key={t.id} value={t.id}>⬆ {escapeStr(t.name)}</option>
-                            ))}
-                          </select>
+                            ➕ Nuovo Sottoargomento
+                          </button>
+
+                          <button
+                            type="button"
+                            className="ai-overlay-btn"
+                            style={{ background: 'rgba(255, 85, 85, 0.08)', borderColor: 'rgba(255, 85, 85, 0.2)', color: '#ff5555', fontSize: '0.6rem', padding: '4px 8px', borderRadius: '6px', cursor: 'pointer', marginTop: '2px' }}
+                            onClick={() => {
+                              handleDeleteTopic(overlayNode.data);
+                              setShowAiOverlay(false);
+                            }}
+                          >
+                            🗑️ Elimina Argomento
+                          </button>
                         </div>
                       )}
 
-                      <button
-                        type="button"
-                        className="ai-overlay-btn"
-                        style={{ background: 'rgba(255, 85, 85, 0.08)', borderColor: 'rgba(255, 85, 85, 0.2)', color: '#ff5555', fontSize: '0.6rem', padding: '4px 8px', borderRadius: '6px', cursor: 'pointer', marginTop: '2px' }}
-                        onClick={() => {
-                          handleDeleteTopic(overlayNode.data);
-                          setShowAiOverlay(false);
-                        }}
-                      >
-                        🗑️ Elimina Argomento
-                      </button>
-                    </div>
-                  )}
+                      {/* Pulsanti Azione per Sottoargomento (Modulo) nel div Overlay */}
+                      {overlayNode.type === 'module' && (
+                        <div className="ai-overlay-actions-section" style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginBottom: '10px', paddingBottom: '8px', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+                          <button
+                            type="button"
+                            className="ai-overlay-btn"
+                            style={{ background: 'rgba(0, 210, 255, 0.16)', borderColor: 'rgba(0, 210, 255, 0.4)', color: '#00d2ff', fontSize: '0.65rem', padding: '6px 10px', borderRadius: '6px', cursor: 'pointer', fontWeight: 600, width: '100%' }}
+                            onClick={() => {
+                              handleCreateSubTopic(overlayNode.data);
+                              setShowAiOverlay(false);
+                            }}
+                          >
+                            ➕ Nuovo Sottoargomento
+                          </button>
 
-                  {/* Pulsanti Azione per Sottoargomento (Modulo) nel div Overlay */}
-                  {overlayNode.type === 'module' && (
-                    <div className="ai-overlay-actions-section" style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginBottom: '10px', paddingBottom: '8px', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
-                      <button
-                        type="button"
-                        className="ai-overlay-btn"
-                        style={{ background: 'rgba(0, 210, 255, 0.12)', borderColor: 'rgba(0, 210, 255, 0.3)', color: '#00d2ff', fontSize: '0.65rem', padding: '6px 10px', borderRadius: '6px', cursor: 'pointer', fontWeight: 600, width: '100%' }}
-                        onClick={() => {
-                          handleMoveModule(overlayNode.data, overlayNode.topicId);
-                          setShowAiOverlay(false);
-                        }}
-                      >
-                        ⇄ Sposta in altro Argomento
-                      </button>
-
-                      <div style={{ display: 'flex', gap: '6px' }}>
-                        <button
-                          type="button"
-                          className="ai-overlay-btn"
-                          style={{ flex: 1, background: 'rgba(210, 153, 34, 0.1)', borderColor: 'rgba(210, 153, 34, 0.25)', color: '#d29922', fontSize: '0.6rem', padding: '5px', borderRadius: '6px', cursor: 'pointer' }}
-                          onClick={() => {
-                            handleRenameModule(overlayNode.data, overlayNode.topicId);
-                            setShowAiOverlay(false);
-                          }}
-                        >
-                          ✏️ Rinomina
-                        </button>
-                        <button
-                          type="button"
-                          className="ai-overlay-btn"
-                          style={{ flex: 1, background: 'rgba(255, 85, 85, 0.08)', borderColor: 'rgba(255, 85, 85, 0.2)', color: '#ff5555', fontSize: '0.6rem', padding: '5px', borderRadius: '6px', cursor: 'pointer' }}
-                          onClick={() => {
-                            handleDeleteModule(overlayNode.data, overlayNode.topicId);
-                            setShowAiOverlay(false);
-                          }}
-                        >
-                          🗑️ Elimina
-                        </button>
-                      </div>
-                    </div>
-                  )}
+                          <div style={{ display: 'flex', gap: '6px' }}>
+                            <button
+                              type="button"
+                              className="ai-overlay-btn"
+                              style={{ flex: 1, background: 'rgba(210, 153, 34, 0.1)', borderColor: 'rgba(210, 153, 34, 0.25)', color: '#d29922', fontSize: '0.6rem', padding: '5px', borderRadius: '6px', cursor: 'pointer' }}
+                              onClick={() => {
+                                handleRenameModule(overlayNode.data, overlayNode.topicId);
+                                setShowAiOverlay(false);
+                              }}
+                            >
+                              ✏️ Rinomina
+                            </button>
+                            <button
+                              type="button"
+                              className="ai-overlay-btn"
+                              style={{ flex: 1, background: 'rgba(255, 85, 85, 0.08)', borderColor: 'rgba(255, 85, 85, 0.2)', color: '#ff5555', fontSize: '0.6rem', padding: '5px', borderRadius: '6px', cursor: 'pointer' }}
+                              onClick={() => {
+                                handleDeleteModule(overlayNode.data, overlayNode.topicId);
+                                setShowAiOverlay(false);
+                              }}
+                            >
+                              🗑️ Elimina
+                            </button>
+                          </div>
+                        </div>
+                      )}
 
                   {/* Lista File Esistenti nel Nodo */}
                   {(() => {
                     const nodeFiles = [];
-                    const processMod = (mod, modName = '') => {
-                      ['teoria', 'test', 'viz', 'docs', 'whitepapers'].forEach(cat => {
-                        (mod[cat] || []).forEach(f => {
+                    if (overlayNode.data) {
+                      ['teoria', 'scripts', 'test', 'viz', 'docs', 'whitepapers', 'pdf', 'media'].forEach(cat => {
+                        (overlayNode.data[cat] || []).forEach(f => {
                           const path = typeof f === 'string' ? f : f.path || f.filePath;
                           const name = path ? path.split('/').pop() : f.name || f;
-                          if (path) nodeFiles.push({ name, path, category: cat, modName });
+                          if (path) nodeFiles.push({ name, path, category: cat });
                         });
                       });
-                    };
-
-                    if (overlayNode.type === 'module' && overlayNode.data) {
-                      processMod(overlayNode.data, overlayNode.data.name);
-                    } else if (overlayNode.type === 'topic' && overlayNode.data?.modules) {
-                      overlayNode.data.modules.forEach(m => processMod(m, m.name));
                     }
 
                     if (nodeFiles.length === 0) return null;
@@ -3063,9 +3503,8 @@ export default function MappaArgomenti({ onOpenFile }) {
                     );
                   })()}
 
-                  {/* Creazione File abilitata ESCLUSIVAMENTE per i Sottoargomenti (Moduli) */}
-                  {overlayNode.type === 'module' ? (
-                    <>
+                  {/* Creazione File abilitata per Argomenti e Sottoargomenti */}
+                  <>
                       <div style={{ fontSize: '0.5rem', fontWeight: 600, color: '#5a5e72', letterSpacing: '0.5px', marginBottom: '6px', textTransform: 'uppercase' }}>
                         CREA NUOVO FILE DENTRO QUESTO SOTTOARGOMENTO
                       </div>
@@ -3284,17 +3723,15 @@ export default function MappaArgomenti({ onOpenFile }) {
                         </div>
                       </form>
                     </>
-                  ) : (
-                    <div style={{ fontSize: '0.65rem', color: '#8b8fa3', padding: '10px', background: 'rgba(255,255,255,0.02)', borderRadius: '6px', border: '1px solid rgba(255,255,255,0.05)', textAlign: 'center', marginTop: '6px' }}>
-                      💡 Gli argomenti contengono sottoargomenti. Seleziona o apri un sottoargomento per creare o generare file al suo interno.
-                    </div>
-                  )}
-                </>
-              )}
+                  </>
+                )}
+              </>
+            )}
             </div>
           )}
         </div>
-        <div className="mappa-detail-panel">
+      </div>
+      <div className="mappa-detail-panel">
           {/* Search Box */}
           <div className="sidebar-search-box">
             <span className="search-icon">🔍</span>
@@ -3311,29 +3748,35 @@ export default function MappaArgomenti({ onOpenFile }) {
           </div>
 
           <div className="detail-body-scrollable">
-            {/* Topic Selector Section */}
+            {/* Top-Level Main Topics Section */}
             <div className="explorer-section">
               <div className="explorer-section-header" onClick={() => setExpandedTopicsSection(!expandedTopicsSection)}>
-                <span>{expandedTopicsSection ? '▼' : '▶'} 🌐 ARGOMENTI ({topicsData.length})</span>
+                <span>{expandedTopicsSection ? '▼' : '▶'} 🌐 ARGOMENTI PRINCIPALI ({topLevelTopics.length})</span>
               </div>
               {expandedTopicsSection && (
                 <div className="explorer-section-content">
-                  {filteredTopics.map(topic => (
-                    <div 
-                      key={topic.id} 
-                      className={`explorer-topic-item ${activeTopicId === topic.id ? 'active' : ''}`}
-                      onClick={() => selectTopic(topic)}
-                    >
-                      <span className="explorer-topic-icon">{topicIcon(topic.domain)}</span>
-                      <span className="explorer-topic-name">{escapeStr(topic.name)}</span>
-                      <span className="explorer-topic-count">{(topic.modules || []).length}</span>
-                    </div>
-                  ))}
+                  {filteredTopLevelTopics.length === 0 && (
+                    <div style={{ fontSize: '0.6rem', color: '#5a5e72', padding: '6px 10px' }}>Nessun argomento trovato.</div>
+                  )}
+                  {filteredTopLevelTopics.map(topic => {
+                    const subCount = topicsData.filter(s => s.parent_id === topic.id).length;
+                    return (
+                      <div 
+                        key={topic.id} 
+                        className={`explorer-topic-item ${activeTopicId === topic.id ? 'active' : ''}`}
+                        onClick={() => selectTopic(topic)}
+                      >
+                        <span className="explorer-topic-icon">{topicIcon(topic.domain)}</span>
+                        <span className="explorer-topic-name">{escapeStr(topic.name)}</span>
+                        <span className="explorer-topic-count" title={`${subCount} sottoargomenti`}>{subCount}</span>
+                      </div>
+                    );
+                  })}
                 </div>
               )}
             </div>
 
-            {/* Active Topic Folders Section */}
+            {/* Active Topic & Its Subtopics Section */}
             {activeTopic && (
               <div className="explorer-section" style={{ borderBottom: 'none' }}>
                 <div className="detail-header">
@@ -3345,7 +3788,7 @@ export default function MappaArgomenti({ onOpenFile }) {
                     </div>
                   )}
 
-                  {/* Pulsante ed il selettore padre integrati nell'Argomento */}
+                  {/* Active topic controls */}
                   <div className="active-topic-controls" style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', marginTop: '8px', alignItems: 'center' }}>
                     <button 
                       className="btn-new-subtopic" 
@@ -3372,62 +3815,76 @@ export default function MappaArgomenti({ onOpenFile }) {
                 </div>
 
                 <div className="explorer-section-header" style={{ marginTop: '12px' }}>
-                  <span>📂 FILE E SOTTOARGOMENTI</span>
+                  <span>📂 SOTTOARGOMENTI DI {escapeStr(activeTopic.name).toUpperCase()} ({activeTopicSubtopics.length})</span>
                 </div>
 
                 <div className="folder-tree">
-                  {filteredModules.length === 0 && (
-                    <div style={{ fontSize: '0.6rem', color: '#5a5e72', padding: '8px 0' }}>
-                      Nessun modulo trovato.
+                  {activeTopicSubtopics.length === 0 && (
+                    <div style={{ fontSize: '0.6rem', color: '#5a5e72', padding: '8px 0', fontStyle: 'italic' }}>
+                      Nessun sottoargomento presente. Clicca "➕ Nuovo Sottoargomento" per crearne uno.
                     </div>
                   )}
-                  {filteredModules.map(mod => {
-                    const isModExpanded = searchQuery ? true : expandedModules[mod.number];
-                    const isModSelected = selectedNode && selectedNode.type === 'module' && selectedNode.data.number === mod.number && selectedNode.topicId === activeTopic.id;
-                    
-                    const toggleModule = () => {
-                      setExpandedModules(prev => ({ ...prev, [mod.number]: !prev[mod.number] }));
+                  {activeTopicSubtopics.map(subtopic => {
+                    const subId = subtopic.id;
+                    const isSubExpanded = searchQuery ? true : expandedModules[subId];
+                    const isSubSelected = selectedNode && (selectedNode.data?.id === subtopic.id);
+
+                    const toggleSubtopic = () => {
+                      setExpandedModules(prev => ({ ...prev, [subId]: !prev[subId] }));
+                      setSelectedNode({ type: 'module', data: subtopic, topicId: subtopic.id });
+                      focusNodeOnGraph(subtopic.id);
                     };
 
-                    const totalFiles = (mod.docs || []).length + (mod.whitepapers || []).length +
-                                      (mod.teoria || []).length + (mod.test || []).length + (mod.viz || []).length;
+                    // Count attached files directly inside subtopic
+                    let totalFiles = 0;
+                    ['teoria', 'scripts', 'test', 'viz', 'docs', 'whitepapers', 'pdf', 'media'].forEach(cat => {
+                      totalFiles += (subtopic[cat] || []).length;
+                    });
 
-                    const folderPath = mod.folder || `${activeTopic.folder}/${mod.number}_${mod.name}`.toLowerCase().replace(/ /g, '_');
+                    const folderPath = subtopic.folder || `data/${subtopic.id}`;
 
                     return (
-                      <div key={mod.number} className="folder-item">
+                      <div key={subtopic.id} className="folder-item">
                         <div 
-                          className={`folder-header ${isModSelected ? 'selected-folder' : ''}`}
-                          onClick={toggleModule}
+                          className={`folder-header ${isSubSelected ? 'selected-folder' : ''}`}
+                          onClick={toggleSubtopic}
                           style={{
-                            background: isModSelected ? 'rgba(0,210,255,0.06)' : 'transparent',
-                            color: isModSelected ? '#00d2ff' : '#8b8fa3'
+                            background: isSubSelected ? 'rgba(0,210,255,0.08)' : 'transparent',
+                            color: isSubSelected ? '#00d2ff' : '#8b8fa3'
                           }}
                         >
                           <span className="folder-header-title">
-                            <span>{isModExpanded ? '📂' : '📁'}</span>
-                            <span>M{mod.number} — {escapeStr(mod.name)}</span>
+                            <span>{isSubExpanded ? '📂' : '📁'}</span>
+                            <span>{escapeStr(subtopic.name)}</span>
                             <span className="folder-header-count">({totalFiles})</span>
                           </span>
                           
                           <div className="folder-actions">
                             <button 
                               className="folder-action-btn"
-                              onClick={(e) => { e.stopPropagation(); handleMoveModule(mod, activeTopic.id); }}
+                              onClick={(e) => { e.stopPropagation(); handleCreateSubTopic(subtopic); }}
+                              title="Crea sotto-sottoargomento dentro questo sottoargomento"
+                              style={{ color: '#00d2ff', fontWeight: 'bold' }}
+                            >
+                              ➕
+                            </button>
+                            <button 
+                              className="folder-action-btn"
+                              onClick={(e) => { e.stopPropagation(); handleMoveModule(subtopic, activeTopic.id); }}
                               title="Sposta sottoargomento in un altro Argomento"
                             >
                               ⇄
                             </button>
                             <button 
                               className="folder-action-btn"
-                              onClick={(e) => { e.stopPropagation(); handleRenameModule(mod, activeTopic.id); }}
+                              onClick={(e) => { e.stopPropagation(); handleRenameModule(subtopic, activeTopic.id); }}
                               title="Rinomina Sottoargomento"
                             >
                               ✏️
                             </button>
                             <button 
                               className="folder-action-btn del"
-                              onClick={(e) => { e.stopPropagation(); handleDeleteModule(mod, activeTopic.id); }}
+                              onClick={(e) => { e.stopPropagation(); handleDeleteModule(subtopic, activeTopic.id); }}
                               title="Elimina Sottoargomento"
                             >
                               🗑️
@@ -3435,11 +3892,18 @@ export default function MappaArgomenti({ onOpenFile }) {
                           </div>
                         </div>
 
-                        {isModExpanded && (
+                        {isSubExpanded && (
                           <div className="folder-contents">
+                            {totalFiles === 0 && (
+                              <div style={{ fontStyle: 'italic', color: '#5a5e72', fontSize: '0.6rem', padding: '6px 12px' }}>
+                                Nessun file presente in questo sottoargomento.
+                              </div>
+                            )}
                             {columnDefs.map(col => {
-                              const files = mod[col.key] || [];
-                              const catKey = `${mod.number}-${col.key}`;
+                              const files = subtopic[col.key] || [];
+                              if (files.length === 0) return null;
+
+                              const catKey = `${subtopic.id}-${col.key}`;
                               const isCatExpanded = searchQuery ? true : expandedCategories[catKey];
                               const fileType = col.key === 'whitepapers' ? 'whitepaper' : col.key;
 
@@ -3474,24 +3938,28 @@ export default function MappaArgomenti({ onOpenFile }) {
                                           Vuoto
                                         </div>
                                       )}
-                                      {files.map((file, idx) => (
-                                        <div key={file.path || idx} className="file-tree-item">
-                                          <span className="explorer-topic-icon" style={{ background: 'none', width: 'auto', height: 'auto' }}>{col.icon}</span>
-                                          <span className="file-tree-name" onClick={() => onOpenFile && onOpenFile(file.path)}>
-                                            {escapeStr(file.filename)}
-                                          </span>
-                                          
-                                          <div className="file-tree-actions">
-                                            <button 
-                                              className="file-tree-del-btn"
-                                              onClick={(e) => { e.stopPropagation(); handleDeleteFile(file.path); }}
-                                              title="Elimina file"
-                                            >
-                                              🗑️
-                                            </button>
+                                      {files.map((file, idx) => {
+                                        const filePath = typeof file === 'string' ? file : file.path || file.filePath;
+                                        const fileName = typeof file === 'string' ? file.split('/').pop() : file.name || file.filename;
+                                        return (
+                                          <div key={filePath || idx} className="file-tree-item">
+                                            <span className="explorer-topic-icon" style={{ background: 'none', width: 'auto', height: 'auto' }}>{col.icon}</span>
+                                            <span className="file-tree-name" onClick={() => onOpenFile && onOpenFile(filePath)}>
+                                              {escapeStr(fileName)}
+                                            </span>
+                                            
+                                            <div className="file-tree-actions">
+                                              <button 
+                                                className="file-tree-del-btn"
+                                                onClick={(e) => { e.stopPropagation(); handleDeleteFile(filePath); }}
+                                                title="Elimina file"
+                                              >
+                                                🗑️
+                                              </button>
+                                            </div>
                                           </div>
-                                        </div>
-                                      ))}
+                                        );
+                                      })}
                                     </div>
                                   )}
                                 </div>
@@ -3508,8 +3976,6 @@ export default function MappaArgomenti({ onOpenFile }) {
           </div>
         </div>
       </div>
-
-
     </div>
   );
 }
