@@ -5,7 +5,7 @@
 import { useEffect, useCallback, useState, useRef } from 'react';
 import { PROVIDER_COLORS, getModelRoutingInfo } from '../modelProviderMap';
 import { loadMessagesFromStorage, saveMessagesToStorage, createSession } from '../chatStorage';
-import { initSpeechRecognition, stopSpeech } from '../audioSpeech';
+import { initSpeechRecognition, createWakeWordMic, stopSpeech } from '../audioSpeech';
 const saveMessagesImmediately = saveMessagesToStorage;
 
 
@@ -232,6 +232,18 @@ export default function useChatCore(extraProps = {}) {
   const recognitionRef = useRef(null);
   const initialInputRef = useRef('');
 
+  // Wake-word microphone: 'off' | 'waiting' (listening for "Sigma") | 'listening'
+  const [smartMicState, setSmartMicState] = useState('off');
+  const smartMicRef = useRef(null);
+
+  const stopSmartMic = useCallback(() => {
+    if (smartMicRef.current) {
+      smartMicRef.current.stop();
+      smartMicRef.current = null;
+    }
+    setSmartMicState('off');
+  }, []);
+
   const toggleRecording = useCallback(() => {
     if (isRecording) {
       if (recognitionRef.current) {
@@ -240,6 +252,10 @@ export default function useChatCore(extraProps = {}) {
       setIsRecording(false);
       return;
     }
+
+    // Chrome allows a single recognition session: the two microphones cannot
+    // both hold it, so starting one releases the other.
+    stopSmartMic();
 
     initialInputRef.current = streamingHook.input || '';
 
@@ -276,7 +292,54 @@ export default function useChatCore(extraProps = {}) {
       console.error('Start recognition error:', err);
       setIsRecording(false);
     }
-  }, [isRecording, streamingHook.input, streamingHook.setInput, addToast]);
+  }, [isRecording, streamingHook.input, streamingHook.setInput, addToast, stopSmartMic]);
+
+  const toggleSmartMic = useCallback(() => {
+    if (smartMicRef.current) {
+      stopSmartMic();
+      if (addToast) addToast('🎙️ Microfono intelligente disattivato.', 'info');
+      return;
+    }
+
+    if (isRecording) {
+      if (recognitionRef.current) {
+        try { recognitionRef.current.stop(); } catch (e) {}
+      }
+      setIsRecording(false);
+    }
+
+    const mic = createWakeWordMic({
+      onState: setSmartMicState,
+      // Show the phrase as it is captured, so the user can see what was heard.
+      onTranscript: (text) => streamingHook.setInput(text),
+      onSubmit: (phrase) => {
+        streamingHook.setInput(phrase);
+        streamingHook.sendMessage(phrase);
+      },
+      onError: (code) => {
+        console.warn('Wake-word mic error:', code);
+        stopSmartMic();
+        if (addToast) addToast(`⚠️ Microfono intelligente interrotto (${code}).`, 'warning');
+      },
+    });
+
+    if (!mic) {
+      if (addToast) addToast('⚠️ Riconoscimento vocale non supportato dal browser.', 'warning');
+      return;
+    }
+
+    smartMicRef.current = mic;
+    if (!mic.start()) {
+      smartMicRef.current = null;
+      return;
+    }
+    if (addToast) addToast('👂 In ascolto: di\' "Sigma" seguito dalla richiesta.', 'info');
+  }, [isRecording, streamingHook.setInput, streamingHook.sendMessage, addToast, stopSmartMic]);
+
+  // Release the microphone when the chat unmounts.
+  useEffect(() => () => {
+    if (smartMicRef.current) smartMicRef.current.stop();
+  }, []);
 
   return {
     // --- States ---
@@ -294,6 +357,8 @@ export default function useChatCore(extraProps = {}) {
     setSpeakerEnabled,
     isRecording,
     onToggleRecording: toggleRecording,
+    smartMicState,
+    onToggleSmartMic: toggleSmartMic,
     configModel: configHook.configModel,
     configProvider: configHook.configProvider,
     availableModels: configHook.availableModels,

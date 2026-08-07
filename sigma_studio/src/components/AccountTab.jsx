@@ -24,13 +24,29 @@ export default function AccountTab() {
 
   // --- Voice Config State ---
   const [voices, setVoices] = useState([]);
+  const [ttsEngines, setTtsEngines] = useState([]);
+  const [ttsDefault, setTtsDefault] = useState({ engine: 'browser', voice: '' });
   const [voiceConfig, setVoiceConfig] = useState(() => {
     try {
       const saved = localStorage.getItem('sigma_assistant_voice_config');
       if (saved) return JSON.parse(saved);
     } catch (e) {}
-    return { voiceURI: '', rate: 1.05, pitch: 1.0 };
+    return { engine: '', neuralVoice: '', voiceURI: '', rate: 1.05, pitch: 1.0 };
   });
+
+  // Which neural engines the backend can actually run right now.
+  useEffect(() => {
+    fetch('/api/tts/engines')
+      .then(r => r.json())
+      .then(data => {
+        setTtsEngines(data.engines || []);
+        if (data.default) setTtsDefault(data.default);
+      })
+      .catch(() => setTtsEngines([]));
+  }, []);
+
+  const activeEngineId = voiceConfig.engine || ttsDefault.engine || 'browser';
+  const activeEngine = ttsEngines.find(e => e.id === activeEngineId);
 
   const [isPlayingTest, setIsPlayingTest] = useState(false);
   const [savedSuccess, setSavedSuccess] = useState(false);
@@ -42,8 +58,12 @@ export default function AccountTab() {
         const available = window.speechSynthesis.getVoices();
         setVoices(available);
         if (!voiceConfig.voiceURI && available.length > 0) {
-          const defaultIt = available.find(v => v.lang.startsWith('it') || v.lang.includes('IT')) || available[0];
-          setVoiceConfig(prev => ({ ...prev, voiceURI: defaultIt.voiceURI }));
+          // Prefer the neural system voices (Windows/macOS ship them as
+          // "Natural"/"Online"): the legacy ones sound noticeably robotic.
+          const italian = available.filter(v => v.lang.startsWith('it') || v.lang.includes('IT'));
+          const pool = italian.length > 0 ? italian : available;
+          const best = pool.find(v => /natural|neural|online|premium|enhanced/i.test(v.name || '')) || pool[0];
+          setVoiceConfig(prev => ({ ...prev, voiceURI: best.voiceURI }));
         }
       }
     };
@@ -460,6 +480,64 @@ export default function AccountTab() {
                 <span>{isPlayingTest ? 'Ferma Test' : '🔊 Test Voce'}</span>
               </button>
             </div>
+
+            {/* Engine Selector */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+              <label style={{ fontSize: '0.74rem', fontWeight: 600, color: '#8b8fa3' }}>Motore Vocale:</label>
+              <select
+                value={voiceConfig.engine || ''}
+                onChange={e => updateVoiceConfig(prev => ({ ...prev, engine: e.target.value, neuralVoice: '' }))}
+                style={{
+                  width: '100%', padding: '8px 12px', borderRadius: '8px',
+                  background: '#0e1016', border: '1px solid rgba(255,255,255,0.08)',
+                  color: '#f0f2f8', fontSize: '0.78rem', outline: 'none', cursor: 'pointer'
+                }}
+              >
+                <option value="">
+                  Automatico (consigliato: {ttsDefault.engine === 'browser' ? 'voce di sistema' : ttsDefault.engine})
+                </option>
+                {ttsEngines.map(engine => (
+                  <option key={engine.id} value={engine.id} disabled={!engine.installed}>
+                    {engine.name}{engine.installed ? '' : ' — non installato'}
+                  </option>
+                ))}
+              </select>
+              {activeEngine && activeEngine.id !== 'browser' && (
+                <div style={{ fontSize: '0.68rem', color: '#8b8fa3', lineHeight: 1.5 }}>
+                  <div>{activeEngine.description}</div>
+                  <div style={{ color: activeEngine.installed ? '#8b8fa3' : '#ffb454' }}>
+                    Licenza: {activeEngine.license}
+                  </div>
+                  {!activeEngine.installed && activeEngine.install_hint && (
+                    <div style={{ marginTop: '4px', color: '#ffb454' }}>
+                      Per attivarlo: <code style={{ color: '#bc8cff' }}>{activeEngine.install_hint}</code>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+
+            {/* Neural Voice Dropdown */}
+            {activeEngine && activeEngine.id !== 'browser' && activeEngine.voices?.length > 0 && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                <label style={{ fontSize: '0.74rem', fontWeight: 600, color: '#8b8fa3' }}>Voce Neurale:</label>
+                <select
+                  value={voiceConfig.neuralVoice || activeEngine.default_voice}
+                  onChange={e => updateVoiceConfig(prev => ({ ...prev, neuralVoice: e.target.value }))}
+                  style={{
+                    width: '100%', padding: '8px 12px', borderRadius: '8px',
+                    background: '#0e1016', border: '1px solid rgba(255,255,255,0.08)',
+                    color: '#f0f2f8', fontSize: '0.78rem', outline: 'none', cursor: 'pointer'
+                  }}
+                >
+                  {activeEngine.voices.map(v => (
+                    <option key={v.id} value={v.id}>
+                      {v.gender === 'male' ? '♂' : '♀'} {v.name} ({v.lang})
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
 
             {/* Voice Dropdown */}
             <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>

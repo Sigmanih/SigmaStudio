@@ -113,6 +113,10 @@ FastAPIHandlerAdapter.handle_update_manifesto_image = handle_update_manifesto_im
 FastAPIHandlerAdapter.handle_upload_agent_image = handle_upload_agent_image
 FastAPIHandlerAdapter.handle_upload_user_avatar = handle_upload_user_avatar
 
+from core.tts_handler import handle_tts_engines, handle_tts_speak
+FastAPIHandlerAdapter.handle_tts_engines = handle_tts_engines
+FastAPIHandlerAdapter.handle_tts_speak = handle_tts_speak
+
 from core.mcp_handler import (
     handle_mcp_servers, handle_mcp_tools, handle_mcp_resources, handle_mcp_rpc
 )

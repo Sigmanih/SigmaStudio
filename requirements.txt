@@ -15,6 +15,14 @@ jinja2>=3.1.0
 # Testing Framework
 pytest>=7.4.0
 
+# Neural Text-to-Speech (optional)
+# Without these the chat falls back to the browser's Web Speech voices.
+#   Kokoro 82M — Apache-2.0, CPU-friendly, Italian voices Sara and Nicola:
+#     pip install kokoro soundfile misaki[it]
+#   XTTS v2 — more expressive but NON-COMMERCIAL licence, and it pins a narrow
+#   transformers range that can disturb the Training Lab stack:
+#     pip install coqui-tts
+
 # AI / ML Frameworks & HuggingFace Tooling
 torch>=2.0.0
 transformers>=4.40.0
