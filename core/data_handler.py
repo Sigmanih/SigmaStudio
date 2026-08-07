@@ -226,14 +226,6 @@ def handle_api_topics(self):
             if os.path.isdir(folder_path):
                 files_dict.update(load_module_files(self, folder_path))
 
-            mod_info = {
-                "number": "01",
-                "folder": folder_path,
-                "name": node_data.get("name", node_id),
-                "description": node_data.get("description", ""),
-            }
-            mod_info.update(files_dict)
-
             topic_info = {
                 "id": node_id,
                 "name": node_data.get("name", os.path.basename(node_id).replace("_", " ").title()),
@@ -243,7 +235,7 @@ def handle_api_topics(self):
                 "parent_id": node_data.get("parent_id"),
                 "children": node_data.get("children", []),
                 "folder": folder_path,
-                # Direct file attachments on Topic Node
+                # Direct file attachments on Topic / Subtopic Node
                 "teoria": files_dict["teoria"],
                 "scripts": files_dict["scripts"],
                 "test": files_dict["test"],
@@ -252,8 +244,7 @@ def handle_api_topics(self):
                 "whitepapers": files_dict["whitepapers"],
                 "pdf": files_dict["pdf"],
                 "media": files_dict["media"],
-                # Module alias for legacy graph compatibility
-                "modules": [mod_info]
+                "modules": [] # No synthetic duplicate subtopic module auto-created!
             }
             result["topics"].append(topic_info)
 

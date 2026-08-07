@@ -15,6 +15,7 @@ import shutil
 
 from core.store import modules_store
 from core.logger import get_logger
+from core.data_handler import rebuild_modules_meta
 
 log = get_logger(__name__)
 
@@ -27,26 +28,32 @@ _ALLOWED_SECTIONS = ("teoria", "scripts", "viz", "docs", "whitepapers")
 # ==============================================================================
 
 def handle_create_topic(self) -> None:
-    """POST /api/create_topic — Create a new topic folder and register it."""
+    """POST /api/create_topic — Create a new topic folder or subtopic folder and register it."""
     try:
         req = self.read_json_body()
-        topic_id = req.get("id", "").strip().lower().replace(" ", "_")
+        raw_id = req.get("id", "").strip().lower().replace(" ", "_")
         name = req.get("name", "").strip()
         description = req.get("description", "")
         domain = req.get("domain", "generale")
         manifesto_ref = req.get("manifesto_ref", "")
         parent_id = req.get("parent_id", None)
 
-        if not topic_id or not name:
+        if not raw_id or not name:
             return self.send_json_response({"error": "id e name sono obbligatori"}, 400)
 
-        meta = modules_store.load()
+        meta = rebuild_modules_meta()
         topics = meta.setdefault("topics", {})
+        nodes = meta.setdefault("nodes", {})
+        all_known_ids = set(topics.keys()) | set(nodes.keys())
 
-        if topic_id in topics:
-            return self.send_json_response({"error": f"Argomento '{topic_id}' già esistente"}, 400)
-        if parent_id and parent_id not in topics:
+        if parent_id and parent_id not in all_known_ids:
             return self.send_json_response({"error": f"Argomento padre '{parent_id}' non trovato"}, 400)
+
+        # Form relative path ID if parent_id is specified
+        if parent_id and parent_id != "root" and not raw_id.startswith(parent_id + "/"):
+            topic_id = f"{parent_id}/{raw_id}"
+        else:
+            topic_id = raw_id
 
         topic_folder = os.path.join("data", topic_id)
         os.makedirs(topic_folder, exist_ok=True)
@@ -64,8 +71,9 @@ def handle_create_topic(self) -> None:
             return m
 
         modules_store.update(_add)
-        log.info("Topic created: %s", topic_id)
-        self.send_json_response({"success": True, "topic_id": topic_id})
+        rebuild_modules_meta()
+        log.info("Topic/Subtopic created: %s (parent: %s)", topic_id, parent_id)
+        self.send_json_response({"success": True, "topic_id": topic_id, "folder": topic_folder.replace("\\", "/")})
     except Exception as exc:
         log.error("handle_create_topic: %s", exc, exc_info=True)
         self.send_json_response({"error": str(exc)}, 500)
