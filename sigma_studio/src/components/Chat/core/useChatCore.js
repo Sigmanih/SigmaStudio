@@ -294,6 +294,13 @@ export default function useChatCore(extraProps = {}) {
     }
   }, [isRecording, streamingHook.input, streamingHook.setInput, addToast, stopSmartMic]);
 
+  const handleSendMessage = useCallback(async (textOverride, extraParams) => {
+    if (smartMicRef.current && smartMicRef.current.isActive()) {
+      smartMicRef.current.reset();
+    }
+    return streamingHook.sendMessage(textOverride, extraParams);
+  }, [streamingHook.sendMessage]);
+
   const toggleSmartMic = useCallback(() => {
     if (smartMicRef.current) {
       stopSmartMic();
@@ -314,7 +321,7 @@ export default function useChatCore(extraProps = {}) {
       onTranscript: (text) => streamingHook.setInput(text),
       onSubmit: (phrase) => {
         streamingHook.setInput(phrase);
-        streamingHook.sendMessage(phrase);
+        handleSendMessage(phrase);
       },
       onError: (code) => {
         console.warn('Wake-word mic error:', code);
@@ -333,13 +340,25 @@ export default function useChatCore(extraProps = {}) {
       smartMicRef.current = null;
       return;
     }
-    if (addToast) addToast('👂 In ascolto: di\' "Sigma" seguito dalla richiesta.', 'info');
-  }, [isRecording, streamingHook.setInput, streamingHook.sendMessage, addToast, stopSmartMic]);
+    if (addToast) addToast('✨ Microfono intelligente attivo: Pronuncia "Sigma" ed inizia a fare la tua domanda!', 'info');
+  }, [isRecording, streamingHook.setInput, handleSendMessage, addToast, stopSmartMic]);
 
   // Release the microphone when the chat unmounts.
   useEffect(() => () => {
     if (smartMicRef.current) smartMicRef.current.stop();
   }, []);
+
+  const handleDeleteMessage = useCallback((msgIndexOrIndices) => {
+    if (streamingHook.loading) {
+      const currentMsgs = sessionsHook.sessionMessages[sessionsHook.activeSessionId] || [];
+      const indices = Array.isArray(msgIndexOrIndices) ? msgIndexOrIndices : [msgIndexOrIndices];
+      const isDeletingActive = indices.some(idx => idx === currentMsgs.length - 1 || currentMsgs[idx]?.loading);
+      if (isDeletingActive) {
+        streamingHook.stopInference();
+      }
+    }
+    return sessionsHook.deleteMessage(msgIndexOrIndices);
+  }, [sessionsHook, streamingHook]);
 
   return {
     // --- States ---
@@ -426,7 +445,7 @@ export default function useChatCore(extraProps = {}) {
     maxTaskIterations: 10,
 
     // --- Actions ---
-    sendMessage: streamingHook.sendMessage,
+    sendMessage: handleSendMessage,
     stopInference: streamingHook.stopInference,
     switchToSession: sessionsHook.switchToSession,
     handleNewSession: sessionsHook.handleNewSession,
@@ -434,7 +453,7 @@ export default function useChatCore(extraProps = {}) {
     handleStartRename: sessionsHook.handleStartRename,
     handleFinishRename: sessionsHook.handleFinishRename,
     handleRenameKeyDown: sessionsHook.handleRenameKeyDown,
-    deleteMessage: sessionsHook.deleteMessage,
+    deleteMessage: handleDeleteMessage,
     handleModelSelect: handleModelSelectWrapped,
     handleSelectManifesto,
     handleDuplicateSession,

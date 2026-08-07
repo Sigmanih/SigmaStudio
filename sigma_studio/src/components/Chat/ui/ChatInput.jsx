@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { Send, Paperclip, RefreshCw, StopCircle, Mic, MicOff, AudioLines, Volume2, VolumeX, Sliders } from 'lucide-react';
+import { setVoiceConfig as saveVoiceConfigToSpeechEngine, getVoiceConfig } from '../audioSpeech';
 
 export default function ChatInput({
   input, setInput, loading, selectedModel, refs, providerColors, currentRouting,
@@ -12,20 +13,12 @@ export default function ChatInput({
   children,
 }) {
   const [showVoicePopover, setShowVoicePopover] = useState(false);
-  const [voiceConfig, setVoiceConfig] = useState(() => {
-    try {
-      const saved = localStorage.getItem('sigma_assistant_voice_config');
-      if (saved) return JSON.parse(saved);
-    } catch (e) {}
-    return { rate: 1.05, pitch: 1.0 };
-  });
+  const [voiceConfig, setVoiceConfigState] = useState(() => getVoiceConfig());
 
   const updateVoiceConfig = (updater) => {
-    setVoiceConfig(prev => {
+    setVoiceConfigState(prev => {
       const updated = typeof updater === 'function' ? updater(prev) : updater;
-      try {
-        localStorage.setItem('sigma_assistant_voice_config', JSON.stringify(updated));
-      } catch (e) {}
+      saveVoiceConfigToSpeechEngine(updated);
       return updated;
     });
   };
@@ -81,12 +74,47 @@ export default function ChatInput({
               <span>Speaker Agente: {speakerEnabled ? 'ON' : 'OFF'}</span>
             </label>
 
+            {/* Volume Slider accanto al pulsante Speaker Agente */}
+            {speakerEnabled && (
+              <div 
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '4px',
+                  background: 'rgba(0, 210, 255, 0.08)',
+                  border: '1px solid rgba(0, 210, 255, 0.25)',
+                  borderRadius: '12px',
+                  padding: '2px 7px',
+                  transition: 'all 0.2s ease',
+                }}
+                title={`Volume voce agente: ${Math.round((voiceConfig.volume ?? 1.0) * 100)}%`}
+              >
+                <input
+                  type="range"
+                  min="0"
+                  max="1"
+                  step="0.05"
+                  value={voiceConfig.volume ?? 1.0}
+                  onChange={e => updateVoiceConfig(prev => ({ ...prev, volume: parseFloat(e.target.value) }))}
+                  style={{
+                    width: '55px',
+                    height: '3px',
+                    accentColor: '#00d2ff',
+                    cursor: 'pointer',
+                  }}
+                />
+                <span style={{ fontSize: '0.64rem', fontWeight: 700, color: '#00d2ff', minWidth: '24px' }}>
+                  {Math.round((voiceConfig.volume ?? 1.0) * 100)}%
+                </span>
+              </div>
+            )}
+
             {/* Voice Tuning Button */}
             <button
               type="button"
               className={`chat-voice-tune-btn ${showVoicePopover ? 'active' : ''}`}
               onClick={(e) => { e.stopPropagation(); setShowVoicePopover(!showVoicePopover); }}
-              title="Regola Velocità di Lettura (Speed) e Tono (Pitch) della voce dell'agente"
+              title="Regola Velocità (Speed), Tono (Pitch) e Volume della voce dell'agente"
               style={{
                 display: 'flex',
                 alignItems: 'center',
@@ -140,6 +168,23 @@ export default function ChatInput({
                   </button>
                 </div>
 
+                {/* Slider Volume */}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.7rem' }}>
+                    <span style={{ color: '#8b8fa3', fontWeight: 600 }}>Volume Voce:</span>
+                    <span style={{ color: '#00d2ff', fontWeight: 700 }}>{Math.round((voiceConfig.volume ?? 1.0) * 100)}%</span>
+                  </div>
+                  <input
+                    type="range"
+                    min="0"
+                    max="1"
+                    step="0.05"
+                    value={voiceConfig.volume ?? 1.0}
+                    onChange={e => updateVoiceConfig(prev => ({ ...prev, volume: parseFloat(e.target.value) }))}
+                    style={{ accentColor: '#00d2ff', cursor: 'pointer', height: '4px' }}
+                  />
+                </div>
+
                 {/* Slider Velocità */}
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.7rem' }}>
@@ -184,8 +229,8 @@ export default function ChatInput({
           className="chat-input"
           placeholder={
             isRecording ? "🔴 Registrazione in corso... Parla adesso..."
-            : smartMicState === 'listening' ? "🎤 Ti ascolto... invio dopo 3 secondi di silenzio"
-            : smartMicState === 'waiting' ? '👂 In attesa della parola "Sigma"...'
+            : smartMicState === 'listening' ? "🎤 Ti sto ascoltando... Parla adesso (invio automatico dopo 2s di silenzio)"
+            : smartMicState === 'waiting' ? '✨ Pronuncia "Sigma" ed inizia a fare la tua domanda...'
             : `Chiedi qualcosa a ${selectedModel}...`
           }
           value={input}
@@ -220,9 +265,9 @@ export default function ChatInput({
             className={`chat-attach-inline-btn ${smartMicState !== 'off' ? 'recording' : ''}`}
             onClick={onToggleSmartMic}
             title={
-              smartMicState === 'listening' ? 'Ti sto ascoltando — invio automatico dopo 3 secondi di silenzio'
-              : smartMicState === 'waiting' ? 'Microfono intelligente attivo — di\' "Sigma" per parlare'
-              : 'Microfono intelligente: si attiva dicendo "Sigma" e invia dopo 3 secondi di silenzio'
+              smartMicState === 'listening' ? 'Ti sto ascoltando — invio automatico dopo 2 secondi di silenzio'
+              : smartMicState === 'waiting' ? '✨ Microfono intelligente attivo — Pronuncia "Sigma" ed inizia a fare la tua domanda'
+              : '✨ Microfono intelligente: Pronuncia "Sigma" ed inizia a fare la tua domanda'
             }
             style={{
               color: smartMicState === 'listening' ? '#4ade80'

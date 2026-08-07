@@ -1,11 +1,11 @@
 import React from 'react';
-import { Bot, User, Terminal, FileText, Zap } from 'lucide-react';
+import { Bot, User, Terminal, FileText, Zap, Play, Pause, RotateCcw, RotateCw, Square } from 'lucide-react';
 import { renderMarkdownLatex } from '../../utils/markdownLatex';
 import { useApp } from '../../contexts/AppContext';
 import 'katex/dist/katex.min.css';
 
 // ==============================================================================
-// AGENT MESSAGE v5.0 — Header inside bubble
+// AGENT MESSAGE v5.0 — Header inside bubble + Audio Player Bar & Karaoke Highlight
 // Avatar 64px + ruolo in header con bg scuro, bubble full-width
 // ==============================================================================
 
@@ -32,11 +32,35 @@ function formatTimestamp(ts) {
   try { return new Date(ts).toLocaleTimeString(); } catch { return ''; }
 }
 
+function highlightCurrentWordInHtml(htmlContent, fullCleanText, charIndex, charLength) {
+  if (!htmlContent || charIndex === undefined || charIndex < 0 || !fullCleanText) return htmlContent;
+
+  const wordLen = Math.max(2, charLength || 4);
+  const rawTargetWord = fullCleanText.slice(charIndex, charIndex + wordLen).trim();
+  const cleanWord = rawTargetWord.replace(/[^\p{L}\p{N}]/gu, '');
+  if (!cleanWord || cleanWord.length < 2) return htmlContent;
+
+  const escaped = cleanWord.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const regex = new RegExp(`(?<!<[^>]*)\\b(${escaped})\\b(?![^<]*>)`, 'i');
+  return htmlContent.replace(regex, '<mark class="speech-word-highlight">$1</mark>');
+}
+
 // ==============================================================================
 // Main AgentMessage Component
 // ==============================================================================
 import { useState, useEffect } from 'react';
-import { speakAgentMessage, stopSpeech, subscribeSpeech, getActiveSpeechId } from './audioSpeech';
+import { 
+  speakAgentMessage, 
+  stopSpeech, 
+  togglePauseSpeech, 
+  seekSpeechRelative, 
+  seekSpeechPercent, 
+  subscribeSpeech, 
+  subscribeSpeechProgress, 
+  getSpeechProgress, 
+  getActiveSpeechId,
+  cleanTextForSpeech
+} from './audioSpeech';
 
 export default function AgentMessage({
   msg,
@@ -52,6 +76,7 @@ export default function AgentMessage({
   const app = useApp();
   const openTab = app ? app.openTab : null;
   const [isPlayingAudio, setIsPlayingAudio] = useState(false);
+  const [speechProgress, setSpeechProgress] = useState(() => getSpeechProgress());
   const [rolledBacks, setRolledBacks] = useState({});
   const [expandedDiffs, setExpandedDiffs] = useState({});
   const [loadingStep, setLoadingStep] = useState(0);
@@ -102,18 +127,9 @@ export default function AgentMessage({
   };
 
   const handleFileClick = (rawPath) => {
-    const path = getCleanPathStr(rawPath);
-    if (!path || !openTab) return;
-    const filename = path.split('/').pop() || path;
-    const pathLower = path.toLowerCase();
-    let type = 'teoria';
-    if (pathLower.includes('/scripts/') || pathLower.includes('/test/')) type = 'scripts';
-    else if (pathLower.includes('/viz/')) type = 'viz';
-    else if (pathLower.includes('/docs/')) {
-      type = path.split('/').pop()?.toUpperCase().startsWith('WHITEPAPER_') ? 'whitepaper' : 'docs';
-    }
-    else if (pathLower.includes('/teoria/')) type = 'teoria';
-    openTab({ path, filename }, type);
+    if (!openTab) return;
+    const clean = getCleanPathStr(rawPath);
+    if (clean) openTab({ path: clean, filename: clean.split('/').pop() || clean }, 'docs');
   };
 
   const messages = groupedMessages || (msg ? [msg] : []);
@@ -144,12 +160,14 @@ export default function AgentMessage({
     return () => window.removeEventListener('sigma_profile_updated', handleProfileUpdate);
   }, []);
 
-  // The button mirrors the global TTS state, so a message auto-played by the
-  // chat stream already shows "Ferma" and stops on the first click.
   const speechId = first.timestamp;
   useEffect(() => {
     setIsPlayingAudio(getActiveSpeechId() === speechId);
-    return subscribeSpeech(activeId => setIsPlayingAudio(activeId === speechId));
+    const unsubSpeech = subscribeSpeech(activeId => setIsPlayingAudio(activeId === speechId));
+    const unsubProgress = subscribeSpeechProgress(p => {
+      if (p && p.speechId === speechId) setSpeechProgress({ ...p });
+    });
+    return () => { unsubSpeech(); unsubProgress(); };
   }, [speechId]);
 
   const avatarSrc = isUser
@@ -184,9 +202,7 @@ export default function AgentMessage({
     <div
       className={`chat-message ${isUser ? 'chat-user' : isSystem ? 'chat-system' : 'chat-assistant'} ${agentId ? 'chat-agent-message' : ''} ${isGrouped ? 'chat-message-grouped' : ''}`}
     >
-      {/* Bubble contenente header + contenuto */}
       <div className="chat-bubble">
-        {/* Header inside bubble */}
         <div className="chat-msg-header">
           <div className="chat-msg-avatar" style={{ borderColor: avatarBg }}>
             <img
@@ -228,7 +244,6 @@ export default function AgentMessage({
                 if (isPlayingAudio) {
                   stopSpeech();
                 } else {
-                  // Answer only: `m.thinking` is deliberately left out.
                   const textToRead = messages.map(m => m.content || m.text || '').join(' ');
                   speakAgentMessage(textToRead, null, null, speechId);
                 }
@@ -256,6 +271,78 @@ export default function AgentMessage({
             <button className="chat-msg-delete-btn" title="Elimina" onClick={() => onDeleteMessage(msgIndex)}>✕</button>
           )}
         </div>
+
+        {/* Audio Player Control Bar when playing */}
+        {!isUser && !isSystem && isPlayingAudio && (
+          <div className="chat-audio-player-bar" onClick={e => e.stopPropagation()}>
+            <div className="chat-audio-player-controls">
+              <button 
+                type="button" 
+                onClick={() => {
+                  const textToRead = messages.map(m => m.content || m.text || '').join(' ');
+                  seekSpeechRelative(speechId, -40, textToRead);
+                }} 
+                title="Indietro di ~5 secondi"
+                className="chat-audio-btn"
+              >
+                <RotateCcw size={11} />
+                <span>-5s</span>
+              </button>
+
+              <button 
+                type="button" 
+                onClick={togglePauseSpeech} 
+                title={speechProgress.paused ? "Riprendi lettura" : "Pausa lettura"}
+                className="chat-audio-btn primary"
+              >
+                {speechProgress.paused ? <Play size={12} /> : <Pause size={12} />}
+              </button>
+
+              <button 
+                type="button" 
+                onClick={() => {
+                  const textToRead = messages.map(m => m.content || m.text || '').join(' ');
+                  seekSpeechRelative(speechId, +40, textToRead);
+                }} 
+                title="Avanti di ~5 secondi"
+                className="chat-audio-btn"
+              >
+                <RotateCw size={11} />
+                <span>+5s</span>
+              </button>
+            </div>
+
+            <div className="chat-audio-scrubber-container">
+              <input 
+                type="range"
+                min="0"
+                max="100"
+                step="1"
+                value={Math.round((speechProgress.progress || 0) * 100)}
+                onChange={(e) => {
+                  const textToRead = messages.map(m => m.content || m.text || '').join(' ');
+                  seekSpeechPercent(speechId, parseFloat(e.target.value) / 100, textToRead);
+                }}
+                className="chat-audio-scrubber"
+                title="Trascina per navigare nel testo"
+              />
+            </div>
+
+            <div className="chat-audio-info">
+              <span className="chat-audio-percent">
+                {Math.round((speechProgress.progress || 0) * 100)}%
+              </span>
+              <button 
+                type="button" 
+                onClick={stopSpeech} 
+                title="Interrompi lettura"
+                className="chat-audio-btn stop"
+              >
+                <Square size={11} />
+              </button>
+            </div>
+          </div>
+        )}
 
         {/* Active agent role banner */}
         {!isUser && !isSystem && (agentId || first.agentRole) && (
@@ -549,7 +636,16 @@ export default function AgentMessage({
                             handleFileClick(path);
                           }
                         }}
-                        dangerouslySetInnerHTML={{ __html: renderMarkdownLatex(displayContent) }}
+                        dangerouslySetInnerHTML={{ 
+                          __html: (isPlayingAudio && speechProgress.speechId === speechId && speechProgress.charIndex >= 0)
+                            ? highlightCurrentWordInHtml(
+                                renderMarkdownLatex(displayContent),
+                                cleanTextForSpeech(messages.map(msgItem => msgItem.content || msgItem.text || '').join(' ')),
+                                speechProgress.charIndex,
+                                speechProgress.charLength
+                              )
+                            : renderMarkdownLatex(displayContent)
+                        }}
                       />
                     )}
                     {(m.streaming || (isLoading && isLast && (!displayContent || displayContent.length < 10))) && (

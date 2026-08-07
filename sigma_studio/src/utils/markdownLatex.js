@@ -279,17 +279,26 @@ function processBlocks(text) {
       continue;
     }
 
-    // Unordered list
+    // Unordered list — group consecutive bullet items into one <ul>
     if (/^[\-\*\+]\s/.test(line)) {
-      result.push(`<ul><li>${line.replace(/^[\-\*\+]\s/, '')}</li></ul>`);
-      i++;
+      const items = [];
+      while (i < lines.length && /^[\-\*\+]\s/.test(lines[i])) {
+        items.push(`<li>${lines[i].replace(/^[\-\*\+]\s/, '')}</li>`);
+        i++;
+      }
+      result.push(`<ul>${items.join('')}</ul>`);
       continue;
     }
 
-    // Ordered list
+    // Ordered list — group consecutive numbered items into one <ol>
     if (/^\d+\.\s/.test(line)) {
-      result.push(`<ol><li>${line.replace(/^\d+\.\s/, '')}</li></ol>`);
-      i++;
+      const items = [];
+      const startNum = parseInt(line.match(/^(\d+)\./)[1], 10);
+      while (i < lines.length && /^\d+\.\s/.test(lines[i])) {
+        items.push(`<li>${lines[i].replace(/^\d+\.\s/, '')}</li>`);
+        i++;
+      }
+      result.push(`<ol start="${startNum}">${items.join('')}</ol>`);
       continue;
     }
 

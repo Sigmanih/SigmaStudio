@@ -143,9 +143,38 @@ let cachedVoices = [];
 let activeSpeechId = null;
 const speechListeners = new Set();
 
+let speechProgressState = {
+  speechId: null,
+  fullText: '',
+  charIndex: 0,
+  charLength: 0,
+  progress: 0,
+  paused: false,
+  isSpeaking: false,
+};
+const progressSubscribers = new Set();
+
+export function subscribeSpeechProgress(listener) {
+  progressSubscribers.add(listener);
+  try { listener(speechProgressState); } catch (e) {}
+  return () => progressSubscribers.delete(listener);
+}
+
+export function getSpeechProgress() {
+  return speechProgressState;
+}
+
+function updateSpeechProgress(patch) {
+  speechProgressState = { ...speechProgressState, ...patch };
+  progressSubscribers.forEach(fn => { try { fn(speechProgressState); } catch (e) {} });
+}
+
 function setActiveSpeechId(id) {
   if (activeSpeechId === id) return;
   activeSpeechId = id;
+  if (!id) {
+    updateSpeechProgress({ isSpeaking: false, paused: false, speechId: null, charIndex: 0, progress: 0 });
+  }
   speechListeners.forEach(fn => { try { fn(activeSpeechId); } catch (e) {} });
 }
 
@@ -195,6 +224,7 @@ const DEFAULT_VOICE_CONFIG = {
   voiceURI: '',      // system voice, used by the browser engine
   rate: 1.05,
   pitch: 1.0,
+  volume: 1.0,
 };
 
 // Populated once from /api/tts/engines. Until it resolves the browser engine is
@@ -218,6 +248,14 @@ export function getVoiceConfig() {
 export function setVoiceConfig(patch) {
   const updated = { ...getVoiceConfig(), ...patch };
   try { localStorage.setItem(VOICE_CONFIG_KEY, JSON.stringify(updated)); } catch (e) {}
+
+  // Realtime volume update for active playing neural audio stream
+  if (updated.volume !== undefined) {
+    const vol = Math.max(0, Math.min(1, parseFloat(updated.volume)));
+    if (speechStream && speechStream.audio) {
+      speechStream.audio.volume = vol;
+    }
+  }
   return updated;
 }
 
@@ -274,7 +312,7 @@ function pickBestSystemVoice(voices) {
 }
 
 /**
- * Build a configured utterance (voice, rate and pitch from user settings).
+ * Build a configured utterance (voice, rate, pitch and volume from user settings).
  */
 function buildUtterance(cleanText) {
   const utterance = new SpeechSynthesisUtterance(cleanText);
@@ -283,6 +321,7 @@ function buildUtterance(cleanText) {
   const cfg = getVoiceConfig();
   utterance.rate = parseFloat(cfg.rate) || DEFAULT_VOICE_CONFIG.rate;
   utterance.pitch = parseFloat(cfg.pitch) || DEFAULT_VOICE_CONFIG.pitch;
+  utterance.volume = cfg.volume !== undefined ? Math.max(0, Math.min(1, parseFloat(cfg.volume))) : 1.0;
 
   const voices = getAvailableVoices();
   if (cfg.voiceURI) {
@@ -297,44 +336,114 @@ function buildUtterance(cleanText) {
  * Speak text using browser SpeechSynthesis (TTS).
  * `speechId` identifies the message being read so the UI can reflect its state.
  */
-export function speakAgentMessage(text, onStart = null, onEnd = null, speechId = null) {
+export function speakAgentMessage(text, onStart = null, onEnd = null, speechId = null, initialOffset = 0) {
   if (typeof window === 'undefined' || !window.speechSynthesis) {
     console.warn('SpeechSynthesis is not supported in this browser.');
     if (onEnd) onEnd();
     return false;
   }
 
-  if (!cleanTextForSpeech(text)) {
+  const clean = cleanTextForSpeech(text);
+  if (!clean) {
     if (onEnd) onEnd();
     return false;
   }
 
-  // Reading a finished message is just a stream that ends immediately: same
-  // engine selection, same sentence splitting, same ordered playback.
   const id = speechId || `speech-${Date.now()}`;
-  if (!startSpeechStream(id, { onStart, onEnd })) {
+  const clampedOffset = Math.max(0, Math.min(clean.length - 1, initialOffset));
+
+  if (!startSpeechStream(id, { onStart, onEnd, initialOffset: clampedOffset, fullCleanText: clean })) {
     if (onEnd) onEnd();
     return false;
   }
-  pushSpeechStream(text);
+
+  const textToSpeak = clampedOffset > 0 ? clean.slice(clampedOffset) : clean;
+  pushSpeechStream(textToSpeak);
   endSpeechStream();
   return true;
 }
 
-// --- Incremental reading -----------------------------------------------------
-// Reading only once generation is over means waiting minutes for a long answer.
-// These helpers speak each sentence as soon as it is complete, keeping the
-// synthesiser one step behind the text instead of one answer behind it.
+export function pauseSpeech() {
+  if (typeof window === 'undefined' || !window.speechSynthesis) return;
+  if (window.speechSynthesis.speaking && !window.speechSynthesis.paused) {
+    window.speechSynthesis.pause();
+    updateSpeechProgress({ paused: true });
+  }
+}
+
+export function resumeSpeech() {
+  if (typeof window === 'undefined' || !window.speechSynthesis) return;
+  if (window.speechSynthesis.paused) {
+    window.speechSynthesis.resume();
+    updateSpeechProgress({ paused: false });
+  }
+}
+
+export function togglePauseSpeech() {
+  if (typeof window === 'undefined' || !window.speechSynthesis) return;
+  if (window.speechSynthesis.paused) {
+    resumeSpeech();
+  } else if (window.speechSynthesis.speaking) {
+    pauseSpeech();
+  }
+}
+
+export function seekSpeech(speechId, targetCharIndex, fullText = null) {
+  if (typeof window === 'undefined' || !window.speechSynthesis) return;
+  const text = fullText || speechProgressState.fullText;
+  if (!text) return;
+
+  const clampedIndex = Math.max(0, Math.min(text.length - 1, Math.round(targetCharIndex)));
+  stopSpeech();
+  speakAgentMessage(text, null, null, speechId, clampedIndex);
+}
+
+export function seekSpeechRelative(speechId, charDelta, fullText = null) {
+  const currentIdx = speechProgressState.charIndex || 0;
+  seekSpeech(speechId, currentIdx + charDelta, fullText);
+}
+
+export function seekSpeechPercent(speechId, percent, fullText = null) {
+  const text = fullText || speechProgressState.fullText;
+  if (!text) return;
+  const targetIdx = Math.round(Math.max(0, Math.min(1, percent)) * text.length);
+  seekSpeech(speechId, targetIdx, text);
+}
+
+// --- Sentence-level streaming playback ---------------------------------------
 
 let speechStream = null;
 
 const SENTENCE_ENDINGS = '.!?…\n';
-// The very first chunk may also break on a weaker pause: waiting for a full
-// sentence before the first sound is what makes the voice feel late to start.
-const FIRST_CHUNK_ENDINGS = ',;:';
-const MIN_FIRST_CHUNK = 24;
-const MAX_UNPUNCTUATED = 260;
+const CLAUSE_ENDINGS = ',;:';
+const MIN_FIRST_CHUNK = 20;
+const MIN_CLAUSE_CHUNK = 35;
+const MAX_UNPUNCTUATED = 100;
 const HAS_LETTERS = /[a-zA-ZÀ-ÿ]/;
+
+// Hold active SpeechSynthesisUtterance references to prevent V8 garbage collection mid-speech
+const activeUtterances = new Set();
+let keepAliveTimer = null;
+
+export function startKeepAlive() {
+  if (keepAliveTimer || typeof window === 'undefined' || !window.speechSynthesis) return;
+  keepAliveTimer = setInterval(() => {
+    if (window.speechSynthesis) {
+      // Touch speaking property to keep IPC active without triggering audio device WASAPI pauses
+      const _active = window.speechSynthesis.speaking;
+    }
+    if (!isSpeaking()) {
+      stopKeepAlive();
+    }
+  }, 5000);
+}
+
+export function stopKeepAlive() {
+  if (keepAliveTimer) {
+    clearInterval(keepAliveTimer);
+    keepAliveTimer = null;
+  }
+}
 
 /** Strip fenced code blocks across chunk boundaries — nobody wants code read out. */
 function stripFencedCode(state, text) {
@@ -365,7 +474,10 @@ function isMidFormula(chunk) {
 function settleChunk(state) {
   if (speechStream !== state) return;
   state.pending = Math.max(0, state.pending - 1);
-  if (state.started && state.ended && state.pending === 0) {
+  const queueEmpty = !state.browserQueue || state.browserQueue.length === 0;
+  if (state.started && state.ended && state.pending === 0 && queueEmpty) {
+    stopKeepAlive();
+    activeUtterances.clear();
     speechStream = null;
     setActiveSpeechId(null);
     if (state.onEnd) state.onEnd();
@@ -402,6 +514,8 @@ function playNextClip(state) {
   markStarted(state);
 
   const audio = new Audio(url);
+  const cfg = getVoiceConfig();
+  audio.volume = cfg.volume !== undefined ? Math.max(0, Math.min(1, parseFloat(cfg.volume))) : 1.0;
   state.audio = audio;
 
   const done = () => {
@@ -450,19 +564,81 @@ function enqueueNeural(state, clean, engine, voice) {
 }
 
 /**
- * Hand the sentence to the browser's own utterance queue.
+ * Buffered browser TTS: feed Chrome at most MAX_CHROME_QUEUE utterances at a
+ * time from a JS-side queue.
  *
- * The Web Speech engine sequences its queue itself, gaplessly. Draining it by
- * hand — speak, wait for `onend`, speak the next — inserts a pause before every
- * sentence and loses the tail whenever Chrome drops the event.
+ * Why not feed them all?  Chrome/SAPI silently drops utterances when its
+ * internal C++ queue grows past ~5 items — events still fire but no audio
+ * reaches the speakers.
+ *
+ * Why not feed one at a time?  Chrome closes and re-opens the WASAPI audio
+ * device between utterances when the queue is empty, causing a 1-3 s hardware
+ * gap on Realtek / USB / Bluetooth speakers.
+ *
+ * Keeping 2 buffered is the sweet spot: the next utterance is already queued
+ * when the current one ends, so Chrome never releases the audio device, but
+ * the queue never grows large enough to trigger the silent-drop bug.
  */
+const MAX_CHROME_QUEUE = 2;
+
+function feedChromeQueue(state) {
+  if (speechStream !== state) return;
+  if (!state.browserQueue || state.browserQueue.length === 0) return;
+
+  while (state.chromeActive < MAX_CHROME_QUEUE && state.browserQueue.length > 0) {
+    const clean = state.browserQueue.shift();
+    const chunkOffset = state.processedChars || 0;
+    state.processedChars = chunkOffset + clean.length + 1;
+
+    const utterance = buildUtterance(clean);
+    activeUtterances.add(utterance);
+    state.chromeActive += 1;
+
+    utterance.onboundary = (event) => {
+      if (event.name === 'word' || !event.name) {
+        const charIdx = chunkOffset + (event.charIndex || 0);
+        const charLen = event.charLength || 5;
+        const totalLen = (state.fullCleanText || '').length || 1;
+        updateSpeechProgress({
+          speechId: state.id,
+          fullText: state.fullCleanText || '',
+          charIndex: charIdx,
+          charLength: charLen,
+          progress: Math.min(1, Math.max(0, charIdx / totalLen)),
+          paused: false,
+          isSpeaking: true,
+        });
+      }
+    };
+
+    const handleFinish = () => {
+      activeUtterances.delete(utterance);
+      state.chromeActive = Math.max(0, state.chromeActive - 1);
+      settleChunk(state);
+      feedChromeQueue(state);
+    };
+
+    utterance.onstart = () => {
+      markStarted(state);
+      startKeepAlive();
+    };
+    utterance.onend = handleFinish;
+    utterance.onerror = handleFinish;
+
+    try {
+      window.speechSynthesis.speak(utterance);
+      startKeepAlive();
+    } catch (err) {
+      handleFinish();
+    }
+  }
+}
+
 function enqueueBrowser(state, clean) {
-  const utterance = buildUtterance(clean);
   state.pending += 1;
-  utterance.onstart = () => markStarted(state);
-  utterance.onend = () => settleChunk(state);
-  utterance.onerror = () => settleChunk(state);
-  window.speechSynthesis.speak(utterance);
+  if (!state.browserQueue) state.browserQueue = [];
+  state.browserQueue.push(clean);
+  feedChromeQueue(state);
 }
 
 function enqueueSpeech(state, rawText) {
@@ -489,7 +665,8 @@ function findSentenceCut(buffer, force, first) {
   for (let i = 0; i < buffer.length; i++) {
     const char = buffer[i];
     const strong = SENTENCE_ENDINGS.includes(char);
-    const weak = first && i >= MIN_FIRST_CHUNK && FIRST_CHUNK_ENDINGS.includes(char);
+    const minLen = first ? MIN_FIRST_CHUNK : MIN_CLAUSE_CHUNK;
+    const weak = i >= minLen && CLAUSE_ENDINGS.includes(char);
     if (!strong && !weak) continue;
     if (char === '.') {
       // A real full stop is followed by a space. Without this check the dot in
@@ -529,7 +706,7 @@ function drainSpeechStream(force) {
 }
 
 /** Begin reading a message that is still being generated. */
-export function startSpeechStream(speechId, { onStart = null, onEnd = null } = {}) {
+export function startSpeechStream(speechId, { onStart = null, onEnd = null, initialOffset = 0, fullCleanText = '' } = {}) {
   if (typeof window === 'undefined' || !window.speechSynthesis) return false;
   stopSpeech();
 
@@ -540,6 +717,9 @@ export function startSpeechStream(speechId, { onStart = null, onEnd = null } = {
     pending: 0, ended: false, started: false,
     engine, voice,
     queue: new Map(), nextSeq: 0, playSeq: 0, busy: false, audio: null,
+    browserQueue: [], chromeActive: 0,
+    processedChars: initialOffset,
+    fullCleanText: fullCleanText,
     abort: new AbortController(),
     onStart, onEnd,
   };
@@ -560,7 +740,8 @@ export function endSpeechStream() {
   if (!state) return;
   drainSpeechStream(true);
   state.ended = true;
-  if (state.pending === 0) {
+  const queueEmpty = !state.browserQueue || state.browserQueue.length === 0;
+  if (state.pending === 0 && queueEmpty) {
     speechStream = null;
     setActiveSpeechId(null);
     if (state.onEnd) state.onEnd();
@@ -573,6 +754,9 @@ export function endSpeechStream() {
 export function stopSpeech() {
   if (typeof window === 'undefined') return;
 
+  stopKeepAlive();
+  activeUtterances.clear();
+
   const state = speechStream;
   speechStream = null;
 
@@ -580,6 +764,8 @@ export function stopSpeech() {
 
   if (state) {
     state.busy = false;
+    state.chromeActive = 0;
+    if (state.browserQueue) state.browserQueue = [];
     try { state.abort.abort(); } catch (e) {}
     if (state.audio) {
       state.audio.onended = state.audio.onerror = null;
@@ -639,7 +825,7 @@ export function initSpeechRecognition({ onResult, onError, onEnd, lang = 'it-IT'
 // --- Wake-word microphone ----------------------------------------------------
 
 const WAKE_WORD = 'sigma';
-const SILENCE_MS = 3000;
+const SILENCE_MS = 2000;
 // Fired by the browser during normal operation; restarting is the answer, not
 // an error message.
 const BENIGN_RECOGNITION_ERRORS = ['no-speech', 'aborted', 'audio-capture'];
@@ -684,9 +870,11 @@ export function createWakeWordMic({
 
   let active = false;      // the user wants the mic on
   let armed = false;       // wake word heard, capturing the command
+  let wakeIndex = -1;      // index of the initial wake word in the transcript
   let captured = '';
   let silenceTimer = null;
   let restartTimer = null;
+  let ignoreUntilRestart = false;
 
   const setState = (state) => { if (onState) onState(state); };
 
@@ -694,34 +882,65 @@ export function createWakeWordMic({
     if (silenceTimer) { clearTimeout(silenceTimer); silenceTimer = null; }
   };
 
+  const resetRecognitionSession = () => {
+    clearSilence();
+    armed = false;
+    wakeIndex = -1;
+    captured = '';
+    ignoreUntilRestart = true;
+    if (active) {
+      setState('waiting');
+      try { recognition.stop(); } catch (e) {}
+    }
+  };
+
   const submitCaptured = () => {
     clearSilence();
     const phrase = captured.trim();
     armed = false;
+    wakeIndex = -1;
     captured = '';
+    ignoreUntilRestart = true;
     if (active) setState('waiting');
     if (phrase && onSubmit) onSubmit(phrase);
+    if (active) {
+      try { recognition.stop(); } catch (e) {}
+    }
+  };
+
+  recognition.onstart = () => {
+    ignoreUntilRestart = false;
   };
 
   recognition.onresult = (event) => {
+    if (ignoreUntilRestart) return;
+
     let transcript = '';
     for (let i = 0; i < event.results.length; i++) {
       transcript += event.results[i][0].transcript;
     }
 
     const normalized = normalizeForMatch(transcript);
-    const at = normalized.lastIndexOf(wake);
-    if (at === -1) {
-      if (!armed) return;                 // still nothing addressed to us
+
+    if (!armed) {
+      const at = normalized.indexOf(wake);
+      if (at === -1) return;                 // still nothing addressed to us
+      armed = true;
+      wakeIndex = at;
+      setState('listening');
+      // Barge-in: the user talking to the agent outranks the agent talking.
+      stopSpeech();
+    }
+
+    if (wakeIndex === -1) {
+      wakeIndex = normalized.indexOf(wake);
+    }
+
+    // Keep only what was said after the initial wake word, punctuation trimmed.
+    if (wakeIndex !== -1) {
+      captured = transcript.slice(wakeIndex + wakeWord.length).replace(/^[\s,.;:!?]+/, '');
     } else {
-      if (!armed) {
-        armed = true;
-        setState('listening');
-        // Barge-in: the user talking to the agent outranks the agent talking.
-        stopSpeech();
-      }
-      // Keep only what was said after the wake word, punctuation trimmed.
-      captured = transcript.slice(at + wakeWord.length).replace(/^[\s,.;:!?]+/, '');
+      captured = transcript.replace(/^[\s,.;:!?]+/, '');
     }
 
     if (onTranscript) onTranscript(captured);
@@ -736,14 +955,23 @@ export function createWakeWordMic({
   };
 
   recognition.onend = () => {
-    // A pending phrase must not be lost when the browser closes the session.
-    if (armed) submitCaptured();
+    // A pending phrase must not be lost when the browser closes the session,
+    // unless we intentionally stopped recognition to reset after a submission.
+    if (armed && !ignoreUntilRestart) submitCaptured();
     if (!active) { setState('off'); return; }
-    // Small delay: restarting synchronously from onend throws in Chrome.
+    // Rapid restart (50ms) to prevent audio capture dropouts in Chrome.
     restartTimer = setTimeout(() => {
       if (!active) return;
-      try { recognition.start(); } catch (e) {}
-    }, 250);
+      try {
+        recognition.start();
+      } catch (e) {
+        // If Chrome is still releasing the previous session, retry seamlessly in 100ms
+        restartTimer = setTimeout(() => {
+          if (!active) return;
+          try { recognition.start(); } catch (err) {}
+        }, 100);
+      }
+    }, 50);
   };
 
   return {
@@ -751,7 +979,9 @@ export function createWakeWordMic({
       if (active) return true;
       active = true;
       armed = false;
+      wakeIndex = -1;
       captured = '';
+      ignoreUntilRestart = false;
       try {
         recognition.start();
       } catch (e) {
@@ -765,11 +995,16 @@ export function createWakeWordMic({
     stop() {
       active = false;
       armed = false;
+      wakeIndex = -1;
       captured = '';
+      ignoreUntilRestart = false;
       clearSilence();
       if (restartTimer) { clearTimeout(restartTimer); restartTimer = null; }
       try { recognition.stop(); } catch (e) {}
       setState('off');
+    },
+    reset() {
+      resetRecognitionSession();
     },
     isActive() { return active; },
   };

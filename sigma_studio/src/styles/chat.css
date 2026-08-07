@@ -1500,6 +1500,107 @@
   content: '▸ ';
 }
 
+/* Speech Karaoke Word Highlight */
+mark.speech-word-highlight,
+.speech-word-highlight {
+  background: #ffe600 !important;
+  color: #0e1016 !important;
+  font-weight: 800 !important;
+  padding: 1px 5px !important;
+  border-radius: 4px !important;
+  box-shadow: 0 0 14px rgba(255, 230, 0, 0.85) !important;
+  display: inline !important;
+  transition: all 0.1s ease !important;
+  text-shadow: none !important;
+}
+
+/* Chat Audio Player Bar */
+.chat-audio-player-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: rgba(15, 23, 42, 0.88);
+  border: 1px solid rgba(0, 210, 255, 0.35);
+  border-radius: 12px;
+  padding: 6px 12px;
+  margin: 6px 0 10px 0;
+  backdrop-filter: blur(12px);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.35);
+}
+
+.chat-audio-player-controls {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.chat-audio-btn {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: var(--text-muted, #8b8fa3);
+  font-size: 0.65rem;
+  font-weight: 600;
+  padding: 3px 8px;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.chat-audio-btn:hover {
+  background: rgba(0, 210, 255, 0.15);
+  border-color: rgba(0, 210, 255, 0.4);
+  color: #00d2ff;
+}
+
+.chat-audio-btn.primary {
+  background: rgba(0, 210, 255, 0.18);
+  border-color: rgba(0, 210, 255, 0.4);
+  color: #00d2ff;
+  font-weight: 700;
+}
+
+.chat-audio-btn.primary:hover {
+  background: rgba(0, 210, 255, 0.3);
+  box-shadow: 0 0 10px rgba(0, 210, 255, 0.3);
+}
+
+.chat-audio-btn.stop:hover {
+  background: rgba(255, 85, 85, 0.2);
+  border-color: rgba(255, 85, 85, 0.4);
+  color: #ff5555;
+}
+
+.chat-audio-scrubber-container {
+  flex: 1;
+  display: flex;
+  align-items: center;
+}
+
+.chat-audio-scrubber {
+  width: 100%;
+  height: 4px;
+  accent-color: #00d2ff;
+  cursor: pointer;
+  border-radius: 2px;
+}
+
+.chat-audio-info {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.chat-audio-percent {
+  font-size: 0.68rem;
+  font-weight: 700;
+  color: #00d2ff;
+  min-width: 32px;
+  text-align: right;
+}
+
 /* Bold & italic */
 .chat-content strong,
 .chat-md strong {
