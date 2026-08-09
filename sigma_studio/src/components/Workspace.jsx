@@ -18,6 +18,7 @@ import AccountTab from './AccountTab';
 import McpHubTab from './McpHubTab';
 import KnowledgeNodeExplorer from './KnowledgeNodeExplorer';
 import McpStatusBar from './McpStatusBar';
+import DomoticaTab from './Workspace/DomoticaTab';
 
 // ==============================================================================
 // Workspace — Content area that renders based on active tab type
@@ -121,8 +122,8 @@ export default function Workspace({
       );
     }
     
-    // All file types (teoria, docs, whitepaper, manifesti, scripts, test, viz) use the unified SigmaLabEditor
-    if (tab.type === 'teoria' || tab.type === 'docs' || tab.type === 'whitepaper' || tab.type === 'manifesti' || tab.type === 'scripts' || tab.type === 'test' || tab.type === 'viz') {
+    // All file types (teoria, docs, whitepaper, manifesti, scripts, test, viz, editor) use the unified SigmaLabEditor
+    if (tab.type === 'teoria' || tab.type === 'docs' || tab.type === 'whitepaper' || tab.type === 'manifesti' || tab.type === 'scripts' || tab.type === 'test' || tab.type === 'viz' || tab.type === 'editor') {
       return (
         <SigmaLabEditor
           tab={tab}
@@ -185,6 +186,9 @@ export default function Workspace({
     if (tab.type === 'mcp_hub') {
       return <McpHubTab />;
     }
+    if (tab.type === 'domotica' || tab.type === 'home_assistant') {
+      return <DomoticaTab />;
+    }
     if (tab.type === 'account') {
       return <AccountTab />;
     }
@@ -227,7 +231,7 @@ export default function Workspace({
           )}
         </div>
       </div>
-      <McpStatusBar />
+      <McpStatusBar openTab={openTab} />
       <div className="content-area">
         {getActiveContent()}
       </div>

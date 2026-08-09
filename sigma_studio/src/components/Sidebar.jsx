@@ -255,6 +255,14 @@ export default function Sidebar({
             />
           )}
           <SidebarItem 
+            icon={Home} 
+            label="Domotica & IoT" 
+            badge="HA"
+            badgeColor="rgba(0,210,255,0.15)"
+            active={activeTabId != null && (activeTabId.startsWith('domotica') || activeTabId.startsWith('home_assistant'))}
+            onClick={() => openTab({ name: '🏠 Domotica & Home Assistant' }, 'domotica')} 
+          />
+          <SidebarItem 
             icon={User} 
             label="Account & Voce" 
             active={activeTabId != null && activeTabId.startsWith('account')}

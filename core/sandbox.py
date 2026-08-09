@@ -34,6 +34,8 @@ ROOT_FILES: frozenset[str] = frozenset({
     "config.json",
     "sigma_server.py",
     "README.md",
+    "README_IT.md",
+    "architettura.md",
     "package.json",
 })
 

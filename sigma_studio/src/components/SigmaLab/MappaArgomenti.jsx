@@ -151,10 +151,11 @@ export default function MappaArgomenti({ onOpenFile }) {
     if (!simulationRef.current) return;
     const currentNodes = simulationRef.current.nodes();
     const positions = {};
+    const round1 = (val) => val == null ? null : Math.round(val * 10) / 10;
     currentNodes.forEach(node => {
       const x = node.fx != null ? node.fx : node.x;
       const y = node.fy != null ? node.fy : node.y;
-      positions[node.id] = { fx: x, fy: y, x, y };
+      positions[node.id] = { fx: round1(x), fy: round1(y), x: round1(x), y: round1(y) };
       node.fx = x;
       node.fy = y;
     });
@@ -168,7 +169,12 @@ export default function MappaArgomenti({ onOpenFile }) {
         }
       }));
     } catch (e) {
-      console.error("Error saving layout positions:", e);
+      if (e.name === 'QuotaExceededError' || e.code === 22 || e.code === 1014) {
+        try {
+          localStorage.removeItem('sigma_graph_custom_positions');
+          localStorage.setItem('sigma_graph_custom_positions', JSON.stringify(positions));
+        } catch (retryErr) {}
+      }
     }
   };
 
@@ -1076,15 +1082,18 @@ export default function MappaArgomenti({ onOpenFile }) {
     // Helper to persist custom positions of a dragged node & all its descendants
     const saveNodePositions = (draggedRoot, descendants) => {
       try {
-        const saved = localStorage.getItem('sigma_graph_custom_positions');
+        let saved = null;
+        try { saved = localStorage.getItem('sigma_graph_custom_positions'); } catch (e) {}
         const positions = saved ? JSON.parse(saved) : {};
+
+        const round1 = (val) => val == null ? null : Math.round(val * 10) / 10;
 
         // Save root node position
         positions[draggedRoot.id] = {
-          x: draggedRoot.x,
-          y: draggedRoot.y,
-          fx: draggedRoot.fx ?? draggedRoot.x,
-          fy: draggedRoot.fy ?? draggedRoot.y
+          x: round1(draggedRoot.x),
+          y: round1(draggedRoot.y),
+          fx: round1(draggedRoot.fx ?? draggedRoot.x),
+          fy: round1(draggedRoot.fy ?? draggedRoot.y)
         };
 
         // Save all descendant nodes' positions & pin them with fx, fy
@@ -1092,16 +1101,29 @@ export default function MappaArgomenti({ onOpenFile }) {
           child.fx = child.x;
           child.fy = child.y;
           positions[child.id] = {
-            x: child.x,
-            y: child.y,
-            fx: child.fx,
-            fy: child.fy
+            x: round1(child.x),
+            y: round1(child.y),
+            fx: round1(child.fx),
+            fy: round1(child.fy)
           };
         });
 
-        localStorage.setItem('sigma_graph_custom_positions', JSON.stringify(positions));
+        const jsonStr = JSON.stringify(positions);
+        try {
+          localStorage.setItem('sigma_graph_custom_positions', jsonStr);
+        } catch (e) {
+          if (e.name === 'QuotaExceededError' || e.code === 22 || e.code === 1014) {
+            // Quota exceeded: store pruned positions to avoid error loop
+            const compactPositions = {};
+            compactPositions[draggedRoot.id] = positions[draggedRoot.id];
+            descendants.forEach(c => { compactPositions[c.id] = positions[c.id]; });
+            try {
+              localStorage.setItem('sigma_graph_custom_positions', JSON.stringify(compactPositions));
+            } catch (retryErr) {}
+          }
+        }
       } catch (e) {
-        console.error("Error saving custom graph positions:", e);
+        // Silently catch layout persistence error to prevent console spam
       }
     };
 

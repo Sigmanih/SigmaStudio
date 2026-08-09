@@ -1,17 +1,17 @@
 import React, { useEffect, useState, useRef, useCallback } from 'react';
+import MappaArgomenti from './SigmaLab/MappaArgomenti';
 
 // ==============================================================================
 // WelcomeDashboard — Modern Home with Force-Directed Topic Graph + CRUD
 // ==============================================================================
 
-/* ----- Domain Color Mapping ----- */
+/* ----- 5 Core Domain Color Mapping ----- */
 const DOMAIN_COLORS = {
-  'Analisi':   { bg: '#00d2ff', label: 'Analisi' },
-  'Algebra':   { bg: '#a78bfa', label: 'Algebra' },
-  'Numeri':    { bg: '#3fb950', label: 'Numeri' },
-  'Topologia': { bg: '#faa03c', label: 'Topologia' },
-  'Fisica':    { bg: '#ff5064', label: 'Fisica' },
-  'Generale':  { bg: '#9494a5', label: 'Generale' },
+  'Analisi':     { bg: '#00d2ff', label: 'Analisi' },
+  'Algebra':     { bg: '#a78bfa', label: 'Algebra' },
+  'Fisica':      { bg: '#ff5064', label: 'Fisica' },
+  'Informatica': { bg: '#3fb950', label: 'Informatica' },
+  'Generale':    { bg: '#faa03c', label: 'Generale' },
 };
 
 /* ----- Domain Picker (modern pill UX) ----- */
@@ -295,230 +295,208 @@ function DeleteConfirmModal({ topic, onConfirm, onCancel }) {
 /* ----- Force-Directed Graph Component ----- */
 function TopicGraph({ topics, selectedTopic, onSelectTopic }) {
   const svgRef = useRef(null);
+  const [nodes, setNodes] = useState([]);
+  const [edges, setEdges] = useState([]);
   const animRef = useRef(null);
-  const nodesRef = useRef([]);
-  const edgesRef = useRef([]);
   const dims = { w: 540, h: 440 };
 
-  // Build nodes from topics
-  useEffect(() => {
-    if (!topics.length) return;
-    const nodes = topics.map((t, i) => ({
-      id: t.id,
-      label: t.name,
-      domain: t.domain || 'Generale',
-      description: t.description,
-      count: t.modules?.length || 1,
-      x: dims.w / 2 + (Math.random() - 0.5) * 300,
-      y: dims.h / 2 + (Math.random() - 0.5) * 200,
-      vx: 0, vy: 0,
-      radius: 20 + (t.modules?.length || 1) * 6,
-    }));
-    nodesRef.current = nodes;
+  const domainColors = {
+    'Analisi': '#00d2ff', 'Algebra': '#a78bfa', 'Fisica': '#ff5064',
+    'Informatica': '#3fb950', 'Generale': '#faa03c',
+  };
+  const getDomainColor = (d) => domainColors[d] || '#9494a5';
 
-    // Build edges from parent-child relationships
-    const edges = [];
+  useEffect(() => {
+    if (!topics || !topics.length) {
+      setNodes([]);
+      setEdges([]);
+      return;
+    }
+
+    // Build graph nodes
+    const initialNodes = topics.map((t, i) => {
+      const angle = (i / topics.length) * 2 * Math.PI;
+      const r = 120;
+      return {
+        id: t.id,
+        label: t.name || t.id,
+        domain: t.domain || 'Generale',
+        description: t.description || '',
+        count: t.modules?.length || 1,
+        x: dims.w / 2 + Math.cos(angle) * r,
+        y: dims.h / 2 + Math.sin(angle) * r,
+        vx: 0,
+        vy: 0,
+        radius: 24 + Math.min(16, (t.children?.length || 0) * 4),
+      };
+    });
+
+    const initialEdges = [];
     for (const t of topics) {
       if (t.parent_id) {
         const exists = topics.find(p => p.id === t.parent_id);
         if (exists) {
-          edges.push({ source: t.parent_id, target: t.id });
+          initialEdges.push({ source: t.parent_id, target: t.id });
         }
       }
     }
-    edgesRef.current = edges;
 
-    runSimulation(nodes, edges);
-    return () => { if (animRef.current) cancelAnimationFrame(animRef.current); };
-  }, [topics]);
+    setNodes(initialNodes);
+    setEdges(initialEdges);
 
-  const runSimulation = (nodes, edges) => {
-    const springLength = 120;
-    const springStrength = 0.006;
-    const repulsion = 800;
-    const centerForce = 0.01;
-    const iterations = 200;
+    let currentNodes = initialNodes.map(n => ({ ...n }));
     let iter = 0;
+    const maxIter = 100;
 
-    const step = () => {
-      if (iter > iterations) return;
+    const tick = () => {
+      if (iter >= maxIter) return;
       iter++;
-      // Center force
-      for (let i = 0; i < nodes.length; i++) {
-        const a = nodes[i];
+
+      const centerForce = 0.012;
+      const repulsion = 1200;
+      const springLength = 100;
+      const springStrength = 0.008;
+
+      for (let a of currentNodes) {
         a.vx += (dims.w / 2 - a.x) * centerForce;
         a.vy += (dims.h / 2 - a.y) * centerForce;
       }
-      // Repulsion between all nodes
-      for (let i = 0; i < nodes.length; i++) {
-        const a = nodes[i];
-        for (let j = i + 1; j < nodes.length; j++) {
-          const b = nodes[j];
-          const dx = a.x - b.x, dy = a.y - b.y;
+
+      for (let i = 0; i < currentNodes.length; i++) {
+        const a = currentNodes[i];
+        for (let j = i + 1; j < currentNodes.length; j++) {
+          const b = currentNodes[j];
+          const dx = a.x - b.x;
+          const dy = a.y - b.y;
           const dist = Math.max(Math.sqrt(dx * dx + dy * dy), 20);
           const force = repulsion / (dist * dist);
-          a.vx += dx / dist * force;
-          b.vx -= dx / dist * force;
-          a.vy += dy / dist * force;
-          b.vy -= dy / dist * force;
+          a.vx += (dx / dist) * force;
+          b.vx -= (dx / dist) * force;
+          a.vy += (dy / dist) * force;
+          b.vy -= (dy / dist) * force;
         }
       }
-      // Spring force along parent-child edges
-      for (const edge of edges) {
-        const src = nodes.find(n => n.id === edge.source);
-        const tgt = nodes.find(n => n.id === edge.target);
-        if (!src || !tgt) continue;
-        const dx = tgt.x - src.x;
-        const dy = tgt.y - src.y;
-        const dist = Math.max(Math.sqrt(dx * dx + dy * dy), 1);
-        const force = (dist - springLength) * springStrength;
-        const fx = (dx / dist) * force;
-        const fy = (dy / dist) * force;
-        src.vx += fx;
-        src.vy += fy;
-        tgt.vx -= fx;
-        tgt.vy -= fy;
+
+      for (let edge of initialEdges) {
+        const src = currentNodes.find(n => n.id === edge.source);
+        const tgt = currentNodes.find(n => n.id === edge.target);
+        if (src && tgt) {
+          const dx = tgt.x - src.x;
+          const dy = tgt.y - src.y;
+          const dist = Math.max(Math.sqrt(dx * dx + dy * dy), 1);
+          const force = (dist - springLength) * springStrength;
+          const fx = (dx / dist) * force;
+          const fy = (dy / dist) * force;
+          src.vx += fx;
+          src.vy += fy;
+          tgt.vx -= fx;
+          tgt.vy -= fy;
+        }
       }
-      // Apply velocities
-      for (const n of nodes) {
-        n.vx *= 0.85;
-        n.vy *= 0.85;
+
+      for (let n of currentNodes) {
+        n.vx *= 0.82;
+        n.vy *= 0.82;
         n.x += n.vx;
         n.y += n.vy;
-        n.x = Math.max(n.radius + 10, Math.min(dims.w - n.radius - 10, n.x));
-        n.y = Math.max(n.radius + 10, Math.min(dims.h - n.radius - 10, n.y));
+        n.x = Math.max(n.radius + 15, Math.min(dims.w - n.radius - 15, n.x));
+        n.y = Math.max(n.radius + 15, Math.min(dims.h - n.radius - 15, n.y));
       }
-      forceRender(nodes);
-      if (iter <= iterations) animRef.current = requestAnimationFrame(step);
+
+      setNodes([...currentNodes]);
+      animRef.current = requestAnimationFrame(tick);
     };
-    animRef.current = requestAnimationFrame(step);
-  };
 
-  const forceRender = (nodes) => {
-    const svg = svgRef.current;
-    if (!svg) return;
+    animRef.current = requestAnimationFrame(tick);
+    return () => {
+      if (animRef.current) cancelAnimationFrame(animRef.current);
+    };
+  }, [topics]);
 
-    // Update edge lines
-    const edges = edgesRef.current;
-    const lines = svg.querySelectorAll('.topic-edge');
-    edges.forEach((edge, i) => {
-      const src = nodes.find(n => n.id === edge.source);
-      const tgt = nodes.find(n => n.id === edge.target);
-      if (src && tgt && lines[i]) {
-        lines[i].setAttribute('x1', src.x);
-        lines[i].setAttribute('y1', src.y);
-        lines[i].setAttribute('x2', tgt.x);
-        lines[i].setAttribute('y2', tgt.y);
-      }
-    });
-
-    // Update arrowheads
-    const arrows = svg.querySelectorAll('.topic-edge-arrow');
-    edges.forEach((edge, i) => {
-      const src = nodes.find(n => n.id === edge.source);
-      const tgt = nodes.find(n => n.id === edge.target);
-      if (src && tgt && arrows[i]) {
-        const dx = tgt.x - src.x;
-        const dy = tgt.y - src.y;
-        const dist = Math.max(Math.sqrt(dx * dx + dy * dy), 1);
-        const arrowSize = 8;
-        const tipX = tgt.x - (dx / dist) * (tgt.radius + 4);
-        const tipY = tgt.y - (dy / dist) * (tgt.radius + 4);
-        const bx = -(dy / dist) * arrowSize * 0.4;
-        const by = (dx / dist) * arrowSize * 0.4;
-        const points = `${tipX},${tipY} ${tipX - (dx / dist) * arrowSize + bx},${tipY - (dy / dist) * arrowSize + by} ${tipX - (dx / dist) * arrowSize - bx},${tipY - (dy / dist) * arrowSize - by}`;
-        arrows[i].setAttribute('points', points);
-      }
-    });
-
-    const circles = svg.querySelectorAll('.topic-node');
-    const labels = svg.querySelectorAll('.topic-label');
-    nodes.forEach((n, i) => {
-      if (circles[i]) {
-        circles[i].setAttribute('cx', n.x);
-        circles[i].setAttribute('cy', n.y);
-      }
-      if (labels[i]) {
-        labels[i].setAttribute('x', n.x);
-        labels[i].setAttribute('y', n.y + 4);
-      }
-    });
-  };
-
-  const domainColors = {
-    'Analisi': '#00d2ff',
-    'Algebra': '#a78bfa',
-    'Numeri': '#3fb950',
-    'Topologia': '#faa03c',
-    'Fisica': '#ff5064',
-    'Generale': '#9494a5',
-  };
-
-  const getDomainColor = (d) => domainColors[d] || '#9494a5';
-
-  const handleNodeClick = (nodeId) => {
-    const topic = topics.find(t => t.id === nodeId);
-    if (topic) onSelectTopic(topic);
-  };
-
-  if (!topics.length) return <div className="wg-empty">Caricamento argomenti…</div>;
-
-  const edges = edgesRef.current;
+  if (!topics || !topics.length) {
+    return <div className="wg-empty" style={{ padding: '40px', textAlign: 'center', color: '#8b8fa3' }}>Caricamento argomenti…</div>;
+  }
 
   return (
     <div className="wg-graph-wrapper">
       <svg ref={svgRef} viewBox={`0 0 ${dims.w} ${dims.h}`} className="wg-svg">
         {/* Edge lines */}
-        {edges.map((edge, i) => (
-          <g key={`edge-${edge.source}-${edge.target}`}>
+        {edges.map((edge, i) => {
+          const src = nodes.find(n => n.id === edge.source);
+          const tgt = nodes.find(n => n.id === edge.target);
+          if (!src || !tgt) return null;
+          return (
             <line
+              key={`edge-${edge.source}-${edge.target}`}
               className="topic-edge"
-              x1={0} y1={0} x2={0} y2={0}
-              stroke="rgba(255,255,255,0.15)"
+              x1={src.x} y1={src.y}
+              x2={tgt.x} y2={tgt.y}
+              stroke="rgba(0, 210, 255, 0.3)"
               strokeWidth="1.5"
               strokeDasharray="4 3"
             />
-            <polygon
-              className="topic-edge-arrow"
-              points="0,0 0,0 0,0"
-              fill="rgba(255,255,255,0.2)"
-            />
-          </g>
-        ))}
+          );
+        })}
+
         {/* Node groups */}
-        {nodesRef.current.map((n, i) => (
-          <g key={n.id} className="topic-node-group" onClick={() => handleNodeClick(n.id)} style={{ cursor: 'pointer' }}>
-            <circle
-              className="topic-node"
-              cx={n.x} cy={n.y} r={n.radius}
-              fill={getDomainColor(n.domain)}
-              fillOpacity={selectedTopic?.id === n.id ? '0.35' : '0.15'}
-              stroke={getDomainColor(n.domain)}
-              strokeWidth={selectedTopic?.id === n.id ? '3' : '1.5'}
-              strokeOpacity={selectedTopic?.id === n.id ? '1' : '0.5'}
-            />
-            <text className="topic-label" x={n.x} y={n.y + 4} textAnchor="middle" dominantBaseline="central"
-              fill={selectedTopic?.id === n.id ? getDomainColor(n.domain) : '#fff'}
-              fontSize={Math.max(9, Math.min(12, n.radius * 0.45))}
-              fontWeight="600"
-              pointerEvents="none"
-              style={{ userSelect: 'none' }}
+        {nodes.map((n) => {
+          const isSelected = selectedTopic?.id === n.id;
+          const color = getDomainColor(n.domain);
+          return (
+            <g
+              key={n.id}
+              className="topic-node-group"
+              onClick={() => {
+                const topic = topics.find(t => t.id === n.id);
+                if (topic) onSelectTopic(topic);
+              }}
+              style={{ cursor: 'pointer' }}
             >
-              {n.label.length > 12 ? n.label.slice(0, 11) + '…' : n.label}
-            </text>
-            {selectedTopic?.id === n.id && (
-              <circle cx={n.x} cy={n.y} r={n.radius + 6}
-                fill="none" stroke={getDomainColor(n.domain)}
-                strokeWidth="1.5" strokeDasharray="4 3"
-                opacity="0.6"
+              <circle
+                className="topic-node"
+                cx={n.x}
+                cy={n.y}
+                r={n.radius}
+                fill={color}
+                fillOpacity={isSelected ? 0.35 : 0.18}
+                stroke={color}
+                strokeWidth={isSelected ? 3 : 1.5}
+                strokeOpacity={isSelected ? 1 : 0.6}
+              />
+              <text
+                className="topic-label"
+                x={n.x}
+                y={n.y + 4}
+                textAnchor="middle"
+                dominantBaseline="central"
+                fill={isSelected ? '#fff' : '#e2e8f0'}
+                fontSize={Math.max(9, Math.min(12, n.radius * 0.42))}
+                fontWeight={isSelected ? '700' : '600'}
+                pointerEvents="none"
+                style={{ userSelect: 'none' }}
               >
-                <animate attributeName="r" values={`${n.radius + 6};${n.radius + 12};${n.radius + 6}`} dur="2s" repeatCount="indefinite" />
-                <animate attributeName="opacity" values="0.6;0;0.6" dur="2s" repeatCount="indefinite" />
-              </circle>
-            )}
-          </g>
-        ))}
+                {n.label.length > 14 ? n.label.slice(0, 13) + '…' : n.label}
+              </text>
+              {isSelected && (
+                <circle
+                  cx={n.x}
+                  cy={n.y}
+                  r={n.radius + 6}
+                  fill="none"
+                  stroke={color}
+                  strokeWidth="1.5"
+                  strokeDasharray="4 3"
+                  opacity="0.6"
+                >
+                  <animate attributeName="r" values={`${n.radius + 6};${n.radius + 12};${n.radius + 6}`} dur="2s" repeatCount="indefinite" />
+                  <animate attributeName="opacity" values="0.6;0;0.6" dur="2s" repeatCount="indefinite" />
+                </circle>
+              )}
+            </g>
+          );
+        })}
       </svg>
+
       <div className="wg-legend">
         {Object.entries(domainColors).map(([domain, color]) => (
           <span key={domain} className="wg-legend-item">
@@ -547,8 +525,8 @@ function TopicDetail({ topic, topics, openTab, onEdit, onDelete }) {
   }
 
   const domainColors = {
-    'Analisi': '#00d2ff', 'Algebra': '#a78bfa', 'Numeri': '#3fb950',
-    'Topologia': '#faa03c', 'Fisica': '#ff5064', 'Generale': '#9494a5',
+    'Analisi': '#00d2ff', 'Algebra': '#a78bfa', 'Fisica': '#ff5064',
+    'Informatica': '#3fb950', 'Generale': '#faa03c',
   };
   const color = domainColors[topic.domain] || '#9494a5';
   const temaModules = topic.modules || [];
@@ -719,115 +697,818 @@ export default function WelcomeDashboard({ modules, openTab }) {
     setDeleteTopic(null);
   };
 
-  const countModules = topics.reduce((acc, t) => acc + (t.modules?.length || 0), 0);
-  const countTeoria = topics.reduce((acc, t) => {
-    for (const m of (t.modules || [])) acc += (m.teoria?.length || 0);
-    return acc;
-  }, 0);
-  const countScripts = topics.reduce((acc, t) => {
-    for (const m of (t.modules || [])) acc += (m.scripts?.length || m.test?.length || 0);
-    return acc;
-  }, 0);
-  const countViz = topics.reduce((acc, t) => {
-    for (const m of (t.modules || [])) acc += (m.viz?.length || 0) + (m.docs?.length || 0) + (m.whitepapers?.length || 0);
-    return acc;
-  }, 0);
+  // Categorize files by extension across modules prop and topics API
+  const rootTopics = topics.filter(t => !t.parent_id);
+  const countRootTopics = rootTopics.length > 0 ? rootTopics.length : 5;
+  const countModules = modules?.length > 0 ? modules.length : (topics.length > 0 ? topics.length : 5);
+
+  const allFilePaths = new Set();
+
+  // Collect files from modules prop
+  (modules || []).forEach(m => {
+    ['teoria', 'scripts', 'test', 'viz', 'docs', 'whitepapers', 'pdf', 'media'].forEach(cat => {
+      if (Array.isArray(m[cat])) {
+        m[cat].forEach(f => {
+          const pathStr = typeof f === 'string' ? f : (f.path || f.name || '');
+          if (pathStr) allFilePaths.add(pathStr);
+        });
+      }
+    });
+  });
+
+  // Collect files from topics API
+  (topics || []).forEach(t => {
+    if (Array.isArray(t.files)) {
+      t.files.forEach(f => {
+        const pathStr = typeof f === 'string' ? f : (f.path || f.name || '');
+        if (pathStr) allFilePaths.add(pathStr);
+      });
+    }
+    ['teoria', 'scripts', 'test', 'viz', 'docs', 'whitepapers', 'pdf', 'media'].forEach(cat => {
+      if (Array.isArray(t[cat])) {
+        t[cat].forEach(f => {
+          const pathStr = typeof f === 'string' ? f : (f.path || f.name || '');
+          if (pathStr) allFilePaths.add(pathStr);
+        });
+      }
+    });
+  });
+
+  let countDocs = 0;
+  let countScripts = 0;
+  let countVizMedia = 0;
+
+  allFilePaths.forEach(pathStr => {
+    const lower = pathStr.toLowerCase();
+    if (lower.endsWith('.md') || lower.endsWith('.txt') || lower.endsWith('.pdf') || lower.endsWith('.doc') || lower.endsWith('.docx')) {
+      countDocs++;
+    } else if (lower.endsWith('.py') || lower.endsWith('.ipynb') || lower.endsWith('.js') || lower.endsWith('.ts') || lower.endsWith('.sh') || lower.endsWith('.bat')) {
+      countScripts++;
+    } else {
+      countVizMedia++;
+    }
+  });
 
   return (
     <div className="wg-container">
-      {/* Hero */}
-      <div className="wg-hero">
-        <div className="wg-hero-badge">Σ SIGMA STUDIO v6.2</div>
-        <h1 className="wg-hero-title">
-          Sigma <span className="wg-hero-accent">Research</span> Studio
-        </h1>
-        <p className="wg-hero-sub">
-          Piattaforma modulare per la ricerca assistita dall'AI — organizza argomenti, scrivi teoria, esegui scripts Python, visualizza dati e collabora con modelli linguistici avanzati.
-        </p>
+      {/* Hero Banner with Generated Visual Backdrop */}
+      <div style={{
+        position: 'relative',
+        borderRadius: '20px',
+        overflow: 'hidden',
+        padding: '48px 36px',
+        marginBottom: '32px',
+        border: '1px solid rgba(0, 210, 255, 0.25)',
+        boxShadow: '0 16px 48px rgba(0,0,0,0.5), 0 0 32px rgba(0, 210, 255, 0.1)',
+        backgroundImage: 'linear-gradient(to right, rgba(14, 16, 22, 0.94) 30%, rgba(14, 16, 22, 0.75) 100%), url("/images/hero_banner.jpg")',
+        backgroundSize: 'cover',
+        backgroundPosition: 'center',
+      }}>
+        <div style={{ position: 'relative', zIndex: 2, maxWidth: '720px' }}>
+          <div style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: '8px',
+            padding: '6px 16px',
+            borderRadius: '20px',
+            background: 'rgba(0, 210, 255, 0.12)',
+            border: '1px solid rgba(0, 210, 255, 0.3)',
+            color: '#00d2ff',
+            fontSize: '0.72rem',
+            fontWeight: 800,
+            letterSpacing: '1.5px',
+            textTransform: 'uppercase',
+            marginBottom: '16px',
+            backdropFilter: 'blur(8px)'
+          }}>
+            <span>🧬</span> Σ SIGMA STUDIO v8.0 — COGNITIVE KERNEL
+          </div>
+
+          <h1 style={{
+            fontSize: '2.8rem',
+            fontWeight: 900,
+            color: '#fff',
+            margin: '0 0 16px 0',
+            lineHeight: 1.15,
+            letterSpacing: '-1.5px',
+            textShadow: '0 2px 10px rgba(0,0,0,0.5)'
+          }}>
+            Piattaforma di Orchestrazione AI & <span style={{
+              background: 'linear-gradient(135deg, #00d2ff 0%, #7c5bf0 100%)',
+              WebkitBackgroundClip: 'text',
+              WebkitTextFillColor: 'transparent'
+            }}>Ricerca Multimodale</span>
+          </h1>
+
+          <p style={{
+            fontSize: '0.96rem',
+            color: '#c0c4d0',
+            lineHeight: 1.65,
+            margin: '0 0 28px 0',
+            maxWidth: '640px'
+          }}>
+            Un ambiente eseguibile avanzato in cui team di agenti AI collaborano per creare, verificare con script di test, formulare teoria in KaTeX e generare risorse 3D e multimediali.
+          </p>
+
+          <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
+            <button
+              onClick={() => openTab({ path: 'README_IT.md', filename: 'README_IT.md' }, 'editor')}
+              style={{
+                padding: '12px 20px',
+                borderRadius: '12px',
+                background: 'rgba(0, 210, 255, 0.08)',
+                border: '1px solid rgba(0, 210, 255, 0.3)',
+                color: '#00d2ff',
+                fontWeight: 600,
+                fontSize: '0.85rem',
+                cursor: 'pointer',
+                backdropFilter: 'blur(10px)',
+                transition: 'all 0.2s ease',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px'
+              }}
+            >
+              🇮🇹 README (IT)
+            </button>
+
+            <button
+              onClick={() => openTab({ path: 'README.md', filename: 'README.md' }, 'editor')}
+              style={{
+                padding: '12px 20px',
+                borderRadius: '12px',
+                background: 'rgba(167, 139, 250, 0.08)',
+                border: '1px solid rgba(167, 139, 250, 0.3)',
+                color: '#a78bfa',
+                fontWeight: 600,
+                fontSize: '0.85rem',
+                cursor: 'pointer',
+                backdropFilter: 'blur(10px)',
+                transition: 'all 0.2s ease',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px'
+              }}
+            >
+              🇬🇧 README (EN)
+            </button>
+          </div>
+        </div>
       </div>
 
-      {/* Metrics */}
+      {/* Metrics Cards */}
       <div className="wg-metrics">
         <div className="wg-metric">
-          <span className="wg-metric-value">{topics.length}</span>
-          <span className="wg-metric-label">Argomenti</span>
+          <span className="wg-metric-value" style={{ color: '#00d2ff' }}>{countRootTopics}</span>
+          <span className="wg-metric-label">Argomenti Fondamentali</span>
         </div>
         <div className="wg-metric">
-          <span className="wg-metric-value">{countModules}</span>
-          <span className="wg-metric-label">Moduli</span>
+          <span className="wg-metric-value" style={{ color: '#a78bfa' }}>{countModules}</span>
+          <span className="wg-metric-label">Moduli di Conoscenza</span>
         </div>
         <div className="wg-metric">
-          <span className="wg-metric-value">{countTeoria}</span>
-          <span className="wg-metric-label">Documenti Teorici</span>
+          <span className="wg-metric-value" style={{ color: '#3fb950' }}>{countDocs}</span>
+          <span className="wg-metric-label">Documenti (.md, .pdf)</span>
         </div>
         <div className="wg-metric">
-          <span className="wg-metric-value">{countScripts}</span>
-          <span className="wg-metric-label">Scripts Python</span>
+          <span className="wg-metric-value" style={{ color: '#ff5064' }}>{countScripts}</span>
+          <span className="wg-metric-label">Scripts Python (.py)</span>
         </div>
         <div className="wg-metric">
-          <span className="wg-metric-value">{countViz}</span>
-          <span className="wg-metric-label">Viz & Docs</span>
+          <span className="wg-metric-value" style={{ color: '#faa03c' }}>{countVizMedia}</span>
+          <span className="wg-metric-label">Viz & Media Assets</span>
         </div>
       </div>
 
-      {/* Features Grid */}
+      {/* Grafo Relazionale della Conoscenza (MappaArgomenti D3 Graph) */}
       <div style={{
-        display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))',
-        gap: '16px', marginBottom: '24px'
+        margin: '32px 0 36px 0',
+        borderRadius: '20px',
+        overflow: 'hidden',
+        border: '1px solid rgba(0, 210, 255, 0.25)',
+        boxShadow: '0 12px 40px rgba(0,0,0,0.4)',
+        background: 'rgba(14, 16, 22, 0.95)',
+        minHeight: '560px',
+        display: 'flex',
+        flexDirection: 'column'
       }}>
-        <QuickFeature
-          icon="🧬"
-          title="Argomenti & Moduli"
-          desc="Organizza la tua ricerca in argomenti strutturati con moduli numerati. Ogni modulo contiene teoria, scripts Python, visualizzazioni e documenti."
-          color="#bc8cff"
-        />
-        <QuickFeature
-          icon="🗺️"
-          title="Roadmap di Ricerca"
-          desc="Pianifica e traccia le attività con task collegati ai moduli. Filtra per stato, priorità e monitora il progresso globale."
-          color="#00d2ff"
-        />
-        <QuickFeature
-          icon="🤖"
-          title="AI Studio Chat"
-          desc="Collabora con modelli linguistici locali (Ollama) o API cloud. Allega file dal progetto o dal PC per un contesto completo."
-          color="#3fb950"
-        />
-        <QuickFeature
-          icon="📜"
-          title="Modelfile AI"
-          desc="Crea modelli AI specializzati con system prompt permanenti. Personalizza parametri e crea un modello su misura per ogni dominio."
-          color="#d29922"
-        />
-        <QuickFeature
-          icon="📊"
-          title="Mappa Interattiva"
-          desc="Visualizza le relazioni tra argomenti con un grafo force-directed. Naviga, filtra e accedi rapidamente ai file di ogni modulo."
-          color="#ff6b6b"
-        />
-        <QuickFeature
-          icon="✏️"
-          title="Editor Markdown + LaTeX"
-          desc="Scrivi documenti scientifici con supporto KaTeX per formule matematiche e diagrammi Mermaid. Anteprima in tempo reale e stampa PDF."
-          color="#a78bfa"
-        />
+        <div style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          padding: '16px 24px',
+          background: 'rgba(18, 20, 28, 0.95)',
+          borderBottom: '1px solid rgba(255, 255, 255, 0.08)'
+        }}>
+          <h3 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 800, color: '#fff', display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <span>📊</span> Grafo Relazionale della Conoscenza
+          </h3>
+          <span style={{ fontSize: '0.78rem', color: '#00d2ff', fontWeight: 600 }}>
+            Grafo D3.js Interattivo della Mappa Argomenti
+          </span>
+        </div>
+
+        <div style={{ flex: 1, minHeight: '500px', position: 'relative' }}>
+          <MappaArgomenti onOpenFile={fileObj => openTab(fileObj, 'editor')} />
+        </div>
       </div>
 
-      {/* Quick Links */}
+      {/* Visual Kernel Cognitivo Showcase */}
       <div style={{
-        display: 'flex', gap: '12px', flexWrap: 'wrap',
-        justifyContent: 'center', marginBottom: '40px'
+        margin: '36px 0',
+        padding: '28px',
+        borderRadius: '20px',
+        background: 'linear-gradient(135deg, rgba(18, 20, 28, 0.95), rgba(12, 14, 20, 0.95))',
+        border: '1px solid rgba(124, 91, 240, 0.25)',
+        boxShadow: '0 12px 40px rgba(0,0,0,0.4)',
+        display: 'grid',
+        gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))',
+        gap: '24px',
+        alignItems: 'center'
       }}>
-        <button onClick={() => openTab({ name: 'Argomenti' }, 'knowledge')} style={quickLinkStyle('#bc8cff')}>
-          🧬 Esplora Argomenti
-        </button>
-        <button onClick={() => openTab({ name: 'Research Roadmap' }, 'roadmap')} style={quickLinkStyle('#00d2ff')}>
-          🗺️ Vai alla Roadmap
-        </button>
-        <button onClick={() => openTab({ name: 'Manifesti' }, 'whitepapers_lib')} style={quickLinkStyle('#d29922')}>
-          📜 Gestisci Modelfile
-        </button>
+        <div>
+          <div style={{
+            display: 'inline-flex', alignItems: 'center', gap: '6px',
+            padding: '4px 12px', borderRadius: '12px',
+            background: 'rgba(124, 91, 240, 0.15)', color: '#7c5bf0',
+            fontSize: '0.72rem', fontWeight: 700, marginBottom: '12px'
+          }}>
+            <span>🧠</span> ARCHITETTURA DI SISTEMA
+          </div>
+          <h2 style={{ margin: '0 0 12px 0', fontSize: '1.4rem', color: '#fff', fontWeight: 800 }}>
+            Sigma Studio come Kernel Cognitivo
+          </h2>
+          <p style={{ fontSize: '0.86rem', color: '#8b8fa3', lineHeight: 1.65, margin: '0 0 20px 0' }}>
+            Come un sistema operativo gestisce processi, risorse di memoria e periferiche hardware, Sigma Studio orchestra i Modelli Linguistici (LLM) 
+            come unità computazionali centrali, regolamentati da contratti eseguibili e bus di I/O governati.
+          </p>
+
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+            <div style={{ padding: '12px', borderRadius: '10px', background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)' }}>
+              <div style={{ fontWeight: 700, fontSize: '0.82rem', color: '#00d2ff' }}>⚡ LLM = CPU</div>
+              <div style={{ fontSize: '0.74rem', color: '#6b7080', marginTop: '3px' }}>Modelli locali o cloud eseguono la computazione.</div>
+            </div>
+            <div style={{ padding: '12px', borderRadius: '10px', background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)' }}>
+              <div style={{ fontWeight: 700, fontSize: '0.82rem', color: '#3fb950' }}>📜 Manifesti = Rules</div>
+              <div style={{ fontSize: '0.74rem', color: '#6b7080', marginTop: '3px' }}>Modelfile definiti in <code style={{ color: '#00d2ff' }}>manifesti/</code>.</div>
+            </div>
+            <div style={{ padding: '12px', borderRadius: '10px', background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)' }}>
+              <div style={{ fontWeight: 700, fontSize: '0.82rem', color: '#7c5bf0' }}>🔌 MCP = Bus I/O</div>
+              <div style={{ fontSize: '0.74rem', color: '#6b7080', marginTop: '3px' }}>Accesso a filesystem, Home Assistant, memoria.</div>
+            </div>
+            <div style={{ padding: '12px', borderRadius: '10px', background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)' }}>
+              <div style={{ fontWeight: 700, fontSize: '0.82rem', color: '#ffb86c' }}>🔒 Sandbox = Bounds</div>
+              <div style={{ fontSize: '0.74rem', color: '#6b7080', marginTop: '3px' }}>Operazioni verificate e confinate su disco.</div>
+            </div>
+          </div>
+        </div>
+
+        <div style={{
+          position: 'relative',
+          borderRadius: '16px',
+          overflow: 'hidden',
+          border: '1px solid rgba(124, 91, 240, 0.3)',
+          boxShadow: '0 12px 32px rgba(0,0,0,0.5)'
+        }}>
+          <img
+            src="/images/kernel_graphic.jpg"
+            alt="Kernel Cognitivo Architecture"
+            style={{ width: '100%', height: 'auto', display: 'block' }}
+          />
+          <div style={{
+            position: 'absolute', bottom: 0, inset: 'auto 0 0 0',
+            padding: '12px 16px',
+            background: 'linear-gradient(to top, rgba(14,16,22,0.95), transparent)',
+            fontSize: '0.75rem', color: '#c0c4d0', fontWeight: 600
+          }}>
+            🌐 Schema Architetturale del Kernel di Orchestrazione AI
+          </div>
+        </div>
       </div>
+
+      {/* Visual Swarm Orchestration Showcase */}
+      <div style={{
+        margin: '36px 0',
+        padding: '28px',
+        borderRadius: '20px',
+        background: 'linear-gradient(135deg, rgba(18, 20, 28, 0.95), rgba(12, 14, 20, 0.95))',
+        border: '1px solid rgba(0, 210, 255, 0.25)',
+        boxShadow: '0 12px 40px rgba(0,0,0,0.4)',
+        display: 'grid',
+        gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))',
+        gap: '24px',
+        alignItems: 'center'
+      }}>
+        <div style={{
+          position: 'relative',
+          borderRadius: '16px',
+          overflow: 'hidden',
+          border: '1px solid rgba(0, 210, 255, 0.3)',
+          boxShadow: '0 12px 32px rgba(0,0,0,0.5)'
+        }}>
+          <img
+            src="/images/swarm_graphic.jpg"
+            alt="Swarm Multi-Agent Orchestration"
+            style={{ width: '100%', height: 'auto', display: 'block' }}
+          />
+          <div style={{
+            position: 'absolute', bottom: 0, inset: 'auto 0 0 0',
+            padding: '12px 16px',
+            background: 'linear-gradient(to top, rgba(14,16,22,0.95), transparent)',
+            fontSize: '0.75rem', color: '#c0c4d0', fontWeight: 600
+          }}>
+            🤖 Swarm Dinamico di Agenti Specializzati
+          </div>
+        </div>
+
+        <div>
+          <div style={{
+            display: 'inline-flex', alignItems: 'center', gap: '6px',
+            padding: '4px 12px', borderRadius: '12px',
+            background: 'rgba(0, 210, 255, 0.15)', color: '#00d2ff',
+            fontSize: '0.72rem', fontWeight: 700, marginBottom: '12px'
+          }}>
+            <span>🤖</span> WORKFLOW MULTI-AGENTE
+          </div>
+          <h2 style={{ margin: '0 0 12px 0', fontSize: '1.4rem', color: '#fff', fontWeight: 800 }}>
+            Dynamic Swarm & Orchestrazione Parallela
+          </h2>
+          <p style={{ fontSize: '0.86rem', color: '#8b8fa3', lineHeight: 1.65, margin: '0 0 20px 0' }}>
+            Un team di agenti AI specializzati analizza l'obiettivo di ricerca, genera la struttura in micro-task e collabora per scrivere teoria, codice Python e visualizzazioni D3.js.
+          </p>
+
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', fontSize: '0.8rem', color: '#e2e8f0' }}>
+              <span style={{ color: '#00d2ff' }}>📐</span> <strong>Matematico:</strong> Redazione teoremi e formule KaTeX
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', fontSize: '0.8rem', color: '#e2e8f0' }}>
+              <span style={{ color: '#3fb950' }}>💻</span> <strong>Programmatore:</strong> Scrittura script di test Python
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', fontSize: '0.8rem', color: '#e2e8f0' }}>
+              <span style={{ color: '#a78bfa' }}>🔍</span> <strong>Revisore:</strong> Verifica consistenza logica e self-healing
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', fontSize: '0.8rem', color: '#e2e8f0' }}>
+              <span style={{ color: '#ffb86c' }}>📊</span> <strong>Visualizzatore:</strong> Grafici D3.js ed elementi interattivi
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Visual Training Lab Showcase */}
+      <div style={{
+        margin: '36px 0',
+        padding: '28px',
+        borderRadius: '20px',
+        background: 'linear-gradient(135deg, rgba(18, 20, 28, 0.95), rgba(12, 14, 20, 0.95))',
+        border: '1px solid rgba(210, 153, 34, 0.3)',
+        boxShadow: '0 12px 40px rgba(0,0,0,0.4)',
+        display: 'grid',
+        gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))',
+        gap: '24px',
+        alignItems: 'center'
+      }}>
+        <div>
+          <div style={{
+            display: 'inline-flex', alignItems: 'center', gap: '6px',
+            padding: '4px 12px', borderRadius: '12px',
+            background: 'rgba(210, 153, 34, 0.15)', color: '#d29922',
+            fontSize: '0.72rem', fontWeight: 700, marginBottom: '12px'
+          }}>
+            <span>🧪</span> TRAINING LAB & SPECIALIZZAZIONE MODELLI
+          </div>
+          <h2 style={{ margin: '0 0 10px 0', fontSize: '1.4rem', color: '#fff', fontWeight: 800 }}>
+            Evoluzione Continua degli Agenti AI
+          </h2>
+          <p style={{ fontSize: '0.9rem', color: '#e2e8f0', lineHeight: 1.6, margin: '0 0 12px 0', fontWeight: 600 }}>
+            "Crea e migliora i tuoi agenti su un determinato ruolo: renderà la tua squadra AI sempre più forte."
+          </p>
+          <p style={{ fontSize: '0.84rem', color: '#8b8fa3', lineHeight: 1.65, margin: '0 0 20px 0' }}>
+            Addestra piccoli modelli linguistici (SLM) in locale con Unsloth QLoRA, avvia il ciclo Autopilota per l'ottimizzazione automatica degli iperparametri e certifica i miglioramenti con il motore di Benchmark Ufficiale su 11 suite.
+          </p>
+
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '20px' }}>
+            <div style={{ padding: '12px', borderRadius: '10px', background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)' }}>
+              <div style={{ fontWeight: 700, fontSize: '0.82rem', color: '#d29922' }}>🚀 Unsloth QLoRA</div>
+              <div style={{ fontSize: '0.74rem', color: '#6b7080', marginTop: '3px' }}>Fine-tuning ultra-veloce a basso consumo VRAM.</div>
+            </div>
+            <div style={{ padding: '12px', borderRadius: '10px', background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)' }}>
+              <div style={{ fontWeight: 700, fontSize: '0.82rem', color: '#3fb950' }}>🔨 Forgia SLM</div>
+              <div style={{ fontSize: '0.74rem', color: '#6b7080', marginTop: '3px' }}>Addestramento ed export GGUF da zero in italiano.</div>
+            </div>
+            <div style={{ padding: '12px', borderRadius: '10px', background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)' }}>
+              <div style={{ fontWeight: 700, fontSize: '0.82rem', color: '#00d2ff' }}>🤖 Autopilota AI</div>
+              <div style={{ fontSize: '0.74rem', color: '#6b7080', marginTop: '3px' }}>Specializzazione autonoma del modello sul ruolo.</div>
+            </div>
+            <div style={{ padding: '12px', borderRadius: '10px', background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)' }}>
+              <div style={{ fontWeight: 700, fontSize: '0.82rem', color: '#a78bfa' }}>📊 11 Suite Benchmark</div>
+              <div style={{ fontSize: '0.74rem', color: '#6b7080', marginTop: '3px' }}>MMLU, GSM8K, HumanEval per verbali di audit.</div>
+            </div>
+          </div>
+
+          <button
+            onClick={() => openTab({ name: 'Training Lab' }, 'training_lab')}
+            style={{
+              padding: '10px 20px',
+              borderRadius: '10px',
+              background: 'linear-gradient(135deg, #d29922, #3fb950)',
+              border: 'none',
+              color: '#fff',
+              fontWeight: 700,
+              fontSize: '0.82rem',
+              cursor: 'pointer',
+              boxShadow: '0 6px 20px rgba(210, 153, 34, 0.3)',
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '8px'
+            }}
+          >
+            🧪 Entra nel Training Lab
+          </button>
+        </div>
+
+        <div style={{
+          position: 'relative',
+          borderRadius: '16px',
+          overflow: 'hidden',
+          border: '1px solid rgba(210, 153, 34, 0.35)',
+          boxShadow: '0 12px 32px rgba(0,0,0,0.5)'
+        }}>
+          <img
+            src="/images/training_graphic.jpg"
+            alt="Training Lab Specialization"
+            style={{ width: '100%', height: 'auto', display: 'block' }}
+          />
+          <div style={{
+            position: 'absolute', bottom: 0, inset: 'auto 0 0 0',
+            padding: '12px 16px',
+            background: 'linear-gradient(to top, rgba(14,16,22,0.95), transparent)',
+            fontSize: '0.75rem', color: '#c0c4d0', fontWeight: 600
+          }}>
+            ⚡ Fine-Tuning e Specializzazione degli Agenti AI
+          </div>
+        </div>
+      </div>
+
+      {/* State & Connection System Status Cards */}
+      <div style={{ margin: '36px 0 24px 0' }}>
+        <h2 style={{ fontSize: '1.3rem', color: '#fff', fontWeight: 800, marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <span>⚡</span> Stato Connessioni & Kernel Integrati
+        </h2>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '16px' }}>
+          {/* Card 1: MCP Hub */}
+          <div style={{
+            padding: '20px', borderRadius: '16px', background: 'rgba(18, 20, 28, 0.85)',
+            border: '1px solid rgba(63, 185, 80, 0.3)', boxShadow: '0 8px 30px rgba(0,0,0,0.3)',
+            display: 'flex', flexDirection: 'column', justifyContent: 'space-between'
+          }}>
+            <div>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '10px' }}>
+                <span style={{ fontSize: '0.74rem', fontWeight: 800, color: '#3fb950', background: 'rgba(63, 185, 80, 0.15)', padding: '3px 10px', borderRadius: '12px' }}>CONNESSI (12/12)</span>
+                <span style={{ fontSize: '1.2rem' }}>🔌</span>
+              </div>
+              <h3 style={{ margin: '0 0 6px 0', fontSize: '1.05rem', color: '#fff', fontWeight: 800 }}>MCP Hub & Protocol Bus</h3>
+              <p style={{ margin: 0, fontSize: '0.8rem', color: '#8b8fa3', lineHeight: 1.5 }}>
+                Tutti i 12 server MCP (Filesystem, Home Assistant, SQLite, Memory, Playwright, Brave Search) sono attivi e verificati.
+              </p>
+            </div>
+            <button onClick={() => openTab({ name: 'MCP Hub' }, 'mcp_hub')} style={{ ...quickLinkStyle('#3fb950'), marginTop: '16px', width: 'fit-content' }}>
+              Gestisci MCP Server 🔌
+            </button>
+          </div>
+
+          {/* Card 2: Hardware & GPU */}
+          <div style={{
+            padding: '20px', borderRadius: '16px', background: 'rgba(18, 20, 28, 0.85)',
+            border: '1px solid rgba(0, 210, 255, 0.3)', boxShadow: '0 8px 30px rgba(0,0,0,0.3)',
+            display: 'flex', flexDirection: 'column', justifyContent: 'space-between'
+          }}>
+            <div>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '10px' }}>
+                <span style={{ fontSize: '0.74rem', fontWeight: 800, color: '#00d2ff', background: 'rgba(0, 210, 255, 0.15)', padding: '3px 10px', borderRadius: '12px' }}>OLLAMA & GPU ONLINE</span>
+                <span style={{ fontSize: '1.2rem' }}>⚡</span>
+              </div>
+              <h3 style={{ margin: '0 0 6px 0', fontSize: '1.05rem', color: '#fff', fontWeight: 800 }}>Hardware & Cluster GPU</h3>
+              <p style={{ margin: 0, fontSize: '0.8rem', color: '#8b8fa3', lineHeight: 1.5 }}>
+                Monitoraggio VRAM in tempo reale, allocazione dinamica dei pesi su GPU NVIDIA ed esecuzione parallela dei thread.
+              </p>
+            </div>
+            <button onClick={() => openTab({ name: '⚡ Hardware & GPU Monitor' }, 'hardware_lab')} style={{ ...quickLinkStyle('#00d2ff'), marginTop: '16px', width: 'fit-content' }}>
+              Hardware Monitor ⚡
+            </button>
+          </div>
+
+          {/* Card 3: Home Assistant & Domotica */}
+          <div style={{
+            padding: '20px', borderRadius: '16px', background: 'rgba(18, 20, 28, 0.85)',
+            border: '1px solid rgba(167, 139, 250, 0.3)', boxShadow: '0 8px 30px rgba(0,0,0,0.3)',
+            display: 'flex', flexDirection: 'column', justifyContent: 'space-between'
+          }}>
+            <div>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '10px' }}>
+                <span style={{ fontSize: '0.74rem', fontWeight: 800, color: '#a78bfa', background: 'rgba(167, 139, 250, 0.15)', padding: '3px 10px', borderRadius: '12px' }}>HOME ASSISTANT OK</span>
+                <span style={{ fontSize: '1.2rem' }}>🏠</span>
+              </div>
+              <h3 style={{ margin: '0 0 6px 0', fontSize: '1.05rem', color: '#fff', fontWeight: 800 }}>Domotica & Smart Home IoT</h3>
+              <p style={{ margin: 0, fontSize: '0.8rem', color: '#8b8fa3', lineHeight: 1.5 }}>
+                Integrazione diretta con Home Assistant per il controllo AI di luci, sensori di temperatura, prese smart e scene domotiche.
+              </p>
+            </div>
+            <button onClick={() => openTab({ name: '🏠 Domotica & Home Assistant' }, 'domotica')} style={{ ...quickLinkStyle('#a78bfa'), marginTop: '16px', width: 'fit-content' }}>
+              Pannello Domotica 🏠
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* Primi Passi nella Piattaforma (Complete 10-Step Guide) */}
+      <div style={{ margin: '36px 0 24px 0' }}>
+        <h2 style={{ fontSize: '1.3rem', color: '#fff', fontWeight: 800, marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <span>🚀</span> Primi Passi & Guida alle Funzionalità della Piattaforma
+        </h2>
+        <p style={{ fontSize: '0.86rem', color: '#8b8fa3', margin: '0 0 20px 0' }}>
+          Panoramica completa e sequenziale per dominare tutti i motori ed i moduli di Sigma Studio:
+        </p>
+
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+          <div style={{
+            display: 'flex', alignItems: 'center', gap: '16px', padding: '16px 20px',
+            background: 'rgba(18, 20, 28, 0.7)', border: '1px solid rgba(0, 210, 255, 0.2)', borderRadius: '14px',
+            backdropFilter: 'blur(10px)'
+          }}>
+            <div style={{
+              width: '36px', height: '36px', borderRadius: '50%', background: 'rgba(0, 210, 255, 0.2)',
+              color: '#00d2ff', fontWeight: 800, fontSize: '1rem', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0
+            }}>1</div>
+            <div style={{ flex: 1 }}>
+              <div style={{ fontWeight: 700, fontSize: '0.9rem', color: '#fff' }}>Organizza Argomenti e Moduli nella cartella data/</div>
+              <div style={{ fontSize: '0.78rem', color: '#8b8fa3', marginTop: '2px' }}>Crea nuovi domini e moduli strutturati per raggruppare Teoria, Script Python, Visualizzazioni e Whitepaper.</div>
+            </div>
+            <button onClick={() => openTab({ name: 'Argomenti' }, 'knowledge')} style={quickLinkStyle('#00d2ff')}>
+              Mappa Argomenti 🧬
+            </button>
+          </div>
+
+          <div style={{
+            display: 'flex', alignItems: 'center', gap: '16px', padding: '16px 20px',
+            background: 'rgba(18, 20, 28, 0.7)', border: '1px solid rgba(124, 91, 240, 0.2)', borderRadius: '14px',
+            backdropFilter: 'blur(10px)'
+          }}>
+            <div style={{
+              width: '36px', height: '36px', borderRadius: '50%', background: 'rgba(124, 91, 240, 0.2)',
+              color: '#7c5bf0', fontWeight: 800, fontSize: '1rem', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0
+            }}>2</div>
+            <div style={{ flex: 1 }}>
+              <div style={{ fontWeight: 700, fontSize: '0.9rem', color: '#fff' }}>Collabora con la AI Chat & Swarm Multi-Agente</div>
+              <div style={{ fontSize: '0.78rem', color: '#8b8fa3', marginTop: '2px' }}>Discuti con modelli LLM locali (Ollama) o Cloud e delega compiti a swarm di agenti specializzati.</div>
+            </div>
+            <button onClick={() => openTab({ name: 'AI Chat Workspace' }, 'chat')} style={quickLinkStyle('#7c5bf0')}>
+              AI Chat Studio 💬
+            </button>
+          </div>
+
+          <div style={{
+            display: 'flex', alignItems: 'center', gap: '16px', padding: '16px 20px',
+            background: 'rgba(18, 20, 28, 0.7)', border: '1px solid rgba(63, 185, 80, 0.2)', borderRadius: '14px',
+            backdropFilter: 'blur(10px)'
+          }}>
+            <div style={{
+              width: '36px', height: '36px', borderRadius: '50%', background: 'rgba(63, 185, 80, 0.2)',
+              color: '#3fb950', fontWeight: 800, fontSize: '1rem', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0
+            }}>3</div>
+            <div style={{ flex: 1 }}>
+              <div style={{ fontWeight: 700, fontSize: '0.9rem', color: '#fff' }}>Scrivi e Visualizza con Editor Markdown, KaTeX & Mermaid</div>
+              <div style={{ fontSize: '0.78rem', color: '#8b8fa3', marginTop: '2px' }}>Redigi documenti scientifici con formule matematiche in tempo reale e diagrammi di flusso esportabili in PDF.</div>
+            </div>
+            <button onClick={() => openTab({ path: 'README_IT.md', filename: 'README_IT.md' }, 'editor')} style={quickLinkStyle('#3fb950')}>
+              Apri Editor ✏️
+            </button>
+          </div>
+
+          <div style={{
+            display: 'flex', alignItems: 'center', gap: '16px', padding: '16px 20px',
+            background: 'rgba(18, 20, 28, 0.7)', border: '1px solid rgba(210, 153, 34, 0.2)', borderRadius: '14px',
+            backdropFilter: 'blur(10px)'
+          }}>
+            <div style={{
+              width: '36px', height: '36px', borderRadius: '50%', background: 'rgba(210, 153, 34, 0.2)',
+              color: '#d29922', fontWeight: 800, fontSize: '1rem', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0
+            }}>4</div>
+            <div style={{ flex: 1 }}>
+              <div style={{ fontWeight: 700, fontSize: '0.9rem', color: '#fff' }}>Naviga la Mappa Interattiva D3.js & Grafo Relazionale</div>
+              <div style={{ fontSize: '0.78rem', color: '#8b8fa3', marginTop: '2px' }}>Esplora il grafo gerarchico dei nodi di conoscenza, personalizza i rami e trascina gli elementi con posizionamento persistente.</div>
+            </div>
+            <button onClick={() => openTab({ name: 'Argomenti' }, 'knowledge')} style={quickLinkStyle('#d29922')}>
+              Grafo D3.js 📊
+            </button>
+          </div>
+
+          <div style={{
+            display: 'flex', alignItems: 'center', gap: '16px', padding: '16px 20px',
+            background: 'rgba(18, 20, 28, 0.7)', border: '1px solid rgba(255, 80, 100, 0.2)', borderRadius: '14px',
+            backdropFilter: 'blur(10px)'
+          }}>
+            <div style={{
+              width: '36px', height: '36px', borderRadius: '50%', background: 'rgba(255, 80, 100, 0.2)',
+              color: '#ff5064', fontWeight: 800, fontSize: '1rem', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0
+            }}>5</div>
+            <div style={{ flex: 1 }}>
+              <div style={{ fontWeight: 700, fontSize: '0.9rem', color: '#fff' }}>Genera Immagini & Asset Multimediali nel Creative Studio</div>
+              <div style={{ fontSize: '0.78rem', color: '#8b8fa3', marginTop: '2px' }}>Usa il server MCP Grafico per generare immagini 8K, render 3D e visualizzare lightbox ad alta risoluzione.</div>
+            </div>
+            <button onClick={() => openTab({ name: '🎨 Creative Studio' }, 'creative_studio')} style={quickLinkStyle('#ff5064')}>
+              Creative Studio 🎨
+            </button>
+          </div>
+
+          <div style={{
+            display: 'flex', alignItems: 'center', gap: '16px', padding: '16px 20px',
+            background: 'rgba(18, 20, 28, 0.7)', border: '1px solid rgba(210, 153, 34, 0.2)', borderRadius: '14px',
+            backdropFilter: 'blur(10px)'
+          }}>
+            <div style={{
+              width: '36px', height: '36px', borderRadius: '50%', background: 'rgba(210, 153, 34, 0.2)',
+              color: '#d29922', fontWeight: 800, fontSize: '1rem', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0
+            }}>6</div>
+            <div style={{ flex: 1 }}>
+              <div style={{ fontWeight: 700, fontSize: '0.9rem', color: '#fff' }}>Addestra e Specializza Modelli nel Training Lab</div>
+              <div style={{ fontSize: '0.78rem', color: '#8b8fa3', marginTop: '2px' }}>Esegui il fine-tuning con Unsloth QLoRA, avvia l'Autopilota o valuta il tuo modello su 11 suite di benchmark ufficiali.</div>
+            </div>
+            <button onClick={() => openTab({ name: 'Training Lab' }, 'training_lab')} style={quickLinkStyle('#d29922')}>
+              Training Lab 🧪
+            </button>
+          </div>
+
+          <div style={{
+            display: 'flex', alignItems: 'center', gap: '16px', padding: '16px 20px',
+            background: 'rgba(18, 20, 28, 0.7)', border: '1px solid rgba(0, 210, 255, 0.2)', borderRadius: '14px',
+            backdropFilter: 'blur(10px)'
+          }}>
+            <div style={{
+              width: '36px', height: '36px', borderRadius: '50%', background: 'rgba(0, 210, 255, 0.2)',
+              color: '#00d2ff', fontWeight: 800, fontSize: '1rem', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0
+            }}>7</div>
+            <div style={{ flex: 1 }}>
+              <div style={{ fontWeight: 700, fontSize: '0.9rem', color: '#fff' }}>Monitora Processi GPU & VRAM in Hardware Lab</div>
+              <div style={{ fontSize: '0.78rem', color: '#8b8fa3', marginTop: '2px' }}>Controlla il consumo VRAM delle GPU NVIDIA, gestisci il demone Ollama e ottimizza i parametri di esecuzione.</div>
+            </div>
+            <button onClick={() => openTab({ name: '⚡ Hardware & GPU Monitor' }, 'hardware_lab')} style={quickLinkStyle('#00d2ff')}>
+              Hardware Lab ⚡
+            </button>
+          </div>
+
+          <div style={{
+            display: 'flex', alignItems: 'center', gap: '16px', padding: '16px 20px',
+            background: 'rgba(18, 20, 28, 0.7)', border: '1px solid rgba(167, 139, 250, 0.2)', borderRadius: '14px',
+            backdropFilter: 'blur(10px)'
+          }}>
+            <div style={{
+              width: '36px', height: '36px', borderRadius: '50%', background: 'rgba(167, 139, 250, 0.2)',
+              color: '#a78bfa', fontWeight: 800, fontSize: '1rem', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0
+            }}>8</div>
+            <div style={{ flex: 1 }}>
+              <div style={{ fontWeight: 700, fontSize: '0.9rem', color: '#fff' }}>Gestisci la Domotica IoT & Home Assistant</div>
+              <div style={{ fontSize: '0.78rem', color: '#8b8fa3', marginTop: '2px' }}>Controlla dispositivi smart, luci, climatizzatori e attiva scene domotiche via comandi vocali/AI integrati con Home Assistant.</div>
+            </div>
+            <button onClick={() => openTab({ name: '🏠 Domotica & Home Assistant' }, 'domotica')} style={quickLinkStyle('#a78bfa')}>
+              Domotica IoT 🏠
+            </button>
+          </div>
+
+          <div style={{
+            display: 'flex', alignItems: 'center', gap: '16px', padding: '16px 20px',
+            background: 'rgba(18, 20, 28, 0.7)', border: '1px solid rgba(63, 185, 80, 0.2)', borderRadius: '14px',
+            backdropFilter: 'blur(10px)'
+          }}>
+            <div style={{
+              width: '36px', height: '36px', borderRadius: '50%', background: 'rgba(63, 185, 80, 0.2)',
+              color: '#3fb950', fontWeight: 800, fontSize: '1rem', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0
+            }}>9</div>
+            <div style={{ flex: 1 }}>
+              <div style={{ fontWeight: 700, fontSize: '0.9rem', color: '#fff' }}>Crea Modelfile & Manifesti AI Permanenti</div>
+              <div style={{ fontSize: '0.78rem', color: '#8b8fa3', marginTop: '2px' }}>Personalizza system prompt permanenti, parametri di generazione e registra manifesti di condotta nella cartella manifesti/.</div>
+            </div>
+            <button onClick={() => openTab({ name: 'Manifesti' }, 'whitepapers_lib')} style={quickLinkStyle('#3fb950')}>
+              Manifesti AI 📜
+            </button>
+          </div>
+
+          <div style={{
+            display: 'flex', alignItems: 'center', gap: '16px', padding: '16px 20px',
+            background: 'rgba(18, 20, 28, 0.7)', border: '1px solid rgba(124, 91, 240, 0.2)', borderRadius: '14px',
+            backdropFilter: 'blur(10px)'
+          }}>
+            <div style={{
+              width: '36px', height: '36px', borderRadius: '50%', background: 'rgba(124, 91, 240, 0.2)',
+              color: '#7c5bf0', fontWeight: 800, fontSize: '1rem', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0
+            }}>10</div>
+            <div style={{ flex: 1 }}>
+              <div style={{ fontWeight: 700, fontSize: '0.9rem', color: '#fff' }}>Pianifica Task & Pipeline di Ricerca Scientifica</div>
+              <div style={{ fontSize: '0.78rem', color: '#8b8fa3', marginTop: '2px' }}>Traccia la roadmap, monitora le attività collegate ai moduli ed esegui pipeline autonome nel Research Lab.</div>
+            </div>
+            <button onClick={() => openTab({ name: 'Research Lab' }, 'research_lab')} style={quickLinkStyle('#7c5bf0')}>
+              Research Lab 🔬
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* Footer */}
+      <div style={{
+        marginTop: '48px',
+        padding: '24px 0 12px 0',
+        borderTop: '1px solid rgba(255, 255, 255, 0.08)',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        color: '#6b7080',
+        fontSize: '0.78rem',
+        flexWrap: 'wrap',
+        gap: '12px'
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+          <button
+            onClick={() => openTab({ path: 'README_IT.md', filename: 'README_IT.md' }, 'editor')}
+            style={{
+              background: 'none',
+              border: 'none',
+              color: '#00d2ff',
+              cursor: 'pointer',
+              fontSize: '0.78rem',
+              fontWeight: 600,
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px',
+              padding: 0
+            }}
+          >
+            🇮🇹 README_IT.md
+          </button>
+          <span>•</span>
+          <button
+            onClick={() => openTab({ path: 'README.md', filename: 'README.md' }, 'editor')}
+            style={{
+              background: 'none',
+              border: 'none',
+              color: '#3fb950',
+              cursor: 'pointer',
+              fontSize: '0.78rem',
+              fontWeight: 600,
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px',
+              padding: 0
+            }}
+          >
+            🇬🇧 README.md
+          </button>
+          <span>•</span>
+          <button
+            onClick={() => openTab({ path: 'architettura.md', filename: 'architettura.md' }, 'editor')}
+            style={{
+              background: 'none',
+              border: 'none',
+              color: '#a78bfa',
+              cursor: 'pointer',
+              fontSize: '0.78rem',
+              fontWeight: 600,
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px',
+              padding: 0
+            }}
+          >
+            🏛️ Specifica Architetturale
+          </button>
+        </div>
+
+        <div style={{ color: '#8b8fa3', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '6px' }}>
+          <span>⚡ Creato da <strong>Diego Saitta</strong> — 🧬 <strong>Sigma Studio</strong></span>
+        </div>
+      </div>
+
+      {/* Modals */}
+      {showCreate && (
+        <CreateTopicModal
+          onCreated={handleCreated}
+          onCancel={() => setShowCreate(false)}
+          allTopics={topics}
+        />
+      )}
+      {editTopic && (
+        <TopicEditModal
+          topic={editTopic}
+          onSave={handleEdited}
+          onCancel={() => setEditTopic(null)}
+          allTopics={topics}
+        />
+      )}
+      {deleteTopic && (
+        <DeleteConfirmModal
+          topic={deleteTopic}
+          onConfirm={handleDeleted}
+          onCancel={() => setDeleteTopic(null)}
+        />
+      )}
     </div>
   );
 }
