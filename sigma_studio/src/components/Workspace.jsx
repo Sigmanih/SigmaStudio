@@ -1,10 +1,11 @@
 import React from 'react';
-import { X, FileText, Terminal, PieChart, BookOpen, Trash2, ChevronRight, Home, MessageSquare, FlaskConical, Brain, Zap, User, Palette, Blocks } from 'lucide-react';
+import { X, FileText, Terminal, PieChart, BookOpen, Trash2, ChevronRight, Home, MessageSquare, FlaskConical, Brain, Zap, User, Palette, Blocks, Image } from 'lucide-react';
 import WelcomeDashboard from './WelcomeDashboard';
 import CreativeStudio from './CreativeStudio/CreativeStudio';
 import SkillsHub from './SkillsHub';
 import { RoadmapView } from './Dashboard';
 import StudioEditor from './Workspace/StudioEditor';
+import ImageViewer from './Workspace/ImageViewer';
 import ManifestiGallery from './Workspace/ManifestiGallery';
 import ModuleView from './Workspace/ModuleView';
 import { MarkdownPreview, MappaArgomenti, SigmaLabEditor } from './SigmaLab';
@@ -35,6 +36,7 @@ const FileIcon = ({ type }) => {
     case 'account': return <User size={16} />;
     case 'creative_studio': return <Palette size={16} />;
     case 'skills_hub': return <Blocks size={16} />;
+    case 'image_viewer': return <Image size={16} />;
     default: return <FileText size={16} />;
   }
 };
@@ -79,6 +81,11 @@ export default function Workspace({
     if (!path) return;
     const filename = path.split('/').pop() || path;
     const pathLower = path.toLowerCase();
+    // Image files go to the dedicated image viewer
+    if (/\.(?:png|jpg|jpeg|webp|svg|gif|bmp|tiff)$/i.test(pathLower)) {
+      openTab({ path, filename }, 'image_viewer');
+      return;
+    }
     let type = 'teoria';
     if (pathLower.includes('/scripts/') || pathLower.includes('/test/')) type = 'scripts';
     else if (pathLower.includes('/viz/')) type = 'viz';
@@ -186,6 +193,9 @@ export default function Workspace({
     }
     if (tab.type === 'skills_hub') {
       return <SkillsHub />;
+    }
+    if (tab.type === 'image_viewer') {
+      return <ImageViewer tab={tab} />;
     }
     return <div className="placeholder-content">Content type {tab.type} not implemented in preview.</div>;
   };

@@ -47,7 +47,22 @@ export default function McpToolStrip({ calls = [], approvals = [] }) {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginTop: '10px' }}>
-      {calls.map((call, idx) => (
+      {calls.map((call, idx) => {
+        // Try to extract image URL from tool output (for generate_image, edit_image, etc.)
+        let imageUrl = null;
+        if (call.ok && call.output && /generate_image|edit_image|upscale_image|render_scene/.test(call.tool || '')) {
+          try {
+            const parsed = typeof call.output === 'string' ? JSON.parse(call.output) : call.output;
+            if (parsed && parsed.url) {
+              imageUrl = parsed.url;
+            }
+          } catch (e) {
+            // Try regex fallback for URL in raw text
+            const urlMatch = (call.output || '').match(/["']?url["']?\s*:\s*["']([^"']+\.(?:png|jpg|jpeg|webp|gif))["']/i);
+            if (urlMatch) imageUrl = urlMatch[1];
+          }
+        }
+        return (
         <div key={`tc-${idx}`} style={{
           // Una chiamata rimandata non è un errore: aspetta il suo turno.
           border: `1px solid ${call.deferred ? 'rgba(255,255,255,0.12)'
@@ -74,8 +89,24 @@ export default function McpToolStrip({ calls = [], approvals = [] }) {
               whiteSpace: 'pre-wrap', wordBreak: 'break-word',
             }}>{call.output}</pre>
           )}
+          {/* Inline image preview for creative tools */}
+          {imageUrl && (
+            <div className="agent-image-preview" style={{ marginTop: '8px', maxWidth: '320px' }}>
+              <img
+                src={imageUrl}
+                alt={call.tool || 'Generated image'}
+                loading="lazy"
+                style={{ maxHeight: '240px' }}
+                onError={(e) => { e.target.parentElement.style.display = 'none'; }}
+              />
+              <div className="image-overlay">
+                <span>🎨 Immagine generata</span>
+              </div>
+            </div>
+          )}
         </div>
-      ))}
+        );
+      })}
 
       {pending.length > 1 && (
         <div style={{

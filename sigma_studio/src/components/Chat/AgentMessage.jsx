@@ -1,9 +1,14 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Bot, User, Terminal, FileText, Zap, Play, Pause, RotateCcw, RotateCw, Square } from 'lucide-react';
 import { renderMarkdownLatex } from '../../utils/markdownLatex';
 import McpToolStrip from './McpToolStrip';
+import ImageLightbox from './ImageLightbox';
 import { useApp } from '../../contexts/AppContext';
 import 'katex/dist/katex.min.css';
+
+// Helper: check if a file path is an image
+const IMAGE_EXTENSIONS = /\.(?:png|jpg|jpeg|webp|svg|gif|bmp|tiff)$/i;
+const isImagePath = (p) => typeof p === 'string' && IMAGE_EXTENSIONS.test(p);
 
 // ==============================================================================
 // AGENT MESSAGE v5.0 — Header inside bubble + Audio Player Bar & Karaoke Highlight
@@ -95,7 +100,7 @@ function highlightCurrentWordInHtml(htmlContent, fullCleanText, charIndex, charL
 // ==============================================================================
 // Main AgentMessage Component
 // ==============================================================================
-import { useState, useEffect } from 'react';
+import { useEffect } from 'react';
 import { 
   speakAgentMessage, 
   stopSpeech, 
@@ -128,6 +133,7 @@ export default function AgentMessage({
   const [expandedDiffs, setExpandedDiffs] = useState({});
   const [loadingStep, setLoadingStep] = useState(0);
   const [copiedMsg, setCopiedMsg] = useState(false);
+  const [lightboxSrc, setLightboxSrc] = useState(null);
 
   const handleCopyMessage = (e) => {
     e.stopPropagation();
@@ -176,7 +182,17 @@ export default function AgentMessage({
   const handleFileClick = (rawPath) => {
     if (!openTab) return;
     const clean = getCleanPathStr(rawPath);
-    if (clean) openTab({ path: clean, filename: clean.split('/').pop() || clean }, 'docs');
+    if (!clean) return;
+    // Route image files to the dedicated image viewer
+    if (isImagePath(clean)) {
+      openTab({ path: clean, filename: clean.split('/').pop() || clean }, 'image_viewer');
+    } else {
+      openTab({ path: clean, filename: clean.split('/').pop() || clean }, 'docs');
+    }
+  };
+
+  const handleImagePreviewClick = (imgUrl) => {
+    setLightboxSrc(imgUrl);
   };
 
   const messages = groupedMessages || (msg ? [msg] : []);
@@ -736,41 +752,66 @@ export default function AgentMessage({
                         {m.created_files?.map((filePath, fIdx) => {
                           const pStr = getCleanPathStr(filePath);
                           const isViz = pStr.toLowerCase().includes('/viz/') || pStr.toLowerCase().endsWith('.html');
+                          const isImg = isImagePath(pStr);
+                          // Resolve the image URL — path may be relative like data/creative/... or absolute /data/...
+                          const imgUrl = isImg ? (pStr.startsWith('/') ? pStr : `/${pStr}`) : null;
                           return (
-                          <div key={`cf-${fIdx}`} className="action-log-item" style={{
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'space-between',
-                            padding: '6px 8px',
-                            background: 'rgba(0, 210, 255, 0.04)',
-                            border: '1px solid rgba(0, 210, 255, 0.15)',
-                            borderRadius: '6px',
-                            fontSize: '0.75rem'
-                          }}>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0, flex: 1 }}>
-                              <span>📁</span>
-                              <span style={{ fontWeight: '600', color: 'var(--primary)', flexShrink: 0 }}>
-                                File salvato
-                              </span>
-                              <span style={{ color: '#8b8fa3', textOverflow: 'ellipsis', overflow: 'hidden', whiteSpace: 'nowrap' }}>
-                                {pStr}
-                              </span>
+                          <div key={`cf-${fIdx}`} style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                            {/* Inline image thumbnail preview */}
+                            {isImg && imgUrl && (
+                              <div
+                                className="agent-image-preview"
+                                onClick={() => handleImagePreviewClick(imgUrl)}
+                                title="Clicca per ingrandire"
+                              >
+                                <img
+                                  src={imgUrl}
+                                  alt={pStr.split('/').pop()}
+                                  loading="lazy"
+                                  onError={(e) => { e.target.style.display = 'none'; }}
+                                />
+                                <div className="image-overlay">
+                                  <span>🔍 Ingrandisci</span>
+                                </div>
+                              </div>
+                            )}
+                            <div className="action-log-item" style={{
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'space-between',
+                              padding: '6px 8px',
+                              background: isImg ? 'rgba(124, 91, 240, 0.06)' : 'rgba(0, 210, 255, 0.04)',
+                              border: isImg ? '1px solid rgba(124, 91, 240, 0.2)' : '1px solid rgba(0, 210, 255, 0.15)',
+                              borderRadius: '6px',
+                              fontSize: '0.75rem'
+                            }}>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0, flex: 1 }}>
+                                <span>{isImg ? '🎨' : '📁'}</span>
+                                <span style={{ fontWeight: '600', color: isImg ? '#7c5bf0' : 'var(--primary)', flexShrink: 0 }}>
+                                  {isImg ? 'Immagine generata' : 'File salvato'}
+                                </span>
+                                <span style={{ color: '#8b8fa3', textOverflow: 'ellipsis', overflow: 'hidden', whiteSpace: 'nowrap' }}>
+                                  {pStr}
+                                </span>
+                              </div>
+                              <div style={{ display: 'flex', gap: '5px' }}>
+                                <button
+                                  onClick={() => handleFileClick(pStr)}
+                                  style={{
+                                    background: isImg ? 'rgba(124,91,240,0.15)' : isViz ? 'rgba(57,185,80,0.15)' : 'rgba(0,210,255,0.15)',
+                                    border: isImg ? '1px solid rgba(124,91,240,0.35)' : isViz ? '1px solid rgba(57,185,80,0.4)' : '1px solid rgba(0,210,255,0.3)',
+                                    color: isImg ? '#7c5bf0' : isViz ? '#3fb950' : 'var(--primary)',
+                                    fontSize: '0.7rem',
+                                    padding: '3px 10px',
+                                    borderRadius: '4px',
+                                    cursor: 'pointer',
+                                    fontWeight: '600'
+                                  }}
+                                >
+                                  {isImg ? 'Visualizza 🖼️' : isViz ? 'Anteprima 👁️' : 'Visualizza 📄'}
+                                </button>
+                              </div>
                             </div>
-                            <button
-                              onClick={() => handleFileClick(pStr)}
-                              style={{
-                                background: isViz ? 'rgba(57,185,80,0.15)' : 'rgba(0,210,255,0.15)',
-                                border: isViz ? '1px solid rgba(57,185,80,0.4)' : '1px solid rgba(0,210,255,0.3)',
-                                color: isViz ? '#3fb950' : 'var(--primary)',
-                                fontSize: '0.7rem',
-                                padding: '3px 10px',
-                                borderRadius: '4px',
-                                cursor: 'pointer',
-                                fontWeight: '600'
-                              }}
-                            >
-                              {isViz ? 'Anteprima 👁️' : 'Visualizza 📄'}
-                            </button>
                           </div>
                           );
                         })}
@@ -888,6 +929,19 @@ export default function AgentMessage({
           }))}
         </div>
       </div>
+      {/* Image Lightbox (fullscreen preview) */}
+      {lightboxSrc && (
+        <ImageLightbox
+          src={lightboxSrc}
+          alt=""
+          onClose={() => setLightboxSrc(null)}
+          onOpenInEditor={() => {
+            // Extract relative path from URL for opening in image viewer
+            const relPath = lightboxSrc.startsWith('/') ? lightboxSrc.slice(1) : lightboxSrc;
+            if (openTab) openTab({ path: relPath, filename: relPath.split('/').pop() || relPath }, 'image_viewer');
+          }}
+        />
+      )}
     </div>
   );
 }

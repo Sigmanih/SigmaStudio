@@ -113,8 +113,14 @@ function renderLatexInText(text, katexBlocks = null) {
 function linkifyPaths(text) {
   if (typeof text !== 'string') return '';
   return text.replace(
-    /((?:data\/|manifesti\/)[^\s<>"'`]+\.(?:md|py|html|js|jsx|css|json|txt))/gi,
-    (match) => `<a class="chat-file-link" title="Apri ${match}" data-path="${match}">📄 ${match}</a>`
+    /((?:data\/|manifesti\/)[^\s<>"'`]+\.(?:md|py|html|js|jsx|css|json|txt|png|jpg|jpeg|webp|svg|gif))/gi,
+    (match) => {
+      const isImage = /\.(?:png|jpg|jpeg|webp|svg|gif)$/i.test(match);
+      if (isImage) {
+        return `<div class="chat-image-preview-card"><img src="/${match}" class="chat-inline-image" loading="lazy" /><span class="chat-image-caption">📄 ${match}</span></div>`;
+      }
+      return `<a class="chat-file-link" title="Apri ${match}" data-path="${match}">📄 ${match}</a>`;
+    }
   );
 }
 
@@ -189,6 +195,8 @@ function processInlineFormatting(text) {
   text = text.replace(/(?<!\*)\*(?!\*)(.+?)(?<!\*)\*(?!\*)/g, '<em>$1</em>');
   // Inline code: `text`
   text = text.replace(/`([^`]+)`/g, '<code>$1</code>');
+  // Markdown images: ![alt](url)
+  text = text.replace(/!\[([^\]]*)\]\(([^)]+)\)/g, '<div class="chat-image-preview-card"><img src="$2" alt="$1" class="chat-inline-image" loading="lazy" /><span class="chat-image-caption">$1</span></div>');
   // Markdown links: [text](url)
   text = text.replace(/\[([^\]]+)\]\(([^)]+)\)/g, (match, linkText, url) => {
     return `<a href="${url}" target="_blank" rel="noopener noreferrer" class="chat-external-link" style="color: #00d2ff; text-decoration: underline; text-underline-offset: 3px; word-break: break-all;">${linkText}</a>`;
@@ -363,6 +371,14 @@ function processBlocks(text) {
 
     // Empty line → paragraph break
     if (line.trim() === '') {
+      i++;
+      continue;
+    }
+
+    // Image syntax — standalone image lines push directly (no <p> wrapper)
+    if (/^!\[([^\]]*)\]\(([^)]+)\)$/.test(line.trim())) {
+      const imgMatch = line.trim().match(/^!\[([^\]]*)\]\(([^)]+)\)$/);
+      result.push(`<div class="chat-image-preview-card"><img src="${imgMatch[2]}" alt="${imgMatch[1]}" class="chat-inline-image" loading="lazy" /><span class="chat-image-caption">${imgMatch[1]}</span></div>`);
       i++;
       continue;
     }
