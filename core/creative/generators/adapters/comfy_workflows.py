@@ -34,8 +34,12 @@ DEFAULT_CHECKPOINTS = {
 }
 
 
-def _seed(params: dict) -> int:
+def _seed(params: dict):
     seed = params.get("seed", -1)
+    # Un placeholder attraversa il builder intatto: serve a generare il manifest
+    # del workflow senza eseguirlo.
+    if isinstance(seed, str) and "{{" in seed:
+        return seed
     return random.randint(0, 2**31 - 1) if seed in (None, -1, "") else int(seed)
 
 
@@ -171,13 +175,16 @@ def user_workflow_path(name: str) -> Path:
 
 
 def list_workflows() -> dict:
-    """Stato dei workflow: built-in disponibili e override utente presenti."""
-    user = {p.stem for p in WORKFLOW_DIR.glob("*.json")} if WORKFLOW_DIR.exists() else set()
+    """Stato dei workflow secondo il registro, non secondo una lista fissa."""
+    from core.creative.workflow_registry import registry
+
+    entries = registry.load(force=True)
+    provided = set(entries)
     return {
-        "builtin": sorted(BUILTIN),
-        "custom_required": sorted(set(CUSTOM_ONLY) - user),
-        "user_provided": sorted(user),
-        "directory": str(WORKFLOW_DIR),
+        "builtin": sorted(w.id for w in entries.values() if w.source == "builtin"),
+        "user_provided": sorted(w.id for w in entries.values() if w.source == "user"),
+        "custom_required": sorted(set(CUSTOM_ONLY) - provided),
+        "directory": str(registry.directory),
     }
 
 

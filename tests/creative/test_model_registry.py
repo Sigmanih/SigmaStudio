@@ -1,4 +1,5 @@
 import asyncio
+import json
 
 import pytest
 
@@ -9,9 +10,32 @@ from core.creative.model_router import CreativeTask, ModelRouter
 
 @pytest.fixture(autouse=True)
 def no_user_workflows(tmp_path, monkeypatch):
-    """Isola i test dai workflow eventualmente presenti sulla macchina."""
-    monkeypatch.setattr(cw, "WORKFLOW_DIR", tmp_path / "workflows")
-    return tmp_path / "workflows"
+    """Isola i test dai workflow presenti sulla macchina.
+
+    Il registro è ora l'unica fonte di verità: si punta la sua directory su una
+    cartella temporanea e si invalida la cache prima e dopo ogni test.
+    """
+    from core.creative.workflow_registry import registry
+
+    directory = tmp_path / "workflows"
+    monkeypatch.setattr(cw, "WORKFLOW_DIR", directory)
+    monkeypatch.setattr(registry, "directory", directory)
+    registry.load(force=True)
+    yield directory
+    monkeypatch.undo()
+    registry.load(force=True)
+
+
+def _write_workflow(directory, workflow_id: str, capability: str):
+    """Simula un workflow esportato dall'utente e registrato in Sigma."""
+    from core.creative.workflow_registry import registry
+
+    directory.mkdir(parents=True, exist_ok=True)
+    (directory / f"{workflow_id}.json").write_text(json.dumps({
+        "id": workflow_id, "name": workflow_id, "capability": capability,
+        "backend": "comfyui", "workflow": {"1": {"class_type": "X", "inputs": {}}},
+    }), encoding="utf-8")
+    registry.load(force=True)
 
 
 @pytest.fixture
@@ -47,8 +71,7 @@ def test_backend_remoto_ignora_il_vincolo_vram(small_gpu):
 
 def test_upscale_normale_usa_esrgan_restauro_usa_supir(big_gpu, no_user_workflows):
     # SUPIR richiede nodi custom: senza il suo workflow non sarebbe selezionabile.
-    no_user_workflows.mkdir(parents=True, exist_ok=True)
-    (no_user_workflows / "supir_upscale.json").write_text('{"1": {"class_type": "X", "inputs": {}}}', encoding="utf-8")
+    _write_workflow(no_user_workflows, "supir_upscale", "upscale")
 
     # Le tuple `prefer` sono quelle che ImageGenerator.upscale passa davvero.
     plain, _ = reg.select_model("upscale", {"comfyui"}, priority="balanced",
@@ -77,8 +100,7 @@ def test_comfyui_escluso_se_manca_il_workflow_custom(big_gpu):
 
 
 def test_workflow_utente_riabilita_il_modello(big_gpu, no_user_workflows):
-    no_user_workflows.mkdir(parents=True, exist_ok=True)
-    (no_user_workflows / "flux_kontext.json").write_text('{"1": {"class_type": "X", "inputs": {}}}', encoding="utf-8")
+    _write_workflow(no_user_workflows, "flux_kontext", "instruct_edit")
     model, backend = reg.select_model("instruct_edit", {"comfyui"})
     assert model is not None and backend == "comfyui"
 

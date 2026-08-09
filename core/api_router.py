@@ -97,6 +97,8 @@ def register_get_handlers(handler_class):
         '/api/creative/downloads': 'handle_creative_downloads',
         '/api/creative/models/search': 'handle_creative_model_search',
         '/api/creative/models/categories': 'handle_creative_model_categories',
+        '/api/creative/models/inventory': 'handle_creative_model_inventory',
+        '/api/creative/workflows': 'handle_creative_workflows',
         # Skills & applicazioni gestite
         '/api/skills': 'handle_skills_list',
         '/api/apps': 'handle_apps_status',
@@ -231,6 +233,8 @@ def register_post_handlers(handler_class):
         '/api/skills/toggle': 'handle_skills_toggle',
         '/api/apps/launch': 'handle_apps_launch',
         '/api/apps/autoconfigure': 'handle_apps_autoconfigure',
+        '/api/creative/workflows/save': 'handle_creative_workflow_save',
+        '/api/creative/workflows/delete': 'handle_creative_workflow_delete',
     }
 
 

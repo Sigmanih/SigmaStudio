@@ -1421,3 +1421,88 @@
 }
 .cs-installed-row span { color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .cs-installed-row em { font-style: normal; color: var(--text-dim); font-size: 0.7rem; margin-left: auto; }
+
+/* ------------------------------------------------------------------
+   Inventario a stati e registro workflow
+   ------------------------------------------------------------------ */
+.cs-inventory, .cs-workflows { display: flex; flex-direction: column; gap: 12px; }
+
+.cs-state-legend { display: flex; flex-wrap: wrap; gap: 8px; }
+.cs-state-chip {
+  display: inline-flex; align-items: center; gap: 5px;
+  font-size: 0.72rem; padding: 4px 9px; border-radius: 10px;
+  background: rgba(255,255,255,0.05); color: var(--text-dim);
+  border: 1px solid rgba(255,255,255,0.08);
+}
+.cs-state-chip em { font-style: normal; font-weight: 700; color: var(--text); }
+.cs-state-chip.installed { border-color: rgba(255,255,255,0.15); }
+.cs-state-chip.available { border-color: rgba(63,185,80,0.4); color: #7ee787; }
+.cs-state-chip.loaded { border-color: rgba(0,210,255,0.45); color: var(--primary); }
+.cs-state-chip.active { border-color: rgba(255,184,108,0.5); color: #ffb86c; }
+
+.cs-device-row { display: flex; flex-wrap: wrap; gap: 16px; }
+
+.cs-inv-category h5 {
+  display: flex; justify-content: space-between; align-items: baseline;
+  font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.05em;
+  color: var(--text-dim); margin: 10px 0 6px;
+}
+.cs-inv-category h5 span { font-size: 0.68rem; text-transform: none; letter-spacing: 0; }
+
+.cs-inv-row {
+  display: grid;
+  grid-template-columns: 10px minmax(0, 2fr) auto minmax(0, 1fr);
+  gap: 12px; align-items: center;
+  padding: 8px 10px; margin-bottom: 5px;
+  background: rgba(255,255,255,0.02);
+  border: 1px solid rgba(255,255,255,0.05);
+  border-radius: 8px;
+}
+.cs-inv-row.state-available { border-color: rgba(63,185,80,0.25); }
+.cs-inv-row.state-loaded { border-color: rgba(0,210,255,0.3); }
+.cs-inv-row.state-active { border-color: rgba(255,184,108,0.45); }
+
+.cs-state-dot { width: 9px; height: 9px; border-radius: 50%; background: #555; }
+.cs-state-dot.available { background: #3fb950; }
+.cs-state-dot.loaded { background: var(--primary); box-shadow: 0 0 7px var(--primary); }
+.cs-state-dot.active { background: #ffb86c; box-shadow: 0 0 7px #ffb86c; animation: cs-pulse 1.4s ease-in-out infinite; }
+@keyframes cs-pulse { 50% { opacity: 0.45; } }
+
+.cs-inv-main { min-width: 0; display: flex; flex-direction: column; }
+.cs-inv-name { font-size: 0.85rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cs-inv-reason { font-size: 0.68rem; color: var(--text-dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cs-inv-meta { display: flex; gap: 10px; font-size: 0.7rem; color: var(--text-dim); white-space: nowrap; }
+.cs-inv-meta em { font-style: normal; }
+.cs-inv-caps { display: flex; gap: 4px; flex-wrap: wrap; justify-content: flex-end; }
+.cs-inv-caps span {
+  font-size: 0.62rem; padding: 1px 6px; border-radius: 6px;
+  background: rgba(255,255,255,0.05); color: var(--text-dim);
+}
+
+/* Workflow */
+.cs-wf-list { display: flex; flex-direction: column; gap: 6px; }
+.cs-wf-row {
+  padding: 9px 11px;
+  background: rgba(255,255,255,0.02);
+  border: 1px solid rgba(63,185,80,0.22);
+  border-radius: 8px;
+}
+.cs-wf-row.blocked { border-color: rgba(255,184,108,0.3); }
+.cs-wf-main { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.cs-wf-name { font-weight: 600; font-size: 0.86rem; }
+.cs-wf-cap {
+  font-size: 0.63rem; text-transform: uppercase; letter-spacing: 0.04em;
+  background: rgba(0,210,255,0.13); color: var(--primary);
+  padding: 2px 7px; border-radius: 6px;
+}
+.cs-wf-src { font-size: 0.62rem; padding: 2px 7px; border-radius: 6px; background: rgba(255,255,255,0.06); color: var(--text-dim); }
+.cs-wf-src.user { background: rgba(188,140,255,0.15); color: var(--accent); }
+.cs-wf-detail { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-top: 4px; }
+
+.cs-wf-form {
+  display: flex; flex-direction: column; gap: 10px;
+  padding: 12px; border-radius: 8px;
+  background: rgba(0,0,0,0.25); border: 1px solid rgba(255,255,255,0.08);
+}
+.cs-wf-fields { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; }
+.cs-wf-form code { background: rgba(0,0,0,0.4); padding: 1px 5px; border-radius: 4px; }

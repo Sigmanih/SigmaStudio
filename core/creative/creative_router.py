@@ -19,6 +19,9 @@ from core.creative.agents.vision_agent import VisionAgent
 from core.creative.model_registry import catalog as model_catalog, available_vram_gb
 from core.creative.generators.adapters.comfyui_adapter import ComfyUIAdapter
 from core.creative import model_hub
+from core.creative.backends import get_backend
+from core.creative.model_state import build_inventory, runtime_tracker
+from core.creative.workflow_registry import registry as workflow_registry
 from core.creative.model_downloader import (
     CATALOG as DOWNLOAD_CATALOG, CATALOG_BY_ID, custom_asset, discover_models_root,
     disk_free_gb, download_manager, installed_by_category, installed_state,
@@ -671,6 +674,91 @@ def handle_creative_downloads(self):
         })
     except Exception as e:
         _fail(self, e, "downloads")
+
+
+def _comfy_backend():
+    cfg = model_router.get_config().get("backends", {}).get("comfyui", {})
+    url = cfg.get("url") or asyncio.run(model_router.probe_backend("comfyui"))
+    return get_backend("comfyui", {**cfg, "url": url or "http://127.0.0.1:8188"})
+
+
+def handle_creative_model_inventory(self):
+    """GET /api/creative/models/inventory — i cinque stati dei modelli.
+
+    Separa esplicitamente "il file c'è" da "il backend lo espone": senza questa
+    distinzione la stessa schermata mostrava un checkpoint sul disco e zero
+    checkpoint disponibili.
+    """
+    try:
+        root = _models_root()
+        filesystem = installed_by_category(root) if root else {}
+
+        backend = _comfy_backend()
+        reachable = asyncio.run(backend.is_available()) if backend else False
+        runtime = asyncio.run(backend.discover_models()) if reachable else None
+        if not reachable:
+            runtime_tracker.clear_backend("comfyui")
+
+        inventory = build_inventory(filesystem, runtime, "comfyui", reachable)
+        stats = asyncio.run(backend.get_system_stats()) if reachable else {}
+
+        self.send_json_response({
+            "success": True,
+            "models_root": root,
+            "disk_free_gb": disk_free_gb(root) if root else 0,
+            "backend_stats": stats,
+            **inventory,
+        })
+    except Exception as e:
+        _fail(self, e, "inventario modelli")
+
+
+def handle_creative_workflows(self):
+    """GET /api/creative/workflows — registro workflow con stato di prontezza."""
+    try:
+        root = _models_root()
+        cfg = model_router.get_config().get("backends", {}).get("comfyui", {})
+        from core.creative.generators.adapters.comfy_workflows import DEFAULT_CHECKPOINTS
+        checkpoints = {**DEFAULT_CHECKPOINTS, **(cfg.get("checkpoints") or {})}
+
+        entries = workflow_registry.status(
+            installed=installed_by_category(root) if root else {},
+            checkpoints=checkpoints,
+            vram_gb=available_vram_gb(),
+        )
+        self.send_json_response({
+            "success": True,
+            "directory": str(workflow_registry.directory),
+            "checkpoints": checkpoints,
+            "workflows": entries,
+            "capabilities": sorted({w["capability"] for w in entries}),
+        })
+    except Exception as e:
+        _fail(self, e, "registro workflow")
+
+
+def handle_creative_workflow_save(self):
+    """POST /api/creative/workflows/save — registra un workflow dell'utente."""
+    data = self.read_json_body()
+    try:
+        graph = data.get("workflow")
+        if isinstance(graph, str):
+            graph = json.loads(graph)
+        saved = workflow_registry.save(data.get("manifest") or data, graph)
+        self.send_json_response({"success": True, "workflow": saved.to_dict()})
+    except Exception as e:
+        _fail(self, e, "salvataggio workflow", 400)
+
+
+def handle_creative_workflow_delete(self):
+    """POST /api/creative/workflows/delete — rimuove un workflow dell'utente."""
+    data = self.read_json_body()
+    workflow_id = data.get("id", "")
+    removed = workflow_registry.delete(workflow_id)
+    self.send_json_response(
+        {"success": removed,
+         "error": "" if removed else "Workflow non trovato o fornito da Sigma (non rimovibile)"},
+        200 if removed else 400)
 
 
 def handle_creative_model_search(self):

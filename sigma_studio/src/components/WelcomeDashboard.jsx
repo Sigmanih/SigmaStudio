@@ -1,5 +1,101 @@
 import React, { useEffect, useState, useRef, useCallback } from 'react';
-import MappaArgomenti from './SigmaLab/MappaArgomenti';
+import { 
+  FolderTree, MessageSquare, Edit3, Share2, Palette, 
+  FlaskConical, Cpu, Home as HomeIcon, Scroll, Microscope, ArrowRight 
+} from 'lucide-react';
+
+const PRIMI_PASSI_CARDS = [
+  {
+    step: '01',
+    title: 'Organizza Argomenti & Moduli',
+    subtitle: 'Crea domini e moduli in data/ per raggruppare Teoria, Script Python, Visualizzazioni e Whitepaper.',
+    icon: FolderTree,
+    color: '#00d2ff',
+    actionText: 'Mappa Argomenti',
+    onClick: (openTab) => openTab({ name: 'Argomenti' }, 'knowledge')
+  },
+  {
+    step: '02',
+    title: 'AI Chat & Swarm Multi-Agente',
+    subtitle: 'Collabora con modelli LLM locali (Ollama) o Cloud e delega compiti a uno swarm di agenti specializzati.',
+    icon: MessageSquare,
+    color: '#7c5bf0',
+    actionText: 'AI Chat Studio',
+    onClick: (openTab) => openTab({ name: 'AI Chat Workspace' }, 'chat')
+  },
+  {
+    step: '03',
+    title: 'Editor Markdown & KaTeX',
+    subtitle: 'Scrivi documenti scientifici con formule LaTeX in tempo reale e diagrammi di flusso Mermaid esportabili.',
+    icon: Edit3,
+    color: '#3fb950',
+    actionText: 'Apri Editor',
+    onClick: (openTab) => openTab({ path: 'README_IT.md', filename: 'README_IT.md' }, 'editor')
+  },
+  {
+    step: '04',
+    title: 'Mappa Interattiva Knowledge',
+    subtitle: 'Esplora la rete gerarchica dei nodi di conoscenza con navigazione visiva e gestione argomenti.',
+    icon: Share2,
+    color: '#d29922',
+    actionText: 'Knowledge Graph',
+    onClick: (openTab) => openTab({ name: 'Argomenti' }, 'knowledge')
+  },
+  {
+    step: '05',
+    title: 'Creative Studio & Asset 8K/3D',
+    subtitle: 'Usa i motori MCP Grafici per generare immagini 8K, render 3D e visualizzare lightbox ad alta risoluzione.',
+    icon: Palette,
+    color: '#ff5064',
+    actionText: 'Creative Studio',
+    onClick: (openTab) => openTab({ name: '🎨 Creative Studio' }, 'creative_studio')
+  },
+  {
+    step: '06',
+    title: 'Training Lab & SLM Forge',
+    subtitle: 'Esegui il fine-tuning con Unsloth QLoRA, avvia l\'Autopilota o valuta il tuo modello su 11 benchmark.',
+    icon: FlaskConical,
+    color: '#d29922',
+    actionText: 'Training Lab',
+    onClick: (openTab) => openTab({ name: 'Training Lab' }, 'training_lab')
+  },
+  {
+    step: '07',
+    title: 'Hardware Lab & GPU Monitor',
+    subtitle: 'Controlla il consumo VRAM delle GPU NVIDIA, gestisci il demone Ollama ed ottimizzi le risorse di calcolo.',
+    icon: Cpu,
+    color: '#00d2ff',
+    actionText: 'Hardware Lab',
+    onClick: (openTab) => openTab({ name: '⚡ Hardware & GPU Monitor' }, 'hardware_lab')
+  },
+  {
+    step: '08',
+    title: 'Domotica IoT & Home Assistant',
+    subtitle: 'Controlla dispositivi smart, luci, climatizzatori ed attiva scene domotiche via comandi vocali/AI.',
+    icon: HomeIcon,
+    color: '#a78bfa',
+    actionText: 'Pannello Domotica',
+    onClick: (openTab) => openTab({ name: '🏠 Domotica & Home Assistant' }, 'domotica')
+  },
+  {
+    step: '09',
+    title: 'Modelfile & Manifesti AI',
+    subtitle: 'Personalizza system prompt permanenti, parametri di generazione e registra manifesti di condotta.',
+    icon: Scroll,
+    color: '#3fb950',
+    actionText: 'Manifesti AI',
+    onClick: (openTab) => openTab({ name: 'Manifesti' }, 'whitepapers_lib')
+  },
+  {
+    step: '10',
+    title: 'Research Lab & Task Pipeline',
+    subtitle: 'Pianifica task, monitora le attività collegate ai moduli ed esegui pipeline scientifiche autonome.',
+    icon: Microscope,
+    color: '#7c5bf0',
+    actionText: 'Research Lab',
+    onClick: (openTab) => openTab({ name: 'Research Lab' }, 'research_lab')
+  }
+];
 
 // ==============================================================================
 // WelcomeDashboard — Modern Home with Force-Directed Topic Graph + CRUD
@@ -880,38 +976,7 @@ export default function WelcomeDashboard({ modules, openTab }) {
         </div>
       </div>
 
-      {/* Grafo Relazionale della Conoscenza (MappaArgomenti D3 Graph) */}
-      <div style={{
-        margin: '32px 0 36px 0',
-        borderRadius: '20px',
-        overflow: 'hidden',
-        border: '1px solid rgba(0, 210, 255, 0.25)',
-        boxShadow: '0 12px 40px rgba(0,0,0,0.4)',
-        background: 'rgba(14, 16, 22, 0.95)',
-        minHeight: '560px',
-        display: 'flex',
-        flexDirection: 'column'
-      }}>
-        <div style={{
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          padding: '16px 24px',
-          background: 'rgba(18, 20, 28, 0.95)',
-          borderBottom: '1px solid rgba(255, 255, 255, 0.08)'
-        }}>
-          <h3 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 800, color: '#fff', display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <span>📊</span> Grafo Relazionale della Conoscenza
-          </h3>
-          <span style={{ fontSize: '0.78rem', color: '#00d2ff', fontWeight: 600 }}>
-            Grafo D3.js Interattivo della Mappa Argomenti
-          </span>
-        </div>
 
-        <div style={{ flex: 1, minHeight: '500px', position: 'relative' }}>
-          <MappaArgomenti onOpenFile={fileObj => openTab(fileObj, 'editor')} />
-        </div>
-      </div>
 
       {/* Visual Kernel Cognitivo Showcase */}
       <div style={{
@@ -1220,195 +1285,97 @@ export default function WelcomeDashboard({ modules, openTab }) {
         </div>
       </div>
 
-      {/* Primi Passi nella Piattaforma (Complete 10-Step Guide) */}
+      {/* Primi Passi nella Piattaforma (Interactive Card Grid) */}
       <div style={{ margin: '36px 0 24px 0' }}>
         <h2 style={{ fontSize: '1.3rem', color: '#fff', fontWeight: 800, marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '8px' }}>
           <span>🚀</span> Primi Passi & Guida alle Funzionalità della Piattaforma
         </h2>
-        <p style={{ fontSize: '0.86rem', color: '#8b8fa3', margin: '0 0 20px 0' }}>
-          Panoramica completa e sequenziale per dominare tutti i motori ed i moduli di Sigma Studio:
+        <p style={{ fontSize: '0.86rem', color: '#8b8fa3', margin: '0 0 24px 0' }}>
+          Panoramica completa ed interattiva: clicca su qualsiasi card per aprire direttamente la funzionalità desiderata:
         </p>
 
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-          <div style={{
-            display: 'flex', alignItems: 'center', gap: '16px', padding: '16px 20px',
-            background: 'rgba(18, 20, 28, 0.7)', border: '1px solid rgba(0, 210, 255, 0.2)', borderRadius: '14px',
-            backdropFilter: 'blur(10px)'
-          }}>
-            <div style={{
-              width: '36px', height: '36px', borderRadius: '50%', background: 'rgba(0, 210, 255, 0.2)',
-              color: '#00d2ff', fontWeight: 800, fontSize: '1rem', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0
-            }}>1</div>
-            <div style={{ flex: 1 }}>
-              <div style={{ fontWeight: 700, fontSize: '0.9rem', color: '#fff' }}>Organizza Argomenti e Moduli nella cartella data/</div>
-              <div style={{ fontSize: '0.78rem', color: '#8b8fa3', marginTop: '2px' }}>Crea nuovi domini e moduli strutturati per raggruppare Teoria, Script Python, Visualizzazioni e Whitepaper.</div>
-            </div>
-            <button onClick={() => openTab({ name: 'Argomenti' }, 'knowledge')} style={quickLinkStyle('#00d2ff')}>
-              Mappa Argomenti 🧬
-            </button>
-          </div>
+        <div style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))',
+          gap: '20px'
+        }}>
+          {PRIMI_PASSI_CARDS.map(card => {
+            const IconComponent = card.icon;
+            return (
+              <div
+                key={card.step}
+                onClick={() => card.onClick(openTab)}
+                className="primi-passi-card"
+                style={{
+                  padding: '22px',
+                  borderRadius: '18px',
+                  background: 'rgba(18, 20, 28, 0.85)',
+                  border: `1px solid ${card.color}35`,
+                  boxShadow: '0 8px 32px rgba(0, 0, 0, 0.35)',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  justifyContent: 'space-between',
+                  gap: '16px',
+                  backdropFilter: 'blur(12px)',
+                  transition: 'all 0.25s ease'
+                }}
+              >
+                <div>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '14px' }}>
+                    <div style={{
+                      width: '44px',
+                      height: '44px',
+                      borderRadius: '12px',
+                      background: `${card.color}18`,
+                      border: `1px solid ${card.color}40`,
+                      color: card.color,
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      boxShadow: `0 0 14px ${card.color}25`
+                    }}>
+                      <IconComponent size={22} />
+                    </div>
 
-          <div style={{
-            display: 'flex', alignItems: 'center', gap: '16px', padding: '16px 20px',
-            background: 'rgba(18, 20, 28, 0.7)', border: '1px solid rgba(124, 91, 240, 0.2)', borderRadius: '14px',
-            backdropFilter: 'blur(10px)'
-          }}>
-            <div style={{
-              width: '36px', height: '36px', borderRadius: '50%', background: 'rgba(124, 91, 240, 0.2)',
-              color: '#7c5bf0', fontWeight: 800, fontSize: '1rem', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0
-            }}>2</div>
-            <div style={{ flex: 1 }}>
-              <div style={{ fontWeight: 700, fontSize: '0.9rem', color: '#fff' }}>Collabora con la AI Chat & Swarm Multi-Agente</div>
-              <div style={{ fontSize: '0.78rem', color: '#8b8fa3', marginTop: '2px' }}>Discuti con modelli LLM locali (Ollama) o Cloud e delega compiti a swarm di agenti specializzati.</div>
-            </div>
-            <button onClick={() => openTab({ name: 'AI Chat Workspace' }, 'chat')} style={quickLinkStyle('#7c5bf0')}>
-              AI Chat Studio 💬
-            </button>
-          </div>
+                    <span style={{
+                      fontSize: '0.68rem',
+                      fontWeight: 800,
+                      color: card.color,
+                      background: `${card.color}15`,
+                      border: `1px solid ${card.color}30`,
+                      padding: '3px 10px',
+                      borderRadius: '20px',
+                      letterSpacing: '0.5px'
+                    }}>
+                      STEP {card.step}
+                    </span>
+                  </div>
 
-          <div style={{
-            display: 'flex', alignItems: 'center', gap: '16px', padding: '16px 20px',
-            background: 'rgba(18, 20, 28, 0.7)', border: '1px solid rgba(63, 185, 80, 0.2)', borderRadius: '14px',
-            backdropFilter: 'blur(10px)'
-          }}>
-            <div style={{
-              width: '36px', height: '36px', borderRadius: '50%', background: 'rgba(63, 185, 80, 0.2)',
-              color: '#3fb950', fontWeight: 800, fontSize: '1rem', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0
-            }}>3</div>
-            <div style={{ flex: 1 }}>
-              <div style={{ fontWeight: 700, fontSize: '0.9rem', color: '#fff' }}>Scrivi e Visualizza con Editor Markdown, KaTeX & Mermaid</div>
-              <div style={{ fontSize: '0.78rem', color: '#8b8fa3', marginTop: '2px' }}>Redigi documenti scientifici con formule matematiche in tempo reale e diagrammi di flusso esportabili in PDF.</div>
-            </div>
-            <button onClick={() => openTab({ path: 'README_IT.md', filename: 'README_IT.md' }, 'editor')} style={quickLinkStyle('#3fb950')}>
-              Apri Editor ✏️
-            </button>
-          </div>
+                  <h3 style={{ margin: '0 0 6px 0', fontSize: '0.98rem', fontWeight: 800, color: '#fff' }}>
+                    {card.title}
+                  </h3>
+                  <p style={{ margin: 0, fontSize: '0.78rem', color: '#8b8fa3', lineHeight: 1.5 }}>
+                    {card.subtitle}
+                  </p>
+                </div>
 
-          <div style={{
-            display: 'flex', alignItems: 'center', gap: '16px', padding: '16px 20px',
-            background: 'rgba(18, 20, 28, 0.7)', border: '1px solid rgba(210, 153, 34, 0.2)', borderRadius: '14px',
-            backdropFilter: 'blur(10px)'
-          }}>
-            <div style={{
-              width: '36px', height: '36px', borderRadius: '50%', background: 'rgba(210, 153, 34, 0.2)',
-              color: '#d29922', fontWeight: 800, fontSize: '1rem', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0
-            }}>4</div>
-            <div style={{ flex: 1 }}>
-              <div style={{ fontWeight: 700, fontSize: '0.9rem', color: '#fff' }}>Naviga la Mappa Interattiva D3.js & Grafo Relazionale</div>
-              <div style={{ fontSize: '0.78rem', color: '#8b8fa3', marginTop: '2px' }}>Esplora il grafo gerarchico dei nodi di conoscenza, personalizza i rami e trascina gli elementi con posizionamento persistente.</div>
-            </div>
-            <button onClick={() => openTab({ name: 'Argomenti' }, 'knowledge')} style={quickLinkStyle('#d29922')}>
-              Grafo D3.js 📊
-            </button>
-          </div>
-
-          <div style={{
-            display: 'flex', alignItems: 'center', gap: '16px', padding: '16px 20px',
-            background: 'rgba(18, 20, 28, 0.7)', border: '1px solid rgba(255, 80, 100, 0.2)', borderRadius: '14px',
-            backdropFilter: 'blur(10px)'
-          }}>
-            <div style={{
-              width: '36px', height: '36px', borderRadius: '50%', background: 'rgba(255, 80, 100, 0.2)',
-              color: '#ff5064', fontWeight: 800, fontSize: '1rem', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0
-            }}>5</div>
-            <div style={{ flex: 1 }}>
-              <div style={{ fontWeight: 700, fontSize: '0.9rem', color: '#fff' }}>Genera Immagini & Asset Multimediali nel Creative Studio</div>
-              <div style={{ fontSize: '0.78rem', color: '#8b8fa3', marginTop: '2px' }}>Usa il server MCP Grafico per generare immagini 8K, render 3D e visualizzare lightbox ad alta risoluzione.</div>
-            </div>
-            <button onClick={() => openTab({ name: '🎨 Creative Studio' }, 'creative_studio')} style={quickLinkStyle('#ff5064')}>
-              Creative Studio 🎨
-            </button>
-          </div>
-
-          <div style={{
-            display: 'flex', alignItems: 'center', gap: '16px', padding: '16px 20px',
-            background: 'rgba(18, 20, 28, 0.7)', border: '1px solid rgba(210, 153, 34, 0.2)', borderRadius: '14px',
-            backdropFilter: 'blur(10px)'
-          }}>
-            <div style={{
-              width: '36px', height: '36px', borderRadius: '50%', background: 'rgba(210, 153, 34, 0.2)',
-              color: '#d29922', fontWeight: 800, fontSize: '1rem', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0
-            }}>6</div>
-            <div style={{ flex: 1 }}>
-              <div style={{ fontWeight: 700, fontSize: '0.9rem', color: '#fff' }}>Addestra e Specializza Modelli nel Training Lab</div>
-              <div style={{ fontSize: '0.78rem', color: '#8b8fa3', marginTop: '2px' }}>Esegui il fine-tuning con Unsloth QLoRA, avvia l'Autopilota o valuta il tuo modello su 11 suite di benchmark ufficiali.</div>
-            </div>
-            <button onClick={() => openTab({ name: 'Training Lab' }, 'training_lab')} style={quickLinkStyle('#d29922')}>
-              Training Lab 🧪
-            </button>
-          </div>
-
-          <div style={{
-            display: 'flex', alignItems: 'center', gap: '16px', padding: '16px 20px',
-            background: 'rgba(18, 20, 28, 0.7)', border: '1px solid rgba(0, 210, 255, 0.2)', borderRadius: '14px',
-            backdropFilter: 'blur(10px)'
-          }}>
-            <div style={{
-              width: '36px', height: '36px', borderRadius: '50%', background: 'rgba(0, 210, 255, 0.2)',
-              color: '#00d2ff', fontWeight: 800, fontSize: '1rem', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0
-            }}>7</div>
-            <div style={{ flex: 1 }}>
-              <div style={{ fontWeight: 700, fontSize: '0.9rem', color: '#fff' }}>Monitora Processi GPU & VRAM in Hardware Lab</div>
-              <div style={{ fontSize: '0.78rem', color: '#8b8fa3', marginTop: '2px' }}>Controlla il consumo VRAM delle GPU NVIDIA, gestisci il demone Ollama e ottimizza i parametri di esecuzione.</div>
-            </div>
-            <button onClick={() => openTab({ name: '⚡ Hardware & GPU Monitor' }, 'hardware_lab')} style={quickLinkStyle('#00d2ff')}>
-              Hardware Lab ⚡
-            </button>
-          </div>
-
-          <div style={{
-            display: 'flex', alignItems: 'center', gap: '16px', padding: '16px 20px',
-            background: 'rgba(18, 20, 28, 0.7)', border: '1px solid rgba(167, 139, 250, 0.2)', borderRadius: '14px',
-            backdropFilter: 'blur(10px)'
-          }}>
-            <div style={{
-              width: '36px', height: '36px', borderRadius: '50%', background: 'rgba(167, 139, 250, 0.2)',
-              color: '#a78bfa', fontWeight: 800, fontSize: '1rem', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0
-            }}>8</div>
-            <div style={{ flex: 1 }}>
-              <div style={{ fontWeight: 700, fontSize: '0.9rem', color: '#fff' }}>Gestisci la Domotica IoT & Home Assistant</div>
-              <div style={{ fontSize: '0.78rem', color: '#8b8fa3', marginTop: '2px' }}>Controlla dispositivi smart, luci, climatizzatori e attiva scene domotiche via comandi vocali/AI integrati con Home Assistant.</div>
-            </div>
-            <button onClick={() => openTab({ name: '🏠 Domotica & Home Assistant' }, 'domotica')} style={quickLinkStyle('#a78bfa')}>
-              Domotica IoT 🏠
-            </button>
-          </div>
-
-          <div style={{
-            display: 'flex', alignItems: 'center', gap: '16px', padding: '16px 20px',
-            background: 'rgba(18, 20, 28, 0.7)', border: '1px solid rgba(63, 185, 80, 0.2)', borderRadius: '14px',
-            backdropFilter: 'blur(10px)'
-          }}>
-            <div style={{
-              width: '36px', height: '36px', borderRadius: '50%', background: 'rgba(63, 185, 80, 0.2)',
-              color: '#3fb950', fontWeight: 800, fontSize: '1rem', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0
-            }}>9</div>
-            <div style={{ flex: 1 }}>
-              <div style={{ fontWeight: 700, fontSize: '0.9rem', color: '#fff' }}>Crea Modelfile & Manifesti AI Permanenti</div>
-              <div style={{ fontSize: '0.78rem', color: '#8b8fa3', marginTop: '2px' }}>Personalizza system prompt permanenti, parametri di generazione e registra manifesti di condotta nella cartella manifesti/.</div>
-            </div>
-            <button onClick={() => openTab({ name: 'Manifesti' }, 'whitepapers_lib')} style={quickLinkStyle('#3fb950')}>
-              Manifesti AI 📜
-            </button>
-          </div>
-
-          <div style={{
-            display: 'flex', alignItems: 'center', gap: '16px', padding: '16px 20px',
-            background: 'rgba(18, 20, 28, 0.7)', border: '1px solid rgba(124, 91, 240, 0.2)', borderRadius: '14px',
-            backdropFilter: 'blur(10px)'
-          }}>
-            <div style={{
-              width: '36px', height: '36px', borderRadius: '50%', background: 'rgba(124, 91, 240, 0.2)',
-              color: '#7c5bf0', fontWeight: 800, fontSize: '1rem', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0
-            }}>10</div>
-            <div style={{ flex: 1 }}>
-              <div style={{ fontWeight: 700, fontSize: '0.9rem', color: '#fff' }}>Pianifica Task & Pipeline di Ricerca Scientifica</div>
-              <div style={{ fontSize: '0.78rem', color: '#8b8fa3', marginTop: '2px' }}>Traccia la roadmap, monitora le attività collegate ai moduli ed esegui pipeline autonome nel Research Lab.</div>
-            </div>
-            <button onClick={() => openTab({ name: 'Research Lab' }, 'research_lab')} style={quickLinkStyle('#7c5bf0')}>
-              Research Lab 🔬
-            </button>
-          </div>
+                <div style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  fontSize: '0.78rem',
+                  fontWeight: 700,
+                  color: card.color,
+                  paddingTop: '12px',
+                  borderTop: '1px solid rgba(255, 255, 255, 0.05)'
+                }}>
+                  <span>{card.actionText}</span>
+                  <ArrowRight size={14} />
+                </div>
+              </div>
+            );
+          })}
         </div>
       </div>
 

@@ -261,6 +261,8 @@ from core.creative.creative_router import (
     handle_creative_segment, handle_creative_video, handle_creative_discover,
     handle_creative_downloads, handle_creative_download_start, handle_creative_download_cancel,
     handle_creative_model_search, handle_creative_model_categories,
+    handle_creative_model_inventory, handle_creative_workflows,
+    handle_creative_workflow_save, handle_creative_workflow_delete,
 )
 FastAPIHandlerAdapter.handle_creative_assets = handle_creative_assets
 FastAPIHandlerAdapter.handle_creative_asset_get = handle_creative_asset_get
@@ -294,6 +296,10 @@ FastAPIHandlerAdapter.handle_creative_download_start = handle_creative_download_
 FastAPIHandlerAdapter.handle_creative_download_cancel = handle_creative_download_cancel
 FastAPIHandlerAdapter.handle_creative_model_search = handle_creative_model_search
 FastAPIHandlerAdapter.handle_creative_model_categories = handle_creative_model_categories
+FastAPIHandlerAdapter.handle_creative_model_inventory = handle_creative_model_inventory
+FastAPIHandlerAdapter.handle_creative_workflows = handle_creative_workflows
+FastAPIHandlerAdapter.handle_creative_workflow_save = handle_creative_workflow_save
+FastAPIHandlerAdapter.handle_creative_workflow_delete = handle_creative_workflow_delete
 
 from core.integrations.handlers import (
     handle_skills_list, handle_skills_toggle, handle_apps_status,

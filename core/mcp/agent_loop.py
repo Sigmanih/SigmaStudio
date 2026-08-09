@@ -79,24 +79,24 @@ def build_tools_prompt(tools: List[Dict[str, Any]]) -> str:
         "",
     ]
 
-    by_category: Dict[str, List[Dict[str, Any]]] = {}
-    for tool in tools:
-        by_category.setdefault(tool.get("category", "general"), []).append(tool)
-
-    for category, group in sorted(by_category.items()):
-        lines.append(f"### {category}")
-        for tool in group:
-            mark = " [conferma]" if tool.get("safety") == governance.SENSITIVE else ""
-            lines.append(f"- **{tool['name']}**{mark}: {tool.get('description', '')}")
-            params = (tool.get("inputSchema") or {}).get("properties") or {}
-            required = set((tool.get("inputSchema") or {}).get("required") or [])
-            if params:
-                rendered = ", ".join(
-                    f"{name}{'*' if name in required else ''}: {spec.get('type', 'string')}"
-                    for name, spec in params.items()
-                )
-                lines.append(f"  argomenti — {rendered}")
-        lines.append("")
+    # Flat list with category in brackets — NOT grouped under headings.
+    # Group headings like `### web_intel` trick models into treating the
+    # category name as a callable tool and they fire `web_intel` → "Tool
+    # not found" in a loop.  A flat list removes the ambiguity entirely.
+    sorted_tools = sorted(tools, key=lambda t: (t.get("category", ""), t["name"]))
+    for tool in sorted_tools:
+        cat = tool.get("category", "general")
+        mark = " [conferma]" if tool.get("safety") == governance.SENSITIVE else ""
+        lines.append(f"- **{tool['name']}** [{cat}]{mark}: {tool.get('description', '')}")
+        params = (tool.get("inputSchema") or {}).get("properties") or {}
+        required = set((tool.get("inputSchema") or {}).get("required") or [])
+        if params:
+            rendered = ", ".join(
+                f"{name}{'*' if name in required else ''}: {spec.get('type', 'string')}"
+                for name, spec in params.items()
+            )
+            lines.append(f"  argomenti — {rendered}")
+    lines.append("")
 
     return "\n".join(lines)
 
@@ -208,7 +208,26 @@ def execute_calls(calls: List[Dict[str, Any]]) -> Tuple[List[Dict[str, Any]], Li
             continue
 
         if result["status"] == "error":
-            outcomes.append({"tool": call["tool"], "ok": False, "output": result["error"]})
+            err_text = result["error"]
+            # When a model invents a tool name (e.g. 'web_intel' instead of
+            # 'search_web'), the hub replies "Strumento 'web_intel' inesistente."
+            # Without suggestions the model often retries the exact same name
+            # and the chat loops forever.  Listing the real tools that live in
+            # the same category gives it an immediate way out.
+            from core.mcp import mcp_hub
+            agent_tools = mcp_hub.get_agent_tools()
+            suggestion = ""
+            for t in agent_tools:
+                if t.get("category") == call.get("tool"):
+                    suggestion = f" Forse intendevi '{t['name']}'?"
+                    break
+            if not suggestion and agent_tools:
+                names = [t["name"] for t in agent_tools[:6]]
+                suggestion = f" Strumenti disponibili: {', '.join(names)}."
+            outcomes.append({
+                "tool": call["tool"], "ok": False,
+                "output": f"{err_text}{suggestion}"
+            })
             continue
 
         content = result["result"].get("content", [])

@@ -102,6 +102,30 @@ class ManagedApp:
             return {"success": False, "error": str(e)}
 
 
+def _find_comfyui() -> str:
+    """Trova ComfyUI Desktop senza dipendere dal nome esatto della cartella.
+
+    L'installer usa nomi diversi fra versioni («Comfy Desktop», «ComfyUI»,
+    pacchetti electron): elencare percorsi fissi lascia l'app irraggiungibile
+    proprio quando è installata.
+    """
+    roots = [
+        Path(os.environ.get("LOCALAPPDATA", "")) / "Programs",
+        Path(os.environ.get("PROGRAMFILES", "")),
+        Path(os.environ.get("LOCALAPPDATA", "")),
+    ]
+    for root in roots:
+        if not root.is_dir():
+            continue
+        for directory in root.glob("*omfy*"):
+            if not directory.is_dir():
+                continue
+            for exe in sorted(directory.glob("*.exe")):
+                if "uninstall" not in exe.name.lower():
+                    return str(exe)
+    return ""
+
+
 def _find_blender() -> str:
     """Riusa il rilevatore del BlenderBridge: una sola verità sul percorso."""
     from core.creative.three_d.blender_bridge import BlenderBridge
@@ -120,6 +144,7 @@ APPS: tuple[ManagedApp, ...] = (
             r"%PROGRAMFILES%\ComfyUI\ComfyUI.exe",
             r"%LOCALAPPDATA%\Programs\ComfyUI\ComfyUI.exe",
         ),
+        finder=_find_comfyui,
         install_url="https://www.comfy.org/download",
         powers=("generazione immagini locale", "instruct edit", "3D", "video", "upscale"),
         config_path="creative.backends.comfyui",

@@ -298,6 +298,78 @@ def _stream_chat_response(handler, messages, ai_cfg, model, provider,
         pass
 
 
+def _try_fast_web_search(message: str):
+    """Riconosce richieste di ricerca web/YouTube e le esegue senza passare dal modello.
+
+    Il modello piccolo (qwen3.5:0.8b) spiega come usare search_web invece di
+    chiamarlo. Per le ricerche non c'è ambiguità — l'intento è sempre chiaro
+    — quindi saltiamo il LLM e andiamo direttamente su DuckDuckGo/YouTube.
+    """
+    import re
+    from core.chat.web_search import _perform_web_search
+
+    m = message.strip()
+    ml = m.lower()
+
+    # Patterns that signal a search intent (not a conversation)
+    search_patterns = [
+        r"\b(?:cerca|cercami|search|trova|trovami|fammi una ricerca|fai una ricerca)\b",
+        r"\b(?:cerca su|cercami su|search on|find on)\b",
+        r"\b(?:video(?: di| su)? )youtube\b",
+        r"\b(?:apri|visit|go to|vai a|naviga)\s+(?:il sito\s+)?(?:https?://|www\.)",
+    ]
+    is_search = any(re.search(p, ml) for p in search_patterns)
+    # "cerca su youtube" or "video youtube" explicitly
+    is_youtube = bool(re.search(r"youtube", ml)) or bool(re.search(r"\bvideo\b", ml))
+    # Explicit URL
+    url_match = re.search(r"(https?://[^\s]+)", m)
+
+    if not is_search and not is_youtube and not url_match:
+        return None
+
+    # Extract the actual query — strip the command words
+    query = m
+    for prefix in ["cerca su ", "cercami su ", "cerca ", "cercami ", "search on ", "search for ", "search ", 
+                    "trova ", "trovami ", "find ", "fammi una ricerca su ", "fammi una ricerca ",
+                    "fai una ricerca su ", "fai una ricerca "]:
+        if ml.startswith(prefix):
+            query = m[len(prefix):]
+            break
+
+    if not query.strip():
+        return None
+
+    log.info("Fast web search for: %s", query)
+    
+    try:
+        results = _perform_web_search(query)
+    except Exception as exc:
+        return {"response": f"🔍 Ricerca web fallita: {exc}", "thinking": "", "actions_log": [],
+                "created_files": [], "error": str(exc)}
+
+    if not results:
+        return {"response": f"🔍 Nessun risultato trovato per '{query}'.", "thinking": "",
+                "actions_log": [], "created_files": [], "error": None}
+
+    # Format a nice response
+    lines = [f"### 🔍 Risultati per: {query}\n"]
+    for i, r in enumerate(results[:5], 1):
+        title = r.get("title", "Link")
+        href = r.get("href", "")
+        body = r.get("body", "")
+        if href:
+            lines.append(f"**{i}. [{title}]({href})**")
+        else:
+            lines.append(f"**{i}. {title}**")
+        if body:
+            lines.append(f"> {body[:300]}")
+        lines.append("")
+    
+    response = "\n".join(lines)
+    return {"response": response, "thinking": f"Ricerca web eseguita direttamente per: {query}",
+            "actions_log": [], "created_files": [], "error": None}
+
+
 def _try_fast_command(message: str):
     """Esegue un comando domestico diretto, o None se la frase va all'agente.
 
@@ -421,6 +493,15 @@ def handle_chat(self):
                     "agent_name": "Sigma AI Architect",
                     "agent_id": "sigma_architect"
                 })
+
+        # --- corsia veloce per ricerche web ---------------------------------
+        # "Cerca su YouTube Bocca di Rosa" non serve il LLM: sappiamo già che
+        # è una ricerca. Saltiamo il modello, chiamiamo DuckDuckGo/YouTube
+        # direttamente, e restituiamo i risultati formattati.
+        if allow_actions and not planning_mode:
+            fast_web = _try_fast_web_search(message)
+            if fast_web is not None:
+                return self.send_json_response(fast_web)
 
         # --- corsia veloce per i comandi domestici diretti --------------------
         # "Spegni le luci dell'ufficio" non ha bisogno di un giro di modello:

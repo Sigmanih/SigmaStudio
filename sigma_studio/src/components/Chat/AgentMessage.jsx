@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { Bot, User, Terminal, FileText, Zap, Play, Pause, RotateCcw, RotateCw, Square } from 'lucide-react';
 import { renderMarkdownLatex } from '../../utils/markdownLatex';
 import McpToolStrip from './McpToolStrip';
@@ -11,8 +11,7 @@ const IMAGE_EXTENSIONS = /\.(?:png|jpg|jpeg|webp|svg|gif|bmp|tiff)$/i;
 const isImagePath = (p) => typeof p === 'string' && IMAGE_EXTENSIONS.test(p);
 
 // ==============================================================================
-// AGENT MESSAGE v5.0 — Header inside bubble + Audio Player Bar & Karaoke Highlight
-// Avatar 64px + ruolo in header con bg scuro, bubble full-width
+// AGENT MESSAGE v5.1 — Memoized HTML to prevent iframe/video reload on re-render
 // ==============================================================================
 
 const AGENT_COLORS = {
@@ -38,81 +37,128 @@ function formatTimestamp(ts) {
   try { return new Date(ts).toLocaleTimeString(); } catch { return ''; }
 }
 
-function highlightCurrentWordInHtml(htmlContent, fullCleanText, charIndex, charLength) {
-  if (!htmlContent || charIndex === undefined || charIndex < 0 || !fullCleanText) return htmlContent;
-
-  let validCharIdx = Math.min(fullCleanText.length - 1, Math.max(0, charIndex));
-
-  // If validCharIdx lands on whitespace/punctuation, look forward up to 15 chars for a word char
-  if (!/[\p{L}\p{N}]/u.test(fullCleanText[validCharIdx])) {
-    let forward = validCharIdx;
-    while (forward < fullCleanText.length && !/[\p{L}\p{N}]/u.test(fullCleanText[forward])) {
-      forward++;
-    }
-    if (forward < fullCleanText.length) {
-      validCharIdx = forward;
-    } else {
-      let backward = validCharIdx;
-      while (backward > 0 && !/[\p{L}\p{N}]/u.test(fullCleanText[backward])) {
-        backward--;
-      }
-      validCharIdx = backward;
-    }
-  }
-
-  if (!/[\p{L}\p{N}]/u.test(fullCleanText[validCharIdx])) return htmlContent;
-
-  // Find exact word boundaries around validCharIdx in fullCleanText
-  let start = validCharIdx;
-  while (start > 0 && /[\p{L}\p{N}]/u.test(fullCleanText[start - 1])) {
-    start--;
-  }
-  let end = validCharIdx;
-  while (end < fullCleanText.length && /[\p{L}\p{N}]/u.test(fullCleanText[end])) {
-    end++;
-  }
-
-  const activeWord = fullCleanText.slice(start, end).trim().replace(/[^\p{L}\p{N}]/gu, '');
-  if (!activeWord || activeWord.length < 2) return htmlContent;
-
-  const escapedWord = activeWord.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  const textBefore = fullCleanText.slice(0, start);
-  const targetOccurrence = (textBefore.match(new RegExp(`\\b${escapedWord}\\b`, 'gi')) || []).length;
-
-  let currentOccurrence = 0;
-
-  // Replace target occurrence inside HTML text nodes only (safe against tags)
-  return htmlContent.replace(/(<[^>]+>)|([^<]+)/g, (match, tag, textNode) => {
-    if (tag) return tag;
-    if (!textNode) return match;
-
-    return textNode.replace(new RegExp(`\\b${escapedWord}\\b`, 'gi'), (wordMatch) => {
-      if (currentOccurrence === targetOccurrence) {
-        currentOccurrence++;
-        return `<mark class="speech-word-highlight">${wordMatch}</mark>`;
-      }
-      currentOccurrence++;
-      return wordMatch;
-    });
-  });
+function findWordAt(text, charIdx) {
+  if (!text || charIdx < 0 || charIdx >= text.length) return null;
+  if (!/[\p{L}\p{N}]/u.test(text[charIdx])) return null;
+  let s = charIdx, e = charIdx;
+  while (s > 0 && /[\p{L}\p{N}]/u.test(text[s - 1])) s--;
+  while (e < text.length && /[\p{L}\p{N}]/u.test(text[e])) e++;
+  const word = text.slice(s, e).trim().replace(/[^\p{L}\p{N}]/gu, '');
+  return word && word.length >= 2 ? { word, start: s, end: e } : null;
 }
 
 // ==============================================================================
 // Main AgentMessage Component
 // ==============================================================================
-import { useEffect } from 'react';
-import { 
-  speakAgentMessage, 
-  stopSpeech, 
-  togglePauseSpeech, 
-  seekSpeechRelative, 
-  seekSpeechPercent, 
-  subscribeSpeech, 
-  subscribeSpeechProgress, 
-  getSpeechProgress, 
+import {
+  speakAgentMessage,
+  stopSpeech,
+  togglePauseSpeech,
+  seekSpeechRelative,
+  seekSpeechPercent,
+  subscribeSpeech,
+  subscribeSpeechProgress,
+  getSpeechProgress,
   getActiveSpeechId,
   cleanTextForSpeech
 } from './audioSpeech';
+
+/**
+ * Memoized content block for a single message within a group.
+ * This avoids re-rendering the markdown (and destroying embedded iframes)
+ * every time speechProgress ticks. Karaoke highlighting is applied
+ * via a lightweight className swap on a <mark> element.
+ */
+function MemoizedContent({ displayContent, isPlaying, speechId, speechProgress, messages, idx, onClick }) {
+  // Base HTML, recomputed ONLY when the raw content changes
+  const baseHtml = useMemo(() => renderMarkdownLatex(displayContent), [displayContent]);
+  const containerRef = useRef(null);
+
+  // Apply / remove karaoke highlight without touching innerHTML
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    // Remove any previous highlight
+    const prev = el.querySelector('mark.speech-word-highlight');
+    if (prev) {
+      const parent = prev.parentNode;
+      if (parent) {
+        parent.replaceChild(document.createTextNode(prev.textContent || ''), prev);
+        parent.normalize();
+      }
+    }
+
+    if (!isPlaying || !speechProgress || String(speechProgress.speechId) !== String(speechId) || speechProgress.charIndex < 0) return;
+
+    const singleClean = cleanTextForSpeech(displayContent);
+    let localIdx = speechProgress.charIndex;
+    for (let pi = 0; pi < idx; pi++) {
+      const prevText = messages[pi]?.content || messages[pi]?.text || '';
+      if (prevText) localIdx -= cleanTextForSpeech(prevText).length;
+    }
+    if (localIdx < 0) localIdx = 0;
+
+    // Advance past current word to the next one
+    if (localIdx < singleClean.length) {
+      while (localIdx < singleClean.length && /[\p{L}\p{N}]/u.test(singleClean[localIdx])) localIdx++;
+      while (localIdx < singleClean.length && !/[\p{L}\p{N}]/u.test(singleClean[localIdx])) localIdx++;
+    }
+
+    const found = findWordAt(singleClean, localIdx);
+    if (!found) return;
+
+    // Walk text nodes in the DOM to find the n-th occurrence of this word
+    const escaped = found.word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const rx = new RegExp(`\\b${escaped}\\b`, 'gi');
+    const textBefore = singleClean.slice(0, found.start);
+    const targetOccurrence = (textBefore.match(rx) || []).length;
+
+    function walk(node, count) {
+      if (node.nodeType === Node.TEXT_NODE) {
+        const txt = node.textContent || '';
+        let m;
+        rx.lastIndex = 0;
+        while ((m = rx.exec(txt)) !== null) {
+          if (count.cur === targetOccurrence) {
+            // Wrap this occurrence in a <mark>
+            const before = txt.slice(0, m.index);
+            const mid = txt.slice(m.index, m.index + m[0].length);
+            const after = txt.slice(m.index + m[0].length);
+            const frag = document.createDocumentFragment();
+            if (before) frag.appendChild(document.createTextNode(before));
+            const mark = document.createElement('mark');
+            mark.className = 'speech-word-highlight';
+            mark.textContent = mid;
+            frag.appendChild(mark);
+            if (after) frag.appendChild(document.createTextNode(after));
+            node.parentNode.replaceChild(frag, node);
+            count.done = true;
+            return;
+          }
+          count.cur++;
+        }
+        return;
+      }
+      if (node.nodeType === Node.ELEMENT_NODE && !['SCRIPT', 'STYLE', 'IFRAME', 'VIDEO', 'AUDIO'].includes(node.tagName)) {
+        for (const child of [...node.childNodes]) {
+          if (count.done) return;
+          walk(child, count);
+        }
+      }
+    }
+    const counter = { cur: 0, done: false };
+    walk(el, counter);
+  }, [displayContent, isPlaying, speechProgress?.charIndex, speechProgress?.speechId, speechId, idx, messages]);
+
+  return (
+    <div
+      ref={containerRef}
+      className="chat-content chat-md"
+      onClick={onClick}
+      dangerouslySetInnerHTML={{ __html: baseHtml }}
+    />
+  );
+}
 
 export default function AgentMessage({
   msg,
@@ -183,7 +229,6 @@ export default function AgentMessage({
     if (!openTab) return;
     const clean = getCleanPathStr(rawPath);
     if (!clean) return;
-    // Route image files to the dedicated image viewer
     if (isImagePath(clean)) {
       openTab({ path: clean, filename: clean.split('/').pop() || clean }, 'image_viewer');
     } else {
@@ -339,34 +384,32 @@ export default function AgentMessage({
         {!isUser && !isSystem && isPlayingAudio && (
           <div className="chat-audio-player-bar" onClick={e => e.stopPropagation()}>
             <div className="chat-audio-player-controls">
-              <button 
-                type="button" 
+              <button
+                type="button"
                 onClick={() => {
                   const textToRead = messages.map(m => m.content || m.text || '').join(' ');
                   seekSpeechRelative(speechId, -40, textToRead);
-                }} 
+                }}
                 title="Indietro di ~5 secondi"
                 className="chat-audio-btn"
               >
                 <RotateCcw size={11} />
                 <span>-5s</span>
               </button>
-
-              <button 
-                type="button" 
-                onClick={togglePauseSpeech} 
+              <button
+                type="button"
+                onClick={togglePauseSpeech}
                 title={speechProgress.paused ? "Riprendi lettura" : "Pausa lettura"}
                 className="chat-audio-btn primary"
               >
                 {speechProgress.paused ? <Play size={12} /> : <Pause size={12} />}
               </button>
-
-              <button 
-                type="button" 
+              <button
+                type="button"
                 onClick={() => {
                   const textToRead = messages.map(m => m.content || m.text || '').join(' ');
                   seekSpeechRelative(speechId, +40, textToRead);
-                }} 
+                }}
                 title="Avanti di ~5 secondi"
                 className="chat-audio-btn"
               >
@@ -374,9 +417,8 @@ export default function AgentMessage({
                 <span>+5s</span>
               </button>
             </div>
-
             <div className="chat-audio-scrubber-container">
-              <input 
+              <input
                 type="range"
                 min="0"
                 max="100"
@@ -390,14 +432,13 @@ export default function AgentMessage({
                 title="Trascina per navigare nel testo"
               />
             </div>
-
             <div className="chat-audio-info">
               <span className="chat-audio-percent">
                 {Math.round((speechProgress.progress || 0) * 100)}%
               </span>
-              <button 
-                type="button" 
-                onClick={stopSpeech} 
+              <button
+                type="button"
+                onClick={stopSpeech}
                 title="Interrompi lettura"
                 className="chat-audio-btn stop"
               >
@@ -426,7 +467,6 @@ export default function AgentMessage({
 
         {/* Content area */}
         <div className="chat-msg-content">
-          {/* Attachments for user messages */}
           {isUser && first.attachments?.length > 0 && (
             <div className="chat-message-attachments">
               {first.attachments.map(p => (
@@ -437,7 +477,6 @@ export default function AgentMessage({
             </div>
           )}
 
-          {/* Loading indicator directly inside chat-msg-content */}
           {isLoading && messages.every(m => !m.content && !m.thinking) ? (
             <div className="chat-loading" style={{ padding: '6px 0', display: 'flex', flexDirection: 'column', gap: '4px' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
@@ -528,21 +567,12 @@ export default function AgentMessage({
                       m.actions_log.map((action, actionIdx) => {
                         if (action.type === 'mcp_tool_call') {
                           return (
-                            <div 
-                              key={actionIdx}
-                              style={{
-                                display: 'flex',
-                                alignItems: 'center',
-                                gap: '8px',
-                                padding: '6px 12px',
-                                borderRadius: '8px',
-                                background: 'rgba(0, 210, 255, 0.08)',
-                                border: '1px solid rgba(0, 210, 255, 0.2)',
-                                color: '#00d2ff',
-                                fontSize: '0.75rem',
-                                fontWeight: 600
-                              }}
-                            >
+                            <div key={actionIdx} style={{
+                              display: 'flex', alignItems: 'center', gap: '8px', padding: '6px 12px',
+                              borderRadius: '8px', background: 'rgba(0, 210, 255, 0.08)',
+                              border: '1px solid rgba(0, 210, 255, 0.2)', color: '#00d2ff',
+                              fontSize: '0.75rem', fontWeight: 600
+                            }}>
                               <Zap size={14} style={{ color: '#00d2ff' }} />
                               <span>{action.message}</span>
                               {action.success && <span style={{ marginLeft: 'auto', color: '#3fb950', fontSize: '0.7rem' }}>✓ Eseguito MCP</span>}
@@ -557,25 +587,15 @@ export default function AgentMessage({
                         return (
                           <div key={actionIdx} style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
                             <div className="action-log-item" style={{
-                              display: 'flex',
-                              alignItems: 'center',
-                              justifyContent: 'space-between',
-                              padding: '6px 8px',
-                              background: 'rgba(255,255,255,0.02)',
-                              border: '1px solid rgba(255,255,255,0.04)',
-                              borderRadius: '6px',
-                              fontSize: '0.75rem'
+                              display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                              padding: '6px 8px', background: 'rgba(255,255,255,0.02)',
+                              border: '1px solid rgba(255,255,255,0.04)', borderRadius: '6px', fontSize: '0.75rem'
                             }}>
                               <div className="action-log-item-left" style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0, flex: 1 }}>
                                 <span>{action.success ? '✅' : '❌'}</span>
-                                <span style={{ fontWeight: '600', color: action.success ? 'var(--primary)' : 'var(--error)', flexShrink: 0 }}>
-                                  {action.type}
-                                </span>
-                                <span 
-                                  style={{ color: '#8b8fa3', textOverflow: 'ellipsis', overflow: 'hidden', whiteSpace: 'nowrap', cursor: action.path ? 'pointer' : 'default' }}
-                                  title={action.path || ''}
-                                  onClick={() => action.path && handleFileClick(action.path)}
-                                >
+                                <span style={{ fontWeight: '600', color: action.success ? 'var(--primary)' : 'var(--error)', flexShrink: 0 }}>{action.type}</span>
+                                <span style={{ color: '#8b8fa3', textOverflow: 'ellipsis', overflow: 'hidden', whiteSpace: 'nowrap', cursor: action.path ? 'pointer' : 'default' }}
+                                  title={action.path || ''} onClick={() => action.path && handleFileClick(action.path)}>
                                   {action.message || action.error || ''}
                                 </span>
                               </div>
@@ -584,96 +604,40 @@ export default function AgentMessage({
                                   const aPStr = getCleanPathStr(action.path);
                                   const isAViz = aPStr.toLowerCase().includes('/viz/') || aPStr.toLowerCase().endsWith('.html');
                                   return (
-                                    <button
-                                      onClick={() => handleFileClick(aPStr)}
-                                      style={{
-                                        background: isAViz ? 'rgba(57,185,80,0.15)' : 'rgba(0,210,255,0.1)',
-                                        border: isAViz ? '1px solid rgba(57,185,80,0.3)' : '1px solid rgba(0,210,255,0.25)',
-                                        color: isAViz ? '#3fb950' : 'var(--primary)',
-                                        fontSize: '0.65rem',
-                                        padding: '2px 8px',
-                                        borderRadius: '4px',
-                                        cursor: 'pointer',
-                                        transition: 'all 0.15s ease'
-                                      }}
-                                      title={isAViz ? "Apri l'anteprima interattiva nel workspace" : "Apri il file nel workspace"}
-                                    >
-                                      {isAViz ? 'Anteprima 👁️' : 'Visualizza 📄'}
-                                    </button>
+                                    <button onClick={() => handleFileClick(aPStr)} style={{
+                                      background: isAViz ? 'rgba(57,185,80,0.15)' : 'rgba(0,210,255,0.1)',
+                                      border: isAViz ? '1px solid rgba(57,185,80,0.3)' : '1px solid rgba(0,210,255,0.25)',
+                                      color: isAViz ? '#3fb950' : 'var(--primary)', fontSize: '0.65rem', padding: '2px 8px',
+                                      borderRadius: '4px', cursor: 'pointer', transition: 'all 0.15s ease'
+                                    }}>{isAViz ? 'Anteprima 👁️' : 'Visualizza 📄'}</button>
                                   );
                                 })()}
-                                {hasDiff && (
-                                  <button
-                                    onClick={() => toggleDiff(diffKey)}
-                                    style={{
-                                      background: 'rgba(0,210,255,0.1)',
-                                      border: '1px solid rgba(0,210,255,0.25)',
-                                      color: 'var(--primary)',
-                                      fontSize: '0.65rem',
-                                      padding: '2px 8px',
-                                      borderRadius: '4px',
-                                      cursor: 'pointer',
-                                      transition: 'all 0.15s ease'
-                                    }}
-                                  >
-                                    {isDiffExpanded ? 'Nascondi Modifiche' : 'Visualizza Modifiche'}
-                                  </button>
-                                )}
-                                {isRollbackable && (
-                                  <button
-                                    onClick={() => handleRollback(action.backup_id)}
-                                    disabled={hasBeenRolledBack}
-                                    style={{
-                                      background: hasBeenRolledBack ? 'transparent' : 'rgba(255,85,85,0.15)',
-                                      border: hasBeenRolledBack ? 'none' : '1px solid rgba(255,85,85,0.3)',
-                                      color: hasBeenRolledBack ? '#3fb950' : '#ff5555',
-                                      fontSize: '0.65rem',
-                                      padding: '2px 8px',
-                                      borderRadius: '4px',
-                                      cursor: hasBeenRolledBack ? 'default' : 'pointer',
-                                      transition: 'all 0.15s ease'
-                                    }}
-                                  >
-                                    {hasBeenRolledBack ? 'Annullato ✓' : 'Annulla Modifica'}
-                                  </button>
-                                )}
+                                {hasDiff && (<button onClick={() => toggleDiff(diffKey)} style={{
+                                  background: 'rgba(0,210,255,0.1)', border: '1px solid rgba(0,210,255,0.25)',
+                                  color: 'var(--primary)', fontSize: '0.65rem', padding: '2px 8px',
+                                  borderRadius: '4px', cursor: 'pointer'
+                                }}>{isDiffExpanded ? 'Nascondi Modifiche' : 'Visualizza Modifiche'}</button>)}
+                                {isRollbackable && (<button onClick={() => handleRollback(action.backup_id)} disabled={hasBeenRolledBack} style={{
+                                  background: hasBeenRolledBack ? 'transparent' : 'rgba(255,85,85,0.15)',
+                                  border: hasBeenRolledBack ? 'none' : '1px solid rgba(255,85,85,0.3)',
+                                  color: hasBeenRolledBack ? '#3fb950' : '#ff5555', fontSize: '0.65rem', padding: '2px 8px',
+                                  borderRadius: '4px', cursor: hasBeenRolledBack ? 'default' : 'pointer'
+                                }}>{hasBeenRolledBack ? 'Annullato ✓' : 'Annulla Modifica'}</button>)}
                               </div>
                             </div>
-                            
                             {hasDiff && isDiffExpanded && (
                               <div className="action-diff-container" style={{
-                                background: '#090b10',
-                                border: '1px solid rgba(255,255,255,0.06)',
-                                borderRadius: '6px',
-                                padding: '8px 10px',
-                                fontFamily: 'Consolas, Monaco, monospace',
-                                fontSize: '0.7rem',
-                                lineHeight: '1.25rem',
-                                overflowX: 'auto',
-                                whiteSpace: 'pre',
-                                color: '#adbac7',
-                                marginTop: '2px',
-                                maxHeight: '350px',
-                                boxShadow: 'inset 0 0 10px rgba(0,0,0,0.5)'
+                                background: '#090b10', border: '1px solid rgba(255,255,255,0.06)', borderRadius: '6px',
+                                padding: '8px 10px', fontFamily: 'Consolas, Monaco, monospace', fontSize: '0.7rem',
+                                lineHeight: '1.25rem', overflowX: 'auto', whiteSpace: 'pre', color: '#adbac7',
+                                marginTop: '2px', maxHeight: '350px', boxShadow: 'inset 0 0 10px rgba(0,0,0,0.5)'
                               }}>
                                 {action.diff.split('\n').map((line, lineIdx) => {
                                   let lineStyle = { padding: '2px 4px', borderRadius: '2px', display: 'block' };
-                                  if (line.startsWith('+') && !line.startsWith('+++')) {
-                                    lineStyle.background = 'rgba(46, 160, 67, 0.15)';
-                                    lineStyle.color = '#3fb950';
-                                  } else if (line.startsWith('-') && !line.startsWith('---')) {
-                                    lineStyle.background = 'rgba(248, 81, 73, 0.15)';
-                                    lineStyle.color = '#f85149';
-                                  } else if (line.startsWith('@@')) {
-                                    lineStyle.color = '#79c0ff';
-                                    lineStyle.background = 'rgba(121, 192, 255, 0.05)';
-                                    lineStyle.fontWeight = 'bold';
-                                  }
-                                  return (
-                                    <span key={lineIdx} style={lineStyle}>
-                                      {line}
-                                    </span>
-                                  );
+                                  if (line.startsWith('+') && !line.startsWith('+++')) { lineStyle.background = 'rgba(46, 160, 67, 0.15)'; lineStyle.color = '#3fb950'; }
+                                  else if (line.startsWith('-') && !line.startsWith('---')) { lineStyle.background = 'rgba(248, 81, 73, 0.15)'; lineStyle.color = '#f85149'; }
+                                  else if (line.startsWith('@@')) { lineStyle.color = '#79c0ff'; lineStyle.background = 'rgba(121, 192, 255, 0.05)'; lineStyle.fontWeight = 'bold'; }
+                                  return <span key={lineIdx} style={lineStyle}>{line}</span>;
                                 })}
                               </div>
                             )}
@@ -681,16 +645,19 @@ export default function AgentMessage({
                         );
                       })
                     ) : (
-                      (m.content || '').split('\n').map((l, j) => (
-                        <div key={j} className="action-line">{l}</div>
-                      ))
+                      (m.content || '').split('\n').map((l, j) => (<div key={j} className="action-line">{l}</div>))
                     )}
                   </div>
                 ) : (
                   <>
                     {displayContent && (
-                      <div
-                        className="chat-content chat-md"
+                      <MemoizedContent
+                        displayContent={displayContent}
+                        isPlaying={isPlayingAudio}
+                        speechId={speechId}
+                        speechProgress={speechProgress}
+                        messages={messages}
+                        idx={idx}
                         onClick={e => {
                           const link = e.target.closest('.chat-file-link');
                           if (link) {
@@ -698,41 +665,6 @@ export default function AgentMessage({
                             const path = link.getAttribute('data-path') || link.dataset.path;
                             handleFileClick(path);
                           }
-                        }}
-                        dangerouslySetInnerHTML={{ 
-                          __html: (isPlayingAudio && speechProgress && String(speechProgress.speechId) === String(speechId) && speechProgress.charIndex >= 0)
-                            ? (() => {
-                                // Calculate per-message charIndex: subtract cleaned lengths
-                                // of all previous messages in the group.
-                                let localIdx = speechProgress.charIndex;
-                                const singleClean = cleanTextForSpeech(displayContent);
-                                for (let pi = 0; pi < idx; pi++) {
-                                  const prev = messages[pi];
-                                  const prevText = prev.content || prev.text || '';
-                                  if (prevText) {
-                                    localIdx -= cleanTextForSpeech(prevText).length;
-                                  }
-                                }
-                                if (localIdx < 0) localIdx = 0;
-                                // Advance to the next word for a "reading ahead" karaoke effect
-                                if (localIdx < singleClean.length) {
-                                  // Skip the current word (if positioned on one)
-                                  while (localIdx < singleClean.length && /[\p{L}\p{N}]/u.test(singleClean[localIdx])) {
-                                    localIdx++;
-                                  }
-                                  // Skip whitespace/punctuation to land on the next word
-                                  while (localIdx < singleClean.length && !/[\p{L}\p{N}]/u.test(singleClean[localIdx])) {
-                                    localIdx++;
-                                  }
-                                }
-                                return highlightCurrentWordInHtml(
-                                  renderMarkdownLatex(displayContent),
-                                  singleClean,
-                                  localIdx,
-                                  speechProgress.charLength
-                                );
-                              })()
-                            : renderMarkdownLatex(displayContent)
                         }}
                       />
                     )}
@@ -742,78 +674,45 @@ export default function AgentMessage({
                         <span style={{ fontStyle: 'italic', fontWeight: '500' }}>Generazione risposta ed elaborazione in corso...</span>
                       </div>
                     )}
-                    {/* Strumenti MCP eseguiti e chiamate in attesa di assenso */}
                     {(m.tool_calls?.length > 0 || m.tool_approvals?.length > 0) && (
                       <McpToolStrip calls={m.tool_calls} approvals={m.tool_approvals} />
                     )}
-                    {/* Render action cards or created file buttons */}
                     {((!m.isAction && m.actions_log && m.actions_log.length > 0) || m.created_files?.length > 0) && (
                       <div className="chat-actions-log" style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginTop: '10px' }}>
                         {m.created_files?.map((filePath, fIdx) => {
                           const pStr = getCleanPathStr(filePath);
                           const isViz = pStr.toLowerCase().includes('/viz/') || pStr.toLowerCase().endsWith('.html');
                           const isImg = isImagePath(pStr);
-                          // Resolve the image URL — path may be relative like data/creative/... or absolute /data/...
                           const imgUrl = isImg ? (pStr.startsWith('/') ? pStr : `/${pStr}`) : null;
                           return (
                           <div key={`cf-${fIdx}`} style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                            {/* Inline image thumbnail preview */}
                             {isImg && imgUrl && (
-                              <div
-                                className="agent-image-preview"
-                                onClick={() => handleImagePreviewClick(imgUrl)}
-                                title="Clicca per ingrandire"
-                              >
-                                <img
-                                  src={imgUrl}
-                                  alt={pStr.split('/').pop()}
-                                  loading="lazy"
-                                  onError={(e) => { e.target.style.display = 'none'; }}
-                                />
-                                <div className="image-overlay">
-                                  <span>🔍 Ingrandisci</span>
-                                </div>
+                              <div className="agent-image-preview" onClick={() => handleImagePreviewClick(imgUrl)} title="Clicca per ingrandire">
+                                <img src={imgUrl} alt={pStr.split('/').pop()} loading="lazy" onError={(e) => { e.target.style.display = 'none'; }} />
+                                <div className="image-overlay"><span>🔍 Ingrandisci</span></div>
                               </div>
                             )}
                             <div className="action-log-item" style={{
-                              display: 'flex',
-                              alignItems: 'center',
-                              justifyContent: 'space-between',
-                              padding: '6px 8px',
-                              background: isImg ? 'rgba(124, 91, 240, 0.06)' : 'rgba(0, 210, 255, 0.04)',
+                              display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                              padding: '6px 8px', background: isImg ? 'rgba(124, 91, 240, 0.06)' : 'rgba(0, 210, 255, 0.04)',
                               border: isImg ? '1px solid rgba(124, 91, 240, 0.2)' : '1px solid rgba(0, 210, 255, 0.15)',
-                              borderRadius: '6px',
-                              fontSize: '0.75rem'
+                              borderRadius: '6px', fontSize: '0.75rem'
                             }}>
                               <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0, flex: 1 }}>
                                 <span>{isImg ? '🎨' : '📁'}</span>
-                                <span style={{ fontWeight: '600', color: isImg ? '#7c5bf0' : 'var(--primary)', flexShrink: 0 }}>
-                                  {isImg ? 'Immagine generata' : 'File salvato'}
-                                </span>
-                                <span style={{ color: '#8b8fa3', textOverflow: 'ellipsis', overflow: 'hidden', whiteSpace: 'nowrap' }}>
-                                  {pStr}
-                                </span>
+                                <span style={{ fontWeight: '600', color: isImg ? '#7c5bf0' : 'var(--primary)', flexShrink: 0 }}>{isImg ? 'Immagine generata' : 'File salvato'}</span>
+                                <span style={{ color: '#8b8fa3', textOverflow: 'ellipsis', overflow: 'hidden', whiteSpace: 'nowrap' }}>{pStr}</span>
                               </div>
                               <div style={{ display: 'flex', gap: '5px' }}>
-                                <button
-                                  onClick={() => handleFileClick(pStr)}
-                                  style={{
-                                    background: isImg ? 'rgba(124,91,240,0.15)' : isViz ? 'rgba(57,185,80,0.15)' : 'rgba(0,210,255,0.15)',
-                                    border: isImg ? '1px solid rgba(124,91,240,0.35)' : isViz ? '1px solid rgba(57,185,80,0.4)' : '1px solid rgba(0,210,255,0.3)',
-                                    color: isImg ? '#7c5bf0' : isViz ? '#3fb950' : 'var(--primary)',
-                                    fontSize: '0.7rem',
-                                    padding: '3px 10px',
-                                    borderRadius: '4px',
-                                    cursor: 'pointer',
-                                    fontWeight: '600'
-                                  }}
-                                >
-                                  {isImg ? 'Visualizza 🖼️' : isViz ? 'Anteprima 👁️' : 'Visualizza 📄'}
-                                </button>
+                                <button onClick={() => handleFileClick(pStr)} style={{
+                                  background: isImg ? 'rgba(124,91,240,0.15)' : isViz ? 'rgba(57,185,80,0.15)' : 'rgba(0,210,255,0.15)',
+                                  border: isImg ? '1px solid rgba(124,91,240,0.35)' : isViz ? '1px solid rgba(57,185,80,0.4)' : '1px solid rgba(0,210,255,0.3)',
+                                  color: isImg ? '#7c5bf0' : isViz ? '#3fb950' : 'var(--primary)', fontSize: '0.7rem', padding: '3px 10px',
+                                  borderRadius: '4px', cursor: 'pointer', fontWeight: '600'
+                                }}>{isImg ? 'Visualizza 🖼️' : isViz ? 'Anteprima 👁️' : 'Visualizza 📄'}</button>
                               </div>
                             </div>
-                          </div>
-                          );
+                          </div>);
                         })}
                         {m.actions_log && m.actions_log.length > 0 && m.actions_log.map((action, actionIdx) => {
                           const isRollbackable = action.success && action.backup_id;
@@ -826,82 +725,34 @@ export default function AgentMessage({
                           return (
                             <div key={actionIdx} style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
                               <div className="action-log-item" style={{
-                                display: 'flex',
-                                alignItems: 'center',
-                                justifyContent: 'space-between',
-                                padding: '6px 8px',
-                                background: 'rgba(255,255,255,0.02)',
-                                border: '1px solid rgba(255,255,255,0.04)',
-                                borderRadius: '6px',
-                                fontSize: '0.75rem'
+                                display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '6px 8px',
+                                background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.04)', borderRadius: '6px', fontSize: '0.75rem'
                               }}>
                                 <div className="action-log-item-left" style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0, flex: 1 }}>
                                   <span>{action.success ? '✅' : '❌'}</span>
-                                  <span style={{ fontWeight: '600', color: action.success ? 'var(--primary)' : 'var(--error)', flexShrink: 0 }}>
-                                    {action.type}
-                                  </span>
-                                  <span 
-                                    style={{ color: '#8b8fa3', textOverflow: 'ellipsis', overflow: 'hidden', whiteSpace: 'nowrap', cursor: actPathStr ? 'pointer' : 'default' }}
-                                    title={actPathStr}
-                                    onClick={() => actPathStr && handleFileClick(actPathStr)}
-                                  >
+                                  <span style={{ fontWeight: '600', color: action.success ? 'var(--primary)' : 'var(--error)', flexShrink: 0 }}>{action.type}</span>
+                                  <span style={{ color: '#8b8fa3', textOverflow: 'ellipsis', overflow: 'hidden', whiteSpace: 'nowrap', cursor: actPathStr ? 'pointer' : 'default' }}
+                                    title={actPathStr} onClick={() => actPathStr && handleFileClick(actPathStr)}>
                                     {action.message || action.error || ''}
                                   </span>
                                 </div>
                                 <div style={{ display: 'flex', gap: '6px', alignItems: 'center', flexShrink: 0 }}>
-                                  {actPathStr && (
-                                    <button
-                                      onClick={() => handleFileClick(actPathStr)}
-                                      style={{
-                                        background: isActViz ? 'rgba(57,185,80,0.15)' : 'rgba(0,210,255,0.1)',
-                                        border: isActViz ? '1px solid rgba(57,185,80,0.3)' : '1px solid rgba(0,210,255,0.25)',
-                                        color: isActViz ? '#3fb950' : 'var(--primary)',
-                                        fontSize: '0.65rem',
-                                        padding: '2px 8px',
-                                        borderRadius: '4px',
-                                        cursor: 'pointer',
-                                        transition: 'all 0.15s ease'
-                                      }}
-                                      title={isActViz ? "Apri l'anteprima interattiva nel workspace" : "Apri il file nel workspace"}
-                                    >
-                                      {isActViz ? 'Anteprima 👁️' : 'Visualizza 📄'}
-                                    </button>
-                                  )}
-                                  {hasDiff && (
-                                    <button
-                                      onClick={() => toggleDiff(diffKey)}
-                                      style={{
-                                        background: 'rgba(0,210,255,0.1)',
-                                        border: '1px solid rgba(0,210,255,0.25)',
-                                        color: 'var(--primary)',
-                                        fontSize: '0.65rem',
-                                        padding: '2px 8px',
-                                        borderRadius: '4px',
-                                        cursor: 'pointer',
-                                        transition: 'all 0.15s ease'
-                                      }}
-                                    >
-                                      {isDiffExpanded ? 'Nascondi Modifiche' : 'Visualizza Modifiche'}
-                                    </button>
-                                  )}
-                                  {isRollbackable && (
-                                    <button
-                                      onClick={() => handleRollback(action.backup_id)}
-                                      disabled={hasBeenRolledBack}
-                                      style={{
-                                        background: hasBeenRolledBack ? 'transparent' : 'rgba(255,85,85,0.15)',
-                                        border: hasBeenRolledBack ? 'none' : '1px solid rgba(255,85,85,0.3)',
-                                        color: hasBeenRolledBack ? '#3fb950' : '#ff5555',
-                                        fontSize: '0.65rem',
-                                        padding: '2px 8px',
-                                        borderRadius: '4px',
-                                        cursor: hasBeenRolledBack ? 'default' : 'pointer',
-                                        transition: 'all 0.15s ease'
-                                      }}
-                                    >
-                                      {hasBeenRolledBack ? 'Annullato ✓' : 'Annulla Modifica'}
-                                    </button>
-                                  )}
+                                  {actPathStr && (<button onClick={() => handleFileClick(actPathStr)} style={{
+                                    background: isActViz ? 'rgba(57,185,80,0.15)' : 'rgba(0,210,255,0.1)',
+                                    border: isActViz ? '1px solid rgba(57,185,80,0.3)' : '1px solid rgba(0,210,255,0.25)',
+                                    color: isActViz ? '#3fb950' : 'var(--primary)', fontSize: '0.65rem', padding: '2px 8px',
+                                    borderRadius: '4px', cursor: 'pointer'
+                                  }}>{isActViz ? 'Anteprima 👁️' : 'Visualizza 📄'}</button>)}
+                                  {hasDiff && (<button onClick={() => toggleDiff(diffKey)} style={{
+                                    background: 'rgba(0,210,255,0.1)', border: '1px solid rgba(0,210,255,0.25)',
+                                    color: 'var(--primary)', fontSize: '0.65rem', padding: '2px 8px', borderRadius: '4px', cursor: 'pointer'
+                                  }}>{isDiffExpanded ? 'Nascondi Modifiche' : 'Visualizza Modifiche'}</button>)}
+                                  {isRollbackable && (<button onClick={() => handleRollback(action.backup_id)} disabled={hasBeenRolledBack} style={{
+                                    background: hasBeenRolledBack ? 'transparent' : 'rgba(255,85,85,0.15)',
+                                    border: hasBeenRolledBack ? 'none' : '1px solid rgba(255,85,85,0.3)',
+                                    color: hasBeenRolledBack ? '#3fb950' : '#ff5555', fontSize: '0.65rem', padding: '2px 8px',
+                                    borderRadius: '4px', cursor: hasBeenRolledBack ? 'default' : 'pointer'
+                                  }}>{hasBeenRolledBack ? 'Annullato ✓' : 'Annulla Modifica'}</button>)}
                                 </div>
                               </div>
                             </div>
@@ -912,16 +763,11 @@ export default function AgentMessage({
                   </>
                 )}
 
-                {/* Error */}
                 {m.error && <div className="chat-error">⚠️ {m.error}</div>}
-
-                {/* Timestamp + model for grouped items */}
                 {isGrouped && (
                   <div className="chat-timestamp">
                     {formatTimestamp(m.timestamp)}
-                    <span className="chat-message-agent">
-                      {' · '}{m.agent_name || agentId || m.agentName || effectiveModelName || 'AI'}
-                    </span>
+                    <span className="chat-message-agent">{' · '}{m.agent_name || agentId || m.agentName || effectiveModelName || 'AI'}</span>
                   </div>
                 )}
               </div>
@@ -929,14 +775,11 @@ export default function AgentMessage({
           }))}
         </div>
       </div>
-      {/* Image Lightbox (fullscreen preview) */}
       {lightboxSrc && (
         <ImageLightbox
-          src={lightboxSrc}
-          alt=""
+          src={lightboxSrc} alt=""
           onClose={() => setLightboxSrc(null)}
           onOpenInEditor={() => {
-            // Extract relative path from URL for opening in image viewer
             const relPath = lightboxSrc.startsWith('/') ? lightboxSrc.slice(1) : lightboxSrc;
             if (openTab) openTab({ path: relPath, filename: relPath.split('/').pop() || relPath }, 'image_viewer');
           }}

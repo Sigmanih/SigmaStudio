@@ -414,8 +414,11 @@ def _comfy_can_load(model: ModelSpec) -> bool:
 
     # I workflow forniti dall'utente referenziano i propri file al loro interno:
     # non tocca a noi indovinare quali pesi caricano.
-    from core.creative.generators.adapters.comfy_workflows import BUILTIN
-    if model.workflow not in BUILTIN:
+    from core.creative.workflow_registry import registry
+    entry = registry.get(model.workflow)
+    if entry is not None and entry.source == "user":
+        # I workflow dell'utente referenziano i propri file: non tocca a noi
+        # indovinare quali pesi caricano.
         return True
 
     loadable = set(_COMFY_INVENTORY.get("checkpoints") or ()) | set(_COMFY_INVENTORY.get("unets") or ())
@@ -432,10 +435,11 @@ def _comfy_workflow_missing(model: ModelSpec) -> bool:
     if not model.workflow:
         return False
     try:
-        from core.creative.generators.adapters.comfy_workflows import BUILTIN, user_workflow_path
+        from core.creative.workflow_registry import registry
     except Exception:
         return False
-    if model.workflow not in BUILTIN and not user_workflow_path(model.workflow).exists():
+    # Il registro è l'unica fonte di verità su quali workflow esistono davvero.
+    if registry.get(model.workflow) is None:
         return True
     # Il workflow c'è ma mancano i pesi: per ComfyUI equivale a non averlo.
     return not _comfy_can_load(model)

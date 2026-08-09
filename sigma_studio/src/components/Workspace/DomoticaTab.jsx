@@ -1,10 +1,12 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import {
   Home, Sun, Thermometer, Lock, Power, Lightbulb, RefreshCw, Send,
   Zap, Sliders, Palette, Plus, Minus, Key, AlertCircle, Search, Filter,
   Tv, Music, Camera, Fan, Waves, DoorOpen, ChevronDown, ChevronUp,
-  Droplets, ShieldCheck, Plug, Wifi, WifiOff
+  Droplets, ShieldCheck, Plug, Wifi, WifiOff, Pencil, Check, X, FlaskConical
 } from 'lucide-react';
+
+const CUSTOM_NAMES_KEY = 'domotica_custom_names';
 
 // ── Colour presets for quick light colour selection ──────────────────────
 const COLOR_PRESETS = [
@@ -124,14 +126,30 @@ export default function DomoticaTab() {
 
   // Control
   const [expandedDevice, setExpandedDevice] = useState(null);
+  const [editingName, setEditingName] = useState(null);
+  const [editValue, setEditValue] = useState('');
   const [prompt, setPrompt] = useState('');
   const [logs, setLogs] = useState([{ time: new Date().toLocaleTimeString(), msg: 'Bus domotico inizializzato.', type: 'info' }]);
   const [aiLoading, setAiLoading] = useState(false);
+  const [customNames, setCustomNames] = useState(() => {
+    try { return JSON.parse(localStorage.getItem(CUSTOM_NAMES_KEY) || '{}'); }
+    catch { return {}; }
+  });
 
   const addLog = (msg, type = 'info') => {
     const time = new Date().toLocaleTimeString();
     setLogs(p => [{ time, msg, type }, ...p].slice(0, 100));
   };
+
+  const saveCustomNames = (patch) => {
+    const next = { ...customNames, ...patch };
+    // Remove entries that reset to default (empty)
+    for (const k of Object.keys(next)) { if (!next[k]) delete next[k]; }
+    setCustomNames(next);
+    try { localStorage.setItem(CUSTOM_NAMES_KEY, JSON.stringify(next)); } catch {}
+  };
+
+  const deviceName = (dev) => customNames[dev.id] || dev.name || dev.id;
 
   // ── Data fetching ────────────────────────────────────────────────────────
   const fetchHaEntities = async () => {
@@ -259,11 +277,24 @@ export default function DomoticaTab() {
     } catch (e) { addLog(`${id}: ${e.message}`, 'action'); }
   };
 
+  // Command an entire area via the new 'area' parameter (one API call).
+  const sendAreaControl = async (area, domain, payload) => {
+    try {
+      const res = await fetch('/api/mcp/ha/control', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ area, domain, ...payload }),
+      });
+      const data = await res.json();
+      if (data.success) addLog(`${area} (${domain}): OK`, 'success');
+      else addLog(`${area}: ${data.error || 'fallito'}`, 'action');
+    } catch (e) { addLog(`${area}: ${e.message}`, 'action'); }
+  };
+
   const toggleDevice = (dev) => {
     const next = dev.state === 'on' ? 'off' : 'on';
     setDevices(p => p.map(d => d.id === dev.id ? { ...d, state: next } : d));
     sendControl(dev.id, { state: next });
-    addLog(`${dev.name} → ${next.toUpperCase()}`, 'action');
+    addLog(`${deviceName(dev)} → ${next.toUpperCase()}`, 'action');
   };
 
   const setBrightness = (dev, val) => {
@@ -362,6 +393,19 @@ export default function DomoticaTab() {
     const glow = active ? dev.color || meta.color : T.off;
     const isExpanded = expandedDevice === dev.id;
     const hidden = !filteredDeviceIds.has(dev.id);
+    const isEditing = editingName === dev.id;
+
+    const startEdit = () => { setEditingName(dev.id); setEditValue(deviceName(dev)); };
+    const confirmEdit = () => {
+      if (editValue.trim() && editValue.trim() !== (dev.name || dev.id)) {
+        saveCustomNames({ [dev.id]: editValue.trim() });
+      } else {
+        saveCustomNames({ [dev.id]: '' });
+      }
+      setEditingName(null);
+    };
+    const cancelEdit = () => setEditingName(null);
+
     if (hidden) return null;
 
     return (
@@ -386,10 +430,33 @@ export default function DomoticaTab() {
             }}>
               <IconC size={22} color={active ? glow : T.muted} />
             </div>
-            <div style={{ minWidth: 0 }}>
-              <div style={{ fontWeight: 700, fontSize: '0.9rem', color: T.text, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                {dev.name}
-              </div>
+            <div style={{ minWidth: 0, flex: 1 }}>
+              {isEditing ? (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <input autoFocus value={editValue} onChange={e => setEditValue(e.target.value)}
+                    onKeyDown={e => { if (e.key === 'Enter') confirmEdit(); if (e.key === 'Escape') cancelEdit(); }}
+                    style={{
+                      flex: 1, background: 'rgba(8,10,16,0.9)', border: `1px solid ${T.accent}40`,
+                      borderRadius: 8, color: '#fff', padding: '4px 10px', fontSize: '0.88rem', outline: 'none',
+                    }} />
+                  <button onClick={confirmEdit} style={{ background: 'none', border: 'none', color: T.on, cursor: 'pointer', padding: 2 }}>
+                    <Check size={14} />
+                  </button>
+                  <button onClick={cancelEdit} style={{ background: 'none', border: 'none', color: '#ff5064', cursor: 'pointer', padding: 2 }}>
+                    <X size={14} />
+                  </button>
+                </div>
+              ) : (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <span style={{ fontWeight: 700, fontSize: '0.9rem', color: T.text, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                    {deviceName(dev)}
+                  </span>
+                  <button onClick={startEdit} style={{ background: 'none', border: 'none', color: T.muted, cursor: 'pointer', padding: 2, opacity: 0.5, flexShrink: 0 }}
+                    title="Rinomina">
+                    <Pencil size={11} />
+                  </button>
+                </div>
+              )}
               <div style={{ fontSize: '0.7rem', color: T.muted, fontFamily: 'JetBrains Mono, monospace', marginTop: 2 }}>
                 {dev.id}
               </div>
@@ -675,6 +742,14 @@ export default function DomoticaTab() {
             const visibleCount = roomDevices.filter(d => filteredDeviceIds.has(d.id)).length;
             if (visibleCount === 0) return null;
             const collapsed = collapsedRooms[room];
+            const lightsInRoom = roomDevices.filter(d => d.domain === 'light');
+            const hasLights = lightsInRoom.length > 0;
+            const anyLightOn = lightsInRoom.some(d => d.state === 'on');
+            const avgBrightness = hasLights ? Math.round(lightsInRoom.reduce((s, d) => s + d.brightness, 0) / lightsInRoom.length) : 50;
+            const roomHasRgb = lightsInRoom.some(d => d.colorModes.some(m => m === 'hs' || m === 'rgb' || m === 'xy'));
+            const roomHasKelvin = lightsInRoom.some(d => d.colorModes.includes('color_temp'));
+            const avgKelvin = roomHasKelvin ? Math.round(lightsInRoom.reduce((s, d) => s + (d.kelvinVal || 4000), 0) / lightsInRoom.length) : 4000;
+
             return (
               <div key={room}>
                 <button onClick={() => toggleRoom(room)} style={{
@@ -690,6 +765,69 @@ export default function DomoticaTab() {
                   </span>
                   {collapsed ? <ChevronDown size={16} color={T.muted} /> : <ChevronUp size={16} color={T.muted} />}
                 </button>
+
+                {/* Master control bar for the room (lights only) */}
+                {!collapsed && hasLights && (
+                  <div style={{
+                    padding: '14px 18px', borderRadius: 14, marginBottom: 12,
+                    background: T.cardBg, border: `1px solid ${T.border}`,
+                    display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap',
+                    backdropFilter: 'blur(14px)',
+                  }}>
+                    <span style={{ fontSize: '0.72rem', fontWeight: 700, color: T.muted, whiteSpace: 'nowrap' }}>
+                      🎛️ {lightsInRoom.length} luci
+                    </span>
+
+                    {/* Master toggle */}
+                    <ToggleSwitch active={anyLightOn} onChange={() =>
+                      sendAreaControl(room, 'light', { state: anyLightOn ? 'off' : 'on' })
+                    } color="#fbbf24" />
+                    <span style={{ fontSize: '0.72rem', fontWeight: 700, color: anyLightOn ? T.on : T.muted, minWidth: 32 }}>
+                      {anyLightOn ? 'ON' : 'OFF'}
+                    </span>
+
+                    {/* Master brightness */}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, flex: 1, minWidth: 120 }}>
+                      <Sun size={13} color={T.muted} />
+                      <GlowSlider value={avgBrightness} onChange={v => {
+                        // Update all lights locally, then send one area call
+                        lightsInRoom.forEach(d => setBrightness(d, v));
+                        sendAreaControl(room, 'light', { state: v > 0 ? 'on' : 'off', brightness: v });
+                      }} color="#fbbf24" />
+                      <span style={{ fontSize: '0.7rem', fontWeight: 700, color: T.text, minWidth: 30, textAlign: 'right' }}>
+                        {avgBrightness}%
+                      </span>
+                    </div>
+
+                    {/* Master colour presets */}
+                    {roomHasRgb && (
+                      <div style={{ display: 'flex', gap: 4 }}>
+                        {COLOR_PRESETS.slice(0, 6).map(p => (
+                          <button key={p.hex} onClick={() => {
+                            lightsInRoom.forEach(d => setColor(d, p.hex, p.rgb));
+                            sendAreaControl(room, 'light', { state: 'on', color_rgb: p.rgb });
+                          }}
+                          style={{ width: 18, height: 18, borderRadius: '50%', border: `1px solid ${p.hex}60`, background: p.hex, cursor: 'pointer', padding: 0 }}
+                          title={p.name} />
+                        ))}
+                      </div>
+                    )}
+
+                    {/* Master kelvin */}
+                    {roomHasKelvin && (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 100 }}>
+                        <Thermometer size={12} color={T.muted} />
+                        <GlowSlider value={avgKelvin} min={2000} max={6500}
+                          onChange={v => {
+                            lightsInRoom.forEach(d => setKelvin(d, v));
+                            sendAreaControl(room, 'light', { state: 'on', color_temp_kelvin: v });
+                          }} color="#f59e0b" />
+                        <span style={{ fontSize: '0.68rem', color: T.muted }}>{avgKelvin}K</span>
+                      </div>
+                    )}
+                  </div>
+                )}
+
                 {!collapsed && (
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(340px, 1fr))', gap: 14 }}>
                     {roomDevices.map(d => <DeviceCard key={d.id} dev={d} />)}

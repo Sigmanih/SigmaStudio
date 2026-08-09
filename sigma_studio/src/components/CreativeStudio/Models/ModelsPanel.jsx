@@ -2,6 +2,8 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { Cpu, CheckCircle2, XCircle, AlertTriangle, HardDrive, Zap, Star, Copy } from 'lucide-react';
 import ModelDownloads from './ModelDownloads';
 import ModelBrowser from './ModelBrowser';
+import ModelInventory from './ModelInventory';
+import WorkflowPanel from './WorkflowPanel';
 
 const TASK_LABELS = {
   text_to_image: 'Text→Image', img_to_img: 'Image→Image', inpaint: 'Inpaint', outpaint: 'Outpaint',
@@ -68,7 +70,6 @@ export default function ModelsPanel({ models = [], inventory = null, onRefresh }
   }
 
   const data = meta || { models, available_backends: [], workflows: {} };
-  const missing = data.workflows?.custom_required || [];
 
   return (
     <div className="cs-models-container">
@@ -77,11 +78,11 @@ export default function ModelsPanel({ models = [], inventory = null, onRefresh }
           <h2><Cpu size={20} /> Registro modelli</h2>
           <p className="cs-hint">
             Sigma sceglie automaticamente il modello per ogni task in base a backend attivi,
-            VRAM libera e priorità. Qui vedi cosa è realmente eseguibile su questa macchina.
+            capacità VRAM e priorità. Qui vedi cosa è realmente eseguibile su questa macchina.
           </p>
         </div>
         <div className="cs-models-stats">
-          <span><HardDrive size={13} /> {data.vram_free_gb ? `${data.vram_free_gb} GB liberi` : 'VRAM n/d'}</span>
+          <span><HardDrive size={13} /> {data.vram_free_gb ? `${data.vram_free_gb} GB VRAM` : 'VRAM n/d'}</span>
           <span>{(data.available_backends || []).join(' · ') || 'nessun backend'}</span>
           <label className="cs-check">
             <input type="checkbox" checked={onlyAvailable} onChange={e => setOnlyAvailable(e.target.checked)} />
@@ -101,57 +102,12 @@ export default function ModelsPanel({ models = [], inventory = null, onRefresh }
         </div>
       )}
 
-      {inventory?.reachable && (
-        <div className="cs-mesh-card">
-          <h3 className="cs-mesh-title"><HardDrive size={18} /> Installato su ComfyUI</h3>
-          <div className="cs-inventory-grid">
-            {[
-              ['Checkpoint', inventory.checkpoints],
-              ['UNET / diffusion', inventory.unets],
-              ['VAE', inventory.vaes],
-              ['LoRA', inventory.loras],
-              ['Upscaler', inventory.upscale_models],
-              ['ControlNet', inventory.controlnets],
-            ].map(([label, list]) => (
-              <div key={label}>
-                <h5>{label} <span>{(list || []).length}</span></h5>
-                {(list || []).length === 0
-                  ? <p className="cs-hint">nessuno</p>
-                  : <ul>{list.slice(0, 6).map(v => <li key={v} title={v}>{v}</li>)}</ul>}
-              </div>
-            ))}
-          </div>
-          {(inventory.checkpoints || []).length === 0 && (inventory.unets || []).length === 0 && (
-            <div className="cs-banner warn" style={{ marginTop: '12px' }}>
-              <AlertTriangle size={16} />
-              <span>
-                Nessun modello immagine installato: scarica un checkpoint (SDXL) o un UNET (FLUX)
-                nelle cartelle <code>models/checkpoints</code> / <code>models/diffusion_models</code> di ComfyUI.
-                Fino ad allora la generazione resta su Pollinations.
-              </span>
-            </div>
-          )}
-        </div>
-      )}
-
-      {missing.length > 0 && (
-        <div className="cs-banner warn">
-          <AlertTriangle size={16} />
-          <span>
-            {missing.length} workflow ComfyUI non ancora forniti ({missing.slice(0, 4).join(', ')}
-            {missing.length > 4 ? '…' : ''}). Esportali da ComfyUI con «Save (API format)» in{' '}
-            <code>{data.workflows.directory}</code> usando i placeholder <code>{'{{prompt}}'}</code>,{' '}
-            <code>{'{{input_image}}'}</code>, <code>{'{{width}}'}</code>, <code>{'{{seed}}'}</code>.
-          </span>
-        </div>
-      )}
-
       <div className="cs-mesh-card">
-        <ModelBrowser onInstalled={onRefresh} />
+        <ModelInventory onRefresh={onRefresh} />
       </div>
 
       <div className="cs-mesh-card">
-        <ModelDownloads onInstalled={onRefresh} />
+        <WorkflowPanel onChanged={onRefresh} />
       </div>
 
       {grouped.map(group => (

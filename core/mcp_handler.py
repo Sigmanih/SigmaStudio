@@ -407,29 +407,62 @@ def handle_mcp_ha_entities(self):
 
 
 def handle_mcp_ha_control(self):
-    """POST /api/mcp/ha/control — Send real control action to Home Assistant entity."""
+    """POST /api/mcp/ha/control — Send control action to device(s) or an entire room.
+
+    Accepts either `entity_id` (single device) or `area` (every device of the
+    matching domain in that room — one API call, one confirmation).
+    """
     try:
         payload = _read_request_payload(self)
         entity_id = payload.get("entity_id") or ""
-        domain = entity_id.split(".")[0] if "." in entity_id else "light"
+        area = payload.get("area") or ""
+
+        # Figure out the domain: explicit field, derived from entity_id, or
+        # default to 'light' when operating on an area.
+        domain = payload.get("domain") or ""
+        if not domain and entity_id:
+            domain = entity_id.split(".")[0] if "." in entity_id else "light"
+        if not domain:
+            domain = "light"
+
+        state = payload.get("state") or ""
 
         if domain == "light":
-            args = {"entity_id": entity_id, "state": payload.get("state", "on")}
+            args = {"state": state or "on"}
+            if entity_id:
+                args["entity_id"] = entity_id
+            if area:
+                args["area"] = area
             if "brightness" in payload:
                 args["brightness_pct"] = int(payload["brightness"])
             if "color_rgb" in payload and isinstance(payload["color_rgb"], list):
                 args["rgb_color"] = payload["color_rgb"]
+            if "color_temp_kelvin" in payload:
+                args["color_temp_kelvin"] = int(payload["color_temp_kelvin"])
+            if "effect" in payload:
+                args["effect"] = payload["effect"]
             outcome = mcp_hub.execute_tool("ha_light_set", args)
+
         elif domain == "switch":
-            args = {"entity_id": entity_id, "state": payload.get("state", "on")}
+            args = {"state": state or "on"}
+            if entity_id:
+                args["entity_id"] = entity_id
+            if area:
+                args["area"] = area
             outcome = mcp_hub.execute_tool("ha_switch_set", args)
+
         elif domain == "climate":
+            if not entity_id:
+                return self.send_json_response({"success": False, "error": "entity_id richiesto per climate"})
             args = {"entity_id": entity_id}
             if "setpoint" in payload:
                 args["temperature"] = float(payload["setpoint"])
             outcome = mcp_hub.execute_tool("ha_climate_set", args)
+
         else:
-            args = {"domain": domain, "service": "toggle", "target": {"entity_id": entity_id}}
+            args = {"domain": domain, "service": "toggle"}
+            if entity_id:
+                args["entity_id"] = entity_id
             outcome = mcp_hub.execute_tool("ha_call_service", args)
 
         if outcome["status"] == "ok":

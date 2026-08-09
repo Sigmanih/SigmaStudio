@@ -273,7 +273,31 @@ function AppContent() {
               {/* Menu Items Stack */}
               <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                 
-                {/* Item 1: Pianificazione & Task */}
+                {/* Item 1: Chat AI Assistente (Ora Primo in Lista) */}
+                <button
+                  onClick={() => setAiChatOpen(!aiChatOpen)}
+                  style={{
+                    display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                    padding: '10px 12px', borderRadius: '10px',
+                    background: aiChatOpen ? 'rgba(188, 140, 255, 0.15)' : 'rgba(255, 255, 255, 0.03)',
+                    border: aiChatOpen ? '1px solid rgba(188, 140, 255, 0.4)' : '1px solid rgba(255, 255, 255, 0.06)',
+                    color: aiChatOpen ? '#bc8cff' : '#e2e4eb',
+                    cursor: 'pointer', transition: 'all 0.18s ease', textAlign: 'left'
+                  }}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                    <div style={{ width: '32px', height: '32px', borderRadius: '8px', background: 'rgba(188, 140, 255, 0.15)', border: '1px solid rgba(188, 140, 255, 0.3)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                      <MessageSquare size={16} color="#bc8cff" />
+                    </div>
+                    <div>
+                      <div style={{ fontSize: '0.8rem', fontWeight: 700 }}>AI Chat Assistente</div>
+                      <div style={{ fontSize: '0.62rem', color: '#8b8fa3' }}>Finestra di chat agentica</div>
+                    </div>
+                  </div>
+                  <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: aiChatOpen ? '#bc8cff' : '#555' }} />
+                </button>
+
+                {/* Item 2: Pianificazione & Task */}
                 <button
                   onClick={() => {
                     setTaskPanelOpen(!taskPanelOpen);
@@ -303,7 +327,7 @@ function AppContent() {
                   )}
                 </button>
 
-                {/* Item 2: Hardware & GPU Monitor */}
+                {/* Item 3: Hardware & GPU Monitor */}
                 <button
                   onClick={() => setHardwarePanelOpen(!hardwarePanelOpen)}
                   style={{
@@ -327,48 +351,27 @@ function AppContent() {
                   <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: hardwarePanelOpen ? '#3fb950' : '#555' }} />
                 </button>
 
-                {/* Item 3: Chat AI Assistente */}
-                <button
-                  onClick={() => setAiChatOpen(!aiChatOpen)}
-                  style={{
-                    display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                    padding: '10px 12px', borderRadius: '10px',
-                    background: aiChatOpen ? 'rgba(188, 140, 255, 0.15)' : 'rgba(255, 255, 255, 0.03)',
-                    border: aiChatOpen ? '1px solid rgba(188, 140, 255, 0.4)' : '1px solid rgba(255, 255, 255, 0.06)',
-                    color: aiChatOpen ? '#bc8cff' : '#e2e4eb',
-                    cursor: 'pointer', transition: 'all 0.18s ease', textAlign: 'left'
-                  }}
-                >
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                    <div style={{ width: '32px', height: '32px', borderRadius: '8px', background: 'rgba(188, 140, 255, 0.15)', border: '1px solid rgba(188, 140, 255, 0.3)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                      <MessageSquare size={16} color="#bc8cff" />
-                    </div>
-                    <div>
-                      <div style={{ fontSize: '0.8rem', fontWeight: 700 }}>AI Chat Assistente</div>
-                      <div style={{ fontSize: '0.62rem', color: '#8b8fa3' }}>Finestra di chat agentica</div>
-                    </div>
-                  </div>
-                  <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: aiChatOpen ? '#bc8cff' : '#555' }} />
-                </button>
-
-                {/* Item 4: Configurazione AI */}
+                {/* Item 4: Configurazione AI (Allineato) */}
                 <button
                   onClick={() => setAiConfigOpen(true)}
                   style={{
-                    display: 'flex', alignItems: 'center', gap: '10px',
+                    display: 'flex', alignItems: 'center', justifyContent: 'space-between',
                     padding: '10px 12px', borderRadius: '10px',
                     background: 'rgba(255, 255, 255, 0.03)',
                     border: '1px solid rgba(255, 255, 255, 0.06)',
                     color: '#e2e4eb', cursor: 'pointer', transition: 'all 0.18s ease', textAlign: 'left'
                   }}
                 >
-                  <div style={{ width: '32px', height: '32px', borderRadius: '8px', background: 'rgba(255, 184, 108, 0.15)', border: '1px solid rgba(255, 184, 108, 0.3)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                    <Settings size={16} color="#ffb86c" />
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                    <div style={{ width: '32px', height: '32px', borderRadius: '8px', background: 'rgba(255, 184, 108, 0.15)', border: '1px solid rgba(255, 184, 108, 0.3)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                      <Settings size={16} color="#ffb86c" />
+                    </div>
+                    <div>
+                      <div style={{ fontSize: '0.8rem', fontWeight: 700 }}>Configurazione AI</div>
+                      <div style={{ fontSize: '0.62rem', color: '#8b8fa3' }}>Modelli, API & Parametri</div>
+                    </div>
                   </div>
-                  <div>
-                    <div style={{ fontSize: '0.8rem', fontWeight: 700 }}>Configurazione AI</div>
-                    <div style={{ fontSize: '0.62rem', color: '#8b8fa3' }}>Modelli, API & Parametri</div>
-                  </div>
+                  <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#ffb86c' }} />
                 </button>
               </div>
             </div>

@@ -496,3 +496,10 @@
   border-radius: 6px;
   border: 1px solid rgba(0, 210, 255, 0.3);
 }
+
+/* Primi Passi Interactive Cards */
+.primi-passi-card:hover {
+  transform: translateY(-4px) scale(1.01);
+  border-color: rgba(0, 210, 255, 0.45) !important;
+  box-shadow: 0 14px 40px rgba(0, 210, 255, 0.15), 0 8px 32px rgba(0, 0, 0, 0.5) !important;
+}
