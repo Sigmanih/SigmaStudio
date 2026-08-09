@@ -34,6 +34,34 @@ def _read_request_payload(handler) -> dict:
     return {}
 
 
+def _unwrap_mcp_result(outcome: dict) -> dict:
+    """Extract the actual data payload from an MCP execute_tool result.
+
+    execute_tool wraps every answer as:
+      {"status": "ok", "result": {"isError": False,
+       "content": [{"type": "text", "text": "<JSON string>"}]}}
+    The real fields (success, entities, error, ...) live inside that JSON
+    string, not at the result level.  This helper un-nests them so callers
+    can write `result.get("success")` and find it.
+    """
+    if outcome.get("status") != "ok":
+        return {}
+    outer = outcome.get("result", {})
+    if outer.get("isError", False):
+        # On error the text is a plain error message, not JSON.
+        return {"success": False, "error": " ".join(
+            p.get("text", "") for p in outer.get("content", [])
+        )}
+    content = outer.get("content", [])
+    if not content:
+        return {}
+    text = content[0].get("text", "") if isinstance(content[0], dict) else str(content[0])
+    try:
+        return json.loads(text) if isinstance(text, str) else {}
+    except (ValueError, TypeError):
+        return {}
+
+
 def _mask_secrets(server_entry: dict, values: dict) -> dict:
     """Replace secret values with a marker, keeping "is it set?" visible."""
     masked = {}
@@ -133,7 +161,7 @@ def handle_mcp_integration(self):
     try:
         payload = _read_request_payload(self)
         key = payload.get("key") or ""
-        values = payload.get("values") or {}
+        values = payload.get("values") or payload.get("config") or {}
         if not key:
             return self.send_json_response({"error": "Manca la chiave dell'integrazione"}, 400)
 
@@ -177,16 +205,42 @@ def handle_mcp_test_integration(self):
     try:
         payload = _read_request_payload(self)
         key = payload.get("key") or ""
+        values = payload.get("values") or payload.get("config") or {}
         if key not in probes:
             return self.send_json_response({"error": f"Nessuna prova disponibile per '{key}'"}, 400)
+
+        # A test with credentials supplied: save them first so the probe runs
+        # against the right instance. But a secret field that arrived empty or
+        # still masked (••••••••) means "keep what was already there" — without
+        # this guard a DomoticaTab test with an empty token field would wipe
+        # a previously saved token and the next real call would break.
+        if values:
+            existing = governance.get_integration_config(key)
+            server = next((s for s in mcp_hub.list_all_servers() if s.get("integration_key") == key), None)
+            secret_keys = {f["key"] for f in (server or {}).get("config_fields", [])
+                           if f.get("type") == "secret"}
+            cleaned = {}
+            for field, value in values.items():
+                unchanged = value == SECRET_MARKER or (field in secret_keys and value == "")
+                if unchanged:
+                    continue
+                cleaned[field] = value
+            for field, value in existing.items():
+                cleaned.setdefault(field, value)
+            if cleaned:
+                governance.set_integration_config(key, cleaned)
 
         tool, args = probes[key]
         # Probes are read-only by construction, so they bypass the approval gate.
         outcome = mcp_hub.execute_tool(tool, args)
-        if outcome["status"] == "ok":
-            return self.send_json_response({"success": True, "key": key, "result": outcome["result"]})
-        self.send_json_response({"success": False, "key": key,
-                                 "error": outcome.get("error", "Prova fallita")})
+        inner = _unwrap_mcp_result(outcome)
+        if inner.get("success"):
+            return self.send_json_response({"success": True, "key": key, "result": inner})
+        
+        # On error, _unwrap_mcp_result gives us the message; on total failure
+        # (status != ok) the gate returned an error string directly.
+        err_msg = inner.get("error") or outcome.get("error") or "Prova di connessione fallita"
+        self.send_json_response({"success": False, "key": key, "error": str(err_msg)})
     except Exception as exc:
         log.error("handle_mcp_test_integration error: %s", exc, exc_info=True)
         self.send_json_response({"success": False, "error": str(exc)})
@@ -293,3 +347,94 @@ def handle_mcp_approve(self):
     except Exception as exc:
         log.error("handle_mcp_approve error: %s", exc, exc_info=True)
         self.send_json_response({"error": str(exc)}, 500)
+
+
+def handle_mcp_ha_entities(self):
+    """GET /api/mcp/ha/entities — Fetch controllable devices + areas from Home Assistant."""
+    try:
+        # Only domains that represent physical devices an operator can actually
+        # command. Without this filter Home Assistant returns hundreds of
+        # entities: automations, zones, device_trackers, update.*, sun.sun …
+        # — the tab would show every one as a card.
+        controllable_domains = [
+            "light", "switch", "climate", "lock", "cover",
+            "media_player", "camera", "vacuum", "fan", "humidifier",
+        ]
+        all_entities = []
+        total = 0
+        errors = []
+
+        for domain in controllable_domains:
+            outcome = mcp_hub.execute_tool("ha_list_entities", {"domain": domain, "limit": 100})
+            inner = _unwrap_mcp_result(outcome)
+            if inner.get("success"):
+                all_entities.extend(inner.get("entities", []))
+                total += inner.get("total_found", 0)
+            elif inner.get("error"):
+                errors.append(f"{domain}: {inner['error']}")
+
+        # Also fetch areas so the frontend can group devices by room.
+        areas_outcome = mcp_hub.execute_tool("ha_list_areas", {"domain": ""})
+        areas_inner = _unwrap_mcp_result(areas_outcome)
+        areas = areas_inner.get("areas", []) if areas_inner.get("success") else []
+
+        if all_entities or areas:
+            return self.send_json_response({
+                "success": True,
+                "is_configured": True,
+                "entities": all_entities,
+                "total_found": len(all_entities),
+                "areas": areas,
+            })
+
+        err = errors[0] if errors else (outcome.get("error", "Home Assistant non configurato"))
+        return self.send_json_response({
+            "success": True,
+            "is_configured": False,
+            "error": str(err) if errors else str(err),
+            "entities": [],
+            "areas": [],
+        })
+    except Exception as exc:
+        log.error("handle_mcp_ha_entities error: %s", exc)
+        self.send_json_response({
+            "success": True,
+            "is_configured": False,
+            "error": str(exc),
+            "entities": [],
+            "areas": [],
+        })
+
+
+def handle_mcp_ha_control(self):
+    """POST /api/mcp/ha/control — Send real control action to Home Assistant entity."""
+    try:
+        payload = _read_request_payload(self)
+        entity_id = payload.get("entity_id") or ""
+        domain = entity_id.split(".")[0] if "." in entity_id else "light"
+
+        if domain == "light":
+            args = {"entity_id": entity_id, "state": payload.get("state", "on")}
+            if "brightness" in payload:
+                args["brightness_pct"] = int(payload["brightness"])
+            if "color_rgb" in payload and isinstance(payload["color_rgb"], list):
+                args["rgb_color"] = payload["color_rgb"]
+            outcome = mcp_hub.execute_tool("ha_light_set", args)
+        elif domain == "switch":
+            args = {"entity_id": entity_id, "state": payload.get("state", "on")}
+            outcome = mcp_hub.execute_tool("ha_switch_set", args)
+        elif domain == "climate":
+            args = {"entity_id": entity_id}
+            if "setpoint" in payload:
+                args["temperature"] = float(payload["setpoint"])
+            outcome = mcp_hub.execute_tool("ha_climate_set", args)
+        else:
+            args = {"domain": domain, "service": "toggle", "target": {"entity_id": entity_id}}
+            outcome = mcp_hub.execute_tool("ha_call_service", args)
+
+        if outcome["status"] == "ok":
+            return self.send_json_response({"success": True, "result": outcome["result"]})
+        self.send_json_response({"success": False, "error": outcome.get("error", "Comando fallito")})
+    except Exception as exc:
+        log.error("handle_mcp_ha_control error: %s", exc)
+        self.send_json_response({"success": False, "error": str(exc)}, 500)

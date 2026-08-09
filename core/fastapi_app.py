@@ -127,6 +127,8 @@ from core.mcp_handler import (
     handle_mcp_external_connect,
     handle_mcp_pending,
     handle_mcp_approve,
+    handle_mcp_ha_entities,
+    handle_mcp_ha_control,
 )
 FastAPIHandlerAdapter.handle_mcp_servers = handle_mcp_servers
 FastAPIHandlerAdapter.handle_mcp_tools = handle_mcp_tools
@@ -140,6 +142,8 @@ FastAPIHandlerAdapter.handle_mcp_external_remove = handle_mcp_external_remove
 FastAPIHandlerAdapter.handle_mcp_external_connect = handle_mcp_external_connect
 FastAPIHandlerAdapter.handle_mcp_pending = handle_mcp_pending
 FastAPIHandlerAdapter.handle_mcp_approve = handle_mcp_approve
+FastAPIHandlerAdapter.handle_mcp_ha_entities = handle_mcp_ha_entities
+FastAPIHandlerAdapter.handle_mcp_ha_control = handle_mcp_ha_control
 
 from core.swarm_handler import (
     handle_swarm_agents, handle_swarm_plan, handle_swarm_execute

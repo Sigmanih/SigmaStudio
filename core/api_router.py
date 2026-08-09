@@ -67,6 +67,7 @@ def register_get_handlers(handler_class):
         '/api/mcp/servers': 'handle_mcp_servers',
         '/api/mcp/tools': 'handle_mcp_tools',
         '/api/mcp/resources': 'handle_mcp_resources',
+        '/api/mcp/ha/entities': 'handle_mcp_ha_entities',
         # Swarm Endpoints
         '/api/swarm/agents': 'handle_swarm_agents',
         # Benchmark Endpoints
@@ -109,6 +110,7 @@ def register_post_handlers(handler_class):
         '/api/mcp/policy': 'handle_mcp_policy',
         '/api/mcp/integration': 'handle_mcp_integration',
         '/api/mcp/test': 'handle_mcp_test_integration',
+        '/api/mcp/ha/control': 'handle_mcp_ha_control',
         '/api/mcp/external/add': 'handle_mcp_external_add',
         '/api/mcp/external/remove': 'handle_mcp_external_remove',
         '/api/mcp/external/connect': 'handle_mcp_external_connect',
