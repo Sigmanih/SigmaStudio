@@ -4,6 +4,7 @@
 # ==============================================================================
 import psutil
 from core.mcp.base_server import BaseMCPServer
+from core.mcp.governance import SAFE, SENSITIVE
 from core.logger import get_logger
 
 log = get_logger(__name__)
@@ -24,21 +25,27 @@ class HardwareMCPServer(BaseMCPServer):
             name="get_hardware_status",
             description="Retrieve detailed GPU VRAM usage, CPU load, and RAM utilization telemetry.",
             input_schema={"type": "object", "properties": {}},
-            handler=self._handle_get_hardware_status
+            handler=self._handle_get_hardware_status,
+            safety=SAFE,
+            category="hardware",
         )
 
         self.register_tool(
             name="clear_vram_cache",
             description="Trigger emergency VRAM garbage collection and PyTorch/CUDA cache cleanup.",
             input_schema={"type": "object", "properties": {}},
-            handler=self._handle_clear_vram_cache
+            handler=self._handle_clear_vram_cache,
+            safety=SENSITIVE,
+            category="hardware",
         )
 
         self.register_tool(
             name="benchmark_gpu",
             description="Run quick FLOPs and VRAM memory throughput benchmark.",
             input_schema={"type": "object", "properties": {}},
-            handler=self._handle_benchmark_gpu
+            handler=self._handle_benchmark_gpu,
+            safety=SENSITIVE,
+            category="hardware",
         )
 
     def _init_resources(self):

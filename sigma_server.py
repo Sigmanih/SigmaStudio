@@ -111,12 +111,28 @@ SigmaAPIHandler.handle_tts_engines = handle_tts_engines
 SigmaAPIHandler.handle_tts_speak = handle_tts_speak
 
 from core.mcp_handler import (
-    handle_mcp_servers, handle_mcp_tools, handle_mcp_resources, handle_mcp_rpc
+    handle_mcp_servers, handle_mcp_tools, handle_mcp_resources, handle_mcp_rpc,
+    handle_mcp_policy,
+    handle_mcp_integration,
+    handle_mcp_test_integration,
+    handle_mcp_external_add,
+    handle_mcp_external_remove,
+    handle_mcp_external_connect,
+    handle_mcp_pending,
+    handle_mcp_approve,
 )
 SigmaAPIHandler.handle_mcp_servers = handle_mcp_servers
 SigmaAPIHandler.handle_mcp_tools = handle_mcp_tools
 SigmaAPIHandler.handle_mcp_resources = handle_mcp_resources
 SigmaAPIHandler.handle_mcp_rpc = handle_mcp_rpc
+SigmaAPIHandler.handle_mcp_policy = handle_mcp_policy
+SigmaAPIHandler.handle_mcp_integration = handle_mcp_integration
+SigmaAPIHandler.handle_mcp_test_integration = handle_mcp_test_integration
+SigmaAPIHandler.handle_mcp_external_add = handle_mcp_external_add
+SigmaAPIHandler.handle_mcp_external_remove = handle_mcp_external_remove
+SigmaAPIHandler.handle_mcp_external_connect = handle_mcp_external_connect
+SigmaAPIHandler.handle_mcp_pending = handle_mcp_pending
+SigmaAPIHandler.handle_mcp_approve = handle_mcp_approve
 
 from core.swarm_handler import (
     handle_swarm_agents, handle_swarm_plan, handle_swarm_execute

@@ -6,6 +6,8 @@ import json
 import logging
 from typing import Dict, Any, List, Callable, Optional
 
+from core.mcp.governance import SAFE, SENSITIVE
+
 log = logging.getLogger(__name__)
 
 
@@ -14,6 +16,22 @@ class BaseMCPServer:
     Base class for Model Context Protocol (MCP) servers.
     Implements standard JSON-RPC 2.0 handling for resources, tools, and prompts.
     """
+    # --- integration contract ---
+    # Servers that reach a third-party system declare what they need to be told
+    # before they can work. The tab reads these to draw a settings panel, and
+    # the tools refuse to run until `is_configured()` is satisfied — an agent
+    # should get "Home Assistant non è configurato" and not a stack trace.
+    integration_key: str = ""
+    config_fields: List[Dict[str, Any]] = []
+
+    def is_configured(self) -> bool:
+        """True when this server has everything it needs to reach its backend."""
+        return True
+
+    def missing_dependency(self) -> Optional[str]:
+        """Install hint for a Python package this server needs, or None."""
+        return None
+
     def __init__(self, name: str, version: str = "1.0.0", description: str = ""):
         self.name = name
         self.version = version
@@ -24,15 +42,24 @@ class BaseMCPServer:
         self._resource_handlers: Dict[str, Callable] = {}
         self._prompts: Dict[str, Dict[str, Any]] = {}
 
-    def register_tool(self, name: str, description: str, input_schema: Dict[str, Any], handler: Callable):
-        """Register a tool with JSON schema and execution handler."""
+    def register_tool(self, name: str, description: str, input_schema: Dict[str, Any],
+                      handler: Callable, safety: str = SAFE, category: str = "general"):
+        """Register a tool with JSON schema and execution handler.
+
+        `safety` decides whether an agent may run the tool unattended. Default to
+        SAFE only for tools whose worst outcome is a wasted second: anything that
+        writes outside Sigma Studio, spends money, moves hardware or speaks to a
+        person in the operator's name must be declared SENSITIVE.
+        """
         self._tools[name] = {
             "name": name,
             "description": description,
-            "inputSchema": input_schema
+            "inputSchema": input_schema,
+            "safety": safety,
+            "category": category,
         }
         self._tool_handlers[name] = handler
-        log.debug(f"[{self.name}] Tool registered: {name}")
+        log.debug(f"[{self.name}] Tool registered: {name} ({safety})")
 
     def register_resource(self, uri: str, name: str, description: str, mime_type: str, handler: Callable):
         """Register a resource URI and content retrieval handler."""

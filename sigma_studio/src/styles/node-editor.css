@@ -1,0 +1,346 @@
+.cs-node-editor {
+  width: 100%;
+  height: 100%;
+  position: relative;
+  background-color: #030305;
+  background-image: radial-gradient(rgba(255, 255, 255, 0.1) 1px, transparent 1px);
+  background-size: 20px 20px;
+  overflow: hidden;
+  touch-action: none;
+  cursor: grab;
+}
+.cs-node-editor:active { cursor: grabbing; }
+
+/* Layer dei nodi: condivide la stessa trasformazione dell'SVG dei cavi,
+   così nodi e connessioni restano allineati a qualsiasi zoom. */
+.cs-node-layer {
+  position: absolute;
+  inset: 0;
+  transform-origin: 0 0;
+  pointer-events: none;
+}
+.cs-node-layer > * { pointer-events: auto; }
+
+.cs-node-palette {
+  position: absolute;
+  top: 16px;
+  left: 16px;
+  width: 250px;
+  max-height: calc(100% - 96px);
+  display: flex;
+  flex-direction: column;
+  background: var(--surface-bright);
+  backdrop-filter: var(--glass);
+  border: 1px solid rgba(188, 140, 255, 0.2);
+  border-radius: 12px;
+  padding: 16px;
+  z-index: 10;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.5);
+  cursor: default;
+}
+
+.cs-palette-search {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: rgba(0,0,0,0.3);
+  border: 1px solid rgba(255,255,255,0.1);
+  border-radius: 6px;
+  padding: 6px 8px;
+  margin-bottom: 12px;
+  color: var(--text-dim);
+}
+.cs-palette-search input {
+  flex: 1;
+  background: none;
+  border: none;
+  outline: none;
+  color: var(--text);
+  font-size: 0.8rem;
+  min-width: 0;
+}
+
+.cs-palette-content { overflow-y: auto; flex: 1; margin: -4px -4px 8px; padding: 4px; }
+.cs-palette-category h5 {
+  font-size: 0.68rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  margin: 10px 0 6px;
+  opacity: 0.85;
+}
+.cs-palette-empty, .cs-palette-hint {
+  font-size: 0.72rem;
+  color: var(--text-dim);
+  margin: 6px 0 0;
+  line-height: 1.4;
+}
+
+.cs-palette-templates { border-top: 1px solid rgba(255,255,255,0.08); padding-top: 10px; }
+.cs-palette-templates h5 {
+  font-size: 0.68rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--accent);
+  margin: 0 0 6px;
+}
+.cs-palette-templates select {
+  width: 100%;
+  background: rgba(0,0,0,0.3);
+  color: var(--text);
+  padding: 6px 8px;
+  border: 1px solid rgba(255,255,255,0.1);
+  border-radius: 6px;
+  font-size: 0.8rem;
+}
+
+.cs-palette-title {
+  color: var(--accent);
+  font-weight: 600;
+  margin-bottom: 12px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.cs-node-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: rgba(255,255,255,0.05);
+  border: 1px solid rgba(255,255,255,0.1);
+  padding: 7px 10px;
+  margin-bottom: 6px;
+  border-radius: 6px;
+  cursor: grab;
+  transition: all 0.2s;
+  font-size: 0.82rem;
+}
+.cs-node-item:hover {
+  background: rgba(188, 140, 255, 0.1);
+  border-color: var(--accent);
+}
+.cs-node-item:active { cursor: grabbing; }
+.cs-node-item-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+.cs-node-item-add { margin-left: auto; opacity: 0; transition: opacity 0.15s; }
+.cs-node-item:hover .cs-node-item-add { opacity: 0.7; }
+
+.cs-svg-canvas {
+  width: 100%;
+  height: 100%;
+  position: absolute;
+  top: 0;
+  left: 0;
+  pointer-events: none;
+}
+.cs-svg-canvas .cs-cable { pointer-events: stroke; cursor: pointer; }
+
+.cs-node-block {
+  position: absolute;
+  background: var(--surface);
+  border: 1px solid rgba(255,255,255,0.1);
+  border-top: 2px solid var(--accent);
+  border-radius: 8px;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.5);
+  backdrop-filter: blur(8px);
+  user-select: none;
+  cursor: grab;
+}
+.cs-node-block:active { cursor: grabbing; }
+.cs-node-block.selected {
+  border-color: var(--accent);
+  box-shadow: 0 0 16px rgba(188, 140, 255, 0.35);
+}
+.cs-node-block.status-running { box-shadow: 0 0 18px rgba(0, 210, 255, 0.45); }
+.cs-node-block.status-done { box-shadow: 0 0 14px rgba(63, 185, 80, 0.35); }
+.cs-node-block.status-error { box-shadow: 0 0 14px rgba(255, 85, 85, 0.45); }
+
+.cs-node-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  height: 34px;
+  padding: 0 10px;
+  background: rgba(255,255,255,0.05);
+  border-bottom: 1px solid rgba(255,255,255,0.05);
+  border-top-left-radius: 6px;
+  border-top-right-radius: 6px;
+  font-size: 0.82rem;
+  font-weight: 600;
+}
+.cs-node-dot { width: 8px; height: 8px; border-radius: 50%; }
+.cs-node-dot.done { background: var(--success, #3fb950); }
+.cs-spin { animation: cs-spin 1s linear infinite; }
+@keyframes cs-spin { to { transform: rotate(360deg); } }
+
+.cs-node-ports {
+  padding: 10px 0 8px;
+  display: flex;
+  flex-direction: column;
+}
+
+.cs-port {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 22px;
+  font-size: 0.72rem;
+  color: var(--text-dim);
+  padding: 0 8px;
+}
+.cs-port-in { justify-content: flex-start; margin-left: -5px; }
+.cs-port-out { justify-content: flex-end; margin-right: -5px; }
+.cs-port-circle {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--surface-bright);
+  border: 2px solid var(--accent);
+  cursor: crosshair;
+  flex-shrink: 0;
+}
+.cs-port-circle:hover {
+  background: var(--accent);
+  box-shadow: 0 0 8px var(--accent);
+  transform: scale(1.25);
+}
+.cs-node-preview {
+  margin: 6px 8px 0;
+  padding-top: 6px;
+  border-top: 1px dashed rgba(255,255,255,0.08);
+  font-size: 0.7rem;
+  color: var(--text-dim);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.cs-cable-pending { stroke-dasharray: 6 4; opacity: 0.8; }
+
+/* Inspector del nodo selezionato */
+.cs-node-inspector {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  width: 260px;
+  max-height: calc(100% - 96px);
+  overflow-y: auto;
+  background: var(--surface-bright);
+  backdrop-filter: var(--glass);
+  border: 1px solid rgba(188, 140, 255, 0.2);
+  border-radius: 12px;
+  padding: 14px;
+  z-index: 10;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.5);
+  cursor: default;
+}
+.cs-inspector-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-weight: 600;
+  font-size: 0.85rem;
+  margin-bottom: 12px;
+}
+.cs-inspector-head span { display: flex; align-items: center; gap: 6px; }
+.cs-inspector-head button {
+  background: none;
+  border: none;
+  color: var(--text-dim);
+  cursor: pointer;
+  padding: 4px;
+  border-radius: 4px;
+}
+.cs-inspector-head button:hover { color: var(--error, #ff5555); background: rgba(255,85,85,0.1); }
+
+.cs-inspector-fields { display: flex; flex-direction: column; gap: 10px; }
+.cs-inspector-field { display: flex; flex-direction: column; gap: 4px; }
+.cs-inspector-field > span {
+  font-size: 0.7rem;
+  text-transform: capitalize;
+  color: var(--text-dim);
+}
+.cs-inspector-field input[type="text"],
+.cs-inspector-field input[type="number"],
+.cs-inspector-field select,
+.cs-inspector-field textarea {
+  width: 100%;
+  background: rgba(0,0,0,0.3);
+  border: 1px solid rgba(255,255,255,0.1);
+  border-radius: 6px;
+  color: var(--text);
+  padding: 6px 8px;
+  font-size: 0.8rem;
+  font-family: inherit;
+  resize: vertical;
+}
+.cs-inspector-field input:focus,
+.cs-inspector-field select:focus,
+.cs-inspector-field textarea:focus { outline: none; border-color: var(--accent); }
+
+.cs-inspector-ports {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px solid rgba(255,255,255,0.08);
+  font-size: 0.68rem;
+  color: var(--text-dim);
+}
+
+.cs-run-console {
+  position: absolute;
+  bottom: 64px;
+  left: 16px;
+  right: 16px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: rgba(10,10,15,0.9);
+  border: 1px solid rgba(255,255,255,0.1);
+  border-radius: 8px;
+  padding: 8px 12px;
+  font-size: 0.78rem;
+  color: var(--text-dim);
+  z-index: 9;
+}
+.cs-run-console.error { border-color: var(--error, #ff5555); color: var(--error, #ff5555); }
+
+.cs-run-btn { padding: 0 16px; height: 32px; border-radius: 6px; font-size: 0.85rem; }
+.cs-run-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+.cs-zoom-label { align-self: center; font-size: 0.75rem; color: var(--text-dim); }
+
+.cs-cable {
+  fill: none;
+  stroke: rgba(188, 140, 255, 0.5);
+  stroke-width: 3;
+  transition: stroke 0.2s;
+}
+.cs-cable:hover { stroke: var(--accent); }
+.cs-cable-anim { stroke-dasharray: 5; animation: flow 1s linear infinite; stroke: #fff; opacity: 0.5; fill: none; stroke-width: 2; pointer-events: none; }
+
+@keyframes flow { to { stroke-dashoffset: -10; } }
+
+.cs-zoom-controls {
+  position: absolute;
+  bottom: 16px;
+  left: 16px;
+  display: flex;
+  gap: 8px;
+  z-index: 10;
+}
+.cs-zoom-btn {
+  background: var(--surface-bright);
+  border: 1px solid rgba(255,255,255,0.1);
+  color: var(--text);
+  width: 32px;
+  height: 32px;
+  border-radius: 6px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.cs-zoom-btn:hover { background: rgba(255,255,255,0.1); }

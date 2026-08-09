@@ -11,6 +11,7 @@ import json
 import re
 import datetime
 import shutil
+import time
 
 from core.logger import get_logger
 from core.ai_providers import (
@@ -153,6 +154,7 @@ def _stream_chat_response(handler, messages, ai_cfg, model, provider,
     full_thinking = ""
     error_msg = None
     router = _ThinkTagRouter()
+    tool_transcript = []           # what ran this turn, for the server log
 
     def _emit(channel: str, text: str) -> None:
         nonlocal full_text, full_thinking
@@ -165,37 +167,98 @@ def _stream_chat_response(handler, messages, ai_cfg, model, provider,
             full_text += text
             _sse_send(handler, {"token": text})
 
-    try:
-        for chunk in call_ai_model_stream(
-            messages, ai_cfg, model, provider, endpoint, api_url, api_key,
-            temperature, max_tokens, top_p, timeout
-        ):
-            if chunk.get("error"):
-                error_msg = chunk.get("message", "Errore sconosciuto")
-                break
-            # Native reasoning channel: already separated by the provider.
-            _emit("thinking", chunk.get("thinking", ""))
-            # Answer channel: may still carry inline <think> blocks.
-            for channel, text in router.feed(chunk.get("token", "")):
-                _emit(channel, text)
-            if chunk.get("done"):
-                for channel, text in router.flush():
+    def _run_model_turn() -> bool:
+        """One pass of the model over `messages`. False if it errored out."""
+        nonlocal error_msg
+        try:
+            for chunk in call_ai_model_stream(
+                messages, ai_cfg, model, provider, endpoint, api_url, api_key,
+                temperature, max_tokens, top_p, timeout
+            ):
+                if chunk.get("error"):
+                    error_msg = chunk.get("message", "Errore sconosciuto")
+                    return False
+                # Native reasoning channel: already separated by the provider.
+                _emit("thinking", chunk.get("thinking", ""))
+                # Answer channel: may still carry inline <think> blocks.
+                for channel, text in router.feed(chunk.get("token", "")):
                     _emit(channel, text)
-                # Forwarded so the client can trigger auto-continuation on truncation.
-                _sse_send(handler, {
-                    "done_reason": chunk.get("done_reason", "stop"),
-                    "truncated": chunk.get("truncated", False),
-                })
-                break
-    except Exception as exc:
-        log.error("Streaming chat failed: %s", exc, exc_info=True)
-        error_msg = str(exc)
+                if chunk.get("done"):
+                    for channel, text in router.flush():
+                        _emit(channel, text)
+                    # Forwarded so the client can trigger auto-continuation on truncation.
+                    _sse_send(handler, {
+                        "done_reason": chunk.get("done_reason", "stop"),
+                        "truncated": chunk.get("truncated", False),
+                    })
+                    return True
+            return True
+        except Exception as exc:
+            log.error("Streaming chat failed: %s", exc, exc_info=True)
+            error_msg = str(exc)
+            return False
+
+    _run_model_turn()
+
+    # --- MCP tool loop -------------------------------------------------------
+    # The model asks for a tool by writing a fenced block; it is run here and the
+    # outcome handed back so the answer can continue with real data. A tool that
+    # acts on the world stops the turn and waits for the operator instead.
+    if not error_msg:
+        try:
+            from core.mcp.agent_loop import (MAX_TOOL_ROUNDS, execute_calls,
+                                             extract_tool_calls, format_results_for_model)
+
+            for _round in range(MAX_TOOL_ROUNDS):
+                calls = extract_tool_calls(full_text)
+                if not calls:
+                    break
+
+                _sse_send(handler, {"model_status": f"⚙️ Eseguo {len(calls)} strumento/i MCP..."})
+                outcomes, approvals = execute_calls(calls)
+
+                for outcome in outcomes:
+                    tool_transcript.append(outcome)
+                    _sse_send(handler, {"tool_result": outcome})
+
+                if approvals:
+                    # Nothing more runs this turn: the client shows the request,
+                    # and resumes through /api/mcp/approve once the user decides.
+                    for approval in approvals:
+                        _sse_send(handler, {"tool_approval": approval})
+                    break
+
+                if not outcomes:
+                    break
+
+                messages = list(messages) + [
+                    {"role": "assistant", "content": full_text},
+                    {"role": "user", "content": format_results_for_model(outcomes)},
+                ]
+                full_text = ""
+                router = _ThinkTagRouter()
+                if not _run_model_turn():
+                    break
+        except Exception as exc:
+            log.error("MCP tool loop failed: %s", exc, exc_info=True)
+            _sse_send(handler, {"tool_result": {
+                "tool": "(hub MCP)", "ok": False,
+                "output": f"Ciclo strumenti interrotto: {exc}",
+            }})
 
     if error_msg:
         _sse_send(handler, {"error": error_msg, "token": f"\n\n⚠️ **Errore:** {error_msg}"})
     else:
         for channel, text in router.flush():
             _emit(channel, text)
+
+        # The call blocks were the agent's instructions to the hub, not prose:
+        # the user sees what the tools did, not the JSON that asked for it.
+        try:
+            from core.mcp.agent_loop import strip_tool_blocks
+            full_text = strip_tool_blocks(full_text)
+        except Exception:
+            pass
 
         # Second pass for reasoning shapes no tag can catch (bullet monologues,
         # "done thinking." markers, English self-analysis preambles).
@@ -224,6 +287,8 @@ def _stream_chat_response(handler, messages, ai_cfg, model, provider,
             "final_thinking": thinking_out,
             "created_files": created_files,
             "actions_log": actions_log,
+            # Gli strumenti eseguiti sono già stati mandati uno per uno mentre
+            # partivano: rimandarli qui in blocco li farebbe contare due volte.
         })
 
     try:
@@ -231,6 +296,53 @@ def _stream_chat_response(handler, messages, ai_cfg, model, provider,
         handler.wfile.flush()
     except Exception:
         pass
+
+
+def _try_fast_command(message: str):
+    """Esegue un comando domestico diretto, o None se la frase va all'agente.
+
+    La risposta ha la stessa forma di quella dell'agente, così il client non
+    deve sapere quale delle due strade è stata presa.
+    """
+    try:
+        from core.mcp import mcp_hub
+        from core.mcp.fast_intents import match_home_command
+
+        intent = match_home_command(message)
+        if not intent:
+            return None
+
+        started = time.monotonic()
+        outcome = mcp_hub.execute_tool(intent["tool"], intent["arguments"])
+        elapsed = (time.monotonic() - started) * 1000
+
+        base = {
+            "thinking": "", "created_files": [], "actions_log": [], "error": None,
+            "manifesto_used": "sigma_home", "agent_name": "Sigma Home",
+            "agent_id": "sigma_home",
+        }
+
+        if outcome["status"] == "confirmation_required":
+            # Il cancello vale anche qui: la corsia veloce accorcia il percorso
+            # fino alla chiamata, non salta l'assenso di chi deve darlo.
+            return {**base,
+                    "response": f"{intent['summary']}.",
+                    "tool_approvals": [outcome["approval"]]}
+
+        if outcome["status"] == "error":
+            log.info("Corsia veloce fallita su '%s': %s", intent["tool"], outcome["error"])
+            return None                       # l'agente ci riprova ragionandoci
+
+        content = outcome["result"].get("content", [])
+        text = "\n".join(p.get("text", "") for p in content if isinstance(p, dict))
+        log.info("Corsia veloce: %s in %.0f ms", intent["tool"], elapsed)
+        return {**base,
+                "response": f"✅ {intent['summary']}.",
+                "tool_calls": [{"tool": intent["tool"], "ok": True,
+                                "server": "HomeAssistant MCP", "output": text}]}
+    except Exception as exc:
+        log.warning("Corsia veloce non disponibile: %s", exc)
+        return None
 
 
 def handle_chat(self):
@@ -310,6 +422,16 @@ def handle_chat(self):
                     "agent_id": "sigma_architect"
                 })
 
+        # --- corsia veloce per i comandi domestici diretti --------------------
+        # "Spegni le luci dell'ufficio" non ha bisogno di un giro di modello:
+        # il riconoscitore lo traduce in una chiamata e si arrende al primo
+        # dubbio, così tutto ciò che richiede davvero di ragionare prosegue
+        # verso l'agente completo poche righe più sotto.
+        if allow_actions and not planning_mode:
+            fast = _try_fast_command(message)
+            if fast is not None:
+                return self.send_json_response(fast)
+
         ai_cfg = load_ai_config()
         active_provider = ai_cfg.get("active_provider", "ollama")
         model = model_override or ai_cfg.get("active_model") or ai_cfg.get("model") or ""
@@ -350,10 +472,11 @@ def handle_chat(self):
                 if rag_res and not rag_res.get("isError"):
                     mcp_context_info += f"\n\n## 🧠 CONTESTO RECUPERATO DA MEMORY MCP:\n{json.dumps(rag_res.get('results', []), indent=2)}\n"
 
-            # 3. Available MCP Tools List Injection
-            mcp_tools = mcp_hub.get_aggregated_tools()
-            tools_desc = "\n".join([f"- {t['name']} [{t.get('server', 'MCP')}]: {t['description']}" for t in mcp_tools[:8]])
-            mcp_context_info += f"\n\n## ⚡ MCP TOOLS & STRUMENTI ATTIVI NELL'HUB:\n{tools_desc}\n"
+            # 3. Callable tool catalogue.
+            # Only what is switched on and actually reachable: listing a tool the
+            # hub would refuse just sends the agent into a wall.
+            from core.mcp.agent_loop import build_tools_prompt
+            mcp_context_info += build_tools_prompt(mcp_hub.get_agent_tools())
         except Exception as mcp_err:
             log.debug("MCP Hub chat pipeline enrichment skipped: %s", mcp_err)
 

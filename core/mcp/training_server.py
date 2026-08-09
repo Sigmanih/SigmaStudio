@@ -5,6 +5,7 @@
 import os
 import json
 from core.mcp.base_server import BaseMCPServer
+from core.mcp.governance import SAFE, SENSITIVE
 from core.logger import get_logger
 
 log = get_logger(__name__)
@@ -32,7 +33,9 @@ class TrainingMCPServer(BaseMCPServer):
                 },
                 "required": ["dataset_name", "data_path"]
             },
-            handler=self._handle_import_dataset
+            handler=self._handle_import_dataset,
+            safety=SENSITIVE,
+            category="training",
         )
 
         self.register_tool(
@@ -48,7 +51,9 @@ class TrainingMCPServer(BaseMCPServer):
                 },
                 "required": ["job_name", "base_model", "dataset_id"]
             },
-            handler=self._handle_start_lora_training
+            handler=self._handle_start_lora_training,
+            safety=SENSITIVE,
+            category="training",
         )
 
         self.register_tool(
@@ -62,7 +67,9 @@ class TrainingMCPServer(BaseMCPServer):
                 },
                 "required": ["checkpoint_id", "target_model_name"]
             },
-            handler=self._handle_export_ollama_model
+            handler=self._handle_export_ollama_model,
+            safety=SENSITIVE,
+            category="training",
         )
 
     def _init_resources(self):

@@ -158,6 +158,8 @@ export default function ChatFloatingPanel({ openFiles, onClose, onOpenConfig, on
         setWebSearch={core.setWebSearch}
         autoScroll={core.autoScroll}
         setAutoScroll={core.setAutoScroll}
+        mcpAutoApprove={core.mcpAutoApprove}
+        setMcpAutoApprove={core.setMcpAutoApprove}
         speakerEnabled={core.speakerEnabled}
         setSpeakerEnabled={core.setSpeakerEnabled}
         isRecording={core.isRecording}

@@ -13,6 +13,7 @@ const saveMessagesImmediately = saveMessagesToStorage;
 import { useChatSessions } from './useChatSessions';
 import { useChatConfig } from './useChatConfig';
 import { useChatStreaming } from './useChatStreaming';
+import { useMcpAutoApprove } from './useMcpAutoApprove';
 
 export default function useChatCore(extraProps = {}) {
   const { openFiles: externalOpenFiles, onTasksUpdated, addToast } = extraProps;
@@ -90,6 +91,9 @@ export default function useChatCore(extraProps = {}) {
     refreshConfig: configHook.refreshConfig,
     activeManifesto: configHook.activeManifesto
   });
+
+  // Interruttore Auto Approve: stato condiviso con la tab MCP Tools.
+  const mcpApproval = useMcpAutoApprove();
 
   // Connect actions log back to sessions switch
   sessionsHook.setActionsLog = streamingHook.setActionsLog;
@@ -396,6 +400,8 @@ export default function useChatCore(extraProps = {}) {
     setExpandedThinking: streamingHook.setExpandedThinking,
     autoScroll: streamingHook.autoScroll,
     setAutoScroll: streamingHook.setAutoScroll,
+    mcpAutoApprove: mcpApproval.mcpAutoApprove,
+    setMcpAutoApprove: mcpApproval.setMcpAutoApprove,
     webSearch: streamingHook.webSearch,
     setWebSearch: streamingHook.setWebSearch,
     quickConfig: configHook.quickConfig,

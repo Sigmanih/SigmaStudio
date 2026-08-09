@@ -16,3 +16,197 @@
 @import './styles/editor.css';
 @import './styles/training-lab.css';
 @import './styles/hardware-lab.css';
+@import './styles/creative-studio.css';
+@import './styles/node-editor.css';
+
+/* ==========================================================================
+   Skills Hub — kernel: skill componibili e motori di supporto
+   ========================================================================== */
+.skills-hub {
+  height: 100%;
+  overflow-y: auto;
+  padding: 28px 32px;
+  display: flex;
+  flex-direction: column;
+  gap: 26px;
+  color: var(--text);
+}
+
+.skills-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 24px;
+  flex-wrap: wrap;
+}
+.skills-header h1 {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0 0 8px;
+  font-size: 1.35rem;
+}
+.skills-header p { margin: 0; color: var(--text-dim); font-size: 0.85rem; max-width: 640px; line-height: 1.5; }
+.skills-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+
+.skills-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  background: rgba(0, 210, 255, 0.12);
+  border: 1px solid rgba(0, 210, 255, 0.35);
+  color: var(--primary);
+  border-radius: 8px;
+  padding: 8px 14px;
+  font-size: 0.82rem;
+  cursor: pointer;
+  text-decoration: none;
+  transition: all 0.2s;
+}
+.skills-btn:hover:not(:disabled) { background: rgba(0, 210, 255, 0.2); }
+.skills-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.skills-btn.ghost { background: rgba(255,255,255,0.05); border-color: rgba(255,255,255,0.12); color: var(--text-dim); }
+.skills-btn.small { padding: 6px 10px; font-size: 0.76rem; }
+
+.skills-message {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  border-radius: 8px;
+  font-size: 0.84rem;
+}
+.skills-message.ok { background: rgba(63,185,80,0.12); border: 1px solid rgba(63,185,80,0.35); color: #7ee787; }
+.skills-message.error { background: rgba(255,85,85,0.12); border: 1px solid rgba(255,85,85,0.35); color: #ff8888; }
+.skills-message button { margin-left: auto; background: none; border: none; color: inherit; cursor: pointer; font-size: 1.1rem; }
+
+.skills-hub section h2 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: var(--text-dim);
+  margin: 0 0 12px;
+}
+
+.skills-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(290px, 1fr));
+  gap: 14px;
+}
+
+.skill-card {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 16px;
+  background: rgba(18, 18, 30, 0.65);
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  border-radius: 12px;
+  transition: border-color 0.2s;
+}
+.skill-card:hover { border-color: rgba(0, 210, 255, 0.3); }
+.skill-card.off { opacity: 0.45; }
+.skill-card.app { border-color: rgba(188, 140, 255, 0.16); }
+.skill-card header { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.skill-name { font-weight: 600; font-size: 0.95rem; }
+.skill-desc { margin: 0; font-size: 0.8rem; color: var(--text-dim); line-height: 1.45; }
+
+.skill-badge.core {
+  font-size: 0.64rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  background: rgba(255,255,255,0.07);
+  color: var(--text-dim);
+  padding: 2px 7px;
+  border-radius: 8px;
+}
+.skill-toggle {
+  display: flex;
+  background: rgba(255,255,255,0.06);
+  border: 1px solid rgba(255,255,255,0.12);
+  color: var(--text-dim);
+  border-radius: 6px;
+  padding: 5px;
+  cursor: pointer;
+}
+.skill-toggle.on { background: rgba(63,185,80,0.16); border-color: rgba(63,185,80,0.45); color: #7ee787; }
+
+.skill-provides { display: flex; flex-wrap: wrap; gap: 4px; }
+.skill-provides span {
+  font-size: 0.65rem;
+  padding: 2px 7px;
+  border-radius: 8px;
+  background: rgba(255,255,255,0.05);
+  color: var(--text-dim);
+}
+
+.skill-card footer {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-top: auto;
+  padding-top: 10px;
+  border-top: 1px solid rgba(255,255,255,0.05);
+}
+.skill-status { display: inline-flex; align-items: center; gap: 5px; font-size: 0.73rem; }
+.skill-status.ok { color: #7ee787; }
+.skill-status.degraded { color: #ffb86c; }
+.skill-status.blocked { color: #ff8888; }
+.skill-mcp {
+  margin-left: auto;
+  font-size: 0.65rem;
+  color: var(--accent);
+  background: rgba(188,140,255,0.12);
+  padding: 2px 7px;
+  border-radius: 8px;
+}
+
+.app-dot { width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0; }
+.app-dot.on { background: #3fb950; box-shadow: 0 0 8px #3fb950; }
+.app-dot.idle { background: #ffb86c; }
+.app-dot.off { background: #555; }
+.app-path {
+  margin: 0;
+  font-size: 0.68rem;
+  color: var(--text-dim);
+  font-family: 'JetBrains Mono', monospace;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Download modelli (Creative Studio → Modelli) */
+.cs-downloads { display: flex; flex-direction: column; gap: 12px; }
+.cs-downloads-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; flex-wrap: wrap; }
+.cs-download-list { display: flex; flex-direction: column; gap: 8px; }
+.cs-download-row {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 10px 12px;
+  background: rgba(255,255,255,0.02);
+  border: 1px solid rgba(255,255,255,0.06);
+  border-radius: 8px;
+}
+.cs-download-row.installed { border-color: rgba(63,185,80,0.3); }
+.cs-download-info { flex: 1; min-width: 0; }
+.cs-download-title { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-weight: 500; font-size: 0.88rem; }
+.cs-download-kind {
+  font-size: 0.62rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  background: rgba(255,255,255,0.07);
+  color: var(--text-dim);
+  padding: 2px 6px;
+  border-radius: 6px;
+}
+.cs-download-kind.gated { background: rgba(255,184,108,0.15); color: #ffb86c; display: inline-flex; align-items: center; gap: 3px; }
+.cs-download-meta { margin: 4px 0 0; font-size: 0.7rem; color: var(--text-dim); font-family: 'JetBrains Mono', monospace; }
+.cs-download-action { min-width: 190px; display: flex; justify-content: flex-end; }
+.cs-download-done { display: inline-flex; align-items: center; gap: 6px; font-size: 0.78rem; color: #7ee787; }
+.cs-download-progress { display: flex; flex-direction: column; gap: 4px; width: 190px; font-size: 0.7rem; color: var(--text-dim); }
+.cs-download-progress .cs-progress-bar { height: 5px; }

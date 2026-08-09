@@ -19,6 +19,7 @@ chiamata di rete per ognuno dei ~200.000 quesiti di un run integrale.
 
 from core.logger import get_logger
 from core.mcp.base_server import BaseMCPServer
+from core.mcp.governance import SAFE, SENSITIVE
 
 log = get_logger(__name__)
 
@@ -40,6 +41,8 @@ class BenchmarkMCPServer(BaseMCPServer):
             description="Elenca le 11 suite ufficiali con stato della cache e numero di quesiti.",
             input_schema={"type": "object", "properties": {}},
             handler=self._handle_list_suites,
+            safety=SAFE,
+            category="benchmark",
         )
 
         self.register_tool(
@@ -53,6 +56,8 @@ class BenchmarkMCPServer(BaseMCPServer):
                 "required": ["suite"],
             },
             handler=self._handle_download_suite,
+            safety=SENSITIVE,
+            category="benchmark",
         )
 
         self.register_tool(
@@ -74,6 +79,8 @@ class BenchmarkMCPServer(BaseMCPServer):
                 "required": ["model"],
             },
             handler=self._handle_run_benchmark,
+            safety=SENSITIVE,
+            category="benchmark",
         )
 
         self.register_tool(
@@ -94,6 +101,8 @@ class BenchmarkMCPServer(BaseMCPServer):
                 "required": ["model"],
             },
             handler=self._handle_measure_capacity,
+            safety=SENSITIVE,
+            category="benchmark",
         )
 
         self.register_tool(
@@ -105,6 +114,8 @@ class BenchmarkMCPServer(BaseMCPServer):
                 "required": ["model"],
             },
             handler=self._handle_get_capacity,
+            safety=SAFE,
+            category="benchmark",
         )
 
         self.register_tool(
@@ -115,6 +126,8 @@ class BenchmarkMCPServer(BaseMCPServer):
                 "properties": {"job_id": {"type": "string", "description": "ID del job (opzionale)"}},
             },
             handler=self._handle_get_status,
+            safety=SAFE,
+            category="benchmark",
         )
 
         self.register_tool(
@@ -130,6 +143,8 @@ class BenchmarkMCPServer(BaseMCPServer):
                 "required": ["job_id"],
             },
             handler=self._handle_review_queue,
+            safety=SAFE,
+            category="benchmark",
         )
 
         self.register_tool(
@@ -150,6 +165,8 @@ class BenchmarkMCPServer(BaseMCPServer):
                 "required": ["model_output", "correct_choice"],
             },
             handler=self._handle_grade_answer,
+            safety=SAFE,
+            category="benchmark",
         )
 
     def _init_resources(self):

@@ -4,6 +4,7 @@
 # ==============================================================================
 import json
 from core.mcp.base_server import BaseMCPServer
+from core.mcp.governance import SAFE, SENSITIVE
 from core.logger import get_logger
 
 log = get_logger(__name__)
@@ -30,7 +31,9 @@ class InferenceMCPServer(BaseMCPServer):
                 },
                 "required": ["prompt"]
             },
-            handler=self._handle_select_routed_model
+            handler=self._handle_select_routed_model,
+            safety=SAFE,
+            category="inference",
         )
 
         self.register_tool(
@@ -44,7 +47,9 @@ class InferenceMCPServer(BaseMCPServer):
                 },
                 "required": ["session_id", "target_agent"]
             },
-            handler=self._handle_swap_kv_cache
+            handler=self._handle_swap_kv_cache,
+            safety=SAFE,
+            category="inference",
         )
 
         self.register_tool(
@@ -60,7 +65,9 @@ class InferenceMCPServer(BaseMCPServer):
                 },
                 "required": ["primary_agent", "prompt"]
             },
-            handler=self._handle_forward_logits_ensemble
+            handler=self._handle_forward_logits_ensemble,
+            safety=SAFE,
+            category="inference",
         )
 
     def _init_resources(self):

@@ -1,6 +1,6 @@
 import React from 'react';
 import { 
-  Home, FileText, Activity, PieChart, Layers, ChevronRight, MessageSquare, FlaskConical, Brain, Zap, User, Server
+  Home, FileText, Activity, PieChart, Layers, ChevronRight, MessageSquare, FlaskConical, Brain, Zap, User, Server, Wrench, Palette, Blocks
 } from 'lucide-react';
 
 export const SidebarItem = ({ icon: Icon, label, active, onClick, badge, badgeColor, badgeSecondary, badgeSecondaryColor }) => (
@@ -52,9 +52,22 @@ export default function Sidebar({
   topicsCount = 0
 }) {
   const [chatCount, setChatCount] = React.useState(0);
+  // Le skill disattivate non compaiono nella barra: la scelta vive in config.json
+  const [hiddenTabs, setHiddenTabs] = React.useState(() => new Set());
+  React.useEffect(() => {
+    fetch('/api/skills')
+      .then(r => r.json())
+      .then(d => {
+        if (!d.success) return;
+        setHiddenTabs(new Set(d.skills.filter(s => !s.enabled && s.tab_type).map(s => s.tab_type)));
+      })
+      .catch(() => {});
+  }, []);
+
   const [researchCount, setResearchCount] = React.useState(0);
   const [trainingCompleted, setTrainingCompleted] = React.useState(0);
   const [localTopicsCount, setLocalTopicsCount] = React.useState(0);
+  const [assetCount, setAssetCount] = React.useState(0);
 
   React.useEffect(() => {
     const updateCounts = () => {
@@ -108,6 +121,15 @@ export default function Sidebar({
             }
           } catch (e) {}
         });
+
+      fetch('/api/creative/stats')
+        .then(res => res.json())
+        .then(data => {
+          if (data.assets) {
+            setAssetCount(data.assets);
+          }
+        })
+        .catch(() => {});
     };
 
     updateCounts();
@@ -178,6 +200,22 @@ export default function Sidebar({
             active={activeTabId != null && activeTabId === 'chat'}
             onClick={() => openTab({ name: 'Chat AI', path: 'chat-tab' }, 'chat')} 
           />
+          {!hiddenTabs.has('creative_studio') && (
+            <SidebarItem
+              icon={Palette}
+              label="Creative Studio"
+              badge={assetCount > 0 ? assetCount : 0}
+              badgeColor="rgba(188,140,255,0.15)"
+              active={activeTabId != null && activeTabId.startsWith('creative_studio')}
+              onClick={() => openTab({ name: '🎨 Creative Studio' }, 'creative_studio')}
+            />
+          )}
+          <SidebarItem
+            icon={Blocks}
+            label="Skills & Motori"
+            active={activeTabId != null && activeTabId.startsWith('skills_hub')}
+            onClick={() => openTab({ name: '🧩 Skills & Motori' }, 'skills_hub')}
+          />
           <SidebarItem 
             icon={FlaskConical} 
             label="Pipelines Lab" 
@@ -186,30 +224,36 @@ export default function Sidebar({
             active={activeTabId != null && activeTabId.startsWith('research_lab')}
             onClick={() => openTab({ name: '🔬 Pipelines Lab' }, 'research_lab')} 
           />
-          <SidebarItem 
-            icon={Brain} 
-            label="Training Lab" 
-            badge={trainingCompleted > 0 ? trainingCompleted : 0}
-            badgeColor="rgba(0,210,255,0.15)"
-            active={activeTabId != null && activeTabId.startsWith('training_lab')}
-            onClick={() => openTab({ name: '🧠 Training Lab' }, 'training_lab')} 
-          />
-          <SidebarItem 
-            icon={Zap} 
-            label="Hardware & GPU" 
-            badge={2}
-            badgeColor="rgba(0,242,254,0.15)"
-            active={activeTabId != null && activeTabId.startsWith('hardware_lab')}
-            onClick={() => openTab({ name: '⚡ Hardware & GPU Monitor' }, 'hardware_lab')} 
-          />
-          <SidebarItem 
-            icon={Server} 
-            label="MCP Server Hub" 
-            badge={6}
-            badgeColor="rgba(63,185,80,0.15)"
-            active={activeTabId != null && activeTabId.startsWith('mcp_hub')}
-            onClick={() => openTab({ name: '⚡ MCP Server Hub' }, 'mcp_hub')} 
-          />
+          {!hiddenTabs.has('training_lab') && (
+            <SidebarItem
+              icon={Brain}
+              label="Training Lab"
+              badge={trainingCompleted > 0 ? trainingCompleted : 0}
+              badgeColor="rgba(0,210,255,0.15)"
+              active={activeTabId != null && activeTabId.startsWith('training_lab')}
+              onClick={() => openTab({ name: '🧠 Training Lab' }, 'training_lab')}
+            />
+          )}
+          {!hiddenTabs.has('hardware_lab') && (
+            <SidebarItem 
+              icon={Zap} 
+              label="Hardware & GPU" 
+              badge={2}
+              badgeColor="rgba(0,242,254,0.15)"
+              active={activeTabId != null && activeTabId.startsWith('hardware_lab')}
+              onClick={() => openTab({ name: '⚡ Hardware & GPU Monitor' }, 'hardware_lab')} 
+            />
+          )}
+          {!hiddenTabs.has('mcp_hub') && (
+            <SidebarItem 
+              icon={Wrench} 
+              label="MCP Tools" 
+              badge={6}
+              badgeColor="rgba(63,185,80,0.15)"
+              active={activeTabId != null && activeTabId.startsWith('mcp_hub')}
+              onClick={() => openTab({ name: '⚡ MCP Tools' }, 'mcp_hub')} 
+            />
+          )}
           <SidebarItem 
             icon={User} 
             label="Account & Voce" 

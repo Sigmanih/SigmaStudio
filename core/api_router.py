@@ -61,6 +61,8 @@ def register_get_handlers(handler_class):
         '/api/hardware/gpu/processes': 'handle_hardware_gpu_processes',
         # Voice Synthesis Endpoints
         '/api/tts/engines': 'handle_tts_engines',
+        # MCP approvals awaiting the operator
+        '/api/mcp/pending': 'handle_mcp_pending',
         # MCP Endpoints
         '/api/mcp/servers': 'handle_mcp_servers',
         '/api/mcp/tools': 'handle_mcp_tools',
@@ -79,6 +81,24 @@ def register_get_handlers(handler_class):
         '/api/training/benchmark/endpoints': 'handle_training_benchmark_endpoints',
         # Knowledge Nodes Endpoints
         '/api/nodes': 'handle_get_nodes',
+        # Creative Studio Endpoints
+        '/api/creative/assets': 'handle_creative_assets',
+        '/api/creative/assets/get': 'handle_creative_asset_get',
+        '/api/creative/assets/lineage': 'handle_creative_asset_lineage',
+        '/api/creative/assets/versions': 'handle_creative_asset_versions',
+        '/api/creative/backends/status': 'handle_creative_backends_status',
+        '/api/creative/stats': 'handle_creative_stats',
+        '/api/creative/mesh/info': 'handle_creative_mesh_info',
+        '/api/creative/agents': 'handle_creative_agents_list',
+        '/api/creative/pipeline/nodes': 'handle_creative_pipeline_nodes',
+        '/api/creative/models': 'handle_creative_models',
+        '/api/creative/backends/discover': 'handle_creative_discover',
+        '/api/creative/downloads': 'handle_creative_downloads',
+        '/api/creative/models/search': 'handle_creative_model_search',
+        '/api/creative/models/categories': 'handle_creative_model_categories',
+        # Skills & applicazioni gestite
+        '/api/skills': 'handle_skills_list',
+        '/api/apps': 'handle_apps_status',
     }
 
 
@@ -86,6 +106,13 @@ def register_post_handlers(handler_class):
     """Register POST API handlers on the handler class."""
     handler_class._POST_HANDLERS = {
         '/api/mcp/rpc': 'handle_mcp_rpc',
+        '/api/mcp/policy': 'handle_mcp_policy',
+        '/api/mcp/integration': 'handle_mcp_integration',
+        '/api/mcp/test': 'handle_mcp_test_integration',
+        '/api/mcp/external/add': 'handle_mcp_external_add',
+        '/api/mcp/external/remove': 'handle_mcp_external_remove',
+        '/api/mcp/external/connect': 'handle_mcp_external_connect',
+        '/api/mcp/approve': 'handle_mcp_approve',
         '/api/swarm/plan': 'handle_swarm_plan',
         '/api/swarm/execute': 'handle_swarm_execute',
         '/api/nodes/create': 'handle_create_node',
@@ -180,6 +207,28 @@ def register_post_handlers(handler_class):
         '/api/training/benchmark/endpoints/add': 'handle_training_benchmark_endpoint_add',
         '/api/training/benchmark/endpoints/remove': 'handle_training_benchmark_endpoint_remove',
         '/api/config/hf_token': 'handle_hf_token_config',
+        # Creative Studio Endpoints
+        '/api/creative/generate': 'handle_creative_generate',
+        '/api/creative/assets/create': 'handle_creative_asset_create',
+        '/api/creative/assets/update': 'handle_creative_asset_update',
+        '/api/creative/assets/delete': 'handle_creative_asset_delete',
+        '/api/creative/backends/config': 'handle_creative_backends_config',
+        '/api/creative/upload': 'handle_creative_upload',
+        '/api/creative/edit': 'handle_creative_edit',
+        '/api/creative/remove-bg': 'handle_creative_remove_bg',
+        '/api/creative/3d': 'handle_creative_3d',
+        '/api/creative/mesh': 'handle_creative_mesh',
+        '/api/creative/material': 'handle_creative_material',
+        '/api/creative/render': 'handle_creative_render',
+        '/api/creative/pipeline/execute': 'handle_creative_pipeline_execute',
+        '/api/creative/vision': 'handle_creative_vision',
+        '/api/creative/segment': 'handle_creative_segment',
+        '/api/creative/video': 'handle_creative_video',
+        '/api/creative/downloads/start': 'handle_creative_download_start',
+        '/api/creative/downloads/cancel': 'handle_creative_download_cancel',
+        '/api/skills/toggle': 'handle_skills_toggle',
+        '/api/apps/launch': 'handle_apps_launch',
+        '/api/apps/autoconfigure': 'handle_apps_autoconfigure',
     }
 
 

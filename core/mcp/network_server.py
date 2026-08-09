@@ -4,6 +4,7 @@
 # ==============================================================================
 import json
 from core.mcp.base_server import BaseMCPServer
+from core.mcp.governance import SAFE, SENSITIVE
 from core.logger import get_logger
 
 log = get_logger(__name__)
@@ -24,7 +25,9 @@ class NetworkMCPServer(BaseMCPServer):
             name="discover_peers",
             description="Scan local network for active AILO P2P compute nodes.",
             input_schema={"type": "object", "properties": {}},
-            handler=self._handle_discover_peers
+            handler=self._handle_discover_peers,
+            safety=SAFE,
+            category="web_intel",
         )
 
         self.register_tool(
@@ -38,7 +41,9 @@ class NetworkMCPServer(BaseMCPServer):
                 },
                 "required": ["task_name", "payload"]
             },
-            handler=self._handle_broadcast_task_to_swarm
+            handler=self._handle_broadcast_task_to_swarm,
+            safety=SENSITIVE,
+            category="web_intel",
         )
 
         self.register_tool(
@@ -51,7 +56,9 @@ class NetworkMCPServer(BaseMCPServer):
                 },
                 "required": ["node_ip"]
             },
-            handler=self._handle_ping_node
+            handler=self._handle_ping_node,
+            safety=SAFE,
+            category="web_intel",
         )
 
         self.register_tool(
@@ -65,7 +72,9 @@ class NetworkMCPServer(BaseMCPServer):
                 },
                 "required": ["query"]
             },
-            handler=self._handle_search_web
+            handler=self._handle_search_web,
+            safety=SAFE,
+            category="web_intel",
         )
 
         self.register_tool(
@@ -78,7 +87,9 @@ class NetworkMCPServer(BaseMCPServer):
                 },
                 "required": ["url"]
             },
-            handler=self._handle_fetch_web_page
+            handler=self._handle_fetch_web_page,
+            safety=SAFE,
+            category="web_intel",
         )
 
     def _init_resources(self):

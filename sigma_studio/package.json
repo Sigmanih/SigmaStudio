@@ -19,7 +19,8 @@
     "prismjs": "^1.30.0",
     "react": "^19.2.4",
     "react-dom": "^19.2.4",
-    "react-simple-code-editor": "^0.14.1"
+    "react-simple-code-editor": "^0.14.1",
+    "three": "^0.185.1"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.4",

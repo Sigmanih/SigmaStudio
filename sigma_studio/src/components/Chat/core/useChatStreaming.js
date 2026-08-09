@@ -178,6 +178,10 @@ export function useChatStreaming({
 
     let streamCreatedFiles = [];
     let streamActionsLog = [];
+    // Strumenti MCP eseguiti in questo turno, e le chiamate che si sono fermate
+    // ad aspettare l'operatore prima di toccare qualcosa fuori da Sigma Studio.
+    let streamToolCalls = [];
+    let streamToolApprovals = [];
 
     try {
       let streamDone = false, hasError = false, streamErrorMsg = '';
@@ -203,6 +207,23 @@ export function useChatStreaming({
               }
               if (p.actions_log && Array.isArray(p.actions_log)) {
                 streamActionsLog = p.actions_log;
+              }
+              // L'agente li manda uno per evento mentre ragiona; la corsia
+              // veloce risponde con un blocco solo che li porta già in elenco.
+              // Entrambe le forme arrivano su questo canale, quindi si leggono
+              // entrambe: leggerne una sola faceva sparire la scheda di
+              // conferma e il comando restava non eseguito senza spiegazioni.
+              if (p.tool_result) {
+                streamToolCalls = [...streamToolCalls, p.tool_result];
+              }
+              if (Array.isArray(p.tool_calls)) {
+                streamToolCalls = [...streamToolCalls, ...p.tool_calls];
+              }
+              if (p.tool_approval) {
+                streamToolApprovals = [...streamToolApprovals, p.tool_approval];
+              }
+              if (Array.isArray(p.tool_approvals)) {
+                streamToolApprovals = [...streamToolApprovals, ...p.tool_approvals];
               }
               if (p.final_content && continuationCount === 0) {
                 finalOverride = p.final_content;
@@ -259,7 +280,9 @@ export function useChatStreaming({
                     thinking: hasThinking ? fullThinking : undefined,
                     streamingThinking: hasThinking,
                     created_files: streamCreatedFiles,
-                    actions_log: streamActionsLog
+                    actions_log: streamActionsLog,
+                    tool_calls: streamToolCalls,
+                    tool_approvals: streamToolApprovals
                   }]
                 }));
               } else {
@@ -274,7 +297,9 @@ export function useChatStreaming({
                       thinking: hasThinking ? fullThinking : n[n.length - 1].thinking,
                       streamingThinking: hasThinking,
                       created_files: streamCreatedFiles.length > 0 ? streamCreatedFiles : n[n.length - 1].created_files,
-                      actions_log: streamActionsLog.length > 0 ? streamActionsLog : n[n.length - 1].actions_log
+                      actions_log: streamActionsLog.length > 0 ? streamActionsLog : n[n.length - 1].actions_log,
+                      tool_calls: streamToolCalls,
+                      tool_approvals: streamToolApprovals
                     };
                   }
                   return { ...prev, [sessionId]: n };
@@ -356,7 +381,9 @@ export function useChatStreaming({
             streamingThinking: false,
             statusMessage: undefined,
             created_files: streamCreatedFiles.length > 0 ? streamCreatedFiles : n[n.length - 1].created_files,
-            actions_log: streamActionsLog.length > 0 ? streamActionsLog : n[n.length - 1].actions_log
+            actions_log: streamActionsLog.length > 0 ? streamActionsLog : n[n.length - 1].actions_log,
+            tool_calls: streamToolCalls,
+            tool_approvals: streamToolApprovals
           };
         }
         saveMessagesImmediately(sessionId, n);
@@ -403,6 +430,10 @@ export function useChatStreaming({
         content: cleanModelTags(data.response) || '⚠️ Nessuna risposta.',
         thinking: data.thinking || null,
         actions_log: data.actions_log || [],
+        // La corsia veloce risponde qui invece che in streaming: gli strumenti
+        // eseguiti e le conferme in attesa arrivano per questa strada.
+        tool_calls: data.tool_calls || [],
+        tool_approvals: data.tool_approvals || [],
         timestamp: new Date().toISOString(),
         error: data.error || null,
         agent_id: routedAgentId,

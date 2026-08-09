@@ -118,12 +118,28 @@ FastAPIHandlerAdapter.handle_tts_engines = handle_tts_engines
 FastAPIHandlerAdapter.handle_tts_speak = handle_tts_speak
 
 from core.mcp_handler import (
-    handle_mcp_servers, handle_mcp_tools, handle_mcp_resources, handle_mcp_rpc
+    handle_mcp_servers, handle_mcp_tools, handle_mcp_resources, handle_mcp_rpc,
+    handle_mcp_policy,
+    handle_mcp_integration,
+    handle_mcp_test_integration,
+    handle_mcp_external_add,
+    handle_mcp_external_remove,
+    handle_mcp_external_connect,
+    handle_mcp_pending,
+    handle_mcp_approve,
 )
 FastAPIHandlerAdapter.handle_mcp_servers = handle_mcp_servers
 FastAPIHandlerAdapter.handle_mcp_tools = handle_mcp_tools
 FastAPIHandlerAdapter.handle_mcp_resources = handle_mcp_resources
 FastAPIHandlerAdapter.handle_mcp_rpc = handle_mcp_rpc
+FastAPIHandlerAdapter.handle_mcp_policy = handle_mcp_policy
+FastAPIHandlerAdapter.handle_mcp_integration = handle_mcp_integration
+FastAPIHandlerAdapter.handle_mcp_test_integration = handle_mcp_test_integration
+FastAPIHandlerAdapter.handle_mcp_external_add = handle_mcp_external_add
+FastAPIHandlerAdapter.handle_mcp_external_remove = handle_mcp_external_remove
+FastAPIHandlerAdapter.handle_mcp_external_connect = handle_mcp_external_connect
+FastAPIHandlerAdapter.handle_mcp_pending = handle_mcp_pending
+FastAPIHandlerAdapter.handle_mcp_approve = handle_mcp_approve
 
 from core.swarm_handler import (
     handle_swarm_agents, handle_swarm_plan, handle_swarm_execute
@@ -229,6 +245,62 @@ FastAPIHandlerAdapter.handle_pipeline_start = handle_pipeline_start
 FastAPIHandlerAdapter.handle_pipeline_status = handle_pipeline_status
 FastAPIHandlerAdapter.handle_pipeline_stop = handle_pipeline_stop
 
+from core.creative.creative_router import (
+    handle_creative_assets, handle_creative_asset_get, handle_creative_asset_lineage,
+    handle_creative_asset_versions, handle_creative_backends_status, handle_creative_stats,
+    handle_creative_generate, handle_creative_asset_create, handle_creative_asset_update,
+    handle_creative_asset_delete, handle_creative_backends_config, handle_creative_upload,
+    handle_creative_edit, handle_creative_remove_bg, handle_creative_3d,
+    handle_creative_mesh, handle_creative_mesh_info, handle_creative_material,
+    handle_creative_render, handle_creative_pipeline_execute, handle_creative_agents_list,
+    handle_creative_pipeline_nodes, handle_creative_models, handle_creative_vision,
+    handle_creative_segment, handle_creative_video, handle_creative_discover,
+    handle_creative_downloads, handle_creative_download_start, handle_creative_download_cancel,
+    handle_creative_model_search, handle_creative_model_categories,
+)
+FastAPIHandlerAdapter.handle_creative_assets = handle_creative_assets
+FastAPIHandlerAdapter.handle_creative_asset_get = handle_creative_asset_get
+FastAPIHandlerAdapter.handle_creative_asset_lineage = handle_creative_asset_lineage
+FastAPIHandlerAdapter.handle_creative_asset_versions = handle_creative_asset_versions
+FastAPIHandlerAdapter.handle_creative_backends_status = handle_creative_backends_status
+FastAPIHandlerAdapter.handle_creative_stats = handle_creative_stats
+FastAPIHandlerAdapter.handle_creative_generate = handle_creative_generate
+FastAPIHandlerAdapter.handle_creative_asset_create = handle_creative_asset_create
+FastAPIHandlerAdapter.handle_creative_asset_update = handle_creative_asset_update
+FastAPIHandlerAdapter.handle_creative_asset_delete = handle_creative_asset_delete
+FastAPIHandlerAdapter.handle_creative_backends_config = handle_creative_backends_config
+FastAPIHandlerAdapter.handle_creative_upload = handle_creative_upload
+FastAPIHandlerAdapter.handle_creative_edit = handle_creative_edit
+FastAPIHandlerAdapter.handle_creative_remove_bg = handle_creative_remove_bg
+FastAPIHandlerAdapter.handle_creative_3d = handle_creative_3d
+FastAPIHandlerAdapter.handle_creative_mesh = handle_creative_mesh
+FastAPIHandlerAdapter.handle_creative_mesh_info = handle_creative_mesh_info
+FastAPIHandlerAdapter.handle_creative_material = handle_creative_material
+FastAPIHandlerAdapter.handle_creative_render = handle_creative_render
+FastAPIHandlerAdapter.handle_creative_pipeline_execute = handle_creative_pipeline_execute
+FastAPIHandlerAdapter.handle_creative_agents_list = handle_creative_agents_list
+FastAPIHandlerAdapter.handle_creative_pipeline_nodes = handle_creative_pipeline_nodes
+FastAPIHandlerAdapter.handle_creative_models = handle_creative_models
+FastAPIHandlerAdapter.handle_creative_vision = handle_creative_vision
+FastAPIHandlerAdapter.handle_creative_segment = handle_creative_segment
+FastAPIHandlerAdapter.handle_creative_video = handle_creative_video
+FastAPIHandlerAdapter.handle_creative_discover = handle_creative_discover
+FastAPIHandlerAdapter.handle_creative_downloads = handle_creative_downloads
+FastAPIHandlerAdapter.handle_creative_download_start = handle_creative_download_start
+FastAPIHandlerAdapter.handle_creative_download_cancel = handle_creative_download_cancel
+FastAPIHandlerAdapter.handle_creative_model_search = handle_creative_model_search
+FastAPIHandlerAdapter.handle_creative_model_categories = handle_creative_model_categories
+
+from core.integrations.handlers import (
+    handle_skills_list, handle_skills_toggle, handle_apps_status,
+    handle_apps_launch, handle_apps_autoconfigure,
+)
+FastAPIHandlerAdapter.handle_skills_list = handle_skills_list
+FastAPIHandlerAdapter.handle_skills_toggle = handle_skills_toggle
+FastAPIHandlerAdapter.handle_apps_status = handle_apps_status
+FastAPIHandlerAdapter.handle_apps_launch = handle_apps_launch
+FastAPIHandlerAdapter.handle_apps_autoconfigure = handle_apps_autoconfigure
+
 from core.context_broker import (
     handle_context_share, handle_context_get, handle_context_chat_log, handle_chat_message_save
 )
@@ -291,6 +363,14 @@ SSE_ENDPOINTS = (
     "/api/chat/orchestrate",
     "/api/chat/pipeline/start",
     "/api/research/start",
+    "/api/creative/generate",
+    "/api/creative/edit",
+    "/api/creative/3d",
+    "/api/creative/mesh",
+    "/api/creative/material",
+    "/api/creative/video",
+    "/api/creative/render",
+    "/api/creative/pipeline/execute",
 )
 
 
@@ -383,8 +463,30 @@ async def serve_root():
     return JSONResponse({"message": "Σ-SIGMA Studio API Running (v8.0). Use /docs for Swagger UI."})
 
 
+DATA_DIR = Path("data")
+
+
+def _resolve_inside(root: Path, path: str) -> Path | None:
+    """Risolve `path` dentro `root` bloccando i path traversal (`../`)."""
+    try:
+        root_abs = root.resolve()
+        target = (root_abs / path).resolve()
+        target.relative_to(root_abs)
+    except (ValueError, OSError):
+        return None
+    return target if target.exists() and target.is_file() else None
+
+
 @app.get("/{path:path}")
 async def serve_static_or_spa(path: str):
+    # Gli asset del Creative Studio vivono sotto data/creative/assets/<id>/ e sono
+    # referenziati dalla UI con l'URL assoluto `/data/...`: senza questo ramo la
+    # richiesta ricadeva sull'index.html e le immagini restavano rotte.
+    if path.startswith("data/"):
+        target = _resolve_inside(DATA_DIR, path[len("data/"):])
+        if target:
+            return FileResponse(target)
+
     target_img = Path("images") / path
     if target_img.exists() and target_img.is_file():
         return FileResponse(target_img)

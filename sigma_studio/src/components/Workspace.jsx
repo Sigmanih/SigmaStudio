@@ -1,6 +1,8 @@
 import React from 'react';
-import { X, FileText, Terminal, PieChart, BookOpen, Trash2, ChevronRight, Home, MessageSquare, FlaskConical, Brain, Zap, User } from 'lucide-react';
+import { X, FileText, Terminal, PieChart, BookOpen, Trash2, ChevronRight, Home, MessageSquare, FlaskConical, Brain, Zap, User, Palette, Blocks } from 'lucide-react';
 import WelcomeDashboard from './WelcomeDashboard';
+import CreativeStudio from './CreativeStudio/CreativeStudio';
+import SkillsHub from './SkillsHub';
 import { RoadmapView } from './Dashboard';
 import StudioEditor from './Workspace/StudioEditor';
 import ManifestiGallery from './Workspace/ManifestiGallery';
@@ -31,6 +33,8 @@ const FileIcon = ({ type }) => {
     case 'training_lab': return <Brain size={16} />;
     case 'hardware_lab': return <Zap size={16} />;
     case 'account': return <User size={16} />;
+    case 'creative_studio': return <Palette size={16} />;
+    case 'skills_hub': return <Blocks size={16} />;
     default: return <FileText size={16} />;
   }
 };
@@ -176,6 +180,12 @@ export default function Workspace({
     }
     if (tab.type === 'account') {
       return <AccountTab />;
+    }
+    if (tab.type === 'creative_studio') {
+      return <CreativeStudio />;
+    }
+    if (tab.type === 'skills_hub') {
+      return <SkillsHub />;
     }
     return <div className="placeholder-content">Content type {tab.type} not implemented in preview.</div>;
   };

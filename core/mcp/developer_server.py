@@ -6,6 +6,7 @@ import os
 import json
 import subprocess
 from core.mcp.base_server import BaseMCPServer
+from core.mcp.governance import SAFE, SENSITIVE
 from core.logger import get_logger
 
 log = get_logger(__name__)
@@ -31,7 +32,9 @@ class DeveloperMCPServer(BaseMCPServer):
                     "test_path": {"type": "string", "description": "Optional test file or test expression"}
                 }
             },
-            handler=self._handle_run_pytest
+            handler=self._handle_run_pytest,
+            safety=SAFE,
+            category="dev_tools",
         )
 
         self.register_tool(
@@ -45,7 +48,9 @@ class DeveloperMCPServer(BaseMCPServer):
                 },
                 "required": ["path", "content"]
             },
-            handler=self._handle_create_workspace_file
+            handler=self._handle_create_workspace_file,
+            safety=SENSITIVE,
+            category="dev_tools",
         )
 
         self.register_tool(
@@ -58,14 +63,18 @@ class DeveloperMCPServer(BaseMCPServer):
                 },
                 "required": ["code"]
             },
-            handler=self._handle_execute_sandbox_code
+            handler=self._handle_execute_sandbox_code,
+            safety=SENSITIVE,
+            category="dev_tools",
         )
 
         self.register_tool(
             name="git_status",
             description="Get current Git status, modified files, and active branch.",
             input_schema={"type": "object", "properties": {}},
-            handler=self._handle_git_status
+            handler=self._handle_git_status,
+            safety=SAFE,
+            category="dev_tools",
         )
 
     def _init_resources(self):

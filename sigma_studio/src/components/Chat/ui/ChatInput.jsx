@@ -5,6 +5,7 @@ import { setVoiceConfig as saveVoiceConfigToSpeechEngine, getVoiceConfig } from 
 export default function ChatInput({
   input, setInput, loading, selectedModel, refs, providerColors, currentRouting,
   webSearch, setWebSearch, autoScroll, setAutoScroll,
+  mcpAutoApprove, setMcpAutoApprove,
   speakerEnabled, setSpeakerEnabled,
   isRecording, onToggleRecording,
   smartMicState = 'off', onToggleSmartMic,
@@ -43,6 +44,23 @@ export default function ChatInput({
         <label className="chat-scroll-toggle" title="Auto-scroll">
           <input type="checkbox" checked={autoScroll} onChange={e => setAutoScroll(e.target.checked)} />
           <span>📜 Auto Scroll</span>
+        </label>
+        <label
+          className="chat-scroll-toggle"
+          title={mcpAutoApprove
+            ? 'Gli agenti eseguono subito anche gli strumenti che agiscono su casa, email e messaggi'
+            : 'Gli strumenti che agiscono verso l\'esterno aspettano la tua conferma in chat'}
+          style={{ color: mcpAutoApprove ? '#d29922' : undefined }}
+        >
+          <input
+            type="checkbox"
+            checked={!!mcpAutoApprove}
+            // Chiamata opzionale: ChatInput vive in due contesti, e uno che
+            // dimentichi di passare il setter deve lasciare la casella inerte,
+            // non far esplodere il gestore del clic.
+            onChange={e => setMcpAutoApprove?.(e.target.checked)}
+          />
+          <span>{mcpAutoApprove ? '⚡' : '🛡️'} Auto Approve</span>
         </label>
         {setSpeakerEnabled !== undefined && (
           <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginLeft: 'auto', position: 'relative' }}>

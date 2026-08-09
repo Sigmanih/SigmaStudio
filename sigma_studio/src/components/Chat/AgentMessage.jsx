@@ -1,6 +1,7 @@
 import React from 'react';
 import { Bot, User, Terminal, FileText, Zap, Play, Pause, RotateCcw, RotateCw, Square } from 'lucide-react';
 import { renderMarkdownLatex } from '../../utils/markdownLatex';
+import McpToolStrip from './McpToolStrip';
 import { useApp } from '../../contexts/AppContext';
 import 'katex/dist/katex.min.css';
 
@@ -724,6 +725,10 @@ export default function AgentMessage({
                         <span className="chat-loading-cursor">●</span>
                         <span style={{ fontStyle: 'italic', fontWeight: '500' }}>Generazione risposta ed elaborazione in corso...</span>
                       </div>
+                    )}
+                    {/* Strumenti MCP eseguiti e chiamate in attesa di assenso */}
+                    {(m.tool_calls?.length > 0 || m.tool_approvals?.length > 0) && (
+                      <McpToolStrip calls={m.tool_calls} approvals={m.tool_approvals} />
                     )}
                     {/* Render action cards or created file buttons */}
                     {((!m.isAction && m.actions_log && m.actions_log.length > 0) || m.created_files?.length > 0) && (

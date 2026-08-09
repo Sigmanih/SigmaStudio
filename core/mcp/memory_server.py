@@ -5,6 +5,7 @@
 import json
 import os
 from core.mcp.base_server import BaseMCPServer
+from core.mcp.governance import SAFE, SENSITIVE
 from core.logger import get_logger
 
 log = get_logger(__name__)
@@ -32,7 +33,9 @@ class MemoryMCPServer(BaseMCPServer):
                 },
                 "required": ["query"]
             },
-            handler=self._handle_query_vector_db
+            handler=self._handle_query_vector_db,
+            safety=SAFE,
+            category="memory",
         )
 
         self.register_tool(
@@ -47,7 +50,9 @@ class MemoryMCPServer(BaseMCPServer):
                 },
                 "required": ["session_id", "memory_key", "content"]
             },
-            handler=self._handle_save_episodic_memory
+            handler=self._handle_save_episodic_memory,
+            safety=SAFE,
+            category="memory",
         )
 
         self.register_tool(
@@ -60,7 +65,9 @@ class MemoryMCPServer(BaseMCPServer):
                 },
                 "required": ["topic"]
             },
-            handler=self._handle_search_knowledge_graph
+            handler=self._handle_search_knowledge_graph,
+            safety=SAFE,
+            category="memory",
         )
 
     def _init_resources(self):
