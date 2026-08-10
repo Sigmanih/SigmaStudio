@@ -361,9 +361,10 @@ function ExternalServers({ servers, onChanged }) {
  * Le due schede che prima non esistevano: dove si dicono a Sigma Studio le
  * credenziali dei sistemi esterni, e dove si collegano server MCP altrui.
  */
-export default function McpIntegrationsPanel({ servers, onChanged }) {
-  const integrations = servers.filter(s => s.integration_key);
-  const external = servers.filter(s => s.external);
+export default function McpIntegrationsPanel({ servers = [], onChanged }) {
+  const safeServers = Array.isArray(servers) ? servers : [];
+  const integrations = safeServers.filter(s => s.integration_key);
+  const external = safeServers.filter(s => s.external);
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '26px' }}>

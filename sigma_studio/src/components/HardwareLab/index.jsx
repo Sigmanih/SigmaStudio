@@ -2,12 +2,81 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { 
   Activity, Zap, HardDrive, Save, ChevronDown, ChevronUp, RotateCcw, Trash2,
   ShieldCheck, Sliders, Play, Pause, TrendingUp, BarChart2,
-  Cpu, Thermometer, Flame, Gauge, AlertTriangle
+  Cpu, Thermometer, Flame, Gauge, AlertTriangle, Layers, CheckCircle2, ArrowRight
 } from 'lucide-react';
 import RealtimeTelemetryChart from './RealtimeTelemetryChart';
 import '../../styles/hardware-lab.css';
 
 const MAX_HISTORY = 900; // ~30 minutes at 2s intervals
+
+const INACTIVE_HARDWARE_NODES = [
+  {
+    id: 'arm64_node',
+    title: 'Cluster Nodi ARM64 & Raspberry Pi 5 Edge',
+    subtitle: 'Offloading di task leggeri di sensoristica, micro-controller e preprocessing I/O su nodi ARM64.',
+    prerequisite: 'Indirizzo IP o Hostname SSH nodo ARM64 (pi@192.168.1.xxx)',
+    statusBadge: 'DISPOSITIVO EDGE STANDBY',
+    icon: Cpu,
+    color: '#3fb950',
+    actionText: 'Collega Nodo ARM64',
+    details: 'Consente di delegare compiti a basso consumo energetico (es. polling sensori, ascolto di eventi MQTT, piccoli script di monitoraggio) a nodi Raspberry Pi 5 o micro-server ARM64 collegati in rete locale.'
+  },
+  {
+    id: 'intel_npu',
+    title: 'NPU Neural Processing Unit (OpenVINO / DirectML)',
+    subtitle: 'Accelerazione hardware dedicata su NPU di bordo per la quantizzazione ed il risparmio energetico durante la sintesi TTS.',
+    prerequisite: 'Driver Intel OpenVINO / DirectML NPU Active',
+    statusBadge: 'DRIVER NPU NON RILEVATO',
+    icon: Gauge,
+    color: '#00d2ff',
+    actionText: 'Abilita Acceleration NPU',
+    details: 'Sfrutta l\'acceleratore di calcolo NPU dedicato presente nei processori Intel Core Ultra o Qualcomm Snapdragon per liberare la GPU principale durante i task di sintesi vocale e tokenization.'
+  },
+  {
+    id: 'liquid_cooling',
+    title: 'Liquid Cooling & Dynamic Thermal Throttle',
+    subtitle: 'Monitoraggio del flusso di liquido refrigerante ed auto-throttling preventivo della frequenza di clock sui picchi > 85°C.',
+    prerequisite: 'Controller Pompa PWM / Sensore Flusso Corsair iCUE',
+    statusBadge: 'SENSORE LIQUIDO STANDBY',
+    icon: Thermometer,
+    color: '#ff5064',
+    actionText: 'Associa Sensore Liquido',
+    details: 'Monitora la telemetria della temperatura del liquido di raffreddamento e regola preventivamente i power limit (TDP) della GPU per evitare il throttling termico improvviso durante le sessioni di fine-tuning prolungate.'
+  },
+  {
+    id: 'nvlink_bridge',
+    title: 'NVLink High-Speed Distributed GPU Bridge',
+    subtitle: 'Comunicazione P2P a 900 GB/s tra GPU NVIDIA per la ripartizione dei pesi di modelli > 70B senza colli di bottiglia PCIe.',
+    prerequisite: '2x GPU NVIDIA RTX/A-Series + Ponte Fisico NVLink',
+    statusBadge: 'NVLINK SLI STANDBY',
+    icon: Zap,
+    color: '#a78bfa',
+    actionText: 'Attiva Bridge NVLink',
+    details: 'Attiva il bus ad altissima velocità NVLink per unire la VRAM di più schede grafiche NVIDIA in un unico pool di memoria contiguo, permettendo di caricare modelli LLM da 70 miliardi di parametri a piena velocità.'
+  },
+  {
+    id: 'fpga_accelerator',
+    title: 'FPGA Logic Accelerator Board',
+    subtitle: 'Accelerazione hardware di algoritmi di crittografia custom, matrici veloci e compressione token via chip FPGA.',
+    prerequisite: 'Scheda Xilinx Alveo / PCIe FPGA Driver',
+    statusBadge: 'SCHEDA FPGA STANDBY',
+    icon: HardDrive,
+    color: '#ffb86c',
+    actionText: 'Inizializza FPGA',
+    details: 'Sfrutta le schede FPGA programmabili via PCIe per velocizzare le operazioni di hashing, de-compressione dei dataset e moltiplicazione tra matrici a precisione arbitraria.'
+  },
+  {
+    id: 'ups_power',
+    title: 'UPS Power & Line Voltage Monitoring',
+    subtitle: 'Monitoraggio della continuità elettrica del cluster, con salvataggio automatico delle memorie agentiche prima di blackout.',
+    prerequisite: 'Gruppo di Continuità USB / NUT (Network UPS Tools)',
+    statusBadge: 'UPS USB DISCONNESSO',
+    icon: ShieldCheck,
+    color: '#38bdf8',
+    actionText: 'Collega Telemetria UPS',
+    details: 'Si interfaccia con il gruppo di continuità via USB o rete local NUT per tracciare il voltaggio di rete, i Watt assorbiti e sincronizzare uno spegnimento di emergenza controllato con salvataggio dello stato del sistema in caso di mancanza di corrente.'
+  }
+];
 
 export default function HardwareLab({ addToast }) {
   const [data, setData] = useState(null);
@@ -15,9 +84,14 @@ export default function HardwareLab({ addToast }) {
   const [saving, setSaving] = useState(false);
   const [autoRefresh, setAutoRefresh] = useState(true);
   const [refreshInterval, setRefreshInterval] = useState(2000);
-  const [showCharts, setShowCharts] = useState(false); // Collapsible charts
+  const [showCharts, setShowCharts] = useState(true); // Collapsible charts enabled by default
   const [showRestartAlert, setShowRestartAlert] = useState(false); // Alert modal
   const [restartingOllama, setRestartingOllama] = useState(false);
+
+  // Standby hardware activation modal state
+  const [activeHwModal, setActiveHwModal] = useState(null);
+  const [activatingHw, setActivatingHw] = useState(null);
+  const [activatedHw, setActivatedHw] = useState({});
 
   // Chi sta occupando la GPU, e con quale job di Sigma.
   const [gpuProcs, setGpuProcs] = useState({ processes: [], orfani: 0 });
@@ -320,66 +394,139 @@ export default function HardwareLab({ addToast }) {
         </div>
       )}
 
-      {/* Top Header */}
-      <div className="hardware-header" style={{ marginBottom: '16px' }}>
-        <div className="hardware-header-title">
-          <div className="hardware-header-icon">
-            <Zap size={22} color="#00f2fe" />
-          </div>
-          <div>
-            <h1 style={{ fontSize: '20px' }}>Hardware & Multi-GPU Lab</h1>
-            <div className="hardware-header-subtitle" style={{ fontSize: '12px' }}>
-              <span>Telemetria in tempo reale</span>
-              <span>•</span>
-              <span style={{ color: '#00f2fe', fontFamily: 'JetBrains Mono, monospace' }}>
-                {gpus.length} GPU ({totalVramGb} GB VRAM) • RAM {hw.ram?.used_gb || 0}/{hw.ram?.total_gb || 0} GB
-              </span>
+      {/* Premium Cyber-Glassmorphic Hardware Hero Panel */}
+      <div style={{
+        position: 'relative',
+        borderRadius: '28px',
+        overflow: 'hidden',
+        padding: '50px 52px 36px 52px',
+        minHeight: '340px',
+        border: '1px solid rgba(0, 210, 255, 0.4)',
+        boxShadow: '0 24px 80px rgba(0, 0, 0, 0.75), 0 0 40px rgba(0, 210, 255, 0.2), inset 0 1px 0 rgba(255, 255, 255, 0.15)',
+        backgroundImage: 'linear-gradient(to right, rgba(8, 10, 16, 0.88) 32%, rgba(8, 10, 16, 0.25) 100%), url("/images/hardware_cluster_lab.jpg")',
+        backgroundSize: 'cover',
+        backgroundPosition: 'center right',
+        marginBottom: '28px',
+        display: 'flex',
+        flexDirection: 'column',
+        justify: 'space-between',
+        gap: '36px'
+      }}>
+        {/* Top Header Row: Title & Action Buttons */}
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '24px', zIndex: 2 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '20px' }}>
+            <div style={{
+              width: '64px', height: '64px', borderRadius: '20px',
+              background: 'radial-gradient(circle at 30% 30%, rgba(0, 242, 254, 0.35), rgba(0, 210, 255, 0.12))',
+              border: '1px solid rgba(0, 242, 254, 0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center',
+              boxShadow: '0 0 35px rgba(0, 242, 254, 0.35)'
+            }}>
+              <Zap size={32} color="#00f2fe" />
             </div>
+            <div>
+              <div style={{
+                display: 'inline-flex', alignItems: 'center', gap: '8px',
+                padding: '4px 14px', borderRadius: '14px',
+                background: 'rgba(0, 210, 255, 0.18)', border: '1px solid rgba(0, 210, 255, 0.4)',
+                color: '#00d2ff', fontSize: '0.74rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '1.2px', marginBottom: '6px'
+              }}>
+                <Activity size={14} /> HARDWARE TELEMETRY & CLUSTER COMPUTING
+              </div>
+              <h1 style={{ margin: 0, fontSize: '2.2rem', fontWeight: 900, color: '#fff', letterSpacing: '-0.8px' }}>
+                ⚡ Hardware & Cluster Telemetry Lab
+              </h1>
+            </div>
+          </div>
+
+          {/* Action Buttons Row */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+            <button 
+              className="hw-btn"
+              onClick={() => setShowRestartAlert(true)}
+              title="Svuota la memoria VRAM/RAM scaricando tutti i modelli caricati da Ollama"
+              style={{ fontSize: '12px', padding: '8px 16px', borderRadius: '12px', border: '1px solid rgba(239, 68, 68, 0.45)', background: 'rgba(239, 68, 68, 0.15)', color: '#fca5a5', fontWeight: 800 }}
+            >
+              <RotateCcw size={14} color="#ef4444" />
+              <span>Svuota VRAM / Riavvia Ollama</span>
+            </button>
+
+            <button 
+              className={`hw-btn ${showCharts ? 'hw-btn-primary' : ''}`}
+              onClick={() => setShowCharts(!showCharts)}
+              title={showCharts ? 'Nascondi i grafici per compattare la vista' : 'Mostra i grafici storici in tempo reale'}
+              style={{ fontSize: '12px', padding: '8px 16px', borderRadius: '12px', fontWeight: 800 }}
+            >
+              <BarChart2 size={14} color={showCharts ? '#fff' : '#00f2fe'} />
+              {showCharts ? 'Nascondi Grafici Storici' : 'Mostra Grafici Storici'}
+              {showCharts ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+            </button>
+
+            <button 
+              className="hw-btn" 
+              onClick={() => setAutoRefresh(!autoRefresh)}
+              title={autoRefresh ? 'Metti in pausa il refresh' : 'Riprendi refresh automatico'}
+              style={{ fontSize: '12px', padding: '8px 16px', borderRadius: '12px', fontWeight: 800 }}
+            >
+              {autoRefresh ? <Pause size={13} color="#00f2fe" /> : <Play size={13} />}
+              {autoRefresh ? 'Pausa (2s)' : 'Riprendi'}
+            </button>
           </div>
         </div>
 
-        <div className="hardware-header-actions" style={{ gap: '8px' }}>
-          <button 
-            className="hw-btn"
-            onClick={handleClearVramMcp}
-            title="Scarica i modelli tenuti in VRAM da Ollama. Non tocca i job di training: per quelli usa «Processi sulla GPU» qui sotto."
-            style={{ fontSize: '12px', padding: '6px 12px', border: '1px solid rgba(0, 210, 255, 0.4)', background: 'rgba(0, 210, 255, 0.12)', color: '#00d2ff' }}
-          >
-            <Zap size={14} color="#00d2ff" />
-            <span>Scarica modelli Ollama</span>
-          </button>
+        {/* Bottom Row: Compact Telemetry Stat Cards */}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '12px', zIndex: 2 }}>
+          
+          {/* Card 1: VRAM & GPU */}
+          <div style={{
+            padding: '10px 14px', borderRadius: '12px',
+            background: 'rgba(10, 14, 24, 0.85)', backdropFilter: 'blur(12px)',
+            border: '1px solid rgba(0, 210, 255, 0.3)', boxShadow: '0 4px 18px rgba(0, 210, 255, 0.1)'
+          }}>
+            <div style={{ fontSize: '0.65rem', color: '#8b8fa3', fontWeight: 800, textTransform: 'uppercase', marginBottom: '2px' }}>
+              GPU & VRAM ALLOCATA
+            </div>
+            <div style={{ fontSize: '1.05rem', fontWeight: 900, color: '#00d2ff', fontFamily: 'JetBrains Mono, monospace' }}>
+              {gpus.length} GPU • {totalVramGb} GB
+            </div>
+            <div style={{ fontSize: '0.65rem', color: '#6b7080', marginTop: '1px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+              {gpus.map(g => g.name || `GPU ${g.index}`).join(', ') || 'NVIDIA Compute'}
+            </div>
+          </div>
 
-          {/* RESTART OLLAMA BUTTON */}
-          <button 
-            className="hw-btn"
-            onClick={() => setShowRestartAlert(true)}
-            title="Svuota la memoria VRAM/RAM scaricando tutti i modelli caricati da Ollama"
-            style={{ fontSize: '12px', padding: '6px 12px', border: '1px solid rgba(239, 68, 68, 0.4)', background: 'rgba(239, 68, 68, 0.12)', color: '#fca5a5' }}
-          >
-            <RotateCcw size={14} color="#ef4444" />
-            <span>Svuota VRAM / Riavvia Ollama</span>
-          </button>
+          {/* Card 2: SYSTEM RAM */}
+          <div style={{
+            padding: '10px 14px', borderRadius: '12px',
+            background: 'rgba(10, 14, 24, 0.85)', backdropFilter: 'blur(12px)',
+            border: '1px solid rgba(16, 185, 129, 0.3)', boxShadow: '0 4px 18px rgba(16, 185, 129, 0.1)'
+          }}>
+            <div style={{ fontSize: '0.65rem', color: '#8b8fa3', fontWeight: 800, textTransform: 'uppercase', marginBottom: '2px' }}>
+              SISTEMA RAM & DISCO
+            </div>
+            <div style={{ fontSize: '1.05rem', fontWeight: 900, color: '#10b981', fontFamily: 'JetBrains Mono, monospace' }}>
+              {hw.ram?.used_gb || hw.ram_used_gb || 0} / {hw.ram?.total_gb || hw.ram_gb || 0} GB
+            </div>
+            <div style={{ fontSize: '0.65rem', color: '#6b7080', marginTop: '1px' }}>
+              RAM Utilizzata {hw.ram?.util_pct || hw.ram_pct || 0}% • Disco {hw.disk?.used_gb || 0} GB
+            </div>
+          </div>
 
-          <button 
-            className={`hw-btn ${showCharts ? 'hw-btn-primary' : ''}`}
-            onClick={() => setShowCharts(!showCharts)}
-            title={showCharts ? 'Nascondi i grafici per compattare la vista' : 'Mostra i grafici storici in tempo reale'}
-            style={{ fontSize: '12px', padding: '6px 12px' }}
-          >
-            <BarChart2 size={14} color={showCharts ? '#fff' : '#00f2fe'} />
-            {showCharts ? 'Nascondi Grafici' : 'Mostra Grafici Storici'}
-            {showCharts ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
-          </button>
+          {/* Card 3: CPU THREADS */}
+          <div style={{
+            padding: '10px 14px', borderRadius: '12px',
+            background: 'rgba(10, 14, 24, 0.85)', backdropFilter: 'blur(12px)',
+            border: '1px solid rgba(188, 140, 255, 0.3)', boxShadow: '0 4px 18px rgba(188, 140, 255, 0.1)'
+          }}>
+            <div style={{ fontSize: '0.65rem', color: '#8b8fa3', fontWeight: 800, textTransform: 'uppercase', marginBottom: '2px' }}>
+              CPU SYSTEM LOAD
+            </div>
+            <div style={{ fontSize: '1.05rem', fontWeight: 900, color: '#bc8cff', fontFamily: 'JetBrains Mono, monospace' }}>
+              {hw.cpu?.util_pct ?? 0}% LOAD
+            </div>
+            <div style={{ fontSize: '0.65rem', color: '#6b7080', marginTop: '1px' }}>
+              {hw.cpu?.logical_count || '?'} Thread Logici • {hw.cpu?.freq_mhz ? `${(hw.cpu.freq_mhz / 1000).toFixed(1)} GHz` : 'N/A'}
+            </div>
+          </div>
 
-          <button 
-            className="hw-btn" 
-            onClick={() => setAutoRefresh(!autoRefresh)}
-            title={autoRefresh ? 'Metti in pausa il refresh' : 'Riprendi refresh automatico'}
-            style={{ fontSize: '12px', padding: '6px 12px' }}
-          >
-            {autoRefresh ? <Pause size={13} color="#00f2fe" /> : <Play size={13} />}
-            {autoRefresh ? 'Pausa (2s)' : 'Riprendi'}
-          </button>
         </div>
       </div>
 
@@ -824,6 +971,161 @@ export default function HardwareLab({ addToast }) {
           </button>
         </div>
       </div>
+
+      {/* ── CARD GRIGIE — HARDWARE & NODI IN STANDBY ── */}
+      <div style={{ marginTop: '28px', display: 'flex', flexDirection: 'column', gap: '20px' }}>
+        <div>
+          <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '4px 12px', borderRadius: '12px', background: 'rgba(255, 255, 255, 0.06)', border: '1px solid rgba(255, 255, 255, 0.1)', color: '#8b8fa3', fontSize: '0.72rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '1px', marginBottom: '8px' }}>
+            <Layers size={13} /> ESPANSIONI CLUSTER & ACCELERATORI HARDWARE IN ATTESA
+          </div>
+          <h2 style={{ margin: 0, fontSize: '1.4rem', fontWeight: 900, color: '#fff' }}>
+            ⚡ Hardware & Nodi di Calcolo Avanzati in Standby (Da Attivare)
+          </h2>
+          <p style={{ margin: '4px 0 0 0', fontSize: '0.84rem', color: '#8b8fa3' }}>
+            Moduli hardware, acceleratori e nodi di calcolo distribuito in attesa di pairing o collegamento fisico:
+          </p>
+        </div>
+
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(340px, 1fr))', gap: '20px' }}>
+          {INACTIVE_HARDWARE_NODES.map(node => {
+            const IconComp = node.icon;
+            const isActivated = activatedHw[node.id];
+
+            return (
+              <div
+                key={node.id}
+                style={{
+                  padding: '24px', borderRadius: '18px',
+                  background: isActivated ? 'rgba(14, 17, 25, 0.85)' : 'rgba(14, 17, 25, 0.4)',
+                  border: '1px solid ' + (isActivated ? `${node.color}40` : 'rgba(255, 255, 255, 0.08)'),
+                  boxShadow: isActivated ? `0 8px 32px ${node.color}15` : 'none',
+                  display: 'flex', flexDirection: 'column', justifyContent: 'space-between',
+                  gap: '16px', opacity: isActivated ? 1 : 0.72,
+                  filter: isActivated ? 'none' : 'grayscale(35%)',
+                  transition: 'all 0.3s ease'
+                }}
+              >
+                <div>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '14px' }}>
+                    <div style={{
+                      width: '44px', height: '44px', borderRadius: '12px',
+                      background: isActivated ? `${node.color}25` : 'rgba(255, 255, 255, 0.04)',
+                      border: '1px solid ' + (isActivated ? node.color : 'rgba(255,255,255,0.08)'),
+                      color: isActivated ? node.color : '#8b8fa3',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center'
+                    }}>
+                      <IconComp size={22} />
+                    </div>
+
+                    <span style={{
+                      fontSize: '0.68rem', fontWeight: 800,
+                      color: isActivated ? '#3fb950' : '#8b8fa3',
+                      background: isActivated ? 'rgba(63, 185, 80, 0.15)' : 'rgba(255, 255, 255, 0.06)',
+                      border: '1px solid ' + (isActivated ? 'rgba(63, 185, 80, 0.3)' : 'rgba(255, 255, 255, 0.1)'),
+                      padding: '3px 10px', borderRadius: '20px', letterSpacing: '0.5px'
+                    }}>
+                      {isActivated ? 'NODO HARDWARE ATTIVO ⚡' : node.statusBadge}
+                    </span>
+                  </div>
+
+                  <h3 style={{ margin: '0 0 6px 0', fontSize: '1rem', fontWeight: 800, color: '#fff' }}>
+                    {node.title}
+                  </h3>
+                  <p style={{ margin: '0 0 12px 0', fontSize: '0.78rem', color: '#8b8fa3', lineHeight: 1.5 }}>
+                    {node.subtitle}
+                  </p>
+                  <div style={{ fontSize: '0.72rem', color: '#6b7080', background: 'rgba(8, 10, 16, 0.6)', padding: '6px 10px', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.04)' }}>
+                    <strong>Requisito:</strong> {node.prerequisite}
+                  </div>
+                </div>
+
+                <button
+                  onClick={() => setActiveHwModal(node)}
+                  disabled={isActivated}
+                  style={{
+                    padding: '10px 16px', borderRadius: '10px',
+                    background: isActivated ? 'rgba(63, 185, 80, 0.15)' : 'rgba(255, 255, 255, 0.06)',
+                    border: '1px solid ' + (isActivated ? 'rgba(63, 185, 80, 0.3)' : 'rgba(255, 255, 255, 0.12)'),
+                    color: isActivated ? '#3fb950' : '#e2e8f0', fontSize: '0.8rem', fontWeight: 700,
+                    cursor: isActivated ? 'default' : 'pointer',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px',
+                    transition: 'all 0.2s ease'
+                  }}
+                >
+                  {isActivated ? <CheckCircle2 size={15} /> : <ArrowRight size={15} />}
+                  {isActivated ? 'Modulo Hardware Inizializzato' : node.actionText}
+                </button>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Standby Hardware Activation Modal Popup */}
+      {activeHwModal && (
+        <div style={{
+          position: 'fixed', inset: 0, zIndex: 10000,
+          background: 'rgba(0,0,0,0.85)', backdropFilter: 'blur(12px)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px'
+        }}>
+          <div style={{
+            width: '100%', maxWidth: '520px', background: 'rgba(18, 20, 28, 0.95)',
+            border: `1px solid ${activeHwModal.color}40`, borderRadius: '20px',
+            padding: '28px', boxShadow: '0 20px 60px rgba(0,0,0,0.6)'
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '16px', color: activeHwModal.color }}>
+              <activeHwModal.icon size={26} />
+              <div>
+                <h2 style={{ margin: 0, fontSize: '1.2rem', color: '#fff', fontWeight: 800 }}>
+                  {activeHwModal.title}
+                </h2>
+                <div style={{ fontSize: '0.74rem', color: '#8b8fa3', marginTop: '2px' }}>
+                  {activeHwModal.statusBadge}
+                </div>
+              </div>
+            </div>
+
+            <p style={{ fontSize: '0.84rem', color: '#c0c4d0', lineHeight: 1.6, marginBottom: '20px' }}>
+              {activeHwModal.details}
+            </p>
+
+            <div style={{ padding: '12px 16px', borderRadius: '12px', background: 'rgba(8, 10, 16, 0.8)', border: '1px solid rgba(255,255,255,0.08)', marginBottom: '24px', fontSize: '0.78rem', color: '#8b8fa3' }}>
+              <div style={{ fontWeight: 700, color: '#fff', marginBottom: '4px' }}>📋 Requisito di Inizializzazione:</div>
+              {activeHwModal.prerequisite}
+            </div>
+
+            <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end' }}>
+              <button
+                onClick={() => setActiveHwModal(null)}
+                style={{ padding: '10px 18px', borderRadius: '10px', background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)', color: '#c0c4d0', cursor: 'pointer', fontSize: '0.82rem', fontWeight: 600 }}
+              >
+                Annulla
+              </button>
+              <button
+                onClick={() => {
+                  setActivatingHw(activeHwModal.id);
+                  setTimeout(() => {
+                    setActivatedHw(prev => ({ ...prev, [activeHwModal.id]: true }));
+                    setActivatingHw(null);
+                    setActiveHwModal(null);
+                    if (addToast) addToast(`⚡ Modulo ${activeHwModal.title} collegato con successo!`, 'success');
+                  }, 1200);
+                }}
+                disabled={activatingHw === activeHwModal.id}
+                style={{
+                  padding: '10px 22px', borderRadius: '10px',
+                  background: `linear-gradient(135deg, ${activeHwModal.color}, #00d2ff)`, border: 'none',
+                  color: '#fff', cursor: 'pointer', fontSize: '0.82rem', fontWeight: 800,
+                  display: 'flex', alignItems: 'center', gap: '8px'
+                }}
+              >
+                {activatingHw === activeHwModal.id ? <Activity className="spin" size={15} /> : <Zap size={15} />}
+                {activatingHw === activeHwModal.id ? 'Inizializzazione...' : 'Connetti & Attiva Nodo Hardware ⚡'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
     </div>
   );

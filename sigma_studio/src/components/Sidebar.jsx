@@ -237,11 +237,11 @@ export default function Sidebar({
           {!hiddenTabs.has('hardware_lab') && (
             <SidebarItem 
               icon={Zap} 
-              label="Hardware & GPU" 
+              label="Hardware" 
               badge={2}
               badgeColor="rgba(0,242,254,0.15)"
               active={activeTabId != null && activeTabId.startsWith('hardware_lab')}
-              onClick={() => openTab({ name: '⚡ Hardware & GPU Monitor' }, 'hardware_lab')} 
+              onClick={() => openTab({ name: '⚡ Hardware' }, 'hardware_lab')} 
             />
           )}
           {!hiddenTabs.has('mcp_hub') && (

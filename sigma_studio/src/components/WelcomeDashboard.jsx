@@ -66,7 +66,7 @@ const PRIMI_PASSI_CARDS = [
     icon: Cpu,
     color: '#00d2ff',
     actionText: 'Hardware Lab',
-    onClick: (openTab) => openTab({ name: '⚡ Hardware & GPU Monitor' }, 'hardware_lab')
+    onClick: (openTab) => openTab({ name: '⚡ Hardware' }, 'hardware_lab')
   },
   {
     step: '08',
@@ -1252,12 +1252,12 @@ export default function WelcomeDashboard({ modules, openTab }) {
                 <span style={{ fontSize: '0.74rem', fontWeight: 800, color: '#00d2ff', background: 'rgba(0, 210, 255, 0.15)', padding: '3px 10px', borderRadius: '12px' }}>OLLAMA & GPU ONLINE</span>
                 <span style={{ fontSize: '1.2rem' }}>⚡</span>
               </div>
-              <h3 style={{ margin: '0 0 6px 0', fontSize: '1.05rem', color: '#fff', fontWeight: 800 }}>Hardware & Cluster GPU</h3>
+              <h3 style={{ margin: '0 0 6px 0', fontSize: '1.05rem', color: '#fff', fontWeight: 800 }}>Hardware & Cluster Telemetry</h3>
               <p style={{ margin: 0, fontSize: '0.8rem', color: '#8b8fa3', lineHeight: 1.5 }}>
                 Monitoraggio VRAM in tempo reale, allocazione dinamica dei pesi su GPU NVIDIA ed esecuzione parallela dei thread.
               </p>
             </div>
-            <button onClick={() => openTab({ name: '⚡ Hardware & GPU Monitor' }, 'hardware_lab')} style={{ ...quickLinkStyle('#00d2ff'), marginTop: '16px', width: 'fit-content' }}>
+            <button onClick={() => openTab({ name: '⚡ Hardware' }, 'hardware_lab')} style={{ ...quickLinkStyle('#00d2ff'), marginTop: '16px', width: 'fit-content' }}>
               Hardware Monitor ⚡
             </button>
           </div>

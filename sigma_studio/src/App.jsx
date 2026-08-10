@@ -344,7 +344,7 @@ function AppContent() {
                       <Cpu size={16} color="#3fb950" />
                     </div>
                     <div>
-                      <div style={{ fontSize: '0.8rem', fontWeight: 700 }}>Hardware & GPU</div>
+                      <div style={{ fontSize: '0.8rem', fontWeight: 700 }}>Hardware</div>
                       <div style={{ fontSize: '0.62rem', color: '#8b8fa3' }}>VRAM, Telemetria & VLLM</div>
                     </div>
                   </div>

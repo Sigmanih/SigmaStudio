@@ -114,7 +114,7 @@ export default function McpStatusBar({ openTab }) {
 
       {/* ⚡ Hardware Cluster Status Pill */}
       <div
-        onClick={() => openTab && openTab({ name: '⚡ Hardware & GPU Monitor' }, 'hardware_lab')}
+        onClick={() => openTab && openTab({ name: '⚡ Hardware' }, 'hardware_lab')}
         style={{
           display: 'inline-flex',
           alignItems: 'center',
