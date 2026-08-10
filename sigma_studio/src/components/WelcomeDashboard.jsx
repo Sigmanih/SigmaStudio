@@ -1,8 +1,10 @@
 import React, { useEffect, useState, useRef, useCallback } from 'react';
 import { 
   FolderTree, MessageSquare, Edit3, Share2, Palette, 
-  FlaskConical, Cpu, Home as HomeIcon, Scroll, Microscope, ArrowRight 
+  FlaskConical, Cpu, Home as HomeIcon, Scroll, Microscope, ArrowRight,
+  Sun, Moon
 } from 'lucide-react';
+import { useApp } from '../contexts/AppContext';
 
 const PRIMI_PASSI_CARDS = [
   {
@@ -754,8 +756,135 @@ const quickLinkStyle = (color) => ({
   gap: '8px'
 });
 
+/* ----- Animated Cyber-Space Background Canvas Component ----- */
+const TechSpaceCanvas = ({ isLight }) => {
+  const canvasRef = useRef(null);
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    let animationFrameId;
+
+    let width = (canvas.width = canvas.parentElement ? canvas.parentElement.offsetWidth : window.innerWidth);
+    let height = (canvas.height = canvas.parentElement ? canvas.parentElement.offsetHeight : window.innerHeight);
+
+    const handleResize = () => {
+      if (!canvas.parentElement) return;
+      width = canvas.width = canvas.parentElement.offsetWidth;
+      height = canvas.height = canvas.parentElement.offsetHeight;
+    };
+
+    window.addEventListener('resize', handleResize);
+
+    const particleCount = Math.min(Math.floor((width * height) / 10000), 75);
+    const particles = [];
+    const colors = isLight 
+      ? ['#0078c8', '#7c5bf0', '#2563eb', '#0284c7'] 
+      : ['#00d2ff', '#bc8cff', '#3b82f6', '#00f0ff'];
+
+    for (let i = 0; i < particleCount; i++) {
+      particles.push({
+        x: Math.random() * width,
+        y: Math.random() * height,
+        vx: (Math.random() - 0.5) * 0.4,
+        vy: (Math.random() - 0.5) * 0.4,
+        radius: Math.random() * 2 + 1,
+        color: colors[Math.floor(Math.random() * colors.length)],
+        pulse: Math.random() * Math.PI * 2
+      });
+    }
+
+    const draw = () => {
+      ctx.clearRect(0, 0, width, height);
+
+      // Deep space cyber grid
+      ctx.strokeStyle = isLight ? 'rgba(0, 120, 200, 0.04)' : 'rgba(0, 210, 255, 0.04)';
+      ctx.lineWidth = 1;
+      const gridSize = 50;
+      for (let x = 0; x < width; x += gridSize) {
+        ctx.beginPath();
+        ctx.moveTo(x, 0);
+        ctx.lineTo(x, height);
+        ctx.stroke();
+      }
+      for (let y = 0; y < height; y += gridSize) {
+        ctx.beginPath();
+        ctx.moveTo(0, y);
+        ctx.lineTo(width, y);
+        ctx.stroke();
+      }
+
+      // Render particle connection lines
+      for (let i = 0; i < particles.length; i++) {
+        for (let j = i + 1; j < particles.length; j++) {
+          const dx = particles[i].x - particles[j].x;
+          const dy = particles[i].y - particles[j].y;
+          const dist = Math.sqrt(dx * dx + dy * dy);
+
+          if (dist < 150) {
+            const alpha = (1 - dist / 150) * (isLight ? 0.15 : 0.22);
+            ctx.strokeStyle = isLight ? `rgba(0, 120, 200, ${alpha})` : `rgba(0, 210, 255, ${alpha})`;
+            ctx.lineWidth = 0.8;
+            ctx.beginPath();
+            ctx.moveTo(particles[i].x, particles[i].y);
+            ctx.lineTo(particles[j].x, particles[j].y);
+            ctx.stroke();
+          }
+        }
+      }
+
+      // Render & update floating tech nodes
+      particles.forEach(p => {
+        p.x += p.vx;
+        p.y += p.vy;
+        p.pulse += 0.03;
+
+        if (p.x < 0 || p.x > width) p.vx *= -1;
+        if (p.y < 0 || p.y > height) p.vy *= -1;
+
+        const currentRadius = p.radius + Math.sin(p.pulse) * 0.5;
+
+        ctx.fillStyle = p.color;
+        ctx.shadowBlur = isLight ? 4 : 10;
+        ctx.shadowColor = p.color;
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, Math.max(0.5, currentRadius), 0, Math.PI * 2);
+        ctx.fill();
+        ctx.shadowBlur = 0;
+      });
+
+      animationFrameId = requestAnimationFrame(draw);
+    };
+
+    draw();
+
+    return () => {
+      window.removeEventListener('resize', handleResize);
+      cancelAnimationFrame(animationFrameId);
+    };
+  }, [isLight]);
+
+  return (
+    <canvas
+      ref={canvasRef}
+      style={{
+        position: 'fixed',
+        top: 0,
+        left: 0,
+        width: '100%',
+        height: '100%',
+        pointerEvents: 'none',
+        zIndex: 0,
+        opacity: isLight ? 0.5 : 0.75
+      }}
+    />
+  );
+};
+
 /* ----- WelcomeScreen Export ----- */
 export default function WelcomeDashboard({ modules, openTab }) {
+  const { theme, toggleTheme } = useApp();
   const [topics, setTopics] = useState([]);
   const [selectedTopic, setSelectedTopic] = useState(null);
 
@@ -846,77 +975,83 @@ export default function WelcomeDashboard({ modules, openTab }) {
   });
 
   return (
-    <div className="wg-container">
-      {/* Hero Banner with Generated Visual Backdrop */}
+    <div className="wg-container" style={{ position: 'relative' }}>
+      {/* Animated Translucent Cyber Space Background Canvas */}
+      <TechSpaceCanvas isLight={theme === 'light'} />
+
+      {/* Hero Visual Banner matching Domotica Header Style */}
       <div style={{
         position: 'relative',
-        borderRadius: '20px',
+        zIndex: 1,
+        borderRadius: 0,
         overflow: 'hidden',
-        padding: '48px 36px',
-        marginBottom: '32px',
-        border: '1px solid rgba(0, 210, 255, 0.25)',
-        boxShadow: '0 16px 48px rgba(0,0,0,0.5), 0 0 32px rgba(0, 210, 255, 0.1)',
-        backgroundImage: 'linear-gradient(to right, rgba(14, 16, 22, 0.94) 30%, rgba(14, 16, 22, 0.75) 100%), url("/images/hero_banner.jpg")',
-        backgroundSize: 'cover',
-        backgroundPosition: 'center',
+        padding: '20px 32px 18px 32px',
+        minHeight: '100px',
+        borderBottom: '1px solid rgba(0, 210, 255, 0.25)',
+        boxShadow: '0 8px 32px rgba(0,0,0,0.4)',
+        backgroundImage: 'linear-gradient(to right, rgba(14, 16, 22, 0.98) 60%, rgba(14, 16, 22, 0.3) 100%), url("/images/hero_banner.jpg")',
+        backgroundSize: '160px auto',
+        backgroundRepeat: 'no-repeat',
+        backgroundPosition: 'right 32px center',
+        marginBottom: '20px',
+        flexShrink: 0
       }}>
-        <div style={{ position: 'relative', zIndex: 2, maxWidth: '720px' }}>
-          <div style={{
-            display: 'inline-flex',
-            alignItems: 'center',
-            gap: '8px',
-            padding: '6px 16px',
-            borderRadius: '20px',
-            background: 'rgba(0, 210, 255, 0.12)',
-            border: '1px solid rgba(0, 210, 255, 0.3)',
-            color: '#00d2ff',
-            fontSize: '0.72rem',
-            fontWeight: 800,
-            letterSpacing: '1.5px',
-            textTransform: 'uppercase',
-            marginBottom: '16px',
-            backdropFilter: 'blur(8px)'
-          }}>
-            <span>🧬</span> Σ SIGMA STUDIO v8.0 — COGNITIVE KERNEL
+        <div style={{ position: 'relative', zIndex: 2, display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '16px' }}>
+          <div style={{ maxWidth: '680px' }}>
+            <div style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '6px',
+              padding: '3px 12px',
+              borderRadius: '14px',
+              background: 'rgba(0, 210, 255, 0.15)',
+              border: '1px solid rgba(0, 210, 255, 0.35)',
+              color: '#00d2ff',
+              fontSize: '0.68rem',
+              fontWeight: 800,
+              letterSpacing: '1px',
+              textTransform: 'uppercase',
+              marginBottom: '6px'
+            }}>
+              <span>🧬</span> Σ SIGMA STUDIO v8.0 — COGNITIVE KERNEL
+            </div>
+
+            <h1 style={{
+              fontSize: '1.35rem',
+              fontWeight: 800,
+              color: '#fff',
+              margin: '0 0 4px 0',
+              letterSpacing: '-0.3px'
+            }}>
+              Piattaforma di Orchestrazione AI & <span style={{
+                background: 'linear-gradient(135deg, #00d2ff 0%, #7c5bf0 100%)',
+                WebkitBackgroundClip: 'text',
+                WebkitTextFillColor: 'transparent'
+              }}>Ricerca Multimodale</span>
+            </h1>
+
+            <p style={{
+              fontSize: '0.78rem',
+              color: '#a0aec0',
+              lineHeight: 1.4,
+              margin: 0
+            }}>
+              Un ambiente eseguibile in cui team di agenti AI collaborano per creare, verificare con script di test e generare risorse 3D e multimediali.
+            </p>
           </div>
 
-          <h1 style={{
-            fontSize: '2.8rem',
-            fontWeight: 900,
-            color: '#fff',
-            margin: '0 0 16px 0',
-            lineHeight: 1.15,
-            letterSpacing: '-1.5px',
-            textShadow: '0 2px 10px rgba(0,0,0,0.5)'
-          }}>
-            Piattaforma di Orchestrazione AI & <span style={{
-              background: 'linear-gradient(135deg, #00d2ff 0%, #7c5bf0 100%)',
-              WebkitBackgroundClip: 'text',
-              WebkitTextFillColor: 'transparent'
-            }}>Ricerca Multimodale</span>
-          </h1>
-
-          <p style={{
-            fontSize: '0.96rem',
-            color: '#c0c4d0',
-            lineHeight: 1.65,
-            margin: '0 0 28px 0',
-            maxWidth: '640px'
-          }}>
-            Un ambiente eseguibile avanzato in cui team di agenti AI collaborano per creare, verificare con script di test, formulare teoria in KaTeX e generare risorse 3D e multimediali.
-          </p>
-
-          <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
+          {/* README Action Buttons & Theme Toggle on the Right */}
+          <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
             <button
               onClick={() => openTab({ path: 'README_IT.md', filename: 'README_IT.md' }, 'editor')}
               style={{
-                padding: '12px 20px',
+                padding: '10px 16px',
                 borderRadius: '12px',
-                background: 'rgba(0, 210, 255, 0.08)',
-                border: '1px solid rgba(0, 210, 255, 0.3)',
+                background: 'rgba(0, 210, 255, 0.12)',
+                border: '1px solid rgba(0, 210, 255, 0.35)',
                 color: '#00d2ff',
-                fontWeight: 600,
-                fontSize: '0.85rem',
+                fontWeight: 800,
+                fontSize: '0.82rem',
                 cursor: 'pointer',
                 backdropFilter: 'blur(10px)',
                 transition: 'all 0.2s ease',
@@ -931,13 +1066,13 @@ export default function WelcomeDashboard({ modules, openTab }) {
             <button
               onClick={() => openTab({ path: 'README.md', filename: 'README.md' }, 'editor')}
               style={{
-                padding: '12px 20px',
+                padding: '10px 16px',
                 borderRadius: '12px',
-                background: 'rgba(167, 139, 250, 0.08)',
-                border: '1px solid rgba(167, 139, 250, 0.3)',
+                background: 'rgba(167, 139, 250, 0.12)',
+                border: '1px solid rgba(167, 139, 250, 0.35)',
                 color: '#a78bfa',
-                fontWeight: 600,
-                fontSize: '0.85rem',
+                fontWeight: 800,
+                fontSize: '0.82rem',
                 cursor: 'pointer',
                 backdropFilter: 'blur(10px)',
                 transition: 'all 0.2s ease',
@@ -948,11 +1083,35 @@ export default function WelcomeDashboard({ modules, openTab }) {
             >
               🇬🇧 README (EN)
             </button>
+
+            <button
+              onClick={toggleTheme}
+              title={`Switch to ${theme === 'dark' ? 'Light' : 'Dark'} theme`}
+              style={{
+                padding: '10px 16px',
+                borderRadius: '12px',
+                background: theme === 'dark' ? 'rgba(255, 215, 0, 0.12)' : 'rgba(124, 91, 240, 0.15)',
+                border: theme === 'dark' ? '1px solid rgba(255, 215, 0, 0.4)' : '1px solid rgba(124, 91, 240, 0.4)',
+                color: theme === 'dark' ? '#ffd700' : '#7c5bf0',
+                fontWeight: 800,
+                fontSize: '0.82rem',
+                cursor: 'pointer',
+                backdropFilter: 'blur(10px)',
+                transition: 'all 0.2s ease',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px'
+              }}
+            >
+              {theme === 'dark' ? <Sun size={16} /> : <Moon size={16} />}
+              {theme === 'dark' ? 'TEMA CHIARO' : 'TEMA SCURO'}
+            </button>
           </div>
         </div>
       </div>
 
-      {/* Metrics Cards */}
+      {/* Main Workspace Body Wrapper */}
+      <div style={{ padding: '0 24px 24px 24px', display: 'flex', flexDirection: 'column', gap: '24px', flex: 1 }}>
       <div className="wg-metrics">
         <div className="wg-metric">
           <span className="wg-metric-value" style={{ color: '#00d2ff' }}>{countRootTopics}</span>
@@ -1476,6 +1635,7 @@ export default function WelcomeDashboard({ modules, openTab }) {
           onCancel={() => setDeleteTopic(null)}
         />
       )}
+      </div>
     </div>
   );
 }

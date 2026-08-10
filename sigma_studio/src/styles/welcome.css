@@ -49,7 +49,7 @@
 /* ========================================
    WelcomeGraph — Force-Directed Graph Dashboard
    ======================================== */
-.wg-container { padding: 32px 48px 80px; max-width: 1400px; margin: 0 auto; animation: fadeIn 0.6s ease-out; overflow-y: auto; height: 100%; }
+.wg-container { padding: 0; width: 100%; margin: 0; animation: fadeIn 0.6s ease-out; overflow-y: auto; height: 100%; display: flex; flex-direction: column; }
 .wg-hero { text-align: center; padding: 24px 0 32px; position: relative; overflow: hidden; }
 .wg-hero::before { content: ''; position: absolute; top: -120px; left: 50%; transform: translateX(-50%); width: 600px; height: 500px; background: radial-gradient(ellipse, var(--primary-glow) 0%, transparent 70%); opacity: 0.25; pointer-events: none; }
 .wg-hero-title { font-size: 2.4rem; font-weight: 800; letter-spacing: -1.5px; margin: 0 0 12px; color: #fff; }

@@ -71,31 +71,80 @@ export default function SkillsHub() {
   };
 
   return (
-    <div className="skills-hub">
-      <header className="skills-header">
-        <div>
-          <h1><Blocks size={22} /> Skills & Motori</h1>
-          <p>
-            Sigma Studio è il kernel: ogni skill è una capacità componibile, ogni motore
-            è una dipendenza gestita. Qui decidi cosa la tua istanza sa fare.
-          </p>
-        </div>
-        <div className="skills-actions">
-          <button className="skills-btn" onClick={autoconfigure} disabled={busy === 'auto'}>
-            {busy === 'auto' ? <Loader size={14} className="cs-spin" /> : <Wrench size={14} />}
-            Collega ciò che è installato
-          </button>
-          <button className="skills-btn ghost" onClick={load}><RefreshCw size={14} /> Aggiorna</button>
-        </div>
-      </header>
+    <div className="skills-hub" style={{ padding: 0, display: 'flex', flexDirection: 'column', overflowY: 'auto' }}>
+      {/* Hero Visual Banner matching Domotica Header Style */}
+      <div style={{
+        position: 'relative',
+        borderRadius: 0,
+        overflow: 'hidden',
+        padding: '20px 32px 18px 32px',
+        minHeight: '100px',
+        borderBottom: '1px solid rgba(0, 210, 255, 0.25)',
+        boxShadow: '0 8px 32px rgba(0,0,0,0.4)',
+        backgroundImage: 'linear-gradient(to right, rgba(8, 10, 16, 0.98) 45%, rgba(8, 10, 16, 0.5) 100%), url("/images/skills_engines_banner.jpg")',
+        backgroundSize: '360px auto',
+        backgroundRepeat: 'no-repeat',
+        backgroundPosition: 'right center',
+        marginBottom: '20px',
+        flexShrink: 0
+      }}>
+        <div style={{ position: 'relative', zIndex: 2, display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '16px' }}>
+          <div style={{ maxWidth: '680px' }}>
+            <div style={{
+              display: 'inline-flex', alignItems: 'center', gap: '6px',
+              padding: '3px 12px', borderRadius: '14px',
+              background: 'rgba(0, 210, 255, 0.15)', border: '1px solid rgba(0, 210, 255, 0.35)',
+              color: '#00d2ff', fontSize: '0.68rem', fontWeight: 800, letterSpacing: '1px', textTransform: 'uppercase', marginBottom: '6px'
+            }}>
+              <Blocks size={14} /> SIGMA KERNEL SKILLS & ENGINE CATALOG
+            </div>
+            <h1 style={{ margin: '0 0 4px 0', fontSize: '1.35rem', fontWeight: 800, color: '#fff', letterSpacing: '-0.3px' }}>
+              🛠️ Skills & Motori Componibili
+            </h1>
+            <p style={{ margin: 0, fontSize: '0.78rem', color: '#a0aec0', lineHeight: 1.4 }}>
+              Sigma Studio è il kernel dell'Agente: ogni skill è una capacità componibile ed ogni motore è una dipendenza di calcolo locale.
+            </p>
+          </div>
 
-      {message && (
-        <div className={`skills-message ${message.type}`}>
-          {message.type === 'ok' ? <CheckCircle2 size={15} /> : <AlertTriangle size={15} />}
-          <span>{message.text}</span>
-          <button onClick={() => setMessage(null)}>×</button>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
+            <button
+              onClick={autoconfigure}
+              disabled={busy === 'auto'}
+              style={{
+                padding: '10px 16px', borderRadius: '12px',
+                background: 'rgba(0, 210, 255, 0.15)', border: '1px solid rgba(0, 210, 255, 0.35)',
+                color: '#00d2ff', fontSize: '0.82rem', fontWeight: 800, cursor: 'pointer',
+                display: 'flex', alignItems: 'center', gap: '6px'
+              }}
+            >
+              {busy === 'auto' ? <Loader size={15} className="cs-spin" /> : <Wrench size={15} />}
+              Collega ciò che è installato
+            </button>
+
+            <button
+              onClick={load}
+              style={{
+                padding: '10px 16px', borderRadius: '12px',
+                background: 'rgba(255, 255, 255, 0.06)', border: '1px solid rgba(255, 255, 255, 0.12)',
+                color: '#e2e8f0', fontSize: '0.82rem', fontWeight: 800, cursor: 'pointer',
+                display: 'flex', alignItems: 'center', gap: '6px'
+              }}
+            >
+              <RefreshCw size={15} /> Aggiorna
+            </button>
+          </div>
         </div>
-      )}
+      </div>
+
+      {/* Main Workspace Body Wrapper */}
+      <div style={{ padding: '0 24px 24px 24px', display: 'flex', flexDirection: 'column', gap: '20px', flex: 1 }}>
+        {message && (
+          <div className={`skills-message ${message.type}`}>
+            {message.type === 'ok' ? <CheckCircle2 size={15} /> : <AlertTriangle size={15} />}
+            <span>{message.text}</span>
+            <button onClick={() => setMessage(null)}>×</button>
+          </div>
+        )}
 
       <section>
         <h2><Puzzle size={16} /> Skill</h2>
@@ -190,6 +239,7 @@ export default function SkillsHub() {
           ))}
         </div>
       </section>
+      </div>
     </div>
   );
 }

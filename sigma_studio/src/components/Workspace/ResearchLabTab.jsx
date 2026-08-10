@@ -30,40 +30,57 @@ export default function ResearchLabTab({ onTasksUpdated, addToast }) {
   const handleClose = () => {};
 
   return (
-    <div style={{ height: '100%', display: 'flex', flexDirection: 'column', padding: '20px 24px', boxSizing: 'border-box', background: '#090a0f', color: '#e2e4eb' }}>
+    <div style={{ height: '100%', display: 'flex', flexDirection: 'column', padding: 0, boxSizing: 'border-box', background: '#090a0f', color: '#e2e4eb', overflowY: 'auto' }}>
       
-      {/* 1. TOP HEADER — POSIZIONATO IN ALTO SOPRA I BUTTONS */}
-      <div className="app-page-header" style={{ marginBottom: '16px', flexShrink: 0 }}>
-        <div className="app-page-header-title">
-          <div className="app-page-header-icon" style={{ width: '42px', height: '42px' }}>
-            <FlaskConical size={22} color="#00f2fe" />
-          </div>
-          <div>
-            <h1 style={{ fontSize: '20px' }}>Pipelines Lab</h1>
-            <div className="app-page-header-subtitle">
-              <span>Orchestrazione Pipeline Multi-Agente & Editor Visuale DAG</span>
-              <span>•</span>
-              <span style={{ color: '#00f2fe', fontFamily: 'JetBrains Mono, monospace' }}>
-                Swarm Multidisciplinare & Workflow Automation
-              </span>
+      {/* Hero Visual Banner matching Domotica Header Style */}
+      <div style={{
+        position: 'relative',
+        borderRadius: 0,
+        overflow: 'hidden',
+        padding: '20px 32px 18px 32px',
+        minHeight: '100px',
+        borderBottom: '1px solid rgba(0, 210, 255, 0.25)',
+        boxShadow: '0 8px 32px rgba(0,0,0,0.4)',
+        backgroundImage: 'linear-gradient(to right, rgba(8, 10, 16, 0.98) 45%, rgba(8, 10, 16, 0.5) 100%), url("/images/pipelines_lab_banner.jpg")',
+        backgroundSize: '360px auto',
+        backgroundRepeat: 'no-repeat',
+        backgroundPosition: 'right center',
+        marginBottom: 0,
+        flexShrink: 0
+      }}>
+        <div style={{ position: 'relative', zIndex: 2, display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '16px' }}>
+          <div style={{ maxWidth: '680px' }}>
+            <div style={{
+              display: 'inline-flex', alignItems: 'center', gap: '6px',
+              padding: '3px 12px', borderRadius: '14px',
+              background: 'rgba(0, 210, 255, 0.15)', border: '1px solid rgba(0, 210, 255, 0.35)',
+              color: '#00d2ff', fontSize: '0.68rem', fontWeight: 800, letterSpacing: '1px', textTransform: 'uppercase', marginBottom: '6px'
+            }}>
+              <FlaskConical size={14} /> MULTI-AGENT PIPELINES & DAG ORCHESTRATION
             </div>
+            <h1 style={{ margin: '0 0 4px 0', fontSize: '1.35rem', fontWeight: 800, color: '#fff', letterSpacing: '-0.3px' }}>
+              🔬 Pipelines Lab & Workflow Automation
+            </h1>
+            <p style={{ margin: 0, fontSize: '0.78rem', color: '#a0aec0', lineHeight: 1.4 }}>
+              Orchestrazione avanzata di swarm multidisciplinari, routing condizionale e grafi aciclici diretti (DAG) per automazioni complesse.
+            </p>
           </div>
         </div>
       </div>
 
-      {/* 2. MODE SWITCHER BUTTONS BAR — POSIZIONATA SOTTO L'HEADER */}
+      {/* 2. MODE SWITCHER BUTTONS BAR — SENZA MARGINI SOPRA E SOTTO */}
       <div 
         style={{ 
           display: 'grid', 
           gridTemplateColumns: '1fr 1fr', 
-          gap: '12px', 
-          marginBottom: '16px', 
-          padding: '8px',
-          background: 'rgba(17, 19, 27, 0.8)',
-          border: '1px solid rgba(255, 255, 255, 0.08)',
-          borderRadius: '14px',
+          gap: '8px', 
+          margin: 0, 
+          padding: '6px 24px',
+          background: 'rgba(14, 16, 24, 0.95)',
+          borderBottom: '1px solid rgba(255, 255, 255, 0.08)',
+          borderRadius: 0,
           backdropFilter: 'blur(12px)',
-          boxShadow: '0 8px 24px rgba(0,0,0,0.3)',
+          boxShadow: '0 4px 16px rgba(0,0,0,0.25)',
           flexShrink: 0
         }}
       >
@@ -77,33 +94,33 @@ export default function ResearchLabTab({ onTasksUpdated, addToast }) {
               style={{
                 display: 'flex',
                 alignItems: 'center',
-                gap: '12px',
-                padding: '12px 18px',
-                borderRadius: '10px',
+                gap: '10px',
+                padding: '6px 14px',
+                borderRadius: '8px',
                 cursor: 'pointer',
                 fontFamily: 'Inter, system-ui, sans-serif',
-                transition: 'all 0.25s cubic-bezier(0.16, 1, 0.3, 1)',
+                transition: 'all 0.2s ease',
                 background: isActive 
                   ? (m.id === 'default' 
                       ? 'linear-gradient(135deg, rgba(0, 210, 255, 0.16), rgba(0, 114, 255, 0.1))' 
                       : 'linear-gradient(135deg, rgba(188, 140, 255, 0.16), rgba(124, 91, 240, 0.1))')
                   : 'transparent',
                 border: isActive 
-                  ? (m.id === 'default' ? '1px solid rgba(0, 210, 255, 0.4)' : '1px solid rgba(188, 140, 255, 0.4)')
+                  ? (m.id === 'default' ? '1px solid rgba(0, 210, 255, 0.35)' : '1px solid rgba(188, 140, 255, 0.35)')
                   : '1px solid transparent',
                 color: isActive 
                   ? (m.id === 'default' ? '#00d2ff' : '#bc8cff')
                   : '#8b8fa3',
                 boxShadow: isActive 
-                  ? (m.id === 'default' ? '0 4px 20px rgba(0, 210, 255, 0.15)' : '0 4px 20px rgba(188, 140, 255, 0.15)')
+                  ? (m.id === 'default' ? '0 2px 12px rgba(0, 210, 255, 0.12)' : '0 2px 12px rgba(188, 140, 255, 0.12)')
                   : 'none'
               }}
             >
               <div 
                 style={{
-                  width: '36px',
-                  height: '36px',
-                  borderRadius: '10px',
+                  width: '26px',
+                  height: '26px',
+                  borderRadius: '6px',
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
@@ -111,24 +128,26 @@ export default function ResearchLabTab({ onTasksUpdated, addToast }) {
                     ? (m.id === 'default' ? 'rgba(0, 210, 255, 0.2)' : 'rgba(188, 140, 255, 0.2)')
                     : 'rgba(255, 255, 255, 0.04)',
                   color: isActive ? '#fff' : '#8b8fa3',
-                  boxShadow: isActive ? (m.id === 'default' ? '0 0 10px rgba(0,210,255,0.3)' : '0 0 10px rgba(188,140,255,0.3)') : 'none',
                   flexShrink: 0
                 }}
               >
-                <Icon size={18} />
+                <Icon size={14} />
               </div>
-              <div style={{ textAlign: 'left', minWidth: 0 }}>
-                <div style={{ fontSize: '0.85rem', fontWeight: 700, color: isActive ? '#fff' : '#e2e4eb', marginBottom: '2px' }}>
+              <div style={{ textAlign: 'left', minWidth: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <span style={{ fontSize: '0.78rem', fontWeight: 800, color: isActive ? '#fff' : '#e2e4eb' }}>
                   {m.label}
-                </div>
-                <div style={{ fontSize: '0.7rem', color: isActive ? 'rgba(226, 228, 235, 0.8)' : '#5a5e72', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                  {m.desc}
-                </div>
+                </span>
+                <span style={{ fontSize: '0.68rem', color: isActive ? 'rgba(226, 228, 235, 0.7)' : '#5a5e72', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                  • {m.desc}
+                </span>
               </div>
             </button>
           );
         })}
       </div>
+
+      {/* Main Content Workspace Body */}
+      <div style={{ padding: '24px', flex: 1, display: 'flex', flexDirection: 'column', gap: '20px', minHeight: 0 }}>
 
       {/* 3. MAIN CONTENT */}
       <div style={{ flex: 1, minHeight: 0, overflow: 'hidden' }}>
@@ -138,6 +157,7 @@ export default function ResearchLabTab({ onTasksUpdated, addToast }) {
         {mode === 'designer' && (
           <PipelineDesigner onClose={handleClose} onTasksUpdated={onTasksUpdated} addToast={addToast} />
         )}
+      </div>
       </div>
     </div>
   );

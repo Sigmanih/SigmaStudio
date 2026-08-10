@@ -2814,21 +2814,38 @@ export default function MappaArgomenti({ onOpenFile }) {
         }
       `}</style>
       
-      {/* Top Cyberpunk Header */}
-      <div className="app-page-header" style={{ margin: '12px 16px 14px 16px', flexShrink: 0 }}>
-        <div className="app-page-header-title">
-          <div className="app-page-header-icon" style={{ width: '42px', height: '42px' }}>
-            <PieChart size={22} color="#00f2fe" />
-          </div>
-          <div>
-            <h1 style={{ fontSize: '20px' }}>Argomenti & Mappa della Conoscenza</h1>
-            <div className="app-page-header-subtitle">
-              <span>Mappe concettuali, grafi della conoscenza e risorse di studio</span>
-              <span>•</span>
-              <span style={{ color: '#00f2fe', fontFamily: 'JetBrains Mono, monospace' }}>
-                {stats.topics || 0} Argomenti • {stats.modules || 0} Moduli • {stats.docs || 0} Documenti
-              </span>
+      {/* Hero Visual Banner matching Domotica Header Style */}
+      <div style={{
+        position: 'relative',
+        borderRadius: 0,
+        overflow: 'hidden',
+        padding: '20px 32px 18px 32px',
+        minHeight: '100px',
+        borderBottom: '1px solid rgba(0, 210, 255, 0.25)',
+        boxShadow: '0 8px 32px rgba(0,0,0,0.4)',
+        backgroundImage: 'linear-gradient(to right, rgba(8, 10, 16, 0.98) 45%, rgba(8, 10, 16, 0.5) 100%), url("/images/knowledge_graph_banner.jpg")',
+        backgroundSize: '360px auto',
+        backgroundRepeat: 'no-repeat',
+        backgroundPosition: 'right center',
+        marginBottom: '20px',
+        flexShrink: 0
+      }}>
+        <div style={{ position: 'relative', zIndex: 2, display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '16px' }}>
+          <div style={{ maxWidth: '680px' }}>
+            <div style={{
+              display: 'inline-flex', alignItems: 'center', gap: '6px',
+              padding: '3px 12px', borderRadius: '14px',
+              background: 'rgba(0, 210, 255, 0.15)', border: '1px solid rgba(0, 210, 255, 0.35)',
+              color: '#00d2ff', fontSize: '0.68rem', fontWeight: 800, letterSpacing: '1px', textTransform: 'uppercase', marginBottom: '6px'
+            }}>
+              <PieChart size={14} /> KNOWLEDGE GRAPH & TOPIC EXPLORER
             </div>
+            <h1 style={{ margin: '0 0 4px 0', fontSize: '1.35rem', fontWeight: 800, color: '#fff', letterSpacing: '-0.3px' }}>
+              🗺️ Mappa Argomenti & Grafo di Conoscenza
+            </h1>
+            <p style={{ margin: 0, fontSize: '0.78rem', color: '#a0aec0', lineHeight: 1.4 }}>
+              Mappe concettuali, grafi della conoscenza interattivi D3 e risorse di studio strutturate.
+            </p>
           </div>
         </div>
       </div>

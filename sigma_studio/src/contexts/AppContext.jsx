@@ -23,6 +23,19 @@ export function AppProvider({ children }) {
   const [aiChatOpen, setAiChatOpen] = useState(false);
   const [aiConfigOpen, setAiConfigOpen] = useState(false);
 
+  // Theme state ('dark' | 'light')
+  const [theme, setTheme] = useState(() => localStorage.getItem('sigma_app_theme') || 'dark');
+
+  const toggleTheme = () => {
+    setTheme(prev => (prev === 'dark' ? 'light' : 'dark'));
+  };
+
+  useEffect(() => {
+    localStorage.setItem('sigma_app_theme', theme);
+    document.documentElement.setAttribute('data-theme', theme);
+    document.body.className = theme === 'light' ? 'theme-light' : 'theme-dark';
+  }, [theme]);
+
   // UI layout state
   const [leftVisible, setLeftVisible] = useState(true);
   const [rightVisible, setRightVisible] = useState(true);
@@ -134,6 +147,11 @@ export function AppProvider({ children }) {
     aiConfigOpen,
     setAiConfigOpen,
     
+    // Theme state
+    theme,
+    setTheme,
+    toggleTheme,
+
     // UI Layout state
     leftVisible,
     setLeftVisible,

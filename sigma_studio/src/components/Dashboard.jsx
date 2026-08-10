@@ -144,54 +144,75 @@ export function RoadmapView({ tasks, onEdit, onAdd, onDelete, onToggleStatus, on
   };
 
   return (
-    <div className="roadmap-view" style={{ height: '100%', display: 'flex', flexDirection: 'column', padding: '20px 24px', background: '#090a0f', color: '#e2e4eb', boxSizing: 'border-box', overflowY: 'auto' }}>
+    <div className="roadmap-view" style={{ height: '100%', display: 'flex', flexDirection: 'column', padding: 0, background: '#090a0f', color: '#e2e4eb', boxSizing: 'border-box', overflowY: 'auto' }}>
       
-      {/* 1. TOP HEADER CYBERPUNK */}
-      <div className="app-page-header" style={{ marginBottom: '16px', flexShrink: 0 }}>
-        <div className="app-page-header-title">
-          <div className="app-page-header-icon" style={{ width: '42px', height: '42px' }}>
-            <Calendar size={22} color="#00f2fe" />
-          </div>
-          <div>
-            <h1 style={{ fontSize: '20px' }}>Pianificazione & Audit Trail</h1>
-            <div className="app-page-header-subtitle">
-              <span>Calendario Attività, Kanban Task, Registro Modifiche AI e Controllo Esecuzioni</span>
-              <span>•</span>
-              <span style={{ color: '#00f2fe', fontFamily: 'JetBrains Mono, monospace' }}>
-                {stats.total} Task • {stats.done} Completati ({stats.progress}%)
-              </span>
+      {/* Hero Visual Banner matching Domotica Header Style */}
+      <div style={{
+        position: 'relative',
+        borderRadius: 0,
+        overflow: 'hidden',
+        padding: '20px 32px 18px 32px',
+        minHeight: '100px',
+        borderBottom: '1px solid rgba(0, 210, 255, 0.25)',
+        boxShadow: '0 8px 32px rgba(0,0,0,0.4)',
+        backgroundImage: 'linear-gradient(to right, rgba(8, 10, 16, 0.98) 45%, rgba(8, 10, 16, 0.5) 100%), url("/images/roadmap_plan_banner.jpg")',
+        backgroundSize: '360px auto',
+        backgroundRepeat: 'no-repeat',
+        backgroundPosition: 'right center',
+        marginBottom: '20px',
+        flexShrink: 0
+      }}>
+        <div style={{ position: 'relative', zIndex: 2, display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '16px' }}>
+          <div style={{ maxWidth: '680px' }}>
+            <div style={{
+              display: 'inline-flex', alignItems: 'center', gap: '6px',
+              padding: '3px 12px', borderRadius: '14px',
+              background: 'rgba(0, 210, 255, 0.15)', border: '1px solid rgba(0, 210, 255, 0.35)',
+              color: '#00d2ff', fontSize: '0.68rem', fontWeight: 800, letterSpacing: '1px', textTransform: 'uppercase', marginBottom: '6px'
+            }}>
+              <Calendar size={14} /> SYSTEM ROADMAP & DEVELOPMENT MILESTONES
             </div>
+            <h1 style={{ margin: '0 0 4px 0', fontSize: '1.35rem', fontWeight: 800, color: '#fff', letterSpacing: '-0.3px' }}>
+              🗓️ Pianificazione & Roadmap di Sviluppo
+            </h1>
+            <p style={{ margin: 0, fontSize: '0.78rem', color: '#a0aec0', lineHeight: 1.4 }}>
+              Calendario Attività, Kanban Task, Registro Modifiche AI e Controllo Esecuzioni.
+            </p>
           </div>
-        </div>
-        <div className="app-page-header-actions">
-          {tasks.length > 1 && (
+
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+            {tasks.length > 1 && (
+              <button 
+                onClick={() => {
+                  if (confirm(`Eliminare TUTTI i ${tasks.length} task? Opera irreversibile.`)) {
+                    onClearAll && onClearAll();
+                  }
+                }} 
+                style={{
+                  display: 'flex', alignItems: 'center', gap: '6px', padding: '10px 16px', borderRadius: '12px',
+                  fontSize: '0.82rem', fontWeight: 700, background: 'rgba(255,85,85,0.15)', border: '1px solid rgba(255,85,85,0.35)',
+                  color: '#ff5555', cursor: 'pointer'
+                }}
+              >
+                <Trash2 size={15} /> Cancella Tutti
+              </button>
+            )}
             <button 
-              onClick={() => {
-                if (confirm(`Eliminare TUTTI i ${tasks.length} task? Opera irreversibile.`)) {
-                  onClearAll && onClearAll();
-                }
-              }} 
+              onClick={onAdd} 
               style={{
-                display: 'flex', alignItems: 'center', gap: '6px', padding: '7px 14px', borderRadius: '8px',
-                fontSize: '0.75rem', fontWeight: 600, background: 'rgba(255,85,85,0.1)', border: '1px solid rgba(255,85,85,0.3)',
-                color: '#ff5555', cursor: 'pointer'
+                display: 'flex', alignItems: 'center', gap: '6px', padding: '10px 18px', borderRadius: '12px',
+                fontSize: '0.82rem', fontWeight: 800, background: 'linear-gradient(135deg, #00d2ff, #0072ff)',
+                border: 'none', color: '#fff', cursor: 'pointer', boxShadow: '0 4px 14px rgba(0,210,255,0.25)'
               }}
             >
-              <Trash2 size={14} /> Cancella Tutti
+              <Plus size={16} /> Nuovo Task
             </button>
-          )}
-          <button 
-            onClick={onAdd} 
-            style={{
-              display: 'flex', alignItems: 'center', gap: '6px', padding: '7px 16px', borderRadius: '8px',
-              fontSize: '0.78rem', fontWeight: 700, background: 'linear-gradient(135deg, #00d2ff, #0072ff)',
-              border: 'none', color: '#fff', cursor: 'pointer', boxShadow: '0 4px 14px rgba(0,210,255,0.25)'
-            }}
-          >
-            <Plus size={16} /> Nuovo Task
-          </button>
+          </div>
         </div>
       </div>
+
+      {/* Main Workspace Body Wrapper */}
+      <div style={{ padding: '0 24px 24px 24px', display: 'flex', flexDirection: 'column', gap: '20px', flex: 1 }}>
 
       {/* 2. STATS WIDGETS BAR */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '12px', marginBottom: '16px', flexShrink: 0 }}>
@@ -546,6 +567,7 @@ export function RoadmapView({ tasks, onEdit, onAdd, onDelete, onToggleStatus, on
         </div>
       )}
 
+      </div>
     </div>
   );
 }

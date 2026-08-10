@@ -1,8 +1,10 @@
 .creative-studio {
   display: flex;
   flex-direction: column;
-  height: 100vh;
-  width: 100vw;
+  height: 100%;
+  width: 100%;
+  margin: 0;
+  padding: 0;
   background-color: var(--bg);
   background-image: radial-gradient(circle at 50% 0%, rgba(0, 210, 255, 0.1), transparent 50%),
                     radial-gradient(circle at 100% 100%, rgba(188, 140, 255, 0.05), transparent 50%);
@@ -16,6 +18,8 @@
   justify-content: space-between;
   align-items: center;
   padding: 12px 24px;
+  margin: 0;
+  border-radius: 0;
   background: var(--surface-bright);
   backdrop-filter: var(--glass);
   border-bottom: 1px solid rgba(0, 210, 255, 0.15);

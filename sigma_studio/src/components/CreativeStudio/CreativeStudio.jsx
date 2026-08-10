@@ -246,7 +246,42 @@ export default function CreativeStudio() {
 
   return (
     <div className="creative-studio cs-fade-in">
-      <div className="cs-toolbar">
+      {/* Hero Visual Banner matching Domotica Header Style */}
+      <div style={{
+        position: 'relative',
+        borderRadius: 0,
+        overflow: 'hidden',
+        padding: '20px 32px 18px 32px',
+        minHeight: '100px',
+        borderBottom: '1px solid rgba(0, 210, 255, 0.25)',
+        boxShadow: '0 8px 32px rgba(0,0,0,0.4)',
+        backgroundImage: 'linear-gradient(to right, rgba(8, 10, 16, 0.98) 45%, rgba(8, 10, 16, 0.5) 100%), url("/images/creative_lab_banner.jpg")',
+        backgroundSize: '360px auto',
+        backgroundRepeat: 'no-repeat',
+        backgroundPosition: 'right center',
+        flexShrink: 0
+      }}>
+        <div style={{ position: 'relative', zIndex: 2, display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '16px' }}>
+          <div style={{ maxWidth: '680px' }}>
+            <div style={{
+              display: 'inline-flex', alignItems: 'center', gap: '6px',
+              padding: '3px 12px', borderRadius: '14px',
+              background: 'rgba(0, 210, 255, 0.15)', border: '1px solid rgba(0, 210, 255, 0.35)',
+              color: '#00d2ff', fontSize: '0.68rem', fontWeight: 800, letterSpacing: '1px', textTransform: 'uppercase', marginBottom: '6px'
+            }}>
+              <Wand2 size={14} /> CREATIVE LAB & MULTIMEDIA GENERATION BUS
+            </div>
+            <h1 style={{ margin: '0 0 4px 0', fontSize: '1.35rem', fontWeight: 800, color: '#fff', letterSpacing: '-0.3px' }}>
+              🎨 Creative Lab — Generazione & Design Multimediale
+            </h1>
+            <p style={{ margin: 0, fontSize: '0.78rem', color: '#a0aec0', lineHeight: 1.4 }}>
+              Generazione di immagini, modelli 3D, mesh Blender, texture PBR e video con ComfyUI, Automatic1111 e SDXL.
+            </p>
+          </div>
+        </div>
+      </div>
+
+      <div className="cs-toolbar" style={{ margin: 0, borderRadius: 0 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
           <button className="collapse-btn" onClick={() => setLeftVisible(!leftVisible)}><ChevronLeft size={16} /></button>
           <div className="cs-view-modes">

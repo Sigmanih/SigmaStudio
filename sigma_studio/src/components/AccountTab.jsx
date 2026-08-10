@@ -247,46 +247,63 @@ export default function AccountTab() {
         overflow: 'hidden'
       }}
     >
-      {/* Top Header — Stile Hardware & GPU Lab */}
-      <div className="app-page-header" style={{ marginBottom: '0px', paddingBottom: '12px' }}>
-        <div className="app-page-header-title">
-          <div className="app-page-header-icon" style={{ width: '40px', height: '40px' }}>
-            <User size={20} color="#00f2fe" />
-          </div>
-          <div>
-            <h1 style={{ fontSize: '20px' }}>Account & Voce Assistente</h1>
-            <div className="app-page-header-subtitle" style={{ fontSize: '11px' }}>
-              <span>Profilo utente, avatar chat e personalizzazione voce TTS</span>
-              <span>•</span>
-              <span style={{ color: '#00f2fe', fontFamily: 'JetBrains Mono, monospace' }}>
-                Speed {voiceConfig.rate}x • Pitch {voiceConfig.pitch}
-              </span>
+      {/* Hero Visual Banner matching Domotica Header Style */}
+      <div style={{
+        position: 'relative',
+        borderRadius: 0,
+        overflow: 'hidden',
+        padding: '20px 32px 18px 32px',
+        minHeight: '100px',
+        borderBottom: '1px solid rgba(0, 210, 255, 0.25)',
+        boxShadow: '0 8px 32px rgba(0,0,0,0.4)',
+        backgroundImage: 'linear-gradient(to right, rgba(8, 10, 16, 0.98) 45%, rgba(8, 10, 16, 0.5) 100%), url("/images/account_voice_banner.jpg")',
+        backgroundSize: '360px auto',
+        backgroundRepeat: 'no-repeat',
+        backgroundPosition: 'right center',
+        marginBottom: '20px',
+        flexShrink: 0
+      }}>
+        <div style={{ position: 'relative', zIndex: 2, display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '16px' }}>
+          <div style={{ maxWidth: '680px' }}>
+            <div style={{
+              display: 'inline-flex', alignItems: 'center', gap: '6px',
+              padding: '3px 12px', borderRadius: '14px',
+              background: 'rgba(0, 210, 255, 0.15)', border: '1px solid rgba(0, 210, 255, 0.35)',
+              color: '#00d2ff', fontSize: '0.68rem', fontWeight: 800, letterSpacing: '1px', textTransform: 'uppercase', marginBottom: '6px'
+            }}>
+              <User size={14} /> ACCOUNT & SYNTHESIS CONTROL HUB
             </div>
+            <h1 style={{ margin: '0 0 4px 0', fontSize: '1.35rem', fontWeight: 800, color: '#fff', letterSpacing: '-0.3px' }}>
+              👤 Account & Voce Neurale AI
+            </h1>
+            <p style={{ margin: 0, fontSize: '0.78rem', color: '#a0aec0', lineHeight: 1.4 }}>
+              Personalizza il tuo avatar, direttive di sistema ed i parametri della voce neurale per gli Agenti dello Swarm.
+            </p>
           </div>
-        </div>
 
-        <div className="app-page-header-actions">
-          <button
-            onClick={handleSave}
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: '6px',
-              padding: '7px 16px',
-              borderRadius: '8px',
-              fontSize: '0.78rem',
-              fontWeight: 700,
-              background: savedSuccess ? 'rgba(63, 185, 80, 0.2)' : 'linear-gradient(135deg, #00d2ff, #0072ff)',
-              border: savedSuccess ? '1px solid rgba(63, 185, 80, 0.5)' : 'none',
-              color: savedSuccess ? '#3fb950' : '#ffffff',
-              cursor: 'pointer',
-              boxShadow: '0 4px 14px rgba(0, 210, 255, 0.25)',
-              transition: 'all 0.2s ease'
-            }}
-          >
-            {savedSuccess ? <Check size={15} /> : <Sparkles size={15} />}
-            <span>{savedSuccess ? 'Salvato!' : 'Salva Modifiche'}</span>
-          </button>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
+            <button
+              onClick={handleSave}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px',
+                padding: '10px 20px',
+                borderRadius: '12px',
+                fontSize: '0.82rem',
+                fontWeight: 800,
+                background: savedSuccess ? 'rgba(63, 185, 80, 0.2)' : 'linear-gradient(135deg, #00d2ff, #0072ff)',
+                border: savedSuccess ? '1px solid rgba(63, 185, 80, 0.5)' : 'none',
+                color: savedSuccess ? '#3fb950' : '#fff',
+                cursor: 'pointer',
+                boxShadow: '0 4px 16px rgba(0, 210, 255, 0.25)',
+                transition: 'all 0.2s ease'
+              }}
+            >
+              {savedSuccess ? <Check size={16} /> : <Sparkles size={16} />}
+              <span>{savedSuccess ? 'Impostazioni Salvate!' : 'Salva Profilo & Voce'}</span>
+            </button>
+          </div>
         </div>
       </div>
 

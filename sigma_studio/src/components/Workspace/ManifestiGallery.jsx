@@ -2,15 +2,236 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { 
   ArrowRight, BookOpen, FileText, FileSignature, Layers, FileDown, 
   Sparkles, ScrollText, Eye, Plus, Cpu, Play, CheckCircle, AlertCircle, Loader,
-  Info, Code, GitBranch, Wand2, Upload, Brain, Target, Award, Zap, RefreshCw, User
+  Info, Code, GitBranch, Wand2, Upload, Brain, Target, Award, Zap, RefreshCw, User,
+  ChevronLeft, ChevronRight, Check
 } from 'lucide-react';
+import { useApp } from '../../contexts/AppContext';
 
-// ==============================================================================
-// ManifestiGallery — Manifesto Editor & AI Model Lab
-// Gestisce i manifesti Modelfile per agenti AI ed i modelli addestrati nel Training Lab
-// ==============================================================================
+// Helper to calculate manifesto particularities and domain metadata
+const getManifestoDetails = (mf) => {
+  const name = ((mf && (mf.filename || mf.name)) || '').toLowerCase();
+  if (name.includes('architect')) {
+    return {
+      role: 'System Architect & Chief Agent',
+      badge: '🏗️ SYSTEM ARCHITECT',
+      badgeColor: '#bc8cff',
+      badgeBg: 'rgba(188, 140, 255, 0.15)',
+      badgeBorder: 'rgba(188, 140, 255, 0.35)',
+      icon: Cpu,
+      desc: 'Orchestratore principale dello Swarm: scompone compiti complessi, assegna ruoli agli agenti specializzati e supervisiona il consenso.',
+      features: [
+        'System Prompt di Orchestrazione Persistente',
+        'Routing Condizionale e Gestione Sub-Task DAG',
+        'Temperatura Bassa (0.2) per Massima Rigorosità',
+        'Integrazione Completa con Bus MCP Hub'
+      ],
+      temp: '0.2 (Stabile)',
+      context: '16384 Token',
+      output: 'Architettura & Task Breakdown'
+    };
+  } else if (name.includes('matematico') || name.includes('math')) {
+    return {
+      role: 'Mathematical Reasoning & Formal Proofs',
+      badge: '∑ MATH SPECIALIST',
+      badgeColor: '#00d2ff',
+      badgeBg: 'rgba(0, 210, 255, 0.15)',
+      badgeBorder: 'rgba(0, 210, 255, 0.35)',
+      icon: Brain,
+      desc: 'Specializzato in dimostrazioni formali, sintassi KaTeX, equazioni differenziali e modellazione algebrica avanzata.',
+      features: [
+        'Formattazione Rigorosa LaTeX / KaTeX',
+        'Derivazione Passo-Passo dei Teoremi',
+        'Validazione di Script SymPy e NumPy',
+        'Temperatura 0.1 per Precisione Numerica'
+      ],
+      temp: '0.1 (Matematico)',
+      context: '8192 Token',
+      output: 'Dimostrazioni & Formule'
+    };
+  } else if (name.includes('programmatore') || name.includes('code') || name.includes('developer')) {
+    return {
+      role: 'Full-Stack Developer & Python Engineer',
+      badge: '⚙️ CODE DEVELOPER',
+      badgeColor: '#3fb950',
+      badgeBg: 'rgba(63, 185, 80, 0.15)',
+      badgeBorder: 'rgba(63, 185, 80, 0.35)',
+      icon: Code,
+      desc: 'Sviluppa script Python, componenti React e microservizi in ambiente sandbox con verifica automatica dei test.',
+      features: [
+        'Generazione di Codice Pulito, Documentato e Tipizzato',
+        'Esecuzione di Script di Verifica pytest & Node.js',
+        'Refactoring e Diagnosi Errori da Stack Trace',
+        'Integrazione MCP Git & Local Storage'
+      ],
+      temp: '0.15 (Codice Piatto)',
+      context: '16384 Token',
+      output: 'Script Eseguibili & Unit Test'
+    };
+  } else if (name.includes('ricercatore') || name.includes('research')) {
+    return {
+      role: 'Multidisciplinary Research & Synthesis',
+      badge: '🔬 RESEARCH LEAD',
+      badgeColor: '#d29922',
+      badgeBg: 'rgba(210, 153, 34, 0.15)',
+      badgeBorder: 'rgba(210, 153, 34, 0.35)',
+      icon: Wand2,
+      desc: 'Esplora letteratura scientifica, sintetizza fonti e costruisce mappe concettuali gerarchiche per il Knowledge Graph.',
+      features: [
+        'Analisi Critica di Paper Scientifici e PDF',
+        'Generazione Mappe Concettuali D3 per Mappa Argomenti',
+        'Estrazione Concetti Chiave & Metadati Formattati',
+        'Temperatura 0.35 per Sintesi Creativa Rigorosa'
+      ],
+      temp: '0.35 (Bilanciato)',
+      context: '32768 Token',
+      output: 'Report & Mappe Concettuali'
+    };
+  }
+  return {
+    role: 'Agentic Intelligence Directive',
+    badge: '📜 AI MANIFESTO',
+    badgeColor: '#a78bfa',
+    badgeBg: 'rgba(167, 139, 250, 0.15)',
+    badgeBorder: 'rgba(167, 139, 250, 0.35)',
+    icon: ScrollText,
+    desc: 'Manifesto agentico personalizzato per l\'orchestrazione del modello e l\'istruzione dei prompt di sistema.',
+    features: [
+      'Identità e Ruolo Personalizzabile',
+      'Configurazione Parametri Ollama Modelfile',
+      'Assegnazione Avatar Grafico Personalizzato',
+      'Compatibilità Multi-Modello LLM/SLM'
+    ],
+    temp: '0.25 (Standard)',
+    context: '8192 Token',
+    output: 'Testo Strutturato'
+  };
+};
+
+/* ----- Animated Cyber-Space Background Canvas Component ----- */
+const TechSpaceCanvas = ({ isLight }) => {
+  const canvasRef = useRef(null);
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    let animationFrameId;
+
+    let width = (canvas.width = canvas.parentElement ? canvas.parentElement.offsetWidth : window.innerWidth);
+    let height = (canvas.height = canvas.parentElement ? canvas.parentElement.offsetHeight : window.innerHeight);
+
+    const handleResize = () => {
+      if (!canvas.parentElement) return;
+      width = canvas.width = canvas.parentElement.offsetWidth;
+      height = canvas.height = canvas.parentElement.offsetHeight;
+    };
+
+    window.addEventListener('resize', handleResize);
+
+    const particleCount = Math.min(Math.floor((width * height) / 10000), 75);
+    const particles = [];
+    const colors = isLight 
+      ? ['#0078c8', '#7c5bf0', '#2563eb', '#0284c7'] 
+      : ['#00d2ff', '#bc8cff', '#3b82f6', '#00f0ff'];
+
+    for (let i = 0; i < particleCount; i++) {
+      particles.push({
+        x: Math.random() * width,
+        y: Math.random() * height,
+        vx: (Math.random() - 0.5) * 0.4,
+        vy: (Math.random() - 0.5) * 0.4,
+        radius: Math.random() * 2 + 1,
+        color: colors[Math.floor(Math.random() * colors.length)],
+        pulse: Math.random() * Math.PI * 2
+      });
+    }
+
+    const draw = () => {
+      ctx.clearRect(0, 0, width, height);
+
+      ctx.strokeStyle = isLight ? 'rgba(0, 120, 200, 0.04)' : 'rgba(0, 210, 255, 0.04)';
+      ctx.lineWidth = 1;
+      const gridSize = 50;
+      for (let x = 0; x < width; x += gridSize) {
+        ctx.beginPath();
+        ctx.moveTo(x, 0);
+        ctx.lineTo(x, height);
+        ctx.stroke();
+      }
+      for (let y = 0; y < height; y += gridSize) {
+        ctx.beginPath();
+        ctx.moveTo(0, y);
+        ctx.lineTo(width, y);
+        ctx.stroke();
+      }
+
+      for (let i = 0; i < particles.length; i++) {
+        for (let j = i + 1; j < particles.length; j++) {
+          const dx = particles[i].x - particles[j].x;
+          const dy = particles[i].y - particles[j].y;
+          const dist = Math.sqrt(dx * dx + dy * dy);
+
+          if (dist < 150) {
+            const alpha = (1 - dist / 150) * (isLight ? 0.15 : 0.22);
+            ctx.strokeStyle = isLight ? `rgba(0, 120, 200, ${alpha})` : `rgba(0, 210, 255, ${alpha})`;
+            ctx.lineWidth = 0.8;
+            ctx.beginPath();
+            ctx.moveTo(particles[i].x, particles[i].y);
+            ctx.lineTo(particles[j].x, particles[j].y);
+            ctx.stroke();
+          }
+        }
+      }
+
+      particles.forEach(p => {
+        p.x += p.vx;
+        p.y += p.vy;
+        p.pulse += 0.03;
+
+        if (p.x < 0 || p.x > width) p.vx *= -1;
+        if (p.y < 0 || p.y > height) p.vy *= -1;
+
+        const currentRadius = p.radius + Math.sin(p.pulse) * 0.5;
+
+        ctx.fillStyle = p.color;
+        ctx.shadowBlur = isLight ? 4 : 10;
+        ctx.shadowColor = p.color;
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, Math.max(0.5, currentRadius), 0, Math.PI * 2);
+        ctx.fill();
+        ctx.shadowBlur = 0;
+      });
+
+      animationFrameId = requestAnimationFrame(draw);
+    };
+
+    draw();
+
+    return () => {
+      window.removeEventListener('resize', handleResize);
+      cancelAnimationFrame(animationFrameId);
+    };
+  }, [isLight]);
+
+  return (
+    <canvas
+      ref={canvasRef}
+      style={{
+        position: 'fixed',
+        top: 0,
+        left: 0,
+        width: '100%',
+        height: '100%',
+        pointerEvents: 'none',
+        zIndex: 0,
+        opacity: isLight ? 0.5 : 0.75
+      }}
+    />
+  );
+};
 
 export default function ManifestiGallery({ modules, manifesti, openTab, setFileModalContext, setIsFileModalOpen, fetchManifesti }) {
+  const { theme } = useApp();
   const [activeSubTab, setActiveSubTab] = useState('standard'); // 'standard' | 'trained'
   const [manifestoText, setManifestoText] = useState('');
   const [manifestoLoading, setManifestoLoading] = useState(true);
@@ -179,9 +400,11 @@ export default function ManifestiGallery({ modules, manifesti, openTab, setFileM
   };
 
   return (
-    <div className="mg-tab">
+    <div className="mg-tab" style={{ position: 'relative' }}>
+      {/* Animated Cyber Space Background Canvas */}
+      <TechSpaceCanvas isLight={theme === 'light'} />
       <style>{`
-        .mg-tab { padding: 20px; height: 100%; overflow-y: auto; }
+        .mg-tab { padding: 0; height: 100%; overflow-y: auto; display: flex; flex-direction: column; }
         .mg-section { margin-bottom: 25px; }
         .mg-section-title { font-size: 0.85rem; font-weight: 600; color: #e2e4eb; display: flex; align-items: center; gap: 8px; margin-bottom: 12px; }
         .mg-section-desc { font-size: 0.62rem; color: #5a5e72; margin-bottom: 10px; }
@@ -234,29 +457,50 @@ export default function ManifestiGallery({ modules, manifesti, openTab, setFileM
         .upload-icon-btn:hover { background: rgba(124,91,240,0.2); color: #ffffff; }
       `}</style>
 
-      {/* Top Header — Stile Hardware & GPU Lab */}
-      <div className="app-page-header" style={{ marginBottom: '16px' }}>
-        <div className="app-page-header-title">
-          <div className="app-page-header-icon">
-            <ScrollText size={22} color="#00f2fe" />
-          </div>
-          <div>
-            <h1>Galleria Manifesti & Agenti AI</h1>
-            <div className="app-page-header-subtitle">
-              <span>Identità agentiche, Modelfile Ollama e Agenti Addestrati</span>
-              <span>•</span>
-              <span style={{ color: '#00f2fe', fontFamily: 'JetBrains Mono, monospace' }}>
-                {manifesti.length} Manifesti Standard • {trainedModels.length} Agenti Addestrati
-              </span>
+      {/* Hero Visual Banner matching Domotica Header Style */}
+      <div style={{
+        position: 'relative',
+        borderRadius: 0,
+        overflow: 'hidden',
+        padding: '20px 32px 18px 32px',
+        minHeight: '100px',
+        borderBottom: '1px solid rgba(0, 210, 255, 0.25)',
+        boxShadow: '0 8px 32px rgba(0,0,0,0.4)',
+        backgroundImage: 'linear-gradient(to right, rgba(8, 10, 16, 0.98) 45%, rgba(8, 10, 16, 0.5) 100%), url("/images/manifesti_gallery_banner.jpg")',
+        backgroundSize: '360px auto',
+        backgroundRepeat: 'no-repeat',
+        backgroundPosition: 'right center',
+        marginBottom: '20px',
+        flexShrink: 0
+      }}>
+        <div style={{ position: 'relative', zIndex: 2, display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '16px' }}>
+          <div style={{ maxWidth: '680px' }}>
+            <div style={{
+              display: 'inline-flex', alignItems: 'center', gap: '6px',
+              padding: '3px 12px', borderRadius: '14px',
+              background: 'rgba(0, 210, 255, 0.15)', border: '1px solid rgba(0, 210, 255, 0.35)',
+              color: '#00d2ff', fontSize: '0.68rem', fontWeight: 800, letterSpacing: '1px', textTransform: 'uppercase', marginBottom: '6px'
+            }}>
+              <ScrollText size={14} /> AI MANIFESTOS & DIRECTIVES CATALOG
             </div>
+            <h1 style={{ margin: '0 0 4px 0', fontSize: '1.35rem', fontWeight: 800, color: '#fff', letterSpacing: '-0.3px' }}>
+              📜 Manifesti & Direttive di Sistema
+            </h1>
+            <p style={{ margin: 0, fontSize: '0.78rem', color: '#a0aec0', lineHeight: 1.4 }}>
+              Identità agentiche, Modelfile Ollama e Agenti Addestrati con la suite Training Lab.
+            </p>
           </div>
-        </div>
-        <div className="app-page-header-actions">
-          <button className="mg-btn" onClick={handleNewManifesto} style={{ background: 'rgba(0,210,255,0.12)', border: '1px solid rgba(0,210,255,0.3)', color: '#00d2ff', fontWeight: 600 }}>
-            <Plus size={14} /> Nuovo Manifesto
-          </button>
+
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+            <button className="mg-btn" onClick={handleNewManifesto} style={{ padding: '10px 18px', borderRadius: '12px', background: 'rgba(0,210,255,0.15)', border: '1px solid rgba(0,210,255,0.35)', color: '#00d2ff', fontWeight: 800, fontSize: '0.82rem' }}>
+              <Plus size={15} /> Nuovo Manifesto
+            </button>
+          </div>
         </div>
       </div>
+
+      {/* Main Workspace Body Wrapper */}
+      <div style={{ padding: '0 24px 24px 24px', display: 'flex', flexDirection: 'column', gap: '20px', flex: 1 }}>
 
       {/* Sub-Tab Switcher */}
       <div style={{ display: 'flex', gap: '8px', marginBottom: '20px', borderBottom: '1px solid rgba(255,255,255,0.08)', paddingBottom: '10px' }}>
@@ -666,6 +910,7 @@ export default function ManifestiGallery({ modules, manifesti, openTab, setFileM
           )}
         </div>
       )}
+      </div>
     </div>
   );
 }

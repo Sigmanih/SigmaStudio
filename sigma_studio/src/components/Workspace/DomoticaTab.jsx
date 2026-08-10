@@ -495,30 +495,32 @@ export default function DomoticaTab() {
       {/* Hero Visual Banner with Generated Graphic Backdrop */}
       <div style={{
         position: 'relative',
-        borderRadius: '0 0 24px 24px',
+        borderRadius: 0,
         overflow: 'hidden',
-        padding: '36px 36px 28px 36px',
+        padding: '20px 32px 18px 32px',
+        minHeight: '100px',
         borderBottom: '1px solid rgba(0, 210, 255, 0.25)',
-        boxShadow: '0 16px 48px rgba(0,0,0,0.5)',
-        backgroundImage: 'linear-gradient(to right, rgba(8, 10, 16, 0.95) 35%, rgba(8, 10, 16, 0.75) 100%), url("/images/domotica_smart_hub.jpg")',
-        backgroundSize: 'cover',
-        backgroundPosition: 'center',
+        boxShadow: '0 8px 32px rgba(0,0,0,0.4)',
+        backgroundImage: 'linear-gradient(to right, rgba(8, 10, 16, 0.98) 45%, rgba(8, 10, 16, 0.5) 100%), url("/images/domotica_smart_hub.jpg")',
+        backgroundSize: '360px auto',
+        backgroundRepeat: 'no-repeat',
+        backgroundPosition: 'right center',
         flexShrink: 0
       }}>
-        <div style={{ position: 'relative', zIndex: 2, display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '20px' }}>
+        <div style={{ position: 'relative', zIndex: 2, display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '16px' }}>
           <div style={{ maxWidth: '680px' }}>
             <div style={{
-              display: 'inline-flex', alignItems: 'center', gap: '8px',
-              padding: '4px 14px', borderRadius: '16px',
+              display: 'inline-flex', alignItems: 'center', gap: '6px',
+              padding: '3px 12px', borderRadius: '14px',
               background: 'rgba(0, 210, 255, 0.15)', border: '1px solid rgba(0, 210, 255, 0.35)',
-              color: '#00d2ff', fontSize: '0.72rem', fontWeight: 800, letterSpacing: '1px', textTransform: 'uppercase', marginBottom: '12px'
+              color: '#00d2ff', fontSize: '0.68rem', fontWeight: 800, letterSpacing: '1px', textTransform: 'uppercase', marginBottom: '6px'
             }}>
               <Zap size={14} /> MCP Home Assistant Bus & Smart Domotica Engine
             </div>
-            <h1 style={{ margin: '0 0 8px 0', fontSize: '1.8rem', fontWeight: 900, color: '#fff', letterSpacing: '-0.5px' }}>
+            <h1 style={{ margin: '0 0 4px 0', fontSize: '1.35rem', fontWeight: 800, color: '#fff', letterSpacing: '-0.3px' }}>
               Controllo Domotico IoT & Gestione Dispositivi Reali
             </h1>
-            <p style={{ margin: 0, fontSize: '0.86rem', color: '#a0aec0', lineHeight: 1.5 }}>
+            <p style={{ margin: 0, fontSize: '0.78rem', color: '#a0aec0', lineHeight: 1.4 }}>
               Scansiona, cerca e controlla in tempo reale luci, climatizzazione, sensori e serrature della tua abitazione o laboratorio.
             </p>
           </div>

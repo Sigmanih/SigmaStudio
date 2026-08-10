@@ -503,3 +503,44 @@
   border-color: rgba(0, 210, 255, 0.45) !important;
   box-shadow: 0 14px 40px rgba(0, 210, 255, 0.15), 0 8px 32px rgba(0, 0, 0, 0.5) !important;
 }
+
+/* Light Theme Global Override */
+[data-theme="light"], .theme-light {
+  --bg: #f2f5fa;
+  --surface: #ffffff;
+  --surface-bright: #e9eef7;
+  --border: rgba(0, 120, 200, 0.18);
+  --text: #1e293b;
+  --text-dim: #64748b;
+  --text-dark: #94a3b8;
+}
+
+.theme-light .wg-container,
+.theme-light .creative-studio,
+.theme-light .chat-workspace-root {
+  background: #f2f5fa !important;
+  color: #1e293b !important;
+}
+
+.theme-light .wg-split-graph,
+.theme-light .wg-detail,
+.theme-light .wg-metric,
+.theme-light .ws-card {
+  background: rgba(255, 255, 255, 0.9) !important;
+  border-color: rgba(0, 150, 255, 0.2) !important;
+  color: #1e293b !important;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.06) !important;
+}
+
+.theme-light .wg-split-head h3,
+.theme-light .wg-detail-title,
+.theme-light .wg-metric-value,
+.theme-light .wg-detail-mod-name {
+  color: #0f172a !important;
+}
+
+.theme-light .wg-detail-desc,
+.theme-light .wg-metric-label,
+.theme-light .wg-legend-item {
+  color: #475569 !important;
+}

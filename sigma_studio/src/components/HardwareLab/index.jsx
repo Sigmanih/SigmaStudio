@@ -322,15 +322,14 @@ export default function HardwareLab({ addToast }) {
       console.error("VRAM clear error via Hardware MCP:", e);
     }
   };
-
-  const hw = data?.hardware || {};
+const hw = data?.hardware || {};
   const gpus = hw.gpu || [];
   const history = historyData;
 
   const totalVramGb = hw.multi_gpu?.total_vram_gb || (gpus.reduce((acc, g) => acc + (g.vram_total_gb || 0), 0)).toFixed(1);
 
   return (
-    <div className="hardware-lab-container" style={{ padding: '16px 20px', position: 'relative' }}>
+    <div className="hardware-lab-container" style={{ padding: 0, position: 'relative', overflowY: 'auto', height: '100%', display: 'flex', flexDirection: 'column' }}>
       
       {/* CONFIRMATION ALERT MODAL FOR RESTART OLLAMA */}
       {showRestartAlert && (
@@ -338,45 +337,35 @@ export default function HardwareLab({ addToast }) {
           position: 'fixed',
           inset: 0,
           background: 'rgba(0, 0, 0, 0.75)',
-          backdropFilter: 'blur(8px)',
-          WebkitBackdropFilter: 'blur(8px)',
-          zIndex: 10020,
+          backdropFilter: 'blur(10px)',
+          zIndex: 9999,
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
-          padding: '16px'
+          padding: '20px'
         }}>
           <div style={{
-            maxWidth: '460px',
-            width: '100%',
-            background: 'rgba(15, 23, 42, 0.98)',
+            background: 'rgba(18, 20, 28, 0.95)',
             border: '1px solid rgba(239, 68, 68, 0.4)',
             borderRadius: '16px',
-            padding: '22px',
-            boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.8), 0 0 25px rgba(239, 68, 68, 0.2)',
-            animation: 'slideUp 0.2s cubic-bezier(0.16, 1, 0.3, 1)'
+            padding: '24px',
+            maxWidth: '460px',
+            boxShadow: '0 20px 50px rgba(0, 0, 0, 0.6)'
           }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '14px' }}>
-              <div style={{ background: 'rgba(239, 68, 68, 0.15)', padding: '10px', borderRadius: '12px', display: 'flex' }}>
-                <AlertTriangle size={24} color="#ef4444" />
-              </div>
-              <div>
-                <h3 style={{ margin: 0, fontSize: '17px', fontWeight: 700, color: '#fff' }}>Riavvio & Pulizia VRAM Ollama</h3>
-                <div style={{ fontSize: '12px', color: 'var(--text-dim)' }}>Svuotamento modelli caricati in memoria</div>
-              </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '12px', color: '#ef4444', marginBottom: '12px' }}>
+              <AlertTriangle size={24} />
+              <h3 style={{ margin: 0, fontSize: '1.1rem', color: '#fff' }}>Svuota VRAM & Riavvia Ollama?</h3>
             </div>
-
-            <div style={{ fontSize: '13px', color: '#cbd5e1', lineHeight: '1.6', marginBottom: '20px', background: 'rgba(0,0,0,0.3)', padding: '14px', borderRadius: '10px', borderLeft: '4px solid #ef4444' }}>
-              ⚠️ <b>Confermi la pulizia della memoria?</b><br />
-              Questa operazione scaricherà immediatamente tutti i modelli caricati da Ollama in VRAM/RAM e riavvierà il servizio di inferenza. Eventuali chat o task in corso verranno interrotti.
-            </div>
-
-            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
+            <p style={{ fontSize: '0.84rem', color: '#a0aec0', lineHeight: 1.5, marginBottom: '20px' }}>
+              Questa azione scaricherà tutti i modelli caricati in memoria video (VRAM) ed eseguità il riavvio del servizio Ollama. 
+              Nessun dato andrà perso.
+            </p>
+            <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
               <button 
                 className="hw-btn" 
-                onClick={() => setShowRestartAlert(false)} 
+                onClick={() => setShowRestartAlert(false)}
                 disabled={restartingOllama}
-                style={{ fontSize: '13px', padding: '8px 16px' }}
+                style={{ padding: '8px 16px', fontSize: '13px' }}
               >
                 Annulla
               </button>
@@ -394,59 +383,48 @@ export default function HardwareLab({ addToast }) {
         </div>
       )}
 
-      {/* Premium Cyber-Glassmorphic Hardware Hero Panel */}
+      {/* Hero Visual Banner matching Domotica Header Style */}
       <div style={{
         position: 'relative',
-        borderRadius: '28px',
+        borderRadius: 0,
         overflow: 'hidden',
-        padding: '50px 52px 36px 52px',
-        minHeight: '340px',
-        border: '1px solid rgba(0, 210, 255, 0.4)',
-        boxShadow: '0 24px 80px rgba(0, 0, 0, 0.75), 0 0 40px rgba(0, 210, 255, 0.2), inset 0 1px 0 rgba(255, 255, 255, 0.15)',
-        backgroundImage: 'linear-gradient(to right, rgba(8, 10, 16, 0.88) 32%, rgba(8, 10, 16, 0.25) 100%), url("/images/hardware_cluster_lab.jpg")',
-        backgroundSize: 'cover',
-        backgroundPosition: 'center right',
-        marginBottom: '28px',
-        display: 'flex',
-        flexDirection: 'column',
-        justify: 'space-between',
-        gap: '36px'
+        padding: '20px 32px 18px 32px',
+        minHeight: '100px',
+        borderBottom: '1px solid rgba(0, 210, 255, 0.25)',
+        boxShadow: '0 8px 32px rgba(0,0,0,0.4)',
+        backgroundImage: 'linear-gradient(to right, rgba(8, 10, 16, 0.98) 45%, rgba(8, 10, 16, 0.5) 100%), url("/images/hardware_cluster_lab.jpg")',
+        backgroundSize: '360px auto',
+        backgroundRepeat: 'no-repeat',
+        backgroundPosition: 'right center',
+        marginBottom: '20px',
+        flexShrink: 0
       }}>
-        {/* Top Header Row: Title & Action Buttons */}
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '24px', zIndex: 2 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '20px' }}>
+        <div style={{ position: 'relative', zIndex: 2, display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '16px' }}>
+          <div style={{ maxWidth: '680px' }}>
             <div style={{
-              width: '64px', height: '64px', borderRadius: '20px',
-              background: 'radial-gradient(circle at 30% 30%, rgba(0, 242, 254, 0.35), rgba(0, 210, 255, 0.12))',
-              border: '1px solid rgba(0, 242, 254, 0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center',
-              boxShadow: '0 0 35px rgba(0, 242, 254, 0.35)'
+              display: 'inline-flex', alignItems: 'center', gap: '6px',
+              padding: '3px 12px', borderRadius: '14px',
+              background: 'rgba(0, 210, 255, 0.15)', border: '1px solid rgba(0, 210, 255, 0.35)',
+              color: '#00d2ff', fontSize: '0.68rem', fontWeight: 800, letterSpacing: '1px', textTransform: 'uppercase', marginBottom: '6px'
             }}>
-              <Zap size={32} color="#00f2fe" />
+              <Zap size={14} /> CLUSTER GPU TELEMETRY & HARDWARE LAB
             </div>
-            <div>
-              <div style={{
-                display: 'inline-flex', alignItems: 'center', gap: '8px',
-                padding: '4px 14px', borderRadius: '14px',
-                background: 'rgba(0, 210, 255, 0.18)', border: '1px solid rgba(0, 210, 255, 0.4)',
-                color: '#00d2ff', fontSize: '0.74rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '1.2px', marginBottom: '6px'
-              }}>
-                <Activity size={14} /> HARDWARE TELEMETRY & CLUSTER COMPUTING
-              </div>
-              <h1 style={{ margin: 0, fontSize: '2.2rem', fontWeight: 900, color: '#fff', letterSpacing: '-0.8px' }}>
-                ⚡ Hardware & Cluster Telemetry Lab
-              </h1>
-            </div>
+            <h1 style={{ margin: '0 0 4px 0', fontSize: '1.35rem', fontWeight: 800, color: '#fff', letterSpacing: '-0.3px' }}>
+              ⚡ Hardware & Cluster Telemetry Lab
+            </h1>
+            <p style={{ margin: 0, fontSize: '0.78rem', color: '#a0aec0', lineHeight: 1.4 }}>
+              Monitoraggio VRAM in tempo reale, allocazione dinamica dei pesi su GPU NVIDIA ed esecuzione parallela dei thread.
+            </p>
           </div>
 
-          {/* Action Buttons Row */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
             <button 
               className="hw-btn"
               onClick={() => setShowRestartAlert(true)}
               title="Svuota la memoria VRAM/RAM scaricando tutti i modelli caricati da Ollama"
-              style={{ fontSize: '12px', padding: '8px 16px', borderRadius: '12px', border: '1px solid rgba(239, 68, 68, 0.45)', background: 'rgba(239, 68, 68, 0.15)', color: '#fca5a5', fontWeight: 800 }}
+              style={{ fontSize: '0.82rem', padding: '10px 16px', borderRadius: '12px', border: '1px solid rgba(239, 68, 68, 0.45)', background: 'rgba(239, 68, 68, 0.15)', color: '#fca5a5', fontWeight: 800, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px' }}
             >
-              <RotateCcw size={14} color="#ef4444" />
+              <RotateCcw size={15} color="#ef4444" />
               <span>Svuota VRAM / Riavvia Ollama</span>
             </button>
 
@@ -454,24 +432,28 @@ export default function HardwareLab({ addToast }) {
               className={`hw-btn ${showCharts ? 'hw-btn-primary' : ''}`}
               onClick={() => setShowCharts(!showCharts)}
               title={showCharts ? 'Nascondi i grafici per compattare la vista' : 'Mostra i grafici storici in tempo reale'}
-              style={{ fontSize: '12px', padding: '8px 16px', borderRadius: '12px', fontWeight: 800 }}
+              style={{ fontSize: '0.82rem', padding: '10px 16px', borderRadius: '12px', fontWeight: 800, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px' }}
             >
-              <BarChart2 size={14} color={showCharts ? '#fff' : '#00f2fe'} />
+              <BarChart2 size={15} color={showCharts ? '#fff' : '#00f2fe'} />
               {showCharts ? 'Nascondi Grafici Storici' : 'Mostra Grafici Storici'}
-              {showCharts ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+              {showCharts ? <ChevronUp size={15} /> : <ChevronDown size={15} />}
             </button>
 
             <button 
               className="hw-btn" 
               onClick={() => setAutoRefresh(!autoRefresh)}
               title={autoRefresh ? 'Metti in pausa il refresh' : 'Riprendi refresh automatico'}
-              style={{ fontSize: '12px', padding: '8px 16px', borderRadius: '12px', fontWeight: 800 }}
+              style={{ fontSize: '0.82rem', padding: '10px 16px', borderRadius: '12px', fontWeight: 800, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px' }}
             >
-              {autoRefresh ? <Pause size={13} color="#00f2fe" /> : <Play size={13} />}
+              {autoRefresh ? <Pause size={14} color="#00f2fe" /> : <Play size={14} />}
               {autoRefresh ? 'Pausa (2s)' : 'Riprendi'}
             </button>
           </div>
         </div>
+      </div>
+
+      {/* Main Workspace Body Wrapper */}
+      <div style={{ padding: '0 24px 24px 24px', display: 'flex', flexDirection: 'column', gap: '20px', flex: 1 }}>
 
         {/* Bottom Row: Compact Telemetry Stat Cards */}
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '12px', zIndex: 2 }}>
@@ -528,7 +510,6 @@ export default function HardwareLab({ addToast }) {
           </div>
 
         </div>
-      </div>
 
       {/* Main Cards Container */}
       <div className="gpu-cards-container" style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
@@ -1127,6 +1108,7 @@ export default function HardwareLab({ addToast }) {
         </div>
       )}
 
+      </div>
     </div>
   );
 }

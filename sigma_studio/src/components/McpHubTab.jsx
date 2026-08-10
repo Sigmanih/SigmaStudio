@@ -571,35 +571,38 @@ export default function McpHubTab() {
   const enabledCount = tools.filter(t => !disabledTools[t.name]).length;
 
   return (
-    <div style={{ padding: '24px', background: '#0a0c14', color: '#e2e4eb', minHeight: '100%', display: 'flex', flexDirection: 'column', gap: '20px', position: 'relative' }}>
+    <div style={{ padding: 0, background: '#0a0c14', color: '#e2e4eb', minHeight: '100%', display: 'flex', flexDirection: 'column', position: 'relative', overflowY: 'auto' }}>
 
       {/* Hero Visual Banner with Generated Graphic */}
       <div style={{
         position: 'relative',
-        borderRadius: '20px',
+        borderRadius: 0,
         overflow: 'hidden',
-        padding: '36px 36px 28px 36px',
-        border: '1px solid rgba(0, 210, 255, 0.25)',
-        boxShadow: '0 16px 48px rgba(0,0,0,0.5)',
-        backgroundImage: 'linear-gradient(to right, rgba(10, 12, 20, 0.95) 35%, rgba(10, 12, 20, 0.75) 100%), url("/images/mcp_protocol_hub.jpg")',
-        backgroundSize: 'cover',
-        backgroundPosition: 'center',
+        padding: '20px 32px 18px 32px',
+        minHeight: '100px',
+        borderBottom: '1px solid rgba(0, 210, 255, 0.25)',
+        boxShadow: '0 8px 32px rgba(0,0,0,0.4)',
+        backgroundImage: 'linear-gradient(to right, rgba(10, 12, 20, 0.98) 45%, rgba(10, 12, 20, 0.5) 100%), url("/images/mcp_protocol_hub.jpg")',
+        backgroundSize: '360px auto',
+        backgroundRepeat: 'no-repeat',
+        backgroundPosition: 'right center',
+        marginBottom: '20px',
         flexShrink: 0
       }}>
-        <div style={{ position: 'relative', zIndex: 2, display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '20px' }}>
+        <div style={{ position: 'relative', zIndex: 2, display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '16px' }}>
           <div style={{ maxWidth: '680px' }}>
             <div style={{
-              display: 'inline-flex', alignItems: 'center', gap: '8px',
-              padding: '4px 14px', borderRadius: '16px',
+              display: 'inline-flex', alignItems: 'center', gap: '6px',
+              padding: '3px 12px', borderRadius: '14px',
               background: 'rgba(0, 210, 255, 0.15)', border: '1px solid rgba(0, 210, 255, 0.35)',
-              color: '#00d2ff', fontSize: '0.72rem', fontWeight: 800, letterSpacing: '1px', textTransform: 'uppercase', marginBottom: '12px'
+              color: '#00d2ff', fontSize: '0.68rem', fontWeight: 800, letterSpacing: '1px', textTransform: 'uppercase', marginBottom: '6px'
             }}>
               <Zap size={14} /> MODEL CONTEXT PROTOCOL (MCP) BUS
             </div>
-            <h1 style={{ margin: '0 0 8px 0', fontSize: '1.8rem', fontWeight: 900, color: '#fff', letterSpacing: '-0.5px' }}>
+            <h1 style={{ margin: '0 0 4px 0', fontSize: '1.35rem', fontWeight: 800, color: '#fff', letterSpacing: '-0.3px' }}>
               MCP Tools & Protocol Server Hub
             </h1>
-            <p style={{ margin: 0, fontSize: '0.86rem', color: '#a0aec0', lineHeight: 1.5 }}>
+            <p style={{ margin: 0, fontSize: '0.78rem', color: '#a0aec0', lineHeight: 1.4 }}>
               Bus di I/O decentralizzato per integrare Filesystem, Memory, Home Assistant, SQLite e Microservizi direttamente con gli Agenti AI.
             </p>
           </div>
@@ -649,7 +652,10 @@ export default function McpHubTab() {
         </div>
       </div>
 
-      {/* Primary Sub Tabs Bar */}
+      {/* Main Workspace Body Wrapper */}
+      <div style={{ padding: '0 24px 24px 24px', display: 'flex', flexDirection: 'column', gap: '20px', flex: 1 }}>
+
+        {/* Primary Sub Tabs Bar */}
       <div style={{ display: 'flex', gap: '10px', borderBottom: '1px solid rgba(255, 255, 255, 0.08)', paddingBottom: '8px', flexWrap: 'wrap' }}>
         {[
           { id: 'catalog', label: `🛠️ Catalogo Skills (${tools.length})` },
@@ -1113,6 +1119,7 @@ export default function McpHubTab() {
         </div>
       )}
 
+      </div>
     </div>
   );
 }

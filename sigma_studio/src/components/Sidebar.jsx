@@ -203,11 +203,11 @@ export default function Sidebar({
           {!hiddenTabs.has('creative_studio') && (
             <SidebarItem
               icon={Palette}
-              label="Creative Studio"
+              label="Creative Lab"
               badge={assetCount > 0 ? assetCount : 0}
               badgeColor="rgba(188,140,255,0.15)"
               active={activeTabId != null && activeTabId.startsWith('creative_studio')}
-              onClick={() => openTab({ name: '🎨 Creative Studio' }, 'creative_studio')}
+              onClick={() => openTab({ name: '🎨 Creative Lab' }, 'creative_studio')}
             />
           )}
           <SidebarItem
@@ -256,11 +256,11 @@ export default function Sidebar({
           )}
           <SidebarItem 
             icon={Home} 
-            label="Domotica & IoT" 
+            label="Domotica" 
             badge="HA"
             badgeColor="rgba(0,210,255,0.15)"
             active={activeTabId != null && (activeTabId.startsWith('domotica') || activeTabId.startsWith('home_assistant'))}
-            onClick={() => openTab({ name: '🏠 Domotica & Home Assistant' }, 'domotica')} 
+            onClick={() => openTab({ name: '🏠 Domotica' }, 'domotica')} 
           />
           <SidebarItem 
             icon={User} 
