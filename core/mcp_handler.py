@@ -406,6 +406,28 @@ def handle_mcp_ha_entities(self):
         })
 
 
+def _execute_user_initiated(tool_name: str, arguments: dict) -> dict:
+    """Esegue un tool sensibile richiesto da un click dell'operatore.
+
+    Il cancello di conferma esiste per fermare gli *agenti* che agiscono da soli,
+    non per far confermare due volte all'operatore ciò che ha appena premuto: il
+    click sulla scheda del dispositivo *è* il consenso umano.
+
+    L'approvazione viene comunque creata e subito consumata, così la richiesta
+    resta tracciata come ogni altra e passa dallo stesso percorso di esecuzione.
+    """
+    outcome = mcp_hub.execute_tool(tool_name, arguments)
+    if outcome.get("status") != "confirmation_required":
+        return outcome
+
+    request_id = (outcome.get("approval") or {}).get("request_id")
+    if not request_id:
+        return outcome
+
+    log.info("Comando diretto dall'operatore: %s approvato dal click", tool_name)
+    return mcp_hub.execute_tool(tool_name, approval_id=request_id)
+
+
 def handle_mcp_ha_control(self):
     """POST /api/mcp/ha/control — Send control action to device(s) or an entire room.
 
@@ -441,7 +463,7 @@ def handle_mcp_ha_control(self):
                 args["color_temp_kelvin"] = int(payload["color_temp_kelvin"])
             if "effect" in payload:
                 args["effect"] = payload["effect"]
-            outcome = mcp_hub.execute_tool("ha_light_set", args)
+            outcome = _execute_user_initiated("ha_light_set", args)
 
         elif domain == "switch":
             args = {"state": state or "on"}
@@ -449,7 +471,7 @@ def handle_mcp_ha_control(self):
                 args["entity_id"] = entity_id
             if area:
                 args["area"] = area
-            outcome = mcp_hub.execute_tool("ha_switch_set", args)
+            outcome = _execute_user_initiated("ha_switch_set", args)
 
         elif domain == "climate":
             if not entity_id:
@@ -457,16 +479,36 @@ def handle_mcp_ha_control(self):
             args = {"entity_id": entity_id}
             if "setpoint" in payload:
                 args["temperature"] = float(payload["setpoint"])
-            outcome = mcp_hub.execute_tool("ha_climate_set", args)
+            outcome = _execute_user_initiated("ha_climate_set", args)
 
         else:
             args = {"domain": domain, "service": "toggle"}
             if entity_id:
                 args["entity_id"] = entity_id
-            outcome = mcp_hub.execute_tool("ha_call_service", args)
+            outcome = _execute_user_initiated("ha_call_service", args)
 
         if outcome["status"] == "ok":
-            return self.send_json_response({"success": True, "result": outcome["result"]})
+            # L'esito reale del dispositivo è dentro `result`: propagarlo
+            # significa distinguere «HA ha accettato la chiamata» da «la luce è
+            # cambiata». Senza questo, un comando a vuoto risultava riuscito.
+            inner = _unwrap_mcp_result(outcome)
+            return self.send_json_response({
+                "success": bool(inner.get("success", True)),
+                "error": inner.get("error", ""),
+                "warning": inner.get("warning", ""),
+                "changed": inner.get("changed"),
+                "unavailable": inner.get("unavailable", []),
+                "result": outcome["result"],
+            })
+
+        # Un comando bloccato in attesa di conferma qui è un difetto, non uno
+        # stato normale: il click era già il consenso.
+        if outcome.get("status") == "confirmation_required":
+            return self.send_json_response({
+                "success": False,
+                "error": "Comando in attesa di conferma: approvalo nella tab MCP Tools.",
+                "approval": outcome.get("approval"),
+            })
         self.send_json_response({"success": False, "error": outcome.get("error", "Comando fallito")})
     except Exception as exc:
         log.error("handle_mcp_ha_control error: %s", exc)

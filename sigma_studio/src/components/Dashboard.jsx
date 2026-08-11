@@ -4,6 +4,24 @@ import {
   AlertCircle, Filter, X, FileText, BookOpen, Terminal, PieChart, Calendar, History,
   ListTodo, Activity, Check, Sparkles, Search, FileCode, Tag, User, Cpu, RefreshCw, Layers
 } from 'lucide-react';
+import { useApp } from '../contexts/AppContext';
+
+// ── Shared style tokens (crema / dark) ─────────────────────────────────────
+const getThemeTokens = (isLight) => ({
+  bg:         isLight ? '#f7f4ed' : '#090a0f',
+  cardBg:     isLight ? '#fffdf9' : '#11131b',
+  cardHover:  isLight ? '#f2ede2' : '#0e1016',
+  border:     isLight ? 'rgba(190, 160, 110, 0.35)' : '#1e2030',
+  divider:    isLight ? 'rgba(190, 160, 110, 0.22)' : 'rgba(255,255,255,0.06)',
+  tabBg:      isLight ? 'rgba(190, 160, 110, 0.12)' : 'rgba(255,255,255,0.03)',
+  tabBorder:  isLight ? 'rgba(190, 160, 110, 0.3)' : 'rgba(255,255,255,0.08)',
+  text:       isLight ? '#111111' : '#e2e4eb',
+  muted:      isLight ? '#2e2820' : '#8b8fa3',
+  dim:        isLight ? '#8a8174' : '#5a5e72',
+  navBg:      isLight ? 'rgba(190, 160, 110, 0.14)' : '#1e2030',
+  navBorder:  isLight ? 'rgba(190, 160, 110, 0.35)' : 'none',
+  navText:    isLight ? '#111111' : '#e2e4eb'
+});
 
 // ==============================================================================
 // RoadmapView (Pianificazione & Audit Trail)
@@ -11,6 +29,9 @@ import {
 // ==============================================================================
 
 export function RoadmapView({ tasks, onEdit, onAdd, onDelete, onToggleStatus, onOpenFile, onClearAll }) {
+  const { theme } = useApp();
+  const isThemeLight = theme === 'light';
+  const T = useMemo(() => getThemeTokens(isThemeLight), [isThemeLight]);
   const [activeTab, setActiveTab] = useState('calendar'); // 'calendar' | 'kanban' | 'audit'
   const [filterStatus, setFilterStatus] = useState('all');
   const [filterModule, setFilterModule] = useState('all');
@@ -144,7 +165,7 @@ export function RoadmapView({ tasks, onEdit, onAdd, onDelete, onToggleStatus, on
   };
 
   return (
-    <div className="roadmap-view" style={{ height: '100%', display: 'flex', flexDirection: 'column', padding: 0, background: '#090a0f', color: '#e2e4eb', boxSizing: 'border-box', overflowY: 'auto' }}>
+    <div className="roadmap-view" style={{ height: '100%', display: 'flex', flexDirection: 'column', padding: 0, background: T.bg, color: T.text, boxSizing: 'border-box', overflowY: 'auto' }}>
       
       {/* Hero Visual Banner matching Domotica Header Style */}
       <div style={{
@@ -155,10 +176,10 @@ export function RoadmapView({ tasks, onEdit, onAdd, onDelete, onToggleStatus, on
         minHeight: '100px',
         borderBottom: '1px solid rgba(0, 210, 255, 0.25)',
         boxShadow: '0 8px 32px rgba(0,0,0,0.4)',
-        backgroundImage: 'linear-gradient(to right, rgba(8, 10, 16, 0.98) 45%, rgba(8, 10, 16, 0.5) 100%), url("/images/roadmap_plan_banner.jpg")',
-        backgroundSize: '360px auto',
+        backgroundImage: 'linear-gradient(to right, rgba(28, 12, 4, 0.96) 35%, rgba(120, 45, 10, 0.6) 75%, rgba(234, 88, 12, 0.22) 100%), url("/images/roadmap_plan_banner.jpg")',
+        backgroundSize: 'cover',
         backgroundRepeat: 'no-repeat',
-        backgroundPosition: 'right center',
+        backgroundPosition: 'center center',
         marginBottom: '20px',
         flexShrink: 0
       }}>
@@ -212,38 +233,38 @@ export function RoadmapView({ tasks, onEdit, onAdd, onDelete, onToggleStatus, on
       </div>
 
       {/* Main Workspace Body Wrapper */}
-      <div style={{ padding: '0 24px 24px 24px', display: 'flex', flexDirection: 'column', gap: '20px', flex: 1 }}>
+      <div style={{ padding: '0 24px 16px 24px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
 
-      {/* 2. STATS WIDGETS BAR */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '12px', marginBottom: '16px', flexShrink: 0 }}>
-        <div style={{ background: '#11131b', border: '1px solid #1e2030', borderRadius: '12px', padding: '12px 16px', display: 'flex', flexDirection: 'column', gap: '4px' }}>
-          <span style={{ fontSize: '0.62rem', color: '#8b8fa3', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Totale Task</span>
-          <span style={{ fontSize: '1.4rem', fontWeight: 700, color: '#fff' }}>{stats.total}</span>
+      {/* 2. STATS WIDGETS BAR — COMPACT & MODERN */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '8px', marginBottom: '8px', flexShrink: 0 }}>
+        <div style={{ background: T.cardBg, border: `1px solid ${T.border}`, borderRadius: '10px', padding: '10px 14px', display: 'flex', alignItems: 'center', gap: '10px', boxShadow: '0 2px 8px rgba(0,0,0,0.08)' }}>
+          <span style={{ fontSize: '1.4rem' }}>📋</span>
+          <div><span style={{ fontSize: '0.62rem', color: T.muted, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.5px', display: 'block' }}>Totale</span><span style={{ fontSize: '1.2rem', fontWeight: 700, color: T.text }}>{stats.total}</span></div>
         </div>
-        <div style={{ background: '#11131b', border: '1px solid #1e2030', borderRadius: '12px', padding: '12px 16px', display: 'flex', flexDirection: 'column', gap: '4px' }}>
-          <span style={{ fontSize: '0.62rem', color: '#3fb950', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Completati ({stats.progress}%)</span>
-          <span style={{ fontSize: '1.4rem', fontWeight: 700, color: '#3fb950' }}>{stats.done}</span>
+        <div style={{ background: T.cardBg, border: `1px solid ${T.border}`, borderRadius: '10px', padding: '10px 14px', display: 'flex', alignItems: 'center', gap: '10px', boxShadow: '0 2px 8px rgba(0,0,0,0.08)' }}>
+          <span style={{ fontSize: '1.4rem' }}>✅</span>
+          <div><span style={{ fontSize: '0.62rem', color: '#3fb950', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.5px', display: 'block' }}>Completati {stats.progress}%</span><span style={{ fontSize: '1.2rem', fontWeight: 700, color: '#3fb950' }}>{stats.done}</span></div>
         </div>
-        <div style={{ background: '#11131b', border: '1px solid #1e2030', borderRadius: '12px', padding: '12px 16px', display: 'flex', flexDirection: 'column', gap: '4px' }}>
-          <span style={{ fontSize: '0.62rem', color: '#00d2ff', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.5px' }}>In Corso</span>
-          <span style={{ fontSize: '1.4rem', fontWeight: 700, color: '#00d2ff' }}>{stats.inCorso}</span>
+        <div style={{ background: T.cardBg, border: `1px solid ${T.border}`, borderRadius: '10px', padding: '10px 14px', display: 'flex', alignItems: 'center', gap: '10px', boxShadow: '0 2px 8px rgba(0,0,0,0.08)' }}>
+          <span style={{ fontSize: '1.4rem' }}>⚡</span>
+          <div><span style={{ fontSize: '0.62rem', color: '#00d2ff', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.5px', display: 'block' }}>In Corso</span><span style={{ fontSize: '1.2rem', fontWeight: 700, color: '#00d2ff' }}>{stats.inCorso}</span></div>
         </div>
-        <div style={{ background: '#11131b', border: '1px solid #1e2030', borderRadius: '12px', padding: '12px 16px', display: 'flex', flexDirection: 'column', gap: '4px' }}>
-          <span style={{ fontSize: '0.62rem', color: '#bc8cff', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Registro Modifiche</span>
-          <span style={{ fontSize: '1.4rem', fontWeight: 700, color: '#bc8cff' }}>{auditLogs.length}</span>
+        <div style={{ background: T.cardBg, border: `1px solid ${T.border}`, borderRadius: '10px', padding: '10px 14px', display: 'flex', alignItems: 'center', gap: '10px', boxShadow: '0 2px 8px rgba(0,0,0,0.08)' }}>
+          <span style={{ fontSize: '1.4rem' }}>📜</span>
+          <div><span style={{ fontSize: '0.62rem', color: '#bc8cff', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.5px', display: 'block' }}>Registro</span><span style={{ fontSize: '1.2rem', fontWeight: 700, color: '#bc8cff' }}>{auditLogs.length}</span></div>
         </div>
       </div>
 
       {/* 3. SUB-TAB SWITCHER */}
-      <div style={{ display: 'flex', gap: '8px', marginBottom: '16px', borderBottom: '1px solid rgba(255,255,255,0.08)', paddingBottom: '10px', flexShrink: 0 }}>
+      <div style={{ display: 'flex', gap: '8px', marginBottom: '8px', borderBottom: `1px solid ${T.divider}`, paddingBottom: '8px', flexShrink: 0 }}>
         <button
           onClick={() => setActiveTab('calendar')}
           style={{
             display: 'flex', alignItems: 'center', gap: '8px', padding: '8px 16px', borderRadius: '8px',
             fontSize: '0.78rem', fontWeight: 700, cursor: 'pointer',
-            background: activeTab === 'calendar' ? 'rgba(0, 210, 255, 0.15)' : 'rgba(255,255,255,0.03)',
-            border: activeTab === 'calendar' ? '1px solid rgba(0, 210, 255, 0.4)' : '1px solid rgba(255,255,255,0.08)',
-            color: activeTab === 'calendar' ? '#00d2ff' : '#8b8fa3',
+            background: activeTab === 'calendar' ? 'rgba(0, 210, 255, 0.15)' : T.tabBg,
+            border: activeTab === 'calendar' ? '1px solid rgba(0, 210, 255, 0.4)' : `1px solid ${T.tabBorder}`,
+            color: activeTab === 'calendar' ? '#00d2ff' : T.muted,
             transition: 'all 0.2s ease'
           }}
         >
@@ -255,9 +276,9 @@ export function RoadmapView({ tasks, onEdit, onAdd, onDelete, onToggleStatus, on
           style={{
             display: 'flex', alignItems: 'center', gap: '8px', padding: '8px 16px', borderRadius: '8px',
             fontSize: '0.78rem', fontWeight: 700, cursor: 'pointer',
-            background: activeTab === 'kanban' ? 'rgba(188, 140, 255, 0.15)' : 'rgba(255,255,255,0.03)',
-            border: activeTab === 'kanban' ? '1px solid rgba(188, 140, 255, 0.4)' : '1px solid rgba(255,255,255,0.08)',
-            color: activeTab === 'kanban' ? '#bc8cff' : '#8b8fa3',
+            background: activeTab === 'kanban' ? 'rgba(188, 140, 255, 0.15)' : T.tabBg,
+            border: activeTab === 'kanban' ? '1px solid rgba(188, 140, 255, 0.4)' : `1px solid ${T.tabBorder}`,
+            color: activeTab === 'kanban' ? '#bc8cff' : T.muted,
             transition: 'all 0.2s ease'
           }}
         >
@@ -269,9 +290,9 @@ export function RoadmapView({ tasks, onEdit, onAdd, onDelete, onToggleStatus, on
           style={{
             display: 'flex', alignItems: 'center', gap: '8px', padding: '8px 16px', borderRadius: '8px',
             fontSize: '0.78rem', fontWeight: 700, cursor: 'pointer',
-            background: activeTab === 'audit' ? 'rgba(63, 185, 80, 0.15)' : 'rgba(255,255,255,0.03)',
-            border: activeTab === 'audit' ? '1px solid rgba(63, 185, 80, 0.4)' : '1px solid rgba(255,255,255,0.08)',
-            color: activeTab === 'audit' ? '#3fb950' : '#8b8fa3',
+            background: activeTab === 'audit' ? 'rgba(63, 185, 80, 0.15)' : T.tabBg,
+            border: activeTab === 'audit' ? '1px solid rgba(63, 185, 80, 0.4)' : `1px solid ${T.tabBorder}`,
+            color: activeTab === 'audit' ? '#3fb950' : T.muted,
             transition: 'all 0.2s ease'
           }}
         >
@@ -282,16 +303,16 @@ export function RoadmapView({ tasks, onEdit, onAdd, onDelete, onToggleStatus, on
 
       {/* TAB 1: CALENDARIO INTERATTIVO */}
       {activeTab === 'calendar' && (
-        <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '16px', flex: 1, minHeight: 0 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 440px) 1fr', gap: '14px' }}>
           
           {/* Griglia Calendario Mensile */}
-          <div style={{ background: '#11131b', border: '1px solid #1e2030', borderRadius: '14px', padding: '20px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
+          <div style={{ background: T.cardBg, border: `1px solid ${T.border}`, borderRadius: '12px', padding: '14px', display: 'flex', flexDirection: 'column', gap: '10px', boxShadow: '0 2px 12px rgba(0,0,0,0.06)' }}>
             
             {/* Header Mese & Navigazione */}
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid rgba(255,255,255,0.06)', paddingBottom: '12px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: `1px solid ${T.divider}`, paddingBottom: '12px' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                 <Calendar size={18} style={{ color: '#00d2ff' }} />
-                <h3 style={{ margin: 0, fontSize: '1rem', fontWeight: 700, color: '#fff' }}>
+                <h3 style={{ margin: 0, fontSize: '1rem', fontWeight: 700, color: T.text }}>
                   {monthNames[month]} {year}
                 </h3>
                 <span style={{ fontSize: '0.65rem', padding: '3px 10px', borderRadius: '12px', background: 'rgba(63,185,80,0.12)', border: '1px solid rgba(63,185,80,0.25)', color: '#3fb950', fontWeight: 700 }}>
@@ -299,25 +320,25 @@ export function RoadmapView({ tasks, onEdit, onAdd, onDelete, onToggleStatus, on
                 </span>
               </div>
               <div style={{ display: 'flex', gap: '6px' }}>
-                <button onClick={prevMonth} style={{ background: '#1e2030', border: 'none', color: '#e2e4eb', borderRadius: '6px', padding: '6px 10px', cursor: 'pointer' }}>
+                <button onClick={prevMonth} style={{ background: T.navBg, border: `1px solid ${T.navBorder}`, color: T.navText, borderRadius: '6px', padding: '6px 10px', cursor: 'pointer' }}>
                   <ChevronLeft size={14} />
                 </button>
                 <button onClick={() => setCurrentDate(new Date())} style={{ background: 'rgba(0,210,255,0.1)', border: '1px solid rgba(0,210,255,0.2)', color: '#00d2ff', borderRadius: '6px', padding: '4px 10px', fontSize: '0.72rem', fontWeight: 600, cursor: 'pointer' }}>
                   Oggi
                 </button>
-                <button onClick={nextMonth} style={{ background: '#1e2030', border: 'none', color: '#e2e4eb', borderRadius: '6px', padding: '6px 10px', cursor: 'pointer' }}>
+                <button onClick={nextMonth} style={{ background: T.navBg, border: `1px solid ${T.navBorder}`, color: T.navText, borderRadius: '6px', padding: '6px 10px', cursor: 'pointer' }}>
                   <ChevronRight size={14} />
                 </button>
               </div>
             </div>
 
-            {/* Giorni della Settimana */}
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', textAlign: 'center', fontSize: '0.72rem', fontWeight: 700, color: '#8b8fa3', paddingBottom: '4px' }}>
+          {/* Giorni della Settimana */}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', textAlign: 'center', fontSize: '0.65rem', fontWeight: 700, color: T.muted, paddingBottom: '2px' }}>
               <span>Lun</span><span>Mar</span><span>Mer</span><span>Gio</span><span>Ven</span><span>Sab</span><span>Dom</span>
             </div>
 
             {/* Griglia Giorni */}
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: '6px', flex: 1 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: '3px', alignContent: 'start' }}>
               {Array.from({ length: firstDayIndex }).map((_, i) => (
                 <div key={`empty-${i}`} style={{ background: 'transparent', borderRadius: '8px' }} />
               ))}
@@ -334,11 +355,11 @@ export function RoadmapView({ tasks, onEdit, onAdd, onDelete, onToggleStatus, on
                     key={dayNum}
                     onClick={() => setSelectedDay(dayNum)}
                     style={{
-                      background: isSelected ? 'rgba(0, 210, 255, 0.15)' : '#0e1016',
-                      border: isSelected ? '1px solid #00d2ff' : (isToday ? '1px solid rgba(188, 140, 255, 0.5)' : '1px solid #1e2030'),
-                      borderRadius: '8px',
-                      padding: '8px',
-                      minHeight: '64px',
+                      background: isSelected ? 'rgba(0, 210, 255, 0.15)' : T.cardHover,
+                      border: isSelected ? '1px solid #00d2ff' : (isToday ? '1px solid rgba(188, 140, 255, 0.5)' : `1px solid ${T.border}`),
+                      borderRadius: '6px',
+                      padding: '4px 5px',
+                      minHeight: '32px',
                       display: 'flex',
                       flexDirection: 'column',
                       justifyContent: 'space-between',
@@ -347,7 +368,7 @@ export function RoadmapView({ tasks, onEdit, onAdd, onDelete, onToggleStatus, on
                     }}
                   >
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <span style={{ fontSize: '0.78rem', fontWeight: isToday || isSelected ? 700 : 500, color: isToday ? '#bc8cff' : (isSelected ? '#00d2ff' : '#e2e4eb') }}>
+                      <span style={{ fontSize: '0.78rem', fontWeight: isToday || isSelected ? 700 : 500, color: isToday ? '#bc8cff' : (isSelected ? '#00d2ff' : T.text) }}>
                         {dayNum}
                       </span>
                       {isToday ? (
@@ -388,38 +409,38 @@ export function RoadmapView({ tasks, onEdit, onAdd, onDelete, onToggleStatus, on
           </div>
 
           {/* Dettagli Giorno Selezionato */}
-          <div style={{ background: '#11131b', border: '1px solid #1e2030', borderRadius: '14px', padding: '18px', display: 'flex', flexDirection: 'column', gap: '14px', overflowY: 'auto' }}>
-            <div style={{ borderBottom: '1px solid rgba(255,255,255,0.06)', paddingBottom: '10px' }}>
-              <h4 style={{ margin: 0, fontSize: '0.9rem', fontWeight: 700, color: '#fff' }}>
+          <div style={{ background: T.cardBg, border: `1px solid ${T.border}`, borderRadius: '12px', padding: '12px', display: 'flex', flexDirection: 'column', gap: '10px', overflowY: 'auto' }}>
+            <div style={{ borderBottom: `1px solid ${T.divider}`, paddingBottom: '10px' }}>
+              <h4 style={{ margin: 0, fontSize: '0.9rem', fontWeight: 700, color: T.text }}>
                 Attività del {selectedDay} {monthNames[month]}
               </h4>
-              <span style={{ fontSize: '0.7rem', color: '#8b8fa3' }}>
+              <span style={{ fontSize: '0.7rem', color: T.muted }}>
                 {selectedEvents.total} eventi registrati in questa data
               </span>
             </div>
 
             {selectedEvents.total === 0 ? (
-              <div style={{ padding: '30px', textAlign: 'center', color: '#5a5e72', fontSize: '0.75rem' }}>
+              <div style={{ padding: '30px', textAlign: 'center', color: T.dim, fontSize: '0.75rem' }}>
                 Nessuna attività registrata per il giorno selezionato.
               </div>
             ) : (
               <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
                 {selectedEvents.dayTasks.map(t => (
-                  <div key={t.id} style={{ background: '#0e1016', border: '1px solid #1e2030', borderRadius: '8px', padding: '10px', display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                  <div key={t.id} style={{ background: T.cardHover, border: `1px solid ${T.border}`, borderRadius: '8px', padding: '10px', display: 'flex', flexDirection: 'column', gap: '4px' }}>
                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                      <span style={{ fontSize: '0.75rem', fontWeight: 700, color: '#e2e4eb' }}>{t.titolo}</span>
+                      <span style={{ fontSize: '0.75rem', fontWeight: 700, color: T.text }}>{t.titolo}</span>
                       <span style={{ fontSize: '0.6rem', padding: '2px 6px', borderRadius: '4px', color: t.status === 'done' ? '#3fb950' : '#00d2ff', background: t.status === 'done' ? 'rgba(63,185,80,0.1)' : 'rgba(0,210,255,0.1)' }}>
                         {t.status?.toUpperCase()}
                       </span>
                     </div>
-                    {t.descrizione && <p style={{ fontSize: '0.65rem', color: '#8b8fa3', margin: 0 }}>{t.descrizione}</p>}
+                    {t.descrizione && <p style={{ fontSize: '0.65rem', color: T.muted, margin: 0 }}>{t.descrizione}</p>}
                   </div>
                 ))}
 
                 {selectedEvents.dayAudits.map(a => (
-                  <div key={a.id} style={{ background: '#0e1016', border: '1px solid rgba(188, 140, 255, 0.2)', borderRadius: '8px', padding: '10px', display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                  <div key={a.id} style={{ background: T.cardHover, border: '1px solid rgba(188, 140, 255, 0.2)', borderRadius: '8px', padding: '10px', display: 'flex', flexDirection: 'column', gap: '4px' }}>
                     <span style={{ fontSize: '0.72rem', fontWeight: 600, color: '#bc8cff' }}>{a.title}</span>
-                    <span style={{ fontSize: '0.62rem', color: '#8b8fa3' }}>{a.details}</span>
+                    <span style={{ fontSize: '0.62rem', color: T.muted }}>{a.details}</span>
                   </div>
                 ))}
               </div>
@@ -430,10 +451,10 @@ export function RoadmapView({ tasks, onEdit, onAdd, onDelete, onToggleStatus, on
 
       {/* TAB 2: GESTIONE TASK KANBAN */}
       {activeTab === 'kanban' && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '14px', flex: 1, minHeight: 0 }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
           {/* Filters */}
           <div style={{ display: 'flex', gap: '12px', alignItems: 'center', flexShrink: 0 }}>
-            <span style={{ fontSize: '0.72rem', color: '#8b8fa3', fontWeight: 600 }}>Filtra Stato:</span>
+            <span style={{ fontSize: '0.72rem', color: T.muted, fontWeight: 600 }}>Filtra Stato:</span>
             <div style={{ display: 'flex', gap: '6px' }}>
               {[
                 { key: 'all', label: 'Tutti' },
@@ -446,9 +467,9 @@ export function RoadmapView({ tasks, onEdit, onAdd, onDelete, onToggleStatus, on
                   onClick={() => setFilterStatus(f.key)}
                   style={{
                     padding: '5px 12px', borderRadius: '6px', fontSize: '0.72rem', fontWeight: 600, cursor: 'pointer',
-                    background: filterStatus === f.key ? 'rgba(0,210,255,0.15)' : '#11131b',
-                    border: filterStatus === f.key ? '1px solid rgba(0,210,255,0.3)' : '1px solid #1e2030',
-                    color: filterStatus === f.key ? '#00d2ff' : '#8b8fa3'
+                    background: filterStatus === f.key ? 'rgba(0,210,255,0.15)' : T.cardBg,
+                    border: filterStatus === f.key ? '1px solid rgba(0,210,255,0.3)' : `1px solid ${T.border}`,
+                    color: filterStatus === f.key ? '#00d2ff' : T.muted
                   }}
                 >
                   {f.label}
@@ -458,7 +479,7 @@ export function RoadmapView({ tasks, onEdit, onAdd, onDelete, onToggleStatus, on
             <select
               value={filterModule}
               onChange={e => setFilterModule(e.target.value)}
-              style={{ padding: '6px 12px', borderRadius: '6px', fontSize: '0.72rem', background: '#11131b', border: '1px solid #1e2030', color: '#e2e4eb', outline: 'none' }}
+              style={{ padding: '6px 12px', borderRadius: '6px', fontSize: '0.72rem', background: T.cardBg, border: `1px solid ${T.border}`, color: T.text, outline: 'none' }}
             >
               <option value="all">Tutti i moduli</option>
               {modules.filter(m => m !== 'all').map(m => (
@@ -476,8 +497,8 @@ export function RoadmapView({ tasks, onEdit, onAdd, onDelete, onToggleStatus, on
                   key={task.id || i} 
                   onClick={() => onEdit(task)}
                   style={{
-                    background: '#11131b',
-                    border: '1px solid #1e2030',
+                    background: T.cardBg,
+                    border: `1px solid ${T.border}`,
                     borderLeft: `4px solid ${task.status === 'done' ? '#3fb950' : (task.status === 'blocked' ? '#ff5555' : '#00d2ff')}`,
                     borderRadius: '12px',
                     padding: '16px',
@@ -497,14 +518,14 @@ export function RoadmapView({ tasks, onEdit, onAdd, onDelete, onToggleStatus, on
                     </span>
                   </div>
 
-                  <h4 style={{ margin: 0, fontSize: '0.88rem', fontWeight: 600, color: '#fff' }}>{task.titolo}</h4>
-                  {task.descrizione && <p style={{ margin: 0, fontSize: '0.72rem', color: '#8b8fa3', lineHeight: 1.4 }}>{task.descrizione}</p>}
+                  <h4 style={{ margin: 0, fontSize: '0.88rem', fontWeight: 600, color: T.text }}>{task.titolo}</h4>
+                  {task.descrizione && <p style={{ margin: 0, fontSize: '0.72rem', color: T.muted, lineHeight: 1.4 }}>{task.descrizione}</p>}
 
                   {/* Reference files */}
                   {task.files && task.files.length > 0 && (
-                    <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', borderTop: '1px solid rgba(255,255,255,0.05)', paddingTop: '8px' }}>
+                    <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', borderTop: `1px solid ${T.divider}`, paddingTop: '8px' }}>
                       {task.files.map((f, fi) => (
-                        <span key={fi} onClick={(e) => { e.stopPropagation(); onOpenFile && onOpenFile(f.path); }} style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '0.62rem', background: '#0e1016', padding: '3px 8px', borderRadius: '6px', color: '#00d2ff', cursor: 'pointer' }}>
+                        <span key={fi} onClick={(e) => { e.stopPropagation(); onOpenFile && onOpenFile(f.path); }} style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '0.62rem', background: T.cardHover, padding: '3px 8px', borderRadius: '6px', color: '#00d2ff', cursor: 'pointer' }}>
                           {getFileIcon(f.type)} {f.filename}
                         </span>
                       ))}
@@ -512,14 +533,14 @@ export function RoadmapView({ tasks, onEdit, onAdd, onDelete, onToggleStatus, on
                   )}
 
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: '4px' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.7rem', color: '#8b8fa3' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.7rem', color: T.muted }}>
                       {statusIcons[task.status]} <span>{statusLabels[task.status]}</span>
                     </div>
                     <div style={{ display: 'flex', gap: '6px' }}>
-                      <button onClick={(e) => { e.stopPropagation(); onToggleStatus(task); }} style={{ padding: '4px 10px', borderRadius: '6px', fontSize: '0.68rem', background: 'transparent', border: '1px solid #1e2030', color: '#3fb950', cursor: 'pointer' }}>
+                      <button onClick={(e) => { e.stopPropagation(); onToggleStatus(task); }} style={{ padding: '4px 10px', borderRadius: '6px', fontSize: '0.68rem', background: 'transparent', border: `1px solid ${T.border}`, color: '#3fb950', cursor: 'pointer' }}>
                         {task.status === 'done' ? 'Riapri' : 'Completa'}
                       </button>
-                      <button onClick={(e) => { e.stopPropagation(); onDelete(task); }} style={{ padding: '4px 8px', borderRadius: '6px', fontSize: '0.68rem', background: 'transparent', border: '1px solid #1e2030', color: '#ff5555', cursor: 'pointer' }}>
+                      <button onClick={(e) => { e.stopPropagation(); onDelete(task); }} style={{ padding: '4px 8px', borderRadius: '6px', fontSize: '0.68rem', background: 'transparent', border: `1px solid ${T.border}`, color: '#ff5555', cursor: 'pointer' }}>
                         <Trash2 size={12} />
                       </button>
                     </div>
@@ -533,11 +554,11 @@ export function RoadmapView({ tasks, onEdit, onAdd, onDelete, onToggleStatus, on
 
       {/* TAB 3: REGISTRO MODIFICHE (AUDIT TRAIL) */}
       {activeTab === 'audit' && (
-        <div style={{ background: '#11131b', border: '1px solid #1e2030', borderRadius: '14px', padding: '20px', flex: 1, display: 'flex', flexDirection: 'column', gap: '14px', overflowY: 'auto' }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid rgba(255,255,255,0.06)', paddingBottom: '10px' }}>
+        <div style={{ background: T.cardBg, border: `1px solid ${T.border}`, borderRadius: '14px', padding: '20px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: `1px solid ${T.divider}`, paddingBottom: '10px' }}>
             <div>
-              <h3 style={{ margin: 0, fontSize: '0.95rem', fontWeight: 700, color: '#fff' }}>Registro Modifiche & Audit Log</h3>
-              <span style={{ fontSize: '0.7rem', color: '#8b8fa3' }}>Storico in tempo reale di modifiche al codice, sessioni agentiche ed esecuzioni</span>
+              <h3 style={{ margin: 0, fontSize: '0.95rem', fontWeight: 700, color: T.text }}>Registro Modifiche & Audit Log</h3>
+              <span style={{ fontSize: '0.7rem', color: T.muted }}>Storico in tempo reale di modifiche al codice, sessioni agentiche ed esecuzioni</span>
             </div>
             <button onClick={() => window.location.reload()} style={{ padding: '6px 12px', borderRadius: '6px', background: 'rgba(0,210,255,0.1)', border: '1px solid rgba(0,210,255,0.2)', color: '#00d2ff', fontSize: '0.72rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px' }}>
               <RefreshCw size={12} /> Aggiorna Log
@@ -546,20 +567,20 @@ export function RoadmapView({ tasks, onEdit, onAdd, onDelete, onToggleStatus, on
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
             {auditLogs.map(log => (
-              <div key={log.id} style={{ background: '#0e1016', border: '1px solid #1e2030', borderRadius: '10px', padding: '12px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '14px' }}>
+              <div key={log.id} style={{ background: T.cardHover, border: `1px solid ${T.border}`, borderRadius: '10px', padding: '12px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '14px' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
                   <div style={{ width: '36px', height: '36px', borderRadius: '8px', background: 'rgba(188, 140, 255, 0.15)', border: '1px solid rgba(188, 140, 255, 0.3)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#bc8cff' }}>
                     <FileCode size={18} />
                   </div>
                   <div>
-                    <h4 style={{ margin: 0, fontSize: '0.82rem', fontWeight: 700, color: '#fff' }}>{log.title}</h4>
-                    <span style={{ fontSize: '0.68rem', color: '#8b8fa3' }}>{log.details}</span>
+                    <h4 style={{ margin: 0, fontSize: '0.82rem', fontWeight: 700, color: T.text }}>{log.title}</h4>
+                    <span style={{ fontSize: '0.68rem', color: T.muted }}>{log.details}</span>
                   </div>
                 </div>
 
                 <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '2px' }}>
                   <span style={{ fontSize: '0.65rem', color: '#00d2ff', fontWeight: 600 }}>{log.actor}</span>
-                  <span style={{ fontSize: '0.6rem', color: '#5a5e72' }}>{log.dateStr}</span>
+                  <span style={{ fontSize: '0.6rem', color: T.dim }}>{log.dateStr}</span>
                 </div>
               </div>
             ))}

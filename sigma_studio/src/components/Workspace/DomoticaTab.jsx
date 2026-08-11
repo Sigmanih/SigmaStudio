@@ -6,6 +6,8 @@ import {
   Droplets, ShieldCheck, Plug, Wifi, WifiOff, Pencil, Check, X, FlaskConical,
   Radio, Eye, Sparkles, Activity, Layers, ArrowRight, ShieldAlert, CheckCircle2
 } from 'lucide-react';
+import { useApp } from '../../contexts/AppContext';
+import TechSpaceCanvas from '../common/TechSpaceCanvas';
 
 const CUSTOM_NAMES_KEY = 'domotica_custom_names';
 
@@ -36,19 +38,21 @@ const DOMAIN_META = {
 };
 
 // ── Shared style tokens ───────────────────────────────────────────────────
-const T = {
-  bg:        '#080a10',
-  cardBg:    'rgba(14,17,25,0.75)',
-  cardHover: 'rgba(18,22,32,0.85)',
-  border:    'rgba(255,255,255,0.06)',
-  borderHov: 'rgba(255,255,255,0.12)',
-  accent:    '#00d2ff',
-  accent2:   '#7c5bf0',
-  text:      '#e2e8f0',
-  muted:     '#8892b0',
-  on:        '#3fb950',
-  off:       '#64748b'
-};
+const getThemeTokens = (isLight) => ({
+  bg:        isLight ? '#f7f4ed' : '#080a10',
+  cardBg:    isLight ? '#fffdf9' : '#0e1017',
+  cardHover: isLight ? '#f2ede2' : '#141824',
+  border:    isLight ? 'rgba(190, 160, 110, 0.35)' : 'rgba(255,255,255,0.06)',
+  borderHov: isLight ? 'rgba(234, 88, 12, 0.4)' : 'rgba(255,255,255,0.12)',
+  accent:    isLight ? '#ea580c' : '#00d2ff',
+  accent2:   isLight ? '#d97706' : '#7c5bf0',
+  text:      isLight ? '#111111' : '#e2e8f0',
+  muted:     isLight ? '#2e2820' : '#8892b0',
+  on:        isLight ? '#166534' : '#3fb950',
+  off:       isLight ? '#78716c' : '#64748b'
+});
+
+const T = getThemeTokens(false);
 
 // ── Standby / Inactive Smart Features definitions (Card Grigie) ───────────
 const INACTIVE_FEATURES = [
@@ -223,6 +227,24 @@ export default function DomoticaTab() {
     fetchHaEntities();
   }, []);
 
+  // Il form partiva sempre dai valori di default, ignorando la configurazione
+  // già salvata: dopo un salvataggio riuscito riapparivano `homeassistant.local`
+  // e token vuoto, facendo credere che nulla fosse stato memorizzato — e un
+  // Salva successivo avrebbe davvero sovrascritto l'indirizzo giusto.
+  useEffect(() => {
+    fetch('/api/mcp/servers')
+      .then(r => r.json())
+      .then(data => {
+        const ha = (data.servers || []).find(s => s.integration_key === 'home_assistant');
+        if (!ha?.config) return;
+        if (ha.config.base_url) setHaUrl(ha.config.base_url);
+        // Il token torna mascherato: rimandarlo così com'è significa
+        // «lascialo com'era», quindi è sicuro mostrarlo nel campo.
+        if (ha.config.token) setHaToken(ha.config.token);
+      })
+      .catch(() => {});
+  }, [showConfigModal]);
+
   // Save custom device name to localStorage
   const saveCustomName = (id, newName) => {
     const trimmed = newName.trim();
@@ -334,56 +356,76 @@ export default function DomoticaTab() {
         } else {
           addLog(`Errore comando HA su ${entityId}: ${data.error}`, 'action');
         }
+        return data;
       }
     } catch (e) {
       console.warn("Comando HA fallito:", e);
+      addLog(`Comando HA non inviato a ${entityId}: ${e.message}`, 'action');
+    }
+    return { success: false, error: 'Comando non inviato' };
+  };
+
+  const toggleDevice = async (id) => {
+    const device = devices.find(d => d.id === id);
+    if (!device) return;
+    const previousState = device.state;
+    const nextState = previousState === 'on' ? 'off'
+      : (previousState === 'off' ? 'on' : (previousState === 'locked' ? 'unlocked' : 'locked'));
+
+    // Anticipare lo stato rende la scheda reattiva; se poi il comando non ha
+    // avuto effetto si torna indietro, perché mostrare una lampada accesa che
+    // è spenta è peggio di un istante di attesa.
+    setDevices(prev => prev.map(d => d.id === id ? { ...d, state: nextState } : d));
+
+    const outcome = await sendRealControl(id, { state: nextState });
+    if (outcome?.success) {
+      addLog(`Dispositivo ${device.name} (${id}) commutato a ${nextState.toUpperCase()}`, 'action');
+    } else {
+      setDevices(prev => prev.map(d => d.id === id ? { ...d, state: previousState } : d));
+      addLog(`${device.name}: stato invariato. ${outcome?.error || 'Il dispositivo non ha risposto.'}`, 'action');
     }
   };
 
-  const toggleDevice = (id) => {
-    setDevices(prev => prev.map(d => {
-      if (d.id === id) {
-        const nextState = d.state === 'on' ? 'off' : (d.state === 'off' ? 'on' : (d.state === 'locked' ? 'unlocked' : 'locked'));
-        addLog(`Dispositivo ${d.name} (${d.id}) commutato a ${nextState.toUpperCase()}`, 'action');
-        sendRealControl(d.id, { state: nextState });
-        return { ...d, state: nextState };
-      }
-      return d;
-    }));
+  // Regolazioni: si applicano subito sulla scheda per non far attendere lo
+  // slider, ma vengono annullate se il dispositivo non ha risposto — altrimenti
+  // la scheda mostra un colore che la lampada non ha mai avuto.
+  const applyAndVerify = async (id, payload, changes, describe) => {
+    const device = devices.find(d => d.id === id);
+    if (!device) return;
+    const previous = { ...device };
+
+    setDevices(prev => prev.map(d => d.id === id ? { ...d, ...changes } : d));
+    const outcome = await sendRealControl(id, payload);
+
+    if (outcome?.success) {
+      addLog(describe(device), 'action');
+    } else {
+      setDevices(prev => prev.map(d => d.id === id ? previous : d));
+      addLog(`${device.name}: regolazione non applicata. ${outcome?.error || 'Nessuna risposta dal dispositivo.'}`, 'action');
+    }
   };
 
   const updateBrightness = (id, newBrightness) => {
-    setDevices(prev => prev.map(d => {
-      if (d.id === id) {
-        const nextState = newBrightness > 0 ? 'on' : 'off';
-        sendRealControl(d.id, { state: nextState, brightness: newBrightness });
-        return { ...d, brightness: newBrightness, state: nextState };
-      }
-      return d;
-    }));
+    const nextState = newBrightness > 0 ? 'on' : 'off';
+    applyAndVerify(id,
+      { state: nextState, brightness: newBrightness },
+      { brightness: newBrightness, state: nextState },
+      d => `Luminosità di ${d.name} impostata al ${newBrightness}%`);
   };
 
   const updateColor = (id, newColorHex, rgbArr = null) => {
-    setDevices(prev => prev.map(d => {
-      if (d.id === id) {
-        sendRealControl(d.id, { state: 'on', color_rgb: rgbArr || [0, 210, 255] });
-        addLog(`Colore di ${d.name} impostato a ${newColorHex}`, 'action');
-        return { ...d, color: newColorHex, state: 'on' };
-      }
-      return d;
-    }));
+    applyAndVerify(id,
+      { state: 'on', color_rgb: rgbArr || [0, 210, 255] },
+      { color: newColorHex, state: 'on' },
+      d => `Colore di ${d.name} impostato a ${newColorHex}`);
   };
 
   const updateSetpoint = (id, delta) => {
-    setDevices(prev => prev.map(d => {
-      if (d.id === id && d.type === 'climate') {
-        const nextVal = Math.max(16, Math.min(30, (d.setpoint || 21) + delta));
-        sendRealControl(d.id, { setpoint: nextVal });
-        addLog(`Temperatura target ${d.name} impostata a ${nextVal}°C`, 'action');
-        return { ...d, setpoint: nextVal };
-      }
-      return d;
-    }));
+    const device = devices.find(d => d.id === id && d.type === 'climate');
+    if (!device) return;
+    const nextVal = Math.max(16, Math.min(30, (device.setpoint || 21) + delta));
+    applyAndVerify(id, { setpoint: nextVal }, { setpoint: nextVal },
+      d => `Temperatura target ${d.name} impostata a ${nextVal}°C`);
   };
 
   // Scene Trigger Preset Handler
@@ -400,7 +442,7 @@ export default function DomoticaTab() {
         }
         return d;
       }));
-      addLog('Scena attivata: "Focus Ricerca" (Illuminazione Ciano 90%, Clima 21°C).', 'success');
+      reportScene('Focus Ricerca', 'light');
     } else if (sceneName === 'standby') {
       setDevices(prev => prev.map(d => {
         if (d.domain === 'light') {
@@ -413,7 +455,7 @@ export default function DomoticaTab() {
         }
         return d;
       }));
-      addLog('Scena attivata: "Standby Notte" (Spegni luci, Serrature bloccate).', 'success');
+      reportScene('Standby Notte', 'light');
     } else if (sceneName === 'creative') {
       setDevices(prev => prev.map(d => {
         if (d.domain === 'light') {
@@ -422,12 +464,38 @@ export default function DomoticaTab() {
         }
         return d;
       }));
-      addLog('Scena attivata: "Ambiente Creativo" (Illuminazione Neon Viola 80%).', 'success');
+      reportScene('Ambiente Creativo', 'light');
+    }
+  };
+
+  // Una scena tocca più dispositivi: il registro deve dire quanti hanno
+  // risposto davvero, non che la scena "è stata attivata" a prescindere.
+  const reportScene = async (name, domain) => {
+    const targets = devices.filter(d => d.domain === domain);
+    await new Promise(r => setTimeout(r, 400));
+    try {
+      const res = await fetch('/api/mcp/ha/entities');
+      const data = await res.json();
+      const live = new Map((data.entities || []).map(e => [e.entity_id, e.state]));
+      const responding = targets.filter(d => !['unavailable', 'unknown'].includes(live.get(d.id)));
+      if (responding.length === targets.length) {
+        addLog(`Scena "${name}" applicata a ${targets.length} dispositivi.`, 'success');
+      } else {
+        addLog(`Scena "${name}": ${responding.length}/${targets.length} dispositivi hanno risposto`
+          + ` — gli altri risultano non disponibili in Home Assistant.`, 'action');
+      }
+    } catch {
+      addLog(`Scena "${name}" inviata; esito non verificabile.`, 'action');
     }
   };
 
   // Handle AI Command Execution
-  const handleAiCommand = (e) => {
+  //
+  // Questo riquadro dichiarava «Tutte le luci reali disattivate» dopo una pausa
+  // di 700 ms, senza aver contattato Home Assistant: cambiava solo lo stato
+  // locale delle schede. I comandi ora partono davvero, uno per dispositivo, e
+  // il registro riporta quanti hanno effettivamente cambiato stato.
+  const handleAiCommand = async (e) => {
     e.preventDefault();
     if (!prompt.trim()) return;
     setAiLoading(true);
@@ -435,19 +503,47 @@ export default function DomoticaTab() {
     setPrompt('');
     addLog(`Comando AI Domotico inviato: "${cmd}"`, 'ai');
 
-    setTimeout(() => {
-      setAiLoading(false);
-      const lower = cmd.toLowerCase();
-      if (lower.includes('spegni') || lower.includes('off')) {
-        setDevices(prev => prev.map(d => d.domain === 'light' ? { ...d, state: 'off' } : d));
-        addLog('AI Home Assistant: Tutte le luci reali disattivate.', 'success');
-      } else if (lower.includes('accendi') || lower.includes('on')) {
-        setDevices(prev => prev.map(d => d.domain === 'light' ? { ...d, state: 'on' } : d));
-        addLog('AI Home Assistant: Tutte le luci reali attivate.', 'success');
-      } else {
-        addLog(`AI Home Assistant: Eseguito comando "${cmd}" via MCP Home Assistant Bus.`, 'success');
+    const lower = cmd.toLowerCase();
+    const turnOff = /\b(spegni|spegnere|off|chiudi)\b/.test(lower);
+    const turnOn = /\b(accendi|accendere|on|apri)\b/.test(lower);
+
+    try {
+      if (!turnOff && !turnOn) {
+        addLog(`Comando non riconosciuto: usa "accendi"/"spegni", eventualmente con il nome di una stanza.`, 'action');
+        return;
       }
-    }, 700);
+      const nextState = turnOff ? 'off' : 'on';
+
+      // Una stanza citata nel testo restringe il bersaglio; altrimenti valgono
+      // tutte le luci note.
+      const rooms = [...new Set(devices.map(d => d.room).filter(Boolean))];
+      const room = rooms.find(r => lower.includes(r.toLowerCase()));
+      const targets = devices.filter(d => d.domain === 'light' && (!room || d.room === room));
+
+      if (!targets.length) {
+        addLog(room ? `Nessuna luce trovata in "${room}".` : 'Nessuna luce disponibile.', 'action');
+        return;
+      }
+
+      const results = await Promise.all(
+        targets.map(d => sendRealControl(d.id, { state: nextState }).then(r => ({ d, r })))
+      );
+      const ok = results.filter(x => x.r?.success);
+      const failed = results.filter(x => !x.r?.success);
+
+      if (ok.length) {
+        setDevices(prev => prev.map(d =>
+          ok.some(x => x.d.id === d.id) ? { ...d, state: nextState } : d));
+        addLog(`Home Assistant: ${ok.length}/${targets.length} luci`
+          + `${room ? ` in ${room}` : ''} portate a ${nextState.toUpperCase()}.`, 'success');
+      }
+      if (failed.length) {
+        addLog(`Nessun effetto su ${failed.length} ${failed.length === 1 ? 'luce' : 'luci'}: `
+          + (failed[0].r?.error || 'il dispositivo non ha risposto.'), 'action');
+      }
+    } finally {
+      setAiLoading(false);
+    }
   };
 
   // Simulate Feature Activation for Standby Cards
@@ -481,16 +577,24 @@ export default function DomoticaTab() {
     });
   }, [devices, searchQuery, selectedDomain]);
 
+  const { theme } = useApp();
+  const isThemeLight = theme === 'light';
+  const T = useMemo(() => getThemeTokens(isThemeLight), [isThemeLight]);
+
   return (
-    <div style={{
-      height: '100%',
-      display: 'flex',
-      flexDirection: 'column',
-      background: T.bg,
-      color: T.text,
-      fontFamily: 'Inter, system-ui, sans-serif',
-      overflowY: 'auto'
-    }}>
+    <div 
+      className="domotica-tab-root"
+      style={{
+        position: 'relative',
+        height: '100%',
+        display: 'flex',
+        flexDirection: 'column',
+        background: T.bg,
+        color: T.text,
+        fontFamily: 'Inter, system-ui, sans-serif',
+        overflowY: 'auto'
+      }}>
+      <TechSpaceCanvas isLight={theme === 'light'} />
 
       {/* Hero Visual Banner with Generated Graphic Backdrop */}
       <div style={{
@@ -501,10 +605,10 @@ export default function DomoticaTab() {
         minHeight: '100px',
         borderBottom: '1px solid rgba(0, 210, 255, 0.25)',
         boxShadow: '0 8px 32px rgba(0,0,0,0.4)',
-        backgroundImage: 'linear-gradient(to right, rgba(8, 10, 16, 0.98) 45%, rgba(8, 10, 16, 0.5) 100%), url("/images/domotica_smart_hub.jpg")',
-        backgroundSize: '360px auto',
+        backgroundImage: 'linear-gradient(to right, rgba(28, 12, 4, 0.96) 35%, rgba(120, 45, 10, 0.6) 75%, rgba(234, 88, 12, 0.22) 100%), url("/images/domotica_smart_hub.jpg")',
+        backgroundSize: 'cover',
         backgroundRepeat: 'no-repeat',
-        backgroundPosition: 'right center',
+        backgroundPosition: 'center center',
         flexShrink: 0
       }}>
         <div style={{ position: 'relative', zIndex: 2, display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '16px' }}>
@@ -570,16 +674,13 @@ export default function DomoticaTab() {
       <div style={{ padding: '32px', flex: 1, maxWidth: '1440px', width: '100%', margin: '0 auto', boxSizing: 'border-box' }}>
 
         {/* Preset Smart Scenes Quick Action Toolbar */}
-        <div style={{
+        <div className="domotica-scene-card primi-passi-card" style={{
           marginBottom: '32px',
           padding: '24px',
           borderRadius: '20px',
-          background: 'rgba(14, 17, 25, 0.85)',
-          border: '1px solid rgba(124, 91, 240, 0.25)',
-          backgroundImage: 'linear-gradient(to right, rgba(14,17,25,0.92) 50%, rgba(14,17,25,0.7) 100%), url("/images/domotica_lighting_scene.jpg")',
-          backgroundSize: 'cover',
-          backgroundPosition: 'center',
-          boxShadow: '0 12px 32px rgba(0,0,0,0.3)',
+          backgroundColor: T.cardBg,
+          border: `1px solid ${T.border}`,
+          boxShadow: '0 8px 30px rgba(0,0,0,0.15)',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
@@ -635,11 +736,11 @@ export default function DomoticaTab() {
         </div>
 
         {/* AI Command Input Bar */}
-        <div style={{
+        <div className="domotica-card primi-passi-card" style={{
           padding: '20px', borderRadius: '18px',
-          background: 'rgba(14, 17, 25, 0.85)',
-          border: '1px solid rgba(0, 210, 255, 0.25)',
-          boxShadow: '0 8px 32px rgba(0,0,0,0.3)',
+          backgroundColor: T.cardBg,
+          border: `1px solid ${T.border}`,
+          boxShadow: '0 8px 30px rgba(0,0,0,0.15)',
           marginBottom: '32px'
         }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '12px', fontSize: '0.86rem', fontWeight: 800, color: '#00d2ff' }}>
@@ -673,14 +774,14 @@ export default function DomoticaTab() {
         </div>
 
         {/* Device Search & Filter Toolbar */}
-        <div style={{
+        <div className="domotica-card primi-passi-card" style={{
           display: 'flex', flexDirection: 'column', gap: '16px', marginBottom: '28px',
-          padding: '20px', borderRadius: '18px', background: 'rgba(14, 17, 25, 0.9)',
-          border: '1px solid rgba(255, 255, 255, 0.08)'
+          padding: '20px', borderRadius: '18px', backgroundColor: T.cardBg,
+          border: `1px solid ${T.border}`
         }}>
           <div style={{ display: 'flex', gap: '14px', flexWrap: 'wrap' }}>
             <div style={{ flex: 1, minWidth: '280px', position: 'relative' }}>
-              <Search size={18} style={{ position: 'absolute', left: '16px', top: '50%', transform: 'translateY(-50%)', color: '#6b7080' }} />
+              <Search size={18} style={{ position: 'absolute', left: '16px', top: '50%', transform: 'translateY(-50%)', color: T.muted }} />
               <input
                 type="text"
                 value={searchQuery}
@@ -688,8 +789,8 @@ export default function DomoticaTab() {
                 placeholder="🔍 Cerca dispositivo, stanza o ID entità (es. luce, ufficio, clima)..."
                 style={{
                   width: '100%', padding: '12px 18px 12px 46px', borderRadius: '12px',
-                  background: 'rgba(8, 10, 16, 0.9)', border: '1px solid rgba(255, 255, 255, 0.1)',
-                  color: '#fff', fontSize: '0.86rem', outline: 'none', boxSizing: 'border-box'
+                  background: isThemeLight ? '#f2ede2' : '#0c0e16', border: `1px solid ${T.border}`,
+                  color: T.text, fontSize: '0.86rem', outline: 'none', boxSizing: 'border-box'
                 }}
               />
             </div>
@@ -768,10 +869,11 @@ export default function DomoticaTab() {
                   return (
                     <div
                       key={dev.id}
+                      className="domotica-device-card primi-passi-card"
                       style={{
                         padding: '18px 20px', borderRadius: '16px',
-                        background: 'rgba(14, 17, 25, 0.85)',
-                        border: '1px solid ' + (isActive ? 'rgba(0, 210, 255, 0.25)' : 'rgba(255, 255, 255, 0.08)'),
+                        backgroundColor: T.cardBg,
+                        border: '1px solid ' + (isActive ? T.accent : T.border),
                         boxShadow: isActive ? `0 4px 20px ${glowColor}15` : 'none', transition: 'all 0.25s ease'
                       }}
                     >
@@ -948,22 +1050,23 @@ export default function DomoticaTab() {
             <h2 style={{ fontSize: '1.15rem', fontWeight: 800, color: '#fff', margin: '0 0 16px 0', display: 'flex', alignItems: 'center', gap: '8px' }}>
               <span>📜</span> Log Eventi MCP Home Assistant
             </h2>
-            <div style={{
-              padding: '18px', borderRadius: '16px', background: 'rgba(8, 10, 16, 0.9)',
-              border: '1px solid rgba(255, 255, 255, 0.08)', maxHeight: '620px', overflowY: 'auto',
+            <div className="domotica-card primi-passi-card" style={{
+              padding: '18px', borderRadius: '16px', backgroundColor: T.cardBg,
+              border: `1px solid ${T.border}`, maxHeight: '620px', overflowY: 'auto',
               display: 'flex', flexDirection: 'column', gap: '10px'
             }}>
               {logs.map((log, idx) => (
                 <div
                   key={idx}
                   style={{
-                    padding: '10px 14px', borderRadius: '10px', background: 'rgba(14, 17, 25, 0.7)',
+                    padding: '10px 14px', borderRadius: '10px',
+                    background: isThemeLight ? '#f2ede2' : '#0c0e16',
                     borderLeft: `3px solid ${log.type === 'success' ? '#3fb950' : (log.type === 'action' ? '#00d2ff' : (log.type === 'ai' ? '#a78bfa' : '#6b7080'))}`,
                     fontSize: '0.78rem'
                   }}
                 >
-                  <div style={{ color: '#6b7080', fontSize: '0.7rem', marginBottom: '2px' }}>{log.time}</div>
-                  <div style={{ color: '#e2e8f0', fontWeight: 500 }}>{log.msg}</div>
+                  <div style={{ color: T.muted, fontSize: '0.7rem', marginBottom: '2px' }}>{log.time}</div>
+                  <div style={{ color: T.text, fontWeight: 500 }}>{log.msg}</div>
                 </div>
               ))}
             </div>
@@ -992,10 +1095,11 @@ export default function DomoticaTab() {
               return (
                 <div
                   key={feat.id}
+                  className="domotica-inactive-card primi-passi-card"
                   style={{
                     padding: '24px', borderRadius: '18px',
-                    background: isActivated ? 'rgba(14, 17, 25, 0.85)' : 'rgba(14, 17, 25, 0.4)',
-                    border: '1px solid ' + (isActivated ? `${feat.color}40` : 'rgba(255, 255, 255, 0.08)'),
+                    backgroundColor: T.cardBg,
+                    border: '1px solid ' + (isActivated ? `${feat.color}40` : T.border),
                     boxShadow: isActivated ? `0 8px 32px ${feat.color}15` : 'none',
                     display: 'flex', flexDirection: 'column', justifyContent: 'space-between',
                     gap: '16px', opacity: isActivated ? 1 : 0.72,

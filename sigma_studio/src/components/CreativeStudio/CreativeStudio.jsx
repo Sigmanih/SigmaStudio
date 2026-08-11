@@ -3,6 +3,8 @@ import {
   Wand2, Edit3, Box, Hexagon, Layers, Workflow, Film, Cpu,
   ChevronLeft, ChevronRight, Database, X
 } from 'lucide-react';
+import { useApp } from '../../contexts/AppContext';
+import TechSpaceCanvas from '../common/TechSpaceCanvas';
 import AssetPanel from './AssetPanel';
 import PropertiesPanel from './PropertiesPanel';
 import ToolPanel from './ToolPanel';
@@ -33,6 +35,7 @@ const VIEWS = [
 ];
 
 export default function CreativeStudio() {
+  const { theme } = useApp();
   const [activeView, setActiveView] = useState('generate');
   const [leftVisible, setLeftVisible] = useState(true);
   const [rightVisible, setRightVisible] = useState(true);
@@ -245,20 +248,24 @@ export default function CreativeStudio() {
   };
 
   return (
-    <div className="creative-studio cs-fade-in">
+    <div className="creative-studio cs-fade-in" style={{ position: 'relative' }}>
+      {/* Animated Translucent Cyber Space Background Canvas */}
+      <TechSpaceCanvas isLight={theme === 'light'} />
+
       {/* Hero Visual Banner matching Domotica Header Style */}
       <div style={{
         position: 'relative',
+        zIndex: 1,
         borderRadius: 0,
         overflow: 'hidden',
         padding: '20px 32px 18px 32px',
         minHeight: '100px',
         borderBottom: '1px solid rgba(0, 210, 255, 0.25)',
         boxShadow: '0 8px 32px rgba(0,0,0,0.4)',
-        backgroundImage: 'linear-gradient(to right, rgba(8, 10, 16, 0.98) 45%, rgba(8, 10, 16, 0.5) 100%), url("/images/creative_lab_banner.jpg")',
-        backgroundSize: '360px auto',
+        backgroundImage: 'linear-gradient(to right, rgba(28, 12, 4, 0.96) 35%, rgba(120, 45, 10, 0.6) 75%, rgba(234, 88, 12, 0.22) 100%), url("/images/creative_lab_banner.jpg")',
+        backgroundSize: 'cover',
         backgroundRepeat: 'no-repeat',
-        backgroundPosition: 'right center',
+        backgroundPosition: 'center center',
         flexShrink: 0
       }}>
         <div style={{ position: 'relative', zIndex: 2, display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '16px' }}>

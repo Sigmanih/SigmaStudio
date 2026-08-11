@@ -5,6 +5,7 @@ import {
   Cpu, Thermometer, Flame, Gauge, AlertTriangle, Layers, CheckCircle2, ArrowRight
 } from 'lucide-react';
 import RealtimeTelemetryChart from './RealtimeTelemetryChart';
+import { useApp } from '../../contexts/AppContext';
 import '../../styles/hardware-lab.css';
 
 const MAX_HISTORY = 900; // ~30 minutes at 2s intervals
@@ -79,6 +80,8 @@ const INACTIVE_HARDWARE_NODES = [
 ];
 
 export default function HardwareLab({ addToast }) {
+  const { theme } = useApp();
+  const isLight = theme === 'light';
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -392,10 +395,10 @@ const hw = data?.hardware || {};
         minHeight: '100px',
         borderBottom: '1px solid rgba(0, 210, 255, 0.25)',
         boxShadow: '0 8px 32px rgba(0,0,0,0.4)',
-        backgroundImage: 'linear-gradient(to right, rgba(8, 10, 16, 0.98) 45%, rgba(8, 10, 16, 0.5) 100%), url("/images/hardware_cluster_lab.jpg")',
-        backgroundSize: '360px auto',
+        backgroundImage: 'linear-gradient(to right, rgba(28, 12, 4, 0.96) 35%, rgba(120, 45, 10, 0.6) 75%, rgba(234, 88, 12, 0.22) 100%), url("/images/hardware_cluster_lab.jpg")',
+        backgroundSize: 'cover',
         backgroundRepeat: 'no-repeat',
-        backgroundPosition: 'right center',
+        backgroundPosition: 'center center',
         marginBottom: '20px',
         flexShrink: 0
       }}>
@@ -461,7 +464,7 @@ const hw = data?.hardware || {};
           {/* Card 1: VRAM & GPU */}
           <div style={{
             padding: '10px 14px', borderRadius: '12px',
-            background: 'rgba(10, 14, 24, 0.85)', backdropFilter: 'blur(12px)',
+            backgroundColor: isLight ? '#fffdf9' : 'rgba(10, 14, 24, 0.85)',
             border: '1px solid rgba(0, 210, 255, 0.3)', boxShadow: '0 4px 18px rgba(0, 210, 255, 0.1)'
           }}>
             <div style={{ fontSize: '0.65rem', color: '#8b8fa3', fontWeight: 800, textTransform: 'uppercase', marginBottom: '2px' }}>
@@ -478,7 +481,7 @@ const hw = data?.hardware || {};
           {/* Card 2: SYSTEM RAM */}
           <div style={{
             padding: '10px 14px', borderRadius: '12px',
-            background: 'rgba(10, 14, 24, 0.85)', backdropFilter: 'blur(12px)',
+            backgroundColor: isLight ? '#fffdf9' : 'rgba(10, 14, 24, 0.85)',
             border: '1px solid rgba(16, 185, 129, 0.3)', boxShadow: '0 4px 18px rgba(16, 185, 129, 0.1)'
           }}>
             <div style={{ fontSize: '0.65rem', color: '#8b8fa3', fontWeight: 800, textTransform: 'uppercase', marginBottom: '2px' }}>
@@ -495,7 +498,7 @@ const hw = data?.hardware || {};
           {/* Card 3: CPU THREADS */}
           <div style={{
             padding: '10px 14px', borderRadius: '12px',
-            background: 'rgba(10, 14, 24, 0.85)', backdropFilter: 'blur(12px)',
+            backgroundColor: isLight ? '#fffdf9' : 'rgba(10, 14, 24, 0.85)',
             border: '1px solid rgba(188, 140, 255, 0.3)', boxShadow: '0 4px 18px rgba(188, 140, 255, 0.1)'
           }}>
             <div style={{ fontSize: '0.65rem', color: '#8b8fa3', fontWeight: 800, textTransform: 'uppercase', marginBottom: '2px' }}>
@@ -519,7 +522,7 @@ const hw = data?.hardware || {};
         {/* ==================================================================== */}
         <div className="gpu-card" style={{
           padding: '14px 18px',
-          background: 'rgba(15, 23, 42, 0.75)',
+          backgroundColor: isLight ? '#fffdf9' : 'rgba(15, 23, 42, 0.75)',
           border: gpuProcs.orfani > 0 ? '1px solid rgba(239, 68, 68, 0.45)' : undefined
         }}>
           <div className="gpu-card-header" style={{ marginBottom: gpuProcs.processes.length ? '12px' : 0 }}>
@@ -640,7 +643,7 @@ const hw = data?.hardware || {};
         {/* ==================================================================== */}
         {/* SYSTEM OVERVIEW CARD (LEFT = COMPUTE, RIGHT = MEMORY) */}
         {/* ==================================================================== */}
-        <div className="gpu-card" style={{ padding: '14px 18px', background: 'rgba(15, 23, 42, 0.75)' }}>
+        <div className="gpu-card" style={{ padding: '14px 18px', backgroundColor: isLight ? '#fffdf9' : 'rgba(15, 23, 42, 0.75)' }}>
           <div className="gpu-card-header" style={{ marginBottom: '12px' }}>
             <div className="gpu-title">
               <div className="gpu-index-pill" style={{ background: 'rgba(16, 185, 129, 0.15)', color: '#10b981', border: '1px solid rgba(16, 185, 129, 0.3)', padding: '2px 8px', fontSize: '11px' }}>
@@ -765,7 +768,7 @@ const hw = data?.hardware || {};
             const hist = historyData[idx] || { vram: [], compute: [], temp: [], power: [] };
 
             return (
-              <div key={idx} className="gpu-card" style={{ padding: '14px 18px', background: 'rgba(15, 23, 42, 0.75)' }}>
+              <div key={idx} className="gpu-card" style={{ padding: '14px 18px', backgroundColor: isLight ? '#fffdf9' : 'rgba(15, 23, 42, 0.75)' }}>
                 {/* GPU Card Top Title Bar */}
                 <div className="gpu-card-header" style={{ marginBottom: '12px' }}>
                   <div className="gpu-title">
@@ -977,7 +980,7 @@ const hw = data?.hardware || {};
                 key={node.id}
                 style={{
                   padding: '24px', borderRadius: '18px',
-                  background: isActivated ? 'rgba(14, 17, 25, 0.85)' : 'rgba(14, 17, 25, 0.4)',
+                  backgroundColor: isLight ? '#fffdf9' : (isActivated ? 'rgba(14, 17, 25, 0.85)' : 'rgba(14, 17, 25, 0.4)'),
                   border: '1px solid ' + (isActivated ? `${node.color}40` : 'rgba(255, 255, 255, 0.08)'),
                   boxShadow: isActivated ? `0 8px 32px ${node.color}15` : 'none',
                   display: 'flex', flexDirection: 'column', justifyContent: 'space-between',

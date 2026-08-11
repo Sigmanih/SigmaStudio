@@ -1,5 +1,6 @@
 import React, { useRef, useEffect, useState, useCallback } from 'react';
 import { PieChart, BookOpen, Layers } from 'lucide-react';
+import { useApp } from '../../contexts/AppContext';
 
 // ==============================================================================
 // MappaArgomenti — Mappa interattiva degli argomenti con D3 force-directed graph
@@ -35,6 +36,8 @@ const CATEGORY_AGENT_MAP = {
 };
 
 export default function MappaArgomenti({ onOpenFile }) {
+  const { theme } = useApp();
+  const isThemeLight = theme === 'light';
   const svgRef = useRef(null);
   const containerRef = useRef(null);
   const [topicsData, setTopicsData] = useState([]);
@@ -661,6 +664,7 @@ export default function MappaArgomenti({ onOpenFile }) {
     const isConstellation = argomentiTheme === 'costellazione';
     const isClassico = argomentiTheme === 'classico';
     const isMinimal = argomentiTheme === 'minimal';
+    const isCrema = argomentiTheme === 'crema';
 
     // Define SVGs: Defs, Gradients & Glow Filters
     const defs = svg.append('defs');
@@ -772,10 +776,10 @@ export default function MappaArgomenti({ onOpenFile }) {
     zoomRef.current = zoom;
 
     // Initial scale: centered in viewport with comfortable scale
-    const initialScale = Math.min(width, height) / 900;
+    const initialScale = Math.min(width, height) / 1800;
     const initialTransform = d3.zoomIdentity
       .translate(width / 2, height / 2.5)
-      .scale(Math.max(0.4, Math.min(0.85, initialScale)));
+      .scale(Math.max(0.2, Math.min(0.425, initialScale)));
     svg.call(zoom.transform, initialTransform);
 
     // Link type map
@@ -800,12 +804,13 @@ export default function MappaArgomenti({ onOpenFile }) {
         const isParent = linkTypeMap[d.source.id + '|' + d.target.id] || linkTypeMap[d.target.id + '|' + d.source.id];
         if (isConstellation) return isParent ? 'url(#parent-link-grad)' : 'url(#constellation-link-grad)';
         if (isClassico) return isParent ? '#d29922' : 'rgba(0, 210, 255, 0.4)';
+        if (isCrema) return isParent ? '#c8963e' : 'rgba(139, 107, 61, 0.45)';
         return isParent ? '#bc8cff' : 'rgba(255, 255, 255, 0.18)';
       })
       .attr('stroke-width', d => {
         const isParent = linkTypeMap[d.source.id + '|' + d.target.id] || linkTypeMap[d.target.id + '|' + d.source.id];
         if (isConstellation) return isParent ? 2.6 : 1.8;
-        if (isClassico) return isParent ? 2.2 : 1.6;
+        if (isClassico || isCrema) return isParent ? 2.2 : 1.6;
         return 1.4;
       })
       .attr('stroke-dasharray', d => {
@@ -968,6 +973,7 @@ export default function MappaArgomenti({ onOpenFile }) {
           const isSelected = selectedNode && d.id === (selectedNode.type === 'topic' ? 'topic-' + selectedNode.data.id : 'mod-' + selectedNode.topicId + '-' + selectedNode.data.number);
           if (isSelected) return 'rgba(210,153,34,0.25)';
           if (isClassico) return d.type === 'topic' ? 'rgba(188,140,255,0.18)' : 'rgba(0,210,255,0.15)';
+          if (isCrema) return d.type === 'topic' ? 'rgba(139,107,61,0.22)' : 'rgba(200,150,62,0.18)';
           return d.type === 'topic' ? '#1e1633' : '#102233';
         })
         .attr('stroke', d => {
@@ -977,10 +983,11 @@ export default function MappaArgomenti({ onOpenFile }) {
           }
           const isSelected = selectedNode && d.id === (selectedNode.type === 'topic' ? 'topic-' + selectedNode.data.id : 'mod-' + selectedNode.topicId + '-' + selectedNode.data.number);
           if (isSelected) return '#d29922';
+          if (isCrema) return d.type === 'topic' ? '#8b6b3d' : '#c8963e';
           return d.type === 'topic' ? '#bc8cff' : '#00d2ff';
         })
         .attr('stroke-width', d => d.type === 'doc' ? 1.5 : (isClassico ? 2.5 : 2))
-        .style('filter', isClassico ? d => d.type === 'topic' ? 'drop-shadow(0 0 6px rgba(188,140,255,0.4))' : 'drop-shadow(0 0 6px rgba(0,210,255,0.3))' : 'none');
+        .style('filter', isClassico ? d => d.type === 'topic' ? 'drop-shadow(0 0 6px rgba(188,140,255,0.4))' : 'drop-shadow(0 0 6px rgba(0,210,255,0.3))' : isCrema ? d => d.type === 'topic' ? 'drop-shadow(0 0 6px rgba(139,107,61,0.3))' : 'drop-shadow(0 0 6px rgba(200,150,62,0.25))' : 'none');
     }
 
     // Node Labels — Dynamic radial orientation to radiate text outwards away from neighbors
@@ -1005,7 +1012,7 @@ export default function MappaArgomenti({ onOpenFile }) {
         if (sin < -0.25) return -(d.r + 8);
         return d.r + Math.round(d.type === 'topic' ? labelFontSize * 1.1 : labelFontSize * 0.95) + 2;
       })
-      .attr('fill', '#e2e4eb')
+      .attr('fill', isCrema ? '#4a3b25' : '#e2e4eb')
       .attr('font-size', d => {
         if (d.type === 'topic') return Math.round(labelFontSize * 1.15) + 'px';
         if (d.type === 'module') return labelFontSize + 'px';
@@ -1013,7 +1020,7 @@ export default function MappaArgomenti({ onOpenFile }) {
       })
       .attr('font-weight', d => d.type === 'topic' ? '700' : '600')
       .attr('pointer-events', 'none')
-      .attr('stroke', '#050612')
+      .attr('stroke', isCrema ? '#faf6ec' : '#050612')
       .attr('stroke-width', '3.5px')
       .attr('stroke-linejoin', 'round')
       .style('paint-order', 'stroke fill')
@@ -1266,7 +1273,7 @@ export default function MappaArgomenti({ onOpenFile }) {
   };
   const resetZoom = () => {
     if (svgRef.current && zoomRef.current && d3) {
-      const initialScale = Math.min(dimensions.width, dimensions.height) / 600;
+      const initialScale = Math.min(dimensions.width, dimensions.height) / 1200;
       d3.select(svgRef.current).transition().duration(500).call(zoomRef.current.transform, d3.zoomIdentity.scale(initialScale));
     }
   };
@@ -2299,7 +2306,7 @@ export default function MappaArgomenti({ onOpenFile }) {
     : [];
 
   return (
-    <div className="mappa-argomenti">
+    <div className={`mappa-argomenti${isThemeLight ? ' theme-light' : ''}`}>
       {loading && (
         <div className="mappa-loading-overlay" style={{
           position: 'absolute',
@@ -2337,6 +2344,112 @@ export default function MappaArgomenti({ onOpenFile }) {
           font-size: 15px;
           overflow: hidden;
         }
+        /* === TEMA LIGHT OVERRIDES (palette Manifesti crema/bianco) === */
+        .mappa-argomenti.theme-light {
+          background: radial-gradient(ellipse at 50% 30%, #f7f4ed 0%, #f2ede2 60%, #e8e0d0 100%);
+          color: #111111;
+        }
+        .mappa-argomenti.theme-light ::-webkit-scrollbar-thumb { background: rgba(190, 160, 110, 0.35); }
+        .mappa-argomenti.theme-light ::-webkit-scrollbar-thumb:hover { background: rgba(234, 88, 12, 0.4); }
+        .mappa-argomenti.theme-light .mappa-header-bar {
+          background: linear-gradient(135deg, rgba(255, 253, 249, 0.97) 0%, rgba(247, 244, 237, 0.94) 100%) !important;
+          border-color: rgba(190, 160, 110, 0.35) !important;
+          box-shadow: 0 4px 20px rgba(190, 160, 110, 0.12) !important;
+        }
+        .mappa-argomenti.theme-light .mappa-header-bar button {
+          background: rgba(255, 253, 249, 0.9);
+          border-color: rgba(190, 160, 110, 0.35);
+          color: #111111;
+        }
+        .mappa-argomenti.theme-light .mappa-detail-panel {
+          background: #fffdf9 !important;
+          border-left-color: rgba(190, 160, 110, 0.35) !important;
+        }
+        .mappa-argomenti.theme-light .mappa-header-bar .theme-control,
+        .mappa-argomenti.theme-light .mappa-header-bar .font-size-control,
+        .mappa-argomenti.theme-light .mappa-header-bar .branch-length-control {
+          background: #fffdf9 !important;
+          border-color: rgba(190, 160, 110, 0.35) !important;
+          color: #2e2820 !important;
+          box-shadow: 0 2px 8px rgba(190, 160, 110, 0.15) !important;
+        }
+        .mappa-argomenti.theme-light .mappa-header-bar .font-size-control span,
+        .mappa-argomenti.theme-light .mappa-header-bar .branch-length-control span {
+          color: #d97706;
+        }
+        .mappa-argomenti.theme-light .mappa-header-bar .font-size-control input,
+        .mappa-argomenti.theme-light .mappa-header-bar .branch-length-control input {
+          accent-color: #ea580c;
+        }
+        .mappa-argomenti.theme-light .mappa-header-bar .btn-explore,
+        .mappa-argomenti.theme-light .mappa-header-bar .btn-explore.active { color: #3fb950; }
+        .mappa-argomenti.theme-light .mappa-header-bar .btn-update { color: #d97706; }
+        .mappa-argomenti.theme-light .mappa-header-bar .btn-new-topic { color: #111111; background: rgba(190, 160, 110, 0.14); border-color: rgba(190, 160, 110, 0.35); }
+        .mappa-argomenti.theme-light .module-filter-bar,
+        .mappa-argomenti.theme-light .topic-tab-bar {
+          background: #f7f4ed !important;
+          border-bottom-color: rgba(190, 160, 110, 0.35) !important;
+        }
+        .mappa-argomenti.theme-light .mfb-label { color: #2e2820; }
+        .mappa-argomenti.theme-light .mfb-btn,
+        .mappa-argomenti.theme-light .topic-tab { color: #2e2820; }
+        .mappa-argomenti.theme-light .mfb-btn:hover,
+        .mappa-argomenti.theme-light .topic-tab:hover { color: #111111; background: #f2ede2; border-color: rgba(190, 160, 110, 0.35); }
+        .mappa-argomenti.theme-light .mfb-btn.active { color: #d97706; border-color: rgba(190, 160, 110, 0.5); background: rgba(190, 160, 110, 0.14); }
+        .mappa-argomenti.theme-light .topic-tab.active { color: #111111; border-bottom-color: #d97706; background: rgba(190, 160, 110, 0.14); }
+        .mappa-argomenti.theme-light .topic-tab .tab-count { background: rgba(190, 160, 110, 0.14); color: #2e2820; }
+        .mappa-argomenti.theme-light .topic-tab.active .tab-count { background: rgba(190, 160, 110, 0.28); color: #111111; }
+        .mappa-argomenti.theme-light .file-columns-area { border-top-color: rgba(190, 160, 110, 0.35); }
+        .mappa-argomenti.theme-light .file-column {
+          background: #fffdf9 !important;
+          border-color: rgba(190, 160, 110, 0.35) !important;
+        }
+        .mappa-argomenti.theme-light .file-column-header {
+          border-bottom-color: rgba(190, 160, 110, 0.35);
+          color: #111111;
+        }
+        .mappa-argomenti.theme-light .file-column .empty-col-hint { color: #2e2820; }
+        .mappa-argomenti.theme-light .col-file-item .col-file-name { color: #2e2820; }
+        .mappa-argomenti.theme-light .col-file-item .col-file-name:hover { color: #111111; }
+        .mappa-argomenti.theme-light .col-file-item:hover { background: #f2ede2; }
+        .mappa-argomenti.theme-light .col-file-item .col-mod-badge { background: rgba(190, 160, 110, 0.14); color: #2e2820; }
+        .mappa-argomenti.theme-light .sidebar-search-box {
+          background: #fffdf9;
+          border-color: rgba(190, 160, 110, 0.35);
+        }
+        .mappa-argomenti.theme-light .sidebar-search-box .search-icon { color: #2e2820; }
+        .mappa-argomenti.theme-light .sidebar-search-input { color: #111111; }
+        .mappa-argomenti.theme-light .sidebar-search-input::placeholder { color: #2e2820; }
+        .mappa-argomenti.theme-light .explorer-section { border-bottom-color: rgba(190, 160, 110, 0.35); }
+        .mappa-argomenti.theme-light .explorer-section-header { color: #2e2820; }
+        .mappa-argomenti.theme-light .explorer-section-header:hover { color: #111111; }
+        .mappa-argomenti.theme-light .explorer-topic-item { color: #2e2820; }
+        .mappa-argomenti.theme-light .explorer-topic-item:hover { background: #f2ede2; color: #111111; }
+        .mappa-argomenti.theme-light .explorer-topic-item.active { background: rgba(190, 160, 110, 0.14); color: #111111; border-left-color: #d97706; }
+        .mappa-argomenti.theme-light .explorer-topic-icon { background: rgba(190, 160, 110, 0.14); }
+        .mappa-argomenti.theme-light .explorer-topic-count { background: rgba(190, 160, 110, 0.14); color: #2e2820; }
+        .mappa-argomenti.theme-light .explorer-topic-item.active .explorer-topic-count { color: #111111; background: rgba(190, 160, 110, 0.28); }
+        .mappa-argomenti.theme-light .folder-header { color: #2e2820; }
+        .mappa-argomenti.theme-light .folder-header:hover { background: #f2ede2; color: #111111; }
+        .mappa-argomenti.theme-light .folder-header-count { color: #2e2820; }
+        .mappa-argomenti.theme-light .category-folder-header { color: #2e2820; }
+        .mappa-argomenti.theme-light .category-folder-header:hover { background: #f2ede2; color: #111111; }
+        .mappa-argomenti.theme-light .file-tree-item { color: #2e2820; }
+        .mappa-argomenti.theme-light .file-tree-item:hover { background: #f2ede2; color: #111111; }
+        .mappa-argomenti.theme-light .detail-type { color: #2e2820 !important; }
+        .mappa-argomenti.theme-light .detail-desc { color: #2e2820; }
+        .mappa-argomenti.theme-light .detail-meta .tag { background: rgba(190, 160, 110, 0.14); color: #2e2820; }
+        .mappa-argomenti.theme-light .detail-meta .tag.modules-tag { color: #d97706; background: rgba(190, 160, 110, 0.14); }
+        .mappa-argomenti.theme-light .detail-rel-label { color: #2e2820; }
+        .mappa-argomenti.theme-light .detail-rel-value { color: #2e2820; }
+        .mappa-argomenti.theme-light .detail-rel-tag { background: rgba(190, 160, 110, 0.14); border: 1px solid rgba(190, 160, 110, 0.28); color: #111111; }
+        .mappa-argomenti.theme-light .detail-files h4 { color: #2e2820; border-bottom-color: rgba(190, 160, 110, 0.35); }
+        .mappa-argomenti.theme-light .detail-file-item .fname { color: #2e2820; }
+        .mappa-argomenti.theme-light .detail-file-item .fname:hover { color: #111111; }
+        .mappa-argomenti.theme-light .detail-file-item:hover { background: #f2ede2; }
+        .mappa-argomenti.theme-light .detail-action-btn { border-color: rgba(190, 160, 110, 0.35); color: #2e2820; }
+        .mappa-argomenti.theme-light .detail-action-btn:hover { background: rgba(190, 160, 110, 0.14); color: #111111; border-color: rgba(190, 160, 110, 0.5); }
+        .mappa-argomenti.theme-light .detail-empty { color: #2e2820; }
         .mappa-argomenti ::-webkit-scrollbar { width: 3px; height: 3px; }
         .mappa-argomenti ::-webkit-scrollbar-track { background: transparent; }
         .mappa-argomenti ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.05); border-radius: 10px; }
@@ -2823,10 +2936,10 @@ export default function MappaArgomenti({ onOpenFile }) {
         minHeight: '100px',
         borderBottom: '1px solid rgba(0, 210, 255, 0.25)',
         boxShadow: '0 8px 32px rgba(0,0,0,0.4)',
-        backgroundImage: 'linear-gradient(to right, rgba(8, 10, 16, 0.98) 45%, rgba(8, 10, 16, 0.5) 100%), url("/images/knowledge_graph_banner.jpg")',
-        backgroundSize: '360px auto',
+        backgroundImage: 'linear-gradient(to right, rgba(28, 12, 4, 0.96) 35%, rgba(120, 45, 10, 0.6) 75%, rgba(234, 88, 12, 0.22) 100%), url("/images/knowledge_graph_banner.jpg")',
+        backgroundSize: 'cover',
         backgroundRepeat: 'no-repeat',
-        backgroundPosition: 'right center',
+        backgroundPosition: 'center center',
         marginBottom: '20px',
         flexShrink: 0
       }}>
@@ -2893,22 +3006,23 @@ export default function MappaArgomenti({ onOpenFile }) {
                   value={argomentiTheme}
                   onChange={e => handleThemeChange(e.target.value)}
                   style={{
-                    background: 'rgba(14, 16, 22, 0.95)',
-                    color: argomentiTheme === 'costellazione' ? '#bc8cff' : argomentiTheme === 'classico' ? '#00d2ff' : '#fbbf24',
-                    border: '1px solid ' + (argomentiTheme === 'costellazione' ? 'rgba(188, 140, 255, 0.4)' : argomentiTheme === 'classico' ? 'rgba(0, 210, 255, 0.4)' : 'rgba(251, 191, 36, 0.4)'),
+                    background: argomentiTheme === 'crema' ? 'rgba(245, 239, 227, 0.98)' : 'rgba(14, 16, 22, 0.95)',
+                    color: argomentiTheme === 'costellazione' ? '#bc8cff' : argomentiTheme === 'classico' ? '#00d2ff' : argomentiTheme === 'crema' ? '#8b6b3d' : '#fbbf24',
+                    border: '1px solid ' + (argomentiTheme === 'costellazione' ? 'rgba(188, 140, 255, 0.4)' : argomentiTheme === 'classico' ? 'rgba(0, 210, 255, 0.4)' : argomentiTheme === 'crema' ? 'rgba(200, 150, 62, 0.5)' : 'rgba(251, 191, 36, 0.4)'),
                     borderRadius: '6px',
                     padding: '4px 8px',
                     outline: 'none',
                     fontSize: '0.68rem',
                     fontWeight: 700,
                     cursor: 'pointer',
-                    boxShadow: argomentiTheme === 'costellazione' ? '0 0 10px rgba(188, 140, 255, 0.2)' : argomentiTheme === 'classico' ? '0 0 10px rgba(0, 210, 255, 0.2)' : '0 0 10px rgba(251, 191, 36, 0.2)',
+                    boxShadow: argomentiTheme === 'costellazione' ? '0 0 10px rgba(188, 140, 255, 0.2)' : argomentiTheme === 'classico' ? '0 0 10px rgba(0, 210, 255, 0.2)' : argomentiTheme === 'crema' ? '0 0 10px rgba(200, 150, 62, 0.3)' : '0 0 10px rgba(251, 191, 36, 0.2)',
                     transition: 'all 0.2s ease'
                   }}
                 >
                   <option value="costellazione" style={{ background: '#0e1016', color: '#bc8cff' }}>🌌 Costellazione Spaziale</option>
                   <option value="classico" style={{ background: '#0e1016', color: '#00d2ff' }}>📊 Grafo Tecnologico</option>
                   <option value="minimal" style={{ background: '#0e1016', color: '#fbbf24' }}>✨ Minimal & Contrast</option>
+                  <option value="crema" style={{ background: '#f5efe3', color: '#8b6b3d' }}>🎨 Tema Crema</option>
                 </select>
               </div>
 
@@ -3015,6 +3129,8 @@ export default function MappaArgomenti({ onOpenFile }) {
                 ? 'radial-gradient(ellipse at 40% 40%, rgba(137, 87, 229, 0.14) 0%, rgba(0, 210, 255, 0.06) 45%, #050612 90%)' 
                 : argomentiTheme === 'classico' 
                 ? 'radial-gradient(circle at 50% 50%, rgba(0, 210, 255, 0.08) 0%, #090b14 85%)' 
+                : argomentiTheme === 'crema'
+                ? 'radial-gradient(ellipse at 40% 40%, rgba(200, 150, 62, 0.14) 0%, rgba(139, 107, 61, 0.06) 45%, #f2e8d4 100%)'
                 : '#0e1018'
             }}
           >

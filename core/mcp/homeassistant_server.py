@@ -145,6 +145,51 @@ class HomeAssistantMCPServer(BaseMCPServer):
                 index.setdefault(_normalize(friendly), entity_id)
         return index
 
+    def _service_outcome(self, targets: List[str], response: Any, action: str) -> Dict[str, Any]:
+        """Traduce la risposta di un servizio in un esito verificabile.
+
+        Home Assistant restituisce l'elenco delle entità che hanno *davvero*
+        cambiato stato. Una lista vuota con HTTP 200 significa che il comando è
+        stato accettato ma non ha toccato nulla — tipicamente perché l'entità è
+        `unavailable`: l'integrazione che la forniva non è più attiva e HA ne
+        conserva solo il ricordo. Dichiarare successo in quel caso manda
+        l'operatore a cercare il guasto nel posto sbagliato.
+        """
+        changed = [s.get("entity_id") for s in response
+                   if isinstance(s, dict) and s.get("entity_id")] if isinstance(response, list) else []
+        untouched = [t for t in targets if t not in changed]
+
+        result: Dict[str, Any] = {
+            "success": True, "count": len(targets), "entities": targets,
+            "changed": len(changed), "changed_entities": changed,
+        }
+        if not untouched:
+            return result
+
+        # Solo sul percorso anomalo si paga una lettura in più per dire perché.
+        unavailable = []
+        for entity in untouched[:10]:
+            try:
+                state = self._request("GET", f"states/{entity}")
+                if isinstance(state, dict) and state.get("state") in ("unavailable", "unknown"):
+                    unavailable.append(entity)
+            except Exception:
+                continue
+
+        if unavailable:
+            result["success"] = False
+            result["unavailable"] = unavailable
+            result["error"] = (
+                f"{action} non applicato: {', '.join(unavailable[:3])} "
+                f"{'è' if len(unavailable) == 1 else 'sono'} in stato 'unavailable' su Home Assistant. "
+                "Il comando è stato accettato ma nessun dispositivo risponde: "
+                "controlla in Home Assistant che l'integrazione che fornisce queste luci sia attiva."
+            )
+        elif not changed:
+            result["warning"] = (f"{action} accettato ma nessuna entità ha cambiato stato "
+                                 "(erano già nella condizione richiesta).")
+        return result
+
     def _resolve_targets(self, entity_id, area: str, domain: str) -> List[str]:
         """Turn whatever the agent named into a concrete list of entity ids.
 
@@ -467,16 +512,18 @@ class HomeAssistantMCPServer(BaseMCPServer):
                 data["effect"] = effect
 
         service = "turn_on" if state == "on" else "turn_off"
-        self._request("POST", f"services/light/{service}", data)
-        log.info("Luci %s: %s (%d entità)", state, ", ".join(targets[:5]), len(targets))
-        return {"success": True, "state": state, "count": len(targets),
-                "entities": targets, "applied": data}
+        response = self._request("POST", f"services/light/{service}", data)
+        outcome = self._service_outcome(targets, response, f"Comando luci '{state}'")
+        log.info("Luci %s: %s (%d richieste, %d cambiate)", state,
+                 ", ".join(targets[:5]), len(targets), outcome["changed"])
+        return {**outcome, "state": state, "applied": data}
 
     def _handle_switch_set(self, entity_id=None, area: str = "", state: str = "on", **kwargs):
         targets = self._resolve_targets(entity_id, area, "switch")
         service = "turn_on" if state == "on" else "turn_off"
-        self._request("POST", f"services/switch/{service}", {"entity_id": targets})
-        return {"success": True, "state": state, "count": len(targets), "entities": targets}
+        response = self._request("POST", f"services/switch/{service}", {"entity_id": targets})
+        outcome = self._service_outcome(targets, response, f"Comando prese '{state}'")
+        return {**outcome, "state": state}
 
     def _handle_climate_set(self, entity_id: str = "", temperature: float = None,
                             hvac_mode: str = "", **kwargs):
@@ -499,4 +546,6 @@ class HomeAssistantMCPServer(BaseMCPServer):
         if entity_id:
             payload["entity_id"] = entity_id
         result = self._request("POST", f"services/{domain}/{service}", payload)
-        return {"success": True, "domain": domain, "service": service, "result": result}
+        targets = [entity_id] if entity_id else []
+        outcome = self._service_outcome(targets, result, f"Servizio {domain}.{service}") if targets             else {"success": True, "changed": len(result) if isinstance(result, list) else 0}
+        return {**outcome, "domain": domain, "service": service, "result": result}

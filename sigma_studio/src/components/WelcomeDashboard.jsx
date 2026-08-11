@@ -5,6 +5,7 @@ import {
   Sun, Moon
 } from 'lucide-react';
 import { useApp } from '../contexts/AppContext';
+import TechSpaceCanvas from './common/TechSpaceCanvas';
 
 const PRIMI_PASSI_CARDS = [
   {
@@ -756,132 +757,6 @@ const quickLinkStyle = (color) => ({
   gap: '8px'
 });
 
-/* ----- Animated Cyber-Space Background Canvas Component ----- */
-const TechSpaceCanvas = ({ isLight }) => {
-  const canvasRef = useRef(null);
-
-  useEffect(() => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const ctx = canvas.getContext('2d');
-    let animationFrameId;
-
-    let width = (canvas.width = canvas.parentElement ? canvas.parentElement.offsetWidth : window.innerWidth);
-    let height = (canvas.height = canvas.parentElement ? canvas.parentElement.offsetHeight : window.innerHeight);
-
-    const handleResize = () => {
-      if (!canvas.parentElement) return;
-      width = canvas.width = canvas.parentElement.offsetWidth;
-      height = canvas.height = canvas.parentElement.offsetHeight;
-    };
-
-    window.addEventListener('resize', handleResize);
-
-    const particleCount = Math.min(Math.floor((width * height) / 10000), 75);
-    const particles = [];
-    const colors = isLight 
-      ? ['#0078c8', '#7c5bf0', '#2563eb', '#0284c7'] 
-      : ['#00d2ff', '#bc8cff', '#3b82f6', '#00f0ff'];
-
-    for (let i = 0; i < particleCount; i++) {
-      particles.push({
-        x: Math.random() * width,
-        y: Math.random() * height,
-        vx: (Math.random() - 0.5) * 0.4,
-        vy: (Math.random() - 0.5) * 0.4,
-        radius: Math.random() * 2 + 1,
-        color: colors[Math.floor(Math.random() * colors.length)],
-        pulse: Math.random() * Math.PI * 2
-      });
-    }
-
-    const draw = () => {
-      ctx.clearRect(0, 0, width, height);
-
-      // Deep space cyber grid
-      ctx.strokeStyle = isLight ? 'rgba(0, 120, 200, 0.04)' : 'rgba(0, 210, 255, 0.04)';
-      ctx.lineWidth = 1;
-      const gridSize = 50;
-      for (let x = 0; x < width; x += gridSize) {
-        ctx.beginPath();
-        ctx.moveTo(x, 0);
-        ctx.lineTo(x, height);
-        ctx.stroke();
-      }
-      for (let y = 0; y < height; y += gridSize) {
-        ctx.beginPath();
-        ctx.moveTo(0, y);
-        ctx.lineTo(width, y);
-        ctx.stroke();
-      }
-
-      // Render particle connection lines
-      for (let i = 0; i < particles.length; i++) {
-        for (let j = i + 1; j < particles.length; j++) {
-          const dx = particles[i].x - particles[j].x;
-          const dy = particles[i].y - particles[j].y;
-          const dist = Math.sqrt(dx * dx + dy * dy);
-
-          if (dist < 150) {
-            const alpha = (1 - dist / 150) * (isLight ? 0.15 : 0.22);
-            ctx.strokeStyle = isLight ? `rgba(0, 120, 200, ${alpha})` : `rgba(0, 210, 255, ${alpha})`;
-            ctx.lineWidth = 0.8;
-            ctx.beginPath();
-            ctx.moveTo(particles[i].x, particles[i].y);
-            ctx.lineTo(particles[j].x, particles[j].y);
-            ctx.stroke();
-          }
-        }
-      }
-
-      // Render & update floating tech nodes
-      particles.forEach(p => {
-        p.x += p.vx;
-        p.y += p.vy;
-        p.pulse += 0.03;
-
-        if (p.x < 0 || p.x > width) p.vx *= -1;
-        if (p.y < 0 || p.y > height) p.vy *= -1;
-
-        const currentRadius = p.radius + Math.sin(p.pulse) * 0.5;
-
-        ctx.fillStyle = p.color;
-        ctx.shadowBlur = isLight ? 4 : 10;
-        ctx.shadowColor = p.color;
-        ctx.beginPath();
-        ctx.arc(p.x, p.y, Math.max(0.5, currentRadius), 0, Math.PI * 2);
-        ctx.fill();
-        ctx.shadowBlur = 0;
-      });
-
-      animationFrameId = requestAnimationFrame(draw);
-    };
-
-    draw();
-
-    return () => {
-      window.removeEventListener('resize', handleResize);
-      cancelAnimationFrame(animationFrameId);
-    };
-  }, [isLight]);
-
-  return (
-    <canvas
-      ref={canvasRef}
-      style={{
-        position: 'fixed',
-        top: 0,
-        left: 0,
-        width: '100%',
-        height: '100%',
-        pointerEvents: 'none',
-        zIndex: 0,
-        opacity: isLight ? 0.5 : 0.75
-      }}
-    />
-  );
-};
-
 /* ----- WelcomeScreen Export ----- */
 export default function WelcomeDashboard({ modules, openTab }) {
   const { theme, toggleTheme } = useApp();
@@ -989,11 +864,11 @@ export default function WelcomeDashboard({ modules, openTab }) {
         minHeight: '100px',
         borderBottom: '1px solid rgba(0, 210, 255, 0.25)',
         boxShadow: '0 8px 32px rgba(0,0,0,0.4)',
-        backgroundImage: 'linear-gradient(to right, rgba(14, 16, 22, 0.98) 60%, rgba(14, 16, 22, 0.3) 100%), url("/images/hero_banner.jpg")',
-        backgroundSize: '160px auto',
+        backgroundImage: 'linear-gradient(to right, rgba(28, 12, 4, 0.96) 35%, rgba(120, 45, 10, 0.6) 75%, rgba(234, 88, 12, 0.22) 100%), url("/images/hero_banner.jpg")',
+        backgroundSize: 'cover',
         backgroundRepeat: 'no-repeat',
-        backgroundPosition: 'right 32px center',
-        marginBottom: '20px',
+        backgroundPosition: 'center center',
+        marginBottom: 0,
         flexShrink: 0
       }}>
         <div style={{ position: 'relative', zIndex: 2, display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '16px' }}>
@@ -1032,7 +907,7 @@ export default function WelcomeDashboard({ modules, openTab }) {
 
             <p style={{
               fontSize: '0.78rem',
-              color: '#a0aec0',
+              color: '#ffffff',
               lineHeight: 1.4,
               margin: 0
             }}>
@@ -1047,13 +922,14 @@ export default function WelcomeDashboard({ modules, openTab }) {
               style={{
                 padding: '10px 16px',
                 borderRadius: '12px',
-                background: 'rgba(0, 210, 255, 0.12)',
-                border: '1px solid rgba(0, 210, 255, 0.35)',
+                background: '#181b28',
+                border: '1px solid rgba(0, 210, 255, 0.5)',
                 color: '#00d2ff',
                 fontWeight: 800,
                 fontSize: '0.82rem',
                 cursor: 'pointer',
-                backdropFilter: 'blur(10px)',
+                opacity: 1,
+                boxShadow: '0 4px 16px rgba(0,0,0,0.4)',
                 transition: 'all 0.2s ease',
                 display: 'flex',
                 alignItems: 'center',
@@ -1068,13 +944,14 @@ export default function WelcomeDashboard({ modules, openTab }) {
               style={{
                 padding: '10px 16px',
                 borderRadius: '12px',
-                background: 'rgba(167, 139, 250, 0.12)',
-                border: '1px solid rgba(167, 139, 250, 0.35)',
+                background: '#181b28',
+                border: '1px solid rgba(167, 139, 250, 0.5)',
                 color: '#a78bfa',
                 fontWeight: 800,
                 fontSize: '0.82rem',
                 cursor: 'pointer',
-                backdropFilter: 'blur(10px)',
+                opacity: 1,
+                boxShadow: '0 4px 16px rgba(0,0,0,0.4)',
                 transition: 'all 0.2s ease',
                 display: 'flex',
                 alignItems: 'center',
@@ -1083,54 +960,47 @@ export default function WelcomeDashboard({ modules, openTab }) {
             >
               🇬🇧 README (EN)
             </button>
-
-            <button
-              onClick={toggleTheme}
-              title={`Switch to ${theme === 'dark' ? 'Light' : 'Dark'} theme`}
-              style={{
-                padding: '10px 16px',
-                borderRadius: '12px',
-                background: theme === 'dark' ? 'rgba(255, 215, 0, 0.12)' : 'rgba(124, 91, 240, 0.15)',
-                border: theme === 'dark' ? '1px solid rgba(255, 215, 0, 0.4)' : '1px solid rgba(124, 91, 240, 0.4)',
-                color: theme === 'dark' ? '#ffd700' : '#7c5bf0',
-                fontWeight: 800,
-                fontSize: '0.82rem',
-                cursor: 'pointer',
-                backdropFilter: 'blur(10px)',
-                transition: 'all 0.2s ease',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '8px'
-              }}
-            >
-              {theme === 'dark' ? <Sun size={16} /> : <Moon size={16} />}
-              {theme === 'dark' ? 'TEMA CHIARO' : 'TEMA SCURO'}
-            </button>
           </div>
         </div>
       </div>
 
       {/* Main Workspace Body Wrapper */}
-      <div style={{ padding: '0 24px 24px 24px', display: 'flex', flexDirection: 'column', gap: '24px', flex: 1 }}>
-      <div className="wg-metrics">
-        <div className="wg-metric">
-          <span className="wg-metric-value" style={{ color: '#00d2ff' }}>{countRootTopics}</span>
+      <div style={{ padding: '0 12px 12px 12px', display: 'flex', flexDirection: 'column', gap: '6px', flex: 1 }}>
+      {/* Redesigned High-Tech Metrics Bar */}
+      <div className="wg-metrics" style={{ marginTop: '18px', marginBottom: '12px' }}>
+        <div className="wg-metric" style={{ borderTop: '3px solid #00d2ff' }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
+            <span style={{ fontSize: '1.1rem' }}>🧠</span>
+            <span className="wg-metric-value" style={{ color: '#00d2ff' }}>{countRootTopics}</span>
+          </div>
           <span className="wg-metric-label">Argomenti Fondamentali</span>
         </div>
-        <div className="wg-metric">
-          <span className="wg-metric-value" style={{ color: '#a78bfa' }}>{countModules}</span>
+        <div className="wg-metric" style={{ borderTop: '3px solid #a78bfa' }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
+            <span style={{ fontSize: '1.1rem' }}>📚</span>
+            <span className="wg-metric-value" style={{ color: '#a78bfa' }}>{countModules}</span>
+          </div>
           <span className="wg-metric-label">Moduli di Conoscenza</span>
         </div>
-        <div className="wg-metric">
-          <span className="wg-metric-value" style={{ color: '#3fb950' }}>{countDocs}</span>
+        <div className="wg-metric" style={{ borderTop: '3px solid #3fb950' }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
+            <span style={{ fontSize: '1.1rem' }}>📄</span>
+            <span className="wg-metric-value" style={{ color: '#3fb950' }}>{countDocs}</span>
+          </div>
           <span className="wg-metric-label">Documenti (.md, .pdf)</span>
         </div>
-        <div className="wg-metric">
-          <span className="wg-metric-value" style={{ color: '#ff5064' }}>{countScripts}</span>
+        <div className="wg-metric" style={{ borderTop: '3px solid #ff5064' }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
+            <span style={{ fontSize: '1.1rem' }}>⚡</span>
+            <span className="wg-metric-value" style={{ color: '#ff5064' }}>{countScripts}</span>
+          </div>
           <span className="wg-metric-label">Scripts Python (.py)</span>
         </div>
-        <div className="wg-metric">
-          <span className="wg-metric-value" style={{ color: '#faa03c' }}>{countVizMedia}</span>
+        <div className="wg-metric" style={{ borderTop: '3px solid #faa03c' }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
+            <span style={{ fontSize: '1.1rem' }}>📊</span>
+            <span className="wg-metric-value" style={{ color: '#faa03c' }}>{countVizMedia}</span>
+          </div>
           <span className="wg-metric-label">Viz & Media Assets</span>
         </div>
       </div>
@@ -1138,13 +1008,13 @@ export default function WelcomeDashboard({ modules, openTab }) {
 
 
       {/* Visual Kernel Cognitivo Showcase */}
-      <div style={{
-        margin: '36px 0',
+      <div className="wg-showcase-card" style={{
+        margin: '4px 0',
         padding: '28px',
         borderRadius: '20px',
-        background: 'linear-gradient(135deg, rgba(18, 20, 28, 0.95), rgba(12, 14, 20, 0.95))',
-        border: '1px solid rgba(124, 91, 240, 0.25)',
-        boxShadow: '0 12px 40px rgba(0,0,0,0.4)',
+        background: '#0e1017',
+        border: '1px solid rgba(124, 91, 240, 0.3)',
+        boxShadow: '0 12px 40px rgba(0,0,0,0.5)',
         display: 'grid',
         gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))',
         gap: '24px',
@@ -1192,12 +1062,14 @@ export default function WelcomeDashboard({ modules, openTab }) {
           borderRadius: '16px',
           overflow: 'hidden',
           border: '1px solid rgba(124, 91, 240, 0.3)',
-          boxShadow: '0 12px 32px rgba(0,0,0,0.5)'
+          boxShadow: '0 12px 32px rgba(0,0,0,0.5)',
+          minHeight: '280px',
+          maxHeight: '320px'
         }}>
           <img
             src="/images/kernel_graphic.jpg"
             alt="Kernel Cognitivo Architecture"
-            style={{ width: '100%', height: 'auto', display: 'block' }}
+            style={{ width: '100%', height: '320px', maxHeight: '320px', objectFit: 'cover', display: 'block' }}
           />
           <div style={{
             position: 'absolute', bottom: 0, inset: 'auto 0 0 0',
@@ -1211,13 +1083,13 @@ export default function WelcomeDashboard({ modules, openTab }) {
       </div>
 
       {/* Visual Swarm Orchestration Showcase */}
-      <div style={{
-        margin: '36px 0',
+      <div className="wg-showcase-card" style={{
+        margin: '4px 0',
         padding: '28px',
         borderRadius: '20px',
-        background: 'linear-gradient(135deg, rgba(18, 20, 28, 0.95), rgba(12, 14, 20, 0.95))',
-        border: '1px solid rgba(0, 210, 255, 0.25)',
-        boxShadow: '0 12px 40px rgba(0,0,0,0.4)',
+        background: '#0e1017',
+        border: '1px solid rgba(0, 210, 255, 0.3)',
+        boxShadow: '0 12px 40px rgba(0,0,0,0.5)',
         display: 'grid',
         gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))',
         gap: '24px',
@@ -1228,12 +1100,14 @@ export default function WelcomeDashboard({ modules, openTab }) {
           borderRadius: '16px',
           overflow: 'hidden',
           border: '1px solid rgba(0, 210, 255, 0.3)',
-          boxShadow: '0 12px 32px rgba(0,0,0,0.5)'
+          boxShadow: '0 12px 32px rgba(0,0,0,0.5)',
+          minHeight: '280px',
+          maxHeight: '320px'
         }}>
           <img
             src="/images/swarm_graphic.jpg"
             alt="Swarm Multi-Agent Orchestration"
-            style={{ width: '100%', height: 'auto', display: 'block' }}
+            style={{ width: '100%', height: '320px', maxHeight: '320px', objectFit: 'cover', display: 'block' }}
           />
           <div style={{
             position: 'absolute', bottom: 0, inset: 'auto 0 0 0',
@@ -1262,16 +1136,16 @@ export default function WelcomeDashboard({ modules, openTab }) {
           </p>
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', fontSize: '0.8rem', color: '#e2e8f0' }}>
+            <div className="wg-feature-item" style={{ display: 'flex', alignItems: 'center', gap: '10px', fontSize: '0.82rem' }}>
               <span style={{ color: '#00d2ff' }}>📐</span> <strong>Matematico:</strong> Redazione teoremi e formule KaTeX
             </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', fontSize: '0.8rem', color: '#e2e8f0' }}>
+            <div className="wg-feature-item" style={{ display: 'flex', alignItems: 'center', gap: '10px', fontSize: '0.82rem' }}>
               <span style={{ color: '#3fb950' }}>💻</span> <strong>Programmatore:</strong> Scrittura script di test Python
             </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', fontSize: '0.8rem', color: '#e2e8f0' }}>
+            <div className="wg-feature-item" style={{ display: 'flex', alignItems: 'center', gap: '10px', fontSize: '0.82rem' }}>
               <span style={{ color: '#a78bfa' }}>🔍</span> <strong>Revisore:</strong> Verifica consistenza logica e self-healing
             </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', fontSize: '0.8rem', color: '#e2e8f0' }}>
+            <div className="wg-feature-item" style={{ display: 'flex', alignItems: 'center', gap: '10px', fontSize: '0.82rem' }}>
               <span style={{ color: '#ffb86c' }}>📊</span> <strong>Visualizzatore:</strong> Grafici D3.js ed elementi interattivi
             </div>
           </div>
@@ -1279,13 +1153,13 @@ export default function WelcomeDashboard({ modules, openTab }) {
       </div>
 
       {/* Visual Training Lab Showcase */}
-      <div style={{
-        margin: '36px 0',
+      <div className="wg-showcase-card" style={{
+        margin: '4px 0',
         padding: '28px',
         borderRadius: '20px',
-        background: 'linear-gradient(135deg, rgba(18, 20, 28, 0.95), rgba(12, 14, 20, 0.95))',
-        border: '1px solid rgba(210, 153, 34, 0.3)',
-        boxShadow: '0 12px 40px rgba(0,0,0,0.4)',
+        background: '#0e1017',
+        border: '1px solid rgba(210, 153, 34, 0.35)',
+        boxShadow: '0 12px 40px rgba(0,0,0,0.5)',
         display: 'grid',
         gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))',
         gap: '24px',
@@ -1355,12 +1229,14 @@ export default function WelcomeDashboard({ modules, openTab }) {
           borderRadius: '16px',
           overflow: 'hidden',
           border: '1px solid rgba(210, 153, 34, 0.35)',
-          boxShadow: '0 12px 32px rgba(0,0,0,0.5)'
+          boxShadow: '0 12px 32px rgba(0,0,0,0.5)',
+          minHeight: '280px',
+          maxHeight: '320px'
         }}>
           <img
             src="/images/training_graphic.jpg"
             alt="Training Lab Specialization"
-            style={{ width: '100%', height: 'auto', display: 'block' }}
+            style={{ width: '100%', height: '320px', maxHeight: '320px', objectFit: 'cover', display: 'block' }}
           />
           <div style={{
             position: 'absolute', bottom: 0, inset: 'auto 0 0 0',
@@ -1374,15 +1250,15 @@ export default function WelcomeDashboard({ modules, openTab }) {
       </div>
 
       {/* State & Connection System Status Cards */}
-      <div style={{ margin: '36px 0 24px 0' }}>
+      <div style={{ margin: '4px 0' }}>
         <h2 style={{ fontSize: '1.3rem', color: '#fff', fontWeight: 800, marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
           <span>⚡</span> Stato Connessioni & Kernel Integrati
         </h2>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '16px' }}>
           {/* Card 1: MCP Hub */}
-          <div style={{
-            padding: '20px', borderRadius: '16px', background: 'rgba(18, 20, 28, 0.85)',
-            border: '1px solid rgba(63, 185, 80, 0.3)', boxShadow: '0 8px 30px rgba(0,0,0,0.3)',
+          <div className="wg-status-card" style={{
+            padding: '20px', borderRadius: '16px', background: '#0e1017',
+            border: '1px solid rgba(63, 185, 80, 0.3)', boxShadow: '0 8px 30px rgba(0,0,0,0.5)',
             display: 'flex', flexDirection: 'column', justifyContent: 'space-between'
           }}>
             <div>
@@ -1401,9 +1277,9 @@ export default function WelcomeDashboard({ modules, openTab }) {
           </div>
 
           {/* Card 2: Hardware & GPU */}
-          <div style={{
-            padding: '20px', borderRadius: '16px', background: 'rgba(18, 20, 28, 0.85)',
-            border: '1px solid rgba(0, 210, 255, 0.3)', boxShadow: '0 8px 30px rgba(0,0,0,0.3)',
+          <div className="wg-status-card" style={{
+            padding: '20px', borderRadius: '16px', background: '#0e1017',
+            border: '1px solid rgba(0, 210, 255, 0.3)', boxShadow: '0 8px 30px rgba(0,0,0,0.5)',
             display: 'flex', flexDirection: 'column', justifyContent: 'space-between'
           }}>
             <div>
@@ -1422,9 +1298,9 @@ export default function WelcomeDashboard({ modules, openTab }) {
           </div>
 
           {/* Card 3: Home Assistant & Domotica */}
-          <div style={{
-            padding: '20px', borderRadius: '16px', background: 'rgba(18, 20, 28, 0.85)',
-            border: '1px solid rgba(167, 139, 250, 0.3)', boxShadow: '0 8px 30px rgba(0,0,0,0.3)',
+          <div className="wg-status-card" style={{
+            padding: '20px', borderRadius: '16px', background: '#0e1017',
+            border: '1px solid rgba(167, 139, 250, 0.3)', boxShadow: '0 8px 30px rgba(0,0,0,0.5)',
             display: 'flex', flexDirection: 'column', justifyContent: 'space-between'
           }}>
             <div>
@@ -1445,7 +1321,7 @@ export default function WelcomeDashboard({ modules, openTab }) {
       </div>
 
       {/* Primi Passi nella Piattaforma (Interactive Card Grid) */}
-      <div style={{ margin: '36px 0 24px 0' }}>
+      <div style={{ margin: '4px 0' }}>
         <h2 style={{ fontSize: '1.3rem', color: '#fff', fontWeight: 800, marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '8px' }}>
           <span>🚀</span> Primi Passi & Guida alle Funzionalità della Piattaforma
         </h2>
@@ -1540,7 +1416,7 @@ export default function WelcomeDashboard({ modules, openTab }) {
 
       {/* Footer */}
       <div style={{
-        marginTop: '48px',
+        marginTop: '8px',
         padding: '24px 0 12px 0',
         borderTop: '1px solid rgba(255, 255, 255, 0.08)',
         display: 'flex',

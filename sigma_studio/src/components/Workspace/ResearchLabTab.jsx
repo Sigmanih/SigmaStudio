@@ -1,4 +1,6 @@
 import React, { useState } from 'react';
+import { useApp } from '../../contexts/AppContext';
+import TechSpaceCanvas from '../common/TechSpaceCanvas';
 import ResearchLab from '../Chat/ResearchLab';
 import PipelineDesigner from '../Chat/PipelineDesigner';
 import { FlaskConical, GitCompare } from 'lucide-react';
@@ -25,26 +27,31 @@ const MODES = [
 ];
 
 export default function ResearchLabTab({ onTasksUpdated, addToast }) {
+  const { theme } = useApp();
   const [mode, setMode] = useState('default');
 
   const handleClose = () => {};
 
   return (
-    <div style={{ height: '100%', display: 'flex', flexDirection: 'column', padding: 0, boxSizing: 'border-box', background: '#090a0f', color: '#e2e4eb', overflowY: 'auto' }}>
+    <div style={{ height: '100%', display: 'flex', flexDirection: 'column', padding: 0, boxSizing: 'border-box', background: 'var(--bg)', color: '#e2e4eb', overflowY: 'auto', position: 'relative' }}>
       
+      {/* Animated Translucent Cyber Space Background Canvas */}
+      <TechSpaceCanvas isLight={theme === 'light'} />
+
       {/* Hero Visual Banner matching Domotica Header Style */}
       <div style={{
         position: 'relative',
+        zIndex: 1,
         borderRadius: 0,
         overflow: 'hidden',
         padding: '20px 32px 18px 32px',
         minHeight: '100px',
         borderBottom: '1px solid rgba(0, 210, 255, 0.25)',
         boxShadow: '0 8px 32px rgba(0,0,0,0.4)',
-        backgroundImage: 'linear-gradient(to right, rgba(8, 10, 16, 0.98) 45%, rgba(8, 10, 16, 0.5) 100%), url("/images/pipelines_lab_banner.jpg")',
-        backgroundSize: '360px auto',
+        backgroundImage: 'linear-gradient(to right, rgba(28, 12, 4, 0.96) 35%, rgba(120, 45, 10, 0.6) 75%, rgba(234, 88, 12, 0.22) 100%), url("/images/pipelines_lab_banner.jpg")',
+        backgroundSize: 'cover',
         backgroundRepeat: 'no-repeat',
-        backgroundPosition: 'right center',
+        backgroundPosition: 'center center',
         marginBottom: 0,
         flexShrink: 0
       }}>
@@ -70,13 +77,14 @@ export default function ResearchLabTab({ onTasksUpdated, addToast }) {
 
       {/* 2. MODE SWITCHER BUTTONS BAR — SENZA MARGINI SOPRA E SOTTO */}
       <div 
+        className="plab-mode-switcher"
         style={{ 
           display: 'grid', 
           gridTemplateColumns: '1fr 1fr', 
           gap: '8px', 
           margin: 0, 
           padding: '6px 24px',
-          background: 'rgba(14, 16, 24, 0.95)',
+          background: 'var(--surface-bright)',
           borderBottom: '1px solid rgba(255, 255, 255, 0.08)',
           borderRadius: 0,
           backdropFilter: 'blur(12px)',

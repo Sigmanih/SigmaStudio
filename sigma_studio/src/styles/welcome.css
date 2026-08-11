@@ -55,10 +55,50 @@
 .wg-hero-title { font-size: 2.4rem; font-weight: 800; letter-spacing: -1.5px; margin: 0 0 12px; color: #fff; }
 .wg-hero-accent { background: linear-gradient(135deg, var(--primary), #7c5bf0); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
 .wg-hero-sub { font-size: 0.9rem; color: var(--text-dim); max-width: 520px; margin: 0 auto; line-height: 1.7; }
-.wg-metrics { display: grid; grid-template-columns: repeat(5, 1fr); gap: 14px; margin-bottom: 32px; }
-.wg-metric { background: var(--surface-bright); border: var(--glass-border); border-radius: var(--radius-m); padding: 18px 14px; text-align: center; transition: all 0.3s ease; }
-.wg-metric-value { display: block; font-size: 1.8rem; font-weight: 800; color: #fff; letter-spacing: -1px; margin-bottom: 2px; }
-.wg-metric-label { display: block; font-size: 0.6rem; color: var(--text-dim); text-transform: uppercase; letter-spacing: 1px; font-weight: 600; }
+.wg-metrics {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 14px;
+  margin-top: 18px;
+  margin-bottom: 16px;
+}
+
+.wg-metric {
+  position: relative;
+  background: linear-gradient(135deg, rgba(18, 20, 28, 0.85), rgba(12, 14, 20, 0.95));
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 16px;
+  padding: 16px 14px;
+  text-align: center;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
+  backdrop-filter: blur(12px);
+  transition: transform 0.25s ease, box-shadow 0.25s ease, border-color 0.25s ease;
+  overflow: hidden;
+}
+
+.wg-metric:hover {
+  transform: translateY(-3px) scale(1.02);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.5), 0 0 20px rgba(0, 210, 255, 0.12);
+  border-color: rgba(255, 255, 255, 0.2);
+}
+
+.wg-metric-value {
+  display: inline-block;
+  font-size: 1.85rem;
+  font-weight: 800;
+  letter-spacing: -1px;
+  margin-bottom: 2px;
+}
+
+.wg-metric-label {
+  display: block;
+  font-size: 0.65rem;
+  color: #8b8fa3;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  font-weight: 700;
+  margin-top: 6px;
+}
 .wg-split { display: grid; grid-template-columns: 1fr 380px; gap: 24px; margin-bottom: 28px; }
 .wg-split-graph { background: var(--surface-bright); border: var(--glass-border); border-radius: var(--radius-l); overflow: hidden; display: flex; flex-direction: column; }
 .wg-split-head { display: flex; align-items: center; justify-content: space-between; padding: 16px 24px; border-bottom: 1px solid var(--border); background: rgba(255,255,255,0.015); }

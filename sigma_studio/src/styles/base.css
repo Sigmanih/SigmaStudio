@@ -39,15 +39,30 @@
   --glass: blur(18px) saturate(180%);
   --shadow-l: 0 32px 64px -16px rgba(0, 0, 0, 0.6);
   --glass-border: 1px solid rgba(255, 255, 255, 0.05);
+
+  /* Il fondale dell'applicazione in un'unica definizione: due aloni d'ambiente
+     più una trama di punti su griglia. Il tema chiaro ne ridefinisce solo i
+     colori, così i due temi restano la stessa scena con luce diversa. */
+  --bg-glow-a: hsla(191, 100%, 50%, 0.04);
+  --bg-glow-b: hsla(266, 100%, 77%, 0.04);
+  --bg-dot: rgba(255, 255, 255, 0.045);
+  --bg-grid: rgba(255, 255, 255, 0.022);
+  --bg-pattern:
+    radial-gradient(at 0% 0%, var(--bg-glow-a) 0, transparent 50%),
+    radial-gradient(at 100% 100%, var(--bg-glow-b) 0, transparent 50%),
+    radial-gradient(var(--bg-dot) 1px, transparent 1px),
+    linear-gradient(var(--bg-grid) 1px, transparent 1px),
+    linear-gradient(90deg, var(--bg-grid) 1px, transparent 1px);
+  --bg-pattern-size: 100% 100%, 100% 100%, 32px 32px, 96px 96px, 96px 96px;
 }
 
 * { box-sizing: border-box; margin: 0; padding: 0; }
 
 body {
-  background: var(--bg);
-  background-image: 
-    radial-gradient(at 0% 0%, hsla(191,100%,50%,0.04) 0, transparent 50%),
-    radial-gradient(at 100% 100%, hsla(266,100%,77%,0.04) 0, transparent 50%);
+  background-color: var(--bg);
+  background-image: var(--bg-pattern);
+  background-size: var(--bg-pattern-size);
+  background-attachment: fixed;
   color: var(--text);
   font-family: 'Inter', sans-serif;
   overflow: hidden;
@@ -75,14 +90,19 @@ body {
   background: #000;
 }
 
-.workspace { 
-  margin: 0px; 
-  transition: var(--trans-smooth); 
-  position: relative; 
+.workspace {
+  margin: 0px;
+  transition: var(--trans-smooth);
+  position: relative;
   z-index: 1;
   min-height: 0;
   overflow: hidden;
-  background: var(--bg);
+  /* L'area di lavoro copre l'intera pagina: senza la stessa trama, il fondale
+     del body resterebbe visibile solo dietro la barra laterale. */
+  background-color: var(--bg);
+  background-image: var(--bg-pattern);
+  background-size: var(--bg-pattern-size);
+  background-attachment: fixed;
   display: flex;
   flex-direction: column;
 }

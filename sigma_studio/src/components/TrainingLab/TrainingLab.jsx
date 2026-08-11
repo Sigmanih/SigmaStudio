@@ -3,6 +3,8 @@ import {
   BookOpen, Database, Cpu, BarChart2, Brain, Award, Hammer, Layers, Bot, Wrench, X,
   Zap, Activity, CheckCircle2, ArrowRight, ShieldCheck
 } from 'lucide-react';
+import { useApp } from '../../contexts/AppContext';
+import TechSpaceCanvas from '../common/TechSpaceCanvas';
 import TrainingDocs from './TrainingDocs';
 import DatasetBrowser from './DatasetBrowser';
 import TrainingConfigurator from './TrainingConfigurator';
@@ -138,6 +140,7 @@ function Toast({ toast, onClose }) {
 }
 
 export default function TrainingLab({ addToast: _addToast, onTasksUpdated }) {
+  const { theme } = useApp();
   const [mode, setMode] = useState('docs');
   const [manualSubMode, setManualSubMode] = useState('dataset');
   const [selectedDatasetId, setSelectedDatasetId] = useState(null);
@@ -221,22 +224,26 @@ export default function TrainingLab({ addToast: _addToast, onTasksUpdated }) {
   const selectedDs = myDatasets.find(d => d.id === selectedDatasetId);
 
   return (
-    <div className="training-lab" style={{ display: 'flex', flexDirection: 'column', background: '#0a0c14', color: '#e2e4eb', minHeight: '100%', overflowY: 'auto' }}>
+    <div className="training-lab" style={{ display: 'flex', flexDirection: 'column', background: 'var(--bg)', color: '#e2e4eb', minHeight: '100%', overflowY: 'auto', position: 'relative' }}>
+      {/* Animated Translucent Cyber Space Background Canvas */}
+      <TechSpaceCanvas isLight={theme === 'light'} />
+
       <Toast toast={toast} onClose={() => setToast(null)} />
 
       {/* ── High-Tech Visual Hero Banner ── */}
       <div style={{
         position: 'relative',
+        zIndex: 1,
         borderRadius: 0,
         overflow: 'hidden',
         padding: '20px 32px 18px 32px',
         minHeight: '100px',
         borderBottom: '1px solid rgba(188, 140, 255, 0.35)',
         boxShadow: '0 8px 32px rgba(0,0,0,0.4)',
-        backgroundImage: 'linear-gradient(to right, rgba(8, 10, 16, 0.98) 45%, rgba(8, 10, 16, 0.5) 100%), url("/images/training_lab_hero.jpg")',
-        backgroundSize: '360px auto',
+        backgroundImage: 'linear-gradient(to right, rgba(28, 12, 4, 0.96) 35%, rgba(120, 45, 10, 0.6) 75%, rgba(234, 88, 12, 0.22) 100%), url("/images/training_lab_hero.jpg")',
+        backgroundSize: 'cover',
         backgroundRepeat: 'no-repeat',
-        backgroundPosition: 'right center',
+        backgroundPosition: 'center center',
         marginBottom: '20px',
         display: 'flex',
         flexDirection: 'column',

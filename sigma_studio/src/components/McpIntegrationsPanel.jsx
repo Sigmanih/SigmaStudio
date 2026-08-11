@@ -1,8 +1,9 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   Home, Mail, MessageSquare, Calendar, Server, Plug, Check, XCircle,
   RefreshCw, Trash2, Plus, AlertTriangle, Play
 } from 'lucide-react';
+import { useApp } from '../contexts/AppContext';
 
 // Il segnaposto che il backend rimanda al posto dei segreti già salvati: il
 // browser non riceve mai un token in chiaro, e rispedirlo così com'è significa
@@ -67,10 +68,28 @@ function StatusPill({ ok, children }) {
 
 /** Pannello di configurazione di un singolo server che parla con l'esterno. */
 function IntegrationCard({ server, onSaved }) {
+  const { theme } = useApp();
+  const isLight = theme === 'light';
+  const cardStyle = {
+    backgroundColor: isLight ? '#fffdf9' : 'rgba(255,255,255,0.03)',
+    border: `1px solid ${isLight ? 'rgba(190, 160, 110, 0.35)' : 'rgba(255,255,255,0.08)'}`,
+    borderRadius: '12px',
+    padding: '18px',
+  };
+  const txt = { heading: isLight ? '#111111' : '#fff', body: isLight ? '#2e2820' : '#8b8fa3' };
   const [values, setValues] = useState(server.config || {});
+  const [dirty, setDirty] = useState(false);
   const [saving, setSaving] = useState(false);
   const [probe, setProbe] = useState(null);
   const [probing, setProbing] = useState(false);
+
+  // `useState` fissa il valore iniziale: al primo render la lista dei server non
+  // è ancora arrivata, quindi i campi restavano vuoti e si vedevano solo i
+  // segnaposto — facendo credere che la configurazione non fosse stata salvata.
+  // Si risincronizza finché l'utente non ha iniziato a scrivere.
+  useEffect(() => {
+    if (!dirty && server.config) setValues(server.config);
+  }, [server.config, dirty]);
 
   const Icon = INTEGRATION_ICONS[server.integration_key] || Plug;
 
@@ -116,7 +135,7 @@ function IntegrationCard({ server, onSaved }) {
   };
 
   return (
-    <div style={card}>
+    <div style={cardStyle}>
       <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '14px' }}>
         <div style={{
           width: '38px', height: '38px', borderRadius: '10px', display: 'flex',
@@ -125,8 +144,8 @@ function IntegrationCard({ server, onSaved }) {
           <Icon size={19} color="#00d2ff" />
         </div>
         <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontWeight: 700, fontSize: '0.95rem' }}>{server.name}</div>
-          <div style={{ fontSize: '0.76rem', color: '#8b8fa3' }}>{server.description}</div>
+          <div style={{ fontWeight: 700, fontSize: '0.95rem', color: txt.heading }}>{server.name}</div>
+          <div style={{ fontSize: '0.76rem', color: txt.body }}>{server.description}</div>
         </div>
         <StatusPill ok={server.configured}>
           {server.configured ? 'configurato' : 'da configurare'}
@@ -152,7 +171,7 @@ function IntegrationCard({ server, onSaved }) {
               type={field.type === 'secret' ? 'password' : (field.type === 'number' ? 'number' : 'text')}
               placeholder={field.placeholder || ''}
               value={values[field.key] ?? ''}
-              onChange={e => setValues(v => ({ ...v, [field.key]: e.target.value }))}
+              onChange={e => { setDirty(true); setValues(v => ({ ...v, [field.key]: e.target.value })); }}
               // Selezionare invece di svuotare: chi scrive sostituisce il
               // segnaposto, chi si limita a cliccarci sopra non lo perde. Con lo
               // svuotamento, un clic distratto seguito da Salva cancellava il
@@ -362,6 +381,20 @@ function ExternalServers({ servers, onChanged }) {
  * credenziali dei sistemi esterni, e dove si collegano server MCP altrui.
  */
 export default function McpIntegrationsPanel({ servers = [], onChanged }) {
+  const { theme } = useApp();
+  const isLight = theme === 'light';
+  const txt = {
+    heading: isLight ? '#111111' : '#fff',
+    body: isLight ? '#2e2820' : '#8b8fa3',
+    muted: isLight ? '#78716c' : '#6b7080',
+  };
+  const cardStyle = {
+    backgroundColor: isLight ? '#fffdf9' : 'rgba(255,255,255,0.03)',
+    border: `1px solid ${isLight ? 'rgba(190, 160, 110, 0.35)' : 'rgba(255,255,255,0.08)'}`,
+    borderRadius: '12px',
+    padding: '18px',
+  };
+
   const safeServers = Array.isArray(servers) ? servers : [];
   const integrations = safeServers.filter(s => s.integration_key);
   const external = safeServers.filter(s => s.external);
@@ -370,8 +403,8 @@ export default function McpIntegrationsPanel({ servers = [], onChanged }) {
     <div style={{ display: 'flex', flexDirection: 'column', gap: '26px' }}>
       <section style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
         <div>
-          <h3 style={{ margin: 0, fontSize: '1rem' }}>Integrazioni native</h3>
-          <div style={{ fontSize: '0.79rem', color: '#8b8fa3', marginTop: '4px' }}>
+          <h3 style={{ margin: 0, fontSize: '1rem', color: txt.heading }}>Integrazioni native</h3>
+          <div style={{ fontSize: '0.79rem', color: txt.body, marginTop: '4px' }}>
             Le credenziali restano nel tuo <code>config.json</code> e non lasciano mai la macchina.
             Un'integrazione non configurata resta visibile ma i suoi strumenti si rifiutano di partire,
             spiegando cosa manca.
@@ -384,8 +417,8 @@ export default function McpIntegrationsPanel({ servers = [], onChanged }) {
 
       <section style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
         <div>
-          <h3 style={{ margin: 0, fontSize: '1rem' }}>Server MCP esterni</h3>
-          <div style={{ fontSize: '0.79rem', color: '#8b8fa3', marginTop: '4px' }}>
+          <h3 style={{ margin: 0, fontSize: '1rem', color: txt.heading }}>Server MCP esterni</h3>
+          <div style={{ fontSize: '0.79rem', color: txt.body, marginTop: '4px' }}>
             Ogni server che parla il protocollo si collega qui, e i suoi strumenti compaiono
             nel catalogo insieme agli altri.
           </div>

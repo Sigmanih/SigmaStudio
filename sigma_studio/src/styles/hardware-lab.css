@@ -158,7 +158,7 @@
   gap: 20px;
   box-shadow: 0 12px 40px rgba(0, 0, 0, 0.4);
   position: relative;
-  overflow: visible; /* Ensure tooltips don't clip */
+  overflow: visible;
   transition: border-color 0.3s ease, box-shadow 0.3s ease;
 }
 
@@ -421,7 +421,6 @@
   position: relative;
   width: 100%;
   height: 110px;
-  /* Allow tooltip and line glow to render smoothly without clipping */
   overflow: visible;
   padding-top: 10px;
 }
@@ -546,4 +545,41 @@
   font-size: 11px;
   color: var(--text-dim, #9494a5);
   line-height: 1.4;
+}
+
+/* ==============================================================================
+   Tema Chiaro / Crema — Card e Container 100% Opachi
+   ============================================================================== */
+.theme-light .hardware-lab-container {
+  background-color: #f7f4ed !important;
+  color: #111111;
+}
+
+.theme-light .gpu-card {
+  background-color: #fffdf9 !important;
+  background-image: none !important;
+  opacity: 1 !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+
+.theme-light .hw-section {
+  background-color: #fffdf9 !important;
+  background-image: none !important;
+  opacity: 1 !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  border-color: rgba(190, 160, 110, 0.35) !important;
+}
+
+.theme-light .hw-chart-card {
+  background-color: #f2ede2 !important;
+  background-image: none !important;
+  opacity: 1 !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+
+.theme-light .gpu-card::before {
+  background: linear-gradient(90deg, #ea580c, #d97706, #3fb950);
 }

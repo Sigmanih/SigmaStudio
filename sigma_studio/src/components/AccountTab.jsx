@@ -2,6 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { User, Volume2, VolumeX, Play, Square, Upload, RefreshCw, Check, Sparkles, Shield, ShieldCheck, Cpu, AlertTriangle } from 'lucide-react';
 import { speakAgentMessage, stopSpeech } from './Chat/audioSpeech';
 import HFTokenSettings from './HFTokenSettings';
+import { useApp } from '../contexts/AppContext';
+import TechSpaceCanvas from './common/TechSpaceCanvas';
 
 const PRESET_AVATARS = [
   { id: 'user_default', name: 'Utente Cyber', url: '/images/default.png' },
@@ -11,6 +13,7 @@ const PRESET_AVATARS = [
 ];
 
 export default function AccountTab() {
+  const { theme } = useApp();
   const [tokenNotice, setTokenNotice] = useState(null);
 
   // --- Profile State ---
@@ -231,22 +234,27 @@ export default function AccountTab() {
   const italianVoices = voices.filter(v => v.lang.startsWith('it') || v.lang.includes('IT'));
   const otherVoices = voices.filter(v => !v.lang.startsWith('it') && !v.lang.includes('IT'));
 
+  const isLight = theme === 'light';
+
   return (
     <div 
       className="account-tab-root"
       style={{
-        padding: '16px 20px',
+        position: 'relative',
+        padding: 0,
+        margin: 0,
         width: '100%',
         height: '100%',
-        color: '#e2e4eb',
+        background: isLight ? '#f7f4ed' : '#080a10',
+        color: isLight ? '#111111' : '#e2e4eb',
         display: 'flex',
         flexDirection: 'column',
-        gap: '16px',
         fontFamily: 'Inter, system-ui, sans-serif',
         boxSizing: 'border-box',
-        overflow: 'hidden'
+        overflowY: 'auto'
       }}
     >
+      <TechSpaceCanvas isLight={theme === 'light'} />
       {/* Hero Visual Banner matching Domotica Header Style */}
       <div style={{
         position: 'relative',
@@ -254,13 +262,14 @@ export default function AccountTab() {
         overflow: 'hidden',
         padding: '20px 32px 18px 32px',
         minHeight: '100px',
-        borderBottom: '1px solid rgba(0, 210, 255, 0.25)',
-        boxShadow: '0 8px 32px rgba(0,0,0,0.4)',
-        backgroundImage: 'linear-gradient(to right, rgba(8, 10, 16, 0.98) 45%, rgba(8, 10, 16, 0.5) 100%), url("/images/account_voice_banner.jpg")',
-        backgroundSize: '360px auto',
+        borderBottom: '1px solid rgba(234, 88, 12, 0.3)',
+        boxShadow: 'none',
+        backgroundImage: 'linear-gradient(to right, rgba(28, 12, 4, 0.96) 35%, rgba(120, 45, 10, 0.6) 75%, rgba(234, 88, 12, 0.22) 100%), url("/images/account_voice_banner.jpg")',
+        backgroundSize: 'cover',
         backgroundRepeat: 'no-repeat',
-        backgroundPosition: 'right center',
+        backgroundPosition: 'center center',
         marginBottom: '20px',
+        width: '100%',
         flexShrink: 0
       }}>
         <div style={{ position: 'relative', zIndex: 2, display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '16px' }}>
@@ -307,22 +316,22 @@ export default function AccountTab() {
         </div>
       </div>
 
-      {/* Griglia a 2 Colonne */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', flex: 1, minHeight: 0, overflow: 'hidden' }}>
+      {/* Inner Content Body Padding Container */}
+      <div style={{ padding: '0 24px 32px 24px', flex: 1, display: 'flex', flexDirection: 'column', gap: '16px' }}>
+        {/* Griglia a 2 Colonne */}
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', flex: 1, minHeight: 0, alignItems: 'stretch' }}>
         
         {/* COLONNA SINISTRA — PROFILO UTENTE */}
         <div 
+          className="account-card primi-passi-card"
           style={{
-            background: 'linear-gradient(135deg, rgba(17, 19, 27, 0.95), rgba(13, 15, 23, 0.9))',
-            border: '1px solid rgba(0, 210, 255, 0.15)',
+            backgroundColor: isLight ? '#fffdf9' : '#0e1017',
+            border: isLight ? '1px solid rgba(190, 160, 110, 0.35)' : '1px solid rgba(0, 210, 255, 0.25)',
             borderRadius: '14px',
             padding: '20px',
             display: 'flex',
             flexDirection: 'column',
-            gap: '16px',
-            height: 'fit-content',
-            maxHeight: '100%',
-            overflowY: 'auto'
+            gap: '16px'
           }}
         >
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px', borderBottom: '1px solid rgba(255,255,255,0.08)', paddingBottom: '10px' }}>
@@ -459,9 +468,10 @@ export default function AccountTab() {
           
           {/* SEZIONE 2 — VOCE ASSISTENTE AI */}
           <div 
+            className="account-card primi-passi-card"
             style={{
-              background: 'linear-gradient(135deg, rgba(17, 19, 27, 0.95), rgba(13, 15, 23, 0.9))',
-              border: '1px solid rgba(188, 140, 255, 0.2)',
+              backgroundColor: isLight ? '#fffdf9' : '#0e1017',
+              border: isLight ? '1px solid rgba(190, 160, 110, 0.35)' : '1px solid rgba(188, 140, 255, 0.25)',
               borderRadius: '14px',
               padding: '18px',
               display: 'flex',
@@ -652,8 +662,8 @@ export default function AccountTab() {
           {/* SEZIONE 3 — CREDENZIALI ESTERNE */}
           <div
             style={{
-              background: 'linear-gradient(135deg, rgba(17, 19, 27, 0.95), rgba(13, 15, 23, 0.9))',
-              border: '1px solid rgba(99, 102, 241, 0.2)',
+              backgroundColor: isLight ? '#fffdf9' : '#0e1017',
+              border: isLight ? '1px solid rgba(190, 160, 110, 0.35)' : '1px solid rgba(99, 102, 241, 0.2)',
               borderRadius: '14px',
               padding: '18px',
               display: 'flex',
@@ -686,5 +696,6 @@ export default function AccountTab() {
         </div>
       </div>
     </div>
-  );
+  </div>
+);
 }

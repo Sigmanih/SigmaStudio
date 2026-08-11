@@ -1,43 +1,50 @@
 import React from 'react';
 import { 
-  Home, FileText, Activity, PieChart, Layers, ChevronRight, MessageSquare, FlaskConical, Brain, Zap, User, Server, Wrench, Palette, Blocks
+  Home, FileText, Activity, PieChart, Layers, ChevronRight, MessageSquare, FlaskConical, Brain, Zap, User, Server, Wrench, Palette, Blocks, Sun, Moon
 } from 'lucide-react';
+import { useApp } from '../contexts/AppContext';
 
-export const SidebarItem = ({ icon: Icon, label, active, onClick, badge, badgeColor, badgeSecondary, badgeSecondaryColor }) => (
-  <div className={`sidebar-item ${active ? 'active' : ''}`} onClick={onClick}>
-    <Icon size={18} />
-    <span>{label}</span>
-    {(badge !== undefined || badgeSecondary !== undefined) && (
-      <span className="sidebar-badges">
-        {badgeSecondary !== undefined && (
-          <span className="badge" style={{ 
-            background: badgeSecondaryColor || 'rgba(210,153,34,0.15)', 
-            color: badgeSecondaryColor || '#d29922',
-            fontSize: '0.6rem',
-            padding: '2px 8px',
-            borderRadius: '10px',
-            fontWeight: 600,
-            marginRight: badge !== undefined ? '4px' : '0'
-          }}>
-            {badgeSecondary}
-          </span>
-        )}
-        {badge !== undefined && (
-          <span className="badge" style={{ 
-            background: badgeColor || 'rgba(63,185,80,0.15)', 
-            color: badgeColor || '#3fb950',
-            fontSize: '0.6rem',
-            padding: '2px 8px',
-            borderRadius: '10px',
-            fontWeight: 600
-          }}>
-            {badge}
-          </span>
-        )}
-      </span>
-    )}
-  </div>
-);
+export const SidebarItem = ({ icon: Icon, label, active, onClick, badge, badgeColor, badgeSecondary, badgeSecondaryColor }) => {
+  const { theme } = useApp();
+  const isLight = theme === 'light';
+  const computedBadgeColor = isLight ? '#2e2820' : (badgeColor || '#3fb950');
+  const computedBadgeSecondaryColor = isLight ? '#2e2820' : (badgeSecondaryColor || '#d29922');
+  return (
+    <div className={`sidebar-item ${active ? 'active' : ''}`} onClick={onClick}>
+      <Icon size={18} />
+      <span>{label}</span>
+      {(badge !== undefined || badgeSecondary !== undefined) && (
+        <span className="sidebar-badges">
+          {badgeSecondary !== undefined && (
+            <span className="badge" style={{ 
+              background: badgeSecondaryColor || 'rgba(210,153,34,0.15)', 
+              color: computedBadgeSecondaryColor,
+              fontSize: '0.6rem',
+              padding: '2px 8px',
+              borderRadius: '10px',
+              fontWeight: 600,
+              marginRight: badge !== undefined ? '4px' : '0'
+            }}>
+              {badgeSecondary}
+            </span>
+          )}
+          {badge !== undefined && (
+            <span className="badge" style={{ 
+              background: badgeColor || 'rgba(63,185,80,0.15)', 
+              color: computedBadgeColor,
+              fontSize: '0.6rem',
+              padding: '2px 8px',
+              borderRadius: '10px',
+              fontWeight: 600
+            }}>
+              {badge}
+            </span>
+          )}
+        </span>
+      )}
+    </div>
+  );
+};
 
 export default function Sidebar({ 
   modules, 
@@ -51,6 +58,7 @@ export default function Sidebar({
   tasks = [],
   topicsCount = 0
 }) {
+  const { theme, toggleTheme } = useApp();
   const [chatCount, setChatCount] = React.useState(0);
   // Le skill disattivate non compaiono nella barra: la scelta vive in config.json
   const [hiddenTabs, setHiddenTabs] = React.useState(() => new Set());
@@ -148,9 +156,56 @@ export default function Sidebar({
       </button>
       <div className="sidebar-content">
         <div className="sidebar-header">
-          <div className="logo">
+          <div className="logo" style={{ marginBottom: '16px' }}>
             <Layers className="logo-icon" size={24} />
             <h2>Sigma <span>Studio</span></h2>
+          </div>
+
+          {/* Modern Theme Switcher directly under Sigma Studio Logo */}
+          <div 
+            onClick={toggleTheme} 
+            title="Cambia Tema (Scuro / Crema Chiaro)"
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              padding: '6px 12px',
+              marginBottom: '20px',
+              borderRadius: '12px',
+              background: theme === 'dark' ? 'rgba(255, 255, 255, 0.05)' : 'rgba(190, 160, 110, 0.18)',
+              border: theme === 'dark' ? '1px solid rgba(255, 255, 255, 0.1)' : '1px solid rgba(190, 160, 110, 0.35)',
+              cursor: 'pointer',
+              transition: 'all 0.25s ease'
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.7rem', fontWeight: 800, color: theme === 'dark' ? '#e2e8f0' : '#111111' }}>
+              {theme === 'dark' ? <Moon size={14} style={{ color: '#bc8cff' }} /> : <Sun size={14} style={{ color: '#ea580c' }} />}
+              <span>TEMA {theme === 'dark' ? 'SCURO' : 'CREMA'}</span>
+            </div>
+
+            {/* Sliding Pill Switch */}
+            <div style={{
+              width: '36px',
+              height: '20px',
+              borderRadius: '10px',
+              background: theme === 'dark' ? 'rgba(188, 140, 255, 0.25)' : 'rgba(234, 88, 12, 0.25)',
+              border: theme === 'dark' ? '1px solid rgba(188, 140, 255, 0.45)' : '1px solid rgba(234, 88, 12, 0.5)',
+              position: 'relative',
+              transition: 'all 0.25s ease',
+              display: 'flex',
+              alignItems: 'center',
+              padding: '2px'
+            }}>
+              <div style={{
+                width: '14px',
+                height: '14px',
+                borderRadius: '50%',
+                background: theme === 'dark' ? '#bc8cff' : '#ea580c',
+                transform: theme === 'dark' ? 'translateX(0px)' : 'translateX(16px)',
+                transition: 'transform 0.25s cubic-bezier(0.34, 1.56, 0.64, 1)',
+                boxShadow: '0 0 6px rgba(0,0,0,0.3)'
+              }} />
+            </div>
           </div>
         </div>
 
@@ -210,12 +265,6 @@ export default function Sidebar({
               onClick={() => openTab({ name: '🎨 Creative Lab' }, 'creative_studio')}
             />
           )}
-          <SidebarItem
-            icon={Blocks}
-            label="Skills & Motori"
-            active={activeTabId != null && activeTabId.startsWith('skills_hub')}
-            onClick={() => openTab({ name: '🧩 Skills & Motori' }, 'skills_hub')}
-          />
           <SidebarItem 
             icon={FlaskConical} 
             label="Pipelines Lab" 

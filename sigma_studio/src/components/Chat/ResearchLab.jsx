@@ -5,6 +5,7 @@ import {
   Plus, Trash2, CheckCircle, Circle, ArrowRight, GitBranch, StopCircle, AlertTriangle, FlaskConical
 } from 'lucide-react';
 import useResearchPipeline from './core/useResearchPipeline';
+import { useApp } from '../../contexts/AppContext';
 
 const PIPELINE_TEMPLATES = {
   universal_swarm: {
@@ -264,6 +265,22 @@ function ObjectiveCard({ obj, agentsMeta, onClick }) {
 
 export default function ResearchLab({ onClose, onTasksUpdated, addToast }) {
   const pipeline = useResearchPipeline(onTasksUpdated, addToast);
+  const { theme } = useApp();
+  const isLight = theme === 'light';
+  const svgColors = {
+    labelCoord: isLight ? 'rgba(234,88,12,0.4)' : 'rgba(255,255,255,0.18)',
+    labelDirect: isLight ? 'rgba(234,88,12,0.3)' : 'rgba(255,255,255,0.12)',
+    labelIndirect: isLight ? 'rgba(234,88,12,0.22)' : 'rgba(255,255,255,0.10)',
+    nodeBg: isLight ? '#fffdf9' : '#1a1d2e',
+    lineBg: isLight ? 'rgba(234,88,12,0.1)' : 'rgba(255,255,255,0.04)',
+    nodeText: isLight ? '#2e2820' : 'rgba(255,255,255,0.35)',
+    nodeTextSub: isLight ? '#78716c' : 'rgba(255,255,255,0.3)',
+    addBtnBg: isLight ? 'rgba(234,88,12,0.06)' : 'rgba(255,255,255,0.02)',
+    addBtnStroke: isLight ? 'rgba(234,88,12,0.2)' : 'rgba(255,255,255,0.08)',
+    gridBg: isLight ? '#fffdf9' : 'rgba(21, 23, 38, 0.25)',
+    addBtnText: isLight ? '#ea580c' : '#8b8fa3',
+    addBtnSub: isLight ? '#78716c' : '#5a5e72',
+  };
   
   // --- Full pipeline hook (restored) ---
   const {
@@ -912,10 +929,9 @@ export default function ResearchLab({ onClose, onTasksUpdated, addToast }) {
               </div>
               {/* Grafo Relazionale Piramidale degli Agenti */}
               <div className="rl-agents-grid" style={{
-                background: 'rgba(21, 23, 38, 0.25)',
-                backdropFilter: 'blur(10px)',
+                background: svgColors.gridBg,
                 borderRadius: '12px',
-                border: '1px solid rgba(255,255,255,0.02)',
+                border: `1px solid ${isLight ? 'rgba(190, 160, 110, 0.25)' : 'rgba(255,255,255,0.02)'}`,
                 padding: '10px 15px',
                 position: 'relative',
                 overflow: 'visible',
@@ -1068,13 +1084,13 @@ export default function ResearchLab({ onClose, onTasksUpdated, addToast }) {
 
                         {/* Row labels */}
                         {coordinator && (
-                          <text x={10} y={ROW_Y[0] - COORD_R - 6} fill="rgba(255,255,255,0.18)" fontSize="7.5" fontWeight="700" textAnchor="start" letterSpacing="1.5">COORDINATORE</text>
+                          <text x={10} y={ROW_Y[0] - COORD_R - 6} fill={svgColors.labelCoord} fontSize="11" fontWeight="700" textAnchor="start" letterSpacing="1.5">COORDINATORE</text>
                         )}
                         {directAgents.length > 0 && (
-                          <text x={10} y={ROW_Y[1] - AVATAR_R - 8} fill="rgba(255,255,255,0.12)" fontSize="7" fontWeight="700" textAnchor="start" letterSpacing="1.5">COLLABORATORI DIRETTI</text>
+                          <text x={10} y={ROW_Y[1] - AVATAR_R - 8} fill={svgColors.labelDirect} fontSize="10" fontWeight="700" textAnchor="start" letterSpacing="1.5">COLLABORATORI DIRETTI</text>
                         )}
                         {indirectAgents.length > 0 && (
-                          <text x={10} y={ROW_Y[2] - AVATAR_R - 8} fill="rgba(255,255,255,0.10)" fontSize="7" fontWeight="700" textAnchor="start" letterSpacing="1.5">AGENTI SPECIALIZZATI</text>
+                          <text x={10} y={ROW_Y[2] - AVATAR_R - 8} fill={svgColors.labelIndirect} fontSize="10" fontWeight="700" textAnchor="start" letterSpacing="1.5">AGENTI SPECIALIZZATI</text>
                         )}
 
                         {/* Connection lines */}
@@ -1127,7 +1143,7 @@ export default function ResearchLab({ onClose, onTasksUpdated, addToast }) {
                                 opacity={isWorking ? 0.7 : 0.4}
                               />
                               {/* Avatar circle background */}
-                              <circle cx={pos.x} cy={pos.y} r={COORD_R} fill="#1a1d2e" />
+                              <circle cx={pos.x} cy={pos.y} r={COORD_R} fill={svgColors.nodeBg} />
                               {/* Agent image */}
                               <image
                                 href={meta.image || '/images/agente0.png'}
@@ -1147,10 +1163,10 @@ export default function ResearchLab({ onClose, onTasksUpdated, addToast }) {
                               {/* Working pulse dot */}
                               {isWorking && <circle cx={pos.x + COORD_R - 5} cy={pos.y - COORD_R + 5} r={5} fill={meta.bg} filter="url(#glow-soft)" style={{ animation: 'pulse-ring 0.8s ease-in-out infinite' }} />}
                               {/* Name label */}
-                              <text x={pos.x} y={pos.y + COORD_R + 14} textAnchor="middle" fill={meta.bg} fontSize="9" fontWeight="800" letterSpacing="0.5">
+                              <text x={pos.x} y={pos.y + COORD_R + 14} textAnchor="middle" fill={meta.bg} fontSize="11" fontWeight="800" letterSpacing="0.5">
                                 {meta.short || 'Arch'}
                               </text>
-                              <text x={pos.x} y={pos.y + COORD_R + 24} textAnchor="middle" fill="rgba(255,255,255,0.35)" fontSize="6.5" fontWeight="600">
+                              <text x={pos.x} y={pos.y + COORD_R + 24} textAnchor="middle" fill={svgColors.nodeText} fontSize="9.5" fontWeight="600">
                                 {agentData?.model || meta.name || ''}
                               </text>
                             </g>
@@ -1190,7 +1206,7 @@ export default function ResearchLab({ onClose, onTasksUpdated, addToast }) {
                                 opacity={isWorking ? 0.6 : 0.3}
                               />
                               {/* Avatar bg */}
-                              <circle cx={pos.x} cy={pos.y} r={AVATAR_R} fill="#1a1d2e" />
+                              <circle cx={pos.x} cy={pos.y} r={AVATAR_R} fill={svgColors.nodeBg} />
                               {/* Agent image */}
                               <image
                                 href={meta.image || '/images/default.png'}
@@ -1232,10 +1248,10 @@ export default function ResearchLab({ onClose, onTasksUpdated, addToast }) {
                                 <text textAnchor="middle" dy="3.5" fontSize="8" fill="#fff" fontWeight="800">✕</text>
                               </g>
                               {/* Label */}
-                              <text x={pos.x} y={pos.y + AVATAR_R + 12} textAnchor="middle" fill={meta.bg} fontSize="8.5" fontWeight="700">
+                              <text x={pos.x} y={pos.y + AVATAR_R + 12} textAnchor="middle" fill={meta.bg} fontSize="10" fontWeight="700">
                                 {meta.short || aid}
                               </text>
-                              <text x={pos.x} y={pos.y + AVATAR_R + 22} textAnchor="middle" fill="rgba(255,255,255,0.3)" fontSize="6">
+                              <text x={pos.x} y={pos.y + AVATAR_R + 22} textAnchor="middle" fill={svgColors.nodeTextSub} fontSize="8.5">
                                 {agent.model || ''}
                               </text>
                             </g>
@@ -1246,13 +1262,13 @@ export default function ResearchLab({ onClose, onTasksUpdated, addToast }) {
                         {hasAdd && (
                           <g style={{ cursor: 'pointer' }} onClick={() => setShowAddMenu(!showAddMenu)}>
                             <circle cx={addPos.x} cy={addPos.y} r={22}
-                              fill="rgba(255,255,255,0.02)"
-                              stroke="rgba(255,255,255,0.08)"
+                              fill={svgColors.addBtnBg}
+                              stroke={svgColors.addBtnStroke}
                               strokeWidth="1.5"
                               strokeDasharray="4,4"
                             />
-                            <text x={addPos.x} y={addPos.y + 4} textAnchor="middle" fill="#8b8fa3" fontSize="18" fontWeight="300">+</text>
-                            <text x={addPos.x} y={addPos.y + 34} textAnchor="middle" fill="#5a5e72" fontSize="7" fontWeight="600">AGGIUNGI</text>
+                              <text x={addPos.x} y={addPos.y + 4} textAnchor="middle" fill={svgColors.addBtnText} fontSize="24" fontWeight="300">+</text>
+                            <text x={addPos.x} y={addPos.y + 34} textAnchor="middle" fill={svgColors.addBtnSub} fontSize="10" fontWeight="600">AGGIUNGI</text>
                           </g>
                         )}
 

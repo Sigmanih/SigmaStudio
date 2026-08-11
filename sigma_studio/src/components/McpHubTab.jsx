@@ -5,6 +5,8 @@ import {
   Home, Mail, MessageSquare, Shield, Layers, Brain, Calendar, Hash, Phone, GitBranch, Eye, Activity,
   ShieldCheck, ShieldAlert, Plug, Sparkles, ArrowRight, Lock, Key
 } from 'lucide-react';
+import { useApp } from '../contexts/AppContext';
+import TechSpaceCanvas from './common/TechSpaceCanvas';
 import McpIntegrationsPanel from './McpIntegrationsPanel';
 
 // MCP Category System & Theme Badges
@@ -302,6 +304,15 @@ const STANDBY_SERVERS = [
 ];
 
 export default function McpHubTab() {
+  const { theme } = useApp();
+  const isLight = theme === 'light';
+  const txt = {
+    heading: isLight ? '#111111' : '#fff',
+    body: isLight ? '#2e2820' : '#8b8fa3',
+    muted: isLight ? '#78716c' : '#6b7080',
+    dim: isLight ? '#44403c' : '#555',
+    sub: isLight ? '#292524' : '#e2e8f0'
+  };
   const [servers, setServers] = useState([]);
   const [tools, setTools] = useState([]);
   const [resources, setResources] = useState([]);
@@ -310,7 +321,7 @@ export default function McpHubTab() {
   const [toolArgs, setToolArgs] = useState('{}');
   const [testResult, setTestResult] = useState(null);
   const [testingTool, setTestingTool] = useState(false);
-  const [activeSubTab, setActiveSubTab] = useState('catalog'); // 'catalog' | 'integrations' | 'standby' | 'tester' | 'console' | 'resources'
+  const [activeSubTab, setActiveSubTab] = useState('catalog'); // 'catalog' | 'integrations' | 'standby' | 'tester' | 'console' | 'resources' | 'skills'
 
   // Filtering & Search state
   const [selectedCategory, setSelectedCategory] = useState('all');
@@ -571,21 +582,24 @@ export default function McpHubTab() {
   const enabledCount = tools.filter(t => !disabledTools[t.name]).length;
 
   return (
-    <div style={{ padding: 0, background: '#0a0c14', color: '#e2e4eb', minHeight: '100%', display: 'flex', flexDirection: 'column', position: 'relative', overflowY: 'auto' }}>
+    <div style={{ padding: 0, background: 'var(--bg)', color: '#e2e4eb', minHeight: '100%', display: 'flex', flexDirection: 'column', position: 'relative', overflowY: 'auto' }}>
+      {/* Animated Translucent Cyber Space Background Canvas */}
+      <TechSpaceCanvas isLight={theme === 'light'} />
 
       {/* Hero Visual Banner with Generated Graphic */}
       <div style={{
         position: 'relative',
+        zIndex: 1,
         borderRadius: 0,
         overflow: 'hidden',
         padding: '20px 32px 18px 32px',
         minHeight: '100px',
         borderBottom: '1px solid rgba(0, 210, 255, 0.25)',
         boxShadow: '0 8px 32px rgba(0,0,0,0.4)',
-        backgroundImage: 'linear-gradient(to right, rgba(10, 12, 20, 0.98) 45%, rgba(10, 12, 20, 0.5) 100%), url("/images/mcp_protocol_hub.jpg")',
-        backgroundSize: '360px auto',
+        backgroundImage: 'linear-gradient(to right, rgba(28, 12, 4, 0.96) 35%, rgba(120, 45, 10, 0.6) 75%, rgba(234, 88, 12, 0.22) 100%), url("/images/mcp_protocol_hub.jpg")',
+        backgroundSize: 'cover',
         backgroundRepeat: 'no-repeat',
-        backgroundPosition: 'right center',
+        backgroundPosition: 'center center',
         marginBottom: '20px',
         flexShrink: 0
       }}>
@@ -698,7 +712,7 @@ export default function McpHubTab() {
                       padding: '5px 12px', borderRadius: '16px',
                       background: isSel ? cat.bg : 'rgba(255, 255, 255, 0.04)',
                       border: `1px solid ${isSel ? cat.color : 'rgba(255, 255, 255, 0.08)'}`,
-                      color: isSel ? cat.color : '#8b8fa3', fontSize: '0.75rem', fontWeight: 700,
+                      color: isSel ? cat.color : txt.body, fontSize: '0.75rem', fontWeight: 700,
                       cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px'
                     }}
                   >
@@ -737,9 +751,9 @@ export default function McpHubTab() {
                   onClick={() => selectToolWithDefaults(tool)}
                   onMouseEnter={e => handleMouseEnterCard(tool, e)}
                   onMouseLeave={() => setHoveredTool(null)}
-                  style={{
+                    style={{
                     padding: '20px', borderRadius: '16px',
-                    background: selectedTool?.name === tool.name ? 'rgba(18, 22, 32, 0.95)' : 'rgba(14, 17, 25, 0.8)',
+                    backgroundColor: isLight ? '#fffdf9' : (selectedTool?.name === tool.name ? 'rgba(18, 22, 32, 0.95)' : 'rgba(14, 17, 25, 0.8)'),
                     border: `1px solid ${selectedTool?.name === tool.name ? color : (isOff ? 'rgba(255,255,255,0.05)' : 'rgba(255,255,255,0.08)')}`,
                     opacity: isOff ? 0.6 : 1, cursor: 'pointer',
                     display: 'flex', flexDirection: 'column', justifyContent: 'space-between', gap: '12px',
@@ -757,8 +771,8 @@ export default function McpHubTab() {
                           <IconComp size={18} />
                         </div>
                         <div>
-                          <div style={{ fontWeight: 800, fontSize: '0.92rem', color: '#fff' }}>{meta.title || tool.name}</div>
-                          <div style={{ fontSize: '0.7rem', color: '#6b7080' }}>
+                          <div style={{ fontWeight: 800, fontSize: '0.92rem', color: txt.heading }}>{meta.title || tool.name}</div>
+                          <div style={{ fontSize: '0.7rem', color: txt.muted }}>
                             <code style={{ color: color }}>{tool.name}</code> • {tool.server}
                           </div>
                         </div>
@@ -778,12 +792,12 @@ export default function McpHubTab() {
                       </button>
                     </div>
 
-                    <p style={{ margin: 0, fontSize: '0.78rem', color: '#8b8fa3', lineHeight: 1.5 }}>
+                    <p style={{ margin: 0, fontSize: '0.78rem', color: txt.body, lineHeight: 1.5 }}>
                       {meta.summary || tool.description}
                     </p>
                   </div>
 
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingTop: '10px', borderTop: '1px solid rgba(255,255,255,0.05)', fontSize: '0.72rem', color: '#6b7080' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingTop: '10px', borderTop: '1px solid rgba(255,255,255,0.05)', fontSize: '0.72rem', color: txt.muted }}>
                     <span>Parametri: {tool.inputSchema?.properties ? Object.keys(tool.inputSchema.properties).length : 0}</span>
                     <span style={{ color: color, fontWeight: 700, display: 'flex', alignItems: 'center', gap: '4px' }}>
                       Seleziona & Prova <ChevronRight size={12} />
@@ -808,10 +822,10 @@ export default function McpHubTab() {
             <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '4px 12px', borderRadius: '12px', background: 'rgba(255, 255, 255, 0.06)', border: '1px solid rgba(255, 255, 255, 0.1)', color: '#8b8fa3', fontSize: '0.72rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '1px', marginBottom: '8px' }}>
               <Layers size={13} /> ESPANSIONI PROTOCOLLO PROTOCOL MCP IN ATTESA
             </div>
-            <h2 style={{ margin: 0, fontSize: '1.4rem', fontWeight: 900, color: '#fff' }}>
+            <h2 style={{ margin: 0, fontSize: '1.4rem', fontWeight: 900, color: txt.heading }}>
               ⚡ Server MCP in Standby Pronte per l'Attivazione
             </h2>
-            <p style={{ margin: '4px 0 0 0', fontSize: '0.84rem', color: '#8b8fa3' }}>
+            <p style={{ margin: '4px 0 0 0', fontSize: '0.84rem', color: txt.body }}>
               Integrazioni ufficiali Model Context Protocol in attesa di credenziali API o socket locale:
             </p>
           </div>
@@ -826,7 +840,7 @@ export default function McpHubTab() {
                   key={srv.id}
                   style={{
                     padding: '24px', borderRadius: '18px',
-                    background: isActivated ? 'rgba(14, 17, 25, 0.85)' : 'rgba(14, 17, 25, 0.4)',
+                    backgroundColor: isLight ? '#fffdf9' : (isActivated ? 'rgba(14, 17, 25, 0.85)' : 'rgba(14, 17, 25, 0.4)'),
                     border: '1px solid ' + (isActivated ? `${srv.color}40` : 'rgba(255, 255, 255, 0.08)'),
                     boxShadow: isActivated ? `0 8px 32px ${srv.color}15` : 'none',
                     display: 'flex', flexDirection: 'column', justifyContent: 'space-between',
@@ -858,10 +872,10 @@ export default function McpHubTab() {
                       </span>
                     </div>
 
-                    <h3 style={{ margin: '0 0 6px 0', fontSize: '1rem', fontWeight: 800, color: '#fff' }}>
+                    <h3 style={{ margin: '0 0 6px 0', fontSize: '1rem', fontWeight: 800, color: txt.heading }}>
                       {srv.name}
                     </h3>
-                    <p style={{ margin: '0 0 12px 0', fontSize: '0.78rem', color: '#8b8fa3', lineHeight: 1.5 }}>
+                    <p style={{ margin: '0 0 12px 0', fontSize: '0.78rem', color: txt.body, lineHeight: 1.5 }}>
                       {srv.summary}
                     </p>
                     <div style={{ fontSize: '0.72rem', color: '#6b7080', background: 'rgba(8, 10, 16, 0.6)', padding: '6px 10px', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.04)' }}>
@@ -897,7 +911,7 @@ export default function McpHubTab() {
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px' }}>
           
           {/* Selected Tool Details & Sandbox Form */}
-          <div style={{ padding: '24px', borderRadius: '18px', background: 'rgba(14, 17, 25, 0.85)', border: '1px solid rgba(255,255,255,0.08)' }}>
+          <div style={{ padding: '24px', borderRadius: '18px', backgroundColor: isLight ? '#fffdf9' : 'rgba(14, 17, 25, 0.85)', border: `1px solid ${isLight ? 'rgba(190, 160, 110, 0.35)' : 'rgba(255,255,255,0.08)'}` }}>
             {selectedTool ? (
               <div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '16px' }}>
@@ -905,19 +919,19 @@ export default function McpHubTab() {
                     <Wrench size={20} />
                   </div>
                   <div>
-                    <h2 style={{ margin: 0, fontSize: '1.1rem', color: '#fff', fontWeight: 800 }}>
+                    <h2 style={{ margin: 0, fontSize: '1.1rem', color: txt.heading, fontWeight: 800 }}>
                       Collaudo RPC: <code style={{ color: '#00d2ff' }}>{selectedTool.name}</code>
                     </h2>
-                    <div style={{ fontSize: '0.74rem', color: '#8b8fa3' }}>Server: {selectedTool.server}</div>
+                    <div style={{ fontSize: '0.74rem', color: txt.body }}>Server: {selectedTool.server}</div>
                   </div>
                 </div>
 
-                <p style={{ fontSize: '0.82rem', color: '#a0aec0', lineHeight: 1.5, marginBottom: '20px' }}>
+                <p style={{ fontSize: '0.82rem', color: txt.body, lineHeight: 1.5, marginBottom: '20px' }}>
                   {TOOL_METADATA[selectedTool.name]?.explanation || selectedTool.description}
                 </p>
 
                 <div style={{ marginBottom: '16px' }}>
-                  <label style={{ display: 'block', fontSize: '0.76rem', fontWeight: 700, color: '#c0c4d0', marginBottom: '6px' }}>
+                  <label style={{ display: 'block', fontSize: '0.76rem', fontWeight: 700, color: txt.sub, marginBottom: '6px' }}>
                     Parametri JSON-RPC di Esecuzione:
                   </label>
                   <textarea
@@ -945,7 +959,7 @@ export default function McpHubTab() {
                 </button>
               </div>
             ) : (
-              <div style={{ textAlign: 'center', color: '#6b7080', padding: '40px' }}>Seleziona una skill dal catalogo per collaudarla.</div>
+              <div style={{ textAlign: 'center', color: txt.muted, padding: '40px' }}>Seleziona una skill dal catalogo per collaudarla.</div>
             )}
           </div>
 
@@ -985,7 +999,7 @@ export default function McpHubTab() {
 
       {/* ── SUB TAB 5: LOG DIAGNOSTICI HUB ── */}
       {activeSubTab === 'console' && (
-        <div style={{ padding: '24px', borderRadius: '18px', background: 'rgba(8, 10, 16, 0.95)', border: '1px solid rgba(255, 255, 255, 0.08)' }}>
+        <div style={{ padding: '24px', borderRadius: '18px', backgroundColor: isLight ? '#fffdf9' : 'rgba(8, 10, 16, 0.95)', border: `1px solid ${isLight ? 'rgba(190, 160, 110, 0.35)' : 'rgba(255, 255, 255, 0.08)'}` }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px' }}>
             <h3 style={{ margin: 0, fontSize: '1.1rem', color: '#fff', fontWeight: 800, display: 'flex', alignItems: 'center', gap: '8px' }}>
               <span>📊</span> Console Diagnostica Collaudo Skills MCP
@@ -1023,10 +1037,10 @@ export default function McpHubTab() {
       {activeSubTab === 'resources' && (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '16px' }}>
           {resources.map((res, idx) => (
-            <div key={idx} style={{ padding: '20px', borderRadius: '16px', background: 'rgba(14, 17, 25, 0.8)', border: '1px solid rgba(255,255,255,0.08)' }}>
+            <div key={idx} style={{ padding: '20px', borderRadius: '16px', backgroundColor: isLight ? '#fffdf9' : 'rgba(14, 17, 25, 0.8)', border: `1px solid ${isLight ? 'rgba(190, 160, 110, 0.35)' : 'rgba(255,255,255,0.08)'}` }}>
               <div style={{ fontWeight: 800, fontSize: '0.9rem', color: '#00d2ff', marginBottom: '4px' }}>{res.name}</div>
-              <div style={{ fontSize: '0.74rem', color: '#8b8fa3', marginBottom: '8px' }}><code>{res.uri}</code></div>
-              <p style={{ fontSize: '0.78rem', color: '#c0c4d0', margin: 0 }}>{res.description || 'Risorsa di contesto esposta dal protocollo MCP.'}</p>
+              <div style={{ fontSize: '0.74rem', color: txt.muted, marginBottom: '8px' }}><code>{res.uri}</code></div>
+              <p style={{ fontSize: '0.78rem', color: txt.body, margin: 0 }}>{res.description || 'Risorsa di contesto esposta dal protocollo MCP.'}</p>
             </div>
           ))}
         </div>
