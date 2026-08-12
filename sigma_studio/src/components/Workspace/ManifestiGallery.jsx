@@ -552,7 +552,7 @@ export default function ManifestiGallery({ modules, manifesti, openTab, setFileM
             <h1 style={{ margin: '0 0 4px 0', fontSize: '1.35rem', fontWeight: 800, color: '#fff', letterSpacing: '-0.3px' }}>
               📜 Manifesti & Direttive di Sistema
             </h1>
-            <p style={{ margin: 0, fontSize: '0.78rem', color: '#a0aec0', lineHeight: 1.4 }}>
+            <p style={{ margin: 0, fontSize: '0.78rem', color: '#ffffff', lineHeight: 1.4 }}>
               Identità agentiche, Modelfile Ollama e Agenti Addestrati con la suite Training Lab.
             </p>
           </div>

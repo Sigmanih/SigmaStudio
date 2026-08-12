@@ -254,20 +254,19 @@ button:active, .mod-btn:active { transform: scale(0.95); }
 }
 
 .app-page-header-title h1 {
-  font-size: 22px;
-  font-weight: 700;
-  margin: 0;
-  background: linear-gradient(135deg, #00f2fe 0%, #4facfe 50%, #bc8cff 100%);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
+  font-size: 1.35rem;
+  font-weight: 800;
+  margin: 0 0 4px 0;
+  color: #ffffff;
   letter-spacing: -0.3px;
-  line-height: 1.25;
+  line-height: 1.4;
 }
 
 .app-page-header-subtitle {
-  font-size: 12px;
-  color: var(--text-dim, #9494a5);
-  margin-top: 3px;
+  font-size: 0.78rem;
+  color: #ffffff;
+  margin-top: 0;
+  line-height: 1.4;
   display: flex;
   align-items: center;
   gap: 8px;

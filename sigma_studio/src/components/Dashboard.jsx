@@ -165,7 +165,7 @@ export function RoadmapView({ tasks, onEdit, onAdd, onDelete, onToggleStatus, on
   };
 
   return (
-    <div className="roadmap-view" style={{ height: '100%', display: 'flex', flexDirection: 'column', padding: 0, background: T.bg, color: T.text, boxSizing: 'border-box', overflowY: 'auto' }}>
+    <div className="roadmap-view" style={{ height: '100%', display: 'flex', flexDirection: 'column', padding: 0, background: T.bg, color: T.text, boxSizing: 'border-box', overflow: 'hidden' }}>
       
       {/* Hero Visual Banner matching Domotica Header Style */}
       <div style={{
@@ -196,7 +196,7 @@ export function RoadmapView({ tasks, onEdit, onAdd, onDelete, onToggleStatus, on
             <h1 style={{ margin: '0 0 4px 0', fontSize: '1.35rem', fontWeight: 800, color: '#fff', letterSpacing: '-0.3px' }}>
               🗓️ Pianificazione & Roadmap di Sviluppo
             </h1>
-            <p style={{ margin: 0, fontSize: '0.78rem', color: '#a0aec0', lineHeight: 1.4 }}>
+            <p style={{ margin: 0, fontSize: '0.78rem', color: '#ffffff', lineHeight: 1.4 }}>
               Calendario Attività, Kanban Task, Registro Modifiche AI e Controllo Esecuzioni.
             </p>
           </div>
@@ -211,7 +211,7 @@ export function RoadmapView({ tasks, onEdit, onAdd, onDelete, onToggleStatus, on
                 }} 
                 style={{
                   display: 'flex', alignItems: 'center', gap: '6px', padding: '10px 16px', borderRadius: '12px',
-                  fontSize: '0.82rem', fontWeight: 700, background: 'rgba(255,85,85,0.15)', border: '1px solid rgba(255,85,85,0.35)',
+                  fontSize: '0.82rem', fontWeight: 800, background: 'rgba(255,85,85,0.15)', border: '1px solid rgba(255,85,85,0.35)',
                   color: '#ff5555', cursor: 'pointer'
                 }}
               >
@@ -233,7 +233,7 @@ export function RoadmapView({ tasks, onEdit, onAdd, onDelete, onToggleStatus, on
       </div>
 
       {/* Main Workspace Body Wrapper */}
-      <div style={{ padding: '0 24px 16px 24px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
+      <div style={{ padding: '0 24px 16px 24px', display: 'flex', flexDirection: 'column', gap: '12px', flex: 1, minHeight: 0 }}>
 
       {/* 2. STATS WIDGETS BAR — COMPACT & MODERN */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '8px', marginBottom: '8px', flexShrink: 0 }}>
@@ -303,7 +303,7 @@ export function RoadmapView({ tasks, onEdit, onAdd, onDelete, onToggleStatus, on
 
       {/* TAB 1: CALENDARIO INTERATTIVO */}
       {activeTab === 'calendar' && (
-        <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 440px) 1fr', gap: '14px' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px', flex: 1, minHeight: 0 }}>
           
           {/* Griglia Calendario Mensile */}
           <div style={{ background: T.cardBg, border: `1px solid ${T.border}`, borderRadius: '12px', padding: '14px', display: 'flex', flexDirection: 'column', gap: '10px', boxShadow: '0 2px 12px rgba(0,0,0,0.06)' }}>
@@ -338,7 +338,7 @@ export function RoadmapView({ tasks, onEdit, onAdd, onDelete, onToggleStatus, on
             </div>
 
             {/* Griglia Giorni */}
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: '3px', alignContent: 'start' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: '3px', flex: 1 }}>
               {Array.from({ length: firstDayIndex }).map((_, i) => (
                 <div key={`empty-${i}`} style={{ background: 'transparent', borderRadius: '8px' }} />
               ))}
@@ -451,7 +451,7 @@ export function RoadmapView({ tasks, onEdit, onAdd, onDelete, onToggleStatus, on
 
       {/* TAB 2: GESTIONE TASK KANBAN */}
       {activeTab === 'kanban' && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '14px', flex: 1, minHeight: 0 }}>
           {/* Filters */}
           <div style={{ display: 'flex', gap: '12px', alignItems: 'center', flexShrink: 0 }}>
             <span style={{ fontSize: '0.72rem', color: T.muted, fontWeight: 600 }}>Filtra Stato:</span>
@@ -554,7 +554,7 @@ export function RoadmapView({ tasks, onEdit, onAdd, onDelete, onToggleStatus, on
 
       {/* TAB 3: REGISTRO MODIFICHE (AUDIT TRAIL) */}
       {activeTab === 'audit' && (
-        <div style={{ background: T.cardBg, border: `1px solid ${T.border}`, borderRadius: '14px', padding: '20px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
+        <div style={{ background: T.cardBg, border: `1px solid ${T.border}`, borderRadius: '14px', padding: '20px', display: 'flex', flexDirection: 'column', gap: '14px', flex: 1, minHeight: 0, overflowY: 'auto' }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: `1px solid ${T.divider}`, paddingBottom: '10px' }}>
             <div>
               <h3 style={{ margin: 0, fontSize: '0.95rem', fontWeight: 700, color: T.text }}>Registro Modifiche & Audit Log</h3>

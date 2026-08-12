@@ -102,65 +102,88 @@ export default function KnowledgeNodeExplorer() {
   const currentNode = nodes[selectedNodeId] || null;
 
   return (
-    <div style={{ padding: '24px', background: '#0a0c14', color: '#e2e4eb', minHeight: '100%', display: 'flex', flexDirection: 'column', gap: '20px' }}>
-      
-      {/* Header */}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid rgba(255, 255, 255, 0.08)', paddingBottom: '16px' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-          <div style={{ padding: '10px', background: 'rgba(0, 210, 255, 0.1)', borderRadius: '12px', border: '1px solid rgba(0, 210, 255, 0.2)' }}>
-            <Layers size={24} color="#00d2ff" />
-          </div>
-          <div>
-            <h1 style={{ margin: 0, fontSize: '1.4rem', fontWeight: 700, color: '#fff' }}>Universal Knowledge Nodes & App Explorer</h1>
-            <div style={{ fontSize: '0.8rem', color: '#8b8fa3' }}>
-              Gestione nodi gerarchici universali, codice, documenti ed applicativi integrati in Sigma Studio
+    <div style={{ background: '#0a0c14', color: '#e2e4eb', minHeight: '100%', display: 'flex', flexDirection: 'column' }}>
+      {/* Hero Visual Banner matching Domotica & Bacheca Header Style */}
+      <div style={{
+        position: 'relative',
+        zIndex: 1,
+        borderRadius: 0,
+        overflow: 'hidden',
+        padding: '20px 32px 18px 32px',
+        minHeight: '100px',
+        borderBottom: '1px solid rgba(0, 210, 255, 0.25)',
+        boxShadow: '0 8px 32px rgba(0,0,0,0.4)',
+        backgroundImage: 'linear-gradient(to right, rgba(28, 12, 4, 0.96) 35%, rgba(120, 45, 10, 0.6) 75%, rgba(234, 88, 12, 0.22) 100%), url("/images/hero_banner.jpg")',
+        backgroundSize: 'cover',
+        backgroundRepeat: 'no-repeat',
+        backgroundPosition: 'center center',
+        marginBottom: '20px',
+        flexShrink: 0
+      }}>
+        <div style={{ position: 'relative', zIndex: 2, display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '16px' }}>
+          <div style={{ maxWidth: '680px' }}>
+            <div style={{
+              display: 'inline-flex', alignItems: 'center', gap: '6px',
+              padding: '3px 12px', borderRadius: '14px',
+              background: 'rgba(0, 210, 255, 0.15)', border: '1px solid rgba(0, 210, 255, 0.35)',
+              color: '#00d2ff', fontSize: '0.68rem', fontWeight: 800, letterSpacing: '1px', textTransform: 'uppercase', marginBottom: '6px'
+            }}>
+              <Layers size={14} /> UNIVERSAL KNOWLEDGE GRAPH & APP EXPLORER
             </div>
+            <h1 style={{ margin: '0 0 4px 0', fontSize: '1.35rem', fontWeight: 800, color: '#fff', letterSpacing: '-0.3px' }}>
+              🌐 Universal Knowledge Nodes & App Explorer
+            </h1>
+            <p style={{ margin: 0, fontSize: '0.78rem', color: '#ffffff', lineHeight: 1.4 }}>
+              Gestione nodi gerarchici universali, codice, documenti ed applicativi integrati in Sigma Studio.
+            </p>
           </div>
-        </div>
 
-        <div style={{ display: 'flex', gap: '10px' }}>
-          <button
-            onClick={() => setShowNewNodeModal(true)}
-            style={{
-              background: 'linear-gradient(135deg, #00d2ff, #0072ff)',
-              border: 'none',
-              color: '#fff',
-              padding: '8px 14px',
-              borderRadius: '8px',
-              fontWeight: 600,
-              fontSize: '0.83rem',
-              cursor: 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '6px'
-            }}
-          >
-            <FolderPlus size={15} />
-            <span>Nuovo Nodo / App Folder</span>
-          </button>
-
-          <button
-            onClick={fetchNodes}
-            style={{
-              background: 'rgba(255, 255, 255, 0.05)',
-              border: '1px solid rgba(255, 255, 255, 0.1)',
-              color: '#e2e4eb',
-              padding: '8px 14px',
-              borderRadius: '8px',
-              cursor: 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '6px',
-              fontSize: '0.83rem'
-            }}
-          >
-            <RefreshCw size={14} className={loading ? 'spin' : ''} />
-            <span>Aggiorna Nodi</span>
-          </button>
+          <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+            <button
+              onClick={fetchNodes}
+              style={{
+                background: 'rgba(255, 255, 255, 0.05)',
+                border: '1px solid rgba(255, 255, 255, 0.1)',
+                color: '#e2e4eb',
+                padding: '10px 16px',
+                borderRadius: '12px',
+                fontWeight: 800,
+                fontSize: '0.82rem',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px'
+              }}
+            >
+              <RefreshCw size={15} className={loading ? 'spin' : ''} />
+              <span>Aggiorna Nodi</span>
+            </button>
+            <button
+              onClick={() => setShowNewNodeModal(true)}
+              style={{
+                background: 'linear-gradient(135deg, #00d2ff, #0072ff)',
+                border: 'none',
+                color: '#fff',
+                padding: '10px 18px',
+                borderRadius: '12px',
+                fontWeight: 800,
+                fontSize: '0.82rem',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px',
+                boxShadow: '0 4px 16px rgba(0,210,255,0.3)'
+              }}
+            >
+              <FolderPlus size={15} />
+              <span>Nuovo Nodo / App Folder</span>
+            </button>
+          </div>
         </div>
       </div>
 
-      {/* Main Grid: Tree Explorer + Node Details & Content Runner */}
+      <div style={{ padding: '0 24px 24px 24px', display: 'flex', flexDirection: 'column', gap: '20px', flex: 1 }}>
+        {/* Main Grid: Tree Explorer + Node Details & Content Runner */}
       <div style={{ display: 'grid', gridTemplateColumns: '300px 1fr', gap: '20px' }}>
         
         {/* Node Tree Navigation */}
@@ -367,6 +390,7 @@ export default function KnowledgeNodeExplorer() {
             </div>
           )}
         </div>
+      </div>
       </div>
 
       {/* New Node Modal */}

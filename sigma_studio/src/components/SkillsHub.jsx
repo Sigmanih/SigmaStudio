@@ -101,7 +101,7 @@ export default function SkillsHub() {
             <h1 style={{ margin: '0 0 4px 0', fontSize: '1.35rem', fontWeight: 800, color: '#fff', letterSpacing: '-0.3px' }}>
               🛠️ Skills & Motori Componibili
             </h1>
-            <p style={{ margin: 0, fontSize: '0.78rem', color: '#a0aec0', lineHeight: 1.4 }}>
+            <p style={{ margin: 0, fontSize: '0.78rem', color: '#ffffff', lineHeight: 1.4 }}>
               Sigma Studio è il kernel dell'Agente: ogni skill è una capacità componibile ed ogni motore è una dipendenza di calcolo locale.
             </p>
           </div>

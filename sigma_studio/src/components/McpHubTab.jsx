@@ -616,7 +616,7 @@ export default function McpHubTab() {
             <h1 style={{ margin: '0 0 4px 0', fontSize: '1.35rem', fontWeight: 800, color: '#fff', letterSpacing: '-0.3px' }}>
               MCP Tools & Protocol Server Hub
             </h1>
-            <p style={{ margin: 0, fontSize: '0.78rem', color: '#a0aec0', lineHeight: 1.4 }}>
+            <p style={{ margin: 0, fontSize: '0.78rem', color: '#ffffff', lineHeight: 1.4 }}>
               Bus di I/O decentralizzato per integrare Filesystem, Memory, Home Assistant, SQLite e Microservizi direttamente con gli Agenti AI.
             </p>
           </div>

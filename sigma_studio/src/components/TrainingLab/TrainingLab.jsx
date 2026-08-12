@@ -238,7 +238,7 @@ export default function TrainingLab({ addToast: _addToast, onTasksUpdated }) {
         overflow: 'hidden',
         padding: '20px 32px 18px 32px',
         minHeight: '100px',
-        borderBottom: '1px solid rgba(188, 140, 255, 0.35)',
+        borderBottom: '1px solid rgba(0, 210, 255, 0.25)',
         boxShadow: '0 8px 32px rgba(0,0,0,0.4)',
         backgroundImage: 'linear-gradient(to right, rgba(28, 12, 4, 0.96) 35%, rgba(120, 45, 10, 0.6) 75%, rgba(234, 88, 12, 0.22) 100%), url("/images/training_lab_hero.jpg")',
         backgroundSize: 'cover',
@@ -258,14 +258,17 @@ export default function TrainingLab({ addToast: _addToast, onTasksUpdated }) {
               <div style={{
                 display: 'inline-flex', alignItems: 'center', gap: '6px',
                 padding: '3px 12px', borderRadius: '14px',
-                background: 'rgba(188, 140, 255, 0.18)', border: '1px solid rgba(188, 140, 255, 0.4)',
-                color: '#bc8cff', fontSize: '0.68rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '1px', marginBottom: '4px'
+                background: 'rgba(0, 210, 255, 0.15)', border: '1px solid rgba(0, 210, 255, 0.35)',
+                color: '#00d2ff', fontSize: '0.68rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '1px', marginBottom: '6px'
               }}>
                 <Activity size={14} /> UNSLOTH QLORA & SLM MODEL FINE-TUNING LAB
               </div>
-              <h1 style={{ margin: 0, fontSize: '1.35rem', fontWeight: 800, color: '#fff', letterSpacing: '-0.3px' }}>
+              <h1 style={{ margin: '0 0 4px 0', fontSize: '1.35rem', fontWeight: 800, color: '#fff', letterSpacing: '-0.3px' }}>
                 🎓 Training & Fine-Tuning Lab
               </h1>
+              <p style={{ margin: 0, fontSize: '0.78rem', color: '#ffffff', lineHeight: 1.4 }}>
+                Ambiente integrato per l'addestramento QLoRA 4-bit, la gestione dei dataset e la valutazione dei benchmark LLM.
+              </p>
             </div>
           </div>
         </div>
