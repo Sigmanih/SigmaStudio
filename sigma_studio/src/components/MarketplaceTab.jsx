@@ -3,7 +3,7 @@ import {
   Store, Package, Download, RefreshCw, CheckCircle2, ShieldCheck, 
   ExternalLink, Terminal, GitBranch, Cpu, Sparkles, Layers, 
   Palette, FlaskConical, Brain, Zap, Home, Wrench, ArrowRight,
-  PlusCircle, AlertCircle, Play
+  PlusCircle, AlertCircle, Play, Check, X, Search
 } from 'lucide-react';
 import { useApp } from '../contexts/AppContext';
 
@@ -98,105 +98,112 @@ const KERNEL_MODULES = [
     tabType: 'mcp_hub',
     version: 'v8.0.0',
     status: 'installed',
-    description: '12 server MCP integrati con policy di sicurezza, classificazione Safe/Sensitive e approvazione Human-in-the-Loop.',
-    tags: ['Model Context Protocol', 'JSON-RPC 2.0', 'Human Approval'],
+    description: 'Gateway centralizzato per tutti i server MCP. Gestione permessi, policy di auto-approvazione e test RPC diagnostici.',
+    tags: ['MCP Standard', 'JSON-RPC', 'Security Policy', 'Discovery'],
     author: 'Sigma Core Team'
   }
 ];
 
 // ==============================================================================
-// Remote Catalog Modules (From Git Repository)
+// Remote Catalog Modules (From Separate Git Repository)
 // ==============================================================================
 const REMOTE_CATALOG_MODULES = [
   {
-    id: 'quantum_sim',
-    name: 'Quantum Computing Lab & Qiskit',
-    category: 'Calcolo Quantistico',
-    gitRepo: 'https://github.com/Sigmanih/sigma_module_quantum',
+    id: 'audio_engine',
+    name: 'Neural Audio & Voice Engine',
+    category: 'Audio & Voce Neurale',
+    icon: Sparkles,
+    color: '#ff79c6',
+    tabType: 'audio_studio',
     version: 'v1.2.0',
-    stars: 142,
-    description: 'Simulatore di circuiti quantistici Qiskit con visualizzazione della sfera di Bloch in 3D e verifica automatica di algoritmi di Shor e Grover.',
-    tags: ['Qiskit', 'Bloch Sphere', 'Quantum AI'],
-    size: '14.2 MB',
+    status: 'available',
+    description: 'Clonazione vocale real-time XTTS-v2, trascrizione Whisper multilingue e sintesi vocale neurale con streaming WebSocket a bassissima latenza.',
+    gitUrl: 'https://github.com/Sigmanih/SigmaStudio-Module-AudioEngine.git',
+    branch: 'main',
+    tags: ['XTTS-v2', 'Whisper', 'Neural Voice', 'FastAPI'],
+    size: '142 MB',
     author: 'Sigma Community'
   },
   {
-    id: 'bioinfo_suite',
-    name: 'Bioinformatics & Molecular Viewer',
-    category: 'Scienze della Vita',
-    gitRepo: 'https://github.com/Sigmanih/sigma_module_bioinfo',
+    id: 'vision_agent',
+    name: 'Vision & Visual Grounding Lab',
+    category: 'Computer Vision & OCR',
+    icon: Sparkles,
+    color: '#00d2ff',
+    tabType: 'vision_lab',
     version: 'v1.0.4',
-    stars: 98,
-    description: 'Visualizzatore di strutture proteiche PDB in WebGL (3Dmol.js) e pipeline di analisi per allineamento di sequenze FASTA.',
-    tags: ['Biopython', 'PDB 3D', 'Genomics'],
-    size: '22.8 MB',
-    author: 'BioAI Group'
+    status: 'available',
+    description: 'Analisi visiva avanzata con Qwen2-VL, rilevamento oggetti YOLOv10, OCR impaginato per paper scientifici e bounding-box interattivi.',
+    gitUrl: 'https://github.com/Sigmanih/SigmaStudio-Module-VisionLab.git',
+    branch: 'main',
+    tags: ['Qwen2-VL', 'YOLOv10', 'OCR Doc', 'Bounding Box'],
+    size: '88 MB',
+    author: 'Sigma Core Team'
   },
   {
     id: 'robotics_ros2',
-    name: 'Robotics Bridge & ROS 2 MCP',
-    category: 'Robotica & Cyberfisica',
-    gitRepo: 'https://github.com/Sigmanih/sigma_module_ros2',
-    version: 'v1.1.0',
-    stars: 185,
-    description: 'Server MCP per la teleoperazione di nodi ROS 2, telemetria lidar 2D/3D e controllo cinematico per bracci robotici.',
-    tags: ['ROS 2', 'rclpy', 'Robotics MCP'],
-    size: '18.5 MB',
-    author: 'Robotics Lab'
+    name: 'ROS2 & Robotics Bridge',
+    category: 'Robotica & Meccatronica',
+    icon: Sparkles,
+    color: '#3fb950',
+    tabType: 'robotics_tab',
+    version: 'v0.9.0',
+    status: 'available',
+    description: 'Interfaccia nativa ROS2 / micro-ROS per inviare comandi cinematica, visualizzare odometria laser e teleoperare bracci robotici.',
+    gitUrl: 'https://github.com/Sigmanih/SigmaStudio-Module-Robotics.git',
+    branch: 'main',
+    tags: ['ROS2 Humble', 'Nav2', 'Kinematics', 'URDF Visualizer'],
+    size: '64 MB',
+    author: 'Sigma Robotics Group'
   },
   {
-    id: 'realtime_voice',
-    name: 'Full-Duplex Speech-to-Speech Lab',
-    category: 'Audio & Voce Realtime',
-    gitRepo: 'https://github.com/Sigmanih/sigma_module_voice_s2s',
-    version: 'v2.0.1',
-    stars: 310,
-    description: 'Pipeline vocale a bassissima latenza (<200ms) con Voice Activity Detection (VAD), streaming audio WebSocket e clonazione vocale zero-shot.',
-    tags: ['Silero VAD', 'Whisper Live', 'Kokoro Streaming'],
-    size: '45.0 MB',
-    author: 'AudioAI Lab'
-  },
-  {
-    id: 'finance_quant',
-    name: 'Financial Backtesting & Market Agent',
+    id: 'financial_quant',
+    name: 'Quant & Algorithmic Trading Lab',
     category: 'Finanza Quantitativa',
-    gitRepo: 'https://github.com/Sigmanih/sigma_module_finance',
-    version: 'v1.3.0',
-    stars: 215,
-    description: 'Motore di backtesting per strategie algoritmiche, integrazione con dati Yahoo Finance/ccxt e generazione di report di rischio Sharpe/Sortino.',
-    tags: ['Backtesting', 'Time Series', 'Quant Agent'],
-    size: '11.0 MB',
-    author: 'QuantResearch'
+    icon: Sparkles,
+    color: '#d29922',
+    tabType: 'quant_lab',
+    version: 'v1.1.0',
+    status: 'available',
+    description: 'Backtesting vettorializzato con Backtrader/VectorBT, calcolo volatilità GARCH, ottimizzazione di portafoglio Markowitz e feed Yahoo Finance.',
+    gitUrl: 'https://github.com/Sigmanih/SigmaStudio-Module-Quant.git',
+    branch: 'main',
+    tags: ['Backtesting', 'VectorBT', 'Markowitz', 'Risk Engine'],
+    size: '35 MB',
+    author: 'Sigma Community'
   }
 ];
 
-export default function MarketplaceTab({ openTab: externalOpenTab }) {
+export default function MarketplaceTab({ openTab }) {
   const { theme } = useApp();
-  const [filter, setFilter] = useState('all');
+  const isLight = theme === 'light';
+
+  // Active View Tab: 'installed' | 'remote'
+  const [activeSubTab, setActiveSubTab] = useState('installed');
   const [search, setSearch] = useState('');
   const [installingId, setInstallingId] = useState(null);
-  const [installLogs, setInstallLogs] = useState([]);
-  const [customGitUrl, setCustomGitUrl] = useState('');
-  const [customBranch, setCustomBranch] = useState('main');
   const [isRebuilding, setIsRebuilding] = useState(false);
   const [rebuildStatus, setRebuildStatus] = useState('');
+  const [installLogs, setInstallLogs] = useState([
+    `[${new Date().toLocaleTimeString()}] 📦 Sigma Kernel Marketplace v8.1 inizializzato.`,
+    `[${new Date().toLocaleTimeString()}] 🔗 Catalogo moduli collegato all'architettura a micro-kernel.`
+  ]);
 
-  // Fallback openTab helper
-  const handleOpenTab = (item, type) => {
-    if (externalOpenTab) {
-      externalOpenTab(item, type);
-    } else if (window.__sigma_openTab) {
-      window.__sigma_openTab(item, type);
-    }
-  };
+  // Color tokens depending on Dark (Blue) vs Light/Crema (Orange)
+  const accentColor = isLight ? '#ea580c' : '#00d2ff';
+  const secondaryAccent = isLight ? '#d97706' : '#3b82f6';
+  const cardBg = isLight ? '#fffdf9' : '#121622';
+  const cardBorder = isLight ? '1px solid rgba(190, 160, 110, 0.32)' : '1px solid rgba(255, 255, 255, 0.08)';
+  const textPrimary = isLight ? '#111111' : '#fff';
+  const textSecondary = isLight ? '#4b5563' : '#a0aec0';
 
-  const handleInstallModule = (mod) => {
+  const handleInstallModule = async (mod) => {
     setInstallingId(mod.id);
     setInstallLogs(prev => [
       ...prev,
-      `[${new Date().toLocaleTimeString()}] 🚀 Inizio download modulo: ${mod.name}`,
-      `[${new Date().toLocaleTimeString()}] 📥 Clonazione repository Git: ${mod.gitRepo}...`,
-      `[${new Date().toLocaleTimeString()}] 📦 Verifica dipendenze Python & Node.js...`,
+      `[${new Date().toLocaleTimeString()}] 🚀 Avvio clone modulo ${mod.name} da ${mod.gitUrl}...`,
+      `[${new Date().toLocaleTimeString()}] 📥 Git sparse-checkout in corso per branch ${mod.branch}...`,
+      `[${new Date().toLocaleTimeString()}] 📦 Verifica dipendenze Python & NPM del modulo...`,
       `[${new Date().toLocaleTimeString()}] ⚡ Compilazione asset Vite e iniezione route FastAPI...`,
       `[${new Date().toLocaleTimeString()}] ✅ Modulo ${mod.name} installato con successo!`
     ]);
@@ -249,20 +256,23 @@ export default function MarketplaceTab({ openTab: externalOpenTab }) {
       height: '100%',
       display: 'flex',
       flexDirection: 'column',
-      background: 'var(--bg-main, #0e1016)',
-      color: 'var(--text-main, #e2e8f0)',
+      background: isLight ? '#f7f4ed' : 'var(--bg-main, #0e1016)',
+      color: textPrimary,
       overflowY: 'auto',
       padding: '0'
     }}>
-      {/* Hero Visual Header */}
+      {/* Hero Visual Header with Standardized Color Coding & Dimensions */}
       <div style={{
         position: 'relative',
-        padding: '28px 36px',
-        background: 'linear-gradient(135deg, rgba(14, 16, 22, 0.96) 0%, rgba(20, 26, 42, 0.92) 100%), url("/images/sigma_logo_harmonic_flow.jpg")',
+        padding: '24px 32px',
+        minHeight: '110px',
+        background: isLight 
+          ? 'linear-gradient(135deg, rgba(254, 252, 247, 0.76) 0%, rgba(248, 242, 232, 0.70) 100%), url("/images/sigma_logo_harmonic_flow.jpg")'
+          : 'linear-gradient(135deg, rgba(10, 14, 26, 0.85) 0%, rgba(14, 22, 42, 0.80) 100%), url("/images/sigma_logo_harmonic_flow.jpg")',
         backgroundSize: 'cover',
         backgroundPosition: 'center',
-        borderBottom: '1px solid rgba(0, 210, 255, 0.25)',
-        boxShadow: '0 8px 32px rgba(0,0,0,0.5)',
+        borderBottom: isLight ? '1px solid rgba(234, 88, 12, 0.35)' : '1px solid rgba(0, 210, 255, 0.25)',
+        boxShadow: isLight ? '0 8px 24px rgba(234, 88, 12, 0.08)' : '0 8px 32px rgba(0,0,0,0.4)',
         flexShrink: 0
       }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '20px' }}>
@@ -270,28 +280,27 @@ export default function MarketplaceTab({ openTab: externalOpenTab }) {
             <div style={{
               display: 'inline-flex',
               alignItems: 'center',
-              gap: '8px',
-              padding: '4px 14px',
-              borderRadius: '20px',
-              background: 'rgba(0, 210, 255, 0.15)',
-              border: '1px solid rgba(0, 210, 255, 0.4)',
-              color: '#00d2ff',
-              fontSize: '0.72rem',
+              gap: '6px',
+              padding: '3px 12px',
+              borderRadius: '14px',
+              background: isLight ? 'rgba(234, 88, 12, 0.12)' : 'rgba(0, 210, 255, 0.15)',
+              border: isLight ? '1px solid rgba(234, 88, 12, 0.35)' : '1px solid rgba(0, 210, 255, 0.4)',
+              color: accentColor,
+              fontSize: '0.68rem',
               fontWeight: 800,
-              letterSpacing: '1.2px',
+              letterSpacing: '1px',
               textTransform: 'uppercase',
-              marginBottom: '10px'
+              marginBottom: '6px'
             }}>
               <Store size={14} /> Σ KERNEL MARKETPLACE & MODULI ESTERNI
             </div>
-            <h1 style={{ fontSize: '1.8rem', fontWeight: 800, margin: '0 0 8px 0', color: '#fff', letterSpacing: '-0.5px' }}>
+            <h1 style={{ fontSize: '1.4rem', fontWeight: 800, margin: '0 0 6px 0', color: textPrimary, letterSpacing: '-0.3px', textShadow: 'none' }}>
               Architettura Modulare a <span style={{
-                background: 'linear-gradient(135deg, #00d2ff 0%, #7c5bf0 100%)',
-                WebkitBackgroundClip: 'text',
-                WebkitTextFillColor: 'transparent'
+                color: isLight ? '#c2410c' : '#00d2ff',
+                fontWeight: 800
               }}>Kernel & Plug-in</span>
             </h1>
-            <p style={{ fontSize: '0.88rem', color: '#a0aec0', maxWidth: '750px', lineHeight: 1.5, margin: 0 }}>
+            <p style={{ fontSize: '0.82rem', color: textSecondary, maxWidth: '750px', lineHeight: 1.45, margin: 0 }}>
               Sigma Studio opera come un <strong>Kernel Cognitivo leggero</strong>. Ogni funzionalità avanzata (Creative Lab, Pipelines, Training Lab, Domotica) è un modulo indipendente collegabile a caldo o installabile da repository Git esterni.
             </p>
           </div>
@@ -307,43 +316,68 @@ export default function MarketplaceTab({ openTab: externalOpenTab }) {
                 gap: '8px',
                 padding: '10px 18px',
                 borderRadius: '12px',
-                background: 'rgba(0, 210, 255, 0.15)',
-                border: '1px solid rgba(0, 210, 255, 0.5)',
-                color: '#00d2ff',
+                background: isLight ? 'rgba(234, 88, 12, 0.12)' : 'rgba(0, 210, 255, 0.15)',
+                border: isLight ? '1px solid rgba(234, 88, 12, 0.45)' : '1px solid rgba(0, 210, 255, 0.5)',
+                color: accentColor,
                 fontWeight: 700,
                 fontSize: '0.85rem',
                 cursor: isRebuilding ? 'not-allowed' : 'pointer',
-                boxShadow: '0 4px 16px rgba(0, 210, 255, 0.2)',
+                boxShadow: isLight ? '0 4px 14px rgba(234, 88, 12, 0.15)' : '0 4px 16px rgba(0, 210, 255, 0.2)',
                 transition: 'all 0.2s ease'
               }}
             >
               <RefreshCw size={16} className={isRebuilding ? 'animate-spin' : ''} />
-              {isRebuilding ? 'Ricompilazione in corso...' : 'Ricompila & Hot-Reload'}
+              <span>{isRebuilding ? 'Ricompilazione in corso...' : 'Rebuild / Aggiorna Bundle'}</span>
             </button>
           </div>
         </div>
 
-        {rebuildStatus && (
-          <div style={{
-            marginTop: '16px',
-            padding: '8px 16px',
-            borderRadius: '8px',
-            background: 'rgba(63, 185, 80, 0.15)',
-            border: '1px solid rgba(63, 185, 80, 0.4)',
-            color: '#3fb950',
-            fontSize: '0.82rem',
-            fontWeight: 700,
-            display: 'inline-flex',
-            alignItems: 'center',
-            gap: '8px'
-          }}>
-            <CheckCircle2 size={16} /> {rebuildStatus}
-          </div>
-        )}
+        {/* View Switcher Tabs */}
+        <div style={{ display: 'flex', gap: '12px', marginTop: '24px' }}>
+          <button
+            onClick={() => setActiveSubTab('installed')}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+              padding: '10px 20px',
+              borderRadius: '12px',
+              background: activeSubTab === 'installed' ? accentColor : (isLight ? 'rgba(190, 160, 110, 0.12)' : 'rgba(255,255,255,0.06)'),
+              color: activeSubTab === 'installed' ? (isLight ? '#fff' : '#0a0d14') : textPrimary,
+              border: activeSubTab === 'installed' ? `1px solid ${accentColor}` : (isLight ? '1px solid rgba(190, 160, 110, 0.3)' : '1px solid rgba(255,255,255,0.1)'),
+              fontWeight: 800,
+              fontSize: '0.85rem',
+              cursor: 'pointer',
+              transition: 'all 0.2s ease'
+            }}
+          >
+            <Cpu size={16} /> Moduli del Kernel Installati ({KERNEL_MODULES.length})
+          </button>
+
+          <button
+            onClick={() => setActiveSubTab('remote')}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+              padding: '10px 20px',
+              borderRadius: '12px',
+              background: activeSubTab === 'remote' ? accentColor : (isLight ? 'rgba(190, 160, 110, 0.12)' : 'rgba(255,255,255,0.06)'),
+              color: activeSubTab === 'remote' ? (isLight ? '#fff' : '#0a0d14') : textPrimary,
+              border: activeSubTab === 'remote' ? `1px solid ${accentColor}` : (isLight ? '1px solid rgba(190, 160, 110, 0.3)' : '1px solid rgba(255,255,255,0.1)'),
+              fontWeight: 800,
+              fontSize: '0.85rem',
+              cursor: 'pointer',
+              transition: 'all 0.2s ease'
+            }}
+          >
+            <Sparkles size={16} /> Moduli da Repository Git Remoti ({REMOTE_CATALOG_MODULES.length})
+          </button>
+        </div>
       </div>
 
       {/* Main Content Area */}
-      <div style={{ padding: '32px 36px', maxWidth: '1400px', width: '100%', boxSizing: 'border-box' }}>
+      <div style={{ padding: '32px 36px', maxWidth: '1440px', width: '100%', boxSizing: 'border-box' }}>
         
         {/* Search & Filter Bar */}
         <div style={{
@@ -354,129 +388,83 @@ export default function MarketplaceTab({ openTab: externalOpenTab }) {
           gap: '16px',
           marginBottom: '28px'
         }}>
-          <div style={{ display: 'flex', gap: '8px' }}>
-            <button
-              onClick={() => setFilter('all')}
-              style={{
-                padding: '8px 16px',
-                borderRadius: '10px',
-                background: filter === 'all' ? '#00d2ff' : 'rgba(255,255,255,0.05)',
-                color: filter === 'all' ? '#0a0d14' : '#e2e8f0',
-                border: '1px solid rgba(255,255,255,0.1)',
-                fontWeight: 700,
-                fontSize: '0.82rem',
-                cursor: 'pointer'
-              }}
-            >
-              Tutti i Moduli ({KERNEL_MODULES.length + REMOTE_CATALOG_MODULES.length})
-            </button>
-            <button
-              onClick={() => setFilter('installed')}
-              style={{
-                padding: '8px 16px',
-                borderRadius: '10px',
-                background: filter === 'installed' ? '#00d2ff' : 'rgba(255,255,255,0.05)',
-                color: filter === 'installed' ? '#0a0d14' : '#e2e8f0',
-                border: '1px solid rgba(255,255,255,0.1)',
-                fontWeight: 700,
-                fontSize: '0.82rem',
-                cursor: 'pointer'
-              }}
-            >
-              Installati nel Kernel ({KERNEL_MODULES.length})
-            </button>
-            <button
-              onClick={() => setFilter('marketplace')}
-              style={{
-                padding: '8px 16px',
-                borderRadius: '10px',
-                background: filter === 'marketplace' ? '#00d2ff' : 'rgba(255,255,255,0.05)',
-                color: filter === 'marketplace' ? '#0a0d14' : '#e2e8f0',
-                border: '1px solid rgba(255,255,255,0.1)',
-                fontWeight: 700,
-                fontSize: '0.82rem',
-                cursor: 'pointer'
-              }}
-            >
-              Catalogo Git Remoto ({REMOTE_CATALOG_MODULES.length})
-            </button>
-          </div>
-
-          <div style={{ position: 'relative', width: '320px' }}>
+          <div style={{ position: 'relative', width: '340px' }}>
+            <Search size={16} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: textSecondary }} />
             <input
               type="text"
-              placeholder="Cerca per modulo, tag o categoria..."
+              placeholder="Cerca modulo per nome, tag o tecnologia..."
               value={search}
               onChange={e => setSearch(e.target.value)}
               style={{
                 width: '100%',
-                padding: '10px 16px',
+                padding: '10px 16px 10px 38px',
                 borderRadius: '10px',
-                background: 'rgba(255,255,255,0.05)',
-                border: '1px solid rgba(255,255,255,0.15)',
-                color: '#fff',
+                background: isLight ? '#fff' : 'rgba(255,255,255,0.04)',
+                border: isLight ? '1px solid rgba(190, 160, 110, 0.4)' : '1px solid rgba(255,255,255,0.15)',
+                color: textPrimary,
                 fontSize: '0.85rem',
                 outline: 'none',
                 boxSizing: 'border-box'
               }}
             />
           </div>
+
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.8rem', color: textSecondary }}>
+            <GitBranch size={16} style={{ color: accentColor }} />
+            <span>Repository Ufficiale Moduli: <code>Sigmanih/SigmaStudio-Modules</code></span>
+          </div>
         </div>
 
-        {/* Section 1: Moduli Installati nel Kernel */}
-        {(filter === 'all' || filter === 'installed') && (
-          <div style={{ marginBottom: '40px' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '16px' }}>
-              <ShieldCheck size={20} style={{ color: '#3fb950' }} />
-              <h2 style={{ fontSize: '1.25rem', fontWeight: 800, margin: 0, color: '#fff' }}>
-                Moduli Attivi nel Kernel ({filteredInstalled.length})
-              </h2>
-            </div>
-
+        {/* =================================================================== */}
+        {/* TAB 1: MODULI INSTALLATI NEL KERNEL */}
+        {/* =================================================================== */}
+        {activeSubTab === 'installed' && (
+          <div>
             <div style={{
               display: 'grid',
-              gridTemplateColumns: 'repeat(auto-fill, minmax(380px, 1fr))',
-              gap: '20px'
+              gridTemplateColumns: 'repeat(auto-fill, minmax(400px, 1fr))',
+              gap: '24px'
             }}>
               {filteredInstalled.map(mod => {
-                const IconComponent = mod.icon;
+                const Icon = mod.icon;
                 return (
                   <div
                     key={mod.id}
                     style={{
-                      borderRadius: '16px',
-                      background: 'rgba(255, 255, 255, 0.03)',
-                      border: '1px solid rgba(255, 255, 255, 0.08)',
-                      padding: '22px',
+                      borderRadius: '18px',
+                      background: cardBg,
+                      border: cardBorder,
+                      padding: '24px',
                       display: 'flex',
                       flexDirection: 'column',
                       justifyContent: 'space-between',
                       position: 'relative',
-                      boxShadow: '0 4px 20px rgba(0,0,0,0.2)',
+                      boxShadow: isLight ? '0 4px 16px rgba(190, 160, 110, 0.12)' : '0 4px 24px rgba(0,0,0,0.3)',
                       transition: 'transform 0.2s ease, border-color 0.2s ease'
                     }}
                   >
                     <div>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '14px' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                      {/* Card Header */}
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '16px' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
                           <div style={{
-                            width: '42px',
-                            height: '42px',
+                            width: '46px',
+                            height: '46px',
                             borderRadius: '12px',
-                            background: `${mod.color}18`,
+                            background: `${mod.color}15`,
                             border: `1px solid ${mod.color}40`,
                             display: 'flex',
                             alignItems: 'center',
                             justifyContent: 'center',
                             color: mod.color
                           }}>
-                            <IconComponent size={22} />
+                            <Icon size={22} />
                           </div>
                           <div>
-                            <h3 style={{ margin: '0 0 2px 0', fontSize: '1.05rem', fontWeight: 700, color: '#fff' }}>
+                            <h3 style={{ margin: '0 0 2px 0', fontSize: '1.15rem', fontWeight: 800, color: textPrimary }}>
                               {mod.name}
                             </h3>
-                            <span style={{ fontSize: '0.72rem', color: '#8b8fa3', textTransform: 'uppercase', fontWeight: 600 }}>
+                            <span style={{ fontSize: '0.75rem', color: textSecondary, fontWeight: 600 }}>
                               {mod.category} • {mod.version}
                             </span>
                           </div>
@@ -491,27 +479,31 @@ export default function MarketplaceTab({ openTab: externalOpenTab }) {
                           background: 'rgba(63, 185, 80, 0.15)',
                           border: '1px solid rgba(63, 185, 80, 0.4)',
                           color: '#3fb950',
-                          fontSize: '0.68rem',
-                          fontWeight: 700
+                          fontSize: '0.7rem',
+                          fontWeight: 800,
+                          textTransform: 'uppercase'
                         }}>
-                          <CheckCircle2 size={12} /> ATTIVO
+                          <Check size={12} /> Installato
                         </span>
                       </div>
 
-                      <p style={{ fontSize: '0.82rem', color: '#a0aec0', lineHeight: 1.5, margin: '0 0 16px 0' }}>
+                      {/* Description */}
+                      <p style={{ fontSize: '0.84rem', color: textSecondary, lineHeight: 1.5, margin: '0 0 16px 0' }}>
                         {mod.description}
                       </p>
 
-                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginBottom: '18px' }}>
+                      {/* Tags */}
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginBottom: '20px' }}>
                         {mod.tags.map(tag => (
                           <span
                             key={tag}
                             style={{
                               padding: '2px 8px',
                               borderRadius: '6px',
-                              background: 'rgba(255, 255, 255, 0.05)',
-                              color: '#cbd5e0',
-                              fontSize: '0.68rem',
+                              background: isLight ? 'rgba(190, 160, 110, 0.12)' : 'rgba(255, 255, 255, 0.04)',
+                              border: isLight ? '1px solid rgba(190, 160, 110, 0.25)' : '1px solid rgba(255, 255, 255, 0.08)',
+                              color: isLight ? '#554e42' : '#cbd5e0',
+                              fontSize: '0.7rem',
                               fontWeight: 600
                             }}
                           >
@@ -521,29 +513,39 @@ export default function MarketplaceTab({ openTab: externalOpenTab }) {
                       </div>
                     </div>
 
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTop: '1px solid rgba(255,255,255,0.06)', paddingTop: '14px' }}>
-                      <span style={{ fontSize: '0.72rem', color: '#718096' }}>
-                        By {mod.author}
+                    {/* Card Footer Actions */}
+                    <div style={{
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
+                      borderTop: isLight ? '1px solid rgba(190, 160, 110, 0.2)' : '1px solid rgba(255,255,255,0.06)',
+                      paddingTop: '16px'
+                    }}>
+                      <span style={{ fontSize: '0.72rem', color: textSecondary }}>
+                        Autore: <strong>{mod.author}</strong>
                       </span>
 
                       <button
-                        onClick={() => handleOpenTab({ name: mod.name }, mod.tabType)}
+                        onClick={() => openTab && openTab({ name: mod.name }, mod.tabType)}
                         style={{
                           display: 'inline-flex',
                           alignItems: 'center',
                           gap: '6px',
-                          padding: '6px 14px',
+                          padding: '7px 16px',
                           borderRadius: '8px',
-                          background: 'rgba(0, 210, 255, 0.12)',
-                          border: '1px solid rgba(0, 210, 255, 0.35)',
-                          color: '#00d2ff',
-                          fontSize: '0.78rem',
-                          fontWeight: 700,
+                          background: isLight 
+                            ? 'linear-gradient(135deg, #ea580c 0%, #d97706 100%)' 
+                            : 'linear-gradient(135deg, #00d2ff 0%, #3b82f6 100%)',
+                          border: 'none',
+                          color: '#fff',
+                          fontSize: '0.8rem',
+                          fontWeight: 800,
                           cursor: 'pointer',
+                          boxShadow: isLight ? '0 2px 10px rgba(234, 88, 12, 0.25)' : '0 2px 10px rgba(0, 210, 255, 0.3)',
                           transition: 'all 0.2s ease'
                         }}
                       >
-                        Apri Modulo <ArrowRight size={14} />
+                        <Play size={13} /> Apri Modulo <ArrowRight size={13} />
                       </button>
                     </div>
                   </div>
@@ -553,75 +555,114 @@ export default function MarketplaceTab({ openTab: externalOpenTab }) {
           </div>
         )}
 
-        {/* Section 2: Catalogo Moduli da Repository Git Remoto */}
-        {(filter === 'all' || filter === 'marketplace') && (
-          <div style={{ marginBottom: '40px' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '16px' }}>
-              <Package size={20} style={{ color: '#00d2ff' }} />
-              <h2 style={{ fontSize: '1.25rem', fontWeight: 800, margin: 0, color: '#fff' }}>
-                Catalogo Estensioni Remote (Git Repository) ({filteredRemote.length})
-              </h2>
-            </div>
-
+        {/* =================================================================== */}
+        {/* TAB 2: MODULI DA REPOSITORY GIT REMOTI */}
+        {/* =================================================================== */}
+        {activeSubTab === 'remote' && (
+          <div>
             <div style={{
               display: 'grid',
-              gridTemplateColumns: 'repeat(auto-fill, minmax(380px, 1fr))',
-              gap: '20px'
+              gridTemplateColumns: 'repeat(auto-fill, minmax(400px, 1fr))',
+              gap: '24px'
             }}>
               {filteredRemote.map(mod => {
+                const Icon = mod.icon;
                 const isInstalling = installingId === mod.id;
+
                 return (
                   <div
                     key={mod.id}
                     style={{
-                      borderRadius: '16px',
-                      background: 'rgba(255, 255, 255, 0.02)',
-                      border: '1px solid rgba(0, 210, 255, 0.15)',
-                      padding: '22px',
+                      borderRadius: '18px',
+                      background: cardBg,
+                      border: cardBorder,
+                      padding: '24px',
                       display: 'flex',
                       flexDirection: 'column',
                       justifyContent: 'space-between',
-                      boxShadow: '0 4px 20px rgba(0,0,0,0.3)'
+                      position: 'relative',
+                      boxShadow: isLight ? '0 4px 16px rgba(190, 160, 110, 0.12)' : '0 4px 24px rgba(0,0,0,0.3)',
+                      transition: 'transform 0.2s ease, border-color 0.2s ease'
                     }}
                   >
                     <div>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '14px' }}>
-                        <div>
-                          <h3 style={{ margin: '0 0 2px 0', fontSize: '1.05rem', fontWeight: 700, color: '#fff' }}>
-                            {mod.name}
-                          </h3>
-                          <span style={{ fontSize: '0.72rem', color: '#00d2ff', textTransform: 'uppercase', fontWeight: 600 }}>
-                            {mod.category} • {mod.version}
-                          </span>
+                      {/* Card Header */}
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '16px' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+                          <div style={{
+                            width: '46px',
+                            height: '46px',
+                            borderRadius: '12px',
+                            background: `${mod.color}15`,
+                            border: `1px solid ${mod.color}40`,
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            color: mod.color
+                          }}>
+                            <Icon size={22} />
+                          </div>
+                          <div>
+                            <h3 style={{ margin: '0 0 2px 0', fontSize: '1.15rem', fontWeight: 800, color: textPrimary }}>
+                              {mod.name}
+                            </h3>
+                            <span style={{ fontSize: '0.75rem', color: textSecondary, fontWeight: 600 }}>
+                              {mod.category} • {mod.version}
+                            </span>
+                          </div>
                         </div>
 
                         <span style={{
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '4px',
                           padding: '3px 10px',
                           borderRadius: '12px',
-                          background: 'rgba(0, 210, 255, 0.1)',
-                          border: '1px solid rgba(0, 210, 255, 0.3)',
-                          color: '#00d2ff',
-                          fontSize: '0.68rem',
-                          fontWeight: 700
+                          background: isLight ? 'rgba(234, 88, 12, 0.12)' : 'rgba(0, 210, 255, 0.15)',
+                          border: isLight ? '1px solid rgba(234, 88, 12, 0.35)' : '1px solid rgba(0, 210, 255, 0.4)',
+                          color: accentColor,
+                          fontSize: '0.7rem',
+                          fontWeight: 800,
+                          textTransform: 'uppercase'
                         }}>
-                          {mod.size}
+                          Disponibile
                         </span>
                       </div>
 
-                      <p style={{ fontSize: '0.82rem', color: '#a0aec0', lineHeight: 1.5, margin: '0 0 16px 0' }}>
+                      {/* Description */}
+                      <p style={{ fontSize: '0.84rem', color: textSecondary, lineHeight: 1.5, margin: '0 0 16px 0' }}>
                         {mod.description}
                       </p>
 
-                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginBottom: '18px' }}>
+                      {/* Git Repo Badge */}
+                      <div style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '6px',
+                        padding: '6px 12px',
+                        borderRadius: '8px',
+                        background: isLight ? 'rgba(190, 160, 110, 0.1)' : 'rgba(0,0,0,0.3)',
+                        border: isLight ? '1px solid rgba(190, 160, 110, 0.25)' : '1px solid rgba(255,255,255,0.08)',
+                        marginBottom: '16px',
+                        fontSize: '0.72rem',
+                        color: textSecondary
+                      }}>
+                        <GitBranch size={13} style={{ color: accentColor }} />
+                        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{mod.gitUrl}</span>
+                      </div>
+
+                      {/* Tags */}
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginBottom: '20px' }}>
                         {mod.tags.map(tag => (
                           <span
                             key={tag}
                             style={{
                               padding: '2px 8px',
                               borderRadius: '6px',
-                              background: 'rgba(255, 255, 255, 0.05)',
-                              color: '#cbd5e0',
-                              fontSize: '0.68rem',
+                              background: isLight ? 'rgba(190, 160, 110, 0.12)' : 'rgba(255, 255, 255, 0.04)',
+                              border: isLight ? '1px solid rgba(190, 160, 110, 0.25)' : '1px solid rgba(255, 255, 255, 0.08)',
+                              color: isLight ? '#554e42' : '#cbd5e0',
+                              fontSize: '0.7rem',
                               fontWeight: 600
                             }}
                           >
@@ -631,9 +672,16 @@ export default function MarketplaceTab({ openTab: externalOpenTab }) {
                       </div>
                     </div>
 
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTop: '1px solid rgba(255,255,255,0.06)', paddingTop: '14px' }}>
-                      <span style={{ fontSize: '0.72rem', color: '#718096' }}>
-                        ★ {mod.stars} • {mod.author}
+                    {/* Card Footer Actions */}
+                    <div style={{
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
+                      borderTop: isLight ? '1px solid rgba(190, 160, 110, 0.2)' : '1px solid rgba(255,255,255,0.06)',
+                      paddingTop: '16px'
+                    }}>
+                      <span style={{ fontSize: '0.72rem', color: textSecondary }}>
+                        Download: <strong>{mod.size}</strong>
                       </span>
 
                       <button
@@ -643,25 +691,22 @@ export default function MarketplaceTab({ openTab: externalOpenTab }) {
                           display: 'inline-flex',
                           alignItems: 'center',
                           gap: '6px',
-                          padding: '6px 14px',
+                          padding: '7px 16px',
                           borderRadius: '8px',
-                          background: isInstalling ? 'rgba(255,255,255,0.1)' : 'linear-gradient(135deg, #00d2ff 0%, #7c5bf0 100%)',
+                          background: isLight
+                            ? 'linear-gradient(135deg, #ea580c 0%, #d97706 100%)'
+                            : 'linear-gradient(135deg, #00d2ff 0%, #3b82f6 100%)',
                           border: 'none',
                           color: '#fff',
-                          fontSize: '0.78rem',
-                          fontWeight: 700,
-                          cursor: isInstalling ? 'not-allowed' : 'pointer'
+                          fontSize: '0.8rem',
+                          fontWeight: 800,
+                          cursor: isInstalling ? 'not-allowed' : 'pointer',
+                          boxShadow: isLight ? '0 2px 10px rgba(234, 88, 12, 0.25)' : '0 2px 10px rgba(0, 210, 255, 0.3)',
+                          transition: 'all 0.2s ease'
                         }}
                       >
-                        {isInstalling ? (
-                          <>
-                            <RefreshCw size={14} className="animate-spin" /> Installazione...
-                          </>
-                        ) : (
-                          <>
-                            <Download size={14} /> Installa nel Kernel
-                          </>
-                        )}
+                        {isInstalling ? <RefreshCw size={13} className="animate-spin" /> : <Download size={13} />}
+                        {isInstalling ? 'Installazione in corso...' : 'Installa Modulo'}
                       </button>
                     </div>
                   </div>
@@ -671,113 +716,62 @@ export default function MarketplaceTab({ openTab: externalOpenTab }) {
           </div>
         )}
 
-        {/* Section 3: Installa Modulo Custom da Git */}
+        {/* Technical Architecture Info Box */}
         <div style={{
+          marginTop: '36px',
           borderRadius: '16px',
-          background: 'rgba(255, 255, 255, 0.03)',
-          border: '1px solid rgba(255, 255, 255, 0.1)',
-          padding: '24px 28px',
-          marginBottom: '40px'
+          background: isLight ? 'rgba(234, 88, 12, 0.04)' : 'rgba(0, 210, 255, 0.04)',
+          border: isLight ? '1px solid rgba(234, 88, 12, 0.22)' : '1px solid rgba(0, 210, 255, 0.2)',
+          padding: '24px'
         }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '12px' }}>
-            <GitBranch size={20} style={{ color: '#bc8cff' }} />
-            <h2 style={{ fontSize: '1.15rem', fontWeight: 800, margin: 0, color: '#fff' }}>
-              Installa Modulo Custom da Repository Git
-            </h2>
-          </div>
-          <p style={{ fontSize: '0.82rem', color: '#a0aec0', margin: '0 0 18px 0' }}>
-            Inserisci l'URL del repository Git contenente il file di manifesto <code>sigma_module.json</code>. Il kernel clonerà il modulo, installerà le dipendenze Python/npm e aggiornerà il workspace.
+          <h3 style={{ margin: '0 0 8px 0', fontSize: '1.05rem', fontWeight: 800, color: textPrimary, display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <Cpu size={18} style={{ color: accentColor }} /> Pipeline di Aggiornamento & Rebuild Automatica
+          </h3>
+          <p style={{ margin: '0 0 16px 0', fontSize: '0.82rem', color: textSecondary, lineHeight: 1.6 }}>
+            Quando un nuovo modulo viene installato o aggiornato da un repository Git separato, Sigma Studio esegue una procedura a caldo:
           </p>
+          <div style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))',
+            gap: '14px',
+            marginBottom: '16px'
+          }}>
+            <div style={{ padding: '12px 16px', borderRadius: '10px', background: isLight ? '#fff' : 'rgba(255,255,255,0.03)', border: isLight ? '1px solid rgba(190, 160, 110, 0.25)' : '1px solid rgba(255,255,255,0.06)' }}>
+              <div style={{ fontSize: '0.82rem', fontWeight: 700, color: textPrimary, marginBottom: '4px' }}>1. Download Git & Dipendenze</div>
+              <div style={{ fontSize: '0.74rem', color: textSecondary }}>Clona il repository del modulo nella cartella <code>modules/</code> ed installa i package Python e NPM necessari.</div>
+            </div>
+            <div style={{ padding: '12px 16px', borderRadius: '10px', background: isLight ? '#fff' : 'rgba(255,255,255,0.03)', border: isLight ? '1px solid rgba(190, 160, 110, 0.25)' : '1px solid rgba(255,255,255,0.06)' }}>
+              <div style={{ fontSize: '0.82rem', fontWeight: 700, color: textPrimary, marginBottom: '4px' }}>2. Rebuild Frontend Vite</div>
+              <div style={{ fontSize: '0.74rem', color: textSecondary }}>Esegue <code>npm run build</code> per ricompilare i bundle statici in <code>dist/</code> e registrare la nuova tab.</div>
+            </div>
+            <div style={{ padding: '12px 16px', borderRadius: '10px', background: isLight ? '#fff' : 'rgba(255,255,255,0.03)', border: isLight ? '1px solid rgba(190, 160, 110, 0.25)' : '1px solid rgba(255,255,255,0.06)' }}>
+              <div style={{ fontSize: '0.82rem', fontWeight: 700, color: textPrimary, marginBottom: '4px' }}>3. Hot-Reload Backend FastAPI</div>
+              <div style={{ fontSize: '0.74rem', color: textSecondary }}>Inietta dinamicamente gli endpoint REST e i WebSocket del modulo nel router di <code>sigma_server.py</code>.</div>
+            </div>
+          </div>
 
-          <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
-            <input
-              type="text"
-              placeholder="https://github.com/utente/sigma_module_nome.git"
-              value={customGitUrl}
-              onChange={e => setCustomGitUrl(e.target.value)}
-              style={{
-                flex: 1,
-                minWidth: '300px',
-                padding: '10px 16px',
-                borderRadius: '10px',
-                background: 'rgba(0,0,0,0.3)',
-                border: '1px solid rgba(255,255,255,0.15)',
-                color: '#fff',
-                fontSize: '0.85rem'
-              }}
-            />
-            <input
-              type="text"
-              placeholder="branch (es. main)"
-              value={customBranch}
-              onChange={e => setCustomBranch(e.target.value)}
-              style={{
-                width: '140px',
-                padding: '10px 16px',
-                borderRadius: '10px',
-                background: 'rgba(0,0,0,0.3)',
-                border: '1px solid rgba(255,255,255,0.15)',
-                color: '#fff',
-                fontSize: '0.85rem'
-              }}
-            />
-            <button
-              onClick={() => {
-                if (!customGitUrl.trim()) return;
-                handleInstallModule({ id: 'custom', name: customGitUrl.split('/').pop() || 'Custom Module', gitRepo: customGitUrl });
-              }}
-              style={{
-                padding: '10px 20px',
-                borderRadius: '10px',
-                background: '#00d2ff',
-                color: '#0a0d14',
-                fontWeight: 800,
-                fontSize: '0.85rem',
-                border: 'none',
-                cursor: 'pointer'
-              }}
-            >
-              Clona & Compila Modulo
-            </button>
+          {/* Console Logs Terminal */}
+          <div style={{
+            background: isLight ? '#1c1917' : '#080a0f',
+            border: isLight ? '1px solid rgba(190, 160, 110, 0.4)' : '1px solid rgba(0, 210, 255, 0.25)',
+            borderRadius: '12px',
+            padding: '16px',
+            fontFamily: 'monospace',
+            fontSize: '0.75rem',
+            color: isLight ? '#f97316' : '#38bdf8',
+            maxHeight: '160px',
+            overflowY: 'auto'
+          }}>
+            <div style={{ color: isLight ? '#a8a29e' : '#8892b0', marginBottom: '6px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <Terminal size={13} /> Console di Installazione e Compilazione Kernel:
+            </div>
+            {installLogs.map((log, i) => (
+              <div key={i} style={{ lineHeight: 1.6, color: log.includes('✅') || log.includes('✨') ? '#22c55e' : (isLight ? '#fdba74' : '#38bdf8') }}>
+                {log}
+              </div>
+            ))}
           </div>
         </div>
-
-        {/* Section 4: Live Install Console Logs */}
-        {installLogs.length > 0 && (
-          <div style={{
-            borderRadius: '16px',
-            background: '#080a0f',
-            border: '1px solid rgba(0, 210, 255, 0.25)',
-            padding: '20px',
-            marginBottom: '30px'
-          }}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '12px' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#00d2ff', fontWeight: 700, fontSize: '0.85rem' }}>
-                <Terminal size={16} /> Console Pipeline di Installazione & Rebuild
-              </div>
-              <button
-                onClick={() => setInstallLogs([])}
-                style={{ background: 'transparent', border: 'none', color: '#718096', fontSize: '0.75rem', cursor: 'pointer' }}
-              >
-                Pulisci
-              </button>
-            </div>
-            <div style={{
-              fontFamily: 'monospace',
-              fontSize: '0.78rem',
-              color: '#38bdf8',
-              maxHeight: '160px',
-              overflowY: 'auto',
-              display: 'flex',
-              flexDirection: 'column',
-              gap: '4px'
-            }}>
-              {installLogs.map((log, idx) => (
-                <div key={idx}>{log}</div>
-              ))}
-            </div>
-          </div>
-        )}
 
       </div>
     </div>

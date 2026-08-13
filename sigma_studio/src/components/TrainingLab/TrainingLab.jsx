@@ -236,51 +236,100 @@ export default function TrainingLab({ addToast: _addToast, onTasksUpdated }) {
         zIndex: 1,
         borderRadius: 0,
         overflow: 'hidden',
-        padding: '20px 32px 18px 32px',
-        minHeight: '100px',
-        borderBottom: '1px solid rgba(0, 210, 255, 0.25)',
-        boxShadow: '0 8px 32px rgba(0,0,0,0.4)',
-        backgroundImage: 'linear-gradient(to right, rgba(28, 12, 4, 0.96) 35%, rgba(120, 45, 10, 0.6) 75%, rgba(234, 88, 12, 0.22) 100%), url("/images/training_lab_hero.jpg")',
+        padding: '24px 32px',
+        minHeight: '110px',
+        borderBottom: theme === 'light' ? '1px solid rgba(234, 88, 12, 0.35)' : '1px solid rgba(0, 210, 255, 0.25)',
+        boxShadow: theme === 'light' ? '0 8px 24px rgba(234, 88, 12, 0.08)' : '0 8px 32px rgba(0,0,0,0.4)',
+        backgroundImage: theme === 'light'
+          ? 'linear-gradient(135deg, rgba(254, 252, 247, 0.76) 0%, rgba(248, 242, 232, 0.70) 100%), url("/images/training_lab_hero.jpg")'
+          : 'linear-gradient(135deg, rgba(10, 14, 26, 0.85) 0%, rgba(14, 22, 42, 0.80) 100%), url("/images/training_lab_hero.jpg")',
         backgroundSize: 'cover',
         backgroundRepeat: 'no-repeat',
         backgroundPosition: 'center center',
         marginBottom: '20px',
         display: 'flex',
         flexDirection: 'column',
-        justify: 'space-between',
+        justifyContent: 'space-between',
         gap: '16px',
         flexShrink: 0
       }}>
-        {/* Top Title & Subtitle */}
+        {/* Top Title & Subtitle with Right Action Buttons */}
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '16px', zIndex: 2 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
-            <div>
-              <div style={{
-                display: 'inline-flex', alignItems: 'center', gap: '6px',
-                padding: '3px 12px', borderRadius: '14px',
-                background: 'rgba(0, 210, 255, 0.15)', border: '1px solid rgba(0, 210, 255, 0.35)',
-                color: '#00d2ff', fontSize: '0.68rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '1px', marginBottom: '6px'
-              }}>
-                <Activity size={14} /> UNSLOTH QLORA & SLM MODEL FINE-TUNING LAB
-              </div>
-              <h1 style={{ margin: '0 0 4px 0', fontSize: '1.35rem', fontWeight: 800, color: '#fff', letterSpacing: '-0.3px' }}>
-                🎓 Training & Fine-Tuning Lab
-              </h1>
-              <p style={{ margin: 0, fontSize: '0.78rem', color: '#ffffff', lineHeight: 1.4 }}>
-                Ambiente integrato per l'addestramento QLoRA 4-bit, la gestione dei dataset e la valutazione dei benchmark LLM.
-              </p>
+          <div style={{ maxWidth: '680px' }}>
+            <div style={{
+              display: 'inline-flex', alignItems: 'center', gap: '6px',
+              padding: '3px 12px', borderRadius: '14px',
+              background: theme === 'light' ? 'rgba(234, 88, 12, 0.12)' : 'rgba(0, 210, 255, 0.15)', 
+              border: theme === 'light' ? '1px solid rgba(234, 88, 12, 0.35)' : '1px solid rgba(0, 210, 255, 0.35)',
+              color: theme === 'light' ? '#ea580c' : '#00d2ff', 
+              fontSize: '0.68rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '1px', marginBottom: '6px'
+            }}>
+              <Activity size={14} /> UNSLOTH QLORA & SLM MODEL FINE-TUNING LAB
             </div>
+            <h1 style={{ margin: '0 0 6px 0', fontSize: '1.4rem', fontWeight: 800, color: theme === 'light' ? '#111111' : '#fff', letterSpacing: '-0.3px', textShadow: 'none' }}>
+              🎓 Training & <span style={{
+                color: theme === 'light' ? '#c2410c' : '#00d2ff',
+                fontWeight: 800
+              }}>Fine-Tuning Lab</span>
+            </h1>
+            <p style={{ margin: 0, fontSize: '0.82rem', color: theme === 'light' ? '#4b5563' : '#cbd5e0', lineHeight: 1.45 }}>
+              Ambiente integrato per l'addestramento QLoRA 4-bit, la gestione dei dataset e la valutazione dei benchmark LLM.
+            </p>
+          </div>
+
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+            <button
+              onClick={() => { setMode('manual'); setManualSubMode('training'); }}
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '6px',
+                padding: '10px 18px',
+                borderRadius: '12px',
+                background: (mode === 'manual' && manualSubMode === 'training') 
+                  ? (theme === 'light' ? '#ea580c' : '#00d2ff') 
+                  : (theme === 'light' ? '#fffdf9' : '#181b28'),
+                color: (mode === 'manual' && manualSubMode === 'training') ? (theme === 'light' ? '#fff' : '#0a0d14') : (theme === 'light' ? '#111' : '#fff'),
+                border: (mode === 'manual' && manualSubMode === 'training') ? 'none' : (theme === 'light' ? '1px solid rgba(190, 160, 110, 0.4)' : '1px solid rgba(255, 255, 255, 0.15)'),
+                fontSize: '0.82rem',
+                fontWeight: 800,
+                cursor: 'pointer'
+              }}
+            >
+              <Cpu size={14} /> Training QLoRA
+            </button>
+            <button
+              onClick={() => { setMode('manual'); setManualSubMode('dataset'); }}
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '6px',
+                padding: '10px 18px',
+                borderRadius: '12px',
+                background: (mode === 'manual' && manualSubMode === 'dataset') 
+                  ? (theme === 'light' ? '#ea580c' : '#00d2ff') 
+                  : (theme === 'light' ? '#fffdf9' : '#181b28'),
+                color: (mode === 'manual' && manualSubMode === 'dataset') ? (theme === 'light' ? '#fff' : '#0a0d14') : (theme === 'light' ? '#111' : '#fff'),
+                border: (mode === 'manual' && manualSubMode === 'dataset') ? 'none' : (theme === 'light' ? '1px solid rgba(190, 160, 110, 0.4)' : '1px solid rgba(255, 255, 255, 0.15)'),
+                fontSize: '0.82rem',
+                fontWeight: 800,
+                cursor: 'pointer'
+              }}
+            >
+              <Database size={14} /> Dataset & SLM Forge
+            </button>
           </div>
         </div>
 
-        {/* Live Telemetry Metrics Cards inside Hero */}
+        {/* Live Telemetry Metrics Cards inside Hero (Solid Non-Transparent) */}
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '12px', zIndex: 2 }}>
           <div style={{
             padding: '10px 14px', borderRadius: '12px',
-            background: 'rgba(10, 14, 24, 0.85)', backdropFilter: 'blur(12px)',
-            border: '1px solid rgba(0, 210, 255, 0.3)', boxShadow: '0 4px 18px rgba(0, 210, 255, 0.1)'
+            background: theme === 'light' ? '#fffdf9' : '#121622',
+            border: theme === 'light' ? '1px solid rgba(190, 160, 110, 0.32)' : '1px solid rgba(0, 210, 255, 0.3)', 
+            boxShadow: theme === 'light' ? '0 4px 14px rgba(190, 160, 110, 0.1)' : '0 4px 18px rgba(0, 210, 255, 0.1)'
           }}>
-            <div style={{ fontSize: '0.65rem', color: '#8b8fa3', fontWeight: 800, textTransform: 'uppercase', marginBottom: '2px' }}>
+            <div style={{ fontSize: '0.65rem', color: theme === 'light' ? '#554e42' : '#8b8fa3', fontWeight: 800, textTransform: 'uppercase', marginBottom: '2px' }}>
               DATASET CARICATI
             </div>
             <div style={{ fontSize: '1.05rem', fontWeight: 900, color: '#00d2ff', fontFamily: 'JetBrains Mono, monospace' }}>

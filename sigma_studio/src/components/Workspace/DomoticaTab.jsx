@@ -601,11 +601,13 @@ export default function DomoticaTab() {
         position: 'relative',
         borderRadius: 0,
         overflow: 'hidden',
-        padding: '20px 32px 18px 32px',
-        minHeight: '100px',
-        borderBottom: '1px solid rgba(0, 210, 255, 0.25)',
-        boxShadow: '0 8px 32px rgba(0,0,0,0.4)',
-        backgroundImage: 'linear-gradient(to right, rgba(28, 12, 4, 0.96) 35%, rgba(120, 45, 10, 0.6) 75%, rgba(234, 88, 12, 0.22) 100%), url("/images/domotica_smart_hub.jpg")',
+        padding: '24px 32px',
+        minHeight: '110px',
+        borderBottom: isThemeLight ? '1px solid rgba(234, 88, 12, 0.35)' : '1px solid rgba(0, 210, 255, 0.25)',
+        boxShadow: isThemeLight ? '0 8px 24px rgba(234, 88, 12, 0.08)' : '0 8px 32px rgba(0,0,0,0.4)',
+        backgroundImage: isThemeLight
+          ? 'linear-gradient(135deg, rgba(254, 252, 247, 0.76) 0%, rgba(248, 242, 232, 0.70) 100%), url("/images/domotica_smart_hub.jpg")'
+          : 'linear-gradient(135deg, rgba(10, 14, 26, 0.85) 0%, rgba(14, 22, 42, 0.80) 100%), url("/images/domotica_smart_hub.jpg")',
         backgroundSize: 'cover',
         backgroundRepeat: 'no-repeat',
         backgroundPosition: 'center center',
@@ -616,15 +618,20 @@ export default function DomoticaTab() {
             <div style={{
               display: 'inline-flex', alignItems: 'center', gap: '6px',
               padding: '3px 12px', borderRadius: '14px',
-              background: 'rgba(0, 210, 255, 0.15)', border: '1px solid rgba(0, 210, 255, 0.35)',
-              color: '#00d2ff', fontSize: '0.68rem', fontWeight: 800, letterSpacing: '1px', textTransform: 'uppercase', marginBottom: '6px'
+              background: isThemeLight ? 'rgba(234, 88, 12, 0.12)' : 'rgba(0, 210, 255, 0.15)', 
+              border: isThemeLight ? '1px solid rgba(234, 88, 12, 0.35)' : '1px solid rgba(0, 210, 255, 0.35)',
+              color: isThemeLight ? '#ea580c' : '#00d2ff', 
+              fontSize: '0.68rem', fontWeight: 800, letterSpacing: '1px', textTransform: 'uppercase', marginBottom: '6px'
             }}>
               <Zap size={14} /> MCP Home Assistant Bus & Smart Domotica Engine
             </div>
-            <h1 style={{ margin: '0 0 4px 0', fontSize: '1.35rem', fontWeight: 800, color: '#fff', letterSpacing: '-0.3px' }}>
-              Controllo Domotico IoT & Gestione Dispositivi Reali
+            <h1 style={{ margin: '0 0 6px 0', fontSize: '1.4rem', fontWeight: 800, color: isThemeLight ? '#111111' : '#fff', letterSpacing: '-0.3px', textShadow: 'none' }}>
+              Controllo Domotico IoT & <span style={{
+                color: isThemeLight ? '#c2410c' : '#00d2ff',
+                fontWeight: 800
+              }}>Gestione Dispositivi Reali</span>
             </h1>
-            <p style={{ margin: 0, fontSize: '0.78rem', color: '#ffffff', lineHeight: 1.4 }}>
+            <p style={{ margin: 0, fontSize: '0.82rem', color: isThemeLight ? '#4b5563' : '#cbd5e0', lineHeight: 1.45 }}>
               Scansiona, cerca e controlla in tempo reale luci, climatizzazione, sensori e serrature della tua abitazione o laboratorio.
             </p>
           </div>

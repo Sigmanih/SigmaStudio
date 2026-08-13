@@ -49,9 +49,7 @@
   font-size: 22px;
   font-weight: 700;
   margin: 0;
-  background: linear-gradient(135deg, #00f2fe 0%, #4facfe 50%, #bc8cff 100%);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
+  color: var(--text, #fff);
   letter-spacing: -0.3px;
 }
 
@@ -555,9 +553,16 @@
   color: #111111;
 }
 
+.theme-light .hw-floating-panel {
+  background-color: #fffdf9 !important;
+  border-color: rgba(190, 160, 110, 0.45) !important;
+  color: #111111 !important;
+}
+
 .theme-light .gpu-card {
   background-color: #fffdf9 !important;
   background-image: none !important;
+  border-color: rgba(190, 160, 110, 0.35) !important;
   opacity: 1 !important;
   backdrop-filter: none !important;
   -webkit-backdrop-filter: none !important;
@@ -573,13 +578,64 @@
 }
 
 .theme-light .hw-chart-card {
-  background-color: #f2ede2 !important;
+  background-color: #f9f6f0 !important;
   background-image: none !important;
+  border-color: rgba(190, 160, 110, 0.35) !important;
   opacity: 1 !important;
   backdrop-filter: none !important;
   -webkit-backdrop-filter: none !important;
 }
 
 .theme-light .gpu-card::before {
-  background: linear-gradient(90deg, #ea580c, #d97706, #3fb950);
+  background: linear-gradient(90deg, #ea580c, #d97706, #16a34a);
 }
+
+.theme-light .gpu-name {
+  color: #111111 !important;
+}
+
+.theme-light .gpu-bus-info {
+  color: #6b7280 !important;
+}
+
+.theme-light .hw-section-title {
+  color: #111111 !important;
+}
+
+.theme-light .hw-select {
+  background: #ffffff !important;
+  border-color: rgba(190, 160, 110, 0.4) !important;
+  color: #111111 !important;
+}
+
+.theme-light .hw-select:focus {
+  border-color: #ea580c !important;
+  box-shadow: 0 0 0 3px rgba(234, 88, 12, 0.15) !important;
+}
+
+.theme-light .hw-btn {
+  background: #f4efe4;
+  border-color: rgba(190, 160, 110, 0.35);
+  color: #111111;
+}
+
+.theme-light .hw-btn:hover {
+  background: #ebe4d5;
+  border-color: rgba(190, 160, 110, 0.55);
+}
+
+.theme-light .hw-btn-primary {
+  background: linear-gradient(135deg, #ea580c 0%, #d97706 100%) !important;
+  color: #ffffff !important;
+  border: none !important;
+}
+
+.theme-light .gpu-stat-badge {
+  background: #f4efe4 !important;
+  border-color: rgba(190, 160, 110, 0.35) !important;
+  color: #111111 !important;
+}
+
+.theme-light .metric-progress-track {
+  background: rgba(0, 0, 0, 0.06) !important;
+}

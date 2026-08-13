@@ -105,7 +105,7 @@
 /* Content Area */
 .content-area { flex: 1; display: flex; flex-direction: column; position: relative; overflow: hidden; background: rgba(10, 10, 15, 0.85); }
 .view-header { padding: 48px 48px 32px; display: flex; justify-content: space-between; align-items: flex-end; }
-.glow-text { font-size: 2rem; font-weight: 800; background: linear-gradient(135deg, #fff 40%, var(--primary)); -webkit-background-clip: text; -webkit-text-fill-color: transparent; letter-spacing: -0.5px; }
+.glow-text { font-size: 2rem; font-weight: 800; color: var(--text, #fff); letter-spacing: -0.5px; }
 
 /* Terminal & Stats */
 .terminal-window { background: rgba(0,0,0,0.6); border: 1px solid var(--border); border-radius: var(--radius-m); height: 180px; overflow-y: auto; padding: 20px; font-size: 0.8rem; color: var(--success); line-height: 1.7; font-family: 'JetBrains Mono', monospace; }

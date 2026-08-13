@@ -374,24 +374,37 @@ Il tuo creatore è l'**Ing. Diego Saitta**, fondatore di Sigma Studio.
     }
   };
 
+  const accentColor = isLight ? '#ea580c' : '#00d2ff';
+  const cardBg = isLight ? '#fffdf9' : '#121622';
+  const cardBorder = isLight ? '1px solid rgba(190, 160, 110, 0.32)' : '1px solid rgba(255, 255, 255, 0.08)';
+  const cardShadow = isLight ? '0 4px 16px rgba(180, 150, 100, 0.12)' : '0 4px 24px rgba(0,0,0,0.3)';
+  const textPrimary = isLight ? '#000000' : '#ffffff';
+  const textSecondary = isLight ? '#000000' : '#a0aec0';
+  const textMuted = isLight ? '#000000' : '#8892b0';
+  const innerCardBg = isLight ? '#f9f5ed' : 'rgba(255, 255, 255, 0.05)';
+  const innerCardBorder = isLight ? '1px solid rgba(190, 160, 110, 0.28)' : '1px solid rgba(255, 255, 255, 0.1)';
+
   return (
-    <div style={{
+    <div className="manifesti-gallery-root" style={{
       height: '100%',
       display: 'flex',
       flexDirection: 'column',
-      background: 'var(--bg-main, #0a0d14)',
-      color: 'var(--text-main, #e2e8f0)',
+      background: isLight ? '#f7f4ed' : 'var(--bg-main, #0a0d14)',
+      color: textPrimary,
       overflowY: 'auto'
     }}>
-      {/* Hero Visual Banner */}
+      {/* Hero Visual Banner with Standardized Color System & Dimensions */}
       <div style={{
         position: 'relative',
-        padding: '28px 36px',
-        background: 'linear-gradient(135deg, rgba(14, 16, 22, 0.96) 0%, rgba(20, 26, 42, 0.92) 100%), url("/images/sigma_logo_harmonic_flow.jpg")',
+        padding: '24px 32px',
+        minHeight: '110px',
+        background: isLight
+          ? 'linear-gradient(135deg, rgba(254, 252, 247, 0.76) 0%, rgba(248, 242, 232, 0.70) 100%), url("/images/sigma_logo_harmonic_flow.jpg")'
+          : 'linear-gradient(135deg, rgba(10, 14, 26, 0.85) 0%, rgba(14, 22, 42, 0.80) 100%), url("/images/sigma_logo_harmonic_flow.jpg")',
         backgroundSize: 'cover',
         backgroundPosition: 'center',
-        borderBottom: '1px solid rgba(0, 210, 255, 0.25)',
-        boxShadow: '0 8px 32px rgba(0,0,0,0.5)',
+        borderBottom: isLight ? '1px solid rgba(234, 88, 12, 0.35)' : '1px solid rgba(0, 210, 255, 0.25)',
+        boxShadow: isLight ? '0 8px 24px rgba(234, 88, 12, 0.08)' : '0 8px 32px rgba(0,0,0,0.4)',
         flexShrink: 0
       }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '20px' }}>
@@ -399,29 +412,28 @@ Il tuo creatore è l'**Ing. Diego Saitta**, fondatore di Sigma Studio.
             <div style={{
               display: 'inline-flex',
               alignItems: 'center',
-              gap: '8px',
-              padding: '4px 14px',
-              borderRadius: '20px',
-              background: 'rgba(188, 140, 255, 0.15)',
-              border: '1px solid rgba(188, 140, 255, 0.4)',
-              color: '#bc8cff',
-              fontSize: '0.72rem',
+              gap: '6px',
+              padding: '3px 12px',
+              borderRadius: '14px',
+              background: isLight ? 'rgba(234, 88, 12, 0.12)' : 'rgba(0, 210, 255, 0.15)',
+              border: isLight ? '1px solid rgba(234, 88, 12, 0.35)' : '1px solid rgba(0, 210, 255, 0.4)',
+              color: isLight ? '#9a3412' : '#00d2ff',
+              fontSize: '0.68rem',
               fontWeight: 800,
-              letterSpacing: '1.2px',
+              letterSpacing: '1px',
               textTransform: 'uppercase',
-              marginBottom: '10px'
+              marginBottom: '6px'
             }}>
               <ScrollText size={14} /> Σ COGNITIVE KERNEL MODELFILES & PROFESSIONS HUB
             </div>
-            <h1 style={{ fontSize: '1.8rem', fontWeight: 800, margin: '0 0 8px 0', color: '#fff', letterSpacing: '-0.5px' }}>
+            <h1 style={{ fontSize: '1.4rem', fontWeight: 800, margin: '0 0 6px 0', color: textPrimary, letterSpacing: '-0.3px', textShadow: 'none' }}>
               Galleria <span style={{
-                background: 'linear-gradient(135deg, #bc8cff 0%, #00d2ff 100%)',
-                WebkitBackgroundClip: 'text',
-                WebkitTextFillColor: 'transparent'
+                color: isLight ? '#c2410c' : '#00d2ff',
+                fontWeight: 800
               }}>Manifesti & Hub Professioni</span>
             </h1>
-            <p style={{ fontSize: '0.88rem', color: '#a0aec0', maxWidth: '780px', lineHeight: 1.5, margin: 0 }}>
-              Il modello unificato del Kernel è <strong>sigma</strong>. I manifesti Modelfile ne stabiliscono il ruolo, i parametri di campionamento e le istruzioni di sistema eseguite runtime in chat o nelle pipeline autonome.
+            <p style={{ fontSize: '0.82rem', color: textSecondary, maxWidth: '780px', lineHeight: 1.45, margin: 0, fontWeight: isLight ? 500 : 400 }}>
+              Il modello unificato del Kernel è <strong style={{ color: textPrimary }}>sigma</strong>. I manifesti Modelfile ne stabiliscono il ruolo, i parametri di campionamento e le istruzioni di sistema eseguite runtime in chat o nelle pipeline autonome.
             </p>
           </div>
 
@@ -434,13 +446,15 @@ Il tuo creatore è l'**Ing. Diego Saitta**, fondatore di Sigma Studio.
                 gap: '8px',
                 padding: '10px 18px',
                 borderRadius: '12px',
-                background: 'linear-gradient(135deg, #bc8cff 0%, #7c5bf0 100%)',
+                background: isLight
+                  ? 'linear-gradient(135deg, #ea580c 0%, #d97706 100%)'
+                  : 'linear-gradient(135deg, #00d2ff 0%, #0077ff 100%)',
                 border: 'none',
                 color: '#fff',
                 fontWeight: 700,
                 fontSize: '0.85rem',
                 cursor: 'pointer',
-                boxShadow: '0 4px 16px rgba(188, 140, 255, 0.3)',
+                boxShadow: isLight ? '0 4px 14px rgba(234, 88, 12, 0.25)' : '0 4px 16px rgba(0, 210, 255, 0.3)',
                 transition: 'all 0.2s ease'
               }}
             >
@@ -453,9 +467,9 @@ Il tuo creatore è l'**Ing. Diego Saitta**, fondatore di Sigma Studio.
               style={{
                 padding: '10px',
                 borderRadius: '12px',
-                background: 'rgba(255, 255, 255, 0.05)',
-                border: '1px solid rgba(255, 255, 255, 0.15)',
-                color: '#e2e8f0',
+                background: isLight ? 'rgba(190, 160, 110, 0.12)' : 'rgba(255, 255, 255, 0.05)',
+                border: isLight ? '1px solid rgba(190, 160, 110, 0.3)' : '1px solid rgba(255, 255, 255, 0.15)',
+                color: textPrimary,
                 cursor: 'pointer'
               }}
             >
@@ -474,12 +488,13 @@ Il tuo creatore è l'**Ing. Diego Saitta**, fondatore di Sigma Studio.
               gap: '8px',
               padding: '10px 20px',
               borderRadius: '12px',
-              background: activeGalleryView === 'installed' ? '#00d2ff' : 'rgba(255,255,255,0.06)',
-              color: activeGalleryView === 'installed' ? '#0a0d14' : '#e2e8f0',
-              border: activeGalleryView === 'installed' ? '1px solid #00d2ff' : '1px solid rgba(255,255,255,0.1)',
+              background: activeGalleryView === 'installed' ? accentColor : (isLight ? '#fffdf9' : 'rgba(255,255,255,0.06)'),
+              color: activeGalleryView === 'installed' ? '#fff' : textPrimary,
+              border: activeGalleryView === 'installed' ? `1px solid ${accentColor}` : (isLight ? '1px solid rgba(190, 160, 110, 0.4)' : '1px solid rgba(255,255,255,0.1)'),
               fontWeight: 800,
               fontSize: '0.85rem',
               cursor: 'pointer',
+              boxShadow: activeGalleryView === 'installed' ? '0 4px 14px rgba(234, 88, 12, 0.25)' : 'none',
               transition: 'all 0.2s ease'
             }}
           >
@@ -494,12 +509,13 @@ Il tuo creatore è l'**Ing. Diego Saitta**, fondatore di Sigma Studio.
               gap: '8px',
               padding: '10px 20px',
               borderRadius: '12px',
-              background: activeGalleryView === 'hub' ? '#bc8cff' : 'rgba(255,255,255,0.06)',
-              color: activeGalleryView === 'hub' ? '#0a0d14' : '#e2e8f0',
-              border: activeGalleryView === 'hub' ? '1px solid #bc8cff' : '1px solid rgba(255,255,255,0.1)',
+              background: activeGalleryView === 'hub' ? accentColor : (isLight ? '#fffdf9' : 'rgba(255,255,255,0.06)'),
+              color: activeGalleryView === 'hub' ? '#fff' : textPrimary,
+              border: activeGalleryView === 'hub' ? `1px solid ${accentColor}` : (isLight ? '1px solid rgba(190, 160, 110, 0.4)' : '1px solid rgba(255,255,255,0.1)'),
               fontWeight: 800,
               fontSize: '0.85rem',
               cursor: 'pointer',
+              boxShadow: activeGalleryView === 'hub' ? '0 4px 14px rgba(234, 88, 12, 0.25)' : 'none',
               transition: 'all 0.2s ease'
             }}
           >
@@ -518,11 +534,12 @@ Il tuo creatore è l'**Ing. Diego Saitta**, fondatore di Sigma Studio.
             borderRadius: '12px',
             background: hubMessage.type === 'success' ? 'rgba(63, 185, 80, 0.15)' : 'rgba(255, 80, 100, 0.15)',
             border: `1px solid ${hubMessage.type === 'success' ? '#3fb950' : '#ff5064'}`,
-            color: hubMessage.type === 'success' ? '#3fb950' : '#ff5064',
+            color: hubMessage.type === 'success' ? '#166534' : '#991b1b',
             marginBottom: '24px',
             display: 'flex',
             alignItems: 'center',
-            justifyContent: 'space-between'
+            justifyContent: 'space-between',
+            fontWeight: 700
           }}>
             <span>{hubMessage.text}</span>
             <button onClick={() => setHubMessage(null)} style={{ background: 'transparent', border: 'none', color: 'inherit', cursor: 'pointer' }}><X size={16} /></button>
@@ -554,12 +571,17 @@ Il tuo creatore è l'**Ing. Diego Saitta**, fondatore di Sigma Studio.
                       style={{
                         padding: '8px 16px',
                         borderRadius: '10px',
-                        background: active ? '#bc8cff' : 'rgba(255,255,255,0.04)',
-                        color: active ? '#0a0d14' : '#e2e8f0',
-                        border: active ? '1px solid #bc8cff' : '1px solid rgba(255,255,255,0.1)',
+                        background: active 
+                          ? (isLight ? '#ea580c' : '#bc8cff') 
+                          : (isLight ? '#fffdf9' : 'rgba(255,255,255,0.04)'),
+                        color: active ? '#ffffff' : textPrimary,
+                        border: active 
+                          ? `1px solid ${isLight ? '#ea580c' : '#bc8cff'}` 
+                          : (isLight ? '1px solid rgba(190, 160, 110, 0.35)' : '1px solid rgba(255,255,255,0.1)'),
                         fontWeight: 700,
                         fontSize: '0.82rem',
                         cursor: 'pointer',
+                        boxShadow: active && isLight ? '0 2px 8px rgba(234, 88, 12, 0.25)' : 'none',
                         transition: 'all 0.2s ease'
                       }}
                     >
@@ -571,7 +593,7 @@ Il tuo creatore è l'**Ing. Diego Saitta**, fondatore di Sigma Studio.
 
               {/* Search Box */}
               <div style={{ position: 'relative', width: '320px' }}>
-                <Search size={16} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: '#8892b0' }} />
+                <Search size={16} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: textMuted }} />
                 <input
                   type="text"
                   placeholder="Cerca agente, modello o competenza..."
@@ -581,9 +603,9 @@ Il tuo creatore è l'**Ing. Diego Saitta**, fondatore di Sigma Studio.
                     width: '100%',
                     padding: '10px 16px 10px 38px',
                     borderRadius: '10px',
-                    background: 'rgba(255,255,255,0.04)',
-                    border: '1px solid rgba(255,255,255,0.15)',
-                    color: '#fff',
+                    background: isLight ? '#ffffff' : 'rgba(255,255,255,0.04)',
+                    border: isLight ? '1px solid rgba(190, 160, 110, 0.4)' : '1px solid rgba(255,255,255,0.15)',
+                    color: textPrimary,
                     fontSize: '0.85rem',
                     outline: 'none',
                     boxSizing: 'border-box'
@@ -599,21 +621,22 @@ Il tuo creatore è l'**Ing. Diego Saitta**, fondatore di Sigma Studio.
               gap: '24px'
             }}>
               {filteredManifesti.map(manifesto => {
-                const domainColor = manifesto.domainColor || '#00d2ff';
+                const domainColor = manifesto.domainColor || (isLight ? '#c2410c' : '#00d2ff');
 
                 return (
                   <div
                     key={manifesto.path}
+                    className="mg-card"
                     style={{
                       borderRadius: '18px',
-                      background: 'rgba(255, 255, 255, 0.025)',
-                      border: '1px solid rgba(255, 255, 255, 0.08)',
+                      background: cardBg,
+                      border: cardBorder,
                       padding: '24px',
                       display: 'flex',
                       flexDirection: 'column',
                       justifyContent: 'space-between',
                       position: 'relative',
-                      boxShadow: '0 4px 24px rgba(0,0,0,0.3)',
+                      boxShadow: cardShadow,
                       transition: 'transform 0.2s ease, border-color 0.2s ease'
                     }}
                   >
@@ -631,11 +654,11 @@ Il tuo creatore è l'**Ing. Diego Saitta**, fondatore di Sigma Studio.
                               borderRadius: '50%',
                               overflow: 'hidden',
                               border: `2px solid ${domainColor}`,
-                              boxShadow: `0 0 16px ${domainColor}50`,
+                              boxShadow: isLight ? `0 0 10px rgba(0,0,0,0.12)` : `0 0 16px ${domainColor}50`,
                               display: 'flex',
                               alignItems: 'center',
                               justifyContent: 'center',
-                              background: '#0a0d14',
+                              background: isLight ? '#fffdf9' : '#0a0d14',
                               flexShrink: 0,
                               cursor: 'pointer',
                               position: 'relative'
@@ -650,10 +673,10 @@ Il tuo creatore è l'**Ing. Diego Saitta**, fondatore di Sigma Studio.
                           </div>
 
                           <div>
-                            <h3 style={{ margin: '0 0 2px 0', fontSize: '1.15rem', fontWeight: 800, color: '#fff' }}>
+                            <h3 style={{ margin: '0 0 2px 0', fontSize: '1.15rem', fontWeight: 800, color: textPrimary }}>
                               {manifesto.name}
                             </h3>
-                            <span style={{ fontSize: '0.75rem', color: domainColor, fontWeight: 700 }}>
+                            <span style={{ fontSize: '0.75rem', color: isLight ? '#9a3412' : domainColor, fontWeight: 700 }}>
                               {manifesto.role}
                             </span>
                           </div>
@@ -663,9 +686,9 @@ Il tuo creatore è l'**Ing. Diego Saitta**, fondatore di Sigma Studio.
                         <span style={{
                           padding: '3px 10px',
                           borderRadius: '12px',
-                          background: `${domainColor}15`,
-                          border: `1px solid ${domainColor}40`,
-                          color: domainColor,
+                          background: isLight ? 'rgba(234, 88, 12, 0.12)' : `${domainColor}15`,
+                          border: isLight ? '1px solid rgba(234, 88, 12, 0.35)' : `1px solid ${domainColor}40`,
+                          color: isLight ? '#9a3412' : domainColor,
                           fontSize: '0.68rem',
                           fontWeight: 700,
                           textTransform: 'uppercase'
@@ -675,7 +698,7 @@ Il tuo creatore è l'**Ing. Diego Saitta**, fondatore di Sigma Studio.
                       </div>
 
                       {/* Description Excerpt */}
-                      <p style={{ fontSize: '0.84rem', color: '#a0aec0', lineHeight: 1.5, margin: '0 0 16px 0' }}>
+                      <p style={{ fontSize: '0.84rem', color: textSecondary, lineHeight: 1.5, margin: '0 0 16px 0', fontWeight: isLight ? 500 : 400 }}>
                         {manifesto.description || 'Nessuna descrizione disponibile.'}
                       </p>
 
@@ -687,13 +710,13 @@ Il tuo creatore è l'**Ing. Diego Saitta**, fondatore di Sigma Studio.
                           gap: '4px',
                           padding: '4px 10px',
                           borderRadius: '8px',
-                          background: 'rgba(255, 255, 255, 0.05)',
-                          border: '1px solid rgba(255, 255, 255, 0.1)',
-                          color: '#e2e8f0',
+                          background: innerCardBg,
+                          border: innerCardBorder,
+                          color: textPrimary,
                           fontSize: '0.72rem',
                           fontWeight: 700
                         }}>
-                          <Cpu size={12} style={{ color: '#00d2ff' }} /> Modello: <strong>{manifesto.baseModel || 'sigma'}</strong>
+                          <Cpu size={12} style={{ color: isLight ? '#0284c7' : '#00d2ff' }} /> Modello: <strong style={{ color: textPrimary }}>{manifesto.baseModel || 'sigma'}</strong>
                         </span>
 
                         <span style={{
@@ -702,13 +725,13 @@ Il tuo creatore è l'**Ing. Diego Saitta**, fondatore di Sigma Studio.
                           gap: '4px',
                           padding: '4px 10px',
                           borderRadius: '8px',
-                          background: 'rgba(255, 255, 255, 0.05)',
-                          border: '1px solid rgba(255, 255, 255, 0.1)',
-                          color: '#e2e8f0',
+                          background: innerCardBg,
+                          border: innerCardBorder,
+                          color: textPrimary,
                           fontSize: '0.72rem',
                           fontWeight: 700
                         }}>
-                          <Sliders size={12} style={{ color: '#bc8cff' }} /> Temp: <strong>{manifesto.temperature ?? 0.2}</strong>
+                          <Sliders size={12} style={{ color: isLight ? '#7c3aed' : '#bc8cff' }} /> Temp: <strong style={{ color: textPrimary }}>{manifesto.temperature ?? 0.2}</strong>
                         </span>
 
                         <span style={{
@@ -717,13 +740,13 @@ Il tuo creatore è l'**Ing. Diego Saitta**, fondatore di Sigma Studio.
                           gap: '4px',
                           padding: '4px 10px',
                           borderRadius: '8px',
-                          background: 'rgba(255, 255, 255, 0.05)',
-                          border: '1px solid rgba(255, 255, 255, 0.1)',
-                          color: '#e2e8f0',
+                          background: innerCardBg,
+                          border: innerCardBorder,
+                          color: textPrimary,
                           fontSize: '0.72rem',
                           fontWeight: 700
                         }}>
-                          <Box size={12} style={{ color: '#3fb950' }} /> Ctx: <strong>{manifesto.numCtx ? `${Math.round(manifesto.numCtx / 1024)}k` : '32k'}</strong>
+                          <Box size={12} style={{ color: isLight ? '#16a34a' : '#3fb950' }} /> Ctx: <strong style={{ color: textPrimary }}>{manifesto.numCtx ? `${Math.round(manifesto.numCtx / 1024)}k` : '32k'}</strong>
                         </span>
                       </div>
 
@@ -736,9 +759,9 @@ Il tuo creatore è l'**Ing. Diego Saitta**, fondatore di Sigma Studio.
                               style={{
                                 padding: '2px 8px',
                                 borderRadius: '6px',
-                                background: 'rgba(255, 255, 255, 0.04)',
-                                border: '1px solid rgba(255, 255, 255, 0.06)',
-                                color: '#cbd5e0',
+                                background: innerCardBg,
+                                border: innerCardBorder,
+                                color: textPrimary,
                                 fontSize: '0.68rem',
                                 fontWeight: 600
                               }}
@@ -755,7 +778,7 @@ Il tuo creatore è l'**Ing. Diego Saitta**, fondatore di Sigma Studio.
                       display: 'flex',
                       justifyContent: 'space-between',
                       alignItems: 'center',
-                      borderTop: '1px solid rgba(255,255,255,0.06)',
+                      borderTop: isLight ? '1px solid rgba(190, 160, 110, 0.25)' : '1px solid rgba(255,255,255,0.06)',
                       paddingTop: '14px',
                       gap: '8px',
                       flexWrap: 'wrap'
@@ -769,9 +792,9 @@ Il tuo creatore è l'**Ing. Diego Saitta**, fondatore di Sigma Studio.
                             gap: '6px',
                             padding: '6px 12px',
                             borderRadius: '8px',
-                            background: 'rgba(255, 255, 255, 0.05)',
-                            border: '1px solid rgba(255, 255, 255, 0.15)',
-                            color: '#e2e8f0',
+                            background: isLight ? '#fffdf9' : 'rgba(255, 255, 255, 0.05)',
+                            border: isLight ? '1px solid rgba(190, 160, 110, 0.4)' : '1px solid rgba(255, 255, 255, 0.15)',
+                            color: textPrimary,
                             fontSize: '0.76rem',
                             fontWeight: 700,
                             cursor: 'pointer'
@@ -788,9 +811,9 @@ Il tuo creatore è l'**Ing. Diego Saitta**, fondatore di Sigma Studio.
                             gap: '6px',
                             padding: '6px 12px',
                             borderRadius: '8px',
-                            background: 'rgba(255, 255, 255, 0.05)',
-                            border: '1px solid rgba(255, 255, 255, 0.15)',
-                            color: '#e2e8f0',
+                            background: isLight ? '#fffdf9' : 'rgba(255, 255, 255, 0.05)',
+                            border: isLight ? '1px solid rgba(190, 160, 110, 0.4)' : '1px solid rgba(255, 255, 255, 0.15)',
+                            color: textPrimary,
                             fontSize: '0.76rem',
                             fontWeight: 700,
                             cursor: 'pointer'
@@ -808,13 +831,15 @@ Il tuo creatore è l'**Ing. Diego Saitta**, fondatore di Sigma Studio.
                           gap: '6px',
                           padding: '6px 14px',
                           borderRadius: '8px',
-                          background: `linear-gradient(135deg, ${domainColor} 0%, #7c5bf0 100%)`,
+                          background: isLight 
+                            ? 'linear-gradient(135deg, #ea580c 0%, #d97706 100%)' 
+                            : `linear-gradient(135deg, ${domainColor} 0%, #7c5bf0 100%)`,
                           border: 'none',
                           color: '#fff',
                           fontSize: '0.78rem',
                           fontWeight: 800,
                           cursor: 'pointer',
-                          boxShadow: `0 2px 10px ${domainColor}40`,
+                          boxShadow: isLight ? '0 2px 10px rgba(234, 88, 12, 0.3)' : `0 2px 10px ${domainColor}40`,
                           transition: 'all 0.2s ease'
                         }}
                       >
@@ -836,17 +861,18 @@ Il tuo creatore è l'**Ing. Diego Saitta**, fondatore di Sigma Studio.
             {/* Hub Introduction & Custom Import Bar */}
             <div style={{
               borderRadius: '16px',
-              background: 'rgba(188, 140, 255, 0.05)',
-              border: '1px solid rgba(188, 140, 255, 0.2)',
+              background: isLight ? '#fffdf9' : 'rgba(188, 140, 255, 0.05)',
+              border: isLight ? '1px solid rgba(190, 160, 110, 0.35)' : '1px solid rgba(188, 140, 255, 0.2)',
+              boxShadow: cardShadow,
               padding: '24px',
               marginBottom: '28px'
             }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px', marginBottom: '18px' }}>
                 <div>
-                  <h2 style={{ fontSize: '1.25rem', fontWeight: 800, margin: '0 0 6px 0', color: '#fff' }}>
+                  <h2 style={{ fontSize: '1.25rem', fontWeight: 800, margin: '0 0 6px 0', color: textPrimary }}>
                     🌐 Repository GitHub Manifesti Professioni
                   </h2>
-                  <p style={{ fontSize: '0.82rem', color: '#a0aec0', margin: 0 }}>
+                  <p style={{ fontSize: '0.82rem', color: textSecondary, margin: 0, fontWeight: isLight ? 500 : 400 }}>
                     Pacchetti di manifesti e istruzioni specialistiche per studenti (universitari e liceali) e professionisti adulti.
                   </p>
                 </div>
@@ -861,9 +887,9 @@ Il tuo creatore è l'**Ing. Diego Saitta**, fondatore di Sigma Studio.
                     gap: '6px',
                     padding: '8px 16px',
                     borderRadius: '8px',
-                    background: 'rgba(255,255,255,0.06)',
-                    border: '1px solid rgba(255,255,255,0.15)',
-                    color: '#bc8cff',
+                    background: isLight ? 'rgba(234, 88, 12, 0.12)' : 'rgba(255,255,255,0.06)',
+                    border: isLight ? '1px solid rgba(234, 88, 12, 0.35)' : '1px solid rgba(255,255,255,0.15)',
+                    color: isLight ? '#c2410c' : '#bc8cff',
                     fontSize: '0.8rem',
                     fontWeight: 700,
                     textDecoration: 'none'
@@ -879,7 +905,8 @@ Il tuo creatore è l'**Ing. Diego Saitta**, fondatore di Sigma Studio.
                 gap: '12px',
                 alignItems: 'center',
                 flexWrap: 'wrap',
-                background: 'rgba(0,0,0,0.3)',
+                background: isLight ? '#f4efe4' : 'rgba(0,0,0,0.3)',
+                border: isLight ? '1px solid rgba(190, 160, 110, 0.35)' : 'none',
                 padding: '12px 16px',
                 borderRadius: '10px'
               }}>
@@ -889,7 +916,15 @@ Il tuo creatore è l'**Ing. Diego Saitta**, fondatore di Sigma Studio.
                     placeholder="URL Raw GitHub o Git (.md)..."
                     value={customImportUrl}
                     onChange={e => setCustomImportUrl(e.target.value)}
-                    style={{ width: '100%', padding: '8px 12px', borderRadius: '6px', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.15)', color: '#fff', fontSize: '0.82rem' }}
+                    style={{
+                      width: '100%',
+                      padding: '8px 12px',
+                      borderRadius: '6px',
+                      background: isLight ? '#fff' : 'rgba(255,255,255,0.05)',
+                      border: isLight ? '1px solid rgba(190, 160, 110, 0.4)' : '1px solid rgba(255,255,255,0.15)',
+                      color: textPrimary,
+                      fontSize: '0.82rem'
+                    }}
                   />
                 </div>
                 <div style={{ flex: 1, minWidth: '160px' }}>
@@ -898,7 +933,15 @@ Il tuo creatore è l'**Ing. Diego Saitta**, fondatore di Sigma Studio.
                     placeholder="Nome file (opzionale)..."
                     value={customImportName}
                     onChange={e => setCustomImportName(e.target.value)}
-                    style={{ width: '100%', padding: '8px 12px', borderRadius: '6px', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.15)', color: '#fff', fontSize: '0.82rem' }}
+                    style={{
+                      width: '100%',
+                      padding: '8px 12px',
+                      borderRadius: '6px',
+                      background: isLight ? '#fff' : 'rgba(255,255,255,0.05)',
+                      border: isLight ? '1px solid rgba(190, 160, 110, 0.4)' : '1px solid rgba(255,255,255,0.15)',
+                      color: textPrimary,
+                      fontSize: '0.82rem'
+                    }}
                   />
                 </div>
                 <button
@@ -907,9 +950,9 @@ Il tuo creatore è l'**Ing. Diego Saitta**, fondatore di Sigma Studio.
                   style={{
                     padding: '8px 18px',
                     borderRadius: '6px',
-                    background: '#bc8cff',
+                    background: isLight ? '#ea580c' : '#bc8cff',
                     border: 'none',
-                    color: '#0a0d14',
+                    color: '#fff',
                     fontWeight: 800,
                     fontSize: '0.82rem',
                     cursor: (importingCustom || !customImportUrl.trim()) ? 'not-allowed' : 'pointer'
@@ -940,12 +983,17 @@ Il tuo creatore è l'**Ing. Diego Saitta**, fondatore di Sigma Studio.
                       style={{
                         padding: '8px 16px',
                         borderRadius: '10px',
-                        background: active ? '#bc8cff' : 'rgba(255,255,255,0.04)',
-                        color: active ? '#0a0d14' : '#e2e8f0',
-                        border: active ? '1px solid #bc8cff' : '1px solid rgba(255,255,255,0.1)',
+                        background: active 
+                          ? (isLight ? '#ea580c' : '#bc8cff') 
+                          : (isLight ? '#fffdf9' : 'rgba(255,255,255,0.04)'),
+                        color: active ? '#ffffff' : textPrimary,
+                        border: active 
+                          ? `1px solid ${isLight ? '#ea580c' : '#bc8cff'}` 
+                          : (isLight ? '1px solid rgba(190, 160, 110, 0.35)' : '1px solid rgba(255,255,255,0.1)'),
                         fontWeight: 700,
                         fontSize: '0.82rem',
                         cursor: 'pointer',
+                        boxShadow: active && isLight ? '0 2px 8px rgba(234, 88, 12, 0.25)' : 'none',
                         transition: 'all 0.2s ease'
                       }}
                     >
@@ -957,7 +1005,7 @@ Il tuo creatore è l'**Ing. Diego Saitta**, fondatore di Sigma Studio.
 
               {/* Hub Search Box */}
               <div style={{ position: 'relative', width: '320px' }}>
-                <Search size={16} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: '#8892b0' }} />
+                <Search size={16} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: textMuted }} />
                 <input
                   type="text"
                   placeholder="Cerca professione o competenza..."
@@ -967,9 +1015,9 @@ Il tuo creatore è l'**Ing. Diego Saitta**, fondatore di Sigma Studio.
                     width: '100%',
                     padding: '10px 16px 10px 38px',
                     borderRadius: '10px',
-                    background: 'rgba(255,255,255,0.04)',
-                    border: '1px solid rgba(255,255,255,0.15)',
-                    color: '#fff',
+                    background: isLight ? '#ffffff' : 'rgba(255,255,255,0.04)',
+                    border: isLight ? '1px solid rgba(190, 160, 110, 0.4)' : '1px solid rgba(255,255,255,0.15)',
+                    color: textPrimary,
                     fontSize: '0.85rem',
                     outline: 'none',
                     boxSizing: 'border-box'
@@ -985,32 +1033,33 @@ Il tuo creatore è l'**Ing. Diego Saitta**, fondatore di Sigma Studio.
               gap: '24px'
             }}>
               {filteredHubCatalog.map(item => {
-                const domainColor = item.domainColor || '#00d2ff';
+                const domainColor = item.domainColor || (isLight ? '#c2410c' : '#00d2ff');
                 const isInstalling = installingId === item.id;
 
                 return (
                   <div
                     key={item.id}
+                    className="mg-card"
                     style={{
                       borderRadius: '18px',
-                      background: 'rgba(255, 255, 255, 0.025)',
-                      border: '1px solid rgba(255, 255, 255, 0.08)',
+                      background: cardBg,
+                      border: cardBorder,
                       padding: '24px',
                       display: 'flex',
                       flexDirection: 'column',
                       justifyContent: 'space-between',
                       position: 'relative',
-                      boxShadow: '0 4px 24px rgba(0,0,0,0.3)'
+                      boxShadow: cardShadow
                     }}
                   >
                     <div>
                       {/* Card Header */}
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '14px' }}>
                         <div>
-                          <h3 style={{ margin: '0 0 2px 0', fontSize: '1.2rem', fontWeight: 800, color: '#fff' }}>
+                          <h3 style={{ margin: '0 0 2px 0', fontSize: '1.2rem', fontWeight: 800, color: textPrimary }}>
                             {item.name}
                           </h3>
-                          <span style={{ fontSize: '0.78rem', color: domainColor, fontWeight: 700 }}>
+                          <span style={{ fontSize: '0.78rem', color: isLight ? '#9a3412' : domainColor, fontWeight: 700 }}>
                             {item.role}
                           </span>
                         </div>
@@ -1018,9 +1067,9 @@ Il tuo creatore è l'**Ing. Diego Saitta**, fondatore di Sigma Studio.
                         <span style={{
                           padding: '3px 10px',
                           borderRadius: '12px',
-                          background: `${domainColor}15`,
-                          border: `1px solid ${domainColor}40`,
-                          color: domainColor,
+                          background: isLight ? 'rgba(234, 88, 12, 0.12)' : `${domainColor}15`,
+                          border: isLight ? '1px solid rgba(234, 88, 12, 0.35)' : `1px solid ${domainColor}40`,
+                          color: isLight ? '#9a3412' : domainColor,
                           fontSize: '0.68rem',
                           fontWeight: 700,
                           textTransform: 'uppercase'
@@ -1036,18 +1085,18 @@ Il tuo creatore è l'**Ing. Diego Saitta**, fondatore di Sigma Studio.
                         gap: '6px',
                         padding: '4px 10px',
                         borderRadius: '6px',
-                        background: 'rgba(255,255,255,0.04)',
-                        border: '1px solid rgba(255,255,255,0.08)',
-                        color: '#cbd5e0',
+                        background: innerCardBg,
+                        border: innerCardBorder,
+                        color: textPrimary,
                         fontSize: '0.74rem',
-                        fontWeight: 600,
+                        fontWeight: 700,
                         marginBottom: '14px'
                       }}>
-                        <Users size={13} style={{ color: '#bc8cff' }} /> Target: {item.target}
+                        <Users size={13} style={{ color: isLight ? '#7c3aed' : '#bc8cff' }} /> Target: {item.target}
                       </div>
 
                       {/* Description */}
-                      <p style={{ fontSize: '0.84rem', color: '#a0aec0', lineHeight: 1.5, margin: '0 0 16px 0' }}>
+                      <p style={{ fontSize: '0.84rem', color: textSecondary, lineHeight: 1.5, margin: '0 0 16px 0', fontWeight: isLight ? 500 : 400 }}>
                         {item.description}
                       </p>
 
@@ -1059,9 +1108,9 @@ Il tuo creatore è l'**Ing. Diego Saitta**, fondatore di Sigma Studio.
                             style={{
                               padding: '2px 8px',
                               borderRadius: '6px',
-                              background: 'rgba(255, 255, 255, 0.04)',
-                              border: '1px solid rgba(255, 255, 255, 0.06)',
-                              color: '#cbd5e0',
+                              background: innerCardBg,
+                              border: innerCardBorder,
+                              color: textPrimary,
                               fontSize: '0.68rem',
                               fontWeight: 600
                             }}
@@ -1077,11 +1126,11 @@ Il tuo creatore è l'**Ing. Diego Saitta**, fondatore di Sigma Studio.
                       display: 'flex',
                       justifyContent: 'space-between',
                       alignItems: 'center',
-                      borderTop: '1px solid rgba(255,255,255,0.06)',
+                      borderTop: isLight ? '1px solid rgba(190, 160, 110, 0.25)' : '1px solid rgba(255,255,255,0.06)',
                       paddingTop: '14px'
                     }}>
-                      <span style={{ fontSize: '0.72rem', color: '#8892b0' }}>
-                        Modelfile: <code>{item.filename}</code>
+                      <span style={{ fontSize: '0.72rem', color: textMuted }}>
+                        Modelfile: <code style={{ color: textPrimary }}>{item.filename}</code>
                       </span>
 
                       {item.installed ? (
@@ -1092,9 +1141,9 @@ Il tuo creatore è l'**Ing. Diego Saitta**, fondatore di Sigma Studio.
                             gap: '4px',
                             padding: '6px 12px',
                             borderRadius: '8px',
-                            background: 'rgba(63, 185, 80, 0.15)',
-                            border: '1px solid rgba(63, 185, 80, 0.4)',
-                            color: '#3fb950',
+                            background: isLight ? 'rgba(34, 197, 94, 0.15)' : 'rgba(63, 185, 80, 0.15)',
+                            border: isLight ? '1px solid rgba(34, 197, 94, 0.4)' : '1px solid rgba(63, 185, 80, 0.4)',
+                            color: isLight ? '#15803d' : '#3fb950',
                             fontSize: '0.75rem',
                             fontWeight: 700
                           }}>
@@ -1106,9 +1155,9 @@ Il tuo creatore è l'**Ing. Diego Saitta**, fondatore di Sigma Studio.
                             style={{
                               padding: '6px 12px',
                               borderRadius: '8px',
-                              background: '#00d2ff',
+                              background: isLight ? '#ea580c' : '#00d2ff',
                               border: 'none',
-                              color: '#0a0d14',
+                              color: '#fff',
                               fontSize: '0.76rem',
                               fontWeight: 800,
                               cursor: 'pointer'
@@ -1127,13 +1176,15 @@ Il tuo creatore è l'**Ing. Diego Saitta**, fondatore di Sigma Studio.
                             gap: '6px',
                             padding: '6px 16px',
                             borderRadius: '8px',
-                            background: 'linear-gradient(135deg, #bc8cff 0%, #7c5bf0 100%)',
+                            background: isLight 
+                              ? 'linear-gradient(135deg, #ea580c 0%, #d97706 100%)' 
+                              : 'linear-gradient(135deg, #bc8cff 0%, #7c5bf0 100%)',
                             border: 'none',
                             color: '#fff',
                             fontSize: '0.78rem',
                             fontWeight: 800,
                             cursor: isInstalling ? 'not-allowed' : 'pointer',
-                            boxShadow: '0 2px 12px rgba(188, 140, 255, 0.3)'
+                            boxShadow: isLight ? '0 2px 12px rgba(234, 88, 12, 0.25)' : '0 2px 12px rgba(188, 140, 255, 0.3)'
                           }}
                         >
                           <Download size={13} /> {isInstalling ? 'Installazione...' : 'Installa nel Kernel'}
@@ -1156,7 +1207,7 @@ Il tuo creatore è l'**Ing. Diego Saitta**, fondatore di Sigma Studio.
         <div style={{
           position: 'fixed',
           top: 0, left: 0, right: 0, bottom: 0,
-          background: 'rgba(0, 0, 0, 0.8)',
+          background: 'rgba(0, 0, 0, 0.75)',
           backdropFilter: 'blur(8px)',
           zIndex: 1000,
           display: 'flex',
@@ -1165,21 +1216,21 @@ Il tuo creatore è l'**Ing. Diego Saitta**, fondatore di Sigma Studio.
           padding: '20px'
         }}>
           <div style={{
-            background: '#0d1117',
-            border: '1px solid rgba(0, 210, 255, 0.3)',
+            background: isLight ? '#fffdf9' : '#0d1117',
+            border: isLight ? '1px solid rgba(190, 160, 110, 0.45)' : '1px solid rgba(0, 210, 255, 0.3)',
             borderRadius: '20px',
             maxWidth: '850px',
             width: '100%',
             maxHeight: '85vh',
             display: 'flex',
             flexDirection: 'column',
-            boxShadow: '0 16px 48px rgba(0,0,0,0.7)',
+            boxShadow: isLight ? '0 16px 48px rgba(0,0,0,0.25)' : '0 16px 48px rgba(0,0,0,0.7)',
             overflow: 'hidden'
           }}>
             {/* Modal Header */}
             <div style={{
               padding: '20px 24px',
-              borderBottom: '1px solid rgba(255,255,255,0.08)',
+              borderBottom: isLight ? '1px solid rgba(190, 160, 110, 0.25)' : '1px solid rgba(255,255,255,0.08)',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'space-between'
@@ -1190,16 +1241,16 @@ Il tuo creatore è l'**Ing. Diego Saitta**, fondatore di Sigma Studio.
                   height: '40px',
                   borderRadius: '50%',
                   overflow: 'hidden',
-                  border: `2px solid ${inspectManifesto.domainColor || '#00d2ff'}`
+                  border: `2px solid ${inspectManifesto.domainColor || (isLight ? '#ea580c' : '#00d2ff')}`
                 }}>
                   <img src={inspectManifesto.image || '/images/default.png'} alt="avatar" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                 </div>
                 <div>
-                  <h3 style={{ margin: 0, fontSize: '1.2rem', fontWeight: 800, color: '#fff' }}>
+                  <h3 style={{ margin: 0, fontSize: '1.2rem', fontWeight: 800, color: textPrimary }}>
                     {inspectManifesto.name}
                   </h3>
-                  <span style={{ fontSize: '0.75rem', color: inspectManifesto.domainColor || '#00d2ff', fontWeight: 700 }}>
-                    {inspectManifesto.role} • <code>{inspectManifesto.filename}</code>
+                  <span style={{ fontSize: '0.75rem', color: isLight ? '#9a3412' : (inspectManifesto.domainColor || '#00d2ff'), fontWeight: 700 }}>
+                    {inspectManifesto.role} • <code style={{ color: textPrimary }}>{inspectManifesto.filename}</code>
                   </span>
                 </div>
               </div>
@@ -1213,9 +1264,11 @@ Il tuo creatore è l'**Ing. Diego Saitta**, fondatore di Sigma Studio.
                     gap: '6px',
                     padding: '8px 14px',
                     borderRadius: '8px',
-                    background: copied ? 'rgba(63, 185, 80, 0.2)' : 'rgba(255,255,255,0.08)',
-                    border: copied ? '1px solid #3fb950' : '1px solid rgba(255,255,255,0.15)',
-                    color: copied ? '#3fb950' : '#fff',
+                    background: copied 
+                      ? (isLight ? 'rgba(34, 197, 94, 0.18)' : 'rgba(63, 185, 80, 0.2)') 
+                      : (isLight ? '#f4efe4' : 'rgba(255,255,255,0.08)'),
+                    border: copied ? '1px solid #16a34a' : (isLight ? '1px solid rgba(190, 160, 110, 0.4)' : '1px solid rgba(255,255,255,0.15)'),
+                    color: copied ? '#15803d' : textPrimary,
                     fontSize: '0.8rem',
                     fontWeight: 700,
                     cursor: 'pointer'
@@ -1230,7 +1283,7 @@ Il tuo creatore è l'**Ing. Diego Saitta**, fondatore di Sigma Studio.
                   style={{
                     background: 'transparent',
                     border: 'none',
-                    color: '#a0aec0',
+                    color: textPrimary,
                     cursor: 'pointer',
                     padding: '6px'
                   }}
@@ -1250,37 +1303,37 @@ Il tuo creatore è l'**Ing. Diego Saitta**, fondatore di Sigma Studio.
                 gap: '12px',
                 marginBottom: '20px'
               }}>
-                <div style={{ padding: '12px', borderRadius: '10px', background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)' }}>
-                  <div style={{ fontSize: '0.68rem', color: '#8892b0', textTransform: 'uppercase' }}>Modello Base</div>
-                  <div style={{ fontSize: '0.95rem', fontWeight: 800, color: '#fff', marginTop: '2px' }}>{inspectManifesto.baseModel || 'sigma'}</div>
+                <div style={{ padding: '12px', borderRadius: '10px', background: innerCardBg, border: innerCardBorder }}>
+                  <div style={{ fontSize: '0.68rem', color: textMuted, textTransform: 'uppercase', fontWeight: 700 }}>Modello Base</div>
+                  <div style={{ fontSize: '0.95rem', fontWeight: 800, color: textPrimary, marginTop: '2px' }}>{inspectManifesto.baseModel || 'sigma'}</div>
                 </div>
-                <div style={{ padding: '12px', borderRadius: '10px', background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)' }}>
-                  <div style={{ fontSize: '0.68rem', color: '#8892b0', textTransform: 'uppercase' }}>Temperatura</div>
-                  <div style={{ fontSize: '0.95rem', fontWeight: 800, color: '#00d2ff', marginTop: '2px' }}>{inspectManifesto.temperature}</div>
+                <div style={{ padding: '12px', borderRadius: '10px', background: innerCardBg, border: innerCardBorder }}>
+                  <div style={{ fontSize: '0.68rem', color: textMuted, textTransform: 'uppercase', fontWeight: 700 }}>Temperatura</div>
+                  <div style={{ fontSize: '0.95rem', fontWeight: 800, color: isLight ? '#c2410c' : '#00d2ff', marginTop: '2px' }}>{inspectManifesto.temperature}</div>
                 </div>
-                <div style={{ padding: '12px', borderRadius: '10px', background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)' }}>
-                  <div style={{ fontSize: '0.68rem', color: '#8892b0', textTransform: 'uppercase' }}>Finestra Contesto</div>
-                  <div style={{ fontSize: '0.95rem', fontWeight: 800, color: '#bc8cff', marginTop: '2px' }}>{inspectManifesto.numCtx} tokens</div>
+                <div style={{ padding: '12px', borderRadius: '10px', background: innerCardBg, border: innerCardBorder }}>
+                  <div style={{ fontSize: '0.68rem', color: textMuted, textTransform: 'uppercase', fontWeight: 700 }}>Finestra Contesto</div>
+                  <div style={{ fontSize: '0.95rem', fontWeight: 800, color: isLight ? '#7c3aed' : '#bc8cff', marginTop: '2px' }}>{inspectManifesto.numCtx} tokens</div>
                 </div>
-                <div style={{ padding: '12px', borderRadius: '10px', background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)' }}>
-                  <div style={{ fontSize: '0.68rem', color: '#8892b0', textTransform: 'uppercase' }}>Top-P / Repeat Penalty</div>
-                  <div style={{ fontSize: '0.95rem', fontWeight: 800, color: '#3fb950', marginTop: '2px' }}>{inspectManifesto.topP} / 1.1</div>
+                <div style={{ padding: '12px', borderRadius: '10px', background: innerCardBg, border: innerCardBorder }}>
+                  <div style={{ fontSize: '0.68rem', color: textMuted, textTransform: 'uppercase', fontWeight: 700 }}>Top-P / Repeat Penalty</div>
+                  <div style={{ fontSize: '0.95rem', fontWeight: 800, color: isLight ? '#16a34a' : '#3fb950', marginTop: '2px' }}>{inspectManifesto.topP} / 1.1</div>
                 </div>
               </div>
 
               {/* Raw Modelfile Syntax Box */}
               <div style={{ marginBottom: '16px' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#00d2ff', fontSize: '0.85rem', fontWeight: 700, marginBottom: '8px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: isLight ? '#c2410c' : '#00d2ff', fontSize: '0.85rem', fontWeight: 700, marginBottom: '8px' }}>
                   <Terminal size={14} /> Contenuto Modelfile Markdown
                 </div>
                 <pre style={{
-                  background: '#080a0f',
-                  border: '1px solid rgba(255,255,255,0.1)',
+                  background: isLight ? '#f9f5ed' : '#080a0f',
+                  border: isLight ? '1px solid rgba(190, 160, 110, 0.35)' : '1px solid rgba(255,255,255,0.1)',
                   borderRadius: '12px',
                   padding: '16px',
                   fontFamily: 'monospace',
                   fontSize: '0.8rem',
-                  color: '#38bdf8',
+                  color: isLight ? '#000000' : '#38bdf8',
                   lineHeight: 1.5,
                   overflowX: 'auto',
                   whiteSpace: 'pre-wrap'
@@ -1294,7 +1347,7 @@ Il tuo creatore è l'**Ing. Diego Saitta**, fondatore di Sigma Studio.
             {/* Modal Footer */}
             <div style={{
               padding: '16px 24px',
-              borderTop: '1px solid rgba(255,255,255,0.08)',
+              borderTop: isLight ? '1px solid rgba(190, 160, 110, 0.25)' : '1px solid rgba(255,255,255,0.08)',
               display: 'flex',
               justifyContent: 'flex-end',
               gap: '12px'
@@ -1307,9 +1360,9 @@ Il tuo creatore è l'**Ing. Diego Saitta**, fondatore di Sigma Studio.
                 style={{
                   padding: '8px 16px',
                   borderRadius: '8px',
-                  background: 'rgba(255,255,255,0.08)',
-                  border: '1px solid rgba(255,255,255,0.15)',
-                  color: '#fff',
+                  background: isLight ? '#f4efe4' : 'rgba(255,255,255,0.08)',
+                  border: isLight ? '1px solid rgba(190, 160, 110, 0.4)' : '1px solid rgba(255,255,255,0.15)',
+                  color: textPrimary,
                   fontSize: '0.85rem',
                   fontWeight: 700,
                   cursor: 'pointer'
@@ -1327,9 +1380,9 @@ Il tuo creatore è l'**Ing. Diego Saitta**, fondatore di Sigma Studio.
                 style={{
                   padding: '8px 18px',
                   borderRadius: '8px',
-                  background: '#00d2ff',
+                  background: isLight ? '#ea580c' : '#00d2ff',
                   border: 'none',
-                  color: '#0a0d14',
+                  color: '#fff',
                   fontSize: '0.85rem',
                   fontWeight: 800,
                   cursor: 'pointer'
@@ -1349,7 +1402,7 @@ Il tuo creatore è l'**Ing. Diego Saitta**, fondatore di Sigma Studio.
         <div style={{
           position: 'fixed',
           top: 0, left: 0, right: 0, bottom: 0,
-          background: 'rgba(0, 0, 0, 0.8)',
+          background: 'rgba(0, 0, 0, 0.75)',
           backdropFilter: 'blur(8px)',
           zIndex: 1000,
           display: 'flex',
@@ -1358,18 +1411,18 @@ Il tuo creatore è l'**Ing. Diego Saitta**, fondatore di Sigma Studio.
           padding: '20px'
         }}>
           <div style={{
-            background: '#0d1117',
-            border: '1px solid rgba(0, 210, 255, 0.3)',
+            background: isLight ? '#fffdf9' : '#0d1117',
+            border: isLight ? '1px solid rgba(190, 160, 110, 0.45)' : '1px solid rgba(0, 210, 255, 0.3)',
             borderRadius: '20px',
             maxWidth: '500px',
             width: '100%',
             padding: '24px'
           }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
-              <h3 style={{ margin: 0, fontSize: '1.2rem', color: '#fff', fontWeight: 800 }}>
+              <h3 style={{ margin: 0, fontSize: '1.2rem', color: textPrimary, fontWeight: 800 }}>
                 Seleziona Avatar per {editingAvatarManifesto.name}
               </h3>
-              <button onClick={() => setEditingAvatarManifesto(null)} style={{ background: 'transparent', border: 'none', color: '#8892b0', cursor: 'pointer' }}>
+              <button onClick={() => setEditingAvatarManifesto(null)} style={{ background: 'transparent', border: 'none', color: textPrimary, cursor: 'pointer' }}>
                 <X size={20} />
               </button>
             </div>
@@ -1381,8 +1434,8 @@ Il tuo creatore è l'**Ing. Diego Saitta**, fondatore di Sigma Studio.
                   onClick={() => handleUpdateAvatar(editingAvatarManifesto, preset.path)}
                   style={{
                     borderRadius: '12px',
-                    background: 'rgba(255, 255, 255, 0.04)',
-                    border: '1px solid rgba(255, 255, 255, 0.1)',
+                    background: innerCardBg,
+                    border: innerCardBorder,
                     padding: '12px',
                     display: 'flex',
                     flexDirection: 'column',
@@ -1394,7 +1447,7 @@ Il tuo creatore è l'**Ing. Diego Saitta**, fondatore di Sigma Studio.
                   <div style={{ width: '60px', height: '60px', borderRadius: '50%', overflow: 'hidden', marginBottom: '8px', border: '1px solid rgba(0,210,255,0.3)' }}>
                     <img src={preset.path} alt={preset.label} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                   </div>
-                  <span style={{ fontSize: '0.72rem', color: '#cbd5e0', textAlign: 'center', fontWeight: 600 }}>{preset.label}</span>
+                  <span style={{ fontSize: '0.72rem', color: textPrimary, textAlign: 'center', fontWeight: 600 }}>{preset.label}</span>
                 </div>
               ))}
             </div>
@@ -1409,7 +1462,7 @@ Il tuo creatore è l'**Ing. Diego Saitta**, fondatore di Sigma Studio.
         <div style={{
           position: 'fixed',
           top: 0, left: 0, right: 0, bottom: 0,
-          background: 'rgba(0, 0, 0, 0.8)',
+          background: 'rgba(0, 0, 0, 0.75)',
           backdropFilter: 'blur(8px)',
           zIndex: 1000,
           display: 'flex',
@@ -1418,8 +1471,8 @@ Il tuo creatore è l'**Ing. Diego Saitta**, fondatore di Sigma Studio.
           padding: '20px'
         }}>
           <div style={{
-            background: '#0d1117',
-            border: '1px solid rgba(188, 140, 255, 0.3)',
+            background: isLight ? '#fffdf9' : '#0d1117',
+            border: isLight ? '1px solid rgba(190, 160, 110, 0.45)' : '1px solid rgba(188, 140, 255, 0.3)',
             borderRadius: '20px',
             maxWidth: '650px',
             width: '100%',
@@ -1428,54 +1481,54 @@ Il tuo creatore è l'**Ing. Diego Saitta**, fondatore di Sigma Studio.
             flexDirection: 'column',
             overflow: 'hidden'
           }}>
-            <div style={{ padding: '20px 24px', borderBottom: '1px solid rgba(255,255,255,0.08)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <div style={{ padding: '20px 24px', borderBottom: isLight ? '1px solid rgba(190, 160, 110, 0.25)' : '1px solid rgba(255,255,255,0.08)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                <Sparkles size={18} style={{ color: '#bc8cff' }} />
-                <h3 style={{ margin: 0, fontSize: '1.2rem', color: '#fff', fontWeight: 800 }}>
+                <Sparkles size={18} style={{ color: isLight ? '#ea580c' : '#bc8cff' }} />
+                <h3 style={{ margin: 0, fontSize: '1.2rem', color: textPrimary, fontWeight: 800 }}>
                   Crea Nuovo Manifesto Modelfile
                 </h3>
               </div>
-              <button onClick={() => setNewManifestoModalOpen(false)} style={{ background: 'transparent', border: 'none', color: '#8892b0', cursor: 'pointer' }}>
+              <button onClick={() => setNewManifestoModalOpen(false)} style={{ background: 'transparent', border: 'none', color: textPrimary, cursor: 'pointer' }}>
                 <X size={20} />
               </button>
             </div>
 
             <div style={{ padding: '24px', overflowY: 'auto', flex: 1, display: 'flex', flexDirection: 'column', gap: '16px' }}>
               {formError && (
-                <div style={{ padding: '10px 14px', borderRadius: '8px', background: 'rgba(255, 80, 100, 0.15)', border: '1px solid #ff5064', color: '#ff5064', fontSize: '0.82rem', fontWeight: 700 }}>
+                <div style={{ padding: '10px 14px', borderRadius: '8px', background: 'rgba(255, 80, 100, 0.15)', border: '1px solid #ff5064', color: '#991b1b', fontSize: '0.82rem', fontWeight: 700 }}>
                   {formError}
                 </div>
               )}
 
               <div>
-                <label style={{ fontSize: '0.78rem', color: '#cbd5e0', fontWeight: 700, marginBottom: '6px', display: 'block' }}>Nome File Manifesto (.md)</label>
+                <label style={{ fontSize: '0.78rem', color: textPrimary, fontWeight: 700, marginBottom: '6px', display: 'block' }}>Nome File Manifesto (.md)</label>
                 <input
                   type="text"
                   placeholder="es. quantum_physicist.md"
                   value={newFileName}
                   onChange={e => setNewFileName(e.target.value)}
-                  style={{ width: '100%', padding: '10px 14px', borderRadius: '8px', background: 'rgba(0,0,0,0.3)', border: '1px solid rgba(255,255,255,0.15)', color: '#fff', fontSize: '0.85rem' }}
+                  style={{ width: '100%', padding: '10px 14px', borderRadius: '8px', background: isLight ? '#ffffff' : 'rgba(0,0,0,0.3)', border: isLight ? '1px solid rgba(190, 160, 110, 0.4)' : '1px solid rgba(255,255,255,0.15)', color: textPrimary, fontSize: '0.85rem' }}
                 />
               </div>
 
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px' }}>
                 <div>
-                  <label style={{ fontSize: '0.78rem', color: '#cbd5e0', fontWeight: 700, marginBottom: '6px', display: 'block' }}>Ruolo Specializzato</label>
+                  <label style={{ fontSize: '0.78rem', color: textPrimary, fontWeight: 700, marginBottom: '6px', display: 'block' }}>Ruolo Specializzato</label>
                   <input
                     type="text"
                     placeholder="es. Quantum Physicist"
                     value={newRole}
                     onChange={e => setNewRole(e.target.value)}
-                    style={{ width: '100%', padding: '10px 14px', borderRadius: '8px', background: 'rgba(0,0,0,0.3)', border: '1px solid rgba(255,255,255,0.15)', color: '#fff', fontSize: '0.85rem' }}
+                    style={{ width: '100%', padding: '10px 14px', borderRadius: '8px', background: isLight ? '#ffffff' : 'rgba(0,0,0,0.3)', border: isLight ? '1px solid rgba(190, 160, 110, 0.4)' : '1px solid rgba(255,255,255,0.15)', color: textPrimary, fontSize: '0.85rem' }}
                   />
                 </div>
 
                 <div>
-                  <label style={{ fontSize: '0.78rem', color: '#cbd5e0', fontWeight: 700, marginBottom: '6px', display: 'block' }}>Categoria / Dominio</label>
+                  <label style={{ fontSize: '0.78rem', color: textPrimary, fontWeight: 700, marginBottom: '6px', display: 'block' }}>Categoria / Dominio</label>
                   <select
                     value={newCategory}
                     onChange={e => setNewCategory(e.target.value)}
-                    style={{ width: '100%', padding: '10px 14px', borderRadius: '8px', background: '#0a0d14', border: '1px solid rgba(255,255,255,0.15)', color: '#fff', fontSize: '0.85rem' }}
+                    style={{ width: '100%', padding: '10px 14px', borderRadius: '8px', background: isLight ? '#ffffff' : '#0a0d14', border: isLight ? '1px solid rgba(190, 160, 110, 0.4)' : '1px solid rgba(255,255,255,0.15)', color: textPrimary, fontSize: '0.85rem' }}
                   >
                     <option value="Architettura & Kernel">Architettura & Kernel</option>
                     <option value="Sviluppo & Test">Sviluppo & Test</option>
@@ -1494,57 +1547,57 @@ Il tuo creatore è l'**Ing. Diego Saitta**, fondatore di Sigma Studio.
 
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '12px' }}>
                 <div>
-                  <label style={{ fontSize: '0.78rem', color: '#cbd5e0', fontWeight: 700, marginBottom: '6px', display: 'block' }}>Modello Base</label>
+                  <label style={{ fontSize: '0.78rem', color: textPrimary, fontWeight: 700, marginBottom: '6px', display: 'block' }}>Modello Base</label>
                   <input
                     type="text"
                     value={newBaseModel}
                     onChange={e => setNewBaseModel(e.target.value)}
-                    style={{ width: '100%', padding: '8px 12px', borderRadius: '8px', background: 'rgba(0,0,0,0.3)', border: '1px solid rgba(255,255,255,0.15)', color: '#fff', fontSize: '0.85rem' }}
+                    style={{ width: '100%', padding: '8px 12px', borderRadius: '8px', background: isLight ? '#ffffff' : 'rgba(0,0,0,0.3)', border: isLight ? '1px solid rgba(190, 160, 110, 0.4)' : '1px solid rgba(255,255,255,0.15)', color: textPrimary, fontSize: '0.85rem' }}
                   />
                 </div>
                 <div>
-                  <label style={{ fontSize: '0.78rem', color: '#cbd5e0', fontWeight: 700, marginBottom: '6px', display: 'block' }}>Temperatura</label>
+                  <label style={{ fontSize: '0.78rem', color: textPrimary, fontWeight: 700, marginBottom: '6px', display: 'block' }}>Temperatura</label>
                   <input
                     type="text"
                     value={newTemp}
                     onChange={e => setNewTemp(e.target.value)}
-                    style={{ width: '100%', padding: '8px 12px', borderRadius: '8px', background: 'rgba(0,0,0,0.3)', border: '1px solid rgba(255,255,255,0.15)', color: '#fff', fontSize: '0.85rem' }}
+                    style={{ width: '100%', padding: '8px 12px', borderRadius: '8px', background: isLight ? '#ffffff' : 'rgba(0,0,0,0.3)', border: isLight ? '1px solid rgba(190, 160, 110, 0.4)' : '1px solid rgba(255,255,255,0.15)', color: textPrimary, fontSize: '0.85rem' }}
                   />
                 </div>
                 <div>
-                  <label style={{ fontSize: '0.78rem', color: '#cbd5e0', fontWeight: 700, marginBottom: '6px', display: 'block' }}>Contesto</label>
+                  <label style={{ fontSize: '0.78rem', color: textPrimary, fontWeight: 700, marginBottom: '6px', display: 'block' }}>Contesto</label>
                   <input
                     type="text"
                     value={newCtx}
                     onChange={e => setNewCtx(e.target.value)}
-                    style={{ width: '100%', padding: '8px 12px', borderRadius: '8px', background: 'rgba(0,0,0,0.3)', border: '1px solid rgba(255,255,255,0.15)', color: '#fff', fontSize: '0.85rem' }}
+                    style={{ width: '100%', padding: '8px 12px', borderRadius: '8px', background: isLight ? '#ffffff' : 'rgba(0,0,0,0.3)', border: isLight ? '1px solid rgba(190, 160, 110, 0.4)' : '1px solid rgba(255,255,255,0.15)', color: textPrimary, fontSize: '0.85rem' }}
                   />
                 </div>
               </div>
 
               <div>
-                <label style={{ fontSize: '0.78rem', color: '#cbd5e0', fontWeight: 700, marginBottom: '6px', display: 'block' }}>Istruzione di Sistema / Descrizione Missione</label>
+                <label style={{ fontSize: '0.78rem', color: textPrimary, fontWeight: 700, marginBottom: '6px', display: 'block' }}>Istruzione di Sistema / Descrizione Missione</label>
                 <textarea
                   rows={4}
                   placeholder="Descrivi la missione dell'agente..."
                   value={newPrompt}
                   onChange={e => setNewPrompt(e.target.value)}
-                  style={{ width: '100%', padding: '10px 14px', borderRadius: '8px', background: 'rgba(0,0,0,0.3)', border: '1px solid rgba(255,255,255,0.15)', color: '#fff', fontSize: '0.85rem', resize: 'vertical' }}
+                  style={{ width: '100%', padding: '10px 14px', borderRadius: '8px', background: isLight ? '#ffffff' : 'rgba(0,0,0,0.3)', border: isLight ? '1px solid rgba(190, 160, 110, 0.4)' : '1px solid rgba(255,255,255,0.15)', color: textPrimary, fontSize: '0.85rem', resize: 'vertical' }}
                 />
               </div>
             </div>
 
-            <div style={{ padding: '16px 24px', borderTop: '1px solid rgba(255,255,255,0.08)', display: 'flex', justifyContent: 'flex-end', gap: '12px' }}>
+            <div style={{ padding: '16px 24px', borderTop: isLight ? '1px solid rgba(190, 160, 110, 0.25)' : '1px solid rgba(255,255,255,0.08)', display: 'flex', justifyContent: 'flex-end', gap: '12px' }}>
               <button
                 onClick={() => setNewManifestoModalOpen(false)}
-                style={{ padding: '8px 16px', borderRadius: '8px', background: 'transparent', border: '1px solid rgba(255,255,255,0.15)', color: '#a0aec0', cursor: 'pointer' }}
+                style={{ padding: '8px 16px', borderRadius: '8px', background: 'transparent', border: isLight ? '1px solid rgba(190, 160, 110, 0.4)' : '1px solid rgba(255,255,255,0.15)', color: textPrimary, cursor: 'pointer' }}
               >
                 Annulla
               </button>
               <button
                 onClick={handleCreateManifesto}
                 disabled={creating}
-                style={{ padding: '8px 18px', borderRadius: '8px', background: 'linear-gradient(135deg, #bc8cff 0%, #7c5bf0 100%)', border: 'none', color: '#fff', fontWeight: 800, cursor: creating ? 'not-allowed' : 'pointer' }}
+                style={{ padding: '8px 18px', borderRadius: '8px', background: isLight ? '#ea580c' : '#bc8cff', border: 'none', color: '#fff', fontWeight: 800, cursor: creating ? 'not-allowed' : 'pointer' }}
               >
                 {creating ? 'Creazione in corso...' : 'Salva Manifesto'}
               </button>

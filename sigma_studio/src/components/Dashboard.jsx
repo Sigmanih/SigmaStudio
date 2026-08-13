@@ -167,16 +167,18 @@ export function RoadmapView({ tasks, onEdit, onAdd, onDelete, onToggleStatus, on
   return (
     <div className="roadmap-view" style={{ height: '100%', display: 'flex', flexDirection: 'column', padding: 0, background: T.bg, color: T.text, boxSizing: 'border-box', overflow: 'hidden' }}>
       
-      {/* Hero Visual Banner matching Domotica Header Style */}
+      {/* Hero Visual Banner with Standardized Theme System & Dimensions */}
       <div style={{
         position: 'relative',
         borderRadius: 0,
         overflow: 'hidden',
-        padding: '20px 32px 18px 32px',
-        minHeight: '100px',
-        borderBottom: '1px solid rgba(0, 210, 255, 0.25)',
-        boxShadow: '0 8px 32px rgba(0,0,0,0.4)',
-        backgroundImage: 'linear-gradient(to right, rgba(28, 12, 4, 0.96) 35%, rgba(120, 45, 10, 0.6) 75%, rgba(234, 88, 12, 0.22) 100%), url("/images/roadmap_plan_banner.jpg")',
+        padding: '24px 32px',
+        minHeight: '110px',
+        borderBottom: theme === 'light' ? '1px solid rgba(234, 88, 12, 0.35)' : '1px solid rgba(0, 210, 255, 0.25)',
+        boxShadow: theme === 'light' ? '0 8px 24px rgba(234, 88, 12, 0.08)' : '0 8px 32px rgba(0,0,0,0.4)',
+        backgroundImage: theme === 'light'
+          ? 'linear-gradient(135deg, rgba(254, 252, 247, 0.76) 0%, rgba(248, 242, 232, 0.70) 100%), url("/images/roadmap_plan_banner.jpg")'
+          : 'linear-gradient(135deg, rgba(10, 14, 26, 0.85) 0%, rgba(14, 22, 42, 0.80) 100%), url("/images/roadmap_plan_banner.jpg")',
         backgroundSize: 'cover',
         backgroundRepeat: 'no-repeat',
         backgroundPosition: 'center center',
@@ -188,15 +190,20 @@ export function RoadmapView({ tasks, onEdit, onAdd, onDelete, onToggleStatus, on
             <div style={{
               display: 'inline-flex', alignItems: 'center', gap: '6px',
               padding: '3px 12px', borderRadius: '14px',
-              background: 'rgba(0, 210, 255, 0.15)', border: '1px solid rgba(0, 210, 255, 0.35)',
-              color: '#00d2ff', fontSize: '0.68rem', fontWeight: 800, letterSpacing: '1px', textTransform: 'uppercase', marginBottom: '6px'
+              background: theme === 'light' ? 'rgba(234, 88, 12, 0.12)' : 'rgba(0, 210, 255, 0.15)', 
+              border: theme === 'light' ? '1px solid rgba(234, 88, 12, 0.35)' : '1px solid rgba(0, 210, 255, 0.35)',
+              color: theme === 'light' ? '#ea580c' : '#00d2ff', 
+              fontSize: '0.68rem', fontWeight: 800, letterSpacing: '1px', textTransform: 'uppercase', marginBottom: '6px'
             }}>
               <Calendar size={14} /> SYSTEM ROADMAP & DEVELOPMENT MILESTONES
             </div>
-            <h1 style={{ margin: '0 0 4px 0', fontSize: '1.35rem', fontWeight: 800, color: '#fff', letterSpacing: '-0.3px' }}>
-              🗓️ Pianificazione & Roadmap di Sviluppo
+            <h1 style={{ margin: '0 0 6px 0', fontSize: '1.4rem', fontWeight: 800, color: theme === 'light' ? '#111111' : '#fff', letterSpacing: '-0.3px', textShadow: 'none' }}>
+              🗓️ Pianificazione & <span style={{
+                color: theme === 'light' ? '#c2410c' : '#00d2ff',
+                fontWeight: 800
+              }}>Roadmap di Sviluppo</span>
             </h1>
-            <p style={{ margin: 0, fontSize: '0.78rem', color: '#ffffff', lineHeight: 1.4 }}>
+            <p style={{ margin: 0, fontSize: '0.82rem', color: theme === 'light' ? '#4b5563' : '#cbd5e0', lineHeight: 1.45 }}>
               Calendario Attività, Kanban Task, Registro Modifiche AI e Controllo Esecuzioni.
             </p>
           </div>

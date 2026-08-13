@@ -9,7 +9,7 @@
 .ws-hero::before { content: ''; position: absolute; top: -120px; left: 50%; transform: translateX(-50%); width: 600px; height: 500px; background: radial-gradient(ellipse, var(--primary-glow) 0%, transparent 70%); opacity: 0.3; pointer-events: none; }
 .ws-hero-badge { display: inline-block; font-size: 0.6rem; font-weight: 800; letter-spacing: 3px; color: var(--primary); background: var(--primary-glow); border: 1px solid var(--primary-border); padding: 6px 16px; border-radius: 20px; margin-bottom: 20px; text-transform: uppercase; }
 .ws-hero-title { font-size: 2.6rem; font-weight: 800; letter-spacing: -1.5px; margin: 0 0 16px; color: #fff; }
-.ws-hero-accent { background: linear-gradient(135deg, var(--primary), #7c5bf0); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+.ws-hero-accent { color: var(--primary); font-weight: 800; }
 .ws-hero-sub { font-size: 0.95rem; color: var(--text-dim); max-width: 520px; margin: 0 auto; line-height: 1.7; }
 
 /* Metrics */
@@ -53,7 +53,7 @@
 .wg-hero { text-align: center; padding: 24px 0 32px; position: relative; overflow: hidden; }
 .wg-hero::before { content: ''; position: absolute; top: -120px; left: 50%; transform: translateX(-50%); width: 600px; height: 500px; background: radial-gradient(ellipse, var(--primary-glow) 0%, transparent 70%); opacity: 0.25; pointer-events: none; }
 .wg-hero-title { font-size: 2.4rem; font-weight: 800; letter-spacing: -1.5px; margin: 0 0 12px; color: #fff; }
-.wg-hero-accent { background: linear-gradient(135deg, var(--primary), #7c5bf0); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+.wg-hero-accent { color: var(--primary); font-weight: 800; }
 .wg-hero-sub { font-size: 0.9rem; color: var(--text-dim); max-width: 520px; margin: 0 auto; line-height: 1.7; }
 .wg-metrics {
   display: grid;
@@ -98,6 +98,19 @@
   letter-spacing: 1px;
   font-weight: 700;
   margin-top: 6px;
+}
+
+.theme-light .wg-metric-label {
+  color: #524d45 !important;
+}
+
+.theme-light .wg-hero-title,
+.theme-light .wg-detail-title,
+.theme-light .ws-hero-title,
+.theme-light .ws-card-title,
+.theme-light .wg-split-head h3,
+.theme-light .wg-modal-head h3 {
+  color: #111827 !important;
 }
 .wg-split { display: grid; grid-template-columns: 1fr 380px; gap: 24px; margin-bottom: 28px; }
 .wg-split-graph { background: var(--surface-bright); border: var(--glass-border); border-radius: var(--radius-l); overflow: hidden; display: flex; flex-direction: column; }

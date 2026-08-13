@@ -469,6 +469,10 @@ function AppContent() {
       {hardwarePanelOpen && (
         <HardwareFloatingPanel
           onClose={() => setHardwarePanelOpen(false)}
+          onOpenTab={() => {
+            handleOpenTab({ type: 'hardware', label: 'Hardware Lab', icon: Zap });
+            setHardwarePanelOpen(false);
+          }}
           addToast={addToast}
         />
       )}

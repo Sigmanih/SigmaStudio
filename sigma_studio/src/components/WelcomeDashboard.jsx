@@ -742,6 +742,16 @@ const quickLinkStyle = (color) => ({
 /* ----- WelcomeScreen Export ----- */
 export default function WelcomeDashboard({ modules, openTab }) {
   const { theme, toggleTheme } = useApp();
+  const isLight = theme === 'light';
+  const titleColor = isLight ? '#111827' : '#ffffff';
+  const subtitleColor = isLight ? '#4b5563' : '#8b8fa3';
+  const cardBg = isLight ? '#fffdf9' : '#0e1017';
+  const cardBorder = isLight ? '1px solid rgba(190, 160, 110, 0.32)' : '1px solid rgba(255, 255, 255, 0.08)';
+  const cardShadow = isLight ? '0 8px 24px rgba(190, 160, 110, 0.12)' : '0 12px 40px rgba(0,0,0,0.5)';
+  const innerCardBg = isLight ? '#f9f6ef' : 'rgba(255, 255, 255, 0.03)';
+  const innerCardBorder = isLight ? '1px solid rgba(190, 160, 110, 0.28)' : '1px solid rgba(255, 255, 255, 0.06)';
+  const innerCardText = isLight ? '#4b5563' : '#6b7080';
+
   const [topics, setTopics] = useState([]);
   const [selectedTopic, setSelectedTopic] = useState(null);
 
@@ -836,17 +846,19 @@ export default function WelcomeDashboard({ modules, openTab }) {
       {/* Animated Translucent Cyber Space Background Canvas */}
       <TechSpaceCanvas isLight={theme === 'light'} />
 
-      {/* Hero Visual Banner matching Domotica Header Style */}
+      {/* Hero Visual Banner with Standardized Theme System */}
       <div style={{
         position: 'relative',
         zIndex: 1,
         borderRadius: 0,
         overflow: 'hidden',
-        padding: '20px 32px 18px 32px',
-        minHeight: '100px',
-        borderBottom: '1px solid rgba(0, 210, 255, 0.25)',
-        boxShadow: '0 8px 32px rgba(0,0,0,0.4)',
-        backgroundImage: 'linear-gradient(to right, rgba(28, 12, 4, 0.96) 35%, rgba(120, 45, 10, 0.6) 75%, rgba(234, 88, 12, 0.22) 100%), url("/images/hero_banner.jpg")',
+        padding: '24px 32px',
+        minHeight: '110px',
+        borderBottom: theme === 'light' ? '1px solid rgba(234, 88, 12, 0.35)' : '1px solid rgba(0, 210, 255, 0.25)',
+        boxShadow: theme === 'light' ? '0 8px 24px rgba(234, 88, 12, 0.08)' : '0 8px 32px rgba(0,0,0,0.4)',
+        backgroundImage: theme === 'light'
+          ? 'linear-gradient(135deg, rgba(254, 252, 247, 0.76) 0%, rgba(248, 242, 232, 0.70) 100%), url("/images/hero_banner.jpg")'
+          : 'linear-gradient(135deg, rgba(10, 14, 26, 0.85) 0%, rgba(14, 22, 42, 0.80) 100%), url("/images/hero_banner.jpg")',
         backgroundSize: 'cover',
         backgroundRepeat: 'no-repeat',
         backgroundPosition: 'center center',
@@ -860,8 +872,8 @@ export default function WelcomeDashboard({ modules, openTab }) {
               height: '56px',
               borderRadius: '50%',
               overflow: 'hidden',
-              border: '2px solid #00d2ff',
-              boxShadow: '0 0 20px rgba(0, 210, 255, 0.5), inset 0 0 10px rgba(0, 210, 255, 0.3)',
+              border: theme === 'light' ? '2px solid #ea580c' : '2px solid #00d2ff',
+              boxShadow: theme === 'light' ? '0 0 20px rgba(234, 88, 12, 0.4)' : '0 0 20px rgba(0, 210, 255, 0.5), inset 0 0 10px rgba(0, 210, 255, 0.3)',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
@@ -882,14 +894,14 @@ export default function WelcomeDashboard({ modules, openTab }) {
                 gap: '6px',
                 padding: '3px 12px',
                 borderRadius: '14px',
-                background: 'rgba(0, 210, 255, 0.15)',
-                border: '1px solid rgba(0, 210, 255, 0.35)',
-                color: '#00d2ff',
+                background: isLight ? 'rgba(234, 88, 12, 0.12)' : 'rgba(0, 210, 255, 0.15)',
+                border: isLight ? '1px solid rgba(234, 88, 12, 0.35)' : '1px solid rgba(0, 210, 255, 0.35)',
+                color: isLight ? '#9a3412' : '#00d2ff',
                 fontSize: '0.68rem',
                 fontWeight: 800,
                 letterSpacing: '1px',
                 textTransform: 'uppercase',
-                marginBottom: '4px'
+                marginBottom: '6px'
               }}>
                 <span>🧬</span> Σ SIGMA STUDIO v8.0 — COGNITIVE KERNEL
               </div>
@@ -897,21 +909,21 @@ export default function WelcomeDashboard({ modules, openTab }) {
               <h1 style={{
                 fontSize: '1.4rem',
                 fontWeight: 800,
-                color: '#fff',
-                margin: '0 0 4px 0',
-                letterSpacing: '-0.3px'
+                color: isLight ? '#111827' : '#ffffff',
+                margin: '0 0 6px 0',
+                letterSpacing: '-0.3px',
+                textShadow: 'none'
               }}>
                 Piattaforma di Orchestrazione AI & <span style={{
-                  background: 'linear-gradient(135deg, #00d2ff 0%, #7c5bf0 100%)',
-                  WebkitBackgroundClip: 'text',
-                  WebkitTextFillColor: 'transparent'
+                  color: isLight ? '#c2410c' : '#00d2ff',
+                  fontWeight: 800
                 }}>Ricerca Multimodale</span>
               </h1>
 
               <p style={{
-                fontSize: '0.78rem',
-                color: '#cbd5e0',
-                lineHeight: 1.4,
+                fontSize: '0.82rem',
+                color: isLight ? '#374151' : '#cbd5e0',
+                lineHeight: 1.45,
                 margin: 0
               }}>
                 Ambiente integrato modulare: agenti AI specializzati, test computazionali Pytest, fine-tuning Unsloth, rendering 3D e marketplace di estensioni.
@@ -926,14 +938,14 @@ export default function WelcomeDashboard({ modules, openTab }) {
               style={{
                 padding: '10px 16px',
                 borderRadius: '12px',
-                background: '#181b28',
-                border: '1px solid rgba(0, 210, 255, 0.5)',
-                color: '#00d2ff',
+                background: isLight ? '#fffdf9' : '#181b28',
+                border: isLight ? '1px solid rgba(190, 160, 110, 0.45)' : '1px solid rgba(0, 210, 255, 0.5)',
+                color: isLight ? '#111827' : '#00d2ff',
                 fontWeight: 800,
                 fontSize: '0.82rem',
                 cursor: 'pointer',
                 opacity: 1,
-                boxShadow: '0 4px 16px rgba(0,0,0,0.4)',
+                boxShadow: isLight ? '0 4px 14px rgba(190, 160, 110, 0.1)' : '0 4px 16px rgba(0,0,0,0.4)',
                 transition: 'all 0.2s ease',
                 display: 'flex',
                 alignItems: 'center',
@@ -948,21 +960,21 @@ export default function WelcomeDashboard({ modules, openTab }) {
               style={{
                 padding: '10px 16px',
                 borderRadius: '12px',
-                background: '#181b28',
-                border: '1px solid rgba(167, 139, 250, 0.5)',
-                color: '#a78bfa',
+                background: isLight ? '#fffdf9' : '#181b28',
+                border: isLight ? '1px solid rgba(190, 160, 110, 0.45)' : '1px solid rgba(167, 139, 250, 0.5)',
+                color: isLight ? '#111827' : '#a78bfa',
                 fontWeight: 800,
                 fontSize: '0.82rem',
                 cursor: 'pointer',
                 opacity: 1,
-                boxShadow: '0 4px 16px rgba(0,0,0,0.4)',
+                boxShadow: isLight ? '0 4px 14px rgba(190, 160, 110, 0.1)' : '0 4px 16px rgba(0,0,0,0.4)',
                 transition: 'all 0.2s ease',
                 display: 'flex',
                 alignItems: 'center',
                 gap: '8px'
               }}
             >
-              🇬🇧 README (EN)
+              🌐 Docs (EN)
             </button>
           </div>
         </div>
@@ -1016,9 +1028,9 @@ export default function WelcomeDashboard({ modules, openTab }) {
         margin: '4px 0',
         padding: '28px',
         borderRadius: '20px',
-        background: '#0e1017',
-        border: '1px solid rgba(124, 91, 240, 0.3)',
-        boxShadow: '0 12px 40px rgba(0,0,0,0.5)',
+        background: cardBg,
+        border: isLight ? '1px solid rgba(124, 91, 240, 0.35)' : '1px solid rgba(124, 91, 240, 0.3)',
+        boxShadow: cardShadow,
         display: 'grid',
         gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))',
         gap: '24px',
@@ -1033,30 +1045,30 @@ export default function WelcomeDashboard({ modules, openTab }) {
           }}>
             <span>🧠</span> ARCHITETTURA DI SISTEMA
           </div>
-          <h2 style={{ margin: '0 0 12px 0', fontSize: '1.4rem', color: '#fff', fontWeight: 800 }}>
+          <h2 style={{ margin: '0 0 12px 0', fontSize: '1.4rem', color: titleColor, fontWeight: 800 }}>
             Sigma Studio come Kernel Cognitivo
           </h2>
-          <p style={{ fontSize: '0.86rem', color: '#8b8fa3', lineHeight: 1.65, margin: '0 0 20px 0' }}>
+          <p style={{ fontSize: '0.86rem', color: subtitleColor, lineHeight: 1.65, margin: '0 0 20px 0' }}>
             Come un sistema operativo gestisce processi, risorse di memoria e periferiche hardware, Sigma Studio orchestra i Modelli Linguistici (LLM) 
             come unità computazionali centrali, regolamentati da contratti eseguibili e bus di I/O governati.
           </p>
 
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-            <div style={{ padding: '12px', borderRadius: '10px', background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)' }}>
-              <div style={{ fontWeight: 700, fontSize: '0.82rem', color: '#00d2ff' }}>⚡ LLM = CPU</div>
-              <div style={{ fontSize: '0.74rem', color: '#6b7080', marginTop: '3px' }}>Modelli locali o cloud eseguono la computazione.</div>
+            <div style={{ padding: '12px', borderRadius: '10px', background: innerCardBg, border: innerCardBorder }}>
+              <div style={{ fontWeight: 700, fontSize: '0.82rem', color: isLight ? '#0284c7' : '#00d2ff' }}>⚡ LLM = CPU</div>
+              <div style={{ fontSize: '0.74rem', color: innerCardText, marginTop: '3px' }}>Modelli locali o cloud eseguono la computazione.</div>
             </div>
-            <div style={{ padding: '12px', borderRadius: '10px', background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)' }}>
-              <div style={{ fontWeight: 700, fontSize: '0.82rem', color: '#3fb950' }}>📜 Manifesti = Rules</div>
-              <div style={{ fontSize: '0.74rem', color: '#6b7080', marginTop: '3px' }}>Modelfile definiti in <code style={{ color: '#00d2ff' }}>manifesti/</code>.</div>
+            <div style={{ padding: '12px', borderRadius: '10px', background: innerCardBg, border: innerCardBorder }}>
+              <div style={{ fontWeight: 700, fontSize: '0.82rem', color: isLight ? '#16a34a' : '#3fb950' }}>📜 Manifesti = Rules</div>
+              <div style={{ fontSize: '0.74rem', color: innerCardText, marginTop: '3px' }}>Modelfile definiti in <code style={{ color: isLight ? '#c2410c' : '#00d2ff' }}>manifesti/</code>.</div>
             </div>
-            <div style={{ padding: '12px', borderRadius: '10px', background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)' }}>
+            <div style={{ padding: '12px', borderRadius: '10px', background: innerCardBg, border: innerCardBorder }}>
               <div style={{ fontWeight: 700, fontSize: '0.82rem', color: '#7c5bf0' }}>🔌 MCP = Bus I/O</div>
-              <div style={{ fontSize: '0.74rem', color: '#6b7080', marginTop: '3px' }}>Accesso a filesystem, Home Assistant, memoria.</div>
+              <div style={{ fontSize: '0.74rem', color: innerCardText, marginTop: '3px' }}>Accesso a filesystem, Home Assistant, memoria.</div>
             </div>
-            <div style={{ padding: '12px', borderRadius: '10px', background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)' }}>
-              <div style={{ fontWeight: 700, fontSize: '0.82rem', color: '#ffb86c' }}>🔒 Sandbox = Bounds</div>
-              <div style={{ fontSize: '0.74rem', color: '#6b7080', marginTop: '3px' }}>Operazioni verificate e confinate su disco.</div>
+            <div style={{ padding: '12px', borderRadius: '10px', background: innerCardBg, border: innerCardBorder }}>
+              <div style={{ fontWeight: 700, fontSize: '0.82rem', color: isLight ? '#d97706' : '#ffb86c' }}>🔒 Sandbox = Bounds</div>
+              <div style={{ fontSize: '0.74rem', color: innerCardText, marginTop: '3px' }}>Operazioni verificate e confinate su disco.</div>
             </div>
           </div>
         </div>
@@ -1091,9 +1103,9 @@ export default function WelcomeDashboard({ modules, openTab }) {
         margin: '4px 0',
         padding: '28px',
         borderRadius: '20px',
-        background: '#0e1017',
-        border: '1px solid rgba(0, 210, 255, 0.3)',
-        boxShadow: '0 12px 40px rgba(0,0,0,0.5)',
+        background: cardBg,
+        border: isLight ? '1px solid rgba(14, 165, 233, 0.35)' : '1px solid rgba(0, 210, 255, 0.3)',
+        boxShadow: cardShadow,
         display: 'grid',
         gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))',
         gap: '24px',
@@ -1103,7 +1115,7 @@ export default function WelcomeDashboard({ modules, openTab }) {
           position: 'relative',
           borderRadius: '16px',
           overflow: 'hidden',
-          border: '1px solid rgba(0, 210, 255, 0.3)',
+          border: isLight ? '1px solid rgba(14, 165, 233, 0.35)' : '1px solid rgba(0, 210, 255, 0.3)',
           boxShadow: '0 12px 32px rgba(0,0,0,0.5)',
           minHeight: '280px',
           maxHeight: '320px'
@@ -1127,30 +1139,31 @@ export default function WelcomeDashboard({ modules, openTab }) {
           <div style={{
             display: 'inline-flex', alignItems: 'center', gap: '6px',
             padding: '4px 12px', borderRadius: '12px',
-            background: 'rgba(0, 210, 255, 0.15)', color: '#00d2ff',
+            background: isLight ? 'rgba(14, 165, 233, 0.12)' : 'rgba(0, 210, 255, 0.15)',
+            color: isLight ? '#0284c7' : '#00d2ff',
             fontSize: '0.72rem', fontWeight: 700, marginBottom: '12px'
           }}>
             <span>🤖</span> WORKFLOW MULTI-AGENTE
           </div>
-          <h2 style={{ margin: '0 0 12px 0', fontSize: '1.4rem', color: '#fff', fontWeight: 800 }}>
+          <h2 style={{ margin: '0 0 12px 0', fontSize: '1.4rem', color: titleColor, fontWeight: 800 }}>
             Dynamic Swarm & Orchestrazione Parallela
           </h2>
-          <p style={{ fontSize: '0.86rem', color: '#8b8fa3', lineHeight: 1.65, margin: '0 0 20px 0' }}>
+          <p style={{ fontSize: '0.86rem', color: subtitleColor, lineHeight: 1.65, margin: '0 0 20px 0' }}>
             Un team di agenti AI specializzati analizza l'obiettivo di ricerca, genera la struttura in micro-task e collabora per scrivere teoria, codice Python e visualizzazioni D3.js.
           </p>
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-            <div className="wg-feature-item" style={{ display: 'flex', alignItems: 'center', gap: '10px', fontSize: '0.82rem' }}>
-              <span style={{ color: '#00d2ff' }}>📐</span> <strong>Matematico:</strong> Redazione teoremi e formule KaTeX
+            <div className="wg-feature-item" style={{ display: 'flex', alignItems: 'center', gap: '10px', fontSize: '0.82rem', color: titleColor }}>
+              <span style={{ color: isLight ? '#0284c7' : '#00d2ff' }}>📐</span> <strong>Matematico:</strong> Redazione teoremi e formule KaTeX
             </div>
-            <div className="wg-feature-item" style={{ display: 'flex', alignItems: 'center', gap: '10px', fontSize: '0.82rem' }}>
-              <span style={{ color: '#3fb950' }}>💻</span> <strong>Programmatore:</strong> Scrittura script di test Python
+            <div className="wg-feature-item" style={{ display: 'flex', alignItems: 'center', gap: '10px', fontSize: '0.82rem', color: titleColor }}>
+              <span style={{ color: isLight ? '#16a34a' : '#3fb950' }}>💻</span> <strong>Programmatore:</strong> Scrittura script di test Python
             </div>
-            <div className="wg-feature-item" style={{ display: 'flex', alignItems: 'center', gap: '10px', fontSize: '0.82rem' }}>
-              <span style={{ color: '#a78bfa' }}>🔍</span> <strong>Revisore:</strong> Verifica consistenza logica e self-healing
+            <div className="wg-feature-item" style={{ display: 'flex', alignItems: 'center', gap: '10px', fontSize: '0.82rem', color: titleColor }}>
+              <span style={{ color: isLight ? '#7c3aed' : '#a78bfa' }}>🔍</span> <strong>Revisore:</strong> Verifica consistenza logica e self-healing
             </div>
-            <div className="wg-feature-item" style={{ display: 'flex', alignItems: 'center', gap: '10px', fontSize: '0.82rem' }}>
-              <span style={{ color: '#ffb86c' }}>📊</span> <strong>Visualizzatore:</strong> Grafici D3.js ed elementi interattivi
+            <div className="wg-feature-item" style={{ display: 'flex', alignItems: 'center', gap: '10px', fontSize: '0.82rem', color: titleColor }}>
+              <span style={{ color: isLight ? '#ea580c' : '#ffb86c' }}>📊</span> <strong>Visualizzatore:</strong> Grafici D3.js ed elementi interattivi
             </div>
           </div>
         </div>
@@ -1161,9 +1174,9 @@ export default function WelcomeDashboard({ modules, openTab }) {
         margin: '4px 0',
         padding: '28px',
         borderRadius: '20px',
-        background: '#0e1017',
-        border: '1px solid rgba(210, 153, 34, 0.35)',
-        boxShadow: '0 12px 40px rgba(0,0,0,0.5)',
+        background: cardBg,
+        border: isLight ? '1px solid rgba(217, 119, 6, 0.35)' : '1px solid rgba(210, 153, 34, 0.35)',
+        boxShadow: cardShadow,
         display: 'grid',
         gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))',
         gap: '24px',
@@ -1173,37 +1186,38 @@ export default function WelcomeDashboard({ modules, openTab }) {
           <div style={{
             display: 'inline-flex', alignItems: 'center', gap: '6px',
             padding: '4px 12px', borderRadius: '12px',
-            background: 'rgba(210, 153, 34, 0.15)', color: '#d29922',
+            background: isLight ? 'rgba(217, 119, 6, 0.12)' : 'rgba(210, 153, 34, 0.15)',
+            color: isLight ? '#b45309' : '#d29922',
             fontSize: '0.72rem', fontWeight: 700, marginBottom: '12px'
           }}>
             <span>🧪</span> TRAINING LAB & SPECIALIZZAZIONE MODELLI
           </div>
-          <h2 style={{ margin: '0 0 10px 0', fontSize: '1.4rem', color: '#fff', fontWeight: 800 }}>
+          <h2 style={{ margin: '0 0 10px 0', fontSize: '1.4rem', color: titleColor, fontWeight: 800 }}>
             Evoluzione Continua degli Agenti AI
           </h2>
-          <p style={{ fontSize: '0.9rem', color: '#e2e8f0', lineHeight: 1.6, margin: '0 0 12px 0', fontWeight: 600 }}>
+          <p style={{ fontSize: '0.9rem', color: titleColor, lineHeight: 1.6, margin: '0 0 12px 0', fontWeight: 600 }}>
             "Crea e migliora i tuoi agenti su un determinato ruolo: renderà la tua squadra AI sempre più forte."
           </p>
-          <p style={{ fontSize: '0.84rem', color: '#8b8fa3', lineHeight: 1.65, margin: '0 0 20px 0' }}>
+          <p style={{ fontSize: '0.84rem', color: subtitleColor, lineHeight: 1.65, margin: '0 0 20px 0' }}>
             Addestra piccoli modelli linguistici (SLM) in locale con Unsloth QLoRA, avvia il ciclo Autopilota per l'ottimizzazione automatica degli iperparametri e certifica i miglioramenti con il motore di Benchmark Ufficiale su 11 suite.
           </p>
 
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '20px' }}>
-            <div style={{ padding: '12px', borderRadius: '10px', background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)' }}>
-              <div style={{ fontWeight: 700, fontSize: '0.82rem', color: '#d29922' }}>🚀 Unsloth QLoRA</div>
-              <div style={{ fontSize: '0.74rem', color: '#6b7080', marginTop: '3px' }}>Fine-tuning ultra-veloce a basso consumo VRAM.</div>
+            <div style={{ padding: '12px', borderRadius: '10px', background: innerCardBg, border: innerCardBorder }}>
+              <div style={{ fontWeight: 700, fontSize: '0.82rem', color: isLight ? '#b45309' : '#d29922' }}>🚀 Unsloth QLoRA</div>
+              <div style={{ fontSize: '0.74rem', color: innerCardText, marginTop: '3px' }}>Fine-tuning ultra-veloce a basso consumo VRAM.</div>
             </div>
-            <div style={{ padding: '12px', borderRadius: '10px', background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)' }}>
-              <div style={{ fontWeight: 700, fontSize: '0.82rem', color: '#3fb950' }}>🔨 Forgia SLM</div>
-              <div style={{ fontSize: '0.74rem', color: '#6b7080', marginTop: '3px' }}>Addestramento ed export GGUF da zero in italiano.</div>
+            <div style={{ padding: '12px', borderRadius: '10px', background: innerCardBg, border: innerCardBorder }}>
+              <div style={{ fontWeight: 700, fontSize: '0.82rem', color: isLight ? '#16a34a' : '#3fb950' }}>🔨 Forgia SLM</div>
+              <div style={{ fontSize: '0.74rem', color: innerCardText, marginTop: '3px' }}>Addestramento ed export GGUF da zero in italiano.</div>
             </div>
-            <div style={{ padding: '12px', borderRadius: '10px', background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)' }}>
-              <div style={{ fontWeight: 700, fontSize: '0.82rem', color: '#00d2ff' }}>🤖 Autopilota AI</div>
-              <div style={{ fontSize: '0.74rem', color: '#6b7080', marginTop: '3px' }}>Specializzazione autonoma del modello sul ruolo.</div>
+            <div style={{ padding: '12px', borderRadius: '10px', background: innerCardBg, border: innerCardBorder }}>
+              <div style={{ fontWeight: 700, fontSize: '0.82rem', color: isLight ? '#0284c7' : '#00d2ff' }}>🤖 Autopilota AI</div>
+              <div style={{ fontSize: '0.74rem', color: innerCardText, marginTop: '3px' }}>Specializzazione autonoma del modello sul ruolo.</div>
             </div>
-            <div style={{ padding: '12px', borderRadius: '10px', background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)' }}>
-              <div style={{ fontWeight: 700, fontSize: '0.82rem', color: '#a78bfa' }}>📊 11 Suite Benchmark</div>
-              <div style={{ fontSize: '0.74rem', color: '#6b7080', marginTop: '3px' }}>MMLU, GSM8K, HumanEval per verbali di audit.</div>
+            <div style={{ padding: '12px', borderRadius: '10px', background: innerCardBg, border: innerCardBorder }}>
+              <div style={{ fontWeight: 700, fontSize: '0.82rem', color: isLight ? '#7c3aed' : '#a78bfa' }}>📊 11 Suite Benchmark</div>
+              <div style={{ fontSize: '0.74rem', color: innerCardText, marginTop: '3px' }}>MMLU, GSM8K, HumanEval per verbali di audit.</div>
             </div>
           </div>
 
@@ -1232,7 +1246,7 @@ export default function WelcomeDashboard({ modules, openTab }) {
           position: 'relative',
           borderRadius: '16px',
           overflow: 'hidden',
-          border: '1px solid rgba(210, 153, 34, 0.35)',
+          border: isLight ? '1px solid rgba(217, 119, 6, 0.35)' : '1px solid rgba(210, 153, 34, 0.35)',
           boxShadow: '0 12px 32px rgba(0,0,0,0.5)',
           minHeight: '280px',
           maxHeight: '320px'
@@ -1255,14 +1269,14 @@ export default function WelcomeDashboard({ modules, openTab }) {
 
       {/* State & Connection System Status Cards */}
       <div style={{ margin: '4px 0' }}>
-        <h2 style={{ fontSize: '1.3rem', color: '#fff', fontWeight: 800, marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+        <h2 style={{ fontSize: '1.3rem', color: titleColor, fontWeight: 800, marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
           <span>⚡</span> Stato Connessioni & Kernel Integrati
         </h2>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '16px' }}>
           {/* Card 1: MCP Hub */}
           <div className="wg-status-card" style={{
-            padding: '20px', borderRadius: '16px', background: '#0e1017',
-            border: '1px solid rgba(63, 185, 80, 0.3)', boxShadow: '0 8px 30px rgba(0,0,0,0.5)',
+            padding: '20px', borderRadius: '16px', background: cardBg,
+            border: isLight ? '1px solid rgba(63, 185, 80, 0.35)' : '1px solid rgba(63, 185, 80, 0.3)', boxShadow: cardShadow,
             display: 'flex', flexDirection: 'column', justifyContent: 'space-between'
           }}>
             <div>
@@ -1270,8 +1284,8 @@ export default function WelcomeDashboard({ modules, openTab }) {
                 <span style={{ fontSize: '0.74rem', fontWeight: 800, color: '#3fb950', background: 'rgba(63, 185, 80, 0.15)', padding: '3px 10px', borderRadius: '12px' }}>CONNESSI (12/12)</span>
                 <span style={{ fontSize: '1.2rem' }}>🔌</span>
               </div>
-              <h3 style={{ margin: '0 0 6px 0', fontSize: '1.05rem', color: '#fff', fontWeight: 800 }}>MCP Hub & Protocol Bus</h3>
-              <p style={{ margin: 0, fontSize: '0.8rem', color: '#8b8fa3', lineHeight: 1.5 }}>
+              <h3 style={{ margin: '0 0 6px 0', fontSize: '1.05rem', color: titleColor, fontWeight: 800 }}>MCP Hub & Protocol Bus</h3>
+              <p style={{ margin: 0, fontSize: '0.8rem', color: subtitleColor, lineHeight: 1.5 }}>
                 Tutti i 12 server MCP (Filesystem, Home Assistant, SQLite, Memory, Playwright, Brave Search) sono attivi e verificati.
               </p>
             </div>
@@ -1282,42 +1296,42 @@ export default function WelcomeDashboard({ modules, openTab }) {
 
           {/* Card 2: Hardware & GPU */}
           <div className="wg-status-card" style={{
-            padding: '20px', borderRadius: '16px', background: '#0e1017',
-            border: '1px solid rgba(0, 210, 255, 0.3)', boxShadow: '0 8px 30px rgba(0,0,0,0.5)',
+            padding: '20px', borderRadius: '16px', background: cardBg,
+            border: isLight ? '1px solid rgba(14, 165, 233, 0.35)' : '1px solid rgba(0, 210, 255, 0.3)', boxShadow: cardShadow,
             display: 'flex', flexDirection: 'column', justifyContent: 'space-between'
           }}>
             <div>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '10px' }}>
-                <span style={{ fontSize: '0.74rem', fontWeight: 800, color: '#00d2ff', background: 'rgba(0, 210, 255, 0.15)', padding: '3px 10px', borderRadius: '12px' }}>OLLAMA & GPU ONLINE</span>
+                <span style={{ fontSize: '0.74rem', fontWeight: 800, color: isLight ? '#0284c7' : '#00d2ff', background: 'rgba(0, 210, 255, 0.15)', padding: '3px 10px', borderRadius: '12px' }}>OLLAMA & GPU ONLINE</span>
                 <span style={{ fontSize: '1.2rem' }}>⚡</span>
               </div>
-              <h3 style={{ margin: '0 0 6px 0', fontSize: '1.05rem', color: '#fff', fontWeight: 800 }}>Hardware & Cluster Telemetry</h3>
-              <p style={{ margin: 0, fontSize: '0.8rem', color: '#8b8fa3', lineHeight: 1.5 }}>
+              <h3 style={{ margin: '0 0 6px 0', fontSize: '1.05rem', color: titleColor, fontWeight: 800 }}>Hardware & Cluster Telemetry</h3>
+              <p style={{ margin: 0, fontSize: '0.8rem', color: subtitleColor, lineHeight: 1.5 }}>
                 Monitoraggio VRAM in tempo reale, allocazione dinamica dei pesi su GPU NVIDIA ed esecuzione parallela dei thread.
               </p>
             </div>
-            <button onClick={() => openTab({ name: '⚡ Hardware' }, 'hardware_lab')} style={{ ...quickLinkStyle('#00d2ff'), marginTop: '16px', width: 'fit-content' }}>
+            <button onClick={() => openTab({ name: '⚡ Hardware' }, 'hardware_lab')} style={{ ...quickLinkStyle(isLight ? '#0284c7' : '#00d2ff'), marginTop: '16px', width: 'fit-content' }}>
               Hardware Monitor ⚡
             </button>
           </div>
 
           {/* Card 3: Home Assistant & Domotica */}
           <div className="wg-status-card" style={{
-            padding: '20px', borderRadius: '16px', background: '#0e1017',
-            border: '1px solid rgba(167, 139, 250, 0.3)', boxShadow: '0 8px 30px rgba(0,0,0,0.5)',
+            padding: '20px', borderRadius: '16px', background: cardBg,
+            border: isLight ? '1px solid rgba(124, 91, 240, 0.35)' : '1px solid rgba(167, 139, 250, 0.3)', boxShadow: cardShadow,
             display: 'flex', flexDirection: 'column', justifyContent: 'space-between'
           }}>
             <div>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '10px' }}>
-                <span style={{ fontSize: '0.74rem', fontWeight: 800, color: '#a78bfa', background: 'rgba(167, 139, 250, 0.15)', padding: '3px 10px', borderRadius: '12px' }}>HOME ASSISTANT OK</span>
+                <span style={{ fontSize: '0.74rem', fontWeight: 800, color: isLight ? '#7c3aed' : '#a78bfa', background: 'rgba(167, 139, 250, 0.15)', padding: '3px 10px', borderRadius: '12px' }}>HOME ASSISTANT OK</span>
                 <span style={{ fontSize: '1.2rem' }}>🏠</span>
               </div>
-              <h3 style={{ margin: '0 0 6px 0', fontSize: '1.05rem', color: '#fff', fontWeight: 800 }}>Domotica & Smart Home IoT</h3>
-              <p style={{ margin: 0, fontSize: '0.8rem', color: '#8b8fa3', lineHeight: 1.5 }}>
+              <h3 style={{ margin: '0 0 6px 0', fontSize: '1.05rem', color: titleColor, fontWeight: 800 }}>Domotica & Smart Home IoT</h3>
+              <p style={{ margin: 0, fontSize: '0.8rem', color: subtitleColor, lineHeight: 1.5 }}>
                 Integrazione diretta con Home Assistant per il controllo AI di luci, sensori di temperatura, prese smart e scene domotiche.
               </p>
             </div>
-            <button onClick={() => openTab({ name: '🏠 Domotica & Home Assistant' }, 'domotica')} style={{ ...quickLinkStyle('#a78bfa'), marginTop: '16px', width: 'fit-content' }}>
+            <button onClick={() => openTab({ name: '🏠 Domotica & Home Assistant' }, 'domotica')} style={{ ...quickLinkStyle(isLight ? '#7c3aed' : '#a78bfa'), marginTop: '16px', width: 'fit-content' }}>
               Pannello Domotica 🏠
             </button>
           </div>
@@ -1326,10 +1340,10 @@ export default function WelcomeDashboard({ modules, openTab }) {
 
       {/* Primi Passi nella Piattaforma (Interactive Card Grid) */}
       <div style={{ margin: '4px 0' }}>
-        <h2 style={{ fontSize: '1.3rem', color: '#fff', fontWeight: 800, marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+        <h2 style={{ fontSize: '1.3rem', color: titleColor, fontWeight: 800, marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '8px' }}>
           <span>🚀</span> Primi Passi & Guida alle Funzionalità della Piattaforma
         </h2>
-        <p style={{ fontSize: '0.86rem', color: '#8b8fa3', margin: '0 0 24px 0' }}>
+        <p style={{ fontSize: '0.86rem', color: subtitleColor, margin: '0 0 24px 0' }}>
           Panoramica completa ed interattiva: clicca su qualsiasi card per aprire direttamente la funzionalità desiderata:
         </p>
 
@@ -1348,15 +1362,14 @@ export default function WelcomeDashboard({ modules, openTab }) {
                 style={{
                   padding: '22px',
                   borderRadius: '18px',
-                  background: 'rgba(18, 20, 28, 0.85)',
-                  border: `1px solid ${card.color}35`,
-                  boxShadow: '0 8px 32px rgba(0, 0, 0, 0.35)',
+                  background: cardBg,
+                  border: isLight ? `1px solid ${card.color}45` : `1px solid ${card.color}35`,
+                  boxShadow: cardShadow,
                   cursor: 'pointer',
                   display: 'flex',
                   flexDirection: 'column',
                   justifyContent: 'space-between',
                   gap: '16px',
-                  backdropFilter: 'blur(12px)',
                   transition: 'all 0.25s ease'
                 }}
               >
@@ -1391,10 +1404,10 @@ export default function WelcomeDashboard({ modules, openTab }) {
                     </span>
                   </div>
 
-                  <h3 style={{ margin: '0 0 6px 0', fontSize: '0.98rem', fontWeight: 800, color: '#fff' }}>
+                  <h3 style={{ margin: '0 0 6px 0', fontSize: '0.98rem', fontWeight: 800, color: titleColor }}>
                     {card.title}
                   </h3>
-                  <p style={{ margin: 0, fontSize: '0.78rem', color: '#8b8fa3', lineHeight: 1.5 }}>
+                  <p style={{ margin: 0, fontSize: '0.78rem', color: subtitleColor, lineHeight: 1.5 }}>
                     {card.subtitle}
                   </p>
                 </div>
@@ -1407,7 +1420,7 @@ export default function WelcomeDashboard({ modules, openTab }) {
                   fontWeight: 700,
                   color: card.color,
                   paddingTop: '12px',
-                  borderTop: '1px solid rgba(255, 255, 255, 0.05)'
+                  borderTop: isLight ? '1px solid rgba(190, 160, 110, 0.2)' : '1px solid rgba(255, 255, 255, 0.05)'
                 }}>
                   <span>{card.actionText}</span>
                   <ArrowRight size={14} />

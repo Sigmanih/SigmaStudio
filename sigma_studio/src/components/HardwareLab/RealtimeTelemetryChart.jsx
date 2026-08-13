@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { Activity } from 'lucide-react';
+import { useApp } from '../../contexts/AppContext';
 
 /**
  * Modern High-Definition Realtime Telemetry Chart
@@ -12,8 +13,16 @@ export default function RealtimeTelemetryChart({
   unit = '', 
   maxVal,
   formatVal,
-  height = 100 
+  height = 100,
+  isLight: propIsLight
 }) {
+  let appContext = null;
+  try {
+    appContext = useApp();
+  } catch (e) {
+    // context optional
+  }
+  const isLight = propIsLight !== undefined ? propIsLight : (appContext?.theme === 'light');
   const [hoverIdx, setHoverIdx] = useState(null);
   const N = 30; // 30 points = 60 seconds history window
 
@@ -34,18 +43,28 @@ export default function RealtimeTelemetryChart({
   const avgVal = recent.length > 0 ? (recent.reduce((a, b) => a + b, 0) / recent.length) : 0;
   const mx = Math.max(1, maxVal || peakMax || 1);
 
+  const cardBg = isLight ? '#f9f6f0' : 'rgba(13, 16, 25, 0.7)';
+  const cardBorder = isLight 
+    ? (hoverIdx !== null ? `1px solid ${color}` : '1px solid rgba(190, 160, 110, 0.35)') 
+    : (hoverIdx !== null ? `1px solid ${color}66` : '1px solid rgba(255, 255, 255, 0.07)');
+  const labelColor = isLight ? '#111111' : '#cbd5e1';
+  const unitColor = isLight ? '#4b5563' : '#9494a5';
+  const gridLineColor = isLight ? 'rgba(0, 0, 0, 0.06)' : 'rgba(255, 255, 255, 0.03)';
+  const statPillBg = isLight ? '#ece5d8' : 'rgba(255, 255, 255, 0.04)';
+  const statPillColor = isLight ? '#111111' : '#cbd5e1';
+
   if (recent.length === 0) {
     return (
-      <div className="hw-chart-card">
+      <div className="hw-chart-card" style={{ background: cardBg, border: cardBorder }}>
         <div className="hw-chart-header">
           <div className="hw-chart-title-box">
             <div className="hw-chart-icon-wrap" style={{ background: `${color}18`, color }}>
               {Icon ? <Icon size={14} color={color} /> : <Activity size={14} color={color} />}
             </div>
-            <span className="hw-chart-label">{label}</span>
+            <span className="hw-chart-label" style={{ color: labelColor }}>{label}</span>
           </div>
         </div>
-        <div className="hw-chart-placeholder">
+        <div className="hw-chart-placeholder" style={{ color: unitColor }}>
           <Activity className="spin" size={16} color={color} />
           <span>Raccolta dati telemetria...</span>
         </div>
@@ -86,22 +105,22 @@ export default function RealtimeTelemetryChart({
     : '';
 
   const hoveredPoint = hoverIdx !== null && points[hoverIdx] ? points[hoverIdx] : null;
-  const gradId = `spark-grad-${label.replace(/[^a-zA-Z0-9]/g, '')}-${color.replace('#', '')}`;
-  const glowFilterId = `glow-${label.replace(/[^a-zA-Z0-9]/g, '')}`;
+  const gradId = `spark-grad-${label.replace(/[^a-zA-Z0-9]/g, '')}-${color.replace('#', '')}-${isLight ? 'lt' : 'dk'}`;
+  const glowFilterId = `glow-${label.replace(/[^a-zA-Z0-9]/g, '')}-${isLight ? 'lt' : 'dk'}`;
 
   return (
-    <div className="hw-chart-card" style={{ borderColor: hoverIdx !== null ? `${color}44` : 'rgba(255,255,255,0.07)' }}>
+    <div className="hw-chart-card" style={{ background: cardBg, border: cardBorder }}>
       {/* Chart Header */}
       <div className="hw-chart-header">
         <div className="hw-chart-title-box">
           <div className="hw-chart-icon-wrap" style={{ background: `${color}18`, color }}>
             {Icon ? <Icon size={14} color={color} /> : <Activity size={14} color={color} />}
           </div>
-          <span className="hw-chart-label">{label}</span>
+          <span className="hw-chart-label" style={{ color: labelColor, fontWeight: 700 }}>{label}</span>
         </div>
         <div className="hw-chart-val-box">
-          <span className="hw-chart-val" style={{ color }}>{displayVal}</span>
-          <span className="hw-chart-unit">{unit}</span>
+          <span className="hw-chart-val" style={{ color, fontWeight: 800 }}>{displayVal}</span>
+          <span className="hw-chart-unit" style={{ color: unitColor }}>{unit}</span>
         </div>
       </div>
 
@@ -118,7 +137,7 @@ export default function RealtimeTelemetryChart({
         >
           <defs>
             <linearGradient id={gradId} x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0%" stopColor={color} stopOpacity="0.35" />
+              <stop offset="0%" stopColor={color} stopOpacity={isLight ? 0.28 : 0.35} />
               <stop offset="100%" stopColor={color} stopOpacity="0.0" />
             </linearGradient>
 
@@ -132,9 +151,9 @@ export default function RealtimeTelemetryChart({
           </defs>
 
           {/* Reference Dashed Lines */}
-          <line x1="0" y1={topPadding} x2={svgWidth} y2={topPadding} stroke="rgba(255,255,255,0.03)" strokeDasharray="4 4" />
-          <line x1="0" y1={svgHeight / 2} x2={svgWidth} y2={svgHeight / 2} stroke="rgba(255,255,255,0.04)" strokeDasharray="4 4" />
-          <line x1="0" y1={svgHeight - bottomPadding} x2={svgWidth} y2={svgHeight - bottomPadding} stroke="rgba(255,255,255,0.03)" strokeDasharray="4 4" />
+          <line x1="0" y1={topPadding} x2={svgWidth} y2={topPadding} stroke={gridLineColor} strokeDasharray="4 4" />
+          <line x1="0" y1={svgHeight / 2} x2={svgWidth} y2={svgHeight / 2} stroke={gridLineColor} strokeDasharray="4 4" />
+          <line x1="0" y1={svgHeight - bottomPadding} x2={svgWidth} y2={svgHeight - bottomPadding} stroke={gridLineColor} strokeDasharray="4 4" />
 
           {/* Area Fill */}
           {areaD && <path d={areaD} fill={`url(#${gradId})`} />}
@@ -145,10 +164,10 @@ export default function RealtimeTelemetryChart({
               d={pathD} 
               fill="none" 
               stroke={color} 
-              strokeWidth="2.2" 
+              strokeWidth="2.4" 
               strokeLinecap="round" 
               strokeLinejoin="round" 
-              filter={`url(#${glowFilterId})`}
+              filter={isLight ? undefined : `url(#${glowFilterId})`}
             />
           )}
 
@@ -160,9 +179,9 @@ export default function RealtimeTelemetryChart({
               x2={hoveredPoint.x}
               y2={svgHeight - bottomPadding}
               stroke={color}
-              strokeWidth="1"
+              strokeWidth="1.2"
               strokeDasharray="2 2"
-              opacity="0.75"
+              opacity="0.8"
             />
           )}
 
@@ -173,7 +192,7 @@ export default function RealtimeTelemetryChart({
               cy={points[points.length - 1].y} 
               r="3.5" 
               fill={color}
-              stroke="#0a0c12"
+              stroke={isLight ? '#ffffff' : '#0a0c12'}
               strokeWidth="1.8"
             />
           )}
@@ -197,9 +216,9 @@ export default function RealtimeTelemetryChart({
               cx={hoveredPoint.x}
               cy={hoveredPoint.y}
               r="4.5"
-              fill="#ffffff"
+              fill={isLight ? '#fffdf9' : '#ffffff'}
               stroke={color}
-              strokeWidth="2"
+              strokeWidth="2.5"
             />
           )}
         </svg>
@@ -210,7 +229,10 @@ export default function RealtimeTelemetryChart({
             className="hw-chart-tooltip"
             style={{ 
               left: `${Math.min(85, Math.max(15, (hoveredPoint.x / svgWidth) * 100))}%`,
-              borderColor: color
+              borderColor: color,
+              background: isLight ? '#fffdf9' : 'rgba(10, 14, 23, 0.95)',
+              color: isLight ? '#111111' : '#ffffff',
+              boxShadow: isLight ? '0 6px 20px rgba(0,0,0,0.15)' : '0 6px 20px rgba(0, 0, 0, 0.6)'
             }}
           >
             {formatVal ? formatVal(hoveredPoint.val) : (typeof hoveredPoint.val === 'number' ? (Number.isInteger(hoveredPoint.val) ? hoveredPoint.val : hoveredPoint.val.toFixed(1)) : hoveredPoint.val)} {unit}
@@ -219,13 +241,13 @@ export default function RealtimeTelemetryChart({
       </div>
 
       {/* Footer Info */}
-      <div className="hw-chart-footer">
+      <div className="hw-chart-footer" style={{ color: unitColor, borderTop: isLight ? '1px dashed rgba(190, 160, 110, 0.3)' : '1px dashed rgba(255, 255, 255, 0.06)' }}>
         <span>-{recent.length * 2}s</span>
         <div style={{ display: 'flex', gap: '6px' }}>
-          <span className="hw-chart-stat-pill">Avg: {formatVal ? formatVal(avgVal) : avgVal.toFixed(1)} {unit}</span>
-          <span className="hw-chart-stat-pill">Peak: {formatVal ? formatVal(peakMax) : (Number.isInteger(peakMax) ? peakMax : peakMax.toFixed(1))} {unit}</span>
+          <span className="hw-chart-stat-pill" style={{ background: statPillBg, color: statPillColor, fontWeight: isLight ? 700 : 500 }}>Avg: {formatVal ? formatVal(avgVal) : avgVal.toFixed(1)} {unit}</span>
+          <span className="hw-chart-stat-pill" style={{ background: statPillBg, color: statPillColor, fontWeight: isLight ? 700 : 500 }}>Peak: {formatVal ? formatVal(peakMax) : (Number.isInteger(peakMax) ? peakMax : peakMax.toFixed(1))} {unit}</span>
         </div>
-        <span style={{ color, opacity: 0.9, fontWeight: 700 }}>Live ●</span>
+        <span style={{ color, opacity: 0.9, fontWeight: 800 }}>Live ●</span>
       </div>
     </div>
   );

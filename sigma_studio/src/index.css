@@ -561,8 +561,9 @@ body.theme-light,
 }
 
 /* ==============================================================================
-   Header Banner High-Contrast Typography & Dark Gradient Mask System
-   Ensures ALL header titles and subtitles are crisp white and 100% visible
+   Header Banner High-Contrast Typography & Uniform Banner System
+   Ensures ALL header titles and subtitles are sharp without shadows,
+   with background image clearly visible with a light tone in cream theme
    ============================================================================== */
 
 [style*="hero_banner.jpg"],
@@ -578,19 +579,7 @@ body.theme-light,
 [style*="roadmap_plan_banner.jpg"],
 [style*="account_voice_banner.jpg"],
 [style*="mcp_protocol_hub.jpg"],
-.theme-light [style*="hero_banner.jpg"],
-.theme-light [style*="domotica_smart_hub.jpg"],
-.theme-light [style*="chat_swarm_banner.jpg"],
-.theme-light [style*="knowledge_graph_banner.jpg"],
-.theme-light [style*="creative_lab_banner.jpg"],
-.theme-light [style*="skills_engines_banner.jpg"],
-.theme-light [style*="pipelines_lab_banner.jpg"],
-.theme-light [style*="training_lab_hero.jpg"],
-.theme-light [style*="hardware_cluster_lab.jpg"],
-.theme-light [style*="manifesti_gallery_banner.jpg"],
-.theme-light [style*="roadmap_plan_banner.jpg"],
-.theme-light [style*="account_voice_banner.jpg"],
-.theme-light [style*="mcp_protocol_hub.jpg"] {
+[style*="sigma_logo_harmonic_flow.jpg"] {
   background-size: cover !important;
   background-position: center center !important;
   background-repeat: no-repeat !important;
@@ -613,16 +602,35 @@ body.theme-light,
 [style*="manifesti_gallery_banner.jpg"]::after,
 [style*="roadmap_plan_banner.jpg"]::after,
 [style*="account_voice_banner.jpg"]::after,
-[style*="mcp_protocol_hub.jpg"]::after {
+[style*="mcp_protocol_hub.jpg"]::after,
+[style*="sigma_logo_harmonic_flow.jpg"]::after {
   content: '';
   position: absolute;
   bottom: 0;
   left: 0;
   right: 0;
   height: 3.5px;
-  background: linear-gradient(90deg, #ea580c 0%, #d97706 40%, #00d2ff 100%);
-  box-shadow: 0 0 14px rgba(234, 88, 12, 0.6);
+  background: linear-gradient(90deg, #00d2ff 0%, #3b82f6 50%, #0077ff 100%);
+  box-shadow: 0 0 14px rgba(0, 210, 255, 0.6);
   z-index: 5;
+}
+
+.theme-light [style*="hero_banner.jpg"]::after,
+.theme-light [style*="domotica_smart_hub.jpg"]::after,
+.theme-light [style*="chat_swarm_banner.jpg"]::after,
+.theme-light [style*="knowledge_graph_banner.jpg"]::after,
+.theme-light [style*="creative_lab_banner.jpg"]::after,
+.theme-light [style*="skills_engines_banner.jpg"]::after,
+.theme-light [style*="pipelines_lab_banner.jpg"]::after,
+.theme-light [style*="training_lab_hero.jpg"]::after,
+.theme-light [style*="hardware_cluster_lab.jpg"]::after,
+.theme-light [style*="manifesti_gallery_banner.jpg"]::after,
+.theme-light [style*="roadmap_plan_banner.jpg"]::after,
+.theme-light [style*="account_voice_banner.jpg"]::after,
+.theme-light [style*="mcp_protocol_hub.jpg"]::after,
+.theme-light [style*="sigma_logo_harmonic_flow.jpg"]::after {
+  background: linear-gradient(90deg, #ea580c 0%, #d97706 50%, #f97316 100%) !important;
+  box-shadow: 0 0 14px rgba(234, 88, 12, 0.6) !important;
 }
 
 /* 100% Solid & Non-Transparent Buttons inside ALL Header Banners */
@@ -638,7 +646,8 @@ body.theme-light,
 [style*="manifesti_gallery_banner.jpg"] button,
 [style*="roadmap_plan_banner.jpg"] button,
 [style*="account_voice_banner.jpg"] button,
-[style*="mcp_protocol_hub.jpg"] button {
+[style*="mcp_protocol_hub.jpg"] button,
+[style*="sigma_logo_harmonic_flow.jpg"] button {
   display: inline-flex !important;
   align-items: center !important;
   justify-content: center !important;
@@ -664,13 +673,14 @@ body.theme-light,
 [style*="knowledge_graph_banner.jpg"] button:hover,
 [style*="creative_lab_banner.jpg"] button:hover,
 [style*="skills_engines_banner.jpg"] button:hover,
-[style*="pipelines_lab_banner.jpg"] button:hover,
+[style*="pipelines_lab_banner.jpg"] button,
 [style*="training_lab_hero.jpg"] button:hover,
 [style*="hardware_cluster_lab.jpg"] button:hover,
 [style*="manifesti_gallery_banner.jpg"] button:hover,
 [style*="roadmap_plan_banner.jpg"] button:hover,
 [style*="account_voice_banner.jpg"] button:hover,
-[style*="mcp_protocol_hub.jpg"] button:hover {
+[style*="mcp_protocol_hub.jpg"] button:hover,
+[style*="sigma_logo_harmonic_flow.jpg"] button:hover {
   transform: translateY(-2px) !important;
   box-shadow: 0 6px 20px rgba(0, 210, 255, 0.35) !important;
 }
@@ -687,7 +697,8 @@ body.theme-light,
 .theme-light [style*="manifesti_gallery_banner.jpg"] button,
 .theme-light [style*="roadmap_plan_banner.jpg"] button,
 .theme-light [style*="account_voice_banner.jpg"] button,
-.theme-light [style*="mcp_protocol_hub.jpg"] button {
+.theme-light [style*="mcp_protocol_hub.jpg"] button,
+.theme-light [style*="sigma_logo_harmonic_flow.jpg"] button {
   display: inline-flex !important;
   align-items: center !important;
   justify-content: center !important;
@@ -719,7 +730,8 @@ body.theme-light,
 .theme-light [style*="manifesti_gallery_banner.jpg"] button:hover,
 .theme-light [style*="roadmap_plan_banner.jpg"] button:hover,
 .theme-light [style*="account_voice_banner.jpg"] button:hover,
-.theme-light [style*="mcp_protocol_hub.jpg"] button:hover {
+.theme-light [style*="mcp_protocol_hub.jpg"] button:hover,
+.theme-light [style*="sigma_logo_harmonic_flow.jpg"] button:hover {
   background-color: #ea580c !important;
   border-color: #ea580c !important;
   color: #ffffff !important;
@@ -727,7 +739,7 @@ body.theme-light,
   box-shadow: 0 6px 20px rgba(234, 88, 12, 0.35) !important;
 }
 
-/* Force Crisp White Titles for ALL Header Banners with Warm Orange Glow */
+/* Force Clean Titles without any Text Shadows */
 [style*="hero_banner.jpg"] h1,
 [style*="domotica_smart_hub.jpg"] h1,
 [style*="chat_swarm_banner.jpg"] h1,
@@ -741,6 +753,12 @@ body.theme-light,
 [style*="roadmap_plan_banner.jpg"] h1,
 [style*="account_voice_banner.jpg"] h1,
 [style*="mcp_protocol_hub.jpg"] h1,
+[style*="sigma_logo_harmonic_flow.jpg"] h1 {
+  color: #ffffff !important;
+  text-shadow: none !important;
+  letter-spacing: -0.5px !important;
+}
+
 .theme-light [style*="hero_banner.jpg"] h1,
 .theme-light [style*="domotica_smart_hub.jpg"] h1,
 .theme-light [style*="chat_swarm_banner.jpg"] h1,
@@ -753,13 +771,14 @@ body.theme-light,
 .theme-light [style*="manifesti_gallery_banner.jpg"] h1,
 .theme-light [style*="roadmap_plan_banner.jpg"] h1,
 .theme-light [style*="account_voice_banner.jpg"] h1,
-.theme-light [style*="mcp_protocol_hub.jpg"] h1 {
-  color: #ffffff !important;
-  text-shadow: 0 2px 10px rgba(28, 12, 4, 0.95), 0 0 20px rgba(234, 88, 12, 0.4) !important;
+.theme-light [style*="mcp_protocol_hub.jpg"] h1,
+.theme-light [style*="sigma_logo_harmonic_flow.jpg"] h1 {
+  color: #111111 !important;
+  text-shadow: none !important;
   letter-spacing: -0.5px !important;
 }
 
-/* Force Crisp Subtitles for ALL Header Banners in BOTH Themes */
+/* Force Clean Subtitles without any Text Shadows */
 [style*="hero_banner.jpg"] p,
 [style*="domotica_smart_hub.jpg"] p,
 [style*="chat_swarm_banner.jpg"] p,
@@ -773,6 +792,12 @@ body.theme-light,
 [style*="roadmap_plan_banner.jpg"] p,
 [style*="account_voice_banner.jpg"] p,
 [style*="mcp_protocol_hub.jpg"] p,
+[style*="sigma_logo_harmonic_flow.jpg"] p {
+  color: #cbd5e0 !important;
+  text-shadow: none !important;
+  opacity: 1 !important;
+}
+
 .theme-light [style*="hero_banner.jpg"] p,
 .theme-light [style*="domotica_smart_hub.jpg"] p,
 .theme-light [style*="chat_swarm_banner.jpg"] p,
@@ -785,9 +810,47 @@ body.theme-light,
 .theme-light [style*="manifesti_gallery_banner.jpg"] p,
 .theme-light [style*="roadmap_plan_banner.jpg"] p,
 .theme-light [style*="account_voice_banner.jpg"] p,
-.theme-light [style*="mcp_protocol_hub.jpg"] p {
-  color: #ffffff !important;
-  text-shadow: 0 1px 4px rgba(0, 0, 0, 0.95) !important;
+.theme-light [style*="mcp_protocol_hub.jpg"] p,
+.theme-light [style*="sigma_logo_harmonic_flow.jpg"] p {
+  color: #4b5563 !important;
+  text-shadow: none !important;
+  opacity: 1 !important;
+}
+
+/* ==============================================================================
+   Standardized 100% Solid & Non-Transparent Cards System for All Tabs
+   ============================================================================== */
+.sigma-card,
+.skill-card,
+.primi-passi-card,
+.wg-showcase-card,
+.wg-status-card,
+.hw-card,
+.tl-card,
+.manifesto-card,
+.mcp-server-card,
+.kanban-task-card,
+.roadmap-card {
+  background: #121622 !important;
+  border: 1px solid rgba(255, 255, 255, 0.08) !important;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.45) !important;
+  opacity: 1 !important;
+}
+
+.theme-light .sigma-card,
+.theme-light .skill-card,
+.theme-light .primi-passi-card,
+.theme-light .wg-showcase-card,
+.theme-light .wg-status-card,
+.theme-light .hw-card,
+.theme-light .tl-card,
+.theme-light .manifesto-card,
+.theme-light .mcp-server-card,
+.theme-light .kanban-task-card,
+.theme-light .roadmap-card {
+  background: #fffdf9 !important;
+  border: 1px solid rgba(190, 160, 110, 0.32) !important;
+  box-shadow: 0 4px 16px rgba(190, 160, 110, 0.12) !important;
   opacity: 1 !important;
 }
 
@@ -820,28 +883,6 @@ body.theme-light,
 .theme-light [style*="color: #5a5e72"],
 .theme-light [style*="color:#5a5e72"] {
   color: #2e2820 !important;
-}
-
-.theme-light .wg-metric-label {
-  color: #26221c !important;
-  font-weight: 800 !important;
-}
-
-.theme-light .wg-container p:not([style*="hero_banner.jpg"] p),
-.theme-light .wg-showcase-card p,
-.theme-light .wg-status-card p {
-  color: #2e2820 !important;
-}
-
-/* Home Header Description Paragraph - Pure Bright White (#ffffff) in BOTH themes */
-[style*="hero_banner.jpg"] p,
-.wg-container [style*="hero_banner.jpg"] p,
-.theme-light .wg-container [style*="hero_banner.jpg"] p,
-.theme-light [style*="hero_banner.jpg"] p {
-  color: #ffffff !important;
-  text-shadow: 0 1px 4px rgba(0, 0, 0, 0.95) !important;
-  opacity: 1 !important;
-  font-weight: 500 !important;
 }
 
 .theme-light strong,
@@ -2976,4 +3017,37 @@ body.theme-light,
   background: #f2ede2 !important;
   border-color: rgba(190, 160, 110, 0.3) !important;
   color: #111111 !important;
+}
+
+/* ==============================================================================
+   MANIFESTI GALLERY — THEME LIGHT TYPOGRAPHY & TEXT SPECIFICATION
+   "tutte le scritte in tema chiaro in manifesti devono essere nere."
+   ============================================================================== */
+.theme-light .manifesti-gallery-root {
+  color: #000000 !important;
+}
+
+.theme-light .manifesti-gallery-root h1,
+.theme-light .manifesti-gallery-root h2,
+.theme-light .manifesti-gallery-root h3,
+.theme-light .manifesti-gallery-root h4,
+.theme-light .manifesti-gallery-root p,
+.theme-light .manifesti-gallery-root label,
+.theme-light .manifesti-gallery-root strong,
+.theme-light .manifesti-gallery-root code,
+.theme-light .manifesti-gallery-root input,
+.theme-light .manifesti-gallery-root select,
+.theme-light .manifesti-gallery-root textarea {
+  color: #000000 !important;
+}
+
+.theme-light .manifesti-gallery-root .mg-card p,
+.theme-light .manifesti-gallery-root .mg-card span,
+.theme-light .manifesti-gallery-root .mg-card strong,
+.theme-light .manifesti-gallery-root .mg-card code {
+  color: #000000 !important;
+}
+
+.theme-light .manifesti-gallery-root button:not([style*="background: linear-gradient"]):not([style*="background: rgb(234, 88, 12)"]):not([style*="background: #ea580c"]) {
+  color: #000000 !important;
 }
