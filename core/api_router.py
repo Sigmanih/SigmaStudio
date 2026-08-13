@@ -99,9 +99,11 @@ def register_get_handlers(handler_class):
         '/api/creative/models/categories': 'handle_creative_model_categories',
         '/api/creative/models/inventory': 'handle_creative_model_inventory',
         '/api/creative/workflows': 'handle_creative_workflows',
-        # Skills & applicazioni gestite
+        # Skills & applicazioni gestite & Marketplace & Manifesti Hub
         '/api/skills': 'handle_skills_list',
         '/api/apps': 'handle_apps_status',
+        '/api/marketplace/modules': 'handle_marketplace_modules',
+        '/api/manifesti/hub': 'handle_manifesti_hub',
     }
 
 
@@ -233,6 +235,9 @@ def register_post_handlers(handler_class):
         '/api/skills/toggle': 'handle_skills_toggle',
         '/api/apps/launch': 'handle_apps_launch',
         '/api/apps/autoconfigure': 'handle_apps_autoconfigure',
+        '/api/marketplace/install': 'handle_marketplace_install',
+        '/api/marketplace/rebuild': 'handle_marketplace_rebuild',
+        '/api/manifesti/install_from_hub': 'handle_manifesti_install_from_hub',
         '/api/creative/workflows/save': 'handle_creative_workflow_save',
         '/api/creative/workflows/delete': 'handle_creative_workflow_delete',
     }

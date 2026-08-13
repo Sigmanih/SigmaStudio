@@ -10,7 +10,7 @@ export function useTabs() {
 
   const openTab = useCallback((item, type) => {
     // Singleton types (no path needed — one tab per type)
-    const SINGLETON_TYPES = ['chat', 'research_lab', 'training_lab', 'hardware_lab', 'roadmap', 'whitepapers_lib', 'knowledge', 'mappa_argomenti', 'account'];
+    const SINGLETON_TYPES = ['chat', 'research_lab', 'training_lab', 'hardware_lab', 'roadmap', 'whitepapers_lib', 'knowledge', 'mappa_argomenti', 'account', 'marketplace'];
     const tabId = SINGLETON_TYPES.includes(type)
       ? `${type}-singleton`
       : `${type}-${item.path || item.folder || item.name || type}`;

@@ -259,7 +259,84 @@ def _determine_agent_by_request(message: str, ai_cfg: dict, model_override: str)
             log.info("Centralino Switchboard (Semantic match: Pure & Applied Math) -> manifesti/math_researcher.md")
             return "manifesti/math_researcher.md"
 
-    # 6. System Architecture & Roadmap -> sigma_architect
+    # 6. Physics & Simulations -> physics_professor
+    physics_patterns = [r'\b(fisic|quantistic|schrodinger|maxwell|relativit|elettromagnet|termodinamic|newton|meccanica|cinematica|ottica|gravit|dinamica)\w*']
+    if any(re.search(p, msg_lower, re.IGNORECASE) for p in physics_patterns):
+        if os.path.exists("manifesti/physics_professor.md"):
+            log.info("Centralino Switchboard (Semantic match: Physics) -> manifesti/physics_professor.md")
+            return "manifesti/physics_professor.md"
+
+    # 7. Chemistry & Molecular Modeling -> chemistry_professor
+    chem_patterns = [r'\b(chimic|molecol|stechiometr|titolazion|reazion|organica|inorganica|ph|soluzion|legame\s+chimico|orbital|idrocarb)\w*']
+    if any(re.search(p, msg_lower, re.IGNORECASE) for p in chem_patterns):
+        if os.path.exists("manifesti/chemistry_professor.md"):
+            log.info("Centralino Switchboard (Semantic match: Chemistry) -> manifesti/chemistry_professor.md")
+            return "manifesti/chemistry_professor.md"
+
+    # 8. Medicine, Health & Pharmacology -> medico_divulgatore
+    med_patterns = [r'\b(medic|salute|farmac|terapi|patolog|sintom|refert|fisiolog|anatom|clinica|diagnos|paziente)\w*']
+    if any(re.search(p, msg_lower, re.IGNORECASE) for p in med_patterns):
+        if os.path.exists("manifesti/medico_divulgatore.md"):
+            log.info("Centralino Switchboard (Semantic match: Medicine) -> manifesti/medico_divulgatore.md")
+            return "manifesti/medico_divulgatore.md"
+
+    # 9. Law, Contracts & Compliance -> consulente_legale
+    legal_patterns = [r'\b(legal|giurid|contratt|clausol|normativ|gdpr|ai\s*act|diritto|avvocat|illecit|responsabilit|decreto|legge)\w*']
+    if any(re.search(p, msg_lower, re.IGNORECASE) for p in legal_patterns):
+        if os.path.exists("manifesti/consulente_legale.md"):
+            log.info("Centralino Switchboard (Semantic match: Legal) -> manifesti/consulente_legale.md")
+            return "manifesti/consulente_legale.md"
+
+    # 10. Finance, Valuation & Economics -> financial_analyst
+    fin_patterns = [r'\b(finanz|bilanc|dcf|ebitda|investim|portafogl|wacc|roe|roi|azion|macroeconom|inflazion|tassi|banca)\w*']
+    if any(re.search(p, msg_lower, re.IGNORECASE) for p in fin_patterns):
+        if os.path.exists("manifesti/financial_analyst.md"):
+            log.info("Centralino Switchboard (Semantic match: Finance) -> manifesti/financial_analyst.md")
+            return "manifesti/financial_analyst.md"
+
+    # 11. Data Science & Machine Learning -> data_scientist
+    ds_patterns = [r'\b(data\s*science|machine\s*learning|pandas|pytorch|scikit|feature|cross\s*validation|clustering|regression|dataset|eda)\w*']
+    if any(re.search(p, msg_lower, re.IGNORECASE) for p in ds_patterns):
+        if os.path.exists("manifesti/data_scientist.md"):
+            log.info("Centralino Switchboard (Semantic match: Data Science) -> manifesti/data_scientist.md")
+            return "manifesti/data_scientist.md"
+
+    # 12. Foreign Languages & Translation -> docente_lingue
+    lang_patterns = [r'\b(traduzion|traduc|inglese|spagnolo|francese|tedesco|grammatica\s+inglese|ielts|toefl|fonetica\s+ipa)\w*']
+    if any(re.search(p, msg_lower, re.IGNORECASE) for p in lang_patterns):
+        if os.path.exists("manifesti/docente_lingue.md"):
+            log.info("Centralino Switchboard (Semantic match: Languages) -> manifesti/docente_lingue.md")
+            return "manifesti/docente_lingue.md"
+
+    # 13. Mechanical & Structural Engineering -> ingegnere_strutturista
+    eng_patterns = [r'\b(struttur|meccanic|scienza\s+costruzioni|trave|flession|taglio|torsion|fem|cad|von\s*mises|sollecitaz)\w*']
+    if any(re.search(p, msg_lower, re.IGNORECASE) for p in eng_patterns):
+        if os.path.exists("manifesti/ingegnere_strutturista.md"):
+            log.info("Centralino Switchboard (Semantic match: Engineering) -> manifesti/ingegnere_strutturista.md")
+            return "manifesti/ingegnere_strutturista.md"
+
+    # 14. Copywriting & Creative Storytelling -> copywriter_storyteller
+    copy_patterns = [r'\b(copywriting|storytelling|sceneggiatur|racconto|romanzo|aida|copy\s+pubblicitar|campagna\s+social|post\s+instagram)\w*']
+    if any(re.search(p, msg_lower, re.IGNORECASE) for p in copy_patterns):
+        if os.path.exists("manifesti/copywriter_storyteller.md"):
+            log.info("Centralino Switchboard (Semantic match: Copywriting) -> manifesti/copywriter_storyteller.md")
+            return "manifesti/copywriter_storyteller.md"
+
+    # 15. Exams, Quizzes & Grading -> academic_examiner
+    exam_patterns = [r'\b(esam|quiz|prova\s+scritta|test\s+multiple|griglia\s+valutazione|rubrica|voto|correzion\s+compito)\w*']
+    if any(re.search(p, msg_lower, re.IGNORECASE) for p in exam_patterns):
+        if os.path.exists("manifesti/academic_examiner.md"):
+            log.info("Centralino Switchboard (Semantic match: Examiner) -> manifesti/academic_examiner.md")
+            return "manifesti/academic_examiner.md"
+
+    # 16. Web Research & News Journalism -> online_journalist
+    journ_patterns = [r'\b(cerca\s+sul\s+web|ricerca\s+online|notizie|ultime\s+notizie|rassegna\s+stampa|fact\s*check|giornalist|inchiesta)\w*']
+    if any(re.search(p, msg_lower, re.IGNORECASE) for p in journ_patterns):
+        if os.path.exists("manifesti/online_journalist.md"):
+            log.info("Centralino Switchboard (Semantic match: Journalism) -> manifesti/online_journalist.md")
+            return "manifesti/online_journalist.md"
+
+    # 17. System Architecture & Roadmap -> sigma_architect
     arch_patterns = [r'\b(architettur|roadmap|pianific|modul|struttura\s+progetto)\w*']
     if any(re.search(p, msg_lower, re.IGNORECASE) for p in arch_patterns):
         if os.path.exists("manifesti/sigma_architect.md"):

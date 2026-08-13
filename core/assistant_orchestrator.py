@@ -17,16 +17,22 @@ from core.agent_registry import get_agent
 
 log = logging.getLogger("sigma.orchestrator")
 
-# Agents that can be routed to
-ROUTABLE_AGENTS = {
-    "sigma_admin": "manifesti/sigma_admin.md",
-    "sigma_architect": "manifesti/sigma_architect.md",
-    "code_architect": "manifesti/code_architect.md",
-    "math_researcher": "manifesti/math_researcher.md",
-    "test_engineer": "manifesti/test_engineer.md",
-    "viz_designer": "manifesti/viz_designer.md",
-    "proof_reviewer": "manifesti/proof_reviewer.md",
-}
+def get_routable_agents() -> dict:
+    """Dynamically scan manifesti/ and manifesti/Private/ for all routable agents."""
+    agents = {}
+    manifesto_dir = 'manifesti'
+    if os.path.isdir(manifesto_dir):
+        for f in os.listdir(manifesto_dir):
+            if f.endswith('.md') and f.lower() != 'readme.md':
+                agent_id = f[:-3]
+                agents[agent_id] = f"manifesti/{f}"
+        p_dir = os.path.join(manifesto_dir, 'Private')
+        if os.path.isdir(p_dir):
+            for f in os.listdir(p_dir):
+                if f.endswith('.md'):
+                    agent_id = f[:-3]
+                    agents[agent_id] = f"manifesti/Private/{f}"
+    return agents
 
 
 def handle_switch_agent(self, agent_name: str, message: str, history: list, bot_name: str = "Sigma Assistant") -> dict:
@@ -42,10 +48,11 @@ def handle_switch_agent(self, agent_name: str, message: str, history: list, bot_
     Returns:
         Response dict with 'response', 'thinking', 'actions_log'
     """
-    manifesto_path = ROUTABLE_AGENTS.get(agent_name)
+    routable = get_routable_agents()
+    manifesto_path = routable.get(agent_name) or routable.get(agent_name.lower().replace(' ', '_'))
     if not manifesto_path:
         return {
-            "response": f"Agente '{agent_name}' non trovato. Agenti disponibili: {', '.join(ROUTABLE_AGENTS.keys())}",
+            "response": f"Agente '{agent_name}' non trovato. Agenti disponibili: {', '.join(routable.keys())}",
             "thinking": None,
             "actions_log": []
         }

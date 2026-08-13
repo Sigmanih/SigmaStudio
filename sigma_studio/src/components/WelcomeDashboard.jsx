@@ -2,7 +2,7 @@ import React, { useEffect, useState, useRef, useCallback } from 'react';
 import { 
   FolderTree, MessageSquare, Edit3, Share2, Palette, 
   FlaskConical, Cpu, Home as HomeIcon, Scroll, Microscope, ArrowRight,
-  Sun, Moon
+  Sun, Moon, Store, Sparkles, ShieldCheck, Zap, Layers
 } from 'lucide-react';
 import { useApp } from '../contexts/AppContext';
 import TechSpaceCanvas from './common/TechSpaceCanvas';
@@ -10,93 +10,75 @@ import TechSpaceCanvas from './common/TechSpaceCanvas';
 const PRIMI_PASSI_CARDS = [
   {
     step: '01',
-    title: 'Organizza Argomenti & Moduli',
-    subtitle: 'Crea domini e moduli in data/ per raggruppare Teoria, Script Python, Visualizzazioni e Whitepaper.',
-    icon: FolderTree,
+    title: 'Setup Modelli & Hardware',
+    subtitle: 'Verifica la connessione a Ollama locale o API Cloud (OpenAI, DeepSeek) e monitora la memoria VRAM GPU.',
+    icon: Cpu,
     color: '#00d2ff',
+    actionText: 'Hardware & AI',
+    onClick: (openTab) => openTab({ name: '⚡ Hardware' }, 'hardware_lab')
+  },
+  {
+    step: '02',
+    title: 'Argomenti & Moduli di Conoscenza',
+    subtitle: 'Struttura cartelle in data/ per raggruppare Teoria LaTeX, Script Python, Test Pytest e Visualizzazioni D3.js.',
+    icon: FolderTree,
+    color: '#3fb950',
     actionText: 'Mappa Argomenti',
     onClick: (openTab) => openTab({ name: 'Argomenti' }, 'knowledge')
   },
   {
-    step: '02',
+    step: '03',
     title: 'AI Chat & Swarm Multi-Agente',
-    subtitle: 'Collabora con modelli LLM locali (Ollama) o Cloud e delega compiti a uno swarm di agenti specializzati.',
+    subtitle: 'Collabora con ruoli specializzati (Matematico, Programmatore, Reviewer) con 4 modalità: Ask, Plan, Execute, Complete.',
     icon: MessageSquare,
     color: '#7c5bf0',
     actionText: 'AI Chat Studio',
     onClick: (openTab) => openTab({ name: 'AI Chat Workspace' }, 'chat')
   },
   {
-    step: '03',
-    title: 'Editor Markdown & KaTeX',
-    subtitle: 'Scrivi documenti scientifici con formule LaTeX in tempo reale e diagrammi di flusso Mermaid esportabili.',
-    icon: Edit3,
-    color: '#3fb950',
-    actionText: 'Apri Editor',
-    onClick: (openTab) => openTab({ path: 'README_IT.md', filename: 'README_IT.md' }, 'editor')
-  },
-  {
     step: '04',
-    title: 'Mappa Interattiva Knowledge',
-    subtitle: 'Esplora la rete gerarchica dei nodi di conoscenza con navigazione visiva e gestione argomenti.',
-    icon: Share2,
-    color: '#d29922',
-    actionText: 'Knowledge Graph',
-    onClick: (openTab) => openTab({ name: 'Argomenti' }, 'knowledge')
+    title: 'Pipelines Lab & Dynamic Swarm',
+    subtitle: 'Trasforma un obiettivo scientifico in un grafo DAG di micro-task eseguiti in parallelo con self-healing automatico.',
+    icon: FlaskConical,
+    color: '#a78bfa',
+    actionText: 'Pipelines Lab',
+    onClick: (openTab) => openTab({ name: '🔬 Pipelines Lab' }, 'research_lab')
   },
   {
     step: '05',
-    title: 'Creative Studio & Asset 8K/3D',
-    subtitle: 'Usa i motori MCP Grafici per generare immagini 8K, render 3D e visualizzare lightbox ad alta risoluzione.',
+    title: 'Training Lab & SLM Forge',
+    subtitle: 'Addestra modelli linguistici con Unsloth QLoRA, avvia l\'Autopilota di iperparametri o valuta su 11 benchmark.',
+    icon: Sparkles,
+    color: '#d29922',
+    actionText: 'Training Lab',
+    onClick: (openTab) => openTab({ name: 'Training Lab' }, 'training_lab')
+  },
+  {
+    step: '06',
+    title: 'Creative Studio 3D & 2D',
+    subtitle: 'Generazione immagini 8K, texture PBR, inpainting, rimozione sfondo e rendering 3D tramite Blender headless.',
     icon: Palette,
     color: '#ff5064',
     actionText: 'Creative Studio',
     onClick: (openTab) => openTab({ name: '🎨 Creative Studio' }, 'creative_studio')
   },
   {
-    step: '06',
-    title: 'Training Lab & SLM Forge',
-    subtitle: 'Esegui il fine-tuning con Unsloth QLoRA, avvia l\'Autopilota o valuta il tuo modello su 11 benchmark.',
-    icon: FlaskConical,
-    color: '#d29922',
-    actionText: 'Training Lab',
-    onClick: (openTab) => openTab({ name: 'Training Lab' }, 'training_lab')
-  },
-  {
     step: '07',
-    title: 'Hardware Lab & GPU Monitor',
-    subtitle: 'Controlla il consumo VRAM delle GPU NVIDIA, gestisci il demone Ollama ed ottimizzi le risorse di calcolo.',
-    icon: Cpu,
-    color: '#00d2ff',
-    actionText: 'Hardware Lab',
-    onClick: (openTab) => openTab({ name: '⚡ Hardware' }, 'hardware_lab')
-  },
-  {
-    step: '08',
     title: 'Domotica IoT & Home Assistant',
-    subtitle: 'Controlla dispositivi smart, luci, climatizzatori ed attiva scene domotiche via comandi vocali/AI.',
+    subtitle: 'Controlla dispositivi smart, sensori, luci e termostati della tua casa tramite server MCP dedicati.',
     icon: HomeIcon,
-    color: '#a78bfa',
+    color: '#00f2fe',
     actionText: 'Pannello Domotica',
     onClick: (openTab) => openTab({ name: '🏠 Domotica & Home Assistant' }, 'domotica')
   },
   {
-    step: '09',
-    title: 'Modelfile & Manifesti AI',
-    subtitle: 'Personalizza system prompt permanenti, parametri di generazione e registra manifesti di condotta.',
-    icon: Scroll,
-    color: '#3fb950',
-    actionText: 'Manifesti AI',
-    onClick: (openTab) => openTab({ name: 'Manifesti' }, 'whitepapers_lib')
-  },
-  {
-    step: '10',
-    title: 'Research Lab & Task Pipeline',
-    subtitle: 'Pianifica task, monitora le attività collegate ai moduli ed esegui pipeline scientifiche autonome.',
-    icon: Microscope,
-    color: '#7c5bf0',
-    actionText: 'Research Lab',
-    onClick: (openTab) => openTab({ name: 'Research Lab' }, 'research_lab')
+    step: '08',
+    title: 'Kernel Marketplace & Moduli Git',
+    subtitle: 'Estendi il Kernel scaricando moduli da repository Git esterni con pipeline automatica di compilazione.',
+    icon: Store,
+    color: '#bc8cff',
+    actionText: 'Marketplace',
+    onClick: (openTab) => openTab({ name: '🛍️ Marketplace Moduli' }, 'marketplace')
   }
 ];
 
@@ -872,47 +854,69 @@ export default function WelcomeDashboard({ modules, openTab }) {
         flexShrink: 0
       }}>
         <div style={{ position: 'relative', zIndex: 2, display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '16px' }}>
-          <div style={{ maxWidth: '680px' }}>
+          <div style={{ maxWidth: '720px', display: 'flex', alignItems: 'center', gap: '18px' }}>
             <div style={{
-              display: 'inline-flex',
+              width: '56px',
+              height: '56px',
+              borderRadius: '50%',
+              overflow: 'hidden',
+              border: '2px solid #00d2ff',
+              boxShadow: '0 0 20px rgba(0, 210, 255, 0.5), inset 0 0 10px rgba(0, 210, 255, 0.3)',
+              display: 'flex',
               alignItems: 'center',
-              gap: '6px',
-              padding: '3px 12px',
-              borderRadius: '14px',
-              background: 'rgba(0, 210, 255, 0.15)',
-              border: '1px solid rgba(0, 210, 255, 0.35)',
-              color: '#00d2ff',
-              fontSize: '0.68rem',
-              fontWeight: 800,
-              letterSpacing: '1px',
-              textTransform: 'uppercase',
-              marginBottom: '6px'
+              justifyContent: 'center',
+              background: '#0a0d14',
+              flexShrink: 0
             }}>
-              <span>🧬</span> Σ SIGMA STUDIO v8.0 — COGNITIVE KERNEL
+              <img 
+                src="/images/sigma_logo_harmonic_flow.jpg" 
+                alt="Sigma Logo" 
+                style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                onError={(e) => { e.target.src = '/sigma_logo.jpg'; }}
+              />
             </div>
+            <div>
+              <div style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '6px',
+                padding: '3px 12px',
+                borderRadius: '14px',
+                background: 'rgba(0, 210, 255, 0.15)',
+                border: '1px solid rgba(0, 210, 255, 0.35)',
+                color: '#00d2ff',
+                fontSize: '0.68rem',
+                fontWeight: 800,
+                letterSpacing: '1px',
+                textTransform: 'uppercase',
+                marginBottom: '4px'
+              }}>
+                <span>🧬</span> Σ SIGMA STUDIO v8.0 — COGNITIVE KERNEL
+              </div>
 
-            <h1 style={{
-              fontSize: '1.35rem',
-              fontWeight: 800,
-              color: '#fff',
-              margin: '0 0 4px 0',
-              letterSpacing: '-0.3px'
-            }}>
-              Piattaforma di Orchestrazione AI & <span style={{
-                background: 'linear-gradient(135deg, #00d2ff 0%, #7c5bf0 100%)',
-                WebkitBackgroundClip: 'text',
-                WebkitTextFillColor: 'transparent'
-              }}>Ricerca Multimodale</span>
-            </h1>
+              <h1 style={{
+                fontSize: '1.4rem',
+                fontWeight: 800,
+                color: '#fff',
+                margin: '0 0 4px 0',
+                letterSpacing: '-0.3px'
+              }}>
+                Piattaforma di Orchestrazione AI & <span style={{
+                  background: 'linear-gradient(135deg, #00d2ff 0%, #7c5bf0 100%)',
+                  WebkitBackgroundClip: 'text',
+                  WebkitTextFillColor: 'transparent'
+                }}>Ricerca Multimodale</span>
+              </h1>
 
-            <p style={{
-              fontSize: '0.78rem',
-              color: '#ffffff',
-              lineHeight: 1.4,
-              margin: 0
-            }}>
-              Un ambiente eseguibile in cui team di agenti AI collaborano per creare, verificare con script di test e generare risorse 3D e multimediali.
-            </p>
+              <p style={{
+                fontSize: '0.78rem',
+                color: '#cbd5e0',
+                lineHeight: 1.4,
+                margin: 0
+              }}>
+                Ambiente integrato modulare: agenti AI specializzati, test computazionali Pytest, fine-tuning Unsloth, rendering 3D e marketplace di estensioni.
+              </p>
+            </div>
           </div>
 
           {/* README Action Buttons & Theme Toggle on the Right */}

@@ -1,6 +1,6 @@
 import React from 'react';
 import { 
-  Home, FileText, Activity, PieChart, Layers, ChevronRight, MessageSquare, FlaskConical, Brain, Zap, User, Server, Wrench, Palette, Blocks, Sun, Moon
+  Home, FileText, Activity, PieChart, Layers, ChevronRight, MessageSquare, FlaskConical, Brain, Zap, User, Server, Wrench, Palette, Blocks, Sun, Moon, Store, Package
 } from 'lucide-react';
 import { useApp } from '../contexts/AppContext';
 
@@ -156,9 +156,41 @@ export default function Sidebar({
       </button>
       <div className="sidebar-content">
         <div className="sidebar-header">
-          <div className="logo" style={{ marginBottom: '16px' }}>
-            <Layers className="logo-icon" size={24} />
-            <h2>Sigma <span>Studio</span></h2>
+          <div 
+            className="logo" 
+            onClick={goHome}
+            title="Torna alla Bacheca"
+            style={{ 
+              marginBottom: '16px', 
+              cursor: 'pointer', 
+              display: 'flex', 
+              alignItems: 'center', 
+              gap: '12px',
+              userSelect: 'none'
+            }}
+          >
+            <div style={{
+              width: '38px',
+              height: '38px',
+              borderRadius: '50%',
+              overflow: 'hidden',
+              border: '2px solid #00d2ff',
+              boxShadow: '0 0 14px rgba(0, 210, 255, 0.45), inset 0 0 8px rgba(0, 210, 255, 0.25)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              background: '#0a0d14',
+              flexShrink: 0,
+              transition: 'transform 0.2s ease, box-shadow 0.2s ease'
+            }}>
+              <img 
+                src="/images/sigma_logo_harmonic_flow.jpg" 
+                alt="Sigma Logo" 
+                style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                onError={(e) => { e.target.src = '/sigma_logo.jpg'; }}
+              />
+            </div>
+            <h2 style={{ margin: 0, fontSize: '1.15rem' }}>Sigma <span style={{ color: '#00d2ff' }}>Studio</span></h2>
           </div>
 
           {/* Modern Theme Switcher directly under Sigma Studio Logo */}
@@ -316,6 +348,14 @@ export default function Sidebar({
             label="Account & Voce" 
             active={activeTabId != null && activeTabId.startsWith('account')}
             onClick={() => openTab({ name: '👤 Account & Profilo' }, 'account')} 
+          />
+          <SidebarItem 
+            icon={Store} 
+            label="Marketplace" 
+            badge="KERNEL"
+            badgeColor="rgba(0,210,255,0.2)"
+            active={activeTabId != null && activeTabId.startsWith('marketplace')}
+            onClick={() => openTab({ name: '🛍️ Marketplace Moduli' }, 'marketplace')} 
           />
         </nav>
 

@@ -15,15 +15,27 @@ const isImagePath = (p) => typeof p === 'string' && IMAGE_EXTENSIONS.test(p);
 // ==============================================================================
 
 const AGENT_COLORS = {
-  sigma_architect: { bg: '#7c5bf0', color: '#ffffff', icon: '🏗️', short: 'Arch', name: 'Sigma Architect', image: '/images/agente0.png' },
-  math_researcher: { bg: '#3fb950', color: '#ffffff', icon: '∑', short: 'Math', name: 'Sigma Math Researcher', image: '/images/matematicoAi.png' },
-  code_architect: { bg: '#00d2ff', color: '#0e1016', icon: '⚙️', short: 'Code', name: 'Sigma Code Architect', image: '/images/programmatoreAi.png' },
-  viz_designer: { bg: '#ff79c6', color: '#ffffff', icon: '🎨', short: 'Viz', name: 'Sigma Viz Designer', image: '/images/default.png' },
-  test_engineer: { bg: '#f1fa8c', color: '#0e1016', icon: '🧪', short: 'Test', name: 'Sigma Test Engineer', image: '/images/default.png' },
-  proof_reviewer: { bg: '#ff5555', color: '#ffffff', icon: '🔍', short: 'Review', name: 'Sigma Proof Reviewer', image: '/images/default.png' },
+  sigma_architect: { bg: '#bc8cff', color: '#0e1016', icon: '🏗️', short: 'Arch', name: 'Sigma Architect', image: '/images/agente0.png' },
+  math_researcher: { bg: '#00d2ff', color: '#0e1016', icon: '∑', short: 'Math', name: 'Sigma Math Researcher', image: '/images/matematicoAi.png' },
+  code_architect: { bg: '#3fb950', color: '#0e1016', icon: '⚙️', short: 'Code', name: 'Sigma Code Architect', image: '/images/programmatoreAi.png' },
+  viz_designer: { bg: '#ff79c6', color: '#0e1016', icon: '🎨', short: 'Viz', name: 'Sigma Viz Designer', image: '/images/default.png' },
+  test_engineer: { bg: '#3fb950', color: '#0e1016', icon: '🧪', short: 'Test', name: 'Sigma Test Engineer', image: '/images/default.png' },
+  proof_reviewer: { bg: '#ff5064', color: '#ffffff', icon: '🔍', short: 'Review', name: 'Sigma Proof Reviewer', image: '/images/default.png' },
+  physics_professor: { bg: '#ff5064', color: '#ffffff', icon: '⚛️', short: 'Physics', name: 'Professore di Fisica', image: '/images/default.png' },
+  chemistry_professor: { bg: '#00f2fe', color: '#0e1016', icon: '🧪', short: 'Chemistry', name: 'Professore di Chimica', image: '/images/default.png' },
+  academic_examiner: { bg: '#d29922', color: '#0e1016', icon: '🎓', short: 'Examiner', name: 'Academic Examiner', image: '/images/default.png' },
+  online_journalist: { bg: '#d29922', color: '#0e1016', icon: '📰', short: 'News', name: 'Online Journalist', image: '/images/default.png' },
   sigma_assistant: { bg: '#00f2fe', color: '#0e1016', icon: '🤖', short: 'Assist', name: 'Sigma Assistant', image: '/images/default.png' },
   sigma_admin: { bg: '#ffb86c', color: '#0e1016', icon: '⚡', short: 'Admin', name: 'Sigma Admin', image: '/images/agente0.png' },
-  math1: { bg: '#3fb950', color: '#ffffff', icon: '∑', short: 'Math', name: 'Sigma Math Researcher', image: '/images/matematicoAi.png' },
+  tutor_matematica: { bg: '#00d2ff', color: '#0e1016', icon: '📐', short: 'Tutor', name: 'Tutor Matematica', image: '/images/matematicoAi.png' },
+  docente_lingue: { bg: '#bc8cff', color: '#0e1016', icon: '🌍', short: 'Lingue', name: 'Docente di Lingue', image: '/images/default.png' },
+  consulente_legale: { bg: '#d29922', color: '#0e1016', icon: '⚖️', short: 'Legale', name: 'Consulente Legale', image: '/images/default.png' },
+  medico_divulgatore: { bg: '#ff5064', color: '#ffffff', icon: '🩺', short: 'Medico', name: 'Medico Consulente', image: '/images/default.png' },
+  financial_analyst: { bg: '#3fb950', color: '#0e1016', icon: '📈', short: 'Finance', name: 'Analista Finanziario', image: '/images/default.png' },
+  data_scientist: { bg: '#00d2ff', color: '#0e1016', icon: '📊', short: 'Data', name: 'Data Scientist', image: '/images/default.png' },
+  copywriter_storyteller: { bg: '#ff79c6', color: '#0e1016', icon: '✍️', short: 'Copy', name: 'Copywriter Creativo', image: '/images/default.png' },
+  ingegnere_strutturista: { bg: '#d29922', color: '#0e1016', icon: '🔧', short: 'Eng', name: 'Ingegnere Meccanico', image: '/images/default.png' },
+  math1: { bg: '#00d2ff', color: '#0e1016', icon: '∑', short: 'Math', name: 'Sigma Math Researcher', image: '/images/matematicoAi.png' },
 };
 
 export function getAgentStyle(agentId) {

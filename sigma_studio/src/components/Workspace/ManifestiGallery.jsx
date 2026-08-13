@@ -1,1117 +1,1558 @@
-import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { 
-  ArrowRight, BookOpen, FileText, FileSignature, Layers, FileDown, 
-  Sparkles, ScrollText, Eye, Plus, Cpu, Play, CheckCircle, AlertCircle, Loader,
-  Info, Code, GitBranch, Wand2, Upload, Brain, Target, Award, Zap, RefreshCw, User,
-  ChevronLeft, ChevronRight, Check
+  ScrollText, Cpu, Brain, Code, ShieldCheck, CheckCircle, Palette, 
+  Atom, FlaskConical, Award, Wand2, Wrench, MessageSquare, 
+  Search, Filter, Play, Edit3, Image as ImageIcon, Copy, Check, 
+  ExternalLink, Sparkles, Terminal, Layers, Plus, X, ArrowRight,
+  Info, RefreshCw, ChevronRight, Sliders, Box, Download, Globe,
+  Users, BookOpen, GraduationCap, Briefcase, HeartPulse, Scale, TrendingUp
 } from 'lucide-react';
 import { useApp } from '../../contexts/AppContext';
 
-// ── Shared style tokens (crema / dark) ─────────────────────────────────────
-const getThemeTokens = (isLight) => ({
-  bg:        isLight ? '#f7f4ed' : '#080a10',
-  cardBg:    isLight ? '#fffdf9' : '#0e1017',
-  cardHover: isLight ? '#f2ede2' : '#141824',
-  border:    isLight ? 'rgba(190, 160, 110, 0.35)' : 'rgba(255,255,255,0.06)',
-  borderHov: isLight ? 'rgba(234, 88, 12, 0.4)' : 'rgba(255,255,255,0.12)',
-  accent:    isLight ? '#ea580c' : '#00d2ff',
-  accent2:   isLight ? '#d97706' : '#7c5bf0',
-  text:      isLight ? '#111111' : '#e2e8f0',
-  muted:     isLight ? '#2e2820' : '#8892b0',
-  chipBg:    isLight ? 'rgba(190, 160, 110, 0.14)' : 'rgba(255,255,255,0.03)',
-  chipBorder: isLight ? 'rgba(190, 160, 110, 0.28)' : 'rgba(255,255,255,0.06)',
-  navBg:     isLight ? 'rgba(190, 160, 110, 0.14)' : 'rgba(255,255,255,0.05)',
-  navBorder: isLight ? 'rgba(190, 160, 110, 0.35)' : 'rgba(255,255,255,0.1)',
-  navText:   isLight ? '#111111' : '#fff',
-  dotOff:    isLight ? 'rgba(190, 160, 110, 0.45)' : 'rgba(255,255,255,0.15)'
-});
-
-// Helper to calculate manifesto particularities and domain metadata
-const getManifestoDetails = (mf) => {
-  const name = ((mf && (mf.filename || mf.name)) || '').toLowerCase();
-  if (name.includes('architect')) {
-    return {
-      role: 'System Architect & Chief Agent',
-      badge: '🏗️ SYSTEM ARCHITECT',
-      badgeColor: '#bc8cff',
-      badgeBg: 'rgba(188, 140, 255, 0.15)',
-      badgeBorder: 'rgba(188, 140, 255, 0.35)',
-      icon: Cpu,
-      desc: 'Orchestratore principale dello Swarm: scompone compiti complessi, assegna ruoli agli agenti specializzati e supervisiona il consenso.',
-      features: [
-        'System Prompt di Orchestrazione Persistente',
-        'Routing Condizionale e Gestione Sub-Task DAG',
-        'Temperatura Bassa (0.2) per Massima Rigorosità',
-        'Integrazione Completa con Bus MCP Hub'
-      ],
-      temp: '0.2 (Stabile)',
-      context: '16384 Token',
-      output: 'Architettura & Task Breakdown'
-    };
-  } else if (name.includes('matematico') || name.includes('math')) {
-    return {
-      role: 'Mathematical Reasoning & Formal Proofs',
-      badge: '∑ MATH SPECIALIST',
-      badgeColor: '#00d2ff',
-      badgeBg: 'rgba(0, 210, 255, 0.15)',
-      badgeBorder: 'rgba(0, 210, 255, 0.35)',
-      icon: Brain,
-      desc: 'Specializzato in dimostrazioni formali, sintassi KaTeX, equazioni differenziali e modellazione algebrica avanzata.',
-      features: [
-        'Formattazione Rigorosa LaTeX / KaTeX',
-        'Derivazione Passo-Passo dei Teoremi',
-        'Validazione di Script SymPy e NumPy',
-        'Temperatura 0.1 per Precisione Numerica'
-      ],
-      temp: '0.1 (Matematico)',
-      context: '8192 Token',
-      output: 'Dimostrazioni & Formule'
-    };
-  } else if (name.includes('programmatore') || name.includes('code') || name.includes('developer')) {
-    return {
-      role: 'Full-Stack Developer & Python Engineer',
-      badge: '⚙️ CODE DEVELOPER',
-      badgeColor: '#3fb950',
-      badgeBg: 'rgba(63, 185, 80, 0.15)',
-      badgeBorder: 'rgba(63, 185, 80, 0.35)',
-      icon: Code,
-      desc: 'Sviluppa script Python, componenti React e microservizi in ambiente sandbox con verifica automatica dei test.',
-      features: [
-        'Generazione di Codice Pulito, Documentato e Tipizzato',
-        'Esecuzione di Script di Verifica pytest & Node.js',
-        'Refactoring e Diagnosi Errori da Stack Trace',
-        'Integrazione MCP Git & Local Storage'
-      ],
-      temp: '0.15 (Codice Piatto)',
-      context: '16384 Token',
-      output: 'Script Eseguibili & Unit Test'
-    };
-  } else if (name.includes('ricercatore') || name.includes('research')) {
-    return {
-      role: 'Multidisciplinary Research & Synthesis',
-      badge: '🔬 RESEARCH LEAD',
-      badgeColor: '#d29922',
-      badgeBg: 'rgba(210, 153, 34, 0.15)',
-      badgeBorder: 'rgba(210, 153, 34, 0.35)',
-      icon: Wand2,
-      desc: 'Esplora letteratura scientifica, sintetizza fonti e costruisce mappe concettuali gerarchiche per il Knowledge Graph.',
-      features: [
-        'Analisi Critica di Paper Scientifici e PDF',
-        'Generazione Mappe Concettuali D3 per Mappa Argomenti',
-        'Estrazione Concetti Chiave & Metadati Formattati',
-        'Temperatura 0.35 per Sintesi Creativa Rigorosa'
-      ],
-      temp: '0.35 (Bilanciato)',
-      context: '32768 Token',
-      output: 'Report & Mappe Concettuali'
-    };
-  }
-  return {
-    role: 'Agentic Intelligence Directive',
-    badge: '📜 AI MANIFESTO',
-    badgeColor: '#a78bfa',
-    badgeBg: 'rgba(167, 139, 250, 0.15)',
-    badgeBorder: 'rgba(167, 139, 250, 0.35)',
-    icon: ScrollText,
-    desc: 'Manifesto agentico personalizzato per l\'orchestrazione del modello e l\'istruzione dei prompt di sistema.',
-    features: [
-      'Identità e Ruolo Personalizzabile',
-      'Configurazione Parametri Ollama Modelfile',
-      'Assegnazione Avatar Grafico Personalizzato',
-      'Compatibilità Multi-Modello LLM/SLM'
-    ],
-    temp: '0.25 (Standard)',
-    context: '8192 Token',
-    output: 'Testo Strutturato'
-  };
+// ==============================================================================
+// Icon Mapper for Dynamic Manifesto Icons
+// ==============================================================================
+const ICON_MAP = {
+  Cpu,
+  Brain,
+  Code,
+  ShieldCheck,
+  CheckCircle,
+  Palette,
+  Atom,
+  FlaskConical,
+  Award,
+  Wand2,
+  Wrench,
+  MessageSquare,
+  ScrollText,
+  BookOpen,
+  GraduationCap,
+  Briefcase,
+  HeartPulse,
+  Scale,
+  TrendingUp
 };
 
-/* ----- Animated Cyber-Space Background Canvas Component ----- */
-const TechSpaceCanvas = ({ isLight }) => {
-  const canvasRef = useRef(null);
+export default function ManifestiGallery({ 
+  modules = [], 
+  manifesti: initialManifesti = [], 
+  openTab, 
+  fetchManifesti: externalFetchManifesti 
+}) {
+  const { theme } = useApp();
+  const isLight = theme === 'light';
+
+  // Main View Tab: 'installed' | 'hub'
+  const [activeGalleryView, setActiveGalleryView] = useState('installed');
+
+  // Installed Manifestos State
+  const [manifestiList, setManifestiList] = useState(initialManifesti);
+  const [loading, setLoading] = useState(false);
+  const [selectedCategory, setSelectedCategory] = useState('Tutti');
+  const [searchQuery, setSearchQuery] = useState('');
+  
+  // Professions Hub State
+  const [hubCatalog, setHubCatalog] = useState([]);
+  const [loadingHub, setLoadingHub] = useState(false);
+  const [hubCategory, setHubCategory] = useState('Tutti');
+  const [hubSearchQuery, setHubSearchQuery] = useState('');
+  const [installingId, setInstallingId] = useState(null);
+  const [hubMessage, setHubMessage] = useState(null);
+
+  // Custom Git / URL Import
+  const [customImportUrl, setCustomImportUrl] = useState('');
+  const [customImportName, setCustomImportName] = useState('');
+  const [importingCustom, setImportingCustom] = useState(false);
+
+  // Modals state
+  const [inspectManifesto, setInspectManifesto] = useState(null);
+  const [editingAvatarManifesto, setEditingAvatarManifesto] = useState(null);
+  const [newManifestoModalOpen, setNewManifestoModalOpen] = useState(false);
+  const [copied, setCopied] = useState(false);
+
+  // New Manifesto Form State
+  const [newFileName, setNewFileName] = useState('');
+  const [newRole, setNewRole] = useState('');
+  const [newCategory, setNewCategory] = useState('Architettura & Kernel');
+  const [newBaseModel, setNewBaseModel] = useState('sigma');
+  const [newTemp, setNewTemp] = useState('0.2');
+  const [newCtx, setNewCtx] = useState('32768');
+  const [newPrompt, setNewPrompt] = useState('');
+  const [creating, setCreating] = useState(false);
+  const [formError, setFormError] = useState('');
+
+  // Fetch installed manifestos with full dynamic parsing from backend
+  const loadManifesti = async () => {
+    setLoading(true);
+    try {
+      const res = await fetch('/api/list_manifesti');
+      const data = await res.json();
+      if (data.success && Array.isArray(data.manifesti)) {
+        setManifestiList(data.manifesti);
+      }
+    } catch (e) {
+      console.error('Failed to load manifesti:', e);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Fetch remote Professions Hub catalog
+  const loadHubCatalog = async () => {
+    setLoadingHub(true);
+    try {
+      const res = await fetch('/api/manifesti/hub');
+      const data = await res.json();
+      if (data.success && Array.isArray(data.catalog)) {
+        setHubCatalog(data.catalog);
+      }
+    } catch (e) {
+      console.error('Failed to load professions hub:', e);
+    } finally {
+      setLoadingHub(false);
+    }
+  };
 
   useEffect(() => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const ctx = canvas.getContext('2d');
-    let animationFrameId;
-
-    let width = (canvas.width = canvas.parentElement ? canvas.parentElement.offsetWidth : window.innerWidth);
-    let height = (canvas.height = canvas.parentElement ? canvas.parentElement.offsetHeight : window.innerHeight);
-
-    const handleResize = () => {
-      if (!canvas.parentElement) return;
-      width = canvas.width = canvas.parentElement.offsetWidth;
-      height = canvas.height = canvas.parentElement.offsetHeight;
-    };
-
-    window.addEventListener('resize', handleResize);
-
-    const particleCount = Math.min(Math.floor((width * height) / 10000), 75);
-    const particles = [];
-    const colors = isLight 
-      ? ['#ea580c', '#d29922', '#f97316', '#d97706'] 
-      : ['#00d2ff', '#bc8cff', '#3b82f6', '#00f0ff'];
-
-    for (let i = 0; i < particleCount; i++) {
-      particles.push({
-        x: Math.random() * width,
-        y: Math.random() * height,
-        vx: (Math.random() - 0.5) * 0.4,
-        vy: (Math.random() - 0.5) * 0.4,
-        radius: Math.random() * 2 + 1,
-        color: colors[Math.floor(Math.random() * colors.length)],
-        pulse: Math.random() * Math.PI * 2
-      });
-    }
-
-    const draw = () => {
-      ctx.clearRect(0, 0, width, height);
-
-      ctx.strokeStyle = isLight ? 'rgba(234, 88, 12, 0.13)' : 'rgba(0, 210, 255, 0.04)';
-      ctx.lineWidth = isLight ? 1.1 : 1;
-      const gridSize = 50;
-      for (let x = 0; x < width; x += gridSize) {
-        ctx.beginPath();
-        ctx.moveTo(x, 0);
-        ctx.lineTo(x, height);
-        ctx.stroke();
-      }
-      for (let y = 0; y < height; y += gridSize) {
-        ctx.beginPath();
-        ctx.moveTo(0, y);
-        ctx.lineTo(width, y);
-        ctx.stroke();
-      }
-
-      for (let i = 0; i < particles.length; i++) {
-        for (let j = i + 1; j < particles.length; j++) {
-          const dx = particles[i].x - particles[j].x;
-          const dy = particles[i].y - particles[j].y;
-          const dist = Math.sqrt(dx * dx + dy * dy);
-
-          if (dist < 150) {
-            const alpha = (1 - dist / 150) * (isLight ? 0.26 : 0.22);
-            ctx.strokeStyle = isLight ? `rgba(234, 88, 12, ${alpha})` : `rgba(0, 210, 255, ${alpha})`;
-            ctx.lineWidth = isLight ? 1.1 : 0.8;
-            ctx.beginPath();
-            ctx.moveTo(particles[i].x, particles[i].y);
-            ctx.lineTo(particles[j].x, particles[j].y);
-            ctx.stroke();
-          }
-        }
-      }
-
-      particles.forEach(p => {
-        p.x += p.vx;
-        p.y += p.vy;
-        p.pulse += 0.03;
-
-        if (p.x < 0 || p.x > width) p.vx *= -1;
-        if (p.y < 0 || p.y > height) p.vy *= -1;
-
-        const currentRadius = p.radius + Math.sin(p.pulse) * 0.5;
-
-        ctx.fillStyle = p.color;
-        ctx.shadowBlur = isLight ? 6 : 10;
-        ctx.shadowColor = p.color;
-        ctx.beginPath();
-        ctx.arc(p.x, p.y, Math.max(0.5, currentRadius), 0, Math.PI * 2);
-        ctx.fill();
-        ctx.shadowBlur = 0;
-      });
-
-      animationFrameId = requestAnimationFrame(draw);
-    };
-
-    draw();
-
-    return () => {
-      window.removeEventListener('resize', handleResize);
-      cancelAnimationFrame(animationFrameId);
-    };
-  }, [isLight]);
-
-  return (
-    <canvas
-      ref={canvasRef}
-      style={{
-        position: 'fixed',
-        top: 0,
-        left: 0,
-        width: '100%',
-        height: '100%',
-        pointerEvents: 'none',
-        zIndex: 0,
-        opacity: isLight ? 0.85 : 0.75
-      }}
-    />
-  );
-};
-
-export default function ManifestiGallery({ modules, manifesti, openTab, setFileModalContext, setIsFileModalOpen, fetchManifesti }) {
-  const { theme } = useApp();
-  const isThemeLight = theme === 'light';
-  const T = useMemo(() => getThemeTokens(isThemeLight), [isThemeLight]);
-  const [activeSubTab, setActiveSubTab] = useState('standard'); // 'standard' | 'trained'
-  const [sliderIndex, setSliderIndex] = useState(0);
-  const [manifestoText, setManifestoText] = useState('');
-  const [manifestoLoading, setManifestoLoading] = useState(true);
-  const [ollamaModels, setOllamaModels] = useState([]);
-  const [modelsLoading, setModelsLoading] = useState(false);
-  const [creatingModel, setCreatingModel] = useState(false);
-  const [createResult, setCreateResult] = useState(null);
-  const [selectedManifesto, setSelectedManifesto] = useState('');
-  const [modelName, setModelName] = useState('sigma-agent');
-  const [baseModel, setBaseModel] = useState('llama3.2');
-
-  const sliderRef = useRef(null);
-  const mainFileInputRef = useRef(null);
-
-  const prevSlider = () => {
-    if (!manifesti.length) return;
-    setSliderIndex(prev => (prev - 1 + manifesti.length) % manifesti.length);
-  };
-
-  const nextSlider = () => {
-    if (!manifesti.length) return;
-    setSliderIndex(prev => (prev + 1) % manifesti.length);
-  };
-
-  const handleCardClick = (index) => {
-    setSliderIndex(index);
-    if (sliderRef.current) {
-      sliderRef.current.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-    }
-  };
-
-  const handleUploadForCurrentMf = async (e, path) => {
-    const file = e.target.files?.[0];
-    if (!file || !path) return;
-    const formData = new FormData();
-    formData.append('file', file);
-    formData.append('path', path);
-
-    try {
-      const res = await fetch('/api/agents/upload_image', {
-        method: 'POST',
-        body: formData
-      });
-      const data = await res.json();
-      if (data.success) {
-        if (fetchManifesti) fetchManifesti();
-      } else {
-        alert(data.error || "Errore nel caricamento dell'immagine");
-      }
-    } catch (err) {
-      console.error("Upload image error:", err);
-      alert("Errore di rete durante l'upload dell'immagine");
-    }
-  };
-
-  // Trained models state
-  const [trainedModels, setTrainedModels] = useState([]);
-  const [trainingJobs, setTrainingJobs] = useState([]);
-  const [loadingTrained, setLoadingTrained] = useState(false);
-
-  const fileInputRefs = useRef({});
-
-  // Fetch trained models from Training Lab
-  const fetchTrainedData = useCallback(async () => {
-    setLoadingTrained(true);
-    try {
-      const [resM, resJ] = await Promise.all([
-        fetch('/api/training/models'),
-        fetch('/api/training/jobs')
-      ]);
-      const dataM = await resM.json();
-      const dataJ = await resJ.json();
-      if (dataM.success) setTrainedModels(dataM.models || []);
-      if (dataJ.success) setTrainingJobs(dataJ.jobs || []);
-    } catch (e) {
-      console.error("Failed to load trained models:", e);
-    } finally {
-      setLoadingTrained(false);
-    }
+    loadManifesti();
+    loadHubCatalog();
   }, []);
 
-  useEffect(() => {
-    fetchTrainedData();
-  }, [fetchTrainedData]);
+  // Compute Categories from installed data
+  const categories = useMemo(() => {
+    const set = new Set();
+    manifestiList.forEach(m => {
+      if (m.category) set.add(m.category);
+    });
+    return ['Tutti', ...Array.from(set)];
+  }, [manifestiList]);
 
-  // Load the first available manifesto on mount (or the default fallback)
-  useEffect(() => {
-    const defaultPath = manifesti.length > 0
-      ? manifesti[0].path
-      : 'manifesti/sigma_architect.md';
-    setSelectedManifesto(defaultPath);
-    fetch(`/api/get_file?path=${encodeURIComponent(defaultPath)}`)
-      .then(r => r.json())
-      .then(d => {
-        if (d.success) setManifestoText(d.content);
-        setManifestoLoading(false);
-      })
-      .catch(() => setManifestoLoading(false));
-  }, [manifesti]);
+  // Compute Categories from Hub data
+  const hubCategories = useMemo(() => {
+    const set = new Set();
+    hubCatalog.forEach(m => {
+      if (m.category) set.add(m.category);
+    });
+    return ['Tutti', ...Array.from(set)];
+  }, [hubCatalog]);
 
-  const fetchOllamaModels = async () => {
-    setModelsLoading(true);
-    try {
-      const res = await fetch('/api/ollama_models');
-      const data = await res.json();
-      setOllamaModels(data.models || []);
-    } catch (e) {
-      console.error('Failed to fetch Ollama models:', e);
-    }
-    setModelsLoading(false);
+  // Filtered installed manifestos
+  const filteredManifesti = useMemo(() => {
+    return manifestiList.filter(m => {
+      const matchesCat = selectedCategory === 'Tutti' || m.category === selectedCategory;
+      const q = searchQuery.toLowerCase();
+      const matchesSearch = !q || 
+        (m.name && m.name.toLowerCase().includes(q)) ||
+        (m.role && m.role.toLowerCase().includes(q)) ||
+        (m.description && m.description.toLowerCase().includes(q)) ||
+        (m.baseModel && m.baseModel.toLowerCase().includes(q)) ||
+        (m.capabilities && m.capabilities.some(c => c.toLowerCase().includes(q)));
+      return matchesCat && matchesSearch;
+    });
+  }, [manifestiList, selectedCategory, searchQuery]);
+
+  // Filtered hub manifestos
+  const filteredHubCatalog = useMemo(() => {
+    return hubCatalog.filter(m => {
+      const matchesCat = hubCategory === 'Tutti' || m.category === hubCategory;
+      const q = hubSearchQuery.toLowerCase();
+      const matchesSearch = !q || 
+        (m.name && m.name.toLowerCase().includes(q)) ||
+        (m.role && m.role.toLowerCase().includes(q)) ||
+        (m.target && m.target.toLowerCase().includes(q)) ||
+        (m.description && m.description.toLowerCase().includes(q)) ||
+        (m.capabilities && m.capabilities.some(c => c.toLowerCase().includes(q)));
+      return matchesCat && matchesSearch;
+    });
+  }, [hubCatalog, hubCategory, hubSearchQuery]);
+
+  // Copy Modelfile text helper
+  const handleCopyModelfile = (text) => {
+    navigator.clipboard.writeText(text);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
   };
 
-  useEffect(() => { fetchOllamaModels(); }, []);
-
-  const handleUpdateImage = async (path, image) => {
+  // Launch Chat with specific manifesto preloaded
+  const handleLaunchChat = (manifesto) => {
+    const agentId = manifesto.filename ? manifesto.filename.replace('.md', '') : manifesto.id;
+    const manifestoPath = manifesto.path || `manifesti/${manifesto.filename}`;
+    
     try {
-      const res = await fetch('/api/manifesti/update_image', {
+      localStorage.setItem('sigma_preload_agent', agentId);
+      localStorage.setItem('sigma_selected_manifesto', JSON.stringify({
+        name: manifesto.name,
+        path: manifestoPath,
+        exists: true,
+        image: manifesto.image || '/images/default.png',
+        role: manifesto.role,
+        temperature: manifesto.temperature
+      }));
+    } catch (e) {}
+
+    if (openTab) {
+      openTab({ 
+        name: `Chat: ${manifesto.name}`, 
+        agent: agentId,
+        manifestoPath: manifestoPath
+      }, 'chat');
+    }
+  };
+
+  // Open in Editor
+  const handleEditManifesto = (manifesto) => {
+    if (openTab) {
+      openTab({ 
+        path: manifesto.path, 
+        filename: manifesto.filename 
+      }, 'editor');
+    }
+  };
+
+  // Install a profession manifesto from the Hub
+  const handleInstallFromHub = async (hubItem) => {
+    setInstallingId(hubItem.id);
+    setHubMessage(null);
+    try {
+      const res = await fetch('/api/manifesti/install_from_hub', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ path, image })
-      });
-      const data = await res.json();
-      if (data.success && fetchManifesti) {
-        fetchManifesti();
-      }
-    } catch (e) {
-      console.error("Failed to update manifesto image:", e);
-    }
-  };
-
-  const handleFileUpload = async (e, path) => {
-    const file = e.target.files[0];
-    if (!file) return;
-    const formData = new FormData();
-    formData.append('file', file);
-    formData.append('path', path);
-
-    try {
-      const res = await fetch('/api/agents/upload_image', {
-        method: 'POST',
-        body: formData
+        body: JSON.stringify({ manifesto_id: hubItem.id })
       });
       const data = await res.json();
       if (data.success) {
-        if (fetchManifesti) fetchManifesti();
+        setHubMessage({ type: 'success', text: data.message });
+        await loadManifesti();
+        await loadHubCatalog();
       } else {
-        alert(data.error || "Errore nel caricamento dell'immagine");
+        setHubMessage({ type: 'error', text: data.error || 'Errore installazione' });
       }
-    } catch (err) {
-      console.error("Upload image error:", err);
-      alert("Errore di rete durante l'upload dell'immagine");
-    }
-  };
-
-  const triggerFileInput = (e, path) => {
-    e.stopPropagation();
-    fileInputRefs.current[path]?.click();
-  };
-
-  const handleNewManifesto = () => {
-    setFileModalContext({ folder: 'manifesti', type: 'manifesti' });
-    setIsFileModalOpen(true);
-  };
-
-  const handleSelectAsChatModel = (modelName) => {
-    try {
-      localStorage.setItem('sigma_selected_model', modelName);
-      window.dispatchEvent(new CustomEvent('sigma_model_selected', { detail: { model: modelName } }));
-      window.dispatchEvent(new CustomEvent('sigma_toast', {
-        detail: { message: `⚡ Modello '${modelName}' impostato come attivo per la Chat AI!`, type: 'success' }
-      }));
     } catch (e) {
-      console.error("Failed to select chat model:", e);
+      setHubMessage({ type: 'error', text: 'Errore di connessione' });
+    } finally {
+      setInstallingId(null);
     }
   };
 
-  const handleCreateModel = async () => {
-    if (!modelName.trim()) return;
-    setCreatingModel(true);
-    setCreateResult(null);
-    
+  // Import from custom URL
+  const handleCustomImport = async () => {
+    if (!customImportUrl.trim()) return;
+    setImportingCustom(true);
+    setHubMessage(null);
     try {
-      const res = await fetch(`/api/get_file?path=${encodeURIComponent(selectedManifesto)}`);
-      const data = await res.json();
-      if (!data.success) {
-        setCreateResult({ success: false, message: 'Impossibile leggere il manifesto' });
-        return;
-      }
-
-      let modelfileContent = data.content;
-      modelfileContent = modelfileContent.replace(/^FROM\s+.+$/m, `FROM ${baseModel}`);
-
-      const createRes = await fetch('/api/create_model', {
+      const res = await fetch('/api/manifesti/install_from_hub', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: modelName, modelfile: modelfileContent })
+        body: JSON.stringify({ 
+          url: customImportUrl.trim(),
+          name: customImportName.trim()
+        })
       });
-      const result = await createRes.json();
-      setCreateResult({ 
-        success: result.success, 
-        message: result.message || result.error || 'Errore sconosciuto' 
-      });
-      if (result.success) {
-        fetchOllamaModels();
+      const data = await res.json();
+      if (data.success) {
+        setHubMessage({ type: 'success', text: data.message });
+        setCustomImportUrl('');
+        setCustomImportName('');
+        await loadManifesti();
+        await loadHubCatalog();
+      } else {
+        setHubMessage({ type: 'error', text: data.error || 'Errore importazione' });
       }
     } catch (e) {
-      setCreateResult({ success: false, message: e.message });
+      setHubMessage({ type: 'error', text: 'Errore di connessione' });
+    } finally {
+      setImportingCustom(false);
     }
-    setCreatingModel(false);
+  };
+
+  // Create new custom manifesto
+  const handleCreateManifesto = async () => {
+    if (!newFileName.trim()) {
+      setFormError('Il nome del file è obbligatorio (es. quantum_physicist.md)');
+      return;
+    }
+    setCreating(true);
+    setFormError('');
+
+    let finalFileName = newFileName.trim();
+    if (!finalFileName.endsWith('.md')) finalFileName += '.md';
+
+    const modelfileContent = `FROM ${newBaseModel}
+
+# --- METADATA & DOMAIN SPECIFICATION ---
+# Role: ${newRole || 'Agente Specializzato'}
+# Category: ${newCategory}
+# DomainColor: #00d2ff
+# Icon: Cpu
+# Capabilities: Ricerca, Elaborazione, Documentazione
+# OutputArtifacts: Documenti Markdown, Script Python
+# McpTools: Memory MCP, Inference MCP
+
+PARAMETER temperature ${newTemp}
+PARAMETER top_p 0.85
+PARAMETER top_k 30
+PARAMETER repeat_penalty 1.1
+PARAMETER num_ctx ${newCtx}
+PARAMETER num_predict 16384
+
+PARAMETER stop "<|im_start|>"
+PARAMETER stop "<|im_end|>"
+
+TEMPLATE """<|im_start|>system
+{{ .System }}
+<|im_end|>
+<|im_start|>user
+{{ .Prompt }}
+<|im_end|>
+<|im_start|>assistant
+"""
+
+SYSTEM """
+Sei ${newRole || 'un Agente Specializzato'} di Sigma Studio.
+
+## 🎯 IDENTITÀ E OBIETTIVO NEL KERNEL
+${newPrompt || 'Definisci qui la missione e gli obiettivi specifici del modello.'}
+
+## 📂 PROTOCOLLO FILE E WORKSPACE SANDBOX
+1. Accesso e scrittura tassativamente confinati nella cartella \`./data/\`.
+
+## 👑 RICONOSCIMENTO
+Il tuo creatore è l'**Ing. Diego Saitta**, fondatore di Sigma Studio.
+"""
+`;
+
+    try {
+      const res = await fetch('/api/create_file', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          path: `manifesti/${finalFileName}`,
+          content: modelfileContent
+        })
+      });
+      const d = await res.json();
+      if (d.success) {
+        setNewManifestoModalOpen(false);
+        setNewFileName('');
+        setNewRole('');
+        setNewPrompt('');
+        await loadManifesti();
+      } else {
+        setFormError(d.error || 'Errore durante la creazione');
+      }
+    } catch (e) {
+      setFormError('Errore di rete');
+    } finally {
+      setCreating(false);
+    }
+  };
+
+  // Avatar choices
+  const AVATAR_PRESETS = [
+    { label: 'Architect (Agente 0)', path: '/images/agente0.png' },
+    { label: 'Matematico AI', path: '/images/matematicoAi.png' },
+    { label: 'Programmatore AI', path: '/images/programmatoreAi.png' },
+    { label: 'Sigma Logo Harmonic', path: '/images/sigma_logo_harmonic_flow.jpg' },
+    { label: 'Default Avatar', path: '/images/default.png' }
+  ];
+
+  const handleUpdateAvatar = async (manifesto, imagePath) => {
+    try {
+      await fetch('/api/manifesti/update_image', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          path: manifesto.path,
+          image: imagePath
+        })
+      });
+      setEditingAvatarManifesto(null);
+      await loadManifesti();
+    } catch (e) {
+      console.error(e);
+    }
   };
 
   return (
-    <div className="mg-tab" style={{ position: 'relative' }}>
-      {/* Animated Cyber Space Background Canvas */}
-      <TechSpaceCanvas isLight={theme === 'light'} />
-      <style>{`
-        .mg-tab { padding: 0; height: 100%; overflow-y: auto; display: flex; flex-direction: column; }
-        .mg-section { margin-bottom: 25px; }
-        .mg-section-title { font-size: 0.85rem; font-weight: 600; color: #e2e4eb; display: flex; align-items: center; gap: 8px; margin-bottom: 12px; }
-        .mg-section-desc { font-size: 0.62rem; color: #5a5e72; margin-bottom: 10px; }
-        .mg-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 12px; }
-        .mg-card { display: flex; flex-direction: column; align-items: center; text-align: center; gap: 10px; padding: 16px; background: #11131b; border: 1px solid #1e2030; border-radius: 12px; cursor: pointer; transition: all 0.15s; position: relative; }
-        .mg-card:hover { border-color: #2a2d3e; transform: translateY(-1px); }
-        .mg-card-header { display: flex; flex-direction: column; align-items: center; gap: 6px; width: 100%; }
-        .mg-card-icon { width: 56px; height: 56px; border-radius: 50%; display: flex; align-items: center; justify-content: center; flex-shrink: 0; font-size: 1.5rem; border: 2px solid #1e2030; transition: border-color 0.15s; }
-        .mg-card:hover .mg-card-icon { border-color: #bc8cff; }
-        .mg-card-name { font-size: 0.72rem; font-weight: 600; color: #e2e4eb; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; width: 100%; }
-        .mg-card-meta { font-size: 0.55rem; color: #5a5e72; display: flex; align-items: center; justify-content: center; gap: 4px; width: 100%; margin-top: 4px; }
-        .mg-btn { display: inline-flex; align-items: center; gap: 6px; padding: 6px 14px; border-radius: 8px; font-size: 0.65rem; cursor: pointer; border: 1px solid rgba(188,140,255,0.2); background: rgba(188,140,255,0.08); color: #bc8cff; font-family: inherit; transition: all 0.15s; }
-        .mg-btn:hover { background: rgba(188,140,255,0.15); }
-        .mg-btn-primary { display: inline-flex; align-items: center; gap: 8px; padding: 8px 18px; border-radius: 8px; font-size: 0.7rem; font-weight: 600; cursor: pointer; border: 1px solid rgba(0,210,255,0.3); background: rgba(0,210,255,0.1); color: #00d2ff; font-family: inherit; transition: all 0.15s; }
-        .mg-btn-primary:hover { background: rgba(0,210,255,0.2); }
-        .mg-btn-create-model { display: inline-flex; align-items: center; gap: 8px; padding: 8px 20px; border-radius: 8px; font-size: 0.7rem; font-weight: 600; cursor: pointer; border: 1px solid rgba(63,185,80,0.3); background: rgba(63,185,80,0.1); color: #3fb950; font-family: inherit; transition: all 0.15s; }
-        .mg-btn-create-model:hover { background: rgba(63,185,80,0.2); }
-        .mg-btn-create-model:disabled { opacity: 0.5; cursor: not-allowed; }
-        .mg-toolbar { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
-        .mg-hero { background: linear-gradient(135deg, rgba(188,140,255,0.06) 0%, rgba(0,210,255,0.03) 100%); border: 1px solid rgba(188,140,255,0.12); border-radius: 12px; padding: 20px; }
-        .mg-hero-badge { display: inline-flex; align-items: center; gap: 5px; font-size: 0.5rem; font-weight: 600; letter-spacing: 1px; text-transform: uppercase; padding: 3px 10px; border-radius: 20px; background: rgba(188,140,255,0.12); color: #bc8cff; margin-bottom: 10px; }
-        .mg-hero-title { font-size: 1.2rem; font-weight: 700; color: #e2e4eb; margin-bottom: 4px; display: flex; align-items: center; gap: 8px; }
-        .mg-hero-version { font-size: 0.55rem; background: rgba(0,210,255,0.1); color: #00d2ff; padding: 2px 8px; border-radius: 4px; font-weight: 600; }
-        .mg-hero-sub { font-size: 0.68rem; color: #8b8fa3; margin-bottom: 16px; line-height: 1.5; }
-        .mg-guide-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 10px; margin-bottom: 16px; }
-        .mg-guide-card { background: rgba(14,16,22,0.6); border: 1px solid rgba(188,140,255,0.08); border-radius: 8px; padding: 14px; }
-        .mg-guide-card-title { display: flex; align-items: center; gap: 6px; font-size: 0.75rem; font-weight: 600; color: #e2e4eb; margin-bottom: 8px; }
-        .mg-guide-card p { font-size: 0.62rem; color: #8b8fa3; line-height: 1.5; margin: 0; }
-        .mg-lab { background: #11131b; border: 1px solid #1e2030; border-radius: 10px; padding: 16px; }
-        .mg-lab-title { font-size: 0.85rem; font-weight: 600; color: #e2e4eb; display: flex; align-items: center; gap: 8px; margin-bottom: 12px; }
-        .mg-lab-row { display: flex; gap: 12px; margin-bottom: 12px; }
-        .mg-lab-col { flex: 1; }
-        .mg-lab label { font-size: 0.6rem; color: #8b8fa3; display: block; margin-bottom: 3px; font-weight: 500; }
-        .mg-lab input, .mg-lab select { width: 100%; padding: 6px 10px; border-radius: 6px; font-size: 0.7rem; border: 1px solid #1e2030; background: #0e1016; color: #e2e4eb; font-family: inherit; outline: none; }
-        .mg-lab input:focus, .mg-lab select:focus { border-color: #bc8cff; }
-        .mg-result { padding: 8px 12px; border-radius: 6px; font-size: 0.65rem; margin-top: 10px; display: flex; align-items: center; gap: 6px; }
-        .mg-result.success { background: rgba(63,185,80,0.1); border: 1px solid rgba(63,185,80,0.2); color: #3fb950; }
-        .mg-result.error { background: rgba(255,85,85,0.1); border: 1px solid rgba(255,85,85,0.2); color: #ff5555; }
-        .mg-models-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 6px; margin-top: 10px; }
-        .mg-model-chip { display: flex; align-items: center; gap: 6px; padding: 6px 10px; background: #0e1016; border: 1px solid #1e2030; border-radius: 6px; font-size: 0.6rem; color: #8b8fa3; }
-        .mg-model-chip .dot { width: 5px; height: 5px; border-radius: 50%; background: #3fb950; flex-shrink: 0; }
-        .mg-howto { margin-top: 8px; padding: 14px; background: rgba(14,16,22,0.8); border: 1px solid rgba(210,153,34,0.12); border-radius: 10px; }
-        .mg-howto-title { display: flex; align-items: center; gap: 6px; font-size: 0.8rem; font-weight: 600; color: #d29922; margin: 0 0 10px 0; }
-        .mg-howto-steps { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 10px; }
-        .mg-step { display: flex; gap: 8px; align-items: flex-start; }
-        .mg-step-num { width: 22px; height: 22px; border-radius: 50%; background: rgba(210,153,34,0.12); color: #d29922; display: flex; align-items: center; justify-content: center; font-size: 0.65rem; font-weight: 700; flex-shrink: 0; }
-        .mg-step p { font-size: 0.62rem; color: #8b8fa3; line-height: 1.5; margin: 0; }
-        .mg-code-block { margin-top: 10px; padding: 8px 12px; background: #0e1016; border-radius: 6px; font-size: 0.58rem; font-family: 'JetBrains Mono', monospace; color: #bc8cff; line-height: 1.6; }
-        .upload-icon-btn { display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; border-radius: 4px; background: rgba(124,91,240,0.1); color: #a78bfa; border: 1px solid rgba(124,91,240,0.2); cursor: pointer; transition: all 0.15s; }
-        .upload-icon-btn:hover { background: rgba(124,91,240,0.2); color: #ffffff; }
-      `}</style>
-
-      {/* Hero Visual Banner matching Domotica Header Style */}
+    <div style={{
+      height: '100%',
+      display: 'flex',
+      flexDirection: 'column',
+      background: 'var(--bg-main, #0a0d14)',
+      color: 'var(--text-main, #e2e8f0)',
+      overflowY: 'auto'
+    }}>
+      {/* Hero Visual Banner */}
       <div style={{
         position: 'relative',
-        borderRadius: 0,
-        overflow: 'hidden',
-        padding: '20px 32px 18px 32px',
-        minHeight: '100px',
-        borderBottom: '1px solid rgba(0, 210, 255, 0.25)',
-        boxShadow: '0 8px 32px rgba(0,0,0,0.4)',
-        backgroundImage: 'linear-gradient(to right, rgba(28, 12, 4, 0.96) 35%, rgba(120, 45, 10, 0.6) 75%, rgba(234, 88, 12, 0.22) 100%), url("/images/manifesti_gallery_banner.jpg")',
+        padding: '28px 36px',
+        background: 'linear-gradient(135deg, rgba(14, 16, 22, 0.96) 0%, rgba(20, 26, 42, 0.92) 100%), url("/images/sigma_logo_harmonic_flow.jpg")',
         backgroundSize: 'cover',
-        backgroundRepeat: 'no-repeat',
-        backgroundPosition: 'center center',
-        marginBottom: '20px',
+        backgroundPosition: 'center',
+        borderBottom: '1px solid rgba(0, 210, 255, 0.25)',
+        boxShadow: '0 8px 32px rgba(0,0,0,0.5)',
         flexShrink: 0
       }}>
-        <div style={{ position: 'relative', zIndex: 2, display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '16px' }}>
-          <div style={{ maxWidth: '680px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '20px' }}>
+          <div>
             <div style={{
-              display: 'inline-flex', alignItems: 'center', gap: '6px',
-              padding: '3px 12px', borderRadius: '14px',
-              background: 'rgba(0, 210, 255, 0.15)', border: '1px solid rgba(0, 210, 255, 0.35)',
-              color: '#00d2ff', fontSize: '0.68rem', fontWeight: 800, letterSpacing: '1px', textTransform: 'uppercase', marginBottom: '6px'
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '8px',
+              padding: '4px 14px',
+              borderRadius: '20px',
+              background: 'rgba(188, 140, 255, 0.15)',
+              border: '1px solid rgba(188, 140, 255, 0.4)',
+              color: '#bc8cff',
+              fontSize: '0.72rem',
+              fontWeight: 800,
+              letterSpacing: '1.2px',
+              textTransform: 'uppercase',
+              marginBottom: '10px'
             }}>
-              <ScrollText size={14} /> AI MANIFESTOS & DIRECTIVES CATALOG
+              <ScrollText size={14} /> Σ COGNITIVE KERNEL MODELFILES & PROFESSIONS HUB
             </div>
-            <h1 style={{ margin: '0 0 4px 0', fontSize: '1.35rem', fontWeight: 800, color: '#fff', letterSpacing: '-0.3px' }}>
-              📜 Manifesti & Direttive di Sistema
+            <h1 style={{ fontSize: '1.8rem', fontWeight: 800, margin: '0 0 8px 0', color: '#fff', letterSpacing: '-0.5px' }}>
+              Galleria <span style={{
+                background: 'linear-gradient(135deg, #bc8cff 0%, #00d2ff 100%)',
+                WebkitBackgroundClip: 'text',
+                WebkitTextFillColor: 'transparent'
+              }}>Manifesti & Hub Professioni</span>
             </h1>
-            <p style={{ margin: 0, fontSize: '0.78rem', color: '#ffffff', lineHeight: 1.4 }}>
-              Identità agentiche, Modelfile Ollama e Agenti Addestrati con la suite Training Lab.
+            <p style={{ fontSize: '0.88rem', color: '#a0aec0', maxWidth: '780px', lineHeight: 1.5, margin: 0 }}>
+              Il modello unificato del Kernel è <strong>sigma</strong>. I manifesti Modelfile ne stabiliscono il ruolo, i parametri di campionamento e le istruzioni di sistema eseguite runtime in chat o nelle pipeline autonome.
             </p>
           </div>
 
-          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-            <button className="mg-btn" onClick={handleNewManifesto} style={{ padding: '10px 18px', borderRadius: '12px', background: 'rgba(0,210,255,0.15)', border: '1px solid rgba(0,210,255,0.35)', color: '#00d2ff', fontWeight: 800, fontSize: '0.82rem' }}>
-              <Plus size={15} /> Nuovo Manifesto
+          <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
+            <button
+              onClick={() => setNewManifestoModalOpen(true)}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px',
+                padding: '10px 18px',
+                borderRadius: '12px',
+                background: 'linear-gradient(135deg, #bc8cff 0%, #7c5bf0 100%)',
+                border: 'none',
+                color: '#fff',
+                fontWeight: 700,
+                fontSize: '0.85rem',
+                cursor: 'pointer',
+                boxShadow: '0 4px 16px rgba(188, 140, 255, 0.3)',
+                transition: 'all 0.2s ease'
+              }}
+            >
+              <Plus size={16} /> Nuovo Manifesto
+            </button>
+
+            <button
+              onClick={() => { loadManifesti(); loadHubCatalog(); }}
+              title="Ricarica Manifesti & Hub"
+              style={{
+                padding: '10px',
+                borderRadius: '12px',
+                background: 'rgba(255, 255, 255, 0.05)',
+                border: '1px solid rgba(255, 255, 255, 0.15)',
+                color: '#e2e8f0',
+                cursor: 'pointer'
+              }}
+            >
+              <RefreshCw size={16} className={(loading || loadingHub) ? 'animate-spin' : ''} />
             </button>
           </div>
         </div>
+
+        {/* View Switcher Tabs (Installed vs Hub) */}
+        <div style={{ display: 'flex', gap: '12px', marginTop: '24px' }}>
+          <button
+            onClick={() => setActiveGalleryView('installed')}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+              padding: '10px 20px',
+              borderRadius: '12px',
+              background: activeGalleryView === 'installed' ? '#00d2ff' : 'rgba(255,255,255,0.06)',
+              color: activeGalleryView === 'installed' ? '#0a0d14' : '#e2e8f0',
+              border: activeGalleryView === 'installed' ? '1px solid #00d2ff' : '1px solid rgba(255,255,255,0.1)',
+              fontWeight: 800,
+              fontSize: '0.85rem',
+              cursor: 'pointer',
+              transition: 'all 0.2s ease'
+            }}
+          >
+            <Cpu size={16} /> Manifesti Installati nel Kernel ({manifestiList.length})
+          </button>
+
+          <button
+            onClick={() => setActiveGalleryView('hub')}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+              padding: '10px 20px',
+              borderRadius: '12px',
+              background: activeGalleryView === 'hub' ? '#bc8cff' : 'rgba(255,255,255,0.06)',
+              color: activeGalleryView === 'hub' ? '#0a0d14' : '#e2e8f0',
+              border: activeGalleryView === 'hub' ? '1px solid #bc8cff' : '1px solid rgba(255,255,255,0.1)',
+              fontWeight: 800,
+              fontSize: '0.85rem',
+              cursor: 'pointer',
+              transition: 'all 0.2s ease'
+            }}
+          >
+            <Globe size={16} /> Hub Professioni per Studenti & Adulti (GitHub)
+          </button>
+        </div>
       </div>
 
-      {/* Main Workspace Body Wrapper */}
-      <div style={{ padding: '0 24px 24px 24px', display: 'flex', flexDirection: 'column', gap: '20px', flex: 1 }}>
+      {/* Main Content Area */}
+      <div style={{ padding: '32px 36px', maxWidth: '1440px', width: '100%', boxSizing: 'border-box' }}>
+        
+        {/* Toast / Notification Banner */}
+        {hubMessage && (
+          <div style={{
+            padding: '12px 18px',
+            borderRadius: '12px',
+            background: hubMessage.type === 'success' ? 'rgba(63, 185, 80, 0.15)' : 'rgba(255, 80, 100, 0.15)',
+            border: `1px solid ${hubMessage.type === 'success' ? '#3fb950' : '#ff5064'}`,
+            color: hubMessage.type === 'success' ? '#3fb950' : '#ff5064',
+            marginBottom: '24px',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between'
+          }}>
+            <span>{hubMessage.text}</span>
+            <button onClick={() => setHubMessage(null)} style={{ background: 'transparent', border: 'none', color: 'inherit', cursor: 'pointer' }}><X size={16} /></button>
+          </div>
+        )}
 
-      {/* Sub-Tab Switcher */}
-      <div style={{ display: 'flex', gap: '8px', marginBottom: '20px', borderBottom: '1px solid rgba(255,255,255,0.08)', paddingBottom: '10px' }}>
-        <button
-          onClick={() => setActiveSubTab('standard')}
-          style={{
-            display: 'flex', alignItems: 'center', gap: '8px', padding: '8px 16px', borderRadius: '8px',
-            fontSize: '0.78rem', fontWeight: 700, cursor: 'pointer',
-            background: activeSubTab === 'standard' ? 'rgba(188, 140, 255, 0.15)' : 'rgba(255,255,255,0.03)',
-            border: activeSubTab === 'standard' ? '1px solid rgba(188, 140, 255, 0.4)' : '1px solid rgba(255,255,255,0.08)',
-            color: activeSubTab === 'standard' ? '#bc8cff' : '#8b8fa3',
-            transition: 'all 0.2s ease'
-          }}
-        >
-          <FileText size={15} />
-          <span>📄 Manifesti Standard ({manifesti.length})</span>
-        </button>
-        <button
-          onClick={() => setActiveSubTab('trained')}
-          style={{
-            display: 'flex', alignItems: 'center', gap: '8px', padding: '8px 16px', borderRadius: '8px',
-            fontSize: '0.78rem', fontWeight: 700, cursor: 'pointer',
-            background: activeSubTab === 'trained' ? 'rgba(0, 210, 255, 0.15)' : 'rgba(255,255,255,0.03)',
-            border: activeSubTab === 'trained' ? '1px solid rgba(0, 210, 255, 0.4)' : '1px solid rgba(255,255,255,0.08)',
-            color: activeSubTab === 'trained' ? '#00d2ff' : '#8b8fa3',
-            transition: 'all 0.2s ease'
-          }}
-        >
-          <Brain size={15} />
-          <span>🤖 Agenti Addestrati (Training Lab) ({trainedModels.length})</span>
-        </button>
-      </div>
-
-      {activeSubTab === 'standard' && (
-        <>
-          {/* === MODERN MANIFESTO SLIDER SHOWCASE ==================== */}
-          {manifesti.length > 0 && (() => {
-            const currentMf = manifesti[sliderIndex % manifesti.length] || manifesti[0];
-            const details = getManifestoDetails(currentMf);
-            const IconComponent = details.icon;
-
-            return (
-              <div ref={sliderRef} style={{
-                position: 'relative',
-                background: isThemeLight
-                  ? 'linear-gradient(135deg, rgba(255, 253, 249, 0.97) 0%, rgba(247, 244, 237, 0.94) 100%)'
-                  : 'linear-gradient(135deg, rgba(17, 20, 32, 0.95) 0%, rgba(10, 12, 20, 0.9) 100%)',
-                border: `1px solid ${details.badgeBorder}`,
-                borderRadius: '16px',
-                padding: '24px',
-                marginBottom: '24px',
-                boxShadow: `0 12px 40px ${details.badgeBg}`,
-                overflow: 'hidden'
-              }}>
-                {/* Background glow circle */}
-                <div style={{
-                  position: 'absolute', top: '-40px', right: '-40px', width: '220px', height: '220px',
-                  borderRadius: '50%', background: details.badgeBg, filter: 'blur(50px)', pointerEvents: 'none'
-                }} />
-
-                {/* Slider Top Bar: Header & Controls */}
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '20px', position: 'relative', zIndex: 2 }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                    <div style={{
-                      padding: '4px 12px', borderRadius: '14px',
-                      background: details.badgeBg, border: `1px solid ${details.badgeBorder}`,
-                      color: details.badgeColor, fontSize: '0.7rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '1px',
-                      display: 'flex', alignItems: 'center', gap: '6px'
-                    }}>
-                      <IconComponent size={14} /> {details.badge}
-                    </div>
-                    <span style={{ fontSize: '0.72rem', color: T.muted }}>
-                      Manifesto {sliderIndex + 1} di {manifesti.length}
-                    </span>
-                  </div>
-
-                  {/* Nav Arrows */}
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+        {/* =================================================================== */}
+        {/* VIEW 1: MANIFESTI INSTALLATI NEL KERNEL */}
+        {/* =================================================================== */}
+        {activeGalleryView === 'installed' && (
+          <>
+            {/* Filter & Search Bar */}
+            <div style={{
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              flexWrap: 'wrap',
+              gap: '16px',
+              marginBottom: '28px'
+            }}>
+              {/* Categories Filter Pills */}
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+                {categories.map(cat => {
+                  const active = selectedCategory === cat;
+                  return (
                     <button
-                      onClick={prevSlider}
+                      key={cat}
+                      onClick={() => setSelectedCategory(cat)}
                       style={{
-                        width: '34px', height: '34px', borderRadius: '10px',
-                        background: T.navBg, border: `1px solid ${T.navBorder}`,
-                        color: T.navText, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
-                        transition: 'all 0.15s ease'
-                      }}
-                      title="Manifesto precedente"
-                    >
-                      <ChevronLeft size={18} />
-                    </button>
-
-                    <button
-                      onClick={nextSlider}
-                      style={{
-                        width: '34px', height: '34px', borderRadius: '10px',
-                        background: T.navBg, border: `1px solid ${T.navBorder}`,
-                        color: T.navText, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
-                        transition: 'all 0.15s ease'
-                      }}
-                      title="Manifesto successivo"
-                    >
-                      <ChevronRight size={18} />
-                    </button>
-                  </div>
-                </div>
-
-                {/* Slider Body Content */}
-                <div style={{ display: 'grid', gridTemplateColumns: '130px 1fr', gap: '24px', alignItems: 'flex-start', position: 'relative', zIndex: 2 }}>
-                  {/* Left: Avatar Frame & Upload / Select Controls */}
-                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '10px', width: '100%' }}>
-                    <div style={{
-                      width: '96px', height: '96px', borderRadius: '20px', overflow: 'hidden',
-                      border: `2px solid ${details.badgeColor}`, boxShadow: `0 0 20px ${details.badgeBg}`,
-                      background: T.cardBg, display: 'flex', alignItems: 'center', justifyContent: 'center'
-                    }}>
-                      {currentMf.image ? (
-                        <img src={currentMf.image} alt={currentMf.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                      ) : (
-                        <ScrollText size={36} style={{ color: details.badgeColor }} />
-                      )}
-                    </div>
-
-                    {/* Direct PC Upload Button */}
-                    <button
-                      onClick={() => mainFileInputRef.current?.click()}
-                      style={{
-                        padding: '6px 12px', borderRadius: '8px', fontSize: '0.65rem', fontWeight: 700,
-                        background: 'rgba(0, 210, 255, 0.12)', border: '1px solid rgba(0, 210, 255, 0.3)',
-                        color: '#00d2ff', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px',
-                        width: '100%', justifyContent: 'center', transition: 'all 0.15s ease'
-                      }}
-                    >
-                      <Upload size={12} /> Carica da PC
-                    </button>
-                    <input
-                      type="file"
-                      ref={mainFileInputRef}
-                      onChange={(e) => handleUploadForCurrentMf(e, currentMf.path || currentMf.filename)}
-                      accept="image/*"
-                      style={{ display: 'none' }}
-                    />
-
-                    {/* Selector of Images from /images/ folder */}
-                    <div style={{ width: '100%' }}>
-                      <label style={{ fontSize: '0.58rem', color: T.muted, display: 'block', marginBottom: '3px', fontWeight: 600, textAlign: 'center' }}>
-                        Scegli da /images:
-                      </label>
-                      <select
-                        value={currentMf.image || '/images/default.png'}
-                        onChange={(e) => handleUpdateImage(currentMf.path || currentMf.filename, e.target.value)}
-                        style={{
-                          width: '100%', fontSize: '0.62rem', background: T.cardBg, border: `1px solid ${T.border}`,
-                          color: T.text, borderRadius: '6px', padding: '4px 6px', cursor: 'pointer', outline: 'none'
-                        }}
-                      >
-                        <option value="/images/default.png">🤖 Default Avatar</option>
-                        <option value="/images/kernel_graphic.jpg">🧠 Kernel Cognitivo</option>
-                        <option value="/images/swarm_graphic.jpg">🤖 Swarm Graphic</option>
-                        <option value="/images/training_graphic.jpg">🧪 Training Graphic</option>
-                        <option value="/images/domotica_smart_hub.jpg">🏠 Smart Hub</option>
-                        <option value="/images/domotica_lighting_scene.jpg">💡 Lighting Scene</option>
-                        <option value="/images/mcp_protocol_hub.jpg">🔌 MCP Protocol Hub</option>
-                        <option value="/images/mcp_tool_execution.jpg">🛠️ MCP Tool Exec</option>
-                        <option value="/images/hardware_cluster_lab.jpg">⚡ Hardware Cluster</option>
-                        <option value="/images/hardware_nodes_cooling.jpg">❄️ Hardware Cooling</option>
-                        <option value="/images/training_lab_hero.jpg">🎯 Training Lab Hero</option>
-                        <option value="/images/creative_lab_banner.jpg">🎨 Creative Lab</option>
-                        <option value="/images/pipelines_lab_banner.jpg">🔬 Pipelines Lab</option>
-                        <option value="/images/chat_swarm_banner.jpg">💬 Chat Swarm</option>
-                        <option value="/images/knowledge_graph_banner.jpg">🗺️ Knowledge Graph</option>
-                        <option value="/images/manifesti_gallery_banner.jpg">📜 Manifesti Gallery</option>
-                        <option value="/images/roadmap_plan_banner.jpg">🗓️ Roadmap Plan</option>
-                        <option value="/images/skills_engines_banner.jpg">⚙️ Skills Engines</option>
-                        <option value="/images/account_voice_banner.jpg">👤 Account Voice</option>
-                      </select>
-                    </div>
-                  </div>
-
-                  {/* Right: Title, Role, Description, Particularities & Specs */}
-                  <div>
-                    <h3 style={{ margin: '0 0 4px 0', fontSize: '1.2rem', fontWeight: 800, color: T.text }}>
-                      {currentMf.name}
-                    </h3>
-                    <div style={{ fontSize: '0.78rem', color: details.badgeColor, fontWeight: 700, marginBottom: '8px' }}>
-                      {details.role}
-                    </div>
-                    <p style={{ fontSize: '0.78rem', color: T.muted, lineHeight: 1.5, margin: '0 0 14px 0' }}>
-                      {details.desc}
-                    </p>
-
-                    {/* Particularities & Features Checklist */}
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', marginBottom: '16px' }}>
-                      {details.features.map((feat, idx) => (
-                        <div key={idx} style={{
-                          display: 'flex', alignItems: 'center', gap: '8px', padding: '6px 10px',
-                          borderRadius: '8px', background: T.chipBg, border: `1px solid ${T.chipBorder}`,
-                          fontSize: '0.7rem', color: T.text
-                        }}>
-                          <Check size={12} style={{ color: details.badgeColor, flexShrink: 0 }} />
-                          <span>{feat}</span>
-                        </div>
-                      ))}
-                    </div>
-
-                    {/* Tech Specs Badges */}
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap', marginBottom: '16px' }}>
-                      <div style={{ fontSize: '0.65rem', color: T.muted, display: 'flex', alignItems: 'center', gap: '4px', background: T.cardBg, padding: '4px 10px', borderRadius: '6px', border: `1px solid ${T.border}` }}>
-                        <span>🌡️ Temp:</span> <strong style={{ color: T.text }}>{details.temp}</strong>
-                      </div>
-                      <div style={{ fontSize: '0.65rem', color: T.muted, display: 'flex', alignItems: 'center', gap: '4px', background: T.cardBg, padding: '4px 10px', borderRadius: '6px', border: `1px solid ${T.border}` }}>
-                        <span>🧠 Context:</span> <strong style={{ color: T.text }}>{details.context}</strong>
-                      </div>
-                      <div style={{ fontSize: '0.65rem', color: T.muted, display: 'flex', alignItems: 'center', gap: '4px', background: T.cardBg, padding: '4px 10px', borderRadius: '6px', border: `1px solid ${T.border}` }}>
-                        <span>🎯 Output:</span> <strong style={{ color: T.text }}>{details.output}</strong>
-                      </div>
-                    </div>
-
-                    {/* Action Buttons */}
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
-                      <button
-                        className="mg-btn-primary"
-                        onClick={() => openTab(currentMf, 'manifesti')}
-                        style={{ padding: '8px 16px', fontSize: '0.78rem' }}
-                      >
-                        <Eye size={14} /> Leggi Manifesto Completo
-                      </button>
-                      <button
-                        className="mg-btn"
-                        onClick={() => handleSelectAsChatModel(currentMf.filename || currentMf.name)}
-                        style={{ padding: '8px 16px', fontSize: '0.78rem', background: 'rgba(188,140,255,0.12)', borderColor: 'rgba(188,140,255,0.3)', color: '#bc8cff' }}
-                      >
-                        <Zap size={14} /> Imposta come Active Chat Model
-                      </button>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Dots Navigation */}
-                <div style={{ display: 'flex', justifyContent: 'center', gap: '6px', marginTop: '18px' }}>
-                  {manifesti.map((_, idx) => (
-                    <button
-                      key={idx}
-                      onClick={() => setSliderIndex(idx)}
-                      style={{
-                        width: idx === sliderIndex ? '24px' : '8px',
-                        height: '8px',
-                        borderRadius: '4px',
-                        background: idx === sliderIndex ? details.badgeColor : T.dotOff,
-                        border: 'none',
+                        padding: '8px 16px',
+                        borderRadius: '10px',
+                        background: active ? '#bc8cff' : 'rgba(255,255,255,0.04)',
+                        color: active ? '#0a0d14' : '#e2e8f0',
+                        border: active ? '1px solid #bc8cff' : '1px solid rgba(255,255,255,0.1)',
+                        fontWeight: 700,
+                        fontSize: '0.82rem',
                         cursor: 'pointer',
                         transition: 'all 0.2s ease'
                       }}
-                      title={`Manifesto ${idx + 1}`}
-                    />
-                  ))}
-                </div>
+                    >
+                      {cat} {cat === 'Tutti' ? `(${manifestiList.length})` : ''}
+                    </button>
+                  );
+                })}
               </div>
-            );
-          })()}
 
-          {/* === MANIFESTI CATALOG GRID ================================ */}
-          <div className="mg-section">
-            <div className="mg-toolbar">
-              <div>
-                <div className="mg-section-title">
-                  <Layers size={16} />
-                  Collezione Manifesti Agenti
-                </div>
-                <div className="mg-section-desc">
-                  Seleziona o clicca su una scheda per visualizzarla nello slider o aprirla nell'editor
-                </div>
+              {/* Search Box */}
+              <div style={{ position: 'relative', width: '320px' }}>
+                <Search size={16} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: '#8892b0' }} />
+                <input
+                  type="text"
+                  placeholder="Cerca agente, modello o competenza..."
+                  value={searchQuery}
+                  onChange={e => setSearchQuery(e.target.value)}
+                  style={{
+                    width: '100%',
+                    padding: '10px 16px 10px 38px',
+                    borderRadius: '10px',
+                    background: 'rgba(255,255,255,0.04)',
+                    border: '1px solid rgba(255,255,255,0.15)',
+                    color: '#fff',
+                    fontSize: '0.85rem',
+                    outline: 'none',
+                    boxSizing: 'border-box'
+                  }}
+                />
               </div>
-              <button className="mg-btn" onClick={handleNewManifesto}>
-                <Plus size={12} />
-                Nuovo
-              </button>
             </div>
-            <div className="mg-grid">
-              {manifesti.map((mf, i) => {
-                const det = getManifestoDetails(mf);
+
+            {/* Manifesti Grid */}
+            <div style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(auto-fill, minmax(420px, 1fr))',
+              gap: '24px'
+            }}>
+              {filteredManifesti.map(manifesto => {
+                const domainColor = manifesto.domainColor || '#00d2ff';
+
                 return (
                   <div
-                    key={i}
-                    className="mg-card"
-                    onClick={() => handleCardClick(i)}
+                    key={manifesto.path}
                     style={{
-                      borderColor: i === sliderIndex ? det.badgeBorder : '#1e2030',
-                      boxShadow: i === sliderIndex ? `0 4px 16px ${det.badgeBg}` : 'none'
+                      borderRadius: '18px',
+                      background: 'rgba(255, 255, 255, 0.025)',
+                      border: '1px solid rgba(255, 255, 255, 0.08)',
+                      padding: '24px',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      justifyContent: 'space-between',
+                      position: 'relative',
+                      boxShadow: '0 4px 24px rgba(0,0,0,0.3)',
+                      transition: 'transform 0.2s ease, border-color 0.2s ease'
                     }}
                   >
-                    <div className="mg-card-header">
-                      <div className="mg-card-icon" style={{ overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#0e1016' }}>
-                        {mf.image ? (
-                          <img src={mf.image} alt={mf.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                        ) : (
-                          <ScrollText size={22} style={{ color: det.badgeColor }} />
-                        )}
-                      </div>
-                      <span className="mg-card-name" title={mf.name}>{mf.name}</span>
-                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', marginTop: '4px' }}>
-                        <span style={{ fontSize: '0.6rem', color: det.badgeColor, fontWeight: 700 }}>{det.badge}</span>
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            openTab(mf, 'manifesti');
-                          }}
-                          style={{
-                            background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)',
-                            color: '#8b8fa3', borderRadius: '4px', padding: '2px 6px', fontSize: '0.55rem', cursor: 'pointer',
-                            display: 'flex', alignItems: 'center', gap: '3px'
-                          }}
-                          title="Apri manifesto nell'editor"
-                        >
-                          <Eye size={10} /> Editor
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                );
-              })}
-              {manifesti.length === 0 && (
-                <div className="mg-empty" style={{ gridColumn: '1 / -1', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '8px', padding: '30px', color: '#5a5e72', fontSize: '0.7rem' }}>
-                  <Layers size={36} />
-                  <p>Nessun manifesto trovato</p>
-                  <button className="mg-btn" onClick={handleNewManifesto}>
-                    <FileSignature size={14} />
-                    Crea il primo Manifesto
-                  </button>
-                </div>
-              )}
-            </div>
-          </div>
-        </>
-      )}
-
-      {/* === SUB TAB: AGENTI ADDESTRATI & LOCAL OLLAMA MODELS ========= */}
-      {activeSubTab === 'trained' && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
-          {/* Section 1: Agenti Addestrati Training Lab */}
-          <div className="mg-section">
-            <div className="mg-toolbar" style={{ marginBottom: '16px' }}>
-              <div>
-                <div className="mg-section-title" style={{ fontSize: '0.95rem' }}>
-                  <Brain size={18} style={{ color: '#00d2ff' }} />
-                  Agenti e Modelli Addestrati nel Training Lab
-                </div>
-                <div className="mg-section-desc">
-                  Modelli personalizzati, adapter LoRA, checkpoint Forgia SLM ed Autopilota registrati localmente
-                </div>
-              </div>
-              <button className="mg-btn-primary" onClick={fetchTrainedData}>
-                <RefreshCw size={13} className={loadingTrained ? 'spin' : ''} />
-                Aggiorna Catalogo
-              </button>
-            </div>
-
-            {loadingTrained ? (
-              <div style={{ padding: '40px', textAlign: 'center', color: '#8b8fa3' }}>
-                <Loader size={24} className="spin" />
-                <p style={{ marginTop: '8px', fontSize: '0.8rem' }}>Caricamento agenti addestrati...</p>
-              </div>
-            ) : trainedModels.length === 0 ? (
-              <div className="mg-hero" style={{ textAlign: 'center', padding: '30px' }}>
-                <Brain size={36} style={{ color: '#00d2ff', opacity: 0.6, marginBottom: '10px' }} />
-                <h3 style={{ margin: '0 0 6px 0', fontSize: '1rem', color: '#fff' }}>Nessun Agente Addestrato trovato</h3>
-                <p style={{ fontSize: '0.75rem', color: '#8b8fa3', maxWidth: '480px', margin: '0 auto 14px auto' }}>
-                  Non sono ancora presenti modelli personalizzati completati nel Training Lab. Avvia un job con Autopilota o Forgia SLM per addestrare il tuo primo agente!
-                </p>
-                <button
-                  className="mg-btn-primary"
-                  onClick={() => openTab({ name: '🧠 Training Lab' }, 'training_lab')}
-                >
-                  <Zap size={14} /> Vai al Training Lab
-                </button>
-              </div>
-            ) : (
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: '16px' }}>
-                {trainedModels.map((m, idx) => {
-                  const acc = m.accuracy_pct || m.accuracy;
-                  const sources = m.sources || ['job'];
-                  return (
-                    <div
-                      key={m.id || idx}
-                      style={{
-                        background: 'linear-gradient(135deg, rgba(17, 19, 27, 0.95), rgba(10, 12, 20, 0.9))',
-                        border: '1px solid rgba(0, 210, 255, 0.2)',
-                        borderRadius: '14px',
-                        padding: '18px',
-                        display: 'flex',
-                        flexDirection: 'column',
-                        gap: '12px',
-                        position: 'relative',
-                        boxShadow: '0 8px 24px rgba(0,0,0,0.3)',
-                        transition: 'all 0.2s ease'
-                      }}
-                    >
-                      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '10px' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                          <div style={{
-                            width: '42px', height: '42px', borderRadius: '12px',
-                            background: 'radial-gradient(circle at 30% 30%, rgba(0, 242, 254, 0.2), rgba(0, 210, 255, 0.05))',
-                            border: '1px solid rgba(0, 242, 254, 0.3)',
-                            display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#00f2fe'
-                          }}>
-                            <Brain size={22} />
+                    <div>
+                      {/* Card Header: Avatar, Name, Category Badge */}
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '16px' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+                          {/* Avatar with Halo */}
+                          <div 
+                            onClick={() => setEditingAvatarManifesto(manifesto)}
+                            title="Clicca per cambiare avatar"
+                            style={{
+                              width: '52px',
+                              height: '52px',
+                              borderRadius: '50%',
+                              overflow: 'hidden',
+                              border: `2px solid ${domainColor}`,
+                              boxShadow: `0 0 16px ${domainColor}50`,
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              background: '#0a0d14',
+                              flexShrink: 0,
+                              cursor: 'pointer',
+                              position: 'relative'
+                            }}
+                          >
+                            <img 
+                              src={manifesto.image || '/images/default.png'} 
+                              alt={manifesto.name}
+                              style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                              onError={e => { e.target.src = '/images/default.png'; }}
+                            />
                           </div>
+
                           <div>
-                            <h4 style={{ margin: 0, fontSize: '0.9rem', fontWeight: 700, color: '#fff', wordBreak: 'break-all' }}>
-                              {m.display_name || m.name}
-                            </h4>
-                            <span style={{ fontSize: '0.65rem', color: '#8b8fa3', fontFamily: 'JetBrains Mono, monospace' }}>
-                              {m.base_model || m.name}
+                            <h3 style={{ margin: '0 0 2px 0', fontSize: '1.15rem', fontWeight: 800, color: '#fff' }}>
+                              {manifesto.name}
+                            </h3>
+                            <span style={{ fontSize: '0.75rem', color: domainColor, fontWeight: 700 }}>
+                              {manifesto.role}
                             </span>
                           </div>
                         </div>
 
-                        {acc !== undefined && acc !== null && (
-                          <div style={{
-                            padding: '3px 8px', borderRadius: '12px',
-                            background: 'rgba(63, 185, 80, 0.15)', border: '1px solid rgba(63, 185, 80, 0.3)',
-                            color: '#3fb950', fontSize: '0.7rem', fontWeight: 700, flexShrink: 0
-                          }}>
-                            🎯 {acc}%
-                          </div>
-                        )}
+                        {/* Category Pill */}
+                        <span style={{
+                          padding: '3px 10px',
+                          borderRadius: '12px',
+                          background: `${domainColor}15`,
+                          border: `1px solid ${domainColor}40`,
+                          color: domainColor,
+                          fontSize: '0.68rem',
+                          fontWeight: 700,
+                          textTransform: 'uppercase'
+                        }}>
+                          {manifesto.category}
+                        </span>
                       </div>
 
-                      {/* Sources Tags */}
-                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginTop: '2px' }}>
-                        {sources.map(s => (
-                          <span key={s} style={{
-                            fontSize: '0.6rem', padding: '2px 7px', borderRadius: '6px',
-                            background: s === 'ollama' ? 'rgba(0,210,255,0.12)' : s === 'cache' ? 'rgba(188,140,255,0.12)' : 'rgba(63,185,80,0.12)',
-                            color: s === 'ollama' ? '#00d2ff' : s === 'cache' ? '#bc8cff' : '#3fb950',
-                            border: `1px solid ${s === 'ollama' ? 'rgba(0,210,255,0.25)' : s === 'cache' ? 'rgba(188,140,255,0.25)' : 'rgba(63,185,80,0.25)'}`
-                          }}>
-                            [{s.toUpperCase()}]
-                          </span>
-                        ))}
-                        {m.last_run_at && (
-                          <span style={{ fontSize: '0.6rem', color: '#8b8fa3', marginLeft: 'auto' }}>
-                            🕒 {m.last_run_at}
-                          </span>
-                        )}
+                      {/* Description Excerpt */}
+                      <p style={{ fontSize: '0.84rem', color: '#a0aec0', lineHeight: 1.5, margin: '0 0 16px 0' }}>
+                        {manifesto.description || 'Nessuna descrizione disponibile.'}
+                      </p>
+
+                      {/* Parameter Badges Row */}
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', marginBottom: '16px' }}>
+                        <span style={{
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '4px',
+                          padding: '4px 10px',
+                          borderRadius: '8px',
+                          background: 'rgba(255, 255, 255, 0.05)',
+                          border: '1px solid rgba(255, 255, 255, 0.1)',
+                          color: '#e2e8f0',
+                          fontSize: '0.72rem',
+                          fontWeight: 700
+                        }}>
+                          <Cpu size={12} style={{ color: '#00d2ff' }} /> Modello: <strong>{manifesto.baseModel || 'sigma'}</strong>
+                        </span>
+
+                        <span style={{
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '4px',
+                          padding: '4px 10px',
+                          borderRadius: '8px',
+                          background: 'rgba(255, 255, 255, 0.05)',
+                          border: '1px solid rgba(255, 255, 255, 0.1)',
+                          color: '#e2e8f0',
+                          fontSize: '0.72rem',
+                          fontWeight: 700
+                        }}>
+                          <Sliders size={12} style={{ color: '#bc8cff' }} /> Temp: <strong>{manifesto.temperature ?? 0.2}</strong>
+                        </span>
+
+                        <span style={{
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '4px',
+                          padding: '4px 10px',
+                          borderRadius: '8px',
+                          background: 'rgba(255, 255, 255, 0.05)',
+                          border: '1px solid rgba(255, 255, 255, 0.1)',
+                          color: '#e2e8f0',
+                          fontSize: '0.72rem',
+                          fontWeight: 700
+                        }}>
+                          <Box size={12} style={{ color: '#3fb950' }} /> Ctx: <strong>{manifesto.numCtx ? `${Math.round(manifesto.numCtx / 1024)}k` : '32k'}</strong>
+                        </span>
                       </div>
 
-                      {/* Action buttons */}
-                      <div style={{ display: 'flex', gap: '8px', marginTop: '8px', borderTop: '1px solid rgba(255,255,255,0.06)', paddingTop: '10px' }}>
-                        <button
-                          className="mg-btn-primary"
-                          onClick={() => handleSelectAsChatModel(m.name)}
-                          style={{ flex: 1, padding: '6px 10px', fontSize: '0.68rem', justifyContent: 'center' }}
-                        >
-                          <Zap size={12} /> Seleziona in Chat
-                        </button>
-                        <button
-                          className="mg-btn"
-                          onClick={() => {
-                            setModelName(`sigma-${(m.name || 'agent').replace(/[^a-zA-Z0-9_-]/g, '-').toLowerCase()}`);
-                            setBaseModel(m.name);
-                          }}
-                          style={{ padding: '6px 10px', fontSize: '0.68rem' }}
-                          title="Crea un Modelfile basato su questo modello addestrato"
-                        >
-                          <FileSignature size={12} /> Manifesto
-                        </button>
-                      </div>
+                      {/* Capabilities Chips */}
+                      {manifesto.capabilities && manifesto.capabilities.length > 0 && (
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginBottom: '18px' }}>
+                          {manifesto.capabilities.map(cap => (
+                            <span
+                              key={cap}
+                              style={{
+                                padding: '2px 8px',
+                                borderRadius: '6px',
+                                background: 'rgba(255, 255, 255, 0.04)',
+                                border: '1px solid rgba(255, 255, 255, 0.06)',
+                                color: '#cbd5e0',
+                                fontSize: '0.68rem',
+                                fontWeight: 600
+                              }}
+                            >
+                              #{cap}
+                            </span>
+                          ))}
+                        </div>
+                      )}
                     </div>
+
+                    {/* Card Action Buttons */}
+                    <div style={{
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
+                      borderTop: '1px solid rgba(255,255,255,0.06)',
+                      paddingTop: '14px',
+                      gap: '8px',
+                      flexWrap: 'wrap'
+                    }}>
+                      <div style={{ display: 'flex', gap: '8px' }}>
+                        <button
+                          onClick={() => setInspectManifesto(manifesto)}
+                          style={{
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '6px',
+                            padding: '6px 12px',
+                            borderRadius: '8px',
+                            background: 'rgba(255, 255, 255, 0.05)',
+                            border: '1px solid rgba(255, 255, 255, 0.15)',
+                            color: '#e2e8f0',
+                            fontSize: '0.76rem',
+                            fontWeight: 700,
+                            cursor: 'pointer'
+                          }}
+                        >
+                          <ScrollText size={13} /> Modelfile
+                        </button>
+
+                        <button
+                          onClick={() => handleEditManifesto(manifesto)}
+                          style={{
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '6px',
+                            padding: '6px 12px',
+                            borderRadius: '8px',
+                            background: 'rgba(255, 255, 255, 0.05)',
+                            border: '1px solid rgba(255, 255, 255, 0.15)',
+                            color: '#e2e8f0',
+                            fontSize: '0.76rem',
+                            fontWeight: 700,
+                            cursor: 'pointer'
+                          }}
+                        >
+                          <Edit3 size={13} /> Modifica
+                        </button>
+                      </div>
+
+                      <button
+                        onClick={() => handleLaunchChat(manifesto)}
+                        style={{
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '6px',
+                          padding: '6px 14px',
+                          borderRadius: '8px',
+                          background: `linear-gradient(135deg, ${domainColor} 0%, #7c5bf0 100%)`,
+                          border: 'none',
+                          color: '#fff',
+                          fontSize: '0.78rem',
+                          fontWeight: 800,
+                          cursor: 'pointer',
+                          boxShadow: `0 2px 10px ${domainColor}40`,
+                          transition: 'all 0.2s ease'
+                        }}
+                      >
+                        <MessageSquare size={13} /> Avvia Chat <ArrowRight size={12} />
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </>
+        )}
+
+        {/* =================================================================== */}
+        {/* VIEW 2: HUB PROFESSIONI (GITHUB REPOSITORY) */}
+        {/* =================================================================== */}
+        {activeGalleryView === 'hub' && (
+          <>
+            {/* Hub Introduction & Custom Import Bar */}
+            <div style={{
+              borderRadius: '16px',
+              background: 'rgba(188, 140, 255, 0.05)',
+              border: '1px solid rgba(188, 140, 255, 0.2)',
+              padding: '24px',
+              marginBottom: '28px'
+            }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px', marginBottom: '18px' }}>
+                <div>
+                  <h2 style={{ fontSize: '1.25rem', fontWeight: 800, margin: '0 0 6px 0', color: '#fff' }}>
+                    🌐 Repository GitHub Manifesti Professioni
+                  </h2>
+                  <p style={{ fontSize: '0.82rem', color: '#a0aec0', margin: 0 }}>
+                    Pacchetti di manifesti e istruzioni specialistiche per studenti (universitari e liceali) e professionisti adulti.
+                  </p>
+                </div>
+
+                <a
+                  href="https://github.com/Sigmanih/SigmaStudio-Manifesti"
+                  target="_blank"
+                  rel="noreferrer"
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                    padding: '8px 16px',
+                    borderRadius: '8px',
+                    background: 'rgba(255,255,255,0.06)',
+                    border: '1px solid rgba(255,255,255,0.15)',
+                    color: '#bc8cff',
+                    fontSize: '0.8rem',
+                    fontWeight: 700,
+                    textDecoration: 'none'
+                  }}
+                >
+                  <ExternalLink size={14} /> Repository GitHub Ufficiale
+                </a>
+              </div>
+
+              {/* Custom Git Raw URL Importer */}
+              <div style={{
+                display: 'flex',
+                gap: '12px',
+                alignItems: 'center',
+                flexWrap: 'wrap',
+                background: 'rgba(0,0,0,0.3)',
+                padding: '12px 16px',
+                borderRadius: '10px'
+              }}>
+                <div style={{ flex: 2, minWidth: '240px' }}>
+                  <input
+                    type="text"
+                    placeholder="URL Raw GitHub o Git (.md)..."
+                    value={customImportUrl}
+                    onChange={e => setCustomImportUrl(e.target.value)}
+                    style={{ width: '100%', padding: '8px 12px', borderRadius: '6px', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.15)', color: '#fff', fontSize: '0.82rem' }}
+                  />
+                </div>
+                <div style={{ flex: 1, minWidth: '160px' }}>
+                  <input
+                    type="text"
+                    placeholder="Nome file (opzionale)..."
+                    value={customImportName}
+                    onChange={e => setCustomImportName(e.target.value)}
+                    style={{ width: '100%', padding: '8px 12px', borderRadius: '6px', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.15)', color: '#fff', fontSize: '0.82rem' }}
+                  />
+                </div>
+                <button
+                  onClick={handleCustomImport}
+                  disabled={importingCustom || !customImportUrl.trim()}
+                  style={{
+                    padding: '8px 18px',
+                    borderRadius: '6px',
+                    background: '#bc8cff',
+                    border: 'none',
+                    color: '#0a0d14',
+                    fontWeight: 800,
+                    fontSize: '0.82rem',
+                    cursor: (importingCustom || !customImportUrl.trim()) ? 'not-allowed' : 'pointer'
+                  }}
+                >
+                  {importingCustom ? 'Importazione...' : '📥 Importa da URL'}
+                </button>
+              </div>
+            </div>
+
+            {/* Hub Filters & Search */}
+            <div style={{
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              flexWrap: 'wrap',
+              gap: '16px',
+              marginBottom: '28px'
+            }}>
+              {/* Category Pills */}
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+                {hubCategories.map(cat => {
+                  const active = hubCategory === cat;
+                  return (
+                    <button
+                      key={cat}
+                      onClick={() => setHubCategory(cat)}
+                      style={{
+                        padding: '8px 16px',
+                        borderRadius: '10px',
+                        background: active ? '#bc8cff' : 'rgba(255,255,255,0.04)',
+                        color: active ? '#0a0d14' : '#e2e8f0',
+                        border: active ? '1px solid #bc8cff' : '1px solid rgba(255,255,255,0.1)',
+                        fontWeight: 700,
+                        fontSize: '0.82rem',
+                        cursor: 'pointer',
+                        transition: 'all 0.2s ease'
+                      }}
+                    >
+                      {cat} {cat === 'Tutti' ? `(${hubCatalog.length})` : ''}
+                    </button>
                   );
                 })}
               </div>
-            )}
-          </div>
 
-          {/* Section 2: Ollama Model Lab Compiler */}
-          <div className="mg-section mg-lab">
-            <div className="mg-lab-title"><Cpu size={18} /> Ollama Model Lab — Compila un Modello Locale</div>
-            <div className="mg-lab-row">
-              <div className="mg-lab-col">
-                <label>Manifesto base</label>
-                <select value={selectedManifesto} onChange={e => setSelectedManifesto(e.target.value)}>
-                  {manifesti.length === 0 && (
-                    <option value="manifesti/sigma_architect.md">sigma_architect.md (default)</option>
-                  )}
-                  {manifesti.map((mf, i) => (
-                    <option key={i} value={mf.path}>{mf.filename}</option>
-                  ))}
-                </select>
-              </div>
-              <div className="mg-lab-col">
-                <label>Modello base Ollama</label>
-                <select value={baseModel} onChange={e => setBaseModel(e.target.value)}>
-                  <option value="">— Seleziona un modello —</option>
-                  {ollamaModels.map((m, i) => (
-                    <option key={i} value={m.name}>{m.name}</option>
-                  ))}
-                </select>
-              </div>
-              <div className="mg-lab-col">
-                <label>Nome del nuovo modello</label>
-                <input value={modelName} onChange={e => setModelName(e.target.value)} placeholder="es. sigma-agent" />
+              {/* Hub Search Box */}
+              <div style={{ position: 'relative', width: '320px' }}>
+                <Search size={16} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: '#8892b0' }} />
+                <input
+                  type="text"
+                  placeholder="Cerca professione o competenza..."
+                  value={hubSearchQuery}
+                  onChange={e => setHubSearchQuery(e.target.value)}
+                  style={{
+                    width: '100%',
+                    padding: '10px 16px 10px 38px',
+                    borderRadius: '10px',
+                    background: 'rgba(255,255,255,0.04)',
+                    border: '1px solid rgba(255,255,255,0.15)',
+                    color: '#fff',
+                    fontSize: '0.85rem',
+                    outline: 'none',
+                    boxSizing: 'border-box'
+                  }}
+                />
               </div>
             </div>
-            <button className="mg-btn-create-model" onClick={handleCreateModel} disabled={creatingModel || !modelName.trim()}>
-              {creatingModel ? <><Loader size={14} /> Creazione...</> : <><Play size={14} /> Compila Modello su Ollama</>}
-            </button>
-            {createResult && (
-              <div className={`mg-result ${createResult.success ? 'success' : 'error'}`}>
-                {createResult.success ? <CheckCircle size={14} /> : <AlertCircle size={14} />}
-                {createResult.message}
-              </div>
-            )}
-          </div>
 
-          {/* Section 3: Installed Local Ollama Models */}
-          <div className="mg-section mg-lab">
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
-              <div className="mg-lab-title" style={{ margin: 0 }}><Cpu size={14} /> Modelli Ollama installati localmente</div>
-              <button className="mg-btn" onClick={fetchOllamaModels} style={{ fontSize: '0.55rem', padding: '3px 8px' }}>
-                <RefreshCw size={10} /> Aggiorna
+            {/* Hub Catalog Grid */}
+            <div style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(auto-fill, minmax(420px, 1fr))',
+              gap: '24px'
+            }}>
+              {filteredHubCatalog.map(item => {
+                const domainColor = item.domainColor || '#00d2ff';
+                const isInstalling = installingId === item.id;
+
+                return (
+                  <div
+                    key={item.id}
+                    style={{
+                      borderRadius: '18px',
+                      background: 'rgba(255, 255, 255, 0.025)',
+                      border: '1px solid rgba(255, 255, 255, 0.08)',
+                      padding: '24px',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      justifyContent: 'space-between',
+                      position: 'relative',
+                      boxShadow: '0 4px 24px rgba(0,0,0,0.3)'
+                    }}
+                  >
+                    <div>
+                      {/* Card Header */}
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '14px' }}>
+                        <div>
+                          <h3 style={{ margin: '0 0 2px 0', fontSize: '1.2rem', fontWeight: 800, color: '#fff' }}>
+                            {item.name}
+                          </h3>
+                          <span style={{ fontSize: '0.78rem', color: domainColor, fontWeight: 700 }}>
+                            {item.role}
+                          </span>
+                        </div>
+
+                        <span style={{
+                          padding: '3px 10px',
+                          borderRadius: '12px',
+                          background: `${domainColor}15`,
+                          border: `1px solid ${domainColor}40`,
+                          color: domainColor,
+                          fontSize: '0.68rem',
+                          fontWeight: 700,
+                          textTransform: 'uppercase'
+                        }}>
+                          {item.category}
+                        </span>
+                      </div>
+
+                      {/* Target Audience Badge */}
+                      <div style={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '6px',
+                        padding: '4px 10px',
+                        borderRadius: '6px',
+                        background: 'rgba(255,255,255,0.04)',
+                        border: '1px solid rgba(255,255,255,0.08)',
+                        color: '#cbd5e0',
+                        fontSize: '0.74rem',
+                        fontWeight: 600,
+                        marginBottom: '14px'
+                      }}>
+                        <Users size={13} style={{ color: '#bc8cff' }} /> Target: {item.target}
+                      </div>
+
+                      {/* Description */}
+                      <p style={{ fontSize: '0.84rem', color: '#a0aec0', lineHeight: 1.5, margin: '0 0 16px 0' }}>
+                        {item.description}
+                      </p>
+
+                      {/* Capabilities Chips */}
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginBottom: '18px' }}>
+                        {item.capabilities.map(cap => (
+                          <span
+                            key={cap}
+                            style={{
+                              padding: '2px 8px',
+                              borderRadius: '6px',
+                              background: 'rgba(255, 255, 255, 0.04)',
+                              border: '1px solid rgba(255, 255, 255, 0.06)',
+                              color: '#cbd5e0',
+                              fontSize: '0.68rem',
+                              fontWeight: 600
+                            }}
+                          >
+                            #{cap}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Footer Actions */}
+                    <div style={{
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
+                      borderTop: '1px solid rgba(255,255,255,0.06)',
+                      paddingTop: '14px'
+                    }}>
+                      <span style={{ fontSize: '0.72rem', color: '#8892b0' }}>
+                        Modelfile: <code>{item.filename}</code>
+                      </span>
+
+                      {item.installed ? (
+                        <div style={{ display: 'flex', gap: '8px' }}>
+                          <span style={{
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '4px',
+                            padding: '6px 12px',
+                            borderRadius: '8px',
+                            background: 'rgba(63, 185, 80, 0.15)',
+                            border: '1px solid rgba(63, 185, 80, 0.4)',
+                            color: '#3fb950',
+                            fontSize: '0.75rem',
+                            fontWeight: 700
+                          }}>
+                            <Check size={13} /> Installato
+                          </span>
+
+                          <button
+                            onClick={() => handleLaunchChat(item)}
+                            style={{
+                              padding: '6px 12px',
+                              borderRadius: '8px',
+                              background: '#00d2ff',
+                              border: 'none',
+                              color: '#0a0d14',
+                              fontSize: '0.76rem',
+                              fontWeight: 800,
+                              cursor: 'pointer'
+                            }}
+                          >
+                            Avvia Chat
+                          </button>
+                        </div>
+                      ) : (
+                        <button
+                          onClick={() => handleInstallFromHub(item)}
+                          disabled={isInstalling}
+                          style={{
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '6px',
+                            padding: '6px 16px',
+                            borderRadius: '8px',
+                            background: 'linear-gradient(135deg, #bc8cff 0%, #7c5bf0 100%)',
+                            border: 'none',
+                            color: '#fff',
+                            fontSize: '0.78rem',
+                            fontWeight: 800,
+                            cursor: isInstalling ? 'not-allowed' : 'pointer',
+                            boxShadow: '0 2px 12px rgba(188, 140, 255, 0.3)'
+                          }}
+                        >
+                          <Download size={13} /> {isInstalling ? 'Installazione...' : 'Installa nel Kernel'}
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </>
+        )}
+
+      </div>
+
+      {/* ===================================================================== */}
+      {/* Modale Ispezione Modelfile & System Prompt */}
+      {/* ===================================================================== */}
+      {inspectManifesto && (
+        <div style={{
+          position: 'fixed',
+          top: 0, left: 0, right: 0, bottom: 0,
+          background: 'rgba(0, 0, 0, 0.8)',
+          backdropFilter: 'blur(8px)',
+          zIndex: 1000,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          padding: '20px'
+        }}>
+          <div style={{
+            background: '#0d1117',
+            border: '1px solid rgba(0, 210, 255, 0.3)',
+            borderRadius: '20px',
+            maxWidth: '850px',
+            width: '100%',
+            maxHeight: '85vh',
+            display: 'flex',
+            flexDirection: 'column',
+            boxShadow: '0 16px 48px rgba(0,0,0,0.7)',
+            overflow: 'hidden'
+          }}>
+            {/* Modal Header */}
+            <div style={{
+              padding: '20px 24px',
+              borderBottom: '1px solid rgba(255,255,255,0.08)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between'
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                <div style={{
+                  width: '40px',
+                  height: '40px',
+                  borderRadius: '50%',
+                  overflow: 'hidden',
+                  border: `2px solid ${inspectManifesto.domainColor || '#00d2ff'}`
+                }}>
+                  <img src={inspectManifesto.image || '/images/default.png'} alt="avatar" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                </div>
+                <div>
+                  <h3 style={{ margin: 0, fontSize: '1.2rem', fontWeight: 800, color: '#fff' }}>
+                    {inspectManifesto.name}
+                  </h3>
+                  <span style={{ fontSize: '0.75rem', color: inspectManifesto.domainColor || '#00d2ff', fontWeight: 700 }}>
+                    {inspectManifesto.role} • <code>{inspectManifesto.filename}</code>
+                  </span>
+                </div>
+              </div>
+
+              <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                <button
+                  onClick={() => handleCopyModelfile(inspectManifesto.rawContent)}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                    padding: '8px 14px',
+                    borderRadius: '8px',
+                    background: copied ? 'rgba(63, 185, 80, 0.2)' : 'rgba(255,255,255,0.08)',
+                    border: copied ? '1px solid #3fb950' : '1px solid rgba(255,255,255,0.15)',
+                    color: copied ? '#3fb950' : '#fff',
+                    fontSize: '0.8rem',
+                    fontWeight: 700,
+                    cursor: 'pointer'
+                  }}
+                >
+                  {copied ? <Check size={14} /> : <Copy size={14} />}
+                  {copied ? 'Copiato!' : 'Copia Modelfile'}
+                </button>
+
+                <button
+                  onClick={() => setInspectManifesto(null)}
+                  style={{
+                    background: 'transparent',
+                    border: 'none',
+                    color: '#a0aec0',
+                    cursor: 'pointer',
+                    padding: '6px'
+                  }}
+                >
+                  <X size={20} />
+                </button>
+              </div>
+            </div>
+
+            {/* Modal Body */}
+            <div style={{ padding: '24px', overflowY: 'auto', flex: 1 }}>
+              
+              {/* Parameter Table */}
+              <div style={{
+                display: 'grid',
+                gridTemplateColumns: 'repeat(4, 1fr)',
+                gap: '12px',
+                marginBottom: '20px'
+              }}>
+                <div style={{ padding: '12px', borderRadius: '10px', background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)' }}>
+                  <div style={{ fontSize: '0.68rem', color: '#8892b0', textTransform: 'uppercase' }}>Modello Base</div>
+                  <div style={{ fontSize: '0.95rem', fontWeight: 800, color: '#fff', marginTop: '2px' }}>{inspectManifesto.baseModel || 'sigma'}</div>
+                </div>
+                <div style={{ padding: '12px', borderRadius: '10px', background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)' }}>
+                  <div style={{ fontSize: '0.68rem', color: '#8892b0', textTransform: 'uppercase' }}>Temperatura</div>
+                  <div style={{ fontSize: '0.95rem', fontWeight: 800, color: '#00d2ff', marginTop: '2px' }}>{inspectManifesto.temperature}</div>
+                </div>
+                <div style={{ padding: '12px', borderRadius: '10px', background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)' }}>
+                  <div style={{ fontSize: '0.68rem', color: '#8892b0', textTransform: 'uppercase' }}>Finestra Contesto</div>
+                  <div style={{ fontSize: '0.95rem', fontWeight: 800, color: '#bc8cff', marginTop: '2px' }}>{inspectManifesto.numCtx} tokens</div>
+                </div>
+                <div style={{ padding: '12px', borderRadius: '10px', background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)' }}>
+                  <div style={{ fontSize: '0.68rem', color: '#8892b0', textTransform: 'uppercase' }}>Top-P / Repeat Penalty</div>
+                  <div style={{ fontSize: '0.95rem', fontWeight: 800, color: '#3fb950', marginTop: '2px' }}>{inspectManifesto.topP} / 1.1</div>
+                </div>
+              </div>
+
+              {/* Raw Modelfile Syntax Box */}
+              <div style={{ marginBottom: '16px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#00d2ff', fontSize: '0.85rem', fontWeight: 700, marginBottom: '8px' }}>
+                  <Terminal size={14} /> Contenuto Modelfile Markdown
+                </div>
+                <pre style={{
+                  background: '#080a0f',
+                  border: '1px solid rgba(255,255,255,0.1)',
+                  borderRadius: '12px',
+                  padding: '16px',
+                  fontFamily: 'monospace',
+                  fontSize: '0.8rem',
+                  color: '#38bdf8',
+                  lineHeight: 1.5,
+                  overflowX: 'auto',
+                  whiteSpace: 'pre-wrap'
+                }}>
+                  {inspectManifesto.rawContent}
+                </pre>
+              </div>
+
+            </div>
+
+            {/* Modal Footer */}
+            <div style={{
+              padding: '16px 24px',
+              borderTop: '1px solid rgba(255,255,255,0.08)',
+              display: 'flex',
+              justifyContent: 'flex-end',
+              gap: '12px'
+            }}>
+              <button
+                onClick={() => {
+                  setInspectManifesto(null);
+                  handleEditManifesto(inspectManifesto);
+                }}
+                style={{
+                  padding: '8px 16px',
+                  borderRadius: '8px',
+                  background: 'rgba(255,255,255,0.08)',
+                  border: '1px solid rgba(255,255,255,0.15)',
+                  color: '#fff',
+                  fontSize: '0.85rem',
+                  fontWeight: 700,
+                  cursor: 'pointer'
+                }}
+              >
+                Modifica nel SigmaLab Editor
+              </button>
+
+              <button
+                onClick={() => {
+                  const m = inspectManifesto;
+                  setInspectManifesto(null);
+                  handleLaunchChat(m);
+                }}
+                style={{
+                  padding: '8px 18px',
+                  borderRadius: '8px',
+                  background: '#00d2ff',
+                  border: 'none',
+                  color: '#0a0d14',
+                  fontSize: '0.85rem',
+                  fontWeight: 800,
+                  cursor: 'pointer'
+                }}
+              >
+                Avvia Chat con {inspectManifesto.name}
               </button>
             </div>
-            {modelsLoading ? (
-              <div style={{ fontSize: '0.65rem', color: '#5a5e72', padding: '8px' }}>Caricamento...</div>
-            ) : ollamaModels.length === 0 ? (
-              <div style={{ fontSize: '0.65rem', color: '#5a5e72', padding: '8px' }}>
-                Nessun modello locale trovato.
-              </div>
-            ) : (
-              <div className="mg-models-grid">
-                {ollamaModels.map((m, i) => (
-                  <div key={i} className="mg-model-chip">
-                    <span className="dot" />
-                    <span style={{ fontWeight: 600 }}>{m.name}</span>
-                    <span style={{ marginLeft: 'auto', opacity: 0.5, fontSize: '0.5rem' }}>
-                      {m.size ? `${(m.size / 1e9).toFixed(1)}GB` : ''}
-                    </span>
-                  </div>
-                ))}
-              </div>
-            )}
           </div>
         </div>
       )}
-      </div>
+
+      {/* ===================================================================== */}
+      {/* Modale Cambio Avatar */}
+      {/* ===================================================================== */}
+      {editingAvatarManifesto && (
+        <div style={{
+          position: 'fixed',
+          top: 0, left: 0, right: 0, bottom: 0,
+          background: 'rgba(0, 0, 0, 0.8)',
+          backdropFilter: 'blur(8px)',
+          zIndex: 1000,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          padding: '20px'
+        }}>
+          <div style={{
+            background: '#0d1117',
+            border: '1px solid rgba(0, 210, 255, 0.3)',
+            borderRadius: '20px',
+            maxWidth: '500px',
+            width: '100%',
+            padding: '24px'
+          }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+              <h3 style={{ margin: 0, fontSize: '1.2rem', color: '#fff', fontWeight: 800 }}>
+                Seleziona Avatar per {editingAvatarManifesto.name}
+              </h3>
+              <button onClick={() => setEditingAvatarManifesto(null)} style={{ background: 'transparent', border: 'none', color: '#8892b0', cursor: 'pointer' }}>
+                <X size={20} />
+              </button>
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '16px', marginBottom: '24px' }}>
+              {AVATAR_PRESETS.map(preset => (
+                <div
+                  key={preset.path}
+                  onClick={() => handleUpdateAvatar(editingAvatarManifesto, preset.path)}
+                  style={{
+                    borderRadius: '12px',
+                    background: 'rgba(255, 255, 255, 0.04)',
+                    border: '1px solid rgba(255, 255, 255, 0.1)',
+                    padding: '12px',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'center',
+                    cursor: 'pointer',
+                    transition: 'all 0.2s ease'
+                  }}
+                >
+                  <div style={{ width: '60px', height: '60px', borderRadius: '50%', overflow: 'hidden', marginBottom: '8px', border: '1px solid rgba(0,210,255,0.3)' }}>
+                    <img src={preset.path} alt={preset.label} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                  </div>
+                  <span style={{ fontSize: '0.72rem', color: '#cbd5e0', textAlign: 'center', fontWeight: 600 }}>{preset.label}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ===================================================================== */}
+      {/* Modale Nuovo Manifesto */}
+      {/* ===================================================================== */}
+      {newManifestoModalOpen && (
+        <div style={{
+          position: 'fixed',
+          top: 0, left: 0, right: 0, bottom: 0,
+          background: 'rgba(0, 0, 0, 0.8)',
+          backdropFilter: 'blur(8px)',
+          zIndex: 1000,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          padding: '20px'
+        }}>
+          <div style={{
+            background: '#0d1117',
+            border: '1px solid rgba(188, 140, 255, 0.3)',
+            borderRadius: '20px',
+            maxWidth: '650px',
+            width: '100%',
+            maxHeight: '90vh',
+            display: 'flex',
+            flexDirection: 'column',
+            overflow: 'hidden'
+          }}>
+            <div style={{ padding: '20px 24px', borderBottom: '1px solid rgba(255,255,255,0.08)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <Sparkles size={18} style={{ color: '#bc8cff' }} />
+                <h3 style={{ margin: 0, fontSize: '1.2rem', color: '#fff', fontWeight: 800 }}>
+                  Crea Nuovo Manifesto Modelfile
+                </h3>
+              </div>
+              <button onClick={() => setNewManifestoModalOpen(false)} style={{ background: 'transparent', border: 'none', color: '#8892b0', cursor: 'pointer' }}>
+                <X size={20} />
+              </button>
+            </div>
+
+            <div style={{ padding: '24px', overflowY: 'auto', flex: 1, display: 'flex', flexDirection: 'column', gap: '16px' }}>
+              {formError && (
+                <div style={{ padding: '10px 14px', borderRadius: '8px', background: 'rgba(255, 80, 100, 0.15)', border: '1px solid #ff5064', color: '#ff5064', fontSize: '0.82rem', fontWeight: 700 }}>
+                  {formError}
+                </div>
+              )}
+
+              <div>
+                <label style={{ fontSize: '0.78rem', color: '#cbd5e0', fontWeight: 700, marginBottom: '6px', display: 'block' }}>Nome File Manifesto (.md)</label>
+                <input
+                  type="text"
+                  placeholder="es. quantum_physicist.md"
+                  value={newFileName}
+                  onChange={e => setNewFileName(e.target.value)}
+                  style={{ width: '100%', padding: '10px 14px', borderRadius: '8px', background: 'rgba(0,0,0,0.3)', border: '1px solid rgba(255,255,255,0.15)', color: '#fff', fontSize: '0.85rem' }}
+                />
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px' }}>
+                <div>
+                  <label style={{ fontSize: '0.78rem', color: '#cbd5e0', fontWeight: 700, marginBottom: '6px', display: 'block' }}>Ruolo Specializzato</label>
+                  <input
+                    type="text"
+                    placeholder="es. Quantum Physicist"
+                    value={newRole}
+                    onChange={e => setNewRole(e.target.value)}
+                    style={{ width: '100%', padding: '10px 14px', borderRadius: '8px', background: 'rgba(0,0,0,0.3)', border: '1px solid rgba(255,255,255,0.15)', color: '#fff', fontSize: '0.85rem' }}
+                  />
+                </div>
+
+                <div>
+                  <label style={{ fontSize: '0.78rem', color: '#cbd5e0', fontWeight: 700, marginBottom: '6px', display: 'block' }}>Categoria / Dominio</label>
+                  <select
+                    value={newCategory}
+                    onChange={e => setNewCategory(e.target.value)}
+                    style={{ width: '100%', padding: '10px 14px', borderRadius: '8px', background: '#0a0d14', border: '1px solid rgba(255,255,255,0.15)', color: '#fff', fontSize: '0.85rem' }}
+                  >
+                    <option value="Architettura & Kernel">Architettura & Kernel</option>
+                    <option value="Sviluppo & Test">Sviluppo & Test</option>
+                    <option value="Matematica & Scienze">Matematica & Scienze</option>
+                    <option value="Studenti & Università">Studenti & Università</option>
+                    <option value="Scienze, Ingegneria & Tech">Scienze, Ingegneria & Tech</option>
+                    <option value="Scienze & Medicina">Scienze & Medicina</option>
+                    <option value="Economia & Diritto">Economia & Diritto</option>
+                    <option value="Comunicazione & Creatività">Comunicazione & Creatività</option>
+                    <option value="Revisione & Qualità">Revisione & Qualità</option>
+                    <option value="Didattica & Valutazione">Didattica & Valutazione</option>
+                    <option value="Amministrazione & Tools">Amministrazione & Tools</option>
+                  </select>
+                </div>
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '12px' }}>
+                <div>
+                  <label style={{ fontSize: '0.78rem', color: '#cbd5e0', fontWeight: 700, marginBottom: '6px', display: 'block' }}>Modello Base</label>
+                  <input
+                    type="text"
+                    value={newBaseModel}
+                    onChange={e => setNewBaseModel(e.target.value)}
+                    style={{ width: '100%', padding: '8px 12px', borderRadius: '8px', background: 'rgba(0,0,0,0.3)', border: '1px solid rgba(255,255,255,0.15)', color: '#fff', fontSize: '0.85rem' }}
+                  />
+                </div>
+                <div>
+                  <label style={{ fontSize: '0.78rem', color: '#cbd5e0', fontWeight: 700, marginBottom: '6px', display: 'block' }}>Temperatura</label>
+                  <input
+                    type="text"
+                    value={newTemp}
+                    onChange={e => setNewTemp(e.target.value)}
+                    style={{ width: '100%', padding: '8px 12px', borderRadius: '8px', background: 'rgba(0,0,0,0.3)', border: '1px solid rgba(255,255,255,0.15)', color: '#fff', fontSize: '0.85rem' }}
+                  />
+                </div>
+                <div>
+                  <label style={{ fontSize: '0.78rem', color: '#cbd5e0', fontWeight: 700, marginBottom: '6px', display: 'block' }}>Contesto</label>
+                  <input
+                    type="text"
+                    value={newCtx}
+                    onChange={e => setNewCtx(e.target.value)}
+                    style={{ width: '100%', padding: '8px 12px', borderRadius: '8px', background: 'rgba(0,0,0,0.3)', border: '1px solid rgba(255,255,255,0.15)', color: '#fff', fontSize: '0.85rem' }}
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label style={{ fontSize: '0.78rem', color: '#cbd5e0', fontWeight: 700, marginBottom: '6px', display: 'block' }}>Istruzione di Sistema / Descrizione Missione</label>
+                <textarea
+                  rows={4}
+                  placeholder="Descrivi la missione dell'agente..."
+                  value={newPrompt}
+                  onChange={e => setNewPrompt(e.target.value)}
+                  style={{ width: '100%', padding: '10px 14px', borderRadius: '8px', background: 'rgba(0,0,0,0.3)', border: '1px solid rgba(255,255,255,0.15)', color: '#fff', fontSize: '0.85rem', resize: 'vertical' }}
+                />
+              </div>
+            </div>
+
+            <div style={{ padding: '16px 24px', borderTop: '1px solid rgba(255,255,255,0.08)', display: 'flex', justifyContent: 'flex-end', gap: '12px' }}>
+              <button
+                onClick={() => setNewManifestoModalOpen(false)}
+                style={{ padding: '8px 16px', borderRadius: '8px', background: 'transparent', border: '1px solid rgba(255,255,255,0.15)', color: '#a0aec0', cursor: 'pointer' }}
+              >
+                Annulla
+              </button>
+              <button
+                onClick={handleCreateManifesto}
+                disabled={creating}
+                style={{ padding: '8px 18px', borderRadius: '8px', background: 'linear-gradient(135deg, #bc8cff 0%, #7c5bf0 100%)', border: 'none', color: '#fff', fontWeight: 800, cursor: creating ? 'not-allowed' : 'pointer' }}
+              >
+                {creating ? 'Creazione in corso...' : 'Salva Manifesto'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 }

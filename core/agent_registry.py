@@ -30,14 +30,46 @@ def save_agents_meta(meta: dict) -> None:
 
 
 def get_all_agents() -> list:
-    """Get list of all registered agents with their metadata."""
+    """Get list of all registered agents with their metadata, auto-discovering all manifests in manifesti/."""
     meta = load_agents_meta()
     agents = meta.get("agents", {})
     result = []
+    known_ids = set()
     for agent_id, agent_data in agents.items():
         entry = {"id": agent_id, **agent_data}
         entry.pop("parent_id", None)
         result.append(entry)
+        known_ids.add(agent_id)
+
+    # Auto-discover unlisted manifests from manifesti/ and manifesti/Private/
+    manifesto_dir = 'manifesti'
+    if os.path.isdir(manifesto_dir):
+        for f in os.listdir(manifesto_dir):
+            if f.endswith('.md') and f.lower() != 'readme.md':
+                aid = f[:-3]
+                if aid not in known_ids:
+                    result.append({
+                        "id": aid,
+                        "name": aid.replace('_', ' ').title(),
+                        "manifesto": f"manifesti/{f}",
+                        "status": "active",
+                        "specialization": aid
+                    })
+                    known_ids.add(aid)
+        p_dir = os.path.join(manifesto_dir, 'Private')
+        if os.path.isdir(p_dir):
+            for f in os.listdir(p_dir):
+                if f.endswith('.md'):
+                    aid = f[:-3]
+                    if aid not in known_ids:
+                        result.append({
+                            "id": aid,
+                            "name": aid.replace('_', ' ').title(),
+                            "manifesto": f"manifesti/Private/{f}",
+                            "status": "active",
+                            "specialization": aid
+                        })
+                        known_ids.add(aid)
     return result
 
 

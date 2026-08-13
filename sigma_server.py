@@ -96,7 +96,8 @@ class SigmaAPIHandler(SimpleHTTPRequestHandler):
 # 1. Data handlers (modules, topics, knowledge DB, manifesti)
 from core.data_handler import (
     handle_api_modules, handle_api_topics, handle_knowledge_db, handle_list_manifesti,
-    handle_update_manifesto_image, handle_upload_agent_image, handle_upload_user_avatar
+    handle_update_manifesto_image, handle_upload_agent_image, handle_upload_user_avatar,
+    handle_manifesti_hub, handle_manifesti_install_from_hub
 )
 SigmaAPIHandler.handle_api_modules = handle_api_modules
 SigmaAPIHandler.handle_api_topics = handle_api_topics
@@ -105,6 +106,8 @@ SigmaAPIHandler.handle_list_manifesti = handle_list_manifesti
 SigmaAPIHandler.handle_update_manifesto_image = handle_update_manifesto_image
 SigmaAPIHandler.handle_upload_agent_image = handle_upload_agent_image
 SigmaAPIHandler.handle_upload_user_avatar = handle_upload_user_avatar
+SigmaAPIHandler.handle_manifesti_hub = handle_manifesti_hub
+SigmaAPIHandler.handle_manifesti_install_from_hub = handle_manifesti_install_from_hub
 
 from core.tts_handler import handle_tts_engines, handle_tts_speak
 SigmaAPIHandler.handle_tts_engines = handle_tts_engines
@@ -308,6 +311,21 @@ def handle_router_train(self):
         return self.send_json_response({"success": False, "error": str(exc)}, status=500)
 
 SigmaAPIHandler.handle_router_train = handle_router_train
+
+# 19. Skills & Marketplace Handlers
+from core.integrations.handlers import (
+    handle_skills_list, handle_skills_toggle, handle_apps_status,
+    handle_apps_launch, handle_apps_autoconfigure,
+    handle_marketplace_modules, handle_marketplace_install, handle_marketplace_rebuild
+)
+SigmaAPIHandler.handle_skills_list = handle_skills_list
+SigmaAPIHandler.handle_skills_toggle = handle_skills_toggle
+SigmaAPIHandler.handle_apps_status = handle_apps_status
+SigmaAPIHandler.handle_apps_launch = handle_apps_launch
+SigmaAPIHandler.handle_apps_autoconfigure = handle_apps_autoconfigure
+SigmaAPIHandler.handle_marketplace_modules = handle_marketplace_modules
+SigmaAPIHandler.handle_marketplace_install = handle_marketplace_install
+SigmaAPIHandler.handle_marketplace_rebuild = handle_marketplace_rebuild
 
 # --- Register routing tables ---
 register_get_handlers(SigmaAPIHandler)

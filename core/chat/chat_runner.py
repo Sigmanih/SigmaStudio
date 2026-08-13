@@ -673,6 +673,23 @@ Contenuto completo...
         if created_files:
             formatted_res = _format_conversational_summary(formatted_res, created_files)
 
+        # Resolve real agent details from manifesto_used
+        real_agent_name = bot_name
+        real_agent_role = ""
+        real_agent_image = "/images/default.png"
+        if manifesto_path and os.path.exists(manifesto_path):
+            fname = os.path.basename(manifesto_path)
+            try:
+                from core.data_handler import _parse_manifesto_file
+                from core.agent_registry import load_agents_meta
+                meta = load_agents_meta()
+                parsed = _parse_manifesto_file(manifesto_path, fname, meta, meta.get("manifesto_images", {}))
+                real_agent_name = parsed.get("name", bot_name)
+                real_agent_role = parsed.get("role", "")
+                real_agent_image = parsed.get("image", "/images/default.png")
+            except Exception as e:
+                log.debug("Manifesto metadata extraction error: %s", e)
+
         return self.send_json_response({
             "response": formatted_res,
             "thinking": thinking or "",
@@ -680,8 +697,10 @@ Contenuto completo...
             "created_files": created_files,
             "error": None,
             "manifesto_used": manifesto_path,
-            "agent_name": bot_name,
-            "agent_id": bot_name.lower().replace(" ", "_")
+            "agent_name": real_agent_name,
+            "agent_role": real_agent_role,
+            "agent_image": real_agent_image,
+            "agent_id": real_agent_name.lower().replace(" ", "_")
         })
 
     except Exception as exc:

@@ -115,6 +115,22 @@ export default function useChatCore(extraProps = {}) {
   useEffect(() => {
     configHook.fetchConfigAndModels();
     configHook.fetchManifestos();
+
+    try {
+      const preload = localStorage.getItem('sigma_preload_agent');
+      if (preload) {
+        localStorage.removeItem('sigma_preload_agent');
+        const mPath = preload.includes('/') ? preload : `manifesti/${preload}.md`;
+        const saved = localStorage.getItem('sigma_selected_manifesto');
+        let mObj = saved ? JSON.parse(saved) : null;
+        if (!mObj) {
+          mObj = { name: preload.replace(/_/g, ' '), path: mPath, exists: true, image: '/images/default.png' };
+        }
+        configHook.setActiveManifesto(mObj);
+        configHook.setSelectedManifestoPath(mObj.path);
+        configHook.setManifestoManuallySelected(true);
+      }
+    } catch (e) {}
   }, []);
 
   const handleSelectManifesto = useCallback((m) => {
