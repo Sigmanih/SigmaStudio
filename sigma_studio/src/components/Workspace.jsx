@@ -1,5 +1,4 @@
-import React from 'react';
-import { X, FileText, Terminal, PieChart, BookOpen, Trash2, ChevronRight, Home, MessageSquare, FlaskConical, Brain, Zap, User, Palette, Blocks, Image, Store } from 'lucide-react';
+import { X, FileText, Terminal, PieChart, BookOpen, Trash2, ChevronRight, Home, MessageSquare, FlaskConical, Brain, Zap, User, Palette, Blocks, Image, Store, Key } from 'lucide-react';
 import WelcomeDashboard from './WelcomeDashboard';
 import CreativeStudio from './CreativeStudio/CreativeStudio';
 import SkillsHub from './SkillsHub';
@@ -19,6 +18,7 @@ import McpHubTab from './McpHubTab';
 import KnowledgeNodeExplorer from './KnowledgeNodeExplorer';
 import DomoticaTab from './Workspace/DomoticaTab';
 import MarketplaceTab from './MarketplaceTab';
+import AIConfigTab from './AIConfigTab';
 
 // ==============================================================================
 // Workspace — Content area that renders based on active tab type
@@ -39,6 +39,7 @@ const FileIcon = ({ type }) => {
     case 'skills_hub': return <Blocks size={16} />;
     case 'marketplace': return <Store size={16} />;
     case 'image_viewer': return <Image size={16} />;
+    case 'ai_config': case 'config': return <Key size={16} />;
     default: return <FileText size={16} />;
   }
 };
@@ -204,6 +205,9 @@ export default function Workspace({
     }
     if (tab.type === 'image_viewer') {
       return <ImageViewer tab={tab} />;
+    }
+    if (tab.type === 'ai_config' || tab.type === 'config') {
+      return <AIConfigTab openTab={openTab} />;
     }
     return <div className="placeholder-content">Content type {tab.type} not implemented in preview.</div>;
   };

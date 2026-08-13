@@ -1,13 +1,12 @@
-import React, { useState, useEffect, useCallback, Suspense, lazy } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, Suspense, lazy } from 'react';
 import {
   Wand2, Edit3, Box, Hexagon, Layers, Workflow, Film, Cpu,
-  ChevronLeft, ChevronRight, Database, X
+  Database, X, Upload, Search, Download, Trash2, CheckCircle2,
+  Sparkles, Sliders, LayoutGrid, List, Play, Scissors, ChevronRight,
+  RefreshCw, Eye
 } from 'lucide-react';
 import { useApp } from '../../contexts/AppContext';
 import TechSpaceCanvas from '../common/TechSpaceCanvas';
-import AssetPanel from './AssetPanel';
-import PropertiesPanel from './PropertiesPanel';
-import ToolPanel from './ToolPanel';
 import GeneratePanel from './Generate/GeneratePanel';
 import EditCanvas from './Edit/EditCanvas';
 import MeshLab from './MeshLab/MeshLab';
@@ -20,28 +19,37 @@ import ProgressOverlay from './shared/ProgressOverlay';
 import { useCreativeApi } from './useCreativeApi';
 import { useCreativeModels } from './useCreativeModels';
 
-// three.js pesa ~600 kB: si carica solo quando si apre davvero la vista 3D.
+// Lazy load 3D viewport
 const Viewport3D = lazy(() => import('./Viewport3D/Viewport3D'));
 
 const VIEWS = [
-  { id: 'generate', label: 'Generate', icon: Wand2 },
-  { id: 'edit', label: 'Edit', icon: Edit3 },
-  { id: '3d', label: '3D', icon: Box },
-  { id: 'mesh', label: 'Mesh Lab', icon: Hexagon },
-  { id: 'materials', label: 'Materials', icon: Layers },
-  { id: 'video', label: 'Video', icon: Film },
-  { id: 'pipeline', label: 'Pipeline', icon: Workflow },
-  { id: 'models', label: 'Modelli', icon: Cpu },
+  { id: 'generate', label: '2D Generator', icon: Wand2, badge: 'SDXL' },
+  { id: 'edit', label: 'Ritocco & Edit', icon: Edit3, badge: 'INPAINT' },
+  { id: '3d', label: '3D Viewport', icon: Box, badge: 'THREE.JS' },
+  { id: 'mesh', label: 'Mesh Lab', icon: Hexagon, badge: 'BLENDER' },
+  { id: 'materials', label: 'Materiali PBR', icon: Layers, badge: 'TEXTURE' },
+  { id: 'video', label: 'Video Studio', icon: Film, badge: 'MOTION' },
+  { id: 'pipeline', label: 'Pipeline Nodi', icon: Workflow, badge: 'COMFY' },
+  { id: 'models', label: 'Modelli AI', icon: Cpu, badge: 'DIFFUSION' },
+];
+
+const ASSET_FILTERS = [
+  { id: 'all', label: 'Tutti' },
+  { id: 'image', label: 'Immagini' },
+  { id: 'model_3d', label: '3D' },
+  { id: 'video', label: 'Video' },
+  { id: 'material', label: 'Materiali' },
 ];
 
 export default function CreativeStudio() {
   const { theme } = useApp();
-  const [activeView, setActiveView] = useState('generate');
-  const [leftVisible, setLeftVisible] = useState(true);
-  const [rightVisible, setRightVisible] = useState(true);
+  const isLight = theme === 'light';
 
+  const [activeView, setActiveView] = useState('generate');
   const [assets, setAssets] = useState([]);
   const [selectedAsset, setSelectedAsset] = useState(null);
+  const [assetSearch, setAssetSearch] = useState('');
+  const [assetFilter, setAssetFilter] = useState('all');
 
   const [backends, setBackends] = useState([]);
   const [capabilities, setCapabilities] = useState({});
@@ -49,6 +57,16 @@ export default function CreativeStudio() {
 
   const { runTask, busy, error, clearError } = useCreativeApi();
   const { models, inventory, refresh: refreshModels } = useCreativeModels();
+  const uploadInputRef = React.useRef(null);
+
+  // Theme styling tokens
+  const bg = isLight ? '#fcfaf6' : '#0b0d13';
+  const cardBg = isLight ? '#fffdf9' : '#11141d';
+  const cardBorder = isLight ? '1px solid rgba(190, 160, 110, 0.3)' : '1px solid rgba(255, 255, 255, 0.08)';
+  const innerCardBg = isLight ? '#f8f5ee' : 'rgba(255, 255, 255, 0.035)';
+  const innerCardBorder = isLight ? '1px solid rgba(190, 160, 110, 0.22)' : '1px solid rgba(255, 255, 255, 0.06)';
+  const titleColor = isLight ? '#111827' : '#ffffff';
+  const subtitleColor = isLight ? '#4b5563' : '#a0a6bc';
 
   const fetchAssets = useCallback(() => (
     fetch('/api/creative/assets?limit=200')
@@ -72,7 +90,6 @@ export default function CreativeStudio() {
 
   useEffect(() => { fetchCreativeData(); }, [fetchCreativeData]);
 
-  /** Inserisce gli asset appena prodotti in cima al vault senza rileggere tutto. */
   const registerAssets = useCallback((produced) => {
     const list = (Array.isArray(produced) ? produced : [produced]).filter(Boolean);
     if (!list.length) return;
@@ -85,8 +102,7 @@ export default function CreativeStudio() {
       .then(data => { if (data.success) setStats(data.stats || { total: 0 }); }).catch(() => {});
   }, []);
 
-  // --- operazioni ------------------------------------------------------
-
+  // --- Operations ---
   const handleGenerate = useCallback((params, backend) => (
     runTask('/api/creative/generate',
       { task_type: 'text_to_image', params, backend },
@@ -149,21 +165,10 @@ export default function CreativeStudio() {
       .catch(() => {})
   ), [runTask, registerAssets]);
 
-  /** Vision agent: il risultato non è un asset ma un'analisi da mostrare. */
-  const handleVision = useCallback((task_type, params = {}) => (
-    runTask('/api/creative/vision',
-      { task_type, asset_id: params.asset_id, params },
-      { label: `Vision: ${task_type}` })
-      .then(data => {
-        fetchAssets();
-        return data.result;
-      })
-  ), [runTask, fetchAssets]);
-
   const handleUpload = useCallback((file) => {
     const reader = new FileReader();
     reader.onload = () => {
-      runTask('/api/creative/upload', { name: file.name, image: reader.result }, { label: 'Upload' })
+      runTask('/api/creative/upload', { name: file.name, image: reader.result }, { label: 'Upload Asset' })
         .then(data => registerAssets(data.asset))
         .catch(() => {});
     };
@@ -182,62 +187,84 @@ export default function CreativeStudio() {
     }).catch(() => {});
   }, [fetchCreativeData]);
 
-  // --- rendering -------------------------------------------------------
+  // Filtered assets
+  const filteredAssets = useMemo(() => {
+    return assets.filter(a => {
+      const matchType = assetFilter === 'all' || a.type === assetFilter || (assetFilter === '3d' && (a.type === 'mesh' || a.type === 'model_3d'));
+      const matchSearch = !assetSearch.trim() || a.name?.toLowerCase().includes(assetSearch.toLowerCase().trim());
+      return matchType && matchSearch;
+    });
+  }, [assets, assetFilter, assetSearch]);
 
-  const is3DAsset = (a) => a && (a.type === 'model_3d' || a.type === 'mesh');
-
+  // Render main canvas for active view
   const renderCanvas = () => {
     switch (activeView) {
       case 'generate':
-        return <GeneratePanel
-          onGenerate={handleGenerate}
-          onUpload={handleUpload}
-          isGenerating={!!busy}
-          backends={backends}
-          models={models}
-          inventory={inventory}
-          recentAssets={assets.filter(a => a.type === 'image' || a.type === 'render')}
-          onSelectAsset={setSelectedAsset} />;
+        return (
+          <GeneratePanel
+            onGenerate={handleGenerate}
+            onUpload={handleUpload}
+            isGenerating={!!busy}
+            backends={backends}
+            models={models}
+            inventory={inventory}
+            recentAssets={assets.filter(a => a.type === 'image' || a.type === 'render')}
+            onSelectAsset={setSelectedAsset}
+          />
+        );
       case 'edit':
-        return <EditCanvas
-          asset={selectedAsset}
-          busy={!!busy}
-          capabilities={capabilities}
-          onEdit={handleEdit}
-          onUpscale={handleUpscale}
-          onSegment={handleSegment} />;
+        return (
+          <EditCanvas
+            asset={selectedAsset}
+            busy={!!busy}
+            capabilities={capabilities}
+            onEdit={handleEdit}
+            onUpscale={handleUpscale}
+            onSegment={handleSegment}
+          />
+        );
       case '3d':
         return (
-          <Suspense fallback={<div className="cs-canvas-wrapper"><p>Caricamento viewport 3D...</p></div>}>
+          <Suspense fallback={<div style={{ padding: '40px', textAlign: 'center' }}><p>Caricamento Viewport 3D...</p></div>}>
             <Viewport3D
               asset={selectedAsset}
               busy={!!busy}
               canGenerate3D={(capabilities.image_to_3d || []).length > 0}
               blenderAvailable={(capabilities.render || []).length > 0}
               onGenerate3D={handle3D}
-              onRender={handleRender} />
+              onRender={handleRender}
+            />
           </Suspense>
         );
       case 'mesh':
-        return <MeshLab
-          asset={selectedAsset}
-          busy={!!busy}
-          blenderAvailable={(capabilities.render || []).length > 0}
-          onMeshOp={handleMesh} />;
+        return (
+          <MeshLab
+            asset={selectedAsset}
+            busy={!!busy}
+            blenderAvailable={(capabilities.render || []).length > 0}
+            onMeshOp={handleMesh}
+          />
+        );
       case 'materials':
-        return <MaterialsPanel
-          asset={selectedAsset}
-          assets={assets}
-          busy={!!busy}
-          blenderAvailable={(capabilities.render || []).length > 0}
-          onMaterial={handleMaterial} />;
+        return (
+          <MaterialsPanel
+            asset={selectedAsset}
+            assets={assets}
+            busy={!!busy}
+            blenderAvailable={(capabilities.render || []).length > 0}
+            onMaterial={handleMaterial}
+          />
+        );
       case 'video':
-        return <VideoPanel
-          asset={selectedAsset}
-          assets={assets}
-          busy={!!busy}
-          canVideo={((capabilities.text_to_video || []).length + (capabilities.image_to_video || []).length) > 0}
-          onVideo={handleVideo} />;
+        return (
+          <VideoPanel
+            asset={selectedAsset}
+            assets={assets}
+            busy={!!busy}
+            canVideo={((capabilities.text_to_video || []).length + (capabilities.image_to_video || []).length) > 0}
+            onVideo={handleVideo}
+          />
+        );
       case 'pipeline':
         return <CreativeNodeEditor assets={assets} onAssetsProduced={registerAssets} />;
       case 'models':
@@ -248,173 +275,407 @@ export default function CreativeStudio() {
   };
 
   return (
-    <div className="creative-studio cs-fade-in" style={{ position: 'relative' }}>
-      {/* Animated Translucent Cyber Space Background Canvas */}
-      <TechSpaceCanvas isLight={theme === 'light'} />
+    <div className="creative-studio cs-fade-in" style={{
+      display: 'flex',
+      flexDirection: 'column',
+      height: '100%',
+      width: '100%',
+      background: bg,
+      color: titleColor,
+      fontFamily: 'inherit',
+      overflow: 'hidden',
+      position: 'relative'
+    }}>
+      <TechSpaceCanvas isLight={isLight} />
 
-      {/* Hero Visual Banner with Standardized Theme System & Dimensions */}
+      {/* TOP HEADER & STUDIO CONTROLS */}
       <div style={{
-        position: 'relative',
-        zIndex: 1,
-        borderRadius: 0,
-        overflow: 'hidden',
-        padding: '24px 32px',
-        minHeight: '110px',
-        borderBottom: theme === 'light' ? '1px solid rgba(234, 88, 12, 0.35)' : '1px solid rgba(0, 210, 255, 0.25)',
-        boxShadow: theme === 'light' ? '0 8px 24px rgba(234, 88, 12, 0.08)' : '0 8px 32px rgba(0,0,0,0.4)',
-        backgroundImage: theme === 'light'
-          ? 'linear-gradient(135deg, rgba(254, 252, 247, 0.76) 0%, rgba(248, 242, 232, 0.70) 100%), url("/images/creative_lab_banner.jpg")'
-          : 'linear-gradient(135deg, rgba(10, 14, 26, 0.85) 0%, rgba(14, 22, 42, 0.80) 100%), url("/images/creative_lab_banner.jpg")',
-        backgroundSize: 'cover',
-        backgroundRepeat: 'no-repeat',
-        backgroundPosition: 'center center',
+        padding: '14px 24px',
+        background: cardBg,
+        borderBottom: isLight ? '1px solid rgba(190, 160, 110, 0.3)' : '1px solid rgba(255, 255, 255, 0.08)',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        flexWrap: 'wrap',
+        gap: '12px',
+        zIndex: 10,
         flexShrink: 0
       }}>
-        <div style={{ position: 'relative', zIndex: 2, display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '16px' }}>
-          <div style={{ maxWidth: '680px' }}>
-            <div style={{
-              display: 'inline-flex', alignItems: 'center', gap: '6px',
-              padding: '3px 12px', borderRadius: '14px',
-              background: theme === 'light' ? 'rgba(234, 88, 12, 0.12)' : 'rgba(0, 210, 255, 0.15)', 
-              border: theme === 'light' ? '1px solid rgba(234, 88, 12, 0.35)' : '1px solid rgba(0, 210, 255, 0.35)',
-              color: theme === 'light' ? '#ea580c' : '#00d2ff', 
-              fontSize: '0.68rem', fontWeight: 800, letterSpacing: '1px', textTransform: 'uppercase', marginBottom: '6px'
-            }}>
-              <Wand2 size={14} /> CREATIVE LAB & MULTIMEDIA GENERATION BUS
-            </div>
-            <h1 style={{ margin: '0 0 6px 0', fontSize: '1.4rem', fontWeight: 800, color: theme === 'light' ? '#111111' : '#fff', letterSpacing: '-0.3px', textShadow: 'none' }}>
-              🎨 Creative Lab — <span style={{
-                color: theme === 'light' ? '#c2410c' : '#00d2ff',
-                fontWeight: 800
-              }}>Generazione & Design Multimediale</span>
-            </h1>
-            <p style={{ margin: 0, fontSize: '0.82rem', color: theme === 'light' ? '#4b5563' : '#cbd5e0', lineHeight: 1.45 }}>
-              Generazione di immagini, modelli 3D, mesh Blender, texture PBR e video con ComfyUI, Automatic1111 e SDXL.
-            </p>
+        {/* Title & Engine status */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+          <div style={{
+            width: '36px',
+            height: '36px',
+            borderRadius: '10px',
+            background: isLight ? 'rgba(234, 88, 12, 0.12)' : 'rgba(0, 210, 255, 0.15)',
+            border: isLight ? '1px solid rgba(234, 88, 12, 0.35)' : '1px solid rgba(0, 210, 255, 0.35)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            fontSize: '1.2rem'
+          }}>
+            🎨
           </div>
-
-          {/* Action Buttons on the Right */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
-            <button
-              onClick={() => setActiveView('generate')}
-              style={{
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: '6px',
-                padding: '10px 18px',
-                borderRadius: '12px',
-                background: activeView === 'generate' 
-                  ? (theme === 'light' ? '#ea580c' : '#00d2ff') 
-                  : (theme === 'light' ? '#fffdf9' : '#181b28'),
-                color: activeView === 'generate' ? (theme === 'light' ? '#fff' : '#0a0d14') : (theme === 'light' ? '#111' : '#fff'),
-                border: activeView === 'generate' ? 'none' : (theme === 'light' ? '1px solid rgba(190, 160, 110, 0.4)' : '1px solid rgba(255, 255, 255, 0.15)'),
-                fontSize: '0.82rem',
-                fontWeight: 800,
-                cursor: 'pointer'
-              }}
-            >
-              <Wand2 size={14} /> 2D Generator
-            </button>
-            <button
-              onClick={() => setActiveView('3d')}
-              style={{
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: '6px',
-                padding: '10px 18px',
-                borderRadius: '12px',
-                background: activeView === '3d' 
-                  ? (theme === 'light' ? '#ea580c' : '#00d2ff') 
-                  : (theme === 'light' ? '#fffdf9' : '#181b28'),
-                color: activeView === '3d' ? (theme === 'light' ? '#fff' : '#0a0d14') : (theme === 'light' ? '#111' : '#fff'),
-                border: activeView === '3d' ? 'none' : (theme === 'light' ? '1px solid rgba(190, 160, 110, 0.4)' : '1px solid rgba(255, 255, 255, 0.15)'),
-                fontSize: '0.82rem',
-                fontWeight: 800,
-                cursor: 'pointer'
-              }}
-            >
-              <Box size={14} /> 3D Viewport
-            </button>
+          <div>
+            <h1 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 800, color: titleColor }}>
+              Creative Lab
+            </h1>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.68rem', color: subtitleColor }}>
+              <BackendStatus backends={backends} />
+              <span>•</span>
+              <Database size={11} color="#00d2ff" />
+              <span>{stats.total ?? assets.length} asset generati</span>
+            </div>
           </div>
         </div>
-      </div>
 
-      <div className="cs-toolbar" style={{ margin: 0, borderRadius: 0 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-          <button className="collapse-btn" onClick={() => setLeftVisible(!leftVisible)}><ChevronLeft size={16} /></button>
-          <div className="cs-view-modes">
-            {VIEWS.map(v => (
+        {/* View Switcher Chips (Horizontal Pills) */}
+        <div style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: '6px',
+          background: innerCardBg,
+          padding: '4px',
+          borderRadius: '12px',
+          border: innerCardBorder,
+          overflowX: 'auto'
+        }}>
+          {VIEWS.map(v => {
+            const active = activeView === v.id;
+            const Icon = v.icon;
+            return (
               <button
                 key={v.id}
-                className={`cs-mode-btn ${activeView === v.id ? 'active' : ''}`}
                 onClick={() => setActiveView(v.id)}
+                style={{
+                  padding: '6px 12px',
+                  borderRadius: '8px',
+                  border: 'none',
+                  background: active ? (isLight ? '#111827' : '#00d2ff') : 'transparent',
+                  color: active ? '#ffffff' : subtitleColor,
+                  fontSize: '0.74rem',
+                  fontWeight: active ? 800 : 600,
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  transition: 'all 0.15s ease',
+                  whiteSpace: 'nowrap'
+                }}
               >
-                <v.icon size={16} /> {v.label}
+                <Icon size={13} />
+                <span>{v.label}</span>
               </button>
-            ))}
-          </div>
-        </div>
-
-        <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-          <div className="cs-toolbar-status">
-            <BackendStatus backends={backends} />
-            <div className="cs-toolbar-sep" />
-            <Database size={14} color="var(--accent)" />
-            <span>{stats.total ?? assets.length} asset</span>
-          </div>
-          <button className="collapse-btn" onClick={() => setRightVisible(!rightVisible)}><ChevronRight size={16} /></button>
+            );
+          })}
         </div>
       </div>
 
       {error && (
-        <div className="cs-error-bar">
+        <div style={{
+          padding: '8px 16px',
+          background: 'rgba(239, 68, 68, 0.15)',
+          borderBottom: '1px solid #ef4444',
+          color: '#ef4444',
+          fontSize: '0.78rem',
+          fontWeight: 700,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          zIndex: 10
+        }}>
           <span>{error}</span>
-          <button onClick={clearError}><X size={14} /></button>
+          <button onClick={clearError} style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer' }}>
+            <X size={14} />
+          </button>
         </div>
       )}
 
-      <div className="cs-workspace">
-        {leftVisible && (
-          <div className="cs-panel-left">
-            <AssetPanel
-              assets={assets}
-              selectedAsset={selectedAsset}
-              onSelectAsset={setSelectedAsset}
-              onUpload={handleUpload}
-              onDelete={handleDelete}
-              onOpenAsset={(a) => {
-                setSelectedAsset(a);
-                setActiveView(is3DAsset(a) ? '3d' : 'edit');
-              }} />
-            <ToolPanel activeView={activeView} onViewChange={setActiveView} />
-          </div>
-        )}
+      {/* TWO-COLUMN STUDIO WORKBENCH */}
+      <div style={{
+        display: 'flex',
+        flex: 1,
+        height: 'calc(100% - 65px)',
+        overflow: 'hidden',
+        position: 'relative'
+      }}>
+        {/* COLUMN 1: LEFT CONTROL & ASSET HUB */}
+        <aside style={{
+          width: '330px',
+          minWidth: '290px',
+          maxWidth: '360px',
+          flexShrink: 0,
+          background: cardBg,
+          borderRight: cardBorder,
+          display: 'flex',
+          flexDirection: 'column',
+          height: '100%',
+          overflow: 'hidden',
+          zIndex: 5
+        }}>
+          {/* Asset Hub Header & Upload */}
+          <div style={{ padding: '12px 14px', borderBottom: innerCardBorder }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '10px' }}>
+              <span style={{ fontSize: '0.82rem', fontWeight: 800, color: titleColor }}>
+                📦 Libreria Asset ({filteredAssets.length})
+              </span>
+              <button
+                onClick={() => uploadInputRef.current?.click()}
+                style={{
+                  padding: '4px 10px',
+                  borderRadius: '8px',
+                  background: 'rgba(0, 210, 255, 0.15)',
+                  border: '1px solid rgba(0, 210, 255, 0.3)',
+                  color: '#00d2ff',
+                  fontSize: '0.7rem',
+                  fontWeight: 700,
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '4px'
+                }}
+              >
+                <Upload size={12} /> Carica
+              </button>
+              <input
+                ref={uploadInputRef}
+                type="file"
+                accept="image/*"
+                hidden
+                onChange={e => { const f = e.target.files?.[0]; if (f) handleUpload(f); e.target.value = ''; }}
+              />
+            </div>
 
-        <div className="cs-canvas">
+            {/* Search Input */}
+            <div style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px',
+              padding: '5px 10px',
+              borderRadius: '8px',
+              background: innerCardBg,
+              border: innerCardBorder,
+              marginBottom: '8px'
+            }}>
+              <Search size={12} color={subtitleColor} />
+              <input
+                type="text"
+                placeholder="Cerca per nome..."
+                value={assetSearch}
+                onChange={e => setAssetSearch(e.target.value)}
+                style={{
+                  background: 'transparent',
+                  border: 'none',
+                  color: titleColor,
+                  fontSize: '0.74rem',
+                  outline: 'none',
+                  width: '100%'
+                }}
+              />
+            </div>
+
+            {/* Type Filter Pills */}
+            <div style={{ display: 'flex', gap: '4px', overflowX: 'auto', paddingBottom: '2px' }}>
+              {ASSET_FILTERS.map(f => (
+                <button
+                  key={f.id}
+                  onClick={() => setAssetFilter(f.id)}
+                  style={{
+                    padding: '3px 8px',
+                    borderRadius: '6px',
+                    fontSize: '0.66rem',
+                    fontWeight: 700,
+                    border: 'none',
+                    background: assetFilter === f.id ? '#00d2ff' : 'transparent',
+                    color: assetFilter === f.id ? '#000000' : subtitleColor,
+                    cursor: 'pointer',
+                    whiteSpace: 'nowrap'
+                  }}
+                >
+                  {f.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Scrollable Asset List */}
+          <div style={{
+            flex: 1,
+            overflowY: 'auto',
+            padding: '10px 12px',
+            display: 'grid',
+            gridTemplateColumns: 'repeat(2, 1fr)',
+            gap: '8px',
+            alignContent: 'flex-start'
+          }}>
+            {filteredAssets.length === 0 ? (
+              <div style={{ gridColumn: '1 / -1', padding: '24px 12px', textAlign: 'center', color: subtitleColor, fontSize: '0.74rem' }}>
+                Nessun asset presente. Genera o carica una nuova opera!
+              </div>
+            ) : (
+              filteredAssets.map(a => {
+                const isSelected = selectedAsset?.id === a.id;
+                return (
+                  <div
+                    key={a.id}
+                    onClick={() => setSelectedAsset(a)}
+                    onDoubleClick={() => {
+                      setSelectedAsset(a);
+                      setActiveView(a.type === 'model_3d' || a.type === 'mesh' ? '3d' : 'edit');
+                    }}
+                    style={{
+                      borderRadius: '10px',
+                      overflow: 'hidden',
+                      background: innerCardBg,
+                      border: isSelected ? '2px solid #00d2ff' : innerCardBorder,
+                      cursor: 'pointer',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      position: 'relative',
+                      boxShadow: isSelected ? '0 0 12px rgba(0, 210, 255, 0.25)' : 'none',
+                      transition: 'all 0.15s ease'
+                    }}
+                  >
+                    <div style={{ width: '100%', height: '80px', background: 'rgba(0,0,0,0.25)', overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                      {a.url ? (
+                        <img src={a.url} alt={a.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                      ) : (
+                        <Box size={22} color={subtitleColor} />
+                      )}
+                    </div>
+                    <div style={{ padding: '6px 8px' }}>
+                      <div style={{ fontSize: '0.7rem', fontWeight: 700, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                        {a.name || 'Senza titolo'}
+                      </div>
+                      <div style={{ fontSize: '0.62rem', color: subtitleColor, display: 'flex', justifyContent: 'space-between', marginTop: '2px' }}>
+                        <span style={{ textTransform: 'uppercase' }}>{a.type || 'image'}</span>
+                        {a.dimensions && <span>{a.dimensions.width}×{a.dimensions.height}</span>}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })
+            )}
+          </div>
+
+          {/* Selected Asset Quick Inspector (Bottom Card) */}
+          {selectedAsset && (
+            <div style={{
+              padding: '12px 14px',
+              borderTop: cardBorder,
+              background: innerCardBg,
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '8px'
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <span style={{ fontSize: '0.74rem', fontWeight: 800, color: titleColor }}>
+                  🔍 Azioni su Asset
+                </span>
+                <span style={{ fontSize: '0.65rem', color: '#00d2ff', fontWeight: 700 }}>
+                  {selectedAsset.name?.slice(0, 18) || 'Asset selezionato'}
+                </span>
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '6px' }}>
+                <button
+                  onClick={() => handleUpscale(selectedAsset.id, 2)}
+                  style={{
+                    padding: '5px 8px',
+                    borderRadius: '6px',
+                    background: cardBg,
+                    border: innerCardBorder,
+                    color: titleColor,
+                    fontSize: '0.68rem',
+                    fontWeight: 700,
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '4px'
+                  }}
+                >
+                  <Sparkles size={11} color="#00d2ff" /> Upscale 2x
+                </button>
+
+                <button
+                  onClick={() => {
+                    setActiveView('3d');
+                    handle3D('image_to_3d', { source_asset_id: selectedAsset.id });
+                  }}
+                  style={{
+                    padding: '5px 8px',
+                    borderRadius: '6px',
+                    background: cardBg,
+                    border: innerCardBorder,
+                    color: titleColor,
+                    fontSize: '0.68rem',
+                    fontWeight: 700,
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '4px'
+                  }}
+                >
+                  <Box size={11} color="#bc8cff" /> Genera 3D
+                </button>
+
+                <button
+                  onClick={() => {
+                    setActiveView('video');
+                    handleVideo('image_to_video', { source_asset_id: selectedAsset.id });
+                  }}
+                  style={{
+                    padding: '5px 8px',
+                    borderRadius: '6px',
+                    background: cardBg,
+                    border: innerCardBorder,
+                    color: titleColor,
+                    fontSize: '0.68rem',
+                    fontWeight: 700,
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '4px'
+                  }}
+                >
+                  <Film size={11} color="#ea580c" /> Anima Video
+                </button>
+
+                <button
+                  onClick={() => handleDelete(selectedAsset.id)}
+                  style={{
+                    padding: '5px 8px',
+                    borderRadius: '6px',
+                    background: 'rgba(239, 68, 68, 0.1)',
+                    border: '1px solid rgba(239, 68, 68, 0.25)',
+                    color: '#ef4444',
+                    fontSize: '0.68rem',
+                    fontWeight: 700,
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '4px'
+                  }}
+                >
+                  <Trash2 size={11} /> Elimina
+                </button>
+              </div>
+            </div>
+          )}
+        </aside>
+
+        {/* COLUMN 2: MAIN INTERACTIVE STUDIO WORKBENCH */}
+        <main style={{
+          flex: 1,
+          height: '100%',
+          overflowY: 'auto',
+          display: 'flex',
+          flexDirection: 'column',
+          position: 'relative'
+        }}>
           {renderCanvas()}
           {busy && <ProgressOverlay label={busy.label} progress={busy.progress} status={busy.message} />}
-        </div>
-
-        {rightVisible && (
-          <div className="cs-panel-right">
-            <PropertiesPanel
-              asset={selectedAsset}
-              busy={busy}
-              capabilities={capabilities}
-              onUpscale={handleUpscale}
-              onEdit={handleEdit}
-              onGenerate3D={handle3D}
-              onMaterial={handleMaterial}
-              onRender={handleRender}
-              onVideo={handleVideo}
-              onVision={handleVision}
-              onDelete={handleDelete}
-              onSelectAsset={(id) => {
-                const found = assets.find(a => a.id === id);
-                if (found) setSelectedAsset(found);
-              }} />
-          </div>
-        )}
+        </main>
       </div>
     </div>
   );

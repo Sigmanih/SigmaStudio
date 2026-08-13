@@ -2,7 +2,8 @@ import React, { useEffect, useState, useRef, useCallback } from 'react';
 import { 
   FolderTree, MessageSquare, Edit3, Share2, Palette, 
   FlaskConical, Cpu, Home as HomeIcon, Scroll, Microscope, ArrowRight,
-  Sun, Moon, Store, Sparkles, ShieldCheck, Zap, Layers
+  Sun, Moon, Store, Sparkles, ShieldCheck, Zap, Layers,
+  Activity, Calendar, Brain, FileText, PieChart, Wrench, Compass, CheckCircle2, Key
 } from 'lucide-react';
 import { useApp } from '../contexts/AppContext';
 import TechSpaceCanvas from './common/TechSpaceCanvas';
@@ -10,75 +11,295 @@ import TechSpaceCanvas from './common/TechSpaceCanvas';
 const PRIMI_PASSI_CARDS = [
   {
     step: '01',
-    title: 'Setup Modelli & Hardware',
-    subtitle: 'Verifica la connessione a Ollama locale o API Cloud (OpenAI, DeepSeek) e monitora la memoria VRAM GPU.',
-    icon: Cpu,
+    category: 'setup',
+    categoryLabel: 'Token & Providers',
+    badgeText: 'FONDAMENTA',
+    title: 'Configura Token & Providers AI',
+    subtitle: 'Gestisci le API key in modo sicuro (OpenAI, Claude, DeepSeek, Google, Groq) e collega Ollama GPU.',
+    tip: 'Concentra tutti i token in un unico hub sicuro e testa le connessioni con un click.',
+    icon: Key,
     color: '#00d2ff',
-    actionText: 'Hardware & AI',
-    onClick: (openTab) => openTab({ name: '⚡ Hardware' }, 'hardware_lab')
+    actionText: 'Configurazione AI ⚙️',
+    onClick: (openTab) => openTab({ name: '⚙️ Configurazione AI' }, 'ai_config')
   },
   {
     step: '02',
-    title: 'Argomenti & Moduli di Conoscenza',
-    subtitle: 'Struttura cartelle in data/ per raggruppare Teoria LaTeX, Script Python, Test Pytest e Visualizzazioni D3.js.',
-    icon: FolderTree,
-    color: '#3fb950',
-    actionText: 'Mappa Argomenti',
-    onClick: (openTab) => openTab({ name: 'Argomenti' }, 'knowledge')
+    category: 'setup',
+    categoryLabel: 'Ruoli & Manifesti',
+    badgeText: 'IDENTITÀ',
+    title: 'Scegli il tuo Ruolo Specialistico',
+    subtitle: 'Attiva il manifesto ideale per il tuo studio o lavoro (studente, programmatore, medico, giurista, ecc.).',
+    tip: 'Il modello Sigma assumerà subito le competenze del ruolo scelto.',
+    icon: Scroll,
+    color: '#bc8cff',
+    actionText: 'Esplora Manifesti 📜',
+    onClick: (openTab) => openTab({ name: 'Manifesti' }, 'whitepapers_lib')
   },
   {
     step: '03',
-    title: 'AI Chat & Swarm Multi-Agente',
-    subtitle: 'Collabora con ruoli specializzati (Matematico, Programmatore, Reviewer) con 4 modalità: Ask, Plan, Execute, Complete.',
-    icon: MessageSquare,
-    color: '#7c5bf0',
-    actionText: 'AI Chat Studio',
-    onClick: (openTab) => openTab({ name: 'AI Chat Workspace' }, 'chat')
+    category: 'studio',
+    categoryLabel: 'Struttura Dati',
+    badgeText: 'ORGANIZZAZIONE',
+    title: 'Naviga la Mappa degli Argomenti',
+    subtitle: 'Esplora il grafo relazionale di cartelle in data/ e consulta teoria LaTeX, test Pytest e grafici D3.js.',
+    tip: 'Tutti i documenti e gli script sono organizzati per materia.',
+    icon: FolderTree,
+    color: '#3fb950',
+    actionText: 'Apri Argomenti 🗺️',
+    onClick: (openTab) => openTab({ name: 'Argomenti' }, 'knowledge')
   },
   {
     step: '04',
-    title: 'Pipelines Lab & Dynamic Swarm',
-    subtitle: 'Trasforma un obiettivo scientifico in un grafo DAG di micro-task eseguiti in parallelo con self-healing automatico.',
-    icon: FlaskConical,
-    color: '#a78bfa',
-    actionText: 'Pipelines Lab',
-    onClick: (openTab) => openTab({ name: '🔬 Pipelines Lab' }, 'research_lab')
+    category: 'studio',
+    categoryLabel: 'Conversazione',
+    badgeText: 'INTERAZIONE',
+    title: 'Collabora in AI Chat Studio',
+    subtitle: 'Dialoga in 4 modalità (Ask, Plan, Execute, Complete) con supporto diretto ai file e tool MCP.',
+    tip: 'Chiedi spiegazioni, crea nuovi script o pianifica compiti.',
+    icon: MessageSquare,
+    color: '#7c5bf0',
+    actionText: 'Avvia Chat AI 💬',
+    onClick: (openTab) => openTab({ name: 'AI Chat Workspace' }, 'chat')
   },
   {
     step: '05',
-    title: 'Training Lab & SLM Forge',
-    subtitle: 'Addestra modelli linguistici con Unsloth QLoRA, avvia l\'Autopilota di iperparametri o valuta su 11 benchmark.',
-    icon: Sparkles,
-    color: '#d29922',
-    actionText: 'Training Lab',
-    onClick: (openTab) => openTab({ name: 'Training Lab' }, 'training_lab')
+    category: 'studio',
+    categoryLabel: 'Pianificazione',
+    badgeText: 'TRACKING',
+    title: 'Pianifica Task & Monitora Audit',
+    subtitle: 'Definisci la roadmap di studio e verifica lo storico delle attività svolte dagli agenti.',
+    tip: 'Tieni traccia dello stato di avanzamento e dei verbali.',
+    icon: Activity,
+    color: '#faa03c',
+    actionText: 'Vedi Pianificazione 📅',
+    onClick: (openTab) => openTab({ name: '📅 Pianificazione & Audit' }, 'roadmap')
   },
   {
     step: '06',
-    title: 'Creative Studio 3D & 2D',
-    subtitle: 'Generazione immagini 8K, texture PBR, inpainting, rimozione sfondo e rendering 3D tramite Blender headless.',
-    icon: Palette,
-    color: '#ff5064',
-    actionText: 'Creative Studio',
-    onClick: (openTab) => openTab({ name: '🎨 Creative Studio' }, 'creative_studio')
+    category: 'advanced',
+    categoryLabel: 'Swarm Multi-Agente',
+    badgeText: 'AUTOMAZIONE',
+    title: 'Lancia una Pipeline Swarm DAG',
+    subtitle: 'Scomponi un obiettivo complesso in micro-task eseguiti in parallelo con self-healing automatico.',
+    tip: 'Un team di agenti coopererà per scrivere teoria, codice e test.',
+    icon: FlaskConical,
+    color: '#00d2ff',
+    actionText: 'Pipelines Lab 🔬',
+    onClick: (openTab) => openTab({ name: '🔬 Pipelines Lab' }, 'research_lab')
   },
   {
     step: '07',
-    title: 'Domotica IoT & Home Assistant',
-    subtitle: 'Controlla dispositivi smart, sensori, luci e termostati della tua casa tramite server MCP dedicati.',
-    icon: HomeIcon,
-    color: '#00f2fe',
-    actionText: 'Pannello Domotica',
-    onClick: (openTab) => openTab({ name: '🏠 Domotica & Home Assistant' }, 'domotica')
+    category: 'advanced',
+    categoryLabel: 'Addestramento',
+    badgeText: 'SPECIALIZZAZIONE',
+    title: 'Addestra con Training Lab & SLM',
+    subtitle: 'Esegui il fine-tuning Unsloth QLoRA in locale, ottimizza con l\'Autopilota e valuta su 11 benchmark.',
+    tip: 'Rendi la tua squadra AI sempre più potente sul tuo settore.',
+    icon: Sparkles,
+    color: '#d29922',
+    actionText: 'Training Lab 🧪',
+    onClick: (openTab) => openTab({ name: 'Training Lab' }, 'training_lab')
   },
   {
     step: '08',
-    title: 'Kernel Marketplace & Moduli Git',
-    subtitle: 'Estendi il Kernel scaricando moduli da repository Git esterni con pipeline automatica di compilazione.',
-    icon: Store,
+    category: 'creative_iot',
+    categoryLabel: 'Studio Grafico',
+    badgeText: 'CREATIVITÀ',
+    title: 'Crea Media in Creative Lab 3D/2D',
+    subtitle: 'Genera immagini 8K, texture PBR per materiali, inpainting ed esegui rendering Blender 3D headless.',
+    tip: 'Produci illustrazioni ad alta risoluzione e asset 3D.',
+    icon: Palette,
+    color: '#ff5064',
+    actionText: 'Creative Lab 🎨',
+    onClick: (openTab) => openTab({ name: '🎨 Creative Studio' }, 'creative_studio')
+  },
+  {
+    step: '09',
+    category: 'creative_iot',
+    categoryLabel: 'Smart Home',
+    badgeText: 'DOMOTICA',
+    title: 'Governa la Casa con Domotica IoT',
+    subtitle: 'Controlla luci, termostati, sensori ambientali e scene domotiche tramite Home Assistant MCP.',
+    tip: 'L\'intelligenza artificiale interagisce con il mondo reale.',
+    icon: HomeIcon,
+    color: '#10b981',
+    actionText: 'Pannello Domotica 🏠',
+    onClick: (openTab) => openTab({ name: '🏠 Domotica & Home Assistant' }, 'domotica')
+  }
+];
+
+/* ----- 9 Showcase Module Definitions (Alternating Showcase Blocks) ----- */
+const MODULE_SHOWCASE_LIST = [
+  {
+    id: 'knowledge',
+    step: 'MODULO 01',
+    badge: 'STRUTTURA & GRAFO DELLA CONOSCENZA',
+    icon: FolderTree,
+    color: '#00d2ff',
+    title: 'Mappa degli Argomenti & Moduli di Conoscenza',
+    objective: 'Organizzare l\'intero corpus scientifico in alberature tematiche e moduli strutturati (data/), integrando teoria rigorosa in LaTeX, script computazionali Python, test automatici Pytest e simulazioni visive interattive.',
+    features: [
+      { icon: '🌐', label: 'Grafo Relazionale D3.js', desc: 'Navigazione force-directed dei nodi e delle dipendenze concettuali.' },
+      { icon: '📐', label: 'Formulario & Teoria LaTeX', desc: 'Rendering in tempo reale delle formule con KaTeX ($ e $$).' },
+      { icon: '⚡', label: 'Validazione Pytest', desc: 'Suite di test computazionali confinati e replicabili su disco.' },
+      { icon: '📊', label: 'Asset Multimodali', desc: 'Whitepaper, schede PDF, grafici SVG e documentazione accademica.' }
+    ],
+    actionText: 'Esplora Mappa Argomenti 🗺️',
+    tabPayload: [{ name: 'Argomenti' }, 'knowledge'],
+    image: '/images/knowledge_graph_banner.jpg',
+    imageCaption: '🌐 Grafo Relazionale Force-Directed e Struttura Modulare dei Dati'
+  },
+  {
+    id: 'whitepapers_lib',
+    step: 'MODULO 02',
+    badge: 'IDENTITY & CONTRATTI OPERATIVI DEI RUOLI',
+    icon: Scroll,
     color: '#bc8cff',
-    actionText: 'Marketplace',
-    onClick: (openTab) => openTab({ name: '🛍️ Marketplace Moduli' }, 'marketplace')
+    title: 'Galleria dei Manifesti & Ruoli Specialistici',
+    objective: 'Fornire al modello unificato Sigma contratti vincolanti ed identità professionali per ogni disciplina: studenti, docenti, programmatori, medici, ingegneri, avvocati e ricercatori, con sincronizzazione dal repository aperto su GitHub.',
+    features: [
+      { icon: '🧠', label: 'Modello Unico Sigma', desc: 'Competenze verticali caricate a runtime tramite Modelfile standard.' },
+      { icon: '🎓', label: 'Studenti & Formazione', desc: 'Ruoli didattici per spiegazioni guidate e risoluzione di problemi.' },
+      { icon: '💼', label: 'Discipline Professionali', desc: 'Manifesti per medici, giuristi, data scientist ed ingegneri.' },
+      { icon: '🌐', label: 'Hub GitHub Sincronizzato', desc: 'Download e aggiornamento istantaneo dei manifesti della community.' }
+    ],
+    actionText: 'Apri Galleria Manifesti 📜',
+    tabPayload: [{ name: 'Manifesti' }, 'whitepapers_lib'],
+    image: '/images/manifesti_gallery_banner.jpg',
+    imageCaption: '📜 Catalogo dei Manifesti Modelfile & Competenze Verticali'
+  },
+  {
+    id: 'roadmap',
+    step: 'MODULO 03',
+    badge: 'ROADMAP, MONITORAGGIO & AUDIT STORICO',
+    icon: Activity,
+    color: '#faa03c',
+    title: 'Pianificazione Strategica & Roadmap dei Task',
+    objective: 'Pianificare lo studio e lo sviluppo della conoscenza, monitorare lo stato di avanzamento delle attività degli agenti in tempo reale e conservare un registro storico di audit per la conformità di ogni deliverable.',
+    features: [
+      { icon: '📌', label: 'Tracking di Stato', desc: 'Gestione visiva delle attività in corso, completate e in attesa.' },
+      { icon: '📑', label: 'Audit & Registro Prove', desc: 'Log dettagliato con marcatura oraria di ogni esecuzione autonoma.' },
+      { icon: '⏱️', label: 'Timeline & Milestone', desc: 'Cronologia interattiva per seguire l\'evoluzione dei progetti.' },
+      { icon: '🎯', label: 'Prioritizzazione Dinamica', desc: 'Assegnazione rapida dei task prioritari ai diversi laboratori.' }
+    ],
+    actionText: 'Consulta Pianificazione 📅',
+    tabPayload: [{ name: '📅 Pianificazione & Audit' }, 'roadmap'],
+    image: '/images/roadmap_plan_banner.jpg',
+    imageCaption: '📅 Tabellone di Pianificazione, Milestone e Audit dei Task'
+  },
+  {
+    id: 'chat',
+    step: 'MODULO 04',
+    badge: 'WORKSPACE CONVERSAZIONALE MULTI-MODALE',
+    icon: MessageSquare,
+    color: '#7c5bf0',
+    title: 'AI Chat Studio & Modalità Operative',
+    objective: 'Interagire con il modello Sigma e con gli agenti specialistici attraverso 4 modalità native (Ask, Plan, Execute, Complete), con accesso diretto ai file del workspace, rendering inline di formule e codice, e invocazione di tool MCP.',
+    features: [
+      { icon: '🔄', label: '4 Modalità Native', desc: 'Da pura consultazione (Ask) a piena esecuzione autonoma su file (Execute).' },
+      { icon: '⚡', label: 'Routing Intelligente Auto', desc: 'Selezione autonoma del ruolo e degli strumenti più indicati.' },
+      { icon: '🛠️', label: 'Esecuzione Tool MCP', desc: 'Lettura/scrittura file, query SQLite, ricerche web e automazioni.' },
+      { icon: '🖼️', label: 'Lightbox Multimodale', desc: 'Visualizzazione immediata di codice, immagini generate e formule.' }
+    ],
+    actionText: 'Entra in AI Chat Studio 💬',
+    tabPayload: [{ name: 'Chat AI', path: 'chat-tab' }, 'chat'],
+    image: '/images/chat_swarm_banner.jpg',
+    imageCaption: '💬 Workspace Conversazionale con Manifesti e Supporto Tool MCP'
+  },
+  {
+    id: 'research_lab',
+    step: 'MODULO 05',
+    badge: 'SWARM AUTONOMO & GRAFI ACICLICI DIRETTI',
+    icon: FlaskConical,
+    color: '#00d2ff',
+    title: 'Pipelines Lab & Dynamic Swarm',
+    objective: 'Scomporre automaticamente un obiettivo scientifico o ingegneristico complesso in una roadmap di micro-task strutturati in un grafo DAG, eseguiti in parallelo da agenti cooperanti con self-healing automatico dei fallimenti.',
+    features: [
+      { icon: '🤖', label: 'Swarm Multi-Agente', desc: 'Matematico, Programmatore, Revisore e Visualizzatore in cooperazione.' },
+      { icon: '📈', label: 'Workflow DAG Paralleli', desc: 'Risoluzione ordinata delle dipendenze tra nodi computazionali.' },
+      { icon: '🛡️', label: 'Ciclo di Self-Healing', desc: 'Ispezione dei test ed autoriparazione immediata del codice difettoso.' },
+      { icon: '📝', label: 'Deliverable Completi', desc: 'Generazione automatica di moduli con teoria, test e grafici D3.js.' }
+    ],
+    actionText: 'Apri Pipelines Lab 🔬',
+    tabPayload: [{ name: '🔬 Pipelines Lab' }, 'research_lab'],
+    image: '/images/pipelines_lab_banner.jpg',
+    imageCaption: '🔬 Orchestrazione a Grafo DAG di Agenti Paralleli e Self-Healing'
+  },
+  {
+    id: 'training_lab',
+    step: 'MODULO 06',
+    badge: 'FINE-TUNING, FORGIA SLM & BENCHMARK',
+    icon: Sparkles,
+    color: '#d29922',
+    title: 'Training Lab & Forgia di Piccoli Modelli (SLM)',
+    objective: 'Specializzare ed addestrare modelli linguistici compatti in locale con Unsloth QLoRA, automatizzare la taratura degli iperparametri con l\'Autopilota ed esportare pesi quantizzati GGUF certificati su 11 benchmark ufficiali.',
+    features: [
+      { icon: '🚀', label: 'Unsloth QLoRA 5x Fast', desc: 'Fine-tuning locale ultra-rapido con consumo minimo di memoria VRAM.' },
+      { icon: '🤖', label: 'Ciclo Autopilota AI', desc: 'Ottimizzazione autonoma di learning rate, batch size e rank LoRA.' },
+      { icon: '🔨', label: 'Forgia Modelli Italiani', desc: 'Addestramento SLM da zero ed export diretto in formato GGUF Ollama.' },
+      { icon: '📊', label: '11 Suite Benchmark', desc: 'Audit dei miglioramenti su MMLU, GSM8K, HumanEval, ARC e BBH.' }
+    ],
+    actionText: 'Entra nel Training Lab 🧪',
+    tabPayload: [{ name: '🧠 Training Lab' }, 'training_lab'],
+    image: '/images/training_lab_hero.jpg',
+    imageCaption: '🧪 Fine-Tuning QLoRA, Autopilota e Forgia Modelli GGUF'
+  },
+  {
+    id: 'creative_studio',
+    step: 'MODULO 07',
+    badge: 'CREATIVE SUITE 2D/3D & BLENDER HEADLESS',
+    icon: Palette,
+    color: '#ff5064',
+    title: 'Creative Lab & Studio 3D / 2D',
+    objective: 'Generare e modificare asset grafici di livello professionale in 8K, creare mappe PBR complete per materiali fisici, isolare elementi con segmentazione SAM/RemBG ed eseguire rendering 3D via Blender in modalità headless.',
+    features: [
+      { icon: '🖼️', label: 'Text-to-Image & Img2Img 8K', desc: 'Generazione fotorealistica ad altissima risoluzione con prompt visivi.' },
+      { icon: '🧊', label: 'Blender Headless 3D', desc: 'Rendering di mesh, animazioni e scene tridimensionali via codice.' },
+      { icon: '🪄', label: 'Inpainting & RemBG', desc: 'Rimozione sfondo trasparente PNG e segmentazione precisa con SAM.' },
+      { icon: '🧱', label: 'Mappe PBR & Materiali', desc: 'Creazione di normal, roughness e height map per rendering e videogiochi.' }
+    ],
+    actionText: 'Apri Creative Lab 🎨',
+    tabPayload: [{ name: '🎨 Creative Lab' }, 'creative_studio'],
+    image: '/images/creative_lab_banner.jpg',
+    imageCaption: '🎨 Generazione Grafica 8K, Texture PBR e Rendering 3D con Blender'
+  },
+  {
+    id: 'hardware_lab',
+    step: 'MODULO 08',
+    badge: 'TELEMETRIA GPU, VRAM & CONTROLLO RISORSE',
+    icon: Zap,
+    color: '#0284c7',
+    title: 'Hardware Lab & Telemetria del Cluster',
+    objective: 'Monitorare in tempo reale le risorse fisiche della macchina (VRAM GPU, RAM di sistema, carico CPU, temperature e latenze), gestire configurazioni multi-GPU parallele e terminare processi orfani con rilascio istantaneo della VRAM.',
+    features: [
+      { icon: '📊', label: 'Telemetria Real-Time SVG', desc: 'Grafici sparkline interattivi con campionamento continuo dei nodi.' },
+      { icon: '🧹', label: 'Svuotamento Rapido VRAM', desc: 'Flush immediato della memoria video GPU con salvaguardia del sistema.' },
+      { icon: '🛑', label: 'Process Killer PID', desc: 'Ispezione e terminazione forzata sicura di processi orfani o bloccati.' },
+      { icon: '⚙️', label: 'Tuning Multi-GPU Parallelo', desc: 'Allocazione dinamica dei pesi e bilanciamento dei thread di calcolo.' }
+    ],
+    actionText: 'Apri Hardware Lab ⚡',
+    tabPayload: [{ name: '⚡ Hardware' }, 'hardware_lab'],
+    image: '/images/hardware_cluster_lab.jpg',
+    imageCaption: '⚡ Telemetria Real-Time VRAM GPU, Monitor Processi e Cluster'
+  },
+  {
+    id: 'domotica',
+    step: 'MODULO 09',
+    badge: 'DOMOTICA IOT & HOME ASSISTANT INTEGRATION',
+    icon: HomeIcon,
+    color: '#10b981',
+    title: 'Domotica & Smart Home con Home Assistant',
+    objective: 'Interfacciare l\'intelligenza artificiale ai dispositivi smart e sensori della casa attraverso il server MCP di Home Assistant, per monitorare ambienti fisici, gestire clima e luci, ed eseguire automazioni intelligenti con supervisione sicura.',
+    features: [
+      { icon: '💡', label: 'Controllo Luci & Clima', desc: 'Regolazione istantanea di tonalità, dimmerazione e termostati smart.' },
+      { icon: '🌡️', label: 'Sensori Ambientali Real-Time', desc: 'Monitoraggio di temperatura, umidità, consumi elettrici e presenze.' },
+      { icon: '🎬', label: 'Scene & Automazioni AI', desc: 'Creazione ed attivazione contestuale di routine domotiche avanzate.' },
+      { icon: '🔒', label: 'Sicurezza MCP Governata', desc: 'Protocollo I/O protetto con approvazione esplicita per le azioni fisiche.' }
+    ],
+    actionText: 'Apri Pannello Domotica 🏠',
+    tabPayload: [{ name: '🏠 Domotica' }, 'domotica'],
+    image: '/images/domotica_smart_hub.jpg',
+    imageCaption: '🏠 Gestione Dispositivi Smart, Clima e Scene via Home Assistant MCP'
   }
 ];
 
@@ -759,6 +980,7 @@ export default function WelcomeDashboard({ modules, openTab }) {
   const [showCreate, setShowCreate] = useState(false);
   const [editTopic, setEditTopic] = useState(null);
   const [deleteTopic, setDeleteTopic] = useState(null);
+  const [activeStepCategory, setActiveStepCategory] = useState('all');
 
   const fetchTopics = useCallback(() => {
     fetch('/api/topics')
@@ -767,8 +989,20 @@ export default function WelcomeDashboard({ modules, openTab }) {
       .catch(() => {});
   }, []);
 
+  const [manifestiCount, setManifestiCount] = useState(12);
+
   useEffect(() => {
     fetchTopics();
+    fetch('/api/list_manifesti')
+      .then(r => r.json())
+      .then(d => {
+        if (d.files && Array.isArray(d.files)) {
+          setManifestiCount(d.files.length);
+        } else if (d.manifesti && Array.isArray(d.manifesti)) {
+          setManifestiCount(d.manifesti.length);
+        }
+      })
+      .catch(() => {});
   }, [fetchTopics]);
 
   const handleCreated = (newTopic) => {
@@ -903,7 +1137,7 @@ export default function WelcomeDashboard({ modules, openTab }) {
                 textTransform: 'uppercase',
                 marginBottom: '6px'
               }}>
-                <span>🧬</span> Σ SIGMA STUDIO v8.0 — COGNITIVE KERNEL
+                <span>🧬</span> Σ SIGMA STUDIO v8.0 — KERNEL COGNITIVO
               </div>
 
               <h1 style={{
@@ -914,10 +1148,10 @@ export default function WelcomeDashboard({ modules, openTab }) {
                 letterSpacing: '-0.3px',
                 textShadow: 'none'
               }}>
-                Piattaforma di Orchestrazione AI & <span style={{
+                Il Sistema Operativo AI-Native per la Conoscenza, la Ricerca e le <span style={{
                   color: isLight ? '#c2410c' : '#00d2ff',
                   fontWeight: 800
-                }}>Ricerca Multimodale</span>
+                }}>Professioni</span>
               </h1>
 
               <p style={{
@@ -926,7 +1160,7 @@ export default function WelcomeDashboard({ modules, openTab }) {
                 lineHeight: 1.45,
                 margin: 0
               }}>
-                Ambiente integrato modulare: agenti AI specializzati, test computazionali Pytest, fine-tuning Unsloth, rendering 3D e marketplace di estensioni.
+                Sigma Studio orchestra il modello unificato Sigma, i Manifesti Modelfile per ogni disciplina, il protocollo MCP come bus I/O di sistema e la validazione computazionale autonoma in un unico ambiente integrato.
               </p>
             </div>
           </div>
@@ -1003,29 +1237,27 @@ export default function WelcomeDashboard({ modules, openTab }) {
             <span style={{ fontSize: '1.1rem' }}>📄</span>
             <span className="wg-metric-value" style={{ color: '#3fb950' }}>{countDocs}</span>
           </div>
-          <span className="wg-metric-label">Documenti (.md, .pdf)</span>
+          <span className="wg-metric-label">Teoria & Whitepaper</span>
         </div>
         <div className="wg-metric" style={{ borderTop: '3px solid #ff5064' }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
             <span style={{ fontSize: '1.1rem' }}>⚡</span>
             <span className="wg-metric-value" style={{ color: '#ff5064' }}>{countScripts}</span>
           </div>
-          <span className="wg-metric-label">Scripts Python (.py)</span>
+          <span className="wg-metric-label">Script & Test Pytest</span>
         </div>
-        <div className="wg-metric" style={{ borderTop: '3px solid #faa03c' }}>
+        <div className="wg-metric" style={{ borderTop: '3px solid #bc8cff' }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
-            <span style={{ fontSize: '1.1rem' }}>📊</span>
-            <span className="wg-metric-value" style={{ color: '#faa03c' }}>{countVizMedia}</span>
+            <span style={{ fontSize: '1.1rem' }}>📜</span>
+            <span className="wg-metric-value" style={{ color: '#bc8cff' }}>{manifestiCount}</span>
           </div>
-          <span className="wg-metric-label">Viz & Media Assets</span>
+          <span className="wg-metric-label">Manifesti dei Ruoli</span>
         </div>
       </div>
 
-
-
-      {/* Visual Kernel Cognitivo Showcase */}
+      {/* Visual Kernel Cognitivo Showcase Overview */}
       <div className="wg-showcase-card" style={{
-        margin: '4px 0',
+        margin: '4px 0 16px 0',
         padding: '28px',
         borderRadius: '20px',
         background: cardBg,
@@ -1046,29 +1278,29 @@ export default function WelcomeDashboard({ modules, openTab }) {
             <span>🧠</span> ARCHITETTURA DI SISTEMA
           </div>
           <h2 style={{ margin: '0 0 12px 0', fontSize: '1.4rem', color: titleColor, fontWeight: 800 }}>
-            Sigma Studio come Kernel Cognitivo
+            Sigma Studio come Kernel Cognitivo Eseguibile
           </h2>
           <p style={{ fontSize: '0.86rem', color: subtitleColor, lineHeight: 1.65, margin: '0 0 20px 0' }}>
-            Come un sistema operativo gestisce processi, risorse di memoria e periferiche hardware, Sigma Studio orchestra i Modelli Linguistici (LLM) 
-            come unità computazionali centrali, regolamentati da contratti eseguibili e bus di I/O governati.
+            Come un sistema operativo orchestra processi, memoria e periferiche hardware, Sigma Studio trasforma i Modelli Linguistici (LLM) 
+            in unità di computazione (CPU), regolamentati da contratti vincolanti (Manifesti Modelfile), con bus di I/O (Server MCP) e memoria confinata (Sandbox protetta).
           </p>
 
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
             <div style={{ padding: '12px', borderRadius: '10px', background: innerCardBg, border: innerCardBorder }}>
-              <div style={{ fontWeight: 700, fontSize: '0.82rem', color: isLight ? '#0284c7' : '#00d2ff' }}>⚡ LLM = CPU</div>
-              <div style={{ fontSize: '0.74rem', color: innerCardText, marginTop: '3px' }}>Modelli locali o cloud eseguono la computazione.</div>
+              <div style={{ fontWeight: 700, fontSize: '0.82rem', color: isLight ? '#0284c7' : '#00d2ff' }}>⚡ Modello Sigma = CPU</div>
+              <div style={{ fontSize: '0.74rem', color: innerCardText, marginTop: '3px' }}>Unità di elaborazione unificata in locale su Ollama o via Cloud.</div>
             </div>
             <div style={{ padding: '12px', borderRadius: '10px', background: innerCardBg, border: innerCardBorder }}>
-              <div style={{ fontWeight: 700, fontSize: '0.82rem', color: isLight ? '#16a34a' : '#3fb950' }}>📜 Manifesti = Rules</div>
-              <div style={{ fontSize: '0.74rem', color: innerCardText, marginTop: '3px' }}>Modelfile definiti in <code style={{ color: isLight ? '#c2410c' : '#00d2ff' }}>manifesti/</code>.</div>
+              <div style={{ fontWeight: 700, fontSize: '0.82rem', color: isLight ? '#16a34a' : '#3fb950' }}>📜 Manifesti = Ruoli & Regole</div>
+              <div style={{ fontSize: '0.74rem', color: innerCardText, marginTop: '3px' }}>Modelfile vincolanti per ogni professione e materia di studio.</div>
             </div>
             <div style={{ padding: '12px', borderRadius: '10px', background: innerCardBg, border: innerCardBorder }}>
-              <div style={{ fontWeight: 700, fontSize: '0.82rem', color: '#7c5bf0' }}>🔌 MCP = Bus I/O</div>
-              <div style={{ fontSize: '0.74rem', color: innerCardText, marginTop: '3px' }}>Accesso a filesystem, Home Assistant, memoria.</div>
+              <div style={{ fontWeight: 700, fontSize: '0.82rem', color: '#7c5bf0' }}>🔌 12 Server MCP = Bus I/O</div>
+              <div style={{ fontSize: '0.74rem', color: innerCardText, marginTop: '3px' }}>Accesso a filesystem, memoria, Domotica, browser e strumenti.</div>
             </div>
             <div style={{ padding: '12px', borderRadius: '10px', background: innerCardBg, border: innerCardBorder }}>
-              <div style={{ fontWeight: 700, fontSize: '0.82rem', color: isLight ? '#d97706' : '#ffb86c' }}>🔒 Sandbox = Bounds</div>
-              <div style={{ fontSize: '0.74rem', color: innerCardText, marginTop: '3px' }}>Operazioni verificate e confinate su disco.</div>
+              <div style={{ fontWeight: 700, fontSize: '0.82rem', color: isLight ? '#d97706' : '#ffb86c' }}>🔒 Sandbox & Test = Bounds</div>
+              <div style={{ fontSize: '0.74rem', color: innerCardText, marginTop: '3px' }}>Validazione con Pytest, formule KaTeX e grafici D3.js.</div>
             </div>
           </div>
         </div>
@@ -1098,336 +1330,376 @@ export default function WelcomeDashboard({ modules, openTab }) {
         </div>
       </div>
 
-      {/* Visual Swarm Orchestration Showcase */}
-      <div className="wg-showcase-card" style={{
-        margin: '4px 0',
-        padding: '28px',
-        borderRadius: '20px',
-        background: cardBg,
-        border: isLight ? '1px solid rgba(14, 165, 233, 0.35)' : '1px solid rgba(0, 210, 255, 0.3)',
-        boxShadow: cardShadow,
-        display: 'grid',
-        gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))',
-        gap: '24px',
-        alignItems: 'center'
-      }}>
-        <div style={{
-          position: 'relative',
-          borderRadius: '16px',
-          overflow: 'hidden',
-          border: isLight ? '1px solid rgba(14, 165, 233, 0.35)' : '1px solid rgba(0, 210, 255, 0.3)',
-          boxShadow: '0 12px 32px rgba(0,0,0,0.5)',
-          minHeight: '280px',
-          maxHeight: '320px'
-        }}>
-          <img
-            src="/images/swarm_graphic.jpg"
-            alt="Swarm Multi-Agent Orchestration"
-            style={{ width: '100%', height: '320px', maxHeight: '320px', objectFit: 'cover', display: 'block' }}
-          />
-          <div style={{
-            position: 'absolute', bottom: 0, inset: 'auto 0 0 0',
-            padding: '12px 16px',
-            background: 'linear-gradient(to top, rgba(14,16,22,0.95), transparent)',
-            fontSize: '0.75rem', color: '#c0c4d0', fontWeight: 600
-          }}>
-            🤖 Swarm Dinamico di Agenti Specializzati
-          </div>
-        </div>
-
-        <div>
-          <div style={{
-            display: 'inline-flex', alignItems: 'center', gap: '6px',
-            padding: '4px 12px', borderRadius: '12px',
-            background: isLight ? 'rgba(14, 165, 233, 0.12)' : 'rgba(0, 210, 255, 0.15)',
-            color: isLight ? '#0284c7' : '#00d2ff',
-            fontSize: '0.72rem', fontWeight: 700, marginBottom: '12px'
-          }}>
-            <span>🤖</span> WORKFLOW MULTI-AGENTE
-          </div>
-          <h2 style={{ margin: '0 0 12px 0', fontSize: '1.4rem', color: titleColor, fontWeight: 800 }}>
-            Dynamic Swarm & Orchestrazione Parallela
-          </h2>
-          <p style={{ fontSize: '0.86rem', color: subtitleColor, lineHeight: 1.65, margin: '0 0 20px 0' }}>
-            Un team di agenti AI specializzati analizza l'obiettivo di ricerca, genera la struttura in micro-task e collabora per scrivere teoria, codice Python e visualizzazioni D3.js.
-          </p>
-
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-            <div className="wg-feature-item" style={{ display: 'flex', alignItems: 'center', gap: '10px', fontSize: '0.82rem', color: titleColor }}>
-              <span style={{ color: isLight ? '#0284c7' : '#00d2ff' }}>📐</span> <strong>Matematico:</strong> Redazione teoremi e formule KaTeX
-            </div>
-            <div className="wg-feature-item" style={{ display: 'flex', alignItems: 'center', gap: '10px', fontSize: '0.82rem', color: titleColor }}>
-              <span style={{ color: isLight ? '#16a34a' : '#3fb950' }}>💻</span> <strong>Programmatore:</strong> Scrittura script di test Python
-            </div>
-            <div className="wg-feature-item" style={{ display: 'flex', alignItems: 'center', gap: '10px', fontSize: '0.82rem', color: titleColor }}>
-              <span style={{ color: isLight ? '#7c3aed' : '#a78bfa' }}>🔍</span> <strong>Revisore:</strong> Verifica consistenza logica e self-healing
-            </div>
-            <div className="wg-feature-item" style={{ display: 'flex', alignItems: 'center', gap: '10px', fontSize: '0.82rem', color: titleColor }}>
-              <span style={{ color: isLight ? '#ea580c' : '#ffb86c' }}>📊</span> <strong>Visualizzatore:</strong> Grafici D3.js ed elementi interattivi
-            </div>
-          </div>
-        </div>
+      {/* Section Header: I Moduli Separati di Sigma Studio */}
+      <div style={{ margin: '20px 0 10px 0' }}>
+        <h2 style={{ fontSize: '1.35rem', color: titleColor, fontWeight: 800, marginBottom: '6px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <span>🏛️</span> I Laboratori & Moduli Operativi di Sigma Studio
+        </h2>
+        <p style={{ fontSize: '0.86rem', color: subtitleColor, margin: '0 0 16px 0' }}>
+          Ciascuna scheda del workspace costituisce un ambiente dedicato e modulare. Esplora gli obiettivi e le capacità di ogni laboratorio:
+        </p>
       </div>
 
-      {/* Visual Training Lab Showcase */}
-      <div className="wg-showcase-card" style={{
-        margin: '4px 0',
-        padding: '28px',
-        borderRadius: '20px',
-        background: cardBg,
-        border: isLight ? '1px solid rgba(217, 119, 6, 0.35)' : '1px solid rgba(210, 153, 34, 0.35)',
-        boxShadow: cardShadow,
-        display: 'grid',
-        gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))',
-        gap: '24px',
-        alignItems: 'center'
-      }}>
-        <div>
-          <div style={{
-            display: 'inline-flex', alignItems: 'center', gap: '6px',
-            padding: '4px 12px', borderRadius: '12px',
-            background: isLight ? 'rgba(217, 119, 6, 0.12)' : 'rgba(210, 153, 34, 0.15)',
-            color: isLight ? '#b45309' : '#d29922',
-            fontSize: '0.72rem', fontWeight: 700, marginBottom: '12px'
+      {/* Alternating Showcase Cards for All 9 Modules */}
+      {MODULE_SHOWCASE_LIST.map((mod, index) => {
+        const isImageRight = index % 2 === 0;
+        const IconComp = mod.icon;
+
+        const textContent = (
+          <div key="text" style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '12px', flexWrap: 'wrap' }}>
+              <div style={{
+                display: 'inline-flex', alignItems: 'center', gap: '6px',
+                padding: '4px 12px', borderRadius: '12px',
+                background: `${mod.color}18`,
+                color: mod.color,
+                border: `1px solid ${mod.color}35`,
+                fontSize: '0.72rem', fontWeight: 800, letterSpacing: '0.5px'
+              }}>
+                <IconComp size={14} />
+                <span>{mod.badge}</span>
+              </div>
+              <span style={{
+                fontSize: '0.68rem', fontWeight: 800,
+                color: isLight ? '#4b5563' : '#8b8fa3',
+                background: isLight ? 'rgba(0,0,0,0.04)' : 'rgba(255,255,255,0.06)',
+                padding: '4px 10px', borderRadius: '12px',
+                border: isLight ? '1px solid rgba(0,0,0,0.08)' : '1px solid rgba(255,255,255,0.08)'
+              }}>
+                {mod.step}
+              </span>
+            </div>
+
+            <h2 style={{ margin: '0 0 12px 0', fontSize: '1.35rem', color: titleColor, fontWeight: 800, lineHeight: 1.3 }}>
+              {mod.title}
+            </h2>
+
+            <div style={{
+              padding: '14px 16px',
+              borderRadius: '12px',
+              background: isLight ? `${mod.color}0a` : `${mod.color}12`,
+              border: `1px solid ${mod.color}30`,
+              marginBottom: '16px'
+            }}>
+              <div style={{ fontSize: '0.7rem', fontWeight: 800, color: mod.color, textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '4px' }}>
+                🎯 Obiettivo del Modulo
+              </div>
+              <p style={{ margin: 0, fontSize: '0.84rem', color: isLight ? '#1f2937' : '#e2e8f0', lineHeight: 1.55, fontWeight: 500 }}>
+                {mod.objective}
+              </p>
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', marginBottom: '20px' }}>
+              {mod.features.map((feat, fIdx) => (
+                <div key={fIdx} style={{
+                  padding: '10px 12px',
+                  borderRadius: '10px',
+                  background: innerCardBg,
+                  border: innerCardBorder
+                }}>
+                  <div style={{ fontWeight: 700, fontSize: '0.8rem', color: mod.color, display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <span>{feat.icon}</span>
+                    <span>{feat.label}</span>
+                  </div>
+                  <div style={{ fontSize: '0.72rem', color: innerCardText, marginTop: '3px', lineHeight: 1.45 }}>
+                    {feat.desc}
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <div>
+              <button
+                onClick={() => openTab(...mod.tabPayload)}
+                style={{
+                  padding: '10px 20px',
+                  borderRadius: '10px',
+                  background: `linear-gradient(135deg, ${mod.color}, ${mod.color}cc)`,
+                  border: 'none',
+                  color: '#fff',
+                  fontWeight: 800,
+                  fontSize: '0.82rem',
+                  cursor: 'pointer',
+                  boxShadow: `0 6px 20px ${mod.color}35`,
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '8px',
+                  transition: 'all 0.2s ease'
+                }}
+              >
+                {mod.actionText}
+                <ArrowRight size={15} />
+              </button>
+            </div>
+          </div>
+        );
+
+        const imageContent = (
+          <div key="image" style={{
+            position: 'relative',
+            borderRadius: '16px',
+            overflow: 'hidden',
+            border: isLight ? `1px solid ${mod.color}45` : `1px solid ${mod.color}35`,
+            boxShadow: isLight ? `0 12px 30px ${mod.color}18` : '0 14px 36px rgba(0,0,0,0.5)',
+            minHeight: '280px',
+            maxHeight: '340px',
+            background: '#0a0d14'
           }}>
-            <span>🧪</span> TRAINING LAB & SPECIALIZZAZIONE MODELLI
-          </div>
-          <h2 style={{ margin: '0 0 10px 0', fontSize: '1.4rem', color: titleColor, fontWeight: 800 }}>
-            Evoluzione Continua degli Agenti AI
-          </h2>
-          <p style={{ fontSize: '0.9rem', color: titleColor, lineHeight: 1.6, margin: '0 0 12px 0', fontWeight: 600 }}>
-            "Crea e migliora i tuoi agenti su un determinato ruolo: renderà la tua squadra AI sempre più forte."
-          </p>
-          <p style={{ fontSize: '0.84rem', color: subtitleColor, lineHeight: 1.65, margin: '0 0 20px 0' }}>
-            Addestra piccoli modelli linguistici (SLM) in locale con Unsloth QLoRA, avvia il ciclo Autopilota per l'ottimizzazione automatica degli iperparametri e certifica i miglioramenti con il motore di Benchmark Ufficiale su 11 suite.
-          </p>
-
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '20px' }}>
-            <div style={{ padding: '12px', borderRadius: '10px', background: innerCardBg, border: innerCardBorder }}>
-              <div style={{ fontWeight: 700, fontSize: '0.82rem', color: isLight ? '#b45309' : '#d29922' }}>🚀 Unsloth QLoRA</div>
-              <div style={{ fontSize: '0.74rem', color: innerCardText, marginTop: '3px' }}>Fine-tuning ultra-veloce a basso consumo VRAM.</div>
-            </div>
-            <div style={{ padding: '12px', borderRadius: '10px', background: innerCardBg, border: innerCardBorder }}>
-              <div style={{ fontWeight: 700, fontSize: '0.82rem', color: isLight ? '#16a34a' : '#3fb950' }}>🔨 Forgia SLM</div>
-              <div style={{ fontSize: '0.74rem', color: innerCardText, marginTop: '3px' }}>Addestramento ed export GGUF da zero in italiano.</div>
-            </div>
-            <div style={{ padding: '12px', borderRadius: '10px', background: innerCardBg, border: innerCardBorder }}>
-              <div style={{ fontWeight: 700, fontSize: '0.82rem', color: isLight ? '#0284c7' : '#00d2ff' }}>🤖 Autopilota AI</div>
-              <div style={{ fontSize: '0.74rem', color: innerCardText, marginTop: '3px' }}>Specializzazione autonoma del modello sul ruolo.</div>
-            </div>
-            <div style={{ padding: '12px', borderRadius: '10px', background: innerCardBg, border: innerCardBorder }}>
-              <div style={{ fontWeight: 700, fontSize: '0.82rem', color: isLight ? '#7c3aed' : '#a78bfa' }}>📊 11 Suite Benchmark</div>
-              <div style={{ fontSize: '0.74rem', color: innerCardText, marginTop: '3px' }}>MMLU, GSM8K, HumanEval per verbali di audit.</div>
+            <img
+              src={mod.image}
+              alt={mod.title}
+              style={{
+                width: '100%',
+                height: '340px',
+                maxHeight: '340px',
+                objectFit: 'cover',
+                display: 'block'
+              }}
+              onError={(e) => { e.target.src = '/images/hero_banner.jpg'; }}
+            />
+            <div style={{
+              position: 'absolute', bottom: 0, inset: 'auto 0 0 0',
+              padding: '12px 16px',
+              background: 'linear-gradient(to top, rgba(14,16,22,0.95), transparent)',
+              fontSize: '0.74rem', color: '#c0c4d0', fontWeight: 600,
+              display: 'flex', alignItems: 'center', gap: '6px'
+            }}>
+              {mod.imageCaption}
             </div>
           </div>
+        );
 
-          <button
-            onClick={() => openTab({ name: 'Training Lab' }, 'training_lab')}
+        return (
+          <div
+            key={mod.id}
+            className="wg-showcase-card"
             style={{
-              padding: '10px 20px',
-              borderRadius: '10px',
-              background: 'linear-gradient(135deg, #d29922, #3fb950)',
-              border: 'none',
-              color: '#fff',
-              fontWeight: 700,
-              fontSize: '0.82rem',
-              cursor: 'pointer',
-              boxShadow: '0 6px 20px rgba(210, 153, 34, 0.3)',
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: '8px'
+              margin: '8px 0',
+              padding: '28px',
+              borderRadius: '20px',
+              background: cardBg,
+              border: isLight ? `1px solid ${mod.color}35` : `1px solid ${mod.color}25`,
+              boxShadow: cardShadow,
+              display: 'grid',
+              gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))',
+              gap: '28px',
+              alignItems: 'center'
             }}
           >
-            🧪 Entra nel Training Lab
-          </button>
-        </div>
+            {isImageRight ? [textContent, imageContent] : [imageContent, textContent]}
+          </div>
+        );
+      })}
 
+      {/* Primi Passi nella Piattaforma (Modern Friendly Interactive Journey) */}
+      <div style={{ margin: '16px 0 8px 0' }}>
         <div style={{
-          position: 'relative',
-          borderRadius: '16px',
-          overflow: 'hidden',
-          border: isLight ? '1px solid rgba(217, 119, 6, 0.35)' : '1px solid rgba(210, 153, 34, 0.35)',
-          boxShadow: '0 12px 32px rgba(0,0,0,0.5)',
-          minHeight: '280px',
-          maxHeight: '320px'
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          flexWrap: 'wrap',
+          gap: '12px',
+          marginBottom: '16px'
         }}>
-          <img
-            src="/images/training_graphic.jpg"
-            alt="Training Lab Specialization"
-            style={{ width: '100%', height: '320px', maxHeight: '320px', objectFit: 'cover', display: 'block' }}
-          />
+          <div>
+            <div style={{
+              display: 'inline-flex', alignItems: 'center', gap: '6px',
+              padding: '4px 12px', borderRadius: '12px',
+              background: isLight ? 'rgba(0, 210, 255, 0.12)' : 'rgba(0, 210, 255, 0.15)',
+              color: isLight ? '#0284c7' : '#00d2ff',
+              fontSize: '0.72rem', fontWeight: 800, marginBottom: '8px'
+            }}>
+              <Compass size={14} />
+              <span>PERCORSO DI AVVIO GUIDATO</span>
+            </div>
+            <h2 style={{ fontSize: '1.4rem', color: titleColor, fontWeight: 800, margin: '0 0 6px 0', display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <span>🚀</span> Primi Passi nella Piattaforma
+            </h2>
+            <p style={{ fontSize: '0.86rem', color: subtitleColor, margin: 0 }}>
+              Segui questo itinerario in tappe o seleziona una categoria per iniziare subito ad utilizzare Sigma Studio:
+            </p>
+          </div>
+
+          {/* Interactive Category Filter Pills */}
           <div style={{
-            position: 'absolute', bottom: 0, inset: 'auto 0 0 0',
-            padding: '12px 16px',
-            background: 'linear-gradient(to top, rgba(14,16,22,0.95), transparent)',
-            fontSize: '0.75rem', color: '#c0c4d0', fontWeight: 600
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px',
+            flexWrap: 'wrap',
+            background: isLight ? 'rgba(0,0,0,0.03)' : 'rgba(255,255,255,0.04)',
+            padding: '4px',
+            borderRadius: '14px',
+            border: isLight ? '1px solid rgba(0,0,0,0.06)' : '1px solid rgba(255,255,255,0.06)'
           }}>
-            ⚡ Fine-Tuning e Specializzazione degli Agenti AI
+            {[
+              { id: 'all', label: '✨ Tutti (9)' },
+              { id: 'setup', label: '⚙️ 1. Setup & Ruoli' },
+              { id: 'studio', label: '📚 2. Studio & Chat' },
+              { id: 'advanced', label: '🤖 3. Swarm & SLM' },
+              { id: 'creative_iot', label: '🎨 4. Media & IoT' }
+            ].map(cat => {
+              const active = activeStepCategory === cat.id;
+              return (
+                <button
+                  key={cat.id}
+                  onClick={() => setActiveStepCategory(cat.id)}
+                  style={{
+                    padding: '6px 14px',
+                    borderRadius: '10px',
+                    fontSize: '0.76rem',
+                    fontWeight: 700,
+                    border: 'none',
+                    cursor: 'pointer',
+                    transition: 'all 0.2s ease',
+                    background: active 
+                      ? (isLight ? '#00d2ff' : '#00d2ff') 
+                      : 'transparent',
+                    color: active ? '#ffffff' : subtitleColor,
+                    boxShadow: active ? '0 4px 12px rgba(0, 210, 255, 0.35)' : 'none'
+                  }}
+                >
+                  {cat.label}
+                </button>
+              );
+            })}
           </div>
         </div>
-      </div>
 
-      {/* State & Connection System Status Cards */}
-      <div style={{ margin: '4px 0' }}>
-        <h2 style={{ fontSize: '1.3rem', color: titleColor, fontWeight: 800, marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-          <span>⚡</span> Stato Connessioni & Kernel Integrati
-        </h2>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '16px' }}>
-          {/* Card 1: MCP Hub */}
-          <div className="wg-status-card" style={{
-            padding: '20px', borderRadius: '16px', background: cardBg,
-            border: isLight ? '1px solid rgba(63, 185, 80, 0.35)' : '1px solid rgba(63, 185, 80, 0.3)', boxShadow: cardShadow,
-            display: 'flex', flexDirection: 'column', justifyContent: 'space-between'
-          }}>
-            <div>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '10px' }}>
-                <span style={{ fontSize: '0.74rem', fontWeight: 800, color: '#3fb950', background: 'rgba(63, 185, 80, 0.15)', padding: '3px 10px', borderRadius: '12px' }}>CONNESSI (12/12)</span>
-                <span style={{ fontSize: '1.2rem' }}>🔌</span>
-              </div>
-              <h3 style={{ margin: '0 0 6px 0', fontSize: '1.05rem', color: titleColor, fontWeight: 800 }}>MCP Hub & Protocol Bus</h3>
-              <p style={{ margin: 0, fontSize: '0.8rem', color: subtitleColor, lineHeight: 1.5 }}>
-                Tutti i 12 server MCP (Filesystem, Home Assistant, SQLite, Memory, Playwright, Brave Search) sono attivi e verificati.
-              </p>
-            </div>
-            <button onClick={() => openTab({ name: 'MCP Hub' }, 'mcp_hub')} style={{ ...quickLinkStyle('#3fb950'), marginTop: '16px', width: 'fit-content' }}>
-              Gestisci MCP Server 🔌
-            </button>
-          </div>
-
-          {/* Card 2: Hardware & GPU */}
-          <div className="wg-status-card" style={{
-            padding: '20px', borderRadius: '16px', background: cardBg,
-            border: isLight ? '1px solid rgba(14, 165, 233, 0.35)' : '1px solid rgba(0, 210, 255, 0.3)', boxShadow: cardShadow,
-            display: 'flex', flexDirection: 'column', justifyContent: 'space-between'
-          }}>
-            <div>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '10px' }}>
-                <span style={{ fontSize: '0.74rem', fontWeight: 800, color: isLight ? '#0284c7' : '#00d2ff', background: 'rgba(0, 210, 255, 0.15)', padding: '3px 10px', borderRadius: '12px' }}>OLLAMA & GPU ONLINE</span>
-                <span style={{ fontSize: '1.2rem' }}>⚡</span>
-              </div>
-              <h3 style={{ margin: '0 0 6px 0', fontSize: '1.05rem', color: titleColor, fontWeight: 800 }}>Hardware & Cluster Telemetry</h3>
-              <p style={{ margin: 0, fontSize: '0.8rem', color: subtitleColor, lineHeight: 1.5 }}>
-                Monitoraggio VRAM in tempo reale, allocazione dinamica dei pesi su GPU NVIDIA ed esecuzione parallela dei thread.
-              </p>
-            </div>
-            <button onClick={() => openTab({ name: '⚡ Hardware' }, 'hardware_lab')} style={{ ...quickLinkStyle(isLight ? '#0284c7' : '#00d2ff'), marginTop: '16px', width: 'fit-content' }}>
-              Hardware Monitor ⚡
-            </button>
-          </div>
-
-          {/* Card 3: Home Assistant & Domotica */}
-          <div className="wg-status-card" style={{
-            padding: '20px', borderRadius: '16px', background: cardBg,
-            border: isLight ? '1px solid rgba(124, 91, 240, 0.35)' : '1px solid rgba(167, 139, 250, 0.3)', boxShadow: cardShadow,
-            display: 'flex', flexDirection: 'column', justifyContent: 'space-between'
-          }}>
-            <div>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '10px' }}>
-                <span style={{ fontSize: '0.74rem', fontWeight: 800, color: isLight ? '#7c3aed' : '#a78bfa', background: 'rgba(167, 139, 250, 0.15)', padding: '3px 10px', borderRadius: '12px' }}>HOME ASSISTANT OK</span>
-                <span style={{ fontSize: '1.2rem' }}>🏠</span>
-              </div>
-              <h3 style={{ margin: '0 0 6px 0', fontSize: '1.05rem', color: titleColor, fontWeight: 800 }}>Domotica & Smart Home IoT</h3>
-              <p style={{ margin: 0, fontSize: '0.8rem', color: subtitleColor, lineHeight: 1.5 }}>
-                Integrazione diretta con Home Assistant per il controllo AI di luci, sensori di temperatura, prese smart e scene domotiche.
-              </p>
-            </div>
-            <button onClick={() => openTab({ name: '🏠 Domotica & Home Assistant' }, 'domotica')} style={{ ...quickLinkStyle(isLight ? '#7c3aed' : '#a78bfa'), marginTop: '16px', width: 'fit-content' }}>
-              Pannello Domotica 🏠
-            </button>
-          </div>
-        </div>
-      </div>
-
-      {/* Primi Passi nella Piattaforma (Interactive Card Grid) */}
-      <div style={{ margin: '4px 0' }}>
-        <h2 style={{ fontSize: '1.3rem', color: titleColor, fontWeight: 800, marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-          <span>🚀</span> Primi Passi & Guida alle Funzionalità della Piattaforma
-        </h2>
-        <p style={{ fontSize: '0.86rem', color: subtitleColor, margin: '0 0 24px 0' }}>
-          Panoramica completa ed interattiva: clicca su qualsiasi card per aprire direttamente la funzionalità desiderata:
-        </p>
-
+        {/* Dynamic Card Grid */}
         <div style={{
           display: 'grid',
           gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))',
           gap: '20px'
         }}>
-          {PRIMI_PASSI_CARDS.map(card => {
-            const IconComponent = card.icon;
-            return (
-              <div
-                key={card.step}
-                onClick={() => card.onClick(openTab)}
-                className="primi-passi-card"
-                style={{
-                  padding: '22px',
-                  borderRadius: '18px',
-                  background: cardBg,
-                  border: isLight ? `1px solid ${card.color}45` : `1px solid ${card.color}35`,
-                  boxShadow: cardShadow,
-                  cursor: 'pointer',
-                  display: 'flex',
-                  flexDirection: 'column',
-                  justifyContent: 'space-between',
-                  gap: '16px',
-                  transition: 'all 0.25s ease'
-                }}
-              >
-                <div>
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '14px' }}>
+          {PRIMI_PASSI_CARDS
+            .filter(card => activeStepCategory === 'all' || card.category === activeStepCategory)
+            .map(card => {
+              const IconComponent = card.icon;
+              return (
+                <div
+                  key={card.step}
+                  onClick={() => card.onClick(openTab)}
+                  className="primi-passi-card"
+                  style={{
+                    padding: '24px',
+                    borderRadius: '20px',
+                    background: cardBg,
+                    border: isLight ? `1px solid ${card.color}45` : `1px solid ${card.color}35`,
+                    boxShadow: cardShadow,
+                    cursor: 'pointer',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    justifyContent: 'space-between',
+                    gap: '16px',
+                    transition: 'all 0.25s cubic-bezier(0.4, 0, 0.2, 1)',
+                    position: 'relative',
+                    overflow: 'hidden'
+                  }}
+                >
+                  <div>
+                    {/* Card Top Row */}
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '14px' }}>
+                      <div style={{
+                        width: '48px',
+                        height: '48px',
+                        borderRadius: '14px',
+                        background: `${card.color}18`,
+                        border: `1px solid ${card.color}45`,
+                        color: card.color,
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        boxShadow: `0 0 16px ${card.color}25`
+                      }}>
+                        <IconComponent size={24} />
+                      </div>
+
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <span style={{
+                          fontSize: '0.66rem',
+                          fontWeight: 800,
+                          color: isLight ? '#4b5563' : '#a0a6bc',
+                          background: isLight ? 'rgba(0,0,0,0.04)' : 'rgba(255,255,255,0.06)',
+                          padding: '3px 8px',
+                          borderRadius: '12px'
+                        }}>
+                          {card.categoryLabel}
+                        </span>
+                        <span style={{
+                          fontSize: '0.68rem',
+                          fontWeight: 800,
+                          color: card.color,
+                          background: `${card.color}18`,
+                          border: `1px solid ${card.color}35`,
+                          padding: '3px 10px',
+                          borderRadius: '20px',
+                          letterSpacing: '0.5px'
+                        }}>
+                          PASSO {card.step}
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Card Title & Subtitle */}
+                    <h3 style={{ margin: '0 0 8px 0', fontSize: '1.05rem', fontWeight: 800, color: titleColor, lineHeight: 1.35 }}>
+                      {card.title}
+                    </h3>
+                    <p style={{ margin: '0 0 14px 0', fontSize: '0.82rem', color: subtitleColor, lineHeight: 1.55 }}>
+                      {card.subtitle}
+                    </p>
+
+                    {/* Friendly Tip Box */}
                     <div style={{
-                      width: '44px',
-                      height: '44px',
-                      borderRadius: '12px',
-                      background: `${card.color}18`,
-                      border: `1px solid ${card.color}40`,
+                      padding: '10px 12px',
+                      borderRadius: '10px',
+                      background: isLight ? `${card.color}08` : `${card.color}10`,
+                      border: `1px solid ${card.color}25`,
+                      fontSize: '0.74rem',
+                      color: isLight ? '#374151' : '#cbd5e1',
+                      lineHeight: 1.45,
+                      display: 'flex',
+                      alignItems: 'flex-start',
+                      gap: '8px'
+                    }}>
+                      <span style={{ fontSize: '0.85rem' }}>💡</span>
+                      <span>{card.tip}</span>
+                    </div>
+                  </div>
+
+                  {/* Card Bottom CTA */}
+                  <div style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    paddingTop: '14px',
+                    borderTop: isLight ? '1px solid rgba(190, 160, 110, 0.22)' : '1px solid rgba(255, 255, 255, 0.06)'
+                  }}>
+                    <span style={{
+                      fontSize: '0.78rem',
+                      fontWeight: 800,
                       color: card.color,
                       display: 'flex',
                       alignItems: 'center',
-                      justifyContent: 'center',
-                      boxShadow: `0 0 14px ${card.color}25`
+                      gap: '6px'
                     }}>
-                      <IconComponent size={22} />
-                    </div>
-
-                    <span style={{
-                      fontSize: '0.68rem',
-                      fontWeight: 800,
-                      color: card.color,
-                      background: `${card.color}15`,
-                      border: `1px solid ${card.color}30`,
-                      padding: '3px 10px',
-                      borderRadius: '20px',
-                      letterSpacing: '0.5px'
-                    }}>
-                      STEP {card.step}
+                      {card.actionText}
                     </span>
+                    <div style={{
+                      width: '28px',
+                      height: '28px',
+                      borderRadius: '50%',
+                      background: `${card.color}18`,
+                      color: card.color,
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center'
+                    }}>
+                      <ArrowRight size={14} />
+                    </div>
                   </div>
-
-                  <h3 style={{ margin: '0 0 6px 0', fontSize: '0.98rem', fontWeight: 800, color: titleColor }}>
-                    {card.title}
-                  </h3>
-                  <p style={{ margin: 0, fontSize: '0.78rem', color: subtitleColor, lineHeight: 1.5 }}>
-                    {card.subtitle}
-                  </p>
                 </div>
-
-                <div style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '6px',
-                  fontSize: '0.78rem',
-                  fontWeight: 700,
-                  color: card.color,
-                  paddingTop: '12px',
-                  borderTop: isLight ? '1px solid rgba(190, 160, 110, 0.2)' : '1px solid rgba(255, 255, 255, 0.05)'
-                }}>
-                  <span>{card.actionText}</span>
-                  <ArrowRight size={14} />
-                </div>
-              </div>
-            );
-          })}
+              );
+            })}
         </div>
       </div>
 

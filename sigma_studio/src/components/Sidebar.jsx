@@ -1,6 +1,6 @@
 import React from 'react';
 import { 
-  Home, FileText, Activity, PieChart, Layers, ChevronRight, MessageSquare, FlaskConical, Brain, Zap, User, Server, Wrench, Palette, Blocks, Sun, Moon, Store, Package
+  Home, FileText, Activity, PieChart, Layers, ChevronRight, MessageSquare, FlaskConical, Brain, Zap, User, Server, Wrench, Palette, Blocks, Sun, Moon, Store, Package, Sliders, Key
 } from 'lucide-react';
 import { useApp } from '../contexts/AppContext';
 
@@ -325,6 +325,14 @@ export default function Sidebar({
               onClick={() => openTab({ name: '⚡ Hardware' }, 'hardware_lab')} 
             />
           )}
+          <SidebarItem 
+            icon={Sliders} 
+            label="Configurazione AI" 
+            badge="TOKEN & API"
+            badgeColor="rgba(0,210,255,0.15)"
+            active={activeTabId != null && (activeTabId.startsWith('ai_config') || activeTabId.startsWith('config'))}
+            onClick={() => openTab({ name: '⚙️ Configurazione AI' }, 'ai_config')} 
+          />
           {!hiddenTabs.has('mcp_hub') && (
             <SidebarItem 
               icon={Wrench} 

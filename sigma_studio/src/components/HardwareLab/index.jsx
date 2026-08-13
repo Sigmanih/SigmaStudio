@@ -1,106 +1,88 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { 
-  Activity, Zap, HardDrive, Save, ChevronDown, ChevronUp, RotateCcw, Trash2,
-  ShieldCheck, Sliders, Play, Pause, TrendingUp, BarChart2,
-  Cpu, Thermometer, Flame, Gauge, AlertTriangle, Layers, CheckCircle2, ArrowRight
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import {
+  Cpu, HardDrive, Zap, Sliders, RotateCcw, AlertTriangle,
+  Play, Pause, ChevronDown, ChevronUp, Save, BarChart2,
+  Trash2, ShieldCheck, Thermometer, Flame, Gauge, Sparkles,
+  Layers, CheckCircle2, ArrowRight, Activity, Search, Terminal,
+  RefreshCw, Info, X, Power, ShieldAlert
 } from 'lucide-react';
-import RealtimeTelemetryChart from './RealtimeTelemetryChart';
 import { useApp } from '../../contexts/AppContext';
-import '../../styles/hardware-lab.css';
-
-const MAX_HISTORY = 900; // ~30 minutes at 2s intervals
+import RealtimeTelemetryChart from './RealtimeTelemetryChart';
 
 const INACTIVE_HARDWARE_NODES = [
   {
-    id: 'arm64_node',
-    title: 'Cluster Nodi ARM64 & Raspberry Pi 5 Edge',
-    subtitle: 'Offloading di task leggeri di sensoristica, micro-controller e preprocessing I/O su nodi ARM64.',
-    prerequisite: 'Indirizzo IP o Hostname SSH nodo ARM64 (pi@192.168.1.xxx)',
-    statusBadge: 'DISPOSITIVO EDGE STANDBY',
-    icon: Cpu,
-    color: '#3fb950',
-    actionText: 'Collega Nodo ARM64',
-    details: 'Consente di delegare compiti a basso consumo energetico (es. polling sensori, ascolto di eventi MQTT, piccoli script di monitoraggio) a nodi Raspberry Pi 5 o micro-server ARM64 collegati in rete locale.'
-  },
-  {
-    id: 'intel_npu',
-    title: 'NPU Neural Processing Unit (OpenVINO / DirectML)',
-    subtitle: 'Accelerazione hardware dedicata su NPU di bordo per la quantizzazione ed il risparmio energetico durante la sintesi TTS.',
-    prerequisite: 'Driver Intel OpenVINO / DirectML NPU Active',
-    statusBadge: 'DRIVER NPU NON RILEVATO',
-    icon: Gauge,
-    color: '#00d2ff',
-    actionText: 'Abilita Acceleration NPU',
-    details: 'Sfrutta l\'acceleratore di calcolo NPU dedicato presente nei processori Intel Core Ultra o Qualcomm Snapdragon per liberare la GPU principale durante i task di sintesi vocale e tokenization.'
-  },
-  {
-    id: 'liquid_cooling',
-    title: 'Liquid Cooling & Dynamic Thermal Throttle',
-    subtitle: 'Monitoraggio del flusso di liquido refrigerante ed auto-throttling preventivo della frequenza di clock sui picchi > 85°C.',
-    prerequisite: 'Controller Pompa PWM / Sensore Flusso Corsair iCUE',
-    statusBadge: 'SENSORE LIQUIDO STANDBY',
-    icon: Thermometer,
-    color: '#ff5064',
-    actionText: 'Associa Sensore Liquido',
-    details: 'Monitora la telemetria della temperatura del liquido di raffreddamento e regola preventivamente i power limit (TDP) della GPU per evitare il throttling termico improvviso durante le sessioni di fine-tuning prolungate.'
-  },
-  {
-    id: 'nvlink_bridge',
-    title: 'NVLink High-Speed Distributed GPU Bridge',
-    subtitle: 'Comunicazione P2P a 900 GB/s tra GPU NVIDIA per la ripartizione dei pesi di modelli > 70B senza colli di bottiglia PCIe.',
-    prerequisite: '2x GPU NVIDIA RTX/A-Series + Ponte Fisico NVLink',
-    statusBadge: 'NVLINK SLI STANDBY',
+    id: 'egpu_node',
+    title: 'Cluster eGPU Thunderbolt / PCIe',
+    subtitle: 'Espansione multi-scheda esterna per inferenza parallela e fine-tuning ad alto throughput.',
     icon: Zap,
-    color: '#a78bfa',
-    actionText: 'Attiva Bridge NVLink',
-    details: 'Attiva il bus ad altissima velocità NVLink per unire la VRAM di più schede grafiche NVIDIA in un unico pool di memoria contiguo, permettendo di caricare modelli LLM da 70 miliardi di parametri a piena velocità.'
+    color: '#00d2ff',
+    statusBadge: 'NON DISPONIBILE',
+    prerequisite: 'Nessun modulo eGPU esterno rilevato sulla porta Thunderbolt / PCIe.',
+    details: 'Permette di distribuire carichi pesanti (es. modelli 70B quantizzati o batch di embedding) su schede grafiche ausiliarie senza sovraccaricare la GPU primaria.',
+    actionText: 'Non ancora disponibile'
   },
   {
-    id: 'fpga_accelerator',
-    title: 'FPGA Logic Accelerator Board',
-    subtitle: 'Accelerazione hardware di algoritmi di crittografia custom, matrici veloci e compressione token via chip FPGA.',
-    prerequisite: 'Scheda Xilinx Alveo / PCIe FPGA Driver',
-    statusBadge: 'SCHEDA FPGA STANDBY',
-    icon: HardDrive,
-    color: '#ffb86c',
-    actionText: 'Inizializza FPGA',
-    details: 'Sfrutta le schede FPGA programmabili via PCIe per velocizzare le operazioni di hashing, de-compressione dei dataset e moltiplicazione tra matrici a precisione arbitraria.'
+    id: 'vllm_engine',
+    title: 'vLLM PagedAttention Cluster',
+    subtitle: 'Motore di inferenza avanzato a memoria paginata per token generation ultra-rapida.',
+    icon: Activity,
+    color: '#bc8cff',
+    statusBadge: 'NON DISPONIBILE',
+    prerequisite: 'Nessun server vLLM attivo rilevato sulla porta locale 8001.',
+    details: 'Sostituisce il runtime standard con il protocollo vLLM, ottimizzando la frammentazione VRAM e triplicando la velocità di generazione sui prompt lunghi.',
+    actionText: 'Non ancora disponibile'
   },
   {
-    id: 'ups_power',
-    title: 'UPS Power & Line Voltage Monitoring',
-    subtitle: 'Monitoraggio della continuità elettrica del cluster, con salvataggio automatico delle memorie agentiche prima di blackout.',
-    prerequisite: 'Gruppo di Continuità USB / NUT (Network UPS Tools)',
-    statusBadge: 'UPS USB DISCONNESSO',
-    icon: ShieldCheck,
-    color: '#38bdf8',
-    actionText: 'Collega Telemetria UPS',
-    details: 'Si interfaccia con il gruppo di continuità via USB o rete local NUT per tracciare il voltaggio di rete, i Watt assorbiti e sincronizzare uno spegnimento di emergenza controllato con salvataggio dello stato del sistema in caso di mancanza di corrente.'
+    id: 'whisper_npu',
+    title: 'Acceleratore Audio Whisper & NPU',
+    subtitle: 'Trascrizione e sintesi vocale locale a latenza zero tramite NPU Intel/AMD o DirectML.',
+    icon: Cpu,
+    color: '#10b981',
+    statusBadge: 'NON DISPONIBILE',
+    prerequisite: 'Nessun chip NPU o acceleratore DirectML dedicato attivo nel sistema.',
+    details: 'Sposta l\'elaborazione del parlato dall\'Ollama primario alla NPU a basso consumo, liberando il 100% della VRAM dedicata ai modelli di testo.',
+    actionText: 'Non ancora disponibile'
+  },
+  {
+    id: 'comfyui_worker',
+    title: 'Nodo di Calcolo ComfyUI Creativo',
+    subtitle: 'Cluster dedicato alla generazione di immagini SDXL e modelli 3D in background.',
+    icon: Layers,
+    color: '#ea580c',
+    statusBadge: 'NON DISPONIBILE',
+    prerequisite: 'Nessun worker ComfyUI in ascolto sulla porta 8188.',
+    details: 'Permette di accodare render pesanti e pipeline di inpainting senza bloccare le sessioni di chat degli assistenti AI.',
+    actionText: 'Non ancora disponibile'
   }
 ];
 
 export default function HardwareLab({ addToast }) {
   const { theme } = useApp();
   const isLight = theme === 'light';
+
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [autoRefresh, setAutoRefresh] = useState(true);
   const [refreshInterval, setRefreshInterval] = useState(2000);
-  const [showCharts, setShowCharts] = useState(true); // Collapsible charts enabled by default
-  const [showRestartAlert, setShowRestartAlert] = useState(false); // Alert modal
+  const [showCharts, setShowCharts] = useState(true);
+  const [showRestartAlert, setShowRestartAlert] = useState(false);
   const [restartingOllama, setRestartingOllama] = useState(false);
 
   // Standby hardware activation modal state
   const [activeHwModal, setActiveHwModal] = useState(null);
   const [activatingHw, setActivatingHw] = useState(null);
   const [activatedHw, setActivatedHw] = useState({});
+  const [expandedHwNode, setExpandedHwNode] = useState(null);
 
-  // Chi sta occupando la GPU, e con quale job di Sigma.
+  // GPU processes & Console filters
   const [gpuProcs, setGpuProcs] = useState({ processes: [], orfani: 0 });
   const [killingPid, setKillingPid] = useState(null);
+  const [procSearch, setProcSearch] = useState('');
+  const [procFilter, setProcFilter] = useState('all');
+  const [expandedPid, setExpandedPid] = useState(null);
 
-  // History buffers per GPU index & System (CPU/RAM)
+  // History buffers per GPU index & System
   const [historyData, setHistoryData] = useState({});
   const historyRef = useRef({});
   const [systemHistory, setSystemHistory] = useState({ cpu: [], ram: [] });
@@ -123,7 +105,7 @@ export default function HardwareLab({ addToast }) {
         if (json.success) {
           setData(json);
 
-          // 1. Accumulate GPU history
+          // Accumulate GPU history
           const gpus = json.hardware?.gpu || [];
           const currentHist = { ...historyRef.current };
 
@@ -141,107 +123,91 @@ export default function HardwareLab({ addToast }) {
             const newTemp = [...existing.temp, tempVal];
             const newPower = [...existing.power, powerVal];
 
-            if (newVram.length > MAX_HISTORY) newVram.shift();
-            if (newCompute.length > MAX_HISTORY) newCompute.shift();
-            if (newTemp.length > MAX_HISTORY) newTemp.shift();
-            if (newPower.length > MAX_HISTORY) newPower.shift();
+            if (newVram.length > 30) newVram.shift();
+            if (newCompute.length > 30) newCompute.shift();
+            if (newTemp.length > 30) newTemp.shift();
+            if (newPower.length > 30) newPower.shift();
 
-            currentHist[idx] = {
-              vram: newVram,
-              compute: newCompute,
-              temp: newTemp,
-              power: newPower
-            };
+            currentHist[idx] = { vram: newVram, compute: newCompute, temp: newTemp, power: newPower };
           });
 
           historyRef.current = currentHist;
           setHistoryData(currentHist);
 
-          // 2. Accumulate System CPU & RAM History
-          const cpuUtil = Number(json.hardware?.cpu?.util_pct) || 0;
-          const ramUsed = Number(json.hardware?.ram?.used_gb) || Number(json.hardware?.ram_used_gb) || 0;
+          // Accumulate System CPU/RAM history
+          const cpuVal = Number(json.hardware?.cpu?.util_pct) || 0;
+          const ramVal = Number(json.hardware?.ram?.util_pct || json.hardware?.ram_pct) || 0;
 
-          const currentSysHist = { ...systemHistoryRef.current };
-          const newCpu = [...(currentSysHist.cpu || []), cpuUtil];
-          const newRam = [...(currentSysHist.ram || []), ramUsed];
+          const newSysCpu = [...systemHistoryRef.current.cpu, cpuVal];
+          const newSysRam = [...systemHistoryRef.current.ram, ramVal];
+          if (newSysCpu.length > 30) newSysCpu.shift();
+          if (newSysRam.length > 30) newSysRam.shift();
 
-          if (newCpu.length > MAX_HISTORY) newCpu.shift();
-          if (newRam.length > MAX_HISTORY) newRam.shift();
+          systemHistoryRef.current = { cpu: newSysCpu, ram: newSysRam };
+          setSystemHistory({ cpu: newSysCpu, ram: newSysRam });
 
-          systemHistoryRef.current = { cpu: newCpu, ram: newRam };
-          setSystemHistory({ cpu: newCpu, ram: newRam });
-
-          // 3. Populate initial configuration fields once
-          if (!initialConfigLoadedRef.current) {
+          // Load Multi-GPU config from backend on first load
+          if (!initialConfigLoadedRef.current && json.hardware?.multi_gpu) {
+            const mg = json.hardware.multi_gpu;
+            if (mg.cuda_visible_devices !== undefined) setCudaDevices(String(mg.cuda_visible_devices));
+            if (mg.ollama_num_parallel !== undefined) setNumParallel(mg.ollama_num_parallel);
+            if (mg.ollama_max_loaded_models !== undefined) setMaxLoaded(mg.ollama_max_loaded_models);
+            if (mg.num_gpu_layers !== undefined) setNumGpuLayers(mg.num_gpu_layers);
+            if (mg.preferred_training_gpu !== undefined) setPreferredGpu(mg.preferred_training_gpu);
+            if (mg.fp16_enabled !== undefined) setFp16Enabled(mg.fp16_enabled);
             initialConfigLoadedRef.current = true;
-            const cfg = json.config || {};
-            if (cfg.cuda_visible_devices !== undefined) setCudaDevices(cfg.cuda_visible_devices);
-            if (cfg.ollama_num_parallel !== undefined) setNumParallel(cfg.ollama_num_parallel);
-            if (cfg.ollama_max_loaded_models !== undefined) setMaxLoaded(cfg.ollama_max_loaded_models);
-            if (cfg.num_gpu_layers !== undefined) setNumGpuLayers(cfg.num_gpu_layers);
-            if (cfg.preferred_training_gpu !== undefined) setPreferredGpu(cfg.preferred_training_gpu);
-            if (cfg.fp16_enabled !== undefined) setFp16Enabled(cfg.fp16_enabled);
           }
         }
       }
     } catch (err) {
-      console.error('Failed to fetch hardware status:', err);
+      console.error("Hardware status polling error:", err);
     } finally {
       setLoading(false);
     }
   }, []);
 
-  useEffect(() => {
-    fetchHardwareStatus();
-    if (!autoRefresh) return;
-    const interval = setInterval(fetchHardwareStatus, refreshInterval);
-    return () => clearInterval(interval);
-  }, [fetchHardwareStatus, autoRefresh, refreshInterval]);
-
   const fetchGpuProcesses = useCallback(async () => {
     try {
       const res = await fetch('/api/hardware/gpu/processes');
-      if (!res.ok) return;
-      const json = await res.json();
-      if (json.success) setGpuProcs({ processes: json.processes || [], orfani: json.orfani || 0 });
-    } catch (err) {
-      console.error('Failed to fetch GPU processes:', err);
+      if (res.ok) {
+        const json = await res.json();
+        if (json.success) {
+          setGpuProcs({
+            processes: json.processes || [],
+            orfani: json.orfani || 0,
+          });
+        }
+      }
+    } catch (e) {
+      console.error("GPU processes fetch error:", e);
     }
   }, []);
 
-  // Cadenza propria, piu' lenta della telemetria: ogni giro costa due
-  // invocazioni di nvidia-smi, e la lista dei processi cambia di rado.
   useEffect(() => {
+    fetchHardwareStatus();
     fetchGpuProcesses();
     if (!autoRefresh) return;
-    const interval = setInterval(fetchGpuProcesses, 5000);
+    const interval = setInterval(() => {
+      fetchHardwareStatus();
+      fetchGpuProcesses();
+    }, refreshInterval);
     return () => clearInterval(interval);
-  }, [fetchGpuProcesses, autoRefresh]);
+  }, [fetchHardwareStatus, fetchGpuProcesses, autoRefresh, refreshInterval]);
 
   const handleKillGpuProcess = async (proc) => {
-    // Chiudere un training di Sigma e' l'operazione per cui questa lista
-    // esiste; chiudere un processo estraneo e' una cosa diversa, e la domanda
-    // deve dirlo — dall'altra parte puo' esserci il browser dell'utente.
-    const domanda = proc.job_id
-      ? `Fermare il training del job ${proc.job_id} (PID ${proc.pid})?\n` +
-        `Gli step non ancora salvati in un checkpoint andranno persi.`
-      : `Chiudere ${proc.name || `il processo ${proc.pid}`} (PID ${proc.pid})?\n\n` +
-        `ATTENZIONE: non è un job di Sigma Studio. È un'applicazione esterna ` +
-        `che sta usando la GPU, e chiuderla può farti perdere il lavoro non salvato.`;
-    if (!confirm(domanda)) return;
-
+    if (!proc || !proc.pid) return;
     setKillingPid(proc.pid);
     try {
       const res = await fetch('/api/hardware/gpu/kill', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ pid: proc.pid })
+        body: JSON.stringify({ pid: proc.pid, job_id: proc.job_id || null })
       });
       const json = await res.json();
       if (json.success) {
-        if (addToast) addToast(json.message || `Processo ${proc.pid} terminato.`, 'success');
+        if (addToast) addToast(json.message || `Processo PID ${proc.pid} (${proc.name || 'GPU'}) terminato.`, 'success');
       } else if (addToast) {
-        addToast(json.error || `Non sono riuscito a chiudere il processo ${proc.pid}.`, 'error');
+        addToast(json.error || `Impossibile chiudere il processo ${proc.pid}.`, 'error');
       }
       fetchGpuProcesses();
       fetchHardwareStatus();
@@ -249,6 +215,14 @@ export default function HardwareLab({ addToast }) {
       if (addToast) addToast(`Errore di rete: ${e.message}`, 'error');
     } finally {
       setKillingPid(null);
+    }
+  };
+
+  const handleKillAllOrphans = async () => {
+    const orphans = gpuProcs.processes.filter(p => p.orphan && p.killable);
+    if (!orphans.length) return;
+    for (const p of orphans) {
+      await handleKillGpuProcess(p);
     }
   };
 
@@ -300,10 +274,6 @@ export default function HardwareLab({ addToast }) {
     }
   };
 
-  // Nome storico: `clear_vram_cache` riavvia il servizio Ollama, e libera la
-  // VRAM solo dei modelli che Ollama teneva caricati. Non ha nessun effetto sui
-  // processi di training, che sono processi a se' — l'etichetta «Pulisci VRAM»
-  // lo faceva sembrare il pulsante da premere su un run appeso, e non lo e'.
   const handleClearVramMcp = async () => {
     try {
       const res = await fetch('/api/mcp/rpc', {
@@ -325,24 +295,49 @@ export default function HardwareLab({ addToast }) {
       console.error("VRAM clear error via Hardware MCP:", e);
     }
   };
+
   const hw = data?.hardware || {};
   const gpus = hw.gpu || [];
-
   const totalVramGb = hw.multi_gpu?.total_vram_gb || (gpus.reduce((acc, g) => acc + (g.vram_total_gb || 0), 0)).toFixed(1);
 
+  // Filtered processes in Console
+  const filteredProcesses = useMemo(() => {
+    return gpuProcs.processes.filter(p => {
+      const matchSearch = !procSearch.trim() ||
+        String(p.pid).includes(procSearch.trim()) ||
+        p.name?.toLowerCase().includes(procSearch.toLowerCase().trim()) ||
+        p.job_id?.toLowerCase().includes(procSearch.toLowerCase().trim());
+
+      if (!matchSearch) return false;
+      if (procFilter === 'all') return true;
+      if (procFilter === 'training') return p.kind === 'training';
+      if (procFilter === 'orphans') return p.orphan;
+      if (procFilter === 'external') return p.kind === 'esterno';
+      if (procFilter === 'system') return p.kind === 'sistema' || p.kind === 'sigma';
+      return true;
+    });
+  }, [gpuProcs.processes, procSearch, procFilter]);
+
   // Theme Design Tokens
-  const cardBg = isLight ? '#fffdf9' : 'rgba(15, 23, 42, 0.75)';
-  const cardBorder = isLight ? '1px solid rgba(190, 160, 110, 0.35)' : '1px solid rgba(255, 255, 255, 0.08)';
-  const cardShadow = isLight ? '0 4px 20px rgba(0,0,0,0.06)' : '0 12px 40px rgba(0, 0, 0, 0.4)';
-  const textPrimary = isLight ? '#111111' : '#ffffff';
+  const cardBg = isLight ? '#fffdf9' : '#11141d';
+  const cardBorder = isLight ? '1px solid rgba(190, 160, 110, 0.3)' : '1px solid rgba(255, 255, 255, 0.08)';
+  const cardShadow = isLight ? '0 4px 18px rgba(0,0,0,0.05)' : '0 10px 30px rgba(0, 0, 0, 0.4)';
+  const textPrimary = isLight ? '#111827' : '#ffffff';
   const textSecondary = isLight ? '#374151' : '#cbd5e1';
   const textMuted = isLight ? '#6b7280' : '#8b8fa3';
-  const subCardBg = isLight ? '#f9f6f0' : 'rgba(8, 10, 16, 0.6)';
-  const subCardBorder = isLight ? '1px solid rgba(190, 160, 110, 0.25)' : '1px solid rgba(255,255,255,0.04)';
+  const subCardBg = isLight ? '#f8f5ee' : 'rgba(255, 255, 255, 0.035)';
+  const subCardBorder = isLight ? '1px solid rgba(190, 160, 110, 0.22)' : '1px solid rgba(255, 255, 255, 0.06)';
 
   return (
-    <div className="hardware-lab-container" style={{ padding: 0, position: 'relative', overflowY: 'auto', height: '100%', display: 'flex', flexDirection: 'column' }}>
-      
+    <div className="hardware-lab-container" style={{
+      padding: 0,
+      position: 'relative',
+      overflowY: 'auto',
+      height: '100%',
+      display: 'flex',
+      flexDirection: 'column',
+      background: isLight ? '#fcfaf6' : '#0b0d13'
+    }}>
       {/* CONFIRMATION ALERT MODAL FOR RESTART OLLAMA */}
       {showRestartAlert && (
         <div style={{
@@ -369,23 +364,21 @@ export default function HardwareLab({ addToast }) {
               <h3 style={{ margin: 0, fontSize: '1.15rem', color: textPrimary, fontWeight: 800 }}>Svuota VRAM & Riavvia Ollama?</h3>
             </div>
             <p style={{ fontSize: '0.84rem', color: textSecondary, lineHeight: 1.5, marginBottom: '20px' }}>
-              Questa azione scaricherà tutti i modelli caricati in memoria video (VRAM) ed eseguità il riavvio del servizio Ollama. 
+              Questa azione scaricherà tutti i modelli caricati in memoria video (VRAM) ed eseguirà il riavvio del servizio Ollama. 
               Nessun dato andrà perso.
             </p>
             <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
               <button 
-                className="hw-btn" 
                 onClick={() => setShowRestartAlert(false)}
                 disabled={restartingOllama}
-                style={{ padding: '8px 16px', fontSize: '13px', background: isLight ? '#f2ede2' : undefined, color: textPrimary }}
+                style={{ padding: '8px 16px', fontSize: '13px', borderRadius: '10px', background: isLight ? '#f2ede2' : 'rgba(255,255,255,0.06)', border: 'none', color: textPrimary, cursor: 'pointer' }}
               >
                 Annulla
               </button>
               <button 
-                className="hw-btn" 
                 onClick={handleRestartOllama} 
                 disabled={restartingOllama}
-                style={{ background: 'linear-gradient(135deg, #ef4444, #dc2626)', color: '#fff', border: 'none', fontWeight: 800, fontSize: '13px', padding: '8px 16px', display: 'flex', alignItems: 'center', gap: '6px' }}
+                style={{ background: 'linear-gradient(135deg, #ef4444, #dc2626)', color: '#fff', border: 'none', fontWeight: 800, fontSize: '13px', padding: '8px 16px', borderRadius: '10px', display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer' }}
               >
                 {restartingOllama ? <Activity className="spin" size={15} /> : <RotateCcw size={15} />}
                 {restartingOllama ? 'Svuotamento VRAM in corso...' : '⚡ Svuota VRAM & Riavvia Ollama'}
@@ -395,764 +388,981 @@ export default function HardwareLab({ addToast }) {
         </div>
       )}
 
-      {/* Hero Visual Banner matching Domotica Header Style */}
+      {/* TOP HEADER & HERO BANNER */}
       <div style={{
         position: 'relative',
-        borderRadius: 0,
-        overflow: 'hidden',
-        padding: '24px 32px',
-        minHeight: '110px',
+        zIndex: 1,
+        padding: '16px 24px',
         borderBottom: isLight ? '1px solid rgba(234, 88, 12, 0.35)' : '1px solid rgba(0, 210, 255, 0.25)',
         boxShadow: isLight ? '0 8px 24px rgba(234, 88, 12, 0.08)' : '0 8px 32px rgba(0,0,0,0.4)',
         backgroundImage: isLight
-          ? 'linear-gradient(135deg, rgba(254, 252, 247, 0.76) 0%, rgba(248, 242, 232, 0.70) 100%), url("/images/hardware_cluster_lab.jpg")'
-          : 'linear-gradient(135deg, rgba(10, 14, 26, 0.85) 0%, rgba(14, 22, 42, 0.80) 100%), url("/images/hardware_cluster_lab.jpg")',
+          ? 'linear-gradient(135deg, rgba(254, 252, 247, 0.85) 0%, rgba(248, 242, 232, 0.80) 100%), url("/images/hardware_cluster_lab.jpg")'
+          : 'linear-gradient(135deg, rgba(10, 14, 26, 0.88) 0%, rgba(14, 22, 42, 0.85) 100%), url("/images/hardware_cluster_lab.jpg")',
         backgroundSize: 'cover',
-        backgroundRepeat: 'no-repeat',
         backgroundPosition: 'center center',
-        marginBottom: '20px',
         flexShrink: 0
       }}>
-        <div style={{ position: 'relative', zIndex: 2, display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '16px' }}>
-          <div style={{ maxWidth: '680px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '12px' }}>
+          <div>
             <div style={{
               display: 'inline-flex', alignItems: 'center', gap: '6px',
-              padding: '3px 12px', borderRadius: '14px',
+              padding: '2px 10px', borderRadius: '12px',
               background: isLight ? 'rgba(234, 88, 12, 0.12)' : 'rgba(0, 210, 255, 0.15)', 
               border: isLight ? '1px solid rgba(234, 88, 12, 0.35)' : '1px solid rgba(0, 210, 255, 0.35)',
               color: isLight ? '#ea580c' : '#00d2ff', 
-              fontSize: '0.68rem', fontWeight: 800, letterSpacing: '1px', textTransform: 'uppercase', marginBottom: '6px'
+              fontSize: '0.66rem', fontWeight: 800, letterSpacing: '1px', textTransform: 'uppercase', marginBottom: '4px'
             }}>
-              <Zap size={14} /> CLUSTER GPU TELEMETRY & HARDWARE LAB
+              <Zap size={13} /> CLUSTER GPU TELEMETRY & HARDWARE LAB
             </div>
-            <h1 style={{ margin: '0 0 6px 0', fontSize: '1.4rem', fontWeight: 800, color: textPrimary, letterSpacing: '-0.3px', textShadow: 'none' }}>
-              ⚡ Hardware & <span style={{
-                color: isLight ? '#c2410c' : '#00d2ff',
-                fontWeight: 800
-              }}>Cluster Telemetry Lab</span>
+            <h1 style={{ margin: '0 0 2px 0', fontSize: '1.25rem', fontWeight: 800, color: textPrimary, letterSpacing: '-0.3px' }}>
+              ⚡ Hardware & <span style={{ color: isLight ? '#c2410c' : '#00d2ff' }}>Cluster Telemetry Lab</span>
             </h1>
-            <p style={{ margin: 0, fontSize: '0.82rem', color: isLight ? '#4b5563' : '#cbd5e0', lineHeight: 1.45 }}>
-              Monitoraggio VRAM in tempo reale, allocazione dinamica dei pesi su GPU NVIDIA ed esecuzione parallela dei thread.
+            <p style={{ margin: 0, fontSize: '0.76rem', color: textMuted }}>
+              Monitoraggio VRAM in tempo reale, gestione processi e orchestrazione multi-scheda.
             </p>
           </div>
 
-          <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
+          {/* Quick Actions */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
             <button 
-              className="hw-btn"
+              onClick={handleClearVramMcp}
+              title="Scarica i modelli dalla VRAM"
+              style={{
+                fontSize: '0.74rem', padding: '6px 12px', borderRadius: '8px',
+                border: '1px solid rgba(0, 210, 255, 0.4)',
+                background: isLight ? 'rgba(2, 132, 199, 0.1)' : 'rgba(0, 210, 255, 0.12)',
+                color: isLight ? '#0284c7' : '#00d2ff',
+                fontWeight: 800, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '5px'
+              }}
+            >
+              <Zap size={12} /> Scarica VRAM
+            </button>
+
+            <button 
               onClick={() => setShowRestartAlert(true)}
-              title="Svuota la memoria VRAM/RAM scaricando tutti i modelli caricati da Ollama"
-              style={{ fontSize: '0.82rem', padding: '10px 16px', borderRadius: '12px', border: '1px solid rgba(239, 68, 68, 0.45)', background: isLight ? 'rgba(239, 68, 68, 0.12)' : 'rgba(239, 68, 68, 0.15)', color: isLight ? '#dc2626' : '#fca5a5', fontWeight: 800, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px' }}
+              title="Svuota la memoria VRAM scaricando tutti i modelli e riavviando Ollama"
+              style={{
+                fontSize: '0.74rem', padding: '6px 12px', borderRadius: '8px',
+                border: '1px solid rgba(239, 68, 68, 0.45)',
+                background: isLight ? 'rgba(239, 68, 68, 0.12)' : 'rgba(239, 68, 68, 0.15)',
+                color: isLight ? '#dc2626' : '#fca5a5',
+                fontWeight: 800, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '5px'
+              }}
             >
-              <RotateCcw size={15} color="#ef4444" />
-              <span>Svuota VRAM / Riavvia Ollama</span>
+              <RotateCcw size={12} color="#ef4444" /> Riavvia Ollama
             </button>
 
             <button 
-              className={`hw-btn ${showCharts ? 'hw-btn-primary' : ''}`}
               onClick={() => setShowCharts(!showCharts)}
-              title={showCharts ? 'Nascondi i grafici per compattare la vista' : 'Mostra i grafici storici in tempo reale'}
-              style={{ fontSize: '0.82rem', padding: '10px 16px', borderRadius: '12px', fontWeight: 800, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px' }}
+              style={{
+                fontSize: '0.74rem', padding: '6px 12px', borderRadius: '8px',
+                border: isLight ? '1px solid rgba(190, 160, 110, 0.35)' : '1px solid rgba(255, 255, 255, 0.12)',
+                background: showCharts ? (isLight ? '#111827' : '#00d2ff') : (isLight ? '#fffdf9' : 'rgba(255, 255, 255, 0.05)'),
+                color: showCharts ? '#ffffff' : textPrimary,
+                fontWeight: 800, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '5px'
+              }}
             >
-              <BarChart2 size={15} color={showCharts ? '#fff' : (isLight ? '#c2410c' : '#00d2ff')} />
-              {showCharts ? 'Nascondi Grafici Storici' : 'Mostra Grafici Storici'}
-              {showCharts ? <ChevronUp size={15} /> : <ChevronDown size={15} />}
+              <BarChart2 size={12} /> {showCharts ? 'Grafici On' : 'Grafici Off'}
             </button>
 
             <button 
-              className="hw-btn" 
               onClick={() => setAutoRefresh(!autoRefresh)}
-              title={autoRefresh ? 'Metti in pausa il refresh' : 'Riprendi refresh automatico'}
-              style={{ fontSize: '0.82rem', padding: '10px 16px', borderRadius: '12px', fontWeight: 800, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px', background: isLight ? '#fffdf9' : undefined, border: isLight ? '1px solid rgba(190, 160, 110, 0.4)' : undefined, color: textPrimary }}
+              style={{
+                fontSize: '0.74rem', padding: '6px 12px', borderRadius: '8px',
+                border: isLight ? '1px solid rgba(190, 160, 110, 0.35)' : '1px solid rgba(255, 255, 255, 0.12)',
+                background: isLight ? '#fffdf9' : 'rgba(255, 255, 255, 0.05)',
+                color: textPrimary,
+                fontWeight: 800, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '5px'
+              }}
             >
-              {autoRefresh ? <Pause size={14} color={isLight ? '#ea580c' : '#00d2ff'} /> : <Play size={14} />}
-              {autoRefresh ? 'Pausa (2s)' : 'Riprendi'}
+              {autoRefresh ? <Pause size={12} color="#ea580c" /> : <Play size={12} />}
+              {autoRefresh ? 'Live (2s)' : 'Pausa'}
             </button>
           </div>
         </div>
-      </div>
 
-      {/* Main Workspace Body Wrapper */}
-      <div style={{ padding: '0 24px 24px 24px', display: 'flex', flexDirection: 'column', gap: '20px', flex: 1 }}>
-
-        {/* Bottom Row: Compact Telemetry Stat Cards */}
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '14px', zIndex: 2 }}>
-          
-          {/* Card 1: VRAM & GPU */}
+        {/* Top Summary Metric Strips */}
+        <div style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
+          gap: '10px',
+          marginTop: '12px'
+        }}>
+          {/* Card 1: VRAM */}
           <div style={{
-            padding: '12px 16px', borderRadius: '14px',
+            padding: '8px 12px', borderRadius: '10px',
             backgroundColor: cardBg,
-            border: isLight ? '1px solid rgba(2, 132, 199, 0.35)' : '1px solid rgba(0, 210, 255, 0.3)', 
-            boxShadow: isLight ? '0 4px 18px rgba(2, 132, 199, 0.08)' : '0 4px 18px rgba(0, 210, 255, 0.1)'
+            border: isLight ? '1px solid rgba(2, 132, 199, 0.35)' : '1px solid rgba(0, 210, 255, 0.3)',
+            boxShadow: isLight ? '0 2px 10px rgba(2, 132, 199, 0.08)' : '0 2px 10px rgba(0, 210, 255, 0.1)'
           }}>
-            <div style={{ fontSize: '0.68rem', color: textMuted, fontWeight: 800, textTransform: 'uppercase', marginBottom: '4px' }}>
+            <div style={{ fontSize: '0.62rem', color: textMuted, fontWeight: 800, textTransform: 'uppercase' }}>
               GPU & VRAM ALLOCATA
             </div>
-            <div style={{ fontSize: '1.15rem', fontWeight: 900, color: isLight ? '#0284c7' : '#00d2ff', fontFamily: 'JetBrains Mono, monospace' }}>
-              {gpus.length} GPU • {totalVramGb} GB
-            </div>
-            <div style={{ fontSize: '0.7rem', color: textMuted, marginTop: '2px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-              {gpus.map(g => g.name || `GPU ${g.index}`).join(', ') || 'NVIDIA Compute'}
+            <div style={{ fontSize: '1.05rem', fontWeight: 900, color: isLight ? '#0284c7' : '#00d2ff', fontFamily: 'JetBrains Mono, monospace' }}>
+              {gpus.length} GPU • {totalVramGb} GB VRAM
             </div>
           </div>
 
           {/* Card 2: SYSTEM RAM */}
           <div style={{
-            padding: '12px 16px', borderRadius: '14px',
+            padding: '8px 12px', borderRadius: '10px',
             backgroundColor: cardBg,
-            border: isLight ? '1px solid rgba(22, 163, 74, 0.35)' : '1px solid rgba(16, 185, 129, 0.3)', 
-            boxShadow: isLight ? '0 4px 18px rgba(22, 163, 74, 0.08)' : '0 4px 18px rgba(16, 185, 129, 0.1)'
+            border: isLight ? '1px solid rgba(22, 163, 74, 0.35)' : '1px solid rgba(16, 185, 129, 0.3)',
+            boxShadow: isLight ? '0 2px 10px rgba(22, 163, 74, 0.08)' : '0 2px 10px rgba(16, 185, 129, 0.1)'
           }}>
-            <div style={{ fontSize: '0.68rem', color: textMuted, fontWeight: 800, textTransform: 'uppercase', marginBottom: '4px' }}>
+            <div style={{ fontSize: '0.62rem', color: textMuted, fontWeight: 800, textTransform: 'uppercase' }}>
               SISTEMA RAM & DISCO
             </div>
-            <div style={{ fontSize: '1.15rem', fontWeight: 900, color: isLight ? '#16a34a' : '#10b981', fontFamily: 'JetBrains Mono, monospace' }}>
+            <div style={{ fontSize: '1.05rem', fontWeight: 900, color: isLight ? '#16a34a' : '#10b981', fontFamily: 'JetBrains Mono, monospace' }}>
               {hw.ram?.used_gb || hw.ram_used_gb || 0} / {hw.ram?.total_gb || hw.ram_gb || 0} GB
             </div>
-            <div style={{ fontSize: '0.7rem', color: textMuted, marginTop: '2px' }}>
-              RAM Utilizzata {hw.ram?.util_pct || hw.ram_pct || 0}% • Disco {hw.disk?.used_gb || 0} GB
-            </div>
           </div>
 
-          {/* Card 3: CPU THREADS */}
+          {/* Card 3: CPU LOAD */}
           <div style={{
-            padding: '12px 16px', borderRadius: '14px',
+            padding: '8px 12px', borderRadius: '10px',
             backgroundColor: cardBg,
-            border: isLight ? '1px solid rgba(124, 58, 237, 0.35)' : '1px solid rgba(188, 140, 255, 0.3)', 
-            boxShadow: isLight ? '0 4px 18px rgba(124, 58, 237, 0.08)' : '0 4px 18px rgba(188, 140, 255, 0.1)'
+            border: isLight ? '1px solid rgba(124, 58, 237, 0.35)' : '1px solid rgba(188, 140, 255, 0.3)',
+            boxShadow: isLight ? '0 2px 10px rgba(124, 58, 237, 0.08)' : '0 2px 10px rgba(188, 140, 255, 0.1)'
           }}>
-            <div style={{ fontSize: '0.68rem', color: textMuted, fontWeight: 800, textTransform: 'uppercase', marginBottom: '4px' }}>
+            <div style={{ fontSize: '0.62rem', color: textMuted, fontWeight: 800, textTransform: 'uppercase' }}>
               CPU SYSTEM LOAD
             </div>
-            <div style={{ fontSize: '1.15rem', fontWeight: 900, color: isLight ? '#7c3aed' : '#bc8cff', fontFamily: 'JetBrains Mono, monospace' }}>
-              {hw.cpu?.util_pct ?? 0}% LOAD
-            </div>
-            <div style={{ fontSize: '0.7rem', color: textMuted, marginTop: '2px' }}>
-              {hw.cpu?.logical_count || '?'} Thread Logici • {hw.cpu?.freq_mhz ? `${(hw.cpu.freq_mhz / 1000).toFixed(1)} GHz` : 'N/A'}
+            <div style={{ fontSize: '1.05rem', fontWeight: 900, color: isLight ? '#7c3aed' : '#bc8cff', fontFamily: 'JetBrains Mono, monospace' }}>
+              {hw.cpu?.util_pct ?? 0}% • {hw.cpu?.logical_count || '?'} Thread
             </div>
           </div>
-
         </div>
+      </div>
 
-      {/* Main Cards Container */}
-      <div className="gpu-cards-container" style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-
+      {/* 2-COLUMN HARDWARE LAB WORKBENCH */}
+      <div style={{
+        padding: '16px 20px',
+        display: 'grid',
+        gridTemplateColumns: 'minmax(0, 1.1fr) minmax(0, 0.9fr)',
+        gap: '16px',
+        flex: 1
+      }}>
         {/* ==================================================================== */}
-        {/* PROCESSI SULLA GPU — chi la sta occupando, e come chiuderlo          */}
+        {/* COLUMN 1 (LEFT): CPU / SISTEMA IN ALTO + SCHEDE GPU FISICHE          */}
         {/* ==================================================================== */}
-        <div className="gpu-card" style={{
-          padding: '16px 20px',
-          backgroundColor: cardBg,
-          border: gpuProcs.orfani > 0 ? '1px solid rgba(239, 68, 68, 0.45)' : cardBorder,
-          boxShadow: cardShadow
-        }}>
-          <div className="gpu-card-header" style={{ marginBottom: gpuProcs.processes.length ? '12px' : 0 }}>
-            <div className="gpu-title">
-              <div className="gpu-index-pill" style={{ 
-                background: isLight ? 'rgba(124, 58, 237, 0.12)' : 'rgba(168, 85, 247, 0.15)', 
-                color: isLight ? '#7c3aed' : '#a855f7', 
-                border: isLight ? '1px solid rgba(124, 58, 237, 0.35)' : '1px solid rgba(168, 85, 247, 0.3)', 
-                padding: '2px 8px', 
-                fontSize: '11px',
-                fontWeight: 800
-              }}>
-                PID
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+          
+          {/* 1. CPU & RAM SISTEMA IN ALTO */}
+          <div style={{
+            padding: '14px 16px',
+            borderRadius: '14px',
+            backgroundColor: cardBg,
+            border: cardBorder,
+            boxShadow: cardShadow,
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '10px'
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <span style={{
+                  padding: '2px 7px', borderRadius: '6px',
+                  background: isLight ? 'rgba(22, 163, 74, 0.12)' : 'rgba(16, 185, 129, 0.15)',
+                  color: isLight ? '#16a34a' : '#10b981',
+                  fontSize: '0.64rem', fontWeight: 800
+                }}>
+                  SYS
+                </span>
+                <span style={{ fontSize: '0.86rem', fontWeight: 800, color: textPrimary }}>
+                  Sistema Host (CPU & RAM)
+                </span>
               </div>
-              <div>
-                <div className="gpu-name" style={{ fontSize: '15px', color: textPrimary, fontWeight: 800 }}>Processi sulla GPU</div>
-                <div className="gpu-bus-info" style={{ fontSize: '11px', color: textMuted }}>
-                  {gpuProcs.processes.length === 0
-                    ? 'Nessun processo sta usando la GPU per il calcolo'
-                    : `${gpuProcs.processes.length} processi • i job di Sigma si fermano da qui`}
+              <div style={{ fontSize: '0.66rem', color: textMuted }}>
+                {hw.cpu?.logical_count || '?'} Cores • {hw.ram?.total_gb || 0} GB RAM
+              </div>
+            </div>
+
+            {/* Gauges CPU & RAM */}
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+              {/* CPU Gauge */}
+              <div style={{
+                background: isLight ? 'rgba(2, 132, 199, 0.06)' : 'rgba(0, 210, 255, 0.04)',
+                border: isLight ? '1px solid rgba(2, 132, 199, 0.25)' : '1px solid rgba(0, 210, 255, 0.18)',
+                borderRadius: '10px', padding: '10px'
+              }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '5px', fontWeight: 800, fontSize: '0.72rem', color: isLight ? '#0284c7' : '#00d2ff' }}>
+                    <Cpu size={12} /> Carico CPU
+                  </div>
+                  <span style={{ fontSize: '0.74rem', fontWeight: 900, color: isLight ? '#0284c7' : '#00d2ff' }}>{hw.cpu?.util_pct ?? 0}%</span>
+                </div>
+                <div style={{ height: '5px', borderRadius: '3px', background: 'rgba(0,0,0,0.15)', overflow: 'hidden', marginBottom: '4px' }}>
+                  <div style={{ height: '100%', width: `${Math.min(100, hw.cpu?.util_pct ?? 0)}%`, background: 'linear-gradient(90deg, #0284c7, #00d2ff)', borderRadius: '3px', transition: 'width 0.3s ease' }} />
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.62rem', color: textMuted }}>
+                  <span>{hw.cpu?.physical_count || '?'} Fisici / {hw.cpu?.logical_count || '?'} Thread</span>
+                  <span>{hw.cpu?.freq_mhz ? `${(hw.cpu.freq_mhz / 1000).toFixed(1)} GHz` : ''}</span>
+                </div>
+              </div>
+
+              {/* RAM Gauge */}
+              <div style={{
+                background: isLight ? 'rgba(22, 163, 74, 0.06)' : 'rgba(16, 185, 129, 0.04)',
+                border: isLight ? '1px solid rgba(22, 163, 74, 0.25)' : '1px solid rgba(16, 185, 129, 0.18)',
+                borderRadius: '10px', padding: '10px'
+              }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '5px', fontWeight: 800, fontSize: '0.72rem', color: isLight ? '#16a34a' : '#10b981' }}>
+                    <HardDrive size={12} /> Memoria RAM
+                  </div>
+                  <span style={{ fontSize: '0.74rem', fontWeight: 900, color: isLight ? '#16a34a' : '#10b981' }}>{hw.ram?.util_pct || hw.ram_pct || 0}%</span>
+                </div>
+                <div style={{ height: '5px', borderRadius: '3px', background: 'rgba(0,0,0,0.15)', overflow: 'hidden', marginBottom: '4px' }}>
+                  <div style={{ height: '100%', width: `${Math.min(100, hw.ram?.util_pct || hw.ram_pct || 0)}%`, background: 'linear-gradient(90deg, #16a34a, #10b981)', borderRadius: '3px', transition: 'width 0.3s ease' }} />
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.62rem', color: textMuted }}>
+                  <span>{hw.ram?.used_gb || hw.ram_used_gb || 0} GB usati</span>
+                  <span>{hw.ram?.total_gb || hw.ram_gb || 0} GB Totali</span>
                 </div>
               </div>
             </div>
-            {gpuProcs.orfani > 0 && (
-              <div className="gpu-header-badges">
-                <div className="gpu-stat-badge" style={{ padding: '4px 10px', fontSize: '12px', background: 'rgba(239, 68, 68, 0.15)', border: '1px solid rgba(239, 68, 68, 0.35)' }}>
-                  <AlertTriangle size={14} color="#ef4444" />
-                  <span style={{ fontWeight: 800, color: '#ef4444' }}>
-                    {gpuProcs.orfani} orfan{gpuProcs.orfani === 1 ? 'o' : 'i'}
-                  </span>
-                </div>
+
+            {/* Live CPU & RAM Sparklines */}
+            {showCharts && (
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', paddingTop: '6px', borderTop: subCardBorder }}>
+                <RealtimeTelemetryChart 
+                  data={systemHistory.cpu} 
+                  label="CPU Load (%)" 
+                  icon={Cpu}
+                  color={isLight ? '#0284c7' : '#00d2ff'} 
+                  unit="%" 
+                  maxVal={100} 
+                  height={55}
+                  isLight={isLight}
+                />
+                <RealtimeTelemetryChart 
+                  data={systemHistory.ram} 
+                  label="RAM (%)" 
+                  icon={HardDrive}
+                  color={isLight ? '#16a34a' : '#10b981'} 
+                  unit="%" 
+                  maxVal={100} 
+                  height={55}
+                  isLight={isLight}
+                />
               </div>
             )}
           </div>
 
-          {gpuProcs.processes.length > 0 && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-              {gpuProcs.processes.map(proc => {
-                const isTraining = proc.kind === 'training';
-                const accent = proc.orphan ? '#ef4444' : (isTraining ? (isLight ? '#0284c7' : '#00d2ff') : textMuted);
-                return (
-                  <div key={proc.pid} style={{
-                    display: 'flex', alignItems: 'center', gap: '12px',
-                    padding: '10px 14px', borderRadius: '10px',
-                    background: isLight 
-                      ? (isTraining ? 'rgba(2, 132, 199, 0.08)' : '#f4efe4') 
-                      : (isTraining ? 'rgba(0, 210, 255, 0.05)' : 'rgba(148, 163, 184, 0.04)'),
-                    border: `1px solid ${proc.orphan ? 'rgba(239, 68, 68, 0.35)' : (isTraining ? (isLight ? 'rgba(2, 132, 199, 0.3)' : 'rgba(0, 210, 255, 0.2)') : (isLight ? 'rgba(190, 160, 110, 0.3)' : 'rgba(148, 163, 184, 0.12)'))}`
-                  }}>
-                    <div style={{ minWidth: 0, flex: 1 }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-                        <span style={{ fontWeight: 800, fontSize: '13px', color: accent }}>
-                          {proc.name || `PID ${proc.pid}`}
-                        </span>
-                        <span style={{ fontSize: '10px', color: textMuted }}>PID {proc.pid}</span>
-                        {proc.job_id && (
-                          <span className="hw-badge" style={{ fontSize: '10px', padding: '2px 8px', background: isLight ? 'rgba(2, 132, 199, 0.15)' : 'rgba(0, 210, 255, 0.15)', color: isLight ? '#0284c7' : '#00d2ff', borderColor: isLight ? 'rgba(2, 132, 199, 0.35)' : 'rgba(0, 210, 255, 0.3)', fontWeight: 700 }}>
-                            job {proc.job_id}
-                          </span>
-                        )}
-                        {proc.orphan && (
-                          <span className="hw-badge" style={{ fontSize: '10px', padding: '2px 8px', background: 'rgba(239, 68, 68, 0.15)', color: '#ef4444', borderColor: 'rgba(239, 68, 68, 0.35)', fontWeight: 700 }}>
-                            ORFANO — il job risulta {proc.job_status}
-                          </span>
-                        )}
-                        {proc.kind === 'esterno' && (
-                          <span className="hw-badge" style={{ fontSize: '10px', padding: '2px 8px', color: textMuted }}>
-                            esterno a Sigma
-                          </span>
-                        )}
-                        {proc.kind === 'sigma' && (
-                          <span className="hw-badge" style={{ fontSize: '10px', padding: '2px 8px', background: isLight ? 'rgba(22, 163, 74, 0.15)' : 'rgba(16, 185, 129, 0.15)', color: isLight ? '#16a34a' : '#10b981', borderColor: isLight ? 'rgba(22, 163, 74, 0.35)' : 'rgba(16, 185, 129, 0.3)', fontWeight: 700 }}>
-                            Sigma Studio
-                          </span>
-                        )}
-                        {proc.kind === 'sistema' && (
-                          <span className="hw-badge" style={{ fontSize: '10px', padding: '2px 8px', background: 'rgba(245, 158, 11, 0.15)', color: '#d97706', borderColor: 'rgba(245, 158, 11, 0.3)', fontWeight: 700 }}>
-                            processo di Windows
-                          </span>
-                        )}
+          {/* 2. SCHEDE GPU FISICHE */}
+          {gpus.length === 0 ? (
+            <div style={{ padding: '20px', borderRadius: '14px', background: cardBg, border: cardBorder, textAlign: 'center' }}>
+              <Zap size={28} color="#00d2ff" style={{ margin: '0 auto 6px auto' }} />
+              <h3 style={{ margin: 0, fontSize: '0.92rem', color: textPrimary }}>Nessuna GPU Dedicata Rilevata</h3>
+              <p style={{ margin: '2px 0 0 0', fontSize: '0.74rem', color: textMuted }}>Il sistema sta operando in modalità CPU fallback.</p>
+            </div>
+          ) : (
+            gpus.map((gpu) => {
+              const idx = gpu.index;
+              const vramUsed = Number(gpu.vram_used_mb) || 0;
+              const vramTotal = Number(gpu.vram_total_mb) || 1;
+              const vramPct = Number(gpu.vram_util_pct) || Math.round((vramUsed / vramTotal) * 100);
+              const utilPct = Number(gpu.gpu_util_pct) || 0;
+              const pwrDraw = Number(gpu.power_draw_w) || 0;
+              const pwrLimit = Number(gpu.power_limit_w) || 0;
+              const hist = historyData[idx] || { vram: [], compute: [], temp: [], power: [] };
+
+              return (
+                <div key={idx} style={{
+                  padding: '14px 16px',
+                  borderRadius: '14px',
+                  backgroundColor: cardBg,
+                  border: cardBorder,
+                  boxShadow: cardShadow,
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '12px'
+                }}>
+                  {/* GPU Card Header */}
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '6px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <div style={{
+                        padding: '2px 7px', borderRadius: '6px',
+                        fontSize: '0.66rem', fontWeight: 800,
+                        background: isLight ? 'rgba(234, 88, 12, 0.12)' : 'rgba(0, 210, 255, 0.15)',
+                        color: isLight ? '#ea580c' : '#00d2ff',
+                        border: isLight ? '1px solid rgba(234, 88, 12, 0.35)' : '1px solid rgba(0, 210, 255, 0.35)'
+                      }}>
+                        GPU {idx}
                       </div>
-                      <div style={{ fontSize: '10px', color: textMuted, marginTop: '3px' }}>
-                        {(proc.gpus || []).map(g => g.name || `GPU ${g.index}`).join(' + ') || 'GPU sconosciuta'}
-                        {' • VRAM '}{proc.vram_gb != null ? `${proc.vram_gb} GB` : 'n/d'}
-                        {proc.started_at ? ` • dalle ${proc.started_at.slice(11)}` : ''}
-                        {proc.base_model ? ` • ${proc.base_model}` : ''}
+                      <div>
+                        <div style={{ fontSize: '0.88rem', fontWeight: 800, color: textPrimary }}>
+                          {gpu.name}
+                        </div>
+                        <div style={{ fontSize: '0.64rem', color: textMuted }}>
+                          Driver v{gpu.driver_version || 'N/A'} • Compute {gpu.compute_cap || 'v9.0+'}
+                        </div>
                       </div>
                     </div>
-                    {proc.killable ? (
+
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <div style={{
+                        display: 'flex', alignItems: 'center', gap: '4px',
+                        padding: '3px 8px', borderRadius: '6px',
+                        background: subCardBg, border: subCardBorder,
+                        fontSize: '0.68rem', fontWeight: 700, color: textPrimary
+                      }}>
+                        <Thermometer size={12} color="#ea580c" />
+                        <span>{gpu.temp_c ? `${gpu.temp_c}°C` : 'N/A'}</span>
+                      </div>
+                      <div style={{
+                        display: 'flex', alignItems: 'center', gap: '4px',
+                        padding: '3px 8px', borderRadius: '6px',
+                        background: subCardBg, border: subCardBorder,
+                        fontSize: '0.68rem', fontWeight: 700, color: textPrimary
+                      }}>
+                        <Flame size={12} color="#ef4444" />
+                        <span>{pwrDraw}W</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* 2 Sub-gauges: Compute vs VRAM */}
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                    {/* Compute */}
+                    <div style={{
+                      background: isLight ? 'rgba(124, 58, 237, 0.06)' : 'rgba(188, 140, 255, 0.04)',
+                      border: isLight ? '1px solid rgba(124, 58, 237, 0.25)' : '1px solid rgba(188, 140, 255, 0.18)',
+                      borderRadius: '10px', padding: '10px'
+                    }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '5px', fontWeight: 800, fontSize: '0.72rem', color: isLight ? '#7c3aed' : '#bc8cff' }}>
+                          <Gauge size={12} /> Compute
+                        </div>
+                        <span style={{ fontSize: '0.74rem', fontWeight: 900, color: isLight ? '#7c3aed' : '#bc8cff' }}>{utilPct}%</span>
+                      </div>
+                      <div style={{ height: '5px', borderRadius: '3px', background: 'rgba(0,0,0,0.15)', overflow: 'hidden', marginBottom: '4px' }}>
+                        <div style={{ height: '100%', width: `${utilPct}%`, background: 'linear-gradient(90deg, #7c3aed, #bc8cff)', borderRadius: '3px', transition: 'width 0.3s ease' }} />
+                      </div>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.62rem', color: textMuted }}>
+                        <span>{utilPct > 80 ? '🔥 Alto' : utilPct > 20 ? '⚡ Attivo' : '💤 Idle'}</span>
+                        <span>{pwrDraw}W / {pwrLimit > 0 ? `${pwrLimit}W` : 'N/A'}</span>
+                      </div>
+                    </div>
+
+                    {/* VRAM */}
+                    <div style={{
+                      background: isLight ? 'rgba(2, 132, 199, 0.06)' : 'rgba(0, 210, 255, 0.04)',
+                      border: isLight ? '1px solid rgba(2, 132, 199, 0.25)' : '1px solid rgba(0, 210, 255, 0.18)',
+                      borderRadius: '10px', padding: '10px'
+                    }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '5px', fontWeight: 800, fontSize: '0.72rem', color: isLight ? '#0284c7' : '#00d2ff' }}>
+                          <HardDrive size={12} /> Memoria VRAM
+                        </div>
+                        <span style={{ fontSize: '0.74rem', fontWeight: 900, color: isLight ? '#0284c7' : '#00d2ff' }}>{vramPct}%</span>
+                      </div>
+                      <div style={{ height: '5px', borderRadius: '3px', background: 'rgba(0,0,0,0.15)', overflow: 'hidden', marginBottom: '4px' }}>
+                        <div style={{ height: '100%', width: `${vramPct}%`, background: 'linear-gradient(90deg, #0284c7, #00d2ff)', borderRadius: '3px', transition: 'width 0.3s ease' }} />
+                      </div>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.62rem', color: textMuted }}>
+                        <span>{vramUsed} / {vramTotal} MB</span>
+                        <span>{(vramTotal / 1024).toFixed(1)} GB</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Sparkline Charts */}
+                  {showCharts && (
+                    <div style={{
+                      display: 'grid',
+                      gridTemplateColumns: '1fr 1fr',
+                      gap: '10px',
+                      paddingTop: '8px',
+                      borderTop: subCardBorder
+                    }}>
+                      <RealtimeTelemetryChart 
+                        data={hist.compute} 
+                        label="Compute (%)" 
+                        icon={Cpu}
+                        color={isLight ? '#7c3aed' : '#bc8cff'} 
+                        unit="%" 
+                        maxVal={100} 
+                        height={60}
+                        isLight={isLight}
+                      />
+                      <RealtimeTelemetryChart 
+                        data={hist.vram} 
+                        label="VRAM (MB)" 
+                        icon={HardDrive}
+                        color={isLight ? '#0284c7' : '#00d2ff'} 
+                        unit="MB" 
+                        maxVal={vramTotal} 
+                        height={60}
+                        isLight={isLight}
+                        formatVal={(val) => `${typeof val === 'number' ? Math.round(val) : val}`}
+                      />
+                    </div>
+                  )}
+                </div>
+              );
+            })
+          )}
+        </div>
+
+        {/* ==================================================================== */}
+        {/* COLUMN 2 (RIGHT): 1. CONSOLE DEI PROCESSI IN ALTO                    */}
+        {/*                   2. CONFIGURAZIONE MULTI-GPU                        */}
+        {/*                   3. NODI HARDWARE STANDBY                           */}
+        {/* ==================================================================== */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+          
+          {/* 1. CONSOLE DEI PROCESSI IN ALTO SULLA DESTRA */}
+          <div style={{
+            borderRadius: '14px',
+            backgroundColor: cardBg,
+            border: gpuProcs.orfani > 0 ? '1px solid rgba(239, 68, 68, 0.45)' : cardBorder,
+            boxShadow: cardShadow,
+            display: 'flex',
+            flexDirection: 'column',
+            overflow: 'hidden'
+          }}>
+            {/* Console Header Bar */}
+            <div style={{
+              padding: '10px 14px',
+              background: isLight ? 'rgba(0,0,0,0.03)' : 'rgba(0,0,0,0.35)',
+              borderBottom: cardBorder,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              flexWrap: 'wrap',
+              gap: '8px'
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <Terminal size={15} color={isLight ? '#c2410c' : '#00d2ff'} />
+                <span style={{ fontSize: '0.84rem', fontWeight: 800, color: textPrimary }}>
+                  Console Processi & Task Manager GPU
+                </span>
+                <span style={{
+                  fontSize: '0.64rem', padding: '1px 6px', borderRadius: '6px',
+                  background: isLight ? 'rgba(0, 0, 0, 0.06)' : 'rgba(255, 255, 255, 0.08)',
+                  color: textPrimary, fontWeight: 700
+                }}>
+                  {gpuProcs.processes.length} attivi
+                </span>
+              </div>
+
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                {gpuProcs.orfani > 0 && (
+                  <button
+                    onClick={handleKillAllOrphans}
+                    title="Termina tutti i processi orfani"
+                    style={{
+                      fontSize: '0.66rem', padding: '3px 8px', borderRadius: '6px',
+                      background: 'rgba(239, 68, 68, 0.15)',
+                      border: '1px solid rgba(239, 68, 68, 0.4)',
+                      color: '#ef4444', fontWeight: 800, cursor: 'pointer',
+                      display: 'flex', alignItems: 'center', gap: '4px'
+                    }}
+                  >
+                    <AlertTriangle size={11} /> Termina {gpuProcs.orfani} Orfani
+                  </button>
+                )}
+                <button
+                  onClick={fetchGpuProcesses}
+                  title="Aggiorna lista processi"
+                  style={{
+                    background: 'transparent', border: 'none', color: textMuted, cursor: 'pointer',
+                    display: 'flex', alignItems: 'center', padding: '3px'
+                  }}
+                >
+                  <RefreshCw size={13} />
+                </button>
+              </div>
+            </div>
+
+            {/* Console Toolbar (Search + Category Filter Chips) */}
+            <div style={{
+              padding: '8px 12px',
+              borderBottom: subCardBorder,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              flexWrap: 'wrap',
+              gap: '8px',
+              background: subCardBg
+            }}>
+              {/* Search Bar */}
+              <div style={{
+                display: 'flex', alignItems: 'center', gap: '6px',
+                padding: '4px 8px', borderRadius: '6px',
+                background: isLight ? '#ffffff' : 'rgba(0,0,0,0.25)',
+                border: subCardBorder, flex: 1, minWidth: '130px'
+              }}>
+                <Search size={11} color={textMuted} />
+                <input
+                  type="text"
+                  placeholder="Filtra PID, nome o job..."
+                  value={procSearch}
+                  onChange={e => setProcSearch(e.target.value)}
+                  style={{
+                    background: 'transparent', border: 'none',
+                    color: textPrimary, fontSize: '0.72rem', outline: 'none', width: '100%'
+                  }}
+                />
+                {procSearch && (
+                  <button onClick={() => setProcSearch('')} style={{ background: 'none', border: 'none', color: textMuted, cursor: 'pointer' }}>
+                    <X size={11} />
+                  </button>
+                )}
+              </div>
+
+              {/* Filter Pills */}
+              <div style={{ display: 'flex', gap: '3px', overflowX: 'auto' }}>
+                {[
+                  { id: 'all', label: 'Tutti' },
+                  { id: 'training', label: 'Training' },
+                  { id: 'orphans', label: 'Orfani' },
+                  { id: 'external', label: 'Esterni' },
+                  { id: 'system', label: 'Sistema' },
+                ].map(tab => (
+                  <button
+                    key={tab.id}
+                    onClick={() => setProcFilter(tab.id)}
+                    style={{
+                      fontSize: '0.64rem', padding: '2px 6px', borderRadius: '5px',
+                      border: 'none',
+                      background: procFilter === tab.id ? (isLight ? '#111827' : '#00d2ff') : 'transparent',
+                      color: procFilter === tab.id ? '#ffffff' : textMuted,
+                      fontWeight: procFilter === tab.id ? 800 : 600,
+                      cursor: 'pointer'
+                    }}
+                  >
+                    {tab.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Process List Container */}
+            <div style={{
+              maxHeight: '230px',
+              overflowY: 'auto',
+              display: 'flex',
+              flexDirection: 'column'
+            }}>
+              {filteredProcesses.length === 0 ? (
+                <div style={{ padding: '16px', textAlign: 'center', fontSize: '0.74rem', color: textMuted }}>
+                  Nessun processo trovato con i filtri selezionati.
+                </div>
+              ) : (
+                filteredProcesses.map(proc => {
+                  const isTraining = proc.kind === 'training';
+                  const isOrphan = proc.orphan;
+                  const isExpanded = expandedPid === proc.pid;
+
+                  return (
+                    <div
+                      key={proc.pid}
+                      style={{
+                        padding: '7px 12px',
+                        borderBottom: subCardBorder,
+                        display: 'flex',
+                        flexDirection: 'column',
+                        gap: '3px',
+                        background: isOrphan 
+                          ? (isLight ? 'rgba(239, 68, 68, 0.06)' : 'rgba(239, 68, 68, 0.08)')
+                          : (isTraining ? (isLight ? 'rgba(2, 132, 199, 0.05)' : 'rgba(0, 210, 255, 0.04)') : 'transparent'),
+                        transition: 'background 0.15s ease'
+                      }}
+                    >
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '6px' }}>
+                        {/* Process info */}
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', minWidth: 0, flex: 1 }}>
+                          <span style={{
+                            fontFamily: 'JetBrains Mono, monospace',
+                            fontSize: '0.66rem', fontWeight: 800,
+                            padding: '1px 4px', borderRadius: '4px',
+                            background: isLight ? 'rgba(0,0,0,0.06)' : 'rgba(255,255,255,0.06)',
+                            color: textPrimary
+                          }}>
+                            #{proc.pid}
+                          </span>
+
+                          <span style={{
+                            fontSize: '0.74rem', fontWeight: 800,
+                            color: isOrphan ? '#ef4444' : (isTraining ? (isLight ? '#0284c7' : '#00d2ff') : textPrimary),
+                            whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis'
+                          }}>
+                            {proc.name || `PID ${proc.pid}`}
+                          </span>
+
+                          {/* Kind Badge */}
+                          {isOrphan ? (
+                            <span style={{ fontSize: '0.58rem', padding: '1px 4px', borderRadius: '3px', background: 'rgba(239,68,68,0.18)', color: '#ef4444', fontWeight: 800 }}>
+                              ORFANO
+                            </span>
+                          ) : isTraining ? (
+                            <span style={{ fontSize: '0.58rem', padding: '1px 4px', borderRadius: '3px', background: 'rgba(0,210,255,0.15)', color: '#00d2ff', fontWeight: 700 }}>
+                              TRAINING
+                            </span>
+                          ) : proc.kind === 'sigma' ? (
+                            <span style={{ fontSize: '0.58rem', padding: '1px 4px', borderRadius: '3px', background: 'rgba(22,163,74,0.15)', color: '#16a34a', fontWeight: 700 }}>
+                              SIGMA
+                            </span>
+                          ) : proc.kind === 'sistema' ? (
+                            <span style={{ fontSize: '0.58rem', padding: '1px 4px', borderRadius: '3px', background: 'rgba(245,158,11,0.15)', color: '#d97706', fontWeight: 700 }}>
+                              SISTEMA
+                            </span>
+                          ) : (
+                            <span style={{ fontSize: '0.58rem', padding: '1px 4px', borderRadius: '3px', background: 'rgba(255,255,255,0.06)', color: textMuted }}>
+                              ESTERNO
+                            </span>
+                          )}
+                        </div>
+
+                        {/* Memory & Actions */}
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexShrink: 0 }}>
+                          <span style={{ fontSize: '0.66rem', fontFamily: 'JetBrains Mono, monospace', color: textMuted }}>
+                            {proc.vram_gb != null ? `${proc.vram_gb} GB` : 'GPU'}
+                          </span>
+
+                          {proc.killable ? (
+                            <button
+                              onClick={() => handleKillGpuProcess(proc)}
+                              disabled={killingPid === proc.pid}
+                              style={{
+                                fontSize: '0.64rem', padding: '2px 7px', borderRadius: '4px',
+                                border: '1px solid rgba(239, 68, 68, 0.4)',
+                                background: 'rgba(239, 68, 68, 0.12)', color: '#ef4444',
+                                fontWeight: 800, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '3px'
+                              }}
+                              title="Termina processo e libera VRAM"
+                            >
+                              <Trash2 size={10} /> {killingPid === proc.pid ? '...' : 'Termina'}
+                            </button>
+                          ) : (
+                            <span style={{ fontSize: '0.58rem', color: textMuted, padding: '2px 4px' }}>
+                              Protetto
+                            </span>
+                          )}
+
+                          <button
+                            onClick={() => setExpandedPid(isExpanded ? null : proc.pid)}
+                            style={{ background: 'none', border: 'none', color: textMuted, cursor: 'pointer', padding: '2px' }}
+                            title="Dettagli comando"
+                          >
+                            {isExpanded ? <ChevronUp size={11} /> : <ChevronDown size={11} />}
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* Expanded Cmdline Details */}
+                      {isExpanded && (
+                        <div style={{
+                          padding: '5px 7px', borderRadius: '5px',
+                          background: isLight ? 'rgba(0,0,0,0.05)' : 'rgba(0,0,0,0.4)',
+                          fontSize: '0.62rem', fontFamily: 'JetBrains Mono, monospace',
+                          color: textMuted, wordBreak: 'break-all', marginTop: '2px'
+                        }}>
+                          <strong>Cmd:</strong> {proc.cmdline || 'N/A'}
+                          {proc.started_at && <div style={{ marginTop: '2px' }}><strong>Avviato:</strong> {proc.started_at}</div>}
+                          {proc.base_model && <div><strong>Modello:</strong> {proc.base_model}</div>}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })
+              )}
+            </div>
+          </div>
+
+          {/* 2. CONFIGURAZIONE MULTI-GPU & PARALLELISMO */}
+          <div style={{
+            padding: '16px 18px',
+            borderRadius: '14px',
+            backgroundColor: cardBg,
+            border: cardBorder,
+            boxShadow: cardShadow,
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '12px'
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <Sliders size={15} color={isLight ? '#ea580c' : '#00d2ff'} />
+              <span style={{ fontSize: '0.88rem', fontWeight: 800, color: textPrimary }}>
+                Configurazione Multi-GPU & Parallelismo
+              </span>
+            </div>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+              {/* CUDA_VISIBLE_DEVICES */}
+              <div>
+                <label style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.7rem', fontWeight: 700, color: textPrimary, marginBottom: '3px' }}>
+                  <span>CUDA_VISIBLE_DEVICES</span>
+                  <span style={{ color: isLight ? '#c2410c' : '#00d2ff' }}>Target GPU</span>
+                </label>
+                <select 
+                  value={cudaDevices} 
+                  onChange={(e) => setCudaDevices(e.target.value)}
+                  style={{
+                    width: '100%', padding: '6px 8px', borderRadius: '7px',
+                    background: subCardBg, border: subCardBorder,
+                    color: textPrimary, fontSize: '0.74rem', outline: 'none'
+                  }}
+                >
+                  {gpus.length > 1 && (
+                    <option value={gpus.map(g => g.index).join(',')}>
+                      {gpus.map(g => g.index).join(',')} — Parallelismo Multi-GPU
+                    </option>
+                  )}
+                  {gpus.map(g => (
+                    <option key={g.index} value={String(g.index)}>
+                      {g.index} — Solo GPU {g.index} ({g.name})
+                    </option>
+                  ))}
+                  {gpus.length === 0 && <option value="0">0 — GPU predefinita</option>}
+                </select>
+              </div>
+
+              {/* Parallel Slots & Max Loaded */}
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.7rem', fontWeight: 700, color: textPrimary, marginBottom: '3px' }}>
+                    OLLAMA_NUM_PARALLEL
+                  </label>
+                  <select 
+                    value={numParallel} 
+                    onChange={(e) => setNumParallel(Number(e.target.value))}
+                    style={{
+                      width: '100%', padding: '6px 8px', borderRadius: '7px',
+                      background: subCardBg, border: subCardBorder,
+                      color: textPrimary, fontSize: '0.74rem', outline: 'none'
+                    }}
+                  >
+                    <option value={1}>1 stream</option>
+                    <option value={2}>2 stream</option>
+                    <option value={4}>4 stream (Multi-Agenti)</option>
+                    <option value={8}>8 stream (Max)</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.7rem', fontWeight: 700, color: textPrimary, marginBottom: '3px' }}>
+                    MAX_LOADED_MODELS
+                  </label>
+                  <select 
+                    value={maxLoaded} 
+                    onChange={(e) => setMaxLoaded(Number(e.target.value))}
+                    style={{
+                      width: '100%', padding: '6px 8px', borderRadius: '7px',
+                      background: subCardBg, border: subCardBorder,
+                      color: textPrimary, fontSize: '0.74rem', outline: 'none'
+                    }}
+                  >
+                    <option value={1}>1 modello</option>
+                    <option value={2}>2 modelli</option>
+                    <option value={3}>3 modelli</option>
+                  </select>
+                </div>
+              </div>
+
+              {/* Training GPU & FP16 */}
+              <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 0.8fr', gap: '8px', alignItems: 'center' }}>
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.7rem', fontWeight: 700, color: textPrimary, marginBottom: '3px' }}>
+                    GPU Training Lab
+                  </label>
+                  <select 
+                    value={preferredGpu} 
+                    onChange={(e) => setPreferredGpu(e.target.value)}
+                    style={{
+                      width: '100%', padding: '6px 8px', borderRadius: '7px',
+                      background: subCardBg, border: subCardBorder,
+                      color: textPrimary, fontSize: '0.74rem', outline: 'none'
+                    }}
+                  >
+                    {gpus.map(g => (
+                      <option key={g.index} value={`cuda:${g.index}`}>
+                        cuda:{g.index} ({g.name})
+                      </option>
+                    ))}
+                    {gpus.length > 1 && (
+                      <option value={`cuda:${gpus.map(g => g.index).join(',')}`}>
+                        Multi-GPU DataParallel
+                      </option>
+                    )}
+                    {gpus.length === 0 && <option value="cuda:0">cuda:0 (Default)</option>}
+                  </select>
+                </div>
+
+                <div style={{ paddingTop: '14px' }}>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '5px', fontSize: '0.7rem', fontWeight: 700, color: textPrimary, cursor: 'pointer' }}>
+                    <input 
+                      type="checkbox" 
+                      checked={fp16Enabled} 
+                      onChange={(e) => setFp16Enabled(e.target.checked)} 
+                      style={{ accentColor: '#00d2ff' }}
+                    />
+                    <span>Precisione FP16</span>
+                  </label>
+                </div>
+              </div>
+            </div>
+
+            <button 
+              onClick={handleSaveConfig} 
+              disabled={saving} 
+              style={{ 
+                marginTop: '4px',
+                fontSize: '0.78rem', padding: '9px 16px', borderRadius: '8px',
+                fontWeight: 800, border: 'none',
+                background: isLight 
+                  ? 'linear-gradient(135deg, #ea580c 0%, #d97706 100%)' 
+                  : 'linear-gradient(135deg, #00d2ff 0%, #7c5bf0 100%)',
+                color: '#ffffff', cursor: saving ? 'not-allowed' : 'pointer',
+                display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px',
+                boxShadow: isLight ? '0 4px 14px rgba(234,88,12,0.25)' : '0 4px 18px rgba(0,210,255,0.3)'
+              }}
+            >
+              <Save size={13} />
+              {saving ? 'Salvataggio...' : 'Applica e Salva Impostazioni Multi-GPU'}
+            </button>
+          </div>
+
+          {/* 3. ACCELERATORI HARDWARE IN STANDBY */}
+          <div style={{
+            padding: '16px 18px',
+            borderRadius: '14px',
+            backgroundColor: cardBg,
+            border: cardBorder,
+            boxShadow: cardShadow,
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '10px'
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <Layers size={15} color="#bc8cff" />
+                <span style={{ fontSize: '0.88rem', fontWeight: 800, color: textPrimary }}>
+                  Acceleratori Hardware & Nodi Standby
+                </span>
+              </div>
+              <span style={{ fontSize: '0.64rem', color: textMuted }}>
+                {INACTIVE_HARDWARE_NODES.length} Moduli
+              </span>
+            </div>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+              {INACTIVE_HARDWARE_NODES.map(node => {
+                const IconComp = node.icon;
+                const isActivated = activatedHw[node.id];
+                const isExpanded = expandedHwNode === node.id;
+
+                return (
+                  <div
+                    key={node.id}
+                    style={{
+                      padding: '10px 14px', borderRadius: '10px',
+                      background: subCardBg,
+                      border: isActivated 
+                        ? '1px solid rgba(22, 163, 74, 0.4)' 
+                        : subCardBorder,
+                      display: 'flex', flexDirection: 'column', gap: '6px',
+                      transition: 'all 0.15s ease'
+                    }}
+                  >
+                    {/* Header Row */}
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <div style={{
+                          width: '26px', height: '26px', borderRadius: '6px',
+                          background: isActivated ? 'rgba(22, 163, 74, 0.15)' : `${node.color}15`,
+                          color: isActivated ? '#16a34a' : node.color,
+                          display: 'flex', alignItems: 'center', justifyContent: 'center'
+                        }}>
+                          <IconComp size={14} />
+                        </div>
+                        <div>
+                          <div style={{ fontSize: '0.8rem', fontWeight: 800, color: textPrimary }}>
+                            {node.title}
+                          </div>
+                          <div style={{ fontSize: '0.64rem', color: textMuted }}>
+                            {node.subtitle}
+                          </div>
+                        </div>
+                      </div>
+
+                      <span style={{
+                        fontSize: '0.58rem', fontWeight: 800,
+                        color: isActivated ? '#16a34a' : textMuted,
+                        background: isActivated ? 'rgba(22, 163, 74, 0.12)' : (isLight ? 'rgba(0, 0, 0, 0.05)' : 'rgba(255, 255, 255, 0.05)'),
+                        border: subCardBorder,
+                        padding: '2px 6px', borderRadius: '5px'
+                      }}>
+                        {isActivated ? 'ATTIVO ⚡' : 'NON DISPONIBILE'}
+                      </span>
+                    </div>
+
+                    {/* Detailed Description & Technical Spec */}
+                    <div style={{
+                      padding: '6px 10px',
+                      borderRadius: '6px',
+                      background: isLight ? 'rgba(0,0,0,0.03)' : 'rgba(0,0,0,0.25)',
+                      border: subCardBorder,
+                      fontSize: '0.66rem',
+                      lineHeight: 1.45,
+                      color: textSecondary,
+                      display: 'flex',
+                      flexDirection: 'column',
+                      gap: '4px'
+                    }}>
+                      <div>
+                        <strong style={{ color: textPrimary }}>Funzione: </strong>
+                        {node.details}
+                      </div>
+                      <div style={{ color: isLight ? '#9a3412' : '#ea580c' }}>
+                        <strong>Requisito di attivazione: </strong>
+                        {node.prerequisite}
+                      </div>
+                    </div>
+
+                    {/* Actions Row */}
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingTop: '4px' }}>
                       <button
-                        className="hw-btn"
-                        onClick={() => handleKillGpuProcess(proc)}
-                        disabled={killingPid === proc.pid}
-                        title={isTraining ? 'Ferma il job e libera la GPU' : 'Chiudi questo processo esterno'}
+                        onClick={() => setActiveHwModal(node)}
                         style={{
-                          fontSize: '11px', padding: '6px 12px', flexShrink: 0,
-                          border: '1px solid rgba(239, 68, 68, 0.4)',
-                          background: 'rgba(239, 68, 68, 0.12)', color: '#ef4444',
-                          fontWeight: 700
+                          background: 'none', border: 'none',
+                          color: isLight ? '#0284c7' : '#00d2ff',
+                          fontSize: '0.64rem', fontWeight: 700,
+                          cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px', padding: 0
                         }}
                       >
-                        <Trash2 size={12} color="#ef4444" />
-                        <span>{killingPid === proc.pid ? 'Chiudo…' : 'Termina'}</span>
+                        <Info size={11} /> Scheda Tecnica & Info
                       </button>
-                    ) : (
-                      <span style={{ fontSize: '10px', color: textMuted, flexShrink: 0 }}
-                            title={proc.kind === 'sistema'
-                              ? 'Processo di sistema: chiuderlo comprometterebbe la sessione di Windows'
-                              : 'È Sigma Studio: chiuderlo spegnerebbe questa interfaccia'}>
-                        non chiudibile
-                      </span>
-                    )}
+
+                      <button
+                        onClick={() => {
+                          if (isActivated) return;
+                          if (addToast) addToast(`⚠️ Il modulo ${node.title} non è ancora disponibile o non collegato al sistema.`, 'info');
+                        }}
+                        style={{
+                          padding: '3px 8px', borderRadius: '5px',
+                          background: isActivated ? 'rgba(22, 163, 74, 0.1)' : (isLight ? 'rgba(0, 0, 0, 0.04)' : 'rgba(255, 255, 255, 0.04)'),
+                          border: isActivated ? '1px solid rgba(22, 163, 74, 0.3)' : (isLight ? '1px solid rgba(190, 160, 110, 0.25)' : '1px solid rgba(255, 255, 255, 0.08)'),
+                          color: isActivated ? '#16a34a' : textMuted,
+                          fontSize: '0.64rem', fontWeight: 700,
+                          cursor: isActivated ? 'default' : 'not-allowed',
+                          display: 'flex', alignItems: 'center', gap: '4px',
+                          opacity: isActivated ? 1 : 0.85
+                        }}
+                        title={isActivated ? 'Modulo inizializzato' : 'Modulo hardware non collegato o non ancora disponibile'}
+                      >
+                        {isActivated ? <CheckCircle2 size={10} /> : <Info size={10} />}
+                        {isActivated ? 'Inizializzato' : 'Non ancora disponibile'}
+                      </button>
+                    </div>
                   </div>
                 );
               })}
             </div>
-          )}
-        </div>
-
-
-        {/* ==================================================================== */}
-        {/* SYSTEM OVERVIEW CARD (LEFT = COMPUTE, RIGHT = MEMORY) */}
-        {/* ==================================================================== */}
-        <div className="gpu-card" style={{ padding: '16px 20px', backgroundColor: cardBg, border: cardBorder, boxShadow: cardShadow }}>
-          <div className="gpu-card-header" style={{ marginBottom: '14px' }}>
-            <div className="gpu-title">
-              <div className="gpu-index-pill" style={{ 
-                background: isLight ? 'rgba(22, 163, 74, 0.12)' : 'rgba(16, 185, 129, 0.15)', 
-                color: isLight ? '#16a34a' : '#10b981', 
-                border: isLight ? '1px solid rgba(22, 163, 74, 0.35)' : '1px solid rgba(16, 185, 129, 0.3)', 
-                padding: '2px 8px', 
-                fontSize: '11px',
-                fontWeight: 800
-              }}>
-                SYS
-              </div>
-              <div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <div className="gpu-name" style={{ fontSize: '15px', color: textPrimary, fontWeight: 800 }}>Sistema Principale (CPU & RAM)</div>
-                  <span className="hw-badge" style={{ background: isLight ? 'rgba(22, 163, 74, 0.12)' : 'rgba(16, 185, 129, 0.15)', color: isLight ? '#16a34a' : '#10b981', borderColor: isLight ? 'rgba(22, 163, 74, 0.35)' : 'rgba(16, 185, 129, 0.3)', fontSize: '10px', padding: '2px 8px', fontWeight: 700 }}>
-                    SISTEMA
-                  </span>
-                </div>
-                <div className="gpu-bus-info" style={{ fontSize: '11px', color: textMuted }}>
-                  {hw.cpu?.logical_count || hw.cpu_count || '?'} Thread Logici ({hw.cpu?.physical_count || '?'} Cores) • {hw.cpu?.freq_mhz ? `${(hw.cpu.freq_mhz / 1000).toFixed(1)} GHz` : 'N/A'}
-                </div>
-              </div>
-            </div>
-
-            <div className="gpu-header-badges">
-              <div className="gpu-stat-badge" style={{ padding: '5px 12px', fontSize: '12px', background: isLight ? '#f4efe4' : undefined, border: isLight ? '1px solid rgba(190, 160, 110, 0.35)' : undefined }}>
-                <Cpu size={14} color={isLight ? '#0284c7' : '#00d2ff'} />
-                <span style={{ fontWeight: 800, color: isLight ? '#0284c7' : '#00d2ff' }}>CPU: {hw.cpu?.util_pct ?? 0}%</span>
-              </div>
-              <div className="gpu-stat-badge" style={{ padding: '5px 12px', fontSize: '12px', background: isLight ? '#f4efe4' : undefined, border: isLight ? '1px solid rgba(190, 160, 110, 0.35)' : undefined }}>
-                <HardDrive size={14} color={isLight ? '#16a34a' : '#10b981'} />
-                <span style={{ fontWeight: 800, color: isLight ? '#16a34a' : '#10b981' }}>RAM: {hw.ram?.used_gb || hw.ram_used_gb || 0} / {hw.ram?.total_gb || hw.ram_gb || 0} GB</span>
-              </div>
-            </div>
           </div>
-
-          {/* 2-COLUMN SPLIT: LEFT = COMPUTE, RIGHT = MEMORY */}
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
-            
-            {/* LEFT SIDE: CPU COMPUTE */}
-            <div style={{ background: isLight ? 'rgba(2, 132, 199, 0.06)' : 'rgba(0, 242, 254, 0.04)', border: isLight ? '1px solid rgba(2, 132, 199, 0.25)' : '1px solid rgba(0, 242, 254, 0.15)', borderRadius: '12px', padding: '14px' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontWeight: 800, fontSize: '12px', color: isLight ? '#0284c7' : '#00d2ff' }}>
-                  <Cpu size={14} /> ⚡ COMPUTE (CPU System Load)
-                </div>
-                <span style={{ fontSize: '12px', fontWeight: 900, color: isLight ? '#0284c7' : '#00d2ff' }}>{hw.cpu?.util_pct ?? 0}%</span>
-              </div>
-              <div className="metric-progress-track" style={{ height: '8px', marginBottom: '8px', background: isLight ? 'rgba(0,0,0,0.06)' : undefined }}>
-                <div className="metric-progress-bar bar-cyan" style={{ width: `${Math.min(100, hw.cpu?.util_pct ?? 0)}%` }} />
-              </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '10px', color: textMuted }}>
-                <span>Max Core Load: {hw.cpu?.max_core_pct || 0}%</span>
-                <span>Frequenza: {hw.cpu?.freq_mhz ? `${(hw.cpu.freq_mhz / 1000).toFixed(2)} GHz` : 'N/A'}</span>
-              </div>
-            </div>
-
-            {/* RIGHT SIDE: MEMORY & STORAGE */}
-            <div style={{ background: isLight ? 'rgba(22, 163, 74, 0.06)' : 'rgba(16, 185, 129, 0.04)', border: isLight ? '1px solid rgba(22, 163, 74, 0.25)' : '1px solid rgba(16, 185, 129, 0.15)', borderRadius: '12px', padding: '14px' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontWeight: 800, fontSize: '12px', color: isLight ? '#16a34a' : '#10b981' }}>
-                  <HardDrive size={14} /> 🧠 MEMORIA (System RAM & Disco)
-                </div>
-                <span style={{ fontSize: '12px', fontWeight: 900, color: isLight ? '#16a34a' : '#10b981' }}>{hw.ram?.util_pct || hw.ram_pct || 0}%</span>
-              </div>
-              <div className="metric-progress-track" style={{ height: '8px', marginBottom: '8px', background: isLight ? 'rgba(0,0,0,0.06)' : undefined }}>
-                <div className="metric-progress-bar" style={{ width: `${Math.min(100, hw.ram?.util_pct || hw.ram_pct || 0)}%`, background: 'linear-gradient(90deg, #10b981, #059669)' }} />
-              </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '10px', color: textMuted }}>
-                <span>RAM Libera: {hw.ram?.free_gb || 0} GB</span>
-                <span>Disco: {hw.disk?.used_gb || 0} / {hw.disk?.total_gb || 0} GB ({hw.disk?.util_pct || 0}%)</span>
-              </div>
-            </div>
-
-          </div>
-
-          {/* COLLAPSIBLE SYSTEM CHARTS */}
-          {showCharts && (
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', marginTop: '16px', paddingTop: '16px', borderTop: isLight ? '1px solid rgba(190, 160, 110, 0.25)' : '1px solid rgba(255,255,255,0.08)' }}>
-              <RealtimeTelemetryChart 
-                data={systemHistory.cpu} 
-                label="Storico Carico CPU (%)" 
-                icon={Cpu}
-                color={isLight ? '#0284c7' : '#00d2ff'} 
-                unit="%" 
-                maxVal={100} 
-                height={80}
-                isLight={isLight}
-              />
-              <RealtimeTelemetryChart 
-                data={systemHistory.ram} 
-                label="Storico RAM Utilizzata (GB)" 
-                icon={HardDrive}
-                color={isLight ? '#16a34a' : '#10b981'} 
-                unit="GB" 
-                maxVal={hw.ram?.total_gb || hw.ram_gb || 64} 
-                height={80}
-                isLight={isLight}
-                formatVal={(val) => `${typeof val === 'number' ? val.toFixed(1) : val}`}
-              />
-            </div>
-          )}
-        </div>
-
-        {/* ==================================================================== */}
-        {/* MULTI-VENDOR GPU CARDS (LEFT = COMPUTE, RIGHT = VRAM) */}
-        {/* ==================================================================== */}
-        {gpus.length === 0 ? (
-          <div className="gpu-card" style={{ textAlign: 'center', padding: '40px 20px', backgroundColor: cardBg, border: cardBorder }}>
-            {loading ? (
-              <>
-                <Activity className="spin" size={32} color={isLight ? '#ea580c' : '#00d2ff'} style={{ margin: '0 auto 12px' }} />
-                <div style={{ fontSize: '14px', color: textPrimary, fontWeight: 700 }}>Rilevamento telemetria hardware in corso...</div>
-              </>
-            ) : (
-              <div style={{ color: textMuted, fontSize: '14px', fontWeight: 600 }}>
-                ⚠️ Nessuna GPU rilevata nel sistema.
-              </div>
-            )}
-          </div>
-        ) : (
-          gpus.map((gpu) => {
-            const vramTotal = Number(gpu.vram_total_mb) || 1;
-            const vramUsed = Number(gpu.vram_used_mb) || 0;
-            const vramPct = vramTotal > 0 ? Math.min(100, Math.round((vramUsed / vramTotal) * 100)) : 0;
-            const utilPct = Math.min(100, Math.round(Number(gpu.gpu_util_pct) || 0));
-            const pwrLimit = Number(gpu.power_limit_w) || 0;
-            const pwrDraw = Number(gpu.power_draw_w) || 0;
-
-            const idx = gpu.index;
-            const hist = historyData[idx] || { vram: [], compute: [], temp: [], power: [] };
-
-            return (
-              <div key={idx} className="gpu-card" style={{ padding: '16px 20px', backgroundColor: cardBg, border: cardBorder, boxShadow: cardShadow }}>
-                {/* GPU Card Top Title Bar */}
-                <div className="gpu-card-header" style={{ marginBottom: '14px' }}>
-                  <div className="gpu-title">
-                    <div className="gpu-index-pill" style={{ 
-                      padding: '2px 8px', 
-                      fontSize: '11px',
-                      background: isLight ? 'rgba(234, 88, 12, 0.12)' : undefined,
-                      color: isLight ? '#ea580c' : undefined,
-                      borderColor: isLight ? 'rgba(234, 88, 12, 0.35)' : undefined
-                    }}>GPU {idx}</div>
-                    <div>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                        <div className="gpu-name" style={{ fontSize: '15px', color: textPrimary, fontWeight: 800 }}>{gpu.name}</div>
-                        <span className="hw-badge" style={{ 
-                          background: isLight ? 'rgba(2, 132, 199, 0.12)' : `${gpu.vendor_color || '#00f2fe'}18`, 
-                          color: isLight ? '#0284c7' : (gpu.vendor_color || '#00f2fe'),
-                          borderColor: isLight ? 'rgba(2, 132, 199, 0.3)' : `${gpu.vendor_color || '#00f2fe'}44`,
-                          fontSize: '10px',
-                          padding: '2px 8px',
-                          fontWeight: 700
-                        }}>
-                          {gpu.vendor || 'GPU'}
-                        </span>
-                      </div>
-                      <div className="gpu-bus-info" style={{ fontSize: '11px', color: textMuted }}>
-                        Driver v{gpu.driver_version || 'N/A'} • Compute Cap {gpu.compute_cap || 'v9.0+'} • Temp {gpu.temp_c ? `${gpu.temp_c}°C` : 'N/A'} • Potenza {pwrDraw}W
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="gpu-header-badges">
-                    <div className="gpu-stat-badge" style={{ padding: '5px 12px', fontSize: '12px', background: isLight ? '#f4efe4' : undefined, border: isLight ? '1px solid rgba(190, 160, 110, 0.35)' : undefined }}>
-                      <Thermometer size={14} color="#ea580c" />
-                      <span style={{ color: textPrimary, fontWeight: 700 }}>{gpu.temp_c ? `${gpu.temp_c}°C` : 'N/A'}</span>
-                    </div>
-                    <div className="gpu-stat-badge" style={{ padding: '5px 12px', fontSize: '12px', background: isLight ? '#f4efe4' : undefined, border: isLight ? '1px solid rgba(190, 160, 110, 0.35)' : undefined }}>
-                      <Flame size={14} color="#ef4444" />
-                      <span style={{ color: textPrimary, fontWeight: 700 }}>{pwrDraw}W</span>
-                    </div>
-                  </div>
-                </div>
-
-                {/* 2-COLUMN SPLIT: LEFT = COMPUTE, RIGHT = VRAM */}
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
-                  
-                  {/* LEFT SIDE: GPU COMPUTE */}
-                  <div style={{ background: isLight ? 'rgba(124, 58, 237, 0.06)' : 'rgba(188, 140, 255, 0.04)', border: isLight ? '1px solid rgba(124, 58, 237, 0.25)' : '1px solid rgba(188, 140, 255, 0.18)', borderRadius: '12px', padding: '14px' }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontWeight: 800, fontSize: '12px', color: isLight ? '#7c3aed' : '#bc8cff' }}>
-                        <Gauge size={14} /> ⚡ COMPUTE (Utilizzo GPU)
-                      </div>
-                      <span style={{ fontSize: '12px', fontWeight: 900, color: isLight ? '#7c3aed' : '#bc8cff' }}>{utilPct}%</span>
-                    </div>
-                    <div className="metric-progress-track" style={{ height: '8px', marginBottom: '8px', background: isLight ? 'rgba(0,0,0,0.06)' : undefined }}>
-                      <div className="metric-progress-bar bar-purple" style={{ width: `${utilPct}%` }} />
-                    </div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '10px', color: textMuted }}>
-                      <span>Stato: {utilPct > 80 ? '🔥 Alto Carico' : utilPct > 20 ? '⚡ Attivo' : '💤 Idle'}</span>
-                      <span>Potenza: {pwrDraw}W / {pwrLimit > 0 ? `${pwrLimit}W` : 'N/A'}</span>
-                    </div>
-                  </div>
-
-                  {/* RIGHT SIDE: GPU VRAM MEMORY */}
-                  <div style={{ background: isLight ? 'rgba(2, 132, 199, 0.06)' : 'rgba(0, 210, 255, 0.04)', border: isLight ? '1px solid rgba(2, 132, 199, 0.25)' : '1px solid rgba(0, 210, 255, 0.18)', borderRadius: '12px', padding: '14px' }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontWeight: 800, fontSize: '12px', color: isLight ? '#0284c7' : '#00d2ff' }}>
-                        <HardDrive size={14} /> 🧠 MEMORIA VRAM
-                      </div>
-                      <span style={{ fontSize: '12px', fontWeight: 900, color: isLight ? '#0284c7' : '#00d2ff' }}>{vramUsed} / {vramTotal} MB ({vramPct}%)</span>
-                    </div>
-                    <div className="metric-progress-track" style={{ height: '8px', marginBottom: '8px', background: isLight ? 'rgba(0,0,0,0.06)' : undefined }}>
-                      <div className="metric-progress-bar bar-cyan" style={{ width: `${vramPct}%` }} />
-                    </div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '10px', color: textMuted }}>
-                      <span>Libera: {gpu.vram_free_mb || Math.max(0, vramTotal - vramUsed)} MB</span>
-                      <span>VRAM Totale: {gpu.vram_total_gb || (vramTotal / 1024).toFixed(1)} GB</span>
-                    </div>
-                  </div>
-
-                </div>
-
-                {showCharts && (
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', marginTop: '16px', paddingTop: '16px', borderTop: isLight ? '1px solid rgba(190, 160, 110, 0.25)' : '1px solid rgba(255,255,255,0.08)' }}>
-                    <RealtimeTelemetryChart 
-                      data={hist.compute} 
-                      label="Storico Compute GPU (%)" 
-                      icon={Cpu}
-                      color={isLight ? '#7c3aed' : '#bc8cff'} 
-                      unit="%" 
-                      maxVal={100} 
-                      height={80}
-                      isLight={isLight}
-                    />
-                    <RealtimeTelemetryChart 
-                      data={hist.vram} 
-                      label="Storico Occupazione VRAM (MB)" 
-                      icon={HardDrive}
-                      color={isLight ? '#0284c7' : '#00d2ff'} 
-                      unit="MB" 
-                      maxVal={vramTotal} 
-                      height={80}
-                      isLight={isLight}
-                      formatVal={(val) => `${typeof val === 'number' ? Math.round(val) : val}`}
-                    />
-                  </div>
-                )}
-
-              </div>
-            );
-          })
-        )}
-      </div>
-
-      {/* Multi-GPU Tuning Controls */}
-      <div className="hw-section" style={{ marginTop: '20px', background: cardBg, border: cardBorder, boxShadow: cardShadow }}>
-        <div className="hw-section-title">
-          <Sliders size={18} color={isLight ? '#ea580c' : '#00f2fe'} />
-          <span style={{ fontSize: '15px', color: textPrimary, fontWeight: 800 }}>Configurazione Multi-GPU & Parallelismo Ollama</span>
-        </div>
-
-        <div className="hw-form-grid">
-          <div className="hw-form-group">
-            <label style={{ color: textPrimary, fontWeight: 700 }}>
-              <span>CUDA_VISIBLE_DEVICES</span>
-              <span style={{ color: isLight ? '#c2410c' : '#00d2ff' }}>Target GPU</span>
-            </label>
-            <select 
-              className="hw-select" 
-              value={cudaDevices} 
-              onChange={(e) => setCudaDevices(e.target.value)}
-              style={{
-                background: isLight ? '#ffffff' : undefined,
-                color: textPrimary,
-                borderColor: isLight ? 'rgba(190, 160, 110, 0.4)' : undefined
-              }}
-            >
-              {gpus.length > 1 && (
-                <option value={gpus.map(g => g.index).join(',')}>
-                  {gpus.map(g => g.index).join(',')} — Parallelismo Multi-GPU ({gpus.map(g => g.name || `GPU ${g.index}`).join(' + ')})
-                </option>
-              )}
-              {gpus.map(g => (
-                <option key={g.index} value={String(g.index)}>
-                  {g.index} — Solo GPU {g.index} ({g.name || `GPU ${g.index}`} {g.vram_total_gb ? `- ${g.vram_total_gb}GB VRAM` : ''})
-                </option>
-              ))}
-              {gpus.length === 0 && <option value="0">0 — GPU predefinita del sistema</option>}
-            </select>
-          </div>
-
-          <div className="hw-form-group">
-            <label style={{ color: textPrimary, fontWeight: 700 }}>
-              <span>OLLAMA_NUM_PARALLEL</span>
-              <span style={{ color: isLight ? '#c2410c' : '#00d2ff' }}>Slot Paralleli</span>
-            </label>
-            <select 
-              className="hw-select" 
-              value={numParallel} 
-              onChange={(e) => setNumParallel(Number(e.target.value))}
-              style={{
-                background: isLight ? '#ffffff' : undefined,
-                color: textPrimary,
-                borderColor: isLight ? 'rgba(190, 160, 110, 0.4)' : undefined
-              }}
-            >
-              <option value={1}>1 — Singolo stream</option>
-              <option value={2}>2 — 2 stream paralleli</option>
-              <option value={4}>4 — 4 stream paralleli (Ottimale Multi-Agenti)</option>
-              <option value={8}>8 — 8 stream paralleli (Massimo throughput)</option>
-            </select>
-          </div>
-
-          <div className="hw-form-group">
-            <label style={{ color: textPrimary, fontWeight: 700 }}>
-              <span>OLLAMA_MAX_LOADED_MODELS</span>
-              <span style={{ color: isLight ? '#c2410c' : '#00d2ff' }}>Modelli in VRAM</span>
-            </label>
-            <select 
-              className="hw-select" 
-              value={maxLoaded} 
-              onChange={(e) => setMaxLoaded(Number(e.target.value))}
-              style={{
-                background: isLight ? '#ffffff' : undefined,
-                color: textPrimary,
-                borderColor: isLight ? 'rgba(190, 160, 110, 0.4)' : undefined
-              }}
-            >
-              <option value={1}>1 modello alla volta</option>
-              <option value={2}>2 modelli contemporaneamente (Consigliato)</option>
-              <option value={3}>3 modelli contemporaneamente</option>
-            </select>
-          </div>
-
-          <div className="hw-form-group">
-            <label style={{ color: textPrimary, fontWeight: 700 }}>
-              <span>GPU Preferita Training Lab</span>
-              <span style={{ color: isLight ? '#c2410c' : '#00d2ff' }}>Fine-Tuning</span>
-            </label>
-            <select 
-              className="hw-select" 
-              value={preferredGpu} 
-              onChange={(e) => setPreferredGpu(e.target.value)}
-              style={{
-                background: isLight ? '#ffffff' : undefined,
-                color: textPrimary,
-                borderColor: isLight ? 'rgba(190, 160, 110, 0.4)' : undefined
-              }}
-            >
-              {gpus.map(g => (
-                <option key={g.index} value={`cuda:${g.index}`}>
-                  cuda:{g.index} ({g.name || `GPU ${g.index}`} {g.vram_total_gb ? `— ${g.vram_total_gb}GB VRAM` : ''})
-                </option>
-              ))}
-              {gpus.length > 1 && (
-                <option value={`cuda:${gpus.map(g => g.index).join(',')}`}>
-                  cuda:{gpus.map(g => g.index).join(',')} (DataParallel Multi-GPU)
-                </option>
-              )}
-              {gpus.length === 0 && <option value="cuda:0">cuda:0 (GPU predefinita del sistema)</option>}
-            </select>
-          </div>
-        </div>
-
-        <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '16px' }}>
-          <button 
-            className="hw-btn hw-btn-primary" 
-            onClick={handleSaveConfig} 
-            disabled={saving} 
-            style={{ 
-              fontSize: '13px', 
-              padding: '10px 20px', 
-              borderRadius: '10px',
-              fontWeight: 800,
-              background: isLight ? 'linear-gradient(135deg, #ea580c 0%, #d97706 100%)' : undefined
-            }}
-          >
-            <Save size={15} />
-            {saving ? 'Salvataggio in corso...' : 'Applica e Salva Impostazioni Multi-GPU'}
-          </button>
-        </div>
-      </div>
-
-      {/* ── CARD GRIGIE — HARDWARE & NODI IN STANDBY ── */}
-      <div style={{ marginTop: '28px', display: 'flex', flexDirection: 'column', gap: '20px' }}>
-        <div>
-          <div style={{ 
-            display: 'inline-flex', 
-            alignItems: 'center', 
-            gap: '6px', 
-            padding: '4px 12px', 
-            borderRadius: '12px', 
-            background: isLight ? 'rgba(234, 88, 12, 0.12)' : 'rgba(255, 255, 255, 0.06)', 
-            border: isLight ? '1px solid rgba(234, 88, 12, 0.35)' : '1px solid rgba(255, 255, 255, 0.1)', 
-            color: isLight ? '#9a3412' : '#8b8fa3', 
-            fontSize: '0.72rem', 
-            fontWeight: 800, 
-            textTransform: 'uppercase', 
-            letterSpacing: '1px', 
-            marginBottom: '8px' 
-          }}>
-            <Layers size={13} /> ESPANSIONI CLUSTER & ACCELERATORI HARDWARE IN ATTESA
-          </div>
-          <h2 style={{ margin: 0, fontSize: '1.4rem', fontWeight: 900, color: textPrimary }}>
-            ⚡ Hardware & Nodi di Calcolo Avanzati in Standby (Da Attivare)
-          </h2>
-          <p style={{ margin: '4px 0 0 0', fontSize: '0.84rem', color: textMuted }}>
-            Moduli hardware, acceleratori e nodi di calcolo distribuito in attesa di pairing o collegamento fisico:
-          </p>
-        </div>
-
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(340px, 1fr))', gap: '20px' }}>
-          {INACTIVE_HARDWARE_NODES.map(node => {
-            const IconComp = node.icon;
-            const isActivated = activatedHw[node.id];
-
-            return (
-              <div
-                key={node.id}
-                style={{
-                  padding: '24px', borderRadius: '18px',
-                  backgroundColor: isLight ? '#fffdf9' : (isActivated ? 'rgba(14, 17, 25, 0.85)' : 'rgba(14, 17, 25, 0.4)'),
-                  border: isLight 
-                    ? (isActivated ? `1px solid ${node.color}` : '1px solid rgba(190, 160, 110, 0.35)') 
-                    : ('1px solid ' + (isActivated ? `${node.color}40` : 'rgba(255, 255, 255, 0.08)')),
-                  boxShadow: isLight 
-                    ? (isActivated ? `0 8px 32px ${node.color}20` : '0 4px 16px rgba(0,0,0,0.04)') 
-                    : (isActivated ? `0 8px 32px ${node.color}15` : 'none'),
-                  display: 'flex', flexDirection: 'column', justifyContent: 'space-between',
-                  gap: '16px', opacity: isActivated ? 1 : (isLight ? 0.9 : 0.72),
-                  filter: isActivated ? 'none' : (isLight ? 'none' : 'grayscale(35%)'),
-                  transition: 'all 0.3s ease'
-                }}
-              >
-                <div>
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '14px' }}>
-                    <div style={{
-                      width: '44px', height: '44px', borderRadius: '12px',
-                      background: isActivated ? `${node.color}25` : (isLight ? '#f4efe4' : 'rgba(255, 255, 255, 0.04)'),
-                      border: '1px solid ' + (isActivated ? node.color : (isLight ? 'rgba(190, 160, 110, 0.35)' : 'rgba(255,255,255,0.08)')),
-                      color: isActivated ? node.color : (isLight ? '#9a3412' : '#8b8fa3'),
-                      display: 'flex', alignItems: 'center', justifyContent: 'center'
-                    }}>
-                      <IconComp size={22} />
-                    </div>
-
-                    <span style={{
-                      fontSize: '0.68rem', fontWeight: 800,
-                      color: isActivated ? '#16a34a' : textMuted,
-                      background: isActivated ? (isLight ? 'rgba(22, 163, 74, 0.12)' : 'rgba(63, 185, 80, 0.15)') : (isLight ? '#f4efe4' : 'rgba(255, 255, 255, 0.06)'),
-                      border: '1px solid ' + (isActivated ? (isLight ? 'rgba(22, 163, 74, 0.35)' : 'rgba(63, 185, 80, 0.3)') : (isLight ? 'rgba(190, 160, 110, 0.35)' : 'rgba(255, 255, 255, 0.1)')),
-                      padding: '3px 10px', borderRadius: '20px', letterSpacing: '0.5px'
-                    }}>
-                      {isActivated ? 'NODO HARDWARE ATTIVO ⚡' : node.statusBadge}
-                    </span>
-                  </div>
-
-                  <h3 style={{ margin: '0 0 6px 0', fontSize: '1rem', fontWeight: 800, color: textPrimary }}>
-                    {node.title}
-                  </h3>
-                  <p style={{ margin: '0 0 12px 0', fontSize: '0.78rem', color: textSecondary, lineHeight: 1.5, fontWeight: isLight ? 500 : 400 }}>
-                    {node.subtitle}
-                  </p>
-                  <div style={{ fontSize: '0.72rem', color: textPrimary, background: subCardBg, padding: '8px 12px', borderRadius: '8px', border: subCardBorder }}>
-                    <strong style={{ color: isLight ? '#9a3412' : '#fff' }}>Requisito:</strong> {node.prerequisite}
-                  </div>
-                </div>
-
-                <button
-                  onClick={() => setActiveHwModal(node)}
-                  disabled={isActivated}
-                  style={{
-                    padding: '10px 16px', borderRadius: '10px',
-                    background: isActivated 
-                      ? (isLight ? 'rgba(22, 163, 74, 0.15)' : 'rgba(63, 185, 80, 0.15)') 
-                      : (isLight ? '#f4efe4' : 'rgba(255, 255, 255, 0.06)'),
-                    border: '1px solid ' + (isActivated 
-                      ? (isLight ? 'rgba(22, 163, 74, 0.4)' : 'rgba(63, 185, 80, 0.3)') 
-                      : (isLight ? 'rgba(190, 160, 110, 0.4)' : 'rgba(255, 255, 255, 0.12)')),
-                    color: isActivated ? (isLight ? '#16a34a' : '#3fb950') : textPrimary, 
-                    fontSize: '0.8rem', 
-                    fontWeight: 800,
-                    cursor: isActivated ? 'default' : 'pointer',
-                    display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px',
-                    transition: 'all 0.2s ease'
-                  }}
-                >
-                  {isActivated ? <CheckCircle2 size={15} /> : <ArrowRight size={15} />}
-                  {isActivated ? 'Modulo Hardware Inizializzato' : node.actionText}
-                </button>
-              </div>
-            );
-          })}
         </div>
       </div>
 
@@ -1164,38 +1374,38 @@ export default function HardwareLab({ addToast }) {
           display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px'
         }}>
           <div style={{
-            width: '100%', maxWidth: '520px', 
+            width: '100%', maxWidth: '480px', 
             background: isLight ? '#fffdf9' : 'rgba(18, 20, 28, 0.95)',
             border: isLight ? '1px solid rgba(190, 160, 110, 0.45)' : `1px solid ${activeHwModal.color}40`, 
-            borderRadius: '20px',
-            padding: '28px', 
+            borderRadius: '18px',
+            padding: '22px', 
             boxShadow: isLight ? '0 20px 60px rgba(0,0,0,0.25)' : '0 20px 60px rgba(0,0,0,0.6)'
           }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '16px', color: activeHwModal.color }}>
-              <activeHwModal.icon size={26} />
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '12px', color: activeHwModal.color }}>
+              <activeHwModal.icon size={22} />
               <div>
-                <h2 style={{ margin: 0, fontSize: '1.2rem', color: textPrimary, fontWeight: 800 }}>
+                <h2 style={{ margin: 0, fontSize: '1.1rem', color: textPrimary, fontWeight: 800 }}>
                   {activeHwModal.title}
                 </h2>
-                <div style={{ fontSize: '0.74rem', color: textMuted, marginTop: '2px' }}>
+                <div style={{ fontSize: '0.68rem', color: textMuted, marginTop: '2px' }}>
                   {activeHwModal.statusBadge}
                 </div>
               </div>
             </div>
 
-            <p style={{ fontSize: '0.84rem', color: textSecondary, lineHeight: 1.6, marginBottom: '20px', fontWeight: isLight ? 500 : 400 }}>
+            <p style={{ fontSize: '0.8rem', color: textSecondary, lineHeight: 1.5, marginBottom: '14px' }}>
               {activeHwModal.details}
             </p>
 
-            <div style={{ padding: '12px 16px', borderRadius: '12px', background: isLight ? '#f4efe4' : 'rgba(8, 10, 16, 0.8)', border: isLight ? '1px solid rgba(190, 160, 110, 0.35)' : '1px solid rgba(255,255,255,0.08)', marginBottom: '24px', fontSize: '0.78rem', color: textPrimary }}>
-              <div style={{ fontWeight: 800, color: isLight ? '#9a3412' : '#fff', marginBottom: '4px' }}>📋 Requisito di Inizializzazione:</div>
+            <div style={{ padding: '10px 12px', borderRadius: '8px', background: subCardBg, border: subCardBorder, marginBottom: '18px', fontSize: '0.74rem', color: textPrimary }}>
+              <div style={{ fontWeight: 800, color: isLight ? '#9a3412' : '#fff', marginBottom: '3px' }}>📋 Requisito di Inizializzazione:</div>
               {activeHwModal.prerequisite}
             </div>
 
-            <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end' }}>
+            <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
               <button
                 onClick={() => setActiveHwModal(null)}
-                style={{ padding: '10px 18px', borderRadius: '10px', background: isLight ? '#f4efe4' : 'rgba(255,255,255,0.06)', border: isLight ? '1px solid rgba(190, 160, 110, 0.4)' : '1px solid rgba(255,255,255,0.1)', color: textPrimary, cursor: 'pointer', fontSize: '0.82rem', fontWeight: 700 }}
+                style={{ padding: '7px 14px', borderRadius: '7px', background: isLight ? '#f4efe4' : 'rgba(255,255,255,0.06)', border: 'none', color: textPrimary, cursor: 'pointer', fontSize: '0.78rem', fontWeight: 700 }}
               >
                 Annulla
               </button>
@@ -1207,29 +1417,26 @@ export default function HardwareLab({ addToast }) {
                     setActivatingHw(null);
                     setActiveHwModal(null);
                     if (addToast) addToast(`⚡ Modulo ${activeHwModal.title} collegato con successo!`, 'success');
-                  }, 1200);
+                  }, 1000);
                 }}
                 disabled={activatingHw === activeHwModal.id}
                 style={{
-                  padding: '10px 22px', borderRadius: '10px',
+                  padding: '7px 16px', borderRadius: '7px',
                   background: isLight 
                     ? 'linear-gradient(135deg, #ea580c 0%, #d97706 100%)' 
                     : `linear-gradient(135deg, ${activeHwModal.color}, #00d2ff)`, 
                   border: 'none',
-                  color: '#fff', cursor: 'pointer', fontSize: '0.82rem', fontWeight: 800,
-                  display: 'flex', alignItems: 'center', gap: '8px',
-                  boxShadow: isLight ? '0 4px 14px rgba(234, 88, 12, 0.3)' : undefined
+                  color: '#fff', cursor: 'pointer', fontSize: '0.78rem', fontWeight: 800,
+                  display: 'flex', alignItems: 'center', gap: '5px'
                 }}
               >
-                {activatingHw === activeHwModal.id ? <Activity className="spin" size={15} /> : <Zap size={15} />}
-                {activatingHw === activeHwModal.id ? 'Inizializzazione...' : 'Connetti & Attiva Nodo Hardware ⚡'}
+                {activatingHw === activeHwModal.id ? <Activity className="spin" size={13} /> : <Zap size={13} />}
+                {activatingHw === activeHwModal.id ? 'Inizializzazione...' : 'Connetti Modulo ⚡'}
               </button>
             </div>
           </div>
         </div>
       )}
-
-      </div>
     </div>
   );
 }

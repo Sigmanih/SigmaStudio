@@ -2,17 +2,17 @@ import React, { useRef, useState } from 'react';
 import {
   Wand2, Dices, Image as ImageIcon, Smartphone, Monitor, MonitorPlay,
   Upload, Cpu, Sparkles, Sliders, History, Download, Eye, Layers, Box,
-  Repeat, Settings2
+  Repeat, Settings2, ZoomIn, Scissors, Film
 } from 'lucide-react';
 import ModelPicker from '../shared/ModelPicker';
 
-const STYLES = ["Photorealistic", "Cyberpunk", "3D Render", "Anime", "Concept Art", "Cinematic", "Vaporwave"];
+const STYLES = ["Photorealistic", "Cyberpunk", "3D Render", "Anime", "Concept Art", "Cinematic", "Vaporwave", "Digital Art"];
 
 const RATIOS = [
-  { label: '1:1', w: 1024, h: 1024, icon: ImageIcon, ratioClass: 'ratio-1-1' },
-  { label: '16:9', w: 1280, h: 720, icon: Monitor, ratioClass: 'ratio-16-9' },
-  { label: '9:16', w: 720, h: 1280, icon: Smartphone, ratioClass: 'ratio-9-16' },
-  { label: '21:9', w: 1536, h: 640, icon: MonitorPlay, ratioClass: 'ratio-21-9' },
+  { label: '1:1 Quadrato', w: 1024, h: 1024, icon: ImageIcon },
+  { label: '16:9 Cinema', w: 1280, h: 720, icon: Monitor },
+  { label: '9:16 Mobile', w: 720, h: 1280, icon: Smartphone },
+  { label: '21:9 Ultra-Wide', w: 1536, h: 640, icon: MonitorPlay },
 ];
 
 export default function GeneratePanel({
@@ -27,12 +27,13 @@ export default function GeneratePanel({
   const [height, setHeight] = useState(1024);
   const [seed, setSeed] = useState(-1);
   const [backend, setBackend] = useState('');
-  const [model, setModel] = useState({});           // { model_id, ckpt }
+  const [model, setModel] = useState({});
   const [sampler, setSampler] = useState('');
   const [scheduler, setScheduler] = useState('');
   const [batch, setBatch] = useState(1);
   const [priority, setPriority] = useState('balanced');
   const [showAdvanced, setShowAdvanced] = useState(false);
+  const [showNegative, setShowNegative] = useState(false);
   const [activeAssetId, setActiveAssetId] = useState(null);
   const fileRef = useRef(null);
 
@@ -47,8 +48,6 @@ export default function GeneratePanel({
 
   const handleGenerateClick = () => {
     if (!prompt.trim() || isGenerating) return;
-    // I campi vuoti non vengono inviati: il default lo decide il backend/modello,
-    // non una stringa vuota che sovrascriverebbe una scelta sensata.
     const params = {
       prompt,
       negative_prompt: negativePrompt,
@@ -74,296 +73,452 @@ export default function GeneratePanel({
   };
 
   return (
-    <div className="cs-generate">
-      <div className="cs-gen-container">
-        {/* COLONNA 1: PROMPT & STILE */}
-        <div className="cs-gen-col cs-gen-col-left">
-          <div className="cs-card-header">
-            <Sparkles size={16} className="cs-icon-accent" />
-            <span>Prompt Creativo</span>
+    <div className="cs-generate-v2" style={{
+      display: 'flex',
+      flexDirection: 'column',
+      height: '100%',
+      width: '100%',
+      padding: '20px 24px',
+      boxSizing: 'border-box',
+      overflowY: 'auto',
+      gap: '20px'
+    }}>
+      {/* 1. TOP CREATIVE PROMPT & CONTROL HUB */}
+      <div style={{
+        background: 'var(--surface, rgba(17, 20, 29, 0.75))',
+        backdropFilter: 'blur(12px)',
+        border: '1px solid var(--border-color, rgba(255, 255, 255, 0.08))',
+        borderRadius: '16px',
+        padding: '18px 20px',
+        boxShadow: '0 4px 20px rgba(0,0,0,0.2)',
+        display: 'flex',
+        flexDirection: 'column',
+        gap: '14px'
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <Sparkles size={16} color="#00d2ff" />
+            <span style={{ fontSize: '0.86rem', fontWeight: 800 }}>Prompt & Visione Creativa</span>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <button
+              type="button"
+              onClick={() => setShowNegative(!showNegative)}
+              style={{
+                background: showNegative ? 'rgba(239, 68, 68, 0.15)' : 'rgba(255,255,255,0.05)',
+                border: showNegative ? '1px solid #ef4444' : '1px solid rgba(255,255,255,0.1)',
+                color: showNegative ? '#ef4444' : 'inherit',
+                fontSize: '0.72rem',
+                fontWeight: 700,
+                padding: '4px 10px',
+                borderRadius: '8px',
+                cursor: 'pointer'
+              }}
+            >
+              {showNegative ? '− Negative Prompt' : '+ Negative Prompt'}
+            </button>
+            <button
+              type="button"
+              onClick={() => setShowAdvanced(!showAdvanced)}
+              style={{
+                background: showAdvanced ? 'rgba(0, 210, 255, 0.15)' : 'rgba(255,255,255,0.05)',
+                border: showAdvanced ? '1px solid #00d2ff' : '1px solid rgba(255,255,255,0.1)',
+                color: showAdvanced ? '#00d2ff' : 'inherit',
+                fontSize: '0.72rem',
+                fontWeight: 700,
+                padding: '4px 10px',
+                borderRadius: '8px',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '4px'
+              }}
+            >
+              <Settings2 size={12} /> {showAdvanced ? 'Meno Parametri' : 'Parametri Avanzati'}
+            </button>
+          </div>
+        </div>
+
+        {/* Main Prompt Textarea */}
+        <div style={{ position: 'relative' }}>
+          <textarea
+            placeholder="Descrivi l'immagine che vuoi creare... (es. 'Un tempio futuristico sulle vette innevate di una montagna aliena, neon soffusi, atmosfera cinematografica, risoluzione 8k')"
+            value={prompt}
+            onChange={e => setPrompt(e.target.value)}
+            onKeyDown={e => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) handleGenerateClick(); }}
+            rows={3}
+            style={{
+              width: '100%',
+              padding: '12px 14px',
+              borderRadius: '12px',
+              background: 'rgba(0, 0, 0, 0.25)',
+              border: '1px solid rgba(255, 255, 255, 0.1)',
+              color: 'inherit',
+              fontSize: '0.85rem',
+              resize: 'vertical',
+              outline: 'none',
+              boxSizing: 'border-box',
+              fontFamily: 'inherit',
+              lineHeight: 1.5
+            }}
+          />
+        </div>
+
+        {/* Negative Prompt (Collapsible) */}
+        {showNegative && (
+          <div>
+            <textarea
+              placeholder="Cosa escludere (es. 'blurry, low quality, deformed, duplicate, watermark')"
+              value={negativePrompt}
+              onChange={e => setNegativePrompt(e.target.value)}
+              rows={2}
+              style={{
+                width: '100%',
+                padding: '8px 12px',
+                borderRadius: '10px',
+                background: 'rgba(239, 68, 68, 0.05)',
+                border: '1px solid rgba(239, 68, 68, 0.25)',
+                color: 'inherit',
+                fontSize: '0.78rem',
+                resize: 'none',
+                outline: 'none',
+                boxSizing: 'border-box',
+                fontFamily: 'inherit'
+              }}
+            />
+          </div>
+        )}
+
+        {/* Style Preset Chips */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+          <span style={{ fontSize: '0.72rem', opacity: 0.7, marginRight: '4px' }}>Stili:</span>
+          {STYLES.map(s => (
+            <button
+              key={s}
+              type="button"
+              onClick={() => appendStyle(s)}
+              style={{
+                padding: '4px 10px',
+                borderRadius: '8px',
+                background: prompt.includes(s.toLowerCase()) ? 'rgba(0, 210, 255, 0.2)' : 'rgba(255, 255, 255, 0.04)',
+                border: prompt.includes(s.toLowerCase()) ? '1px solid #00d2ff' : '1px solid rgba(255, 255, 255, 0.08)',
+                color: prompt.includes(s.toLowerCase()) ? '#00d2ff' : 'inherit',
+                fontSize: '0.72rem',
+                fontWeight: 600,
+                cursor: 'pointer',
+                transition: 'all 0.15s ease'
+              }}
+            >
+              + {s}
+            </button>
+          ))}
+        </div>
+
+        {/* Action Controls & Aspect Ratio Bar */}
+        <div style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          flexWrap: 'wrap',
+          gap: '12px',
+          paddingTop: '6px',
+          borderTop: '1px solid rgba(255, 255, 255, 0.06)'
+        }}>
+          {/* Aspect Ratio Buttons */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+            <span style={{ fontSize: '0.72rem', opacity: 0.7, marginRight: '4px' }}>Formato:</span>
+            {RATIOS.map(ratio => {
+              const active = width === ratio.w && height === ratio.h;
+              const Icon = ratio.icon;
+              return (
+                <button
+                  key={ratio.label}
+                  type="button"
+                  onClick={() => { setWidth(ratio.w); setHeight(ratio.h); }}
+                  style={{
+                    padding: '6px 12px',
+                    borderRadius: '8px',
+                    background: active ? '#00d2ff' : 'rgba(255, 255, 255, 0.04)',
+                    border: active ? '1px solid #00d2ff' : '1px solid rgba(255, 255, 255, 0.08)',
+                    color: active ? '#000000' : 'inherit',
+                    fontSize: '0.74rem',
+                    fontWeight: 700,
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '5px'
+                  }}
+                >
+                  <Icon size={13} /> {ratio.label}
+                </button>
+              );
+            })}
           </div>
 
-          <div className="cs-prompt-area">
-            <div className="cs-prompt-box">
-              <textarea
-                placeholder="Descrivi la tua visione artistica nei minimi dettagli... (es. 'Un santuario cyberpunk avvolto nella nebbia neon')"
-                value={prompt}
-                onChange={e => setPrompt(e.target.value)}
-                onKeyDown={e => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) handleGenerateClick(); }}
+          {/* Quick Quality Sliders */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <span style={{ fontSize: '0.72rem', opacity: 0.7 }}>Steps:</span>
+              <input
+                type="range"
+                min="15"
+                max="100"
+                value={steps}
+                onChange={e => setSteps(Number(e.target.value))}
+                style={{ width: '80px', accentColor: '#00d2ff' }}
               />
+              <span style={{ fontSize: '0.72rem', fontWeight: 800, color: '#00d2ff', minWidth: '20px' }}>{steps}</span>
             </div>
 
-            <div className="cs-preset-section">
-              <span className="cs-sublabel">Stili consigliati</span>
-              <div className="cs-style-presets">
-                {STYLES.map(s => (
-                  <button key={s} type="button" className="cs-preset-chip" onClick={() => appendStyle(s)}>
-                    {s}
-                  </button>
-                ))}
-              </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <span style={{ fontSize: '0.72rem', opacity: 0.7 }}>CFG:</span>
+              <input
+                type="range"
+                min="1"
+                max="20"
+                step="0.5"
+                value={cfg}
+                onChange={e => setCfg(Number(e.target.value))}
+                style={{ width: '70px', accentColor: '#bc8cff' }}
+              />
+              <span style={{ fontSize: '0.72rem', fontWeight: 800, color: '#bc8cff', minWidth: '20px' }}>{cfg}</span>
             </div>
 
-            <div className="cs-negative-prompt">
-              <span className="cs-sublabel">Negative Prompt</span>
-              <div className="cs-prompt-box cs-prompt-box-small">
-                <textarea
-                  placeholder="Cosa escludere (es. 'blurry, low quality, deformed, duplicate')"
-                  value={negativePrompt}
-                  onChange={e => setNegativePrompt(e.target.value)}
-                />
-              </div>
-            </div>
+            {/* Main Generate Button */}
+            <button
+              onClick={handleGenerateClick}
+              disabled={isGenerating || !prompt.trim()}
+              style={{
+                padding: '10px 24px',
+                borderRadius: '12px',
+                background: 'linear-gradient(135deg, #00d2ff, #7c5bf0)',
+                border: 'none',
+                color: '#ffffff',
+                fontSize: '0.84rem',
+                fontWeight: 800,
+                cursor: isGenerating || !prompt.trim() ? 'not-allowed' : 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px',
+                boxShadow: '0 4px 18px rgba(0, 210, 255, 0.35)',
+                opacity: isGenerating || !prompt.trim() ? 0.6 : 1,
+                transition: 'all 0.18s ease'
+              }}
+            >
+              <Wand2 size={16} className={isGenerating ? 'spin' : ''} />
+              <span>{isGenerating ? 'Generazione in corso...' : 'Genera Immagine'}</span>
+            </button>
+          </div>
+        </div>
 
-            <div className="cs-backend-picker">
-              <span className="cs-sublabel"><Cpu size={13} style={{ verticalAlign: 'middle', marginRight: '4px' }} /> Motore AI</span>
+        {/* Advanced Settings Drawer (Optional) */}
+        {showAdvanced && (
+          <div style={{
+            padding: '12px',
+            borderRadius: '10px',
+            background: 'rgba(0, 0, 0, 0.2)',
+            border: '1px solid rgba(255, 255, 255, 0.06)',
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
+            gap: '12px',
+            fontSize: '0.75rem'
+          }}>
+            <div>
+              <label style={{ display: 'block', opacity: 0.7, marginBottom: '4px' }}>Motore Backend</label>
               <select
                 value={backend}
                 onChange={e => setBackend(e.target.value)}
-                className="cs-select"
+                style={{ width: '100%', padding: '6px', borderRadius: '6px', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', color: 'inherit' }}
               >
-                <option value="">Auto (Router Intelligente Sigma)</option>
+                <option value="">Auto (Router Intelligente)</option>
                 {imageBackends.map(b => <option key={b.name} value={b.name}>{b.name}</option>)}
               </select>
             </div>
 
-            <ModelPicker
-              task="text_to_image"
-              models={models}
-              inventory={inventory}
-              value={model}
-              onChange={setModel}
-            />
-
-            {!model.model_id && (
-              <div className="cs-priority-picker">
-                <span className="cs-sublabel">Criterio di scelta automatica</span>
-                <div className="cs-priority-row">
-                  {[
-                    { id: 'quality', label: 'Qualità' },
-                    { id: 'balanced', label: 'Bilanciato' },
-                    { id: 'speed', label: 'Velocità' },
-                  ].map(p => (
-                    <button
-                      key={p.id}
-                      type="button"
-                      className={`cs-pill ${priority === p.id ? 'active' : ''}`}
-                      onClick={() => setPriority(p.id)}
-                    >
-                      {p.label}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            )}
-          </div>
-        </div>
-
-        {/* COLONNA 2: PREVIEW CANVAS & AZIONE MAIN */}
-        <div className="cs-gen-col cs-gen-col-center">
-          <div className="cs-card-header">
-            <Eye size={16} className="cs-icon-accent" />
-            <span>Stage di Anteprima & Output</span>
-          </div>
-
-          <div className="cs-stage-container">
-            {isGenerating ? (
-              <div className="cs-stage-loading">
-                <div className="cs-pulse-orb" />
-                <span className="cs-stage-loading-text">Sintesi dell'opera in corso...</span>
-                <span className="cs-stage-loading-sub">L'IA sta elaborando la tua richiesta</span>
-              </div>
-            ) : activeAsset?.url ? (
-              <div className="cs-stage-preview">
-                <img src={activeAsset.url} alt={activeAsset.name || 'Generazione'} className="cs-stage-img" />
-                <div className="cs-stage-overlay">
-                  <div className="cs-stage-asset-info">
-                    <span className="cs-stage-asset-name">{activeAsset.name || 'Senza titolo'}</span>
-                    <span className="cs-stage-asset-meta">{activeAsset.type || 'image'}</span>
-                  </div>
-                  <div className="cs-stage-actions">
-                    <a className="cs-stage-btn" href={activeAsset.url} download title="Scarica ad alta risoluzione">
-                      <Download size={14} />
-                    </a>
-                  </div>
-                </div>
-              </div>
-            ) : (
-              <div className="cs-stage-empty">
-                <div className="cs-empty-icon-wrap">
-                  <Wand2 size={36} className="cs-empty-icon" />
-                </div>
-                <h3>Area di Rendering Creativo</h3>
-                <p>Inserisci un prompt a sinistra e clicca su <strong>Genera immagine</strong> per visualizzare il risultato in tempo reale.</p>
-              </div>
-            )}
-          </div>
-
-          <div className="cs-generate-actions-bar">
-            <button
-              className="cs-generate-btn"
-              onClick={handleGenerateClick}
-              disabled={isGenerating || !prompt.trim()}
-            >
-              <Wand2 size={20} className={isGenerating ? 'cs-spin-icon' : ''} />
-              <span>{isGenerating ? 'Generazione...' : 'Genera immagine'}</span>
-            </button>
-
-            <button
-              className="cs-icon-btn cs-upload-btn"
-              title="Carica un'immagine nel vault"
-              onClick={() => fileRef.current?.click()}
-            >
-              <Upload size={18} />
-            </button>
-            <input
-              ref={fileRef}
-              type="file"
-              accept="image/*"
-              hidden
-              onChange={e => { const f = e.target.files?.[0]; if (f) onUpload?.(f); e.target.value = ''; }}
-            />
-          </div>
-        </div>
-
-        {/* COLONNA 3: PARAMETRI & VAULT RECENTI */}
-        <div className="cs-gen-col cs-gen-col-right">
-          <div className="cs-card-header">
-            <Sliders size={16} className="cs-icon-accent" />
-            <span>Parametri & Vault</span>
-          </div>
-
-          <div className="cs-params-panel">
-            <div className="cs-param-group">
-              <div className="cs-param-header">
-                <label>Steps (Qualità)</label>
-                <span className="cs-val-badge">{steps}</span>
-              </div>
-              <input type="range" min="1" max="150" value={steps} onChange={e => setSteps(Number(e.target.value))} />
-            </div>
-
-            <div className="cs-param-group">
-              <div className="cs-param-header">
-                <label>CFG Scale (Aderenza)</label>
-                <span className="cs-val-badge">{cfg}</span>
-              </div>
-              <input type="range" min="1" max="30" step="0.5" value={cfg} onChange={e => setCfg(Number(e.target.value))} />
-            </div>
-
-            <div className="cs-param-group">
-              <label className="cs-sublabel">Proporzioni (Aspect Ratio)</label>
-              <div className="cs-aspect-ratios">
-                {RATIOS.map(ratio => (
-                  <button
-                    key={ratio.label}
-                    type="button"
-                    className={`cs-ratio-btn ${width === ratio.w && height === ratio.h ? 'active' : ''}`}
-                    onClick={() => { setWidth(ratio.w); setHeight(ratio.h); }}
-                  >
-                    <div className={`cs-ratio-box ${ratio.ratioClass}`} />
-                    <span className="cs-ratio-label">{ratio.label}</span>
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            <div className="cs-param-group">
-              <label className="cs-sublabel">Dimensioni esatte (px)</label>
-              <div className="cs-dim-row">
-                <input
-                  type="number" min="256" max="4096" step="8" value={width}
-                  onChange={e => setWidth(Number(e.target.value))}
-                  className="cs-num-input" title="Larghezza" />
-                <span className="cs-dim-x">×</span>
-                <input
-                  type="number" min="256" max="4096" step="8" value={height}
-                  onChange={e => setHeight(Number(e.target.value))}
-                  className="cs-num-input" title="Altezza" />
-                <button type="button" className="cs-icon-btn" title="Scambia larghezza e altezza"
-                        onClick={() => { setWidth(height); setHeight(width); }}>
-                  <Repeat size={14} />
-                </button>
-              </div>
-              <p className="cs-hint">Multipli di 8. SDXL rende al meglio attorno a 1 MP, FLUX regge anche 1536.</p>
-            </div>
-
-            <div className="cs-param-group">
-              <button type="button" className="cs-advanced-toggle" onClick={() => setShowAdvanced(v => !v)}>
-                <Settings2 size={13} /> Parametri avanzati {showAdvanced ? '−' : '+'}
-              </button>
-
-              {showAdvanced && (
-                <div className="cs-advanced-fields">
-                  <label className="cs-field">
-                    <span>Sampler</span>
-                    <select className="cs-select" value={sampler} onChange={e => setSampler(e.target.value)}>
-                      <option value="">Default</option>
-                      {(inventory?.samplers || []).map(s => <option key={s} value={s}>{s}</option>)}
-                    </select>
-                  </label>
-                  <label className="cs-field">
-                    <span>Scheduler</span>
-                    <select className="cs-select" value={scheduler} onChange={e => setScheduler(e.target.value)}>
-                      <option value="">Default</option>
-                      {(inventory?.schedulers || []).map(s => <option key={s} value={s}>{s}</option>)}
-                    </select>
-                  </label>
-                  <label className="cs-field">
-                    <span>Batch</span>
-                    <input type="number" min="1" max="8" value={batch}
-                           onChange={e => setBatch(Number(e.target.value))} className="cs-num-input" />
-                  </label>
-                  {!inventory?.reachable && (
-                    <p className="cs-hint">Sampler e scheduler compaiono quando ComfyUI è raggiungibile.</p>
-                  )}
-                </div>
-              )}
-            </div>
-
-            <div className="cs-param-group">
-              <label className="cs-sublabel">Seed Casuale o Fisso</label>
-              <div className="cs-seed-row">
+            <div>
+              <label style={{ display: 'block', opacity: 0.7, marginBottom: '4px' }}>Seed Casuale o Fisso</label>
+              <div style={{ display: 'flex', gap: '4px' }}>
                 <input
                   type="number"
                   value={seed}
                   onChange={e => setSeed(Number(e.target.value))}
-                  className="cs-num-input cs-seed-input"
+                  style={{ flex: 1, padding: '6px', borderRadius: '6px', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', color: 'inherit' }}
                 />
-                <button type="button" className="cs-icon-btn cs-seed-btn" onClick={() => setSeed(-1)} title="Seed casuale (-1)">
-                  <Dices size={16} />
+                <button
+                  type="button"
+                  onClick={() => setSeed(-1)}
+                  style={{ padding: '6px 10px', borderRadius: '6px', background: 'rgba(255,255,255,0.08)', border: 'none', color: 'inherit', cursor: 'pointer' }}
+                  title="Seed casuale"
+                >
+                  <Dices size={14} />
                 </button>
               </div>
             </div>
 
-            {recentAssets.length > 0 && (
-              <div className="cs-history-section">
-                <div className="cs-card-header cs-card-header-sub">
-                  <History size={14} className="cs-icon-accent" />
-                  <span>Vault Recenti</span>
-                  <span className="cs-count-tag">{recentAssets.length}</span>
-                </div>
-                <div className="cs-history-grid">
-                  {recentAssets.slice(0, 8).map(asset => (
-                    <div
-                      key={asset.id}
-                      className={`cs-history-item ${activeAsset?.id === asset.id ? 'active' : ''}`}
-                      onClick={() => handleSelectHistoryAsset(asset)}
-                      title={asset.name || 'Asset'}
-                    >
-                      {asset.url ? (
-                        <img src={asset.url} alt={asset.name} />
-                      ) : (
-                        <div className="cs-history-placeholder"><ImageIcon size={16} /></div>
-                      )}
-                    </div>
-                  ))}
-                </div>
+            <div>
+              <label style={{ display: 'block', opacity: 0.7, marginBottom: '4px' }}>Dimensioni Esatte (W × H)</label>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                <input
+                  type="number"
+                  value={width}
+                  onChange={e => setWidth(Number(e.target.value))}
+                  style={{ width: '60px', padding: '6px', borderRadius: '6px', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', color: 'inherit' }}
+                />
+                <span>×</span>
+                <input
+                  type="number"
+                  value={height}
+                  onChange={e => setHeight(Number(e.target.value))}
+                  style={{ width: '60px', padding: '6px', borderRadius: '6px', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', color: 'inherit' }}
+                />
               </div>
-            )}
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* 2. LARGE INTERACTIVE VISUAL STAGE */}
+      <div style={{
+        flex: 1,
+        minHeight: '380px',
+        borderRadius: '16px',
+        background: 'var(--surface, rgba(10, 13, 20, 0.8))',
+        border: '1px solid var(--border-color, rgba(255, 255, 255, 0.08))',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        position: 'relative',
+        overflow: 'hidden',
+        boxShadow: 'inset 0 0 40px rgba(0,0,0,0.4)'
+      }}>
+        {isGenerating ? (
+          <div style={{ textAlign: 'center', padding: '40px' }}>
+            <div className="cs-pulse-orb" style={{ margin: '0 auto 16px auto' }} />
+            <h3 style={{ margin: '0 0 6px 0', fontSize: '1.1rem', fontWeight: 800 }}>Sintesi Creativa in Corso...</h3>
+            <p style={{ margin: 0, fontSize: '0.8rem', opacity: 0.7 }}>I modelli neurali stanno generando la tua opera d'arte ad alta fedeltà.</p>
+          </div>
+        ) : activeAsset?.url ? (
+          <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'relative' }}>
+            <img
+              src={activeAsset.url}
+              alt={activeAsset.name || 'Opera generata'}
+              style={{
+                maxWidth: '100%',
+                maxHeight: '100%',
+                objectFit: 'contain',
+                borderRadius: '8px'
+              }}
+            />
+
+            {/* Overlay Toolbar */}
+            <div style={{
+              position: 'absolute',
+              bottom: '16px',
+              left: '50%',
+              transform: 'translateX(-50%)',
+              padding: '8px 16px',
+              borderRadius: '24px',
+              background: 'rgba(10, 14, 24, 0.85)',
+              backdropFilter: 'blur(16px)',
+              border: '1px solid rgba(255, 255, 255, 0.15)',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '12px',
+              boxShadow: '0 8px 30px rgba(0,0,0,0.5)'
+            }}>
+              <span style={{ fontSize: '0.76rem', fontWeight: 700, paddingRight: '8px', borderRight: '1px solid rgba(255,255,255,0.1)' }}>
+                {activeAsset.name || 'Generazione'}
+              </span>
+              <a
+                href={activeAsset.url}
+                download
+                title="Scarica immagine"
+                style={{ color: '#00d2ff', display: 'flex', alignItems: 'center', textDecoration: 'none' }}
+              >
+                <Download size={16} />
+              </a>
+            </div>
+          </div>
+        ) : (
+          <div style={{ textAlign: 'center', padding: '40px', maxWidth: '400px' }}>
+            <div style={{
+              width: '64px',
+              height: '64px',
+              borderRadius: '20px',
+              background: 'rgba(0, 210, 255, 0.1)',
+              border: '1px solid rgba(0, 210, 255, 0.25)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              margin: '0 auto 16px auto'
+            }}>
+              <Wand2 size={28} color="#00d2ff" />
+            </div>
+            <h3 style={{ margin: '0 0 6px 0', fontSize: '1.1rem', fontWeight: 800 }}>Canvas di Generazione Creativa</h3>
+            <p style={{ margin: 0, fontSize: '0.8rem', opacity: 0.7, lineHeight: 1.5 }}>
+              Inserisci un prompt nel box superiore e premi <strong>Genera Immagine</strong> per sintetizzare artwork in tempo reale.
+            </p>
+          </div>
+        )}
+      </div>
+
+      {/* 3. RECENT GENERATIONS STRIP */}
+      {recentAssets.length > 0 && (
+        <div style={{
+          background: 'var(--surface, rgba(17, 20, 29, 0.6))',
+          borderRadius: '14px',
+          padding: '12px 16px',
+          border: '1px solid var(--border-color, rgba(255, 255, 255, 0.06))'
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.76rem', fontWeight: 800 }}>
+              <History size={14} color="#00d2ff" />
+              <span>Generazioni Recenti</span>
+              <span style={{ fontSize: '0.68rem', padding: '1px 6px', borderRadius: '8px', background: 'rgba(0,210,255,0.15)', color: '#00d2ff' }}>
+                {recentAssets.length}
+              </span>
+            </div>
+          </div>
+
+          <div style={{
+            display: 'flex',
+            gap: '10px',
+            overflowX: 'auto',
+            paddingBottom: '4px'
+          }}>
+            {recentAssets.map(asset => {
+              const isActive = activeAsset?.id === asset.id;
+              return (
+                <div
+                  key={asset.id}
+                  onClick={() => handleSelectHistoryAsset(asset)}
+                  style={{
+                    width: '64px',
+                    height: '64px',
+                    borderRadius: '10px',
+                    overflow: 'hidden',
+                    flexShrink: 0,
+                    border: isActive ? '2px solid #00d2ff' : '1px solid rgba(255, 255, 255, 0.1)',
+                    cursor: 'pointer',
+                    position: 'relative',
+                    transition: 'all 0.15s ease',
+                    boxShadow: isActive ? '0 0 12px rgba(0,210,255,0.3)' : 'none'
+                  }}
+                  title={asset.name}
+                >
+                  {asset.url ? (
+                    <img src={asset.url} alt={asset.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                  ) : (
+                    <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.3)' }}>
+                      <ImageIcon size={18} />
+                    </div>
+                  )}
+                </div>
+              );
+            })}
           </div>
         </div>
-      </div>
+      )}
     </div>
   );
 }
-

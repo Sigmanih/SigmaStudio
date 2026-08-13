@@ -108,8 +108,15 @@ function AppContent() {
         openTab({ path: e.data.path, filename }, type);
       }
     };
+    const configHandler = () => {
+      openTab({ name: '⚙️ Configurazione AI' }, 'ai_config');
+    };
     window.addEventListener('message', handler);
-    return () => window.removeEventListener('message', handler);
+    window.addEventListener('open-ai-config', configHandler);
+    return () => {
+      window.removeEventListener('message', handler);
+      window.removeEventListener('open-ai-config', configHandler);
+    };
   }, [openTab]);
 
   useEffect(() => {
@@ -353,7 +360,10 @@ function AppContent() {
 
                 {/* Item 4: Configurazione AI (Allineato) */}
                 <button
-                  onClick={() => setAiConfigOpen(true)}
+                  onClick={() => {
+                    openTab({ name: '⚙️ Configurazione AI' }, 'ai_config');
+                    setDockMinimized(true);
+                  }}
                   style={{
                     display: 'flex', alignItems: 'center', justifyContent: 'space-between',
                     padding: '10px 12px', borderRadius: '10px',
@@ -368,7 +378,7 @@ function AppContent() {
                     </div>
                     <div>
                       <div style={{ fontSize: '0.8rem', fontWeight: 700 }}>Configurazione AI</div>
-                      <div style={{ fontSize: '0.62rem', color: '#8b8fa3' }}>Modelli, API & Parametri</div>
+                      <div style={{ fontSize: '0.62rem', color: '#8b8fa3' }}>Token, Providers & Modelli</div>
                     </div>
                   </div>
                   <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#ffb86c' }} />

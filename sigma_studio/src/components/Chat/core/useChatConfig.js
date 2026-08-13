@@ -34,46 +34,68 @@ export function useChatConfig({ saveSessionsState, sessionRefs }) {
 
   useEffect(() => { refs.manifestoManuallySelected.current = manifestoManuallySelected; }, [manifestoManuallySelected]);
 
-  const fetchOllamaModels = useCallback(async () => {
+  const fetchOllamaModels = useCallback(async (customConfigs) => {
     setLoadingModels(true);
     try {
       const res = await fetch('/api/ollama_models');
       const data = await res.json();
       let models = data.models?.length ? data.models : [];
       const known = new Set(models.map(m => m.name));
-      if (providerConfigs) {
-        Object.entries(providerConfigs).forEach(([, pv]) => {
-          (pv.models || []).forEach(m => { if (!known.has(m)) { models.push({ name: m, size: 'API' }); known.add(m); } });
-          if (pv.model && !known.has(pv.model)) { models.push({ name: pv.model, size: 'API' }); known.add(pv.model); }
+      
+      const pConfigs = customConfigs || providerConfigs;
+      if (pConfigs) {
+        Object.entries(pConfigs).forEach(([pk, pv]) => {
+          // Ollama models are already fetched from local daemon
+          if (pk === 'ollama') return;
+
+          // For all cloud/external providers, ONLY add models IF configured (has_api_key or api_key present or custom endpoint)
+          const isConfigured = pv?.has_api_key === true || (pv?.api_key && pv?.api_key.trim().length > 0) || (pk === 'custom' && (pv?.endpoint || pv?.api_url));
+          if (!isConfigured) return;
+
+          if (pv.model && !known.has(pv.model)) {
+            models.push({ name: pv.model, size: 'API', provider: pk });
+            known.add(pv.model);
+          }
+          (pv.models || []).forEach(m => {
+            if (!known.has(m)) {
+              models.push({ name: m, size: 'API', provider: pk });
+              known.add(m);
+            }
+          });
         });
       }
-      if (models.length > 0) setAvailableModels(models);
-    } catch (e) {}
-    if (availableModels.length === 0 && selectedModel) {
-      setAvailableModels([{ name: selectedModel, size: configProvider !== 'ollama' ? 'API' : '' }]);
+      setAvailableModels(models);
+    } catch (e) {
+      console.error("Errore recupero modelli:", e);
+    } finally {
+      setLoadingModels(false);
     }
-    setLoadingModels(false);
-  }, [providerConfigs, selectedModel, configProvider, availableModels.length]);
+  }, [providerConfigs]);
 
   const fetchConfigAndModels = useCallback(async () => {
     try {
       const r = await fetch('/api/config');
       const d = await r.json();
       if (d.success) {
-        if (d.config?.providers) setProviderConfigs(d.config.providers);
+        const provs = d.config?.providers || {};
+        setProviderConfigs(provs);
         if (d.config?.model) { setSelectedModel(d.config.model); setConfigModel(d.config.model); }
         if (d.config?.provider) setConfigProvider(d.config.provider);
         if (d.config?.manifesto && !refs.manifestoManuallySelected.current) {
           const m = d.config.manifesto;
           setActiveManifesto({ ...m, image: m.image || '/images/default.png' });
         }
+        await fetchOllamaModels(provs);
+      } else {
+        await fetchOllamaModels();
       }
     } catch (e) {
       // Fallback defaults if config fetch fails
       setSelectedModel('llama3.2');
       setConfigModel('llama3.2');
       setConfigProvider('ollama');
-    } finally { fetchOllamaModels(); }
+      await fetchOllamaModels();
+    }
   }, [fetchOllamaModels]);
 
   const refreshConfig = useCallback(async () => {
@@ -157,6 +179,14 @@ export function useChatConfig({ saveSessionsState, sessionRefs }) {
       await fetchOllamaModels();
     } catch (e) {}
   };
+
+  useEffect(() => {
+    const handleConfigUpdated = () => {
+      fetchConfigAndModels();
+    };
+    window.addEventListener('ai-config-updated', handleConfigUpdated);
+    return () => window.removeEventListener('ai-config-updated', handleConfigUpdated);
+  }, [fetchConfigAndModels]);
 
   return {
     selectedModel,

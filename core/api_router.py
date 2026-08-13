@@ -11,6 +11,7 @@ def register_get_handlers(handler_class):
         '/api/tasks': 'handle_api_tasks_get',
         '/api/get_file': 'handle_get_file',
         '/api/list_manifesti': 'handle_list_manifesti',
+        '/api/manifesti': 'handle_list_manifesti',
         '/api/knowledge_db': 'handle_knowledge_db',
         '/api/config': 'handle_api_config_get',
         '/api/ollama_models': 'handle_api_ollama_models',
@@ -59,6 +60,7 @@ def register_get_handlers(handler_class):
         '/api/hardware/status': 'handle_hardware_status',
         '/api/hardware/restart-ollama': 'handle_hardware_restart_ollama',
         '/api/hardware/gpu/processes': 'handle_hardware_gpu_processes',
+        '/api/hardware/gpu-processes': 'handle_hardware_gpu_processes',
         # Voice Synthesis Endpoints
         '/api/tts/engines': 'handle_tts_engines',
         # MCP approvals awaiting the operator
@@ -127,6 +129,8 @@ def register_post_handlers(handler_class):
         '/api/hardware/config': 'handle_hardware_config',
         '/api/hardware/restart-ollama': 'handle_hardware_restart_ollama',
         '/api/hardware/gpu/kill': 'handle_hardware_gpu_kill',
+        '/api/hardware/kill-process': 'handle_hardware_gpu_kill',
+        '/api/hardware/kill_process': 'handle_hardware_gpu_kill',
         '/api/run_test': 'handle_run_test',
         '/api/create_file': 'handle_create_file',
         '/api/delete_file': 'handle_delete_file',
