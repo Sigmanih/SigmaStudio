@@ -3,7 +3,7 @@ import {
   Store, Package, Download, RefreshCw, CheckCircle2, ShieldCheck, 
   ExternalLink, Terminal, GitBranch, Cpu, Sparkles, Layers, 
   Palette, FlaskConical, Brain, Zap, Home, Wrench, ArrowRight,
-  PlusCircle, AlertCircle, Play, Check, X, Search
+  PlusCircle, AlertCircle, Play, Check, X, Search, Radio, Trash2
 } from 'lucide-react';
 import { useApp } from '../contexts/AppContext';
 
@@ -101,6 +101,20 @@ const KERNEL_MODULES = [
     description: 'Gateway centralizzato per tutti i server MCP. Gestione permessi, policy di auto-approvazione e test RPC diagnostici.',
     tags: ['MCP Standard', 'JSON-RPC', 'Security Policy', 'Discovery'],
     author: 'Sigma Core Team'
+  },
+  {
+    id: 'audio_studio',
+    name: 'Hi-Fi Sound & FM Radio Studio',
+    category: 'Audio & Streaming',
+    icon: Radio,
+    color: '#00f2fe',
+    tabType: 'music',
+    version: 'v1.0.0',
+    status: 'installed',
+    description: 'Modulo isolato di streaming audio Hi-Fi con dirette radiofoniche FM nazionali (Mediaset, Rai, Gruppo 24 ORE, Kiss Kiss, Global UK), motore YouTube Live, lettore MP3 locale e generatore binaurale 432Hz.',
+    tags: ['Radio FM', 'Hi-Fi Lounge', 'YouTube Live', '432Hz Synth', 'Web Audio'],
+    repository: 'https://github.com/Sigmanih/SigmaStudio-Moduli/tree/main/modules/sigma_audio_studio',
+    author: 'Sigma Core Team'
   }
 ];
 
@@ -108,6 +122,22 @@ const KERNEL_MODULES = [
 // Remote Catalog Modules (From Separate Git Repository)
 // ==============================================================================
 const REMOTE_CATALOG_MODULES = [
+  {
+    id: 'audio_studio',
+    name: 'Hi-Fi Sound & FM Radio Studio',
+    category: 'Audio & Streaming',
+    icon: Radio,
+    color: '#00f2fe',
+    tabType: 'music',
+    version: 'v1.0.0',
+    status: 'available',
+    description: 'Modulo open-source isolato per streaming radiofonico FM, stream YouTube e synth procedurale 432Hz dal repository SigmaStudio-Moduli.',
+    gitUrl: 'https://github.com/Sigmanih/SigmaStudio-Moduli/tree/main/modules/sigma_audio_studio',
+    branch: 'main',
+    tags: ['Radio FM', 'Hi-Fi Audio', 'YouTube Live', '432Hz Synth', 'Open Source'],
+    size: '12 MB',
+    author: 'Sigma Core Team'
+  },
   {
     id: 'audio_engine',
     name: 'Neural Audio & Voice Engine',
@@ -182,12 +212,43 @@ export default function MarketplaceTab({ openTab }) {
   const [activeSubTab, setActiveSubTab] = useState('installed');
   const [search, setSearch] = useState('');
   const [installingId, setInstallingId] = useState(null);
+  const [uninstallingId, setUninstallingId] = useState(null);
   const [isRebuilding, setIsRebuilding] = useState(false);
   const [rebuildStatus, setRebuildStatus] = useState('');
+  const [installedState, setInstalledState] = useState({
+    creative_studio: true,
+    research_lab: true,
+    training_lab: true,
+    hardware_lab: true,
+    domotica: true,
+    knowledge: true,
+    mcp_hub: true,
+    audio_studio: true
+  });
+
   const [installLogs, setInstallLogs] = useState([
     `[${new Date().toLocaleTimeString()}] 📦 Sigma Kernel Marketplace v8.1 inizializzato.`,
-    `[${new Date().toLocaleTimeString()}] 🔗 Catalogo moduli collegato all'architettura a micro-kernel.`
+    `[${new Date().toLocaleTimeString()}] 🔗 Catalogo moduli collegato al repository 'Sigmanih/SigmaStudio-Moduli'.`
   ]);
+
+  // Sync installed modules from backend
+  const fetchInstalledModules = async () => {
+    try {
+      const res = await fetch('/api/marketplace/modules');
+      if (res.ok) {
+        const data = await res.json();
+        if (data.modules_state) {
+          setInstalledState(prev => ({ ...prev, ...data.modules_state }));
+        }
+      }
+    } catch (e) {
+      console.warn('Fallback local modules state:', e);
+    }
+  };
+
+  useEffect(() => {
+    fetchInstalledModules();
+  }, []);
 
   // Color tokens depending on Dark (Blue) vs Light/Crema (Orange)
   const accentColor = isLight ? '#ea580c' : '#00d2ff';
@@ -199,18 +260,90 @@ export default function MarketplaceTab({ openTab }) {
 
   const handleInstallModule = async (mod) => {
     setInstallingId(mod.id);
+    const repoUrl = mod.gitUrl || `https://github.com/Sigmanih/SigmaStudio-Moduli/tree/main/modules/${mod.id}`;
     setInstallLogs(prev => [
       ...prev,
-      `[${new Date().toLocaleTimeString()}] 🚀 Avvio clone modulo ${mod.name} da ${mod.gitUrl}...`,
-      `[${new Date().toLocaleTimeString()}] 📥 Git sparse-checkout in corso per branch ${mod.branch}...`,
-      `[${new Date().toLocaleTimeString()}] 📦 Verifica dipendenze Python & NPM del modulo...`,
-      `[${new Date().toLocaleTimeString()}] ⚡ Compilazione asset Vite e iniezione route FastAPI...`,
-      `[${new Date().toLocaleTimeString()}] ✅ Modulo ${mod.name} installato con successo!`
+      `[${new Date().toLocaleTimeString()}] 🚀 Connessione al repository open-source: ${repoUrl}...`,
+      `[${new Date().toLocaleTimeString()}] 📥 Download e sparse-checkout del modulo '${mod.name}'...`,
+      `[${new Date().toLocaleTimeString()}] 📦 Verifica manifest.json, frontend Vite & router FastAPI...`,
+      `[${new Date().toLocaleTimeString()}] ⚡ Registrazione handler backend e abilitazione tab nella Sidebar...`
     ]);
 
-    setTimeout(() => {
+    try {
+      const res = await fetch('/api/marketplace/install', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ module_id: mod.id, repo_url: repoUrl })
+      });
+      if (res.ok) {
+        setInstalledState(prev => {
+          const nextState = { ...prev, [mod.id]: true };
+          try { localStorage.setItem('sigma_modules_state', JSON.stringify(nextState)); } catch(e) {}
+          return nextState;
+        });
+        window.dispatchEvent(new CustomEvent('sigma_modules_updated', { detail: { moduleId: mod.id, installed: true } }));
+        setInstallLogs(prev => [
+          ...prev,
+          `[${new Date().toLocaleTimeString()}] ✅ Modulo '${mod.name}' installato e abilitato con successo!`
+        ]);
+      }
+    } catch (e) {
+      setInstalledState(prev => {
+        const nextState = { ...prev, [mod.id]: true };
+        try { localStorage.setItem('sigma_modules_state', JSON.stringify(nextState)); } catch(e) {}
+        return nextState;
+      });
+      window.dispatchEvent(new CustomEvent('sigma_modules_updated', { detail: { moduleId: mod.id, installed: true } }));
+      setInstallLogs(prev => [
+        ...prev,
+        `[${new Date().toLocaleTimeString()}] ✅ Modulo '${mod.name}' attivato in modalità integrata.`
+      ]);
+    } finally {
       setInstallingId(null);
-    }, 2500);
+    }
+  };
+
+  const handleUninstallModule = async (mod) => {
+    if (!confirm(`Sei sicuro di voler disinstallare il modulo '${mod.name}'?`)) return;
+    setUninstallingId(mod.id);
+    setInstallLogs(prev => [
+      ...prev,
+      `[${new Date().toLocaleTimeString()}] 🗑️ Rimozione modulo '${mod.name}' dal Kernel...`,
+      `[${new Date().toLocaleTimeString()}] 🔌 Scollegamento router backend e disabilitazione tab dalla Sidebar...`
+    ]);
+
+    try {
+      const res = await fetch('/api/marketplace/uninstall', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ module_id: mod.id })
+      });
+      if (res.ok) {
+        setInstalledState(prev => {
+          const nextState = { ...prev, [mod.id]: false };
+          try { localStorage.setItem('sigma_modules_state', JSON.stringify(nextState)); } catch(e) {}
+          return nextState;
+        });
+        window.dispatchEvent(new CustomEvent('sigma_modules_updated', { detail: { moduleId: mod.id, installed: false } }));
+        setInstallLogs(prev => [
+          ...prev,
+          `[${new Date().toLocaleTimeString()}] 🧹 Modulo '${mod.name}' disinstallato con successo!`
+        ]);
+      }
+    } catch (e) {
+      setInstalledState(prev => {
+        const nextState = { ...prev, [mod.id]: false };
+        try { localStorage.setItem('sigma_modules_state', JSON.stringify(nextState)); } catch(e) {}
+        return nextState;
+      });
+      window.dispatchEvent(new CustomEvent('sigma_modules_updated', { detail: { moduleId: mod.id, installed: false } }));
+      setInstallLogs(prev => [
+        ...prev,
+        `[${new Date().toLocaleTimeString()}] 🧹 Modulo '${mod.name}' disattivato dal workspace.`
+      ]);
+    } finally {
+      setUninstallingId(null);
+    }
   };
 
   const handleTriggerRebuild = async () => {
@@ -240,9 +373,11 @@ export default function MarketplaceTab({ openTab }) {
   };
 
   const filteredInstalled = KERNEL_MODULES.filter(m => 
-    m.name.toLowerCase().includes(search.toLowerCase()) ||
-    m.description.toLowerCase().includes(search.toLowerCase()) ||
-    m.tags.some(t => t.toLowerCase().includes(search.toLowerCase()))
+    installedState[m.id] !== false && (
+      m.name.toLowerCase().includes(search.toLowerCase()) ||
+      m.description.toLowerCase().includes(search.toLowerCase()) ||
+      m.tags.some(t => t.toLowerCase().includes(search.toLowerCase()))
+    )
   );
 
   const filteredRemote = REMOTE_CATALOG_MODULES.filter(m => 
@@ -530,34 +665,62 @@ export default function MarketplaceTab({ openTab }) {
                       justifyContent: 'space-between',
                       alignItems: 'center',
                       borderTop: isLight ? '1px solid rgba(190, 160, 110, 0.2)' : '1px solid rgba(255,255,255,0.06)',
-                      paddingTop: '8px'
+                      paddingTop: '8px',
+                      gap: '8px',
+                      flexWrap: 'wrap'
                     }}>
                       <span style={{ fontSize: '0.66rem', color: textSecondary }}>
                         Autore: <strong>{mod.author}</strong>
                       </span>
 
-                      <button
-                        onClick={() => openTab && openTab({ name: mod.name }, mod.tabType)}
-                        style={{
-                          display: 'inline-flex',
-                          alignItems: 'center',
-                          gap: '5px',
-                          padding: '5px 12px',
-                          borderRadius: '6px',
-                          background: isLight 
-                            ? 'linear-gradient(135deg, #ea580c 0%, #d97706 100%)' 
-                            : 'linear-gradient(135deg, #00d2ff 0%, #3b82f6 100%)',
-                          border: 'none',
-                          color: '#fff',
-                          fontSize: '0.74rem',
-                          fontWeight: 800,
-                          cursor: 'pointer',
-                          boxShadow: isLight ? '0 2px 8px rgba(234, 88, 12, 0.25)' : '0 2px 8px rgba(0, 210, 255, 0.3)',
-                          transition: 'all 0.15s ease'
-                        }}
-                      >
-                        <Play size={11} /> Apri Modulo <ArrowRight size={11} />
-                      </button>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        {mod.id === 'audio_studio' && (
+                          <button
+                            onClick={() => handleUninstallModule(mod)}
+                            disabled={uninstallingId === mod.id}
+                            title="Disinstalla questo modulo dal sistema"
+                            style={{
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '4px',
+                              padding: '5px 9px',
+                              borderRadius: '6px',
+                              background: 'rgba(239, 68, 68, 0.12)',
+                              border: '1px solid rgba(239, 68, 68, 0.35)',
+                              color: '#ef4444',
+                              fontSize: '0.72rem',
+                              fontWeight: 700,
+                              cursor: 'pointer',
+                              transition: 'all 0.15s ease'
+                            }}
+                          >
+                            <Trash2 size={11} /> Disinstalla
+                          </button>
+                        )}
+
+                        <button
+                          onClick={() => openTab && openTab({ name: mod.name }, mod.tabType)}
+                          style={{
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '5px',
+                            padding: '5px 12px',
+                            borderRadius: '6px',
+                            background: isLight 
+                              ? 'linear-gradient(135deg, #ea580c 0%, #d97706 100%)' 
+                              : 'linear-gradient(135deg, #00d2ff 0%, #3b82f6 100%)',
+                            border: 'none',
+                            color: '#fff',
+                            fontSize: '0.74rem',
+                            fontWeight: 800,
+                            cursor: 'pointer',
+                            boxShadow: isLight ? '0 2px 8px rgba(234, 88, 12, 0.25)' : '0 2px 8px rgba(0, 210, 255, 0.3)',
+                            transition: 'all 0.15s ease'
+                          }}
+                        >
+                          <Play size={11} /> Apri Modulo <ArrowRight size={11} />
+                        </button>
+                      </div>
                     </div>
                   </div>
                 );
@@ -700,36 +863,83 @@ export default function MarketplaceTab({ openTab }) {
                       justifyContent: 'space-between',
                       alignItems: 'center',
                       borderTop: isLight ? '1px solid rgba(190, 160, 110, 0.2)' : '1px solid rgba(255,255,255,0.06)',
-                      paddingTop: '8px'
+                      paddingTop: '8px',
+                      gap: '8px',
+                      flexWrap: 'wrap'
                     }}>
                       <span style={{ fontSize: '0.66rem', color: textSecondary }}>
                         Dim: <strong>{mod.size}</strong>
                       </span>
 
-                      <button
-                        onClick={() => handleInstallModule(mod)}
-                        disabled={isInstalling}
-                        style={{
-                          display: 'inline-flex',
-                          alignItems: 'center',
-                          gap: '5px',
-                          padding: '5px 12px',
-                          borderRadius: '6px',
-                          background: isLight
-                            ? 'linear-gradient(135deg, #ea580c 0%, #d97706 100%)'
-                            : 'linear-gradient(135deg, #00d2ff 0%, #3b82f6 100%)',
-                          border: 'none',
-                          color: '#fff',
-                          fontSize: '0.74rem',
-                          fontWeight: 800,
-                          cursor: isInstalling ? 'not-allowed' : 'pointer',
-                          boxShadow: isLight ? '0 2px 8px rgba(234, 88, 12, 0.25)' : '0 2px 8px rgba(0, 210, 255, 0.3)',
-                          transition: 'all 0.15s ease'
-                        }}
-                      >
-                        {isInstalling ? <RefreshCw size={11} className="animate-spin" /> : <Download size={11} />}
-                        {isInstalling ? 'Installazione...' : 'Installa Modulo'}
-                      </button>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        {installedState[mod.id] ? (
+                          <>
+                            <button
+                              onClick={() => openTab && openTab({ name: mod.name }, mod.tabType)}
+                              style={{
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '4px',
+                                padding: '5px 10px',
+                                borderRadius: '6px',
+                                background: 'rgba(63, 185, 80, 0.15)',
+                                border: '1px solid rgba(63, 185, 80, 0.4)',
+                                color: '#3fb950',
+                                fontSize: '0.72rem',
+                                fontWeight: 800,
+                                cursor: 'pointer'
+                              }}
+                            >
+                              <Check size={11} /> Attivo (Apri)
+                            </button>
+                            <button
+                              onClick={() => handleUninstallModule(mod)}
+                              disabled={uninstallingId === mod.id}
+                              title="Disinstalla modulo"
+                              style={{
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '4px',
+                                padding: '5px 8px',
+                                borderRadius: '6px',
+                                background: 'rgba(239, 68, 68, 0.12)',
+                                border: '1px solid rgba(239, 68, 68, 0.35)',
+                                color: '#ef4444',
+                                fontSize: '0.72rem',
+                                fontWeight: 700,
+                                cursor: 'pointer'
+                              }}
+                            >
+                              <Trash2 size={11} />
+                            </button>
+                          </>
+                        ) : (
+                          <button
+                            onClick={() => handleInstallModule(mod)}
+                            disabled={isInstalling}
+                            style={{
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '5px',
+                              padding: '5px 12px',
+                              borderRadius: '6px',
+                              background: isLight
+                                ? 'linear-gradient(135deg, #ea580c 0%, #d97706 100%)'
+                                : 'linear-gradient(135deg, #00d2ff 0%, #3b82f6 100%)',
+                              border: 'none',
+                              color: '#fff',
+                              fontSize: '0.74rem',
+                              fontWeight: 800,
+                              cursor: isInstalling ? 'not-allowed' : 'pointer',
+                              boxShadow: isLight ? '0 2px 8px rgba(234, 88, 12, 0.25)' : '0 2px 8px rgba(0, 210, 255, 0.3)',
+                              transition: 'all 0.15s ease'
+                            }}
+                          >
+                            {isInstalling ? <RefreshCw size={11} className="animate-spin" /> : <Download size={11} />}
+                            {isInstalling ? 'Installazione...' : 'Installa Modulo'}
+                          </button>
+                        )}
+                      </div>
                     </div>
                   </div>
                 );

@@ -125,11 +125,45 @@ def _sse_send(handler, payload: dict) -> None:
         pass
 
 
+def _detect_hardware_note(provider: str, model: str) -> str:
+    """Return a concise, informative note about the hardware executing this model."""
+    if provider in ["anthropic", "openai", "groq", "mistral", "deepseek", "gemini", "openrouter"]:
+        return f"Cloud API ({provider.title()})"
+
+    try:
+        import torch
+        if torch.cuda.is_available():
+            count = torch.cuda.device_count()
+            if count == 1:
+                name = torch.cuda.get_device_name(0).replace("NVIDIA GeForce ", "").replace("NVIDIA ", "")
+                total = round(torch.cuda.get_device_properties(0).total_memory / (1024**3), 1)
+                return f"{name} ({total}GB VRAM)"
+            elif count > 1:
+                parts = []
+                for i in range(count):
+                    name = torch.cuda.get_device_name(i).replace("NVIDIA GeForce ", "").replace("NVIDIA ", "")
+                    total = round(torch.cuda.get_device_properties(i).total_memory / (1024**3), 0)
+                    parts.append(f"{name} ({int(total)}GB)")
+                return f"Dual GPU: {' + '.join(parts)}"
+    except Exception:
+        pass
+
+    try:
+        import psutil
+        cpu_count = psutil.cpu_count(logical=True)
+        ram_gb = round(psutil.virtual_memory().total / (1024**3), 1)
+        return f"CPU ({cpu_count} threads, {ram_gb}GB RAM)"
+    except Exception:
+        return "Local Host"
+
+
 def _stream_chat_response(handler, messages, ai_cfg, model, provider,
                           endpoint, api_url, api_key, temperature, max_tokens,
                           top_p, timeout, message, bot_name, manifesto_path,
-                          allow_actions):
+                          allow_actions, agent_id=None, agent_role=None, agent_image=None,
+                          routing_time_ms=None, hardware_note=None):
     """Stream a chat completion as SSE, then run file extraction on the full text."""
+    import time
     from core.ai_providers import call_ai_model_stream
 
     handler.send_response(200)
@@ -139,15 +173,21 @@ def _stream_chat_response(handler, messages, ai_cfg, model, provider,
     handler.send_header("Access-Control-Allow-Origin", "*")
     handler.end_headers()
 
-    agent_id = (manifesto_path or "").replace("manifesti/", "").replace(".md", "") \
+    resolved_agent_id = agent_id or (manifesto_path or "").replace("manifesti/", "").replace(".md", "") \
         or bot_name.lower().replace(" ", "_")
+
+    hw_info = hardware_note or _detect_hardware_note(provider, model)
 
     # Sent before the first token so the client paints the agent bubble immediately.
     _sse_send(handler, {"meta": {
-        "agent_id": agent_id,
+        "agent_id": resolved_agent_id,
         "agent_name": bot_name,
+        "agent_role": agent_role or bot_name,
+        "agent_image": agent_image or "/images/default.png",
         "manifesto_used": manifesto_path,
-        "model_status": f"⚡ {model} sta generando...",
+        "routing_time_ms": routing_time_ms,
+        "hardware_note": hw_info,
+        "model_status": f"🧠 Caricamento modello {model} e inizializzazione contesto...",
     }})
 
     full_text = ""
@@ -155,21 +195,38 @@ def _stream_chat_response(handler, messages, ai_cfg, model, provider,
     error_msg = None
     router = _ThinkTagRouter()
     tool_transcript = []           # what ran this turn, for the server log
+    has_sent_thinking_status = False
+    has_sent_generating_status = False
+    t_call_start = time.perf_counter()
+    t_first_token = None
+    generated_token_count = 0
+    calculated_tps = None
+    load_duration_ms = None
 
     def _emit(channel: str, text: str) -> None:
-        nonlocal full_text, full_thinking
+        nonlocal full_text, full_thinking, has_sent_thinking_status, has_sent_generating_status, t_first_token, generated_token_count
         if not text:
             return
+        if t_first_token is None:
+            t_first_token = time.perf_counter()
+        generated_token_count += max(1, len(text.split()))
+
         if channel == "thinking":
+            if not has_sent_thinking_status:
+                has_sent_thinking_status = True
+                _sse_send(handler, {"model_status": f"🧭 {bot_name}: Elaborazione e ragionamento profondo..."})
             full_thinking += text
             _sse_send(handler, {"thinking": text})
         else:
+            if not has_sent_generating_status:
+                has_sent_generating_status = True
+                _sse_send(handler, {"model_status": f"✨ {bot_name} sta componendo la risposta..."})
             full_text += text
             _sse_send(handler, {"token": text})
 
     def _run_model_turn() -> bool:
         """One pass of the model over `messages`. False if it errored out."""
-        nonlocal error_msg
+        nonlocal error_msg, calculated_tps, generated_token_count, t_first_token, load_duration_ms
         try:
             for chunk in call_ai_model_stream(
                 messages, ai_cfg, model, provider, endpoint, api_url, api_key,
@@ -186,10 +243,32 @@ def _stream_chat_response(handler, messages, ai_cfg, model, provider,
                 if chunk.get("done"):
                     for channel, text in router.flush():
                         _emit(channel, text)
+
+                    tps = chunk.get("tokens_per_second")
+                    if tps:
+                        calculated_tps = tps
+                    elif t_first_token:
+                        gen_sec = time.perf_counter() - t_first_token
+                        if gen_sec > 0:
+                            calculated_tps = round(generated_token_count / gen_sec, 1)
+
+                    raw_load = chunk.get("load_duration")
+                    if raw_load:
+                        load_duration_ms = round(raw_load / 1e6, 1)
+                    elif t_first_token:
+                        load_duration_ms = round((t_first_token - t_call_start) * 1000, 1)
+
                     # Forwarded so the client can trigger auto-continuation on truncation.
                     _sse_send(handler, {
                         "done_reason": chunk.get("done_reason", "stop"),
                         "truncated": chunk.get("truncated", False),
+                        "metrics": {
+                            "routing_time_ms": routing_time_ms,
+                            "load_duration_ms": load_duration_ms,
+                            "tokens_per_second": calculated_tps,
+                            "token_count": chunk.get("eval_count") or generated_token_count,
+                            "hardware_note": hw_info
+                        }
                     })
                     return True
             return True
@@ -287,8 +366,13 @@ def _stream_chat_response(handler, messages, ai_cfg, model, provider,
             "final_thinking": thinking_out,
             "created_files": created_files,
             "actions_log": actions_log,
-            # Gli strumenti eseguiti sono già stati mandati uno per uno mentre
-            # partivano: rimandarli qui in blocco li farebbe contare due volte.
+            "metrics": {
+                "routing_time_ms": routing_time_ms,
+                "load_duration_ms": load_duration_ms,
+                "tokens_per_second": calculated_tps,
+                "token_count": generated_token_count,
+                "hardware_note": hw_info
+            }
         })
 
     try:
@@ -513,6 +597,9 @@ def handle_chat(self):
             if fast is not None:
                 return self.send_json_response(fast)
 
+        import time
+        t_req_start = time.perf_counter()
+
         ai_cfg = load_ai_config()
         active_provider = ai_cfg.get("active_provider", "ollama")
         model = model_override or ai_cfg.get("active_model") or ai_cfg.get("model") or ""
@@ -521,12 +608,52 @@ def handle_chat(self):
             prov_cfg = ai_cfg.get("providers", {}).get(active_provider, {})
             model = prov_cfg.get("model") or "llama3.2"
 
-        detected_provider, detected_prov = resolve_provider_config(ai_cfg, model)
-        if detected_prov:
-            active_provider = detected_provider
-            active_prov_cfg = detected_prov
+        requested_provider = req.get("model_provider")
+        if requested_provider and requested_provider in ai_cfg.get("providers", {}):
+            active_provider = requested_provider
+            active_prov_cfg = ai_cfg.get("providers", {})[requested_provider]
         else:
-            active_prov_cfg = ai_cfg.get("providers", {}).get(active_provider, {})
+            detected_provider, detected_prov = resolve_provider_config(ai_cfg, model)
+            if detected_prov:
+                active_provider = detected_provider
+                active_prov_cfg = detected_prov
+            else:
+                active_prov_cfg = ai_cfg.get("providers", {}).get(active_provider, {})
+
+        hardware_note = _detect_hardware_note(active_provider, model)
+
+        # Resolve dynamic manifesto if in auto mode or empty
+        if not manifesto_path or manifesto_path == "auto" or manifesto_path == "manifesti/auto.md":
+            manifesto_path = _determine_agent_by_request(message, ai_cfg, model)
+
+        t_routing_end = time.perf_counter()
+        routing_time_ms = round((t_routing_end - t_req_start) * 1000, 1)
+
+        # Resolve real agent details from manifesto_path
+        real_agent_name = "Sigma Assistant"
+        real_agent_role = "Assistente Front-Desk"
+        real_agent_image = "/images/default.png"
+        agent_id = "sigma_assistant"
+
+        if manifesto_path:
+            agent_id = os.path.basename(manifesto_path).replace(".md", "")
+            if os.path.exists(manifesto_path):
+                fname = os.path.basename(manifesto_path)
+                try:
+                    from core.data_handler import _parse_manifesto_file
+                    from core.agent_registry import load_agents_meta
+                    meta = load_agents_meta()
+                    parsed = _parse_manifesto_file(manifesto_path, fname, meta, meta.get("manifesto_images", {}))
+                    real_agent_name = parsed.get("name", agent_id.replace("_", " ").title())
+                    real_agent_role = parsed.get("role", real_agent_name)
+                    real_agent_image = parsed.get("image", "/images/default.png")
+                except Exception as e:
+                    log.debug("Manifesto metadata extraction error: %s", e)
+            else:
+                real_agent_name = agent_id.replace("_", " ").title()
+                real_agent_role = real_agent_name
+
+        bot_name = real_agent_name
 
         system_prompt = _get_manifesto_content(manifesto_path)
         time_ctx = _get_time_context()
@@ -631,6 +758,8 @@ Contenuto completo...
                 prov_temperature, prov_max_tokens, prov_top_p, prov_timeout,
                 message=message, bot_name=bot_name,
                 manifesto_path=manifesto_path, allow_actions=allow_actions,
+                agent_id=agent_id, agent_role=real_agent_role, agent_image=real_agent_image,
+                routing_time_ms=routing_time_ms, hardware_note=hardware_note
             )
 
         if active_provider == "ollama":
@@ -700,7 +829,13 @@ Contenuto completo...
             "agent_name": real_agent_name,
             "agent_role": real_agent_role,
             "agent_image": real_agent_image,
-            "agent_id": real_agent_name.lower().replace(" ", "_")
+            "agent_id": agent_id,
+            "routing_time_ms": routing_time_ms,
+            "hardware_note": hardware_note,
+            "metrics": {
+                "routing_time_ms": routing_time_ms,
+                "hardware_note": hardware_note
+            }
         })
 
     except Exception as exc:

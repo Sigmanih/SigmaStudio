@@ -16,6 +16,8 @@ def handle_api_config_get(self):
     safe_cfg = {}
     safe_cfg['active_provider'] = ai_cfg.get('active_provider', 'ollama')
     safe_cfg['active_model'] = ai_cfg.get('active_model', 'llama3.2')
+    safe_cfg['favorite_model'] = ai_cfg.get('favorite_model', '')
+    safe_cfg['favorite_models'] = ai_cfg.get('favorite_models', ([ai_cfg['favorite_model']] if ai_cfg.get('favorite_model') else []))
     safe_cfg['providers'] = {}
     for pk, pv in ai_cfg.get('providers', {}).items():
         safe_cfg['providers'][pk] = {k: v for k, v in pv.items() if k != 'api_key'}
@@ -51,9 +53,12 @@ def handle_api_config_post(self):
                         if k == 'api_key' and not v:
                             continue
                         ai_cfg['providers'][pk][k] = v
-        for k in ('active_provider', 'active_model'):
+        for k in ('active_provider', 'active_model', 'favorite_model', 'favorite_models'):
             if k in req:
                 ai_cfg[k] = req[k]
+        if 'favorite_models' in req and isinstance(req['favorite_models'], list):
+            if req['favorite_models'] and not req.get('favorite_model'):
+                ai_cfg['favorite_model'] = req['favorite_models'][0]
         if 'provider' in req and req['provider']:
             ai_cfg['active_provider'] = req['provider']
         if 'model' in req and req['model']:

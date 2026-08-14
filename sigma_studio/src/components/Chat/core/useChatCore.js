@@ -453,6 +453,10 @@ export default function useChatCore(extraProps = {}) {
     setPlanExecuting: streamingHook.setPlanExecuting,
     showHistory: streamingHook.showHistory,
     setShowHistory: streamingHook.setShowHistory,
+    favoriteModel: configHook.favoriteModel,
+    favoriteModels: configHook.favoriteModels,
+    handleSetFavoriteModel: configHook.handleSetFavoriteModel,
+    handleToggleFavoriteModel: configHook.handleToggleFavoriteModel,
     showModelDropdown: configHook.showModelDropdown,
     setShowModelDropdown: configHook.setShowModelDropdown,
     editingSessionName: sessionsHook.editingSessionName,
@@ -477,6 +481,7 @@ export default function useChatCore(extraProps = {}) {
     handleRenameKeyDown: sessionsHook.handleRenameKeyDown,
     deleteMessage: handleDeleteMessage,
     handleModelSelect: handleModelSelectWrapped,
+    handleSetFavorite: configHook.handleSetFavoriteModel,
     handleSelectManifesto,
     handleDuplicateSession,
     openModelDropdown: async () => {

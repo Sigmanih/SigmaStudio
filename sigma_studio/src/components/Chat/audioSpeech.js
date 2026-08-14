@@ -101,8 +101,19 @@ export function cleanTextForSpeech(text) {
 
   // Emphasis and highlights: drop the markers, keep the words.
   out = out.replace(/`([^`\n]+)`/g, '$1');
+
+  // Markdown images: strip completely (do not speak alt text as prose)
   out = out.replace(/!\[[^\]]*\]\([^)]*\)/g, ' ');
-  out = out.replace(/\[([^\]]*)\]\([^)]*\)/g, '$1');
+
+  // Markdown links: replace [Readable Title](https://...) -> Readable Title
+  out = out.replace(/\[([^\]]+)\]\([^)]*\)/g, ' $1 ');
+
+  // Incomplete markdown link fragments: [Readable Title](https://... -> Readable Title
+  out = out.replace(/\[([^\]]+)\]\s*\(\s*https?:\/\/[^\s)]*/g, ' $1 ');
+
+  // Standalone bracketed labels: [Label] -> Label
+  out = out.replace(/\[([^\]]+)\]/g, ' $1 ');
+
   out = out.replace(/^\s{0,3}#{1,6}\s+/gm, '');
   out = out.replace(/(\*\*\*|\*\*|\*|___|__|~~)(?=\S)([\s\S]*?\S)\1/g, '$2');
   out = out.replace(/^\s{0,3}[-*+]\s+/gm, '');       // list bullets
@@ -121,8 +132,9 @@ export function cleanTextForSpeech(text) {
   // Arrows and box drawing left over once the meaningful ones are spoken.
   out = out.replace(/[←-⇿─-╿■-◿]/g, ' ');
 
-  // Leftover structural punctuation, then whitespace normalisation.
-  out = out.replace(/https?:\/\/\S+/g, ' ');
+  // Leftover structural punctuation, raw URLs, and domain names (never speak URLs aloud).
+  out = out.replace(/https?:\/\/[^\s)]+/gi, ' ');
+  out = out.replace(/\bwww\.[a-zA-Z0-9\-_.]{2,}\.[a-zA-Z]{2,}\b/gi, ' ');
   out = out.replace(/[*_~`#\[\]|>]/g, ' ');
   out = out.replace(/\n+/g, '. ');
   out = out.replace(/\s+/g, ' ');
@@ -852,6 +864,21 @@ function isMidFormula(chunk) {
   return opens > closes;
 }
 
+/** True while a markdown link `[title](url)` is still unclosed in the chunk buffer. */
+function isMidMarkdownLink(chunk) {
+  const lastOpenBracket = chunk.lastIndexOf('[');
+  if (lastOpenBracket === -1) return false;
+  const afterBracket = chunk.slice(lastOpenBracket);
+  const closeBracket = afterBracket.indexOf(']');
+  if (closeBracket === -1) return true; // '[' not closed yet
+  // If [title] is immediately followed by '(', check if ')' has arrived
+  const afterCloseBracket = afterBracket.slice(closeBracket + 1);
+  if (afterCloseBracket.startsWith('(')) {
+    return !afterCloseBracket.includes(')');
+  }
+  return false;
+}
+
 function settleChunk(state) {
   if (speechStream !== state) return;
   if (speechProgressState && speechProgressState.paused) return;
@@ -1378,6 +1405,7 @@ function findSentenceCut(buffer, force, first) {
     const candidate = buffer.slice(0, i + 1);
     if (!HAS_LETTERS.test(candidate)) continue;
     if (isMidFormula(candidate)) continue;
+    if (isMidMarkdownLink(candidate)) continue;
     return i;
   }
   return -1;

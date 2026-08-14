@@ -1,9 +1,9 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   Home, FileText, Activity, PieChart, Layers, ChevronRight, MessageSquare, 
   FlaskConical, Brain, Zap, User, Server, Wrench, Palette, Blocks, Sun, 
   Moon, Store, Package, Sliders, Key, Sparkles, FolderGit2, Compass,
-  Cpu, Box, Radio
+  Cpu, Box, Radio, Music
 } from 'lucide-react';
 import { useApp } from '../contexts/AppContext';
 
@@ -164,8 +164,39 @@ export default function Sidebar({
     };
 
     updateCounts();
-    const interval = setInterval(updateCounts, 5000);
+    const interval = setInterval(updateCounts, 4000);
     return () => clearInterval(interval);
+  }, []);
+
+  const [isAudioInstalled, setIsAudioInstalled] = useState(() => {
+    try {
+      const saved = localStorage.getItem('sigma_modules_state');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (parsed.audio_studio !== undefined) return parsed.audio_studio === true;
+      }
+    } catch(e) {}
+    return true;
+  });
+
+  React.useEffect(() => {
+    const handleModulesUpdated = (e) => {
+      if (e.detail?.moduleId === 'audio_studio') {
+        setIsAudioInstalled(e.detail.installed);
+      }
+      try {
+        const saved = localStorage.getItem('sigma_modules_state');
+        if (saved) {
+          const parsed = JSON.parse(saved);
+          if (parsed.audio_studio !== undefined) {
+            setIsAudioInstalled(parsed.audio_studio === true);
+          }
+        }
+      } catch(err) {}
+    };
+
+    window.addEventListener('sigma_modules_updated', handleModulesUpdated);
+    return () => window.removeEventListener('sigma_modules_updated', handleModulesUpdated);
   }, []);
 
   const taskInCorso = tasks.filter(t => t.status === 'in_corso' || !t.status).length;
@@ -427,6 +458,17 @@ export default function Sidebar({
             active={activeTabId != null && activeTabId.startsWith('marketplace')}
             onClick={() => openTab({ name: '📦 Hub Moduli & Estensioni' }, 'marketplace')} 
           />
+
+          {isAudioInstalled && (
+            <SidebarItem 
+              icon={Radio} 
+              label="Musica & Radio FM" 
+              badge="LOUNGE"
+              badgeColor="rgba(0,242,254,0.2)"
+              active={activeTabId != null && (activeTabId.startsWith('music') || activeTabId === 'audio_studio' || activeTabId === 'music_lounge')}
+              onClick={() => openTab({ name: '📻 Musica & Radio FM' }, 'music')} 
+            />
+          )}
 
           <SidebarItem 
             icon={User} 

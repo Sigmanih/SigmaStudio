@@ -182,6 +182,12 @@ export function useChatStreaming({
     // ad aspettare l'operatore prima di toccare qualcosa fuori da Sigma Studio.
     let streamToolCalls = [];
     let streamToolApprovals = [];
+    let streamRoutingTimeMs = null;
+    let streamLoadDurationMs = null;
+    let streamHardwareNote = null;
+    let streamTps = null;
+    let firstTokenTime = null;
+    let generatedTokenCount = 0;
 
     try {
       let streamDone = false, hasError = false, streamErrorMsg = '';
@@ -208,6 +214,20 @@ export function useChatStreaming({
               if (p.actions_log && Array.isArray(p.actions_log)) {
                 streamActionsLog = p.actions_log;
               }
+              if (p.metrics) {
+                if (p.metrics.routing_time_ms !== undefined && p.metrics.routing_time_ms !== null) {
+                  streamRoutingTimeMs = p.metrics.routing_time_ms;
+                }
+                if (p.metrics.load_duration_ms !== undefined && p.metrics.load_duration_ms !== null) {
+                  streamLoadDurationMs = p.metrics.load_duration_ms;
+                }
+                if (p.metrics.hardware_note) {
+                  streamHardwareNote = p.metrics.hardware_note;
+                }
+                if (p.metrics.tokens_per_second !== undefined && p.metrics.tokens_per_second !== null) {
+                  streamTps = p.metrics.tokens_per_second;
+                }
+              }
               // L'agente li manda uno per evento mentre ragiona; la corsia
               // veloce risponde con un blocco solo che li porta già in elenco.
               // Entrambe le forme arrivano su questo canale, quindi si leggono
@@ -231,10 +251,34 @@ export function useChatStreaming({
               if (p.final_thinking !== undefined && continuationCount === 0) {
                 finalThinkingOverride = p.final_thinking;
               }
+              if (p.model_status) {
+                setSessionMessages(prev => {
+                  const n = [...(prev[sessionId] || [])];
+                  if (n.length > 0 && n[n.length - 1].role === 'assistant') {
+                    n[n.length - 1] = {
+                      ...n[n.length - 1],
+                      statusMessage: p.model_status
+                    };
+                  }
+                  return { ...prev, [sessionId]: n };
+                });
+              }
               if (p.meta) {
-                streamAgentId = p.meta.agent_id || p.meta.manifesto_used;
-                streamAgentName = p.meta.agent_name || streamAgentId;
+                if (p.meta.routing_time_ms !== undefined && p.meta.routing_time_ms !== null) {
+                  streamRoutingTimeMs = p.meta.routing_time_ms;
+                }
+                if (p.meta.load_duration_ms !== undefined && p.meta.load_duration_ms !== null) {
+                  streamLoadDurationMs = p.meta.load_duration_ms;
+                }
+                if (p.meta.hardware_note) {
+                  streamHardwareNote = p.meta.hardware_note;
+                }
+                streamAgentId = p.meta.agent_id || p.meta.manifesto_used || 'sigma_assistant';
                 streamAgentStyle = getAgentStyle(streamAgentId);
+                const resolvedRole = p.meta.agent_role || streamAgentStyle.name || p.meta.agent_name || (streamAgentId ? streamAgentId.replace('_', ' ') : 'Sigma Assistant');
+                const resolvedName = p.meta.agent_name || streamAgentStyle.name || resolvedRole;
+                const resolvedImage = p.meta.agent_image || streamAgentStyle.image || '/images/default.png';
+                streamAgentName = resolvedName;
                 const modelStatus = p.meta.model_status;
                 setSessionMessages(prev => {
                   const n = [...(prev[sessionId] || [])];
@@ -242,18 +286,34 @@ export function useChatStreaming({
                     n[n.length - 1] = {
                       ...n[n.length - 1],
                       agent_id: streamAgentId,
-                      agentRole: streamAgentStyle.name || streamAgentName,
-                      agentName: `${streamAgentStyle.name || streamAgentName} (${selectedModel})`,
-                      agentImage: streamAgentStyle.image || '/images/default.png',
-                      statusMessage: modelStatus || n[n.length - 1].statusMessage
+                      agentRole: resolvedRole,
+                      agentName: `${resolvedRole} (${selectedModel})`,
+                      agentImage: resolvedImage,
+                      statusMessage: modelStatus || n[n.length - 1].statusMessage,
+                      routing_time_ms: streamRoutingTimeMs,
+                      load_duration_ms: streamLoadDurationMs,
+                      hardware_note: streamHardwareNote,
+                      metrics: {
+                        routing_time_ms: streamRoutingTimeMs,
+                        load_duration_ms: streamLoadDurationMs,
+                        tokens_per_second: streamTps,
+                        hardware_note: streamHardwareNote
+                      }
                     };
                   }
                   return { ...prev, [sessionId]: n };
                 });
               }
-              if (p.thinking) { hasThinking = true; fullThinking += p.thinking; }
+              if (p.thinking) {
+                hasThinking = true;
+                fullThinking += p.thinking;
+                if (!firstTokenTime) firstTokenTime = performance.now();
+                generatedTokenCount += Math.max(1, p.thinking.split(/\s+/).filter(Boolean).length);
+              }
               if (p.token) {
                 fullText += p.token;
+                if (!firstTokenTime) firstTokenTime = performance.now();
+                generatedTokenCount += Math.max(1, p.token.split(/\s+/).filter(Boolean).length);
                 // Read along as the answer is written — reasoning is on its own
                 // channel and never reaches this branch, so it is never spoken.
                 if (speakerEnabled) {
@@ -263,28 +323,83 @@ export function useChatStreaming({
                   pushSpeechStream(p.token);
                 }
               }
-              else if (p.response) { fullText += p.response; }
+              else if (p.response) {
+                fullText += p.response;
+                if (!firstTokenTime) firstTokenTime = performance.now();
+                generatedTokenCount += Math.max(1, p.response.split(/\s+/).filter(Boolean).length);
+              }
+
+              // Live TPS calculation
+              if (firstTokenTime && !streamTps) {
+                const elapsedSec = (performance.now() - firstTokenTime) / 1000;
+                if (elapsedSec > 0.4) {
+                  streamTps = parseFloat((generatedTokenCount / elapsedSec).toFixed(1));
+                }
+              }
+
               if (firstToken && continuationCount === 0) {
                 firstToken = false;
-                setSessionMessages(prev => ({
-                  ...prev,
-                  [sessionId]: [...(prev[sessionId] || []), {
-                    role: 'assistant',
-                    content: fullText,
-                    agent_id: streamAgentId,
-                    agentName: `${streamAgentStyle.name || streamAgentName || selectedModel} (${selectedModel})`,
-                    agentRole: streamAgentStyle.name || streamAgentName || activeManifesto?.name || '',
-                    agentImage: streamAgentStyle.image || activeManifesto?.image || '/images/default.png',
-                    timestamp: assistantTimestamp,
-                    streaming: true,
-                    thinking: hasThinking ? fullThinking : undefined,
-                    streamingThinking: hasThinking,
-                    created_files: streamCreatedFiles,
-                    actions_log: streamActionsLog,
-                    tool_calls: streamToolCalls,
-                    tool_approvals: streamToolApprovals
-                  }]
-                }));
+                const resolvedRole = streamAgentStyle?.name || streamAgentName || (activeManifesto?.name && activeManifesto?.name !== 'auto' ? activeManifesto.name : 'Sigma Assistant');
+                const resolvedImage = streamAgentStyle?.image || (activeManifesto?.image && activeManifesto?.image !== '/images/default.png' ? activeManifesto.image : '/images/default.png');
+                setSessionMessages(prev => {
+                  const n = [...(prev[sessionId] || [])];
+                  if (n.length > 0 && n[n.length - 1].role === 'assistant') {
+                    n[n.length - 1] = {
+                      ...n[n.length - 1],
+                      content: fullText,
+                      agent_id: streamAgentId,
+                      agentName: `${resolvedRole} (${selectedModel})`,
+                      agentRole: resolvedRole,
+                      agentImage: resolvedImage,
+                      timestamp: assistantTimestamp,
+                      streaming: true,
+                      thinking: hasThinking ? fullThinking : undefined,
+                      streamingThinking: hasThinking,
+                      created_files: streamCreatedFiles,
+                      actions_log: streamActionsLog,
+                      tool_calls: streamToolCalls,
+                      tool_approvals: streamToolApprovals,
+                      routing_time_ms: streamRoutingTimeMs,
+                      load_duration_ms: streamLoadDurationMs,
+                      tokens_per_second: streamTps,
+                      hardware_note: streamHardwareNote,
+                      metrics: {
+                        routing_time_ms: streamRoutingTimeMs,
+                        load_duration_ms: streamLoadDurationMs,
+                        tokens_per_second: streamTps,
+                        hardware_note: streamHardwareNote
+                      }
+                    };
+                  } else {
+                    n.push({
+                      role: 'assistant',
+                      content: fullText,
+                      agent_id: streamAgentId,
+                      agentName: `${resolvedRole} (${selectedModel})`,
+                      agentRole: resolvedRole,
+                      agentImage: resolvedImage,
+                      timestamp: assistantTimestamp,
+                      streaming: true,
+                      thinking: hasThinking ? fullThinking : undefined,
+                      streamingThinking: hasThinking,
+                      created_files: streamCreatedFiles,
+                      actions_log: streamActionsLog,
+                      tool_calls: streamToolCalls,
+                      tool_approvals: streamToolApprovals,
+                      routing_time_ms: streamRoutingTimeMs,
+                      load_duration_ms: streamLoadDurationMs,
+                      tokens_per_second: streamTps,
+                      hardware_note: streamHardwareNote,
+                      metrics: {
+                        routing_time_ms: streamRoutingTimeMs,
+                        load_duration_ms: streamLoadDurationMs,
+                        tokens_per_second: streamTps,
+                        hardware_note: streamHardwareNote
+                      }
+                    });
+                  }
+                  return { ...prev, [sessionId]: n };
+                });
               } else {
                 setSessionMessages(prev => {
                   const n = [...(prev[sessionId] || [])];
@@ -299,7 +414,17 @@ export function useChatStreaming({
                       created_files: streamCreatedFiles.length > 0 ? streamCreatedFiles : n[n.length - 1].created_files,
                       actions_log: streamActionsLog.length > 0 ? streamActionsLog : n[n.length - 1].actions_log,
                       tool_calls: streamToolCalls,
-                      tool_approvals: streamToolApprovals
+                      tool_approvals: streamToolApprovals,
+                      routing_time_ms: streamRoutingTimeMs || n[n.length - 1].routing_time_ms,
+                      load_duration_ms: streamLoadDurationMs || n[n.length - 1].load_duration_ms,
+                      tokens_per_second: streamTps || n[n.length - 1].tokens_per_second,
+                      hardware_note: streamHardwareNote || n[n.length - 1].hardware_note,
+                      metrics: {
+                        routing_time_ms: streamRoutingTimeMs || n[n.length - 1].routing_time_ms,
+                        load_duration_ms: streamLoadDurationMs || n[n.length - 1].load_duration_ms,
+                        tokens_per_second: streamTps || n[n.length - 1].tokens_per_second,
+                        hardware_note: streamHardwareNote || n[n.length - 1].hardware_note
+                      }
                     };
                   }
                   return { ...prev, [sessionId]: n };
@@ -367,6 +492,13 @@ export function useChatStreaming({
         }
       }
 
+      if (!streamTps && firstTokenTime) {
+        const elapsedSec = (performance.now() - firstTokenTime) / 1000;
+        if (elapsedSec > 0.2) {
+          streamTps = parseFloat((generatedTokenCount / elapsedSec).toFixed(1));
+        }
+      }
+
       setSessionMessages(prev => {
         const n = [...(prev[sessionId] || [])];
         if (n.length > 0 && n[n.length - 1].role === 'assistant') {
@@ -383,7 +515,13 @@ export function useChatStreaming({
             created_files: streamCreatedFiles.length > 0 ? streamCreatedFiles : n[n.length - 1].created_files,
             actions_log: streamActionsLog.length > 0 ? streamActionsLog : n[n.length - 1].actions_log,
             tool_calls: streamToolCalls,
-            tool_approvals: streamToolApprovals
+            tool_approvals: streamToolApprovals,
+            routing_time_ms: streamRoutingTimeMs || n[n.length - 1].routing_time_ms,
+            tokens_per_second: streamTps || n[n.length - 1].tokens_per_second,
+            metrics: {
+              routing_time_ms: streamRoutingTimeMs || n[n.length - 1].routing_time_ms,
+              tokens_per_second: streamTps || n[n.length - 1].tokens_per_second
+            }
           };
         }
         saveMessagesImmediately(sessionId, n);
@@ -422,9 +560,12 @@ export function useChatStreaming({
   const handleJsonResponse = async (res, sessionId, updatedMessages) => {
     try {
       const data = await res.json();
-      const routedAgentId = data.agent_id || data.manifesto_used;
-      const routedAgentName = data.agent_name || data.bot_name;
-      const style = getAgentStyle(routedAgentId);
+      const routedAgentId = data.agent_id || data.manifesto_used || 'sigma_assistant';
+      const routedStyle = getAgentStyle(routedAgentId);
+      const resolvedRole = data.agent_role || routedStyle?.name || data.agent_name || (routedAgentId ? routedAgentId.replace('_', ' ') : 'Sigma Assistant');
+      const resolvedImage = data.agent_image || routedStyle?.image || '/images/default.png';
+      const routingTimeMs = data.routing_time_ms ?? data.metrics?.routing_time_ms ?? null;
+      const tokensPerSecond = data.tokens_per_second ?? data.metrics?.tokens_per_second ?? null;
       const assistant = {
         role: 'assistant',
         content: cleanModelTags(data.response) || '⚠️ Nessuna risposta.',
@@ -437,9 +578,15 @@ export function useChatStreaming({
         timestamp: new Date().toISOString(),
         error: data.error || null,
         agent_id: routedAgentId,
-        agentName: `${style.name || routedAgentName || selectedModel} (${selectedModel})`,
-        agentRole: style.name || routedAgentName || activeManifesto?.name || 'AI',
-        agentImage: style.image || activeManifesto?.image || '/images/default.png'
+        agentName: `${resolvedRole} (${selectedModel})`,
+        agentRole: resolvedRole,
+        agentImage: resolvedImage,
+        routing_time_ms: routingTimeMs,
+        tokens_per_second: tokensPerSecond,
+        metrics: {
+          routing_time_ms: routingTimeMs,
+          tokens_per_second: tokensPerSecond
+        }
       };
       if (sessionRefs.activeSessionId.current === sessionId) {
         const finalMessages = [...updatedMessages, assistant];
@@ -496,7 +643,28 @@ export function useChatStreaming({
     const userMsg = { role: 'user', content: messageText.trim(), timestamp: new Date().toISOString(), attachments: attachedFiles.length > 0 ? [...attachedFiles] : undefined, agentName: selectedModel };
     const currentMsgs = sessionRefs.sessionMessages.current[currentSessionId] || [];
     const updatedMessages = [...currentMsgs, userMsg];
-    setMessagesForSession(currentSessionId, updatedMessages);
+    const isAuto = !selectedManifestoPath || selectedManifestoPath === 'auto';
+    const initialStatus = isAuto 
+      ? '🎯 Analisi semantica della richiesta e selezione agente...' 
+      : `🧠 Inizializzazione contesto per ${activeManifesto?.name || selectedModel}...`;
+
+    const placeholderRole = isAuto ? 'Sigma Assistant' : (activeManifesto?.name || 'Sigma Assistant');
+    const placeholderId = isAuto ? 'sigma_assistant' : (activeManifesto?.path?.replace('manifesti/', '')?.replace('.md', '') || 'sigma_assistant');
+    const placeholderImage = isAuto ? '/images/default.png' : (activeManifesto?.image || '/images/default.png');
+
+    const assistantPlaceholder = {
+      role: 'assistant',
+      content: '',
+      agent_id: placeholderId,
+      agentName: `${placeholderRole} (${selectedModel})`,
+      agentRole: placeholderRole,
+      agentImage: placeholderImage,
+      timestamp: new Date().toISOString(),
+      streaming: true,
+      statusMessage: initialStatus
+    };
+    const updatedMessagesWithPlaceholder = [...updatedMessages, assistantPlaceholder];
+    setMessagesForSession(currentSessionId, updatedMessagesWithPlaceholder);
     saveMessagesImmediately(currentSessionId, updatedMessages);
     const sessionName = sessionRefs.sessions.current.find(s => s.id === currentSessionId)?.name;
     if (sessionName && sessionName.startsWith('Chat ')) {

@@ -7,6 +7,7 @@ const MANIFESTO_STYLE = { position: 'relative', marginLeft: '6px' };
 export default function ChatHeader({
   isDragging, onStartDrag, selectedModel, availableModels, loadingModels,
   showModelDropdown, onToggleDropdown, onSelectModel, providerConfigs, modelBtnRef,
+  favoriteModel, favoriteModels, onSetFavoriteModel,
   activeManifesto, manifestos, showManifestoDropdown, setShowManifestoDropdown,
   onSelectManifesto, onDuplicateSession, onOpenQuickConfig, showQuickConfig,
   onOpenConfig, onClose, isPanel = false, contextStats, onCopyAll,
@@ -21,6 +22,10 @@ export default function ChatHeader({
       setTimeout(() => setCopiedAll(false), 2000);
     }
   };
+
+  const effectiveFavs = Array.isArray(favoriteModels) && favoriteModels.length > 0 
+    ? favoriteModels 
+    : (favoriteModel ? [favoriteModel] : []);
 
   return (
     <div 
@@ -53,6 +58,10 @@ export default function ChatHeader({
           providerConfigs={providerConfigs}
           onToggle={onToggleDropdown}
           onSelect={onSelectModel}
+          onOpenConfig={onOpenConfig}
+          favoriteModel={favoriteModel}
+          favoriteModels={effectiveFavs}
+          onSetFavorite={onSetFavoriteModel}
         />
         <div className="model-selector-wrapper" style={{ position: 'relative', marginLeft: '6px' }}>
           <button
@@ -67,15 +76,26 @@ export default function ChatHeader({
             </svg>
           </button>
           {showManifestoDropdown && (
-            <div className="model-selector-popover" style={{ left: '0', transform: 'none', minWidth: '180px' }}>
-              {manifestos.length === 0 && <div className="model-selector-option disabled">Nessun manifesto</div>}
+            <div className="model-selector-popover" style={{ left: '0', transform: 'none', minWidth: '220px', maxHeight: '320px', overflowY: 'auto' }}>
+              {manifestos.length === 0 && <div className="model-selector-option disabled">Nessun manifesto installato</div>}
               {manifestos.map(m => (
                 <div
                   key={m.path}
                   className={`model-selector-option ${activeManifesto.name === m.name ? 'selected' : ''}`}
                   onClick={(e) => { e.stopPropagation(); onSelectManifesto(m); }}
+                  style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', padding: '6px 10px', gap: '2px' }}
                 >
-                  📋 {m.name}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px', width: '100%', justifyContent: 'space-between' }}>
+                    <span style={{ fontWeight: 700, fontSize: '0.75rem' }}>
+                      📋 {m.name}
+                    </span>
+                    {activeManifesto.name === m.name && <span style={{ fontSize: '0.7rem', color: '#4ade80' }}>✓</span>}
+                  </div>
+                  {m.role && (
+                    <span style={{ fontSize: '0.65rem', color: 'var(--text-muted, #8b8fa3)', paddingLeft: '18px' }}>
+                      {m.role}
+                    </span>
+                  )}
                 </div>
               ))}
             </div>

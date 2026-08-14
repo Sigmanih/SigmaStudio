@@ -65,6 +65,9 @@ export default function ChatFloatingPanel({ openFiles, onClose, onOpenConfig, on
         onSelectModel={core.handleModelSelect}
         providerConfigs={core.providerConfigs}
         modelBtnRef={core.refs.modelBtn}
+        favoriteModel={core.favoriteModel}
+        favoriteModels={core.favoriteModels}
+        onSetFavoriteModel={core.handleSetFavoriteModel}
         activeManifesto={core.activeManifesto}
         manifestos={core.manifestos}
         showManifestoDropdown={core.showManifestoDropdown}

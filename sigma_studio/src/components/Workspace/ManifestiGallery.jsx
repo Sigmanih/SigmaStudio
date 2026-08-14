@@ -5,7 +5,8 @@ import {
   Search, Filter, Play, Edit3, Image as ImageIcon, Copy, Check, 
   ExternalLink, Sparkles, Terminal, Layers, Plus, X, ArrowRight,
   Info, RefreshCw, ChevronRight, Sliders, Box, Download, Globe,
-  Users, BookOpen, GraduationCap, Briefcase, HeartPulse, Scale, TrendingUp
+  Users, BookOpen, GraduationCap, Briefcase, HeartPulse, Scale, TrendingUp,
+  Trash2
 } from 'lucide-react';
 import { useApp } from '../../contexts/AppContext';
 
@@ -31,7 +32,8 @@ const ICON_MAP = {
   Briefcase,
   HeartPulse,
   Scale,
-  TrendingUp
+  TrendingUp,
+  Trash2
 };
 
 export default function ManifestiGallery({ 
@@ -58,6 +60,7 @@ export default function ManifestiGallery({
   const [hubCategory, setHubCategory] = useState('Tutti');
   const [hubSearchQuery, setHubSearchQuery] = useState('');
   const [installingId, setInstallingId] = useState(null);
+  const [uninstallingId, setUninstallingId] = useState(null);
   const [hubMessage, setHubMessage] = useState(null);
 
   // Custom Git / URL Import
@@ -225,6 +228,7 @@ export default function ManifestiGallery({
         setHubMessage({ type: 'success', text: data.message });
         await loadManifesti();
         await loadHubCatalog();
+        if (externalFetchManifesti) externalFetchManifesti();
       } else {
         setHubMessage({ type: 'error', text: data.error || 'Errore installazione' });
       }
@@ -232,6 +236,40 @@ export default function ManifestiGallery({
       setHubMessage({ type: 'error', text: 'Errore di connessione' });
     } finally {
       setInstallingId(null);
+    }
+  };
+
+  // Uninstall/delete an agent manifesto from the Kernel
+  const handleUninstallManifesto = async (manifesto) => {
+    const filename = manifesto.filename || (manifesto.path ? manifesto.path.split('/').pop() : `${manifesto.id}.md`);
+    if (filename === 'sigma_assistant.md' || manifesto.id === 'sigma_assistant') {
+      setHubMessage({ type: 'error', text: 'Sigma Assistant è l\'assistente predefinito del sistema e non può essere rimosso.' });
+      return;
+    }
+    if (!window.confirm(`Sei sicuro di voler disinstallare il ruolo '${manifesto.name || filename}' dal Kernel?`)) {
+      return;
+    }
+    setUninstallingId(manifesto.id || filename);
+    setHubMessage(null);
+    try {
+      const res = await fetch('/api/manifesti/uninstall', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ filename })
+      });
+      const data = await res.json();
+      if (data.success) {
+        setHubMessage({ type: 'success', text: data.message });
+        await loadManifesti();
+        await loadHubCatalog();
+        if (externalFetchManifesti) externalFetchManifesti();
+      } else {
+        setHubMessage({ type: 'error', text: data.error || 'Errore durante la disinstallazione' });
+      }
+    } catch (e) {
+      setHubMessage({ type: 'error', text: 'Errore di connessione' });
+    } finally {
+      setUninstallingId(null);
     }
   };
 
@@ -256,6 +294,7 @@ export default function ManifestiGallery({
         setCustomImportName('');
         await loadManifesti();
         await loadHubCatalog();
+        if (externalFetchManifesti) externalFetchManifesti();
       } else {
         setHubMessage({ type: 'error', text: data.error || 'Errore importazione' });
       }
@@ -776,7 +815,7 @@ Il tuo creatore è l'**Ing. Diego Saitta**, fondatore di Sigma Studio.
                       paddingTop: '8px',
                       gap: '6px'
                     }}>
-                      <div style={{ display: 'flex', gap: '5px' }}>
+                      <div style={{ display: 'flex', gap: '5px', alignItems: 'center' }}>
                         <button
                           onClick={() => setInspectManifesto(manifesto)}
                           style={{
@@ -804,6 +843,24 @@ Il tuo creatore è l'**Ing. Diego Saitta**, fondatore di Sigma Studio.
                         >
                           <Edit3 size={11} />
                         </button>
+
+                        {manifesto.filename !== 'sigma_assistant.md' && manifesto.id !== 'sigma_assistant' && (
+                          <button
+                            onClick={() => handleUninstallManifesto(manifesto)}
+                            disabled={uninstallingId === (manifesto.id || manifesto.filename)}
+                            style={{
+                              display: 'inline-flex', alignItems: 'center', gap: '3px',
+                              padding: '4px 7px', borderRadius: '6px',
+                              background: 'rgba(255, 80, 100, 0.1)',
+                              border: '1px solid rgba(255, 80, 100, 0.3)',
+                              color: isLight ? '#dc2626' : '#ff5064',
+                              fontSize: '0.68rem', fontWeight: 700, cursor: 'pointer'
+                            }}
+                            title="Disinstalla questo manifesto dal Kernel"
+                          >
+                            <Trash2 size={11} />
+                          </button>
+                        )}
                       </div>
 
                       <button
@@ -1069,14 +1126,45 @@ Il tuo creatore è l'**Ing. Diego Saitta**, fondatore di Sigma Studio.
                     <div style={{
                       display: 'flex', justifyContent: 'space-between', alignItems: 'center',
                       borderTop: isLight ? '1px solid rgba(190, 160, 110, 0.25)' : '1px solid rgba(255,255,255,0.06)',
-                      paddingTop: '8px'
+                      paddingTop: '8px',
+                      gap: '6px'
                     }}>
-                      <span style={{ fontSize: '0.66rem', color: textMuted, fontFamily: 'JetBrains Mono, monospace' }}>
-                        {item.filename}
-                      </span>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+                        <button
+                          onClick={() => setInspectManifesto(item)}
+                          style={{
+                            display: 'inline-flex', alignItems: 'center', gap: '4px',
+                            padding: '4px 7px', borderRadius: '6px',
+                            background: isLight ? '#fffdf9' : 'rgba(255, 255, 255, 0.05)',
+                            border: isLight ? '1px solid rgba(190, 160, 110, 0.4)' : '1px solid rgba(255, 255, 255, 0.15)',
+                            color: textPrimary, fontSize: '0.68rem', fontWeight: 700, cursor: 'pointer'
+                          }}
+                          title="Ispeziona Modelfile e prompt di sistema"
+                        >
+                          <ScrollText size={11} /> Modelfile
+                        </button>
+
+                        {item.installed && item.filename !== 'sigma_assistant.md' && item.id !== 'sigma_assistant' && (
+                          <button
+                            onClick={() => handleUninstallManifesto(item)}
+                            disabled={uninstallingId === (item.id || item.filename)}
+                            style={{
+                              display: 'inline-flex', alignItems: 'center', gap: '3px',
+                              padding: '4px 6px', borderRadius: '6px',
+                              background: 'rgba(255, 80, 100, 0.1)',
+                              border: '1px solid rgba(255, 80, 100, 0.3)',
+                              color: isLight ? '#dc2626' : '#ff5064',
+                              fontSize: '0.68rem', fontWeight: 700, cursor: 'pointer'
+                            }}
+                            title="Disinstalla questo manifesto dal Kernel"
+                          >
+                            <Trash2 size={11} />
+                          </button>
+                        )}
+                      </div>
 
                       {item.installed ? (
-                        <div style={{ display: 'flex', gap: '6px' }}>
+                        <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
                           <span style={{
                             display: 'inline-flex', alignItems: 'center', gap: '3px',
                             padding: '3px 8px', borderRadius: '6px',
@@ -1091,12 +1179,14 @@ Il tuo creatore è l'**Ing. Diego Saitta**, fondatore di Sigma Studio.
                           <button
                             onClick={() => handleLaunchChat(item)}
                             style={{
-                              padding: '3px 8px', borderRadius: '6px',
+                              display: 'inline-flex', alignItems: 'center', gap: '4px',
+                              padding: '3px 9px', borderRadius: '6px',
                               background: isLight ? '#ea580c' : '#00d2ff',
-                              border: 'none', color: '#fff', fontSize: '0.68rem', fontWeight: 800, cursor: 'pointer'
+                              border: 'none', color: '#fff', fontSize: '0.68rem', fontWeight: 800, cursor: 'pointer',
+                              boxShadow: isLight ? '0 2px 6px rgba(234, 88, 12, 0.2)' : '0 2px 6px rgba(0, 210, 255, 0.3)'
                             }}
                           >
-                            Chat
+                            <MessageSquare size={10} /> Chat
                           </button>
                         </div>
                       ) : (
@@ -1110,10 +1200,11 @@ Il tuo creatore è l'**Ing. Diego Saitta**, fondatore di Sigma Studio.
                               ? 'linear-gradient(135deg, #ea580c 0%, #d97706 100%)' 
                               : 'linear-gradient(135deg, #bc8cff 0%, #7c5bf0 100%)',
                             border: 'none', color: '#fff', fontSize: '0.72rem', fontWeight: 800,
-                            cursor: isInstalling ? 'not-allowed' : 'pointer'
+                            cursor: isInstalling ? 'not-allowed' : 'pointer',
+                            boxShadow: isLight ? '0 2px 8px rgba(234, 88, 12, 0.25)' : '0 2px 8px rgba(188, 140, 255, 0.3)'
                           }}
                         >
-                          <Download size={11} /> {isInstalling ? 'Install...' : 'Installa'}
+                          <Download size={11} /> {isInstalling ? 'Scaricamento...' : 'Scarica & Attiva'}
                         </button>
                       )}
                     </div>
@@ -1183,7 +1274,7 @@ Il tuo creatore è l'**Ing. Diego Saitta**, fondatore di Sigma Studio.
 
               <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
                 <button
-                  onClick={() => handleCopyModelfile(inspectManifesto.rawContent)}
+                  onClick={() => handleCopyModelfile(inspectManifesto.rawContent || inspectManifesto.content)}
                   style={{
                     display: 'flex',
                     alignItems: 'center',
@@ -1243,7 +1334,7 @@ Il tuo creatore è l'**Ing. Diego Saitta**, fondatore di Sigma Studio.
                 </div>
                 <div style={{ padding: '12px', borderRadius: '10px', background: innerCardBg, border: innerCardBorder }}>
                   <div style={{ fontSize: '0.68rem', color: textMuted, textTransform: 'uppercase', fontWeight: 700 }}>Top-P / Repeat Penalty</div>
-                  <div style={{ fontSize: '0.95rem', fontWeight: 800, color: isLight ? '#16a34a' : '#3fb950', marginTop: '2px' }}>{inspectManifesto.topP} / 1.1</div>
+                  <div style={{ fontSize: '0.95rem', fontWeight: 800, color: isLight ? '#16a34a' : '#3fb950', marginTop: '2px' }}>{inspectManifesto.topP || 0.85} / 1.1</div>
                 </div>
               </div>
 
@@ -1264,7 +1355,7 @@ Il tuo creatore è l'**Ing. Diego Saitta**, fondatore di Sigma Studio.
                   overflowX: 'auto',
                   whiteSpace: 'pre-wrap'
                 }}>
-                  {inspectManifesto.rawContent}
+                  {inspectManifesto.rawContent || inspectManifesto.content}
                 </pre>
               </div>
 
@@ -1278,24 +1369,52 @@ Il tuo creatore è l'**Ing. Diego Saitta**, fondatore di Sigma Studio.
               justifyContent: 'flex-end',
               gap: '12px'
             }}>
-              <button
-                onClick={() => {
-                  setInspectManifesto(null);
-                  handleEditManifesto(inspectManifesto);
-                }}
-                style={{
-                  padding: '8px 16px',
-                  borderRadius: '8px',
-                  background: isLight ? '#f4efe4' : 'rgba(255,255,255,0.08)',
-                  border: isLight ? '1px solid rgba(190, 160, 110, 0.4)' : '1px solid rgba(255,255,255,0.15)',
-                  color: textPrimary,
-                  fontSize: '0.85rem',
-                  fontWeight: 700,
-                  cursor: 'pointer'
-                }}
-              >
-                Modifica nel SigmaLab Editor
-              </button>
+              {!inspectManifesto.installed && inspectManifesto.id !== 'sigma_assistant' && (
+                <button
+                  onClick={async () => {
+                    await handleInstallFromHub(inspectManifesto);
+                    setInspectManifesto(null);
+                  }}
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                    padding: '8px 18px',
+                    borderRadius: '8px',
+                    background: isLight 
+                      ? 'linear-gradient(135deg, #ea580c 0%, #d97706 100%)' 
+                      : 'linear-gradient(135deg, #bc8cff 0%, #7c5bf0 100%)',
+                    border: 'none',
+                    color: '#fff',
+                    fontSize: '0.85rem',
+                    fontWeight: 800,
+                    cursor: 'pointer'
+                  }}
+                >
+                  <Download size={14} /> Scarica & Attiva nel Kernel
+                </button>
+              )}
+
+              {inspectManifesto.path && (
+                <button
+                  onClick={() => {
+                    setInspectManifesto(null);
+                    handleEditManifesto(inspectManifesto);
+                  }}
+                  style={{
+                    padding: '8px 16px',
+                    borderRadius: '8px',
+                    background: isLight ? '#f4efe4' : 'rgba(255,255,255,0.08)',
+                    border: isLight ? '1px solid rgba(190, 160, 110, 0.4)' : '1px solid rgba(255,255,255,0.15)',
+                    color: textPrimary,
+                    fontSize: '0.85rem',
+                    fontWeight: 700,
+                    cursor: 'pointer'
+                  }}
+                >
+                  Modifica nel SigmaLab Editor
+                </button>
+              )}
 
               <button
                 onClick={() => {

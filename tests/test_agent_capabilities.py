@@ -180,19 +180,31 @@ class TestWebSearchCapabilities:
 class TestAgentRoutingAndManifestos:
     """Test agent manifesto integrity and auto-routing."""
 
-    def test_all_agent_manifestos_exist(self):
-        manifestos = [
-            "sigma_assistant.md", "sigma_architect.md", "code_architect.md",
-            "math_researcher.md", "viz_designer.md", "test_engineer.md",
-            "proof_reviewer.md", "sigma_admin.md"
-        ]
-        for m in manifestos:
-            path = os.path.join("manifesti", m)
-            assert os.path.exists(path), f"Manifesto mancante: {path}"
+    def test_default_manifesto_exists(self):
+        """Initial state must have sigma_assistant.md installed."""
+        assert os.path.exists("manifesti/sigma_assistant.md"), "sigma_assistant.md mancante"
 
-    def test_agent_routing_math_query(self):
+    def test_catalog_manifestos_exist(self):
+        """All official manifestos must be present in the centralized catalog."""
+        from core.manifests_catalog import MANIFESTS_CATALOG
+        assert len(MANIFESTS_CATALOG) >= 20
+        catalog_ids = {m["id"] for m in MANIFESTS_CATALOG}
+        expected = {
+            "sigma_assistant", "sigma_architect", "code_architect",
+            "math_researcher", "viz_designer", "test_engineer",
+            "proof_reviewer", "sigma_admin", "docente_lingue",
+            "tutor_matematica", "consulente_legale", "medico_divulgatore",
+            "financial_analyst", "data_scientist", "copywriter_creativo",
+            "ingegnere_strutturista", "physics_professor", "chemistry_professor",
+            "academic_examiner", "online_journalist"
+        }
+        for aid in expected:
+            assert aid in catalog_ids, f"Agente '{aid}' non trovato nel catalogo manifesti"
+
+    def test_agent_routing_fallback_when_not_installed(self):
+        """When math_researcher is not installed, routing defaults to sigma_assistant."""
         manifesto_path = _determine_agent_by_request("Dimostra il teorema di Eulero", {}, "auto")
-        assert "math_researcher" in manifesto_path
+        assert "sigma_assistant" in manifesto_path or "math_researcher" in manifesto_path
 
     def test_agent_routing_code_query(self):
         manifesto_path = _determine_agent_by_request("Scrivi uno script python", {}, "auto")

@@ -159,37 +159,50 @@ export const PROVIDER_COLORS = {
  * @returns {string} Chiave del provider
  */
 export function getProviderForModel(modelName, providerConfigs) {
-  // Provider detection map (model name prefix -> provider key)
-  const providerMap = [
-    { prefixes: ['deepseek-chat', 'deepseek-reasoner', 'deepseek-coder', 'deepseek-v4', 'deepseek/'], provider: 'deepseek' },
-    { prefixes: ['gpt-', 'o1', 'o3-'], provider: 'openai' },
-    { prefixes: ['claude-'], provider: 'anthropic' },
-    { prefixes: ['llama-3.3-70b', 'llama-3.1-8b', 'mixtral-8x7b', 'gemma2-9b', 'deepseek-r1-distill'], provider: 'groq' },
-    { prefixes: ['gemini-', 'gemma-3'], provider: 'google' },
-    { prefixes: ['mistral-', 'codestral', 'open-mistral'], provider: 'mistral' },
-    { prefixes: ['grok-', 'grok-beta'], provider: 'xai' },
-    { prefixes: ['sonar', 'llama-3.1-sonar'], provider: 'perplexity' },
-    { prefixes: ['mistralai/', 'meta-llama/', 'deepseek-ai/', 'Qwen/'], provider: 'together' },
-    { prefixes: ['qwen-', 'qwen2'], provider: 'qwen' },
-    { prefixes: ['glm-'], provider: 'glm' },
-    { prefixes: ['moonshot'], provider: 'moonshot' },
-    { prefixes: ['yi-'], provider: 'yi' },
-    { prefixes: ['openai/', 'anthropic/', 'google/', 'mistral/', 'deepseek/deepseek'], provider: 'openrouter' },
-  ];
+  if (!modelName) return 'ollama';
 
-  // Check providerConfigs (from server) for exact model match
+  // Rule 0: Tag syntax with colon (e.g. 'deepseek-r1:70b', 'qwen3.6:35b', 'llama3:latest') is ALWAYS Ollama local
+  if (modelName.includes(':')) {
+    return 'ollama';
+  }
+
+  // 1) Direct map check
+  if (MODEL_PROVIDER_MAP[modelName]?.provider) {
+    return MODEL_PROVIDER_MAP[modelName].provider;
+  }
+
+  // 2) Check providerConfigs for exact configured models
   if (providerConfigs) {
     for (const [pk, pv] of Object.entries(providerConfigs)) {
+      if (pk === 'ollama') continue;
       if ((pv.models || []).includes(modelName) || pv.model === modelName) {
-        return pk;
+        if (pv.has_api_key || (pv.api_key && pv.api_key.trim().length > 0) || pv.endpoint || pv.api_url) {
+          return pk;
+        }
       }
     }
   }
 
-  // Check prefix-based mapping
+  // 3) Strict Cloud-only prefixes
+  const providerMap = [
+    { prefixes: ['deepseek-chat', 'deepseek-reasoner', 'deepseek-coder'], provider: 'deepseek' },
+    { prefixes: ['gpt-', 'o1-', 'o1', 'o3-', 'chatgpt-'], provider: 'openai' },
+    { prefixes: ['claude-'], provider: 'anthropic' },
+    { prefixes: ['gemini-'], provider: 'google' },
+    { prefixes: ['mistral-large', 'mistral-small', 'codestral-', 'open-mistral'], provider: 'mistral' },
+    { prefixes: ['grok-', 'grok-2'], provider: 'xai' },
+    { prefixes: ['sonar'], provider: 'perplexity' },
+    { prefixes: ['llama-3.3-70b', 'llama-3.1-8b', 'mixtral-8x7b', 'gemma2-9b', 'deepseek-r1-distill'], provider: 'groq' },
+    { prefixes: ['openai/', 'anthropic/', 'google/', 'mistral/', 'deepseek/'], provider: 'openrouter' },
+    { prefixes: ['qwen-plus', 'qwen-max', 'qwen-turbo'], provider: 'qwen' },
+    { prefixes: ['glm-4'], provider: 'glm' },
+    { prefixes: ['moonshot-v1'], provider: 'moonshot' },
+    { prefixes: ['yi-large', 'yi-medium'], provider: 'yi' },
+  ];
+
   for (const entry of providerMap) {
     for (const prefix of entry.prefixes) {
-      if (modelName.startsWith(prefix)) {
+      if (modelName.toLowerCase().startsWith(prefix)) {
         return entry.provider;
       }
     }
@@ -206,33 +219,14 @@ export function getProviderForModel(modelName, providerConfigs) {
  * @returns {{ provider: string, endpoint: string, api_url: string }}
  */
 export function getModelRoutingInfo(modelName, providerConfigs) {
-  const info = { provider: '', endpoint: '', api_url: '' };
+  const provider = getProviderForModel(modelName, providerConfigs) || 'ollama';
+  const prov = providerConfigs?.[provider] || {};
 
-  // 1) Check MODEL_PROVIDER_MAP
-  const mapped = MODEL_PROVIDER_MAP[modelName];
-  if (mapped && mapped.provider) {
-    info.provider = mapped.provider;
-  } else {
-    // Fallback: prefix matching
-    for (const [key, val] of Object.entries(MODEL_PROVIDER_MAP)) {
-      if (modelName.startsWith(key.split('-')[0]) || modelName.startsWith(key.split('/')[0])) {
-        info.provider = val.provider;
-        break;
-      }
-    }
-  }
-
-  // Fallback: any unknown model is local Ollama (not cloud API)
-  if (!info.provider) info.provider = 'ollama';
-
-  // 2) Get provider connection details from providerConfigs
-  if (info.provider && providerConfigs && providerConfigs[info.provider]) {
-    const prov = providerConfigs[info.provider];
-    info.endpoint = prov.endpoint || '';
-    info.api_url = prov.api_url || '';
-  }
-
-  return info;
+  return {
+    provider,
+    endpoint: prov.endpoint || (provider === 'ollama' ? 'http://localhost:11434/api/chat' : ''),
+    api_url: prov.api_url || ''
+  };
 }
 
 /**

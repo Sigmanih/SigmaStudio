@@ -1,5 +1,5 @@
 import React, { useEffect } from 'react';
-import { GripVertical, Sparkles, X, Calendar, Cpu, MessageSquare, Settings } from 'lucide-react';
+import { GripVertical, Sparkles, X, Calendar, Cpu, MessageSquare, Settings, Music } from 'lucide-react';
 
 // Sub-components
 import Sidebar from './components/Sidebar';
@@ -9,10 +9,12 @@ import AIConfig from './components/AIConfig';
 import ToastNotification from './components/ToastNotification';
 import TaskFloatingPanel from './components/TaskFloatingPanel';
 import HardwareFloatingPanel from './components/HardwareFloatingPanel';
+import MusicFloatingWidget from './components/Music/MusicFloatingWidget';
 import { ModuleModal, TaskModal, NewFileModal } from './components/modals';
 
 // Context
 import { AppProvider, useApp } from './contexts/AppContext';
+import { MusicProvider } from './context/MusicContext';
 
 // ==============================================================================
 // SIGMA STUDIO | State Orchestrator v7.0 — Floating UI Edition
@@ -55,6 +57,37 @@ function AppContent() {
     fileOps,
     moduleOps
   } = useApp();
+
+  const [isAudioInstalled, setIsAudioInstalled] = useState(() => {
+    try {
+      const saved = localStorage.getItem('sigma_modules_state');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (parsed.audio_studio !== undefined) return parsed.audio_studio === true;
+      }
+    } catch(e) {}
+    return true;
+  });
+
+  useEffect(() => {
+    const handleModulesUpdated = (e) => {
+      if (e.detail?.moduleId === 'audio_studio') {
+        setIsAudioInstalled(e.detail.installed);
+      }
+      try {
+        const saved = localStorage.getItem('sigma_modules_state');
+        if (saved) {
+          const parsed = JSON.parse(saved);
+          if (parsed.audio_studio !== undefined) {
+            setIsAudioInstalled(parsed.audio_studio === true);
+          }
+        }
+      } catch(err) {}
+    };
+
+    window.addEventListener('sigma_modules_updated', handleModulesUpdated);
+    return () => window.removeEventListener('sigma_modules_updated', handleModulesUpdated);
+  }, []);
 
   const [taskPanelOpen, setTaskPanelOpen] = React.useState(false);
   const [hardwarePanelOpen, setHardwarePanelOpen] = React.useState(false);
@@ -383,6 +416,16 @@ function AppContent() {
                   </div>
                   <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#ffb86c' }} />
                 </button>
+
+                {/* Item 5: Musica & Focus Lounge Quick Widget */}
+                {isAudioInstalled && (
+                  <div style={{ marginTop: '2px' }}>
+                    <MusicFloatingWidget onOpenTab={(tabObj, tabId) => {
+                      openTab(tabObj, tabId);
+                      setDockMinimized(true);
+                    }} />
+                  </div>
+                )}
               </div>
             </div>
           )}
@@ -516,7 +559,9 @@ function AppContent() {
 export default function App() {
   return (
     <AppProvider>
-      <AppContent />
+      <MusicProvider>
+        <AppContent />
+      </MusicProvider>
     </AppProvider>
   );
 }

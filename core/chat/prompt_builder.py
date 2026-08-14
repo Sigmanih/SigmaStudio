@@ -33,6 +33,48 @@ def _get_time_context() -> str:
     )
 
 
+import re
+
+
+def _extract_system_prompt_from_modelfile(raw_content: str) -> str:
+    """Extract clean system prompt instructions from a Modelfile text,
+    stripping Modelfile grammar (FROM, PARAMETER, TEMPLATE, metadata comments).
+    """
+    if not raw_content or not isinstance(raw_content, str):
+        return ""
+
+    # 1. If SYSTEM """...""" or SYSTEM '''...''' block exists, extract its content
+    sys_match = re.search(r'SYSTEM\s+(?:"""|\'\'\')(.*?)(?:"""|\'\'\')', raw_content, re.DOTALL)
+    if sys_match:
+        return sys_match.group(1).strip()
+
+    # 2. If SYSTEM "..." exists (single line or single quote)
+    sys_match_single = re.search(r'SYSTEM\s+"(.*?)"', raw_content, re.DOTALL)
+    if sys_match_single:
+        return sys_match_single.group(1).strip()
+
+    # 3. Otherwise strip Modelfile directives (FROM, PARAMETER, TEMPLATE, metadata comments)
+    clean_lines = []
+    in_template = False
+    for line in raw_content.splitlines():
+        line_s = line.strip()
+        if line_s.startswith("TEMPLATE "):
+            in_template = True
+            continue
+        if in_template:
+            if '"""' in line_s or "'''" in line_s:
+                in_template = False
+            continue
+        if line_s.startswith((
+            "FROM ", "PARAMETER ", "# Role:", "# Category:", "# DomainColor:",
+            "# Icon:", "# Capabilities:", "# OutputArtifacts:", "# McpTools:"
+        )):
+            continue
+        clean_lines.append(line)
+
+    return "\n".join(clean_lines).strip()
+
+
 def _build_agent_identity_header(user_name: str = None, user_title: str = None) -> str:
     """Build the universal platform identity and user recognition header for all AI agents."""
     name_str = user_name.strip() if (user_name and isinstance(user_name, str) and user_name.strip()) else "l'Utente"
@@ -43,28 +85,49 @@ def _build_agent_identity_header(user_name: str = None, user_title: str = None) 
 - Sei un agente AI integrato residente in **Sigma Studio**, la tua piattaforma di ricerca, studio e laboratorio tecnologico dove risiedi, studi e lavori felicemente.
 - Stai collaborando in tempo reale con il tuo utente e sviluppatore: **{name_str}**.
 - Riconosci **{name_str}** e rivolgiti a **{name_str}** in modo collaborativo, cordiale e professionale.
+- Rispondi SEMPRE in lingua italiana in modo fluido, naturale, rigoroso ed esaustivo, senza emettere monologhi interni in inglese o frammenti di configurazione tecnica.
 - Ogni frase o cortesia finale di chiusura (es. "Fammi sapere se desideri altre modifiche su Sigma Studio!") DEVE ESSERE SCRITTA ESPLICITAMENTE nel testo del messaggio finale in chat, affinché la versione visualizzata e quella parlata siano identiche al 100%.
 """
 
 
 def _get_manifesto_content(manifesto_path: str) -> str:
-    """Read and return the content of a manifesto Modelfile.
+    """Read and return the clean system prompt of a manifesto Modelfile.
 
     Args:
-        manifesto_path: Relative or absolute path to the ``.md`` manifesto.
+        manifesto_path: Relative or absolute path or identifier of the ``.md`` manifesto.
 
     Returns:
-        File content string, or empty string if the file cannot be read.
+        Clean system prompt string, or empty string if not found.
     """
     if not manifesto_path:
         return ""
+
+    raw_text = ""
     try:
         if os.path.exists(manifesto_path):
             with open(manifesto_path, "r", encoding="utf-8") as fh:
-                return fh.read()
+                raw_text = fh.read()
+        else:
+            # Try looking inside manifesti/ directory
+            alt_path = os.path.join("manifesti", os.path.basename(manifesto_path))
+            if os.path.exists(alt_path):
+                with open(alt_path, "r", encoding="utf-8") as fh:
+                    raw_text = fh.read()
     except OSError as exc:
         log.warning("Cannot read manifesto %s: %s", manifesto_path, exc)
-    return ""
+
+    # Fallback to centralized catalog if file not on disk
+    if not raw_text:
+        try:
+            from core.manifests_catalog import get_manifesto_by_id_or_filename
+            clean_id = os.path.basename(manifesto_path).replace(".md", "")
+            cat_entry = get_manifesto_by_id_or_filename(clean_id)
+            if cat_entry:
+                raw_text = cat_entry.get("content", "")
+        except Exception as exc:
+            log.debug("Catalog fallback for %s failed: %s", manifesto_path, exc)
+
+    return _extract_system_prompt_from_modelfile(raw_text)
 
 
 def _resolve_manifesto_for_model(model_name: str) -> str:

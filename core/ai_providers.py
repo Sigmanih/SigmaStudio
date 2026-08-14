@@ -401,37 +401,43 @@ def resolve_provider_config(ai_cfg_or_model, model_name: str = None):
         model_name = (ai_cfg or {}).get("active_model", "llama3.2")
 
     providers = (ai_cfg or {}).get("providers", {})
-    best_match = None
 
+    # Rule 0: Any model with a tag/colon (e.g. 'deepseek-r1:70b', 'qwen3.6:35b', 'llama3.2:latest') is an Ollama local model
+    if ":" in model_name:
+        return "ollama", providers.get("ollama", {})
+
+    # Rule 1: Exact model match in provider's configured models list
+    for pk, pv in providers.items():
+        if pk == "ollama":
+            continue
+        configured_models = pv.get("models", [])
+        if model_name in configured_models or pv.get("model") == model_name:
+            if pv.get("api_key", "").strip() or pv.get("endpoint") or pv.get("api_url"):
+                return pk, pv
+
+    # Rule 2: Strict Cloud-only prefix matching (prevent false positives on local models)
     cloud_prefixes = {
-        'deepseek': 'deepseek-',
-        'gpt-': 'openai',
-        'o1': 'openai',
-        'o3-': 'openai',
-        'claude-': 'anthropic',
-        'llama-3.3': 'groq',
-        'llama-3.1-8b': 'groq',
-        'mixtral-8x7b': 'groq',
-        'gemma2-9b': 'groq',
-        'deepseek-r1-distill': 'groq',
-        'deepseek': 'deepseek',
-        'gemini': 'google',
-        'mistral': 'mistral',
-        'codestral': 'mistral',
-        'grok': 'xai',
-        'sonar': 'perplexity',
-        'qwen-': 'qwen',
-        'glm-': 'glm',
-        'moonshot': 'moonshot',
-        'yi-': 'yi',
+        'openai': ('gpt-', 'o1-', 'o1', 'o3-', 'chatgpt-'),
+        'anthropic': ('claude-',),
+        'google': ('gemini-',),
+        'deepseek': ('deepseek-chat', 'deepseek-reasoner', 'deepseek-coder'),
+        'xai': ('grok-', 'grok-2', 'grok-beta'),
+        'perplexity': ('sonar',),
+        'mistral': ('mistral-large', 'mistral-small', 'codestral-', 'open-mistral'),
+        'groq': ('llama-3.3-70b', 'llama-3.1-8b', 'mixtral-8x7b', 'gemma2-9b', 'deepseek-r1-distill'),
+        'openrouter': ('openai/', 'anthropic/', 'google/', 'meta-llama/', 'mistralai/', 'deepseek/'),
+        'qwen': ('qwen-plus', 'qwen-max', 'qwen-turbo'),
+        'glm': ('glm-4',),
+        'moonshot': ('moonshot-v1',),
+        'yi': ('yi-large', 'yi-medium'),
     }
-    for prefix, pk in cloud_prefixes.items():
-        if model_name.lower().startswith(prefix):
+    for pk, prefixes in cloud_prefixes.items():
+        if any(model_name.lower().startswith(pfx) for pfx in prefixes):
             pv = providers.get(pk, {})
             if pv.get("api_key", "").strip():
                 return pk, pv
 
-    # Rule 4: Fallback to Ollama local
+    # Rule 3: Fallback to Ollama local
     return "ollama", providers.get("ollama", {})
 
 
@@ -658,7 +664,23 @@ def call_ollama_stream(
                     yield result
                 if data.get("done", False):
                     done_reason = data.get("done_reason", "stop")
-                    yield {"done": True, "done_reason": done_reason, "truncated": done_reason == "length"}
+                    eval_count = data.get("eval_count")
+                    eval_duration = data.get("eval_duration")
+                    load_duration = data.get("load_duration")
+                    prompt_eval_duration = data.get("prompt_eval_duration")
+                    tps = None
+                    if eval_count and eval_duration and eval_duration > 0:
+                        tps = round(eval_count / (eval_duration / 1e9), 1)
+                    yield {
+                        "done": True,
+                        "done_reason": done_reason,
+                        "truncated": done_reason == "length",
+                        "eval_count": eval_count,
+                        "eval_duration": eval_duration,
+                        "load_duration": load_duration,
+                        "prompt_eval_duration": prompt_eval_duration,
+                        "tokens_per_second": tps
+                    }
                     break
             except json.JSONDecodeError:
                 continue

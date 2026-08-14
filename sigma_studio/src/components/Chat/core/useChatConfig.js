@@ -2,7 +2,34 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { saveLastModel } from '../chatStorage';
 
 export function useChatConfig({ saveSessionsState, sessionRefs }) {
-  const [selectedModel, setSelectedModel] = useState('');
+  const [favoriteModels, setFavoriteModels] = useState(() => {
+    try {
+      const stored = localStorage.getItem('sigma_favorite_models');
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      }
+      const single = localStorage.getItem('sigma_favorite_model');
+      if (single) return [single];
+      return [];
+    } catch (e) {
+      return [];
+    }
+  });
+
+  const favoriteModel = favoriteModels[0] || '';
+  const [selectedModel, setSelectedModel] = useState(() => {
+    try {
+      const stored = localStorage.getItem('sigma_favorite_models');
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed[0];
+      }
+      return localStorage.getItem('sigma_favorite_model') || '';
+    } catch (e) {
+      return '';
+    }
+  });
   const [configModel, setConfigModel] = useState('llama3.2');
   const [configProvider, setConfigProvider] = useState('ollama');
   const [availableModels, setAvailableModels] = useState([]);
@@ -79,7 +106,33 @@ export function useChatConfig({ saveSessionsState, sessionRefs }) {
       if (d.success) {
         const provs = d.config?.providers || {};
         setProviderConfigs(provs);
-        if (d.config?.model) { setSelectedModel(d.config.model); setConfigModel(d.config.model); }
+        let favs = [];
+        try {
+          const stored = localStorage.getItem('sigma_favorite_models');
+          if (stored) {
+            const parsed = JSON.parse(stored);
+            if (Array.isArray(parsed) && parsed.length > 0) favs = parsed;
+          }
+          if (favs.length === 0) {
+            const single = localStorage.getItem('sigma_favorite_model');
+            if (single) favs = [single];
+          }
+        } catch (e) {}
+
+        if (favs.length === 0 && d.config?.favorite_models && Array.isArray(d.config.favorite_models) && d.config.favorite_models.length > 0) {
+          favs = d.config.favorite_models;
+        } else if (favs.length === 0 && d.config?.favorite_model) {
+          favs = [d.config.favorite_model];
+        }
+
+        if (favs.length > 0) {
+          setFavoriteModels(favs);
+          setSelectedModel(prev => prev || favs[0]);
+          setConfigModel(favs[0]);
+        } else if (d.config?.model) {
+          setSelectedModel(prev => prev || d.config.model);
+          setConfigModel(d.config.model);
+        }
         if (d.config?.provider) setConfigProvider(d.config.provider);
         if (d.config?.manifesto && !refs.manifestoManuallySelected.current) {
           const m = d.config.manifesto;
@@ -91,8 +144,9 @@ export function useChatConfig({ saveSessionsState, sessionRefs }) {
       }
     } catch (e) {
       // Fallback defaults if config fetch fails
-      setSelectedModel('llama3.2');
-      setConfigModel('llama3.2');
+      const fallback = 'llama3.2';
+      setSelectedModel(prev => prev || fallback);
+      setConfigModel(fallback);
       setConfigProvider('ollama');
       await fetchOllamaModels();
     }
@@ -104,6 +158,11 @@ export function useChatConfig({ saveSessionsState, sessionRefs }) {
       const d = await r.json();
       if (d.success) {
         if (d.config?.providers) setProviderConfigs(d.config.providers);
+        if (d.config?.favorite_models && Array.isArray(d.config.favorite_models)) {
+          setFavoriteModels(d.config.favorite_models);
+        } else if (d.config?.favorite_model) {
+          setFavoriteModels([d.config.favorite_model]);
+        }
         if (d.config?.model) setConfigModel(d.config.model);
         if (d.config?.provider) setConfigProvider(d.config.provider);
         setQuickConfig(prev => ({
@@ -129,15 +188,18 @@ export function useChatConfig({ saveSessionsState, sessionRefs }) {
     try {
       const res = await fetch('/api/list_manifesti');
       const data = await res.json();
-      if (data.success && data.files) {
-        const loaded = data.files.map(f => ({
+      const files = data.manifesti || data.files || [];
+      if (data.success && files) {
+        const loaded = files.map(f => ({
           path: f.path,
-          name: f.name.replace('.md', ''),
+          name: f.name || f.filename?.replace('.md', ''),
           filename: f.filename,
-          image: f.image || '/images/default.png'
+          image: f.image || '/images/default.png',
+          role: f.role || '',
+          domainColor: f.domainColor || '#00d2ff'
         }));
         setManifestos([
-          { path: 'auto', name: 'auto', filename: 'auto.md', image: '/images/default.png' },
+          { path: 'auto', name: 'auto', filename: 'auto.md', image: '/images/default.png', role: 'Centralino Automatico' },
           ...loaded
         ]);
       }
@@ -154,6 +216,47 @@ export function useChatConfig({ saveSessionsState, sessionRefs }) {
         body: JSON.stringify(updated)
       });
     } catch (e) {}
+  };
+
+  const handleToggleFavoriteModel = (modelName) => {
+    if (!modelName) return;
+    setFavoriteModels(prev => {
+      let newFavs = [];
+      if (prev.includes(modelName)) {
+        newFavs = prev.filter(m => m !== modelName);
+      } else {
+        newFavs = [...prev, modelName];
+      }
+      try {
+        localStorage.setItem('sigma_favorite_models', JSON.stringify(newFavs));
+        if (newFavs.length > 0) {
+          localStorage.setItem('sigma_favorite_model', newFavs[0]);
+        } else {
+          localStorage.removeItem('sigma_favorite_model');
+        }
+      } catch (e) {}
+
+      (async () => {
+        try {
+          const r = await fetch('/api/config');
+          const d = await r.json();
+          if (d.success && d.config) {
+            await fetch('/api/config', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                ...d.config,
+                favorite_models: newFavs,
+                favorite_model: newFavs[0] || '',
+                model: selectedModel || newFavs[0] || d.config.model
+              })
+            });
+          }
+        } catch (e) {}
+      })();
+
+      return newFavs;
+    });
   };
 
   const handleModelSelect = async (name) => {
@@ -189,6 +292,11 @@ export function useChatConfig({ saveSessionsState, sessionRefs }) {
   }, [fetchConfigAndModels]);
 
   return {
+    favoriteModel,
+    favoriteModels,
+    setFavoriteModels,
+    handleSetFavoriteModel: handleToggleFavoriteModel,
+    handleToggleFavoriteModel,
     selectedModel,
     setSelectedModel,
     configModel,

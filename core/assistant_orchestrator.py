@@ -51,8 +51,16 @@ def handle_switch_agent(self, agent_name: str, message: str, history: list, bot_
     routable = get_routable_agents()
     manifesto_path = routable.get(agent_name) or routable.get(agent_name.lower().replace(' ', '_'))
     if not manifesto_path:
+        from core.manifests_catalog import get_manifesto_by_id_or_filename
+        catalog_entry = get_manifesto_by_id_or_filename(agent_name)
+        if catalog_entry:
+            return {
+                "response": f"L'agente specializzato **{catalog_entry['name']}** (`{catalog_entry['role']}`) non è ancora installato in locale. Puoi scaricarlo e attivarlo con 1 click dalla tab **Galleria Manifesti (Hub Professioni)**!",
+                "thinking": None,
+                "actions_log": []
+            }
         return {
-            "response": f"Agente '{agent_name}' non trovato. Agenti disponibili: {', '.join(routable.keys())}",
+            "response": f"Agente '{agent_name}' non trovato. Agenti attualmente installati nel Kernel: {', '.join(routable.keys())}",
             "thinking": None,
             "actions_log": []
         }

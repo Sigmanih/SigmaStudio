@@ -106,6 +106,8 @@ def register_get_handlers(handler_class):
         '/api/apps': 'handle_apps_status',
         '/api/marketplace/modules': 'handle_marketplace_modules',
         '/api/manifesti/hub': 'handle_manifesti_hub',
+        '/api/modules/audio_studio/status': 'handle_audio_studio_status',
+        '/api/modules/audio_studio/stations': 'handle_audio_studio_stations',
     }
 
 
@@ -240,8 +242,10 @@ def register_post_handlers(handler_class):
         '/api/apps/launch': 'handle_apps_launch',
         '/api/apps/autoconfigure': 'handle_apps_autoconfigure',
         '/api/marketplace/install': 'handle_marketplace_install',
+        '/api/marketplace/uninstall': 'handle_marketplace_uninstall',
         '/api/marketplace/rebuild': 'handle_marketplace_rebuild',
         '/api/manifesti/install_from_hub': 'handle_manifesti_install_from_hub',
+        '/api/manifesti/uninstall': 'handle_manifesti_uninstall',
         '/api/creative/workflows/save': 'handle_creative_workflow_save',
         '/api/creative/workflows/delete': 'handle_creative_workflow_delete',
     }

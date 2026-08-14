@@ -140,33 +140,78 @@ function escapeHtml(text) {
 }
 
 /**
- * Extract YouTube video IDs from text or URLs.
+ * Extract YouTube video metadata (id and title) from text or markdown links.
  */
-function extractYouTubeVideoIds(text) {
+function extractYouTubeVideos(text) {
   if (!text || typeof text !== 'string') return [];
-  const regex = /(?:https?:\/\/)?(?:www\.)?(?:youtube\.com\/(?:watch\?v=|embed\/)|youtu\.be\/)([a-zA-Z0-9_-]{11})/gi;
-  const ids = [];
-  let match;
-  while ((match = regex.exec(text)) !== null) {
-    if (match[1] && !ids.includes(match[1])) {
-      ids.push(match[1]);
+  const results = [];
+  const seen = new Set();
+
+  // 1. Markdown link format: [Title](https://www.youtube.com/watch?v=ID)
+  const mdRegex = /\[([^\]]+)\]\((?:https?:\/\/)?(?:www\.)?(?:youtube\.com\/(?:watch\?v=|embed\/)|youtu\.be\/)([a-zA-Z0-9_-]{11})[^\)]*\)/gi;
+  let mdMatch;
+  while ((mdMatch = mdRegex.exec(text)) !== null) {
+    const title = mdMatch[1].trim();
+    const id = mdMatch[2];
+    if (id && !seen.has(id)) {
+      seen.add(id);
+      results.push({ id, title: title || 'Video YouTube' });
     }
   }
-  return ids;
+
+  // 2. Direct URLs or embedded IDs
+  const rawRegex = /(?:https?:\/\/)?(?:www\.)?(?:youtube\.com\/(?:watch\?v=|embed\/)|youtu\.be\/)([a-zA-Z0-9_-]{11})/gi;
+  let rawMatch;
+  while ((rawMatch = rawRegex.exec(text)) !== null) {
+    const id = rawMatch[1];
+    if (id && !seen.has(id)) {
+      seen.add(id);
+      results.push({ id, title: 'Video YouTube' });
+    }
+  }
+
+  return results;
+}
+
+function escapeAttr(str) {
+  if (!str) return '';
+  return String(str).replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 }
 
 /**
- * Generate YouTube responsive video preview HTML block for a list of video IDs.
+ * Generate YouTube responsive video preview HTML block for a list of video objects or IDs.
  */
-function generateYouTubePreviewsHtml(videoIds) {
-  if (!videoIds || videoIds.length === 0) return '';
+function generateYouTubePreviewsHtml(videoList) {
+  if (!videoList || videoList.length === 0) return '';
   
-  const cards = videoIds.map(id => `
-<div class="youtube-preview-card" style="margin: 14px 0; border-radius: 10px; overflow: hidden; background: #090a0f; border: 1px solid rgba(0, 210, 255, 0.3); max-width: 560px; box-shadow: 0 6px 20px rgba(0,0,0,0.45); transition: transform 0.2s ease, border-color 0.2s ease;">
+  const cards = videoList.map(v => {
+    const id = typeof v === 'string' ? v : v.id;
+    const title = (typeof v === 'object' && v.title) ? v.title : 'Video Musicale YouTube';
+    const escapedTitle = escapeAttr(title);
+
+    return `
+<div class="youtube-preview-card" style="margin: 12px 0 6px 0; border-radius: 12px; overflow: hidden; background: #0c0e17; border: 1px solid rgba(0, 210, 255, 0.25); max-width: 620px; box-shadow: 0 8px 24px rgba(0,0,0,0.5); transition: transform 0.2s ease, border-color 0.2s ease;">
+  <div style="padding: 10px 14px; background: rgba(14, 17, 28, 0.95); border-bottom: 1px solid rgba(255, 255, 255, 0.06); display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap;">
+    <div style="display: flex; align-items: center; gap: 8px; overflow: hidden; min-width: 140px; flex: 1;">
+      <span style="display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; border-radius: 50%; background: #ff0000; color: #fff; font-size: 0.65rem; flex-shrink: 0; box-shadow: 0 0 10px rgba(255, 0, 0, 0.5);">▶</span>
+      <span style="font-size: 0.82rem; font-weight: 700; color: #f1f5f9; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="${escapedTitle}">${escapedTitle}</span>
+    </div>
+    
+    <div style="display: flex; align-items: center; gap: 6px; flex-shrink: 0;">
+      <button class="chat-yt-fav-btn" data-yt-id="${id}" data-yt-title="${escapedTitle}" title="Salva nei Preferiti di Sigma Radio" style="display: inline-flex; align-items: center; gap: 4px; padding: 4px 9px; border-radius: 6px; background: rgba(239, 68, 68, 0.15); border: 1px solid rgba(239, 68, 68, 0.35); color: #ef4444; font-size: 0.72rem; font-weight: 700; cursor: pointer; transition: all 0.15s ease;">
+        ❤️ Preferiti
+      </button>
+      <button class="chat-yt-play-radio-btn" data-yt-id="${id}" data-yt-title="${escapedTitle}" title="Ascolta in background su Sigma Radio" style="display: inline-flex; align-items: center; gap: 4px; padding: 4px 9px; border-radius: 6px; background: rgba(0, 242, 254, 0.15); border: 1px solid rgba(0, 242, 254, 0.35); color: #00f2fe; font-size: 0.72rem; font-weight: 700; cursor: pointer; transition: all 0.15s ease;">
+        ▶ Riproduci
+      </button>
+      <a href="https://www.youtube.com/watch?v=${id}" target="_blank" rel="noopener noreferrer" class="chat-external-link" style="font-size: 0.72rem; color: #94a3b8; text-decoration: none; font-weight: 600; padding: 4px 8px; border-radius: 6px; background: rgba(255, 255, 255, 0.06); border: 1px solid rgba(255, 255, 255, 0.1);">YouTube ↗</a>
+    </div>
+  </div>
   <div style="position: relative; padding-bottom: 56.25%; height: 0; overflow: hidden; background: #000;">
     <iframe
       src="https://www.youtube-nocookie.com/embed/${id}?rel=0&modestbranding=1"
-      title="YouTube Video Preview"
+      title="${escapedTitle}"
+      loading="lazy"
       frameborder="0"
       allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share; compute-pressure"
       referrerpolicy="strict-origin-when-cross-origin"
@@ -174,14 +219,11 @@ function generateYouTubePreviewsHtml(videoIds) {
       style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; border: 0;"
     ></iframe>
   </div>
-  <div style="padding: 8px 12px; font-size: 0.78rem; color: #8b8fa3; display: flex; align-items: center; justify-content: space-between; background: #0e1016; border-top: 1px solid #1e2030;">
-    <span style="display: flex; align-items: center; gap: 6px; font-weight: 600; color: #e2e8f0;"><span style="color: #ff0000; font-size: 0.9rem;">▶</span> Anteprima Video YouTube</span>
-    <a href="https://www.youtube.com/watch?v=${id}" target="_blank" rel="noopener noreferrer" class="chat-external-link" style="color: #00d2ff; text-decoration: none; font-weight: 600;">Apri su YouTube ↗</a>
-  </div>
 </div>
-`).join('');
+`;
+  }).join('');
 
-  return `<div class="youtube-preview-container" style="display: flex; flex-direction: column; gap: 10px; margin-top: 10px;">${cards}</div>`;
+  return `<div class="youtube-preview-container" style="display: flex; flex-direction: column; gap: 12px; margin-top: 12px;">${cards}</div>`;
 }
 
 /**
@@ -491,9 +533,9 @@ export function renderMarkdownLatex(text) {
     processed = linkifyPaths(processed);
 
     // Step 8: Extract YouTube videos and append responsive video previews
-    const ytVideoIds = extractYouTubeVideoIds(text);
-    if (ytVideoIds.length > 0) {
-      processed += generateYouTubePreviewsHtml(ytVideoIds);
+    const ytVideos = extractYouTubeVideos(text);
+    if (ytVideos.length > 0) {
+      processed += generateYouTubePreviewsHtml(ytVideos);
     }
 
     return processed;

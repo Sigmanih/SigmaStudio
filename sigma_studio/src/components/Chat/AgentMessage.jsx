@@ -4,6 +4,7 @@ import { renderMarkdownLatex } from '../../utils/markdownLatex';
 import McpToolStrip from './McpToolStrip';
 import ImageLightbox from './ImageLightbox';
 import { useApp } from '../../contexts/AppContext';
+import { useMusic } from '../../context/MusicContext';
 import 'katex/dist/katex.min.css';
 
 // Helper: check if a file path is an image
@@ -252,6 +253,64 @@ export default function AgentMessage({
     setLightboxSrc(imgUrl);
   };
 
+  const musicCtx = useMusic ? useMusic() : null;
+  const saveYouTubeFavorite = musicCtx?.saveYouTubeFavorite;
+  const addCustomTrack = musicCtx?.addCustomTrack;
+  const userCategories = musicCtx?.userCategories || [];
+  const createUserCategory = musicCtx?.createUserCategory;
+
+  const [categoryPickerTarget, setCategoryPickerTarget] = useState(null);
+  const [newCatInlineName, setNewCatInlineName] = useState('');
+
+  const handleMemoizedContentClick = (e) => {
+    // 1. File links
+    const link = e.target.closest('.chat-file-link');
+    if (link) {
+      e.preventDefault();
+      const path = link.getAttribute('data-path') || link.dataset.path;
+      handleFileClick(path);
+      return;
+    }
+
+    // 2. YouTube Favorite Button
+    const favBtn = e.target.closest('.chat-yt-fav-btn');
+    if (favBtn) {
+      e.preventDefault();
+      e.stopPropagation();
+      const ytId = favBtn.getAttribute('data-yt-id') || favBtn.dataset.ytId;
+      const ytTitle = favBtn.getAttribute('data-yt-title') || favBtn.dataset.ytTitle || 'Video Musicale';
+      setCategoryPickerTarget({
+        id: ytId,
+        title: ytTitle,
+        btnEl: favBtn
+      });
+      return;
+    }
+
+    // 3. YouTube Play in Background Button
+    const playRadioBtn = e.target.closest('.chat-yt-play-radio-btn');
+    if (playRadioBtn) {
+      e.preventDefault();
+      e.stopPropagation();
+      const ytId = playRadioBtn.getAttribute('data-yt-id') || playRadioBtn.dataset.ytId;
+      const ytTitle = playRadioBtn.getAttribute('data-yt-title') || playRadioBtn.dataset.ytTitle || 'Video Musicale';
+      if (addCustomTrack) {
+        addCustomTrack({
+          id: `yt-${ytId}`,
+          youtubeId: ytId,
+          title: ytTitle,
+          engine: 'youtube',
+          url: `https://www.youtube.com/watch?v=${ytId}`
+        });
+        playRadioBtn.innerHTML = '▶ In Riproduzione';
+        playRadioBtn.style.background = 'rgba(0, 242, 254, 0.4)';
+        playRadioBtn.style.borderColor = '#00f2fe';
+        playRadioBtn.style.color = '#ffffff';
+      }
+      return;
+    }
+  };
+
   const messages = groupedMessages || (msg ? [msg] : []);
   if (messages.length === 0) return null;
 
@@ -294,11 +353,13 @@ export default function AgentMessage({
     ? (userProfile.avatar || '/images/default.png')
     : (agentId ? agentStyle.image : (first.agentImage || '/images/default.png'));
   const avatarBg = isUser ? 'rgba(0, 210, 255, 0.5)' : (agentId ? agentStyle.bg : 'var(--primary)');
+  const rawRole = first.agentRole || first.agent_name || (agentId && agentId !== 'auto' ? agentId.replace('_', ' ') : 'Sigma Assistant');
   const roleName = isUser
     ? (userProfile.name || 'Tu')
-    : (agentId ? (first.agentRole || first.agent_name || agentId) : (first.agentRole || 'AI'));
+    : ((rawRole && rawRole.toLowerCase() !== 'auto') ? rawRole : 'Sigma Assistant');
 
-  const modelName = isUser ? '' : (first.agentName || effectiveModelName || 'AI');
+  const rawModelName = first.agentName || effectiveModelName || 'AI';
+  const modelName = isUser ? '' : (rawModelName.toLowerCase().startsWith('auto ') || rawModelName.toLowerCase() === 'auto' ? `${roleName} (${effectiveModelName || selectedModel || 'AI'})` : rawModelName);
 
   const loadingSteps = [
     "Sto pensando...",
@@ -473,7 +534,7 @@ export default function AgentMessage({
             color: '#8b8fa3'
           }}>
             <span style={{ fontSize: '1rem' }}>{agentStyle?.icon || '🤖'}</span>
-            <span>Ruolo attivo: <strong style={{ color: 'var(--primary)' }}>{first.agentRole || agentStyle?.short || roleName}</strong></span>
+            <span>Ruolo attivo: <strong style={{ color: 'var(--primary)' }}>{roleName}</strong></span>
           </div>
         )}
 
@@ -670,20 +731,28 @@ export default function AgentMessage({
                         speechProgress={speechProgress}
                         messages={messages}
                         idx={idx}
-                        onClick={e => {
-                          const link = e.target.closest('.chat-file-link');
-                          if (link) {
-                            e.preventDefault();
-                            const path = link.getAttribute('data-path') || link.dataset.path;
-                            handleFileClick(path);
-                          }
-                        }}
+                        onClick={handleMemoizedContentClick}
                       />
                     )}
                     {(m.streaming || (isLoading && isLast && (!displayContent || displayContent.length < 10))) && (
-                      <div className="chat-generating-indicator" style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '8px', color: 'var(--primary)', fontSize: '0.78rem' }}>
+                      <div className="chat-generating-indicator" style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '8px',
+                        marginTop: '8px',
+                        color: 'var(--primary)',
+                        fontSize: '0.78rem'
+                      }}>
                         <span className="chat-loading-cursor">●</span>
-                        <span style={{ fontStyle: 'italic', fontWeight: '500' }}>Generazione risposta ed elaborazione in corso...</span>
+                        <span style={{ fontStyle: 'italic', fontWeight: '600', letterSpacing: '0.2px' }}>
+                          {m.statusMessage || (
+                            m.streamingThinking 
+                              ? '🧭 Elaborazione e ragionamento profondo in corso...' 
+                              : (displayContent && displayContent.length >= 10 
+                                  ? '✨ Generazione risposta in corso...' 
+                                  : '🧠 Caricamento modello e analisi contesto...')
+                          )}
+                        </span>
                       </div>
                     )}
                     {(m.tool_calls?.length > 0 || m.tool_approvals?.length > 0) && (
@@ -776,6 +845,71 @@ export default function AgentMessage({
                 )}
 
                 {m.error && <div className="chat-error">⚠️ {m.error}</div>}
+
+                {/* Performance & Hardware Metrics in bottom right */}
+                {!isUser && !isSystem && (() => {
+                  const rawRouting = m.routing_time_ms ?? m.metrics?.routing_time_ms ?? first.routing_time_ms ?? first.metrics?.routing_time_ms;
+                  const routingDisplay = rawRouting !== undefined && rawRouting !== null
+                    ? (rawRouting >= 1000 ? `${(rawRouting / 1000).toFixed(2)}s` : `${Math.round(rawRouting)}ms`)
+                    : null;
+
+                  const rawLoad = m.load_duration_ms ?? m.metrics?.load_duration_ms ?? first.load_duration_ms ?? first.metrics?.load_duration_ms;
+                  const loadDisplay = rawLoad !== undefined && rawLoad !== null
+                    ? (rawLoad >= 1000 ? `${(rawLoad / 1000).toFixed(2)}s` : `${Math.round(rawLoad)}ms`)
+                    : null;
+
+                  const rawTps = m.tokens_per_second ?? m.metrics?.tokens_per_second ?? first.tokens_per_second ?? first.metrics?.tokens_per_second;
+                  const tpsDisplay = rawTps !== undefined && rawTps !== null
+                    ? `${typeof rawTps === 'number' ? rawTps.toFixed(1) : rawTps}`
+                    : null;
+
+                  const rawHw = m.hardware_note || m.metrics?.hardware_note || first.hardware_note || first.metrics?.hardware_note;
+                  const hardwareDisplay = rawHw || null;
+
+                  if (!routingDisplay && !loadDisplay && !tpsDisplay && !hardwareDisplay) return null;
+
+                  return (
+                    <div className="chat-msg-footer-metrics" style={{
+                      display: 'flex',
+                      flexWrap: 'wrap',
+                      alignItems: 'center',
+                      justifyContent: 'flex-end',
+                      gap: '8px 14px',
+                      marginTop: '8px',
+                      paddingTop: '6px',
+                      fontSize: '0.67rem',
+                      color: '#8b8fa3',
+                      borderTop: '1px solid rgba(255, 255, 255, 0.04)',
+                      userSelect: 'none'
+                    }}>
+                      {routingDisplay && (
+                        <span title="Tempo impiegato dal centralino per analizzare l'intento e selezionare il ruolo" style={{ display: 'inline-flex', alignItems: 'center', gap: '3px' }}>
+                          <span>🎯</span>
+                          <span>Scelta centralino: <strong style={{ color: '#00d2ff', fontWeight: 600 }}>{routingDisplay}</strong></span>
+                        </span>
+                      )}
+                      {loadDisplay && (
+                        <span title="Tempo impiegato per caricare il modello in memoria / VRAM" style={{ display: 'inline-flex', alignItems: 'center', gap: '3px' }}>
+                          <span>⏳</span>
+                          <span>Caricamento: <strong style={{ color: '#eab308', fontWeight: 600 }}>{loadDisplay}</strong></span>
+                        </span>
+                      )}
+                      {tpsDisplay && (
+                        <span title="Velocità di generazione del modello (tokens al secondo)" style={{ display: 'inline-flex', alignItems: 'center', gap: '3px' }}>
+                          <span>⚡</span>
+                          <span>Velocità: <strong style={{ color: '#4ade80', fontWeight: 600 }}>{tpsDisplay} t/s</strong></span>
+                        </span>
+                      )}
+                      {hardwareDisplay && (
+                        <span title="Hardware di elaborazione utilizzato dal modello" style={{ display: 'inline-flex', alignItems: 'center', gap: '3px' }}>
+                          <span>💻</span>
+                          <span>Hardware: <strong style={{ color: '#a78bfa', fontWeight: 600 }}>{hardwareDisplay}</strong></span>
+                        </span>
+                      )}
+                    </div>
+                  );
+                })()}
+
                 {isGrouped && (
                   <div className="chat-timestamp">
                     {formatTimestamp(m.timestamp)}
@@ -796,6 +930,181 @@ export default function AgentMessage({
             if (openTab) openTab({ path: relPath, filename: relPath.split('/').pop() || relPath }, 'image_viewer');
           }}
         />
+      )}
+
+      {/* Interactive Category & Favorite Picker Popover for YouTube Video Cards */}
+      {categoryPickerTarget && (
+        <div 
+          onClick={() => setCategoryPickerTarget(null)}
+          style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            background: 'rgba(0, 0, 0, 0.65)',
+            backdropFilter: 'blur(5px)',
+            zIndex: 99999,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center'
+          }}
+        >
+          <div 
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              background: '#0f172a',
+              border: '1px solid rgba(0, 242, 254, 0.4)',
+              borderRadius: '16px',
+              padding: '22px 26px',
+              width: '90%',
+              maxWidth: '430px',
+              boxShadow: '0 20px 60px rgba(0,0,0,0.85), 0 0 35px rgba(0, 242, 254, 0.25)',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '14px',
+              color: '#f8fafc'
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.96rem', fontWeight: 800 }}>
+                <span style={{ color: '#ef4444' }}>❤️</span> Salva nei Preferiti & Categorie
+              </div>
+              <button 
+                onClick={() => setCategoryPickerTarget(null)}
+                style={{ background: 'transparent', border: 'none', color: '#94a3b8', cursor: 'pointer', fontSize: '1rem' }}
+              >
+                ✕
+              </button>
+            </div>
+
+            <div style={{ fontSize: '0.78rem', color: '#94a3b8', background: 'rgba(255, 255, 255, 0.04)', padding: '8px 10px', borderRadius: '8px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+              🎵 <strong>{categoryPickerTarget.title}</strong>
+            </div>
+
+            <div style={{ fontSize: '0.75rem', fontWeight: 700, color: '#cbd5e1' }}>
+              Seleziona una categoria / genere esistente:
+            </div>
+
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', maxHeight: '140px', overflowY: 'auto' }}>
+              {userCategories && userCategories.map(cat => (
+                <button
+                  key={cat.id}
+                  onClick={() => {
+                    if (saveYouTubeFavorite) {
+                      saveYouTubeFavorite({
+                        id: categoryPickerTarget.id,
+                        title: categoryPickerTarget.title,
+                        categoryId: cat.id
+                      });
+                      if (categoryPickerTarget.btnEl) {
+                        categoryPickerTarget.btnEl.innerHTML = `❤️ ${cat.icon} ${cat.name}`;
+                        categoryPickerTarget.btnEl.style.background = 'rgba(239, 68, 68, 0.4)';
+                        categoryPickerTarget.btnEl.style.borderColor = '#ef4444';
+                        categoryPickerTarget.btnEl.style.color = '#ffffff';
+                      }
+                    }
+                    setCategoryPickerTarget(null);
+                  }}
+                  style={{
+                    background: `${cat.color || '#00f2fe'}22`,
+                    border: `1px solid ${cat.color || '#00f2fe'}66`,
+                    color: cat.color || '#00f2fe',
+                    borderRadius: '8px',
+                    padding: '6px 10px',
+                    fontSize: '0.74rem',
+                    fontWeight: 700,
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '5px',
+                    transition: 'all 0.15s ease'
+                  }}
+                  onMouseEnter={(e) => e.currentTarget.style.transform = 'scale(1.04)'}
+                  onMouseLeave={(e) => e.currentTarget.style.transform = 'scale(1)'}
+                >
+                  <span>{cat.icon || '📁'}</span>
+                  <span>{cat.name}</span>
+                </button>
+              ))}
+            </div>
+
+            <div style={{ borderTop: '1px solid rgba(255, 255, 255, 0.08)', paddingTop: '12px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+              <div style={{ fontSize: '0.72rem', fontWeight: 700, color: '#94a3b8' }}>
+                Oppure crea un nuovo genere/categoria al volo:
+              </div>
+              <div style={{ display: 'flex', gap: '8px' }}>
+                <input
+                  type="text"
+                  value={newCatInlineName}
+                  onChange={(e) => setNewCatInlineName(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && newCatInlineName.trim()) {
+                      if (saveYouTubeFavorite) {
+                        saveYouTubeFavorite({
+                          id: categoryPickerTarget.id,
+                          title: categoryPickerTarget.title,
+                          categoryName: newCatInlineName.trim()
+                        });
+                        if (categoryPickerTarget.btnEl) {
+                          categoryPickerTarget.btnEl.innerHTML = `❤️ ${newCatInlineName.trim()}`;
+                          categoryPickerTarget.btnEl.style.background = 'rgba(239, 68, 68, 0.4)';
+                          categoryPickerTarget.btnEl.style.borderColor = '#ef4444';
+                          categoryPickerTarget.btnEl.style.color = '#ffffff';
+                        }
+                      }
+                      setNewCatInlineName('');
+                      setCategoryPickerTarget(null);
+                    }
+                  }}
+                  placeholder="es. Cyberpunk Coding, Metal Gym..."
+                  style={{
+                    flex: 1,
+                    background: '#1e293b',
+                    border: '1px solid rgba(255, 255, 255, 0.15)',
+                    borderRadius: '8px',
+                    padding: '8px 10px',
+                    color: '#ffffff',
+                    fontSize: '0.78rem'
+                  }}
+                />
+                <button
+                  onClick={() => {
+                    if (newCatInlineName.trim() && saveYouTubeFavorite) {
+                      saveYouTubeFavorite({
+                        id: categoryPickerTarget.id,
+                        title: categoryPickerTarget.title,
+                        categoryName: newCatInlineName.trim()
+                      });
+                      if (categoryPickerTarget.btnEl) {
+                        categoryPickerTarget.btnEl.innerHTML = `❤️ ${newCatInlineName.trim()}`;
+                        categoryPickerTarget.btnEl.style.background = 'rgba(239, 68, 68, 0.4)';
+                        categoryPickerTarget.btnEl.style.borderColor = '#ef4444';
+                        categoryPickerTarget.btnEl.style.color = '#ffffff';
+                      }
+                      setNewCatInlineName('');
+                      setCategoryPickerTarget(null);
+                    }
+                  }}
+                  disabled={!newCatInlineName.trim()}
+                  style={{
+                    background: 'linear-gradient(135deg, #00f2fe, #4facfe)',
+                    border: 'none',
+                    borderRadius: '8px',
+                    color: '#000000',
+                    fontWeight: 800,
+                    fontSize: '0.75rem',
+                    padding: '0 14px',
+                    cursor: 'pointer',
+                    opacity: newCatInlineName.trim() ? 1 : 0.5
+                  }}
+                >
+                  Salva
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

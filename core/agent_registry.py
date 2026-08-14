@@ -36,10 +36,12 @@ def get_all_agents() -> list:
     result = []
     known_ids = set()
     for agent_id, agent_data in agents.items():
-        entry = {"id": agent_id, **agent_data}
-        entry.pop("parent_id", None)
-        result.append(entry)
-        known_ids.add(agent_id)
+        manifesto_path = agent_data.get("manifesto", f"manifesti/{agent_id}.md")
+        if os.path.exists(manifesto_path) or agent_id == "sigma_assistant":
+            entry = {"id": agent_id, **agent_data}
+            entry.pop("parent_id", None)
+            result.append(entry)
+            known_ids.add(agent_id)
 
     # Auto-discover unlisted manifests from manifesti/ and manifesti/Private/
     manifesto_dir = 'manifesti'
@@ -71,6 +73,29 @@ def get_all_agents() -> list:
                         })
                         known_ids.add(aid)
     return result
+
+
+def unregister_agent(agent_id: str) -> tuple:
+    """Remove an agent from the registry.
+
+    Args:
+        agent_id: Agent ID to unregister
+
+    Returns:
+        Tuple of (success, message)
+    """
+    if agent_id == "sigma_assistant":
+        return False, "Non è possibile disregistrare l'agente principale 'sigma_assistant'"
+
+    meta = load_agents_meta()
+    agents = meta.setdefault("agents", {})
+
+    if agent_id not in agents:
+        return True, "Agente non presente nel registro"
+
+    del agents[agent_id]
+    save_agents_meta(meta)
+    return True, f"Agente '{agent_id}' rimosso con successo"
 
 
 def get_agent(agent_id: str) -> dict:
