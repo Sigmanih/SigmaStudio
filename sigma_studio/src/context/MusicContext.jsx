@@ -56,6 +56,11 @@ export function MusicProvider({ children }) {
   const [repeatMode, setRepeatMode] = useState('all'); // 'off' | 'all' | 'one'
   const [audioError, setAudioError] = useState(null);
 
+  const audioRef = useRef(null);
+  const ytIframeRef = useRef(null);
+  const playTimerRef = useRef(null);
+  const synthNodesRef = useRef(null);
+
   const [isAudioInstalled, setIsAudioInstalled] = useState(() => {
     try {
       const saved = localStorage.getItem('sigma_modules_state');
