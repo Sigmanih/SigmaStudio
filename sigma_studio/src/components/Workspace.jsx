@@ -21,6 +21,7 @@ import DomoticaTab from './Workspace/DomoticaTab';
 import MarketplaceTab from './MarketplaceTab';
 import AIConfigTab from './AIConfigTab';
 import MusicTab from './Music/MusicTab';
+import { useModuleState } from '../hooks/useModuleState';
 
 // ==============================================================================
 // Workspace — Content area that renders based on active tab type
@@ -72,36 +73,9 @@ export default function Workspace({
   deleteTask,
   clearAllTasks
 }) {
-  const [isAudioInstalled, setIsAudioInstalled] = useState(() => {
-    try {
-      const saved = localStorage.getItem('sigma_modules_state');
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        if (parsed.audio_studio !== undefined) return parsed.audio_studio === true;
-      }
-    } catch(e) {}
-    return true;
-  });
+  const { modulesState } = useModuleState();
+  const isAudioInstalled = modulesState.audio_studio === true;
 
-  useEffect(() => {
-    const handleModulesUpdated = (e) => {
-      if (e.detail?.moduleId === 'audio_studio') {
-        setIsAudioInstalled(e.detail.installed);
-      }
-      try {
-        const saved = localStorage.getItem('sigma_modules_state');
-        if (saved) {
-          const parsed = JSON.parse(saved);
-          if (parsed.audio_studio !== undefined) {
-            setIsAudioInstalled(parsed.audio_studio === true);
-          }
-        }
-      } catch(err) {}
-    };
-
-    window.addEventListener('sigma_modules_updated', handleModulesUpdated);
-    return () => window.removeEventListener('sigma_modules_updated', handleModulesUpdated);
-  }, []);
   const handleRoadmapDelete = (task) => {
     if (confirm(`Eliminare il task "${task.titolo}"?`)) {
       deleteTask(task.titolo);

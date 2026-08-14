@@ -16,6 +16,10 @@ import { ModuleModal, TaskModal, NewFileModal } from './components/modals';
 import { AppProvider, useApp } from './contexts/AppContext';
 import { MusicProvider } from './context/MusicContext';
 
+// Hooks
+import { useModuleState } from './hooks/useModuleState';
+
+
 // ==============================================================================
 // SIGMA STUDIO | State Orchestrator v7.0 — Floating UI Edition
 // ==============================================================================
@@ -58,36 +62,9 @@ function AppContent() {
     moduleOps
   } = useApp();
 
-  const [isAudioInstalled, setIsAudioInstalled] = useState(() => {
-    try {
-      const saved = localStorage.getItem('sigma_modules_state');
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        if (parsed.audio_studio !== undefined) return parsed.audio_studio === true;
-      }
-    } catch(e) {}
-    return true;
-  });
+  const { modulesState, isLoaded: modulesLoaded } = useModuleState();
+  const isAudioInstalled = modulesState.audio_studio === true;
 
-  useEffect(() => {
-    const handleModulesUpdated = (e) => {
-      if (e.detail?.moduleId === 'audio_studio') {
-        setIsAudioInstalled(e.detail.installed);
-      }
-      try {
-        const saved = localStorage.getItem('sigma_modules_state');
-        if (saved) {
-          const parsed = JSON.parse(saved);
-          if (parsed.audio_studio !== undefined) {
-            setIsAudioInstalled(parsed.audio_studio === true);
-          }
-        }
-      } catch(err) {}
-    };
-
-    window.addEventListener('sigma_modules_updated', handleModulesUpdated);
-    return () => window.removeEventListener('sigma_modules_updated', handleModulesUpdated);
-  }, []);
 
   const [taskPanelOpen, setTaskPanelOpen] = React.useState(false);
   const [hardwarePanelOpen, setHardwarePanelOpen] = React.useState(false);

@@ -6,6 +6,7 @@ import {
   Cpu, Box, Radio, Music
 } from 'lucide-react';
 import { useApp } from '../contexts/AppContext';
+import { useModuleState } from '../hooks/useModuleState';
 
 export const SidebarItem = ({ 
   icon: Icon, 
@@ -168,36 +169,9 @@ export default function Sidebar({
     return () => clearInterval(interval);
   }, []);
 
-  const [isAudioInstalled, setIsAudioInstalled] = useState(() => {
-    try {
-      const saved = localStorage.getItem('sigma_modules_state');
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        if (parsed.audio_studio !== undefined) return parsed.audio_studio === true;
-      }
-    } catch(e) {}
-    return true;
-  });
+  const { modulesState } = useModuleState();
+  const isAudioInstalled = modulesState.audio_studio === true;
 
-  React.useEffect(() => {
-    const handleModulesUpdated = (e) => {
-      if (e.detail?.moduleId === 'audio_studio') {
-        setIsAudioInstalled(e.detail.installed);
-      }
-      try {
-        const saved = localStorage.getItem('sigma_modules_state');
-        if (saved) {
-          const parsed = JSON.parse(saved);
-          if (parsed.audio_studio !== undefined) {
-            setIsAudioInstalled(parsed.audio_studio === true);
-          }
-        }
-      } catch(err) {}
-    };
-
-    window.addEventListener('sigma_modules_updated', handleModulesUpdated);
-    return () => window.removeEventListener('sigma_modules_updated', handleModulesUpdated);
-  }, []);
 
   const taskInCorso = tasks.filter(t => t.status === 'in_corso' || !t.status).length;
   const taskDone = tasks.filter(t => t.status === 'done').length;
