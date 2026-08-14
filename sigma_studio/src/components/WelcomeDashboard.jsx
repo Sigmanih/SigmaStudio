@@ -964,14 +964,14 @@ const quickLinkStyle = (color) => ({
 export default function WelcomeDashboard({ modules, openTab }) {
   const { theme, toggleTheme } = useApp();
   const isLight = theme === 'light';
-  const titleColor = isLight ? '#111827' : '#ffffff';
-  const subtitleColor = isLight ? '#4b5563' : '#8b8fa3';
-  const cardBg = isLight ? '#fffdf9' : '#0e1017';
-  const cardBorder = isLight ? '1px solid rgba(190, 160, 110, 0.32)' : '1px solid rgba(255, 255, 255, 0.08)';
-  const cardShadow = isLight ? '0 8px 24px rgba(190, 160, 110, 0.12)' : '0 12px 40px rgba(0,0,0,0.5)';
-  const innerCardBg = isLight ? '#f9f6ef' : 'rgba(255, 255, 255, 0.03)';
-  const innerCardBorder = isLight ? '1px solid rgba(190, 160, 110, 0.28)' : '1px solid rgba(255, 255, 255, 0.06)';
-  const innerCardText = isLight ? '#4b5563' : '#6b7080';
+  const titleColor = isLight ? '#000000' : '#ffffff';
+  const subtitleColor = isLight ? '#000000' : '#8b8fa3';
+  const cardBg = isLight ? '#ffffff' : '#121622';
+  const cardBorder = isLight ? '1px solid rgba(190, 160, 110, 0.4)' : '1px solid rgba(255, 255, 255, 0.08)';
+  const cardShadow = isLight ? '0 6px 20px rgba(190, 160, 110, 0.15)' : '0 12px 40px rgba(0,0,0,0.5)';
+  const innerCardBg = isLight ? '#fbf8f2' : '#181e2b';
+  const innerCardBorder = isLight ? '1px solid rgba(190, 160, 110, 0.32)' : '1px solid rgba(255, 255, 255, 0.06)';
+  const innerCardText = isLight ? '#000000' : '#cbd5e1';
 
   const [topics, setTopics] = useState([]);
   const [selectedTopic, setSelectedTopic] = useState(null);
@@ -1143,7 +1143,7 @@ export default function WelcomeDashboard({ modules, openTab }) {
               <h1 style={{
                 fontSize: '1.4rem',
                 fontWeight: 800,
-                color: isLight ? '#111827' : '#ffffff',
+                color: isLight ? '#000000' : '#ffffff',
                 margin: '0 0 6px 0',
                 letterSpacing: '-0.3px',
                 textShadow: 'none'
@@ -1156,9 +1156,10 @@ export default function WelcomeDashboard({ modules, openTab }) {
 
               <p style={{
                 fontSize: '0.82rem',
-                color: isLight ? '#374151' : '#cbd5e0',
+                color: isLight ? '#000000' : '#cbd5e0',
                 lineHeight: 1.45,
-                margin: 0
+                margin: 0,
+                fontWeight: isLight ? 600 : 400
               }}>
                 Sigma Studio orchestra il modello unificato Sigma, i Manifesti Modelfile per ogni disciplina, il protocollo MCP come bus I/O di sistema e la validazione computazionale autonoma in un unico ambiente integrato.
               </p>
@@ -1172,9 +1173,9 @@ export default function WelcomeDashboard({ modules, openTab }) {
               style={{
                 padding: '10px 16px',
                 borderRadius: '12px',
-                background: isLight ? '#fffdf9' : '#181b28',
+                background: isLight ? '#ffffff' : '#181b28',
                 border: isLight ? '1px solid rgba(190, 160, 110, 0.45)' : '1px solid rgba(0, 210, 255, 0.5)',
-                color: isLight ? '#111827' : '#00d2ff',
+                color: isLight ? '#000000' : '#00d2ff',
                 fontWeight: 800,
                 fontSize: '0.82rem',
                 cursor: 'pointer',
@@ -1194,9 +1195,9 @@ export default function WelcomeDashboard({ modules, openTab }) {
               style={{
                 padding: '10px 16px',
                 borderRadius: '12px',
-                background: isLight ? '#fffdf9' : '#181b28',
+                background: isLight ? '#ffffff' : '#181b28',
                 border: isLight ? '1px solid rgba(190, 160, 110, 0.45)' : '1px solid rgba(167, 139, 250, 0.5)',
-                color: isLight ? '#111827' : '#a78bfa',
+                color: isLight ? '#000000' : '#a78bfa',
                 fontWeight: 800,
                 fontSize: '0.82rem',
                 cursor: 'pointer',
@@ -1218,40 +1219,40 @@ export default function WelcomeDashboard({ modules, openTab }) {
       <div style={{ padding: '0 12px 12px 12px', display: 'flex', flexDirection: 'column', gap: '6px', flex: 1 }}>
       {/* Redesigned High-Tech Metrics Bar */}
       <div className="wg-metrics" style={{ marginTop: '18px', marginBottom: '12px' }}>
-        <div className="wg-metric" style={{ borderTop: '3px solid #00d2ff' }}>
+        <div className="wg-metric" style={{ borderTop: '3px solid #00d2ff', background: cardBg }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
             <span style={{ fontSize: '1.1rem' }}>🧠</span>
-            <span className="wg-metric-value" style={{ color: '#00d2ff' }}>{countRootTopics}</span>
+            <span className="wg-metric-value" style={{ color: isLight ? '#0284c7' : '#00d2ff' }}>{countRootTopics}</span>
           </div>
-          <span className="wg-metric-label">Argomenti Fondamentali</span>
+          <span className="wg-metric-label" style={{ color: isLight ? '#000000' : '#8b8fa3' }}>Argomenti Fondamentali</span>
         </div>
-        <div className="wg-metric" style={{ borderTop: '3px solid #a78bfa' }}>
+        <div className="wg-metric" style={{ borderTop: '3px solid #a78bfa', background: cardBg }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
             <span style={{ fontSize: '1.1rem' }}>📚</span>
-            <span className="wg-metric-value" style={{ color: '#a78bfa' }}>{countModules}</span>
+            <span className="wg-metric-value" style={{ color: isLight ? '#7c3aed' : '#a78bfa' }}>{countModules}</span>
           </div>
-          <span className="wg-metric-label">Moduli di Conoscenza</span>
+          <span className="wg-metric-label" style={{ color: isLight ? '#000000' : '#8b8fa3' }}>Moduli di Conoscenza</span>
         </div>
-        <div className="wg-metric" style={{ borderTop: '3px solid #3fb950' }}>
+        <div className="wg-metric" style={{ borderTop: '3px solid #3fb950', background: cardBg }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
             <span style={{ fontSize: '1.1rem' }}>📄</span>
-            <span className="wg-metric-value" style={{ color: '#3fb950' }}>{countDocs}</span>
+            <span className="wg-metric-value" style={{ color: isLight ? '#16a34a' : '#3fb950' }}>{countDocs}</span>
           </div>
-          <span className="wg-metric-label">Teoria & Whitepaper</span>
+          <span className="wg-metric-label" style={{ color: isLight ? '#000000' : '#8b8fa3' }}>Teoria & Whitepaper</span>
         </div>
-        <div className="wg-metric" style={{ borderTop: '3px solid #ff5064' }}>
+        <div className="wg-metric" style={{ borderTop: '3px solid #ff5064', background: cardBg }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
             <span style={{ fontSize: '1.1rem' }}>⚡</span>
-            <span className="wg-metric-value" style={{ color: '#ff5064' }}>{countScripts}</span>
+            <span className="wg-metric-value" style={{ color: isLight ? '#dc2626' : '#ff5064' }}>{countScripts}</span>
           </div>
-          <span className="wg-metric-label">Script & Test Pytest</span>
+          <span className="wg-metric-label" style={{ color: isLight ? '#000000' : '#8b8fa3' }}>Script & Test Pytest</span>
         </div>
-        <div className="wg-metric" style={{ borderTop: '3px solid #bc8cff' }}>
+        <div className="wg-metric" style={{ borderTop: '3px solid #bc8cff', background: cardBg }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
             <span style={{ fontSize: '1.1rem' }}>📜</span>
-            <span className="wg-metric-value" style={{ color: '#bc8cff' }}>{manifestiCount}</span>
+            <span className="wg-metric-value" style={{ color: isLight ? '#9333ea' : '#bc8cff' }}>{manifestiCount}</span>
           </div>
-          <span className="wg-metric-label">Manifesti dei Ruoli</span>
+          <span className="wg-metric-label" style={{ color: isLight ? '#000000' : '#8b8fa3' }}>Manifesti dei Ruoli</span>
         </div>
       </div>
 
@@ -1272,35 +1273,35 @@ export default function WelcomeDashboard({ modules, openTab }) {
           <div style={{
             display: 'inline-flex', alignItems: 'center', gap: '6px',
             padding: '4px 12px', borderRadius: '12px',
-            background: 'rgba(124, 91, 240, 0.15)', color: '#7c5bf0',
-            fontSize: '0.72rem', fontWeight: 700, marginBottom: '12px'
+            background: 'rgba(124, 91, 240, 0.15)', color: isLight ? '#6d28d9' : '#7c5bf0',
+            fontSize: '0.72rem', fontWeight: 800, marginBottom: '12px'
           }}>
             <span>🧠</span> ARCHITETTURA DI SISTEMA
           </div>
           <h2 style={{ margin: '0 0 12px 0', fontSize: '1.4rem', color: titleColor, fontWeight: 800 }}>
             Sigma Studio come Kernel Cognitivo Eseguibile
           </h2>
-          <p style={{ fontSize: '0.86rem', color: subtitleColor, lineHeight: 1.65, margin: '0 0 20px 0' }}>
+          <p style={{ fontSize: '0.86rem', color: subtitleColor, lineHeight: 1.65, margin: '0 0 20px 0', fontWeight: isLight ? 500 : 400 }}>
             Come un sistema operativo orchestra processi, memoria e periferiche hardware, Sigma Studio trasforma i Modelli Linguistici (LLM) 
             in unità di computazione (CPU), regolamentati da contratti vincolanti (Manifesti Modelfile), con bus di I/O (Server MCP) e memoria confinata (Sandbox protetta).
           </p>
 
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
             <div style={{ padding: '12px', borderRadius: '10px', background: innerCardBg, border: innerCardBorder }}>
-              <div style={{ fontWeight: 700, fontSize: '0.82rem', color: isLight ? '#0284c7' : '#00d2ff' }}>⚡ Modello Sigma = CPU</div>
-              <div style={{ fontSize: '0.74rem', color: innerCardText, marginTop: '3px' }}>Unità di elaborazione unificata in locale su Ollama o via Cloud.</div>
+              <div style={{ fontWeight: 800, fontSize: '0.82rem', color: isLight ? '#0284c7' : '#00d2ff' }}>⚡ Modello Sigma = CPU</div>
+              <div style={{ fontSize: '0.74rem', color: innerCardText, marginTop: '3px', fontWeight: isLight ? 500 : 400 }}>Unità di elaborazione unificata in locale su Ollama o via Cloud.</div>
             </div>
             <div style={{ padding: '12px', borderRadius: '10px', background: innerCardBg, border: innerCardBorder }}>
-              <div style={{ fontWeight: 700, fontSize: '0.82rem', color: isLight ? '#16a34a' : '#3fb950' }}>📜 Manifesti = Ruoli & Regole</div>
-              <div style={{ fontSize: '0.74rem', color: innerCardText, marginTop: '3px' }}>Modelfile vincolanti per ogni professione e materia di studio.</div>
+              <div style={{ fontWeight: 800, fontSize: '0.82rem', color: isLight ? '#16a34a' : '#3fb950' }}>📜 Manifesti = Ruoli & Regole</div>
+              <div style={{ fontSize: '0.74rem', color: innerCardText, marginTop: '3px', fontWeight: isLight ? 500 : 400 }}>Modelfile vincolanti per ogni professione e materia di studio.</div>
             </div>
             <div style={{ padding: '12px', borderRadius: '10px', background: innerCardBg, border: innerCardBorder }}>
-              <div style={{ fontWeight: 700, fontSize: '0.82rem', color: '#7c5bf0' }}>🔌 12 Server MCP = Bus I/O</div>
-              <div style={{ fontSize: '0.74rem', color: innerCardText, marginTop: '3px' }}>Accesso a filesystem, memoria, Domotica, browser e strumenti.</div>
+              <div style={{ fontWeight: 800, fontSize: '0.82rem', color: isLight ? '#6d28d9' : '#7c5bf0' }}>🔌 12 Server MCP = Bus I/O</div>
+              <div style={{ fontSize: '0.74rem', color: innerCardText, marginTop: '3px', fontWeight: isLight ? 500 : 400 }}>Accesso a filesystem, memoria, Domotica, browser e strumenti.</div>
             </div>
             <div style={{ padding: '12px', borderRadius: '10px', background: innerCardBg, border: innerCardBorder }}>
-              <div style={{ fontWeight: 700, fontSize: '0.82rem', color: isLight ? '#d97706' : '#ffb86c' }}>🔒 Sandbox & Test = Bounds</div>
-              <div style={{ fontSize: '0.74rem', color: innerCardText, marginTop: '3px' }}>Validazione con Pytest, formule KaTeX e grafici D3.js.</div>
+              <div style={{ fontWeight: 800, fontSize: '0.82rem', color: isLight ? '#d97706' : '#ffb86c' }}>🔒 Sandbox & Test = Bounds</div>
+              <div style={{ fontSize: '0.74rem', color: innerCardText, marginTop: '3px', fontWeight: isLight ? 500 : 400 }}>Validazione con Pytest, formule KaTeX e grafici D3.js.</div>
             </div>
           </div>
         </div>
@@ -1323,7 +1324,7 @@ export default function WelcomeDashboard({ modules, openTab }) {
             position: 'absolute', bottom: 0, inset: 'auto 0 0 0',
             padding: '12px 16px',
             background: 'linear-gradient(to top, rgba(14,16,22,0.95), transparent)',
-            fontSize: '0.75rem', color: '#c0c4d0', fontWeight: 600
+            fontSize: '0.75rem', color: '#ffffff', fontWeight: 600
           }}>
             🌐 Schema Architetturale del Kernel di Orchestrazione AI
           </div>
@@ -1335,7 +1336,7 @@ export default function WelcomeDashboard({ modules, openTab }) {
         <h2 style={{ fontSize: '1.35rem', color: titleColor, fontWeight: 800, marginBottom: '6px', display: 'flex', alignItems: 'center', gap: '8px' }}>
           <span>🏛️</span> I Laboratori & Moduli Operativi di Sigma Studio
         </h2>
-        <p style={{ fontSize: '0.86rem', color: subtitleColor, margin: '0 0 16px 0' }}>
+        <p style={{ fontSize: '0.86rem', color: subtitleColor, margin: '0 0 16px 0', fontWeight: isLight ? 500 : 400 }}>
           Ciascuna scheda del workspace costituisce un ambiente dedicato e modulare. Esplora gli obiettivi e le capacità di ogni laboratorio:
         </p>
       </div>
@@ -1352,19 +1353,19 @@ export default function WelcomeDashboard({ modules, openTab }) {
                 display: 'inline-flex', alignItems: 'center', gap: '6px',
                 padding: '4px 12px', borderRadius: '12px',
                 background: `${mod.color}18`,
-                color: mod.color,
-                border: `1px solid ${mod.color}35`,
+                color: isLight ? '#000000' : mod.color,
+                border: `1px solid ${mod.color}45`,
                 fontSize: '0.72rem', fontWeight: 800, letterSpacing: '0.5px'
               }}>
-                <IconComp size={14} />
+                <IconComp size={14} style={{ color: mod.color }} />
                 <span>{mod.badge}</span>
               </div>
               <span style={{
                 fontSize: '0.68rem', fontWeight: 800,
-                color: isLight ? '#4b5563' : '#8b8fa3',
-                background: isLight ? 'rgba(0,0,0,0.04)' : 'rgba(255,255,255,0.06)',
+                color: isLight ? '#000000' : '#8b8fa3',
+                background: isLight ? '#f4efe6' : 'rgba(255,255,255,0.06)',
                 padding: '4px 10px', borderRadius: '12px',
-                border: isLight ? '1px solid rgba(0,0,0,0.08)' : '1px solid rgba(255,255,255,0.08)'
+                border: isLight ? '1px solid rgba(190, 160, 110, 0.35)' : '1px solid rgba(255,255,255,0.08)'
               }}>
                 {mod.step}
               </span>
@@ -1377,14 +1378,14 @@ export default function WelcomeDashboard({ modules, openTab }) {
             <div style={{
               padding: '14px 16px',
               borderRadius: '12px',
-              background: isLight ? `${mod.color}0a` : `${mod.color}12`,
-              border: `1px solid ${mod.color}30`,
+              background: isLight ? '#fbf8f2' : `${mod.color}12`,
+              border: isLight ? '1px solid rgba(190, 160, 110, 0.35)' : `1px solid ${mod.color}30`,
               marginBottom: '16px'
             }}>
-              <div style={{ fontSize: '0.7rem', fontWeight: 800, color: mod.color, textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '4px' }}>
+              <div style={{ fontSize: '0.7rem', fontWeight: 800, color: isLight ? '#c2410c' : mod.color, textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '4px' }}>
                 🎯 Obiettivo del Modulo
               </div>
-              <p style={{ margin: 0, fontSize: '0.84rem', color: isLight ? '#1f2937' : '#e2e8f0', lineHeight: 1.55, fontWeight: 500 }}>
+              <p style={{ margin: 0, fontSize: '0.84rem', color: isLight ? '#000000' : '#e2e8f0', lineHeight: 1.55, fontWeight: isLight ? 600 : 500 }}>
                 {mod.objective}
               </p>
             </div>
@@ -1397,11 +1398,11 @@ export default function WelcomeDashboard({ modules, openTab }) {
                   background: innerCardBg,
                   border: innerCardBorder
                 }}>
-                  <div style={{ fontWeight: 700, fontSize: '0.8rem', color: mod.color, display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <div style={{ fontWeight: 800, fontSize: '0.8rem', color: isLight ? '#9a3412' : mod.color, display: 'flex', alignItems: 'center', gap: '6px' }}>
                     <span>{feat.icon}</span>
                     <span>{feat.label}</span>
                   </div>
-                  <div style={{ fontSize: '0.72rem', color: innerCardText, marginTop: '3px', lineHeight: 1.45 }}>
+                  <div style={{ fontSize: '0.72rem', color: innerCardText, marginTop: '3px', lineHeight: 1.45, fontWeight: isLight ? 500 : 400 }}>
                     {feat.desc}
                   </div>
                 </div>
@@ -1414,13 +1415,15 @@ export default function WelcomeDashboard({ modules, openTab }) {
                 style={{
                   padding: '10px 20px',
                   borderRadius: '10px',
-                  background: `linear-gradient(135deg, ${mod.color}, ${mod.color}cc)`,
+                  background: isLight
+                    ? 'linear-gradient(135deg, #ea580c 0%, #d97706 100%)'
+                    : `linear-gradient(135deg, ${mod.color}, ${mod.color}cc)`,
                   border: 'none',
                   color: '#fff',
                   fontWeight: 800,
                   fontSize: '0.82rem',
                   cursor: 'pointer',
-                  boxShadow: `0 6px 20px ${mod.color}35`,
+                  boxShadow: isLight ? '0 4px 14px rgba(234, 88, 12, 0.25)' : `0 6px 20px ${mod.color}35`,
                   display: 'inline-flex',
                   alignItems: 'center',
                   gap: '8px',
@@ -1461,7 +1464,7 @@ export default function WelcomeDashboard({ modules, openTab }) {
               position: 'absolute', bottom: 0, inset: 'auto 0 0 0',
               padding: '12px 16px',
               background: 'linear-gradient(to top, rgba(14,16,22,0.95), transparent)',
-              fontSize: '0.74rem', color: '#c0c4d0', fontWeight: 600,
+              fontSize: '0.74rem', color: '#ffffff', fontWeight: 600,
               display: 'flex', alignItems: 'center', gap: '6px'
             }}>
               {mod.imageCaption}
@@ -1478,7 +1481,7 @@ export default function WelcomeDashboard({ modules, openTab }) {
               padding: '28px',
               borderRadius: '20px',
               background: cardBg,
-              border: isLight ? `1px solid ${mod.color}35` : `1px solid ${mod.color}25`,
+              border: isLight ? `1px solid rgba(190, 160, 110, 0.4)` : `1px solid ${mod.color}25`,
               boxShadow: cardShadow,
               display: 'grid',
               gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))',
@@ -1505,8 +1508,8 @@ export default function WelcomeDashboard({ modules, openTab }) {
             <div style={{
               display: 'inline-flex', alignItems: 'center', gap: '6px',
               padding: '4px 12px', borderRadius: '12px',
-              background: isLight ? 'rgba(0, 210, 255, 0.12)' : 'rgba(0, 210, 255, 0.15)',
-              color: isLight ? '#0284c7' : '#00d2ff',
+              background: isLight ? 'rgba(234, 88, 12, 0.12)' : 'rgba(0, 210, 255, 0.15)',
+              color: isLight ? '#c2410c' : '#00d2ff',
               fontSize: '0.72rem', fontWeight: 800, marginBottom: '8px'
             }}>
               <Compass size={14} />
@@ -1515,7 +1518,7 @@ export default function WelcomeDashboard({ modules, openTab }) {
             <h2 style={{ fontSize: '1.4rem', color: titleColor, fontWeight: 800, margin: '0 0 6px 0', display: 'flex', alignItems: 'center', gap: '8px' }}>
               <span>🚀</span> Primi Passi nella Piattaforma
             </h2>
-            <p style={{ fontSize: '0.86rem', color: subtitleColor, margin: 0 }}>
+            <p style={{ fontSize: '0.86rem', color: subtitleColor, margin: 0, fontWeight: isLight ? 500 : 400 }}>
               Segui questo itinerario in tappe o seleziona una categoria per iniziare subito ad utilizzare Sigma Studio:
             </p>
           </div>
@@ -1526,10 +1529,10 @@ export default function WelcomeDashboard({ modules, openTab }) {
             alignItems: 'center',
             gap: '8px',
             flexWrap: 'wrap',
-            background: isLight ? 'rgba(0,0,0,0.03)' : 'rgba(255,255,255,0.04)',
+            background: isLight ? '#ffffff' : 'rgba(255,255,255,0.04)',
             padding: '4px',
             borderRadius: '14px',
-            border: isLight ? '1px solid rgba(0,0,0,0.06)' : '1px solid rgba(255,255,255,0.06)'
+            border: isLight ? '1px solid rgba(190, 160, 110, 0.35)' : '1px solid rgba(255,255,255,0.06)'
           }}>
             {[
               { id: 'all', label: '✨ Tutti (9)' },
@@ -1552,10 +1555,10 @@ export default function WelcomeDashboard({ modules, openTab }) {
                     cursor: 'pointer',
                     transition: 'all 0.2s ease',
                     background: active 
-                      ? (isLight ? '#00d2ff' : '#00d2ff') 
+                      ? (isLight ? '#ea580c' : '#00d2ff') 
                       : 'transparent',
-                    color: active ? '#ffffff' : subtitleColor,
-                    boxShadow: active ? '0 4px 12px rgba(0, 210, 255, 0.35)' : 'none'
+                    color: active ? '#ffffff' : (isLight ? '#000000' : subtitleColor),
+                    boxShadow: active ? (isLight ? '0 3px 10px rgba(234, 88, 12, 0.3)' : '0 4px 12px rgba(0, 210, 255, 0.35)') : 'none'
                   }}
                 >
                   {cat.label}
@@ -1584,7 +1587,7 @@ export default function WelcomeDashboard({ modules, openTab }) {
                     padding: '24px',
                     borderRadius: '20px',
                     background: cardBg,
-                    border: isLight ? `1px solid ${card.color}45` : `1px solid ${card.color}35`,
+                    border: isLight ? `1px solid rgba(190, 160, 110, 0.4)` : `1px solid ${card.color}35`,
                     boxShadow: cardShadow,
                     cursor: 'pointer',
                     display: 'flex',
@@ -1605,30 +1608,31 @@ export default function WelcomeDashboard({ modules, openTab }) {
                         borderRadius: '14px',
                         background: `${card.color}18`,
                         border: `1px solid ${card.color}45`,
-                        color: card.color,
+                        color: isLight ? '#9a3412' : card.color,
                         display: 'flex',
                         alignItems: 'center',
                         justifyContent: 'center',
                         boxShadow: `0 0 16px ${card.color}25`
                       }}>
-                        <IconComponent size={24} />
+                        <IconComponent size={24} style={{ color: card.color }} />
                       </div>
 
                       <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                         <span style={{
                           fontSize: '0.66rem',
                           fontWeight: 800,
-                          color: isLight ? '#4b5563' : '#a0a6bc',
-                          background: isLight ? 'rgba(0,0,0,0.04)' : 'rgba(255,255,255,0.06)',
+                          color: isLight ? '#000000' : '#a0a6bc',
+                          background: isLight ? '#f4efe6' : 'rgba(255,255,255,0.06)',
                           padding: '3px 8px',
-                          borderRadius: '12px'
+                          borderRadius: '12px',
+                          border: isLight ? '1px solid rgba(190, 160, 110, 0.3)' : 'none'
                         }}>
                           {card.categoryLabel}
                         </span>
                         <span style={{
                           fontSize: '0.68rem',
                           fontWeight: 800,
-                          color: card.color,
+                          color: isLight ? '#9a3412' : card.color,
                           background: `${card.color}18`,
                           border: `1px solid ${card.color}35`,
                           padding: '3px 10px',
@@ -1644,7 +1648,7 @@ export default function WelcomeDashboard({ modules, openTab }) {
                     <h3 style={{ margin: '0 0 8px 0', fontSize: '1.05rem', fontWeight: 800, color: titleColor, lineHeight: 1.35 }}>
                       {card.title}
                     </h3>
-                    <p style={{ margin: '0 0 14px 0', fontSize: '0.82rem', color: subtitleColor, lineHeight: 1.55 }}>
+                    <p style={{ margin: '0 0 14px 0', fontSize: '0.82rem', color: subtitleColor, lineHeight: 1.55, fontWeight: isLight ? 500 : 400 }}>
                       {card.subtitle}
                     </p>
 
@@ -1652,14 +1656,15 @@ export default function WelcomeDashboard({ modules, openTab }) {
                     <div style={{
                       padding: '10px 12px',
                       borderRadius: '10px',
-                      background: isLight ? `${card.color}08` : `${card.color}10`,
-                      border: `1px solid ${card.color}25`,
+                      background: isLight ? '#fbf8f2' : `${card.color}10`,
+                      border: isLight ? '1px solid rgba(190, 160, 110, 0.35)' : `1px solid ${card.color}25`,
                       fontSize: '0.74rem',
-                      color: isLight ? '#374151' : '#cbd5e1',
+                      color: isLight ? '#000000' : '#cbd5e1',
                       lineHeight: 1.45,
                       display: 'flex',
                       alignItems: 'flex-start',
-                      gap: '8px'
+                      gap: '8px',
+                      fontWeight: isLight ? 500 : 400
                     }}>
                       <span style={{ fontSize: '0.85rem' }}>💡</span>
                       <span>{card.tip}</span>
@@ -1672,12 +1677,12 @@ export default function WelcomeDashboard({ modules, openTab }) {
                     alignItems: 'center',
                     justifyContent: 'space-between',
                     paddingTop: '14px',
-                    borderTop: isLight ? '1px solid rgba(190, 160, 110, 0.22)' : '1px solid rgba(255, 255, 255, 0.06)'
+                    borderTop: isLight ? '1px solid rgba(190, 160, 110, 0.25)' : '1px solid rgba(255, 255, 255, 0.06)'
                   }}>
                     <span style={{
                       fontSize: '0.78rem',
                       fontWeight: 800,
-                      color: card.color,
+                      color: isLight ? '#c2410c' : card.color,
                       display: 'flex',
                       alignItems: 'center',
                       gap: '6px'
@@ -1688,8 +1693,8 @@ export default function WelcomeDashboard({ modules, openTab }) {
                       width: '28px',
                       height: '28px',
                       borderRadius: '50%',
-                      background: `${card.color}18`,
-                      color: card.color,
+                      background: isLight ? 'rgba(234, 88, 12, 0.12)' : `${card.color}18`,
+                      color: isLight ? '#c2410c' : card.color,
                       display: 'flex',
                       alignItems: 'center',
                       justifyContent: 'center'
@@ -1707,11 +1712,11 @@ export default function WelcomeDashboard({ modules, openTab }) {
       <div style={{
         marginTop: '8px',
         padding: '24px 0 12px 0',
-        borderTop: '1px solid rgba(255, 255, 255, 0.08)',
+        borderTop: isLight ? '1px solid rgba(190, 160, 110, 0.25)' : '1px solid rgba(255, 255, 255, 0.08)',
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'space-between',
-        color: '#6b7080',
+        color: isLight ? '#000000' : '#6b7080',
         fontSize: '0.78rem',
         flexWrap: 'wrap',
         gap: '12px'
@@ -1722,10 +1727,10 @@ export default function WelcomeDashboard({ modules, openTab }) {
             style={{
               background: 'none',
               border: 'none',
-              color: '#00d2ff',
+              color: isLight ? '#c2410c' : '#00d2ff',
               cursor: 'pointer',
               fontSize: '0.78rem',
-              fontWeight: 600,
+              fontWeight: 700,
               display: 'flex',
               alignItems: 'center',
               gap: '6px',
@@ -1740,10 +1745,10 @@ export default function WelcomeDashboard({ modules, openTab }) {
             style={{
               background: 'none',
               border: 'none',
-              color: '#3fb950',
+              color: isLight ? '#15803d' : '#3fb950',
               cursor: 'pointer',
               fontSize: '0.78rem',
-              fontWeight: 600,
+              fontWeight: 700,
               display: 'flex',
               alignItems: 'center',
               gap: '6px',
@@ -1758,10 +1763,10 @@ export default function WelcomeDashboard({ modules, openTab }) {
             style={{
               background: 'none',
               border: 'none',
-              color: '#a78bfa',
+              color: isLight ? '#7c3aed' : '#a78bfa',
               cursor: 'pointer',
               fontSize: '0.78rem',
-              fontWeight: 600,
+              fontWeight: 700,
               display: 'flex',
               alignItems: 'center',
               gap: '6px',
@@ -1772,8 +1777,8 @@ export default function WelcomeDashboard({ modules, openTab }) {
           </button>
         </div>
 
-        <div style={{ color: '#8b8fa3', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '6px' }}>
-          <span>⚡ Creato da <strong>Diego Saitta</strong> — 🧬 <strong>Sigma Studio</strong></span>
+        <div style={{ color: isLight ? '#000000' : '#8b8fa3', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '6px' }}>
+          <span>⚡ Creato da <strong style={{ color: isLight ? '#000000' : '#ffffff' }}>Diego Saitta</strong> — 🧬 <strong style={{ color: isLight ? '#000000' : '#ffffff' }}>Sigma Studio</strong></span>
         </div>
       </div>
 

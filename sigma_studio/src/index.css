@@ -848,8 +848,8 @@ body.theme-light,
 .theme-light .mcp-server-card,
 .theme-light .kanban-task-card,
 .theme-light .roadmap-card {
-  background: #fffdf9 !important;
-  border: 1px solid rgba(190, 160, 110, 0.32) !important;
+  background: #ffffff !important;
+  border: 1px solid rgba(190, 160, 110, 0.4) !important;
   box-shadow: 0 4px 16px rgba(190, 160, 110, 0.12) !important;
   opacity: 1 !important;
 }
@@ -866,7 +866,7 @@ body.theme-light,
 .theme-light h4,
 .theme-light h5,
 .theme-light h6 {
-  color: #111111 !important;
+  color: #000000 !important;
 }
 
 /* High Contrast Override for light gray / dim text in Light Theme */
@@ -881,8 +881,12 @@ body.theme-light,
 .theme-light [style*="color: #6b7080"],
 .theme-light [style*="color:#6b7080"],
 .theme-light [style*="color: #5a5e72"],
-.theme-light [style*="color:#5a5e72"] {
-  color: #2e2820 !important;
+.theme-light [style*="color:#5a5e72"],
+.theme-light [style*="color: #4b5563"],
+.theme-light [style*="color:#4b5563"],
+.theme-light [style*="color: #374151"],
+.theme-light [style*="color:#374151"] {
+  color: #000000 !important;
 }
 
 .theme-light strong,
@@ -902,13 +906,22 @@ body.theme-light,
 }
 
 .theme-light .wg-feature-item {
-  color: #2e2820 !important;
+  color: #000000 !important;
   font-weight: 600;
 }
 
 .theme-light .wg-feature-item strong {
-  color: #111111 !important;
+  color: #000000 !important;
   font-weight: 800;
+}
+
+/* Bacheca / Welcome Screen Specific Strict Rules: 100% Solid Cards & Pure Black Text */
+.theme-light .wg-container p,
+.theme-light .wg-container span:not([style*="color: #ea580c"]):not([style*="color: #00d2ff"]):not([style*="color: #7c3aed"]):not([style*="color: #16a34a"]):not([style*="color: #dc2626"]):not([style*="color: #9333ea"]):not([style*="color: #c2410c"]):not([style*="color: #9a3412"]),
+.theme-light .wg-container div:not([style*="color: #ea580c"]):not([style*="color: #00d2ff"]):not([style*="color: #7c3aed"]):not([style*="color: #16a34a"]):not([style*="color: #dc2626"]):not([style*="color: #9333ea"]):not([style*="color: #c2410c"]):not([style*="color: #9a3412"]),
+.theme-light .welcome-screen p,
+.theme-light .welcome-screen span {
+  color: #000000 !important;
 }
 
 /* Divs, Cards and Showcase Panels in Warm Cream Theme (100% Solid Opaque, No Transparency) */
@@ -938,20 +951,19 @@ body.theme-light,
 .theme-light .mg-lab,
 .theme-light .mg-guide-card,
 .theme-light .mg-howto,
-.theme-light .primi-passi-card,
 .theme-light .account-card,
 .theme-light .account-tab-root .account-card,
 .theme-light .domotica-card,
 .theme-light .domotica-device-card,
 .theme-light .domotica-scene-card,
 .theme-light .domotica-inactive-card {
-  background-color: #fffdf9 !important;
+  background-color: #ffffff !important;
   background-image: none !important;
   opacity: 1 !important;
   backdrop-filter: none !important;
   -webkit-backdrop-filter: none !important;
-  border-color: rgba(190, 160, 110, 0.35) !important;
-  color: #111111 !important;
+  border-color: rgba(190, 160, 110, 0.4) !important;
+  color: #000000 !important;
   box-shadow: 0 4px 16px rgba(180, 150, 100, 0.1) !important;
 }
 
@@ -963,7 +975,7 @@ body.theme-light,
 .theme-light .domotica-device-card h3,
 .theme-light .domotica-scene-card h3,
 .theme-light .domotica-inactive-card h3 {
-  color: #111111 !important;
+  color: #000000 !important;
 }
 
 .theme-light .account-card p,
@@ -971,12 +983,13 @@ body.theme-light,
 .theme-light .domotica-device-card p,
 .theme-light .domotica-scene-card p,
 .theme-light .domotica-inactive-card p {
-  color: #2e2820 !important;
+  color: #000000 !important;
 }
 
 .theme-light .wg-spec-chip {
-  background: #f2ede2 !important;
+  background: #fbf8f2 !important;
   border-color: rgba(190, 160, 110, 0.3) !important;
+  color: #000000 !important;
 }
 
 /* Inputs, Selects and Form Controls in Warm Cream Theme */

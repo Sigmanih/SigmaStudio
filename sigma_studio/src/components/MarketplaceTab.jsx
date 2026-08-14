@@ -292,7 +292,7 @@ export default function MarketplaceTab({ openTab }) {
               textTransform: 'uppercase',
               marginBottom: '6px'
             }}>
-              <Store size={14} /> Σ KERNEL MARKETPLACE & MODULI ESTERNI
+              <Package size={14} /> Σ HUB MODULI & ESTENSIONI KERNEL
             </div>
             <h1 style={{ fontSize: '1.4rem', fontWeight: 800, margin: '0 0 6px 0', color: textPrimary, letterSpacing: '-0.3px', textShadow: 'none' }}>
               Architettura Modulare a <span style={{
@@ -376,8 +376,8 @@ export default function MarketplaceTab({ openTab }) {
         </div>
       </div>
 
-      {/* Main Content Area */}
-      <div style={{ padding: '32px 36px', maxWidth: '1440px', width: '100%', boxSizing: 'border-box' }}>
+      {/* Main Content Area — Full Width */}
+      <div style={{ padding: '16px 20px', width: '100%', boxSizing: 'border-box', flex: 1 }}>
         
         {/* Search & Filter Bar */}
         <div style={{
@@ -385,33 +385,33 @@ export default function MarketplaceTab({ openTab }) {
           justifyContent: 'space-between',
           alignItems: 'center',
           flexWrap: 'wrap',
-          gap: '16px',
-          marginBottom: '28px'
+          gap: '10px',
+          marginBottom: '16px'
         }}>
-          <div style={{ position: 'relative', width: '340px' }}>
-            <Search size={16} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: textSecondary }} />
+          <div style={{ position: 'relative', width: '300px' }}>
+            <Search size={14} style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', color: textSecondary }} />
             <input
               type="text"
-              placeholder="Cerca modulo per nome, tag o tecnologia..."
+              placeholder="Cerca modulo per nome o tag..."
               value={search}
               onChange={e => setSearch(e.target.value)}
               style={{
                 width: '100%',
-                padding: '10px 16px 10px 38px',
-                borderRadius: '10px',
+                padding: '7px 12px 7px 32px',
+                borderRadius: '8px',
                 background: isLight ? '#fff' : 'rgba(255,255,255,0.04)',
                 border: isLight ? '1px solid rgba(190, 160, 110, 0.4)' : '1px solid rgba(255,255,255,0.15)',
                 color: textPrimary,
-                fontSize: '0.85rem',
+                fontSize: '0.78rem',
                 outline: 'none',
                 boxSizing: 'border-box'
               }}
             />
           </div>
 
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.8rem', color: textSecondary }}>
-            <GitBranch size={16} style={{ color: accentColor }} />
-            <span>Repository Ufficiale Moduli: <code>Sigmanih/SigmaStudio-Modules</code></span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.74rem', color: textSecondary }}>
+            <GitBranch size={14} style={{ color: accentColor }} />
+            <span>Repository Moduli: <code>Sigmanih/SigmaStudio-Modules</code></span>
           </div>
         </div>
 
@@ -422,8 +422,8 @@ export default function MarketplaceTab({ openTab }) {
           <div>
             <div style={{
               display: 'grid',
-              gridTemplateColumns: 'repeat(auto-fill, minmax(400px, 1fr))',
-              gap: '24px'
+              gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))',
+              gap: '12px'
             }}>
               {filteredInstalled.map(mod => {
                 const Icon = mod.icon;
@@ -431,40 +431,41 @@ export default function MarketplaceTab({ openTab }) {
                   <div
                     key={mod.id}
                     style={{
-                      borderRadius: '18px',
+                      borderRadius: '14px',
                       background: cardBg,
                       border: cardBorder,
-                      padding: '24px',
+                      padding: '12px 14px',
                       display: 'flex',
                       flexDirection: 'column',
                       justifyContent: 'space-between',
                       position: 'relative',
-                      boxShadow: isLight ? '0 4px 16px rgba(190, 160, 110, 0.12)' : '0 4px 24px rgba(0,0,0,0.3)',
-                      transition: 'transform 0.2s ease, border-color 0.2s ease'
+                      boxShadow: isLight ? '0 4px 14px rgba(190, 160, 110, 0.1)' : '0 4px 20px rgba(0,0,0,0.3)',
+                      transition: 'transform 0.15s ease, border-color 0.15s ease'
                     }}
                   >
                     <div>
                       {/* Card Header */}
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '16px' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '10px', gap: '8px' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', minWidth: 0, flex: 1 }}>
                           <div style={{
-                            width: '46px',
-                            height: '46px',
-                            borderRadius: '12px',
+                            width: '34px',
+                            height: '34px',
+                            borderRadius: '8px',
                             background: `${mod.color}15`,
                             border: `1px solid ${mod.color}40`,
                             display: 'flex',
                             alignItems: 'center',
                             justifyContent: 'center',
-                            color: mod.color
+                            color: mod.color,
+                            flexShrink: 0
                           }}>
-                            <Icon size={22} />
+                            <Icon size={17} />
                           </div>
-                          <div>
-                            <h3 style={{ margin: '0 0 2px 0', fontSize: '1.15rem', fontWeight: 800, color: textPrimary }}>
+                          <div style={{ minWidth: 0, flex: 1 }}>
+                            <h3 style={{ margin: '0 0 1px 0', fontSize: '0.86rem', fontWeight: 800, color: textPrimary, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                               {mod.name}
                             </h3>
-                            <span style={{ fontSize: '0.75rem', color: textSecondary, fontWeight: 600 }}>
+                            <span style={{ fontSize: '0.66rem', color: textSecondary, fontWeight: 600, display: 'block', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                               {mod.category} • {mod.version}
                             </span>
                           </div>
@@ -473,37 +474,47 @@ export default function MarketplaceTab({ openTab }) {
                         <span style={{
                           display: 'inline-flex',
                           alignItems: 'center',
-                          gap: '4px',
-                          padding: '3px 10px',
-                          borderRadius: '12px',
+                          gap: '3px',
+                          padding: '2px 7px',
+                          borderRadius: '6px',
                           background: 'rgba(63, 185, 80, 0.15)',
                           border: '1px solid rgba(63, 185, 80, 0.4)',
                           color: '#3fb950',
-                          fontSize: '0.7rem',
+                          fontSize: '0.62rem',
                           fontWeight: 800,
-                          textTransform: 'uppercase'
+                          textTransform: 'uppercase',
+                          flexShrink: 0
                         }}>
-                          <Check size={12} /> Installato
+                          <Check size={10} /> Attivo
                         </span>
                       </div>
 
                       {/* Description */}
-                      <p style={{ fontSize: '0.84rem', color: textSecondary, lineHeight: 1.5, margin: '0 0 16px 0' }}>
+                      <p style={{
+                        fontSize: '0.72rem',
+                        color: textSecondary,
+                        lineHeight: 1.35,
+                        margin: '0 0 10px 0',
+                        display: '-webkit-box',
+                        WebkitLineClamp: 2,
+                        WebkitBoxOrient: 'vertical',
+                        overflow: 'hidden'
+                      }}>
                         {mod.description}
                       </p>
 
                       {/* Tags */}
-                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginBottom: '20px' }}>
-                        {mod.tags.map(tag => (
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px', marginBottom: '12px' }}>
+                        {mod.tags.slice(0, 4).map(tag => (
                           <span
                             key={tag}
                             style={{
-                              padding: '2px 8px',
-                              borderRadius: '6px',
+                              padding: '1px 6px',
+                              borderRadius: '4px',
                               background: isLight ? 'rgba(190, 160, 110, 0.12)' : 'rgba(255, 255, 255, 0.04)',
                               border: isLight ? '1px solid rgba(190, 160, 110, 0.25)' : '1px solid rgba(255, 255, 255, 0.08)',
                               color: isLight ? '#554e42' : '#cbd5e0',
-                              fontSize: '0.7rem',
+                              fontSize: '0.64rem',
                               fontWeight: 600
                             }}
                           >
@@ -519,9 +530,9 @@ export default function MarketplaceTab({ openTab }) {
                       justifyContent: 'space-between',
                       alignItems: 'center',
                       borderTop: isLight ? '1px solid rgba(190, 160, 110, 0.2)' : '1px solid rgba(255,255,255,0.06)',
-                      paddingTop: '16px'
+                      paddingTop: '8px'
                     }}>
-                      <span style={{ fontSize: '0.72rem', color: textSecondary }}>
+                      <span style={{ fontSize: '0.66rem', color: textSecondary }}>
                         Autore: <strong>{mod.author}</strong>
                       </span>
 
@@ -530,22 +541,22 @@ export default function MarketplaceTab({ openTab }) {
                         style={{
                           display: 'inline-flex',
                           alignItems: 'center',
-                          gap: '6px',
-                          padding: '7px 16px',
-                          borderRadius: '8px',
+                          gap: '5px',
+                          padding: '5px 12px',
+                          borderRadius: '6px',
                           background: isLight 
                             ? 'linear-gradient(135deg, #ea580c 0%, #d97706 100%)' 
                             : 'linear-gradient(135deg, #00d2ff 0%, #3b82f6 100%)',
                           border: 'none',
                           color: '#fff',
-                          fontSize: '0.8rem',
+                          fontSize: '0.74rem',
                           fontWeight: 800,
                           cursor: 'pointer',
-                          boxShadow: isLight ? '0 2px 10px rgba(234, 88, 12, 0.25)' : '0 2px 10px rgba(0, 210, 255, 0.3)',
-                          transition: 'all 0.2s ease'
+                          boxShadow: isLight ? '0 2px 8px rgba(234, 88, 12, 0.25)' : '0 2px 8px rgba(0, 210, 255, 0.3)',
+                          transition: 'all 0.15s ease'
                         }}
                       >
-                        <Play size={13} /> Apri Modulo <ArrowRight size={13} />
+                        <Play size={11} /> Apri Modulo <ArrowRight size={11} />
                       </button>
                     </div>
                   </div>
@@ -562,8 +573,8 @@ export default function MarketplaceTab({ openTab }) {
           <div>
             <div style={{
               display: 'grid',
-              gridTemplateColumns: 'repeat(auto-fill, minmax(400px, 1fr))',
-              gap: '24px'
+              gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))',
+              gap: '12px'
             }}>
               {filteredRemote.map(mod => {
                 const Icon = mod.icon;
@@ -573,40 +584,41 @@ export default function MarketplaceTab({ openTab }) {
                   <div
                     key={mod.id}
                     style={{
-                      borderRadius: '18px',
+                      borderRadius: '14px',
                       background: cardBg,
                       border: cardBorder,
-                      padding: '24px',
+                      padding: '12px 14px',
                       display: 'flex',
                       flexDirection: 'column',
                       justifyContent: 'space-between',
                       position: 'relative',
-                      boxShadow: isLight ? '0 4px 16px rgba(190, 160, 110, 0.12)' : '0 4px 24px rgba(0,0,0,0.3)',
-                      transition: 'transform 0.2s ease, border-color 0.2s ease'
+                      boxShadow: isLight ? '0 4px 14px rgba(190, 160, 110, 0.1)' : '0 4px 20px rgba(0,0,0,0.3)',
+                      transition: 'transform 0.15s ease, border-color 0.15s ease'
                     }}
                   >
                     <div>
                       {/* Card Header */}
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '16px' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '10px', gap: '8px' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', minWidth: 0, flex: 1 }}>
                           <div style={{
-                            width: '46px',
-                            height: '46px',
-                            borderRadius: '12px',
+                            width: '34px',
+                            height: '34px',
+                            borderRadius: '8px',
                             background: `${mod.color}15`,
                             border: `1px solid ${mod.color}40`,
                             display: 'flex',
                             alignItems: 'center',
                             justifyContent: 'center',
-                            color: mod.color
+                            color: mod.color,
+                            flexShrink: 0
                           }}>
-                            <Icon size={22} />
+                            <Icon size={17} />
                           </div>
-                          <div>
-                            <h3 style={{ margin: '0 0 2px 0', fontSize: '1.15rem', fontWeight: 800, color: textPrimary }}>
+                          <div style={{ minWidth: 0, flex: 1 }}>
+                            <h3 style={{ margin: '0 0 1px 0', fontSize: '0.86rem', fontWeight: 800, color: textPrimary, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                               {mod.name}
                             </h3>
-                            <span style={{ fontSize: '0.75rem', color: textSecondary, fontWeight: 600 }}>
+                            <span style={{ fontSize: '0.66rem', color: textSecondary, fontWeight: 600, display: 'block', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                               {mod.category} • {mod.version}
                             </span>
                           </div>
@@ -615,22 +627,32 @@ export default function MarketplaceTab({ openTab }) {
                         <span style={{
                           display: 'inline-flex',
                           alignItems: 'center',
-                          gap: '4px',
-                          padding: '3px 10px',
-                          borderRadius: '12px',
+                          gap: '3px',
+                          padding: '2px 7px',
+                          borderRadius: '6px',
                           background: isLight ? 'rgba(234, 88, 12, 0.12)' : 'rgba(0, 210, 255, 0.15)',
                           border: isLight ? '1px solid rgba(234, 88, 12, 0.35)' : '1px solid rgba(0, 210, 255, 0.4)',
                           color: accentColor,
-                          fontSize: '0.7rem',
+                          fontSize: '0.62rem',
                           fontWeight: 800,
-                          textTransform: 'uppercase'
+                          textTransform: 'uppercase',
+                          flexShrink: 0
                         }}>
                           Disponibile
                         </span>
                       </div>
 
                       {/* Description */}
-                      <p style={{ fontSize: '0.84rem', color: textSecondary, lineHeight: 1.5, margin: '0 0 16px 0' }}>
+                      <p style={{
+                        fontSize: '0.72rem',
+                        color: textSecondary,
+                        lineHeight: 1.35,
+                        margin: '0 0 8px 0',
+                        display: '-webkit-box',
+                        WebkitLineClamp: 2,
+                        WebkitBoxOrient: 'vertical',
+                        overflow: 'hidden'
+                      }}>
                         {mod.description}
                       </p>
 
@@ -638,31 +660,31 @@ export default function MarketplaceTab({ openTab }) {
                       <div style={{
                         display: 'flex',
                         alignItems: 'center',
-                        gap: '6px',
-                        padding: '6px 12px',
-                        borderRadius: '8px',
+                        gap: '4px',
+                        padding: '4px 8px',
+                        borderRadius: '6px',
                         background: isLight ? 'rgba(190, 160, 110, 0.1)' : 'rgba(0,0,0,0.3)',
                         border: isLight ? '1px solid rgba(190, 160, 110, 0.25)' : '1px solid rgba(255,255,255,0.08)',
-                        marginBottom: '16px',
-                        fontSize: '0.72rem',
+                        marginBottom: '8px',
+                        fontSize: '0.66rem',
                         color: textSecondary
                       }}>
-                        <GitBranch size={13} style={{ color: accentColor }} />
+                        <GitBranch size={11} style={{ color: accentColor }} />
                         <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{mod.gitUrl}</span>
                       </div>
 
                       {/* Tags */}
-                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginBottom: '20px' }}>
-                        {mod.tags.map(tag => (
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px', marginBottom: '10px' }}>
+                        {mod.tags.slice(0, 4).map(tag => (
                           <span
                             key={tag}
                             style={{
-                              padding: '2px 8px',
-                              borderRadius: '6px',
+                              padding: '1px 6px',
+                              borderRadius: '4px',
                               background: isLight ? 'rgba(190, 160, 110, 0.12)' : 'rgba(255, 255, 255, 0.04)',
                               border: isLight ? '1px solid rgba(190, 160, 110, 0.25)' : '1px solid rgba(255, 255, 255, 0.08)',
                               color: isLight ? '#554e42' : '#cbd5e0',
-                              fontSize: '0.7rem',
+                              fontSize: '0.64rem',
                               fontWeight: 600
                             }}
                           >
@@ -678,10 +700,10 @@ export default function MarketplaceTab({ openTab }) {
                       justifyContent: 'space-between',
                       alignItems: 'center',
                       borderTop: isLight ? '1px solid rgba(190, 160, 110, 0.2)' : '1px solid rgba(255,255,255,0.06)',
-                      paddingTop: '16px'
+                      paddingTop: '8px'
                     }}>
-                      <span style={{ fontSize: '0.72rem', color: textSecondary }}>
-                        Download: <strong>{mod.size}</strong>
+                      <span style={{ fontSize: '0.66rem', color: textSecondary }}>
+                        Dim: <strong>{mod.size}</strong>
                       </span>
 
                       <button
@@ -690,23 +712,23 @@ export default function MarketplaceTab({ openTab }) {
                         style={{
                           display: 'inline-flex',
                           alignItems: 'center',
-                          gap: '6px',
-                          padding: '7px 16px',
-                          borderRadius: '8px',
+                          gap: '5px',
+                          padding: '5px 12px',
+                          borderRadius: '6px',
                           background: isLight
                             ? 'linear-gradient(135deg, #ea580c 0%, #d97706 100%)'
                             : 'linear-gradient(135deg, #00d2ff 0%, #3b82f6 100%)',
                           border: 'none',
                           color: '#fff',
-                          fontSize: '0.8rem',
+                          fontSize: '0.74rem',
                           fontWeight: 800,
                           cursor: isInstalling ? 'not-allowed' : 'pointer',
-                          boxShadow: isLight ? '0 2px 10px rgba(234, 88, 12, 0.25)' : '0 2px 10px rgba(0, 210, 255, 0.3)',
-                          transition: 'all 0.2s ease'
+                          boxShadow: isLight ? '0 2px 8px rgba(234, 88, 12, 0.25)' : '0 2px 8px rgba(0, 210, 255, 0.3)',
+                          transition: 'all 0.15s ease'
                         }}
                       >
-                        {isInstalling ? <RefreshCw size={13} className="animate-spin" /> : <Download size={13} />}
-                        {isInstalling ? 'Installazione in corso...' : 'Installa Modulo'}
+                        {isInstalling ? <RefreshCw size={11} className="animate-spin" /> : <Download size={11} />}
+                        {isInstalling ? 'Installazione...' : 'Installa Modulo'}
                       </button>
                     </div>
                   </div>
@@ -718,37 +740,37 @@ export default function MarketplaceTab({ openTab }) {
 
         {/* Technical Architecture Info Box */}
         <div style={{
-          marginTop: '36px',
-          borderRadius: '16px',
+          marginTop: '24px',
+          borderRadius: '14px',
           background: isLight ? 'rgba(234, 88, 12, 0.04)' : 'rgba(0, 210, 255, 0.04)',
           border: isLight ? '1px solid rgba(234, 88, 12, 0.22)' : '1px solid rgba(0, 210, 255, 0.2)',
-          padding: '24px'
+          padding: '16px 20px'
         }}>
-          <h3 style={{ margin: '0 0 8px 0', fontSize: '1.05rem', fontWeight: 800, color: textPrimary, display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <Cpu size={18} style={{ color: accentColor }} /> Pipeline di Aggiornamento & Rebuild Automatica
+          <h3 style={{ margin: '0 0 6px 0', fontSize: '0.95rem', fontWeight: 800, color: textPrimary, display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <Cpu size={16} style={{ color: accentColor }} /> Pipeline di Aggiornamento & Rebuild Automatica
           </h3>
-          <p style={{ margin: '0 0 16px 0', fontSize: '0.82rem', color: textSecondary, lineHeight: 1.6 }}>
+          <p style={{ margin: '0 0 12px 0', fontSize: '0.76rem', color: textSecondary, lineHeight: 1.5 }}>
             Quando un nuovo modulo viene installato o aggiornato da un repository Git separato, Sigma Studio esegue una procedura a caldo:
           </p>
           <div style={{
             display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))',
-            gap: '14px',
-            marginBottom: '16px'
+            gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))',
+            gap: '10px'
           }}>
-            <div style={{ padding: '12px 16px', borderRadius: '10px', background: isLight ? '#fff' : 'rgba(255,255,255,0.03)', border: isLight ? '1px solid rgba(190, 160, 110, 0.25)' : '1px solid rgba(255,255,255,0.06)' }}>
-              <div style={{ fontSize: '0.82rem', fontWeight: 700, color: textPrimary, marginBottom: '4px' }}>1. Download Git & Dipendenze</div>
-              <div style={{ fontSize: '0.74rem', color: textSecondary }}>Clona il repository del modulo nella cartella <code>modules/</code> ed installa i package Python e NPM necessari.</div>
+            <div style={{ padding: '10px 14px', borderRadius: '8px', background: isLight ? '#fff' : 'rgba(255,255,255,0.03)', border: isLight ? '1px solid rgba(190, 160, 110, 0.25)' : '1px solid rgba(255,255,255,0.06)' }}>
+              <div style={{ fontSize: '0.78rem', fontWeight: 700, color: textPrimary, marginBottom: '2px' }}>1. Download Git & Dipendenze</div>
+              <div style={{ fontSize: '0.68rem', color: textSecondary }}>Clona il repository del modulo nella cartella <code>modules/</code> ed installa i package necessari.</div>
             </div>
-            <div style={{ padding: '12px 16px', borderRadius: '10px', background: isLight ? '#fff' : 'rgba(255,255,255,0.03)', border: isLight ? '1px solid rgba(190, 160, 110, 0.25)' : '1px solid rgba(255,255,255,0.06)' }}>
-              <div style={{ fontSize: '0.82rem', fontWeight: 700, color: textPrimary, marginBottom: '4px' }}>2. Rebuild Frontend Vite</div>
-              <div style={{ fontSize: '0.74rem', color: textSecondary }}>Esegue <code>npm run build</code> per ricompilare i bundle statici in <code>dist/</code> e registrare la nuova tab.</div>
+            <div style={{ padding: '10px 14px', borderRadius: '8px', background: isLight ? '#fff' : 'rgba(255,255,255,0.03)', border: isLight ? '1px solid rgba(190, 160, 110, 0.25)' : '1px solid rgba(255,255,255,0.06)' }}>
+              <div style={{ fontSize: '0.78rem', fontWeight: 700, color: textPrimary, marginBottom: '2px' }}>2. Rebuild Frontend Vite</div>
+              <div style={{ fontSize: '0.68rem', color: textSecondary }}>Esegue <code>npm run build</code> per ricompilare i bundle statici in <code>dist/</code> e registrare la nuova tab.</div>
             </div>
-            <div style={{ padding: '12px 16px', borderRadius: '10px', background: isLight ? '#fff' : 'rgba(255,255,255,0.03)', border: isLight ? '1px solid rgba(190, 160, 110, 0.25)' : '1px solid rgba(255,255,255,0.06)' }}>
-              <div style={{ fontSize: '0.82rem', fontWeight: 700, color: textPrimary, marginBottom: '4px' }}>3. Hot-Reload Backend FastAPI</div>
-              <div style={{ fontSize: '0.74rem', color: textSecondary }}>Inietta dinamicamente gli endpoint REST e i WebSocket del modulo nel router di <code>sigma_server.py</code>.</div>
+            <div style={{ padding: '10px 14px', borderRadius: '8px', background: isLight ? '#fff' : 'rgba(255,255,255,0.03)', border: isLight ? '1px solid rgba(190, 160, 110, 0.25)' : '1px solid rgba(255,255,255,0.06)' }}>
+              <div style={{ fontSize: '0.78rem', fontWeight: 700, color: textPrimary, marginBottom: '2px' }}>3. Hot-Reload Backend FastAPI</div>
+              <div style={{ fontSize: '0.68rem', color: textSecondary }}>Inietta dinamicamente gli endpoint REST e i WebSocket del modulo nel router di <code>sigma_server.py</code>.</div>
             </div>
           </div>
+        </div>
 
           {/* Console Logs Terminal */}
           <div style={{
@@ -774,6 +796,5 @@ export default function MarketplaceTab({ openTab }) {
         </div>
 
       </div>
-    </div>
-  );
-}
+    );
+  }
