@@ -69,25 +69,34 @@ import json
 
 STATE_FILE = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "data", "marketplace_installed.json")
 
+# Kernel modules always default to True (hardcoded into the product)
+# Optional modules (installable/uninstallable) default to False
+_KERNEL_DEFAULTS = {
+    "creative_studio": True,
+    "research_lab": True,
+    "training_lab": True,
+    "hardware_lab": True,
+    "domotica": True,
+    "knowledge": True,
+    "mcp_hub": True,
+}
+_OPTIONAL_DEFAULTS = {
+    "audio_studio": False,  # Must be explicitly installed by user
+}
+
 def _get_installed_modules_state():
-    default_installed = {
-        "creative_studio": True,
-        "research_lab": True,
-        "training_lab": True,
-        "hardware_lab": True,
-        "domotica": True,
-        "knowledge": True,
-        "mcp_hub": True,
-        "audio_studio": True
-    }
+    state = {**_KERNEL_DEFAULTS, **_OPTIONAL_DEFAULTS}
     try:
         if os.path.exists(STATE_FILE):
             with open(STATE_FILE, "r", encoding="utf-8") as f:
                 saved = json.load(f)
-                default_installed.update(saved)
+                # Only override optional modules from saved state (never override kernel defaults)
+                for k, v in saved.items():
+                    if k not in _KERNEL_DEFAULTS:
+                        state[k] = v
     except Exception as e:
         log.warning(f"Errore lettura stato marketplace: {e}")
-    return default_installed
+    return state
 
 def _save_installed_modules_state(state):
     try:

@@ -102,6 +102,12 @@ const KERNEL_MODULES = [
     tags: ['MCP Standard', 'JSON-RPC', 'Security Policy', 'Discovery'],
     author: 'Sigma Core Team'
   },
+];
+
+// ==============================================================================
+// Optional Modules — installabili/disinstallabili da repository Git
+// ==============================================================================
+const OPTIONAL_MODULES = [
   {
     id: 'audio_studio',
     name: 'Hi-Fi Sound & FM Radio Studio',
@@ -110,10 +116,11 @@ const KERNEL_MODULES = [
     color: '#00f2fe',
     tabType: 'music',
     version: 'v1.0.0',
-    status: 'installed',
     description: 'Modulo isolato di streaming audio Hi-Fi con dirette radiofoniche FM nazionali (Mediaset, Rai, Gruppo 24 ORE, Kiss Kiss, Global UK), motore YouTube Live, lettore MP3 locale e generatore binaurale 432Hz.',
+    gitUrl: 'https://github.com/Sigmanih/SigmaStudio-Moduli/tree/main/modules/sigma_audio_studio',
+    branch: 'main',
     tags: ['Radio FM', 'Hi-Fi Lounge', 'YouTube Live', '432Hz Synth', 'Web Audio'],
-    repository: 'https://github.com/Sigmanih/SigmaStudio-Moduli/tree/main/modules/sigma_audio_studio',
+    size: '12 MB',
     author: 'Sigma Core Team'
   }
 ];
@@ -122,22 +129,6 @@ const KERNEL_MODULES = [
 // Remote Catalog Modules (From Separate Git Repository)
 // ==============================================================================
 const REMOTE_CATALOG_MODULES = [
-  {
-    id: 'audio_studio',
-    name: 'Hi-Fi Sound & FM Radio Studio',
-    category: 'Audio & Streaming',
-    icon: Radio,
-    color: '#00f2fe',
-    tabType: 'music',
-    version: 'v1.0.0',
-    status: 'available',
-    description: 'Modulo open-source isolato per streaming radiofonico FM, stream YouTube e synth procedurale 432Hz dal repository SigmaStudio-Moduli.',
-    gitUrl: 'https://github.com/Sigmanih/SigmaStudio-Moduli/tree/main/modules/sigma_audio_studio',
-    branch: 'main',
-    tags: ['Radio FM', 'Hi-Fi Audio', 'YouTube Live', '432Hz Synth', 'Open Source'],
-    size: '12 MB',
-    author: 'Sigma Core Team'
-  },
   {
     id: 'audio_engine',
     name: 'Neural Audio & Voice Engine',
@@ -204,6 +195,47 @@ const REMOTE_CATALOG_MODULES = [
   }
 ];
 
+// ==============================================================================
+// Reusable Module Card component
+// ==============================================================================
+function ModuleCard({ mod, isLight, cardBg, cardBorder, textPrimary, textSecondary, accentColor, badge, actions, gitUrl }) {
+  const Icon = mod.icon;
+  return (
+    <div style={{ borderRadius: '14px', background: cardBg, border: cardBorder, padding: '12px 14px', display: 'flex', flexDirection: 'column', justifyContent: 'space-between', position: 'relative', boxShadow: isLight ? '0 4px 14px rgba(190, 160, 110, 0.1)' : '0 4px 20px rgba(0,0,0,0.3)', transition: 'transform 0.15s ease, border-color 0.15s ease' }}>
+      <div>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '10px', gap: '8px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', minWidth: 0, flex: 1 }}>
+            <div style={{ width: '34px', height: '34px', borderRadius: '8px', background: `${mod.color}15`, border: `1px solid ${mod.color}40`, display: 'flex', alignItems: 'center', justifyContent: 'center', color: mod.color, flexShrink: 0 }}>
+              <Icon size={17} />
+            </div>
+            <div style={{ minWidth: 0, flex: 1 }}>
+              <h3 style={{ margin: '0 0 1px 0', fontSize: '0.86rem', fontWeight: 800, color: textPrimary, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{mod.name}</h3>
+              <span style={{ fontSize: '0.66rem', color: textSecondary, fontWeight: 600, display: 'block', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{mod.category} • {mod.version}</span>
+            </div>
+          </div>
+          {badge}
+        </div>
+        <p style={{ fontSize: '0.72rem', color: textSecondary, lineHeight: 1.35, margin: '0 0 8px 0', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>{mod.description}</p>
+        {(gitUrl || mod.gitUrl) && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: '4px', padding: '4px 8px', borderRadius: '6px', background: isLight ? 'rgba(190,160,110,0.1)' : 'rgba(0,0,0,0.3)', border: isLight ? '1px solid rgba(190,160,110,0.25)' : '1px solid rgba(255,255,255,0.08)', marginBottom: '8px', fontSize: '0.66rem', color: textSecondary }}>
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke={accentColor} strokeWidth="2"><circle cx="18" cy="18" r="3"/><circle cx="6" cy="6" r="3"/><path d="M13 6h3a2 2 0 0 1 2 2v7"/><line x1="6" y1="9" x2="6" y2="21"/></svg>
+            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{gitUrl || mod.gitUrl}</span>
+          </div>
+        )}
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px', marginBottom: '10px' }}>
+          {(mod.tags || []).slice(0, 4).map(tag => (
+            <span key={tag} style={{ padding: '1px 6px', borderRadius: '4px', background: isLight ? 'rgba(190,160,110,0.12)' : 'rgba(255,255,255,0.04)', border: isLight ? '1px solid rgba(190,160,110,0.25)' : '1px solid rgba(255,255,255,0.08)', color: isLight ? '#554e42' : '#cbd5e0', fontSize: '0.64rem', fontWeight: 600 }}>#{tag}</span>
+          ))}
+        </div>
+      </div>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTop: isLight ? '1px solid rgba(190,160,110,0.2)' : '1px solid rgba(255,255,255,0.06)', paddingTop: '8px', gap: '8px', flexWrap: 'wrap' }}>
+        <span style={{ fontSize: '0.66rem', color: textSecondary }}>Autore: <strong>{mod.author}</strong>{mod.size ? ` • ${mod.size}` : ''}</span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>{actions}</div>
+      </div>
+    </div>
+  );
+}
+
 export default function MarketplaceTab({ openTab }) {
   const { theme } = useApp();
   const isLight = theme === 'light';
@@ -215,15 +247,23 @@ export default function MarketplaceTab({ openTab }) {
   const [uninstallingId, setUninstallingId] = useState(null);
   const [isRebuilding, setIsRebuilding] = useState(false);
   const [rebuildStatus, setRebuildStatus] = useState('');
-  const [installedState, setInstalledState] = useState({
-    creative_studio: true,
-    research_lab: true,
-    training_lab: true,
-    hardware_lab: true,
-    domotica: true,
-    knowledge: true,
-    mcp_hub: true,
-    audio_studio: true
+  // Optional modules installed state — starts from false, only true if confirmed by backend
+  const [optionalInstalledState, setOptionalInstalledState] = useState(() => {
+    // Pre-populate from localStorage only for optional modules
+    try {
+      const saved = localStorage.getItem('sigma_modules_state');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        const state = {};
+        OPTIONAL_MODULES.forEach(m => {
+          state[m.id] = parsed[m.id] === true;
+        });
+        return state;
+      }
+    } catch(e) {}
+    const state = {};
+    OPTIONAL_MODULES.forEach(m => { state[m.id] = false; });
+    return state;
   });
 
   const [installLogs, setInstallLogs] = useState([
@@ -231,23 +271,40 @@ export default function MarketplaceTab({ openTab }) {
     `[${new Date().toLocaleTimeString()}] 🔗 Catalogo moduli collegato al repository 'Sigmanih/SigmaStudio-Moduli'.`
   ]);
 
-  // Sync installed modules from backend
+  // Sync optional modules installed state from backend (single source of truth)
   const fetchInstalledModules = async () => {
     try {
       const res = await fetch('/api/marketplace/modules');
       if (res.ok) {
         const data = await res.json();
         if (data.modules_state) {
-          setInstalledState(prev => ({ ...prev, ...data.modules_state }));
+          const nextState = {};
+          OPTIONAL_MODULES.forEach(m => {
+            nextState[m.id] = data.modules_state[m.id] === true;
+          });
+          setOptionalInstalledState(nextState);
+          // Sync to localStorage so sidebar/app can read it
+          try {
+            const existing = JSON.parse(localStorage.getItem('sigma_modules_state') || '{}');
+            localStorage.setItem('sigma_modules_state', JSON.stringify({ ...existing, ...data.modules_state }));
+          } catch(e) {}
         }
       }
     } catch (e) {
-      console.warn('Fallback local modules state:', e);
+      console.warn('Fallback local optional modules state:', e);
     }
   };
 
+  // Listen for install/uninstall events from other tabs
   useEffect(() => {
+    const handleModulesUpdated = (e) => {
+      if (e.detail?.moduleId) {
+        setOptionalInstalledState(prev => ({ ...prev, [e.detail.moduleId]: e.detail.installed }));
+      }
+    };
+    window.addEventListener('sigma_modules_updated', handleModulesUpdated);
     fetchInstalledModules();
+    return () => window.removeEventListener('sigma_modules_updated', handleModulesUpdated);
   }, []);
 
   // Color tokens depending on Dark (Blue) vs Light/Crema (Orange)
@@ -263,10 +320,10 @@ export default function MarketplaceTab({ openTab }) {
     const repoUrl = mod.gitUrl || `https://github.com/Sigmanih/SigmaStudio-Moduli/tree/main/modules/${mod.id}`;
     setInstallLogs(prev => [
       ...prev,
-      `[${new Date().toLocaleTimeString()}] 🚀 Connessione al repository open-source: ${repoUrl}...`,
-      `[${new Date().toLocaleTimeString()}] 📥 Download e sparse-checkout del modulo '${mod.name}'...`,
-      `[${new Date().toLocaleTimeString()}] 📦 Verifica manifest.json, frontend Vite & router FastAPI...`,
-      `[${new Date().toLocaleTimeString()}] ⚡ Registrazione handler backend e abilitazione tab nella Sidebar...`
+      `[${new Date().toLocaleTimeString()}] 🚀 Connessione al repository: ${repoUrl}...`,
+      `[${new Date().toLocaleTimeString()}] 📥 Download modulo '${mod.name}' da SigmaStudio-Moduli...`,
+      `[${new Date().toLocaleTimeString()}] 📦 Verifica manifest.json, frontend & router backend...`,
+      `[${new Date().toLocaleTimeString()}] ⚡ Abilitazione tab nella Sidebar e registrazione backend...`
     ]);
 
     try {
@@ -276,9 +333,12 @@ export default function MarketplaceTab({ openTab }) {
         body: JSON.stringify({ module_id: mod.id, repo_url: repoUrl })
       });
       if (res.ok) {
-        setInstalledState(prev => {
+        setOptionalInstalledState(prev => {
           const nextState = { ...prev, [mod.id]: true };
-          try { localStorage.setItem('sigma_modules_state', JSON.stringify(nextState)); } catch(e) {}
+          try {
+            const existing = JSON.parse(localStorage.getItem('sigma_modules_state') || '{}');
+            localStorage.setItem('sigma_modules_state', JSON.stringify({ ...existing, [mod.id]: true }));
+          } catch(e) {}
           return nextState;
         });
         window.dispatchEvent(new CustomEvent('sigma_modules_updated', { detail: { moduleId: mod.id, installed: true } }));
@@ -286,17 +346,16 @@ export default function MarketplaceTab({ openTab }) {
           ...prev,
           `[${new Date().toLocaleTimeString()}] ✅ Modulo '${mod.name}' installato e abilitato con successo!`
         ]);
+      } else {
+        setInstallLogs(prev => [
+          ...prev,
+          `[${new Date().toLocaleTimeString()}] ❌ Errore: il server ha risposto con ${res.status}. Riprova.`
+        ]);
       }
     } catch (e) {
-      setInstalledState(prev => {
-        const nextState = { ...prev, [mod.id]: true };
-        try { localStorage.setItem('sigma_modules_state', JSON.stringify(nextState)); } catch(e) {}
-        return nextState;
-      });
-      window.dispatchEvent(new CustomEvent('sigma_modules_updated', { detail: { moduleId: mod.id, installed: true } }));
       setInstallLogs(prev => [
         ...prev,
-        `[${new Date().toLocaleTimeString()}] ✅ Modulo '${mod.name}' attivato in modalità integrata.`
+        `[${new Date().toLocaleTimeString()}] ❌ Errore di rete: ${e.message}`
       ]);
     } finally {
       setInstallingId(null);
@@ -319,9 +378,12 @@ export default function MarketplaceTab({ openTab }) {
         body: JSON.stringify({ module_id: mod.id })
       });
       if (res.ok) {
-        setInstalledState(prev => {
+        setOptionalInstalledState(prev => {
           const nextState = { ...prev, [mod.id]: false };
-          try { localStorage.setItem('sigma_modules_state', JSON.stringify(nextState)); } catch(e) {}
+          try {
+            const existing = JSON.parse(localStorage.getItem('sigma_modules_state') || '{}');
+            localStorage.setItem('sigma_modules_state', JSON.stringify({ ...existing, [mod.id]: false }));
+          } catch(e) {}
           return nextState;
         });
         window.dispatchEvent(new CustomEvent('sigma_modules_updated', { detail: { moduleId: mod.id, installed: false } }));
@@ -329,17 +391,16 @@ export default function MarketplaceTab({ openTab }) {
           ...prev,
           `[${new Date().toLocaleTimeString()}] 🧹 Modulo '${mod.name}' disinstallato con successo!`
         ]);
+      } else {
+        setInstallLogs(prev => [
+          ...prev,
+          `[${new Date().toLocaleTimeString()}] ❌ Errore disinstallazione: ${res.status}`
+        ]);
       }
     } catch (e) {
-      setInstalledState(prev => {
-        const nextState = { ...prev, [mod.id]: false };
-        try { localStorage.setItem('sigma_modules_state', JSON.stringify(nextState)); } catch(e) {}
-        return nextState;
-      });
-      window.dispatchEvent(new CustomEvent('sigma_modules_updated', { detail: { moduleId: mod.id, installed: false } }));
       setInstallLogs(prev => [
         ...prev,
-        `[${new Date().toLocaleTimeString()}] 🧹 Modulo '${mod.name}' disattivato dal workspace.`
+        `[${new Date().toLocaleTimeString()}] ❌ Errore di rete: ${e.message}`
       ]);
     } finally {
       setUninstallingId(null);
@@ -372,19 +433,21 @@ export default function MarketplaceTab({ openTab }) {
     }
   };
 
-  const filteredInstalled = KERNEL_MODULES.filter(m => 
-    installedState[m.id] !== false && (
-      m.name.toLowerCase().includes(search.toLowerCase()) ||
-      m.description.toLowerCase().includes(search.toLowerCase()) ||
-      m.tags.some(t => t.toLowerCase().includes(search.toLowerCase()))
-    )
-  );
-
-  const filteredRemote = REMOTE_CATALOG_MODULES.filter(m => 
+  const searchFn = (m) =>
     m.name.toLowerCase().includes(search.toLowerCase()) ||
     m.description.toLowerCase().includes(search.toLowerCase()) ||
-    m.tags.some(t => t.toLowerCase().includes(search.toLowerCase()))
-  );
+    m.tags.some(t => t.toLowerCase().includes(search.toLowerCase()));
+
+  // Tab "Installati": kernel modules (always active) + optional modules that are installed
+  const filteredKernel = KERNEL_MODULES.filter(searchFn);
+  const filteredOptionalInstalled = OPTIONAL_MODULES.filter(m => optionalInstalledState[m.id] === true && searchFn(m));
+
+  // Tab "Repository Remoti": optional modules + remote catalog (excluding installed optionals from this view)
+  const filteredOptionalRemote = OPTIONAL_MODULES.filter(searchFn);
+  const filteredRemoteCatalog = REMOTE_CATALOG_MODULES.filter(searchFn);
+  const filteredRemote = [...filteredOptionalRemote, ...filteredRemoteCatalog];
+
+  const installedCount = KERNEL_MODULES.length + filteredOptionalInstalled.length;
 
   return (
     <div style={{
@@ -486,7 +549,7 @@ export default function MarketplaceTab({ openTab }) {
               transition: 'all 0.2s ease'
             }}
           >
-            <Cpu size={16} /> Moduli del Kernel Installati ({KERNEL_MODULES.length})
+            <Cpu size={16} /> Moduli Installati ({installedCount})
           </button>
 
           <button
@@ -506,7 +569,7 @@ export default function MarketplaceTab({ openTab }) {
               transition: 'all 0.2s ease'
             }}
           >
-            <Sparkles size={16} /> Moduli da Repository Git Remoti ({REMOTE_CATALOG_MODULES.length})
+            <Sparkles size={16} /> Moduli da Repository Git Remoti ({filteredRemote.length})
           </button>
         </div>
       </div>
@@ -554,178 +617,89 @@ export default function MarketplaceTab({ openTab }) {
         {/* TAB 1: MODULI INSTALLATI NEL KERNEL */}
         {/* =================================================================== */}
         {activeSubTab === 'installed' && (
-          <div>
-            <div style={{
-              display: 'grid',
-              gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))',
-              gap: '12px'
-            }}>
-              {filteredInstalled.map(mod => {
-                const Icon = mod.icon;
-                return (
-                  <div
-                    key={mod.id}
-                    style={{
-                      borderRadius: '14px',
-                      background: cardBg,
-                      border: cardBorder,
-                      padding: '12px 14px',
-                      display: 'flex',
-                      flexDirection: 'column',
-                      justifyContent: 'space-between',
-                      position: 'relative',
-                      boxShadow: isLight ? '0 4px 14px rgba(190, 160, 110, 0.1)' : '0 4px 20px rgba(0,0,0,0.3)',
-                      transition: 'transform 0.15s ease, border-color 0.15s ease'
-                    }}
-                  >
-                    <div>
-                      {/* Card Header */}
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '10px', gap: '8px' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', minWidth: 0, flex: 1 }}>
-                          <div style={{
-                            width: '34px',
-                            height: '34px',
-                            borderRadius: '8px',
-                            background: `${mod.color}15`,
-                            border: `1px solid ${mod.color}40`,
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            color: mod.color,
-                            flexShrink: 0
-                          }}>
-                            <Icon size={17} />
-                          </div>
-                          <div style={{ minWidth: 0, flex: 1 }}>
-                            <h3 style={{ margin: '0 0 1px 0', fontSize: '0.86rem', fontWeight: 800, color: textPrimary, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                              {mod.name}
-                            </h3>
-                            <span style={{ fontSize: '0.66rem', color: textSecondary, fontWeight: 600, display: 'block', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                              {mod.category} • {mod.version}
-                            </span>
-                          </div>
-                        </div>
-
-                        <span style={{
-                          display: 'inline-flex',
-                          alignItems: 'center',
-                          gap: '3px',
-                          padding: '2px 7px',
-                          borderRadius: '6px',
-                          background: 'rgba(63, 185, 80, 0.15)',
-                          border: '1px solid rgba(63, 185, 80, 0.4)',
-                          color: '#3fb950',
-                          fontSize: '0.62rem',
-                          fontWeight: 800,
-                          textTransform: 'uppercase',
-                          flexShrink: 0
-                        }}>
-                          <Check size={10} /> Attivo
-                        </span>
-                      </div>
-
-                      {/* Description */}
-                      <p style={{
-                        fontSize: '0.72rem',
-                        color: textSecondary,
-                        lineHeight: 1.35,
-                        margin: '0 0 10px 0',
-                        display: '-webkit-box',
-                        WebkitLineClamp: 2,
-                        WebkitBoxOrient: 'vertical',
-                        overflow: 'hidden'
-                      }}>
-                        {mod.description}
-                      </p>
-
-                      {/* Tags */}
-                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px', marginBottom: '12px' }}>
-                        {mod.tags.slice(0, 4).map(tag => (
-                          <span
-                            key={tag}
-                            style={{
-                              padding: '1px 6px',
-                              borderRadius: '4px',
-                              background: isLight ? 'rgba(190, 160, 110, 0.12)' : 'rgba(255, 255, 255, 0.04)',
-                              border: isLight ? '1px solid rgba(190, 160, 110, 0.25)' : '1px solid rgba(255, 255, 255, 0.08)',
-                              color: isLight ? '#554e42' : '#cbd5e0',
-                              fontSize: '0.64rem',
-                              fontWeight: 600
-                            }}
-                          >
-                            #{tag}
-                          </span>
-                        ))}
-                      </div>
-                    </div>
-
-                    {/* Card Footer Actions */}
-                    <div style={{
-                      display: 'flex',
-                      justifyContent: 'space-between',
-                      alignItems: 'center',
-                      borderTop: isLight ? '1px solid rgba(190, 160, 110, 0.2)' : '1px solid rgba(255,255,255,0.06)',
-                      paddingTop: '8px',
-                      gap: '8px',
-                      flexWrap: 'wrap'
-                    }}>
-                      <span style={{ fontSize: '0.66rem', color: textSecondary }}>
-                        Autore: <strong>{mod.author}</strong>
-                      </span>
-
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                        {mod.id === 'audio_studio' && (
-                          <button
-                            onClick={() => handleUninstallModule(mod)}
-                            disabled={uninstallingId === mod.id}
-                            title="Disinstalla questo modulo dal sistema"
-                            style={{
-                              display: 'inline-flex',
-                              alignItems: 'center',
-                              gap: '4px',
-                              padding: '5px 9px',
-                              borderRadius: '6px',
-                              background: 'rgba(239, 68, 68, 0.12)',
-                              border: '1px solid rgba(239, 68, 68, 0.35)',
-                              color: '#ef4444',
-                              fontSize: '0.72rem',
-                              fontWeight: 700,
-                              cursor: 'pointer',
-                              transition: 'all 0.15s ease'
-                            }}
-                          >
-                            <Trash2 size={11} /> Disinstalla
-                          </button>
-                        )}
-
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+            {/* Kernel Modules — always active */}
+            <div>
+              <div style={{ fontSize: '0.7rem', fontWeight: 800, letterSpacing: '1px', textTransform: 'uppercase', color: textSecondary, marginBottom: '10px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <Cpu size={13} style={{ color: accentColor }} /> Moduli Kernel (sempre attivi)
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '12px' }}>
+                {filteredKernel.map(mod => {
+                  const Icon = mod.icon;
+                  return (
+                    <ModuleCard
+                      key={mod.id}
+                      mod={mod}
+                      isLight={isLight}
+                      cardBg={cardBg}
+                      cardBorder={cardBorder}
+                      textPrimary={textPrimary}
+                      textSecondary={textSecondary}
+                      accentColor={accentColor}
+                      badge={<span style={{ display: 'inline-flex', alignItems: 'center', gap: '3px', padding: '2px 7px', borderRadius: '6px', background: 'rgba(63, 185, 80, 0.15)', border: '1px solid rgba(63, 185, 80, 0.4)', color: '#3fb950', fontSize: '0.62rem', fontWeight: 800, textTransform: 'uppercase', flexShrink: 0 }}><Check size={10} /> Kernel</span>}
+                      actions={
                         <button
                           onClick={() => openTab && openTab({ name: mod.name }, mod.tabType)}
-                          style={{
-                            display: 'inline-flex',
-                            alignItems: 'center',
-                            gap: '5px',
-                            padding: '5px 12px',
-                            borderRadius: '6px',
-                            background: isLight 
-                              ? 'linear-gradient(135deg, #ea580c 0%, #d97706 100%)' 
-                              : 'linear-gradient(135deg, #00d2ff 0%, #3b82f6 100%)',
-                            border: 'none',
-                            color: '#fff',
-                            fontSize: '0.74rem',
-                            fontWeight: 800,
-                            cursor: 'pointer',
-                            boxShadow: isLight ? '0 2px 8px rgba(234, 88, 12, 0.25)' : '0 2px 8px rgba(0, 210, 255, 0.3)',
-                            transition: 'all 0.15s ease'
-                          }}
+                          style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', padding: '5px 12px', borderRadius: '6px', background: isLight ? 'linear-gradient(135deg, #ea580c 0%, #d97706 100%)' : 'linear-gradient(135deg, #00d2ff 0%, #3b82f6 100%)', border: 'none', color: '#fff', fontSize: '0.74rem', fontWeight: 800, cursor: 'pointer' }}
                         >
-                          <Play size={11} /> Apri Modulo <ArrowRight size={11} />
+                          <Play size={11} /> Apri <ArrowRight size={11} />
                         </button>
-                      </div>
-                    </div>
-                  </div>
-                );
-              })}
+                      }
+                    />
+                  );
+                })}
+              </div>
             </div>
+
+            {/* Optional Installed Modules */}
+            {filteredOptionalInstalled.length > 0 && (
+              <div>
+                <div style={{ fontSize: '0.7rem', fontWeight: 800, letterSpacing: '1px', textTransform: 'uppercase', color: textSecondary, marginBottom: '10px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <Package size={13} style={{ color: accentColor }} /> Moduli Opzionali Installati
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '12px' }}>
+                  {filteredOptionalInstalled.map(mod => {
+                    const Icon = mod.icon;
+                    return (
+                      <ModuleCard
+                        key={mod.id}
+                        mod={mod}
+                        isLight={isLight}
+                        cardBg={cardBg}
+                        cardBorder={cardBorder}
+                        textPrimary={textPrimary}
+                        textSecondary={textSecondary}
+                        accentColor={accentColor}
+                        badge={<span style={{ display: 'inline-flex', alignItems: 'center', gap: '3px', padding: '2px 7px', borderRadius: '6px', background: 'rgba(63, 185, 80, 0.15)', border: '1px solid rgba(63, 185, 80, 0.4)', color: '#3fb950', fontSize: '0.62rem', fontWeight: 800, textTransform: 'uppercase', flexShrink: 0 }}><Check size={10} /> Attivo</span>}
+                        actions={
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                            <button
+                              onClick={() => handleUninstallModule(mod)}
+                              disabled={uninstallingId === mod.id}
+                              style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', padding: '5px 9px', borderRadius: '6px', background: 'rgba(239, 68, 68, 0.12)', border: '1px solid rgba(239, 68, 68, 0.35)', color: '#ef4444', fontSize: '0.72rem', fontWeight: 700, cursor: uninstallingId === mod.id ? 'not-allowed' : 'pointer' }}
+                            >
+                              <Trash2 size={11} /> {uninstallingId === mod.id ? 'Rimozione...' : 'Disinstalla'}
+                            </button>
+                            <button
+                              onClick={() => openTab && openTab({ name: mod.name }, mod.tabType)}
+                              style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', padding: '5px 12px', borderRadius: '6px', background: isLight ? 'linear-gradient(135deg, #ea580c 0%, #d97706 100%)' : 'linear-gradient(135deg, #00d2ff 0%, #3b82f6 100%)', border: 'none', color: '#fff', fontSize: '0.74rem', fontWeight: 800, cursor: 'pointer' }}
+                            >
+                              <Play size={11} /> Apri <ArrowRight size={11} />
+                            </button>
+                          </div>
+                        }
+                      />
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {filteredOptionalInstalled.length === 0 && (
+              <div style={{ padding: '16px 20px', borderRadius: '12px', background: isLight ? 'rgba(190,160,110,0.08)' : 'rgba(255,255,255,0.03)', border: isLight ? '1px dashed rgba(190,160,110,0.3)' : '1px dashed rgba(255,255,255,0.1)', fontSize: '0.78rem', color: textSecondary, textAlign: 'center' }}>
+                Nessun modulo opzionale installato. Vai al tab <strong>Repository Remoti</strong> per scoprire e installare nuovi moduli.
+              </div>
+            )}
           </div>
         )}
 
@@ -734,219 +708,53 @@ export default function MarketplaceTab({ openTab }) {
         {/* =================================================================== */}
         {activeSubTab === 'remote' && (
           <div>
-            <div style={{
-              display: 'grid',
-              gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))',
-              gap: '12px'
-            }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '12px' }}>
               {filteredRemote.map(mod => {
-                const Icon = mod.icon;
                 const isInstalling = installingId === mod.id;
+                const isInstalled = optionalInstalledState[mod.id] === true;
+                const badge = isInstalled
+                  ? <span style={{ display: 'inline-flex', alignItems: 'center', gap: '3px', padding: '2px 7px', borderRadius: '6px', background: 'rgba(63, 185, 80, 0.15)', border: '1px solid rgba(63, 185, 80, 0.4)', color: '#3fb950', fontSize: '0.62rem', fontWeight: 800, textTransform: 'uppercase', flexShrink: 0 }}><Check size={10} /> Installato</span>
+                  : <span style={{ display: 'inline-flex', alignItems: 'center', gap: '3px', padding: '2px 7px', borderRadius: '6px', background: isLight ? 'rgba(234, 88, 12, 0.12)' : 'rgba(0, 210, 255, 0.15)', border: isLight ? '1px solid rgba(234, 88, 12, 0.35)' : '1px solid rgba(0, 210, 255, 0.4)', color: accentColor, fontSize: '0.62rem', fontWeight: 800, textTransform: 'uppercase', flexShrink: 0 }}>Disponibile</span>;
+
+                const actions = isInstalled ? (
+                  <>
+                    <button onClick={() => handleUninstallModule(mod)} disabled={uninstallingId === mod.id}
+                      style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', padding: '5px 8px', borderRadius: '6px', background: 'rgba(239, 68, 68, 0.12)', border: '1px solid rgba(239, 68, 68, 0.35)', color: '#ef4444', fontSize: '0.72rem', fontWeight: 700, cursor: uninstallingId === mod.id ? 'not-allowed' : 'pointer' }}>
+                      <Trash2 size={11} /> {uninstallingId === mod.id ? '...' : 'Disinstalla'}
+                    </button>
+                    <button onClick={() => openTab && openTab({ name: mod.name }, mod.tabType)}
+                      style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', padding: '5px 10px', borderRadius: '6px', background: 'rgba(63, 185, 80, 0.15)', border: '1px solid rgba(63, 185, 80, 0.4)', color: '#3fb950', fontSize: '0.72rem', fontWeight: 800, cursor: 'pointer' }}>
+                      <Play size={11} /> Apri
+                    </button>
+                  </>
+                ) : (
+                  <button onClick={() => handleInstallModule(mod)} disabled={isInstalling}
+                    style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', padding: '5px 12px', borderRadius: '6px', background: isLight ? 'linear-gradient(135deg, #ea580c 0%, #d97706 100%)' : 'linear-gradient(135deg, #00d2ff 0%, #3b82f6 100%)', border: 'none', color: '#fff', fontSize: '0.74rem', fontWeight: 800, cursor: isInstalling ? 'not-allowed' : 'pointer', transition: 'all 0.15s ease' }}>
+                    {isInstalling ? <RefreshCw size={11} /> : <Download size={11} />}
+                    {isInstalling ? 'Installazione...' : 'Installa Modulo'}
+                  </button>
+                );
 
                 return (
-                  <div
+                  <ModuleCard
                     key={mod.id}
-                    style={{
-                      borderRadius: '14px',
-                      background: cardBg,
-                      border: cardBorder,
-                      padding: '12px 14px',
-                      display: 'flex',
-                      flexDirection: 'column',
-                      justifyContent: 'space-between',
-                      position: 'relative',
-                      boxShadow: isLight ? '0 4px 14px rgba(190, 160, 110, 0.1)' : '0 4px 20px rgba(0,0,0,0.3)',
-                      transition: 'transform 0.15s ease, border-color 0.15s ease'
-                    }}
-                  >
-                    <div>
-                      {/* Card Header */}
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '10px', gap: '8px' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', minWidth: 0, flex: 1 }}>
-                          <div style={{
-                            width: '34px',
-                            height: '34px',
-                            borderRadius: '8px',
-                            background: `${mod.color}15`,
-                            border: `1px solid ${mod.color}40`,
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            color: mod.color,
-                            flexShrink: 0
-                          }}>
-                            <Icon size={17} />
-                          </div>
-                          <div style={{ minWidth: 0, flex: 1 }}>
-                            <h3 style={{ margin: '0 0 1px 0', fontSize: '0.86rem', fontWeight: 800, color: textPrimary, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                              {mod.name}
-                            </h3>
-                            <span style={{ fontSize: '0.66rem', color: textSecondary, fontWeight: 600, display: 'block', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                              {mod.category} • {mod.version}
-                            </span>
-                          </div>
-                        </div>
-
-                        <span style={{
-                          display: 'inline-flex',
-                          alignItems: 'center',
-                          gap: '3px',
-                          padding: '2px 7px',
-                          borderRadius: '6px',
-                          background: isLight ? 'rgba(234, 88, 12, 0.12)' : 'rgba(0, 210, 255, 0.15)',
-                          border: isLight ? '1px solid rgba(234, 88, 12, 0.35)' : '1px solid rgba(0, 210, 255, 0.4)',
-                          color: accentColor,
-                          fontSize: '0.62rem',
-                          fontWeight: 800,
-                          textTransform: 'uppercase',
-                          flexShrink: 0
-                        }}>
-                          Disponibile
-                        </span>
-                      </div>
-
-                      {/* Description */}
-                      <p style={{
-                        fontSize: '0.72rem',
-                        color: textSecondary,
-                        lineHeight: 1.35,
-                        margin: '0 0 8px 0',
-                        display: '-webkit-box',
-                        WebkitLineClamp: 2,
-                        WebkitBoxOrient: 'vertical',
-                        overflow: 'hidden'
-                      }}>
-                        {mod.description}
-                      </p>
-
-                      {/* Git Repo Badge */}
-                      <div style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '4px',
-                        padding: '4px 8px',
-                        borderRadius: '6px',
-                        background: isLight ? 'rgba(190, 160, 110, 0.1)' : 'rgba(0,0,0,0.3)',
-                        border: isLight ? '1px solid rgba(190, 160, 110, 0.25)' : '1px solid rgba(255,255,255,0.08)',
-                        marginBottom: '8px',
-                        fontSize: '0.66rem',
-                        color: textSecondary
-                      }}>
-                        <GitBranch size={11} style={{ color: accentColor }} />
-                        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{mod.gitUrl}</span>
-                      </div>
-
-                      {/* Tags */}
-                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px', marginBottom: '10px' }}>
-                        {mod.tags.slice(0, 4).map(tag => (
-                          <span
-                            key={tag}
-                            style={{
-                              padding: '1px 6px',
-                              borderRadius: '4px',
-                              background: isLight ? 'rgba(190, 160, 110, 0.12)' : 'rgba(255, 255, 255, 0.04)',
-                              border: isLight ? '1px solid rgba(190, 160, 110, 0.25)' : '1px solid rgba(255, 255, 255, 0.08)',
-                              color: isLight ? '#554e42' : '#cbd5e0',
-                              fontSize: '0.64rem',
-                              fontWeight: 600
-                            }}
-                          >
-                            #{tag}
-                          </span>
-                        ))}
-                      </div>
-                    </div>
-
-                    {/* Card Footer Actions */}
-                    <div style={{
-                      display: 'flex',
-                      justifyContent: 'space-between',
-                      alignItems: 'center',
-                      borderTop: isLight ? '1px solid rgba(190, 160, 110, 0.2)' : '1px solid rgba(255,255,255,0.06)',
-                      paddingTop: '8px',
-                      gap: '8px',
-                      flexWrap: 'wrap'
-                    }}>
-                      <span style={{ fontSize: '0.66rem', color: textSecondary }}>
-                        Dim: <strong>{mod.size}</strong>
-                      </span>
-
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                        {installedState[mod.id] ? (
-                          <>
-                            <button
-                              onClick={() => openTab && openTab({ name: mod.name }, mod.tabType)}
-                              style={{
-                                display: 'inline-flex',
-                                alignItems: 'center',
-                                gap: '4px',
-                                padding: '5px 10px',
-                                borderRadius: '6px',
-                                background: 'rgba(63, 185, 80, 0.15)',
-                                border: '1px solid rgba(63, 185, 80, 0.4)',
-                                color: '#3fb950',
-                                fontSize: '0.72rem',
-                                fontWeight: 800,
-                                cursor: 'pointer'
-                              }}
-                            >
-                              <Check size={11} /> Attivo (Apri)
-                            </button>
-                            <button
-                              onClick={() => handleUninstallModule(mod)}
-                              disabled={uninstallingId === mod.id}
-                              title="Disinstalla modulo"
-                              style={{
-                                display: 'inline-flex',
-                                alignItems: 'center',
-                                gap: '4px',
-                                padding: '5px 8px',
-                                borderRadius: '6px',
-                                background: 'rgba(239, 68, 68, 0.12)',
-                                border: '1px solid rgba(239, 68, 68, 0.35)',
-                                color: '#ef4444',
-                                fontSize: '0.72rem',
-                                fontWeight: 700,
-                                cursor: 'pointer'
-                              }}
-                            >
-                              <Trash2 size={11} />
-                            </button>
-                          </>
-                        ) : (
-                          <button
-                            onClick={() => handleInstallModule(mod)}
-                            disabled={isInstalling}
-                            style={{
-                              display: 'inline-flex',
-                              alignItems: 'center',
-                              gap: '5px',
-                              padding: '5px 12px',
-                              borderRadius: '6px',
-                              background: isLight
-                                ? 'linear-gradient(135deg, #ea580c 0%, #d97706 100%)'
-                                : 'linear-gradient(135deg, #00d2ff 0%, #3b82f6 100%)',
-                              border: 'none',
-                              color: '#fff',
-                              fontSize: '0.74rem',
-                              fontWeight: 800,
-                              cursor: isInstalling ? 'not-allowed' : 'pointer',
-                              boxShadow: isLight ? '0 2px 8px rgba(234, 88, 12, 0.25)' : '0 2px 8px rgba(0, 210, 255, 0.3)',
-                              transition: 'all 0.15s ease'
-                            }}
-                          >
-                            {isInstalling ? <RefreshCw size={11} className="animate-spin" /> : <Download size={11} />}
-                            {isInstalling ? 'Installazione...' : 'Installa Modulo'}
-                          </button>
-                        )}
-                      </div>
-                    </div>
-                  </div>
+                    mod={mod}
+                    isLight={isLight}
+                    cardBg={cardBg}
+                    cardBorder={cardBorder}
+                    textPrimary={textPrimary}
+                    textSecondary={textSecondary}
+                    accentColor={accentColor}
+                    badge={badge}
+                    actions={actions}
+                    gitUrl={mod.gitUrl}
+                  />
                 );
               })}
             </div>
           </div>
         )}
+
 
         {/* Technical Architecture Info Box */}
         <div style={{
