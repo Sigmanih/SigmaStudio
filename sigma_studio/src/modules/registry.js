@@ -18,20 +18,30 @@ const TAB_TO_MODULE_PATH = {
   music:           './sigma_audio_studio/index.jsx',
   music_lounge:    './sigma_audio_studio/index.jsx',
   audio_studio:    './sigma_audio_studio/index.jsx',
+  voice_studio:    './sigma_voice_studio/index.jsx',
 
   // Lab & Infrastruttura
   training_lab:    './sigma_training_lab/index.jsx',
   hardware_lab:    './sigma_hardware_lab/index.jsx',
+  hardware:        './sigma_hardware_lab/index.jsx',
   research_lab:    './sigma_research_lab/index.jsx',
+  developer_lab:   './sigma_developer_lab/index.jsx',
+  network_lab:     './sigma_network_lab/index.jsx',
 
   // Knowledge & MCP
   knowledge:       './sigma_knowledge/index.jsx',
   mcp_hub:         './sigma_mcp_hub/index.jsx',
+  roadmap:         './sigma_roadmap/index.jsx',
+
+  // Messaging & Email
+  email_client:    './sigma_email_client/index.jsx',
+  messaging_hub:   './sigma_messaging_hub/index.jsx',
 
   // IoT & Domotica
   domotica:        './sigma_domotica/index.jsx',
   home_assistant:  './sigma_domotica/index.jsx',
 };
+
 
 const _componentCache = {};
 

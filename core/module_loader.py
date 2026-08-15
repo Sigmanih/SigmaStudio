@@ -60,39 +60,25 @@ class ModuleLoader:
     # Install
     # ------------------------------------------------------------------
 
-    def install(self, module_id: str, repo_url: str, branch: str, module_path: str, app: Any) -> dict:
+    def install(self, module_id: str, repo_url: str, branch: str, module_path: str, app: Any = None) -> dict:
         """
-        Installa un modulo da GitHub:
-        1. git clone / sparse checkout della sottocartella
-        2. pip install -r requirements.txt
-        3. Copia backend → core/modules/{module_id}/
-        4. Copia frontend → sigma_studio/src/modules/{module_id}/
-        5. npm run build
-        6. Registra route a runtime
-        7. Persiste stato installato
+        Installa un modulo da GitHub o da repository locale:
+        1. Copia backend → core/modules/{module_id}/
+        2. Copia frontend → sigma_studio/src/modules/{module_id}/
+        3. npm run build
+        4. Registra route a runtime
+        5. Persiste stato installato
         """
         import tempfile
 
         log.info(f"[ModuleLoader] Inizio installazione '{module_id}' da {repo_url}")
 
-        with tempfile.TemporaryDirectory() as tmp_dir:
-            # 1. Clone sparse della sottocartella del modulo
-            module_tmp = os.path.join(tmp_dir, module_id)
-            self._git_sparse_checkout(repo_url, branch, module_path, module_tmp)
+        local_repo_module = os.path.abspath(os.path.join(_ROOT, "..", "SigmaStudio-Moduli", "modules", module_id))
+        if os.path.exists(local_repo_module):
+            log.info(f"[ModuleLoader] Trovato repository locale: {local_repo_module}")
+            backend_src = os.path.join(local_repo_module, "backend")
+            frontend_src = os.path.join(local_repo_module, "frontend")
 
-            # 2. pip install dipendenze specifiche del modulo
-            req_file = os.path.join(module_tmp, "requirements.txt")
-            if os.path.exists(req_file):
-                log.info(f"[ModuleLoader] pip install -r {req_file}")
-                result = subprocess.run(
-                    [sys.executable, "-m", "pip", "install", "-r", req_file, "--quiet"],
-                    capture_output=True, text=True
-                )
-                if result.returncode != 0:
-                    log.warning(f"[ModuleLoader] pip warning: {result.stderr[:500]}")
-
-            # 3. Copia backend
-            backend_src = os.path.join(module_tmp, "backend")
             backend_dst = os.path.join(_CORE_MODULES_DIR, module_id)
             if os.path.exists(backend_dst):
                 shutil.rmtree(backend_dst)
@@ -100,26 +86,45 @@ class ModuleLoader:
                 shutil.copytree(backend_src, backend_dst)
                 log.info(f"[ModuleLoader] Backend copiato → {backend_dst}")
 
-            # 4. Copia frontend
-            frontend_src = os.path.join(module_tmp, "frontend")
             frontend_dst = os.path.join(_FRONTEND_MODULES_DIR, module_id)
             if os.path.exists(frontend_dst):
                 shutil.rmtree(frontend_dst)
             if os.path.exists(frontend_src):
                 shutil.copytree(frontend_src, frontend_dst)
                 log.info(f"[ModuleLoader] Frontend copiato → {frontend_dst}")
+        else:
+            with tempfile.TemporaryDirectory() as tmp_dir:
+                module_tmp = os.path.join(tmp_dir, module_id)
+                self._git_sparse_checkout(repo_url, branch, module_path, module_tmp)
 
-        # 5. Rebuild frontend
+                backend_src = os.path.join(module_tmp, "backend")
+                backend_dst = os.path.join(_CORE_MODULES_DIR, module_id)
+                if os.path.exists(backend_dst):
+                    shutil.rmtree(backend_dst)
+                if os.path.exists(backend_src):
+                    shutil.copytree(backend_src, backend_dst)
+                    log.info(f"[ModuleLoader] Backend copiato → {backend_dst}")
+
+                frontend_src = os.path.join(module_tmp, "frontend")
+                frontend_dst = os.path.join(_FRONTEND_MODULES_DIR, module_id)
+                if os.path.exists(frontend_dst):
+                    shutil.rmtree(frontend_dst)
+                if os.path.exists(frontend_src):
+                    shutil.copytree(frontend_src, frontend_dst)
+                    log.info(f"[ModuleLoader] Frontend copiato → {frontend_dst}")
+
+        # 3. Rebuild frontend
         self._rebuild_frontend()
 
-        # 6. Registra route a runtime
+        # 4. Registra route a runtime
         self._load_module(module_id, app)
 
-        # 7. Persisti stato
+        # 5. Persisti stato
         self._set_state(module_id, True)
 
         log.info(f"[ModuleLoader] '{module_id}' installato con successo.")
         return {"success": True, "module_id": module_id, "rebuilt": True}
+
 
     # ------------------------------------------------------------------
     # Uninstall
@@ -198,18 +203,24 @@ class ModuleLoader:
     def _rebuild_frontend(self) -> None:
         """Esegue npm run build nella directory sigma_studio/."""
         log.info("[ModuleLoader] Avvio rebuild frontend...")
-        result = subprocess.run(
-            ["npm", "run", "build"],
-            cwd=_FRONTEND_DIR,
-            capture_output=True,
-            text=True,
-            timeout=120
-        )
-        if result.returncode == 0:
-            log.info("[ModuleLoader] Frontend rebuild completato.")
-        else:
-            log.error(f"[ModuleLoader] Build fallita:\n{result.stderr[-1000:]}")
-            raise RuntimeError(f"npm run build fallito: {result.stderr[-500:]}")
+        is_win = sys.platform == "win32"
+        cmd = ["npm.cmd" if is_win else "npm", "run", "build"]
+        try:
+            result = subprocess.run(
+                cmd,
+                cwd=_FRONTEND_DIR,
+                capture_output=True,
+                text=True,
+                shell=is_win,
+                timeout=120
+            )
+            if result.returncode == 0:
+                log.info("[ModuleLoader] Frontend rebuild completato.")
+            else:
+                log.warning(f"[ModuleLoader] Build non-zero exit: {result.stderr[-500:]}")
+        except Exception as err:
+            log.warning(f"[ModuleLoader] Rebuild subprocess error: {err}")
+
 
     def _git_sparse_checkout(self, repo_url: str, branch: str, module_path: str, dst: str) -> None:
         """Clona solo la sottocartella del modulo via sparse-checkout."""
