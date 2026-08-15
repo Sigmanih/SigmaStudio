@@ -297,6 +297,30 @@ def get_hardware_telemetry() -> Dict[str, Any]:
     }
 
 
+EXCLUDE_PROCESS_NAMES = {
+    'code.exe', 'antigravity.exe', 'msedge.exe', 'msedgewebview2.exe', 'chrome.exe',
+    'asus_framework.exe', 'nzxt cam.exe', 'cam_helper.exe', 'nvidia overlay.exe',
+    'razerappengine.exe', 'cp3.exe', 'pet.exe', 'powershell.exe', 'conhost.exe',
+    'explorer.exe', 'taskhostw.exe', 'svchost.exe', 'searchhost.exe', 'runtimebroker.exe',
+    'shellexperiencehost.exe', 'startmenuexperiencehost.exe', 'textinputhost.exe'
+}
+
+
+def _is_sigma_or_ai_workload(raw_name: str, cmdline: str) -> bool:
+    """Returns True only if the process belongs to Sigma Studio, Python, or an AI/GPU workload."""
+    if raw_name in EXCLUDE_PROCESS_NAMES:
+        return False
+    if 'python' in raw_name:
+        return True
+    if any(k in raw_name for k in ['ollama', 'blender', 'ffmpeg', 'comfy', 'llama', 'vllm', 'torch', 'uvicorn']):
+        return True
+    if any(k in cmdline for k in ['sigma_server.py', 'sigma_studio', 'sigma_engine', 'sigma_agent', 'sigma_router', 'ailoflow']):
+        return True
+    if 'node' in raw_name and 'sigma_studio' in cmdline:
+        return True
+    return False
+
+
 def _classify_process_module(name: str, cmdline: str, is_master: bool, mem_mb: float, vram_mb: float, cpu_p: float) -> tuple[str, str, str]:
     """Classifies a process to determine its associated Sigma Studio module."""
     if is_master:
@@ -317,7 +341,7 @@ def _classify_process_module(name: str, cmdline: str, is_master: bool, mem_mb: f
         return "sigma_research_lab", "🔬 Pipelines Lab", "Agent Swarm"
     if "node" in name or "vite" in cmdline:
         return "frontend_vite", "🌐 Frontend Vite Server", "Interfaccia"
-    if "docker" in name or "sandbox" in cmdline:
+    if "sandbox" in cmdline and "docker" in cmdline:
         return "sandbox_engine", "📦 Sandbox Engine", "Ambiente Protetto"
     
     # Large model worker
@@ -325,10 +349,10 @@ def _classify_process_module(name: str, cmdline: str, is_master: bool, mem_mb: f
         return "sigma_engine", "⚡ SigmaEngine (Inference / MoE)", "Inference"
     if vram_mb > 400:
         return "sigma_engine_worker", "⚡ Sigma Worker", "Background"
-    if cpu_p == 0 and mem_mb < 60:
+    if cpu_p == 0 and mem_mb < 35:
         return "orphan_idle", "💤 Subprocess Inattivo", "Orfano"
 
-    return "sigma_core_worker", "⚡ Sigma Core Worker", "Sistema"
+    return "sigma_core_worker", "⚡ Sigma Subprocess Worker", "Subprocess"
 
 
 def get_gpu_processes() -> Dict[str, Any]:
@@ -343,13 +367,13 @@ def get_gpu_processes() -> Dict[str, Any]:
             raw_name = (p_info.get('name') or '').lower()
             cmdline = " ".join(p_info.get('cmdline') or []).lower()
             
-            if any(k in raw_name or k in cmdline for k in ['python', 'node', 'ollama', 'sigma', 'uvicorn', 'blender', 'comfy', 'torch', 'ffmpeg', 'docker']):
+            if _is_sigma_or_ai_workload(raw_name, cmdline):
                 mem_mb = round((p_info.get('memory_info').rss if p_info.get('memory_info') else 0) / (1024**2), 1)
                 cpu_p = round(p_info.get('cpu_percent') or 0.0, 1)
                 is_cur = (p_info.get('pid') == current_pid)
                 
                 # Estimate VRAM usage
-                est_vram = int(mem_mb * 0.85) if any(k in raw_name or k in cmdline for k in ['ollama', 'torch', 'sigma', 'comfy', 'blender']) else int(mem_mb * 0.15)
+                est_vram = int(mem_mb * 0.85) if any(k in raw_name or k in cmdline for k in ['ollama', 'torch', 'sigma_server', 'comfy', 'blender']) else int(mem_mb * 0.15)
                 created_dt = time.strftime('%H:%M:%S', time.localtime(p_info.get('create_time') or time.time()))
                 
                 # Assigned GPU estimation
@@ -372,6 +396,7 @@ def get_gpu_processes() -> Dict[str, Any]:
                     display_name = mod_name
                 else:
                     display_name = p_info.get('name') or "python.exe"
+
 
                 procs.append({
                     "pid": p_info.get('pid'),
