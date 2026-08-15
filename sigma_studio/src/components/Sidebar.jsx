@@ -338,7 +338,7 @@ export default function Sidebar({
             onClick={() => openTab({ name: 'Chat AI', path: 'chat-tab' }, 'chat')} 
           />
           
-          {isCreativeInstalled ? (
+          {isCreativeInstalled && (
             <SidebarItem
               icon={Palette}
               label="Creative Lab"
@@ -347,16 +347,8 @@ export default function Sidebar({
               active={activeTabId != null && activeTabId.startsWith('creative_studio')}
               onClick={() => openTab({ name: '🎨 Creative Lab' }, 'creative_studio')}
             />
-          ) : (
-            <SidebarItem
-              icon={Palette}
-              label="Creative Lab"
-              badge="+"
-              badgeColor="rgba(255,255,255,0.06)"
-              active={false}
-              onClick={() => openTab({ name: '📦 Hub Moduli & Estensioni' }, 'marketplace')}
-            />
           )}
+
 
 
           <SidebarItem 
@@ -419,7 +411,7 @@ export default function Sidebar({
             />
           )}
 
-          {isDomoticaInstalled ? (
+          {isDomoticaInstalled && (
             <SidebarItem 
               icon={Home} 
               label="Domotica & IoT" 
@@ -428,16 +420,8 @@ export default function Sidebar({
               active={activeTabId != null && (activeTabId.startsWith('domotica') || activeTabId.startsWith('home_assistant'))}
               onClick={() => openTab({ name: '🏠 Domotica' }, 'domotica')} 
             />
-          ) : (
-            <SidebarItem 
-              icon={Home} 
-              label="Domotica & IoT" 
-              badge="+"
-              badgeColor="rgba(255,255,255,0.06)"
-              active={false}
-              onClick={() => openTab({ name: '📦 Hub Moduli & Estensioni' }, 'marketplace')} 
-            />
           )}
+
         </nav>
 
         {/* ================================================================= */}
