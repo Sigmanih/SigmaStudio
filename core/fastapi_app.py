@@ -11,8 +11,16 @@ import json
 import asyncio
 import queue
 import threading
+import warnings
 from pathlib import Path
 from urllib.parse import urlparse
+
+warnings.filterwarnings("ignore", category=UserWarning, module="torch")
+warnings.filterwarnings("ignore", category=FutureWarning, module="torch")
+warnings.filterwarnings("ignore", message=".*expandable_segments.*")
+warnings.filterwarnings("ignore", message=".*dropout option adds dropout.*")
+warnings.filterwarnings("ignore", message=".*weight_norm is deprecated.*")
+warnings.filterwarnings("ignore", message=".*Redirects are currently not supported.*")
 
 from fastapi import FastAPI, Request, Response
 from fastapi.responses import JSONResponse, StreamingResponse, FileResponse
@@ -117,9 +125,6 @@ FastAPIHandlerAdapter.handle_manifesti_hub = handle_manifesti_hub
 FastAPIHandlerAdapter.handle_manifesti_install_from_hub = handle_manifesti_install_from_hub
 FastAPIHandlerAdapter.handle_manifesti_uninstall = handle_manifesti_uninstall
 
-from core.tts_handler import handle_tts_engines, handle_tts_speak
-FastAPIHandlerAdapter.handle_tts_engines = handle_tts_engines
-FastAPIHandlerAdapter.handle_tts_speak = handle_tts_speak
 
 from core.mcp_handler import (
     handle_mcp_servers, handle_mcp_tools, handle_mcp_resources, handle_mcp_rpc,

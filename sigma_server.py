@@ -11,8 +11,16 @@ import mimetypes
 import signal
 import sys
 import shutil
+import warnings
 from http.server import HTTPServer, SimpleHTTPRequestHandler
 from socketserver import ThreadingMixIn
+
+warnings.filterwarnings("ignore", category=UserWarning, module="torch")
+warnings.filterwarnings("ignore", category=FutureWarning, module="torch")
+warnings.filterwarnings("ignore", message=".*expandable_segments.*")
+warnings.filterwarnings("ignore", message=".*dropout option adds dropout.*")
+warnings.filterwarnings("ignore", message=".*weight_norm is deprecated.*")
+warnings.filterwarnings("ignore", message=".*Redirects are currently not supported.*")
 
 # --- Core modules ---
 from core.logger import get_logger
@@ -109,10 +117,6 @@ SigmaAPIHandler.handle_upload_user_avatar = handle_upload_user_avatar
 SigmaAPIHandler.handle_manifesti_hub = handle_manifesti_hub
 SigmaAPIHandler.handle_manifesti_install_from_hub = handle_manifesti_install_from_hub
 SigmaAPIHandler.handle_manifesti_uninstall = handle_manifesti_uninstall
-
-from core.tts_handler import handle_tts_engines, handle_tts_speak
-SigmaAPIHandler.handle_tts_engines = handle_tts_engines
-SigmaAPIHandler.handle_tts_speak = handle_tts_speak
 
 from core.mcp_handler import (
     handle_mcp_servers, handle_mcp_tools, handle_mcp_resources, handle_mcp_rpc,
@@ -411,7 +415,8 @@ def _apply_hardware_env():
         os.environ["OLLAMA_KEEP_ALIVE"] = "24h"
         
         # 2. PyTorch & CUDA Memory Allocation Optimization
-        os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:True"
+        if sys.platform != "win32":
+            os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:True"
         
         # 3. CPU Core Multi-threading Optimization (Dynamic detection)
         cpu_threads = str(os.cpu_count() or 8)

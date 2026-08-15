@@ -3,7 +3,7 @@ import {
   Store, Package, Download, RefreshCw, CheckCircle2, ShieldCheck, 
   ExternalLink, Terminal, GitBranch, Cpu, Sparkles, Layers, 
   Palette, FlaskConical, Brain, Zap, Home, Wrench, ArrowRight,
-  PlusCircle, AlertCircle, Play, Check, X, Search, Radio, Trash2, Calendar, PieChart
+  PlusCircle, AlertCircle, Play, Check, X, Search, Radio, Trash2, Calendar, PieChart, Mic
 } from 'lucide-react';
 
 import { useApp } from '../contexts/AppContext';
@@ -152,8 +152,24 @@ const OPTIONAL_MODULES = [
     tags: ['D3.js Graph', 'Knowledge Graph', 'Universal Nodes', 'Memory MCP', 'Episodic Context', 'RAG'],
     size: '2 MB',
     author: 'Sigma Core Team'
+  },
+  {
+    id: 'sigma_voice_studio',
+    name: 'Voice Studio & Neural Speech Lab',
+    category: 'Audio & Voce Neurale',
+    icon: Mic,
+    color: '#ff79c6',
+    tabType: 'voice_studio',
+    version: 'v1.0.0',
+    description: 'Laboratorio di sintesi vocale neurale: motore Kokoro 82M ultra-veloce, Coqui XTTS-v2 zero-shot voice cloning, personalizzazione tono/velocità, preset vocali e Voice MCP Server.',
+    gitUrl: 'https://github.com/Sigmanih/SigmaStudio-Moduli/tree/main/modules/sigma_voice_studio',
+    branch: 'main',
+    tags: ['Kokoro 82M', 'XTTS-v2', 'Neural TTS', 'Voice Cloning', 'Speech Synthesis', 'Voice MCP'],
+    size: '3 MB',
+    author: 'Sigma Core Team'
   }
 ];
+
 
 
 

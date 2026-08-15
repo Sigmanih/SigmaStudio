@@ -261,6 +261,19 @@ export default function Workspace({
         </React.Suspense>
       );
     }
+    if (tab.type === 'voice_studio') {
+      const isVoiceInstalled = modulesState.sigma_voice_studio === true;
+      const LazyVoice = getLazyModule('voice_studio');
+      if (!isVoiceInstalled || !LazyVoice) {
+        return <ModuleNotInstalled tabType="voice_studio" openTab={openTab} />;
+      }
+      return (
+        <React.Suspense fallback={<div style={{ padding: '32px', color: '#94a3b8', textAlign: 'center' }}>Caricamento Voice Studio...</div>}>
+          <LazyVoice openTab={openTab} />
+        </React.Suspense>
+      );
+    }
+
     if (tab.type === 'skills_hub') {
       return <SkillsHub />;
     }

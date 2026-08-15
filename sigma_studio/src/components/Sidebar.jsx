@@ -3,7 +3,7 @@ import {
   Home, FileText, Activity, PieChart, Layers, ChevronRight, MessageSquare, 
   FlaskConical, Brain, Zap, User, Server, Wrench, Palette, Blocks, Sun, 
   Moon, Store, Package, Sliders, Key, Sparkles, FolderGit2, Compass,
-  Cpu, Box, Radio, Music
+  Cpu, Box, Radio, Music, Mic
 } from 'lucide-react';
 import { useApp } from '../contexts/AppContext';
 import { useModuleState } from '../hooks/useModuleState';
@@ -112,6 +112,7 @@ export default function Sidebar({
   const isTrainingInstalled = modulesState.sigma_training_lab === true;
   const isRoadmapInstalled = modulesState.sigma_roadmap === true;
   const isKnowledgeInstalled = modulesState.sigma_knowledge === true;
+  const isVoiceInstalled = modulesState.sigma_voice_studio === true;
 
   // Poll for counts (chat sessions, manifesti, topics, etc.)
   useEffect(() => {
@@ -367,6 +368,18 @@ export default function Sidebar({
               onClick={() => openTab({ name: '🎨 Creative Lab' }, 'creative_studio')}
             />
           )}
+
+          {isVoiceInstalled && (
+            <SidebarItem
+              icon={Mic}
+              label="Voice Studio"
+              badge="TTS"
+              badgeColor="rgba(255,121,198,0.15)"
+              active={activeTabId != null && activeTabId.startsWith('voice_studio')}
+              onClick={() => openTab({ name: '🎙️ Voice Studio' }, 'voice_studio')}
+            />
+          )}
+
 
 
 
