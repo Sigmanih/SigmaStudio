@@ -3,8 +3,9 @@ import {
   FolderTree, MessageSquare, Edit3, Share2, Palette, 
   FlaskConical, Cpu, Home as HomeIcon, Scroll, Microscope, ArrowRight,
   Sun, Moon, Store, Sparkles, ShieldCheck, Zap, Layers,
-  Activity, Calendar, Brain, FileText, PieChart, Wrench, Compass, CheckCircle2, Key
+  Activity, Calendar, Brain, FileText, PieChart, Wrench, Compass, CheckCircle2, Key, DownloadCloud
 } from 'lucide-react';
+
 import { useApp } from '../contexts/AppContext';
 import TechSpaceCanvas from './common/TechSpaceCanvas';
 
@@ -284,7 +285,27 @@ const MODULE_SHOWCASE_LIST = [
     imageCaption: '⚡ Telemetria Real-Time VRAM GPU, Monitor Processi e Cluster'
   },
   {
+    id: 'model_hub',
+    step: 'KERNEL 08',
+    badge: 'HUGGING FACE MODEL HUB & KERNEL OPTIMIZER',
+    icon: DownloadCloud,
+    color: '#ffb86c',
+    title: 'Model Hub & Hugging Face Optimizer (Kernel)',
+    objective: 'Scaricare, ottimizzare ed eseguire modelli di intelligenza artificiale direttamente da Hugging Face all\'interno di SigmaEngine con partizionamento automatico su GPU e RAM e FlashAttention-2.',
+    features: [
+      { icon: '🔍', label: 'Esploratore Hugging Face', desc: 'Ricerca istantanea di modelli GGUF, MoE, Reasoning, Vision e Coding.' },
+      { icon: '📥', label: 'Download Streaming con Resume', desc: 'Scaricamento in background ad altissima velocità con tracking MB/s.' },
+      { icon: '⚡', label: 'Deploy Diretto in SigmaEngine', desc: 'Partizionamento automatico a livelli tra GPU RTX 5070 Ti, RTX 5060 e RAM.' },
+      { icon: '🚀', label: 'FlashAttention-2 & KV FP8', desc: 'Compilazione kernel e quantizzazione dinamica per massimizzare i token/s.' }
+    ],
+    actionText: 'Apri Model Hub & HF 📥',
+    tabPayload: [{ name: '⚡ Model Hub & HF' }, 'model_hub'],
+    image: '/images/hardware_cluster_lab.jpg',
+    imageCaption: '📥 Ricerca, Download e Ottimizzazione Hardware di Modelli Hugging Face'
+  },
+  {
     id: 'domotica',
+
     step: 'MODULO 09',
     badge: 'DOMOTICA IOT & HOME ASSISTANT INTEGRATION',
     icon: HomeIcon,

@@ -8,6 +8,9 @@ from core.engine.engine_router import (
     handle_engine_status,
     handle_engine_profile,
     handle_engine_partition,
+    handle_engine_hf_import,
+    handle_engine_models,
+    handle_engine_optimize,
 )
 
 __all__ = [
@@ -21,5 +24,9 @@ __all__ = [
     "handle_engine_status",
     "handle_engine_profile",
     "handle_engine_partition",
+    "handle_engine_hf_import",
+    "handle_engine_models",
+    "handle_engine_optimize",
 ]
+
 

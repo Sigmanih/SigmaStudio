@@ -51,6 +51,28 @@ class TestModelHubAPI(unittest.TestCase):
         data = response.json()
         self.assertTrue(data.get("success"))
 
+    def test_engine_models_endpoint(self):
+        """GET /api/engine/models should return active model, backend, and recommended presets."""
+        response = self.client.get("/api/engine/models")
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertTrue(data.get("success"))
+        self.assertIn("recommended_models", data)
+        self.assertIn("optimizations", data)
+
+    def test_engine_hf_import_endpoint(self):
+        """POST /api/engine/hf/import should adapt and optimize HF model for SigmaEngine."""
+        response = self.client.post("/api/engine/hf/import", json={
+            "repo_id": "bartowski/DeepSeek-R1-Distill-Qwen-14B-GGUF",
+            "quantization": "Q4_K_M"
+        })
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertTrue(data.get("success"))
+        self.assertIn("model", data)
+        self.assertEqual(data["model"]["repo_id"], "bartowski/DeepSeek-R1-Distill-Qwen-14B-GGUF")
+
 
 if __name__ == "__main__":
     unittest.main()
+

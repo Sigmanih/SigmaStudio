@@ -444,16 +444,15 @@ export default function Sidebar({
             />
           )}
 
-          {isModelHubInstalled && (
-            <SidebarItem 
-              icon={DownloadCloud} 
-              label="Model Hub & HF" 
-              badge="HF"
-              badgeColor="rgba(255,184,108,0.15)"
-              active={activeTabId != null && activeTabId.startsWith('model_hub')}
-              onClick={() => openTab({ name: '📥 Model Hub' }, 'model_hub')} 
-            />
-          )}
+          <SidebarItem 
+            icon={DownloadCloud} 
+            label="Model Hub & HF Engine" 
+            badge="KERNEL"
+            badgeColor="rgba(255,184,108,0.2)"
+            active={activeTabId != null && activeTabId.startsWith('model_hub')}
+            onClick={() => openTab({ name: '⚡ Model Hub & HF' }, 'model_hub')} 
+          />
+
 
           {isNetworkInstalled && (
             <SidebarItem 

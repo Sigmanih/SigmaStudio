@@ -47,3 +47,94 @@ def handle_engine_partition(self):
     except Exception as exc:
         log.error(f"handle_engine_partition error: {exc}")
         return self.send_json_response({"success": False, "error": str(exc)}, 500)
+
+
+def handle_engine_hf_import(self):
+    """POST /api/engine/hf/import — Direct Hugging Face Model Import & Hardware Maximizer."""
+    try:
+        body = self.read_json_body() if hasattr(self, 'read_json_body') else {}
+        repo_id = body.get("repo_id")
+        filename = body.get("filename")
+        quantization = body.get("quantization")
+        token = body.get("hf_token")
+
+        if not repo_id:
+            return self.send_json_response({"success": False, "error": "repo_id obbligatorio"}, 400)
+
+        res = sigma_engine.import_and_optimize_hf_model(
+            repo_id=repo_id,
+            filename=filename,
+            quantization=quantization,
+            hf_token=token
+        )
+        return self.send_json_response(res)
+    except Exception as exc:
+        log.error(f"handle_engine_hf_import error: {exc}")
+        return self.send_json_response({"success": False, "error": str(exc)}, 500)
+
+
+def handle_engine_models(self):
+    """GET /api/engine/models — Returns active model, local catalog, and recommended Hugging Face models."""
+    try:
+        status = sigma_engine.get_status()
+        optimizations = getattr(sigma_engine, 'optimization_telemetry', {})
+        return self.send_json_response({
+            "success": True,
+            "loaded_model": sigma_engine.loaded_model,
+            "loaded_model_name": sigma_engine.loaded_model_name,
+            "active_backend": sigma_engine.active_backend,
+            "optimizations": optimizations,
+            "recommended_models": [
+                {
+                    "repo_id": "bartowski/DeepSeek-R1-Distill-Qwen-14B-GGUF",
+                    "filename": "DeepSeek-R1-Distill-Qwen-14B-Q4_K_M.gguf",
+                    "name": "DeepSeek R1 Distill Qwen 14B",
+                    "quantization": "Q4_K_M",
+                    "size_gb": 8.9,
+                    "target_device": "RTX 5070 Ti (16 GB) + FlashAttention-2"
+                },
+                {
+                    "repo_id": "unsloth/DeepSeek-R1-Distill-Llama-8B-GGUF",
+                    "filename": "DeepSeek-R1-Distill-Llama-8B-Q4_K_M.gguf",
+                    "name": "DeepSeek R1 Distill Llama 8B",
+                    "quantization": "Q4_K_M",
+                    "size_gb": 4.9,
+                    "target_device": "RTX 5060 (8 GB) Full VRAM"
+                },
+                {
+                    "repo_id": "bartowski/Qwen2.5-Coder-14B-Instruct-GGUF",
+                    "filename": "Qwen2.5-Coder-14B-Instruct-Q4_K_M.gguf",
+                    "name": "Qwen 2.5 Coder 14B Instruct",
+                    "quantization": "Q4_K_M",
+                    "size_gb": 8.9,
+                    "target_device": "RTX 5070 Ti (16 GB)"
+                },
+                {
+                    "repo_id": "bartowski/Llama-3.3-70B-Instruct-GGUF",
+                    "filename": "Llama-3.3-70B-Instruct-Q4_K_M.gguf",
+                    "name": "Llama 3.3 70B Instruct (MoE Sharded)",
+                    "quantization": "Q4_K_M",
+                    "size_gb": 42.0,
+                    "target_device": "Multi-GPU Dual RTX 5070 Ti + 5060 + RAM"
+                }
+            ]
+        })
+    except Exception as exc:
+        log.error(f"handle_engine_models error: {exc}")
+        return self.send_json_response({"success": False, "error": str(exc)}, 500)
+
+
+def handle_engine_optimize(self):
+    """POST /api/engine/optimize — Recalibrates and maximizes hardware dispatching."""
+    try:
+        sigma_engine.hardware_profile = UniversalHardwareProbe.probe_all()
+        sigma_engine.optimization_telemetry = sigma_engine._generate_default_optimizations()
+        return self.send_json_response({
+            "success": True,
+            "message": "Parametri di calcolo e FlashAttention-2 ricalibrati con successo.",
+            "optimizations": sigma_engine.optimization_telemetry
+        })
+    except Exception as exc:
+        log.error(f"handle_engine_optimize error: {exc}")
+        return self.send_json_response({"success": False, "error": str(exc)}, 500)
+

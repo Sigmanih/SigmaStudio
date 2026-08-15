@@ -8,7 +8,9 @@ import HfBrowser from './HfBrowser';
 import DownloadManager from './DownloadManager';
 import LocalInventory from './LocalInventory';
 import SigmaDeployModal from './SigmaDeployModal';
+import EngineOptimizer from './EngineOptimizer';
 import './styles/model-hub.css';
+
 
 export default function ModelHub({ addToast }) {
   const { theme } = useApp();
@@ -144,6 +146,7 @@ export default function ModelHub({ addToast }) {
       {/* 2. NAVIGATION TABS */}
       <div style={{ display: 'flex', gap: '8px', borderBottom: subBorder, paddingBottom: '8px' }}>
         {[
+          { id: 'optimizer', label: '⚡ SigmaEngine Kernel & Ottimizzatore' },
           { id: 'browse', label: '🔍 Esplora Hugging Face' },
           { id: 'downloads', label: '📥 Download Attivi & Coda' },
           { id: 'inventory', label: '💾 Modelli Locali & Storage' },
@@ -167,6 +170,13 @@ export default function ModelHub({ addToast }) {
       </div>
 
       {/* 3. TAB CONTENT VIEWS */}
+      {activeTab === 'optimizer' && (
+        <EngineOptimizer
+          isLight={isLight}
+          addToast={addToast}
+        />
+      )}
+
       {activeTab === 'browse' && (
         <HfBrowser
           isLight={isLight}

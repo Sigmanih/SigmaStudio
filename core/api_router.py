@@ -20,6 +20,8 @@ def register_get_handlers(handler_class):
         '/api/tts/engines': 'handle_tts_engines_fallback',
         '/api/engine/status': 'handle_engine_status',
         '/api/engine/profile': 'handle_engine_profile',
+        '/api/engine/models': 'handle_engine_models',
+
 
 
 
@@ -219,7 +221,10 @@ def register_post_handlers(handler_class):
         '/api/training/benchmark/endpoints/remove': 'handle_training_benchmark_endpoint_remove',
         '/api/config/hf_token': 'handle_hf_token_config',
         '/api/engine/partition': 'handle_engine_partition',
+        '/api/engine/hf/import': 'handle_engine_hf_import',
+        '/api/engine/optimize': 'handle_engine_optimize',
         '/api/skills/toggle': 'handle_skills_toggle',
+
 
         '/api/apps/launch': 'handle_apps_launch',
         '/api/apps/autoconfigure': 'handle_apps_autoconfigure',
