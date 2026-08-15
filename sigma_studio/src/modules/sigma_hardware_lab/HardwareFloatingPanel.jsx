@@ -3,10 +3,11 @@ import {
   Zap, Activity, ShieldCheck, Play, Pause, X, GripVertical, Maximize2, RotateCcw,
   HardDrive, Cpu, Thermometer, Flame, Gauge, Sliders, BarChart2, AlertTriangle
 } from 'lucide-react';
-import RealtimeTelemetryChart from './HardwareLab/RealtimeTelemetryChart';
-import { useApp } from '../contexts/AppContext';
-import '../styles/hardware-lab.css';
-import '../styles/chat.css';
+import RealtimeTelemetryChart from './RealtimeTelemetryChart';
+import { useApp } from '../../contexts/AppContext';
+import './styles/hardware-lab.css';
+import '../../styles/chat.css';
+
 
 const MIN_WIDTH = 480;
 const MIN_HEIGHT = 380;
@@ -105,31 +106,61 @@ export default function HardwareFloatingPanel({ onClose, onOpenTab, addToast }) 
     }
   }, []);
 
-  useEffect(() => {
-    fetchHardwareStatus();
-    if (!autoRefresh) return;
-    const interval = setInterval(fetchHardwareStatus, refreshInterval);
-    return () => clearInterval(interval);
-  }, [fetchHardwareStatus, autoRefresh, refreshInterval]);
+  const [gpuProcs, setGpuProcs] = useState({ processes: [], orfani: 0 });
+  const [killingPid, setKillingPid] = useState(null);
 
-  const handleRestartOllama = async () => {
-    setRestartingOllama(true);
+  const fetchGpuProcesses = useCallback(async () => {
     try {
-      const res = await fetch('/api/hardware/restart-ollama', { method: 'POST' });
+      const res = await fetch('/api/hardware/gpu/processes');
+      if (res.ok) {
+        const json = await res.json();
+        if (json.success) {
+          setGpuProcs({
+            processes: json.processes || [],
+            orfani: json.orfani || 0,
+          });
+        }
+      }
+    } catch (e) {
+      console.error('Failed to fetch GPU processes:', e);
+    }
+  }, []);
+
+  const handleKillGpuProcess = async (proc) => {
+    if (!proc || !proc.pid) return;
+    setKillingPid(proc.pid);
+    try {
+      const res = await fetch('/api/hardware/gpu/kill', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ pid: proc.pid })
+      });
       const json = await res.json();
       if (json.success) {
-        if (addToast) addToast(`🧹 ${json.message}`, 'success', 5000);
-        fetchHardwareStatus();
-      } else {
-        if (addToast) addToast(`❌ Errore riavvio: ${json.error}`, 'error', 5000);
+        if (addToast) addToast(json.message || `Processo PID ${proc.pid} terminato.`, 'success');
+      } else if (addToast) {
+        addToast(json.error || `Impossibile chiudere il processo ${proc.pid}.`, 'error');
       }
-    } catch (err) {
-      if (addToast) addToast(`❌ Errore di connessione: ${err.message}`, 'error', 5000);
+      fetchGpuProcesses();
+      fetchHardwareStatus();
+    } catch (e) {
+      if (addToast) addToast(`Errore: ${e.message}`, 'error');
     } finally {
-      setRestartingOllama(false);
-      setShowRestartAlert(false);
+      setKillingPid(null);
     }
   };
+
+  useEffect(() => {
+    fetchHardwareStatus();
+    fetchGpuProcesses();
+    if (!autoRefresh) return;
+    const interval = setInterval(() => {
+      fetchHardwareStatus();
+      fetchGpuProcesses();
+    }, refreshInterval);
+    return () => clearInterval(interval);
+  }, [fetchHardwareStatus, fetchGpuProcesses, autoRefresh, refreshInterval]);
+
 
   // Drag logic
   useEffect(() => {
@@ -706,8 +737,81 @@ export default function HardwareFloatingPanel({ onClose, onOpenTab, addToast }) 
             );
           })
         )}
+
+        {/* PROCESSES LIST IN FLOATING PANEL */}
+
+        {gpuProcs.processes.length > 0 && (
+          <div style={{
+            marginTop: '6px',
+            borderRadius: '12px',
+            background: cardBg,
+            border: cardBorder,
+            overflow: 'hidden'
+          }}>
+            <div style={{
+              padding: '8px 12px',
+              background: isLight ? 'rgba(0,0,0,0.03)' : 'rgba(0,0,0,0.3)',
+              borderBottom: cardBorder,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between'
+            }}>
+              <span style={{ fontSize: '11px', fontWeight: 800, color: textPrimary, display: 'flex', alignItems: 'center', gap: '5px' }}>
+                <Zap size={12} color={accentColor} /> Processi & Memoria Attivi ({gpuProcs.processes.length})
+              </span>
+            </div>
+
+            <div style={{ maxHeight: '180px', overflowY: 'auto' }}>
+              {gpuProcs.processes.slice(0, 10).map(proc => (
+                <div key={proc.pid} style={{
+                  padding: '6px 12px',
+                  borderBottom: isLight ? '1px solid rgba(0,0,0,0.04)' : '1px solid rgba(255,255,255,0.04)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  gap: '8px',
+                  fontSize: '11px'
+                }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px', minWidth: 0 }}>
+                    <span style={{ fontFamily: 'monospace', fontWeight: 700, color: textDim }}>#{proc.pid}</span>
+                    <span style={{ fontWeight: 700, color: textPrimary, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                      {proc.name}
+                    </span>
+                    <span style={{ fontSize: '9px', color: textDim }}>({proc.user || 'Sigma'})</span>
+                  </div>
+
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0 }}>
+                    <span style={{ fontFamily: 'monospace', color: accentColor, fontWeight: 700 }}>
+                      {proc.vram_mb || 0} MB VRAM
+                    </span>
+                    <span style={{ fontFamily: 'monospace', color: textDim, fontSize: '10px' }}>
+                      {proc.memory_mb || 0}M RAM
+                    </span>
+                    <button
+                      onClick={() => handleKillGpuProcess(proc)}
+                      disabled={killingPid === proc.pid}
+                      style={{
+                        background: 'rgba(239, 68, 68, 0.12)',
+                        border: '1px solid rgba(239, 68, 68, 0.35)',
+                        color: '#ef4444',
+                        borderRadius: '4px',
+                        padding: '2px 6px',
+                        fontSize: '9px',
+                        fontWeight: 800,
+                        cursor: 'pointer'
+                      }}
+                    >
+                      {killingPid === proc.pid ? '...' : 'Kill'}
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
 }
+
 

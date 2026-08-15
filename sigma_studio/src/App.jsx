@@ -70,6 +70,14 @@ function AppContent() {
   const [hardwarePanelOpen, setHardwarePanelOpen] = React.useState(false);
   const [dockMinimized, setDockMinimized] = React.useState(true);
 
+  const LazyHardwareFloating = React.useMemo(() => {
+    if (isHardwareInstalled) {
+      return React.lazy(() => import('./modules/sigma_hardware_lab/HardwareFloatingPanel'));
+    }
+    return null;
+  }, [isHardwareInstalled]);
+
+
   // Floating dock bar drag state
   const [dockPos, setDockPos] = React.useState({ x: undefined, y: undefined });
   const [dockDragging, setDockDragging] = React.useState(false);
@@ -348,19 +356,19 @@ function AppContent() {
                 )}
 
 
-                {/* Item 3: Hardware & GPU Monitor */}
+                {/* Item 3: Hardware & GPU Mini Floating Panel */}
                 {isHardwareInstalled && (
                   <button
                     onClick={() => {
-                      openTab({ name: '⚡ Hardware' }, 'hardware_lab');
+                      setHardwarePanelOpen(!hardwarePanelOpen);
                       setDockMinimized(true);
                     }}
                     style={{
                       display: 'flex', alignItems: 'center', justifyContent: 'space-between',
                       padding: '10px 12px', borderRadius: '10px',
-                      background: 'rgba(255, 255, 255, 0.03)',
-                      border: '1px solid rgba(255, 255, 255, 0.06)',
-                      color: '#e2e4eb',
+                      background: hardwarePanelOpen ? 'rgba(63, 185, 80, 0.15)' : 'rgba(255, 255, 255, 0.03)',
+                      border: hardwarePanelOpen ? '1px solid rgba(63, 185, 80, 0.4)' : '1px solid rgba(255, 255, 255, 0.06)',
+                      color: hardwarePanelOpen ? '#3fb950' : '#e2e4eb',
                       cursor: 'pointer', transition: 'all 0.18s ease', textAlign: 'left'
                     }}
                   >
@@ -369,13 +377,14 @@ function AppContent() {
                         <Cpu size={16} color="#3fb950" />
                       </div>
                       <div>
-                        <div style={{ fontSize: '0.8rem', fontWeight: 700 }}>Hardware</div>
-                        <div style={{ fontSize: '0.62rem', color: '#8b8fa3' }}>VRAM, Telemetria & VLLM</div>
+                        <div style={{ fontSize: '0.8rem', fontWeight: 700 }}>Mini Hardware</div>
+                        <div style={{ fontSize: '0.62rem', color: '#8b8fa3' }}>Pannello flottante VRAM & GPU</div>
                       </div>
                     </div>
-                    <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#3fb950' }} />
+                    <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: hardwarePanelOpen ? '#3fb950' : '#555' }} />
                   </button>
                 )}
+
 
 
 
@@ -507,6 +516,21 @@ function AppContent() {
           addToast={addToast}
         />
       )}
+
+      {/* HARDWARE MINI FLOATING PANEL */}
+      {hardwarePanelOpen && isHardwareInstalled && LazyHardwareFloating && (
+        <React.Suspense fallback={null}>
+          <LazyHardwareFloating
+            onClose={() => setHardwarePanelOpen(false)}
+            onOpenTab={(tabObj, tabId) => {
+              openTab(tabObj, tabId);
+              setHardwarePanelOpen(false);
+            }}
+            addToast={addToast}
+          />
+        </React.Suspense>
+      )}
+
 
       {/* AI CONFIG MODAL */}
       {aiConfigOpen && (

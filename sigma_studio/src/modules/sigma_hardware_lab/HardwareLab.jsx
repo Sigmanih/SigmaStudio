@@ -807,13 +807,12 @@ export default function HardwareLab({ addToast }) {
         </div>
 
         {/* ==================================================================== */}
-        {/* COLUMN 2 (RIGHT): 1. CONSOLE DEI PROCESSI IN ALTO                    */}
-        {/*                   2. CONFIGURAZIONE MULTI-GPU                        */}
-        {/*                   3. NODI HARDWARE STANDBY                           */}
+        {/* COLUMN 2 (RIGHT): 1. CONSOLE DEI PROCESSI & GESTIONE VRAM/RAM        */}
+        {/*                   2. NODI HARDWARE STANDBY                           */}
         {/* ==================================================================== */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
           
-          {/* 1. CONSOLE DEI PROCESSI IN ALTO SULLA DESTRA */}
+          {/* 1. CONSOLE DEI PROCESSI & TASK MANAGER HARDWARE */}
           <div style={{
             borderRadius: '14px',
             backgroundColor: cardBg,
@@ -821,11 +820,12 @@ export default function HardwareLab({ addToast }) {
             boxShadow: cardShadow,
             display: 'flex',
             flexDirection: 'column',
-            overflow: 'hidden'
+            overflow: 'hidden',
+            flex: 1
           }}>
             {/* Console Header Bar */}
             <div style={{
-              padding: '10px 14px',
+              padding: '12px 16px',
               background: isLight ? 'rgba(0,0,0,0.03)' : 'rgba(0,0,0,0.35)',
               borderBottom: cardBorder,
               display: 'flex',
@@ -835,16 +835,16 @@ export default function HardwareLab({ addToast }) {
               gap: '8px'
             }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <Terminal size={15} color={isLight ? '#c2410c' : '#00d2ff'} />
-                <span style={{ fontSize: '0.84rem', fontWeight: 800, color: textPrimary }}>
-                  Console Processi & Task Manager GPU
+                <Terminal size={16} color={isLight ? '#c2410c' : '#00d2ff'} />
+                <span style={{ fontSize: '0.88rem', fontWeight: 800, color: textPrimary }}>
+                  Monitor Processi & Allocazione Memoria
                 </span>
                 <span style={{
-                  fontSize: '0.64rem', padding: '1px 6px', borderRadius: '6px',
+                  fontSize: '0.66rem', padding: '2px 8px', borderRadius: '8px',
                   background: isLight ? 'rgba(0, 0, 0, 0.06)' : 'rgba(255, 255, 255, 0.08)',
                   color: textPrimary, fontWeight: 700
                 }}>
-                  {gpuProcs.processes.length} attivi
+                  {gpuProcs.processes.length} processi attivi
                 </span>
               </div>
 
@@ -854,14 +854,14 @@ export default function HardwareLab({ addToast }) {
                     onClick={handleKillAllOrphans}
                     title="Termina tutti i processi orfani"
                     style={{
-                      fontSize: '0.66rem', padding: '3px 8px', borderRadius: '6px',
+                      fontSize: '0.66rem', padding: '4px 10px', borderRadius: '6px',
                       background: 'rgba(239, 68, 68, 0.15)',
                       border: '1px solid rgba(239, 68, 68, 0.4)',
                       color: '#ef4444', fontWeight: 800, cursor: 'pointer',
                       display: 'flex', alignItems: 'center', gap: '4px'
                     }}
                   >
-                    <AlertTriangle size={11} /> Termina {gpuProcs.orfani} Orfani
+                    <AlertTriangle size={12} /> Termina {gpuProcs.orfani} Orfani
                   </button>
                 )}
                 <button
@@ -869,10 +869,10 @@ export default function HardwareLab({ addToast }) {
                   title="Aggiorna lista processi"
                   style={{
                     background: 'transparent', border: 'none', color: textMuted, cursor: 'pointer',
-                    display: 'flex', alignItems: 'center', padding: '3px'
+                    display: 'flex', alignItems: 'center', padding: '4px'
                   }}
                 >
-                  <RefreshCw size={13} />
+                  <RefreshCw size={14} />
                 </button>
               </div>
             </div>
@@ -893,40 +893,39 @@ export default function HardwareLab({ addToast }) {
                 display: 'flex', alignItems: 'center', gap: '6px',
                 padding: '4px 8px', borderRadius: '6px',
                 background: isLight ? '#ffffff' : 'rgba(0,0,0,0.25)',
-                border: subCardBorder, flex: 1, minWidth: '130px'
+                border: subCardBorder, flex: 1, minWidth: '150px'
               }}>
-                <Search size={11} color={textMuted} />
+                <Search size={12} color={textMuted} />
                 <input
                   type="text"
-                  placeholder="Filtra PID, nome o job..."
+                  placeholder="Filtra per PID, nome, utente o GPU..."
                   value={procSearch}
                   onChange={e => setProcSearch(e.target.value)}
                   style={{
                     background: 'transparent', border: 'none',
-                    color: textPrimary, fontSize: '0.72rem', outline: 'none', width: '100%'
+                    color: textPrimary, fontSize: '0.74rem', outline: 'none', width: '100%'
                   }}
                 />
                 {procSearch && (
                   <button onClick={() => setProcSearch('')} style={{ background: 'none', border: 'none', color: textMuted, cursor: 'pointer' }}>
-                    <X size={11} />
+                    <X size={12} />
                   </button>
                 )}
               </div>
 
               {/* Filter Pills */}
-              <div style={{ display: 'flex', gap: '3px', overflowX: 'auto' }}>
+              <div style={{ display: 'flex', gap: '4px', overflowX: 'auto' }}>
                 {[
                   { id: 'all', label: 'Tutti' },
-                  { id: 'training', label: 'Training' },
+                  { id: 'gpu', label: 'GPU Dedicated' },
                   { id: 'orphans', label: 'Orfani' },
-                  { id: 'external', label: 'Esterni' },
-                  { id: 'system', label: 'Sistema' },
+                  { id: 'python', label: 'Python / AI' },
                 ].map(tab => (
                   <button
                     key={tab.id}
                     onClick={() => setProcFilter(tab.id)}
                     style={{
-                      fontSize: '0.64rem', padding: '2px 6px', borderRadius: '5px',
+                      fontSize: '0.66rem', padding: '3px 8px', borderRadius: '6px',
                       border: 'none',
                       background: procFilter === tab.id ? (isLight ? '#111827' : '#00d2ff') : 'transparent',
                       color: procFilter === tab.id ? '#ffffff' : textMuted,
@@ -940,132 +939,136 @@ export default function HardwareLab({ addToast }) {
               </div>
             </div>
 
-            {/* Process List Container */}
+            {/* Table Header Row */}
             <div style={{
-              maxHeight: '230px',
+              padding: '6px 14px',
+              display: 'grid',
+              gridTemplateColumns: 'minmax(140px, 1.4fr) minmax(70px, 0.7fr) minmax(110px, 1fr) minmax(90px, 0.9fr) minmax(80px, 0.8fr) 70px',
+              gap: '6px',
+              fontSize: '0.62rem',
+              fontWeight: 800,
+              color: textMuted,
+              textTransform: 'uppercase',
+              letterSpacing: '0.5px',
+              borderBottom: subCardBorder,
+              background: isLight ? 'rgba(0,0,0,0.02)' : 'rgba(0,0,0,0.2)'
+            }}>
+              <div>Processo & PID</div>
+              <div>Utente</div>
+              <div>GPU Assegnata</div>
+              <div>VRAM / RAM</div>
+              <div>Carico CPU/GPU</div>
+              <div style={{ textAlign: 'right' }}>Azione</div>
+            </div>
+
+            {/* Process List Container (Expanded) */}
+            <div style={{
+              maxHeight: '440px',
               overflowY: 'auto',
               display: 'flex',
               flexDirection: 'column'
             }}>
               {filteredProcesses.length === 0 ? (
-                <div style={{ padding: '16px', textAlign: 'center', fontSize: '0.74rem', color: textMuted }}>
+                <div style={{ padding: '24px', textAlign: 'center', fontSize: '0.76rem', color: textMuted }}>
                   Nessun processo trovato con i filtri selezionati.
                 </div>
               ) : (
                 filteredProcesses.map(proc => {
-                  const isTraining = proc.kind === 'training';
-                  const isOrphan = proc.orphan;
+                  const isOrphan = proc.is_orphan || proc.orphan;
                   const isExpanded = expandedPid === proc.pid;
 
                   return (
                     <div
                       key={proc.pid}
                       style={{
-                        padding: '7px 12px',
+                        padding: '8px 14px',
                         borderBottom: subCardBorder,
                         display: 'flex',
                         flexDirection: 'column',
-                        gap: '3px',
+                        gap: '4px',
                         background: isOrphan 
                           ? (isLight ? 'rgba(239, 68, 68, 0.06)' : 'rgba(239, 68, 68, 0.08)')
-                          : (isTraining ? (isLight ? 'rgba(2, 132, 199, 0.05)' : 'rgba(0, 210, 255, 0.04)') : 'transparent'),
+                          : 'transparent',
                         transition: 'background 0.15s ease'
                       }}
                     >
-                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '6px' }}>
-                        {/* Process info */}
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', minWidth: 0, flex: 1 }}>
+                      <div style={{
+                        display: 'grid',
+                        gridTemplateColumns: 'minmax(140px, 1.4fr) minmax(70px, 0.7fr) minmax(110px, 1fr) minmax(90px, 0.9fr) minmax(80px, 0.8fr) 70px',
+                        alignItems: 'center',
+                        gap: '6px'
+                      }}>
+                        {/* 1. Process & PID */}
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', minWidth: 0 }}>
                           <span style={{
                             fontFamily: 'JetBrains Mono, monospace',
                             fontSize: '0.66rem', fontWeight: 800,
-                            padding: '1px 4px', borderRadius: '4px',
+                            padding: '2px 5px', borderRadius: '4px',
                             background: isLight ? 'rgba(0,0,0,0.06)' : 'rgba(255,255,255,0.06)',
                             color: textPrimary
                           }}>
                             #{proc.pid}
                           </span>
-
                           <span style={{
-                            fontSize: '0.74rem', fontWeight: 800,
-                            color: isOrphan ? '#ef4444' : (isTraining ? (isLight ? '#0284c7' : '#00d2ff') : textPrimary),
+                            fontSize: '0.76rem', fontWeight: 800,
+                            color: isOrphan ? '#ef4444' : (isLight ? '#0284c7' : '#00d2ff'),
                             whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis'
-                          }}>
+                          }} title={proc.name}>
                             {proc.name || `PID ${proc.pid}`}
                           </span>
-
-                          {/* Kind Badge */}
-                          {isOrphan ? (
-                            <span style={{ fontSize: '0.58rem', padding: '1px 4px', borderRadius: '3px', background: 'rgba(239,68,68,0.18)', color: '#ef4444', fontWeight: 800 }}>
-                              ORFANO
-                            </span>
-                          ) : isTraining ? (
-                            <span style={{ fontSize: '0.58rem', padding: '1px 4px', borderRadius: '3px', background: 'rgba(0,210,255,0.15)', color: '#00d2ff', fontWeight: 700 }}>
-                              TRAINING
-                            </span>
-                          ) : proc.kind === 'sigma' ? (
-                            <span style={{ fontSize: '0.58rem', padding: '1px 4px', borderRadius: '3px', background: 'rgba(22,163,74,0.15)', color: '#16a34a', fontWeight: 700 }}>
-                              SIGMA
-                            </span>
-                          ) : proc.kind === 'sistema' ? (
-                            <span style={{ fontSize: '0.58rem', padding: '1px 4px', borderRadius: '3px', background: 'rgba(245,158,11,0.15)', color: '#d97706', fontWeight: 700 }}>
-                              SISTEMA
-                            </span>
-                          ) : (
-                            <span style={{ fontSize: '0.58rem', padding: '1px 4px', borderRadius: '3px', background: 'rgba(255,255,255,0.06)', color: textMuted }}>
-                              ESTERNO
-                            </span>
-                          )}
                         </div>
 
-                        {/* Memory & Actions */}
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexShrink: 0 }}>
-                          <span style={{ fontSize: '0.66rem', fontFamily: 'JetBrains Mono, monospace', color: textMuted }}>
-                            {proc.vram_gb != null ? `${proc.vram_gb} GB` : 'GPU'}
+                        {/* 2. User */}
+                        <div style={{ fontSize: '0.7rem', color: textSecondary, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                          {proc.user || 'Sigma'}
+                        </div>
+
+                        {/* 3. Assigned GPU */}
+                        <div>
+                          <span style={{
+                            fontSize: '0.62rem', fontWeight: 700, padding: '2px 6px', borderRadius: '4px',
+                            background: proc.vram_mb > 500 
+                              ? 'rgba(0, 210, 255, 0.15)' 
+                              : (proc.vram_mb > 100 ? 'rgba(188, 140, 255, 0.15)' : 'rgba(255, 255, 255, 0.05)'),
+                            color: proc.vram_mb > 500 
+                              ? (isLight ? '#0284c7' : '#00d2ff') 
+                              : (proc.vram_mb > 100 ? '#bc8cff' : textMuted),
+                            border: proc.vram_mb > 500 ? '1px solid rgba(0, 210, 255, 0.3)' : '1px solid transparent',
+                            whiteSpace: 'nowrap'
+                          }}>
+                            {proc.assigned_gpu || `GPU ${proc.gpu_index ?? 0}`}
                           </span>
+                        </div>
 
-                          {proc.killable ? (
-                            <button
-                              onClick={() => handleKillGpuProcess(proc)}
-                              disabled={killingPid === proc.pid}
-                              style={{
-                                fontSize: '0.64rem', padding: '2px 7px', borderRadius: '4px',
-                                border: '1px solid rgba(239, 68, 68, 0.4)',
-                                background: 'rgba(239, 68, 68, 0.12)', color: '#ef4444',
-                                fontWeight: 800, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '3px'
-                              }}
-                              title="Termina processo e libera VRAM"
-                            >
-                              <Trash2 size={10} /> {killingPid === proc.pid ? '...' : 'Termina'}
-                            </button>
-                          ) : (
-                            <span style={{ fontSize: '0.58rem', color: textMuted, padding: '2px 4px' }}>
-                              Protetto
-                            </span>
-                          )}
+                        {/* 4. VRAM / RAM */}
+                        <div style={{ fontSize: '0.68rem', fontFamily: 'JetBrains Mono, monospace', color: textPrimary }}>
+                          <span style={{ color: isLight ? '#0284c7' : '#00d2ff', fontWeight: 700 }}>{proc.vram_mb || 0} MB</span>
+                          <span style={{ color: textMuted, fontSize: '0.62rem' }}> / {proc.memory_mb || 0}M RAM</span>
+                        </div>
 
+                        {/* 5. CPU / GPU Load */}
+                        <div style={{ fontSize: '0.68rem', fontFamily: 'JetBrains Mono, monospace', color: textMuted }}>
+                          <span>{proc.cpu_pct ?? 0}% CPU</span>
+                          {proc.gpu_pct > 0 && <span style={{ color: '#bc8cff', marginLeft: '4px' }}>{proc.gpu_pct}% G</span>}
+                        </div>
+
+                        {/* 6. Action */}
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '4px' }}>
                           <button
-                            onClick={() => setExpandedPid(isExpanded ? null : proc.pid)}
-                            style={{ background: 'none', border: 'none', color: textMuted, cursor: 'pointer', padding: '2px' }}
-                            title="Dettagli comando"
+                            onClick={() => handleKillGpuProcess(proc)}
+                            disabled={killingPid === proc.pid}
+                            style={{
+                              fontSize: '0.62rem', padding: '3px 8px', borderRadius: '4px',
+                              border: '1px solid rgba(239, 68, 68, 0.4)',
+                              background: 'rgba(239, 68, 68, 0.12)', color: '#ef4444',
+                              fontWeight: 800, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '2px'
+                            }}
+                            title="Termina processo e libera memoria"
                           >
-                            {isExpanded ? <ChevronUp size={11} /> : <ChevronDown size={11} />}
+                            <Trash2 size={10} /> {killingPid === proc.pid ? '...' : 'Kill'}
                           </button>
                         </div>
                       </div>
-
-                      {/* Expanded Cmdline Details */}
-                      {isExpanded && (
-                        <div style={{
-                          padding: '5px 7px', borderRadius: '5px',
-                          background: isLight ? 'rgba(0,0,0,0.05)' : 'rgba(0,0,0,0.4)',
-                          fontSize: '0.62rem', fontFamily: 'JetBrains Mono, monospace',
-                          color: textMuted, wordBreak: 'break-all', marginTop: '2px'
-                        }}>
-                          <strong>Cmd:</strong> {proc.cmdline || 'N/A'}
-                          {proc.started_at && <div style={{ marginTop: '2px' }}><strong>Avviato:</strong> {proc.started_at}</div>}
-                          {proc.base_model && <div><strong>Modello:</strong> {proc.base_model}</div>}
-                        </div>
-                      )}
                     </div>
                   );
                 })
@@ -1073,158 +1076,6 @@ export default function HardwareLab({ addToast }) {
             </div>
           </div>
 
-          {/* 2. CONFIGURAZIONE MULTI-GPU & PARALLELISMO */}
-          <div style={{
-            padding: '16px 18px',
-            borderRadius: '14px',
-            backgroundColor: cardBg,
-            border: cardBorder,
-            boxShadow: cardShadow,
-            display: 'flex',
-            flexDirection: 'column',
-            gap: '12px'
-          }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-              <Sliders size={15} color={isLight ? '#ea580c' : '#00d2ff'} />
-              <span style={{ fontSize: '0.88rem', fontWeight: 800, color: textPrimary }}>
-                Configurazione Multi-GPU & Parallelismo
-              </span>
-            </div>
-
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-              {/* CUDA_VISIBLE_DEVICES */}
-              <div>
-                <label style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.7rem', fontWeight: 700, color: textPrimary, marginBottom: '3px' }}>
-                  <span>CUDA_VISIBLE_DEVICES</span>
-                  <span style={{ color: isLight ? '#c2410c' : '#00d2ff' }}>Target GPU</span>
-                </label>
-                <select 
-                  value={cudaDevices} 
-                  onChange={(e) => setCudaDevices(e.target.value)}
-                  style={{
-                    width: '100%', padding: '6px 8px', borderRadius: '7px',
-                    background: subCardBg, border: subCardBorder,
-                    color: textPrimary, fontSize: '0.74rem', outline: 'none'
-                  }}
-                >
-                  {gpus.length > 1 && (
-                    <option value={gpus.map(g => g.index).join(',')}>
-                      {gpus.map(g => g.index).join(',')} — Parallelismo Multi-GPU
-                    </option>
-                  )}
-                  {gpus.map(g => (
-                    <option key={g.index} value={String(g.index)}>
-                      {g.index} — Solo GPU {g.index} ({g.name})
-                    </option>
-                  ))}
-                  {gpus.length === 0 && <option value="0">0 — GPU predefinita</option>}
-                </select>
-              </div>
-
-              {/* Parallel Slots & Max Loaded */}
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
-                <div>
-                  <label style={{ display: 'block', fontSize: '0.7rem', fontWeight: 700, color: textPrimary, marginBottom: '3px' }}>
-                    OLLAMA_NUM_PARALLEL
-                  </label>
-                  <select 
-                    value={numParallel} 
-                    onChange={(e) => setNumParallel(Number(e.target.value))}
-                    style={{
-                      width: '100%', padding: '6px 8px', borderRadius: '7px',
-                      background: subCardBg, border: subCardBorder,
-                      color: textPrimary, fontSize: '0.74rem', outline: 'none'
-                    }}
-                  >
-                    <option value={1}>1 stream</option>
-                    <option value={2}>2 stream</option>
-                    <option value={4}>4 stream (Multi-Agenti)</option>
-                    <option value={8}>8 stream (Max)</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label style={{ display: 'block', fontSize: '0.7rem', fontWeight: 700, color: textPrimary, marginBottom: '3px' }}>
-                    MAX_LOADED_MODELS
-                  </label>
-                  <select 
-                    value={maxLoaded} 
-                    onChange={(e) => setMaxLoaded(Number(e.target.value))}
-                    style={{
-                      width: '100%', padding: '6px 8px', borderRadius: '7px',
-                      background: subCardBg, border: subCardBorder,
-                      color: textPrimary, fontSize: '0.74rem', outline: 'none'
-                    }}
-                  >
-                    <option value={1}>1 modello</option>
-                    <option value={2}>2 modelli</option>
-                    <option value={3}>3 modelli</option>
-                  </select>
-                </div>
-              </div>
-
-              {/* Training GPU & FP16 */}
-              <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 0.8fr', gap: '8px', alignItems: 'center' }}>
-                <div>
-                  <label style={{ display: 'block', fontSize: '0.7rem', fontWeight: 700, color: textPrimary, marginBottom: '3px' }}>
-                    GPU Training Lab
-                  </label>
-                  <select 
-                    value={preferredGpu} 
-                    onChange={(e) => setPreferredGpu(e.target.value)}
-                    style={{
-                      width: '100%', padding: '6px 8px', borderRadius: '7px',
-                      background: subCardBg, border: subCardBorder,
-                      color: textPrimary, fontSize: '0.74rem', outline: 'none'
-                    }}
-                  >
-                    {gpus.map(g => (
-                      <option key={g.index} value={`cuda:${g.index}`}>
-                        cuda:{g.index} ({g.name})
-                      </option>
-                    ))}
-                    {gpus.length > 1 && (
-                      <option value={`cuda:${gpus.map(g => g.index).join(',')}`}>
-                        Multi-GPU DataParallel
-                      </option>
-                    )}
-                    {gpus.length === 0 && <option value="cuda:0">cuda:0 (Default)</option>}
-                  </select>
-                </div>
-
-                <div style={{ paddingTop: '14px' }}>
-                  <label style={{ display: 'flex', alignItems: 'center', gap: '5px', fontSize: '0.7rem', fontWeight: 700, color: textPrimary, cursor: 'pointer' }}>
-                    <input 
-                      type="checkbox" 
-                      checked={fp16Enabled} 
-                      onChange={(e) => setFp16Enabled(e.target.checked)} 
-                      style={{ accentColor: '#00d2ff' }}
-                    />
-                    <span>Precisione FP16</span>
-                  </label>
-                </div>
-              </div>
-            </div>
-
-            <button 
-              onClick={handleSaveConfig} 
-              disabled={saving} 
-              style={{ 
-                marginTop: '4px',
-                fontSize: '0.78rem', padding: '9px 16px', borderRadius: '8px',
-                fontWeight: 800, border: 'none',
-                background: isLight 
-                  ? 'linear-gradient(135deg, #ea580c 0%, #d97706 100%)' 
-                  : 'linear-gradient(135deg, #00d2ff 0%, #7c5bf0 100%)',
-                color: '#ffffff', cursor: saving ? 'not-allowed' : 'pointer',
-                display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px',
-                boxShadow: isLight ? '0 4px 14px rgba(234,88,12,0.25)' : '0 4px 18px rgba(0,210,255,0.3)'
-              }}
-            >
-              <Save size={13} />
-              {saving ? 'Salvataggio...' : 'Applica e Salva Impostazioni Multi-GPU'}
-            </button>
-          </div>
 
           {/* 3. ACCELERATORI HARDWARE IN STANDBY */}
           <div style={{
