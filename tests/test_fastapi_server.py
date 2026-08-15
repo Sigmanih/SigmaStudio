@@ -44,13 +44,14 @@ class TestFastAPIServerEndpoints:
         data = response.json()
         assert isinstance(data, dict) or isinstance(data, list)
 
-    def test_api_training_hardware_endpoint(self):
-        """GET /api/training/hardware returns hardware telemetry."""
-        response = client.get("/api/training/hardware")
+    def test_api_skills_endpoint(self):
+        """GET /api/skills returns skills status list."""
+        response = client.get("/api/skills")
         assert response.status_code == 200
         data = response.json()
         assert data.get("success") is True
-        assert "hardware" in data
+        assert "skills" in data
+
 
     def test_api_config_endpoint(self):
         """GET /api/config returns platform config."""

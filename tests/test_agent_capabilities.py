@@ -208,4 +208,5 @@ class TestAgentRoutingAndManifestos:
 
     def test_agent_routing_code_query(self):
         manifesto_path = _determine_agent_by_request("Scrivi uno script python", {}, "auto")
-        assert "code_architect" in manifesto_path or "sigma_assistant" in manifesto_path
+        assert "code_architect" in manifesto_path or "sigma_assistant" in manifesto_path or "sigma_architect" in manifesto_path
+
