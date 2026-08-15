@@ -1,8 +1,8 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   Search, Download, Star, ArrowDown, Sparkles, Filter, CheckCircle2,
   Layers, Cpu, Activity, ExternalLink, HardDrive, ArrowUpDown, ChevronDown,
-  Calendar, RefreshCw, PlusCircle, ShieldCheck, FolderDown, FileCode
+  Calendar, RefreshCw, PlusCircle, ShieldCheck, FolderDown, FileCode, ArrowUp
 } from 'lucide-react';
 
 const CATEGORIES = [
@@ -64,12 +64,15 @@ export default function HfBrowser({ isLight, addToast, onDownloadStarted }) {
   const [hasMore, setHasMore] = useState(false);
   const [loading, setLoading] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
+  const [loadedPagesCount, setLoadedPagesCount] = useState(1);
 
   const [selectedModel, setSelectedModel] = useState(null);
   const [modelDetails, setModelDetails] = useState(null);
   const [loadingDetails, setLoadingDetails] = useState(false);
   const [downloadingFile, setDownloadingFile] = useState(null);
   const [downloadingRepo, setDownloadingRepo] = useState(false);
+
+  const topRef = useRef(null);
 
   const cardBg = isLight ? '#ffffff' : '#0d1019';
   const cardBorder = isLight ? '1px solid rgba(190, 160, 110, 0.3)' : '1px solid rgba(255, 255, 255, 0.08)';
@@ -83,6 +86,7 @@ export default function HfBrowser({ isLight, addToast, onDownloadStarted }) {
       setLoadingMore(true);
     } else {
       setLoading(true);
+      setLoadedPagesCount(1);
     }
 
     try {
@@ -103,6 +107,7 @@ export default function HfBrowser({ isLight, addToast, onDownloadStarted }) {
               const uniqueNew = list.filter(item => !existingIds.has(item.id));
               return [...prev, ...uniqueNew];
             });
+            setLoadedPagesCount(c => c + 1);
           } else {
             setResults(list);
           }
@@ -130,6 +135,10 @@ export default function HfBrowser({ isLight, addToast, onDownloadStarted }) {
     if (!loadingMore && nextCursor) {
       fetchModels(nextCursor, true);
     }
+  };
+
+  const scrollToTop = () => {
+    topRef.current?.scrollIntoView({ behavior: 'smooth' });
   };
 
   const handleSelectModel = async (m) => {
@@ -203,14 +212,20 @@ export default function HfBrowser({ isLight, addToast, onDownloadStarted }) {
   };
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-      {/* 1. SEARCH BAR & MULTI-DIMENSIONAL FILTERS CONTAINER */}
-      <div style={{
-        padding: '16px 20px', borderRadius: '16px',
-        background: cardBg, border: cardBorder,
-        display: 'flex', flexDirection: 'column', gap: '14px',
-        boxShadow: isLight ? '0 2px 10px rgba(0,0,0,0.03)' : '0 4px 20px rgba(0,0,0,0.3)'
-      }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', position: 'relative' }}>
+      <div ref={topRef} />
+
+      {/* 1. STICKY SEARCH & MULTI-DIMENSIONAL FILTERS CONTAINER */}
+      <div
+        className="mh-sticky-filters"
+        style={{
+          padding: '16px 20px', borderRadius: '16px',
+          background: isLight ? 'rgba(255, 255, 255, 0.96)' : 'rgba(13, 16, 25, 0.95)',
+          border: cardBorder,
+          display: 'flex', flexDirection: 'column', gap: '12px',
+          boxShadow: isLight ? '0 4px 20px rgba(0,0,0,0.06)' : '0 10px 30px rgba(0,0,0,0.45)'
+        }}
+      >
         {/* Search Input, Official Toggle & Sort / Format Dropdowns */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
           <div style={{
@@ -310,8 +325,8 @@ export default function HfBrowser({ isLight, addToast, onDownloadStarted }) {
           ))}
         </div>
 
-        {/* Granular Size in GB Bracket Pills (including >32G, 48G, 70G, 140G+) */}
-        <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', alignItems: 'center', borderTop: subBorder, paddingTop: '10px' }}>
+        {/* Granular Size in GB Bracket Pills */}
+        <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', alignItems: 'center', borderTop: subBorder, paddingTop: '8px' }}>
           <span style={{ fontSize: '0.66rem', fontWeight: 800, color: '#ffb86c', textTransform: 'uppercase', marginRight: '4px', display: 'flex', alignItems: 'center', gap: '4px' }}>
             <HardDrive size={12} /> FASCIA PESO GB:
           </span>
@@ -361,7 +376,42 @@ export default function HfBrowser({ isLight, addToast, onDownloadStarted }) {
         </div>
       </div>
 
-      {/* 2. DYNAMIC LIVE MODELS GRID */}
+      {/* 2. STATS & PAGINATION HEADER */}
+      <div style={{
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+        padding: '6px 10px', fontSize: '0.74rem', color: textMuted
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <span style={{ fontWeight: 800, color: textPrimary }}>
+            Mostrati {results.length} modelli
+          </span>
+          <span>•</span>
+          <span>{loadedPagesCount} {loadedPagesCount === 1 ? 'blocco caricato' : 'blocchi caricati'}</span>
+          {officialOnly && (
+            <span style={{
+              fontSize: '0.62rem', padding: '1px 6px', borderRadius: '4px',
+              background: 'rgba(59, 130, 246, 0.15)', color: '#3b82f6', fontWeight: 800
+            }}>
+              Solo Provider Ufficiali
+            </span>
+          )}
+        </div>
+
+        {results.length > 30 && (
+          <button
+            onClick={scrollToTop}
+            style={{
+              background: subBg, border: subBorder, borderRadius: '6px',
+              padding: '4px 10px', color: textPrimary, fontSize: '0.7rem',
+              fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px'
+            }}
+          >
+            <ArrowUp size={12} /> Torna su
+          </button>
+        )}
+      </div>
+
+      {/* 3. DYNAMIC LIVE MODELS GRID */}
       {loading ? (
         <div style={{ textAlign: 'center', padding: '60px 20px', color: textMuted }}>
           <Activity className="mh-spin" size={24} color="#ffb86c" style={{ margin: '0 auto 10px' }} />
@@ -500,29 +550,46 @@ export default function HfBrowser({ isLight, addToast, onDownloadStarted }) {
             ))}
           </div>
 
-          {/* 3. PAGINATION / LOAD MORE BUTTON */}
-          {hasMore && (
-            <div style={{ display: 'flex', justifyContent: 'center', padding: '10px 0 20px' }}>
+          {/* 4. PAGINATION FOOTER */}
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '10px', padding: '16px 0 30px' }}>
+            {hasMore ? (
               <button
                 onClick={handleLoadMore}
                 disabled={loadingMore}
                 style={{
-                  padding: '10px 24px', borderRadius: '12px',
-                  background: subBg, border: subBorder,
-                  color: textPrimary, fontSize: '0.82rem', fontWeight: 800,
+                  padding: '12px 28px', borderRadius: '12px',
+                  background: isLight ? '#111827' : 'linear-gradient(135deg, #ffb86c, #ea580c)',
+                  border: 'none',
+                  color: '#ffffff', fontSize: '0.84rem', fontWeight: 800,
                   cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px',
-                  boxShadow: '0 4px 15px rgba(0,0,0,0.1)'
+                  boxShadow: '0 6px 20px rgba(255, 184, 108, 0.3)'
                 }}
               >
-                {loadingMore ? <Activity className="mh-spin" size={16} color="#ffb86c" /> : <PlusCircle size={16} color="#ffb86c" />}
-                {loadingMore ? 'Caricamento da Hugging Face...' : 'Carica Altri Modelli da Hugging Face'}
+                {loadingMore ? <Activity className="mh-spin" size={16} color="#ffffff" /> : <PlusCircle size={16} color="#ffffff" />}
+                {loadingMore ? 'Caricamento da Hugging Face...' : `Carica Altri Modelli da Hugging Face (+30)`}
               </button>
-            </div>
-          )}
+            ) : (
+              <div style={{ fontSize: '0.76rem', color: textMuted }}>
+                ✓ Tutti i modelli disponibili per questa selezione sono stati caricati.
+              </div>
+            )}
+
+            {results.length > 20 && (
+              <button
+                onClick={scrollToTop}
+                style={{
+                  background: 'transparent', border: 'none', color: textMuted,
+                  fontSize: '0.74rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px'
+                }}
+              >
+                <ArrowUp size={12} /> Torna all'inizio della lista
+              </button>
+            )}
+          </div>
         </div>
       )}
 
-      {/* 4. QUANTIZATION & FILE SELECTION MODAL */}
+      {/* 5. QUANTIZATION & FILE SELECTION MODAL */}
       {selectedModel && (
         <div style={{
           position: 'fixed', inset: 0,
