@@ -38,7 +38,7 @@ def _save_hub_config(cfg: dict) -> None:
 
 
 def handle_models_hf_search(self):
-    """GET /api/models/hf/search — Cerca modelli su Hugging Face con filtri multi-dimensionali."""
+    """GET /api/models/hf/search — Cerca modelli su Hugging Face con filtri multi-dimensionali e paginazione."""
     try:
         query = ""
         category = "all"
@@ -46,6 +46,7 @@ def handle_models_hf_search(self):
         param_bracket = "all"
         format_filter = "all"
         sort = "downloads"
+        page = 1
         limit = 30
 
         # Parse query params if available
@@ -58,25 +59,34 @@ def handle_models_hf_search(self):
             param_bracket = params.get('param_bracket', ['all'])[0]
             format_filter = params.get('format_filter', ['all'])[0]
             sort = params.get('sort', ['downloads'])[0]
+            page = int(params.get('page', ['1'])[0])
             limit = int(params.get('limit', ['30'])[0])
 
         cfg = _load_hub_config()
         token = cfg.get("hf_token") or None
-        results = search_hf_models(
+        data = search_hf_models(
             query=query,
             category=category,
             size_bracket=size_bracket,
             param_bracket=param_bracket,
             format_filter=format_filter,
             sort=sort,
+            page=page,
             limit=limit,
             hf_token=token
         )
 
-        self.send_json_response({"success": True, "results": results})
+        self.send_json_response({
+            "success": True,
+            "results": data.get("results", []),
+            "total": data.get("total", 0),
+            "page": data.get("page", 1),
+            "has_more": data.get("has_more", False)
+        })
     except Exception as e:
         log.error("Error in handle_models_hf_search: %s", e)
         self.send_json_response({"success": False, "error": str(e)}, 500)
+
 
 
 

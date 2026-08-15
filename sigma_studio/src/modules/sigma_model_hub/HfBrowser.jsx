@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import {
   Search, Download, Star, ArrowDown, Sparkles, Filter, CheckCircle2,
-  Layers, Cpu, Activity, ExternalLink, HardDrive, ArrowUpDown, ChevronDown, SlidersHorizontal
+  Layers, Cpu, Activity, ExternalLink, HardDrive, ArrowUpDown, ChevronDown,
+  Calendar, RefreshCw, PlusCircle
 } from 'lucide-react';
 
 const CATEGORIES = [
@@ -33,6 +34,7 @@ const PARAM_BRACKETS = [
 ];
 
 const SORT_OPTIONS = [
+  { id: 'newest', label: '✨ Nuove Uscite / Più Recenti (Data Rilascio)' },
   { id: 'downloads', label: '📥 Più Scaricati (Downloads)' },
   { id: 'likes', label: '⭐ Più Popolari (Likes / Trending)' },
   { id: 'size_asc', label: '💾 Peso Minore prima (GB ↑)' },
@@ -51,10 +53,14 @@ export default function HfBrowser({ isLight, addToast, onDownloadStarted }) {
   const [sizeBracket, setSizeBracket] = useState('all');
   const [paramBracket, setParamBracket] = useState('all');
   const [formatFilter, setFormatFilter] = useState('all');
-  const [sortBy, setSortBy] = useState('downloads');
+  const [sortBy, setSortBy] = useState('newest');
+  const [page, setPage] = useState(1);
 
   const [results, setResults] = useState([]);
+  const [hasMore, setHasMore] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
+
   const [selectedModel, setSelectedModel] = useState(null);
   const [modelDetails, setModelDetails] = useState(null);
   const [loadingDetails, setLoadingDetails] = useState(false);
@@ -67,29 +73,46 @@ export default function HfBrowser({ isLight, addToast, onDownloadStarted }) {
   const subBg = isLight ? '#f8f5ee' : 'rgba(255, 255, 255, 0.03)';
   const subBorder = isLight ? '1px solid rgba(190, 160, 110, 0.22)' : '1px solid rgba(255, 255, 255, 0.06)';
 
-  const fetchModels = useCallback(async () => {
-    setLoading(true);
+  const fetchModels = useCallback(async (targetPage = 1, append = false) => {
+    if (append) {
+      setLoadingMore(true);
+    } else {
+      setLoading(true);
+    }
+
     try {
       const q = encodeURIComponent(search);
-      const url = `/api/models/hf/search?q=${q}&category=${category}&size_bracket=${sizeBracket}&param_bracket=${paramBracket}&format_filter=${formatFilter}&sort=${sortBy}&limit=36`;
+      const url = `/api/models/hf/search?q=${q}&category=${category}&size_bracket=${sizeBracket}&param_bracket=${paramBracket}&format_filter=${formatFilter}&sort=${sortBy}&page=${targetPage}&limit=30`;
       const res = await fetch(url);
       if (res.ok) {
         const json = await res.json();
         if (json.success) {
-          setResults(json.results || []);
+          const list = json.results || [];
+          setResults(list);
+          setHasMore(json.has_more === true || list.length >= targetPage * 30);
+          setPage(targetPage);
         }
       }
     } catch (e) {
-      console.error('Error fetching HF models:', e);
+      console.error('Error fetching dynamic HF models:', e);
     } finally {
       setLoading(false);
+      setLoadingMore(false);
     }
   }, [search, category, sizeBracket, paramBracket, formatFilter, sortBy]);
 
+  // Reset to page 1 on filter changes
   useEffect(() => {
-    const delay = setTimeout(fetchModels, 250);
+    const delay = setTimeout(() => {
+      fetchModels(1, false);
+    }, 250);
     return () => clearTimeout(delay);
   }, [fetchModels]);
+
+  const handleLoadMore = () => {
+    const nextPage = page + 1;
+    fetchModels(nextPage, true);
+  };
 
   const handleSelectModel = async (m) => {
     setSelectedModel(m);
@@ -154,7 +177,7 @@ export default function HfBrowser({ isLight, addToast, onDownloadStarted }) {
             <Search size={16} color="#ffb86c" />
             <input
               type="text"
-              placeholder="Cerca qualsiasi modello Hugging Face (es. DeepSeek-R1, Qwen2.5-Coder, Llama-3.3, GGUF)..."
+              placeholder="Cerca qualsiasi modello Hugging Face in tempo reale (es. DeepSeek-R1, Qwen2.5, Llama-3.3, GGUF)..."
               value={search}
               onChange={e => setSearch(e.target.value)}
               style={{
@@ -278,91 +301,125 @@ export default function HfBrowser({ isLight, addToast, onDownloadStarted }) {
       {loading ? (
         <div style={{ textAlign: 'center', padding: '60px 20px', color: textMuted }}>
           <Activity className="mh-spin" size={24} color="#ffb86c" style={{ margin: '0 auto 10px' }} />
-          <div>Caricamento dinamico da Hugging Face API...</div>
+          <div>Interrogazione live in tempo reale da Hugging Face API...</div>
         </div>
       ) : results.length === 0 ? (
         <div style={{ textAlign: 'center', padding: '60px 20px', color: textMuted }}>
           Nessun modello trovato per i filtri selezionati. Prova a selezionare "Tutti i Pesi" o "Tutti i Parametri".
         </div>
       ) : (
-        <div className="mh-models-grid">
-          {results.map(m => (
-            <div
-              key={m.id}
-              onClick={() => handleSelectModel(m)}
-              className="mh-card mh-card-hover"
-              style={{
-                padding: '16px', borderRadius: '14px',
-                background: cardBg, border: selectedModel?.id === m.id ? '1.5px solid #ffb86c' : cardBorder,
-                cursor: 'pointer', display: 'flex', flexDirection: 'column', justifyContent: 'space-between', gap: '12px'
-              }}
-            >
-              <div>
-                <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '8px' }}>
-                  <div>
-                    <span style={{ fontSize: '0.64rem', color: textMuted, textTransform: 'uppercase', fontWeight: 800 }}>
-                      {m.author}
-                    </span>
-                    <h3 style={{ margin: '2px 0 0 0', fontSize: '0.94rem', fontWeight: 800, color: textPrimary, lineHeight: '1.3' }}>
-                      {m.name}
-                    </h3>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+          <div className="mh-models-grid">
+            {results.map(m => (
+              <div
+                key={m.id}
+                onClick={() => handleSelectModel(m)}
+                className="mh-card mh-card-hover"
+                style={{
+                  padding: '16px', borderRadius: '14px',
+                  background: cardBg, border: selectedModel?.id === m.id ? '1.5px solid #ffb86c' : cardBorder,
+                  cursor: 'pointer', display: 'flex', flexDirection: 'column', justifyContent: 'space-between', gap: '12px'
+                }}
+              >
+                <div>
+                  <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '8px' }}>
+                    <div>
+                      <span style={{ fontSize: '0.64rem', color: textMuted, textTransform: 'uppercase', fontWeight: 800 }}>
+                        {m.author}
+                      </span>
+                      <h3 style={{ margin: '2px 0 0 0', fontSize: '0.94rem', fontWeight: 800, color: textPrimary, lineHeight: '1.3' }}>
+                        {m.name}
+                      </h3>
+                    </div>
+
+                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '4px', flexShrink: 0 }}>
+                      <span style={{
+                        fontSize: '0.62rem', padding: '2px 6px', borderRadius: '4px',
+                        background: 'rgba(255, 184, 108, 0.15)', color: '#ffb86c', fontWeight: 800
+                      }}>
+                        {m.params_label || '7B'}
+                      </span>
+                      <span style={{
+                        fontSize: '0.60rem', padding: '1px 5px', borderRadius: '3px',
+                        background: subBg, color: textMuted, border: subBorder, fontWeight: 700
+                      }}>
+                        ~{m.size_gb} GB
+                      </span>
+                    </div>
                   </div>
 
-                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '4px', flexShrink: 0 }}>
-                    <span style={{
-                      fontSize: '0.62rem', padding: '2px 6px', borderRadius: '4px',
-                      background: 'rgba(255, 184, 108, 0.15)', color: '#ffb86c', fontWeight: 800
-                    }}>
-                      {m.params_label || '7B'}
-                    </span>
-                    <span style={{
-                      fontSize: '0.60rem', padding: '1px 5px', borderRadius: '3px',
-                      background: subBg, color: textMuted, border: subBorder, fontWeight: 700
-                    }}>
-                      ~{m.size_gb} GB
-                    </span>
-                  </div>
+                  <p style={{ margin: '8px 0 0 0', fontSize: '0.72rem', color: textMuted, lineHeight: '1.4' }}>
+                    {m.description}
+                  </p>
                 </div>
 
-                <p style={{ margin: '8px 0 0 0', fontSize: '0.72rem', color: textMuted, lineHeight: '1.4' }}>
-                  {m.description}
-                </p>
-              </div>
-
-              <div>
-                {/* Target GPU & Stats */}
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderTop: subBorder, paddingTop: '8px', fontSize: '0.68rem', color: textMuted }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    <span>⭐ {m.likes}</span>
-                    <span>📥 {m.downloads > 1000 ? `${Math.round(m.downloads / 1000)}k` : m.downloads}</span>
+                <div>
+                  {/* Release Date & Stats */}
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderTop: subBorder, paddingTop: '8px', fontSize: '0.68rem', color: textMuted }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <Calendar size={12} color="#ffb86c" />
+                      <span style={{ color: textPrimary, fontWeight: 700 }}>
+                        {m.release_date_label || 'Recente'}
+                      </span>
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <span>⭐ {m.likes}</span>
+                      <span>📥 {m.downloads > 1000 ? `${Math.round(m.downloads / 1000)}k` : m.downloads}</span>
+                    </div>
                   </div>
-                  <span style={{ color: '#00d2ff', fontWeight: 700, fontSize: '0.66rem' }}>
-                    {m.recommended_gpu || '⚡ SigmaEngine'}
-                  </span>
-                </div>
 
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    handleSelectModel(m);
-                  }}
-                  style={{
-                    width: '100%', marginTop: '10px',
-                    padding: '7px 12px', borderRadius: '8px',
-                    border: 'none', background: 'rgba(255, 184, 108, 0.15)', color: isLight ? '#ea580c' : '#ffb86c',
-                    fontSize: '0.74rem', fontWeight: 800, cursor: 'pointer',
-                    display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '5px'
-                  }}
-                >
-                  <Download size={13} /> Seleziona Quantizzazione & Scarica
-                </button>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: '6px', fontSize: '0.66rem' }}>
+                    <span style={{ color: '#00d2ff', fontWeight: 700 }}>
+                      {m.recommended_gpu || '⚡ SigmaEngine'}
+                    </span>
+                    <span style={{ color: textMuted, fontWeight: 600 }}>
+                      {m.format || 'GGUF'}
+                    </span>
+                  </div>
+
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleSelectModel(m);
+                    }}
+                    style={{
+                      width: '100%', marginTop: '10px',
+                      padding: '7px 12px', borderRadius: '8px',
+                      border: 'none', background: 'rgba(255, 184, 108, 0.15)', color: isLight ? '#ea580c' : '#ffb86c',
+                      fontSize: '0.74rem', fontWeight: 800, cursor: 'pointer',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '5px'
+                    }}
+                  >
+                    <Download size={13} /> Seleziona Quantizzazione & Scarica
+                  </button>
+                </div>
               </div>
+            ))}
+          </div>
+
+          {/* 3. PAGINATION / LOAD MORE BUTTON */}
+          {hasMore && (
+            <div style={{ display: 'flex', justifyContent: 'center', padding: '10px 0 20px' }}>
+              <button
+                onClick={handleLoadMore}
+                disabled={loadingMore}
+                style={{
+                  padding: '10px 24px', borderRadius: '12px',
+                  background: subBg, border: subBorder,
+                  color: textPrimary, fontSize: '0.82rem', fontWeight: 800,
+                  cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px',
+                  boxShadow: '0 4px 15px rgba(0,0,0,0.1)'
+                }}
+              >
+                {loadingMore ? <Activity className="mh-spin" size={16} color="#ffb86c" /> : <PlusCircle size={16} color="#ffb86c" />}
+                {loadingMore ? 'Caricamento da Hugging Face...' : 'Carica Altri Modelli da Hugging Face'}
+              </button>
             </div>
-          ))}
+          )}
         </div>
       )}
 
-      {/* 3. QUANTIZATION & FILE SELECTION MODAL */}
+      {/* 4. QUANTIZATION & FILE SELECTION MODAL */}
       {selectedModel && (
         <div style={{
           position: 'fixed', inset: 0,
@@ -377,9 +434,16 @@ export default function HfBrowser({ isLight, addToast, onDownloadStarted }) {
           }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
               <div>
-                <span style={{ fontSize: '0.66rem', color: '#ffb86c', fontWeight: 800, textTransform: 'uppercase' }}>
-                  FILE & QUANTIZZAZIONI DISPONIBILI
-                </span>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <span style={{ fontSize: '0.66rem', color: '#ffb86c', fontWeight: 800, textTransform: 'uppercase' }}>
+                    FILE & QUANTIZZAZIONI
+                  </span>
+                  {selectedModel.release_date_label && (
+                    <span style={{ fontSize: '0.66rem', color: textMuted, display: 'flex', alignItems: 'center', gap: '3px' }}>
+                      <Calendar size={11} /> {selectedModel.release_date_label}
+                    </span>
+                  )}
+                </div>
                 <h3 style={{ margin: '2px 0 0 0', fontSize: '1.05rem', fontWeight: 800, color: textPrimary }}>
                   {selectedModel.name}
                 </h3>
@@ -392,7 +456,7 @@ export default function HfBrowser({ isLight, addToast, onDownloadStarted }) {
             {loadingDetails ? (
               <div style={{ textAlign: 'center', padding: '30px', color: textMuted }}>
                 <Activity className="mh-spin" size={20} color="#ffb86c" style={{ margin: '0 auto 8px' }} />
-                <span>Interrogazione Hugging Face per i file del repository...</span>
+                <span>Interrogazione live dei rami Hugging Face per i file del modello...</span>
               </div>
             ) : (
               <div style={{ maxHeight: '280px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '8px' }}>

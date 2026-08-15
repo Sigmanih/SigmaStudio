@@ -1,6 +1,6 @@
 # ==============================================================================
 # core/modules/sigma_model_hub/backend/hf_client.py
-# Hugging Face Hub Client & Model Explorer for SigmaEngine with Advanced Multi-Dimensional Filtering
+# Dynamic Real-Time Hugging Face Hub Client & Model Explorer for SigmaEngine
 # ==============================================================================
 from __future__ import annotations
 import os
@@ -14,6 +14,22 @@ from core.logger import get_logger
 log = get_logger(__name__)
 
 HF_API_BASE = "https://huggingface.co/api"
+
+
+def _format_date_label(iso_date: Optional[str]) -> str:
+    """Converts ISO date string (e.g. 2025-02-14T18:22:00.000Z) to human-readable Italian date label."""
+    if not iso_date:
+        return "Recente"
+    try:
+        part = iso_date.split('T')[0]
+        y, m, d = part.split('-')
+        month_names = {
+            "01": "Gen", "02": "Feb", "03": "Mar", "04": "Apr", "05": "Mag", "06": "Giu",
+            "07": "Lug", "08": "Ago", "09": "Set", "10": "Ott", "11": "Nov", "12": "Dic"
+        }
+        return f"{int(d)} {month_names.get(m, m)} {y}"
+    except Exception:
+        return iso_date[:10] if len(iso_date) >= 10 else iso_date
 
 
 def _extract_param_count(model_id: str, name: str, tags: List[str] = None) -> tuple[float, str]:
@@ -102,7 +118,7 @@ def _matches_param_bracket(params_b: float, bracket: str) -> bool:
     return True
 
 
-# Curated Popular Models for offline/instant catalogue
+# Curated Popular Models for offline/instant catalogue with release dates
 POPULAR_MODELS = [
     {
         "id": "bartowski/DeepSeek-R1-Distill-Qwen-14B-GGUF",
@@ -115,6 +131,9 @@ POPULAR_MODELS = [
         "format": "GGUF",
         "downloads": 128000,
         "likes": 2400,
+        "created_at": "2025-01-22T08:00:00Z",
+        "last_modified": "2025-01-24T12:30:00Z",
+        "release_date_label": "22 Gen 2025",
         "description": "Modello di ragionamento ad alte prestazioni basato sull'architettura DeepSeek R1.",
         "quantizations": ["Q4_K_M (8.9 GB)", "Q5_K_M (10.5 GB)", "Q8_0 (15.2 GB)"],
         "pipeline_tag": "text-generation",
@@ -132,6 +151,9 @@ POPULAR_MODELS = [
         "format": "GGUF",
         "downloads": 310000,
         "likes": 4200,
+        "created_at": "2025-01-21T14:20:00Z",
+        "last_modified": "2025-01-23T16:00:00Z",
+        "release_date_label": "21 Gen 2025",
         "description": "Distillazione compatta di DeepSeek R1 su Llama 3.1 8B, ideale per velocità estrema.",
         "quantizations": ["Q4_K_M (4.9 GB)", "Q8_0 (8.5 GB)"],
         "pipeline_tag": "text-generation",
@@ -149,6 +171,9 @@ POPULAR_MODELS = [
         "format": "GGUF",
         "downloads": 540000,
         "likes": 5600,
+        "created_at": "2024-07-23T12:00:00Z",
+        "last_modified": "2024-08-01T10:00:00Z",
+        "release_date_label": "23 Lug 2024",
         "description": "Modello conversazionale di riferimento di Meta con 128k context window.",
         "quantizations": ["Q4_K_M (4.9 GB)", "Q5_K_M (5.7 GB)", "Q8_0 (8.5 GB)"],
         "pipeline_tag": "text-generation",
@@ -166,6 +191,9 @@ POPULAR_MODELS = [
         "format": "GGUF",
         "downloads": 180000,
         "likes": 3100,
+        "created_at": "2024-11-12T09:30:00Z",
+        "last_modified": "2024-11-14T11:00:00Z",
+        "release_date_label": "12 Nov 2024",
         "description": "Specialista assoluto nella generazione di codice in 90+ linguaggi di programmazione.",
         "quantizations": ["Q4_K_M (8.9 GB)", "Q5_K_M (10.5 GB)", "Q8_0 (15.2 GB)"],
         "pipeline_tag": "text-generation",
@@ -183,6 +211,9 @@ POPULAR_MODELS = [
         "format": "GGUF",
         "downloads": 320000,
         "likes": 4800,
+        "created_at": "2024-11-12T09:30:00Z",
+        "last_modified": "2024-11-14T11:00:00Z",
+        "release_date_label": "12 Nov 2024",
         "description": "Agente di coding leggero, rapido e ultra-efficiente per refactoring e debugging.",
         "quantizations": ["Q4_K_M (4.6 GB)", "Q8_0 (7.9 GB)"],
         "pipeline_tag": "text-generation",
@@ -200,6 +231,9 @@ POPULAR_MODELS = [
         "format": "GGUF",
         "downloads": 95000,
         "likes": 2100,
+        "created_at": "2024-12-06T15:00:00Z",
+        "last_modified": "2024-12-08T18:00:00Z",
+        "release_date_label": "6 Dic 2024",
         "description": "Modello ammiraglia da 70B parametri, ottimizzato per tiering sharded multi-GPU e RAM.",
         "quantizations": ["Q2_K (26 GB)", "Q3_K_M (35 GB)", "Q4_K_M (42 GB)"],
         "pipeline_tag": "text-generation",
@@ -217,6 +251,9 @@ POPULAR_MODELS = [
         "format": "GGUF",
         "downloads": 75000,
         "likes": 1600,
+        "created_at": "2024-09-02T10:00:00Z",
+        "last_modified": "2024-09-05T14:00:00Z",
+        "release_date_label": "2 Set 2024",
         "description": "Modello multimodale per analisi di immagini, schemi tecnici, screenshot e documenti.",
         "quantizations": ["Q4_K_M (4.8 GB)", "Q8_0 (8.2 GB)"],
         "pipeline_tag": "image-text-to-text",
@@ -234,6 +271,9 @@ POPULAR_MODELS = [
         "format": "Bin",
         "downloads": 480000,
         "likes": 6700,
+        "created_at": "2023-11-10T11:00:00Z",
+        "last_modified": "2024-01-15T09:00:00Z",
+        "release_date_label": "10 Nov 2023",
         "description": "Il miglior modello di trascrizione vocale multilingue a bassissima latenza.",
         "quantizations": ["FP16 (3.1 GB)", "INT8 (1.6 GB)"],
         "pipeline_tag": "automatic-speech-recognition",
@@ -250,12 +290,13 @@ def search_hf_models(
     param_bracket: str = "all",
     format_filter: str = "all",
     sort: str = "downloads",
+    page: int = 1,
     limit: int = 30,
     hf_token: Optional[str] = None
-) -> List[Dict[str, Any]]:
+) -> Dict[str, Any]:
     """
-    Searches models on Hugging Face API dynamically with multi-dimensional filtering
-    (Category, Size in GB bracket, Parameter count bracket, Format, and Sorting).
+    Searches models on Hugging Face API dynamically in real time.
+    Reads live models, dates, parameters, and weights with pagination.
     """
     results = []
 
@@ -268,23 +309,25 @@ def search_hf_models(
         "moe": "text-generation",
     }
 
-    # 1. Match from POPULAR_MODELS catalogue first
-    q_low = query.lower().strip()
-    for m in POPULAR_MODELS:
-        if q_low:
-            if q_low not in m["id"].lower() and q_low not in m["name"].lower() and q_low not in m["description"].lower():
+    # 1. Match from POPULAR_MODELS catalogue first (if page 1)
+    if page == 1:
+        q_low = query.lower().strip()
+        for m in POPULAR_MODELS:
+            if q_low:
+                if q_low not in m["id"].lower() and q_low not in m["name"].lower() and q_low not in m["description"].lower():
+                    continue
+            if category != "all" and category != m.get("category"):
                 continue
-        if category != "all" and category != m.get("category"):
-            continue
-        if not _matches_size_bracket(m.get("size_gb", 5.0), size_bracket):
-            continue
-        if not _matches_param_bracket(m.get("params_b", 7.0), param_bracket):
-            continue
-        if format_filter != "all" and format_filter.lower() not in m.get("format", "").lower():
-            continue
-        results.append(m)
+            if not _matches_size_bracket(m.get("size_gb", 5.0), size_bracket):
+                continue
+            if not _matches_param_bracket(m.get("params_b", 7.0), param_bracket):
+                continue
+            if format_filter != "all" and format_filter.lower() not in m.get("format", "").lower():
+                continue
+            results.append(m)
 
-    # 2. Dynamic Live Fetch via Hugging Face Hub API
+    # 2. Dynamic Live Fetch directly from Hugging Face Hub API (Always live)
+    has_more = True
     try:
         search_query = query.strip()
         if not search_query:
@@ -304,13 +347,17 @@ def search_hf_models(
         # HF Sort mapping
         hf_sort = sort
         if sort in ["size_asc", "size_desc"]:
-            hf_sort = "downloads"  # sort by downloads first, then local sort by size
+            hf_sort = "downloads"
+        elif sort == "newest" or sort == "lastModified":
+            hf_sort = "lastModified"
 
+        # Calculate fetch limits
+        fetch_limit = min(limit * 3, 100)
         params = {
             "search": search_query,
             "sort": hf_sort,
             "direction": -1,
-            "limit": min(limit * 2, 60),
+            "limit": fetch_limit,
             "full": "true"
         }
         if category in cat_tag_map:
@@ -325,6 +372,8 @@ def search_hf_models(
         with urllib.request.urlopen(req, timeout=8) as response:
             if response.status == 200:
                 raw = json.loads(response.read().decode("utf-8"))
+                has_more = len(raw) >= fetch_limit
+
                 for item in raw:
                     mid = item.get("id") or item.get("modelId", "")
                     if any(r["id"] == mid for r in results):
@@ -334,6 +383,12 @@ def search_hf_models(
                     m_name = mid.split("/")[-1] if "/" in mid else mid
                     pipeline = item.get("pipeline_tag", "text-generation")
                     tags = item.get("tags", [])
+
+                    # Parse release date and last modified
+                    created_at = item.get("createdAt")
+                    last_modified = item.get("lastModified")
+                    release_date = created_at or last_modified
+                    date_label = _format_date_label(release_date)
 
                     # Parse parameters and size
                     params_b, params_label = _extract_param_count(mid, m_name, tags)
@@ -371,30 +426,42 @@ def search_hf_models(
                         "format": fmt_label,
                         "downloads": item.get("downloads", 0),
                         "likes": item.get("likes", 0),
-                        "description": f"Modello {m_name} ({params_label} • {size_gb} GB) su Hugging Face Hub.",
+                        "created_at": created_at,
+                        "last_modified": last_modified,
+                        "release_date_label": date_label,
+                        "description": f"Modello {m_name} ({params_label} • {size_gb} GB) rilasciato da {author}.",
                         "quantizations": ["GGUF Q4_K_M", "Q8_0", "FP16"] if is_gguf else ["Safetensors FP16 / BF16"],
                         "pipeline_tag": pipeline,
                         "default_file": f"{m_name}.gguf" if is_gguf else f"{m_name}.safetensors",
                         "recommended_gpu": rec_gpu
                     })
     except Exception as ex:
-        log.debug(f"[HF_Client] Online search error: {ex}")
+        log.debug(f"[HF_Client] Dynamic online search error: {ex}")
 
     # 3. Apply custom sorting
     if sort == "likes":
         results.sort(key=lambda x: x.get("likes", 0), reverse=True)
     elif sort == "downloads":
         results.sort(key=lambda x: x.get("downloads", 0), reverse=True)
+    elif sort in ["newest", "lastModified"]:
+        results.sort(key=lambda x: x.get("created_at") or x.get("last_modified") or "", reverse=True)
     elif sort == "size_asc":
         results.sort(key=lambda x: x.get("size_gb", 0.0))
     elif sort == "size_desc":
         results.sort(key=lambda x: x.get("size_gb", 0.0), reverse=True)
 
-    return results[:limit]
+    final_results = results[:limit * page]
+    return {
+        "results": final_results,
+        "total": len(results),
+        "page": page,
+        "limit": limit,
+        "has_more": len(results) > len(final_results) or has_more
+    }
 
 
 def get_hf_model_details(model_id: str, hf_token: Optional[str] = None) -> Dict[str, Any]:
-    """Fetches detailed metadata, file list, and available GGUF quantizations for a model."""
+    """Fetches detailed metadata, file list, dates, and available GGUF quantizations for a model."""
     try:
         url = f"{HF_API_BASE}/models/{model_id}"
         req = urllib.request.Request(url)
@@ -418,6 +485,10 @@ def get_hf_model_details(model_id: str, hf_token: Optional[str] = None) -> Dict[
                             "download_url": f"https://huggingface.co/{model_id}/resolve/main/{rfilename}"
                         })
 
+                created_at = data.get("createdAt")
+                last_modified = data.get("lastModified")
+                release_date_label = _format_date_label(created_at or last_modified)
+
                 params_b, params_label = _extract_param_count(model_id, data.get("id", ""), data.get("tags", []))
                 size_gb = _estimate_model_size_gb(params_b, is_gguf=any(f["is_gguf"] for f in files))
 
@@ -427,6 +498,9 @@ def get_hf_model_details(model_id: str, hf_token: Optional[str] = None) -> Dict[
                     "author": data.get("author", model_id.split("/")[0] if "/" in model_id else "Community"),
                     "downloads": data.get("downloads", 0),
                     "likes": data.get("likes", 0),
+                    "created_at": created_at,
+                    "last_modified": last_modified,
+                    "release_date_label": release_date_label,
                     "params_label": params_label,
                     "size_gb": size_gb,
                     "recommended_gpu": _determine_target_gpu(size_gb),
@@ -447,6 +521,9 @@ def get_hf_model_details(model_id: str, hf_token: Optional[str] = None) -> Dict[
         "author": model_id.split("/")[0] if "/" in model_id else "Community",
         "downloads": 50000,
         "likes": 1200,
+        "created_at": "2025-01-01T00:00:00Z",
+        "last_modified": "2025-01-01T00:00:00Z",
+        "release_date_label": "1 Gen 2025",
         "params_label": params_label,
         "size_gb": size_gb,
         "recommended_gpu": _determine_target_gpu(size_gb),
