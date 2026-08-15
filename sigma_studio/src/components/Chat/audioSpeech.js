@@ -292,8 +292,22 @@ function resolveEngine() {
 /** Ask the backend which neural engines are installed. Cached after first call. */
 export function loadTTSEngines(force = false) {
   if (enginesProbe && !force) return enginesProbe;
+  try {
+    const installedRaw = localStorage.getItem('sigma_marketplace_installed');
+    if (installedRaw) {
+      const parsed = JSON.parse(installedRaw);
+      if (parsed && parsed.sigma_voice_studio === false) {
+        serverEngines = [];
+        return Promise.resolve([]);
+      }
+    }
+  } catch (e) {}
+
   enginesProbe = fetch('/api/tts/engines')
-    .then(r => r.json())
+    .then(r => {
+      if (!r.ok) return { engines: [], default: { engine: 'browser', voice: '' } };
+      return r.json();
+    })
     .then(data => {
       serverEngines = data.engines || [];
       if (data.default) serverDefault = data.default;
@@ -305,6 +319,7 @@ export function loadTTSEngines(force = false) {
     });
   return enginesProbe;
 }
+
 
 if (typeof window !== 'undefined') {
   loadTTSEngines();
