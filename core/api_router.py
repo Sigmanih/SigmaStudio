@@ -17,6 +17,11 @@ def register_get_handlers(handler_class):
         '/api/config/hf_token': 'handle_hf_token_get',
         '/api/ollama_models': 'handle_api_ollama_models',
         '/api/tags': 'handle_api_ollama_models',
+        '/api/tts/engines': 'handle_tts_engines_fallback',
+        '/api/engine/status': 'handle_engine_status',
+        '/api/engine/profile': 'handle_engine_profile',
+
+
 
         '/api/sandbox/list': 'handle_sandbox_list',
         '/api/agents': 'handle_agents_list',
@@ -206,7 +211,9 @@ def register_post_handlers(handler_class):
         '/api/training/benchmark/endpoints/add': 'handle_training_benchmark_endpoint_add',
         '/api/training/benchmark/endpoints/remove': 'handle_training_benchmark_endpoint_remove',
         '/api/config/hf_token': 'handle_hf_token_config',
+        '/api/engine/partition': 'handle_engine_partition',
         '/api/skills/toggle': 'handle_skills_toggle',
+
         '/api/apps/launch': 'handle_apps_launch',
         '/api/apps/autoconfigure': 'handle_apps_autoconfigure',
         '/api/marketplace/install': 'handle_marketplace_install',

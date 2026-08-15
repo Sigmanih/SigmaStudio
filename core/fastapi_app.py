@@ -199,7 +199,8 @@ FastAPIHandlerAdapter.handle_api_tasks_assign = handle_api_tasks_assign
 from core.config_handler import (
     handle_api_config_get, handle_api_config_post,
     handle_api_ollama_models, handle_api_create_model,
-    handle_hf_token_config, handle_hf_token_get
+    handle_hf_token_config, handle_hf_token_get,
+    handle_tts_engines_fallback
 )
 FastAPIHandlerAdapter.handle_api_config_get = handle_api_config_get
 FastAPIHandlerAdapter.handle_api_config_post = handle_api_config_post
@@ -207,6 +208,16 @@ FastAPIHandlerAdapter.handle_api_ollama_models = handle_api_ollama_models
 FastAPIHandlerAdapter.handle_api_create_model = handle_api_create_model
 FastAPIHandlerAdapter.handle_hf_token_config = handle_hf_token_config
 FastAPIHandlerAdapter.handle_hf_token_get = handle_hf_token_get
+FastAPIHandlerAdapter.handle_tts_engines_fallback = handle_tts_engines_fallback
+
+from core.engine import (
+    handle_engine_status, handle_engine_profile, handle_engine_partition
+)
+FastAPIHandlerAdapter.handle_engine_status = handle_engine_status
+FastAPIHandlerAdapter.handle_engine_profile = handle_engine_profile
+FastAPIHandlerAdapter.handle_engine_partition = handle_engine_partition
+
+
 
 
 from core.chat_handler import handle_chat, handle_chat_extract_files

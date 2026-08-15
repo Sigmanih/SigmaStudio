@@ -293,15 +293,21 @@ function resolveEngine() {
 export function loadTTSEngines(force = false) {
   if (enginesProbe && !force) return enginesProbe;
   try {
-    const installedRaw = localStorage.getItem('sigma_marketplace_installed');
+    const installedRaw = typeof window !== 'undefined' ? localStorage.getItem('sigma_marketplace_installed') : null;
     if (installedRaw) {
       const parsed = JSON.parse(installedRaw);
-      if (parsed && parsed.sigma_voice_studio === false) {
+      if (!parsed || parsed.sigma_voice_studio !== true) {
         serverEngines = [];
         return Promise.resolve([]);
       }
+    } else {
+      serverEngines = [];
+      return Promise.resolve([]);
     }
-  } catch (e) {}
+  } catch (e) {
+    serverEngines = [];
+    return Promise.resolve([]);
+  }
 
   enginesProbe = fetch('/api/tts/engines')
     .then(r => {
@@ -320,10 +326,6 @@ export function loadTTSEngines(force = false) {
   return enginesProbe;
 }
 
-
-if (typeof window !== 'undefined') {
-  loadTTSEngines();
-}
 
 /** Cached engine list (null until the first probe resolves). */
 export function getTTSEngines() {

@@ -177,4 +177,10 @@ def handle_hf_token_get(self):
                     pass
         return self.send_json_response({"success": True, "hf_has_token": bool(token)})
     except Exception as exc:
-        return self.send_json_response({"success": False, "hf_has_token": False, "error": str(exc)})
+        return self.send_json_response({"success": False, "hf_has_token": False, "error": str(exc)})
+
+
+def handle_tts_engines_fallback(self):
+    """GET /api/tts/engines fallback returning empty engines list when sigma_voice_studio is not loaded."""
+    return self.send_json_response({"engines": [], "default": {"engine": "browser", "voice": ""}})
+

@@ -193,7 +193,8 @@ SigmaAPIHandler.handle_api_tasks_assign = handle_api_tasks_assign
 from core.config_handler import (
     handle_api_config_get, handle_api_config_post,
     handle_api_ollama_models, handle_api_create_model,
-    handle_hf_token_config, handle_hf_token_get
+    handle_hf_token_config, handle_hf_token_get,
+    handle_tts_engines_fallback
 )
 SigmaAPIHandler.handle_api_config_get = handle_api_config_get
 SigmaAPIHandler.handle_api_config_post = handle_api_config_post
@@ -201,6 +202,17 @@ SigmaAPIHandler.handle_api_ollama_models = handle_api_ollama_models
 SigmaAPIHandler.handle_api_create_model = handle_api_create_model
 SigmaAPIHandler.handle_hf_token_config = handle_hf_token_config
 SigmaAPIHandler.handle_hf_token_get = handle_hf_token_get
+SigmaAPIHandler.handle_tts_engines_fallback = handle_tts_engines_fallback
+
+# 5b. SigmaEngine Handlers
+from core.engine import (
+    handle_engine_status, handle_engine_profile, handle_engine_partition
+)
+SigmaAPIHandler.handle_engine_status = handle_engine_status
+SigmaAPIHandler.handle_engine_profile = handle_engine_profile
+SigmaAPIHandler.handle_engine_partition = handle_engine_partition
+
+
 
 
 # 6. Chat handler
