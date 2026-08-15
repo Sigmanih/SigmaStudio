@@ -788,8 +788,32 @@ export default function AIConfigTab({ openTab }) {
     }
   };
 
+  const [disabledProviders, setDisabledProviders] = useState(() => {
+    try {
+      const saved = localStorage.getItem('sigma_disabled_providers');
+      return saved ? JSON.parse(saved) : {};
+    } catch {
+      return {};
+    }
+  });
+
+  const toggleDisableProvider = (pId) => {
+    setDisabledProviders(prev => {
+      const next = { ...prev, [pId]: !prev[pId] };
+      try { localStorage.setItem('sigma_disabled_providers', JSON.stringify(next)); } catch {}
+      if (next[pId] && activeProvider === pId) {
+        setActiveProvider('sigma_engine');
+        setActiveModel('sigma-native:latest');
+      }
+      return next;
+    });
+  };
+
   // Switch Active Provider
   const handleSelectActiveProvider = (pId) => {
+    if (disabledProviders[pId]) {
+      toggleDisableProvider(pId);
+    }
     setActiveProvider(pId);
     const p = providerSettings[pId] || {};
     const mod = p.custom_model || p.model || PROVIDER_CATALOG[pId]?.default_model || '';
@@ -801,6 +825,7 @@ export default function AIConfigTab({ openTab }) {
     const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify({
       active_provider: activeProvider,
       active_model: activeModel,
+      disabled_providers: disabledProviders,
       parameters,
       timestamp: new Date().toISOString()
     }, null, 2));
@@ -812,12 +837,13 @@ export default function AIConfigTab({ openTab }) {
 
   // Reset to default
   const handleResetDefault = () => {
-    if (confirm("Sei sicuro di voler reimpostare la configurazione predefinita su Ollama Locale?")) {
-      setActiveProvider('ollama');
-      setActiveModel('sigma:latest');
+    if (confirm("Sei sicuro di voler reimpostare la configurazione predefinita su SigmaEngine Nativo?")) {
+      setActiveProvider('sigma_engine');
+      setActiveModel('sigma-native:latest');
       saveAllConfig();
     }
   };
+
 
   // Filtered providers
   const filteredProviders = useMemo(() => {
@@ -1254,6 +1280,7 @@ export default function AIConfigTab({ openTab }) {
             {filteredProviders.map(prov => {
               const pState = providerSettings[prov.id] || {};
               const isSelected = activeProvider === prov.id;
+              const isDisabled = disabledProviders[prov.id] === true;
               const hasKey = prov.id === 'ollama' ? true : (pState.has_api_key || (pState.api_key && pState.api_key.trim().length > 0));
               const isVisible = visibleKeys[prov.id];
               const test = testResults[prov.id];
@@ -1272,9 +1299,10 @@ export default function AIConfigTab({ openTab }) {
                     padding: '14px 16px',
                     borderRadius: '14px',
                     background: cardBg,
+                    opacity: isDisabled ? 0.6 : 1,
                     border: isSelected 
                       ? `2px solid ${prov.color}` 
-                      : (isLight ? '1px solid rgba(190, 160, 110, 0.25)' : '1px solid rgba(255, 255, 255, 0.07)'),
+                      : (isDisabled ? '1px dashed rgba(239, 68, 68, 0.4)' : (isLight ? '1px solid rgba(190, 160, 110, 0.25)' : '1px solid rgba(255, 255, 255, 0.07)')),
                     boxShadow: isSelected ? `0 4px 16px ${prov.color}20` : cardShadow,
                     display: 'flex',
                     flexDirection: 'column',
@@ -1303,46 +1331,70 @@ export default function AIConfigTab({ openTab }) {
                           <h3 style={{ margin: 0, fontSize: '0.86rem', fontWeight: 800, color: titleColor }}>
                             {prov.label}
                           </h3>
-                          <span style={{ fontSize: '0.6rem', fontWeight: 800, color: prov.color, letterSpacing: '0.4px' }}>
-                            {prov.badge}
+                          <span style={{ fontSize: '0.6rem', fontWeight: 800, color: isDisabled ? '#ef4444' : prov.color, letterSpacing: '0.4px' }}>
+                            {isDisabled ? 'DISABILITATO' : prov.badge}
                           </span>
                         </div>
                       </div>
 
-                      {/* Primary Toggle */}
-                      {isSelected ? (
-                        <span style={{
-                          padding: '3px 8px',
-                          borderRadius: '8px',
-                          background: `${prov.color}20`,
-                          color: prov.color,
-                          fontSize: '0.62rem',
-                          fontWeight: 800,
-                          border: `1px solid ${prov.color}45`,
-                          display: 'flex',
-                          alignItems: 'center',
-                          gap: '3px'
-                        }}>
-                          <CheckCircle2 size={10} /> ATTIVO
-                        </span>
-                      ) : (
-                        <button
-                          onClick={() => handleSelectActiveProvider(prov.id)}
-                          style={{
-                            padding: '3px 8px',
-                            borderRadius: '8px',
-                            background: innerCardBg,
-                            border: innerCardBorder,
-                            color: subtitleColor,
-                            fontSize: '0.62rem',
-                            fontWeight: 700,
-                            cursor: 'pointer'
-                          }}
-                        >
-                          Imposta Primario
-                        </button>
-                      )}
+                      {/* Header Actions (Primary / Enable / Disable) */}
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+                        {prov.id !== 'sigma_engine' && (
+                          <button
+                            onClick={() => toggleDisableProvider(prov.id)}
+                            title={isDisabled ? "Riabilita provider" : "Rimuovi o disabilita provider da Sigma Studio"}
+                            style={{
+                              padding: '3px 7px',
+                              borderRadius: '7px',
+                              background: isDisabled ? 'rgba(239, 68, 68, 0.15)' : 'rgba(255, 255, 255, 0.05)',
+                              border: isDisabled ? '1px solid rgba(239, 68, 68, 0.4)' : '1px solid rgba(255, 255, 255, 0.1)',
+                              color: isDisabled ? '#ef4444' : subtitleColor,
+                              fontSize: '0.6rem',
+                              fontWeight: 700,
+                              cursor: 'pointer'
+                            }}
+                          >
+                            {isDisabled ? 'Riabilita' : 'Rimuovi'}
+                          </button>
+                        )}
+
+                        {!isDisabled && (
+                          isSelected ? (
+                            <span style={{
+                              padding: '3px 8px',
+                              borderRadius: '8px',
+                              background: `${prov.color}20`,
+                              color: prov.color,
+                              fontSize: '0.62rem',
+                              fontWeight: 800,
+                              border: `1px solid ${prov.color}45`,
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: '3px'
+                            }}>
+                              <CheckCircle2 size={10} /> ATTIVO
+                            </span>
+                          ) : (
+                            <button
+                              onClick={() => handleSelectActiveProvider(prov.id)}
+                              style={{
+                                padding: '3px 8px',
+                                borderRadius: '8px',
+                                background: innerCardBg,
+                                border: innerCardBorder,
+                                color: subtitleColor,
+                                fontSize: '0.62rem',
+                                fontWeight: 700,
+                                cursor: 'pointer'
+                              }}
+                            >
+                              Imposta Primario
+                            </button>
+                          )
+                        )}
+                      </div>
                     </div>
+
 
                     <p style={{ margin: '0 0 10px 0', fontSize: '0.72rem', color: subtitleColor, lineHeight: 1.4 }}>
                       {prov.hint}

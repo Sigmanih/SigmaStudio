@@ -19,16 +19,27 @@ export default function ModelSelector({
   const primaryFav = favList[0] || '';
 
   // Group models by provider and STRICTLY FILTER to only available/configured providers:
-  // - SigmaEngine & Ollama (locali): sempre attivi
-  // - Cloud Providers: SOLO se l'utente ha inserito la chiave API (has_api_key o api_key) o endpoint custom
+  // - Respect user-disabled providers (e.g. Ollama removed/disabled)
+  // - SigmaEngine (nativo): sempre attivo
+  // - Cloud Providers: SOLO se l'utente ha inserito la chiave API o endpoint custom
   const modelsWithProvider = useMemo(() => {
+    const disabledMap = (() => {
+      try {
+        return JSON.parse(localStorage.getItem('sigma_disabled_providers') || '{}');
+      } catch {
+        return {};
+      }
+    })();
+
     return (models || [])
       .map(m => {
         const provider = m.provider || getProviderForModel(m.name, providerConfigs) || 'sigma_engine';
         return { ...m, provider };
       })
       .filter(m => {
-        if (m.provider === 'ollama' || m.provider === 'sigma_engine' || m.provider === 'sigma' || m.provider === 'ailoflow') return true;
+        if (disabledMap[m.provider] === true) return false;
+        if (m.provider === 'sigma_engine' || m.provider === 'sigma' || m.provider === 'ailoflow') return true;
+        if (m.provider === 'ollama') return disabledMap.ollama !== true;
         const pCfg = providerConfigs?.[m.provider];
         return (
           pCfg?.has_api_key === true || 
@@ -37,6 +48,7 @@ export default function ModelSelector({
         );
       });
   }, [models, providerConfigs]);
+
 
   // Extract unique providers present in active models + ⭐ PREFERITI Tab
   const providerTabs = useMemo(() => {
