@@ -3,29 +3,29 @@ import {
   Search, Download, Star, ArrowDown, Sparkles, Filter, CheckCircle2,
   Layers, Cpu, Activity, ExternalLink, HardDrive, ArrowUpDown, ChevronDown,
   Calendar, RefreshCw, PlusCircle, ShieldCheck, FolderDown, FileCode, ArrowUp,
-  XCircle, Zap
+  XCircle, Zap, RotateCcw, X
 } from 'lucide-react';
 
 const CATEGORIES = [
   { id: 'all', label: 'Tutte le Categorie' },
-  { id: 'reasoning', label: '🧠 Reasoning (R1 / DeepSeek)' },
-  { id: 'llm', label: '💬 LLM Conversazionali' },
-  { id: 'code', label: '💻 Coding & Agenti' },
-  { id: 'moe', label: '⚡ MoE Sharded (70B+)' },
-  { id: 'vision', label: '👁️ Vision & Multimodale' },
-  { id: 'audio', label: '🎙️ Audio & Whisper' },
+  { id: 'reasoning', label: '🧠 Reasoning (DeepSeek R1 / O1)' },
+  { id: 'llm', label: '💬 LLM Conversazionali (Chat / Instruct)' },
+  { id: 'code', label: '💻 Coding & Agenti (Coder)' },
+  { id: 'moe', label: '⚡ MoE Sharded (Architetture MoE)' },
+  { id: 'vision', label: '👁️ Vision & Multimodale (VLM / OCR)' },
+  { id: 'audio', label: '🎙️ Audio & Voice (Whisper / TTS)' },
 ];
 
 const SIZE_BRACKETS = [
-  { id: 'all', label: 'Tutti i Pesi', badge: 'ALL' },
-  { id: 'under_4gb', label: '< 4 GB', hint: 'CPU / NPU', color: '#10b981' },
-  { id: '4_8gb', label: '4 - 8 GB', hint: 'RTX 5060 (8GB)', color: '#00d2ff' },
-  { id: '8_16gb', label: '8 - 16 GB', hint: 'RTX 5070 Ti (16GB)', color: '#bc8cff' },
-  { id: '16_32gb', label: '16 - 32 GB', hint: 'Dual-GPU 24GB', color: '#ffb86c' },
-  { id: '32_48gb', label: '32 - 48 GB', hint: '70B Q4 (~42GB)', color: '#ea580c' },
-  { id: '48_70gb', label: '48 - 70 GB', hint: '70B Q8 / MoE', color: '#ff5064' },
-  { id: '70_140gb', label: '70 - 140 GB', hint: 'Cluster / 140B MoE', color: '#d946ef' },
-  { id: 'over_140gb', label: '> 140 GB', hint: 'DeepSeek 671B Sharded', color: '#8b5cf6' },
+  { id: 'all', label: 'Tutti i Pesi (All GB)' },
+  { id: 'under_4gb', label: '🟢 < 4 GB (Leggero • CPU / NPU)' },
+  { id: '4_8gb', label: '🔵 4 - 8 GB (RTX 5060 8GB)' },
+  { id: '8_16gb', label: '🟣 8 - 16 GB (RTX 5070 Ti 16GB)' },
+  { id: '16_32gb', label: '🟡 16 - 32 GB (Dual-GPU 24GB)' },
+  { id: '32_48gb', label: '🟠 32 - 48 GB (70B Q4 ~42GB)' },
+  { id: '48_70gb', label: '🔴 48 - 70 GB (70B Q8 / MoE)' },
+  { id: '70_140gb', label: '🟣 70 - 140 GB (Cluster / 140B MoE)' },
+  { id: 'over_140gb', label: '🔮 > 140 GB (DeepSeek 671B Sharded)' },
 ];
 
 const PARAM_BRACKETS = [
@@ -37,18 +37,18 @@ const PARAM_BRACKETS = [
   { id: '70b_plus', label: '70B+ & MoE Sharded' },
 ];
 
+const FORMAT_OPTIONS = [
+  { id: 'all', label: 'Tutti i Formati (GGUF + Safetensors)' },
+  { id: 'gguf', label: '⚡ Solo GGUF (llama.cpp)' },
+  { id: 'safetensors', label: '📦 Solo Safetensors (FP16 / FP8 / HF)' },
+];
+
 const SORT_OPTIONS = [
   { id: 'newest', label: '✨ Nuove Uscite / Più Recenti (Data Rilascio)' },
   { id: 'downloads', label: '📥 Più Scaricati (Downloads)' },
   { id: 'likes', label: '⭐ Più Popolari (Likes / Trending)' },
   { id: 'size_asc', label: '💾 Peso Minore prima (GB ↑)' },
   { id: 'size_desc', label: '💾 Peso Maggiore prima (GB ↓)' },
-];
-
-const FORMAT_OPTIONS = [
-  { id: 'all', label: 'Tutti i Formati' },
-  { id: 'gguf', label: '⚡ Solo GGUF' },
-  { id: 'safetensors', label: '📦 Solo Safetensors' },
 ];
 
 export default function HfBrowser({ isLight, addToast, onDownloadStarted, activeDownloads = [] }) {
@@ -81,6 +81,17 @@ export default function HfBrowser({ isLight, addToast, onDownloadStarted, active
   const textMuted = isLight ? '#6b7280' : '#8b8fa3';
   const subBg = isLight ? '#f8f5ee' : 'rgba(255, 255, 255, 0.03)';
   const subBorder = isLight ? '1px solid rgba(190, 160, 110, 0.22)' : '1px solid rgba(255, 255, 255, 0.06)';
+
+  const hasActiveFilters = category !== 'all' || sizeBracket !== 'all' || paramBracket !== 'all' || formatFilter !== 'all' || officialOnly || search.trim() !== '';
+
+  const handleResetFilters = () => {
+    setSearch('');
+    setCategory('all');
+    setSizeBracket('all');
+    setParamBracket('all');
+    setFormatFilter('all');
+    setOfficialOnly(false);
+  };
 
   const fetchModels = useCallback(async (targetCursor = null, append = false) => {
     if (append) {
@@ -232,41 +243,51 @@ export default function HfBrowser({ isLight, addToast, onDownloadStarted, active
     <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', position: 'relative' }}>
       <div ref={topRef} />
 
-      {/* 1. STICKY SEARCH & MULTI-DIMENSIONAL FILTERS CONTAINER */}
+      {/* 1. MODERN ULTRA-SLEEK SEARCH & FILTER TOOLBAR */}
       <div
         className="mh-sticky-filters"
         style={{
           padding: '16px 20px', borderRadius: '16px',
           background: isLight ? 'rgba(255, 255, 255, 0.96)' : 'rgba(13, 16, 25, 0.95)',
           border: cardBorder,
-          display: 'flex', flexDirection: 'column', gap: '12px',
+          display: 'flex', flexDirection: 'column', gap: '14px',
           boxShadow: isLight ? '0 4px 20px rgba(0,0,0,0.06)' : '0 10px 30px rgba(0,0,0,0.45)'
         }}
       >
-        {/* Search Input, Official Toggle & Sort / Format Dropdowns */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
-          <div style={{
-            display: 'flex', alignItems: 'center', gap: '8px',
-            padding: '9px 14px', borderRadius: '10px',
-            background: subBg, border: subBorder, flex: 1, minWidth: '260px'
-          }}>
-            <Search size={16} color="#ffb86c" />
+        {/* Top Row: Hero Search Bar + "Solo Ufficiali" Toggle + Reset */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
+          <div
+            className="mh-search-hero"
+            style={{
+              background: subBg, border: subBorder, flex: 1, minWidth: '280px'
+            }}
+          >
+            <Search size={18} color="#ffb86c" style={{ flexShrink: 0 }} />
             <input
               type="text"
-              placeholder="Cerca qualsiasi modello Hugging Face in tempo reale (es. Qwen/Qwen2.5, deepseek-ai/DeepSeek-R1, Meta-Llama)..."
+              placeholder="Cerca qualsiasi modello Hugging Face in tempo reale (es. Qwen3.8, DeepSeek-R1, Llama-3.3)..."
               value={search}
               onChange={e => setSearch(e.target.value)}
               style={{
                 background: 'transparent', border: 'none',
-                color: textPrimary, fontSize: '0.84rem', outline: 'none', width: '100%'
+                color: textPrimary, fontSize: '0.86rem', outline: 'none', width: '100%'
               }}
             />
+            {search && (
+              <button
+                onClick={() => setSearch('')}
+                style={{ background: 'none', border: 'none', color: textMuted, cursor: 'pointer', padding: 0 }}
+                title="Cancella ricerca"
+              >
+                <X size={16} />
+              </button>
+            )}
           </div>
 
-          {/* "Solo Ufficiali" Checkbox Filter */}
+          {/* "Solo Ufficiali" Switch / Pill Toggle */}
           <label style={{
-            display: 'flex', alignItems: 'center', gap: '6px',
-            padding: '9px 14px', borderRadius: '10px',
+            display: 'flex', alignItems: 'center', gap: '8px',
+            padding: '10px 16px', borderRadius: '12px',
             background: officialOnly ? (isLight ? '#eff6ff' : 'rgba(59, 130, 246, 0.15)') : subBg,
             border: officialOnly ? '1.5px solid #3b82f6' : subBorder,
             cursor: 'pointer', userSelect: 'none', transition: 'all 0.15s ease'
@@ -277,126 +298,197 @@ export default function HfBrowser({ isLight, addToast, onDownloadStarted, active
               onChange={e => setOfficialOnly(e.target.checked)}
               style={{ accentColor: '#3b82f6', cursor: 'pointer' }}
             />
-            <ShieldCheck size={15} color={officialOnly ? '#3b82f6' : textMuted} />
-            <span style={{ fontSize: '0.78rem', fontWeight: 800, color: officialOnly ? '#3b82f6' : textPrimary }}>
+            <ShieldCheck size={16} color={officialOnly ? '#3b82f6' : textMuted} />
+            <span style={{ fontSize: '0.80rem', fontWeight: 800, color: officialOnly ? '#3b82f6' : textPrimary }}>
               Solo Ufficiali
             </span>
           </label>
 
-          {/* Sort Dropdown */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-            <ArrowUpDown size={14} color="#ffb86c" />
-            <select
-              value={sortBy}
-              onChange={e => setSortBy(e.target.value)}
+          {/* Reset Filters Button */}
+          {hasActiveFilters && (
+            <button
+              onClick={handleResetFilters}
               style={{
-                padding: '9px 12px', borderRadius: '10px',
+                display: 'flex', alignItems: 'center', gap: '6px',
+                padding: '10px 14px', borderRadius: '12px',
                 background: subBg, border: subBorder,
-                color: textPrimary, fontSize: '0.78rem', fontWeight: 700, outline: 'none', cursor: 'pointer'
+                color: '#ff5064', fontSize: '0.76rem', fontWeight: 700, cursor: 'pointer',
+                transition: 'all 0.15s ease'
               }}
+              title="Reimposta tutti i filtri ai valori predefiniti"
             >
-              {SORT_OPTIONS.map(opt => (
-                <option key={opt.id} value={opt.id} style={{ background: isLight ? '#fff' : '#0d1019', color: textPrimary }}>
-                  {opt.label}
-                </option>
-              ))}
-            </select>
+              <RotateCcw size={13} /> Azzera Filtri
+            </button>
+          )}
+        </div>
+
+        {/* Bottom Row: 5 Clean Select Dropdowns (Category, Size, Params, Format, Sort) */}
+        <div className="mh-filter-selects-grid">
+          {/* 1. CATEGORIA */}
+          <div className="mh-select-container">
+            <span className="mh-select-label" style={{ color: textMuted }}>
+              <Layers size={11} color="#ffb86c" /> Categoria
+            </span>
+            <div className="mh-select-wrapper" style={{ background: subBg, border: subBorder }}>
+              <select
+                value={category}
+                onChange={e => setCategory(e.target.value)}
+                style={{ color: textPrimary }}
+              >
+                {CATEGORIES.map(c => (
+                  <option key={c.id} value={c.id} style={{ background: isLight ? '#fff' : '#0d1019', color: textPrimary }}>
+                    {c.label}
+                  </option>
+                ))}
+              </select>
+              <ChevronDown size={14} className="mh-select-icon" color={textMuted} />
+            </div>
           </div>
 
-          {/* Format Selector */}
-          <select
-            value={formatFilter}
-            onChange={e => setFormatFilter(e.target.value)}
-            style={{
-              padding: '9px 12px', borderRadius: '10px',
-              background: subBg, border: subBorder,
-              color: textPrimary, fontSize: '0.78rem', fontWeight: 700, outline: 'none', cursor: 'pointer'
-            }}
-          >
-            {FORMAT_OPTIONS.map(f => (
-              <option key={f.id} value={f.id} style={{ background: isLight ? '#fff' : '#0d1019', color: textPrimary }}>
-                {f.label}
-              </option>
-            ))}
-          </select>
+          {/* 2. FASCIA PESO GB */}
+          <div className="mh-select-container">
+            <span className="mh-select-label" style={{ color: '#ffb86c' }}>
+              <HardDrive size={11} color="#ffb86c" /> Fascia Peso GB
+            </span>
+            <div className="mh-select-wrapper" style={{ background: subBg, border: subBorder }}>
+              <select
+                value={sizeBracket}
+                onChange={e => setSizeBracket(e.target.value)}
+                style={{ color: textPrimary }}
+              >
+                {SIZE_BRACKETS.map(b => (
+                  <option key={b.id} value={b.id} style={{ background: isLight ? '#fff' : '#0d1019', color: textPrimary }}>
+                    {b.label}
+                  </option>
+                ))}
+              </select>
+              <ChevronDown size={14} className="mh-select-icon" color={textMuted} />
+            </div>
+          </div>
+
+          {/* 3. PARAMETRI */}
+          <div className="mh-select-container">
+            <span className="mh-select-label" style={{ color: '#00d2ff' }}>
+              <Cpu size={11} color="#00d2ff" /> Parametri
+            </span>
+            <div className="mh-select-wrapper" style={{ background: subBg, border: subBorder }}>
+              <select
+                value={paramBracket}
+                onChange={e => setParamBracket(e.target.value)}
+                style={{ color: textPrimary }}
+              >
+                {PARAM_BRACKETS.map(p => (
+                  <option key={p.id} value={p.id} style={{ background: isLight ? '#fff' : '#0d1019', color: textPrimary }}>
+                    {p.label}
+                  </option>
+                ))}
+              </select>
+              <ChevronDown size={14} className="mh-select-icon" color={textMuted} />
+            </div>
+          </div>
+
+          {/* 4. FORMATO PESI */}
+          <div className="mh-select-container">
+            <span className="mh-select-label" style={{ color: '#10b981' }}>
+              <FileCode size={11} color="#10b981" /> Formato Pesi
+            </span>
+            <div className="mh-select-wrapper" style={{ background: subBg, border: subBorder }}>
+              <select
+                value={formatFilter}
+                onChange={e => setFormatFilter(e.target.value)}
+                style={{ color: textPrimary }}
+              >
+                {FORMAT_OPTIONS.map(f => (
+                  <option key={f.id} value={f.id} style={{ background: isLight ? '#fff' : '#0d1019', color: textPrimary }}>
+                    {f.label}
+                  </option>
+                ))}
+              </select>
+              <ChevronDown size={14} className="mh-select-icon" color={textMuted} />
+            </div>
+          </div>
+
+          {/* 5. ORDINAMENTO */}
+          <div className="mh-select-container">
+            <span className="mh-select-label" style={{ color: '#bc8cff' }}>
+              <ArrowUpDown size={11} color="#bc8cff" /> Ordina Per
+            </span>
+            <div className="mh-select-wrapper" style={{ background: subBg, border: subBorder }}>
+              <select
+                value={sortBy}
+                onChange={e => setSortBy(e.target.value)}
+                style={{ color: textPrimary }}
+              >
+                {SORT_OPTIONS.map(s => (
+                  <option key={s.id} value={s.id} style={{ background: isLight ? '#fff' : '#0d1019', color: textPrimary }}>
+                    {s.label}
+                  </option>
+                ))}
+              </select>
+              <ChevronDown size={14} className="mh-select-icon" color={textMuted} />
+            </div>
+          </div>
         </div>
 
-        {/* Categories Pills */}
-        <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', alignItems: 'center' }}>
-          <span style={{ fontSize: '0.66rem', fontWeight: 800, color: textMuted, textTransform: 'uppercase', marginRight: '4px' }}>
-            CATEGORIA:
-          </span>
-          {CATEGORIES.map(cat => (
-            <button
-              key={cat.id}
-              onClick={() => setCategory(cat.id)}
-              className="mh-pill-btn"
-              style={{
-                background: category === cat.id ? (isLight ? '#111827' : '#ffb86c') : subBg,
-                color: category === cat.id ? (isLight ? '#ffffff' : '#0d1019') : textMuted,
-                border: category === cat.id ? '1px solid transparent' : subBorder
-              }}
-            >
-              {cat.label}
-            </button>
-          ))}
-        </div>
-
-        {/* Granular Size in GB Bracket Pills */}
-        <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', alignItems: 'center', borderTop: subBorder, paddingTop: '8px' }}>
-          <span style={{ fontSize: '0.66rem', fontWeight: 800, color: '#ffb86c', textTransform: 'uppercase', marginRight: '4px', display: 'flex', alignItems: 'center', gap: '4px' }}>
-            <HardDrive size={12} /> FASCIA PESO GB:
-          </span>
-          {SIZE_BRACKETS.map(b => (
-            <button
-              key={b.id}
-              onClick={() => setSizeBracket(b.id)}
-              className="mh-pill-btn"
-              style={{
-                background: sizeBracket === b.id ? (b.color || '#ffb86c') : subBg,
-                color: sizeBracket === b.id ? '#ffffff' : textMuted,
-                border: sizeBracket === b.id ? '1px solid transparent' : subBorder
-              }}
-            >
-              <span>{b.label}</span>
-              {b.hint && (
-                <span style={{
-                  fontSize: '0.62rem', opacity: 0.85, padding: '1px 4px', borderRadius: '3px',
-                  background: sizeBracket === b.id ? 'rgba(0,0,0,0.25)' : 'rgba(255,255,255,0.06)'
-                }}>
-                  {b.hint}
-                </span>
-              )}
-            </button>
-          ))}
-        </div>
-
-        {/* Parameter Count Bracket Pills */}
-        <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', alignItems: 'center' }}>
-          <span style={{ fontSize: '0.66rem', fontWeight: 800, color: '#00d2ff', textTransform: 'uppercase', marginRight: '4px', display: 'flex', alignItems: 'center', gap: '4px' }}>
-            <Cpu size={12} /> PARAMETRI:
-          </span>
-          {PARAM_BRACKETS.map(p => (
-            <button
-              key={p.id}
-              onClick={() => setParamBracket(p.id)}
-              className="mh-pill-btn"
-              style={{
-                background: paramBracket === p.id ? '#00d2ff' : subBg,
-                color: paramBracket === p.id ? '#07090e' : textMuted,
-                border: paramBracket === p.id ? '1px solid transparent' : subBorder
-              }}
-            >
-              {p.label}
-            </button>
-          ))}
-        </div>
+        {/* Active Filter Chips Bar (when active) */}
+        {hasActiveFilters && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap', borderTop: subBorder, paddingTop: '10px' }}>
+            <span style={{ fontSize: '0.64rem', fontWeight: 800, color: textMuted, textTransform: 'uppercase' }}>
+              FILTRI ATTIVI:
+            </span>
+            {category !== 'all' && (
+              <span
+                onClick={() => setCategory('all')}
+                className="mh-active-chip"
+                style={{ background: 'rgba(255, 184, 108, 0.15)', color: '#ffb86c', border: '1px solid rgba(255, 184, 108, 0.3)' }}
+              >
+                {CATEGORIES.find(c => c.id === category)?.label} <X size={12} />
+              </span>
+            )}
+            {sizeBracket !== 'all' && (
+              <span
+                onClick={() => setSizeBracket('all')}
+                className="mh-active-chip"
+                style={{ background: 'rgba(0, 210, 255, 0.15)', color: '#00d2ff', border: '1px solid rgba(0, 210, 255, 0.3)' }}
+              >
+                {SIZE_BRACKETS.find(s => s.id === sizeBracket)?.label} <X size={12} />
+              </span>
+            )}
+            {paramBracket !== 'all' && (
+              <span
+                onClick={() => setParamBracket('all')}
+                className="mh-active-chip"
+                style={{ background: 'rgba(188, 140, 255, 0.15)', color: '#bc8cff', border: '1px solid rgba(188, 140, 255, 0.3)' }}
+              >
+                {PARAM_BRACKETS.find(p => p.id === paramBracket)?.label} <X size={12} />
+              </span>
+            )}
+            {formatFilter !== 'all' && (
+              <span
+                onClick={() => setFormatFilter('all')}
+                className="mh-active-chip"
+                style={{ background: 'rgba(16, 185, 129, 0.15)', color: '#10b981', border: '1px solid rgba(16, 185, 129, 0.3)' }}
+              >
+                {FORMAT_OPTIONS.find(f => f.id === formatFilter)?.label} <X size={12} />
+              </span>
+            )}
+            {officialOnly && (
+              <span
+                onClick={() => setOfficialOnly(false)}
+                className="mh-active-chip"
+                style={{ background: 'rgba(59, 130, 246, 0.15)', color: '#3b82f6', border: '1px solid rgba(59, 130, 246, 0.3)' }}
+              >
+                🛡️ Solo Ufficiali <X size={12} />
+              </span>
+            )}
+          </div>
+        )}
       </div>
 
       {/* 2. STATS & PAGINATION HEADER */}
       <div style={{
         display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-        padding: '6px 10px', fontSize: '0.74rem', color: textMuted
+        padding: '2px 8px', fontSize: '0.74rem', color: textMuted
       }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
           <span style={{ fontWeight: 800, color: textPrimary }}>
@@ -414,7 +506,7 @@ export default function HfBrowser({ isLight, addToast, onDownloadStarted, active
           )}
         </div>
 
-        {results.length > 30 && (
+        {results.length > 20 && (
           <button
             onClick={scrollToTop}
             style={{
@@ -821,7 +913,6 @@ export default function HfBrowser({ isLight, addToast, onDownloadStarted, active
                 </div>
 
                 {/* Individual files accordion/list */}
-
                 <div>
                   <div style={{ fontSize: '0.72rem', fontWeight: 800, color: textMuted, textTransform: 'uppercase', marginBottom: '6px' }}>
                     Oppure scarica singoli file / quantizzazioni ({modelDetails?.files?.length || 0}):

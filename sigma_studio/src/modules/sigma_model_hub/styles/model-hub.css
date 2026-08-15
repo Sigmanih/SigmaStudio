@@ -39,8 +39,97 @@
   position: sticky;
   top: 0;
   z-index: 20;
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  transition: all 0.2s ease;
+}
+
+/* Modern Search Box */
+.mh-search-hero {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 16px;
+  border-radius: 12px;
+  transition: all 0.2s ease;
+}
+
+.mh-search-hero:focus-within {
+  border-color: #ffb86c !important;
+  box-shadow: 0 0 16px rgba(255, 184, 108, 0.25);
+}
+
+/* Modern Filter Select Grid */
+.mh-filter-selects-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: 10px;
+  align-items: center;
+}
+
+.mh-select-container {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.mh-select-label {
+  font-size: 0.65rem;
+  font-weight: 800;
+  letter-spacing: 0.4px;
+  text-transform: uppercase;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.mh-select-wrapper {
+  position: relative;
+  display: flex;
+  align-items: center;
+  border-radius: 10px;
+  transition: all 0.15s ease;
+}
+
+.mh-select-wrapper:hover {
+  border-color: rgba(255, 184, 108, 0.4) !important;
+}
+
+.mh-select-wrapper select {
+  width: 100%;
+  appearance: none;
+  -webkit-appearance: none;
+  background: transparent;
+  border: none;
+  outline: none;
+  padding: 8px 30px 8px 12px;
+  font-size: 0.78rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.mh-select-icon {
+  position: absolute;
+  right: 10px;
+  pointer-events: none;
+  opacity: 0.7;
+}
+
+/* Active Filter Chips */
+.mh-active-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 8px;
+  border-radius: 6px;
+  font-size: 0.68rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.mh-active-chip:hover {
+  opacity: 0.85;
 }
 
 /* Header & Card Base */
@@ -52,20 +141,6 @@
 .mh-card-hover:hover {
   transform: translateY(-2px);
   box-shadow: 0 8px 25px rgba(0, 0, 0, 0.3);
-}
-
-/* Category Pills */
-.mh-pill-btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 6px 14px;
-  border-radius: 8px;
-  font-size: 0.76rem;
-  font-weight: 700;
-  cursor: pointer;
-  transition: all 0.15s ease;
-  border: 1px solid transparent;
 }
 
 /* Model Grid */
