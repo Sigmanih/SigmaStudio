@@ -23,6 +23,30 @@ OFFICIAL_ORGANIZATIONS = {
     'bytedance', 'internlm', 'systran', 'bigcode', 'salesforce', 'openchat'
 }
 
+OFFICIAL_AUTHOR_MAP = {
+    'qwen': 'Qwen',
+    'llama': 'meta-llama',
+    'meta': 'meta-llama',
+    'deepseek': 'deepseek-ai',
+    'mistral': 'mistralai',
+    'google': 'google',
+    'gemma': 'google',
+    'microsoft': 'microsoft',
+    'phi': 'microsoft',
+    'cohere': 'CohereForAI',
+    '01-ai': '01-ai',
+    'yi': '01-ai',
+    'nvidia': 'nvidia',
+    'nemotron': 'nvidia',
+    'stability': 'stabilityai',
+    'black-forest': 'black-forest-labs',
+    'flux': 'black-forest-labs',
+    'apple': 'apple',
+    'internlm': 'internlm',
+    'thudm': 'THUDM',
+    'glm': 'THUDM'
+}
+
 
 def is_official_provider(author: str, model_id: str) -> bool:
     """Checks if the model author or repository organization is an official AI lab or provider."""
@@ -64,10 +88,10 @@ def _extract_param_count(model_id: str, name: str, tags: List[str] = None) -> tu
     if moe_match:
         experts = int(moe_match.group(1))
         expert_size = float(moe_match.group(2))
-        total_params = round(experts * expert_size * 0.65, 1)  # approx active + routed parameters
+        total_params = round(experts * expert_size * 0.65, 1)
         return total_params, f"{experts}x{expert_size:g}B (MoE)"
 
-    # Check standard B pattern like 70b, 32b, 14b, 8b, 7b, 3b, 1.5b, 0.5b
+    # Check standard B pattern like 70b, 32b, 27b, 14b, 8b, 7b, 3b, 1.5b, 0.5b
     param_match = re.search(r'(\d+(?:\.\d+)?)\s*b(?:\b|[^a-z0-9])', text)
     if param_match:
         val = float(param_match.group(1))
@@ -223,7 +247,7 @@ POPULAR_MODELS = [
     },
     {
         "id": "meta-llama/Llama-3.3-70B-Instruct",
-        "name": "Meta Llama 3.3 70B Instruct",
+        "name": "Meta Llama 3.3-70B Instruct",
         "author": "meta-llama",
         "category": "moe",
         "params_b": 70.0,
@@ -290,6 +314,30 @@ POPULAR_MODELS = [
 ]
 
 
+def _fetch_from_hf_api(params: Dict[str, Any], hf_token: Optional[str] = None) -> tuple[List[Dict[str, Any]], Optional[str]]:
+    """Helper to query Hugging Face API and extract items and next_cursor."""
+    url = f"{HF_API_BASE}/models?{urllib.parse.urlencode(params)}"
+    req = urllib.request.Request(url)
+    req.add_header("User-Agent", "SigmaStudio-ModelHub/2.0")
+    if hf_token:
+        req.add_header("Authorization", f"Bearer {hf_token}")
+
+    try:
+        with urllib.request.urlopen(req, timeout=10) as response:
+            if response.status == 200:
+                raw = json.loads(response.read().decode("utf-8"))
+                link = response.headers.get("Link", "")
+                next_cursor = None
+                if 'rel="next"' in link:
+                    match = re.search(r'[?&]cursor=([^&>]+)', link)
+                    if match:
+                        next_cursor = urllib.parse.unquote(match.group(1))
+                return raw, next_cursor
+    except Exception as ex:
+        log.debug(f"[HF_Client] HF API fetch error for {params}: {ex}")
+    return [], None
+
+
 def search_hf_models(
     query: str = "",
     category: str = "all",
@@ -310,12 +358,8 @@ def search_hf_models(
     results = []
 
     cat_tag_map = {
-        "llm": "text-generation",
-        "code": "text-generation",
-        "reasoning": "text-generation",
         "vision": "image-text-to-text",
         "audio": "automatic-speech-recognition",
-        "moe": "text-generation",
     }
 
     # 1. Match from POPULAR_MODELS catalogue first (only on page 1 / initial load without cursor)
@@ -337,132 +381,142 @@ def search_hf_models(
                 continue
             results.append(m)
 
-    # 2. Dynamic Live Fetch directly from Hugging Face Hub API
+    # 2. Dynamic Multi-Pass Live Fetch directly from Hugging Face Hub API
     next_cursor = None
     try:
         search_query = query.strip()
-        if not search_query:
-            if official_only:
-                search_query = "qwen"
-            elif category == "code":
-                search_query = "coder"
-            elif category == "reasoning":
-                search_query = "deepseek r1"
-            elif category == "vision":
-                search_query = "vision"
-            elif category == "moe":
-                search_query = "moe"
-            elif format_filter == "safetensors":
-                search_query = "instruct safetensors"
-            else:
-                search_query = "gguf"
-
-        # HF Sort mapping
         hf_sort = sort
         if sort in ["size_asc", "size_desc"]:
             hf_sort = "downloads"
-        elif sort == "newest" or sort == "lastModified":
+        elif sort in ["newest", "lastModified"]:
             hf_sort = "lastModified"
 
-        fetch_limit = min(limit * 2, 60)
+        raw_items: List[Dict[str, Any]] = []
+
+        # A. If searching official models or query matches an official provider keyword, fetch from official author endpoint first!
+        detected_author = None
+        q_lower = search_query.lower()
+        for key_kw, author_name in OFFICIAL_AUTHOR_MAP.items():
+            if key_kw in q_lower:
+                detected_author = author_name
+                break
+
+        if not cursor and (official_only or detected_author):
+            target_authors = [detected_author] if detected_author else ["Qwen", "meta-llama", "deepseek-ai", "mistralai"]
+            for auth in target_authors:
+                if not auth:
+                    continue
+                auth_clean_q = re.sub(auth, '', search_query, flags=re.IGNORECASE).strip()
+                auth_clean_q = re.sub(r'(qwen|llama|deepseek|mistral)', '', auth_clean_q, flags=re.IGNORECASE).strip()
+                auth_params = {
+                    "author": auth,
+                    "limit": 30,
+                    "full": "true"
+                }
+                if auth_clean_q:
+                    auth_params["search"] = auth_clean_q
+                if hf_sort:
+                    auth_params["sort"] = hf_sort
+                    auth_params["direction"] = -1
+
+                auth_raw, _ = _fetch_from_hf_api(auth_params, hf_token=hf_token)
+                for item in auth_raw:
+                    if not any(x.get("id") == item.get("id") for x in raw_items):
+                        raw_items.append(item)
+
+        # B. Standard global search query
+        effective_search = search_query
+        if not effective_search:
+            effective_search = "qwen" if official_only else "gguf"
+
+        fetch_limit = min(limit * 3, 90)
         params = {
-            "search": search_query,
+            "search": effective_search,
             "sort": hf_sort,
             "direction": -1,
             "limit": fetch_limit,
             "full": "true"
         }
-        # Only restrict pipeline_tag for specific non-LLM categories
-        if category in ["vision", "audio"]:
+        if category in cat_tag_map:
             params["pipeline_tag"] = cat_tag_map[category]
         if cursor:
             params["cursor"] = cursor
 
-        url = f"{HF_API_BASE}/models?{urllib.parse.urlencode(params)}"
+        global_raw, next_cursor = _fetch_from_hf_api(params, hf_token=hf_token)
+        for item in global_raw:
+            if not any(x.get("id") == item.get("id") for x in raw_items):
+                raw_items.append(item)
 
-        req = urllib.request.Request(url)
-        req.add_header("User-Agent", "SigmaStudio-ModelHub/2.0")
-        if hf_token:
-            req.add_header("Authorization", f"Bearer {hf_token}")
+        # C. Transform and filter raw items
+        for item in raw_items:
+            mid = item.get("id") or item.get("modelId", "")
+            if any(r["id"] == mid for r in results):
+                continue
 
-        with urllib.request.urlopen(req, timeout=10) as response:
-            if response.status == 200:
-                raw = json.loads(response.read().decode("utf-8"))
-                link = response.headers.get("Link", "")
-                if 'rel="next"' in link:
-                    match = re.search(r'[?&]cursor=([^&>]+)', link)
-                    if match:
-                        next_cursor = urllib.parse.unquote(match.group(1))
+            author = mid.split("/")[0] if "/" in mid else "HuggingFace"
+            is_official = is_official_provider(author, mid)
 
-                for item in raw:
-                    mid = item.get("id") or item.get("modelId", "")
-                    if any(r["id"] == mid for r in results):
-                        continue
+            # If official_only is enabled, skip community repackages
+            if official_only and not is_official:
+                continue
 
-                    author = mid.split("/")[0] if "/" in mid else "HuggingFace"
-                    is_official = is_official_provider(author, mid)
+            m_name = mid.split("/")[-1] if "/" in mid else mid
+            pipeline = item.get("pipeline_tag", "text-generation")
+            tags = item.get("tags", [])
 
-                    # If official_only is enabled, skip community repackages
-                    if official_only and not is_official:
-                        continue
+            # Parse release date and last modified
+            created_at = item.get("createdAt")
+            last_modified = item.get("lastModified")
+            release_date = created_at or last_modified
+            date_label = _format_date_label(release_date)
 
-                    m_name = mid.split("/")[-1] if "/" in mid else mid
-                    pipeline = item.get("pipeline_tag", "text-generation")
-                    tags = item.get("tags", [])
+            # Parse parameters and size
+            params_b, params_label = _extract_param_count(mid, m_name, tags)
+            is_gguf = "gguf" in mid.lower() or "gguf" in tags or format_filter == "gguf"
+            fmt_label = "GGUF" if is_gguf else "Safetensors"
+            size_gb = _estimate_model_size_gb(params_b, is_gguf=is_gguf)
+            rec_gpu = _determine_target_gpu(size_gb)
 
-                    # Parse release date and last modified
-                    created_at = item.get("createdAt")
-                    last_modified = item.get("lastModified")
-                    release_date = created_at or last_modified
-                    date_label = _format_date_label(release_date)
+            # Apply filters
+            if not _matches_size_bracket(size_gb, size_bracket):
+                continue
+            if not _matches_param_bracket(params_b, param_bracket):
+                continue
+            if format_filter != "all" and format_filter.lower() not in fmt_label.lower():
+                continue
 
-                    # Parse parameters and size
-                    params_b, params_label = _extract_param_count(mid, m_name, tags)
-                    is_gguf = "gguf" in mid.lower() or "gguf" in tags or format_filter == "gguf"
-                    fmt_label = "GGUF" if is_gguf else "Safetensors"
-                    size_gb = _estimate_model_size_gb(params_b, is_gguf=is_gguf)
-                    rec_gpu = _determine_target_gpu(size_gb)
-
-                    # Apply filters
-                    if not _matches_size_bracket(size_gb, size_bracket):
-                        continue
-                    if not _matches_param_bracket(params_b, param_bracket):
-                        continue
-                    if format_filter != "all" and format_filter.lower() not in fmt_label.lower():
-                        continue
-
-                    inferred_cat = category if category != "all" else (
-                        "code" if "code" in mid.lower() or "coder" in mid.lower() else (
-                            "vision" if "vl" in mid.lower() or "vision" in mid.lower() else (
-                                "reasoning" if "r1" in mid.lower() or "reason" in mid.lower() else (
-                                    "moe" if "moe" in mid.lower() or "x" in mid.lower() else "llm"
-                                )
-                            )
+            inferred_cat = category if category != "all" else (
+                "code" if "code" in mid.lower() or "coder" in mid.lower() else (
+                    "vision" if "vl" in mid.lower() or "vision" in mid.lower() else (
+                        "reasoning" if "r1" in mid.lower() or "reason" in mid.lower() else (
+                            "moe" if "moe" in mid.lower() or "x" in mid.lower() else "llm"
                         )
                     )
+                )
+            )
 
-                    results.append({
-                        "id": mid,
-                        "name": m_name,
-                        "author": author,
-                        "category": inferred_cat,
-                        "params_b": params_b,
-                        "params_label": params_label,
-                        "size_gb": size_gb,
-                        "format": fmt_label,
-                        "downloads": item.get("downloads", 0),
-                        "likes": item.get("likes", 0),
-                        "is_official": is_official,
-                        "created_at": created_at,
-                        "last_modified": last_modified,
-                        "release_date_label": date_label,
-                        "description": f"Modello {m_name} ({params_label} • {size_gb} GB) di {author}.",
-                        "quantizations": ["GGUF Q4_K_M", "Q8_0", "FP16"] if is_gguf else ["Safetensors FP16 / BF16"],
-                        "pipeline_tag": pipeline,
-                        "default_file": f"{m_name}.gguf" if is_gguf else f"{m_name}.safetensors",
-                        "hf_url": f"https://huggingface.co/{mid}",
-                        "recommended_gpu": rec_gpu
-                    })
+            results.append({
+                "id": mid,
+                "name": m_name,
+                "author": author,
+                "category": inferred_cat,
+                "params_b": params_b,
+                "params_label": params_label,
+                "size_gb": size_gb,
+                "format": fmt_label,
+                "downloads": item.get("downloads", 0),
+                "likes": item.get("likes", 0),
+                "is_official": is_official,
+                "created_at": created_at,
+                "last_modified": last_modified,
+                "release_date_label": date_label,
+                "description": f"Modello {m_name} ({params_label} • {size_gb} GB) di {author}.",
+                "quantizations": ["GGUF Q4_K_M", "Q8_0", "FP16"] if is_gguf else ["Safetensors FP16 / BF16"],
+                "pipeline_tag": pipeline,
+                "default_file": f"{m_name}.gguf" if is_gguf else f"{m_name}.safetensors",
+                "hf_url": f"https://huggingface.co/{mid}",
+                "recommended_gpu": rec_gpu
+            })
     except Exception as ex:
         log.debug(f"[HF_Client] Dynamic online search error: {ex}")
 
@@ -484,7 +538,6 @@ def search_hf_models(
         "next_cursor": next_cursor,
         "has_more": bool(next_cursor) or len(results) >= limit
     }
-
 
 
 def get_hf_model_details(model_id: str, hf_token: Optional[str] = None) -> Dict[str, Any]:
