@@ -4,7 +4,7 @@ import {
   Play, Pause, ChevronRight, BarChart2,
   Trash2, ShieldCheck, Thermometer, Flame, Gauge, Sparkles,
   Layers, CheckCircle2, Activity, Search, Terminal,
-  RefreshCw, Info, X, Power, ArrowUpRight
+  RefreshCw, Info, X, Power, ArrowUpRight, Wifi, ArrowDown, ArrowUp, Database
 } from 'lucide-react';
 import { useApp } from '../../contexts/AppContext';
 import RealtimeTelemetryChart from './RealtimeTelemetryChart';
@@ -17,7 +17,6 @@ const INACTIVE_HARDWARE_NODES = [
     icon: Zap,
     color: '#00d2ff',
     statusBadge: 'STANDBY',
-    details: 'Permette di distribuire carichi pesanti su schede ausiliarie senza saturare la GPU primaria.'
   },
   {
     id: 'vllm_engine',
@@ -26,7 +25,6 @@ const INACTIVE_HARDWARE_NODES = [
     icon: Activity,
     color: '#bc8cff',
     statusBadge: 'STANDBY',
-    details: 'Ottimizza la frammentazione VRAM e triplica la velocità di generazione con SigmaEngine.'
   },
   {
     id: 'whisper_npu',
@@ -35,7 +33,6 @@ const INACTIVE_HARDWARE_NODES = [
     icon: Cpu,
     color: '#10b981',
     statusBadge: 'STANDBY',
-    details: 'Sposta l\'elaborazione audio su NPU a basso consumo, liberando il 100% della VRAM per i modelli LLM.'
   },
   {
     id: 'comfyui_worker',
@@ -44,7 +41,6 @@ const INACTIVE_HARDWARE_NODES = [
     icon: Layers,
     color: '#ea580c',
     statusBadge: 'STANDBY',
-    details: 'Accoda render pesanti e pipeline DAG senza interrompere le sessioni di chat degli agenti.'
   }
 ];
 
@@ -59,20 +55,23 @@ export default function HardwareLab({ addToast }) {
   const [showRestartAlert, setShowRestartAlert] = useState(false);
   const [restartingOllama, setRestartingOllama] = useState(false);
 
-  // Selected device for inspector & graph view
+  // Selected device for inspector
   const [selectedDeviceId, setSelectedDeviceId] = useState('gpu_0');
+
+  // Selected chart tab in UX inspector
+  const [activeChartType, setActiveChartType] = useState('compute'); // 'compute' | 'vram' | 'temp' | 'power' | 'net_down' | 'disk_io'
 
   // GPU processes & Console filters
   const [gpuProcs, setGpuProcs] = useState({ processes: [], orfani: 0 });
   const [killingPid, setKillingPid] = useState(null);
   const [procSearch, setProcSearch] = useState('');
-  const [procFilter, setProcFilter] = useState('all');
+  const [procModuleFilter, setProcModuleFilter] = useState('all');
 
-  // History buffers per GPU index & System
+  // History buffers
   const [historyData, setHistoryData] = useState({});
   const historyRef = useRef({});
-  const [systemHistory, setSystemHistory] = useState({ cpu: [], ram: [] });
-  const systemHistoryRef = useRef({ cpu: [], ram: [] });
+  const [systemHistory, setSystemHistory] = useState({ cpu: [], ram: [], net_down: [], net_up: [], disk_read: [], disk_write: [] });
+  const systemHistoryRef = useRef({ cpu: [], ram: [], net_down: [], net_up: [], disk_read: [], disk_write: [] });
 
   const fetchHardwareStatus = useCallback(async () => {
     try {
@@ -82,7 +81,7 @@ export default function HardwareLab({ addToast }) {
         if (json.success) {
           setData(json);
 
-          // Accumulate GPU history
+          // 1. Accumulate GPU history
           const gpus = json.hardware?.gpu || [];
           const currentHist = { ...historyRef.current };
 
@@ -111,17 +110,38 @@ export default function HardwareLab({ addToast }) {
           historyRef.current = currentHist;
           setHistoryData(currentHist);
 
-          // System CPU & RAM History
+          // 2. Accumulate System, Network & Disk History
           const cpuVal = Number(json.hardware?.cpu?.usage_pct) || 0;
           const ramVal = Number(json.hardware?.ram?.used_gb) || 0;
+          const netDown = Number(json.hardware?.network?.download_kbps) || 0;
+          const netUp = Number(json.hardware?.network?.upload_kbps) || 0;
+          const diskRead = Number(json.hardware?.storage?.read_mbps) || 0;
+          const diskWrite = Number(json.hardware?.storage?.write_mbps) || 0;
 
           const newSysCpu = [...systemHistoryRef.current.cpu, cpuVal];
           const newSysRam = [...systemHistoryRef.current.ram, ramVal];
+          const newNetDown = [...systemHistoryRef.current.net_down, netDown];
+          const newNetUp = [...systemHistoryRef.current.net_up, netUp];
+          const newDiskR = [...systemHistoryRef.current.disk_read, diskRead];
+          const newDiskW = [...systemHistoryRef.current.disk_write, diskWrite];
+
           if (newSysCpu.length > 30) newSysCpu.shift();
           if (newSysRam.length > 30) newSysRam.shift();
+          if (newNetDown.length > 30) newNetDown.shift();
+          if (newNetUp.length > 30) newNetUp.shift();
+          if (newDiskR.length > 30) newDiskR.shift();
+          if (newDiskW.length > 30) newDiskW.shift();
 
-          systemHistoryRef.current = { cpu: newSysCpu, ram: newSysRam };
-          setSystemHistory({ cpu: newSysCpu, ram: newSysRam });
+          const updatedSysHist = {
+            cpu: newSysCpu,
+            ram: newSysRam,
+            net_down: newNetDown,
+            net_up: newNetUp,
+            disk_read: newDiskR,
+            disk_write: newDiskW
+          };
+          systemHistoryRef.current = updatedSysHist;
+          setSystemHistory(updatedSysHist);
         }
       }
     } catch (err) {
@@ -241,7 +261,17 @@ export default function HardwareLab({ addToast }) {
   const cpu = hw.cpu || {};
   const ram = hw.ram || {};
   const storage = hw.storage || {};
-  const totalVramGb = (gpus.reduce((acc, g) => acc + (g.vram_total_mb || 0), 0) / 1024).toFixed(1);
+  const network = hw.network || {};
+  const disks = storage.disks || [];
+
+  // Module filter options for Process Table
+  const moduleCategories = useMemo(() => {
+    const set = new Set();
+    gpuProcs.processes.forEach(p => {
+      if (p.module_name) set.add(p.module_name);
+    });
+    return Array.from(set);
+  }, [gpuProcs.processes]);
 
   // Filtered processes in Console
   const filteredProcesses = useMemo(() => {
@@ -250,40 +280,74 @@ export default function HardwareLab({ addToast }) {
       const matchSearch = !q ||
         String(p.pid).includes(q) ||
         p.name?.toLowerCase().includes(q) ||
+        p.module_name?.toLowerCase().includes(q) ||
         p.user?.toLowerCase().includes(q) ||
         p.assigned_gpu?.toLowerCase().includes(q);
 
       if (!matchSearch) return false;
-      if (procFilter === 'all') return true;
-      if (procFilter === 'gpu') return (p.vram_mb || 0) > 50;
-      if (procFilter === 'orphans') return p.is_orphan || p.orphan;
-      if (procFilter === 'python') return p.name?.toLowerCase().includes('python') || p.name?.toLowerCase().includes('sigma');
-      return true;
+      if (procModuleFilter === 'all') return true;
+      if (procModuleFilter === 'orphans') return p.is_orphan || p.orphan;
+      if (procModuleFilter === 'gpu_only') return (p.vram_mb || 0) > 50;
+      return p.module_name === procModuleFilter;
     });
-  }, [gpuProcs.processes, procSearch, procFilter]);
+  }, [gpuProcs.processes, procSearch, procModuleFilter]);
 
   // Selected device resolution for right pane inspector
   const selectedDevice = useMemo(() => {
     if (selectedDeviceId === 'cpu_sys') {
       return {
         id: 'cpu_sys',
-        type: 'CPU & RAM',
+        type: 'CPU & Host RAM',
         name: cpu.name || 'AMD Ryzen Multi-Core Processor',
         subtitle: `${cpu.cores_physical || 8} Core Fisici • ${cpu.cores_logical || 16} Thread • ${cpu.freq_mhz || 3800} MHz`,
+        availableCharts: [
+          { id: 'compute', label: 'Carico CPU', icon: Cpu, color: '#00d2ff', unit: '%', max: 100, data: systemHistory.cpu },
+          { id: 'vram', label: 'RAM Host', icon: HardDrive, color: '#10b981', unit: 'GB', max: ram.total_gb || 96, data: systemHistory.ram, format: v => `${typeof v === 'number' ? v.toFixed(1) : v} GB` },
+        ],
         metrics: [
           { label: 'Carico CPU', val: `${cpu.usage_pct ?? 0}%`, color: '#00d2ff', progress: cpu.usage_pct ?? 0 },
           { label: 'RAM Occupata', val: `${ram.used_gb || 0} / ${ram.total_gb || 0} GB`, color: '#10b981', progress: ram.usage_pct ?? 0 },
           { label: 'RAM Libera', val: `${ram.free_gb || 0} GB`, color: '#bc8cff' },
-          { label: 'Storage Disco', val: `${storage.used_gb || 800} / ${storage.total_gb || 2000} GB`, color: '#ffb86c' }
+          { label: 'Frequenza', val: `${cpu.freq_mhz || 3800} MHz`, color: '#ffb86c' }
+        ]
+      };
+    }
+
+    if (selectedDeviceId === 'storage_sys') {
+      return {
+        id: 'storage_sys',
+        type: 'Storage & Drive Fisici',
+        name: `Storage di Sistema (${disks.length} Partizioni)`,
+        subtitle: `Capacità Totale: ${storage.total_gb || 3800} GB • Libero: ${storage.free_gb || 1900} GB`,
+        availableCharts: [
+          { id: 'disk_read', label: 'Lettura Disco', icon: HardDrive, color: '#00d2ff', unit: 'MB/s', max: 500, data: systemHistory.disk_read },
+          { id: 'disk_write', label: 'Scrittura Disco', icon: HardDrive, color: '#ffb86c', unit: 'MB/s', max: 500, data: systemHistory.disk_write },
         ],
-        history: {
-          compute: systemHistory.cpu,
-          vram: systemHistory.ram,
-          computeLabel: 'Carico CPU (%)',
-          vramLabel: 'RAM Utilizzata (GB)',
-          computeMax: 100,
-          vramMax: ram.total_gb || 96
-        }
+        metrics: [
+          { label: 'Spazio Totale', val: `${storage.total_gb || 0} GB`, color: '#00d2ff' },
+          { label: 'Spazio Libero', val: `${storage.free_gb || 0} GB`, color: '#10b981' },
+          { label: 'Lettura I/O', val: `${storage.read_mbps || 0} MB/s`, color: '#bc8cff' },
+          { label: 'Scrittura I/O', val: `${storage.write_mbps || 0} MB/s`, color: '#ffb86c' }
+        ]
+      };
+    }
+
+    if (selectedDeviceId === 'network_sys') {
+      return {
+        id: 'network_sys',
+        type: 'Telemetria di Rete',
+        name: 'Interfaccia di Rete & Connettività',
+        subtitle: `${network.status || 'Gigabit Ethernet / Wi-Fi'} • Inviati: ${network.total_sent_mb || 0} MB • Ricevuti: ${network.total_recv_mb || 0} MB`,
+        availableCharts: [
+          { id: 'net_down', label: 'Download Rate', icon: ArrowDown, color: '#10b981', unit: 'KB/s', max: 10000, data: systemHistory.net_down },
+          { id: 'net_up', label: 'Upload Rate', icon: ArrowUp, color: '#00d2ff', unit: 'KB/s', max: 5000, data: systemHistory.net_up },
+        ],
+        metrics: [
+          { label: 'Download Live', val: `${network.download_kbps || 0} KB/s`, color: '#10b981' },
+          { label: 'Upload Live', val: `${network.upload_kbps || 0} KB/s`, color: '#00d2ff' },
+          { label: 'Dati Ricevuti', val: `${network.total_recv_mb || 0} MB`, color: '#bc8cff' },
+          { label: 'Dati Inviati', val: `${network.total_sent_mb || 0} MB`, color: '#ffb86c' }
+        ]
       };
     }
 
@@ -295,27 +359,31 @@ export default function HardwareLab({ addToast }) {
         id: `gpu_${targetGpu.index}`,
         type: targetGpu.type || 'NVIDIA Dedicated GPU',
         name: targetGpu.name,
-        subtitle: `Dispositivo #${targetGpu.index} • ${targetGpu.is_integrated ? 'APU Integrata' : 'GPU Dedicata ad Alta Velocità'}`,
-        is_integrated: targetGpu.is_integrated,
+        subtitle: `Dispositivo #${targetGpu.index} • ${targetGpu.is_integrated ? 'APU Integrata su Ryzen' : 'GPU Dedicata CUDA'}`,
+        availableCharts: [
+          { id: 'compute', label: 'Compute GPU', icon: Gauge, color: '#bc8cff', unit: '%', max: 100, data: hist.compute },
+          { id: 'vram', label: 'VRAM Allocata', icon: HardDrive, color: '#00d2ff', unit: 'MB', max: targetGpu.vram_total_mb || 16384, data: hist.vram, format: v => `${typeof v === 'number' ? Math.round(v) : v} MB` },
+          { id: 'temp', label: 'Temperatura', icon: Thermometer, color: targetGpu.temp_c > 75 ? '#ef4444' : '#10b981', unit: '°C', max: 100, data: hist.temp, format: v => `${typeof v === 'number' ? v.toFixed(1) : v}°C` },
+          { id: 'power', label: 'Potenza Elettrica', icon: Zap, color: '#ffb86c', unit: 'Watt', max: 300, data: hist.power, format: v => `${typeof v === 'number' ? v.toFixed(1) : v} W` },
+        ],
         metrics: [
           { label: 'Memoria VRAM', val: `${targetGpu.vram_used_mb} / ${targetGpu.vram_total_mb} MB`, color: '#00d2ff', progress: targetGpu.vram_usage_pct },
           { label: 'GPU Compute', val: `${targetGpu.gpu_util_pct}%`, color: '#bc8cff', progress: targetGpu.gpu_util_pct },
           { label: 'Temperatura', val: `${targetGpu.temp_c}°C`, color: targetGpu.temp_c > 75 ? '#ef4444' : '#10b981' },
           { label: 'Consumo Elettrico', val: `${targetGpu.power_draw_w} W`, color: '#ffb86c' }
-        ],
-        history: {
-          compute: hist.compute,
-          vram: hist.vram,
-          computeLabel: 'Compute GPU (%)',
-          vramLabel: 'VRAM Allocata (MB)',
-          computeMax: 100,
-          vramMax: targetGpu.vram_total_mb || 16384
-        }
+        ]
       };
     }
 
     return null;
-  }, [selectedDeviceId, cpu, ram, storage, gpus, historyData, systemHistory]);
+  }, [selectedDeviceId, cpu, ram, storage, network, disks, gpus, historyData, systemHistory]);
+
+  // Adjust active chart tab if not available for currently selected device
+  useEffect(() => {
+    if (selectedDevice?.availableCharts && !selectedDevice.availableCharts.some(c => c.id === activeChartType)) {
+      setActiveChartType(selectedDevice.availableCharts[0].id);
+    }
+  }, [selectedDevice, activeChartType]);
 
   // Design Tokens
   const cardBg = isLight ? '#fffdf9' : '#0d1019';
@@ -326,6 +394,9 @@ export default function HardwareLab({ addToast }) {
   const textMuted = isLight ? '#6b7280' : '#8b8fa3';
   const subCardBg = isLight ? '#f8f5ee' : 'rgba(255, 255, 255, 0.03)';
   const subCardBorder = isLight ? '1px solid rgba(190, 160, 110, 0.22)' : '1px solid rgba(255, 255, 255, 0.06)';
+
+  // Active chart object
+  const currentChart = selectedDevice?.availableCharts?.find(c => c.id === activeChartType) || selectedDevice?.availableCharts?.[0];
 
   return (
     <div style={{
@@ -338,7 +409,7 @@ export default function HardwareLab({ addToast }) {
       gap: '20px',
       boxSizing: 'border-box'
     }}>
-      {/* 1. FUTURISTIC HEADER & ACTIONS BAR */}
+      {/* 1. HEADER & GLOBAL ACTIONS */}
       <div style={{
         padding: '16px 20px',
         borderRadius: '16px',
@@ -355,14 +426,10 @@ export default function HardwareLab({ addToast }) {
       }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
           <div style={{
-            width: '46px',
-            height: '46px',
-            borderRadius: '12px',
+            width: '46px', height: '46px', borderRadius: '12px',
             background: 'radial-gradient(circle at 30% 30%, rgba(0, 242, 254, 0.25), rgba(0, 210, 255, 0.05))',
             border: '1px solid rgba(0, 242, 254, 0.35)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
             boxShadow: '0 0 20px rgba(0, 242, 254, 0.2)'
           }}>
             <Zap size={22} color="#00d2ff" />
@@ -378,11 +445,11 @@ export default function HardwareLab({ addToast }) {
                 fontWeight: 800, display: 'flex', alignItems: 'center', gap: '4px'
               }}>
                 <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: '#10b981' }} />
-                {gpus.length} GPU • {ram.total_gb || 94} GB RAM
+                {gpus.length} GPU • {ram.total_gb || 94} GB RAM • {disks.length} Dischi
               </span>
             </div>
             <p style={{ margin: '2px 0 0 0', fontSize: '0.75rem', color: textMuted }}>
-              Monitoraggio in tempo reale su architettura distribuita, VRAM e gestione dei processi.
+              Telemetria in tempo reale: GPU, CPU, RAM, Hard Disk, Rete e tracciamento processi per modulo.
             </p>
           </div>
         </div>
@@ -431,7 +498,7 @@ export default function HardwareLab({ addToast }) {
         </div>
       </div>
 
-      {/* 2. MAIN WORKBENCH: HARDWARE DEVICES ROWS (LEFT) + INTERACTIVE LIVE INSPECTOR (RIGHT) */}
+      {/* 2. ROW-BASED HARDWARE MASTER LIST (LEFT) + UX CHART INSPECTOR (RIGHT) */}
       <div style={{
         display: 'grid',
         gridTemplateColumns: 'minmax(0, 1.15fr) minmax(0, 0.85fr)',
@@ -440,29 +507,18 @@ export default function HardwareLab({ addToast }) {
         {/* LEFT COLUMN: INTERACTIVE HARDWARE DEVICES (ROW-BY-ROW) */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
           <div style={{ fontSize: '0.75rem', fontWeight: 800, color: textMuted, textTransform: 'uppercase', letterSpacing: '0.8px', display: 'flex', alignItems: 'center', gap: '6px' }}>
-            <Layers size={14} color="#00d2ff" /> DISPOSITIVI HARDWARE DISPONIBILI ({gpus.length + 1})
+            <Layers size={14} color="#00d2ff" /> DISPOSITIVI & RISORSE DISPONIBILI ({gpus.length + 3})
           </div>
 
-          {/* ROW 1: CPU HOST & SYSTEM RAM */}
+          {/* ROW 1: CPU & RAM HOST */}
           <div
             onClick={() => setSelectedDeviceId('cpu_sys')}
             style={{
-              padding: '14px 16px',
-              borderRadius: '12px',
-              background: selectedDeviceId === 'cpu_sys'
-                ? (isLight ? '#ffffff' : 'rgba(0, 210, 255, 0.08)')
-                : cardBg,
-              border: selectedDeviceId === 'cpu_sys'
-                ? '1.5px solid #00d2ff'
-                : cardBorder,
-              boxShadow: selectedDeviceId === 'cpu_sys'
-                ? '0 0 20px rgba(0, 210, 255, 0.15)'
-                : cardShadow,
-              cursor: 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-              gap: '12px',
+              padding: '13px 16px', borderRadius: '12px',
+              background: selectedDeviceId === 'cpu_sys' ? (isLight ? '#ffffff' : 'rgba(0, 210, 255, 0.08)') : cardBg,
+              border: selectedDeviceId === 'cpu_sys' ? '1.5px solid #00d2ff' : cardBorder,
+              boxShadow: selectedDeviceId === 'cpu_sys' ? '0 0 20px rgba(0, 210, 255, 0.15)' : cardShadow,
+              cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px',
               transition: 'all 0.2s ease'
             }}
           >
@@ -489,7 +545,6 @@ export default function HardwareLab({ addToast }) {
               </div>
             </div>
 
-            {/* Quick Metrics */}
             <div style={{ display: 'flex', alignItems: 'center', gap: '16px', flexShrink: 0 }}>
               <div style={{ textAlign: 'right' }}>
                 <div style={{ fontSize: '0.64rem', color: textMuted, fontWeight: 700 }}>CARICO CPU</div>
@@ -507,7 +562,7 @@ export default function HardwareLab({ addToast }) {
             </div>
           </div>
 
-          {/* ROWS FOR GPUS (NVIDIA RTX 5070 Ti, RTX 5060, AMD Radeon iGPU) */}
+          {/* ROWS FOR GPUS */}
           {gpus.map(gpu => {
             const isSelected = selectedDeviceId === `gpu_${gpu.index}`;
             const isIntegrated = gpu.is_integrated;
@@ -517,22 +572,11 @@ export default function HardwareLab({ addToast }) {
                 key={gpu.index}
                 onClick={() => setSelectedDeviceId(`gpu_${gpu.index}`)}
                 style={{
-                  padding: '14px 16px',
-                  borderRadius: '12px',
-                  background: isSelected
-                    ? (isLight ? '#ffffff' : 'rgba(0, 210, 255, 0.08)')
-                    : cardBg,
-                  border: isSelected
-                    ? '1.5px solid #00d2ff'
-                    : cardBorder,
-                  boxShadow: isSelected
-                    ? '0 0 20px rgba(0, 210, 255, 0.15)'
-                    : cardShadow,
-                  cursor: 'pointer',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'space-between',
-                  gap: '12px',
+                  padding: '13px 16px', borderRadius: '12px',
+                  background: isSelected ? (isLight ? '#ffffff' : 'rgba(0, 210, 255, 0.08)') : cardBg,
+                  border: isSelected ? '1.5px solid #00d2ff' : cardBorder,
+                  boxShadow: isSelected ? '0 0 20px rgba(0, 210, 255, 0.15)' : cardShadow,
+                  cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px',
                   transition: 'all 0.2s ease'
                 }}
               >
@@ -559,12 +603,11 @@ export default function HardwareLab({ addToast }) {
                       </span>
                     </div>
                     <div style={{ fontSize: '0.68rem', color: textMuted, marginTop: '2px' }}>
-                      {gpu.type || (isIntegrated ? 'AMD Radeon APU' : 'NVIDIA Dedicated')} • {gpu.temp_c ? `${gpu.temp_c}°C` : ''} {gpu.power_draw_w ? `• ${gpu.power_draw_w}W` : ''}
+                      {gpu.type || (isIntegrated ? 'AMD APU' : 'NVIDIA CUDA')} • {gpu.temp_c}°C • {gpu.power_draw_w}W
                     </div>
                   </div>
                 </div>
 
-                {/* Quick Metrics */}
                 <div style={{ display: 'flex', alignItems: 'center', gap: '16px', flexShrink: 0 }}>
                   <div style={{ textAlign: 'right' }}>
                     <div style={{ fontSize: '0.64rem', color: textMuted, fontWeight: 700 }}>VRAM ALLOCATA</div>
@@ -583,9 +626,113 @@ export default function HardwareLab({ addToast }) {
               </div>
             );
           })}
+
+          {/* ROW 3: HARD DISK & STORAGE PARTITIONS */}
+          <div
+            onClick={() => setSelectedDeviceId('storage_sys')}
+            style={{
+              padding: '13px 16px', borderRadius: '12px',
+              background: selectedDeviceId === 'storage_sys' ? (isLight ? '#ffffff' : 'rgba(0, 210, 255, 0.08)') : cardBg,
+              border: selectedDeviceId === 'storage_sys' ? '1.5px solid #00d2ff' : cardBorder,
+              boxShadow: selectedDeviceId === 'storage_sys' ? '0 0 20px rgba(0, 210, 255, 0.15)' : cardShadow,
+              cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px',
+              transition: 'all 0.2s ease'
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: '12px', minWidth: 0 }}>
+              <div style={{
+                width: '38px', height: '38px', borderRadius: '10px',
+                background: 'rgba(255, 184, 108, 0.15)', border: '1px solid rgba(255, 184, 108, 0.3)',
+                display: 'flex', alignItems: 'center', justifyContent: 'center'
+              }}>
+                <Database size={18} color="#ffb86c" />
+              </div>
+              <div style={{ minWidth: 0 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <span style={{ fontSize: '0.86rem', fontWeight: 800, color: textPrimary }}>
+                    Hard Disk & Partizioni SSD
+                  </span>
+                  <span style={{ fontSize: '0.62rem', padding: '1px 6px', borderRadius: '4px', background: 'rgba(255, 184, 108, 0.15)', color: '#ffb86c', fontWeight: 700 }}>
+                    {disks.length} Volumi
+                  </span>
+                </div>
+                <div style={{ fontSize: '0.68rem', color: textMuted, marginTop: '2px' }}>
+                  {disks.map(d => `${d.device} (${d.used_gb}/${d.total_gb} GB)`).join(' • ')}
+                </div>
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', alignItems: 'center', gap: '16px', flexShrink: 0 }}>
+              <div style={{ textAlign: 'right' }}>
+                <div style={{ fontSize: '0.64rem', color: textMuted, fontWeight: 700 }}>SPAZIO USATO</div>
+                <div style={{ fontSize: '0.86rem', fontWeight: 900, color: '#ffb86c', fontFamily: 'JetBrains Mono, monospace' }}>
+                  {storage.used_gb || 0} / {storage.total_gb || 0} GB
+                </div>
+              </div>
+              <div style={{ textAlign: 'right' }}>
+                <div style={{ fontSize: '0.64rem', color: textMuted, fontWeight: 700 }}>DISCO I/O</div>
+                <div style={{ fontSize: '0.86rem', fontWeight: 900, color: '#00d2ff', fontFamily: 'JetBrains Mono, monospace' }}>
+                  {storage.read_mbps || 0}M / {storage.write_mbps || 0}M
+                </div>
+              </div>
+              <ChevronRight size={18} color={selectedDeviceId === 'storage_sys' ? '#00d2ff' : textMuted} />
+            </div>
+          </div>
+
+          {/* ROW 4: NETWORK & BANDWIDTH */}
+          <div
+            onClick={() => setSelectedDeviceId('network_sys')}
+            style={{
+              padding: '13px 16px', borderRadius: '12px',
+              background: selectedDeviceId === 'network_sys' ? (isLight ? '#ffffff' : 'rgba(0, 210, 255, 0.08)') : cardBg,
+              border: selectedDeviceId === 'network_sys' ? '1.5px solid #00d2ff' : cardBorder,
+              boxShadow: selectedDeviceId === 'network_sys' ? '0 0 20px rgba(0, 210, 255, 0.15)' : cardShadow,
+              cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px',
+              transition: 'all 0.2s ease'
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: '12px', minWidth: 0 }}>
+              <div style={{
+                width: '38px', height: '38px', borderRadius: '10px',
+                background: 'rgba(0, 210, 255, 0.15)', border: '1px solid rgba(0, 210, 255, 0.3)',
+                display: 'flex', alignItems: 'center', justifyContent: 'center'
+              }}>
+                <Wifi size={18} color="#00d2ff" />
+              </div>
+              <div style={{ minWidth: 0 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <span style={{ fontSize: '0.86rem', fontWeight: 800, color: textPrimary }}>
+                    Connessione di Rete & Bandwidth
+                  </span>
+                  <span style={{ fontSize: '0.62rem', padding: '1px 6px', borderRadius: '4px', background: 'rgba(16, 185, 129, 0.15)', color: '#10b981', fontWeight: 700 }}>
+                    Online
+                  </span>
+                </div>
+                <div style={{ fontSize: '0.68rem', color: textMuted, marginTop: '2px' }}>
+                  {network.status || 'Gigabit Ethernet / Wi-Fi'} • Inviati: {network.total_sent_mb || 0} MB • Ricevuti: {network.total_recv_mb || 0} MB
+                </div>
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', alignItems: 'center', gap: '16px', flexShrink: 0 }}>
+              <div style={{ textAlign: 'right' }}>
+                <div style={{ fontSize: '0.64rem', color: textMuted, fontWeight: 700 }}>DOWNLOAD</div>
+                <div style={{ fontSize: '0.86rem', fontWeight: 900, color: '#10b981', fontFamily: 'JetBrains Mono, monospace' }}>
+                  {network.download_kbps || 0} KB/s
+                </div>
+              </div>
+              <div style={{ textAlign: 'right' }}>
+                <div style={{ fontSize: '0.64rem', color: textMuted, fontWeight: 700 }}>UPLOAD</div>
+                <div style={{ fontSize: '0.86rem', fontWeight: 900, color: '#00d2ff', fontFamily: 'JetBrains Mono, monospace' }}>
+                  {network.upload_kbps || 0} KB/s
+                </div>
+              </div>
+              <ChevronRight size={18} color={selectedDeviceId === 'network_sys' ? '#00d2ff' : textMuted} />
+            </div>
+          </div>
         </div>
 
-        {/* RIGHT COLUMN: INTERACTIVE DEVICE INSPECTOR & REALTIME CHARTS */}
+        {/* RIGHT COLUMN: HIGH-END UX INSPECTOR WITH DEDICATED GRAPH SELECTOR */}
         <div style={{
           padding: '18px 20px',
           borderRadius: '16px',
@@ -613,7 +760,7 @@ export default function HardwareLab({ addToast }) {
                 </div>
               </div>
 
-              {/* Metric Cards Grid */}
+              {/* Metrics Grid */}
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
                 {selectedDevice.metrics.map((m, idx) => (
                   <div key={idx} style={{
@@ -637,30 +784,55 @@ export default function HardwareLab({ addToast }) {
                 ))}
               </div>
 
-              {/* Live Sparkline Graphs */}
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginTop: '6px' }}>
-                <RealtimeTelemetryChart
-                  data={selectedDevice.history.compute}
-                  label={selectedDevice.history.computeLabel}
-                  icon={Cpu}
-                  color="#00d2ff"
-                  unit="%"
-                  maxVal={selectedDevice.history.computeMax}
-                  height={80}
-                  isLight={isLight}
-                />
-                <RealtimeTelemetryChart
-                  data={selectedDevice.history.vram}
-                  label={selectedDevice.history.vramLabel}
-                  icon={HardDrive}
-                  color="#bc8cff"
-                  unit={selectedDeviceId === 'cpu_sys' ? 'GB' : 'MB'}
-                  maxVal={selectedDevice.history.vramMax}
-                  height={80}
-                  isLight={isLight}
-                  formatVal={(v) => `${typeof v === 'number' ? Math.round(v) : v}`}
-                />
+              {/* UX DESIGN GRAPH SELECTOR (SELECT ONE CHART AT A TIME) */}
+              <div style={{ marginTop: '4px' }}>
+                <div style={{ fontSize: '0.66rem', fontWeight: 800, color: textMuted, textTransform: 'uppercase', marginBottom: '8px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <span>SELEZIONA TELEMETRIA GRAFICA</span>
+                  <span style={{ color: currentChart?.color, fontWeight: 900 }}>{currentChart?.label}</span>
+                </div>
+
+                <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                  {selectedDevice.availableCharts.map(c => {
+                    const ChartIcon = c.icon;
+                    const isActive = activeChartType === c.id;
+                    return (
+                      <button
+                        key={c.id}
+                        onClick={() => setActiveChartType(c.id)}
+                        style={{
+                          display: 'flex', alignItems: 'center', gap: '5px',
+                          padding: '6px 12px', borderRadius: '8px',
+                          border: isActive ? `1.5px solid ${c.color}` : subCardBorder,
+                          background: isActive ? (isLight ? '#ffffff' : `${c.color}20`) : subCardBg,
+                          color: isActive ? (isLight ? '#111827' : '#ffffff') : textMuted,
+                          fontSize: '0.72rem', fontWeight: isActive ? 800 : 600,
+                          cursor: 'pointer', transition: 'all 0.15s ease'
+                        }}
+                      >
+                        <ChartIcon size={13} color={c.color} />
+                        <span>{c.label}</span>
+                      </button>
+                    );
+                  })}
+                </div>
               </div>
+
+              {/* EXPANDED HD LIVE CHART */}
+              {currentChart && (
+                <div style={{ marginTop: '6px' }}>
+                  <RealtimeTelemetryChart
+                    data={currentChart.data}
+                    label={`${currentChart.label} nel tempo`}
+                    icon={currentChart.icon}
+                    color={currentChart.color}
+                    unit={currentChart.unit}
+                    maxVal={currentChart.max}
+                    height={120}
+                    isLight={isLight}
+                    formatVal={currentChart.format}
+                  />
+                </div>
+              )}
             </>
           ) : (
             <div style={{ textAlign: 'center', padding: '40px 20px', color: textMuted }}>
@@ -670,7 +842,7 @@ export default function HardwareLab({ addToast }) {
         </div>
       </div>
 
-      {/* 3. FULL-WIDTH TASK MANAGER & PROCESSES CONSOLE */}
+      {/* 3. FULL-WIDTH TASK MANAGER & PROCESSES CONSOLE WITH MODULE MAPPING */}
       <div style={{
         borderRadius: '16px',
         backgroundColor: cardBg,
@@ -695,13 +867,13 @@ export default function HardwareLab({ addToast }) {
             <Terminal size={18} color="#00d2ff" />
             <div>
               <span style={{ fontSize: '0.92rem', fontWeight: 800, color: textPrimary }}>
-                Task Manager Processi, VRAM & Memoria
+                Task Manager Processi & Moduli Sigma
               </span>
               <span style={{
                 fontSize: '0.66rem', padding: '2px 8px', borderRadius: '8px',
                 background: 'rgba(0, 210, 255, 0.12)', color: '#00d2ff', fontWeight: 800, marginLeft: '8px'
               }}>
-                {gpuProcs.processes.length} Processi
+                {gpuProcs.processes.length} Processi Attivi
               </span>
             </div>
           </div>
@@ -716,7 +888,7 @@ export default function HardwareLab({ addToast }) {
               <Search size={12} color={textMuted} />
               <input
                 type="text"
-                placeholder="Filtra per PID, nome, utente..."
+                placeholder="Cerca PID, modulo, utente..."
                 value={procSearch}
                 onChange={e => setProcSearch(e.target.value)}
                 style={{
@@ -731,29 +903,59 @@ export default function HardwareLab({ addToast }) {
               )}
             </div>
 
-            {/* Filter Pills */}
-            <div style={{ display: 'flex', gap: '4px' }}>
-              {[
-                { id: 'all', label: 'Tutti' },
-                { id: 'gpu', label: 'GPU' },
-                { id: 'orphans', label: 'Orfani' },
-                { id: 'python', label: 'Python/AI' },
-              ].map(tab => (
+            {/* Filter by Module Pill Tabs */}
+            <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap' }}>
+              <button
+                onClick={() => setProcModuleFilter('all')}
+                style={{
+                  fontSize: '0.66rem', padding: '4px 10px', borderRadius: '6px', border: 'none',
+                  background: procModuleFilter === 'all' ? (isLight ? '#111827' : '#00d2ff') : subCardBg,
+                  color: procModuleFilter === 'all' ? '#ffffff' : textMuted,
+                  fontWeight: procModuleFilter === 'all' ? 800 : 600, cursor: 'pointer'
+                }}
+              >
+                Tutti
+              </button>
+
+              <button
+                onClick={() => setProcModuleFilter('gpu_only')}
+                style={{
+                  fontSize: '0.66rem', padding: '4px 10px', borderRadius: '6px', border: 'none',
+                  background: procModuleFilter === 'gpu_only' ? (isLight ? '#111827' : '#00d2ff') : subCardBg,
+                  color: procModuleFilter === 'gpu_only' ? '#ffffff' : textMuted,
+                  fontWeight: procModuleFilter === 'gpu_only' ? 800 : 600, cursor: 'pointer'
+                }}
+              >
+                Solo GPU
+              </button>
+
+              {moduleCategories.slice(0, 4).map(mod => (
                 <button
-                  key={tab.id}
-                  onClick={() => setProcFilter(tab.id)}
+                  key={mod}
+                  onClick={() => setProcModuleFilter(mod)}
                   style={{
-                    fontSize: '0.66rem', padding: '4px 10px', borderRadius: '6px',
-                    border: 'none',
-                    background: procFilter === tab.id ? (isLight ? '#111827' : '#00d2ff') : subCardBg,
-                    color: procFilter === tab.id ? '#ffffff' : textMuted,
-                    fontWeight: procFilter === tab.id ? 800 : 600,
-                    cursor: 'pointer'
+                    fontSize: '0.66rem', padding: '4px 10px', borderRadius: '6px', border: 'none',
+                    background: procModuleFilter === mod ? (isLight ? '#111827' : '#00d2ff') : subCardBg,
+                    color: procModuleFilter === mod ? '#ffffff' : textMuted,
+                    fontWeight: procModuleFilter === mod ? 800 : 600, cursor: 'pointer',
+                    whiteSpace: 'nowrap'
                   }}
                 >
-                  {tab.label}
+                  {mod}
                 </button>
               ))}
+
+              <button
+                onClick={() => setProcModuleFilter('orphans')}
+                style={{
+                  fontSize: '0.66rem', padding: '4px 10px', borderRadius: '6px', border: 'none',
+                  background: procModuleFilter === 'orphans' ? '#ef4444' : subCardBg,
+                  color: procModuleFilter === 'orphans' ? '#ffffff' : (gpuProcs.orfani > 0 ? '#ef4444' : textMuted),
+                  fontWeight: procModuleFilter === 'orphans' ? 800 : 600, cursor: 'pointer'
+                }}
+              >
+                Orfani ({gpuProcs.orfani})
+              </button>
             </div>
 
             {gpuProcs.orfani > 0 && (
@@ -782,7 +984,7 @@ export default function HardwareLab({ addToast }) {
         <div style={{
           padding: '8px 18px',
           display: 'grid',
-          gridTemplateColumns: 'minmax(180px, 1.8fr) minmax(100px, 1fr) minmax(130px, 1.2fr) minmax(120px, 1fr) minmax(110px, 1fr) 80px',
+          gridTemplateColumns: 'minmax(180px, 1.8fr) minmax(130px, 1.3fr) minmax(100px, 1fr) minmax(120px, 1.2fr) minmax(110px, 1fr) minmax(100px, 1fr) 80px',
           gap: '8px',
           fontSize: '0.64rem',
           fontWeight: 800,
@@ -793,6 +995,7 @@ export default function HardwareLab({ addToast }) {
           background: isLight ? 'rgba(0,0,0,0.01)' : 'rgba(0,0,0,0.15)'
         }}>
           <div>Processo & PID</div>
+          <div>Modulo / Contesto</div>
           <div>Proprietario</div>
           <div>Dispositivo / GPU</div>
           <div>VRAM / RAM Host</div>
@@ -801,10 +1004,10 @@ export default function HardwareLab({ addToast }) {
         </div>
 
         {/* Process List Entries */}
-        <div style={{ maxHeight: '360px', overflowY: 'auto', display: 'flex', flexDirection: 'column' }}>
+        <div style={{ maxHeight: '380px', overflowY: 'auto', display: 'flex', flexDirection: 'column' }}>
           {filteredProcesses.length === 0 ? (
             <div style={{ padding: '24px', textAlign: 'center', fontSize: '0.76rem', color: textMuted }}>
-              Nessun processo trovato con i filtri attivi.
+              Nessun processo trovato per il filtro selezionato.
             </div>
           ) : (
             filteredProcesses.map(proc => {
@@ -818,7 +1021,7 @@ export default function HardwareLab({ addToast }) {
                     padding: '9px 18px',
                     borderBottom: subCardBorder,
                     display: 'grid',
-                    gridTemplateColumns: 'minmax(180px, 1.8fr) minmax(100px, 1fr) minmax(130px, 1.2fr) minmax(120px, 1fr) minmax(110px, 1fr) 80px',
+                    gridTemplateColumns: 'minmax(180px, 1.8fr) minmax(130px, 1.3fr) minmax(100px, 1fr) minmax(120px, 1.2fr) minmax(110px, 1fr) minmax(100px, 1fr) 80px',
                     alignItems: 'center',
                     gap: '8px',
                     background: isMaster
@@ -847,12 +1050,28 @@ export default function HardwareLab({ addToast }) {
                     </span>
                   </div>
 
-                  {/* 2. User */}
+                  {/* 2. Module / Context */}
+                  <div>
+                    <span style={{
+                      fontSize: '0.64rem', fontWeight: 700, padding: '2px 7px', borderRadius: '5px',
+                      background: isMaster
+                        ? 'rgba(0, 210, 255, 0.15)'
+                        : (proc.module_id === 'sigma_creative_lab' ? 'rgba(234, 88, 12, 0.15)' : (proc.module_id === 'sigma_engine' ? 'rgba(188, 140, 255, 0.15)' : 'rgba(255, 255, 255, 0.05)')),
+                      color: isMaster
+                        ? '#00d2ff'
+                        : (proc.module_id === 'sigma_creative_lab' ? '#ea580c' : (proc.module_id === 'sigma_engine' ? '#bc8cff' : textSecondary)),
+                      whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', display: 'inline-block', maxWidth: '100%'
+                    }}>
+                      {proc.module_name || 'Sigma Core'}
+                    </span>
+                  </div>
+
+                  {/* 3. User */}
                   <div style={{ fontSize: '0.72rem', color: textSecondary, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                     {proc.user || 'Sigma'}
                   </div>
 
-                  {/* 3. Assigned GPU */}
+                  {/* 4. Assigned GPU */}
                   <div>
                     <span style={{
                       fontSize: '0.64rem', fontWeight: 700, padding: '2px 7px', borderRadius: '5px',
@@ -869,19 +1088,19 @@ export default function HardwareLab({ addToast }) {
                     </span>
                   </div>
 
-                  {/* 4. VRAM / RAM */}
+                  {/* 5. VRAM / RAM */}
                   <div style={{ fontSize: '0.7rem', fontFamily: 'JetBrains Mono, monospace', color: textPrimary }}>
                     <span style={{ color: '#00d2ff', fontWeight: 700 }}>{proc.vram_mb || 0} MB</span>
                     <span style={{ color: textMuted, fontSize: '0.64rem' }}> / {proc.memory_mb || 0}M</span>
                   </div>
 
-                  {/* 5. CPU / GPU Load */}
+                  {/* 6. CPU / GPU Load */}
                   <div style={{ fontSize: '0.7rem', fontFamily: 'JetBrains Mono, monospace', color: textMuted }}>
                     <span>{proc.cpu_pct ?? 0}% CPU</span>
                     {proc.gpu_pct > 0 && <span style={{ color: '#bc8cff', marginLeft: '6px' }}>{proc.gpu_pct}% GPU</span>}
                   </div>
 
-                  {/* 6. Kill Action */}
+                  {/* 7. Kill Action */}
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end' }}>
                     {proc.killable ? (
                       <button
@@ -910,7 +1129,7 @@ export default function HardwareLab({ addToast }) {
         </div>
       </div>
 
-      {/* 4. STANDBY ACCELERATOR NODES (BOTTOM COMPACT CARDS) */}
+      {/* 4. STANDBY ACCELERATOR NODES */}
       <div style={{
         padding: '16px 20px',
         borderRadius: '16px',

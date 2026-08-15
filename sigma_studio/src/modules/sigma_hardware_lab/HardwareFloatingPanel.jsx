@@ -757,12 +757,39 @@ export default function HardwareFloatingPanel({ onClose, onOpenTab, addToast }) 
               justifyContent: 'space-between'
             }}>
               <span style={{ fontSize: '11px', fontWeight: 800, color: textPrimary, display: 'flex', alignItems: 'center', gap: '5px' }}>
-                <Zap size={12} color={accentColor} /> Processi & Memoria Attivi ({gpuProcs.processes.length})
+                <Zap size={12} color={accentColor} /> Processi & Moduli Sigma ({gpuProcs.processes.length})
               </span>
+              {gpuProcs.orfani > 0 && (
+                <button
+                  onClick={async () => {
+                    try {
+                      await fetch('/api/hardware/gpu/kill', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ all_orphans: true })
+                      });
+                      fetchGpuProcesses();
+                      fetchHardwareStatus();
+                    } catch (e) {}
+                  }}
+                  style={{
+                    background: 'rgba(239, 68, 68, 0.15)',
+                    border: '1px solid rgba(239, 68, 68, 0.4)',
+                    color: '#ef4444',
+                    borderRadius: '4px',
+                    padding: '2px 6px',
+                    fontSize: '9px',
+                    fontWeight: 800,
+                    cursor: 'pointer'
+                  }}
+                >
+                  Kill {gpuProcs.orfani} Orfani
+                </button>
+              )}
             </div>
 
             <div style={{ maxHeight: '180px', overflowY: 'auto' }}>
-              {gpuProcs.processes.slice(0, 10).map(proc => (
+              {gpuProcs.processes.slice(0, 15).map(proc => (
                 <div key={proc.pid} style={{
                   padding: '6px 12px',
                   borderBottom: isLight ? '1px solid rgba(0,0,0,0.04)' : '1px solid rgba(255,255,255,0.04)',
@@ -777,7 +804,9 @@ export default function HardwareFloatingPanel({ onClose, onOpenTab, addToast }) 
                     <span style={{ fontWeight: 700, color: textPrimary, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                       {proc.name}
                     </span>
-                    <span style={{ fontSize: '9px', color: textDim }}>({proc.user || 'Sigma'})</span>
+                    <span style={{ fontSize: '9px', padding: '1px 4px', borderRadius: '3px', background: isLight ? 'rgba(0,0,0,0.05)' : 'rgba(255,255,255,0.06)', color: textDim }}>
+                      {proc.module_name || proc.user || 'Sigma'}
+                    </span>
                   </div>
 
                   <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0 }}>
@@ -787,26 +816,31 @@ export default function HardwareFloatingPanel({ onClose, onOpenTab, addToast }) 
                     <span style={{ fontFamily: 'monospace', color: textDim, fontSize: '10px' }}>
                       {proc.memory_mb || 0}M RAM
                     </span>
-                    <button
-                      onClick={() => handleKillGpuProcess(proc)}
-                      disabled={killingPid === proc.pid}
-                      style={{
-                        background: 'rgba(239, 68, 68, 0.12)',
-                        border: '1px solid rgba(239, 68, 68, 0.35)',
-                        color: '#ef4444',
-                        borderRadius: '4px',
-                        padding: '2px 6px',
-                        fontSize: '9px',
-                        fontWeight: 800,
-                        cursor: 'pointer'
-                      }}
-                    >
-                      {killingPid === proc.pid ? '...' : 'Kill'}
-                    </button>
+                    {proc.killable ? (
+                      <button
+                        onClick={() => handleKillGpuProcess(proc)}
+                        disabled={killingPid === proc.pid}
+                        style={{
+                          background: 'rgba(239, 68, 68, 0.12)',
+                          border: '1px solid rgba(239, 68, 68, 0.35)',
+                          color: '#ef4444',
+                          borderRadius: '4px',
+                          padding: '2px 6px',
+                          fontSize: '9px',
+                          fontWeight: 800,
+                          cursor: 'pointer'
+                        }}
+                      >
+                        {killingPid === proc.pid ? '...' : 'Kill'}
+                      </button>
+                    ) : (
+                      <span style={{ fontSize: '9px', color: '#00d2ff', fontWeight: 700 }}>Protetto</span>
+                    )}
                   </div>
                 </div>
               ))}
             </div>
+
           </div>
         )}
       </div>
