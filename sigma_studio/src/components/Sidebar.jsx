@@ -3,7 +3,7 @@ import {
   Home, FileText, Activity, PieChart, Layers, ChevronRight, MessageSquare, 
   FlaskConical, Brain, Zap, User, Server, Wrench, Palette, Blocks, Sun, 
   Moon, Store, Package, Sliders, Key, Sparkles, FolderGit2, Compass,
-  Cpu, Box, Radio, Music, Mic
+  Cpu, Box, Radio, Music, Mic, Terminal, Globe, Mail, Send
 } from 'lucide-react';
 import { useApp } from '../contexts/AppContext';
 import { useModuleState } from '../hooks/useModuleState';
@@ -113,6 +113,10 @@ export default function Sidebar({
   const isRoadmapInstalled = modulesState.sigma_roadmap === true;
   const isKnowledgeInstalled = modulesState.sigma_knowledge === true;
   const isVoiceInstalled = modulesState.sigma_voice_studio === true;
+  const isDevInstalled = modulesState.sigma_developer_lab === true;
+  const isNetworkInstalled = modulesState.sigma_network_lab === true;
+  const isEmailInstalled = modulesState.sigma_email_client === true;
+  const isMessagingInstalled = modulesState.sigma_messaging_hub === true;
 
   // Poll for counts (chat sessions, manifesti, topics, etc.)
   useEffect(() => {
@@ -380,6 +384,18 @@ export default function Sidebar({
             />
           )}
 
+          {isDevInstalled && (
+            <SidebarItem
+              icon={Terminal}
+              label="Developer Lab"
+              badge="DOCKER"
+              badgeColor="rgba(0,210,255,0.15)"
+              active={activeTabId != null && activeTabId.startsWith('developer_lab')}
+              onClick={() => openTab({ name: '💻 Developer Lab' }, 'developer_lab')}
+            />
+          )}
+
+
 
 
 
@@ -427,6 +443,18 @@ export default function Sidebar({
             />
           )}
 
+          {isNetworkInstalled && (
+            <SidebarItem 
+              icon={Globe} 
+              label="Network Lab" 
+              badge="NET"
+              badgeColor="rgba(63,185,80,0.15)"
+              active={activeTabId != null && activeTabId.startsWith('network_lab')}
+              onClick={() => openTab({ name: '🌐 Network Lab' }, 'network_lab')} 
+            />
+          )}
+
+
 
           <SidebarItem 
             icon={Sliders} 
@@ -460,6 +488,40 @@ export default function Sidebar({
           )}
 
         </nav>
+
+        {/* ================================================================= */}
+        {/* 4. MACROCATEGORIA: COMUNICAZIONE & SOCIAL                         */}
+        {/* ================================================================= */}
+        {(isEmailInstalled || isMessagingInstalled) && (
+          <nav className="nav-section" style={{ marginBottom: '14px' }}>
+            <div className="section-title" style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <span>COMUNICAZIONE & SOCIAL</span>
+            </div>
+
+            {isEmailInstalled && (
+              <SidebarItem 
+                icon={Mail} 
+                label="Email Hub" 
+                badge="MAIL"
+                badgeColor="rgba(255,180,84,0.15)"
+                active={activeTabId != null && activeTabId.startsWith('email_client')}
+                onClick={() => openTab({ name: '✉️ Email Hub' }, 'email_client')} 
+              />
+            )}
+
+            {isMessagingInstalled && (
+              <SidebarItem 
+                icon={Send} 
+                label="Messaging Hub" 
+                badge="BOT"
+                badgeColor="rgba(188,140,255,0.15)"
+                active={activeTabId != null && activeTabId.startsWith('messaging_hub')}
+                onClick={() => openTab({ name: '💬 Messaging Hub' }, 'messaging_hub')} 
+              />
+            )}
+          </nav>
+        )}
+
 
         {/* ================================================================= */}
         {/* 4. MACROCATEGORIA: ESTENSIONI & PROFILO                            */}

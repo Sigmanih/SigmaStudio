@@ -3,7 +3,8 @@ import {
   Store, Package, Download, RefreshCw, CheckCircle2, ShieldCheck, 
   ExternalLink, Terminal, GitBranch, Cpu, Sparkles, Layers, 
   Palette, FlaskConical, Brain, Zap, Home, Wrench, ArrowRight,
-  PlusCircle, AlertCircle, Play, Check, X, Search, Radio, Trash2, Calendar, PieChart, Mic
+  PlusCircle, AlertCircle, Play, Check, X, Search, Radio, Trash2, Calendar, PieChart, Mic,
+  Globe, Mail, Send
 } from 'lucide-react';
 
 import { useApp } from '../contexts/AppContext';
@@ -167,8 +168,69 @@ const OPTIONAL_MODULES = [
     tags: ['Kokoro 82M', 'XTTS-v2', 'Neural TTS', 'Voice Cloning', 'Speech Synthesis', 'Voice MCP'],
     size: '3 MB',
     author: 'Sigma Core Team'
+  },
+  {
+    id: 'sigma_developer_lab',
+    name: 'Developer Lab & Docker Sandbox',
+    category: 'Sviluppo & Sandbox',
+    icon: Terminal,
+    color: '#00d2ff',
+    tabType: 'developer_lab',
+    version: 'v1.0.0',
+    description: 'IDE avanzato per programmatori con gestione container Docker isolati, esecuzione codice live con terminale output, installazione pacchetti pip/npm in container e runner test pytest.',
+    gitUrl: 'https://github.com/Sigmanih/SigmaStudio-Moduli/tree/main/modules/sigma_developer_lab',
+    branch: 'main',
+    tags: ['Docker', 'Sandbox', 'Pytest', 'Python', 'Node.js', 'Terminal', 'Developer MCP'],
+    size: '2 MB',
+    author: 'Sigma Core Team'
+  },
+  {
+    id: 'sigma_network_lab',
+    name: 'Network Explorer & Web Research',
+    category: 'Rete & Ricerca',
+    icon: Globe,
+    color: '#3fb950',
+    tabType: 'network_lab',
+    version: 'v1.0.0',
+    description: 'Console di ricerca web live, HTTP API request builder (stile Postman), diagnostica DNS, Ping e Network MCP Server per agenti AI.',
+    gitUrl: 'https://github.com/Sigmanih/SigmaStudio-Moduli/tree/main/modules/sigma_network_lab',
+    branch: 'main',
+    tags: ['Web Search', 'HTTP Client', 'DNS', 'Ping', 'Network MCP'],
+    size: '1 MB',
+    author: 'Sigma Core Team'
+  },
+  {
+    id: 'sigma_email_client',
+    name: 'Email Hub & Client',
+    category: 'Comunicazione & Social',
+    icon: Mail,
+    color: '#ffb454',
+    tabType: 'email_client',
+    version: 'v1.0.0',
+    description: 'Client webmail integrato con lettura inbox, visualizzatore email HTML, compositore con supporto bozze agenti AI, configurazione sicura SMTP/IMAP ed Email MCP Server.',
+    gitUrl: 'https://github.com/Sigmanih/SigmaStudio-Moduli/tree/main/modules/sigma_email_client',
+    branch: 'main',
+    tags: ['Email', 'IMAP', 'SMTP', 'Webmail', 'Email MCP'],
+    size: '1 MB',
+    author: 'Sigma Core Team'
+  },
+  {
+    id: 'sigma_messaging_hub',
+    name: 'Messaging & Notification Hub',
+    category: 'Comunicazione & Social',
+    icon: Send,
+    color: '#bc8cff',
+    tabType: 'messaging_hub',
+    version: 'v1.0.0',
+    description: 'Centro di controllo per canali Telegram, Slack e Discord Webhook, dispatcher notifiche broadcast e Messaging MCP Server.',
+    gitUrl: 'https://github.com/Sigmanih/SigmaStudio-Moduli/tree/main/modules/sigma_messaging_hub',
+    branch: 'main',
+    tags: ['Telegram', 'Slack', 'Discord', 'Webhooks', 'Messaging MCP'],
+    size: '1 MB',
+    author: 'Sigma Core Team'
   }
 ];
+
 
 
 

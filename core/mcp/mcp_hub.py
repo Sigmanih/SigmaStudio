@@ -18,25 +18,16 @@ from typing import Any, Dict, List, Optional
 from core.logger import get_logger
 from core.mcp import governance
 from core.mcp.base_server import BaseMCPServer
-from core.mcp.calendar_server import CalendarMCPServer
 from core.mcp.client import ExternalMCPServer
-from core.mcp.developer_server import DeveloperMCPServer
-from core.mcp.email_server import EmailMCPServer
 from core.mcp.inference_server import InferenceMCPServer
-from core.mcp.messaging_server import MessagingMCPServer
-from core.mcp.network_server import NetworkMCPServer
 
 log = get_logger(__name__)
 
-# Built-in kernel servers
+# Built-in micro-kernel servers (Inference provider selector & dynamic routing)
 BUILTIN_SERVERS = [
-    DeveloperMCPServer,
     InferenceMCPServer,
-    NetworkMCPServer,
-    EmailMCPServer,
-    MessagingMCPServer,
-    CalendarMCPServer,
 ]
+
 
 
 

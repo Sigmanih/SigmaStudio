@@ -273,6 +273,56 @@ export default function Workspace({
         </React.Suspense>
       );
     }
+    if (tab.type === 'developer_lab') {
+      const isDevInstalled = modulesState.sigma_developer_lab === true;
+      const LazyDev = getLazyModule('developer_lab');
+      if (!isDevInstalled || !LazyDev) {
+        return <ModuleNotInstalled tabType="developer_lab" openTab={openTab} />;
+      }
+      return (
+        <React.Suspense fallback={<div style={{ padding: '32px', color: '#94a3b8', textAlign: 'center' }}>Caricamento Developer Lab...</div>}>
+          <LazyDev openTab={openTab} />
+        </React.Suspense>
+      );
+    }
+
+    if (tab.type === 'network_lab') {
+      const isNetInstalled = modulesState.sigma_network_lab === true;
+      const LazyNet = getLazyModule('network_lab');
+      if (!isNetInstalled || !LazyNet) {
+        return <ModuleNotInstalled tabType="network_lab" openTab={openTab} />;
+      }
+      return (
+        <React.Suspense fallback={<div style={{ padding: '32px', color: '#94a3b8', textAlign: 'center' }}>Caricamento Network Lab...</div>}>
+          <LazyNet openTab={openTab} />
+        </React.Suspense>
+      );
+    }
+    if (tab.type === 'email_client') {
+      const isEmailInstalled = modulesState.sigma_email_client === true;
+      const LazyEmail = getLazyModule('email_client');
+      if (!isEmailInstalled || !LazyEmail) {
+        return <ModuleNotInstalled tabType="email_client" openTab={openTab} />;
+      }
+      return (
+        <React.Suspense fallback={<div style={{ padding: '32px', color: '#94a3b8', textAlign: 'center' }}>Caricamento Email Hub...</div>}>
+          <LazyEmail openTab={openTab} />
+        </React.Suspense>
+      );
+    }
+    if (tab.type === 'messaging_hub') {
+      const isMsgInstalled = modulesState.sigma_messaging_hub === true;
+      const LazyMsg = getLazyModule('messaging_hub');
+      if (!isMsgInstalled || !LazyMsg) {
+        return <ModuleNotInstalled tabType="messaging_hub" openTab={openTab} />;
+      }
+      return (
+        <React.Suspense fallback={<div style={{ padding: '32px', color: '#94a3b8', textAlign: 'center' }}>Caricamento Messaging Hub...</div>}>
+          <LazyMsg openTab={openTab} />
+        </React.Suspense>
+      );
+    }
+
 
     if (tab.type === 'skills_hub') {
       return <SkillsHub />;
