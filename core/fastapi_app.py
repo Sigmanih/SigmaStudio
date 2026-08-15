@@ -277,13 +277,35 @@ FastAPIHandlerAdapter.handle_hardware_config = handle_hardware_config
 FastAPIHandlerAdapter.handle_hardware_restart_ollama = handle_hardware_restart_ollama
 FastAPIHandlerAdapter.handle_hardware_gpu_kill = handle_hardware_gpu_kill
 
-# Caricamento dinamico dei moduli opzionali installati (Creative Lab, Domotica, etc.)
+# Caricamento dinamico dei moduli opzionali installati (Creative Lab, Domotica, Model Hub, etc.)
 try:
     from core.module_loader import ModuleLoader
     module_loader = ModuleLoader()
     module_loader.load_installed(app)
 except Exception as _mod_err:
     log.warning(f"[FastAPI] Avviso inizializzazione ModuleLoader: {_mod_err}")
+
+try:
+    from core.modules.sigma_model_hub.backend.handlers import (
+        handle_models_hf_search, handle_models_hf_details, handle_models_hf_downloads_list,
+        handle_models_local_list, handle_models_config_get,
+        handle_models_hf_download_start, handle_models_hf_download_cancel,
+        handle_models_engine_load, handle_models_engine_unload, handle_models_config_save
+    )
+    FastAPIHandlerAdapter.handle_models_hf_search = handle_models_hf_search
+    FastAPIHandlerAdapter.handle_models_hf_details = handle_models_hf_details
+    FastAPIHandlerAdapter.handle_models_hf_downloads_list = handle_models_hf_downloads_list
+    FastAPIHandlerAdapter.handle_models_local_list = handle_models_local_list
+    FastAPIHandlerAdapter.handle_models_config_get = handle_models_config_get
+    FastAPIHandlerAdapter.handle_models_hf_download_start = handle_models_hf_download_start
+    FastAPIHandlerAdapter.handle_models_hf_download_cancel = handle_models_hf_download_cancel
+    FastAPIHandlerAdapter.handle_models_engine_load = handle_models_engine_load
+    FastAPIHandlerAdapter.handle_models_engine_unload = handle_models_engine_unload
+    FastAPIHandlerAdapter.handle_models_config_save = handle_models_config_save
+except Exception as _mh_err:
+    log.warning(f"[FastAPI] Avviso binding Model Hub: {_mh_err}")
+
+
 
 
 

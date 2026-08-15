@@ -1,0 +1,70 @@
+/* ==============================================================================
+   Model Hub & Hugging Face Downloader — Cyberpunk/Glassmorphic Styling
+   ============================================================================== */
+
+.model-hub-container {
+  display: flex;
+  flex-direction: column;
+  min-height: 100%;
+  width: 100%;
+  box-sizing: border-box;
+  padding: 20px 24px;
+  gap: 20px;
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+}
+
+/* Header & Card Base */
+.mh-card {
+  border-radius: 16px;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.mh-card-hover:hover {
+  transform: translateY(-2px);
+}
+
+/* Category Pills */
+.mh-pill-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 14px;
+  border-radius: 8px;
+  font-size: 0.76rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  border: 1px solid transparent;
+}
+
+/* Model Grid */
+.mh-models-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  gap: 16px;
+}
+
+/* Progress Track */
+.mh-progress-track {
+  height: 6px;
+  border-radius: 3px;
+  background: rgba(255, 255, 255, 0.08);
+  overflow: hidden;
+  position: relative;
+}
+
+.mh-progress-bar {
+  height: 100%;
+  border-radius: 3px;
+  transition: width 0.3s ease;
+}
+
+/* Spin animation */
+@keyframes mh-spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+.mh-spin {
+  animation: mh-spin 1s linear infinite;
+}

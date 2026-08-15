@@ -10,12 +10,14 @@ const MODULE_META = {
   creative_studio: { icon: '🎨', name: 'Creative Lab 3D/2D',            color: '#ff5064' },
   training_lab:    { icon: '🧠', name: 'Training Lab & SLM Forge',       color: '#a78bfa' },
   hardware_lab:    { icon: '⚡', name: 'Hardware Lab & VRAM',            color: '#fbbf24' },
+  model_hub:       { icon: '📥', name: 'Model Hub & HF Downloader',       color: '#ffb86c' },
   research_lab:    { icon: '🔬', name: 'Pipelines Lab & Dynamic Swarm',  color: '#34d399' },
   knowledge:       { icon: '🗺️', name: 'Knowledge Explorer',             color: '#60a5fa' },
   mcp_hub:         { icon: '🔧', name: 'MCP Tools Hub',                  color: '#f87171' },
   music:           { icon: '📻', name: 'Hi-Fi Sound & FM Radio Studio',  color: '#00f2fe' },
   audio_studio:    { icon: '📻', name: 'Hi-Fi Sound & FM Radio Studio',  color: '#00f2fe' },
   domotica:        { icon: '🏠', name: 'Domotica & Home Assistant IoT',  color: '#a78bfa' },
+
 };
 
 export default function ModuleNotInstalled({ tabType, openTab }) {

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { X, FileText, Terminal, PieChart, BookOpen, Trash2, ChevronRight, Home, MessageSquare, FlaskConical, Brain, Zap, User, Palette, Blocks, Image, Store, Key, Music } from 'lucide-react';
+import { X, FileText, Terminal, PieChart, BookOpen, Trash2, ChevronRight, Home, MessageSquare, FlaskConical, Brain, Zap, User, Palette, Blocks, Image, Store, Key, Music, DownloadCloud } from 'lucide-react';
 import WelcomeDashboard from './WelcomeDashboard';
 import SkillsHub from './SkillsHub';
 import StudioEditor from './Workspace/StudioEditor';
@@ -33,6 +33,7 @@ const FileIcon = ({ type }) => {
     case 'research_lab': return <FlaskConical size={16} />;
     case 'training_lab': return <Brain size={16} />;
     case 'hardware_lab': return <Zap size={16} />;
+    case 'model_hub': return <DownloadCloud size={16} />;
     case 'account': return <User size={16} />;
     case 'creative_studio': return <Palette size={16} />;
     case 'skills_hub': return <Blocks size={16} />;
@@ -43,6 +44,7 @@ const FileIcon = ({ type }) => {
     default: return <FileText size={16} />;
   }
 };
+
 
 export default function Workspace({ 
   openTabs, 
@@ -237,7 +239,21 @@ export default function Workspace({
       );
     }
 
+    if (tab.type === 'model_hub' || tab.type === 'hf_hub') {
+      const isModelHubInstalled = modulesState.sigma_model_hub === true;
+      const LazyModelHub = getLazyModule('model_hub');
+      if (!isModelHubInstalled || !LazyModelHub) {
+        return <ModuleNotInstalled tabType="model_hub" openTab={openTab} />;
+      }
+      return (
+        <React.Suspense fallback={<div style={{ padding: '32px', color: '#94a3b8', textAlign: 'center' }}>Caricamento Model Hub...</div>}>
+          <LazyModelHub addToast={(msg, type, dur) => {}} openTab={openTab} />
+        </React.Suspense>
+      );
+    }
+
     if (tab.type === 'mcp_hub') {
+
       return <McpHubTab />;
     }
     if (tab.type === 'domotica' || tab.type === 'home_assistant') {

@@ -24,9 +24,11 @@ const TAB_TO_MODULE_PATH = {
   training_lab:    './sigma_training_lab/index.jsx',
   hardware_lab:    './sigma_hardware_lab/index.jsx',
   hardware:        './sigma_hardware_lab/index.jsx',
+  model_hub:       './sigma_model_hub/index.jsx',
   research_lab:    './sigma_research_lab/index.jsx',
   developer_lab:   './sigma_developer_lab/index.jsx',
   network_lab:     './sigma_network_lab/index.jsx',
+
 
   // Knowledge & MCP
   knowledge:       './sigma_knowledge/index.jsx',

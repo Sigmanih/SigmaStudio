@@ -19,12 +19,14 @@ const OPTIONAL_MODULE_IDS = [
   // Infrastruttura Lab
   'sigma_training_lab',  // Training Lab & SLM Forge
   'sigma_hardware_lab',  // Hardware Lab & VRAM
+  'sigma_model_hub',     // Model Hub & Hugging Face Downloader
   'sigma_research_lab',  // Pipelines Lab & Dynamic Swarm
   // Knowledge & Tools
   'sigma_knowledge',     // Knowledge Explorer
   'sigma_mcp_hub',       // MCP Tools Hub
   // IoT
   'sigma_domotica',      // Domotica & Home Assistant IoT
+
 ];
 
 // Kernel modules — always present, NOT in optional list.

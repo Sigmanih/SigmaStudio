@@ -3,7 +3,7 @@ import {
   Home, FileText, Activity, PieChart, Layers, ChevronRight, MessageSquare, 
   FlaskConical, Brain, Zap, User, Server, Wrench, Palette, Blocks, Sun, 
   Moon, Store, Package, Sliders, Key, Sparkles, FolderGit2, Compass,
-  Cpu, Box, Radio, Music, Mic, Terminal, Globe, Mail, Send
+  Cpu, Box, Radio, Music, Mic, Terminal, Globe, Mail, Send, DownloadCloud
 } from 'lucide-react';
 import { useApp } from '../contexts/AppContext';
 import { useModuleState } from '../hooks/useModuleState';
@@ -108,6 +108,7 @@ export default function Sidebar({
   const isDomoticaInstalled = modulesState.sigma_domotica === true;
   const isCreativeInstalled = modulesState.sigma_creative_lab === true;
   const isHardwareInstalled = modulesState.sigma_hardware_lab === true;
+  const isModelHubInstalled = modulesState.sigma_model_hub === true;
   const isResearchInstalled = modulesState.sigma_research_lab === true;
   const isTrainingInstalled = modulesState.sigma_training_lab === true;
   const isRoadmapInstalled = modulesState.sigma_roadmap === true;
@@ -443,6 +444,17 @@ export default function Sidebar({
             />
           )}
 
+          {isModelHubInstalled && (
+            <SidebarItem 
+              icon={DownloadCloud} 
+              label="Model Hub & HF" 
+              badge="HF"
+              badgeColor="rgba(255,184,108,0.15)"
+              active={activeTabId != null && activeTabId.startsWith('model_hub')}
+              onClick={() => openTab({ name: '📥 Model Hub' }, 'model_hub')} 
+            />
+          )}
+
           {isNetworkInstalled && (
             <SidebarItem 
               icon={Globe} 
@@ -453,6 +465,7 @@ export default function Sidebar({
               onClick={() => openTab({ name: '🌐 Network Lab' }, 'network_lab')} 
             />
           )}
+
 
 
 

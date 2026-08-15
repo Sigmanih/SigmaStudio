@@ -100,7 +100,14 @@ def register_get_handlers(handler_class):
         '/api/manifesti/hub': 'handle_manifesti_hub',
         '/api/modules/audio_studio/status': 'handle_audio_studio_status',
         '/api/modules/audio_studio/stations': 'handle_audio_studio_stations',
+        # Model Hub & HF Downloader
+        '/api/models/hf/search': 'handle_models_hf_search',
+        '/api/models/hf/details': 'handle_models_hf_details',
+        '/api/models/hf/downloads': 'handle_models_hf_downloads_list',
+        '/api/models/local/list': 'handle_models_local_list',
+        '/api/models/config': 'handle_models_config_get',
     }
+
 
 
 def register_post_handlers(handler_class):
@@ -221,7 +228,14 @@ def register_post_handlers(handler_class):
         '/api/marketplace/rebuild': 'handle_marketplace_rebuild',
         '/api/manifesti/install_from_hub': 'handle_manifesti_install_from_hub',
         '/api/manifesti/uninstall': 'handle_manifesti_uninstall',
+        # Model Hub & HF Downloader
+        '/api/models/hf/download/start': 'handle_models_hf_download_start',
+        '/api/models/hf/download/cancel': 'handle_models_hf_download_cancel',
+        '/api/models/engine/load': 'handle_models_engine_load',
+        '/api/models/engine/unload': 'handle_models_engine_unload',
+        '/api/models/config': 'handle_models_config_save',
     }
+
 
 
 
