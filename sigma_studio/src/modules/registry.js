@@ -1,0 +1,66 @@
+// ==============================================================================
+// sigma_studio/src/modules/registry.js — Dynamic Module Registry (Vite Glob)
+// Usa import.meta.glob per scoprire a build-time solo i moduli FISICAMENTE presenti
+// nella cartella src/modules/. Se un modulo non è installato, non viene incluso nel bundle
+// e getLazyModule() ritorna null, attivando la schermata ModuleNotInstalled.
+// ==============================================================================
+import React from 'react';
+
+// Scansiona dinamicamente tutti i moduli installati nella directory
+const installedModules = import.meta.glob('./*/index.jsx');
+
+// Mappatura tabType → path del modulo
+const TAB_TO_MODULE_PATH = {
+  // Multimodale & Grafica
+  creative_studio: './sigma_creative_lab/index.jsx',
+
+  // Audio & Streaming
+  music:           './sigma_audio_studio/index.jsx',
+  music_lounge:    './sigma_audio_studio/index.jsx',
+  audio_studio:    './sigma_audio_studio/index.jsx',
+
+  // Lab & Infrastruttura
+  training_lab:    './sigma_training_lab/index.jsx',
+  hardware_lab:    './sigma_hardware_lab/index.jsx',
+  research_lab:    './sigma_research_lab/index.jsx',
+
+  // Knowledge & MCP
+  knowledge:       './sigma_knowledge/index.jsx',
+  mcp_hub:         './sigma_mcp_hub/index.jsx',
+
+  // IoT & Domotica
+  domotica:        './sigma_domotica/index.jsx',
+  home_assistant:  './sigma_domotica/index.jsx',
+};
+
+const _componentCache = {};
+
+/**
+ * Restituisce un componente React.lazy() per il tabType specificato SE il modulo è installato su disco.
+ * Altrimenti ritorna null.
+ *
+ * @param {string} tabType
+ * @returns {React.LazyExoticComponent | null}
+ */
+export function getLazyModule(tabType) {
+  const path = TAB_TO_MODULE_PATH[tabType];
+  if (!path || !installedModules[path]) {
+    return null;
+  }
+
+  if (!_componentCache[tabType]) {
+    _componentCache[tabType] = React.lazy(installedModules[path]);
+  }
+  return _componentCache[tabType];
+}
+
+/**
+ * Verifica se il modulo è presente su disco e compilato.
+ *
+ * @param {string} tabType
+ * @returns {boolean}
+ */
+export function isModuleRegistered(tabType) {
+  const path = TAB_TO_MODULE_PATH[tabType];
+  return Boolean(path && installedModules[path]);
+}

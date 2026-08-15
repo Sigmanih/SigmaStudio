@@ -21,7 +21,6 @@ from core.mcp.base_server import BaseMCPServer
 from core.mcp.benchmark_server import BenchmarkMCPServer
 from core.mcp.calendar_server import CalendarMCPServer
 from core.mcp.client import ExternalMCPServer
-from core.mcp.creative_server import CreativeMCPServer
 from core.mcp.developer_server import DeveloperMCPServer
 from core.mcp.email_server import EmailMCPServer
 from core.mcp.hardware_server import HardwareMCPServer
@@ -34,8 +33,8 @@ from core.mcp.training_server import TrainingMCPServer
 
 log = get_logger(__name__)
 
-# Built-in servers, in the order the tab shows them.
-BUILTIN_SERVERS = (
+# Built-in kernel servers
+BUILTIN_SERVERS = [
     MemoryMCPServer,
     DeveloperMCPServer,
     HardwareMCPServer,
@@ -43,12 +42,11 @@ BUILTIN_SERVERS = (
     InferenceMCPServer,
     NetworkMCPServer,
     BenchmarkMCPServer,
-    CreativeMCPServer,
     HomeAssistantMCPServer,
     EmailMCPServer,
     MessagingMCPServer,
     CalendarMCPServer,
-)
+]
 
 
 class MCPHub:
@@ -60,6 +58,22 @@ class MCPHub:
         self._lock = threading.RLock()
         self._initialize_servers()
         self.reload_external_servers()
+
+    def register_server(self, server_cls_or_instance) -> bool:
+        """Registra dinamicamente un server MCP da un modulo opzionale."""
+        try:
+            if isinstance(server_cls_or_instance, type):
+                server = server_cls_or_instance()
+            else:
+                server = server_cls_or_instance
+            with self._lock:
+                self.servers[server.name] = server
+            log.info("Dynamically Registered Module MCP Server: '%s' (v%s)", server.name, server.version)
+            return True
+        except Exception as exc:
+            log.error("Errore registrazione server MCP dinamico: %s", exc, exc_info=True)
+            return False
+
 
     def _initialize_servers(self):
         for server_cls in BUILTIN_SERVERS:

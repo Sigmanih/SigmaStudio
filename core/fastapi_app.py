@@ -253,57 +253,14 @@ FastAPIHandlerAdapter.handle_pipeline_start = handle_pipeline_start
 FastAPIHandlerAdapter.handle_pipeline_status = handle_pipeline_status
 FastAPIHandlerAdapter.handle_pipeline_stop = handle_pipeline_stop
 
-from core.creative.creative_router import (
-    handle_creative_assets, handle_creative_asset_get, handle_creative_asset_lineage,
-    handle_creative_asset_versions, handle_creative_backends_status, handle_creative_stats,
-    handle_creative_generate, handle_creative_asset_create, handle_creative_asset_update,
-    handle_creative_asset_delete, handle_creative_backends_config, handle_creative_upload,
-    handle_creative_edit, handle_creative_remove_bg, handle_creative_3d,
-    handle_creative_mesh, handle_creative_mesh_info, handle_creative_material,
-    handle_creative_render, handle_creative_pipeline_execute, handle_creative_agents_list,
-    handle_creative_pipeline_nodes, handle_creative_models, handle_creative_vision,
-    handle_creative_segment, handle_creative_video, handle_creative_discover,
-    handle_creative_downloads, handle_creative_download_start, handle_creative_download_cancel,
-    handle_creative_model_search, handle_creative_model_categories,
-    handle_creative_model_inventory, handle_creative_workflows,
-    handle_creative_workflow_save, handle_creative_workflow_delete,
-)
-FastAPIHandlerAdapter.handle_creative_assets = handle_creative_assets
-FastAPIHandlerAdapter.handle_creative_asset_get = handle_creative_asset_get
-FastAPIHandlerAdapter.handle_creative_asset_lineage = handle_creative_asset_lineage
-FastAPIHandlerAdapter.handle_creative_asset_versions = handle_creative_asset_versions
-FastAPIHandlerAdapter.handle_creative_backends_status = handle_creative_backends_status
-FastAPIHandlerAdapter.handle_creative_stats = handle_creative_stats
-FastAPIHandlerAdapter.handle_creative_generate = handle_creative_generate
-FastAPIHandlerAdapter.handle_creative_asset_create = handle_creative_asset_create
-FastAPIHandlerAdapter.handle_creative_asset_update = handle_creative_asset_update
-FastAPIHandlerAdapter.handle_creative_asset_delete = handle_creative_asset_delete
-FastAPIHandlerAdapter.handle_creative_backends_config = handle_creative_backends_config
-FastAPIHandlerAdapter.handle_creative_upload = handle_creative_upload
-FastAPIHandlerAdapter.handle_creative_edit = handle_creative_edit
-FastAPIHandlerAdapter.handle_creative_remove_bg = handle_creative_remove_bg
-FastAPIHandlerAdapter.handle_creative_3d = handle_creative_3d
-FastAPIHandlerAdapter.handle_creative_mesh = handle_creative_mesh
-FastAPIHandlerAdapter.handle_creative_mesh_info = handle_creative_mesh_info
-FastAPIHandlerAdapter.handle_creative_material = handle_creative_material
-FastAPIHandlerAdapter.handle_creative_render = handle_creative_render
-FastAPIHandlerAdapter.handle_creative_pipeline_execute = handle_creative_pipeline_execute
-FastAPIHandlerAdapter.handle_creative_agents_list = handle_creative_agents_list
-FastAPIHandlerAdapter.handle_creative_pipeline_nodes = handle_creative_pipeline_nodes
-FastAPIHandlerAdapter.handle_creative_models = handle_creative_models
-FastAPIHandlerAdapter.handle_creative_vision = handle_creative_vision
-FastAPIHandlerAdapter.handle_creative_segment = handle_creative_segment
-FastAPIHandlerAdapter.handle_creative_video = handle_creative_video
-FastAPIHandlerAdapter.handle_creative_discover = handle_creative_discover
-FastAPIHandlerAdapter.handle_creative_downloads = handle_creative_downloads
-FastAPIHandlerAdapter.handle_creative_download_start = handle_creative_download_start
-FastAPIHandlerAdapter.handle_creative_download_cancel = handle_creative_download_cancel
-FastAPIHandlerAdapter.handle_creative_model_search = handle_creative_model_search
-FastAPIHandlerAdapter.handle_creative_model_categories = handle_creative_model_categories
-FastAPIHandlerAdapter.handle_creative_model_inventory = handle_creative_model_inventory
-FastAPIHandlerAdapter.handle_creative_workflows = handle_creative_workflows
-FastAPIHandlerAdapter.handle_creative_workflow_save = handle_creative_workflow_save
-FastAPIHandlerAdapter.handle_creative_workflow_delete = handle_creative_workflow_delete
+# Caricamento dinamico dei moduli opzionali installati (Creative Lab, Domotica, etc.)
+try:
+    from core.module_loader import ModuleLoader
+    module_loader = ModuleLoader()
+    module_loader.load_installed(app)
+except Exception as _mod_err:
+    log.warning(f"[FastAPI] Avviso inizializzazione ModuleLoader: {_mod_err}")
+
 
 from core.integrations.handlers import (
     handle_skills_list, handle_skills_toggle, handle_apps_status,

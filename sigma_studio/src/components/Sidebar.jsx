@@ -172,6 +172,7 @@ export default function Sidebar({
   const { modulesState } = useModuleState();
   const isAudioInstalled = modulesState.audio_studio === true;
   const isDomoticaInstalled = modulesState.sigma_domotica === true;
+  const isCreativeInstalled = modulesState.sigma_creative_lab === true;
 
 
   const taskInCorso = tasks.filter(t => t.status === 'in_corso' || !t.status).length;
@@ -337,16 +338,26 @@ export default function Sidebar({
             onClick={() => openTab({ name: 'Chat AI', path: 'chat-tab' }, 'chat')} 
           />
           
-          {!hiddenTabs.has('creative_studio') && (
+          {isCreativeInstalled ? (
             <SidebarItem
               icon={Palette}
               label="Creative Lab"
               badge={assetCount > 0 ? assetCount : 0}
-              badgeColor="rgba(188,140,255,0.15)"
+              badgeColor="rgba(255,80,100,0.15)"
               active={activeTabId != null && activeTabId.startsWith('creative_studio')}
               onClick={() => openTab({ name: '🎨 Creative Lab' }, 'creative_studio')}
             />
+          ) : (
+            <SidebarItem
+              icon={Palette}
+              label="Creative Lab"
+              badge="+"
+              badgeColor="rgba(255,255,255,0.06)"
+              active={false}
+              onClick={() => openTab({ name: '📦 Hub Moduli & Estensioni' }, 'marketplace')}
+            />
           )}
+
 
           <SidebarItem 
             icon={FlaskConical} 

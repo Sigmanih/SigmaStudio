@@ -11,19 +11,7 @@ import { useApp } from '../contexts/AppContext';
 // Built-in Kernel Modules Data
 // ==============================================================================
 const KERNEL_MODULES = [
-  {
-    id: 'creative_studio',
-    name: 'Creative Lab 3D/2D',
-    category: 'Multimodale & Grafica',
-    icon: Palette,
-    color: '#ff5064',
-    tabType: 'creative_studio',
-    version: 'v8.0.2',
-    status: 'installed',
-    description: 'Generazione Text-to-Image, inpainting, estrazione texture PBR, sintesi video e rendering fotorealistico tramite Blender headless.',
-    tags: ['ComfyUI', 'SD WebUI', 'Blender 3D', 'RemBG', 'PBR'],
-    author: 'Sigma Core Team'
-  },
+
   {
     id: 'research_lab',
     name: 'Pipelines Lab & Dynamic Swarm',
@@ -63,19 +51,7 @@ const KERNEL_MODULES = [
     tags: ['NVIDIA NVML', 'GPU VRAM', 'Ollama Daemon', 'Process Manager'],
     author: 'Sigma Core Team'
   },
-  {
-    id: 'domotica',
-    name: 'Domotica & Home Assistant IoT',
-    category: 'Automazione Domotica',
-    icon: Home,
-    color: '#a78bfa',
-    tabType: 'domotica',
-    version: 'v8.0.0',
-    status: 'installed',
-    description: 'Bridge MCP nativo per Home Assistant. Controllo entità smart, automazioni, termostati e streaming telecamere.',
-    tags: ['Home Assistant', 'WebSocket', 'IoT MCP', 'Scene Smart'],
-    author: 'Sigma Core Team'
-  },
+
   {
     id: 'knowledge',
     name: 'Research Lab & Knowledge Explorer',
@@ -108,6 +84,21 @@ const KERNEL_MODULES = [
 // Optional Modules — installabili/disinstallabili da repository Git
 // ==============================================================================
 const OPTIONAL_MODULES = [
+  {
+    id: 'sigma_creative_lab',
+    name: 'Creative Lab 3D/2D',
+    category: 'Multimodale & Grafica',
+    icon: Palette,
+    color: '#ff5064',
+    tabType: 'creative_studio',
+    version: 'v1.0.0',
+    description: 'Studio generativo multimodale: Text-to-Image (FLUX, SDXL), Img2Img, Inpainting, rimozione sfondo (SAM2/rembg), generazione 3D (Hunyuan3D), materiali PBR, rendering Blender headless, pipeline a nodi DAG e sintesi video.',
+    gitUrl: 'https://github.com/Sigmanih/SigmaStudio-Moduli/tree/main/modules/sigma_creative_lab',
+    branch: 'main',
+    tags: ['FLUX', 'SDXL', 'ComfyUI', 'Blender 3D', 'RemBG', 'PBR', 'Video Gen'],
+    size: '2 MB',
+    author: 'Sigma Core Team'
+  },
   {
     id: 'audio_studio',
     name: 'Hi-Fi Sound & FM Radio Studio',

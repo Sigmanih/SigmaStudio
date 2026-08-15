@@ -11,20 +11,25 @@
 import { useState, useEffect, useCallback } from 'react';
 
 // Optional modules — these can be installed / uninstalled by the user.
+// All modules default to FALSE until the backend confirms otherwise.
 const OPTIONAL_MODULE_IDS = [
-  'audio_studio',
-  'sigma_domotica',
+  // Media & Generazione
+  'sigma_creative_lab',  // Creative Lab 3D/2D
+  'audio_studio',        // Hi-Fi Sound & FM Radio Studio
+  // Infrastruttura Lab
+  'sigma_training_lab',  // Training Lab & SLM Forge
+  'sigma_hardware_lab',  // Hardware Lab & VRAM
+  'sigma_research_lab',  // Pipelines Lab & Dynamic Swarm
+  // Knowledge & Tools
+  'sigma_knowledge',     // Knowledge Explorer
+  'sigma_mcp_hub',       // MCP Tools Hub
+  // IoT
+  'sigma_domotica',      // Domotica & Home Assistant IoT
 ];
 
-// Kernel modules — always installed, never removable.
-const KERNEL_MODULE_IDS = [
-  'creative_studio',
-  'research_lab',
-  'training_lab',
-  'hardware_lab',
-  'mcp_hub',
-  'knowledge',
-];
+// Kernel modules — always present, NOT in optional list.
+// Solo Chat e Marketplace rimangono fissi nel kernel.
+const KERNEL_MODULE_IDS = [];
 
 /**
  * Returns the current install state for all optional modules.

@@ -69,19 +69,19 @@ import json
 
 STATE_FILE = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "data", "marketplace_installed.json")
 
-# Kernel modules always default to True (hardcoded into the product)
-# Optional modules (installable/uninstallable) default to False
-_KERNEL_DEFAULTS = {
-    "creative_studio": True,
-    "research_lab": True,
-    "training_lab": True,
-    "hardware_lab": True,
-    "knowledge": True,
-    "mcp_hub": True,
-}
+# Kernel modules (always fixed, only Chat & Marketplace)
+_KERNEL_DEFAULTS = {}
+
+# Optional modules (downloadable from GitHub, isolated from kernel)
 _OPTIONAL_DEFAULTS = {
-    "audio_studio": False,    # Hi-Fi Sound & FM Radio Studio
-    "sigma_domotica": False,  # Domotica & Home Assistant IoT
+    "sigma_creative_lab": False,  # Creative Lab 3D/2D
+    "audio_studio": False,        # Hi-Fi Sound & FM Radio Studio
+    "sigma_domotica": False,      # Domotica & Home Assistant IoT
+    "sigma_training_lab": False,  # Training Lab & SLM Forge
+    "sigma_hardware_lab": False,  # Hardware Lab & VRAM
+    "sigma_research_lab": False,  # Pipelines Lab & Dynamic Swarm
+    "sigma_knowledge": False,     # Knowledge Explorer
+    "sigma_mcp_hub": False,       # MCP Tools Hub
 }
 
 def _get_installed_modules_state():
@@ -90,10 +90,9 @@ def _get_installed_modules_state():
         if os.path.exists(STATE_FILE):
             with open(STATE_FILE, "r", encoding="utf-8") as f:
                 saved = json.load(f)
-                # Only override optional modules from saved state (never override kernel defaults)
+                # Only override optional modules from saved state
                 for k, v in saved.items():
-                    if k not in _KERNEL_DEFAULTS:
-                        state[k] = v
+                    state[k] = v
     except Exception as e:
         log.warning(f"Errore lettura stato marketplace: {e}")
     return state
@@ -112,17 +111,9 @@ def handle_marketplace_modules(self):
     try:
         state = _get_installed_modules_state()
         
-        # Build kernel installed list
-        installed_list = [
-            {"id": "creative_studio", "name": "Creative Lab 3D/2D", "status": "active", "installed": True},
-            {"id": "research_lab", "name": "Pipelines Lab & Dynamic Swarm", "status": "active", "installed": True},
-            {"id": "training_lab", "name": "Training Lab & SLM Forge", "status": "active", "installed": True},
-            {"id": "hardware_lab", "name": "Hardware Lab & VRAM", "status": "active", "installed": True},
-            {"id": "knowledge", "name": "Research Lab & Knowledge", "status": "active", "installed": True},
-            {"id": "mcp_hub", "name": "MCP Tools & Governance", "status": "active", "installed": True},
-        ]
-        # Append installed optional modules
-        for mod_id, defaults in _OPTIONAL_DEFAULTS.items():
+        # Build installed list based strictly on active state
+        installed_list = []
+        for mod_id in _OPTIONAL_DEFAULTS.keys():
             is_installed = state.get(mod_id, False)
             if is_installed:
                 installed_list.append({"id": mod_id, "status": "active", "installed": True})
@@ -141,13 +132,21 @@ def handle_marketplace_install(self):
     """POST /api/marketplace/install — Scarica e installa modulo da repository Git."""
     try:
         data = self.read_json_body()
-        repo_url = data.get("repo_url", "")
+        repo_url = data.get("repo_url", "https://github.com/Sigmanih/SigmaStudio-Moduli")
         module_id = data.get("module_id", "")
-        log.info(f"Marketplace install: {module_id} da {repo_url}")
+        branch = data.get("branch", "main")
+        module_path = data.get("module_path", f"modules/{module_id}")
+        log.info(f"Marketplace install: {module_id} da {repo_url} (path: {module_path})")
         
-        state = _get_installed_modules_state()
-        state[module_id] = True
-        _save_installed_modules_state(state)
+        try:
+            from core.module_loader import ModuleLoader
+            loader = ModuleLoader()
+            res = loader.install(module_id, repo_url, branch, module_path, app=None)
+        except Exception as err:
+            log.warning(f"[Marketplace] Fallback local install recording due to: {err}")
+            state = _get_installed_modules_state()
+            state[module_id] = True
+            _save_installed_modules_state(state)
         
         self.send_json_response({
             "success": True,
@@ -167,9 +166,15 @@ def handle_marketplace_uninstall(self):
         module_id = data.get("module_id", "")
         log.info(f"Marketplace uninstall: {module_id}")
         
-        state = _get_installed_modules_state()
-        state[module_id] = False
-        _save_installed_modules_state(state)
+        try:
+            from core.module_loader import ModuleLoader
+            loader = ModuleLoader()
+            loader.uninstall(module_id)
+        except Exception as err:
+            log.warning(f"[Marketplace] Fallback local uninstall recording due to: {err}")
+            state = _get_installed_modules_state()
+            state[module_id] = False
+            _save_installed_modules_state(state)
         
         self.send_json_response({
             "success": True,
@@ -180,6 +185,7 @@ def handle_marketplace_uninstall(self):
     except Exception as e:
         log.error(f"Errore disinstallazione modulo {e}")
         self.send_json_response({"success": False, "error": str(e)}, 500)
+
 
 
 def handle_marketplace_rebuild(self):

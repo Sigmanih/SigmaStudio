@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { X, FileText, Terminal, PieChart, BookOpen, Trash2, ChevronRight, Home, MessageSquare, FlaskConical, Brain, Zap, User, Palette, Blocks, Image, Store, Key, Music } from 'lucide-react';
 import WelcomeDashboard from './WelcomeDashboard';
-import CreativeStudio from './CreativeStudio/CreativeStudio';
 import SkillsHub from './SkillsHub';
 import { RoadmapView } from './Dashboard';
 import StudioEditor from './Workspace/StudioEditor';
@@ -22,6 +21,8 @@ import MarketplaceTab from './MarketplaceTab';
 import AIConfigTab from './AIConfigTab';
 import MusicTab from './Music/MusicTab';
 import { useModuleState } from '../hooks/useModuleState';
+import { getLazyModule } from '../modules/registry';
+import ModuleNotInstalled from '../modules/ModuleNotInstalled';
 
 // ==============================================================================
 // Workspace — Content area that renders based on active tab type
@@ -198,21 +199,7 @@ export default function Workspace({
     }
     if (tab.type === 'domotica' || tab.type === 'home_assistant') {
       if (!isDomoticaInstalled) {
-        return (
-          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', gap: '16px', color: '#a0aec0', textAlign: 'center', padding: '40px' }}>
-            <div style={{ fontSize: '3rem' }}>🏠</div>
-            <h3 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 800, color: '#fff' }}>Modulo Domotica Non Installato</h3>
-            <p style={{ margin: 0, fontSize: '0.85rem', maxWidth: '380px', lineHeight: 1.5 }}>
-              Il modulo <strong>Domotica & Home Assistant IoT</strong> non è installato. Installalo dal Hub Moduli per controllare le tue entità smart.
-            </p>
-            <button
-              onClick={() => openTab({ name: '📦 Hub Moduli & Estensioni' }, 'marketplace')}
-              style={{ padding: '10px 22px', borderRadius: '10px', background: 'linear-gradient(135deg, #a78bfa, #7c5bf0)', border: 'none', color: '#fff', fontWeight: 800, fontSize: '0.85rem', cursor: 'pointer' }}
-            >
-              Apri Hub Moduli
-            </button>
-          </div>
-        );
+        return <ModuleNotInstalled tabType="domotica" openTab={openTab} />;
       }
       return <DomoticaTab />;
     }
@@ -220,7 +207,16 @@ export default function Workspace({
       return <AccountTab />;
     }
     if (tab.type === 'creative_studio') {
-      return <CreativeStudio />;
+      const isCreativeInstalled = modulesState.sigma_creative_lab === true;
+      const LazyCreative = getLazyModule('creative_studio');
+      if (!isCreativeInstalled || !LazyCreative) {
+        return <ModuleNotInstalled tabType="creative_studio" openTab={openTab} />;
+      }
+      return (
+        <React.Suspense fallback={<div style={{ padding: '32px', color: '#94a3b8', textAlign: 'center' }}>Caricamento Creative Lab...</div>}>
+          <LazyCreative openTab={openTab} />
+        </React.Suspense>
+      );
     }
     if (tab.type === 'skills_hub') {
       return <SkillsHub />;
@@ -233,72 +229,11 @@ export default function Workspace({
     }
     if (tab.type === 'music' || tab.type === 'music_lounge' || tab.type === 'audio_studio') {
       if (!isAudioInstalled) {
-        return (
-          <div style={{
-            display: 'flex',
-            flexDirection: 'column',
-            alignItems: 'center',
-            justifyContent: 'center',
-            height: '100%',
-            padding: '40px',
-            textAlign: 'center',
-            color: '#8b8fa3',
-            gap: '16px'
-          }}>
-            <div style={{
-              width: '64px',
-              height: '64px',
-              borderRadius: '50%',
-              background: 'rgba(255, 255, 255, 0.05)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              fontSize: '2rem'
-            }}>
-              📻
-            </div>
-            <h3 style={{ margin: 0, color: '#f8fafc', fontSize: '1.2rem', fontWeight: 700 }}>
-              Modulo Audio Studio Disinstallato
-            </h3>
-            <p style={{ margin: 0, maxWidth: '440px', fontSize: '0.85rem', lineHeight: '1.5' }}>
-              Il modulo <strong>Hi-Fi Sound & FM Radio Studio</strong> è attualmente disinstallato o disattivato. Puoi installarlo in qualsiasi momento con un click dall'Hub Moduli.
-            </p>
-            <div style={{ display: 'flex', gap: '10px', marginTop: '8px' }}>
-              <button
-                onClick={() => openTab({ name: '📦 Hub Moduli & Estensioni' }, 'marketplace')}
-                style={{
-                  background: 'linear-gradient(135deg, #00f2fe, #4facfe)',
-                  border: 'none',
-                  color: '#000',
-                  fontWeight: 800,
-                  borderRadius: '8px',
-                  padding: '10px 18px',
-                  cursor: 'pointer',
-                  fontSize: '0.82rem'
-                }}
-              >
-                Apri Hub Moduli
-              </button>
-              <button
-                onClick={() => closeTab(tab.id)}
-                style={{
-                  background: 'rgba(255, 255, 255, 0.08)',
-                  border: '1px solid rgba(255, 255, 255, 0.12)',
-                  color: '#f8fafc',
-                  borderRadius: '8px',
-                  padding: '10px 18px',
-                  cursor: 'pointer',
-                  fontSize: '0.82rem'
-                }}
-              >
-                Chiudi Scheda
-              </button>
-            </div>
-          </div>
-        );
+        return <ModuleNotInstalled tabType="music" openTab={openTab} />;
       }
       return <MusicTab />;
     }
+
     if (tab.type === 'ai_config' || tab.type === 'config') {
       return <AIConfigTab openTab={openTab} />;
     }

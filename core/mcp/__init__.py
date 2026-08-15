@@ -7,8 +7,6 @@ from core.mcp.training_server import TrainingMCPServer
 from core.mcp.inference_server import InferenceMCPServer
 from core.mcp.network_server import NetworkMCPServer
 from core.mcp.benchmark_server import BenchmarkMCPServer
-from core.mcp.creative_server import CreativeMCPServer
-from core.mcp.homeassistant_server import HomeAssistantMCPServer
 from core.mcp.email_server import EmailMCPServer
 from core.mcp.messaging_server import MessagingMCPServer
 from core.mcp.calendar_server import CalendarMCPServer
@@ -26,8 +24,6 @@ __all__ = [
     "InferenceMCPServer",
     "NetworkMCPServer",
     "BenchmarkMCPServer",
-    "CreativeMCPServer",
-    "HomeAssistantMCPServer",
     "EmailMCPServer",
     "MessagingMCPServer",
     "CalendarMCPServer",
@@ -35,3 +31,4 @@ __all__ = [
     "mcp_hub",
     "MCPHub",
 ]
+
