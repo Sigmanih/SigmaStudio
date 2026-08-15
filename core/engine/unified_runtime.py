@@ -10,6 +10,8 @@ from core.logger import get_logger
 from core.engine.hardware_probe import UniversalHardwareProbe
 from core.engine.weight_profiler import WeightSaliencyProfiler
 from core.engine.disk_streamer import MultiDriveShardedStreamer
+from core.engine.moe_expert_cache import MoEExpertCache
+from core.engine.speculative import SpeculativeDecodingEngine
 
 log = get_logger(__name__)
 
@@ -17,17 +19,21 @@ log = get_logger(__name__)
 class UniversalSigmaEngine:
     """
     State-of-the-art universal LLM engine for Sigma Studio.
-    Auto-dispatches execution to the highest-performance backend available on the device.
+    Auto-dispatches execution to the highest-performance backend available on the device,
+    featuring MoE Expert VRAM caching, Speculative Decoding, and Multi-Drive Streaming.
     """
 
     def __init__(self):
         self.hardware_profile = UniversalHardwareProbe.probe_all()
         self.active_backend = self._determine_optimal_backend()
         self.streamer = MultiDriveShardedStreamer()
+        self.moe_cache = MoEExpertCache(max_vram_experts=8)
+        self.speculative_engine = SpeculativeDecodingEngine(gamma_lookahead=4)
         self.loaded_model_name: Optional[str] = None
         self.loaded_model = None
         self.tokenizer = None
         log.info(f"[SigmaEngine] Initialized. Active Backend: {self.active_backend}")
+
 
     def _determine_optimal_backend(self) -> str:
         """Selects the best execution backend based on detected accelerators."""

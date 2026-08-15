@@ -76,6 +76,35 @@ class TestSigmaEngine(unittest.TestCase):
         self.assertIsNotNone(tokens[0].get("ttft_ms"))
         self.assertTrue(tokens[-1]["done"])
 
+    def test_moe_expert_cache(self):
+        """Verify predictive MoE LRU cache tracking and hit-rate."""
+        from core.engine.moe_expert_cache import MoEExpertCache
+        cache = MoEExpertCache(max_vram_experts=4)
+        
+        # Cold miss
+        self.assertFalse(cache.record_activation(0, 1))
+        # Hot hit
+        self.assertTrue(cache.record_activation(0, 1))
+        
+        stats = cache.get_stats()
+        self.assertEqual(stats["hits"], 1)
+        self.assertEqual(stats["misses"], 1)
+        self.assertEqual(stats["vram_hit_rate_percent"], 50.0)
+
+    def test_speculative_decoding(self):
+        """Verify candidate acceptance logic and speedup calculation."""
+        from core.engine.speculative import SpeculativeDecodingEngine
+        spec = SpeculativeDecodingEngine(gamma_lookahead=4)
+        accepted, count = spec.speculate_and_verify(
+            draft_tokens=["il", "modello", "MoE", "funziona"],
+            target_verification_probs=[0.98, 0.95, 0.92, 0.40]
+        )
+        self.assertEqual(count, 3)
+        self.assertEqual(accepted, ["il", "modello", "MoE"])
+        stats = spec.get_stats()
+        self.assertGreater(stats["total_accepted"], 0)
+
 
 if __name__ == "__main__":
     unittest.main()
+
