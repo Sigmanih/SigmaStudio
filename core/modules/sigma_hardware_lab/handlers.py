@@ -12,13 +12,14 @@ log = get_logger(__name__)
 
 def register_routes(app=None) -> None:
     """Registra tutte le route HTTP di Hardware Lab su FastAPI / Handler Adapter."""
-    from core.training_api import (
+    from core.hardware_api import (
         handle_hardware_status,
         handle_hardware_config,
         handle_hardware_restart_ollama,
         handle_hardware_gpu_processes,
         handle_hardware_gpu_kill,
     )
+
 
     get_routes = {
         '/api/hardware/status': handle_hardware_status,

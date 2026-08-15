@@ -320,7 +320,18 @@ def handle_router_train(self):
 
 SigmaAPIHandler.handle_router_train = handle_router_train
 
+from core.hardware_api import (
+    handle_hardware_status, handle_hardware_gpu_processes, handle_hardware_config,
+    handle_hardware_restart_ollama, handle_hardware_gpu_kill
+)
+SigmaAPIHandler.handle_hardware_status = handle_hardware_status
+SigmaAPIHandler.handle_hardware_gpu_processes = handle_hardware_gpu_processes
+SigmaAPIHandler.handle_hardware_config = handle_hardware_config
+SigmaAPIHandler.handle_hardware_restart_ollama = handle_hardware_restart_ollama
+SigmaAPIHandler.handle_hardware_gpu_kill = handle_hardware_gpu_kill
+
 # 19. Skills & Marketplace Handlers
+
 from core.integrations.handlers import (
     handle_skills_list, handle_skills_toggle, handle_apps_status,
     handle_apps_launch, handle_apps_autoconfigure,

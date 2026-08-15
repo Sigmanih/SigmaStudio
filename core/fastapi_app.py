@@ -267,6 +267,16 @@ FastAPIHandlerAdapter.handle_pipeline_start = handle_pipeline_start
 FastAPIHandlerAdapter.handle_pipeline_status = handle_pipeline_status
 FastAPIHandlerAdapter.handle_pipeline_stop = handle_pipeline_stop
 
+from core.hardware_api import (
+    handle_hardware_status, handle_hardware_gpu_processes, handle_hardware_config,
+    handle_hardware_restart_ollama, handle_hardware_gpu_kill
+)
+FastAPIHandlerAdapter.handle_hardware_status = handle_hardware_status
+FastAPIHandlerAdapter.handle_hardware_gpu_processes = handle_hardware_gpu_processes
+FastAPIHandlerAdapter.handle_hardware_config = handle_hardware_config
+FastAPIHandlerAdapter.handle_hardware_restart_ollama = handle_hardware_restart_ollama
+FastAPIHandlerAdapter.handle_hardware_gpu_kill = handle_hardware_gpu_kill
+
 # Caricamento dinamico dei moduli opzionali installati (Creative Lab, Domotica, etc.)
 try:
     from core.module_loader import ModuleLoader
@@ -274,6 +284,7 @@ try:
     module_loader.load_installed(app)
 except Exception as _mod_err:
     log.warning(f"[FastAPI] Avviso inizializzazione ModuleLoader: {_mod_err}")
+
 
 
 from core.integrations.handlers import (
