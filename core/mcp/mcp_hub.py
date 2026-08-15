@@ -22,7 +22,6 @@ from core.mcp.calendar_server import CalendarMCPServer
 from core.mcp.client import ExternalMCPServer
 from core.mcp.developer_server import DeveloperMCPServer
 from core.mcp.email_server import EmailMCPServer
-from core.mcp.homeassistant_server import HomeAssistantMCPServer
 from core.mcp.inference_server import InferenceMCPServer
 from core.mcp.memory_server import MemoryMCPServer
 from core.mcp.messaging_server import MessagingMCPServer
@@ -36,11 +35,11 @@ BUILTIN_SERVERS = [
     DeveloperMCPServer,
     InferenceMCPServer,
     NetworkMCPServer,
-    HomeAssistantMCPServer,
     EmailMCPServer,
     MessagingMCPServer,
     CalendarMCPServer,
 ]
+
 
 
 

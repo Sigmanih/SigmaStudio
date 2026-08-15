@@ -127,9 +127,25 @@ def _find_comfyui() -> str:
 
 
 def _find_blender() -> str:
-    """Riusa il rilevatore del BlenderBridge: una sola verità sul percorso."""
-    from core.creative.three_d.blender_bridge import BlenderBridge
-    return BlenderBridge('')._find_blender()
+    """Rileva l'eseguibile di Blender se installato."""
+    try:
+        from core.modules.sigma_creative_lab.backend.three_d.blender_bridge import BlenderBridge
+        return BlenderBridge('')._find_blender()
+    except Exception:
+        pass
+    import shutil
+    b = shutil.which("blender")
+    if b:
+        return b
+    import os
+    from pathlib import Path
+    prog_files = Path(os.environ.get("ProgramFiles", r"C:\Program Files")) / "Blender Foundation"
+    if prog_files.is_dir():
+        for bl_dir in sorted(prog_files.glob("Blender*"), reverse=True):
+            exe = bl_dir / "blender.exe"
+            if exe.is_file():
+                return str(exe)
+    return ""
 
 
 APPS: tuple[ManagedApp, ...] = (

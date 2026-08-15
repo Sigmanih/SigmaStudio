@@ -103,15 +103,23 @@ export default function Sidebar({
   const [localTopicsCount, setLocalTopicsCount] = React.useState(0);
   const [assetCount, setAssetCount] = React.useState(0);
 
-  React.useEffect(() => {
+  const { modulesState } = useModuleState();
+  const isAudioInstalled = modulesState.audio_studio === true;
+  const isDomoticaInstalled = modulesState.sigma_domotica === true;
+  const isCreativeInstalled = modulesState.sigma_creative_lab === true;
+  const isHardwareInstalled = modulesState.sigma_hardware_lab === true;
+  const isResearchInstalled = modulesState.sigma_research_lab === true;
+  const isTrainingInstalled = modulesState.sigma_training_lab === true;
+  const isRoadmapInstalled = modulesState.sigma_roadmap === true;
+
+  // Poll for counts (chat sessions, manifesti, topics, etc.)
+  useEffect(() => {
     const updateCounts = () => {
       try {
-        const data = localStorage.getItem('sigma_chat_sessions');
-        if (data) {
-          const parsed = JSON.parse(data);
-          if (Array.isArray(parsed)) {
-            setChatCount(parsed.length);
-          }
+        const chatSessions = localStorage.getItem('sigma_chat_sessions');
+        if (chatSessions) {
+          const parsed = JSON.parse(chatSessions);
+          if (Array.isArray(parsed)) setChatCount(parsed.length);
         } else {
           setChatCount(0);
         }
@@ -119,23 +127,27 @@ export default function Sidebar({
         setChatCount(0);
       }
 
-      fetch('/api/research/list')
-        .then(res => res.json())
-        .then(data => {
-          if (data.success && Array.isArray(data.sessions)) {
-            setResearchCount(data.sessions.length);
-          }
-        })
-        .catch(() => {});
+      if (isResearchInstalled) {
+        fetch('/api/research/list')
+          .then(res => res.json())
+          .then(data => {
+            if (data.success && Array.isArray(data.sessions)) {
+              setResearchCount(data.sessions.length);
+            }
+          })
+          .catch(() => {});
+      }
 
-      fetch('/api/training/jobs')
-        .then(res => res.json())
-        .then(data => {
-          if (data.success && Array.isArray(data.jobs)) {
-            setTrainingCompleted(data.jobs.filter(j => j.status === 'completed' || j.status === 'running').length);
-          }
-        })
-        .catch(() => {});
+      if (isTrainingInstalled) {
+        fetch('/api/training/jobs')
+          .then(res => res.json())
+          .then(data => {
+            if (data.success && Array.isArray(data.jobs)) {
+              setTrainingCompleted(data.jobs.filter(j => j.status === 'completed' || j.status === 'running').length);
+            }
+          })
+          .catch(() => {});
+      }
 
       fetch('/api/topics')
         .then(res => res.json())
@@ -154,30 +166,22 @@ export default function Sidebar({
           } catch (e) {}
         });
 
-      fetch('/api/creative/stats')
-        .then(res => res.json())
-        .then(data => {
-          if (data.assets) {
-            setAssetCount(data.assets);
-          }
-        })
-        .catch(() => {});
+      if (isCreativeInstalled) {
+        fetch('/api/creative/stats')
+          .then(res => res.json())
+          .then(data => {
+            if (data.assets) {
+              setAssetCount(data.assets);
+            }
+          })
+          .catch(() => {});
+      }
     };
 
     updateCounts();
-    const interval = setInterval(updateCounts, 4000);
+    const interval = setInterval(updateCounts, 5000);
     return () => clearInterval(interval);
-  }, []);
-
-  const { modulesState } = useModuleState();
-  const isAudioInstalled = modulesState.audio_studio === true;
-  const isDomoticaInstalled = modulesState.sigma_domotica === true;
-  const isCreativeInstalled = modulesState.sigma_creative_lab === true;
-  const isHardwareInstalled = modulesState.sigma_hardware_lab === true;
-  const isResearchInstalled = modulesState.sigma_research_lab === true;
-  const isTrainingInstalled = modulesState.sigma_training_lab === true;
-  const isRoadmapInstalled = modulesState.sigma_roadmap === true;
-
+  }, [isResearchInstalled, isTrainingInstalled, isCreativeInstalled]);
 
   const taskInCorso = tasks.filter(t => t.status === 'in_corso' || !t.status).length;
   const taskDone = tasks.filter(t => t.status === 'done').length;
