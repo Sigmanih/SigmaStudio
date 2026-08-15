@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import {
   Search, Download, Star, ArrowDown, Sparkles, Filter, CheckCircle2,
   Layers, Cpu, Activity, ExternalLink, HardDrive, ArrowUpDown, ChevronDown,
-  Calendar, RefreshCw, PlusCircle, ShieldCheck
+  Calendar, RefreshCw, PlusCircle, ShieldCheck, FolderDown, FileCode
 } from 'lucide-react';
 
 const CATEGORIES = [
@@ -69,6 +69,7 @@ export default function HfBrowser({ isLight, addToast, onDownloadStarted }) {
   const [modelDetails, setModelDetails] = useState(null);
   const [loadingDetails, setLoadingDetails] = useState(false);
   const [downloadingFile, setDownloadingFile] = useState(null);
+  const [downloadingRepo, setDownloadingRepo] = useState(false);
 
   const cardBg = isLight ? '#ffffff' : '#0d1019';
   const cardBorder = isLight ? '1px solid rgba(190, 160, 110, 0.3)' : '1px solid rgba(255, 255, 255, 0.08)';
@@ -136,7 +137,7 @@ export default function HfBrowser({ isLight, addToast, onDownloadStarted }) {
     }
   };
 
-  const handleStartDownload = async (modelId, filename, downloadUrl) => {
+  const handleStartSingleDownload = async (modelId, filename, downloadUrl) => {
     setDownloadingFile(filename);
     try {
       const res = await fetch('/api/models/hf/download/start', {
@@ -159,6 +160,32 @@ export default function HfBrowser({ isLight, addToast, onDownloadStarted }) {
       if (addToast) addToast(`❌ Errore di rete: ${e.message}`, 'error');
     } finally {
       setDownloadingFile(null);
+    }
+  };
+
+  const handleStartWholeRepoDownload = async (modelId, filesList = null) => {
+    setDownloadingRepo(true);
+    try {
+      const res = await fetch('/api/models/hf/download/repo', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          model_id: modelId,
+          files: filesList
+        })
+      });
+      const json = await res.json();
+      if (json.success) {
+        if (addToast) addToast(`🚀 Download avviato per l'intero modello ${modelId}!`, 'success');
+        if (onDownloadStarted) onDownloadStarted(json.task);
+        setSelectedModel(null);
+      } else {
+        if (addToast) addToast(`❌ Errore: ${json.error}`, 'error');
+      }
+    } catch (e) {
+      if (addToast) addToast(`❌ Errore di rete: ${e.message}`, 'error');
+    } finally {
+      setDownloadingRepo(false);
     }
   };
 
@@ -407,7 +434,6 @@ export default function HfBrowser({ isLight, addToast, onDownloadStarted }) {
                     <span style={{ color: '#00d2ff', fontWeight: 700 }}>
                       {m.recommended_gpu || '⚡ SigmaEngine'}
                     </span>
-                    {/* Direct Hugging Face External Link */}
                     <a
                       href={m.hf_url || `https://huggingface.co/${m.id}`}
                       target="_blank"
@@ -423,21 +449,39 @@ export default function HfBrowser({ isLight, addToast, onDownloadStarted }) {
                     </a>
                   </div>
 
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      handleSelectModel(m);
-                    }}
-                    style={{
-                      width: '100%', marginTop: '10px',
-                      padding: '7px 12px', borderRadius: '8px',
-                      border: 'none', background: 'rgba(255, 184, 108, 0.15)', color: isLight ? '#ea580c' : '#ffb86c',
-                      fontSize: '0.74rem', fontWeight: 800, cursor: 'pointer',
-                      display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '5px'
-                    }}
-                  >
-                    <Download size={13} /> Seleziona Quantizzazione & Scarica
-                  </button>
+                  {/* Actions: 1-Click Whole Repo Download or Inspect Files */}
+                  <div style={{ display: 'flex', gap: '6px', marginTop: '10px' }}>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleStartWholeRepoDownload(m.id);
+                      }}
+                      style={{
+                        flex: 1, padding: '7px 10px', borderRadius: '8px',
+                        border: 'none', background: 'linear-gradient(135deg, #ffb86c, #ea580c)', color: '#ffffff',
+                        fontSize: '0.74rem', fontWeight: 800, cursor: 'pointer',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px',
+                        boxShadow: '0 0 10px rgba(255, 184, 108, 0.25)'
+                      }}
+                    >
+                      <FolderDown size={13} /> Scarica Tutto
+                    </button>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleSelectModel(m);
+                      }}
+                      style={{
+                        padding: '7px 10px', borderRadius: '8px',
+                        border: subBorder, background: subBg, color: textPrimary,
+                        fontSize: '0.72rem', fontWeight: 700, cursor: 'pointer',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center'
+                      }}
+                      title="Ispeziona file e quantizzazioni"
+                    >
+                      <FileCode size={13} />
+                    </button>
+                  </div>
                 </div>
               </div>
             ))}
@@ -473,7 +517,7 @@ export default function HfBrowser({ isLight, addToast, onDownloadStarted }) {
           zIndex: 10030, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px'
         }}>
           <div style={{
-            maxWidth: '580px', width: '100%',
+            maxWidth: '620px', width: '100%',
             background: cardBg, border: cardBorder, borderRadius: '16px',
             padding: '20px', display: 'flex', flexDirection: 'column', gap: '14px',
             boxShadow: '0 25px 50px rgba(0, 0, 0, 0.7)'
@@ -482,14 +526,13 @@ export default function HfBrowser({ isLight, addToast, onDownloadStarted }) {
               <div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                   <span style={{ fontSize: '0.66rem', color: '#ffb86c', fontWeight: 800, textTransform: 'uppercase' }}>
-                    FILE & QUANTIZZAZIONI
+                    DETTAGLI MODELLO
                   </span>
                   {selectedModel.release_date_label && (
                     <span style={{ fontSize: '0.66rem', color: textMuted, display: 'flex', alignItems: 'center', gap: '3px' }}>
                       <Calendar size={11} /> {selectedModel.release_date_label}
                     </span>
                   )}
-                  {/* External link in Modal */}
                   <a
                     href={selectedModel.hf_url || `https://huggingface.co/${selectedModel.id}`}
                     target="_blank"
@@ -506,7 +549,7 @@ export default function HfBrowser({ isLight, addToast, onDownloadStarted }) {
                   {selectedModel.name}
                 </h3>
               </div>
-              <button onClick={() => setSelectedModel(null)} style={{ background: 'none', border: 'none', color: textMuted, cursor: 'pointer' }}>
+              <button onClick={() => setSelectedModel(null)} style={{ background: 'none', border: 'none', color: textMuted, cursor: 'pointer', fontSize: '0.8rem' }}>
                 Chiudi
               </button>
             </div>
@@ -517,40 +560,80 @@ export default function HfBrowser({ isLight, addToast, onDownloadStarted }) {
                 <span>Interrogazione live dei rami Hugging Face per i file del modello...</span>
               </div>
             ) : (
-              <div style={{ maxHeight: '280px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                {(modelDetails?.files || []).map((file, idx) => (
-                  <div
-                    key={idx}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                {/* HERO BANNER: 1-CLICK WHOLE REPO DOWNLOAD */}
+                <div style={{
+                  padding: '14px', borderRadius: '12px',
+                  background: isLight ? '#fef3c7' : 'linear-gradient(135deg, rgba(255, 184, 108, 0.15), rgba(234, 88, 12, 0.15))',
+                  border: '1.5px solid #ffb86c',
+                  display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px', flexWrap: 'wrap'
+                }}>
+                  <div>
+                    <div style={{ fontSize: '0.86rem', fontWeight: 800, color: textPrimary, display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <FolderDown size={16} color="#ffb86c" /> Scarica Intero Modello ({modelDetails?.files?.length || 1} file / shard)
+                    </div>
+                    <div style={{ fontSize: '0.7rem', color: textMuted, marginTop: '2px' }}>
+                      Scarica tutti i file (pesi, tokenizer, config) in un colpo solo per SigmaEngine.
+                    </div>
+                  </div>
+
+                  <button
+                    onClick={() => handleStartWholeRepoDownload(selectedModel.id, modelDetails?.files)}
+                    disabled={downloadingRepo}
                     style={{
-                      padding: '10px 12px', borderRadius: '10px',
-                      background: subBg, border: subBorder,
-                      display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px'
+                      padding: '8px 16px', borderRadius: '8px',
+                      border: 'none', background: 'linear-gradient(135deg, #ffb86c, #ea580c)',
+                      color: '#ffffff', fontSize: '0.78rem', fontWeight: 800, cursor: 'pointer',
+                      display: 'flex', alignItems: 'center', gap: '6px',
+                      boxShadow: '0 0 12px rgba(255, 184, 108, 0.35)'
                     }}
                   >
-                    <div style={{ minWidth: 0 }}>
-                      <div style={{ fontSize: '0.78rem', fontWeight: 700, color: textPrimary, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                        {file.filename}
-                      </div>
-                      <div style={{ fontSize: '0.66rem', color: textMuted }}>
-                        {file.is_gguf ? '⚡ Formato GGUF (Ottimizzato SigmaEngine)' : 'Safetensors'}
-                      </div>
-                    </div>
+                    {downloadingRepo ? <Activity className="mh-spin" size={13} /> : <Download size={13} />}
+                    {downloadingRepo ? 'Avvio...' : 'Scarica Modello Completo'}
+                  </button>
+                </div>
 
-                    <button
-                      onClick={() => handleStartDownload(selectedModel.id, file.filename, file.download_url)}
-                      disabled={downloadingFile === file.filename}
-                      style={{
-                        padding: '6px 12px', borderRadius: '6px',
-                        border: 'none', background: 'linear-gradient(135deg, #ffb86c, #ea580c)',
-                        color: '#fff', fontSize: '0.72rem', fontWeight: 800, cursor: 'pointer',
-                        display: 'flex', alignItems: 'center', gap: '4px', flexShrink: 0
-                      }}
-                    >
-                      {downloadingFile === file.filename ? <Activity className="mh-spin" size={12} /> : <Download size={12} />}
-                      {downloadingFile === file.filename ? 'Avvio...' : 'Scarica'}
-                    </button>
+                {/* Individual files accordion/list */}
+                <div>
+                  <div style={{ fontSize: '0.72rem', fontWeight: 800, color: textMuted, textTransform: 'uppercase', marginBottom: '6px' }}>
+                    Oppure scarica singoli file / quantizzazioni ({modelDetails?.files?.length || 0}):
                   </div>
-                ))}
+                  <div style={{ maxHeight: '220px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                    {(modelDetails?.files || []).map((file, idx) => (
+                      <div
+                        key={idx}
+                        style={{
+                          padding: '8px 12px', borderRadius: '8px',
+                          background: subBg, border: subBorder,
+                          display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px'
+                        }}
+                      >
+                        <div style={{ minWidth: 0 }}>
+                          <div style={{ fontSize: '0.76rem', fontWeight: 700, color: textPrimary, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                            {file.filename}
+                          </div>
+                          <div style={{ fontSize: '0.64rem', color: textMuted }}>
+                            {file.is_gguf ? '⚡ GGUF' : (file.is_safetensors ? '📦 Safetensors' : 'Config / JSON')}
+                          </div>
+                        </div>
+
+                        <button
+                          onClick={() => handleStartSingleDownload(selectedModel.id, file.filename, file.download_url)}
+                          disabled={downloadingFile === file.filename}
+                          style={{
+                            padding: '4px 10px', borderRadius: '6px',
+                            border: subBorder, background: subBg,
+                            color: textPrimary, fontSize: '0.68rem', fontWeight: 700, cursor: 'pointer',
+                            display: 'flex', alignItems: 'center', gap: '4px', flexShrink: 0
+                          }}
+                        >
+                          {downloadingFile === file.filename ? <Activity className="mh-spin" size={10} /> : <Download size={10} />}
+                          Singolo
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
               </div>
             )}
           </div>

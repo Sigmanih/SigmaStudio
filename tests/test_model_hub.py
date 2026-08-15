@@ -54,10 +54,28 @@ class TestModelHubAPI(unittest.TestCase):
             self.assertGreater(item.get("size_gb", 0), 32.0)
             self.assertLessEqual(item.get("size_gb", 0), 48.0)
 
+    def test_download_repo_endpoint(self):
+        """POST /api/models/hf/download/repo should accept multi-file/repo download tasks."""
+        response = self.client.post("/api/models/hf/download/repo", json={
+            "model_id": "Qwen/Qwen2.5-7B-Instruct",
+            "files": [
+                {"filename": "config.json", "download_url": "https://huggingface.co/Qwen/Qwen2.5-7B-Instruct/resolve/main/config.json"},
+                {"filename": "tokenizer.json", "download_url": "https://huggingface.co/Qwen/Qwen2.5-7B-Instruct/resolve/main/tokenizer.json"}
+            ]
+        })
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertTrue(data.get("success"))
+        self.assertIn("task", data)
+        self.assertTrue(data["task"].get("is_repo_download"))
+        self.assertEqual(data["task"].get("total_files"), 2)
+
+    def test_local_models_list_endpoint(self):
         """GET /api/models/local/list should return 200 with local models list."""
         response = self.client.get("/api/models/local/list")
         self.assertEqual(response.status_code, 200)
         data = response.json()
+
         self.assertTrue(data.get("success"))
         self.assertIn("models", data)
         self.assertIsInstance(data["models"], list)

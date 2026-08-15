@@ -143,6 +143,32 @@ def handle_models_hf_download_start(self):
         self.send_json_response({"success": False, "error": str(e)}, 500)
 
 
+def handle_models_hf_download_repo(self):
+    """POST /api/models/hf/download/repo — Scarica l'intero modello con tutti i suoi file e shard."""
+    try:
+        body = self.read_json_body() if hasattr(self, 'read_json_body') else {}
+        model_id = body.get("model_id")
+        files = body.get("files")
+
+        if not model_id:
+            self.send_json_response({"success": False, "error": "model_id obbligatorio"}, 400)
+            return
+
+        cfg = _load_hub_config()
+        token = cfg.get("hf_token") or None
+
+        task = downloader_manager.start_repo_download(
+            model_id=model_id,
+            files_list=files,
+            hf_token=token
+        )
+        self.send_json_response({"success": True, "task": task})
+    except Exception as e:
+        log.error("Error in handle_models_hf_download_repo: %s", e)
+        self.send_json_response({"success": False, "error": str(e)}, 500)
+
+
+
 def handle_models_hf_downloads_list(self):
     """GET /api/models/hf/downloads — Restituisce tutti i download attivi e completati."""
     try:

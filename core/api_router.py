@@ -233,13 +233,14 @@ def register_post_handlers(handler_class):
         '/api/marketplace/rebuild': 'handle_marketplace_rebuild',
         '/api/manifesti/install_from_hub': 'handle_manifesti_install_from_hub',
         '/api/manifesti/uninstall': 'handle_manifesti_uninstall',
-        # Model Hub & HF Downloader
         '/api/models/hf/download/start': 'handle_models_hf_download_start',
+        '/api/models/hf/download/repo': 'handle_models_hf_download_repo',
         '/api/models/hf/download/cancel': 'handle_models_hf_download_cancel',
         '/api/models/engine/load': 'handle_models_engine_load',
         '/api/models/engine/unload': 'handle_models_engine_unload',
         '/api/models/config': 'handle_models_config_save',
     }
+
 
 
 

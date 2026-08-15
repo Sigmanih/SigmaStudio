@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Download, Activity, CheckCircle2, XCircle, Trash2, ArrowRight, Zap, RefreshCw, Layers } from 'lucide-react';
+import { Download, Activity, CheckCircle2, XCircle, Trash2, ArrowRight, Zap, RefreshCw, Layers, HardDrive } from 'lucide-react';
 
 export default function DownloadManager({ isLight, addToast, onDeployRequested }) {
   const [downloads, setDownloads] = useState([]);
@@ -30,7 +30,7 @@ export default function DownloadManager({ isLight, addToast, onDeployRequested }
 
   useEffect(() => {
     fetchDownloads();
-    const interval = setInterval(fetchDownloads, 1500);
+    const interval = setInterval(fetchDownloads, 1200);
     return () => clearInterval(interval);
   }, [fetchDownloads]);
 
@@ -43,7 +43,7 @@ export default function DownloadManager({ isLight, addToast, onDeployRequested }
       });
       const json = await res.json();
       if (json.success) {
-        if (addToast) addToast(`Download ${taskId} annullato.`, 'info');
+        if (addToast) addToast(`Download #${taskId} annullato.`, 'info');
         fetchDownloads();
       }
     } catch (e) {
@@ -63,13 +63,14 @@ export default function DownloadManager({ isLight, addToast, onDeployRequested }
             Coda di Download in Background
           </h2>
           <div style={{ fontSize: '0.72rem', color: textMuted, marginTop: '2px' }}>
-            {downloads.length} Download totali • Streaming ad alta velocità con supporto resume
+            {downloads.length} Download registrati • Supporto per repository completi e multi-shard
           </div>
         </div>
 
         <button
           onClick={fetchDownloads}
           style={{ background: 'none', border: 'none', color: textMuted, cursor: 'pointer', padding: '4px' }}
+          title="Aggiorna lista"
         >
           <RefreshCw size={15} />
         </button>
@@ -87,7 +88,7 @@ export default function DownloadManager({ isLight, addToast, onDeployRequested }
         }}>
           <Download size={28} color="#00d2ff" />
           <div style={{ fontSize: '0.86rem', fontWeight: 700, color: textPrimary }}>Nessun download attivo al momento</div>
-          <div style={{ fontSize: '0.74rem' }}>Esplora Hugging Face e avvia il download di un modello per vederlo qui in tempo reale.</div>
+          <div style={{ fontSize: '0.74rem' }}>Esplora Hugging Face e avvia il download completo di un modello per vederlo qui in tempo reale.</div>
         </div>
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
@@ -106,18 +107,31 @@ export default function DownloadManager({ isLight, addToast, onDeployRequested }
                   display: 'flex', flexDirection: 'column', gap: '10px'
                 }}
               >
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px', flexWrap: 'wrap' }}>
                   <div>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                       <span style={{ fontSize: '0.64rem', padding: '1px 5px', borderRadius: '3px', background: subBg, color: textMuted, fontFamily: 'monospace' }}>
                         #{t.task_id}
                       </span>
-                      <span style={{ fontSize: '0.86rem', fontWeight: 800, color: textPrimary }}>
+                      <span style={{ fontSize: '0.88rem', fontWeight: 800, color: textPrimary }}>
                         {t.filename}
                       </span>
+                      {t.is_repo_download && (
+                        <span style={{
+                          fontSize: '0.62rem', padding: '2px 6px', borderRadius: '4px',
+                          background: 'rgba(0, 210, 255, 0.15)', color: '#00d2ff', fontWeight: 800
+                        }}>
+                          MODULO COMPLETO ({t.total_files} file)
+                        </span>
+                      )}
                     </div>
                     <div style={{ fontSize: '0.68rem', color: textMuted, marginTop: '2px' }}>
-                      Repository: {t.model_id}
+                      Repository: <strong>{t.model_id}</strong>
+                      {t.is_repo_download && isDown && t.current_file_name && (
+                        <span style={{ color: '#ffb86c', marginLeft: '6px' }}>
+                          • Scaricamento File {t.current_file_idx}/{t.total_files}: <code>{t.current_file_name}</code>
+                        </span>
+                      )}
                     </div>
                   </div>
 
