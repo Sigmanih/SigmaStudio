@@ -343,7 +343,7 @@ def search_hf_models(
         search_query = query.strip()
         if not search_query:
             if official_only:
-                search_query = "qwen OR meta-llama OR deepseek-ai OR mistralai"
+                search_query = "qwen"
             elif category == "code":
                 search_query = "coder"
             elif category == "reasoning":
@@ -372,12 +372,14 @@ def search_hf_models(
             "limit": fetch_limit,
             "full": "true"
         }
-        if category in cat_tag_map:
+        # Only restrict pipeline_tag for specific non-LLM categories
+        if category in ["vision", "audio"]:
             params["pipeline_tag"] = cat_tag_map[category]
         if cursor:
             params["cursor"] = cursor
 
         url = f"{HF_API_BASE}/models?{urllib.parse.urlencode(params)}"
+
         req = urllib.request.Request(url)
         req.add_header("User-Agent", "SigmaStudio-ModelHub/2.0")
         if hf_token:
