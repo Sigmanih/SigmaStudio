@@ -13,19 +13,6 @@ import { useApp } from '../contexts/AppContext';
 const KERNEL_MODULES = [
 
   {
-    id: 'research_lab',
-    name: 'Pipelines Lab & Dynamic Swarm',
-    category: 'Orchestrazione Multi-Agente',
-    icon: FlaskConical,
-    color: '#7c5bf0',
-    tabType: 'research_lab',
-    version: 'v8.0.0',
-    status: 'installed',
-    description: 'Pianificatore DAG di swarm multi-agente, decomposizione automatica di obiettivi scientifici e self-healing dei fallimenti.',
-    tags: ['Swarm DAG', 'Pytest Self-Healing', 'Multi-Agent', 'Roadmap'],
-    author: 'Sigma Core Team'
-  },
-  {
     id: 'training_lab',
     name: 'Training Lab & SLM Forge',
     category: 'Fine-Tuning & Valutazione',
@@ -130,8 +117,24 @@ const OPTIONAL_MODULES = [
     tags: ['NVIDIA NVML', 'GPU VRAM', 'Ollama Daemon', 'Process Manager', 'CUDA Telemetry'],
     size: '1 MB',
     author: 'Sigma Core Team'
+  },
+  {
+    id: 'sigma_research_lab',
+    name: 'Pipelines Lab & Dynamic Swarm',
+    category: 'Orchestrazione Multi-Agente',
+    icon: FlaskConical,
+    color: '#7c5bf0',
+    tabType: 'research_lab',
+    version: 'v1.0.0',
+    description: 'Pianificatore DAG di swarm multi-agente, decomposizione automatica di obiettivi scientifici, feedback loop iterativo e self-healing dei task.',
+    gitUrl: 'https://github.com/Sigmanih/SigmaStudio-Moduli/tree/main/modules/sigma_research_lab',
+    branch: 'main',
+    tags: ['Swarm DAG', 'Multi-Agent', 'Workflow Automation', 'Pipeline Designer', 'Self-Healing'],
+    size: '1.5 MB',
+    author: 'Sigma Core Team'
   }
 ];
+
 
 
 // ==============================================================================

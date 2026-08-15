@@ -9,7 +9,6 @@ import ManifestiGallery from './Workspace/ManifestiGallery';
 import ModuleView from './Workspace/ModuleView';
 import { MarkdownPreview, MappaArgomenti, SigmaLabEditor } from './SigmaLab';
 import ChatWorkspace from './Chat/ChatWorkspace';
-import ResearchLabTab from './Workspace/ResearchLabTab';
 import TrainingLab from './TrainingLab';
 
 import AccountTab from './AccountTab';
@@ -180,8 +179,18 @@ export default function Workspace({
       return <ChatWorkspace />;
     }
     if (tab.type === 'research_lab') {
-      return <ResearchLabTab onTasksUpdated={() => {}} addToast={(msg, type, duration) => {}} />;
+      const isResearchInstalled = modulesState.sigma_research_lab === true;
+      const LazyResearch = getLazyModule('research_lab');
+      if (!isResearchInstalled || !LazyResearch) {
+        return <ModuleNotInstalled tabType="research_lab" openTab={openTab} />;
+      }
+      return (
+        <React.Suspense fallback={<div style={{ padding: '32px', color: '#94a3b8', textAlign: 'center' }}>Caricamento Pipelines Lab...</div>}>
+          <LazyResearch onTasksUpdated={() => {}} addToast={(msg, type, duration) => {}} openTab={openTab} />
+        </React.Suspense>
+      );
     }
+
     if (tab.type === 'training_lab') {
       return (
         <TrainingLab

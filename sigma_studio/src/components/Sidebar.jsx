@@ -174,6 +174,7 @@ export default function Sidebar({
   const isDomoticaInstalled = modulesState.sigma_domotica === true;
   const isCreativeInstalled = modulesState.sigma_creative_lab === true;
   const isHardwareInstalled = modulesState.sigma_hardware_lab === true;
+  const isResearchInstalled = modulesState.sigma_research_lab === true;
 
 
   const taskInCorso = tasks.filter(t => t.status === 'in_corso' || !t.status).length;
@@ -352,14 +353,17 @@ export default function Sidebar({
 
 
 
-          <SidebarItem 
-            icon={FlaskConical} 
-            label="Pipelines Lab" 
-            badge={researchCount > 0 ? researchCount : 0}
-            badgeColor="rgba(188,140,255,0.15)"
-            active={activeTabId != null && activeTabId.startsWith('research_lab')}
-            onClick={() => openTab({ name: '🔬 Pipelines Lab' }, 'research_lab')} 
-          />
+          {isResearchInstalled && (
+            <SidebarItem 
+              icon={FlaskConical} 
+              label="Pipelines Lab" 
+              badge={researchCount > 0 ? researchCount : 0}
+              badgeColor="rgba(188,140,255,0.15)"
+              active={activeTabId != null && activeTabId.startsWith('research_lab')}
+              onClick={() => openTab({ name: '🔬 Pipelines Lab' }, 'research_lab')} 
+            />
+          )}
+
 
           {!hiddenTabs.has('training_lab') && (
             <SidebarItem
