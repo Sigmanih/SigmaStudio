@@ -294,8 +294,9 @@ class TestIntegrations(GovernanceTestCase):
 
     def test_read_only_tools_stay_safe(self):
         by_name = {t["name"]: t for t in mcp_hub.get_aggregated_tools()}
-        for name in ("read_inbox", "calendar_list_events", "search_web", "query_vector_db", "run_pytest"):
+        for name in ("read_inbox", "calendar_list_events", "search_web", "run_pytest"):
             self.assertEqual(by_name[name]["safety"], governance.SAFE)
+
 
 
 if __name__ == "__main__":

@@ -3,7 +3,7 @@
 # ==============================================================================
 import unittest
 from core.mcp import (
-    mcp_hub, MemoryMCPServer, DeveloperMCPServer,
+    mcp_hub, DeveloperMCPServer,
     InferenceMCPServer, NetworkMCPServer, EmailMCPServer,
     MessagingMCPServer, CalendarMCPServer
 )
@@ -15,16 +15,15 @@ class TestMCPServers(unittest.TestCase):
         servers = mcp_hub.list_all_servers()
         names = {s["name"] for s in servers}
         self.assertEqual(len(servers), len(names), "nomi di server duplicati sull'hub")
-        for expected in ("Memory MCP", "Developer MCP", "Inference MCP", "Network MCP",
+        for expected in ("Developer MCP", "Inference MCP", "Network MCP",
                          "Email MCP", "Messaging MCP", "Calendar MCP"):
             self.assertIn(expected, names)
 
     def test_tools_aggregation(self):
         """Verify that tools are aggregated across servers."""
         tools = mcp_hub.get_aggregated_tools()
-        self.assertGreater(len(tools), 5)
+        self.assertGreater(len(tools), 4)
         tool_names = {t["name"] for t in tools}
-        self.assertIn("query_vector_db", tool_names)
         self.assertIn("run_pytest", tool_names)
         self.assertIn("select_routed_model", tool_names)
         self.assertIn("discover_peers", tool_names)
@@ -32,11 +31,9 @@ class TestMCPServers(unittest.TestCase):
     def test_resources_aggregation(self):
         """Verify that resources are aggregated across servers."""
         resources = mcp_hub.get_aggregated_resources()
-        self.assertGreater(len(resources), 2)
+        self.assertGreater(len(resources), 0)
         uris = {r["uri"] for r in resources}
         self.assertIn("developer://git/status", uris)
-        self.assertIn("memory://knowledge/graph", uris)
-
 
     def test_json_rpc_dispatch(self):
         """Test JSON-RPC 2.0 dispatching on MCP Hub."""

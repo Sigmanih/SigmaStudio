@@ -111,6 +111,7 @@ export default function Sidebar({
   const isResearchInstalled = modulesState.sigma_research_lab === true;
   const isTrainingInstalled = modulesState.sigma_training_lab === true;
   const isRoadmapInstalled = modulesState.sigma_roadmap === true;
+  const isKnowledgeInstalled = modulesState.sigma_knowledge === true;
 
   // Poll for counts (chat sessions, manifesti, topics, etc.)
   useEffect(() => {
@@ -149,22 +150,25 @@ export default function Sidebar({
           .catch(() => {});
       }
 
-      fetch('/api/topics')
-        .then(res => res.json())
-        .then(data => {
-          if (data.topics && Array.isArray(data.topics)) {
-            setLocalTopicsCount(data.topics.length);
-          }
-        })
-        .catch(() => {
-          try {
-            const k = localStorage.getItem('sigma_knowledge_topics');
-            if (k) {
-              const parsed = JSON.parse(k);
-              if (Array.isArray(parsed)) setLocalTopicsCount(parsed.length);
+      if (isKnowledgeInstalled) {
+        fetch('/api/topics')
+          .then(res => res.json())
+          .then(data => {
+            if (data.topics && Array.isArray(data.topics)) {
+              setLocalTopicsCount(data.topics.length);
             }
-          } catch (e) {}
-        });
+          })
+          .catch(() => {
+            try {
+              const k = localStorage.getItem('sigma_knowledge_topics');
+              if (k) {
+                const parsed = JSON.parse(k);
+                if (Array.isArray(parsed)) setLocalTopicsCount(parsed.length);
+              }
+            } catch (e) {}
+          });
+      }
+
 
       if (isCreativeInstalled) {
         fetch('/api/creative/stats')
@@ -181,7 +185,8 @@ export default function Sidebar({
     updateCounts();
     const interval = setInterval(updateCounts, 5000);
     return () => clearInterval(interval);
-  }, [isResearchInstalled, isTrainingInstalled, isCreativeInstalled]);
+  }, [isResearchInstalled, isTrainingInstalled, isCreativeInstalled, isKnowledgeInstalled]);
+
 
   const taskInCorso = tasks.filter(t => t.status === 'in_corso' || !t.status).length;
   const taskDone = tasks.filter(t => t.status === 'done').length;
@@ -322,14 +327,17 @@ export default function Sidebar({
             active={activeTabId != null && (activeTabId.startsWith('whitepaper') || activeTabId.startsWith('whitepapers_lib'))}
             onClick={() => openTab({ name: 'Manifesti' }, 'whitepapers_lib')} 
           />
-          <SidebarItem 
-            icon={PieChart} 
-            label="Argomenti & Memoria" 
-            badge={localTopicsCount > 0 || topicsCount > 0 ? Math.max(localTopicsCount, topicsCount) : 0}
-            badgeColor="rgba(0,210,255,0.15)"
-            active={activeTabId != null && activeTabId.startsWith('knowledge')}
-            onClick={() => openTab({ name: 'Argomenti' }, 'knowledge')} 
-          />
+          {isKnowledgeInstalled && (
+            <SidebarItem 
+              icon={PieChart} 
+              label="Argomenti & Memoria" 
+              badge={localTopicsCount > 0 || topicsCount > 0 ? Math.max(localTopicsCount, topicsCount) : 0}
+              badgeColor="rgba(0,210,255,0.15)"
+              active={activeTabId != null && activeTabId.startsWith('knowledge')}
+              onClick={() => openTab({ name: 'Argomenti' }, 'knowledge')} 
+            />
+          )}
+
         </nav>
 
         {/* ================================================================= */}

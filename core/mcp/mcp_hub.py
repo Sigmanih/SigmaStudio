@@ -23,7 +23,6 @@ from core.mcp.client import ExternalMCPServer
 from core.mcp.developer_server import DeveloperMCPServer
 from core.mcp.email_server import EmailMCPServer
 from core.mcp.inference_server import InferenceMCPServer
-from core.mcp.memory_server import MemoryMCPServer
 from core.mcp.messaging_server import MessagingMCPServer
 from core.mcp.network_server import NetworkMCPServer
 
@@ -31,7 +30,6 @@ log = get_logger(__name__)
 
 # Built-in kernel servers
 BUILTIN_SERVERS = [
-    MemoryMCPServer,
     DeveloperMCPServer,
     InferenceMCPServer,
     NetworkMCPServer,
@@ -39,6 +37,7 @@ BUILTIN_SERVERS = [
     MessagingMCPServer,
     CalendarMCPServer,
 ]
+
 
 
 

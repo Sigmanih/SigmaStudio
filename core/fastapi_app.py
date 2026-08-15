@@ -156,12 +156,6 @@ FastAPIHandlerAdapter.handle_swarm_agents = handle_swarm_agents
 FastAPIHandlerAdapter.handle_swarm_plan = handle_swarm_plan
 FastAPIHandlerAdapter.handle_swarm_execute = handle_swarm_execute
 
-from core.node_handler import (
-    handle_get_nodes, handle_create_node, handle_delete_node
-)
-FastAPIHandlerAdapter.handle_get_nodes = handle_get_nodes
-FastAPIHandlerAdapter.handle_create_node = handle_create_node
-FastAPIHandlerAdapter.handle_delete_node = handle_delete_node
 
 from core.module_handler import (
     handle_create_topic, handle_update_topic, handle_delete_topic,

@@ -6,12 +6,11 @@ import StudioEditor from './Workspace/StudioEditor';
 import ImageViewer from './Workspace/ImageViewer';
 import ManifestiGallery from './Workspace/ManifestiGallery';
 import ModuleView from './Workspace/ModuleView';
-import { MarkdownPreview, MappaArgomenti, SigmaLabEditor } from './SigmaLab';
+import { MarkdownPreview, SigmaLabEditor } from './SigmaLab';
 import ChatWorkspace from './Chat/ChatWorkspace';
 
 import AccountTab from './AccountTab';
 import McpHubTab from './McpHubTab';
-import KnowledgeNodeExplorer from './KnowledgeNodeExplorer';
 import DomoticaTab from './Workspace/DomoticaTab';
 import MarketplaceTab from './MarketplaceTab';
 import AIConfigTab from './AIConfigTab';
@@ -146,8 +145,18 @@ export default function Workspace({
       );
     }
     if (tab.type === 'mappa_argomenti' || tab.type === 'knowledge') {
-      return <MappaArgomenti onOpenFile={openTabFromMappa} />;
+      const isKnowledgeInstalled = modulesState.sigma_knowledge === true;
+      const LazyKnowledge = getLazyModule('knowledge');
+      if (!isKnowledgeInstalled || !LazyKnowledge) {
+        return <ModuleNotInstalled tabType="knowledge" openTab={openTab} />;
+      }
+      return (
+        <React.Suspense fallback={<div style={{ padding: '32px', color: '#94a3b8', textAlign: 'center' }}>Caricamento Argomenti & Memoria...</div>}>
+          <LazyKnowledge onOpenFile={openTabFromMappa} openTab={openTab} />
+        </React.Suspense>
+      );
     }
+
     if (tab.type === 'whitepapers_lib') {
       return (
         <ManifestiGallery 

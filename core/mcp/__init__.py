@@ -1,6 +1,5 @@
 from core.mcp.base_server import BaseMCPServer
 from core.mcp.governance import SAFE, SENSITIVE
-from core.mcp.memory_server import MemoryMCPServer
 from core.mcp.developer_server import DeveloperMCPServer
 from core.mcp.inference_server import InferenceMCPServer
 from core.mcp.network_server import NetworkMCPServer
@@ -14,7 +13,6 @@ __all__ = [
     "BaseMCPServer",
     "SAFE",
     "SENSITIVE",
-    "MemoryMCPServer",
     "DeveloperMCPServer",
     "InferenceMCPServer",
     "NetworkMCPServer",
@@ -25,6 +23,3 @@ __all__ = [
     "mcp_hub",
     "MCPHub",
 ]
-
-
-

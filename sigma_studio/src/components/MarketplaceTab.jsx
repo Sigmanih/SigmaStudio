@@ -14,19 +14,6 @@ const KERNEL_MODULES = [
 
 
   {
-    id: 'knowledge',
-    name: 'Research Lab & Knowledge Explorer',
-    category: 'Conoscenza & Calcolo',
-    icon: Layers,
-    color: '#3fb950',
-    tabType: 'knowledge',
-    version: 'v8.0.0',
-    status: 'installed',
-    description: 'Grafo relazionale force-directed D3.js, editor integrato con formule LaTeX KaTeX e sandbox protetta Pytest.',
-    tags: ['D3.js Graph', 'KaTeX LaTeX', 'PrismJS', 'Pytest Sandbox'],
-    author: 'Sigma Core Team'
-  },
-  {
     id: 'mcp_hub',
     name: 'MCP Tools & Governance Gateway',
     category: 'Protocollo & Governance',
@@ -149,8 +136,24 @@ const OPTIONAL_MODULES = [
     tags: ['Roadmap', 'Kanban', 'Calendar', 'Audit Trail', 'Task Management', 'Milestones'],
     size: '1 MB',
     author: 'Sigma Core Team'
+  },
+  {
+    id: 'sigma_knowledge',
+    name: 'Argomenti, Memoria & Knowledge Graph',
+    category: 'Conoscenza & Memoria',
+    icon: PieChart,
+    color: '#00d2ff',
+    tabType: 'knowledge',
+    version: 'v1.0.0',
+    description: 'Grafo relazionale interattivo D3.js, Universal Knowledge Nodes con supporto multi-formato, memoria episodica e RAG Memory MCP Server.',
+    gitUrl: 'https://github.com/Sigmanih/SigmaStudio-Moduli/tree/main/modules/sigma_knowledge',
+    branch: 'main',
+    tags: ['D3.js Graph', 'Knowledge Graph', 'Universal Nodes', 'Memory MCP', 'Episodic Context', 'RAG'],
+    size: '2 MB',
+    author: 'Sigma Core Team'
   }
 ];
+
 
 
 
