@@ -50,7 +50,7 @@ SKILLS: tuple[Skill, ...] = (
         provides=("conversazione", "orchestrazione agenti"),
     ),
     Skill(
-        id="creative", label="Creative Studio", icon="palette",
+        id="creative", label="Creative Lab", icon="palette",
         description="Generazione immagini, editing, 3D, materiali, video e pipeline a nodi.",
         tab_type="creative_studio",
         optional_apps=("comfyui", "blender"),

@@ -114,7 +114,7 @@ def handle_marketplace_modules(self):
         
         # Build kernel installed list
         installed_list = [
-            {"id": "creative_studio", "name": "Creative Studio 3D/2D", "status": "active", "installed": True},
+            {"id": "creative_studio", "name": "Creative Lab 3D/2D", "status": "active", "installed": True},
             {"id": "research_lab", "name": "Pipelines Lab & Dynamic Swarm", "status": "active", "installed": True},
             {"id": "training_lab", "name": "Training Lab & SLM Forge", "status": "active", "installed": True},
             {"id": "hardware_lab", "name": "Hardware Lab & VRAM", "status": "active", "installed": True},

@@ -179,7 +179,8 @@
   white-space: nowrap;
 }
 
-/* Download modelli (Creative Studio → Modelli) */
+/* Download modelli (Creative Lab → Modelli) */
+
 .cs-downloads { display: flex; flex-direction: column; gap: 12px; }
 .cs-downloads-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; flex-wrap: wrap; }
 .cs-download-list { display: flex; flex-direction: column; gap: 8px; }
@@ -1252,7 +1253,8 @@ body.theme-light,
 }
 
 /* ==============================================================================
-   Creative Studio — Warm Cream Theme Overrides
+   Creative Lab — Warm Cream Theme Overrides
+
    ============================================================================== */
 
 /* Sfondo principale — usa la stessa trama della Home (var(--bg-pattern) già applicata dal global) */

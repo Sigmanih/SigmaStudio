@@ -121,7 +121,8 @@ export default function ImageViewer({ tab }) {
     if (openTab) {
       openTab(tab.path);
     } else {
-      console.log('Opening in Creative Studio', tab.path);
+      console.log('Opening in Creative Lab', tab.path);
+
     }
   };
 
@@ -197,7 +198,8 @@ export default function ImageViewer({ tab }) {
           </button>
           
           <button onClick={handleOpenStudio} className="image-viewer-action-btn studio-btn" style={{ background: 'linear-gradient(135deg, rgba(0, 210, 255, 0.15), rgba(124, 91, 240, 0.15))', border: '1px solid rgba(124, 91, 240, 0.3)', color: '#00d2ff' }}>
-            <Palette size={16} color="#7c5bf0" /> <span style={{ fontSize: '0.8rem', fontWeight: 500 }}>Apri in Creative Studio</span>
+            <Palette size={16} color="#7c5bf0" /> <span style={{ fontSize: '0.8rem', fontWeight: 500 }}>Apri in Creative Lab</span>
+
           </button>
         </div>
       </div>

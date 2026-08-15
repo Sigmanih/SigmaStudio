@@ -13,7 +13,7 @@ import { useApp } from '../contexts/AppContext';
 const KERNEL_MODULES = [
   {
     id: 'creative_studio',
-    name: 'Creative Studio 3D/2D',
+    name: 'Creative Lab 3D/2D',
     category: 'Multimodale & Grafica',
     icon: Palette,
     color: '#ff5064',

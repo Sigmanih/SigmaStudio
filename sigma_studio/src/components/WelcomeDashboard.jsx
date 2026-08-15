@@ -111,7 +111,8 @@ const PRIMI_PASSI_CARDS = [
     icon: Palette,
     color: '#ff5064',
     actionText: 'Creative Lab 🎨',
-    onClick: (openTab) => openTab({ name: '🎨 Creative Studio' }, 'creative_studio')
+    onClick: (openTab) => openTab({ name: '🎨 Creative Lab' }, 'creative_studio')
+
   },
   {
     step: '09',
