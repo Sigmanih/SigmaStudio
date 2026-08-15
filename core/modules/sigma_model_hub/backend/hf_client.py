@@ -15,6 +15,29 @@ log = get_logger(__name__)
 
 HF_API_BASE = "https://huggingface.co/api"
 
+# Recognized verified official organizations and AI labs
+OFFICIAL_ORGANIZATIONS = {
+    'qwen', 'meta-llama', 'deepseek-ai', 'mistralai', 'google', 'microsoft',
+    'anthropic', 'cohereforai', 'thudm', '01-ai', 'nvidia', 'facebook', 'baai',
+    'stabilityai', 'black-forest-labs', 'allenai', 'apple', 'openai', 'tiiuae',
+    'bytedance', 'internlm', 'systran', 'bigcode', 'salesforce', 'openchat'
+}
+
+
+def is_official_provider(author: str, model_id: str) -> bool:
+    """Checks if the model author or repository organization is an official AI lab or provider."""
+    auth_low = (author or "").lower().strip()
+    id_low = (model_id or "").lower().strip()
+    org = id_low.split('/')[0] if '/' in id_low else auth_low
+    
+    if org in OFFICIAL_ORGANIZATIONS:
+        return True
+    return any(o in org for o in [
+        'qwen', 'meta-llama', 'deepseek-ai', 'mistralai', 'google', 'microsoft',
+        'cohereforai', 'nvidia', 'baai', 'stabilityai', 'black-forest-labs',
+        'allenai', 'apple', 'tiiuae', 'bytedance', 'internlm', 'systran', '01-ai', 'thudm'
+    ])
+
 
 def _format_date_label(iso_date: Optional[str]) -> str:
     """Converts ISO date string (e.g. 2025-02-14T18:22:00.000Z) to human-readable Italian date label."""
@@ -82,8 +105,12 @@ def _determine_target_gpu(size_gb: float) -> str:
         return "RTX 5070 Ti (16 GB) + FlashAttn-2"
     elif size_gb <= 24.0:
         return "Dual-GPU (RTX 5070 Ti + RTX 5060)"
+    elif size_gb <= 48.0:
+        return "Dual-GPU + RAM 94GB (Sharded)"
+    elif size_gb <= 90.0:
+        return "Host RAM 94GB + NVMe Striping"
     else:
-        return "Multi-GPU + Host RAM 94GB Sharded"
+        return "Multi-Drive NVMe Striped Matrix"
 
 
 def _matches_size_bracket(size_gb: float, bracket: str) -> bool:
@@ -97,6 +124,14 @@ def _matches_size_bracket(size_gb: float, bracket: str) -> bool:
         return 8.0 < size_gb <= 16.0
     if bracket == "16_32gb":
         return 16.0 < size_gb <= 32.0
+    if bracket == "32_48gb":
+        return 32.0 < size_gb <= 48.0
+    if bracket == "48_70gb":
+        return 48.0 < size_gb <= 70.0
+    if bracket == "70_140gb":
+        return 70.0 < size_gb <= 140.0
+    if bracket == "over_140gb":
+        return size_gb > 140.0
     if bracket == "over_32gb":
         return size_gb > 32.0
     return True
@@ -118,8 +153,96 @@ def _matches_param_bracket(params_b: float, bracket: str) -> bool:
     return True
 
 
-# Curated Popular Models for offline/instant catalogue with release dates
+# Curated Popular Official & Featured Models with direct HF links
 POPULAR_MODELS = [
+    {
+        "id": "Qwen/Qwen2.5-Coder-14B-Instruct",
+        "name": "Qwen 2.5 Coder 14B Instruct",
+        "author": "Qwen",
+        "category": "code",
+        "params_b": 14.0,
+        "params_label": "14B",
+        "size_gb": 28.0,
+        "format": "Safetensors",
+        "downloads": 240000,
+        "likes": 3800,
+        "is_official": True,
+        "created_at": "2024-11-12T09:30:00Z",
+        "last_modified": "2024-11-14T11:00:00Z",
+        "release_date_label": "12 Nov 2024",
+        "description": "Modello ufficiale Alibaba Qwen per la generazione, analisi e refactoring di codice.",
+        "quantizations": ["Safetensors (FP16 28 GB)", "GGUF Q4_K_M (8.9 GB)"],
+        "pipeline_tag": "text-generation",
+        "default_file": "model.safetensors",
+        "hf_url": "https://huggingface.co/Qwen/Qwen2.5-Coder-14B-Instruct",
+        "recommended_gpu": "RTX 5070 Ti (16 GB)"
+    },
+    {
+        "id": "deepseek-ai/DeepSeek-R1-Distill-Qwen-14B",
+        "name": "DeepSeek R1 Distill Qwen 14B",
+        "author": "deepseek-ai",
+        "category": "reasoning",
+        "params_b": 14.0,
+        "params_label": "14B",
+        "size_gb": 28.0,
+        "format": "Safetensors",
+        "downloads": 410000,
+        "likes": 5900,
+        "is_official": True,
+        "created_at": "2025-01-20T08:00:00Z",
+        "last_modified": "2025-01-22T12:00:00Z",
+        "release_date_label": "20 Gen 2025",
+        "description": "Modello di ragionamento ufficiale rilasciato da DeepSeek AI basato su Qwen 14B.",
+        "quantizations": ["Safetensors FP16 (28 GB)", "GGUF Q4_K_M (8.9 GB)"],
+        "pipeline_tag": "text-generation",
+        "default_file": "model.safetensors",
+        "hf_url": "https://huggingface.co/deepseek-ai/DeepSeek-R1-Distill-Qwen-14B",
+        "recommended_gpu": "RTX 5070 Ti (16 GB)"
+    },
+    {
+        "id": "meta-llama/Llama-3.1-8B-Instruct",
+        "name": "Meta Llama 3.1 8B Instruct",
+        "author": "meta-llama",
+        "category": "llm",
+        "params_b": 8.0,
+        "params_label": "8B",
+        "size_gb": 16.0,
+        "format": "Safetensors",
+        "downloads": 820000,
+        "likes": 8400,
+        "is_official": True,
+        "created_at": "2024-07-23T12:00:00Z",
+        "last_modified": "2024-08-01T10:00:00Z",
+        "release_date_label": "23 Lug 2024",
+        "description": "Modello ufficiale di Meta con 128k contest window e alte capacità conversazionali.",
+        "quantizations": ["Safetensors (16 GB)", "GGUF Q4_K_M (4.9 GB)"],
+        "pipeline_tag": "text-generation",
+        "default_file": "model.safetensors",
+        "hf_url": "https://huggingface.co/meta-llama/Llama-3.1-8B-Instruct",
+        "recommended_gpu": "RTX 5060 (8 GB)"
+    },
+    {
+        "id": "meta-llama/Llama-3.3-70B-Instruct",
+        "name": "Meta Llama 3.3 70B Instruct",
+        "author": "meta-llama",
+        "category": "moe",
+        "params_b": 70.0,
+        "params_label": "70B",
+        "size_gb": 140.0,
+        "format": "Safetensors",
+        "downloads": 310000,
+        "likes": 4700,
+        "is_official": True,
+        "created_at": "2024-12-06T15:00:00Z",
+        "last_modified": "2024-12-08T18:00:00Z",
+        "release_date_label": "6 Dic 2024",
+        "description": "Modello ammiraglia da 70 miliardi di parametri ufficiale rilasciato da Meta.",
+        "quantizations": ["Safetensors (140 GB)", "GGUF Q4_K_M (42 GB)"],
+        "pipeline_tag": "text-generation",
+        "default_file": "model.safetensors",
+        "hf_url": "https://huggingface.co/meta-llama/Llama-3.3-70B-Instruct",
+        "recommended_gpu": "Multi-GPU + Host RAM (Dual GPU)"
+    },
     {
         "id": "bartowski/DeepSeek-R1-Distill-Qwen-14B-GGUF",
         "name": "DeepSeek R1 Distill Qwen 14B (GGUF)",
@@ -131,154 +254,38 @@ POPULAR_MODELS = [
         "format": "GGUF",
         "downloads": 128000,
         "likes": 2400,
+        "is_official": False,
         "created_at": "2025-01-22T08:00:00Z",
         "last_modified": "2025-01-24T12:30:00Z",
         "release_date_label": "22 Gen 2025",
-        "description": "Modello di ragionamento ad alte prestazioni basato sull'architettura DeepSeek R1.",
+        "description": "Quantizzazione GGUF ad alta efficienza per DeepSeek R1 14B.",
         "quantizations": ["Q4_K_M (8.9 GB)", "Q5_K_M (10.5 GB)", "Q8_0 (15.2 GB)"],
         "pipeline_tag": "text-generation",
         "default_file": "DeepSeek-R1-Distill-Qwen-14B-Q4_K_M.gguf",
+        "hf_url": "https://huggingface.co/bartowski/DeepSeek-R1-Distill-Qwen-14B-GGUF",
         "recommended_gpu": "RTX 5070 Ti (16 GB)"
     },
     {
-        "id": "unsloth/DeepSeek-R1-Distill-Llama-8B-GGUF",
-        "name": "DeepSeek R1 Distill Llama 8B (GGUF)",
-        "author": "unsloth",
-        "category": "reasoning",
-        "params_b": 8.0,
-        "params_label": "8B",
-        "size_gb": 4.9,
-        "format": "GGUF",
-        "downloads": 310000,
-        "likes": 4200,
-        "created_at": "2025-01-21T14:20:00Z",
-        "last_modified": "2025-01-23T16:00:00Z",
-        "release_date_label": "21 Gen 2025",
-        "description": "Distillazione compatta di DeepSeek R1 su Llama 3.1 8B, ideale per velocità estrema.",
-        "quantizations": ["Q4_K_M (4.9 GB)", "Q8_0 (8.5 GB)"],
-        "pipeline_tag": "text-generation",
-        "default_file": "DeepSeek-R1-Distill-Llama-8B-Q4_K_M.gguf",
-        "recommended_gpu": "RTX 5060 (8 GB)"
-    },
-    {
-        "id": "bartowski/Meta-Llama-3.1-8B-Instruct-GGUF",
-        "name": "Meta Llama 3.1 8B Instruct (GGUF)",
-        "author": "bartowski",
+        "id": "Qwen/Qwen2.5-7B-Instruct",
+        "name": "Qwen 2.5 7B Instruct",
+        "author": "Qwen",
         "category": "llm",
-        "params_b": 8.0,
-        "params_label": "8B",
-        "size_gb": 4.9,
-        "format": "GGUF",
-        "downloads": 540000,
-        "likes": 5600,
-        "created_at": "2024-07-23T12:00:00Z",
-        "last_modified": "2024-08-01T10:00:00Z",
-        "release_date_label": "23 Lug 2024",
-        "description": "Modello conversazionale di riferimento di Meta con 128k context window.",
-        "quantizations": ["Q4_K_M (4.9 GB)", "Q5_K_M (5.7 GB)", "Q8_0 (8.5 GB)"],
-        "pipeline_tag": "text-generation",
-        "default_file": "Meta-Llama-3.1-8B-Instruct-Q4_K_M.gguf",
-        "recommended_gpu": "RTX 5060 (8 GB)"
-    },
-    {
-        "id": "bartowski/Qwen2.5-Coder-14B-Instruct-GGUF",
-        "name": "Qwen 2.5 Coder 14B Instruct (GGUF)",
-        "author": "bartowski",
-        "category": "code",
-        "params_b": 14.0,
-        "params_label": "14B",
-        "size_gb": 8.9,
-        "format": "GGUF",
-        "downloads": 180000,
-        "likes": 3100,
-        "created_at": "2024-11-12T09:30:00Z",
-        "last_modified": "2024-11-14T11:00:00Z",
-        "release_date_label": "12 Nov 2024",
-        "description": "Specialista assoluto nella generazione di codice in 90+ linguaggi di programmazione.",
-        "quantizations": ["Q4_K_M (8.9 GB)", "Q5_K_M (10.5 GB)", "Q8_0 (15.2 GB)"],
-        "pipeline_tag": "text-generation",
-        "default_file": "Qwen2.5-Coder-14B-Instruct-Q4_K_M.gguf",
-        "recommended_gpu": "RTX 5070 Ti (16 GB)"
-    },
-    {
-        "id": "bartowski/Qwen2.5-Coder-7B-Instruct-GGUF",
-        "name": "Qwen 2.5 Coder 7B Instruct (GGUF)",
-        "author": "bartowski",
-        "category": "code",
         "params_b": 7.0,
         "params_label": "7B",
-        "size_gb": 4.6,
-        "format": "GGUF",
-        "downloads": 320000,
-        "likes": 4800,
-        "created_at": "2024-11-12T09:30:00Z",
-        "last_modified": "2024-11-14T11:00:00Z",
-        "release_date_label": "12 Nov 2024",
-        "description": "Agente di coding leggero, rapido e ultra-efficiente per refactoring e debugging.",
-        "quantizations": ["Q4_K_M (4.6 GB)", "Q8_0 (7.9 GB)"],
+        "size_gb": 14.0,
+        "format": "Safetensors",
+        "downloads": 520000,
+        "likes": 6100,
+        "is_official": True,
+        "created_at": "2024-09-18T10:00:00Z",
+        "last_modified": "2024-09-20T12:00:00Z",
+        "release_date_label": "18 Set 2024",
+        "description": "Modello ufficiale Qwen 2.5 7B ad altissime prestazioni per general LLM e chat.",
+        "quantizations": ["Safetensors (14 GB)", "GGUF Q4_K_M (4.6 GB)"],
         "pipeline_tag": "text-generation",
-        "default_file": "Qwen2.5-Coder-7B-Instruct-Q4_K_M.gguf",
+        "default_file": "model.safetensors",
+        "hf_url": "https://huggingface.co/Qwen/Qwen2.5-7B-Instruct",
         "recommended_gpu": "RTX 5060 (8 GB)"
-    },
-    {
-        "id": "bartowski/Llama-3.3-70B-Instruct-GGUF",
-        "name": "Llama 3.3 70B Instruct (MoE/Sharded GGUF)",
-        "author": "bartowski",
-        "category": "moe",
-        "params_b": 70.0,
-        "params_label": "70B",
-        "size_gb": 42.0,
-        "format": "GGUF",
-        "downloads": 95000,
-        "likes": 2100,
-        "created_at": "2024-12-06T15:00:00Z",
-        "last_modified": "2024-12-08T18:00:00Z",
-        "release_date_label": "6 Dic 2024",
-        "description": "Modello ammiraglia da 70B parametri, ottimizzato per tiering sharded multi-GPU e RAM.",
-        "quantizations": ["Q2_K (26 GB)", "Q3_K_M (35 GB)", "Q4_K_M (42 GB)"],
-        "pipeline_tag": "text-generation",
-        "default_file": "Llama-3.3-70B-Instruct-Q4_K_M.gguf",
-        "recommended_gpu": "Multi-GPU (RTX 5070 Ti + RTX 5060 + RAM)"
-    },
-    {
-        "id": "bartowski/Qwen2-VL-7B-Instruct-GGUF",
-        "name": "Qwen2 VL 7B Vision-Language (GGUF)",
-        "author": "bartowski",
-        "category": "vision",
-        "params_b": 7.0,
-        "params_label": "7B",
-        "size_gb": 4.8,
-        "format": "GGUF",
-        "downloads": 75000,
-        "likes": 1600,
-        "created_at": "2024-09-02T10:00:00Z",
-        "last_modified": "2024-09-05T14:00:00Z",
-        "release_date_label": "2 Set 2024",
-        "description": "Modello multimodale per analisi di immagini, schemi tecnici, screenshot e documenti.",
-        "quantizations": ["Q4_K_M (4.8 GB)", "Q8_0 (8.2 GB)"],
-        "pipeline_tag": "image-text-to-text",
-        "default_file": "Qwen2-VL-7B-Instruct-Q4_K_M.gguf",
-        "recommended_gpu": "RTX 5060 (8 GB)"
-    },
-    {
-        "id": "Systran/faster-whisper-large-v3",
-        "name": "Faster Whisper Large v3 (Audio/STT)",
-        "author": "Systran",
-        "category": "audio",
-        "params_b": 1.5,
-        "params_label": "1.5B",
-        "size_gb": 3.1,
-        "format": "Bin",
-        "downloads": 480000,
-        "likes": 6700,
-        "created_at": "2023-11-10T11:00:00Z",
-        "last_modified": "2024-01-15T09:00:00Z",
-        "release_date_label": "10 Nov 2023",
-        "description": "Il miglior modello di trascrizione vocale multilingue a bassissima latenza.",
-        "quantizations": ["FP16 (3.1 GB)", "INT8 (1.6 GB)"],
-        "pipeline_tag": "automatic-speech-recognition",
-        "default_file": "model.bin",
-        "recommended_gpu": "NPU / RTX 5060"
     }
 ]
 
@@ -290,13 +297,14 @@ def search_hf_models(
     param_bracket: str = "all",
     format_filter: str = "all",
     sort: str = "downloads",
+    official_only: bool = False,
     page: int = 1,
     limit: int = 30,
     hf_token: Optional[str] = None
 ) -> Dict[str, Any]:
     """
     Searches models on Hugging Face API dynamically in real time.
-    Reads live models, dates, parameters, and weights with pagination.
+    Supports official_only filter, granular size brackets (>32G, 48G, 70G, 140G+), and direct URLs.
     """
     results = []
 
@@ -313,6 +321,8 @@ def search_hf_models(
     if page == 1:
         q_low = query.lower().strip()
         for m in POPULAR_MODELS:
+            if official_only and not m.get("is_official", False):
+                continue
             if q_low:
                 if q_low not in m["id"].lower() and q_low not in m["name"].lower() and q_low not in m["description"].lower():
                     continue
@@ -326,19 +336,21 @@ def search_hf_models(
                 continue
             results.append(m)
 
-    # 2. Dynamic Live Fetch directly from Hugging Face Hub API (Always live)
+    # 2. Dynamic Live Fetch directly from Hugging Face Hub API
     has_more = True
     try:
         search_query = query.strip()
         if not search_query:
-            if category == "code":
-                search_query = "coder gguf"
+            if official_only:
+                search_query = "qwen OR meta-llama OR deepseek-ai OR mistralai"
+            elif category == "code":
+                search_query = "coder"
             elif category == "reasoning":
-                search_query = "deepseek r1 gguf"
+                search_query = "deepseek r1"
             elif category == "vision":
-                search_query = "vision gguf"
+                search_query = "vision"
             elif category == "moe":
-                search_query = "moe gguf"
+                search_query = "moe"
             elif format_filter == "safetensors":
                 search_query = "instruct safetensors"
             else:
@@ -351,7 +363,6 @@ def search_hf_models(
         elif sort == "newest" or sort == "lastModified":
             hf_sort = "lastModified"
 
-        # Calculate fetch limits
         fetch_limit = min(limit * 3, 100)
         params = {
             "search": search_query,
@@ -380,6 +391,12 @@ def search_hf_models(
                         continue
 
                     author = mid.split("/")[0] if "/" in mid else "HuggingFace"
+                    is_official = is_official_provider(author, mid)
+
+                    # If official_only is enabled, skip community repackages
+                    if official_only and not is_official:
+                        continue
+
                     m_name = mid.split("/")[-1] if "/" in mid else mid
                     pipeline = item.get("pipeline_tag", "text-generation")
                     tags = item.get("tags", [])
@@ -426,13 +443,15 @@ def search_hf_models(
                         "format": fmt_label,
                         "downloads": item.get("downloads", 0),
                         "likes": item.get("likes", 0),
+                        "is_official": is_official,
                         "created_at": created_at,
                         "last_modified": last_modified,
                         "release_date_label": date_label,
-                        "description": f"Modello {m_name} ({params_label} • {size_gb} GB) rilasciato da {author}.",
+                        "description": f"Modello {m_name} ({params_label} • {size_gb} GB) di {author}.",
                         "quantizations": ["GGUF Q4_K_M", "Q8_0", "FP16"] if is_gguf else ["Safetensors FP16 / BF16"],
                         "pipeline_tag": pipeline,
                         "default_file": f"{m_name}.gguf" if is_gguf else f"{m_name}.safetensors",
+                        "hf_url": f"https://huggingface.co/{mid}",
                         "recommended_gpu": rec_gpu
                     })
     except Exception as ex:
@@ -461,7 +480,7 @@ def search_hf_models(
 
 
 def get_hf_model_details(model_id: str, hf_token: Optional[str] = None) -> Dict[str, Any]:
-    """Fetches detailed metadata, file list, dates, and available GGUF quantizations for a model."""
+    """Fetches detailed metadata, file list, dates, and available quantizations for a model."""
     try:
         url = f"{HF_API_BASE}/models/{model_id}"
         req = urllib.request.Request(url)
@@ -491,11 +510,13 @@ def get_hf_model_details(model_id: str, hf_token: Optional[str] = None) -> Dict[
 
                 params_b, params_label = _extract_param_count(model_id, data.get("id", ""), data.get("tags", []))
                 size_gb = _estimate_model_size_gb(params_b, is_gguf=any(f["is_gguf"] for f in files))
+                author = data.get("author", model_id.split("/")[0] if "/" in model_id else "Community")
 
                 return {
                     "success": True,
                     "id": model_id,
-                    "author": data.get("author", model_id.split("/")[0] if "/" in model_id else "Community"),
+                    "author": author,
+                    "is_official": is_official_provider(author, model_id),
                     "downloads": data.get("downloads", 0),
                     "likes": data.get("likes", 0),
                     "created_at": created_at,
@@ -507,7 +528,8 @@ def get_hf_model_details(model_id: str, hf_token: Optional[str] = None) -> Dict[
                     "pipeline_tag": data.get("pipeline_tag", "text-generation"),
                     "tags": data.get("tags", []),
                     "files": files,
-                    "card_url": f"https://huggingface.co/{model_id}"
+                    "card_url": f"https://huggingface.co/{model_id}",
+                    "hf_url": f"https://huggingface.co/{model_id}"
                 }
     except Exception as ex:
         log.error(f"[HF_Client] get_hf_model_details error for {model_id}: {ex}")
@@ -515,10 +537,12 @@ def get_hf_model_details(model_id: str, hf_token: Optional[str] = None) -> Dict[
     # Fallback representation
     params_b, params_label = _extract_param_count(model_id, model_id)
     size_gb = _estimate_model_size_gb(params_b, is_gguf=True)
+    author = model_id.split("/")[0] if "/" in model_id else "Community"
     return {
         "success": True,
         "id": model_id,
-        "author": model_id.split("/")[0] if "/" in model_id else "Community",
+        "author": author,
+        "is_official": is_official_provider(author, model_id),
         "downloads": 50000,
         "likes": 1200,
         "created_at": "2025-01-01T00:00:00Z",
@@ -543,5 +567,6 @@ def get_hf_model_details(model_id: str, hf_token: Optional[str] = None) -> Dict[
                 "download_url": f"https://huggingface.co/{model_id}/resolve/main/{model_id.split('/')[-1]}-Q8_0.gguf"
             }
         ],
-        "card_url": f"https://huggingface.co/{model_id}"
+        "card_url": f"https://huggingface.co/{model_id}",
+        "hf_url": f"https://huggingface.co/{model_id}"
     }

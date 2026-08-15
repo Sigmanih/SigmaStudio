@@ -46,6 +46,7 @@ def handle_models_hf_search(self):
         param_bracket = "all"
         format_filter = "all"
         sort = "downloads"
+        official_only = False
         page = 1
         limit = 30
 
@@ -59,6 +60,7 @@ def handle_models_hf_search(self):
             param_bracket = params.get('param_bracket', ['all'])[0]
             format_filter = params.get('format_filter', ['all'])[0]
             sort = params.get('sort', ['downloads'])[0]
+            official_only = params.get('official_only', ['false'])[0].lower() in ['true', '1', 'yes']
             page = int(params.get('page', ['1'])[0])
             limit = int(params.get('limit', ['30'])[0])
 
@@ -71,10 +73,12 @@ def handle_models_hf_search(self):
             param_bracket=param_bracket,
             format_filter=format_filter,
             sort=sort,
+            official_only=official_only,
             page=page,
             limit=limit,
             hf_token=token
         )
+
 
         self.send_json_response({
             "success": True,

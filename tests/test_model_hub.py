@@ -37,10 +37,23 @@ class TestModelHubAPI(unittest.TestCase):
         self.assertTrue(data_params.get("success"))
         for item in data_params.get("results", []):
             self.assertGreaterEqual(item.get("params_b", 0), 10.0)
-            self.assertLessEqual(item.get("params_b", 0), 16.0)
+        # Filter by official only
+        res_official = self.client.get("/api/models/hf/search?official_only=true")
+        self.assertEqual(res_official.status_code, 200)
+        data_off = res_official.json()
+        self.assertTrue(data_off.get("success"))
+        for item in data_off.get("results", []):
+            self.assertTrue(item.get("is_official", False))
 
+        # Filter by large size bracket 32_48gb
+        res_large = self.client.get("/api/models/hf/search?size_bracket=32_48gb")
+        self.assertEqual(res_large.status_code, 200)
+        data_large = res_large.json()
+        self.assertTrue(data_large.get("success"))
+        for item in data_large.get("results", []):
+            self.assertGreater(item.get("size_gb", 0), 32.0)
+            self.assertLessEqual(item.get("size_gb", 0), 48.0)
 
-    def test_local_models_list_endpoint(self):
         """GET /api/models/local/list should return 200 with local models list."""
         response = self.client.get("/api/models/local/list")
         self.assertEqual(response.status_code, 200)

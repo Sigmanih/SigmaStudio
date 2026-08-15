@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import {
   Search, Download, Star, ArrowDown, Sparkles, Filter, CheckCircle2,
   Layers, Cpu, Activity, ExternalLink, HardDrive, ArrowUpDown, ChevronDown,
-  Calendar, RefreshCw, PlusCircle
+  Calendar, RefreshCw, PlusCircle, ShieldCheck
 } from 'lucide-react';
 
 const CATEGORIES = [
@@ -21,7 +21,10 @@ const SIZE_BRACKETS = [
   { id: '4_8gb', label: '4 - 8 GB', hint: 'RTX 5060 (8GB)', color: '#00d2ff' },
   { id: '8_16gb', label: '8 - 16 GB', hint: 'RTX 5070 Ti (16GB)', color: '#bc8cff' },
   { id: '16_32gb', label: '16 - 32 GB', hint: 'Dual-GPU 24GB', color: '#ffb86c' },
-  { id: 'over_32gb', label: '> 32 GB', hint: 'RAM 94GB / MoE', color: '#ff5064' },
+  { id: '32_48gb', label: '32 - 48 GB', hint: '70B Q4 (~42GB)', color: '#ea580c' },
+  { id: '48_70gb', label: '48 - 70 GB', hint: '70B Q8 / MoE', color: '#ff5064' },
+  { id: '70_140gb', label: '70 - 140 GB', hint: 'Cluster / 140B MoE', color: '#d946ef' },
+  { id: 'over_140gb', label: '> 140 GB', hint: 'DeepSeek 671B Sharded', color: '#8b5cf6' },
 ];
 
 const PARAM_BRACKETS = [
@@ -54,6 +57,7 @@ export default function HfBrowser({ isLight, addToast, onDownloadStarted }) {
   const [paramBracket, setParamBracket] = useState('all');
   const [formatFilter, setFormatFilter] = useState('all');
   const [sortBy, setSortBy] = useState('newest');
+  const [officialOnly, setOfficialOnly] = useState(false);
   const [page, setPage] = useState(1);
 
   const [results, setResults] = useState([]);
@@ -82,7 +86,7 @@ export default function HfBrowser({ isLight, addToast, onDownloadStarted }) {
 
     try {
       const q = encodeURIComponent(search);
-      const url = `/api/models/hf/search?q=${q}&category=${category}&size_bracket=${sizeBracket}&param_bracket=${paramBracket}&format_filter=${formatFilter}&sort=${sortBy}&page=${targetPage}&limit=30`;
+      const url = `/api/models/hf/search?q=${q}&category=${category}&size_bracket=${sizeBracket}&param_bracket=${paramBracket}&format_filter=${formatFilter}&sort=${sortBy}&official_only=${officialOnly}&page=${targetPage}&limit=30`;
       const res = await fetch(url);
       if (res.ok) {
         const json = await res.json();
@@ -99,7 +103,7 @@ export default function HfBrowser({ isLight, addToast, onDownloadStarted }) {
       setLoading(false);
       setLoadingMore(false);
     }
-  }, [search, category, sizeBracket, paramBracket, formatFilter, sortBy]);
+  }, [search, category, sizeBracket, paramBracket, formatFilter, sortBy, officialOnly]);
 
   // Reset to page 1 on filter changes
   useEffect(() => {
@@ -167,7 +171,7 @@ export default function HfBrowser({ isLight, addToast, onDownloadStarted }) {
         display: 'flex', flexDirection: 'column', gap: '14px',
         boxShadow: isLight ? '0 2px 10px rgba(0,0,0,0.03)' : '0 4px 20px rgba(0,0,0,0.3)'
       }}>
-        {/* Search Input & Sort / Format Dropdowns */}
+        {/* Search Input, Official Toggle & Sort / Format Dropdowns */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
           <div style={{
             display: 'flex', alignItems: 'center', gap: '8px',
@@ -177,7 +181,7 @@ export default function HfBrowser({ isLight, addToast, onDownloadStarted }) {
             <Search size={16} color="#ffb86c" />
             <input
               type="text"
-              placeholder="Cerca qualsiasi modello Hugging Face in tempo reale (es. DeepSeek-R1, Qwen2.5, Llama-3.3, GGUF)..."
+              placeholder="Cerca qualsiasi modello Hugging Face in tempo reale (es. Qwen/Qwen2.5, deepseek-ai/DeepSeek-R1, Meta-Llama)..."
               value={search}
               onChange={e => setSearch(e.target.value)}
               style={{
@@ -186,6 +190,26 @@ export default function HfBrowser({ isLight, addToast, onDownloadStarted }) {
               }}
             />
           </div>
+
+          {/* "Solo Ufficiali" Checkbox Filter */}
+          <label style={{
+            display: 'flex', alignItems: 'center', gap: '6px',
+            padding: '9px 14px', borderRadius: '10px',
+            background: officialOnly ? (isLight ? '#eff6ff' : 'rgba(59, 130, 246, 0.15)') : subBg,
+            border: officialOnly ? '1.5px solid #3b82f6' : subBorder,
+            cursor: 'pointer', userSelect: 'none', transition: 'all 0.15s ease'
+          }}>
+            <input
+              type="checkbox"
+              checked={officialOnly}
+              onChange={e => setOfficialOnly(e.target.checked)}
+              style={{ accentColor: '#3b82f6', cursor: 'pointer' }}
+            />
+            <ShieldCheck size={15} color={officialOnly ? '#3b82f6' : textMuted} />
+            <span style={{ fontSize: '0.78rem', fontWeight: 800, color: officialOnly ? '#3b82f6' : textPrimary }}>
+              Solo Ufficiali
+            </span>
+          </label>
 
           {/* Sort Dropdown */}
           <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
@@ -246,7 +270,7 @@ export default function HfBrowser({ isLight, addToast, onDownloadStarted }) {
           ))}
         </div>
 
-        {/* Size in GB Bracket Pills */}
+        {/* Granular Size in GB Bracket Pills (including >32G, 48G, 70G, 140G+) */}
         <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', alignItems: 'center', borderTop: subBorder, paddingTop: '10px' }}>
           <span style={{ fontSize: '0.66rem', fontWeight: 800, color: '#ffb86c', textTransform: 'uppercase', marginRight: '4px', display: 'flex', alignItems: 'center', gap: '4px' }}>
             <HardDrive size={12} /> FASCIA PESO GB:
@@ -305,7 +329,7 @@ export default function HfBrowser({ isLight, addToast, onDownloadStarted }) {
         </div>
       ) : results.length === 0 ? (
         <div style={{ textAlign: 'center', padding: '60px 20px', color: textMuted }}>
-          Nessun modello trovato per i filtri selezionati. Prova a selezionare "Tutti i Pesi" o "Tutti i Parametri".
+          Nessun modello trovato per i filtri selezionati. Prova a deselezionare "Solo Ufficiali" o seleziona "Tutti i Pesi".
         </div>
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
@@ -324,9 +348,20 @@ export default function HfBrowser({ isLight, addToast, onDownloadStarted }) {
                 <div>
                   <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '8px' }}>
                     <div>
-                      <span style={{ fontSize: '0.64rem', color: textMuted, textTransform: 'uppercase', fontWeight: 800 }}>
-                        {m.author}
-                      </span>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <span style={{ fontSize: '0.64rem', color: textMuted, textTransform: 'uppercase', fontWeight: 800 }}>
+                          {m.author}
+                        </span>
+                        {m.is_official && (
+                          <span style={{
+                            fontSize: '0.58rem', padding: '1px 5px', borderRadius: '4px',
+                            background: 'rgba(59, 130, 246, 0.15)', color: '#3b82f6', border: '1px solid rgba(59, 130, 246, 0.3)',
+                            fontWeight: 800, display: 'flex', alignItems: 'center', gap: '3px'
+                          }}>
+                            <ShieldCheck size={10} /> Ufficiale
+                          </span>
+                        )}
+                      </div>
                       <h3 style={{ margin: '2px 0 0 0', fontSize: '0.94rem', fontWeight: 800, color: textPrimary, lineHeight: '1.3' }}>
                         {m.name}
                       </h3>
@@ -372,9 +407,20 @@ export default function HfBrowser({ isLight, addToast, onDownloadStarted }) {
                     <span style={{ color: '#00d2ff', fontWeight: 700 }}>
                       {m.recommended_gpu || '⚡ SigmaEngine'}
                     </span>
-                    <span style={{ color: textMuted, fontWeight: 600 }}>
-                      {m.format || 'GGUF'}
-                    </span>
+                    {/* Direct Hugging Face External Link */}
+                    <a
+                      href={m.hf_url || `https://huggingface.co/${m.id}`}
+                      target="_blank"
+                      rel="noreferrer"
+                      onClick={e => e.stopPropagation()}
+                      style={{
+                        color: textMuted, textDecoration: 'none', display: 'flex', alignItems: 'center', gap: '3px',
+                        fontWeight: 700, padding: '2px 5px', borderRadius: '4px', background: subBg, border: subBorder
+                      }}
+                      title="Apri pagina ufficiale su Hugging Face"
+                    >
+                      <ExternalLink size={10} /> Hugging Face
+                    </a>
                   </div>
 
                   <button
@@ -443,6 +489,18 @@ export default function HfBrowser({ isLight, addToast, onDownloadStarted }) {
                       <Calendar size={11} /> {selectedModel.release_date_label}
                     </span>
                   )}
+                  {/* External link in Modal */}
+                  <a
+                    href={selectedModel.hf_url || `https://huggingface.co/${selectedModel.id}`}
+                    target="_blank"
+                    rel="noreferrer"
+                    style={{
+                      fontSize: '0.66rem', color: '#00d2ff', textDecoration: 'none',
+                      display: 'flex', alignItems: 'center', gap: '3px', fontWeight: 700
+                    }}
+                  >
+                    <ExternalLink size={11} /> Scheda Hugging Face
+                  </a>
                 </div>
                 <h3 style={{ margin: '2px 0 0 0', fontSize: '1.05rem', fontWeight: 800, color: textPrimary }}>
                   {selectedModel.name}
