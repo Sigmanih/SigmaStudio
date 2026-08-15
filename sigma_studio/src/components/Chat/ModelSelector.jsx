@@ -19,16 +19,16 @@ export default function ModelSelector({
   const primaryFav = favList[0] || '';
 
   // Group models by provider and STRICTLY FILTER to only available/configured providers:
-  // - Ollama (locale): sempre attivo
+  // - SigmaEngine & Ollama (locali): sempre attivi
   // - Cloud Providers: SOLO se l'utente ha inserito la chiave API (has_api_key o api_key) o endpoint custom
   const modelsWithProvider = useMemo(() => {
     return (models || [])
       .map(m => {
-        const provider = m.provider || getProviderForModel(m.name, providerConfigs) || 'ollama';
+        const provider = m.provider || getProviderForModel(m.name, providerConfigs) || 'sigma_engine';
         return { ...m, provider };
       })
       .filter(m => {
-        if (m.provider === 'ollama') return true;
+        if (m.provider === 'ollama' || m.provider === 'sigma_engine' || m.provider === 'sigma' || m.provider === 'ailoflow') return true;
         const pCfg = providerConfigs?.[m.provider];
         return (
           pCfg?.has_api_key === true || 
@@ -47,7 +47,7 @@ export default function ModelSelector({
     modelsWithProvider.forEach(m => {
       counts[m.provider] = (counts[m.provider] || 0) + 1;
     });
-    const preferredOrder = ['favorites', 'all', 'ollama', 'openai', 'anthropic', 'deepseek', 'google', 'groq', 'openrouter', 'mistral', 'xai', 'perplexity', 'together', 'qwen', 'glm', 'custom'];
+    const preferredOrder = ['favorites', 'all', 'sigma_engine', 'ollama', 'ailoflow', 'deepseek', 'openai', 'anthropic', 'google', 'groq', 'openrouter', 'mistral', 'xai', 'perplexity', 'together', 'qwen', 'glm', 'custom'];
     const availableProviders = Object.keys(counts).filter(p => p !== 'all' && p !== 'favorites');
     
     const sorted = preferredOrder.filter(p => p in counts);
@@ -55,13 +55,23 @@ export default function ModelSelector({
       if (!sorted.includes(p)) sorted.push(p);
     });
 
+    const getTabLabel = (p) => {
+      if (p === 'favorites') return '⭐ Preferiti';
+      if (p === 'all') return 'Tutti';
+      if (p === 'sigma_engine' || p === 'sigma') return '⚡ SIGMA';
+      if (p === 'ailoflow') return '🌊 AILOFLOW';
+      if (p === 'ollama') return '🦙 OLLAMA';
+      return p.toUpperCase();
+    };
+
     return sorted.map(p => ({
       id: p,
-      label: p === 'favorites' ? '⭐ Preferiti' : (p === 'all' ? 'Tutti' : p.toUpperCase()),
+      label: getTabLabel(p),
       count: counts[p] || 0,
       color: p === 'favorites' ? '#facc15' : (p === 'all' ? '#00d2ff' : (PROVIDER_COLORS[p]?.color || '#8b8fa3'))
     }));
   }, [modelsWithProvider, favList]);
+
 
   // Filter models based on active tab and search query
   const filteredModels = useMemo(() => {

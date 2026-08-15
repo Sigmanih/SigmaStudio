@@ -26,9 +26,35 @@ log = get_logger(__name__)
 # ---------------------------------------------------------------------------
 
 DEFAULT_AI_CONFIG = {
-    "active_provider": "ollama",
-    "active_model": "llama3.2",
+    "active_provider": "sigma_engine",
+    "active_model": "sigma-native:latest",
     "providers": {
+        "sigma_engine": {
+            "label": "SigmaEngine (Nativo & Sharded)",
+            "endpoint": "http://localhost:8000/api/engine",
+            "model": "sigma-native:latest",
+            "temperature": 0.7,
+            "max_tokens": 4096,
+            "top_p": 0.9,
+            "models": [
+                "sigma-native:latest",
+                "sigma-minerva-1b-base-v1.0",
+                "sigma-router:latest",
+                "ailo-340m-v4",
+                "llama4:16x17b (MoE Sharded)",
+                "deepseek-r1:70b (Sigma Native)",
+                "qwen2.5-coder:7b (Sigma Accelerated)"
+            ],
+        },
+        "ailoflow": {
+            "label": "AiloFlow (Flow Engine)",
+            "endpoint": "http://localhost:5000/v1",
+            "model": "ailo-flow-default",
+            "temperature": 0.7,
+            "max_tokens": 4096,
+            "top_p": 0.9,
+            "models": ["ailo-flow-default", "ailo-152m-router", "ailo-340m-v4"],
+        },
         "ollama": {
             "label": "Ollama (Locale)",
             "endpoint": "http://localhost:11434/api/chat",
@@ -449,6 +475,14 @@ def resolve_provider_config(ai_cfg_or_model, model_name: str = None):
 def call_ai_model(messages, ai_cfg, model, provider, endpoint, api_url, api_key, temperature, max_tokens, top_p, request_timeout):
     """Unified AI model caller used by agent_orchestrator, execute_loop, loop_handler.
     Eliminates 3x code duplication."""
+    if provider in ('sigma_engine', 'sigma'):
+        from core.engine import sigma_engine
+        prompt_text = messages[-1].get("content", "") if messages else ""
+        sys_text = messages[0].get("content", "") if messages and messages[0].get("role") == "system" else ""
+        tokens = list(sigma_engine.generate_stream(prompt_text, system_prompt=sys_text, temperature=temperature, max_tokens=max_tokens))
+        full_res = "".join([t["token"] for t in tokens])
+        return full_res, "Esecuzione nativa diretta su hardware completata tramite SigmaEngine (CUDA/MPS/DirectML + Multi-Tier Sharding).", None
+
     route_provider = provider
     if route_provider in ('deepseek', 'openai'):
         route_provider = 'api'
@@ -853,6 +887,12 @@ def call_anthropic(
 
 def call_ai_model_stream(messages, ai_cfg, model, provider, endpoint, api_url, api_key, temperature, max_tokens, top_p, request_timeout):
     """Unified generator yielding chunks of tokens in the format {'token': '...', 'thinking': '...'} or {'done': True} or {'error': True, 'message': '...'}"""
+    if provider in ('sigma_engine', 'sigma'):
+        from core.engine import sigma_engine
+        prompt_text = messages[-1].get("content", "") if messages else ""
+        sys_text = messages[0].get("content", "") if messages and messages[0].get("role") == "system" else ""
+        return sigma_engine.generate_stream(prompt_text, system_prompt=sys_text, temperature=temperature, max_tokens=max_tokens)
+
     route_provider = provider
     if route_provider in ('deepseek', 'openai'):
         route_provider = 'api'
@@ -878,4 +918,4 @@ def call_ai_model_stream(messages, ai_cfg, model, provider, endpoint, api_url, a
         return _exc_gen()
     
     def _unk_gen(): yield {"error": True, "message": "Provider sconosciuto"}
-    return _unk_gen()
+    return _unk_gen()

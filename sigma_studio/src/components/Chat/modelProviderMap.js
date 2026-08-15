@@ -8,6 +8,21 @@
  * I modelli Ollama sono quelli locali, gli altri vanno su API esterne.
  */
 export const MODEL_PROVIDER_MAP = {
+  // SigmaEngine (Nativo & Hardware Sharded)
+  'sigma-native': { provider: 'sigma_engine' },
+  'sigma-native:latest': { provider: 'sigma_engine' },
+  'sigma-minerva-1b-base-v1.0': { provider: 'sigma_engine' },
+  'sigma-minerva-1b-base-v1.0:latest': { provider: 'sigma_engine' },
+  'sigma-router': { provider: 'sigma_engine' },
+  'sigma-router:latest': { provider: 'sigma_engine' },
+  'ailo-340m-v4': { provider: 'sigma_engine' },
+  'ailo-340m-v4:latest': { provider: 'sigma_engine' },
+  'ailo-152m-router': { provider: 'sigma_engine' },
+  'ailo-flow-default': { provider: 'ailoflow' },
+  'sigma-llama4-moe-sharded': { provider: 'sigma_engine' },
+  'sigma-deepseek-r1-tiered': { provider: 'sigma_engine' },
+  'sigma-qwen-coder-accelerated': { provider: 'sigma_engine' },
+
   // Ollama (locale)
   'llama3.2': { provider: 'ollama' },
   'llama3.1': { provider: 'ollama' },
@@ -135,6 +150,9 @@ export const MODEL_PROVIDER_MAP = {
  * Colori per i badge dei provider.
  */
 export const PROVIDER_COLORS = {
+  sigma_engine: { bg: 'rgba(0, 242, 254, 0.15)', color: '#00f2fe' },
+  sigma: { bg: 'rgba(0, 242, 254, 0.15)', color: '#00f2fe' },
+  ailoflow: { bg: 'rgba(0, 210, 255, 0.15)', color: '#00d2ff' },
   ollama: { bg: '#1a1a2e', color: '#e94560' },
   deepseek: { bg: '#1a2e1a', color: '#4ecdc4' },
   openai: { bg: '#1a2e2e', color: '#74b9ff' },
@@ -159,16 +177,23 @@ export const PROVIDER_COLORS = {
  * @returns {string} Chiave del provider
  */
 export function getProviderForModel(modelName, providerConfigs) {
-  if (!modelName) return 'ollama';
+  if (!modelName) return 'sigma_engine';
 
-  // Rule 0: Tag syntax with colon (e.g. 'deepseek-r1:70b', 'qwen3.6:35b', 'llama3:latest') is ALWAYS Ollama local
-  if (modelName.includes(':')) {
-    return 'ollama';
+  // Rule 0: SigmaEngine native models
+  const lower = modelName.toLowerCase();
+  if (lower.startsWith('sigma-') || lower.startsWith('sigma:') || lower.startsWith('sigma_') || lower.startsWith('ailo-')) {
+    if (lower.includes('flow')) return 'ailoflow';
+    return 'sigma_engine';
   }
 
   // 1) Direct map check
   if (MODEL_PROVIDER_MAP[modelName]?.provider) {
     return MODEL_PROVIDER_MAP[modelName].provider;
+  }
+
+  // Rule 2: Tag syntax with colon (e.g. 'deepseek-r1:70b', 'qwen3.6:35b') is Ollama local unless marked as sigma
+  if (modelName.includes(':') && !lower.startsWith('sigma')) {
+    return 'ollama';
   }
 
   // 2) Check providerConfigs for exact configured models
@@ -233,6 +258,8 @@ export function getModelRoutingInfo(modelName, providerConfigs) {
  * Provider prefix mapping for ModelSelector.
  */
 export const PROVIDER_PREFIX_MAP = [
+  { prefixes: ['sigma-', 'sigma:', 'sigma_', 'sigma-native'], provider: 'sigma_engine' },
+  { prefixes: ['ailo-', 'ailoflow'], provider: 'ailoflow' },
   { prefixes: ['deepseek-chat', 'deepseek-reasoner', 'deepseek-coder', 'deepseek-v4', 'deepseek/'], provider: 'deepseek' },
   { prefixes: ['gpt-', 'o1', 'o3-'], provider: 'openai' },
   { prefixes: ['claude-'], provider: 'anthropic' },

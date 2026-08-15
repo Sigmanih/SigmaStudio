@@ -61,19 +61,39 @@ export function useChatConfig({ saveSessionsState, sessionRefs }) {
 
   useEffect(() => { refs.manifestoManuallySelected.current = manifestoManuallySelected; }, [manifestoManuallySelected]);
 
+  const SIGMA_NATIVE_MODELS = [
+    { name: 'sigma-native:latest', size: 'Hardware Native', provider: 'sigma_engine' },
+    { name: 'sigma-minerva-1b-base-v1.0', size: '1.0 GB', provider: 'sigma_engine' },
+    { name: 'sigma-router:latest', size: '1.0 GB', provider: 'sigma_engine' },
+    { name: 'ailo-340m-v4', size: '683 MB', provider: 'sigma_engine' },
+    { name: 'llama4:16x17b (MoE Sharded)', size: '67 GB (Tier 0-3)', provider: 'sigma_engine' },
+    { name: 'deepseek-r1:70b (Sigma Native)', size: '42 GB (FlashAttn-2)', provider: 'sigma_engine' },
+    { name: 'qwen2.5-coder:7b (Sigma Accelerated)', size: '4.7 GB', provider: 'sigma_engine' },
+  ];
+
   const fetchOllamaModels = useCallback(async (customConfigs) => {
     setLoadingModels(true);
     try {
       const res = await fetch('/api/ollama_models');
       const data = await res.json();
-      let models = data.models?.length ? data.models : [];
+      let fetchedModels = data.models?.length ? data.models : [];
+      
+      let models = [...SIGMA_NATIVE_MODELS];
       const known = new Set(models.map(m => m.name));
+
+      fetchedModels.forEach(m => {
+        const mName = m.name || m;
+        if (!known.has(mName)) {
+          models.push({ name: mName, size: m.size || 'Local', provider: 'ollama' });
+          known.add(mName);
+        }
+      });
       
       const pConfigs = customConfigs || providerConfigs;
       if (pConfigs) {
         Object.entries(pConfigs).forEach(([pk, pv]) => {
-          // Ollama models are already fetched from local daemon
-          if (pk === 'ollama') return;
+          // Ollama and Sigma models are already included
+          if (pk === 'ollama' || pk === 'sigma_engine' || pk === 'sigma') return;
 
           // For all cloud/external providers, ONLY add models IF configured (has_api_key or api_key present or custom endpoint)
           const isConfigured = pv?.has_api_key === true || (pv?.api_key && pv?.api_key.trim().length > 0) || (pk === 'custom' && (pv?.endpoint || pv?.api_url));
@@ -94,10 +114,12 @@ export function useChatConfig({ saveSessionsState, sessionRefs }) {
       setAvailableModels(models);
     } catch (e) {
       console.error("Errore recupero modelli:", e);
+      setAvailableModels([...SIGMA_NATIVE_MODELS]);
     } finally {
       setLoadingModels(false);
     }
   }, [providerConfigs]);
+
 
   const fetchConfigAndModels = useCallback(async () => {
     try {
