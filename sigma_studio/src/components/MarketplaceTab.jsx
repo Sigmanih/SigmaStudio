@@ -134,8 +134,24 @@ const OPTIONAL_MODULES = [
     tags: ['Unsloth QLoRA', 'GGUF Export', 'Gradus FWE', 'Benchmarks', 'SLM Forge', 'Autopilot'],
     size: '3 MB',
     author: 'Sigma Core Team'
+  },
+  {
+    id: 'sigma_roadmap',
+    name: 'Pianificazione, Roadmap & Task Audit',
+    category: 'Pianificazione & Task',
+    icon: Calendar,
+    color: '#ffd700',
+    tabType: 'roadmap',
+    version: 'v1.0.0',
+    description: 'Sistema completo di pianificazione strategica: Calendario Attività, Kanban Task interattivo, Audit Trail cronologico e pannello flottante per monitoraggio delle milestone.',
+    gitUrl: 'https://github.com/Sigmanih/SigmaStudio-Moduli/tree/main/modules/sigma_roadmap',
+    branch: 'main',
+    tags: ['Roadmap', 'Kanban', 'Calendar', 'Audit Trail', 'Task Management', 'Milestones'],
+    size: '1 MB',
+    author: 'Sigma Core Team'
   }
 ];
+
 
 
 

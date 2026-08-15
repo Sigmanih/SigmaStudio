@@ -176,6 +176,7 @@ export default function Sidebar({
   const isHardwareInstalled = modulesState.sigma_hardware_lab === true;
   const isResearchInstalled = modulesState.sigma_research_lab === true;
   const isTrainingInstalled = modulesState.sigma_training_lab === true;
+  const isRoadmapInstalled = modulesState.sigma_roadmap === true;
 
 
   const taskInCorso = tasks.filter(t => t.status === 'in_corso' || !t.status).length;
@@ -296,16 +297,19 @@ export default function Sidebar({
             active={activeTabId === null}
             onClick={goHome}
           />
-          <SidebarItem 
-            icon={Activity} 
-            label="Pianificazione & Task" 
-            badge={taskInCorso > 0 ? taskInCorso : (taskTotal === 0 ? 0 : undefined)}
-            badgeColor="rgba(210,153,34,0.15)"
-            badgeSecondary={taskDone > 0 ? taskDone : undefined}
-            badgeSecondaryColor="rgba(63,185,80,0.15)"
-            active={activeTabId != null && activeTabId.startsWith('roadmap')}
-            onClick={() => openTab({ name: '📅 Pianificazione & Audit' }, 'roadmap')} 
-          />
+          {isRoadmapInstalled && (
+            <SidebarItem 
+              icon={Activity} 
+              label="Pianificazione & Task" 
+              badge={taskInCorso > 0 ? taskInCorso : (taskTotal === 0 ? 0 : undefined)}
+              badgeColor="rgba(210,153,34,0.15)"
+              badgeSecondary={taskDone > 0 ? taskDone : undefined}
+              badgeSecondaryColor="rgba(63,185,80,0.15)"
+              active={activeTabId != null && activeTabId.startsWith('roadmap')}
+              onClick={() => openTab({ name: '📅 Pianificazione & Audit' }, 'roadmap')} 
+            />
+          )}
+
           <SidebarItem 
             icon={FileText} 
             label="Manifesti & Direttive" 

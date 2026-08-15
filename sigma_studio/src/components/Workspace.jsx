@@ -2,7 +2,6 @@ import React, { useState, useEffect } from 'react';
 import { X, FileText, Terminal, PieChart, BookOpen, Trash2, ChevronRight, Home, MessageSquare, FlaskConical, Brain, Zap, User, Palette, Blocks, Image, Store, Key, Music } from 'lucide-react';
 import WelcomeDashboard from './WelcomeDashboard';
 import SkillsHub from './SkillsHub';
-import { RoadmapView } from './Dashboard';
 import StudioEditor from './Workspace/StudioEditor';
 import ImageViewer from './Workspace/ImageViewer';
 import ManifestiGallery from './Workspace/ManifestiGallery';
@@ -162,18 +161,27 @@ export default function Workspace({
       );
     }
     if (tab.type === 'roadmap') {
+      const isRoadmapInstalled = modulesState.sigma_roadmap === true;
+      const LazyRoadmap = getLazyModule('roadmap');
+      if (!isRoadmapInstalled || !LazyRoadmap) {
+        return <ModuleNotInstalled tabType="roadmap" openTab={openTab} />;
+      }
       return (
-        <RoadmapView 
-          tasks={tasks} 
-          onAdd={() => { setEditingTask(null); setIsTaskModalOpen(true); }} 
-          onEdit={(task) => { setEditingTask(task); setIsTaskModalOpen(true); }}
-          onDelete={(task) => handleRoadmapDelete(task)}
-          onToggleStatus={handleRoadmapToggleStatus}
-          onOpenFile={openTabFromMappa}
-          onClearAll={clearAllTasks}
-        />
+        <React.Suspense fallback={<div style={{ padding: '32px', color: '#94a3b8', textAlign: 'center' }}>Caricamento Pianificazione & Audit...</div>}>
+          <LazyRoadmap 
+            tasks={tasks} 
+            onAdd={() => { setEditingTask(null); setIsTaskModalOpen(true); }} 
+            onEdit={(task) => { setEditingTask(task); setIsTaskModalOpen(true); }}
+            onDelete={(task) => handleRoadmapDelete(task)}
+            onToggleStatus={handleRoadmapToggleStatus}
+            onOpenFile={openTabFromMappa}
+            onClearAll={clearAllTasks}
+            openTab={openTab}
+          />
+        </React.Suspense>
       );
     }
+
     if (tab.type === 'chat') {
       return <ChatWorkspace />;
     }

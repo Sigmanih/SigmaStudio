@@ -7,7 +7,6 @@ import Workspace from './components/Workspace';
 import ChatPanel from './components/Chat/ChatPanel';
 import AIConfig from './components/AIConfig';
 import ToastNotification from './components/ToastNotification';
-import TaskFloatingPanel from './components/TaskFloatingPanel';
 import MusicFloatingWidget from './components/Music/MusicFloatingWidget';
 import { ModuleModal, TaskModal, NewFileModal } from './components/modals';
 
@@ -64,6 +63,7 @@ function AppContent() {
   const { modulesState, isLoaded: modulesLoaded } = useModuleState();
   const isAudioInstalled = modulesState.audio_studio === true;
   const isHardwareInstalled = modulesState.sigma_hardware_lab === true;
+  const isRoadmapInstalled = modulesState.sigma_roadmap === true;
 
 
   const [taskPanelOpen, setTaskPanelOpen] = React.useState(false);
@@ -315,34 +315,38 @@ function AppContent() {
                 </button>
 
                 {/* Item 2: Pianificazione & Task */}
-                <button
-                  onClick={() => {
-                    setTaskPanelOpen(!taskPanelOpen);
-                  }}
-                  style={{
-                    display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                    padding: '10px 12px', borderRadius: '10px',
-                    background: taskPanelOpen ? 'rgba(0, 242, 254, 0.15)' : 'rgba(255, 255, 255, 0.03)',
-                    border: taskPanelOpen ? '1px solid rgba(0, 242, 254, 0.4)' : '1px solid rgba(255, 255, 255, 0.06)',
-                    color: taskPanelOpen ? '#00f2fe' : '#e2e4eb',
-                    cursor: 'pointer', transition: 'all 0.18s ease', textAlign: 'left'
-                  }}
-                >
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                    <div style={{ width: '32px', height: '32px', borderRadius: '8px', background: 'rgba(0, 242, 254, 0.15)', border: '1px solid rgba(0, 242, 254, 0.3)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                      <Calendar size={16} color="#00f2fe" />
+                {isRoadmapInstalled && (
+                  <button
+                    onClick={() => {
+                      handleOpenTab({ type: 'roadmap', label: '📅 Pianificazione & Audit', icon: Calendar });
+                      setDockMinimized(true);
+                    }}
+                    style={{
+                      display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                      padding: '10px 12px', borderRadius: '10px',
+                      background: 'rgba(255, 255, 255, 0.03)',
+                      border: '1px solid rgba(255, 255, 255, 0.06)',
+                      color: '#e2e4eb',
+                      cursor: 'pointer', transition: 'all 0.18s ease', textAlign: 'left'
+                    }}
+                  >
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                      <div style={{ width: '32px', height: '32px', borderRadius: '8px', background: 'rgba(0, 242, 254, 0.15)', border: '1px solid rgba(0, 242, 254, 0.3)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                        <Calendar size={16} color="#00f2fe" />
+                      </div>
+                      <div>
+                        <div style={{ fontSize: '0.8rem', fontWeight: 700 }}>Pianificazione</div>
+                        <div style={{ fontSize: '0.62rem', color: '#8b8fa3' }}>Task board, calendario e log</div>
+                      </div>
                     </div>
-                    <div>
-                      <div style={{ fontSize: '0.8rem', fontWeight: 700 }}>Pianificazione</div>
-                      <div style={{ fontSize: '0.62rem', color: '#8b8fa3' }}>Task board, calendario e log</div>
-                    </div>
-                  </div>
-                  {tasks?.length > 0 && (
-                    <span style={{ fontSize: '0.65rem', fontWeight: 700, background: 'rgba(0, 242, 254, 0.2)', color: '#00f2fe', padding: '2px 8px', borderRadius: '10px', border: '1px solid rgba(0, 242, 254, 0.3)' }}>
-                      {tasks.length}
-                    </span>
-                  )}
-                </button>
+                    {tasks?.length > 0 && (
+                      <span style={{ fontSize: '0.65rem', fontWeight: 700, background: 'rgba(0, 242, 254, 0.2)', color: '#00f2fe', padding: '2px 8px', borderRadius: '10px', border: '1px solid rgba(0, 242, 254, 0.3)' }}>
+                        {tasks.length}
+                      </span>
+                    )}
+                  </button>
+                )}
+
 
                 {/* Item 3: Hardware & GPU Monitor */}
                 {isHardwareInstalled && (
@@ -488,19 +492,7 @@ function AppContent() {
         </div>
       </div>
 
-      {/* TASK FLOATING PANEL */}
-      {taskPanelOpen && (
-        <TaskFloatingPanel
-          tasks={tasks}
-          onAdd={() => { setEditingTask(null); setIsTaskModalOpen(true); }}
-          onEdit={(task) => { setEditingTask(task); setIsTaskModalOpen(true); }}
-          onDelete={handleDeleteTask}
-          onToggleStatus={toggleTaskStatus}
-          onOpenFile={handleOpenFileFromTask}
-          onClearAll={clearAllTasks}
-          onClose={() => setTaskPanelOpen(false)}
-        />
-      )}
+
 
 
 
