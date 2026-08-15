@@ -18,7 +18,6 @@ from typing import Any, Dict, List, Optional
 from core.logger import get_logger
 from core.mcp import governance
 from core.mcp.base_server import BaseMCPServer
-from core.mcp.benchmark_server import BenchmarkMCPServer
 from core.mcp.calendar_server import CalendarMCPServer
 from core.mcp.client import ExternalMCPServer
 from core.mcp.developer_server import DeveloperMCPServer
@@ -28,7 +27,6 @@ from core.mcp.inference_server import InferenceMCPServer
 from core.mcp.memory_server import MemoryMCPServer
 from core.mcp.messaging_server import MessagingMCPServer
 from core.mcp.network_server import NetworkMCPServer
-from core.mcp.training_server import TrainingMCPServer
 
 log = get_logger(__name__)
 
@@ -36,15 +34,14 @@ log = get_logger(__name__)
 BUILTIN_SERVERS = [
     MemoryMCPServer,
     DeveloperMCPServer,
-    TrainingMCPServer,
     InferenceMCPServer,
     NetworkMCPServer,
-    BenchmarkMCPServer,
     HomeAssistantMCPServer,
     EmailMCPServer,
     MessagingMCPServer,
     CalendarMCPServer,
 ]
+
 
 
 

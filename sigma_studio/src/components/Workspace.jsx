@@ -9,7 +9,6 @@ import ManifestiGallery from './Workspace/ManifestiGallery';
 import ModuleView from './Workspace/ModuleView';
 import { MarkdownPreview, MappaArgomenti, SigmaLabEditor } from './SigmaLab';
 import ChatWorkspace from './Chat/ChatWorkspace';
-import TrainingLab from './TrainingLab';
 
 import AccountTab from './AccountTab';
 import McpHubTab from './McpHubTab';
@@ -192,13 +191,22 @@ export default function Workspace({
     }
 
     if (tab.type === 'training_lab') {
+      const isTrainingInstalled = modulesState.sigma_training_lab === true;
+      const LazyTraining = getLazyModule('training_lab');
+      if (!isTrainingInstalled || !LazyTraining) {
+        return <ModuleNotInstalled tabType="training_lab" openTab={openTab} />;
+      }
       return (
-        <TrainingLab
-          addToast={(msg, type, dur) => {}}
-          onTasksUpdated={() => {}}
-        />
+        <React.Suspense fallback={<div style={{ padding: '32px', color: '#94a3b8', textAlign: 'center' }}>Caricamento Training Lab...</div>}>
+          <LazyTraining
+            addToast={(msg, type, dur) => {}}
+            onTasksUpdated={() => {}}
+            openTab={openTab}
+          />
+        </React.Suspense>
       );
     }
+
     if (tab.type === 'hardware_lab' || tab.type === 'hardware') {
       const isHardwareInstalled = modulesState.sigma_hardware_lab === true;
       const LazyHardware = getLazyModule('hardware_lab');

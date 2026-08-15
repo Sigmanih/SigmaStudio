@@ -2,10 +2,8 @@ from core.mcp.base_server import BaseMCPServer
 from core.mcp.governance import SAFE, SENSITIVE
 from core.mcp.memory_server import MemoryMCPServer
 from core.mcp.developer_server import DeveloperMCPServer
-from core.mcp.training_server import TrainingMCPServer
 from core.mcp.inference_server import InferenceMCPServer
 from core.mcp.network_server import NetworkMCPServer
-from core.mcp.benchmark_server import BenchmarkMCPServer
 from core.mcp.email_server import EmailMCPServer
 from core.mcp.messaging_server import MessagingMCPServer
 from core.mcp.calendar_server import CalendarMCPServer
@@ -18,10 +16,8 @@ __all__ = [
     "SENSITIVE",
     "MemoryMCPServer",
     "DeveloperMCPServer",
-    "TrainingMCPServer",
     "InferenceMCPServer",
     "NetworkMCPServer",
-    "BenchmarkMCPServer",
     "EmailMCPServer",
     "MessagingMCPServer",
     "CalendarMCPServer",
@@ -29,5 +25,6 @@ __all__ = [
     "mcp_hub",
     "MCPHub",
 ]
+
 
 

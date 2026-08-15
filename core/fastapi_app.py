@@ -308,10 +308,6 @@ FastAPIHandlerAdapter.handle_research_decompose = handle_research_decompose
 FastAPIHandlerAdapter.handle_research_next_steps = handle_research_next_steps
 FastAPIHandlerAdapter.handle_research_start = handle_research_start
 
-# Training Lab & Hardware Lab — definizione unica condivisa col server legacy
-from core.training_api import register_training_handlers
-
-register_training_handlers(FastAPIHandlerAdapter)
 
 def _handle_router_train(self):
     try:

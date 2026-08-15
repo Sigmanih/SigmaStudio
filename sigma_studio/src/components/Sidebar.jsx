@@ -175,6 +175,7 @@ export default function Sidebar({
   const isCreativeInstalled = modulesState.sigma_creative_lab === true;
   const isHardwareInstalled = modulesState.sigma_hardware_lab === true;
   const isResearchInstalled = modulesState.sigma_research_lab === true;
+  const isTrainingInstalled = modulesState.sigma_training_lab === true;
 
 
   const taskInCorso = tasks.filter(t => t.status === 'in_corso' || !t.status).length;
@@ -365,7 +366,7 @@ export default function Sidebar({
           )}
 
 
-          {!hiddenTabs.has('training_lab') && (
+          {isTrainingInstalled && (
             <SidebarItem
               icon={Brain}
               label="Training Lab"
@@ -375,6 +376,7 @@ export default function Sidebar({
               onClick={() => openTab({ name: '🧠 Training Lab' }, 'training_lab')}
             />
           )}
+
         </nav>
 
         {/* ================================================================= */}

@@ -12,19 +12,6 @@ import { useApp } from '../contexts/AppContext';
 // ==============================================================================
 const KERNEL_MODULES = [
 
-  {
-    id: 'training_lab',
-    name: 'Training Lab & SLM Forge',
-    category: 'Fine-Tuning & Valutazione',
-    icon: Brain,
-    color: '#d29922',
-    tabType: 'training_lab',
-    version: 'v8.1.0',
-    status: 'installed',
-    description: 'Fine-tuning QLoRA Unsloth, Autopilota di iperparametri, Forgia SLM italiana, esportazione GGUF e 11 benchmark ufficiali.',
-    tags: ['Unsloth QLoRA', 'GGUF Export', 'Gradus FWE', 'Benchmarks'],
-    author: 'Sigma Core Team'
-  },
 
   {
     id: 'knowledge',
@@ -132,8 +119,24 @@ const OPTIONAL_MODULES = [
     tags: ['Swarm DAG', 'Multi-Agent', 'Workflow Automation', 'Pipeline Designer', 'Self-Healing'],
     size: '1.5 MB',
     author: 'Sigma Core Team'
+  },
+  {
+    id: 'sigma_training_lab',
+    name: 'Training Lab & SLM Forge',
+    category: 'Fine-Tuning & Valutazione',
+    icon: Brain,
+    color: '#d29922',
+    tabType: 'training_lab',
+    version: 'v1.0.0',
+    description: 'Fine-tuning QLoRA Unsloth, Autopilota di iperparametri, Forgia SLM italiana, esportazione GGUF e 11 benchmark ufficiali (MMLU, GSM8K, HumanEval, ARC, BBH...).',
+    gitUrl: 'https://github.com/Sigmanih/SigmaStudio-Moduli/tree/main/modules/sigma_training_lab',
+    branch: 'main',
+    tags: ['Unsloth QLoRA', 'GGUF Export', 'Gradus FWE', 'Benchmarks', 'SLM Forge', 'Autopilot'],
+    size: '3 MB',
+    author: 'Sigma Core Team'
   }
 ];
+
 
 
 
