@@ -423,13 +423,19 @@ def resolve_provider_config(ai_cfg_or_model, model_name: str = None):
         if not model_name and isinstance(ai_cfg_or_model, str):
             model_name = ai_cfg_or_model
 
-    if not model_name:
-        model_name = (ai_cfg or {}).get("active_model", "llama3.2")
-
     providers = (ai_cfg or {}).get("providers", {})
+    if not model_name:
+        model_name = (ai_cfg or {}).get("active_model", "sigma-native:latest")
 
-    # Rule 0: Any model with a tag/colon (e.g. 'deepseek-r1:70b', 'qwen3.6:35b', 'llama3.2:latest') is an Ollama local model
-    if ":" in model_name:
+
+    # Rule 0: SigmaEngine native models (always routed to SigmaEngine)
+    lower = (model_name or "").lower()
+    if lower.startswith("sigma-") or lower.startswith("sigma:") or lower.startswith("sigma_") or lower.startswith("ailo-") or "sharded" in lower or "moe" in lower or "native" in lower or "minerva" in lower:
+        return "sigma_engine", providers.get("sigma_engine", {"label": "SigmaEngine (Nativo & Sharded)", "endpoint": "http://localhost:8000/api/engine"})
+
+
+    # Rule 1: Any model with a tag/colon (e.g. 'deepseek-r1:70b', 'qwen3.6:35b', 'llama3.2:latest') is an Ollama local model
+    if ":" in model_name and not lower.startswith("sigma"):
         return "ollama", providers.get("ollama", {})
 
     # Rule 1: Exact model match in provider's configured models list
@@ -631,10 +637,16 @@ def call_ollama(
                 thinking = None
             return content, thinking, None
         return None, None, f"Ollama error {resp.status_code}: {resp.text}"
-    except requests.exceptions.ConnectionError:
-        return None, None, f"Impossibile connettersi a Ollama su {endpoint}."
-    except requests.exceptions.Timeout:
-        return None, None, f"Timeout ({timeout}s) nel contattare Ollama."
+    except (requests.exceptions.ConnectionError, requests.exceptions.Timeout) as e:
+        log.warning("[Ollama] Daemon non raggiungibile (%s). Fallback su SigmaEngine Nativo...", e)
+        try:
+            from core.engine import sigma_engine
+            prompt_text = messages[-1].get("content", "") if messages else ""
+            sys_text = messages[0].get("content", "") if messages and messages[0].get("role") == "system" else ""
+            tokens = list(sigma_engine.generate_stream(prompt_text, system_prompt=sys_text, temperature=temperature, max_tokens=max_tokens))
+            return "".join([t["token"] for t in tokens]), "Elaborato con successo tramite fallback su SigmaEngine Nativo.", None
+        except Exception as fallback_err:
+            return None, None, f"Impossibile connettersi a Ollama su {endpoint} ({e}). Fallback error: {fallback_err}"
     except Exception as e:
         return None, None, str(e)
 
@@ -718,8 +730,17 @@ def call_ollama_stream(
                     break
             except json.JSONDecodeError:
                 continue
-    except requests.exceptions.Timeout:
-        yield {"error": True, "message": f"Timeout ({timeout}s) - il modello sta impiegando troppo tempo."}
+    except (requests.exceptions.ConnectionError, requests.exceptions.Timeout) as e:
+        log.warning("[Ollama Stream] Daemon non raggiungibile (%s). Fallback automatico su SigmaEngine Nativo...", e)
+        try:
+            from core.engine import sigma_engine
+            prompt_text = messages[-1].get("content", "") if messages else ""
+            sys_text = messages[0].get("content", "") if messages and messages[0].get("role") == "system" else ""
+            for token_chunk in sigma_engine.generate_stream(prompt_text, system_prompt=sys_text, temperature=temperature, max_tokens=max_tokens):
+                yield token_chunk
+            return
+        except Exception as fallback_err:
+            yield {"error": True, "message": f"Ollama non raggiungibile su {endpoint} ({e})"}
     except Exception as e:
         yield {"error": True, "message": str(e)}
 
