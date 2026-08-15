@@ -480,18 +480,48 @@ export default function HfBrowser({ isLight, addToast, onDownloadStarted, active
                       </div>
 
                       <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '4px', flexShrink: 0 }}>
-                        <span style={{
-                          fontSize: '0.62rem', padding: '2px 6px', borderRadius: '4px',
-                          background: 'rgba(255, 184, 108, 0.15)', color: '#ffb86c', fontWeight: 800
-                        }}>
-                          {m.params_label || '7B'}
-                        </span>
-                        <span style={{
-                          fontSize: '0.60rem', padding: '1px 5px', borderRadius: '3px',
-                          background: subBg, color: textMuted, border: subBorder, fontWeight: 700
-                        }}>
-                          ~{m.size_gb} GB
-                        </span>
+                        {m.is_moe || (m.total_params_label && m.total_params_label !== m.active_params_label) ? (
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '3px' }}>
+                            <span style={{
+                              fontSize: '0.62rem', padding: '2px 6px', borderRadius: '4px',
+                              background: 'rgba(0, 210, 255, 0.15)', color: '#00d2ff', fontWeight: 800
+                            }}>
+                              ⚡ {m.active_params_label || m.params_label}
+                            </span>
+                            <span style={{
+                              fontSize: '0.60rem', padding: '2px 5px', borderRadius: '4px',
+                              background: subBg, color: textMuted, border: subBorder, fontWeight: 700
+                            }}>
+                              📊 {m.total_params_label}
+                            </span>
+                          </div>
+                        ) : (
+                          <span style={{
+                            fontSize: '0.62rem', padding: '2px 6px', borderRadius: '4px',
+                            background: 'rgba(255, 184, 108, 0.15)', color: '#ffb86c', fontWeight: 800
+                          }}>
+                            {m.params_label || '7B'}
+                          </span>
+                        )}
+
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                          {m.precision && (
+                            <span style={{
+                              fontSize: '0.58rem', padding: '1px 5px', borderRadius: '3px',
+                              background: m.precision.includes('FP8') ? 'rgba(0, 210, 255, 0.12)' : (m.precision.includes('GGUF') ? 'rgba(16, 185, 129, 0.12)' : 'rgba(255, 184, 108, 0.12)'),
+                              color: m.precision.includes('FP8') ? '#00d2ff' : (m.precision.includes('GGUF') ? '#10b981' : '#ffb86c'),
+                              fontWeight: 800
+                            }}>
+                              {m.precision.split(' ')[0]}
+                            </span>
+                          )}
+                          <span style={{
+                            fontSize: '0.60rem', padding: '1px 5px', borderRadius: '3px',
+                            background: subBg, color: textPrimary, border: subBorder, fontWeight: 800
+                          }}>
+                            ~{m.size_gb} GB
+                          </span>
+                        </div>
                       </div>
                     </div>
 
@@ -519,6 +549,7 @@ export default function HfBrowser({ isLight, addToast, onDownloadStarted, active
                       <span style={{ color: '#00d2ff', fontWeight: 700 }}>
                         {m.recommended_gpu || '⚡ SigmaEngine'}
                       </span>
+
                       <a
                         href={m.hf_url || `https://huggingface.co/${m.id}`}
                         target="_blank"
@@ -766,7 +797,31 @@ export default function HfBrowser({ isLight, addToast, onDownloadStarted, active
                   </button>
                 </div>
 
+                {/* Model Specs Quick Overview Grid */}
+                <div style={{
+                  display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: '8px',
+                  padding: '10px 12px', borderRadius: '10px', background: subBg, border: subBorder, fontSize: '0.74rem'
+                }}>
+                  <div>
+                    <div style={{ color: textMuted, fontSize: '0.64rem', fontWeight: 700 }}>PARAMETRI ATTIVI</div>
+                    <div style={{ color: '#00d2ff', fontWeight: 800 }}>⚡ {modelDetails?.active_params_label || selectedModel.active_params_label || selectedModel.params_label}</div>
+                  </div>
+                  <div>
+                    <div style={{ color: textMuted, fontSize: '0.64rem', fontWeight: 700 }}>PARAMETRI TOTALI</div>
+                    <div style={{ color: textPrimary, fontWeight: 800 }}>📊 {modelDetails?.total_params_label || selectedModel.total_params_label}</div>
+                  </div>
+                  <div>
+                    <div style={{ color: textMuted, fontSize: '0.64rem', fontWeight: 700 }}>PRECISIONE PESI</div>
+                    <div style={{ color: '#ffb86c', fontWeight: 800 }}>{modelDetails?.precision || selectedModel.precision || 'Safetensors'}</div>
+                  </div>
+                  <div>
+                    <div style={{ color: textMuted, fontSize: '0.64rem', fontWeight: 700 }}>PESO STIMATO</div>
+                    <div style={{ color: textPrimary, fontWeight: 800 }}>~{selectedModel.size_gb} GB</div>
+                  </div>
+                </div>
+
                 {/* Individual files accordion/list */}
+
                 <div>
                   <div style={{ fontSize: '0.72rem', fontWeight: 800, color: textMuted, textTransform: 'uppercase', marginBottom: '6px' }}>
                     Oppure scarica singoli file / quantizzazioni ({modelDetails?.files?.length || 0}):

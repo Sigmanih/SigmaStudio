@@ -79,46 +79,98 @@ def _format_date_label(iso_date: Optional[str]) -> str:
         return iso_date[:10] if len(iso_date) >= 10 else iso_date
 
 
-def _extract_param_count(model_id: str, name: str, tags: List[str] = None) -> tuple[float, str]:
-    """Extracts parameter count in billions (e.g. 14.0, '14B') from model id, name or tags."""
+def parse_model_specs(model_id: str, name: str, tags: List[str] = None) -> Dict[str, Any]:
+    """
+    Accurately extracts:
+    - active_params_b (float) & active_params_label (e.g. '27B', '95B')
+    - total_params_label (e.g. '27B', '2.4T Totali', '47B (8x7B)')
+    - is_moe (bool)
+    - precision_label (e.g. 'FP8', 'FP16', 'GGUF Q4_K_M', 'NVFP4')
+    - estimated size_gb (e.g. 27.0 GB for FP8 vs 54.0 GB for FP16)
+    """
     text = f"{model_id} {name} {' '.join(tags or [])}".lower()
-    
-    # Check MoE pattern like 8x7b, 16x17b, 8x22b
-    moe_match = re.search(r'(\d+)\s*x\s*(\d+(?:\.\d+)?)\s*b', text)
-    if moe_match:
-        experts = int(moe_match.group(1))
-        expert_size = float(moe_match.group(2))
-        total_params = round(experts * expert_size * 0.65, 1)
-        return total_params, f"{experts}x{expert_size:g}B (MoE)"
 
-    # Check standard B pattern like 70b, 32b, 27b, 14b, 8b, 7b, 3b, 1.5b, 0.5b
-    param_match = re.search(r'(\d+(?:\.\d+)?)\s*b(?:\b|[^a-z0-9])', text)
-    if param_match:
-        val = float(param_match.group(1))
-        if 0.1 <= val <= 1000:
-            return val, f"{val:g}B"
+    # 1. Parameter extraction (Active vs Total)
+    active_b = 7.0
+    active_label = "7B"
+    total_label = "7B"
+    is_moe = False
 
-    # Check M pattern like 350m, 500m, 152m
-    m_match = re.search(r'(\d+)\s*m(?:\b|[^a-z0-9])', text)
-    if m_match:
-        val_m = float(m_match.group(1))
-        return round(val_m / 1000, 2), f"{int(val_m)}M"
-
-    return 7.0, "7B"
-
-
-def _estimate_model_size_gb(params_b: float, is_gguf: bool = True, quant: str = "Q4_K_M") -> float:
-    """Estimates the model weight file size in GB based on parameters and quantization."""
-    if is_gguf:
-        if "q8" in quant.lower():
-            return round(params_b * 1.08, 1)
-        elif "q5" in quant.lower():
-            return round(params_b * 0.75, 1)
-        elif "q2" in quant.lower() or "q3" in quant.lower():
-            return round(params_b * 0.45, 1)
+    # Check for MoE active token patterns like 2.4T-A95B or 35B-A3B or A95B
+    moe_a_match = re.search(r'(?:(\d+(?:\.\d+)?)\s*t\s*[-_])?a(\d+(?:\.\d+)?)\s*b', text)
+    if moe_a_match:
+        is_moe = True
+        t_tokens = moe_a_match.group(1)
+        active_val = float(moe_a_match.group(2))
+        active_b = active_val
+        active_label = f"{active_val:g}B"
+        total_label = f"{t_tokens}T Totali" if t_tokens else f"{active_val:g}B (MoE)"
+    else:
+        # Check standard MoE expert patterns like 8x7b, 16x17b, 8x22b
+        moe_match = re.search(r'(\d+)\s*x\s*(\d+(?:\.\d+)?)\s*b', text)
+        if moe_match:
+            is_moe = True
+            experts = int(moe_match.group(1))
+            expert_size = float(moe_match.group(2))
+            active_b = round(expert_size * 2, 1)
+            total_b = round(experts * expert_size, 1)
+            active_label = f"~{active_b:g}B"
+            total_label = f"{total_b:g}B ({experts}x{expert_size:g}B)"
         else:
-            return round(params_b * 0.62, 1)  # standard Q4_K_M
-    return round(params_b * 2.0, 1)  # FP16 / Safetensors
+            # Check standard B pattern like 70b, 32b, 27b, 14b, 8b, 7b, 3b, 1.5b, 0.5b
+            param_match = re.search(r'(\d+(?:\.\d+)?)\s*b(?:\b|[^a-z0-9])', text)
+            if param_match:
+                val = float(param_match.group(1))
+                if 0.1 <= val <= 1000:
+                    active_b = val
+                    active_label = f"{val:g}B"
+                    total_label = f"{val:g}B"
+            else:
+                m_match = re.search(r'(\d+)\s*m(?:\b|[^a-z0-9])', text)
+                if m_match:
+                    val_m = float(m_match.group(1))
+                    active_b = round(val_m / 1000, 2)
+                    active_label = f"{int(val_m)}M"
+                    total_label = f"{int(val_m)}M"
+
+    # 2. Precision & Size estimation (FP8, FP16, GGUF, NVFP4)
+    is_gguf = "gguf" in text
+    if "fp8" in text or "int8" in text or "w8a8" in text or "8bit" in text or "8-bit" in text:
+        precision = "FP8 (8-bit)"
+        fmt_label = "Safetensors (FP8)"
+        size_gb = round(active_b * 1.0, 1)
+    elif "nvfp4" in text or "mxfp4" in text or "int4" in text or "fp4" in text or "awq" in text or "gptq" in text or "4bit" in text:
+        precision = "4-bit (NVFP4/AWQ)"
+        fmt_label = "Safetensors (4-bit)"
+        size_gb = round(active_b * 0.55, 1)
+    elif is_gguf:
+        if "q8" in text:
+            precision = "GGUF Q8_0 (8-bit)"
+            size_gb = round(active_b * 1.08, 1)
+        elif "q5" in text:
+            precision = "GGUF Q5_K_M (5-bit)"
+            size_gb = round(active_b * 0.75, 1)
+        elif "q2" in text or "q3" in text:
+            precision = "GGUF Q3_K_M (3-bit)"
+            size_gb = round(active_b * 0.45, 1)
+        else:
+            precision = "GGUF Q4_K_M (4-bit)"
+            size_gb = round(active_b * 0.62, 1)
+        fmt_label = "GGUF"
+    else:
+        precision = "FP16 / BF16 (16-bit)"
+        fmt_label = "Safetensors"
+        size_gb = round(active_b * 2.0, 1)
+
+    return {
+        "active_b": active_b,
+        "active_label": active_label,
+        "total_label": total_label,
+        "is_moe": is_moe,
+        "precision": precision,
+        "format": fmt_label,
+        "size_gb": size_gb
+    }
 
 
 def _determine_target_gpu(size_gb: float) -> str:
@@ -186,6 +238,9 @@ POPULAR_MODELS = [
         "category": "code",
         "params_b": 14.0,
         "params_label": "14B",
+        "active_params_label": "14B",
+        "total_params_label": "14B",
+        "precision": "FP16 (16-bit)",
         "size_gb": 28.0,
         "format": "Safetensors",
         "downloads": 240000,
@@ -208,6 +263,9 @@ POPULAR_MODELS = [
         "category": "reasoning",
         "params_b": 14.0,
         "params_label": "14B",
+        "active_params_label": "14B",
+        "total_params_label": "14B",
+        "precision": "FP16 (16-bit)",
         "size_gb": 28.0,
         "format": "Safetensors",
         "downloads": 410000,
@@ -230,6 +288,9 @@ POPULAR_MODELS = [
         "category": "llm",
         "params_b": 8.0,
         "params_label": "8B",
+        "active_params_label": "8B",
+        "total_params_label": "8B",
+        "precision": "FP16 (16-bit)",
         "size_gb": 16.0,
         "format": "Safetensors",
         "downloads": 820000,
@@ -238,7 +299,7 @@ POPULAR_MODELS = [
         "created_at": "2024-07-23T12:00:00Z",
         "last_modified": "2024-08-01T10:00:00Z",
         "release_date_label": "23 Lug 2024",
-        "description": "Modello ufficiale di Meta con 128k contest window e alte capacità conversazionali.",
+        "description": "Modello ufficiale di Meta con 128k context window e alte capacità conversazionali.",
         "quantizations": ["Safetensors (16 GB)", "GGUF Q4_K_M (4.9 GB)"],
         "pipeline_tag": "text-generation",
         "default_file": "model.safetensors",
@@ -247,11 +308,14 @@ POPULAR_MODELS = [
     },
     {
         "id": "meta-llama/Llama-3.3-70B-Instruct",
-        "name": "Meta Llama 3.3-70B Instruct",
+        "name": "Meta Llama 3.3 70B Instruct",
         "author": "meta-llama",
         "category": "moe",
         "params_b": 70.0,
         "params_label": "70B",
+        "active_params_label": "70B",
+        "total_params_label": "70B",
+        "precision": "FP16 (16-bit)",
         "size_gb": 140.0,
         "format": "Safetensors",
         "downloads": 310000,
@@ -274,6 +338,9 @@ POPULAR_MODELS = [
         "category": "reasoning",
         "params_b": 14.0,
         "params_label": "14B",
+        "active_params_label": "14B",
+        "total_params_label": "14B",
+        "precision": "GGUF Q4_K_M (4-bit)",
         "size_gb": 8.9,
         "format": "GGUF",
         "downloads": 128000,
@@ -296,6 +363,9 @@ POPULAR_MODELS = [
         "category": "llm",
         "params_b": 7.0,
         "params_label": "7B",
+        "active_params_label": "7B",
+        "total_params_label": "7B",
+        "precision": "FP16 (16-bit)",
         "size_gb": 14.0,
         "format": "Safetensors",
         "downloads": 520000,
@@ -353,7 +423,7 @@ def search_hf_models(
 ) -> Dict[str, Any]:
     """
     Searches models on Hugging Face API dynamically in real time.
-    Supports official_only filter, granular size brackets, and cursor-based endless pagination.
+    Supports official_only filter, granular size brackets, active/total parameters and precision-aware sizing.
     """
     results = []
 
@@ -447,7 +517,7 @@ def search_hf_models(
             if not any(x.get("id") == item.get("id") for x in raw_items):
                 raw_items.append(item)
 
-        # C. Transform and filter raw items
+        # C. Transform and filter raw items with precision & active/total specs
         for item in raw_items:
             mid = item.get("id") or item.get("modelId", "")
             if any(r["id"] == mid for r in results):
@@ -470,11 +540,14 @@ def search_hf_models(
             release_date = created_at or last_modified
             date_label = _format_date_label(release_date)
 
-            # Parse parameters and size
-            params_b, params_label = _extract_param_count(mid, m_name, tags)
-            is_gguf = "gguf" in mid.lower() or "gguf" in tags or format_filter == "gguf"
-            fmt_label = "GGUF" if is_gguf else "Safetensors"
-            size_gb = _estimate_model_size_gb(params_b, is_gguf=is_gguf)
+            # Parse precision, active/total parameters and realistic size in GB
+            specs = parse_model_specs(mid, m_name, tags)
+            params_b = specs["active_b"]
+            params_label = specs["active_label"]
+            total_params_label = specs["total_label"]
+            precision = specs["precision"]
+            fmt_label = specs["format"]
+            size_gb = specs["size_gb"]
             rec_gpu = _determine_target_gpu(size_gb)
 
             # Apply filters
@@ -489,7 +562,7 @@ def search_hf_models(
                 "code" if "code" in mid.lower() or "coder" in mid.lower() else (
                     "vision" if "vl" in mid.lower() or "vision" in mid.lower() else (
                         "reasoning" if "r1" in mid.lower() or "reason" in mid.lower() else (
-                            "moe" if "moe" in mid.lower() or "x" in mid.lower() else "llm"
+                            "moe" if specs["is_moe"] or "moe" in mid.lower() or "x" in mid.lower() else "llm"
                         )
                     )
                 )
@@ -502,6 +575,10 @@ def search_hf_models(
                 "category": inferred_cat,
                 "params_b": params_b,
                 "params_label": params_label,
+                "active_params_label": params_label,
+                "total_params_label": total_params_label,
+                "is_moe": specs["is_moe"],
+                "precision": precision,
                 "size_gb": size_gb,
                 "format": fmt_label,
                 "downloads": item.get("downloads", 0),
@@ -510,10 +587,10 @@ def search_hf_models(
                 "created_at": created_at,
                 "last_modified": last_modified,
                 "release_date_label": date_label,
-                "description": f"Modello {m_name} ({params_label} • {size_gb} GB) di {author}.",
-                "quantizations": ["GGUF Q4_K_M", "Q8_0", "FP16"] if is_gguf else ["Safetensors FP16 / BF16"],
+                "description": f"Modello {m_name} ({precision} • {params_label} attivi / {total_params_label}) di {author}.",
+                "quantizations": ["GGUF Q4_K_M", "Q8_0", "FP16"] if "GGUF" in fmt_label else [f"{precision} ({size_gb} GB)"],
                 "pipeline_tag": pipeline,
-                "default_file": f"{m_name}.gguf" if is_gguf else f"{m_name}.safetensors",
+                "default_file": f"{m_name}.gguf" if "GGUF" in fmt_label else f"{m_name}.safetensors",
                 "hf_url": f"https://huggingface.co/{mid}",
                 "recommended_gpu": rec_gpu
             })
@@ -569,8 +646,7 @@ def get_hf_model_details(model_id: str, hf_token: Optional[str] = None) -> Dict[
                 last_modified = data.get("lastModified")
                 release_date_label = _format_date_label(created_at or last_modified)
 
-                params_b, params_label = _extract_param_count(model_id, data.get("id", ""), data.get("tags", []))
-                size_gb = _estimate_model_size_gb(params_b, is_gguf=any(f["is_gguf"] for f in files))
+                specs = parse_model_specs(model_id, data.get("id", ""), data.get("tags", []))
                 author = data.get("author", model_id.split("/")[0] if "/" in model_id else "Community")
 
                 return {
@@ -583,9 +659,13 @@ def get_hf_model_details(model_id: str, hf_token: Optional[str] = None) -> Dict[
                     "created_at": created_at,
                     "last_modified": last_modified,
                     "release_date_label": release_date_label,
-                    "params_label": params_label,
-                    "size_gb": size_gb,
-                    "recommended_gpu": _determine_target_gpu(size_gb),
+                    "params_label": specs["active_label"],
+                    "active_params_label": specs["active_label"],
+                    "total_params_label": specs["total_label"],
+                    "precision": specs["precision"],
+                    "is_moe": specs["is_moe"],
+                    "size_gb": specs["size_gb"],
+                    "recommended_gpu": _determine_target_gpu(specs["size_gb"]),
                     "pipeline_tag": data.get("pipeline_tag", "text-generation"),
                     "tags": data.get("tags", []),
                     "files": files,
@@ -596,8 +676,7 @@ def get_hf_model_details(model_id: str, hf_token: Optional[str] = None) -> Dict[
         log.error(f"[HF_Client] get_hf_model_details error for {model_id}: {ex}")
 
     # Fallback representation
-    params_b, params_label = _extract_param_count(model_id, model_id)
-    size_gb = _estimate_model_size_gb(params_b, is_gguf=True)
+    specs = parse_model_specs(model_id, model_id)
     author = model_id.split("/")[0] if "/" in model_id else "Community"
     return {
         "success": True,
@@ -609,9 +688,13 @@ def get_hf_model_details(model_id: str, hf_token: Optional[str] = None) -> Dict[
         "created_at": "2025-01-01T00:00:00Z",
         "last_modified": "2025-01-01T00:00:00Z",
         "release_date_label": "1 Gen 2025",
-        "params_label": params_label,
-        "size_gb": size_gb,
-        "recommended_gpu": _determine_target_gpu(size_gb),
+        "params_label": specs["active_label"],
+        "active_params_label": specs["active_label"],
+        "total_params_label": specs["total_label"],
+        "precision": specs["precision"],
+        "is_moe": specs["is_moe"],
+        "size_gb": specs["size_gb"],
+        "recommended_gpu": _determine_target_gpu(specs["size_gb"]),
         "pipeline_tag": "text-generation",
         "tags": ["gguf", "llama", "sigma-engine"],
         "files": [
