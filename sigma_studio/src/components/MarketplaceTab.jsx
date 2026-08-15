@@ -3,8 +3,9 @@ import {
   Store, Package, Download, RefreshCw, CheckCircle2, ShieldCheck, 
   ExternalLink, Terminal, GitBranch, Cpu, Sparkles, Layers, 
   Palette, FlaskConical, Brain, Zap, Home, Wrench, ArrowRight,
-  PlusCircle, AlertCircle, Play, Check, X, Search, Radio, Trash2, Calendar
+  PlusCircle, AlertCircle, Play, Check, X, Search, Radio, Trash2, Calendar, PieChart
 } from 'lucide-react';
+
 import { useApp } from '../contexts/AppContext';
 
 // ==============================================================================
