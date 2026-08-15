@@ -287,13 +287,6 @@ SigmaAPIHandler.handle_research_decompose = handle_research_decompose
 SigmaAPIHandler.handle_research_next_steps = handle_research_next_steps
 SigmaAPIHandler.handle_research_start = handle_research_start
 
-# 18. Training Lab & Hardware Lab — handler condivisi con il server FastAPI
-# (definizione unica in core/training_api.py: le due pipeline devono esporre
-#  esattamente gli stessi endpoint)
-from core.training_handler import reconcile_jobs
-from core.training_api import register_training_handlers
-
-register_training_handlers(SigmaAPIHandler)
 
 def handle_router_train(self):
     """API Endpoint to rebuild the sigma-router model and generate training dataset."""
@@ -460,15 +453,6 @@ if __name__ == "__main__":
     # Apply Multi-GPU Environment
     _apply_hardware_env()
 
-    # 0a. Training jobs left "running" by a previous session: reattach those still
-    # alive (the child process survives a Sigma restart), close out the others.
-    try:
-        _rec = reconcile_jobs()
-        if _rec["reattached"] or _rec["closed"]:
-            log.info("Training jobs: %d riagganciati, %d chiusi",
-                     len(_rec["reattached"]), len(_rec["closed"]))
-    except Exception as exc:
-        log.warning("reconcile_jobs skipped: %s", exc)
 
     # 0. Ensure default manifestos are copied
     _init_manifesti()
