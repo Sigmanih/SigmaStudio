@@ -863,10 +863,18 @@ export default function AgentMessage({
                     ? `${typeof rawTps === 'number' ? rawTps.toFixed(1) : rawTps}`
                     : null;
 
+                  const rawEngine = m.engine || m.metrics?.engine || first.engine || first.metrics?.engine;
+                  const engineDisplay = rawEngine || null;
+
+                  const rawTtft = m.ttft_ms ?? m.metrics?.ttft_ms ?? first.ttft_ms ?? first.metrics?.ttft_ms;
+                  const ttftDisplay = rawTtft !== undefined && rawTtft !== null
+                    ? `${Math.round(rawTtft)}ms`
+                    : null;
+
                   const rawHw = m.hardware_note || m.metrics?.hardware_note || first.hardware_note || first.metrics?.hardware_note;
                   const hardwareDisplay = rawHw || null;
 
-                  if (!routingDisplay && !loadDisplay && !tpsDisplay && !hardwareDisplay) return null;
+                  if (!routingDisplay && !loadDisplay && !tpsDisplay && !hardwareDisplay && !engineDisplay && !ttftDisplay) return null;
 
                   return (
                     <div className="chat-msg-footer-metrics" style={{
@@ -882,6 +890,18 @@ export default function AgentMessage({
                       borderTop: '1px solid rgba(255, 255, 255, 0.04)',
                       userSelect: 'none'
                     }}>
+                      {engineDisplay && (
+                        <span title="Motore di inferenza utilizzato" style={{ display: 'inline-flex', alignItems: 'center', gap: '3px' }}>
+                          <span>⚡</span>
+                          <span>Engine: <strong style={{ color: '#00f2fe', fontWeight: 700 }}>{engineDisplay}</strong></span>
+                        </span>
+                      )}
+                      {ttftDisplay && (
+                        <span title="Time To First Token (Latenza primo token)" style={{ display: 'inline-flex', alignItems: 'center', gap: '3px' }}>
+                          <span>⏱️</span>
+                          <span>TTFT: <strong style={{ color: '#00f2fe', fontWeight: 600 }}>{ttftDisplay}</strong></span>
+                        </span>
+                      )}
                       {routingDisplay && (
                         <span title="Tempo impiegato dal centralino per analizzare l'intento e selezionare il ruolo" style={{ display: 'inline-flex', alignItems: 'center', gap: '3px' }}>
                           <span>🎯</span>
@@ -896,7 +916,7 @@ export default function AgentMessage({
                       )}
                       {tpsDisplay && (
                         <span title="Velocità di generazione del modello (tokens al secondo)" style={{ display: 'inline-flex', alignItems: 'center', gap: '3px' }}>
-                          <span>⚡</span>
+                          <span>🚀</span>
                           <span>Velocità: <strong style={{ color: '#4ade80', fontWeight: 600 }}>{tpsDisplay} t/s</strong></span>
                         </span>
                       )}
@@ -908,6 +928,7 @@ export default function AgentMessage({
                       )}
                     </div>
                   );
+
                 })()}
 
                 {isGrouped && (
