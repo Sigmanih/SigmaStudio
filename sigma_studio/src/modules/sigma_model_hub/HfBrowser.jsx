@@ -1,8 +1,11 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Search, Download, Star, ArrowDown, Sparkles, Filter, CheckCircle2, Layers, Cpu, Activity, ExternalLink } from 'lucide-react';
+import {
+  Search, Download, Star, ArrowDown, Sparkles, Filter, CheckCircle2,
+  Layers, Cpu, Activity, ExternalLink, HardDrive, ArrowUpDown, ChevronDown, SlidersHorizontal
+} from 'lucide-react';
 
 const CATEGORIES = [
-  { id: 'all', label: 'Tutti i Modelli' },
+  { id: 'all', label: 'Tutte le Categorie' },
   { id: 'reasoning', label: '🧠 Reasoning (R1 / DeepSeek)' },
   { id: 'llm', label: '💬 LLM Conversazionali' },
   { id: 'code', label: '💻 Coding & Agenti' },
@@ -11,9 +14,45 @@ const CATEGORIES = [
   { id: 'audio', label: '🎙️ Audio & Whisper' },
 ];
 
+const SIZE_BRACKETS = [
+  { id: 'all', label: 'Tutti i Pesi', badge: 'ALL' },
+  { id: 'under_4gb', label: '< 4 GB', hint: 'CPU / NPU', color: '#10b981' },
+  { id: '4_8gb', label: '4 - 8 GB', hint: 'RTX 5060 (8GB)', color: '#00d2ff' },
+  { id: '8_16gb', label: '8 - 16 GB', hint: 'RTX 5070 Ti (16GB)', color: '#bc8cff' },
+  { id: '16_32gb', label: '16 - 32 GB', hint: 'Dual-GPU 24GB', color: '#ffb86c' },
+  { id: 'over_32gb', label: '> 32 GB', hint: 'RAM 94GB / MoE', color: '#ff5064' },
+];
+
+const PARAM_BRACKETS = [
+  { id: 'all', label: 'Tutti i Parametri' },
+  { id: 'under_3b', label: 'Micro (< 3B)' },
+  { id: '7b_8b', label: '7B - 8B' },
+  { id: '12b_14b', label: '12B - 14B' },
+  { id: '27b_34b', label: '27B - 34B' },
+  { id: '70b_plus', label: '70B+ & MoE Sharded' },
+];
+
+const SORT_OPTIONS = [
+  { id: 'downloads', label: '📥 Più Scaricati (Downloads)' },
+  { id: 'likes', label: '⭐ Più Popolari (Likes / Trending)' },
+  { id: 'size_asc', label: '💾 Peso Minore prima (GB ↑)' },
+  { id: 'size_desc', label: '💾 Peso Maggiore prima (GB ↓)' },
+];
+
+const FORMAT_OPTIONS = [
+  { id: 'all', label: 'Tutti i Formati' },
+  { id: 'gguf', label: '⚡ Solo GGUF' },
+  { id: 'safetensors', label: '📦 Solo Safetensors' },
+];
+
 export default function HfBrowser({ isLight, addToast, onDownloadStarted }) {
   const [search, setSearch] = useState('');
   const [category, setCategory] = useState('all');
+  const [sizeBracket, setSizeBracket] = useState('all');
+  const [paramBracket, setParamBracket] = useState('all');
+  const [formatFilter, setFormatFilter] = useState('all');
+  const [sortBy, setSortBy] = useState('downloads');
+
   const [results, setResults] = useState([]);
   const [loading, setLoading] = useState(false);
   const [selectedModel, setSelectedModel] = useState(null);
@@ -32,7 +71,8 @@ export default function HfBrowser({ isLight, addToast, onDownloadStarted }) {
     setLoading(true);
     try {
       const q = encodeURIComponent(search);
-      const res = await fetch(`/api/models/hf/search?q=${q}&category=${category}&limit=24`);
+      const url = `/api/models/hf/search?q=${q}&category=${category}&size_bracket=${sizeBracket}&param_bracket=${paramBracket}&format_filter=${formatFilter}&sort=${sortBy}&limit=36`;
+      const res = await fetch(url);
       if (res.ok) {
         const json = await res.json();
         if (json.success) {
@@ -44,10 +84,10 @@ export default function HfBrowser({ isLight, addToast, onDownloadStarted }) {
     } finally {
       setLoading(false);
     }
-  }, [search, category]);
+  }, [search, category, sizeBracket, paramBracket, formatFilter, sortBy]);
 
   useEffect(() => {
-    const delay = setTimeout(fetchModels, 300);
+    const delay = setTimeout(fetchModels, 250);
     return () => clearTimeout(delay);
   }, [fetchModels]);
 
@@ -97,22 +137,24 @@ export default function HfBrowser({ isLight, addToast, onDownloadStarted }) {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-      {/* 1. Search Bar & Categories */}
+      {/* 1. SEARCH BAR & MULTI-DIMENSIONAL FILTERS CONTAINER */}
       <div style={{
-        padding: '14px 18px', borderRadius: '14px',
+        padding: '16px 20px', borderRadius: '16px',
         background: cardBg, border: cardBorder,
-        display: 'flex', flexDirection: 'column', gap: '12px'
+        display: 'flex', flexDirection: 'column', gap: '14px',
+        boxShadow: isLight ? '0 2px 10px rgba(0,0,0,0.03)' : '0 4px 20px rgba(0,0,0,0.3)'
       }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+        {/* Search Input & Sort / Format Dropdowns */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
           <div style={{
             display: 'flex', alignItems: 'center', gap: '8px',
-            padding: '8px 14px', borderRadius: '10px',
-            background: subBg, border: subBorder, flex: 1
+            padding: '9px 14px', borderRadius: '10px',
+            background: subBg, border: subBorder, flex: 1, minWidth: '260px'
           }}>
-            <Search size={15} color="#00d2ff" />
+            <Search size={16} color="#ffb86c" />
             <input
               type="text"
-              placeholder="Cerca modelli su Hugging Face (es. DeepSeek-R1, Qwen2.5-Coder, Llama-3.1, GGUF)..."
+              placeholder="Cerca qualsiasi modello Hugging Face (es. DeepSeek-R1, Qwen2.5-Coder, Llama-3.3, GGUF)..."
               value={search}
               onChange={e => setSearch(e.target.value)}
               style={{
@@ -121,18 +163,58 @@ export default function HfBrowser({ isLight, addToast, onDownloadStarted }) {
               }}
             />
           </div>
+
+          {/* Sort Dropdown */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+            <ArrowUpDown size={14} color="#ffb86c" />
+            <select
+              value={sortBy}
+              onChange={e => setSortBy(e.target.value)}
+              style={{
+                padding: '9px 12px', borderRadius: '10px',
+                background: subBg, border: subBorder,
+                color: textPrimary, fontSize: '0.78rem', fontWeight: 700, outline: 'none', cursor: 'pointer'
+              }}
+            >
+              {SORT_OPTIONS.map(opt => (
+                <option key={opt.id} value={opt.id} style={{ background: isLight ? '#fff' : '#0d1019', color: textPrimary }}>
+                  {opt.label}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* Format Selector */}
+          <select
+            value={formatFilter}
+            onChange={e => setFormatFilter(e.target.value)}
+            style={{
+              padding: '9px 12px', borderRadius: '10px',
+              background: subBg, border: subBorder,
+              color: textPrimary, fontSize: '0.78rem', fontWeight: 700, outline: 'none', cursor: 'pointer'
+            }}
+          >
+            {FORMAT_OPTIONS.map(f => (
+              <option key={f.id} value={f.id} style={{ background: isLight ? '#fff' : '#0d1019', color: textPrimary }}>
+                {f.label}
+              </option>
+            ))}
+          </select>
         </div>
 
-        {/* Category Pills */}
-        <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+        {/* Categories Pills */}
+        <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', alignItems: 'center' }}>
+          <span style={{ fontSize: '0.66rem', fontWeight: 800, color: textMuted, textTransform: 'uppercase', marginRight: '4px' }}>
+            CATEGORIA:
+          </span>
           {CATEGORIES.map(cat => (
             <button
               key={cat.id}
               onClick={() => setCategory(cat.id)}
               className="mh-pill-btn"
               style={{
-                background: category === cat.id ? (isLight ? '#111827' : '#00d2ff') : subBg,
-                color: category === cat.id ? '#ffffff' : textMuted,
+                background: category === cat.id ? (isLight ? '#111827' : '#ffb86c') : subBg,
+                color: category === cat.id ? (isLight ? '#ffffff' : '#0d1019') : textMuted,
                 border: category === cat.id ? '1px solid transparent' : subBorder
               }}
             >
@@ -140,17 +222,67 @@ export default function HfBrowser({ isLight, addToast, onDownloadStarted }) {
             </button>
           ))}
         </div>
+
+        {/* Size in GB Bracket Pills */}
+        <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', alignItems: 'center', borderTop: subBorder, paddingTop: '10px' }}>
+          <span style={{ fontSize: '0.66rem', fontWeight: 800, color: '#ffb86c', textTransform: 'uppercase', marginRight: '4px', display: 'flex', alignItems: 'center', gap: '4px' }}>
+            <HardDrive size={12} /> FASCIA PESO GB:
+          </span>
+          {SIZE_BRACKETS.map(b => (
+            <button
+              key={b.id}
+              onClick={() => setSizeBracket(b.id)}
+              className="mh-pill-btn"
+              style={{
+                background: sizeBracket === b.id ? (b.color || '#ffb86c') : subBg,
+                color: sizeBracket === b.id ? '#ffffff' : textMuted,
+                border: sizeBracket === b.id ? '1px solid transparent' : subBorder
+              }}
+            >
+              <span>{b.label}</span>
+              {b.hint && (
+                <span style={{
+                  fontSize: '0.62rem', opacity: 0.85, padding: '1px 4px', borderRadius: '3px',
+                  background: sizeBracket === b.id ? 'rgba(0,0,0,0.25)' : 'rgba(255,255,255,0.06)'
+                }}>
+                  {b.hint}
+                </span>
+              )}
+            </button>
+          ))}
+        </div>
+
+        {/* Parameter Count Bracket Pills */}
+        <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', alignItems: 'center' }}>
+          <span style={{ fontSize: '0.66rem', fontWeight: 800, color: '#00d2ff', textTransform: 'uppercase', marginRight: '4px', display: 'flex', alignItems: 'center', gap: '4px' }}>
+            <Cpu size={12} /> PARAMETRI:
+          </span>
+          {PARAM_BRACKETS.map(p => (
+            <button
+              key={p.id}
+              onClick={() => setParamBracket(p.id)}
+              className="mh-pill-btn"
+              style={{
+                background: paramBracket === p.id ? '#00d2ff' : subBg,
+                color: paramBracket === p.id ? '#07090e' : textMuted,
+                border: paramBracket === p.id ? '1px solid transparent' : subBorder
+              }}
+            >
+              {p.label}
+            </button>
+          ))}
+        </div>
       </div>
 
-      {/* 2. Models Grid */}
+      {/* 2. DYNAMIC LIVE MODELS GRID */}
       {loading ? (
         <div style={{ textAlign: 'center', padding: '60px 20px', color: textMuted }}>
-          <Activity className="mh-spin" size={24} color="#00d2ff" style={{ margin: '0 auto 10px' }} />
-          <div>Ricerca modelli su Hugging Face in corso...</div>
+          <Activity className="mh-spin" size={24} color="#ffb86c" style={{ margin: '0 auto 10px' }} />
+          <div>Caricamento dinamico da Hugging Face API...</div>
         </div>
       ) : results.length === 0 ? (
         <div style={{ textAlign: 'center', padding: '60px 20px', color: textMuted }}>
-          Nessun modello trovato per i criteri specificati.
+          Nessun modello trovato per i filtri selezionati. Prova a selezionare "Tutti i Pesi" o "Tutti i Parametri".
         </div>
       ) : (
         <div className="mh-models-grid">
@@ -161,7 +293,7 @@ export default function HfBrowser({ isLight, addToast, onDownloadStarted }) {
               className="mh-card mh-card-hover"
               style={{
                 padding: '16px', borderRadius: '14px',
-                background: cardBg, border: selectedModel?.id === m.id ? '1.5px solid #00d2ff' : cardBorder,
+                background: cardBg, border: selectedModel?.id === m.id ? '1.5px solid #ffb86c' : cardBorder,
                 cursor: 'pointer', display: 'flex', flexDirection: 'column', justifyContent: 'space-between', gap: '12px'
               }}
             >
@@ -175,12 +307,21 @@ export default function HfBrowser({ isLight, addToast, onDownloadStarted }) {
                       {m.name}
                     </h3>
                   </div>
-                  <span style={{
-                    fontSize: '0.62rem', padding: '2px 6px', borderRadius: '4px',
-                    background: 'rgba(0, 210, 255, 0.12)', color: '#00d2ff', fontWeight: 800, flexShrink: 0
-                  }}>
-                    {m.category?.toUpperCase() || 'LLM'}
-                  </span>
+
+                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '4px', flexShrink: 0 }}>
+                    <span style={{
+                      fontSize: '0.62rem', padding: '2px 6px', borderRadius: '4px',
+                      background: 'rgba(255, 184, 108, 0.15)', color: '#ffb86c', fontWeight: 800
+                    }}>
+                      {m.params_label || '7B'}
+                    </span>
+                    <span style={{
+                      fontSize: '0.60rem', padding: '1px 5px', borderRadius: '3px',
+                      background: subBg, color: textMuted, border: subBorder, fontWeight: 700
+                    }}>
+                      ~{m.size_gb} GB
+                    </span>
+                  </div>
                 </div>
 
                 <p style={{ margin: '8px 0 0 0', fontSize: '0.72rem', color: textMuted, lineHeight: '1.4' }}>
@@ -189,14 +330,14 @@ export default function HfBrowser({ isLight, addToast, onDownloadStarted }) {
               </div>
 
               <div>
-                {/* Stats & Quantizations */}
+                {/* Target GPU & Stats */}
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderTop: subBorder, paddingTop: '8px', fontSize: '0.68rem', color: textMuted }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                     <span>⭐ {m.likes}</span>
                     <span>📥 {m.downloads > 1000 ? `${Math.round(m.downloads / 1000)}k` : m.downloads}</span>
                   </div>
-                  <span style={{ color: '#10b981', fontWeight: 700 }}>
-                    {m.recommended_gpu || 'SigmaEngine'}
+                  <span style={{ color: '#00d2ff', fontWeight: 700, fontSize: '0.66rem' }}>
+                    {m.recommended_gpu || '⚡ SigmaEngine'}
                   </span>
                 </div>
 
@@ -208,7 +349,7 @@ export default function HfBrowser({ isLight, addToast, onDownloadStarted }) {
                   style={{
                     width: '100%', marginTop: '10px',
                     padding: '7px 12px', borderRadius: '8px',
-                    border: 'none', background: 'rgba(0, 210, 255, 0.12)', color: isLight ? '#0284c7' : '#00d2ff',
+                    border: 'none', background: 'rgba(255, 184, 108, 0.15)', color: isLight ? '#ea580c' : '#ffb86c',
                     fontSize: '0.74rem', fontWeight: 800, cursor: 'pointer',
                     display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '5px'
                   }}
@@ -221,7 +362,7 @@ export default function HfBrowser({ isLight, addToast, onDownloadStarted }) {
         </div>
       )}
 
-      {/* 3. Model Files & Download Picker Drawer / Modal */}
+      {/* 3. QUANTIZATION & FILE SELECTION MODAL */}
       {selectedModel && (
         <div style={{
           position: 'fixed', inset: 0,
@@ -229,14 +370,14 @@ export default function HfBrowser({ isLight, addToast, onDownloadStarted }) {
           zIndex: 10030, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px'
         }}>
           <div style={{
-            maxWidth: '560px', width: '100%',
+            maxWidth: '580px', width: '100%',
             background: cardBg, border: cardBorder, borderRadius: '16px',
             padding: '20px', display: 'flex', flexDirection: 'column', gap: '14px',
             boxShadow: '0 25px 50px rgba(0, 0, 0, 0.7)'
           }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
               <div>
-                <span style={{ fontSize: '0.66rem', color: '#00d2ff', fontWeight: 800, textTransform: 'uppercase' }}>
+                <span style={{ fontSize: '0.66rem', color: '#ffb86c', fontWeight: 800, textTransform: 'uppercase' }}>
                   FILE & QUANTIZZAZIONI DISPONIBILI
                 </span>
                 <h3 style={{ margin: '2px 0 0 0', fontSize: '1.05rem', fontWeight: 800, color: textPrimary }}>
@@ -250,8 +391,8 @@ export default function HfBrowser({ isLight, addToast, onDownloadStarted }) {
 
             {loadingDetails ? (
               <div style={{ textAlign: 'center', padding: '30px', color: textMuted }}>
-                <Activity className="mh-spin" size={20} color="#00d2ff" style={{ margin: '0 auto 8px' }} />
-                <span>Caricamento file da Hugging Face...</span>
+                <Activity className="mh-spin" size={20} color="#ffb86c" style={{ margin: '0 auto 8px' }} />
+                <span>Interrogazione Hugging Face per i file del repository...</span>
               </div>
             ) : (
               <div style={{ maxHeight: '280px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '8px' }}>
@@ -278,7 +419,7 @@ export default function HfBrowser({ isLight, addToast, onDownloadStarted }) {
                       disabled={downloadingFile === file.filename}
                       style={{
                         padding: '6px 12px', borderRadius: '6px',
-                        border: 'none', background: 'linear-gradient(135deg, #00d2ff, #0090ff)',
+                        border: 'none', background: 'linear-gradient(135deg, #ffb86c, #ea580c)',
                         color: '#fff', fontSize: '0.72rem', fontWeight: 800, cursor: 'pointer',
                         display: 'flex', alignItems: 'center', gap: '4px', flexShrink: 0
                       }}

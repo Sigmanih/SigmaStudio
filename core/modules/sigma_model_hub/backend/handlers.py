@@ -38,12 +38,15 @@ def _save_hub_config(cfg: dict) -> None:
 
 
 def handle_models_hf_search(self):
-    """GET /api/models/hf/search — Cerca modelli su Hugging Face."""
+    """GET /api/models/hf/search — Cerca modelli su Hugging Face con filtri multi-dimensionali."""
     try:
         query = ""
         category = "all"
+        size_bracket = "all"
+        param_bracket = "all"
+        format_filter = "all"
         sort = "downloads"
-        limit = 20
+        limit = 30
 
         # Parse query params if available
         if hasattr(self, 'path') and '?' in self.path:
@@ -51,17 +54,30 @@ def handle_models_hf_search(self):
             params = urllib.parse.parse_qs(qs)
             query = params.get('q', [''])[0]
             category = params.get('category', ['all'])[0]
+            size_bracket = params.get('size_bracket', ['all'])[0]
+            param_bracket = params.get('param_bracket', ['all'])[0]
+            format_filter = params.get('format_filter', ['all'])[0]
             sort = params.get('sort', ['downloads'])[0]
-            limit = int(params.get('limit', ['20'])[0])
+            limit = int(params.get('limit', ['30'])[0])
 
         cfg = _load_hub_config()
         token = cfg.get("hf_token") or None
-        results = search_hf_models(query=query, category=category, sort=sort, limit=limit, hf_token=token)
+        results = search_hf_models(
+            query=query,
+            category=category,
+            size_bracket=size_bracket,
+            param_bracket=param_bracket,
+            format_filter=format_filter,
+            sort=sort,
+            limit=limit,
+            hf_token=token
+        )
 
         self.send_json_response({"success": True, "results": results})
     except Exception as e:
         log.error("Error in handle_models_hf_search: %s", e)
         self.send_json_response({"success": False, "error": str(e)}, 500)
+
 
 
 def handle_models_hf_details(self):

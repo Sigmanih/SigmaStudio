@@ -19,6 +19,27 @@ class TestModelHubAPI(unittest.TestCase):
         self.assertIn("results", data)
         self.assertIsInstance(data["results"], list)
 
+    def test_hf_search_multi_dimensional_filters(self):
+        """GET /api/models/hf/search with size_bracket, param_bracket, and sort."""
+        # Filter by size bracket
+        res_size = self.client.get("/api/models/hf/search?size_bracket=8_16gb&sort=likes")
+        self.assertEqual(res_size.status_code, 200)
+        data_size = res_size.json()
+        self.assertTrue(data_size.get("success"))
+        for item in data_size.get("results", []):
+            self.assertGreater(item.get("size_gb", 0), 8.0)
+            self.assertLessEqual(item.get("size_gb", 0), 16.0)
+
+        # Filter by parameter bracket
+        res_params = self.client.get("/api/models/hf/search?param_bracket=12b_14b&sort=downloads")
+        self.assertEqual(res_params.status_code, 200)
+        data_params = res_params.json()
+        self.assertTrue(data_params.get("success"))
+        for item in data_params.get("results", []):
+            self.assertGreaterEqual(item.get("params_b", 0), 10.0)
+            self.assertLessEqual(item.get("params_b", 0), 16.0)
+
+
     def test_local_models_list_endpoint(self):
         """GET /api/models/local/list should return 200 with local models list."""
         response = self.client.get("/api/models/local/list")
