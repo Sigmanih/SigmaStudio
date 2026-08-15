@@ -315,14 +315,19 @@ class ModelDownloadManager:
 
                             now = time.time()
                             dt = now - last_time
-                            if dt >= 0.8:
+                            if dt >= 0.6:
                                 task.speed_mbps = (bytes_since_last_calc / (1024**2)) / dt
                                 bytes_since_last_calc = 0
                                 last_time = now
 
-                                # Calculate repo percentage
-                                file_base_pct = (idx / total_files) * 100.0
-                                task.progress_pct = min(99.9, file_base_pct + (100.0 / total_files) * 0.5)
+                                # Calculate weighted percentage across all shards
+                                if task.total_bytes > 0:
+                                    task.progress_pct = min(99.9, (task.downloaded_bytes / task.total_bytes) * 100.0)
+                                else:
+                                    task.progress_pct = min(99.9, ((idx + 0.5) / total_files) * 100.0)
+
+                                if task.speed_mbps > 0 and task.total_bytes > task.downloaded_bytes:
+                                    task.eta_seconds = (task.total_bytes - task.downloaded_bytes) / (task.speed_mbps * 1024**2)
 
                 if task._cancel_flag:
                     break
@@ -330,6 +335,9 @@ class ModelDownloadManager:
                 if os.path.exists(save_file):
                     os.remove(save_file)
                 os.rename(temp_file, save_file)
+                # Mark completed shard ratio
+                task.progress_pct = min(99.9, ((idx + 1) / total_files) * 100.0)
+
 
             if task._cancel_flag:
                 task.status = "cancelled"

@@ -2,7 +2,8 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   Search, Download, Star, ArrowDown, Sparkles, Filter, CheckCircle2,
   Layers, Cpu, Activity, ExternalLink, HardDrive, ArrowUpDown, ChevronDown,
-  Calendar, RefreshCw, PlusCircle, ShieldCheck, FolderDown, FileCode, ArrowUp
+  Calendar, RefreshCw, PlusCircle, ShieldCheck, FolderDown, FileCode, ArrowUp,
+  XCircle, Zap
 } from 'lucide-react';
 
 const CATEGORIES = [
@@ -50,7 +51,7 @@ const FORMAT_OPTIONS = [
   { id: 'safetensors', label: '📦 Solo Safetensors' },
 ];
 
-export default function HfBrowser({ isLight, addToast, onDownloadStarted }) {
+export default function HfBrowser({ isLight, addToast, onDownloadStarted, activeDownloads = [] }) {
   const [search, setSearch] = useState('');
   const [category, setCategory] = useState('all');
   const [sizeBracket, setSizeBracket] = useState('all');
@@ -198,7 +199,7 @@ export default function HfBrowser({ isLight, addToast, onDownloadStarted }) {
       });
       const json = await res.json();
       if (json.success) {
-        if (addToast) addToast(`🚀 Download avviato per l'intero modello ${modelId}!`, 'success');
+        if (addToast) addToast(`🚀 Download avviato per l'intero modello ${modelId}! Mostro progresso in tempo reale.`, 'success');
         if (onDownloadStarted) onDownloadStarted(json.task);
         setSelectedModel(null);
       } else {
@@ -208,6 +209,22 @@ export default function HfBrowser({ isLight, addToast, onDownloadStarted }) {
       if (addToast) addToast(`❌ Errore di rete: ${e.message}`, 'error');
     } finally {
       setDownloadingRepo(false);
+    }
+  };
+
+  const handleCancelDownload = async (taskId) => {
+    try {
+      const res = await fetch('/api/models/hf/download/cancel', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ task_id: taskId })
+      });
+      const json = await res.json();
+      if (json.success) {
+        if (addToast) addToast(`Download annullato.`, 'info');
+      }
+    } catch (e) {
+      if (addToast) addToast(`Errore: ${e.message}`, 'error');
     }
   };
 
@@ -424,130 +441,206 @@ export default function HfBrowser({ isLight, addToast, onDownloadStarted }) {
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
           <div className="mh-models-grid">
-            {results.map(m => (
-              <div
-                key={m.id}
-                onClick={() => handleSelectModel(m)}
-                className="mh-card mh-card-hover"
-                style={{
-                  padding: '16px', borderRadius: '14px',
-                  background: cardBg, border: selectedModel?.id === m.id ? '1.5px solid #ffb86c' : cardBorder,
-                  cursor: 'pointer', display: 'flex', flexDirection: 'column', justifyContent: 'space-between', gap: '12px'
-                }}
-              >
-                <div>
-                  <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '8px' }}>
-                    <div>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                        <span style={{ fontSize: '0.64rem', color: textMuted, textTransform: 'uppercase', fontWeight: 800 }}>
-                          {m.author}
-                        </span>
-                        {m.is_official && (
-                          <span style={{
-                            fontSize: '0.58rem', padding: '1px 5px', borderRadius: '4px',
-                            background: 'rgba(59, 130, 246, 0.15)', color: '#3b82f6', border: '1px solid rgba(59, 130, 246, 0.3)',
-                            fontWeight: 800, display: 'flex', alignItems: 'center', gap: '3px'
-                          }}>
-                            <ShieldCheck size={10} /> Ufficiale
+            {results.map(m => {
+              // Check if this model is currently in active download
+              const activeTask = activeDownloads.find(t => t.model_id === m.id && (t.status === 'downloading' || t.status === 'queued'));
+              const completedTask = activeDownloads.find(t => t.model_id === m.id && t.status === 'completed');
+
+              return (
+                <div
+                  key={m.id}
+                  onClick={() => handleSelectModel(m)}
+                  className="mh-card mh-card-hover"
+                  style={{
+                    padding: '16px', borderRadius: '14px',
+                    background: cardBg, border: activeTask ? '1.5px solid #00d2ff' : (selectedModel?.id === m.id ? '1.5px solid #ffb86c' : cardBorder),
+                    cursor: 'pointer', display: 'flex', flexDirection: 'column', justifyContent: 'space-between', gap: '12px'
+                  }}
+                >
+                  <div>
+                    <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '8px' }}>
+                      <div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                          <span style={{ fontSize: '0.64rem', color: textMuted, textTransform: 'uppercase', fontWeight: 800 }}>
+                            {m.author}
                           </span>
-                        )}
+                          {m.is_official && (
+                            <span style={{
+                              fontSize: '0.58rem', padding: '1px 5px', borderRadius: '4px',
+                              background: 'rgba(59, 130, 246, 0.15)', color: '#3b82f6', border: '1px solid rgba(59, 130, 246, 0.3)',
+                              fontWeight: 800, display: 'flex', alignItems: 'center', gap: '3px'
+                            }}>
+                              <ShieldCheck size={10} /> Ufficiale
+                            </span>
+                          )}
+                        </div>
+                        <h3 style={{ margin: '2px 0 0 0', fontSize: '0.94rem', fontWeight: 800, color: textPrimary, lineHeight: '1.3' }}>
+                          {m.name}
+                        </h3>
                       </div>
-                      <h3 style={{ margin: '2px 0 0 0', fontSize: '0.94rem', fontWeight: 800, color: textPrimary, lineHeight: '1.3' }}>
-                        {m.name}
-                      </h3>
+
+                      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '4px', flexShrink: 0 }}>
+                        <span style={{
+                          fontSize: '0.62rem', padding: '2px 6px', borderRadius: '4px',
+                          background: 'rgba(255, 184, 108, 0.15)', color: '#ffb86c', fontWeight: 800
+                        }}>
+                          {m.params_label || '7B'}
+                        </span>
+                        <span style={{
+                          fontSize: '0.60rem', padding: '1px 5px', borderRadius: '3px',
+                          background: subBg, color: textMuted, border: subBorder, fontWeight: 700
+                        }}>
+                          ~{m.size_gb} GB
+                        </span>
+                      </div>
                     </div>
 
-                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '4px', flexShrink: 0 }}>
-                      <span style={{
-                        fontSize: '0.62rem', padding: '2px 6px', borderRadius: '4px',
-                        background: 'rgba(255, 184, 108, 0.15)', color: '#ffb86c', fontWeight: 800
+                    <p style={{ margin: '8px 0 0 0', fontSize: '0.72rem', color: textMuted, lineHeight: '1.4' }}>
+                      {m.description}
+                    </p>
+                  </div>
+
+                  <div>
+                    {/* Release Date & Stats */}
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderTop: subBorder, paddingTop: '8px', fontSize: '0.68rem', color: textMuted }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <Calendar size={12} color="#ffb86c" />
+                        <span style={{ color: textPrimary, fontWeight: 700 }}>
+                          {m.release_date_label || 'Recente'}
+                        </span>
+                      </div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <span>⭐ {m.likes}</span>
+                        <span>📥 {m.downloads > 1000 ? `${Math.round(m.downloads / 1000)}k` : m.downloads}</span>
+                      </div>
+                    </div>
+
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: '6px', fontSize: '0.66rem' }}>
+                      <span style={{ color: '#00d2ff', fontWeight: 700 }}>
+                        {m.recommended_gpu || '⚡ SigmaEngine'}
+                      </span>
+                      <a
+                        href={m.hf_url || `https://huggingface.co/${m.id}`}
+                        target="_blank"
+                        rel="noreferrer"
+                        onClick={e => e.stopPropagation()}
+                        style={{
+                          color: textMuted, textDecoration: 'none', display: 'flex', alignItems: 'center', gap: '3px',
+                          fontWeight: 700, padding: '2px 5px', borderRadius: '4px', background: subBg, border: subBorder
+                        }}
+                        title="Apri pagina ufficiale su Hugging Face"
+                      >
+                        <ExternalLink size={10} /> Hugging Face
+                      </a>
+                    </div>
+
+                    {/* LIVE IN-CARD DOWNLOAD PROGRESS OR ACTION BUTTONS */}
+                    {activeTask ? (
+                      <div
+                        onClick={e => e.stopPropagation()}
+                        style={{
+                          marginTop: '10px', padding: '8px 10px', borderRadius: '8px',
+                          background: 'rgba(0, 210, 255, 0.08)', border: '1px solid rgba(0, 210, 255, 0.3)',
+                          display: 'flex', flexDirection: 'column', gap: '6px'
+                        }}
+                      >
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: '0.72rem' }}>
+                          <span style={{ color: '#00d2ff', fontWeight: 800, display: 'flex', alignItems: 'center', gap: '4px' }}>
+                            <Activity className="mh-spin" size={12} color="#00d2ff" />
+                            Scaricamento: {activeTask.progress_pct}%
+                          </span>
+                          <span style={{ color: textPrimary, fontWeight: 700, fontFamily: 'monospace' }}>
+                            {activeTask.speed_mbps} MB/s
+                          </span>
+                        </div>
+
+                        <div className="mh-progress-track">
+                          <div
+                            className="mh-progress-bar"
+                            style={{
+                              width: `${activeTask.progress_pct}%`,
+                              background: 'linear-gradient(90deg, #00d2ff, #0090ff)'
+                            }}
+                          />
+                        </div>
+
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: '0.64rem', color: textMuted }}>
+                          <span>
+                            {activeTask.is_repo_download
+                              ? `File ${activeTask.current_file_idx}/${activeTask.total_files} (${activeTask.current_file_name})`
+                              : `${activeTask.downloaded_mb} / ${activeTask.total_mb || '...'} MB`}
+                          </span>
+                          <button
+                            onClick={() => handleCancelDownload(activeTask.task_id)}
+                            style={{
+                              background: 'none', border: 'none', color: '#ef4444',
+                              fontWeight: 700, cursor: 'pointer', padding: 0
+                            }}
+                          >
+                            Annulla
+                          </button>
+                        </div>
+                      </div>
+                    ) : completedTask ? (
+                      <div style={{
+                        marginTop: '10px', padding: '7px 10px', borderRadius: '8px',
+                        background: 'rgba(16, 185, 129, 0.12)', border: '1px solid rgba(16, 185, 129, 0.3)',
+                        display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: '0.72rem'
                       }}>
-                        {m.params_label || '7B'}
-                      </span>
-                      <span style={{
-                        fontSize: '0.60rem', padding: '1px 5px', borderRadius: '3px',
-                        background: subBg, color: textMuted, border: subBorder, fontWeight: 700
-                      }}>
-                        ~{m.size_gb} GB
-                      </span>
-                    </div>
-                  </div>
-
-                  <p style={{ margin: '8px 0 0 0', fontSize: '0.72rem', color: textMuted, lineHeight: '1.4' }}>
-                    {m.description}
-                  </p>
-                </div>
-
-                <div>
-                  {/* Release Date & Stats */}
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderTop: subBorder, paddingTop: '8px', fontSize: '0.68rem', color: textMuted }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                      <Calendar size={12} color="#ffb86c" />
-                      <span style={{ color: textPrimary, fontWeight: 700 }}>
-                        {m.release_date_label || 'Recente'}
-                      </span>
-                    </div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                      <span>⭐ {m.likes}</span>
-                      <span>📥 {m.downloads > 1000 ? `${Math.round(m.downloads / 1000)}k` : m.downloads}</span>
-                    </div>
-                  </div>
-
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: '6px', fontSize: '0.66rem' }}>
-                    <span style={{ color: '#00d2ff', fontWeight: 700 }}>
-                      {m.recommended_gpu || '⚡ SigmaEngine'}
-                    </span>
-                    <a
-                      href={m.hf_url || `https://huggingface.co/${m.id}`}
-                      target="_blank"
-                      rel="noreferrer"
-                      onClick={e => e.stopPropagation()}
-                      style={{
-                        color: textMuted, textDecoration: 'none', display: 'flex', alignItems: 'center', gap: '3px',
-                        fontWeight: 700, padding: '2px 5px', borderRadius: '4px', background: subBg, border: subBorder
-                      }}
-                      title="Apri pagina ufficiale su Hugging Face"
-                    >
-                      <ExternalLink size={10} /> Hugging Face
-                    </a>
-                  </div>
-
-                  {/* Actions: 1-Click Whole Repo Download or Inspect Files */}
-                  <div style={{ display: 'flex', gap: '6px', marginTop: '10px' }}>
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleStartWholeRepoDownload(m.id);
-                      }}
-                      style={{
-                        flex: 1, padding: '7px 10px', borderRadius: '8px',
-                        border: 'none', background: 'linear-gradient(135deg, #ffb86c, #ea580c)', color: '#ffffff',
-                        fontSize: '0.74rem', fontWeight: 800, cursor: 'pointer',
-                        display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px',
-                        boxShadow: '0 0 10px rgba(255, 184, 108, 0.25)'
-                      }}
-                    >
-                      <FolderDown size={13} /> Scarica Tutto
-                    </button>
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleSelectModel(m);
-                      }}
-                      style={{
-                        padding: '7px 10px', borderRadius: '8px',
-                        border: subBorder, background: subBg, color: textPrimary,
-                        fontSize: '0.72rem', fontWeight: 700, cursor: 'pointer',
-                        display: 'flex', alignItems: 'center', justifyContent: 'center'
-                      }}
-                      title="Ispeziona file e quantizzazioni"
-                    >
-                      <FileCode size={13} />
-                    </button>
+                        <span style={{ color: '#10b981', fontWeight: 800, display: 'flex', alignItems: 'center', gap: '4px' }}>
+                          <CheckCircle2 size={13} /> Scaricato
+                        </span>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleSelectModel(m);
+                          }}
+                          style={{
+                            padding: '3px 8px', borderRadius: '4px', border: 'none',
+                            background: '#10b981', color: '#ffffff', fontWeight: 800, cursor: 'pointer', fontSize: '0.68rem'
+                          }}
+                        >
+                          ⚡ Avvia
+                        </button>
+                      </div>
+                    ) : (
+                      <div style={{ display: 'flex', gap: '6px', marginTop: '10px' }}>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleStartWholeRepoDownload(m.id);
+                          }}
+                          style={{
+                            flex: 1, padding: '7px 10px', borderRadius: '8px',
+                            border: 'none', background: 'linear-gradient(135deg, #ffb86c, #ea580c)', color: '#ffffff',
+                            fontSize: '0.74rem', fontWeight: 800, cursor: 'pointer',
+                            display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px',
+                            boxShadow: '0 0 10px rgba(255, 184, 108, 0.25)'
+                          }}
+                        >
+                          <FolderDown size={13} /> Scarica Tutto
+                        </button>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleSelectModel(m);
+                          }}
+                          style={{
+                            padding: '7px 10px', borderRadius: '8px',
+                            border: subBorder, background: subBg, color: textPrimary,
+                            fontSize: '0.72rem', fontWeight: 700, cursor: 'pointer',
+                            display: 'flex', alignItems: 'center', justifyContent: 'center'
+                          }}
+                          title="Ispeziona file e quantizzazioni"
+                        >
+                          <FileCode size={13} />
+                        </button>
+                      </div>
+                    )}
                   </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
 
           {/* 4. PAGINATION FOOTER */}
