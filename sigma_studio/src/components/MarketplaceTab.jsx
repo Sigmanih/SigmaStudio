@@ -38,19 +38,6 @@ const KERNEL_MODULES = [
     tags: ['Unsloth QLoRA', 'GGUF Export', 'Gradus FWE', 'Benchmarks'],
     author: 'Sigma Core Team'
   },
-  {
-    id: 'hardware_lab',
-    name: 'Hardware Lab & VRAM Telemetry',
-    category: 'Monitoraggio Hardware',
-    icon: Zap,
-    color: '#00d2ff',
-    tabType: 'hardware_lab',
-    version: 'v8.0.0',
-    status: 'installed',
-    description: 'Telemetria in tempo reale di GPU VRAM, RAM di sistema, CPU e terminazione selettiva dei processi zombie.',
-    tags: ['NVIDIA NVML', 'GPU VRAM', 'Ollama Daemon', 'Process Manager'],
-    author: 'Sigma Core Team'
-  },
 
   {
     id: 'knowledge',
@@ -128,8 +115,24 @@ const OPTIONAL_MODULES = [
     tags: ['Home Assistant', 'WebSocket', 'IoT MCP', 'Scene Smart', 'Zigbee'],
     size: '8 MB',
     author: 'Sigma Core Team'
+  },
+  {
+    id: 'sigma_hardware_lab',
+    name: 'Hardware Lab & VRAM Telemetry',
+    category: 'Infrastruttura & GPU',
+    icon: Zap,
+    color: '#00d2ff',
+    tabType: 'hardware_lab',
+    version: 'v1.0.0',
+    description: 'Telemetria in tempo reale di GPU VRAM, RAM di sistema, carico CPU, gestione processi CUDA e terminazione selettiva dei processi zombie.',
+    gitUrl: 'https://github.com/Sigmanih/SigmaStudio-Moduli/tree/main/modules/sigma_hardware_lab',
+    branch: 'main',
+    tags: ['NVIDIA NVML', 'GPU VRAM', 'Ollama Daemon', 'Process Manager', 'CUDA Telemetry'],
+    size: '1 MB',
+    author: 'Sigma Core Team'
   }
 ];
+
 
 // ==============================================================================
 // Remote Catalog Modules (From Separate Git Repository)

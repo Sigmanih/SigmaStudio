@@ -8,7 +8,6 @@ import ChatPanel from './components/Chat/ChatPanel';
 import AIConfig from './components/AIConfig';
 import ToastNotification from './components/ToastNotification';
 import TaskFloatingPanel from './components/TaskFloatingPanel';
-import HardwareFloatingPanel from './components/HardwareFloatingPanel';
 import MusicFloatingWidget from './components/Music/MusicFloatingWidget';
 import { ModuleModal, TaskModal, NewFileModal } from './components/modals';
 
@@ -64,6 +63,7 @@ function AppContent() {
 
   const { modulesState, isLoaded: modulesLoaded } = useModuleState();
   const isAudioInstalled = modulesState.audio_studio === true;
+  const isHardwareInstalled = modulesState.sigma_hardware_lab === true;
 
 
   const [taskPanelOpen, setTaskPanelOpen] = React.useState(false);
@@ -345,28 +345,35 @@ function AppContent() {
                 </button>
 
                 {/* Item 3: Hardware & GPU Monitor */}
-                <button
-                  onClick={() => setHardwarePanelOpen(!hardwarePanelOpen)}
-                  style={{
-                    display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                    padding: '10px 12px', borderRadius: '10px',
-                    background: hardwarePanelOpen ? 'rgba(63, 185, 80, 0.15)' : 'rgba(255, 255, 255, 0.03)',
-                    border: hardwarePanelOpen ? '1px solid rgba(63, 185, 80, 0.4)' : '1px solid rgba(255, 255, 255, 0.06)',
-                    color: hardwarePanelOpen ? '#3fb950' : '#e2e4eb',
-                    cursor: 'pointer', transition: 'all 0.18s ease', textAlign: 'left'
-                  }}
-                >
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                    <div style={{ width: '32px', height: '32px', borderRadius: '8px', background: 'rgba(63, 185, 80, 0.15)', border: '1px solid rgba(63, 185, 80, 0.3)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                      <Cpu size={16} color="#3fb950" />
+                {isHardwareInstalled && (
+                  <button
+                    onClick={() => {
+                      openTab({ name: '⚡ Hardware' }, 'hardware_lab');
+                      setDockMinimized(true);
+                    }}
+                    style={{
+                      display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                      padding: '10px 12px', borderRadius: '10px',
+                      background: 'rgba(255, 255, 255, 0.03)',
+                      border: '1px solid rgba(255, 255, 255, 0.06)',
+                      color: '#e2e4eb',
+                      cursor: 'pointer', transition: 'all 0.18s ease', textAlign: 'left'
+                    }}
+                  >
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                      <div style={{ width: '32px', height: '32px', borderRadius: '8px', background: 'rgba(63, 185, 80, 0.15)', border: '1px solid rgba(63, 185, 80, 0.3)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                        <Cpu size={16} color="#3fb950" />
+                      </div>
+                      <div>
+                        <div style={{ fontSize: '0.8rem', fontWeight: 700 }}>Hardware</div>
+                        <div style={{ fontSize: '0.62rem', color: '#8b8fa3' }}>VRAM, Telemetria & VLLM</div>
+                      </div>
                     </div>
-                    <div>
-                      <div style={{ fontSize: '0.8rem', fontWeight: 700 }}>Hardware</div>
-                      <div style={{ fontSize: '0.62rem', color: '#8b8fa3' }}>VRAM, Telemetria & VLLM</div>
-                    </div>
-                  </div>
-                  <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: hardwarePanelOpen ? '#3fb950' : '#555' }} />
-                </button>
+                    <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#3fb950' }} />
+                  </button>
+                )}
+
+
 
                 {/* Item 4: Configurazione AI (Allineato) */}
                 <button
@@ -495,17 +502,7 @@ function AppContent() {
         />
       )}
 
-      {/* HARDWARE FLOATING PANEL */}
-      {hardwarePanelOpen && (
-        <HardwareFloatingPanel
-          onClose={() => setHardwarePanelOpen(false)}
-          onOpenTab={() => {
-            handleOpenTab({ type: 'hardware', label: 'Hardware Lab', icon: Zap });
-            setHardwarePanelOpen(false);
-          }}
-          addToast={addToast}
-        />
-      )}
+
 
       {/* AI CHAT PANEL */}
       {aiChatOpen && (

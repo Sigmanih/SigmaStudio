@@ -11,7 +11,6 @@ import { MarkdownPreview, MappaArgomenti, SigmaLabEditor } from './SigmaLab';
 import ChatWorkspace from './Chat/ChatWorkspace';
 import ResearchLabTab from './Workspace/ResearchLabTab';
 import TrainingLab from './TrainingLab';
-import HardwareLab from './HardwareLab';
 
 import AccountTab from './AccountTab';
 import McpHubTab from './McpHubTab';
@@ -191,9 +190,19 @@ export default function Workspace({
         />
       );
     }
-    if (tab.type === 'hardware_lab') {
-      return <HardwareLab addToast={(msg, type, dur) => {}} />;
+    if (tab.type === 'hardware_lab' || tab.type === 'hardware') {
+      const isHardwareInstalled = modulesState.sigma_hardware_lab === true;
+      const LazyHardware = getLazyModule('hardware_lab');
+      if (!isHardwareInstalled || !LazyHardware) {
+        return <ModuleNotInstalled tabType="hardware_lab" openTab={openTab} />;
+      }
+      return (
+        <React.Suspense fallback={<div style={{ padding: '32px', color: '#94a3b8', textAlign: 'center' }}>Caricamento Hardware Lab...</div>}>
+          <LazyHardware addToast={(msg, type, dur) => {}} openTab={openTab} />
+        </React.Suspense>
+      );
     }
+
     if (tab.type === 'mcp_hub') {
       return <McpHubTab />;
     }

@@ -173,6 +173,7 @@ export default function Sidebar({
   const isAudioInstalled = modulesState.audio_studio === true;
   const isDomoticaInstalled = modulesState.sigma_domotica === true;
   const isCreativeInstalled = modulesState.sigma_creative_lab === true;
+  const isHardwareInstalled = modulesState.sigma_hardware_lab === true;
 
 
   const taskInCorso = tasks.filter(t => t.status === 'in_corso' || !t.status).length;
@@ -380,7 +381,7 @@ export default function Sidebar({
             <span>INFRASTRUTTURA & SISTEMA</span>
           </div>
 
-          {!hiddenTabs.has('hardware_lab') && (
+          {isHardwareInstalled && (
             <SidebarItem 
               icon={Zap} 
               label="Hardware & GPU" 
@@ -390,6 +391,7 @@ export default function Sidebar({
               onClick={() => openTab({ name: '⚡ Hardware' }, 'hardware_lab')} 
             />
           )}
+
 
           <SidebarItem 
             icon={Sliders} 

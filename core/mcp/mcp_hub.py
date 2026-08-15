@@ -23,7 +23,6 @@ from core.mcp.calendar_server import CalendarMCPServer
 from core.mcp.client import ExternalMCPServer
 from core.mcp.developer_server import DeveloperMCPServer
 from core.mcp.email_server import EmailMCPServer
-from core.mcp.hardware_server import HardwareMCPServer
 from core.mcp.homeassistant_server import HomeAssistantMCPServer
 from core.mcp.inference_server import InferenceMCPServer
 from core.mcp.memory_server import MemoryMCPServer
@@ -37,7 +36,6 @@ log = get_logger(__name__)
 BUILTIN_SERVERS = [
     MemoryMCPServer,
     DeveloperMCPServer,
-    HardwareMCPServer,
     TrainingMCPServer,
     InferenceMCPServer,
     NetworkMCPServer,
@@ -47,6 +45,7 @@ BUILTIN_SERVERS = [
     MessagingMCPServer,
     CalendarMCPServer,
 ]
+
 
 
 class MCPHub:
