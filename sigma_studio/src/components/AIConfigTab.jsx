@@ -541,21 +541,18 @@ export default function AIConfigTab({ openTab }) {
   const fetchOllamaModels = useCallback(async () => {
     setLoadingModels(true);
     try {
-      const res = await fetch('/api/tags');
+      const res = await fetch('/api/ollama_models');
       const data = await res.json();
       if (data.models && Array.isArray(data.models)) {
         const names = data.models.map(m => m.name || m);
         setOllamaLocalModels(names);
       }
     } catch (e) {
-      try {
-        const res2 = await fetch('/api/ollama_models');
-        const data2 = await res2.json();
-        if (data2.models) setOllamaLocalModels(data2.models);
-      } catch (err) {}
+      setOllamaLocalModels([]);
     } finally {
       setLoadingModels(false);
     }
+
   }, []);
 
   useEffect(() => {

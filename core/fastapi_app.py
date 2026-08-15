@@ -198,12 +198,16 @@ FastAPIHandlerAdapter.handle_api_tasks_assign = handle_api_tasks_assign
 
 from core.config_handler import (
     handle_api_config_get, handle_api_config_post,
-    handle_api_ollama_models, handle_api_create_model
+    handle_api_ollama_models, handle_api_create_model,
+    handle_hf_token_config, handle_hf_token_get
 )
 FastAPIHandlerAdapter.handle_api_config_get = handle_api_config_get
 FastAPIHandlerAdapter.handle_api_config_post = handle_api_config_post
 FastAPIHandlerAdapter.handle_api_ollama_models = handle_api_ollama_models
 FastAPIHandlerAdapter.handle_api_create_model = handle_api_create_model
+FastAPIHandlerAdapter.handle_hf_token_config = handle_hf_token_config
+FastAPIHandlerAdapter.handle_hf_token_get = handle_hf_token_get
+
 
 from core.chat_handler import handle_chat, handle_chat_extract_files
 FastAPIHandlerAdapter.handle_chat = handle_chat

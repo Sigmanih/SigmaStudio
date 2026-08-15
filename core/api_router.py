@@ -14,7 +14,10 @@ def register_get_handlers(handler_class):
         '/api/manifesti': 'handle_list_manifesti',
         '/api/knowledge_db': 'handle_knowledge_db',
         '/api/config': 'handle_api_config_get',
+        '/api/config/hf_token': 'handle_hf_token_get',
         '/api/ollama_models': 'handle_api_ollama_models',
+        '/api/tags': 'handle_api_ollama_models',
+
         '/api/sandbox/list': 'handle_sandbox_list',
         '/api/agents': 'handle_agents_list',
         '/api/agents/get': 'handle_agents_get',

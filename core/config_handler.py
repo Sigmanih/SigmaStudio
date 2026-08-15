@@ -130,3 +130,51 @@ def handle_api_create_model(self):
     except Exception as exc:
         log.error("handle_api_create_model: %s", exc)
         return self.send_json_response({"error": str(exc)}, 500)
+
+
+def handle_hf_token_config(self):
+    """POST /api/config/hf_token — Save HuggingFace token in config and environment."""
+    try:
+        req = self.read_json_body() if hasattr(self, 'read_json_body') else {}
+        token = req.get('hf_token', '').strip()
+        
+        cfg_path = os.path.join("data", "config.json")
+        cfg = {}
+        if os.path.exists(cfg_path):
+            try:
+                with open(cfg_path, 'r', encoding='utf-8') as f:
+                    cfg = json.load(f)
+            except Exception:
+                cfg = {}
+        
+        cfg['hf_token'] = token
+        os.makedirs(os.path.dirname(cfg_path), exist_ok=True)
+        with open(cfg_path, 'w', encoding='utf-8') as f:
+            json.dump(cfg, f, indent=2, ensure_ascii=False)
+            
+        if token:
+            os.environ["HF_TOKEN"] = token
+            os.environ["HUGGINGFACE_TOKEN"] = token
+            
+        return self.send_json_response({"success": True, "hf_has_token": bool(token)})
+    except Exception as exc:
+        log.error("handle_hf_token_config error: %s", exc)
+        return self.send_json_response({"success": False, "error": str(exc)}, 500)
+
+
+def handle_hf_token_get(self):
+    """GET /api/config/hf_token — Get HuggingFace token configured status."""
+    try:
+        token = os.environ.get("HF_TOKEN") or os.environ.get("HUGGINGFACE_TOKEN") or ""
+        if not token:
+            cfg_path = os.path.join("data", "config.json")
+            if os.path.exists(cfg_path):
+                try:
+                    with open(cfg_path, 'r', encoding='utf-8') as f:
+                        cfg = json.load(f)
+                        token = cfg.get("hf_token", "")
+                except Exception:
+                    pass
+        return self.send_json_response({"success": True, "hf_has_token": bool(token)})
+    except Exception as exc:
+        return self.send_json_response({"success": False, "hf_has_token": False, "error": str(exc)})

@@ -8,7 +8,7 @@ export default function HFTokenSettings({ addToast }) {
 
   useEffect(() => {
     // Check if token is already configured on mount
-    fetch('/api/hardware/status')
+    fetch('/api/config/hf_token')
       .then(r => r.json())
       .then(data => {
         if (data.success && data.hf_has_token !== undefined) {
@@ -16,6 +16,7 @@ export default function HFTokenSettings({ addToast }) {
         }
       })
       .catch(() => {});
+
   }, []);
 
   const handleSave = async () => {

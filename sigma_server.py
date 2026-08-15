@@ -192,12 +192,16 @@ SigmaAPIHandler.handle_api_tasks_assign = handle_api_tasks_assign
 # 5. Config handlers
 from core.config_handler import (
     handle_api_config_get, handle_api_config_post,
-    handle_api_ollama_models, handle_api_create_model
+    handle_api_ollama_models, handle_api_create_model,
+    handle_hf_token_config, handle_hf_token_get
 )
 SigmaAPIHandler.handle_api_config_get = handle_api_config_get
 SigmaAPIHandler.handle_api_config_post = handle_api_config_post
 SigmaAPIHandler.handle_api_ollama_models = handle_api_ollama_models
 SigmaAPIHandler.handle_api_create_model = handle_api_create_model
+SigmaAPIHandler.handle_hf_token_config = handle_hf_token_config
+SigmaAPIHandler.handle_hf_token_get = handle_hf_token_get
+
 
 # 6. Chat handler
 from core.chat_handler import handle_chat
