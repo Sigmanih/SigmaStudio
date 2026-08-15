@@ -298,13 +298,14 @@ def search_hf_models(
     format_filter: str = "all",
     sort: str = "downloads",
     official_only: bool = False,
+    cursor: Optional[str] = None,
     page: int = 1,
     limit: int = 30,
     hf_token: Optional[str] = None
 ) -> Dict[str, Any]:
     """
     Searches models on Hugging Face API dynamically in real time.
-    Supports official_only filter, granular size brackets (>32G, 48G, 70G, 140G+), and direct URLs.
+    Supports official_only filter, granular size brackets, and cursor-based endless pagination.
     """
     results = []
 
@@ -317,8 +318,8 @@ def search_hf_models(
         "moe": "text-generation",
     }
 
-    # 1. Match from POPULAR_MODELS catalogue first (if page 1)
-    if page == 1:
+    # 1. Match from POPULAR_MODELS catalogue first (only on page 1 / initial load without cursor)
+    if not cursor and page == 1:
         q_low = query.lower().strip()
         for m in POPULAR_MODELS:
             if official_only and not m.get("is_official", False):
@@ -337,7 +338,7 @@ def search_hf_models(
             results.append(m)
 
     # 2. Dynamic Live Fetch directly from Hugging Face Hub API
-    has_more = True
+    next_cursor = None
     try:
         search_query = query.strip()
         if not search_query:
@@ -363,7 +364,7 @@ def search_hf_models(
         elif sort == "newest" or sort == "lastModified":
             hf_sort = "lastModified"
 
-        fetch_limit = min(limit * 3, 100)
+        fetch_limit = min(limit * 2, 60)
         params = {
             "search": search_query,
             "sort": hf_sort,
@@ -373,6 +374,8 @@ def search_hf_models(
         }
         if category in cat_tag_map:
             params["pipeline_tag"] = cat_tag_map[category]
+        if cursor:
+            params["cursor"] = cursor
 
         url = f"{HF_API_BASE}/models?{urllib.parse.urlencode(params)}"
         req = urllib.request.Request(url)
@@ -380,10 +383,14 @@ def search_hf_models(
         if hf_token:
             req.add_header("Authorization", f"Bearer {hf_token}")
 
-        with urllib.request.urlopen(req, timeout=8) as response:
+        with urllib.request.urlopen(req, timeout=10) as response:
             if response.status == 200:
                 raw = json.loads(response.read().decode("utf-8"))
-                has_more = len(raw) >= fetch_limit
+                link = response.headers.get("Link", "")
+                if 'rel="next"' in link:
+                    match = re.search(r'[?&]cursor=([^&>]+)', link)
+                    if match:
+                        next_cursor = urllib.parse.unquote(match.group(1))
 
                 for item in raw:
                     mid = item.get("id") or item.get("modelId", "")
@@ -469,14 +476,13 @@ def search_hf_models(
     elif sort == "size_desc":
         results.sort(key=lambda x: x.get("size_gb", 0.0), reverse=True)
 
-    final_results = results[:limit * page]
     return {
-        "results": final_results,
+        "results": results,
         "total": len(results),
-        "page": page,
-        "limit": limit,
-        "has_more": len(results) > len(final_results) or has_more
+        "next_cursor": next_cursor,
+        "has_more": bool(next_cursor) or len(results) >= limit
     }
+
 
 
 def get_hf_model_details(model_id: str, hf_token: Optional[str] = None) -> Dict[str, Any]:

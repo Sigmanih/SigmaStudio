@@ -58,9 +58,9 @@ export default function HfBrowser({ isLight, addToast, onDownloadStarted }) {
   const [formatFilter, setFormatFilter] = useState('all');
   const [sortBy, setSortBy] = useState('newest');
   const [officialOnly, setOfficialOnly] = useState(false);
-  const [page, setPage] = useState(1);
 
   const [results, setResults] = useState([]);
+  const [nextCursor, setNextCursor] = useState(null);
   const [hasMore, setHasMore] = useState(false);
   const [loading, setLoading] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
@@ -78,7 +78,7 @@ export default function HfBrowser({ isLight, addToast, onDownloadStarted }) {
   const subBg = isLight ? '#f8f5ee' : 'rgba(255, 255, 255, 0.03)';
   const subBorder = isLight ? '1px solid rgba(190, 160, 110, 0.22)' : '1px solid rgba(255, 255, 255, 0.06)';
 
-  const fetchModels = useCallback(async (targetPage = 1, append = false) => {
+  const fetchModels = useCallback(async (targetCursor = null, append = false) => {
     if (append) {
       setLoadingMore(true);
     } else {
@@ -87,15 +87,27 @@ export default function HfBrowser({ isLight, addToast, onDownloadStarted }) {
 
     try {
       const q = encodeURIComponent(search);
-      const url = `/api/models/hf/search?q=${q}&category=${category}&size_bracket=${sizeBracket}&param_bracket=${paramBracket}&format_filter=${formatFilter}&sort=${sortBy}&official_only=${officialOnly}&page=${targetPage}&limit=30`;
+      let url = `/api/models/hf/search?q=${q}&category=${category}&size_bracket=${sizeBracket}&param_bracket=${paramBracket}&format_filter=${formatFilter}&sort=${sortBy}&official_only=${officialOnly}&limit=30`;
+      if (targetCursor) {
+        url += `&cursor=${encodeURIComponent(targetCursor)}`;
+      }
+
       const res = await fetch(url);
       if (res.ok) {
         const json = await res.json();
         if (json.success) {
           const list = json.results || [];
-          setResults(list);
-          setHasMore(json.has_more === true || list.length >= targetPage * 30);
-          setPage(targetPage);
+          if (append) {
+            setResults(prev => {
+              const existingIds = new Set(prev.map(p => p.id));
+              const uniqueNew = list.filter(item => !existingIds.has(item.id));
+              return [...prev, ...uniqueNew];
+            });
+          } else {
+            setResults(list);
+          }
+          setNextCursor(json.next_cursor || null);
+          setHasMore(Boolean(json.next_cursor) || (list.length >= 20 && json.has_more));
         }
       }
     } catch (e) {
@@ -106,17 +118,18 @@ export default function HfBrowser({ isLight, addToast, onDownloadStarted }) {
     }
   }, [search, category, sizeBracket, paramBracket, formatFilter, sortBy, officialOnly]);
 
-  // Reset to page 1 on filter changes
+  // Reset to initial on filter changes
   useEffect(() => {
     const delay = setTimeout(() => {
-      fetchModels(1, false);
+      fetchModels(null, false);
     }, 250);
     return () => clearTimeout(delay);
   }, [fetchModels]);
 
   const handleLoadMore = () => {
-    const nextPage = page + 1;
-    fetchModels(nextPage, true);
+    if (!loadingMore && nextCursor) {
+      fetchModels(nextCursor, true);
+    }
   };
 
   const handleSelectModel = async (m) => {
@@ -352,7 +365,7 @@ export default function HfBrowser({ isLight, addToast, onDownloadStarted }) {
       {loading ? (
         <div style={{ textAlign: 'center', padding: '60px 20px', color: textMuted }}>
           <Activity className="mh-spin" size={24} color="#ffb86c" style={{ margin: '0 auto 10px' }} />
-          <div>Interrogazione live in tempo reale da Hugging Face API...</div>
+          <div>Interrogazione live in tempo reale da Hugging Face Hub...</div>
         </div>
       ) : results.length === 0 ? (
         <div style={{ textAlign: 'center', padding: '60px 20px', color: textMuted }}>

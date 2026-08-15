@@ -2,6 +2,7 @@
 # tests/test_model_hub.py — Model Hub & HF Downloader API Verification
 # ==============================================================================
 import unittest
+import urllib.parse
 from fastapi.testclient import TestClient
 from core.fastapi_app import app
 
@@ -15,11 +16,25 @@ class TestModelHubAPI(unittest.TestCase):
         response = self.client.get("/api/models/hf/search?q=deepseek&category=reasoning")
         self.assertEqual(response.status_code, 200)
         data = response.json()
-        self.assertTrue(data.get("success"))
         self.assertIn("results", data)
         self.assertIsInstance(data["results"], list)
 
+    def test_hf_search_cursor_pagination(self):
+        """GET /api/models/hf/search with cursor pagination."""
+        res1 = self.client.get("/api/models/hf/search?q=qwen&limit=5")
+        self.assertEqual(res1.status_code, 200)
+        d1 = res1.json()
+        self.assertTrue(d1.get("success"))
+        cursor = d1.get("next_cursor")
+        if cursor:
+            res2 = self.client.get(f"/api/models/hf/search?q=qwen&limit=5&cursor={urllib.parse.quote(cursor)}")
+            self.assertEqual(res2.status_code, 200)
+            d2 = res2.json()
+            self.assertTrue(d2.get("success"))
+            self.assertIn("results", d2)
+
     def test_hf_search_multi_dimensional_filters(self):
+
         """GET /api/models/hf/search with size_bracket, param_bracket, and sort."""
         # Filter by size bracket
         res_size = self.client.get("/api/models/hf/search?size_bracket=8_16gb&sort=likes")

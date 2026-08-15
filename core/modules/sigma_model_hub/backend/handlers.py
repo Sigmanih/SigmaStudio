@@ -47,6 +47,7 @@ def handle_models_hf_search(self):
         format_filter = "all"
         sort = "downloads"
         official_only = False
+        cursor = None
         page = 1
         limit = 30
 
@@ -61,6 +62,7 @@ def handle_models_hf_search(self):
             format_filter = params.get('format_filter', ['all'])[0]
             sort = params.get('sort', ['downloads'])[0]
             official_only = params.get('official_only', ['false'])[0].lower() in ['true', '1', 'yes']
+            cursor = params.get('cursor', [''])[0] or None
             page = int(params.get('page', ['1'])[0])
             limit = int(params.get('limit', ['30'])[0])
 
@@ -74,19 +76,21 @@ def handle_models_hf_search(self):
             format_filter=format_filter,
             sort=sort,
             official_only=official_only,
+            cursor=cursor,
             page=page,
             limit=limit,
             hf_token=token
         )
 
-
         self.send_json_response({
             "success": True,
             "results": data.get("results", []),
             "total": data.get("total", 0),
-            "page": data.get("page", 1),
+            "page": page,
+            "next_cursor": data.get("next_cursor"),
             "has_more": data.get("has_more", False)
         })
+
     except Exception as e:
         log.error("Error in handle_models_hf_search: %s", e)
         self.send_json_response({"success": False, "error": str(e)}, 500)
