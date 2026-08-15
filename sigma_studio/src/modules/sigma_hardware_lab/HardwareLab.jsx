@@ -219,12 +219,25 @@ export default function HardwareLab({ addToast }) {
   };
 
   const handleKillAllOrphans = async () => {
-    const orphans = gpuProcs.processes.filter(p => p.orphan && p.killable);
-    if (!orphans.length) return;
-    for (const p of orphans) {
-      await handleKillGpuProcess(p);
+    try {
+      const res = await fetch('/api/hardware/gpu/kill', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ all_orphans: true })
+      });
+      const json = await res.json();
+      if (json.success) {
+        if (addToast) addToast(json.message || 'Processi orfani terminati con successo.', 'success');
+      } else if (addToast) {
+        addToast(json.error || 'Errore nella terminazione dei processi orfani.', 'error');
+      }
+      fetchGpuProcesses();
+      fetchHardwareStatus();
+    } catch (e) {
+      if (addToast) addToast(`Errore: ${e.message}`, 'error');
     }
   };
+
 
   const handleSaveConfig = async () => {
     setSaving(true);

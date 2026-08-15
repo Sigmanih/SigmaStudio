@@ -190,17 +190,33 @@ def get_gpu_processes() -> Dict[str, Any]:
     orphan_count = 0
     current_pid = os.getpid()
 
-    for p in psutil.process_iter(['pid', 'name', 'cpu_percent', 'memory_info', 'create_time', 'status', 'username']):
+    for p in psutil.process_iter(['pid', 'name', 'cpu_percent', 'memory_info', 'create_time', 'status', 'username', 'cmdline']):
         try:
             p_info = p.info
-            name = (p_info.get('name') or '').lower()
-            if any(k in name for k in ['python', 'node', 'ollama', 'sigma', 'uvicorn', 'blender', 'comfy', 'torch', 'ffmpeg', 'docker']):
+            raw_name = (p_info.get('name') or '').lower()
+            cmdline = " ".join(p_info.get('cmdline') or []).lower()
+            
+            if any(k in raw_name or k in cmdline for k in ['python', 'node', 'ollama', 'sigma', 'uvicorn', 'blender', 'comfy', 'torch', 'ffmpeg', 'docker']):
                 mem_mb = round((p_info.get('memory_info').rss if p_info.get('memory_info') else 0) / (1024**2), 1)
                 cpu_p = round(p_info.get('cpu_percent') or 0.0, 1)
                 is_cur = (p_info.get('pid') == current_pid)
                 
+                # High-visibility Process Name
+                if is_cur:
+                    display_name = "⚡ Sigma Studio Server (FastAPI Master)"
+                elif "sigma_server" in cmdline or "sigma" in cmdline:
+                    display_name = "⚡ Sigma Studio Worker / Subprocess"
+                elif "ollama" in raw_name or "ollama" in cmdline:
+                    display_name = "🦙 Ollama AI Daemon"
+                elif "comfy" in cmdline:
+                    display_name = "🎨 ComfyUI Generative Worker"
+                elif "blender" in raw_name:
+                    display_name = "🧊 Blender 3D Engine"
+                else:
+                    display_name = p_info.get('name') or "python.exe"
+
                 # Estimate VRAM usage
-                est_vram = int(mem_mb * 0.85) if any(k in name for k in ['ollama', 'torch', 'sigma', 'comfy', 'blender']) else int(mem_mb * 0.15)
+                est_vram = int(mem_mb * 0.85) if any(k in raw_name or k in cmdline for k in ['ollama', 'torch', 'sigma', 'comfy', 'blender']) else int(mem_mb * 0.15)
                 created_dt = time.strftime('%H:%M:%S', time.localtime(p_info.get('create_time') or time.time()))
                 
                 # Assigned GPU estimation
@@ -209,14 +225,15 @@ def get_gpu_processes() -> Dict[str, Any]:
                 if '\\' in user:
                     user = user.split('\\')[-1]
 
-                is_orphan = False if is_cur else (cpu_p == 0 and mem_mb < 30 and 'python' in name)
+                is_orphan = False if is_cur else (cpu_p == 0 and mem_mb < 30 and 'python' in raw_name and 'sigma' not in cmdline)
                 if is_orphan:
                     orphan_count += 1
 
                 procs.append({
                     "pid": p_info.get('pid'),
-                    "name": p_info.get('name'),
-                    "user": user,
+                    "name": display_name,
+                    "raw_name": p_info.get('name'),
+                    "user": user if not is_cur else "Sigma Core",
                     "gpu_index": 0 if est_vram > 800 else (1 if est_vram > 200 else 2),
                     "assigned_gpu": assigned_gpu,
                     "vram_mb": est_vram,
@@ -224,20 +241,22 @@ def get_gpu_processes() -> Dict[str, Any]:
                     "cpu_pct": cpu_p,
                     "gpu_pct": min(100.0, round(float(cpu_p * 1.4), 1)) if est_vram > 100 else 0.0,
                     "is_orphan": is_orphan,
+                    "is_master": is_cur,
+                    "killable": not is_cur,
                     "status": p_info.get('status') or "running",
                     "created_at": created_dt
                 })
         except (psutil.NoSuchProcess, psutil.AccessDenied):
             continue
 
-    procs.sort(key=lambda x: (x["vram_mb"], x["memory_mb"]), reverse=True)
+    # Sort: Master first, then by VRAM descending
+    procs.sort(key=lambda x: (1 if x.get("is_master") else 0, x["vram_mb"], x["memory_mb"]), reverse=True)
 
     return {
         "success": True,
-        "processes": procs[:30],
+        "processes": procs[:35],
         "orfani": orphan_count
     }
-
 
 
 def handle_hardware_status(self):
@@ -296,26 +315,56 @@ def handle_hardware_restart_ollama(self):
 
 
 def handle_hardware_gpu_kill(self):
-    """POST /api/hardware/gpu/kill — Termina un processo specifico tramite PID."""
+    """POST /api/hardware/gpu/kill — Termina un processo specifico tramite PID o tutti gli orfani."""
     try:
         body = self.read_json_body()
+        current_pid = os.getpid()
+
+        # 1. Kill all orphans batch
+        if body.get("all_orphans") or body.get("kill_all_orphans"):
+            killed = 0
+            for p in psutil.process_iter(['pid', 'name', 'cpu_percent', 'memory_info', 'cmdline']):
+                try:
+                    if p.pid == current_pid:
+                        continue
+                    p_name = (p.info.get('name') or '').lower()
+                    cmdline = " ".join(p.info.get('cmdline') or []).lower()
+                    mem_mb = (p.info.get('memory_info').rss if p.info.get('memory_info') else 0) / (1024**2)
+                    cpu_p = p.info.get('cpu_percent') or 0.0
+                    if 'python' in p_name and cpu_p == 0 and mem_mb < 35 and 'sigma' not in cmdline:
+                        p.terminate()
+                        killed += 1
+                except Exception:
+                    continue
+            self.send_json_response({
+                "success": True,
+                "message": f"Terminati {killed} processi orfani." if killed > 0 else "Nessun processo orfano residuo."
+            })
+            return
+
+        # 2. Kill single PID
         pid = body.get("pid")
         if not pid:
             self.send_json_response({"success": False, "error": "PID non specificato"}, 400)
             return
 
-        if int(pid) == os.getpid():
-            self.send_json_response({"success": False, "error": "Impossibile terminare il processo del server corrente"}, 400)
+        if int(pid) == current_pid:
+            self.send_json_response({
+                "success": False,
+                "error": "Il processo Master di Sigma Studio è protetto e non può essere terminato."
+            })
             return
 
         proc = psutil.Process(int(pid))
+        pname = proc.name()
         proc.terminate()
         self.send_json_response({
             "success": True,
-            "message": f"Processo PID {pid} ({proc.name()}) terminato con successo."
+            "message": f"Processo PID {pid} ({pname}) terminato con successo."
         })
     except psutil.NoSuchProcess:
         self.send_json_response({"success": True, "message": f"Processo PID {pid} non più attivo."})
     except Exception as e:
         log.error("Error in handle_hardware_gpu_kill: %s", e)
         self.send_json_response({"success": False, "error": str(e)}, 500)
+

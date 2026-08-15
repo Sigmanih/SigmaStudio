@@ -43,5 +43,23 @@ class TestHardwareAPI(unittest.TestCase):
         self.assertTrue(data.get("success"))
 
 
+    def test_hardware_gpu_kill_all_orphans(self):
+        """POST /api/hardware/gpu/kill with all_orphans should return 200 and success."""
+        response = self.client.post("/api/hardware/gpu/kill", json={"all_orphans": True})
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertTrue(data.get("success"))
+
+    def test_hardware_protect_master_process(self):
+        """POST /api/hardware/gpu/kill on master process should be safely rejected without 400."""
+        import os
+        response = self.client.post("/api/hardware/gpu/kill", json={"pid": os.getpid()})
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertFalse(data.get("success"))
+        self.assertIn("protetto", data.get("error", "").lower())
+
+
 if __name__ == "__main__":
     unittest.main()
+
