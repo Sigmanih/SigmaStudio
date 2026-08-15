@@ -515,6 +515,14 @@ if __name__ == "__main__":
     try:
         import uvicorn
         from core.fastapi_app import app
-        uvicorn.run(app, host="0.0.0.0", port=8000, log_level="info")
-    except KeyboardInterrupt:
-        graceful_shutdown(None, None)
+        # timeout_graceful_shutdown=1 forces immediate closure of idle keep-alive browser connections on Ctrl+C
+        uvicorn.run(
+            app,
+            host="0.0.0.0",
+            port=8000,
+            log_level="info",
+            timeout_graceful_shutdown=1,
+            timeout_keep_alive=5,
+        )
+    except (KeyboardInterrupt, SystemExit):
+        log.info("Server arrestato correttamente.")
