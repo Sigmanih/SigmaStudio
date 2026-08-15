@@ -76,12 +76,12 @@ _KERNEL_DEFAULTS = {
     "research_lab": True,
     "training_lab": True,
     "hardware_lab": True,
-    "domotica": True,
     "knowledge": True,
     "mcp_hub": True,
 }
 _OPTIONAL_DEFAULTS = {
-    "audio_studio": False,  # Must be explicitly installed by user
+    "audio_studio": False,    # Hi-Fi Sound & FM Radio Studio
+    "sigma_domotica": False,  # Domotica & Home Assistant IoT
 }
 
 def _get_installed_modules_state():
@@ -112,17 +112,20 @@ def handle_marketplace_modules(self):
     try:
         state = _get_installed_modules_state()
         
-        # Base kernel modules list
+        # Build kernel installed list
         installed_list = [
-            {"id": "creative_studio", "name": "Creative Studio 3D/2D", "status": "active" if state.get("creative_studio", True) else "disabled", "installed": state.get("creative_studio", True)},
-            {"id": "research_lab", "name": "Pipelines Lab & Dynamic Swarm", "status": "active" if state.get("research_lab", True) else "disabled", "installed": state.get("research_lab", True)},
-            {"id": "training_lab", "name": "Training Lab & SLM Forge", "status": "active" if state.get("training_lab", True) else "disabled", "installed": state.get("training_lab", True)},
-            {"id": "hardware_lab", "name": "Hardware Lab & VRAM", "status": "active" if state.get("hardware_lab", True) else "disabled", "installed": state.get("hardware_lab", True)},
-            {"id": "domotica", "name": "Domotica & Home Assistant", "status": "active" if state.get("domotica", True) else "disabled", "installed": state.get("domotica", True)},
-            {"id": "knowledge", "name": "Research Lab & Knowledge", "status": "active" if state.get("knowledge", True) else "disabled", "installed": state.get("knowledge", True)},
-            {"id": "mcp_hub", "name": "MCP Tools & Governance", "status": "active" if state.get("mcp_hub", True) else "disabled", "installed": state.get("mcp_hub", True)},
-            {"id": "audio_studio", "name": "Hi-Fi Sound & FM Radio Studio", "tabType": "music", "status": "active" if state.get("audio_studio", True) else "disabled", "installed": state.get("audio_studio", True), "category": "Audio & Streaming", "version": "v1.0.0", "author": "Sigma Core Team", "repository": "https://github.com/Sigmanih/SigmaStudio-Moduli/tree/main/modules/sigma_audio_studio"}
+            {"id": "creative_studio", "name": "Creative Studio 3D/2D", "status": "active", "installed": True},
+            {"id": "research_lab", "name": "Pipelines Lab & Dynamic Swarm", "status": "active", "installed": True},
+            {"id": "training_lab", "name": "Training Lab & SLM Forge", "status": "active", "installed": True},
+            {"id": "hardware_lab", "name": "Hardware Lab & VRAM", "status": "active", "installed": True},
+            {"id": "knowledge", "name": "Research Lab & Knowledge", "status": "active", "installed": True},
+            {"id": "mcp_hub", "name": "MCP Tools & Governance", "status": "active", "installed": True},
         ]
+        # Append installed optional modules
+        for mod_id, defaults in _OPTIONAL_DEFAULTS.items():
+            is_installed = state.get(mod_id, False)
+            if is_installed:
+                installed_list.append({"id": mod_id, "status": "active", "installed": True})
 
         self.send_json_response({
             "success": True,

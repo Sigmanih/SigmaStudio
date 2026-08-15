@@ -13,7 +13,7 @@ import { useState, useEffect, useCallback } from 'react';
 // Optional modules — these can be installed / uninstalled by the user.
 const OPTIONAL_MODULE_IDS = [
   'audio_studio',
-  'domotica',  // will become optional in next refactor
+  'sigma_domotica',
 ];
 
 // Kernel modules — always installed, never removable.

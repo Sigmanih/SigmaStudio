@@ -122,6 +122,21 @@ const OPTIONAL_MODULES = [
     tags: ['Radio FM', 'Hi-Fi Lounge', 'YouTube Live', '432Hz Synth', 'Web Audio'],
     size: '12 MB',
     author: 'Sigma Core Team'
+  },
+  {
+    id: 'sigma_domotica',
+    name: 'Domotica & Home Assistant IoT',
+    category: 'Automazione Domotica',
+    icon: Home,
+    color: '#a78bfa',
+    tabType: 'domotica',
+    version: 'v1.0.0',
+    description: 'Bridge MCP nativo per Home Assistant. Controllo entità smart (luci, prese, clima, sensori, telecamere), automazioni, scene personalizzate e streaming camera in tempo reale.',
+    gitUrl: 'https://github.com/Sigmanih/SigmaStudio-Moduli/tree/main/modules/sigma_domotica',
+    branch: 'main',
+    tags: ['Home Assistant', 'WebSocket', 'IoT MCP', 'Scene Smart', 'Zigbee'],
+    size: '8 MB',
+    author: 'Sigma Core Team'
   }
 ];
 

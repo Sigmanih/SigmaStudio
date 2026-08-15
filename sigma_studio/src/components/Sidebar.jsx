@@ -171,6 +171,7 @@ export default function Sidebar({
 
   const { modulesState } = useModuleState();
   const isAudioInstalled = modulesState.audio_studio === true;
+  const isDomoticaInstalled = modulesState.sigma_domotica === true;
 
 
   const taskInCorso = tasks.filter(t => t.status === 'in_corso' || !t.status).length;
@@ -178,8 +179,9 @@ export default function Sidebar({
   const taskTotal = tasks.length;
 
   // Custom installed marketplace modules (excluding base standard modules)
-  const builtinModuleIds = new Set(['creative_studio', 'research_lab', 'training_lab', 'hardware_lab', 'domotica', 'mcp_hub', 'config', 'account', 'marketplace']);
+  const builtinModuleIds = new Set(['creative_studio', 'research_lab', 'training_lab', 'hardware_lab', 'mcp_hub', 'config', 'account', 'marketplace']);
   const dynamicInstalledModules = modules.filter(m => m.installed && !builtinModuleIds.has(m.id));
+
 
   return (
     <aside className="sidebar">
@@ -406,14 +408,25 @@ export default function Sidebar({
             />
           )}
 
-          <SidebarItem 
-            icon={Home} 
-            label="Domotica & IoT" 
-            badge="HA"
-            badgeColor="rgba(0,210,255,0.15)"
-            active={activeTabId != null && (activeTabId.startsWith('domotica') || activeTabId.startsWith('home_assistant'))}
-            onClick={() => openTab({ name: '🏠 Domotica' }, 'domotica')} 
-          />
+          {isDomoticaInstalled ? (
+            <SidebarItem 
+              icon={Home} 
+              label="Domotica & IoT" 
+              badge="HA"
+              badgeColor="rgba(167,139,250,0.2)"
+              active={activeTabId != null && (activeTabId.startsWith('domotica') || activeTabId.startsWith('home_assistant'))}
+              onClick={() => openTab({ name: '🏠 Domotica' }, 'domotica')} 
+            />
+          ) : (
+            <SidebarItem 
+              icon={Home} 
+              label="Domotica & IoT" 
+              badge="+"
+              badgeColor="rgba(255,255,255,0.06)"
+              active={false}
+              onClick={() => openTab({ name: '📦 Hub Moduli & Estensioni' }, 'marketplace')} 
+            />
+          )}
         </nav>
 
         {/* ================================================================= */}

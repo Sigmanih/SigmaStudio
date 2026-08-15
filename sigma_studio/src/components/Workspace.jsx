@@ -75,6 +75,7 @@ export default function Workspace({
 }) {
   const { modulesState } = useModuleState();
   const isAudioInstalled = modulesState.audio_studio === true;
+  const isDomoticaInstalled = modulesState.sigma_domotica === true;
 
   const handleRoadmapDelete = (task) => {
     if (confirm(`Eliminare il task "${task.titolo}"?`)) {
@@ -196,6 +197,23 @@ export default function Workspace({
       return <McpHubTab />;
     }
     if (tab.type === 'domotica' || tab.type === 'home_assistant') {
+      if (!isDomoticaInstalled) {
+        return (
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', gap: '16px', color: '#a0aec0', textAlign: 'center', padding: '40px' }}>
+            <div style={{ fontSize: '3rem' }}>🏠</div>
+            <h3 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 800, color: '#fff' }}>Modulo Domotica Non Installato</h3>
+            <p style={{ margin: 0, fontSize: '0.85rem', maxWidth: '380px', lineHeight: 1.5 }}>
+              Il modulo <strong>Domotica & Home Assistant IoT</strong> non è installato. Installalo dal Hub Moduli per controllare le tue entità smart.
+            </p>
+            <button
+              onClick={() => openTab({ name: '📦 Hub Moduli & Estensioni' }, 'marketplace')}
+              style={{ padding: '10px 22px', borderRadius: '10px', background: 'linear-gradient(135deg, #a78bfa, #7c5bf0)', border: 'none', color: '#fff', fontWeight: 800, fontSize: '0.85rem', cursor: 'pointer' }}
+            >
+              Apri Hub Moduli
+            </button>
+          </div>
+        );
+      }
       return <DomoticaTab />;
     }
     if (tab.type === 'account') {
