@@ -198,8 +198,11 @@ class UniversalSigmaEngine:
     def load_native_model(self, model_identifier: Optional[str] = None) -> bool:
         """Loads a local model from data/models/ into GPU/VRAM natively using PyTorch and Transformers."""
         try:
+            import os
             import torch
-            from transformers import AutoModelForCausalLM, AutoTokenizer
+            from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig
+
+            os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:True"
 
             model_info = self.find_valid_model_directory(model_identifier)
             if not model_info:
@@ -208,18 +211,42 @@ class UniversalSigmaEngine:
 
             target_path, display_name = model_info
             log.info("[SigmaEngine] Loading native model from '%s' into GPU VRAM...", target_path)
-            dtype = torch.bfloat16 if torch.cuda.is_available() and torch.cuda.is_bf16_supported() else (torch.float16 if torch.cuda.is_available() else torch.float32)
+
+            has_cuda = torch.cuda.is_available()
+            compute_dtype = torch.bfloat16 if has_cuda and torch.cuda.is_bf16_supported() else (torch.float16 if has_cuda else torch.float32)
 
             self.tokenizer_instance = AutoTokenizer.from_pretrained(target_path, trust_remote_code=True)
-            self.model_instance = AutoModelForCausalLM.from_pretrained(
-                target_path,
-                device_map="auto" if torch.cuda.is_available() else None,
-                torch_dtype=dtype,
-                low_cpu_mem_usage=True,
-                trust_remote_code=True
-            )
+
+            # Auto-quantization to fit comfortably in Dual GPU VRAM (RTX 5070 Ti 16GB + RTX 5060 8GB = 24GB total)
+            load_kwargs = {
+                "low_cpu_mem_usage": True,
+                "trust_remote_code": True,
+            }
+
+            if has_cuda:
+                # Configure dynamic max_memory to always guarantee 2.5 GB headroom for attention buffers
+                max_memory = {}
+                for i in range(torch.cuda.device_count()):
+                    tot_gb = torch.cuda.get_device_properties(i).total_memory / (1024**3)
+                    headroom = 2.5 if i == 0 else 1.8
+                    max_memory[i] = f"{max(round(tot_gb - headroom, 1), 1.0)}GiB"
+                max_memory["cpu"] = "80GiB"
+
+                bnb_config = BitsAndBytesConfig(
+                    load_in_4bit=True,
+                    bnb_4bit_quant_type="nf4",
+                    bnb_4bit_compute_dtype=compute_dtype,
+                    bnb_4bit_use_double_quant=True,
+                )
+                load_kwargs["quantization_config"] = bnb_config
+                load_kwargs["device_map"] = "auto"
+                load_kwargs["max_memory"] = max_memory
+            else:
+                load_kwargs["torch_dtype"] = torch.float32
+
+            self.model_instance = AutoModelForCausalLM.from_pretrained(target_path, **load_kwargs)
             self.loaded_model_name = display_name
-            log.info("[SigmaEngine] Model '%s' successfully loaded into native GPU runtime.", display_name)
+            log.info("[SigmaEngine] Model '%s' successfully loaded into native GPU runtime (4-bit NF4 Dual-GPU).", display_name)
             return True
         except Exception as e:
             log.error("[SigmaEngine] Failed to load native model '%s': %s", model_identifier, e)
@@ -294,7 +321,15 @@ class UniversalSigmaEngine:
                     top_p=0.95
                 )
 
-                thread = threading.Thread(target=self.model_instance.generate, kwargs=gen_kwargs)
+                generation_error = []
+                def _run_generate():
+                    try:
+                        self.model_instance.generate(**gen_kwargs)
+                    except Exception as exc:
+                        log.error("[SigmaEngine] Thread generate exception: %s", exc)
+                        generation_error.append(exc)
+
+                thread = threading.Thread(target=_run_generate)
                 thread.daemon = True
                 thread.start()
 
@@ -317,6 +352,16 @@ class UniversalSigmaEngine:
                         "speed_tok_s": current_speed,
                         "done": False
                     }
+
+                thread.join(timeout=1.0)
+                if generation_error and token_count == 0:
+                    yield {
+                        "token": f"\n\n❌ **Errore esecuzione neurale GPU**: {generation_error[0]}",
+                        "token_index": 1,
+                        "done": True
+                    }
+                    return
+
                 yield {"token": "", "token_index": token_count + 1, "done": True}
                 return
             except Exception as gen_err:
