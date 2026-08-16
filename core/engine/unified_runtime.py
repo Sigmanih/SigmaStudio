@@ -224,28 +224,35 @@ class UniversalSigmaEngine:
             }
 
             if has_cuda:
-                # Dynamic tiering leaving headroom for KV cache and forward activations
-                accs = self.hardware_profile.get("accelerators", [])
-                v0_total = accs[0].get("total_vram_gb", 16.0) if accs else 16.0
-                v1_total = accs[1].get("total_vram_gb", 8.0) if len(accs) > 1 else 0.0
-                ram_avail = self.hardware_profile.get("ram", {}).get("available_gb", 64.0)
+                bnb_config = BitsAndBytesConfig(
+                    load_in_4bit=True,
+                    bnb_4bit_quant_type="nf4",
+                    bnb_4bit_compute_dtype=compute_dtype,
+                    bnb_4bit_use_double_quant=True,
+                )
+                load_kwargs["quantization_config"] = bnb_config
 
-                max_memory = {
-                    0: f"{max(round(v0_total - 3.2, 1), 2.0)}GiB",
-                }
-                if len(accs) > 1:
-                    max_memory[1] = f"{max(round(v1_total - 3.0, 1), 2.0)}GiB"
-                max_memory["cpu"] = f"{max(round(ram_avail * 0.85, 1), 16.0)}GiB"
-
-                load_kwargs["device_map"] = "auto"
-                load_kwargs["max_memory"] = max_memory
-                load_kwargs["torch_dtype"] = compute_dtype
+                # Explicit optimal Dual-GPU layer split (RTX 5070 Ti 16GB: 40 layers, RTX 5060 8GB: 24 layers)
+                if torch.cuda.device_count() > 1:
+                    custom_device_map = {
+                        "model.embed_tokens": 0,
+                        "model.rotary_emb": 0,
+                        "model.norm": 0,
+                        "lm_head": 0
+                    }
+                    for i in range(40):
+                        custom_device_map[f"model.layers.{i}"] = 0
+                    for i in range(40, 64):
+                        custom_device_map[f"model.layers.{i}"] = 1
+                    load_kwargs["device_map"] = custom_device_map
+                else:
+                    load_kwargs["device_map"] = "cuda:0"
             else:
                 load_kwargs["torch_dtype"] = torch.float32
 
             self.model_instance = AutoModelForCausalLM.from_pretrained(target_path, **load_kwargs)
             self.loaded_model_name = display_name
-            log.info("[SigmaEngine] Model '%s' successfully loaded into native GPU/RAM runtime.", display_name)
+            log.info("[SigmaEngine] Model '%s' successfully loaded into native Dual-GPU 4-bit runtime (100%% VRAM).", display_name)
             return True
         except Exception as e:
             log.error("[SigmaEngine] Failed to load native model '%s': %s", model_identifier, e)
