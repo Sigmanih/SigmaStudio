@@ -512,7 +512,7 @@ def handle_chat(self):
         bot_name = req.get("bot_name", "SigmaBot")
         manifesto_path = req.get("manifesto_path", "")
         model_override = req.get("model", "")
-        allow_actions = req.get("allow_actions", True)
+        allow_actions = req.get("allow_actions", False)
         planning_mode = req.get("planning_mode", False)
 
         msg_lower = message.lower().strip()
