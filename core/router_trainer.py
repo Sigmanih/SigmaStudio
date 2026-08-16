@@ -323,15 +323,15 @@ def get_feedback_stats() -> dict:
 # ---------------------------------------------------------------------------
 
 def ensure_sigma_router_model() -> bool:
-    """Ensure the custom `sigma-router` model exists in Ollama."""
+    """Ensure the custom `sigma-router` model exists in Ollama if Ollama is running."""
     try:
-        r = requests.get("http://localhost:11434/api/tags", timeout=3)
+        r = requests.get("http://localhost:11434/api/tags", timeout=0.5)
         if r.status_code == 200:
             models = [m.get("name", "") for m in r.json().get("models", [])]
             if any(ROUTER_MODEL_NAME in m for m in models):
                 return True
 
-        system_prompt = """Sei l'Orchestratore e Centralino Intelligente di Sigma Studio.
+            system_prompt = """Sei l'Orchestratore e Centralino Intelligente di Sigma Studio.
 Classifica l'intenzione dell'utente. Rispondi ESCLUSIVAMENTE con l'ID dell'agente prescelto tra i seguenti:
 - math_researcher (matematica, probabilità, teoremi, formule, dimostrazioni, equazioni, fisica o teoria)
 - code_architect (programmazione, scrittura o modifica codice, script python, react, bug, refactoring)
@@ -343,21 +343,19 @@ Classifica l'intenzione dell'utente. Rispondi ESCLUSIVAMENTE con l'ID dell'agent
 
 Rispondi SOLO ed ESCLUSIVAMENTE con l'ID dell'agente (es. math_researcher). NESSUN ALTRO TESTO."""
 
-        payload = {
-            "name": ROUTER_MODEL_NAME,
-            "from": BASE_MODEL_NAME,
-            "system": system_prompt,
-            "parameters": {"temperature": 0.0, "num_predict": 12},
-            "stream": False
-        }
-        res = requests.post("http://localhost:11434/api/create", json=payload, timeout=30)
-        if res.status_code == 200:
-            log.info("Initialized '%s' model in Ollama", ROUTER_MODEL_NAME)
-            return True
-        else:
-            log.warning("Could not create '%s': %s", ROUTER_MODEL_NAME, res.text[:200])
-    except Exception as exc:
-        log.warning("Ollama router creation skipped: %s", exc)
+            payload = {
+                "name": ROUTER_MODEL_NAME,
+                "from": BASE_MODEL_NAME,
+                "system": system_prompt,
+                "parameters": {"temperature": 0.0, "num_predict": 12},
+                "stream": False
+            }
+            res = requests.post("http://localhost:11434/api/create", json=payload, timeout=30)
+            if res.status_code == 200:
+                log.info("Initialized '%s' model in Ollama", ROUTER_MODEL_NAME)
+                return True
+    except Exception:
+        pass
     return False
 
 
