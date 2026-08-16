@@ -403,20 +403,35 @@ def apply_execution_profile(profile: str, config: dict) -> dict:
 # Provider resolution
 # ---------------------------------------------------------------------------
 
-def resolve_provider_config(ai_cfg_or_model, model_name: str = None):
-    """Find the provider configuration that should handle the given model.
+def _resolve_local_ollama_tag(model_name: str) -> str | None:
+    """Finds if a model_name (HF name or slug) matches an active model in Ollama."""
+    try:
+        import requests
+        resp = requests.get("http://127.0.0.1:11434/api/tags", timeout=1.0)
+        if resp.status_code == 200:
+            models = [m.get("name") for m in resp.json().get("models", []) if m.get("name")]
+            if model_name in models:
+                return model_name
+            clean = model_name.lower().replace("/", "--").replace(":", "-")
+            for m in models:
+                m_clean = m.lower().replace("/", "--").replace(":", "-")
+                if clean in m_clean or m_clean in clean:
+                    return m
+                base = model_name.split("/")[-1].lower().replace("-", "").replace("_", "")
+                m_base = m.split(":")[0].lower().replace("-", "").replace("_", "")
+                if base.startswith(m_base) or m_base.startswith(base):
+                    return m
+    except Exception:
+        pass
+    return None
 
-    Supports both signatures:
-    - resolve_provider_config(ai_cfg, model_name)
-    - resolve_provider_config(model_name)
 
-    Returns:
-        Tuple of (provider_key, provider_config). Always returns a valid tuple.
+def resolve_provider_config(ai_cfg_or_model, model_name: str = "") -> tuple[str, dict]:
     """
-    if model_name is None and isinstance(ai_cfg_or_model, str):
-        model_name = ai_cfg_or_model
-        ai_cfg = load_ai_config()
-    elif isinstance(ai_cfg_or_model, dict):
+    Resolve which AI provider to use based on model name and configuration.
+    Returns (provider_name, provider_config).
+    """
+    if isinstance(ai_cfg_or_model, dict):
         ai_cfg = ai_cfg_or_model
     else:
         ai_cfg = load_ai_config()
@@ -427,13 +442,21 @@ def resolve_provider_config(ai_cfg_or_model, model_name: str = None):
     if not model_name:
         model_name = (ai_cfg or {}).get("active_model", "sigma-native:latest")
 
-
-    # Rule 0: SigmaEngine native models (always routed to SigmaEngine)
     lower = (model_name or "").lower()
+
+    # Rule 0: Check if model exists directly in local Ollama daemon
+    ollama_tag = _resolve_local_ollama_tag(model_name)
+    if ollama_tag and not lower.startswith("sigma-native"):
+        pv = dict(providers.get("ollama", {}))
+        pv["model"] = ollama_tag
+        pv["endpoint"] = pv.get("endpoint") or "http://127.0.0.1:11434/api/chat"
+        return "ollama", pv
+
+    # Rule 0.5: SigmaEngine native models (always routed to SigmaEngine)
     if lower.startswith("sigma-") or lower.startswith("sigma:") or lower.startswith("sigma_") or lower.startswith("ailo-") or "sharded" in lower or "moe" in lower or "native" in lower or "minerva" in lower:
         return "sigma_engine", providers.get("sigma_engine", {"label": "SigmaEngine (Nativo & Sharded)", "endpoint": "http://localhost:8000/api/engine"})
 
-    # Rule 0.5: Local models downloaded via Model Hub (in data/models/)
+    # Rule 0.8: Local models downloaded via Model Hub (in data/models/)
     clean_folder = model_name.replace("/", "--")
     if os.path.exists(os.path.join(os.getcwd(), "data", "models", clean_folder)) or \
        os.path.exists(os.path.join(os.getcwd(), "data", "models", model_name)):
@@ -483,10 +506,8 @@ def resolve_provider_config(ai_cfg_or_model, model_name: str = None):
 # AI Call implementations
 # ---------------------------------------------------------------------------
 
-# Centralized AI model caller — eliminates 3x duplication across codebase
 def call_ai_model(messages, ai_cfg, model, provider, endpoint, api_url, api_key, temperature, max_tokens, top_p, request_timeout):
-    """Unified AI model caller used by agent_orchestrator, execute_loop, loop_handler.
-    Eliminates 3x code duplication."""
+    """Unified AI model caller used by agent_orchestrator, execute_loop, loop_handler."""
     if provider in ('sigma_engine', 'sigma'):
         from core.engine import sigma_engine
         prompt_text = messages[-1].get("content", "") if messages else ""
@@ -913,7 +934,7 @@ def call_anthropic(
 
 
 def call_ai_model_stream(messages, ai_cfg, model, provider, endpoint, api_url, api_key, temperature, max_tokens, top_p, request_timeout):
-    """Unified generator yielding chunks of tokens in the format {'token': '...', 'thinking': '...'} or {'done': True} or {'error': True, 'message': '...'}"""
+    # Unified generator yielding chunks of tokens
     if provider in ('sigma_engine', 'sigma'):
         from core.engine import sigma_engine
         prompt_text = messages[-1].get("content", "") if messages else ""

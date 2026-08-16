@@ -161,158 +161,120 @@ class UniversalSigmaEngine:
 
         # Attempt neural dispatch via local Ollama acceleration engine
         try:
-            import urllib.request
-            tags_req = urllib.request.Request("http://localhost:11434/api/tags", method="GET")
-            with urllib.request.urlopen(tags_req, timeout=1.0) as resp:
-                if resp.status == 200:
-                    tags_data = json.loads(resp.read().decode("utf-8"))
-                    models = [m.get("name") for m in tags_data.get("models", []) if m.get("name")]
-                    if models:
-                        # Prioritize loaded model, then qwen3.8:27b, then qwen3.6:27b, then first available
-                        target_model = self.loaded_model_name
-                        if not target_model or not any(target_model == m for m in models):
-                            priority_candidates = ["qwen3.8:27b", "qwen3.6:27b-q4_K_M", "qwen3.6:27b", "qwen3.6:35b", "deepseek-r1:70b", "deepseek-r1:14b"]
-                            for cand in priority_candidates:
-                                if any(cand in m for m in models):
-                                    target_model = next(m for m in models if cand in m)
-                                    break
-                            if not target_model:
-                                target_model = models[0]
+            import requests
+            resp = requests.get("http://127.0.0.1:11434/api/tags", timeout=1.5)
+            if resp.status_code == 200:
+                tags_data = resp.json()
+                models = [m.get("name") for m in tags_data.get("models", []) if m.get("name")]
+                if models:
+                    # Target model priority: loaded_model_name -> qwen3.8:27b -> qwen3.6:27b -> first available
+                    target_model = self.loaded_model_name
+                    if not target_model or not any(target_model == m for m in models):
+                        priority_candidates = ["qwen3.8:27b", "qwen3.6:27b-q4_K_M", "qwen3.6:27b", "qwen3.6:35b", "deepseek-r1:70b", "deepseek-r1:14b"]
+                        for cand in priority_candidates:
+                            if any(cand in m for m in models):
+                                target_model = next(m for m in models if cand in m)
+                                break
+                        if not target_model:
+                            target_model = models[0]
 
-                        gen_payload = {
-                            "model": target_model,
-                            "messages": [
-                                {"role": "system", "content": system_prompt},
-                                {"role": "user", "content": prompt}
-                            ],
-                            "stream": True,
-                            "options": {
-                                "temperature": temperature,
-                                "num_predict": max(max_tokens or 16384, 16384),
-                                "num_ctx": 65536,
-                                "top_p": 0.95,
-                                "top_k": 40,
-                                "repeat_penalty": 1.1,
-                            }
+                    gen_payload = {
+                        "model": target_model,
+                        "messages": [
+                            {"role": "system", "content": system_prompt},
+                            {"role": "user", "content": prompt}
+                        ],
+                        "stream": True,
+                        "options": {
+                            "temperature": temperature,
+                            "num_predict": max(max_tokens or 16384, 16384),
+                            "num_ctx": 65536,
+                            "top_p": 0.95,
+                            "top_k": 40,
+                            "repeat_penalty": 1.1,
                         }
-                        gen_req = urllib.request.Request(
-                            "http://localhost:11434/api/chat",
-                            data=json.dumps(gen_payload).encode("utf-8"),
-                            headers={"Content-Type": "application/json"}
-                        )
-                        with urllib.request.urlopen(gen_req, timeout=300) as gen_resp:
-                            for line in gen_resp:
-                                if not line:
-                                    continue
-                                try:
-                                    chunk_json = json.loads(line.decode("utf-8"))
-                                    msg_chunk = chunk_json.get("message", {})
-                                    token_text = msg_chunk.get("content", "")
-                                    if token_text:
-                                        token_count += 1
-                                        now = time.perf_counter()
-                                        if not first_token_sent:
-                                            ttft_ms = round((now - t_start) * 1000, 1)
-                                            first_token_sent = True
-                                        else:
-                                            ttft_ms = 0.0
-                                        current_speed = round(token_count / max(now - t_start, 0.001), 1)
-                                        yield {
-                                            "token": token_text,
-                                            "token_index": token_count,
-                                            "ttft_ms": ttft_ms if token_count == 1 else None,
-                                            "speed_tok_s": current_speed,
-                                            "done": chunk_json.get("done", False)
-                                        }
-                                except Exception:
-                                    continue
-                            return
-        except Exception:
-            pass # Fallback to local semantic synthesis below
+                    }
+                    gen_resp = requests.post("http://127.0.0.1:11434/api/chat", json=gen_payload, stream=True, timeout=300)
+                    if gen_resp.status_code == 200:
+                        for line in gen_resp.iter_lines(decode_unicode=True):
+                            if not line:
+                                continue
+                            try:
+                                chunk_json = json.loads(line)
+                                msg_chunk = chunk_json.get("message", {})
+                                token_text = msg_chunk.get("content", "")
+                                if token_text:
+                                    token_count += 1
+                                    now = time.perf_counter()
+                                    if not first_token_sent:
+                                        ttft_ms = round((now - t_start) * 1000, 1)
+                                        first_token_sent = True
+                                    else:
+                                        ttft_ms = 0.0
+                                    current_speed = round(token_count / max(now - t_start, 0.001), 1)
+                                    yield {
+                                        "token": token_text,
+                                        "token_index": token_count,
+                                        "ttft_ms": ttft_ms if token_count == 1 else None,
+                                        "speed_tok_s": current_speed,
+                                        "done": chunk_json.get("done", False)
+                                    }
+                            except Exception:
+                                continue
+                        return
+        except Exception as ex:
+            log.warning("[SigmaEngine] Neural bridge attempt failed (%s). Attempting Ollama daemon auto-recovery...", ex)
+            try:
+                import subprocess
+                subprocess.Popen(["ollama", "serve"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                time.sleep(2.0)
+                # Retry once
+                gen_resp = requests.post(
+                    "http://127.0.0.1:11434/api/chat",
+                    json={
+                        "model": target_model if 'target_model' in locals() and target_model else "qwen3.8:27b",
+                        "messages": [
+                            {"role": "system", "content": system_prompt},
+                            {"role": "user", "content": prompt}
+                        ],
+                        "stream": True,
+                        "options": {"temperature": temperature, "num_predict": max(max_tokens or 16384, 16384)}
+                    },
+                    stream=True,
+                    timeout=300
+                )
+                if gen_resp.status_code == 200:
+                    for line in gen_resp.iter_lines(decode_unicode=True):
+                        if not line:
+                            continue
+                        try:
+                            chunk_json = json.loads(line)
+                            msg_chunk = chunk_json.get("message", {})
+                            token_text = msg_chunk.get("content", "")
+                            if token_text:
+                                token_count += 1
+                                now = time.perf_counter()
+                                yield {
+                                    "token": token_text,
+                                    "token_index": token_count,
+                                    "speed_tok_s": round(token_count / max(now - t_start, 0.001), 1),
+                                    "done": chunk_json.get("done", False)
+                                }
+                        except Exception:
+                            continue
+                    return
+            except Exception as rec_err:
+                log.error("[SigmaEngine] Auto-recovery failed: %s", rec_err)
 
-        p_lower = (prompt or "").lower()
-
-        # Semantic synthesis router based on prompt intent and agent context
-        if any(w in p_lower for w in ["sigma studio", "cos'è sigma", "parlami di", "presentati", "chi sei", "funzionalità"]):
-            full_text = (
-                "Ciao Diego! **Sigma Studio** è la workstation di sviluppo AI avanzata, modulare e 100% autonoma, "
-                "progettata per operare con massima privacy ed efficienza direttamente sul tuo hardware locale.\n\n"
-                "### 🚀 Architettura & Punti di Forza di Sigma Studio\n\n"
-                "1. **⚡ SigmaEngine & Hardware Sharding (Tier 0-3)**:\n"
-                "   - Motore nativo universale multi-backend (**CUDA FlashAttention-2**, Apple Silicon MPS, ROCm, DirectML e CPU AVX-512).\n"
-                "   - **Saliency Tiering Memory (Pattern AiloFlow)**: permette di eseguire modelli giganti (come MoE 16x17B da 67GB) partizionando i pesi caldi in VRAM (RTX 5070 Ti), RAM di sistema e streaming asincrono multi-disco.\n\n"
-                "2. **🧩 Ecosistema Modulare & Repository Indipendente**:\n"
-                "   - Hub di espansioni modulari (**SigmaStudio-Moduli**) completamente disaccoppiate dal kernel: *Hardware Lab*, *Creative Lab 3D/2D*, *Audio Studio*, *Developer Lab (Docker)*, *Pipelines Lab*, *IoT & Domotica*, *Knowledge RAG*.\n"
-                "   - Ogni modulo include i propri server **MCP (Model Context Protocol)** e route FastAPI dedicate.\n\n"
-                "3. **🌐 Providers & Modelli Agnostici**:\n"
-                "   - Supporto nativo per **SigmaEngine**, **AiloFlow**, e provider cloud (DeepSeek, OpenAI, Claude, Gemini, Groq), con piena facoltà di abilitare o rimuovere provider esterni come Ollama a proprio piacimento.\n\n"
-                "4. **🛡️ Privacy Assoluta & Zero Cloud Lock-in**:\n"
-                "   - I tuoi dati, file sorgente, chiavi e pesi dei modelli rimangono confinati nella tua workstation senza telemetrie esterne.\n\n"
-                "Come posso aiutarti oggi? Vuoi esplorare la telemetria hardware, progettare una pipeline o testare la generazione di codice?"
-            )
-        elif any(w in p_lower for w in ["hardware", "vram", "gpu", "temperatura", "rtx", "ram"]):
-            hw = self.hardware_profile
-            full_text = (
-                f"### ⚡ Stato Hardware & Rilevamento SigmaEngine\n\n"
-                f"- **Backend Attivo**: `{self.active_backend}`\n"
-                f"- **GPU Principale**: NVIDIA GeForce RTX 5070 Ti (16 GB VRAM - Tier 0)\n"
-                f"- **Memoria Host**: 93.66 GB RAM (~73 GB disponibile - Tier 2)\n"
-                f"- **Storage Sharding**: 2 Unità NVMe/SSD configurate in striped streaming (Tier 3)\n"
-                f"- **Accelerazione Tensor**: FP8 Tensor Cores + FlashAttention-2 abilitati.\n\n"
-                "Il runtime è ottimizzato per garantire il massimo throughput con zero latenza di bus PCIe."
-            )
-        elif any(w in p_lower for w in ["codice", "python", "script", "funzione", "programma", "def ", "class "]):
-            full_text = (
-                "Certamente! Ecco una soluzione tecnica ottimizzata sviluppata per l'ambiente Sigma Studio:\n\n"
-                "```python\n"
-                "# Script ad alte prestazioni compatibile con Sigma Studio Kernel\n"
-                "import os\n"
-                "import time\n"
-                "from core.engine import sigma_engine\n\n"
-                "def execute_task():\n"
-                "    print('⚡ Inizializzazione task ad alte prestazioni...')\n"
-                "    status = sigma_engine.get_status()\n"
-                "    print(f'Runtime Backend: {status[\"active_backend\"]}')\n"
-                "    return status\n\n"
-                "if __name__ == '__main__':\n"
-                "    res = execute_task()\n"
-                "    print('Completato:', res)\n"
-                "```\n\n"
-                "Fammi sapere se desideri estendere questo script o integrarlo con un server MCP dedicato!"
-            )
-        else:
-            full_text = (
-                f"Ho elaborato la tua richiesta tramite **SigmaEngine** (Backend: `{self.active_backend}`).\n\n"
-                f"Hai chiesto: *\"{prompt.strip()}\"*\n\n"
-                "In qualità di **Sigma Assistant**, sono a tua completa disposizione per aiutarti nella programmazione, "
-                "nell'ottimizzazione dei modelli, nella gestione dei container Docker, o nella progettazione di architetture neurali.\n\n"
-                "Dimmi pure su quale modulo o attività desideri concentrarti!"
-            )
-
-        # Tokenize by words and spaces for natural streaming
-        chunks = re.findall(r'\S+|\n|\s+', full_text)
-
-        for idx, chunk in enumerate(chunks):
-            # Fast token emission (~65 tokens/sec)
-            time.sleep(0.012)
-            token_count += 1
-            now = time.perf_counter()
-
-            if not first_token_sent:
-                ttft_ms = round((now - t_start) * 1000, 1)
-                first_token_sent = True
-            else:
-                ttft_ms = 0.0
-
-            current_speed = round(token_count / max(now - t_start, 0.001), 1)
-
-            yield {
-                "token": chunk,
-                "token_index": token_count,
-                "ttft_ms": ttft_ms if token_count == 1 else None,
-                "speed_tok_s": current_speed,
-                "done": idx == len(chunks) - 1
-            }
+        error_message = (
+            "⚠️ **Avviso SigmaEngine**: Il daemon di inferenza locale (Ollama / CUDA Runtime) non risponde su `127.0.0.1:11434`.\n\n"
+            "Per avviare l'inferenza neurale locale:\n"
+            "1. Apri un terminale ed esegui `ollama serve` (oppure usa il pulsante **Riavvia Ollama** nel tab *Hardware Lab*).\n"
+            "2. Verifica che il modello selezionato sia presente nei download di *Model Hub*."
+        )
+        for chunk in error_message.split(" "):
+            yield {"token": chunk + " ", "token_index": token_count + 1, "done": False}
+        yield {"token": "", "done": True}
 
 
 
