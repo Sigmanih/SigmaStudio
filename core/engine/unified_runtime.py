@@ -146,28 +146,67 @@ class UniversalSigmaEngine:
             "tiering_summary": UniversalHardwareProbe.get_recommended_tiering()
         }
 
-    def load_native_model(self, model_identifier: str) -> bool:
+    @staticmethod
+    def _folder_has_weights(folder_path: str) -> bool:
+        """Checks if a directory actually contains neural model weights."""
+        if not os.path.isdir(folder_path):
+            return False
+        files = os.listdir(folder_path)
+        return any(
+            f.endswith('.safetensors') or f.endswith('.gguf') or f.endswith('.bin') or f == 'model.safetensors.index.json'
+            for f in files
+        )
+
+    def find_valid_model_directory(self, model_identifier: Optional[str] = None) -> Optional[tuple[str, str]]:
+        """
+        Finds the directory path and canonical name of a valid local model containing weights.
+        Returns (target_path, display_name) or None.
+        """
+        models_dir = os.path.join(os.getcwd(), "data", "models")
+        if not os.path.exists(models_dir):
+            return None
+
+        if model_identifier:
+            candidates = [
+                model_identifier,
+                model_identifier.replace("/", "--"),
+                model_identifier.replace(":", "-"),
+                model_identifier.split("/")[-1],
+                model_identifier.split(":")[0],
+            ]
+            for cand in candidates:
+                p = os.path.join(models_dir, cand)
+                if self._folder_has_weights(p):
+                    return p, cand
+
+            clean_id = model_identifier.lower().replace("/", "").replace("-", "").replace("_", "").replace(":", "")
+            for folder in os.listdir(models_dir):
+                p = os.path.join(models_dir, folder)
+                if self._folder_has_weights(p):
+                    clean_folder = folder.lower().replace("/", "").replace("-", "").replace("_", "").replace(":", "")
+                    if clean_id in clean_folder or clean_folder in clean_id or ('qwen3' in clean_id and 'qwen3' in clean_folder):
+                        return p, folder
+
+        # Fallback to any folder in data/models that actually contains weights
+        for folder in sorted(os.listdir(models_dir)):
+            p = os.path.join(models_dir, folder)
+            if self._folder_has_weights(p):
+                return p, folder
+
+        return None
+
+    def load_native_model(self, model_identifier: Optional[str] = None) -> bool:
         """Loads a local model from data/models/ into GPU/VRAM natively using PyTorch and Transformers."""
         try:
             import torch
             from transformers import AutoModelForCausalLM, AutoTokenizer
 
-            clean_folder = model_identifier.replace("/", "--")
-            possible_paths = [
-                os.path.join(os.getcwd(), "data", "models", clean_folder),
-                os.path.join(os.getcwd(), "data", "models", model_identifier),
-                model_identifier
-            ]
-            target_path = None
-            for p in possible_paths:
-                if os.path.exists(p) and os.path.isdir(p):
-                    target_path = p
-                    break
-
-            if not target_path:
-                log.warning("[SigmaEngine] Local model directory not found for '%s'", model_identifier)
+            model_info = self.find_valid_model_directory(model_identifier)
+            if not model_info:
+                log.warning("[SigmaEngine] No valid local model directory with weights found for '%s'", model_identifier)
                 return False
 
+            target_path, display_name = model_info
             log.info("[SigmaEngine] Loading native model from '%s' into GPU VRAM...", target_path)
             dtype = torch.bfloat16 if torch.cuda.is_available() and torch.cuda.is_bf16_supported() else (torch.float16 if torch.cuda.is_available() else torch.float32)
 
@@ -179,8 +218,8 @@ class UniversalSigmaEngine:
                 low_cpu_mem_usage=True,
                 trust_remote_code=True
             )
-            self.loaded_model_name = model_identifier
-            log.info("[SigmaEngine] Model '%s' successfully loaded into native GPU runtime.", model_identifier)
+            self.loaded_model_name = display_name
+            log.info("[SigmaEngine] Model '%s' successfully loaded into native GPU runtime.", display_name)
             return True
         except Exception as e:
             log.error("[SigmaEngine] Failed to load native model '%s': %s", model_identifier, e)
@@ -203,19 +242,13 @@ class UniversalSigmaEngine:
         token_count = 0
         first_token_sent = False
 
-        target_model = model_name or self.loaded_model_name
-        if not target_model:
-            # Check available folders in data/models/
-            models_dir = os.path.join(os.getcwd(), "data", "models")
-            if os.path.exists(models_dir):
-                folders = [f for f in os.listdir(models_dir) if os.path.isdir(os.path.join(models_dir, f)) and not f.startswith(".")]
-                if folders:
-                    target_model = folders[0]
+        model_info = self.find_valid_model_directory(model_name or self.loaded_model_name)
+        target_model = model_info[1] if model_info else (model_name or self.loaded_model_name or "Qwen/Qwen3.8-27B")
 
         # Ensure model is loaded in memory
         if (self.model_instance is None or self.loaded_model_name != target_model) and target_model:
             yield {
-                "token": f"⏳ *[SigmaEngine Nativo]* Caricamento modello `{target_model}` su GPU VRAM in corso...\n\n",
+                "token": f"⏳ *[SigmaEngine Nativo]* Caricamento pesi neurali `{target_model}` su Dual GPU VRAM...\n\n",
                 "token_index": 1,
                 "done": False
             }

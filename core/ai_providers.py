@@ -483,7 +483,7 @@ def call_ai_model(messages, ai_cfg, model, provider, endpoint, api_url, api_key,
         from core.engine import sigma_engine
         prompt_text = messages[-1].get("content", "") if messages else ""
         sys_text = messages[0].get("content", "") if messages and messages[0].get("role") == "system" else ""
-        tokens = list(sigma_engine.generate_stream(prompt_text, system_prompt=sys_text, temperature=temperature, max_tokens=max_tokens))
+        tokens = list(sigma_engine.generate_stream(prompt_text, system_prompt=sys_text, temperature=temperature, max_tokens=max_tokens, model_name=model))
         full_res = "".join([t["token"] for t in tokens])
         return full_res, "Esecuzione nativa diretta su hardware completata tramite SigmaEngine (CUDA/MPS/DirectML + Multi-Tier Sharding).", None
 
@@ -819,7 +819,7 @@ def call_ollama_stream(
             from core.engine import sigma_engine
             prompt_text = messages[-1].get("content", "") if messages else ""
             sys_text = messages[0].get("content", "") if messages and messages[0].get("role") == "system" else ""
-            for token_chunk in sigma_engine.generate_stream(prompt_text, system_prompt=sys_text, temperature=temperature, max_tokens=max_tokens):
+            for token_chunk in sigma_engine.generate_stream(prompt_text, system_prompt=sys_text, temperature=temperature, max_tokens=max_tokens, model_name=model):
                 yield token_chunk
             return
         except Exception as fallback_err:
