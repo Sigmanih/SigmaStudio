@@ -145,6 +145,10 @@ class ModelDownloadManager:
         target_dir = os.path.join(self.models_dir, clean_mid)
         os.makedirs(target_dir, exist_ok=True)
 
+        from .hf_client import parse_model_specs
+        specs = parse_model_specs(model_id, model_id)
+        estimated_total_bytes = int(specs.get("size_gb", 0) * (1024**3))
+
         task_id = str(uuid.uuid4())[:8]
         display_name = f"Intero Modello ({len(files_list)} file / shard)"
         task = ModelDownloadTask(
@@ -154,11 +158,13 @@ class ModelDownloadManager:
             download_url="",
             save_path=target_dir,
             hf_token=hf_token,
+            total_bytes=estimated_total_bytes,
             files_queue=files_list
         )
 
         with self.lock:
             self.tasks[task_id] = task
+
 
         t = threading.Thread(target=self._repo_download_worker, args=(task, target_dir), daemon=True)
         t.start()
@@ -326,12 +332,19 @@ class ModelDownloadManager:
                     already_done_bytes += os.path.getsize(part_file)
 
             if task.total_bytes == 0:
-                task.total_bytes = max(
-                    already_done_bytes,
-                    sum((5 * 1024**3 if f.get("filename", "").endswith(".safetensors") else 2 * 1024**2) for f in task.files_queue)
-                )
+                from .hf_client import parse_model_specs
+                specs = parse_model_specs(task.model_id, task.model_id)
+                est_bytes = int(specs.get("size_gb", 0) * (1024**3))
+                if est_bytes > 0:
+                    task.total_bytes = max(already_done_bytes, est_bytes)
+                else:
+                    task.total_bytes = max(
+                        already_done_bytes,
+                        sum((12 * 1024**3 if f.get("filename", "").endswith(".safetensors") else 2 * 1024**2) for f in task.files_queue)
+                    )
 
             task.downloaded_bytes = already_done_bytes
+
 
             # 2. Iterate through each shard/file
             for idx, file_info in enumerate(task.files_queue):

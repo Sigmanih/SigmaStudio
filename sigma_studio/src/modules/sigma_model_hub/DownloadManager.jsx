@@ -94,8 +94,16 @@ export default function DownloadManager({ isLight, addToast, onDeployRequested }
     }
   };
 
+  const formatMb = (mb) => {
+    if (!mb || mb <= 0) return '0 MB';
+    if (mb >= 1024 * 1024) return `${(mb / (1024 * 1024)).toFixed(2)} TB`;
+    if (mb >= 1024) return `${(mb / 1024).toFixed(1)} GB`;
+    return `${Math.round(mb)} MB`;
+  };
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+
       <div style={{
         padding: '14px 18px', borderRadius: '14px',
         background: cardBg, border: cardBorder,
@@ -260,13 +268,16 @@ export default function DownloadManager({ isLight, addToast, onDeployRequested }
                 {/* Status & Error Message Details */}
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: '0.68rem', color: textMuted }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                    <span>{t.downloaded_mb} / {t.total_mb || '...'} MB ({t.progress_pct}%)</span>
+                    <span style={{ fontWeight: 700 }}>
+                      💾 {formatMb(t.downloaded_mb)} / {t.total_mb ? formatMb(t.total_mb) : '...'} ({t.progress_pct}%)
+                    </span>
                     {(isFailed || isCancelled) && (
                       <span style={{ color: '#10b981', fontWeight: 700 }}>
-                        • I {t.downloaded_mb} MB scaricati sono salvati e verranno riutilizzati alla ripresa
+                        • I {formatMb(t.downloaded_mb)} già scaricati sono preservati su disco
                       </span>
                     )}
                   </div>
+
 
                   <span style={{
                     fontWeight: 800,

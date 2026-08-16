@@ -125,10 +125,18 @@ export default function ModelHub({ addToast }) {
     }
   };
 
+  const formatMb = (mb) => {
+    if (!mb || mb <= 0) return '0 MB';
+    if (mb >= 1024 * 1024) return `${(mb / (1024 * 1024)).toFixed(2)} TB`;
+    if (mb >= 1024) return `${(mb / 1024).toFixed(1)} GB`;
+    return `${Math.round(mb)} MB`;
+  };
+
   // Find currently downloading task or last interrupted task if any
   const currentRunningTask = activeDownloads.find(d => d.status === 'downloading' || d.status === 'queued');
   const lastFailedTask = activeDownloads.find(d => d.status === 'failed' || d.status === 'cancelled');
   const totalActiveTasksCount = activeDownloads.filter(d => d.status === 'downloading' || d.status === 'queued').length;
+
 
 
   return (
@@ -350,8 +358,8 @@ export default function ModelHub({ addToast }) {
               </div>
               <div style={{ fontSize: '0.68rem', color: textMuted, marginTop: '2px' }}>
                 {currentRunningTask.is_repo_download
-                  ? `File ${currentRunningTask.current_file_idx}/${currentRunningTask.total_files} (${currentRunningTask.current_file_name})`
-                  : `${currentRunningTask.downloaded_mb} / ${currentRunningTask.total_mb || '...'} MB`}
+                  ? `File ${currentRunningTask.current_file_idx}/${currentRunningTask.total_files} (${currentRunningTask.current_file_name}) • ${formatMb(currentRunningTask.downloaded_mb)} / ${currentRunningTask.total_mb ? formatMb(currentRunningTask.total_mb) : '...'}`
+                  : `${formatMb(currentRunningTask.downloaded_mb)} / ${currentRunningTask.total_mb ? formatMb(currentRunningTask.total_mb) : '...'}`}
                 {' • '}
                 <span style={{ color: '#ffb86c', fontWeight: 700 }}>
                   {currentRunningTask.speed_mbps} MB/s
@@ -410,10 +418,11 @@ export default function ModelHub({ addToast }) {
                 </span>
               </div>
               <div style={{ fontSize: '0.68rem', color: '#10b981', marginTop: '2px', fontWeight: 700 }}>
-                💾 {lastFailedTask.downloaded_mb} MB già salvati su disco (riprende da dove si era fermato)
+                💾 {formatMb(lastFailedTask.downloaded_mb)} già salvati su disco (riprende da dove si era fermato)
               </div>
             </div>
           </div>
+
 
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0 }}>
             <button

@@ -636,7 +636,7 @@ export default function HfBrowser({ isLight, addToast, onDownloadStarted, active
                             fontSize: '0.60rem', padding: '1px 5px', borderRadius: '3px',
                             background: subBg, color: textPrimary, border: subBorder, fontWeight: 800
                           }}>
-                            ~{m.size_gb} GB
+                            💾 {m.size_label || (m.size_gb >= 1000 ? `~${(m.size_gb / 1000).toFixed(1)} TB` : `~${m.size_gb} GB`)}
                           </span>
                         </div>
                       </div>
@@ -645,7 +645,24 @@ export default function HfBrowser({ isLight, addToast, onDownloadStarted, active
                     <p style={{ margin: '8px 0 0 0', fontSize: '0.72rem', color: textMuted, lineHeight: '1.4' }}>
                       {m.description}
                     </p>
+
+                    {m.is_moe && (
+                      <div style={{
+                        marginTop: '8px', padding: '6px 9px', borderRadius: '6px',
+                        background: 'rgba(0, 210, 255, 0.05)', border: '1px solid rgba(0, 210, 255, 0.18)',
+                        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                        fontSize: '0.64rem'
+                      }}>
+                        <span style={{ color: '#00d2ff', fontWeight: 800 }}>
+                          ⚡ VRAM Attiva Token: {m.active_vram_label || `~${m.active_vram_gb || m.size_gb} GB`}
+                        </span>
+                        <span style={{ color: textPrimary, fontWeight: 800 }}>
+                          💾 Storage Totale: {m.size_label || `~${m.size_gb} GB`}
+                        </span>
+                      </div>
+                    )}
                   </div>
+
 
                   <div>
                     {/* Release Date & Stats */}

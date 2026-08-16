@@ -83,98 +83,139 @@ def parse_model_specs(model_id: str, name: str, tags: List[str] = None) -> Dict[
     """
     Accurately extracts:
     - active_params_b (float) & active_params_label (e.g. '27B', '95B')
-    - total_params_label (e.g. '27B', '2.4T Totali', '47B (8x7B)')
+    - total_params_b (float) & total_params_label (e.g. '27B', '2.4T Totali', '671B Totali')
     - is_moe (bool)
     - precision_label (e.g. 'FP8', 'FP16', 'GGUF Q4_K_M', 'NVFP4')
-    - estimated size_gb (e.g. 27.0 GB for FP8 vs 54.0 GB for FP16)
+    - estimated size_gb: TOTAL DISK STORAGE / DOWNLOAD SIZE (based on total_b * precision)
+    - estimated active_vram_gb: ACTIVE INFERENCE VRAM FOOTPRINT (based on active_b * precision)
+    - size_label (e.g. '~2.4 TB', '~4.8 TB', '~54.0 GB')
+    - active_vram_label (e.g. '~95 GB VRAM', '~190 GB VRAM')
     """
     text = f"{model_id} {name} {' '.join(tags or [])}".lower()
 
     # 1. Parameter extraction (Active vs Total)
     active_b = 7.0
+    total_b = 7.0
     active_label = "7B"
     total_label = "7B"
     is_moe = False
 
-    # Check for MoE active token patterns like 2.4T-A95B or 35B-A3B or A95B
-    moe_a_match = re.search(r'(?:(\d+(?:\.\d+)?)\s*t\s*[-_])?a(\d+(?:\.\d+)?)\s*b', text)
-    if moe_a_match:
+    # Check for DeepSeek-V3 / DeepSeek-R1 full 671B MoE
+    if ("deepseek-v3" in text or "deepseek-r1" in text or "deepseek_v3" in text or "deepseek_r1" in text) and "distill" not in text and "tiny" not in text and "zero" not in text:
         is_moe = True
-        t_tokens = moe_a_match.group(1)
-        active_val = float(moe_a_match.group(2))
-        active_b = active_val
-        active_label = f"{active_val:g}B"
-        total_label = f"{t_tokens}T Totali" if t_tokens else f"{active_val:g}B (MoE)"
+        total_b = 671.0
+        active_b = 37.0
+        active_label = "37B"
+        total_label = "671B Totali"
     else:
-        # Check standard MoE expert patterns like 8x7b, 16x17b, 8x22b
-        moe_match = re.search(r'(\d+)\s*x\s*(\d+(?:\.\d+)?)\s*b', text)
-        if moe_match:
+        # Check for MoE active token patterns like 2.4T-A95B or 35B-A3B or A95B
+        moe_a_match = re.search(r'(?:(\d+(?:\.\d+)?)\s*t\s*[-_])?a(\d+(?:\.\d+)?)\s*b', text)
+        if moe_a_match:
             is_moe = True
-            experts = int(moe_match.group(1))
-            expert_size = float(moe_match.group(2))
-            active_b = round(expert_size * 2, 1)
-            total_b = round(experts * expert_size, 1)
-            active_label = f"~{active_b:g}B"
-            total_label = f"{total_b:g}B ({experts}x{expert_size:g}B)"
-        else:
-            # Check standard B pattern like 70b, 32b, 27b, 14b, 8b, 7b, 3b, 1.5b, 0.5b
-            param_match = re.search(r'(\d+(?:\.\d+)?)\s*b(?:\b|[^a-z0-9])', text)
-            if param_match:
-                val = float(param_match.group(1))
-                if 0.1 <= val <= 1000:
-                    active_b = val
-                    active_label = f"{val:g}B"
-                    total_label = f"{val:g}B"
+            t_tokens = moe_a_match.group(1)
+            active_val = float(moe_a_match.group(2))
+            active_b = active_val
+            active_label = f"{active_val:g}B"
+            if t_tokens:
+                total_b = float(t_tokens) * 1000.0  # e.g. 2.4T -> 2400B
+                total_label = f"{t_tokens}T Totali"
             else:
-                m_match = re.search(r'(\d+)\s*m(?:\b|[^a-z0-9])', text)
-                if m_match:
-                    val_m = float(m_match.group(1))
-                    active_b = round(val_m / 1000, 2)
-                    active_label = f"{int(val_m)}M"
-                    total_label = f"{int(val_m)}M"
+                total_b = active_val * 4.0
+                total_label = f"{active_val:g}B (MoE)"
+        else:
+            # Check standard MoE expert patterns like 8x7b, 16x17b, 8x22b
+            moe_match = re.search(r'(\d+)\s*x\s*(\d+(?:\.\d+)?)\s*b', text)
+            if moe_match:
+                is_moe = True
+                experts = int(moe_match.group(1))
+                expert_size = float(moe_match.group(2))
+                active_b = round(expert_size * 2, 1)
+                total_b = round(experts * expert_size, 1)
+                active_label = f"~{active_b:g}B"
+                total_label = f"{total_b:g}B ({experts}x{expert_size:g}B)"
+            else:
+                # Check standard B pattern like 70b, 32b, 27b, 14b, 8b, 7b, 3b, 1.5b, 0.5b
+                param_match = re.search(r'(\d+(?:\.\d+)?)\s*b(?:\b|[^a-z0-9])', text)
+                if param_match:
+                    val = float(param_match.group(1))
+                    if 0.1 <= val <= 1000:
+                        active_b = val
+                        total_b = val
+                        active_label = f"{val:g}B"
+                        total_label = f"{val:g}B"
+                else:
+                    m_match = re.search(r'(\d+)\s*m(?:\b|[^a-z0-9])', text)
+                    if m_match:
+                        val_m = float(m_match.group(1))
+                        active_b = round(val_m / 1000, 2)
+                        total_b = active_b
+                        active_label = f"{int(val_m)}M"
+                        total_label = f"{int(val_m)}M"
 
     # 2. Precision & Size estimation (FP8, FP16, GGUF, NVFP4)
     is_gguf = "gguf" in text
     if "fp8" in text or "int8" in text or "w8a8" in text or "8bit" in text or "8-bit" in text:
         precision = "FP8 (8-bit)"
         fmt_label = "Safetensors (FP8)"
-        size_gb = round(active_b * 1.0, 1)
+        bytes_per_param = 1.0
     elif "nvfp4" in text or "mxfp4" in text or "int4" in text or "fp4" in text or "awq" in text or "gptq" in text or "4bit" in text:
         precision = "4-bit (NVFP4/AWQ)"
         fmt_label = "Safetensors (4-bit)"
-        size_gb = round(active_b * 0.55, 1)
+        bytes_per_param = 0.55
     elif is_gguf:
         if "q8" in text:
             precision = "GGUF Q8_0 (8-bit)"
-            size_gb = round(active_b * 1.08, 1)
+            bytes_per_param = 1.08
         elif "q5" in text:
             precision = "GGUF Q5_K_M (5-bit)"
-            size_gb = round(active_b * 0.75, 1)
+            bytes_per_param = 0.75
         elif "q2" in text or "q3" in text:
             precision = "GGUF Q3_K_M (3-bit)"
-            size_gb = round(active_b * 0.45, 1)
+            bytes_per_param = 0.45
         else:
             precision = "GGUF Q4_K_M (4-bit)"
-            size_gb = round(active_b * 0.62, 1)
+            bytes_per_param = 0.62
         fmt_label = "GGUF"
     else:
         precision = "FP16 / BF16 (16-bit)"
         fmt_label = "Safetensors"
-        size_gb = round(active_b * 2.0, 1)
+        bytes_per_param = 2.0
+
+    # Total repository storage / download size is based on total_b
+    size_gb = round(total_b * bytes_per_param, 1)
+    # Active inference VRAM footprint is based on active_b
+    active_vram_gb = round(active_b * bytes_per_param, 1)
+
+    if size_gb >= 1000.0:
+        size_label = f"~{size_gb / 1000.0:.1f} TB"
+    else:
+        size_label = f"~{size_gb:g} GB"
+
+    if active_vram_gb >= 1000.0:
+        active_vram_label = f"~{active_vram_gb / 1000.0:.1f} TB"
+    else:
+        active_vram_label = f"~{active_vram_gb:g} GB"
 
     return {
         "active_b": active_b,
+        "total_b": total_b,
         "active_label": active_label,
         "total_label": total_label,
         "is_moe": is_moe,
         "precision": precision,
         "format": fmt_label,
-        "size_gb": size_gb
+        "size_gb": size_gb,
+        "size_label": size_label,
+        "active_vram_gb": active_vram_gb,
+        "active_vram_label": active_vram_label,
+        "bytes_per_param": bytes_per_param
     }
 
 
-def _determine_target_gpu(size_gb: float) -> str:
-    """Recommends the best hardware target in Sigma Studio based on model size."""
+def _determine_target_gpu(size_gb: float, is_moe: bool = False, active_vram_label: str = "") -> str:
+    """Recommends the best hardware target in Sigma Studio based on model size and MoE architecture."""
+    if is_moe and size_gb >= 500.0:
+        return f"Cluster / NVMe Offload ({active_vram_label} Attiva)"
     if size_gb <= 5.5:
         return "RTX 5060 (8 GB) Full VRAM"
     elif size_gb <= 12.0:
@@ -185,8 +226,11 @@ def _determine_target_gpu(size_gb: float) -> str:
         return "Dual-GPU + RAM 94GB (Sharded)"
     elif size_gb <= 90.0:
         return "Host RAM 94GB + NVMe Striping"
+    elif size_gb < 1000.0:
+        return f"NVMe Striping (~{int(size_gb)} GB Storage)"
     else:
-        return "Multi-Drive NVMe Striped Matrix"
+        return f"Multi-Drive NVMe Array (~{size_gb/1000.0:.1f} TB Storage)"
+
 
 
 def _matches_size_bracket(size_gb: float, bracket: str) -> bool:
@@ -543,12 +587,16 @@ def search_hf_models(
             # Parse precision, active/total parameters and realistic size in GB
             specs = parse_model_specs(mid, m_name, tags)
             params_b = specs["active_b"]
+            total_b = specs["total_b"]
             params_label = specs["active_label"]
             total_params_label = specs["total_label"]
             precision = specs["precision"]
             fmt_label = specs["format"]
             size_gb = specs["size_gb"]
-            rec_gpu = _determine_target_gpu(size_gb)
+            size_label = specs["size_label"]
+            active_vram_gb = specs["active_vram_gb"]
+            active_vram_label = specs["active_vram_label"]
+            rec_gpu = _determine_target_gpu(size_gb, specs["is_moe"], active_vram_label)
 
             # Apply filters
             if not _matches_size_bracket(size_gb, size_bracket):
@@ -568,18 +616,28 @@ def search_hf_models(
                 )
             )
 
+            desc_text = (
+                f"Modello MoE {m_name} ({precision} • {params_label} attivi per token / {total_params_label}). Storage: {size_label}, VRAM attiva: {active_vram_label}."
+                if specs["is_moe"]
+                else f"Modello {m_name} ({precision} • {params_label} • {size_label}) di {author}."
+            )
+
             results.append({
                 "id": mid,
                 "name": m_name,
                 "author": author,
                 "category": inferred_cat,
                 "params_b": params_b,
+                "total_b": total_b,
                 "params_label": params_label,
                 "active_params_label": params_label,
                 "total_params_label": total_params_label,
                 "is_moe": specs["is_moe"],
                 "precision": precision,
                 "size_gb": size_gb,
+                "size_label": size_label,
+                "active_vram_gb": active_vram_gb,
+                "active_vram_label": active_vram_label,
                 "format": fmt_label,
                 "downloads": item.get("downloads", 0),
                 "likes": item.get("likes", 0),
@@ -587,13 +645,14 @@ def search_hf_models(
                 "created_at": created_at,
                 "last_modified": last_modified,
                 "release_date_label": date_label,
-                "description": f"Modello {m_name} ({precision} • {params_label} attivi / {total_params_label}) di {author}.",
-                "quantizations": ["GGUF Q4_K_M", "Q8_0", "FP16"] if "GGUF" in fmt_label else [f"{precision} ({size_gb} GB)"],
+                "description": desc_text,
+                "quantizations": ["GGUF Q4_K_M", "Q8_0", "FP16"] if "GGUF" in fmt_label else [f"{precision} ({size_label})"],
                 "pipeline_tag": pipeline,
                 "default_file": f"{m_name}.gguf" if "GGUF" in fmt_label else f"{m_name}.safetensors",
                 "hf_url": f"https://huggingface.co/{mid}",
                 "recommended_gpu": rec_gpu
             })
+
     except Exception as ex:
         log.debug(f"[HF_Client] Dynamic online search error: {ex}")
 
@@ -665,7 +724,10 @@ def get_hf_model_details(model_id: str, hf_token: Optional[str] = None) -> Dict[
                     "precision": specs["precision"],
                     "is_moe": specs["is_moe"],
                     "size_gb": specs["size_gb"],
-                    "recommended_gpu": _determine_target_gpu(specs["size_gb"]),
+                    "size_label": specs["size_label"],
+                    "active_vram_gb": specs["active_vram_gb"],
+                    "active_vram_label": specs["active_vram_label"],
+                    "recommended_gpu": _determine_target_gpu(specs["size_gb"], specs["is_moe"], specs["active_vram_label"]),
                     "pipeline_tag": data.get("pipeline_tag", "text-generation"),
                     "tags": data.get("tags", []),
                     "files": files,
@@ -683,34 +745,30 @@ def get_hf_model_details(model_id: str, hf_token: Optional[str] = None) -> Dict[
         "id": model_id,
         "author": author,
         "is_official": is_official_provider(author, model_id),
-        "downloads": 50000,
-        "likes": 1200,
-        "created_at": "2025-01-01T00:00:00Z",
-        "last_modified": "2025-01-01T00:00:00Z",
-        "release_date_label": "1 Gen 2025",
+        "downloads": 0,
+        "likes": 0,
+        "created_at": None,
+        "last_modified": None,
+        "release_date_label": "N/D",
         "params_label": specs["active_label"],
         "active_params_label": specs["active_label"],
         "total_params_label": specs["total_label"],
         "precision": specs["precision"],
         "is_moe": specs["is_moe"],
         "size_gb": specs["size_gb"],
-        "recommended_gpu": _determine_target_gpu(specs["size_gb"]),
+        "size_label": specs["size_label"],
+        "active_vram_gb": specs["active_vram_gb"],
+        "active_vram_label": specs["active_vram_label"],
+        "recommended_gpu": _determine_target_gpu(specs["size_gb"], specs["is_moe"], specs["active_vram_label"]),
         "pipeline_tag": "text-generation",
-        "tags": ["gguf", "llama", "sigma-engine"],
-        "files": [
-            {
-                "filename": f"{model_id.split('/')[-1]}-Q4_K_M.gguf",
-                "is_gguf": True,
-                "is_safetensors": False,
-                "download_url": f"https://huggingface.co/{model_id}/resolve/main/{model_id.split('/')[-1]}-Q4_K_M.gguf"
-            },
-            {
-                "filename": f"{model_id.split('/')[-1]}-Q8_0.gguf",
-                "is_gguf": True,
-                "is_safetensors": False,
-                "download_url": f"https://huggingface.co/{model_id}/resolve/main/{model_id.split('/')[-1]}-Q8_0.gguf"
-            }
-        ],
+        "tags": [],
+        "files": [{
+            "filename": f"{model_id.split('/')[-1]}.safetensors",
+            "is_gguf": False,
+            "is_safetensors": True,
+            "download_url": f"https://huggingface.co/{model_id}/resolve/main/model.safetensors"
+        }],
         "card_url": f"https://huggingface.co/{model_id}",
         "hf_url": f"https://huggingface.co/{model_id}"
     }
+
