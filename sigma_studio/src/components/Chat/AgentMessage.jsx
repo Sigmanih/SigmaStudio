@@ -5,7 +5,9 @@ import McpToolStrip from './McpToolStrip';
 import ImageLightbox from './ImageLightbox';
 import { useApp } from '../../contexts/AppContext';
 import { useMusic } from '../../context/MusicContext';
+import { getModelSpecs } from './core/modelSpecsHelper';
 import 'katex/dist/katex.min.css';
+
 
 // Helper: check if a file path is an image
 const IMAGE_EXTENSIONS = /\.(?:png|jpg|jpeg|webp|svg|gif|bmp|tiff)$/i;
@@ -360,6 +362,8 @@ export default function AgentMessage({
 
   const rawModelName = first.agentName || effectiveModelName || 'AI';
   const modelName = isUser ? '' : (rawModelName.toLowerCase().startsWith('auto ') || rawModelName.toLowerCase() === 'auto' ? `${roleName} (${effectiveModelName || selectedModel || 'AI'})` : rawModelName);
+  const targetModelForSpecs = (first.agentName || effectiveModelName || '').replace(/^.*?\((.*?)\).*$/, '$1');
+  const modelSpecs = !isUser && !isSystem ? getModelSpecs(targetModelForSpecs) : null;
 
   const loadingSteps = [
     "Sto pensando...",
@@ -394,10 +398,39 @@ export default function AgentMessage({
             />
           </div>
           <div className="chat-msg-role">{roleName}</div>
-          {modelName && <div className="chat-msg-model">· {modelName}</div>}
+          {modelName && (
+            <div className="chat-msg-model" style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', flexWrap: 'wrap' }}>
+              <span>· {modelName}</span>
+              {modelSpecs?.params && (
+                <span style={{
+                  fontSize: '0.58rem', padding: '1px 5px', borderRadius: '4px',
+                  background: 'rgba(0, 210, 255, 0.16)', color: '#00d2ff', fontWeight: 800
+                }}>
+                  ⚡ {modelSpecs.params}
+                </span>
+              )}
+              {modelSpecs?.size && (
+                <span style={{
+                  fontSize: '0.58rem', padding: '1px 5px', borderRadius: '4px',
+                  background: 'rgba(255, 184, 108, 0.16)', color: '#ffb86c', fontWeight: 800
+                }}>
+                  💾 {modelSpecs.size}
+                </span>
+              )}
+              {modelSpecs?.format && (
+                <span style={{
+                  fontSize: '0.56rem', padding: '1px 4px', borderRadius: '3px',
+                  background: 'rgba(188, 140, 255, 0.14)', color: '#bc8cff', fontWeight: 700
+                }}>
+                  {modelSpecs.format}
+                </span>
+              )}
+            </div>
+          )}
           {isOrchestrated && <span className="chat-msg-orchestrated" title="Assegnato dall'Orchestrator">🎯</span>}
           <div className="chat-msg-header-spacer" />
           <div className="chat-msg-time">{formatTimestamp(first.timestamp)}</div>
+
           <button
             className={`chat-msg-copy-btn ${copiedMsg ? 'copied' : ''}`}
             title="Copia messaggio negli appunti"
@@ -526,17 +559,44 @@ export default function AgentMessage({
           <div className="chat-msg-agent-badge" style={{
             display: 'flex',
             alignItems: 'center',
+            justifyContent: 'space-between',
             gap: '8px',
             padding: '8px 12px',
             background: 'rgba(255,255,255,0.02)',
             borderBottom: '1px solid rgba(255,255,255,0.04)',
             fontSize: '0.72rem',
-            color: '#8b8fa3'
+            color: '#8b8fa3',
+            flexWrap: 'wrap'
           }}>
-            <span style={{ fontSize: '1rem' }}>{agentStyle?.icon || '🤖'}</span>
-            <span>Ruolo attivo: <strong style={{ color: 'var(--primary)' }}>{roleName}</strong></span>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <span style={{ fontSize: '1rem' }}>{agentStyle?.icon || '🤖'}</span>
+              <span>Ruolo attivo: <strong style={{ color: 'var(--primary)' }}>{roleName}</strong></span>
+            </div>
+
+            {modelSpecs && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.66rem' }}>
+                <span style={{ color: '#8b8fa3' }}>Modello: <strong style={{ color: 'var(--text-primary, #ffffff)' }}>{modelSpecs.name}</strong></span>
+                {modelSpecs.params && (
+                  <span style={{
+                    fontSize: '0.58rem', padding: '1px 5px', borderRadius: '4px',
+                    background: 'rgba(0, 210, 255, 0.16)', color: '#00d2ff', fontWeight: 800
+                  }}>
+                    ⚡ {modelSpecs.params}
+                  </span>
+                )}
+                {modelSpecs.size && (
+                  <span style={{
+                    fontSize: '0.58rem', padding: '1px 5px', borderRadius: '4px',
+                    background: 'rgba(255, 184, 108, 0.16)', color: '#ffb86c', fontWeight: 800
+                  }}>
+                    💾 {modelSpecs.size}
+                  </span>
+                )}
+              </div>
+            )}
           </div>
         )}
+
 
         {/* Content area */}
         <div className="chat-msg-content">

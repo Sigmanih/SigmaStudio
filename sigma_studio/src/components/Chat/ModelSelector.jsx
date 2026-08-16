@@ -1,6 +1,7 @@
 import React, { useState, useMemo } from 'react';
-import { Cpu, ChevronDown, Check, Loader, Search, Key, Sparkles } from 'lucide-react';
+import { Cpu, ChevronDown, Check, Loader, Search, Key, Sparkles, HardDrive, Zap } from 'lucide-react';
 import { PROVIDER_COLORS, getProviderForModel } from './modelProviderMap';
+import { getModelSpecs } from './core/modelSpecsHelper';
 
 export default function ModelSelector({
   modelBtnRef, effectiveModelName, showDropdown, models,
@@ -9,6 +10,11 @@ export default function ModelSelector({
 }) {
   const [activeTab, setActiveTab] = useState('all');
   const [searchQuery, setSearchQuery] = useState('');
+
+  const activeSpecs = useMemo(() => {
+    return getModelSpecs(effectiveModelName || selectedModel, models);
+  }, [effectiveModelName, selectedModel, models]);
+
 
   const favList = useMemo(() => {
     if (Array.isArray(favoriteModels) && favoriteModels.length > 0) return favoriteModels;
@@ -113,8 +119,19 @@ export default function ModelSelector({
       <button className={`model-selector-btn ${!effectiveModelName ? 'no-model' : ''}`} onClick={onToggle}>
         <Cpu size={12} />
         <span className="model-selector-name">{effectiveModelName || 'Scegli modello'}</span>
+        {activeSpecs?.params && (
+          <span style={{ fontSize: '0.58rem', padding: '1px 5px', borderRadius: '4px', background: 'rgba(0, 210, 255, 0.16)', color: '#00d2ff', fontWeight: 800, whiteSpace: 'nowrap' }}>
+            ⚡ {activeSpecs.params}
+          </span>
+        )}
+        {activeSpecs?.size && (
+          <span style={{ fontSize: '0.58rem', padding: '1px 5px', borderRadius: '4px', background: 'rgba(255, 184, 108, 0.16)', color: '#ffb86c', fontWeight: 800, whiteSpace: 'nowrap' }}>
+            💾 {activeSpecs.size}
+          </span>
+        )}
         <ChevronDown size={10} className={`model-selector-chevron ${showDropdown ? 'open' : ''}`} />
       </button>
+
 
       {showDropdown && (
         <div className="model-selector-popover tabbed-popover" style={{ minWidth: '310px' }}>
@@ -299,15 +316,32 @@ export default function ModelSelector({
                         ⭐
                       </span>
                     )}
+                    {(() => {
+                      const itemSpecs = getModelSpecs(m.name, models);
+                      return (
+                        <>
+                          {itemSpecs?.params && (
+                            <span style={{ fontSize: '0.58rem', padding: '1px 5px', borderRadius: '4px', background: 'rgba(0, 210, 255, 0.14)', color: '#00d2ff', fontWeight: 800 }}>
+                              ⚡ {itemSpecs.params}
+                            </span>
+                          )}
+                          {itemSpecs?.size && (
+                            <span style={{ fontSize: '0.58rem', padding: '1px 5px', borderRadius: '4px', background: 'rgba(255, 184, 108, 0.14)', color: '#ffb86c', fontWeight: 800 }}>
+                              💾 {itemSpecs.size}
+                            </span>
+                          )}
+                        </>
+                      );
+                    })()}
                     <span className="model-selector-provider-badge" style={{ backgroundColor: colors.bg, color: colors.color }}>
-                      {m.provider}
+                      {m.provider === 'sigma_engine' ? 'SIGMA' : m.provider}
                     </span>
-                    {m.size && <span className="model-selector-opt-size">{m.size === 'API' ? m.size : m.size + 'GB'}</span>}
                     {isSelected && <Check size={12} className="model-selector-check" />}
                   </div>
                 </div>
               );
             })}
+
           </div>
 
           {/* Quick Footer for AI Configuration */}
