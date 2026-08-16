@@ -224,29 +224,28 @@ class UniversalSigmaEngine:
             }
 
             if has_cuda:
-                # Configure dynamic max_memory to always guarantee 2.5 GB headroom for attention buffers
-                max_memory = {}
-                for i in range(torch.cuda.device_count()):
-                    tot_gb = torch.cuda.get_device_properties(i).total_memory / (1024**3)
-                    headroom = 2.5 if i == 0 else 1.8
-                    max_memory[i] = f"{max(round(tot_gb - headroom, 1), 1.0)}GiB"
-                max_memory["cpu"] = "80GiB"
+                # Dynamic tiering leaving headroom for KV cache and forward activations
+                accs = self.hardware_profile.get("accelerators", [])
+                v0_total = accs[0].get("total_vram_gb", 16.0) if accs else 16.0
+                v1_total = accs[1].get("total_vram_gb", 8.0) if len(accs) > 1 else 0.0
+                ram_avail = self.hardware_profile.get("ram", {}).get("available_gb", 64.0)
 
-                bnb_config = BitsAndBytesConfig(
-                    load_in_4bit=True,
-                    bnb_4bit_quant_type="nf4",
-                    bnb_4bit_compute_dtype=compute_dtype,
-                    bnb_4bit_use_double_quant=True,
-                )
-                load_kwargs["quantization_config"] = bnb_config
+                max_memory = {
+                    0: f"{max(round(v0_total - 3.2, 1), 2.0)}GiB",
+                }
+                if len(accs) > 1:
+                    max_memory[1] = f"{max(round(v1_total - 3.0, 1), 2.0)}GiB"
+                max_memory["cpu"] = f"{max(round(ram_avail * 0.85, 1), 16.0)}GiB"
+
                 load_kwargs["device_map"] = "auto"
                 load_kwargs["max_memory"] = max_memory
+                load_kwargs["torch_dtype"] = compute_dtype
             else:
                 load_kwargs["torch_dtype"] = torch.float32
 
             self.model_instance = AutoModelForCausalLM.from_pretrained(target_path, **load_kwargs)
             self.loaded_model_name = display_name
-            log.info("[SigmaEngine] Model '%s' successfully loaded into native GPU runtime (4-bit NF4 Dual-GPU).", display_name)
+            log.info("[SigmaEngine] Model '%s' successfully loaded into native GPU/RAM runtime.", display_name)
             return True
         except Exception as e:
             log.error("[SigmaEngine] Failed to load native model '%s': %s", model_identifier, e)
