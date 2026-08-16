@@ -76,14 +76,8 @@ export function useChatConfig({ saveSessionsState, sessionRefs }) {
   const fetchOllamaModels = useCallback(async (customConfigs) => {
     setLoadingModels(true);
     try {
-      const isOllamaDisabled = (() => {
-        try {
-          const disabledMap = JSON.parse(localStorage.getItem('sigma_disabled_providers') || '{}');
-          return disabledMap.ollama === true || customConfigs?.ollama?.disabled === true || providerConfigs?.ollama?.disabled === true;
-        } catch {
-          return false;
-        }
-      })();
+      const pConfigs = customConfigs || providerConfigs;
+      const isOllamaExplicitlyEnabled = pConfigs?.ollama?.enabled === true;
 
       let models = [...SIGMA_NATIVE_MODELS];
       const known = new Set(models.map(m => m.name));
@@ -114,7 +108,8 @@ export function useChatConfig({ saveSessionsState, sessionRefs }) {
         console.warn("Model Hub local models fetching error:", locErr);
       }
 
-      if (!isOllamaDisabled) {
+      // 2. Fetch external Ollama ONLY IF explicitly configured & enabled by user
+      if (isOllamaExplicitlyEnabled) {
         try {
           const res = await fetch('/api/ollama_models');
           const data = await res.json();
@@ -123,18 +118,17 @@ export function useChatConfig({ saveSessionsState, sessionRefs }) {
           fetchedModels.forEach(m => {
             const mName = m.name || m;
             if (!known.has(mName)) {
-              models.push({ name: mName, size: m.size || 'Local', provider: 'ollama' });
+              models.push({ name: mName, size: m.size || 'External', provider: 'ollama' });
               known.add(mName);
             }
           });
         } catch (fetchErr) {
-          console.warn("Ollama non in ascolto o offline:", fetchErr);
+          console.warn("Ollama esterno non raggiungibile:", fetchErr);
         }
       }
 
 
       
-      const pConfigs = customConfigs || providerConfigs;
       if (pConfigs) {
         Object.entries(pConfigs).forEach(([pk, pv]) => {
           // Ollama and Sigma models are already included

@@ -403,33 +403,15 @@ def apply_execution_profile(profile: str, config: dict) -> dict:
 # Provider resolution
 # ---------------------------------------------------------------------------
 
-def _resolve_local_ollama_tag(model_name: str) -> str | None:
-    """Finds if a model_name (HF name or slug) matches an active model in Ollama."""
-    try:
-        import requests
-        resp = requests.get("http://127.0.0.1:11434/api/tags", timeout=1.0)
-        if resp.status_code == 200:
-            models = [m.get("name") for m in resp.json().get("models", []) if m.get("name")]
-            if model_name in models:
-                return model_name
-            clean = model_name.lower().replace("/", "--").replace(":", "-")
-            for m in models:
-                m_clean = m.lower().replace("/", "--").replace(":", "-")
-                if clean in m_clean or m_clean in clean:
-                    return m
-                base = model_name.split("/")[-1].lower().replace("-", "").replace("_", "")
-                m_base = m.split(":")[0].lower().replace("-", "").replace("_", "")
-                if base.startswith(m_base) or m_base.startswith(base):
-                    return m
-    except Exception:
-        pass
-    return None
-
+# ---------------------------------------------------------------------------
+# Provider resolution
+# ---------------------------------------------------------------------------
 
 def resolve_provider_config(ai_cfg_or_model, model_name: str = "") -> tuple[str, dict]:
     """
     Resolve which AI provider to use based on model name and configuration.
     Returns (provider_name, provider_config).
+    Defaults to native SigmaEngine for all local models.
     """
     if isinstance(ai_cfg_or_model, dict):
         ai_cfg = ai_cfg_or_model
@@ -444,39 +426,23 @@ def resolve_provider_config(ai_cfg_or_model, model_name: str = "") -> tuple[str,
 
     lower = (model_name or "").lower()
 
-    # Rule 0: Check if model exists directly in local Ollama daemon
-    ollama_tag = _resolve_local_ollama_tag(model_name)
-    if ollama_tag and not lower.startswith("sigma-native"):
-        pv = dict(providers.get("ollama", {}))
-        pv["model"] = ollama_tag
-        pv["endpoint"] = pv.get("endpoint") or "http://127.0.0.1:11434/api/chat"
-        return "ollama", pv
-
-    # Rule 0.5: SigmaEngine native models (always routed to SigmaEngine)
-    if lower.startswith("sigma-") or lower.startswith("sigma:") or lower.startswith("sigma_") or lower.startswith("ailo-") or "sharded" in lower or "moe" in lower or "native" in lower or "minerva" in lower:
-        return "sigma_engine", providers.get("sigma_engine", {"label": "SigmaEngine (Nativo & Sharded)", "endpoint": "http://localhost:8000/api/engine"})
-
-    # Rule 0.8: Local models downloaded via Model Hub (in data/models/)
+    # Rule 0: SigmaEngine native models or downloaded Hugging Face models in data/models/
     clean_folder = model_name.replace("/", "--")
     if os.path.exists(os.path.join(os.getcwd(), "data", "models", clean_folder)) or \
-       os.path.exists(os.path.join(os.getcwd(), "data", "models", model_name)):
-        return "sigma_engine", providers.get("sigma_engine", {"label": "SigmaEngine (Modello Locale)", "endpoint": "http://localhost:8000/api/engine"})
+       os.path.exists(os.path.join(os.getcwd(), "data", "models", model_name)) or \
+       lower.startswith("sigma") or lower.startswith("ailo") or "sharded" in lower or "native" in lower or "minerva" in lower:
+        return "sigma_engine", providers.get("sigma_engine", {"label": "SigmaEngine (Nativo)", "endpoint": "http://localhost:8000/api/engine"})
 
-    # Rule 1: Any model with a tag/colon (e.g. 'deepseek-r1:70b', 'qwen3.6:35b', 'llama3.2:latest') is an Ollama local model
-    if ":" in model_name and not lower.startswith("sigma"):
-        return "ollama", providers.get("ollama", {})
-
-
-    # Rule 1: Exact model match in provider's configured models list
+    # Rule 1: Exact model match in configured cloud providers list
     for pk, pv in providers.items():
-        if pk == "ollama":
+        if pk == "ollama" or pk == "sigma_engine":
             continue
         configured_models = pv.get("models", [])
         if model_name in configured_models or pv.get("model") == model_name:
             if pv.get("api_key", "").strip() or pv.get("endpoint") or pv.get("api_url"):
                 return pk, pv
 
-    # Rule 2: Strict Cloud-only prefix matching (prevent false positives on local models)
+    # Rule 2: Strict Cloud-only prefix matching (prevent false positives)
     cloud_prefixes = {
         'openai': ('gpt-', 'o1-', 'o1', 'o3-', 'chatgpt-'),
         'anthropic': ('claude-',),
@@ -498,8 +464,13 @@ def resolve_provider_config(ai_cfg_or_model, model_name: str = "") -> tuple[str,
             if pv.get("api_key", "").strip():
                 return pk, pv
 
-    # Rule 3: Fallback to Ollama local
-    return "ollama", providers.get("ollama", {})
+    # Rule 3: Optional external Ollama (ONLY if explicitly configured and enabled)
+    ollama_pv = providers.get("ollama", {})
+    if ollama_pv.get("enabled") is True and ollama_pv.get("endpoint"):
+        return "ollama", ollama_pv
+
+    # Default: Native SigmaEngine
+    return "sigma_engine", providers.get("sigma_engine", {"label": "SigmaEngine (Nativo)", "endpoint": "http://localhost:8000/api/engine"})
 
 
 # ---------------------------------------------------------------------------

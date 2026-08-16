@@ -34,6 +34,8 @@ class UniversalSigmaEngine:
         self.loaded_model_name: Optional[str] = None
         self.loaded_model: Optional[Dict[str, Any]] = None
         self.tokenizer = None
+        self.model_instance = None
+        self.tokenizer_instance = None
         self.optimization_telemetry: Dict[str, Any] = self._generate_default_optimizations()
         log.info(f"[SigmaEngine] Kernel Initialized. Active Backend: {self.active_backend}")
 
@@ -144,138 +146,166 @@ class UniversalSigmaEngine:
             "tiering_summary": UniversalHardwareProbe.get_recommended_tiering()
         }
 
+    def load_native_model(self, model_identifier: str) -> bool:
+        """Loads a local model from data/models/ into GPU/VRAM natively using PyTorch and Transformers."""
+        try:
+            import torch
+            from transformers import AutoModelForCausalLM, AutoTokenizer
+
+            clean_folder = model_identifier.replace("/", "--")
+            possible_paths = [
+                os.path.join(os.getcwd(), "data", "models", clean_folder),
+                os.path.join(os.getcwd(), "data", "models", model_identifier),
+                model_identifier
+            ]
+            target_path = None
+            for p in possible_paths:
+                if os.path.exists(p) and os.path.isdir(p):
+                    target_path = p
+                    break
+
+            if not target_path:
+                log.warning("[SigmaEngine] Local model directory not found for '%s'", model_identifier)
+                return False
+
+            log.info("[SigmaEngine] Loading native model from '%s' into GPU VRAM...", target_path)
+            dtype = torch.bfloat16 if torch.cuda.is_available() and torch.cuda.is_bf16_supported() else (torch.float16 if torch.cuda.is_available() else torch.float32)
+
+            self.tokenizer_instance = AutoTokenizer.from_pretrained(target_path, trust_remote_code=True)
+            self.model_instance = AutoModelForCausalLM.from_pretrained(
+                target_path,
+                device_map="auto" if torch.cuda.is_available() else None,
+                torch_dtype=dtype,
+                low_cpu_mem_usage=True,
+                trust_remote_code=True
+            )
+            self.loaded_model_name = model_identifier
+            log.info("[SigmaEngine] Model '%s' successfully loaded into native GPU runtime.", model_identifier)
+            return True
+        except Exception as e:
+            log.error("[SigmaEngine] Failed to load native model '%s': %s", model_identifier, e)
+            return False
+
     def generate_stream(
         self,
         prompt: str,
         system_prompt: str = "Sei Sigma Assistant, un'architettura AI avanzata, precisa e utile. Rispondi in italiano in modo esaustivo, dettagliato e strutturato.",
         temperature: float = 0.7,
-        max_tokens: int = 16384
+        max_tokens: int = 16384,
+        model_name: Optional[str] = None
     ) -> Generator[Dict[str, Any], None, None]:
         """
         Universal generation stream yielding tokens with latency and throughput metrics.
-        Executes native neural dispatch via local GPU/Ollama backend or rich semantic conversational synthesis.
+        Executes 100% native PyTorch CUDA inference directly within the Sigma Studio process.
         """
+        import threading
         t_start = time.perf_counter()
-        first_token_sent = False
         token_count = 0
+        first_token_sent = False
 
-        # Attempt neural dispatch via local Ollama acceleration engine
-        try:
-            import requests
-            resp = requests.get("http://127.0.0.1:11434/api/tags", timeout=1.5)
-            if resp.status_code == 200:
-                tags_data = resp.json()
-                models = [m.get("name") for m in tags_data.get("models", []) if m.get("name")]
-                if models:
-                    # Target model priority: loaded_model_name -> qwen3.8:27b -> qwen3.6:27b -> first available
-                    target_model = self.loaded_model_name
-                    if not target_model or not any(target_model == m for m in models):
-                        priority_candidates = ["qwen3.8:27b", "qwen3.6:27b-q4_K_M", "qwen3.6:27b", "qwen3.6:35b", "deepseek-r1:70b", "deepseek-r1:14b"]
-                        for cand in priority_candidates:
-                            if any(cand in m for m in models):
-                                target_model = next(m for m in models if cand in m)
-                                break
-                        if not target_model:
-                            target_model = models[0]
+        target_model = model_name or self.loaded_model_name
+        if not target_model:
+            # Check available folders in data/models/
+            models_dir = os.path.join(os.getcwd(), "data", "models")
+            if os.path.exists(models_dir):
+                folders = [f for f in os.listdir(models_dir) if os.path.isdir(os.path.join(models_dir, f)) and not f.startswith(".")]
+                if folders:
+                    target_model = folders[0]
 
-                    gen_payload = {
-                        "model": target_model,
-                        "messages": [
-                            {"role": "system", "content": system_prompt},
-                            {"role": "user", "content": prompt}
-                        ],
-                        "stream": True,
-                        "options": {
-                            "temperature": temperature,
-                            "num_predict": max(max_tokens or 16384, 16384),
-                            "num_ctx": 65536,
-                            "top_p": 0.95,
-                            "top_k": 40,
-                            "repeat_penalty": 1.1,
-                        }
-                    }
-                    gen_resp = requests.post("http://127.0.0.1:11434/api/chat", json=gen_payload, stream=True, timeout=300)
-                    if gen_resp.status_code == 200:
-                        for line in gen_resp.iter_lines(decode_unicode=True):
-                            if not line:
-                                continue
-                            try:
-                                chunk_json = json.loads(line)
-                                msg_chunk = chunk_json.get("message", {})
-                                token_text = msg_chunk.get("content", "")
-                                if token_text:
-                                    token_count += 1
-                                    now = time.perf_counter()
-                                    if not first_token_sent:
-                                        ttft_ms = round((now - t_start) * 1000, 1)
-                                        first_token_sent = True
-                                    else:
-                                        ttft_ms = 0.0
-                                    current_speed = round(token_count / max(now - t_start, 0.001), 1)
-                                    yield {
-                                        "token": token_text,
-                                        "token_index": token_count,
-                                        "ttft_ms": ttft_ms if token_count == 1 else None,
-                                        "speed_tok_s": current_speed,
-                                        "done": chunk_json.get("done", False)
-                                    }
-                            except Exception:
-                                continue
-                        return
-        except Exception as ex:
-            log.warning("[SigmaEngine] Neural bridge attempt failed (%s). Attempting Ollama daemon auto-recovery...", ex)
+        # Ensure model is loaded in memory
+        if (self.model_instance is None or self.loaded_model_name != target_model) and target_model:
+            yield {
+                "token": f"⏳ *[SigmaEngine Nativo]* Caricamento modello `{target_model}` su GPU VRAM in corso...\n\n",
+                "token_index": 1,
+                "done": False
+            }
+            success = self.load_native_model(target_model)
+            if not success:
+                yield {
+                    "token": (
+                        f"⚠️ **Avviso SigmaEngine**: Impossibile caricare il modello locale `{target_model}`.\n\n"
+                        "Per scaricare e gestire i modelli locali nativi, apri la scheda **Model Hub** nella barra laterale sinistra.\n"
+                        "Oppure seleziona un provider Cloud (DeepSeek, OpenAI, Groq) da **Impostazioni AI**."
+                    ),
+                    "token_index": 2,
+                    "done": True
+                }
+                return
+
+        if self.model_instance is not None and self.tokenizer_instance is not None:
             try:
-                import subprocess
-                subprocess.Popen(["ollama", "serve"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-                time.sleep(2.0)
-                # Retry once
-                gen_resp = requests.post(
-                    "http://127.0.0.1:11434/api/chat",
-                    json={
-                        "model": target_model if 'target_model' in locals() and target_model else "qwen3.8:27b",
-                        "messages": [
-                            {"role": "system", "content": system_prompt},
-                            {"role": "user", "content": prompt}
-                        ],
-                        "stream": True,
-                        "options": {"temperature": temperature, "num_predict": max(max_tokens or 16384, 16384)}
-                    },
-                    stream=True,
-                    timeout=300
-                )
-                if gen_resp.status_code == 200:
-                    for line in gen_resp.iter_lines(decode_unicode=True):
-                        if not line:
-                            continue
-                        try:
-                            chunk_json = json.loads(line)
-                            msg_chunk = chunk_json.get("message", {})
-                            token_text = msg_chunk.get("content", "")
-                            if token_text:
-                                token_count += 1
-                                now = time.perf_counter()
-                                yield {
-                                    "token": token_text,
-                                    "token_index": token_count,
-                                    "speed_tok_s": round(token_count / max(now - t_start, 0.001), 1),
-                                    "done": chunk_json.get("done", False)
-                                }
-                        except Exception:
-                            continue
-                    return
-            except Exception as rec_err:
-                log.error("[SigmaEngine] Auto-recovery failed: %s", rec_err)
+                import torch
+                from transformers import TextIteratorStreamer
 
-        error_message = (
-            "⚠️ **Avviso SigmaEngine**: Il daemon di inferenza locale (Ollama / CUDA Runtime) non risponde su `127.0.0.1:11434`.\n\n"
-            "Per avviare l'inferenza neurale locale:\n"
-            "1. Apri un terminale ed esegui `ollama serve` (oppure usa il pulsante **Riavvia Ollama** nel tab *Hardware Lab*).\n"
-            "2. Verifica che il modello selezionato sia presente nei download di *Model Hub*."
+                streamer = TextIteratorStreamer(self.tokenizer_instance, skip_prompt=True, skip_special_tokens=True)
+                messages = [
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": prompt}
+                ]
+                
+                try:
+                    formatted_prompt = self.tokenizer_instance.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
+                except Exception:
+                    formatted_prompt = f"System: {system_prompt}\nUser: {prompt}\nAssistant:"
+
+                inputs = self.tokenizer_instance(formatted_prompt, return_tensors="pt")
+                if torch.cuda.is_available():
+                    inputs = {k: v.to("cuda") for k, v in inputs.items()}
+
+                gen_kwargs = dict(
+                    **inputs,
+                    streamer=streamer,
+                    max_new_tokens=min(max_tokens or 4096, 16384),
+                    temperature=temperature if temperature > 0 else 0.7,
+                    do_sample=temperature > 0,
+                    top_p=0.95
+                )
+
+                thread = threading.Thread(target=self.model_instance.generate, kwargs=gen_kwargs)
+                thread.daemon = True
+                thread.start()
+
+                for token_text in streamer:
+                    if not token_text:
+                        continue
+                    token_count += 1
+                    now = time.perf_counter()
+                    if not first_token_sent:
+                        ttft_ms = round((now - t_start) * 1000, 1)
+                        first_token_sent = True
+                    else:
+                        ttft_ms = 0.0
+                    current_speed = round(token_count / max(now - t_start, 0.001), 1)
+
+                    yield {
+                        "token": token_text,
+                        "token_index": token_count,
+                        "ttft_ms": ttft_ms if token_count == 1 else None,
+                        "speed_tok_s": current_speed,
+                        "done": False
+                    }
+                yield {"token": "", "token_index": token_count + 1, "done": True}
+                return
+            except Exception as gen_err:
+                log.error("[SigmaEngine] Native generation error: %s", gen_err)
+                yield {
+                    "token": f"\n\n❌ **Errore generazione SigmaEngine**: {gen_err}",
+                    "token_index": token_count + 1,
+                    "done": True
+                }
+                return
+
+        # If no model is installed in data/models/
+        msg = (
+            "⚠️ **Nessun modello AI locale presente in `data/models/`.**\n\n"
+            "SigmaEngine esegue l'inferenza nativa direttamente sui pesi locali scaricati.\n\n"
+            "Per iniziare:\n"
+            "1. Apri **Model Hub** (nella barra laterale) e scarica un modello Hugging Face (es. *Qwen 2.5 7B* o *Qwen 3.8 27B*).\n"
+            "2. Oppure configura una chiave API per provider Cloud (DeepSeek, OpenAI, Anthropic, Gemini, Groq) in **Impostazioni** (⚙️)."
         )
-        for chunk in error_message.split(" "):
+        for chunk in msg.split(" "):
             yield {"token": chunk + " ", "token_index": token_count + 1, "done": False}
         yield {"token": "", "done": True}
-
 
 
 # Singleton engine instance
