@@ -86,6 +86,32 @@ export function useChatConfig({ saveSessionsState, sessionRefs }) {
       let models = [...SIGMA_NATIVE_MODELS];
       const known = new Set(models.map(m => m.name));
 
+      // 1. Fetch Local Models downloaded via Model Hub (SigmaEngine / Local Storage)
+      try {
+        const localRes = await fetch('/api/models/local/list');
+        if (localRes.ok) {
+          const localJson = await localRes.json();
+          if (localJson.success && Array.isArray(localJson.models)) {
+            localJson.models.forEach(m => {
+              const mName = m.display_name || m.filename || m.model_id;
+              if (!known.has(mName)) {
+                models.unshift({
+                  name: mName,
+                  size: m.size_label || `${m.size_gb} GB`,
+                  provider: 'sigma_engine',
+                  path: m.path,
+                  format: m.format,
+                  is_local_hub: true
+                });
+                known.add(mName);
+              }
+            });
+          }
+        }
+      } catch (locErr) {
+        console.warn("Model Hub local models fetching error:", locErr);
+      }
+
       if (!isOllamaDisabled) {
         try {
           const res = await fetch('/api/ollama_models');
@@ -103,6 +129,7 @@ export function useChatConfig({ saveSessionsState, sessionRefs }) {
           console.warn("Ollama non in ascolto o offline:", fetchErr);
         }
       }
+
 
       
       const pConfigs = customConfigs || providerConfigs;

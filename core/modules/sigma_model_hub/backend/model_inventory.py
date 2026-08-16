@@ -14,52 +14,132 @@ from core.engine.weight_profiler import WeightSaliencyProfiler
 
 log = get_logger(__name__)
 
-MODELS_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(__file__)))), "data", "models")
+
+def _get_workspace_root() -> str:
+    """Finds the root directory containing data/ or sigma_server.py."""
+    cwd = os.getcwd()
+    if os.path.exists(os.path.join(cwd, "data")):
+        return cwd
+    curr = os.path.abspath(os.path.dirname(__file__))
+    for _ in range(6):
+        if os.path.exists(os.path.join(curr, "sigma_server.py")) or os.path.exists(os.path.join(curr, "data")):
+            return curr
+        curr = os.path.dirname(curr)
+    return cwd
+
+
+ROOT_DIR = _get_workspace_root()
+MODELS_DIR = os.path.join(ROOT_DIR, "data", "models")
 
 
 def scan_local_models(custom_dir: Optional[str] = None) -> List[Dict[str, Any]]:
-    """Scans local disk for downloaded model files (.gguf, .safetensors, .bin)."""
+    """Scans local disk for downloaded model files (.gguf, .safetensors, .bin, multi-shard repos)."""
     base_dir = custom_dir if custom_dir and os.path.exists(custom_dir) else MODELS_DIR
     os.makedirs(base_dir, exist_ok=True)
     results = []
 
-    for root, dirs, files in os.walk(base_dir):
-        for f in files:
-            if f.endswith((".gguf", ".safetensors", ".bin", ".pt")):
-                full_path = os.path.join(root, f)
-                try:
-                    stat = os.stat(full_path)
-                    size_bytes = stat.st_size
-                    size_gb = round(size_bytes / (1024**3), 2)
-                    size_mb = round(size_bytes / (1024**2), 1)
+    try:
+        entries = os.listdir(base_dir)
+    except Exception as e:
+        log.warning(f"[ModelInventory] Error reading {base_dir}: {e}")
+        return []
 
-                    # Extract model name and quantization
-                    filename = f
-                    fmt = "GGUF" if f.endswith(".gguf") else ("Safetensors" if f.endswith(".safetensors") else "PyTorch Bin")
-                    
-                    quant_match = re.search(r'(Q[0-9]_[A-Z0-9_]+|FP16|FP32|BF16|INT8|INT4|AWQ|EXL2)', f, re.IGNORECASE)
-                    quantization = quant_match.group(1).upper() if quant_match else "Standard"
+    for entry in entries:
+        full_entry_path = os.path.join(base_dir, entry)
 
-                    # Estimate required VRAM
-                    est_vram_gb = round(size_gb * 1.15 + 0.8, 1)
-                    
-                    is_active = (sigma_engine.loaded_model_name == f or sigma_engine.loaded_model_name == full_path)
+        # 1. Check if entry is a directory (e.g. Qwen--Qwen3.8-27B or Multi-Shard Model Repository)
+        if os.path.isdir(full_entry_path):
+            try:
+                dir_files = os.listdir(full_entry_path)
+                shard_files = [f for f in dir_files if f.endswith((".safetensors", ".bin", ".gguf", ".pt"))]
+                if not shard_files:
+                    continue
 
-                    results.append({
-                        "filename": filename,
-                        "path": full_path,
-                        "format": fmt,
-                        "quantization": quantization,
-                        "size_gb": size_gb,
-                        "size_mb": size_mb,
-                        "est_vram_gb": est_vram_gb,
-                        "is_active_in_engine": is_active,
-                        "modified_at": time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(stat.st_mtime))
-                    })
-                except Exception as ex:
-                    log.debug(f"[ModelInventory] Error reading {full_path}: {ex}")
+                total_bytes = sum(os.path.getsize(os.path.join(full_entry_path, f)) for f in shard_files)
+                size_gb = round(total_bytes / (1024**3), 2)
+                size_mb = round(total_bytes / (1024**2), 1)
 
-    # Sort by modification time descending
+                raw_name = entry.replace("--", "/")
+                is_sharded = len(shard_files) > 1
+                primary_file = os.path.join(full_entry_path, "model.safetensors.index.json") if os.path.exists(os.path.join(full_entry_path, "model.safetensors.index.json")) else os.path.join(full_entry_path, shard_files[0])
+
+                if any(f.endswith(".gguf") for f in shard_files):
+                    fmt = f"GGUF ({len(shard_files)} Shard)" if is_sharded else "GGUF"
+                elif any(f.endswith(".safetensors") for f in shard_files):
+                    fmt = f"Safetensors ({len(shard_files)} Shards • Completo)" if is_sharded else "Safetensors"
+                else:
+                    fmt = "PyTorch Bin"
+
+                quant_match = re.search(r'(Q[0-9]_[A-Z0-9_]+|FP16|FP32|BF16|FP8|INT8|INT4|AWQ|EXL2)', entry, re.IGNORECASE)
+                quantization = quant_match.group(1).upper() if quant_match else ("FP16 / BF16" if "safetensors" in fmt.lower() else "Standard")
+
+                est_vram_gb = round(size_gb * 1.15 + 0.8, 1)
+                stat = os.stat(full_entry_path)
+
+                is_active = (
+                    sigma_engine.loaded_model_name == raw_name or
+                    sigma_engine.loaded_model_name == entry or
+                    sigma_engine.loaded_model_name == full_entry_path
+                )
+
+                results.append({
+                    "filename": raw_name,
+                    "model_id": raw_name,
+                    "display_name": raw_name,
+                    "path": full_entry_path,
+                    "primary_file": primary_file,
+                    "format": fmt,
+                    "quantization": quantization,
+                    "is_repo_folder": True,
+                    "total_shards": len(shard_files),
+                    "size_gb": size_gb,
+                    "size_mb": size_mb,
+                    "size_label": f"~{size_gb:.1f} GB" if size_gb < 1000 else f"~{size_gb/1000:.1f} TB",
+                    "est_vram_gb": est_vram_gb,
+                    "is_active_in_engine": is_active,
+                    "modified_at": time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(stat.st_mtime))
+                })
+            except Exception as ex:
+                log.debug(f"[ModelInventory] Error reading directory {full_entry_path}: {ex}")
+
+        # 2. Check if entry is a standalone single model file
+        elif os.path.isfile(full_entry_path) and entry.endswith((".gguf", ".safetensors", ".bin", ".pt")):
+            try:
+                stat = os.stat(full_entry_path)
+                size_bytes = stat.st_size
+                size_gb = round(size_bytes / (1024**3), 2)
+                size_mb = round(size_bytes / (1024**2), 1)
+
+                fmt = "GGUF" if entry.endswith(".gguf") else ("Safetensors" if entry.endswith(".safetensors") else "PyTorch Bin")
+                quant_match = re.search(r'(Q[0-9]_[A-Z0-9_]+|FP16|FP32|BF16|FP8|INT8|INT4|AWQ|EXL2)', entry, re.IGNORECASE)
+                quantization = quant_match.group(1).upper() if quant_match else "Standard"
+                est_vram_gb = round(size_gb * 1.15 + 0.8, 1)
+
+                is_active = (
+                    sigma_engine.loaded_model_name == entry or
+                    sigma_engine.loaded_model_name == full_entry_path
+                )
+
+                results.append({
+                    "filename": entry,
+                    "model_id": entry,
+                    "display_name": entry,
+                    "path": full_entry_path,
+                    "primary_file": full_entry_path,
+                    "format": fmt,
+                    "quantization": quantization,
+                    "is_repo_folder": False,
+                    "total_shards": 1,
+                    "size_gb": size_gb,
+                    "size_mb": size_mb,
+                    "size_label": f"~{size_gb:.1f} GB" if size_gb < 1000 else f"~{size_gb/1000:.1f} TB",
+                    "est_vram_gb": est_vram_gb,
+                    "is_active_in_engine": is_active,
+                    "modified_at": time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(stat.st_mtime))
+                })
+            except Exception as ex:
+                log.debug(f"[ModelInventory] Error reading file {full_entry_path}: {ex}")
+
     results.sort(key=lambda x: x.get("modified_at", ""), reverse=True)
     return results
 
@@ -74,8 +154,13 @@ def deploy_model_to_sigma_engine(
     if not os.path.exists(model_path):
         return {"success": False, "error": f"File modello non trovato: {model_path}"}
 
-    model_name = os.path.basename(model_path)
-    file_size_gb = round(os.path.getsize(model_path) / (1024**3), 2)
+    model_name = os.path.basename(model_path).replace("--", "/")
+    
+    if os.path.isdir(model_path):
+        dir_files = [os.path.join(model_path, f) for f in os.listdir(model_path) if f.endswith((".safetensors", ".bin", ".gguf", ".pt"))]
+        file_size_gb = round(sum(os.path.getsize(f) for f in dir_files) / (1024**3), 2)
+    else:
+        file_size_gb = round(os.path.getsize(model_path) / (1024**3), 2)
 
     # Calculate optimal tiering across available GPUs and RAM
     probe = UniversalHardwareProbe.probe_all()

@@ -433,10 +433,16 @@ def resolve_provider_config(ai_cfg_or_model, model_name: str = None):
     if lower.startswith("sigma-") or lower.startswith("sigma:") or lower.startswith("sigma_") or lower.startswith("ailo-") or "sharded" in lower or "moe" in lower or "native" in lower or "minerva" in lower:
         return "sigma_engine", providers.get("sigma_engine", {"label": "SigmaEngine (Nativo & Sharded)", "endpoint": "http://localhost:8000/api/engine"})
 
+    # Rule 0.5: Local models downloaded via Model Hub (in data/models/)
+    clean_folder = model_name.replace("/", "--")
+    if os.path.exists(os.path.join(os.getcwd(), "data", "models", clean_folder)) or \
+       os.path.exists(os.path.join(os.getcwd(), "data", "models", model_name)):
+        return "sigma_engine", providers.get("sigma_engine", {"label": "SigmaEngine (Modello Locale)", "endpoint": "http://localhost:8000/api/engine"})
 
     # Rule 1: Any model with a tag/colon (e.g. 'deepseek-r1:70b', 'qwen3.6:35b', 'llama3.2:latest') is an Ollama local model
     if ":" in model_name and not lower.startswith("sigma"):
         return "ollama", providers.get("ollama", {})
+
 
     # Rule 1: Exact model match in provider's configured models list
     for pk, pv in providers.items():

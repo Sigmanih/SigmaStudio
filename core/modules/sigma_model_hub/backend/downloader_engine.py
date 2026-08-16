@@ -211,14 +211,44 @@ class ModelDownloadManager:
                 return True
         return False
 
+    def _sync_disk_models_to_tasks(self):
+        """Scans disk models and ensures all completed downloaded models appear in download history."""
+        try:
+            from .model_inventory import scan_local_models
+            local_models = scan_local_models(self.models_dir)
+            for m in local_models:
+                m_id = m.get("model_id") or m.get("filename")
+                clean_id = m_id.replace("/", "--").replace(":", "-").lower()
+                task_id = f"disk-{clean_id}"[:16]
+                if task_id not in self.tasks and not any(t.model_id == m_id for t in self.tasks.values()):
+                    size_bytes = int(m.get("size_gb", 0) * (1024**3))
+                    self.tasks[task_id] = ModelDownloadTask(
+                        task_id=task_id,
+                        model_id=m_id,
+                        filename=m.get("filename") if not m.get("is_repo_folder") else f"{m_id} ({m.get('total_shards', 1)} file / shard)",
+                        download_url="",
+                        save_path=m.get("path"),
+                        status="completed",
+                        total_bytes=size_bytes,
+                        downloaded_bytes=size_bytes,
+                        progress_pct=100.0,
+                        is_repo_download=m.get("is_repo_folder", False),
+                        files_queue=[{}] * m.get("total_shards", 1)
+                    )
+        except Exception as ex:
+            log.debug(f"[ModelDownloader] Error syncing disk models: {ex}")
+
     def get_tasks(self) -> List[Dict[str, Any]]:
         with self.lock:
+            self._sync_disk_models_to_tasks()
             return [t.to_dict() for t in self.tasks.values()]
 
     def get_task(self, task_id: str) -> Optional[Dict[str, Any]]:
         with self.lock:
+            self._sync_disk_models_to_tasks()
             task = self.tasks.get(task_id)
             return task.to_dict() if task else None
+
 
     def _single_download_worker(self, task: ModelDownloadTask):
         """Worker thread executing streaming chunked HTTP download with auto-resume and retry loops."""
