@@ -151,51 +151,6 @@ export default function ModelSelector({
             )}
           </div>
 
-          {/* Quick Favorite Suggestion Bar */}
-          {primaryFav && activeTab !== 'favorites' && (
-            <div 
-              className="model-selector-favorite-suggestion"
-              onClick={() => onSelect(primaryFav)}
-              style={{
-                margin: '6px 8px 4px',
-                padding: '6px 10px',
-                borderRadius: '8px',
-                background: 'linear-gradient(135deg, rgba(234, 179, 8, 0.15) 0%, rgba(202, 138, 4, 0.08) 100%)',
-                border: '1px solid rgba(234, 179, 8, 0.35)',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-                cursor: 'pointer',
-                transition: 'all 0.15s ease'
-              }}
-              title="Clicca per selezionare il modello preferito predefinito"
-            >
-              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', minWidth: 0, flex: 1 }}>
-                <span style={{ fontSize: '0.9rem' }}>⭐</span>
-                <div style={{ display: 'flex', flexDirection: 'column', minWidth: 0 }}>
-                  <span style={{ fontSize: '0.62rem', fontWeight: 700, color: '#facc15', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-                    Suggerito (Predefinito)
-                  </span>
-                  <span style={{ fontSize: '0.74rem', fontWeight: 600, color: '#fff', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                    {primaryFav}
-                  </span>
-                </div>
-              </div>
-              <span style={{
-                fontSize: '0.66rem',
-                padding: '2px 8px',
-                borderRadius: '5px',
-                background: selectedModel === primaryFav ? 'rgba(34, 197, 94, 0.2)' : 'rgba(234, 179, 8, 0.25)',
-                color: selectedModel === primaryFav ? '#4ade80' : '#facc15',
-                border: selectedModel === primaryFav ? '1px solid rgba(34, 197, 94, 0.4)' : '1px solid rgba(234, 179, 8, 0.4)',
-                fontWeight: 700,
-                flexShrink: 0
-              }}>
-                {selectedModel === primaryFav ? '✓ In Uso' : 'Usa Ora ⚡'}
-              </span>
-            </div>
-          )}
-
           {/* Provider Tabs Header (Includes ⭐ Preferiti, Tutti, and configured providers) */}
           <div className="model-selector-tabs-header">
             {providerTabs.map(tab => (
