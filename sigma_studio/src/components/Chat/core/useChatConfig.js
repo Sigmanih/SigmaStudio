@@ -20,6 +20,8 @@ export function useChatConfig({ saveSessionsState, sessionRefs }) {
   const favoriteModel = favoriteModels[0] || '';
   const [selectedModel, setSelectedModel] = useState(() => {
     try {
+      const lastUsed = localStorage.getItem('sigma_last_selected_model') || localStorage.getItem('sigma_selected_model');
+      if (lastUsed) return lastUsed;
       const stored = localStorage.getItem('sigma_favorite_models');
       if (stored) {
         const parsed = JSON.parse(stored);
@@ -30,7 +32,7 @@ export function useChatConfig({ saveSessionsState, sessionRefs }) {
       return '';
     }
   });
-  const [configModel, setConfigModel] = useState('llama3.2');
+  const [configModel, setConfigModel] = useState('');
   const [configProvider, setConfigProvider] = useState('ollama');
   const [availableModels, setAvailableModels] = useState([]);
   const [loadingModels, setLoadingModels] = useState(false);
@@ -190,13 +192,24 @@ export function useChatConfig({ saveSessionsState, sessionRefs }) {
           favs = [d.config.favorite_model];
         }
 
+        const lastUsed = (() => {
+          try { return localStorage.getItem('sigma_last_selected_model') || localStorage.getItem('sigma_selected_model') || ''; } catch (e) { return ''; }
+        })();
+        let initialModel = '';
+        if (lastUsed) {
+          initialModel = lastUsed;
+        } else if (favs.length > 0) {
+          initialModel = favs[0];
+        } else if (d.config?.model) {
+          initialModel = d.config.model;
+        }
+
         if (favs.length > 0) {
           setFavoriteModels(favs);
-          setSelectedModel(prev => prev || favs[0]);
-          setConfigModel(favs[0]);
-        } else if (d.config?.model) {
-          setSelectedModel(prev => prev || d.config.model);
-          setConfigModel(d.config.model);
+        }
+        if (initialModel) {
+          setSelectedModel(prev => prev || initialModel);
+          setConfigModel(initialModel);
         }
         if (d.config?.provider) setConfigProvider(d.config.provider);
         if (d.config?.manifesto && !refs.manifestoManuallySelected.current) {
@@ -208,10 +221,13 @@ export function useChatConfig({ saveSessionsState, sessionRefs }) {
         await fetchOllamaModels();
       }
     } catch (e) {
-      // Fallback defaults if config fetch fails
-      const fallback = 'llama3.2';
-      setSelectedModel(prev => prev || fallback);
-      setConfigModel(fallback);
+      const fallback = (() => {
+        try { return localStorage.getItem('sigma_last_selected_model') || ''; } catch (e) { return ''; }
+      })();
+      if (fallback) {
+        setSelectedModel(prev => prev || fallback);
+        setConfigModel(fallback);
+      }
       setConfigProvider('ollama');
       await fetchOllamaModels();
     }
@@ -328,6 +344,10 @@ export function useChatConfig({ saveSessionsState, sessionRefs }) {
     setSelectedModel(name);
     setShowModelDropdown(false);
     saveLastModel(name);
+    try {
+      localStorage.setItem('sigma_last_selected_model', name);
+      localStorage.setItem('sigma_selected_model', name);
+    } catch (e) {}
     if (sessionRefs && sessionRefs.activeSessionId?.current && saveSessionsState) {
       saveSessionsState(sessionRefs.sessions.current.map(s =>
         s.id === sessionRefs.activeSessionId.current
@@ -337,11 +357,11 @@ export function useChatConfig({ saveSessionsState, sessionRefs }) {
     }
     try {
       const cfg = await (await fetch('/api/config')).json();
-      if (cfg.success?.config) {
+      if (cfg.success && cfg.config) {
         await fetch('/api/config', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ ...cfg.config, model: name })
+          body: JSON.stringify({ ...cfg.config, model: name, active_model: name })
         });
       }
       await fetchOllamaModels();

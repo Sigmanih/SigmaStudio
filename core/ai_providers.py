@@ -596,6 +596,55 @@ def check_ollama_vram_status(model_name: str, endpoint: str = "http://localhost:
     return {"loaded": False, "status_message": f"⏳ Caricamento del modello `{model_name}` in VRAM GPU (Cold Start)..."}
 
 
+def select_best_available_model(requested_model: str = "", available_models: list[str] = None) -> str | None:
+    """
+    Selects the best model using the following strict priority:
+    1. First model from configured favorite_models that is available.
+    2. The configured favorite_model / active_model if available.
+    3. First lightweight/quantized model available in Ollama (avoiding 50GB+ FP16 models).
+    4. Returns None if no models are available.
+    """
+    if not available_models:
+        return None
+        
+    cfg = load_ai_config()
+    fav_models = cfg.get("favorite_models", [])
+    if isinstance(fav_models, str):
+        fav_models = [fav_models]
+    single_fav = cfg.get("favorite_model", "")
+    if single_fav and single_fav not in fav_models:
+        fav_models.append(single_fav)
+
+    # 1. Check favorites
+    for fav in fav_models:
+        if fav in available_models:
+            return fav
+        clean_fav = fav.lower().replace("/", "--").replace(":", "-")
+        for av in available_models:
+            av_clean = av.lower().replace("/", "--").replace(":", "-")
+            if clean_fav in av_clean or av_clean in clean_fav:
+                return av
+
+    # 2. Check active/configured model
+    active_m = cfg.get("active_model", "")
+    if active_m in available_models:
+        return active_m
+
+    # 3. Prioritize fast quantized models over heavy 50GB+ FP16 models
+    quant_priority = ["qwen3.6-raw", "qwen3.6:27b", "qwen3.6:35b", "deepseek-r1:14b", "deepseek-r1:70b", "llama4", "glm-4", "qwen2.5"]
+    for q_cand in quant_priority:
+        for av in available_models:
+            if q_cand in av.lower() and "f16" not in av.lower():
+                return av
+
+    # 4. Filter out unquantized 50GB+ if smaller models exist
+    smaller_models = [m for m in available_models if "3.8:27b" not in m.lower()]
+    if smaller_models:
+        return smaller_models[0]
+
+    return available_models[0]
+
+
 def call_ollama(
     messages: list,
     model: str,
@@ -640,11 +689,20 @@ def call_ollama(
                 if tags_resp.status_code == 200:
                     models_data = tags_resp.json()
                     available_models = [m.get("name") for m in models_data.get("models", []) if m.get("name")]
-                if available_models and available_models[0] != model:
-                    fallback_model = available_models[0]
-                    log.warning("Model '%s' not found in Ollama. Falling back to '%s'", model, fallback_model)
+                fallback_model = select_best_available_model(model, available_models)
+                if fallback_model and fallback_model != model:
+                    log.warning("Model '%s' not found in Ollama. Falling back to favorite/available '%s'", model, fallback_model)
                     payload["model"] = fallback_model
                     resp = requests.post(endpoint, json=payload, timeout=timeout)
+                elif not fallback_model:
+                    error_msg = (
+                        "⚠️ **Nessun modello AI locale attivo o pronto all'uso.**\n\n"
+                        "Per iniziare a chattare:\n"
+                        "1. Apri il tab **Model Hub** (dalla barra laterale) e scarica o avvia un modello raccomandato (es. *Qwen 3.6 27B Q4_K_M* o *DeepSeek-R1 14B*).\n"
+                        "2. Oppure apri **Impostazioni AI** (icona ⚙️) e inserisci la tua API Key per provider cloud (DeepSeek, OpenAI, Anthropic, Gemini, Groq)."
+                    )
+                    log.error("No models available in Ollama.")
+                    return None, None, error_msg
                 if resp.status_code != 200:
                     error_msg = f"Modello '{model}' non trovato in Ollama. Modelli disponibili: {', '.join(available_models[:10]) if available_models else 'nessuno'}"
                     log.error(error_msg)
@@ -671,9 +729,10 @@ def call_ollama(
             prompt_text = messages[-1].get("content", "") if messages else ""
             sys_text = messages[0].get("content", "") if messages and messages[0].get("role") == "system" else ""
             tokens = list(sigma_engine.generate_stream(prompt_text, system_prompt=sys_text, temperature=temperature, max_tokens=max_tokens))
-            return "".join([t["token"] for t in tokens]), "Elaborato con successo tramite fallback su SigmaEngine Nativo.", None
-        except Exception as fallback_err:
-            return None, None, f"Impossibile connettersi a Ollama su {endpoint} ({e}). Fallback error: {fallback_err}"
+            full_res = "".join([t["token"] for t in tokens])
+            return full_res, None, None
+        except Exception as ex:
+            return None, None, f"Errore connessione Ollama / SigmaEngine: {e} | {ex}"
     except Exception as e:
         return None, None, str(e)
 
@@ -714,6 +773,32 @@ def call_ollama_stream(
             "options": options,
         }
         resp = requests.post(endpoint, json=payload, stream=True, timeout=int(timeout or 300))
+        if resp.status_code == 404 and "not found" in resp.text:
+            try:
+                base_url = endpoint.rsplit('/', 1)[0]
+                tags_resp = requests.get(f"{base_url}/tags", timeout=5)
+                available_models = []
+                if tags_resp.status_code == 200:
+                    available_models = [m.get("name") for m in tags_resp.json().get("models", []) if m.get("name")]
+                fallback_model = select_best_available_model(model, available_models)
+                if fallback_model and fallback_model != model:
+                    log.warning("[Ollama Stream] Model '%s' not found. Falling back to favorite/available '%s'", model, fallback_model)
+                    payload["model"] = fallback_model
+                    resp = requests.post(endpoint, json=payload, stream=True, timeout=int(timeout or 300))
+                elif not fallback_model:
+                    yield {
+                        "error": True,
+                        "no_model_available": True,
+                        "token": (
+                            "⚠️ **Nessun modello AI locale attivo o pronto all'uso.**\n\n"
+                            "Per iniziare a chattare:\n"
+                            "1. Apri il tab **Model Hub** (dalla barra laterale) e scarica o avvia un modello raccomandato (es. *Qwen 3.6 27B Q4_K_M* o *DeepSeek-R1 14B*).\n"
+                            "2. Oppure apri **Impostazioni AI** (icona ⚙️) e inserisci la tua API Key per provider cloud (DeepSeek, OpenAI, Anthropic, Gemini, Groq)."
+                        )
+                    }
+                    return
+            except Exception as ex:
+                log.error("[Ollama Stream] Failed to resolve fallback model: %s", ex)
         if resp.status_code != 200:
             yield {"error": True, "message": f"Ollama error {resp.status_code}: {resp.text[:200]}"}
             return

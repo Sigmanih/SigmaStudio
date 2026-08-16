@@ -84,6 +84,9 @@ export default function useChatCore(extraProps = {}) {
 
     // Config bindings
     selectedModel: configHook.selectedModel,
+    setSelectedModel: configHook.setSelectedModel,
+    availableModels: configHook.availableModels,
+    favoriteModels: configHook.favoriteModels,
     providerConfigs: configHook.providerConfigs,
     quickConfig: configHook.quickConfig,
     selectedManifestoPath: configHook.selectedManifestoPath,

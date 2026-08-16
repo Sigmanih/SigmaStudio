@@ -73,6 +73,9 @@ export function useChatStreaming({
   welcomeMsg,
   sessionRefs,
   selectedModel,
+  setSelectedModel,
+  availableModels,
+  favoriteModels,
   providerConfigs,
   quickConfig,
   selectedManifestoPath,
@@ -637,16 +640,54 @@ export function useChatStreaming({
     const messageText = typeof rawText === 'string' ? rawText.trim() : '';
     if (!messageText && attachedFiles.length === 0) return;
 
+    // Auto-resolve effective model: selectedModel -> last_selected -> first favorite -> first available
+    let effectiveModel = selectedModel;
+    if (!effectiveModel) {
+      const lastUsed = (() => {
+        try { return localStorage.getItem('sigma_last_selected_model') || localStorage.getItem('sigma_selected_model') || ''; } catch (e) { return ''; }
+      })();
+      if (lastUsed) {
+        effectiveModel = lastUsed;
+      } else if (favoriteModels && favoriteModels.length > 0) {
+        effectiveModel = favoriteModels[0];
+      } else if (availableModels && availableModels.length > 0) {
+        effectiveModel = availableModels[0]?.name || availableModels[0];
+      }
+      if (effectiveModel && setSelectedModel) {
+        setSelectedModel(effectiveModel);
+      }
+    }
+
+    if (!effectiveModel && (!availableModels || availableModels.length === 0)) {
+      const alertMsg = {
+        role: 'assistant',
+        content: `⚠️ **Nessun modello AI locale attivo o scaricato.**\n\nPer iniziare a chattare con **Sigma Studio**:\n\n1. **Scarica un Modello Locale**: Apri la scheda **Model Hub** (nella barra laterale sinistra) e scarica o avvia un modello raccomandato come **Qwen 3.6 27B Q4_K_M** o **DeepSeek-R1 14B**.\n2. **Oppure Configura un Provider Cloud**: Clicca su **Impostazioni** (⚙️) ed inserisci la tua API Key per DeepSeek, OpenAI, Anthropic o Groq.\n3. **Seleziona il Modello**: Scegli il modello preferito dal menu in alto a sinistra nella chat.`,
+        agent_id: 'sigma_assistant',
+        agentName: 'Sigma Assistant',
+        agentRole: 'Sigma Assistant',
+        agentImage: '/images/default.png',
+        timestamp: new Date().toISOString(),
+        error: true
+      };
+      const userMsg = { role: 'user', content: messageText.trim(), timestamp: new Date().toISOString() };
+      const currentMsgs = sessionRefs.sessionMessages.current[currentSessionId] || [];
+      const updatedMessages = [...currentMsgs, userMsg, alertMsg];
+      setMessagesForSession(currentSessionId, updatedMessages);
+      saveMessagesImmediately(currentSessionId, updatedMessages);
+      setInput('');
+      return;
+    }
+
     streamingSessionIdRef.current = currentSessionId;
     const openFiles = externalOpenFiles || [];
     const contextFiles = [...(openFiles || []), ...attachedFiles].slice(0, MAX_ATTACHMENTS);
-    const userMsg = { role: 'user', content: messageText.trim(), timestamp: new Date().toISOString(), attachments: attachedFiles.length > 0 ? [...attachedFiles] : undefined, agentName: selectedModel };
+    const userMsg = { role: 'user', content: messageText.trim(), timestamp: new Date().toISOString(), attachments: attachedFiles.length > 0 ? [...attachedFiles] : undefined, agentName: effectiveModel };
     const currentMsgs = sessionRefs.sessionMessages.current[currentSessionId] || [];
     const updatedMessages = [...currentMsgs, userMsg];
     const isAuto = !selectedManifestoPath || selectedManifestoPath === 'auto';
     const initialStatus = isAuto 
       ? '🎯 Analisi semantica della richiesta e selezione agente...' 
-      : `🧠 Inizializzazione contesto per ${activeManifesto?.name || selectedModel}...`;
+      : `🧠 Inizializzazione contesto per ${activeManifesto?.name || effectiveModel}...`;
 
     const placeholderRole = isAuto ? 'Sigma Assistant' : (activeManifesto?.name || 'Sigma Assistant');
     const placeholderId = isAuto ? 'sigma_assistant' : (activeManifesto?.path?.replace('manifesti/', '')?.replace('.md', '') || 'sigma_assistant');
@@ -656,7 +697,7 @@ export function useChatStreaming({
       role: 'assistant',
       content: '',
       agent_id: placeholderId,
-      agentName: `${placeholderRole} (${selectedModel})`,
+      agentName: `${placeholderRole} (${effectiveModel})`,
       agentRole: placeholderRole,
       agentImage: placeholderImage,
       timestamp: new Date().toISOString(),
@@ -669,7 +710,7 @@ export function useChatStreaming({
     const sessionName = sessionRefs.sessions.current.find(s => s.id === currentSessionId)?.name;
     if (sessionName && sessionName.startsWith('Chat ')) {
       const firstWords = messageText.trim().slice(0, 50).replace(/\n/g, ' ');
-      const newName = `${firstWords}... (${selectedModel.split(':')[0]})`;
+      const newName = `${firstWords}... (${(effectiveModel || '').split(':')[0]})`;
       saveSessionsState(sessionRefs.sessions.current.map(s => s.id === currentSessionId ? { ...s, name: newName } : s));
     }
     setInput('');
@@ -680,7 +721,7 @@ export function useChatStreaming({
     globalAbortController = controller;
 
     try {
-      const routing = getModelRoutingInfo(selectedModel, providerConfigs);
+      const routing = getModelRoutingInfo(effectiveModel, providerConfigs);
       const isPlan = activeMode === 'plan';
 
       const userProfile = (() => {
@@ -690,7 +731,7 @@ export function useChatStreaming({
 
       const useStream = !isPlan;
       const body = {
-        message: messageText.trim(), bot_name: selectedModel, model: selectedModel,
+        message: messageText.trim(), bot_name: effectiveModel, model: effectiveModel,
         model_provider: routing.provider, model_endpoint: routing.endpoint, model_api_url: routing.api_url,
         allow_actions: true, planning_mode: isPlan, stream: useStream,
         timeout: quickConfig.timeout || 300, web_search: webSearch,
