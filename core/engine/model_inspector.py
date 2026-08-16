@@ -1,0 +1,418 @@
+# ==============================================================================
+# core/engine/model_inspector.py — Ground-truth model introspection
+#
+# Reads what a model ACTUALLY is from its own files (config.json +
+# model.safetensors.index.json + safetensors headers) instead of guessing from
+# the folder name. Everything downstream — layer partitioning, VRAM budgeting,
+# device maps — depends on these numbers being real.
+# ==============================================================================
+import os
+import json
+import struct
+from dataclasses import dataclass, field, asdict
+from typing import Dict, Any, List, Optional, Tuple
+
+from core.logger import get_logger
+
+log = get_logger(__name__)
+
+# Bytes per element, by safetensors dtype string.
+_DTYPE_BYTES = {
+    "F64": 8, "I64": 8,
+    "F32": 4, "I32": 4,
+    "F16": 2, "BF16": 2, "I16": 2,
+    "F8_E4M3": 1, "F8_E5M2": 1, "I8": 1, "U8": 1, "BOOL": 1,
+    "F4": 0.5, "I4": 0.5,
+}
+
+# Effective bytes/param for bitsandbytes NF4 with double quantization.
+# 4 bits payload + ~0.127 bits of (double-quantized) absmax scales = 4.127 bits.
+_NF4_BYTES_PER_PARAM = 4.127 / 8.0
+_INT8_BYTES_PER_PARAM = 1.0 + (0.5 / 8.0)
+
+# Tensors that bitsandbytes leaves in full compute dtype.
+_NEVER_QUANTIZED_HINTS = ("embed_tokens", "lm_head", "wte", "shared", "embeddings")
+
+
+@dataclass
+class ModelFacts:
+    """Ground truth about a local model directory."""
+    path: str
+    name: str
+    model_type: str = "unknown"
+    architectures: List[str] = field(default_factory=list)
+    weight_format: str = "safetensors"          # safetensors | gguf | bin
+
+    # Transformer geometry (from text_config when multimodal)
+    num_hidden_layers: int = 0
+    hidden_size: int = 0
+    head_dim: int = 0
+    num_attention_heads: int = 0
+    num_key_value_heads: int = 0
+    vocab_size: int = 0
+    max_position_embeddings: int = 0
+    tie_word_embeddings: bool = False
+    layer_types: List[str] = field(default_factory=list)
+    torch_dtype: str = "bfloat16"
+
+    # Structure flags
+    is_moe: bool = False
+    num_experts: int = 0
+    is_multimodal: bool = False
+    has_mtp: bool = False                        # native multi-token-prediction head
+
+    # Discovered from the weight index — never hardcoded.
+    layer_prefix: str = ""                       # e.g. "model.language_model.layers"
+    auxiliary_prefixes: List[str] = field(default_factory=list)  # visual / mtp / etc.
+
+    # Real measured sizes
+    total_bytes: int = 0
+    param_count: int = 0
+    quantizable_params: int = 0
+    resident_params: int = 0                     # params bnb keeps in compute dtype
+
+    def summary(self) -> str:
+        return (
+            f"{self.name}: {self.param_count / 1e9:.2f}B params, "
+            f"{self.total_bytes / 2**30:.1f}GB on disk, "
+            f"{self.num_hidden_layers} layers, "
+            f"prefix='{self.layer_prefix}'"
+            + (", multimodal" if self.is_multimodal else "")
+            + (", MoE" if self.is_moe else "")
+            + (", MTP" if self.has_mtp else "")
+        )
+
+    def to_dict(self) -> Dict[str, Any]:
+        return asdict(self)
+
+
+class ModelInspector:
+    """Extracts ground-truth facts from a local model directory."""
+
+    @classmethod
+    def inspect(cls, model_path: str, use_cache: bool = True) -> Optional[ModelFacts]:
+        """
+        Reads config + weight index + safetensors headers.
+        Results are cached in the model dir so repeated loads are instant.
+        """
+        if not os.path.isdir(model_path):
+            log.warning("[ModelInspector] Not a directory: %s", model_path)
+            return None
+
+        cache_file = os.path.join(model_path, ".sigma_facts.json")
+        if use_cache and os.path.exists(cache_file):
+            try:
+                with open(cache_file, "r", encoding="utf-8") as f:
+                    cached = json.load(f)
+                if cached.get("_schema") == 2:
+                    cached.pop("_schema", None)
+                    return ModelFacts(**cached)
+            except Exception as exc:
+                log.debug("[ModelInspector] Ignoring stale cache: %s", exc)
+
+        facts = ModelFacts(path=model_path, name=os.path.basename(model_path.rstrip("\\/")))
+
+        cls._read_config(facts)
+        cls._read_weight_layout(facts)
+
+        if facts.num_hidden_layers and not facts.layer_types:
+            facts.layer_types = ["full_attention"] * facts.num_hidden_layers
+
+        try:
+            payload = facts.to_dict()
+            payload["_schema"] = 2
+            with open(cache_file, "w", encoding="utf-8") as f:
+                json.dump(payload, f, indent=2)
+        except Exception as exc:
+            log.debug("[ModelInspector] Could not write facts cache: %s", exc)
+
+        log.info("[ModelInspector] %s", facts.summary())
+        return facts
+
+    # ------------------------------------------------------------------ config
+
+    @classmethod
+    def _read_config(cls, facts: ModelFacts) -> None:
+        config_path = os.path.join(facts.path, "config.json")
+        if not os.path.exists(config_path):
+            return
+        try:
+            with open(config_path, "r", encoding="utf-8") as f:
+                cfg = json.load(f)
+        except Exception as exc:
+            log.warning("[ModelInspector] Unreadable config.json: %s", exc)
+            return
+
+        facts.model_type = cfg.get("model_type", "unknown")
+        facts.architectures = cfg.get("architectures", []) or []
+        facts.is_multimodal = any(
+            k in cfg for k in ("vision_config", "audio_config", "video_config")
+        )
+
+        # Multimodal configs nest the transformer geometry under text_config.
+        text = cfg.get("text_config") or cfg.get("llm_config") or cfg
+        facts.num_hidden_layers = int(text.get("num_hidden_layers", 0) or 0)
+        facts.hidden_size = int(text.get("hidden_size", 0) or 0)
+        facts.num_attention_heads = int(text.get("num_attention_heads", 0) or 0)
+        facts.num_key_value_heads = int(
+            text.get("num_key_value_heads", facts.num_attention_heads) or 0
+        )
+        facts.vocab_size = int(text.get("vocab_size", 0) or 0)
+        facts.max_position_embeddings = int(text.get("max_position_embeddings", 0) or 0)
+        facts.tie_word_embeddings = bool(
+            text.get("tie_word_embeddings", cfg.get("tie_word_embeddings", False))
+        )
+        facts.torch_dtype = str(text.get("dtype") or text.get("torch_dtype") or "bfloat16")
+        facts.layer_types = list(text.get("layer_types", []) or [])
+
+        head_dim = text.get("head_dim")
+        if not head_dim and facts.num_attention_heads:
+            head_dim = facts.hidden_size // facts.num_attention_heads
+        facts.head_dim = int(head_dim or 0)
+
+        for key in ("num_experts", "num_local_experts", "n_routed_experts"):
+            if text.get(key):
+                facts.num_experts = int(text[key])
+                facts.is_moe = True
+                break
+
+    # ------------------------------------------------------------ weight layout
+
+    @classmethod
+    def _read_weight_layout(cls, facts: ModelFacts) -> None:
+        """Discovers the real layer prefix and measures true tensor sizes."""
+        files = os.listdir(facts.path)
+
+        if any(f.endswith(".gguf") for f in files):
+            facts.weight_format = "gguf"
+            facts.total_bytes = sum(
+                os.path.getsize(os.path.join(facts.path, f))
+                for f in files if f.endswith(".gguf")
+            )
+            return
+
+        shard_files: List[str] = []
+        index_path = os.path.join(facts.path, "model.safetensors.index.json")
+
+        if os.path.exists(index_path):
+            try:
+                with open(index_path, "r", encoding="utf-8") as f:
+                    index = json.load(f)
+                weight_map = index.get("weight_map", {})
+                facts.total_bytes = int(index.get("metadata", {}).get("total_size", 0))
+                cls._detect_prefixes(facts, list(weight_map.keys()))
+                shard_files = sorted(set(weight_map.values()))
+            except Exception as exc:
+                log.warning("[ModelInspector] Unreadable weight index: %s", exc)
+
+        if not shard_files:
+            shard_files = sorted(f for f in files if f.endswith(".safetensors"))
+            if not shard_files:
+                facts.weight_format = "bin"
+                facts.total_bytes = sum(
+                    os.path.getsize(os.path.join(facts.path, f))
+                    for f in files if f.endswith(".bin")
+                )
+                return
+
+        cls._measure_tensors(facts, shard_files)
+
+        if not facts.total_bytes:
+            facts.total_bytes = sum(
+                os.path.getsize(os.path.join(facts.path, f)) for f in shard_files
+            )
+
+    @classmethod
+    def _detect_prefixes(cls, facts: ModelFacts, tensor_names: List[str]) -> None:
+        """
+        Finds the actual '<...>.layers' prefix used by this checkpoint.
+
+        This is what makes device maps portable: 'model.layers' (Llama/Qwen2),
+        'model.language_model.layers' (Qwen3.5-VL), 'transformer.h' (GPT-2), etc.
+        The decoder stack is whichever prefix carries the most tensors.
+        """
+        counts: Dict[str, int] = {}
+        for name in tensor_names:
+            parts = name.split(".")
+            for i, part in enumerate(parts):
+                if part.isdigit() and i > 0:
+                    prefix = ".".join(parts[:i])
+                    counts[prefix] = counts.get(prefix, 0) + 1
+                    break
+
+        if counts:
+            facts.layer_prefix = max(counts.items(), key=lambda kv: kv[1])[0]
+            facts.auxiliary_prefixes = sorted(
+                p for p in counts
+                if p != facts.layer_prefix and not p.startswith(facts.layer_prefix)
+            )
+
+        facts.has_mtp = any(n.startswith("mtp.") for n in tensor_names)
+        if not facts.is_multimodal:
+            facts.is_multimodal = any(
+                ".visual." in n or n.startswith("visual.") or ".vision_tower." in n
+                for n in tensor_names
+            )
+        if not facts.is_moe:
+            facts.is_moe = any(".experts." in n for n in tensor_names)
+
+    @classmethod
+    def _measure_tensors(cls, facts: ModelFacts, shard_files: List[str]) -> None:
+        """
+        Reads only the safetensors headers (not the payload) to get exact dtype
+        and shape per tensor, then splits params into quantizable (2-D Linear
+        weights) vs resident (embeddings, lm_head, norms, conv kernels).
+        """
+        total_params = 0
+        quantizable = 0
+        resident = 0
+        measured_bytes = 0
+
+        for shard in shard_files:
+            full_path = os.path.join(facts.path, shard)
+            header = cls._read_safetensors_header(full_path)
+            if not header:
+                continue
+
+            for name, meta in header.items():
+                if name == "__metadata__" or not isinstance(meta, dict):
+                    continue
+                shape = meta.get("shape") or []
+                dtype = meta.get("dtype", "BF16")
+                if not shape:
+                    continue
+
+                numel = 1
+                for dim in shape:
+                    numel *= int(dim)
+                total_params += numel
+                measured_bytes += int(numel * _DTYPE_BYTES.get(dtype, 2))
+
+                is_linear_weight = (
+                    len(shape) == 2
+                    and name.endswith(".weight")
+                    and not any(hint in name for hint in _NEVER_QUANTIZED_HINTS)
+                )
+                if is_linear_weight:
+                    quantizable += numel
+                else:
+                    resident += numel
+
+        if total_params:
+            facts.param_count = total_params
+            facts.quantizable_params = quantizable
+            facts.resident_params = resident
+        if measured_bytes and not facts.total_bytes:
+            facts.total_bytes = measured_bytes
+
+    @staticmethod
+    def _read_safetensors_header(path: str) -> Optional[Dict[str, Any]]:
+        """Parses the JSON header at the start of a .safetensors file."""
+        try:
+            with open(path, "rb") as f:
+                raw_len = f.read(8)
+                if len(raw_len) < 8:
+                    return None
+                header_len = struct.unpack("<Q", raw_len)[0]
+                if header_len <= 0 or header_len > 200 * 1024 * 1024:
+                    return None
+                return json.loads(f.read(header_len).decode("utf-8"))
+        except Exception as exc:
+            log.debug("[ModelInspector] Header read failed for %s: %s", path, exc)
+            return None
+
+    # --------------------------------------------------------------- estimates
+
+    @classmethod
+    def estimate_footprint(
+        cls,
+        facts: ModelFacts,
+        quantization: str = "nf4",
+        compute_dtype_bytes: int = 2,
+    ) -> Dict[str, float]:
+        """
+        Estimates resident memory for the weights under a given quantization.
+
+        Returns GB figures. bitsandbytes keeps embeddings, lm_head, norms and
+        conv kernels in compute dtype — on large-vocab models that residual is
+        several GB and is exactly what makes naive VRAM plans overflow.
+        """
+        if not facts.param_count:
+            return {
+                "quantized_gb": 0.0,
+                "resident_gb": 0.0,
+                "total_gb": round(facts.total_bytes / 2**30, 2),
+                "quantization": quantization,
+            }
+
+        per_param = {
+            "nf4": _NF4_BYTES_PER_PARAM,
+            "fp4": _NF4_BYTES_PER_PARAM,
+            "int8": _INT8_BYTES_PER_PARAM,
+        }.get((quantization or "").lower(), float(compute_dtype_bytes))
+
+        quantized_gb = (facts.quantizable_params * per_param) / 2**30
+        resident_gb = (facts.resident_params * compute_dtype_bytes) / 2**30
+
+        return {
+            "quantized_gb": round(quantized_gb, 2),
+            "resident_gb": round(resident_gb, 2),
+            "total_gb": round(quantized_gb + resident_gb, 2),
+            "quantization": quantization,
+            "quantizable_params": facts.quantizable_params,
+            "resident_params": facts.resident_params,
+        }
+
+    @classmethod
+    def estimate_kv_cache_gb(
+        cls,
+        facts: ModelFacts,
+        context_tokens: int,
+        batch_size: int = 1,
+        bytes_per_element: int = 2,
+    ) -> float:
+        """
+        KV cache growth for a given context length.
+
+        Only full-attention layers scale with sequence length; linear-attention
+        layers carry a constant-size recurrent state, which is why hybrid models
+        tolerate far longer contexts than their layer count suggests.
+        """
+        if not facts.num_hidden_layers or not facts.head_dim:
+            return 0.0
+
+        if facts.layer_types:
+            attn_layers = sum(1 for t in facts.layer_types if t == "full_attention")
+            if attn_layers == 0:
+                attn_layers = facts.num_hidden_layers
+        else:
+            attn_layers = facts.num_hidden_layers
+
+        kv_heads = facts.num_key_value_heads or facts.num_attention_heads or 1
+        per_token = 2 * attn_layers * kv_heads * facts.head_dim * bytes_per_element
+        return round((per_token * context_tokens * batch_size) / 2**30, 3)
+
+    @classmethod
+    def resolve_model_class(cls, facts: ModelFacts):
+        """
+        Returns the transformers class this checkpoint declares.
+
+        Using config.architectures directly is the only approach that works for
+        every checkpoint: AutoModelForCausalLM silently picks a text-only class
+        for multimodal configs and then fails on missing top-level fields.
+        """
+        import transformers
+
+        for arch in facts.architectures:
+            model_cls = getattr(transformers, arch, None)
+            if model_cls is not None:
+                return model_cls
+            log.debug("[ModelInspector] '%s' not exported by transformers", arch)
+
+        if facts.is_multimodal:
+            fallback = getattr(transformers, "AutoModelForImageTextToText", None)
+            if fallback is not None:
+                log.info("[ModelInspector] Falling back to AutoModelForImageTextToText")
+                return fallback
+
+        return transformers.AutoModelForCausalLM

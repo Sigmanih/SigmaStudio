@@ -73,11 +73,40 @@ def handle_engine_hf_import(self):
         return self.send_json_response({"success": False, "error": str(exc)}, 500)
 
 
+def handle_engine_plan(self):
+    """
+    POST /api/engine/plan — Placement plan for a model without loading it.
+
+    Lets the UI show which tiers a model will occupy, and any warnings, before
+    paying the cost of a load.
+    """
+    try:
+        body = self.read_json_body() if hasattr(self, 'read_json_body') else {}
+        res = sigma_engine.plan_for_model(
+            model_identifier=body.get("model"),
+            context_tokens=int(body.get("context_tokens", 32768)),
+            force_quantization=body.get("quantization"),
+        )
+        return self.send_json_response(res, 200 if res.get("success") else 404)
+    except Exception as exc:
+        log.error(f"handle_engine_plan error: {exc}")
+        return self.send_json_response({"success": False, "error": str(exc)}, 500)
+
+
+def handle_engine_unload(self):
+    """POST /api/engine/unload — Releases the active model and frees VRAM."""
+    try:
+        return self.send_json_response(sigma_engine.unload())
+    except Exception as exc:
+        log.error(f"handle_engine_unload error: {exc}")
+        return self.send_json_response({"success": False, "error": str(exc)}, 500)
+
+
 def handle_engine_models(self):
     """GET /api/engine/models — Returns active model, local catalog, and recommended Hugging Face models."""
     try:
         status = sigma_engine.get_status()
-        optimizations = getattr(sigma_engine, 'optimization_telemetry', {})
+        optimizations = sigma_engine._generate_default_optimizations()
         return self.send_json_response({
             "success": True,
             "loaded_model": sigma_engine.loaded_model,
@@ -128,11 +157,14 @@ def handle_engine_optimize(self):
     """POST /api/engine/optimize — Recalibrates and maximizes hardware dispatching."""
     try:
         sigma_engine.hardware_profile = UniversalHardwareProbe.probe_all()
-        sigma_engine.optimization_telemetry = sigma_engine._generate_default_optimizations()
+        optimizations = sigma_engine._generate_default_optimizations()
         return self.send_json_response({
             "success": True,
-            "message": "Parametri di calcolo e FlashAttention-2 ricalibrati con successo.",
-            "optimizations": sigma_engine.optimization_telemetry
+            "message": (
+                f"Hardware riesaminato: backend {optimizations['backend']}, "
+                f"attenzione {optimizations['attention_kernel']}."
+            ),
+            "optimizations": optimizations
         })
     except Exception as exc:
         log.error(f"handle_engine_optimize error: {exc}")

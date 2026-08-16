@@ -162,10 +162,28 @@ class UniversalHardwareProbe:
 
         return accelerators
 
+    # Sequential-read bandwidth by storage class, in MB/s. These are class
+    # estimates used for ranking offload targets, not measurements: reliably
+    # timing a real read means defeating the OS page cache, which is not
+    # portable. Bus type is a far stronger signal than a cached micro-read.
+    _SPEED_CLASS_MB_S = {
+        "nvme": 3500.0,
+        "ssd": 520.0,
+        "usb": 400.0,
+        "hdd": 150.0,
+        "unknown": 250.0,
+    }
+
+    _media_map_cache: Optional[Dict[str, Dict[str, str]]] = None
+
     @classmethod
     def probe_storage_drives(cls) -> List[Dict[str, Any]]:
-        """List all physical storage partitions and mounts available for sharded streaming."""
+        """
+        Lists mounted volumes with their storage class, for choosing offload
+        targets. Performs no disk writes, so it is safe to call on startup.
+        """
         drives = []
+        media_map = cls._get_media_map()
         try:
             partitions = psutil.disk_partitions(all=False)
             seen_mounts = set()
@@ -175,53 +193,130 @@ class UniversalHardwareProbe:
                 seen_mounts.add(p.mountpoint)
                 try:
                     usage = psutil.disk_usage(p.mountpoint)
-                    # Benchmark read speed briefly (5MB sample)
-                    read_speed_mb = cls._benchmark_read_speed(p.mountpoint)
-                    drives.append({
-                        "device": p.device,
-                        "mountpoint": p.mountpoint,
-                        "fstype": p.fstype,
-                        "total_gb": round(usage.total / (1024**3), 2),
-                        "free_gb": round(usage.free / (1024**3), 2),
-                        "used_percent": usage.percent,
-                        "estimated_read_speed_mb_s": read_speed_mb,
-                        "is_fast_storage": read_speed_mb >= 350
-                    })
                 except Exception:
                     continue
+
+                media = media_map.get(cls._mount_key(p.mountpoint), {})
+                speed_class = cls._classify_storage(media)
+                bandwidth = cls._SPEED_CLASS_MB_S[speed_class]
+
+                drives.append({
+                    "device": p.device,
+                    "mountpoint": p.mountpoint,
+                    "fstype": p.fstype,
+                    "total_gb": round(usage.total / (1024**3), 2),
+                    "free_gb": round(usage.free / (1024**3), 2),
+                    "used_percent": usage.percent,
+                    "speed_class": speed_class,
+                    "media_type": media.get("MediaType", "Unknown"),
+                    "bus_type": media.get("BusType", "Unknown"),
+                    "model": media.get("Model", ""),
+                    "estimated_read_speed_mb_s": bandwidth,
+                    "is_removable": speed_class == "usb",
+                    "is_fast_storage": speed_class in ("nvme", "ssd"),
+                })
         except Exception as e:
             log.warning(f"[HardwareProbe] Error probing storage drives: {e}")
         return drives
 
-    @classmethod
-    def _benchmark_read_speed(cls, mountpoint: str) -> float:
-        """Estimate sequential read bandwidth of a drive in MB/s."""
-        sample_file = os.path.join(mountpoint, f".sigma_speed_test_{int(time.time())}.tmp")
-        try:
-            # Write 4MB test chunk
-            data = b"0" * (4 * 1024 * 1024)
-            with open(sample_file, "wb") as f:
-                f.write(data)
-                f.flush()
-                os.fsync(f.fileno())
+    @staticmethod
+    def _mount_key(mountpoint: str) -> str:
+        """Normalizes a mountpoint to the key used by the media map."""
+        if platform.system() == "Windows":
+            return mountpoint.rstrip("\\/").rstrip(":").upper()[:1]
+        return mountpoint
 
-            # Read and measure time
-            t0 = time.perf_counter()
-            with open(sample_file, "rb") as f:
-                _ = f.read()
-            t1 = time.perf_counter()
-            
-            elapsed = max(t1 - t0, 0.0001)
-            mb_s = round(4.0 / elapsed, 1)
-            return mb_s
-        except Exception:
-            return 250.0  # Safe default estimate for SSD
-        finally:
-            if os.path.exists(sample_file):
-                try:
-                    os.remove(sample_file)
-                except Exception:
-                    pass
+    @staticmethod
+    def _classify_storage(media: Dict[str, str]) -> str:
+        """Maps a drive's reported media/bus type onto a speed class."""
+        bus = (media.get("BusType") or "").lower()
+        media_type = (media.get("MediaType") or "").lower()
+
+        if bus in ("usb", "1394", "sd", "mmc"):
+            return "usb"
+        if "nvme" in bus:
+            return "nvme"
+        if "ssd" in media_type or media_type == "4":
+            return "ssd"
+        if "hdd" in media_type or "rotational" in media_type or media_type == "3":
+            return "hdd"
+        return "unknown"
+
+    @classmethod
+    def _get_media_map(cls) -> Dict[str, Dict[str, str]]:
+        """
+        Maps each volume to its physical device characteristics.
+        Cached: the answer only changes when hardware is plugged or unplugged.
+        """
+        if cls._media_map_cache is not None:
+            return cls._media_map_cache
+
+        system = platform.system()
+        try:
+            if system == "Windows":
+                cls._media_map_cache = cls._get_media_map_windows()
+            elif system == "Linux":
+                cls._media_map_cache = cls._get_media_map_linux()
+            else:
+                cls._media_map_cache = {}
+        except Exception as e:
+            log.debug(f"[HardwareProbe] Media type detection failed: {e}")
+            cls._media_map_cache = {}
+
+        return cls._media_map_cache
+
+    @staticmethod
+    def _get_media_map_windows() -> Dict[str, Dict[str, str]]:
+        """Joins drive letters to physical disks via Windows Storage cmdlets."""
+        import subprocess
+        import json as _json
+
+        script = (
+            "$p=@{};"
+            "Get-Partition -ErrorAction SilentlyContinue | "
+            "Where-Object {$_.DriveLetter} | "
+            "ForEach-Object { $p[[string]$_.DriveLetter]=[string]$_.DiskNumber };"
+            "$d=@{};"
+            "Get-PhysicalDisk -ErrorAction SilentlyContinue | "
+            "ForEach-Object { $d[[string]$_.DeviceId]=@{"
+            "MediaType=[string]$_.MediaType;"
+            "BusType=[string]$_.BusType;"
+            "Model=[string]$_.FriendlyName} };"
+            "$o=@{};"
+            "foreach($k in $p.Keys){$n=[string]$p[$k];"
+            "if($d.ContainsKey($n)){$o[$k]=$d[$n]}};"
+            "$o | ConvertTo-Json -Compress"
+        )
+        result = subprocess.run(
+            ["powershell", "-NoProfile", "-NonInteractive", "-Command", script],
+            capture_output=True, text=True, timeout=20,
+        )
+        if result.returncode != 0 or not result.stdout.strip():
+            return {}
+        return _json.loads(result.stdout.strip()) or {}
+
+    @staticmethod
+    def _get_media_map_linux() -> Dict[str, Dict[str, str]]:
+        """Reads rotational/bus hints from sysfs for each mounted block device."""
+        media: Dict[str, Dict[str, str]] = {}
+        for part in psutil.disk_partitions(all=False):
+            dev = os.path.basename(part.device)
+            base = dev.rstrip("0123456789")
+            if base.startswith("nvme"):
+                base = dev.split("p")[0]
+                media[part.mountpoint] = {"BusType": "NVMe", "MediaType": "SSD"}
+                continue
+            rotational_path = f"/sys/block/{base}/queue/rotational"
+            try:
+                with open(rotational_path, "r", encoding="utf-8") as f:
+                    rotational = f.read().strip()
+                media[part.mountpoint] = {
+                    "BusType": "SATA",
+                    "MediaType": "HDD" if rotational == "1" else "SSD",
+                }
+            except Exception:
+                continue
+        return media
 
     @classmethod
     def get_recommended_tiering(cls) -> Dict[str, Any]:

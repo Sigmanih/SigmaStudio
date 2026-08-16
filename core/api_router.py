@@ -223,6 +223,8 @@ def register_post_handlers(handler_class):
         '/api/engine/partition': 'handle_engine_partition',
         '/api/engine/hf/import': 'handle_engine_hf_import',
         '/api/engine/optimize': 'handle_engine_optimize',
+        '/api/engine/plan': 'handle_engine_plan',
+        '/api/engine/unload': 'handle_engine_unload',
         '/api/skills/toggle': 'handle_skills_toggle',
 
 

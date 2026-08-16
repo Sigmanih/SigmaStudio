@@ -1,0 +1,364 @@
+# ==============================================================================
+# core/engine/memory_planner.py — Hardware-aware placement planner
+#
+# Turns measured hardware (UniversalHardwareProbe) + measured model facts
+# (ModelInspector) into the concrete arguments accelerate needs:
+# max_memory, offload_folder and the quantization choice.
+#
+# Filling order is strictly: fastest VRAM -> slower VRAM -> system RAM -> disk.
+# Precision is chosen as the highest quality that still fits entirely in VRAM,
+# because spilling to RAM costs far more speed than dropping to 4-bit costs
+# quality.
+# ==============================================================================
+import os
+from dataclasses import dataclass, field, asdict
+from typing import Dict, Any, List, Optional, Union
+
+from core.logger import get_logger
+from core.engine.model_inspector import ModelFacts, ModelInspector
+
+log = get_logger(__name__)
+
+# Per-GPU reserve for the CUDA context, cuBLAS/cuDNN workspaces and allocator
+# fragmentation. Without this a plan that fits on paper OOMs in practice.
+_CUDA_CONTEXT_RESERVE_GB = 0.8
+# Extra headroom on the device that carries lm_head and the sampling step.
+_PRIMARY_ACTIVATION_RESERVE_GB = 1.0
+# Leave the OS and the rest of Sigma Studio room to breathe.
+_HOST_RAM_RESERVE_GB = 8.0
+# Below this much slack, the fit is inside estimation error: accelerate places
+# indivisible decoder blocks, so a plan this tight can still spill or OOM.
+_MARGINAL_FIT_GB = 1.0
+# Quantization candidates, best quality first.
+_PRECISION_LADDER = ("bf16", "int8", "nf4")
+
+# transformers' bitsandbytes quantizers shrink whatever max_memory they are
+# given by this factor (quantizer_bnb_4bit.adjust_max_memory) to leave room for
+# quantization buffers. We already reserve context, activation and KV headroom
+# ourselves, so passing our budget through unchanged would apply that safety
+# margin twice and push weights onto the CPU that were meant for VRAM. We divide
+# it out so the budget transformers ends up using is the one we planned.
+_BNB_MAX_MEMORY_HAIRCUT = 0.90
+
+
+@dataclass
+class PlacementPlan:
+    """Everything load_native_model needs to place a model optimally."""
+    quantization: str = "nf4"
+    max_memory: Dict[Union[int, str], str] = field(default_factory=dict)
+    offload_folder: Optional[str] = None
+    fits_in_vram: bool = False
+    uses_host_ram: bool = False
+    uses_disk: bool = False
+
+    # Reporting
+    model_footprint_gb: float = 0.0      # weights only, at the chosen precision
+    kv_cache_gb: float = 0.0             # at context_tokens
+    total_required_gb: float = 0.0       # weights + KV
+    total_vram_gb: float = 0.0           # raw free VRAM across all GPUs
+    weight_budget_gb: float = 0.0        # VRAM left for weights after reserves + KV
+    vram_headroom_gb: float = 0.0        # weight_budget - weights; negative means spill
+    context_tokens: int = 0
+    devices: List[Dict[str, Any]] = field(default_factory=list)
+    warnings: List[str] = field(default_factory=list)
+    notes: List[str] = field(default_factory=list)
+
+    def to_dict(self) -> Dict[str, Any]:
+        data = asdict(self)
+        # JSON keys must be strings; accelerate needs the int keys.
+        data["max_memory"] = {str(k): v for k, v in self.max_memory.items()}
+        return data
+
+    def max_memory_for_string_strategy(self) -> Dict[Union[int, str], str]:
+        """
+        Budgets adjusted for transformers' own safety margin.
+
+        When device_map is a string, the bitsandbytes quantizers shrink whatever
+        max_memory they receive (quantizer_bnb_4bit.adjust_max_memory) to leave
+        room for quantization buffers. We already reserve context, activation
+        and KV headroom, so passing the raw budget would apply that margin twice
+        and push weights onto the CPU that were meant for VRAM. An explicit
+        device map skips that code path and needs no adjustment, which is why
+        this is a separate accessor rather than baked into max_memory.
+        """
+        if self.quantization not in ("nf4", "fp4", "int8"):
+            return dict(self.max_memory)
+
+        adjusted: Dict[Union[int, str], str] = {}
+        for key, value in self.max_memory.items():
+            gib = float(str(value).replace("GiB", "").strip())
+            adjusted[key] = f"{gib / _BNB_MAX_MEMORY_HAIRCUT:.2f}GiB"
+        return adjusted
+
+    def summary(self) -> str:
+        tiers = ["VRAM"]
+        if self.uses_host_ram:
+            tiers.append("RAM")
+        if self.uses_disk:
+            tiers.append("disk")
+        return (
+            f"{self.quantization.upper()} | "
+            f"{self.total_required_gb:.1f}GB required "
+            f"({self.model_footprint_gb:.1f} weights + {self.kv_cache_gb:.1f} KV) "
+            f"vs {self.total_vram_gb:.1f}GB VRAM | "
+            f"headroom {self.vram_headroom_gb:+.2f}GB | "
+            f"tiers: {' -> '.join(tiers)}"
+        )
+
+
+class MemoryPlanner:
+    """Computes optimal multi-tier placement for a model on this machine."""
+
+    @classmethod
+    def build_plan(
+        cls,
+        facts: ModelFacts,
+        hardware_profile: Dict[str, Any],
+        context_tokens: int = 32768,
+        force_quantization: Optional[str] = None,
+        include_vision: bool = True,
+        allow_host_spill: bool = False,
+    ) -> PlacementPlan:
+        """
+        Builds a placement plan for this model on this machine.
+
+        allow_host_spill offers accelerate a CPU budget even when the model is
+        expected to fit in VRAM. Used as a retry path when a VRAM-only load is
+        rejected, trading speed for actually running.
+        """
+        plan = PlacementPlan(context_tokens=context_tokens)
+
+        gpus = [
+            a for a in hardware_profile.get("accelerators", [])
+            if a.get("type") in ("NVIDIA_CUDA", "AMD_ROCM") and "free_vram_gb" in a
+        ]
+        # Fastest first: more SMs wins, VRAM breaks ties.
+        gpus.sort(
+            key=lambda a: (a.get("multi_processor_count", 0), a.get("free_vram_gb", 0)),
+            reverse=True,
+        )
+
+        ram_available_gb = float(
+            hardware_profile.get("ram", {}).get("available_gb", 16.0)
+        )
+
+        # ---------------------------------------------------------- precision
+        plan.kv_cache_gb = ModelInspector.estimate_kv_cache_gb(facts, context_tokens)
+        usable_vram = cls._usable_vram(gpus, plan.kv_cache_gb)
+
+        # Raw capacity vs the budget actually available to weights: the latter
+        # is what the fill loop spends, the former is what the user recognises
+        # as "my VRAM".
+        plan.total_vram_gb = round(
+            sum(g.get("free_vram_gb", 0.0) for g in gpus), 2
+        )
+        plan.weight_budget_gb = round(sum(usable_vram.values()), 2)
+
+        quantization, footprint = cls._choose_precision(
+            facts, plan.weight_budget_gb, force_quantization
+        )
+        plan.quantization = quantization
+        plan.model_footprint_gb = footprint["total_gb"]
+        plan.total_required_gb = round(plan.model_footprint_gb + plan.kv_cache_gb, 2)
+        plan.vram_headroom_gb = round(plan.weight_budget_gb - plan.model_footprint_gb, 2)
+
+        if not include_vision and facts.is_multimodal:
+            plan.notes.append(
+                "Vision tower excluded from the VRAM budget (text-only session)."
+            )
+
+        # -------------------------------------------------------- device fill
+        remaining = plan.model_footprint_gb
+        for idx, gpu in enumerate(gpus):
+            device_id = gpu.get("device_id", idx)
+            budget = usable_vram.get(device_id, 0.0)
+            assigned = min(budget, remaining) if remaining > 0 else 0.0
+            remaining = max(remaining - assigned, 0.0)
+
+            plan.max_memory[device_id] = cls._gib(budget)
+            plan.devices.append({
+                "device_id": device_id,
+                "tier": f"tier{idx}_vram",
+                "name": gpu.get("name", f"GPU{device_id}"),
+                "free_vram_gb": gpu.get("free_vram_gb", 0.0),
+                "budget_gb": round(budget, 2),
+                "estimated_use_gb": round(assigned, 2),
+            })
+
+        plan.fits_in_vram = remaining <= 0.01
+        if plan.fits_in_vram and plan.vram_headroom_gb < _MARGINAL_FIT_GB:
+            plan.warnings.append(
+                f"Marginal fit: only {plan.vram_headroom_gb:.2f}GB of slack. "
+                f"Reduce the context below {context_tokens} tokens, or expect "
+                "accelerate to spill a block into system RAM."
+            )
+
+        # ------------------------------------------------ tier 2: system RAM
+        host_budget = max(ram_available_gb - _HOST_RAM_RESERVE_GB, 1.0)
+        host_assigned = min(host_budget, remaining) if remaining > 0 else 0.0
+        remaining = max(remaining - host_assigned, 0.0)
+        plan.uses_host_ram = host_assigned > 0.01
+
+        # Offering a CPU budget is what lets accelerate place weights there. When
+        # the model fits in VRAM we withhold it, so a slightly optimistic
+        # estimate surfaces as an explicit error instead of silently degrading
+        # into PCIe-bound inference.
+        if plan.uses_host_ram or allow_host_spill:
+            plan.max_memory["cpu"] = cls._gib(host_budget)
+
+        plan.devices.append({
+            "device_id": "cpu",
+            "tier": "tier2_host_ram",
+            "name": "System RAM",
+            "free_vram_gb": round(ram_available_gb, 2),
+            "budget_gb": round(host_budget, 2),
+            "estimated_use_gb": round(host_assigned, 2),
+        })
+
+        # ----------------------------------------------------- tier 3: disk
+        if remaining > 0.01:
+            offload_dir = cls._select_offload_drive(
+                hardware_profile, required_gb=remaining
+            )
+            if offload_dir:
+                plan.offload_folder = offload_dir
+                plan.uses_disk = True
+                plan.devices.append({
+                    "device_id": "disk",
+                    "tier": "tier3_disk",
+                    "name": offload_dir,
+                    "budget_gb": round(remaining * 4, 2),
+                    "estimated_use_gb": round(remaining, 2),
+                })
+                plan.warnings.append(
+                    f"{remaining:.1f}GB must stream from disk: expect a large "
+                    "slowdown. A smaller model or heavier quantization will be "
+                    "dramatically faster."
+                )
+            else:
+                plan.warnings.append(
+                    f"{remaining:.1f}GB does not fit anywhere, and no drive has "
+                    "room for offload. Loading will fail."
+                )
+        elif plan.uses_host_ram:
+            plan.warnings.append(
+                f"{host_assigned:.1f}GB spills into system RAM over PCIe: "
+                "generation will be noticeably slower than a pure-VRAM fit."
+            )
+
+        # An offload folder must exist whenever CPU offload is in play, because
+        # accelerate can still decide to page individual weights out.
+        if plan.offload_folder is None and (plan.uses_host_ram or not plan.fits_in_vram):
+            plan.offload_folder = cls._select_offload_drive(hardware_profile, 8.0)
+
+        cls._add_quality_notes(plan, facts, footprint)
+        log.info("[MemoryPlanner] %s", plan.summary())
+        return plan
+
+    # ------------------------------------------------------------- internals
+
+    @staticmethod
+    def _gib(gb: float) -> str:
+        return f"{max(gb, 0.0):.2f}GiB"
+
+    @staticmethod
+    def _usable_vram(gpus: List[Dict[str, Any]], kv_cache_gb: float) -> Dict[Any, float]:
+        """
+        Free VRAM minus CUDA context, activations and this device's share of the
+        KV cache. KV is charged proportionally to capacity, since accelerate
+        spreads layers the same way.
+        """
+        total_free = sum(g.get("free_vram_gb", 0.0) for g in gpus) or 1.0
+        usable: Dict[Any, float] = {}
+
+        for idx, gpu in enumerate(gpus):
+            device_id = gpu.get("device_id", idx)
+            free = float(gpu.get("free_vram_gb", 0.0))
+            reserve = _CUDA_CONTEXT_RESERVE_GB
+            if idx == 0:
+                reserve += _PRIMARY_ACTIVATION_RESERVE_GB
+            kv_share = kv_cache_gb * (free / total_free)
+            usable[device_id] = max(free - reserve - kv_share, 0.0)
+
+        return usable
+
+    @classmethod
+    def _choose_precision(
+        cls,
+        facts: ModelFacts,
+        usable_vram_gb: float,
+        forced: Optional[str],
+    ):
+        """
+        Picks the highest-quality precision whose weights fit entirely in VRAM.
+        Falls back to the smallest option when nothing fits, so the caller can
+        still plan a RAM/disk spill.
+        """
+        if forced:
+            return forced, ModelInspector.estimate_footprint(facts, forced)
+
+        for precision in _PRECISION_LADDER:
+            footprint = ModelInspector.estimate_footprint(facts, precision)
+            if footprint["total_gb"] <= usable_vram_gb:
+                return precision, footprint
+
+        smallest = _PRECISION_LADDER[-1]
+        return smallest, ModelInspector.estimate_footprint(facts, smallest)
+
+    @staticmethod
+    def _select_offload_drive(
+        hardware_profile: Dict[str, Any], required_gb: float
+    ) -> Optional[str]:
+        """
+        Chooses the fastest drive with enough headroom for offload shards.
+
+        Bandwidth outranks capacity: a roomy USB disk is the worst possible
+        offload target, since every streamed layer crosses that bus on the
+        critical path of every forward pass.
+        """
+        drives = hardware_profile.get("storage_drives", []) or []
+        needed = max(required_gb * 1.5, 8.0)
+
+        candidates = [d for d in drives if d.get("free_gb", 0) >= needed]
+        if not candidates:
+            return None
+
+        internal = [d for d in candidates if not d.get("is_removable")]
+        if internal:
+            candidates = internal
+
+        candidates.sort(
+            key=lambda d: (
+                d.get("estimated_read_speed_mb_s", 0),
+                d.get("free_gb", 0),
+            ),
+            reverse=True,
+        )
+
+        target = os.path.join(candidates[0]["mountpoint"], "sigma_offload")
+        try:
+            os.makedirs(target, exist_ok=True)
+            return target
+        except Exception as exc:
+            log.warning("[MemoryPlanner] Cannot create offload dir %s: %s", target, exc)
+            return None
+
+    @staticmethod
+    def _add_quality_notes(
+        plan: PlacementPlan, facts: ModelFacts, footprint: Dict[str, float]
+    ) -> None:
+        if plan.quantization == "nf4" and footprint.get("resident_gb", 0) > 2.0:
+            plan.notes.append(
+                f"{footprint['resident_gb']:.1f}GB stays in bf16 (embeddings, "
+                f"lm_head, norms): bitsandbytes never quantizes those."
+            )
+        if facts.layer_types and "linear_attention" in facts.layer_types:
+            linear = facts.layer_types.count("linear_attention")
+            plan.notes.append(
+                f"{linear}/{facts.num_hidden_layers} layers use linear attention: "
+                "KV cache grows only with the full-attention layers."
+            )
+        if facts.has_mtp:
+            plan.notes.append(
+                "Checkpoint ships a native MTP head, usable for speculative decoding."
+            )
