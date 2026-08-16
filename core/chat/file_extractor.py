@@ -76,7 +76,7 @@ def _generate_files_summary(created_paths: list[str], full_response: str) -> str
 
 
 def _format_file_creation_summary(ai_response, created_paths) -> str:
-    """Format final user message stripping long file codeblocks.
+    """Format final user message preserving full code blocks and appending disk save summary.
     
     Accepts (ai_response: str, created_paths: list[str]) or (created_paths: list[str], ai_response: str).
     """
@@ -91,16 +91,13 @@ def _format_file_creation_summary(ai_response, created_paths) -> str:
     if not created_paths:
         return ai_response
     
-    text = ai_response
-    text = re.sub(r'(?:Path|Percorso|File)[:\s]+`?(?:data/|\./data/)[^`\n]+`?[^\n]*', '', text, flags=re.IGNORECASE)
-    text = re.sub(r'```[a-zA-Z0-9]*[\s\S]*?```', '', text)
-    text = re.sub(r'\n{3,}', '\n\n', text)
-    
-    clean_text = text.strip()
-    if len(clean_text) < 20:
-        clean_text = "Ho elaborato la tua richiesta e generato la documentazione formale su disco."
-        
+    clean_text = ai_response.strip()
     file_summary = _generate_files_summary(created_paths, ai_response)
+    
+    # Avoid duplicating summary if already present in the response
+    if "File creati e salvati su disco" in clean_text or "File salvati con successo su disco" in clean_text:
+        return clean_text
+    
     return f"{clean_text}\n\n{file_summary}".strip()
 
 

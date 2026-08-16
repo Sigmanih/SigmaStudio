@@ -161,9 +161,9 @@ export default function AIConfig({ isOpen, onClose }) {
     api_key: '',
     has_api_key: false,
     temperature: 0.7,
-    max_tokens: 4096,
-    top_p: 0.9,
-    num_ctx: 8192,
+    max_tokens: 16384,
+    top_p: 0.95,
+    num_ctx: 32768,
   });
   const [ollamaModels, setOllamaModels] = useState([]);
   const [loadingModels, setLoadingModels] = useState(false);
@@ -194,9 +194,9 @@ export default function AIConfig({ isOpen, onClose }) {
           ...cfg,
           endpoint: toBaseEndpoint(cfg.endpoint || prev.endpoint),
           temperature: cfg.temperature ?? 0.7,
-          max_tokens: cfg.max_tokens ?? 4096,
-          top_p: cfg.top_p ?? 0.9,
-          num_ctx: cfg.num_ctx ?? 8192,
+          max_tokens: cfg.max_tokens ?? 16384,
+          top_p: cfg.top_p ?? 0.95,
+          num_ctx: cfg.num_ctx ?? 32768,
         }));
       }
     } catch (e) {

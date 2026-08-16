@@ -240,73 +240,73 @@ def save_ai_config(ai_config: dict, config_path: str = "config.json") -> None:
 EXECUTION_PROFILES = {
     "fast_chat": {
         "label": "Chat Veloce / Sintetica",
-        "temperature": 0.5,
-        "max_tokens": 1024,
-        "num_ctx": 4096,
-        "top_p": 0.9,
+        "temperature": 0.6,
+        "max_tokens": 4096,
+        "num_ctx": 32768,
+        "top_p": 0.95,
         "top_k": 40,
         "repeat_penalty": 1.1,
-        "description": "Risposta velocissima a bassissima latenza per saluti e domande brevi"
+        "description": "Risposta veloce a bassissima latenza per saluti e richieste rapide, con memoria di contesto estesa (32K)"
     },
     "code": {
         "label": "Codice / Sviluppo Deep",
         "temperature": 0.2,
-        "max_tokens": 16384,
-        "num_ctx": 32768,
-        "top_p": 0.85,
-        "top_k": 30,
-        "repeat_penalty": 1.1,
-        "description": "Preciso, deterministico, ideale per generare e modificare codice completo"
+        "max_tokens": 32768,
+        "num_ctx": 65536,
+        "top_p": 0.9,
+        "top_k": 40,
+        "repeat_penalty": 1.05,
+        "description": "Massima precisione e determinismo, ideale per generare e modificare codice completo senza troncamenti (65K ctx)"
     },
     "mathematics": {
         "label": "Matematica / Ricerca Deep",
         "temperature": 0.2,
-        "max_tokens": 16384,
-        "num_ctx": 32768,
+        "max_tokens": 32768,
+        "num_ctx": 65536,
         "top_p": 0.9,
         "top_k": 40,
-        "repeat_penalty": 1.1,
-        "description": "Ragionamento logico profondo, dimostrazioni formali e trattazioni complete"
+        "repeat_penalty": 1.05,
+        "description": "Ragionamento logico profondo, dimostrazioni formali e trattazioni complete (65K ctx)"
     },
     "creative": {
         "label": "Creativo / Brainstorming",
-        "temperature": 0.8,
-        "max_tokens": 4096,
-        "num_ctx": 16384,
+        "temperature": 0.85,
+        "max_tokens": 16384,
+        "num_ctx": 65536,
         "top_p": 0.95,
         "top_k": 50,
-        "repeat_penalty": 1.0,
-        "description": "Creativo e divergente, ideale per brainstorming e scrittura"
+        "repeat_penalty": 1.05,
+        "description": "Creativo e divergente, ideale per brainstorming e scrittura estesa (65K ctx)"
     },
     "analysis": {
         "label": "Analisi Dati",
-        "temperature": 0.2,
-        "max_tokens": 8192,
-        "num_ctx": 32768,
-        "top_p": 0.8,
-        "top_k": 25,
-        "repeat_penalty": 1.2,
-        "description": "Analitico, contesto ampio, preciso"
+        "temperature": 0.25,
+        "max_tokens": 32768,
+        "num_ctx": 65536,
+        "top_p": 0.85,
+        "top_k": 30,
+        "repeat_penalty": 1.1,
+        "description": "Analitico, contesto ultra-ampio (65K ctx), massima precisione di calcolo"
     },
     "conversation": {
         "label": "Conversazione Standard",
-        "temperature": 0.6,
-        "max_tokens": 4096,
-        "num_ctx": 16384,
-        "top_p": 0.9,
+        "temperature": 0.7,
+        "max_tokens": 16384,
+        "num_ctx": 65536,
+        "top_p": 0.95,
         "top_k": 40,
         "repeat_penalty": 1.1,
-        "description": "Bilanciato per conversazione generale approfondita"
+        "description": "Bilanciato per conversazioni approfondite con finestra di memoria estesa (65K ctx)"
     },
     "web_search": {
         "label": "Ricerca Web",
         "temperature": 0.4,
-        "max_tokens": 4096,
-        "num_ctx": 16384,
-        "top_p": 0.85,
-        "top_k": 35,
+        "max_tokens": 16384,
+        "num_ctx": 65536,
+        "top_p": 0.9,
+        "top_k": 40,
         "repeat_penalty": 1.1,
-        "description": "Bilanciato, sintetico, per ricerca informazioni"
+        "description": "Bilanciato, sintetico e strutturato per sintesi di informazioni web (65K ctx)"
     },
 }
 
@@ -580,11 +580,11 @@ def call_ollama(
     model: str,
     endpoint: str,
     temperature: float = 0.7,
-    max_tokens: int = 4096,
-    top_p: float = 0.9,
+    max_tokens: int = 16384,
+    top_p: float = 0.95,
     top_k: int = 40,
     repeat_penalty: float = 1.1,
-    num_ctx: int = 8192,
+    num_ctx: int = 32768,
     seed: int = 0,
     timeout: int = 300,
 ) -> tuple:
@@ -593,11 +593,11 @@ def call_ollama(
     try:
         options = {
             "temperature": temperature,
-            "num_predict": max(max_tokens or 8192, 16384), # Generous token limit to prevent truncation during reasoning monologues
-            "top_p": top_p,
-            "top_k": top_k,
-            "repeat_penalty": repeat_penalty,
-            "num_ctx": max(num_ctx or 16384, 32768),       # Expanded context window
+            "num_predict": max(max_tokens or 16384, 16384), # Generous token limit to prevent truncation during long code & reasoning
+            "top_p": top_p if top_p is not None else 0.95,
+            "top_k": top_k or 40,
+            "repeat_penalty": repeat_penalty or 1.1,
+            "num_ctx": max(num_ctx or 32768, 65536),       # Expanded context window up to 65K
             "num_thread": 12,                              # Use 12 physical CPU threads for prompt prefill
             "use_mmap": True,                              # Memory-mapped weights for high memory bandwidth
         }
@@ -662,11 +662,11 @@ def call_ollama_stream(
     model: str,
     endpoint: str,
     temperature: float = 0.7,
-    max_tokens: int = 4096,
-    top_p: float = 0.9,
+    max_tokens: int = 16384,
+    top_p: float = 0.95,
     top_k: int = 40,
     repeat_penalty: float = 1.1,
-    num_ctx: int = 8192,
+    num_ctx: int = 32768,
     seed: int = 0,
     timeout: int = 300,
 ):
@@ -676,11 +676,11 @@ def call_ollama_stream(
     try:
         options = {
             "temperature": temperature,
-            "num_predict": max(max_tokens or 8192, 16384), # Generous token limit to prevent truncation during reasoning monologues
-            "top_p": top_p,
-            "top_k": top_k,
-            "repeat_penalty": repeat_penalty,
-            "num_ctx": max(num_ctx or 16384, 32768),       # Expanded context window
+            "num_predict": max(max_tokens or 16384, 16384), # Generous token limit to prevent truncation during long code & reasoning
+            "top_p": top_p if top_p is not None else 0.95,
+            "top_k": top_k or 40,
+            "repeat_penalty": repeat_penalty or 1.1,
+            "num_ctx": max(num_ctx or 32768, 65536),       # Expanded context window up to 65K
             "num_thread": 12,                              # Use 12 physical CPU threads for prompt prefill
             "use_mmap": True,                              # Memory-mapped weights for high memory bandwidth
         }

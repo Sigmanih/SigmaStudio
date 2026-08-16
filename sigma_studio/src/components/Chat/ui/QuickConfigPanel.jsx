@@ -46,21 +46,21 @@ export default function QuickConfigPanel({ quickConfig, setQuickConfig, onClose 
         <span className="qc-presets-label">Preset Rapidi:</span>
         <button
           className="qc-preset-btn"
-          onClick={() => applyPreset({ temperature: 0.7, top_p: 0.9, top_k: 40, repeat_penalty: 1.1 })}
+          onClick={() => applyPreset({ temperature: 0.7, top_p: 0.95, top_k: 40, repeat_penalty: 1.1, max_tokens: 16384, num_ctx: 32768 })}
         >
-          🎯 Bilanciato
+          🎯 Bilanciato (32K Ctx)
         </button>
         <button
           className="qc-preset-btn"
-          onClick={() => applyPreset({ temperature: 0.2, top_p: 0.8, top_k: 20, repeat_penalty: 1.15 })}
+          onClick={() => applyPreset({ temperature: 0.2, top_p: 0.9, top_k: 40, repeat_penalty: 1.05, max_tokens: 32768, num_ctx: 65536 })}
         >
-          🔬 Codice & Logica
+          🔬 Codice & Logica (65K Ctx)
         </button>
         <button
           className="qc-preset-btn"
-          onClick={() => applyPreset({ temperature: 1.0, top_p: 0.95, top_k: 60, repeat_penalty: 1.05 })}
+          onClick={() => applyPreset({ temperature: 0.85, top_p: 0.95, top_k: 50, repeat_penalty: 1.05, max_tokens: 16384, num_ctx: 65536 })}
         >
-          🎨 Creativo
+          🎨 Creativo (65K Ctx)
         </button>
       </div>
 
@@ -123,7 +123,7 @@ export default function QuickConfigPanel({ quickConfig, setQuickConfig, onClose 
             value={quickConfig.max_tokens}
             onChange={e => setQuickConfig(prev => ({ ...prev, max_tokens: parseInt(e.target.value) }))}
           >
-            {[512, 1024, 2048, 4096, 8192, 16384, 32768].map(v => (
+            {[2048, 4096, 8192, 16384, 32768, 65536].map(v => (
               <option key={v} value={v}>{v >= 1024 ? `${v/1024}K token` : `${v} token`}</option>
             ))}
           </select>
@@ -150,8 +150,8 @@ export default function QuickConfigPanel({ quickConfig, setQuickConfig, onClose 
             value={quickConfig.num_ctx}
             onChange={e => setQuickConfig(prev => ({ ...prev, num_ctx: parseInt(e.target.value) }))}
           >
-            {[2048, 4096, 8192, 16384, 32768, 65536, 131072].map(v => (
-              <option key={v} value={v}>{v >= 1024 ? `${v/1024}K` : v}</option>
+            {[8192, 16384, 32768, 65536, 131072, 262144].map(v => (
+              <option key={v} value={v}>{v >= 1024 ? `${v/1024}K token` : `${v} token`}</option>
             ))}
           </select>
         </div>

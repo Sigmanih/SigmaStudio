@@ -46,11 +46,11 @@ export function useChatConfig({ saveSessionsState, sessionRefs }) {
   // --- Quick config ---
   const [quickConfig, setQuickConfig] = useState({
     temperature: 0.7,
-    max_tokens: 4096,
-    top_p: 0.9,
+    max_tokens: 16384,
+    top_p: 0.95,
     top_k: 40,
     repeat_penalty: 1.1,
-    num_ctx: 8192,
+    num_ctx: 32768,
     seed: 0,
     timeout: 300
   });

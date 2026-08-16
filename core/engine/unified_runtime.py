@@ -147,17 +147,88 @@ class UniversalSigmaEngine:
     def generate_stream(
         self,
         prompt: str,
-        system_prompt: str = "Sei Sigma Assistant, un'intelligenza artificiale avanzata e utile.",
+        system_prompt: str = "Sei Sigma Assistant, un'architettura AI avanzata, precisa e utile. Rispondi in italiano in modo esaustivo, dettagliato e strutturato.",
         temperature: float = 0.7,
-        max_tokens: int = 1024
+        max_tokens: int = 16384
     ) -> Generator[Dict[str, Any], None, None]:
         """
         Universal generation stream yielding tokens with latency and throughput metrics.
-        Executes native neural dispatch or rich semantic conversational synthesis.
+        Executes native neural dispatch via local GPU/Ollama backend or rich semantic conversational synthesis.
         """
         t_start = time.perf_counter()
         first_token_sent = False
         token_count = 0
+
+        # Attempt neural dispatch via local Ollama acceleration engine
+        try:
+            import urllib.request
+            tags_req = urllib.request.Request("http://localhost:11434/api/tags", method="GET")
+            with urllib.request.urlopen(tags_req, timeout=1.0) as resp:
+                if resp.status == 200:
+                    tags_data = json.loads(resp.read().decode("utf-8"))
+                    models = [m.get("name") for m in tags_data.get("models", []) if m.get("name")]
+                    if models:
+                        # Prioritize loaded model, then qwen3.8:27b, then qwen3.6:27b, then first available
+                        target_model = self.loaded_model_name
+                        if not target_model or not any(target_model == m for m in models):
+                            priority_candidates = ["qwen3.8:27b", "qwen3.6:27b-q4_K_M", "qwen3.6:27b", "qwen3.6:35b", "deepseek-r1:70b", "deepseek-r1:14b"]
+                            for cand in priority_candidates:
+                                if any(cand in m for m in models):
+                                    target_model = next(m for m in models if cand in m)
+                                    break
+                            if not target_model:
+                                target_model = models[0]
+
+                        gen_payload = {
+                            "model": target_model,
+                            "messages": [
+                                {"role": "system", "content": system_prompt},
+                                {"role": "user", "content": prompt}
+                            ],
+                            "stream": True,
+                            "options": {
+                                "temperature": temperature,
+                                "num_predict": max(max_tokens or 16384, 16384),
+                                "num_ctx": 65536,
+                                "top_p": 0.95,
+                                "top_k": 40,
+                                "repeat_penalty": 1.1,
+                            }
+                        }
+                        gen_req = urllib.request.Request(
+                            "http://localhost:11434/api/chat",
+                            data=json.dumps(gen_payload).encode("utf-8"),
+                            headers={"Content-Type": "application/json"}
+                        )
+                        with urllib.request.urlopen(gen_req, timeout=300) as gen_resp:
+                            for line in gen_resp:
+                                if not line:
+                                    continue
+                                try:
+                                    chunk_json = json.loads(line.decode("utf-8"))
+                                    msg_chunk = chunk_json.get("message", {})
+                                    token_text = msg_chunk.get("content", "")
+                                    if token_text:
+                                        token_count += 1
+                                        now = time.perf_counter()
+                                        if not first_token_sent:
+                                            ttft_ms = round((now - t_start) * 1000, 1)
+                                            first_token_sent = True
+                                        else:
+                                            ttft_ms = 0.0
+                                        current_speed = round(token_count / max(now - t_start, 0.001), 1)
+                                        yield {
+                                            "token": token_text,
+                                            "token_index": token_count,
+                                            "ttft_ms": ttft_ms if token_count == 1 else None,
+                                            "speed_tok_s": current_speed,
+                                            "done": chunk_json.get("done", False)
+                                        }
+                                except Exception:
+                                    continue
+                            return
+        except Exception:
+            pass # Fallback to local semantic synthesis below
 
         p_lower = (prompt or "").lower()
 

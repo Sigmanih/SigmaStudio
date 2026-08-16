@@ -29,7 +29,7 @@ def handle_api_config_get(self):
     safe_cfg['api_url'] = active_prov.get('api_url', '')
     safe_cfg['has_api_key'] = active_prov.get('has_api_key', False)
     for k in ('temperature', 'max_tokens', 'top_p', 'top_k', 'repeat_penalty', 'num_ctx', 'seed'):
-        safe_cfg[k] = active_prov.get(k, {'temperature': 0.7, 'max_tokens': 8192, 'top_p': 0.9,
+        safe_cfg[k] = active_prov.get(k, {'temperature': 0.7, 'max_tokens': 16384, 'top_p': 0.95,
                 'top_k': 40, 'repeat_penalty': 1.1, 'num_ctx': 32768, 'seed': 0}[k])
     # Resolve manifesto for the active model
     from core.chat_handler import _resolve_manifesto_for_model

@@ -521,8 +521,8 @@ export default function AIConfigTab({ openTab }) {
   // Global Inference Parameters
   const [parameters, setParameters] = useState({
     temperature: 0.7,
-    max_tokens: 8192,
-    top_p: 0.9,
+    max_tokens: 16384,
+    top_p: 0.95,
     top_k: 40,
     repeat_penalty: 1.1,
     num_ctx: 32768,
@@ -1701,7 +1701,7 @@ export default function AIConfigTab({ openTab }) {
                 <span style={{ fontSize: '0.78rem', fontWeight: 800, color: '#faa03c' }}>{parameters.num_ctx.toLocaleString()} token</span>
               </div>
               <div style={{ display: 'flex', gap: '5px', flexWrap: 'wrap', marginBottom: '6px' }}>
-                {[4096, 8192, 16384, 32768, 65536, 131072].map(ctx => (
+                {[8192, 16384, 32768, 65536, 131072, 262144].map(ctx => (
                   <button
                     key={ctx}
                     onClick={() => setParameters(p => ({ ...p, num_ctx: ctx }))}
@@ -1729,7 +1729,7 @@ export default function AIConfigTab({ openTab }) {
                 <span style={{ fontSize: '0.78rem', fontWeight: 800, color: '#00d2ff' }}>{parameters.max_tokens.toLocaleString()} token</span>
               </div>
               <div style={{ display: 'flex', gap: '5px', flexWrap: 'wrap' }}>
-                {[2048, 4096, 8192, 16384].map(tok => (
+                {[4096, 8192, 16384, 32768, 65536].map(tok => (
                   <button
                     key={tok}
                     onClick={() => setParameters(p => ({ ...p, max_tokens: tok }))}
@@ -1744,7 +1744,7 @@ export default function AIConfigTab({ openTab }) {
                       color: parameters.max_tokens === tok ? '#ffffff' : subtitleColor
                     }}
                   >
-                    {tok}
+                    {tok >= 1024 ? `${tok / 1024}K` : tok}
                   </button>
                 ))}
               </div>

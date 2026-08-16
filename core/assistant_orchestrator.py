@@ -106,12 +106,12 @@ def handle_switch_agent(self, agent_name: str, message: str, history: list, bot_
     tuned_cfg = apply_execution_profile(profile_key, active_prov_cfg)
 
     temperature = tuned_cfg.get("temperature", 0.3)
-    max_tokens = tuned_cfg.get("max_tokens", 8192)
-    top_p = tuned_cfg.get("top_p", 0.9)
-    num_ctx = tuned_cfg.get("num_ctx", 16384)
+    max_tokens = tuned_cfg.get("max_tokens", 16384)
+    top_p = tuned_cfg.get("top_p", 0.95)
+    num_ctx = tuned_cfg.get("num_ctx", 32768)
     top_k = tuned_cfg.get("top_k", 40)
     repeat_penalty = tuned_cfg.get("repeat_penalty", 1.1)
-    timeout = tuned_cfg.get("timeout", 120)
+    timeout = tuned_cfg.get("timeout", 180)
 
     log.info("Centralino Switchboard -> Agent '%s' | Profilo: '%s' | Temp: %.2f | Ctx: %d",
              agent_name, profile_key, temperature, num_ctx)
