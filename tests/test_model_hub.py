@@ -85,7 +85,29 @@ class TestModelHubAPI(unittest.TestCase):
         self.assertTrue(data["task"].get("is_repo_download"))
         self.assertEqual(data["task"].get("total_files"), 2)
 
+    def test_download_retry_endpoint(self):
+        """POST /api/models/hf/download/retry should resume an interrupted download task."""
+        # 1. Start a download task
+        start_res = self.client.post("/api/models/hf/download/start", json={
+            "model_id": "test/model",
+            "filename": "test.safetensors",
+            "download_url": "https://huggingface.co/test/model/resolve/main/test.safetensors"
+        })
+        task_id = start_res.json()["task"]["task_id"]
+
+        # 2. Cancel it
+        self.client.post("/api/models/hf/download/cancel", json={"task_id": task_id})
+
+        # 3. Retry / Resume it
+        retry_res = self.client.post("/api/models/hf/download/retry", json={"task_id": task_id})
+        self.assertEqual(retry_res.status_code, 200)
+        data = retry_res.json()
+        self.assertTrue(data.get("success"))
+        self.assertEqual(data["task"]["task_id"], task_id)
+        self.assertIn(data["task"]["status"], ["queued", "downloading", "completed"])
+
     def test_local_models_list_endpoint(self):
+
         """GET /api/models/local/list should return 200 with local models list."""
         response = self.client.get("/api/models/local/list")
         self.assertEqual(response.status_code, 200)

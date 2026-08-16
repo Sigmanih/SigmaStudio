@@ -108,9 +108,28 @@ export default function ModelHub({ addToast }) {
   const subBg = isLight ? '#f8f5ee' : 'rgba(255, 255, 255, 0.03)';
   const subBorder = isLight ? '1px solid rgba(190, 160, 110, 0.22)' : '1px solid rgba(255, 255, 255, 0.06)';
 
-  // Find currently downloading task if any
-  const currentRunningTask = activeDownloads.find(d => d.status === 'downloading');
+  const handleRetryTask = async (taskId) => {
+    try {
+      const res = await fetch('/api/models/hf/download/retry', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ task_id: taskId })
+      });
+      const json = await res.json();
+      if (json.success) {
+        if (addToast) addToast(`🚀 Ripresa del download in corso dai file salvati su disco!`, 'success');
+        fetchDownloads();
+      }
+    } catch (e) {
+      if (addToast) addToast(`Errore: ${e.message}`, 'error');
+    }
+  };
+
+  // Find currently downloading task or last interrupted task if any
+  const currentRunningTask = activeDownloads.find(d => d.status === 'downloading' || d.status === 'queued');
+  const lastFailedTask = activeDownloads.find(d => d.status === 'failed' || d.status === 'cancelled');
   const totalActiveTasksCount = activeDownloads.filter(d => d.status === 'downloading' || d.status === 'queued').length;
+
 
   return (
     <div className="model-hub-container" style={{ backgroundColor: isLight ? '#f4efe4' : '#07090e', color: textPrimary }}>
@@ -303,7 +322,7 @@ export default function ModelHub({ addToast }) {
         </div>
       )}
 
-      {/* 4. SLEEK LIVE FLOATING DOWNLOAD HUD BANNER (Visible across any tab when downloading) */}
+      {/* 4. SLEEK LIVE FLOATING DOWNLOAD HUD BANNER (Visible across any tab when downloading or interrupted) */}
       {currentRunningTask && activeTab !== 'downloads' && (
         <div
           onClick={() => setActiveTab('downloads')}
@@ -359,6 +378,62 @@ export default function ModelHub({ addToast }) {
           </div>
         </div>
       )}
+
+      {!currentRunningTask && lastFailedTask && activeTab !== 'downloads' && (
+        <div
+          onClick={() => setActiveTab('downloads')}
+          style={{
+            position: 'sticky', bottom: '16px', zIndex: 100,
+            padding: '12px 18px', borderRadius: '14px',
+            background: isLight ? 'rgba(255, 255, 255, 0.96)' : 'rgba(13, 16, 25, 0.95)',
+            backdropFilter: 'blur(12px)',
+            border: '1.5px solid rgba(239, 68, 68, 0.4)',
+            boxShadow: '0 10px 30px rgba(239, 68, 68, 0.2)',
+            display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '14px',
+            cursor: 'pointer', transition: 'all 0.2s ease'
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px', minWidth: 0 }}>
+            <div style={{
+              width: '32px', height: '32px', borderRadius: '8px',
+              background: 'rgba(239, 68, 68, 0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0
+            }}>
+              <RotateCcw size={16} color="#ef4444" />
+            </div>
+            <div style={{ minWidth: 0 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <span style={{ fontSize: '0.82rem', fontWeight: 800, color: textPrimary, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                  Download Interrotto: {lastFailedTask.model_id}
+                </span>
+                <span style={{ fontSize: '0.78rem', fontWeight: 800, color: '#ef4444', fontFamily: 'monospace' }}>
+                  {lastFailedTask.progress_pct}%
+                </span>
+              </div>
+              <div style={{ fontSize: '0.68rem', color: '#10b981', marginTop: '2px', fontWeight: 700 }}>
+                💾 {lastFailedTask.downloaded_mb} MB già salvati su disco (riprende da dove si era fermato)
+              </div>
+            </div>
+          </div>
+
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0 }}>
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                handleRetryTask(lastFailedTask.task_id);
+              }}
+              style={{
+                padding: '6px 14px', borderRadius: '8px', border: 'none',
+                background: 'linear-gradient(135deg, #10b981, #00d2ff)', color: '#ffffff',
+                fontSize: '0.74rem', fontWeight: 800, cursor: 'pointer',
+                display: 'flex', alignItems: 'center', gap: '4px', boxShadow: '0 0 10px rgba(16, 185, 129, 0.3)'
+              }}
+            >
+              <RotateCcw size={12} /> Riprendi Ora
+            </button>
+          </div>
+        </div>
+      )}
+
 
       {/* 5. DEPLOY TO SIGMA ENGINE MODAL */}
       {deployTargetModel && (

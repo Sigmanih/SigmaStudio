@@ -295,6 +295,7 @@ try:
         handle_models_hf_search, handle_models_hf_details, handle_models_hf_downloads_list,
         handle_models_local_list, handle_models_config_get,
         handle_models_hf_download_start, handle_models_hf_download_repo, handle_models_hf_download_cancel,
+        handle_models_hf_download_retry, handle_models_hf_download_remove,
         handle_models_engine_load, handle_models_engine_unload, handle_models_config_save
     )
     FastAPIHandlerAdapter.handle_models_hf_search = handle_models_hf_search
@@ -305,9 +306,12 @@ try:
     FastAPIHandlerAdapter.handle_models_hf_download_start = handle_models_hf_download_start
     FastAPIHandlerAdapter.handle_models_hf_download_repo = handle_models_hf_download_repo
     FastAPIHandlerAdapter.handle_models_hf_download_cancel = handle_models_hf_download_cancel
+    FastAPIHandlerAdapter.handle_models_hf_download_retry = handle_models_hf_download_retry
+    FastAPIHandlerAdapter.handle_models_hf_download_remove = handle_models_hf_download_remove
     FastAPIHandlerAdapter.handle_models_engine_load = handle_models_engine_load
     FastAPIHandlerAdapter.handle_models_engine_unload = handle_models_engine_unload
     FastAPIHandlerAdapter.handle_models_config_save = handle_models_config_save
+
 
 except Exception as _mh_err:
     log.warning(f"[FastAPI] Avviso binding Model Hub: {_mh_err}")

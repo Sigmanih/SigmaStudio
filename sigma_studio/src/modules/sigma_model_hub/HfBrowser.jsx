@@ -223,6 +223,25 @@ export default function HfBrowser({ isLight, addToast, onDownloadStarted, active
     }
   };
 
+  const handleRetryDownload = async (taskId) => {
+    try {
+      const res = await fetch('/api/models/hf/download/retry', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ task_id: taskId })
+      });
+      const json = await res.json();
+      if (json.success) {
+        if (addToast) addToast(`🚀 Ripresa del download in corso dai file salvati su disco!`, 'success');
+        if (onDownloadStarted) onDownloadStarted(json.task);
+      } else {
+        if (addToast) addToast(`Errore ripresa: ${json.error}`, 'error');
+      }
+    } catch (e) {
+      if (addToast) addToast(`Errore: ${e.message}`, 'error');
+    }
+  };
+
   const handleCancelDownload = async (taskId) => {
     try {
       const res = await fetch('/api/models/hf/download/cancel', {
@@ -232,12 +251,13 @@ export default function HfBrowser({ isLight, addToast, onDownloadStarted, active
       });
       const json = await res.json();
       if (json.success) {
-        if (addToast) addToast(`Download annullato.`, 'info');
+        if (addToast) addToast(`Download annullato. File parziali preservati su disco.`, 'info');
       }
     } catch (e) {
       if (addToast) addToast(`Errore: ${e.message}`, 'error');
     }
   };
+
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', position: 'relative' }}>
@@ -537,6 +557,7 @@ export default function HfBrowser({ isLight, addToast, onDownloadStarted, active
               // Check if this model is currently in active download
               const activeTask = activeDownloads.find(t => t.model_id === m.id && (t.status === 'downloading' || t.status === 'queued'));
               const completedTask = activeDownloads.find(t => t.model_id === m.id && t.status === 'completed');
+              const failedTask = activeDownloads.find(t => t.model_id === m.id && (t.status === 'failed' || t.status === 'cancelled'));
 
               return (
                 <div
@@ -545,10 +566,14 @@ export default function HfBrowser({ isLight, addToast, onDownloadStarted, active
                   className="mh-card mh-card-hover"
                   style={{
                     padding: '16px', borderRadius: '14px',
-                    background: cardBg, border: activeTask ? '1.5px solid #00d2ff' : (selectedModel?.id === m.id ? '1.5px solid #ffb86c' : cardBorder),
+                    background: cardBg,
+                    border: activeTask
+                      ? '1.5px solid #00d2ff'
+                      : (failedTask ? '1.5px solid rgba(239, 68, 68, 0.4)' : (selectedModel?.id === m.id ? '1.5px solid #ffb86c' : cardBorder)),
                     cursor: 'pointer', display: 'flex', flexDirection: 'column', justifyContent: 'space-between', gap: '12px'
                   }}
                 >
+
                   <div>
                     <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '8px' }}>
                       <div>
@@ -704,6 +729,41 @@ export default function HfBrowser({ isLight, addToast, onDownloadStarted, active
                           </button>
                         </div>
                       </div>
+                    ) : failedTask ? (
+                      <div
+                        onClick={e => e.stopPropagation()}
+                        style={{
+                          marginTop: '10px', padding: '8px 10px', borderRadius: '8px',
+                          background: 'rgba(239, 68, 68, 0.08)', border: '1px solid rgba(239, 68, 68, 0.3)',
+                          display: 'flex', flexDirection: 'column', gap: '6px'
+                        }}
+                      >
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: '0.72rem' }}>
+                          <span style={{ color: '#ef4444', fontWeight: 800, display: 'flex', alignItems: 'center', gap: '4px' }}>
+                            <AlertTriangle size={12} /> Interrotto ({failedTask.progress_pct}%)
+                          </span>
+                          <button
+                            onClick={() => handleRetryDownload(failedTask.task_id)}
+                            style={{
+                              padding: '4px 10px', borderRadius: '6px', border: 'none',
+                              background: 'linear-gradient(135deg, #10b981, #00d2ff)', color: '#ffffff',
+                              fontSize: '0.68rem', fontWeight: 800, cursor: 'pointer',
+                              display: 'flex', alignItems: 'center', gap: '3px', boxShadow: '0 0 8px rgba(16, 185, 129, 0.3)'
+                            }}
+                          >
+                            <RotateCcw size={10} /> Riprendi
+                          </button>
+                        </div>
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: '0.62rem', color: textMuted }}>
+                          <span style={{ color: '#10b981' }}>💾 {failedTask.downloaded_mb} MB già salvati su disco</span>
+                          <button
+                            onClick={() => handleStartWholeRepoDownload(m.id)}
+                            style={{ background: 'none', border: 'none', color: textMuted, cursor: 'pointer', fontSize: '0.62rem', textDecoration: 'underline' }}
+                          >
+                            Ricomincia da zero
+                          </button>
+                        </div>
+                      </div>
                     ) : completedTask ? (
                       <div style={{
                         marginTop: '10px', padding: '7px 10px', borderRadius: '8px',
@@ -760,6 +820,7 @@ export default function HfBrowser({ isLight, addToast, onDownloadStarted, active
                         </button>
                       </div>
                     )}
+
                   </div>
                 </div>
               );

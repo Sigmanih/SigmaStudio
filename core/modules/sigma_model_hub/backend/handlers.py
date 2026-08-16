@@ -199,6 +199,42 @@ def handle_models_hf_download_cancel(self):
         self.send_json_response({"success": False, "error": str(e)}, 500)
 
 
+def handle_models_hf_download_retry(self):
+    """POST /api/models/hf/download/retry — Riprende/Riprova un download interrotto o fallito."""
+    try:
+        body = self.read_json_body() if hasattr(self, 'read_json_body') else {}
+        task_id = body.get("task_id")
+        if not task_id:
+            self.send_json_response({"success": False, "error": "task_id mancante"}, 400)
+            return
+
+        task = downloader_manager.retry_download(task_id)
+        if task:
+            self.send_json_response({"success": True, "task": task, "message": f"Download #{task_id} ripreso con successo."})
+        else:
+            self.send_json_response({"success": False, "error": f"Task #{task_id} non trovato."}, 404)
+    except Exception as e:
+        log.error("Error in handle_models_hf_download_retry: %s", e)
+        self.send_json_response({"success": False, "error": str(e)}, 500)
+
+
+def handle_models_hf_download_remove(self):
+    """POST /api/models/hf/download/remove — Rimuove un task completato o fallito dalla lista."""
+    try:
+        body = self.read_json_body() if hasattr(self, 'read_json_body') else {}
+        task_id = body.get("task_id")
+        if not task_id:
+            self.send_json_response({"success": False, "error": "task_id mancante"}, 400)
+            return
+
+        success = downloader_manager.remove_task(task_id)
+        self.send_json_response({"success": success, "message": f"Task #{task_id} rimosso." if success else "Task non trovato."})
+    except Exception as e:
+        log.error("Error in handle_models_hf_download_remove: %s", e)
+        self.send_json_response({"success": False, "error": str(e)}, 500)
+
+
+
 def handle_models_local_list(self):
     """GET /api/models/local/list — Restituisce elenco modelli scaricati in locale."""
     try:

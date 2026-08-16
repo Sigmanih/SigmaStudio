@@ -236,10 +236,13 @@ def register_post_handlers(handler_class):
         '/api/models/hf/download/start': 'handle_models_hf_download_start',
         '/api/models/hf/download/repo': 'handle_models_hf_download_repo',
         '/api/models/hf/download/cancel': 'handle_models_hf_download_cancel',
+        '/api/models/hf/download/retry': 'handle_models_hf_download_retry',
+        '/api/models/hf/download/remove': 'handle_models_hf_download_remove',
         '/api/models/engine/load': 'handle_models_engine_load',
         '/api/models/engine/unload': 'handle_models_engine_unload',
         '/api/models/config': 'handle_models_config_save',
     }
+
 
 
 
