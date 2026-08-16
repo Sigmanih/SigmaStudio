@@ -198,7 +198,14 @@ export default function DownloadManager({ isLight, addToast, onDeployRequested }
 
                     {isDone && (
                       <button
-                        onClick={() => onDeployRequested && onDeployRequested({ filename: t.filename, path: t.save_path, size_gb: (t.downloaded_mb / 1024).toFixed(1) })}
+                        onClick={() => onDeployRequested && onDeployRequested({
+                          filename: t.model_id || t.filename,
+                          name: t.model_id || t.filename,
+                          path: t.save_path,
+                          size_gb: (t.downloaded_mb / 1024).toFixed(1),
+                          size_label: `~${(t.downloaded_mb / 1024).toFixed(1)} GB`,
+                          format: t.is_repo_download ? 'Safetensors' : 'GGUF'
+                        })}
                         style={{
                           padding: '6px 14px', borderRadius: '8px',
                           border: 'none', background: 'linear-gradient(135deg, #00d2ff, #0090ff)',
@@ -209,6 +216,7 @@ export default function DownloadManager({ isLight, addToast, onDeployRequested }
                         <Zap size={13} /> ⚡ Avvia in SigmaEngine
                       </button>
                     )}
+
 
                     {(isFailed || isCancelled) && (
                       <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>

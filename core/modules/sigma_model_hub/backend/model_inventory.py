@@ -151,16 +151,36 @@ def deploy_model_to_sigma_engine(
     enable_moe_cache: bool = True
 ) -> Dict[str, Any]:
     """Registers and activates a local model inside UniversalSigmaEngine."""
-    if not os.path.exists(model_path):
-        return {"success": False, "error": f"File modello non trovato: {model_path}"}
+    resolved_path = model_path
 
-    model_name = os.path.basename(model_path).replace("--", "/")
+    if not os.path.exists(resolved_path):
+        # 1. Try relative to MODELS_DIR
+        candidate1 = os.path.join(MODELS_DIR, model_path)
+        candidate2 = os.path.join(MODELS_DIR, model_path.replace("/", "--"))
+        candidate3 = os.path.join(MODELS_DIR, model_path.replace("--", "/"))
+        if os.path.exists(candidate1):
+            resolved_path = candidate1
+        elif os.path.exists(candidate2):
+            resolved_path = candidate2
+        elif os.path.exists(candidate3):
+            resolved_path = candidate3
+        else:
+            # 2. Search in local models inventory
+            for m in scan_local_models():
+                if m.get("filename") == model_path or m.get("model_id") == model_path or m.get("display_name") == model_path:
+                    resolved_path = m.get("path")
+                    break
+
+    if not resolved_path or not os.path.exists(resolved_path):
+        return {"success": False, "error": f"File modello non trovato su disco: {model_path}"}
+
+    model_name = os.path.basename(resolved_path).replace("--", "/")
     
-    if os.path.isdir(model_path):
-        dir_files = [os.path.join(model_path, f) for f in os.listdir(model_path) if f.endswith((".safetensors", ".bin", ".gguf", ".pt"))]
-        file_size_gb = round(sum(os.path.getsize(f) for f in dir_files) / (1024**3), 2)
+    if os.path.isdir(resolved_path):
+        dir_files = [os.path.join(resolved_path, f) for f in os.listdir(resolved_path) if f.endswith((".safetensors", ".bin", ".gguf", ".pt"))]
+        file_size_gb = round(sum(os.path.getsize(f) for f in dir_files) / (1024**3), 2) if dir_files else 10.0
     else:
-        file_size_gb = round(os.path.getsize(model_path) / (1024**3), 2)
+        file_size_gb = round(os.path.getsize(resolved_path) / (1024**3), 2)
 
     # Calculate optimal tiering across available GPUs and RAM
     probe = UniversalHardwareProbe.probe_all()
@@ -170,7 +190,7 @@ def deploy_model_to_sigma_engine(
     ram_gb = probe.get("ram", {}).get("available_gb", 64.0)
 
     tiering = WeightSaliencyProfiler.partition_model_layers(
-        total_layers=32,
+        total_layers=32 if "27b" not in model_name.lower() and "70b" not in model_name.lower() else 64,
         vram_primary_gb=vram_0,
         vram_secondary_gb=vram_1,
         system_ram_gb=ram_gb,
@@ -182,14 +202,36 @@ def deploy_model_to_sigma_engine(
     sigma_engine.loaded_model_name = model_name
     sigma_engine.loaded_model = {
         "name": model_name,
-        "path": model_path,
+        "path": resolved_path,
         "format": "GGUF" if model_name.endswith(".gguf") else "Safetensors",
         "size_gb": file_size_gb,
-        "quantization": quantization or "Auto",
+        "quantization": quantization or "Auto (Tiered)",
         "backend": sigma_engine.active_backend,
         "tiering": tiering,
         "loaded_at": time.time()
     }
+
+    # Automatically set this model as active for Chat
+    try:
+        from core.ai_brain import load_ai_config, save_ai_config
+        cfg = load_ai_config()
+        cfg["active_model"] = model_name
+        cfg["active_provider"] = "sigma_engine"
+        if "providers" not in cfg:
+            cfg["providers"] = {}
+        if "sigma_engine" not in cfg["providers"]:
+            cfg["providers"]["sigma_engine"] = {
+                "label": "SigmaEngine (Nativo & Sharded)",
+                "endpoint": "http://localhost:8000/api/engine"
+            }
+        cfg["providers"]["sigma_engine"]["model"] = model_name
+        if "models" not in cfg["providers"]["sigma_engine"]:
+            cfg["providers"]["sigma_engine"]["models"] = []
+        if model_name not in cfg["providers"]["sigma_engine"]["models"]:
+            cfg["providers"]["sigma_engine"]["models"].insert(0, model_name)
+        save_ai_config(cfg)
+    except Exception as ex:
+        log.debug(f"[ModelInventory] Note updating ai_config: {ex}")
 
     log.info(f"[ModelInventory] Modello {model_name} caricato con successo in SigmaEngine!")
 
@@ -200,6 +242,7 @@ def deploy_model_to_sigma_engine(
         "tiering_plan": tiering,
         "active_backend": sigma_engine.active_backend
     }
+
 
 
 def unload_sigma_engine_model() -> Dict[str, Any]:

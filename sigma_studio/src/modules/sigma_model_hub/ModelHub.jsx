@@ -13,12 +13,13 @@ import EngineOptimizer from './EngineOptimizer';
 import './styles/model-hub.css';
 
 
-export default function ModelHub({ addToast }) {
+export default function ModelHub({ addToast, openTab }) {
   const { theme } = useApp();
   const isLight = theme === 'light';
 
   const [activeTab, setActiveTab] = useState('browse'); // 'optimizer' | 'browse' | 'downloads' | 'inventory' | 'settings'
   const [deployTargetModel, setDeployTargetModel] = useState(null);
+
 
   // Active Downloads Tracking
   const [activeDownloads, setActiveDownloads] = useState([]);
@@ -449,14 +450,23 @@ export default function ModelHub({ addToast }) {
         <SigmaDeployModal
           model={deployTargetModel}
           isLight={isLight}
+          addToast={addToast}
           onClose={() => setDeployTargetModel(null)}
           onSuccess={() => {
-            setDeployTargetModel(null);
             fetchEngineStatus();
-            if (addToast) addToast('⚡ Modello avviato con successo in SigmaEngine!', 'success');
+          }}
+          onNavigateToChat={() => {
+            if (openTab) {
+              openTab({ id: 'chat', title: 'Chat', type: 'chat' });
+            } else {
+              try {
+                window.dispatchEvent(new CustomEvent('open_tab', { detail: { type: 'chat' } }));
+              } catch (e) {}
+            }
           }}
         />
       )}
     </div>
   );
 }
+
