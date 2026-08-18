@@ -38,6 +38,24 @@ def _models_dir() -> str:
     return _active_models_dir()
 
 
+def _earliest_weight_time(folder: str, weight_files) -> float:
+    """
+    When this model first appeared on disk.
+
+    The oldest weight file, not the folder's own timestamp: a directory keeps
+    being touched as files are added, so it says when the download finished
+    rather than when it started, and it says nothing at all about a model that
+    was simply pointed at where it already lived.
+    """
+    times = []
+    for name in weight_files:
+        try:
+            times.append(os.path.getctime(os.path.join(folder, name)))
+        except Exception:
+            continue
+    return min(times) if times else os.path.getctime(folder)
+
+
 def scan_local_models(custom_dir: Optional[str] = None) -> List[Dict[str, Any]]:
     """Scans local disk for downloaded model files (.gguf, .safetensors, .bin, multi-shard repos)."""
     base_dir = custom_dir if custom_dir and os.path.exists(custom_dir) else _models_dir()
@@ -71,10 +89,13 @@ def scan_local_models(custom_dir: Optional[str] = None) -> List[Dict[str, Any]]:
 
                 if any(f.endswith(".gguf") for f in shard_files):
                     fmt = f"GGUF ({len(shard_files)} Shard)" if is_sharded else "GGUF"
+                    fmt_tag = "GGUF"
                 elif any(f.endswith(".safetensors") for f in shard_files):
                     fmt = f"Safetensors ({len(shard_files)} Shards • Completo)" if is_sharded else "Safetensors"
+                    fmt_tag = "SAFETENSORS"
                 else:
                     fmt = "PyTorch Bin"
+                    fmt_tag = "BIN"
 
                 quant_match = re.search(r'(Q[0-9]_[A-Z0-9_]+|FP16|FP32|BF16|FP8|INT8|INT4|AWQ|EXL2)', entry, re.IGNORECASE)
                 quantization = quant_match.group(1).upper() if quant_match else ("FP16 / BF16" if "safetensors" in fmt.lower() else "Standard")
@@ -95,6 +116,7 @@ def scan_local_models(custom_dir: Optional[str] = None) -> List[Dict[str, Any]]:
                     "path": full_entry_path,
                     "primary_file": primary_file,
                     "format": fmt,
+                    "format_tag": fmt_tag,
                     "quantization": quantization,
                     "is_repo_folder": True,
                     "total_shards": len(shard_files),
@@ -103,7 +125,11 @@ def scan_local_models(custom_dir: Optional[str] = None) -> List[Dict[str, Any]]:
                     "size_label": f"~{size_gb:.1f} GB" if size_gb < 1000 else f"~{size_gb/1000:.1f} TB",
                     "est_vram_gb": est_vram_gb,
                     "is_active_in_engine": is_active,
-                    "modified_at": time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(stat.st_mtime))
+                    "modified_at": time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(stat.st_mtime)),
+                    "added_at": time.strftime(
+                        '%Y-%m-%d %H:%M:%S',
+                        time.localtime(_earliest_weight_time(full_entry_path, shard_files))
+                    ),
                 })
             except Exception as ex:
                 log.debug(f"[ModelInventory] Error reading directory {full_entry_path}: {ex}")
@@ -117,6 +143,8 @@ def scan_local_models(custom_dir: Optional[str] = None) -> List[Dict[str, Any]]:
                 size_mb = round(size_bytes / (1024**2), 1)
 
                 fmt = "GGUF" if entry.endswith(".gguf") else ("Safetensors" if entry.endswith(".safetensors") else "PyTorch Bin")
+                fmt_tag = ("GGUF" if entry.endswith(".gguf")
+                           else "SAFETENSORS" if entry.endswith(".safetensors") else "BIN")
                 quant_match = re.search(r'(Q[0-9]_[A-Z0-9_]+|FP16|FP32|BF16|FP8|INT8|INT4|AWQ|EXL2)', entry, re.IGNORECASE)
                 quantization = quant_match.group(1).upper() if quant_match else "Standard"
                 est_vram_gb = round(size_gb * 1.15 + 0.8, 1)
@@ -133,6 +161,7 @@ def scan_local_models(custom_dir: Optional[str] = None) -> List[Dict[str, Any]]:
                     "path": full_entry_path,
                     "primary_file": full_entry_path,
                     "format": fmt,
+                    "format_tag": fmt_tag,
                     "quantization": quantization,
                     "is_repo_folder": False,
                     "total_shards": 1,
@@ -141,7 +170,8 @@ def scan_local_models(custom_dir: Optional[str] = None) -> List[Dict[str, Any]]:
                     "size_label": f"~{size_gb:.1f} GB" if size_gb < 1000 else f"~{size_gb/1000:.1f} TB",
                     "est_vram_gb": est_vram_gb,
                     "is_active_in_engine": is_active,
-                    "modified_at": time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(stat.st_mtime))
+                    "modified_at": time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(stat.st_mtime)),
+                    "added_at": time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(stat.st_ctime)),
                 })
             except Exception as ex:
                 log.debug(f"[ModelInventory] Error reading file {full_entry_path}: {ex}")

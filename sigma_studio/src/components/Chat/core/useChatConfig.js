@@ -63,15 +63,12 @@ export function useChatConfig({ saveSessionsState, sessionRefs }) {
 
   useEffect(() => { refs.manifestoManuallySelected.current = manifestoManuallySelected; }, [manifestoManuallySelected]);
 
-  const SIGMA_NATIVE_MODELS = [
-    { name: 'sigma-native:latest', size: 'Hardware Native', provider: 'sigma_engine' },
-    { name: 'sigma-minerva-1b-base-v1.0', size: '1.0 GB', provider: 'sigma_engine' },
-    { name: 'sigma-router:latest', size: '1.0 GB', provider: 'sigma_engine' },
-    { name: 'ailo-340m-v4', size: '683 MB', provider: 'sigma_engine' },
-    { name: 'llama4:16x17b (MoE Sharded)', size: '67 GB (Tier 0-3)', provider: 'sigma_engine' },
-    { name: 'deepseek-r1:70b (Sigma Native)', size: '42 GB (FlashAttn-2)', provider: 'sigma_engine' },
-    { name: 'qwen2.5-coder:7b (Sigma Accelerated)', size: '4.7 GB', provider: 'sigma_engine' },
-  ];
+  // The SIGMA list is whatever is actually installed under the models
+  // directory, nothing more. It used to be seeded with a fixed roster of
+  // placeholder names (sigma-native, llama4:16x17b, deepseek-r1:70b...) that
+  // existed nowhere on disk: selecting one produced a load failure, and they
+  // buried the real models the user had just downloaded or converted.
+  const SIGMA_NATIVE_MODELS = [];
 
   const fetchOllamaModels = useCallback(async (customConfigs) => {
     setLoadingModels(true);

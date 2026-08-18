@@ -203,6 +203,12 @@ def _stream_chat_response(handler, messages, ai_cfg, model, provider,
     calculated_tps = None
     load_duration_ms = None
 
+    def _emit_status_text(text: str) -> None:
+        """Forwards an engine status line to the client without metering it."""
+        if not text:
+            return
+        _sse_send(handler, {"token": text, "channel": "answer", "status": True})
+
     def _emit(channel: str, text: str) -> None:
         nonlocal full_text, full_thinking, has_sent_thinking_status, has_sent_generating_status, t_first_token, generated_token_count
         if not text:
@@ -237,6 +243,14 @@ def _stream_chat_response(handler, messages, ai_cfg, model, provider,
                     return False
                 # Native reasoning channel: already separated by the provider.
                 _emit("thinking", chunk.get("thinking", ""))
+                # Status notices (model loading, placement summary) are shown
+                # but never timed or counted: starting the clock on them folds
+                # the model load into throughput, and their words are not the
+                # model's output.
+                if chunk.get("status"):
+                    _emit_status_text(chunk.get("token", ""))
+                    continue
+
                 # Answer channel: may still carry inline <think> blocks.
                 for channel, text in router.feed(chunk.get("token", "")):
                     _emit(channel, text)

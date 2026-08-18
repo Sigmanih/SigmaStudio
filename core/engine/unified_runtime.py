@@ -797,6 +797,10 @@ class UniversalSigmaEngine:
                     "sui tier di memoria disponibili...\n\n"
                 ),
                 "token_index": 1,
+                # Marked as status so the caller shows it without counting it
+                # as generated output: these words are not the model's, and
+                # timing from here folds the load into the throughput figure.
+                "status": True,
                 "done": False,
             }
             result = self.load_native_model(target_model)
@@ -811,6 +815,7 @@ class UniversalSigmaEngine:
             yield {
                 "token": f"✅ {self._describe_load(result)}\n\n",
                 "token_index": 2,
+                "status": True,
                 "done": False,
             }
 
@@ -877,21 +882,35 @@ class UniversalSigmaEngine:
             thread.start()
 
             first_token_sent = False
+            first_token_at = t_start
             for token_text in streamer:
                 if not token_text:
                     continue
                 token_count += 1
                 now = time.perf_counter()
 
-                chunk: Dict[str, Any] = {
-                    "token": token_text,
-                    "token_index": token_count,
-                    "speed_tok_s": round(token_count / max(now - t_start, 0.001), 1),
-                    "done": False,
-                }
+                # Throughput is reported for the decode phase alone. Prompt
+                # processing is a one-off cost that scales with the prompt, and
+                # folding it in makes a healthy model look several times slower
+                # as soon as the conversation carries real context. It is
+                # reported separately, as time-to-first-token.
                 if not first_token_sent:
-                    chunk["ttft_ms"] = round((now - t_start) * 1000, 1)
+                    first_token_at = now
+                    chunk = {
+                        "token": token_text,
+                        "token_index": token_count,
+                        "ttft_ms": round((now - t_start) * 1000, 1),
+                        "done": False,
+                    }
                     first_token_sent = True
+                else:
+                    decode_seconds = max(now - first_token_at, 1e-3)
+                    chunk = {
+                        "token": token_text,
+                        "token_index": token_count,
+                        "speed_tok_s": round((token_count - 1) / decode_seconds, 1),
+                        "done": False,
+                    }
                 yield chunk
 
             thread.join(timeout=5.0)
@@ -905,12 +924,14 @@ class UniversalSigmaEngine:
                 }
                 return
 
-            elapsed = time.perf_counter() - t_start
+            now = time.perf_counter()
+            decode_seconds = max(now - first_token_at, 1e-3)
             yield {
                 "token": "",
                 "token_index": token_count + 1,
-                "speed_tok_s": round(token_count / max(elapsed, 0.001), 1),
+                "speed_tok_s": round(max(token_count - 1, 1) / decode_seconds, 1),
                 "total_tokens": token_count,
+                "prefill_ms": round((first_token_at - t_start) * 1000, 1),
                 "done": True,
             }
 

@@ -47,99 +47,166 @@ def _save_hw_config(cfg: dict) -> None:
         json.dump(cfg, f, indent=2)
 
 
+def _nvidia_smi_telemetry() -> Dict[int, Dict[str, Any]]:
+    """
+    Real per-GPU telemetry from the NVIDIA driver.
+
+    nvidia-smi ships with every driver, so this needs no extra dependency, and
+    it reports what the device is actually doing. Utilisation, temperature,
+    power and fan speed have no equivalent in torch, and device memory it does
+    report covers every process, not just ours.
+    """
+    import subprocess
+
+    fields = ("index,name,utilization.gpu,memory.used,memory.total,"
+              "temperature.gpu,power.draw,fan.speed")
+    try:
+        result = subprocess.run(
+            ["nvidia-smi", "--query-gpu=" + fields,
+             "--format=csv,noheader,nounits"],
+            capture_output=True, text=True, timeout=6,
+        )
+        if result.returncode != 0:
+            return {}
+    except Exception as exc:
+        log.debug("nvidia-smi unavailable: %s", exc)
+        return {}
+
+    def number(raw):
+        try:
+            return float(raw)
+        except (TypeError, ValueError):
+            return None          # "[N/A]" on cards without the sensor
+
+    telemetry: Dict[int, Dict[str, Any]] = {}
+    for line in result.stdout.strip().splitlines():
+        parts = [p.strip() for p in line.split(",")]
+        if len(parts) < 8:
+            continue
+        try:
+            index = int(parts[0])
+        except ValueError:
+            continue
+        telemetry[index] = {
+            "name": parts[1],
+            "gpu_util_pct": number(parts[2]),
+            "vram_used_mb": number(parts[3]),
+            "vram_total_mb": number(parts[4]),
+            "temp_c": number(parts[5]),
+            "power_draw_w": number(parts[6]),
+            "fan_speed_pct": number(parts[7]),
+        }
+    return telemetry
+
+
 def _detect_all_gpus(cpu_pct: float) -> List[Dict[str, Any]]:
-    """Detects all dedicated NVIDIA CUDA GPUs and integrated AMD/Intel GPUs."""
+    """
+    Reports every GPU with measured values.
+
+    Nothing here is synthesised. The previous version derived GPU utilisation
+    from CPU load, computed temperature and power from the device index, held
+    VRAM usage above a fixed floor, and invented a complete RTX 5070 Ti when it
+    found no GPU at all -- so the panel showed plausible numbers that described
+    no real hardware. Fields the system cannot measure are reported as null so
+    the UI can say "unknown" instead of showing a fabricated reading.
+    """
     gpus_list: List[Dict[str, Any]] = []
     seen_names = set()
+    telemetry = _nvidia_smi_telemetry()
 
-    # 1. Dedicated NVIDIA GPUs via PyTorch CUDA
     try:
         import torch
-        if torch.cuda.is_available():
-            for i in range(torch.cuda.device_count()):
-                props = torch.cuda.get_device_properties(i)
-                total_mb = round(props.total_memory / (1024**2), 0)
-                alloc_mb = round(torch.cuda.memory_allocated(i) / (1024**2), 0)
-                res_mb = round(torch.cuda.memory_reserved(i) / (1024**2), 0)
-                used_mb = max(alloc_mb, res_mb, 2400 if i == 0 else 600)
-                free_mb = max(0, total_mb - used_mb)
-                usage_pct = round((used_mb / total_mb) * 100, 1) if total_mb > 0 else 0
+        cuda_available = torch.cuda.is_available()
+    except Exception:
+        cuda_available = False
 
-                gpus_list.append({
-                    "index": i,
-                    "name": props.name,
-                    "type": "NVIDIA CUDA Dedicated",
-                    "vram_total_mb": int(total_mb),
-                    "vram_used_mb": int(used_mb),
-                    "vram_free_mb": int(free_mb),
-                    "vram_usage_pct": usage_pct,
-                    "gpu_util_pct": min(100.0, round(float(cpu_pct * 0.7 + (6.0 if i == 0 else 2.0)), 1)),
-                    "temp_c": 42.0 + (i * 3.0),
-                    "power_draw_w": 28.5 + (i * 8.0),
-                    "fan_speed_pct": 30 if i == 0 else 0,
-                    "is_integrated": False
-                })
-                seen_names.add(props.name.lower())
-    except Exception as e:
-        log.debug("Torch CUDA probe failed: %s", e)
+    if cuda_available:
+        import torch
+        for i in range(torch.cuda.device_count()):
+            props = torch.cuda.get_device_properties(i)
+            measured = telemetry.get(i, {})
 
-    # 2. Integrated AMD / Intel GPUs via Windows CIM (Win32_VideoController)
+            total_mb = measured.get("vram_total_mb")
+            used_mb = measured.get("vram_used_mb")
+            if total_mb is None or used_mb is None:
+                # No driver telemetry: mem_get_info still reports true device
+                # occupancy, unlike the torch allocator counters.
+                try:
+                    free_bytes, total_bytes = torch.cuda.mem_get_info(i)
+                    total_mb = total_bytes / (1024 ** 2)
+                    used_mb = (total_bytes - free_bytes) / (1024 ** 2)
+                except Exception:
+                    total_mb = props.total_memory / (1024 ** 2)
+                    used_mb = None
+
+            usage_pct = (
+                round(used_mb / total_mb * 100, 1)
+                if used_mb is not None and total_mb else None
+            )
+
+            gpus_list.append({
+                "index": i,
+                "name": props.name,
+                "type": "NVIDIA CUDA Dedicated",
+                "vram_total_mb": int(total_mb) if total_mb else None,
+                "vram_used_mb": int(used_mb) if used_mb is not None else None,
+                "vram_free_mb": (
+                    int(total_mb - used_mb)
+                    if used_mb is not None and total_mb else None
+                ),
+                "vram_usage_pct": usage_pct,
+                "gpu_util_pct": measured.get("gpu_util_pct"),
+                "temp_c": measured.get("temp_c"),
+                "power_draw_w": measured.get("power_draw_w"),
+                "fan_speed_pct": measured.get("fan_speed_pct"),
+                "telemetry_source": "nvidia-smi" if measured else "torch",
+                "is_integrated": False,
+            })
+            seen_names.add(props.name.lower())
+
+    # Integrated GPUs: enumerable on Windows, but with no usage telemetry. They
+    # are listed so the user sees the whole picture, with the unmeasurable
+    # fields left null rather than filled in with invented values.
     if sys.platform == "win32":
         try:
             import subprocess
-            cmd = ["powershell", "-NoProfile", "-Command", "Get-CimInstance Win32_VideoController | Select-Object Name, AdapterRAM, DriverVersion | ConvertTo-Json"]
-            res = subprocess.run(cmd, capture_output=True, text=True, timeout=3)
+            cmd = ["powershell", "-NoProfile", "-Command",
+                   "Get-CimInstance Win32_VideoController | "
+                   "Select-Object Name, AdapterRAM | ConvertTo-Json"]
+            res = subprocess.run(cmd, capture_output=True, text=True, timeout=6)
             if res.returncode == 0 and res.stdout.strip():
                 adapters = json.loads(res.stdout)
                 if isinstance(adapters, dict):
                     adapters = [adapters]
                 for adapter in adapters:
-                    name = adapter.get("Name", "")
+                    name = (adapter.get("Name") or "").strip()
                     if not name or name.lower() in seen_names:
                         continue
-                    
-                    # Calculate VRAM
-                    ram_bytes = adapter.get("AdapterRAM") or 2147483648
-                    vram_mb = int(min(max(ram_bytes // (1024**2), 512), 16384))
-                    if "amd" in name.lower() or "radeon" in name.lower():
-                        vram_mb = 2048 # 2 GB shared standard for Ryzen iGPU
-
-                    used_mb = 350
-                    next_idx = len(gpus_list)
+                    ram_bytes = adapter.get("AdapterRAM")
+                    vram_mb = int(ram_bytes // (1024 ** 2)) if ram_bytes else None
+                    is_amd = "amd" in name.lower() or "radeon" in name.lower()
                     gpus_list.append({
-                        "index": next_idx,
+                        "index": len(gpus_list),
                         "name": name,
-                        "type": "AMD Radeon iGPU (DirectML/DirectX 12)" if "amd" in name.lower() or "radeon" in name.lower() else "Integrated Graphics",
+                        "type": ("AMD Radeon iGPU (DirectML/DirectX 12)"
+                                 if is_amd else "Integrated Graphics"),
                         "vram_total_mb": vram_mb,
-                        "vram_used_mb": used_mb,
-                        "vram_free_mb": vram_mb - used_mb,
-                        "vram_usage_pct": round((used_mb / vram_mb) * 100, 1),
-                        "gpu_util_pct": round(float(cpu_pct * 0.4 + 1.0), 1),
-                        "temp_c": 38.0,
-                        "power_draw_w": 12.0,
-                        "fan_speed_pct": 0,
-                        "is_integrated": True
+                        "vram_used_mb": None,
+                        "vram_free_mb": None,
+                        "vram_usage_pct": None,
+                        "gpu_util_pct": None,
+                        "temp_c": None,
+                        "power_draw_w": None,
+                        "fan_speed_pct": None,
+                        "telemetry_source": "none",
+                        "is_integrated": True,
                     })
                     seen_names.add(name.lower())
         except Exception as ex:
             log.debug("CIM VideoController query failed: %s", ex)
 
-    if not gpus_list:
-        gpus_list.append({
-            "index": 0,
-            "name": "NVIDIA GeForce RTX 5070 Ti",
-            "type": "NVIDIA CUDA Dedicated",
-            "vram_total_mb": 16384,
-            "vram_used_mb": 2400,
-            "vram_free_mb": 13984,
-            "vram_usage_pct": 14.6,
-            "gpu_util_pct": 8.0,
-            "temp_c": 42.0,
-            "power_draw_w": 28.0,
-            "fan_speed_pct": 30,
-            "is_integrated": False
-        })
-
+    # No placeholder GPU when none is present: a machine without one must say
+    # so, not display a discrete card it does not have.
     return gpus_list
 
 

@@ -110,6 +110,7 @@ def register_get_handlers(handler_class):
         '/api/models/config': 'handle_models_config_get',
         '/api/models/convert/info': 'handle_models_convert_info',
         '/api/models/convert/jobs': 'handle_models_convert_jobs',
+        '/api/models/browse': 'handle_models_browse_dirs',
     }
     # Merge, never replace. Optional modules register their own routes
     # through the module loader, which runs before this; assigning a fresh

@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { HardDrive, Zap, RefreshCw, CheckCircle2, Trash2, Folder, Power, Activity } from 'lucide-react';
 
-export default function LocalInventory({ isLight, addToast, onDeployRequested }) {
+export default function LocalInventory({ isLight, addToast, onDeployRequested,
+                                         activeDownloads = [] }) {
   const [models, setModels] = useState([]);
   const [loading, setLoading] = useState(true);
   const [unloading, setUnloading] = useState(false);
@@ -89,6 +90,43 @@ export default function LocalInventory({ isLight, addToast, onDeployRequested })
         </div>
       </div>
 
+      {activeDownloads.length > 0 && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+          <div style={{ fontSize: '0.78rem', fontWeight: 800, color: textPrimary }}>
+            Download in corso
+          </div>
+          {activeDownloads.map(task => (
+            <div key={task.task_id} style={{
+              padding: '12px 16px', borderRadius: '12px',
+              background: cardBg, border: '1.5px solid rgba(0, 210, 255, 0.35)',
+              display: 'flex', flexDirection: 'column', gap: '7px',
+            }}>
+              <div style={{
+                display: 'flex', justifyContent: 'space-between', gap: '10px',
+                fontSize: '0.82rem', fontWeight: 700, color: textPrimary,
+              }}>
+                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {task.repo_id || task.filename}
+                </span>
+                <span style={{ color: textMuted, fontWeight: 600, flexShrink: 0 }}>
+                  {task.progress_pct}%
+                </span>
+              </div>
+              <div style={{ height: '5px', borderRadius: '3px', background: 'rgba(255,255,255,0.08)' }}>
+                <div style={{
+                  width: `${task.progress_pct}%`, height: '100%', borderRadius: '3px',
+                  background: 'linear-gradient(90deg,#00d2ff,#3a7bd5)',
+                  transition: 'width 0.4s ease',
+                }} />
+              </div>
+              <div style={{ fontSize: '0.68rem', color: textMuted }}>
+                {task.downloaded_label || ''} {task.status}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
       {loading ? (
         <div style={{ textAlign: 'center', padding: '40px', color: textMuted }}>
           <Activity className="mh-spin" size={20} color="#00d2ff" style={{ margin: '0 auto 8px' }} />
@@ -120,6 +158,17 @@ export default function LocalInventory({ isLight, addToast, onDeployRequested })
                   <span style={{ fontSize: '0.88rem', fontWeight: 800, color: textPrimary, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                     {m.filename}
                   </span>
+                  {m.format_tag && (
+                    <span style={{
+                      fontSize: '0.62rem', padding: '1px 6px', borderRadius: '4px',
+                      fontWeight: 800,
+                      background: m.format_tag === 'GGUF'
+                        ? 'rgba(34, 197, 94, 0.15)' : 'rgba(0, 210, 255, 0.15)',
+                      color: m.format_tag === 'GGUF' ? '#22c55e' : '#00d2ff',
+                    }}>
+                      {m.format_tag}
+                    </span>
+                  )}
                   <span style={{
                     fontSize: '0.62rem', padding: '1px 6px', borderRadius: '4px',
                     background: 'rgba(188, 140, 255, 0.15)', color: '#bc8cff', fontWeight: 800
@@ -136,7 +185,8 @@ export default function LocalInventory({ isLight, addToast, onDeployRequested })
                   )}
                 </div>
                 <div style={{ fontSize: '0.68rem', color: textMuted, marginTop: '3px' }}>
-                  Dimensione: {m.size_gb} GB • VRAM Stimata: ~{m.est_vram_gb} GB • Modificato: {m.modified_at}
+                  {m.format} • {m.size_gb} GB • VRAM stimata ~{m.est_vram_gb} GB
+                  {m.added_at && <> • Aggiunto: {m.added_at}</>}
                 </div>
               </div>
 

@@ -326,6 +326,18 @@ class ModelInspector:
             head_dim = facts.hidden_size // facts.num_attention_heads
         facts.head_dim = head_dim
 
+        # Hybrid models interleave full attention with linear/recurrent layers,
+        # and GGUF records that as an interval rather than a list. Only the full
+        # attention layers hold a KV cache that grows with the context; treating
+        # all of them as full attention overstates the cache several-fold and
+        # makes the planner leave layers on the CPU that would have fit.
+        interval = geometry("full_attention_interval")
+        if interval > 1 and facts.num_hidden_layers:
+            facts.layer_types = [
+                "full_attention" if (i + 1) % interval == 0 else "linear_attention"
+                for i in range(facts.num_hidden_layers)
+            ]
+
         # GGUF ships already quantized, so the whole file is the resident cost;
         # there is no separate quantizable/resident split to model.
         facts.param_count = 0

@@ -366,6 +366,95 @@ def handle_models_convert_jobs(self):
         self.send_json_response({"success": False, "error": str(e)}, 500)
 
 
+def handle_models_browse_dirs(self):
+    """
+    GET /api/models/browse — Lists subdirectories, for picking a models folder.
+
+    A server-side browser rather than a file input: the browser only ever hands
+    back a relative name for a chosen directory, and the path this setting needs
+    is an absolute one on the machine running the engine.
+    """
+    try:
+        from urllib.parse import urlparse, parse_qs
+        from core.model_paths import models_dir
+
+        query = parse_qs(urlparse(self.path).query)
+        requested = (query.get("path", [""])[0] or "").strip()
+
+        if not requested:
+            current = models_dir()
+            base = os.path.dirname(current) or current
+        else:
+            base = os.path.abspath(requested)
+
+        if not os.path.isdir(base):
+            self.send_json_response(
+                {"success": False, "error": f"Non e' una cartella: {base}"}, 400)
+            return
+
+        entries = []
+        for name in sorted(os.listdir(base)):
+            full = os.path.join(base, name)
+            if not os.path.isdir(full) or name.startswith("."):
+                continue
+            entries.append({
+                "name": name, "path": full, "has_models": _holds_models(full),
+            })
+
+        parent = os.path.dirname(base.rstrip(os.sep))
+        self.send_json_response({
+            "success": True,
+            "current": base,
+            "parent": parent if parent and parent != base else None,
+            "entries": entries,
+            "roots": _list_drive_roots(),
+        })
+    except Exception as e:
+        log.error("Error in handle_models_browse_dirs: %s", e)
+        self.send_json_response({"success": False, "error": str(e)}, 500)
+
+
+def _holds_models(folder: str) -> bool:
+    """
+    Whether a folder is, or contains, model weights.
+
+    A models directory holds one subfolder per model rather than loose weight
+    files, so checking only its own contents marks the very folder the user is
+    looking for as empty.
+    """
+    suffixes = (".safetensors", ".gguf", ".bin")
+    try:
+        names = os.listdir(folder)
+    except Exception:
+        return False
+
+    if any(n.endswith(suffixes) for n in names):
+        return True
+
+    for name in names[:60]:          # one level down is enough, and bounded
+        child = os.path.join(folder, name)
+        if not os.path.isdir(child):
+            continue
+        try:
+            if any(n.endswith(suffixes) for n in os.listdir(child)):
+                return True
+        except Exception:
+            continue
+    return False
+
+
+def _list_drive_roots():
+    """Mount points to jump to, so the user is not stuck below one root."""
+    try:
+        import psutil
+        return [
+            p.mountpoint for p in psutil.disk_partitions(all=False)
+            if os.path.isdir(p.mountpoint)
+        ]
+    except Exception:
+        return []
+
+
 def register_routes(app=None) -> None:
     """Registra tutte le route HTTP di Model Hub su FastAPI / Handler Adapter."""
     get_routes = {
@@ -376,6 +465,7 @@ def register_routes(app=None) -> None:
         '/api/models/config': handle_models_config_get,
         '/api/models/convert/info': handle_models_convert_info,
         '/api/models/convert/jobs': handle_models_convert_jobs,
+        '/api/models/browse': handle_models_browse_dirs,
     }
 
     post_routes = {

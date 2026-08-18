@@ -1,5 +1,6 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
-import { STORAGE_KEY, MAX_HISTORY, createSession, loadSessions } from '../chatStorage';
+import { STORAGE_KEY, MAX_HISTORY, createSession, loadSessions,
+         loadActiveSessionId, saveActiveSessionId } from '../chatStorage';
 
 export function useChatSessions({ selectedModel, setSelectedModel, setActionsLog, saveMessagesImmediately, loadMessagesFromStorage, welcomeMsg }) {
   const [sessions, setSessions] = useState([]);
@@ -18,13 +19,35 @@ export function useChatSessions({ selectedModel, setSelectedModel, setActionsLog
   useEffect(() => { refs.sessionMessages.current = sessionMessages; }, [sessionMessages]);
   useEffect(() => { refs.activeSessionId.current = activeSessionId; }, [activeSessionId]);
 
-  // Carica le sessioni salvate da localStorage al mount
+  // Restore the conversation on mount.
+  //
+  // Only the session list used to be read back. The active session and its
+  // messages were never restored, so a page refresh left the panel with no
+  // active session and an empty message map: the history was still in
+  // localStorage under sigma_chat_msgs_<id>, it was simply never loaded, and
+  // the conversation looked lost.
   useEffect(() => {
     const saved = loadSessions();
-    if (saved.length > 0) {
-      setSessions(saved);
+    if (!saved.length) return;
+
+    setSessions(saved);
+
+    const storedId = loadActiveSessionId();
+    const target = saved.find(x => x.id === storedId) || saved[0];
+    if (!target) return;
+
+    const restored = loadMessagesFromStorage(target.id);
+    if (restored && restored.length > 0) {
+      setSessionMessages(prev => ({ ...prev, [target.id]: restored }));
     }
-  }, []);
+    setActiveSessionId(target.id);
+    if (setSelectedModel && target.model) setSelectedModel(target.model);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Remember which conversation was open, so the next load reopens it.
+  useEffect(() => {
+    saveActiveSessionId(activeSessionId);
+  }, [activeSessionId]);
 
   const saveSessionsState = useCallback((ns) => {
     setSessions(ns);

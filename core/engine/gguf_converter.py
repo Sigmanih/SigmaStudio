@@ -518,7 +518,18 @@ class GgufConverter:
         base_name = job.source_model
         if base_name.endswith("-GGUF"):
             base_name = base_name[:-5]
-        target_dir = os.path.join(models_dir(), base_name + "-GGUF")
+        for suffix in ("-" + q["id"] for q in QUANT_TYPES):
+            if base_name.endswith(suffix):
+                base_name = base_name[: -len(suffix)]
+                break
+
+        # One directory per quantization. Sharing a folder made every variant
+        # collapse into a single inventory entry whose size was their sum, and
+        # left the loader picking whichever filename sorted first -- so a freshly
+        # made Q4 was invisible while the engine kept loading the F16 beside it.
+        target_dir = os.path.join(
+            models_dir(), base_name + "-GGUF-" + job.quantization
+        )
         os.makedirs(target_dir, exist_ok=True)
         intermediate = os.path.join(target_dir, job.source_model + "-f16.gguf")
         final_name = job.source_model + "." + job.quantization + ".gguf"

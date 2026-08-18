@@ -315,8 +315,14 @@ export function useChatStreaming({
               }
               if (p.token) {
                 fullText += p.token;
-                if (!firstTokenTime) firstTokenTime = performance.now();
-                generatedTokenCount += Math.max(1, p.token.split(/\s+/).filter(Boolean).length);
+                // Engine status lines ("loading the model...", the placement
+                // summary) are shown but never metered: starting the clock on
+                // them puts the whole model load into the denominator, which is
+                // what made a 15 t/s generation read as 2.9 t/s while running.
+                if (!p.status) {
+                  if (!firstTokenTime) firstTokenTime = performance.now();
+                  generatedTokenCount += Math.max(1, p.token.split(/\s+/).filter(Boolean).length);
+                }
                 // Read along as the answer is written — reasoning is on its own
                 // channel and never reaches this branch, so it is never spoken.
                 if (speakerEnabled) {
@@ -332,11 +338,16 @@ export function useChatStreaming({
                 generatedTokenCount += Math.max(1, p.response.split(/\s+/).filter(Boolean).length);
               }
 
-              // Live TPS calculation
-              if (firstTokenTime && !streamTps) {
+              // Live throughput, refreshed as it goes rather than frozen at
+              // the first sample: an early estimate over a fraction of a second
+              // is noisy, and keeping it made the running figure disagree with
+              // the final one for the whole answer.
+              if (firstTokenTime && generatedTokenCount > 1) {
                 const elapsedSec = (performance.now() - firstTokenTime) / 1000;
                 if (elapsedSec > 0.4) {
-                  streamTps = parseFloat((generatedTokenCount / elapsedSec).toFixed(1));
+                  streamTps = parseFloat(
+                    ((generatedTokenCount - 1) / elapsedSec).toFixed(1)
+                  );
                 }
               }
 

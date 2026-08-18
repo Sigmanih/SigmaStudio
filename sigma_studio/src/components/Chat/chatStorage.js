@@ -6,10 +6,11 @@ const STORAGE_KEY = 'sigma_chat_sessions';
 const POS_KEY = 'sigma_chat_position';
 const SIZE_KEY = 'sigma_chat_size';
 const LAST_MODEL_KEY = 'sigma_last_model';
+const ACTIVE_SESSION_KEY = 'sigma_active_session';
 const MAX_HISTORY = 20;
 const MAX_ATTACHMENTS = 10;
 
-export { STORAGE_KEY, POS_KEY, SIZE_KEY, LAST_MODEL_KEY, MAX_HISTORY, MAX_ATTACHMENTS };
+export { STORAGE_KEY, POS_KEY, SIZE_KEY, LAST_MODEL_KEY, ACTIVE_SESSION_KEY, MAX_HISTORY, MAX_ATTACHMENTS };
 
 export function loadLastModel(defaultModel = '') {
   try {
@@ -21,6 +22,19 @@ export function loadLastModel(defaultModel = '') {
 export function saveLastModel(modelName) {
   try {
     localStorage.setItem(LAST_MODEL_KEY, modelName);
+  } catch (e) {}
+}
+
+export function loadActiveSessionId() {
+  try {
+    return localStorage.getItem(ACTIVE_SESSION_KEY) || null;
+  } catch { return null; }
+}
+
+export function saveActiveSessionId(sessionId) {
+  try {
+    if (sessionId) localStorage.setItem(ACTIVE_SESSION_KEY, sessionId);
+    else localStorage.removeItem(ACTIVE_SESSION_KEY);
   } catch (e) {}
 }
 

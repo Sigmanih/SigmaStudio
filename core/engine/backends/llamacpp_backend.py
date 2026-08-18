@@ -164,6 +164,7 @@ class LlamaCppBackend(InferenceBackend):
         t_start = time.perf_counter()
         token_count = 0
         first_token_sent = False
+        first_token_at = t_start
 
         try:
             stream = self._llm.create_chat_completion(
@@ -181,23 +182,38 @@ class LlamaCppBackend(InferenceBackend):
 
                 token_count += 1
                 now = time.perf_counter()
-                payload: Dict[str, Any] = {
-                    "token": text,
-                    "token_index": token_count,
-                    "speed_tok_s": round(token_count / max(now - t_start, 1e-3), 1),
-                    "done": False,
-                }
+                # Decode-only throughput; prompt processing is reported apart as
+                # time-to-first-token so a long context does not read as a slow
+                # model.
                 if not first_token_sent:
-                    payload["ttft_ms"] = round((now - t_start) * 1000, 1)
+                    first_token_at = now
                     first_token_sent = True
+                    payload: Dict[str, Any] = {
+                        "token": text,
+                        "token_index": token_count,
+                        "ttft_ms": round((now - t_start) * 1000, 1),
+                        "done": False,
+                    }
+                else:
+                    payload = {
+                        "token": text,
+                        "token_index": token_count,
+                        "speed_tok_s": round(
+                            (token_count - 1) / max(now - first_token_at, 1e-3), 1
+                        ),
+                        "done": False,
+                    }
                 yield payload
 
-            elapsed = time.perf_counter() - t_start
+            now = time.perf_counter()
             yield {
                 "token": "",
                 "token_index": token_count + 1,
-                "speed_tok_s": round(token_count / max(elapsed, 1e-3), 1),
+                "speed_tok_s": round(
+                    max(token_count - 1, 1) / max(now - first_token_at, 1e-3), 1
+                ),
                 "total_tokens": token_count,
+                "prefill_ms": round((first_token_at - t_start) * 1000, 1),
                 "done": True,
             }
 
@@ -251,9 +267,27 @@ class LlamaCppBackend(InferenceBackend):
         candidates = sorted(f for f in os.listdir(facts.path) if f.endswith(".gguf"))
         if not candidates:
             return None
+
         # llama.cpp opens a split model from its first part and finds the rest.
         first_shard = [c for c in candidates if "00001-of-" in c]
-        return os.path.join(facts.path, (first_shard or candidates)[0])
+        if first_shard:
+            return os.path.join(facts.path, first_shard[0])
+
+        # Several unrelated GGUFs in one folder means different quantizations of
+        # the same model. Alphabetical order would pick "F16" over "Q4_K_S",
+        # loading the largest variant precisely when a smaller one was made to
+        # fit; the smallest is the one that was converted to be usable here.
+        if len(candidates) > 1:
+            sized = [(os.path.getsize(os.path.join(facts.path, c)), c)
+                     for c in candidates]
+            chosen = min(sized)[1]
+            log.info(
+                "[LlamaCpp] %d GGUF variants in %s, loading the smallest (%s)",
+                len(candidates), facts.path, chosen,
+            )
+            return os.path.join(facts.path, chosen)
+
+        return os.path.join(facts.path, candidates[0])
 
     @classmethod
     def _plan_settings(
