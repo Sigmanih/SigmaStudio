@@ -15,101 +15,55 @@ import SkillsShowcaseSlider, { SKILLS_CATALOG } from './SkillsShowcaseSlider';
 
 
 // ==============================================================================
-// WORKFLOW OPERATIVO DEL KERNEL: DAL DOWNLOAD HUGGING FACE ALLA CHAT AI
+// WORKFLOW OPERATIVO DEL KERNEL: PIPELINE A 4 STEP (COMPATTA & MODERNA)
 // ==============================================================================
 const KERNEL_WORKFLOW_STEPS = [
   {
     step: '01',
-    phase: '1. ACQUISIZIONE MODELLO',
-    badge: 'HUGGING FACE DOWNLOADER',
-    title: 'Cerca & Scarica il Modello da Hugging Face',
-    subtitle: 'Accedi a Modelli Hub per cercare qualsiasi LLM Open Source (DeepSeek-R1, Qwen 2.5, Llama 3.3, Mistral) con download streaming ad alta velocità e ripresa automatica dei byte.',
-    tip: 'Verifica la VRAM richiesta stimata nella scheda del modello prima di scaricare.',
+    phase: '1. ACQUISIZIONE',
+    title: 'Download Hugging Face',
+    subtitle: 'Cerca e scarica qualsiasi LLM Open-Source da Modelli Hub con download rapido in streaming.',
     icon: DownloadCloud,
     color: '#00d2ff',
     tabId: 'model_hub',
     tabName: '⚡ Modelli Hub',
-    actionText: 'Cerca su Hugging Face 📥'
+    actionText: 'Cerca Modello'
   },
   {
     step: '02',
-    phase: '2. QUANTIZZAZIONE & FORGIA (TAB 2 MODELLI HUB)',
-    badge: 'GGUF CONVERTER & FORGE',
-    title: 'Quantizza in GGUF nel 2° Tab di Modelli Hub',
-    subtitle: 'Apri la seconda tab di Modelli Hub ("Convertitore & Forgia GGUF") per convertire i pesi nel formato preferito (Q4_K_M per risparmio VRAM, Q5_K_M, Q8_0 o FP16) ed ottimizzare l\'inferenza.',
-    tip: 'La quantizzazione è integrata direttamente in Modelli Hub (tab 2) senza bisogno di avviare il training lab.',
+    phase: '2. FORGIA GGUF',
+    title: 'Quantizza nel 2° Tab',
+    subtitle: 'Nel tab 2 di Modelli Hub (Convertitore & Forgia), quantizza i pesi (Q4_K_M, Q5, Q8, FP16) per la tua VRAM.',
     icon: Brain,
     color: '#d29922',
     tabId: 'model_hub',
     tabName: '⚡ Modelli Hub',
-    actionText: 'Quantizza in Modelli Hub 🔨'
+    actionText: 'Forgia GGUF'
   },
   {
     step: '03',
-    phase: '3. IDENTITÀ OPERATIVA',
-    badge: '20 MODELFILE MANIFESTI',
-    title: 'Assegna il Ruolo Specialistico con Manifesti Hub',
-    subtitle: 'Seleziona uno dei 20 Manifesti disciplinari vincolanti in Manifesti Hub (Architetto, Dev, Matematico, Medico, Giurista, ecc.) per infondere competenze, regole di condotta e parametri operativi standardizzati.',
-    tip: 'Il Manifesto vincola l\'agente con istruzioni di sistema rigorose e formato di risposta pulito.',
+    phase: '3. RUOLO SPECIALISTICO',
+    title: 'Applica Manifesto Hub',
+    subtitle: 'Seleziona uno dei 20 Manifesti disciplinari per assegnare identità, regole e competenze all\'agente.',
     icon: Scroll,
     color: '#bc8cff',
     tabId: 'whitepapers_lib',
     tabName: '📜 Manifesti Hub',
-    actionText: 'Esplora Manifesti Hub 📜'
+    actionText: 'Scegli Ruolo'
   },
   {
     step: '04',
-    phase: '4. ESECUZIONE RUNTIME',
-    badge: 'SIGMAENGINE O PROVIDERS CLOUD & 12 MCP',
-    title: 'Collabora in Chat AI su SigmaEngine o Providers Preferiti',
-    subtitle: 'Dialoga in streaming con il modello caricato direttamente in memoria su SigmaEngine Nativo, oppure scegli i tuoi Providers preferiti (OpenAI, Claude, DeepSeek, Google Gemini, Groq, Ollama) per il 100% di integrabilità.',
-    tip: '100% interoperabile: puoi passare istantaneamente dal motore locale ai Providers esterni con 12 Server MCP sempre attivi.',
+    phase: '4. INFERENZA & CHAT',
+    title: 'Collabora in Chat AI',
+    subtitle: 'Dialoga in streaming con SigmaEngine nativo multi-GPU o con i tuoi Providers esterni con 12 Server MCP.',
     icon: MessageSquare,
     color: '#3fb950',
     tabId: 'chat',
-    tabName: 'AI Chat Workspace',
-    actionText: 'Avvia Chat AI Workspace 💬'
+    tabName: 'Chat AI',
+    actionText: 'Avvia Chat'
   }
 ];
 
-// ==============================================================================
-// GUIDA INSTALLAZIONE MODULI & SKILLS A PIACERE (HOT-RELOAD)
-// ==============================================================================
-const MODULE_INSTALL_METHODS = [
-  {
-    method: '01',
-    badge: '1-CLICK VISUALE (CONSIGLIATO)',
-    title: 'Download Istantaneo dall\'Hub Skills',
-    desc: 'Accedi al tab Hub Skills & Estensioni, individua la skill di tuo interesse (Creative Lab 3D, Voice Studio, Docker Sandbox, Domotica) e premi "Scarica". Il modulo viene scaricato gratuitamente da GitHub e montato a caldo nel runtime senza riavviare.',
-    icon: Store,
-    color: '#00d2ff',
-    actionText: 'Apri Hub Skills 📦',
-    tabId: 'marketplace',
-    tabName: '📦 Hub Skills & Estensioni'
-  },
-  {
-    method: '02',
-    badge: 'MODULO CUSTOM / CARTELLE LOCALI',
-    title: 'Aggiunta Modulo Manuale in modules/',
-    desc: 'Vuoi creare una tua skill personalizzata? Crea una cartella in modules/<nome_skill>/ contenente il file manifest.json (con ID, nome, categoria, icona e percorso componenti). Sigma Studio lo rileva all\'istante aggiungendolo alla barra laterale.',
-    icon: FolderTree,
-    color: '#7c5bf0',
-    actionText: 'Esplora Struttura Cartelle 📁',
-    tabId: 'editor',
-    tabName: 'Editor Codice'
-  },
-  {
-    method: '03',
-    badge: 'STRUMENTI I/O & GOVERNANCE',
-    title: 'Estensione con Server MCP Standard',
-    desc: 'Per dotare gli agenti AI di nuovi strumenti operativi (Database SQLite personalizzati, API esterne REST, sensori IoT o script CLI), aggiungi la configurazione JSON del server nel tab MCP Tools con governance dei permessi.',
-    icon: Wrench,
-    color: '#10b981',
-    actionText: 'Gestione Server MCP 🔌',
-    tabId: 'mcp_hub',
-    tabName: 'MCP Tools'
-  }
-];
 
 export default function WelcomeDashboard({ modules, openTab }) {
   const { theme } = useApp();
@@ -287,7 +241,7 @@ export default function WelcomeDashboard({ modules, openTab }) {
           {/* Quick Action Buttons con Tasto Diretto GitHub */}
           <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
             <a
-              href="https://github.com/Sigmanih/Sigma_Studio"
+              href="https://github.com/Sigmanih/SigmaStudio"
               target="_blank"
               rel="noreferrer"
               style={{
@@ -417,7 +371,7 @@ export default function WelcomeDashboard({ modules, openTab }) {
           {/* Card 5: Provider AI Attivo */}
           <div 
             className="wg-metric" 
-            onClick={() => openTab({ name: '⚙️ Configurazione Providers' }, 'ai_config')}
+            onClick={() => openTab({ name: '⚙️ Providers Hub' }, 'ai_config')}
             style={{ borderTop: '3px solid #faa03c', background: cardBg, cursor: 'pointer' }}
             title="Clicca per configurare o cambiare il Provider AI attivo"
           >
@@ -518,7 +472,7 @@ export default function WelcomeDashboard({ modules, openTab }) {
               </button>
 
               <a
-                href="https://github.com/Sigmanih/Sigma_Studio"
+                href="https://github.com/Sigmanih/SigmaStudio"
                 target="_blank"
                 rel="noreferrer"
                 style={{
@@ -641,7 +595,7 @@ export default function WelcomeDashboard({ modules, openTab }) {
 
               <div style={{ paddingTop: '8px', borderTop: isLight ? '1px solid rgba(190, 160, 110, 0.2)' : '1px solid rgba(255,255,255,0.06)' }}>
                 <button
-                  onClick={() => openTab({ name: '⚙️ Configurazione Providers' }, 'ai_config')}
+                  onClick={() => openTab({ name: '⚙️ Providers Hub' }, 'ai_config')}
                   style={{
                     background: 'none',
                     border: 'none',
@@ -744,6 +698,9 @@ export default function WelcomeDashboard({ modules, openTab }) {
           </div>
         </div>
 
+        {/* ── SLIDER INTERATTIVO: SKILLS & MODULI GITHUB OPEN SOURCE ──────────── */}
+        <SkillsShowcaseSlider openTab={openTab} />
+
         {/* ── VISUAL KERNEL COGNITIVO & DESCRIZIONE SIGMAENGINE INTERNO ──────── */}
         <div className="wg-showcase-card" style={{
           margin: '4px 0 16px 0',
@@ -820,13 +777,10 @@ export default function WelcomeDashboard({ modules, openTab }) {
           </div>
         </div>
 
-        {/* ── SLIDER INTERATTIVO: SKILLS & MODULI GITHUB OPEN SOURCE ──────────── */}
-        <SkillsShowcaseSlider openTab={openTab} />
-
-        {/* ── WORKFLOW OPERATIVO DEL KERNEL: DAL DOWNLOAD HUGGING FACE ALLA CHAT AI (STACKED CYBERPUNK) ── */}
+        {/* ── GUIDA OPERATIVA KERNEL: PIPELINE A 4 STEP COMPATTA & MODERNA ── */}
         <div style={{
-          margin: '20px 0 16px 0',
-          padding: '28px',
+          margin: '0 0 20px 0',
+          padding: '24px 26px',
           borderRadius: '24px',
           background: cardBg,
           border: cardBorder,
@@ -834,261 +788,171 @@ export default function WelcomeDashboard({ modules, openTab }) {
           position: 'relative',
           overflow: 'hidden'
         }}>
-          <div style={{ marginBottom: '22px' }}>
-            <div style={{
-              display: 'inline-flex', alignItems: 'center', gap: '6px',
-              padding: '4px 12px', borderRadius: '12px',
-              background: isLight ? 'rgba(234, 88, 12, 0.12)' : 'rgba(0, 210, 255, 0.15)',
-              color: isLight ? '#c2410c' : '#00d2ff',
-              fontSize: '0.72rem', fontWeight: 800, marginBottom: '8px'
-            }}>
-              <Compass size={14} />
-              <span>GUIDA OPERATIVA KERNEL • WORKFLOW SEQUENZIALE</span>
+          <div style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            flexWrap: 'wrap',
+            gap: '12px',
+            marginBottom: '18px'
+          }}>
+            <div>
+              <div style={{
+                display: 'inline-flex', alignItems: 'center', gap: '6px',
+                padding: '4px 12px', borderRadius: '12px',
+                background: isLight ? 'rgba(234, 88, 12, 0.12)' : 'rgba(0, 210, 255, 0.15)',
+                color: isLight ? '#c2410c' : '#00d2ff',
+                fontSize: '0.72rem', fontWeight: 800, marginBottom: '6px'
+              }}>
+                <Compass size={14} />
+                <span>PIPELINE OPERATIVA KERNEL • STEP-BY-STEP</span>
+              </div>
+              <h2 style={{ fontSize: '1.35rem', color: titleColor, fontWeight: 800, margin: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <span>🧬</span> I 4 Passi per Usare Qualsiasi Modello AI in Sigma Studio
+              </h2>
             </div>
-            <h2 style={{ fontSize: '1.45rem', color: titleColor, fontWeight: 800, margin: '0 0 6px 0', display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <span>🧬</span> Dal Download Hugging Face alla Chat AI su SigmaEngine
-            </h2>
-            <p style={{ fontSize: '0.86rem', color: subtitleColor, margin: 0, fontWeight: isLight ? 500 : 400, maxWidth: '840px' }}>
-              La sequenza logica del sistema operativo: acquisisci qualsiasi modello open-source, forgia la quantizzazione GGUF ideale per la tua VRAM, infondi il ruolo operativo con i Manifesti ed avvia l'inferenza su SigmaEngine.
-            </p>
+            
+            <span style={{
+              fontSize: '0.72rem',
+              fontWeight: 800,
+              padding: '4px 10px',
+              borderRadius: '8px',
+              background: isLight ? '#fbf8f2' : 'rgba(255,255,255,0.06)',
+              border: isLight ? '1px solid rgba(190, 160, 110, 0.35)' : '1px solid rgba(255,255,255,0.1)',
+              color: subtitleColor
+            }}>
+              Sequenza 01 ➔ 04
+            </span>
           </div>
 
-          {/* Stacked Cyberpunk Steps (1 sopra l'altro) */}
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-            {KERNEL_WORKFLOW_STEPS.map((st) => {
+          {/* Griglia a 4 Colonne Step-by-Step con Connettori Visuali */}
+          <div style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fit, minmax(230px, 1fr))',
+            gap: '14px',
+            alignItems: 'stretch'
+          }}>
+            {KERNEL_WORKFLOW_STEPS.map((st, idx) => {
               const StepIcon = st.icon;
               return (
                 <div
                   key={st.step}
                   onClick={() => openTab({ name: st.tabName }, st.tabId)}
                   style={{
-                    padding: '18px 22px',
+                    padding: '16px',
                     borderRadius: '16px',
                     background: innerCardBg,
-                    border: isLight ? `1.5px solid rgba(190, 160, 110, 0.35)` : `1.5px solid ${st.color}35`,
-                    boxShadow: isLight ? '0 4px 14px rgba(190, 160, 110, 0.08)' : `0 4px 20px ${st.color}10`,
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'space-between',
-                    flexWrap: 'wrap',
-                    gap: '16px',
-                    cursor: 'pointer',
-                    transition: 'all 0.2s ease',
-                    position: 'relative',
-                    overflow: 'hidden'
-                  }}
-                  onMouseEnter={(e) => {
-                    e.currentTarget.style.borderColor = st.color;
-                    e.currentTarget.style.transform = 'translateY(-2px)';
-                  }}
-                  onMouseLeave={(e) => {
-                    e.currentTarget.style.borderColor = isLight ? 'rgba(190, 160, 110, 0.35)' : `${st.color}35`;
-                    e.currentTarget.style.transform = 'translateY(0)';
-                  }}
-                >
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '18px', flex: 1, minWidth: '280px' }}>
-                    {/* Step Number & Icon Box */}
-                    <div style={{
-                      width: '52px',
-                      height: '52px',
-                      borderRadius: '14px',
-                      background: `${st.color}18`,
-                      border: `1.5px solid ${st.color}50`,
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      flexShrink: 0,
-                      boxShadow: `0 0 16px ${st.color}25`
-                    }}>
-                      <StepIcon size={24} style={{ color: st.color }} />
-                    </div>
-
-                    {/* Step Content */}
-                    <div style={{ flex: 1 }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px', flexWrap: 'wrap' }}>
-                        <span style={{
-                          fontSize: '0.66rem',
-                          fontWeight: 900,
-                          padding: '2px 8px',
-                          borderRadius: '6px',
-                          background: `${st.color}20`,
-                          color: isLight ? '#000000' : st.color,
-                          border: `1px solid ${st.color}40`,
-                          letterSpacing: '0.5px'
-                        }}>
-                          PASSO {st.step}
-                        </span>
-                        <span style={{ fontSize: '0.68rem', fontWeight: 800, color: isLight ? '#7a7060' : '#8b8fa3', textTransform: 'uppercase' }}>
-                          {st.phase}
-                        </span>
-                      </div>
-
-                      <h3 style={{ margin: '0 0 4px 0', fontSize: '1.05rem', fontWeight: 800, color: titleColor }}>
-                        {st.title}
-                      </h3>
-                      <p style={{ margin: '0 0 8px 0', fontSize: '0.8rem', color: subtitleColor, lineHeight: 1.45, fontWeight: isLight ? 500 : 400 }}>
-                        {st.subtitle}
-                      </p>
-
-                      {/* Tech Tip Pill */}
-                      <div style={{
-                        display: 'inline-flex',
-                        alignItems: 'center',
-                        gap: '6px',
-                        padding: '4px 10px',
-                        borderRadius: '8px',
-                        background: isLight ? '#ffffff' : 'rgba(255,255,255,0.03)',
-                        border: isLight ? '1px solid rgba(190, 160, 110, 0.25)' : '1px solid rgba(255,255,255,0.06)',
-                        fontSize: '0.72rem',
-                        color: innerCardText,
-                        fontWeight: isLight ? 500 : 400
-                      }}>
-                        <span>💡</span>
-                        <span>{st.tip}</span>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Action CTA Button */}
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        openTab({ name: st.tabName }, st.tabId);
-                      }}
-                      style={{
-                        padding: '9px 18px',
-                        borderRadius: '10px',
-                        background: isLight ? '#ea580c' : st.color,
-                        border: 'none',
-                        color: '#ffffff',
-                        fontSize: '0.78rem',
-                        fontWeight: 800,
-                        cursor: 'pointer',
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '6px',
-                        boxShadow: isLight ? '0 2px 10px rgba(234, 88, 12, 0.25)' : `0 2px 12px ${st.color}35`,
-                        whiteSpace: 'nowrap'
-                      }}
-                    >
-                      {st.actionText} <ArrowRight size={13} />
-                    </button>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-
-        {/* ── GUIDA MODULI: COME INSTALLARE & AGGIUNGERE SKILLS A PIACERE (HOT-RELOAD) ── */}
-        <div style={{
-          margin: '0 0 20px 0',
-          padding: '26px 28px',
-          borderRadius: '24px',
-          background: cardBg,
-          border: isLight ? '1px solid rgba(124, 91, 240, 0.35)' : '1px solid rgba(124, 91, 240, 0.3)',
-          boxShadow: cardShadow,
-          position: 'relative',
-          overflow: 'hidden'
-        }}>
-          <div style={{ marginBottom: '18px' }}>
-            <div style={{
-              display: 'inline-flex', alignItems: 'center', gap: '6px',
-              padding: '4px 12px', borderRadius: '12px',
-              background: 'rgba(124, 91, 240, 0.15)', color: isLight ? '#6d28d9' : '#a78bfa',
-              fontSize: '0.72rem', fontWeight: 800, marginBottom: '8px'
-            }}>
-              <span>🧩</span> ESTENDIBILITÀ DEL KERNEL & HOT-RELOAD
-            </div>
-            <h2 style={{ fontSize: '1.35rem', color: titleColor, fontWeight: 800, margin: '0 0 6px 0', display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <span>📦</span> Come Installare ed Aggiungere Moduli e Skills a Piacere
-            </h2>
-            <p style={{ fontSize: '0.84rem', color: subtitleColor, margin: 0, fontWeight: isLight ? 500 : 400, maxWidth: '820px' }}>
-              Sigma Studio supporta l'architettura a plugin dinamici: puoi scaricare i moduli ufficiali con un click da GitHub, creare le tue estensioni custom in locale o aggiungere nuovi Server MCP per connettere qualsiasi strumento esterno.
-            </p>
-          </div>
-
-          {/* Griglia 3 Metodi di Installazione (Stack / Split) */}
-          <div style={{
-            display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fit, minmax(290px, 1fr))',
-            gap: '16px'
-          }}>
-            {MODULE_INSTALL_METHODS.map((m) => {
-              const MethodIcon = m.icon;
-              return (
-                <div
-                  key={m.method}
-                  onClick={() => openTab({ name: m.tabName }, m.tabId)}
-                  style={{
-                    padding: '18px',
-                    borderRadius: '16px',
-                    background: innerCardBg,
-                    border: isLight ? '1px solid rgba(190, 160, 110, 0.35)' : `1px solid ${m.color}30`,
+                    border: isLight ? `1px solid rgba(190, 160, 110, 0.35)` : `1px solid ${st.color}30`,
                     display: 'flex',
                     flexDirection: 'column',
                     justifyContent: 'space-between',
                     gap: '12px',
                     cursor: 'pointer',
-                    transition: 'all 0.2s ease'
+                    transition: 'all 0.22s cubic-bezier(0.4, 0, 0.2, 1)',
+                    position: 'relative'
                   }}
                   onMouseEnter={(e) => {
-                    e.currentTarget.style.borderColor = m.color;
-                    e.currentTarget.style.transform = 'translateY(-2px)';
+                    e.currentTarget.style.borderColor = st.color;
+                    e.currentTarget.style.transform = 'translateY(-3px)';
+                    e.currentTarget.style.boxShadow = isLight ? `0 8px 20px rgba(0,0,0,0.08)` : `0 8px 25px ${st.color}20`;
                   }}
                   onMouseLeave={(e) => {
-                    e.currentTarget.style.borderColor = isLight ? 'rgba(190, 160, 110, 0.35)' : `${m.color}30`;
+                    e.currentTarget.style.borderColor = isLight ? 'rgba(190, 160, 110, 0.35)' : `${st.color}30`;
                     e.currentTarget.style.transform = 'translateY(0)';
+                    e.currentTarget.style.boxShadow = 'none';
                   }}
                 >
                   <div>
+                    {/* Top Row: Numero Step & Icona */}
                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '10px' }}>
                       <div style={{
-                        width: '40px',
-                        height: '40px',
-                        borderRadius: '12px',
-                        background: `${m.color}18`,
-                        border: `1px solid ${m.color}45`,
                         display: 'flex',
                         alignItems: 'center',
-                        justifyContent: 'center'
+                        gap: '8px'
                       }}>
-                        <MethodIcon size={20} style={{ color: m.color }} />
+                        <div style={{
+                          width: '38px',
+                          height: '38px',
+                          borderRadius: '11px',
+                          background: `${st.color}18`,
+                          border: `1px solid ${st.color}45`,
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          flexShrink: 0
+                        }}>
+                          <StepIcon size={19} style={{ color: st.color }} />
+                        </div>
+                        <span style={{
+                          fontSize: '0.64rem',
+                          fontWeight: 900,
+                          padding: '2px 7px',
+                          borderRadius: '6px',
+                          background: `${st.color}15`,
+                          color: isLight ? '#000000' : st.color,
+                          border: `1px solid ${st.color}35`,
+                          letterSpacing: '0.5px'
+                        }}>
+                          PASSO {st.step}
+                        </span>
                       </div>
 
-                      <span style={{
-                        fontSize: '0.66rem',
-                        fontWeight: 800,
-                        padding: '3px 8px',
-                        borderRadius: '6px',
-                        background: `${m.color}15`,
-                        color: isLight ? '#000000' : m.color,
-                        border: `1px solid ${m.color}35`,
-                        letterSpacing: '0.5px'
-                      }}>
-                        METODO {m.method}
-                      </span>
+                      {idx < KERNEL_WORKFLOW_STEPS.length - 1 && (
+                        <span style={{ fontSize: '0.85rem', color: isLight ? '#c2410c' : st.color, opacity: 0.8, fontWeight: 900 }}>
+                          ➔
+                        </span>
+                      )}
                     </div>
 
-                    <div style={{ fontSize: '0.95rem', fontWeight: 800, color: titleColor, marginBottom: '6px' }}>
-                      {m.title}
+                    <div style={{
+                      fontSize: '0.66rem',
+                      fontWeight: 800,
+                      color: isLight ? '#7a7060' : '#8b8fa3',
+                      textTransform: 'uppercase',
+                      letterSpacing: '0.5px',
+                      marginBottom: '3px'
+                    }}>
+                      {st.phase}
                     </div>
-                    <p style={{ fontSize: '0.78rem', color: subtitleColor, lineHeight: 1.5, margin: 0, fontWeight: isLight ? 500 : 400 }}>
-                      {m.desc}
+
+                    <h3 style={{
+                      margin: '0 0 6px 0',
+                      fontSize: '0.94rem',
+                      fontWeight: 800,
+                      color: titleColor,
+                      lineHeight: 1.35
+                    }}>
+                      {st.title}
+                    </h3>
+
+                    <p style={{
+                      margin: 0,
+                      fontSize: '0.76rem',
+                      color: subtitleColor,
+                      lineHeight: 1.45,
+                      fontWeight: isLight ? 500 : 400
+                    }}>
+                      {st.subtitle}
                     </p>
                   </div>
 
-                  <div style={{ paddingTop: '10px', borderTop: isLight ? '1px solid rgba(190, 160, 110, 0.2)' : '1px solid rgba(255,255,255,0.06)' }}>
+                  {/* Bottone Azione Compatto */}
+                  <div style={{
+                    paddingTop: '10px',
+                    borderTop: isLight ? '1px solid rgba(190, 160, 110, 0.2)' : '1px solid rgba(255,255,255,0.06)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between'
+                  }}>
                     <span style={{
-                      fontSize: '0.76rem',
+                      fontSize: '0.74rem',
                       fontWeight: 800,
-                      color: isLight ? '#c2410c' : m.color,
+                      color: isLight ? '#c2410c' : st.color,
                       display: 'flex',
                       alignItems: 'center',
-                      gap: '6px'
+                      gap: '5px'
                     }}>
-                      {m.actionText} <ArrowRight size={13} />
+                      {st.actionText} <ArrowRight size={13} />
                     </span>
                   </div>
                 </div>
@@ -1096,6 +960,7 @@ export default function WelcomeDashboard({ modules, openTab }) {
             })}
           </div>
         </div>
+
 
         {/* ── FOOTER ────────────────────────────────────────────────────────── */}
         <div style={{

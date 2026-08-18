@@ -226,6 +226,10 @@ function generateYouTubePreviewsHtml(videoList) {
   return `<div class="youtube-preview-container" style="display: flex; flex-direction: column; gap: 12px; margin-top: 12px;">${cards}</div>`;
 }
 
+function isBadgeUrl(url) {
+  return /shields\.io|badgen\.net|badge|badge\.svg|\.svg($|\?)/i.test(url);
+}
+
 /**
  * Process inline formatting: bold, italic, inline code, links, raw URLs.
  * Must be called AFTER LaTeX rendering so we don't process $ inside KaTeX HTML.
@@ -237,8 +241,20 @@ function processInlineFormatting(text) {
   text = text.replace(/(?<!\*)\*(?!\*)(.+?)(?<!\*)\*(?!\*)/g, '<em>$1</em>');
   // Inline code: `text`
   text = text.replace(/`([^`]+)`/g, '<code>$1</code>');
+  // Markdown linked images: [![alt](imgUrl)](linkUrl)
+  text = text.replace(/\[!\[([^\]]*)\]\(([^)]+)\)\]\(([^)]+)\)/g, (match, alt, imgUrl, linkUrl) => {
+    const isBadge = isBadgeUrl(imgUrl);
+    return `<a href="${linkUrl}" target="_blank" rel="noopener noreferrer" style="display:inline-block; vertical-align:middle; text-decoration:none; margin:2px 3px 2px 0;"><img src="${imgUrl}" alt="${alt}" class="${isBadge ? 'inline-badge' : 'chat-inline-image'}" style="vertical-align:middle; max-height:${isBadge ? '22px' : 'auto'}; border-radius:3px; display:inline-block;" loading="lazy" /></a>`;
+  });
   // Markdown images: ![alt](url)
-  text = text.replace(/!\[([^\]]*)\]\(([^)]+)\)/g, '<div class="chat-image-preview-card"><img src="$2" alt="$1" class="chat-inline-image" loading="lazy" /><span class="chat-image-caption">$1</span></div>');
+  text = text.replace(/!\[([^\]]*)\]\(([^)]+)\)/g, (match, alt, url) => {
+    const isBadge = isBadgeUrl(url);
+    if (isBadge) {
+      return `<img src="${url}" alt="${alt}" class="inline-badge" style="display:inline-block; vertical-align:middle; margin:2px 3px 2px 0; max-height:22px; border-radius:3px;" loading="lazy" />`;
+    }
+    const caption = alt && alt.trim().length > 0 && !alt.startsWith('http') ? `<span class="chat-image-caption">${alt}</span>` : '';
+    return `<div class="chat-image-preview-card" style="margin:14px 0;"><img src="${url}" alt="${alt}" class="chat-inline-image" loading="lazy" />${caption}</div>`;
+  });
   // Markdown links: [text](url)
   text = text.replace(/\[([^\]]+)\]\(([^)]+)\)/g, (match, linkText, url) => {
     return `<a href="${url}" target="_blank" rel="noopener noreferrer" class="chat-external-link" style="color: #00d2ff; text-decoration: underline; text-underline-offset: 3px; word-break: break-all;">${linkText}</a>`;
@@ -417,11 +433,24 @@ function processBlocks(text) {
       continue;
     }
 
-    // Image syntax — standalone image lines push directly (no <p> wrapper)
-    if (/^!\[([^\]]*)\]\(([^)]+)\)$/.test(line.trim())) {
-      const imgMatch = line.trim().match(/^!\[([^\]]*)\]\(([^)]+)\)$/);
-      result.push(`<div class="chat-image-preview-card"><img src="${imgMatch[2]}" alt="${imgMatch[1]}" class="chat-inline-image" loading="lazy" /><span class="chat-image-caption">${imgMatch[1]}</span></div>`);
-      i++;
+    // Image / Badge syntax — check for single or consecutive image/badge lines
+    const isImageLine = (l) => {
+      const t = l.trim();
+      return t.length > 0 && (
+        /^(\[!\[.*?\]\(.*?\)\]\(.*?\)|\!\[.*?\]\(.*?\))+$/.test(t) ||
+        (t.startsWith('![') && t.endsWith(')')) ||
+        (t.startsWith('[![') && t.endsWith(')'))
+      );
+    };
+
+    if (isImageLine(line)) {
+      const badgeGroup = [];
+      while (i < lines.length && isImageLine(lines[i])) {
+        badgeGroup.push(lines[i].trim());
+        i++;
+      }
+      const renderedGroup = badgeGroup.map(b => processInlineFormatting(b)).join(' ');
+      result.push(`<div class="badge-row" style="display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; margin: 8px 0;">${renderedGroup}</div>`);
       continue;
     }
 

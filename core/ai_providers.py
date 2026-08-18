@@ -184,16 +184,16 @@ def load_ai_config(config_path: str = "config.json") -> dict:
         )
 
         if is_legacy:
-            provider_key = ai_cfg.get("provider", "ollama")
+            provider_key = ai_cfg.get("provider", "sigma_engine")
             defaults = DEFAULT_AI_CONFIG
             prov = defaults["providers"].get(
-                provider_key, defaults["providers"]["ollama"]
+                provider_key, defaults["providers"]["sigma_engine"]
             ).copy()
             prov.update({
                 "endpoint": ai_cfg.get("endpoint", prov.get("endpoint", "")),
                 "api_url": ai_cfg.get("api_url", prov.get("api_url", "")),
                 "api_key": ai_cfg.get("api_key", prov.get("api_key", "")),
-                "model": ai_cfg.get("model", prov.get("model", "llama3.2")),
+                "model": ai_cfg.get("model", prov.get("model", "sigma-native:latest")),
                 "temperature": ai_cfg.get("temperature", prov.get("temperature", 0.7)),
                 "max_tokens": ai_cfg.get("max_tokens", prov.get("max_tokens", 4096)),
                 "top_p": ai_cfg.get("top_p", prov.get("top_p", 0.9)),
@@ -206,8 +206,8 @@ def load_ai_config(config_path: str = "config.json") -> dict:
             ai_cfg["providers"][provider_key] = prov
         else:
             # Ensure required keys exist
-            ai_cfg.setdefault("active_provider", ai_cfg.get("provider", "ollama"))
-            ai_cfg.setdefault("active_model", ai_cfg.get("model", "llama3.2"))
+            ai_cfg.setdefault("active_provider", ai_cfg.get("provider", "sigma_engine"))
+            ai_cfg.setdefault("active_model", ai_cfg.get("model", "sigma-native:latest"))
             if "providers" not in ai_cfg:
                 ai_cfg["providers"] = DEFAULT_AI_CONFIG["providers"]
             else:

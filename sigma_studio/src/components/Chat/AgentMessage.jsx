@@ -57,14 +57,15 @@ function findWordAt(text, charIdx) {
   const len = text.length;
   let idx = Math.min(charIdx, len - 1);
   if (!/[\p{L}\p{N}]/u.test(text[idx])) {
-    let forward = idx;
-    while (forward < len && !/[\p{L}\p{N}]/u.test(text[forward])) forward++;
-    if (forward < len) {
-      idx = forward;
+    // Prefer the word we are currently finishing (backward search)
+    let backward = idx;
+    while (backward >= 0 && !/[\p{L}\p{N}]/u.test(text[backward])) backward--;
+    if (backward >= 0) {
+      idx = backward;
     } else {
-      let backward = idx;
-      while (backward >= 0 && !/[\p{L}\p{N}]/u.test(text[backward])) backward--;
-      if (backward >= 0) idx = backward;
+      let forward = idx;
+      while (forward < len && !/[\p{L}\p{N}]/u.test(text[forward])) forward++;
+      if (forward < len) idx = forward;
       else return null;
     }
   }
@@ -103,18 +104,21 @@ function MemoizedContent({ displayContent, isPlaying, speechId, speechProgress, 
   const containerRef = useRef(null);
   const currentHighlightRef = useRef(null);
 
-  // Clean up highlight helper
-  const removeHighlight = () => {
+  // Helper to safely unwrap a mark element back to plain text
+  const unwrapMark = (markEl) => {
+    if (!markEl || !markEl.parentNode) return;
+    const parent = markEl.parentNode;
+    const text = markEl.textContent || '';
+    parent.replaceChild(document.createTextNode(text), markEl);
+    parent.normalize();
+  };
+
+  // Clean up all highlights helper
+  const removeAllHighlights = () => {
     const el = containerRef.current;
     if (!el) return;
-    const prev = el.querySelector('mark.speech-word-highlight');
-    if (prev) {
-      const parent = prev.parentNode;
-      if (parent) {
-        parent.replaceChild(document.createTextNode(prev.textContent || ''), prev);
-        parent.normalize();
-      }
-    }
+    const marks = el.querySelectorAll('mark.speech-word-highlight');
+    marks.forEach(m => unwrapMark(m));
     currentHighlightRef.current = null;
   };
 
@@ -124,7 +128,7 @@ function MemoizedContent({ displayContent, isPlaying, speechId, speechProgress, 
     if (!el) return;
 
     if (!isPlaying || !speechProgress || String(speechProgress.speechId) !== String(speechId) || speechProgress.charIndex < 0) {
-      removeHighlight();
+      removeAllHighlights();
       return;
     }
 
@@ -134,17 +138,19 @@ function MemoizedContent({ displayContent, isPlaying, speechId, speechProgress, 
       const prevText = messages[pi]?.content || messages[pi]?.text || '';
       if (prevText) localIdx -= cleanTextForSpeech(prevText).length;
     }
+
     if (localIdx < 0) {
-      removeHighlight();
+      removeAllHighlights();
       return;
     }
     if (localIdx >= singleClean.length && singleClean.length > 0) {
-      localIdx = singleClean.length - 1;
+      removeAllHighlights();
+      return;
     }
 
     const found = findWordAt(singleClean, localIdx);
     if (!found) {
-      // Keep existing highlight visible while briefly moving between words/spaces
+      // Keep existing highlight visible while moving between words/spaces
       return;
     }
 
@@ -162,11 +168,12 @@ function MemoizedContent({ displayContent, isPlaying, speechId, speechProgress, 
       return;
     }
 
-    // Remove previous word highlight and advance to the next word
-    removeHighlight();
+    // Find and wrap the new word FIRST before removing the old mark
+    let newMark = null;
 
     function walk(node, count) {
       if (node.nodeType === Node.TEXT_NODE) {
+        if (node.parentNode && node.parentNode.tagName === 'MARK') return;
         const txt = node.textContent || '';
         let m;
         rx.lastIndex = 0;
@@ -178,12 +185,12 @@ function MemoizedContent({ displayContent, isPlaying, speechId, speechProgress, 
             const frag = document.createDocumentFragment();
             if (before) frag.appendChild(document.createTextNode(before));
             const mark = document.createElement('mark');
-            mark.className = 'speech-word-highlight';
+            mark.className = 'speech-word-highlight is-active';
             mark.textContent = mid;
             frag.appendChild(mark);
             if (after) frag.appendChild(document.createTextNode(after));
             node.parentNode.replaceChild(frag, node);
-            currentHighlightRef.current = { word: found.word, targetOccurrence };
+            newMark = mark;
             count.done = true;
             return;
           }
@@ -198,8 +205,27 @@ function MemoizedContent({ displayContent, isPlaying, speechId, speechProgress, 
         }
       }
     }
+
     const counter = { cur: 0, done: false };
     walk(el, counter);
+
+    // If the new mark was successfully created:
+    // 1. Transition previous marks to .is-leaving (initiates gentle fade-out)
+    // 2. Safely unwrap once the fade-out completes
+    if (newMark) {
+      const prevMarks = el.querySelectorAll('mark.speech-word-highlight');
+      prevMarks.forEach(pm => {
+        if (pm !== newMark) {
+          pm.className = 'speech-word-highlight is-leaving';
+          setTimeout(() => {
+            if (pm && pm.parentNode && pm.classList.contains('is-leaving')) {
+              unwrapMark(pm);
+            }
+          }, 320);
+        }
+      });
+      currentHighlightRef.current = { word: found.word, targetOccurrence, mark: newMark };
+    }
   }, [displayContent, isPlaying, speechProgress?.charIndex, speechProgress?.speechId, speechId, idx, messages]);
 
   return (
@@ -974,10 +1000,7 @@ export default function AgentMessage({
                     ? `${Math.round(rawTtft)}ms`
                     : null;
 
-                  const rawHw = m.hardware_note || m.metrics?.hardware_note || first.hardware_note || first.metrics?.hardware_note;
-                  const hardwareDisplay = rawHw || null;
-
-                  if (!routingDisplay && !loadDisplay && !tpsDisplay && !hardwareDisplay && !engineDisplay && !ttftDisplay) return null;
+                  if (!routingDisplay && !loadDisplay && !tpsDisplay && !engineDisplay && !ttftDisplay) return null;
 
                   return (
                     <div className="chat-msg-footer-metrics" style={{
@@ -1021,12 +1044,6 @@ export default function AgentMessage({
                         <span title="Velocità di generazione del modello (tokens al secondo)" style={{ display: 'inline-flex', alignItems: 'center', gap: '3px' }}>
                           <span>🚀</span>
                           <span>Velocità: <strong style={{ color: '#4ade80', fontWeight: 600 }}>{tpsDisplay} t/s</strong></span>
-                        </span>
-                      )}
-                      {hardwareDisplay && (
-                        <span title="Hardware di elaborazione utilizzato dal modello" style={{ display: 'inline-flex', alignItems: 'center', gap: '3px' }}>
-                          <span>💻</span>
-                          <strong style={{ color: '#a78bfa', fontWeight: 600 }}>{hardwareDisplay}</strong>
                         </span>
                       )}
                     </div>

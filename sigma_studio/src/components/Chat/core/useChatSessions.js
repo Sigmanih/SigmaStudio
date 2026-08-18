@@ -19,28 +19,40 @@ export function useChatSessions({ selectedModel, setSelectedModel, setActionsLog
   useEffect(() => { refs.sessionMessages.current = sessionMessages; }, [sessionMessages]);
   useEffect(() => { refs.activeSessionId.current = activeSessionId; }, [activeSessionId]);
 
-  // Restore the conversation on mount.
-  //
-  // Only the session list used to be read back. The active session and its
-  // messages were never restored, so a page refresh left the panel with no
-  // active session and an empty message map: the history was still in
-  // localStorage under sigma_chat_msgs_<id>, it was simply never loaded, and
-  // the conversation looked lost.
+  // Restore the conversation on mount: auto-select the latest/first session in history and load its messages
   useEffect(() => {
     const saved = loadSessions();
-    if (!saved.length) return;
+    if (!saved || saved.length === 0) {
+      const s = createSession(selectedModel);
+      saveSessionsState([s]);
+      setSessionMessages({ [s.id]: [welcomeMsg] });
+      saveMessagesImmediately(s.id, [welcomeMsg]);
+      setActiveSessionId(s.id);
+      saveActiveSessionId(s.id);
+      return;
+    }
 
     setSessions(saved);
 
+    // Pick the active session or the first in history (saved[0])
     const storedId = loadActiveSessionId();
-    const target = saved.find(x => x.id === storedId) || saved[0];
+    const target = (storedId ? saved.find(x => x.id === storedId) : null) || saved[0];
     if (!target) return;
 
-    const restored = loadMessagesFromStorage(target.id);
-    if (restored && restored.length > 0) {
-      setSessionMessages(prev => ({ ...prev, [target.id]: restored }));
+    let restored = loadMessagesFromStorage(target.id);
+    if (!restored || restored.length === 0) {
+      if (Array.isArray(target.messages) && target.messages.length > 0) {
+        restored = target.messages;
+      } else {
+        restored = [welcomeMsg];
+      }
     }
+
+    setSessionMessages(prev => ({ ...prev, [target.id]: restored }));
+    refs.sessionMessages.current = { [target.id]: restored };
     setActiveSessionId(target.id);
+    refs.activeSessionId.current = target.id;
+    saveActiveSessionId(target.id);
     if (setSelectedModel && target.model) setSelectedModel(target.model);
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 

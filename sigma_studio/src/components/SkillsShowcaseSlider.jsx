@@ -689,6 +689,518 @@ const CATEGORIES = [
 ];
 
 // ==============================================================================
+// SUB-COMPONENT: SkillSlideCard (Singola Scheda Completa nel Track)
+// ==============================================================================
+function SkillSlideCard({
+  skill,
+  isInstalled,
+  isLight,
+  openTab,
+  onOpenModal,
+  titleColor,
+  subtitleColor,
+  innerCardBg,
+  innerCardBorder,
+  innerCardText
+}) {
+  const IconComponent = skill.icon;
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', width: '100%' }}>
+      {/* Header Card: Icona, Titolo, Categoria, Badge e Azioni Top */}
+      <div style={{
+        display: 'flex',
+        alignItems: 'flex-start',
+        justifyContent: 'space-between',
+        flexWrap: 'wrap',
+        gap: '16px',
+        marginBottom: '20px',
+        borderBottom: isLight ? '1px solid rgba(190, 160, 110, 0.25)' : '1px solid rgba(255,255,255,0.08)',
+        paddingBottom: '16px'
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '16px', flexWrap: 'wrap' }}>
+          {/* Icona Skill */}
+          <div style={{
+            width: '54px',
+            height: '54px',
+            borderRadius: '16px',
+            background: `${skill.color}18`,
+            border: `1px solid ${skill.color}45`,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            boxShadow: `0 0 20px ${skill.color}25`,
+            color: isLight ? '#c2410c' : skill.color,
+            flexShrink: 0
+          }}>
+            <IconComponent size={28} style={{ color: skill.color }} />
+          </div>
+
+          <div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap', marginBottom: '4px' }}>
+              {/* Badge Categoria */}
+              <span style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '4px',
+                padding: '3px 10px',
+                borderRadius: '10px',
+                background: `${skill.color}18`,
+                border: `1px solid ${skill.color}35`,
+                color: isLight ? '#9a3412' : skill.color,
+                fontSize: '0.68rem',
+                fontWeight: 800,
+                letterSpacing: '0.5px'
+              }}>
+                {skill.badge}
+              </span>
+
+              {/* Badge Stato Installazione */}
+              <span style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '4px',
+                padding: '3px 10px',
+                borderRadius: '10px',
+                background: isInstalled 
+                  ? (isLight ? 'rgba(22, 163, 74, 0.12)' : 'rgba(63, 185, 80, 0.15)')
+                  : (isLight ? 'rgba(234, 88, 12, 0.1)' : 'rgba(0, 210, 255, 0.12)'),
+                border: isInstalled 
+                  ? (isLight ? '1px solid rgba(22, 163, 74, 0.35)' : '1px solid rgba(63, 185, 80, 0.35)')
+                  : (isLight ? '1px solid rgba(234, 88, 12, 0.35)' : '1px solid rgba(0, 210, 255, 0.3)'),
+                color: isInstalled 
+                  ? (isLight ? '#15803d' : '#3fb950')
+                  : (isLight ? '#c2410c' : '#00d2ff'),
+                fontSize: '0.68rem',
+                fontWeight: 800
+              }}>
+                {isInstalled ? <CheckCircle2 size={12} /> : <Download size={12} />}
+                {isInstalled ? 'Pronta & Installata' : 'Disponibile su GitHub'}
+              </span>
+
+              <span style={{
+                fontSize: '0.66rem',
+                fontWeight: 700,
+                color: isLight ? '#7a7060' : '#8b8fa3',
+                background: isLight ? '#f4efe6' : 'rgba(255,255,255,0.06)',
+                padding: '3px 8px',
+                borderRadius: '8px'
+              }}>
+                {skill.version} • {skill.size}
+              </span>
+            </div>
+
+            <h3 style={{
+              margin: 0,
+              fontSize: '1.35rem',
+              fontWeight: 800,
+              color: titleColor,
+              lineHeight: 1.3
+            }}>
+              {skill.name}
+            </h3>
+          </div>
+        </div>
+
+        {/* Pulsanti di Azione Destra */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+          <button
+            onClick={onOpenModal}
+            title="Guida approfondita ed esempi di integrazione"
+            style={{
+              padding: '8px 14px',
+              borderRadius: '10px',
+              background: isLight ? '#fbf8f2' : 'rgba(255,255,255,0.06)',
+              border: isLight ? '1px solid rgba(190, 160, 110, 0.4)' : '1px solid rgba(255,255,255,0.12)',
+              color: isLight ? '#374151' : '#e2e8f0',
+              fontSize: '0.78rem',
+              fontWeight: 700,
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px'
+            }}
+          >
+            <BookOpen size={14} />
+            Guida Rapida
+          </button>
+
+          {skill.gitUrl && (
+            <a
+              href={skill.gitUrl}
+              target="_blank"
+              rel="noreferrer"
+              title="Apri sorgente GitHub del modulo"
+              style={{
+                padding: '8px 12px',
+                borderRadius: '10px',
+                background: isLight ? '#fbf8f2' : 'rgba(255,255,255,0.06)',
+                border: isLight ? '1px solid rgba(190, 160, 110, 0.4)' : '1px solid rgba(255,255,255,0.12)',
+                color: isLight ? '#374151' : '#e2e8f0',
+                fontSize: '0.78rem',
+                fontWeight: 700,
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px',
+                textDecoration: 'none'
+              }}
+            >
+              <ExternalLink size={14} />
+              GitHub
+            </a>
+          )}
+
+          {/* Pulsante Lancio / Installazione */}
+          {isInstalled ? (
+            <button
+              onClick={() => openTab({ name: skill.name }, skill.tabType)}
+              style={{
+                padding: '8px 18px',
+                borderRadius: '10px',
+                background: isLight
+                  ? 'linear-gradient(135deg, #ea580c 0%, #d97706 100%)'
+                  : `linear-gradient(135deg, ${skill.color}, ${skill.color}cc)`,
+                border: 'none',
+                color: '#ffffff',
+                fontSize: '0.82rem',
+                fontWeight: 800,
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px',
+                boxShadow: isLight ? '0 4px 14px rgba(234, 88, 12, 0.25)' : `0 4px 18px ${skill.color}35`,
+                transition: 'all 0.2s ease'
+              }}
+            >
+              Apri Skill
+              <ArrowRight size={15} />
+            </button>
+          ) : (
+            <button
+              onClick={() => openTab({ name: '📦 Hub Skills & Estensioni' }, 'marketplace')}
+              style={{
+                padding: '8px 18px',
+                borderRadius: '10px',
+                background: isLight
+                  ? 'linear-gradient(135deg, #0284c7 0%, #0369a1 100%)'
+                  : 'linear-gradient(135deg, #00d2ff 0%, #0077ff 100%)',
+                border: 'none',
+                color: '#ffffff',
+                fontSize: '0.82rem',
+                fontWeight: 800,
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px',
+                boxShadow: '0 4px 14px rgba(0, 210, 255, 0.3)',
+                transition: 'all 0.2s ease'
+              }}
+            >
+              <Download size={15} />
+              Installa dall'Hub
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* Banner Informativo: Download Gratuito da GitHub */}
+      <div style={{
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        gap: '12px',
+        flexWrap: 'wrap',
+        padding: '10px 16px',
+        borderRadius: '12px',
+        background: isLight ? 'rgba(234, 88, 12, 0.08)' : 'rgba(0, 210, 255, 0.08)',
+        border: isLight ? '1px solid rgba(234, 88, 12, 0.3)' : '1px solid rgba(0, 210, 255, 0.25)',
+        marginBottom: '18px'
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.78rem', color: isLight ? '#9a3412' : '#00d2ff', fontWeight: 700 }}>
+          <Sparkles size={15} style={{ flexShrink: 0 }} />
+          <span>
+            <strong>Skills 100% Gratuite & Open-Source:</strong> Per installare o abilitare qualsiasi skill, vai nella tab <strong style={{ color: isLight ? '#ea580c' : '#ffffff' }}>Hub Skills & Estensioni</strong> e clicca su <em>Download</em> per sincronizzarla gratuitamente da GitHub.
+          </span>
+        </div>
+        <button
+          onClick={() => openTab({ name: '📦 Hub Skills & Estensioni' }, 'marketplace')}
+          style={{
+            background: 'none',
+            border: 'none',
+            color: isLight ? '#ea580c' : '#00d2ff',
+            fontSize: '0.76rem',
+            fontWeight: 800,
+            cursor: 'pointer',
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: '4px',
+            padding: 0,
+            textDecoration: 'underline'
+          }}
+        >
+          Vai all'Hub Skills <ArrowRight size={13} />
+        </button>
+      </div>
+
+      {/* Body Card: Layout a 3 Colonne */}
+      <div style={{
+        display: 'grid',
+        gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))',
+        gap: '20px',
+        marginBottom: '12px',
+        alignItems: 'start'
+      }}>
+        {/* Colonna 1: Banner Immagine */}
+        <div style={{
+          position: 'relative',
+          borderRadius: '16px',
+          overflow: 'hidden',
+          border: isLight ? `1px solid ${skill.color}45` : `1px solid ${skill.color}35`,
+          boxShadow: isLight ? `0 8px 24px ${skill.color}15` : '0 12px 30px rgba(0,0,0,0.5)',
+          minHeight: '220px',
+          maxHeight: '260px',
+          background: '#0a0d14'
+        }}>
+          <img
+            src={skill.image}
+            alt={skill.name}
+            style={{
+              width: '100%',
+              height: '260px',
+              maxHeight: '260px',
+              objectFit: 'cover',
+              display: 'block'
+            }}
+            onError={(e) => { e.target.src = '/images/hero_banner.jpg'; }}
+          />
+          <div style={{
+            position: 'absolute', bottom: 0, inset: 'auto 0 0 0',
+            padding: '10px 14px',
+            background: 'linear-gradient(to top, rgba(10,13,20,0.95), transparent)',
+            fontSize: '0.72rem', color: '#ffffff', fontWeight: 700,
+            display: 'flex', alignItems: 'center', gap: '6px'
+          }}>
+            <span>🖼️ {skill.badge}</span>
+          </div>
+        </div>
+
+        {/* Colonna 2: Obiettivo e Componenti Chiave */}
+        <div>
+          {/* Box Obiettivo */}
+          <div style={{
+            padding: '12px 14px',
+            borderRadius: '12px',
+            background: isLight ? '#fbf8f2' : `${skill.color}10`,
+            border: isLight ? '1px solid rgba(190, 160, 110, 0.35)' : `1px solid ${skill.color}25`,
+            marginBottom: '14px'
+          }}>
+            <div style={{
+              fontSize: '0.68rem',
+              fontWeight: 800,
+              color: isLight ? '#c2410c' : skill.color,
+              textTransform: 'uppercase',
+              letterSpacing: '0.6px',
+              marginBottom: '4px',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px'
+            }}>
+              <Info size={13} />
+              🎯 Obiettivo Primario & Ambito
+            </div>
+            <p style={{
+              margin: 0,
+              fontSize: '0.82rem',
+              color: isLight ? '#111827' : '#e2e8f0',
+              lineHeight: 1.5,
+              fontWeight: isLight ? 600 : 500
+            }}>
+              {skill.objective}
+            </p>
+          </div>
+
+          {/* Griglia 2x2 dei Componenti Chiave */}
+          <div>
+            <div style={{
+              fontSize: '0.7rem',
+              fontWeight: 800,
+              color: isLight ? '#7a7060' : '#8b8fa3',
+              textTransform: 'uppercase',
+              letterSpacing: '0.6px',
+              marginBottom: '8px',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px'
+            }}>
+              <Layers size={13} />
+              🧩 Componenti Chiave & Tecnologie
+            </div>
+
+            <div style={{
+              display: 'grid',
+              gridTemplateColumns: '1fr 1fr',
+              gap: '8px'
+            }}>
+              {skill.components.map((comp, cIdx) => (
+                <div
+                  key={cIdx}
+                  style={{
+                    padding: '8px 10px',
+                    borderRadius: '10px',
+                    background: innerCardBg,
+                    border: innerCardBorder,
+                    display: 'flex',
+                    flexDirection: 'column',
+                    justifyContent: 'flex-start'
+                  }}
+                >
+                  <div style={{
+                    fontWeight: 800,
+                    fontSize: '0.76rem',
+                    color: isLight ? '#9a3412' : skill.color,
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '5px',
+                    marginBottom: '2px'
+                  }}>
+                    <span>{comp.icon}</span>
+                    <span>{comp.title}</span>
+                  </div>
+                  <div style={{
+                    fontSize: '0.7rem',
+                    color: innerCardText,
+                    lineHeight: 1.4,
+                    fontWeight: isLight ? 500 : 400
+                  }}>
+                    {comp.desc}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        {/* Colonna Destra: Guida Pratica Step-by-Step */}
+        <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
+          <div>
+            <div style={{
+              fontSize: '0.72rem',
+              fontWeight: 800,
+              color: isLight ? '#7a7060' : '#8b8fa3',
+              textTransform: 'uppercase',
+              letterSpacing: '0.6px',
+              marginBottom: '8px',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px'
+            }}>
+              <Code size={13} />
+              💡 Come Usarlo (Guida Pratica Step-by-Step)
+            </div>
+
+            <div style={{
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '10px',
+              marginBottom: '16px'
+            }}>
+              {skill.usageGuide.map((stepItem, sIdx) => (
+                <div
+                  key={sIdx}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'flex-start',
+                    gap: '12px',
+                    padding: '10px 14px',
+                    borderRadius: '12px',
+                    background: innerCardBg,
+                    border: innerCardBorder
+                  }}
+                >
+                  <div style={{
+                    width: '24px',
+                    height: '24px',
+                    borderRadius: '50%',
+                    background: `${skill.color}25`,
+                    border: `1px solid ${skill.color}45`,
+                    color: isLight ? '#9a3412' : skill.color,
+                    fontSize: '0.72rem',
+                    fontWeight: 900,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    flexShrink: 0
+                  }}>
+                    {stepItem.step}
+                  </div>
+                  <div>
+                    <div style={{
+                      fontWeight: 800,
+                      fontSize: '0.78rem',
+                      color: titleColor,
+                      marginBottom: '2px'
+                    }}>
+                      {stepItem.title}
+                    </div>
+                    <div style={{
+                      fontSize: '0.72rem',
+                      color: subtitleColor,
+                      lineHeight: 1.45,
+                      fontWeight: isLight ? 500 : 400
+                    }}>
+                      {stepItem.text}
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Prompt Esempio & Tag */}
+          <div style={{
+            padding: '10px 12px',
+            borderRadius: '10px',
+            background: innerCardBg,
+            border: innerCardBorder
+          }}>
+            <div style={{
+              fontSize: '0.68rem',
+              fontWeight: 800,
+              color: isLight ? '#7a7060' : '#8b8fa3',
+              marginBottom: '6px',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px'
+            }}>
+              <span>⚡ STACK & TAG TECNOLOGICI:</span>
+            </div>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+              {skill.tags.map((tag, tIdx) => (
+                <span
+                  key={tIdx}
+                  style={{
+                    fontSize: '0.68rem',
+                    fontWeight: 700,
+                    padding: '2px 8px',
+                    borderRadius: '6px',
+                    background: isLight ? '#ffffff' : 'rgba(255,255,255,0.06)',
+                    border: isLight ? '1px solid rgba(190, 160, 110, 0.3)' : '1px solid rgba(255,255,255,0.08)',
+                    color: isLight ? '#111827' : '#cbd5e1'
+                  }}
+                >
+                  #{tag}
+                </span>
+              ))}
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ==============================================================================
 // MAIN COMPONENT: SkillsShowcaseSlider
 // ==============================================================================
 export default function SkillsShowcaseSlider({ openTab }) {
@@ -701,6 +1213,10 @@ export default function SkillsShowcaseSlider({ openTab }) {
   const [searchQuery, setSearchQuery] = useState('');
   const [isAutoPlay, setIsAutoPlay] = useState(true);
   const [selectedModalSkill, setSelectedModalSkill] = useState(null);
+
+  // Swipe / Touch Support
+  const [touchStart, setTouchStart] = useState(null);
+  const [touchEnd, setTouchEnd] = useState(null);
 
   const autoPlayRef = useRef(null);
 
@@ -729,12 +1245,12 @@ export default function SkillsShowcaseSlider({ openTab }) {
     }
   }, [filteredSkills.length, currentIndex]);
 
-  // Gestione Autoplay (avanza ogni 9 secondi, si ferma al hover o se disattivato)
+  // Gestione Autoplay (avanza ogni 8 secondi, si ferma al hover o se disattivato)
   useEffect(() => {
     if (!isAutoPlay || filteredSkills.length <= 1) return;
     autoPlayRef.current = setInterval(() => {
       setCurrentIndex(prev => (prev + 1) % filteredSkills.length);
-    }, 9000);
+    }, 8000);
     return () => clearInterval(autoPlayRef.current);
   }, [isAutoPlay, filteredSkills.length]);
 
@@ -746,11 +1262,27 @@ export default function SkillsShowcaseSlider({ openTab }) {
     setCurrentIndex(prev => (prev + 1) % filteredSkills.length);
   };
 
+  // Touch Swipe Handlers
+  const handleTouchStart = (e) => {
+    setTouchEnd(null);
+    setTouchStart(e.targetTouches[0].clientX);
+  };
+
+  const handleTouchMove = (e) => {
+    setTouchEnd(e.targetTouches[0].clientX);
+  };
+
+  const handleTouchEnd = () => {
+    if (!touchStart || !touchEnd) return;
+    const distance = touchStart - touchEnd;
+    const isLeftSwipe = distance > 45;
+    const isRightSwipe = distance < -45;
+    if (isLeftSwipe) handleNext();
+    if (isRightSwipe) handlePrev();
+  };
+
   const currentSkill = filteredSkills[currentIndex] || SKILLS_CATALOG[0];
   const IconComponent = currentSkill.icon;
-
-  // Verifica se la skill è installata
-  const isInstalled = currentSkill.size === 'Kernel' || modulesState[currentSkill.id] === true;
 
   // Stili Tematizzati
   const cardBg = isLight 
@@ -758,10 +1290,10 @@ export default function SkillsShowcaseSlider({ openTab }) {
     : 'linear-gradient(135deg, rgba(14, 18, 28, 0.95) 0%, rgba(10, 13, 20, 0.98) 100%)';
   const cardBorder = isLight 
     ? '1px solid rgba(190, 160, 110, 0.45)' 
-    : `1px solid ${currentSkill.color}35`;
+    : `1px solid ${currentSkill ? currentSkill.color : '#00d2ff'}35`;
   const cardShadow = isLight 
     ? '0 12px 32px rgba(234, 88, 12, 0.08)' 
-    : `0 16px 40px rgba(0,0,0,0.6), 0 0 30px ${currentSkill.color}15`;
+    : `0 16px 40px rgba(0,0,0,0.6), 0 0 30px ${currentSkill ? currentSkill.color : '#00d2ff'}15`;
 
   const titleColor = isLight ? '#111827' : '#ffffff';
   const subtitleColor = isLight ? '#4b5563' : '#a0a6bc';
@@ -961,7 +1493,7 @@ export default function SkillsShowcaseSlider({ openTab }) {
         </div>
       </div>
 
-      {/* ── CARD PRINCIPALE DELLO SLIDER ──────────────────────────────────── */}
+      {/* ── CARD PRINCIPALE DELLO SLIDER DINAMICO (CAROUSEL TRACK) ────────── */}
       {filteredSkills.length === 0 ? (
         <div style={{
           padding: '40px',
@@ -981,500 +1513,148 @@ export default function SkillsShowcaseSlider({ openTab }) {
             background: cardBg,
             border: cardBorder,
             boxShadow: cardShadow,
-            padding: '28px',
             overflow: 'hidden',
-            transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)'
+            transition: 'border-color 0.4s ease, box-shadow 0.4s ease'
           }}
         >
-          {/* Header Card: Icona, Titolo, Categoria, Badge e Azioni Top */}
+          {/* Barra di Avanzamento Autoplay al Bordo Superiore */}
           <div style={{
-            display: 'flex',
-            alignItems: 'flex-start',
-            justifyContent: 'space-between',
-            flexWrap: 'wrap',
-            gap: '16px',
-            marginBottom: '20px',
-            borderBottom: isLight ? '1px solid rgba(190, 160, 110, 0.25)' : '1px solid rgba(255,255,255,0.08)',
-            paddingBottom: '16px'
+            position: 'relative',
+            width: '100%',
+            height: '3px',
+            background: isLight ? 'rgba(0,0,0,0.06)' : 'rgba(255,255,255,0.06)',
+            overflow: 'hidden'
           }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '16px', flexWrap: 'wrap' }}>
-              {/* Icona Skill */}
-              <div style={{
-                width: '54px',
-                height: '54px',
-                borderRadius: '16px',
-                background: `${currentSkill.color}18`,
-                border: `1px solid ${currentSkill.color}45`,
+            <div
+              key={`progress-${currentIndex}-${isAutoPlay}`}
+              style={{
+                height: '100%',
+                background: isLight
+                  ? 'linear-gradient(90deg, #ea580c, #f97316)'
+                  : `linear-gradient(90deg, ${currentSkill.color}, #00d2ff)`,
+                width: isAutoPlay ? '100%' : '0%',
+                transition: isAutoPlay ? 'width 8s linear' : 'none',
+                boxShadow: `0 0 8px ${currentSkill.color}`
+              }}
+            />
+          </div>
+
+          {/* Freccia Flottante Sinistra */}
+          {filteredSkills.length > 1 && (
+            <button
+              onClick={(e) => { e.stopPropagation(); handlePrev(); }}
+              aria-label="Skill precedente"
+              style={{
+                position: 'absolute',
+                left: '12px',
+                top: '50%',
+                transform: 'translateY(-50%)',
+                zIndex: 25,
+                width: '42px',
+                height: '42px',
+                borderRadius: '50%',
+                background: isLight ? 'rgba(255, 255, 255, 0.9)' : 'rgba(15, 20, 32, 0.88)',
+                backdropFilter: 'blur(10px)',
+                border: isLight ? '1px solid rgba(190, 160, 110, 0.45)' : '1px solid rgba(255, 255, 255, 0.18)',
+                boxShadow: isLight ? '0 4px 16px rgba(0,0,0,0.12)' : '0 6px 20px rgba(0,0,0,0.6)',
+                color: isLight ? '#111827' : '#ffffff',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
-                boxShadow: `0 0 20px ${currentSkill.color}25`,
-                color: isLight ? '#c2410c' : currentSkill.color,
-                flexShrink: 0
-              }}>
-                <IconComponent size={28} style={{ color: currentSkill.color }} />
-              </div>
-
-              <div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap', marginBottom: '4px' }}>
-                  {/* Badge Categoria */}
-                  <span style={{
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    gap: '4px',
-                    padding: '3px 10px',
-                    borderRadius: '10px',
-                    background: `${currentSkill.color}18`,
-                    border: `1px solid ${currentSkill.color}35`,
-                    color: isLight ? '#9a3412' : currentSkill.color,
-                    fontSize: '0.68rem',
-                    fontWeight: 800,
-                    letterSpacing: '0.5px'
-                  }}>
-                    {currentSkill.badge}
-                  </span>
-
-                  {/* Badge Stato Installazione */}
-                  <span style={{
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    gap: '4px',
-                    padding: '3px 10px',
-                    borderRadius: '10px',
-                    background: isInstalled 
-                      ? (isLight ? 'rgba(22, 163, 74, 0.12)' : 'rgba(63, 185, 80, 0.15)')
-                      : (isLight ? 'rgba(234, 88, 12, 0.1)' : 'rgba(0, 210, 255, 0.12)'),
-                    border: isInstalled 
-                      ? (isLight ? '1px solid rgba(22, 163, 74, 0.35)' : '1px solid rgba(63, 185, 80, 0.35)')
-                      : (isLight ? '1px solid rgba(234, 88, 12, 0.35)' : '1px solid rgba(0, 210, 255, 0.3)'),
-                    color: isInstalled 
-                      ? (isLight ? '#15803d' : '#3fb950')
-                      : (isLight ? '#c2410c' : '#00d2ff'),
-                    fontSize: '0.68rem',
-                    fontWeight: 800
-                  }}>
-                    {isInstalled ? <CheckCircle2 size={12} /> : <Download size={12} />}
-                    {isInstalled ? 'Pronta & Installata' : 'Disponibile su GitHub'}
-                  </span>
-
-                  <span style={{
-                    fontSize: '0.66rem',
-                    fontWeight: 700,
-                    color: isLight ? '#7a7060' : '#8b8fa3',
-                    background: isLight ? '#f4efe6' : 'rgba(255,255,255,0.06)',
-                    padding: '3px 8px',
-                    borderRadius: '8px'
-                  }}>
-                    {currentSkill.version} • {currentSkill.size}
-                  </span>
-                </div>
-
-                <h3 style={{
-                  margin: 0,
-                  fontSize: '1.35rem',
-                  fontWeight: 800,
-                  color: titleColor,
-                  lineHeight: 1.3
-                }}>
-                  {currentSkill.name}
-                </h3>
-              </div>
-            </div>
-
-            {/* Pulsanti di Azione Destra */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-              <button
-                onClick={() => setSelectedModalSkill(currentSkill)}
-                title="Guida approfondita ed esempi di integrazione"
-                style={{
-                  padding: '8px 14px',
-                  borderRadius: '10px',
-                  background: isLight ? '#fbf8f2' : 'rgba(255,255,255,0.06)',
-                  border: isLight ? '1px solid rgba(190, 160, 110, 0.4)' : '1px solid rgba(255,255,255,0.12)',
-                  color: isLight ? '#374151' : '#e2e8f0',
-                  fontSize: '0.78rem',
-                  fontWeight: 700,
-                  cursor: 'pointer',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '6px'
-                }}
-              >
-                <BookOpen size={14} />
-                Guida Rapida
-              </button>
-
-              {currentSkill.gitUrl && (
-                <a
-                  href={currentSkill.gitUrl}
-                  target="_blank"
-                  rel="noreferrer"
-                  title="Apri sorgente GitHub del modulo"
-                  style={{
-                    padding: '8px 12px',
-                    borderRadius: '10px',
-                    background: isLight ? '#fbf8f2' : 'rgba(255,255,255,0.06)',
-                    border: isLight ? '1px solid rgba(190, 160, 110, 0.4)' : '1px solid rgba(255,255,255,0.12)',
-                    color: isLight ? '#374151' : '#e2e8f0',
-                    fontSize: '0.78rem',
-                    fontWeight: 700,
-                    cursor: 'pointer',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '6px',
-                    textDecoration: 'none'
-                  }}
-                >
-                  <ExternalLink size={14} />
-                  GitHub
-                </a>
-              )}
-
-              {/* Pulsante Lancio / Installazione */}
-              {isInstalled ? (
-                <button
-                  onClick={() => openTab({ name: currentSkill.name }, currentSkill.tabType)}
-                  style={{
-                    padding: '8px 18px',
-                    borderRadius: '10px',
-                    background: isLight
-                      ? 'linear-gradient(135deg, #ea580c 0%, #d97706 100%)'
-                      : `linear-gradient(135deg, ${currentSkill.color}, ${currentSkill.color}cc)`,
-                    border: 'none',
-                    color: '#ffffff',
-                    fontSize: '0.82rem',
-                    fontWeight: 800,
-                    cursor: 'pointer',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '8px',
-                    boxShadow: isLight ? '0 4px 14px rgba(234, 88, 12, 0.25)' : `0 4px 18px ${currentSkill.color}35`,
-                    transition: 'all 0.2s ease'
-                  }}
-                >
-                  Apri Skill
-                  <ArrowRight size={15} />
-                </button>
-              ) : (
-                <button
-                  onClick={() => openTab({ name: '📦 Hub Skills & Estensioni' }, 'marketplace')}
-                  style={{
-                    padding: '8px 18px',
-                    borderRadius: '10px',
-                    background: isLight
-                      ? 'linear-gradient(135deg, #0284c7 0%, #0369a1 100%)'
-                      : 'linear-gradient(135deg, #00d2ff 0%, #0077ff 100%)',
-                    border: 'none',
-                    color: '#ffffff',
-                    fontSize: '0.82rem',
-                    fontWeight: 800,
-                    cursor: 'pointer',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '8px',
-                    boxShadow: '0 4px 14px rgba(0, 210, 255, 0.3)',
-                    transition: 'all 0.2s ease'
-                  }}
-                >
-                  <Download size={15} />
-                  Installa dall'Hub
-                </button>
-              )}
-            </div>
-          </div>
-
-          {/* Banner Informativo: Download Gratuito da GitHub */}
-          <div style={{
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            gap: '12px',
-            flexWrap: 'wrap',
-            padding: '10px 16px',
-            borderRadius: '12px',
-            background: isLight ? 'rgba(234, 88, 12, 0.08)' : 'rgba(0, 210, 255, 0.08)',
-            border: isLight ? '1px solid rgba(234, 88, 12, 0.3)' : '1px solid rgba(0, 210, 255, 0.25)',
-            marginBottom: '18px'
-          }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.78rem', color: isLight ? '#9a3412' : '#00d2ff', fontWeight: 700 }}>
-              <Sparkles size={15} style={{ flexShrink: 0 }} />
-              <span>
-                <strong>Skills 100% Gratuite & Open-Source:</strong> Per installare o abilitare qualsiasi skill, vai nella tab <strong style={{ color: isLight ? '#ea580c' : '#ffffff' }}>Hub Skills & Estensioni</strong> e clicca su <em>Download</em> per sincronizzarla gratuitamente da GitHub.
-              </span>
-            </div>
-            <button
-              onClick={() => openTab({ name: '📦 Hub Skills & Estensioni' }, 'marketplace')}
-              style={{
-                background: 'none',
-                border: 'none',
-                color: isLight ? '#ea580c' : '#00d2ff',
-                fontSize: '0.76rem',
-                fontWeight: 800,
                 cursor: 'pointer',
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: '4px',
-                padding: 0,
-                textDecoration: 'underline'
+                transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)'
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.transform = 'translateY(-50%) scale(1.1)';
+                e.currentTarget.style.borderColor = currentSkill.color;
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.transform = 'translateY(-50%) scale(1)';
+                e.currentTarget.style.borderColor = isLight ? 'rgba(190, 160, 110, 0.45)' : 'rgba(255, 255, 255, 0.18)';
               }}
             >
-              Vai all'Hub Skills <ArrowRight size={13} />
+              <ChevronLeft size={22} />
             </button>
-          </div>
+          )}
 
-          {/* Body Card: Layout a 3 Colonne o Griglia con Immagine Banner, Dettaglio & Guida */}
-          <div style={{
-            display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))',
-            gap: '20px',
-            marginBottom: '20px',
-            alignItems: 'start'
-          }}>
-            {/* Colonna 1: Banner Immagine della Skill */}
-            <div style={{
-              position: 'relative',
-              borderRadius: '16px',
-              overflow: 'hidden',
-              border: isLight ? `1px solid ${currentSkill.color}45` : `1px solid ${currentSkill.color}35`,
-              boxShadow: isLight ? `0 8px 24px ${currentSkill.color}15` : '0 12px 30px rgba(0,0,0,0.5)',
-              minHeight: '220px',
-              maxHeight: '260px',
-              background: '#0a0d14'
-            }}>
-              <img
-                src={currentSkill.image}
-                alt={currentSkill.name}
-                style={{
-                  width: '100%',
-                  height: '260px',
-                  maxHeight: '260px',
-                  objectFit: 'cover',
-                  display: 'block'
-                }}
-                onError={(e) => { e.target.src = '/images/hero_banner.jpg'; }}
-              />
-              <div style={{
-                position: 'absolute', bottom: 0, inset: 'auto 0 0 0',
-                padding: '10px 14px',
-                background: 'linear-gradient(to top, rgba(10,13,20,0.95), transparent)',
-                fontSize: '0.72rem', color: '#ffffff', fontWeight: 700,
-                display: 'flex', alignItems: 'center', gap: '6px'
-              }}>
-                <span>🖼️ {currentSkill.badge}</span>
-              </div>
-            </div>
+          {/* Freccia Flottante Destra */}
+          {filteredSkills.length > 1 && (
+            <button
+              onClick={(e) => { e.stopPropagation(); handleNext(); }}
+              aria-label="Prossima skill"
+              style={{
+                position: 'absolute',
+                right: '12px',
+                top: '50%',
+                transform: 'translateY(-50%)',
+                zIndex: 25,
+                width: '42px',
+                height: '42px',
+                borderRadius: '50%',
+                background: isLight ? 'rgba(255, 255, 255, 0.9)' : 'rgba(15, 20, 32, 0.88)',
+                backdropFilter: 'blur(10px)',
+                border: isLight ? '1px solid rgba(190, 160, 110, 0.45)' : '1px solid rgba(255, 255, 255, 0.18)',
+                boxShadow: isLight ? '0 4px 16px rgba(0,0,0,0.12)' : '0 6px 20px rgba(0,0,0,0.6)',
+                color: isLight ? '#111827' : '#ffffff',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                cursor: 'pointer',
+                transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)'
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.transform = 'translateY(-50%) scale(1.1)';
+                e.currentTarget.style.borderColor = currentSkill.color;
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.transform = 'translateY(-50%) scale(1)';
+                e.currentTarget.style.borderColor = isLight ? 'rgba(190, 160, 110, 0.45)' : 'rgba(255, 255, 255, 0.18)';
+              }}
+            >
+              <ChevronRight size={22} />
+            </button>
+          )}
 
-            {/* Colonna 2: Obiettivo e Componenti Chiave */}
-            <div>
-              {/* Box Obiettivo */}
-              <div style={{
-                padding: '12px 14px',
-                borderRadius: '12px',
-                background: isLight ? '#fbf8f2' : `${currentSkill.color}10`,
-                border: isLight ? '1px solid rgba(190, 160, 110, 0.35)' : `1px solid ${currentSkill.color}25`,
-                marginBottom: '14px'
-              }}>
-                <div style={{
-                  fontSize: '0.68rem',
-                  fontWeight: 800,
-                  color: isLight ? '#c2410c' : currentSkill.color,
-                  textTransform: 'uppercase',
-                  letterSpacing: '0.6px',
-                  marginBottom: '4px',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '6px'
-                }}>
-                  <Info size={13} />
-                  🎯 Obiettivo Primario & Ambito
+          {/* ── TRACK A SCIVOLAMENTO ORIZZONTALE FLUIDO (GPU ACCELERATO) ───── */}
+          <div
+            onTouchStart={handleTouchStart}
+            onTouchMove={handleTouchMove}
+            onTouchEnd={handleTouchEnd}
+            style={{
+              display: 'flex',
+              width: `${filteredSkills.length * 100}%`,
+              transform: `translateX(-${currentIndex * (100 / filteredSkills.length)}%)`,
+              transition: 'transform 0.36s cubic-bezier(0.16, 1, 0.3, 1)',
+              willChange: 'transform'
+            }}
+          >
+            {filteredSkills.map((skill) => {
+              const isInstalled = skill.size === 'Kernel' || modulesState[skill.id] === true;
+              return (
+                <div
+                  key={skill.id}
+                  style={{
+                    width: `${100 / filteredSkills.length}%`,
+                    flexShrink: 0,
+                    padding: '28px',
+                    boxSizing: 'border-box'
+                  }}
+                >
+                  <SkillSlideCard
+                    skill={skill}
+                    isInstalled={isInstalled}
+                    isLight={isLight}
+                    openTab={openTab}
+                    onOpenModal={() => setSelectedModalSkill(skill)}
+                    titleColor={titleColor}
+                    subtitleColor={subtitleColor}
+                    innerCardBg={innerCardBg}
+                    innerCardBorder={innerCardBorder}
+                    innerCardText={innerCardText}
+                  />
                 </div>
-                <p style={{
-                  margin: 0,
-                  fontSize: '0.82rem',
-                  color: isLight ? '#111827' : '#e2e8f0',
-                  lineHeight: 1.5,
-                  fontWeight: isLight ? 600 : 500
-                }}>
-                  {currentSkill.objective}
-                </p>
-              </div>
-
-              {/* Griglia 2x2 dei Componenti Chiave */}
-              <div>
-                <div style={{
-                  fontSize: '0.7rem',
-                  fontWeight: 800,
-                  color: isLight ? '#7a7060' : '#8b8fa3',
-                  textTransform: 'uppercase',
-                  letterSpacing: '0.6px',
-                  marginBottom: '8px',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '6px'
-                }}>
-                  <Layers size={13} />
-                  🧩 Componenti Chiave & Tecnologie
-                </div>
-
-                <div style={{
-                  display: 'grid',
-                  gridTemplateColumns: '1fr 1fr',
-                  gap: '8px'
-                }}>
-                  {currentSkill.components.map((comp, cIdx) => (
-                    <div
-                      key={cIdx}
-                      style={{
-                        padding: '8px 10px',
-                        borderRadius: '10px',
-                        background: innerCardBg,
-                        border: innerCardBorder,
-                        display: 'flex',
-                        flexDirection: 'column',
-                        justifyContent: 'flex-start'
-                      }}
-                    >
-                      <div style={{
-                        fontWeight: 800,
-                        fontSize: '0.76rem',
-                        color: isLight ? '#9a3412' : currentSkill.color,
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '5px',
-                        marginBottom: '2px'
-                      }}>
-                        <span>{comp.icon}</span>
-                        <span>{comp.title}</span>
-                      </div>
-                      <div style={{
-                        fontSize: '0.7rem',
-                        color: innerCardText,
-                        lineHeight: 1.4,
-                        fontWeight: isLight ? 500 : 400
-                      }}>
-                        {comp.desc}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </div>
-
-            {/* Colonna Destra: Guida Pratica "Come Usarlo" Step-by-Step */}
-            <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
-              <div>
-                <div style={{
-                  fontSize: '0.72rem',
-                  fontWeight: 800,
-                  color: isLight ? '#7a7060' : '#8b8fa3',
-                  textTransform: 'uppercase',
-                  letterSpacing: '0.6px',
-                  marginBottom: '8px',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '6px'
-                }}>
-                  <Code size={13} />
-                  💡 Come Usarlo (Guida Pratica Step-by-Step)
-                </div>
-
-                <div style={{
-                  display: 'flex',
-                  flexDirection: 'column',
-                  gap: '10px',
-                  marginBottom: '16px'
-                }}>
-                  {currentSkill.usageGuide.map((stepItem, sIdx) => (
-                    <div
-                      key={sIdx}
-                      style={{
-                        display: 'flex',
-                        alignItems: 'flex-start',
-                        gap: '12px',
-                        padding: '10px 14px',
-                        borderRadius: '12px',
-                        background: innerCardBg,
-                        border: innerCardBorder
-                      }}
-                    >
-                      <div style={{
-                        width: '26px',
-                        height: '26px',
-                        borderRadius: '50%',
-                        background: isLight ? 'rgba(234, 88, 12, 0.15)' : `${currentSkill.color}25`,
-                        border: isLight ? '1px solid rgba(234, 88, 12, 0.4)' : `1px solid ${currentSkill.color}45`,
-                        color: isLight ? '#c2410c' : currentSkill.color,
-                        fontWeight: 800,
-                        fontSize: '0.78rem',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        flexShrink: 0,
-                        marginTop: '2px'
-                      }}>
-                        {stepItem.step}
-                      </div>
-                      <div>
-                        <div style={{
-                          fontWeight: 800,
-                          fontSize: '0.8rem',
-                          color: titleColor,
-                          marginBottom: '2px'
-                        }}>
-                          {stepItem.title}
-                        </div>
-                        <div style={{
-                          fontSize: '0.73rem',
-                          color: innerCardText,
-                          lineHeight: 1.45,
-                          fontWeight: isLight ? 500 : 400
-                        }}>
-                          {stepItem.text}
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              {/* Tag Tecnologici & Esempio Prompt */}
-              <div style={{
-                padding: '10px 14px',
-                borderRadius: '12px',
-                background: isLight ? '#f4efe6' : 'rgba(255,255,255,0.02)',
-                border: isLight ? '1px solid rgba(190, 160, 110, 0.25)' : '1px solid rgba(255,255,255,0.05)'
-              }}>
-                <div style={{
-                  fontSize: '0.68rem',
-                  fontWeight: 800,
-                  color: isLight ? '#7a7060' : '#8b8fa3',
-                  marginBottom: '6px',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '6px'
-                }}>
-                  <span>⚡ STACK & TAG TECNOLOGICI:</span>
-                </div>
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
-                  {currentSkill.tags.map((tag, tIdx) => (
-                    <span
-                      key={tIdx}
-                      style={{
-                        fontSize: '0.68rem',
-                        fontWeight: 700,
-                        padding: '2px 8px',
-                        borderRadius: '6px',
-                        background: isLight ? '#ffffff' : 'rgba(255,255,255,0.06)',
-                        border: isLight ? '1px solid rgba(190, 160, 110, 0.3)' : '1px solid rgba(255,255,255,0.08)',
-                        color: isLight ? '#111827' : '#cbd5e1'
-                      }}
-                    >
-                      #{tag}
-                    </span>
-                  ))}
-                </div>
-              </div>
-            </div>
+              );
+            })}
           </div>
 
           {/* ── BARRA INFERIORE DI CONTROLLO SLIDER & PAGINAZIONE ───────────── */}
@@ -1484,7 +1664,8 @@ export default function SkillsShowcaseSlider({ openTab }) {
             justifyContent: 'space-between',
             flexWrap: 'wrap',
             gap: '14px',
-            paddingTop: '16px',
+            padding: '16px 28px',
+            background: isLight ? 'rgba(0,0,0,0.02)' : 'rgba(0,0,0,0.25)',
             borderTop: isLight ? '1px solid rgba(190, 160, 110, 0.25)' : '1px solid rgba(255,255,255,0.08)'
           }}>
             {/* Controlli Prev / Next + Play/Pausa */}

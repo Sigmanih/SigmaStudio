@@ -99,7 +99,10 @@ export default function SigmaLabEditor({
 
   useEffect(() => {
     if (!content || !previewRef.current || fileType === 'test' || fileType === 'viz') return;
-    renderPreview();
+    const timer = setTimeout(() => {
+      renderPreview();
+    }, 120);
+    return () => clearTimeout(timer);
   }, [content, fileType]);
 
   const renderPreview = async () => {
@@ -306,7 +309,13 @@ export default function SigmaLabEditor({
         .lab-viewer th { background: #f7f7f7; }
         .lab-viewer pre { background: #f8f8f8; padding: 20px; border-radius: 8px; overflow-x: auto; border: 1px solid #eee; font-family: 'JetBrains Mono', monospace; font-size: 0.85rem; }
         .lab-viewer code { font-family: 'JetBrains Mono', monospace; }
-        .lab-viewer img { max-width: 100%; border-radius: 8px; margin: 20px 0; }
+        .lab-viewer img { max-width: 100%; height: auto; border-radius: 6px; vertical-align: middle; }
+        .lab-viewer img.inline-badge { display: inline-block !important; vertical-align: middle !important; margin: 2px 4px 2px 0 !important; max-height: 22px !important; border-radius: 3px !important; }
+        .lab-viewer .badge-row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; margin: 12px 0; }
+        .lab-viewer .badge-row img { margin: 0 !important; display: inline-block !important; }
+        .lab-viewer .chat-image-preview-card { margin: 16px 0; max-width: 100%; }
+        .lab-viewer .chat-image-preview-card img { margin: 0; border-radius: 8px; box-shadow: 0 4px 16px rgba(0,0,0,0.08); }
+        .lab-viewer .chat-image-caption { display: block; font-size: 0.8rem; color: #64748b; font-style: italic; margin-top: 6px; text-align: center; }
         .lab-viewer .mermaid-wrapper { width: 100%; margin: 30px auto; overflow-x: auto; background: #fafafa; border: 1px solid #e0e0e0; border-radius: 8px; padding: 20px 0; }
         .lab-viewer .mermaid-wrapper svg { display: block; margin: 0 auto; max-width: 100%; height: auto; }
         .lab-viewer .mermaid-error { color: #c00; padding: 20px; border: 1px dashed #c00; border-radius: 8px; font-size: 0.8rem; }

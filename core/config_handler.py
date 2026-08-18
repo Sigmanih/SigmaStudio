@@ -14,8 +14,8 @@ log = get_logger(__name__)
 def handle_api_config_get(self):
     ai_cfg = load_ai_config()
     safe_cfg = {}
-    safe_cfg['active_provider'] = ai_cfg.get('active_provider', 'ollama')
-    safe_cfg['active_model'] = ai_cfg.get('active_model', 'llama3.2')
+    safe_cfg['active_provider'] = ai_cfg.get('active_provider', 'sigma_engine')
+    safe_cfg['active_model'] = ai_cfg.get('active_model', 'sigma-native:latest')
     safe_cfg['favorite_model'] = ai_cfg.get('favorite_model', '')
     safe_cfg['favorite_models'] = ai_cfg.get('favorite_models', ([ai_cfg['favorite_model']] if ai_cfg.get('favorite_model') else []))
     safe_cfg['providers'] = {}
@@ -63,7 +63,7 @@ def handle_api_config_post(self):
             ai_cfg['active_provider'] = req['provider']
         if 'model' in req and req['model']:
             ai_cfg['active_model'] = req['model']
-        active_provider = ai_cfg.get('active_provider', 'ollama')
+        active_provider = ai_cfg.get('active_provider', 'sigma_engine')
         if active_provider in ai_cfg.get('providers', {}):
             prov = ai_cfg['providers'][active_provider]
             for k in ('endpoint', 'api_url', 'temperature', 'max_tokens', 'top_p', 'top_k', 'repeat_penalty', 'num_ctx', 'seed'):
@@ -81,23 +81,37 @@ def handle_api_config_post(self):
 
 
 def handle_api_ollama_models(self):
+    """List Ollama models via HTTP API ONLY if explicitly enabled (never spawns subprocesses/daemons)."""
     try:
-        result = subprocess.run(['ollama', 'list'], capture_output=True, text=True, timeout=30, encoding='utf-8', errors='replace')
-        models = []
-        if result.returncode == 0:
-            lines = result.stdout.strip().split('\n')
-            for line in lines[1:]:
-                if line.strip():
-                    parts = line.split()
-                    if parts:
-                        name = parts[0]
-                        size_str = parts[2] if len(parts) > 2 else '?'
-                        models.append({"name": name, "size": size_str})
-        self.send_json_response({"success": True, "models": models})
-    except FileNotFoundError:
-        return self.send_json_response({"success": False, "models": [], "error": "ollama not found"})
-    except Exception as e:
-        self.send_json_response({"success": False, "models": [], "error": str(e)})
+        from core.ai_providers import load_ai_config
+        ai_cfg = load_ai_config()
+        ollama_cfg = ai_cfg.get("providers", {}).get("ollama", {})
+        
+        # If Ollama is not explicitly enabled by the user, return empty list without touching network/processes
+        if ollama_cfg.get("enabled") is not True:
+            return self.send_json_response({"success": True, "models": []})
+
+        import urllib.request
+        import json
+        endpoint = ollama_cfg.get("endpoint", "http://localhost:11434/api/chat")
+        base_url = endpoint.split("/api/")[0] if "/api/" in endpoint else "http://localhost:11434"
+        tags_url = f"{base_url}/api/tags"
+        
+        req = urllib.request.Request(tags_url, headers={"User-Agent": "SigmaStudio"})
+        with urllib.request.urlopen(req, timeout=0.8) as resp:
+            data = json.loads(resp.read().decode('utf-8'))
+            raw_models = data.get("models", [])
+            models = []
+            for m in raw_models:
+                m_name = m.get("name", "")
+                m_size_bytes = m.get("size", 0)
+                m_size_str = f"{m_size_bytes / (1024**3):.1f} GB" if m_size_bytes else "?"
+                if m_name:
+                    models.append({"name": m_name, "size": m_size_str})
+            return self.send_json_response({"success": True, "models": models})
+    except Exception:
+        # If daemon is not running or unreachable, return empty list without spawning any process
+        return self.send_json_response({"success": True, "models": []})
 
 
 def handle_api_create_model(self):

@@ -351,10 +351,10 @@ export default function Sidebar({
 
           <SidebarItem 
             icon={MessageSquare} 
-            label="Chat AI Workspace" 
+            label="Chat AI" 
             badge={chatCount > 0 ? chatCount : 0}
             badgeColor="rgba(0,210,255,0.15)"
-            active={activeTabId != null && activeTabId === 'chat'}
+            active={activeTabId != null && activeTabId.startsWith('chat')}
             onClick={() => openTab({ name: 'Chat AI', path: 'chat-tab' }, 'chat')} 
           />
 
@@ -368,21 +368,21 @@ export default function Sidebar({
           />
 
           <SidebarItem 
+            icon={Sliders} 
+            label="Providers Hub" 
+            badge="ROUTING"
+            badgeColor="rgba(0,210,255,0.15)"
+            active={activeTabId != null && (activeTabId.startsWith('ai_config') || activeTabId.startsWith('config'))}
+            onClick={() => openTab({ name: '⚙️ Providers Hub' }, 'ai_config')} 
+          />
+
+          <SidebarItem 
             icon={FileText} 
             label="Manifesti Hub" 
             badge={manifestiCount + modules.reduce((acc, m) => acc + (m.whitepapers?.length || 0), 0)}
             badgeColor="rgba(188,140,255,0.15)"
             active={activeTabId != null && (activeTabId.startsWith('whitepaper') || activeTabId.startsWith('whitepapers_lib'))}
             onClick={() => openTab({ name: '📜 Manifesti Hub' }, 'whitepapers_lib')} 
-          />
-
-          <SidebarItem 
-            icon={Sliders} 
-            label="Configurazione Providers" 
-            badge="ROUTING"
-            badgeColor="rgba(0,210,255,0.15)"
-            active={activeTabId != null && (activeTabId.startsWith('ai_config') || activeTabId.startsWith('config'))}
-            onClick={() => openTab({ name: '⚙️ Configurazione Providers' }, 'ai_config')} 
           />
 
           {!hiddenTabs.has('mcp_hub') && (
@@ -398,7 +398,7 @@ export default function Sidebar({
 
           <SidebarItem 
             icon={Settings} 
-            label="Impostazioni Piattaforma" 
+            label="Impostazioni" 
             badge="CONFIG"
             badgeColor="rgba(188,140,255,0.15)"
             active={activeTabId != null && (activeTabId.startsWith('account') || activeTabId.startsWith('settings'))}

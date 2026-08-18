@@ -127,7 +127,7 @@ function AppContent() {
       }
     };
     const configHandler = () => {
-      openTab({ name: '⚙️ Configurazione Providers' }, 'ai_config');
+      openTab({ name: '⚙️ Providers Hub' }, 'ai_config');
     };
     window.addEventListener('message', handler);
     window.addEventListener('open-ai-config', configHandler);
@@ -388,10 +388,10 @@ function AppContent() {
 
 
 
-                {/* Item 4: Configurazione Providers (Allineato) */}
+                {/* Item 4: Providers Hub (Allineato) */}
                 <button
                   onClick={() => {
-                    openTab({ name: '⚙️ Configurazione Providers' }, 'ai_config');
+                    openTab({ name: '⚙️ Providers Hub' }, 'ai_config');
                     setDockMinimized(true);
                   }}
                   style={{
@@ -407,8 +407,8 @@ function AppContent() {
                       <Settings size={16} color="#ffb86c" />
                     </div>
                     <div>
-                      <div style={{ fontSize: '0.8rem', fontWeight: 700 }}>Configurazione AI</div>
-                      <div style={{ fontSize: '0.62rem', color: '#8b8fa3' }}>Token, Providers & Modelli</div>
+                      <div style={{ fontSize: '0.8rem', fontWeight: 700 }}>Providers Hub</div>
+                      <div style={{ fontSize: '0.62rem', color: '#8b8fa3' }}>Token, Providers & Routing</div>
                     </div>
                   </div>
                   <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#ffb86c' }} />

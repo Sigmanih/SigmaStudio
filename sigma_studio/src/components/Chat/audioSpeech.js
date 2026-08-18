@@ -241,7 +241,7 @@ const DEFAULT_VOICE_CONFIG = {
   engine: '',        // '' = follow the server recommendation
   neuralVoice: '',
   voiceURI: '',      // system voice, used by the browser engine
-  rate: 1.05,
+  rate: 1.0,         // Natural standard cadence for crystal-clear Italian speech
   pitch: 1.0,
   volume: 1.0,
 };
@@ -288,15 +288,13 @@ function resolveEngine() {
   const wanted = cfg.engine || serverDefault.engine;
   if (wanted === 'browser' || neuralDegraded) return { engine: 'browser', voice: '' };
 
-  // Never commit to an engine the server cannot actually run: discovering it
-  // mid-answer would mean changing voice halfway through.
-  const known = (serverEngines || []).find(e => e.id === wanted);
-  if (serverEngines && (!known || !known.installed)) return { engine: 'browser', voice: '' };
+  const engine = serverEngines ? serverEngines.find(e => e.id === wanted) : null;
+  if (engine) return { engine: wanted, voice: cfg.neuralVoice || engine.defaultVoice || '' };
 
-  return { engine: wanted, voice: cfg.neuralVoice || serverDefault.voice };
+  return { engine: 'browser', voice: '' };
 }
 
-/** Ask the backend which neural engines are installed. Cached after first call. */
+/** Check if the backend has neural TTS engines installed. */
 export function loadTTSEngines(force = false) {
   if (enginesProbe && !force) return enginesProbe;
   try {
@@ -333,16 +331,29 @@ export function loadTTSEngines(force = false) {
   return enginesProbe;
 }
 
-
 /** Cached engine list (null until the first probe resolves). */
 export function getTTSEngines() {
   return serverEngines;
 }
 
-/** Best system voice: Windows/macOS neural voices sound far better than the legacy ones. */
+/** Best system voice: High-definition Windows / Edge / Chrome neural voices sound far better than legacy voices. */
 function pickBestSystemVoice(voices) {
+  if (!voices || voices.length === 0) return null;
   const italian = voices.filter(v => (v.lang || '').toLowerCase().startsWith('it'));
   const pool = italian.length > 0 ? italian : voices;
+
+  // 1. Prioritize Microsoft Natural / Online / Neural / Enhanced Italian voices (Elsa, Isabella, Diego, Cosimo, Google)
+  const naturalIt = pool.find(v => (v.lang || '').toLowerCase().startsWith('it') && /natural|neural|online|premium|enhanced/i.test(v.name || ''));
+  if (naturalIt) return naturalIt;
+
+  // 2. High-quality Modern Italian voices
+  const modernIt = pool.find(v => (v.lang || '').toLowerCase().startsWith('it') && /elsa|isabella|diego|cosimo|google|chiara|giorgio|federico/i.test(v.name || ''));
+  if (modernIt) return modernIt;
+
+  // 3. Any Italian voice
+  if (italian.length > 0) return italian[0];
+
+  // 4. Fallback to premium voice
   const premium = pool.find(v => /natural|neural|online|premium|enhanced/i.test(v.name || ''));
   return premium || pool[0] || null;
 }

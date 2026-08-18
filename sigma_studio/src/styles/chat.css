@@ -1563,20 +1563,70 @@
   content: '▸ ';
 }
 
-/* Speech Karaoke Word Highlight / Underline */
+/* Speech Karaoke Word Highlight - Fluid Glowing Neon Wave */
 mark.speech-word-highlight,
 .speech-word-highlight {
-  background: rgba(0, 210, 255, 0.16) !important;
+  position: relative !important;
+  background: rgba(0, 210, 255, 0.12) !important;
   color: inherit !important;
   font-weight: inherit !important;
-  border-bottom: 2.5px solid #00d2ff !important;
-  border-radius: 2px !important;
-  padding: 0 1px 1px 1px !important;
-  margin: 0 !important;
-  box-shadow: 0 2px 8px rgba(0, 210, 255, 0.35) !important;
+  border-radius: 4px !important;
+  padding: 1px 4px 2px 4px !important;
+  margin: 0 -1px !important;
   display: inline !important;
-  transition: background-color 0.15s ease, border-color 0.15s ease !important;
   text-shadow: none !important;
+  box-decoration-break: clone !important;
+  -webkit-box-decoration-break: clone !important;
+  
+  /* Modern fluid neon underline with soft vertical bloom */
+  border-bottom: 2.5px solid #00d2ff !important;
+  box-shadow: 0 3px 12px rgba(0, 210, 255, 0.28) !important;
+  
+  transition: opacity 0.3s cubic-bezier(0.16, 1, 0.3, 1),
+              background 0.3s cubic-bezier(0.16, 1, 0.3, 1),
+              box-shadow 0.3s cubic-bezier(0.16, 1, 0.3, 1),
+              border-bottom-color 0.3s cubic-bezier(0.16, 1, 0.3, 1) !important;
+}
+
+/* Fluid entrance: progressive wave illumination on the active/new word */
+mark.speech-word-highlight.is-active,
+mark.speech-word-highlight.is-entering {
+  opacity: 1 !important;
+  background: rgba(0, 210, 255, 0.14) !important;
+  border-bottom: 2.5px solid #00d2ff !important;
+  box-shadow: 0 3px 14px rgba(0, 210, 255, 0.38) !important;
+  animation: speechFluidWave 0.26s cubic-bezier(0.16, 1, 0.3, 1) forwards !important;
+}
+
+/* Fluid exit: soft gradual dissolving fade on previous words */
+mark.speech-word-highlight.is-leaving {
+  opacity: 0 !important;
+  background: transparent !important;
+  border-bottom-color: transparent !important;
+  box-shadow: none !important;
+  pointer-events: none !important;
+  transition: opacity 0.3s cubic-bezier(0.16, 1, 0.3, 1),
+              background 0.3s cubic-bezier(0.16, 1, 0.3, 1),
+              box-shadow 0.3s cubic-bezier(0.16, 1, 0.3, 1),
+              border-bottom-color 0.3s cubic-bezier(0.16, 1, 0.3, 1) !important;
+}
+
+@keyframes speechFluidWave {
+  0% {
+    background: transparent;
+    border-bottom: 2.5px solid rgba(0, 210, 255, 0.15);
+    box-shadow: 0 1px 4px rgba(0, 210, 255, 0.08);
+  }
+  50% {
+    background: rgba(0, 210, 255, 0.18);
+    border-bottom: 2.5px solid #00f2fe;
+    box-shadow: 0 4px 16px rgba(0, 242, 254, 0.45);
+  }
+  100% {
+    background: rgba(0, 210, 255, 0.14);
+    border-bottom: 2.5px solid #00d2ff;
+    box-shadow: 0 3px 14px rgba(0, 210, 255, 0.38);
+  }
 }
 
 /* Chat Audio Player Bar */

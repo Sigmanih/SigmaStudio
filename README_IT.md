@@ -1,91 +1,117 @@
 <p align="center">
-  <h1 align="center">🧬 Σ-SIGMA Studio</h1>
-  <p align="center"><strong>Micro-Kernel Modulare AI-Native per Orchestrazione Cognitiva, Swarm Multi-Agente Autonomi ed Ecosistema Modulare Dinamico</strong></p>
-  <p align="center">
-    <a href="#"><img src="https://img.shields.io/badge/python-3.10+-blue.svg" alt="Python 3.10+"></a>
-    <a href="#"><img src="https://img.shields.io/badge/react-19-61DAFB.svg" alt="React 19"></a>
-    <a href="#"><img src="https://img.shields.io/badge/fastapi-0.100+-009688.svg" alt="FastAPI"></a>
-    <a href="#"><img src="https://img.shields.io/badge/ollama-ready-FF6F00.svg" alt="Ollama Ready"></a>
-    <a href="#"><img src="https://img.shields.io/badge/mcp-standard-00f2fe.svg" alt="Model Context Protocol"></a>
-    <a href="#"><img src="https://img.shields.io/badge/architettura-microkernel--modulare-success.svg" alt="Micro-Kernel Modulare"></a>
-  </p>
-  <p align="center">
-    <a href="README.md">🇬🇧 English</a> • <a href="README_IT.md">🇮🇹 Italiano</a> • <a href="https://github.com/Sigmanih/SigmaStudio-Moduli">📦 Catalogo Moduli</a>
-  </p>
+  <img src="images/sigma_logo_harmonic_flow.jpg" alt="Logo Sigma Studio" width="160" style="border-radius: 24px; box-shadow: 0 8px 30px rgba(0,210,255,0.25);" />
 </p>
+
+<h1 align="center">🧬 Σ-SIGMA Studio</h1>
+
+<p align="center">
+  <strong>Kernel Operativo Cognitivo Modulare AI-Native per Inferenza Multi-GPU, Swarm Multi-Agente Autonomi ed Ecosistema Modulare Dinamico</strong>
+</p>
+
+<p align="center">
+  <a href="https://www.python.org"><img src="https://img.shields.io/badge/python-3.10+-3776AB?style=flat-square&logo=python&logoColor=white" alt="Python 3.10+"></a>
+  <a href="https://react.dev"><img src="https://img.shields.io/badge/react-19-61DAFB?style=flat-square&logo=react&logoColor=black" alt="React 19"></a>
+  <a href="https://fastapi.tiangolo.com"><img src="https://img.shields.io/badge/fastapi-0.100+-009688?style=flat-square&logo=fastapi&logoColor=white" alt="FastAPI"></a>
+  <a href="https://developer.nvidia.com/cuda-zone"><img src="https://img.shields.io/badge/cuda-multi--gpu-76B900?style=flat-square&logo=nvidia&logoColor=white" alt="NVIDIA CUDA Multi-GPU"></a>
+  <a href="https://modelcontextprotocol.io"><img src="https://img.shields.io/badge/mcp-12--servers-00f2fe?style=flat-square" alt="Model Context Protocol"></a>
+  <a href="https://github.com/Sigmanih/SigmaStudio"><img src="https://img.shields.io/badge/architettura-microkernel--modulare-success?style=flat-square" alt="Microkernel Modulare"></a>
+</p>
+
+<p align="center">
+  <a href="README.md">🇬🇧 English</a> • <a href="README_IT.md">🇮🇹 Italiano</a> • <a href="https://github.com/Sigmanih/SigmaStudio">📦 Repository GitHub</a>
+</p>
+
+---
+
+## 📸 Screenshot della Piattaforma
+
+<p align="center">
+  <img src="images/screenshots/bacheca.png" alt="Bacheca Sigma Studio & Hub Skills" width="100%" />
+</p>
+<p align="center"><em>1. Bacheca Rilasci Dinamica, Slider Showcase delle Skills & Pipeline Operativa Kernel a 4 Step</em></p>
+
+<p align="center">
+  <img src="images/screenshots/chat.png" alt="Chat AI Workspace & Swarm Multi-Agente" width="100%" />
+</p>
+<p align="center"><em>2. Workspace Chat AI in Streaming con Latenza Sub-100ms, SigmaEngine Multi-GPU & 12 Server MCP</em></p>
+
+<p align="center">
+  <img src="images/screenshots/modelli.png" alt="Modelli Hub & Forgia GGUF" width="100%" />
+</p>
+<p align="center"><em>3. Modelli Hub: Hugging Face Downloader Integrato & Forgia di Quantizzazione GGUF (Tab 2)</em></p>
 
 ---
 
 ## 🚀 Panoramica
 
-**Sigma Studio** è una piattaforma open-source progettata attorno a un **Micro-Kernel** ultraleggero e sicuro, affiancato da un **Ecosistema Modulare Runtime a Camere Stagne**. Combina un backend ad altissime prestazioni in **Python 3.10+ FastAPI** con un'interfaccia reattiva in **React 19 + Vite 8**.
+**Sigma Studio** è un sistema operativo cognitivo open-source progettato attorno a un **Micro-Kernel** a camere stagne affiancato da un **Ecosistema Modulare Runtime ad Iniezione a Caldo**. Combina un backend in **Python 3.10+ FastAPI** ad elevate prestazioni con un frontend reattivo in **React 19 + Vite 8**.
 
-I team di agenti AI interagiscono mediante manifesti Modelfile, strumenti standard Model Context Protocol (MCP) e laboratori specializzati installabili a caldo direttamente dal catalogo ufficiale [**SigmaStudio-Moduli**](https://github.com/Sigmanih/SigmaStudio-Moduli).
+I team di agenti AI cooperano tramite manifesti Modelfile vincolanti, strumenti operativi Model Context Protocol (MCP) e laboratori specializzati scaricabili e montabili a caldo senza riavviare il server.
 
 ```
-+-------------------------------------------------------------------------+
-|                       Σ-SIGMA STUDIO MICRO-KERNEL                       |
-+-------------------------------------------------------------------------+
-|  🧠 Router Multi-Provider  |  🤖 Swarm Multi-Agente DAG |  🔌 Core MCP Hub   |
-|  (Ollama, DeepSeek, OpenAI)|  (Loop Paralleli Dinamici) |  (6 Server Kernel) |
-+-------------------------------------------------------------------------+
-|                     🏪 HUB MODULI ED ESTENSIONI                         |
-+-------------------------------------------------------------------------+
-| 🎨 Creative Lab 3D/2D      | 🧠 Training Lab & Forge   | 🎙️ Voice Studio    |
-| 🔬 Pipelines Lab & Swarm   | ⚡ Hardware & Telemetria  | 🏠 Domotica Smart  |
-| 📅 Roadmap & Task Audit    | 📊 Grafo Argomenti/Memoria| 📻 Hi-Fi Audio Lab |
-+-------------------------------------------------------------------------+
++-----------------------------------------------------------------------------------------+
+|                                KERNEL COGNITIVO Σ-SIGMA STUDIO                          |
++-----------------------------------------------------------------------------------------+
+|  ⚡ SigmaEngine (Multi-GPU CUDA) |  ⚙️ Providers Hub (100% Interoperabile) |  📜 20 Modelfiles  |
+|  (C++/PyTorch FlashAttn-2 Shard) |  (OpenAI, Claude, Gemini, DeepSeek)   |  (Manifesti Hub)  |
++-----------------------------------------------------------------------------------------+
+|                              🔌 12 SERVER MODEL CONTEXT PROTOCOL                        |
++-----------------------------------------------------------------------------------------+
+|  🛠️ Dev / Workspace  |  🌐 Web Search & DNS |  ✉️ Client Email |  💬 Telegram / Slack  |
+|  📅 Calendario Task  |  🧠 Memoria Vettoriale|  🏠 IoT HomeAss  |  ⚡ GPU VRAM Flush    |
++-----------------------------------------------------------------------------------------+
+|                              🧩 15 SKILLS & LABORATORI OPEN SOURCE                      |
++-----------------------------------------------------------------------------------------+
+| 🎨 Creative Lab 3D/2D      | 🧠 Training Lab & SLM     | 🎙️ Voice Studio (Kokoro)      |
+| 🔬 Pipelines Lab & Swarm   | ⚡ Hardware & Telemetria  | 🏠 Assistente Domotica IoT     |
+| 📅 Roadmap & Task Audit    | 📊 Grafo Memoria D3       | 📻 Hi-Fi Audio Lounge          |
++-----------------------------------------------------------------------------------------+
 ```
 
 ---
 
 ## 🌟 Architettura & Funzionalità Chiave
 
-### 1. 🏛️ Architettura a Camere Stagne (Micro-Kernel)
-- **Zero Codice Superfluo**: I laboratori o le estensioni non installate non appesantiscono il kernel. Non occupano memoria, non registrano rotte statiche e non appaiono nella sidebar.
-- **Iniezione a Caldo (Hot-Injection)**: I moduli vengono installati e disinstallati a runtime tramite l'**Hub Moduli & Estensioni**, collegando dinamicamente endpoint FastAPI, viste React e server MCP senza necessità di riavviare il server.
-- **Bundle Ultra-Compatto**: Il bundle frontend compila in **< 700ms** con una dimensione di soli **~1.1 MB**.
+### 1. ⚡ SigmaEngine: Inferenza Nativa Multi-GPU Ottimizzata
+- **Sharding Intelligente C++/PyTorch**: Distribuisce automaticamente i layer dei modelli LLM (da 7B a 70B+) tra GPU primaria, secondaria (es. RTX 5070 Ti + RTX 5060) e RAM di sistema per prevenire la saturazione VRAM.
+- **TTFT Sub-100ms**: Latenza minima al primo token con kernel FlashAttention-2 nativi e streaming continuo dei blocchi KV-cache.
 
-### 2. 🧠 Motore di Inferenza Multi-Provider
-- Supporto nativo per modelli locali **Ollama** e API Cloud esterne (**DeepSeek, OpenAI, Anthropic Claude, Groq, OpenRouter**).
-- Router semantico locale ultrarapido (~100ms) per classificazione automatica del task e selezione dinamica del modello ottimale.
+### 2. ⚡ Modelli Hub: Hugging Face Downloader & Forgia GGUF (Tab 2)
+- **Hugging Face Downloader**: Cerca, filtra e scarica qualsiasi modello open-source direttamente da Hugging Face con ripresa automatica del download in streaming.
+- **Convertitore & Forgia GGUF (Tab 2)**: Quantizzazione integrata in locale nel formato ideale (Q4_K_M, Q5_K_M, Q8_0, FP16) per ottimizzare l'uso della VRAM senza dipendenze CLI esterne.
 
-### 3. 🤖 Orchestrazione Swarm Multi-Agente Autonoma
-- **Dynamic Swarm Planner**: Genera piani di esecuzione a grafo aciclico diretto (DAG) in tempo reale per risolvere task complessi multi-step.
-- **Broker di Contesto**: Condivisione sicura della memoria episodica, passaggio dei trace degli strumenti ed esecuzione parallela in thread-pool.
-- **Sistema di Manifesti**: Ruoli, personalità e vincoli operativi degli agenti definiti in formato Modelfile Markdown (`manifesti/*.md`).
+### 3. ⚙️ Providers Hub: Routing e Interoperabilità Totale
+- Possibilità di scegliere e commutare istantaneamente tra il motore nativo locale SigmaEngine e i Providers Cloud preferiti (**OpenAI GPT-4o, Anthropic Claude 3.5, Google Gemini 2.0 Flash, DeepSeek-R1, Groq, Ollama**).
+- Centralino semantico locale ultrarapido (~100ms) per l'analisi dell'intento e il dispatching automatico verso l'agente o provider più idoneo.
 
-### 4. 🔌 Hub MCP (Model Context Protocol) & Governance
-- **6 Server Kernel Integrati**:
-  - `Developer MCP`: Manipolazione file, ispezione workspace, esecuzione test pytest.
-  - `Inference MCP`: Selezione provider, recupero contesto, fallback automatico.
-  - `Network MCP`: Ricerca web live, richieste HTTP, diagnostica DNS/IP.
-  - `Email MCP`: Lettura inbox, composizione e invio email.
-  - `Messaging MCP`: Notifiche Telegram, Slack e webhook esterni.
-  - `Calendar MCP`: Schedulazione e consultazione eventi Google/CalDAV.
-- **Server MCP Modulari**: I server aggiuntivi (`HomeAssistant MCP`, `Hardware MCP`, `Training MCP`, `Memory MCP`, `Voice MCP`, `Creative MCP`) vengono registrati solo quando il rispettivo modulo è installato.
-- **Gate di Approvazione Sicura**: Dialoghi di conferma granulari per gli strumenti operativi critici.
+### 4. 📜 Manifesti Hub: 20 Ruoli Disciplinari Standardizzati
+- Regole di condotta, vincoli etici e formati di risposta standardizzati per 20 figure specialistiche (Architetto Software, Sviluppatore, Matematico, Medico, Giurista, Auditor di Sicurezza, ecc.).
 
-### 5. 🔒 Sandbox e Sicurezza
-- Whitelist rigorosa dei percorsi che limita le operazioni del filesystem alle cartelle autorizzate (`data/`, `manifesti/`, `scratch/`, `sigma_studio/`, `core/`).
-- Isolamento dei sottoprocessi con validazione statica AST e timeout di sicurezza.
+### 5. 🔌 12 Server Model Context Protocol (MCP)
+- **Server Kernel Nativi**: Developer CLI & Pytest, Web Search live, Email Manager, Notifiche Telegram/Slack, Calendario, Fallback di Inferenza.
+- **Server MCP Modulari**: Home Assistant IoT, Monitor Hardware NVML & VRAM Flush, Sintesi Vocale Neurale, Grafo Memoria RAG, Training QLoRA.
+- **Governance dei Permessi**: Dialoghi interattivi di approvazione granulare prima dell'esecuzione di comandi critici di sistema.
+
+### 6. 🏛️ Isolamento e Sicurezza a Camere Stagne
+- **Whitelist Rigorosa dei Percorsi**: Operazioni sul filesystem confinate unicamente alle directory consentite (`data/`, `manifesti/`, `scratch/`, `sigma_studio/`, `core/`).
+- **Sandbox di Esecuzione**: Validazione statica AST per prevenire l'esecuzione di codice arbitrario non verificato.
 
 ---
 
-## 📦 Catalogo Moduli Ufficiali (`SigmaStudio-Moduli`)
+## 📦 Catalogo Moduli Ufficiali
 
-Tutti i moduli opzionali possono essere installati con 1-click dall'**Hub Moduli & Estensioni**:
+Tutti i moduli opzionali possono essere scaricati gratuitamente con 1 click dall'**Hub Skills & Estensioni**:
 
 | ID Modulo | Nome | Categoria | Funzionalità Principali |
 |:---|:---|:---|:---|
-| [`sigma_creative_lab`](https://github.com/Sigmanih/SigmaStudio-Moduli/tree/main/modules/sigma_creative_lab) | **Creative Lab 3D/2D** | Multimodale & Grafica | Text-to-Image (FLUX/SDXL), rimozione sfondo SAM2/rembg, generazione 3D (Hunyuan3D/TripoSR), materiali PBR, rendering Blender headless, generazione video Wan2.1. |
-| [`sigma_training_lab`](https://github.com/Sigmanih/SigmaStudio-Moduli/tree/main/modules/sigma_training_lab) | **Training Lab & SLM Forge** | Fine-Tuning & SLM | Unsloth QLoRA, PEFT, Gradus Functional Weight Engine (FWE), Autopilot iperparametri, quantizzazione GGUF, benchmark MMLU/GSM8K. |
-| [`sigma_voice_studio`](https://github.com/Sigmanih/SigmaStudio-Moduli/tree/main/modules/sigma_voice_studio) | **Voice Studio & Speech Lab** | Voce Neurale & Audio | Kokoro 82M ultra-veloce, Coqui XTTS-v2 zero-shot voice cloning, regolazione velocità/pitch, waveform live, preset vocali, Voice MCP server. |
-| [`sigma_hardware_lab`](https://github.com/Sigmanih/SigmaStudio-Moduli/tree/main/modules/sigma_hardware_lab) | **Hardware & Telemetria GPU** | Sistema & VRAM | Monitoraggio real-time VRAM/GPU/CPU, gestione processi CUDA, terminazione processi zombie, riavvio demone Ollama. |
-| [`sigma_research_lab`](https://github.com/Sigmanih/SigmaStudio-Moduli/tree/main/modules/sigma_research_lab) | **Pipelines Lab & Swarm** | Ricerca & Automazione | Visual designer di pipeline a nodi DAG, loop di ricerca multi-agente, ispezione step-by-step dei risultati. |
-| [`sigma_knowledge`](https://github.com/Sigmanih/SigmaStudio-Moduli/tree/main/modules/sigma_knowledge) | **Argomenti & Grafo Memoria** | Conoscenza & Memoria | Grafo relazionale interattivo D3 force-directed, Universal Knowledge Nodes explorer, ricerca vettoriale RAG, Memory MCP server. |
-| [`sigma_roadmap`](https://github.com/Sigmanih/SigmaStudio-Moduli/tree/main/modules/sigma_roadmap) | **Roadmap & Kanban Task** | Produttività & Attività | Calendario interattivo, lavagna Kanban drag-and-drop, audit log cronologico, pannello flottante per milestone. |
-| [`sigma_domotica`](https://github.com/Sigmanih/SigmaStudio-Moduli/tree/main/modules/sigma_domotica) | **Smart Home Assistant** | IoT & Domotica | Bridge WebSocket/REST con Home Assistant, controllo dispositivi, trigger automazioni, gestione luci e clima. |
+| [`sigma_creative_lab`](https://github.com/Sigmanih/SigmaStudio-Moduli/tree/main/modules/sigma_creative_lab) | **Creative Lab 3D/2D** | Multimodale & Grafica | Text-to-Image (FLUX/SDXL), scontorno SAM2/rembg, generazione 3D (Hunyuan3D/TripoSR), materiali PBR, rendering Blender headless. |
+| [`sigma_training_lab`](https://github.com/Sigmanih/SigmaStudio-Moduli/tree/main/modules/sigma_training_lab) | **Training Lab & SLM** | Fine-Tuning & SLM | Unsloth QLoRA, PEFT, Gradus Functional Weight Engine (FWE), Autopilot iperparametri, quantizzazione GGUF, benchmark MMLU. |
+| [`sigma_voice_studio`](https://github.com/Sigmanih/SigmaStudio-Moduli/tree/main/modules/sigma_voice_studio) | **Voice Studio & Audio** | Voce Neurale & Audio | Kokoro 82M ultra-veloce (<80ms), Coqui XTTS-v2 zero-shot cloning, regolazione pitch/speed, waveform live, Voice MCP. |
+| [`sigma_hardware_lab`](https://github.com/Sigmanih/SigmaStudio-Moduli/tree/main/modules/sigma_hardware_lab) | **Hardware & Telemetria GPU** | Sistema & VRAM | Telemetria real-time VRAM/GPU/CPU, gestione processi CUDA, terminazione zombie e flush memoria video con 1 click. |
+| [`sigma_research_lab`](https://github.com/Sigmanih/SigmaStudio-Moduli/tree/main/modules/sigma_research_lab) | **Pipelines Lab & Swarm** | Ricerca & Automazione | Visual designer nodi DAG, loop di ricerca multi-agente, ispezione step-by-step ed auto-correzione codice (self-healing). |
+| [`sigma_knowledge`](https://github.com/Sigmanih/SigmaStudio-Moduli/tree/main/modules/sigma_knowledge) | **Argomenti & Grafo Memoria** | Conoscenza & Memoria | Grafo relazionale D3 force-directed, esploratore Universal Knowledge Nodes, ricerca semantica RAG, Memory MCP. |
+| [`sigma_roadmap`](https://github.com/Sigmanih/SigmaStudio-Moduli/tree/main/modules/sigma_roadmap) | **Roadmap & Kanban Task** | Produttività & Attività | Calendario interattivo, lavagna Kanban drag-and-drop, audit log cronologico, milestone manager. |
+| [`sigma_domotica`](https://github.com/Sigmanih/SigmaStudio-Moduli/tree/main/modules/sigma_domotica) | **Assistente Domotica Smart** | IoT & Domotica | Bridge WebSocket/REST Home Assistant, controllo dispositivi, trigger automazioni, modulazione carichi energetici. |
 
 ---
 
@@ -95,7 +121,7 @@ Tutti i moduli opzionali possono essere installati con 1-click dall'**Hub Moduli
 - **Sistema Operativo**: Windows 10/11 o Linux x86_64
 - **Python**: 3.10 o superiore
 - **Node.js**: 18.0+ e npm 9.0+
-- **Ollama** (Consigliato per modelli locali): [ollama.com](https://ollama.com)
+- **CUDA Toolkit** (Consigliato per accelerazione hardware): NVIDIA CUDA 12.0+
 
 ### 1. Clonare il Repository
 ```bash
@@ -104,15 +130,14 @@ cd SigmaStudio
 ```
 
 ### 2. Setup Automatico (Windows)
-Fai doppio clic su `install_dependencies.bat` oppure esegui da PowerShell:
+Fai doppio clic su `install_dependencies.bat` o esegui:
 ```powershell
 .\install_dependencies.bat
 ```
-*Questo script crea l'ambiente virtuale (`.venv`), installa le dipendenze Python, compila il frontend React e prepara i file di configurazione.*
 
 ### 3. Setup Manuale (Linux / macOS)
 ```bash
-# 1. Crea e attiva l'ambiente virtuale Python
+# 1. Crea e attiva l'ambiente virtuale
 python -m venv .venv
 source .venv/bin/activate  # Su Windows: .venv\Scripts\activate
 pip install -r requirements.txt
@@ -128,7 +153,7 @@ python sigma_server.py
 ```
 
 ### 4. Avvio di Sigma Studio
-Avvia con un clic su Windows:
+Avvia con un clic da Windows:
 ```powershell
 .\sigma_studio.bat
 ```
@@ -136,7 +161,7 @@ Oppure manualmente da terminale:
 ```bash
 python sigma_server.py
 ```
-Apri il browser su **`http://localhost:8000`**.
+Accedi dal browser su **`http://localhost:8000`**.
 
 ---
 
@@ -146,12 +171,9 @@ Esegui la suite completa di test automatizzati con Pytest:
 ```bash
 pytest tests/ -v
 ```
-Tutti i **147 test del kernel** verificano la governance MCP, il routing agenti, le API FastAPI, la sandbox di sicurezza e lo streaming SSE con il 100% di successo.
+Tutti i test del kernel verificano la governance MCP, il routing agenti, le API FastAPI, la sandbox e lo streaming chat con il 100% di successo.
 
 ---
 
-## 📄 Licenza & Community
-
-- **Licenza**: MIT License — libera per uso personale, didattico e commerciale.
-- **Repository Moduli**: [Sigmanih/SigmaStudio-Moduli](https://github.com/Sigmanih/SigmaStudio-Moduli)
-- **Autore**: Sigma Core Team
+## 📜 Licenza & Aggiornamenti
+Sigma Studio è rilasciato sotto licenza **Apache-2.0**. Nuove funzionalità ed ottimizzazioni del kernel vengono rilasciate con frequenza costante sul [Repository GitHub Ufficiale](https://github.com/Sigmanih/SigmaStudio).

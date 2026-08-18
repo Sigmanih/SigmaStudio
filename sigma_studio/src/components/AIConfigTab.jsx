@@ -512,7 +512,7 @@ export default function AIConfigTab({ openTab }) {
   const [activeSection, setActiveSection] = useState('providers'); // 'providers' | 'parameters'
 
   // Central Config State
-  const [activeProvider, setActiveProvider] = useState('ollama');
+  const [activeProvider, setActiveProvider] = useState('sigma_engine');
   const [activeModel, setActiveModel] = useState('sigma:latest');
   const [providerSettings, setProviderSettings] = useState({});
   const [ollamaLocalModels, setOllamaLocalModels] = useState([]);
@@ -565,7 +565,7 @@ export default function AIConfigTab({ openTab }) {
       const data = await res.json();
       if (data.success && data.config) {
         const cfg = data.config;
-        setActiveProvider(cfg.active_provider || cfg.provider || 'ollama');
+        setActiveProvider(cfg.active_provider || cfg.provider || 'sigma_engine');
         setActiveModel(cfg.active_model || cfg.model || 'sigma:latest');
         
         // Populate per-provider data
@@ -600,8 +600,9 @@ export default function AIConfigTab({ openTab }) {
     }
   }, []);
 
-  // Fetch Ollama models
-  const fetchOllamaModels = useCallback(async () => {
+  // Fetch Ollama models ONLY if explicitly requested/configured
+  const fetchOllamaModels = useCallback(async (isExplicit = false) => {
+    if (!isExplicit) return;
     setLoadingModels(true);
     try {
       const res = await fetch('/api/ollama_models');
@@ -620,9 +621,8 @@ export default function AIConfigTab({ openTab }) {
 
   useEffect(() => {
     fetchConfig();
-    fetchOllamaModels();
     fetchEngineProfile();
-  }, [fetchConfig, fetchOllamaModels, fetchEngineProfile]);
+  }, [fetchConfig, fetchEngineProfile]);
 
   // Update a single provider field
   const updateProviderField = (pId, field, value) => {
