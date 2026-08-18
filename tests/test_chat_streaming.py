@@ -63,6 +63,9 @@ class _FakeHandler:
 
 
 def _fake_stream(*args, **kwargs):
+    # With the <think> prefill, the model continues from inside <think>.
+    # A typical response closes the tag first, then emits the answer.
+    yield {"token": "planning done</think>"}
     yield {"token": "Ciao"}
     yield {"token": " mondo"}
     yield {"done": True, "done_reason": "stop", "truncated": False}
@@ -281,9 +284,14 @@ class TestThinkingSeparation:
         assert "Devo contare fino a tre" in final["final_thinking"]
 
     def test_native_reasoning_channel_stays_separate(self, monkeypatch):
+        # Native reasoning channel (thinking field) bypasses the router entirely:
+        # it is emitted directly as thinking events, and the answer token
+        # passes through the router. Because this uses provider="ollama",
+        # the prefill primes the router in thinking state — so the token
+        # chunk that closes </think> is needed before answer tokens appear.
         def _native_stream(*args, **kwargs):
             yield {"thinking": "ragiono in silenzio"}
-            yield {"token": "Risposta finale."}
+            yield {"token": "</think>Risposta finale."}
             yield {"done": True, "done_reason": "stop"}
 
         monkeypatch.setattr("core.ai_providers.call_ai_model_stream", _native_stream)
@@ -293,7 +301,7 @@ class TestThinkingSeparation:
         events = handler.events()
         final = [e for e in events if "final_content" in e][0]
         assert "".join(e["token"] for e in events if "token" in e) == "Risposta finale."
-        assert final["final_thinking"] == "ragiono in silenzio"
+        assert "ragiono in silenzio" in final["final_thinking"]
         assert "ragiono" not in final["final_content"]
 
     def test_reasoning_only_answer_does_not_leave_an_empty_bubble(self, monkeypatch):

@@ -202,6 +202,21 @@ def _stream_chat_response(handler, messages, ai_cfg, model, provider,
     calculated_tps = None
     load_duration_ms = None
 
+    # ── Deterministic thinking prefill ──────────────────────────────────────
+    # For local providers (Ollama / SigmaEngine) that don't natively separate
+    # reasoning from text, we inject a partial assistant message that forces
+    # the model to open a <think> block.  The model MUST continue from there,
+    # so the _ThinkTagRouter receives clean XML tags with no heuristics needed.
+    # Cloud providers (Anthropic, DeepSeek-Reasoner) already return a separate
+    # `reasoning_content` field, so prefilling would corrupt their output.
+    _PREFILL_PROVIDERS = {"ollama", "sigma_engine", "sigma"}
+    _prefill_injected = provider in _PREFILL_PROVIDERS
+    if _prefill_injected:
+        # Ollama continues generation from any partial assistant message
+        messages = list(messages) + [{"role": "assistant", "content": "<think>\n"}]
+        # Prime the router so it starts in thinking state immediately
+        router._in_thinking = True
+
     def _emit_status_text(text: str) -> None:
         """Forwards an engine status line to the client without metering it."""
         if not text:
@@ -229,12 +244,13 @@ def _stream_chat_response(handler, messages, ai_cfg, model, provider,
             full_text += text
             _sse_send(handler, {"token": text})
 
-    def _run_model_turn() -> bool:
+    def _run_model_turn(turn_messages=None) -> bool:
         """One pass of the model over `messages`. False if it errored out."""
         nonlocal error_msg, calculated_tps, generated_token_count, t_first_token, load_duration_ms
+        _msgs = turn_messages if turn_messages is not None else messages
         try:
             for chunk in call_ai_model_stream(
-                messages, ai_cfg, model, provider, endpoint, api_url, api_key,
+                _msgs, ai_cfg, model, provider, endpoint, api_url, api_key,
                 temperature, max_tokens, top_p, timeout
             ):
                 if chunk.get("error"):
@@ -296,7 +312,7 @@ def _stream_chat_response(handler, messages, ai_cfg, model, provider,
             error_msg = str(exc)
             return False
 
-    _run_model_turn()
+    _run_model_turn(messages)
 
     # --- MCP tool loop -------------------------------------------------------
     # The model asks for a tool by writing a fenced block; it is run here and the
@@ -329,13 +345,18 @@ def _stream_chat_response(handler, messages, ai_cfg, model, provider,
                 if not outcomes:
                     break
 
-                messages = list(messages) + [
+                next_messages = list(messages) + [
                     {"role": "assistant", "content": full_text},
                     {"role": "user", "content": format_results_for_model(outcomes)},
                 ]
+                # Re-apply prefill for local providers on each tool continuation turn
+                if _prefill_injected:
+                    next_messages = next_messages + [{"role": "assistant", "content": "<think>\n"}]
                 full_text = ""
                 router = _ThinkTagRouter()
-                if not _run_model_turn():
+                if _prefill_injected:
+                    router._in_thinking = True
+                if not _run_model_turn(next_messages):
                     break
         except Exception as exc:
             log.error("MCP tool loop failed: %s", exc, exc_info=True)
