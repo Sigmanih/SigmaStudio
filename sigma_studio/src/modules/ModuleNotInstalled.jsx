@@ -56,13 +56,13 @@ export default function ModuleNotInstalled({ tabType, openTab }) {
           {meta.name}
         </h3>
         <p style={{ margin: 0, fontSize: '0.85rem', maxWidth: '380px', lineHeight: 1.6, color: '#6b7280' }}>
-          Questo modulo non è installato. Aprilo dal <strong style={{ color: '#a0aec0' }}>Hub Moduli</strong> per scaricarlo e abilitarlo.
+          Questa skill/modulo non è installata. Aprila dall'<strong style={{ color: '#a0aec0' }}>Hub Skills & Estensioni</strong> per scaricarla e abilitarla.
         </p>
       </div>
 
       {/* CTA */}
       <button
-        onClick={() => openTab && openTab({ name: '📦 Hub Moduli & Estensioni' }, 'marketplace')}
+        onClick={() => openTab && openTab({ name: '📦 Hub Skills & Estensioni' }, 'marketplace')}
         style={{
           display: 'flex',
           alignItems: 'center',
@@ -87,7 +87,7 @@ export default function ModuleNotInstalled({ tabType, openTab }) {
         }}
       >
         <Package size={15} />
-        Apri Hub Moduli
+        Apri Hub Skills & Estensioni
         <ArrowRight size={14} />
       </button>
     </div>

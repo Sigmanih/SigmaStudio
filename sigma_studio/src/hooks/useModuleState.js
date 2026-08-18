@@ -16,15 +16,23 @@ const OPTIONAL_MODULE_IDS = [
   // Media & Generazione
   'sigma_creative_lab',  // Creative Lab 3D/2D
   'audio_studio',        // Hi-Fi Sound & FM Radio Studio
+  'sigma_voice_studio',  // Voice Studio & Neural Speech Lab
+  // Sviluppo & Sandbox
+  'sigma_developer_lab', // Developer Lab & Docker Sandbox
   // Infrastruttura Lab
   'sigma_training_lab',  // Training Lab & SLM Forge
   'sigma_hardware_lab',  // Hardware Lab & VRAM
   'sigma_research_lab',  // Pipelines Lab & Dynamic Swarm
-  // Knowledge & Tools
+  // Knowledge & Pianificazione
   'sigma_knowledge',     // Knowledge Explorer
+  'sigma_roadmap',       // Pianificazione & Task Audit
   'sigma_mcp_hub',       // MCP Tools Hub
   // IoT
   'sigma_domotica',      // Domotica & Home Assistant IoT
+  // Rete & Comunicazione
+  'sigma_network_lab',   // Network Explorer & Web Research
+  'sigma_email_client',  // Email Hub & Client
+  'sigma_messaging_hub', // Messaging & Notification Hub
 ];
 
 // Kernel modules — always present and active natively in Sigma Studio core.

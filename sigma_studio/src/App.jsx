@@ -127,7 +127,7 @@ function AppContent() {
       }
     };
     const configHandler = () => {
-      openTab({ name: '⚙️ Configurazione AI' }, 'ai_config');
+      openTab({ name: '⚙️ Configurazione Providers' }, 'ai_config');
     };
     window.addEventListener('message', handler);
     window.addEventListener('open-ai-config', configHandler);
@@ -388,10 +388,10 @@ function AppContent() {
 
 
 
-                {/* Item 4: Configurazione AI (Allineato) */}
+                {/* Item 4: Configurazione Providers (Allineato) */}
                 <button
                   onClick={() => {
-                    openTab({ name: '⚙️ Configurazione AI' }, 'ai_config');
+                    openTab({ name: '⚙️ Configurazione Providers' }, 'ai_config');
                     setDockMinimized(true);
                   }}
                   style={{

@@ -603,16 +603,16 @@ export default function MarketplaceTab({ openTab }) {
               textTransform: 'uppercase',
               marginBottom: '6px'
             }}>
-              <Package size={14} /> Σ HUB MODULI & ESTENSIONI KERNEL
+              <Package size={14} /> Σ HUB SKILLS & ESTENSIONI KERNEL
             </div>
             <h1 style={{ fontSize: '1.4rem', fontWeight: 800, margin: '0 0 6px 0', color: textPrimary, letterSpacing: '-0.3px', textShadow: 'none' }}>
               Architettura Modulare a <span style={{
                 color: isLight ? '#c2410c' : '#00d2ff',
                 fontWeight: 800
-              }}>Kernel & Plug-in</span>
+              }}>Skills, Kernel & Plug-in</span>
             </h1>
             <p style={{ fontSize: '0.82rem', color: textSecondary, maxWidth: '750px', lineHeight: 1.45, margin: 0 }}>
-              Sigma Studio opera come un <strong>Kernel Cognitivo leggero</strong>. Ogni funzionalità avanzata (Creative Lab, Pipelines, Training Lab, Domotica) è un modulo indipendente collegabile a caldo o installabile da repository Git esterni.
+              Sigma Studio opera come un <strong>Kernel Cognitivo modulare</strong>. Ogni skill e funzionalità avanzata (Creative Lab, Pipelines, Training Lab, Domotica, Voice Studio) è un modulo indipendente collegabile a caldo o installabile da repository Git esterni.
             </p>
           </div>
 

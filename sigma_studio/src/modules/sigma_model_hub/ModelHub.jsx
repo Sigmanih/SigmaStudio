@@ -208,7 +208,7 @@ export default function ModelHub({ addToast, openTab }) {
             id: 'inventory',
             label: totalActiveTasksCount > 0
               ? `💾 Modelli Locali (${currentRunningTask ? `${currentRunningTask.progress_pct}%` : totalActiveTasksCount} in download)`
-              : '💾 Modelli Locali & Storage'
+              : '💾 Inventario Modelli Locali'
           },
           { id: 'settings', label: '⚙️ Directory & HF Token' },
         ].map(tab => (
