@@ -8,6 +8,7 @@ import { useApp } from '../../contexts/AppContext';
 import HfBrowser from './HfBrowser';
 import DownloadManager from './DownloadManager';
 import LocalInventory from './LocalInventory';
+import GgufConverter from './GgufConverter';
 import SigmaDeployModal from './SigmaDeployModal';
 import EngineOptimizer from './EngineOptimizer';
 import './styles/model-hub.css';
@@ -207,6 +208,7 @@ export default function ModelHub({ addToast, openTab }) {
               ? `📥 Download Attivi (${currentRunningTask ? `${currentRunningTask.progress_pct}%` : totalActiveTasksCount})`
               : '📥 Download Attivi & Coda'
           },
+          { id: 'convert', label: '📦 Conversione GGUF' },
           { id: 'inventory', label: '💾 Modelli Locali & Storage' },
           { id: 'settings', label: '⚙️ Directory & HF Token' },
         ].map(tab => (
@@ -254,6 +256,13 @@ export default function ModelHub({ addToast, openTab }) {
           isLight={isLight}
           addToast={addToast}
           onDeployRequested={m => setDeployTargetModel(m)}
+        />
+      )}
+
+      {activeTab === 'convert' && (
+        <GgufConverter
+          isLight={isLight}
+          addToast={addToast}
         />
       )}
 

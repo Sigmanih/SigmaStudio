@@ -223,39 +223,20 @@ class UniversalSigmaEngine:
     ) -> Optional[Tuple[str, str]]:
         """
         Finds the directory and canonical name of a local model with weights.
-        Returns (target_path, display_name) or None.
+
+        Resolution lives in core.model_paths so the engine, the downloader,
+        the inventory and the converter all agree on where models are, and
+        all follow the directory configured in the Model Hub.
         """
-        models_dir = os.path.join(os.getcwd(), "data", "models")
-        if not os.path.exists(models_dir):
+        from core.model_paths import resolve_model_dir, list_model_dirs
+
+        path = resolve_model_dir(model_identifier)
+        if path is None and not model_identifier:
+            candidates = list_model_dirs()
+            path = candidates[0] if candidates else None
+        if path is None:
             return None
-
-        if model_identifier:
-            candidates = [
-                model_identifier,
-                model_identifier.replace("/", "--"),
-                model_identifier.replace(":", "-"),
-                model_identifier.split("/")[-1],
-                model_identifier.split(":")[0],
-            ]
-            for cand in candidates:
-                p = os.path.join(models_dir, cand)
-                if self._folder_has_weights(p):
-                    return p, cand
-
-            clean_id = "".join(c for c in model_identifier.lower() if c.isalnum())
-            for folder in os.listdir(models_dir):
-                p = os.path.join(models_dir, folder)
-                if self._folder_has_weights(p):
-                    clean_folder = "".join(c for c in folder.lower() if c.isalnum())
-                    if clean_id in clean_folder or clean_folder in clean_id:
-                        return p, folder
-
-        for folder in sorted(os.listdir(models_dir)):
-            p = os.path.join(models_dir, folder)
-            if self._folder_has_weights(p):
-                return p, folder
-
-        return None
+        return path, os.path.basename(path.rstrip(os.sep + '/'))
 
     # ------------------------------------------------------------- loading
 
@@ -784,13 +765,21 @@ class UniversalSigmaEngine:
 
     def generate_stream(
         self,
-        prompt: str,
+        prompt: str = "",
         system_prompt: str = DEFAULT_SYSTEM_PROMPT,
         temperature: float = 0.7,
         max_tokens: int = 16384,
         model_name: Optional[str] = None,
+        messages: Optional[List[Dict[str, str]]] = None,
     ) -> Generator[Dict[str, Any], None, None]:
-        """Streams tokens from native PyTorch inference with live throughput metrics."""
+        """
+        Streams tokens from native inference with live throughput metrics.
+
+        `messages` carries the whole conversation -- system prompt, attached
+        file context, prior turns and tool results. Passing only `prompt` and
+        `system_prompt` collapses that to a single exchange, so the model loses
+        everything the user has already said.
+        """
         t_start = time.perf_counter()
         token_count = 0
 
@@ -825,6 +814,11 @@ class UniversalSigmaEngine:
                 "done": False,
             }
 
+            # Throughput must measure generation, not the load before it.
+            # Counting a ~30s model load against the first tokens is what
+            # made a healthy 11 tok/s read as 0.6 tok/s in the UI.
+            t_start = time.perf_counter()
+
         # A registry backend runs its own generation loop; it owns the model.
         if self.active_backend_instance is not None:
             yield from self.active_backend_instance.generate_stream(
@@ -832,6 +826,7 @@ class UniversalSigmaEngine:
                 system_prompt=system_prompt,
                 temperature=temperature,
                 max_tokens=max_tokens,
+                messages=self._as_messages(prompt, system_prompt, messages),
             )
             return
 
@@ -846,13 +841,15 @@ class UniversalSigmaEngine:
                 timeout=300.0,
             )
 
-            inputs = self._build_inputs(prompt, system_prompt)
+            inputs = self._build_inputs(
+                self._as_messages(prompt, system_prompt, messages)
+            )
             do_sample = temperature is not None and temperature > 0
 
             gen_kwargs: Dict[str, Any] = dict(
                 **inputs,
                 streamer=streamer,
-                max_new_tokens=max(1, min(max_tokens or 4096, 16384)),
+                max_new_tokens=self._token_budget(max_tokens, inputs),
                 do_sample=do_sample,
                 use_cache=True,
             )
@@ -925,20 +922,73 @@ class UniversalSigmaEngine:
                 "done": True,
             }
 
-    def _build_inputs(self, prompt: str, system_prompt: str) -> Dict[str, Any]:
+    def _token_budget(self, requested: int, inputs: Dict[str, Any]) -> int:
+        """
+        How many new tokens this request may generate.
+
+        Bounded by what is left of the model's context after the prompt, rather
+        than by a fixed ceiling: a long conversation must not be allowed to run
+        past the window and corrupt its own KV cache, while a short one should
+        not be cut off early just because some constant said so.
+        """
+        limit = requested if requested and requested > 0 else 4096
+
+        prompt_tokens = 0
+        ids = inputs.get("input_ids")
+        if ids is not None and hasattr(ids, "shape"):
+            prompt_tokens = int(ids.shape[-1])
+
+        window = 0
+        if self.model_facts:
+            window = self.model_facts.max_position_embeddings or 0
+        if self.placement_plan and self.placement_plan.context_tokens:
+            # The plan reserved KV for this many tokens; going beyond it is what
+            # turns a comfortable placement into an out-of-memory mid-answer.
+            window = min(window, self.placement_plan.context_tokens) if window                 else self.placement_plan.context_tokens
+
+        if window:
+            room = window - prompt_tokens - 16      # leave the template a margin
+            if room > 0:
+                limit = min(limit, room)
+
+        return max(1, limit)
+
+    @staticmethod
+    def _as_messages(
+        prompt: str,
+        system_prompt: str,
+        messages: Optional[List[Dict[str, str]]],
+    ) -> List[Dict[str, str]]:
+        """
+        Normalises the two calling styles into one conversation.
+
+        Callers that already assembled a conversation pass it through intact;
+        the older prompt/system_prompt pair is promoted into the same shape.
+        """
+        if messages:
+            return [m for m in messages if m.get("content")]
+
+        conversation = []
+        if system_prompt:
+            conversation.append({"role": "system", "content": system_prompt})
+        conversation.append({"role": "user", "content": prompt})
+        return conversation
+
+    def _build_inputs(self, messages: List[Dict[str, str]]) -> Dict[str, Any]:
         """Applies the model's chat template and moves tensors to the input device."""
         import torch
 
-        messages = [
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": prompt},
-        ]
         try:
             formatted = self.tokenizer_instance.apply_chat_template(
                 messages, tokenize=False, add_generation_prompt=True
             )
         except Exception:
-            formatted = f"System: {system_prompt}\nUser: {prompt}\nAssistant:"
+            # No chat template: render the whole transcript rather than
+            # dropping every turn but the last.
+            formatted = "\n".join(
+                f"{m.get('role', 'user').capitalize()}: {m.get('content', '')}"
+                for m in messages
+            ) + "\nAssistant:"
 
         inputs = self.tokenizer_instance(formatted, return_tensors="pt")
 

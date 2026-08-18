@@ -69,8 +69,14 @@ class InferenceBackend(ABC):
         system_prompt: str = "",
         temperature: float = 0.7,
         max_tokens: int = 2048,
+        messages: Optional[list] = None,
     ) -> Generator[Dict[str, Any], None, None]:
-        """Yields token chunks shaped like the engine's streaming contract."""
+        """
+        Yields token chunks shaped like the engine's streaming contract.
+
+        `messages` carries the full conversation when the caller has one;
+        prompt/system_prompt remain for single-turn callers.
+        """
 
     @abstractmethod
     def unload(self) -> Dict[str, Any]:

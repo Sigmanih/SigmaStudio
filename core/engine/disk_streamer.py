@@ -21,17 +21,26 @@ class MultiDriveShardedStreamer:
     """
 
     def __init__(self, target_drives: Optional[List[str]] = None, chunk_size_mb: int = 32):
+        from core.model_paths import project_root
+
         self.chunk_size_mb = chunk_size_mb
-        self.target_drives = target_drives or [os.path.abspath("data/shards")]
+        # Anchored to the installation, not the working directory: this object is
+        # built when the engine module is imported, and resolving "data/shards"
+        # relatively made that import fail outright when the server was started
+        # from anywhere else.
+        self.target_drives = target_drives or [
+            os.path.join(project_root(), "data", "shards")
+        ]
         self.shard_registry: Dict[str, List[str]] = {}
         self.prefetch_queue = queue.Queue(maxsize=4)
         self._active = False
         self._worker_thread = None
 
-        # Ensure base directories exist
-        for d in self.target_drives:
-            shard_dir = os.path.join(d, "sigma_layer_shards") if not d.endswith("sigma_layer_shards") else d
-            os.makedirs(shard_dir, exist_ok=True)
+    def _shard_dir(self, drive_root: str) -> str:
+        """Creates and returns the shard directory for a drive, on first use."""
+        path = drive_root if drive_root.endswith("sigma_layer_shards")             else os.path.join(drive_root, "sigma_layer_shards")
+        os.makedirs(path, exist_ok=True)
+        return path
 
     def register_sharded_layer(self, layer_index: int, layer_bytes: bytes) -> List[str]:
         """
@@ -44,8 +53,7 @@ class MultiDriveShardedStreamer:
         for chunk_idx, chunk_data in enumerate(chunks):
             # Round-robin assign drive
             drive_root = self.target_drives[chunk_idx % len(self.target_drives)]
-            shard_dir = os.path.join(drive_root, "sigma_layer_shards")
-            os.makedirs(shard_dir, exist_ok=True)
+            shard_dir = self._shard_dir(drive_root)
             
             filename = f"layer_{layer_index}_chunk_{chunk_idx}.shard"
             full_path = os.path.join(shard_dir, filename)

@@ -29,6 +29,9 @@ _HOST_RAM_RESERVE_GB = 8.0
 # Below this much slack, the fit is inside estimation error: accelerate places
 # indivisible decoder blocks, so a plan this tight can still spill or OOM.
 _MARGINAL_FIT_GB = 1.0
+# Never shrink the planning context below this: an assistant that cannot
+# hold a page of conversation is not useful, however fast it is.
+_MIN_CONTEXT_TOKENS = 4096
 # Quantization candidates, best quality first.
 _PRECISION_LADDER = ("bf16", "int8", "nf4")
 
@@ -58,7 +61,8 @@ class PlacementPlan:
     total_vram_gb: float = 0.0           # raw free VRAM across all GPUs
     weight_budget_gb: float = 0.0        # VRAM left for weights after reserves + KV
     vram_headroom_gb: float = 0.0        # weight_budget - weights; negative means spill
-    context_tokens: int = 0
+    context_tokens: int = 0            # planned, after fitting to VRAM
+    requested_context_tokens: int = 0  # what the caller asked for
     devices: List[Dict[str, Any]] = field(default_factory=list)
     warnings: List[str] = field(default_factory=list)
     notes: List[str] = field(default_factory=list)
@@ -142,8 +146,33 @@ class MemoryPlanner:
             hardware_profile.get("ram", {}).get("available_gb", 16.0)
         )
 
-        # ---------------------------------------------------------- precision
-        plan.kv_cache_gb = ModelInspector.estimate_kv_cache_gb(facts, context_tokens)
+        # ------------------------------------------------ precision & context
+        # Reserving KV for a context the conversation may never reach is not
+        # free: it comes straight out of the weight budget, and a fit with no
+        # slack left makes the CUDA allocator thrash. Measured on a 27B NF4
+        # across two cards, 32k context left 0.08GB spare and ran at 1.5 tok/s,
+        # while 8k left real headroom and ran at 11.4 tok/s for the same
+        # placement. So the context is fitted to the hardware, not assumed.
+        chosen_ctx = context_tokens
+        for candidate in cls._context_candidates(context_tokens):
+            kv_gb = ModelInspector.estimate_kv_cache_gb(facts, candidate)
+            budget = round(sum(cls._usable_vram(gpus, kv_gb).values()), 2)
+            _, trial = cls._choose_precision(facts, budget, force_quantization)
+            if budget - trial["total_gb"] >= _MARGINAL_FIT_GB:
+                chosen_ctx = candidate
+                break
+            chosen_ctx = candidate
+
+        if chosen_ctx != context_tokens:
+            plan.notes.append(
+                f"Context reduced from {context_tokens} to {chosen_ctx} tokens to "
+                "keep enough VRAM headroom; a marginal fit costs far more speed "
+                "than the unused context is worth."
+            )
+        plan.context_tokens = chosen_ctx
+        plan.requested_context_tokens = context_tokens
+
+        plan.kv_cache_gb = ModelInspector.estimate_kv_cache_gb(facts, chosen_ctx)
         usable_vram = cls._usable_vram(gpus, plan.kv_cache_gb)
 
         # Raw capacity vs the budget actually available to weights: the latter
@@ -256,6 +285,27 @@ class MemoryPlanner:
         return plan
 
     # ------------------------------------------------------------- internals
+
+    @staticmethod
+    def _context_candidates(requested: int) -> List[int]:
+        """
+        Context sizes to try, largest first, down to a usable floor.
+
+        Halving rather than searching continuously keeps the plan stable: small
+        changes in free VRAM should not make the engine pick a slightly
+        different context on every load and invalidate the KV cache.
+        """
+        candidates = [requested]
+        value = requested
+        while value > _MIN_CONTEXT_TOKENS:
+            value //= 2
+            candidates.append(max(value, _MIN_CONTEXT_TOKENS))
+        seen, ordered = set(), []
+        for c in candidates:
+            if c not in seen:
+                seen.add(c)
+                ordered.append(c)
+        return ordered
 
     @staticmethod
     def _gib(gb: float) -> str:

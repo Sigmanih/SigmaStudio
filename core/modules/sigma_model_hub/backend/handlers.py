@@ -288,11 +288,81 @@ def handle_models_config_get(self):
 def handle_models_config_save(self):
     """POST /api/models/config — Salva impostazioni del Model Hub."""
     try:
+        from core.model_paths import models_dir, set_models_dir
+
         body = self.read_json_body()
         _save_hub_config(body)
-        self.send_json_response({"success": True, "message": "Impostazioni salvate con successo.", "config": body})
+
+        # Point every consumer at the new location in the same breath. Without
+        # this the downloader would start writing to the new directory while the
+        # engine, the inventory and the converter kept reading the old one.
+        new_dir = (body or {}).get("models_dir")
+        if new_dir:
+            resolved = set_models_dir(new_dir)
+            downloader_manager.set_models_dir(resolved)
+
+        self.send_json_response({
+            "success": True,
+            "message": "Impostazioni salvate con successo.",
+            "config": body,
+            "active_models_dir": models_dir(),
+        })
     except Exception as e:
         log.error("Error in handle_models_config_save: %s", e)
+        self.send_json_response({"success": False, "error": str(e)}, 500)
+
+
+# ---------------------------------------------------------------- conversion
+
+def handle_models_convert_info(self):
+    """GET /api/models/convert/info — Modelli convertibili, tipi e stato tooling."""
+    try:
+        from core.engine.gguf_converter import GgufConverter
+        self.send_json_response({
+            "success": True,
+            "models": GgufConverter.convertible_models(),
+            "quantization_types": GgufConverter.quantization_types(),
+            "tooling": GgufConverter.converter_status(),
+            "jobs": GgufConverter.jobs(),
+        })
+    except Exception as e:
+        log.error("Error in handle_models_convert_info: %s", e)
+        self.send_json_response({"success": False, "error": str(e)}, 500)
+
+
+def handle_models_convert_tooling(self):
+    """POST /api/models/convert/tooling — Scarica lo script di conversione."""
+    try:
+        from core.engine.gguf_converter import GgufConverter
+        res = GgufConverter.fetch_converter()
+        self.send_json_response(res, 200 if res.get("success") else 502)
+    except Exception as e:
+        log.error("Error in handle_models_convert_tooling: %s", e)
+        self.send_json_response({"success": False, "error": str(e)}, 500)
+
+
+def handle_models_convert_start(self):
+    """POST /api/models/convert/start — Avvia la conversione in GGUF."""
+    try:
+        from core.engine.gguf_converter import GgufConverter
+        body = self.read_json_body() if hasattr(self, "read_json_body") else {}
+        res = GgufConverter.start(
+            model_name=body.get("model"),
+            quantization=body.get("quantization", "Q4_K_M"),
+        )
+        self.send_json_response(res, 200 if res.get("success") else 400)
+    except Exception as e:
+        log.error("Error in handle_models_convert_start: %s", e)
+        self.send_json_response({"success": False, "error": str(e)}, 500)
+
+
+def handle_models_convert_jobs(self):
+    """GET /api/models/convert/jobs — Stato delle conversioni."""
+    try:
+        from core.engine.gguf_converter import GgufConverter
+        self.send_json_response({"success": True, "jobs": GgufConverter.jobs()})
+    except Exception as e:
+        log.error("Error in handle_models_convert_jobs: %s", e)
         self.send_json_response({"success": False, "error": str(e)}, 500)
 
 
@@ -304,6 +374,8 @@ def register_routes(app=None) -> None:
         '/api/models/hf/downloads': handle_models_hf_downloads_list,
         '/api/models/local/list': handle_models_local_list,
         '/api/models/config': handle_models_config_get,
+        '/api/models/convert/info': handle_models_convert_info,
+        '/api/models/convert/jobs': handle_models_convert_jobs,
     }
 
     post_routes = {
@@ -312,6 +384,8 @@ def register_routes(app=None) -> None:
         '/api/models/engine/load': handle_models_engine_load,
         '/api/models/engine/unload': handle_models_engine_unload,
         '/api/models/config': handle_models_config_save,
+        '/api/models/convert/start': handle_models_convert_start,
+        '/api/models/convert/tooling': handle_models_convert_tooling,
     }
 
     try:

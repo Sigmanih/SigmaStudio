@@ -100,15 +100,24 @@ class ModelInspector:
             return None
 
         cache_file = os.path.join(model_path, ".sigma_facts.json")
+        fingerprint = cls._directory_fingerprint(model_path)
+
         if use_cache and os.path.exists(cache_file):
             try:
                 with open(cache_file, "r", encoding="utf-8") as f:
                     cached = json.load(f)
-                if cached.get("_schema") == 2:
+                # The fingerprint guards against a directory that changed after
+                # being inspected. A conversion creates its output folder before
+                # the weights land in it, so an inspection during that window
+                # cached "no weights here" and, with nothing to invalidate it,
+                # kept reporting that long after the model was complete.
+                if cached.get("_schema") == 3 and cached.get("_fingerprint") == fingerprint:
                     cached.pop("_schema", None)
+                    cached.pop("_fingerprint", None)
                     return ModelFacts(**cached)
+                log.debug("[ModelInspector] Cache stale for %s, re-inspecting", model_path)
             except Exception as exc:
-                log.debug("[ModelInspector] Ignoring stale cache: %s", exc)
+                log.debug("[ModelInspector] Ignoring unreadable cache: %s", exc)
 
         facts = ModelFacts(path=model_path, name=os.path.basename(model_path.rstrip("\\/")))
 
@@ -120,7 +129,8 @@ class ModelInspector:
 
         try:
             payload = facts.to_dict()
-            payload["_schema"] = 2
+            payload["_schema"] = 3
+            payload["_fingerprint"] = fingerprint
             with open(cache_file, "w", encoding="utf-8") as f:
                 json.dump(payload, f, indent=2)
         except Exception as exc:
@@ -128,6 +138,31 @@ class ModelInspector:
 
         log.info("[ModelInspector] %s", facts.summary())
         return facts
+
+    @staticmethod
+    def _directory_fingerprint(model_path: str) -> str:
+        """
+        Cheap signature of a model directory's weight files.
+
+        Names, sizes and modification times of the files that define the model.
+        Reading them costs a stat per file, which is nothing next to re-parsing
+        every safetensors header, but changes the moment the directory does.
+        """
+        try:
+            entries = []
+            for name in sorted(os.listdir(model_path)):
+                if name.startswith("."):
+                    continue
+                if not name.endswith((".safetensors", ".gguf", ".bin", ".json")):
+                    continue
+                full = os.path.join(model_path, name)
+                if not os.path.isfile(full):
+                    continue
+                stat = os.stat(full)
+                entries.append(f"{name}:{stat.st_size}:{int(stat.st_mtime)}")
+            return "|".join(entries)
+        except Exception:
+            return ""
 
     # ------------------------------------------------------------------ config
 

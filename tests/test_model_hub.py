@@ -2,6 +2,7 @@
 # tests/test_model_hub.py — Model Hub & HF Downloader API Verification
 # ==============================================================================
 import unittest
+import os
 import urllib.parse
 from fastapi.testclient import TestClient
 from core.fastapi_app import app
@@ -149,17 +150,125 @@ class TestModelHubAPI(unittest.TestCase):
         self.assertIn("recommended_models", data)
         self.assertIn("optimizations", data)
 
-    def test_engine_hf_import_endpoint(self):
-        """POST /api/engine/hf/import should adapt and optimize HF model for SigmaEngine."""
+    def test_engine_hf_import_requires_the_weights_to_be_present(self):
+        """
+        POST /api/engine/hf/import must not claim to have prepared a model that
+        is not on disk.
+
+        Resolution used to fall through to "the first model that has weights"
+        even when a specific repo was named, so asking for a model you had never
+        downloaded silently handed back a different one. The plan is computed
+        from measured weights, so with nothing to measure the honest answer is
+        that it has to be downloaded first.
+        """
         response = self.client.post("/api/engine/hf/import", json={
             "repo_id": "bartowski/DeepSeek-R1-Distill-Qwen-14B-GGUF",
             "quantization": "Q4_K_M"
         })
         self.assertEqual(response.status_code, 200)
         data = response.json()
+        self.assertFalse(data.get("success"))
+        self.assertTrue(data.get("requires_download"))
+        self.assertIn("Model Hub", data.get("error", ""))
+
+
+    def test_conversion_endpoints_are_reachable(self):
+        """
+        The conversion routes must answer, not 404.
+
+        register_get_handlers/register_post_handlers used to assign a fresh
+        route table, wiping anything the module loader had registered before
+        them. The tab was fully wired while every one of its calls 404ed, and
+        the UI reported "no models" for what was really a missing endpoint.
+        """
+        response = self.client.get("/api/models/convert/info")
+        self.assertEqual(response.status_code, 200)
+
+        data = response.json()
         self.assertTrue(data.get("success"))
-        self.assertIn("model", data)
-        self.assertEqual(data["model"]["repo_id"], "bartowski/DeepSeek-R1-Distill-Qwen-14B-GGUF")
+        self.assertIn("models", data)
+        self.assertIn("quantization_types", data)
+        self.assertIn("tooling", data)
+
+        self.assertEqual(self.client.get("/api/models/convert/jobs").status_code, 200)
+
+    def test_only_oversized_gguf_models_are_offered(self):
+        """
+        A GGUF is offered again only when shrinking it still buys something.
+
+        Re-quantizing an F16 or Q8 is how a model that turned out too large for
+        the machine becomes usable without repeating the hours-long Hugging
+        Face conversion. Re-quantizing something already at Q4 or below trades
+        quality for space that is no longer the constraint, so it is not shown.
+        """
+        data = self.client.get("/api/models/convert/info").json()
+        for model in data.get("models", []):
+            if model.get("source_format") != "gguf":
+                continue
+            weights = [f for f in os.listdir(model["path"]) if f.endswith(".gguf")]
+            joined = " ".join(weights).upper()
+            self.assertTrue(
+                any(tag in joined for tag in ("F16", "F32", "BF16", "Q8_0", "Q6_K")),
+                f"{model['name']} is already compact and should not be offered",
+            )
+
+    def test_conversion_refuses_an_unknown_model(self):
+        response = self.client.post("/api/models/convert/start", json={
+            "model": "does-not-exist", "quantization": "Q4_K_M",
+        })
+        self.assertEqual(response.status_code, 400)
+        self.assertFalse(response.json().get("success"))
+
+
+    def test_conversion_reports_architecture_compatibility(self):
+        """
+        Every model must carry a verdict on whether it can be converted and then
+        run, so an impossible job is refused instantly instead of after hours.
+
+        The names differ between ecosystems: transformers reports "qwen3_5"
+        while the GGUF file records "qwen35". Comparing the Hugging Face
+        spelling against the runtime marked working models as unsupported.
+        """
+        data = self.client.get("/api/models/convert/info").json()
+        for model in data.get("models", []):
+            compat = model.get("compatibility")
+            self.assertIsNotNone(compat, f"{model['name']} has no verdict")
+            self.assertIn("blocked_by", compat)
+            self.assertIn("summary", compat)
+            if compat.get("gguf_architecture"):
+                self.assertNotIn("_", compat["gguf_architecture"])
+
+
+    def test_existing_gguf_is_offered_for_requantization(self):
+        """
+        A GGUF that is still large must be re-quantizable without redoing the
+        Hugging Face conversion.
+
+        That first stage takes hours on a large checkpoint. Discovering only
+        afterwards that the chosen precision does not fit in VRAM should not
+        mean paying it again: dropping an existing F16 to Q4_K_M is a straight
+        file transform that runs in-process.
+        """
+        data = self.client.get("/api/models/convert/info").json()
+        for model in data.get("models", []):
+            self.assertIn("source_format", model)
+            self.assertIn(model["source_format"], ("safetensors", "gguf"))
+
+    def test_each_model_reports_what_fits_in_vram(self):
+        """
+        Choosing a precision that does not fit costs an order of magnitude of
+        throughput, and the conversion is far too slow to learn that by trying.
+        """
+        data = self.client.get("/api/models/convert/info").json()
+        for model in data.get("models", []):
+            fit = model.get("fits_in_vram")
+            if not fit:
+                continue
+            self.assertIn("per_quantization", fit)
+            self.assertIn("usable_vram_gb", fit)
+            for name, ok in fit["per_quantization"].items():
+                expected = model["estimated_outputs"][name] <= fit["usable_vram_gb"]
+                self.assertEqual(ok, expected, f"{name} fit verdict is inconsistent")
 
 
 if __name__ == "__main__":

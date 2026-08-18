@@ -5,7 +5,7 @@ from urllib.parse import urlparse
 
 def register_get_handlers(handler_class):
     """Register GET API handlers on the handler class."""
-    handler_class._GET_HANDLERS = {
+    core_routes = {
         '/api/modules': 'handle_api_modules',
         '/api/topics': 'handle_api_topics',
         '/api/tasks': 'handle_api_tasks_get',
@@ -108,13 +108,21 @@ def register_get_handlers(handler_class):
         '/api/models/hf/downloads': 'handle_models_hf_downloads_list',
         '/api/models/local/list': 'handle_models_local_list',
         '/api/models/config': 'handle_models_config_get',
+        '/api/models/convert/info': 'handle_models_convert_info',
+        '/api/models/convert/jobs': 'handle_models_convert_jobs',
     }
+    # Merge, never replace. Optional modules register their own routes
+    # through the module loader, which runs before this; assigning a fresh
+    # dict here silently discarded every one of them, so a module's
+    # endpoints answered 404 while its UI was fully wired up.
+    existing = getattr(handler_class, '_GET_HANDLERS', None) or {}
+    handler_class._GET_HANDLERS = {**core_routes, **existing}
 
 
 
 def register_post_handlers(handler_class):
     """Register POST API handlers on the handler class."""
-    handler_class._POST_HANDLERS = {
+    core_routes = {
         '/api/mcp/rpc': 'handle_mcp_rpc',
         '/api/mcp/policy': 'handle_mcp_policy',
         '/api/mcp/integration': 'handle_mcp_integration',
@@ -244,7 +252,11 @@ def register_post_handlers(handler_class):
         '/api/models/engine/load': 'handle_models_engine_load',
         '/api/models/engine/unload': 'handle_models_engine_unload',
         '/api/models/config': 'handle_models_config_save',
+        '/api/models/convert/start': 'handle_models_convert_start',
+        '/api/models/convert/tooling': 'handle_models_convert_tooling',
     }
+    existing = getattr(handler_class, '_POST_HANDLERS', None) or {}
+    handler_class._POST_HANDLERS = {**core_routes, **existing}
 
 
 

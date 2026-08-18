@@ -28,13 +28,19 @@ def _get_workspace_root() -> str:
     return cwd
 
 
-ROOT_DIR = _get_workspace_root()
-MODELS_DIR = os.path.join(ROOT_DIR, "data", "models")
+from core.model_paths import models_dir as _active_models_dir, project_root
+
+ROOT_DIR = project_root()
+
+
+def _models_dir() -> str:
+    """The active models directory, shared with the engine and downloader."""
+    return _active_models_dir()
 
 
 def scan_local_models(custom_dir: Optional[str] = None) -> List[Dict[str, Any]]:
     """Scans local disk for downloaded model files (.gguf, .safetensors, .bin, multi-shard repos)."""
-    base_dir = custom_dir if custom_dir and os.path.exists(custom_dir) else MODELS_DIR
+    base_dir = custom_dir if custom_dir and os.path.exists(custom_dir) else _models_dir()
     os.makedirs(base_dir, exist_ok=True)
     results = []
 
@@ -155,9 +161,9 @@ def deploy_model_to_sigma_engine(
 
     if not os.path.exists(resolved_path):
         # 1. Try relative to MODELS_DIR
-        candidate1 = os.path.join(MODELS_DIR, model_path)
-        candidate2 = os.path.join(MODELS_DIR, model_path.replace("/", "--"))
-        candidate3 = os.path.join(MODELS_DIR, model_path.replace("--", "/"))
+        candidate1 = os.path.join(_models_dir(), model_path)
+        candidate2 = os.path.join(_models_dir(), model_path.replace("/", "--"))
+        candidate3 = os.path.join(_models_dir(), model_path.replace("--", "/"))
         if os.path.exists(candidate1):
             resolved_path = candidate1
         elif os.path.exists(candidate2):

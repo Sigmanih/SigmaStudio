@@ -414,7 +414,7 @@ class TestGgufInspection(unittest.TestCase):
     """GGUF geometry is parsed from the file itself, without llama.cpp."""
 
     def setUp(self):
-        self.gguf_dir = _find_local_model(suffix=".gguf")
+        self.gguf_dir = _find_local_model(suffix=".gguf", smallest=True)
         if not self.gguf_dir:
             self.skipTest("no local GGUF model in data/models/")
 
@@ -441,7 +441,7 @@ class TestGgufGeneration(unittest.TestCase):
         available, reason = LlamaCppBackend.availability()
         if not available:
             self.skipTest(reason)
-        gguf_dir = _find_local_model(suffix=".gguf")
+        gguf_dir = _find_local_model(suffix=".gguf", smallest=True)
         if not gguf_dir:
             self.skipTest("no local GGUF model in data/models/")
         self.model_name = os.path.basename(gguf_dir)
@@ -631,25 +631,93 @@ class TestNativeLoadIntegration(unittest.TestCase):
         )
 
 
-def _find_local_model(suffix=None):
+
+class TestFactsCacheInvalidation(unittest.TestCase):
     """
-    Returns the first data/models/ subdirectory holding real weights.
+    Introspection caches its findings next to the weights. That cache has to
+    notice when the directory changes: a conversion creates its output folder
+    before the weights land in it, and an inspection during that window cached
+    "no weights here", which the engine then reported as an unknown format long
+    after the model was complete.
+    """
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.dir = self.tmp.name
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def test_cache_is_refreshed_when_weights_appear(self):
+        from core.engine.model_inspector import ModelInspector
+
+        # Inspected while still empty, exactly as a conversion leaves it.
+        first = ModelInspector.inspect(self.dir)
+        self.assertIsNotNone(first)
+        self.assertNotEqual(first.weight_format, "gguf")
+
+        # A GGUF header is enough for the format to be recognised.
+        with open(os.path.join(self.dir, "model.gguf"), "wb") as handle:
+            handle.write(b"GGUF" + bytes(64))
+
+        second = ModelInspector.inspect(self.dir)
+        self.assertEqual(
+            second.weight_format, "gguf",
+            "the cache was served after the directory changed",
+        )
+
+    def test_cache_is_reused_when_nothing_changed(self):
+        from core.engine.model_inspector import ModelInspector
+
+        with open(os.path.join(self.dir, "model.gguf"), "wb") as handle:
+            handle.write(b"GGUF" + bytes(64))
+
+        first = ModelInspector.inspect(self.dir)
+        cache = os.path.join(self.dir, ".sigma_facts.json")
+        self.assertTrue(os.path.exists(cache))
+        before = os.stat(cache).st_mtime_ns
+
+        second = ModelInspector.inspect(self.dir)
+        self.assertEqual(second.weight_format, first.weight_format)
+        self.assertEqual(os.stat(cache).st_mtime_ns, before,
+                         "cache was rewritten despite an unchanged directory")
+
+
+def _find_local_model(suffix=None, smallest=False):
+    """
+    Returns a data/models/ subdirectory holding real weights.
 
     `suffix` narrows the search to one weight format, so the GGUF and
     safetensors paths can each be exercised against whatever is installed.
+
+    `smallest` picks the least bulky match. Tests that actually load and
+    generate should not be handed a 50GB checkpoint just because it sorts
+    first: the run becomes minutes long and fails on machines that cannot hold
+    it, for reasons unrelated to what is being asserted.
     """
-    models_dir = os.path.join(os.getcwd(), "data", "models")
-    if not os.path.isdir(models_dir):
+    from core.model_paths import models_dir as _models_dir
+
+    base = _models_dir()
+    if not os.path.isdir(base):
         return None
 
     wanted = (suffix,) if suffix else (".safetensors", ".gguf", ".bin")
-    for entry in sorted(os.listdir(models_dir)):
-        path = os.path.join(models_dir, entry)
+    matches = []
+    for entry in sorted(os.listdir(base)):
+        path = os.path.join(base, entry)
         if not os.path.isdir(path):
             continue
-        if any(f.endswith(wanted) for f in os.listdir(path)):
+        weights = [f for f in os.listdir(path) if f.endswith(wanted)]
+        if not weights:
+            continue
+        if not smallest:
             return path
-    return None
+        size = sum(os.path.getsize(os.path.join(path, f)) for f in weights)
+        matches.append((size, path))
+
+    if not matches:
+        return None
+    return min(matches)[1]
 
 
 if __name__ == "__main__":

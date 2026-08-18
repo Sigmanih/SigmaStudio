@@ -428,8 +428,12 @@ def resolve_provider_config(ai_cfg_or_model, model_name: str = "") -> tuple[str,
 
     # Rule 0: SigmaEngine native models or downloaded Hugging Face models in data/models/
     clean_folder = model_name.replace("/", "--")
-    if os.path.exists(os.path.join(os.getcwd(), "data", "models", clean_folder)) or \
-       os.path.exists(os.path.join(os.getcwd(), "data", "models", model_name)) or \
+    # Resolved through the shared path helper so a models directory moved in
+    # the Model Hub is recognised here too.
+    from core.model_paths import models_dir as _models_dir
+    _base = _models_dir()
+    if os.path.exists(os.path.join(_base, clean_folder)) or \
+       os.path.exists(os.path.join(_base, model_name)) or \
        lower.startswith("sigma") or lower.startswith("ailo") or "sharded" in lower or "native" in lower or "minerva" in lower:
         return "sigma_engine", providers.get("sigma_engine", {"label": "SigmaEngine (Nativo)", "endpoint": "http://localhost:8000/api/engine"})
 
@@ -481,9 +485,13 @@ def call_ai_model(messages, ai_cfg, model, provider, endpoint, api_url, api_key,
     """Unified AI model caller used by agent_orchestrator, execute_loop, loop_handler."""
     if provider in ('sigma_engine', 'sigma'):
         from core.engine import sigma_engine
-        prompt_text = messages[-1].get("content", "") if messages else ""
-        sys_text = messages[0].get("content", "") if messages and messages[0].get("role") == "system" else ""
-        tokens = list(sigma_engine.generate_stream(prompt_text, system_prompt=sys_text, temperature=temperature, max_tokens=max_tokens, model_name=model))
+        # Pass the whole conversation. Reducing it to messages[0] and
+        # messages[-1] silently drops history, attached file context and tool
+        # results, so the model answers as if the exchange had just begun.
+        tokens = list(sigma_engine.generate_stream(
+            messages=messages, temperature=temperature,
+            max_tokens=max_tokens, model_name=model,
+        ))
         full_res = "".join([t["token"] for t in tokens])
         return full_res, "Esecuzione nativa diretta su hardware completata tramite SigmaEngine (CUDA/MPS/DirectML + Multi-Tier Sharding).", None
 
@@ -697,9 +705,10 @@ def call_ollama(
         log.warning("[Ollama] Daemon non raggiungibile (%s). Fallback su SigmaEngine Nativo...", e)
         try:
             from core.engine import sigma_engine
-            prompt_text = messages[-1].get("content", "") if messages else ""
-            sys_text = messages[0].get("content", "") if messages and messages[0].get("role") == "system" else ""
-            tokens = list(sigma_engine.generate_stream(prompt_text, system_prompt=sys_text, temperature=temperature, max_tokens=max_tokens))
+            tokens = list(sigma_engine.generate_stream(
+                messages=messages, temperature=temperature,
+                max_tokens=max_tokens, model_name=model,
+            ))
             full_res = "".join([t["token"] for t in tokens])
             return full_res, None, None
         except Exception as ex:
@@ -817,9 +826,10 @@ def call_ollama_stream(
         log.warning("[Ollama Stream] Daemon non raggiungibile (%s). Fallback automatico su SigmaEngine Nativo...", e)
         try:
             from core.engine import sigma_engine
-            prompt_text = messages[-1].get("content", "") if messages else ""
-            sys_text = messages[0].get("content", "") if messages and messages[0].get("role") == "system" else ""
-            for token_chunk in sigma_engine.generate_stream(prompt_text, system_prompt=sys_text, temperature=temperature, max_tokens=max_tokens, model_name=model):
+            for token_chunk in sigma_engine.generate_stream(
+                messages=messages, temperature=temperature,
+                max_tokens=max_tokens, model_name=model,
+            ):
                 yield token_chunk
             return
         except Exception as fallback_err:
@@ -993,9 +1003,12 @@ def call_ai_model_stream(messages, ai_cfg, model, provider, endpoint, api_url, a
     # Unified generator yielding chunks of tokens
     if provider in ('sigma_engine', 'sigma'):
         from core.engine import sigma_engine
-        prompt_text = messages[-1].get("content", "") if messages else ""
-        sys_text = messages[0].get("content", "") if messages and messages[0].get("role") == "system" else ""
-        return sigma_engine.generate_stream(prompt_text, system_prompt=sys_text, temperature=temperature, max_tokens=max_tokens)
+        # Same here, plus the model name: without it the engine falls back to
+        # whatever happens to be resident instead of what the caller selected.
+        return sigma_engine.generate_stream(
+            messages=messages, temperature=temperature,
+            max_tokens=max_tokens, model_name=model,
+        )
 
     route_provider = provider
     if route_provider in ('deepseek', 'openai'):
@@ -1022,4 +1035,4 @@ def call_ai_model_stream(messages, ai_cfg, model, provider, endpoint, api_url, a
         return _exc_gen()
     
     def _unk_gen(): yield {"error": True, "message": "Provider sconosciuto"}
-    return _unk_gen()
+    return _unk_gen()

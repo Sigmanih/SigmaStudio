@@ -19,8 +19,16 @@ from core.engine.backends.base import InferenceBackend, module_available
 
 log = get_logger(__name__)
 
-# Room left on each GPU for the KV cache, compute buffers and the CUDA context.
-_GPU_RESERVE_GB = 1.0
+# Room left on each GPU for the CUDA context and per-device scratch.
+_GPU_RESERVE_GB = 1.5
+
+# llama.cpp puts more on the GPU than the layers themselves: the output and
+# embedding tensors, per-device compute buffers, and the KV cache for whatever
+# it offloaded. Measured on a 27B F16 split across two cards, 23 layers
+# estimated at 18.0GB actually occupied 21.5GB and filled both cards to the
+# last byte, which collapsed throughput to 0.2 tok/s. Sizing layers by their
+# raw bytes alone reliably overcommits, so the estimate carries that margin.
+_GGUF_OVERHEAD_FACTOR = 1.20
 # Fraction of physical cores used when running on CPU. Leaving one core free
 # keeps the host responsive, which matters most on the small boards where the
 # CPU path is the only path.
@@ -137,6 +145,7 @@ class LlamaCppBackend(InferenceBackend):
         system_prompt: str = "",
         temperature: float = 0.7,
         max_tokens: int = 2048,
+        messages: Optional[List[Dict[str, str]]] = None,
     ) -> Generator[Dict[str, Any], None, None]:
         if self._llm is None:
             yield {
@@ -146,10 +155,11 @@ class LlamaCppBackend(InferenceBackend):
             }
             return
 
-        messages = []
-        if system_prompt:
-            messages.append({"role": "system", "content": system_prompt})
-        messages.append({"role": "user", "content": prompt})
+        if not messages:
+            messages = []
+            if system_prompt:
+                messages.append({"role": "system", "content": system_prompt})
+            messages.append({"role": "user", "content": prompt})
 
         t_start = time.perf_counter()
         token_count = 0
@@ -298,8 +308,8 @@ class LlamaCppBackend(InferenceBackend):
         weights_gb = facts.total_bytes / 2**30
         layers = facts.num_hidden_layers or 0
 
-        if layers and (weights_gb + kv_gb) > total_usable:
-            per_layer = weights_gb / layers
+        if layers and (weights_gb * _GGUF_OVERHEAD_FACTOR + kv_gb) > total_usable:
+            per_layer = (weights_gb / layers) * _GGUF_OVERHEAD_FACTOR
             budget = max(total_usable - kv_gb, 0.0)
             n_gpu_layers = max(int(budget / max(per_layer, 1e-6)), 0)
             n_gpu_layers = min(n_gpu_layers, layers)
@@ -310,7 +320,7 @@ class LlamaCppBackend(InferenceBackend):
         if len(gpus) > 1 and total_usable > 0:
             tensor_split = [round(u / total_usable, 4) for u in usable]
 
-        return {
+        settings = {
             "n_gpu_layers": n_gpu_layers,
             "tensor_split": tensor_split,
             "n_ctx": n_ctx,
@@ -322,6 +332,13 @@ class LlamaCppBackend(InferenceBackend):
             "weights_gb": round(weights_gb, 2),
             "kv_cache_gb": kv_gb,
         }
+        if 0 <= n_gpu_layers < layers:
+            settings["warning"] = (
+                f"Solo {n_gpu_layers} dei {layers} layer stanno in VRAM: i "
+                "restanti girano dalla RAM di sistema, circa dieci volte piu' "
+                "lentamente. Una quantizzazione piu' compatta entrerebbe tutta."
+            )
+        return settings
 
     @staticmethod
     def _clamp_context(facts: ModelFacts, requested: int) -> int:
