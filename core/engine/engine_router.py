@@ -93,6 +93,27 @@ def handle_engine_plan(self):
         return self.send_json_response({"success": False, "error": str(exc)}, 500)
 
 
+def handle_engine_benchmark(self):
+    """
+    POST /api/engine/benchmark — Measures prefill and decode speed on this host.
+
+    Returns a verdict naming what the model is bound by, so tuning targets the
+    actual limit rather than an assumed one.
+    """
+    try:
+        body = self.read_json_body() if hasattr(self, 'read_json_body') else {}
+        res = sigma_engine.benchmark(
+            prompt_tokens=int(body.get("prompt_tokens", 128)),
+            decode_tokens=int(body.get("decode_tokens", 24)),
+            profile_modules=bool(body.get("profile_modules", False)),
+            model_name=body.get("model"),
+        )
+        return self.send_json_response(res, 200 if res.get("success") else 400)
+    except Exception as exc:
+        log.error(f"handle_engine_benchmark error: {exc}")
+        return self.send_json_response({"success": False, "error": str(exc)}, 500)
+
+
 def handle_engine_unload(self):
     """POST /api/engine/unload — Releases the active model and frees VRAM."""
     try:

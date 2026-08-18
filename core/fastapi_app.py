@@ -213,7 +213,7 @@ FastAPIHandlerAdapter.handle_tts_engines_fallback = handle_tts_engines_fallback
 from core.engine import (
     handle_engine_status, handle_engine_profile, handle_engine_partition,
     handle_engine_hf_import, handle_engine_models, handle_engine_optimize,
-    handle_engine_plan, handle_engine_unload
+    handle_engine_plan, handle_engine_unload, handle_engine_benchmark
 )
 FastAPIHandlerAdapter.handle_engine_status = handle_engine_status
 FastAPIHandlerAdapter.handle_engine_profile = handle_engine_profile
@@ -223,6 +223,7 @@ FastAPIHandlerAdapter.handle_engine_models = handle_engine_models
 FastAPIHandlerAdapter.handle_engine_optimize = handle_engine_optimize
 FastAPIHandlerAdapter.handle_engine_plan = handle_engine_plan
 FastAPIHandlerAdapter.handle_engine_unload = handle_engine_unload
+FastAPIHandlerAdapter.handle_engine_benchmark = handle_engine_benchmark
 
 
 

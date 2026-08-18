@@ -31,3 +31,24 @@ peft>=0.10.0
 accelerate>=0.28.0
 huggingface_hub>=0.22.0
 safetensors>=0.4.0
+bitsandbytes>=0.43.0        # 4-bit/8-bit quantization for the safetensors path
+
+# SigmaEngine inference backends (optional)
+# The engine picks a backend per model format and per machine; each is only
+# offered when its dependency is importable.
+#
+#   GGUF via llama.cpp — the portable path. Runs on CUDA, Metal, Vulkan and
+#   plain ARM NEON, so it is what makes small models usable on boards with no
+#   discrete GPU. PyPI ships only a source distribution; use the prebuilt
+#   wheels instead:
+#     CUDA:  pip install llama-cpp-python \
+#              --extra-index-url https://abetlen.github.io/llama-cpp-python/whl/cu125
+#     CPU:   pip install llama-cpp-python \
+#              --extra-index-url https://abetlen.github.io/llama-cpp-python/whl/cpu
+#   On Blackwell (sm_120) the cu125 build has no native SASS, so the driver
+#   JIT-compiles its PTX on first use: expect one slow generation, then full
+#   speed once the driver caches the result.
+#
+#   Fused linear-attention kernels for hybrid models (Qwen3.5 and similar).
+#   Without it those layers fall back to a much slower torch implementation:
+#     pip install flash-linear-attention

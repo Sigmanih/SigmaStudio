@@ -225,6 +225,7 @@ def register_post_handlers(handler_class):
         '/api/engine/optimize': 'handle_engine_optimize',
         '/api/engine/plan': 'handle_engine_plan',
         '/api/engine/unload': 'handle_engine_unload',
+        '/api/engine/benchmark': 'handle_engine_benchmark',
         '/api/skills/toggle': 'handle_skills_toggle',
 
 

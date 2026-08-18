@@ -183,12 +183,13 @@ class ModelInspector:
         """Discovers the real layer prefix and measures true tensor sizes."""
         files = os.listdir(facts.path)
 
-        if any(f.endswith(".gguf") for f in files):
+        gguf_files = sorted(f for f in files if f.endswith(".gguf"))
+        if gguf_files:
             facts.weight_format = "gguf"
             facts.total_bytes = sum(
-                os.path.getsize(os.path.join(facts.path, f))
-                for f in files if f.endswith(".gguf")
+                os.path.getsize(os.path.join(facts.path, f)) for f in gguf_files
             )
+            cls._read_gguf_metadata(facts, os.path.join(facts.path, gguf_files[0]))
             return
 
         shard_files: List[str] = []
@@ -221,6 +222,115 @@ class ModelInspector:
             facts.total_bytes = sum(
                 os.path.getsize(os.path.join(facts.path, f)) for f in shard_files
             )
+
+    # GGUF metadata value types, per the format specification.
+    _GGUF_UINT8, _GGUF_INT8, _GGUF_UINT16, _GGUF_INT16 = 0, 1, 2, 3
+    _GGUF_UINT32, _GGUF_INT32, _GGUF_FLOAT32, _GGUF_BOOL = 4, 5, 6, 7
+    _GGUF_STRING, _GGUF_ARRAY = 8, 9
+    _GGUF_UINT64, _GGUF_INT64, _GGUF_FLOAT64 = 10, 11, 12
+
+    _GGUF_SCALARS = {
+        _GGUF_UINT8: ("<B", 1), _GGUF_INT8: ("<b", 1),
+        _GGUF_UINT16: ("<H", 2), _GGUF_INT16: ("<h", 2),
+        _GGUF_UINT32: ("<I", 4), _GGUF_INT32: ("<i", 4),
+        _GGUF_FLOAT32: ("<f", 4), _GGUF_BOOL: ("<?", 1),
+        _GGUF_UINT64: ("<Q", 8), _GGUF_INT64: ("<q", 8),
+        _GGUF_FLOAT64: ("<d", 8),
+    }
+
+    @classmethod
+    def _read_gguf_metadata(cls, facts: ModelFacts, gguf_path: str) -> None:
+        """
+        Reads geometry from a GGUF file's own header.
+
+        Parsed directly rather than through llama-cpp-python so a model can be
+        inspected and planned on a machine where that backend is not installed
+        -- which is exactly the case when deciding whether to install it.
+        """
+        try:
+            with open(gguf_path, "rb") as handle:
+                if handle.read(4) != b"GGUF":
+                    log.debug("[ModelInspector] Not a GGUF file: %s", gguf_path)
+                    return
+                struct.unpack("<I", handle.read(4))[0]           # format version
+                struct.unpack("<Q", handle.read(8))[0]           # tensor count
+                kv_count = struct.unpack("<Q", handle.read(8))[0]
+
+                metadata: Dict[str, Any] = {}
+                for _ in range(min(kv_count, 4096)):
+                    key = cls._read_gguf_string(handle)
+                    if key is None:
+                        break
+                    value_type = struct.unpack("<I", handle.read(4))[0]
+                    metadata[key] = cls._read_gguf_value(handle, value_type)
+        except Exception as exc:
+            log.debug("[ModelInspector] GGUF header unreadable: %s", exc)
+            return
+
+        arch = str(metadata.get("general.architecture", "") or "")
+        facts.model_type = arch or "gguf"
+        if arch:
+            facts.architectures = [arch]
+
+        def geometry(suffix: str, default: int = 0) -> int:
+            value = metadata.get(f"{arch}.{suffix}") if arch else None
+            return int(value) if isinstance(value, (int, float)) else default
+
+        facts.num_hidden_layers = geometry("block_count")
+        facts.hidden_size = geometry("embedding_length")
+        facts.num_attention_heads = geometry("attention.head_count")
+        facts.num_key_value_heads = geometry(
+            "attention.head_count_kv", facts.num_attention_heads
+        )
+        facts.max_position_embeddings = geometry("context_length")
+        facts.num_experts = geometry("expert_count")
+        facts.is_moe = facts.num_experts > 0
+
+        head_dim = geometry("attention.key_length")
+        if not head_dim and facts.num_attention_heads:
+            head_dim = facts.hidden_size // facts.num_attention_heads
+        facts.head_dim = head_dim
+
+        # GGUF ships already quantized, so the whole file is the resident cost;
+        # there is no separate quantizable/resident split to model.
+        facts.param_count = 0
+        facts.quantizable_params = 0
+        facts.resident_params = 0
+
+    @classmethod
+    def _read_gguf_string(cls, handle) -> Optional[str]:
+        raw_len = handle.read(8)
+        if len(raw_len) < 8:
+            return None
+        length = struct.unpack("<Q", raw_len)[0]
+        if length > 64 * 1024 * 1024:
+            return None
+        return handle.read(length).decode("utf-8", errors="replace")
+
+    @classmethod
+    def _read_gguf_value(cls, handle, value_type: int) -> Any:
+        """Reads one metadata value, skipping over arrays we do not need."""
+        if value_type in cls._GGUF_SCALARS:
+            fmt, size = cls._GGUF_SCALARS[value_type]
+            return struct.unpack(fmt, handle.read(size))[0]
+
+        if value_type == cls._GGUF_STRING:
+            return cls._read_gguf_string(handle)
+
+        if value_type == cls._GGUF_ARRAY:
+            elem_type = struct.unpack("<I", handle.read(4))[0]
+            count = struct.unpack("<Q", handle.read(8))[0]
+            # Tokenizer vocabularies live here and can be hundreds of thousands
+            # of entries; walk past them rather than materialising them.
+            if elem_type in cls._GGUF_SCALARS:
+                handle.seek(cls._GGUF_SCALARS[elem_type][1] * count, os.SEEK_CUR)
+            elif elem_type == cls._GGUF_STRING:
+                for _ in range(count):
+                    if cls._read_gguf_string(handle) is None:
+                        break
+            return f"<array[{count}]>"
+
+        raise ValueError(f"unsupported GGUF value type {value_type}")
 
     @classmethod
     def _detect_prefixes(cls, facts: ModelFacts, tensor_names: List[str]) -> None:

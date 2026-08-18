@@ -8,6 +8,7 @@
 # ==============================================================================
 import os
 import time
+import atexit
 import threading
 from typing import Dict, Any, List, Optional, Generator, Tuple
 
@@ -48,6 +49,9 @@ class UniversalSigmaEngine:
 
         self.loaded_model_name: Optional[str] = None
         self.loaded_model: Optional[Dict[str, Any]] = None
+        # Set when a non-safetensors checkpoint is served by a registry backend
+        # (llama.cpp today). The transformers path uses model_instance instead.
+        self.active_backend_instance = None
         self.model_instance = None
         self.tokenizer_instance = None
         self.model_facts: Optional[ModelFacts] = None
@@ -59,13 +63,23 @@ class UniversalSigmaEngine:
     # ------------------------------------------------------------- hardware
 
     @property
+    def has_resident_model(self) -> bool:
+        """
+        Whether any runtime currently holds weights.
+
+        Residency lives in two places: the transformers path keeps a module in
+        model_instance, a registry backend keeps its own handle. Checking only
+        one makes the engine reload on top of a model it already has.
+        """
+        if self.model_instance is not None:
+            return True
+        backend = self.active_backend_instance
+        return backend is not None and backend.is_loaded
+
+    @property
     def hardware_profile(self) -> Dict[str, Any]:
         if self._hardware_profile is None:
             self._hardware_profile = UniversalHardwareProbe.probe_all()
-            log.info(
-                "[SigmaEngine] Kernel initialized. Active backend: %s",
-                self.active_backend,
-            )
         return self._hardware_profile
 
     @hardware_profile.setter
@@ -77,6 +91,7 @@ class UniversalSigmaEngine:
     def active_backend(self) -> str:
         if self._active_backend is None:
             self._active_backend = self._determine_optimal_backend()
+            log.info("[SigmaEngine] Active backend: %s", self._active_backend)
         return self._active_backend
 
     def refresh_vram(self) -> Dict[str, Any]:
@@ -103,8 +118,13 @@ class UniversalSigmaEngine:
         naming a backend whose library is missing produces a plan that cannot
         run.
         """
-        accs = (self._hardware_profile or {}).get("accelerators", [])
-        system = (self._hardware_profile or {}).get("system", {})
+        # Probe if needed rather than reading the raw field: callers reach this
+        # through get_status(), where the accelerator list may not have been
+        # populated yet, and an empty list would silently look like a CPU-only
+        # machine and select a CPU backend on a box with two GPUs.
+        profile = self.hardware_profile
+        accs = profile.get("accelerators", [])
+        system = profile.get("system", {})
         has_torch = self._module_available("torch")
 
         if has_torch and any(a.get("type") == "NVIDIA_CUDA" for a in accs):
@@ -274,6 +294,28 @@ class UniversalSigmaEngine:
 
         target_path, display_name = model_info
 
+        # Already resident: switching chats that share a model costs nothing.
+        if self.has_resident_model and self.loaded_model_name == display_name:
+            log.debug("[SigmaEngine] '%s' already resident, reusing", display_name)
+            return {
+                "success": True,
+                "model_name": display_name,
+                "already_loaded": True,
+                "load_seconds": 0.0,
+                "plan": self.placement_plan.to_dict() if self.placement_plan else {},
+                "placement": (self.loaded_model or {}).get("placement"),
+            }
+
+        # A different model: release the current one first. Two checkpoints
+        # cannot share the VRAM budget, and loading over a resident model makes
+        # the new plan overcommit and fall back to a host-RAM spill.
+        if self.has_resident_model:
+            log.info(
+                "[SigmaEngine] Switching '%s' -> '%s', releasing current weights",
+                self.loaded_model_name, display_name,
+            )
+            self.unload()
+
         # ------------------------------------------------------ measure
         try:
             facts = ModelInspector.inspect(target_path)
@@ -285,15 +327,11 @@ class UniversalSigmaEngine:
             log.error("[SigmaEngine] %s", error)
             return {"success": False, "error": error, "stage": "inspection"}
 
-        if facts.weight_format == "gguf":
-            error = (
-                f"'{display_name}' e' in formato GGUF, che richiede llama-cpp-python "
-                "(non installato). Usa un checkpoint safetensors oppure installa "
-                "llama-cpp-python."
-            )
-            self.last_load_error = error
-            log.error("[SigmaEngine] %s", error)
-            return {"success": False, "error": error, "stage": "format"}
+        # Formats other than safetensors are served by a dedicated backend
+        # chosen for this machine, so GGUF runs on llama.cpp CUDA kernels here
+        # and on NEON on an ARM board without the caller knowing the difference.
+        if facts.weight_format != "safetensors":
+            return self._load_via_backend(facts, display_name, context_tokens)
 
         # -------------------------------------------------------- plan
         profile = self.refresh_vram()
@@ -349,26 +387,30 @@ class UniversalSigmaEngine:
             model_cls, target_path, plan, compute_dtype, has_cuda, facts
         )
 
-        # A VRAM-only plan that the runtime rejects is recoverable: replan with a
-        # host-RAM budget rather than leaving the user with no model at all.
-        if model is None and has_cuda and plan.fits_in_vram:
+        # Any first-attempt failure is potentially recoverable. Free VRAM can
+        # drop between planning and loading -- another process, or another model
+        # in this one -- so re-probe instead of trusting the reading the failed
+        # plan was built on, and allow a host spill rather than leaving the user
+        # with no model at all.
+        if model is None and has_cuda:
             log.warning(
-                "[SigmaEngine] VRAM-only placement rejected (%s). "
-                "Retrying with host RAM spill.", load_error,
+                "[SigmaEngine] First placement failed (%s). "
+                "Re-probing VRAM and retrying with host RAM spill.", load_error,
             )
+            self._free_cuda_cache()
             plan = MemoryPlanner.build_plan(
                 facts,
-                profile,
+                self.refresh_vram(),
                 context_tokens=context_tokens,
                 force_quantization=force_quantization,
                 allow_host_spill=True,
             )
             plan.warnings.append(
-                "VRAM-only placement was rejected by the runtime; part of the "
-                "model now sits in system RAM, which is slower."
+                "First placement failed; replanned against currently free VRAM "
+                "with a host-RAM spill, which is slower than a pure-VRAM fit."
             )
             model, load_error = self._attempt_load(
-                model_cls, target_path, plan, compute_dtype, has_cuda
+                model_cls, target_path, plan, compute_dtype, has_cuda, facts
             )
 
         if model is None:
@@ -424,6 +466,48 @@ class UniversalSigmaEngine:
             "facts": facts.to_dict(),
             "placement": actual_placement,
         }
+
+    def _load_via_backend(
+        self, facts: ModelFacts, display_name: str, context_tokens: int
+    ) -> Dict[str, Any]:
+        """Loads a non-safetensors checkpoint through the backend registry."""
+        from core.engine.backends import select_backend, explain_unsupported
+
+        backend_cls = select_backend(facts, self.refresh_vram())
+        if backend_cls is None:
+            error = explain_unsupported(facts)
+            self.last_load_error = error
+            log.error("[SigmaEngine] %s", error)
+            return {"success": False, "error": error, "stage": "backend"}
+
+        backend = backend_cls()
+        result = backend.load(facts, self.hardware_profile, context_tokens=context_tokens)
+        if not result.get("success"):
+            self.last_load_error = result.get("error")
+            log.error(
+                "[SigmaEngine] Backend %s failed: %s",
+                backend_cls.name, result.get("error"),
+            )
+            return result
+
+        self.active_backend_instance = backend
+        self.model_facts = facts
+        self.loaded_model_name = display_name
+        self.placement_plan = None
+        self.last_load_error = None
+        self.loaded_model = {
+            "name": display_name,
+            "path": facts.path,
+            "format": facts.weight_format,
+            "size_gb": round(facts.total_bytes / 2**30, 2),
+            "backend": backend_cls.name,
+            "placement": result.get("placement", {}),
+            "settings": result.get("settings", {}),
+            "load_seconds": result.get("load_seconds"),
+            "loaded_at": time.time(),
+            "status": "ready",
+        }
+        return result
 
     def _attempt_load(
         self,
@@ -596,6 +680,13 @@ class UniversalSigmaEngine:
         """
         previous = self.loaded_model_name
         freed_before = self._vram_used_bytes()
+        allocated_before = self._torch_allocated_bytes()
+
+        # A registry backend owns its own memory (llama.cpp allocates outside
+        # the torch allocator), so it must release through its own path.
+        if self.active_backend_instance is not None:
+            self.active_backend_instance.unload()
+            self.active_backend_instance = None
 
         model = self.model_instance
         if model is not None:
@@ -614,19 +705,65 @@ class UniversalSigmaEngine:
         self.last_device_map_report = None
         del model
 
+        self._free_cuda_cache()
+
+        # Two figures, because they answer different questions. The driver delta
+        # is what the machine actually gets back and is what a user sees, but
+        # other processes move it. The allocator delta counts only tensors this
+        # process released, so it is exact regardless of what else is running.
+        freed_gb = round((freed_before - self._vram_used_bytes()) / 2**30, 2)
+        freed_allocated_gb = round(
+            (allocated_before - self._torch_allocated_bytes()) / 2**30, 2
+        )
+        log.info(
+            "[SigmaEngine] Unloaded '%s', released %.2f GB of tensors "
+            "(%.2f GB returned to the driver)",
+            previous, freed_allocated_gb, freed_gb,
+        )
+        return {
+            "success": True,
+            "unloaded": previous,
+            "freed_vram_gb": freed_gb,
+            "freed_allocated_gb": freed_allocated_gb,
+        }
+
+    @staticmethod
+    def _free_cuda_cache() -> None:
+        """
+        Returns cached blocks on every GPU to the driver.
+
+        empty_cache() only releases the caching allocator's pool for the current
+        device, so on a multi-GPU split it leaves the secondary cards holding
+        gigabytes that the driver still counts as used. The next plan then reads
+        a machine with far less free VRAM than it really has.
+        """
         try:
             import gc
             import torch
             gc.collect()
-            if torch.cuda.is_available():
-                torch.cuda.empty_cache()
-                torch.cuda.synchronize()
+            if not torch.cuda.is_available():
+                return
+            for index in range(torch.cuda.device_count()):
+                with torch.cuda.device(index):
+                    torch.cuda.synchronize()
+                    torch.cuda.empty_cache()
+                    torch.cuda.ipc_collect()
         except Exception as exc:
-            log.debug("[SigmaEngine] Cache clear skipped: %s", exc)
+            log.debug("[SigmaEngine] Cache release skipped: %s", exc)
 
-        freed_gb = round((freed_before - self._vram_used_bytes()) / 2**30, 2)
-        log.info("[SigmaEngine] Unloaded '%s', freed %.2f GB VRAM", previous, freed_gb)
-        return {"success": True, "unloaded": previous, "freed_vram_gb": freed_gb}
+    @staticmethod
+    def _torch_allocated_bytes() -> int:
+        """Bytes of live tensors this process holds, across all CUDA devices."""
+        try:
+            import torch
+            if not torch.cuda.is_available():
+                return 0
+            return sum(
+                torch.cuda.memory_allocated(i)
+                for i in range(torch.cuda.device_count())
+            )
+        except Exception:
+            return 0
 
     @staticmethod
     def _vram_used_bytes() -> int:
@@ -664,7 +801,7 @@ class UniversalSigmaEngine:
             yield from self._yield_no_model_message()
             return
 
-        if self.model_instance is None or self.loaded_model_name != target_model:
+        if not self.has_resident_model or self.loaded_model_name != target_model:
             yield {
                 "token": (
                     f"⏳ *[SigmaEngine]* Caricamento `{target_model}` "
@@ -682,16 +819,21 @@ class UniversalSigmaEngine:
                 }
                 return
 
-            plan = result.get("plan", {})
             yield {
-                "token": (
-                    f"✅ Caricato in {result.get('load_seconds')}s "
-                    f"({plan.get('quantization', '?').upper()}, "
-                    f"{plan.get('total_required_gb', '?')} GB).\n\n"
-                ),
+                "token": f"✅ {self._describe_load(result)}\n\n",
                 "token_index": 2,
                 "done": False,
             }
+
+        # A registry backend runs its own generation loop; it owns the model.
+        if self.active_backend_instance is not None:
+            yield from self.active_backend_instance.generate_stream(
+                prompt,
+                system_prompt=system_prompt,
+                temperature=temperature,
+                max_tokens=max_tokens,
+            )
+            return
 
         try:
             import torch
@@ -823,6 +965,32 @@ class UniversalSigmaEngine:
             for k, v in inputs.items()
         }
 
+    @staticmethod
+    def _describe_load(result: Dict[str, Any]) -> str:
+        """One line describing how a model was placed, for either runtime."""
+        seconds = result.get("load_seconds")
+        plan = result.get("plan") or {}
+        if plan:
+            return (
+                f"Caricato in {seconds}s "
+                f"({str(plan.get('quantization', '?')).upper()}, "
+                f"{plan.get('total_required_gb', '?')} GB)."
+            )
+
+        settings = result.get("settings") or {}
+        placement = result.get("placement") or {}
+        layers = placement.get("layers_on_gpu")
+        total = placement.get("layers_total")
+        where = (
+            "tutti i layer su GPU" if placement.get("fully_offloaded")
+            else f"{layers}/{total} layer su GPU"
+        )
+        return (
+            f"Caricato in {seconds}s "
+            f"({result.get('backend', 'backend')}, {where}, "
+            f"ctx {settings.get('n_ctx', '?')})."
+        )
+
     def _format_load_failure(self, target_model: str, result: Dict[str, Any]) -> str:
         """Renders the real load failure, with guidance matched to the stage."""
         stage = result.get("stage", "load")
@@ -882,8 +1050,66 @@ class UniversalSigmaEngine:
                 self.placement_plan.to_dict() if self.placement_plan else None
             ),
             "optimizations": self._generate_default_optimizations(),
+            "backends": self.backend_capabilities(),
+            "active_backend_name": (
+                self.active_backend_instance.name
+                if self.active_backend_instance else "transformers"
+            ),
             "tiering_summary": self.hardware_profile.get("recommended_tiering"),
         }
+
+    def backend_capabilities(self) -> Dict[str, Any]:
+        """
+        Which runtimes this machine can use, and what is missing for the rest.
+
+        Lets the UI explain why a downloaded checkpoint cannot run here and name
+        the install that would fix it, instead of failing at load time.
+        """
+        from core.engine.backends import capability_report
+
+        report = capability_report(self.hardware_profile)
+        report["transformers"] = {
+            "available": self._module_available("transformers")
+            and self._module_available("torch"),
+            "reason": (
+                "pronto" if self._module_available("transformers")
+                else "transformers non installato"
+            ),
+            "formats": ["safetensors"],
+            "quantization": (
+                "bitsandbytes" if self._module_available("bitsandbytes")
+                else "non disponibile"
+            ),
+        }
+        return report
+
+    def benchmark(
+        self,
+        prompt_tokens: int = 128,
+        decode_tokens: int = 24,
+        profile_modules: bool = False,
+        model_name: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """
+        Measures real prefill and decode speed for the loaded model.
+
+        Loads the model first if needed, so the endpoint is usable from a cold
+        engine.
+        """
+        from core.engine.benchmark import EngineBenchmark
+
+        if self.model_instance is None:
+            target = model_name or self.loaded_model_name
+            result = self.load_native_model(target)
+            if not result.get("success"):
+                return {"success": False, "error": result.get("error")}
+
+        return EngineBenchmark.run(
+            self,
+            prompt_tokens=prompt_tokens,
+            decode_tokens=decode_tokens,
+            profile_modules=profile_modules,
+        )
 
     def plan_for_model(
         self,
@@ -986,3 +1212,20 @@ class UniversalSigmaEngine:
 # Singleton engine instance. Construction is cheap: hardware probing happens on
 # first access, not at import time.
 sigma_engine = UniversalSigmaEngine()
+
+
+@atexit.register
+def _release_engine_on_exit() -> None:
+    """
+    Returns model memory when the program closes.
+
+    Completes the residency contract: weights stay put across chats and are
+    released on an explicit request, a switch to a different model, or here.
+    """
+    try:
+        if sigma_engine.model_instance is not None:
+            sigma_engine.unload()
+    except Exception:
+        # Interpreter shutdown tears down CUDA and threading in an order we do
+        # not control; a failure here must never mask the real exit path.
+        pass

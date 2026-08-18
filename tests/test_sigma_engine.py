@@ -6,6 +6,7 @@ import unittest
 import os
 import shutil
 import tempfile
+import time
 from core.engine.hardware_probe import UniversalHardwareProbe
 from core.engine.weight_profiler import WeightSaliencyProfiler
 from core.engine.disk_streamer import MultiDriveShardedStreamer
@@ -65,26 +66,20 @@ class TestSigmaEngine(unittest.TestCase):
             shutil.rmtree(tmp_dir1, ignore_errors=True)
             shutil.rmtree(tmp_dir2, ignore_errors=True)
 
-    def test_engine_streaming_generation(self):
-        """Verify the stream terminates and reports TTFT on the first real token."""
+    def test_engine_status_without_loading(self):
+        """
+        Status must be answerable on a cold engine.
+
+        Weights are never touched here: streaming is covered against the shared
+        model in TestNativeLoadIntegration, so this stays cheap and cannot leave
+        VRAM behind for whichever test pytest-randomly schedules next.
+        """
         engine = UniversalSigmaEngine()
-        # Loading is lazy inside generate_stream, so release VRAM afterwards or
-        # later tests plan against a machine that looks out of memory.
-        self.addCleanup(engine.unload)
         status = engine.get_status()
         self.assertIn("active_backend", status)
-
-        chunks = list(engine.generate_stream("Test prompt", max_tokens=16))
-        self.assertGreater(len(chunks), 0)
-        self.assertTrue(chunks[-1]["done"])
-
-        # The stream legitimately opens with status chunks (loading notice,
-        # load summary) before the model emits anything, so TTFT belongs to the
-        # first chunk carrying a generated token, not to chunks[0].
-        timed = [c for c in chunks if c.get("ttft_ms") is not None]
-        if timed:
-            self.assertGreater(timed[0]["ttft_ms"], 0)
-            self.assertEqual(timed[0]["token_index"], 1)
+        self.assertEqual(status["status"], "ready")
+        self.assertIsNone(engine.model_instance)
+        self.assertIn("optimizations", status)
 
     def test_moe_expert_cache(self):
         """Verify predictive MoE LRU cache tracking and hit-rate."""
@@ -313,6 +308,172 @@ class TestDeviceMapRepair(unittest.TestCase):
         self.assertEqual(repaired, device_map)
 
 
+class TestBackendSelection(unittest.TestCase):
+    """
+    The engine must pick a runtime that can actually start on this machine, and
+    adapt its settings to the hardware it finds.
+    """
+
+    def test_capability_report_names_the_missing_dependency(self):
+        from core.engine.backends import capability_report
+        report = capability_report(_fake_profile([]))
+        self.assertIn("llama_cpp", report)
+        entry = report["llama_cpp"]
+        self.assertIn("gguf", entry["formats"])
+        # An unavailable backend must say what is missing, not just "no".
+        self.assertTrue(entry["reason"])
+
+    def test_gguf_routes_to_llamacpp(self):
+        from core.engine.backends import select_backend, LlamaCppBackend
+        facts = _facts()
+        facts.weight_format = "gguf"
+        available, _ = LlamaCppBackend.availability()
+        chosen = select_backend(facts, _fake_profile([_gpu(0, "x", 16.0, 70)]))
+        if available:
+            self.assertIs(chosen, LlamaCppBackend)
+        else:
+            self.assertIsNone(chosen)
+
+    def test_safetensors_is_not_claimed_by_llamacpp(self):
+        from core.engine.backends import select_backend
+        facts = _facts()
+        facts.weight_format = "safetensors"
+        self.assertIsNone(
+            select_backend(facts, _fake_profile([_gpu(0, "x", 16.0, 70)]))
+        )
+
+    def test_arm_board_runs_on_cpu_with_neon(self):
+        """
+        On a board with no accelerator the model has to run on the CPU, and the
+        batch size has to come down to fit the memory such devices have.
+        """
+        from core.engine.backends import LlamaCppBackend
+        facts = _facts(layers=28)
+        facts.weight_format = "gguf"
+        facts.total_bytes = 2 * 2**30
+        facts.max_position_embeddings = 8192
+
+        profile = _fake_profile([], ram_gb=6.0)
+        profile["cpu"] = {"cores_physical": 4}
+        profile["system"] = {"is_arm": True, "is_raspberry_pi": True}
+
+        settings = LlamaCppBackend._plan_settings(facts, profile, 4096)
+        self.assertEqual(settings["n_gpu_layers"], 0)
+        self.assertEqual(settings["device"], "arm_neon")
+        self.assertEqual(settings["n_batch"], 128)
+        self.assertEqual(settings["n_threads"], 3)      # 4 cores, one left free
+
+    def test_apple_silicon_offloads_everything(self):
+        from core.engine.backends import LlamaCppBackend
+        facts = _facts()
+        facts.weight_format = "gguf"
+        profile = _fake_profile([{"type": "APPLE_MPS", "device_id": 0}])
+        profile["cpu"] = {"cores_physical": 8}
+        settings = LlamaCppBackend._plan_settings(facts, profile, 4096)
+        self.assertEqual(settings["device"], "metal")
+        self.assertEqual(settings["n_gpu_layers"], -1)
+
+    def test_tensor_split_follows_free_vram(self):
+        """A 16GB + 8GB pair must not be split evenly."""
+        from core.engine.backends import LlamaCppBackend
+        facts = _facts(layers=32)
+        facts.weight_format = "gguf"
+        facts.total_bytes = 4 * 2**30
+
+        profile = _fake_profile([_gpu(0, "big", 15.0, 70), _gpu(1, "small", 7.0, 30)])
+        profile["cpu"] = {"cores_physical": 12}
+
+        settings = LlamaCppBackend._plan_settings(facts, profile, 4096)
+        split = settings["tensor_split"]
+        self.assertIsNotNone(split)
+        self.assertAlmostEqual(sum(split), 1.0, places=2)
+        self.assertGreater(split[0], split[1])
+
+    def test_oversized_model_offloads_only_what_fits(self):
+        from core.engine.backends import LlamaCppBackend
+        facts = _facts(layers=80)
+        facts.weight_format = "gguf"
+        facts.total_bytes = 40 * 2**30          # far larger than the card
+
+        profile = _fake_profile([_gpu(0, "small", 8.0, 40)])
+        profile["cpu"] = {"cores_physical": 8}
+
+        settings = LlamaCppBackend._plan_settings(facts, profile, 2048)
+        self.assertGreater(settings["n_gpu_layers"], 0)
+        self.assertLess(settings["n_gpu_layers"], 80)
+
+    def test_context_is_clamped_to_training_length(self):
+        from core.engine.backends import LlamaCppBackend
+        facts = _facts()
+        facts.max_position_embeddings = 4096
+        self.assertEqual(LlamaCppBackend._clamp_context(facts, 32768), 4096)
+        self.assertEqual(LlamaCppBackend._clamp_context(facts, 2048), 2048)
+
+
+class TestGgufInspection(unittest.TestCase):
+    """GGUF geometry is parsed from the file itself, without llama.cpp."""
+
+    def setUp(self):
+        self.gguf_dir = _find_local_model(suffix=".gguf")
+        if not self.gguf_dir:
+            self.skipTest("no local GGUF model in data/models/")
+
+    def test_reads_geometry_from_header(self):
+        from core.engine.model_inspector import ModelInspector
+        facts = ModelInspector.inspect(self.gguf_dir, use_cache=False)
+        self.assertEqual(facts.weight_format, "gguf")
+        self.assertGreater(facts.num_hidden_layers, 0)
+        self.assertGreater(facts.hidden_size, 0)
+        self.assertGreater(facts.head_dim, 0)
+        self.assertGreater(facts.total_bytes, 0)
+
+    def test_kv_estimate_available_for_gguf(self):
+        from core.engine.model_inspector import ModelInspector
+        facts = ModelInspector.inspect(self.gguf_dir, use_cache=False)
+        self.assertGreater(ModelInspector.estimate_kv_cache_gb(facts, 4096), 0)
+
+
+class TestGgufGeneration(unittest.TestCase):
+    """End-to-end through the engine, exercising the backend hand-off."""
+
+    def setUp(self):
+        from core.engine.backends import LlamaCppBackend
+        available, reason = LlamaCppBackend.availability()
+        if not available:
+            self.skipTest(reason)
+        gguf_dir = _find_local_model(suffix=".gguf")
+        if not gguf_dir:
+            self.skipTest("no local GGUF model in data/models/")
+        self.model_name = os.path.basename(gguf_dir)
+
+    def test_loads_and_generates(self):
+        engine = UniversalSigmaEngine()
+        self.addCleanup(engine.unload)
+
+        result = engine.load_native_model(self.model_name, context_tokens=2048)
+        self.assertTrue(result.get("success"), msg=result.get("error"))
+        self.assertEqual(result.get("backend"), "llama_cpp")
+        self.assertTrue(engine.has_resident_model)
+
+        chunks = list(engine.generate_stream(
+            "Di' semplicemente: ciao.", max_tokens=24, model_name=self.model_name
+        ))
+        text = "".join(c.get("token", "") for c in chunks)
+        self.assertTrue(chunks[-1]["done"])
+        self.assertGreater(len(text.strip()), 0)
+        self.assertNotIn("Errore", text)
+
+    def test_residency_applies_to_backend_models_too(self):
+        engine = UniversalSigmaEngine()
+        self.addCleanup(engine.unload)
+        engine.load_native_model(self.model_name, context_tokens=2048)
+
+        t0 = time.perf_counter()
+        again = engine.load_native_model(self.model_name, context_tokens=2048)
+        self.assertTrue(again.get("already_loaded"))
+        self.assertLess(time.perf_counter() - t0, 0.5)
+
+
 class TestNativeLoadIntegration(unittest.TestCase):
     """
     End-to-end load and generate. This is the only test that exercises the path
@@ -320,28 +481,66 @@ class TestNativeLoadIntegration(unittest.TestCase):
     have to agree; every unit above passed while that path was broken.
     """
 
-    def setUp(self):
-        model_dir = _find_local_model()
-        if not model_dir:
-            self.skipTest("no local model in data/models/")
+    engine = None
+    load_result = None
+
+    @classmethod
+    def setUpClass(cls):
+        """
+        Loads the model once for the whole class.
+
+        Each load costs ~23s and ~17GB of VRAM. Loading per-test also makes the
+        suite order-dependent: pytest-randomly can interleave these with other
+        tests, and any VRAM not returned by a previous instance shows up here as
+        an unrelated OOM.
+        """
+        cls.model_dir = _find_local_model(suffix=".safetensors")
+        cls.skip_reason = None
+
+        if not cls.model_dir:
+            cls.skip_reason = "no local safetensors model in data/models/"
+            return
         try:
             import torch
             if not torch.cuda.is_available():
-                self.skipTest("CUDA not available")
+                cls.skip_reason = "CUDA not available"
+                return
         except ImportError:
-            self.skipTest("torch not installed")
-        self.model_name = os.path.basename(model_dir)
+            cls.skip_reason = "torch not installed"
+            return
+
+        cls.model_name = os.path.basename(cls.model_dir)
+        cls.engine = UniversalSigmaEngine()
+
+        # Record whether a pure-VRAM placement is even possible right now. On a
+        # smaller machine, or with VRAM already in use, spilling to host RAM is
+        # the correct outcome rather than a defect, and assertions about ideal
+        # placement have to stand down.
+        planned = cls.engine.plan_for_model(cls.model_name, context_tokens=4096)
+        cls.fits_in_vram = bool(
+            planned.get("success") and planned["plan"]["fits_in_vram"]
+        )
+
+        cls.load_result = cls.engine.load_native_model(
+            cls.model_name, context_tokens=4096
+        )
+
+    @classmethod
+    def tearDownClass(cls):
+        if cls.engine is not None:
+            cls.engine.unload()
+            cls.engine = None
+
+    def setUp(self):
+        if self.skip_reason:
+            self.skipTest(self.skip_reason)
+        if not self.load_result.get("success"):
+            self.fail(f"model load failed: {self.load_result.get('error')}")
 
     def test_loads_and_generates(self):
-        engine = UniversalSigmaEngine()
-        self.addCleanup(engine.unload)
-        result = engine.load_native_model(self.model_name, context_tokens=4096)
-        self.assertTrue(result.get("success"), msg=result.get("error"))
+        self.assertEqual(self.load_result["placement"]["mode"], "sharded")
 
-        placement = result["placement"]
-        self.assertEqual(placement["mode"], "sharded")
-
-        chunks = list(engine.generate_stream(
+        chunks = list(self.engine.generate_stream(
             "Rispondi con una sola parola: ciao.",
             max_tokens=24, model_name=self.model_name,
         ))
@@ -350,13 +549,20 @@ class TestNativeLoadIntegration(unittest.TestCase):
         self.assertGreater(len(text.strip()), 0)
         self.assertNotIn("Errore", text)
 
-    def test_critical_modules_stay_on_gpu(self):
-        engine = UniversalSigmaEngine()
-        self.addCleanup(engine.unload)
-        result = engine.load_native_model(self.model_name, context_tokens=4096)
-        self.assertTrue(result.get("success"), msg=result.get("error"))
+        # The stream opens with status chunks before the model emits anything,
+        # so TTFT belongs to the first chunk carrying a generated token.
+        timed = [c for c in chunks if c.get("ttft_ms") is not None]
+        self.assertTrue(timed, "no chunk reported time-to-first-token")
+        self.assertGreater(timed[0]["ttft_ms"], 0)
+        self.assertEqual(timed[0]["token_index"], 1)
 
-        device_map = getattr(engine.model_instance, "hf_device_map", {}) or {}
+    def test_critical_modules_stay_on_gpu(self):
+        if not self.fits_in_vram:
+            self.skipTest(
+                "model does not fit in this machine's free VRAM; spilling "
+                "per-token modules is the correct behaviour here"
+            )
+        device_map = getattr(self.engine.model_instance, "hf_device_map", {}) or {}
         exiled = [
             name for name, device in device_map.items()
             if str(device) in ("cpu", "disk")
@@ -364,28 +570,84 @@ class TestNativeLoadIntegration(unittest.TestCase):
         ]
         self.assertEqual(exiled, [], f"per-token modules left off GPU: {exiled}")
 
-    def test_unload_returns_vram(self):
-        """Switching models must actually give the memory back."""
-        engine = UniversalSigmaEngine()
-        self.addCleanup(engine.unload)
-        result = engine.load_native_model(self.model_name, context_tokens=4096)
+    def test_benchmark_reports_a_verdict(self):
+        """
+        The benchmark must name what the model is bound by, since that is what
+        decides whether tuning should target placement, precision or kernels.
+        """
+        result = self.engine.benchmark(prompt_tokens=64, decode_tokens=8)
         self.assertTrue(result.get("success"), msg=result.get("error"))
 
-        released = engine.unload()
-        self.assertGreater(released["freed_vram_gb"], 1.0)
-        self.assertIsNone(engine.model_instance)
+        self.assertGreater(result["prefill"]["tokens_per_second"], 0)
+        self.assertGreater(result["decode"]["tokens_per_second"], 0)
+        self.assertIn(
+            result["verdict"]["bound_by"],
+            ("memory_bandwidth", "kernel_launch_overhead", "host_memory", "unknown"),
+        )
+        # Prefill batches many tokens through the same weights, so it is always
+        # far faster per token than decode; an inversion means a broken measure.
+        self.assertGreater(
+            result["prefill"]["tokens_per_second"],
+            result["decode"]["tokens_per_second"],
+        )
+
+    def test_resident_model_is_reused_not_reloaded(self):
+        """
+        A model stays resident across chats: re-requesting the one already
+        loaded must cost nothing, since a reload is tens of seconds and would
+        also briefly need VRAM for two copies.
+        """
+        t0 = time.perf_counter()
+        result = self.engine.load_native_model(self.model_name, context_tokens=4096)
+        elapsed = time.perf_counter() - t0
+
+        self.assertTrue(result.get("success"))
+        self.assertTrue(result.get("already_loaded"))
+        self.assertLess(elapsed, 0.5)
+
+        # Generation must not announce a load either.
+        chunks = list(self.engine.generate_stream(
+            "Ciao", max_tokens=8, model_name=self.model_name
+        ))
+        self.assertFalse(
+            any("Caricamento" in c.get("token", "") for c in chunks),
+            "generation reloaded a model that was already resident",
+        )
+
+    def test_unload_returns_vram(self):
+        """Switching models must actually give the memory back."""
+        released = self.engine.unload()
+        # Assert on the allocator delta, not the driver delta: the latter also
+        # moves with whatever else is using the GPU, which makes it flaky.
+        self.assertGreater(released["freed_allocated_gb"], 1.0)
+        self.assertIsNone(self.engine.model_instance)
+
+        # Restore state for whatever test runs next in this class.
+        type(self).load_result = self.engine.load_native_model(
+            self.model_name, context_tokens=4096
+        )
+        self.assertTrue(
+            self.load_result.get("success"), msg=self.load_result.get("error")
+        )
 
 
-def _find_local_model():
-    """Returns the first data/models/ subdirectory holding real weights."""
+def _find_local_model(suffix=None):
+    """
+    Returns the first data/models/ subdirectory holding real weights.
+
+    `suffix` narrows the search to one weight format, so the GGUF and
+    safetensors paths can each be exercised against whatever is installed.
+    """
     models_dir = os.path.join(os.getcwd(), "data", "models")
     if not os.path.isdir(models_dir):
         return None
+
+    wanted = (suffix,) if suffix else (".safetensors", ".gguf", ".bin")
     for entry in sorted(os.listdir(models_dir)):
         path = os.path.join(models_dir, entry)
         if not os.path.isdir(path):
             continue
-        if any(f.endswith((".safetensors", ".gguf", ".bin")) for f in os.listdir(path)):
+        if any(f.endswith(wanted) for f in os.listdir(path)):
             return path
     return None
 

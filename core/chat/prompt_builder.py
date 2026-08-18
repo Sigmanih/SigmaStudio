@@ -13,9 +13,65 @@ Responsibilities:
 """
 
 import os
+import re
+from collections import OrderedDict
 from core.logger import get_logger
 
 log = get_logger(__name__)
+
+# --- Agent routing budget ----------------------------------------------------
+# Routing picks one manifesto path. It is a classification, not a generation,
+# and every millisecond it costs is latency before the user sees any answer.
+
+# An agent id is a handful of tokens. The previous budget of 1000 allowed a
+# reasoning model to emit its entire chain of thought before the id, which on a
+# local 27B at ~10 tok/s meant up to a minute and a half spent choosing a file.
+_ROUTING_MAX_TOKENS = 24
+
+# The same request always maps to the same agent, and retries and loops re-route
+# identical messages, so the classifier result is worth keeping.
+_ROUTING_CACHE: "OrderedDict[str, str]" = OrderedDict()
+_ROUTING_CACHE_MAX = 256
+
+# Reasoning models wrap their deliberation in tags; the id follows it.
+_THINK_BLOCK = re.compile(
+    r"<(think|thinking|reasoning)>.*?</\1>", re.DOTALL | re.IGNORECASE
+)
+
+
+def _routing_cache_get(message: str):
+    key = message.strip().lower()
+    path = _ROUTING_CACHE.get(key)
+    if path is not None:
+        _ROUTING_CACHE.move_to_end(key)
+    return path
+
+
+def _routing_cache_put(message: str, manifesto_path: str) -> None:
+    key = message.strip().lower()
+    _ROUTING_CACHE[key] = manifesto_path
+    _ROUTING_CACHE.move_to_end(key)
+    while len(_ROUTING_CACHE) > _ROUTING_CACHE_MAX:
+        _ROUTING_CACHE.popitem(last=False)
+
+
+def _llm_routing_is_cheap(provider: str) -> bool:
+    """
+    Whether the classifier can run without paying a model load.
+
+    A local engine must not be woken up just to pick a manifesto: pulling a
+    multi-GB checkpoint into VRAM takes tens of seconds, dwarfing the decision
+    it informs, and the answer path loads the same model moments later anyway.
+    Once the model is already resident the call is ordinary inference.
+    """
+    if provider not in ("sigma_engine", "sigma"):
+        return True
+    try:
+        from core.engine import sigma_engine
+        return sigma_engine.model_instance is not None
+    except Exception as exc:
+        log.debug("Engine unavailable for routing: %s", exc)
+        return False
 
 
 def _get_time_context() -> str:
@@ -253,6 +309,23 @@ def _collect_context_files(handler, open_files: list[str]) -> str:
 
 
 def _determine_agent_by_request(message: str, ai_cfg: dict, model_override: str) -> str:
+    """
+    Determine the specialized agent manifesto for a request.
+
+    Thin caching wrapper: routing is deterministic for a given message, so
+    repeated requests (retries, loop iterations) reuse the earlier decision
+    instead of re-running the pattern tiers and possibly the LLM classifier.
+    """
+    cached = _routing_cache_get(message)
+    if cached is not None:
+        return cached
+
+    manifesto_path = _resolve_agent_by_request(message, ai_cfg, model_override)
+    _routing_cache_put(message, manifesto_path)
+    return manifesto_path
+
+
+def _resolve_agent_by_request(message: str, ai_cfg: dict, model_override: str) -> str:
     """Determine the specialized agent manifesto based on semantic domain patterns & LLM intent classification."""
     import re
     import json
@@ -274,14 +347,11 @@ def _determine_agent_by_request(message: str, ai_cfg: dict, model_override: str)
             log.info("Centralino Switchboard (Front-Desk Chat) -> manifesti/sigma_assistant.md")
             return "manifesti/sigma_assistant.md"
 
-    # 2. Primary Intent Classifier using dedicated lightweight 'sigma-router' model (<200ms)
-    try:
-        from core.router_trainer import classify_agent_with_router
-        model_routed_path = classify_agent_with_router(message)
-        if model_routed_path:
-            return model_routed_path
-    except Exception as exc:
-        log.debug("Dedicated model router skipped: %s", exc)
+    # The dedicated 'sigma-router' Ollama model used to be consulted here. It
+    # required a separate Ollama daemon on :11434, and when that is not running
+    # the attempt costs ~4s of connection timeout on every single message before
+    # falling through to the pattern tiers below. Sigma Studio runs its own
+    # engine now, so the dependency is gone rather than merely optional.
 
     # 2. Visualizations, D3.js & Charts -> viz_designer
     viz_patterns = [r'\b(d3|canvas|grafic|diagramm|plot|chart|visualizz)\w*']
@@ -409,10 +479,29 @@ def _determine_agent_by_request(message: str, ai_cfg: dict, model_override: str)
     # 7. Fallback Semantic LLM Classifier Router
     main_model, provider, endpoint, api_url, api_key, temperature, max_tokens, top_p, timeout = \
         load_agent_config(ai_cfg, model_override, SIGMA_ARCHITECT_ID)
-        
+
+    if not _llm_routing_is_cheap(provider):
+        log.info(
+            "Centralino Switchboard: skipping LLM classifier (%s not resident) "
+            "-> manifesti/sigma_assistant.md", provider,
+        )
+        return "manifesti/sigma_assistant.md"
+
     agents = get_all_agents()
     active_agents = [a for a in agents if a.get("status") == "active"]
-    
+
+    # Only agents with an installed manifesto can actually be routed to. Asking
+    # a model to choose between candidates that resolve to nothing spends a full
+    # inference pass to arrive at the default anyway.
+    routable = [a for a in active_agents if os.path.exists(f"manifesti/{a['id']}.md")]
+    if len(routable) < 2:
+        log.info(
+            "Centralino Switchboard: %d routable manifesto(s), no classification "
+            "needed -> manifesti/sigma_assistant.md", len(routable),
+        )
+        return "manifesti/sigma_assistant.md"
+    active_agents = routable
+
     agents_info = "\n".join([f"- {a['id']}: {a['name']} (Specializzazione: {a.get('specialization', a.get('role', ''))})" for a in active_agents])
     
     system_prompt = f"""Sei l'Orchestratore e Centralino Intelligente di Sigma Studio.
@@ -434,10 +523,12 @@ Il tuo unico compito è analizzare il senso semantico della richiesta dell'utent
     try:
         response, _, error = call_ai_model(
             messages, ai_cfg, main_model, provider, endpoint, api_url, api_key,
-            0.1, 1000, top_p, timeout
+            0.1, _ROUTING_MAX_TOKENS, top_p, timeout
         )
         if not error and response:
-            chosen = response.strip().lower()
+            # A reasoning model spends its budget deliberating before answering;
+            # drop that so the id is what gets matched.
+            chosen = _THINK_BLOCK.sub("", response).strip().lower()
             chosen = re.sub(r'[^a-z0-9_-]', '', chosen)
             for a in active_agents:
                 if a['id'].lower() == chosen or a['id'].lower().replace('-', '_') == chosen.replace('-', '_'):

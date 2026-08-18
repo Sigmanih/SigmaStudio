@@ -39,7 +39,7 @@ export default function LocalInventory({ isLight, addToast, onDeployRequested })
       const res = await fetch('/api/models/engine/unload', { method: 'POST' });
       const json = await res.json();
       if (json.success) {
-        if (addToast) addToast('🧹 Modello scaricato e memoria VRAM liberata.', 'info');
+        if (addToast) addToast(`🧹 ${json.message}`, 'info');
         fetchLocalModels();
       }
     } catch (e) {
@@ -69,7 +69,7 @@ export default function LocalInventory({ isLight, addToast, onDeployRequested })
           <button
             onClick={handleUnloadModel}
             disabled={unloading}
-            title="Scarica qualsiasi modello attivo in memoria"
+            title="Scarica il modello attivo e libera la memoria che occupa"
             style={{
               padding: '6px 12px', borderRadius: '6px',
               border: '1px solid rgba(239, 68, 68, 0.35)', background: 'rgba(239, 68, 68, 0.1)',
@@ -77,7 +77,7 @@ export default function LocalInventory({ isLight, addToast, onDeployRequested })
               display: 'flex', alignItems: 'center', gap: '4px'
             }}
           >
-            <Power size={12} /> Scarica da VRAM
+            <Power size={12} /> {unloading ? 'Rilascio…' : 'Rilascia memoria'}
           </button>
 
           <button

@@ -101,6 +101,24 @@ class UniversalHardwareProbe:
                     props = torch.cuda.get_device_properties(idx)
                     total_vram = props.total_memory
                     free_vram, _ = torch.cuda.mem_get_info(idx) if hasattr(torch.cuda, 'mem_get_info') else (total_vram, total_vram)
+
+                    # Blocks this process has reserved but is no longer using
+                    # read as "used" at the driver level, yet the allocator will
+                    # hand them straight back to the next allocation. After
+                    # unloading a model that pool can be gigabytes, and treating
+                    # it as unavailable makes every later plan needlessly
+                    # conservative.
+                    reclaimable = 0
+                    try:
+                        reclaimable = max(
+                            torch.cuda.memory_reserved(idx)
+                            - torch.cuda.memory_allocated(idx),
+                            0,
+                        )
+                    except Exception:
+                        reclaimable = 0
+                    free_vram = min(free_vram + reclaimable, total_vram)
+
                     accelerators.append({
                         "device_id": idx,
                         "type": "NVIDIA_CUDA",
@@ -108,6 +126,7 @@ class UniversalHardwareProbe:
                         "compute_capability": f"{props.major}.{props.minor}",
                         "total_vram_gb": round(total_vram / (1024**3), 2),
                         "free_vram_gb": round(free_vram / (1024**3), 2),
+                        "reclaimable_cache_gb": round(reclaimable / (1024**3), 2),
                         "multi_processor_count": props.multi_processor_count,
                         "supports_flash_attention": props.major >= 8,
                         "supports_fp8": props.major >= 8.9 or props.major >= 9,

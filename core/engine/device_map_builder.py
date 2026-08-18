@@ -24,6 +24,10 @@ log = get_logger(__name__)
 # stay on an accelerator while any GPU room remains.
 _CRITICAL_SUBSTRINGS = ("lm_head", "embed_tokens", "embed_in", "wte")
 
+# Slack a device must retain after taking a rescued module, covering the gap
+# between estimated tensor sizes and real allocation.
+_REPAIR_MARGIN_BYTES = int(0.4 * 2**30)
+
 
 class DeviceMapBuilder:
     """Computes and repairs an explicit device map for a planned load."""
@@ -211,11 +215,18 @@ class DeviceMapBuilder:
         max_memory: Dict[Any, int],
         needed: int,
     ) -> Optional[int]:
-        """Returns the GPU with the most free budget that can take `needed`."""
+        """
+        Returns the GPU with the most free budget that can take `needed`.
+
+        Requires a margin beyond the module's own size: these budgets come from
+        estimated tensor sizes and a VRAM reading taken before the load began.
+        Filling a device to exactly its budget leaves nothing for the difference
+        and the module OOMs while being materialised.
+        """
         candidates = [
             (max_memory[d] - used.get(d, 0), d)
             for d in gpu_devices
-            if max_memory[d] - used.get(d, 0) >= needed
+            if max_memory[d] - used.get(d, 0) >= needed + _REPAIR_MARGIN_BYTES
         ]
         if not candidates:
             return None

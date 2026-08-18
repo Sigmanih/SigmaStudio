@@ -15,6 +15,7 @@ from core.engine.engine_router import (
     handle_engine_optimize,
     handle_engine_plan,
     handle_engine_unload,
+    handle_engine_benchmark,
 )
 
 __all__ = [
@@ -37,6 +38,7 @@ __all__ = [
     "handle_engine_optimize",
     "handle_engine_plan",
     "handle_engine_unload",
+    "handle_engine_benchmark",
 ]
 
 
