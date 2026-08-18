@@ -497,7 +497,12 @@ async def api_patch_dispatcher(request: Request, path: str):
     return await _dispatch_route(request, "PATCH")
 
 
-DIST_DIR = Path("sigma_studio/dist")
+# Anchored to the installation, not the working directory: launched from
+# anywhere else, these resolved to folders that do not exist and the UI
+# served nothing but 404s.
+from core.model_paths import project_root as _project_root
+_ROOT = Path(_project_root())
+DIST_DIR = _ROOT / "sigma_studio" / "dist"
 
 
 @app.get("/")
@@ -508,7 +513,7 @@ async def serve_root():
     return JSONResponse({"message": "Σ-SIGMA Studio API Running (v8.0). Use /docs for Swagger UI."})
 
 
-DATA_DIR = Path("data")
+DATA_DIR = _ROOT / "data"
 
 
 def _resolve_inside(root: Path, path: str) -> Path | None:
@@ -532,7 +537,7 @@ async def serve_static_or_spa(path: str):
         if target:
             return FileResponse(target)
 
-    target_img = Path("images") / path
+    target_img = _ROOT / "images" / path
     if target_img.exists() and target_img.is_file():
         return FileResponse(target_img)
 
@@ -545,11 +550,11 @@ async def serve_static_or_spa(path: str):
     if target_dist.exists() and target_dist.is_file():
         return FileResponse(target_dist)
 
-    target_data = Path("data") / path
+    target_data = _ROOT / "data" / path
     if target_data.exists() and target_data.is_file():
         return FileResponse(target_data)
 
-    target_manifesti = Path("manifesti") / path
+    target_manifesti = _ROOT / "manifesti" / path
     if target_manifesti.exists() and target_manifesti.is_file():
         return FileResponse(target_manifesti)
 

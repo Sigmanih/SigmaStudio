@@ -426,7 +426,9 @@ def _apply_hardware_env():
     try:
         cfg = {}
         if os.path.exists("config.json"):
-            with open("config.json", "r", encoding="utf-8") as f:
+            from core.model_paths import project_root
+            _cfg = os.path.join(project_root(), "config.json")
+            with open(_cfg, "r", encoding="utf-8") as f:
                 cfg = json.load(f)
         
         hw = cfg.get("hardware", {})
@@ -536,4 +538,4 @@ if __name__ == "__main__":
             timeout_keep_alive=5,
         )
     except (KeyboardInterrupt, SystemExit):
-        log.info("Server arrestato correttamente.")
+        log.info("Server arrestato correttamente.")

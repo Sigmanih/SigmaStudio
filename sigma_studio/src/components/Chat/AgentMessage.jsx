@@ -424,7 +424,7 @@ export default function AgentMessage({
     : ((rawRole && rawRole.toLowerCase() !== 'auto') ? rawRole : 'Sigma Assistant');
 
   const rawModelName = first.agentName || effectiveModelName || 'AI';
-  const modelName = isUser ? '' : (rawModelName.toLowerCase().startsWith('auto ') || rawModelName.toLowerCase() === 'auto' ? `${roleName} (${effectiveModelName || selectedModel || 'AI'})` : rawModelName);
+  const modelName = isUser ? '' : (rawModelName.toLowerCase().startsWith('auto ') || rawModelName.toLowerCase() === 'auto' ? `${roleName} (${effectiveModelName || 'AI'})` : rawModelName);
   const targetModelForSpecs = (first.agentName || effectiveModelName || '').replace(/^.*?\((.*?)\).*$/, '$1');
   const modelSpecs = !isUser && !isSystem ? getModelSpecs(targetModelForSpecs) : null;
 

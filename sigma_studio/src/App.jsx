@@ -326,7 +326,9 @@ function AppContent() {
                 {isRoadmapInstalled && (
                   <button
                     onClick={() => {
-                      handleOpenTab({ type: 'roadmap', label: '📅 Pianificazione & Audit', icon: Calendar });
+                      // openTab takes (item, type); handleOpenTab never existed,
+                      // so this button threw a ReferenceError on click.
+                      openTab({ name: '📅 Pianificazione & Audit' }, 'roadmap');
                       setDockMinimized(true);
                     }}
                     style={{
