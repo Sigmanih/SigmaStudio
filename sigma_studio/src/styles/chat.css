@@ -1563,17 +1563,19 @@
   content: '▸ ';
 }
 
-/* Speech Karaoke Word Highlight */
+/* Speech Karaoke Word Highlight / Underline */
 mark.speech-word-highlight,
 .speech-word-highlight {
-  background: #ffe600 !important;
-  color: #0e1016 !important;
-  font-weight: 800 !important;
-  padding: 1px 5px !important;
-  border-radius: 4px !important;
-  box-shadow: 0 0 14px rgba(255, 230, 0, 0.85) !important;
+  background: rgba(0, 210, 255, 0.16) !important;
+  color: inherit !important;
+  font-weight: inherit !important;
+  border-bottom: 2.5px solid #00d2ff !important;
+  border-radius: 2px !important;
+  padding: 0 1px 1px 1px !important;
+  margin: 0 !important;
+  box-shadow: 0 2px 8px rgba(0, 210, 255, 0.35) !important;
   display: inline !important;
-  transition: all 0.1s ease !important;
+  transition: background-color 0.15s ease, border-color 0.15s ease !important;
   text-shadow: none !important;
 }
 

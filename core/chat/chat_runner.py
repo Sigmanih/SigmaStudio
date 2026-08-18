@@ -69,11 +69,8 @@ _THINK_TAG_RE = re.compile(r"</?(?:think|thinking|reasoning|rationale|scratchpad
 class _ThinkTagRouter:
     """Split a token stream into answer text and reasoning text on the fly.
 
-    Models that wrap their chain-of-thought in `<think>…</think>` deliver it on the
-    same channel as the answer. Cleaning it only once the stream is over means the
-    user watches the reasoning being typed into the answer bubble (and the TTS
-    reads it out loud). This routes each token to the right channel as it arrives,
-    holding back any trailing fragment that might turn out to be a tag.
+    Cleanly routes `<think>...</think>` blocks to the thinking channel,
+    holding back only partial tag prefixes like `<th` until resolved.
     """
 
     def __init__(self):
@@ -84,6 +81,7 @@ class _ThinkTagRouter:
         """Return [(channel, text), …] where channel is 'token' or 'thinking'."""
         self._buffer += text
         out = []
+
         while True:
             match = _THINK_TAG_RE.search(self._buffer)
             if not match:
@@ -94,8 +92,7 @@ class _ThinkTagRouter:
             self._in_thinking = not match.group().startswith("</")
             self._buffer = self._buffer[match.end():]
 
-        # A trailing '<' may be the start of a tag still being streamed: keep it
-        # buffered until we see enough characters to decide.
+        # Hold back trailing '<' that might be part of an incoming <think> or </think> tag
         cut = self._buffer.rfind("<")
         if cut != -1 and len(self._buffer) - cut <= 12:
             emit, self._buffer = self._buffer[:cut], self._buffer[cut:]
@@ -104,13 +101,15 @@ class _ThinkTagRouter:
 
         if emit:
             out.append(("thinking" if self._in_thinking else "token", emit))
+
         return out
 
     def flush(self) -> list[tuple[str, str]]:
         """Emit whatever is left once the stream is over."""
         if not self._buffer:
             return []
-        out = [("thinking" if self._in_thinking else "token", self._buffer)]
+        channel = "thinking" if self._in_thinking else "token"
+        out = [(channel, self._buffer)]
         self._buffer = ""
         return out
 
@@ -244,11 +243,17 @@ def _stream_chat_response(handler, messages, ai_cfg, model, provider,
                 # Native reasoning channel: already separated by the provider.
                 _emit("thinking", chunk.get("thinking", ""))
                 # Status notices (model loading, placement summary) are shown
-                # but never timed or counted: starting the clock on them folds
-                # the model load into throughput, and their words are not the
-                # model's output.
+                # but never timed or counted as generated words.
                 if chunk.get("status"):
-                    _emit_status_text(chunk.get("token", ""))
+                    if chunk.get("load_duration_ms"):
+                        load_duration_ms = chunk.get("load_duration_ms")
+                    if chunk.get("model_status"):
+                        _sse_send(handler, {
+                            "model_status": chunk.get("model_status"),
+                            "meta": {"load_duration_ms": load_duration_ms}
+                        })
+                    if chunk.get("token"):
+                        _emit_status_text(chunk.get("token"))
                     continue
 
                 # Answer channel: may still carry inline <think> blocks.

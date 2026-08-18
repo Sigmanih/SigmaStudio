@@ -89,6 +89,13 @@ export function cleanTextForSpeech(text) {
   if (!text) return '';
   let out = text;
 
+  // 1. Thinking / reasoning tags and thoughts are NEVER read aloud
+  out = out.replace(/<(think|thinking|reasoning|Thought|scratchpad)>[\s\S]*?<\/\1>/gi, ' ');
+  out = out.replace(/<(think|thinking|reasoning|scratchpad)>[\s\S]*$/gi, ' ');
+  out = out.replace(/^(?:We\s+need\s+to|We\s+must|Need\s+(?:maybe|to|include|ensure)|Let'?s\s+(?:craft|think|final|structure)|Let\s+me\s+think|The\s+instruction:|Potential\s+issue:|Here'?s\s+a\s+thinking\s+process|Analyze\s+User\s+Input|Determine\s+Output\s+Structure|Draft\s+Content|Self-Correction|Execution|Plan|Requirements\s+from\s+System\s+Prompt)[\s\S]*?(?=\n#|\nEcco|\n1️⃣|\n[A-ZÀ-Ü]|\n\{|\n\n|\Z)/gi, ' ');
+  out = out.replace(/\n*📁\s+\*\*File creati e salvati su disco:\*\*[\s\S]*$/gi, ' ');
+  out = out.replace(/\n*###\s+📋\s+Sintesi dei Contenuti Generati[\s\S]*?(?=\n\n|\Z)/gi, ' ');
+
   // Code blocks are never read aloud.
   out = out.replace(/```[\s\S]*?```/g, ' ');
   out = out.replace(/<[^>]*>/g, ' ');
@@ -855,18 +862,41 @@ function watchdogTick() {
 export function startKeepAlive() { startWatchdog(); }
 export function stopKeepAlive() { stopWatchdog(); }
 
-/** Strip fenced code blocks across chunk boundaries — nobody wants code read out. */
+/** Strip fenced code blocks and thinking tags across chunk boundaries — nobody wants code or reasoning read out. */
 function stripFencedCode(state, text) {
   let out = '';
   let rest = text;
   while (rest.length) {
-    const idx = rest.indexOf('```');
-    if (idx === -1) {
-      if (!state.inCode) out += rest;
+    if (state.inThinking) {
+      const tClose = rest.indexOf('</think>');
+      const tClose2 = rest.indexOf('</thinking>');
+      const closeIdx = tClose !== -1 ? tClose : tClose2;
+      if (closeIdx === -1) break;
+      const tagLen = tClose !== -1 ? 8 : 11;
+      rest = rest.slice(closeIdx + tagLen);
+      state.inThinking = false;
+      continue;
+    }
+
+    const tOpen = rest.indexOf('<think>');
+    const tOpen2 = rest.indexOf('<thinking>');
+    const openIdx = (tOpen !== -1 && tOpen2 !== -1) ? Math.min(tOpen, tOpen2) : (tOpen !== -1 ? tOpen : tOpen2);
+    const cIdx = rest.indexOf('```');
+
+    if (openIdx !== -1 && (cIdx === -1 || openIdx < cIdx)) {
+      if (!state.inCode) out += rest.slice(0, openIdx);
+      const tagLen = rest.startsWith('<thinking>', openIdx) ? 10 : 7;
+      rest = rest.slice(openIdx + tagLen);
+      state.inThinking = true;
+      continue;
+    }
+
+    if (cIdx === -1) {
+      if (!state.inCode && !state.inThinking) out += rest;
       break;
     }
-    if (!state.inCode) out += rest.slice(0, idx);
-    rest = rest.slice(idx + 3);
+    if (!state.inCode && !state.inThinking) out += rest.slice(0, cIdx);
+    rest = rest.slice(cIdx + 3);
     state.inCode = !state.inCode;
   }
   return out;

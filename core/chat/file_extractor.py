@@ -40,6 +40,39 @@ def _determine_default_module_path(topic_slug: str, folder: str, fname: str) -> 
     return f"data/{topic_slug}/{fname}"
 
 
+def is_explicit_file_creation_request(prompt: str) -> bool:
+    """Determine if user explicitly requested creating or saving a file on disk."""
+    if not prompt or not isinstance(prompt, str):
+        return False
+    
+    text = prompt.strip().lower()
+    
+    # 1. Informational or conversational queries are NEVER file creation requests
+    conversational_patterns = [
+        r'^\s*(?:parlami|spiegami|raccontami|dimmi|mostrami|elenca|descrivi|analizza|riassumi|illustrami|introduci)\b',
+        r'^\s*(?:chi sei|cosa sei|come ti chiami|cosa puoi fare|cosa sai fare|quali sono|che cosa sono|cosa fa|come funziona)\b',
+        r'\b(?:parlami in chat|parlami del|parlami dei|parlami delle|parlami di)\b',
+        r'^\s*(?:ciao|buongiorno|buonasera|salve|hey|ehi|help|aiuto)\b',
+    ]
+    for cp in conversational_patterns:
+        if re.search(cp, text, re.IGNORECASE):
+            if not re.search(r'\b(?:salva(?:lo|li)?\s+(?:su|in|come)\s+file|crea(?:mi)?\s+(?:un|il|lo|la|i|gli|le)\s+file|scrivi(?:mi)?\s+(?:un|il)\s+file)\b', text, re.IGNORECASE):
+                return False
+
+    # 2. Positive explicit file creation triggers:
+    positive_patterns = [
+        r'\b(?:crea|creami|genera|generami|scrivi|scrivimi|salva|salvalo|salvali|esporta|esportami|sviluppa|sviluppami)\s+(?:un|uno|una|il|lo|la|i|gli|le)?\s*(?:nuovo\s+)?(?:file|documento|script|codice|modulo|progetto|dataset|scheda)\b',
+        r'\b(?:salva(?:lo|li)?\s+(?:su|in|come|nel)\s+(?:file|disco|disco fisso|data/|./data/))\b',
+        r'\b(?:crea(?:mi)?\s+(?:la\s+cartella|la\s+directory|il\s+file))\b',
+        r'\b(?:create_file|write_file|save_to_file)\b',
+    ]
+    for pp in positive_patterns:
+        if re.search(pp, text, re.IGNORECASE):
+            return True
+            
+    return False
+
+
 def _generate_files_summary(created_paths: list[str], full_response: str) -> str:
     """Generate an elegant markdown summary description of the created files."""
     if not created_paths:
@@ -76,29 +109,16 @@ def _generate_files_summary(created_paths: list[str], full_response: str) -> str
 
 
 def _format_file_creation_summary(ai_response, created_paths) -> str:
-    """Format final user message preserving full code blocks and appending disk save summary.
-    
-    Accepts (ai_response: str, created_paths: list[str]) or (created_paths: list[str], ai_response: str).
+    """Preserves conversational clean text without injecting duplicate file logs into text.
+    The created_files and actions_log metadata are rendered by the dedicated UI component.
     """
     if isinstance(ai_response, list) and isinstance(created_paths, str):
         ai_response, created_paths = created_paths, ai_response
     
     if not isinstance(ai_response, str):
         ai_response = str(ai_response or "")
-    if not isinstance(created_paths, list):
-        created_paths = [str(created_paths)] if created_paths else []
 
-    if not created_paths:
-        return ai_response
-    
-    clean_text = ai_response.strip()
-    file_summary = _generate_files_summary(created_paths, ai_response)
-    
-    # Avoid duplicating summary if already present in the response
-    if "File creati e salvati su disco" in clean_text or "File salvati con successo su disco" in clean_text:
-        return clean_text
-    
-    return f"{clean_text}\n\n{file_summary}".strip()
+    return ai_response.strip()
 
 
 _format_conversational_summary = _format_file_creation_summary
@@ -332,8 +352,8 @@ def _extract_and_create_files_from_text(clean_response: str, prompt_topic: str =
             if clean_path and clean_path not in created_paths:
                 _save_file_with_backup(clean_path, file_content)
 
-    # Pattern 2: Standalone Codeblocks paired with preceding filenames or headers
-    if not created_paths:
+    # Pattern 2: Standalone Codeblocks paired with preceding filenames (requires explicit file creation intent)
+    if not created_paths and user_wants_file_creation:
         codeblocks = re.findall(r"(?:###|##|\*\*|[a-zA-Z0-9_\-\./]+)?\s*([a-zA-Z0-9_\-\./]+\.(?:md|py|html|js|css|json))?[^\n]*\n```([a-zA-Z0-9]*)\n([\s\S]*?)\n```", clean_response, re.IGNORECASE)
         if codeblocks:
             for idx, (filename_hint, lang, file_content) in enumerate(codeblocks, start=1):
@@ -347,13 +367,11 @@ def _extract_and_create_files_from_text(clean_response: str, prompt_topic: str =
                     clean_path = _determine_default_module_path(topic_slug, folder, fname)
                     _save_file_with_backup(clean_path, file_content)
 
-    # Pattern 4: Fallback — save entire response as a structured topic file
+    # Pattern 4: Fallback — save entire response as a structured topic file (requires explicit creation intent)
     is_reasoning_only = clean_response.strip().startswith("Analyze User Input:") or clean_response.strip().startswith("Identify Constraints")
     is_admin_action = any(w in prompt_topic.lower() for w in ('rinomina', 'elimina', 'cancella', 'rimuovi', 'cambia nome'))
-    _creation_keywords_re = re.compile(r'\b(crea|genera|scrivi|file|argomento|modulo|documento|teoria)\b', re.IGNORECASE)
-    prompt_has_creation_intent = bool(_creation_keywords_re.search(prompt_topic))
     should_fallback = not is_reasoning_only and not is_admin_action and (
-        force_save or (len(clean_response) > 50 and prompt_has_creation_intent)
+        force_save or (len(clean_response) > 50 and user_wants_file_creation)
     )
     if not created_paths and should_fallback:
         title_match = re.search(r'^#\s+(.+)', clean_response, re.MULTILINE)

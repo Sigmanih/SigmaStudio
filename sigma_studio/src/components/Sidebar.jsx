@@ -446,11 +446,11 @@ export default function Sidebar({
 
           <SidebarItem 
             icon={DownloadCloud} 
-            label="Model Hub & HF Engine" 
-            badge="KERNEL"
+            label="Modelli Locali & Storage" 
+            badge="LOCAL"
             badgeColor="rgba(255,184,108,0.2)"
             active={activeTabId != null && activeTabId.startsWith('model_hub')}
-            onClick={() => openTab({ name: '⚡ Model Hub & HF' }, 'model_hub')} 
+            onClick={() => openTab({ name: '⚡ Modelli Locali & Storage' }, 'model_hub')} 
           />
 
 

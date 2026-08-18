@@ -53,13 +53,26 @@ function formatTimestamp(ts) {
 }
 
 function findWordAt(text, charIdx) {
-  if (!text || charIdx < 0 || charIdx >= text.length) return null;
-  if (!/[\p{L}\p{N}]/u.test(text[charIdx])) return null;
-  let s = charIdx, e = charIdx;
+  if (!text || charIdx < 0) return null;
+  const len = text.length;
+  let idx = Math.min(charIdx, len - 1);
+  if (!/[\p{L}\p{N}]/u.test(text[idx])) {
+    let forward = idx;
+    while (forward < len && !/[\p{L}\p{N}]/u.test(text[forward])) forward++;
+    if (forward < len) {
+      idx = forward;
+    } else {
+      let backward = idx;
+      while (backward >= 0 && !/[\p{L}\p{N}]/u.test(text[backward])) backward--;
+      if (backward >= 0) idx = backward;
+      else return null;
+    }
+  }
+  let s = idx, e = idx;
   while (s > 0 && /[\p{L}\p{N}]/u.test(text[s - 1])) s--;
-  while (e < text.length && /[\p{L}\p{N}]/u.test(text[e])) e++;
+  while (e < len && /[\p{L}\p{N}]/u.test(text[e])) e++;
   const word = text.slice(s, e).trim().replace(/[^\p{L}\p{N}]/gu, '');
-  return word && word.length >= 2 ? { word, start: s, end: e } : null;
+  return word && word.length >= 1 ? { word, start: s, end: e } : null;
 }
 
 // ==============================================================================
@@ -82,18 +95,18 @@ import {
  * Memoized content block for a single message within a group.
  * This avoids re-rendering the markdown (and destroying embedded iframes)
  * every time speechProgress ticks. Karaoke highlighting is applied
- * via a lightweight className swap on a <mark> element.
+ * via a persistent, non-flickering <mark> element that smoothly advances.
  */
 function MemoizedContent({ displayContent, isPlaying, speechId, speechProgress, messages, idx, onClick }) {
   // Base HTML, recomputed ONLY when the raw content changes
   const baseHtml = useMemo(() => renderMarkdownLatex(displayContent), [displayContent]);
   const containerRef = useRef(null);
+  const currentHighlightRef = useRef(null);
 
-  // Apply / remove karaoke highlight without touching innerHTML
-  useEffect(() => {
+  // Clean up highlight helper
+  const removeHighlight = () => {
     const el = containerRef.current;
     if (!el) return;
-    // Remove any previous highlight
     const prev = el.querySelector('mark.speech-word-highlight');
     if (prev) {
       const parent = prev.parentNode;
@@ -102,8 +115,18 @@ function MemoizedContent({ displayContent, isPlaying, speechId, speechProgress, 
         parent.normalize();
       }
     }
+    currentHighlightRef.current = null;
+  };
 
-    if (!isPlaying || !speechProgress || String(speechProgress.speechId) !== String(speechId) || speechProgress.charIndex < 0) return;
+  // Apply / move karaoke highlight smoothly without DOM thrashing
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+
+    if (!isPlaying || !speechProgress || String(speechProgress.speechId) !== String(speechId) || speechProgress.charIndex < 0) {
+      removeHighlight();
+      return;
+    }
 
     const singleClean = cleanTextForSpeech(displayContent);
     let localIdx = speechProgress.charIndex;
@@ -111,22 +134,36 @@ function MemoizedContent({ displayContent, isPlaying, speechId, speechProgress, 
       const prevText = messages[pi]?.content || messages[pi]?.text || '';
       if (prevText) localIdx -= cleanTextForSpeech(prevText).length;
     }
-    if (localIdx < 0) localIdx = 0;
-
-    // Advance past current word to the next one
-    if (localIdx < singleClean.length) {
-      while (localIdx < singleClean.length && /[\p{L}\p{N}]/u.test(singleClean[localIdx])) localIdx++;
-      while (localIdx < singleClean.length && !/[\p{L}\p{N}]/u.test(singleClean[localIdx])) localIdx++;
+    if (localIdx < 0) {
+      removeHighlight();
+      return;
+    }
+    if (localIdx >= singleClean.length && singleClean.length > 0) {
+      localIdx = singleClean.length - 1;
     }
 
     const found = findWordAt(singleClean, localIdx);
-    if (!found) return;
+    if (!found) {
+      // Keep existing highlight visible while briefly moving between words/spaces
+      return;
+    }
 
-    // Walk text nodes in the DOM to find the n-th occurrence of this word
     const escaped = found.word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     const rx = new RegExp(`\\b${escaped}\\b`, 'gi');
     const textBefore = singleClean.slice(0, found.start);
     const targetOccurrence = (textBefore.match(rx) || []).length;
+
+    // If already highlighting this exact word occurrence, keep it without re-rendering DOM
+    if (
+      currentHighlightRef.current &&
+      currentHighlightRef.current.word === found.word &&
+      currentHighlightRef.current.targetOccurrence === targetOccurrence
+    ) {
+      return;
+    }
+
+    // Remove previous word highlight and advance to the next word
+    removeHighlight();
 
     function walk(node, count) {
       if (node.nodeType === Node.TEXT_NODE) {
@@ -135,7 +172,6 @@ function MemoizedContent({ displayContent, isPlaying, speechId, speechProgress, 
         rx.lastIndex = 0;
         while ((m = rx.exec(txt)) !== null) {
           if (count.cur === targetOccurrence) {
-            // Wrap this occurrence in a <mark>
             const before = txt.slice(0, m.index);
             const mid = txt.slice(m.index, m.index + m[0].length);
             const after = txt.slice(m.index + m[0].length);
@@ -147,6 +183,7 @@ function MemoizedContent({ displayContent, isPlaying, speechId, speechProgress, 
             frag.appendChild(mark);
             if (after) frag.appendChild(document.createTextNode(after));
             node.parentNode.replaceChild(frag, node);
+            currentHighlightRef.current = { word: found.word, targetOccurrence };
             count.done = true;
             return;
           }
@@ -452,35 +489,41 @@ export default function AgentMessage({
           >
             {copiedMsg ? '✓ Copiato!' : '📋 Copia'}
           </button>
-          {!isUser && !isSystem && (
-            <button
-              onClick={() => {
-                if (isPlayingAudio) {
-                  stopSpeech();
-                } else {
-                  const textToRead = messages.map(m => m.content || m.text || '').join(' ');
-                  speakAgentMessage(textToRead, null, null, speechId);
-                }
-              }}
-              title={isPlayingAudio ? 'Ferma lettura' : 'Ascolta risposta vocale (TTS)'}
-              style={{
-                background: isPlayingAudio ? 'rgba(0,210,255,0.2)' : 'rgba(255,255,255,0.04)',
-                border: isPlayingAudio ? '1px solid rgba(0,210,255,0.4)' : '1px solid rgba(255,255,255,0.08)',
-                color: isPlayingAudio ? '#00d2ff' : 'var(--text-muted, #8b8fa3)',
-                fontSize: '0.68rem',
-                cursor: 'pointer',
-                padding: '2px 7px',
-                borderRadius: '4px',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '4px',
-                marginLeft: '6px',
-                transition: 'all 0.2s ease'
-              }}
-            >
-              {isPlayingAudio ? '⏹️ Ferma' : '🔊 Ascolta'}
-            </button>
-          )}
+          {!isUser && !isSystem && (() => {
+            const isMessageStreaming = messages.some(m => m.streaming || m.streamingThinking) || Boolean(isLoading);
+            return (
+              <button
+                disabled={isMessageStreaming}
+                onClick={() => {
+                  if (isMessageStreaming) return;
+                  if (isPlayingAudio) {
+                    stopSpeech();
+                  } else {
+                    const textToRead = messages.map(m => m.content || m.text || '').join(' ');
+                    speakAgentMessage(textToRead, null, null, speechId);
+                  }
+                }}
+                title={isMessageStreaming ? 'In attesa del completamento della risposta...' : (isPlayingAudio ? 'Ferma lettura' : 'Ascolta risposta vocale (TTS)')}
+                style={{
+                  background: isPlayingAudio ? 'rgba(0,210,255,0.2)' : 'rgba(255,255,255,0.04)',
+                  border: isPlayingAudio ? '1px solid rgba(0,210,255,0.4)' : '1px solid rgba(255,255,255,0.08)',
+                  color: isMessageStreaming ? '#55596e' : (isPlayingAudio ? '#00d2ff' : 'var(--text-muted, #8b8fa3)'),
+                  opacity: isMessageStreaming ? 0.45 : 1,
+                  fontSize: '0.68rem',
+                  cursor: isMessageStreaming ? 'not-allowed' : 'pointer',
+                  padding: '2px 7px',
+                  borderRadius: '4px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '4px',
+                  marginLeft: '6px',
+                  transition: 'all 0.2s ease'
+                }}
+              >
+                {isPlayingAudio ? '⏹️ Ferma' : '🔊 Ascolta'}
+              </button>
+            );
+          })()}
           {onDeleteMessage && (
             <button className="chat-msg-delete-btn" title="Elimina" onClick={() => onDeleteMessage(msgIndex)}>✕</button>
           )}
@@ -637,13 +680,13 @@ export default function AgentMessage({
               if (thinkMatch) {
                 displayThinking = thinkMatch[1].trim();
                 displayContent = displayContent.replace(/<think>.*?<\/think>/gs, '').trim();
-              } else if (/^(?:Analyze User Input|Identify Key Constraints|Context:|Thinking:|Role:|\*\*Analyze)/i.test(displayContent.trim()) || displayContent.includes('Analyze User Input')) {
+              } else if (/^(?:Analyze User Input|Identify Key Constraints|Context:|Thinking:|Role:|\*\*Analyze|The user is asking|Need maybe|Need to|Need final|Let me think|Let's draft|Wait, let me|Actually, look|"Ciao)/i.test(displayContent.trim()) || displayContent.includes('Analyze User Input')) {
                 const monologueMatch = displayContent.match(/^(Analyze\s+User\s+Input:[\s\S]*?(?:Final\s+Output\s+Generation:[^\n]*|Proceeds\.?|✅)+)\s*([\s\S]+)$/i);
                 if (monologueMatch) {
                   displayThinking = monologueMatch[1].trim();
                   displayContent = monologueMatch[2].trim();
                 } else {
-                  const responseMarker = displayContent.match(/(?:\n|^|\b)(?:Ciao!|Ciao\b|Path:|#\s+|Ecco\s+|Ho\s+|Per\s+|---|Sono\s+Sigma|\*\*Risposta|\*\*Struttura|Dimmi\s+pure)/i);
+                  const responseMarker = displayContent.match(/(?:\n\n|\n|^)\s*(?:(?:Let\'?s\s+draft[:\s]*|Let\s+me\s+write\s+the\s+final\s+response\s+now[:\s]*|final\.)\s*\n+)?(Ciao[,!\s]|Salve[,!\s]|Buongiorno[,!\s]|Buonasera[,!\s]|Ecco\s+|Benvenuto[,!\s]|Certamente|Certo[,!]|In\s+\*?\*?Sigma\s+Studio\*?\*?|\*\*Sigma\s+Studio\*\*|Come\s+Sigma\s+Architect|Come\s+Sigma\s+Assistant|La\s+mia\s+opinione|#\s+|Path:)/i);
                   if (responseMarker) {
                     const splitPos = responseMarker.index;
                     displayThinking = displayContent.substring(0, splitPos).trim();
@@ -950,9 +993,15 @@ export default function AgentMessage({
                       borderTop: '1px solid rgba(255, 255, 255, 0.04)',
                       userSelect: 'none'
                     }}>
+                      {loadDisplay && (
+                        <span title="Tempo impiegato per caricare il modello in memoria / VRAM" style={{ display: 'inline-flex', alignItems: 'center', gap: '3px' }}>
+                          <span>⚡</span>
+                          <span>Caricamento: <strong style={{ color: '#eab308', fontWeight: 600 }}>{loadDisplay}</strong></span>
+                        </span>
+                      )}
                       {engineDisplay && (
                         <span title="Motore di inferenza utilizzato" style={{ display: 'inline-flex', alignItems: 'center', gap: '3px' }}>
-                          <span>⚡</span>
+                          <span>⚙️</span>
                           <span>Engine: <strong style={{ color: '#00f2fe', fontWeight: 700 }}>{engineDisplay}</strong></span>
                         </span>
                       )}
@@ -968,12 +1017,6 @@ export default function AgentMessage({
                           <span>Scelta centralino: <strong style={{ color: '#00d2ff', fontWeight: 600 }}>{routingDisplay}</strong></span>
                         </span>
                       )}
-                      {loadDisplay && (
-                        <span title="Tempo impiegato per caricare il modello in memoria / VRAM" style={{ display: 'inline-flex', alignItems: 'center', gap: '3px' }}>
-                          <span>⏳</span>
-                          <span>Caricamento: <strong style={{ color: '#eab308', fontWeight: 600 }}>{loadDisplay}</strong></span>
-                        </span>
-                      )}
                       {tpsDisplay && (
                         <span title="Velocità di generazione del modello (tokens al secondo)" style={{ display: 'inline-flex', alignItems: 'center', gap: '3px' }}>
                           <span>🚀</span>
@@ -983,7 +1026,7 @@ export default function AgentMessage({
                       {hardwareDisplay && (
                         <span title="Hardware di elaborazione utilizzato dal modello" style={{ display: 'inline-flex', alignItems: 'center', gap: '3px' }}>
                           <span>💻</span>
-                          <span>Hardware: <strong style={{ color: '#a78bfa', fontWeight: 600 }}>{hardwareDisplay}</strong></span>
+                          <strong style={{ color: '#a78bfa', fontWeight: 600 }}>{hardwareDisplay}</strong>
                         </span>
                       )}
                     </div>

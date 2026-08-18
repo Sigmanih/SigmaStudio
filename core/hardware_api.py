@@ -260,20 +260,6 @@ def _get_disks_info() -> Dict[str, Any]:
     except Exception:
         pass
 
-    if not disks:
-        disks.append({
-            "device": "C:\\",
-            "mountpoint": "C:\\",
-            "fstype": "NTFS",
-            "total_gb": 1906.8,
-            "used_gb": 1728.7,
-            "free_gb": 178.1,
-            "usage_pct": 90.7
-        })
-        tot_gb = 1906.8
-        used_gb = 1728.7
-        free_gb = 178.1
-
     overall_pct = round((used_gb / tot_gb * 100), 1) if tot_gb > 0 else 0.0
 
     return {
@@ -316,24 +302,79 @@ def _get_network_info() -> Dict[str, Any]:
         "upload_kbps": up_kbps,
         "total_sent_mb": total_sent_mb,
         "total_recv_mb": total_recv_mb,
-        "status": "Online (Gigabit / Wi-Fi)"
+        "status": "Online"
     }
+
+
+_cached_cpu_brand = None
+
+def _get_cpu_brand() -> str:
+    """Reads the exact real CPU model name directly from the host system/registry."""
+    global _cached_cpu_brand
+    if _cached_cpu_brand:
+        return _cached_cpu_brand
+
+    # 1. Windows Registry (100% accurate processor name from Windows kernel)
+    if sys.platform == "win32":
+        try:
+            import winreg
+            key = winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, r"HARDWARE\DESCRIPTION\System\CentralProcessor\0")
+            name, _ = winreg.QueryValueEx(key, "ProcessorNameString")
+            winreg.CloseKey(key)
+            if name and str(name).strip():
+                _cached_cpu_brand = " ".join(str(name).split()).strip()
+                return _cached_cpu_brand
+        except Exception:
+            pass
+
+    # 2. Linux /proc/cpuinfo
+    if sys.platform.startswith("linux"):
+        try:
+            with open("/proc/cpuinfo", "r", encoding="utf-8", errors="ignore") as f:
+                for line in f:
+                    if "model name" in line:
+                        _cached_cpu_brand = " ".join(line.split(":", 1)[1].split()).strip()
+                        return _cached_cpu_brand
+        except Exception:
+            pass
+
+    # 3. macOS sysctl
+    if sys.platform == "darwin":
+        try:
+            import subprocess
+            res = subprocess.run(["sysctl", "-n", "machdep.cpu.brand_string"], capture_output=True, text=True)
+            if res.returncode == 0 and res.stdout.strip():
+                _cached_cpu_brand = " ".join(res.stdout.split()).strip()
+                return _cached_cpu_brand
+        except Exception:
+            pass
+
+    # 4. Fallback to platform.processor()
+    p = platform.processor()
+    if p and not p.isdigit() and len(p.strip()) > 2:
+        _cached_cpu_brand = " ".join(p.split()).strip()
+        return _cached_cpu_brand
+
+    _cached_cpu_brand = "CPU Host"
+    return _cached_cpu_brand
 
 
 def get_hardware_telemetry() -> Dict[str, Any]:
     """Collects real-time hardware telemetry for CPU, RAM, GPU, Disks, and Network."""
-    # 1. CPU
+    # 1. CPU (100% real measured dynamic values)
     cpu_pct = psutil.cpu_percent(interval=None)
     cpu_freq = psutil.cpu_freq()
+    phys_count = psutil.cpu_count(logical=False)
+    log_count = psutil.cpu_count(logical=True)
     cpu_info = {
-        "name": UniversalHardwareProbe.probe_all().get("cpu", {}).get("brand", "AMD Ryzen CPU Multi-Core"),
-        "cores_physical": psutil.cpu_count(logical=False) or 8,
-        "cores_logical": psutil.cpu_count(logical=True) or 16,
+        "name": _get_cpu_brand(),
+        "cores_physical": phys_count if phys_count is not None else 0,
+        "cores_logical": log_count if log_count is not None else 0,
         "usage_pct": round(cpu_pct, 1),
-        "freq_mhz": round(cpu_freq.current, 0) if cpu_freq else 3600
+        "freq_mhz": round(cpu_freq.current, 0) if (cpu_freq and cpu_freq.current) else 0
     }
 
-    # 2. RAM
+    # 2. RAM (100% real measured dynamic values)
     vm = psutil.virtual_memory()
     ram_info = {
         "total_gb": round(vm.total / (1024**3), 2),

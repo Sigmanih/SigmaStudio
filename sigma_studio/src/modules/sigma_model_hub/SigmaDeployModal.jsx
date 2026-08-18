@@ -114,9 +114,9 @@ export default function SigmaDeployModal({ model, onClose, onDeployed, onSuccess
               {model.filename || model.name}
             </div>
             <div style={{ fontSize: '0.74rem', color: textMuted, marginTop: '4px', display: 'flex', gap: '12px' }}>
-              <span>Dimensione: <strong>{model.size_label || (model.size_gb ? `${model.size_gb} GB` : '51.8 GB')}</strong></span>
-              <span>Formato: <strong>{model.format || 'Safetensors'}</strong></span>
-              <span>VRAM Richiesta: <strong>~{model.est_vram_gb || 60} GB</strong></span>
+              <span>Dimensione: <strong>{model.size_label || (model.size_gb ? `${model.size_gb} GB` : 'Locale')}</strong></span>
+              <span>Formato: <strong>{model.format || (model.filename?.toLowerCase().endsWith('.gguf') ? 'GGUF' : 'Standard')}</strong></span>
+              <span>VRAM Richiesta: <strong>{model.est_vram_gb ? `~${model.est_vram_gb} GB` : 'Auto'}</strong></span>
             </div>
           </div>
 

@@ -162,13 +162,13 @@ def handle_switch_agent(self, agent_name: str, message: str, history: list, bot_
             log.error("Parse error for agent %s: %s", agent_name, e)
     
     # Auto-extract text files only if the user explicitly requested file creation
-    _create_keywords = ['crea', 'scrivi', 'genera', 'salva', 'file', 'documento', 'modulo', 'argomento']
-    user_requested_creation = any(kw in message.lower() for kw in _create_keywords)
+    from core.chat.file_extractor import is_explicit_file_creation_request
+    user_requested_creation = is_explicit_file_creation_request(message)
     
     if user_requested_creation and not any(a.get("type") in ("create_file", "edit_file") for a in actions_log) and len(clean_response) > 50:
         try:
-            from core.chat_handler import _extract_and_create_files_from_text
-            created = _extract_and_create_files_from_text(clean_response, message)
+            from core.chat.file_extractor import _extract_and_create_files_from_text
+            created, acts = _extract_and_create_files_from_text(clean_response, message)
             for cp in created:
                 actions_log.append({
                     "type": "create_file", "success": True, "path": cp,

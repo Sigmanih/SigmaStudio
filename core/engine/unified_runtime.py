@@ -790,38 +790,41 @@ class UniversalSigmaEngine:
             yield from self._yield_no_model_message()
             return
 
-        if not self.has_resident_model or self.loaded_model_name != target_model:
-            yield {
-                "token": (
-                    f"⏳ *[SigmaEngine]* Caricamento `{target_model}` "
-                    "sui tier di memoria disponibili...\n\n"
-                ),
-                "token_index": 1,
-                # Marked as status so the caller shows it without counting it
-                # as generated output: these words are not the model's, and
-                # timing from here folds the load into the throughput figure.
-                "status": True,
-                "done": False,
-            }
+        def _clean_m_name(name):
+            if not name: return ""
+            return str(name).strip().lower().replace(".gguf", "").replace("--", "/").split("/")[-1].split("\\")[-1]
+
+        is_already_resident = (
+            self.has_resident_model and (
+                _clean_m_name(self.loaded_model_name) == _clean_m_name(target_model) or
+                _clean_m_name(self.loaded_model_name) == _clean_m_name(model_name) or
+                (model_info and self.loaded_model and os.path.abspath(self.loaded_model.get("path", "")) == os.path.abspath(model_info[0]))
+            )
+        )
+
+        if not is_already_resident:
             result = self.load_native_model(target_model)
             if not result.get("success"):
                 yield {
                     "token": self._format_load_failure(target_model, result),
-                    "token_index": 2,
+                    "token_index": 1,
                     "done": True,
                 }
                 return
 
+            load_sec = result.get("load_seconds") or round(time.perf_counter() - t_start, 2)
+            load_ms = round(load_sec * 1000, 1)
+
             yield {
-                "token": f"✅ {self._describe_load(result)}\n\n",
-                "token_index": 2,
+                "token": "",
                 "status": True,
+                "load_duration_ms": load_ms,
+                "load_seconds": load_sec,
+                "model_status": f"⚡ Modello caricato in {load_sec}s",
                 "done": False,
             }
 
             # Throughput must measure generation, not the load before it.
-            # Counting a ~30s model load against the first tokens is what
-            # made a healthy 11 tok/s read as 0.6 tok/s in the UI.
             t_start = time.perf_counter()
 
         # A registry backend runs its own generation loop; it owns the model.

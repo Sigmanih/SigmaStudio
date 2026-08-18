@@ -187,3 +187,91 @@ Un frattale è una figura geometrica...
         finally:
             if os.path.exists("data/test_temp_frattali"):
                 shutil.rmtree("data/test_temp_frattali", ignore_errors=True)
+
+    def test_complex_english_thinking_extraction(self):
+        sample = """The user is asking "che ne pensi dei moduli?" (what do you think about the modules?). This is a follow-up to the previous conversation about Sigma Studio. The user is Diego Saitta, the developer and creator.
+
+I need to respond in Italian, as Sigma Assistant (front-desk) or perhaps as Sigma Architect since the system prompt has a strong identity as "Sigma Architect, il Lead System Architect e Coordinatore dell'Orchestrazione Cognitiva di Sigma Studio."
+
+Wait, let me re-read the system prompt carefully. There are two identities mixed:
+The second one is more specific and detailed.
+
+Let me think about what "moduli" refers to. In the previous response, I listed many modules.
+Let me write the final response now.
+
+Ciao Diego Saitta! Come Sigma Architect, ti do la mia lettura architetturale dei moduli di Sigma Studio.
+
+La mia opinione: un'architettura a moduli ben pensata
+I moduli di Sigma Studio rappresentano la decisione più importante del sistema."""
+
+        cleaned, thinking = _clean_all_tags(sample)
+        assert thinking is not None
+        assert "Wait, let me re-read" in thinking
+        assert "The user is asking" in thinking
+        assert cleaned.startswith("Ciao Diego Saitta!")
+        assert "La mia opinione: un'architettura a moduli ben pensata" in cleaned
+        assert "Wait, let me re-read" not in cleaned
+
+    def test_need_maybe_thinking_extraction(self):
+        sample = """"Ciao, Diego Saitta! Sigma Studio è..."
+
+Need maybe mention "oggi"? Could say "In questo momento, Sigma Studio è..." Not necessary.
+
+Need maybe mention "Sono Sigma Assistant...".
+
+Need maybe mention "Il cuore di Sigma Studio è l'idea che ogni agente AI abbia un'identità operativa definita da un Manifesto/Modelfile...".
+
+Need maybe mention "Puoi usarlo per: conversare, studiare, sviluppare, analizzare dati, creare contenuti, gestire domotica, marketplace, galleria manifesti...".
+
+Need final phrase exactly. Ensure no hidden internal. final.
+
+Ciao, Diego Saitta!
+
+**Sigma Studio** è la piattaforma cognitiva e di laboratorio tecnologico in cui risiedo."""
+
+        cleaned, thinking = _clean_all_tags(sample)
+        assert thinking is not None
+        assert "Need maybe mention" in thinking
+        assert "Ensure no hidden internal" in thinking
+        assert cleaned.startswith("Ciao, Diego Saitta!")
+        assert "**Sigma Studio** è la piattaforma" in cleaned
+        assert "Need maybe" not in cleaned
+
+    def test_think_tag_router_streaming(self):
+        from core.chat.chat_runner import _ThinkTagRouter
+        router = _ThinkTagRouter()
+        
+        chunks = [
+            "<think>\nNeed maybe ",
+            "mention 'oggi'? ",
+            "Not necessary.\n",
+            "Need final phrase.</think>\n\n",
+            "Ciao, Diego Saitta!\n\n",
+            "**Sigma Studio** è la piattaforma."
+        ]
+        
+        thinking_parts = []
+        token_parts = []
+        
+        for c in chunks:
+            for ch, text in router.feed(c):
+                if ch == "thinking":
+                    thinking_parts.append(text)
+                else:
+                    token_parts.append(text)
+        for ch, text in router.flush():
+            if ch == "thinking":
+                thinking_parts.append(text)
+            else:
+                token_parts.append(text)
+                
+        full_thinking = "".join(thinking_parts)
+        full_token = "".join(token_parts)
+        
+        assert "Need maybe mention" in full_thinking
+        assert "Ciao, Diego Saitta!" in full_token
+        assert "**Sigma Studio**" in full_token
+        assert "Need maybe" not in full_token
+        assert "<think>" not in full_thinking
+        assert "</think>" not in full_thinking
+        assert "<think>" not in full_token

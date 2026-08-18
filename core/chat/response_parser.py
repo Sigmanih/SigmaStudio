@@ -44,7 +44,16 @@ _THINKING_STARTERS: list[str] = [
     r"^Here\'?s\s+a\s+thinking\s+process\b",
     r"^Here\s+is\s+the\s+thinking\s+process\b",
     r"^Thinking\s+Process:",
-    r"^Let\s+me\s+think\s+(?:about|through|step\s+by\s+step)",
+    r"^The\s+user\s+(?:is\s+asking|wants|asks|queried|says)\b",
+    r"^Wait,\s+let\s+me\b",
+    r"^Actually,\s+looking\b",
+    r"^I\s+need\s+to\s+respond\b",
+    r"^This\s+is\s+asking\b",
+    r"^Let\s+me\s+think\b",
+    r"^Let\'?s\s+(?:think|craft|final|structure)\b",
+    r"^Need\s+(?:maybe|to|include|ensure)\b",
+    r"^The\s+instruction:\b",
+    r"^Potential\s+issue:\b",
     r"^I\'?ll\s+approach\s+this\s+",
     r"^Let\s+me\s+analyze\s+",
     r"^Analyze\s+User\s+Input:",
@@ -61,69 +70,94 @@ _THINKING_STARTERS: list[str] = [
 def _extract_english_thinking(content: str) -> tuple[str, str | None]:
     """Detect and extract English 'thinking process' from model responses.
 
-    Some models (Gemma-based, some fine-tunes) produce inline self-analysis
-    in English before the actual Italian reply.  This function splits them.
-
-    Returns:
-        ``(response_text, thinking_text)`` — *thinking_text* is ``None`` when
-        no thinking block was found.
+    Handles English self-analysis, planning, and mental drafting preambles
+    emitted before the actual Italian reply.
     """
     if not content or not isinstance(content, str):
         return content, None
 
-    for starter in _THINKING_STARTERS:
-        if re.search(starter, content.strip(), re.IGNORECASE):
-            lines = content.strip().split("\n")
-            thinking_lines, response_lines = [], []
-            in_thinking = True
+    # Check for explicit transition phrases to the final response
+    _EXPLICIT_TRANSITIONS = [
+        r'(?:\n|^)\s*(?:Let\s+me\s+write\s+the\s+final\s+response\s+now|Let\s+me\s+finalize\s+(?:the|my)\s+response|Let\s+me\s+draft\s+(?:a|the)\s+response|Here\s+is\s+the\s+final\s+response|Final\s+Response|Let\'?s\s+write\s+the\s+final\s+response|Let\'?s\s+final|Final\s+output|Final\s+Answer|final\.|Final\.|Let\'?s\s+draft[:\s]*|Draft\s+Response[:\s]*|Need\s+final\s+phrase[^\n]*|Ensure\s+no\s+hidden\s+internal[^\n]*|Need\s+maybe\s+no\s+tool[^\n]*)[:.\s]*\n+',
+        r'(?:\n|^)\s*(?:Let\s+me\s+structure\s+a\s+clear[^\n]*response[^\n]*\n+)',
+    ]
+    for trans in _EXPLICIT_TRANSITIONS:
+        match = re.search(trans, content, re.IGNORECASE)
+        if match:
+            thinking_part = content[:match.end()].strip()
+            response_part = content[match.end():].strip()
+            if thinking_part and response_part:
+                return response_part, thinking_part
 
-            for line in lines:
-                stripped = line.strip()
-                if not stripped:
-                    (thinking_lines if in_thinking else response_lines).append(line)
-                    continue
+    has_starter = any(re.search(starter, content.strip(), re.IGNORECASE) for starter in _THINKING_STARTERS)
+    if not has_starter:
+        first_para = content.strip().split("\n\n")[0]
+        if len(first_para) > 30 and _detect_language(first_para) == "en" and re.search(r'\b(?:user|prompt|system|respond|Italian|thinking|draft|opinion|module|architecture)\b', first_para, re.IGNORECASE):
+            has_starter = True
 
-                if in_thinking:
-                    is_end = (
-                        stripped.startswith("Oggi \u00e8")
-                        or stripped.startswith("Il link")
-                        or stripped.startswith("[SYSTEM")
-                        or stripped.startswith("[ANALISI")
-                        or stripped.startswith("[SOURCE")
-                        or (stripped.startswith("**") and "**" in stripped[2:])
-                        or (
-                            re.match(r"^[A-Z\u00c0\u00c8\u00c9\u00cc\u00d2\u00d9][a-z\u00e0\u00e8\u00e9\u00ec\u00f2\u00f9]", stripped)
-                            and not re.match(
-                                r"^(Here|Let|Think|Analyze|Check|Determine|Formulate|"
-                                r"Refine|Self|I\'?ll|I will|Consider|Evaluate|Identify|"
-                                r"Note|Observe|Plan|Prepare|Step|The\s+(user|request|"
-                                r"query|answer))",
-                                stripped, re.IGNORECASE,
-                            )
-                        )
-                    )
-                    if is_end and not re.match(r"^\d+\.\s", stripped):
-                        in_thinking = False
-                        response_lines.append(line)
-                    else:
-                        thinking_lines.append(line)
-                else:
-                    response_lines.append(line)
+    if not has_starter:
+        return content, None
 
-            thinking_text = "\n".join(thinking_lines).strip()
-            response_text = "\n".join(response_lines).strip()
-            if thinking_text and response_text and len(thinking_text) > len(response_text) * 0.3:
-                return response_text, thinking_text
+    lines = content.strip().split("\n")
+
+    # Search backwards for the last valid Italian response start
+    for idx in range(len(lines) - 1, 0, -1):
+        line = lines[idx].strip()
+        if not line:
+            continue
+        is_it_start = bool(re.match(
+            r"^(?:Ciao[,!\s]|Salve[,!\s]|Buongiorno[,!\s]|Buonasera[,!\s]|Ecco\s+|Benvenuto[,!\s]|Certamente|Certo[,!]|In\s+\*?\*?Sigma\s+Studio\*?\*?|\*\*Sigma\s+Studio\*\*|Come\s+Sigma\s+Architect|Come\s+Sigma\s+Assistant|La\s+mia\s+opinione[:\s]|I\s+moduli\s+di\s+Sigma\s+Studio)\b",
+            line,
+            re.IGNORECASE
+        ))
+        if is_it_start:
+            following_lines = lines[idx:]
+            following_text = "\n".join(following_lines).strip()
+            if not re.search(r'\b(?:Wait,\s+let\s+me|Let\s+me\s+think|Actually,\s+looking|Let\s+me\s+write\s+the\s+final|The\s+instruction:)\b', following_text, re.IGNORECASE):
+                preceding_text = "\n".join(lines[:idx]).strip()
+                if len(preceding_text) > 30:
+                    return following_text, preceding_text
+
+    # Forward scan tracking language and transition
+    thinking_lines, response_lines = [], []
+    in_thinking = True
+
+    for idx, line in enumerate(lines):
+        stripped = line.strip()
+        if not stripped:
+            (thinking_lines if in_thinking else response_lines).append(line)
+            continue
+
+        if in_thinking:
+            is_greeting = bool(re.match(r"^(?:Ciao|Salve|Buongiorno|Buonasera|Ecco|Benvenuto|Certamente|Certo[,!])\b", stripped, re.IGNORECASE))
+            clean_l = re.sub(r"^[\s#\-\*\d\.\(\)]+", "", stripped).strip()
+            is_it_lang = len(clean_l) >= 15 and _detect_language(clean_l) == "it"
+            
+            rest_doc = "\n".join(lines[idx:]).strip()
+            has_future_thinking = bool(re.search(r'\b(?:Wait,\s+let\s+me|Let\s+me\s+think|Actually,\s+looking|Let\s+me\s+write\s+the\s+final|The\s+instruction:)\b', rest_doc, re.IGNORECASE))
+            
+            if (is_greeting or is_it_lang) and not has_future_thinking:
+                in_thinking = False
+                response_lines.append(line)
+            else:
+                thinking_lines.append(line)
+        else:
+            response_lines.append(line)
+
+    thinking_text = "\n".join(thinking_lines).strip()
+    response_text = "\n".join(response_lines).strip()
+    if thinking_text and response_text and len(thinking_text) > len(response_text) * 0.15:
+        return response_text, thinking_text
 
     return content, None
 
 
 _ENGLISH_STOPWORDS = {"the", "of", "to", "and", "a", "in", "is", "it", "you", "that", "for", "on", "are", "with", "this", "have", "from", "be"}
-_ITALIAN_STOPWORDS = {"il", "la", "di", "dei", "della", "del", "in", "con", "su", "per", "tra", "fra", "un", "una", "che", "si", "sono", "\u00e8", "ad", "al", "alla", "allo", "ai", "gli", "le", "lo"}
+_ITALIAN_STOPWORDS = {"il", "la", "di", "dei", "della", "del", "in", "con", "su", "per", "tra", "fra", "un", "una", "che", "si", "sono", "è", "ad", "al", "alla", "allo", "ai", "gli", "le", "lo"}
 
 def _detect_language(text: str) -> str:
     """Return 'en' or 'it' or 'unknown' based on stopword frequency."""
-    words = re.findall(r"\b[a-z\u00e0\u00e8\u00e9\u00ec\u00f2\u00f9\']+\b", text.lower())
+    words = re.findall(r"\b[a-zàèéìòù\']+\b", text.lower())
     if not words:
         return "unknown"
     en_count = sum(1 for w in words if w in _ENGLISH_STOPWORDS)
@@ -136,37 +170,26 @@ def _detect_language(text: str) -> str:
 
 
 def _split_by_language_transition(content: str) -> tuple[str, str | None]:
-    """Detect and split English thinking block from Italian response."""
+    """Detect and split English thinking block from Italian response using robust paragraph checks."""
     if not content or not isinstance(content, str):
         return content, None
 
-    lines = content.split("\n")
-    split_idx = -1
-    consecutive_italian = 0
+    paragraphs = [p.strip() for p in content.split("\n\n") if p.strip()]
+    if len(paragraphs) < 2:
+        return content, None
 
-    for idx, line in enumerate(lines):
-        stripped = line.strip()
-        if not stripped:
-            continue
+    split_p_idx = -1
+    for idx in range(len(paragraphs) - 1, 0, -1):
+        para = paragraphs[idx]
+        lang = _detect_language(para)
+        has_en_thinking = bool(re.search(r'\b(?:The\s+user|Let\s+me|Wait,\s+let|Actually,\s+look|system\s+prompt|I\s+should\s+respond|Need\s+to|Let\'?s\s+draft)\b', para, re.IGNORECASE))
+        if has_en_thinking or lang == 'en':
+            split_p_idx = idx + 1
+            break
 
-        clean_line = re.sub(r"^[\s#\-\*\d\.\(\)]+", "", stripped).strip()
-        if len(clean_line) < 15:
-            continue
-
-        lang = _detect_language(clean_line)
-        if lang == "it":
-            consecutive_italian += 1
-            if split_idx == -1:
-                split_idx = idx
-            if consecutive_italian >= 2:
-                break
-        elif lang == "en":
-            split_idx = -1
-            consecutive_italian = 0
-
-    if split_idx > 0:
-        preceding = "\n".join(lines[:split_idx]).strip()
-        following = "\n".join(lines[split_idx:]).strip()
+    if 0 < split_p_idx < len(paragraphs):
+        preceding = "\n\n".join(paragraphs[:split_p_idx]).strip()
+        following = "\n\n".join(paragraphs[split_p_idx:]).strip()
         if len(preceding) > 30 and len(following) > 30:
             return following, preceding
 

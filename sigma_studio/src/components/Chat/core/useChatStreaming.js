@@ -26,9 +26,11 @@ function cleanModelTags(text) {
   // Unclosed reasoning block (stream cut short): drop it rather than render it.
   cleaned = cleaned.replace(/<(think|thinking|reasoning|scratchpad)>[\s\S]*$/gi, '');
 
-  // 2. Remove "Here's a thinking process:" English self-analysis blocks
-  cleaned = cleaned.replace(/^(?:We\s+need\s+to|We\s+must|Let'?s\s+craft|Here'?s\s+a\s+thinking\s+process|Analyze\s+User\s+Input|Determine\s+Output\s+Structure|Draft\s+Content|Self-Correction|Execution|Plan|Requirements\s+from\s+System\s+Prompt)[\s\S]*?(?=\n#|\nEcco|\n1️⃣|\n[A-ZÀ-Ü]|\n\{|\n\n|\Z)/gi, '');
+  // 2. Remove "Here's a thinking process:" and English self-analysis blocks
+  cleaned = cleaned.replace(/^(?:We\s+need\s+to|We\s+must|Need\s+(?:maybe|to|include|ensure)|Let'?s\s+(?:craft|think|final|structure)|Let\s+me\s+think|The\s+instruction:|Potential\s+issue:|Here'?s\s+a\s+thinking\s+process|Analyze\s+User\s+Input|Determine\s+Output\s+Structure|Draft\s+Content|Self-Correction|Execution|Plan|Requirements\s+from\s+System\s+Prompt)[\s\S]*?(?=\n#|\nEcco|\n1️⃣|\n[A-ZÀ-Ü]|\n\{|\n\n|\Z)/gi, '');
   cleaned = cleaned.replace(/^(?:-\s*(?:Request|Language|Domain|Requirements|Identity|Rules|Structure):[^\n]*\n)+/gi, '');
+  cleaned = cleaned.replace(/\n*📁\s+\*\*File creati e salvati su disco:\*\*[\s\S]*$/gi, '');
+  cleaned = cleaned.replace(/\n*###\s+📋\s+Sintesi dei Contenuti Generati[\s\S]*?(?=\n\n|\Z)/gi, '');
 
   // 3. Extract "response" value if raw JSON object string was outputted by LLM
   if (cleaned.trim().startsWith('{') && cleaned.includes('"response"')) {
@@ -164,7 +166,7 @@ export function useChatStreaming({
     const reader = res.body.getReader();
     const decoder = new TextDecoder();
     let fullText = '', fullThinking = '', buffer = '';
-    let firstToken = true, hasThinking = false, wasTruncated = false;
+    let firstToken = true, hasThinking = false, isCurrentlyThinking = false, wasTruncated = false;
     // Server-side formatted version of the answer (code blocks stripped, file
     // summary appended). Replaces the streamed text once the stream is over.
     let finalOverride = null;
@@ -176,19 +178,16 @@ export function useChatStreaming({
     const modelName = selectedModel;
     
     let streamAgentId = activeManifesto?.path?.replace('manifesti/', '')?.replace('.md', '') || '';
-    let streamAgentName = activeManifesto?.name || '';
     let streamAgentStyle = getAgentStyle(streamAgentId);
-
+    let streamAgentName = activeManifesto?.name || 'Sigma Assistant';
     let streamCreatedFiles = [];
     let streamActionsLog = [];
-    // Strumenti MCP eseguiti in questo turno, e le chiamate che si sono fermate
-    // ad aspettare l'operatore prima di toccare qualcosa fuori da Sigma Studio.
     let streamToolCalls = [];
     let streamToolApprovals = [];
     let streamRoutingTimeMs = null;
     let streamLoadDurationMs = null;
-    let streamHardwareNote = null;
     let streamTps = null;
+    let streamHardwareNote = null;
     let firstTokenTime = null;
     let generatedTokenCount = 0;
 
@@ -198,256 +197,239 @@ export function useChatStreaming({
         const { done, value } = await reader.read();
         if (done) break;
         buffer += decoder.decode(value, { stream: true });
-        const parts = buffer.split('\n\n');
-        buffer = parts.pop() || '';
-        for (const part of parts) {
-          for (const line of part.split('\n')) {
-            if (!line.startsWith('data: ')) continue;
-            const payload = line.slice(6);
-            if (payload === '[DONE]') { streamDone = true; break; }
-            if (payload === '[ERROR]') { hasError = true; streamDone = true; break; }
-            try {
-              const p = JSON.parse(payload);
-              if (p.truncated || p.done_reason === 'length') {
-                wasTruncated = true;
-              }
-              if (p.created_files && Array.isArray(p.created_files)) {
-                streamCreatedFiles = p.created_files;
-              }
-              if (p.actions_log && Array.isArray(p.actions_log)) {
-                streamActionsLog = p.actions_log;
-              }
-              if (p.metrics) {
-                if (p.metrics.routing_time_ms !== undefined && p.metrics.routing_time_ms !== null) {
-                  streamRoutingTimeMs = p.metrics.routing_time_ms;
-                }
-                if (p.metrics.load_duration_ms !== undefined && p.metrics.load_duration_ms !== null) {
-                  streamLoadDurationMs = p.metrics.load_duration_ms;
-                }
-                if (p.metrics.hardware_note) {
-                  streamHardwareNote = p.metrics.hardware_note;
-                }
-                if (p.metrics.tokens_per_second !== undefined && p.metrics.tokens_per_second !== null) {
-                  streamTps = p.metrics.tokens_per_second;
-                }
-              }
-              // L'agente li manda uno per evento mentre ragiona; la corsia
-              // veloce risponde con un blocco solo che li porta già in elenco.
-              // Entrambe le forme arrivano su questo canale, quindi si leggono
-              // entrambe: leggerne una sola faceva sparire la scheda di
-              // conferma e il comando restava non eseguito senza spiegazioni.
-              if (p.tool_result) {
-                streamToolCalls = [...streamToolCalls, p.tool_result];
-              }
-              if (Array.isArray(p.tool_calls)) {
-                streamToolCalls = [...streamToolCalls, ...p.tool_calls];
-              }
-              if (p.tool_approval) {
-                streamToolApprovals = [...streamToolApprovals, p.tool_approval];
-              }
-              if (Array.isArray(p.tool_approvals)) {
-                streamToolApprovals = [...streamToolApprovals, ...p.tool_approvals];
-              }
-              if (p.final_content && continuationCount === 0) {
-                finalOverride = p.final_content;
-              }
-              if (p.final_thinking !== undefined && continuationCount === 0) {
-                finalThinkingOverride = p.final_thinking;
-              }
-              if (p.model_status) {
-                setSessionMessages(prev => {
-                  const n = [...(prev[sessionId] || [])];
-                  if (n.length > 0 && n[n.length - 1].role === 'assistant') {
-                    n[n.length - 1] = {
-                      ...n[n.length - 1],
-                      statusMessage: p.model_status
-                    };
-                  }
-                  return { ...prev, [sessionId]: n };
-                });
-              }
-              if (p.meta) {
-                if (p.meta.routing_time_ms !== undefined && p.meta.routing_time_ms !== null) {
-                  streamRoutingTimeMs = p.meta.routing_time_ms;
-                }
-                if (p.meta.load_duration_ms !== undefined && p.meta.load_duration_ms !== null) {
-                  streamLoadDurationMs = p.meta.load_duration_ms;
-                }
-                if (p.meta.hardware_note) {
-                  streamHardwareNote = p.meta.hardware_note;
-                }
-                streamAgentId = p.meta.agent_id || p.meta.manifesto_used || 'sigma_assistant';
-                streamAgentStyle = getAgentStyle(streamAgentId);
-                const resolvedRole = p.meta.agent_role || streamAgentStyle.name || p.meta.agent_name || (streamAgentId ? streamAgentId.replace('_', ' ') : 'Sigma Assistant');
-                const resolvedName = p.meta.agent_name || streamAgentStyle.name || resolvedRole;
-                const resolvedImage = p.meta.agent_image || streamAgentStyle.image || '/images/default.png';
-                streamAgentName = resolvedName;
-                const modelStatus = p.meta.model_status;
-                setSessionMessages(prev => {
-                  const n = [...(prev[sessionId] || [])];
-                  if (n.length > 0 && n[n.length - 1].role === 'assistant') {
-                    n[n.length - 1] = {
-                      ...n[n.length - 1],
-                      agent_id: streamAgentId,
-                      agentRole: resolvedRole,
-                      agentName: `${resolvedRole} (${selectedModel})`,
-                      agentImage: resolvedImage,
-                      statusMessage: modelStatus || n[n.length - 1].statusMessage,
-                      routing_time_ms: streamRoutingTimeMs,
-                      load_duration_ms: streamLoadDurationMs,
-                      hardware_note: streamHardwareNote,
-                      metrics: {
-                        routing_time_ms: streamRoutingTimeMs,
-                        load_duration_ms: streamLoadDurationMs,
-                        tokens_per_second: streamTps,
-                        hardware_note: streamHardwareNote
-                      }
-                    };
-                  }
-                  return { ...prev, [sessionId]: n };
-                });
-              }
-              if (p.thinking) {
-                hasThinking = true;
-                fullThinking += p.thinking;
-                if (!firstTokenTime) firstTokenTime = performance.now();
-                generatedTokenCount += Math.max(1, p.thinking.split(/\s+/).filter(Boolean).length);
-              }
-              if (p.token) {
-                fullText += p.token;
-                // Engine status lines ("loading the model...", the placement
-                // summary) are shown but never metered: starting the clock on
-                // them puts the whole model load into the denominator, which is
-                // what made a 15 t/s generation read as 2.9 t/s while running.
-                if (!p.status) {
-                  if (!firstTokenTime) firstTokenTime = performance.now();
-                  generatedTokenCount += Math.max(1, p.token.split(/\s+/).filter(Boolean).length);
-                }
-                // Read along as the answer is written — reasoning is on its own
-                // channel and never reaches this branch, so it is never spoken.
-                if (speakerEnabled) {
-                  if (!speechStarted) {
-                    speechStarted = startSpeechStream(assistantTimestamp);
-                  }
-                  pushSpeechStream(p.token);
-                }
-              }
-              else if (p.response) {
-                fullText += p.response;
-                if (!firstTokenTime) firstTokenTime = performance.now();
-                generatedTokenCount += Math.max(1, p.response.split(/\s+/).filter(Boolean).length);
-              }
+        const lines = buffer.split('\n\n');
+        buffer = lines.pop() || '';
 
-              // Live throughput, refreshed as it goes rather than frozen at
-              // the first sample: an early estimate over a fraction of a second
-              // is noisy, and keeping it made the running figure disagree with
-              // the final one for the whole answer.
-              if (firstTokenTime && generatedTokenCount > 1) {
-                const elapsedSec = (performance.now() - firstTokenTime) / 1000;
-                if (elapsedSec > 0.4) {
-                  streamTps = parseFloat(
-                    ((generatedTokenCount - 1) / elapsedSec).toFixed(1)
-                  );
-                }
-              }
+        for (const line of lines) {
+          if (!line.startsWith('data: ')) continue;
+          const raw = line.slice(6).trim();
+          if (!raw) continue;
+          if (raw === '[DONE]') { streamDone = true; break; }
+          if (raw === '[ERROR]') { hasError = true; streamDone = true; break; }
 
-              if (firstToken && continuationCount === 0) {
-                firstToken = false;
-                const resolvedRole = streamAgentStyle?.name || streamAgentName || (activeManifesto?.name && activeManifesto?.name !== 'auto' ? activeManifesto.name : 'Sigma Assistant');
-                const resolvedImage = streamAgentStyle?.image || (activeManifesto?.image && activeManifesto?.image !== '/images/default.png' ? activeManifesto.image : '/images/default.png');
-                setSessionMessages(prev => {
-                  const n = [...(prev[sessionId] || [])];
-                  if (n.length > 0 && n[n.length - 1].role === 'assistant') {
-                    n[n.length - 1] = {
-                      ...n[n.length - 1],
-                      content: fullText,
-                      agent_id: streamAgentId,
-                      agentName: `${resolvedRole} (${selectedModel})`,
-                      agentRole: resolvedRole,
-                      agentImage: resolvedImage,
-                      timestamp: assistantTimestamp,
-                      streaming: true,
-                      thinking: hasThinking ? fullThinking : undefined,
-                      streamingThinking: hasThinking,
-                      created_files: streamCreatedFiles,
-                      actions_log: streamActionsLog,
-                      tool_calls: streamToolCalls,
-                      tool_approvals: streamToolApprovals,
+          try {
+            const p = JSON.parse(raw);
+            if (p.truncated || p.done_reason === 'length') {
+              wasTruncated = true;
+            }
+            if (p.created_files) {
+              streamCreatedFiles = p.created_files;
+            }
+            if (p.actions_log) {
+              streamActionsLog = p.actions_log;
+            }
+            if (p.metrics) {
+              if (p.metrics.routing_time_ms !== undefined && p.metrics.routing_time_ms !== null) {
+                streamRoutingTimeMs = p.metrics.routing_time_ms;
+              }
+              if (p.metrics.load_duration_ms !== undefined && p.metrics.load_duration_ms !== null) {
+                streamLoadDurationMs = p.metrics.load_duration_ms;
+              }
+              if (p.metrics.hardware_note) {
+                streamHardwareNote = p.metrics.hardware_note;
+              }
+              if (p.metrics.tokens_per_second !== undefined && p.metrics.tokens_per_second !== null) {
+                streamTps = p.metrics.tokens_per_second;
+              }
+            }
+            if (p.tool_result) {
+              streamToolCalls = [...streamToolCalls, p.tool_result];
+            }
+            if (Array.isArray(p.tool_calls)) {
+              streamToolCalls = [...streamToolCalls, ...p.tool_calls];
+            }
+            if (p.tool_approval) {
+              streamToolApprovals = [...streamToolApprovals, p.tool_approval];
+            }
+            if (Array.isArray(p.tool_approvals)) {
+              streamToolApprovals = [...streamToolApprovals, ...p.tool_approvals];
+            }
+            if (p.final_content && continuationCount === 0) {
+              finalOverride = p.final_content;
+            }
+            if (p.final_thinking !== undefined && continuationCount === 0) {
+              finalThinkingOverride = p.final_thinking;
+            }
+            if (p.model_status) {
+              setSessionMessages(prev => {
+                const n = [...(prev[sessionId] || [])];
+                if (n.length > 0 && n[n.length - 1].role === 'assistant') {
+                  n[n.length - 1] = {
+                    ...n[n.length - 1],
+                    statusMessage: p.model_status
+                  };
+                }
+                return { ...prev, [sessionId]: n };
+              });
+            }
+            if (p.meta) {
+              if (p.meta.routing_time_ms !== undefined && p.meta.routing_time_ms !== null) {
+                streamRoutingTimeMs = p.meta.routing_time_ms;
+              }
+              if (p.meta.load_duration_ms !== undefined && p.meta.load_duration_ms !== null) {
+                streamLoadDurationMs = p.meta.load_duration_ms;
+              }
+              if (p.meta.hardware_note) {
+                streamHardwareNote = p.meta.hardware_note;
+              }
+              streamAgentId = p.meta.agent_id || p.meta.manifesto_used || 'sigma_assistant';
+              streamAgentStyle = getAgentStyle(streamAgentId);
+              const resolvedRole = p.meta.agent_role || streamAgentStyle.name || p.meta.agent_name || (streamAgentId ? streamAgentId.replace('_', ' ') : 'Sigma Assistant');
+              const resolvedName = p.meta.agent_name || streamAgentStyle.name || resolvedRole;
+              const resolvedImage = p.meta.agent_image || streamAgentStyle.image || '/images/default.png';
+              streamAgentName = resolvedName;
+              const modelStatus = p.meta.model_status;
+              setSessionMessages(prev => {
+                const n = [...(prev[sessionId] || [])];
+                if (n.length > 0 && n[n.length - 1].role === 'assistant') {
+                  n[n.length - 1] = {
+                    ...n[n.length - 1],
+                    agent_id: streamAgentId,
+                    agentRole: resolvedRole,
+                    agentName: `${resolvedRole} (${selectedModel})`,
+                    agentImage: resolvedImage,
+                    statusMessage: modelStatus || n[n.length - 1].statusMessage,
+                    routing_time_ms: streamRoutingTimeMs,
+                    load_duration_ms: streamLoadDurationMs,
+                    hardware_note: streamHardwareNote,
+                    metrics: {
                       routing_time_ms: streamRoutingTimeMs,
                       load_duration_ms: streamLoadDurationMs,
                       tokens_per_second: streamTps,
-                      hardware_note: streamHardwareNote,
-                      metrics: {
-                        routing_time_ms: streamRoutingTimeMs,
-                        load_duration_ms: streamLoadDurationMs,
-                        tokens_per_second: streamTps,
-                        hardware_note: streamHardwareNote
-                      }
-                    };
-                  } else {
-                    n.push({
-                      role: 'assistant',
-                      content: fullText,
-                      agent_id: streamAgentId,
-                      agentName: `${resolvedRole} (${selectedModel})`,
-                      agentRole: resolvedRole,
-                      agentImage: resolvedImage,
-                      timestamp: assistantTimestamp,
-                      streaming: true,
-                      thinking: hasThinking ? fullThinking : undefined,
-                      streamingThinking: hasThinking,
-                      created_files: streamCreatedFiles,
-                      actions_log: streamActionsLog,
-                      tool_calls: streamToolCalls,
-                      tool_approvals: streamToolApprovals,
+                      hardware_note: streamHardwareNote
+                    }
+                  };
+                }
+                return { ...prev, [sessionId]: n };
+              });
+            }
+            if (p.thinking) {
+              hasThinking = true;
+              isCurrentlyThinking = true;
+              fullThinking += p.thinking;
+              if (!firstTokenTime) firstTokenTime = performance.now();
+              generatedTokenCount += Math.max(1, p.thinking.split(/\s+/).filter(Boolean).length);
+            }
+            if (p.token) {
+              isCurrentlyThinking = false;
+              fullText += p.token;
+              if (!p.status) {
+                if (!firstTokenTime) firstTokenTime = performance.now();
+                generatedTokenCount += Math.max(1, p.token.split(/\s+/).filter(Boolean).length);
+              }
+            }
+            else if (p.response) {
+              isCurrentlyThinking = false;
+              fullText += p.response;
+              if (!firstTokenTime) firstTokenTime = performance.now();
+              generatedTokenCount += Math.max(1, p.response.split(/\s+/).filter(Boolean).length);
+            }
+
+            if (firstTokenTime && generatedTokenCount > 1) {
+              const elapsedSec = (performance.now() - firstTokenTime) / 1000;
+              if (elapsedSec > 0.4) {
+                streamTps = parseFloat(
+                  ((generatedTokenCount - 1) / elapsedSec).toFixed(1)
+                );
+              }
+            }
+
+            if (firstToken && continuationCount === 0) {
+              firstToken = false;
+              const resolvedRole = streamAgentStyle?.name || streamAgentName || (activeManifesto?.name && activeManifesto?.name !== 'auto' ? activeManifesto.name : 'Sigma Assistant');
+              const resolvedImage = streamAgentStyle?.image || (activeManifesto?.image && activeManifesto?.image !== '/images/default.png' ? activeManifesto.image : '/images/default.png');
+              setSessionMessages(prev => {
+                const n = [...(prev[sessionId] || [])];
+                if (n.length > 0 && n[n.length - 1].role === 'assistant') {
+                  n[n.length - 1] = {
+                    ...n[n.length - 1],
+                    content: fullText,
+                    agent_id: streamAgentId,
+                    agentName: `${resolvedRole} (${selectedModel})`,
+                    agentRole: resolvedRole,
+                    agentImage: resolvedImage,
+                    timestamp: assistantTimestamp,
+                    streaming: true,
+                    thinking: hasThinking ? fullThinking : undefined,
+                    streamingThinking: isCurrentlyThinking,
+                    created_files: streamCreatedFiles,
+                    actions_log: streamActionsLog,
+                    tool_calls: streamToolCalls,
+                    tool_approvals: streamToolApprovals,
+                    routing_time_ms: streamRoutingTimeMs,
+                    load_duration_ms: streamLoadDurationMs,
+                    tokens_per_second: streamTps,
+                    hardware_note: streamHardwareNote,
+                    metrics: {
                       routing_time_ms: streamRoutingTimeMs,
                       load_duration_ms: streamLoadDurationMs,
                       tokens_per_second: streamTps,
-                      hardware_note: streamHardwareNote,
-                      metrics: {
-                        routing_time_ms: streamRoutingTimeMs,
-                        load_duration_ms: streamLoadDurationMs,
-                        tokens_per_second: streamTps,
-                        hardware_note: streamHardwareNote
-                      }
-                    });
-                  }
-                  return { ...prev, [sessionId]: n };
-                });
-              } else {
-                setSessionMessages(prev => {
-                  const n = [...(prev[sessionId] || [])];
-                  if (n.length > 0 && n[n.length - 1].role === 'assistant') {
-                    const existingContent = continuationCount > 0 ? n[n.length - 1].content : '';
-                    const updatedContent = continuationCount > 0 ? existingContent + fullText : fullText;
-                    n[n.length - 1] = {
-                      ...n[n.length - 1],
-                      content: updatedContent,
-                      thinking: hasThinking ? fullThinking : n[n.length - 1].thinking,
-                      streamingThinking: hasThinking,
-                      created_files: streamCreatedFiles.length > 0 ? streamCreatedFiles : n[n.length - 1].created_files,
-                      actions_log: streamActionsLog.length > 0 ? streamActionsLog : n[n.length - 1].actions_log,
-                      tool_calls: streamToolCalls,
-                      tool_approvals: streamToolApprovals,
+                      hardware_note: streamHardwareNote
+                    }
+                  };
+                } else {
+                  n.push({
+                    role: 'assistant',
+                    content: fullText,
+                    agent_id: streamAgentId,
+                    agentName: `${resolvedRole} (${selectedModel})`,
+                    agentRole: resolvedRole,
+                    agentImage: resolvedImage,
+                    timestamp: assistantTimestamp,
+                    streaming: true,
+                    thinking: hasThinking ? fullThinking : undefined,
+                    streamingThinking: isCurrentlyThinking,
+                    created_files: streamCreatedFiles,
+                    actions_log: streamActionsLog,
+                    tool_calls: streamToolCalls,
+                    tool_approvals: streamToolApprovals,
+                    routing_time_ms: streamRoutingTimeMs,
+                    load_duration_ms: streamLoadDurationMs,
+                    tokens_per_second: streamTps,
+                    hardware_note: streamHardwareNote,
+                    metrics: {
+                      routing_time_ms: streamRoutingTimeMs,
+                      load_duration_ms: streamLoadDurationMs,
+                      tokens_per_second: streamTps,
+                      hardware_note: streamHardwareNote
+                    }
+                  });
+                }
+                return { ...prev, [sessionId]: n };
+              });
+            } else {
+              setSessionMessages(prev => {
+                const n = [...(prev[sessionId] || [])];
+                if (n.length > 0 && n[n.length - 1].role === 'assistant') {
+                  const existingContent = continuationCount > 0 ? n[n.length - 1].content : '';
+                  const updatedContent = continuationCount > 0 ? existingContent + fullText : fullText;
+                  n[n.length - 1] = {
+                    ...n[n.length - 1],
+                    content: updatedContent,
+                    thinking: hasThinking ? fullThinking : n[n.length - 1].thinking,
+                    streamingThinking: isCurrentlyThinking,
+                    created_files: streamCreatedFiles.length > 0 ? streamCreatedFiles : n[n.length - 1].created_files,
+                    actions_log: streamActionsLog.length > 0 ? streamActionsLog : n[n.length - 1].actions_log,
+                    tool_calls: streamToolCalls,
+                    tool_approvals: streamToolApprovals,
+                    routing_time_ms: streamRoutingTimeMs || n[n.length - 1].routing_time_ms,
+                    load_duration_ms: streamLoadDurationMs || n[n.length - 1].load_duration_ms,
+                    tokens_per_second: streamTps || n[n.length - 1].tokens_per_second,
+                    hardware_note: streamHardwareNote || n[n.length - 1].hardware_note,
+                    metrics: {
                       routing_time_ms: streamRoutingTimeMs || n[n.length - 1].routing_time_ms,
                       load_duration_ms: streamLoadDurationMs || n[n.length - 1].load_duration_ms,
                       tokens_per_second: streamTps || n[n.length - 1].tokens_per_second,
-                      hardware_note: streamHardwareNote || n[n.length - 1].hardware_note,
-                      metrics: {
-                        routing_time_ms: streamRoutingTimeMs || n[n.length - 1].routing_time_ms,
-                        load_duration_ms: streamLoadDurationMs || n[n.length - 1].load_duration_ms,
-                        tokens_per_second: streamTps || n[n.length - 1].tokens_per_second,
-                        hardware_note: streamHardwareNote || n[n.length - 1].hardware_note
-                      }
-                    };
-                  }
-                  return { ...prev, [sessionId]: n };
-                });
-              }
-            } catch (e) {}
-          }
-          if (streamDone) break;
+                      hardware_note: streamHardwareNote || n[n.length - 1].hardware_note
+                    }
+                  };
+                }
+                return { ...prev, [sessionId]: n };
+              });
+            }
+          } catch (e) {}
         }
+        if (streamDone) break;
       }
 
       if (wasTruncated && continuationCount < 3) {
@@ -556,7 +538,11 @@ export function useChatStreaming({
           endSpeechStream();
         } else if (speakerEnabled && finalContent && !hasError) {
           // No progressive reading happened (non-streaming provider): read it now.
-          speakAgentMessage(finalContent, null, null, assistantTimestamp);
+          const hasVideo = /(?:youtube\.com|youtu\.be|vimeo\.com|\.mp4|\.webm|!\[video\]|<video|<iframe)/i.test(finalContent);
+          const speakDelay = hasVideo ? 450 : 50;
+          setTimeout(() => {
+            speakAgentMessage(finalContent, null, null, assistantTimestamp);
+          }, speakDelay);
         }
         return { ...prev, [sessionId]: n };
       });

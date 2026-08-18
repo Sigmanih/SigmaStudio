@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { saveLastModel } from '../chatStorage';
+import { registerLocalModels } from './modelSpecsHelper';
 
 export function useChatConfig({ saveSessionsState, sessionRefs }) {
   const [favoriteModels, setFavoriteModels] = useState(() => {
@@ -79,21 +80,30 @@ export function useChatConfig({ saveSessionsState, sessionRefs }) {
       let models = [...SIGMA_NATIVE_MODELS];
       const known = new Set(models.map(m => m.name));
 
-      // 1. Fetch Local Models downloaded via Model Hub (SigmaEngine / Local Storage)
+      // 1. Fetch Local Models downloaded via Modelli Locali & Storage (SigmaEngine / Local Storage)
       try {
         const localRes = await fetch('/api/models/local/list');
         if (localRes.ok) {
           const localJson = await localRes.json();
           if (localJson.success && Array.isArray(localJson.models)) {
+            registerLocalModels(localJson.models);
             localJson.models.forEach(m => {
               const mName = m.display_name || m.filename || m.model_id;
               if (!known.has(mName)) {
                 models.unshift({
                   name: mName,
-                  size: m.size_label || `${m.size_gb} GB`,
+                  filename: m.filename,
+                  model_id: m.model_id,
+                  display_name: m.display_name,
+                  size: m.size_label || (m.size_gb ? `~${m.size_gb} GB` : 'Locale'),
+                  size_gb: m.size_gb,
+                  size_label: m.size_label,
                   provider: 'sigma_engine',
                   path: m.path,
                   format: m.format,
+                  format_tag: m.format_tag,
+                  quantization: m.quantization,
+                  est_vram_gb: m.est_vram_gb,
                   is_local_hub: true
                 });
                 known.add(mName);
@@ -102,7 +112,7 @@ export function useChatConfig({ saveSessionsState, sessionRefs }) {
           }
         }
       } catch (locErr) {
-        console.warn("Model Hub local models fetching error:", locErr);
+        console.warn("Modelli Locali fetching error:", locErr);
       }
 
       // 2. Fetch external Ollama ONLY IF explicitly configured & enabled by user

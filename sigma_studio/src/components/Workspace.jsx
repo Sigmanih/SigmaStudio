@@ -246,7 +246,7 @@ export default function Workspace({
         return <ModuleNotInstalled tabType="model_hub" openTab={openTab} />;
       }
       return (
-        <React.Suspense fallback={<div style={{ padding: '32px', color: '#94a3b8', textAlign: 'center' }}>Caricamento Model Hub...</div>}>
+        <React.Suspense fallback={<div style={{ padding: '32px', color: '#94a3b8', textAlign: 'center' }}>Caricamento Modelli Locali & Storage...</div>}>
           <LazyModelHub addToast={(msg, type, dur) => {}} openTab={openTab} />
         </React.Suspense>
       );

@@ -166,7 +166,7 @@ export default function ModelHub({ addToast, openTab }) {
           <div>
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
               <h1 style={{ margin: 0, fontSize: '1.25rem', fontWeight: 800, letterSpacing: '-0.3px', color: textPrimary }}>
-                Model Hub & <span style={{ color: '#ffb86c' }}>Hugging Face Downloader</span>
+                Modelli Locali & <span style={{ color: '#ffb86c' }}>Storage</span>
               </h1>
               <span style={{
                 fontSize: '0.66rem', padding: '2px 8px', borderRadius: '12px',
