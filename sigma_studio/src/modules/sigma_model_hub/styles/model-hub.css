@@ -1,0 +1,176 @@
+/* ==============================================================================
+   Model Hub & Hugging Face Downloader — Cyberpunk/Glassmorphic Styling
+   ============================================================================== */
+
+.model-hub-container {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  max-height: 100vh;
+  overflow-y: auto;
+  overflow-x: hidden;
+  box-sizing: border-box;
+  padding: 20px 24px 60px 24px;
+  gap: 20px;
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  scroll-behavior: smooth;
+}
+
+/* Custom Sleek Scrollbar */
+.model-hub-container::-webkit-scrollbar {
+  width: 8px;
+}
+
+.model-hub-container::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.model-hub-container::-webkit-scrollbar-thumb {
+  background: rgba(255, 184, 108, 0.25);
+  border-radius: 4px;
+}
+
+.model-hub-container::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 184, 108, 0.45);
+}
+
+/* Sticky Filter Container */
+.mh-sticky-filters {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  transition: all 0.2s ease;
+}
+
+/* Modern Search Box */
+.mh-search-hero {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 16px;
+  border-radius: 12px;
+  transition: all 0.2s ease;
+}
+
+.mh-search-hero:focus-within {
+  border-color: #ffb86c !important;
+  box-shadow: 0 0 16px rgba(255, 184, 108, 0.25);
+}
+
+/* Modern Filter Select Grid */
+.mh-filter-selects-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: 10px;
+  align-items: center;
+}
+
+.mh-select-container {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.mh-select-label {
+  font-size: 0.65rem;
+  font-weight: 800;
+  letter-spacing: 0.4px;
+  text-transform: uppercase;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.mh-select-wrapper {
+  position: relative;
+  display: flex;
+  align-items: center;
+  border-radius: 10px;
+  transition: all 0.15s ease;
+}
+
+.mh-select-wrapper:hover {
+  border-color: rgba(255, 184, 108, 0.4) !important;
+}
+
+.mh-select-wrapper select {
+  width: 100%;
+  appearance: none;
+  -webkit-appearance: none;
+  background: transparent;
+  border: none;
+  outline: none;
+  padding: 8px 30px 8px 12px;
+  font-size: 0.78rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.mh-select-icon {
+  position: absolute;
+  right: 10px;
+  pointer-events: none;
+  opacity: 0.7;
+}
+
+/* Active Filter Chips */
+.mh-active-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 8px;
+  border-radius: 6px;
+  font-size: 0.68rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.mh-active-chip:hover {
+  opacity: 0.85;
+}
+
+/* Header & Card Base */
+.mh-card {
+  border-radius: 16px;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.mh-card-hover:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 25px rgba(0, 0, 0, 0.3);
+}
+
+/* Model Grid */
+.mh-models-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  gap: 16px;
+}
+
+/* Progress Track */
+.mh-progress-track {
+  height: 6px;
+  border-radius: 3px;
+  background: rgba(255, 255, 255, 0.08);
+  overflow: hidden;
+  position: relative;
+}
+
+.mh-progress-bar {
+  height: 100%;
+  border-radius: 3px;
+  transition: width 0.3s ease;
+}
+
+/* Spin animation */
+@keyframes mh-spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+.mh-spin {
+  animation: mh-spin 1s linear infinite;
+}
