@@ -6,9 +6,10 @@
 #   requirements/base.txt    — Core web framework (all platforms)
 #   requirements/ai-core.txt — AI/ML without GPU-specific packages
 #   requirements/cuda.txt    — Full NVIDIA CUDA stack
-#   requirements/cpu.txt     — CPU-only (Raspberry Pi, ARM64)
-#   requirements/apple.txt   — Apple Silicon (MPS)
-#   requirements/tts.txt     — Text-to-Speech (optional)
+#   requirements/cpu.txt       — CPU-only (Raspberry Pi, ARM64)
+#   requirements/apple.txt     — Apple Silicon (MPS)
+#   requirements/inference.txt — GGUF runtime (llama-cpp-python)
+#   requirements/tts.txt       — Text-to-Speech (optional)
 # ==============================================================================
 
 # Core Web Framework & ASGI Server
@@ -34,6 +35,11 @@ huggingface_hub>=0.22.0
 safetensors>=0.4.0
 bitsandbytes>=0.43.0
 
-# SigmaEngine inference backends (optional)
-# See the original comments in the old requirements.txt for installation
-# instructions for llama-cpp-python and flash-linear-attention.
+# SigmaEngine inference backends
+# llama-cpp-python (required to run .gguf checkpoints) is deliberately absent:
+# the wheel index depends on the accelerator, so sigma_launcher.py installs it
+# at first launch after probing the machine. See requirements/inference.txt for
+# the per-platform command if installing by hand.
+#
+# Optional CUDA-only accelerations, source builds, engine falls back without
+# them: flash-attn, flash-linear-attention, causal-conv1d.

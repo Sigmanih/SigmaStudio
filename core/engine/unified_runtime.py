@@ -1075,7 +1075,11 @@ class UniversalSigmaEngine:
                 "Apri **Model Hub** nella barra laterale per scaricare un modello, "
                 "oppure seleziona un provider Cloud in **Impostazioni AI**."
             ),
-            "format": "Installa `llama-cpp-python` oppure usa un checkpoint safetensors.",
+            "format": (
+                "Esegui `python sigma_launcher.py --install` per installare il "
+                "runtime GGUF su questo hardware, oppure usa un checkpoint "
+                "safetensors."
+            ),
             "inspection": "Il checkpoint sembra incompleto: verifica il download.",
             "load": (
                 "Se e' un errore di memoria, riduci il contesto o forza una "

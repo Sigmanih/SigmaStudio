@@ -51,10 +51,14 @@ class LlamaCppBackend(InferenceBackend):
     @classmethod
     def availability(cls) -> Tuple[bool, str]:
         if not module_available("llama_cpp"):
+            # The launcher resolves the right wheel index (or source build) for
+            # this machine; naming a fixed CUDA tag here sent ARM and CPU hosts
+            # after a wheel that does not exist for them.
             return False, (
-                "llama-cpp-python non installato. Wheel precompilate CUDA: "
-                "pip install llama-cpp-python "
-                "--extra-index-url https://abetlen.github.io/llama-cpp-python/whl/cu125"
+                "llama-cpp-python non installato: esegui "
+                "`python sigma_launcher.py --install` per installarlo "
+                "automaticamente per questo hardware "
+                "(dettagli in requirements/inference.txt)."
             )
         return True, "pronto"
 

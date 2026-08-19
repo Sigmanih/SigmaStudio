@@ -1,0 +1,33 @@
+# ==============================================================================
+# Sigma Studio — Inference Kernels (GGUF runtime)
+# ==============================================================================
+# Without this package SigmaEngine can download a .gguf checkpoint and then
+# refuse to run it: the llama_cpp backend reports "non utilizzabile qui".
+#
+# It is kept out of base/cpu/cuda/apple because the same package name needs a
+# different source per accelerator, and `sigma_launcher.py` resolves that at
+# first launch (install_inference_kernels): it probes the machine, picks the
+# matching wheel index, and falls back to a source build where no wheel exists.
+#
+# Installing by hand instead — pick the line that matches the machine:
+#
+#   NVIDIA (prebuilt, replace cu125 with the CUDA version nvidia-smi reports):
+#     pip install -r requirements/inference.txt \
+#       --extra-index-url https://abetlen.github.io/llama-cpp-python/whl/cu125
+#
+#   Apple Silicon (Metal is compiled in by default):
+#     pip install -r requirements/inference.txt
+#
+#   CPU x86_64:
+#     pip install -r requirements/inference.txt \
+#       --extra-index-url https://abetlen.github.io/llama-cpp-python/whl/cpu
+#
+#   ARM64 / Raspberry Pi (no wheels published: compiled from source, minutes)
+#     sudo apt-get install -y build-essential cmake python3-dev
+#     pip install -r requirements/inference.txt
+#
+#   AMD ROCm (source build):
+#     CMAKE_ARGS="-DGGML_HIPBLAS=on" pip install -r requirements/inference.txt
+# ==============================================================================
+
+llama-cpp-python>=0.3.0

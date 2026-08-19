@@ -4,3 +4,7 @@
 -r ai-core.txt
 torch>=2.0.0
 # Standard PyPI torch wheel includes MPS support on Apple Silicon
+
+# GGUF runtime (llama-cpp-python) is not listed here: its source differs per
+# accelerator. sigma_launcher.py installs it automatically at first launch;
+# to do it by hand see requirements/inference.txt.

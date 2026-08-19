@@ -18,6 +18,7 @@ import venv
 import json
 import hashlib
 import glob
+import re
 import shutil
 
 # Ensure Python >= 3.10
@@ -67,7 +68,7 @@ def detect_platform():
         except FileNotFoundError:
             pass
 
-    return {
+    info = {
         "os": system,
         "arch": machine,
         "is_arm": is_arm,
@@ -77,6 +78,65 @@ def detect_platform():
         "is_linux": is_linux,
         "is_darwin": is_darwin
     }
+    info.update(detect_compute_backend(info))
+    return info
+
+
+def _nvidia_smi_cuda_version():
+    """CUDA version the installed driver supports, as (major, minor), or None."""
+    if not shutil.which("nvidia-smi"):
+        return None
+    try:
+        out = subprocess.check_output(["nvidia-smi"], stderr=subprocess.DEVNULL,
+                                      timeout=20).decode("utf-8", "replace")
+    except Exception:
+        return None
+    # Driver builds label this differently ("CUDA Version" on older releases,
+    # "CUDA UMD Version" on newer ones); both mean the highest CUDA runtime this
+    # driver can load, which is what bounds the wheel we may install.
+    match = re.search(r"CUDA(?:\s+UMD)?\s+Version:\s*(\d+)\.(\d+)", out)
+    if not match:
+        return None
+    return int(match.group(1)), int(match.group(2))
+
+
+def _has_nvidia_gpu():
+    """True only when a driver answers for a real device."""
+    if not shutil.which("nvidia-smi"):
+        return False
+    try:
+        out = subprocess.check_output(
+            ["nvidia-smi", "--query-gpu=name", "--format=csv,noheader"],
+            stderr=subprocess.DEVNULL, timeout=20,
+        ).decode("utf-8", "replace").strip()
+        return bool(out)
+    except Exception:
+        return False
+
+
+def detect_compute_backend(platform_info):
+    """
+    Which accelerator this machine actually has.
+
+    Drives both the requirements set and the llama.cpp build, so a Raspberry Pi
+    is never handed a CUDA wheel and an NVIDIA box is never left on CPU kernels.
+    Detection is by probe, never by assuming what a given OS implies.
+    """
+    if platform_info.get("is_apple_silicon"):
+        return {"compute": "metal", "cuda_version": None}
+
+    if _has_nvidia_gpu():
+        cuda = _nvidia_smi_cuda_version()
+        return {"compute": "cuda", "cuda_version": cuda}
+
+    # ROCm has no prebuilt llama.cpp wheels; it still selects the CPU torch set
+    # and a source build, which is what the AMD path needs anyway.
+    if platform_info.get("is_linux") and (
+        shutil.which("rocminfo") or os.path.isdir("/opt/rocm")
+    ):
+        return {"compute": "rocm", "cuda_version": None}
+
+    return {"compute": "cpu", "cuda_version": None}
 
 def get_venv_paths():
     venv_dir = os.path.abspath(".venv")
@@ -142,17 +202,236 @@ def install_dependencies(platform_info):
     # Base requirements
     run_pip(os.path.join(req_dir, "base.txt"))
 
-    # Platform specific
-    if platform_info["is_apple_silicon"] or platform_info["is_darwin"]:
+    # Platform specific. The set follows the accelerator that was detected, not
+    # the operating system: a Linux box without an NVIDIA driver gets the CPU
+    # wheels, which is both correct and several gigabytes smaller.
+    compute = platform_info.get("compute", "cpu")
+    if platform_info["is_darwin"]:
         run_pip(os.path.join(req_dir, "apple.txt"))
-    elif platform_info["is_windows"] or platform_info["is_linux"]:
-        if not platform_info["is_raspberry_pi"]:
-            if not run_pip(os.path.join(req_dir, "cuda.txt")):
-                run_pip(os.path.join(req_dir, "cpu.txt"))
-        else:
+    elif compute == "cuda":
+        if not run_pip(os.path.join(req_dir, "cuda.txt")):
             run_pip(os.path.join(req_dir, "cpu.txt"))
+    else:
+        run_pip(os.path.join(req_dir, "cpu.txt"))
+
+    install_inference_kernels(platform_info)
 
     print_log("[SIGMA] Python dependencies ready.", Colors.OKGREEN)
+
+
+# ==============================================================================
+# Inference kernels
+#
+# The GGUF runtime is not a normal requirement: the same package name has to be
+# built or fetched differently per accelerator, and on ARM there is no wheel at
+# all. Leaving it out of the requirement files meant every fresh install could
+# download a GGUF model and then fail to run it -- which is exactly the error
+# this block exists to prevent.
+# ==============================================================================
+
+# Attempts are recorded so a build that cannot succeed on this machine is not
+# retried on every single launch. `--install` ignores the record and retries.
+_KERNEL_STAMP_NAME = ".sigma_kernels.json"
+
+
+def _kernel_stamp_path():
+    venv_dir, _, _, _ = get_venv_paths()
+    return os.path.join(venv_dir, _KERNEL_STAMP_NAME)
+
+
+def _read_kernel_stamp():
+    try:
+        with open(_kernel_stamp_path(), "r", encoding="utf-8") as f:
+            data = json.load(f)
+        return data if isinstance(data, dict) else {}
+    except Exception:
+        return {}
+
+
+def _write_kernel_stamp(data):
+    try:
+        with open(_kernel_stamp_path(), "w", encoding="utf-8") as f:
+            json.dump(data, f, indent=2)
+    except Exception:
+        pass
+
+
+def _module_installed(python_exe, module):
+    try:
+        subprocess.check_call([python_exe, "-c", f"import {module}"],
+                              stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        return True
+    except Exception:
+        return False
+
+
+def _llama_cpp_wheel_indexes(platform_info):
+    """
+    Prebuilt llama-cpp-python wheel indexes to try, best match first.
+
+    The CUDA index is keyed by the version the driver reports; nearby tags are
+    tried after it because the published set lags new driver releases. An empty
+    entry means plain PyPI, which is the right answer on macOS (Metal is built
+    in) and the only answer on ARM, where the package builds from source.
+    """
+    base = "https://abetlen.github.io/llama-cpp-python/whl"
+
+    if platform_info.get("compute") == "cpu" and not platform_info.get("is_arm"):
+        # x86 CPU wheels are published too, and are far preferable to spending
+        # minutes compiling llama.cpp on a machine that has no accelerator.
+        return [f"{base}/cpu", None]
+
+    if platform_info.get("compute") != "cuda":
+        return [None]
+
+    tags = []
+    cuda = platform_info.get("cuda_version")
+    if cuda:
+        major, minor = cuda
+        # A driver runs any CUDA runtime up to the one it reports, so start at
+        # the exact match and walk down.
+        for candidate in range(minor, max(minor - 3, -1), -1):
+            tags.append(f"cu{major}{candidate}")
+    # The published set lags new driver releases; these are the tags that have
+    # actually been built, tried after anything the driver hinted at.
+    for fallback in ("cu125", "cu124", "cu123", "cu122", "cu121"):
+        if fallback not in tags:
+            tags.append(fallback)
+
+    return [f"{base}/{tag}" for tag in tags] + [None]
+
+
+def _index_serves_package(index_url, package="llama-cpp-python", timeout=8):
+    """
+    Whether a PEP 503 index actually publishes this package.
+
+    Driver versions run ahead of the published wheel set, so most of the
+    candidate tags 404. Checking here turns each miss into one HTTP request
+    instead of a full pip resolution. A network failure returns True: better to
+    let pip try than to skip a tag because the check itself could not run.
+    """
+    import urllib.request
+    import urllib.error
+
+    url = f"{index_url.rstrip('/')}/{package}/"
+    try:
+        req = urllib.request.Request(url, method="HEAD")
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            return resp.status == 200
+    except urllib.error.HTTPError:
+        return False
+    except Exception:
+        return True
+
+
+def _ensure_build_toolchain(platform_info):
+    """
+    cmake and a C++ compiler, needed wherever llama.cpp builds from source.
+
+    Returns False when the toolchain is missing and cannot be installed, so the
+    caller reports what to run instead of starting a build that cannot finish.
+    """
+    if shutil.which("cmake") and (shutil.which("c++") or shutil.which("g++") or shutil.which("cc")):
+        return True
+
+    if platform_info.get("is_linux") and shutil.which("apt-get"):
+        print_log("[SIGMA] Installing build toolchain for llama.cpp (build-essential, cmake)...", Colors.OKCYAN)
+        subprocess.run(["sudo", "apt-get", "update", "-y"], check=False)
+        subprocess.run(["sudo", "apt-get", "install", "-y", "build-essential", "cmake"], check=False)
+        return bool(shutil.which("cmake"))
+
+    return bool(shutil.which("cmake"))
+
+
+def install_inference_kernels(platform_info, force=False):
+    """
+    Installs the llama.cpp GGUF runtime for the accelerator on this machine.
+
+    Cheap when already present: an import check short-circuits before pip is
+    ever invoked, so this costs nothing on a normal launch.
+    """
+    python_exe, _ = ensure_venv()
+
+    if _module_installed(python_exe, "llama_cpp"):
+        return True
+
+    compute = platform_info.get("compute", "cpu")
+    key = f"llama_cpp:{compute}:{platform_info.get('arch')}:{sys.version_info.major}.{sys.version_info.minor}"
+    stamp = _read_kernel_stamp()
+
+    if not force and stamp.get(key, {}).get("status") == "failed":
+        print_log(
+            "[SIGMA] GGUF runtime (llama-cpp-python) not installed and a previous "
+            "attempt failed; skipping. Retry with: python sigma_launcher.py --install",
+            Colors.WARNING,
+        )
+        return False
+
+    print_log(f"[SIGMA] Installing GGUF runtime (llama-cpp-python) for '{compute}'...", Colors.OKCYAN)
+
+    # Only Linux gets the toolchain gate: macOS ships arm64 wheels on PyPI and
+    # clang with the command line tools, so blocking there would refuse an
+    # install that would have worked.
+    needs_source_build = platform_info.get("is_linux") and (
+        platform_info.get("is_arm") or compute == "rocm"
+    )
+    if needs_source_build and not _ensure_build_toolchain(platform_info):
+        print_log(
+            "[SIGMA] llama-cpp-python must be compiled on this architecture and no "
+            "toolchain was found. Install it and relaunch:\n"
+            "  sudo apt-get install -y build-essential cmake python3-dev",
+            Colors.WARNING,
+        )
+        stamp[key] = {"status": "failed", "reason": "toolchain missing"}
+        _write_kernel_stamp(stamp)
+        return False
+
+    if needs_source_build:
+        print_log(
+            "[SIGMA] No prebuilt wheel is published for this architecture: llama.cpp "
+            "will be compiled from source. This runs once and can take several "
+            "minutes on a small board.",
+            Colors.WARNING,
+        )
+
+    env = os.environ.copy()
+    if compute == "metal":
+        env.setdefault("CMAKE_ARGS", "-DGGML_METAL=on")
+    elif compute == "rocm":
+        env.setdefault("CMAKE_ARGS", "-DGGML_HIPBLAS=on")
+
+    for index_url in _llama_cpp_wheel_indexes(platform_info):
+        if index_url and not _index_serves_package(index_url):
+            continue
+        cmd = [python_exe, "-m", "pip", "install", "--default-timeout=120",
+               "llama-cpp-python>=0.3.0"]
+        if index_url:
+            # --only-binary matters: an index tag that was never published 404s,
+            # and without it pip would quietly fall back to PyPI and compile a
+            # CPU-only build, reporting success while dropping GPU offload.
+            cmd += ["--extra-index-url", index_url, "--only-binary=:all:"]
+            print_log(f"[SIGMA] Trying prebuilt wheels from {index_url}", Colors.OKCYAN)
+        else:
+            print_log("[SIGMA] Falling back to a source build from PyPI...", Colors.OKCYAN)
+        try:
+            subprocess.check_call(cmd, env=env)
+        except subprocess.CalledProcessError:
+            continue
+        if _module_installed(python_exe, "llama_cpp"):
+            stamp[key] = {"status": "ok", "index": index_url or "pypi"}
+            _write_kernel_stamp(stamp)
+            print_log("[SIGMA] GGUF runtime ready: modelli .gguf eseguibili.", Colors.OKGREEN)
+            return True
+
+    stamp[key] = {"status": "failed", "reason": "pip install failed"}
+    _write_kernel_stamp(stamp)
+    print_log(
+        "[SIGMA] WARNING: llama-cpp-python could not be installed. Safetensors "
+        "models still work; GGUF checkpoints will not load until it is present.",
+        Colors.WARNING,
+    )
+    return False
+
 
 def _get_path_hash(path):
     sha1 = hashlib.sha1()
@@ -398,9 +677,10 @@ def show_system_info():
     info = detect_platform()
     for k, v in info.items():
         print(f"  - {k}: {v}")
-        
+
     python_exe, _ = ensure_venv()
     activate_venv_env()
+    print(f"  - llama_cpp installed: {_module_installed(python_exe, 'llama_cpp')}")
     
     try:
         from core.engine.hardware_probe import UniversalHardwareProbe
@@ -427,6 +707,9 @@ def main():
         ensure_venv()
         activate_venv_env()
         install_dependencies(platform_info)
+        # Explicit --install means "try again", including builds that failed
+        # before and are skipped on a normal launch.
+        install_inference_kernels(platform_info, force=True)
         ensure_frontend()
         return
 
