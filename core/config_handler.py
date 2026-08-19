@@ -147,74 +147,36 @@ def handle_api_create_model(self):
 
 
 def handle_hf_token_config(self):
-    """POST /api/config/hf_token — Save HuggingFace token in config and environment."""
+    """
+    POST /api/config/hf_token — Save the HuggingFace token.
+
+    Kept for callers outside the Model Hub; the token itself is managed from the
+    Model Hub "Directory & HF Token" tab, and both routes share the same write
+    path so neither can leave a stale copy behind.
+    """
     try:
+        from core.modules.sigma_model_hub.backend.hf_client import persist_hf_token
+
         req = self.read_json_body() if hasattr(self, 'read_json_body') else {}
-        token = req.get('hf_token', '').strip()
-
-        # Update environment variables
-        if token:
-            os.environ["HF_TOKEN"] = token
-            os.environ["HUGGINGFACE_TOKEN"] = token
-            os.environ["HUGGING_FACE_HUB_TOKEN"] = token
-        else:
-            os.environ.pop("HF_TOKEN", None)
-            os.environ.pop("HUGGINGFACE_TOKEN", None)
-            os.environ.pop("HUGGING_FACE_HUB_TOKEN", None)
-
-        # 1. Update config.json
-        cfg_paths = [
-            "config.json",
-            os.path.join("data", "config.json"),
-        ]
-        for cfg_path in cfg_paths:
-            cfg = {}
-            if os.path.exists(cfg_path):
-                try:
-                    with open(cfg_path, 'r', encoding='utf-8') as f:
-                        cfg = json.load(f)
-                except Exception:
-                    cfg = {}
-            cfg['hf_token'] = token
-            os.makedirs(os.path.dirname(cfg_path) or '.', exist_ok=True)
-            with open(cfg_path, 'w', encoding='utf-8') as f:
-                json.dump(cfg, f, indent=2, ensure_ascii=False)
-
-        # 2. Update data/model_hub_config.json
-        hub_cfg_path = os.path.join("data", "model_hub_config.json")
-        hub_cfg = {}
-        if os.path.exists(hub_cfg_path):
-            try:
-                with open(hub_cfg_path, 'r', encoding='utf-8') as f:
-                    hub_cfg = json.load(f)
-            except Exception:
-                hub_cfg = {}
-        hub_cfg['hf_token'] = token
-        os.makedirs(os.path.dirname(hub_cfg_path), exist_ok=True)
-        with open(hub_cfg_path, 'w', encoding='utf-8') as f:
-            json.dump(hub_cfg, f, indent=2, ensure_ascii=False)
-
-        # 3. Update active downloader tasks if loaded
-        try:
-            from core.modules.sigma_model_hub.backend.downloader_engine import downloader_manager
-            with downloader_manager.lock:
-                for t in downloader_manager.tasks.values():
-                    t.hf_token = token
-        except Exception:
-            pass
-
-        return self.send_json_response({"success": True, "hf_has_token": bool(token)})
+        token = (req.get('hf_token') or '').strip()
+        result = persist_hf_token(token)
+        return self.send_json_response({"success": True, "hf_has_token": result["hf_has_token"]})
     except Exception as exc:
         log.error("handle_hf_token_config error: %s", exc)
         return self.send_json_response({"success": False, "error": str(exc)}, 500)
 
 
 def handle_hf_token_get(self):
-    """GET /api/config/hf_token — Get HuggingFace token configured status."""
+    """GET /api/config/hf_token — Get HuggingFace token configured status and its origin."""
     try:
-        from core.modules.sigma_model_hub.backend.hf_client import get_effective_hf_token
-        token = get_effective_hf_token() or ""
-        return self.send_json_response({"success": True, "hf_has_token": bool(token)})
+        from core.modules.sigma_model_hub.backend.hf_client import resolve_hf_token
+        resolved = resolve_hf_token()
+        return self.send_json_response({
+            "success": True,
+            "hf_has_token": bool(resolved["token"]),
+            "hf_token_source": resolved["source"],
+            "hf_token_source_detail": resolved["detail"],
+        })
     except Exception as exc:
         return self.send_json_response({"success": False, "hf_has_token": False, "error": str(exc)})
 
@@ -222,4 +184,4 @@ def handle_hf_token_get(self):
 def handle_tts_engines_fallback(self):
     """GET /api/tts/engines fallback returning empty engines list when sigma_voice_studio is not loaded."""
     return self.send_json_response({"engines": [], "default": {"engine": "browser", "voice": ""}})
-
+

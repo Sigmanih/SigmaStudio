@@ -14,6 +14,18 @@ import EngineOptimizer from './EngineOptimizer';
 import './styles/model-hub.css';
 
 
+// Where an active token was resolved from. Only a token stored in Sigma's own
+// config is editable here: one coming from the environment or from a
+// `huggingface-cli login` wins over whatever is typed in, and saying so is the
+// difference between "the field is empty" and "the field is irrelevant".
+const HF_TOKEN_SOURCE_LABELS = {
+  input: 'Inserito manualmente',
+  env: "Variabile d'ambiente",
+  config: 'Configurazione Sigma',
+  cli_cache: 'Login huggingface-cli',
+};
+
+
 export default function ModelHub({ addToast, openTab }) {
   const { theme } = useApp();
   const isLight = theme === 'light';
@@ -35,10 +47,14 @@ export default function ModelHub({ addToast, openTab }) {
   const [savingConfig, setSavingConfig] = useState(false);
   const [pickingDir, setPickingDir] = useState(false);
 
-  // Token testing and visibility state
+  // Token and connection testing state
   const [showToken, setShowToken] = useState(false);
   const [testingToken, setTestingToken] = useState(false);
   const [tokenTestResult, setTokenTestResult] = useState(null);
+  const [testingConn, setTestingConn] = useState(false);
+  const [connResult, setConnResult] = useState(null);
+  const [savingToken, setSavingToken] = useState(false);
+  const [hfTokenStatus, setHfTokenStatus] = useState({ has_token: false, source: null, detail: null });
 
   // Engine status
   const [engineStatus, setEngineStatus] = useState(null);
@@ -62,11 +78,24 @@ export default function ModelHub({ addToast, openTab }) {
       const res = await fetch('/api/models/config');
       if (res.ok) {
         const json = await res.json();
-        if (json.success) setConfig(json.config || {});
+        if (json.success && json.config) {
+          setConfig(prev => ({
+            ...prev,
+            ...json.config,
+            hf_token: json.config.hf_token || prev.hf_token || ''
+          }));
+          setHfTokenStatus({
+            has_token: !!json.hf_has_token,
+            source: json.hf_token_source || null,
+            detail: json.hf_token_source_detail || null,
+          });
+          return json;
+        }
       }
     } catch (e) {
       console.error('Error fetching Model Hub config:', e);
     }
+    return null;
   }, []);
 
   const fetchEngineStatus = useCallback(async () => {
@@ -88,6 +117,47 @@ export default function ModelHub({ addToast, openTab }) {
     const interval = setInterval(fetchDownloads, 1500);
     return () => clearInterval(interval);
   }, [fetchConfig, fetchEngineStatus, fetchDownloads]);
+
+  // Anything that used to send the user to Impostazioni for the token now sends
+  // them here instead. The flag covers the tab being opened by that request;
+  // the event covers the hub already being mounted on another tab.
+  useEffect(() => {
+    if (typeof window !== 'undefined' && window.__sigmaOpenHfTokenSettings) {
+      window.__sigmaOpenHfTokenSettings = false;
+      setActiveTab('settings');
+    }
+    const onRequest = () => setActiveTab('settings');
+    window.addEventListener('sigma_open_hf_token_settings', onRequest);
+    return () => window.removeEventListener('sigma_open_hf_token_settings', onRequest);
+  }, []);
+
+  const handleTestConnection = async () => {
+    setTestingConn(true);
+    setConnResult(null);
+    try {
+      const res = await fetch('/api/models/hf/test-connection', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ hf_token: (config.hf_token || '').trim() })
+      });
+      const json = await res.json();
+      setConnResult(json);
+      if (json.connected) {
+        if (json.token_valid) {
+          if (addToast) addToast(`⚡ ${json.message}`, 'success', 6000);
+        } else {
+          if (addToast) addToast(`🌐 Hugging Face raggiungibile (${json.latency_ms}ms), ma: ${json.error || 'Nessun token valido'}`, 'warning', 6000);
+        }
+      } else {
+        if (addToast) addToast(`❌ ${json.error || 'Hugging Face non raggiungibile'}`, 'error', 6000);
+      }
+    } catch (e) {
+      setConnResult({ connected: false, error: e.message });
+      if (addToast) addToast(`Errore test connessione: ${e.message}`, 'error');
+    } finally {
+      setTestingConn(false);
+    }
+  };
 
   const handleTestToken = async () => {
     const token = (config.hf_token || '').trim();
@@ -118,18 +188,76 @@ export default function ModelHub({ addToast, openTab }) {
     }
   };
 
+  // The token is saved on its own, without touching the models directory, so
+  // fixing a rejected download never depends on the directory field being valid.
+  const persistToken = async (token, { successMessage }) => {
+    setSavingToken(true);
+    try {
+      const res = await fetch('/api/models/config', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ hf_token: token })
+      });
+      const json = await res.json();
+      if (!json.success) {
+        if (addToast) addToast(`❌ Errore salvataggio token: ${json.error || 'Errore'}`, 'error');
+        return false;
+      }
+      setHfTokenStatus({
+        has_token: !!json.hf_has_token,
+        source: json.hf_token_source || null,
+        detail: json.hf_token_source_detail || null,
+      });
+      if (addToast) addToast(successMessage, 'success', 5000);
+      fetchConfig();
+      fetchDownloads();
+      return true;
+    } catch (e) {
+      if (addToast) addToast(`Errore salvataggio token: ${e.message}`, 'error');
+      return false;
+    } finally {
+      setSavingToken(false);
+    }
+  };
+
+  const handleSaveToken = async () => {
+    const token = (config.hf_token || '').trim();
+    if (!token) {
+      if (addToast) addToast('⚠️ Inserisci un token Hugging Face valido (hf_...).', 'warning');
+      return;
+    }
+    const ok = await persistToken(token, { successMessage: '🔑 Token Hugging Face salvato e attivo su tutta la piattaforma!' });
+    // Saving without knowing whether the token works is the failure mode this
+    // tab existed to remove: verify it right away.
+    if (ok) handleTestToken();
+  };
+
+  const handleRemoveToken = async () => {
+    setTokenTestResult(null);
+    const ok = await persistToken('', { successMessage: '🗑️ Token Hugging Face rimosso. I download proseguiranno in modalità anonima.' });
+    if (ok) setConfig(prev => ({ ...prev, hf_token: '' }));
+  };
+
   const handleSaveConfig = async () => {
     setSavingConfig(true);
     try {
       const res = await fetch('/api/models/config', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(config)
+        body: JSON.stringify({
+          models_dir: config.models_dir || 'data/models',
+          hf_token: (config.hf_token || '').trim(),
+          auto_deploy_on_download: config.auto_deploy_on_download ?? true,
+          preferred_quantization: config.preferred_quantization || 'Q4_K_M'
+        })
       });
       const json = await res.json();
       if (json.success) {
         if (addToast) addToast('⚡ Configurazione e Token salvati con successo!', 'success');
         fetchDownloads();
+        fetchConfig();
+      } else {
+        if (addToast) addToast(`❌ Errore salvataggio: ${json.error || 'Errore'}`, 'error');
       }
     } catch (e) {
       if (addToast) addToast(`Errore salvataggio: ${e.message}`, 'error');
@@ -199,17 +327,25 @@ export default function ModelHub({ addToast, openTab }) {
             <DownloadCloud size={24} color="#ffb86c" />
           </div>
           <div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
               <h1 style={{ margin: 0, fontSize: '1.25rem', fontWeight: 800, letterSpacing: '-0.3px', color: textPrimary }}>
                 Model Hub & <span style={{ color: '#ffb86c' }}>Hugging Face Downloader</span>
               </h1>
-              <span style={{
-                fontSize: '0.66rem', padding: '2px 8px', borderRadius: '12px',
-                background: 'rgba(255, 184, 108, 0.15)', color: '#ffb86c', border: '1px solid rgba(255, 184, 108, 0.3)',
-                fontWeight: 800
-              }}>
-                Hugging Face API Live
-              </span>
+              <button
+                onClick={handleTestConnection}
+                disabled={testingConn}
+                title="Esegui test connettività verso Hugging Face e verifica token"
+                style={{
+                  fontSize: '0.68rem', padding: '3px 10px', borderRadius: '12px',
+                  background: connResult?.connected ? 'rgba(16, 185, 129, 0.15)' : 'rgba(255, 184, 108, 0.15)',
+                  color: connResult?.connected ? '#10b981' : '#ffb86c',
+                  border: connResult?.connected ? '1px solid rgba(16, 185, 129, 0.4)' : '1px solid rgba(255, 184, 108, 0.3)',
+                  fontWeight: 800, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px'
+                }}
+              >
+                {testingConn ? <Activity className="mh-spin" size={11} /> : <RefreshCw size={11} />}
+                {testingConn ? 'Verifica in corso...' : connResult?.latency_ms ? `HF Connesso (${connResult.latency_ms}ms)` : '🧪 Test Connessione'}
+              </button>
             </div>
             <p style={{ margin: '2px 0 0 0', fontSize: '0.75rem', color: textMuted }}>
               Scarica modelli GGUF e Safetensors da Hugging Face e avviali direttamente con <strong>⚡ SigmaEngine</strong>.
@@ -345,11 +481,33 @@ export default function ModelHub({ addToast, openTab }) {
             </div>
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-              <label style={{ fontSize: '0.74rem', fontWeight: 700, color: textPrimary }}>
-                Token Personale Hugging Face (hf_...):
-              </label>
-              <div style={{ display: 'flex', gap: '8px' }}>
-                <div style={{ position: 'relative', flex: 1 }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px', flexWrap: 'wrap' }}>
+                <label style={{ fontSize: '0.74rem', fontWeight: 700, color: textPrimary }}>
+                  Token Personale Hugging Face (hf_...):
+                </label>
+                <span style={{
+                  display: 'flex', alignItems: 'center', gap: '5px',
+                  fontSize: '0.68rem', fontWeight: 800, padding: '3px 10px', borderRadius: '12px',
+                  background: hfTokenStatus.has_token ? 'rgba(16, 185, 129, 0.14)' : 'rgba(245, 158, 11, 0.14)',
+                  border: hfTokenStatus.has_token ? '1px solid rgba(16, 185, 129, 0.35)' : '1px solid rgba(245, 158, 11, 0.35)',
+                  color: hfTokenStatus.has_token ? '#10b981' : '#f59e0b'
+                }}>
+                  {hfTokenStatus.has_token ? <Check size={11} /> : <AlertTriangle size={11} />}
+                  {hfTokenStatus.has_token
+                    ? `Token attivo • ${HF_TOKEN_SOURCE_LABELS[hfTokenStatus.source] || 'Configurazione Sigma'}`
+                    : 'Nessun token configurato'}
+                </span>
+              </div>
+
+              {hfTokenStatus.has_token && (hfTokenStatus.source === 'env' || hfTokenStatus.source === 'cli_cache') && (
+                <div style={{ fontSize: '0.68rem', color: '#f59e0b', display: 'flex', alignItems: 'center', gap: '5px' }}>
+                  <AlertTriangle size={12} />
+                  Token ereditato da {hfTokenStatus.detail || 'una fonte esterna'}: ha la precedenza finché non ne salvi uno qui.
+                </div>
+              )}
+
+              <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                <div style={{ position: 'relative', flex: '1 1 260px', minWidth: '220px' }}>
                   <input
                     type={showToken ? 'text' : 'password'}
                     value={config.hf_token || ''}
@@ -357,6 +515,7 @@ export default function ModelHub({ addToast, openTab }) {
                       setConfig({ ...config, hf_token: e.target.value });
                       setTokenTestResult(null);
                     }}
+                    onKeyDown={e => { if (e.key === 'Enter') handleSaveToken(); }}
                     placeholder="hf_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
                     style={{
                       width: '100%', padding: '10px 42px 10px 14px', borderRadius: '10px',
@@ -379,20 +538,114 @@ export default function ModelHub({ addToast, openTab }) {
                 </div>
 
                 <button
-                  onClick={handleTestToken}
-                  disabled={testingToken || !config.hf_token}
+                  onClick={handleSaveToken}
+                  disabled={savingToken || !(config.hf_token || '').trim()}
                   style={{
-                    padding: '10px 16px', borderRadius: '10px', border: subBorder,
+                    padding: '10px 20px', borderRadius: '10px', border: 'none',
+                    background: 'linear-gradient(135deg, #10b981, #00d2ff)',
+                    color: '#ffffff', fontSize: '0.8rem', fontWeight: 800,
+                    cursor: savingToken || !(config.hf_token || '').trim() ? 'not-allowed' : 'pointer',
+                    opacity: savingToken || !(config.hf_token || '').trim() ? 0.6 : 1,
+                    display: 'flex', alignItems: 'center', gap: '6px', whiteSpace: 'nowrap',
+                    boxShadow: '0 4px 18px rgba(16, 185, 129, 0.25)'
+                  }}
+                >
+                  {savingToken ? <Activity className="mh-spin" size={14} /> : <CheckCircle2 size={14} />}
+                  {savingToken ? 'Salvataggio...' : hfTokenStatus.has_token ? 'Aggiorna Token' : 'Salva Token'}
+                </button>
+              </div>
+
+              <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginTop: '2px' }}>
+                <button
+                  onClick={handleTestConnection}
+                  disabled={testingConn}
+                  title="Verifica raggiungibilità di Hugging Face e validità del token attivo"
+                  style={{
+                    padding: '9px 14px', borderRadius: '10px', border: subBorder,
+                    background: 'linear-gradient(135deg, rgba(255, 184, 108, 0.2), rgba(234, 88, 12, 0.2))',
+                    color: textPrimary, fontSize: '0.76rem', fontWeight: 800, cursor: 'pointer',
+                    display: 'flex', alignItems: 'center', gap: '6px', whiteSpace: 'nowrap'
+                  }}
+                >
+                  {testingConn ? <Activity className="mh-spin" size={14} color="#ffb86c" /> : <RefreshCw size={14} color="#ffb86c" />}
+                  {testingConn ? 'Test in corso...' : '🧪 Test Connessione'}
+                </button>
+
+                <button
+                  onClick={handleTestToken}
+                  disabled={testingToken || !(config.hf_token || '').trim()}
+                  title="Interroga huggingface.co/api/whoami-v2 con il token inserito"
+                  style={{
+                    padding: '9px 14px', borderRadius: '10px', border: subBorder,
                     background: 'linear-gradient(135deg, rgba(99, 102, 241, 0.2), rgba(0, 210, 255, 0.2))',
-                    color: textPrimary, fontSize: '0.78rem', fontWeight: 800, cursor: 'pointer',
+                    color: textPrimary, fontSize: '0.76rem', fontWeight: 800,
+                    cursor: testingToken || !(config.hf_token || '').trim() ? 'not-allowed' : 'pointer',
+                    opacity: testingToken || !(config.hf_token || '').trim() ? 0.6 : 1,
                     display: 'flex', alignItems: 'center', gap: '6px', whiteSpace: 'nowrap'
                   }}
                 >
                   {testingToken ? <Activity className="mh-spin" size={14} color="#00d2ff" /> : <ShieldCheck size={14} color="#00d2ff" />}
-                  {testingToken ? 'Verifica...' : 'Verifica Token'}
+                  {testingToken ? 'Verifica...' : '🔍 Verifica Token'}
                 </button>
+
+                {hfTokenStatus.has_token && (
+                  <button
+                    onClick={handleRemoveToken}
+                    disabled={savingToken}
+                    title="Cancella il token da ambiente e configurazione"
+                    style={{
+                      padding: '9px 14px', borderRadius: '10px',
+                      border: '1px solid rgba(239, 68, 68, 0.35)',
+                      background: 'rgba(239, 68, 68, 0.1)',
+                      color: '#ef4444', fontSize: '0.76rem', fontWeight: 800, cursor: 'pointer',
+                      display: 'flex', alignItems: 'center', gap: '6px', whiteSpace: 'nowrap'
+                    }}
+                  >
+                    <XCircle size={14} /> Rimuovi Token
+                  </button>
+                )}
+
+                {lastFailedTask && hfTokenStatus.has_token && (
+                  <button
+                    onClick={() => handleRetryTask(lastFailedTask.task_id)}
+                    title={`Riprende ${lastFailedTask.model_id} con il token attivo`}
+                    style={{
+                      padding: '9px 14px', borderRadius: '10px',
+                      border: '1px solid rgba(255, 184, 108, 0.4)',
+                      background: 'rgba(255, 184, 108, 0.12)',
+                      color: '#ffb86c', fontSize: '0.76rem', fontWeight: 800, cursor: 'pointer',
+                      display: 'flex', alignItems: 'center', gap: '6px', whiteSpace: 'nowrap'
+                    }}
+                  >
+                    <RotateCcw size={14} /> Riprendi Download Interrotto
+                  </button>
+                )}
               </div>
             </div>
+
+            {/* Connection test result alert */}
+            {connResult && (
+              <div style={{
+                padding: '12px 16px', borderRadius: '10px',
+                background: connResult.connected ? 'rgba(16, 185, 129, 0.12)' : 'rgba(239, 68, 68, 0.12)',
+                border: connResult.connected ? '1px solid rgba(16, 185, 129, 0.3)' : '1px solid rgba(239, 68, 68, 0.3)',
+                display: 'flex', alignItems: 'flex-start', gap: '10px'
+              }}>
+                {connResult.connected ? (
+                  <CheckCircle2 size={18} color="#10b981" style={{ flexShrink: 0, marginTop: '2px' }} />
+                ) : (
+                  <AlertTriangle size={18} color="#ef4444" style={{ flexShrink: 0, marginTop: '2px' }} />
+                )}
+                <div style={{ fontSize: '0.76rem', color: connResult.connected ? '#10b981' : '#ef4444' }}>
+                  <div style={{ fontWeight: 800 }}>
+                    {connResult.connected ? `Hugging Face Raggiungibile (Latenza: ${connResult.latency_ms}ms)` : 'Connessione a Hugging Face Fallita'}
+                  </div>
+                  <div style={{ marginTop: '2px', color: textPrimary, fontSize: '0.72rem' }}>
+                    {connResult.message || connResult.error}
+                  </div>
+                </div>
+              </div>
+            )}
 
             {/* Test result alert */}
             {tokenTestResult && (
@@ -422,6 +675,21 @@ export default function ModelHub({ addToast, openTab }) {
                 </div>
               </div>
             )}
+
+            {/* A che serve il token */}
+            <div style={{
+              background: 'rgba(0, 210, 255, 0.04)', border: '1px solid rgba(0, 210, 255, 0.12)',
+              borderRadius: '12px', padding: '14px 16px',
+              fontSize: '0.7rem', color: textMuted, lineHeight: 1.65
+            }}>
+              <strong style={{ color: '#00d2ff' }}>💡 Perché serve il token?</strong>
+              <ul style={{ margin: '8px 0 0 16px', padding: 0 }}>
+                <li>Download da Hugging Face fino a 10x più veloci (da ~50 KB/s anonimi a 5-50 MB/s)</li>
+                <li>Accesso ai modelli <em>gated</em> (Llama 3, Gemma, Mistral, DeepSeek)</li>
+                <li>Necessario per dataset privati o soggetti a restrizioni</li>
+                <li>Vale per tutta la piattaforma — Model Hub, Training Lab e conversioni GGUF — e resta attivo dopo il riavvio</li>
+              </ul>
+            </div>
           </div>
 
           {/* SEZIONE 2: DIRECTORY STORAGE MODELLI */}

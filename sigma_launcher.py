@@ -154,12 +154,23 @@ def install_dependencies(platform_info):
 
     print_log("[SIGMA] Python dependencies ready.", Colors.OKGREEN)
 
-def _get_directory_hash(directory):
+def _get_path_hash(path):
     sha1 = hashlib.sha1()
-    if not os.path.exists(directory):
+    if not os.path.exists(path):
         return sha1.hexdigest()
-    
-    for root, _, files in os.walk(directory):
+    if os.path.isfile(path):
+        try:
+            with open(path, 'rb') as f:
+                while True:
+                    buf = f.read(4096)
+                    if not buf:
+                        break
+                    sha1.update(buf)
+        except Exception:
+            pass
+        return sha1.hexdigest()
+
+    for root, _, files in os.walk(path):
         for names in sorted(files):
             filepath = os.path.join(root, names)
             try:
@@ -172,6 +183,8 @@ def _get_directory_hash(directory):
             except Exception:
                 pass
     return sha1.hexdigest()
+
+_get_directory_hash = _get_path_hash
 
 def check_node_version():
     """Return major version number of Node.js (e.g. 18, 20, 22) or 0 if not found."""

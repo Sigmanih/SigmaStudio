@@ -263,7 +263,7 @@ export default function Workspace({
       return <DomoticaTab />;
     }
     if (tab.type === 'account' || tab.type === 'settings') {
-      return <AccountTab />;
+      return <AccountTab openTab={openTab} />;
     }
     if (tab.type === 'creative_studio') {
       const isCreativeInstalled = modulesState.sigma_creative_lab === true;

@@ -16,46 +16,59 @@ log = get_logger(__name__)
 HF_API_BASE = "https://huggingface.co/api"
 
 
-def get_effective_hf_token(explicit_token: Optional[str] = None) -> Optional[str]:
-    """Resolves the best available Hugging Face API token from explicit arg, env vars, config, or HF CLI cache."""
-    if explicit_token and explicit_token.strip():
-        return explicit_token.strip()
+# Every place the token is read from or written to, in resolution order. The
+# Model Hub is the single UI for the token, so a save has to reach all of them:
+# a stale copy left behind in one file is a download that silently falls back
+# to anonymous rate limits.
+HF_TOKEN_ENV_KEYS = ("HF_TOKEN", "HUGGING_FACE_HUB_TOKEN", "HUGGINGFACE_HUB_TOKEN", "HUGGINGFACE_TOKEN")
 
-    # 1. Check environment variables
-    for env_key in ("HF_TOKEN", "HUGGING_FACE_HUB_TOKEN", "HUGGINGFACE_HUB_TOKEN", "HUGGINGFACE_TOKEN"):
-        val = os.getenv(env_key)
-        if val and val.strip():
-            return val.strip()
 
-    # 2. Check model hub config file(s)
-    root_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))))
-    for p in (
+def _hf_root_dir() -> str:
+    """Installation root, anchored to this file rather than the working directory."""
+    return os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(
+        os.path.dirname(os.path.abspath(__file__))))))
+
+
+def _hf_config_paths() -> List[str]:
+    """Config files that can carry `hf_token`, in the order they are resolved."""
+    root_dir = _hf_root_dir()
+    return [
         os.path.join(root_dir, "data", "model_hub_config.json"),
         os.path.join(root_dir, "core", "data", "model_hub_config.json"),
-    ):
-        if os.path.exists(p):
-            try:
-                with open(p, "r", encoding="utf-8") as f:
-                    cfg = json.load(f)
-                    tok = (cfg.get("hf_token") or "").strip()
-                    if tok:
-                        return tok
-            except Exception:
-                pass
+        os.path.join(root_dir, "config.json"),
+        os.path.join(root_dir, "data", "config.json"),
+    ]
 
-    # 3. Check config.json
-    config_json_path = os.path.join(root_dir, "config.json")
-    if os.path.exists(config_json_path):
+
+def resolve_hf_token(explicit_token: Optional[str] = None) -> Dict[str, Any]:
+    """Resolves the token and reports where it came from, so the Model Hub can show its origin."""
+    if explicit_token and explicit_token.strip():
+        return {"token": explicit_token.strip(), "source": "input", "detail": "Token inserito manualmente"}
+
+    # 1. Environment variables
+    for env_key in HF_TOKEN_ENV_KEYS:
+        val = os.getenv(env_key)
+        if val and val.strip():
+            return {"token": val.strip(), "source": "env", "detail": "Variabile d'ambiente " + env_key}
+
+    # 2. Sigma config files
+    for path in _hf_config_paths():
+        if not os.path.exists(path):
+            continue
         try:
-            with open(config_json_path, "r", encoding="utf-8") as f:
+            with open(path, "r", encoding="utf-8") as f:
                 cfg = json.load(f)
-                tok = (cfg.get("hf_token") or cfg.get("ai_providers", {}).get("huggingface", {}).get("token") or "").strip()
-                if tok:
-                    return tok
         except Exception:
-            pass
+            continue
+        if not isinstance(cfg, dict):
+            continue
+        providers = cfg.get("ai_providers") if isinstance(cfg.get("ai_providers"), dict) else {}
+        hf_provider = providers.get("huggingface") if isinstance(providers.get("huggingface"), dict) else {}
+        tok = (cfg.get("hf_token") or hf_provider.get("token") or "").strip()
+        if tok:
+            return {"token": tok, "source": "config", "detail": os.path.relpath(path, _hf_root_dir())}
 
-    # 4. Check ~/.cache/huggingface/token or ~/.huggingface/token
+    # 3. Hugging Face CLI cache (`huggingface-cli login`)
     for cache_path in (
         os.path.expanduser("~/.cache/huggingface/token"),
         os.path.expanduser("~/.huggingface/token"),
@@ -64,12 +77,78 @@ def get_effective_hf_token(explicit_token: Optional[str] = None) -> Optional[str
             try:
                 with open(cache_path, "r", encoding="utf-8") as f:
                     tok = f.read().strip()
-                    if tok:
-                        return tok
             except Exception:
-                pass
+                continue
+            if tok:
+                return {"token": tok, "source": "cli_cache", "detail": "Cache huggingface-cli"}
 
-    return None
+    return {"token": None, "source": None, "detail": None}
+
+
+def get_effective_hf_token(explicit_token: Optional[str] = None) -> Optional[str]:
+    """Resolves the best available Hugging Face API token from explicit arg, env vars, config, or HF CLI cache."""
+    return resolve_hf_token(explicit_token)["token"]
+
+
+def persist_hf_token(token: Optional[str]) -> Dict[str, Any]:
+    """
+    Single write path for the Hugging Face token.
+
+    Applies it to the process environment, to every Sigma config file that is
+    read back on resolution, and to any download already in flight, so the token
+    saved from the Model Hub is the one used everywhere without a restart.
+    """
+    token = (token or "").strip()
+    written: List[str] = []
+
+    if token:
+        for env_key in HF_TOKEN_ENV_KEYS:
+            os.environ[env_key] = token
+    else:
+        for env_key in HF_TOKEN_ENV_KEYS:
+            os.environ.pop(env_key, None)
+
+    root_dir = _hf_root_dir()
+    targets = [
+        os.path.join(root_dir, "data", "model_hub_config.json"),
+        os.path.join(root_dir, "config.json"),
+        os.path.join(root_dir, "data", "config.json"),
+    ]
+    # The legacy copy is only refreshed when it already exists: creating it
+    # would add a file that shadows the primary one on the next resolution.
+    legacy = os.path.join(root_dir, "core", "data", "model_hub_config.json")
+    if os.path.exists(legacy):
+        targets.append(legacy)
+
+    for path in targets:
+        cfg = {}
+        if os.path.exists(path):
+            try:
+                with open(path, "r", encoding="utf-8") as f:
+                    loaded = json.load(f)
+                if isinstance(loaded, dict):
+                    cfg = loaded
+            except Exception:
+                cfg = {}
+        cfg["hf_token"] = token
+        try:
+            os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
+            with open(path, "w", encoding="utf-8") as f:
+                json.dump(cfg, f, indent=2, ensure_ascii=False)
+            written.append(os.path.relpath(path, root_dir))
+        except Exception as exc:
+            log.warning("persist_hf_token: impossibile scrivere %s: %s", path, exc)
+
+    # Downloads already queued or paused keep their own copy of the token.
+    try:
+        from .downloader_engine import downloader_manager
+        with downloader_manager.lock:
+            for task in downloader_manager.tasks.values():
+                task.hf_token = token
+    except Exception:
+        pass
+
+    return {"hf_has_token": bool(token), "written": written}
 
 
 # Recognized verified official organizations and AI labs

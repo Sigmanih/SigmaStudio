@@ -10,9 +10,40 @@ const PRESET_AVATARS = [
   { id: 'user_architect', name: 'Architect', url: '/images/agente0.png' },
 ];
 
-export default function AccountTab() {
+export default function AccountTab({ openTab }) {
   const { theme } = useApp();
   const [savedSuccess, setSavedSuccess] = useState(false);
+
+  // The token itself lives in the Model Hub: duplicating the field here is what
+  // let the two copies drift apart. What stays is its status and a way in.
+  const [hfStatus, setHfStatus] = useState({ has_token: false, source: null, detail: null });
+
+  const refreshHfStatus = () => {
+    fetch('/api/config/hf_token')
+      .then(r => r.json())
+      .then(data => {
+        if (data && data.success) {
+          setHfStatus({
+            has_token: !!data.hf_has_token,
+            source: data.hf_token_source || null,
+            detail: data.hf_token_source_detail || null,
+          });
+        }
+      })
+      .catch(() => {});
+  };
+
+  useEffect(refreshHfStatus, []);
+
+  const openHfTokenSettings = () => {
+    try {
+      window.__sigmaOpenHfTokenSettings = true;
+      window.dispatchEvent(new CustomEvent('sigma_open_hf_token_settings'));
+    } catch { /* the hub falls back to its default tab */ }
+    if (openTab) {
+      openTab({ name: '\u26a1 Modelli Hub' }, 'model_hub');
+    }
+  };
 
   // --- Profile State ---
   const [profile, setProfile] = useState(() => {
@@ -354,8 +385,63 @@ export default function AccountTab() {
             </div>
           </div>
 
-          {/* COLONNA DESTRA — STATO SESSIONE & STORAGE */}
+          {/* COLONNA DESTRA — CREDENZIALI, STATO SESSIONE & STORAGE */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+
+            {/* SEZIONE CREDENZIALI ESTERNE — RIMANDO AL MODEL HUB */}
+            <div
+              style={{
+                backgroundColor: isLight ? '#fffdf9' : '#0e1017',
+                border: isLight ? '1px solid rgba(190, 160, 110, 0.35)' : '1px solid rgba(99, 102, 241, 0.2)',
+                borderRadius: '14px',
+                padding: '20px',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '12px'
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', borderBottom: '1px solid rgba(255,255,255,0.08)', paddingBottom: '10px' }}>
+                <ShieldCheck size={18} style={{ color: '#6366f1' }} />
+                <div>
+                  <h3 style={{ margin: 0, fontSize: '0.95rem', fontWeight: 700, color: isLight ? '#111' : '#f0f2f8' }}>
+                    Credenziali Esterne — Hugging Face
+                  </h3>
+                  <div style={{ fontSize: '0.7rem', color: '#8b8fa3', marginTop: '1px' }}>
+                    Gestione centralizzata nel Model Hub, sezione “Directory & HF Token”
+                  </div>
+                </div>
+              </div>
+
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.75rem' }}>
+                <Key size={14} style={{ color: hfStatus.has_token ? '#3fb950' : '#f59e0b' }} />
+                <span style={{ color: hfStatus.has_token ? '#3fb950' : '#f59e0b', fontWeight: 700 }}>
+                  {hfStatus.has_token ? 'Token configurato e attivo' : 'Nessun token configurato'}
+                </span>
+                {hfStatus.has_token && hfStatus.detail && (
+                  <span style={{ color: '#8b8fa3', fontSize: '0.7rem' }}>({hfStatus.detail})</span>
+                )}
+              </div>
+
+              <div style={{ fontSize: '0.72rem', color: '#8b8fa3', lineHeight: 1.55 }}>
+                {hfStatus.has_token
+                  ? 'Download veloci e modelli gated abilitati su Model Hub, Training Lab e conversioni GGUF.'
+                  : 'Senza token i download sono limitati a ~50 KB/s e i modelli gated (Llama, Gemma, Mistral) non sono scaricabili.'}
+              </div>
+
+              <button
+                onClick={openHfTokenSettings}
+                style={{
+                  display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '6px',
+                  padding: '9px 16px', borderRadius: '10px', width: 'fit-content',
+                  background: 'rgba(99, 102, 241, 0.15)',
+                  border: '1px solid rgba(99, 102, 241, 0.4)',
+                  color: '#818cf8', fontSize: '0.76rem', fontWeight: 800, cursor: 'pointer'
+                }}
+              >
+                <CheckCircle2 size={14} />
+                {hfStatus.has_token ? 'Gestisci Token nel Model Hub' : 'Configura Token nel Model Hub'}
+              </button>
+            </div>
 
             {/* SEZIONE STORAGE & STATO SESSIONE */}
             <div

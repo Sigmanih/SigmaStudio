@@ -7,7 +7,8 @@ import os
 import json
 import urllib.parse
 from core.logger import get_logger
-from .hf_client import search_hf_models, get_hf_model_details
+from .hf_client import (search_hf_models, get_hf_model_details, get_effective_hf_token,
+                        persist_hf_token, resolve_hf_token)
 from .downloader_engine import downloader_manager, DEFAULT_MODELS_DIR
 from .model_inventory import scan_local_models, deploy_model_to_sigma_engine, unload_sigma_engine_model
 
@@ -43,10 +44,14 @@ def _load_hub_config() -> dict:
     return cfg
 
 
-def _save_hub_config(cfg: dict) -> None:
+def _save_hub_config(cfg: dict) -> dict:
+    existing = _load_hub_config()
+    if isinstance(cfg, dict):
+        existing.update(cfg)
     os.makedirs(os.path.dirname(_CONFIG_PATH), exist_ok=True)
     with open(_CONFIG_PATH, "w", encoding="utf-8") as f:
-        json.dump(cfg, f, indent=2)
+        json.dump(existing, f, indent=2)
+    return existing
 
 
 def handle_models_hf_search(self):
@@ -288,10 +293,22 @@ def handle_models_engine_unload(self):
 
 
 def handle_models_config_get(self):
-    """GET /api/models/config — Restituisce impostazioni del Model Hub."""
+    """GET /api/models/config — Restituisce impostazioni del Model Hub e stato del token HF."""
     try:
+        from .hf_client import resolve_hf_token
+
         cfg = _load_hub_config()
-        self.send_json_response({"success": True, "config": cfg})
+        resolved = resolve_hf_token()
+        self.send_json_response({
+            "success": True,
+            "config": cfg,
+            # The tab is the only place the token is managed, so it also has to
+            # show where an already-active token is coming from: an env var or
+            # a huggingface-cli login is not editable from here.
+            "hf_has_token": bool(resolved["token"]),
+            "hf_token_source": resolved["source"],
+            "hf_token_source_detail": resolved["detail"],
+        })
     except Exception as e:
         log.error("Error in handle_models_config_get: %s", e)
         self.send_json_response({"success": False, "error": str(e)}, 500)
@@ -302,52 +319,127 @@ def handle_models_config_save(self):
     try:
         from core.model_paths import models_dir, set_models_dir
 
-        body = self.read_json_body()
-        _save_hub_config(body)
+        body = self.read_json_body() if hasattr(self, 'read_json_body') else {}
+        if not isinstance(body, dict):
+            body = {}
+
+        saved_cfg = _save_hub_config(body)
 
         # Update models_dir
-        new_dir = (body or {}).get("models_dir")
+        new_dir = body.get("models_dir")
         if new_dir:
-            resolved = set_models_dir(new_dir)
-            downloader_manager.set_models_dir(resolved)
+            resolved_dir = set_models_dir(new_dir)
+            downloader_manager.set_models_dir(resolved_dir)
 
-        # Update HF token in environment and active tasks
-        hf_token = (body or {}).get("hf_token", "").strip()
-        if hf_token:
-            os.environ["HF_TOKEN"] = hf_token
-            os.environ["HUGGINGFACE_TOKEN"] = hf_token
-            os.environ["HUGGING_FACE_HUB_TOKEN"] = hf_token
-        elif "hf_token" in body and not hf_token:
-            os.environ.pop("HF_TOKEN", None)
-            os.environ.pop("HUGGINGFACE_TOKEN", None)
-            os.environ.pop("HUGGING_FACE_HUB_TOKEN", None)
+        # A single write path for the token: environment, every config file that
+        # is read back on resolution, and the downloads already in flight, so an
+        # interrupted gated download retries with the new token straight away.
+        hf_token = (body.get("hf_token") or "").strip() if "hf_token" in body else (saved_cfg.get("hf_token") or "").strip()
+        persist_hf_token(hf_token)
+        saved_cfg["hf_token"] = hf_token
 
-        # Update all active tasks with the new token so immediate retries succeed!
-        with downloader_manager.lock:
-            for t in downloader_manager.tasks.values():
-                t.hf_token = hf_token
-
-        # Also sync to config.json
-        try:
-            cfg_path = os.path.join(_ROOT_DIR, "config.json")
-            if os.path.exists(cfg_path):
-                with open(cfg_path, "r", encoding="utf-8") as f:
-                    c = json.load(f)
-                c["hf_token"] = hf_token
-                with open(cfg_path, "w", encoding="utf-8") as f:
-                    json.dump(c, f, indent=2)
-        except Exception:
-            pass
-
+        resolved = resolve_hf_token()
         self.send_json_response({
             "success": True,
-            "message": "Impostazioni salvate con successo.",
-            "config": body,
+            "message": "Impostazioni e Token salvati con successo.",
+            "config": saved_cfg,
+            "hf_has_token": bool(resolved["token"]),
+            "hf_token_source": resolved["source"],
+            "hf_token_source_detail": resolved["detail"],
             "active_models_dir": models_dir(),
         })
     except Exception as e:
         log.error("Error in handle_models_config_save: %s", e)
         self.send_json_response({"success": False, "error": str(e)}, 500)
+
+
+def handle_models_hf_test_connection(self):
+    """GET/POST /api/models/hf/test-connection — Esegue test completo di connettività verso Hugging Face e verifica token."""
+    import time
+    import json
+    import urllib.request
+    import urllib.error
+
+    body = self.read_json_body() if hasattr(self, 'read_json_body') else {}
+    if not isinstance(body, dict):
+        body = {}
+    # A GET carries no body: fall back to the token already configured, so the
+    # header pill can test the connection without the settings tab being open.
+    token = (body.get("hf_token") or "").strip()
+    if not token:
+        token = (get_effective_hf_token() or "").strip()
+
+    t_start = time.time()
+    reachability_ok = False
+    latency_ms = 0
+    token_valid = False
+    user_info = {}
+    error_detail = None
+
+    # 1. Test basic reachability to Hugging Face API
+    try:
+        req = urllib.request.Request("https://huggingface.co/api/models?limit=1")
+        req.add_header("User-Agent", "SigmaStudio-ModelHub/2.0")
+        with urllib.request.urlopen(req, timeout=8) as resp:
+            if resp.status == 200:
+                reachability_ok = True
+                latency_ms = round((time.time() - t_start) * 1000, 1)
+    except Exception as ex:
+        error_detail = f"Impossibile raggiungere i server Hugging Face: {ex}"
+
+    if not reachability_ok:
+        self.send_json_response({
+            "success": False,
+            "connected": False,
+            "latency_ms": None,
+            "token_valid": False,
+            "error": error_detail or "Connessione a Hugging Face fallita. Controlla la connessione internet.",
+            "message": "❌ Hugging Face non raggiungibile."
+        })
+        return
+
+    # 2. Test token if present
+    if token:
+        try:
+            req_auth = urllib.request.Request("https://huggingface.co/api/whoami-v2")
+            req_auth.add_header("Authorization", f"Bearer {token}")
+            req_auth.add_header("User-Agent", "SigmaStudio-ModelHub/2.0")
+            with urllib.request.urlopen(req_auth, timeout=8) as resp:
+                if resp.status == 200:
+                    data = json.loads(resp.read().decode("utf-8"))
+                    token_valid = True
+                    user_info = {
+                        "username": data.get("name") or data.get("fullname") or "Utente HF",
+                        "email": data.get("email") or "",
+                        "type": data.get("type") or "user",
+                        "orgs": [o.get("name") for o in data.get("orgs", []) if o.get("name")]
+                    }
+        except urllib.error.HTTPError as http_err:
+            if http_err.code in (401, 403):
+                error_detail = "Token Hugging Face non valido o revocato (HTTP 401 Unauthorized)."
+            else:
+                error_detail = f"Errore verifica token: HTTP {http_err.code}"
+        except Exception as ex:
+            error_detail = f"Errore verifica token: {ex}"
+    else:
+        error_detail = "Nessun token configurato (download anonimo con velocità ridotta ~50KB/s e senza accesso a modelli Gated come Llama)."
+
+    msg = f"✅ Connessione a Hugging Face attiva ({latency_ms}ms)."
+    if token_valid:
+        msg += f" Autenticato come @{user_info.get('username')}."
+    else:
+        msg += f" {error_detail}"
+
+    self.send_json_response({
+        "success": True,
+        "connected": True,
+        "latency_ms": latency_ms,
+        "token_valid": token_valid,
+        "token_configured": bool(token),
+        "user_info": user_info,
+        "error": error_detail if not token_valid else None,
+        "message": msg
+    })
 
 
 def handle_models_hf_token_test(self):
@@ -559,6 +651,7 @@ def register_routes(app=None) -> None:
         '/api/models/hf/search': handle_models_hf_search,
         '/api/models/hf/details': handle_models_hf_details,
         '/api/models/hf/downloads': handle_models_hf_downloads_list,
+        '/api/models/hf/test-connection': handle_models_hf_test_connection,
         '/api/models/local/list': handle_models_local_list,
         '/api/models/config': handle_models_config_get,
         '/api/models/convert/info': handle_models_convert_info,
@@ -573,6 +666,7 @@ def register_routes(app=None) -> None:
         '/api/models/hf/download/retry': handle_models_hf_download_retry,
         '/api/models/hf/download/remove': handle_models_hf_download_remove,
         '/api/models/hf/token/test': handle_models_hf_token_test,
+        '/api/models/hf/test-connection': handle_models_hf_test_connection,
         '/api/models/engine/load': handle_models_engine_load,
         '/api/models/engine/unload': handle_models_engine_unload,
         '/api/models/config': handle_models_config_save,
