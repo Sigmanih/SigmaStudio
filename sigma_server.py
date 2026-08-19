@@ -330,6 +330,11 @@ SigmaAPIHandler.handle_hardware_config = handle_hardware_config
 SigmaAPIHandler.handle_hardware_restart_ollama = handle_hardware_restart_ollama
 SigmaAPIHandler.handle_hardware_gpu_kill = handle_hardware_gpu_kill
 
+# 18b. System Capabilities & Module Compatibility
+from core.system_handler import handle_system_capabilities, handle_system_available_modules
+SigmaAPIHandler.handle_system_capabilities = handle_system_capabilities
+SigmaAPIHandler.handle_system_available_modules = handle_system_available_modules
+
 # 19. Skills & Marketplace Handlers
 
 from core.integrations.handlers import (

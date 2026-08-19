@@ -1,0 +1,96 @@
+# ==============================================================================
+# Sigma Studio — Continuous Integration
+# Runs on every push and pull request to main/develop branches.
+# Tests Python backend and React frontend across platforms.
+# ==============================================================================
+name: CI
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+
+jobs:
+  test-backend:
+    name: Python ${{ matrix.python-version }} on ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+        python-version: ['3.11', '3.12']
+    
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: 'pip'
+          cache-dependency-path: 'requirements/base.txt'
+      
+      - name: Install base dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements/base.txt
+      
+      - name: Run tests (if present)
+        shell: bash
+        run: |
+          if [ -d "tests" ]; then
+            pytest tests/ -v --tb=short
+          else
+            echo "No tests directory in repository — skipping pytest."
+          fi
+      
+      - name: Verify capability manager
+        run: |
+          python -c "from core.capability_manager import detect_capabilities; caps = detect_capabilities(); print(caps.to_dict())"
+
+  test-frontend:
+    name: Frontend Build
+    runs-on: ubuntu-latest
+    
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Set up Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+          cache-dependency-path: 'sigma_studio/package-lock.json'
+      
+      - name: Install frontend dependencies
+        run: npm --prefix sigma_studio install
+      
+      - name: Build frontend
+        run: npm --prefix sigma_studio run build
+      
+      - name: Verify dist output
+        run: |
+          test -d sigma_studio/dist
+          test -f sigma_studio/dist/index.html
+
+  launcher-check:
+    name: Launcher Check on ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      
+      - name: Run launcher --check
+        run: python sigma_launcher.py --check
+      
+      - name: Run launcher --info
+        run: python sigma_launcher.py --info

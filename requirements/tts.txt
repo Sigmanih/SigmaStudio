@@ -1,0 +1,7 @@
+# ==============================================================================
+# Sigma Studio — Text-to-Speech Dependencies (Optional)
+# Kokoro 82M — Apache-2.0, CPU-friendly, Italian voices
+# ==============================================================================
+kokoro
+soundfile
+misaki[it]

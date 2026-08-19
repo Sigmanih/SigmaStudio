@@ -1,0 +1,9 @@
+# ==============================================================================
+# Sigma Studio — CUDA Dependencies (NVIDIA GPU)
+# Install with: pip install -r requirements/cuda.txt
+# For specific CUDA version: pip install torch --index-url https://download.pytorch.org/whl/cu124
+# ==============================================================================
+-r ai-core.txt
+torch>=2.0.0
+peft>=0.10.0
+bitsandbytes>=0.43.0

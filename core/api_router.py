@@ -71,6 +71,8 @@ def register_get_handlers(handler_class):
         '/api/hardware/restart-ollama': 'handle_hardware_restart_ollama',
         '/api/hardware/gpu/processes': 'handle_hardware_gpu_processes',
         '/api/hardware/gpu-processes': 'handle_hardware_gpu_processes',
+        '/api/system/capabilities': 'handle_system_capabilities',
+        '/api/system/available_modules': 'handle_system_available_modules',
         # Voice Synthesis Endpoints
         '/api/tts/engines': 'handle_tts_engines',
         # MCP approvals awaiting the operator

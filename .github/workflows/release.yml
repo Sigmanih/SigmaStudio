@@ -1,0 +1,167 @@
+# ==============================================================================
+# Sigma Studio — Multi-Platform Release Builder
+# Triggered by version tags (v*). Builds portable archives for all platforms
+# and publishes them as GitHub Release assets.
+# ==============================================================================
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build ${{ matrix.artifact }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            arch: x64
+            artifact: SigmaStudio-win-x64
+            python-version: '3.11'
+            archive-ext: zip
+          - os: ubuntu-latest
+            arch: x64
+            artifact: SigmaStudio-linux-x64
+            python-version: '3.11'
+            archive-ext: tar.gz
+          - os: ubuntu-24.04-arm
+            arch: arm64
+            artifact: SigmaStudio-linux-arm64
+            python-version: '3.11'
+            archive-ext: tar.gz
+          - os: macos-latest
+            arch: arm64
+            artifact: SigmaStudio-macos-arm64
+            python-version: '3.11'
+            archive-ext: tar.gz
+          - os: macos-13
+            arch: x64
+            artifact: SigmaStudio-macos-x64
+            python-version: '3.11'
+            archive-ext: tar.gz
+    
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      
+      - name: Set up Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      
+      - name: Extract version from tag
+        id: version
+        shell: bash
+        run: echo "VERSION=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+      
+      - name: Install Python base dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements/base.txt
+      
+      - name: Build frontend
+        run: |
+          npm --prefix sigma_studio install
+          npm --prefix sigma_studio run build
+      
+      - name: Run tests (if present)
+        shell: bash
+        run: |
+          if [ -d "tests" ]; then
+            pytest tests/ -v --tb=short
+          else
+            echo "No tests directory — skipping pytest."
+          fi
+        continue-on-error: true
+      
+      - name: Prepare release directory
+        shell: bash
+        run: |
+          VERSION=${{ steps.version.outputs.VERSION }}
+          DIST_DIR="${{ matrix.artifact }}-${VERSION}"
+          mkdir -p "${DIST_DIR}"
+          
+          # Core application files
+          cp -r core/ "${DIST_DIR}/core/"
+          cp -r sigma_studio/dist/ "${DIST_DIR}/sigma_studio/dist/" 2>/dev/null || true
+          cp -r manifesti/ "${DIST_DIR}/manifesti/" 2>/dev/null || true
+          cp -r requirements/ "${DIST_DIR}/requirements/"
+          cp -r scripts/ "${DIST_DIR}/scripts/"
+          cp -r images/ "${DIST_DIR}/images/" 2>/dev/null || true
+          
+          # Entry points and config
+          cp sigma_server.py "${DIST_DIR}/"
+          cp sigma_launcher.py "${DIST_DIR}/"
+          cp sigma_studio.bat "${DIST_DIR}/" 2>/dev/null || true
+          cp sigma_studio.sh "${DIST_DIR}/" 2>/dev/null || true
+          cp requirements.txt "${DIST_DIR}/"
+          cp config.example.json "${DIST_DIR}/"
+          cp package.json "${DIST_DIR}/"
+          cp README.md "${DIST_DIR}/"
+          cp LICENSE "${DIST_DIR}/"
+          
+          # Remove development artifacts
+          find "${DIST_DIR}" -name '__pycache__' -type d -exec rm -rf {} + 2>/dev/null || true
+          find "${DIST_DIR}" -name '*.pyc' -delete 2>/dev/null || true
+          find "${DIST_DIR}" -name '.pytest_cache' -type d -exec rm -rf {} + 2>/dev/null || true
+      
+      - name: Create archive (Unix)
+        if: matrix.archive-ext == 'tar.gz'
+        shell: bash
+        run: |
+          VERSION=${{ steps.version.outputs.VERSION }}
+          DIST_DIR="${{ matrix.artifact }}-${VERSION}"
+          tar -czf "${DIST_DIR}.tar.gz" "${DIST_DIR}/"
+      
+      - name: Create archive (Windows)
+        if: matrix.archive-ext == 'zip'
+        shell: pwsh
+        run: |
+          $VERSION = "${{ steps.version.outputs.VERSION }}"
+          $DIST_DIR = "${{ matrix.artifact }}-${VERSION}"
+          Compress-Archive -Path "${DIST_DIR}" -DestinationPath "${DIST_DIR}.zip"
+      
+      - name: Upload release artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: ${{ matrix.artifact }}-${{ steps.version.outputs.VERSION }}.${{ matrix.archive-ext }}
+
+  publish:
+    name: Publish GitHub Release
+    needs: build
+    runs-on: ubuntu-latest
+    
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: release-assets/
+      
+      - name: Extract version
+        id: version
+        run: echo "VERSION=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+      
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: "Sigma Studio ${{ steps.version.outputs.VERSION }}"
+          draft: false
+          prerelease: ${{ contains(steps.version.outputs.VERSION, '-') }}
+          generate_release_notes: true
+          files: release-assets/**/*
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

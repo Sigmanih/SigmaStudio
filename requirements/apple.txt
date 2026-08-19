@@ -1,0 +1,6 @@
+# ==============================================================================
+# Sigma Studio — Apple Silicon Dependencies (MPS)
+# ==============================================================================
+-r ai-core.txt
+torch>=2.0.0
+# Standard PyPI torch wheel includes MPS support on Apple Silicon

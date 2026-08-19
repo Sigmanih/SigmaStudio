@@ -1,0 +1,9 @@
+# ==============================================================================
+# Sigma Studio — AI Core Dependencies (CPU-compatible)
+# ==============================================================================
+-r base.txt
+transformers>=4.40.0
+datasets>=2.18.0
+huggingface_hub>=0.22.0
+safetensors>=0.4.0
+accelerate>=0.28.0

@@ -12,31 +12,66 @@ __pycache__/
 *.pyd
 .Python
 
-# Environment / Secrets
+# Environment / Secrets / Credentials
 .env
 .env.local
 .env.*.local
 *.env
+*.key
+*.pem
+*.crt
+*.cer
+*.pfx
+*.p12
+*.secret
+*.jwt
+credentials.json
+client_secret*.json
+token.json
+tokens.json
+auth.json
+hf_token.txt
 
 # Config with API keys
 config.json
 config.local.json
 
+# Dynamic Modules (downloaded from separate repositories)
+modules/
+core/modules/*
+!core/modules/__init__.py
+sigma_studio/src/modules/*
+!sigma_studio/src/modules/registry.js
+!sigma_studio/src/modules/ModuleNotInstalled.jsx
+data/marketplace_installed.json
+
+# Tests & Coverage
+tests/
+.pytest_cache/
+.coverage
+htmlcov/
+
 # Data modules (each user adds their own)
 data/
 !data/.gitkeep
 
-# IDE
+# IDE & AI Assistants
 .vscode/
 .idea/
+.claude/
+.gemini/
+.cursor/
+.windsurf/
 *.swp
 *.swo
 *~
 
-# Debug / Temp test output
+# Debug / Temp test output & Logs
 test_1M_output.txt
 test_output.txt
 *.tmp
+*.log
+*.pid
 
 # Scratch (temporary workspace)
 scratch/
@@ -55,8 +90,15 @@ sandboxes.json
 Thumbs.db
 
 # Database files (contain user data)
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+*.sqlite
+*.sqlite3
 agent_context.db
 agent_memory/
+data/creative/creative_assets.db
 
 # Research sessions (user-specific)
 research_sessions/

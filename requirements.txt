@@ -1,6 +1,15 @@
 # ==============================================================================
 # Sigma Studio v8 — Python Dependencies
 # ==============================================================================
+# This file installs the full dependency stack for backward compatibility.
+# For platform-specific installation, use the files in requirements/:
+#   requirements/base.txt    — Core web framework (all platforms)
+#   requirements/ai-core.txt — AI/ML without GPU-specific packages
+#   requirements/cuda.txt    — Full NVIDIA CUDA stack
+#   requirements/cpu.txt     — CPU-only (Raspberry Pi, ARM64)
+#   requirements/apple.txt   — Apple Silicon (MPS)
+#   requirements/tts.txt     — Text-to-Speech (optional)
+# ==============================================================================
 
 # Core Web Framework & ASGI Server
 fastapi>=0.100.0
@@ -15,14 +24,6 @@ jinja2>=3.1.0
 # Testing Framework
 pytest>=7.4.0
 
-# Neural Text-to-Speech (optional)
-# Without these the chat falls back to the browser's Web Speech voices.
-#   Kokoro 82M — Apache-2.0, CPU-friendly, Italian voices Sara and Nicola:
-#     pip install kokoro soundfile misaki[it]
-#   XTTS v2 — more expressive but NON-COMMERCIAL licence, and it pins a narrow
-#   transformers range that can disturb the Training Lab stack:
-#     pip install coqui-tts
-
 # AI / ML Frameworks & HuggingFace Tooling
 torch>=2.0.0
 transformers>=4.40.0
@@ -31,24 +32,8 @@ peft>=0.10.0
 accelerate>=0.28.0
 huggingface_hub>=0.22.0
 safetensors>=0.4.0
-bitsandbytes>=0.43.0        # 4-bit/8-bit quantization for the safetensors path
+bitsandbytes>=0.43.0
 
 # SigmaEngine inference backends (optional)
-# The engine picks a backend per model format and per machine; each is only
-# offered when its dependency is importable.
-#
-#   GGUF via llama.cpp — the portable path. Runs on CUDA, Metal, Vulkan and
-#   plain ARM NEON, so it is what makes small models usable on boards with no
-#   discrete GPU. PyPI ships only a source distribution; use the prebuilt
-#   wheels instead:
-#     CUDA:  pip install llama-cpp-python \
-#              --extra-index-url https://abetlen.github.io/llama-cpp-python/whl/cu125
-#     CPU:   pip install llama-cpp-python \
-#              --extra-index-url https://abetlen.github.io/llama-cpp-python/whl/cpu
-#   On Blackwell (sm_120) the cu125 build has no native SASS, so the driver
-#   JIT-compiles its PTX on first use: expect one slow generation, then full
-#   speed once the driver caches the result.
-#
-#   Fused linear-attention kernels for hybrid models (Qwen3.5 and similar).
-#   Without it those layers fall back to a much slower torch implementation:
-#     pip install flash-linear-attention
+# See the original comments in the old requirements.txt for installation
+# instructions for llama-cpp-python and flash-linear-attention.
