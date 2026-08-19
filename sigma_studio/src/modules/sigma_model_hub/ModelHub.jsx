@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import {
   DownloadCloud, Search, HardDrive, Zap, Shield, Key,
   CheckCircle2, RefreshCw, Folder, Layers, Activity, Sparkles, ExternalLink,
-  ArrowRight, XCircle
+  ArrowRight, XCircle, RotateCcw
 } from 'lucide-react';
 import { useApp } from '../../contexts/AppContext';
 import HfBrowser from './HfBrowser';

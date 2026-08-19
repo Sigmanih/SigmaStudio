@@ -3,7 +3,7 @@ import {
   Search, Download, Star, ArrowDown, Sparkles, Filter, CheckCircle2,
   Layers, Cpu, Activity, ExternalLink, HardDrive, ArrowUpDown, ChevronDown,
   Calendar, RefreshCw, PlusCircle, ShieldCheck, FolderDown, FileCode, ArrowUp,
-  XCircle, Zap, RotateCcw, X
+  XCircle, Zap, RotateCcw, X, AlertTriangle
 } from 'lucide-react';
 
 const CATEGORIES = [
