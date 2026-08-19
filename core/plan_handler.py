@@ -105,6 +105,7 @@ def _generate_plan(self, req):
         project_tree = '\n'.join(tree_lines)
     
     # --- Planning prompt ---
+    context_section = f"### File aperti:\n{context_str}\n" if context_str else ""
     plan_prompt = f"""{system_prompt}
 
 ## 🎯 OBIETTIVO
@@ -116,8 +117,7 @@ Oggi: {time_ctx}
 ### Struttura del progetto (sigma_studio/src/):
 {project_tree[:2000]}
 
-{f'### File aperti:\n{context_str}' if context_str else ''}
-
+{context_section}
 ### AZIONI DISPONIBILI
 I tipi di azione validi sono:
 - read_file: legge un file. Parametri: "path"

@@ -2,7 +2,6 @@
 # Sigma Studio — CPU Dependencies (No GPU Required)
 # Suitable for: Raspberry Pi, ARM64 Linux, headless servers
 # ==============================================================================
+--extra-index-url https://download.pytorch.org/whl/cpu
 -r ai-core.txt
 torch>=2.0.0
-# Note: Install CPU-only PyTorch:
-#   pip install torch --index-url https://download.pytorch.org/whl/cpu

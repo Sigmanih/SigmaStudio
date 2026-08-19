@@ -126,7 +126,7 @@ def install_dependencies(platform_info):
         if os.path.exists(req_file):
             print_log(f"[SIGMA] Installing {req_file}...", Colors.OKCYAN)
             try:
-                subprocess.check_call([python_exe, "-m", "pip", "install", "-r", req_file])
+                subprocess.check_call([python_exe, "-m", "pip", "install", "--default-timeout=120", "--retries", "5", "-r", req_file])
                 return True
             except subprocess.CalledProcessError as e:
                 print_log(f"[SIGMA] Warning: pip install returned error: {e}", Colors.WARNING)
