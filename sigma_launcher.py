@@ -262,13 +262,29 @@ def ensure_frontend():
     
     if needs_build:
         print_log("[SIGMA] Frontend build required. Preparing assets...", Colors.OKCYAN)
+        lock_file = os.path.join(frontend_dir, "package-lock.json")
         
         if not os.path.exists(node_modules_dir):
             print_log("[SIGMA] Installing frontend dependencies (npm install)...", Colors.OKCYAN)
-            subprocess.run([npm_bin, "install"], cwd=frontend_dir, check=False)
+            subprocess.run([npm_bin, "install", "--include=optional"], cwd=frontend_dir, check=False)
             
         print_log("[SIGMA] Running Vite build (npm run build)...", Colors.OKCYAN)
         res = subprocess.run([npm_bin, "run", "build"], cwd=frontend_dir)
+        
+        # Self-healing for cross-platform optionalDependencies bug (e.g. missing native rolldown/esbuild binding on arm64)
+        if res.returncode != 0:
+            print_log("[SIGMA] Build failed due to missing platform native bindings. Cleaning stale node_modules & package-lock.json for fresh install...", Colors.WARNING)
+            if os.path.exists(node_modules_dir):
+                shutil.rmtree(node_modules_dir, ignore_errors=True)
+            if os.path.exists(lock_file):
+                try:
+                    os.remove(lock_file)
+                except Exception:
+                    pass
+            print_log("[SIGMA] Reinstalling frontend dependencies with optional native packages...", Colors.OKCYAN)
+            subprocess.run([npm_bin, "install", "--include=optional"], cwd=frontend_dir, check=False)
+            print_log("[SIGMA] Retrying Vite build...", Colors.OKCYAN)
+            res = subprocess.run([npm_bin, "run", "build"], cwd=frontend_dir)
         
         if res.returncode == 0:
             try:

@@ -34,5 +34,11 @@ else
     echo -e "\033[92m[SIGMA] Node.js $(node -v) found (>= 20).\033[0m"
 fi
 
+# Clean stale cross-platform node_modules/package-lock.json if ARM64 native bindings missing
+if [ -d "sigma_studio/node_modules" ] && [ ! -d "sigma_studio/node_modules/@rolldown/binding-linux-arm64-gnu" ]; then
+    echo -e "\033[93m[SIGMA] Cleaning stale node_modules for fresh ARM64 native bindings...\033[0m"
+    rm -rf sigma_studio/node_modules sigma_studio/package-lock.json
+fi
+
 echo -e "\033[92m[SIGMA] System dependencies met. Running python installer...\033[0m"
 python3 sigma_launcher.py --install
