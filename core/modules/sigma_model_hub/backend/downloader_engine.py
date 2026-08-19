@@ -263,6 +263,7 @@ class ModelDownloadManager:
         task.status = "downloading"
         chunk_size = 1024 * 1024  # 1 MB
         temp_path = f"{task.save_path}.part"
+        os.makedirs(os.path.dirname(task.save_path), exist_ok=True)
         max_retries = 6
 
         for attempt in range(1, max_retries + 1):
@@ -364,6 +365,7 @@ class ModelDownloadManager:
                 fname = file_info.get("filename", "")
                 save_file = os.path.join(target_dir, fname)
                 part_file = f"{save_file}.part"
+                os.makedirs(os.path.dirname(save_file), exist_ok=True)
                 if os.path.exists(save_file):
                     already_done_bytes += os.path.getsize(save_file)
                 elif os.path.exists(part_file):
@@ -393,6 +395,9 @@ class ModelDownloadManager:
                 d_url = file_info.get("download_url") or f"https://huggingface.co/{task.model_id}/resolve/main/{fname}"
                 save_file = os.path.join(target_dir, fname)
                 temp_file = f"{save_file}.part"
+
+                # Ensure nested subdirectory exists (e.g. encoding/tests/...)
+                os.makedirs(os.path.dirname(save_file), exist_ok=True)
 
                 task.current_file_idx = idx + 1
                 task.current_file_name = fname
@@ -426,6 +431,7 @@ class ModelDownloadManager:
 
                         with urllib.request.urlopen(req, timeout=30) as resp:
                             mode = "ab" if existing_bytes > 0 else "wb"
+                            os.makedirs(os.path.dirname(temp_file), exist_ok=True)
                             with open(temp_file, mode) as out_f:
                                 while not task._cancel_flag:
                                     chunk = resp.read(chunk_size)
