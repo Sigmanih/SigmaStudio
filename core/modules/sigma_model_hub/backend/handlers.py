@@ -13,22 +13,34 @@ from .model_inventory import scan_local_models, deploy_model_to_sigma_engine, un
 
 log = get_logger(__name__)
 
-_CONFIG_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(__file__)))), "data", "model_hub_config.json")
+_ROOT_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))))
+_CONFIG_PATH = os.path.join(_ROOT_DIR, "data", "model_hub_config.json")
 
 
 def _load_hub_config() -> dict:
-    if os.path.exists(_CONFIG_PATH):
-        try:
-            with open(_CONFIG_PATH, "r", encoding="utf-8") as f:
-                return json.load(f)
-        except Exception:
-            pass
-    return {
+    from .hf_client import get_effective_hf_token
+    cfg = {
         "models_dir": DEFAULT_MODELS_DIR,
         "hf_token": "",
         "auto_deploy_on_download": True,
         "preferred_quantization": "Q4_K_M"
     }
+    if os.path.exists(_CONFIG_PATH):
+        try:
+            with open(_CONFIG_PATH, "r", encoding="utf-8") as f:
+                saved = json.load(f)
+                if isinstance(saved, dict):
+                    cfg.update(saved)
+        except Exception:
+            pass
+
+    # If hf_token is empty in config, check env vars or cached token
+    if not cfg.get("hf_token"):
+        effective = get_effective_hf_token()
+        if effective:
+            cfg["hf_token"] = effective
+
+    return cfg
 
 
 def _save_hub_config(cfg: dict) -> None:

@@ -109,6 +109,10 @@ class ModelDownloadManager:
         os.makedirs(target_dir, exist_ok=True)
         save_path = os.path.join(target_dir, filename)
 
+        if not hf_token:
+            from .hf_client import get_effective_hf_token
+            hf_token = get_effective_hf_token()
+
         task_id = str(uuid.uuid4())[:8]
         task = ModelDownloadTask(
             task_id=task_id,
@@ -131,13 +135,16 @@ class ModelDownloadManager:
     start_download = start_single_download
 
     def start_repo_download(
-
         self,
         model_id: str,
         files_list: Optional[List[Dict[str, str]]] = None,
         hf_token: Optional[str] = None
     ) -> Dict[str, Any]:
         """Starts a background download task for the entire model (all shards and config files)."""
+        if not hf_token:
+            from .hf_client import get_effective_hf_token
+            hf_token = get_effective_hf_token()
+
         if not files_list:
             from .hf_client import get_hf_model_details
             details = get_hf_model_details(model_id, hf_token=hf_token)
@@ -186,6 +193,10 @@ class ModelDownloadManager:
             task = self.tasks.get(task_id)
             if not task:
                 return None
+
+            if not task.hf_token:
+                from .hf_client import get_effective_hf_token
+                task.hf_token = get_effective_hf_token()
 
             task._cancel_flag = False
             task.status = "queued"
@@ -282,8 +293,14 @@ class ModelDownloadManager:
 
                 req = urllib.request.Request(task.download_url)
                 req.add_header("User-Agent", "SigmaStudio-ModelHub/2.0")
-                if task.hf_token:
-                    req.add_header("Authorization", f"Bearer {task.hf_token}")
+                token = task.hf_token
+                if not token:
+                    from .hf_client import get_effective_hf_token
+                    token = get_effective_hf_token()
+                    task.hf_token = token
+
+                if token:
+                    req.add_header("Authorization", f"Bearer {token}")
                 if existing_bytes > 0:
                     req.add_header("Range", f"bytes={existing_bytes}-")
 
@@ -334,6 +351,27 @@ class ModelDownloadManager:
                 task.eta_seconds = 0
                 log.info(f"[ModelDownloader] Task {task.task_id} COMPLETED: {task.save_path}")
                 return
+
+            except urllib.error.HTTPError as ex:
+                if ex.code in (401, 403):
+                    auth_err = (
+                        f"Autenticazione richiesta (HTTP {ex.code}): Il modello '{task.model_id}' "
+                        f"richiede un Hugging Face Access Token valido e l'accettazione della licenza del modello su huggingface.co. "
+                        f"Inserisci il tuo Token (read) nella scheda 'Directory & HF Token' di Model Hub."
+                    )
+                    task.status = "failed"
+                    task.error_message = auth_err
+                    log.error(f"[ModelDownloader] Task {task.task_id} AUTH ERROR: {auth_err}")
+                    return
+
+                log.warning(f"[ModelDownloader] HTTP error {ex.code} on {task.filename} (attempt {attempt}/{max_retries}): {ex}. Retrying with Range resume...")
+                if attempt < max_retries:
+                    time.sleep(2 * attempt)
+                else:
+                    task.status = "failed"
+                    task.error_message = f"Errore HTTP {ex.code} dopo {max_retries} tentativi: {ex}"
+                    log.error(f"[ModelDownloader] Task {task.task_id} FAILED: {ex}")
+                    return
 
             except (urllib.error.URLError, http.client.RemoteDisconnected, http.client.IncompleteRead,
                     TimeoutError, socket.timeout, ConnectionResetError, OSError) as ex:
@@ -424,8 +462,14 @@ class ModelDownloadManager:
 
                         req = urllib.request.Request(d_url)
                         req.add_header("User-Agent", "SigmaStudio-ModelHub/2.0")
-                        if task.hf_token:
-                            req.add_header("Authorization", f"Bearer {task.hf_token}")
+                        token = task.hf_token
+                        if not token:
+                            from .hf_client import get_effective_hf_token
+                            token = get_effective_hf_token()
+                            task.hf_token = token
+
+                        if token:
+                            req.add_header("Authorization", f"Bearer {token}")
                         if existing_bytes > 0:
                             req.add_header("Range", f"bytes={existing_bytes}-")
 
@@ -466,6 +510,24 @@ class ModelDownloadManager:
                         task.progress_pct = min(99.9, ((idx + 1) / total_files) * 100.0)
                         shard_success = True
                         break
+
+                    except urllib.error.HTTPError as ex:
+                        if ex.code in (401, 403):
+                            auth_err = (
+                                f"Autenticazione richiesta (HTTP {ex.code}): Il modello '{task.model_id}' "
+                                f"richiede un Hugging Face Access Token valido e l'accettazione della licenza del modello su huggingface.co. "
+                                f"Inserisci il tuo Token (read) nella scheda 'Directory & HF Token' di Model Hub."
+                            )
+                            task.status = "failed"
+                            task.error_message = auth_err
+                            log.error(f"[ModelDownloader] Repo Task {task.task_id} AUTH ERROR: {auth_err}")
+                            return
+
+                        log.warning(f"[ModelDownloader] HTTP error {ex.code} on shard {idx+1}/{total_files} ({fname}, attempt {attempt}/{max_shard_retries}): {ex}. Retrying with Range...")
+                        if attempt < max_shard_retries:
+                            time.sleep(2 * attempt)
+                        else:
+                            raise Exception(f"Errore HTTP {ex.code} su shard {idx+1}/{total_files} ({fname}): {ex}")
 
                     except (urllib.error.URLError, http.client.RemoteDisconnected, http.client.IncompleteRead,
                             TimeoutError, socket.timeout, ConnectionResetError, OSError) as ex:

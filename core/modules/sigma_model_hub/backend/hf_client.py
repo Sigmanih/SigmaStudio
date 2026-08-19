@@ -15,6 +15,63 @@ log = get_logger(__name__)
 
 HF_API_BASE = "https://huggingface.co/api"
 
+
+def get_effective_hf_token(explicit_token: Optional[str] = None) -> Optional[str]:
+    """Resolves the best available Hugging Face API token from explicit arg, env vars, config, or HF CLI cache."""
+    if explicit_token and explicit_token.strip():
+        return explicit_token.strip()
+
+    # 1. Check environment variables
+    for env_key in ("HF_TOKEN", "HUGGING_FACE_HUB_TOKEN", "HUGGINGFACE_HUB_TOKEN", "HUGGINGFACE_TOKEN"):
+        val = os.getenv(env_key)
+        if val and val.strip():
+            return val.strip()
+
+    # 2. Check model hub config file(s)
+    root_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))))
+    for p in (
+        os.path.join(root_dir, "data", "model_hub_config.json"),
+        os.path.join(root_dir, "core", "data", "model_hub_config.json"),
+    ):
+        if os.path.exists(p):
+            try:
+                with open(p, "r", encoding="utf-8") as f:
+                    cfg = json.load(f)
+                    tok = (cfg.get("hf_token") or "").strip()
+                    if tok:
+                        return tok
+            except Exception:
+                pass
+
+    # 3. Check config.json
+    config_json_path = os.path.join(root_dir, "config.json")
+    if os.path.exists(config_json_path):
+        try:
+            with open(config_json_path, "r", encoding="utf-8") as f:
+                cfg = json.load(f)
+                tok = (cfg.get("hf_token") or cfg.get("ai_providers", {}).get("huggingface", {}).get("token") or "").strip()
+                if tok:
+                    return tok
+        except Exception:
+            pass
+
+    # 4. Check ~/.cache/huggingface/token or ~/.huggingface/token
+    for cache_path in (
+        os.path.expanduser("~/.cache/huggingface/token"),
+        os.path.expanduser("~/.huggingface/token"),
+    ):
+        if os.path.exists(cache_path):
+            try:
+                with open(cache_path, "r", encoding="utf-8") as f:
+                    tok = f.read().strip()
+                    if tok:
+                        return tok
+            except Exception:
+                pass
+
+    return None
+
+
 # Recognized verified official organizations and AI labs
 OFFICIAL_ORGANIZATIONS = {
     'qwen', 'meta-llama', 'deepseek-ai', 'mistralai', 'google', 'microsoft',

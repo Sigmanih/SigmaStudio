@@ -428,20 +428,40 @@ export default function ModelHub({ addToast, openTab }) {
             <div style={{ minWidth: 0 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                 <span style={{ fontSize: '0.82rem', fontWeight: 800, color: textPrimary, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                  Download Interrotto: {lastFailedTask.model_id}
+                  {lastFailedTask.error_message && (lastFailedTask.error_message.includes('401') || lastFailedTask.error_message.includes('403') || lastFailedTask.error_message.includes('Autenticazione'))
+                    ? `🔒 Token HF Richiesto: ${lastFailedTask.model_id}`
+                    : `Download Interrotto: ${lastFailedTask.model_id}`}
                 </span>
                 <span style={{ fontSize: '0.78rem', fontWeight: 800, color: '#ef4444', fontFamily: 'monospace' }}>
                   {lastFailedTask.progress_pct}%
                 </span>
               </div>
-              <div style={{ fontSize: '0.68rem', color: '#10b981', marginTop: '2px', fontWeight: 700 }}>
-                💾 {formatMb(lastFailedTask.downloaded_mb)} già salvati su disco (riprende da dove si era fermato)
+              <div style={{ fontSize: '0.68rem', color: lastFailedTask.error_message && (lastFailedTask.error_message.includes('401') || lastFailedTask.error_message.includes('403') || lastFailedTask.error_message.includes('Autenticazione')) ? '#f59e0b' : '#10b981', marginTop: '2px', fontWeight: 700 }}>
+                {lastFailedTask.error_message && (lastFailedTask.error_message.includes('401') || lastFailedTask.error_message.includes('403') || lastFailedTask.error_message.includes('Autenticazione'))
+                  ? '⚠️ Modello protetto / Gated: Inserisci il tuo Access Token HF nelle Impostazioni'
+                  : `💾 ${formatMb(lastFailedTask.downloaded_mb)} già salvati su disco (riprende da dove si era fermato)`}
               </div>
             </div>
           </div>
 
 
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0 }}>
+            {lastFailedTask.error_message && (lastFailedTask.error_message.includes('401') || lastFailedTask.error_message.includes('403') || lastFailedTask.error_message.includes('Autenticazione')) && (
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setActiveTab('settings');
+                }}
+                style={{
+                  padding: '6px 14px', borderRadius: '8px', border: 'none',
+                  background: 'linear-gradient(135deg, #f59e0b, #ea580c)', color: '#ffffff',
+                  fontSize: '0.74rem', fontWeight: 800, cursor: 'pointer',
+                  display: 'flex', alignItems: 'center', gap: '4px', boxShadow: '0 0 10px rgba(245, 158, 11, 0.3)'
+                }}
+              >
+                ⚙️ Inserisci Token HF
+              </button>
+            )}
             <button
               onClick={(e) => {
                 e.stopPropagation();
