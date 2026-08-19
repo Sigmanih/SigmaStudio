@@ -9,6 +9,9 @@ import React from 'react';
 // Scansiona dinamicamente tutti i moduli installati nella directory
 const installedModules = import.meta.glob('./*/index.jsx');
 
+// Scansiona dinamicamente tutti i Floating Panel opzionali presenti nella directory
+const installedFloatingPanels = import.meta.glob('./*/HardwareFloatingPanel.jsx');
+
 // Mappatura tabType → path del modulo
 const TAB_TO_MODULE_PATH = {
   // Multimodale & Grafica
@@ -64,6 +67,23 @@ export function getLazyModule(tabType) {
     _componentCache[tabType] = React.lazy(installedModules[path]);
   }
   return _componentCache[tabType];
+}
+
+/**
+ * Restituisce il componente React.lazy() per l'Hardware Floating Panel se il modulo sigma_hardware_lab è installato.
+ * Altrimenti ritorna null.
+ *
+ * @returns {React.LazyExoticComponent | null}
+ */
+export function getLazyHardwareFloating() {
+  const path = './sigma_hardware_lab/HardwareFloatingPanel.jsx';
+  if (!installedFloatingPanels[path]) {
+    return null;
+  }
+  if (!_componentCache['hardware_floating']) {
+    _componentCache['hardware_floating'] = React.lazy(installedFloatingPanels[path]);
+  }
+  return _componentCache['hardware_floating'];
 }
 
 /**

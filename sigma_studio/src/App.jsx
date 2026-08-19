@@ -16,6 +16,7 @@ import { MusicProvider } from './context/MusicContext';
 
 // Hooks
 import { useModuleState } from './hooks/useModuleState';
+import { getLazyHardwareFloating } from './modules/registry';
 
 
 // ==============================================================================
@@ -72,7 +73,7 @@ function AppContent() {
 
   const LazyHardwareFloating = React.useMemo(() => {
     if (isHardwareInstalled) {
-      return React.lazy(() => import('./modules/sigma_hardware_lab/HardwareFloatingPanel'));
+      return getLazyHardwareFloating();
     }
     return null;
   }, [isHardwareInstalled]);
