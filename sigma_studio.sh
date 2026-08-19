@@ -25,15 +25,20 @@ else
     fi
 fi
 
-# 2. Check and auto-install Node.js and npm if not present and no dist/ folder exists
-if ! command -v npm &>/dev/null; then
-    if [ ! -f "sigma_studio/dist/index.html" ]; then
-        echo -e "\033[93m[SIGMA] Node.js/npm not found. Installing nodejs and npm...\033[0m"
-        if command -v apt-get &>/dev/null; then
-            sudo apt-get update -y && sudo apt-get install -y nodejs npm
-        elif command -v brew &>/dev/null; then
-            brew install node
-        fi
+# 2. Check and auto-install Node.js (>= 20 LTS) if not present or too old
+NODE_VER=0
+if command -v node &>/dev/null; then
+    NODE_VER=$(node -v | sed 's/v//' | cut -d. -f1)
+fi
+
+if [ ! -f "sigma_studio/dist/index.html" ] && [ "$NODE_VER" -lt 20 ]; then
+    echo -e "\033[93m[SIGMA] Node.js is not installed or version < 20 (found '$NODE_VER'). Installing Node.js 20.x LTS...\033[0m"
+    if command -v apt-get &>/dev/null; then
+        sudo apt-get install -y curl ca-certificates
+        curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
+        sudo apt-get install -y nodejs
+    elif command -v brew &>/dev/null; then
+        brew install node
     fi
 fi
 

@@ -19,12 +19,19 @@ sudo apt-get install -y python3 python3-pip python3-venv git \
     libjpeg-dev \
     libopenblas-dev
 
-# Check/Install Node.js
-if ! command -v npm &>/dev/null; then
-    echo -e "\033[93m[SIGMA] Node.js/npm not found. Installing via apt...\033[0m"
-    sudo apt-get install -y nodejs npm
+# Check/Install Node.js (>= 20 LTS required by Vite 8)
+NODE_VER=0
+if command -v node &>/dev/null; then
+    NODE_VER=$(node -v | sed 's/v//' | cut -d. -f1)
+fi
+
+if [ "$NODE_VER" -lt 20 ]; then
+    echo -e "\033[93m[SIGMA] Node.js version is '$NODE_VER' (< 20). Installing Node.js 20.x LTS via NodeSource...\033[0m"
+    sudo apt-get install -y curl ca-certificates
+    curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
+    sudo apt-get install -y nodejs
 else
-    echo -e "\033[92m[SIGMA] Node.js/npm found.\033[0m"
+    echo -e "\033[92m[SIGMA] Node.js $(node -v) found (>= 20).\033[0m"
 fi
 
 echo -e "\033[92m[SIGMA] System dependencies met. Running python installer...\033[0m"

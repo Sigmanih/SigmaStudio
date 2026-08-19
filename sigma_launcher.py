@@ -169,17 +169,31 @@ def _get_directory_hash(directory):
                 pass
     return sha1.hexdigest()
 
+def check_node_version():
+    """Return major version number of Node.js (e.g. 18, 20, 22) or 0 if not found."""
+    try:
+        cmd = ["node.exe"] if os.name == 'nt' else ["node"]
+        out = subprocess.check_output(cmd + ["-v"], stderr=subprocess.DEVNULL).decode().strip()
+        if out.startswith("v"):
+            return int(out.lstrip("v").split(".")[0])
+    except Exception:
+        pass
+    return 0
+
 def auto_install_node_npm():
-    """Attempt to automatically install Node.js and npm using the system package manager."""
-    print_log("[SIGMA] Attempting to install Node.js and npm automatically...", Colors.OKCYAN)
+    """Attempt to automatically install or upgrade to Node.js (>= 20 LTS) using the system package manager."""
+    print_log("[SIGMA] Installing/Upgrading Node.js (>= 20 LTS) and npm...", Colors.OKCYAN)
     system = platform.system().lower()
     
     try:
         if system == "linux":
             if shutil.which("apt-get"):
-                print_log("[SIGMA] Installing nodejs and npm via apt-get...", Colors.OKCYAN)
-                subprocess.run(["sudo", "apt-get", "update", "-y"], check=False)
-                subprocess.run(["sudo", "apt-get", "install", "-y", "nodejs", "npm"], check=False)
+                print_log("[SIGMA] Setting up NodeSource Node.js 20.x LTS repository for Debian/Ubuntu/Raspberry Pi...", Colors.OKCYAN)
+                if not shutil.which("curl"):
+                    subprocess.run(["sudo", "apt-get", "update", "-y"], check=False)
+                    subprocess.run(["sudo", "apt-get", "install", "-y", "curl", "ca-certificates"], check=False)
+                cmd = "curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash - && sudo apt-get install -y nodejs"
+                subprocess.run(["bash", "-c", cmd], check=False)
             elif shutil.which("dnf"):
                 subprocess.run(["sudo", "dnf", "install", "-y", "nodejs", "npm"], check=False)
             elif shutil.which("pacman"):
@@ -188,7 +202,7 @@ def auto_install_node_npm():
                 subprocess.run(["sudo", "apk", "add", "nodejs", "npm"], check=False)
         elif system == "darwin":
             if shutil.which("brew"):
-                print_log("[SIGMA] Installing node via Homebrew...", Colors.OKCYAN)
+                print_log("[SIGMA] Installing/Upgrading node via Homebrew...", Colors.OKCYAN)
                 subprocess.run(["brew", "install", "node"], check=False)
         elif system == "windows":
             if shutil.which("winget"):
@@ -207,22 +221,28 @@ def ensure_frontend():
     node_modules_dir = os.path.join(frontend_dir, "node_modules")
     hash_file = os.path.join(frontend_dir, ".build_stamp")
     
-    # Check for npm
+    # Check for npm and Node.js version
     npm_bin = shutil.which("npm")
     if not npm_bin and os.name == 'nt':
         npm_bin = shutil.which("npm.cmd")
         
-    if not npm_bin:
+    node_ver = check_node_version()
+    
+    # Vite 8 requires Node.js >= 20.19.0 or >= 22.12.0
+    if not npm_bin or (node_ver > 0 and node_ver < 20):
+        if node_ver > 0 and node_ver < 20:
+            print_log(f"[SIGMA] Detected Node.js v{node_ver}, but Vite requires Node.js >= 20. Upgrading...", Colors.WARNING)
         auto_install_node_npm()
         npm_bin = shutil.which("npm") or (shutil.which("npm.cmd") if os.name == 'nt' else None)
+        node_ver = check_node_version()
         
-    if not npm_bin:
+    if not npm_bin or (node_ver > 0 and node_ver < 20):
         if os.path.exists(os.path.join(dist_dir, "index.html")):
-            print_log("[SIGMA] WARNING: Node.js/npm not found. Using pre-built frontend in sigma_studio/dist.", Colors.WARNING)
+            print_log("[SIGMA] WARNING: Node.js >= 20 not found. Using pre-built frontend in sigma_studio/dist.", Colors.WARNING)
             return
         else:
-            print_log("[SIGMA] ERROR: Node.js / npm is required to build the frontend, but was not found.", Colors.FAIL, True)
-            print_log("[SIGMA] Please install Node.js manually:\n  - Debian/Ubuntu/Raspberry Pi: sudo apt update && sudo apt install -y nodejs npm\n  - macOS: brew install node\n  - Windows: winget install OpenJS.NodeJS.LTS", Colors.WARNING)
+            print_log("[SIGMA] ERROR: Node.js (>= 20 LTS) is required to build the frontend.", Colors.FAIL, True)
+            print_log("[SIGMA] Please install Node.js 20 LTS manually:\n  - Debian/Ubuntu/Raspberry Pi: curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash - && sudo apt-get install -y nodejs\n  - macOS: brew install node\n  - Windows: winget install OpenJS.NodeJS.LTS", Colors.WARNING)
             sys.exit(1)
 
     # Reusing SHA-1 fingerprint logic pattern
