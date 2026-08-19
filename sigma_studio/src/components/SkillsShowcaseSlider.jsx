@@ -251,7 +251,7 @@ export const SKILLS_CATALOG = [
       {
         icon: '📊',
         title: 'Telemetria SVG Live',
-        desc: 'Sparkline continua con monitoraggio di RTX 5070 Ti, RTX 5060, CPU e RAM.'
+        desc: 'Sparkline continua con monitoraggio di GPU/NPU, VRAM, CPU e RAM di sistema.'
       },
       {
         icon: '🧹',
@@ -265,8 +265,8 @@ export const SKILLS_CATALOG = [
       },
       {
         icon: '⚙️',
-        title: 'Tuning Multi-GPU Parallelo',
-        desc: 'Distribuzione automatica dei layer tra GPU primaria, secondaria e RAM.'
+        title: 'Tuning Multi-Dispositivo',
+        desc: 'Distribuzione automatica dei layer tra GPU, acceleratori e RAM di sistema.'
       }
     ],
     usageGuide: [

@@ -124,40 +124,74 @@ def handle_engine_unload(self):
 
 
 def handle_engine_models(self):
-    """GET /api/engine/models — Returns active model, local catalog, and recommended Hugging Face models."""
+    """GET /api/engine/models — Returns active model, local catalog, and recommended Hugging Face models dynamically tailored to current hardware."""
     try:
+        from core.engine.hardware_probe import UniversalHardwareProbe
         status = sigma_engine.get_status()
         optimizations = sigma_engine._generate_default_optimizations()
-        return self.send_json_response({
-            "success": True,
-            "loaded_model": sigma_engine.loaded_model,
-            "loaded_model_name": sigma_engine.loaded_model_name,
-            "active_backend": sigma_engine.active_backend,
-            "optimizations": optimizations,
-            "recommended_models": [
+
+        # Probe current machine hardware
+        hw = UniversalHardwareProbe.probe_all()
+        accs = hw.get("accelerators", [])
+        sys_info = hw.get("system", {})
+        ram_gb = sys_info.get("ram_gb", 8.0)
+        cpu_cores = sys_info.get("cpu_cores", 4)
+        is_rpi = sys_info.get("is_raspberry_pi", False)
+        is_apple = sys_info.get("is_apple_silicon", False)
+
+        total_vram = sum(a.get("total_vram_gb", 0) for a in accs)
+        gpu_names = [a.get("name", "GPU") for a in accs if a.get("name")]
+
+        # Determine primary device name & architecture description
+        if len(gpu_names) > 1:
+            sharding_desc = f"Multi-GPU ({' + '.join(gpu_names)})"
+            primary_device = gpu_names[0]
+        elif len(gpu_names) == 1:
+            sharding_desc = f"GPU ({gpu_names[0]} • {total_vram:.1f} GB VRAM)"
+            primary_device = gpu_names[0]
+        elif is_apple:
+            sharding_desc = f"Apple Silicon Metal (MPS Unified RAM • {ram_gb:.0f} GB)"
+            primary_device = "Apple Silicon (MPS)"
+        elif is_rpi:
+            sharding_desc = f"Raspberry Pi ARM64 (CPU • {ram_gb:.0f} GB RAM)"
+            primary_device = "Raspberry Pi CPU"
+        else:
+            sharding_desc = f"CPU Host ({cpu_cores} Cores • {ram_gb:.0f} GB RAM)"
+            primary_device = "CPU Host"
+
+        # Enrich optimizations with hardware description
+        optimizations["sharding_desc"] = sharding_desc
+        optimizations["primary_device"] = primary_device
+        optimizations["total_vram_gb"] = total_vram
+        optimizations["ram_gb"] = ram_gb
+
+        # Generate dynamic recommendations based on available memory
+        if total_vram >= 24 or (is_apple and ram_gb >= 64):
+            # Heavyweight 32B-70B tier
+            recommended_models = [
+                {
+                    "repo_id": "bartowski/DeepSeek-R1-Distill-Qwen-32B-GGUF",
+                    "filename": "DeepSeek-R1-Distill-Qwen-32B-Q4_K_M.gguf",
+                    "name": "DeepSeek R1 Distill Qwen 32B",
+                    "quantization": "Q4_K_M",
+                    "size_gb": 19.8,
+                    "target_device": f"{primary_device} Full VRAM"
+                },
+                {
+                    "repo_id": "bartowski/Qwen2.5-Coder-32B-Instruct-GGUF",
+                    "filename": "Qwen2.5-Coder-32B-Instruct-Q4_K_M.gguf",
+                    "name": "Qwen 2.5 Coder 32B Instruct",
+                    "quantization": "Q4_K_M",
+                    "size_gb": 19.8,
+                    "target_device": f"{primary_device} (Coding 32B)"
+                },
                 {
                     "repo_id": "bartowski/DeepSeek-R1-Distill-Qwen-14B-GGUF",
                     "filename": "DeepSeek-R1-Distill-Qwen-14B-Q4_K_M.gguf",
                     "name": "DeepSeek R1 Distill Qwen 14B",
                     "quantization": "Q4_K_M",
                     "size_gb": 8.9,
-                    "target_device": "RTX 5070 Ti (16 GB) + FlashAttention-2"
-                },
-                {
-                    "repo_id": "unsloth/DeepSeek-R1-Distill-Llama-8B-GGUF",
-                    "filename": "DeepSeek-R1-Distill-Llama-8B-Q4_K_M.gguf",
-                    "name": "DeepSeek R1 Distill Llama 8B",
-                    "quantization": "Q4_K_M",
-                    "size_gb": 4.9,
-                    "target_device": "RTX 5060 (8 GB) Full VRAM"
-                },
-                {
-                    "repo_id": "bartowski/Qwen2.5-Coder-14B-Instruct-GGUF",
-                    "filename": "Qwen2.5-Coder-14B-Instruct-Q4_K_M.gguf",
-                    "name": "Qwen 2.5 Coder 14B Instruct",
-                    "quantization": "Q4_K_M",
-                    "size_gb": 8.9,
-                    "target_device": "RTX 5070 Ti (16 GB)"
+                    "target_device": f"{primary_device} (Ultra Veloce)"
                 },
                 {
                     "repo_id": "bartowski/Llama-3.3-70B-Instruct-GGUF",
@@ -165,9 +199,125 @@ def handle_engine_models(self):
                     "name": "Llama 3.3 70B Instruct (MoE Sharded)",
                     "quantization": "Q4_K_M",
                     "size_gb": 42.0,
-                    "target_device": "Multi-GPU Dual RTX 5070 Ti + 5060 + RAM"
+                    "target_device": f"{sharding_desc} + RAM"
                 }
             ]
+        elif total_vram >= 12 or (is_apple and ram_gb >= 24):
+            # 14B tier
+            recommended_models = [
+                {
+                    "repo_id": "bartowski/DeepSeek-R1-Distill-Qwen-14B-GGUF",
+                    "filename": "DeepSeek-R1-Distill-Qwen-14B-Q4_K_M.gguf",
+                    "name": "DeepSeek R1 Distill Qwen 14B",
+                    "quantization": "Q4_K_M",
+                    "size_gb": 8.9,
+                    "target_device": f"{primary_device} Full VRAM"
+                },
+                {
+                    "repo_id": "bartowski/Qwen2.5-Coder-14B-Instruct-GGUF",
+                    "filename": "Qwen2.5-Coder-14B-Instruct-Q4_K_M.gguf",
+                    "name": "Qwen 2.5 Coder 14B Instruct",
+                    "quantization": "Q4_K_M",
+                    "size_gb": 8.9,
+                    "target_device": f"{primary_device} (Coding 14B)"
+                },
+                {
+                    "repo_id": "unsloth/DeepSeek-R1-Distill-Llama-8B-GGUF",
+                    "filename": "DeepSeek-R1-Distill-Llama-8B-Q4_K_M.gguf",
+                    "name": "DeepSeek R1 Distill Llama 8B",
+                    "quantization": "Q4_K_M",
+                    "size_gb": 4.9,
+                    "target_device": f"{primary_device} (Ultra Veloce)"
+                },
+                {
+                    "repo_id": "bartowski/Qwen2.5-7B-Instruct-GGUF",
+                    "filename": "Qwen2.5-7B-Instruct-Q4_K_M.gguf",
+                    "name": "Qwen 2.5 7B Instruct",
+                    "quantization": "Q4_K_M",
+                    "size_gb": 4.7,
+                    "target_device": f"{primary_device} (All-Rounder)"
+                }
+            ]
+        elif total_vram >= 6 or (is_apple and ram_gb >= 16):
+            # 7B-8B tier
+            recommended_models = [
+                {
+                    "repo_id": "unsloth/DeepSeek-R1-Distill-Llama-8B-GGUF",
+                    "filename": "DeepSeek-R1-Distill-Llama-8B-Q4_K_M.gguf",
+                    "name": "DeepSeek R1 Distill Llama 8B",
+                    "quantization": "Q4_K_M",
+                    "size_gb": 4.9,
+                    "target_device": f"{primary_device} Full VRAM"
+                },
+                {
+                    "repo_id": "bartowski/Qwen2.5-Coder-7B-Instruct-GGUF",
+                    "filename": "Qwen2.5-Coder-7B-Instruct-Q4_K_M.gguf",
+                    "name": "Qwen 2.5 Coder 7B Instruct",
+                    "quantization": "Q4_K_M",
+                    "size_gb": 4.7,
+                    "target_device": f"{primary_device} (Coding 7B)"
+                },
+                {
+                    "repo_id": "bartowski/Llama-3.2-3B-Instruct-GGUF",
+                    "filename": "Llama-3.2-3B-Instruct-Q4_K_M.gguf",
+                    "name": "Llama 3.2 3B Instruct",
+                    "quantization": "Q4_K_M",
+                    "size_gb": 2.0,
+                    "target_device": f"{primary_device} (Ultra Veloce)"
+                },
+                {
+                    "repo_id": "bartowski/DeepSeek-R1-Distill-Qwen-1.5B-GGUF",
+                    "filename": "DeepSeek-R1-Distill-Qwen-1.5B-Q4_K_M.gguf",
+                    "name": "DeepSeek R1 Distill Qwen 1.5B",
+                    "quantization": "Q4_K_M",
+                    "size_gb": 1.1,
+                    "target_device": f"{primary_device} (Reasoning Leggero)"
+                }
+            ]
+        else:
+            # Low VRAM / CPU / Raspberry Pi tier (0.5B - 3B, up to 7B lightweight)
+            recommended_models = [
+                {
+                    "repo_id": "bartowski/Llama-3.2-3B-Instruct-GGUF",
+                    "filename": "Llama-3.2-3B-Instruct-Q4_K_M.gguf",
+                    "name": "Llama 3.2 3B Instruct",
+                    "quantization": "Q4_K_M",
+                    "size_gb": 2.0,
+                    "target_device": f"{primary_device} (~35 tok/s)"
+                },
+                {
+                    "repo_id": "bartowski/Qwen2.5-Coder-1.5B-Instruct-GGUF",
+                    "filename": "Qwen2.5-Coder-1.5B-Instruct-Q4_K_M.gguf",
+                    "name": "Qwen 2.5 Coder 1.5B Instruct",
+                    "quantization": "Q4_K_M",
+                    "size_gb": 1.1,
+                    "target_device": f"{primary_device} (Coding Leggero)"
+                },
+                {
+                    "repo_id": "bartowski/DeepSeek-R1-Distill-Qwen-1.5B-GGUF",
+                    "filename": "DeepSeek-R1-Distill-Qwen-1.5B-Q4_K_M.gguf",
+                    "name": "DeepSeek R1 Distill Qwen 1.5B",
+                    "quantization": "Q4_K_M",
+                    "size_gb": 1.1,
+                    "target_device": f"{primary_device} (Reasoning Leggero)"
+                },
+                {
+                    "repo_id": "Qwen/Qwen2.5-0.5B-Instruct-GGUF",
+                    "filename": "qwen2.5-0.5b-instruct-q4_k_m.gguf",
+                    "name": "Qwen 2.5 0.5B Instruct (Ultra-Light)",
+                    "quantization": "Q4_K_M",
+                    "size_gb": 0.4,
+                    "target_device": f"{primary_device} (Massima Velocità)"
+                }
+            ]
+
+        return self.send_json_response({
+            "success": True,
+            "loaded_model": sigma_engine.loaded_model,
+            "loaded_model_name": sigma_engine.loaded_model_name,
+            "active_backend": sigma_engine.active_backend,
+            "optimizations": optimizations,
+            "recommended_models": recommended_models
         })
     except Exception as exc:
         log.error(f"handle_engine_models error: {exc}")

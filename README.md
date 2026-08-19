@@ -72,8 +72,8 @@ Multi-agent teams interact through Modelfile manifests, standard Model Context P
 
 ## 🌟 Key Architecture & Capabilities
 
-### 1. ⚡ SigmaEngine Native Multi-GPU Inference
-- **Zero-Bottleneck C++/PyTorch Layer Sharding**: Automatically partitions large LLMs (from 7B to 70B+) across primary and secondary GPUs (e.g. RTX 5070 Ti + RTX 5060) and system RAM.
+### 1. ⚡ SigmaEngine Cross-Platform Inference
+- **Zero-Bottleneck C++/PyTorch Layer Sharding**: Automatically partitions large LLMs (from 0.5B to 70B+) across available GPUs, Apple Silicon Metal, or CPU cores and system RAM.
 - **Sub-100ms TTFT**: Ultra-low Time To First Token with native FlashAttention-2 acceleration and continuous KV-cache streaming.
 
 ### 2. ⚡ Modelli Hub: Hugging Face Downloader & GGUF Forge

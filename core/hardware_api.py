@@ -469,6 +469,14 @@ def get_gpu_processes() -> Dict[str, Any]:
     orphan_count = 0
     current_pid = os.getpid()
 
+    # Discover real accelerators on this host
+    accs = []
+    try:
+        from core.engine.hardware_probe import UniversalHardwareProbe
+        accs = UniversalHardwareProbe.probe_accelerators()
+    except Exception:
+        pass
+
     for p in psutil.process_iter(['pid', 'name', 'cpu_percent', 'memory_info', 'create_time', 'status', 'username', 'cmdline']):
         try:
             p_info = p.info
@@ -485,7 +493,18 @@ def get_gpu_processes() -> Dict[str, Any]:
                 created_dt = time.strftime('%H:%M:%S', time.localtime(p_info.get('create_time') or time.time()))
                 
                 # Assigned GPU estimation
-                assigned_gpu = "GPU 0 (RTX 5070 Ti)" if est_vram > 800 else ("GPU 1 (RTX 5060)" if est_vram > 200 else "RAM / Host")
+                if accs and len(accs) > 0:
+                    gpu0_name = accs[0].get('name', 'GPU 0')
+                    if est_vram > 800:
+                        assigned_gpu = f"GPU 0 ({gpu0_name})"
+                    elif len(accs) > 1 and est_vram > 200:
+                        gpu1_name = accs[1].get('name', 'GPU 1')
+                        assigned_gpu = f"GPU 1 ({gpu1_name})"
+                    else:
+                        assigned_gpu = "RAM / Host"
+                else:
+                    assigned_gpu = "RAM / Host (CPU)"
+
                 user = p_info.get('username') or os.getenv('USERNAME', 'Sigma')
                 if '\\' in user:
                     user = user.split('\\')[-1]

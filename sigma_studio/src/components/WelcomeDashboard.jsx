@@ -523,10 +523,10 @@ export default function WelcomeDashboard({ modules, openTab }) {
                   </span>
                 </div>
                 <div style={{ fontSize: '0.95rem', fontWeight: 800, color: titleColor, marginBottom: '4px' }}>
-                  SigmaEngine: Inferenza Ottimizzata Multi-GPU
+                  SigmaEngine: Inferenza Ottimizzata Multi-Piattaforma
                 </div>
                 <p style={{ fontSize: '0.78rem', color: subtitleColor, lineHeight: 1.45, margin: '0 0 10px 0', fontWeight: isLight ? 500 : 400 }}>
-                  Motore C++/PyTorch: partizionamento intelligente dei layer tra RTX 5070 Ti, RTX 5060 e RAM per modelli fino a 70B+ senza saturazione VRAM.
+                  Motore C++/PyTorch: partizionamento intelligente dei layer tra GPU, acceleratori e RAM di sistema per modelli fino a 70B+ senza saturazione VRAM.
                 </p>
 
                 {/* Chips compatte */}

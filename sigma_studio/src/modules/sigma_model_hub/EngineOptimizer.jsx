@@ -156,33 +156,35 @@ export default function EngineOptimizer({ isLight, addToast }) {
           <div style={{ padding: '12px', borderRadius: '10px', background: subBg, border: subBorder }}>
             <div style={{ fontSize: '0.66rem', color: textMuted, fontWeight: 700 }}>ATTENTION KERNEL</div>
             <div style={{ fontSize: '0.92rem', fontWeight: 800, color: '#00d2ff', marginTop: '2px' }}>
-              {opts.attention_kernel || 'FLASH_ATTENTION_2'}
+              {(opts.attention_kernel || 'SDPA').toUpperCase()}
             </div>
-            <div style={{ fontSize: '0.68rem', color: textMuted, marginTop: '2px' }}>Zero-memory attention scaling</div>
+            <div style={{ fontSize: '0.68rem', color: textMuted, marginTop: '2px' }}>
+              {opts.flash_attention_2_available ? 'FlashAttention-2 accelerato' : 'Scaled Dot-Product / CPU SIMD'}
+            </div>
           </div>
 
           <div style={{ padding: '12px', borderRadius: '10px', background: subBg, border: subBorder }}>
             <div style={{ fontSize: '0.66rem', color: textMuted, fontWeight: 700 }}>KV CACHE QUANTIZZATA</div>
             <div style={{ fontSize: '0.92rem', fontWeight: 800, color: '#10b981', marginTop: '2px' }}>
-              {opts.kv_cache_quantization || 'FP8_E4M3'} (Risparmio 50% VRAM)
+              {opts.kv_cache_quantization || (opts.bf16_supported ? 'FP8_E4M3 (Risparmio 50% VRAM)' : 'FP16 / INT8 Adattivo')}
             </div>
-            <div style={{ fontSize: '0.68rem', color: textMuted, marginTop: '2px' }}>128k contesti lunghi ultra-rapidi</div>
+            <div style={{ fontSize: '0.68rem', color: textMuted, marginTop: '2px' }}>Gestione contesti estesi a bassa latenza</div>
           </div>
 
           <div style={{ padding: '12px', borderRadius: '10px', background: subBg, border: subBorder }}>
-            <div style={{ fontSize: '0.66rem', color: textMuted, fontWeight: 700 }}>TENSOR PARALLEL SHARDING</div>
+            <div style={{ fontSize: '0.66rem', color: textMuted, fontWeight: 700 }}>DISPATCHING & ACCELERAZIONE</div>
             <div style={{ fontSize: '0.92rem', fontWeight: 800, color: '#bc8cff', marginTop: '2px' }}>
-              Dual GPU (RTX 5070 Ti + RTX 5060)
+              {opts.sharding_desc || (opts.devices_in_use > 1 ? `Multi-Device (${opts.devices_in_use} GPU)` : (opts.devices_in_use === 1 ? 'GPU Singola' : 'CPU Multi-Core'))}
             </div>
-            <div style={{ fontSize: '0.68rem', color: textMuted, marginTop: '2px' }}>Partizionamento asincrono a livelli</div>
+            <div style={{ fontSize: '0.68rem', color: textMuted, marginTop: '2px' }}>Partizionamento hardware e memoria</div>
           </div>
 
           <div style={{ padding: '12px', borderRadius: '10px', background: subBg, border: subBorder }}>
-            <div style={{ fontSize: '0.66rem', color: textMuted, fontWeight: 700 }}>SPECULATIVE DECODING</div>
+            <div style={{ fontSize: '0.66rem', color: textMuted, fontWeight: 700 }}>BACKEND INFERENZA</div>
             <div style={{ fontSize: '0.92rem', fontWeight: 800, color: '#ffb86c', marginTop: '2px' }}>
-              Lookahead Gamma 4 (~{opts.estimated_tok_sec || 85} tok/s)
+              {opts.backend ? opts.backend.toUpperCase() : 'SIGMAENGINE (AUTO)'}
             </div>
-            <div style={{ fontSize: '0.68rem', color: textMuted, marginTop: '2px' }}>+220% velocità di generazione</div>
+            <div style={{ fontSize: '0.68rem', color: textMuted, marginTop: '2px' }}>Throughput calibrato su hardware locale</div>
           </div>
         </div>
       </div>

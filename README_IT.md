@@ -72,8 +72,8 @@ I team di agenti AI cooperano tramite manifesti Modelfile vincolanti, strumenti 
 
 ## 🌟 Architettura & Funzionalità Chiave
 
-### 1. ⚡ SigmaEngine: Inferenza Nativa Multi-GPU Ottimizzata
-- **Sharding Intelligente C++/PyTorch**: Distribuisce automaticamente i layer dei modelli LLM (da 7B a 70B+) tra GPU primaria, secondaria (es. RTX 5070 Ti + RTX 5060) e RAM di sistema per prevenire la saturazione VRAM.
+### 1. ⚡ SigmaEngine: Inferenza Nativa Ottimizzata Multi-Piattaforma
+- **Sharding Intelligente C++/PyTorch**: Distribuisce automaticamente i layer dei modelli LLM (da 0.5B a 70B+) tra le GPU disponibili, Apple Silicon Metal o core CPU e RAM di sistema per prevenire la saturazione VRAM.
 - **TTFT Sub-100ms**: Latenza minima al primo token con kernel FlashAttention-2 nativi e streaming continuo dei blocchi KV-cache.
 
 ### 2. ⚡ Modelli Hub: Hugging Face Downloader & Forgia GGUF (Tab 2)
