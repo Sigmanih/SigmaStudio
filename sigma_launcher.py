@@ -119,14 +119,18 @@ def activate_venv_env():
         del os.environ["PYTHONHOME"]
 
 def install_dependencies(platform_info):
-    _, pip_exe = ensure_venv()
-    print_log("[SIGMA] Checking and installing dependencies...", Colors.OKCYAN)
+    python_exe, _ = ensure_venv()
+    print_log("[SIGMA] Checking and ensuring Python dependencies are installed...", Colors.OKCYAN)
 
     def run_pip(req_file):
         if os.path.exists(req_file):
             print_log(f"[SIGMA] Installing {req_file}...", Colors.OKCYAN)
-            subprocess.check_call([pip_exe, "install", "-r", req_file])
-            return True
+            try:
+                subprocess.check_call([python_exe, "-m", "pip", "install", "-r", req_file])
+                return True
+            except subprocess.CalledProcessError as e:
+                print_log(f"[SIGMA] Warning: pip install returned error: {e}", Colors.WARNING)
+                return False
         return False
 
     req_dir = "requirements"
@@ -148,7 +152,7 @@ def install_dependencies(platform_info):
         else:
             run_pip(os.path.join(req_dir, "cpu.txt"))
 
-    print_log("[SIGMA] Dependencies installed.", Colors.OKGREEN)
+    print_log("[SIGMA] Python dependencies ready.", Colors.OKGREEN)
 
 def _get_directory_hash(directory):
     sha1 = hashlib.sha1()
@@ -417,6 +421,7 @@ def main():
     print_log("[SIGMA] Starting Sigma Studio...", Colors.HEADER)
     ensure_venv()
     activate_venv_env()
+    install_dependencies(platform_info)
     
     if args.check:
         print_log("[SIGMA] Environment checks passed.", Colors.OKGREEN)
