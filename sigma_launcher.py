@@ -169,48 +169,99 @@ def _get_directory_hash(directory):
                 pass
     return sha1.hexdigest()
 
+def auto_install_node_npm():
+    """Attempt to automatically install Node.js and npm using the system package manager."""
+    print_log("[SIGMA] Attempting to install Node.js and npm automatically...", Colors.OKCYAN)
+    system = platform.system().lower()
+    
+    try:
+        if system == "linux":
+            if shutil.which("apt-get"):
+                print_log("[SIGMA] Installing nodejs and npm via apt-get...", Colors.OKCYAN)
+                subprocess.run(["sudo", "apt-get", "update", "-y"], check=False)
+                subprocess.run(["sudo", "apt-get", "install", "-y", "nodejs", "npm"], check=False)
+            elif shutil.which("dnf"):
+                subprocess.run(["sudo", "dnf", "install", "-y", "nodejs", "npm"], check=False)
+            elif shutil.which("pacman"):
+                subprocess.run(["sudo", "pacman", "-S", "--noconfirm", "nodejs", "npm"], check=False)
+            elif shutil.which("apk"):
+                subprocess.run(["sudo", "apk", "add", "nodejs", "npm"], check=False)
+        elif system == "darwin":
+            if shutil.which("brew"):
+                print_log("[SIGMA] Installing node via Homebrew...", Colors.OKCYAN)
+                subprocess.run(["brew", "install", "node"], check=False)
+        elif system == "windows":
+            if shutil.which("winget"):
+                print_log("[SIGMA] Installing Node.js via winget...", Colors.OKCYAN)
+                subprocess.run(["winget", "install", "OpenJS.NodeJS.LTS", "-e", "--accept-package-agreements", "--accept-source-agreements", "--silent"], check=False)
+    except Exception as e:
+        print_log(f"[SIGMA] Auto-install attempt ended: {e}", Colors.WARNING)
+
 def ensure_frontend():
     print_log("[SIGMA] Checking frontend...", Colors.OKCYAN)
     
+    frontend_dir = os.path.abspath("sigma_studio")
+    dist_dir = os.path.join(frontend_dir, "dist")
+    src_dir = os.path.join(frontend_dir, "src")
+    pkg_json = os.path.join(frontend_dir, "package.json")
+    node_modules_dir = os.path.join(frontend_dir, "node_modules")
+    hash_file = os.path.join(frontend_dir, ".build_stamp")
+    
     # Check for npm
-    try:
-        subprocess.run(["npm", "--version"], check=True, capture_output=True)
-    except (FileNotFoundError, subprocess.CalledProcessError):
-        print_log("[SIGMA] ERROR: npm is not found. Please install Node.js and npm.", Colors.FAIL, True)
-        sys.exit(1)
+    npm_bin = shutil.which("npm")
+    if not npm_bin and os.name == 'nt':
+        npm_bin = shutil.which("npm.cmd")
+        
+    if not npm_bin:
+        auto_install_node_npm()
+        npm_bin = shutil.which("npm") or (shutil.which("npm.cmd") if os.name == 'nt' else None)
+        
+    if not npm_bin:
+        if os.path.exists(os.path.join(dist_dir, "index.html")):
+            print_log("[SIGMA] WARNING: Node.js/npm not found. Using pre-built frontend in sigma_studio/dist.", Colors.WARNING)
+            return
+        else:
+            print_log("[SIGMA] ERROR: Node.js / npm is required to build the frontend, but was not found.", Colors.FAIL, True)
+            print_log("[SIGMA] Please install Node.js manually:\n  - Debian/Ubuntu/Raspberry Pi: sudo apt update && sudo apt install -y nodejs npm\n  - macOS: brew install node\n  - Windows: winget install OpenJS.NodeJS.LTS", Colors.WARNING)
+            sys.exit(1)
 
     # Reusing SHA-1 fingerprint logic pattern
-    package_json_hash = _get_directory_hash("package.json")
-    src_hash = _get_directory_hash("src")
+    package_json_hash = _get_directory_hash(pkg_json)
+    src_hash = _get_directory_hash(src_dir)
     current_hash = hashlib.sha1((package_json_hash + src_hash).encode('utf-8')).hexdigest()
     
-    hash_file = os.path.join("dist", ".build_hash")
     built_hash = ""
     if os.path.exists(hash_file):
-        with open(hash_file, "r") as f:
-            built_hash = f.read().strip()
+        try:
+            with open(hash_file, "r", encoding="utf-8") as f:
+                built_hash = f.read().strip()
+        except Exception:
+            pass
             
-    if built_hash != current_hash or not os.path.exists("dist"):
-        print_log("[SIGMA] Frontend changes detected. Building...", Colors.OKCYAN)
+    needs_build = (built_hash != current_hash) or not os.path.exists(os.path.join(dist_dir, "index.html"))
+    
+    if needs_build:
+        print_log("[SIGMA] Frontend build required. Preparing assets...", Colors.OKCYAN)
         
-        if not os.path.exists("node_modules"):
-            print_log("[SIGMA] Installing node modules...", Colors.OKCYAN)
-            subprocess.run(["npm", "install"], check=True)
+        if not os.path.exists(node_modules_dir):
+            print_log("[SIGMA] Installing frontend dependencies (npm install)...", Colors.OKCYAN)
+            subprocess.run([npm_bin, "install"], cwd=frontend_dir, check=False)
             
-        print_log("[SIGMA] Running Vite build...", Colors.OKCYAN)
+        print_log("[SIGMA] Running Vite build (npm run build)...", Colors.OKCYAN)
+        res = subprocess.run([npm_bin, "run", "build"], cwd=frontend_dir)
         
-        # Clean old dist
-        if os.path.exists("dist"):
-            shutil.rmtree("dist")
-            
-        subprocess.run(["npm", "run", "build"], check=True)
-        
-        # Save hash
-        os.makedirs("dist", exist_ok=True)
-        with open(hash_file, "w") as f:
-            f.write(current_hash)
-            
-        print_log("[SIGMA] Frontend build complete.", Colors.OKGREEN)
+        if res.returncode == 0:
+            try:
+                with open(hash_file, "w", encoding="utf-8") as f:
+                    f.write(current_hash)
+            except Exception:
+                pass
+            print_log("[SIGMA] Frontend build complete.", Colors.OKGREEN)
+        else:
+            print_log("[SIGMA] WARNING: Frontend build failed. Checking for existing dist folder...", Colors.WARNING)
+            if not os.path.exists(os.path.join(dist_dir, "index.html")):
+                print_log("[SIGMA] ERROR: No valid frontend build found in sigma_studio/dist.", Colors.FAIL, True)
+                sys.exit(1)
     else:
         print_log("[SIGMA] Frontend is up to date.", Colors.OKGREEN)
 
