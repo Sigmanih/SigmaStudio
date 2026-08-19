@@ -16,17 +16,32 @@ const CATEGORIES = [
   { id: 'audio', label: '🎙️ Audio & Voice (Whisper / TTS)' },
 ];
 
+// Brackets describe the model, never a particular card: `maxGb` is what the
+// bracket demands, and whether that fits is answered by the VRAM this machine
+// reports at runtime — see annotateBrackets below.
 const SIZE_BRACKETS = [
-  { id: 'all', label: 'Tutti i Pesi (All GB)' },
-  { id: 'under_4gb', label: '🟢 < 4 GB (Leggero • CPU / NPU)' },
-  { id: '4_8gb', label: '🔵 4 - 8 GB (RTX 5060 8GB)' },
-  { id: '8_16gb', label: '🟣 8 - 16 GB (RTX 5070 Ti 16GB)' },
-  { id: '16_32gb', label: '🟡 16 - 32 GB (Dual-GPU 24GB)' },
-  { id: '32_48gb', label: '🟠 32 - 48 GB (70B Q4 ~42GB)' },
-  { id: '48_70gb', label: '🔴 48 - 70 GB (70B Q8 / MoE)' },
-  { id: '70_140gb', label: '🟣 70 - 140 GB (Cluster / 140B MoE)' },
-  { id: 'over_140gb', label: '🔮 > 140 GB (DeepSeek 671B Sharded)' },
+  { id: 'all', label: 'Tutti i Pesi (All GB)', maxGb: null },
+  { id: 'under_4gb', label: '🟢 < 4 GB (Leggero • CPU / NPU)', maxGb: 4 },
+  { id: '4_8gb', label: '🔵 4 - 8 GB', maxGb: 8 },
+  { id: '8_16gb', label: '🟣 8 - 16 GB', maxGb: 16 },
+  { id: '16_32gb', label: '🟡 16 - 32 GB', maxGb: 32 },
+  { id: '32_48gb', label: '🟠 32 - 48 GB (es. 70B Q4)', maxGb: 48 },
+  { id: '48_70gb', label: '🔴 48 - 70 GB (70B Q8 / MoE)', maxGb: 70 },
+  { id: '70_140gb', label: '🟣 70 - 140 GB (MoE di grandi dimensioni)', maxGb: 140 },
+  { id: 'over_140gb', label: '🔮 > 140 GB (Sharding multi-tier)', maxGb: null },
 ];
+
+// Weights are not the only thing in VRAM; the same slack the backend applies.
+const FIT_HEADROOM = 1.15;
+
+function annotateBrackets(brackets, totalVramGb) {
+  if (!totalVramGb) return brackets;
+  return brackets.map(b => (
+    b.maxGb && b.maxGb * FIT_HEADROOM <= totalVramGb
+      ? { ...b, label: `${b.label} ✓ VRAM` }
+      : b
+  ));
+}
 
 const PARAM_BRACKETS = [
   { id: 'all', label: 'Tutti i Parametri' },
@@ -72,6 +87,24 @@ export default function HfBrowser({ isLight, addToast, onDownloadStarted, active
   const [loadingDetails, setLoadingDetails] = useState(false);
   const [downloadingFile, setDownloadingFile] = useState(null);
   const [downloadingRepo, setDownloadingRepo] = useState(false);
+
+  // Total VRAM measured on this machine, used to mark which size brackets fit.
+  const [totalVramGb, setTotalVramGb] = useState(0);
+
+  useEffect(() => {
+    fetch('/api/hardware/status')
+      .then(r => r.json())
+      .then(data => {
+        const gpus = data?.hardware?.gpu || [];
+        const total = gpus
+          .filter(g => !g.is_integrated && g.vram_total_mb)
+          .reduce((sum, g) => sum + g.vram_total_mb / 1024, 0);
+        setTotalVramGb(Math.round(total * 10) / 10);
+      })
+      .catch(() => setTotalVramGb(0));
+  }, []);
+
+  const sizeBrackets = annotateBrackets(SIZE_BRACKETS, totalVramGb);
 
   const topRef = useRef(null);
 
@@ -376,7 +409,7 @@ export default function HfBrowser({ isLight, addToast, onDownloadStarted, active
                 onChange={e => setSizeBracket(e.target.value)}
                 style={{ color: textPrimary }}
               >
-                {SIZE_BRACKETS.map(b => (
+                {sizeBrackets.map(b => (
                   <option key={b.id} value={b.id} style={{ background: isLight ? '#fff' : '#0d1019', color: textPrimary }}>
                     {b.label}
                   </option>
@@ -471,7 +504,7 @@ export default function HfBrowser({ isLight, addToast, onDownloadStarted, active
                 className="mh-active-chip"
                 style={{ background: 'rgba(0, 210, 255, 0.15)', color: '#00d2ff', border: '1px solid rgba(0, 210, 255, 0.3)' }}
               >
-                {SIZE_BRACKETS.find(s => s.id === sizeBracket)?.label} <X size={12} />
+                {sizeBrackets.find(b => b.id === sizeBracket)?.label} <X size={12} />
               </span>
             )}
             {paramBracket !== 'all' && (

@@ -1,10 +1,27 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Zap, Cpu, HardDrive, CheckCircle2, X, Activity, Layers, ArrowRight, MessageSquare } from 'lucide-react';
 
 export default function SigmaDeployModal({ model, onClose, onDeployed, onSuccess, isLight, addToast, onNavigateToChat }) {
   const [loading, setLoading] = useState(false);
   const [deployedData, setDeployedData] = useState(null);
   const [quant, setQuant] = useState(model.quantization || 'Auto (Tiered)');
+
+  // Tiers come from the machine, not from a fixed list of cards: this modal
+  // used to name two specific GPUs and a fixed amount of RAM, and printed layer
+  // counts that no planner had produced.
+  const [hardware, setHardware] = useState(null);
+
+  useEffect(() => {
+    fetch('/api/hardware/status')
+      .then(r => r.json())
+      .then(data => setHardware(data?.hardware || null))
+      .catch(() => setHardware(null));
+  }, []);
+
+  const gpus = (hardware?.gpu || []).filter(g => !g.is_integrated);
+  const ramTotalGb = hardware?.ram?.total_gb || 0;
+  const TIER_COLORS = ['#00d2ff', '#bc8cff', '#f59e0b', '#ef4444'];
+  const gb = (value) => (value || value === 0 ? `${Number(value).toFixed(1)} GB` : '—');
 
   const cardBg = isLight ? '#ffffff' : '#0d1019';
   const cardBorder = isLight ? '1px solid rgba(190, 160, 110, 0.35)' : '1px solid rgba(255, 255, 255, 0.12)';
@@ -114,9 +131,9 @@ export default function SigmaDeployModal({ model, onClose, onDeployed, onSuccess
               {model.filename || model.name}
             </div>
             <div style={{ fontSize: '0.74rem', color: textMuted, marginTop: '4px', display: 'flex', gap: '12px' }}>
-              <span>Dimensione: <strong>{model.size_label || (model.size_gb ? `${model.size_gb} GB` : '51.8 GB')}</strong></span>
+              <span>Dimensione: <strong>{model.size_label || (model.size_gb ? `${model.size_gb} GB` : 'n/d')}</strong></span>
               <span>Formato: <strong>{model.format || 'Safetensors'}</strong></span>
-              <span>VRAM Richiesta: <strong>~{model.est_vram_gb || 60} GB</strong></span>
+              <span>VRAM Richiesta: <strong>{model.est_vram_gb ? `~${model.est_vram_gb} GB` : (model.active_vram_label || 'calcolata al deploy')}</strong></span>
             </div>
           </div>
 
@@ -135,53 +152,82 @@ export default function SigmaDeployModal({ model, onClose, onDeployed, onSuccess
                 Il modello <strong>{model.filename || model.name}</strong> è ora attivo in memoria e configurato come motore predefinito per la Chat e gli Agenti AI.
               </div>
 
-              {deployedData.tiering_plan && (
+              {deployedData.tiering_plan?.devices?.length > 0 && (
                 <div style={{ marginTop: '6px', display: 'flex', flexDirection: 'column', gap: '6px', fontSize: '0.70rem' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', color: '#00d2ff', fontWeight: 700 }}>
-                    <span>⚡ GPU 0 (RTX 5070 Ti 16GB):</span>
-                    <span>{deployedData.tiering_plan.tier0_primary_vram?.count || 16} Layer (~{deployedData.tiering_plan.tier0_primary_vram?.estimated_memory_gb || 12.9} GB VRAM)</span>
+                  {deployedData.tiering_plan.devices
+                    .filter(d => d.estimated_use_gb > 0)
+                    .map((d, i) => (
+                      <div key={d.tier || i} style={{ display: 'flex', justifyContent: 'space-between', color: TIER_COLORS[i % TIER_COLORS.length], fontWeight: 700 }}>
+                        <span>
+                          {d.device_id === 'cpu' ? '💾' : d.device_id === 'disk' ? '🗄️' : '⚡'} {d.name}
+                          {d.device_id !== 'cpu' && d.device_id !== 'disk' ? ` (${gb(d.free_vram_gb)} liberi)` : ''}:
+                        </span>
+                        <span>{gb(d.estimated_use_gb)} allocati</span>
+                      </div>
+                    ))}
+                  <div style={{ display: 'flex', justifyContent: 'space-between', color: textMuted, fontWeight: 700, paddingTop: '4px', borderTop: subBorder }}>
+                    <span>Precisione: {(deployedData.tiering_plan.quantization || 'auto').toUpperCase()}</span>
+                    <span>Totale richiesto: {gb(deployedData.tiering_plan.total_required_gb)}</span>
                   </div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', color: '#bc8cff', fontWeight: 700 }}>
-                    <span>⚡ GPU 1 (RTX 5060 8GB):</span>
-                    <span>{deployedData.tiering_plan.tier1_secondary_vram?.count || 7} Layer (~{deployedData.tiering_plan.tier1_secondary_vram?.estimated_memory_gb || 5.7} GB VRAM)</span>
-                  </div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', color: '#10b981', fontWeight: 700 }}>
-                    <span>💾 Host System RAM (94GB):</span>
-                    <span>{deployedData.tiering_plan.tier2_host_ram?.count || 41} Layer (~{deployedData.tiering_plan.tier2_host_ram?.estimated_memory_gb || 33.2} GB RAM)</span>
-                  </div>
+                </div>
+              )}
+
+              {deployedData.tiering_plan?.warnings?.length > 0 && (
+                <div style={{ marginTop: '4px', fontSize: '0.68rem', color: '#f59e0b', lineHeight: 1.5 }}>
+                  {deployedData.tiering_plan.warnings.map((w, i) => (
+                    <div key={i}>⚠️ {w}</div>
+                  ))}
                 </div>
               )}
             </div>
           ) : (
             <div>
               <div style={{ fontSize: '0.72rem', fontWeight: 800, color: textMuted, textTransform: 'uppercase', marginBottom: '8px' }}>
-                PIANO DI PARTIZIONAMENTO SALIENCY TIERING (AILOFLOW)
+                TIER DISPONIBILI SU QUESTA MACCHINA
               </div>
 
               <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                <div style={{ padding: '10px 12px', borderRadius: '10px', background: subBg, border: subBorder, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    <Zap size={15} color="#00d2ff" />
-                    <span style={{ fontSize: '0.78rem', fontWeight: 700, color: textPrimary }}>GPU 0: NVIDIA RTX 5070 Ti (16 GB)</span>
+                {gpus.map((g, i) => (
+                  <div key={g.index ?? i} style={{ padding: '10px 12px', borderRadius: '10px', background: subBg, border: subBorder, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0 }}>
+                      <Zap size={15} color={TIER_COLORS[i % TIER_COLORS.length]} />
+                      <span style={{ fontSize: '0.78rem', fontWeight: 700, color: textPrimary, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        GPU {g.index ?? i}: {g.name}
+                      </span>
+                    </div>
+                    <span style={{ fontSize: '0.72rem', fontWeight: 800, color: TIER_COLORS[i % TIER_COLORS.length], whiteSpace: 'nowrap' }}>
+                      Tier {i} • {g.vram_free_mb ? `${gb(g.vram_free_mb / 1024)} liberi` : ''}
+                      {g.vram_total_mb ? ` / ${gb(g.vram_total_mb / 1024)}` : ''}
+                    </span>
                   </div>
-                  <span style={{ fontSize: '0.72rem', fontWeight: 800, color: '#00d2ff' }}>Tier 0 • Layer Primari (~13 GB)</span>
-                </div>
+                ))}
 
-                <div style={{ padding: '10px 12px', borderRadius: '10px', background: subBg, border: subBorder, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    <Zap size={15} color="#bc8cff" />
-                    <span style={{ fontSize: '0.78rem', fontWeight: 700, color: textPrimary }}>GPU 1: NVIDIA RTX 5060 (8 GB)</span>
+                {ramTotalGb > 0 && (
+                  <div style={{ padding: '10px 12px', borderRadius: '10px', background: subBg, border: subBorder, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <HardDrive size={15} color="#10b981" />
+                      <span style={{ fontSize: '0.78rem', fontWeight: 700, color: textPrimary }}>RAM di Sistema</span>
+                    </div>
+                    <span style={{ fontSize: '0.72rem', fontWeight: 800, color: '#10b981', whiteSpace: 'nowrap' }}>
+                      Tier {gpus.length} • {gb(hardware?.ram?.free_gb)} liberi / {gb(ramTotalGb)}
+                    </span>
                   </div>
-                  <span style={{ fontSize: '0.72rem', fontWeight: 800, color: '#bc8cff' }}>Tier 1 • Layer Secondari (~6 GB)</span>
-                </div>
+                )}
 
-                <div style={{ padding: '10px 12px', borderRadius: '10px', background: subBg, border: subBorder, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    <HardDrive size={15} color="#10b981" />
-                    <span style={{ fontSize: '0.78rem', fontWeight: 700, color: textPrimary }}>RAM di Sistema (94 GB Host)</span>
+                {!hardware && (
+                  <div style={{ padding: '10px 12px', borderRadius: '10px', background: subBg, border: subBorder, fontSize: '0.74rem', color: textMuted }}>
+                    Rilevamento hardware in corso...
                   </div>
-                  <span style={{ fontSize: '0.72rem', fontWeight: 800, color: '#10b981' }}>Tier 2 • MoE Routing & Layer Restanti (~33 GB)</span>
-                </div>
+                )}
+                {hardware && gpus.length === 0 && (
+                  <div style={{ padding: '10px 12px', borderRadius: '10px', background: subBg, border: subBorder, fontSize: '0.74rem', color: textMuted }}>
+                    Nessuna GPU dedicata rilevata: il modello verrà eseguito su CPU e RAM di sistema.
+                  </div>
+                )}
+              </div>
+
+              <div style={{ fontSize: '0.68rem', color: textMuted, marginTop: '8px', lineHeight: 1.5 }}>
+                Il piano di partizionamento definitivo viene calcolato da SigmaEngine sul modello scelto e mostrato dopo il deploy.
               </div>
             </div>
           )}

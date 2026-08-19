@@ -19,16 +19,18 @@ from core.logger import get_logger
 
 log = get_logger(__name__)
 
-# Sequential-read bandwidth by GPU family, GB/s. Used only to compute the
-# bandwidth ceiling a placement implies; measured numbers always take priority.
-_GPU_BANDWIDTH_GB_S = {
-    "5090": 1792.0, "5080": 960.0, "5070 ti": 896.0, "5070": 672.0,
-    "5060 ti": 448.0, "5060": 448.0,
-    "4090": 1008.0, "4080": 717.0, "4070": 504.0, "4060": 272.0,
-    "3090": 936.0, "3080": 760.0, "3070": 448.0, "3060": 360.0,
-    "a100": 1935.0, "h100": 3350.0, "l40": 864.0,
-}
-_DEFAULT_BANDWIDTH_GB_S = 400.0
+# Memory bandwidth is measured on the device that is about to run the model,
+# never looked up from a table of card names: a table cannot know about power
+# limits, thermal state, a laptop variant of the same chip, or a card released
+# after this file was written, and a wrong ceiling turns the verdict upside
+# down. Devices are measured once per process and cached.
+_bandwidth_cache: Dict[int, Optional[float]] = {}
+
+# Probe size, capped so the measurement never competes with resident weights.
+_BANDWIDTH_PROBE_MB = 256
+_BANDWIDTH_PROBE_MIN_MB = 16
+_BANDWIDTH_PROBE_FREE_FRACTION = 0.05
+_BANDWIDTH_PROBE_ITERATIONS = 5
 
 # Modules worth timing individually. Anything not covered lands in "other",
 # which is where launch overhead becomes visible.
@@ -87,7 +89,7 @@ class EngineBenchmark:
             }
 
             result["bandwidth_ceiling"] = cls._bandwidth_ceiling(
-                engine, result["placement"], decode
+                result["placement"], decode, torch
             )
 
             if profile_modules:
@@ -180,21 +182,17 @@ class EngineBenchmark:
 
     @classmethod
     def _bandwidth_ceiling(
-        cls, engine, placement: Dict[str, float], decode: Dict[str, Any]
+        cls, placement: Dict[str, float], decode: Dict[str, Any], torch
     ) -> Dict[str, Any]:
         """
         Fastest possible decode for this placement, if every byte of weights were
-        read at the device's peak bandwidth.
+        read at the bandwidth measured on the devices holding them.
 
         Devices are summed rather than maxed: a layer-split model runs its
         devices in sequence within a token, not in parallel.
         """
-        accelerators = engine.hardware_profile.get("accelerators", [])
-        by_index = {
-            str(a.get("device_id")): a.get("name", "") for a in accelerators
-        }
-
         total_seconds = 0.0
+        unmeasured = False
         detail: List[Dict[str, Any]] = []
         for device, gb in placement.items():
             if not device.startswith("cuda"):
@@ -202,12 +200,28 @@ class EngineBenchmark:
                 # here and let the verdict flag it instead of guessing a number.
                 detail.append({"device": device, "weights_gb": gb, "bandwidth_gb_s": None})
                 continue
-            index = device.split(":")[-1]
-            bandwidth = cls._bandwidth_for(by_index.get(index, ""))
-            total_seconds += gb / bandwidth
+            try:
+                index = int(device.split(":")[-1])
+            except ValueError:
+                index = 0
+            bandwidth = cls.measure_device_bandwidth(index, torch)
+            if bandwidth:
+                total_seconds += gb / bandwidth
+            else:
+                unmeasured = True
             detail.append({
                 "device": device, "weights_gb": gb, "bandwidth_gb_s": bandwidth,
             })
+
+        # A ceiling built from a partially measured placement would understate
+        # the floor and make the verdict claim headroom that does not exist.
+        if unmeasured or total_seconds <= 0:
+            return {
+                "ms_per_token": None,
+                "tokens_per_second": None,
+                "efficiency_percent": None,
+                "devices": detail,
+            }
 
         ms = total_seconds * 1000
         measured = decode["ms_per_token"]
@@ -219,12 +233,55 @@ class EngineBenchmark:
         }
 
     @staticmethod
-    def _bandwidth_for(gpu_name: str) -> float:
-        name = gpu_name.lower()
-        for key, value in _GPU_BANDWIDTH_GB_S.items():
-            if key in name:
-                return value
-        return _DEFAULT_BANDWIDTH_GB_S
+    def measure_device_bandwidth(index: int, torch) -> Optional[float]:
+        """
+        Achieved memory bandwidth of one CUDA device, in GB/s.
+
+        A large device-to-device copy touches each byte twice (one read, one
+        write), which is the closest portable stand-in for the sequential weight
+        read a decode step performs. Returns None when the device cannot be
+        measured, so the caller reports "unknown" instead of a guess.
+        """
+        if index in _bandwidth_cache:
+            return _bandwidth_cache[index]
+
+        value: Optional[float] = None
+        src = dst = None
+        try:
+            device = torch.device(f"cuda:{index}")
+            free_bytes, _ = torch.cuda.mem_get_info(index)
+            free_mb = free_bytes / (1024 ** 2)
+            probe_mb = min(_BANDWIDTH_PROBE_MB, free_mb * _BANDWIDTH_PROBE_FREE_FRACTION)
+            if probe_mb >= _BANDWIDTH_PROBE_MIN_MB:
+                elements = int(probe_mb * 1024 * 1024) // 2  # float16
+                src = torch.empty(elements, dtype=torch.float16, device=device)
+                dst = torch.empty_like(src)
+
+                dst.copy_(src)  # warm up allocator and clocks
+                torch.cuda.synchronize(device)
+
+                start = time.perf_counter()
+                for _ in range(_BANDWIDTH_PROBE_ITERATIONS):
+                    dst.copy_(src)
+                torch.cuda.synchronize(device)
+                elapsed = time.perf_counter() - start
+
+                if elapsed > 0:
+                    moved_bytes = (
+                        src.numel() * src.element_size() * 2 * _BANDWIDTH_PROBE_ITERATIONS
+                    )
+                    value = round(moved_bytes / (1024 ** 3) / elapsed, 1)
+        except Exception as exc:
+            log.debug("[Benchmark] Bandwidth probe failed on cuda:%s: %s", index, exc)
+        finally:
+            del src, dst
+            try:
+                torch.cuda.empty_cache()
+            except Exception:
+                pass
+
+        _bandwidth_cache[index] = value
+        return value
 
     @classmethod
     def _profile_modules(cls, model, input_ids, torch) -> Dict[str, Any]:

@@ -103,12 +103,12 @@ def _detect_all_gpus(cpu_pct: float) -> List[Dict[str, Any]]:
     """
     Reports every GPU with measured values.
 
-    Nothing here is synthesised. The previous version derived GPU utilisation
-    from CPU load, computed temperature and power from the device index, held
-    VRAM usage above a fixed floor, and invented a complete RTX 5070 Ti when it
-    found no GPU at all -- so the panel showed plausible numbers that described
-    no real hardware. Fields the system cannot measure are reported as null so
-    the UI can say "unknown" instead of showing a fabricated reading.
+    Nothing here is synthesised. An earlier version derived GPU utilisation from
+    CPU load, computed temperature and power from the device index, held VRAM
+    usage above a fixed floor, and invented a discrete card when it found no GPU
+    at all -- so the panel showed plausible numbers that described no real
+    hardware. Fields the system cannot measure are reported as null so the UI
+    can say "unknown" instead of showing a fabricated reading.
     """
     gpus_list: List[Dict[str, Any]] = []
     seen_names = set()

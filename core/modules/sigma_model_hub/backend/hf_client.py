@@ -6,6 +6,7 @@ from __future__ import annotations
 import os
 import re
 import json
+import time
 import urllib.request
 import urllib.parse
 from typing import Dict, Any, List, Optional
@@ -348,24 +349,114 @@ def parse_model_specs(model_id: str, name: str, tags: List[str] = None) -> Dict[
     }
 
 
-def _determine_target_gpu(size_gb: float, is_moe: bool = False, active_vram_label: str = "") -> str:
-    """Recommends the best hardware target in Sigma Studio based on model size and MoE architecture."""
-    if is_moe and size_gb >= 500.0:
-        return f"Cluster / NVMe Offload ({active_vram_label} Attiva)"
-    if size_gb <= 5.5:
-        return "RTX 5060 (8 GB) Full VRAM"
-    elif size_gb <= 12.0:
-        return "RTX 5070 Ti (16 GB) + FlashAttn-2"
-    elif size_gb <= 24.0:
-        return "Dual-GPU (RTX 5070 Ti + RTX 5060)"
-    elif size_gb <= 48.0:
-        return "Dual-GPU + RAM 94GB (Sharded)"
-    elif size_gb <= 90.0:
-        return "Host RAM 94GB + NVMe Striping"
-    elif size_gb < 1000.0:
-        return f"NVMe Striping (~{int(size_gb)} GB Storage)"
-    else:
-        return f"Multi-Drive NVMe Array (~{size_gb/1000.0:.1f} TB Storage)"
+# Weights alone never fill a device: KV cache, activations and the CUDA context
+# also live there. A placement is only called a fit with this much slack on top.
+_FIT_HEADROOM = 1.15
+
+# The hardware inventory is stable for the lifetime of a machine, but a search
+# page asks for it once per result. Cached so a listing costs one probe.
+_hardware_snapshot_cache: Optional[Dict[str, Any]] = None
+_hardware_snapshot_at: float = 0.0
+_HARDWARE_SNAPSHOT_TTL_S = 60.0
+
+
+def get_local_hardware_snapshot(force: bool = False) -> Dict[str, Any]:
+    """
+    Capacity of the machine actually running Sigma, as measured by the probe.
+
+    Returns empty lists when nothing can be detected: callers must degrade to a
+    hardware-neutral answer rather than describe a machine that may not exist.
+    """
+    global _hardware_snapshot_cache, _hardware_snapshot_at
+
+    now = time.time()
+    if not force and _hardware_snapshot_cache is not None and \
+            (now - _hardware_snapshot_at) < _HARDWARE_SNAPSHOT_TTL_S:
+        return _hardware_snapshot_cache
+
+    snapshot: Dict[str, Any] = {"gpus": [], "ram_gb": 0.0, "fast_storage": False}
+    try:
+        from core.engine.hardware_probe import UniversalHardwareProbe
+
+        for acc in UniversalHardwareProbe.probe_accelerators():
+            vram = acc.get("total_vram_gb") or acc.get("unified_memory_gb") or 0.0
+            if not vram:
+                continue
+            snapshot["gpus"].append({
+                "name": acc.get("name", "GPU"),
+                "vram_gb": float(vram),
+                "type": acc.get("type", ""),
+            })
+        snapshot["gpus"].sort(key=lambda g: g["vram_gb"], reverse=True)
+
+        snapshot["ram_gb"] = float(UniversalHardwareProbe.probe_ram().get("total_gb", 0.0))
+        snapshot["fast_storage"] = any(
+            d.get("is_fast_storage") for d in UniversalHardwareProbe.probe_storage_drives()
+        )
+    except Exception as ex:
+        log.debug("[HF_Client] Hardware snapshot unavailable: %s", ex)
+
+    _hardware_snapshot_cache = snapshot
+    _hardware_snapshot_at = now
+    return snapshot
+
+
+def _short_gpu_name(name: str) -> str:
+    """Drops vendor boilerplate so a card fits on a badge, without renaming it."""
+    cleaned = re.sub(r"\b(NVIDIA|GeForce|AMD|Radeon|Intel\(R\)|Corporation)\b", "", name)
+    return re.sub(r"\s+", " ", cleaned).strip() or name
+
+
+def _determine_target_gpu(
+    size_gb: float,
+    is_moe: bool = False,
+    active_vram_label: str = "",
+    active_vram_gb: Optional[float] = None,
+) -> str:
+    """
+    Where this model would actually run, on the hardware this machine has.
+
+    Nothing here is keyed to a particular card. The requirement is compared with
+    the VRAM, RAM and storage the probe reports, and when the probe finds
+    nothing the answer states the requirement instead of naming hardware.
+    """
+    # A MoE only holds its active experts in VRAM; the rest can stream.
+    required_gb = active_vram_gb if (is_moe and active_vram_gb) else size_gb
+    required_gb = max(float(required_gb or 0.0), 0.1)
+
+    hardware = get_local_hardware_snapshot()
+    gpus = hardware["gpus"]
+    ram_gb = hardware["ram_gb"]
+
+    def _requirement_label() -> str:
+        if required_gb >= 1000.0:
+            return f"~{required_gb / 1000.0:.1f} TB"
+        return f"~{required_gb:g} GB"
+
+    if not gpus:
+        if ram_gb and ram_gb >= required_gb * _FIT_HEADROOM:
+            return f"CPU + RAM di sistema ({ram_gb:g} GB)"
+        if ram_gb:
+            return f"CPU + offload su disco ({_requirement_label()} richiesti)"
+        return f"{_requirement_label()} richiesti ({active_vram_label or 'pesi'})"
+
+    needed = required_gb * _FIT_HEADROOM
+    largest = gpus[0]
+    total_vram = sum(g["vram_gb"] for g in gpus)
+
+    if largest["vram_gb"] >= needed:
+        return f"{_short_gpu_name(largest['name'])} ({largest['vram_gb']:g} GB) • VRAM completa"
+
+    if len(gpus) > 1 and total_vram >= needed:
+        return f"Multi-GPU {len(gpus)}× ({total_vram:g} GB VRAM totali) • sharded"
+
+    if total_vram + ram_gb >= needed:
+        return f"{_short_gpu_name(largest['name'])} + RAM ({ram_gb:g} GB) • offload parziale"
+
+    if hardware["fast_storage"]:
+        return f"Offload su disco ({_requirement_label()}) • streaming NVMe/SSD"
+
+    return f"Oltre le risorse locali ({_requirement_label()} richiesti)"
 
 
 
@@ -434,7 +525,6 @@ POPULAR_MODELS = [
         "pipeline_tag": "text-generation",
         "default_file": "model.safetensors",
         "hf_url": "https://huggingface.co/Qwen/Qwen2.5-Coder-14B-Instruct",
-        "recommended_gpu": "RTX 5070 Ti (16 GB)"
     },
     {
         "id": "deepseek-ai/DeepSeek-R1-Distill-Qwen-14B",
@@ -459,7 +549,6 @@ POPULAR_MODELS = [
         "pipeline_tag": "text-generation",
         "default_file": "model.safetensors",
         "hf_url": "https://huggingface.co/deepseek-ai/DeepSeek-R1-Distill-Qwen-14B",
-        "recommended_gpu": "RTX 5070 Ti (16 GB)"
     },
     {
         "id": "meta-llama/Llama-3.1-8B-Instruct",
@@ -484,7 +573,6 @@ POPULAR_MODELS = [
         "pipeline_tag": "text-generation",
         "default_file": "model.safetensors",
         "hf_url": "https://huggingface.co/meta-llama/Llama-3.1-8B-Instruct",
-        "recommended_gpu": "RTX 5060 (8 GB)"
     },
     {
         "id": "meta-llama/Llama-3.3-70B-Instruct",
@@ -509,7 +597,6 @@ POPULAR_MODELS = [
         "pipeline_tag": "text-generation",
         "default_file": "model.safetensors",
         "hf_url": "https://huggingface.co/meta-llama/Llama-3.3-70B-Instruct",
-        "recommended_gpu": "Multi-GPU + Host RAM (Dual GPU)"
     },
     {
         "id": "bartowski/DeepSeek-R1-Distill-Qwen-14B-GGUF",
@@ -534,7 +621,6 @@ POPULAR_MODELS = [
         "pipeline_tag": "text-generation",
         "default_file": "DeepSeek-R1-Distill-Qwen-14B-Q4_K_M.gguf",
         "hf_url": "https://huggingface.co/bartowski/DeepSeek-R1-Distill-Qwen-14B-GGUF",
-        "recommended_gpu": "RTX 5070 Ti (16 GB)"
     },
     {
         "id": "Qwen/Qwen2.5-7B-Instruct",
@@ -559,7 +645,6 @@ POPULAR_MODELS = [
         "pipeline_tag": "text-generation",
         "default_file": "model.safetensors",
         "hf_url": "https://huggingface.co/Qwen/Qwen2.5-7B-Instruct",
-        "recommended_gpu": "RTX 5060 (8 GB)"
     }
 ]
 
@@ -629,7 +714,15 @@ def search_hf_models(
                 continue
             if format_filter != "all" and format_filter.lower() not in m.get("format", "").lower():
                 continue
-            results.append(m)
+            # Computed here rather than stored with the entry: the catalogue is
+            # shared, the machine reading it is not.
+            results.append({
+                **m,
+                "recommended_gpu": _determine_target_gpu(
+                    m.get("size_gb", 0.0), m.get("is_moe", False),
+                    m.get("active_vram_label", ""), m.get("active_vram_gb"),
+                ),
+            })
 
     # 2. Dynamic Multi-Pass Live Fetch directly from Hugging Face Hub API
     next_cursor = None
@@ -732,7 +825,7 @@ def search_hf_models(
             size_label = specs["size_label"]
             active_vram_gb = specs["active_vram_gb"]
             active_vram_label = specs["active_vram_label"]
-            rec_gpu = _determine_target_gpu(size_gb, specs["is_moe"], active_vram_label)
+            rec_gpu = _determine_target_gpu(size_gb, specs["is_moe"], active_vram_label, active_vram_gb)
 
             # Apply filters
             if not _matches_size_bracket(size_gb, size_bracket):
@@ -863,7 +956,9 @@ def get_hf_model_details(model_id: str, hf_token: Optional[str] = None) -> Dict[
                     "size_label": specs["size_label"],
                     "active_vram_gb": specs["active_vram_gb"],
                     "active_vram_label": specs["active_vram_label"],
-                    "recommended_gpu": _determine_target_gpu(specs["size_gb"], specs["is_moe"], specs["active_vram_label"]),
+                    "recommended_gpu": _determine_target_gpu(
+                        specs["size_gb"], specs["is_moe"],
+                        specs["active_vram_label"], specs["active_vram_gb"]),
                     "pipeline_tag": data.get("pipeline_tag", "text-generation"),
                     "tags": data.get("tags", []),
                     "files": files,
@@ -895,7 +990,9 @@ def get_hf_model_details(model_id: str, hf_token: Optional[str] = None) -> Dict[
         "size_label": specs["size_label"],
         "active_vram_gb": specs["active_vram_gb"],
         "active_vram_label": specs["active_vram_label"],
-        "recommended_gpu": _determine_target_gpu(specs["size_gb"], specs["is_moe"], specs["active_vram_label"]),
+        "recommended_gpu": _determine_target_gpu(
+                        specs["size_gb"], specs["is_moe"],
+                        specs["active_vram_label"], specs["active_vram_gb"]),
         "pipeline_tag": "text-generation",
         "tags": [],
         "files": [{
