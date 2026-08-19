@@ -17,7 +17,11 @@ from core.logger import get_logger
 
 log = get_logger(__name__)
 
-DEFAULT_MODELS_DIR = os.path.join(os.getcwd(), "data", "models")
+from core.model_paths import models_dir as _active_models_dir
+
+# The same directory the engine loads from, so a finished download is
+# immediately visible to inference instead of landing where it never looks.
+DEFAULT_MODELS_DIR = _active_models_dir()
 
 
 @dataclass
@@ -84,6 +88,10 @@ class ModelDownloadManager:
         self.lock = threading.Lock()
 
     def set_models_dir(self, new_dir: str):
+        # Keep the shared resolver in step, or the engine would carry on
+        # reading the previous location.
+        from core.model_paths import set_models_dir as _set_shared
+        _set_shared(new_dir)
         with self.lock:
             self.models_dir = new_dir
             os.makedirs(self.models_dir, exist_ok=True)

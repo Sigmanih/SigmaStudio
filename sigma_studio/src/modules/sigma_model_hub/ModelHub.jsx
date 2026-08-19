@@ -6,8 +6,9 @@ import {
 } from 'lucide-react';
 import { useApp } from '../../contexts/AppContext';
 import HfBrowser from './HfBrowser';
-import DownloadManager from './DownloadManager';
 import LocalInventory from './LocalInventory';
+import GgufConverter from './GgufConverter';
+import DirectoryPicker from './DirectoryPicker';
 import SigmaDeployModal from './SigmaDeployModal';
 import EngineOptimizer from './EngineOptimizer';
 import './styles/model-hub.css';
@@ -32,6 +33,7 @@ export default function ModelHub({ addToast, openTab }) {
     preferred_quantization: 'Q4_K_M'
   });
   const [savingConfig, setSavingConfig] = useState(false);
+  const [pickingDir, setPickingDir] = useState(false);
 
   // Engine status
   const [engineStatus, setEngineStatus] = useState(null);
@@ -201,13 +203,13 @@ export default function ModelHub({ addToast, openTab }) {
         {[
           { id: 'optimizer', label: '⚡ SigmaEngine Kernel & Ottimizzatore' },
           { id: 'browse', label: '🔍 Esplora Hugging Face' },
+          { id: 'convert', label: '📦 Conversione GGUF' },
           {
-            id: 'downloads',
+            id: 'inventory',
             label: totalActiveTasksCount > 0
-              ? `📥 Download Attivi (${currentRunningTask ? `${currentRunningTask.progress_pct}%` : totalActiveTasksCount})`
-              : '📥 Download Attivi & Coda'
+              ? `💾 Modelli Locali (${currentRunningTask ? `${currentRunningTask.progress_pct}%` : totalActiveTasksCount} in download)`
+              : '💾 Modelli Locali & Storage'
           },
-          { id: 'inventory', label: '💾 Modelli Locali & Storage' },
           { id: 'settings', label: '⚙️ Directory & HF Token' },
         ].map(tab => (
           <button
@@ -249,11 +251,10 @@ export default function ModelHub({ addToast, openTab }) {
         />
       )}
 
-      {activeTab === 'downloads' && (
-        <DownloadManager
+      {activeTab === 'convert' && (
+        <GgufConverter
           isLight={isLight}
           addToast={addToast}
-          onDeployRequested={m => setDeployTargetModel(m)}
         />
       )}
 
@@ -261,6 +262,7 @@ export default function ModelHub({ addToast, openTab }) {
         <LocalInventory
           isLight={isLight}
           addToast={addToast}
+          activeDownloads={activeDownloads}
           onDeployRequested={m => setDeployTargetModel(m)}
         />
       )}
@@ -284,17 +286,31 @@ export default function ModelHub({ addToast, openTab }) {
             <label style={{ fontSize: '0.74rem', fontWeight: 700, color: textPrimary, display: 'flex', alignItems: 'center', gap: '6px' }}>
               <Folder size={14} color="#ffb86c" /> Cartella Download Modelli:
             </label>
-            <input
-              type="text"
-              value={config.models_dir || ''}
-              onChange={e => setConfig({ ...config, models_dir: e.target.value })}
-              placeholder="es. data/models (Default)"
-              style={{
-                padding: '9px 12px', borderRadius: '10px',
-                background: subBg, border: subBorder,
-                color: textPrimary, fontSize: '0.8rem', outline: 'none'
-              }}
-            />
+            <div style={{ display: 'flex', gap: '8px' }}>
+              <input
+                type="text"
+                value={config.models_dir || ''}
+                onChange={e => setConfig({ ...config, models_dir: e.target.value })}
+                placeholder="es. data/models (Default)"
+                style={{
+                  flex: 1, padding: '9px 12px', borderRadius: '10px',
+                  background: subBg, border: subBorder,
+                  color: textPrimary, fontSize: '0.8rem', outline: 'none'
+                }}
+              />
+              <button
+                onClick={() => setPickingDir(true)}
+                title="Sfoglia le cartelle del computer"
+                style={{
+                  padding: '9px 14px', borderRadius: '10px', border: subBorder,
+                  background: subBg, color: textPrimary,
+                  fontSize: '0.8rem', fontWeight: 700, cursor: 'pointer',
+                  whiteSpace: 'nowrap'
+                }}
+              >
+                Sfoglia...
+              </button>
+            </div>
           </div>
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
@@ -332,9 +348,9 @@ export default function ModelHub({ addToast, openTab }) {
       )}
 
       {/* 4. SLEEK LIVE FLOATING DOWNLOAD HUD BANNER (Visible across any tab when downloading or interrupted) */}
-      {currentRunningTask && activeTab !== 'downloads' && (
+      {currentRunningTask && activeTab !== 'inventory' && (
         <div
-          onClick={() => setActiveTab('downloads')}
+          onClick={() => setActiveTab('inventory')}
           style={{
             position: 'sticky', bottom: '16px', zIndex: 100,
             padding: '12px 18px', borderRadius: '14px',
@@ -373,7 +389,7 @@ export default function ModelHub({ addToast, openTab }) {
             <button
               onClick={(e) => {
                 e.stopPropagation();
-                setActiveTab('downloads');
+                setActiveTab('inventory');
               }}
               style={{
                 padding: '6px 12px', borderRadius: '8px', border: 'none',
@@ -388,9 +404,9 @@ export default function ModelHub({ addToast, openTab }) {
         </div>
       )}
 
-      {!currentRunningTask && lastFailedTask && activeTab !== 'downloads' && (
+      {!currentRunningTask && lastFailedTask && activeTab !== 'inventory' && (
         <div
-          onClick={() => setActiveTab('downloads')}
+          onClick={() => setActiveTab('inventory')}
           style={{
             position: 'sticky', bottom: '16px', zIndex: 100,
             padding: '12px 18px', borderRadius: '14px',
@@ -445,6 +461,15 @@ export default function ModelHub({ addToast, openTab }) {
       )}
 
 
+      {pickingDir && (
+        <DirectoryPicker
+          initialPath={config.models_dir}
+          isLight={isLight}
+          onSelect={dir => setConfig(c => ({ ...c, models_dir: dir }))}
+          onClose={() => setPickingDir(false)}
+        />
+      )}
+
       {/* 5. DEPLOY TO SIGMA ENGINE MODAL */}
       {deployTargetModel && (
         <SigmaDeployModal
@@ -456,8 +481,15 @@ export default function ModelHub({ addToast, openTab }) {
             fetchEngineStatus();
           }}
           onNavigateToChat={() => {
+            // The chat panel must be told which model was just deployed, and
+            // openTab takes (item, type): passing a single object left the tab
+            // with no type at all, which rendered an empty pane.
+            try {
+              window.dispatchEvent(new CustomEvent('ai-config-updated'));
+            } catch (e) { /* the chat refreshes on its own next mount */ }
+
             if (openTab) {
-              openTab({ id: 'chat', title: 'Chat', type: 'chat' });
+              openTab({ name: 'Chat' }, 'chat');
             } else {
               try {
                 window.dispatchEvent(new CustomEvent('open_tab', { detail: { type: 'chat' } }));

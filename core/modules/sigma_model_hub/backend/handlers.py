@@ -288,12 +288,171 @@ def handle_models_config_get(self):
 def handle_models_config_save(self):
     """POST /api/models/config — Salva impostazioni del Model Hub."""
     try:
+        from core.model_paths import models_dir, set_models_dir
+
         body = self.read_json_body()
         _save_hub_config(body)
-        self.send_json_response({"success": True, "message": "Impostazioni salvate con successo.", "config": body})
+
+        # Point every consumer at the new location in the same breath. Without
+        # this the downloader would start writing to the new directory while the
+        # engine, the inventory and the converter kept reading the old one.
+        new_dir = (body or {}).get("models_dir")
+        if new_dir:
+            resolved = set_models_dir(new_dir)
+            downloader_manager.set_models_dir(resolved)
+
+        self.send_json_response({
+            "success": True,
+            "message": "Impostazioni salvate con successo.",
+            "config": body,
+            "active_models_dir": models_dir(),
+        })
     except Exception as e:
         log.error("Error in handle_models_config_save: %s", e)
         self.send_json_response({"success": False, "error": str(e)}, 500)
+
+
+# ---------------------------------------------------------------- conversion
+
+def handle_models_convert_info(self):
+    """GET /api/models/convert/info — Modelli convertibili, tipi e stato tooling."""
+    try:
+        from core.engine.gguf_converter import GgufConverter
+        self.send_json_response({
+            "success": True,
+            "models": GgufConverter.convertible_models(),
+            "quantization_types": GgufConverter.quantization_types(),
+            "tooling": GgufConverter.converter_status(),
+            "jobs": GgufConverter.jobs(),
+        })
+    except Exception as e:
+        log.error("Error in handle_models_convert_info: %s", e)
+        self.send_json_response({"success": False, "error": str(e)}, 500)
+
+
+def handle_models_convert_tooling(self):
+    """POST /api/models/convert/tooling — Scarica lo script di conversione."""
+    try:
+        from core.engine.gguf_converter import GgufConverter
+        res = GgufConverter.fetch_converter()
+        self.send_json_response(res, 200 if res.get("success") else 502)
+    except Exception as e:
+        log.error("Error in handle_models_convert_tooling: %s", e)
+        self.send_json_response({"success": False, "error": str(e)}, 500)
+
+
+def handle_models_convert_start(self):
+    """POST /api/models/convert/start — Avvia la conversione in GGUF."""
+    try:
+        from core.engine.gguf_converter import GgufConverter
+        body = self.read_json_body() if hasattr(self, "read_json_body") else {}
+        res = GgufConverter.start(
+            model_name=body.get("model"),
+            quantization=body.get("quantization", "Q4_K_M"),
+        )
+        self.send_json_response(res, 200 if res.get("success") else 400)
+    except Exception as e:
+        log.error("Error in handle_models_convert_start: %s", e)
+        self.send_json_response({"success": False, "error": str(e)}, 500)
+
+
+def handle_models_convert_jobs(self):
+    """GET /api/models/convert/jobs — Stato delle conversioni."""
+    try:
+        from core.engine.gguf_converter import GgufConverter
+        self.send_json_response({"success": True, "jobs": GgufConverter.jobs()})
+    except Exception as e:
+        log.error("Error in handle_models_convert_jobs: %s", e)
+        self.send_json_response({"success": False, "error": str(e)}, 500)
+
+
+def handle_models_browse_dirs(self):
+    """
+    GET /api/models/browse — Lists subdirectories, for picking a models folder.
+
+    A server-side browser rather than a file input: the browser only ever hands
+    back a relative name for a chosen directory, and the path this setting needs
+    is an absolute one on the machine running the engine.
+    """
+    try:
+        from urllib.parse import urlparse, parse_qs
+        from core.model_paths import models_dir
+
+        query = parse_qs(urlparse(self.path).query)
+        requested = (query.get("path", [""])[0] or "").strip()
+
+        if not requested:
+            current = models_dir()
+            base = os.path.dirname(current) or current
+        else:
+            base = os.path.abspath(requested)
+
+        if not os.path.isdir(base):
+            self.send_json_response(
+                {"success": False, "error": f"Non e' una cartella: {base}"}, 400)
+            return
+
+        entries = []
+        for name in sorted(os.listdir(base)):
+            full = os.path.join(base, name)
+            if not os.path.isdir(full) or name.startswith("."):
+                continue
+            entries.append({
+                "name": name, "path": full, "has_models": _holds_models(full),
+            })
+
+        parent = os.path.dirname(base.rstrip(os.sep))
+        self.send_json_response({
+            "success": True,
+            "current": base,
+            "parent": parent if parent and parent != base else None,
+            "entries": entries,
+            "roots": _list_drive_roots(),
+        })
+    except Exception as e:
+        log.error("Error in handle_models_browse_dirs: %s", e)
+        self.send_json_response({"success": False, "error": str(e)}, 500)
+
+
+def _holds_models(folder: str) -> bool:
+    """
+    Whether a folder is, or contains, model weights.
+
+    A models directory holds one subfolder per model rather than loose weight
+    files, so checking only its own contents marks the very folder the user is
+    looking for as empty.
+    """
+    suffixes = (".safetensors", ".gguf", ".bin")
+    try:
+        names = os.listdir(folder)
+    except Exception:
+        return False
+
+    if any(n.endswith(suffixes) for n in names):
+        return True
+
+    for name in names[:60]:          # one level down is enough, and bounded
+        child = os.path.join(folder, name)
+        if not os.path.isdir(child):
+            continue
+        try:
+            if any(n.endswith(suffixes) for n in os.listdir(child)):
+                return True
+        except Exception:
+            continue
+    return False
+
+
+def _list_drive_roots():
+    """Mount points to jump to, so the user is not stuck below one root."""
+    try:
+        import psutil
+        return [
+            p.mountpoint for p in psutil.disk_partitions(all=False)
+            if os.path.isdir(p.mountpoint)
+        ]
+    except Exception:
+        return []
 
 
 def register_routes(app=None) -> None:
@@ -304,6 +463,9 @@ def register_routes(app=None) -> None:
         '/api/models/hf/downloads': handle_models_hf_downloads_list,
         '/api/models/local/list': handle_models_local_list,
         '/api/models/config': handle_models_config_get,
+        '/api/models/convert/info': handle_models_convert_info,
+        '/api/models/convert/jobs': handle_models_convert_jobs,
+        '/api/models/browse': handle_models_browse_dirs,
     }
 
     post_routes = {
@@ -312,6 +474,8 @@ def register_routes(app=None) -> None:
         '/api/models/engine/load': handle_models_engine_load,
         '/api/models/engine/unload': handle_models_engine_unload,
         '/api/models/config': handle_models_config_save,
+        '/api/models/convert/start': handle_models_convert_start,
+        '/api/models/convert/tooling': handle_models_convert_tooling,
     }
 
     try:
