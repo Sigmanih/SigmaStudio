@@ -298,20 +298,46 @@ def handle_models_config_get(self):
 
 
 def handle_models_config_save(self):
-    """POST /api/models/config — Salva impostazioni del Model Hub."""
+    """POST /api/models/config — Salva impostazioni del Model Hub e aggiorna i token attivi."""
     try:
         from core.model_paths import models_dir, set_models_dir
 
         body = self.read_json_body()
         _save_hub_config(body)
 
-        # Point every consumer at the new location in the same breath. Without
-        # this the downloader would start writing to the new directory while the
-        # engine, the inventory and the converter kept reading the old one.
+        # Update models_dir
         new_dir = (body or {}).get("models_dir")
         if new_dir:
             resolved = set_models_dir(new_dir)
             downloader_manager.set_models_dir(resolved)
+
+        # Update HF token in environment and active tasks
+        hf_token = (body or {}).get("hf_token", "").strip()
+        if hf_token:
+            os.environ["HF_TOKEN"] = hf_token
+            os.environ["HUGGINGFACE_TOKEN"] = hf_token
+            os.environ["HUGGING_FACE_HUB_TOKEN"] = hf_token
+        elif "hf_token" in body and not hf_token:
+            os.environ.pop("HF_TOKEN", None)
+            os.environ.pop("HUGGINGFACE_TOKEN", None)
+            os.environ.pop("HUGGING_FACE_HUB_TOKEN", None)
+
+        # Update all active tasks with the new token so immediate retries succeed!
+        with downloader_manager.lock:
+            for t in downloader_manager.tasks.values():
+                t.hf_token = hf_token
+
+        # Also sync to config.json
+        try:
+            cfg_path = os.path.join(_ROOT_DIR, "config.json")
+            if os.path.exists(cfg_path):
+                with open(cfg_path, "r", encoding="utf-8") as f:
+                    c = json.load(f)
+                c["hf_token"] = hf_token
+                with open(cfg_path, "w", encoding="utf-8") as f:
+                    json.dump(c, f, indent=2)
+        except Exception:
+            pass
 
         self.send_json_response({
             "success": True,
@@ -321,6 +347,66 @@ def handle_models_config_save(self):
         })
     except Exception as e:
         log.error("Error in handle_models_config_save: %s", e)
+        self.send_json_response({"success": False, "error": str(e)}, 500)
+
+
+def handle_models_hf_token_test(self):
+    """POST /api/models/hf/token/test — Verifica la validità del token Hugging Face contattando l'API ufficiale."""
+    try:
+        body = self.read_json_body() if hasattr(self, 'read_json_body') else {}
+        token = (body.get("hf_token") or "").strip()
+        if not token:
+            from .hf_client import get_effective_hf_token
+            token = get_effective_hf_token() or ""
+
+        if not token:
+            self.send_json_response({"success": False, "error": "Nessun token inserito da verificare."}, 400)
+            return
+
+        import urllib.request
+        import json
+        req = urllib.request.Request("https://huggingface.co/api/whoami-v2")
+        req.add_header("Authorization", f"Bearer {token}")
+        req.add_header("User-Agent", "SigmaStudio-ModelHub/2.0")
+
+        try:
+            with urllib.request.urlopen(req, timeout=10) as resp:
+                if resp.status == 200:
+                    data = json.loads(resp.read().decode("utf-8"))
+                    username = data.get("name") or data.get("fullname") or "Utente HF"
+                    email = data.get("email") or ""
+                    auth_type = data.get("type") or "user"
+                    orgs = [o.get("name") for o in data.get("orgs", []) if o.get("name")]
+                    self.send_json_response({
+                        "success": True,
+                        "valid": True,
+                        "username": username,
+                        "email": email,
+                        "type": auth_type,
+                        "orgs": orgs,
+                        "message": f"✅ Token Hugging Face valido! Autenticato come @{username}."
+                    })
+                else:
+                    self.send_json_response({
+                        "success": False,
+                        "valid": False,
+                        "error": f"Risposta inattesa da Hugging Face: HTTP {resp.status}"
+                    }, 400)
+        except urllib.error.HTTPError as http_err:
+            if http_err.code in (401, 403):
+                self.send_json_response({
+                    "success": False,
+                    "valid": False,
+                    "error": "❌ Token non valido o revocato (HTTP 401 Unauthorized). Verifica di aver copiato l'intero token 'hf_...' da huggingface.co/settings/tokens"
+                }, 200)
+            else:
+                self.send_json_response({
+                    "success": False,
+                    "valid": False,
+                    "error": f"Errore server Hugging Face: HTTP {http_err.code}"
+                }, 200)
+    except Exception as e:
+        log.error("Error in handle_models_hf_token_test: %s", e)
         self.send_json_response({"success": False, "error": str(e)}, 500)
 
 
@@ -482,7 +568,11 @@ def register_routes(app=None) -> None:
 
     post_routes = {
         '/api/models/hf/download/start': handle_models_hf_download_start,
+        '/api/models/hf/download/repo': handle_models_hf_download_repo,
         '/api/models/hf/download/cancel': handle_models_hf_download_cancel,
+        '/api/models/hf/download/retry': handle_models_hf_download_retry,
+        '/api/models/hf/download/remove': handle_models_hf_download_remove,
+        '/api/models/hf/token/test': handle_models_hf_token_test,
         '/api/models/engine/load': handle_models_engine_load,
         '/api/models/engine/unload': handle_models_engine_unload,
         '/api/models/config': handle_models_config_save,

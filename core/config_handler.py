@@ -151,25 +151,58 @@ def handle_hf_token_config(self):
     try:
         req = self.read_json_body() if hasattr(self, 'read_json_body') else {}
         token = req.get('hf_token', '').strip()
-        
-        cfg_path = os.path.join("data", "config.json")
-        cfg = {}
-        if os.path.exists(cfg_path):
-            try:
-                with open(cfg_path, 'r', encoding='utf-8') as f:
-                    cfg = json.load(f)
-            except Exception:
-                cfg = {}
-        
-        cfg['hf_token'] = token
-        os.makedirs(os.path.dirname(cfg_path), exist_ok=True)
-        with open(cfg_path, 'w', encoding='utf-8') as f:
-            json.dump(cfg, f, indent=2, ensure_ascii=False)
-            
+
+        # Update environment variables
         if token:
             os.environ["HF_TOKEN"] = token
             os.environ["HUGGINGFACE_TOKEN"] = token
-            
+            os.environ["HUGGING_FACE_HUB_TOKEN"] = token
+        else:
+            os.environ.pop("HF_TOKEN", None)
+            os.environ.pop("HUGGINGFACE_TOKEN", None)
+            os.environ.pop("HUGGING_FACE_HUB_TOKEN", None)
+
+        # 1. Update config.json
+        cfg_paths = [
+            "config.json",
+            os.path.join("data", "config.json"),
+        ]
+        for cfg_path in cfg_paths:
+            cfg = {}
+            if os.path.exists(cfg_path):
+                try:
+                    with open(cfg_path, 'r', encoding='utf-8') as f:
+                        cfg = json.load(f)
+                except Exception:
+                    cfg = {}
+            cfg['hf_token'] = token
+            os.makedirs(os.path.dirname(cfg_path) or '.', exist_ok=True)
+            with open(cfg_path, 'w', encoding='utf-8') as f:
+                json.dump(cfg, f, indent=2, ensure_ascii=False)
+
+        # 2. Update data/model_hub_config.json
+        hub_cfg_path = os.path.join("data", "model_hub_config.json")
+        hub_cfg = {}
+        if os.path.exists(hub_cfg_path):
+            try:
+                with open(hub_cfg_path, 'r', encoding='utf-8') as f:
+                    hub_cfg = json.load(f)
+            except Exception:
+                hub_cfg = {}
+        hub_cfg['hf_token'] = token
+        os.makedirs(os.path.dirname(hub_cfg_path), exist_ok=True)
+        with open(hub_cfg_path, 'w', encoding='utf-8') as f:
+            json.dump(hub_cfg, f, indent=2, ensure_ascii=False)
+
+        # 3. Update active downloader tasks if loaded
+        try:
+            from core.modules.sigma_model_hub.backend.downloader_engine import downloader_manager
+            with downloader_manager.lock:
+                for t in downloader_manager.tasks.values():
+                    t.hf_token = token
+        except Exception:
+            pass
+
         return self.send_json_response({"success": True, "hf_has_token": bool(token)})
     except Exception as exc:
         log.error("handle_hf_token_config error: %s", exc)
@@ -179,16 +212,8 @@ def handle_hf_token_config(self):
 def handle_hf_token_get(self):
     """GET /api/config/hf_token — Get HuggingFace token configured status."""
     try:
-        token = os.environ.get("HF_TOKEN") or os.environ.get("HUGGINGFACE_TOKEN") or ""
-        if not token:
-            cfg_path = os.path.join("data", "config.json")
-            if os.path.exists(cfg_path):
-                try:
-                    with open(cfg_path, 'r', encoding='utf-8') as f:
-                        cfg = json.load(f)
-                        token = cfg.get("hf_token", "")
-                except Exception:
-                    pass
+        from core.modules.sigma_model_hub.backend.hf_client import get_effective_hf_token
+        token = get_effective_hf_token() or ""
         return self.send_json_response({"success": True, "hf_has_token": bool(token)})
     except Exception as exc:
         return self.send_json_response({"success": False, "hf_has_token": False, "error": str(exc)})

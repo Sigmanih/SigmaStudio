@@ -194,9 +194,10 @@ class ModelDownloadManager:
             if not task:
                 return None
 
-            if not task.hf_token:
-                from .hf_client import get_effective_hf_token
-                task.hf_token = get_effective_hf_token()
+            from .hf_client import get_effective_hf_token
+            latest_token = get_effective_hf_token()
+            if latest_token:
+                task.hf_token = latest_token
 
             task._cancel_flag = False
             task.status = "queued"

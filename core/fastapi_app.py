@@ -303,7 +303,7 @@ try:
         handle_models_engine_load, handle_models_engine_unload, handle_models_config_save,
         handle_models_convert_info, handle_models_convert_jobs,
         handle_models_convert_start, handle_models_convert_tooling,
-        handle_models_browse_dirs
+        handle_models_browse_dirs, handle_models_hf_token_test
     )
     FastAPIHandlerAdapter.handle_models_hf_search = handle_models_hf_search
     FastAPIHandlerAdapter.handle_models_hf_details = handle_models_hf_details
@@ -315,6 +315,7 @@ try:
     FastAPIHandlerAdapter.handle_models_hf_download_cancel = handle_models_hf_download_cancel
     FastAPIHandlerAdapter.handle_models_hf_download_retry = handle_models_hf_download_retry
     FastAPIHandlerAdapter.handle_models_hf_download_remove = handle_models_hf_download_remove
+    FastAPIHandlerAdapter.handle_models_hf_token_test = handle_models_hf_token_test
     FastAPIHandlerAdapter.handle_models_engine_load = handle_models_engine_load
     FastAPIHandlerAdapter.handle_models_engine_unload = handle_models_engine_unload
     FastAPIHandlerAdapter.handle_models_config_save = handle_models_config_save

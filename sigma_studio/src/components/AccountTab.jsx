@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from 'react';
 import { User, Upload, Check, Sparkles, ShieldCheck, HardDrive, Key, CheckCircle2 } from 'lucide-react';
-import HFTokenSettings from './HFTokenSettings';
 import { useApp } from '../contexts/AppContext';
 import TechSpaceCanvas from './common/TechSpaceCanvas';
 
@@ -13,7 +12,6 @@ const PRESET_AVATARS = [
 
 export default function AccountTab() {
   const { theme } = useApp();
-  const [tokenNotice, setTokenNotice] = useState(null);
   const [savedSuccess, setSavedSuccess] = useState(false);
 
   // --- Profile State ---
@@ -356,43 +354,8 @@ export default function AccountTab() {
             </div>
           </div>
 
-          {/* COLONNA DESTRA — CREDENZIALI ESTERNE & HUGGINGFACE TOKEN */}
+          {/* COLONNA DESTRA — STATO SESSIONE & STORAGE */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-            
-            {/* SEZIONE HUGGINGFACE TOKEN */}
-            <div
-              style={{
-                backgroundColor: isLight ? '#fffdf9' : '#0e1017',
-                border: isLight ? '1px solid rgba(190, 160, 110, 0.35)' : '1px solid rgba(99, 102, 241, 0.2)',
-                borderRadius: '14px',
-                padding: '20px',
-                display: 'flex',
-                flexDirection: 'column',
-                gap: '14px'
-              }}
-            >
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', borderBottom: '1px solid rgba(255,255,255,0.08)', paddingBottom: '10px' }}>
-                <ShieldCheck size={18} style={{ color: '#6366f1' }} />
-                <div>
-                  <h3 style={{ margin: 0, fontSize: '0.95rem', fontWeight: 700, color: isLight ? '#111' : '#f0f2f8' }}>
-                    HuggingFace API Token
-                  </h3>
-                  <div style={{ fontSize: '0.7rem', color: '#8b8fa3', marginTop: '1px' }}>
-                    Download modelli, dataset e checkpoint su tutta l'infrastruttura
-                  </div>
-                </div>
-              </div>
-              <HFTokenSettings addToast={(message, type) => setTokenNotice({ message, type })} />
-              {tokenNotice && (
-                <div style={{
-                  fontSize: '0.72rem', padding: '6px 10px', borderRadius: '6px',
-                  color: tokenNotice.type === 'error' ? '#ff5555' : '#3fb950',
-                  background: tokenNotice.type === 'error' ? 'rgba(255,85,85,0.08)' : 'rgba(63,185,80,0.08)',
-                }}>
-                  {tokenNotice.message}
-                </div>
-              )}
-            </div>
 
             {/* SEZIONE STORAGE & STATO SESSIONE */}
             <div

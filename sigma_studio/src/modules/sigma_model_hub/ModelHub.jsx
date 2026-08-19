@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import {
   DownloadCloud, Search, HardDrive, Zap, Shield, Key,
   CheckCircle2, RefreshCw, Folder, Layers, Activity, Sparkles, ExternalLink,
-  ArrowRight, XCircle, RotateCcw
+  ArrowRight, XCircle, RotateCcw, Eye, EyeOff, ShieldCheck, AlertTriangle, Check
 } from 'lucide-react';
 import { useApp } from '../../contexts/AppContext';
 import HfBrowser from './HfBrowser';
@@ -34,6 +34,11 @@ export default function ModelHub({ addToast, openTab }) {
   });
   const [savingConfig, setSavingConfig] = useState(false);
   const [pickingDir, setPickingDir] = useState(false);
+
+  // Token testing and visibility state
+  const [showToken, setShowToken] = useState(false);
+  const [testingToken, setTestingToken] = useState(false);
+  const [tokenTestResult, setTokenTestResult] = useState(null);
 
   // Engine status
   const [engineStatus, setEngineStatus] = useState(null);
@@ -84,6 +89,35 @@ export default function ModelHub({ addToast, openTab }) {
     return () => clearInterval(interval);
   }, [fetchConfig, fetchEngineStatus, fetchDownloads]);
 
+  const handleTestToken = async () => {
+    const token = (config.hf_token || '').trim();
+    if (!token) {
+      if (addToast) addToast('⚠️ Inserisci prima il token Hugging Face da verificare.', 'warning');
+      return;
+    }
+    setTestingToken(true);
+    setTokenTestResult(null);
+    try {
+      const res = await fetch('/api/models/hf/token/test', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ hf_token: token })
+      });
+      const json = await res.json();
+      setTokenTestResult(json);
+      if (json.valid) {
+        if (addToast) addToast(`✅ ${json.message || 'Token valido!'}`, 'success', 5000);
+      } else {
+        if (addToast) addToast(json.error || 'Token non valido.', 'error', 6000);
+      }
+    } catch (e) {
+      setTokenTestResult({ valid: false, error: e.message });
+      if (addToast) addToast(`Errore verifica token: ${e.message}`, 'error');
+    } finally {
+      setTestingToken(false);
+    }
+  };
+
   const handleSaveConfig = async () => {
     setSavingConfig(true);
     try {
@@ -94,7 +128,8 @@ export default function ModelHub({ addToast, openTab }) {
       });
       const json = await res.json();
       if (json.success) {
-        if (addToast) addToast('⚡ Configurazione Model Hub salvata con successo!', 'success');
+        if (addToast) addToast('⚡ Configurazione e Token salvati con successo!', 'success');
+        fetchDownloads();
       }
     } catch (e) {
       if (addToast) addToast(`Errore salvataggio: ${e.message}`, 'error');
@@ -269,81 +304,215 @@ export default function ModelHub({ addToast, openTab }) {
 
       {activeTab === 'settings' && (
         <div style={{
-          padding: '24px', borderRadius: '16px',
-          background: cardBg, border: cardBorder, boxShadow: cardShadow,
-          display: 'flex', flexDirection: 'column', gap: '18px', maxWidth: '640px'
+          display: 'flex', flexDirection: 'column', gap: '20px', maxWidth: '720px'
         }}>
-          <div>
-            <h2 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 800, color: textPrimary }}>
-              Configurazione Download & Storage Modelli
-            </h2>
-            <p style={{ margin: '3px 0 0 0', fontSize: '0.74rem', color: textMuted }}>
-              Imposta la cartella locale di salvataggio e il tuo Hugging Face API Token personale.
-            </p>
-          </div>
-
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-            <label style={{ fontSize: '0.74rem', fontWeight: 700, color: textPrimary, display: 'flex', alignItems: 'center', gap: '6px' }}>
-              <Folder size={14} color="#ffb86c" /> Cartella Download Modelli:
-            </label>
-            <div style={{ display: 'flex', gap: '8px' }}>
-              <input
-                type="text"
-                value={config.models_dir || ''}
-                onChange={e => setConfig({ ...config, models_dir: e.target.value })}
-                placeholder="es. data/models (Default)"
+          {/* SEZIONE 1: HUGGING FACE TOKEN & AUTENTICAZIONE */}
+          <div style={{
+            padding: '24px', borderRadius: '16px',
+            background: cardBg, border: cardBorder, boxShadow: cardShadow,
+            display: 'flex', flexDirection: 'column', gap: '16px'
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid rgba(255,255,255,0.06)', paddingBottom: '12px', flexWrap: 'wrap', gap: '10px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <div style={{
+                  width: '36px', height: '36px', borderRadius: '10px',
+                  background: 'linear-gradient(135deg, rgba(99, 102, 241, 0.2), rgba(0, 210, 255, 0.2))',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center'
+                }}>
+                  <Key size={20} color="#00d2ff" />
+                </div>
+                <div>
+                  <h2 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 800, color: textPrimary }}>
+                    Hugging Face Access Token
+                  </h2>
+                  <div style={{ fontSize: '0.74rem', color: textMuted, marginTop: '2px' }}>
+                    Download ultra-veloci (5-50 MB/s) e accesso ai modelli protetti / Gated (Llama 3, Gemma, DeepSeek)
+                  </div>
+                </div>
+              </div>
+              <a
+                href="https://huggingface.co/settings/tokens"
+                target="_blank"
+                rel="noopener noreferrer"
                 style={{
-                  flex: 1, padding: '9px 12px', borderRadius: '10px',
-                  background: subBg, border: subBorder,
-                  color: textPrimary, fontSize: '0.8rem', outline: 'none'
-                }}
-              />
-              <button
-                onClick={() => setPickingDir(true)}
-                title="Sfoglia le cartelle del computer"
-                style={{
-                  padding: '9px 14px', borderRadius: '10px', border: subBorder,
-                  background: subBg, color: textPrimary,
-                  fontSize: '0.8rem', fontWeight: 700, cursor: 'pointer',
-                  whiteSpace: 'nowrap'
+                  fontSize: '0.72rem', color: '#00d2ff', textDecoration: 'none',
+                  display: 'flex', alignItems: 'center', gap: '4px', fontWeight: 700,
+                  padding: '6px 12px', borderRadius: '8px', background: subBg, border: subBorder
                 }}
               >
-                Sfoglia...
+                Genera Token <ExternalLink size={12} />
+              </a>
+            </div>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+              <label style={{ fontSize: '0.74rem', fontWeight: 700, color: textPrimary }}>
+                Token Personale Hugging Face (hf_...):
+              </label>
+              <div style={{ display: 'flex', gap: '8px' }}>
+                <div style={{ position: 'relative', flex: 1 }}>
+                  <input
+                    type={showToken ? 'text' : 'password'}
+                    value={config.hf_token || ''}
+                    onChange={e => {
+                      setConfig({ ...config, hf_token: e.target.value });
+                      setTokenTestResult(null);
+                    }}
+                    placeholder="hf_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+                    style={{
+                      width: '100%', padding: '10px 42px 10px 14px', borderRadius: '10px',
+                      background: subBg, border: subBorder,
+                      color: textPrimary, fontSize: '0.82rem', fontFamily: 'monospace', outline: 'none',
+                      boxSizing: 'border-box'
+                    }}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowToken(!showToken)}
+                    style={{
+                      position: 'absolute', right: '10px', top: '50%', transform: 'translateY(-50%)',
+                      background: 'none', border: 'none', color: textMuted, cursor: 'pointer',
+                      padding: '4px', display: 'flex', alignItems: 'center'
+                    }}
+                  >
+                    {showToken ? <EyeOff size={16} /> : <Eye size={16} />}
+                  </button>
+                </div>
+
+                <button
+                  onClick={handleTestToken}
+                  disabled={testingToken || !config.hf_token}
+                  style={{
+                    padding: '10px 16px', borderRadius: '10px', border: subBorder,
+                    background: 'linear-gradient(135deg, rgba(99, 102, 241, 0.2), rgba(0, 210, 255, 0.2))',
+                    color: textPrimary, fontSize: '0.78rem', fontWeight: 800, cursor: 'pointer',
+                    display: 'flex', alignItems: 'center', gap: '6px', whiteSpace: 'nowrap'
+                  }}
+                >
+                  {testingToken ? <Activity className="mh-spin" size={14} color="#00d2ff" /> : <ShieldCheck size={14} color="#00d2ff" />}
+                  {testingToken ? 'Verifica...' : 'Verifica Token'}
+                </button>
+              </div>
+            </div>
+
+            {/* Test result alert */}
+            {tokenTestResult && (
+              <div style={{
+                padding: '12px 16px', borderRadius: '10px',
+                background: tokenTestResult.valid ? 'rgba(16, 185, 129, 0.12)' : 'rgba(239, 68, 68, 0.12)',
+                border: tokenTestResult.valid ? '1px solid rgba(16, 185, 129, 0.3)' : '1px solid rgba(239, 68, 68, 0.3)',
+                display: 'flex', alignItems: 'flex-start', gap: '10px'
+              }}>
+                {tokenTestResult.valid ? (
+                  <CheckCircle2 size={18} color="#10b981" style={{ flexShrink: 0, marginTop: '2px' }} />
+                ) : (
+                  <AlertTriangle size={18} color="#ef4444" style={{ flexShrink: 0, marginTop: '2px' }} />
+                )}
+                <div style={{ fontSize: '0.76rem', color: tokenTestResult.valid ? '#10b981' : '#ef4444' }}>
+                  <div style={{ fontWeight: 800 }}>
+                    {tokenTestResult.valid ? 'Autenticazione Riuscita' : 'Autenticazione Fallita'}
+                  </div>
+                  <div style={{ marginTop: '2px', color: textPrimary, fontSize: '0.72rem' }}>
+                    {tokenTestResult.message || tokenTestResult.error}
+                  </div>
+                  {tokenTestResult.valid && tokenTestResult.orgs && tokenTestResult.orgs.length > 0 && (
+                    <div style={{ marginTop: '4px', fontSize: '0.68rem', color: textMuted }}>
+                      Organizzazioni associate: {tokenTestResult.orgs.join(', ')}
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* SEZIONE 2: DIRECTORY STORAGE MODELLI */}
+          <div style={{
+            padding: '24px', borderRadius: '16px',
+            background: cardBg, border: cardBorder, boxShadow: cardShadow,
+            display: 'flex', flexDirection: 'column', gap: '16px'
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', borderBottom: '1px solid rgba(255,255,255,0.06)', paddingBottom: '12px' }}>
+              <div style={{
+                width: '36px', height: '36px', borderRadius: '10px',
+                background: 'linear-gradient(135deg, rgba(255, 184, 108, 0.2), rgba(234, 88, 12, 0.2))',
+                display: 'flex', alignItems: 'center', justifyContent: 'center'
+              }}>
+                <Folder size={20} color="#ffb86c" />
+              </div>
+              <div>
+                <h2 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 800, color: textPrimary }}>
+                  Cartella di Salvataggio Modelli
+                </h2>
+                <div style={{ fontSize: '0.74rem', color: textMuted, marginTop: '2px' }}>
+                  Directory su disco dove vengono archiviati i pesi GGUF e Safetensors scaricati
+                </div>
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+              <label style={{ fontSize: '0.74rem', fontWeight: 700, color: textPrimary }}>
+                Percorso Directory:
+              </label>
+              <div style={{ display: 'flex', gap: '8px' }}>
+                <input
+                  type="text"
+                  value={config.models_dir || ''}
+                  onChange={e => setConfig({ ...config, models_dir: e.target.value })}
+                  placeholder="es. data/models (Default)"
+                  style={{
+                    flex: 1, padding: '10px 14px', borderRadius: '10px',
+                    background: subBg, border: subBorder,
+                    color: textPrimary, fontSize: '0.82rem', fontFamily: 'monospace', outline: 'none'
+                  }}
+                />
+                <button
+                  onClick={() => setPickingDir(true)}
+                  title="Sfoglia le cartelle del computer"
+                  style={{
+                    padding: '10px 16px', borderRadius: '10px', border: subBorder,
+                    background: subBg, color: textPrimary,
+                    fontSize: '0.8rem', fontWeight: 700, cursor: 'pointer',
+                    whiteSpace: 'nowrap'
+                  }}
+                >
+                  Sfoglia...
+                </button>
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingTop: '10px', borderTop: '1px solid rgba(255,255,255,0.06)', flexWrap: 'wrap', gap: '10px' }}>
+              <button
+                onClick={handleSaveConfig}
+                disabled={savingConfig}
+                style={{
+                  padding: '11px 24px', borderRadius: '10px',
+                  border: 'none', background: 'linear-gradient(135deg, #10b981, #00d2ff)',
+                  color: '#ffffff', fontSize: '0.84rem', fontWeight: 800, cursor: 'pointer',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px',
+                  boxShadow: '0 4px 20px rgba(16, 185, 129, 0.3)'
+                }}
+              >
+                {savingConfig ? <Activity className="mh-spin" size={16} /> : <CheckCircle2 size={16} />}
+                {savingConfig ? 'Salvataggio...' : 'Salva Impostazioni'}
               </button>
+
+              {lastFailedTask && (
+                <button
+                  onClick={() => {
+                    handleSaveConfig().then(() => handleRetryTask(lastFailedTask.task_id));
+                  }}
+                  style={{
+                    padding: '11px 20px', borderRadius: '10px',
+                    border: '1px solid rgba(255, 184, 108, 0.4)',
+                    background: 'rgba(255, 184, 108, 0.12)',
+                    color: '#ffb86c', fontSize: '0.82rem', fontWeight: 800, cursor: 'pointer',
+                    display: 'flex', alignItems: 'center', gap: '6px'
+                  }}
+                >
+                  <RotateCcw size={14} /> Salva e Riprendi Download Interrotto
+                </button>
+              )}
             </div>
           </div>
-
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-            <label style={{ fontSize: '0.74rem', fontWeight: 700, color: textPrimary, display: 'flex', alignItems: 'center', gap: '6px' }}>
-              <Key size={14} color="#00d2ff" /> Hugging Face Access Token (Opzionale per modelli gated/Llama):
-            </label>
-            <input
-              type="password"
-              value={config.hf_token || ''}
-              onChange={e => setConfig({ ...config, hf_token: e.target.value })}
-              placeholder="hf_..."
-              style={{
-                padding: '9px 12px', borderRadius: '10px',
-                background: subBg, border: subBorder,
-                color: textPrimary, fontSize: '0.8rem', outline: 'none'
-              }}
-            />
-          </div>
-
-          <button
-            onClick={handleSaveConfig}
-            disabled={savingConfig}
-            style={{
-              padding: '10px 20px', borderRadius: '10px',
-              border: 'none', background: 'linear-gradient(135deg, #ffb86c, #ea580c)',
-              color: '#ffffff', fontSize: '0.82rem', fontWeight: 800, cursor: 'pointer',
-              display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px',
-              width: 'fit-content', boxShadow: '0 4px 15px rgba(255, 184, 108, 0.3)'
-            }}
-          >
-            {savingConfig ? <Activity className="mh-spin" size={14} /> : <CheckCircle2 size={14} />}
-            {savingConfig ? 'Salvataggio...' : 'Salva Impostazioni'}
-          </button>
         </div>
       )}
 
