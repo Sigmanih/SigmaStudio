@@ -7,6 +7,7 @@ import os
 import sys
 import json
 import time
+import platform
 import psutil
 from typing import Dict, Any, List
 from core.logger import get_logger
@@ -327,18 +328,34 @@ def _get_cpu_brand() -> str:
         except Exception:
             pass
 
-    # 2. Linux /proc/cpuinfo
+    # 2. Linux ARM / Raspberry Pi device tree model (e.g. Raspberry Pi 5 Model B)
     if sys.platform.startswith("linux"):
+        for dt_path in ["/sys/firmware/devicetree/base/model", "/proc/device-tree/model"]:
+            if os.path.exists(dt_path):
+                try:
+                    with open(dt_path, "r", encoding="utf-8", errors="ignore") as f:
+                        m = f.read().strip("\x00 \n\r\t")
+                        if m:
+                            _cached_cpu_brand = m
+                            return _cached_cpu_brand
+                except Exception:
+                    pass
+
+        # 3. Linux /proc/cpuinfo (x86_64 and ARM)
         try:
             with open("/proc/cpuinfo", "r", encoding="utf-8", errors="ignore") as f:
                 for line in f:
-                    if "model name" in line:
-                        _cached_cpu_brand = " ".join(line.split(":", 1)[1].split()).strip()
-                        return _cached_cpu_brand
+                    lower_line = line.lower()
+                    if any(lower_line.startswith(k) for k in ["model name", "model\t", "hardware\t", "processor\t: 0"]):
+                        if ":" in line:
+                            val = line.split(":", 1)[1].strip()
+                            if val and not val.isdigit():
+                                _cached_cpu_brand = " ".join(val.split()).strip()
+                                return _cached_cpu_brand
         except Exception:
             pass
 
-    # 3. macOS sysctl
+    # 4. macOS sysctl
     if sys.platform == "darwin":
         try:
             import subprocess
@@ -349,11 +366,22 @@ def _get_cpu_brand() -> str:
         except Exception:
             pass
 
-    # 4. Fallback to platform.processor()
-    p = platform.processor()
-    if p and not p.isdigit() and len(p.strip()) > 2:
-        _cached_cpu_brand = " ".join(p.split()).strip()
-        return _cached_cpu_brand
+    # 5. Fallback to platform.processor() or platform.machine()
+    try:
+        p = platform.processor()
+        if p and not p.isdigit() and len(p.strip()) > 2:
+            _cached_cpu_brand = " ".join(p.split()).strip()
+            return _cached_cpu_brand
+    except Exception:
+        pass
+
+    try:
+        m = platform.machine()
+        if m:
+            _cached_cpu_brand = f"CPU Host ({m})"
+            return _cached_cpu_brand
+    except Exception:
+        pass
 
     _cached_cpu_brand = "CPU Host"
     return _cached_cpu_brand
@@ -361,36 +389,76 @@ def _get_cpu_brand() -> str:
 
 def get_hardware_telemetry() -> Dict[str, Any]:
     """Collects real-time hardware telemetry for CPU, RAM, GPU, Disks, and Network."""
-    # 1. CPU (100% real measured dynamic values)
-    cpu_pct = psutil.cpu_percent(interval=None)
-    cpu_freq = psutil.cpu_freq()
-    phys_count = psutil.cpu_count(logical=False)
-    log_count = psutil.cpu_count(logical=True)
+    # 1. CPU (100% real measured dynamic values with safe fallback)
+    try:
+        cpu_pct = psutil.cpu_percent(interval=None)
+    except Exception:
+        cpu_pct = 0.0
+
+    cpu_freq_val = 0
+    try:
+        cpu_freq = psutil.cpu_freq()
+        if cpu_freq and getattr(cpu_freq, "current", None):
+            cpu_freq_val = round(cpu_freq.current, 0)
+    except Exception:
+        pass
+
+    try:
+        phys_count = psutil.cpu_count(logical=False) or 0
+    except Exception:
+        phys_count = 0
+
+    try:
+        log_count = psutil.cpu_count(logical=True) or 0
+    except Exception:
+        log_count = 0
+
     cpu_info = {
         "name": _get_cpu_brand(),
-        "cores_physical": phys_count if phys_count is not None else 0,
-        "cores_logical": log_count if log_count is not None else 0,
+        "cores_physical": phys_count,
+        "cores_logical": log_count,
         "usage_pct": round(cpu_pct, 1),
-        "freq_mhz": round(cpu_freq.current, 0) if (cpu_freq and cpu_freq.current) else 0
+        "freq_mhz": cpu_freq_val
     }
 
-    # 2. RAM (100% real measured dynamic values)
-    vm = psutil.virtual_memory()
-    ram_info = {
-        "total_gb": round(vm.total / (1024**3), 2),
-        "used_gb": round(vm.used / (1024**3), 2),
-        "free_gb": round(vm.available / (1024**3), 2),
-        "usage_pct": round(vm.percent, 1)
-    }
+    # 2. RAM (100% real measured dynamic values with safe fallback)
+    try:
+        vm = psutil.virtual_memory()
+        ram_info = {
+            "total_gb": round(vm.total / (1024**3), 2),
+            "used_gb": round(vm.used / (1024**3), 2),
+            "free_gb": round(vm.available / (1024**3), 2),
+            "usage_pct": round(vm.percent, 1)
+        }
+    except Exception as err:
+        log.warning("RAM telemetry fallback: %s", err)
+        ram_info = {
+            "total_gb": 0.0,
+            "used_gb": 0.0,
+            "free_gb": 0.0,
+            "usage_pct": 0.0
+        }
 
     # 3. GPUs
-    gpus_list = _detect_all_gpus(cpu_pct)
+    try:
+        gpus_list = _detect_all_gpus(cpu_pct)
+    except Exception as err:
+        log.warning("GPU detection fallback: %s", err)
+        gpus_list = []
 
     # 4. Storage & Disks
-    storage_info = _get_disks_info()
+    try:
+        storage_info = _get_disks_info()
+    except Exception as err:
+        log.warning("Storage info fallback: %s", err)
+        storage_info = {"disks": [], "total_gb": 0.0, "used_gb": 0.0, "free_gb": 0.0, "usage_pct": 0.0, "read_mbps": 0.0, "write_mbps": 0.0}
 
     # 5. Network
-    network_info = _get_network_info()
+    try:
+        network_info = _get_network_info()
+    except Exception as err:
+        log.warning("Network info fallback: %s", err)
+        network_info = {"download_kbps": 0.0, "upload_kbps": 0.0, "total_sent_mb": 0.0, "total_recv_mb": 0.0, "status": "Online"}
 
     return {
         "success": True,
