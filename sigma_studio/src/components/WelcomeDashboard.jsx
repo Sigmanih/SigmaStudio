@@ -217,10 +217,10 @@ export default function WelcomeDashboard({ modules, openTab }) {
                 color: isLight ? '#c2410c' : '#00d2ff',
                 border: isLight ? '1px solid rgba(234, 88, 12, 0.3)' : '1px solid rgba(0, 210, 255, 0.3)'
               }}>
-                Benvenuto in Sigma AI Studio
+                ⚡ Piattaforma AI Locale & Modulare
               </span>
               <span style={{ fontSize: '0.76rem', color: subtitleColor, fontWeight: 600 }}>
-                • Sistema Operativo AI Locale & Sovrano
+                • Autonomia Sovrana & Zero Costi API
               </span>
             </div>
 
@@ -231,28 +231,27 @@ export default function WelcomeDashboard({ modules, openTab }) {
               color: titleColor,
               letterSpacing: '-0.3px'
             }}>
-              L'Ambiente di Lavoro Unificato per l'Intelligenza Artificiale Locale
+              Benvenuto in Sigma AI Studio
             </h2>
 
             <p style={{
               margin: 0,
-              fontSize: '0.86rem',
+              fontSize: '0.88rem',
               color: subtitleColor,
-              lineHeight: 1.6,
+              lineHeight: 1.65,
               maxWidth: '1000px'
             }}>
-              <strong>Sigma AI Studio</strong> è una suite completa e modulare progettata per eseguire, orchestrare ed estendere modelli di intelligenza artificiale direttamente sul tuo hardware locale (workstation Windows, Linux, macOS o dispositivi ARM come Raspberry Pi). 
-              A differenza dei tradizionali chatbot cloud, Sigma garantisce <strong>privacy assoluta</strong>, <strong>sovranità sui dati</strong>, <strong>flessibilità architetturale</strong> e la capacità di interagire direttamente con il tuo computer attraverso protocolli di strumenti avanzati.
+              Grazie al motore <strong>SigmaEngine</strong> integrato con Sigma Studio, puoi fare il download dei modelli open-source, quantizzarli e <strong>ottimizzarli su misura per il tuo hardware</strong> — da workstation con GPU dedicate a dispositivi a basso consumo come il Raspberry Pi 5. Tutto viene eseguito in locale, garantendo <strong>privacy assoluta</strong>, <strong>zero latenza di rete</strong> e totale indipendenza dal cloud.
             </p>
           </div>
 
-          {/* I 4 Pilastri del Sistema Spiegati in Modo Strutturato */}
+          {/* I 4 Pilastri del Sistema Sintetizzati ed Enfatici */}
           <div style={{
             display: 'grid',
             gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))',
             gap: '16px'
           }}>
-            {/* Pilastro 1: Kernel & Inferenza */}
+            {/* Pilastro 1: SigmaEngine & Download Modelli */}
             <div style={{
               padding: '18px 20px',
               borderRadius: '14px',
@@ -271,11 +270,11 @@ export default function WelcomeDashboard({ modules, openTab }) {
                   <Cpu size={18} color="#00d2ff" />
                 </div>
                 <h3 style={{ margin: 0, fontSize: '0.92rem', fontWeight: 800, color: titleColor }}>
-                  1. Inferenza Neurale Sovrana
+                  1. SigmaEngine & Download Modelli
                 </h3>
               </div>
               <p style={{ margin: 0, fontSize: '0.78rem', color: subtitleColor, lineHeight: 1.5 }}>
-                Esegui pesi <strong>GGUF</strong> e <strong>Safetensors</strong> scaricati da Hugging Face con allocazione intelligente della VRAM e supporto multi-tier per CPU/GPU locali.
+                Scarica qualsiasi modello open-source (GGUF, Safetensors) da Hugging Face ed eseguilo in locale con <strong>gestione automatica della VRAM/RAM</strong> per massime prestazioni sul tuo hardware.
               </p>
               <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.72rem', color: '#00d2ff', fontWeight: 700, marginTop: 'auto', cursor: 'pointer' }}
                 onClick={() => openTab({ name: '⚡ Modelli Hub' }, 'model_hub')}
@@ -284,7 +283,7 @@ export default function WelcomeDashboard({ modules, openTab }) {
               </div>
             </div>
 
-            {/* Pilastro 2: Manifesti & Ruoli */}
+            {/* Pilastro 2: Manifesti & Ruoli Specialistici */}
             <div style={{
               padding: '18px 20px',
               borderRadius: '14px',
@@ -303,11 +302,11 @@ export default function WelcomeDashboard({ modules, openTab }) {
                   <Scroll size={18} color="#bc8cff" />
                 </div>
                 <h3 style={{ margin: 0, fontSize: '0.92rem', fontWeight: 800, color: titleColor }}>
-                  2. Allineamento & Manifesti
+                  2. Manifesti & Ruoli Specialistici
                 </h3>
               </div>
               <p style={{ margin: 0, fontSize: '0.78rem', color: subtitleColor, lineHeight: 1.5 }}>
-                Specializza istantaneamente le risposte dell'AI attivando <strong>manifesti disciplinari</strong> e regole deontologiche per ingegneria, codice, medicina, diritto e ricerca.
+                Trasforma all'istante l'assistente in un esperto di codice, ingegneria, medicina o ricerca: i manifesti applicano <strong>regole etiche e direttive disciplinari</strong> senza dover riaddestrare il modello.
               </p>
               <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.72rem', color: '#bc8cff', fontWeight: 700, marginTop: 'auto', cursor: 'pointer' }}
                 onClick={() => openTab({ name: '📜 Manifesti Hub' }, 'whitepapers_lib')}
@@ -316,7 +315,7 @@ export default function WelcomeDashboard({ modules, openTab }) {
               </div>
             </div>
 
-            {/* Pilastro 3: Protocollo MCP */}
+            {/* Pilastro 3: Protocollo MCP & Automazione */}
             <div style={{
               padding: '18px 20px',
               borderRadius: '14px',
@@ -335,11 +334,11 @@ export default function WelcomeDashboard({ modules, openTab }) {
                   <Terminal size={18} color="#ff5064" />
                 </div>
                 <h3 style={{ margin: 0, fontSize: '0.92rem', fontWeight: 800, color: titleColor }}>
-                  3. Strumenti & Gateway MCP
+                  3. Protocollo MCP & Azione sul Sistema
                 </h3>
               </div>
               <p style={{ margin: 0, fontSize: '0.78rem', color: subtitleColor, lineHeight: 1.5 }}>
-                Permette al modello di agire con strumenti pratici via <strong>Model Context Protocol</strong>: gestione file, esecuzione comandi, test di sistema e domotica IoT.
+                Dai all'AI strumenti pratici tramite <strong>Model Context Protocol</strong>: esecuzione di script, gestione file, diagnostica hardware in tempo reale e controllo domotico IoT.
               </p>
               <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.72rem', color: '#ff5064', fontWeight: 700, marginTop: 'auto', cursor: 'pointer' }}
                 onClick={() => openTab({ name: 'MCP Tools' }, 'mcp_hub')}
@@ -348,7 +347,7 @@ export default function WelcomeDashboard({ modules, openTab }) {
               </div>
             </div>
 
-            {/* Pilastro 4: Moduli Estendibili */}
+            {/* Pilastro 4: Hub Skills & Estensioni da GitHub */}
             <div style={{
               padding: '18px 20px',
               borderRadius: '14px',
@@ -367,11 +366,11 @@ export default function WelcomeDashboard({ modules, openTab }) {
                   <Layers size={18} color="#3fb950" />
                 </div>
                 <h3 style={{ margin: 0, fontSize: '0.92rem', fontWeight: 800, color: titleColor }}>
-                  4. Moduli & Skills Isolati
+                  4. Hub Skills & Estensioni da GitHub
                 </h3>
               </div>
               <p style={{ margin: 0, fontSize: '0.78rem', color: subtitleColor, lineHeight: 1.5 }}>
-                Architettura dinamica: scarica e attiva nuove funzionalità da GitHub (3D Creative Lab, Audio Studio, Training Lab, Hardware Monitor) senza appesantire il kernel.
+                Scarica e attiva con un click nuovi moduli ed estensioni (Creative Lab 3D, Audio Studio, Training Lab, Hardware Monitor) mantenendo il <strong>kernel sempre pulito e leggero</strong>.
               </p>
               <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.72rem', color: '#3fb950', fontWeight: 700, marginTop: 'auto', cursor: 'pointer' }}
                 onClick={() => openTab({ name: '📦 Hub Skills & Estensioni' }, 'marketplace')}
