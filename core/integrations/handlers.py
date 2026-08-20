@@ -247,3 +247,14 @@ def handle_audio_studio_stations(self):
         self.send_json_response({"success": True, "stations": []})
 
 
+def handle_training_list_jobs(self):
+    """GET /api/training/jobs — Safe fallback for training jobs when module is uninstalled or idle."""
+    self.send_json_response({"success": True, "jobs": [], "count": 0})
+
+
+def handle_training_list_datasets(self):
+    """GET /api/training/datasets — Safe fallback for training datasets when module is uninstalled or idle."""
+    self.send_json_response({"success": True, "datasets": [], "count": 0})
+
+
+

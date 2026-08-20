@@ -339,7 +339,8 @@ from core.integrations.handlers import (
     handle_skills_list, handle_skills_toggle, handle_apps_status,
     handle_apps_launch, handle_apps_autoconfigure,
     handle_marketplace_modules, handle_marketplace_install, handle_marketplace_uninstall, handle_marketplace_rebuild,
-    handle_audio_studio_status, handle_audio_studio_stations
+    handle_audio_studio_status, handle_audio_studio_stations,
+    handle_training_list_jobs, handle_training_list_datasets
 )
 FastAPIHandlerAdapter.handle_skills_list = handle_skills_list
 FastAPIHandlerAdapter.handle_skills_toggle = handle_skills_toggle
@@ -352,6 +353,8 @@ FastAPIHandlerAdapter.handle_marketplace_uninstall = handle_marketplace_uninstal
 FastAPIHandlerAdapter.handle_marketplace_rebuild = handle_marketplace_rebuild
 FastAPIHandlerAdapter.handle_audio_studio_status = handle_audio_studio_status
 FastAPIHandlerAdapter.handle_audio_studio_stations = handle_audio_studio_stations
+FastAPIHandlerAdapter.handle_training_list_jobs = handle_training_list_jobs
+FastAPIHandlerAdapter.handle_training_list_datasets = handle_training_list_datasets
 
 from core.context_broker import (
     handle_context_share, handle_context_get, handle_context_chat_log, handle_chat_message_save
