@@ -141,10 +141,13 @@ class ModuleLoader:
 
                 self._copy_module_from_dir(module_tmp, module_id)
 
+        # 2.5 Installa dipendenze Python se presenti in requirements.txt
+        self._install_python_dependencies(found_local if found_local else module_tmp, module_id)
+
         # 3. Rebuild frontend
         self._rebuild_frontend()
 
-        # 4. Registra route a runtime
+        # 4. Registra route e MCP a runtime
         self._load_module(module_id, app)
 
         # 5. Persisti stato
@@ -170,12 +173,44 @@ class ModuleLoader:
             shutil.copytree(backend_src, backend_dst)
             log.info(f"[ModuleLoader] Backend copiato in: {backend_dst}")
 
+        # Copia file radice opzionali del modulo (manifest.json, requirements.txt, README.md)
+        for root_file in ["manifest.json", "requirements.txt", "README.md"]:
+            rf_src = os.path.join(source_dir, root_file)
+            if os.path.exists(rf_src):
+                shutil.copy2(rf_src, os.path.join(backend_dst, root_file))
+
         frontend_dst = os.path.join(_FRONTEND_MODULES_DIR, module_id)
         if os.path.exists(frontend_dst):
             shutil.rmtree(frontend_dst)
         if os.path.exists(frontend_src):
             shutil.copytree(frontend_src, frontend_dst)
             log.info(f"[ModuleLoader] Frontend copiato in: {frontend_dst}")
+
+    def _install_python_dependencies(self, source_dir: str, module_id: str) -> None:
+        """Installa le dipendenze Python se presente requirements.txt nel modulo."""
+        req_paths = [
+            os.path.join(source_dir, "requirements.txt"),
+            os.path.join(_CORE_MODULES_DIR, module_id, "requirements.txt"),
+        ]
+        found_req = None
+        for p in req_paths:
+            if os.path.exists(p) and os.path.getsize(p) > 0:
+                found_req = p
+                break
+
+        if not found_req:
+            return
+
+        log.info(f"[ModuleLoader] Trovato requirements.txt per '{module_id}', verifica dipendenze in corso...")
+        try:
+            cmd = [sys.executable, "-m", "pip", "install", "-r", found_req, "--no-warn-script-location"]
+            res = subprocess.run(cmd, capture_output=True, text=True, timeout=180)
+            if res.returncode == 0:
+                log.info(f"[ModuleLoader] Dipendenze Python per '{module_id}' verificate/installate con successo.")
+            else:
+                log.warning(f"[ModuleLoader] Avviso installazione dipendenze pip per '{module_id}': {res.stderr[:200] if res.stderr else ''}")
+        except Exception as err:
+            log.warning(f"[ModuleLoader] Impossibile verificare dipendenze pip per '{module_id}': {err}")
 
     # ------------------------------------------------------------------
     # Uninstall
@@ -206,6 +241,13 @@ class ModuleLoader:
         # 3. Rebuild frontend
         self._rebuild_frontend()
 
+        # 3.5 Rimuovi server MCP associati dall'Hub MCP
+        try:
+            from core.mcp.mcp_hub import mcp_hub
+            mcp_hub.unregister_server(module_id)
+        except Exception as mcp_err:
+            log.warning(f"[ModuleLoader] Avviso rimozione MCP server per '{module_id}': {mcp_err}")
+
         # 4. Rimuovi dalla registry in-memory
         self._loaded.pop(module_id, None)
 
@@ -220,7 +262,7 @@ class ModuleLoader:
     # ------------------------------------------------------------------
 
     def _load_module(self, module_id: str, app: Any) -> bool:
-        """Importa dinamicamente gli handler del modulo e registra le route."""
+        """Importa dinamicamente gli handler del modulo e registra le route e i server MCP."""
         if _CORE_MODULES_DIR not in sys.path:
             sys.path.insert(0, os.path.dirname(_CORE_MODULES_DIR))
         if _ROOT not in sys.path:
@@ -254,15 +296,20 @@ class ModuleLoader:
         try:
             if hasattr(mod, "register_routes"):
                 mod.register_routes(app)
-                self._loaded[module_id] = mod
                 log.info(f"[ModuleLoader] '{module_id}' route registrate da {loaded_path}.")
-                return True
-            else:
-                log.info(f"[ModuleLoader] '{module_id}' caricato (nessun register_routes esplicito).")
-                self._loaded[module_id] = mod
-                return True
+
+            if hasattr(mod, "register_mcp"):
+                try:
+                    from core.mcp.mcp_hub import mcp_hub
+                    mod.register_mcp(mcp_hub)
+                    log.info(f"[ModuleLoader] '{module_id}' server MCP registrati da {loaded_path}.")
+                except Exception as mcp_err:
+                    log.warning(f"[ModuleLoader] Avviso registrazione MCP per '{module_id}': {mcp_err}")
+
+            self._loaded[module_id] = mod
+            return True
         except Exception as e:
-            log.error(f"[ModuleLoader] Errore esecuzione register_routes per '{module_id}': {e}")
+            log.error(f"[ModuleLoader] Errore esecuzione register_routes/register_mcp per '{module_id}': {e}")
             return False
 
     def _rebuild_frontend(self) -> None:

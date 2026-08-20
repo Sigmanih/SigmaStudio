@@ -76,6 +76,7 @@ _KERNEL_DEFAULTS = {}
 _OPTIONAL_DEFAULTS = {
     "sigma_creative_lab": False,   # Creative Lab 3D/2D
     "audio_studio": False,         # Hi-Fi Sound & FM Radio Studio
+    "sigma_audio_studio": False,   # Hi-Fi Sound & FM Radio Studio Alias
     "sigma_domotica": False,       # Domotica & Home Assistant IoT
     "sigma_training_lab": False,   # Training Lab & SLM Forge
     "sigma_hardware_lab": False,   # Hardware Lab & VRAM
@@ -99,6 +100,10 @@ def _get_installed_modules_state():
                 # Only override optional modules from saved state
                 for k, v in saved.items():
                     state[k] = v
+        # Sync audio aliases
+        if state.get("audio_studio") or state.get("sigma_audio_studio"):
+            state["audio_studio"] = True
+            state["sigma_audio_studio"] = True
     except Exception as e:
         log.warning(f"Errore lettura stato marketplace: {e}")
     return state

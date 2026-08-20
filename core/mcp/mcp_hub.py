@@ -59,6 +59,17 @@ class MCPHub:
             log.error("Errore registrazione server MCP dinamico: %s", exc, exc_info=True)
             return False
 
+    def unregister_server(self, server_name: str) -> bool:
+        """Rimuove dinamicamente un server MCP alla disinstallazione di un modulo."""
+        with self._lock:
+            removed = False
+            for k in list(self.servers.keys()):
+                if k.lower() == server_name.lower() or server_name.lower() in k.lower():
+                    self.servers.pop(k, None)
+                    log.info("Dynamically Unregistered Module MCP Server: '%s'", k)
+                    removed = True
+            return removed
+
 
     def _initialize_servers(self):
         for server_cls in BUILTIN_SERVERS:
