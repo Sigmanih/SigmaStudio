@@ -25,23 +25,23 @@ export const SKILLS_CATALOG = [
     size: '2 MB',
     gitUrl: 'https://github.com/Sigmanih/SigmaStudio-Moduli/tree/main/modules/sigma_creative_lab',
     image: '/images/creative_lab_banner.jpg',
-    badge: 'STUDIO MULTIMODALE & BLENDER',
-    objective: 'Genera immagini fotorealistiche 8K (FLUX/SDXL), sconta soggetti con SAM2 e renderizza scene 3D procedurali con Blender headless.',
+    badge: 'STUDIO 3D & GENERAZIONE 8K',
+    objective: 'Crea render 3D fotorealistici con Blender headless, genera grafiche 8K (FLUX/SDXL) e sconta soggetti in un click con SAM2, tutto accelerato dalla tua GPU.',
     components: [
       {
         icon: '🖼️',
-        title: 'Immagini 8K FLUX/SDXL',
-        desc: 'Creazione grafica da testo con prompt positivi/negativi, controllo seed e filtri.'
+        title: 'Grafica 8K FLUX/SDXL',
+        desc: 'Generazione fotorealistica da testo con prompt positivi/negativi e controllo seed.'
       },
       {
         icon: '🧊',
         title: 'Blender 3D Headless',
-        desc: 'Rendering procedurale di modelli 3D, luci volumetriche e animazioni da Python.'
+        desc: 'Rendering procedurale di scene 3D, luci volumetriche e animazioni da Python.'
       },
       {
         icon: '🪄',
         title: 'SAM2 & RemBG Segmenter',
-        desc: 'Scontorno automatico chirurgico del soggetto con esportazione PNG trasparente.'
+        desc: 'Scontorno istantaneo chirurgico del soggetto con esportazione trasparente.'
       },
       {
         icon: '🧱',
@@ -50,9 +50,9 @@ export const SKILLS_CATALOG = [
       }
     ],
     usageGuide: [
-      { step: '1', title: 'Scegli la Modalità', text: 'Accedi al Creative Lab e seleziona il tab desiderato tra Generatore 8K, Blender 3D o Texturizzatore PBR.' },
-      { step: '2', title: 'Imposta Prompt & Parametri', text: 'Descrivi la scena o fornisci uno script 3D, regolando aspect-ratio, passi di campionamento e CFG scale.' },
-      { step: '3', title: 'Esporta e Usa in Chat', text: 'Salva l\'asset generato in alta risoluzione o invialo direttamente alla Chat AI per analisi visiva multimodale.' }
+      { step: '1', title: 'Scegli la Modalità', text: 'Accedi al Creative Lab e seleziona il tab tra Generatore 8K, Blender 3D o Texturizzatore PBR.' },
+      { step: '2', title: 'Imposta Prompt & Parametri', text: 'Descrivi la scena o fornisci uno script 3D, regolando risoluzione, passi e campionamento.' },
+      { step: '3', title: 'Esporta o Invia in Chat', text: 'Salva l\'asset in alta risoluzione o invialo alla Chat AI per analisi visiva multimodale.' }
     ],
     tags: ['FLUX.1', 'SDXL', 'Blender 3D', 'RemBG', 'PBR Maps', 'SAM2'],
     samplePrompt: 'Genera un render 3D fotorealistico di un processore quantistico a luce blu neon con riflessi metallici in stile cyberpunk.'
@@ -69,8 +69,8 @@ export const SKILLS_CATALOG = [
     size: '1.5 MB',
     gitUrl: 'https://github.com/Sigmanih/SigmaStudio-Moduli/tree/main/modules/sigma_research_lab',
     image: '/images/pipelines_lab_banner.jpg',
-    badge: 'SWARM DAG & AUTO-HEALING',
-    objective: 'Risolve obiettivi scientifici e compiti complessi coordinando un team di agenti AI in parallelo (DAG) con auto-correzione degli errori.',
+    badge: 'SCIAME AI & AUTO-HEALING',
+    objective: 'Coordina uno sciame di agenti AI specializzati (Architetto, Matematico, Coder) per risolvere problemi scientifici complessi con pipeline parallele e auto-correzione del codice.',
     components: [
       {
         icon: '🤖',
@@ -80,7 +80,7 @@ export const SKILLS_CATALOG = [
       {
         icon: '📈',
         title: 'Pianificatore DAG Parallelo',
-        desc: 'Scomposizione logica dell\'obiettivo in compiti paralleli con risoluzione dipendenze.'
+        desc: 'Scomposizione dell\'obiettivo in compiti paralleli con risoluzione dipendenze.'
       },
       {
         icon: '🛡️',
@@ -96,7 +96,7 @@ export const SKILLS_CATALOG = [
     usageGuide: [
       { step: '1', title: 'Definisci l\'Obiettivo', text: 'Inserisci la specifica del problema o il modulo che vuoi ricercare e sviluppare da zero.' },
       { step: '2', title: 'Genera la Roadmap DAG', text: 'Lo Swarm crea l\'alberatura dei compiti e assegna le mansioni agli agenti in parallelo.' },
-      { step: '3', title: 'Valida & Integra', text: 'Segui l\'avanzamento in tempo reale con i test automatici fino al salvataggio finale nella cartella data/.' }
+      { step: '3', title: 'Valida & Integra', text: 'Segui l\'avanzamento in tempo reale con i test automatici fino al salvataggio finale.' }
     ],
     tags: ['Swarm DAG', 'Multi-Agent', 'Self-Healing', 'Pytest Runner', 'LaTeX Gen'],
     samplePrompt: 'Crea una pipeline di ricerca per modellare la dinamica dei fluidi con equazioni di Navier-Stokes e codice di simulazione.'
@@ -113,13 +113,13 @@ export const SKILLS_CATALOG = [
     size: '3 MB',
     gitUrl: 'https://github.com/Sigmanih/SigmaStudio-Moduli/tree/main/modules/sigma_training_lab',
     image: '/images/training_lab_hero.jpg',
-    badge: 'FINE-TUNING QLORA & 11 BENCHMARK',
-    objective: 'Addestra e specializza modelli linguistici compatti (SLM) in locale con Unsloth QLoRA 5x più veloce ed esporta in formato GGUF.',
+    badge: 'FINE-TUNING QLORA 5X & FORGIA GGUF',
+    objective: 'Addestra e forgia Small Language Models (SLM) in locale con Unsloth QLoRA 5x più veloce, autopilota di iperparametri ed export diretto in GGUF per SigmaEngine.',
     components: [
       {
         icon: '🚀',
         title: 'Unsloth QLoRA 5x Fast',
-        desc: 'Fine-tuning accelerato su GPU NVIDIA con allocazione VRAM ottimizzata.'
+        desc: 'Fine-tuning accelerato su GPU NVIDIA con consumo di memoria VRAM ridotto.'
       },
       {
         icon: '🤖',
@@ -157,8 +157,8 @@ export const SKILLS_CATALOG = [
     size: '3 MB',
     gitUrl: 'https://github.com/Sigmanih/SigmaStudio-Moduli/tree/main/modules/sigma_voice_studio',
     image: '/images/account_voice_banner.jpg',
-    badge: 'KOKORO 82M & CLONAZIONE VOCALE',
-    objective: 'Sintesi vocale neurale ultra-veloce (<80ms) con Kokoro 82M e clonazione vocale zero-shot da file audio con Coqui XTTS-v2.',
+    badge: 'KOKORO 82M & VOCE REAL-TIME',
+    objective: 'Sintesi vocale neurale real-time (<80ms) con Kokoro 82M e clonazione vocale zero-shot da 5s di audio per risposte parlate direttamente nella Chat AI.',
     components: [
       {
         icon: '⚡',
@@ -184,7 +184,7 @@ export const SKILLS_CATALOG = [
     usageGuide: [
       { step: '1', title: 'Seleziona Voce o Clona', text: 'Scegli uno dei preset vocali italiani/multilingue o carica un file WAV per clonare una nuova voce.' },
       { step: '2', title: 'Genera & Ascolta', text: 'Digita il testo da riprodurre e ascolta l\'anteprima istantanea con visualizzatore a onde sonore.' },
-      { step: '3', title: 'Attiva Speaker in Chat', text: 'Abilita "Speaker Agente: ON" nella Chat per ascoltare le risposte mentre vengono generate a video.' }
+      { step: '3', title: 'Attiva Speaker in Chat', text: 'Abilita "Speaker Agente: ON" nella Chat per ascoltare le risposte mentre vengono generate.' }
     ],
     tags: ['Kokoro 82M', 'XTTS-v2', 'Voice Cloning', 'Neural TTS', 'Voice MCP'],
     samplePrompt: 'Sintetizza questo testo con tono accademico caloroso e cadenza naturale a 1.05x di velocità.'
@@ -201,8 +201,8 @@ export const SKILLS_CATALOG = [
     size: '2 MB',
     gitUrl: 'https://github.com/Sigmanih/SigmaStudio-Moduli/tree/main/modules/sigma_developer_lab',
     image: '/images/skills_engines_banner.jpg',
-    badge: 'IDE ISOLATO DOCKER & RUNNER PYTEST',
-    objective: 'Ambiente di sviluppo per programmatori con esecuzione protetta del codice in container Docker isolati e runner di test Pytest.',
+    badge: 'SANDBOX DOCKER & RUNNER PYTEST',
+    objective: 'Esegui, testa e collauda codice Python, Node.js e Bash in ambienti container Docker totalmente isolati con test unitari Pytest e terminale ANSI in streaming.',
     components: [
       {
         icon: '🐳',
@@ -245,8 +245,8 @@ export const SKILLS_CATALOG = [
     size: '1 MB',
     gitUrl: 'https://github.com/Sigmanih/SigmaStudio-Moduli/tree/main/modules/sigma_hardware_lab',
     image: '/images/hardware_cluster_lab.jpg',
-    badge: 'TELEMETRIA GPU REAL-TIME & FLUSH VRAM',
-    objective: 'Monitora VRAM, CPU e temperature in tempo reale, bilancia il carico multi-GPU e libera memoria video con un solo click.',
+    badge: 'TELEMETRIA GPU & FLUSH VRAM',
+    objective: 'Telemetria in tempo reale di GPU VRAM, CPU e temperature con svuotamento forzato della memoria video e arresto immediato dei processi bloccati.',
     components: [
       {
         icon: '📊',
@@ -289,8 +289,8 @@ export const SKILLS_CATALOG = [
     size: '8 MB',
     gitUrl: 'https://github.com/Sigmanih/SigmaStudio-Moduli/tree/main/modules/sigma_domotica',
     image: '/images/domotica_smart_hub.jpg',
-    badge: 'SMART HOME & HOME ASSISTANT MCP',
-    objective: 'Governa la casa intelligente (luci, clima, sensori e routine) tramite Home Assistant con interfaccia visuale e comandi in chat.',
+    badge: 'SMART HOME & IOT MCP GATEWAY',
+    objective: 'Controlla la tua smart home via Home Assistant: gestisci luci, clima, sensori e routine sia dalla dashboard interattiva sia tramite comandi vocali/chat.',
     components: [
       {
         icon: '💡',
@@ -333,8 +333,8 @@ export const SKILLS_CATALOG = [
     size: '2 MB',
     gitUrl: 'https://github.com/Sigmanih/SigmaStudio-Moduli/tree/main/modules/sigma_knowledge',
     image: '/images/knowledge_graph_banner.jpg',
-    badge: 'GRAFO RELAZIONALE D3.JS & RAG MEMORY',
-    objective: 'Organizza la conoscenza in un grafo visivo interattivo D3.js, visualizza formule KaTeX e offre memoria episodica RAG agli agenti.',
+    badge: 'GRAFO D3.JS & MEMORIA RAG',
+    objective: 'Mappa concettuale interattiva in D3.js, rendering KaTeX di formule matematiche e memoria RAG episodica per dare agli agenti AI un contesto infallibile.',
     components: [
       {
         icon: '🌐',
@@ -378,7 +378,7 @@ export const SKILLS_CATALOG = [
     gitUrl: 'https://github.com/Sigmanih/SigmaStudio-Moduli/tree/main/modules/sigma_roadmap',
     image: '/images/roadmap_plan_banner.jpg',
     badge: 'KANBAN, CALENDARIO & AUDIT LOG',
-    objective: 'Pianifica task con tabellone Kanban drag-and-drop, calendario scadenze e registro di audit per tracciare le azioni degli agenti.',
+    objective: 'Organizza progetti e compiti con tabellone Kanban drag & drop, calendario scadenze e registro cronologico di audit per monitorare ogni operazione completata.',
     components: [
       {
         icon: '📌',
@@ -421,8 +421,8 @@ export const SKILLS_CATALOG = [
     size: '1 MB',
     gitUrl: 'https://github.com/Sigmanih/SigmaStudio-Moduli/tree/main/modules/sigma_network_lab',
     image: '/images/skills_engines_banner.jpg',
-    badge: 'RICERCA WEB, HTTP API & NETWORK MCP',
-    objective: 'Ricerche web live, collaudo di API HTTP/REST (stile Postman) e diagnostica di rete DNS/Ping per estendere le capacità degli agenti.',
+    badge: 'RICERCA WEB & CLIENT REST MCP',
+    objective: 'Ricerche web in tempo reale, collaudo di API HTTP REST (GET/POST) e diagnostica di rete DNS/Ping per nutrire le risposte degli agenti con dati aggiornati.',
     components: [
       {
         icon: '🔍',
@@ -465,8 +465,8 @@ export const SKILLS_CATALOG = [
     size: '1 MB',
     gitUrl: 'https://github.com/Sigmanih/SigmaStudio-Moduli/tree/main/modules/sigma_email_client',
     image: '/images/hero_banner.jpg',
-    badge: 'WEBMAIL SICURA, IMAP/SMTP & EMAIL MCP',
-    objective: 'Gestione email IMAP/SMTP sicura con compositore assistito da AI per bozze perfette e notifiche automatiche dei task.',
+    badge: 'WEBMAIL SICURA & BOZZE AI',
+    objective: 'Client webmail sicuro IMAP/SMTP con compositore AI per redigere risposte perfette e inviare automaticamente report periodici sulle attività.',
     components: [
       {
         icon: '📬',
@@ -509,8 +509,8 @@ export const SKILLS_CATALOG = [
     size: '1 MB',
     gitUrl: 'https://github.com/Sigmanih/SigmaStudio-Moduli/tree/main/modules/sigma_messaging_hub',
     image: '/images/chat_swarm_banner.jpg',
-    badge: 'TELEGRAM BOT, SLACK, DISCORD & MESSAGING MCP',
-    objective: 'Invia notifiche istantanee e alert su Telegram Bot, Slack e Discord al termine di lunghe elaborazioni o fine training.',
+    badge: 'TELEGRAM, DISCORD & MESSAGING MCP',
+    objective: 'Invia notifiche push istantanee su Telegram Bot, Discord e Slack al termine di elaborazioni Swarm o fine addestramento LoRA, interagendo anche da mobile.',
     components: [
       {
         icon: '🤖',
@@ -553,8 +553,8 @@ export const SKILLS_CATALOG = [
     size: '12 MB',
     gitUrl: 'https://github.com/Sigmanih/SigmaStudio-Moduli/tree/main/modules/sigma_audio_studio',
     image: '/images/hero_banner.jpg',
-    badge: 'RADIO FM LIVE, 432HZ & LOUNGE PLAYER',
-    objective: 'Radio FM nazionali in diretta streaming, sintetizzatore di onde binaurali a 432Hz per la concentrazione e lettore MP3.',
+    badge: 'RADIO FM LIVE & ONDE 432HZ',
+    objective: 'Radio FM nazionali in streaming continuo, sintetizzatore di onde binaurali a 432Hz per il massimo focus mentale e riproduttore MP3 con spettrogramma live.',
     components: [
       {
         icon: '📻',
@@ -597,8 +597,8 @@ export const SKILLS_CATALOG = [
     size: 'Kernel',
     gitUrl: 'https://huggingface.co/models',
     image: '/images/hardware_cluster_lab.jpg',
-    badge: 'HUGGING FACE DOWNLOADER & GPU SHARDING',
-    objective: 'Cerca e scarica modelli Open Source da Hugging Face ed eseguili direttamente su SigmaEngine con allocazione multi-GPU e FlashAttention-2.',
+    badge: 'HUGGING FACE & DEPLOY SIGMAENGINE',
+    objective: 'Grazie a SigmaEngine cerchi e scarichi qualsiasi LLM open-source da Hugging Face, quantizzi i pesi in GGUF e li ottimizzi per la tua VRAM/RAM con deploy istantaneo.',
     components: [
       {
         icon: '🔍',
@@ -642,7 +642,7 @@ export const SKILLS_CATALOG = [
     gitUrl: 'https://github.com/modelcontextprotocol',
     image: '/images/mcp_protocol_hub.jpg',
     badge: '12 SERVER MCP & SICUREZZA GOVERNATA',
-    objective: 'Gateway per 12 Server Model Context Protocol (MCP) con gestione dei permessi granulari, sicurezza governata e collaudo diagnostico RPC.',
+    objective: 'Il ponte operativo tra l\'AI e il tuo PC: 12 Server MCP per eseguire file, comandi, interrogazioni SQLite e domotica con policy di sicurezza e whitelist governate.',
     components: [
       {
         icon: '🔌',
@@ -920,7 +920,7 @@ function SkillSlideCard({
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.78rem', color: isLight ? '#9a3412' : '#00d2ff', fontWeight: 700 }}>
           <Sparkles size={15} style={{ flexShrink: 0 }} />
           <span>
-            <strong>Skills 100% Gratuite & Open-Source:</strong> Per installare o abilitare qualsiasi skill, vai nella tab <strong style={{ color: isLight ? '#ea580c' : '#ffffff' }}>Hub Skills & Estensioni</strong> e clicca su <em>Download</em> per sincronizzarla gratuitamente da GitHub.
+            <strong>Skills 100% Gratuite & Modulari:</strong> Espandi Sigma Studio aggiungendo nuove funzionalità da GitHub con un solo click dall'<strong style={{ color: isLight ? '#ea580c' : '#ffffff' }}>Hub Skills & Estensioni</strong> senza appesantire il sistema.
           </span>
         </div>
         <button
@@ -1341,7 +1341,7 @@ export default function SkillsShowcaseSlider({ openTab }) {
           </div>
           <h2 style={{
             margin: '0 0 6px 0',
-            fontSize: '1.45rem',
+            fontSize: '1.25rem',
             fontWeight: 800,
             color: titleColor,
             display: 'flex',
@@ -1356,9 +1356,9 @@ export default function SkillsShowcaseSlider({ openTab }) {
             color: subtitleColor,
             lineHeight: 1.5,
             fontWeight: isLight ? 500 : 400,
-            maxWidth: '780px'
+            maxWidth: '820px'
           }}>
-            Ogni Skill è un'estensione modulare che arricchisce il Kernel di Sigma Studio. Esplora i componenti interni, consulta la guida d'uso step-by-step e lancia o installa la skill direttamente con un click.
+            Espandi le capacità di Sigma Studio in un click: scarica laboratori 3D, sintesi vocale neurale, telemetria hardware e server MCP da GitHub, mantenendo il kernel sempre leggero e veloce.
           </p>
         </div>
 
