@@ -400,6 +400,11 @@ def install_inference_kernels(platform_info, force=False):
     elif compute == "rocm":
         env.setdefault("CMAKE_ARGS", "-DGGML_HIPBLAS=on")
 
+    if platform_info.get("is_raspberry_pi") or platform_info.get("is_arm"):
+        # Limita a 2 core su Raspberry Pi per evitare cali di tensione (brownout), surriscaldamento ed esaurimento RAM
+        env.setdefault("CMAKE_BUILD_PARALLEL_LEVEL", "2")
+
+
     for index_url in _llama_cpp_wheel_indexes(platform_info):
         if index_url and not _index_serves_package(index_url):
             continue
@@ -695,6 +700,7 @@ def main():
     parser.add_argument("--install", action="store_true", help="Install or update dependencies")
     parser.add_argument("--check", action="store_true", help="Verify environment without starting")
     parser.add_argument("--info", action="store_true", help="Show system capabilities")
+    parser.add_argument("--no-llama", "--skip-inference-kernels", dest="skip_inference_kernels", action="store_true", help="Skip compiling llama-cpp-python (start Sigma Studio immediately)")
     args = parser.parse_args()
 
     platform_info = detect_platform()
@@ -709,7 +715,8 @@ def main():
         install_dependencies(platform_info)
         # Explicit --install means "try again", including builds that failed
         # before and are skipped on a normal launch.
-        install_inference_kernels(platform_info, force=True)
+        if not args.skip_inference_kernels:
+            install_inference_kernels(platform_info, force=True)
         ensure_frontend()
         return
 
