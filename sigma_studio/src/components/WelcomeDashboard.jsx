@@ -1,157 +1,28 @@
-import React, { useEffect, useState } from 'react';
+import React from 'react';
 import { 
   MessageSquare, Scroll, ExternalLink,
-  DownloadCloud, Layers, ArrowRight
+  DownloadCloud, Layers, Cpu, ShieldCheck, Terminal, 
+  ArrowRight, Sparkles, Zap, Wrench, Globe, CheckCircle2
 } from 'lucide-react';
 
 import { useApp } from '../contexts/AppContext';
-import { useModuleState } from '../hooks/useModuleState';
 import TechSpaceCanvas from './common/TechSpaceCanvas';
 import SkillsShowcaseSlider from './SkillsShowcaseSlider';
-
-// ==============================================================================
-// 4 PILASTRI ARCHITETTURALI DI SIGMA STUDIO — INTEGRATI NEL FLUSSO OPERATIVO
-// ==============================================================================
-const SYSTEM_PILLARS = [
-  {
-    id: 'chat',
-    step: '1. Interfaccia & Esecuzione',
-    title: 'Chat AI & Kernel Cognitivo',
-    roleTag: 'Interfaccia & Flusso Operativo',
-    description: 'Il centro di controllo conversazionale. Riceve le istruzioni, coordina il routing semantico e sfrutta i protocolli MCP per interrogare file e lanciare codice.',
-    bullets: ['Streaming neurale real-time', 'Tool-calling MCP automatico', 'Routing locale / cloud'],
-    icon: MessageSquare,
-    color: '#00d2ff',
-    tabId: 'chat',
-    tabName: 'Chat AI',
-    actionText: 'Avvia Chat AI'
-  },
-  {
-    id: 'model_hub',
-    step: '2. Runtime & Pesi Locali',
-    title: 'Modelli Hub & SigmaEngine',
-    roleTag: 'Infrastruttura di Inferenza',
-    description: 'Il motore di inferenza sovrano. Esplora e scarica LLM open-source da Hugging Face, ottimizza i quantizzati GGUF per la tua VRAM e alloca i modelli con un click.',
-    bullets: ['Supporto GGUF & Safetensors', 'Quantizzazione dinamica VRAM', 'Scaricamento & eliminazione sicura'],
-    icon: DownloadCloud,
-    color: '#faa03c',
-    tabId: 'model_hub',
-    tabName: '⚡ Modelli Hub',
-    actionText: 'Gestisci Modelli'
-  },
-  {
-    id: 'whitepapers_lib',
-    step: '3. Allineamento & Ruoli',
-    title: 'Manifesti & Personalità',
-    roleTag: 'Governance & Specializzazione',
-    description: 'Il layer di configurazione comportamentale. Guida il modello applicando regole deontologiche, stili di ragionamento e prompt di sistema per qualsiasi professione.',
-    bullets: ['Ruoli professionali pronti', 'Hot-swap istantaneo senza riavvio', 'Manifesti personalizzabili'],
-    icon: Scroll,
-    color: '#bc8cff',
-    tabId: 'whitepapers_lib',
-    tabName: '📜 Manifesti Hub',
-    actionText: 'Sfoglia Manifesti'
-  },
-  {
-    id: 'marketplace',
-    step: '4. Ecosistema Estendibile',
-    title: 'Hub Skills & Gateway MCP',
-    roleTag: 'Estensioni & Protocolli I/O',
-    description: 'Il ponte operativo verso l\'esterno. Espandi il kernel con laboratori 3D, audio neurale, domotica Home Assistant e server MCP per automatizzare il sistema operativo.',
-    bullets: ['Moduli modulari isolati', 'Server MCP multi-tool integrati', 'Installazione a 1-click da GitHub'],
-    icon: Layers,
-    color: '#3fb950',
-    tabId: 'marketplace',
-    tabName: '📦 Hub Skills & Estensioni',
-    actionText: 'Esplora Hub Skills'
-  }
-];
 
 export default function WelcomeDashboard({ modules, openTab }) {
   const { theme } = useApp();
   const isLight = theme === 'light';
   const titleColor = isLight ? '#111827' : '#ffffff';
   const subtitleColor = isLight ? '#4b5563' : '#94a3b8';
-  const cardBg = isLight ? '#ffffff' : '#111522';
   const cardBorder = isLight ? '1px solid rgba(190, 160, 110, 0.35)' : '1px solid rgba(255, 255, 255, 0.08)';
   const cardShadow = isLight ? '0 4px 20px rgba(190, 160, 110, 0.12)' : '0 10px 30px rgba(0, 0, 0, 0.4)';
-
-  const { modulesState } = useModuleState();
-  const [manifestiCount, setManifestiCount] = useState(0);
-  const [localModelsCount, setLocalModelsCount] = useState(0);
-  const [activeMcpCount, setActiveMcpCount] = useState(0);
-  const [activeProviderName, setActiveProviderName] = useState('SigmaEngine');
-  const [dynamicInstalledModules, setDynamicInstalledModules] = useState([]);
-
-  useEffect(() => {
-    // 1. Recupera manifesti attivi
-    fetch('/api/list_manifesti')
-      .then(r => r.json())
-      .then(d => {
-        if (d.files && Array.isArray(d.files)) {
-          setManifestiCount(d.files.length);
-        } else if (d.manifesti && Array.isArray(d.manifesti)) {
-          setManifestiCount(d.manifesti.length);
-        }
-      })
-      .catch(() => {});
-
-    // 2. Recupera modelli locali effettivamente scaricati
-    fetch('/api/models/local/list')
-      .then(r => r.json())
-      .then(d => {
-        if (d.models && Array.isArray(d.models)) {
-          setLocalModelsCount(d.models.length);
-        }
-      })
-      .catch(() => {});
-
-    // 3. Recupera server MCP attivi
-    fetch('/api/mcp/servers')
-      .then(r => r.json())
-      .then(d => {
-        if (d.servers && Array.isArray(d.servers)) {
-          const active = d.servers.filter(s => s.status === 'online' || s.status === 'active' || s.connected || s.enabled !== false);
-          setActiveMcpCount(active.length);
-        }
-      })
-      .catch(() => {
-        setActiveMcpCount(6);
-      });
-
-    // 4. Recupera provider AI attivo
-    fetch('/api/config')
-      .then(r => r.json())
-      .then(d => {
-        if (d.config) {
-          const p = d.config.active_provider || d.config.provider;
-          if (p === 'sigma_engine') setActiveProviderName('SigmaEngine');
-          else if (p === 'ollama') setActiveProviderName('Ollama');
-          else if (p === 'openai') setActiveProviderName('OpenAI');
-          else if (p === 'anthropic') setActiveProviderName('Claude');
-          else if (p === 'deepseek') setActiveProviderName('DeepSeek');
-          else if (p === 'google') setActiveProviderName('Gemini');
-          else if (p === 'groq') setActiveProviderName('Groq');
-          else if (p) setActiveProviderName(p);
-        }
-      })
-      .catch(() => {});
-
-    // 5. Moduli installati dal marketplace
-    try {
-      const stored = localStorage.getItem('sigma_market_installed');
-      if (stored) setDynamicInstalledModules(JSON.parse(stored));
-    } catch (e) {}
-  }, []);
-
-  const activeSkillsCount = Object.keys(modulesState || {}).filter(k => k !== 'sigma_model_hub' && modulesState[k] === true).length + dynamicInstalledModules.length;
 
   return (
     <div className="wg-container" style={{ position: 'relative' }}>
       {/* Canvas Sfondo Spaziale Animato */}
       <TechSpaceCanvas isLight={isLight} />
 
-      {/* Hero Banner Moderno */}
+      {/* Hero Header Moderno */}
       <div style={{
         position: 'relative',
         zIndex: 1,
@@ -174,7 +45,7 @@ export default function WelcomeDashboard({ modules, openTab }) {
           gap: '18px'
         }}>
           {/* Logo & Headline */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '18px', maxWidth: '720px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '18px', maxWidth: '750px' }}>
             <div style={{
               width: '54px',
               height: '54px',
@@ -231,7 +102,7 @@ export default function WelcomeDashboard({ modules, openTab }) {
             </div>
           </div>
 
-          {/* Azioni Rapide */}
+          {/* Azioni Rapide nell'Header */}
           <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', alignItems: 'center' }}>
             <button
               onClick={() => openTab({ name: 'AI Chat Workspace' }, 'chat')}
@@ -317,295 +188,252 @@ export default function WelcomeDashboard({ modules, openTab }) {
       </div>
 
       {/* Corpo Principale */}
-      <div style={{ padding: '16px 20px 24px 20px', display: 'flex', flexDirection: 'column', gap: '18px', flex: 1 }}>
+      <div style={{ padding: '20px 24px 28px 24px', display: 'flex', flexDirection: 'column', gap: '22px', flex: 1 }}>
         
-        {/* ── 5 METRICHE TELEMETRICHE CHIAVE ──────── */}
-        <div className="wg-metrics" style={{ margin: 0 }}>
-          {/* Card 1: Modelli Locali */}
-          <div 
-            className="wg-metric" 
-            onClick={() => openTab({ name: '⚡ Modelli Hub' }, 'model_hub')}
-            style={{ borderTop: '3px solid #00d2ff', background: cardBg, cursor: 'pointer' }}
-            title="Clicca per aprire Modelli Hub"
-          >
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
-              <span style={{ fontSize: '1.2rem' }}>🤖</span>
-              <span className="wg-metric-value" style={{ color: isLight ? '#0284c7' : '#00d2ff' }}>{localModelsCount}</span>
-            </div>
-            <span className="wg-metric-label" style={{ color: subtitleColor }}>Modelli Scaricati</span>
-          </div>
-
-          {/* Card 2: Manifesti */}
-          <div 
-            className="wg-metric" 
-            onClick={() => openTab({ name: '📜 Manifesti Hub' }, 'whitepapers_lib')}
-            style={{ borderTop: '3px solid #bc8cff', background: cardBg, cursor: 'pointer' }}
-            title="Clicca per esplorare i Manifesti"
-          >
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
-              <span style={{ fontSize: '1.2rem' }}>📜</span>
-              <span className="wg-metric-value" style={{ color: isLight ? '#9333ea' : '#bc8cff' }}>{manifestiCount}</span>
-            </div>
-            <span className="wg-metric-label" style={{ color: subtitleColor }}>Ruoli & Manifesti</span>
-          </div>
-
-          {/* Card 3: Skills */}
-          <div 
-            className="wg-metric" 
-            onClick={() => openTab({ name: '📦 Hub Skills & Estensioni' }, 'marketplace')}
-            style={{ borderTop: '3px solid #3fb950', background: cardBg, cursor: 'pointer' }}
-            title="Clicca per visualizzare l'Hub Skills"
-          >
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
-              <span style={{ fontSize: '1.2rem' }}>🧩</span>
-              <span className="wg-metric-value" style={{ color: isLight ? '#16a34a' : '#3fb950' }}>{activeSkillsCount}</span>
-            </div>
-            <span className="wg-metric-label" style={{ color: subtitleColor }}>Skills Attive</span>
-          </div>
-
-          {/* Card 4: Server MCP */}
-          <div 
-            className="wg-metric" 
-            onClick={() => openTab({ name: 'MCP Tools' }, 'mcp_hub')}
-            style={{ borderTop: '3px solid #ff5064', background: cardBg, cursor: 'pointer' }}
-            title="Clicca per accedere al gateway MCP"
-          >
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
-              <span style={{ fontSize: '1.2rem' }}>🔌</span>
-              <span className="wg-metric-value" style={{ color: isLight ? '#dc2626' : '#ff5064' }}>{activeMcpCount}</span>
-            </div>
-            <span className="wg-metric-label" style={{ color: subtitleColor }}>Server MCP</span>
-          </div>
-
-          {/* Card 5: Provider AI */}
-          <div 
-            className="wg-metric" 
-            onClick={() => openTab({ name: '⚙️ Providers Hub' }, 'ai_config')}
-            style={{ borderTop: '3px solid #faa03c', background: cardBg, cursor: 'pointer' }}
-            title="Clicca per configurare i Provider AI"
-          >
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
-              <span style={{ fontSize: '1.2rem' }}>⚡</span>
-              <span className="wg-metric-value" style={{ color: isLight ? '#d97706' : '#faa03c', fontSize: activeProviderName.length > 10 ? '1rem' : '1.2rem' }}>{activeProviderName}</span>
-            </div>
-            <span className="wg-metric-label" style={{ color: subtitleColor }}>Provider Attivo</span>
-          </div>
-        </div>
-
-        {/* ── SEZIONE GRAFICA: COS'È SIGMA STUDIO & FLUSSO ARCHITETTURALE ──────── */}
+        {/* ── DIV DI BENVENUTO E SPIEGAZIONE APPROFONDITA DI SIGMA STUDIO ──────── */}
         <div style={{
-          padding: '22px 24px',
-          borderRadius: '16px',
+          padding: '28px 32px',
+          borderRadius: '20px',
           background: isLight 
-            ? 'linear-gradient(135deg, rgba(255,255,255,0.95), rgba(248, 245, 238, 0.95))' 
-            : 'linear-gradient(135deg, rgba(17, 21, 34, 0.95), rgba(13, 16, 26, 0.95))',
+            ? 'linear-gradient(135deg, #ffffff 0%, #faf8f5 100%)' 
+            : 'linear-gradient(135deg, rgba(17, 21, 34, 0.96) 0%, rgba(11, 14, 23, 0.98) 100%)',
           border: cardBorder,
           boxShadow: cardShadow,
           display: 'flex',
           flexDirection: 'column',
-          gap: '18px'
+          gap: '24px'
         }}>
-          {/* Header Introduttivo */}
-          <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', flexWrap: 'wrap', gap: '14px' }}>
-            <div style={{ maxWidth: '850px' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px' }}>
-                <span style={{
-                  fontSize: '0.66rem',
-                  fontWeight: 800,
-                  letterSpacing: '1px',
-                  textTransform: 'uppercase',
-                  padding: '2px 8px',
-                  borderRadius: '6px',
-                  background: 'rgba(0, 210, 255, 0.12)',
-                  color: '#00d2ff',
-                  border: '1px solid rgba(0, 210, 255, 0.25)'
-                }}>
-                  Cos'è Sigma Studio
-                </span>
-                <span style={{ fontSize: '0.74rem', color: subtitleColor, fontWeight: 600 }}>
-                  • Architettura Unificata a 4 Livelli
-                </span>
-              </div>
-              <h2 style={{
-                margin: '0 0 8px 0',
-                fontSize: '1.2rem',
+          {/* Header del Benvenuto */}
+          <div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
+              <span style={{
+                fontSize: '0.68rem',
                 fontWeight: 800,
-                color: titleColor,
-                letterSpacing: '-0.2px'
+                letterSpacing: '1px',
+                textTransform: 'uppercase',
+                padding: '3px 10px',
+                borderRadius: '6px',
+                background: isLight ? 'rgba(234, 88, 12, 0.12)' : 'rgba(0, 210, 255, 0.14)',
+                color: isLight ? '#c2410c' : '#00d2ff',
+                border: isLight ? '1px solid rgba(234, 88, 12, 0.3)' : '1px solid rgba(0, 210, 255, 0.3)'
               }}>
-                Il Sistema Operativo AI per l'Autonomia Sovrana
-              </h2>
-              <p style={{
-                margin: 0,
-                fontSize: '0.82rem',
-                color: subtitleColor,
-                lineHeight: 1.55
-              }}>
-                <strong>Sigma AI Studio</strong> trasforma qualsiasi macchina (da PC Windows/Mac/Linux a dispositivi ARM come Raspberry Pi) in una stazione di intelligenza artificiale locale e modulare. Il sistema integra in una pipeline fluida l'<strong>inferenza neurale</strong> dei modelli, la <strong>governance comportamentale</strong> dei manifesti, l'<strong>interfaccia di chat</strong> e l'<strong>esecuzione attiva</strong> tramite protocolli di strumenti MCP.
-              </p>
+                Benvenuto in Sigma AI Studio
+              </span>
+              <span style={{ fontSize: '0.76rem', color: subtitleColor, fontWeight: 600 }}>
+                • Sistema Operativo AI Locale & Sovrano
+              </span>
             </div>
 
-            {/* Pipeline Visual Diagram Indicator */}
-            <div style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: '6px',
-              padding: '8px 14px',
-              borderRadius: '12px',
-              background: isLight ? 'rgba(0,0,0,0.03)' : 'rgba(255,255,255,0.03)',
-              border: isLight ? '1px solid rgba(190,160,110,0.25)' : '1px solid rgba(255,255,255,0.06)',
-              fontSize: '0.72rem',
-              fontWeight: 700,
+            <h2 style={{
+              margin: '0 0 10px 0',
+              fontSize: '1.4rem',
+              fontWeight: 800,
               color: titleColor,
-              flexShrink: 0
+              letterSpacing: '-0.3px'
             }}>
-              <span>⚡ Pesi</span>
-              <span style={{ color: subtitleColor }}>➔</span>
-              <span>📜 Ruolo</span>
-              <span style={{ color: subtitleColor }}>➔</span>
-              <span style={{ color: '#00d2ff' }}>🧠 Kernel</span>
-              <span style={{ color: subtitleColor }}>➔</span>
-              <span style={{ color: '#3fb950' }}>🔌 Tool MCP</span>
-            </div>
+              L'Ambiente di Lavoro Unificato per l'Intelligenza Artificiale Locale
+            </h2>
+
+            <p style={{
+              margin: 0,
+              fontSize: '0.86rem',
+              color: subtitleColor,
+              lineHeight: 1.6,
+              maxWidth: '1000px'
+            }}>
+              <strong>Sigma AI Studio</strong> è una suite completa e modulare progettata per eseguire, orchestrare ed estendere modelli di intelligenza artificiale direttamente sul tuo hardware locale (workstation Windows, Linux, macOS o dispositivi ARM come Raspberry Pi). 
+              A differenza dei tradizionali chatbot cloud, Sigma garantisce <strong>privacy assoluta</strong>, <strong>sovranità sui dati</strong>, <strong>flessibilità architetturale</strong> e la capacità di interagire direttamente con il tuo computer attraverso protocolli di strumenti avanzati.
+            </p>
           </div>
 
-          {/* ── LE 4 AREE CHIAVE INTEGRATE NEL CONTESTO ──────── */}
+          {/* I 4 Pilastri del Sistema Spiegati in Modo Strutturato */}
           <div style={{
             display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))',
+            gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))',
+            gap: '16px'
+          }}>
+            {/* Pilastro 1: Kernel & Inferenza */}
+            <div style={{
+              padding: '18px 20px',
+              borderRadius: '14px',
+              background: isLight ? 'rgba(0, 210, 255, 0.04)' : 'rgba(0, 210, 255, 0.03)',
+              border: isLight ? '1px solid rgba(0, 210, 255, 0.25)' : '1px solid rgba(0, 210, 255, 0.15)',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '10px'
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <div style={{
+                  width: '36px', height: '36px', borderRadius: '10px',
+                  background: 'rgba(0, 210, 255, 0.15)', border: '1px solid rgba(0, 210, 255, 0.35)',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0
+                }}>
+                  <Cpu size={18} color="#00d2ff" />
+                </div>
+                <h3 style={{ margin: 0, fontSize: '0.92rem', fontWeight: 800, color: titleColor }}>
+                  1. Inferenza Neurale Sovrana
+                </h3>
+              </div>
+              <p style={{ margin: 0, fontSize: '0.78rem', color: subtitleColor, lineHeight: 1.5 }}>
+                Esegui pesi <strong>GGUF</strong> e <strong>Safetensors</strong> scaricati da Hugging Face con allocazione intelligente della VRAM e supporto multi-tier per CPU/GPU locali.
+              </p>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.72rem', color: '#00d2ff', fontWeight: 700, marginTop: 'auto', cursor: 'pointer' }}
+                onClick={() => openTab({ name: '⚡ Modelli Hub' }, 'model_hub')}
+              >
+                <span>Gestisci modelli in Modelli Hub</span> <ArrowRight size={12} />
+              </div>
+            </div>
+
+            {/* Pilastro 2: Manifesti & Ruoli */}
+            <div style={{
+              padding: '18px 20px',
+              borderRadius: '14px',
+              background: isLight ? 'rgba(188, 140, 255, 0.04)' : 'rgba(188, 140, 255, 0.03)',
+              border: isLight ? '1px solid rgba(188, 140, 255, 0.25)' : '1px solid rgba(188, 140, 255, 0.15)',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '10px'
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <div style={{
+                  width: '36px', height: '36px', borderRadius: '10px',
+                  background: 'rgba(188, 140, 255, 0.15)', border: '1px solid rgba(188, 140, 255, 0.35)',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0
+                }}>
+                  <Scroll size={18} color="#bc8cff" />
+                </div>
+                <h3 style={{ margin: 0, fontSize: '0.92rem', fontWeight: 800, color: titleColor }}>
+                  2. Allineamento & Manifesti
+                </h3>
+              </div>
+              <p style={{ margin: 0, fontSize: '0.78rem', color: subtitleColor, lineHeight: 1.5 }}>
+                Specializza istantaneamente le risposte dell'AI attivando <strong>manifesti disciplinari</strong> e regole deontologiche per ingegneria, codice, medicina, diritto e ricerca.
+              </p>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.72rem', color: '#bc8cff', fontWeight: 700, marginTop: 'auto', cursor: 'pointer' }}
+                onClick={() => openTab({ name: '📜 Manifesti Hub' }, 'whitepapers_lib')}
+              >
+                <span>Esplora Manifesti e Ruoli</span> <ArrowRight size={12} />
+              </div>
+            </div>
+
+            {/* Pilastro 3: Protocollo MCP */}
+            <div style={{
+              padding: '18px 20px',
+              borderRadius: '14px',
+              background: isLight ? 'rgba(255, 80, 100, 0.04)' : 'rgba(255, 80, 100, 0.03)',
+              border: isLight ? '1px solid rgba(255, 80, 100, 0.25)' : '1px solid rgba(255, 80, 100, 0.15)',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '10px'
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <div style={{
+                  width: '36px', height: '36px', borderRadius: '10px',
+                  background: 'rgba(255, 80, 100, 0.15)', border: '1px solid rgba(255, 80, 100, 0.35)',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0
+                }}>
+                  <Terminal size={18} color="#ff5064" />
+                </div>
+                <h3 style={{ margin: 0, fontSize: '0.92rem', fontWeight: 800, color: titleColor }}>
+                  3. Strumenti & Gateway MCP
+                </h3>
+              </div>
+              <p style={{ margin: 0, fontSize: '0.78rem', color: subtitleColor, lineHeight: 1.5 }}>
+                Permette al modello di agire con strumenti pratici via <strong>Model Context Protocol</strong>: gestione file, esecuzione comandi, test di sistema e domotica IoT.
+              </p>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.72rem', color: '#ff5064', fontWeight: 700, marginTop: 'auto', cursor: 'pointer' }}
+                onClick={() => openTab({ name: 'MCP Tools' }, 'mcp_hub')}
+              >
+                <span>Accedi al Gateway MCP</span> <ArrowRight size={12} />
+              </div>
+            </div>
+
+            {/* Pilastro 4: Moduli Estendibili */}
+            <div style={{
+              padding: '18px 20px',
+              borderRadius: '14px',
+              background: isLight ? 'rgba(63, 185, 80, 0.04)' : 'rgba(63, 185, 80, 0.03)',
+              border: isLight ? '1px solid rgba(63, 185, 80, 0.25)' : '1px solid rgba(63, 185, 80, 0.15)',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '10px'
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <div style={{
+                  width: '36px', height: '36px', borderRadius: '10px',
+                  background: 'rgba(63, 185, 80, 0.15)', border: '1px solid rgba(63, 185, 80, 0.35)',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0
+                }}>
+                  <Layers size={18} color="#3fb950" />
+                </div>
+                <h3 style={{ margin: 0, fontSize: '0.92rem', fontWeight: 800, color: titleColor }}>
+                  4. Moduli & Skills Isolati
+                </h3>
+              </div>
+              <p style={{ margin: 0, fontSize: '0.78rem', color: subtitleColor, lineHeight: 1.5 }}>
+                Architettura dinamica: scarica e attiva nuove funzionalità da GitHub (3D Creative Lab, Audio Studio, Training Lab, Hardware Monitor) senza appesantire il kernel.
+              </p>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.72rem', color: '#3fb950', fontWeight: 700, marginTop: 'auto', cursor: 'pointer' }}
+                onClick={() => openTab({ name: '📦 Hub Skills & Estensioni' }, 'marketplace')}
+              >
+                <span>Apri Hub Skills & Moduli</span> <ArrowRight size={12} />
+              </div>
+            </div>
+          </div>
+
+          {/* Quick Guide: Come iniziare */}
+          <div style={{
+            padding: '16px 20px',
+            borderRadius: '12px',
+            background: isLight ? 'rgba(0,0,0,0.03)' : 'rgba(255,255,255,0.03)',
+            border: isLight ? '1px solid rgba(190, 160, 110, 0.25)' : '1px solid rgba(255, 255, 255, 0.06)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            flexWrap: 'wrap',
             gap: '14px'
           }}>
-            {SYSTEM_PILLARS.map((pillar) => {
-              const PillarIcon = pillar.icon;
-              return (
-                <div
-                  key={pillar.id}
-                  onClick={() => openTab({ name: pillar.tabName }, pillar.tabId)}
-                  style={{
-                    padding: '16px 18px',
-                    borderRadius: '14px',
-                    background: isLight ? '#ffffff' : '#0e121e',
-                    border: isLight ? '1px solid rgba(190, 160, 110, 0.28)' : '1px solid rgba(255, 255, 255, 0.06)',
-                    boxShadow: isLight ? '0 2px 10px rgba(190, 160, 110, 0.08)' : '0 4px 16px rgba(0, 0, 0, 0.25)',
-                    display: 'flex',
-                    flexDirection: 'column',
-                    justifyContent: 'space-between',
-                    gap: '12px',
-                    cursor: 'pointer',
-                    transition: 'all 0.22s ease',
-                    position: 'relative'
-                  }}
-                  onMouseEnter={(e) => {
-                    e.currentTarget.style.borderColor = pillar.color;
-                    e.currentTarget.style.transform = 'translateY(-2px)';
-                    e.currentTarget.style.boxShadow = `0 8px 24px ${pillar.color}22`;
-                  }}
-                  onMouseLeave={(e) => {
-                    e.currentTarget.style.borderColor = isLight ? 'rgba(190, 160, 110, 0.28)' : 'rgba(255, 255, 255, 0.06)';
-                    e.currentTarget.style.transform = 'translateY(0)';
-                    e.currentTarget.style.boxShadow = isLight ? '0 2px 10px rgba(190, 160, 110, 0.08)' : '0 4px 16px rgba(0, 0, 0, 0.25)';
-                  }}
-                >
-                  <div>
-                    {/* Header Card: Step & Ruolo */}
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '10px' }}>
-                      <span style={{
-                        fontSize: '0.65rem',
-                        fontWeight: 800,
-                        textTransform: 'uppercase',
-                        letterSpacing: '0.5px',
-                        color: pillar.color,
-                      }}>
-                        {pillar.step}
-                      </span>
-                      <span style={{
-                        fontSize: '0.62rem',
-                        padding: '1px 6px',
-                        borderRadius: '4px',
-                        background: `${pillar.color}15`,
-                        color: pillar.color,
-                        fontWeight: 700
-                      }}>
-                        {pillar.roleTag}
-                      </span>
-                    </div>
-
-                    {/* Titolo e Icona */}
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '8px' }}>
-                      <div style={{
-                        width: '34px',
-                        height: '34px',
-                        borderRadius: '10px',
-                        background: `${pillar.color}18`,
-                        border: `1px solid ${pillar.color}40`,
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        flexShrink: 0
-                      }}>
-                        <PillarIcon size={18} style={{ color: pillar.color }} />
-                      </div>
-                      <h3 style={{
-                        margin: 0,
-                        fontSize: '0.95rem',
-                        fontWeight: 800,
-                        color: titleColor
-                      }}>
-                        {pillar.title}
-                      </h3>
-                    </div>
-
-                    {/* Descrizione Integrata */}
-                    <p style={{
-                      margin: '0 0 10px 0',
-                      fontSize: '0.76rem',
-                      color: subtitleColor,
-                      lineHeight: 1.45
-                    }}>
-                      {pillar.description}
-                    </p>
-
-                    {/* Feature Bullets */}
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                      {pillar.bullets.map((b, bIdx) => (
-                        <div key={bIdx} style={{
-                          display: 'flex',
-                          alignItems: 'center',
-                          gap: '6px',
-                          fontSize: '0.7rem',
-                          color: isLight ? '#374151' : '#cbd5e1',
-                          fontWeight: 500
-                        }}>
-                          <span style={{ color: pillar.color, fontSize: '0.75rem', lineHeight: 1 }}>•</span>
-                          <span>{b}</span>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-
-                  {/* Bottone Azione */}
-                  <div style={{
-                    paddingTop: '8px',
-                    borderTop: isLight ? '1px solid rgba(190, 160, 110, 0.2)' : '1px solid rgba(255,255,255,0.06)',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'space-between'
-                  }}>
-                    <span style={{
-                      fontSize: '0.74rem',
-                      fontWeight: 800,
-                      color: pillar.color,
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '4px'
-                    }}>
-                      {pillar.actionText} <ArrowRight size={13} />
-                    </span>
-                  </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+              <Sparkles size={20} color={isLight ? '#c2410c' : '#00d2ff'} />
+              <div>
+                <div style={{ fontSize: '0.84rem', fontWeight: 700, color: titleColor }}>
+                  Pronto per iniziare?
                 </div>
-              );
-            })}
+                <div style={{ fontSize: '0.75rem', color: subtitleColor }}>
+                  Apri la Chat per dialogare con l'assistente oppure visita il Modelli Hub per scaricare il tuo primo LLM locale.
+                </div>
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap' }}>
+              <button
+                onClick={() => openTab({ name: 'AI Chat Workspace' }, 'chat')}
+                style={{
+                  padding: '7px 14px', borderRadius: '8px',
+                  background: isLight ? '#ea580c' : '#00d2ff',
+                  border: 'none', color: '#ffffff',
+                  fontSize: '0.76rem', fontWeight: 800, cursor: 'pointer',
+                  display: 'flex', alignItems: 'center', gap: '6px'
+                }}
+              >
+                💬 Apri Chat AI
+              </button>
+              <button
+                onClick={() => openTab({ name: '⚡ Modelli Hub' }, 'model_hub')}
+                style={{
+                  padding: '7px 14px', borderRadius: '8px',
+                  background: isLight ? '#ffffff' : 'rgba(255,255,255,0.08)',
+                  border: isLight ? '1px solid rgba(190, 160, 110, 0.35)' : '1px solid rgba(255, 255, 255, 0.15)',
+                  color: isLight ? '#111827' : '#ffffff',
+                  fontSize: '0.76rem', fontWeight: 700, cursor: 'pointer',
+                  display: 'flex', alignItems: 'center', gap: '6px'
+                }}
+              >
+                ⚡ Modelli Hub
+              </button>
+            </div>
           </div>
+
         </div>
 
         {/* ── CATALOGO SKILLS SHOWCASE SLIDER ──────── */}
