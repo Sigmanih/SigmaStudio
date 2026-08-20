@@ -20,6 +20,9 @@ import os
 import shutil
 import subprocess
 import sys
+import tempfile
+import urllib.request
+import zipfile
 from typing import Any
 
 from core.logger import get_logger
@@ -34,6 +37,31 @@ _FRONTEND_DIR        = os.path.join(_ROOT, "sigma_studio")
 _STATE_FILE          = os.path.join(_ROOT, "data", "marketplace_installed.json")
 
 
+def _sanitize_git_url(raw_url: str) -> tuple[str, str, str]:
+    """
+    Estrae repo_url pulito, branch e module_subpath da un eventuale URL GitHub web.
+    Esempio: https://github.com/Sigmanih/SigmaStudio-Moduli/tree/main/modules/sigma_hardware_lab
+    -> ('https://github.com/Sigmanih/SigmaStudio-Moduli.git', 'main', 'modules/sigma_hardware_lab')
+    """
+    if not raw_url:
+        return ("https://github.com/Sigmanih/SigmaStudio-Moduli.git", "main", "")
+
+    if "/tree/" in raw_url:
+        base_repo, rest = raw_url.split("/tree/", 1)
+        parts = rest.split("/", 1)
+        branch = parts[0] if parts else "main"
+        subpath = parts[1] if len(parts) > 1 else ""
+        clean_repo = base_repo.rstrip("/")
+        if not clean_repo.endswith(".git"):
+            clean_repo += ".git"
+        return (clean_repo, branch, subpath)
+
+    clean_repo = raw_url.rstrip("/")
+    if not clean_repo.endswith(".git") and "github.com" in clean_repo:
+        clean_repo += ".git"
+    return (clean_repo, "main", "")
+
+
 class ModuleLoader:
     """Gestisce il ciclo di vita dei moduli opzionali di Sigma Studio."""
 
@@ -43,7 +71,7 @@ class ModuleLoader:
         os.makedirs(_CORE_MODULES_DIR, exist_ok=True)
         init_file = os.path.join(_CORE_MODULES_DIR, "__init__.py")
         if not os.path.exists(init_file):
-            open(init_file, "w").close()
+            open(init_file, "w", encoding="utf-8").close()
 
     # ------------------------------------------------------------------
     # Boot
@@ -60,58 +88,58 @@ class ModuleLoader:
     # Install
     # ------------------------------------------------------------------
 
-    def install(self, module_id: str, repo_url: str, branch: str, module_path: str, app: Any = None) -> dict:
+    def install(self, module_id: str, repo_url: str = "", branch: str = "main", module_path: str = "", app: Any = None) -> dict:
         """
-        Installa un modulo da GitHub o da repository locale:
-        1. Copia backend → core/modules/{module_id}/
-        2. Copia frontend → sigma_studio/src/modules/{module_id}/
+        Installa un modulo da repository locale o GitHub:
+        1. Copia backend -> core/modules/{module_id}/
+        2. Copia frontend -> sigma_studio/src/modules/{module_id}/
         3. npm run build
         4. Registra route a runtime
         5. Persiste stato installato
         """
-        import tempfile
+        log.info(f"[ModuleLoader] Inizio installazione '{module_id}'...")
 
-        log.info(f"[ModuleLoader] Inizio installazione '{module_id}' da {repo_url}")
+        clean_repo, parsed_branch, parsed_path = _sanitize_git_url(repo_url)
+        if not branch or branch == "main":
+            branch = parsed_branch or "main"
+        if not module_path:
+            module_path = parsed_path or f"modules/{module_id}"
 
-        local_repo_module = os.path.abspath(os.path.join(_ROOT, "..", "SigmaStudio-Moduli", "modules", module_id))
-        if os.path.exists(local_repo_module):
-            log.info(f"[ModuleLoader] Trovato repository locale: {local_repo_module}")
-            backend_src = os.path.join(local_repo_module, "backend")
-            frontend_src = os.path.join(local_repo_module, "frontend")
+        # 1. Verifica se esiste una cartella sorgente locale (sviluppo o repo collegata)
+        possible_local_paths = [
+            os.path.abspath(os.path.join(_ROOT, "..", "SigmaStudio-Moduli", "modules", module_id)),
+            os.path.abspath(os.path.join(_ROOT, "SigmaStudio-Moduli", "modules", module_id)),
+            os.path.abspath(os.path.join(_ROOT, "..", "..", "SigmaStudio-Moduli", "modules", module_id)),
+        ]
 
-            backend_dst = os.path.join(_CORE_MODULES_DIR, module_id)
-            if os.path.exists(backend_dst):
-                shutil.rmtree(backend_dst)
-            if os.path.exists(backend_src):
-                shutil.copytree(backend_src, backend_dst)
-                log.info(f"[ModuleLoader] Backend copiato → {backend_dst}")
+        found_local = None
+        for p in possible_local_paths:
+            if os.path.exists(p):
+                found_local = p
+                break
 
-            frontend_dst = os.path.join(_FRONTEND_MODULES_DIR, module_id)
-            if os.path.exists(frontend_dst):
-                shutil.rmtree(frontend_dst)
-            if os.path.exists(frontend_src):
-                shutil.copytree(frontend_src, frontend_dst)
-                log.info(f"[ModuleLoader] Frontend copiato → {frontend_dst}")
+        if found_local:
+            log.info(f"[ModuleLoader] Trovato modulo locale in: {found_local}")
+            self._copy_module_from_dir(found_local, module_id)
         else:
+            log.info(f"[ModuleLoader] Download remoto per '{module_id}' da {clean_repo} (branch: {branch})...")
             with tempfile.TemporaryDirectory() as tmp_dir:
                 module_tmp = os.path.join(tmp_dir, module_id)
-                self._git_sparse_checkout(repo_url, branch, module_path, module_tmp)
+                downloaded = False
 
-                backend_src = os.path.join(module_tmp, "backend")
-                backend_dst = os.path.join(_CORE_MODULES_DIR, module_id)
-                if os.path.exists(backend_dst):
-                    shutil.rmtree(backend_dst)
-                if os.path.exists(backend_src):
-                    shutil.copytree(backend_src, backend_dst)
-                    log.info(f"[ModuleLoader] Backend copiato → {backend_dst}")
+                # Metodo A: Git sparse-checkout
+                try:
+                    self._git_sparse_checkout(clean_repo, branch, module_path, module_tmp)
+                    if os.path.exists(module_tmp) and os.listdir(module_tmp):
+                        downloaded = True
+                except Exception as git_err:
+                    log.warning(f"[ModuleLoader] Git checkout fallito ({git_err}), provo download ZIP archivio...")
 
-                frontend_src = os.path.join(module_tmp, "frontend")
-                frontend_dst = os.path.join(_FRONTEND_MODULES_DIR, module_id)
-                if os.path.exists(frontend_dst):
-                    shutil.rmtree(frontend_dst)
-                if os.path.exists(frontend_src):
-                    shutil.copytree(frontend_src, frontend_dst)
-                    log.info(f"[ModuleLoader] Frontend copiato → {frontend_dst}")
+                # Metodo B: Download ZIP Fallback (se Git non disponibile o fallito)
+                if not downloaded:
+                    self._download_github_zip(clean_repo, branch, module_id, module_tmp)
+
+                self._copy_module_from_dir(module_tmp, module_id)
 
         # 3. Rebuild frontend
         self._rebuild_frontend()
@@ -125,6 +153,29 @@ class ModuleLoader:
         log.info(f"[ModuleLoader] '{module_id}' installato con successo.")
         return {"success": True, "module_id": module_id, "rebuilt": True}
 
+    def _copy_module_from_dir(self, source_dir: str, module_id: str) -> None:
+        """Copia i file backend e frontend dalla cartella sorgente alle destinazioni di Sigma Studio."""
+        backend_src = os.path.join(source_dir, "backend")
+        frontend_src = os.path.join(source_dir, "frontend")
+
+        # Se non esistono sottocartelle backend/frontend, usa la root per entrambe
+        if not os.path.exists(backend_src) and not os.path.exists(frontend_src):
+            backend_src = source_dir
+            frontend_src = source_dir
+
+        backend_dst = os.path.join(_CORE_MODULES_DIR, module_id)
+        if os.path.exists(backend_dst):
+            shutil.rmtree(backend_dst)
+        if os.path.exists(backend_src):
+            shutil.copytree(backend_src, backend_dst)
+            log.info(f"[ModuleLoader] Backend copiato in: {backend_dst}")
+
+        frontend_dst = os.path.join(_FRONTEND_MODULES_DIR, module_id)
+        if os.path.exists(frontend_dst):
+            shutil.rmtree(frontend_dst)
+        if os.path.exists(frontend_src):
+            shutil.copytree(frontend_src, frontend_dst)
+            log.info(f"[ModuleLoader] Frontend copiato in: {frontend_dst}")
 
     # ------------------------------------------------------------------
     # Uninstall
@@ -152,12 +203,10 @@ class ModuleLoader:
             shutil.rmtree(frontend_dst)
             log.info(f"[ModuleLoader] Frontend rimosso: {frontend_dst}")
 
-        # 3. Rebuild frontend (senza il modulo)
+        # 3. Rebuild frontend
         self._rebuild_frontend()
 
         # 4. Rimuovi dalla registry in-memory
-        # Nota: le route FastAPI rimangono fino al prossimo restart del server.
-        # Le chiamate alle route con codice rimosso ritorneranno 500; accettabile.
         self._loaded.pop(module_id, None)
 
         # 5. Persisti stato
@@ -172,32 +221,48 @@ class ModuleLoader:
 
     def _load_module(self, module_id: str, app: Any) -> bool:
         """Importa dinamicamente gli handler del modulo e registra le route."""
-        # Assicura che il path sia importabile
         if _CORE_MODULES_DIR not in sys.path:
             sys.path.insert(0, os.path.dirname(_CORE_MODULES_DIR))
+        if _ROOT not in sys.path:
+            sys.path.insert(0, _ROOT)
 
-        handler_module_path = f"core.modules.{module_id}.backend.handlers"
+        candidate_module_paths = [
+            f"core.modules.{module_id}.handlers",
+            f"core.modules.{module_id}.backend.handlers",
+            f"core.modules.{module_id}",
+        ]
+
+        mod = None
+        loaded_path = None
+        for handler_module_path in candidate_module_paths:
+            try:
+                if handler_module_path in sys.modules:
+                    mod = importlib.reload(sys.modules[handler_module_path])
+                else:
+                    mod = importlib.import_module(handler_module_path)
+                loaded_path = handler_module_path
+                break
+            except ModuleNotFoundError:
+                continue
+            except Exception as e:
+                log.error(f"[ModuleLoader] Errore import '{handler_module_path}': {e}")
+
+        if mod is None:
+            log.warning(f"[ModuleLoader] Nessun handler trovato per modulo '{module_id}' su disco.")
+            return False
+
         try:
-            # Force-reload se già importato (caso install runtime)
-            if handler_module_path in sys.modules:
-                importlib.reload(sys.modules[handler_module_path])
-                mod = sys.modules[handler_module_path]
-            else:
-                mod = importlib.import_module(handler_module_path)
-
             if hasattr(mod, "register_routes"):
                 mod.register_routes(app)
                 self._loaded[module_id] = mod
-                log.info(f"[ModuleLoader] '{module_id}' route registrate.")
+                log.info(f"[ModuleLoader] '{module_id}' route registrate da {loaded_path}.")
                 return True
             else:
-                log.warning(f"[ModuleLoader] '{module_id}/handlers.py' non espone register_routes().")
-                return False
-        except ModuleNotFoundError:
-            log.warning(f"[ModuleLoader] '{module_id}' non trovato su disco, skip.")
-            return False
+                log.info(f"[ModuleLoader] '{module_id}' caricato (nessun register_routes esplicito).")
+                self._loaded[module_id] = mod
+                return True
         except Exception as e:
-            log.error(f"[ModuleLoader] Errore caricamento '{module_id}': {e}")
+            log.error(f"[ModuleLoader] Errore esecuzione register_routes per '{module_id}': {e}")
             return False
 
     def _rebuild_frontend(self) -> None:
@@ -215,12 +280,11 @@ class ModuleLoader:
                 timeout=120
             )
             if result.returncode == 0:
-                log.info("[ModuleLoader] Frontend rebuild completato.")
+                log.info("[ModuleLoader] Frontend rebuild completato con successo.")
             else:
-                log.warning(f"[ModuleLoader] Build non-zero exit: {result.stderr[-500:]}")
+                log.warning(f"[ModuleLoader] Build completata con avvisi: {result.stderr[-300:] if result.stderr else ''}")
         except Exception as err:
-            log.warning(f"[ModuleLoader] Rebuild subprocess error: {err}")
-
+            log.warning(f"[ModuleLoader] Subprocess build notice: {err}")
 
     def _git_sparse_checkout(self, repo_url: str, branch: str, module_path: str, dst: str) -> None:
         """Clona solo la sottocartella del modulo via sparse-checkout."""
@@ -233,10 +297,9 @@ class ModuleLoader:
         for cmd in cmds:
             subprocess.run(cmd, cwd=dst, check=True, capture_output=True)
 
-        # Scrivi sparse-checkout config
         sparse_file = os.path.join(dst, ".git", "info", "sparse-checkout")
         os.makedirs(os.path.dirname(sparse_file), exist_ok=True)
-        with open(sparse_file, "w") as f:
+        with open(sparse_file, "w", encoding="utf-8") as f:
             f.write(f"{module_path}/*\n")
 
         subprocess.run(
@@ -244,13 +307,54 @@ class ModuleLoader:
             cwd=dst, check=True, capture_output=True
         )
 
-        # Sposta il contenuto della sottocartella nella root di dst
         module_subdir = os.path.join(dst, module_path)
         if os.path.exists(module_subdir):
             for item in os.listdir(module_subdir):
                 shutil.move(os.path.join(module_subdir, item), dst)
-            # Cleanup
             shutil.rmtree(os.path.join(dst, module_path.split("/")[0]), ignore_errors=True)
+
+    def _download_github_zip(self, repo_url: str, branch: str, module_id: str, dst: str) -> None:
+        """Scarica l'archivio ZIP da GitHub ed estrae la cartella del modulo."""
+        # Da https://github.com/Sigmanih/SigmaStudio-Moduli.git a https://github.com/Sigmanih/SigmaStudio-Moduli/archive/refs/heads/main.zip
+        clean_base = repo_url.replace(".git", "").rstrip("/")
+        zip_url = f"{clean_base}/archive/refs/heads/{branch}.zip"
+        log.info(f"[ModuleLoader] Download ZIP archivio: {zip_url}")
+
+        with tempfile.NamedTemporaryFile(suffix=".zip", delete=False) as tf:
+            zip_path = tf.name
+
+        try:
+            req = urllib.request.Request(zip_url, headers={"User-Agent": "SigmaStudio/1.0"})
+            with urllib.request.urlopen(req, timeout=30) as resp, open(zip_path, "wb") as out_f:
+                shutil.copyfileobj(resp, out_f)
+
+            with zipfile.ZipFile(zip_path, "r") as zf:
+                # Cerca file che appartengono a modules/{module_id}
+                prefix_to_find = f"modules/{module_id}/"
+                extracted_any = False
+                for member in zf.infolist():
+                    if prefix_to_find in member.filename:
+                        # Estrai rimuovendo il prefisso fino a modules/{module_id}/
+                        rel_path = member.filename.split(prefix_to_find, 1)[1]
+                        if not rel_path:
+                            continue
+                        target_file = os.path.join(dst, rel_path)
+                        if member.is_dir():
+                            os.makedirs(target_file, exist_ok=True)
+                        else:
+                            os.makedirs(os.path.dirname(target_file), exist_ok=True)
+                            with zf.open(member) as src, open(target_file, "wb") as dst_file:
+                                shutil.copyfileobj(src, dst_file)
+                        extracted_any = True
+
+                if not extracted_any:
+                    raise RuntimeError(f"Nessun file trovato nello ZIP per '{prefix_to_find}'")
+        finally:
+            if os.path.exists(zip_path):
+                try:
+                    os.remove(zip_path)
+                except Exception:
+                    pass
 
     def _read_state(self) -> dict:
         try:
@@ -271,3 +375,4 @@ class ModuleLoader:
 
     def list_loaded(self) -> list[str]:
         return list(self._loaded.keys())
+

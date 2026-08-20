@@ -6,47 +6,65 @@
 // ==============================================================================
 import React from 'react';
 
-// Scansiona dinamicamente tutti i moduli installati nella directory
-const installedModules = import.meta.glob('./*/index.jsx');
+// Scansiona dinamicamente tutti i moduli installati nella directory (.jsx e .js)
+const installedModules = import.meta.glob([
+  './*/index.jsx',
+  './*/index.js',
+  './*/DomoticaTab.jsx'
+]);
 
 // Scansiona dinamicamente tutti i Floating Panel opzionali presenti nella directory
-const installedFloatingPanels = import.meta.glob('./*/HardwareFloatingPanel.jsx');
+const installedFloatingPanels = import.meta.glob([
+  './*/HardwareFloatingPanel.jsx',
+  './*/HardwareFloatingPanel.js'
+]);
 
-// Mappatura tabType → path del modulo
-const TAB_TO_MODULE_PATH = {
+// Mappatura tabType → nome cartella modulo
+const TAB_TO_FOLDER = {
   // Multimodale & Grafica
-  creative_studio: './sigma_creative_lab/index.jsx',
+  creative_studio: 'sigma_creative_lab',
 
   // Audio & Streaming
-  music:           './sigma_audio_studio/index.jsx',
-  music_lounge:    './sigma_audio_studio/index.jsx',
-  audio_studio:    './sigma_audio_studio/index.jsx',
-  voice_studio:    './sigma_voice_studio/index.jsx',
+  music:           'sigma_audio_studio',
+  music_lounge:    'sigma_audio_studio',
+  audio_studio:    'sigma_audio_studio',
+  voice_studio:    'sigma_voice_studio',
 
   // Lab & Infrastruttura
-  training_lab:    './sigma_training_lab/index.jsx',
-  hardware_lab:    './sigma_hardware_lab/index.jsx',
-  hardware:        './sigma_hardware_lab/index.jsx',
-  model_hub:       './sigma_model_hub/index.jsx',
-  research_lab:    './sigma_research_lab/index.jsx',
-  developer_lab:   './sigma_developer_lab/index.jsx',
-  network_lab:     './sigma_network_lab/index.jsx',
-
+  training_lab:    'sigma_training_lab',
+  hardware_lab:    'sigma_hardware_lab',
+  hardware:        'sigma_hardware_lab',
+  model_hub:       'sigma_model_hub',
+  research_lab:    'sigma_research_lab',
+  developer_lab:   'sigma_developer_lab',
+  network_lab:     'sigma_network_lab',
 
   // Knowledge & MCP
-  knowledge:       './sigma_knowledge/index.jsx',
-  mcp_hub:         './sigma_mcp_hub/index.jsx',
-  roadmap:         './sigma_roadmap/index.jsx',
+  knowledge:       'sigma_knowledge',
+  mcp_hub:         'sigma_mcp_hub',
+  roadmap:         'sigma_roadmap',
 
   // Messaging & Email
-  email_client:    './sigma_email_client/index.jsx',
-  messaging_hub:   './sigma_messaging_hub/index.jsx',
+  email_client:    'sigma_email_client',
+  messaging_hub:   'sigma_messaging_hub',
 
   // IoT & Domotica
-  domotica:        './sigma_domotica/index.jsx',
-  home_assistant:  './sigma_domotica/index.jsx',
+  domotica:        'sigma_domotica',
+  home_assistant:  'sigma_domotica',
 };
 
+function findModuleImport(tabType) {
+  const folder = TAB_TO_FOLDER[tabType] || tabType;
+  const candidates = [
+    `./${folder}/index.jsx`,
+    `./${folder}/index.js`,
+    `./${folder}/DomoticaTab.jsx`,
+  ];
+  for (const c of candidates) {
+    if (installedModules[c]) return installedModules[c];
+  }
+  return null;
+}
 
 const _componentCache = {};
 
@@ -58,13 +76,13 @@ const _componentCache = {};
  * @returns {React.LazyExoticComponent | null}
  */
 export function getLazyModule(tabType) {
-  const path = TAB_TO_MODULE_PATH[tabType];
-  if (!path || !installedModules[path]) {
+  const importFn = findModuleImport(tabType);
+  if (!importFn) {
     return null;
   }
 
   if (!_componentCache[tabType]) {
-    _componentCache[tabType] = React.lazy(installedModules[path]);
+    _componentCache[tabType] = React.lazy(importFn);
   }
   return _componentCache[tabType];
 }
@@ -76,12 +94,22 @@ export function getLazyModule(tabType) {
  * @returns {React.LazyExoticComponent | null}
  */
 export function getLazyHardwareFloating() {
-  const path = './sigma_hardware_lab/HardwareFloatingPanel.jsx';
-  if (!installedFloatingPanels[path]) {
+  const candidates = [
+    './sigma_hardware_lab/HardwareFloatingPanel.jsx',
+    './sigma_hardware_lab/HardwareFloatingPanel.js'
+  ];
+  let importFn = null;
+  for (const c of candidates) {
+    if (installedFloatingPanels[c]) {
+      importFn = installedFloatingPanels[c];
+      break;
+    }
+  }
+  if (!importFn) {
     return null;
   }
   if (!_componentCache['hardware_floating']) {
-    _componentCache['hardware_floating'] = React.lazy(installedFloatingPanels[path]);
+    _componentCache['hardware_floating'] = React.lazy(importFn);
   }
   return _componentCache['hardware_floating'];
 }
@@ -93,6 +121,5 @@ export function getLazyHardwareFloating() {
  * @returns {boolean}
  */
 export function isModuleRegistered(tabType) {
-  const path = TAB_TO_MODULE_PATH[tabType];
-  return Boolean(path && installedModules[path]);
+  return Boolean(findModuleImport(tabType));
 }

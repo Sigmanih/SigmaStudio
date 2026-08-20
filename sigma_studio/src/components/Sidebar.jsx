@@ -407,6 +407,20 @@ export default function Sidebar({
         </nav>
 
         {/* ================================================================= */}
+        {/* HUB SKILLS & ESTENSIONI (MARKETPLACE)                             */}
+        {/* ================================================================= */}
+        <nav className="nav-section" style={{ marginBottom: '10px' }}>
+          <SidebarItem 
+            icon={Package} 
+            label="Hub Skills & Estensioni" 
+            badge="STORE ↗"
+            badgeColor="rgba(0,210,255,0.2)"
+            active={activeTabId != null && activeTabId.startsWith('marketplace')}
+            onClick={() => openTab({ name: '📦 Hub Skills & Estensioni' }, 'marketplace')} 
+          />
+        </nav>
+
+        {/* ================================================================= */}
         {/* 2. SEZIONE MODULARE: CATALOGO SKILLS (SUDDIVISO PER SOTTOARGOMENTI) */}
         {/* ================================================================= */}
         <nav className="nav-section" style={{ marginBottom: '14px' }}>
@@ -722,18 +736,6 @@ export default function Sidebar({
               ))}
             </div>
           )}
-
-          {/* Link Rapido all'Hub Skills per scaricare nuovi moduli */}
-          <div style={{ marginTop: '8px', paddingTop: '8px', borderTop: isLight ? '1px dashed rgba(190, 160, 110, 0.3)' : '1px dashed rgba(255, 255, 255, 0.08)' }}>
-            <SidebarItem 
-              icon={Package} 
-              label="Hub Skills & Estensioni" 
-              badge="STORE ↗"
-              badgeColor="rgba(0,210,255,0.2)"
-              active={activeTabId != null && activeTabId.startsWith('marketplace')}
-              onClick={() => openTab({ name: '📦 Hub Skills & Estensioni' }, 'marketplace')} 
-            />
-          </div>
         </nav>
 
       </div>

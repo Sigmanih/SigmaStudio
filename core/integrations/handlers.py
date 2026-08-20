@@ -74,14 +74,20 @@ _KERNEL_DEFAULTS = {}
 
 # Optional modules (downloadable from GitHub, isolated from kernel)
 _OPTIONAL_DEFAULTS = {
-    "sigma_creative_lab": False,  # Creative Lab 3D/2D
-    "audio_studio": False,        # Hi-Fi Sound & FM Radio Studio
-    "sigma_domotica": False,      # Domotica & Home Assistant IoT
-    "sigma_training_lab": False,  # Training Lab & SLM Forge
-    "sigma_hardware_lab": False,  # Hardware Lab & VRAM
-    "sigma_research_lab": False,  # Pipelines Lab & Dynamic Swarm
-    "sigma_knowledge": False,     # Knowledge Explorer
-    "sigma_mcp_hub": False,       # MCP Tools Hub
+    "sigma_creative_lab": False,   # Creative Lab 3D/2D
+    "audio_studio": False,         # Hi-Fi Sound & FM Radio Studio
+    "sigma_domotica": False,       # Domotica & Home Assistant IoT
+    "sigma_training_lab": False,   # Training Lab & SLM Forge
+    "sigma_hardware_lab": False,   # Hardware Lab & VRAM
+    "sigma_research_lab": False,   # Pipelines Lab & Dynamic Swarm
+    "sigma_knowledge": False,      # Knowledge Explorer
+    "sigma_mcp_hub": False,        # MCP Tools Hub
+    "sigma_roadmap": False,        # Pianificazione & Task Audit
+    "sigma_voice_studio": False,   # Voice Studio & Neural Speech
+    "sigma_developer_lab": False,  # Developer Lab & Sandbox
+    "sigma_network_lab": False,    # Network Explorer & Web Research
+    "sigma_email_client": False,   # Email Hub & Client
+    "sigma_messaging_hub": False,  # Messaging & Notification Hub
 }
 
 def _get_installed_modules_state():
@@ -129,7 +135,7 @@ def handle_marketplace_modules(self):
 
 
 def handle_marketplace_install(self):
-    """POST /api/marketplace/install — Scarica e installa modulo da repository Git."""
+    """POST /api/marketplace/install — Scarica e installa modulo da repository Git o archivio."""
     try:
         data = self.read_json_body()
         repo_url = data.get("repo_url", "https://github.com/Sigmanih/SigmaStudio-Moduli")
@@ -138,15 +144,9 @@ def handle_marketplace_install(self):
         module_path = data.get("module_path", f"modules/{module_id}")
         log.info(f"Marketplace install: {module_id} da {repo_url} (path: {module_path})")
         
-        try:
-            from core.module_loader import ModuleLoader
-            loader = ModuleLoader()
-            res = loader.install(module_id, repo_url, branch, module_path, app=None)
-        except Exception as err:
-            log.warning(f"[Marketplace] Fallback local install recording due to: {err}")
-            state = _get_installed_modules_state()
-            state[module_id] = True
-            _save_installed_modules_state(state)
+        from core.module_loader import ModuleLoader
+        loader = ModuleLoader()
+        res = loader.install(module_id, repo_url, branch, module_path, app=getattr(self, 'app', None))
         
         self.send_json_response({
             "success": True,
@@ -155,7 +155,7 @@ def handle_marketplace_install(self):
             "installed": True
         })
     except Exception as e:
-        log.error(f"Errore installazione modulo {e}")
+        log.error(f"Errore installazione modulo {module_id}: {e}")
         self.send_json_response({"success": False, "error": str(e)}, 500)
 
 

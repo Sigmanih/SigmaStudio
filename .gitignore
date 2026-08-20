@@ -50,7 +50,6 @@ sigma_studio/src/modules/*
 data/marketplace_installed.json
 
 # Tests & Coverage
-tests/
 .pytest_cache/
 .coverage
 htmlcov/

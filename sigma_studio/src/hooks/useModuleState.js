@@ -16,6 +16,7 @@ const OPTIONAL_MODULE_IDS = [
   // Media & Generazione
   'sigma_creative_lab',  // Creative Lab 3D/2D
   'audio_studio',        // Hi-Fi Sound & FM Radio Studio
+  'sigma_audio_studio',  // Hi-Fi Sound & FM Radio Studio Alias
   'sigma_voice_studio',  // Voice Studio & Neural Speech Lab
   // Sviluppo & Sandbox
   'sigma_developer_lab', // Developer Lab & Docker Sandbox

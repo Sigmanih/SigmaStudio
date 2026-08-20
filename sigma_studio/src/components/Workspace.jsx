@@ -72,7 +72,7 @@ export default function Workspace({
   clearAllTasks
 }) {
   const { modulesState } = useModuleState();
-  const isAudioInstalled = modulesState.audio_studio === true;
+  const isAudioInstalled = modulesState.audio_studio === true || modulesState.sigma_audio_studio === true;
   const isDomoticaInstalled = modulesState.sigma_domotica === true;
 
   const handleRoadmapDelete = (task) => {
