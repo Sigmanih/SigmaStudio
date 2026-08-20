@@ -683,8 +683,8 @@ export function useChatStreaming({
     const updatedMessages = [...currentMsgs, userMsg];
     const isAuto = !selectedManifestoPath || selectedManifestoPath === 'auto';
     const initialStatus = isAuto 
-      ? '🎯 Analisi semantica della richiesta e selezione agente...' 
-      : `🧠 Inizializzazione contesto per ${activeManifesto?.name || effectiveModel}...`;
+      ? '🎯 Analisi semantica della richiesta e instradamento...' 
+      : `🧠 Elaborazione risposta per ${activeManifesto?.name || effectiveModel}...`;
 
     const placeholderRole = isAuto ? 'Sigma Assistant' : (activeManifesto?.name || 'Sigma Assistant');
     const placeholderId = isAuto ? 'sigma_assistant' : (activeManifesto?.path?.replace('manifesti/', '')?.replace('.md', '') || 'sigma_assistant');

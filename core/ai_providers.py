@@ -640,15 +640,20 @@ def call_ollama(
     if not REQUESTS_AVAILABLE:
         return None, None, "requests library not available. Install with: pip install requests"
     try:
+        cpu_count = os.cpu_count() or 4
+        optimal_threads = min(cpu_count, 8) if cpu_count <= 8 else max(4, min(cpu_count - 2, 12))
+        effective_ctx = num_ctx if (num_ctx and num_ctx > 0) else 8192
+        effective_max_tokens = max_tokens if (max_tokens and max_tokens > 0) else 4096
+
         options = {
             "temperature": temperature,
-            "num_predict": max(max_tokens or 16384, 16384), # Generous token limit to prevent truncation during long code & reasoning
+            "num_predict": effective_max_tokens,
             "top_p": top_p if top_p is not None else 0.95,
             "top_k": top_k or 40,
             "repeat_penalty": repeat_penalty or 1.1,
-            "num_ctx": max(num_ctx or 32768, 65536),       # Expanded context window up to 65K
-            "num_thread": 12,                              # Use 12 physical CPU threads for prompt prefill
-            "use_mmap": True,                              # Memory-mapped weights for high memory bandwidth
+            "num_ctx": effective_ctx,
+            "num_thread": optimal_threads,
+            "use_mmap": True,
         }
         if seed:
             options["seed"] = seed
@@ -734,15 +739,20 @@ def call_ollama_stream(
         yield {"error": True, "message": "requests library not available"}
         return
     try:
+        cpu_count = os.cpu_count() or 4
+        optimal_threads = min(cpu_count, 8) if cpu_count <= 8 else max(4, min(cpu_count - 2, 12))
+        effective_ctx = num_ctx if (num_ctx and num_ctx > 0) else 8192
+        effective_max_tokens = max_tokens if (max_tokens and max_tokens > 0) else 4096
+
         options = {
             "temperature": temperature,
-            "num_predict": max(max_tokens or 16384, 16384), # Generous token limit to prevent truncation during long code & reasoning
+            "num_predict": effective_max_tokens,
             "top_p": top_p if top_p is not None else 0.95,
             "top_k": top_k or 40,
             "repeat_penalty": repeat_penalty or 1.1,
-            "num_ctx": max(num_ctx or 32768, 65536),       # Expanded context window up to 65K
-            "num_thread": 12,                              # Use 12 physical CPU threads for prompt prefill
-            "use_mmap": True,                              # Memory-mapped weights for high memory bandwidth
+            "num_ctx": effective_ctx,
+            "num_thread": optimal_threads,
+            "use_mmap": True,
         }
         if seed:
             options["seed"] = seed
