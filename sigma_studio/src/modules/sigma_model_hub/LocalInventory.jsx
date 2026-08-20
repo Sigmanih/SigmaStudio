@@ -6,6 +6,7 @@ export default function LocalInventory({ isLight, addToast, onDeployRequested,
   const [models, setModels] = useState([]);
   const [loading, setLoading] = useState(true);
   const [unloading, setUnloading] = useState(false);
+  const [deletingPath, setDeletingPath] = useState(null);
 
   const cardBg = isLight ? '#ffffff' : '#0d1019';
   const cardBorder = isLight ? '1px solid rgba(190, 160, 110, 0.3)' : '1px solid rgba(255, 255, 255, 0.08)';
@@ -47,6 +48,40 @@ export default function LocalInventory({ isLight, addToast, onDeployRequested,
       if (addToast) addToast(`Errore: ${e.message}`, 'error');
     } finally {
       setUnloading(false);
+    }
+  };
+
+  const handleDeleteModel = async (model) => {
+    const name = model.filename || model.display_name || model.model_id;
+    const sizeInfo = model.size_label || (model.size_gb ? `${model.size_gb} GB` : '');
+    const confirmMsg = `Sei sicuro di voler eliminare definitivamente il modello "${name}"${sizeInfo ? ` (${sizeInfo})` : ''} dallo storage locale?`;
+    
+    if (!window.confirm(confirmMsg)) {
+      return;
+    }
+
+    setDeletingPath(model.path || model.filename);
+    try {
+      const res = await fetch('/api/models/local/delete', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          model_path: model.path,
+          model_id: model.model_id || model.filename,
+          filename: model.filename
+        })
+      });
+      const json = await res.json();
+      if (res.ok && json.success) {
+        if (addToast) addToast(`🗑️ ${json.message || 'Modello eliminato con successo.'}`, 'success');
+        fetchLocalModels();
+      } else {
+        if (addToast) addToast(`❌ ${json.error || 'Errore durante l\'eliminazione del modello.'}`, 'error');
+      }
+    } catch (e) {
+      if (addToast) addToast(`Errore di rete: ${e.message}`, 'error');
+    } finally {
+      setDeletingPath(null);
     }
   };
 
@@ -202,6 +237,32 @@ export default function LocalInventory({ isLight, addToast, onDeployRequested,
                   }}
                 >
                   <Zap size={13} /> {m.is_active_in_engine ? 'Rialloca' : '⚡ Avvia in SigmaEngine'}
+                </button>
+
+                <button
+                  onClick={() => handleDeleteModel(m)}
+                  disabled={deletingPath === (m.path || m.filename)}
+                  title="Elimina definitivamente questo modello dallo storage locale"
+                  style={{
+                    padding: '6px 10px', borderRadius: '6px',
+                    border: isLight ? '1px solid rgba(239, 68, 68, 0.35)' : '1px solid rgba(239, 68, 68, 0.3)',
+                    background: isLight ? 'rgba(239, 68, 68, 0.08)' : 'rgba(239, 68, 68, 0.1)',
+                    color: '#ef4444', fontSize: '0.74rem', fontWeight: 700, cursor: 'pointer',
+                    display: 'flex', alignItems: 'center', gap: '4px',
+                    opacity: deletingPath === (m.path || m.filename) ? 0.6 : 1,
+                    transition: 'all 0.18s ease'
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.background = 'rgba(239, 68, 68, 0.2)';
+                    e.currentTarget.style.borderColor = '#ef4444';
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.background = isLight ? 'rgba(239, 68, 68, 0.08)' : 'rgba(239, 68, 68, 0.1)';
+                    e.currentTarget.style.borderColor = isLight ? 'rgba(239, 68, 68, 0.35)' : 'rgba(239, 68, 68, 0.3)';
+                  }}
+                >
+                  <Trash2 size={13} />
+                  {deletingPath === (m.path || m.filename) ? 'Rimozione...' : 'Elimina'}
                 </button>
               </div>
             </div>

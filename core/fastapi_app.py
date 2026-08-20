@@ -297,7 +297,7 @@ except Exception as _mod_err:
 try:
     from core.modules.sigma_model_hub.backend.handlers import (
         handle_models_hf_search, handle_models_hf_details, handle_models_hf_downloads_list,
-        handle_models_local_list, handle_models_config_get,
+        handle_models_local_list, handle_models_local_delete, handle_models_config_get,
         handle_models_hf_download_start, handle_models_hf_download_repo, handle_models_hf_download_cancel,
         handle_models_hf_download_retry, handle_models_hf_download_remove,
         handle_models_engine_load, handle_models_engine_unload, handle_models_config_save,
@@ -311,6 +311,7 @@ try:
     FastAPIHandlerAdapter.handle_models_hf_downloads_list = handle_models_hf_downloads_list
     FastAPIHandlerAdapter.handle_models_hf_test_connection = handle_models_hf_test_connection
     FastAPIHandlerAdapter.handle_models_local_list = handle_models_local_list
+    FastAPIHandlerAdapter.handle_models_local_delete = handle_models_local_delete
     FastAPIHandlerAdapter.handle_models_config_get = handle_models_config_get
     FastAPIHandlerAdapter.handle_models_hf_download_start = handle_models_hf_download_start
     FastAPIHandlerAdapter.handle_models_hf_download_repo = handle_models_hf_download_repo

@@ -255,6 +255,8 @@ def register_post_handlers(handler_class):
         '/api/models/hf/download/remove': 'handle_models_hf_download_remove',
         '/api/models/hf/token/test': 'handle_models_hf_token_test',
         '/api/models/hf/test-connection': 'handle_models_hf_test_connection',
+        '/api/models/local/delete': 'handle_models_local_delete',
+        '/api/models/delete': 'handle_models_local_delete',
         '/api/models/engine/load': 'handle_models_engine_load',
         '/api/models/engine/unload': 'handle_models_engine_unload',
         '/api/models/config': 'handle_models_config_save',

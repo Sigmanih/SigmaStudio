@@ -316,3 +316,86 @@ def unload_sigma_engine_model() -> Dict[str, Any]:
             if prev else "Nessun modello era caricato."
         ),
     }
+
+
+def delete_local_model(model_path_or_id: str, custom_dir: Optional[str] = None) -> Dict[str, Any]:
+    """
+    Safely deletes a downloaded model file or repository folder from disk.
+    Prevents directory traversal and ensures safe sandbox boundaries.
+    """
+    import shutil
+    if not model_path_or_id or not str(model_path_or_id).strip():
+        return {"success": False, "error": "Identificativo o percorso del modello non valido"}
+
+    base_dir = os.path.abspath(custom_dir if custom_dir and os.path.exists(custom_dir) else _models_dir())
+    raw_target = str(model_path_or_id).strip()
+
+    # 1. Determine target full path
+    target_path = None
+    if os.path.isabs(raw_target) and os.path.exists(raw_target):
+        target_path = os.path.abspath(raw_target)
+    else:
+        # Check standard model naming variations
+        candidates = [
+            os.path.join(base_dir, raw_target),
+            os.path.join(base_dir, raw_target.replace("/", "--")),
+            os.path.join(base_dir, os.path.basename(raw_target)),
+        ]
+        for c in candidates:
+            if os.path.exists(c):
+                target_path = os.path.abspath(c)
+                break
+
+    if not target_path or not os.path.exists(target_path):
+        return {"success": False, "error": f"Modello '{raw_target}' non trovato su disco"}
+
+    # 2. Security sandbox check: target must be inside base_dir
+    try:
+        common = os.path.commonpath([base_dir, target_path])
+        if os.path.abspath(common) != base_dir:
+            return {"success": False, "error": "Operazione non consentita al di fuori della cartella modelli"}
+    except Exception:
+        return {"success": False, "error": "Verifica di sicurezza percorso fallita"}
+
+    if target_path == base_dir:
+        return {"success": False, "error": "Non è possibile cancellare l'intera cartella radice dei modelli"}
+
+    # 3. If model is currently loaded in SigmaEngine, unload it first
+    try:
+        if (sigma_engine.loaded_model_name and 
+            (sigma_engine.loaded_model_name in target_path or target_path in sigma_engine.loaded_model_name)):
+            sigma_engine.unload()
+    except Exception as ex:
+        log.warning(f"[ModelInventory] Warning unloading model before deletion: {ex}")
+
+    # 4. Perform deletion
+    try:
+        if os.path.isdir(target_path):
+            shutil.rmtree(target_path)
+        else:
+            os.remove(target_path)
+
+        # 5. Clean any matching residual .part files
+        parent_dir = os.path.dirname(target_path)
+        base_name = os.path.basename(target_path)
+        part_candidates = [
+            os.path.join(parent_dir, base_name + ".part"),
+            os.path.join(parent_dir, base_name + ".tmp")
+        ]
+        for p in part_candidates:
+            if os.path.exists(p):
+                try:
+                    os.remove(p)
+                except Exception:
+                    pass
+
+        log.info(f"[ModelInventory] Modello rimosso con successo da disco: {target_path}")
+        return {
+            "success": True,
+            "message": f"Modello '{os.path.basename(target_path)}' rimosso con successo dallo storage.",
+            "deleted_path": target_path
+        }
+    except Exception as e:
+        log.error(f"[ModelInventory] Errore cancellazione modello {target_path}: {e}")
+        return {"success": False, "error": f"Errore durante l'eliminazione dei file: {str(e)}"}
+
