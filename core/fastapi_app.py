@@ -512,6 +512,8 @@ async def _dispatch_route(request: Request, method: str):
 
 @app.get("/v1/models")
 @app.get("/api/v1/models")
+@app.get("/api/models")
+@app.get("/models")
 async def v1_list_models():
     """List available models in OpenAI standard format."""
     models_list = get_all_available_models()
@@ -559,6 +561,7 @@ async def v1_retrieve_model(model_id: str):
 
 @app.post("/v1/chat/completions")
 @app.post("/api/v1/chat/completions")
+@app.post("/chat/completions")
 async def v1_chat_completions(request: Request):
     """OpenAI standard Chat Completions endpoint with SSE Streaming & JSON support."""
     try:
@@ -613,6 +616,7 @@ async def v1_chat_completions(request: Request):
 
 @app.post("/v1/completions")
 @app.post("/api/v1/completions")
+@app.post("/completions")
 async def v1_completions(request: Request):
     """OpenAI standard Text Completions endpoint."""
     try:
@@ -689,14 +693,18 @@ async def v1_completions(request: Request):
 
 @app.post("/v1/embeddings")
 @app.post("/api/v1/embeddings")
+@app.post("/api/embed")
+@app.post("/api/embeddings")
+@app.post("/v1/api/embed")
+@app.post("/v1/api/embeddings")
 async def v1_embeddings(request: Request):
-    """OpenAI standard Embeddings endpoint."""
+    """OpenAI & Ollama standard Embeddings endpoint."""
     try:
         body = await request.json()
     except Exception:
         body = {}
 
-    input_data = body.get("input", "")
+    input_data = body.get("input", "") or body.get("prompt", "")
     model = body.get("model", "sigmaengine")
     if isinstance(input_data, str):
         inputs = [input_data]
@@ -707,6 +715,7 @@ async def v1_embeddings(request: Request):
 
     import hashlib
     data = []
+    raw_embeddings = []
     for idx, text in enumerate(inputs):
         seed_bytes = hashlib.sha256(text.encode("utf-8")).digest()
         vector = []
@@ -718,10 +727,15 @@ async def v1_embeddings(request: Request):
             "embedding": vector,
             "index": idx
         })
+        raw_embeddings.append(vector)
+
+    # Return structure compatible with both OpenAI and Ollama formats
     return JSONResponse(status_code=200, content={
         "object": "list",
         "data": data,
         "model": model,
+        "embeddings": raw_embeddings if len(raw_embeddings) > 1 else (raw_embeddings[0] if raw_embeddings else []),
+        "embedding": raw_embeddings[0] if raw_embeddings else [],
         "usage": {
             "prompt_tokens": sum(len(t.split()) for t in inputs),
             "total_tokens": sum(len(t.split()) for t in inputs)
@@ -730,6 +744,10 @@ async def v1_embeddings(request: Request):
 
 
 @app.get("/api/tags")
+@app.get("/v1/api/tags")
+@app.get("/api/v1/tags")
+@app.get("/tags")
+@app.get("/v1/tags")
 async def ollama_tags_route():
     """Ollama standard /api/tags endpoint."""
     models_list = get_all_available_models()
@@ -757,12 +775,20 @@ async def ollama_tags_route():
 
 
 @app.get("/api/version")
+@app.get("/v1/api/version")
+@app.get("/api/v1/version")
+@app.get("/version")
+@app.get("/v1/version")
 async def ollama_version_route():
     """Ollama standard /api/version endpoint."""
     return JSONResponse(status_code=200, content={"version": "0.5.4-sigmaengine"})
 
 
 @app.get("/api/ps")
+@app.get("/v1/api/ps")
+@app.get("/api/v1/ps")
+@app.get("/ps")
+@app.get("/v1/ps")
 async def ollama_ps_route():
     """Ollama standard /api/ps running models endpoint."""
     from core.engine.unified_runtime import sigma_engine
@@ -790,6 +816,10 @@ async def ollama_ps_route():
 
 
 @app.post("/api/show")
+@app.post("/v1/api/show")
+@app.post("/api/v1/show")
+@app.post("/show")
+@app.post("/v1/show")
 async def ollama_show_route(request: Request):
     """Ollama standard /api/show endpoint."""
     try:
@@ -813,6 +843,9 @@ async def ollama_show_route(request: Request):
 
 
 @app.post("/api/chat")
+@app.post("/v1/api/chat")
+@app.post("/api/v1/chat")
+@app.post("/v1/chat")
 async def ollama_chat_route(request: Request):
     """
     Intelligently routes between:
@@ -884,6 +917,10 @@ async def ollama_chat_route(request: Request):
 
 
 @app.post("/api/generate")
+@app.post("/v1/api/generate")
+@app.post("/api/v1/generate")
+@app.post("/generate")
+@app.post("/v1/generate")
 async def ollama_generate_route(request: Request):
     """Ollama standard /api/generate endpoint with NDJSON streaming."""
     try:
@@ -948,6 +985,13 @@ async def ollama_generate_route(request: Request):
             temperature=temperature,
             max_tokens=max_tokens
         )
+        return JSONResponse(status_code=200, content={
+            "model": model,
+            "created_at": res.get("created_at", datetime.datetime.now(datetime.timezone.utc).isoformat()),
+            "response": res.get("message", {}).get("content", ""),
+            "done": True,
+            "total_duration": res.get("total_duration", 0),
+        })
         return JSONResponse(status_code=200, content={
             "model": model,
             "created_at": res.get("created_at", datetime.datetime.now(datetime.timezone.utc).isoformat()),
@@ -1076,11 +1120,19 @@ DIST_DIR = _ROOT / "sigma_studio" / "dist"
 
 
 @app.get("/")
-async def serve_root():
+@app.head("/")
+async def serve_root(request: Request):
+    accept = request.headers.get("accept", "")
+    user_agent = request.headers.get("user-agent", "").lower()
+    
+    # If client is Ollama / Cline / Roo / API client probing root or requesting text
+    if "text/html" not in accept and ("ollama" in user_agent or "curl" in user_agent or "cline" in user_agent or "roo" in user_agent or accept == "*/*" or not accept):
+        return Response(content="Ollama is running", media_type="text/plain", status_code=200)
+
     index_file = DIST_DIR / "index.html"
     if index_file.exists():
         return FileResponse(index_file)
-    return JSONResponse({"message": "Σ-SIGMA Studio API Running (v8.0). Use /docs for Swagger UI."})
+    return Response(content="Ollama is running", media_type="text/plain", status_code=200)
 
 
 DATA_DIR = _ROOT / "data"

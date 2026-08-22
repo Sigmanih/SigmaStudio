@@ -2347,31 +2347,89 @@ export default function AIConfigTab({ openTab }) {
 
             {/* TAB CONTENT: CLINE / ROO CODE */}
             {activeVsCodeTab === 'cline' && (
-              <div>
-                <p style={{ margin: '0 0 10px 0', fontSize: '0.74rem', color: subtitleColor, lineHeight: 1.4 }}>
-                  Nelle impostazioni di <strong>Cline</strong> o <strong>Roo Code</strong> in VS Code, seleziona il provider <strong>OpenAI Compatible</strong>:
-                </p>
-                <div style={{
-                  display: 'grid',
-                  gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
-                  gap: '10px',
-                  marginBottom: '10px'
-                }}>
-                  <div style={{ padding: '10px', borderRadius: '8px', background: innerCardBg, border: innerCardBorder }}>
-                    <div style={{ fontSize: '0.66rem', color: subtitleColor, fontWeight: 700 }}>API PROVIDER</div>
-                    <div style={{ fontSize: '0.8rem', fontWeight: 800, color: titleColor, marginTop: '2px' }}>OpenAI Compatible</div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+                <div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '6px' }}>
+                    <span style={{ fontSize: '0.74rem', fontWeight: 800, color: '#10a37f' }}>Opzione 1 (Consigliata) — Provider: OpenAI Compatible</span>
+                    <span style={{ fontSize: '0.62rem', background: '#10a37f20', color: '#10a37f', padding: '1px 6px', borderRadius: '6px', fontWeight: 700 }}>Piena conformità SSE & Tool Calling</span>
                   </div>
-                  <div style={{ padding: '10px', borderRadius: '8px', background: innerCardBg, border: innerCardBorder }}>
-                    <div style={{ fontSize: '0.66rem', color: subtitleColor, fontWeight: 700 }}>BASE URL</div>
-                    <div style={{ fontSize: '0.8rem', fontWeight: 800, color: '#00f2fe', marginTop: '2px' }}>http://localhost:8000/v1</div>
+                  <p style={{ margin: '0 0 8px 0', fontSize: '0.73rem', color: subtitleColor, lineHeight: 1.4 }}>
+                    Nelle impostazioni di <strong>Cline</strong> o <strong>Roo Code</strong> in VS Code, imposta:
+                  </p>
+                  <div style={{
+                    display: 'grid',
+                    gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
+                    gap: '8px'
+                  }}>
+                    <div style={{ padding: '8px 12px', borderRadius: '8px', background: innerCardBg, border: innerCardBorder }}>
+                      <div style={{ fontSize: '0.64rem', color: subtitleColor, fontWeight: 700 }}>API PROVIDER</div>
+                      <div style={{ fontSize: '0.78rem', fontWeight: 800, color: titleColor, marginTop: '2px' }}>OpenAI Compatible</div>
+                    </div>
+                    <div style={{ padding: '8px 12px', borderRadius: '8px', background: innerCardBg, border: innerCardBorder, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <div>
+                        <div style={{ fontSize: '0.64rem', color: subtitleColor, fontWeight: 700 }}>BASE URL</div>
+                        <div style={{ fontSize: '0.78rem', fontWeight: 800, color: '#00f2fe', marginTop: '2px' }}>http://localhost:8000/v1</div>
+                      </div>
+                      <button onClick={() => copyKeyToClipboard('cline_base', 'http://localhost:8000/v1')} style={{ background: 'none', border: 'none', color: subtitleColor, cursor: 'pointer' }}>
+                        {copiedKey === 'cline_base' ? <Check size={12} color="#3fb950" /> : <Copy size={12} />}
+                      </button>
+                    </div>
+                    <div style={{ padding: '8px 12px', borderRadius: '8px', background: innerCardBg, border: innerCardBorder, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <div>
+                        <div style={{ fontSize: '0.64rem', color: subtitleColor, fontWeight: 700 }}>API KEY</div>
+                        <div style={{ fontSize: '0.78rem', fontWeight: 800, color: titleColor, marginTop: '2px' }}>sigma</div>
+                      </div>
+                      <button onClick={() => copyKeyToClipboard('cline_key', 'sigma')} style={{ background: 'none', border: 'none', color: subtitleColor, cursor: 'pointer' }}>
+                        {copiedKey === 'cline_key' ? <Check size={12} color="#3fb950" /> : <Copy size={12} />}
+                      </button>
+                    </div>
+                    <div style={{ padding: '8px 12px', borderRadius: '8px', background: innerCardBg, border: innerCardBorder, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <div>
+                        <div style={{ fontSize: '0.64rem', color: subtitleColor, fontWeight: 700 }}>MODEL ID</div>
+                        <div style={{ fontSize: '0.78rem', fontWeight: 800, color: '#00d2ff', marginTop: '2px' }}>{selectedGuideModel}</div>
+                      </div>
+                      <button onClick={() => copyKeyToClipboard('cline_model', selectedGuideModel)} style={{ background: 'none', border: 'none', color: subtitleColor, cursor: 'pointer' }}>
+                        {copiedKey === 'cline_model' ? <Check size={12} color="#3fb950" /> : <Copy size={12} />}
+                      </button>
+                    </div>
                   </div>
-                  <div style={{ padding: '10px', borderRadius: '8px', background: innerCardBg, border: innerCardBorder }}>
-                    <div style={{ fontSize: '0.66rem', color: subtitleColor, fontWeight: 700 }}>API KEY</div>
-                    <div style={{ fontSize: '0.8rem', fontWeight: 800, color: titleColor, marginTop: '2px' }}>sigma</div>
+                </div>
+
+                <div style={{ borderTop: isLight ? '1px solid rgba(0,0,0,0.08)' : '1px solid rgba(255,255,255,0.06)', paddingTop: '10px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '6px' }}>
+                    <span style={{ fontSize: '0.74rem', fontWeight: 800, color: '#00d2ff' }}>Opzione 2 — Provider: Ollama</span>
+                    <span style={{ fontSize: '0.62rem', background: '#00d2ff20', color: '#00d2ff', padding: '1px 6px', borderRadius: '6px', fontWeight: 700 }}>Protocollo NDJSON</span>
                   </div>
-                  <div style={{ padding: '10px', borderRadius: '8px', background: innerCardBg, border: innerCardBorder }}>
-                    <div style={{ fontSize: '0.66rem', color: subtitleColor, fontWeight: 700 }}>MODEL ID</div>
-                    <div style={{ fontSize: '0.8rem', fontWeight: 800, color: '#00d2ff', marginTop: '2px' }}>{selectedGuideModel}</div>
+                  <p style={{ margin: '0 0 8px 0', fontSize: '0.73rem', color: subtitleColor, lineHeight: 1.4 }}>
+                    Se selezioni il provider <strong>Ollama</strong> in Cline o Roo Code, imposta il Base URL <strong>senza /v1</strong>:
+                  </p>
+                  <div style={{
+                    display: 'grid',
+                    gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
+                    gap: '8px'
+                  }}>
+                    <div style={{ padding: '8px 12px', borderRadius: '8px', background: innerCardBg, border: innerCardBorder }}>
+                      <div style={{ fontSize: '0.64rem', color: subtitleColor, fontWeight: 700 }}>API PROVIDER</div>
+                      <div style={{ fontSize: '0.78rem', fontWeight: 800, color: titleColor, marginTop: '2px' }}>Ollama</div>
+                    </div>
+                    <div style={{ padding: '8px 12px', borderRadius: '8px', background: innerCardBg, border: innerCardBorder, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <div>
+                        <div style={{ fontSize: '0.64rem', color: subtitleColor, fontWeight: 700 }}>BASE URL (Ollama)</div>
+                        <div style={{ fontSize: '0.78rem', fontWeight: 800, color: '#00d2ff', marginTop: '2px' }}>http://localhost:8000</div>
+                      </div>
+                      <button onClick={() => copyKeyToClipboard('ollama_cline_base', 'http://localhost:8000')} style={{ background: 'none', border: 'none', color: subtitleColor, cursor: 'pointer' }}>
+                        {copiedKey === 'ollama_cline_base' ? <Check size={12} color="#3fb950" /> : <Copy size={12} />}
+                      </button>
+                    </div>
+                    <div style={{ padding: '8px 12px', borderRadius: '8px', background: innerCardBg, border: innerCardBorder, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <div>
+                        <div style={{ fontSize: '0.64rem', color: subtitleColor, fontWeight: 700 }}>MODEL ID</div>
+                        <div style={{ fontSize: '0.78rem', fontWeight: 800, color: '#00d2ff', marginTop: '2px' }}>{selectedGuideModel}</div>
+                      </div>
+                      <button onClick={() => copyKeyToClipboard('ollama_cline_model', selectedGuideModel)} style={{ background: 'none', border: 'none', color: subtitleColor, cursor: 'pointer' }}>
+                        {copiedKey === 'ollama_cline_model' ? <Check size={12} color="#3fb950" /> : <Copy size={12} />}
+                      </button>
+                    </div>
                   </div>
                 </div>
               </div>
