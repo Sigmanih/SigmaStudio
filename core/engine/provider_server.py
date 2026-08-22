@@ -134,7 +134,7 @@ def get_all_available_models() -> List[Dict[str, Any]]:
 
     # 2. Local Models in data/models/
     try:
-        from core.modules.sigma_model_hub.backend.local_scanner import scan_local_models
+        from core.modules.sigma_model_hub.backend.model_inventory import scan_local_models
         local_items = scan_local_models()
         for item in local_items:
             m_id = item.get("name") or item.get("filename") or os.path.basename(item.get("path", ""))

@@ -244,9 +244,23 @@ def stream_admin_agent_turn(
     full_messages = [{"role": "system", "content": ADMIN_DEVELOPER_SYSTEM_PROMPT}]
     for m in messages:
         if m.get("role") != "system":
-            full_messages.append({"role": m.get("role", "user"), "content": m.get("content", "")})
+            m_content = m.get("content", "")
+            attachments = m.get("attachments", [])
+            if attachments:
+                att_texts = []
+                for att in attachments:
+                    att_name = att.get("name") or att.get("filename") or "allegato"
+                    att_content = att.get("content") or ""
+                    att_path = att.get("path") or ""
+                    if att_content:
+                        att_texts.append(f"--- FILE ALLEGATO: {att_name} ---\n```\n{att_content[:35000]}\n```")
+                    elif att_path:
+                        att_texts.append(f"--- RIFERIMENTO FILE ALLEGATO: {att_path} ---")
+                if att_texts:
+                    m_content = f"{m_content}\n\n" + "\n\n".join(att_texts)
+            full_messages.append({"role": m.get("role", "user"), "content": m_content})
 
-    last_user_prompt = messages[-1].get("content", "") if messages else "Ciao"
+    last_user_prompt = full_messages[-1].get("content", "") if len(full_messages) > 1 else "Ciao"
 
     current_turn = 0
     total_generated_tokens = 0

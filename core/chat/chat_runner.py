@@ -1138,6 +1138,23 @@ Contenuto completo...
         if retrieved_memory:
             volatile_parts.append(retrieved_memory)
 
+        # Open workspace context files
+        context_files = req.get("context", {}).get("open_files", [])
+        if context_files:
+            ctx_str = _collect_context_files(self, context_files)
+            if ctx_str:
+                volatile_parts.append(f"## 📂 FILE APERTI NEL WORKSPACE:\n{ctx_str}")
+
+        # Attached PC files
+        uploaded_files = req.get("uploaded_files", [])
+        if uploaded_files:
+            for uf in uploaded_files:
+                if isinstance(uf, dict):
+                    fname = uf.get("filename", "allegato")
+                    fcontent = uf.get("content", "")
+                    if fcontent:
+                        volatile_parts.append(f"## 📎 FILE ALLEGATO DALL'UTENTE: {fname}\n```\n{fcontent[:35000]}\n```")
+
         volatile_context = "\n\n".join(volatile_parts)
         final_user_turn = (
             f"{volatile_context}\n\n---\n\n{message}"

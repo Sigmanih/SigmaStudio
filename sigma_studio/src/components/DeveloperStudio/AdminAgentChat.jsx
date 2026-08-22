@@ -3,9 +3,33 @@ import {
   Send, Bot, User, Sparkles, Brain, Check, Copy, RefreshCw, 
   Terminal, FileCode, Trash2, ArrowRight, ShieldCheck, Zap, 
   ChevronDown, ChevronUp, SplitSquareVertical, Layers, Folder, 
-  Plus, Edit2, Clock, Search, X, MessageSquare 
+  Plus, Edit2, Clock, Search, X, MessageSquare,
+  Paperclip, Mic, MicOff, FileText, Upload
 } from 'lucide-react';
 import DeveloperModelSelector from './DeveloperModelSelector';
+import { renderMarkdownLatex } from '../../utils/markdownLatex';
+import 'katex/dist/katex.min.css';
+import Prism from 'prismjs';
+import 'prismjs/components/prism-python';
+import 'prismjs/components/prism-javascript';
+import 'prismjs/components/prism-jsx';
+import 'prismjs/components/prism-json';
+import 'prismjs/components/prism-bash';
+import 'prismjs/components/prism-powershell';
+import 'prismjs/components/prism-markup';
+import 'prismjs/components/prism-css';
+import 'prismjs/components/prism-yaml';
+import 'prismjs/themes/prism-tomorrow.css';
+import mermaid from 'mermaid';
+
+try {
+  mermaid.initialize({
+    startOnLoad: false,
+    theme: 'dark',
+    securityLevel: 'loose',
+    flowchart: { useMaxWidth: true, htmlLabels: true }
+  });
+} catch (e) {}
 
 const STORAGE_TASKS_KEY = 'sigma_dev_tasks_v2';
 const STORAGE_ACTIVE_TASK_KEY = 'sigma_dev_active_task_id_v2';
@@ -48,6 +72,117 @@ const cleanMessageText = (text) => {
   cleaned = cleaned.replace(/<(?:execute_command|shell|terminal|read_file|write_to_file|list_dir|search_code)>[\s\S]*?<\/(?:execute_command|shell|terminal|read_file|write_to_file|list_dir|search_code)>/gi, '');
   return cleaned.trim();
 };
+
+function RichMessageContent({ content, isUser, onOpenFile, isLight }) {
+  const containerRef = useRef(null);
+
+  const html = useMemo(() => {
+    if (!content) return '';
+    return renderMarkdownLatex(content);
+  }, [content]);
+
+  useEffect(() => {
+    if (!containerRef.current) return;
+    const el = containerRef.current;
+
+    // 1. Highlight code blocks with Prism & add Copy button
+    el.querySelectorAll('pre code').forEach((codeBlock) => {
+      const pre = codeBlock.parentElement;
+      if (!pre || pre.dataset.prismDone) return;
+      pre.dataset.prismDone = 'true';
+
+      const langMatch = codeBlock.className.match(/language-(\w+)/);
+      const lang = langMatch ? langMatch[1] : '';
+
+      if (lang && Prism.languages[lang]) {
+        try {
+          Prism.highlightElement(codeBlock);
+        } catch (e) {}
+      }
+
+      // Add Header with language pill and Copy Button
+      const header = document.createElement('div');
+      header.className = 'chat-code-header';
+      header.style.cssText = 'display:flex;justify-content:space-between;align-items:center;padding:4px 8px;background:rgba(0,0,0,0.35);border-bottom:1px solid rgba(255,255,255,0.06);margin:-14px -16px 10px -16px;border-radius:10px 10px 0 0;font-size:0.62rem;color:#8b949e;';
+      header.innerHTML = `
+        <span style="font-weight:700;text-transform:uppercase;color:#00d2ff;letter-spacing:0.5px;">${lang || 'CODE'}</span>
+        <button class="chat-copy-code-btn" style="background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.1);color:#c9d1d9;padding:2px 7px;border-radius:4px;cursor:pointer;font-size:0.62rem;display:flex;align-items:center;gap:3px;transition:all 0.15s;">
+          📋 Copia
+        </button>
+      `;
+      const copyBtn = header.querySelector('.chat-copy-code-btn');
+      copyBtn?.addEventListener('click', (e) => {
+        e.stopPropagation();
+        navigator.clipboard.writeText(codeBlock.textContent || '');
+        copyBtn.innerHTML = '✓ Copiato!';
+        copyBtn.style.color = '#3fb950';
+        copyBtn.style.borderColor = 'rgba(63,185,80,0.4)';
+        setTimeout(() => {
+          copyBtn.innerHTML = '📋 Copia';
+          copyBtn.style.color = '#c9d1d9';
+          copyBtn.style.borderColor = 'rgba(255,255,255,0.1)';
+        }, 2000);
+      });
+      pre.insertBefore(header, pre.firstChild);
+    });
+
+    // 2. Render Mermaid diagrams
+    const mermaidBlocks = el.querySelectorAll('.language-mermaid');
+    if (mermaidBlocks.length > 0) {
+      mermaidBlocks.forEach(async (block, i) => {
+        const raw = block.textContent;
+        const pre = block.closest('pre') || block;
+        if (!pre || pre.dataset.mermaidDone) return;
+        pre.dataset.mermaidDone = 'true';
+
+        const wrapper = document.createElement('div');
+        wrapper.className = 'mermaid-wrapper';
+        wrapper.style.cssText = 'width:100%;margin:12px 0;overflow-x:auto;background:#0d1117;border:1px solid rgba(0,210,255,0.25);border-radius:8px;padding:12px;display:flex;justify-content:center;box-shadow:0 4px 16px rgba(0,0,0,0.3);';
+        
+        try {
+          const id = `mermaid-admin-${Date.now()}-${i}`;
+          const { svg } = await mermaid.render(id, raw);
+          wrapper.innerHTML = svg;
+          pre.parentNode?.replaceChild(wrapper, pre);
+        } catch (err) {
+          wrapper.innerHTML = `<div style="color:#ef4444;font-size:0.68rem;padding:6px;">Mermaid Error: ${err.message}</div>`;
+          pre.parentNode?.replaceChild(wrapper, pre);
+        }
+      });
+    }
+  }, [html]);
+
+  const handleClick = (e) => {
+    const fileLink = e.target.closest('.chat-file-link');
+    if (fileLink && onOpenFile) {
+      e.preventDefault();
+      const path = fileLink.dataset.path || fileLink.getAttribute('data-path') || fileLink.textContent.replace(/^📄\s*/, '').trim();
+      if (path) onOpenFile(path);
+    }
+  };
+
+  return (
+    <div
+      ref={containerRef}
+      className={`chat-content chat-md dev-chat-md ${isLight ? 'light-mode' : ''}`}
+      onClick={handleClick}
+      style={{
+        padding: '10px 14px',
+        borderRadius: '10px',
+        fontSize: '0.76rem',
+        lineHeight: 1.55,
+        background: isUser
+          ? (isLight ? 'rgba(0, 242, 254, 0.12)' : 'rgba(0, 242, 254, 0.1)')
+          : (isLight ? '#ffffff' : '#161b22'),
+        border: isLight ? '1px solid #d0d7de' : '1px solid rgba(255,255,255,0.08)',
+        color: isLight ? '#24292f' : '#e6edf3',
+        wordBreak: 'break-word',
+        boxShadow: isLight ? '0 1px 3px rgba(0,0,0,0.05)' : 'none'
+      }}
+      dangerouslySetInnerHTML={{ __html: html }}
+    />
+  );
+}
 
 const sanitizeTasksForLocalStorage = (tasksList) => {
   return (tasksList || []).slice(0, 15).map(t => ({
@@ -128,6 +263,13 @@ export default function AdminAgentChat({
   const [autoScroll, setAutoScroll] = useState(true);
   const [isStreaming, setIsStreaming] = useState(false);
   const [expandedThoughts, setExpandedThoughts] = useState({});
+
+  // File attachments & Speech recognition state
+  const [attachedFiles, setAttachedFiles] = useState([]);
+  const [isListening, setIsListening] = useState(false);
+  const [isDragOver, setIsDragOver] = useState(false);
+  const fileInputRef = useRef(null);
+  const recognitionRef = useRef(null);
 
   const chatEndRef = useRef(null);
   const taskMenuRef = useRef(null);
@@ -245,6 +387,110 @@ export default function AdminAgentChat({
     setExpandedThoughts(prev => ({ ...prev, [idx]: !prev[idx] }));
   };
 
+  const handleFileSelect = (e) => {
+    const files = Array.from(e.target.files || []);
+    if (!files.length) return;
+
+    files.forEach((file) => {
+      const reader = new FileReader();
+      reader.onload = (ev) => {
+        setAttachedFiles(prev => [
+          ...prev,
+          {
+            id: `att_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+            name: file.name,
+            size: file.size,
+            type: file.type,
+            content: typeof ev.target.result === 'string' ? ev.target.result : ''
+          }
+        ]);
+      };
+      reader.readAsText(file);
+    });
+
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
+  };
+
+  const removeAttachedFile = (fileId) => {
+    setAttachedFiles(prev => prev.filter(f => f.id !== fileId));
+  };
+
+  const handleDropFiles = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragOver(false);
+    const files = Array.from(e.dataTransfer.files || []);
+    if (!files.length) return;
+
+    files.forEach((file) => {
+      const reader = new FileReader();
+      reader.onload = (ev) => {
+        setAttachedFiles(prev => [
+          ...prev,
+          {
+            id: `att_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+            name: file.name,
+            size: file.size,
+            type: file.type,
+            content: typeof ev.target.result === 'string' ? ev.target.result : ''
+          }
+        ]);
+      };
+      reader.readAsText(file);
+    });
+  };
+
+  const toggleVoiceInput = () => {
+    if (isListening) {
+      if (recognitionRef.current) {
+        try { recognitionRef.current.stop(); } catch (e) {}
+      }
+      setIsListening(false);
+      return;
+    }
+
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SpeechRecognition) {
+      alert("Il riconoscimento vocale non è supportato in questo browser.");
+      return;
+    }
+
+    try {
+      const recognition = new SpeechRecognition();
+      recognition.continuous = true;
+      recognition.interimResults = true;
+      recognition.lang = 'it-IT';
+
+      let baseText = input ? input + ' ' : '';
+
+      recognition.onresult = (event) => {
+        let transcript = '';
+        for (let i = event.resultIndex; i < event.results.length; ++i) {
+          transcript += event.results[i][0].transcript;
+        }
+        setInput(baseText + transcript);
+      };
+
+      recognition.onerror = (err) => {
+        console.warn('SpeechRecognition error:', err);
+        setIsListening(false);
+      };
+
+      recognition.onend = () => {
+        setIsListening(false);
+      };
+
+      recognition.start();
+      recognitionRef.current = recognition;
+      setIsListening(true);
+    } catch (err) {
+      console.error('Failed to start speech recognition:', err);
+      setIsListening(false);
+    }
+  };
+
   // Filtered Tasks for Dropdown
   const filteredTasks = useMemo(() => {
     if (!taskSearchQuery.trim()) return tasks;
@@ -254,13 +500,29 @@ export default function AdminAgentChat({
   // Send Message & Stream Response with clean turn-based step splitting
   const handleSendMessage = async (textToSend) => {
     const userPrompt = textToSend || input.trim();
-    if (!userPrompt || isStreaming) return;
+    if ((!userPrompt && attachedFiles.length === 0) || isStreaming) return;
+
+    const currentAttachments = [...attachedFiles];
+    setAttachedFiles([]);
+    if (isListening && recognitionRef.current) {
+      try { recognitionRef.current.stop(); } catch (e) {}
+      setIsListening(false);
+    }
 
     // Auto-update task title from first user prompt if still generic
     const isGenericTitle = activeTask.title.startsWith('Nuovo Task') || activeTask.title.startsWith('Task #');
-    const newTitle = isGenericTitle ? (userPrompt.slice(0, 36) + (userPrompt.length > 36 ? '...' : '')) : activeTask.title;
+    const newTitle = isGenericTitle 
+      ? (userPrompt ? (userPrompt.slice(0, 36) + (userPrompt.length > 36 ? '...' : '')) : `Allegati (${currentAttachments.length})`) 
+      : activeTask.title;
 
-    const newMessages = [...messages, { role: 'user', content: userPrompt }];
+    const userMsgObj = { 
+      role: 'user', 
+      content: userPrompt || `Analizza i file allegati: ${currentAttachments.map(a => a.name).join(', ')}`,
+      attachments: currentAttachments.length > 0 ? currentAttachments : undefined,
+      timestamp: new Date().toISOString()
+    };
+
+    const newMessages = [...messages, userMsgObj];
     let activeMsgIndex = newMessages.length;
 
     // Append user message + first assistant turn placeholder
@@ -288,7 +550,11 @@ export default function AdminAgentChat({
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          messages: newMessages.map(m => ({ role: m.role, content: m.content })),
+          messages: newMessages.map(m => ({ 
+            role: m.role, 
+            content: m.content,
+            attachments: m.attachments
+          })),
           workspace_root: workspaceRoot,
           model: selectedModel,
           auto_execute_tools: autoExecuteTools
@@ -791,22 +1057,56 @@ export default function AdminAgentChat({
             {/* Message Bubble Content */}
             {(() => {
               const contentText = msg.role === 'user' ? msg.content : cleanMessageText(msg.content);
-              if (!contentText) return null;
+              if (!contentText && (!msg.attachments || msg.attachments.length === 0)) return null;
               return (
-                <div style={{
-                  padding: '8px 12px',
-                  borderRadius: '10px',
-                  fontSize: '0.76rem',
-                  lineHeight: 1.45,
-                  background: msg.role === 'user'
-                    ? (isLight ? 'rgba(0, 242, 254, 0.12)' : 'rgba(0, 242, 254, 0.1)')
-                    : (isLight ? '#ffffff' : '#161b22'),
-                  border: isLight ? '1px solid #d0d7de' : '1px solid rgba(255,255,255,0.08)',
-                  color: isLight ? '#24292f' : '#e6edf3',
-                  whiteSpace: 'pre-wrap',
-                  wordBreak: 'break-word'
-                }}>
-                  {contentText}
+                <div>
+                  {msg.attachments && msg.attachments.length > 0 && (
+                    <div style={{
+                      display: 'flex',
+                      flexWrap: 'wrap',
+                      gap: '5px',
+                      marginBottom: contentText ? '6px' : 0
+                    }}>
+                      {msg.attachments.map((att, attIdx) => (
+                        <div
+                          key={attIdx}
+                          onClick={() => onOpenFile && onOpenFile(att.name || att.path)}
+                          style={{
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '4px',
+                            padding: '3px 8px',
+                            borderRadius: '6px',
+                            fontSize: '0.66rem',
+                            fontWeight: 600,
+                            background: isLight ? 'rgba(0, 242, 254, 0.15)' : 'rgba(0, 242, 254, 0.1)',
+                            border: '1px solid rgba(0, 242, 254, 0.3)',
+                            color: isLight ? '#0366d6' : '#00f2fe',
+                            cursor: onOpenFile ? 'pointer' : 'default'
+                          }}
+                          title={att.name || att.path}
+                        >
+                          <FileText size={11} />
+                          <span style={{ maxWidth: '180px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                            {att.name || att.path}
+                          </span>
+                          {att.size && (
+                            <span style={{ opacity: 0.65, fontSize: '0.60rem' }}>
+                              ({(att.size / 1024).toFixed(1)} KB)
+                            </span>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  {contentText && (
+                    <RichMessageContent
+                      content={contentText}
+                      isUser={msg.role === 'user'}
+                      onOpenFile={onOpenFile}
+                      isLight={isLight}
+                    />
+                  )}
                 </div>
               );
             })()}
@@ -1055,25 +1355,139 @@ export default function AdminAgentChat({
         ))}
       </div>
 
+      {/* Attached Files Bar (Preview before sending) */}
+      {attachedFiles.length > 0 && (
+        <div style={{
+          display: 'flex',
+          flexWrap: 'wrap',
+          gap: '6px',
+          padding: '6px 10px',
+          background: isLight ? '#f0f3f6' : '#0e121a',
+          borderTop: isLight ? '1px solid #e1e4e8' : '1px solid rgba(255,255,255,0.06)'
+        }}>
+          {attachedFiles.map((file) => (
+            <div
+              key={file.id}
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '5px',
+                padding: '3px 8px',
+                borderRadius: '6px',
+                fontSize: '0.68rem',
+                background: isLight ? '#ffffff' : '#1b222d',
+                border: '1px solid rgba(0, 242, 254, 0.3)',
+                color: isLight ? '#24292f' : '#e6edf3'
+              }}
+            >
+              <FileText size={12} color="#00f2fe" />
+              <span style={{ maxWidth: '140px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                {file.name}
+              </span>
+              <span style={{ opacity: 0.6, fontSize: '0.60rem' }}>
+                ({(file.size / 1024).toFixed(1)} KB)
+              </span>
+              <button
+                type="button"
+                onClick={() => removeAttachedFile(file.id)}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  color: '#8b949e',
+                  cursor: 'pointer',
+                  padding: 0,
+                  display: 'flex',
+                  alignItems: 'center'
+                }}
+              >
+                <X size={11} />
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+
       {/* Input Bar */}
       <form 
         onSubmit={(e) => {
           e.preventDefault();
           handleSendMessage();
         }}
+        onDragOver={(e) => { e.preventDefault(); setIsDragOver(true); }}
+        onDragLeave={() => setIsDragOver(false)}
+        onDrop={handleDropFiles}
         style={{
           padding: '8px 10px',
           borderTop: isLight ? '1px solid #d0d7de' : '1px solid rgba(255,255,255,0.08)',
           display: 'flex',
+          alignItems: 'center',
           gap: '6px',
-          background: isLight ? '#f6f8fa' : '#0a0e14'
+          background: isDragOver 
+            ? (isLight ? 'rgba(0, 242, 254, 0.1)' : 'rgba(0, 242, 254, 0.08)')
+            : (isLight ? '#f6f8fa' : '#0a0e14'),
+          transition: 'background 0.2s ease'
         }}
       >
+        {/* Hidden File Input */}
+        <input
+          type="file"
+          multiple
+          ref={fileInputRef}
+          onChange={handleFileSelect}
+          style={{ display: 'none' }}
+        />
+
+        {/* Paperclip / Attach File Button */}
+        <button
+          type="button"
+          onClick={() => fileInputRef.current?.click()}
+          title="Allega file (testo, codice, configurazioni)"
+          style={{
+            padding: '6px 8px',
+            borderRadius: '8px',
+            background: attachedFiles.length > 0 ? 'rgba(0, 242, 254, 0.2)' : (isLight ? '#ffffff' : '#161b22'),
+            border: isLight ? '1px solid #d0d7de' : '1px solid rgba(255,255,255,0.12)',
+            color: attachedFiles.length > 0 ? '#00f2fe' : (isLight ? '#57606a' : '#8b949e'),
+            cursor: 'pointer',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            transition: 'all 0.15s ease'
+          }}
+        >
+          <Paperclip size={14} />
+        </button>
+
+        {/* Microphone / Speech-to-Text Button */}
+        <button
+          type="button"
+          onClick={toggleVoiceInput}
+          title={isListening ? "Ferma registrazione vocale" : "Dettatura vocale (Microfono)"}
+          style={{
+            padding: '6px 8px',
+            borderRadius: '8px',
+            background: isListening 
+              ? 'rgba(239, 68, 68, 0.25)' 
+              : (isLight ? '#ffffff' : '#161b22'),
+            border: isListening 
+              ? '1px solid rgba(239, 68, 68, 0.5)' 
+              : (isLight ? '1px solid #d0d7de' : '1px solid rgba(255,255,255,0.12)'),
+            color: isListening ? '#ef4444' : (isLight ? '#57606a' : '#8b949e'),
+            cursor: 'pointer',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            transition: 'all 0.15s ease'
+          }}
+        >
+          {isListening ? <MicOff size={14} /> : <Mic size={14} />}
+        </button>
+
         <input
           type="text"
           value={input}
           onChange={e => setInput(e.target.value)}
-          placeholder={isStreaming ? "L'agente sta elaborando..." : "Chiedi all'AI Developer Agent..."}
+          placeholder={isListening ? "🎤 Ascolto in corso..." : (isStreaming ? "L'agente sta elaborando..." : "Chiedi all'AI Developer Agent... (puoi allegare o trascinare file)")}
           disabled={isStreaming}
           style={{
             flex: 1,
@@ -1086,16 +1500,17 @@ export default function AdminAgentChat({
             outline: 'none'
           }}
         />
+
         <button
           type="submit"
-          disabled={isStreaming || !input.trim()}
+          disabled={isStreaming || (!input.trim() && attachedFiles.length === 0)}
           style={{
             padding: '6px 12px',
             borderRadius: '8px',
-            background: input.trim() && !isStreaming ? 'linear-gradient(135deg, #00f2fe, #4facfe)' : (isLight ? '#e1e4e8' : '#21262d'),
+            background: (input.trim() || attachedFiles.length > 0) && !isStreaming ? 'linear-gradient(135deg, #00f2fe, #4facfe)' : (isLight ? '#e1e4e8' : '#21262d'),
             border: 'none',
-            color: input.trim() && !isStreaming ? '#000000' : '#8b949e',
-            cursor: input.trim() && !isStreaming ? 'pointer' : 'default',
+            color: (input.trim() || attachedFiles.length > 0) && !isStreaming ? '#000000' : '#8b949e',
+            cursor: (input.trim() || attachedFiles.length > 0) && !isStreaming ? 'pointer' : 'default',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center'
@@ -1104,6 +1519,149 @@ export default function AdminAgentChat({
           {isStreaming ? <RefreshCw size={13} className="spin" /> : <Send size={13} />}
         </button>
       </form>
+
+      <style>{`
+        .dev-chat-md {
+          line-height: 1.6;
+          color: #e6edf3;
+        }
+        .dev-chat-md.light-mode {
+          color: #24292f;
+        }
+        .dev-chat-md h1 {
+          font-size: 1.05rem;
+          font-weight: 800;
+          color: #00f2fe;
+          margin: 12px 0 6px 0;
+          border-bottom: 1px solid rgba(0, 242, 254, 0.25);
+          padding-bottom: 4px;
+        }
+        .dev-chat-md h2 {
+          font-size: 0.94rem;
+          font-weight: 700;
+          color: #38bdf8;
+          margin: 10px 0 4px 0;
+          border-bottom: 1px solid rgba(56, 189, 248, 0.15);
+          padding-bottom: 3px;
+        }
+        .dev-chat-md h3 {
+          font-size: 0.86rem;
+          font-weight: 700;
+          color: #7dd3fc;
+          margin: 8px 0 3px 0;
+        }
+        .dev-chat-md h4 {
+          font-size: 0.78rem;
+          font-weight: 700;
+          color: #bae6fd;
+          margin: 6px 0 2px 0;
+        }
+        .dev-chat-md p {
+          margin: 6px 0;
+        }
+        .dev-chat-md ul, .dev-chat-md ol {
+          margin: 6px 0 6px 18px;
+          padding: 0;
+        }
+        .dev-chat-md li {
+          margin: 2px 0;
+        }
+        .dev-chat-md blockquote {
+          border-left: 3px solid #00f2fe;
+          background: rgba(0, 242, 254, 0.05);
+          padding: 6px 12px;
+          margin: 8px 0;
+          border-radius: 0 6px 6px 0;
+          color: #94a3b8;
+          font-style: italic;
+        }
+        .dev-chat-md hr {
+          border: none;
+          height: 1px;
+          background: linear-gradient(90deg, transparent, rgba(0, 242, 254, 0.3), transparent);
+          margin: 12px 0;
+        }
+        .dev-chat-md .chat-table-wrapper {
+          margin: 10px 0;
+          overflow-x: auto;
+          border-radius: 8px;
+          border: 1px solid rgba(0, 242, 254, 0.25);
+          background: #090d13;
+          box-shadow: 0 4px 14px rgba(0, 0, 0, 0.3);
+        }
+        .dev-chat-md table {
+          width: 100%;
+          border-collapse: collapse;
+          font-size: 0.72rem;
+        }
+        .dev-chat-md th {
+          background: linear-gradient(135deg, rgba(0, 242, 254, 0.15), rgba(124, 91, 240, 0.12));
+          color: #00f2fe;
+          padding: 8px 12px;
+          font-weight: 700;
+          text-align: left;
+          border-bottom: 1px solid rgba(0, 242, 254, 0.3);
+          text-transform: uppercase;
+          letter-spacing: 0.5px;
+          font-size: 0.66rem;
+        }
+        .dev-chat-md td {
+          padding: 7px 12px;
+          border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+          color: #d1d5db;
+        }
+        .dev-chat-md tr:nth-child(even) td {
+          background: rgba(255, 255, 255, 0.02);
+        }
+        .dev-chat-md tr:hover td {
+          background: rgba(0, 242, 254, 0.06);
+        }
+        .dev-chat-md pre {
+          background: #0b0f17 !important;
+          border: 1px solid rgba(0, 242, 254, 0.2) !important;
+          border-radius: 8px !important;
+          padding: 12px 14px !important;
+          margin: 8px 0 !important;
+          overflow-x: auto !important;
+          box-shadow: 0 4px 14px rgba(0, 0, 0, 0.25) !important;
+        }
+        .dev-chat-md pre code {
+          background: transparent !important;
+          padding: 0 !important;
+          font-family: 'JetBrains Mono', Consolas, monospace !important;
+          font-size: 0.72rem !important;
+          color: #e6edf3 !important;
+        }
+        .dev-chat-md code:not(pre code) {
+          background: rgba(0, 242, 254, 0.1) !important;
+          color: #00f2fe !important;
+          padding: 1px 5px !important;
+          border-radius: 4px !important;
+          font-family: 'JetBrains Mono', Consolas, monospace !important;
+          font-size: 0.72rem !important;
+          border: 1px solid rgba(0, 242, 254, 0.2) !important;
+        }
+        .dev-chat-md .chat-file-link {
+          color: #00f2fe;
+          text-decoration: underline;
+          text-underline-offset: 3px;
+          cursor: pointer;
+          font-weight: 600;
+          transition: all 0.15s ease;
+        }
+        .dev-chat-md .chat-file-link:hover {
+          color: #ffffff;
+          text-shadow: 0 0 10px rgba(0, 242, 254, 0.5);
+        }
+        .dev-chat-md .katex-display {
+          padding: 8px 12px;
+          margin: 8px 0;
+          background: rgba(11, 15, 23, 0.7);
+          border-radius: 8px;
+          border: 1px solid rgba(0, 242, 254, 0.2);
+          overflow-x: auto;
+        }
+      `}</style>
     </div>
   );
 }
