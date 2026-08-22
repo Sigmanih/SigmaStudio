@@ -377,6 +377,15 @@ export default function Sidebar({
           />
 
           <SidebarItem 
+            icon={Terminal} 
+            label="Developer Studio" 
+            badge="ADMIN IDE"
+            badgeColor="rgba(0,242,254,0.25)"
+            active={activeTabId != null && activeTabId.startsWith('developer_studio')}
+            onClick={() => openTab({ name: '💻 Developer Studio' }, 'developer_studio')} 
+          />
+
+          <SidebarItem 
             icon={FileText} 
             label="Manifesti Hub" 
             badge={manifestiCount + modules.reduce((acc, m) => acc + (m.whitepapers?.length || 0), 0)}

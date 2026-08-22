@@ -38,6 +38,11 @@ def handle_engine_partition(self):
         body = self.read_json_body() if hasattr(self, 'read_json_body') else {}
         model = body.get("model") or sigma_engine.loaded_model_name
         if not model:
+            default_dir = sigma_engine.find_valid_model_directory()
+            if default_dir:
+                model = default_dir[1]
+        
+        if not model:
             return self.send_json_response({
                 "success": False,
                 "error": "Nessun modello indicato e nessuno caricato: il "

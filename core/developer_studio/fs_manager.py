@@ -1,0 +1,323 @@
+# ==============================================================================
+# core/developer_studio/fs_manager.py — Admin Filesystem & Workspace Engine
+# Sigma Studio v8 — Developer Studio Backend (Full Filesystem Admin Access)
+# ==============================================================================
+"""Provides high-performance, unrestricted filesystem operations for the
+Sigma Developer Studio, including tree traversal, file I/O, search, and deletion.
+"""
+
+import os
+import re
+import mimetypes
+from pathlib import Path
+from typing import Dict, List, Any, Optional
+
+from core.logger import get_logger
+
+log = get_logger("developer_fs")
+
+IGNORE_DIRS = {
+    ".git", "node_modules", "__pycache__", ".venv", "venv", ".pytest_cache",
+    ".idea", ".vscode", "dist", "build", ".next", ".cache"
+}
+
+IGNORE_EXTENSIONS = {
+    ".pyc", ".pyd", ".pyo", ".so", ".dll", ".dylib", ".exe", ".bin", ".whl"
+}
+
+
+def get_default_workspace_root() -> str:
+    """Returns the default project root path."""
+    try:
+        from core.model_paths import project_root
+        return os.path.abspath(project_root())
+    except Exception:
+        return os.path.abspath(os.getcwd())
+
+
+def get_workspace_tree(
+    root_path: Optional[str] = None,
+    max_depth: int = 4,
+    current_depth: int = 0
+) -> Dict[str, Any]:
+    """Recursively builds a tree structure for the workspace explorer."""
+    if not root_path:
+        root_path = get_default_workspace_root()
+
+    p = Path(root_path).resolve()
+    if not p.exists():
+        return {
+            "name": p.name or str(p),
+            "path": str(p),
+            "is_dir": True,
+            "error": "Directory does not exist",
+            "children": []
+        }
+
+    tree: Dict[str, Any] = {
+        "name": p.name or str(p),
+        "path": str(p).replace("\\", "/"),
+        "is_dir": p.is_dir(),
+        "children": []
+    }
+
+    if not p.is_dir():
+        try:
+            tree["size"] = p.stat().st_size
+        except Exception:
+            tree["size"] = 0
+        return tree
+
+    if current_depth >= max_depth:
+        tree["has_children"] = True
+        return tree
+
+    try:
+        entries = sorted(list(p.iterdir()), key=lambda x: (not x.is_dir(), x.name.lower()))
+        for entry in entries:
+            name = entry.name
+            if name in IGNORE_DIRS or (entry.is_file() and entry.suffix in IGNORE_EXTENSIONS):
+                continue
+            if name.startswith(".") and name not in {".env", ".gitignore"}:
+                continue
+
+            if entry.is_dir():
+                child_tree = get_workspace_tree(str(entry), max_depth, current_depth + 1)
+                tree["children"].append(child_tree)
+            else:
+                try:
+                    size = entry.stat().st_size
+                except Exception:
+                    size = 0
+                tree["children"].append({
+                    "name": name,
+                    "path": str(entry).replace("\\", "/"),
+                    "is_dir": False,
+                    "size": size,
+                    "extension": entry.suffix.lstrip(".").lower()
+                })
+    except PermissionError:
+        tree["permission_denied"] = True
+    except Exception as e:
+        log.warning("Error reading directory %s: %s", p, e)
+
+    return tree
+
+
+def read_file_content(file_path: str, max_bytes: int = 5 * 1024 * 1024) -> Dict[str, Any]:
+    """Reads a file in admin mode (utf-8, images, PDFs, media, or detects binary)."""
+    p = Path(file_path).resolve()
+    if not p.exists():
+        return {"success": False, "error": f"File non trovato: {file_path}"}
+    if p.is_dir():
+        return {"success": False, "error": f"Il percorso è una cartella: {file_path}"}
+
+    ext = p.suffix.lstrip(".").lower()
+    img_exts = {"png", "jpg", "jpeg", "gif", "webp", "svg", "ico", "bmp", "tiff"}
+    media_exts = {"mp3", "wav", "ogg", "flac", "mp4", "webm", "mov", "mkv"}
+    doc_exts = {"pdf"}
+    model_exts = {"gguf", "safetensors", "bin", "pt", "pth", "onnx", "engine"}
+
+    try:
+        size = p.stat().st_size
+        size_gb = round(size / (1024**3), 2)
+        size_mb = round(size / (1024**2), 1)
+        size_label = f"~{size_gb} GB" if size_gb >= 1 else (f"~{size_mb} MB" if size_mb >= 1 else f"{size} B")
+
+        # 1. Images, Media, Documents and Model weights
+        if ext in img_exts or ext in media_exts or ext in doc_exts or ext in model_exts:
+            content_text = None
+            if ext == "svg" and size < max_bytes:
+                try:
+                    content_text = p.read_text(encoding="utf-8", errors="replace")
+                except Exception:
+                    pass
+
+            return {
+                "success": True,
+                "path": str(p).replace("\\", "/"),
+                "filename": p.name,
+                "extension": ext,
+                "is_binary": True,
+                "is_image": ext in img_exts,
+                "is_pdf": ext in doc_exts,
+                "is_media": ext in media_exts,
+                "is_model": ext in model_exts,
+                "size": size,
+                "size_label": size_label,
+                "content": content_text
+            }
+
+        # 2. Large generic files (> 5 MB)
+        if size > max_bytes:
+            return {
+                "success": True,
+                "path": str(p).replace("\\", "/"),
+                "filename": p.name,
+                "extension": ext,
+                "is_binary": True,
+                "is_large": True,
+                "size": size,
+                "size_label": size_label,
+                "content": None,
+                "message": f"File di grandi dimensioni ({size_label})."
+            }
+
+        # 3. Check binary null bytes
+        with open(p, "rb") as f:
+            chunk = f.read(1024)
+            if b"\x00" in chunk:
+                return {
+                    "success": True,
+                    "path": str(p).replace("\\", "/"),
+                    "filename": p.name,
+                    "extension": ext,
+                    "is_binary": True,
+                    "size": size,
+                    "size_label": size_label,
+                    "content": None,
+                    "message": "File binario non modificabile in testo."
+                }
+
+        # 4. Text file
+        content = p.read_text(encoding="utf-8", errors="replace")
+        return {
+            "success": True,
+            "path": str(p).replace("\\", "/"),
+            "filename": p.name,
+            "extension": ext,
+            "is_binary": False,
+            "size": size,
+            "size_label": size_label,
+            "content": content
+        }
+    except Exception as e:
+        log.error("Error reading file %s: %s", p, e)
+        return {"success": False, "error": f"Impossibile leggere il file: {str(e)}"}
+
+
+def write_file_content(file_path: str, content: str) -> Dict[str, Any]:
+    """Writes or overwrites a file in admin mode, creating parent folders if needed."""
+    try:
+        p = Path(file_path).resolve()
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_text(content, encoding="utf-8")
+        return {
+            "success": True,
+            "path": str(p).replace("\\", "/"),
+            "size": p.stat().st_size,
+            "message": f"File salvato con successo: {p.name}"
+        }
+    except Exception as e:
+        return {"success": False, "error": f"Errore scrittura file: {str(e)}"}
+
+
+def delete_fs_entry(target_path: str, recursive: bool = True) -> Dict[str, Any]:
+    """Deletes a file or directory in admin mode."""
+    try:
+        p = Path(target_path).resolve()
+        if not p.exists():
+            return {"success": False, "error": f"Percorso non trovato: {target_path}"}
+
+        if p.is_file():
+            p.unlink()
+            return {"success": True, "message": f"File eliminato: {p.name}", "is_dir": False}
+        elif p.is_dir():
+            import shutil
+            if recursive:
+                shutil.rmtree(p)
+            else:
+                p.rmdir()
+            return {"success": True, "message": f"Cartella eliminata: {p.name}", "is_dir": True}
+        return {"success": False, "error": "Tipo di entry non supportato"}
+    except Exception as e:
+        return {"success": False, "error": f"Errore durante l'eliminazione: {str(e)}"}
+
+
+def create_fs_entry(target_path: str, is_dir: bool = False) -> Dict[str, Any]:
+    """Creates a new file or directory."""
+    try:
+        p = Path(target_path).resolve()
+        if p.exists():
+            return {"success": False, "error": f"L'elemento esiste già: {target_path}"}
+
+        if is_dir:
+            p.mkdir(parents=True, exist_ok=True)
+            return {"success": True, "message": f"Cartella creata: {p.name}", "is_dir": True, "path": str(p).replace("\\", "/")}
+        else:
+            p.parent.mkdir(parents=True, exist_ok=True)
+            p.write_text("", encoding="utf-8")
+            return {"success": True, "message": f"File creato: {p.name}", "is_dir": False, "path": str(p).replace("\\", "/")}
+    except Exception as e:
+        return {"success": False, "error": f"Errore durante la creazione: {str(e)}"}
+
+
+def rename_fs_entry(source_path: str, target_path: str) -> Dict[str, Any]:
+    """Renames or moves a file/folder."""
+    try:
+        src = Path(source_path).resolve()
+        dst = Path(target_path).resolve()
+        if not src.exists():
+            return {"success": False, "error": f"Origine non trovata: {source_path}"}
+        if dst.exists():
+            return {"success": False, "error": f"La destinazione esiste già: {target_path}"}
+
+        dst.parent.mkdir(parents=True, exist_ok=True)
+        src.rename(dst)
+        return {
+            "success": True,
+            "message": f"Rinominato da {src.name} a {dst.name}",
+            "old_path": str(src).replace("\\", "/"),
+            "new_path": str(dst).replace("\\", "/")
+        }
+    except Exception as e:
+        return {"success": False, "error": f"Errore durante la rinomina: {str(e)}"}
+
+
+def search_workspace_files(
+    root_path: Optional[str] = None,
+    query: str = "",
+    is_regex: bool = False,
+    max_results: int = 50
+) -> Dict[str, Any]:
+    """Searches text occurrences across workspace files."""
+    if not root_path:
+        root_path = get_default_workspace_root()
+
+    root = Path(root_path).resolve()
+    if not root.exists() or not query:
+        return {"success": True, "results": [], "total_matches": 0}
+
+    results: List[Dict[str, Any]] = []
+    pattern = re.compile(query if is_regex else re.escape(query), re.IGNORECASE)
+
+    try:
+        for p in root.rglob("*"):
+            if not p.is_file():
+                continue
+            # Skip ignored directories & binaries
+            parts = p.parts
+            if any(ign in parts for ign in IGNORE_DIRS):
+                continue
+            if p.suffix in IGNORE_EXTENSIONS:
+                continue
+
+            try:
+                content = p.read_text(encoding="utf-8", errors="ignore")
+                lines = content.splitlines()
+                for line_num, line in enumerate(lines, 1):
+                    if pattern.search(line):
+                        results.append({
+                            "path": str(p).replace("\\", "/"),
+                            "filename": p.name,
+                            "line_number": line_num,
+                            "line_content": line.strip()[:200]
+                        })
+                        if len(results) >= max_results:
+                            return {"success": True, "results": results, "capped": True}
+            except Exception:
+                continue
+    except Exception as e:
+        return {"success": False, "error": str(e), "results": []}
+
+    return {"success": True, "results": results, "capped": False}

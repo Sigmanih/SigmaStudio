@@ -785,7 +785,35 @@ class UniversalSigmaEngine:
                     return tokenizer
             except Exception as exc:
                 log.debug("[SigmaEngine] Processor unavailable, using tokenizer: %s", exc)
-        return AutoTokenizer.from_pretrained(target_path, trust_remote_code=True)
+
+        try:
+            return AutoTokenizer.from_pretrained(target_path, trust_remote_code=True)
+        except Exception as primary_err:
+            log.warning("[SigmaEngine] Primary tokenizer loading failed for '%s': %s. Trying fallback local tokenizers...", facts.name, primary_err)
+            
+            # Try to borrow tokenizer from other complete local directories in data/models/
+            try:
+                from core.model_paths import models_dir
+                mdir = models_dir()
+                if os.path.isdir(mdir):
+                    for sub in sorted(os.listdir(mdir)):
+                        sub_path = os.path.join(mdir, sub)
+                        if os.path.isdir(sub_path) and sub_path != target_path:
+                            if os.path.exists(os.path.join(sub_path, "tokenizer.json")) or os.path.exists(os.path.join(sub_path, "tokenizer_config.json")):
+                                try:
+                                    tok = AutoTokenizer.from_pretrained(sub_path, trust_remote_code=True)
+                                    log.info("[SigmaEngine] Successfully borrowed compatible tokenizer from '%s' for '%s'", sub, facts.name)
+                                    return tok
+                                except Exception:
+                                    continue
+            except Exception as scan_err:
+                log.debug("[SigmaEngine] Fallback scan failed: %s", scan_err)
+
+            raise RuntimeError(
+                f"File di tokenizer non trovati per '{facts.name}'. "
+                f"Il checkpoint su disco ha un download incompleto (manca tokenizer.json). "
+                f"Completa il download dal Model Hub oppure seleziona un modello pronto all'uso come 'Qwen--Qwen3.8-27B-GGUF'."
+            ) from primary_err
 
     @staticmethod
     def _describe_placement(model) -> Dict[str, Any]:

@@ -1087,6 +1087,77 @@ async def engine_server_info_route():
     })
 
 
+# ==============================================================================
+# Sigma Developer Studio API Endpoints (Admin Filesystem, Terminal, AI Agent)
+# ==============================================================================
+from core.developer_studio.handlers import (
+    handle_fs_tree,
+    handle_fs_read,
+    handle_fs_raw,
+    handle_fs_write,
+    handle_fs_delete,
+    handle_fs_create,
+    handle_fs_rename,
+    handle_fs_search,
+    handle_agent_chat,
+    handle_workspace_roots,
+    handle_get_tasks,
+    handle_save_tasks
+)
+
+@app.get("/api/developer/tasks")
+async def dev_get_tasks_route(request: Request):
+    return await handle_get_tasks(request)
+
+@app.post("/api/developer/tasks")
+async def dev_save_tasks_route(request: Request):
+    return await handle_save_tasks(request)
+
+@app.get("/api/developer/fs/tree")
+async def dev_fs_tree_route(request: Request):
+    return await handle_fs_tree(request)
+
+@app.get("/api/developer/fs/read")
+async def dev_fs_read_route(request: Request):
+    return await handle_fs_read(request)
+
+@app.get("/api/developer/fs/raw")
+async def dev_fs_raw_route(request: Request):
+    return await handle_fs_raw(request)
+
+@app.post("/api/developer/fs/write")
+async def dev_fs_write_route(request: Request):
+    return await handle_fs_write(request)
+
+@app.post("/api/developer/fs/delete")
+async def dev_fs_delete_route(request: Request):
+    return await handle_fs_delete(request)
+
+@app.post("/api/developer/fs/create")
+async def dev_fs_create_route(request: Request):
+    return await handle_fs_create(request)
+
+@app.post("/api/developer/fs/rename")
+async def dev_fs_rename_route(request: Request):
+    return await handle_fs_rename(request)
+
+@app.post("/api/developer/fs/search")
+async def dev_fs_search_route(request: Request):
+    return await handle_fs_search(request)
+
+@app.post("/api/developer/terminal/exec")
+async def dev_terminal_exec_route(request: Request):
+    return await handle_terminal_exec(request)
+
+@app.post("/api/developer/agent/chat")
+async def dev_agent_chat_route(request: Request):
+    return await handle_agent_chat(request)
+
+@app.get("/api/developer/workspace/roots")
+async def dev_workspace_roots_route(request: Request):
+    return await handle_workspace_roots(request)
+
+
 # ------------------------------------------------------------------------------
 # Generic dispatchers
 # ------------------------------------------------------------------------------

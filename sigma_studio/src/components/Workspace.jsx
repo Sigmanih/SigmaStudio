@@ -15,6 +15,7 @@ import DomoticaTab from './Workspace/DomoticaTab';
 import MarketplaceTab from './MarketplaceTab';
 import AIConfigTab from './AIConfigTab';
 import MusicTab from './Music/MusicTab';
+import DeveloperStudio from './DeveloperStudio/DeveloperStudio';
 import { useModuleState } from '../hooks/useModuleState';
 import { getLazyModule } from '../modules/registry';
 import ModuleNotInstalled from '../modules/ModuleNotInstalled';
@@ -289,17 +290,8 @@ export default function Workspace({
         </React.Suspense>
       );
     }
-    if (tab.type === 'developer_lab') {
-      const isDevInstalled = modulesState.sigma_developer_lab === true;
-      const LazyDev = getLazyModule('developer_lab');
-      if (!isDevInstalled || !LazyDev) {
-        return <ModuleNotInstalled tabType="developer_lab" openTab={openTab} />;
-      }
-      return (
-        <React.Suspense fallback={<div style={{ padding: '32px', color: '#94a3b8', textAlign: 'center' }}>Caricamento Developer Lab...</div>}>
-          <LazyDev openTab={openTab} />
-        </React.Suspense>
-      );
+    if (tab.type === 'developer_studio' || tab.type === 'developer_lab') {
+      return <DeveloperStudio />;
     }
 
     if (tab.type === 'network_lab') {

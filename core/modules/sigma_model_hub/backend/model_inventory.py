@@ -75,7 +75,10 @@ def scan_local_models(custom_dir: Optional[str] = None) -> List[Dict[str, Any]]:
             try:
                 dir_files = os.listdir(full_entry_path)
                 shard_files = [f for f in dir_files if f.endswith((".safetensors", ".bin", ".gguf", ".pt"))]
-                if not shard_files:
+                part_files = [f for f in dir_files if f.endswith((".part", ".download", ".tmp"))]
+                has_tokenizer = any(f in dir_files for f in ("tokenizer.json", "tokenizer_config.json", "vocab.json", "tokenizer.model")) or any(f.endswith(".gguf") for f in shard_files)
+                
+                if not shard_files and not part_files:
                     continue
 
                 total_bytes = sum(os.path.getsize(os.path.join(full_entry_path, f)) for f in shard_files)
@@ -84,13 +87,23 @@ def scan_local_models(custom_dir: Optional[str] = None) -> List[Dict[str, Any]]:
 
                 raw_name = entry.replace("--", "/")
                 is_sharded = len(shard_files) > 1
-                primary_file = os.path.join(full_entry_path, "model.safetensors.index.json") if os.path.exists(os.path.join(full_entry_path, "model.safetensors.index.json")) else os.path.join(full_entry_path, shard_files[0])
+                primary_file = os.path.join(full_entry_path, "model.safetensors.index.json") if os.path.exists(os.path.join(full_entry_path, "model.safetensors.index.json")) else (os.path.join(full_entry_path, shard_files[0]) if shard_files else full_entry_path)
+
+                # Check if all declared shards exist
+                is_complete = True
+                if part_files:
+                    is_complete = False
+                elif not has_tokenizer and not any(f.endswith(".gguf") for f in shard_files):
+                    is_complete = False
 
                 if any(f.endswith(".gguf") for f in shard_files):
                     fmt = f"GGUF ({len(shard_files)} Shard)" if is_sharded else "GGUF"
                     fmt_tag = "GGUF"
                 elif any(f.endswith(".safetensors") for f in shard_files):
-                    fmt = f"Safetensors ({len(shard_files)} Shards • Completo)" if is_sharded else "Safetensors"
+                    if is_complete:
+                        fmt = f"Safetensors ({len(shard_files)} Shards • Completo)" if is_sharded else "Safetensors"
+                    else:
+                        fmt = f"Safetensors ({len(shard_files)} Shards • Incompleto)"
                     fmt_tag = "SAFETENSORS"
                 else:
                     fmt = "PyTorch Bin"
@@ -118,6 +131,8 @@ def scan_local_models(custom_dir: Optional[str] = None) -> List[Dict[str, Any]]:
                     "format_tag": fmt_tag,
                     "quantization": quantization,
                     "is_repo_folder": True,
+                    "is_complete": is_complete,
+                    "has_part_files": len(part_files) > 0,
                     "total_shards": len(shard_files),
                     "size_gb": size_gb,
                     "size_mb": size_mb,
