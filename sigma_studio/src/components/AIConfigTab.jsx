@@ -2,7 +2,9 @@ import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { 
   Cpu, Key, ShieldCheck, Zap, RefreshCw, Save, CheckCircle2, 
   AlertCircle, Sliders, ExternalLink, Copy, Check, Eye, EyeOff, 
-  Search, Server, Database, Download, Trash2, ChevronDown, Lock, Sparkles
+  Search, Server, Database, Download, Trash2, ChevronDown, Lock, Sparkles,
+  Code, Terminal, Layers, Globe, Play, CheckCircle, FileText, Settings, Share2,
+  Monitor, X, ChevronRight, Wifi, ArrowUpRight
 } from 'lucide-react';
 import { useApp } from '../contexts/AppContext';
 
@@ -60,24 +62,22 @@ export const ProviderIcons = {
   ),
   openrouter: ({ size = 20, color = '#6366f1' }) => (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none">
-      <circle cx="6" cy="6" r="3" fill={`${color}25`} stroke={color} strokeWidth="1.8" />
-      <circle cx="18" cy="6" r="3" fill={`${color}25`} stroke={color} strokeWidth="1.8" />
-      <circle cx="12" cy="18" r="3" fill={`${color}25`} stroke={color} strokeWidth="1.8" />
-      <path d="M8.5 7.5L15.5 7.5M7.5 8.5L10.5 15.5M16.5 8.5L13.5 15.5" stroke={color} strokeWidth="1.6" strokeLinecap="round" />
+      <circle cx="12" cy="12" r="9" stroke={color} strokeWidth="1.8" fill={`${color}15`} />
+      <path d="M12 3V21M3 12H21" stroke={color} strokeWidth="1.4" strokeDasharray="2 2" />
+      <circle cx="12" cy="12" r="4" fill={color} />
     </svg>
   ),
-  mistral: ({ size = 20, color = '#ff7000' }) => (
+  mistral: ({ size = 20, color = '#f59e0b' }) => (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none">
-      <rect x="3" y="4" width="4" height="4" rx="1" fill={color} />
-      <rect x="17" y="4" width="4" height="4" rx="1" fill={color} />
-      <rect x="3" y="10" width="8" height="4" rx="1" fill={color} />
-      <rect x="13" y="10" width="8" height="4" rx="1" fill={color} />
-      <rect x="3" y="16" width="18" height="4" rx="1" fill={color} />
+      <rect x="4" y="4" width="4" height="16" fill={color} />
+      <rect x="10" y="8" width="4" height="12" fill={color} />
+      <rect x="16" y="12" width="4" height="8" fill={color} />
     </svg>
   ),
-  xai: ({ size = 20, color = '#e11d48' }) => (
+  xai: ({ size = 20, color = '#ffffff' }) => (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none">
-      <path d="M4 4L14 15.5M9.5 10.5L4 20M20 20L10.5 9M14.5 14L20 4" stroke={color} strokeWidth="2.2" strokeLinecap="round" />
+      <path d="M4 4L14 14M14 4L4 14" stroke={color} strokeWidth="2.2" strokeLinecap="round" />
+      <path d="M15 4H20V20H15" stroke={color} strokeWidth="1.8" />
     </svg>
   ),
   perplexity: ({ size = 20, color = '#06b6d4' }) => (
@@ -88,14 +88,19 @@ export const ProviderIcons = {
   ),
   together: ({ size = 20, color = '#3b82f6' }) => (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none">
-      <circle cx="9" cy="12" r="5" stroke={color} strokeWidth="1.8" fill={`${color}25`} />
-      <circle cx="15" cy="12" r="5" stroke={color} strokeWidth="1.8" fill={`${color}25`} />
+      <circle cx="8" cy="12" r="5" stroke={color} strokeWidth="1.8" fill={`${color}20`} />
+      <circle cx="16" cy="12" r="5" stroke={color} strokeWidth="1.8" fill={`${color}20`} />
     </svg>
   ),
-  qwen: ({ size = 20, color = '#8b5cf6' }) => (
+  qwen: ({ size = 20, color = '#6366f1' }) => (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none">
-      <path d="M12 2L20.5 7V17L12 22L3.5 17V7L12 2Z" stroke={color} strokeWidth="1.8" fill={`${color}20`} strokeLinejoin="round" />
-      <path d="M12 7L16.5 9.5V14.5L12 17L7.5 14.5V9.5L12 7Z" stroke={color} strokeWidth="1.5" fill={`${color}35`} />
+      <path d="M12 3L20 7.5V16.5L12 21L4 16.5V7.5L12 3Z" stroke={color} strokeWidth="1.8" fill={`${color}20`} strokeLinejoin="round" />
+      <circle cx="12" cy="12" r="3" fill={color} />
+    </svg>
+  ),
+  moonshot: ({ size = 20, color = '#ec4899' }) => (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+      <path d="M12 3C7.03 3 3 7.03 3 12C3 16.97 7.03 21 12 21C16.97 21 21 16.97 21 12C21 11.5 20.96 11 20.88 10.52C20.07 12.55 18.11 14 15.8 14C12.82 14 10.4 11.58 10.4 8.6C10.4 6.29 11.85 4.33 13.88 3.52C13.26 3.18 12.64 3 12 3Z" stroke={color} strokeWidth="1.8" fill={`${color}22`} strokeLinejoin="round" />
     </svg>
   ),
   glm: ({ size = 20, color = '#0284c7' }) => (
@@ -117,18 +122,18 @@ export const ProviderIcons = {
 export const PROVIDER_CATALOG = {
   sigma_engine: {
     id: 'sigma_engine',
-    label: '⚡ SigmaEngine (Nativo & Sharded)',
+    label: '⚡ SigmaEngine (Nativo & Open Server)',
     category: 'local',
     color: '#00f2fe',
-    badge: 'NATIVO HARDWARE',
+    badge: 'OPENAI & OLLAMA SERVER',
     endpoint: 'http://localhost:8000',
-    api_url: '/api/engine',
+    api_url: 'http://localhost:8000/v1',
     api_key_required: false,
-    key_placeholder: 'Nessuna API Key (Motore Nativo Integrato)',
+    key_placeholder: 'Nessuna API Key (o usa "sigma")',
     docs_url: 'https://github.com/Sigmanih/SigmaStudio',
-    hint: 'Esecuzione nativa diretta su hardware (CUDA FlashAttention-2, Apple MPS, ROCm, DirectML, ARM NEON/CPU) con partizionamento automatico a livelli e streaming multi-disco per contesti estesi.',
+    hint: 'Server API nativo conforme agli standard OpenAI (/v1) e Ollama (/api). Esecuzione ultra-rapida con FlashAttn-2, multi-GPU e sharding. Collegabile a Visual Studio Code (Continue, Cline, Roo Code, Copilot, Cursor).',
     default_model: 'sigma-native:latest',
-    popular_models: ['sigma-native:latest', 'deepseek-r1-qwen-7b-nf4', 'qwen2.5-coder-7b-fp8', 'llama-3.2-3b-direct', 'phi-4-14b-sharded']
+    popular_models: ['sigma-native:latest', 'sigmaengine', 'qwen2.5-coder:7b', 'deepseek-r1:8b', 'llama3.2:3b', 'gpt-4o', 'claude-3-5-sonnet']
   },
   ailoflow: {
     id: 'ailoflow',
@@ -539,6 +544,245 @@ export default function AIConfigTab({ openTab }) {
   const [hardwareProfile, setHardwareProfile] = useState(null);
   const [tieringPlan, setTieringPlan] = useState(null);
 
+  // VS Code & SigmaEngine Server Interoperability State
+  const [serverInfo, setServerInfo] = useState(null);
+  const [providerServerEnabled, setProviderServerEnabled] = useState(true);
+  const [selectedGuideModel, setSelectedGuideModel] = useState('sigmaengine');
+  const [showVSCodeModal, setShowVSCodeModal] = useState(false);
+  const [activeVsCodeTab, setActiveVsCodeTab] = useState('continue'); // 'continue' | 'cline' | 'copilot' | 'python' | 'curl'
+  const [liveTestState, setLiveTestState] = useState({
+    protocol: 'openai',
+    prompt: 'Scrivi un breve saluto da Visual Studio Code e spiega i vantaggi di SigmaEngine.',
+    isTesting: false,
+    outputText: '',
+    latency: null,
+    ttft: null,
+    error: null
+  });
+
+  const fetchServerInfo = useCallback(async () => {
+    try {
+      const res = await fetch('/api/engine/server_info');
+      const data = await res.json();
+      if (data.success) {
+        setServerInfo(data);
+        if (data.provider_server_enabled !== undefined) {
+          setProviderServerEnabled(data.provider_server_enabled);
+        }
+      }
+    } catch (e) {
+      console.debug("Server info fetch:", e);
+    }
+  }, []);
+
+  const toggleProviderServer = async (targetState) => {
+    const nextState = targetState !== undefined ? targetState : !providerServerEnabled;
+    try {
+      const res = await fetch('/api/engine/provider_server/toggle', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ enabled: nextState })
+      });
+      const data = await res.json();
+      if (data.success) {
+        setProviderServerEnabled(data.provider_server_enabled);
+        setSaveToast({
+          type: 'success',
+          msg: `Servizio Provider Server ${data.provider_server_enabled ? 'ABILITATO 🟢' : 'DISABILITATO 🔴'}`
+        });
+        setTimeout(() => setSaveToast(null), 3500);
+        fetchServerInfo();
+      }
+    } catch (err) {
+      setSaveToast({ type: 'error', msg: `Errore toggle server: ${err.message}` });
+      setTimeout(() => setSaveToast(null), 3500);
+    }
+  };
+
+  // Enumerate all available models for the VS Code guide selector
+  const allAvailableGuideModels = useMemo(() => {
+    const list = [
+      { id: 'sigmaengine', name: '⚡ sigmaengine (Auto-Risoluzione dinamica / Modello Residente)', type: 'alias' }
+    ];
+    if (serverInfo?.resident_model && serverInfo.resident_model !== 'Nessun modello caricato') {
+      list.push({ id: serverInfo.resident_model, name: `🔥 ${serverInfo.resident_model} (In VRAM)`, type: 'resident' });
+    }
+    (serverInfo?.available_models || []).forEach(m => {
+      if (!list.some(x => x.id === m.id)) {
+        const icon = m.category === 'cloud' ? '☁️' : (m.is_resident ? '🔥' : '🏠');
+        list.push({ id: m.id, name: `${icon} ${m.name || m.id}`, type: m.category || 'local' });
+      }
+    });
+    (ollamaLocalModels || []).forEach(m => {
+      const mName = typeof m === 'string' ? m : m.name;
+      if (mName && !list.some(x => x.id === mName)) {
+        list.push({ id: mName, name: `🏠 ${mName} (Locale GGUF/Ollama)`, type: 'local' });
+      }
+    });
+    Object.entries(providerSettings).forEach(([pId, pCfg]) => {
+      if (pId !== 'sigma_engine') {
+        const mod = pCfg?.custom_model || pCfg?.model || PROVIDER_CATALOG[pId]?.default_model;
+        if (mod && !list.some(x => x.id === mod)) {
+          list.push({ id: mod, name: `☁️ ${mod} (${PROVIDER_CATALOG[pId]?.label || pId})`, type: 'cloud' });
+        }
+      }
+    });
+    return list;
+  }, [serverInfo, ollamaLocalModels, providerSettings]);
+
+  const downloadContinueConfig = () => {
+    const targetModel = selectedGuideModel || 'sigmaengine';
+    const cfg = {
+      models: [
+        {
+          title: `SigmaEngine (${targetModel})`,
+          provider: "openai",
+          model: targetModel,
+          apiBase: "http://localhost:8000/v1",
+          apiKey: "sigma"
+        },
+        {
+          title: `SigmaEngine Ollama (${targetModel})`,
+          provider: "ollama",
+          model: targetModel,
+          apiBase: "http://localhost:8000"
+        }
+      ],
+      tabAutocompleteModel: {
+        title: "SigmaEngine Autocomplete (7B Coder)",
+        provider: "openai",
+        model: "qwen2.5-coder:7b",
+        apiBase: "http://localhost:8000/v1",
+        apiKey: "sigma"
+      }
+    };
+    const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(cfg, null, 2));
+    const a = document.createElement('a');
+    a.setAttribute("href", dataStr);
+    a.setAttribute("download", `continue_config_${targetModel.replace(/[^a-zA-Z0-9_-]/g, '_')}.json`);
+    a.click();
+  };
+
+  const runLiveServerTest = async () => {
+    const targetModel = selectedGuideModel || 'sigmaengine';
+    setLiveTestState(prev => ({ ...prev, isTesting: true, outputText: '', error: null, latency: null, ttft: null }));
+    const startTime = performance.now();
+    let firstTokenRecorded = false;
+
+    try {
+      if (liveTestState.protocol === 'openai') {
+        const resp = await fetch('/v1/chat/completions', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            model: targetModel,
+            messages: [{ role: 'user', content: liveTestState.prompt || 'Ciao da VS Code!' }],
+            stream: true,
+            max_tokens: 300,
+            temperature: 0.7
+          })
+        });
+
+        if (!resp.ok) {
+          const errText = await resp.text();
+          let parsedErr = errText;
+          try {
+            const errObj = JSON.parse(errText);
+            parsedErr = errObj.error?.message || errObj.error || errText;
+          } catch (_) {}
+          throw new Error(`HTTP ${resp.status}: ${parsedErr}`);
+        }
+
+        const reader = resp.body.getReader();
+        const decoder = new TextDecoder('utf-8');
+        let fullText = '';
+
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          const chunk = decoder.decode(value, { stream: true });
+          const lines = chunk.split('\n');
+          for (const line of lines) {
+            if (line.startsWith('data: ') && line.trim() !== 'data: [DONE]') {
+              try {
+                const parsed = JSON.parse(line.slice(6));
+                if (parsed.error) {
+                  const errMsg = typeof parsed.error === 'object' ? (parsed.error.message || JSON.stringify(parsed.error)) : parsed.error;
+                  setLiveTestState(prev => ({ ...prev, error: errMsg }));
+                }
+                const token = parsed.choices?.[0]?.delta?.content || '';
+                if (token) {
+                  if (!firstTokenRecorded) {
+                    firstTokenRecorded = true;
+                    setLiveTestState(prev => ({ ...prev, ttft: Math.round(performance.now() - startTime) }));
+                  }
+                  fullText += token;
+                  setLiveTestState(prev => ({ ...prev, outputText: fullText }));
+                }
+              } catch (e) {}
+            }
+          }
+        }
+        setLiveTestState(prev => ({ ...prev, isTesting: false, latency: Math.round(performance.now() - startTime) }));
+      } else {
+        // Ollama protocol
+        const resp = await fetch('/api/chat', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            model: targetModel,
+            messages: [{ role: 'user', content: liveTestState.prompt || 'Ciao da VS Code!' }],
+            stream: true,
+            options: { num_predict: 300, temperature: 0.7 }
+          })
+        });
+
+        if (!resp.ok) {
+          const errText = await resp.text();
+          let parsedErr = errText;
+          try {
+            const errObj = JSON.parse(errText);
+            parsedErr = errObj.error || errText;
+          } catch (_) {}
+          throw new Error(`HTTP ${resp.status}: ${parsedErr}`);
+        }
+
+        const reader = resp.body.getReader();
+        const decoder = new TextDecoder('utf-8');
+        let fullText = '';
+
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          const chunk = decoder.decode(value, { stream: true });
+          const lines = chunk.split('\n');
+          for (const line of lines) {
+            if (line.trim()) {
+              try {
+                const parsed = JSON.parse(line.trim());
+                if (parsed.error) {
+                  setLiveTestState(prev => ({ ...prev, error: parsed.error }));
+                }
+                const token = parsed.message?.content || '';
+                if (token) {
+                  if (!firstTokenRecorded) {
+                    firstTokenRecorded = true;
+                    setLiveTestState(prev => ({ ...prev, ttft: Math.round(performance.now() - startTime) }));
+                  }
+                  fullText += token;
+                  setLiveTestState(prev => ({ ...prev, outputText: fullText }));
+                }
+              } catch (e) {}
+            }
+          }
+        }
+        setLiveTestState(prev => ({ ...prev, isTesting: false, latency: Math.round(performance.now() - startTime) }));
+      }
+    } catch (err) {
+      setLiveTestState(prev => ({ ...prev, isTesting: false, error: err.message }));
+    }
+  };
+
   const fetchEngineProfile = useCallback(async () => {
     try {
       const res = await fetch('/api/engine/profile');
@@ -622,7 +866,8 @@ export default function AIConfigTab({ openTab }) {
   useEffect(() => {
     fetchConfig();
     fetchEngineProfile();
-  }, [fetchConfig, fetchEngineProfile]);
+    fetchServerInfo();
+  }, [fetchConfig, fetchEngineProfile, fetchServerInfo]);
 
   // Update a single provider field
   const updateProviderField = (pId, field, value) => {
@@ -750,6 +995,42 @@ export default function AIConfigTab({ openTab }) {
         })
       });
 
+      // If testing SigmaEngine directly, use the standard OpenAI /v1/chat/completions endpoint
+      if (pId === 'sigma_engine') {
+        const engRes = await fetch('/v1/chat/completions', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            model: modelToTest || 'sigmaengine',
+            messages: [{ role: 'user', content: "Rispondi solo con 'OK'." }],
+            stream: false,
+            max_tokens: 20
+          })
+        });
+
+        const latency = Math.round(performance.now() - startTime);
+        const data = await engRes.json();
+
+        if (engRes.ok && data.choices && data.choices[0]) {
+          setTestResults(prev => ({
+            ...prev,
+            [pId]: {
+              status: 'success',
+              msg: `Connesso (${latency}ms) — ${modelToTest} (OpenAI & Ollama Server)`,
+              latency
+            }
+          }));
+          return;
+        } else if (data.error) {
+          const errMsg = typeof data.error === 'object' ? (data.error.message || JSON.stringify(data.error)) : data.error;
+          setTestResults(prev => ({
+            ...prev,
+            [pId]: { status: 'error', msg: `Errore: ${errMsg}`, latency }
+          }));
+          return;
+        }
+      }
+
       const chatRes = await fetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -759,8 +1040,33 @@ export default function AIConfigTab({ openTab }) {
           model: modelToTest
         })
       });
-      const chatData = await chatRes.json();
+
+      const rawText = await chatRes.text();
       const latency = Math.round(performance.now() - startTime);
+      let chatData = {};
+
+      try {
+        chatData = JSON.parse(rawText);
+      } catch (parseErr) {
+        // Safely extract from SSE or NDJSON lines
+        const lines = rawText.split('\n');
+        for (const line of lines) {
+          const clean = line.replace(/^data:\s*/, '').trim();
+          if (clean && clean !== '[DONE]') {
+            try {
+              const obj = JSON.parse(clean);
+              if (obj.error) { chatData.error = obj.error; break; }
+              if (obj.token || obj.message || obj.response || obj.choices) {
+                chatData.success = true;
+                break;
+              }
+            } catch (_) {}
+          }
+        }
+        if (!chatData.error && rawText.length > 0) {
+          chatData.success = true;
+        }
+      }
 
       if (chatData.error) {
         setTestResults(prev => ({
@@ -1166,9 +1472,10 @@ export default function AIConfigTab({ openTab }) {
         borderBottom: isLight ? '1px solid rgba(190, 160, 110, 0.2)' : '1px solid rgba(255, 255, 255, 0.08)',
         paddingBottom: '12px'
       }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
           {[
             { id: 'providers', label: '🔑 Token & Providers AI', icon: Key },
+            { id: 'server', label: '🔌 SigmaEngine Server (VS Code)', icon: Code },
             { id: 'parameters', label: '⚙️ Parametri di Inferenza', icon: Sliders }
           ].map(sec => {
             const active = activeSection === sec.id;
@@ -1188,8 +1495,9 @@ export default function AIConfigTab({ openTab }) {
                   alignItems: 'center',
                   gap: '6px',
                   transition: 'all 0.18s ease',
-                  background: active ? (isLight ? '#111827' : '#ffffff') : 'transparent',
-                  color: active ? (isLight ? '#ffffff' : '#111827') : subtitleColor
+                  background: active ? (sec.id === 'server' ? 'linear-gradient(135deg, #00f2fe, #4facfe)' : (isLight ? '#111827' : '#ffffff')) : 'transparent',
+                  color: active ? (sec.id === 'server' ? '#000000' : (isLight ? '#ffffff' : '#111827')) : subtitleColor,
+                  boxShadow: active && sec.id === 'server' ? '0 2px 10px rgba(0, 242, 254, 0.3)' : 'none'
                 }}
               >
                 <Icon size={14} />
@@ -1281,7 +1589,7 @@ export default function AIConfigTab({ openTab }) {
               const pState = providerSettings[prov.id] || {};
               const isSelected = activeProvider === prov.id;
               const isDisabled = disabledProviders[prov.id] === true;
-              const hasKey = prov.id === 'ollama' ? true : (pState.has_api_key || (pState.api_key && pState.api_key.trim().length > 0));
+              const hasKey = prov.id === 'ollama' || prov.id === 'sigma_engine' ? true : (pState.has_api_key || (pState.api_key && pState.api_key.trim().length > 0));
               const isVisible = visibleKeys[prov.id];
               const test = testResults[prov.id];
               const isTesting = testingProvider === prov.id;
@@ -1395,6 +1703,48 @@ export default function AIConfigTab({ openTab }) {
                       </div>
                     </div>
 
+                    {/* SigmaEngine Interactive VS Code & Interop Banner */}
+                    {prov.id === 'sigma_engine' && (
+                      <div style={{
+                        padding: '7px 10px',
+                        borderRadius: '8px',
+                        background: 'rgba(0, 242, 254, 0.07)',
+                        border: '1px solid rgba(0, 242, 254, 0.25)',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        gap: '6px',
+                        marginBottom: '8px'
+                      }}>
+                        <div>
+                          <div style={{ fontSize: '0.65rem', fontWeight: 800, color: '#00f2fe', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                            <Wifi size={10} color="#3fb950" /> OPENAI & OLLAMA PROTOCOL
+                          </div>
+                          <div style={{ fontSize: '0.6rem', color: subtitleColor }}>
+                            Port: 8000 • /v1/chat/completions • /api/chat
+                          </div>
+                        </div>
+                        <button
+                          onClick={() => setActiveSection('server')}
+                          style={{
+                            padding: '3px 7px',
+                            borderRadius: '6px',
+                            background: 'linear-gradient(135deg, #00f2fe, #4facfe)',
+                            border: 'none',
+                            color: '#000',
+                            fontSize: '0.62rem',
+                            fontWeight: 800,
+                            cursor: 'pointer',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '3px',
+                            whiteSpace: 'nowrap'
+                          }}
+                        >
+                          <Code size={10} /> VS Code Guide
+                        </button>
+                      </div>
+                    )}
 
                     <p style={{ margin: '0 0 10px 0', fontSize: '0.72rem', color: subtitleColor, lineHeight: 1.4 }}>
                       {prov.hint}
@@ -1600,7 +1950,677 @@ export default function AIConfigTab({ openTab }) {
         </>
       )}
 
-      {/* SECTION 2: GLOBAL INFERENCE PARAMETERS */}
+      {/* SECTION 2: SIGMAENGINE SERVER & VS CODE INTEROPERABILITY */}
+      {activeSection === 'server' && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+          {/* Top Server Status Banner with ON/OFF Service Toggle */}
+          <div style={{
+            padding: '20px 24px',
+            borderRadius: '16px',
+            background: providerServerEnabled 
+              ? 'linear-gradient(135deg, rgba(0, 242, 254, 0.12), rgba(79, 172, 254, 0.05))'
+              : 'linear-gradient(135deg, rgba(239, 68, 68, 0.12), rgba(185, 28, 28, 0.04))',
+            border: providerServerEnabled ? '1px solid rgba(0, 242, 254, 0.35)' : '1px solid rgba(239, 68, 68, 0.35)',
+            boxShadow: cardShadow,
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            flexWrap: 'wrap',
+            gap: '16px'
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+              <div style={{
+                width: '48px',
+                height: '48px',
+                borderRadius: '12px',
+                background: providerServerEnabled ? 'rgba(0, 242, 254, 0.15)' : 'rgba(239, 68, 68, 0.15)',
+                border: providerServerEnabled ? '1px solid rgba(0, 242, 254, 0.4)' : '1px solid rgba(239, 68, 68, 0.4)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                boxShadow: providerServerEnabled ? '0 0 20px rgba(0, 242, 254, 0.25)' : '0 0 20px rgba(239, 68, 68, 0.25)'
+              }}>
+                <Globe size={26} color={providerServerEnabled ? "#00f2fe" : "#ef4444"} />
+              </div>
+              <div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '3px' }}>
+                  <span style={{
+                    fontSize: '0.66rem',
+                    fontWeight: 800,
+                    color: providerServerEnabled ? '#00f2fe' : '#ef4444',
+                    background: providerServerEnabled ? 'rgba(0, 242, 254, 0.15)' : 'rgba(239, 68, 68, 0.15)',
+                    border: providerServerEnabled ? '1px solid rgba(0, 242, 254, 0.35)' : '1px solid rgba(239, 68, 68, 0.35)',
+                    padding: '2px 8px',
+                    borderRadius: '10px',
+                    letterSpacing: '0.5px'
+                  }}>
+                    STANDARD OPEN PROVIDER
+                  </span>
+                  <span style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '5px',
+                    fontSize: '0.72rem',
+                    fontWeight: 800,
+                    color: providerServerEnabled ? '#3fb950' : '#ef4444'
+                  }}>
+                    <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: providerServerEnabled ? '#3fb950' : '#ef4444', display: 'inline-block', boxShadow: providerServerEnabled ? '0 0 8px #3fb950' : 'none' }} />
+                    {providerServerEnabled ? 'SERVIZIO ATTIVO (Port 8000)' : 'SERVIZIO DISABILITATO'}
+                  </span>
+                </div>
+                <h2 style={{ margin: '0 0 3px 0', fontSize: '1.25rem', fontWeight: 800, color: titleColor }}>
+                  ⚡ SigmaEngine Provider Server — Interoperabilità VS Code & Client
+                </h2>
+                <p style={{ margin: 0, fontSize: '0.76rem', color: subtitleColor, maxWidth: '680px', lineHeight: 1.45 }}>
+                  Server API unificato conforme agli standard <strong>OpenAI</strong> (<code style={{ color: '#00f2fe' }}>/v1</code>) e <strong>Ollama</strong> (<code style={{ color: '#00d2ff' }}>/api</code>). Puoi abilitare o disabilitare il servizio in qualsiasi momento.
+                </p>
+              </div>
+            </div>
+
+            {/* Service Toggle Switch & Actions */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+              <button
+                onClick={() => toggleProviderServer()}
+                style={{
+                  padding: '8px 14px',
+                  borderRadius: '10px',
+                  background: providerServerEnabled ? 'rgba(239, 68, 68, 0.15)' : 'linear-gradient(135deg, #3fb950, #2ea043)',
+                  border: providerServerEnabled ? '1px solid rgba(239, 68, 68, 0.35)' : 'none',
+                  color: providerServerEnabled ? '#ef4444' : '#fff',
+                  fontSize: '0.74rem',
+                  fontWeight: 800,
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  boxShadow: providerServerEnabled ? 'none' : '0 4px 14px rgba(63, 185, 80, 0.3)'
+                }}
+              >
+                {providerServerEnabled ? (
+                  <>
+                    <X size={13} /> Disabilita Servizio
+                  </>
+                ) : (
+                  <>
+                    <Zap size={13} /> Abilita Servizio
+                  </>
+                )}
+              </button>
+
+              <button
+                onClick={downloadContinueConfig}
+                style={{
+                  padding: '8px 14px',
+                  borderRadius: '10px',
+                  background: 'linear-gradient(135deg, #00f2fe, #4facfe)',
+                  border: 'none',
+                  color: '#000',
+                  fontSize: '0.76rem',
+                  fontWeight: 800,
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  boxShadow: '0 4px 14px rgba(0, 242, 254, 0.3)'
+                }}
+              >
+                <Download size={13} /> Scarica config.json (Continue)
+              </button>
+            </div>
+          </div>
+
+          {/* DYNAMIC MODEL SELECTOR FOR VS CODE & EXTERNAL CLIENTS */}
+          <div style={{
+            padding: '16px 20px',
+            borderRadius: '14px',
+            background: cardBg,
+            border: cardBorder,
+            boxShadow: cardShadow,
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '12px'
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '10px' }}>
+              <div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '2px' }}>
+                  <Sparkles size={16} color="#00f2fe" />
+                  <h3 style={{ margin: 0, fontSize: '0.92rem', fontWeight: 800, color: titleColor }}>
+                    🎯 Seleziona Modello di Riferimento per VS Code & Software
+                  </h3>
+                </div>
+                <p style={{ margin: 0, fontSize: '0.74rem', color: subtitleColor }}>
+                  Scegli quale modello esporre: tutti i modelli scaricati in <code>data/models/</code>, residenti in VRAM o configurati in Cloud sono accessibili via standard OpenAI & Ollama.
+                </p>
+              </div>
+
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: '280px' }}>
+                <select
+                  value={selectedGuideModel}
+                  onChange={e => setSelectedGuideModel(e.target.value)}
+                  style={{
+                    width: '100%',
+                    padding: '8px 12px',
+                    borderRadius: '10px',
+                    background: innerCardBg,
+                    border: '1px solid rgba(0, 242, 254, 0.4)',
+                    color: titleColor,
+                    fontSize: '0.78rem',
+                    fontWeight: 700,
+                    outline: 'none',
+                    cursor: 'pointer'
+                  }}
+                >
+                  {allAvailableGuideModels.map(m => (
+                    <option key={m.id} value={m.id}>
+                      {m.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            {/* Quick Model Pills */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+              <span style={{ fontSize: '0.68rem', color: subtitleColor, fontWeight: 700 }}>Scorciatoie Rapide:</span>
+              {allAvailableGuideModels.slice(0, 6).map(m => (
+                <button
+                  key={m.id}
+                  onClick={() => setSelectedGuideModel(m.id)}
+                  style={{
+                    padding: '3px 8px',
+                    borderRadius: '6px',
+                    fontSize: '0.66rem',
+                    fontWeight: 700,
+                    cursor: 'pointer',
+                    background: selectedGuideModel === m.id ? 'rgba(0, 242, 254, 0.2)' : innerCardBg,
+                    border: selectedGuideModel === m.id ? '1px solid #00f2fe' : innerCardBorder,
+                    color: selectedGuideModel === m.id ? '#00f2fe' : subtitleColor,
+                    transition: 'all 0.15s ease'
+                  }}
+                >
+                  {m.id}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Quick Endpoints Copy Matrix */}
+          <div style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))',
+            gap: '12px'
+          }}>
+            {/* OpenAI Format Box */}
+            <div style={{
+              padding: '14px 16px',
+              borderRadius: '12px',
+              background: cardBg,
+              border: cardBorder,
+              boxShadow: cardShadow
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
+                <span style={{ fontSize: '0.74rem', fontWeight: 800, color: '#10a37f' }}>
+                  🟢 Standard OpenAI Compatible
+                </span>
+                <span style={{ fontSize: '0.64rem', color: subtitleColor, fontWeight: 700 }}>
+                  Per Continue, Cline, Roo Code, Copilot, LangChain
+                </span>
+              </div>
+              <div style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                padding: '6px 10px',
+                borderRadius: '8px',
+                background: innerCardBg,
+                border: innerCardBorder,
+                fontSize: '0.76rem',
+                fontFamily: 'monospace',
+                color: titleColor
+              }}>
+                <span>http://localhost:8000/v1</span>
+                <button
+                  onClick={() => copyKeyToClipboard('openai_base', 'http://localhost:8000/v1')}
+                  style={{ background: 'none', border: 'none', color: subtitleColor, cursor: 'pointer', padding: '2px' }}
+                >
+                  {copiedKey === 'openai_base' ? <Check size={13} color="#3fb950" /> : <Copy size={13} />}
+                </button>
+              </div>
+              <div style={{ fontSize: '0.66rem', color: subtitleColor, marginTop: '6px' }}>
+                API Key: <code style={{ color: '#00f2fe' }}>sigma</code> • Model ID: <code style={{ color: '#00f2fe', fontWeight: 700 }}>{selectedGuideModel}</code>
+              </div>
+            </div>
+
+            {/* Ollama Format Box */}
+            <div style={{
+              padding: '14px 16px',
+              borderRadius: '12px',
+              background: cardBg,
+              border: cardBorder,
+              boxShadow: cardShadow
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
+                <span style={{ fontSize: '0.74rem', fontWeight: 800, color: '#00d2ff' }}>
+                  🔷 Standard Ollama Protocol
+                </span>
+                <span style={{ fontSize: '0.64rem', color: subtitleColor, fontWeight: 700 }}>
+                  Per Ollama SDK, Continue (ollama), Local Web UIs
+                </span>
+              </div>
+              <div style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                padding: '6px 10px',
+                borderRadius: '8px',
+                background: innerCardBg,
+                border: innerCardBorder,
+                fontSize: '0.76rem',
+                fontFamily: 'monospace',
+                color: titleColor
+              }}>
+                <span>http://localhost:8000</span>
+                <button
+                  onClick={() => copyKeyToClipboard('ollama_base', 'http://localhost:8000')}
+                  style={{ background: 'none', border: 'none', color: subtitleColor, cursor: 'pointer', padding: '2px' }}
+                >
+                  {copiedKey === 'ollama_base' ? <Check size={13} color="#3fb950" /> : <Copy size={13} />}
+                </button>
+              </div>
+              <div style={{ fontSize: '0.66rem', color: subtitleColor, marginTop: '6px' }}>
+                Endpoints: <code style={{ color: '#00d2ff' }}>/api/chat</code> • <code style={{ color: '#00d2ff' }}>/api/tags</code> • <code style={{ color: '#00d2ff' }}>/api/generate</code>
+              </div>
+            </div>
+          </div>
+
+          {/* Integration Guides & Interactive Code Snippets */}
+          <div style={{
+            padding: '20px',
+            borderRadius: '16px',
+            background: cardBg,
+            border: cardBorder,
+            boxShadow: cardShadow
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '14px', flexWrap: 'wrap', gap: '10px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <Terminal size={18} color="#00f2fe" />
+                <h3 style={{ margin: 0, fontSize: '0.95rem', fontWeight: 800, color: titleColor }}>
+                  Guide di Configurazione per Client & IDE
+                </h3>
+              </div>
+
+              {/* Guide Tabs Switcher */}
+              <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap' }}>
+                {[
+                  { id: 'continue', label: '🧩 Continue (VS Code)' },
+                  { id: 'cline', label: '🤖 Cline / Roo Code' },
+                  { id: 'copilot', label: '🚀 Cursor / Copilot' },
+                  { id: 'python', label: '🐍 Python SDK' },
+                  { id: 'curl', label: '💻 cURL Test' }
+                ].map(tab => (
+                  <button
+                    key={tab.id}
+                    onClick={() => setActiveVsCodeTab(tab.id)}
+                    style={{
+                      padding: '4px 10px',
+                      borderRadius: '8px',
+                      fontSize: '0.7rem',
+                      fontWeight: 700,
+                      border: isLight ? '1px solid rgba(190, 160, 110, 0.25)' : '1px solid rgba(255, 255, 255, 0.08)',
+                      cursor: 'pointer',
+                      background: activeVsCodeTab === tab.id ? '#00f2fe' : innerCardBg,
+                      color: activeVsCodeTab === tab.id ? '#000000' : subtitleColor,
+                      transition: 'all 0.15s ease'
+                    }}
+                  >
+                    {tab.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* TAB CONTENT: CONTINUE.DEV */}
+            {activeVsCodeTab === 'continue' && (
+              <div>
+                <p style={{ margin: '0 0 10px 0', fontSize: '0.74rem', color: subtitleColor, lineHeight: 1.4 }}>
+                  In Visual Studio Code, installa l'estensione <strong>Continue</strong> e incolla questa configurazione nel file <code style={{ color: '#00f2fe' }}>~/.continue/config.json</code>:
+                </p>
+                <div style={{ position: 'relative' }}>
+                  <pre style={{
+                    padding: '12px 14px',
+                    borderRadius: '10px',
+                    background: '#07090e',
+                    border: '1px solid rgba(255, 255, 255, 0.08)',
+                    color: '#00f2fe',
+                    fontSize: '0.74rem',
+                    fontFamily: 'Consolas, monospace',
+                    overflowX: 'auto',
+                    margin: 0
+                  }}>{`{
+  "models": [
+    {
+      "title": "SigmaEngine (${selectedGuideModel})",
+      "provider": "openai",
+      "model": "${selectedGuideModel}",
+      "apiBase": "http://localhost:8000/v1",
+      "apiKey": "sigma"
+    },
+    {
+      "title": "SigmaEngine Ollama (${selectedGuideModel})",
+      "provider": "ollama",
+      "model": "${selectedGuideModel}",
+      "apiBase": "http://localhost:8000"
+    }
+  ],
+  "tabAutocompleteModel": {
+    "title": "SigmaEngine Autocomplete",
+    "provider": "openai",
+    "model": "qwen2.5-coder:7b",
+    "apiBase": "http://localhost:8000/v1",
+    "apiKey": "sigma"
+  }
+}`}</pre>
+                  <button
+                    onClick={() => copyKeyToClipboard('continue_code', `{\n  "models": [\n    {\n      "title": "SigmaEngine (${selectedGuideModel})",\n      "provider": "openai",\n      "model": "${selectedGuideModel}",\n      "apiBase": "http://localhost:8000/v1",\n      "apiKey": "sigma"\n    }\n  ]\n}`)}
+                    style={{
+                      position: 'absolute',
+                      top: '8px',
+                      right: '8px',
+                      padding: '4px 8px',
+                      borderRadius: '6px',
+                      background: 'rgba(255,255,255,0.1)',
+                      border: '1px solid rgba(255,255,255,0.2)',
+                      color: '#fff',
+                      fontSize: '0.64rem',
+                      fontWeight: 700,
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '4px'
+                    }}
+                  >
+                    {copiedKey === 'continue_code' ? <Check size={11} color="#3fb950" /> : <Copy size={11} />} Copia JSON
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* TAB CONTENT: CLINE / ROO CODE */}
+            {activeVsCodeTab === 'cline' && (
+              <div>
+                <p style={{ margin: '0 0 10px 0', fontSize: '0.74rem', color: subtitleColor, lineHeight: 1.4 }}>
+                  Nelle impostazioni di <strong>Cline</strong> o <strong>Roo Code</strong> in VS Code, seleziona il provider <strong>OpenAI Compatible</strong>:
+                </p>
+                <div style={{
+                  display: 'grid',
+                  gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
+                  gap: '10px',
+                  marginBottom: '10px'
+                }}>
+                  <div style={{ padding: '10px', borderRadius: '8px', background: innerCardBg, border: innerCardBorder }}>
+                    <div style={{ fontSize: '0.66rem', color: subtitleColor, fontWeight: 700 }}>API PROVIDER</div>
+                    <div style={{ fontSize: '0.8rem', fontWeight: 800, color: titleColor, marginTop: '2px' }}>OpenAI Compatible</div>
+                  </div>
+                  <div style={{ padding: '10px', borderRadius: '8px', background: innerCardBg, border: innerCardBorder }}>
+                    <div style={{ fontSize: '0.66rem', color: subtitleColor, fontWeight: 700 }}>BASE URL</div>
+                    <div style={{ fontSize: '0.8rem', fontWeight: 800, color: '#00f2fe', marginTop: '2px' }}>http://localhost:8000/v1</div>
+                  </div>
+                  <div style={{ padding: '10px', borderRadius: '8px', background: innerCardBg, border: innerCardBorder }}>
+                    <div style={{ fontSize: '0.66rem', color: subtitleColor, fontWeight: 700 }}>API KEY</div>
+                    <div style={{ fontSize: '0.8rem', fontWeight: 800, color: titleColor, marginTop: '2px' }}>sigma</div>
+                  </div>
+                  <div style={{ padding: '10px', borderRadius: '8px', background: innerCardBg, border: innerCardBorder }}>
+                    <div style={{ fontSize: '0.66rem', color: subtitleColor, fontWeight: 700 }}>MODEL ID</div>
+                    <div style={{ fontSize: '0.8rem', fontWeight: 800, color: '#00d2ff', marginTop: '2px' }}>{selectedGuideModel}</div>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* TAB CONTENT: CURSOR / COPILOT / WINDSURF */}
+            {activeVsCodeTab === 'copilot' && (
+              <div>
+                <p style={{ margin: '0 0 10px 0', fontSize: '0.74rem', color: subtitleColor, lineHeight: 1.4 }}>
+                  Imposta le variabili di ambiente per collegare <strong>Cursor</strong>, <strong>Aider</strong> o <strong>Windsurf</strong> a SigmaEngine:
+                </p>
+                <pre style={{
+                  padding: '12px 14px',
+                  borderRadius: '10px',
+                  background: '#07090e',
+                  border: '1px solid rgba(255, 255, 255, 0.08)',
+                  color: '#3fb950',
+                  fontSize: '0.74rem',
+                  fontFamily: 'Consolas, monospace',
+                  overflowX: 'auto',
+                  margin: 0
+                }}>{`# PowerShell / Terminale Windows
+$env:OPENAI_BASE_URL="http://localhost:8000/v1"
+$env:OPENAI_API_KEY="sigma"
+$env:OPENAI_MODEL="${selectedGuideModel}"
+
+# Linux / macOS / Bash
+export OPENAI_BASE_URL="http://localhost:8000/v1"
+export OPENAI_API_KEY="sigma"
+export OPENAI_MODEL="${selectedGuideModel}"`}</pre>
+              </div>
+            )}
+
+            {/* TAB CONTENT: PYTHON SDK */}
+            {activeVsCodeTab === 'python' && (
+              <div>
+                <p style={{ margin: '0 0 10px 0', fontSize: '0.74rem', color: subtitleColor, lineHeight: 1.4 }}>
+                  Usa l'SDK ufficiale <code>openai</code> in Python senza modificare una riga di logica:
+                </p>
+                <pre style={{
+                  padding: '12px 14px',
+                  borderRadius: '10px',
+                  background: '#07090e',
+                  border: '1px solid rgba(255, 255, 255, 0.08)',
+                  color: '#faa03c',
+                  fontSize: '0.74rem',
+                  fontFamily: 'Consolas, monospace',
+                  overflowX: 'auto',
+                  margin: 0
+                }}>{`from openai import OpenAI
+
+client = OpenAI(
+    base_url="http://localhost:8000/v1",
+    api_key="sigma"
+)
+
+response = client.chat.completions.create(
+    model="${selectedGuideModel}",
+    messages=[
+        {"role": "system", "content": "Sei Sigma Assistant."},
+        {"role": "user", "content": "Ciao da Visual Studio Code!"}
+    ],
+    stream=True
+)
+
+for chunk in response:
+    content = chunk.choices[0].delta.content or ""
+    print(content, end="", flush=True)`}</pre>
+              </div>
+            )}
+
+            {/* TAB CONTENT: CURL TEST */}
+            {activeVsCodeTab === 'curl' && (
+              <div>
+                <p style={{ margin: '0 0 10px 0', fontSize: '0.74rem', color: subtitleColor, lineHeight: 1.4 }}>
+                  Esegui un probe istantaneo da PowerShell o terminale per testare lo streaming SSE di SigmaEngine:
+                </p>
+                <div style={{ position: 'relative' }}>
+                  <pre style={{
+                    padding: '12px 14px',
+                    borderRadius: '10px',
+                    background: '#07090e',
+                    border: '1px solid rgba(255, 255, 255, 0.08)',
+                    color: '#00f2fe',
+                    fontSize: '0.74rem',
+                    fontFamily: 'Consolas, monospace',
+                    overflowX: 'auto',
+                    margin: 0
+                  }}>{`curl http://localhost:8000/v1/chat/completions -H "Content-Type: application/json" -d "{\\"model\\":\\"${selectedGuideModel}\\",\\"messages\\":[{\\"role\\":\\"user\\",\\"content\\":\\"Ciao SigmaEngine!\\"}]}"`}</pre>
+                  <button
+                    onClick={() => copyKeyToClipboard('curl_code', `curl http://localhost:8000/v1/chat/completions -H "Content-Type: application/json" -d "{\\"model\\":\\"${selectedGuideModel}\\",\\"messages\\":[{\\"role\\":\\"user\\",\\"content\\":\\"Ciao SigmaEngine!\\"}]}"`)}
+                    style={{
+                      position: 'absolute',
+                      top: '8px',
+                      right: '8px',
+                      padding: '4px 8px',
+                      borderRadius: '6px',
+                      background: 'rgba(255,255,255,0.1)',
+                      border: '1px solid rgba(255,255,255,0.2)',
+                      color: '#fff',
+                      fontSize: '0.64rem',
+                      fontWeight: 700,
+                      cursor: 'pointer'
+                    }}
+                  >
+                    {copiedKey === 'curl_code' ? <Check size={11} color="#3fb950" /> : <Copy size={11} />} Copia cURL
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Interactive Live Interoperability Test Terminal */}
+          <div style={{
+            padding: '20px',
+            borderRadius: '16px',
+            background: cardBg,
+            border: '1px solid rgba(0, 242, 254, 0.25)',
+            boxShadow: cardShadow
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '12px', flexWrap: 'wrap', gap: '10px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <Zap size={18} color="#00f2fe" />
+                <h3 style={{ margin: 0, fontSize: '0.95rem', fontWeight: 800, color: titleColor }}>
+                  ⚡ Test Live Interoperabilità Endpoint
+                </h3>
+                <span style={{
+                  fontSize: '0.68rem',
+                  fontWeight: 700,
+                  color: '#00f2fe',
+                  background: 'rgba(0, 242, 254, 0.12)',
+                  padding: '2px 8px',
+                  borderRadius: '6px'
+                }}>
+                  Modello: {selectedGuideModel}
+                </span>
+              </div>
+
+              {/* Protocol Switcher */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <button
+                  onClick={() => setLiveTestState(p => ({ ...p, protocol: 'openai' }))}
+                  style={{
+                    padding: '4px 10px',
+                    borderRadius: '8px',
+                    fontSize: '0.7rem',
+                    fontWeight: 700,
+                    border: 'none',
+                    cursor: 'pointer',
+                    background: liveTestState.protocol === 'openai' ? '#10a37f' : innerCardBg,
+                    color: liveTestState.protocol === 'openai' ? '#fff' : subtitleColor
+                  }}
+                >
+                  OpenAI (/v1/chat/completions)
+                </button>
+                <button
+                  onClick={() => setLiveTestState(p => ({ ...p, protocol: 'ollama' }))}
+                  style={{
+                    padding: '4px 10px',
+                    borderRadius: '8px',
+                    fontSize: '0.7rem',
+                    fontWeight: 700,
+                    border: 'none',
+                    cursor: 'pointer',
+                    background: liveTestState.protocol === 'ollama' ? '#00d2ff' : innerCardBg,
+                    color: liveTestState.protocol === 'ollama' ? '#fff' : subtitleColor
+                  }}
+                >
+                  Ollama (/api/chat)
+                </button>
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', gap: '8px', marginBottom: '12px' }}>
+              <input
+                type="text"
+                value={liveTestState.prompt}
+                onChange={e => setLiveTestState(p => ({ ...p, prompt: e.target.value }))}
+                placeholder="Inserisci un prompt di test..."
+                style={{
+                  flex: 1,
+                  padding: '8px 12px',
+                  borderRadius: '10px',
+                  background: innerCardBg,
+                  border: innerCardBorder,
+                  color: titleColor,
+                  fontSize: '0.78rem',
+                  outline: 'none'
+                }}
+              />
+              <button
+                onClick={runLiveServerTest}
+                disabled={liveTestState.isTesting}
+                style={{
+                  padding: '8px 18px',
+                  borderRadius: '10px',
+                  background: 'linear-gradient(135deg, #00f2fe, #4facfe)',
+                  border: 'none',
+                  color: '#000',
+                  fontSize: '0.78rem',
+                  fontWeight: 800,
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  whiteSpace: 'nowrap'
+                }}
+              >
+                {liveTestState.isTesting ? <RefreshCw size={13} className="spin" /> : <Play size={13} />}
+                Esegui Test Live
+              </button>
+            </div>
+
+            {/* Test Results Output Box */}
+            {(liveTestState.outputText || liveTestState.isTesting || liveTestState.error) && (
+              <div style={{
+                padding: '14px',
+                borderRadius: '12px',
+                background: '#07090e',
+                border: '1px solid rgba(0, 242, 254, 0.3)',
+                fontSize: '0.78rem',
+                color: titleColor,
+                lineHeight: 1.5
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px', fontSize: '0.68rem', color: subtitleColor }}>
+                  <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                    <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: liveTestState.isTesting ? '#00f2fe' : (liveTestState.error ? '#ef4444' : '#3fb950') }} />
+                    Protocollo: <strong>{liveTestState.protocol.toUpperCase()}</strong> • Modello: <strong style={{ color: '#00f2fe' }}>{selectedGuideModel}</strong>
+                  </span>
+                  {liveTestState.ttft && (
+                    <span>TTFT (Primo Token): <strong style={{ color: '#00f2fe' }}>{liveTestState.ttft}ms</strong> • Totale: <strong style={{ color: '#3fb950' }}>{liveTestState.latency || '...'}ms</strong></span>
+                  )}
+                </div>
+
+                {liveTestState.error ? (
+                  <div style={{ color: '#ef4444' }}>❌ {liveTestState.error}</div>
+                ) : (
+                  <div style={{ whiteSpace: 'pre-wrap', color: '#e2e8f0', fontFamily: 'inherit' }}>
+                    {liveTestState.outputText}
+                    {liveTestState.isTesting && <span style={{ display: 'inline-block', width: '6px', height: '14px', background: '#00f2fe', marginLeft: '3px', verticalAlign: 'middle', animation: 'blink 1s infinite' }} />}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* SECTION 3: GLOBAL INFERENCE PARAMETERS */}
       {activeSection === 'parameters' && (
         <div style={{
           display: 'grid',

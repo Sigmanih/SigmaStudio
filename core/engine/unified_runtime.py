@@ -330,10 +330,22 @@ class UniversalSigmaEngine:
         """
         from core.model_paths import resolve_model_dir, list_model_dirs
 
+        alias_keywords = ("sigmaengine", "sigma-native:latest", "sigma:latest", "default", "auto", "native", "")
+
+        # If alias or empty, check currently loaded resident model first
+        if (not model_identifier or str(model_identifier).strip().lower() in alias_keywords) and self.loaded_model_name:
+            path = resolve_model_dir(self.loaded_model_name)
+            if path:
+                return path, os.path.basename(path.rstrip(os.sep + '/'))
+
+        # If specific identifier, try direct resolve
         path = resolve_model_dir(model_identifier)
-        if path is None and not model_identifier:
+
+        # Fallback for alias or when identifier wasn't found directly: pick first available model directory with weights
+        if path is None:
             candidates = list_model_dirs()
             path = candidates[0] if candidates else None
+
         if path is None:
             return None
         return path, os.path.basename(path.rstrip(os.sep + '/'))

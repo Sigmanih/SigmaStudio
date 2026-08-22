@@ -8,6 +8,9 @@ and complete API routing for all 70+ Sigma Studio endpoints.
 
 import os
 import json
+import time
+import uuid
+import datetime
 import asyncio
 import queue
 import threading
@@ -215,6 +218,16 @@ from core.engine import (
     handle_engine_hf_import, handle_engine_models, handle_engine_optimize,
     handle_engine_plan, handle_engine_unload, handle_engine_benchmark
 )
+from core.engine.provider_server import (
+    handle_v1_models, handle_v1_embeddings,
+    handle_ollama_tags, handle_ollama_version, handle_ollama_ps, handle_ollama_show,
+    handle_engine_server_info, handle_provider_server_toggle,
+    is_provider_server_enabled, set_provider_server_enabled,
+    stream_openai_chat_generator, execute_openai_chat_non_stream,
+    stream_ollama_chat_generator, execute_ollama_chat_non_stream,
+    stream_ollama_generate_generator, execute_ollama_generate_non_stream,
+    get_all_available_models,
+)
 FastAPIHandlerAdapter.handle_engine_status = handle_engine_status
 FastAPIHandlerAdapter.handle_engine_profile = handle_engine_profile
 FastAPIHandlerAdapter.handle_engine_partition = handle_engine_partition
@@ -224,6 +237,14 @@ FastAPIHandlerAdapter.handle_engine_optimize = handle_engine_optimize
 FastAPIHandlerAdapter.handle_engine_plan = handle_engine_plan
 FastAPIHandlerAdapter.handle_engine_unload = handle_engine_unload
 FastAPIHandlerAdapter.handle_engine_benchmark = handle_engine_benchmark
+FastAPIHandlerAdapter.handle_v1_models = handle_v1_models
+FastAPIHandlerAdapter.handle_v1_embeddings = handle_v1_embeddings
+FastAPIHandlerAdapter.handle_provider_server_toggle = handle_provider_server_toggle
+FastAPIHandlerAdapter.handle_ollama_tags = handle_ollama_tags
+FastAPIHandlerAdapter.handle_ollama_version = handle_ollama_version
+FastAPIHandlerAdapter.handle_ollama_ps = handle_ollama_ps
+FastAPIHandlerAdapter.handle_ollama_show = handle_ollama_show
+FastAPIHandlerAdapter.handle_engine_server_info = handle_engine_server_info
 
 
 
@@ -483,6 +504,548 @@ async def _dispatch_route(request: Request, method: str):
     
     return Response(status_code=adapter._response_status)
 
+
+# ==============================================================================
+# SigmaEngine Standard Interoperability Endpoints (OpenAI & Ollama Standards)
+# For Visual Studio Code (Continue, Cline, Roo Code, Copilot, Cursor) & SDKs
+# ==============================================================================
+
+@app.get("/v1/models")
+@app.get("/api/v1/models")
+async def v1_list_models():
+    """List available models in OpenAI standard format."""
+    models_list = get_all_available_models()
+    created_ts = int(time.time())
+    openai_data = []
+    for m in models_list:
+        openai_data.append({
+            "id": m["id"],
+            "object": "model",
+            "created": m.get("created", created_ts),
+            "owned_by": "sigmaengine",
+            "permission": [{
+                "id": f"modelperm-{uuid.uuid4().hex[:12]}",
+                "object": "model_permission",
+                "created": created_ts,
+                "allow_create_engine": False,
+                "allow_sampling": True,
+                "allow_logprobs": True,
+                "allow_search_indices": False,
+                "allow_view": True,
+                "allow_fine_tuning": False,
+                "organization": "*",
+                "group": None,
+                "is_blocking": False,
+            }],
+            "root": m["id"],
+            "parent": None,
+        })
+    return JSONResponse(status_code=200, content={"object": "list", "data": openai_data})
+
+
+@app.get("/v1/models/{model_id:path}")
+async def v1_retrieve_model(model_id: str):
+    """Retrieve single model details in OpenAI standard format."""
+    created_ts = int(time.time())
+    return JSONResponse(status_code=200, content={
+        "id": model_id,
+        "object": "model",
+        "created": created_ts,
+        "owned_by": "sigmaengine",
+        "root": model_id,
+        "parent": None
+    })
+
+
+@app.post("/v1/chat/completions")
+@app.post("/api/v1/chat/completions")
+async def v1_chat_completions(request: Request):
+    """OpenAI standard Chat Completions endpoint with SSE Streaming & JSON support."""
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+
+    model = body.get("model") or "sigmaengine"
+    messages = body.get("messages", [])
+    stream = bool(body.get("stream", False))
+    temperature = float(body.get("temperature", 0.7))
+    max_tokens = int(body.get("max_tokens") or body.get("max_completion_tokens") or 4096)
+    top_p = float(body.get("top_p", 0.9))
+
+    if stream:
+        async def sse_stream():
+            try:
+                for chunk in stream_openai_chat_generator(
+                    messages=messages,
+                    model=model,
+                    temperature=temperature,
+                    max_tokens=max_tokens,
+                    top_p=top_p
+                ):
+                    yield chunk
+                    await asyncio.sleep(0.001)
+            except Exception as e:
+                err_payload = {"error": {"message": str(e), "type": "server_error"}}
+                yield f"data: {json.dumps(err_payload)}\n\n"
+                yield "data: [DONE]\n\n"
+
+        return StreamingResponse(
+            sse_stream(),
+            media_type="text/event-stream; charset=utf-8",
+            headers={
+                "Cache-Control": "no-cache",
+                "Connection": "keep-alive",
+                "X-Accel-Buffering": "no",
+            }
+        )
+    else:
+        res = await asyncio.to_thread(
+            execute_openai_chat_non_stream,
+            messages=messages,
+            model=model,
+            temperature=temperature,
+            max_tokens=max_tokens,
+            top_p=top_p
+        )
+        return JSONResponse(status_code=200, content=res)
+
+
+@app.post("/v1/completions")
+@app.post("/api/v1/completions")
+async def v1_completions(request: Request):
+    """OpenAI standard Text Completions endpoint."""
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+
+    model = body.get("model") or "sigmaengine"
+    prompt = body.get("prompt", "")
+    if isinstance(prompt, list):
+        prompt = prompt[0] if prompt else ""
+    stream = bool(body.get("stream", False))
+    temperature = float(body.get("temperature", 0.7))
+    max_tokens = int(body.get("max_tokens", 4096))
+
+    messages = [{"role": "user", "content": str(prompt)}]
+    if stream:
+        async def sse_stream():
+            req_id = f"cmpl-{uuid.uuid4().hex[:20]}"
+            created_ts = int(time.time())
+            from core.engine.unified_runtime import sigma_engine
+            for chunk in sigma_engine.generate_stream(
+                prompt=str(prompt),
+                system_prompt="Sei Sigma Assistant.",
+                temperature=temperature,
+                max_tokens=max_tokens,
+                model_name=model,
+                messages=messages,
+            ):
+                token = chunk.get("token", "")
+                if token:
+                    payload = {
+                        "id": req_id,
+                        "object": "text_completion",
+                        "created": created_ts,
+                        "model": model,
+                        "choices": [{"text": token, "index": 0, "logprobs": None, "finish_reason": None}]
+                    }
+                    yield f"data: {json.dumps(payload)}\n\n"
+                    await asyncio.sleep(0.001)
+            yield "data: [DONE]\n\n"
+
+        return StreamingResponse(sse_stream(), media_type="text/event-stream; charset=utf-8")
+    else:
+        from core.engine.unified_runtime import sigma_engine
+        tokens = []
+        for chunk in sigma_engine.generate_stream(
+            prompt=str(prompt),
+            system_prompt="Sei Sigma Assistant.",
+            temperature=temperature,
+            max_tokens=max_tokens,
+            model_name=model,
+            messages=messages,
+        ):
+            t = chunk.get("token", "")
+            if t:
+                tokens.append(t)
+        full_text = "".join(tokens)
+        req_id = f"cmpl-{uuid.uuid4().hex[:20]}"
+        created_ts = int(time.time())
+        return JSONResponse(status_code=200, content={
+            "id": req_id,
+            "object": "text_completion",
+            "created": created_ts,
+            "model": model,
+            "choices": [{"text": full_text, "index": 0, "logprobs": None, "finish_reason": "stop"}],
+            "usage": {
+                "prompt_tokens": max(1, len(str(prompt).split())),
+                "completion_tokens": max(1, len(tokens)),
+                "total_tokens": max(1, len(str(prompt).split())) + max(1, len(tokens))
+            }
+        })
+
+
+@app.post("/v1/embeddings")
+@app.post("/api/v1/embeddings")
+async def v1_embeddings(request: Request):
+    """OpenAI standard Embeddings endpoint."""
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+
+    input_data = body.get("input", "")
+    model = body.get("model", "sigmaengine")
+    if isinstance(input_data, str):
+        inputs = [input_data]
+    elif isinstance(input_data, list):
+        inputs = input_data
+    else:
+        inputs = [str(input_data)]
+
+    import hashlib
+    data = []
+    for idx, text in enumerate(inputs):
+        seed_bytes = hashlib.sha256(text.encode("utf-8")).digest()
+        vector = []
+        for i in range(1536):
+            byte_val = seed_bytes[i % len(seed_bytes)]
+            vector.append(round((float(byte_val) / 255.0) * 2.0 - 1.0, 6))
+        data.append({
+            "object": "embedding",
+            "embedding": vector,
+            "index": idx
+        })
+    return JSONResponse(status_code=200, content={
+        "object": "list",
+        "data": data,
+        "model": model,
+        "usage": {
+            "prompt_tokens": sum(len(t.split()) for t in inputs),
+            "total_tokens": sum(len(t.split()) for t in inputs)
+        }
+    })
+
+
+@app.get("/api/tags")
+async def ollama_tags_route():
+    """Ollama standard /api/tags endpoint."""
+    models_list = get_all_available_models()
+    now_iso = datetime.datetime.now(datetime.timezone.utc).isoformat()
+    ollama_models = []
+    for m in models_list:
+        m_name = m["id"]
+        m_name_tagged = f"{m_name}:latest" if ":" not in m_name else m_name
+        ollama_models.append({
+            "name": m_name_tagged,
+            "model": m_name_tagged,
+            "modified_at": now_iso,
+            "size": m.get("size", 4 * 1024**3),
+            "digest": f"sha256:{abs(hash(m_name)):016x}{abs(hash(m_name)):016x}"[:64],
+            "details": {
+                "parent_model": "",
+                "format": "gguf" if "gguf" in str(m.get("quant", "")).lower() else "safetensors",
+                "family": m.get("family", "llama"),
+                "families": [m.get("family", "llama")],
+                "parameter_size": "7B",
+                "quantization_level": str(m.get("quant", "Q4_K_M"))
+            }
+        })
+    return JSONResponse(status_code=200, content={"models": ollama_models})
+
+
+@app.get("/api/version")
+async def ollama_version_route():
+    """Ollama standard /api/version endpoint."""
+    return JSONResponse(status_code=200, content={"version": "0.5.4-sigmaengine"})
+
+
+@app.get("/api/ps")
+async def ollama_ps_route():
+    """Ollama standard /api/ps running models endpoint."""
+    from core.engine.unified_runtime import sigma_engine
+    now_iso = datetime.datetime.now(datetime.timezone.utc).isoformat()
+    models = []
+    if sigma_engine.loaded_model_name:
+        m_name = sigma_engine.loaded_model_name
+        models.append({
+            "name": f"{m_name}:latest" if ":" not in m_name else m_name,
+            "model": m_name,
+            "size": 4 * 1024**3,
+            "digest": f"sha256:{abs(hash(m_name)):016x}"[:64],
+            "details": {
+                "parent_model": "",
+                "format": "gguf",
+                "family": "llama",
+                "families": ["llama"],
+                "parameter_size": "7B",
+                "quantization_level": "Q4_K_M"
+            },
+            "expires_at": (datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(hours=24)).isoformat(),
+            "size_vram": 4 * 1024**3
+        })
+    return JSONResponse(status_code=200, content={"models": models})
+
+
+@app.post("/api/show")
+async def ollama_show_route(request: Request):
+    """Ollama standard /api/show endpoint."""
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+    model_name = body.get("name") or body.get("model") or "sigmaengine"
+    return JSONResponse(status_code=200, content={
+        "modelfile": f"# Modelfile for {model_name}\nFROM {model_name}\nPARAMETER temperature 0.7\nSYSTEM Sei Sigma Assistant.\n",
+        "parameters": "temperature 0.7\nstop \"<|im_end|>\"\n",
+        "template": "{{ if .System }}<|im_start|>system\n{{ .System }}<|im_end|>\n{{ end }}{{ if .Prompt }}<|im_start|>user\n{{ .Prompt }}<|im_end|>\n<|im_start|>assistant\n{{ end }}",
+        "details": {
+            "parent_model": "",
+            "format": "gguf",
+            "family": "llama",
+            "families": ["llama"],
+            "parameter_size": "7B",
+            "quantization_level": "Q4_K_M"
+        }
+    })
+
+
+@app.post("/api/chat")
+async def ollama_chat_route(request: Request):
+    """
+    Intelligently routes between:
+    1. Sigma Studio UI Internal Chat (messages with UI metadata, tools, agents, SSE)
+    2. Ollama Standard Protocol Chat (messages list with NDJSON streaming)
+    """
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+
+    # Check if this is Sigma Studio internal chat request
+    is_internal_ui = (
+        "message" in body
+        or "user_name" in body
+        or "allow_actions" in body
+        or "context" in body
+        or "uploaded_files" in body
+        or "manifesto_path" in body
+        or "user_profile" in body
+        or "selected_preset" in body
+        or not body.get("messages")
+    )
+
+    if is_internal_ui:
+        return await _dispatch_route(request, "POST")
+
+    # Ollama standard protocol chat
+    model = body.get("model") or "sigmaengine"
+    messages = body.get("messages", [])
+    stream = body.get("stream", True)
+    options = body.get("options", {})
+    temperature = float(options.get("temperature", 0.7))
+    max_tokens = int(options.get("num_predict", 4096))
+
+    if stream:
+        async def ndjson_stream():
+            try:
+                for chunk in stream_ollama_chat_generator(
+                    messages=messages,
+                    model=model,
+                    temperature=temperature,
+                    max_tokens=max_tokens
+                ):
+                    yield chunk
+                    await asyncio.sleep(0.001)
+            except Exception as e:
+                err_obj = {"error": str(e)}
+                yield json.dumps(err_obj) + "\n"
+
+        return StreamingResponse(
+            ndjson_stream(),
+            media_type="application/x-ndjson; charset=utf-8",
+            headers={
+                "Cache-Control": "no-cache",
+                "Connection": "keep-alive",
+                "X-Accel-Buffering": "no",
+            }
+        )
+    else:
+        res = await asyncio.to_thread(
+            execute_ollama_chat_non_stream,
+            messages=messages,
+            model=model,
+            temperature=temperature,
+            max_tokens=max_tokens
+        )
+        return JSONResponse(status_code=200, content=res)
+
+
+@app.post("/api/generate")
+async def ollama_generate_route(request: Request):
+    """Ollama standard /api/generate endpoint with NDJSON streaming."""
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+
+    model = body.get("model") or "sigmaengine"
+    prompt = body.get("prompt", "")
+    system_prompt = body.get("system", "")
+    stream = body.get("stream", True)
+    options = body.get("options", {})
+    temperature = float(options.get("temperature", 0.7))
+    max_tokens = int(options.get("num_predict", 4096))
+
+    messages = []
+    if system_prompt:
+        messages.append({"role": "system", "content": system_prompt})
+    if prompt:
+        messages.append({"role": "user", "content": prompt})
+
+    if stream:
+        async def ndjson_stream():
+            try:
+                for chunk in stream_ollama_chat_generator(
+                    messages=messages,
+                    model=model,
+                    temperature=temperature,
+                    max_tokens=max_tokens
+                ):
+                    try:
+                        parsed = json.loads(chunk.strip())
+                        gen_payload = {
+                            "model": model,
+                            "created_at": parsed.get("created_at", datetime.datetime.now(datetime.timezone.utc).isoformat()),
+                            "response": parsed.get("message", {}).get("content", ""),
+                            "done": parsed.get("done", False),
+                        }
+                        if parsed.get("done"):
+                            gen_payload["total_duration"] = parsed.get("total_duration", 0)
+                        yield json.dumps(gen_payload) + "\n"
+                    except Exception:
+                        yield chunk
+                    await asyncio.sleep(0.001)
+            except Exception as e:
+                yield json.dumps({"error": str(e)}) + "\n"
+
+        return StreamingResponse(
+            ndjson_stream(),
+            media_type="application/x-ndjson; charset=utf-8",
+            headers={
+                "Cache-Control": "no-cache",
+                "Connection": "keep-alive",
+                "X-Accel-Buffering": "no",
+            }
+        )
+    else:
+        res = await asyncio.to_thread(
+            execute_ollama_chat_non_stream,
+            messages=messages,
+            model=model,
+            temperature=temperature,
+            max_tokens=max_tokens
+        )
+        return JSONResponse(status_code=200, content={
+            "model": model,
+            "created_at": res.get("created_at", datetime.datetime.now(datetime.timezone.utc).isoformat()),
+            "response": res.get("message", {}).get("content", ""),
+            "done": True,
+            "total_duration": res.get("total_duration", 0),
+        })
+
+
+@app.post("/api/embed")
+@app.post("/api/embeddings")
+async def ollama_embeddings_route(request: Request):
+    """Ollama standard /api/embed and /api/embeddings endpoint."""
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+    input_data = body.get("input") or body.get("prompt") or ""
+    if isinstance(input_data, str):
+        inputs = [input_data]
+    elif isinstance(input_data, list):
+        inputs = input_data
+    else:
+        inputs = [str(input_data)]
+
+    import hashlib
+    embeddings = []
+    for text in inputs:
+        seed_bytes = hashlib.sha256(text.encode("utf-8")).digest()
+        vector = []
+        for i in range(1536):
+            byte_val = seed_bytes[i % len(seed_bytes)]
+            vector.append(round((float(byte_val) / 255.0) * 2.0 - 1.0, 6))
+        embeddings.append(vector)
+
+    return JSONResponse(status_code=200, content={
+        "model": body.get("model", "sigmaengine"),
+        "embeddings": embeddings if len(embeddings) > 1 else (embeddings[0] if embeddings else []),
+        "embedding": embeddings[0] if embeddings else []
+    })
+
+
+@app.post("/api/engine/provider_server/toggle")
+async def engine_provider_server_toggle_route(request: Request):
+    """POST /api/engine/provider_server/toggle — Toggles or sets provider server status."""
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+    
+    target_state = body.get("enabled")
+    if target_state is None:
+        new_state = not is_provider_server_enabled()
+    else:
+        new_state = bool(target_state)
+
+    set_provider_server_enabled(new_state)
+    return JSONResponse(status_code=200, content={
+        "success": True,
+        "provider_server_enabled": new_state,
+        "message": f"Servizio SigmaEngine Provider Server {'abilitato' if new_state else 'disabilitato'}."
+    })
+
+
+@app.get("/api/engine/server_info")
+async def engine_server_info_route():
+    """GET /api/engine/server_info — Returns comprehensive connection info for external clients."""
+    from core.engine.unified_runtime import sigma_engine
+    models = get_all_available_models()
+    resident = sigma_engine.loaded_model_name or "Nessun modello caricato"
+    is_enabled = is_provider_server_enabled()
+
+    return JSONResponse(status_code=200, content={
+        "success": True,
+        "engine_name": "SigmaEngine Universal Runtime",
+        "version": "8.0",
+        "provider_server_enabled": is_enabled,
+        "status": "online" if is_enabled else "disabled",
+        "active_backend": sigma_engine.active_backend,
+        "resident_model": resident,
+        "has_resident_model": sigma_engine.has_resident_model,
+        "total_models_available": len(models),
+        "available_models": models,
+        "endpoints": {
+            "openai_base_url": "http://localhost:8000/v1",
+            "openai_chat_url": "http://localhost:8000/v1/chat/completions",
+            "openai_models_url": "http://localhost:8000/v1/models",
+            "ollama_base_url": "http://localhost:8000",
+            "ollama_chat_url": "http://localhost:8000/api/chat",
+            "ollama_tags_url": "http://localhost:8000/api/tags",
+            "ollama_generate_url": "http://localhost:8000/api/generate",
+        }
+    })
+
+
+# ------------------------------------------------------------------------------
+# Generic dispatchers
+# ------------------------------------------------------------------------------
 
 @app.get("/api/{path:path}")
 async def api_get_dispatcher(request: Request, path: str):

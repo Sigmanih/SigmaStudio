@@ -204,13 +204,31 @@ SigmaAPIHandler.handle_hf_token_config = handle_hf_token_config
 SigmaAPIHandler.handle_hf_token_get = handle_hf_token_get
 SigmaAPIHandler.handle_tts_engines_fallback = handle_tts_engines_fallback
 
-# 5b. SigmaEngine Handlers
+# 5b. SigmaEngine Handlers & Standard Provider Server
 from core.engine import (
-    handle_engine_status, handle_engine_profile, handle_engine_partition
+    handle_engine_status, handle_engine_profile, handle_engine_partition,
+    handle_engine_hf_import, handle_engine_models, handle_engine_optimize,
+    handle_engine_plan, handle_engine_unload, handle_engine_benchmark,
+    handle_v1_models, handle_v1_embeddings,
+    handle_ollama_tags, handle_ollama_version, handle_ollama_ps, handle_ollama_show,
+    handle_engine_server_info,
 )
 SigmaAPIHandler.handle_engine_status = handle_engine_status
 SigmaAPIHandler.handle_engine_profile = handle_engine_profile
 SigmaAPIHandler.handle_engine_partition = handle_engine_partition
+SigmaAPIHandler.handle_engine_hf_import = handle_engine_hf_import
+SigmaAPIHandler.handle_engine_models = handle_engine_models
+SigmaAPIHandler.handle_engine_optimize = handle_engine_optimize
+SigmaAPIHandler.handle_engine_plan = handle_engine_plan
+SigmaAPIHandler.handle_engine_unload = handle_engine_unload
+SigmaAPIHandler.handle_engine_benchmark = handle_engine_benchmark
+SigmaAPIHandler.handle_v1_models = handle_v1_models
+SigmaAPIHandler.handle_v1_embeddings = handle_v1_embeddings
+SigmaAPIHandler.handle_ollama_tags = handle_ollama_tags
+SigmaAPIHandler.handle_ollama_version = handle_ollama_version
+SigmaAPIHandler.handle_ollama_ps = handle_ollama_ps
+SigmaAPIHandler.handle_ollama_show = handle_ollama_show
+SigmaAPIHandler.handle_engine_server_info = handle_engine_server_info
 
 
 

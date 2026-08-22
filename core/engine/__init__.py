@@ -19,6 +19,27 @@ from core.engine.engine_router import (
     handle_engine_unload,
     handle_engine_benchmark,
 )
+from core.engine.provider_server import (
+    handle_v1_models,
+    handle_v1_model_retrieve,
+    handle_v1_embeddings,
+    handle_ollama_tags,
+    handle_ollama_version,
+    handle_ollama_ps,
+    handle_ollama_show,
+    handle_engine_server_info,
+    handle_provider_server_toggle,
+    is_provider_server_enabled,
+    set_provider_server_enabled,
+    resolve_target_model,
+    stream_openai_chat_generator,
+    execute_openai_chat_non_stream,
+    stream_ollama_chat_generator,
+    execute_ollama_chat_non_stream,
+    stream_ollama_generate_generator,
+    execute_ollama_generate_non_stream,
+    get_all_available_models,
+)
 
 __all__ = [
     "UniversalHardwareProbe",
@@ -45,6 +66,21 @@ __all__ = [
     "handle_engine_plan",
     "handle_engine_unload",
     "handle_engine_benchmark",
+    "handle_v1_models",
+    "handle_v1_model_retrieve",
+    "handle_v1_embeddings",
+    "handle_ollama_tags",
+    "handle_ollama_version",
+    "handle_ollama_ps",
+    "handle_ollama_show",
+    "handle_engine_server_info",
+    "stream_openai_chat_generator",
+    "execute_openai_chat_non_stream",
+    "stream_ollama_chat_generator",
+    "execute_ollama_chat_non_stream",
+    "stream_ollama_generate_generator",
+    "execute_ollama_generate_non_stream",
+    "get_all_available_models",
 ]
 
 
