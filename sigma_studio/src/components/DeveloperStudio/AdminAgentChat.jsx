@@ -271,6 +271,9 @@ export default function AdminAgentChat({
   const fileInputRef = useRef(null);
   const recognitionRef = useRef(null);
 
+  const messagesContainerRef = useRef(null);
+  const rafScrollRef = useRef(null);
+  const isUserScrolledUpRef = useRef(false);
   const chatEndRef = useRef(null);
   const taskMenuRef = useRef(null);
 
@@ -323,15 +326,40 @@ export default function AdminAgentChat({
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, [showTaskMenu]);
 
-  // Auto-scroll on message updates (if autoScroll enabled)
+  const scrollToBottom = (instant = true) => {
+    if (!autoScroll || isUserScrolledUpRef.current || !messagesContainerRef.current) return;
+    const container = messagesContainerRef.current;
+
+    if (rafScrollRef.current) {
+      cancelAnimationFrame(rafScrollRef.current);
+    }
+
+    rafScrollRef.current = requestAnimationFrame(() => {
+      if (!container) return;
+      if (instant) {
+        container.scrollTop = container.scrollHeight;
+      } else {
+        container.scrollTo({ top: container.scrollHeight, behavior: 'smooth' });
+      }
+    });
+  };
+
+  const handleScrollMessages = (e) => {
+    const { scrollTop, scrollHeight, clientHeight } = e.currentTarget;
+    const isAtBottom = scrollHeight - scrollTop - clientHeight < 60;
+    isUserScrolledUpRef.current = !isAtBottom;
+  };
+
+  // Fluid Auto-scroll without animation conflicts
   useEffect(() => {
-    if (autoScroll) {
-      chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    if (autoScroll && !isUserScrolledUpRef.current) {
+      scrollToBottom(true);
     }
   }, [messages, isStreaming, autoScroll]);
 
   // Task Management Handlers
   const handleCreateNewTask = () => {
+    isUserScrolledUpRef.current = false;
     const newTask = createNewTask(`Task #${tasks.length + 1}`);
     setTasks(prev => [newTask, ...prev]);
     setActiveTaskId(newTask.id);
@@ -339,6 +367,7 @@ export default function AdminAgentChat({
   };
 
   const handleSelectTask = (taskId) => {
+    isUserScrolledUpRef.current = false;
     setActiveTaskId(taskId);
     setShowTaskMenu(false);
   };
@@ -987,14 +1016,19 @@ export default function AdminAgentChat({
       </div>
 
       {/* Messages List */}
-      <div style={{
-        flex: 1,
-        overflowY: 'auto',
-        padding: '12px 14px',
-        display: 'flex',
-        flexDirection: 'column',
-        gap: '12px'
-      }}>
+      <div 
+        ref={messagesContainerRef}
+        onScroll={handleScrollMessages}
+        style={{
+          flex: 1,
+          overflowY: 'auto',
+          padding: '12px 14px',
+          display: 'flex',
+          flexDirection: 'column',
+          gap: '12px',
+          scrollBehavior: 'auto'
+        }}
+      >
         {messages.map((msg, idx) => (
           <div key={idx} style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
             <div style={{
