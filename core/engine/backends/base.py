@@ -14,6 +14,7 @@ from abc import ABC, abstractmethod
 from typing import Dict, Any, Generator, Optional, Tuple
 
 from core.engine.model_inspector import ModelFacts
+from core.engine.sampling import SamplingParams
 
 
 class InferenceBackend(ABC):
@@ -70,12 +71,22 @@ class InferenceBackend(ABC):
         temperature: float = 0.7,
         max_tokens: int = 2048,
         messages: Optional[list] = None,
+        params: Optional["SamplingParams"] = None,
+        cancel: Any = None,
     ) -> Generator[Dict[str, Any], None, None]:
         """
         Yields token chunks shaped like the engine's streaming contract.
 
         `messages` carries the full conversation when the caller has one;
         prompt/system_prompt remain for single-turn callers.
+
+        `params` is the resolved sampler, identical across backends; each one
+        adapts it to its own runtime rather than inventing its own defaults.
+        A backend that receives None builds one from temperature and
+        max_tokens, so older callers keep working.
+
+        `cancel` is a CancellationToken, checked between tokens so an
+        abandoned request stops costing compute.
         """
 
     @abstractmethod
@@ -94,6 +105,22 @@ class InferenceBackend(ABC):
     def telemetry(self) -> Dict[str, Any]:
         """Backend-specific settings that are genuinely in effect."""
         return {}
+
+    def benchmark(self, prompt_tokens: int = 128, decode_tokens: int = 24) -> Dict[str, Any]:
+        """
+        Measures prefill and decode speed on this backend, or says it cannot.
+
+        The default answer is an honest refusal rather than silence: a backend
+        that does not implement this is a backend the tuning loop is blind on,
+        and the caller has to be able to say so. Every backend that serves real
+        traffic should override it -- otherwise the fastest path in the product
+        is the one nobody can measure.
+        """
+        return {
+            "success": False,
+            "error": f"Il backend '{self.name}' non espone ancora un benchmark.",
+            "backend": self.name,
+        }
 
 
 def module_available(name: str) -> bool:

@@ -19,7 +19,7 @@ from core.ai_providers import (
     call_ollama, call_ollama_stream,
     call_openai_compatible, call_openai_compatible_stream,
     call_anthropic,
-    detect_execution_profile, apply_execution_profile,
+    detect_execution_profile, apply_execution_profile, EXECUTION_PROFILES,
 )
 from core.task_handler import execute_ai_actions
 from core.agent_memory import get_memory_context, save_session_memory, save_decision_memory, load_memory
@@ -37,15 +37,41 @@ from core.chat.response_parser import (
 from core.chat.prompt_builder import (
     _get_time_context, _get_manifesto_content, _build_filesystem_context,
     _collect_context_files, _resolve_manifesto_for_model, _determine_agent_by_request,
-    _build_agent_identity_header,
+    _build_agent_identity_header, invalidate_filesystem_context,
 )
 from core.chat.file_extractor import (
     _normalize_data_path, _ensure_module_subfolders, _determine_default_module_path,
     _generate_files_summary, _format_conversational_summary, _extract_and_create_files_from_text,
 )
 from core.chat.web_search import _perform_web_search
+from core.chat.history import (
+    estimate_tokens, resident_tokenizer, trim_history, dropped_notice, history_budget,
+)
 
 log = get_logger(__name__)
+
+# What a cloud model is assumed to hold when we cannot ask. Deliberately modest:
+# every provider on the list is well past it, so the trim is conservative rather
+# than an overflow waiting for the one provider that is not.
+_DEFAULT_CLOUD_CONTEXT = 32768
+
+
+def _engine_context_window() -> int:
+    """
+    The context of the resident local model, or a safe assumption for the cloud.
+
+    Asked of the engine rather than of the checkpoint: the planner shrinks the
+    window to what this machine could actually allocate, and budgeting a
+    conversation against the trained figure builds a prompt the runtime refuses.
+    """
+    try:
+        from core.engine import sigma_engine
+        window = sigma_engine.context_window()
+        if window:
+            return window
+    except Exception as exc:
+        log.debug("Context window unavailable from the engine (%s)", exc)
+    return _DEFAULT_CLOUD_CONTEXT
 
 
 def _sanitize_history_message(content: str) -> str:
@@ -64,6 +90,44 @@ def _sanitize_history_message(content: str) -> str:
 
 
 _THINK_TAG_RE = re.compile(r"</?(?:think|thinking|reasoning|rationale|scratchpad)>", re.IGNORECASE)
+
+
+def _new_cancellation_token():
+    """
+    A token the engine can watch, or None where the engine is not installed.
+
+    Chat must keep working on a host that has no local inference runtime at
+    all -- a cloud-only laptop, or a board where the kernels have not been
+    built yet. Everything downstream treats None as "never cancelled", so the
+    feature degrades instead of breaking the import.
+    """
+    try:
+        from core.engine.cancellation import CancellationToken
+        return CancellationToken()
+    except Exception as exc:
+        log.debug("Cancellation unavailable (%s); streams run to completion.", exc)
+        return None
+
+
+def _resolve_sampling(model, provider_key, provider_cfg, profile, reasoning):
+    """
+    The sampler for this turn, or None to leave providers on their old defaults.
+
+    Kept tolerant for the same reason as the token above: a missing engine
+    package must cost the tuned sampling, not the answer.
+    """
+    try:
+        from core.engine.sampling import SamplingParams
+        return SamplingParams.resolve(
+            model_name=model,
+            provider_key=provider_key,
+            provider_cfg=provider_cfg or {},
+            profile=profile,
+            reasoning=reasoning,
+        )
+    except Exception as exc:
+        log.debug("SamplingParams unavailable (%s); using provider defaults.", exc)
+        return None
 
 
 class _ThinkTagRouter:
@@ -114,14 +178,141 @@ class _ThinkTagRouter:
         return out
 
 
-def _sse_send(handler, payload: dict) -> None:
+def _sse_send(handler, payload: dict) -> bool:
     """Write one SSE event. Works both on the legacy HTTP server (real socket)
-    and on the FastAPI adapter, whose wfile pushes into the streaming queue."""
+    and on the FastAPI adapter, whose wfile pushes into the streaming queue.
+
+    Returns False when the write failed, which on a stream means the reader is
+    gone: the user pressed stop, closed the tab, or lost the network. That
+    return value is the only signal the engine gets that it can stop; swallowing
+    it, as this function used to, is what left generations running to the full
+    token budget with nobody on the other end.
+    """
     try:
         handler.wfile.write(f"data: {json.dumps(payload, ensure_ascii=False)}\n\n".encode("utf-8"))
         handler.wfile.flush()
+        return True
     except Exception:
-        pass
+        return False
+
+
+def _msgs_for_repair(messages, attempted_text):
+    """The conversation plus the block that failed, asking for it again, clean."""
+    return list(messages) + [
+        {"role": "assistant", "content": attempted_text},
+        {"role": "user", "content": (
+            "Il blocco strumento che hai scritto non è JSON valido e non è stato "
+            "eseguito. Riscrivi SOLO l'oggetto JSON della chiamata, senza testo "
+            "attorno e senza recinto markdown."
+        )},
+    ]
+
+
+def _repair_tool_calls(handler, messages, ai_cfg, model, provider, endpoint,
+                       api_url, api_key, timeout, sampling, cancel):
+    """
+    One grammar-constrained retry of a malformed tool call.
+
+    Returns the parsed calls, or None when nothing better could be produced --
+    in which case the caller reports the original parse error, exactly as
+    before. This is strictly an upgrade on the retry that already happened: the
+    same generation, spent on an output that cannot be malformed.
+    """
+    try:
+        from core.engine.grammars import grammar_for_available_tools
+        from core.mcp.agent_loop import extract_tool_calls
+        from core.ai_providers import call_ai_model_stream
+    except Exception as exc:
+        log.debug("Tool repair unavailable (%s)", exc)
+        return None
+
+    grammar = grammar_for_available_tools()
+    if not grammar:
+        return None
+
+    # Short, cold and bounded: this is a transcription, not a decision.
+    repair_params = sampling.with_grammar(grammar).with_overrides(
+        temperature=0.0, max_tokens=512
+    )
+
+    try:
+        pieces = []
+        for chunk in call_ai_model_stream(
+            messages, ai_cfg, model, provider, endpoint, api_url, api_key,
+            0.0, 512, 1.0, timeout, params=repair_params, cancel=cancel,
+        ):
+            if chunk.get("error"):
+                return None
+            pieces.append(chunk.get("token", ""))
+        raw = "".join(pieces).strip()
+    except Exception as exc:
+        log.debug("Tool repair generation failed: %s", exc)
+        return None
+
+    if not raw:
+        return None
+
+    # The grammar emits the bare object; extract_tool_calls wants the fence.
+    calls = extract_tool_calls(f"```sigma-tool\n{raw}\n```")
+    good = [c for c in calls if not c.get("parse_error")]
+    if good:
+        log.info("Chiamata strumento riparata con grammatica: %s",
+                 ", ".join(c["tool"] for c in good))
+        _sse_send(handler, {"model_status": "🔧 Chiamata strumento corretta..."})
+        return good
+    return None
+
+
+class _TokenCoalescer:
+    """
+    Batches consecutive tokens on one channel into fewer SSE events.
+
+    A write plus a flush per token is a syscall per token on the server, and on
+    the client every event re-renders the whole message through markdown, KaTeX
+    and Mermaid. At the ten tokens a second of a 27B nobody notices; the moment
+    a small model runs at a hundred and fifty, the interface becomes the slowest
+    part of the pipeline and the stream visibly stutters.
+
+    Text is never reordered or dropped -- only grouped. The flush thresholds are
+    chosen so the reader cannot perceive the grouping: a frame at 60Hz is 16ms,
+    so a 25ms window is at most one frame of extra latency, and the character
+    cap keeps a fast model from batching a whole paragraph into one repaint.
+    """
+
+    MAX_DELAY_SECONDS = 0.025
+    MAX_CHARS = 48
+
+    def __init__(self, emit):
+        self._emit = emit
+        self._channel = None
+        self._buffer = ""
+        self._opened_at = 0.0
+
+    def feed(self, channel: str, text: str) -> None:
+        if not text:
+            return
+        now = time.perf_counter()
+        # A channel switch must flush: reasoning and answer land in different
+        # bubbles, and merging them would put the thinking in the reply.
+        if self._channel is not None and channel != self._channel:
+            self.flush()
+        if self._channel is None:
+            self._channel = channel
+            self._opened_at = now
+        self._buffer += text
+        if (len(self._buffer) >= self.MAX_CHARS
+                or now - self._opened_at >= self.MAX_DELAY_SECONDS):
+            self.flush()
+
+    def flush(self) -> None:
+        if self._buffer and self._channel is not None:
+            channel, text = self._channel, self._buffer
+            self._buffer = ""
+            self._channel = None
+            self._emit(channel, text)
+        else:
+            self._buffer = ""
+            self._channel = None
 
 
 def _detect_hardware_note(provider: str, model: str) -> str:
@@ -160,10 +351,21 @@ def _stream_chat_response(handler, messages, ai_cfg, model, provider,
                           endpoint, api_url, api_key, temperature, max_tokens,
                           top_p, timeout, message, bot_name, manifesto_path,
                           allow_actions, agent_id=None, agent_role=None, agent_image=None,
-                          routing_time_ms=None, hardware_note=None):
-    """Stream a chat completion as SSE, then run file extraction on the full text."""
+                          routing_time_ms=None, hardware_note=None,
+                          sampling=None, wants_reasoning=True):
+    """Stream a chat completion as SSE, then run file extraction on the full text.
+
+    `sampling` is the resolved SamplingParams for this turn; when None each
+    provider falls back to the loose temperature/max_tokens/top_p triple.
+
+    `wants_reasoning` decides whether a local model is asked to think before
+    answering. It defaults to True so callers that predate the execution
+    profiles behave as before.
+    """
     import time
     from core.ai_providers import call_ai_model_stream
+
+    cancel = _new_cancellation_token()
 
     handler.send_response(200)
     handler.send_header("Content-Type", "text/event-stream")
@@ -209,19 +411,30 @@ def _stream_chat_response(handler, messages, ai_cfg, model, provider,
     # so the _ThinkTagRouter receives clean XML tags with no heuristics needed.
     # Cloud providers (Anthropic, DeepSeek-Reasoner) already return a separate
     # `reasoning_content` field, so prefilling would corrupt their output.
+    #
+    # It is now conditional. Forcing it on every turn made "ciao" pay for a
+    # reasoning block, and the cost is not only latency: a small model pushed
+    # into a chain of thought it was never trained to produce answers worse,
+    # not better. The execution profile decides -- code, mathematics and
+    # analysis think; conversation, greetings and web summaries answer.
     _PREFILL_PROVIDERS = {"ollama", "sigma_engine", "sigma"}
-    _prefill_injected = provider in _PREFILL_PROVIDERS
+    _prefill_injected = wants_reasoning and provider in _PREFILL_PROVIDERS
     if _prefill_injected:
         # Ollama continues generation from any partial assistant message
         messages = list(messages) + [{"role": "assistant", "content": "<think>\n"}]
         # Prime the router so it starts in thinking state immediately
         router._in_thinking = True
 
+    def _push(payload: dict) -> None:
+        """Send one event, and stop the generation if nobody received it."""
+        if not _sse_send(handler, payload) and cancel is not None:
+            cancel.cancel("client_disconnected")
+
     def _emit_status_text(text: str) -> None:
         """Forwards an engine status line to the client without metering it."""
         if not text:
             return
-        _sse_send(handler, {"token": text, "channel": "answer", "status": True})
+        _push({"token": text, "channel": "answer", "status": True})
 
     def _emit(channel: str, text: str) -> None:
         nonlocal full_text, full_thinking, has_sent_thinking_status, has_sent_generating_status, t_first_token, generated_token_count
@@ -234,15 +447,20 @@ def _stream_chat_response(handler, messages, ai_cfg, model, provider,
         if channel == "thinking":
             if not has_sent_thinking_status:
                 has_sent_thinking_status = True
-                _sse_send(handler, {"model_status": f"🧭 {bot_name}: Elaborazione e ragionamento profondo..."})
+                _push({"model_status": f"🧭 {bot_name}: Elaborazione e ragionamento profondo..."})
             full_thinking += text
-            _sse_send(handler, {"thinking": text})
+            _push({"thinking": text})
         else:
             if not has_sent_generating_status:
                 has_sent_generating_status = True
-                _sse_send(handler, {"model_status": f"✨ {bot_name} sta componendo la risposta..."})
+                _push({"model_status": f"✨ {bot_name} sta componendo la risposta..."})
             full_text += text
-            _sse_send(handler, {"token": text})
+            _push({"token": text})
+
+    # Everything the model produces goes through the coalescer; status lines
+    # and metrics bypass it, because they are single events that must land the
+    # moment they happen.
+    coalescer = _TokenCoalescer(_emit)
 
     def _run_model_turn(turn_messages=None) -> bool:
         """One pass of the model over `messages`. False if it errored out."""
@@ -251,16 +469,20 @@ def _stream_chat_response(handler, messages, ai_cfg, model, provider,
         try:
             for chunk in call_ai_model_stream(
                 _msgs, ai_cfg, model, provider, endpoint, api_url, api_key,
-                temperature, max_tokens, top_p, timeout
+                temperature, max_tokens, top_p, timeout,
+                params=sampling, cancel=cancel,
             ):
+                if cancel is not None and cancel.cancelled:
+                    return False
                 if chunk.get("error"):
                     error_msg = chunk.get("message", "Errore sconosciuto")
                     return False
                 # Native reasoning channel: already separated by the provider.
-                _emit("thinking", chunk.get("thinking", ""))
+                coalescer.feed("thinking", chunk.get("thinking", ""))
                 # Status notices (model loading, placement summary) are shown
                 # but never timed or counted as generated words.
                 if chunk.get("status"):
+                    coalescer.flush()
                     if chunk.get("load_duration_ms"):
                         load_duration_ms = chunk.get("load_duration_ms")
                     if chunk.get("model_status"):
@@ -274,12 +496,18 @@ def _stream_chat_response(handler, messages, ai_cfg, model, provider,
 
                 # Answer channel: may still carry inline <think> blocks.
                 for channel, text in router.feed(chunk.get("token", "")):
-                    _emit(channel, text)
+                    coalescer.feed(channel, text)
                 if chunk.get("done"):
                     for channel, text in router.flush():
-                        _emit(channel, text)
+                        coalescer.feed(channel, text)
+                    coalescer.flush()
 
-                    tps = chunk.get("tokens_per_second")
+                    # Prefer whatever the runtime measured. SigmaEngine reports
+                    # speed_tok_s from real decoded tokens; Ollama reports
+                    # tokens_per_second. Recomputing from a word count here
+                    # would replace a true number with an estimate that is off
+                    # by the tokenizer's words-per-token ratio.
+                    tps = chunk.get("speed_tok_s") or chunk.get("tokens_per_second")
                     if tps:
                         calculated_tps = tps
                     elif t_first_token:
@@ -293,16 +521,27 @@ def _stream_chat_response(handler, messages, ai_cfg, model, provider,
                     elif t_first_token:
                         load_duration_ms = round((t_first_token - t_call_start) * 1000, 1)
 
+                    # The engine reports real token counts; the word-split
+                    # tally here is only a fallback for providers that don't.
+                    reported_tokens = (
+                        chunk.get("eval_count")
+                        or chunk.get("total_tokens")
+                        or generated_token_count
+                    )
+
+                    coalescer.flush()
+
                     # Forwarded so the client can trigger auto-continuation on truncation.
-                    _sse_send(handler, {
+                    _push({
                         "done_reason": chunk.get("done_reason", "stop"),
                         "truncated": chunk.get("truncated", False),
                         "metrics": {
                             "routing_time_ms": routing_time_ms,
                             "load_duration_ms": load_duration_ms,
                             "tokens_per_second": calculated_tps,
-                            "token_count": chunk.get("eval_count") or generated_token_count,
-                            "hardware_note": hw_info
+                            "token_count": reported_tokens,
+                            "hardware_note": hw_info,
+                            "sampling": chunk.get("sampling"),
                         }
                     })
                     return True
@@ -313,6 +552,17 @@ def _stream_chat_response(handler, messages, ai_cfg, model, provider,
             return False
 
     _run_model_turn(messages)
+
+    # --- Abandoned request ---------------------------------------------------
+    # Nobody is reading this stream any more. Running MCP tools or writing
+    # files on behalf of an answer the user cancelled is worse than useless:
+    # those act on the world, and the user asked for the turn to stop.
+    if cancel is not None and cancel.cancelled:
+        log.info(
+            "Chat stream cancelled (%s) after %d words for '%s'",
+            cancel.reason, generated_token_count, model,
+        )
+        return
 
     # --- MCP tool loop -------------------------------------------------------
     # The model asks for a tool by writing a fenced block; it is run here and the
@@ -327,6 +577,22 @@ def _stream_chat_response(handler, messages, ai_cfg, model, provider,
                 calls = extract_tool_calls(full_text)
                 if not calls:
                     break
+
+                # A block the model got syntactically wrong is worth one
+                # constrained retry before it is reported as a failure. The
+                # grammar makes malformed JSON and invented tool names
+                # unreachable rather than merely discouraged, so the retry
+                # cannot come back wrong in the same way -- unlike the plain
+                # re-ask, which costs the same generation and often does.
+                malformed = [c for c in calls if c.get("parse_error")]
+                if malformed and sampling is not None:
+                    repaired = _repair_tool_calls(
+                        handler, _msgs_for_repair(messages, full_text),
+                        ai_cfg, model, provider, endpoint, api_url, api_key,
+                        timeout, sampling, cancel,
+                    )
+                    if repaired:
+                        calls = repaired
 
                 _sse_send(handler, {"model_status": f"⚙️ Eseguo {len(calls)} strumento/i MCP..."})
                 outcomes, approvals = execute_calls(calls)
@@ -352,6 +618,9 @@ def _stream_chat_response(handler, messages, ai_cfg, model, provider,
                 # Re-apply prefill for local providers on each tool continuation turn
                 if _prefill_injected:
                     next_messages = next_messages + [{"role": "assistant", "content": "<think>\n"}]
+                # Nothing may straddle the reset: buffered text belongs to the
+                # answer that just ended, not to the continuation.
+                coalescer.flush()
                 full_text = ""
                 router = _ThinkTagRouter()
                 if _prefill_injected:
@@ -365,11 +634,18 @@ def _stream_chat_response(handler, messages, ai_cfg, model, provider,
                 "output": f"Ciclo strumenti interrotto: {exc}",
             }})
 
+    # A tool continuation can be cancelled too, and the same rule holds: do not
+    # write files for an answer the user stopped.
+    if cancel is not None and cancel.cancelled:
+        log.info("Chat stream cancelled (%s) during the tool loop", cancel.reason)
+        return
+
     if error_msg:
         _sse_send(handler, {"error": error_msg, "token": f"\n\n⚠️ **Errore:** {error_msg}"})
     else:
         for channel, text in router.flush():
-            _emit(channel, text)
+            coalescer.feed(channel, text)
+        coalescer.flush()
 
         # The call blocks were the agent's instructions to the hub, not prose:
         # the user sees what the tools did, not the JSON that asked for it.
@@ -394,6 +670,9 @@ def _stream_chat_response(handler, messages, ai_cfg, model, provider,
                 created_files, actions_log = _extract_and_create_files_from_text(
                     clean_text, prompt_topic=message
                 )
+                if created_files:
+                    # The cached tree is now a turn behind what is on disk.
+                    invalidate_filesystem_context()
             except Exception as exc:
                 log.error("Post-stream file extraction failed: %s", exc, exc_info=True)
 
@@ -695,48 +974,74 @@ def handle_chat(self):
 
         bot_name = real_agent_name
 
+        # ── Execution profile ────────────────────────────────────────────────
+        # detect_execution_profile and apply_execution_profile have existed and
+        # been imported at the top of this file for a long time without ever
+        # being called: sampling came straight off the provider config, so
+        # "ciao" was planned exactly like a proof. The profile now decides two
+        # things -- the sampler for this turn, and whether the model is asked
+        # to think before answering.
+        profile_key = detect_execution_profile(message)
+        profile = EXECUTION_PROFILES.get(profile_key, {})
+        wants_reasoning = bool(profile.get("reasoning", True))
+        sampling = _resolve_sampling(
+            model, active_provider, active_prov_cfg, profile, wants_reasoning
+        )
+        log.info(
+            "Profilo '%s' (reasoning=%s) | %s",
+            profile_key, wants_reasoning,
+            sampling.summary() if sampling else "sampler: provider defaults",
+        )
+
+
         system_prompt = _get_manifesto_content(manifesto_path)
-        time_ctx = _get_time_context()
-        fs_context = _build_filesystem_context()
 
         user_name = req.get('user_name') or req.get('user_profile', {}).get('name')
         user_title = req.get('user_title') or req.get('user_profile', {}).get('title')
         identity_header = _build_agent_identity_header(user_name, user_title)
 
-        # Integration with MCP Hub (Hardware VRAM Guard & Memory MCP RAG)
-        mcp_context_info = ""
+        # ── Stable prefix / volatile tail ────────────────────────────────────
+        # Everything the model reads used to be rebuilt into one system message
+        # per turn, clock included. Both local runtimes reuse the KV cache of
+        # the longest token prefix shared with the previous call, so a system
+        # block whose first lines change every minute invalidates the cache at
+        # token zero: the whole prompt is prefilled again on every message, and
+        # the cost grows with the conversation.
+        #
+        # So the message is split by lifetime, not by topic. What is identical
+        # from one turn to the next -- who the agent is, its manifesto, the
+        # tool catalogue, the file-writing rules -- stays in the system message
+        # and is prefilled once. What changes -- the clock, the knowledge-base
+        # tree, retrieved memories -- rides with the final user turn, after the
+        # history, where it costs its own tokens and nothing else's.
+        mcp_tools_catalogue = ""
+        retrieved_memory = ""
         try:
             from core.mcp import mcp_hub
-            # 1. Hardware MCP VRAM Check
-            hw_server = mcp_hub.get_server("Hardware MCP")
-            if hw_server:
-                hw_status = hw_server.call_tool("get_hardware_status")
-                # Pre-warm or clean VRAM if needed
 
-            # 2. Memory MCP Context Retrieval
+            # Memory MCP retrieval depends on the question, so it is volatile.
             mem_server = mcp_hub.get_server("Memory MCP")
             if mem_server and message:
                 rag_res = mem_server.call_tool("query_vector_db", {"query": message, "limit": 3})
                 if rag_res and not rag_res.get("isError"):
-                    mcp_context_info += f"\n\n## 🧠 CONTESTO RECUPERATO DA MEMORY MCP:\n{json.dumps(rag_res.get('results', []), indent=2)}\n"
+                    retrieved_memory = (
+                        "## 🧠 CONTESTO RECUPERATO DA MEMORY MCP:\n"
+                        + json.dumps(rag_res.get("results", []), indent=2)
+                        + "\n"
+                    )
 
-            # 3. Callable tool catalogue.
+            # The callable tool catalogue only changes when the operator turns a
+            # server on or off, so it belongs in the cacheable prefix.
             # Only what is switched on and actually reachable: listing a tool the
             # hub would refuse just sends the agent into a wall.
             from core.mcp.agent_loop import build_tools_prompt
-            mcp_context_info += build_tools_prompt(mcp_hub.get_agent_tools())
+            mcp_tools_catalogue = build_tools_prompt(mcp_hub.get_agent_tools())
         except Exception as mcp_err:
             log.debug("MCP Hub chat pipeline enrichment skipped: %s", mcp_err)
 
         full_prompt = f"""{identity_header}
 
-{system_prompt}
-
-## STRUTTURA PROGETTO
-{fs_context}
-
-## ORA CORRENTE
-{time_ctx}{mcp_context_info}
+{system_prompt}{mcp_tools_catalogue}
 
 ## ISTRUZIONI CREAZIONE E SALVATAGGIO FILE SU DISCO
 1. Quando l'utente ti chiede di creare, scrivere o generare un file per un Argomento, DEVI SEMPRE specificare il percorso relativo esplicito collegandolo DIRETTAMENTE all'argomento (es. `data/ARGOMENTO/NOME_FILE.md`) e racchiudere il contenuto completo all'interno di un blocco di codice markdown:
@@ -768,25 +1073,81 @@ Contenuto completo...
 
         messages = [{"role": "system", "content": full_prompt}]
 
-        # Include recent conversation history (last 10 messages)
-        recent_history = history_messages[-10:] if len(history_messages) > 10 else history_messages
+        # Drop a user turn the frontend already appended to the history, before
+        # measuring: counting a duplicate against the budget evicts a real turn.
+        candidate_history = [
+            h for h in history_messages
+            if not (h.get("role") == "user" and h.get("content") == message)
+        ]
 
-        for h in recent_history:
-            # Prevent duplicating current user message if it was appended to history in frontend
-            if h.get("role") == "user" and h.get("content") == message:
-                continue
-            messages.append(h)
+        # The volatile block, and then the question. The question stays last:
+        # it is what the model must answer, and burying it under a directory
+        # listing is how an assistant ends up describing the listing.
+        volatile_parts = []
+        fs_context = _build_filesystem_context()
+        if fs_context:
+            volatile_parts.append("## STRUTTURA PROGETTO\n" + fs_context)
+        volatile_parts.append("## ORA CORRENTE\n" + _get_time_context())
+        if retrieved_memory:
+            volatile_parts.append(retrieved_memory)
 
-        if not messages or messages[-1].get("content") != message:
-            messages.append({"role": "user", "content": message})
+        volatile_context = "\n\n".join(volatile_parts)
+        final_user_turn = (
+            f"{volatile_context}\n\n---\n\n{message}"
+            if volatile_context else message
+        )
+
+        # ── History, measured rather than counted ────────────────────────────
+        # The window has to hold the system prompt, the volatile block, the
+        # question and the answer. History gets what is left, and is trimmed
+        # from the oldest end with the model's own tokenizer where there is one.
+        tokenizer = resident_tokenizer()
+        fixed_tokens = (
+            estimate_tokens(full_prompt, tokenizer)
+            + estimate_tokens(final_user_turn, tokenizer)
+        )
+        budget = history_budget(
+            context_window=_engine_context_window(),
+            fixed_tokens=fixed_tokens,
+            reserve_for_answer=int(profile.get("max_tokens") or 4096),
+        )
+        recent_history, history_report = trim_history(
+            candidate_history, budget, tokenizer=tokenizer
+        )
+        messages.extend(recent_history)
+
+        notice = dropped_notice(history_report)
+        if notice:
+            final_user_turn = f"{notice}\n\n{final_user_turn}"
+
+        if not messages or messages[-1].get("content") != final_user_turn:
+            messages.append({"role": "user", "content": final_user_turn})
+
+        log.debug(
+            "Contesto: %d fissi + %d storia (%d/%d messaggi) su finestra %d, "
+            "riserva risposta %d",
+            fixed_tokens, history_report["tokens"], history_report["kept"],
+            history_report["kept"] + history_report["dropped"],
+            _engine_context_window(), int(profile.get("max_tokens") or 4096),
+        )
 
         prov_endpoint = active_prov_cfg.get("endpoint", "http://localhost:11434/api/chat")
         prov_api_url = active_prov_cfg.get("api_url") or active_prov_cfg.get("endpoint", "")
         prov_api_key = active_prov_cfg.get("api_key", "")
-        prov_temperature = active_prov_cfg.get("temperature", 0.7)
-        prov_max_tokens = active_prov_cfg.get("max_tokens", 4096)
-        prov_top_p = active_prov_cfg.get("top_p", 0.9)
         prov_timeout = req.get("timeout") or active_prov_cfg.get("timeout", 300)
+
+        # The loose triple the non-streaming providers still take. It now comes
+        # from the resolved sampler rather than raw config, so the JSON path and
+        # the SSE path answer with the same settings.
+        if sampling is not None:
+            prov_temperature = sampling.temperature
+            prov_max_tokens = sampling.max_tokens
+            prov_top_p = sampling.top_p
+        else:
+            tuned_cfg = apply_execution_profile(profile_key, active_prov_cfg)
+            prov_temperature = tuned_cfg.get("temperature", 0.7)
+            prov_max_tokens = tuned_cfg.get("max_tokens", 4096)
+            prov_top_p = tuned_cfg.get("top_p", 0.9)
 
         # Token-by-token SSE: the user reads the answer as it is produced instead of
         # waiting for the whole generation. Planning mode stays on the JSON path
@@ -799,7 +1160,8 @@ Contenuto completo...
                 message=message, bot_name=bot_name,
                 manifesto_path=manifesto_path, allow_actions=allow_actions,
                 agent_id=agent_id, agent_role=real_agent_role, agent_image=real_agent_image,
-                routing_time_ms=routing_time_ms, hardware_note=hardware_note
+                routing_time_ms=routing_time_ms, hardware_note=hardware_note,
+                sampling=sampling, wants_reasoning=wants_reasoning,
             )
 
         if active_provider == "ollama":
@@ -837,6 +1199,8 @@ Contenuto completo...
         actions_log = []
         if allow_actions and ai_response:
             created_files, actions_log = _extract_and_create_files_from_text(ai_response, prompt_topic=message)
+            if created_files:
+                invalidate_filesystem_context()
 
         formatted_res = _format_response(ai_response)
         if created_files:

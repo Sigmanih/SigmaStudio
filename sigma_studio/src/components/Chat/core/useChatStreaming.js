@@ -191,6 +191,148 @@ export function useChatStreaming({
     let firstTokenTime = null;
     let generatedTokenCount = 0;
 
+    // ── One React commit per frame, not per SSE event ──────────────────
+    // Every event used to run a full setSessionMessages: array copy, object
+    // spread, and a re-render of the whole message through markdown, KaTeX and
+    // Mermaid. At the ten tokens a second of a large local model that is
+    // invisible; at the hundred-plus of a small one the interface becomes the
+    // slowest stage in the pipeline and the stream visibly stutters.
+    //
+    // The text itself is accumulated synchronously in fullText/fullThinking, so
+    // batching changes only how often React is told about it -- never what it
+    // is eventually told. A frame is read at paint time, so it always carries
+    // the newest text rather than the text as of when it was scheduled.
+    let paintHandle = null;
+    let paintIsRaf = false;
+    let paintDirty = false;
+
+    const commitStreamState = () => {
+      if (firstToken && continuationCount === 0) {
+        firstToken = false;
+        const resolvedRole = streamAgentStyle?.name || streamAgentName || (activeManifesto?.name && activeManifesto?.name !== 'auto' ? activeManifesto.name : 'Sigma Assistant');
+        const resolvedImage = streamAgentStyle?.image || (activeManifesto?.image && activeManifesto?.image !== '/images/default.png' ? activeManifesto.image : '/images/default.png');
+        setSessionMessages(prev => {
+          const n = [...(prev[sessionId] || [])];
+          if (n.length > 0 && n[n.length - 1].role === 'assistant') {
+            n[n.length - 1] = {
+              ...n[n.length - 1],
+              content: fullText,
+              agent_id: streamAgentId,
+              agentName: `${resolvedRole} (${selectedModel})`,
+              agentRole: resolvedRole,
+              agentImage: resolvedImage,
+              timestamp: assistantTimestamp,
+              streaming: true,
+              thinking: hasThinking ? fullThinking : undefined,
+              streamingThinking: isCurrentlyThinking,
+              created_files: streamCreatedFiles,
+              actions_log: streamActionsLog,
+              tool_calls: streamToolCalls,
+              tool_approvals: streamToolApprovals,
+              routing_time_ms: streamRoutingTimeMs,
+              load_duration_ms: streamLoadDurationMs,
+              tokens_per_second: streamTps,
+              hardware_note: streamHardwareNote,
+              metrics: {
+                routing_time_ms: streamRoutingTimeMs,
+                load_duration_ms: streamLoadDurationMs,
+                tokens_per_second: streamTps,
+                hardware_note: streamHardwareNote
+              }
+            };
+          } else {
+            n.push({
+              role: 'assistant',
+              content: fullText,
+              agent_id: streamAgentId,
+              agentName: `${resolvedRole} (${selectedModel})`,
+              agentRole: resolvedRole,
+              agentImage: resolvedImage,
+              timestamp: assistantTimestamp,
+              streaming: true,
+              thinking: hasThinking ? fullThinking : undefined,
+              streamingThinking: isCurrentlyThinking,
+              created_files: streamCreatedFiles,
+              actions_log: streamActionsLog,
+              tool_calls: streamToolCalls,
+              tool_approvals: streamToolApprovals,
+              routing_time_ms: streamRoutingTimeMs,
+              load_duration_ms: streamLoadDurationMs,
+              tokens_per_second: streamTps,
+              hardware_note: streamHardwareNote,
+              metrics: {
+                routing_time_ms: streamRoutingTimeMs,
+                load_duration_ms: streamLoadDurationMs,
+                tokens_per_second: streamTps,
+                hardware_note: streamHardwareNote
+              }
+            });
+          }
+          return { ...prev, [sessionId]: n };
+        });
+      } else {
+        setSessionMessages(prev => {
+          const n = [...(prev[sessionId] || [])];
+          if (n.length > 0 && n[n.length - 1].role === 'assistant') {
+            const existingContent = continuationCount > 0 ? n[n.length - 1].content : '';
+            const updatedContent = continuationCount > 0 ? existingContent + fullText : fullText;
+            n[n.length - 1] = {
+              ...n[n.length - 1],
+              content: updatedContent,
+              thinking: hasThinking ? fullThinking : n[n.length - 1].thinking,
+              streamingThinking: isCurrentlyThinking,
+              created_files: streamCreatedFiles.length > 0 ? streamCreatedFiles : n[n.length - 1].created_files,
+              actions_log: streamActionsLog.length > 0 ? streamActionsLog : n[n.length - 1].actions_log,
+              tool_calls: streamToolCalls,
+              tool_approvals: streamToolApprovals,
+              routing_time_ms: streamRoutingTimeMs || n[n.length - 1].routing_time_ms,
+              load_duration_ms: streamLoadDurationMs || n[n.length - 1].load_duration_ms,
+              tokens_per_second: streamTps || n[n.length - 1].tokens_per_second,
+              hardware_note: streamHardwareNote || n[n.length - 1].hardware_note,
+              metrics: {
+                routing_time_ms: streamRoutingTimeMs || n[n.length - 1].routing_time_ms,
+                load_duration_ms: streamLoadDurationMs || n[n.length - 1].load_duration_ms,
+                tokens_per_second: streamTps || n[n.length - 1].tokens_per_second,
+                hardware_note: streamHardwareNote || n[n.length - 1].hardware_note
+              }
+            };
+          }
+          return { ...prev, [sessionId]: n };
+        });
+      }
+    };
+
+    const paintNow = () => {
+      paintHandle = null;
+      paintDirty = false;
+      commitStreamState();
+    };
+
+    const schedulePaint = () => {
+      paintDirty = true;
+      if (paintHandle !== null) return;
+      if (typeof requestAnimationFrame === 'function') {
+        paintIsRaf = true;
+        paintHandle = requestAnimationFrame(paintNow);
+      } else {
+        // Node, jsdom, a background tab that throttles rAF: the stream must
+        // still arrive, just on a timer instead of a frame.
+        paintIsRaf = false;
+        paintHandle = setTimeout(paintNow, 16);
+      }
+    };
+
+    // Called before anything reads the final message: a frame still in flight
+    // would otherwise land after the final content and overwrite it.
+    const flushPaint = () => {
+      if (paintHandle !== null) {
+        if (paintIsRaf) cancelAnimationFrame(paintHandle);
+        else clearTimeout(paintHandle);
+        paintHandle = null;
+      }
+      if (paintDirty) paintNow();
+    };
+
     try {
       let streamDone = false, hasError = false, streamErrorMsg = '';
       while (!streamDone) {
@@ -334,103 +476,15 @@ export function useChatStreaming({
               }
             }
 
-            if (firstToken && continuationCount === 0) {
-              firstToken = false;
-              const resolvedRole = streamAgentStyle?.name || streamAgentName || (activeManifesto?.name && activeManifesto?.name !== 'auto' ? activeManifesto.name : 'Sigma Assistant');
-              const resolvedImage = streamAgentStyle?.image || (activeManifesto?.image && activeManifesto?.image !== '/images/default.png' ? activeManifesto.image : '/images/default.png');
-              setSessionMessages(prev => {
-                const n = [...(prev[sessionId] || [])];
-                if (n.length > 0 && n[n.length - 1].role === 'assistant') {
-                  n[n.length - 1] = {
-                    ...n[n.length - 1],
-                    content: fullText,
-                    agent_id: streamAgentId,
-                    agentName: `${resolvedRole} (${selectedModel})`,
-                    agentRole: resolvedRole,
-                    agentImage: resolvedImage,
-                    timestamp: assistantTimestamp,
-                    streaming: true,
-                    thinking: hasThinking ? fullThinking : undefined,
-                    streamingThinking: isCurrentlyThinking,
-                    created_files: streamCreatedFiles,
-                    actions_log: streamActionsLog,
-                    tool_calls: streamToolCalls,
-                    tool_approvals: streamToolApprovals,
-                    routing_time_ms: streamRoutingTimeMs,
-                    load_duration_ms: streamLoadDurationMs,
-                    tokens_per_second: streamTps,
-                    hardware_note: streamHardwareNote,
-                    metrics: {
-                      routing_time_ms: streamRoutingTimeMs,
-                      load_duration_ms: streamLoadDurationMs,
-                      tokens_per_second: streamTps,
-                      hardware_note: streamHardwareNote
-                    }
-                  };
-                } else {
-                  n.push({
-                    role: 'assistant',
-                    content: fullText,
-                    agent_id: streamAgentId,
-                    agentName: `${resolvedRole} (${selectedModel})`,
-                    agentRole: resolvedRole,
-                    agentImage: resolvedImage,
-                    timestamp: assistantTimestamp,
-                    streaming: true,
-                    thinking: hasThinking ? fullThinking : undefined,
-                    streamingThinking: isCurrentlyThinking,
-                    created_files: streamCreatedFiles,
-                    actions_log: streamActionsLog,
-                    tool_calls: streamToolCalls,
-                    tool_approvals: streamToolApprovals,
-                    routing_time_ms: streamRoutingTimeMs,
-                    load_duration_ms: streamLoadDurationMs,
-                    tokens_per_second: streamTps,
-                    hardware_note: streamHardwareNote,
-                    metrics: {
-                      routing_time_ms: streamRoutingTimeMs,
-                      load_duration_ms: streamLoadDurationMs,
-                      tokens_per_second: streamTps,
-                      hardware_note: streamHardwareNote
-                    }
-                  });
-                }
-                return { ...prev, [sessionId]: n };
-              });
-            } else {
-              setSessionMessages(prev => {
-                const n = [...(prev[sessionId] || [])];
-                if (n.length > 0 && n[n.length - 1].role === 'assistant') {
-                  const existingContent = continuationCount > 0 ? n[n.length - 1].content : '';
-                  const updatedContent = continuationCount > 0 ? existingContent + fullText : fullText;
-                  n[n.length - 1] = {
-                    ...n[n.length - 1],
-                    content: updatedContent,
-                    thinking: hasThinking ? fullThinking : n[n.length - 1].thinking,
-                    streamingThinking: isCurrentlyThinking,
-                    created_files: streamCreatedFiles.length > 0 ? streamCreatedFiles : n[n.length - 1].created_files,
-                    actions_log: streamActionsLog.length > 0 ? streamActionsLog : n[n.length - 1].actions_log,
-                    tool_calls: streamToolCalls,
-                    tool_approvals: streamToolApprovals,
-                    routing_time_ms: streamRoutingTimeMs || n[n.length - 1].routing_time_ms,
-                    load_duration_ms: streamLoadDurationMs || n[n.length - 1].load_duration_ms,
-                    tokens_per_second: streamTps || n[n.length - 1].tokens_per_second,
-                    hardware_note: streamHardwareNote || n[n.length - 1].hardware_note,
-                    metrics: {
-                      routing_time_ms: streamRoutingTimeMs || n[n.length - 1].routing_time_ms,
-                      load_duration_ms: streamLoadDurationMs || n[n.length - 1].load_duration_ms,
-                      tokens_per_second: streamTps || n[n.length - 1].tokens_per_second,
-                      hardware_note: streamHardwareNote || n[n.length - 1].hardware_note
-                    }
-                  };
-                }
-                return { ...prev, [sessionId]: n };
-              });
-            }
+            schedulePaint();
           } catch (e) {}
         }
         if (streamDone) break;
       }
+
+      // The stream is over: land whatever the last frame did not, before
+      // anything below reads or replaces the message.
+      flushPaint();
 
       if (wasTruncated && continuationCount < 3) {
         setSessionMessages(prev => {
@@ -547,6 +601,9 @@ export function useChatStreaming({
         return { ...prev, [sessionId]: n };
       });
     } catch (e) {
+      // Cancel any frame still queued: it would repaint a partial answer on
+      // top of the error the user needs to read.
+      try { flushPaint(); } catch (_) {}
       setLoading(false);
       stopSpeech();
       setSessionMessages(prev => {

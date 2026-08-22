@@ -20,6 +20,9 @@ from core.engine.moe_expert_cache import MoEExpertCache
 from core.engine.speculative import SpeculativeDecodingEngine
 from core.engine.model_inspector import ModelInspector, ModelFacts
 from core.engine.memory_planner import MemoryPlanner, PlacementPlan
+from core.engine.sampling import SamplingParams
+from core.engine.cancellation import is_cancelled, stopping_criteria_for
+from core.engine.prefix_cache import PrefixKVCache
 
 log = get_logger(__name__)
 
@@ -59,6 +62,24 @@ class UniversalSigmaEngine:
         self.last_load_error: Optional[str] = None
         self.last_device_map_report: Optional[Dict[str, Any]] = None
         self._load_lock = threading.Lock()
+
+        # One model is resident at a time, so one generation runs at a time.
+        # The server is threaded and admits concurrent requests: without this,
+        # two chats for different models had one thread unload the weights the
+        # other was mid-generation on, and two chats for the same GGUF called
+        # into llama.cpp concurrently, which is not thread-safe. The queue is
+        # not a limitation added here -- it is the truth about the hardware,
+        # made explicit instead of discovered as a crash.
+        self._generation_lock = threading.RLock()
+        self._generation_waiting = 0
+        self._waiting_lock = threading.Lock()
+
+        # Cross-turn KV reuse on the transformers path. On by default because
+        # the memory it holds is memory the placement plan already reserved for
+        # the context window; SIGMA_PREFIX_CACHE=0 turns it off for a machine
+        # where that budget is genuinely tight.
+        self.prefix_cache = PrefixKVCache()
+        self.prefix_cache_enabled = os.environ.get("SIGMA_PREFIX_CACHE", "1") != "0"
 
     # ------------------------------------------------------------- hardware
 
@@ -418,6 +439,11 @@ class UniversalSigmaEngine:
         self.loaded_model_name = display_name
         self.last_load_error = None
 
+        # The cache may grow to the context the plan reserved KV for, and no
+        # further: past that it stops being a saving and becomes a second copy
+        # of the conversation sitting in VRAM.
+        self.prefix_cache.configure(display_name, plan.context_tokens)
+
         actual_placement = self._describe_placement(model)
         self.loaded_model = {
             "name": display_name,
@@ -663,6 +689,10 @@ class UniversalSigmaEngine:
         freed_before = self._vram_used_bytes()
         allocated_before = self._torch_allocated_bytes()
 
+        # The cache holds tensors on the model's devices. Dropping it before
+        # the weights is what makes the freed-bytes figure below honest.
+        self.prefix_cache.clear("model unloaded")
+
         # A registry backend owns its own memory (llama.cpp allocates outside
         # the torch allocator), so it must release through its own path.
         if self.active_backend_instance is not None:
@@ -763,6 +793,11 @@ class UniversalSigmaEngine:
 
     # ---------------------------------------------------------- generation
 
+    #: How long a queued request waits for the engine before giving up. Longer
+    #: than any single answer should take, short enough that a wedged
+    #: generation surfaces as an error instead of a hung tab.
+    GENERATION_QUEUE_TIMEOUT = 600.0
+
     def generate_stream(
         self,
         prompt: str = "",
@@ -771,6 +806,80 @@ class UniversalSigmaEngine:
         max_tokens: int = 16384,
         model_name: Optional[str] = None,
         messages: Optional[List[Dict[str, str]]] = None,
+        params: Optional[SamplingParams] = None,
+        cancel: Any = None,
+    ) -> Generator[Dict[str, Any], None, None]:
+        """
+        Serialises access to the engine, then streams the answer.
+
+        Everything below the lock assumes it owns the resident model: it may
+        unload it, replace it, and mutate its KV cache. Two threads doing that
+        at once is not slower, it is wrong, so the queue is part of the
+        contract rather than a tuning choice.
+        """
+        with self._waiting_lock:
+            self._generation_waiting += 1
+            position = self._generation_waiting
+
+        acquired = self._generation_lock.acquire(blocking=False)
+        try:
+            if not acquired:
+                # Say so rather than appearing frozen: on a single-model engine
+                # a wait is normal, and a silent one reads as a crash.
+                yield {
+                    "token": "",
+                    "status": True,
+                    "model_status": (
+                        f"⏳ Motore occupato da un'altra richiesta"
+                        f"{f' ({position - 1} in attesa)' if position > 1 else ''}..."
+                    ),
+                    "queue_position": position,
+                    "done": False,
+                }
+                acquired = self._generation_lock.acquire(
+                    timeout=self.GENERATION_QUEUE_TIMEOUT
+                )
+        finally:
+            with self._waiting_lock:
+                self._generation_waiting -= 1
+
+        if not acquired:
+            yield {
+                "token": (
+                    "\n\n⏳ **Motore occupato**: la richiesta precedente non si è "
+                    f"conclusa entro {int(self.GENERATION_QUEUE_TIMEOUT)}s. "
+                    "Riprova, oppure scarica il modello dal Model Hub per "
+                    "liberare il motore."
+                ),
+                "token_index": 1,
+                "done": True,
+            }
+            return
+
+        try:
+            yield from self._generate_stream_locked(
+                prompt=prompt,
+                system_prompt=system_prompt,
+                temperature=temperature,
+                max_tokens=max_tokens,
+                model_name=model_name,
+                messages=messages,
+                params=params,
+                cancel=cancel,
+            )
+        finally:
+            self._generation_lock.release()
+
+    def _generate_stream_locked(
+        self,
+        prompt: str = "",
+        system_prompt: str = DEFAULT_SYSTEM_PROMPT,
+        temperature: float = 0.7,
+        max_tokens: int = 16384,
+        model_name: Optional[str] = None,
+        messages: Optional[List[Dict[str, str]]] = None,
+        params: Optional[SamplingParams] = None,
+        cancel: Any = None,
     ) -> Generator[Dict[str, Any], None, None]:
         """
         Streams tokens from native inference with live throughput metrics.
@@ -779,9 +888,22 @@ class UniversalSigmaEngine:
         file context, prior turns and tool results. Passing only `prompt` and
         `system_prompt` collapses that to a single exchange, so the model loses
         everything the user has already said.
+
+        `params` carries the whole sampler. Callers that predate it still pass
+        temperature and max_tokens, which are promoted into the same object, so
+        there is exactly one place where sampling is decided either way.
+
+        `cancel` is checked between tokens: when the reader goes away the
+        generation stops instead of running to the token budget with nobody
+        listening.
         """
         t_start = time.perf_counter()
         token_count = 0
+
+        if params is None:
+            params = SamplingParams.resolve(model_name=model_name or "").with_overrides(
+                temperature=temperature, max_tokens=max_tokens
+            )
 
         model_info = self.find_valid_model_directory(model_name or self.loaded_model_name)
         target_model = model_info[1] if model_info else (model_name or self.loaded_model_name)
@@ -832,9 +954,11 @@ class UniversalSigmaEngine:
             yield from self.active_backend_instance.generate_stream(
                 prompt,
                 system_prompt=system_prompt,
-                temperature=temperature,
-                max_tokens=max_tokens,
+                temperature=params.temperature,
+                max_tokens=params.max_tokens,
                 messages=self._as_messages(prompt, system_prompt, messages),
+                params=params,
+                cancel=cancel,
             )
             return
 
@@ -852,33 +976,68 @@ class UniversalSigmaEngine:
             inputs = self._build_inputs(
                 self._as_messages(prompt, system_prompt, messages)
             )
-            do_sample = temperature is not None and temperature > 0
 
+            # One sampler, resolved once, adapted here. The token budget still
+            # has the last word: it knows what is left of the context window.
             gen_kwargs: Dict[str, Any] = dict(
                 **inputs,
+                **params.for_transformers(self.tokenizer_instance),
                 streamer=streamer,
-                max_new_tokens=self._token_budget(max_tokens, inputs),
-                do_sample=do_sample,
                 use_cache=True,
             )
-            # Sampling knobs are invalid without sampling and emit warnings.
-            if do_sample:
-                gen_kwargs["temperature"] = temperature
-                gen_kwargs["top_p"] = 0.95
+            gen_kwargs["max_new_tokens"] = self._token_budget(
+                params.max_tokens, inputs
+            )
+
+            # Reuse the KV of whatever this prompt shares with the last one.
+            # In a conversation that is the entire history: the model then
+            # prefills only the newest turn instead of re-reading everything
+            # it read a minute ago.
+            prompt_ids = inputs["input_ids"][0].tolist()
+            reused_tokens = 0
+            if self.prefix_cache_enabled:
+                past, reused_tokens = self.prefix_cache.take(
+                    prompt_ids, self.loaded_model_name or ""
+                )
+                if past is not None:
+                    gen_kwargs["past_key_values"] = past
+                    # generate() must return the cache it leaves behind, or the
+                    # next turn has nothing to crop.
+                    gen_kwargs["return_dict_in_generate"] = True
+            self.prefix_cache.tokens_prefilled += max(
+                len(prompt_ids) - reused_tokens, 0
+            )
+            if self.prefix_cache_enabled and "return_dict_in_generate" not in gen_kwargs:
+                gen_kwargs["return_dict_in_generate"] = True
+
+            if params.seed is not None:
+                from transformers import set_seed
+                set_seed(params.seed)
+
+            stopper = stopping_criteria_for(cancel)
+            if stopper is not None:
+                gen_kwargs["stopping_criteria"] = stopper
 
             pad_id = getattr(self.tokenizer_instance, "pad_token_id", None)
             eos_id = getattr(self.tokenizer_instance, "eos_token_id", None)
             gen_kwargs["pad_token_id"] = pad_id if pad_id is not None else eos_id
 
+            log.debug("[SigmaEngine] Sampling: %s", params.summary())
+
             generation_error: List[BaseException] = []
+            generation_output: List[Any] = []
 
             def _run_generate():
                 try:
                     with torch.inference_mode():
-                        self.model_instance.generate(**gen_kwargs)
+                        result = self.model_instance.generate(**gen_kwargs)
+                    generation_output.append(result)
                 except BaseException as exc:  # surfaced to the caller below
                     log.error("[SigmaEngine] Generation thread failed: %s", exc)
                     generation_error.append(exc)
+                    # A failed generation leaves a cache of unknown length; the
+                    # next turn must not crop something it cannot trust.
+                    self.prefix_cache.clear("generation failed")
                     streamer.end()
 
             thread = threading.Thread(target=_run_generate, daemon=True)
@@ -887,6 +1046,12 @@ class UniversalSigmaEngine:
             first_token_sent = False
             first_token_at = t_start
             for token_text in streamer:
+                # The stopping criterion already told generate to wind down;
+                # leaving the consumer loop as well means the caller stops
+                # paying for tokens nobody will read. The streamer queue is
+                # unbounded, so the producer never blocks on our exit.
+                if is_cancelled(cancel):
+                    break
                 if not token_text:
                     continue
                 token_count += 1
@@ -918,6 +1083,8 @@ class UniversalSigmaEngine:
 
             thread.join(timeout=5.0)
 
+            self._retain_prefix_cache(generation_output, cancel)
+
             if generation_error:
                 yield {
                     "token": f"\n\n❌ **Errore GPU durante la generazione**: "
@@ -935,16 +1102,54 @@ class UniversalSigmaEngine:
                 "speed_tok_s": round(max(token_count - 1, 1) / decode_seconds, 1),
                 "total_tokens": token_count,
                 "prefill_ms": round((first_token_at - t_start) * 1000, 1),
+                "cancelled": is_cancelled(cancel),
+                "sampling": params.to_dict(),
+                "prefix_reused_tokens": reused_tokens,
+                "prompt_tokens": len(prompt_ids),
                 "done": True,
             }
 
         except Exception as exc:
+            self.prefix_cache.clear("generation error")
             log.error("[SigmaEngine] Generation error: %s", exc, exc_info=True)
             yield {
                 "token": f"\n\n❌ **Errore SigmaEngine**: {type(exc).__name__}: {exc}",
                 "token_index": token_count + 1,
                 "done": True,
             }
+
+    def _retain_prefix_cache(self, generation_output: List[Any], cancel: Any) -> None:
+        """
+        Keeps the KV cache a finished generation left, for the next turn.
+
+        Only a generation that ran to its natural end is kept. A cancelled one
+        stopped at an arbitrary token, and the sequence it reports may not be
+        the sequence the cache actually covers -- reusing that would not slow
+        the next answer down, it would corrupt it.
+        """
+        if not self.prefix_cache_enabled:
+            return
+        if is_cancelled(cancel) or not generation_output:
+            self.prefix_cache.clear("generation did not finish")
+            return
+
+        result = generation_output[0]
+        cache = getattr(result, "past_key_values", None)
+        sequences = getattr(result, "sequences", None)
+        if cache is None or sequences is None:
+            # An older transformers, or a model whose generate() returns a bare
+            # tensor: nothing to retain, and nothing broken by not retaining it.
+            self.prefix_cache.clear("runtime returned no cache")
+            return
+
+        try:
+            ids = sequences[0].tolist()
+        except Exception as exc:
+            log.debug("[SigmaEngine] Cannot read generated ids (%s)", exc)
+            self.prefix_cache.clear("unreadable sequence")
+            return
+
+        self.prefix_cache.store(ids, cache, self.loaded_model_name or "")
 
     def _token_budget(self, requested: int, inputs: Dict[str, Any]) -> int:
         """
@@ -1115,6 +1320,24 @@ class UniversalSigmaEngine:
 
     # -------------------------------------------------------------- status
 
+    def context_window(self) -> int:
+        """
+        The context the resident model actually has, in tokens.
+
+        Not what the checkpoint was trained for: what this machine could
+        allocate for it. The planner shrinks the window to fit the VRAM it
+        found, and a caller budgeting a conversation against the trained figure
+        would build a prompt the runtime then refuses.
+        """
+        if self.active_backend_instance is not None:
+            settings = self.active_backend_instance.telemetry() or {}
+            return int(settings.get("n_ctx", 0) or 0)
+        if self.placement_plan and self.placement_plan.context_tokens:
+            return int(self.placement_plan.context_tokens)
+        if self.model_facts and self.model_facts.max_position_embeddings:
+            return int(self.model_facts.max_position_embeddings)
+        return 0
+
     def get_status(self) -> Dict[str, Any]:
         """Returns engine state, hardware allocation and the active plan."""
         return {
@@ -1134,6 +1357,14 @@ class UniversalSigmaEngine:
                 if self.active_backend_instance else "transformers"
             ),
             "tiering_summary": self.hardware_profile.get("recommended_tiering"),
+            # Real counters, not a claim: hits, misses and how much prefill the
+            # cache actually removed on this machine with this conversation.
+            "prefix_cache": (
+                self.prefix_cache.stats() if self.prefix_cache_enabled
+                else {"enabled": False}
+            ),
+            "generation_busy": self._generation_waiting > 0,
+            "generation_queue": self._generation_waiting,
         }
 
     def backend_capabilities(self) -> Dict[str, Any]:
@@ -1176,18 +1407,32 @@ class UniversalSigmaEngine:
         """
         from core.engine.benchmark import EngineBenchmark
 
-        if self.model_instance is None:
+        if not self.has_resident_model:
             target = model_name or self.loaded_model_name
             result = self.load_native_model(target)
             if not result.get("success"):
                 return {"success": False, "error": result.get("error")}
 
-        return EngineBenchmark.run(
-            self,
-            prompt_tokens=prompt_tokens,
-            decode_tokens=decode_tokens,
-            profile_modules=profile_modules,
-        )
+        # A registry backend owns its own model and measures itself. Routing
+        # everything through the transformers benchmark is why this endpoint
+        # answered "no model loaded" for every GGUF -- that is, for the format
+        # most models on this machine are actually in.
+        if self.active_backend_instance is not None:
+            with self._generation_lock:
+                return self.active_backend_instance.benchmark(
+                    prompt_tokens=prompt_tokens, decode_tokens=decode_tokens,
+                )
+
+        # Measuring mutates the KV cache and competes for the device, so it
+        # queues behind chat like any other generation.
+        with self._generation_lock:
+            self.prefix_cache.clear("benchmark run")
+            return EngineBenchmark.run(
+                self,
+                prompt_tokens=prompt_tokens,
+                decode_tokens=decode_tokens,
+                profile_modules=profile_modules,
+            )
 
     def plan_for_model(
         self,

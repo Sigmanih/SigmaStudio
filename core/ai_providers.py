@@ -19,6 +19,31 @@ from core.logger import get_logger
 log = get_logger(__name__)
 
 
+def _cancelled(token) -> bool:
+    """
+    Whether the caller has given up on this generation.
+
+    Duck-typed on purpose: importing core.engine.cancellation here would drag
+    the whole engine package in at module load, and this module has to stay
+    importable on a host that has no inference runtime installed at all --
+    a cloud-only laptop, or a Raspberry Pi before the kernels are built.
+    """
+    if token is None:
+        return False
+    try:
+        flag = getattr(token, "cancelled", None)
+        if isinstance(flag, bool):
+            return flag
+        if callable(flag):
+            return bool(flag())
+        is_set = getattr(token, "is_set", None)
+        if callable(is_set):
+            return bool(is_set())
+    except Exception:
+        return False
+    return False
+
+
 
 
 # ---------------------------------------------------------------------------
@@ -240,6 +265,7 @@ def save_ai_config(ai_config: dict, config_path: str = "config.json") -> None:
 EXECUTION_PROFILES = {
     "fast_chat": {
         "label": "Chat Veloce / Sintetica",
+        "reasoning": False,
         "temperature": 0.6,
         "max_tokens": 4096,
         "num_ctx": 32768,
@@ -250,6 +276,7 @@ EXECUTION_PROFILES = {
     },
     "code": {
         "label": "Codice / Sviluppo Deep",
+        "reasoning": True,
         "temperature": 0.2,
         "max_tokens": 32768,
         "num_ctx": 65536,
@@ -260,6 +287,7 @@ EXECUTION_PROFILES = {
     },
     "mathematics": {
         "label": "Matematica / Ricerca Deep",
+        "reasoning": True,
         "temperature": 0.2,
         "max_tokens": 32768,
         "num_ctx": 65536,
@@ -270,6 +298,7 @@ EXECUTION_PROFILES = {
     },
     "creative": {
         "label": "Creativo / Brainstorming",
+        "reasoning": False,
         "temperature": 0.85,
         "max_tokens": 16384,
         "num_ctx": 65536,
@@ -280,6 +309,7 @@ EXECUTION_PROFILES = {
     },
     "analysis": {
         "label": "Analisi Dati",
+        "reasoning": True,
         "temperature": 0.25,
         "max_tokens": 32768,
         "num_ctx": 65536,
@@ -290,6 +320,7 @@ EXECUTION_PROFILES = {
     },
     "conversation": {
         "label": "Conversazione Standard",
+        "reasoning": False,
         "temperature": 0.7,
         "max_tokens": 16384,
         "num_ctx": 65536,
@@ -300,6 +331,7 @@ EXECUTION_PROFILES = {
     },
     "web_search": {
         "label": "Ricerca Web",
+        "reasoning": False,
         "temperature": 0.4,
         "max_tokens": 16384,
         "num_ctx": 65536,
@@ -319,10 +351,16 @@ def detect_execution_profile(message: str, context: str = "") -> str:
     """
     msg_strip = message.strip().lower()
     words = msg_strip.split()
-    
-    # Fast chat check for short greetings or trivial questions
+
+    # Fast chat check for short greetings or trivial questions.
+    # Punctuation is stripped per word: "ciao," and "stai?" are the way people
+    # actually type a greeting, and matching only the bare token sent every one
+    # of them down the deep-generation path this test exists to avoid.
     greetings = {'ciao', 'buongiorno', 'buonasera', 'salve', 'chi sei', 'come stai', 'grazie', 'ok', 'perfetto', 'test'}
-    if len(words) <= 4 and (msg_strip in greetings or any(w in greetings for w in words)):
+    bare = [w.strip(".,!?;:…\"'()") for w in words]
+    if len(words) <= 4 and (
+        msg_strip.strip(".,!?;:…") in greetings or any(w in greetings for w in bare)
+    ):
         return "fast_chat"
 
     msg_lower = (message + " " + context).lower()
@@ -734,28 +772,38 @@ def call_ollama_stream(
     num_ctx: int = 32768,
     seed: int = 0,
     timeout: int = 300,
+    params=None,
+    cancel=None,
 ):
     if not REQUESTS_AVAILABLE:
         yield {"error": True, "message": "requests library not available"}
         return
     try:
+        # Thread count is the one option Ollama cannot infer better than we
+        # can: it is a property of this host, not of the sampler, so it is set
+        # here on every platform rather than carried in SamplingParams.
         cpu_count = os.cpu_count() or 4
         optimal_threads = min(cpu_count, 8) if cpu_count <= 8 else max(4, min(cpu_count - 2, 12))
-        effective_ctx = num_ctx if (num_ctx and num_ctx > 0) else 8192
-        effective_max_tokens = max_tokens if (max_tokens and max_tokens > 0) else 4096
 
-        options = {
-            "temperature": temperature,
-            "num_predict": effective_max_tokens,
-            "top_p": top_p if top_p is not None else 0.95,
-            "top_k": top_k or 40,
-            "repeat_penalty": repeat_penalty or 1.1,
-            "num_ctx": effective_ctx,
-            "num_thread": optimal_threads,
-            "use_mmap": True,
-        }
-        if seed:
-            options["seed"] = seed
+        if params is not None:
+            options = params.for_ollama_options()
+            options.setdefault("num_ctx", num_ctx if (num_ctx and num_ctx > 0) else 8192)
+        else:
+            effective_ctx = num_ctx if (num_ctx and num_ctx > 0) else 8192
+            effective_max_tokens = max_tokens if (max_tokens and max_tokens > 0) else 4096
+            options = {
+                "temperature": temperature,
+                "num_predict": effective_max_tokens,
+                "top_p": top_p if top_p is not None else 0.95,
+                "top_k": top_k or 40,
+                "repeat_penalty": repeat_penalty or 1.1,
+                "num_ctx": effective_ctx,
+            }
+            if seed:
+                options["seed"] = seed
+
+        options["num_thread"] = optimal_threads
+        options["use_mmap"] = True
         payload = {
             "model": model,
             "messages": messages,
@@ -793,6 +841,12 @@ def call_ollama_stream(
             yield {"error": True, "message": f"Ollama error {resp.status_code}: {resp.text[:200]}"}
             return
         for line in resp.iter_lines(chunk_size=1, decode_unicode=True):
+            if _cancelled(cancel):
+                # Closing the response tells Ollama to stop generating; without
+                # it the daemon keeps the model busy for a reply nobody wants.
+                resp.close()
+                yield {"done": True, "done_reason": "cancelled", "cancelled": True}
+                return
             if not line:
                 continue
             try:
@@ -901,6 +955,8 @@ def call_openai_compatible_stream(
     max_tokens: int = 4096,
     top_p: float = 0.9,
     timeout: int = 120,
+    params=None,
+    cancel=None,
 ):
     if not REQUESTS_AVAILABLE:
         yield {"error": True, "message": "requests library not available"}
@@ -916,16 +972,25 @@ def call_openai_compatible_stream(
         payload = {
             "model": model,
             "messages": messages,
-            "temperature": temperature,
-            "max_tokens": max_tokens,
-            "top_p": top_p,
             "stream": True,
         }
+        if params is not None:
+            payload.update(params.for_openai())
+        else:
+            payload.update({
+                "temperature": temperature,
+                "max_tokens": max_tokens,
+                "top_p": top_p,
+            })
         resp = requests.post(api_url, json=payload, headers=headers, stream=True, timeout=int(timeout or 120))
         if resp.status_code != 200:
             yield {"error": True, "message": f"API error {resp.status_code}: {resp.text[:200]}"}
             return
         for line in resp.iter_lines(chunk_size=1, decode_unicode=True):
+            if _cancelled(cancel):
+                resp.close()
+                yield {"done": True, "done_reason": "cancelled", "cancelled": True}
+                return
             if not line:
                 continue
             if not line.startswith("data:"):
@@ -1009,8 +1074,20 @@ def call_anthropic(
         return None, str(e)
 
 
-def call_ai_model_stream(messages, ai_cfg, model, provider, endpoint, api_url, api_key, temperature, max_tokens, top_p, request_timeout):
-    # Unified generator yielding chunks of tokens
+def call_ai_model_stream(messages, ai_cfg, model, provider, endpoint, api_url, api_key,
+                         temperature, max_tokens, top_p, request_timeout,
+                         params=None, cancel=None):
+    """
+    Unified generator yielding chunks of tokens.
+
+    `params` is a SamplingParams resolved by the caller. Passing it is how the
+    sampler a model was tuned for actually reaches the runtime; without it each
+    provider falls back to the loose temperature/max_tokens/top_p triple, which
+    is what the older call sites still send.
+
+    `cancel` is a CancellationToken, so a request the client walked away from
+    stops consuming the GPU (or the remote quota) instead of running to term.
+    """
     if provider in ('sigma_engine', 'sigma'):
         from core.engine import sigma_engine
         # Same here, plus the model name: without it the engine falls back to
@@ -1018,6 +1095,7 @@ def call_ai_model_stream(messages, ai_cfg, model, provider, endpoint, api_url, a
         return sigma_engine.generate_stream(
             messages=messages, temperature=temperature,
             max_tokens=max_tokens, model_name=model,
+            params=params, cancel=cancel,
         )
 
     route_provider = provider
@@ -1029,9 +1107,11 @@ def call_ai_model_stream(messages, ai_cfg, model, provider, endpoint, api_url, a
     try:
         if route_provider == "ollama":
             return call_ollama_stream(messages, model, endpoint, temperature, max_tokens, top_p,
-                ac.get("top_k", 40), ac.get("repeat_penalty", 1.1), ac.get("num_ctx", 8192), ac.get("seed", 0), request_timeout)
+                ac.get("top_k", 40), ac.get("repeat_penalty", 1.1), ac.get("num_ctx", 8192), ac.get("seed", 0), request_timeout,
+                params=params, cancel=cancel)
         elif route_provider == "api":
-            return call_openai_compatible_stream(messages, model, api_url, api_key, temperature, max_tokens, top_p, request_timeout)
+            return call_openai_compatible_stream(messages, model, api_url, api_key, temperature, max_tokens, top_p, request_timeout,
+                params=params, cancel=cancel)
         elif route_provider == "anthropic":
             # Anthropic fallback to non-stream, yielding the entire text as a single token
             content, thinking = call_anthropic(messages, model, api_url, api_key, temperature, max_tokens, top_p)

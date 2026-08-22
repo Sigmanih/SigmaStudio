@@ -23,20 +23,10 @@ log = get_logger(__name__)
 # Routing picks one manifesto path. It is a classification, not a generation,
 # and every millisecond it costs is latency before the user sees any answer.
 
-# An agent id is a handful of tokens. The previous budget of 1000 allowed a
-# reasoning model to emit its entire chain of thought before the id, which on a
-# local 27B at ~10 tok/s meant up to a minute and a half spent choosing a file.
-_ROUTING_MAX_TOKENS = 24
-
 # The same request always maps to the same agent, and retries and loops re-route
-# identical messages, so the classifier result is worth keeping.
+# identical messages, so the routing result is worth keeping.
 _ROUTING_CACHE: "OrderedDict[str, str]" = OrderedDict()
 _ROUTING_CACHE_MAX = 256
-
-# Reasoning models wrap their deliberation in tags; the id follows it.
-_THINK_BLOCK = re.compile(
-    r"<(think|thinking|reasoning)>.*?</\1>", re.DOTALL | re.IGNORECASE
-)
 
 
 def _routing_cache_get(message: str):
@@ -53,25 +43,6 @@ def _routing_cache_put(message: str, manifesto_path: str) -> None:
     _ROUTING_CACHE.move_to_end(key)
     while len(_ROUTING_CACHE) > _ROUTING_CACHE_MAX:
         _ROUTING_CACHE.popitem(last=False)
-
-
-def _llm_routing_is_cheap(provider: str) -> bool:
-    """
-    Whether the classifier can run without paying a model load.
-
-    A local engine must not be woken up just to pick a manifesto: pulling a
-    multi-GB checkpoint into VRAM takes tens of seconds, dwarfing the decision
-    it informs, and the answer path loads the same model moments later anyway.
-    Once the model is already resident the call is ordinary inference.
-    """
-    if provider not in ("sigma_engine", "sigma"):
-        return True
-    try:
-        from core.engine import sigma_engine
-        return sigma_engine.model_instance is not None
-    except Exception as exc:
-        log.debug("Engine unavailable for routing: %s", exc)
-        return False
 
 
 def _get_time_context() -> str:
@@ -222,19 +193,67 @@ def _resolve_manifesto_for_model(model_name: str) -> str:
     return ""
 
 
+# --- Knowledge-base tree cache ----------------------------------------------
+# The tree was rebuilt from disk on every single chat message: a full walk of
+# data/ before the model could be given anything. That is I/O per request and
+# tokens per request, and both grow with how much the user has stored -- the
+# product got slower the more it was used.
+#
+# The tree only changes when the user creates or deletes something, which is
+# rare compared to how often they type. A short time-to-live plus the mtimes of
+# the directories themselves catches every change the agents make through
+# create_file / delete_file, at the cost of one stat per topic instead of a
+# recursive listing.
+_FS_CACHE_TTL_SECONDS = 45.0
+_FS_MAX_FILES = 400            # beyond this the tree stops informing and starts crowding
+_fs_cache: dict[str, object] = {"stamp": None, "text": "", "built_at": 0.0}
+
+
+def _fs_tree_stamp(data_dir: str) -> tuple:
+    """
+    A cheap fingerprint of the tree's shape.
+
+    Directory mtimes move when entries are added or removed at that level, so
+    stat-ing the root and each topic detects every structural change without
+    descending into the files themselves.
+    """
+    try:
+        stamp = [os.stat(data_dir).st_mtime_ns]
+        for entry in sorted(os.listdir(data_dir)):
+            path = os.path.join(data_dir, entry)
+            if os.path.isdir(path):
+                stamp.append(os.stat(path).st_mtime_ns)
+        return tuple(stamp)
+    except OSError:
+        return ()
+
+
 def _build_filesystem_context() -> str:
     """Build a text representation of the ``data/`` knowledge-base structure.
 
-    Returns:
-        Multi-line string listing topics → modules → sections → files,
-        or empty string if ``data/`` does not exist.
+    Cached: see the note above. Returns a multi-line string listing
+    topics → modules → sections → files, or empty string if ``data/``
+    does not exist.
     """
-    lines: list[str] = []
+    import time
+
     data_dir = "data"
     if not os.path.isdir(data_dir):
         return ""
 
+    now = time.monotonic()
+    fresh = (now - float(_fs_cache["built_at"])) < _FS_CACHE_TTL_SECONDS
+    stamp = _fs_tree_stamp(data_dir)
+    if fresh and _fs_cache["stamp"] == stamp:
+        return str(_fs_cache["text"])
+
+    lines: list[str] = []
+    file_count = 0
+    truncated = False
+
     for topic in sorted(os.listdir(data_dir)):
+        if truncated:
+            break
         topic_path = os.path.join(data_dir, topic)
         if not os.path.isdir(topic_path):
             continue
@@ -252,10 +271,36 @@ def _build_filesystem_context() -> str:
                     if files:
                         lines.append(f"    {section}/")
                         for fname in files:
+                            if file_count >= _FS_MAX_FILES:
+                                truncated = True
+                                break
                             fpath = os.path.join(sec_path, fname).replace("\\", "/")
                             lines.append(f"      {fname}  → {fpath}")
+                            file_count += 1
+                if truncated:
+                    break
+            if truncated:
+                break
 
-    return "\n".join(lines) if lines else ""
+    if truncated:
+        # Say so rather than silently showing a partial tree: an agent that
+        # believes it has seen everything will report a file as missing.
+        lines.append(
+            f"\n… elenco troncato a {_FS_MAX_FILES} file. "
+            "Usa gli strumenti di lettura del filesystem per il resto."
+        )
+
+    text = "\n".join(lines) if lines else ""
+    _fs_cache["stamp"] = stamp
+    _fs_cache["text"] = text
+    _fs_cache["built_at"] = now
+    return text
+
+
+def invalidate_filesystem_context() -> None:
+    """Drop the cached tree after an agent has written to ``data/``."""
+    _fs_cache["stamp"] = None
+    _fs_cache["built_at"] = 0.0
 
 
 def _collect_context_files(handler, open_files: list[str]) -> str:
@@ -327,13 +372,17 @@ def _determine_agent_by_request(message: str, ai_cfg: dict, model_override: str)
 
 
 def _resolve_agent_by_request(message: str, ai_cfg: dict, model_override: str) -> str:
-    """Determine the specialized agent manifesto based on semantic domain patterns & LLM intent classification."""
+    """
+    Pick the specialized manifesto for a request, without spending a model pass.
+
+    Seventeen ordered pattern tiers handle what a regex can decide reliably;
+    what they miss goes to the vector-similarity router at the bottom. Nothing
+    on this path loads weights or waits on a generation, so routing costs
+    microseconds to milliseconds rather than a full inference.
+    """
     import re
-    import json
     import os
-    from core.orchestration.agent_config import load_agent_config
-    from core.agent_registry import SIGMA_ARCHITECT_ID, get_all_agents
-    from core.ai_providers import call_ai_model
+    from core.agent_registry import get_all_agents
 
     msg_lower = message.lower().strip()
 
@@ -477,68 +526,44 @@ def _resolve_agent_by_request(message: str, ai_cfg: dict, model_override: str) -
             log.info("Centralino Switchboard (Semantic match: Architecture) -> manifesti/sigma_architect.md")
             return "manifesti/sigma_architect.md"
 
-    # 7. Fallback Semantic LLM Classifier Router
-    main_model, provider, endpoint, api_url, api_key, temperature, max_tokens, top_p, timeout = \
-        load_agent_config(ai_cfg, model_override, SIGMA_ARCHITECT_ID)
+    # 18. Fallback: vector-similarity intent router.
+    #
+    # This used to be a full inference pass: the chat model was asked, in
+    # prose, which manifesto to use, and the user waited for the whole
+    # generation before their answer even started. On a 27B that is the single
+    # largest fixed cost in front of the first token, paid on every message
+    # that the pattern tiers above did not already resolve.
+    #
+    # core/embedding_router.py answers the same question by similarity against
+    # curated anchor phrases. With sentence-transformers installed it is a
+    # multilingual embedding lookup; without it, the module falls back to an
+    # n-gram TF-IDF cosine that is pure standard library. Both land in single
+    # -digit milliseconds and both run anywhere Python runs, which the model
+    # pass never did.
+    routable_ids = {
+        a["id"] for a in get_all_agents()
+        if a.get("status") == "active" and os.path.exists(f"manifesti/{a['id']}.md")
+    }
 
-    if not _llm_routing_is_cheap(provider):
-        log.info(
-            "Centralino Switchboard: skipping LLM classifier (%s not resident) "
-            "-> manifesti/sigma_assistant.md", provider,
-        )
-        return "manifesti/sigma_assistant.md"
-
-    agents = get_all_agents()
-    active_agents = [a for a in agents if a.get("status") == "active"]
-
-    # Only agents with an installed manifesto can actually be routed to. Asking
-    # a model to choose between candidates that resolve to nothing spends a full
-    # inference pass to arrive at the default anyway.
-    routable = [a for a in active_agents if os.path.exists(f"manifesti/{a['id']}.md")]
-    if len(routable) < 2:
-        log.info(
-            "Centralino Switchboard: %d routable manifesto(s), no classification "
-            "needed -> manifesti/sigma_assistant.md", len(routable),
-        )
-        return "manifesti/sigma_assistant.md"
-    active_agents = routable
-
-    agents_info = "\n".join([f"- {a['id']}: {a['name']} (Specializzazione: {a.get('specialization', a.get('role', ''))})" for a in active_agents])
-    
-    system_prompt = f"""Sei l'Orchestratore e Centralino Intelligente di Sigma Studio.
-Il tuo unico compito è analizzare il senso semantico della richiesta dell'utente e rispondi ESCLUSIVAMENTE con l'ID dell'agente più idoneo:
-
-### AGENTI DISPONIBILI:
-{agents_info}
-
-### REGOLE:
-- Rispondi SOLO ed ESCLUSIVAMENTE con l'id esatto dell'agente (es: math_researcher, code_architect, viz_designer, sigma_assistant).
-- Non aggiungere spiegazioni, punteggiatura o altri testi.
-"""
-
-    messages = [
-        {"role": "system", "content": system_prompt},
-        {"role": "user", "content": f"Richiesta utente: {message}"}
-    ]
-    
     try:
-        response, _, error = call_ai_model(
-            messages, ai_cfg, main_model, provider, endpoint, api_url, api_key,
-            0.1, _ROUTING_MAX_TOKENS, top_p, timeout
-        )
-        if not error and response:
-            # A reasoning model spends its budget deliberating before answering;
-            # drop that so the id is what gets matched.
-            chosen = _THINK_BLOCK.sub("", response).strip().lower()
-            chosen = re.sub(r'[^a-z0-9_-]', '', chosen)
-            for a in active_agents:
-                if a['id'].lower() == chosen or a['id'].lower().replace('-', '_') == chosen.replace('-', '_'):
-                    path = f"manifesti/{a['id']}.md"
-                    if os.path.exists(path):
-                        log.info("Centralino Switchboard (LLM Classifier) -> agent: %s (%s)", a['id'], path)
-                        return path
-    except Exception as e:
-        log.error("Error in LLM agent routing: %s", e)
-        
-    return "manifesti/sigma_assistant.md"
+        from core.embedding_router import classify_intent_multilingual
 
+        verdict = classify_intent_multilingual(message)
+        if verdict:
+            agent = verdict.get("agent")
+            if agent in routable_ids:
+                log.info(
+                    "Centralino Switchboard (Embedding Router, conf=%.2f) -> %s",
+                    verdict.get("confidence", 0.0), agent,
+                )
+                return f"manifesti/{agent}.md"
+            log.debug(
+                "Embedding Router chose '%s', which has no installed manifesto; "
+                "falling through to the front desk.", agent,
+            )
+    except Exception as exc:
+        # A router that cannot answer is not an error worth failing a chat
+        # over: the front desk handles anything unrouted perfectly well.
+        log.debug("Embedding Router unavailable (%s); using the front desk.", exc)
+
+    return "manifesti/sigma_assistant.md"

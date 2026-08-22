@@ -7,9 +7,15 @@ against pre-defined anchor intents. Provides sub-10ms intent classification on C
 import os
 import json
 import time
-import numpy as np
 from pathlib import Path
 from core.logger import get_logger
+
+# numpy is imported where it is used, not here. This module is on the critical
+# path of every chat message, and it has a pure-standard-library fallback that
+# works without numpy or sentence-transformers -- which is the configuration on
+# a Raspberry Pi, on a fresh CPU-only install, and anywhere the ML extras have
+# not been built yet. A module-level import would make the import itself fail
+# there, and take routing down with it.
 
 log = get_logger("sigma.embedding_router")
 
@@ -54,6 +60,86 @@ ANCHORS = [
     {"text": "ciao chi sei?", "mode": "INFO", "agent": "sigma_assistant", "intent": "general_chat", "actions": []},
     {"text": "buongiorno", "mode": "INFO", "agent": "sigma_assistant", "intent": "general_chat", "actions": []},
     {"text": "hello what can you do?", "mode": "INFO", "agent": "sigma_assistant", "intent": "general_chat", "actions": []},
+
+    # ---------------------------------------------------------------------
+    # The specialist desks the pattern cascade in prompt_builder can route to.
+    # They live here too because the cascade only fires on the literal stems it
+    # lists, and a request phrased around the subject rather than its keywords
+    # used to fall through to a full model pass. Anchors are the cheap way to
+    # cover the paraphrase. Both languages, because the product is used in
+    # both, and an anchor set that is Italian-only routes English requests to
+    # the front desk by accident.
+    # ---------------------------------------------------------------------
+
+    # Visualization & charts
+    {"text": "fammi un grafico interattivo con d3", "mode": "LOOP", "agent": "viz_designer", "intent": "build_visualization", "actions": ["create_file"]},
+    {"text": "visualizza questi dati in un diagramma", "mode": "LOOP", "agent": "viz_designer", "intent": "build_visualization", "actions": ["create_file"]},
+    {"text": "draw a chart of this distribution", "mode": "LOOP", "agent": "viz_designer", "intent": "build_visualization", "actions": ["create_file"]},
+
+    # Testing
+    {"text": "scrivi i test pytest per questa funzione", "mode": "LOOP", "agent": "test_engineer", "intent": "write_tests", "actions": ["create_file"]},
+    {"text": "quanto è la copertura dei test?", "mode": "INFO", "agent": "test_engineer", "intent": "explain_concept", "actions": []},
+    {"text": "add unit tests for this module", "mode": "LOOP", "agent": "test_engineer", "intent": "write_tests", "actions": ["create_file"]},
+
+    # Physics
+    {"text": "spiegami l'equazione di Schrodinger", "mode": "INFO", "agent": "physics_professor", "intent": "explain_concept", "actions": []},
+    {"text": "come funziona la relatività ristretta?", "mode": "INFO", "agent": "physics_professor", "intent": "explain_concept", "actions": []},
+    {"text": "explain thermodynamics entropy", "mode": "INFO", "agent": "physics_professor", "intent": "explain_concept", "actions": []},
+
+    # Chemistry
+    {"text": "bilancia questa reazione chimica", "mode": "INFO", "agent": "chemistry_professor", "intent": "explain_concept", "actions": []},
+    {"text": "calcola il ph di questa soluzione", "mode": "INFO", "agent": "chemistry_professor", "intent": "explain_concept", "actions": []},
+    {"text": "explain covalent bonds in organic molecules", "mode": "INFO", "agent": "chemistry_professor", "intent": "explain_concept", "actions": []},
+
+    # Medicine
+    {"text": "cosa significa questo referto medico?", "mode": "INFO", "agent": "medico_divulgatore", "intent": "explain_concept", "actions": []},
+    {"text": "quali sono i sintomi e la terapia?", "mode": "INFO", "agent": "medico_divulgatore", "intent": "explain_concept", "actions": []},
+    {"text": "explain how this drug works physiologically", "mode": "INFO", "agent": "medico_divulgatore", "intent": "explain_concept", "actions": []},
+
+    # Legal
+    {"text": "questa clausola contrattuale è valida?", "mode": "INFO", "agent": "consulente_legale", "intent": "explain_concept", "actions": []},
+    {"text": "cosa prevede il gdpr per questi dati?", "mode": "INFO", "agent": "consulente_legale", "intent": "explain_concept", "actions": []},
+    {"text": "review this contract for compliance risks", "mode": "INFO", "agent": "consulente_legale", "intent": "explain_concept", "actions": []},
+
+    # Finance
+    {"text": "fammi una valutazione dcf di questa azienda", "mode": "LOOP", "agent": "financial_analyst", "intent": "analyze_data", "actions": ["create_file"]},
+    {"text": "come leggo questo bilancio?", "mode": "INFO", "agent": "financial_analyst", "intent": "explain_concept", "actions": []},
+    {"text": "analyse the portfolio return and risk", "mode": "INFO", "agent": "financial_analyst", "intent": "analyze_data", "actions": []},
+
+    # Data science
+    {"text": "addestra un modello di regressione su questo dataset", "mode": "LOOP", "agent": "data_scientist", "intent": "analyze_data", "actions": ["create_file"]},
+    {"text": "fai una eda con pandas su questi dati", "mode": "LOOP", "agent": "data_scientist", "intent": "analyze_data", "actions": ["create_file"]},
+    {"text": "which clustering algorithm fits this data?", "mode": "INFO", "agent": "data_scientist", "intent": "explain_concept", "actions": []},
+
+    # Languages & translation
+    {"text": "traduci questo testo in inglese", "mode": "INFO", "agent": "docente_lingue", "intent": "translate", "actions": []},
+    {"text": "correggi la grammatica di questa frase in francese", "mode": "INFO", "agent": "docente_lingue", "intent": "translate", "actions": []},
+    {"text": "translate this paragraph into spanish", "mode": "INFO", "agent": "docente_lingue", "intent": "translate", "actions": []},
+
+    # Structural / mechanical engineering
+    {"text": "calcola il momento flettente di questa trave", "mode": "INFO", "agent": "ingegnere_strutturista", "intent": "explain_concept", "actions": []},
+    {"text": "verifica a taglio della sezione in acciaio", "mode": "INFO", "agent": "ingegnere_strutturista", "intent": "explain_concept", "actions": []},
+    {"text": "compute von mises stress for this part", "mode": "INFO", "agent": "ingegnere_strutturista", "intent": "explain_concept", "actions": []},
+
+    # Copywriting & storytelling
+    {"text": "scrivi un post instagram per questo lancio", "mode": "LOOP", "agent": "copywriter_storyteller", "intent": "write_copy", "actions": ["create_file"]},
+    {"text": "inventa una storia breve su un faro", "mode": "LOOP", "agent": "copywriter_storyteller", "intent": "write_copy", "actions": ["create_file"]},
+    {"text": "write ad copy for this landing page", "mode": "LOOP", "agent": "copywriter_storyteller", "intent": "write_copy", "actions": ["create_file"]},
+
+    # Exams & grading
+    {"text": "preparami un quiz a risposta multipla su questo argomento", "mode": "LOOP", "agent": "academic_examiner", "intent": "build_exam", "actions": ["create_file"]},
+    {"text": "correggi questo compito e dammi un voto", "mode": "INFO", "agent": "academic_examiner", "intent": "grade", "actions": []},
+    {"text": "build a grading rubric for this assignment", "mode": "LOOP", "agent": "academic_examiner", "intent": "build_exam", "actions": ["create_file"]},
+
+    # Web research & journalism
+    {"text": "cerca sul web le ultime notizie su questo tema", "mode": "INFO", "agent": "online_journalist", "intent": "web_research", "actions": ["search_web"]},
+    {"text": "fammi una rassegna stampa aggiornata", "mode": "INFO", "agent": "online_journalist", "intent": "web_research", "actions": ["search_web"]},
+    {"text": "fact check this claim online", "mode": "INFO", "agent": "online_journalist", "intent": "web_research", "actions": ["search_web"]},
+
+    # Architecture & roadmap
+    {"text": "come è strutturato il progetto e quale roadmap seguiamo?", "mode": "INFO", "agent": "sigma_architect", "intent": "explain_architecture", "actions": []},
+    {"text": "progetta l'architettura di questo modulo", "mode": "LOOP", "agent": "sigma_architect", "intent": "explain_architecture", "actions": ["create_file"]},
+    {"text": "plan the system architecture for this feature", "mode": "LOOP", "agent": "sigma_architect", "intent": "explain_architecture", "actions": ["create_file"]},
 ]
 
 _model = None
@@ -128,14 +214,22 @@ def _fallback_similarity_classify(message: str) -> dict | None:
 
 def classify_intent_multilingual(message: str) -> dict | None:
     """Classify message intent using vector similarity against anchor intents."""
+    if not message or not message.strip():
+        return None
+
     model = _get_model()
     if not model:
+        return _fallback_similarity_classify(message)
+
+    try:
+        import numpy as np
+    except ImportError:
         return _fallback_similarity_classify(message)
 
     t0 = time.time()
     embeddings, anchors = _get_anchor_embeddings()
     if embeddings is None:
-        return None
+        return _fallback_similarity_classify(message)
 
     query_emb = model.encode([message], normalize_embeddings=True)[0]
     similarities = np.dot(embeddings, query_emb)
