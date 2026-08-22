@@ -16,6 +16,14 @@ from core.logger import get_logger
 
 log = get_logger(__name__)
 
+# Version of the cached .sigma_facts.json payload. Bump it whenever a field
+# starts being populated that older caches do not carry: the fingerprint only
+# notices a directory that changed, so a model inspected before the new field
+# existed would keep reporting the old, incomplete answer forever. Raised to 4
+# when the GGUF path began reading vocab_size, which the llama.cpp planner needs
+# to size its prefill batch.
+_FACTS_SCHEMA = 4
+
 # Bytes per element, by safetensors dtype string.
 _DTYPE_BYTES = {
     "F64": 8, "I64": 8,
@@ -111,7 +119,7 @@ class ModelInspector:
                 # the weights land in it, so an inspection during that window
                 # cached "no weights here" and, with nothing to invalidate it,
                 # kept reporting that long after the model was complete.
-                if cached.get("_schema") == 3 and cached.get("_fingerprint") == fingerprint:
+                if cached.get("_schema") == _FACTS_SCHEMA and cached.get("_fingerprint") == fingerprint:
                     cached.pop("_schema", None)
                     cached.pop("_fingerprint", None)
                     return ModelFacts(**cached)
@@ -129,7 +137,7 @@ class ModelInspector:
 
         try:
             payload = facts.to_dict()
-            payload["_schema"] = 3
+            payload["_schema"] = _FACTS_SCHEMA
             payload["_fingerprint"] = fingerprint
             with open(cache_file, "w", encoding="utf-8") as f:
                 json.dump(payload, f, indent=2)
@@ -326,6 +334,19 @@ class ModelInspector:
             head_dim = facts.hidden_size // facts.num_attention_heads
         facts.head_dim = head_dim
 
+        # The vocabulary decides more than tokenization: llama-cpp-python sizes
+        # its logits buffer as n_batch x n_vocab float32, so on a large-vocab
+        # model the prefill batch costs a megabyte per slot in host RAM. Leaving
+        # this at zero, as the GGUF path used to, meant that cost was invisible
+        # to the planner exactly where it is largest.
+        vocab = geometry("vocab_size")
+        if not vocab:
+            # Not every converter writes vocab_size; the token list is always
+            # there, and the header parser already recorded its length rather
+            # than materialising a quarter of a million strings.
+            vocab = cls._gguf_array_length(metadata.get("tokenizer.ggml.tokens"))
+        facts.vocab_size = vocab
+
         # Hybrid models interleave full attention with linear/recurrent layers,
         # and GGUF records that as an interval rather than a list. Only the full
         # attention layers hold a KV cache that grows with the context; treating
@@ -353,6 +374,16 @@ class ModelInspector:
         if length > 64 * 1024 * 1024:
             return None
         return handle.read(length).decode("utf-8", errors="replace")
+
+    @staticmethod
+    def _gguf_array_length(marker: Any) -> int:
+        """The element count recorded for a skipped GGUF array, or 0."""
+        if not isinstance(marker, str) or not marker.startswith("<array["):
+            return 0
+        try:
+            return int(marker[len("<array["):-2])
+        except ValueError:
+            return 0
 
     @classmethod
     def _read_gguf_value(cls, handle, value_type: int) -> Any:

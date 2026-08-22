@@ -17,7 +17,6 @@
 # belong where the output genuinely has a shape -- a tool call, a plan object,
 # a repair pass on a block the model already got wrong.
 # ==============================================================================
-import json
 from typing import Any, Dict, Iterable, List, Optional
 
 from core.logger import get_logger
@@ -41,9 +40,19 @@ array     ::= "[" ws (value ("," ws value)*)? "]" ws
 """
 
 
-def _literal(text: str) -> str:
-    """A GBNF string literal for an exact token, safely escaped."""
-    return json.dumps(text)
+def _gbnf_string(text: str) -> str:
+    """
+    A GBNF terminal that emits `text` *as a quoted JSON string*.
+
+    The distinction is easy to get wrong and silent when you do: in GBNF a
+    double-quoted sequence delimits a terminal, so `"search_web"` makes the
+    model emit `search_web` with no quotes at all -- valid against the grammar,
+    invalid as JSON. The quotes have to be escaped into the terminal itself.
+    llama.cpp does not reject the mistake, it faithfully generates the broken
+    output, so this is checked by a round-trip test rather than by reading.
+    """
+    escaped = text.replace("\\", "\\\\").replace('"', '\\"')
+    return f'"\\"{escaped}\\""'
 
 
 def tool_call_grammar(tool_names: Iterable[str]) -> Optional[str]:
@@ -61,7 +70,7 @@ def tool_call_grammar(tool_names: Iterable[str]) -> Optional[str]:
     if not names:
         return None
 
-    alternation = " | ".join(_literal(name) for name in names)
+    alternation = " | ".join(_gbnf_string(name) for name in names)
     return (
         'root      ::= "{" ws "\\"tool\\"" ws ":" ws toolname ws "," ws '
         '"\\"arguments\\"" ws ":" ws object "}" ws\n'
@@ -96,12 +105,6 @@ def json_object_grammar(schema: Optional[Dict[str, Any]] = None) -> str:
 
     body = " ".join(parts)
     return f'root ::= "{{" ws {body} "}}" ws\n' + _JSON_PRIMITIVES
-
-
-def _gbnf_string(text: str) -> str:
-    """A quoted JSON key rendered as a GBNF terminal."""
-    escaped = text.replace("\\", "\\\\").replace('"', '\\"')
-    return f'"\\"{escaped}\\""'
 
 
 def _rule_for_type(json_type: Any) -> str:

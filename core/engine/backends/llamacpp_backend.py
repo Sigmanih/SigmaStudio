@@ -36,13 +36,28 @@ _GGUF_OVERHEAD_FACTOR = 1.20
 # CPU path is the only path.
 _CPU_THREAD_HEADROOM = 1
 
-# Above this context the KV cache is worth quantizing. At 32k on a 27B the
-# cache is several gigabytes in f16, and those gigabytes come straight out of
-# the layer budget -- which is the one number that decides throughput on this
-# backend. q8_0 halves it at a quality cost that does not show up in practice;
-# below the threshold the saving is not worth even a small risk.
+# Quantizing the KV cache halves it, which can buy back GPU layers -- but it is
+# not free. Measured on this project's own hardware, decoding a 3B with every
+# layer on the CPU:
+#
+#     KV f16   8.59 tok/s          KV q8_0   7.65 tok/s      -10.9%
+#
+# and with every layer on the GPU the same comparison is within noise (+1.8%).
+# The dequantization cost lands on whichever device holds the layer, so on a
+# split placement the many CPU-resident layers each pay it.
+#
+# It is therefore applied only when it earns its place: when the halved cache
+# moves enough layers onto the accelerator to more than repay the per-token
+# cost. Applying it by context length alone -- as this did at first -- gained a
+# single layer out of 65 on a model that did not fit anyway, and slowed the 47
+# CPU-resident ones down for nothing.
 _KV_QUANT_CONTEXT_THRESHOLD = 8192
 _KV_QUANT_TYPE = "q8_0"
+
+# The measured decode penalty of a quantized cache on a host-resident layer:
+# 8.59 -> 7.65 tok/s on the CPU-only run above. The placement decision is made
+# against this number rather than against a rule of thumb.
+_KV_QUANT_DECODE_PENALTY = 0.11
 
 # GGML type codes, from ggml.h. llama-cpp-python takes the integer, not a name.
 _GGML_TYPES = {"f16": 1, "q8_0": 8, "q5_1": 7, "q5_0": 6, "q4_1": 3, "q4_0": 2}
@@ -735,21 +750,22 @@ class LlamaCppBackend(InferenceBackend):
         weights_gb = facts.total_bytes / 2**30
         layers = facts.num_hidden_layers or 0
 
-        # Quantizing the KV cache is decided before the layer count, because it
-        # changes the budget the layer count is computed from. Halving a cache
-        # of several gigabytes buys back whole layers, and a layer on the GPU
-        # is worth roughly ten times the same layer on the host bus.
+        # Quantizing the KV cache is decided against the placement it produces,
+        # not against the context length: the question is not "is the cache
+        # big?" but "does halving it move enough layers onto the accelerator to
+        # repay what it costs on the ones that stay behind?"
         kv_gb_f16 = ModelInspector.estimate_kv_cache_gb(facts, n_ctx)
-        kv_quant = _KV_QUANT_TYPE if n_ctx > _KV_QUANT_CONTEXT_THRESHOLD else None
-        kv_gb = round(kv_gb_f16 / 2, 3) if kv_quant else kv_gb_f16
 
-        if layers and (weights_gb * _GGUF_OVERHEAD_FACTOR + kv_gb) > total_usable:
-            per_layer = (weights_gb / layers) * _GGUF_OVERHEAD_FACTOR
-            budget = max(total_usable - kv_gb, 0.0)
-            n_gpu_layers = max(int(budget / max(per_layer, 1e-6)), 0)
-            n_gpu_layers = min(n_gpu_layers, layers)
-        else:
-            n_gpu_layers = -1                      # everything fits: offload all
+        plain = cls._layers_that_fit(weights_gb, layers, total_usable, kv_gb_f16)
+        halved = cls._layers_that_fit(weights_gb, layers, total_usable, kv_gb_f16 / 2)
+
+        kv_quant = None
+        if n_ctx > _KV_QUANT_CONTEXT_THRESHOLD and layers:
+            if cls._kv_quant_pays_off(plain, halved, layers):
+                kv_quant = _KV_QUANT_TYPE
+
+        kv_gb = round(kv_gb_f16 / 2, 3) if kv_quant else kv_gb_f16
+        n_gpu_layers = halved if kv_quant else plain
 
         tensor_split = None
         if len(gpus) > 1 and total_usable > 0:
@@ -782,13 +798,217 @@ class LlamaCppBackend(InferenceBackend):
         }
         if kv_quant:
             settings["kv_saving_gb"] = round(kv_gb_f16 - kv_gb, 2)
-        if 0 <= n_gpu_layers < layers:
-            settings["warning"] = (
-                f"Solo {n_gpu_layers} dei {layers} layer stanno in VRAM: i "
-                "restanti girano dalla RAM di sistema, circa dieci volte piu' "
-                "lentamente. Una quantizzazione piu' compatta entrerebbe tutta."
-            )
+        settings.update(cls._throughput_forecast(facts, settings, hardware))
         return settings
+
+    # Host memory bandwidth actually reached by a streaming read, as opposed to
+    # the figure on the module label. Dual-channel DDR4/DDR5 desktops land here;
+    # it is a stated assumption, not a measurement, and is labelled as such
+    # wherever the forecast is shown.
+    _HOST_BANDWIDTH_GB_S = 12.0
+    # A page fault to NVMe is roughly an order of magnitude worse again.
+    _DISK_BANDWIDTH_GB_S = 1.5
+
+    @classmethod
+    def _throughput_forecast(
+        cls, facts: ModelFacts, settings: Dict[str, Any], hardware: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """
+        Says what this placement will feel like, before the user finds out.
+
+        Decoding reads every weight once per token, so the layers left off the
+        accelerator set a hard ceiling that no amount of tuning moves: bytes on
+        the host bus divided by the bandwidth of that bus. The engine used to
+        produce this placement in silence and let the user discover it as "the
+        model is slow now" -- a 50GB F16 on 21GB of VRAM answers at a third of
+        a token per second, and nothing said so.
+
+        Worse is when the host-resident part does not fit in free RAM either.
+        Then it is paged from the model file on every token, an order of
+        magnitude slower again, and that case is worth its own warning because
+        it is the difference between slow and unusable.
+        """
+        layers = facts.num_hidden_layers or 0
+        on_gpu = settings.get("n_gpu_layers", 0)
+        weights_gb = facts.total_bytes / 2**30
+
+        if not layers or on_gpu < 0 or on_gpu >= layers:
+            return {"forecast": {"placement": "fully_offloaded"}}
+
+        off_gpu = layers - on_gpu
+        host_gb = weights_gb * off_gpu / layers
+        free_ram = float((hardware.get("ram") or {}).get("available_gb", 0.0) or 0.0)
+        paging = free_ram > 0 and host_gb > free_ram
+
+        bandwidth = cls._DISK_BANDWIDTH_GB_S if paging else cls._HOST_BANDWIDTH_GB_S
+        ceiling = round(bandwidth / max(host_gb, 1e-6), 2)
+
+        forecast = {
+            "placement": "split",
+            "layers_on_gpu": on_gpu,
+            "layers_on_host": off_gpu,
+            "host_gb_per_token": round(host_gb, 1),
+            "free_ram_gb": round(free_ram, 1),
+            "pages_from_disk": paging,
+            "estimated_tokens_per_second": ceiling,
+            "assumed_bandwidth_gb_s": bandwidth,
+        }
+
+        if paging:
+            settings["warning"] = (
+                f"{off_gpu} dei {layers} layer non stanno in VRAM e i {host_gb:.0f} GB "
+                f"che restano non entrano nemmeno nella RAM libera ({free_ram:.0f} GB): "
+                f"verranno letti dal disco a ogni token. Attesa realistica: "
+                f"{cls._render_rate(ceiling)}. Serve una quantizzazione piu' compatta."
+            )
+        else:
+            rimasti = (
+                "l'ultimo layer viene letto" if off_gpu == 1
+                else f"gli altri {off_gpu} vengono letti"
+            )
+            quanti = f"{host_gb:.1f} GB" if host_gb < 10 else f"{host_gb:.0f} GB"
+            settings["warning"] = (
+                f"{on_gpu} dei {layers} layer stanno in VRAM: {rimasti} dalla RAM "
+                f"di sistema, {quanti} a ogni token. Tetto stimato "
+                f"{cls._render_rate(ceiling)}, indipendente da ogni altra "
+                f"ottimizzazione."
+            )
+
+        alternative = cls.suggest_smaller_variant(facts, hardware)
+        if alternative:
+            forecast["better_variant"] = alternative
+            settings["warning"] += (
+                f" Su questo disco c'e' gia' '{alternative['name']}' "
+                f"({alternative['size_gb']} GB): entrerebbe "
+                f"{'quasi tutto' if alternative['partial'] else 'interamente'} in VRAM."
+            )
+        return {"forecast": forecast}
+
+    @staticmethod
+    def _render_rate(tokens_per_second: float) -> str:
+        """A rate a person can read, including the ones that round to zero."""
+        if tokens_per_second >= 1:
+            return f"~{tokens_per_second:.1f} token/s"
+        if tokens_per_second >= 0.1:
+            return f"~{tokens_per_second:.2f} token/s"
+        seconds = 1.0 / max(tokens_per_second, 1e-9)
+        return f"meno di 0,1 token/s (circa {seconds:.0f}s per token)"
+
+    @staticmethod
+    def suggest_smaller_variant(
+        facts: ModelFacts, hardware: Dict[str, Any]
+    ) -> Optional[Dict[str, Any]]:
+        """
+        Another local copy of this model that would actually fit.
+
+        Naming the remedy matters more than naming the problem: the user who
+        hit this had the Q4_K_S of the very same checkpoint sitting in the next
+        folder, and no part of the product mentioned it.
+
+        Matching is on the model name with the quantization suffix removed, so
+        'Qwen--Qwen3.8-27B-GGUF-Q4_K_S' is recognised as a variant of
+        'Qwen--Qwen3.8-27B-GGUF' without a registry to keep in step.
+        """
+        try:
+            from core.model_paths import models_dir
+            root = models_dir()
+            if not os.path.isdir(root):
+                return None
+        except Exception:
+            return None
+
+        usable = sum(
+            max(a.get("free_vram_gb", 0.0) - _GPU_RESERVE_GB, 0.0)
+            for a in hardware.get("accelerators", [])
+            if a.get("type") in ("NVIDIA_CUDA", "AMD_ROCM")
+        )
+        if usable <= 0:
+            return None
+
+        def stem(name: str) -> str:
+            lowered = name.lower()
+            for marker in ("-gguf", "_gguf", ".gguf"):
+                index = lowered.find(marker)
+                if index > 0:
+                    return lowered[:index]
+            return lowered
+
+        target = stem(facts.name)
+        current_gb = facts.total_bytes / 2**30
+        best = None
+
+        for entry in sorted(os.listdir(root)):
+            folder = os.path.join(root, entry)
+            if not os.path.isdir(folder) or entry == facts.name:
+                continue
+            if stem(entry) != target:
+                continue
+            files = [f for f in os.listdir(folder) if f.endswith(".gguf")]
+            if not files:
+                continue
+            size_gb = min(
+                os.path.getsize(os.path.join(folder, f)) for f in files
+            ) / 2**30
+            if size_gb >= current_gb:
+                continue
+            candidate = {
+                "name": entry,
+                "size_gb": round(size_gb, 1),
+                "partial": size_gb * _GGUF_OVERHEAD_FACTOR > usable,
+            }
+            # Prefer the largest variant that still fits: quality first among
+            # the options that solve the speed problem.
+            if best is None or (candidate["size_gb"] > best["size_gb"]
+                                and not candidate["partial"]):
+                best = candidate
+        return best
+
+    @staticmethod
+    def _layers_that_fit(
+        weights_gb: float, layers: int, usable_gb: float, kv_gb: float
+    ) -> int:
+        """
+        How many layers the accelerator can hold, or -1 when all of them can.
+
+        -1 is llama.cpp's own way of saying "offload everything", and it is not
+        the same as the layer count: it also lets the runtime place the output
+        and embedding tensors, which a numeric limit does not.
+        """
+        if not layers:
+            return -1
+        if (weights_gb * _GGUF_OVERHEAD_FACTOR + kv_gb) <= usable_gb:
+            return -1
+        per_layer = (weights_gb / layers) * _GGUF_OVERHEAD_FACTOR
+        budget = max(usable_gb - kv_gb, 0.0)
+        return min(max(int(budget / max(per_layer, 1e-6)), 0), layers)
+
+    @staticmethod
+    def _kv_quant_pays_off(plain: int, halved: int, layers: int) -> bool:
+        """
+        Whether halving the cache saves more than dequantizing it costs.
+
+        Decode on a split placement is dominated by the weights read over the
+        host bus, which is proportional to the layers left behind. Quantizing
+        the cache multiplies per-token work by the measured penalty but reduces
+        that count, so the trade is simply
+
+            host_layers(halved) x penalty  <  host_layers(plain)
+
+        Counting layers moved, as the first version did, gets this backwards at
+        both ends: it rejected a case that cut host traffic fourfold because
+        only three layers moved, and accepted one that moved a single layer of
+        sixty-five while slowing the other forty-seven down.
+        """
+        if plain == -1:
+            return False                  # already fully offloaded; nothing to buy
+        if halved == -1:
+            return True                   # buys full offload: always worth it
+
+        host_plain = max(layers - plain, 0)
+        host_halved = max(layers - halved, 0)
+        if host_plain == 0:
+            return False
+        return host_halved * (1.0 + _KV_QUANT_DECODE_PENALTY) < host_plain
 
     @staticmethod
     def _cap_batch(desired: int, facts: ModelFacts) -> int:
@@ -803,7 +1023,10 @@ class LlamaCppBackend(InferenceBackend):
         """
         vocab = int(getattr(facts, "vocab_size", 0) or 0)
         if vocab <= 0:
-            return desired
+            # Unknown vocabulary means unknown cost, and the roomy batch is an
+            # optimisation while two gigabytes of committed RAM is a real loss.
+            # Refusing to guess upward is the only safe direction here.
+            return min(desired, _N_BATCH_DEFAULT)
         affordable = _SCORES_BUDGET_BYTES // (vocab * 4)
         # Never below llama.cpp's own floor: a batch smaller than 128 makes
         # prefill slower than the memory it saves is worth.

@@ -22,8 +22,25 @@ log = get_logger(__name__)
 # Per-GPU reserve for the CUDA context, cuBLAS/cuDNN workspaces and allocator
 # fragmentation. Without this a plan that fits on paper OOMs in practice.
 _CUDA_CONTEXT_RESERVE_GB = 0.8
-# Extra headroom on the device that carries lm_head and the sampling step.
+# Floor for the extra headroom on the device that carries lm_head and the
+# sampling step. It used to be the whole story, and a flat gigabyte is simply
+# the wrong shape: activations scale with how many tokens are pushed through at
+# once and how wide the model is. A 27B at 16k context reported a comfortable
+# +1.08GB of headroom and then died allocating 230MB mid-answer, because the
+# prefill working set it never counted was worth about two gigabytes.
 _PRIMARY_ACTIVATION_RESERVE_GB = 1.0
+
+# Live tensors per token during a prefill step: the residual stream plus the
+# query/key/value and MLP intermediates that coexist inside one decoder block.
+# Deliberately a small integer rather than a precise model -- the point is that
+# the term scales with context and hidden size at all, which a constant does
+# not. Verified against the case above: 16384 x 5120 x 2B x 8 = 1.25GB, which
+# is the order of magnitude that was missing.
+_ACTIVATION_TENSORS_PER_TOKEN = 8
+
+# No estimate should be allowed to eat a whole card; past this fraction of the
+# primary GPU the answer is a smaller context, not a bigger reserve.
+_MAX_ACTIVATION_FRACTION = 0.35
 # Leave the OS and the rest of Sigma Studio room to breathe.
 _HOST_RAM_RESERVE_GB = 8.0
 # Below this much slack, the fit is inside estimation error: accelerate places
@@ -156,7 +173,8 @@ class MemoryPlanner:
         chosen_ctx = context_tokens
         for candidate in cls._context_candidates(context_tokens):
             kv_gb = ModelInspector.estimate_kv_cache_gb(facts, candidate)
-            budget = round(sum(cls._usable_vram(gpus, kv_gb).values()), 2)
+            budget = round(sum(cls._usable_vram(
+                gpus, kv_gb, facts, candidate).values()), 2)
             _, trial = cls._choose_precision(facts, budget, force_quantization)
             if budget - trial["total_gb"] >= _MARGINAL_FIT_GB:
                 chosen_ctx = candidate
@@ -173,7 +191,9 @@ class MemoryPlanner:
         plan.requested_context_tokens = context_tokens
 
         plan.kv_cache_gb = ModelInspector.estimate_kv_cache_gb(facts, chosen_ctx)
-        usable_vram = cls._usable_vram(gpus, plan.kv_cache_gb)
+        usable_vram = cls._usable_vram(
+            gpus, plan.kv_cache_gb, facts, chosen_ctx
+        )
 
         # Raw capacity vs the budget actually available to weights: the latter
         # is what the fill loop spends, the former is what the user recognises
@@ -312,7 +332,36 @@ class MemoryPlanner:
         return f"{max(gb, 0.0):.2f}GiB"
 
     @staticmethod
-    def _usable_vram(gpus: List[Dict[str, Any]], kv_cache_gb: float) -> Dict[Any, float]:
+    def activation_reserve_gb(
+        facts: Optional[ModelFacts], context_tokens: int, primary_free_gb: float
+    ) -> float:
+        """
+        Working memory a prefill step needs on the device that runs it.
+
+        Weights and KV are both accounted for elsewhere and both are static;
+        this is the third term, the one that only exists while a forward pass is
+        running, and it is the one that used to be a constant. It scales with
+        the two things that actually drive it -- how many tokens go through at
+        once, and how wide the model is -- and is capped so an implausible
+        context cannot reserve the entire card.
+        """
+        base = _PRIMARY_ACTIVATION_RESERVE_GB
+        if facts is None or not facts.hidden_size or context_tokens <= 0:
+            return base
+
+        bytes_per_token = facts.hidden_size * 2 * _ACTIVATION_TENSORS_PER_TOKEN
+        scaled = (context_tokens * bytes_per_token) / 2**30
+        ceiling = max(primary_free_gb * _MAX_ACTIVATION_FRACTION, base)
+        return round(min(max(base, scaled), ceiling), 2)
+
+    @classmethod
+    def _usable_vram(
+        cls,
+        gpus: List[Dict[str, Any]],
+        kv_cache_gb: float,
+        facts: Optional[ModelFacts] = None,
+        context_tokens: int = 0,
+    ) -> Dict[Any, float]:
         """
         Free VRAM minus CUDA context, activations and this device's share of the
         KV cache. KV is charged proportionally to capacity, since accelerate
@@ -326,7 +375,9 @@ class MemoryPlanner:
             free = float(gpu.get("free_vram_gb", 0.0))
             reserve = _CUDA_CONTEXT_RESERVE_GB
             if idx == 0:
-                reserve += _PRIMARY_ACTIVATION_RESERVE_GB
+                # The primary card runs the forward pass, so it is the only one
+                # that pays for activations on top of its share of the weights.
+                reserve += cls.activation_reserve_gb(facts, context_tokens, free)
             kv_share = kv_cache_gb * (free / total_free)
             usable[device_id] = max(free - reserve - kv_share, 0.0)
 

@@ -5,7 +5,6 @@ from typing import Dict, Any
 from core.logger import get_logger
 from core.engine.unified_runtime import sigma_engine
 from core.engine.hardware_probe import UniversalHardwareProbe
-from core.engine.weight_profiler import WeightSaliencyProfiler
 
 log = get_logger(__name__)
 
@@ -22,31 +21,105 @@ def handle_engine_profile(self):
 
 
 def handle_engine_partition(self):
-    """POST /api/engine/partition — Calculate optimal layer tiering for a given model size."""
+    """
+    POST /api/engine/partition — Where this model's layers would actually go.
+
+    This used to answer with a saliency heuristic: a hardcoded U-curve over a
+    hypothetical model, with 450MB assumed per layer, computed from whatever
+    numbers the caller passed. The panel that displays it always passed 32
+    layers and 8GB, so the tiering shown in the UI described a model that did
+    not exist and had never been loaded.
+
+    It now answers from MemoryPlanner -- the same code that decides the real
+    placement -- for a real model, so the panel and the loader can no longer
+    disagree.
+    """
     try:
         body = self.read_json_body() if hasattr(self, 'read_json_body') else {}
-        total_layers = int(body.get("total_layers", 32))
-        model_size_gb = float(body.get("model_size_gb", 8.0))
-        is_moe = bool(body.get("is_moe", False))
-        
-        probe = UniversalHardwareProbe.probe_all()
-        accs = probe.get("accelerators", [])
-        vram_0 = accs[0].get("free_vram_gb", 0.0) if accs else 0.0
-        vram_1 = accs[1].get("free_vram_gb", 0.0) if len(accs) > 1 else 0.0
-        ram_gb = probe.get("ram", {}).get("available_gb", 16.0)
+        model = body.get("model") or sigma_engine.loaded_model_name
+        if not model:
+            return self.send_json_response({
+                "success": False,
+                "error": "Nessun modello indicato e nessuno caricato: il "
+                         "partizionamento dipende dal modello, non e' una "
+                         "proprieta' della sola macchina.",
+            }, 400)
 
-        plan = WeightSaliencyProfiler.partition_model_layers(
-            total_layers=total_layers,
-            vram_primary_gb=vram_0,
-            vram_secondary_gb=vram_1,
-            system_ram_gb=ram_gb,
-            model_size_gb=model_size_gb,
-            is_moe=is_moe
+        result = sigma_engine.plan_for_model(
+            model_identifier=model,
+            context_tokens=int(body.get("context_tokens", 32768)),
+            force_quantization=body.get("quantization"),
         )
-        return self.send_json_response({"success": True, "tiering_plan": plan})
+        if not result.get("success"):
+            return self.send_json_response(result, 404)
+
+        return self.send_json_response({
+            "success": True,
+            "model": model,
+            "tiering_plan": _tiering_view(result),
+            "plan": result.get("plan"),
+        })
     except Exception as exc:
         log.error(f"handle_engine_partition error: {exc}")
         return self.send_json_response({"success": False, "error": str(exc)}, 500)
+
+
+def _tiering_view(result: dict) -> dict:
+    """
+    The plan rendered as the tier counts the settings panel reads.
+
+    Derived from the same budgets the loader spends, so a layer counted here in
+    VRAM is a layer accelerate will be told to put there. Layers per tier come
+    from each device's share of the weight budget: that is exactly how the
+    filling loop assigns them.
+    """
+    plan = result.get("plan") or {}
+    facts = result.get("facts") or {}
+    layers = int(facts.get("num_hidden_layers") or 0)
+    weights_gb = float(plan.get("model_footprint_gb") or 0.0)
+
+    def budget_gb(value) -> float:
+        try:
+            return float(str(value).replace("GiB", "").strip())
+        except (TypeError, ValueError):
+            return 0.0
+
+    per_layer = (weights_gb / layers) if layers else 0.0
+    budgets = plan.get("max_memory") or {}
+    gpu_keys = sorted(k for k in budgets if str(k).isdigit())
+
+    def tier(count: int) -> dict:
+        return {
+            "count": count,
+            "estimated_memory_gb": round(count * per_layer, 2),
+        }
+
+    placed = 0
+    tiers = []
+    for key in gpu_keys:
+        if per_layer <= 0:
+            break
+        fits = min(int(budget_gb(budgets[key]) / per_layer), layers - placed)
+        tiers.append(max(fits, 0))
+        placed += max(fits, 0)
+
+    host = min(layers - placed, layers) if plan.get("uses_host_ram") else 0
+    placed += host
+    disk = max(layers - placed, 0) if plan.get("uses_disk") else 0
+
+    return {
+        "total_layers": layers,
+        "quantization": plan.get("quantization"),
+        "context_tokens": plan.get("context_tokens"),
+        "tier0_primary_vram": tier(tiers[0] if tiers else 0),
+        "tier1_secondary_vram": tier(sum(tiers[1:]) if len(tiers) > 1 else 0),
+        "tier2_host_ram": tier(host),
+        "tier3_disk_shards": dict(
+            tier(disk),
+            streaming_mode="accelerate_offload_folder" if disk else "disabled",
+        ),
+        "warnings": plan.get("warnings") or [],
+    }
 
 
 def handle_engine_hf_import(self):

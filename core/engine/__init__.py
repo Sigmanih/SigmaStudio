@@ -1,8 +1,4 @@
 from core.engine.hardware_probe import UniversalHardwareProbe
-from core.engine.weight_profiler import WeightSaliencyProfiler
-from core.engine.disk_streamer import MultiDriveShardedStreamer
-from core.engine.moe_expert_cache import MoEExpertCache
-from core.engine.speculative import SpeculativeDecodingEngine
 from core.engine.model_inspector import ModelInspector, ModelFacts
 from core.engine.memory_planner import MemoryPlanner, PlacementPlan
 from core.engine.sampling import SamplingParams, FAMILY_RECIPES
@@ -26,10 +22,6 @@ from core.engine.engine_router import (
 
 __all__ = [
     "UniversalHardwareProbe",
-    "WeightSaliencyProfiler",
-    "MultiDriveShardedStreamer",
-    "MoEExpertCache",
-    "SpeculativeDecodingEngine",
     "ModelInspector",
     "ModelFacts",
     "MemoryPlanner",

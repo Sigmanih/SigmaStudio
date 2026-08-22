@@ -187,6 +187,12 @@ export function useChatStreaming({
     let streamRoutingTimeMs = null;
     let streamLoadDurationMs = null;
     let streamTps = null;
+    // True once the runtime has reported a real figure. From that point the
+    // word-count estimate below must not overwrite it: splitting on whitespace
+    // undercounts Italian by roughly the tokenizer's words-per-token ratio, so
+    // replacing a measured 40 tok/s with an estimated 24 is not a fallback,
+    // it is a downgrade.
+    let tpsFromRuntime = false;
     let streamHardwareNote = null;
     let firstTokenTime = null;
     let generatedTokenCount = 0;
@@ -372,6 +378,7 @@ export function useChatStreaming({
               }
               if (p.metrics.tokens_per_second !== undefined && p.metrics.tokens_per_second !== null) {
                 streamTps = p.metrics.tokens_per_second;
+                tpsFromRuntime = true;
               }
             }
             if (p.tool_result) {
@@ -467,7 +474,7 @@ export function useChatStreaming({
               generatedTokenCount += Math.max(1, p.response.split(/\s+/).filter(Boolean).length);
             }
 
-            if (firstTokenTime && generatedTokenCount > 1) {
+            if (!tpsFromRuntime && firstTokenTime && generatedTokenCount > 1) {
               const elapsedSec = (performance.now() - firstTokenTime) / 1000;
               if (elapsedSec > 0.4) {
                 streamTps = parseFloat(
@@ -545,7 +552,9 @@ export function useChatStreaming({
       if (!streamTps && firstTokenTime) {
         const elapsedSec = (performance.now() - firstTokenTime) / 1000;
         if (elapsedSec > 0.2) {
-          streamTps = parseFloat((generatedTokenCount / elapsedSec).toFixed(1));
+          if (!tpsFromRuntime) {
+            streamTps = parseFloat((generatedTokenCount / elapsedSec).toFixed(1));
+          }
         }
       }
 

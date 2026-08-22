@@ -10,7 +10,6 @@ from typing import Dict, Any, List, Optional
 from core.logger import get_logger
 from core.engine.unified_runtime import sigma_engine
 from core.engine.hardware_probe import UniversalHardwareProbe
-from core.engine.weight_profiler import WeightSaliencyProfiler
 
 log = get_logger(__name__)
 
@@ -184,7 +183,6 @@ def deploy_model_to_sigma_engine(
     model_path: str,
     quantization: Optional[str] = None,
     primary_gpu_layers: int = -1,
-    enable_moe_cache: bool = True
 ) -> Dict[str, Any]:
     """Registers and activates a local model inside UniversalSigmaEngine."""
     resolved_path = model_path

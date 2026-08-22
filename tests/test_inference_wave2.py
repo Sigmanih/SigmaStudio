@@ -5,10 +5,16 @@
 # llama.cpp placement knobs, token-budgeted history, SSE coalescing and
 # grammar-constrained tool calls.
 #
-# Nothing here loads a model. The pieces that need one are tested through their
-# planning and bookkeeping, which is where the decisions actually live -- and
-# which is why these run identically on a CUDA box, an Apple laptop and a board
-# with no accelerator at all.
+# Most of it needs no model: planning and bookkeeping are where the decisions
+# live, and testing them there is why the bulk of this file runs identically on
+# a CUDA box, an Apple laptop and a board with no accelerator at all.
+#
+# Three tests deliberately break that rule, because the wave shipped a crash
+# that only a real runtime could have caught: a grammar that reads correctly and
+# generates invalid JSON, and a llama.cpp option that loads cleanly and fails on
+# the first long prompt. Those are exercised against the installed libraries --
+# a two-layer transformers model built from config, and the smallest local GGUF
+# -- and skip themselves where the library is absent.
 # ==============================================================================
 import threading
 import time
@@ -121,6 +127,78 @@ class TestPrefixKVCache(unittest.TestCase):
         self.assertEqual(stats["tokens_reused"], 500)
 
 
+class TestPrefixCacheAgainstRealTransformers(unittest.TestCase):
+    """
+    The library contract PrefixKVCache depends on, exercised for real.
+
+    A fake cache proves the bookkeeping; it cannot prove that transformers
+    still offers `crop`, or that a cropped cache produces the same answer as a
+    full prefill. That second property is the whole safety argument for the
+    feature -- a reused cache that changes the answer is worse than no cache --
+    so it is checked against a real model rather than asserted in a comment.
+
+    The model is built from a config with random weights: two layers and a
+    64-wide hidden state, which is instant and needs no download, while
+    exercising exactly the same generate() path a real checkpoint would.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        try:
+            import torch
+            from transformers import AutoConfig, AutoModelForCausalLM
+        except ImportError:
+            raise unittest.SkipTest("transformers/torch not installed on this host")
+
+        torch.manual_seed(0)
+        config = AutoConfig.for_model(
+            "qwen2", vocab_size=512, hidden_size=64, intermediate_size=128,
+            num_hidden_layers=2, num_attention_heads=4, num_key_value_heads=2,
+            max_position_embeddings=1024,
+        )
+        cls.torch = torch
+        cls.model = AutoModelForCausalLM.from_config(config).eval()
+
+    def _generate(self, ids, past=None, new_tokens=6):
+        with self.torch.inference_mode():
+            return self.model.generate(
+                ids, max_new_tokens=new_tokens, do_sample=False, use_cache=True,
+                past_key_values=past, return_dict_in_generate=True,
+            )
+
+    def test_generate_returns_a_croppable_cache(self):
+        ids = self.torch.arange(120).unsqueeze(0) % 512
+        result = self._generate(ids)
+        cache = result.past_key_values
+        self.assertTrue(hasattr(cache, "crop"),
+                        "transformers no longer exposes crop(); prefix reuse "
+                        "must fall back to a full prefill")
+        cache.crop(100)
+        self.assertEqual(cache.get_seq_length(), 100)
+
+    def test_a_reused_cache_produces_the_identical_answer(self):
+        first = self._generate(self.torch.arange(120).unsqueeze(0) % 512)
+        sequence = first.sequences[0].tolist()
+
+        cache = PrefixKVCache(max_tokens=1024)
+        cache.configure("tiny", 1024)
+        cache.store(sequence, first.past_key_values, "tiny")
+
+        follow_up = self.torch.tensor([sequence + [7, 8, 9]])
+        past, reused = cache.take(follow_up[0].tolist(), "tiny")
+        self.assertGreater(reused, 0)
+
+        warm = self._generate(follow_up, past=past)
+        cold = self._generate(follow_up)
+
+        start = follow_up.shape[1]
+        self.assertEqual(
+            warm.sequences[0].tolist()[start:],
+            cold.sequences[0].tolist()[start:],
+            "reusing the cache changed the answer",
+        )
+
+
 class TestGenerationQueue(unittest.TestCase):
     """L5 — one resident model means one generation at a time."""
 
@@ -179,6 +257,15 @@ _HW_TIGHT_GPU = {
                       "multi_processor_count": 46}],
     "cpu": {"cores_physical": 8}, "system": {},
 }
+# One card with just enough VRAM that the KV cache decides the placement: the
+# f16 cache leaves most layers on the host, the halved one nearly clears them.
+# This is the only regime where quantizing is the right call, and the fixture
+# exists so the policy is tested where it actually applies.
+_HW_BORDERLINE_GPU = {
+    "accelerators": [{"type": "NVIDIA_CUDA", "free_vram_gb": 21.5,
+                      "multi_processor_count": 84}],
+    "cpu": {"cores_physical": 16}, "system": {}, "ram": {"available_gb": 64.0},
+}
 _HW_APPLE = {"accelerators": [{"type": "APPLE_MPS"}],
              "cpu": {"cores_physical": 10}, "system": {}}
 _HW_PI = {"accelerators": [], "cpu": {"cores_physical": 4},
@@ -189,21 +276,94 @@ _HW_CPU = {"accelerators": [], "cpu": {"cores_physical": 12}, "system": {}}
 class TestLlamaCppPlanning(unittest.TestCase):
     """L11 / L6 — the knobs that decide throughput on the GGUF path."""
 
-    def test_kv_is_quantized_at_a_long_context(self):
-        settings = LlamaCppBackend._plan_settings(_facts_27b(), _HW_DUAL_GPU, 32768)
-        self.assertEqual(settings["kv_quant"], "q8_0")
-        self.assertLess(settings["kv_cache_gb"], settings["kv_cache_gb_f16"])
+    def test_kv_is_quantized_only_when_it_pays_for_itself(self):
+        """
+        The rule is the measurement, not the context length.
+
+        Quantizing costs ~11% of decode on every host-resident layer, so it is
+        applied when halving the cache cuts host traffic by more than that.
+        The first version of this policy fired on context length alone: on the
+        50GB F16 that prompted the rewrite it moved one layer of sixty-five
+        onto the GPU and slowed the other forty-seven down.
+        """
+        # Borderline card: the f16 cache strands most layers on the host and
+        # halving it nearly clears them. Apply.
+        borderline = _facts_27b()
+        borderline.total_bytes = 14 * 2**30
+        self.assertEqual(
+            LlamaCppBackend._plan_settings(borderline, _HW_BORDERLINE_GPU, 32768)["kv_quant"],
+            "q8_0",
+        )
+
+        # Everything already fits: there is nothing to buy, and the penalty
+        # would be paid for no gain.
+        self.assertIsNone(
+            LlamaCppBackend._plan_settings(borderline, _HW_DUAL_GPU, 32768)["kv_quant"]
+        )
+
+        # Hopeless placement: halving the cache changes almost nothing, and the
+        # penalty would land on every layer left on the host. This is the 50GB
+        # F16 from the report.
+        hopeless = _facts_27b()
+        hopeless.total_bytes = 51 * 2**30
+        self.assertIsNone(
+            LlamaCppBackend._plan_settings(hopeless, _HW_BORDERLINE_GPU, 32768)["kv_quant"]
+        )
+
+    def test_the_decision_rule_matches_the_measurement(self):
+        # 4 host layers -> 1 is a fourfold cut: worth 11%.
+        self.assertTrue(LlamaCppBackend._kv_quant_pays_off(61, 64, 65))
+        # 48 -> 47 is not.
+        self.assertFalse(LlamaCppBackend._kv_quant_pays_off(17, 18, 65))
+        # Reaching full offload always wins.
+        self.assertTrue(LlamaCppBackend._kv_quant_pays_off(60, -1, 65))
+        # Already fully offloaded: nothing to buy.
+        self.assertFalse(LlamaCppBackend._kv_quant_pays_off(-1, -1, 65))
+
+    def test_a_hopeless_placement_is_forecast_not_hidden(self):
+        """
+        The regression report this came from: a 50GB F16 on 21GB of VRAM
+        answered at half a token per second, and the engine said nothing.
+        """
+        facts = _facts_27b()
+        facts.total_bytes = 51 * 2**30
+        hardware = dict(_HW_TIGHT_GPU, ram={"available_gb": 31.0})
+        settings = LlamaCppBackend._plan_settings(facts, hardware, 32768)
+
+        forecast = settings["forecast"]
+        self.assertEqual(forecast["placement"], "split")
+        self.assertTrue(forecast["pages_from_disk"],
+                        "the host-resident part does not fit in free RAM and "
+                        "that has to be said, it is the difference between "
+                        "slow and unusable")
+        self.assertLess(forecast["estimated_tokens_per_second"], 1.0)
+        self.assertIn("token/s", settings["warning"])
+
+    def test_a_good_placement_carries_no_alarm(self):
+        facts = _facts_27b()
+        facts.total_bytes = 6 * 2**30
+        settings = LlamaCppBackend._plan_settings(facts, _HW_DUAL_GPU, 8192)
+        self.assertEqual(settings["forecast"]["placement"], "fully_offloaded")
+        self.assertNotIn("warning", settings)
+
+    def test_rates_below_a_tenth_do_not_round_to_zero(self):
+        self.assertIn("meno di", LlamaCppBackend._render_rate(0.04))
+        self.assertIn("0.5", LlamaCppBackend._render_rate(0.5))
+        self.assertIn("12.0", LlamaCppBackend._render_rate(12.0))
 
     def test_kv_is_left_alone_at_a_short_context(self):
         settings = LlamaCppBackend._plan_settings(_facts_27b(), _HW_DUAL_GPU, 4096)
         self.assertIsNone(settings["kv_quant"])
 
     def test_quantized_kv_buys_back_gpu_layers(self):
-        # The point of the whole change: on a card where the f16 cache leaves no
-        # room, halving it is what puts layers back on the accelerator.
+        # Where the trade fires, it must actually move layers onto the card.
         facts = _facts_27b()
-        settings = LlamaCppBackend._plan_settings(facts, _HW_TIGHT_GPU, 32768)
-        self.assertGreater(settings["n_gpu_layers"], 0)
+        facts.total_bytes = 14 * 2**30
+        with_quant = LlamaCppBackend._plan_settings(
+            facts, _HW_BORDERLINE_GPU, 32768)["n_gpu_layers"]
+        without = LlamaCppBackend._layers_that_fit(
+            14.0, facts.num_hidden_layers, 20.0, 8.0)
+        self.assertTrue(with_quant == -1 or with_quant > without)
 
     def test_prefill_batch_grows_only_when_there_is_room(self):
         roomy = LlamaCppBackend._plan_settings(_facts_27b(), _HW_DUAL_GPU, 32768)
@@ -258,6 +418,150 @@ class TestLlamaCppPlanning(unittest.TestCase):
         self.assertIsNone(settings["kv_quant"])
         self.assertEqual(settings["prompt_lookup_tokens"], 0)
         self.assertTrue(settings["degraded"])
+
+
+class _FakeLlm:
+    """Enough of a llama_cpp.Llama to exercise the consistency check."""
+
+    def __init__(self, rows, logits_all, vocab=248320):
+        import numpy as np
+        self._logits_all = logits_all
+        self.scores = np.zeros((rows, 1), dtype=np.float32)
+        self.scores = type("S", (), {"shape": (rows, vocab)})()
+        self.draft_model = object()
+
+
+class TestSpeculationSafety(unittest.TestCase):
+    """
+    Regression cover for the crash this wave shipped.
+
+    llama-cpp-python 0.3.34 turns its per-token logits buffer on whenever a
+    draft model is present, but sizes that buffer from the `logits_all`
+    argument, which is still False. The object loads, answers short prompts,
+    and then raises
+
+        could not broadcast input array from shape (N,) into shape (0,)
+
+    the first time a prompt is longer than one batch -- which a first chat
+    message with a real system prompt already is. Reproduced against the
+    installed wheel at exactly 512 x 248320 = 127139840, the number in the
+    report.
+    """
+
+    def setUp(self):
+        self._previous = LlamaCppBackend._prompt_lookup_broken
+        LlamaCppBackend._prompt_lookup_broken = False
+
+    def tearDown(self):
+        LlamaCppBackend._prompt_lookup_broken = self._previous
+
+    def test_an_undersized_logits_buffer_disables_the_drafter(self):
+        backend = LlamaCppBackend()
+        backend._llm = _FakeLlm(rows=512, logits_all=True)
+        settings = {"n_ctx": 32768, "prompt_lookup_tokens": 10}
+
+        backend._verify_speculation(settings)
+
+        self.assertEqual(settings["prompt_lookup_tokens"], 0)
+        self.assertIsNone(backend._llm.draft_model)
+        self.assertFalse(backend._llm._logits_all)
+        self.assertTrue(settings["degraded"])
+
+    def test_a_consistent_buffer_keeps_the_speedup(self):
+        # A fixed wheel must pass the same check and lose nothing.
+        backend = LlamaCppBackend()
+        backend._llm = _FakeLlm(rows=32768, logits_all=True)
+        settings = {"n_ctx": 32768, "prompt_lookup_tokens": 10}
+
+        backend._verify_speculation(settings)
+
+        self.assertEqual(settings["prompt_lookup_tokens"], 10)
+        self.assertFalse(LlamaCppBackend._prompt_lookup_broken)
+
+    def test_no_drafter_means_nothing_to_verify(self):
+        backend = LlamaCppBackend()
+        backend._llm = _FakeLlm(rows=512, logits_all=False)
+        settings = {"n_ctx": 32768, "prompt_lookup_tokens": 0}
+        backend._verify_speculation(settings)
+        self.assertIsNotNone(backend._llm.draft_model)
+
+    def test_the_verdict_is_remembered_for_later_loads(self):
+        backend = LlamaCppBackend()
+        backend._llm = _FakeLlm(rows=512, logits_all=True)
+        backend._verify_speculation({"n_ctx": 32768, "prompt_lookup_tokens": 10})
+        self.assertTrue(LlamaCppBackend._prompt_lookup_broken)
+
+        # A second load must not even ask for a drafter.
+        settings = {"prompt_lookup_tokens": 10}
+        self.assertIsNone(LlamaCppBackend._build_draft_model(settings))
+        self.assertEqual(settings["prompt_lookup_tokens"], 0)
+
+
+class TestBatchMemoryCost(unittest.TestCase):
+    """
+    The prefill batch is not free in host RAM.
+
+    llama-cpp-python allocates n_batch x n_vocab float32 up front, written or
+    not. On the 248320-token vocabulary of the model in use, the roomy 2048
+    would commit two gigabytes before generating anything.
+    """
+
+    def test_a_large_vocabulary_caps_the_batch(self):
+        facts = _facts_27b()
+        facts.vocab_size = 248320
+        capped = LlamaCppBackend._cap_batch(2048, facts)
+        self.assertLess(capped, 2048)
+        self.assertLessEqual(capped * facts.vocab_size * 4, 512 * 2**20)
+
+    def test_a_small_vocabulary_keeps_the_roomy_batch(self):
+        facts = _facts_27b()
+        facts.vocab_size = 32000
+        self.assertEqual(LlamaCppBackend._cap_batch(2048, facts), 2048)
+
+    def test_an_unknown_vocabulary_refuses_to_guess_upward(self):
+        # Unknown cost plus an optional speedup: the only safe direction is down.
+        facts = _facts_27b()
+        facts.vocab_size = 0
+        self.assertLessEqual(LlamaCppBackend._cap_batch(2048, facts), 512)
+
+    def test_the_cap_never_goes_below_llamacpp_s_floor(self):
+        facts = _facts_27b()
+        facts.vocab_size = 10_000_000          # absurd, to force the floor
+        self.assertEqual(LlamaCppBackend._cap_batch(2048, facts), 128)
+
+    def test_the_planner_reports_what_the_buffer_costs(self):
+        facts = _facts_27b()
+        facts.vocab_size = 248320
+        settings = LlamaCppBackend._plan_settings(facts, _HW_DUAL_GPU, 32768)
+        self.assertIn("logits_buffer_gb", settings)
+        self.assertLess(settings["logits_buffer_gb"], 1.0)
+
+
+class TestGgufVocabulary(unittest.TestCase):
+    """The planner cannot budget for a vocabulary it never reads."""
+
+    def test_vocab_is_read_from_the_gguf_header(self):
+        import glob
+        import os
+        from core.engine.model_inspector import ModelInspector
+
+        folders = [d for d in glob.glob("data/models/*")
+                   if os.path.isdir(d) and glob.glob(os.path.join(d, "*.gguf"))]
+        if not folders:
+            self.skipTest("no local GGUF to inspect")
+
+        facts = ModelInspector.inspect(folders[0])
+        self.assertGreater(
+            facts.vocab_size, 0,
+            "GGUF vocab_size stayed at zero; the llama.cpp batch cap silently "
+            "does nothing without it",
+        )
+
+    def test_the_facts_cache_is_versioned(self):
+        # The fingerprint only notices a directory that changed, so a field that
+        # starts being populated needs a schema bump or old caches win forever.
+        from core.engine import model_inspector
+        self.assertGreaterEqual(model_inspector._FACTS_SCHEMA, 4)
 
 
 class TestBackendBenchmark(unittest.TestCase):
@@ -394,9 +698,13 @@ class TestGrammars(unittest.TestCase):
     """Q2 — a malformed tool call should be unreachable, not repaired."""
 
     def test_tool_grammar_pins_the_callable_names(self):
+        # Asserted in the escaped form the grammar must actually contain. The
+        # earlier version of this test looked for the bare terminal, which is
+        # precisely the broken rendering, so it passed while the grammar was
+        # producing unquoted JSON.
         gbnf = tool_call_grammar(["get_hardware_status", "search_web"])
-        self.assertIn('"get_hardware_status"', gbnf)
-        self.assertIn('"search_web"', gbnf)
+        self.assertIn(r'"\"get_hardware_status\""', gbnf)
+        self.assertIn(r'"\"search_web\""', gbnf)
         self.assertIn("root", gbnf)
 
     def test_no_tools_means_no_grammar(self):
@@ -405,7 +713,7 @@ class TestGrammars(unittest.TestCase):
 
     def test_duplicate_tool_names_appear_once(self):
         gbnf = tool_call_grammar(["a", "a", "b"])
-        self.assertEqual(gbnf.count('"a"'), 1)
+        self.assertEqual(gbnf.count(r'"\"a\""'), 1)
 
     def test_names_needing_escapes_do_not_break_the_grammar(self):
         gbnf = tool_call_grammar(['weird"name'])
@@ -421,6 +729,49 @@ class TestGrammars(unittest.TestCase):
 
     def test_schemaless_grammar_is_still_valid_json(self):
         self.assertIn("root ::= object", json_object_grammar())
+
+    def test_a_constrained_name_is_emitted_as_a_quoted_json_string(self):
+        # The bug this pins: in GBNF a double-quoted sequence delimits a
+        # terminal, so `"search_web"` emits search_web with no quotes -- valid
+        # against the grammar, invalid as JSON. llama.cpp does not reject the
+        # mistake, it generates the broken output, so reading the grammar is
+        # not enough to catch it.
+        gbnf = tool_call_grammar(["search_web"])
+        self.assertIn(r'"\"search_web\""', gbnf)
+        self.assertNotIn('("search_web")', gbnf)
+
+    def test_grammar_output_round_trips_through_json(self):
+        # The only check that would have caught the quoting bug: generate under
+        # the grammar and parse the result.
+        import glob
+        import json
+        import os
+
+        try:
+            from llama_cpp import Llama
+        except ImportError:
+            self.skipTest("llama_cpp not installed on this host")
+
+        models = [f for d in glob.glob("data/models/*")
+                  for f in glob.glob(os.path.join(d, "*.gguf"))]
+        if not models:
+            self.skipTest("no local GGUF to generate with")
+
+        tools = ["get_hardware_status", "search_web", "read_file"]
+        llm = Llama(model_path=min(models, key=os.path.getsize),
+                    n_ctx=1024, n_gpu_layers=0, verbose=False)
+        try:
+            result = llm.create_chat_completion(
+                messages=[{"role": "user", "content": "Leggi il file config.json"}],
+                max_tokens=80, temperature=0.0,
+                grammar=compile_for_llama_cpp(tool_call_grammar(tools)),
+            )
+            text = result["choices"][0]["message"]["content"]
+            payload = json.loads(text)             # raises if the grammar is wrong
+            self.assertIn(payload["tool"], tools)
+            self.assertIsInstance(payload["arguments"], dict)
+        finally:
+            llm.close()
 
     def test_compiling_degrades_instead_of_raising(self):
         # Without llama.cpp there is no grammar; the caller decodes

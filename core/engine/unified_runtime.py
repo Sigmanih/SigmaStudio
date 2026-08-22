@@ -14,10 +14,6 @@ from typing import Dict, Any, List, Optional, Generator, Tuple
 
 from core.logger import get_logger
 from core.engine.hardware_probe import UniversalHardwareProbe
-from core.engine.weight_profiler import WeightSaliencyProfiler
-from core.engine.disk_streamer import MultiDriveShardedStreamer
-from core.engine.moe_expert_cache import MoEExpertCache
-from core.engine.speculative import SpeculativeDecodingEngine
 from core.engine.model_inspector import ModelInspector, ModelFacts
 from core.engine.memory_planner import MemoryPlanner, PlacementPlan
 from core.engine.sampling import SamplingParams
@@ -25,6 +21,12 @@ from core.engine.cancellation import is_cancelled, stopping_criteria_for
 from core.engine.prefix_cache import PrefixKVCache
 
 log = get_logger(__name__)
+
+# Spare VRAM required, on top of the cache itself, before a KV cache is held
+# between turns. A retained cache is memory the next turn starts from rather
+# than memory it can allocate, so the margin has to cover the activations of
+# that next turn too.
+_PREFIX_CACHE_MIN_SPARE_GB = 1.0
 
 DEFAULT_SYSTEM_PROMPT = (
     "Sei Sigma Assistant, un'architettura AI avanzata, precisa e utile. "
@@ -45,10 +47,6 @@ class UniversalSigmaEngine:
         # volume, which must not happen at import time.
         self._hardware_profile: Optional[Dict[str, Any]] = None
         self._active_backend: Optional[str] = None
-
-        self.streamer = MultiDriveShardedStreamer()
-        self.moe_cache = MoEExpertCache(max_vram_experts=8)
-        self.speculative_engine = SpeculativeDecodingEngine(gamma_lookahead=4)
 
         self.loaded_model_name: Optional[str] = None
         self.loaded_model: Optional[Dict[str, Any]] = None
@@ -80,6 +78,9 @@ class UniversalSigmaEngine:
         # where that budget is genuinely tight.
         self.prefix_cache = PrefixKVCache()
         self.prefix_cache_enabled = os.environ.get("SIGMA_PREFIX_CACHE", "1") != "0"
+        # Set per load: even when the feature is on, a placement without room
+        # to spare must not hold a cache between turns.
+        self.prefix_cache_retained = False
 
     # ------------------------------------------------------------- hardware
 
@@ -204,9 +205,21 @@ class UniversalSigmaEngine:
                 self.placement_plan.offload_folder if self.placement_plan else None
             ),
             "bf16_supported": any(a.get("supports_bf16") for a in accs) if has_cuda else False,
-            "moe_expert_cache_active": bool(
-                self.model_facts and self.model_facts.is_moe
+            # Reported from the backend that is actually running, not from a
+            # class that was instantiated and never called. The MoE expert
+            # cache, the speculative engine and the multi-drive streamer used
+            # to be constructed here and appear in this dictionary while none
+            # of their methods was reachable from any code path -- three
+            # accelerations that existed only in the status panel.
+            "speculative": (
+                (self.active_backend_instance.telemetry() or {}).get("speculative")
+                if self.active_backend_instance is not None else None
             ),
+            "kv_cache_type": (
+                (self.active_backend_instance.telemetry() or {}).get("kv_quant", "f16")
+                if self.active_backend_instance is not None else "f16"
+            ),
+            "prefix_kv_reuse": self.prefix_cache_enabled,
             "native_mtp_head": bool(self.model_facts and self.model_facts.has_mtp),
         }
 
@@ -224,20 +237,86 @@ class UniversalSigmaEngine:
 
     # -------------------------------------------------------- model discovery
 
-    @staticmethod
-    def _folder_has_weights(folder_path: str) -> bool:
-        """Checks if a directory actually contains neural model weights."""
-        if not os.path.isdir(folder_path):
-            return False
-        try:
-            files = os.listdir(folder_path)
-        except Exception:
-            return False
-        return any(
-            f.endswith((".safetensors", ".gguf", ".bin"))
-            or f == "model.safetensors.index.json"
-            for f in files
+    def _transformers_infeasibility(
+        self, facts: ModelFacts, plan: PlacementPlan, profile: Dict[str, Any]
+    ) -> Optional[str]:
+        """
+        Why this checkpoint cannot run through transformers here, or None.
+
+        Three questions, in the order that decides the answer: is there a torch
+        at all, is there an accelerator, and does the smallest precision fit in
+        what memory exists. A refusal always names the format that would work
+        and, where one is already on disk, the folder.
+        """
+        if not self._module_available("torch"):
+            return (
+                f"'{facts.name}' e' in safetensors, che richiede PyTorch, non "
+                "installato su questa macchina. Converti il modello in GGUF "
+                "(Model Hub -> Converti) per usarlo con llama.cpp, che gira "
+                "anche senza torch."
+            )
+
+        accelerators = [
+            a for a in profile.get("accelerators", [])
+            if a.get("type") in ("NVIDIA_CUDA", "AMD_ROCM", "APPLE_MPS")
+        ]
+        ram_gb = float((profile.get("ram") or {}).get("available_gb", 0.0) or 0.0)
+        smallest_gb = ModelInspector.estimate_footprint(facts, "nf4")["total_gb"]
+        if not smallest_gb:
+            smallest_gb = facts.total_bytes / 2**30
+
+        alternative = self._gguf_twin(facts)
+        suffix = (
+            f" Sullo stesso disco c'e' gia' '{alternative}', in GGUF: usa quello."
+            if alternative else
+            " Converti il modello in GGUF dal Model Hub: llama.cpp lo esegue "
+            "quantizzato e a blocchi, senza doverlo tenere tutto in memoria."
         )
+
+        if not accelerators:
+            # CPU-only: transformers has no quantized CPU kernel path here, so
+            # the model lands in its full dtype and the figure to beat is the
+            # checkpoint on disk, not the 4-bit footprint.
+            full_gb = facts.total_bytes / 2**30
+            if full_gb > max(ram_gb - 2.0, 1.0):
+                return (
+                    f"'{facts.name}' occupa {full_gb:.1f} GB e questa macchina non "
+                    f"ha acceleratori: transformers lo caricherebbe in RAM, dove "
+                    f"ce ne sono {ram_gb:.1f} GB liberi.{suffix}"
+                )
+            return None
+
+        total_vram = sum(a.get("free_vram_gb", 0.0) for a in accelerators)
+        reachable = total_vram + max(ram_gb - 2.0, 0.0)
+        if smallest_gb > reachable:
+            return (
+                f"'{facts.name}' richiede almeno {smallest_gb:.1f} GB anche a 4 bit, "
+                f"e qui sono raggiungibili {reachable:.1f} GB fra VRAM "
+                f"({total_vram:.1f}) e RAM libera ({ram_gb:.1f}).{suffix}"
+            )
+        return None
+
+    @staticmethod
+    def _gguf_twin(facts: ModelFacts) -> Optional[str]:
+        """A folder holding a GGUF of the same checkpoint, if one is local."""
+        try:
+            from core.model_paths import models_dir
+            root = models_dir()
+            if not os.path.isdir(root):
+                return None
+        except Exception:
+            return None
+
+        stem = facts.name.lower().split("-gguf")[0]
+        for entry in sorted(os.listdir(root)):
+            folder = os.path.join(root, entry)
+            if not os.path.isdir(folder) or entry == facts.name:
+                continue
+            if not entry.lower().startswith(stem):
+                continue
+            if any(f.endswith(".gguf") for f in os.listdir(folder)):
+                return entry
+        return None
 
     def find_valid_model_directory(
         self, model_identifier: Optional[str] = None
@@ -344,6 +423,26 @@ class UniversalSigmaEngine:
             force_quantization=force_quantization,
         )
 
+        # A safetensors checkpoint never reaches the backend registry: the
+        # branch above sends only other formats there, so transformers is the
+        # only runtime this path can use. That is fine on a workstation and
+        # wrong everywhere else -- on a board with no accelerator it means a
+        # 27B is loaded in float32 onto four gigabytes of RAM, which does not
+        # fail so much as stop responding. The refusal below is what "supported
+        # on every platform" actually requires: knowing where it cannot run,
+        # and saying which format can.
+        infeasible = self._transformers_infeasibility(facts, plan, profile)
+        if infeasible:
+            self.last_load_error = infeasible
+            log.error("[SigmaEngine] %s", infeasible)
+            return {
+                "success": False,
+                "error": infeasible,
+                "stage": "feasibility",
+                "plan": plan.to_dict(),
+                "facts": facts.to_dict(),
+            }
+
         log.info(
             "[SigmaEngine] Loading '%s' | %s | %s",
             display_name, facts.summary(), plan.summary(),
@@ -442,7 +541,24 @@ class UniversalSigmaEngine:
         # The cache may grow to the context the plan reserved KV for, and no
         # further: past that it stops being a saving and becomes a second copy
         # of the conversation sitting in VRAM.
-        self.prefix_cache.configure(display_name, plan.context_tokens)
+        #
+        # And only when the placement left room for it at all. Holding a KV
+        # cache between turns is memory that is *not* released when the answer
+        # ends, so on a plan whose headroom is already inside estimation error
+        # it turns a tight fit into an out-of-memory error on the second
+        # message. Saving a prefill is not worth losing the conversation.
+        headroom = plan.vram_headroom_gb
+        if headroom < plan.kv_cache_gb + _PREFIX_CACHE_MIN_SPARE_GB:
+            self.prefix_cache.clear("placement too tight to retain KV")
+            self.prefix_cache_retained = False
+            log.info(
+                "[SigmaEngine] Prefix KV reuse off for '%s': %.2fGB headroom does "
+                "not cover a %.2fGB cache plus a safety margin.",
+                display_name, headroom, plan.kv_cache_gb,
+            )
+        else:
+            self.prefix_cache_retained = True
+            self.prefix_cache.configure(display_name, plan.context_tokens)
 
         actual_placement = self._describe_placement(model)
         self.loaded_model = {
@@ -514,6 +630,15 @@ class UniversalSigmaEngine:
             "loaded_at": time.time(),
             "status": "ready",
         }
+
+        # A placement that cannot perform is not a silent outcome. The user who
+        # loaded a 50GB F16 onto 21GB of VRAM experienced it as "the engine got
+        # slower"; the engine knew the ceiling before the first token and said
+        # nothing. It is logged loudly and carried in the result so the chat can
+        # show it where the wait actually happens.
+        warning = (result.get("settings") or {}).get("warning")
+        if warning:
+            log.warning("[SigmaEngine] %s", warning)
         return result
 
     def _attempt_load(
@@ -880,6 +1005,7 @@ class UniversalSigmaEngine:
         messages: Optional[List[Dict[str, str]]] = None,
         params: Optional[SamplingParams] = None,
         cancel: Any = None,
+        retried_after_oom: bool = False,
     ) -> Generator[Dict[str, Any], None, None]:
         """
         Streams tokens from native inference with live throughput metrics.
@@ -937,14 +1063,25 @@ class UniversalSigmaEngine:
             load_sec = result.get("load_seconds") or round(time.perf_counter() - t_start, 2)
             load_ms = round(load_sec * 1000, 1)
 
+            placement_warning = (result.get("settings") or {}).get("warning")
             yield {
                 "token": "",
                 "status": True,
                 "load_duration_ms": load_ms,
                 "load_seconds": load_sec,
                 "model_status": f"⚡ Modello caricato in {load_sec}s",
+                "placement_warning": placement_warning,
                 "done": False,
             }
+            if placement_warning:
+                # Shown in the answer bubble, before the first token: this is
+                # the moment the user is about to start waiting, and the only
+                # moment where knowing why is still useful.
+                yield {
+                    "token": f"> ⚠️ {placement_warning}\n\n",
+                    "status": True,
+                    "done": False,
+                }
 
             # Throughput must measure generation, not the load before it.
             t_start = time.perf_counter()
@@ -995,7 +1132,7 @@ class UniversalSigmaEngine:
             # it read a minute ago.
             prompt_ids = inputs["input_ids"][0].tolist()
             reused_tokens = 0
-            if self.prefix_cache_enabled:
+            if self.prefix_cache_enabled and self.prefix_cache_retained:
                 past, reused_tokens = self.prefix_cache.take(
                     prompt_ids, self.loaded_model_name or ""
                 )
@@ -1007,7 +1144,8 @@ class UniversalSigmaEngine:
             self.prefix_cache.tokens_prefilled += max(
                 len(prompt_ids) - reused_tokens, 0
             )
-            if self.prefix_cache_enabled and "return_dict_in_generate" not in gen_kwargs:
+            if (self.prefix_cache_enabled and self.prefix_cache_retained
+                    and "return_dict_in_generate" not in gen_kwargs):
                 gen_kwargs["return_dict_in_generate"] = True
 
             if params.seed is not None:
@@ -1086,9 +1224,37 @@ class UniversalSigmaEngine:
             self._retain_prefix_cache(generation_output, cancel)
 
             if generation_error:
+                failure = generation_error[0]
+
+                # An out-of-memory before the first token is recoverable: the
+                # retained cache and the allocator's free blocks are both giving
+                # up memory the retry can use. Once tokens have reached the user
+                # a retry would repeat them, so the answer is the explanation.
+                if (self._is_out_of_memory(failure) and token_count == 0
+                        and not retried_after_oom):
+                    log.warning(
+                        "[SigmaEngine] Out of memory before the first token; "
+                        "releasing the prefix cache and retrying once."
+                    )
+                    self.prefix_cache.clear("out of memory")
+                    self.prefix_cache_retained = False
+                    self._free_cuda_cache()
+                    yield {
+                        "token": "",
+                        "status": True,
+                        "model_status": "♻️ VRAM esaurita: libero la cache e riprovo...",
+                        "done": False,
+                    }
+                    yield from self._generate_stream_locked(
+                        prompt=prompt, system_prompt=system_prompt,
+                        temperature=temperature, max_tokens=max_tokens,
+                        model_name=model_name, messages=messages,
+                        params=params, cancel=cancel, retried_after_oom=True,
+                    )
+                    return
+
                 yield {
-                    "token": f"\n\n❌ **Errore GPU durante la generazione**: "
-                             f"{type(generation_error[0]).__name__}: {generation_error[0]}",
+                    "token": self._explain_generation_failure(failure),
                     "token_index": token_count + 1,
                     "done": True,
                 }
@@ -1113,10 +1279,71 @@ class UniversalSigmaEngine:
             self.prefix_cache.clear("generation error")
             log.error("[SigmaEngine] Generation error: %s", exc, exc_info=True)
             yield {
-                "token": f"\n\n❌ **Errore SigmaEngine**: {type(exc).__name__}: {exc}",
+                "token": self._explain_generation_failure(exc),
                 "token_index": token_count + 1,
                 "done": True,
             }
+
+    def _explain_generation_failure(self, exc: BaseException) -> str:
+        """
+        Turns a runtime failure into something the user can act on.
+
+        An out-of-memory error in particular is not a bug report, it is a
+        placement that was one allocation too optimistic, and the remedies are
+        specific and knowable: a shorter context, a smaller quantization, or a
+        GGUF of the same checkpoint that llama.cpp can split more finely. The
+        raw CUDA message names none of them.
+        """
+        text = f"{type(exc).__name__}: {exc}"
+        if not self._is_out_of_memory(exc):
+            return f"\n\n❌ **Errore SigmaEngine**: {text}"
+
+        plan = self.placement_plan
+        lines = [
+            "\n\n❌ **VRAM esaurita durante la generazione.**",
+            "",
+            "Il modello era caricato, ma non e' rimasto spazio per il passo di "
+            "calcolo. La cache di prefisso e' stata liberata.",
+        ]
+        if plan:
+            lines.append(
+                f"Piano attuale: {plan.quantization.upper()}, contesto "
+                f"{plan.context_tokens} token, margine dichiarato "
+                f"{plan.vram_headroom_gb:+.2f} GB."
+            )
+
+        remedies = []
+        if plan and plan.context_tokens > 4096:
+            remedies.append(
+                f"ridurre il contesto (ora {plan.context_tokens}): e' la leva "
+                "piu' diretta, la memoria di calcolo cresce con esso"
+            )
+        if plan and plan.quantization != "nf4":
+            remedies.append("forzare la quantizzazione a NF4 dal Model Hub")
+        remedies.append(
+            "usare un GGUF dello stesso checkpoint: llama.cpp divide per layer "
+            "con grana piu' fine e non ha bisogno di far stare tutto in una volta"
+        )
+        lines.append("")
+        lines.append("Rimedi, dal piu' efficace:")
+        lines.extend(f"- {r}" for r in remedies)
+        return "\n".join(lines)
+
+    @staticmethod
+    def _is_out_of_memory(exc: BaseException) -> bool:
+        """
+        Whether this failure is memory exhaustion, whatever the accelerator.
+
+        Matched by name and text rather than by class, because the exception
+        differs per backend -- torch.cuda.OutOfMemoryError on NVIDIA, a plain
+        RuntimeError on ROCm and MPS -- and the engine has to behave the same
+        on all of them.
+        """
+        name = type(exc).__name__
+        if "OutOfMemory" in name or "OOM" in name:
+            return True
+        text = str(exc).lower()
+        return "out of memory" in text or "cuda error: out of memory" in text
 
     def _retain_prefix_cache(self, generation_output: List[Any], cancel: Any) -> None:
         """
@@ -1127,7 +1354,7 @@ class UniversalSigmaEngine:
         the sequence the cache actually covers -- reusing that would not slow
         the next answer down, it would corrupt it.
         """
-        if not self.prefix_cache_enabled:
+        if not (self.prefix_cache_enabled and self.prefix_cache_retained):
             return
         if is_cancelled(cancel) or not generation_output:
             self.prefix_cache.clear("generation did not finish")
@@ -1243,32 +1470,6 @@ class UniversalSigmaEngine:
             k: v.to(target_device) if hasattr(v, "to") else v
             for k, v in inputs.items()
         }
-
-    @staticmethod
-    def _describe_load(result: Dict[str, Any]) -> str:
-        """One line describing how a model was placed, for either runtime."""
-        seconds = result.get("load_seconds")
-        plan = result.get("plan") or {}
-        if plan:
-            return (
-                f"Caricato in {seconds}s "
-                f"({str(plan.get('quantization', '?')).upper()}, "
-                f"{plan.get('total_required_gb', '?')} GB)."
-            )
-
-        settings = result.get("settings") or {}
-        placement = result.get("placement") or {}
-        layers = placement.get("layers_on_gpu")
-        total = placement.get("layers_total")
-        where = (
-            "tutti i layer su GPU" if placement.get("fully_offloaded")
-            else f"{layers}/{total} layer su GPU"
-        )
-        return (
-            f"Caricato in {seconds}s "
-            f"({result.get('backend', 'backend')}, {where}, "
-            f"ctx {settings.get('n_ctx', '?')})."
-        )
 
     def _format_load_failure(self, target_model: str, result: Dict[str, Any]) -> str:
         """Renders the real load failure, with guidance matched to the stage."""
