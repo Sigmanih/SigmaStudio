@@ -199,17 +199,31 @@ class TestPromptPrefixStability(unittest.TestCase):
         self.assertEqual(len(digests), 1,
                          "the system prefix changed between turns, so no KV cache can hit")
 
-    def test_volatile_context_is_not_in_the_system_message(self):
+    def test_only_the_uncacheable_stays_out_of_the_system_message(self):
+        """
+        The split is by lifetime, and measurement moved two things across it.
+
+        The knowledge-base tree and the clock started in the tail on the theory
+        that they change. The tree changes only when the user creates or
+        deletes something, and the minute almost never matters -- so both were
+        costing a re-prefill every turn to express something stable. What
+        remains volatile is the precise time when it is asked for, and
+        retrieved memories, which depend on the question.
+        """
         captured = self._assemble("Ciao", [])
         system = captured["messages"][0]["content"]
-        self.assertNotIn("ORA CORRENTE", system)
-        self.assertNotIn("STRUTTURA PROGETTO", system)
+        self.assertIn("STRUTTURA PROGETTO", system)
+        self.assertIn("Oggi è", system)
+        self.assertNotIn("Ora corrente", system)
 
     def test_volatile_context_rides_with_the_final_user_turn(self):
-        captured = self._assemble("Ciao", [])
+        # When there is any, it goes with the last turn -- after the history,
+        # so it cannot cap the shared prefix any earlier than the newest
+        # exchange.
+        captured = self._assemble("Che ore sono adesso?", [])
         last = captured["messages"][-1]
         self.assertEqual(last["role"], "user")
-        self.assertIn("ORA CORRENTE", last["content"])
+        self.assertIn("Ora corrente", last["content"])
 
     def test_the_question_stays_last_in_its_turn(self):
         # Burying the question under a directory listing is how an assistant
@@ -221,6 +235,138 @@ class TestPromptPrefixStability(unittest.TestCase):
     def test_reasoning_follows_the_message_not_the_provider(self):
         self.assertFalse(self._assemble("Ciao", [])["wants_reasoning"])
         self.assertTrue(self._assemble("dimostra il teorema", [])["wants_reasoning"])
+
+
+class TestPrefixReuseAcrossTurns(unittest.TestCase):
+    """
+    Stability is necessary but not sufficient: what gets reused is the longest
+    shared token prefix, and anything volatile placed before the end of the
+    conversation caps it there.
+
+    The first version of this split put the knowledge-base tree and a
+    minute-precision clock into the final user turn. Both are replayed from
+    history on the next turn *without* that block, so the sequences diverged at
+    the last exchange and ~440 tokens were re-prefilled every message -- which
+    is what the user experienced as "it loads again every time I talk to it".
+    """
+
+    _assemble = TestPromptPrefixStability._assemble
+
+    def _prompt_text(self, messages):
+        return "\n".join(f"{m['role']}: {m['content']}" for m in messages)
+
+    def _shared_prefix(self, first, second):
+        a, b = self._prompt_text(first), self._prompt_text(second)
+        limit = min(len(a), len(b))
+        index = 0
+        while index < limit and a[index] == b[index]:
+            index += 1
+        return index
+
+    def _conversation(self, questions):
+        history, prompts = [], []
+        for question in questions:
+            captured = self._assemble(question, list(history))
+            prompts.append(captured["messages"])
+            history += [
+                {"role": "user", "content": question},
+                {"role": "assistant", "content": "Una risposta di esempio."},
+            ]
+        return prompts
+
+    def test_the_tree_lives_in_the_cacheable_prefix(self):
+        captured = self._assemble("Ciao", [])
+        system = captured["messages"][0]["content"]
+        self.assertIn("STRUTTURA PROGETTO", system)
+        self.assertNotIn("STRUTTURA PROGETTO", captured["messages"][-1]["content"])
+
+    def test_an_ordinary_question_carries_no_volatile_tail(self):
+        # With nothing volatile to append, the last turn is the question alone
+        # and the divergence point moves to the end of the conversation.
+        captured = self._assemble("Cos'e' un numero primo?", [])
+        self.assertEqual(
+            captured["messages"][-1]["content"].strip(), "Cos'e' un numero primo?"
+        )
+
+    def test_the_clock_appears_only_when_the_question_needs_it(self):
+        asked = self._assemble("Che ore sono adesso?", [])
+        ordinary = self._assemble("Spiegami i numeri primi", [])
+        self.assertIn("Ora corrente", asked["messages"][-1]["content"])
+        self.assertNotIn("Ora corrente", ordinary["messages"][-1]["content"])
+
+    def test_the_date_is_still_available_every_turn(self):
+        # Dropping the minute must not drop the day: plenty of answers depend on
+        # knowing what today is.
+        system = self._assemble("Ciao", [])["messages"][0]["content"]
+        self.assertIn("Oggi è", system)
+
+    def test_the_shared_prefix_grows_with_the_conversation(self):
+        # The property that matters: each turn should re-read only the newest
+        # exchange, not everything since the system prompt.
+        prompts = self._conversation([
+            "Cos'e' un numero primo?", "E il piu' grande conosciuto?",
+            "Come si dimostra?", "Fammi un esempio.",
+        ])
+        shared = [self._shared_prefix(prompts[i], prompts[i + 1])
+                  for i in range(len(prompts) - 1)]
+        self.assertGreater(
+            shared[-1], shared[0],
+            "the reuse point is frozen: every turn re-prefills the whole history",
+        )
+
+    def test_almost_the_whole_prompt_is_reusable(self):
+        prompts = self._conversation([
+            "Cos'e' un numero primo?", "E il piu' grande conosciuto?",
+            "Come si dimostra?",
+        ])
+        for index in range(len(prompts) - 1):
+            total = len(self._prompt_text(prompts[index + 1]))
+            shared = self._shared_prefix(prompts[index], prompts[index + 1])
+            self.assertGreater(
+                shared / total, 0.90,
+                f"turn {index + 1}->{index + 2} reuses only {shared / total:.0%}",
+            )
+
+
+class TestPreparingStatus(unittest.TestCase):
+    """
+    The status line shown before the first token has to be true.
+
+    It said "loading the model" on every request, resident or not, so a
+    conversation with a model already in VRAM read as a reload each turn.
+    """
+
+    def test_a_resident_model_is_not_announced_as_loading(self):
+        from unittest import mock
+        from core.chat.chat_runner import _preparing_status
+        from core.engine import sigma_engine
+
+        with mock.patch.object(type(sigma_engine), "has_resident_model",
+                               new_callable=mock.PropertyMock) as resident:
+            resident.return_value = True
+            status = _preparing_status("qwen3-27b", "Sigma")
+        self.assertNotIn("Caricamento", status)
+
+    def test_a_cold_engine_does_say_loading(self):
+        from unittest import mock
+        from core.chat.chat_runner import _preparing_status
+        from core.engine import sigma_engine
+
+        with mock.patch.object(type(sigma_engine), "has_resident_model",
+                               new_callable=mock.PropertyMock) as resident:
+            resident.return_value = False
+            status = _preparing_status("qwen3-27b", "Sigma")
+        self.assertIn("Caricamento", status)
+
+    def test_a_queued_request_says_so(self):
+        from core.chat.chat_runner import _preparing_status
+        from core.engine import sigma_engine
+
+        sigma_engine._generation_waiting += 1
+        try:
+            self.assertIn("coda", _preparing_status("m", "Sigma"))
+        finally:
+            sigma_engine._generation_waiting -= 1
 
 
 class TestFilesystemContextCache(unittest.TestCase):

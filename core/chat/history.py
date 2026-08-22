@@ -138,6 +138,16 @@ def dropped_notice(report: Dict[str, Any]) -> str:
     )
 
 
+# Most of the window may not be set aside for a reply that will almost never be
+# that long. The deep profiles cap an answer at 32768 tokens on a window of the
+# same size, so treating that cap as a reservation left the history exactly
+# nothing: a single question about mathematics or code collapsed the
+# conversation to the last exchange, and the assistant appeared to forget
+# everything the moment the subject turned technical.
+_MAX_ANSWER_RESERVE_FRACTION = 4          # at most a quarter of the window
+_MIN_ANSWER_RESERVE_TOKENS = 1024
+
+
 def history_budget(
     context_window: int,
     fixed_tokens: int,
@@ -149,9 +159,18 @@ def history_budget(
     The window has to hold three things: the parts that are not negotiable (the
     system prompt, the volatile context, the question), the history, and room
     for the answer. The history is the only elastic one, so it gets what is
-    left -- never a fixed fraction, which is how a long system prompt and a
-    long history combine to leave the model no room to reply.
+    left.
+
+    The reply's share is bounded, because a profile's max_tokens is a ceiling on
+    how long an answer *may* run, not a prediction of how long it will. Reserving
+    the ceiling means the rarest case dictates every ordinary one.
     """
     if context_window <= 0:
         return 8192                                # unknown window: stay modest
-    return max(context_window - fixed_tokens - reserve_for_answer, 0)
+
+    reserve = min(
+        reserve_for_answer,
+        max(context_window // _MAX_ANSWER_RESERVE_FRACTION,
+            _MIN_ANSWER_RESERVE_TOKENS),
+    )
+    return max(context_window - fixed_tokens - reserve, 0)

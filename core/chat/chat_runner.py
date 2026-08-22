@@ -38,6 +38,7 @@ from core.chat.prompt_builder import (
     _get_time_context, _get_manifesto_content, _build_filesystem_context,
     _collect_context_files, _resolve_manifesto_for_model, _determine_agent_by_request,
     _build_agent_identity_header, invalidate_filesystem_context,
+    _get_date_context, needs_precise_time,
 )
 from core.chat.file_extractor import (
     _normalize_data_path, _ensure_module_subfolders, _determine_default_module_path,
@@ -315,6 +316,28 @@ class _TokenCoalescer:
             self._channel = None
 
 
+def _preparing_status(model: str, bot_name: str) -> str:
+    """
+    What the engine is doing before the first token arrives.
+
+    Separates the three situations the user experiences as one undifferentiated
+    wait: the weights have to be brought into memory, another request is using
+    the engine, or the model is resident and simply reading the prompt. Only
+    the first is a load, and saying so on every turn taught the user to read
+    every pause as one.
+    """
+    try:
+        from core.engine import sigma_engine
+
+        if sigma_engine._generation_waiting > 0:
+            return "⏳ Motore occupato da un'altra richiesta, in coda..."
+        if sigma_engine.has_resident_model:
+            return f"📖 {bot_name} sta leggendo la conversazione..."
+        return f"🧠 Caricamento di {model} in memoria..."
+    except Exception:
+        return f"🧠 Preparazione di {model}..."
+
+
 def _detect_hardware_note(provider: str, model: str) -> str:
     """Return a concise, informative note about the hardware executing this model."""
     if provider in ["anthropic", "openai", "groq", "mistral", "deepseek", "gemini", "openrouter"]:
@@ -388,7 +411,12 @@ def _stream_chat_response(handler, messages, ai_cfg, model, provider,
         "manifesto_used": manifesto_path,
         "routing_time_ms": routing_time_ms,
         "hardware_note": hw_info,
-        "model_status": f"🧠 Caricamento modello {model} e inizializzazione contesto...",
+        # Sent before the first token, so it has to describe what is actually
+        # happening. It used to say "loading the model" on every request,
+        # resident or not, which is why talking to a model already in VRAM felt
+        # like waiting for it to load each time. The engine emits its own
+        # notice when a load genuinely happens.
+        "model_status": _preparing_status(model, bot_name),
     }})
 
     full_text = ""
@@ -1039,9 +1067,24 @@ def handle_chat(self):
         except Exception as mcp_err:
             log.debug("MCP Hub chat pipeline enrichment skipped: %s", mcp_err)
 
+        # The knowledge-base tree belongs in the cacheable prefix. It was moved
+        # into the per-turn tail on the theory that it changes; measured, it
+        # changes only when the user creates or deletes something, while its
+        # ~240 tokens sat at precisely the point where prefix reuse stops. A
+        # tree that does change costs one invalidation, which is the right
+        # price paid once rather than a fraction of it paid forever.
+        fs_context = _build_filesystem_context()
+        project_structure = (
+            f"\n## STRUTTURA PROGETTO\n{fs_context}\n" if fs_context else ""
+        )
+        # The date, not the clock: see _get_date_context. Stable for a day, so
+        # it belongs here rather than in the tail.
+        today = _get_date_context()
+
         full_prompt = f"""{identity_header}
 
-{system_prompt}{mcp_tools_catalogue}
+{system_prompt}{mcp_tools_catalogue}{project_structure}
+{today}
 
 ## ISTRUZIONI CREAZIONE E SALVATAGGIO FILE SU DISCO
 1. Quando l'utente ti chiede di creare, scrivere o generare un file per un Argomento, DEVI SEMPRE specificare il percorso relativo esplicito collegandolo DIRETTAMENTE all'argomento (es. `data/ARGOMENTO/NOME_FILE.md`) e racchiudere il contenuto completo all'interno di un blocco di codice markdown:
@@ -1083,11 +1126,15 @@ Contenuto completo...
         # The volatile block, and then the question. The question stays last:
         # it is what the model must answer, and burying it under a directory
         # listing is how an assistant ends up describing the listing.
+        # What genuinely cannot be cached, and nothing else. The clock is
+        # fifteen tokens; retrieved memories depend on the question. The
+        # knowledge-base tree used to be here too, and measured at ~240 tokens
+        # it was the single largest thing being re-prefilled on every message,
+        # sitting exactly at the point where the KV cache stops matching. It
+        # now lives in the stable prefix above.
         volatile_parts = []
-        fs_context = _build_filesystem_context()
-        if fs_context:
-            volatile_parts.append("## STRUTTURA PROGETTO\n" + fs_context)
-        volatile_parts.append("## ORA CORRENTE\n" + _get_time_context())
+        if needs_precise_time(message):
+            volatile_parts.append(_get_time_context())
         if retrieved_memory:
             volatile_parts.append(retrieved_memory)
 

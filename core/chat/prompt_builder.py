@@ -45,19 +45,53 @@ def _routing_cache_put(message: str, manifesto_path: str) -> None:
         _ROUTING_CACHE.popitem(last=False)
 
 
-def _get_time_context() -> str:
-    """Return a short Italian date/time string for injection into prompts."""
+_GIORNI = ["Lunedì", "Martedì", "Mercoledì", "Giovedì", "Venerdì", "Sabato", "Domenica"]
+_MESI = [
+    "Gennaio", "Febbraio", "Marzo", "Aprile", "Maggio", "Giugno",
+    "Luglio", "Agosto", "Settembre", "Ottobre", "Novembre", "Dicembre",
+]
+
+# Questions where the minute actually matters. Anything else is answered just as
+# well by the date, which has the decisive advantage of not changing.
+_ASKS_THE_TIME = re.compile(
+    r"\b(che\s+or[ae]|orario|adesso|in\s+questo\s+momento|ora\s+esatta|"
+    r"quanto\s+manca|fra\s+quanto|scadenz|deadline|timer|cronometr|"
+    r"what\s+time|right\s+now|current\s+time)\w*", re.IGNORECASE
+)
+
+
+def _get_date_context() -> str:
+    """
+    Today's date, without the clock.
+
+    Granularity is a caching decision, not a formatting one. A timestamp with
+    minutes changes between one message and the next, and anything that changes
+    cannot live in the part of the prompt the KV cache reuses -- so a detail
+    almost no answer needs was costing a re-prefill on every turn. The date is
+    stable for a day and sits in the prefix; the minute is added, in the
+    volatile tail, only when the question is about time.
+    """
     from datetime import datetime
     now = datetime.now()
-    giorni = ["Lunedì", "Martedì", "Mercoledì", "Giovedì", "Venerdì", "Sabato", "Domenica"]
-    mesi = [
-        "Gennaio", "Febbraio", "Marzo", "Aprile", "Maggio", "Giugno",
-        "Luglio", "Agosto", "Settembre", "Ottobre", "Novembre", "Dicembre",
-    ]
     return (
-        f"## 📅 Oggi è {giorni[now.weekday()]} {now.day} {mesi[now.month - 1]} "
-        f"{now.year}, ore {now.strftime('%H:%M')}.\n"
+        f"## 📅 Oggi è {_GIORNI[now.weekday()]} {now.day} "
+        f"{_MESI[now.month - 1]} {now.year}.\n"
     )
+
+
+def _get_time_context() -> str:
+    """The full date and clock, for the turns that genuinely need the minute."""
+    from datetime import datetime
+    now = datetime.now()
+    return (
+        f"## 🕐 Ora corrente: {_GIORNI[now.weekday()]} {now.day} "
+        f"{_MESI[now.month - 1]} {now.year}, ore {now.strftime('%H:%M')}.\n"
+    )
+
+
+def needs_precise_time(message: str) -> bool:
+    """Whether this question is worth breaking the cacheable prefix for."""
+    return bool(_ASKS_THE_TIME.search(message or ""))
 
 
 import re
