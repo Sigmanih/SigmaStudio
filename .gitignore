@@ -37,16 +37,16 @@ config.json
 config.local.json
 
 # Dynamic Modules (downloaded from separate repositories)
-modules/
-core/modules/*
-!core/modules/__init__.py
-!core/modules/sigma_model_hub
-!core/modules/sigma_model_hub/**
-sigma_studio/src/modules/*
-!sigma_studio/src/modules/registry.js
-!sigma_studio/src/modules/ModuleNotInstalled.jsx
-!sigma_studio/src/modules/sigma_model_hub
-!sigma_studio/src/modules/sigma_model_hub/**
+/modules/
+/core/modules/*
+!/core/modules/__init__.py
+!/core/modules/sigma_model_hub/
+!/core/modules/sigma_model_hub/**
+/sigma_studio/src/modules/*
+!/sigma_studio/src/modules/registry.js
+!/sigma_studio/src/modules/ModuleNotInstalled.jsx
+!/sigma_studio/src/modules/sigma_model_hub/
+!/sigma_studio/src/modules/sigma_model_hub/**
 data/marketplace_installed.json
 
 # Tests & Coverage
