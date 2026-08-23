@@ -1222,6 +1222,10 @@ def _resolve_inside(root: Path, path: str) -> Path | None:
 
 @app.get("/{path:path}")
 async def serve_static_or_spa(path: str):
+    # Any unmatched API endpoint must return JSON 404, never index.html
+    if path.startswith("api/") or path.startswith("v1/"):
+        return JSONResponse(status_code=404, content={"error": f"API endpoint '/{path}' non trovato"})
+
     # Gli asset del Creative Studio vivono sotto data/creative/assets/<id>/ e sono
     # referenziati dalla UI con l'URL assoluto `/data/...`: senza questo ramo la
     # richiesta ricadeva sull'index.html e le immagini restavano rotte.

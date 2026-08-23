@@ -34,6 +34,7 @@ accelerate>=0.28.0
 huggingface_hub>=0.22.0
 safetensors>=0.4.0
 bitsandbytes>=0.43.0
+gguf>=0.1.0
 
 # SigmaEngine inference backends
 # llama-cpp-python (required to run .gguf checkpoints) is deliberately absent:

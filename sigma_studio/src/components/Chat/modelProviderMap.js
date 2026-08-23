@@ -179,21 +179,36 @@ export const PROVIDER_COLORS = {
 export function getProviderForModel(modelName, providerConfigs) {
   if (!modelName) return 'sigma_engine';
 
-  // Rule 0: SigmaEngine native models
   const lower = modelName.toLowerCase();
+
+  // Rule 0: SigmaEngine native models & Ailo
   if (lower.startsWith('sigma-') || lower.startsWith('sigma:') || lower.startsWith('sigma_') || lower.startsWith('ailo-')) {
     if (lower.includes('flow')) return 'ailoflow';
+    return 'sigma_engine';
+  }
+
+  // Rule 0.5: Local storage / Model Hub files (GGUF, Safetensors, HF hub downloads with '--', quantized formats)
+  if (
+    lower.includes('.gguf') ||
+    lower.includes('gguf') ||
+    lower.includes('safetensors') ||
+    lower.includes('--') ||
+    lower.includes('q4_') ||
+    lower.includes('q8_') ||
+    lower.includes('q5_') ||
+    lower.includes('q6_') ||
+    lower.includes('q3_') ||
+    lower.includes('q2_') ||
+    lower.includes('f16') ||
+    lower.includes('bf16') ||
+    lower.includes('dflash')
+  ) {
     return 'sigma_engine';
   }
 
   // 1) Direct map check
   if (MODEL_PROVIDER_MAP[modelName]?.provider) {
     return MODEL_PROVIDER_MAP[modelName].provider;
-  }
-
-  // Rule 2: Tag syntax with colon (e.g. 'deepseek-r1:70b', 'qwen3.6:35b') is Ollama local unless marked as sigma
-  if (modelName.includes(':') && !lower.startsWith('sigma')) {
-    return 'ollama';
   }
 
   // 2) Check providerConfigs for exact configured models
@@ -227,14 +242,19 @@ export function getProviderForModel(modelName, providerConfigs) {
 
   for (const entry of providerMap) {
     for (const prefix of entry.prefixes) {
-      if (modelName.toLowerCase().startsWith(prefix)) {
+      if (lower.startsWith(prefix)) {
         return entry.provider;
       }
     }
   }
 
-  // Default: ollama
-  return 'ollama';
+  // Rule 4: Tag syntax with colon (e.g. 'llama3.2:latest', 'qwen3.6:35b') is Ollama local
+  if (modelName.includes(':') && !lower.startsWith('sigma')) {
+    return 'ollama';
+  }
+
+  // Default: if Ollama is explicitly enabled use ollama, otherwise route to native sigma_engine
+  return providerConfigs?.ollama?.enabled === true ? 'ollama' : 'sigma_engine';
 }
 
 /**
@@ -244,7 +264,7 @@ export function getProviderForModel(modelName, providerConfigs) {
  * @returns {{ provider: string, endpoint: string, api_url: string }}
  */
 export function getModelRoutingInfo(modelName, providerConfigs) {
-  const provider = getProviderForModel(modelName, providerConfigs) || 'ollama';
+  const provider = getProviderForModel(modelName, providerConfigs) || 'sigma_engine';
   const prov = providerConfigs?.[provider] || {};
 
   return {

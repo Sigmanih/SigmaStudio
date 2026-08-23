@@ -7,3 +7,4 @@ datasets>=2.18.0
 huggingface_hub>=0.22.0
 safetensors>=0.4.0
 accelerate>=0.28.0
+gguf>=0.1.0

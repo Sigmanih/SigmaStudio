@@ -234,10 +234,34 @@ class GgufConverter:
         The two stages fail for different reasons and are reported separately,
         so a missing converter script does not look like a broken runtime.
         """
+        import importlib
         from core.engine.backends.base import module_available
 
         writer = module_available("gguf")
         quantizer = module_available("llama_cpp")
+
+        # Auto-recover quantizer (llama_cpp) if not yet imported/present
+        if not quantizer:
+            try:
+                from sigma_launcher import detect_platform, install_inference_kernels
+                platform_info = detect_platform()
+                install_inference_kernels(platform_info)
+                importlib.invalidate_caches()
+                quantizer = module_available("llama_cpp")
+            except Exception:
+                pass
+
+        # Auto-recover gguf package if missing
+        if not writer:
+            try:
+                import sys
+                import subprocess
+                subprocess.run([sys.executable, "-m", "pip", "install", "gguf>=0.1.0"], check=False)
+                importlib.invalidate_caches()
+                writer = module_available("gguf")
+            except Exception:
+                pass
+
         script = os.path.exists(CONVERTER_PATH)
         return {
             "gguf_writer": writer,
@@ -399,26 +423,78 @@ class GgufConverter:
                         return True
         return False
 
-    @staticmethod
-    def _gguf_arch_name(hf_model_type: str) -> Optional[str]:
-        """
-        The GGUF architecture string for a Hugging Face model_type.
-
-        Matched by ignoring separators, because the two ecosystems punctuate the
-        same architecture differently ("qwen3_5" against "qwen35").
-        """
-        if not hf_model_type:
-            return None
+    @classmethod
+    def _get_gguf_module(cls):
+        """Import gguf package, prioritizing the bundled version in CONVERTER_DIR."""
+        import sys
+        if os.path.isdir(BUNDLED_GGUF_PY) and BUNDLED_GGUF_PY not in sys.path:
+            sys.path.insert(0, BUNDLED_GGUF_PY)
         try:
             import gguf
+            return gguf
         except Exception:
             return None
 
-        flat = hf_model_type.replace("_", "").replace("-", "").replace(".", "")
-        for member in gguf.MODEL_ARCH:
-            name = gguf.MODEL_ARCH_NAMES.get(member, "")
-            if name.replace("_", "").replace("-", "").replace(".", "") == flat:
-                return name
+    @classmethod
+    def _gguf_arch_name(cls, hf_model_type: str) -> Optional[str]:
+        """
+        The GGUF architecture string for a Hugging Face model_type.
+
+        Matched with canonical mappings and by ignoring separators, because the
+        two ecosystems punctuate the same architecture differently ("qwen3_5" against "qwen35").
+        """
+        if not hf_model_type:
+            return None
+
+        lowered = hf_model_type.lower()
+        KNOWN_MAPPINGS = {
+            "qwen3_5": "qwen35",
+            "qwen3.5": "qwen35",
+            "qwen35": "qwen35",
+            "qwen3_5_moe": "qwen35moe",
+            "qwen35moe": "qwen35moe",
+            "qwen3": "qwen3",
+            "qwen3_moe": "qwen3moe",
+            "qwen2": "qwen2",
+            "qwen2_5": "qwen2",
+            "qwen2.5": "qwen2",
+            "qwen2_moe": "qwen2moe",
+            "qwen2_vl": "qwen2vl",
+            "llama": "llama",
+            "deepseek_v4": "deepseek4",
+            "deepseek_v3": "deepseek2",
+            "deepseek_v2": "deepseek2",
+            "deepseek": "deepseek",
+            "glm_moe_dsa": "glm-dsa",
+            "glm_dsa": "glm-dsa",
+            "chatglm": "chatglm",
+            "glm4": "glm4",
+            "mistral": "llama",
+            "gemma": "gemma",
+            "gemma2": "gemma2",
+            "phi3": "phi3",
+            "phi2": "phi2",
+            "starcoder2": "starcoder2",
+            "command_r": "command-r",
+            "cohere": "command-r",
+        }
+
+        if lowered in KNOWN_MAPPINGS:
+            return KNOWN_MAPPINGS[lowered]
+
+        flat_no_v = lowered.replace("_", "").replace("-", "").replace(".", "").replace("v", "")
+        if flat_no_v in KNOWN_MAPPINGS:
+            return KNOWN_MAPPINGS[flat_no_v]
+
+        gguf_mod = cls._get_gguf_module()
+        if gguf_mod is not None:
+            flat = lowered.replace("_", "").replace("-", "").replace(".", "")
+            for member in gguf_mod.MODEL_ARCH:
+                name = gguf_mod.MODEL_ARCH_NAMES.get(member, "")
+                name_flat = name.replace("_", "").replace("-", "").replace(".", "")
+                if name_flat == flat or name_flat.replace("v", "") == flat_no_v:
+                    return name
+
         return None
 
     @staticmethod
