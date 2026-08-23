@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { GripVertical, Sparkles, X, Calendar, Cpu, MessageSquare, Settings, Music } from 'lucide-react';
+import { GripVertical, Sparkles, X, Calendar, Cpu, MessageSquare, Settings, Music, Trash2, RefreshCw } from 'lucide-react';
 
 // Sub-components
 import Sidebar from './components/Sidebar';
@@ -34,6 +34,7 @@ function AppContent() {
     toggleTaskStatus,
     deleteTask,
     clearAllTasks,
+    clearSystemMemory,
     isTaskModalOpen,
     setIsTaskModalOpen,
     editingTask,
@@ -417,7 +418,36 @@ function AppContent() {
                   <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#ffb86c' }} />
                 </button>
 
-                {/* Item 5: Musica & Focus Lounge Quick Widget */}
+                {/* Item 5: Pulisci Memoria & Task */}
+                <button
+                  onClick={() => {
+                    if (window.confirm("Vuoi cancellare i task salvati, liberare la memoria RAM/VRAM e arrestare i processi in background?")) {
+                      clearSystemMemory({ clearTasks: true, clearChat: true });
+                      setDockMinimized(true);
+                    }
+                  }}
+                  style={{
+                    display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                    padding: '10px 12px', borderRadius: '10px',
+                    background: 'rgba(239, 68, 68, 0.08)',
+                    border: '1px solid rgba(239, 68, 68, 0.25)',
+                    color: '#f87171', cursor: 'pointer', transition: 'all 0.18s ease', textAlign: 'left'
+                  }}
+                  title="Pulisci memoria, resetta task precedenti e arresta processi in background"
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                    <div style={{ width: '32px', height: '32px', borderRadius: '8px', background: 'rgba(239, 68, 68, 0.15)', border: '1px solid rgba(239, 68, 68, 0.3)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                      <Trash2 size={16} color="#f87171" />
+                    </div>
+                    <div>
+                      <div style={{ fontSize: '0.8rem', fontWeight: 700 }}>Pulisci Memoria</div>
+                      <div style={{ fontSize: '0.62rem', color: '#8b8fa3' }}>Reset task, chat e stacca processi</div>
+                    </div>
+                  </div>
+                  <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#ef4444' }} />
+                </button>
+
+                {/* Item 6: Musica & Focus Lounge Quick Widget */}
                 {isAudioInstalled && (
                   <div style={{ marginTop: '2px' }}>
                     <MusicFloatingWidget onOpenTab={(tabObj, tabId) => {

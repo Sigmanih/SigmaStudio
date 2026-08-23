@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import {
   Download, Activity, CheckCircle2, XCircle, Trash2, ArrowRight,
-  Zap, RefreshCw, Layers, HardDrive, RotateCcw, AlertTriangle
+  Zap, RefreshCw, Layers, HardDrive, RotateCcw, AlertTriangle,
+  Pause, Play, X
 } from 'lucide-react';
 
 export default function DownloadManager({ isLight, addToast, onDeployRequested }) {
@@ -38,34 +39,34 @@ export default function DownloadManager({ isLight, addToast, onDeployRequested }
     return () => clearInterval(interval);
   }, [fetchDownloads]);
 
-  const handleCancelDownload = async (taskId) => {
+  const handlePauseDownload = async (taskId) => {
     try {
-      const res = await fetch('/api/models/hf/download/cancel', {
+      const res = await fetch('/api/models/hf/download/pause', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ task_id: taskId })
       });
       const json = await res.json();
       if (json.success) {
-        if (addToast) addToast(`Download #${taskId} annullato. I file parziali sono preservati su disco.`, 'info');
+        if (addToast) addToast(`⏸️ Download #${taskId} messo in pausa. I file scaricati restano su disco.`, 'info');
         fetchDownloads();
       }
     } catch (e) {
-      if (addToast) addToast(`Errore: ${e.message}`, 'error');
+      if (addToast) addToast(`Errore pausa: ${e.message}`, 'error');
     }
   };
 
-  const handleRetryDownload = async (taskId) => {
+  const handleResumeDownload = async (taskId) => {
     setRetryingId(taskId);
     try {
-      const res = await fetch('/api/models/hf/download/retry', {
+      const res = await fetch('/api/models/hf/download/resume', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ task_id: taskId })
       });
       const json = await res.json();
       if (json.success) {
-        if (addToast) addToast(`🚀 Ripresa del download #${taskId} in corso dai file già scaricati su disco!`, 'success');
+        if (addToast) addToast(`🚀 Ripresa del download #${taskId} dai byte già presenti su disco!`, 'success');
         fetchDownloads();
       } else {
         if (addToast) addToast(`Errore ripresa: ${json.error}`, 'error');
@@ -77,12 +78,29 @@ export default function DownloadManager({ isLight, addToast, onDeployRequested }
     }
   };
 
-  const handleRemoveTask = async (taskId) => {
+  const handleCancelDownload = async (taskId) => {
+    try {
+      const res = await fetch('/api/models/hf/download/cancel', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ task_id: taskId })
+      });
+      const json = await res.json();
+      if (json.success) {
+        if (addToast) addToast(`Download #${taskId} annullato.`, 'info');
+        fetchDownloads();
+      }
+    } catch (e) {
+      if (addToast) addToast(`Errore: ${e.message}`, 'error');
+    }
+  };
+
+  const handleRemoveTask = async (taskId, deleteFromDisk = false) => {
     try {
       const res = await fetch('/api/models/hf/download/remove', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ task_id: taskId })
+        body: JSON.stringify({ task_id: taskId, delete_from_disk: deleteFromDisk })
       });
       const json = await res.json();
       if (json.success) {
@@ -146,6 +164,7 @@ export default function DownloadManager({ isLight, addToast, onDeployRequested }
           {downloads.map(t => {
             const isDone = t.status === 'completed';
             const isDown = t.status === 'downloading' || t.status === 'queued';
+            const isPaused = t.status === 'paused';
             const isFailed = t.status === 'failed';
             const isCancelled = t.status === 'cancelled';
 
@@ -157,7 +176,7 @@ export default function DownloadManager({ isLight, addToast, onDeployRequested }
                   background: cardBg,
                   border: isDone
                     ? '1px solid rgba(16, 185, 129, 0.3)'
-                    : (isFailed ? '1.5px solid rgba(239, 68, 68, 0.4)' : cardBorder),
+                    : (isFailed ? '1.5px solid rgba(239, 68, 68, 0.4)' : (isPaused ? '1px solid rgba(245, 158, 11, 0.4)' : cardBorder)),
                   display: 'flex', flexDirection: 'column', gap: '10px'
                 }}
               >
@@ -189,52 +208,92 @@ export default function DownloadManager({ isLight, addToast, onDeployRequested }
                     </div>
                   </div>
 
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
                     {isDown && (
-                      <span style={{ fontSize: '0.74rem', fontWeight: 800, color: '#00d2ff', fontFamily: 'monospace' }}>
+                      <span style={{ fontSize: '0.74rem', fontWeight: 800, color: '#00d2ff', fontFamily: 'monospace', marginRight: '4px' }}>
                         {t.speed_mbps} MB/s • ETA: {t.eta_seconds > 60 ? `${Math.round(t.eta_seconds / 60)}m` : `${t.eta_seconds}s`}
                       </span>
                     )}
 
-                    {isDone && (
-                      <button
-                        onClick={() => onDeployRequested && onDeployRequested({
-                          filename: t.model_id || t.filename,
-                          name: t.model_id || t.filename,
-                          path: t.save_path,
-                          size_gb: (t.downloaded_mb / 1024).toFixed(1),
-                          size_label: `~${(t.downloaded_mb / 1024).toFixed(1)} GB`,
-                          format: t.is_repo_download ? 'Safetensors' : 'GGUF'
-                        })}
-                        style={{
-                          padding: '6px 14px', borderRadius: '8px',
-                          border: 'none', background: 'linear-gradient(135deg, #00d2ff, #0090ff)',
-                          color: '#ffffff', fontSize: '0.74rem', fontWeight: 800, cursor: 'pointer',
-                          display: 'flex', alignItems: 'center', gap: '4px', boxShadow: '0 0 10px rgba(0, 210, 255, 0.3)'
-                        }}
-                      >
-                        <Zap size={13} /> ⚡ Avvia in SigmaEngine
-                      </button>
-                    )}
-
-
-                    {(isFailed || isCancelled) && (
+                    {/* Action 1: In-Progress Controls (Pause / Cancel) */}
+                    {isDown && (
                       <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                         <button
-                          onClick={() => handleRetryDownload(t.task_id)}
+                          onClick={() => handlePauseDownload(t.task_id)}
+                          style={{
+                            padding: '6px 12px', borderRadius: '8px',
+                            border: '1px solid rgba(245, 158, 11, 0.4)', background: 'rgba(245, 158, 11, 0.12)',
+                            color: '#f59e0b', fontSize: '0.72rem', fontWeight: 700, cursor: 'pointer',
+                            display: 'flex', alignItems: 'center', gap: '4px', transition: 'all 0.15s ease'
+                          }}
+                          title="Metti in pausa il download mantenendo i byte su disco"
+                        >
+                          <Pause size={12} /> Pausa
+                        </button>
+                        <button
+                          onClick={() => handleCancelDownload(t.task_id)}
+                          style={{
+                            padding: '6px 10px', borderRadius: '8px',
+                            border: '1px solid rgba(239, 68, 68, 0.3)', background: 'rgba(239, 68, 68, 0.08)',
+                            color: '#ef4444', fontSize: '0.72rem', fontWeight: 700, cursor: 'pointer',
+                            display: 'flex', alignItems: 'center', gap: '4px', transition: 'all 0.15s ease'
+                          }}
+                          title="Annulla il download"
+                        >
+                          <X size={12} /> Annulla
+                        </button>
+                      </div>
+                    )}
+
+                    {/* Action 2: Paused / Cancelled Controls (Resume / Remove) */}
+                    {(isPaused || isCancelled) && (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <button
+                          onClick={() => handleResumeDownload(t.task_id)}
                           disabled={retryingId === t.task_id}
                           style={{
                             padding: '6px 14px', borderRadius: '8px',
                             border: 'none', background: 'linear-gradient(135deg, #10b981, #00d2ff)',
                             color: '#ffffff', fontSize: '0.74rem', fontWeight: 800, cursor: 'pointer',
-                            display: 'flex', alignItems: 'center', gap: '4px', boxShadow: '0 0 10px rgba(16, 185, 129, 0.3)'
+                            display: 'flex', alignItems: 'center', gap: '5px', boxShadow: '0 0 10px rgba(16, 185, 129, 0.3)'
                           }}
+                          title="Riprendi download da dove era stato interrotto"
                         >
-                          {retryingId === t.task_id ? <Activity className="mh-spin" size={13} /> : <RotateCcw size={13} />}
+                          {retryingId === t.task_id ? <Activity className="mh-spin" size={13} /> : <Play size={13} />}
                           Riprendi Download
                         </button>
                         <button
-                          onClick={() => handleRemoveTask(t.task_id)}
+                          onClick={() => handleRemoveTask(t.task_id, false)}
+                          style={{
+                            padding: '6px 10px', borderRadius: '8px',
+                            border: subBorder, background: subBg, color: textMuted,
+                            fontSize: '0.70rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px'
+                          }}
+                          title="Rimuovi dalla lista dei download"
+                        >
+                          <Trash2 size={13} />
+                        </button>
+                      </div>
+                    )}
+
+                    {/* Action 3: Failed Controls (Retry / Remove) */}
+                    {isFailed && (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <button
+                          onClick={() => handleResumeDownload(t.task_id)}
+                          disabled={retryingId === t.task_id}
+                          style={{
+                            padding: '6px 14px', borderRadius: '8px',
+                            border: 'none', background: 'linear-gradient(135deg, #ef4444, #f59e0b)',
+                            color: '#ffffff', fontSize: '0.74rem', fontWeight: 800, cursor: 'pointer',
+                            display: 'flex', alignItems: 'center', gap: '4px'
+                          }}
+                        >
+                          {retryingId === t.task_id ? <Activity className="mh-spin" size={13} /> : <RotateCcw size={13} />}
+                          Riprova Download
+                        </button>
+                        <button
+                          onClick={() => handleRemoveTask(t.task_id, false)}
                           style={{
                             padding: '6px 10px', borderRadius: '8px',
                             border: subBorder, background: subBg, color: textMuted,
@@ -247,17 +306,39 @@ export default function DownloadManager({ isLight, addToast, onDeployRequested }
                       </div>
                     )}
 
-                    {isDown && (
-                      <button
-                        onClick={() => handleCancelDownload(t.task_id)}
-                        style={{
-                          padding: '5px 10px', borderRadius: '6px',
-                          border: '1px solid rgba(239, 68, 68, 0.4)', background: 'rgba(239, 68, 68, 0.1)',
-                          color: '#ef4444', fontSize: '0.70rem', fontWeight: 700, cursor: 'pointer'
-                        }}
-                      >
-                        Pausa / Annulla
-                      </button>
+                    {/* Action 4: Completed Controls (Deploy to Engine / Remove from List) */}
+                    {isDone && (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <button
+                          onClick={() => onDeployRequested && onDeployRequested({
+                            filename: t.model_id || t.filename,
+                            name: t.model_id || t.filename,
+                            path: t.save_path,
+                            size_gb: (t.downloaded_mb / 1024).toFixed(1),
+                            size_label: `~${(t.downloaded_mb / 1024).toFixed(1)} GB`,
+                            format: t.is_repo_download ? 'Safetensors' : 'GGUF'
+                          })}
+                          style={{
+                            padding: '6px 14px', borderRadius: '8px',
+                            border: 'none', background: 'linear-gradient(135deg, #00d2ff, #0090ff)',
+                            color: '#ffffff', fontSize: '0.74rem', fontWeight: 800, cursor: 'pointer',
+                            display: 'flex', alignItems: 'center', gap: '4px', boxShadow: '0 0 10px rgba(0, 210, 255, 0.3)'
+                          }}
+                        >
+                          <Zap size={13} /> ⚡ Avvia in SigmaEngine
+                        </button>
+                        <button
+                          onClick={() => handleRemoveTask(t.task_id, false)}
+                          style={{
+                            padding: '6px 10px', borderRadius: '8px',
+                            border: subBorder, background: subBg, color: textMuted,
+                            fontSize: '0.70rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px'
+                          }}
+                          title="Rimuovi questo modello completato dalla cronologia download"
+                        >
+                          <Trash2 size={13} /> Rimuovi
+                        </button>
+                      </div>
                     )}
                   </div>
                 </div>
@@ -268,7 +349,9 @@ export default function DownloadManager({ isLight, addToast, onDeployRequested }
                     className="mh-progress-bar"
                     style={{
                       width: `${t.progress_pct}%`,
-                      background: isDone ? '#10b981' : (isFailed ? '#ef4444' : (isCancelled ? '#f59e0b' : 'linear-gradient(90deg, #00d2ff, #0090ff)'))
+                      background: isDone
+                        ? '#10b981'
+                        : (isFailed ? '#ef4444' : (isPaused ? '#f59e0b' : (isCancelled ? '#6b7280' : 'linear-gradient(90deg, #00d2ff, #0090ff)')))
                     }}
                   />
                 </div>
@@ -279,19 +362,18 @@ export default function DownloadManager({ isLight, addToast, onDeployRequested }
                     <span style={{ fontWeight: 700 }}>
                       💾 {formatMb(t.downloaded_mb)} / {t.total_mb ? formatMb(t.total_mb) : '...'} ({t.progress_pct}%)
                     </span>
-                    {(isFailed || isCancelled) && (
+                    {(isFailed || isCancelled || isPaused) && (
                       <span style={{ color: '#10b981', fontWeight: 700 }}>
                         • I {formatMb(t.downloaded_mb)} già scaricati sono preservati su disco
                       </span>
                     )}
                   </div>
 
-
                   <span style={{
                     fontWeight: 800,
-                    color: isDone ? '#10b981' : (isDown ? '#00d2ff' : (isFailed ? '#ef4444' : '#f59e0b'))
+                    color: isDone ? '#10b981' : (isDown ? '#00d2ff' : (isPaused ? '#f59e0b' : (isFailed ? '#ef4444' : '#8b8fa3')))
                   }}>
-                    {isFailed ? 'FALLITO (RECUPERABILE)' : (isCancelled ? 'IN PAUSA' : t.status.toUpperCase())}
+                    {isDone ? 'COMPLETATO' : (isPaused ? 'IN PAUSA' : (isFailed ? 'FALLITO (RECUPERABILE)' : (isCancelled ? 'ANNULLATO' : (t.status === 'queued' ? 'IN CODA' : 'SCARICAMENTO IN CORSO'))))}
                   </span>
                 </div>
 
@@ -307,7 +389,7 @@ export default function DownloadManager({ isLight, addToast, onDeployRequested }
                       <span>{t.error_message}</span>
                     </div>
                     <button
-                      onClick={() => handleRetryDownload(t.task_id)}
+                      onClick={() => handleResumeDownload(t.task_id)}
                       style={{
                         padding: '3px 8px', borderRadius: '4px',
                         border: 'none', background: '#ef4444', color: '#ffffff',

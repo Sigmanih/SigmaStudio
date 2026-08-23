@@ -3,7 +3,7 @@ import {
   Home, FileText, Activity, PieChart, Layers, ChevronRight, ChevronDown, MessageSquare, 
   FlaskConical, Brain, Zap, User, Server, Wrench, Palette, Blocks, Sun, 
   Moon, Store, Package, Sliders, Key, Sparkles, FolderGit2, Compass,
-  Cpu, Box, Radio, Music, Mic, Terminal, Globe, Mail, Send, DownloadCloud, Settings
+  Cpu, Box, Radio, Music, Mic, Terminal, Globe, Mail, Send, DownloadCloud, Settings, Trash2
 } from 'lucide-react';
 import { useApp } from '../contexts/AppContext';
 import { useModuleState } from '../hooks/useModuleState';
@@ -82,7 +82,7 @@ export default function Sidebar({
   tasks = [],
   topicsCount = 0
 }) {
-  const { theme, toggleTheme } = useApp();
+  const { theme, toggleTheme, clearSystemMemory } = useApp();
   const isLight = theme === 'light';
 
   const [chatCount, setChatCount] = useState(0);
@@ -745,6 +745,22 @@ export default function Sidebar({
               ))}
             </div>
           )}
+
+          {/* Quick System Cleanup Action */}
+          <div style={{ marginTop: '14px', paddingTop: '10px', borderTop: isLight ? '1px solid #e0d8cc' : '1px solid rgba(255,255,255,0.06)' }}>
+            <SidebarItem
+              icon={Trash2}
+              label="Pulisci Memoria"
+              badge="RESET"
+              badgeColor="rgba(239, 68, 68, 0.2)"
+              active={false}
+              onClick={() => {
+                if (window.confirm("Vuoi cancellare i task salvati, liberare la memoria RAM/VRAM e arrestare tutti i processi in background?")) {
+                  clearSystemMemory({ clearTasks: true, clearChat: true });
+                }
+              }}
+            />
+          </div>
         </nav>
 
       </div>

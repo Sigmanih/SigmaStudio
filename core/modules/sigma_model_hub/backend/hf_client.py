@@ -216,16 +216,16 @@ def _format_date_label(iso_date: Optional[str]) -> str:
         return iso_date[:10] if len(iso_date) >= 10 else iso_date
 
 
-def parse_model_specs(model_id: str, name: str, tags: List[str] = None) -> Dict[str, Any]:
+def parse_model_specs(model_id: str, name: str, tags: List[str] = None, raw_item: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     """
     Accurately extracts:
     - active_params_b (float) & active_params_label (e.g. '27B', '95B')
     - total_params_b (float) & total_params_label (e.g. '27B', '2.4T Totali', '671B Totali')
     - is_moe (bool)
-    - precision_label (e.g. 'FP8', 'FP16', 'GGUF Q4_K_M', 'NVFP4')
-    - estimated size_gb: TOTAL DISK STORAGE / DOWNLOAD SIZE (based on total_b * precision)
-    - estimated active_vram_gb: ACTIVE INFERENCE VRAM FOOTPRINT (based on active_b * precision)
-    - size_label (e.g. '~2.4 TB', '~4.8 TB', '~54.0 GB')
+    - precision_label (e.g. 'FP8', 'FP16', 'GGUF Q4_K_S', 'GGUF Q4_K_M', 'NVFP4')
+    - realistic size_gb: ACTUAL DISK STORAGE / DOWNLOAD SIZE (from usedStorage or accurate precision formula)
+    - realistic active_vram_gb: ACTIVE INFERENCE VRAM FOOTPRINT (based on active_b * precision)
+    - size_label (e.g. '~2.4 TB', '~4.8 TB', '~14.7 GB', '~54.0 GB')
     - active_vram_label (e.g. '~95 GB VRAM', '~190 GB VRAM')
     """
     text = f"{model_id} {name} {' '.join(tags or [])}".lower()
@@ -271,7 +271,7 @@ def parse_model_specs(model_id: str, name: str, tags: List[str] = None) -> Dict[
                 active_label = f"~{active_b:g}B"
                 total_label = f"{total_b:g}B ({experts}x{expert_size:g}B)"
             else:
-                # Check standard B pattern like 70b, 32b, 27b, 14b, 8b, 7b, 3b, 1.5b, 0.5b
+                # Check standard B pattern like 70b, 32b, 27b, 14b, 8b, 7b, 3.8b, 3b, 1.5b, 0.5b
                 param_match = re.search(r'(\d+(?:\.\d+)?)\s*b(?:\b|[^a-z0-9])', text)
                 if param_match:
                     val = float(param_match.group(1))
@@ -289,6 +289,23 @@ def parse_model_specs(model_id: str, name: str, tags: List[str] = None) -> Dict[
                         active_label = f"{int(val_m)}M"
                         total_label = f"{int(val_m)}M"
 
+    # Refine with exact parameter count from Hugging Face metadata if available
+    if raw_item:
+        if isinstance(raw_item.get("gguf"), dict) and raw_item["gguf"].get("total"):
+            exact_params = round(raw_item["gguf"]["total"] / 1e9, 2)
+            if exact_params > 0 and not is_moe:
+                active_b = exact_params
+                total_b = exact_params
+                active_label = f"{exact_params:g}B" if exact_params < 100 else f"{int(exact_params)}B"
+                total_label = active_label
+        elif isinstance(raw_item.get("safetensors"), dict) and raw_item["safetensors"].get("total"):
+            exact_params = round(raw_item["safetensors"]["total"] / 1e9, 2)
+            if exact_params > 0 and not is_moe:
+                active_b = exact_params
+                total_b = exact_params
+                active_label = f"{exact_params:g}B" if exact_params < 100 else f"{int(exact_params)}B"
+                total_label = active_label
+
     # 2. Precision & Size estimation (FP8, FP16, GGUF, NVFP4)
     is_gguf = "gguf" in text
     if "fp8" in text or "int8" in text or "w8a8" in text or "8bit" in text or "8-bit" in text:
@@ -300,26 +317,66 @@ def parse_model_specs(model_id: str, name: str, tags: List[str] = None) -> Dict[
         fmt_label = "Safetensors (4-bit)"
         bytes_per_param = 0.55
     elif is_gguf:
-        if "q8" in text:
+        fmt_label = "GGUF"
+        if "q8_0" in text or "q8_k" in text or "q8" in text:
             precision = "GGUF Q8_0 (8-bit)"
-            bytes_per_param = 1.08
-        elif "q5" in text:
+            bytes_per_param = 1.05
+        elif "q6_k" in text or "q6" in text:
+            precision = "GGUF Q6_K (6-bit)"
+            bytes_per_param = 0.82
+        elif "q5_k_m" in text or "q5_m" in text:
             precision = "GGUF Q5_K_M (5-bit)"
-            bytes_per_param = 0.75
-        elif "q2" in text or "q3" in text:
+            bytes_per_param = 0.70
+        elif "q5_k_s" in text or "q5_s" in text or "q5_0" in text or "q5" in text:
+            precision = "GGUF Q5_K_S (5-bit)"
+            bytes_per_param = 0.66
+        elif "q4_k_s" in text or "q4_s" in text:
+            precision = "GGUF Q4_K_S (4-bit)"
+            bytes_per_param = 0.54
+        elif "q4_0" in text:
+            precision = "GGUF Q4_0 (4-bit)"
+            bytes_per_param = 0.52
+        elif "iq4_xs" in text or "iq4_nl" in text or "iq4" in text:
+            precision = "GGUF IQ4_XS (4-bit)"
+            bytes_per_param = 0.49
+        elif "q4_k_m" in text or "q4_m" in text:
+            precision = "GGUF Q4_K_M (4-bit)"
+            bytes_per_param = 0.58
+        elif "q3_k_l" in text or "q3_k_m" in text or "iq3_m" in text:
             precision = "GGUF Q3_K_M (3-bit)"
             bytes_per_param = 0.45
+        elif "q3_k_s" in text or "q3_s" in text or "iq3_xs" in text or "iq3_xxs" in text:
+            precision = "GGUF Q3_K_S (3-bit)"
+            bytes_per_param = 0.40
+        elif "q2_k" in text or "iq2_m" in text or "iq2_xs" in text or "iq2_xxs" in text or "q2" in text:
+            precision = "GGUF Q2_K (2-bit)"
+            bytes_per_param = 0.30
+        elif "f16" in text or "fp16" in text or "bf16" in text:
+            precision = "GGUF F16 (16-bit)"
+            bytes_per_param = 2.0
         else:
             precision = "GGUF Q4_K_M (4-bit)"
-            bytes_per_param = 0.62
-        fmt_label = "GGUF"
+            bytes_per_param = 0.58
     else:
         precision = "FP16 / BF16 (16-bit)"
         fmt_label = "Safetensors"
         bytes_per_param = 2.0
 
-    # Total repository storage / download size is based on total_b
-    size_gb = round(total_b * bytes_per_param, 1)
+    # Total repository storage / download size
+    # Check if exact usedStorage is available from Hugging Face
+    used_storage_bytes = raw_item.get("usedStorage") if raw_item else None
+    if used_storage_bytes and isinstance(used_storage_bytes, (int, float)) and used_storage_bytes > 0:
+        # Check if the repo has only 1 primary GGUF variant or is safetensors
+        siblings = raw_item.get("siblings") or []
+        gguf_files = [s for s in siblings if s.get("rfilename", "").lower().endswith(".gguf")]
+        if len(gguf_files) <= 1:
+            size_gb = round(used_storage_bytes / (1024**3), 1)
+        else:
+            # Multiple GGUF variants: usedStorage is sum of all; use accurate single variant formula
+            size_gb = round(total_b * bytes_per_param, 1)
+    else:
+        size_gb = round(total_b * bytes_per_param, 1)
+
     # Active inference VRAM footprint is based on active_b
     active_vram_gb = round(active_b * bytes_per_param, 1)
 
@@ -859,7 +916,7 @@ def search_hf_models(
             date_label = _format_date_label(release_date)
 
             # Parse precision, active/total parameters and realistic size in GB
-            specs = parse_model_specs(mid, m_name, tags)
+            specs = parse_model_specs(mid, m_name, tags, raw_item=item)
             params_b = specs["active_b"]
             total_b = specs["total_b"]
             params_label = specs["active_label"]
@@ -981,7 +1038,7 @@ def get_hf_model_details(model_id: str, hf_token: Optional[str] = None) -> Dict[
                 last_modified = data.get("lastModified")
                 release_date_label = _format_date_label(created_at or last_modified)
 
-                specs = parse_model_specs(model_id, data.get("id", ""), data.get("tags", []))
+                specs = parse_model_specs(model_id, data.get("id", ""), data.get("tags", []), raw_item=data)
                 author = data.get("author", model_id.split("/")[0] if "/" in model_id else "Community")
 
                 return {

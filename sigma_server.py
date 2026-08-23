@@ -489,7 +489,13 @@ def _apply_hardware_env():
 
 
 def graceful_shutdown(signum, frame):
-    log.info("Shutting down gracefully...")
+    log.info("Ricevuto segnale di arresto. Disconnessione e stacco di tutti i task in corso...")
+    try:
+        from core.system_cleanup import shutdown_all_tasks
+        shutdown_all_tasks()
+    except Exception as exc:
+        log.warning("Errore durante shutdown dei task: %s", exc)
+    log.info("Server arrestato correttamente.")
     sys.exit(0)
 
 

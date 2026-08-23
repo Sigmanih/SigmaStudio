@@ -29,13 +29,25 @@ from fastapi import FastAPI, Request, Response
 from fastapi.responses import JSONResponse, StreamingResponse, FileResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
+from contextlib import asynccontextmanager
 
 from core.logger import get_logger
 from core.sandbox import is_path_allowed
 from core.store import modules_store, tasks_store
 from core.api_router import register_get_handlers, register_post_handlers
+from core.system_cleanup import handle_system_clear_memory, shutdown_all_tasks
 
 log = get_logger("fastapi_server")
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Startup
+    yield
+    # Graceful Shutdown: detach running tasks, stop child processes, free VRAM/RAM
+    log.info("[FastAPI] Shutdown avviato: arresto ordinato di tutti i task e liberazione risorse...")
+    shutdown_all_tasks()
+
 
 app = FastAPI(
     title="Σ-SIGMA Studio API",
@@ -43,6 +55,7 @@ app = FastAPI(
     version="8.0",
     docs_url="/docs",
     redoc_url="/redoc",
+    lifespan=lifespan,
 )
 
 app.add_middleware(
@@ -429,6 +442,7 @@ def _handle_router_train(self):
     except Exception as exc:
         return self.send_json_response({"success": False, "error": str(exc)}, 500)
 FastAPIHandlerAdapter.handle_router_train = _handle_router_train
+FastAPIHandlerAdapter.handle_system_clear_memory = handle_system_clear_memory
 
 register_get_handlers(FastAPIHandlerAdapter)
 register_post_handlers(FastAPIHandlerAdapter)

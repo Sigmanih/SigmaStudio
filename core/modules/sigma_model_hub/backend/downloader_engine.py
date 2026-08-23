@@ -85,6 +85,7 @@ class ModelDownloadManager:
         self.models_dir = models_dir
         os.makedirs(self.models_dir, exist_ok=True)
         self.tasks: Dict[str, ModelDownloadTask] = {}
+        self.dismissed_task_ids: set = set()
         self.lock = threading.Lock()
 
     def set_models_dir(self, new_dir: str):
@@ -228,15 +229,31 @@ class ModelDownloadManager:
         with self.lock:
             self.tasks[task_id] = task
 
-
         t = threading.Thread(target=self._repo_download_worker, args=(task, target_dir), daemon=True)
         t.start()
 
         log.info(f"[ModelDownloader] Whole-Repo task {task_id} launched for {model_id} ({len(files_list)} files)")
         return task.to_dict()
 
+    def pause_download(self, task_id: str) -> bool:
+        """Pauses an active download, keeping partial bytes intact for later resume."""
+        with self.lock:
+            task = self.tasks.get(task_id)
+            if task and task.status in ["queued", "downloading"]:
+                task._cancel_flag = True
+                task.status = "paused"
+                task.speed_mbps = 0.0
+                task.eta_seconds = 0
+                log.info(f"[ModelDownloader] Download #{task_id} ({task.filename}) in PAUSA.")
+                return True
+        return False
+
+    def resume_download(self, task_id: str) -> Optional[Dict[str, Any]]:
+        """Resumes a paused download from where it stopped."""
+        return self.retry_download(task_id)
+
     def retry_download(self, task_id: str) -> Optional[Dict[str, Any]]:
-        """Resumes/Retries a failed or cancelled download task from where it left off."""
+        """Resumes/Retries a failed, paused or cancelled download task from where it left off."""
         with self.lock:
             task = self.tasks.get(task_id)
             if not task:
@@ -265,17 +282,49 @@ class ModelDownloadManager:
         """Cancels an active download."""
         with self.lock:
             task = self.tasks.get(task_id)
-            if task and task.status in ["queued", "downloading"]:
+            if task and task.status in ["queued", "downloading", "paused"]:
                 task._cancel_flag = True
                 task.status = "cancelled"
                 return True
         return False
 
-    def remove_task(self, task_id: str) -> bool:
-        """Removes a task from the list."""
+    def remove_task(self, task_id: str, delete_from_disk: bool = False) -> bool:
+        """Removes a task from the list and optionally deletes files from disk."""
         with self.lock:
-            if task_id in self.tasks:
+            task = self.tasks.get(task_id)
+            self.dismissed_task_ids.add(task_id)
+            if task and task.model_id:
+                self.dismissed_task_ids.add(task.model_id)
+
+            if task:
+                if task.status in ["queued", "downloading"]:
+                    task._cancel_flag = True
+                    task.status = "cancelled"
+
+                if delete_from_disk and task.save_path:
+                    try:
+                        part_file = task.save_path + ".part"
+                        if os.path.exists(part_file):
+                            os.remove(part_file)
+                        from .model_inventory import delete_local_model
+                        delete_local_model(task.save_path)
+                    except Exception as ex:
+                        log.warning(f"[ModelDownloader] Errore cancellazione file per #{task_id}: {ex}")
+
                 del self.tasks[task_id]
+                return True
+            elif task_id.startswith("disk-"):
+                if delete_from_disk:
+                    try:
+                        from .model_inventory import scan_local_models, delete_local_model
+                        for m in scan_local_models(self.models_dir):
+                            m_id = m.get("model_id") or m.get("filename")
+                            clean_id = m_id.replace("/", "--").replace(":", "-").lower()
+                            if f"disk-{clean_id}"[:16] == task_id or task_id.endswith(clean_id):
+                                delete_local_model(m.get("path"))
+                                break
+                    except Exception as ex:
+                        log.warning(f"[ModelDownloader] Errore rimozione modello su disco {task_id}: {ex}")
                 return True
         return False
 
@@ -288,6 +337,8 @@ class ModelDownloadManager:
                 m_id = m.get("model_id") or m.get("filename")
                 clean_id = m_id.replace("/", "--").replace(":", "-").lower()
                 task_id = f"disk-{clean_id}"[:16]
+                if task_id in self.dismissed_task_ids or m_id in self.dismissed_task_ids:
+                    continue
                 if task_id not in self.tasks and not any(t.model_id == m_id for t in self.tasks.values()):
                     size_bytes = int(m.get("size_gb", 0) * (1024**3))
                     self.tasks[task_id] = ModelDownloadTask(

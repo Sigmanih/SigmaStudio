@@ -1206,27 +1206,98 @@ export default function HfBrowser({ isLight, addToast, onDownloadStarted, active
                 })()}
 
                 {/* Model Specs Quick Overview Grid */}
-                <div style={{
-                  display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: '8px',
-                  padding: '10px 12px', borderRadius: '10px', background: subBg, border: subBorder, fontSize: '0.74rem'
-                }}>
-                  <div>
-                    <div style={{ color: textMuted, fontSize: '0.64rem', fontWeight: 700 }}>PARAMETRI ATTIVI</div>
-                    <div style={{ color: '#00d2ff', fontWeight: 800 }}>⚡ {modelDetails?.active_params_label || selectedModel.active_params_label || selectedModel.params_label}</div>
-                  </div>
-                  <div>
-                    <div style={{ color: textMuted, fontSize: '0.64rem', fontWeight: 700 }}>PARAMETRI TOTALI</div>
-                    <div style={{ color: textPrimary, fontWeight: 800 }}>📊 {modelDetails?.total_params_label || selectedModel.total_params_label}</div>
-                  </div>
-                  <div>
-                    <div style={{ color: textMuted, fontSize: '0.64rem', fontWeight: 700 }}>PRECISIONE PESI</div>
-                    <div style={{ color: '#ffb86c', fontWeight: 800 }}>{modelDetails?.precision || selectedModel.precision || 'Safetensors'}</div>
-                  </div>
-                  <div>
-                    <div style={{ color: textMuted, fontSize: '0.64rem', fontWeight: 700 }}>PESO STIMATO</div>
-                    <div style={{ color: textPrimary, fontWeight: 800 }}>~{selectedModel.size_gb} GB</div>
-                  </div>
-                </div>
+                {(() => {
+                  const ggufFiles = (modelDetails?.files || []).filter(f => f.is_gguf || f.filename?.toLowerCase().endsWith('.gguf'));
+                  const activeFile = ggufFiles.find(f => f.filename === selectedQuantFilename) || ggufFiles[0];
+                  
+                  const computeActiveFileDetails = (activeFilename, model, details) => {
+                    const basePrecision = details?.precision || model?.precision || 'Safetensors';
+                    const baseSizeGb = details?.size_gb || model?.size_gb || 0;
+                    const totalB = details?.total_b || model?.total_b || 7.0;
+
+                    if (!activeFilename) {
+                      return {
+                        precision: basePrecision,
+                        sizeLabel: details?.size_label || model?.size_label || `~${baseSizeGb} GB`,
+                        sizeGb: baseSizeGb
+                      };
+                    }
+
+                    const fnLower = activeFilename.toLowerCase();
+                    let precision = basePrecision;
+                    let mult = 0.58;
+
+                    if (fnLower.includes('q8_0') || fnLower.includes('q8')) {
+                      precision = 'GGUF Q8_0 (8-bit)';
+                      mult = 1.05;
+                    } else if (fnLower.includes('q6_k') || fnLower.includes('q6')) {
+                      precision = 'GGUF Q6_K (6-bit)';
+                      mult = 0.82;
+                    } else if (fnLower.includes('q5_k_m') || fnLower.includes('q5_m')) {
+                      precision = 'GGUF Q5_K_M (5-bit)';
+                      mult = 0.70;
+                    } else if (fnLower.includes('q5_k_s') || fnLower.includes('q5_s') || fnLower.includes('q5_0') || fnLower.includes('q5')) {
+                      precision = 'GGUF Q5_K_S (5-bit)';
+                      mult = 0.66;
+                    } else if (fnLower.includes('q4_k_s') || fnLower.includes('q4_s')) {
+                      precision = 'GGUF Q4_K_S (4-bit)';
+                      mult = 0.54;
+                    } else if (fnLower.includes('q4_0')) {
+                      precision = 'GGUF Q4_0 (4-bit)';
+                      mult = 0.52;
+                    } else if (fnLower.includes('iq4_xs') || fnLower.includes('iq4')) {
+                      precision = 'GGUF IQ4_XS (4-bit)';
+                      mult = 0.49;
+                    } else if (fnLower.includes('q4_k_m') || fnLower.includes('q4_m')) {
+                      precision = 'GGUF Q4_K_M (4-bit)';
+                      mult = 0.58;
+                    } else if (fnLower.includes('q3_k_m') || fnLower.includes('iq3_m')) {
+                      precision = 'GGUF Q3_K_M (3-bit)';
+                      mult = 0.45;
+                    } else if (fnLower.includes('q3_k_s') || fnLower.includes('iq3_xs') || fnLower.includes('q3')) {
+                      precision = 'GGUF Q3_K_S (3-bit)';
+                      mult = 0.40;
+                    } else if (fnLower.includes('q2_k') || fnLower.includes('iq2') || fnLower.includes('q2')) {
+                      precision = 'GGUF Q2_K (2-bit)';
+                      mult = 0.30;
+                    } else if (fnLower.includes('f16') || fnLower.includes('fp16') || fnLower.includes('bf16')) {
+                      precision = 'GGUF F16 (16-bit)';
+                      mult = 2.0;
+                    }
+
+                    const isSingleGguf = details?.files?.filter(f => f.is_gguf || f.filename?.toLowerCase().endsWith('.gguf')).length === 1;
+                    const computedGb = isSingleGguf && baseSizeGb ? baseSizeGb : parseFloat((totalB * mult).toFixed(1));
+                    const sizeLabel = computedGb >= 1000 ? `~${(computedGb / 1000).toFixed(1)} TB` : `~${computedGb} GB`;
+
+                    return { precision, sizeLabel, sizeGb: computedGb };
+                  };
+
+                  const activeDetails = computeActiveFileDetails(activeFile?.filename, selectedModel, modelDetails);
+
+                  return (
+                    <div style={{
+                      display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: '8px',
+                      padding: '10px 12px', borderRadius: '10px', background: subBg, border: subBorder, fontSize: '0.74rem'
+                    }}>
+                      <div>
+                        <div style={{ color: textMuted, fontSize: '0.64rem', fontWeight: 700 }}>PARAMETRI ATTIVI</div>
+                        <div style={{ color: '#00d2ff', fontWeight: 800 }}>⚡ {modelDetails?.active_params_label || selectedModel.active_params_label || selectedModel.params_label}</div>
+                      </div>
+                      <div>
+                        <div style={{ color: textMuted, fontSize: '0.64rem', fontWeight: 700 }}>PARAMETRI TOTALI</div>
+                        <div style={{ color: textPrimary, fontWeight: 800 }}>📊 {modelDetails?.total_params_label || selectedModel.total_params_label}</div>
+                      </div>
+                      <div>
+                        <div style={{ color: textMuted, fontSize: '0.64rem', fontWeight: 700 }}>PRECISIONE PESI</div>
+                        <div style={{ color: '#ffb86c', fontWeight: 800 }}>{activeDetails.precision}</div>
+                      </div>
+                      <div>
+                        <div style={{ color: textMuted, fontSize: '0.64rem', fontWeight: 700 }}>DIMENSIONE PESI</div>
+                        <div style={{ color: textPrimary, fontWeight: 800 }}>{activeDetails.sizeLabel}</div>
+                      </div>
+                    </div>
+                  );
+                })()}
 
                 {/* Individual files accordion/list */}
                 <div>

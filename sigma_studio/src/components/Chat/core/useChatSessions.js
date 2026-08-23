@@ -56,6 +56,24 @@ export function useChatSessions({ selectedModel, setSelectedModel, setActionsLog
     if (setSelectedModel && target.model) setSelectedModel(target.model);
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Listen for global memory purge event to instantly reset sessions and messages
+  useEffect(() => {
+    const handleMemoryCleared = () => {
+      const s = createSession(selectedModel);
+      setSessions([s]);
+      refs.sessions.current = [s];
+      try { localStorage.setItem(STORAGE_KEY, JSON.stringify([s])); } catch (e) {}
+      setSessionMessages({ [s.id]: [welcomeMsg] });
+      refs.sessionMessages.current = { [s.id]: [welcomeMsg] };
+      saveMessagesImmediately(s.id, [welcomeMsg]);
+      setActiveSessionId(s.id);
+      refs.activeSessionId.current = s.id;
+      saveActiveSessionId(s.id);
+    };
+    window.addEventListener('sigma-memory-cleared', handleMemoryCleared);
+    return () => window.removeEventListener('sigma-memory-cleared', handleMemoryCleared);
+  }, [selectedModel, welcomeMsg, saveMessagesImmediately]);
+
   // Remember which conversation was open, so the next load reopens it.
   useEffect(() => {
     saveActiveSessionId(activeSessionId);

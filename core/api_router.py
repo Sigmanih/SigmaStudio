@@ -121,6 +121,8 @@ def register_get_handlers(handler_class):
         '/api/models/convert/info': 'handle_models_convert_info',
         '/api/models/convert/jobs': 'handle_models_convert_jobs',
         '/api/models/browse': 'handle_models_browse_dirs',
+        # System & Memory Cleanup
+        '/api/system/clear-memory': 'handle_system_clear_memory',
     }
     # Merge, never replace. Optional modules register their own routes
     # through the module loader, which runs before this; assigning a fresh
@@ -263,6 +265,8 @@ def register_post_handlers(handler_class):
         '/api/manifesti/uninstall': 'handle_manifesti_uninstall',
         '/api/models/hf/download/start': 'handle_models_hf_download_start',
         '/api/models/hf/download/repo': 'handle_models_hf_download_repo',
+        '/api/models/hf/download/pause': 'handle_models_hf_download_pause',
+        '/api/models/hf/download/resume': 'handle_models_hf_download_resume',
         '/api/models/hf/download/cancel': 'handle_models_hf_download_cancel',
         '/api/models/hf/download/retry': 'handle_models_hf_download_retry',
         '/api/models/hf/download/remove': 'handle_models_hf_download_remove',
@@ -278,6 +282,9 @@ def register_post_handlers(handler_class):
         '/api/models/config': 'handle_models_config_save',
         '/api/models/convert/start': 'handle_models_convert_start',
         '/api/models/convert/tooling': 'handle_models_convert_tooling',
+        # System & Memory Cleanup
+        '/api/system/clear-memory': 'handle_system_clear_memory',
+        '/api/tasks/clear-all': 'handle_system_clear_memory',
     }
     existing = getattr(handler_class, '_POST_HANDLERS', None) or {}
     handler_class._POST_HANDLERS = {**core_routes, **existing}

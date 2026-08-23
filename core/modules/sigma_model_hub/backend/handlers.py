@@ -223,8 +223,29 @@ def handle_models_hf_download_cancel(self):
         self.send_json_response({"success": False, "error": str(e)}, 500)
 
 
+def handle_models_hf_download_pause(self):
+    """POST /api/models/hf/download/pause — Mette in pausa un download attivo preservando i byte su disco."""
+    try:
+        body = self.read_json_body() if hasattr(self, 'read_json_body') else {}
+        task_id = body.get("task_id")
+        if not task_id:
+            self.send_json_response({"success": False, "error": "task_id mancante"}, 400)
+            return
+
+        success = downloader_manager.pause_download(task_id)
+        self.send_json_response({"success": success, "message": f"Download #{task_id} messo in pausa." if success else "Task non attivo o già terminato."})
+    except Exception as e:
+        log.error("Error in handle_models_hf_download_pause: %s", e)
+        self.send_json_response({"success": False, "error": str(e)}, 500)
+
+
+def handle_models_hf_download_resume(self):
+    """POST /api/models/hf/download/resume — Riprende un download in pausa o fallito."""
+    return handle_models_hf_download_retry(self)
+
+
 def handle_models_hf_download_retry(self):
-    """POST /api/models/hf/download/retry — Riprende/Riprova un download interrotto o fallito."""
+    """POST /api/models/hf/download/retry — Riprende/Riprova un download interrotto, in pausa o fallito."""
     try:
         body = self.read_json_body() if hasattr(self, 'read_json_body') else {}
         task_id = body.get("task_id")
@@ -243,16 +264,17 @@ def handle_models_hf_download_retry(self):
 
 
 def handle_models_hf_download_remove(self):
-    """POST /api/models/hf/download/remove — Rimuove un task completato o fallito dalla lista."""
+    """POST /api/models/hf/download/remove — Rimuove un task dalla lista e opzionalmente da disco."""
     try:
         body = self.read_json_body() if hasattr(self, 'read_json_body') else {}
         task_id = body.get("task_id")
+        delete_from_disk = bool(body.get("delete_from_disk", False))
         if not task_id:
             self.send_json_response({"success": False, "error": "task_id mancante"}, 400)
             return
 
-        success = downloader_manager.remove_task(task_id)
-        self.send_json_response({"success": success, "message": f"Task #{task_id} rimosso." if success else "Task non trovato."})
+        success = downloader_manager.remove_task(task_id, delete_from_disk=delete_from_disk)
+        self.send_json_response({"success": success, "message": f"Task #{task_id} rimosso con successo." if success else "Task non trovato."})
     except Exception as e:
         log.error("Error in handle_models_hf_download_remove: %s", e)
         self.send_json_response({"success": False, "error": str(e)}, 500)

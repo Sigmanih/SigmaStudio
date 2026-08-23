@@ -89,6 +89,36 @@ export function AppProvider({ children }) {
     }
   };
 
+  const clearSystemMemory = async (options = { clearTasks: true, clearChat: true }) => {
+    try {
+      const res = await fetch('/api/system/clear-memory', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(options)
+      });
+      const data = await res.json();
+      if (options.clearTasks) {
+        setTasks([]);
+      }
+      if (options.clearChat) {
+        try {
+          localStorage.removeItem('sigma_chat_sessions');
+          localStorage.removeItem('sigma_active_session');
+          Object.keys(localStorage).forEach(k => {
+            if (k.startsWith('sigma_chat_msgs_')) localStorage.removeItem(k);
+          });
+        } catch (e) {}
+      }
+      window.dispatchEvent(new CustomEvent('sigma-memory-cleared'));
+      addToast(data.message || 'Memoria e task ripuliti con successo.', 'success');
+      return data;
+    } catch (err) {
+      console.error('Clear system memory error:', err);
+      addToast('Errore durante la pulizia: ' + err.message, 'error');
+      return { success: false, error: err.message };
+    }
+  };
+
   // Initial load
   useEffect(() => {
     fetchModules();
@@ -113,6 +143,7 @@ export function AppProvider({ children }) {
     toggleTaskStatus,
     deleteTask,
     clearAllTasks,
+    clearSystemMemory,
     isTaskModalOpen,
     setIsTaskModalOpen,
     editingTask,
