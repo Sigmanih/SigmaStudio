@@ -1228,7 +1228,19 @@ Contenuto completo...
                 sampling=sampling, wants_reasoning=wants_reasoning,
             )
 
-        if active_provider == "ollama":
+        if active_provider in ("sigma_engine", "sigma"):
+            # The native engine runs in this process; it has no HTTP endpoint to
+            # call. Falling through to the generic branch sent the request to
+            # the sigma_engine provider's nominal URL -- this very server's
+            # /api/engine, which does not exist -- so every non-streaming turn
+            # on a local model answered "API error 404" instead of running it.
+            from core.ai_providers import call_ai_model
+            ai_response, thinking, err = call_ai_model(
+                messages, ai_cfg, model, active_provider,
+                prov_endpoint, prov_api_url, prov_api_key,
+                prov_temperature, prov_max_tokens, prov_top_p, prov_timeout,
+            )
+        elif active_provider == "ollama":
             ai_response, thinking, err = call_ollama(
                 messages, model,
                 endpoint=prov_endpoint,

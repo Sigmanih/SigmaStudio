@@ -4,7 +4,6 @@
 # ARM NEON (Raspberry Pi 4/5, Jetson, Rockchip), CPU AVX-512/AVX2, Multi-Drive Storage
 # ==============================================================================
 import os
-import sys
 import time
 import platform
 import psutil
@@ -59,21 +58,162 @@ class UniversalHardwareProbe:
 
     @classmethod
     def probe_cpu(cls) -> Dict[str, Any]:
-        info = {
-            "cores_physical": psutil.cpu_count(logical=False) or 1,
+        """
+        Cores, clock and the SIMD this CPU actually has.
+
+        The features used to be asserted rather than read -- every non-ARM host
+        was reported as AVX2+FMA, including the ones that predate AVX2 and the
+        ones running under emulation. A capability report that is right by
+        assumption is worse than none: it is the input to choosing which
+        llama.cpp wheel to install.
+        """
+        freq = None
+        try:
+            freq = psutil.cpu_freq()
+        except Exception:
+            freq = None
+
+        return {
+            "cores_physical": psutil.cpu_count(logical=False) or psutil.cpu_count(logical=True) or 1,
             "cores_logical": psutil.cpu_count(logical=True) or 1,
-            "frequency_mhz": psutil.cpu_freq().current if psutil.cpu_freq() else 0,
-            "simd_features": []
+            "frequency_mhz": round(freq.current) if freq else 0,
+            "frequency_max_mhz": round(freq.max) if freq and freq.max else 0,
+            "model": cls._cpu_model_name(),
+            "simd_features": cls._probe_simd_features(),
         }
-        # Check SIMD instructions
+
+    @staticmethod
+    def _cpu_model_name() -> str:
+        """The CPU's own name, where the platform will say."""
+        system = platform.system()
+        try:
+            if system == "Linux":
+                with open("/proc/cpuinfo", "r", encoding="utf-8", errors="ignore") as fh:
+                    for line in fh:
+                        key, _, value = line.partition(":")
+                        if key.strip().lower() in ("model name", "hardware", "cpu model"):
+                            return value.strip()
+            elif system == "Darwin":
+                import subprocess
+                out = subprocess.run(
+                    ["sysctl", "-n", "machdep.cpu.brand_string"],
+                    capture_output=True, text=True, timeout=5,
+                )
+                if out.returncode == 0:
+                    return out.stdout.strip()
+        except Exception as exc:
+            log.debug("[HardwareProbe] CPU model unavailable: %s", exc)
+        return platform.processor() or platform.machine()
+
+    @classmethod
+    def _probe_simd_features(cls) -> List[str]:
+        """
+        The vector extensions this CPU reports, in llama.cpp's vocabulary.
+
+        Reported from the OS rather than inferred from the architecture, so a
+        pre-AVX2 x86 host and a Raspberry Pi both get an answer that matches
+        what a kernel would actually be able to run.
+        """
+        system = platform.system()
         arch = platform.machine().lower()
-        if "arm" in arch or "aarch64" in arch:
-            info["simd_features"].append("ARM_NEON")
-            if sys.byteorder == 'little':
-                info["simd_features"].append("ARM_64")
-        else:
-            info["simd_features"].extend(["AVX2", "FMA"])
-        return info
+        found: List[str] = []
+
+        if system == "Linux":
+            flags = cls._linux_cpu_flags()
+            # /proc/cpuinfo spells ARM features in its own way: `asimd` is
+            # NEON on aarch64, and dotprod/i8mm are what llama.cpp's quantized
+            # ARM kernels look for.
+            mapping = {
+                "avx512f": "AVX512", "avx2": "AVX2", "avx": "AVX",
+                "fma": "FMA", "f16c": "F16C", "sse4_2": "SSE4.2",
+                "asimd": "ARM_NEON", "neon": "ARM_NEON",
+                "asimddp": "ARM_DOTPROD", "i8mm": "ARM_I8MM",
+                "sve": "ARM_SVE", "asimdhp": "ARM_FP16",
+            }
+            for flag, label in mapping.items():
+                if flag in flags and label not in found:
+                    found.append(label)
+
+        elif system == "Darwin":
+            found.extend(cls._darwin_simd_features(arch))
+
+        elif system == "Windows":
+            found.extend(cls._windows_simd_features())
+
+        if not found:
+            # Nothing could be read. Say what the architecture guarantees and
+            # nothing more: NEON is mandatory on aarch64, SSE2 on x86-64.
+            if "aarch64" in arch or "arm64" in arch:
+                found.append("ARM_NEON")
+            elif arch in ("x86_64", "amd64"):
+                found.append("SSE2")
+
+        if ("aarch64" in arch or "arm64" in arch) and "ARM_NEON" not in found:
+            found.append("ARM_NEON")
+        return found
+
+    @staticmethod
+    def _linux_cpu_flags() -> set:
+        flags = set()
+        try:
+            with open("/proc/cpuinfo", "r", encoding="utf-8", errors="ignore") as fh:
+                for line in fh:
+                    key, _, value = line.partition(":")
+                    if key.strip().lower() in ("flags", "features"):
+                        flags.update(value.split())
+        except Exception as exc:
+            log.debug("[HardwareProbe] /proc/cpuinfo unreadable: %s", exc)
+        return flags
+
+    @staticmethod
+    def _darwin_simd_features(arch: str) -> List[str]:
+        import subprocess
+        found: List[str] = []
+        probes = {
+            "hw.optional.arm.FEAT_DotProd": "ARM_DOTPROD",
+            "hw.optional.arm.FEAT_I8MM": "ARM_I8MM",
+            "hw.optional.arm.FEAT_FP16": "ARM_FP16",
+            "hw.optional.avx2_0": "AVX2",
+            "hw.optional.avx512f": "AVX512",
+            "hw.optional.fma": "FMA",
+        }
+        for key, label in probes.items():
+            try:
+                out = subprocess.run(["sysctl", "-n", key],
+                                     capture_output=True, text=True, timeout=5)
+                if out.returncode == 0 and out.stdout.strip() == "1":
+                    found.append(label)
+            except Exception:
+                continue
+        if ("arm" in arch or "aarch64" in arch) and "ARM_NEON" not in found:
+            found.append("ARM_NEON")
+        return found
+
+    @staticmethod
+    def _windows_simd_features() -> List[str]:
+        """Asks Windows itself, via IsProcessorFeaturePresent."""
+        found: List[str] = []
+        try:
+            import ctypes
+            is_present = ctypes.windll.kernel32.IsProcessorFeaturePresent
+            # Values from winnt.h.
+            for code, label in ((40, "AVX2"), (39, "AVX"), (41, "AVX512"),
+                                (38, "SSE4.2"), (10, "SSE2")):
+                if is_present(code):
+                    found.append(label)
+            if "AVX2" in found:
+                # FMA3 shipped with AVX2 on every part that has AVX2, and
+                # Windows exposes no separate flag for it.
+                found.append("FMA")
+        except Exception as exc:
+            log.debug("[HardwareProbe] IsProcessorFeaturePresent failed: %s", exc)
+        return found
+
+    # A machine with this little RAM cannot absorb a mis-sized plan: there is
+    # no swap worth the name on a Raspberry Pi (512 MB on an SD card), so an
+    # over-allocation does not slow the board down, it takes it off the
+    # network until somebody power-cycles it.
+    _LOW_MEMORY_GB = 10.0
 
     @classmethod
     def probe_ram(cls) -> Dict[str, Any]:
@@ -86,7 +226,10 @@ class UniversalHardwareProbe:
             "available_gb": round(mem.available / (1024**3), 2),
             "used_percent": mem.percent,
             "swap_total_gb": round(swap.total / (1024**3), 2),
-            "swap_free_gb": round(swap.free / (1024**3), 2)
+            "swap_free_gb": round(swap.free / (1024**3), 2),
+            # Read by the GGUF planner, which spends a fraction of what is free
+            # rather than a fixed number of gigabytes.
+            "is_low_memory": (mem.total / (1024**3)) < cls._LOW_MEMORY_GB,
         }
 
     @classmethod

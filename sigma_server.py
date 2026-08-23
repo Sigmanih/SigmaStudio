@@ -445,45 +445,21 @@ from core.data_handler import rebuild_modules_meta as _rebuild_modules_meta
 
 
 def _apply_hardware_env():
-    """Apply multi-GPU hardware + high-performance execution variables at startup."""
+    """
+    Apply device visibility, threading and credentials for this process.
+
+    Delegated to core.runtime_env so that every entry point gets the same
+    environment: this one, `uvicorn core.fastapi_app:app`, and anything the
+    launcher spawns. It used to live here, which meant the settings existed
+    only when the server was started through this exact file.
+    """
     try:
-        cfg = {}
-        if os.path.exists("config.json"):
-            from core.model_paths import project_root
-            _cfg = os.path.join(project_root(), "config.json")
-            with open(_cfg, "r", encoding="utf-8") as f:
-                cfg = json.load(f)
-        
-        hw = cfg.get("hardware", {})
-        devices = hw.get("cuda_visible_devices", "0,1")
-        num_parallel = str(hw.get("ollama_num_parallel", 4))
-        max_loaded = str(hw.get("ollama_max_loaded_models", 2))
-        
-        # 1. Multi-GPU & Ollama Concurrency Optimization
-        os.environ["CUDA_VISIBLE_DEVICES"] = devices
-        os.environ["OLLAMA_NUM_PARALLEL"] = num_parallel
-        os.environ["OLLAMA_MAX_LOADED_MODELS"] = max_loaded
-        os.environ["OLLAMA_FLASH_ATTENTION"] = "1"
-        os.environ["OLLAMA_KEEP_ALIVE"] = "24h"
-        
-        # 2. PyTorch & CUDA Memory Allocation Optimization
-        if sys.platform != "win32":
-            os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:True"
-        
-        # 3. CPU Core Multi-threading Optimization (Dynamic detection)
-        cpu_threads = str(os.cpu_count() or 8)
-        os.environ["OMP_NUM_THREADS"] = cpu_threads
-        os.environ["MKL_NUM_THREADS"] = cpu_threads
-        
-        log.info("Hardware Acceleration active: GPUs=%s | Parallel Slots=%s | FlashAttention=1 | VRAM Warm Cache=24h | CPU Threads=%s",
-                 devices, num_parallel, cpu_threads)
-        
-        # 4. Apply HF_TOKEN if present
-        hf_token = cfg.get("hf_token", "")
-        if hf_token:
-            os.environ["HF_TOKEN"] = hf_token
-            os.environ["HUGGINGFACE_TOKEN"] = hf_token
-            log.info("HF_TOKEN loaded from config (masked: %s...)", hf_token[:8] if len(hf_token) > 8 else "")
+        from core.runtime_env import apply_hardware_env
+        applied = apply_hardware_env()
+        log.info(
+            "Ambiente hardware applicato: %s",
+            ", ".join(f"{k}={v}" for k, v in applied.items()) or "nessuna modifica",
+        )
     except Exception as exc:
         log.warning("Could not apply hardware env: %s", exc)
 

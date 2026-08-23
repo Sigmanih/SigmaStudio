@@ -16,6 +16,7 @@
 # a two-layer transformers model built from config, and the smallest local GGUF
 # -- and skip themselves where the library is absent.
 # ==============================================================================
+import os
 import threading
 import time
 import unittest
@@ -383,12 +384,33 @@ class TestLlamaCppPlanning(unittest.TestCase):
         self.assertLessEqual(settings["n_batch"], 128)
         self.assertEqual(settings["n_gpu_layers"], 0)
 
-    def test_prompt_lookup_is_planned_on_every_platform(self):
-        # It needs no second model and no VRAM, and it is worth most on the
-        # slowest hosts, so there is no platform that should opt out.
+    def test_prompt_lookup_is_dropped_when_its_buffer_does_not_fit(self):
+        """
+        Speculation needs no second model and no VRAM, but it is not free.
+
+        Attaching a draft model makes llama-cpp-python size its logits buffer
+        by the whole context instead of one batch: n_ctx x n_vocab x float32.
+        On this 152064-token vocabulary at 16k that is 9.3 GB of host RAM, and
+        this used to be requested on every platform unconditionally -- which is
+        how an 8 GB board ended up asking for 21 GB and stopped responding
+        instead of merely running slowly.
+        """
         for hardware in (_HW_DUAL_GPU, _HW_TIGHT_GPU, _HW_APPLE, _HW_PI, _HW_CPU):
             settings = LlamaCppBackend._plan_settings(_facts_27b(), hardware, 16384)
-            self.assertGreater(settings["prompt_lookup_tokens"], 0)
+            self.assertEqual(
+                settings["prompt_lookup_tokens"], 0,
+                f"un buffer da 9.3 GB non deve essere richiesto su {hardware}",
+            )
+
+    def test_prompt_lookup_survives_where_it_is_affordable(self):
+        # The feature is budgeted, not banned: a small vocabulary and a short
+        # window keep the buffer well inside the allowance, and there it stays.
+        facts = _facts_27b()
+        facts.vocab_size = 32000
+        facts.total_bytes = 2 * 2**30
+        hardware = dict(_HW_CPU, ram={"total_gb": 64.0, "available_gb": 48.0})
+        settings = LlamaCppBackend._plan_settings(facts, hardware, 4096)
+        self.assertGreater(settings["prompt_lookup_tokens"], 0)
 
     def test_apple_puts_everything_on_the_shared_pool(self):
         settings = LlamaCppBackend._plan_settings(_facts_27b(), _HW_APPLE, 16384)
@@ -779,6 +801,137 @@ class TestGrammars(unittest.TestCase):
         self.assertIsNone(compile_for_llama_cpp(""))
         result = compile_for_llama_cpp("root ::= object")
         self.assertTrue(result is None or hasattr(result, "__class__"))
+
+
+def _facts_llama32_3b():
+    """The 3B Q4 GGUF that took a Raspberry Pi 5 off the network."""
+    facts = ModelFacts(
+        path="/fake/sigma-alpaca-3b-gguf", name="sigma-alpaca-3b-gguf",
+        model_type="llama", architectures=["llama"], weight_format="gguf",
+        num_hidden_layers=28, hidden_size=3072, head_dim=128,
+        num_attention_heads=24, num_key_value_heads=8, vocab_size=128256,
+        max_position_embeddings=131072,
+    )
+    facts.total_bytes = 2019377408
+    return facts
+
+
+# A Raspberry Pi 5 as it actually reports itself: four cores, 8 GB, and half a
+# gigabyte of swap on an SD card -- which is to say, no room at all to absorb a
+# plan that asks for more than the board has.
+_HW_PI5 = {
+    "accelerators": [{"type": "HOST_CPU", "name": "CPU (aarch64)", "threads": 4}],
+    "cpu": {"cores_physical": 4, "cores_logical": 4},
+    "ram": {"total_gb": 7.9, "available_gb": 7.0, "swap_total_gb": 0.5,
+            "is_low_memory": True},
+    "system": {"is_arm": True, "is_raspberry_pi": True, "is_linux": True},
+    "storage_drives": [],
+}
+
+
+class TestHostMemoryFit(unittest.TestCase):
+    """
+    The plan has to fit in the RAM the machine actually has.
+
+    Regression cover for the failure that motivated this: on the Pi 5 above,
+    the default 32k window plus prompt lookup asked for 1.9 GB of weights,
+    3.5 GB of KV cache and a 15.7 GB logits buffer. llama.cpp allocates that
+    buffer lazily, so the load reported success in thirteen seconds and the
+    board died on the first forward pass -- not an out-of-memory error, a
+    machine that stopped answering ping until it was power-cycled.
+    """
+
+    def test_a_3b_fits_on_a_pi5(self):
+        settings = LlamaCppBackend._plan_settings(_facts_llama32_3b(), _HW_PI5, 32768)
+        self.assertLessEqual(
+            settings["host_required_gb"], settings["host_budget_gb"],
+            f"il piano chiede {settings['host_required_gb']} GB su un budget di "
+            f"{settings['host_budget_gb']} GB",
+        )
+        self.assertEqual(settings["prompt_lookup_tokens"], 0)
+        self.assertEqual(settings["n_gpu_layers"], 0)
+        self.assertEqual(settings["device"], "arm_neon")
+
+    def test_the_window_shrinks_rather_than_overcommitting(self):
+        # 8 GB of free RAM cannot hold a 32k KV cache for this model on top of
+        # the weights, so the window is what gives -- and it is said out loud.
+        settings = LlamaCppBackend._plan_settings(_facts_llama32_3b(), _HW_PI5, 32768)
+        self.assertLess(settings["n_ctx"], 32768)
+        self.assertGreaterEqual(settings["n_ctx"], 1024)
+        self.assertTrue(settings.get("notes"))
+
+    def test_a_model_too_big_for_the_board_is_reported_not_attempted_silently(self):
+        starved = dict(
+            _HW_PI5, ram={"total_gb": 3.8, "available_gb": 1.2, "is_low_memory": True}
+        )
+        settings = LlamaCppBackend._plan_settings(_facts_llama32_3b(), starved, 32768)
+        self.assertTrue(settings.get("warning"))
+        self.assertIn("RAM", settings["warning"])
+
+    def test_a_workstation_keeps_its_full_window(self):
+        # The budget must not punish a machine that has the memory: same model,
+        # same request, 64 GB of RAM and a big card -> nothing is given up.
+        workstation = {
+            "accelerators": [{"type": "NVIDIA_CUDA", "free_vram_gb": 23.0,
+                              "multi_processor_count": 128, "device_id": 0}],
+            "cpu": {"cores_physical": 16},
+            "ram": {"total_gb": 64.0, "available_gb": 48.0},
+            "system": {}, "storage_drives": [],
+        }
+        settings = LlamaCppBackend._plan_settings(
+            _facts_llama32_3b(), workstation, 32768)
+        self.assertEqual(settings["n_ctx"], 32768)
+        self.assertEqual(settings["n_gpu_layers"], -1)
+
+    def test_the_logits_buffer_is_counted_even_when_fully_offloaded(self):
+        # It is a numpy array on the Python side, so it is host RAM whatever
+        # the accelerator is doing. A plan that ignores it is wrong on a
+        # workstation too; it just takes longer to notice.
+        facts = _facts_llama32_3b()
+        self.assertGreater(LlamaCppBackend._logits_buffer_gb(facts, 32768), 15.0)
+        self.assertLess(LlamaCppBackend._logits_buffer_gb(facts, 128), 0.1)
+
+    def test_an_explicit_ceiling_is_honoured(self):
+        os.environ["SIGMA_MAX_CONTEXT"] = "2048"
+        try:
+            settings = LlamaCppBackend._plan_settings(
+                _facts_llama32_3b(), _HW_PI5, 32768)
+            self.assertLessEqual(settings["n_ctx"], 2048)
+        finally:
+            os.environ.pop("SIGMA_MAX_CONTEXT", None)
+
+    def test_prefill_may_use_every_core_while_decode_leaves_one(self):
+        settings = LlamaCppBackend._plan_settings(_facts_llama32_3b(), _HW_PI5, 8192)
+        self.assertEqual(settings["n_threads_batch"], 4)
+        self.assertEqual(settings["n_threads"], 3)
+
+    def test_a_cpu_only_host_gets_a_speed_forecast(self):
+        """
+        The slowest supported configuration used to be the only one with no
+        expectation attached, which made "two minutes to the first token" read
+        as a fault rather than as the board.
+
+        The numbers are checked against a real run: the same model on a
+        Raspberry Pi 5 measured 4.38 tok/s decode and 24.8 tok/s prefill, so a
+        forecast that lands far from those is not a forecast.
+        """
+        settings = LlamaCppBackend._plan_settings(_facts_llama32_3b(), _HW_PI5, 8192)
+        forecast = settings.get("forecast") or {}
+        self.assertEqual(forecast.get("placement"), "cpu_only")
+        self.assertAlmostEqual(
+            forecast["estimated_tokens_per_second"], 4.38, delta=1.0)
+        self.assertAlmostEqual(
+            forecast["estimated_prefill_tokens_per_second"], 24.8, delta=6.0)
+        self.assertIn("token/s", settings.get("note_speed", ""))
+
+    def test_a_model_that_does_not_fit_in_ram_is_forecast_as_paging(self):
+        starved = dict(
+            _HW_PI5, ram={"total_gb": 3.8, "available_gb": 1.2, "is_low_memory": True}
+        )
+        forecast = LlamaCppBackend._plan_settings(
+            _facts_llama32_3b(), starved, 8192).get("forecast") or {}
+        self.assertTrue(forecast.get("pages_from_disk"))
+        self.assertLess(forecast["estimated_tokens_per_second"], 2.0)
 
 
 if __name__ == "__main__":

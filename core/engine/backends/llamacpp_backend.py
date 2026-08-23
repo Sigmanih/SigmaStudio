@@ -238,6 +238,13 @@ _GGML_TYPES = {"f16": 1, "q8_0": 8, "q5_1": 7, "q5_0": 6, "q4_1": 3, "q4_0": 2}
 # the wait before the first token on a long prompt.
 _N_BATCH_DEFAULT = 512
 _N_BATCH_ROOMY = 2048
+# Measured on a Raspberry Pi 5 with a 3B Q4_K_M, 2048 prompt tokens, 4 threads:
+#
+#     n_batch 128 -> 24.8 tok/s prefill      n_batch 256 -> 24.5 tok/s
+#
+# Prefill on this class of board is compute-bound, not batch-bound, so a larger
+# batch buys nothing and costs n_batch x n_vocab x float32 of host RAM. Raising
+# this looks like an optimisation and is not one.
 _N_BATCH_ARM = 128
 
 # n_batch is not free in host RAM. llama-cpp-python allocates a logits buffer of
@@ -254,7 +261,61 @@ _SCORES_BUDGET_BYTES = 512 * 2**20
 # edits, translation, summarising a pasted document -- and costs close to
 # nothing when it does not, because a rejected draft is one batched forward
 # pass the model was going to make anyway.
+#
+# It is not free in memory, though, and the cost is not obvious: passing a
+# draft model makes llama-cpp-python turn `logits_all` on, and the logits
+# buffer then spans the whole context instead of one batch. At n_ctx x n_vocab
+# x float32 that is 15.7 GB for a 32k window on a 128256-token vocabulary --
+# more than three times the model itself. It is therefore requested only when
+# that buffer has been costed against real free RAM (see _fit_to_host_memory).
 _PROMPT_LOOKUP_TOKENS = 10
+
+# Host RAM that must stay free for the OS, the web server and the page cache
+# llama.cpp reads mmapped weights through. A flat figure is the wrong shape:
+# reserving 8 GB on a board that only has 8 is the same as refusing to run,
+# and reserving 0.6 GB on a 128 GB workstation is not a reserve at all.
+_HOST_RESERVE_FRACTION = 0.12
+_HOST_RESERVE_MIN_GB = 0.6
+_HOST_RESERVE_MAX_GB = 4.0
+
+# Scratch llama.cpp allocates per context beyond the KV cache: compute graph,
+# per-thread buffers and the tokenizer's own working set. Small, but it is the
+# difference between a plan that just fits and one that pages.
+_HOST_SCRATCH_GB = 0.3
+
+# The speculation buffer is an optimisation. It is allowed at most this share
+# of what is actually free, and never more than the cap: a speedup that takes
+# a gigabyte away from the page cache the weights stream through is a loss.
+_SPECULATION_BUFFER_FRACTION = 0.10
+_SPECULATION_BUFFER_CAP_GB = 1.0
+
+# Contexts to try when the requested one does not fit, largest first. Halving
+# rather than searching keeps the choice stable, so small changes in free RAM
+# do not silently move the window between two loads of the same model.
+_MIN_CONTEXT_TOKENS = 2048
+# Below this an assistant cannot hold a system prompt plus a question, so a
+# plan that needs less says so instead of pretending.
+_FLOOR_CONTEXT_TOKENS = 1024
+
+# Without an accelerator, prefill is the wall: every doubling of the window
+# doubles the KV cache and lengthens the worst-case prompt the board has to
+# chew through before the first token. 32k on a Raspberry Pi is not a longer
+# conversation, it is a conversation that never starts. Callers that really
+# want more can say so through SIGMA_MAX_CONTEXT.
+_CPU_CONTEXT_CEILING = 8192
+
+
+def _env_context_ceiling() -> Optional[int]:
+    """An explicit context ceiling from the environment, when one is set."""
+    raw = os.environ.get("SIGMA_MAX_CONTEXT", "").strip()
+    if not raw:
+        return None
+    try:
+        value = int(raw)
+    except ValueError:
+        log.warning("[LlamaCpp] SIGMA_MAX_CONTEXT='%s' non e' un intero: ignorato.", raw)
+        return None
+    return value if value > 0 else None
 
 
 class LlamaCppBackend(InferenceBackend):
@@ -386,6 +447,7 @@ class LlamaCppBackend(InferenceBackend):
                 tensor_split=settings["tensor_split"],
                 n_ctx=settings["n_ctx"],
                 n_threads=settings["n_threads"],
+                n_threads_batch=settings.get("n_threads_batch") or settings["n_threads"],
                 n_batch=settings["n_batch"],
                 flash_attn=settings["flash_attn"],
                 verbose=False,
@@ -432,6 +494,9 @@ class LlamaCppBackend(InferenceBackend):
             retry_settings["flash_attn"] = False
             retry_settings["n_batch"] = min(retry_settings.get("n_batch", 512), 256)
             retry_settings["kv_quant"] = None
+            # No draft_model is passed on any retry path, so reporting prompt
+            # lookup as active would describe a run that is not happening.
+            retry_settings["prompt_lookup_tokens"] = 0
 
             retry_kwargs = dict(
                 model_path=model_file,
@@ -462,6 +527,7 @@ class LlamaCppBackend(InferenceBackend):
                 # --------------------------------------------------------------
                 cpu_settings = dict(settings)
                 cpu_settings["n_gpu_layers"] = 0
+                cpu_settings["prompt_lookup_tokens"] = 0
                 cpu_settings["flash_attn"] = False
                 cpu_settings["n_ctx"] = min(cpu_settings.get("n_ctx", 8192), 4096)
                 cpu_settings["n_batch"] = 128
@@ -493,6 +559,7 @@ class LlamaCppBackend(InferenceBackend):
                     # ----------------------------------------------------------
                     low_ram_settings = dict(settings)
                     low_ram_settings["n_gpu_layers"] = 0
+                    low_ram_settings["prompt_lookup_tokens"] = 0
                     low_ram_settings["flash_attn"] = False
                     low_ram_settings["n_ctx"] = 2048
                     low_ram_settings["n_batch"] = 64
@@ -526,6 +593,7 @@ class LlamaCppBackend(InferenceBackend):
                         # ------------------------------------------------------
                         micro_settings = dict(settings)
                         micro_settings["n_gpu_layers"] = 0
+                        micro_settings["prompt_lookup_tokens"] = 0
                         micro_settings["n_ctx"] = 1024
                         micro_settings["n_batch"] = 32
                         micro_kwargs = dict(
@@ -952,7 +1020,8 @@ class LlamaCppBackend(InferenceBackend):
         the optional keys, and the settings are corrected so the placement
         report stays true.
         """
-        optional = ("type_k", "type_v", "draft_model", "flash_attn", "use_mmap", "use_mlock")
+        optional = ("type_k", "type_v", "draft_model", "flash_attn", "use_mmap",
+                    "use_mlock", "n_threads_batch")
         try:
             return Llama(**kwargs)
         except TypeError as exc:
@@ -1067,21 +1136,46 @@ class LlamaCppBackend(InferenceBackend):
             reverse=True,
         )
 
+        weights_gb = facts.total_bytes / 2**30
         n_ctx = cls._clamp_context(facts, context_tokens)
         physical_cores = int(cpu.get("cores_physical", 4) or 4)
-        n_threads = max(physical_cores - _CPU_THREAD_HEADROOM, 1)
+        # Never below two: a single thread makes a board that could answer
+        # slowly answer not at all, and the headroom exists to keep the web UI
+        # responsive, not to halve the engine.
+        n_threads = max(physical_cores - _CPU_THREAD_HEADROOM, min(physical_cores, 2))
+        # Prefill is a burst, not a steady load: it runs once per turn and the
+        # user is watching a spinner while it does. Giving it every core costs
+        # the web UI a moment of latency and buys back seconds of waiting,
+        # which on a board without an accelerator is the whole experience.
+        n_threads_batch = physical_cores
 
-        # Apple silicon shares one memory pool, so everything goes to the GPU.
+        env_ceiling = _env_context_ceiling()
+        if env_ceiling:
+            n_ctx = min(n_ctx, cls._clamp_context(facts, env_ceiling))
+
+        # Apple silicon shares one memory pool, so everything goes to the GPU --
+        # and that pool is the same RAM the logits buffer comes out of, so the
+        # host fit applies here exactly as it does on a CPU-only board.
         if any(a.get("type") == "APPLE_MPS" for a in accelerators):
-            return {
-                "n_gpu_layers": -1, "tensor_split": None, "n_ctx": n_ctx,
+            n_batch = cls._cap_batch(_N_BATCH_ROOMY, facts)
+            fit = cls._fit_to_host_memory(
+                facts, hardware, requested_ctx=n_ctx,
+                host_weights_gb=weights_gb, n_batch=n_batch,
+                want_speculation=True,
+            )
+            settings = {
+                "n_gpu_layers": -1, "tensor_split": None, "n_ctx": fit["n_ctx"],
                 "n_threads": n_threads,
-                "n_batch": cls._cap_batch(_N_BATCH_ROOMY, facts),
+                "n_threads_batch": n_threads_batch,
+                "n_batch": n_batch,
                 "flash_attn": True,
-                "kv_quant": _KV_QUANT_TYPE if n_ctx > _KV_QUANT_CONTEXT_THRESHOLD else None,
-                "prompt_lookup_tokens": _PROMPT_LOOKUP_TOKENS,
+                "kv_quant": (
+                    _KV_QUANT_TYPE if fit["n_ctx"] > _KV_QUANT_CONTEXT_THRESHOLD else None
+                ),
+                "prompt_lookup_tokens": fit["prompt_lookup_tokens"],
                 "device": "metal",
             }
+            return cls._merge_host_fit(settings, fit)
 
         if not gpus:
             # CPU-only, which is the normal case on ARM boards. Smaller batches
@@ -1089,76 +1183,139 @@ class LlamaCppBackend(InferenceBackend):
             #
             # No KV quantization here: it rides on flash attention, which this
             # path does not enable, and dequantizing the cache on every step
-            # would cost the CPU exactly what it cannot spare. Prompt lookup,
-            # on the other hand, is worth most precisely here -- a board that
-            # decodes at two tokens a second gains the most from the tokens it
-            # can skip decoding.
+            # would cost the CPU exactly what it cannot spare.
+            #
+            # Prompt lookup is worth most precisely here -- a board that decodes
+            # at two tokens a second gains the most from the tokens it can skip
+            # -- but it is also here that its logits buffer is least affordable,
+            # so the fit below decides rather than the platform.
             is_arm = bool(system.get("is_arm") or system.get("is_raspberry_pi"))
-            return {
-                "n_gpu_layers": 0, "tensor_split": None, "n_ctx": n_ctx,
+            n_batch = cls._cap_batch(
+                _N_BATCH_ARM if is_arm else _N_BATCH_DEFAULT, facts)
+            requested_ctx = min(n_ctx, env_ceiling or _CPU_CONTEXT_CEILING)
+            fit = cls._fit_to_host_memory(
+                facts, hardware, requested_ctx=requested_ctx,
+                host_weights_gb=weights_gb, n_batch=n_batch,
+                want_speculation=True,
+            )
+            settings = {
+                "n_gpu_layers": 0, "tensor_split": None, "n_ctx": fit["n_ctx"],
                 "n_threads": n_threads,
-                "n_batch": cls._cap_batch(
-                    _N_BATCH_ARM if is_arm else _N_BATCH_DEFAULT, facts),
+                "n_threads_batch": n_threads_batch,
+                "n_batch": n_batch,
                 "flash_attn": False,
                 "kv_quant": None,
-                "prompt_lookup_tokens": _PROMPT_LOOKUP_TOKENS,
+                "prompt_lookup_tokens": fit["prompt_lookup_tokens"],
                 "device": "arm_neon" if is_arm else "cpu",
+                "weights_gb": round(weights_gb, 2),
             }
+            if n_ctx > requested_ctx and not env_ceiling:
+                settings.setdefault("notes", []).append(
+                    f"Contesto limitato a {requested_ctx} token su CPU: senza "
+                    f"acceleratore il prefill di una finestra piu' larga costa "
+                    f"minuti prima del primo token. Imposta SIGMA_MAX_CONTEXT "
+                    f"per alzarlo."
+                )
+            settings.update(cls._cpu_forecast(facts, settings, hardware))
+            return cls._merge_host_fit(settings, fit)
 
         usable = [max(g.get("free_vram_gb", 0.0) - _GPU_RESERVE_GB, 0.0) for g in gpus]
         total_usable = sum(usable)
-        weights_gb = facts.total_bytes / 2**30
         layers = facts.num_hidden_layers or 0
-
-        # Quantizing the KV cache is decided against the placement it produces,
-        # not against the context length: the question is not "is the cache
-        # big?" but "does halving it move enough layers onto the accelerator to
-        # repay what it costs on the ones that stay behind?"
-        kv_gb_f16 = ModelInspector.estimate_kv_cache_gb(facts, n_ctx)
-
-        plain = cls._layers_that_fit(weights_gb, layers, total_usable, kv_gb_f16)
-        halved = cls._layers_that_fit(weights_gb, layers, total_usable, kv_gb_f16 / 2)
-
-        kv_quant = None
-        if n_ctx > _KV_QUANT_CONTEXT_THRESHOLD and layers:
-            if cls._kv_quant_pays_off(plain, halved, layers):
-                kv_quant = _KV_QUANT_TYPE
-
-        kv_gb = round(kv_gb_f16 / 2, 3) if kv_quant else kv_gb_f16
-        n_gpu_layers = halved if kv_quant else plain
 
         tensor_split = None
         if len(gpus) > 1 and total_usable > 0:
             tensor_split = [round(u / total_usable, 4) for u in usable]
 
-        # A larger prefill batch only helps where there is memory to hold it.
-        # On a card that is already full, it competes with the weights.
-        headroom_gb = total_usable - (weights_gb * _GGUF_OVERHEAD_FACTOR + kv_gb)
-        n_batch = cls._cap_batch(
-            _N_BATCH_ROOMY if headroom_gb > 1.0 else _N_BATCH_DEFAULT, facts
-        )
+        # The split and the host fit depend on each other: the KV cache that
+        # stays in host RAM is set by how many layers missed the accelerator,
+        # and shrinking the context to fit host RAM changes how many fit. Two
+        # passes settle it -- the second only runs when the first shrank the
+        # window, and it cannot shrink it again because the ladder is monotonic.
+        for _ in range(2):
+            # Quantizing the KV cache is decided against the placement it
+            # produces, not against the context length: the question is not "is
+            # the cache big?" but "does halving it move enough layers onto the
+            # accelerator to repay what it costs on the ones that stay behind?"
+            kv_gb_f16 = ModelInspector.estimate_kv_cache_gb(facts, n_ctx)
+
+            plain = cls._layers_that_fit(weights_gb, layers, total_usable, kv_gb_f16)
+            halved = cls._layers_that_fit(weights_gb, layers, total_usable, kv_gb_f16 / 2)
+
+            kv_quant = None
+            if n_ctx > _KV_QUANT_CONTEXT_THRESHOLD and layers:
+                if cls._kv_quant_pays_off(plain, halved, layers):
+                    kv_quant = _KV_QUANT_TYPE
+
+            kv_gb = round(kv_gb_f16 / 2, 3) if kv_quant else kv_gb_f16
+            n_gpu_layers = halved if kv_quant else plain
+
+            # A larger prefill batch only helps where there is memory to hold
+            # it. On a card that is already full, it competes with the weights.
+            headroom_gb = total_usable - (weights_gb * _GGUF_OVERHEAD_FACTOR + kv_gb)
+            n_batch = cls._cap_batch(
+                _N_BATCH_ROOMY if headroom_gb > 1.0 else _N_BATCH_DEFAULT, facts
+            )
+
+            # Whatever llama.cpp did not offload is read from host RAM, and the
+            # logits buffer lives there regardless of placement -- which is why
+            # a workstation with two cards can still be taken down by a 32k
+            # context on a large vocabulary if nobody counts it.
+            host_layer_fraction = (
+                0.0 if (n_gpu_layers < 0 or (layers and n_gpu_layers >= layers))
+                else (max(layers - n_gpu_layers, 0) / layers if layers else 1.0)
+            )
+            fit = cls._fit_to_host_memory(
+                facts, hardware, requested_ctx=n_ctx,
+                host_weights_gb=weights_gb * host_layer_fraction,
+                n_batch=n_batch, want_speculation=True,
+                kv_host_fraction=host_layer_fraction,
+                kv_bytes_per_element=1 if kv_quant else 2,
+            )
+            if fit["n_ctx"] == n_ctx:
+                break
+            n_ctx = fit["n_ctx"]
 
         settings = {
             "n_gpu_layers": n_gpu_layers,
             "tensor_split": tensor_split,
             "n_ctx": n_ctx,
             "n_threads": n_threads,
+            "n_threads_batch": n_threads_batch,
             "n_batch": n_batch,
             "flash_attn": True,
             "kv_quant": kv_quant,
-            "prompt_lookup_tokens": _PROMPT_LOOKUP_TOKENS,
+            "prompt_lookup_tokens": fit["prompt_lookup_tokens"],
             "device": "cuda",
             "usable_vram_gb": round(total_usable, 2),
             "weights_gb": round(weights_gb, 2),
             "kv_cache_gb": kv_gb,
             "kv_cache_gb_f16": kv_gb_f16,
-            "logits_buffer_gb": round(
-                n_batch * max(int(getattr(facts, "vocab_size", 0) or 0), 1) * 4 / 2**30, 2
-            ),
         }
         if kv_quant:
             settings["kv_saving_gb"] = round(kv_gb_f16 - kv_gb, 2)
+        # The forecast writes its own `warning`, so it runs before the fit is
+        # folded in: _merge_host_fit appends to whatever is already there
+        # rather than replacing it, and both warnings matter.
         settings.update(cls._throughput_forecast(facts, settings, hardware))
+        return cls._merge_host_fit(settings, fit)
+
+    @staticmethod
+    def _merge_host_fit(settings: Dict[str, Any], fit: Dict[str, Any]) -> Dict[str, Any]:
+        """Folds a host-memory fit into a settings dict, keeping its reporting."""
+        settings["n_ctx"] = fit["n_ctx"]
+        settings["prompt_lookup_tokens"] = fit["prompt_lookup_tokens"]
+        settings["logits_buffer_gb"] = fit["logits_buffer_gb"]
+        settings["host_required_gb"] = fit["host_required_gb"]
+        settings["host_budget_gb"] = fit["host_budget_gb"]
+        settings["host_kv_gb"] = fit["host_kv_gb"]
+        if fit["notes"]:
+            settings.setdefault("notes", []).extend(fit["notes"])
+        if fit["warning"]:
+            existing = settings.get("warning")
+            settings["warning"] = (
+                f"{existing} {fit['warning']}" if existing else fit["warning"]
+            )
         return settings
 
     # Host memory bandwidth actually reached by a streaming read, as opposed to
@@ -1168,6 +1325,80 @@ class LlamaCppBackend(InferenceBackend):
     _HOST_BANDWIDTH_GB_S = 12.0
     # A page fault to NVMe is roughly an order of magnitude worse again.
     _DISK_BANDWIDTH_GB_S = 1.5
+    # Single-channel LPDDR4X on a small ARM board. This one is measured rather
+    # than assumed: a 1.88 GB Q4_K_M decoded at 4.38 tok/s on a Raspberry Pi 5
+    # (4 threads, all layers on the CPU), which is 8.2 GB/s of effective read
+    # bandwidth. Rounded down, because that run had the board to itself.
+    _ARM_BANDWIDTH_GB_S = 8.0
+    # Prefill is compute-bound rather than bandwidth-bound, and on the same
+    # board it ran 5.7x faster than decode. Measured across n_batch 128 and 256,
+    # which produced 24.8 and 24.5 tok/s -- within noise of each other, so the
+    # small ARM prefill batch costs nothing and the memory it saves is real.
+    _PREFILL_TO_DECODE_RATIO = 5.5
+
+    @classmethod
+    def _cpu_forecast(
+        cls, facts: ModelFacts, settings: Dict[str, Any], hardware: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """
+        What a host with no accelerator will actually feel like.
+
+        The CPU path used to report nothing at all, which left the slowest
+        configuration the product supports as the only one with no expectation
+        attached: a Raspberry Pi 5 answers a 2000-token first message about two
+        minutes after it is sent, and every part of the UI implied that was a
+        fault rather than the hardware.
+
+        Two numbers, because they behave differently. Decode reads every weight
+        once per token, so it is bounded by memory bandwidth and no amount of
+        tuning moves it. Prefill is compute-bound and only happens in full once:
+        llama.cpp keeps the evaluated tokens and reuses the longest common
+        prefix on the next turn, so the system prompt is paid for on the first
+        message of a conversation and not again.
+        """
+        weights_gb = facts.total_bytes / 2**30
+        if weights_gb <= 0:
+            return {}
+
+        is_arm = settings.get("device") == "arm_neon"
+        bandwidth = cls._ARM_BANDWIDTH_GB_S if is_arm else cls._HOST_BANDWIDTH_GB_S
+        free_ram = float((hardware.get("ram") or {}).get("available_gb", 0.0) or 0.0)
+        paging = 0 < free_ram < weights_gb
+        if paging:
+            bandwidth = cls._DISK_BANDWIDTH_GB_S
+
+        decode_tps = round(bandwidth / weights_gb, 2)
+        prefill_tps = round(decode_tps * cls._PREFILL_TO_DECODE_RATIO, 1)
+
+        forecast = {
+            "placement": "cpu_only",
+            "weights_gb": round(weights_gb, 2),
+            "assumed_bandwidth_gb_s": bandwidth,
+            "estimated_tokens_per_second": decode_tps,
+            "estimated_prefill_tokens_per_second": prefill_tps,
+            "pages_from_disk": paging,
+            "first_turn_only": (
+                "llama.cpp riusa il prefisso gia' valutato: il prompt di sistema "
+                "si paga al primo messaggio della conversazione, non ai successivi."
+            ),
+        }
+
+        if paging:
+            settings["warning"] = (
+                f"I {weights_gb:.1f} GB del modello non stanno nella RAM libera "
+                f"({free_ram:.1f} GB): verranno letti dal disco a ogni token. "
+                f"Attesa realistica: {cls._render_rate(decode_tps)}. Serve una "
+                f"quantizzazione piu' compatta o un modello piu' piccolo."
+            )
+        else:
+            settings["note_speed"] = (
+                f"Esecuzione su CPU: attesa {cls._render_rate(decode_tps)} in "
+                f"generazione e circa {prefill_tps:.0f} token/s nella lettura del "
+                f"prompt. Un prompt di sistema da 2000 token costa quindi "
+                f"~{2000 / max(prefill_tps, 0.1):.0f}s al primo messaggio, poi "
+                f"viene riutilizzato."
+            )
+        return {"forecast": forecast}
 
     @classmethod
     def _throughput_forecast(
@@ -1399,3 +1630,169 @@ class LlamaCppBackend(InferenceBackend):
         if trained and requested > trained:
             return trained
         return max(requested, 512)
+
+    # ------------------------------------------------------- host RAM budget
+
+    @staticmethod
+    def _logits_buffer_gb(facts: ModelFacts, rows: int) -> float:
+        """
+        Host RAM llama-cpp-python commits for its logits buffer.
+
+        The buffer is `rows x n_vocab` float32 and it is host memory even when
+        every layer is on the accelerator, because it is a numpy array on the
+        Python side. `rows` is n_batch normally and the whole context when a
+        draft model is attached -- which is why speculation has to be costed
+        here rather than assumed free.
+        """
+        vocab = int(getattr(facts, "vocab_size", 0) or 0)
+        if vocab <= 0 or rows <= 0:
+            return 0.0
+        return round(rows * vocab * 4 / 2**30, 3)
+
+    @staticmethod
+    def _host_budget_gb(hardware: Dict[str, Any]) -> float:
+        """
+        Host RAM this load may spend, or 0.0 when the probe could not say.
+
+        The reserve scales with the machine so the same rule works on a 8 GB
+        board and on a 128 GB workstation.
+        """
+        ram = hardware.get("ram") or {}
+        available = float(ram.get("available_gb") or 0.0)
+        total = float(ram.get("total_gb") or available)
+        if available <= 0:
+            return 0.0
+        reserve = min(
+            max(total * _HOST_RESERVE_FRACTION, _HOST_RESERVE_MIN_GB),
+            _HOST_RESERVE_MAX_GB,
+        )
+        return max(available - reserve, 0.0)
+
+    @classmethod
+    def _context_ladder(cls, requested: int) -> List[int]:
+        """Context sizes to try, largest first, down to a usable floor."""
+        ladder, value = [requested], requested
+        while value > _MIN_CONTEXT_TOKENS:
+            value //= 2
+            ladder.append(max(value, _MIN_CONTEXT_TOKENS))
+        ladder.append(_FLOOR_CONTEXT_TOKENS)
+        seen, ordered = set(), []
+        for candidate in ladder:
+            if candidate not in seen and candidate > 0:
+                seen.add(candidate)
+                ordered.append(candidate)
+        return ordered
+
+    @classmethod
+    def _fit_to_host_memory(
+        cls,
+        facts: ModelFacts,
+        hardware: Dict[str, Any],
+        requested_ctx: int,
+        host_weights_gb: float,
+        n_batch: int,
+        want_speculation: bool,
+        kv_host_fraction: float = 1.0,
+        kv_bytes_per_element: int = 2,
+    ) -> Dict[str, Any]:
+        """
+        Fits the context and the speculation buffer into real free host RAM.
+
+        This is the check the engine did not make, and its absence is what took
+        a whole Raspberry Pi 5 down rather than merely running slowly: a 3B at
+        the default 32k window asked for 1.9 GB of weights, 3.5 GB of KV cache
+        and -- because prompt lookup was on -- a 15.7 GB logits buffer, on a
+        board with 8 GB and half a gigabyte of swap. llama.cpp allocates that
+        buffer lazily, so the load reported success in thirteen seconds and the
+        machine died on the first forward pass instead.
+
+        Concessions are made cheapest-first, because they are not equivalent:
+        losing speculative decoding costs some tokens per second, losing
+        context costs the conversation. So speculation is dropped before the
+        window is halved, and the window is halved before anything is declared
+        impossible.
+        """
+        budget = cls._host_budget_gb(hardware)
+        available = float((hardware.get("ram") or {}).get("available_gb") or 0.0)
+        batch_logits_gb = cls._logits_buffer_gb(facts, n_batch)
+
+        spec_budget = min(
+            available * _SPECULATION_BUFFER_FRACTION, _SPECULATION_BUFFER_CAP_GB
+        ) if available > 0 else _SPECULATION_BUFFER_CAP_GB
+
+        notes: List[str] = []
+        warning: Optional[str] = None
+
+        for ctx in cls._context_ladder(requested_ctx):
+            kv_gb = ModelInspector.estimate_kv_cache_gb(
+                facts, ctx, bytes_per_element=kv_bytes_per_element
+            ) * max(min(kv_host_fraction, 1.0), 0.0)
+            base_gb = host_weights_gb + kv_gb + batch_logits_gb + _HOST_SCRATCH_GB
+            spec_gb = cls._logits_buffer_gb(facts, ctx)
+
+            speculation_affordable = (
+                want_speculation
+                and spec_gb <= spec_budget
+                and (budget <= 0 or base_gb + spec_gb <= budget)
+            )
+            if speculation_affordable:
+                return cls._host_fit_result(
+                    ctx, requested_ctx, True, base_gb + spec_gb, budget,
+                    kv_gb, batch_logits_gb, spec_gb, notes, warning,
+                )
+
+            if want_speculation and ctx == requested_ctx:
+                notes.append(
+                    f"Speculative decoding (prompt lookup) disattivato: il suo "
+                    f"buffer dei logits occuperebbe {spec_gb:.1f} GB di RAM "
+                    f"({facts.vocab_size} token di vocabolario x {ctx} di "
+                    f"contesto), oltre il budget di {spec_budget:.1f} GB."
+                )
+
+            if budget <= 0 or base_gb <= budget:
+                return cls._host_fit_result(
+                    ctx, requested_ctx, False, base_gb, budget,
+                    kv_gb, batch_logits_gb, 0.0, notes, warning,
+                )
+
+        # Nothing on the ladder fits. The load is still attempted at the floor:
+        # llama.cpp streams mmapped weights from disk and may survive, and an
+        # explicit warning beats refusing a model the user can see on disk.
+        ctx = _FLOOR_CONTEXT_TOKENS
+        kv_gb = ModelInspector.estimate_kv_cache_gb(
+            facts, ctx, bytes_per_element=kv_bytes_per_element
+        ) * max(min(kv_host_fraction, 1.0), 0.0)
+        base_gb = host_weights_gb + kv_gb + batch_logits_gb + _HOST_SCRATCH_GB
+        warning = (
+            f"Il modello richiede circa {base_gb:.1f} GB di RAM anche con un "
+            f"contesto minimo di {ctx} token, ma ne sono liberi solo "
+            f"{budget:.1f} GB. Il caricamento verra' tentato leggendo i pesi dal "
+            f"disco: sara' molto lento e puo' esaurire la memoria. Usa una "
+            f"quantizzazione piu' compatta (Q4_K_S / Q3) o un modello piu' piccolo."
+        )
+        return cls._host_fit_result(
+            ctx, requested_ctx, False, base_gb, budget,
+            kv_gb, batch_logits_gb, 0.0, notes, warning,
+        )
+
+    @staticmethod
+    def _host_fit_result(
+        ctx: int, requested_ctx: int, speculation: bool, required_gb: float,
+        budget_gb: float, kv_gb: float, batch_logits_gb: float,
+        spec_logits_gb: float, notes: List[str], warning: Optional[str],
+    ) -> Dict[str, Any]:
+        if ctx < requested_ctx:
+            notes.append(
+                f"Contesto ridotto da {requested_ctx} a {ctx} token per stare "
+                f"nella RAM disponibile ({budget_gb:.1f} GB utilizzabili)."
+            )
+        return {
+            "n_ctx": ctx,
+            "prompt_lookup_tokens": _PROMPT_LOOKUP_TOKENS if speculation else 0,
+            "host_required_gb": round(required_gb, 2),
+            "host_budget_gb": round(budget_gb, 2),
+            "host_kv_gb": round(kv_gb, 2),
+            "logits_buffer_gb": round(batch_logits_gb + spec_logits_gb, 3),
+            "notes": notes,
+            "warning": warning,
+        }

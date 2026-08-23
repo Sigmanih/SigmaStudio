@@ -12,10 +12,12 @@ import time
 import uuid
 import datetime
 import asyncio
+import concurrent.futures
 import queue
 import threading
 import warnings
 from pathlib import Path
+from typing import Optional
 from urllib.parse import urlparse
 
 warnings.filterwarnings("ignore", category=UserWarning, module="torch")
@@ -42,11 +44,31 @@ log = get_logger("fastapi_server")
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Startup
+    # Startup. asyncio's default executor is sized min(32, cpu_count + 4), so
+    # on a four-core board every `asyncio.to_thread` in the app shares eight
+    # threads with everything else. Pointing it at our own pool makes the size
+    # a property of the workload -- blocking I/O and a serialised engine -- and
+    # not of how many cores the machine happens to have.
+    asyncio.get_running_loop().set_default_executor(_api_executor)
+    # Idempotent: a no-op when sigma_server.py already applied it, and the only
+    # place it happens when uvicorn is pointed straight at this module.
+    try:
+        from core.runtime_env import apply_hardware_env
+        apply_hardware_env()
+    except Exception as exc:
+        log.warning("[FastAPI] Ambiente hardware non applicato: %s", exc)
+    log.info(
+        "[FastAPI] Pool richieste: %d thread API + %d thread streaming (CPU: %s core).",
+        _API_WORKERS, _STREAM_WORKERS, os.cpu_count(),
+    )
     yield
     # Graceful Shutdown: detach running tasks, stop child processes, free VRAM/RAM
     log.info("[FastAPI] Shutdown avviato: arresto ordinato di tutti i task e liberazione risorse...")
     shutdown_all_tasks()
+    # Do not wait: a generation in flight can take minutes, and the point of
+    # Ctrl+C is that the port is free now.
+    _api_executor.shutdown(wait=False, cancel_futures=True)
+    _stream_executor.shutdown(wait=False, cancel_futures=True)
 
 
 app = FastAPI(
@@ -67,6 +89,101 @@ app.add_middleware(
 )
 
 
+# Handlers are synchronous, so every API request spends its life on a worker
+# thread. Left to asyncio's default executor that pool is min(32, cpu_count+4)
+# threads -- twenty-eight on the workstation this was written on, and eight on
+# a four-core Raspberry Pi. Eight is few enough that a couple of slow handlers
+# starve every other endpoint, which is exactly how a board that was merely
+# generating slowly ended up answering nothing at all.
+#
+# Two pools rather than one, because the two kinds of work have different
+# shapes: a status poll must never queue behind a model load. The sizes are set
+# from the workload (these threads block on I/O and on the engine lock, they do
+# not compete for CPU) rather than from the core count.
+_API_WORKERS = 32
+_STREAM_WORKERS = 16
+
+_api_executor = concurrent.futures.ThreadPoolExecutor(
+    max_workers=_API_WORKERS, thread_name_prefix="sigma-api"
+)
+_stream_executor = concurrent.futures.ThreadPoolExecutor(
+    max_workers=_STREAM_WORKERS, thread_name_prefix="sigma-stream"
+)
+
+
+class ClientGone(BrokenPipeError):
+    """Raised inside a handler thread when the SSE reader has disconnected."""
+
+
+_STREAM_SENTINEL = object()
+
+
+async def _aiter_blocking(factory):
+    """
+    Iterates a blocking generator without ever holding the event loop.
+
+    Every streaming route here used to write `for chunk in generator()` inside
+    an `async def`, which runs the generator's body -- the whole forward pass --
+    on the event loop itself. On a machine fast enough that each token arrives
+    in microseconds nobody notices. On a Raspberry Pi, where prefill alone is
+    tens of seconds, it means the server stops accepting connections entirely
+    for the duration: not a slow answer, a dead port.
+
+    The generator runs on a worker thread and hands items to the loop instead.
+    `factory` is a zero-argument callable so the generator is created on that
+    thread, never on the loop.
+    """
+    loop = asyncio.get_running_loop()
+    items: asyncio.Queue = asyncio.Queue()
+    stop = threading.Event()
+
+    def _deliver(item) -> bool:
+        try:
+            loop.call_soon_threadsafe(items.put_nowait, item)
+            return True
+        except RuntimeError:                    # loop closed under us
+            stop.set()
+            return False
+
+    def _pump():
+        source = None
+        try:
+            source = factory()
+            for item in source:
+                if stop.is_set():
+                    break
+                if not _deliver(item):
+                    break
+        except BaseException as exc:            # re-raised on the consumer side
+            _deliver(exc)
+        finally:
+            # Closed explicitly rather than left to the collector: abandoning
+            # an engine generator mid-iteration leaves its `finally` -- and the
+            # generation lock it releases there -- waiting on a garbage
+            # collection nobody has scheduled.
+            if source is not None and hasattr(source, "close"):
+                try:
+                    source.close()
+                except Exception as exc:
+                    log.debug("[FastAPI] chiusura generatore ignorata: %s", exc)
+            _deliver(_STREAM_SENTINEL)
+
+    _stream_executor.submit(_pump)
+    try:
+        while True:
+            item = await items.get()
+            if item is _STREAM_SENTINEL:
+                break
+            if isinstance(item, BaseException):
+                raise item
+            yield item
+    finally:
+        # Set on client disconnect as well as normal completion, so an
+        # abandoned stream stops generating instead of running to its full
+        # token budget with nobody reading.
+        stop.set()
+
+
 class FastAPIHandlerAdapter:
     """Bridge adapter that allows existing core handlers to run seamlessly on FastAPI."""
 
@@ -79,18 +196,55 @@ class FastAPIHandlerAdapter:
         self._response_data = None
         self._response_status = 200
         self._response_headers = {}
+        # Streaming state, populated by attach_stream() on the SSE path only.
+        self._loop: Optional[asyncio.AbstractEventLoop] = None
+        self._stream_queue: Optional[asyncio.Queue] = None
+        self.client_gone = threading.Event()
         self.sse_queue = queue.Queue()
-        self.wfile = self._SSEWriter(self.sse_queue)
+        self.wfile = self._SSEWriter(self)
+
+    def attach_stream(self, loop: "asyncio.AbstractEventLoop") -> "asyncio.Queue":
+        """
+        Wires this adapter's writer to an asyncio queue on the running loop.
+
+        The events are handed to the loop with call_soon_threadsafe instead of
+        being parked in a thread-safe queue somebody has to block on. That
+        matters more than it looks: draining a queue.Queue meant one worker
+        thread sat in `get()` for the entire generation, so on a small machine
+        a handful of open chats could hold every thread the pool had while
+        doing nothing at all.
+        """
+        self._loop = loop
+        self._stream_queue = asyncio.Queue()
+        return self._stream_queue
+
+    def emit(self, item) -> None:
+        """Push one item to the reader, or raise if there is no reader left."""
+        if self.client_gone.is_set():
+            raise ClientGone("Il client ha chiuso lo stream.")
+        if self._loop is None or self._stream_queue is None:
+            self.sse_queue.put(item)
+            return
+        try:
+            self._loop.call_soon_threadsafe(self._stream_queue.put_nowait, item)
+        except RuntimeError as exc:            # loop already closed
+            self.client_gone.set()
+            raise ClientGone(str(exc)) from exc
 
     class _SSEWriter:
-        def __init__(self, q: queue.Queue):
-            self._queue = q
+        """File-like shim: handlers write SSE frames here as if to a socket."""
+
+        def __init__(self, adapter: "FastAPIHandlerAdapter"):
+            self._adapter = adapter
 
         def write(self, b: bytes):
-            self._queue.put(b.decode("utf-8", errors="replace"))
+            self._adapter.emit(b.decode("utf-8", errors="replace"))
 
         def flush(self):
-            pass
+            # A write that cannot reach the reader must fail on the next call
+            # too, so callers polling flush() also learn the stream is dead.
+            if self._adapter.client_gone.is_set():
+                raise ClientGone("Il client ha chiuso lo stream.")
 
     def get_module_meta(self) -> dict:
         return modules_store.load()
@@ -491,6 +645,9 @@ async def _dispatch_route(request: Request, method: str):
 
     # Check if SSE streaming is expected
     if request.url.path in SSE_ENDPOINTS:
+        loop = asyncio.get_running_loop()
+        stream_queue = adapter.attach_stream(loop)
+
         def _run_in_thread():
             try:
                 handler_fn()
@@ -498,31 +655,66 @@ async def _dispatch_route(request: Request, method: str):
                     res_data = dict(adapter._response_data)
                     if "response" in res_data and "token" not in res_data:
                         res_data["token"] = res_data["response"]
-                    payload = json.dumps(res_data)
-                    adapter.sse_queue.put(f"data: {payload}\n\n")
-                    adapter.sse_queue.put("data: [DONE]\n\n")
+                    payload = json.dumps(res_data, ensure_ascii=False)
+                    adapter.emit(f"data: {payload}\n\n")
+                    adapter.emit("data: [DONE]\n\n")
+            except ClientGone:
+                # The reader left. The handler has already been told, through
+                # the failed write, and stopped; there is nobody to report to.
+                log.info("[FastAPI] Stream %s interrotto dal client.", request.url.path)
             except Exception as e:
-                adapter.sse_queue.put(f"data: {json.dumps({'error': str(e)})}\n\n")
+                log.error("[FastAPI] Stream %s fallito: %s", request.url.path, e,
+                          exc_info=True)
+                try:
+                    adapter.emit(f"data: {json.dumps({'error': str(e)})}\n\n")
+                except Exception:
+                    pass
             finally:
-                adapter.sse_queue.put(None)
+                # The sentinel must arrive even when the client is gone: it is
+                # what lets the generator below finish instead of being garbage
+                # collected mid-await.
+                try:
+                    loop.call_soon_threadsafe(stream_queue.put_nowait, None)
+                except RuntimeError:
+                    pass
 
-        threading.Thread(target=_run_in_thread, daemon=True).start()
+        # A dedicated thread rather than a pool slot: this one is a user's chat
+        # turn, it spends nearly all its life blocked on the engine's own queue,
+        # and queueing it behind a pool would leave the request with no reply at
+        # all -- not even the "engine busy" notice the runtime sends.
+        threading.Thread(
+            target=_run_in_thread, daemon=True,
+            name=f"sigma-sse-{request.url.path}",
+        ).start()
 
         async def sse_generator():
-            while True:
-                item = await asyncio.to_thread(adapter.sse_queue.get)
-                if item is None:
-                    break
-                yield item
+            try:
+                while True:
+                    item = await stream_queue.get()
+                    if item is None:
+                        break
+                    yield item
+            finally:
+                # Reached on normal completion and on client disconnect alike.
+                # Setting it is what turns an abandoned stream into a stopped
+                # generation instead of one that runs to its full token budget
+                # writing into a queue nobody reads.
+                adapter.client_gone.set()
 
-        return StreamingResponse(sse_generator(), media_type="text/event-stream")
+        return StreamingResponse(
+            sse_generator(),
+            media_type="text/event-stream",
+            headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+        )
 
-    # Standard JSON dispatch
-    await asyncio.to_thread(handler_fn)
+    # Standard JSON dispatch. Its own pool, so a burst of long-running POSTs
+    # cannot leave a status poll with no thread to run on.
+    loop = asyncio.get_running_loop()
+    await loop.run_in_executor(_api_executor, handler_fn)
 
     if adapter._response_data is not None:
         return JSONResponse(status_code=adapter._response_status, content=adapter._response_data)
-    
+
     return Response(status_code=adapter._response_status)
 
 
@@ -600,15 +792,14 @@ async def v1_chat_completions(request: Request):
     if stream:
         async def sse_stream():
             try:
-                for chunk in stream_openai_chat_generator(
+                async for chunk in _aiter_blocking(lambda: stream_openai_chat_generator(
                     messages=messages,
                     model=model,
                     temperature=temperature,
                     max_tokens=max_tokens,
                     top_p=top_p
-                ):
+                )):
                     yield chunk
-                    await asyncio.sleep(0.001)
             except Exception as e:
                 err_payload = {"error": {"message": str(e), "type": "server_error"}}
                 yield f"data: {json.dumps(err_payload)}\n\n"
@@ -659,14 +850,14 @@ async def v1_completions(request: Request):
             req_id = f"cmpl-{uuid.uuid4().hex[:20]}"
             created_ts = int(time.time())
             from core.engine.unified_runtime import sigma_engine
-            for chunk in sigma_engine.generate_stream(
+            async for chunk in _aiter_blocking(lambda: sigma_engine.generate_stream(
                 prompt=str(prompt),
                 system_prompt="Sei Sigma Assistant.",
                 temperature=temperature,
                 max_tokens=max_tokens,
                 model_name=model,
                 messages=messages,
-            ):
+            )):
                 token = chunk.get("token", "")
                 if token:
                     payload = {
@@ -677,24 +868,31 @@ async def v1_completions(request: Request):
                         "choices": [{"text": token, "index": 0, "logprobs": None, "finish_reason": None}]
                     }
                     yield f"data: {json.dumps(payload)}\n\n"
-                    await asyncio.sleep(0.001)
             yield "data: [DONE]\n\n"
 
         return StreamingResponse(sse_stream(), media_type="text/event-stream; charset=utf-8")
     else:
         from core.engine.unified_runtime import sigma_engine
-        tokens = []
-        for chunk in sigma_engine.generate_stream(
-            prompt=str(prompt),
-            system_prompt="Sei Sigma Assistant.",
-            temperature=temperature,
-            max_tokens=max_tokens,
-            model_name=model,
-            messages=messages,
-        ):
-            t = chunk.get("token", "")
-            if t:
-                tokens.append(t)
+        # Collected on a worker thread: iterating the engine here would run the
+        # whole generation on the event loop and stop the server answering
+        # anything else until it finished.
+        def _collect():
+            return [
+                chunk.get("token", "")
+                for chunk in sigma_engine.generate_stream(
+                    prompt=str(prompt),
+                    system_prompt="Sei Sigma Assistant.",
+                    temperature=temperature,
+                    max_tokens=max_tokens,
+                    model_name=model,
+                    messages=messages,
+                )
+                if chunk.get("token")
+            ]
+
+        tokens = await asyncio.get_running_loop().run_in_executor(
+            _stream_executor, _collect
+        )
         full_text = "".join(tokens)
         req_id = f"cmpl-{uuid.uuid4().hex[:20]}"
         created_ts = int(time.time())
@@ -905,14 +1103,13 @@ async def ollama_chat_route(request: Request):
     if stream:
         async def ndjson_stream():
             try:
-                for chunk in stream_ollama_chat_generator(
+                async for chunk in _aiter_blocking(lambda: stream_ollama_chat_generator(
                     messages=messages,
                     model=model,
                     temperature=temperature,
                     max_tokens=max_tokens
-                ):
+                )):
                     yield chunk
-                    await asyncio.sleep(0.001)
             except Exception as e:
                 err_obj = {"error": str(e)}
                 yield json.dumps(err_obj) + "\n"
@@ -966,12 +1163,12 @@ async def ollama_generate_route(request: Request):
     if stream:
         async def ndjson_stream():
             try:
-                for chunk in stream_ollama_chat_generator(
+                async for chunk in _aiter_blocking(lambda: stream_ollama_chat_generator(
                     messages=messages,
                     model=model,
                     temperature=temperature,
                     max_tokens=max_tokens
-                ):
+                )):
                     try:
                         parsed = json.loads(chunk.strip())
                         gen_payload = {
