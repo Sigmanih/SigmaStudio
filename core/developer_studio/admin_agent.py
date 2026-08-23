@@ -31,28 +31,51 @@ log = get_logger("admin_developer_agent")
 ADMIN_DEVELOPER_SYSTEM_PROMPT = """Sei Σ-SIGMA Developer Admin, un Pair-Programmer e Software Architect di livello esperto integrato nativamente in Sigma Studio.
 Hai permessi di AMMINISTRATORE completi sul workspace: puoi visualizzare, modificare, creare, eliminare file ed eseguire comandi da terminale (PowerShell/Bash).
 
-REGOLE CRITICHE:
-1. Rispondi SEMPRE in lingua ITALIANA.
-2. Ragiona internamente all'interno dei tag <think> ... </think>. Non esporre ragionamenti interni in inglese all'utente.
-3. Quando usi i tool, emetti DIRETTAMENTE i tag dei tool senza commenti intermedi in inglese.
-4. Quando ricevi i risultati dei tool, rispondi all'utente con un'analisi dettagliata, ordinata, professionale e chiara in italiano.
+REGOLE CRITICHE E OBBLIGATORIE:
+1. Rispondi SEMPRE ed ESCLUSIVAMENTE in lingua ITALIANA.
+2. Ragiona internamente all'interno dei tag <think> ... </think>. NON scrivere mai ragionamenti in inglese al di fuori dei tag <think>.
+3. Quando affronti compiti multi-step o complessi, definisci e aggiorna la tua pipeline di task usando il tool `pipeline`.
+4. Quando usi i tool, emetti DIRETTAMENTE i tag dei tool.
+5. Quando ricevi i risultati dei tool, fornisci all'utente un'analisi chiara, sintetica e professionale in italiano, indicando l'avanzamento dei task e i passi successivi.
+6. Quando tutti i task della pipeline sono stati completati con successo, emetti il tool `complete_goal`.
 
 TAG STRUTTURATI DEI TOOL:
-1. Per esplorare una cartella:
+
+1. Per definire o aggiornare la pipeline dei task (piano d'azione):
+```tool:pipeline
+{
+  "tasks": [
+    {"id": "1", "title": "Esplorazione iniziale cartelle e architettura", "status": "done"},
+    {"id": "2", "title": "Analisi codice core e discrepanze", "status": "in_progress"},
+    {"id": "3", "title": "Verifica frontend e test", "status": "pending"},
+    {"id": "4", "title": "Relazione finale e proposte di miglioramento", "status": "pending"}
+  ]
+}
+```
+I possibili valori di status sono: "pending", "in_progress", "done".
+
+2. Per dichiarare l'obiettivo completato:
+```tool:complete_goal
+{
+  "summary": "Obiettivo completato con successo. Tutti i punti sono stati verificati."
+}
+```
+
+3. Per esplorare una cartella:
 ```tool:list_dir
 {
   "path": "percorso cartella"
 }
 ```
 
-2. Per leggere un file:
+4. Per leggere un file:
 ```tool:read_file
 {
   "path": "percorso del file"
 }
 ```
 
-3. Per scrivere o modificare un file:
+5. Per scrivere o modificare un file:
 ```tool:write_file
 {
   "path": "percorso del file",
@@ -60,14 +83,14 @@ TAG STRUTTURATI DEI TOOL:
 }
 ```
 
-4. Per eliminare un file o una cartella:
+6. Per eliminare un file o una cartella:
 ```tool:delete
 {
   "path": "percorso da eliminare"
 }
 ```
 
-5. Per eseguire un comando terminale:
+7. Per eseguire un comando terminale:
 ```tool:terminal
 {
   "command": "comando qui",
@@ -75,7 +98,7 @@ TAG STRUTTURATI DEI TOOL:
 }
 ```
 
-6. Per cercare codice o testo:
+8. Per cercare codice o testo:
 ```tool:search_code
 {
   "query": "testo da cercare"
@@ -216,6 +239,30 @@ def execute_admin_tool(tool_name: str, params: Dict[str, Any], workspace_root: s
         path = params.get("path") or workspace_root
         res = search_workspace_files(path, query)
         return {"tool": "search_code", "query": query, **res}
+
+    elif tool_name in ("pipeline", "tasks", "set_tasks", "update_pipeline"):
+        tasks = params.get("tasks", [])
+        if isinstance(tasks, str):
+            try:
+                tasks = json.loads(tasks)
+            except Exception:
+                tasks = [{"id": "1", "title": tasks, "status": "in_progress"}]
+        return {
+            "tool": "pipeline",
+            "tasks": tasks,
+            "success": True,
+            "message": f"Pipeline aggiornata con {len(tasks)} sotto-task."
+        }
+
+    elif tool_name in ("complete_goal", "finish_task", "task_complete"):
+        summary = params.get("summary") or params.get("message") or "Obiettivo completato con successo."
+        return {
+            "tool": "complete_goal",
+            "summary": summary,
+            "is_completed": True,
+            "success": True,
+            "message": summary
+        }
 
     return {"tool": tool_name, "success": False, "error": f"Tool sconosciuto: {tool_name}"}
 
@@ -406,6 +453,17 @@ def stream_admin_agent_turn(
                 "result": result
             }
 
+            if t_name in ("pipeline", "tasks", "set_tasks", "update_pipeline"):
+                yield {
+                    "type": "pipeline_update",
+                    "tasks": result.get("tasks", [])
+                }
+            elif t_name in ("complete_goal", "finish_task", "task_complete"):
+                yield {
+                    "type": "goal_complete",
+                    "summary": result.get("summary", "")
+                }
+
             # Format concise observation for the model
             obs_str = f"Tool '{t_name}' eseguito con successo.\n"
             if t_name == "list_dir":
@@ -419,6 +477,10 @@ def stream_admin_agent_turn(
                 obs_str += result.get("message", "Eliminato.")
             elif t_name == "write_file":
                 obs_str += result.get("message", "File salvato.")
+            elif t_name in ("pipeline", "tasks", "set_tasks", "update_pipeline"):
+                obs_str += f"Pipeline aggiornata: {len(result.get('tasks', []))} task registrati."
+            elif t_name in ("complete_goal", "finish_task", "task_complete"):
+                obs_str += f"Obiettivo finale completato: {result.get('summary', '')}"
             else:
                 obs_str += json.dumps(result, ensure_ascii=False)
 
