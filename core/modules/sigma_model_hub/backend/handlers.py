@@ -78,6 +78,7 @@ def handle_models_hf_search(self):
             size_bracket = params.get('size_bracket', ['all'])[0]
             param_bracket = params.get('param_bracket', ['all'])[0]
             format_filter = params.get('format_filter', ['all'])[0]
+            quant_filter = params.get('quant_filter', ['all'])[0]
             sort = params.get('sort', ['downloads'])[0]
             official_only = params.get('official_only', ['false'])[0].lower() in ['true', '1', 'yes']
             cursor = params.get('cursor', [''])[0] or None
@@ -92,6 +93,7 @@ def handle_models_hf_search(self):
             size_bracket=size_bracket,
             param_bracket=param_bracket,
             format_filter=format_filter,
+            quant_filter=quant_filter,
             sort=sort,
             official_only=official_only,
             cursor=cursor,

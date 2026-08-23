@@ -500,6 +500,43 @@ def _matches_param_bracket(params_b: float, bracket: str) -> bool:
     return True
 
 
+def _matches_quant_filter(quant_filter: str, text_corpus: str, specs: Optional[Dict[str, Any]] = None) -> bool:
+    """Matches a model against the requested quantization filter."""
+    if not quant_filter or quant_filter == "all":
+        return True
+    q = quant_filter.lower().strip()
+    extra = ""
+    if specs:
+        extra = f"{specs.get('precision', '')} {specs.get('format', '')}"
+    text = f"{text_corpus} {extra}".lower().replace("-", "_")
+
+    if q == "q4_k_m":
+        return "q4_k_m" in text or "q4km" in text or ("q4" in text and "gguf" in text and "q4_k_s" not in text and "q4_0" not in text)
+    elif q == "q5_k_m":
+        return "q5_k_m" in text or "q5km" in text or "q5_k_s" in text or ("q5" in text and "gguf" in text)
+    elif q == "q8_0":
+        return "q8_0" in text or "q8_k" in text or "q80" in text or ("q8" in text and "gguf" in text) or ("8bit" in text and "gguf" in text)
+    elif q == "q4_k_s":
+        return "q4_k_s" in text or "q4ks" in text or "q4_0" in text or "q4_1" in text
+    elif q == "q6_k":
+        return "q6_k" in text or "q6k" in text or ("q6" in text and "gguf" in text)
+    elif q == "q3_k_m":
+        return "q3_k_m" in text or "q3km" in text or "q3_k_l" in text or "q3_k_s" in text or ("q3" in text and "gguf" in text)
+    elif q == "q2_k":
+        return "q2_k" in text or "q2k" in text or ("q2" in text and "gguf" in text)
+    elif q == "imatrix":
+        return "iq4" in text or "iq3" in text or "iq2" in text or "iq1" in text or "imatrix" in text
+    elif q == "fp8":
+        return "fp8" in text or "w8a8" in text or ("int8" in text and "safetensors" in text) or ("8bit" in text and "safetensors" in text)
+    elif q == "nvfp4":
+        return "nvfp4" in text or "mxfp4" in text or "fp4" in text
+    elif q == "awq_gptq":
+        return "awq" in text or "gptq" in text or "exl2" in text or ("int4" in text and "safetensors" in text)
+    elif q == "fp16_bf16":
+        return "fp16" in text or "bf16" in text or "bfloat16" in text or "float16" in text or "16bit" in text or ("safetensors" in text and "fp8" not in text and "4bit" not in text and "awq" not in text)
+    return q in text
+
+
 # Curated Popular Official & Featured Models with direct HF links
 POPULAR_MODELS = [
     {
@@ -679,6 +716,7 @@ def search_hf_models(
     size_bracket: str = "all",
     param_bracket: str = "all",
     format_filter: str = "all",
+    quant_filter: str = "all",
     sort: str = "downloads",
     official_only: bool = False,
     cursor: Optional[str] = None,
@@ -688,7 +726,7 @@ def search_hf_models(
 ) -> Dict[str, Any]:
     """
     Searches models on Hugging Face API dynamically in real time.
-    Supports official_only filter, granular size brackets, active/total parameters and precision-aware sizing.
+    Supports official_only filter, granular size brackets, active/total parameters, precision and quantization-aware filtering.
     """
     results = []
 
@@ -713,6 +751,8 @@ def search_hf_models(
             if not _matches_param_bracket(m.get("params_b", 7.0), param_bracket):
                 continue
             if format_filter != "all" and format_filter.lower() not in m.get("format", "").lower():
+                continue
+            if not _matches_quant_filter(quant_filter, f"{m['id']} {m['name']} {m['description']}", {"precision": m.get("precision", ""), "format": m.get("format", "")}):
                 continue
             # Computed here rather than stored with the entry: the catalogue is
             # shared, the machine reading it is not.
@@ -770,7 +810,12 @@ def search_hf_models(
         # B. Standard global search query
         effective_search = search_query
         if not effective_search:
-            effective_search = "qwen" if official_only else "gguf"
+            if quant_filter and quant_filter != "all":
+                effective_search = f"gguf {quant_filter}" if "q" in quant_filter or "imatrix" in quant_filter else quant_filter
+            else:
+                effective_search = "qwen" if official_only else "gguf"
+        elif quant_filter and quant_filter != "all" and quant_filter.lower() not in effective_search.lower():
+            effective_search = f"{effective_search} {quant_filter}"
 
         fetch_limit = min(limit * 3, 90)
         params = {
@@ -833,6 +878,8 @@ def search_hf_models(
             if not _matches_param_bracket(params_b, param_bracket):
                 continue
             if format_filter != "all" and format_filter.lower() not in fmt_label.lower():
+                continue
+            if not _matches_quant_filter(quant_filter, f"{mid} {m_name} {' '.join(tags)}", specs):
                 continue
 
             inferred_cat = category if category != "all" else (

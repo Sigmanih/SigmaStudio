@@ -160,12 +160,60 @@ class ModelDownloadManager:
         target_dir = os.path.join(self.models_dir, clean_mid)
         os.makedirs(target_dir, exist_ok=True)
 
+        # Smart GGUF Filtering: If repository contains multiple GGUF quantization variants,
+        # download ONLY the single optimal/preferred quantization instead of downloading all variants (avoiding 50GB+ duplicates)
+        gguf_entries = [f for f in files_list if f.get("filename", "").lower().endswith(".gguf")]
+        if len(gguf_entries) > 1:
+            try:
+                from .handlers import _load_hub_config
+                cfg = _load_hub_config()
+                pref_q = (cfg.get("preferred_quantization") or "Q4_K_M").upper()
+            except Exception:
+                pref_q = "Q4_K_M"
+
+            # Check if model_id explicitly names a specific quantization variant (e.g. Q8_0 in MIDI-LLM_Llama-3.2-1B-Q8_0-GGUF)
+            mid_upper = model_id.upper().replace("-", "_")
+            explicit_id_quant = ""
+            for q_cand in ["Q8_0", "Q5_K_M", "Q5_K_S", "Q5_0", "Q4_K_M", "Q4_K_S", "Q4_0", "Q6_K", "Q3_K_M", "Q3_K_S", "Q2_K", "IQ4_XS", "IQ3_M", "IQ2_XXS", "F16", "BF16"]:
+                if q_cand in mid_upper:
+                    explicit_id_quant = q_cand
+                    break
+
+            priority_list = [p for p in [
+                explicit_id_quant,
+                pref_q,
+                "Q4_K_M", "Q4_K_S", "Q5_K_M", "Q5_K_S",
+                "Q6_K", "Q8_0", "Q3_K_M", "Q3_K_S", "Q2_K", "F16", "BF16"
+            ] if p]
+
+            selected_ggufs = []
+            matched_tag = ""
+            for q_tag in priority_list:
+                q_clean = q_tag.lower().replace("_", "").replace("-", "")
+                matches = [
+                    f for f in gguf_entries
+                    if q_clean in f.get("filename", "").lower().replace("_", "").replace("-", "")
+                ]
+                if matches:
+                    selected_ggufs = matches
+                    matched_tag = q_tag
+                    break
+
+            if not selected_ggufs:
+                selected_ggufs = [gguf_entries[0]]
+                matched_tag = "GGUF"
+
+            non_gguf_entries = [f for f in files_list if not f.get("filename", "").lower().endswith(".gguf")]
+            files_list = selected_ggufs + non_gguf_entries
+            display_name = f"{model_id.split('/')[-1]} ({matched_tag})"
+        else:
+            display_name = f"{model_id.split('/')[-1]} ({len(files_list)} file / shard)" if len(files_list) > 1 else files_list[0].get("filename", f"{model_id.split('/')[-1]}.safetensors")
+
         from .hf_client import parse_model_specs
         specs = parse_model_specs(model_id, model_id)
         estimated_total_bytes = int(specs.get("size_gb", 0) * (1024**3))
 
         task_id = str(uuid.uuid4())[:8]
-        display_name = f"Intero Modello ({len(files_list)} file / shard)"
         task = ModelDownloadTask(
             task_id=task_id,
             model_id=model_id,

@@ -3,7 +3,7 @@ import {
   Search, Download, Star, ArrowDown, Sparkles, Filter, CheckCircle2,
   Layers, Cpu, Activity, ExternalLink, HardDrive, ArrowUpDown, ChevronDown,
   Calendar, RefreshCw, PlusCircle, ShieldCheck, FolderDown, FileCode, ArrowUp,
-  XCircle, Zap, RotateCcw, X, AlertTriangle
+  XCircle, Zap, RotateCcw, X, AlertTriangle, Sliders
 } from 'lucide-react';
 
 const CATEGORIES = [
@@ -58,6 +58,22 @@ const FORMAT_OPTIONS = [
   { id: 'safetensors', label: '📦 Solo Safetensors (FP16 / FP8 / HF)' },
 ];
 
+const QUANT_OPTIONS = [
+  { id: 'all', label: 'Tutte le Quantizzazioni' },
+  { id: 'q4_k_m', label: '⚡ Q4_K_M (4-bit • Consigliato)' },
+  { id: 'q5_k_m', label: '⚡ Q5_K_M (5-bit • Alta Fedeltà)' },
+  { id: 'q8_0', label: '⚡ Q8_0 (8-bit • Quasi-Lossless)' },
+  { id: 'q4_k_s', label: '⚡ Q4_K_S (4-bit • Leggero)' },
+  { id: 'q6_k', label: '⚡ Q6_K (6-bit • Bilanciato)' },
+  { id: 'q3_k_m', label: '⚡ Q3_K_M (3-bit • Basso VRAM)' },
+  { id: 'q2_k', label: '⚡ Q2_K (2-bit • Ultra-Compatto)' },
+  { id: 'imatrix', label: '⚡ iMatrix (IQ4 / IQ3 / IQ2)' },
+  { id: 'fp8', label: '📦 FP8 / W8A8 (8-bit Ada/Blackwell)' },
+  { id: 'nvfp4', label: '📦 NVFP4 / FP4 (4-bit Blackwell)' },
+  { id: 'awq_gptq', label: '📦 AWQ / GPTQ (4-bit GPU)' },
+  { id: 'fp16_bf16', label: '📦 FP16 / BF16 (16-bit Piena Precisione)' },
+];
+
 const SORT_OPTIONS = [
   { id: 'newest', label: '✨ Nuove Uscite / Più Recenti (Data Rilascio)' },
   { id: 'downloads', label: '📥 Più Scaricati (Downloads)' },
@@ -66,12 +82,55 @@ const SORT_OPTIONS = [
   { id: 'size_desc', label: '💾 Peso Maggiore prima (GB ↓)' },
 ];
 
+const getModelTargetQuantLabel = (m, preferredQuant = 'Q4_K_M', activeFilterQuant = 'all') => {
+  if (!m) return 'Modello';
+  const text = `${m.id || ''} ${m.name || ''} ${m.precision || ''} ${m.default_file || ''}`.toUpperCase().replace(/-/g, '_');
+
+  // 1. Check if model ID / name / precision explicitly defines a specific quantization
+  if (text.includes('Q8_0') || text.includes('Q8_K') || text.includes('Q80')) return 'Q8_0';
+  if (text.includes('Q5_K_M') || text.includes('Q5KM')) return 'Q5_K_M';
+  if (text.includes('Q5_K_S') || text.includes('Q5KS')) return 'Q5_K_S';
+  if (text.includes('Q5_0') || text.includes('Q5_1')) return 'Q5_0';
+  if (text.includes('Q4_K_M') || text.includes('Q4KM')) return 'Q4_K_M';
+  if (text.includes('Q4_K_S') || text.includes('Q4KS')) return 'Q4_K_S';
+  if (text.includes('Q4_0') || text.includes('Q4_1')) return 'Q4_0';
+  if (text.includes('Q6_K') || text.includes('Q6K')) return 'Q6_K';
+  if (text.includes('Q3_K_M') || text.includes('Q3KM')) return 'Q3_K_M';
+  if (text.includes('Q3_K_S') || text.includes('Q3KS')) return 'Q3_K_S';
+  if (text.includes('Q3_K_L') || text.includes('Q3KL')) return 'Q3_K_L';
+  if (text.includes('Q2_K') || text.includes('Q2K')) return 'Q2_K';
+  if (text.includes('IQ4_XS') || text.includes('IQ4_NL') || text.includes('IQ4')) return 'IQ4';
+  if (text.includes('IQ3_M') || text.includes('IQ3_XXS') || text.includes('IQ3')) return 'IQ3';
+  if (text.includes('IQ2_XXS') || text.includes('IQ2_XS') || text.includes('IQ2')) return 'IQ2';
+  if (text.includes('NVFP4') || text.includes('MXFP4')) return 'NVFP4';
+  if (text.includes('FP8') || text.includes('W8A8')) return 'FP8';
+  if (text.includes('AWQ')) return 'AWQ';
+  if (text.includes('GPTQ')) return 'GPTQ';
+  if (text.includes('EXL2')) return 'EXL2';
+  if (text.includes('BF16') || text.includes('BFLOAT16')) return 'BF16';
+  if (text.includes('FP16') || text.includes('FLOAT16')) return 'FP16';
+
+  // 2. If user selected a specific quantization filter, adapt to that
+  if (activeFilterQuant && activeFilterQuant !== 'all') {
+    return activeFilterQuant.toUpperCase();
+  }
+
+  // 3. If GGUF repository with generic name, use preferredQuant
+  if ((m.format && m.format.toUpperCase().includes('GGUF')) || (m.precision && m.precision.toUpperCase().includes('GGUF')) || text.includes('GGUF')) {
+    return preferredQuant || 'Q4_K_M';
+  }
+
+  // 4. Safetensors / Full model
+  return 'Modello';
+};
+
 export default function HfBrowser({ isLight, addToast, onDownloadStarted, activeDownloads = [] }) {
   const [search, setSearch] = useState('');
   const [category, setCategory] = useState('all');
   const [sizeBracket, setSizeBracket] = useState('all');
   const [paramBracket, setParamBracket] = useState('all');
   const [formatFilter, setFormatFilter] = useState('all');
+  const [quantFilter, setQuantFilter] = useState('all');
   const [sortBy, setSortBy] = useState('newest');
   const [officialOnly, setOfficialOnly] = useState(false);
 
@@ -84,6 +143,7 @@ export default function HfBrowser({ isLight, addToast, onDownloadStarted, active
 
   const [selectedModel, setSelectedModel] = useState(null);
   const [modelDetails, setModelDetails] = useState(null);
+  const [selectedQuantFilename, setSelectedQuantFilename] = useState('');
   const [loadingDetails, setLoadingDetails] = useState(false);
   const [downloadingFile, setDownloadingFile] = useState(null);
   const [downloadingRepo, setDownloadingRepo] = useState(false);
@@ -115,7 +175,7 @@ export default function HfBrowser({ isLight, addToast, onDownloadStarted, active
   const subBg = isLight ? '#f8f5ee' : 'rgba(255, 255, 255, 0.03)';
   const subBorder = isLight ? '1px solid rgba(190, 160, 110, 0.22)' : '1px solid rgba(255, 255, 255, 0.06)';
 
-  const hasActiveFilters = category !== 'all' || sizeBracket !== 'all' || paramBracket !== 'all' || formatFilter !== 'all' || officialOnly || search.trim() !== '';
+  const hasActiveFilters = category !== 'all' || sizeBracket !== 'all' || paramBracket !== 'all' || formatFilter !== 'all' || quantFilter !== 'all' || officialOnly || search.trim() !== '';
 
   const handleResetFilters = () => {
     setSearch('');
@@ -123,6 +183,7 @@ export default function HfBrowser({ isLight, addToast, onDownloadStarted, active
     setSizeBracket('all');
     setParamBracket('all');
     setFormatFilter('all');
+    setQuantFilter('all');
     setOfficialOnly(false);
   };
 
@@ -136,7 +197,7 @@ export default function HfBrowser({ isLight, addToast, onDownloadStarted, active
 
     try {
       const q = encodeURIComponent(search);
-      let url = `/api/models/hf/search?q=${q}&category=${category}&size_bracket=${sizeBracket}&param_bracket=${paramBracket}&format_filter=${formatFilter}&sort=${sortBy}&official_only=${officialOnly}&limit=30`;
+      let url = `/api/models/hf/search?q=${q}&category=${category}&size_bracket=${sizeBracket}&param_bracket=${paramBracket}&format_filter=${formatFilter}&quant_filter=${quantFilter}&sort=${sortBy}&official_only=${officialOnly}&limit=30`;
       if (targetCursor) {
         url += `&cursor=${encodeURIComponent(targetCursor)}`;
       }
@@ -166,7 +227,7 @@ export default function HfBrowser({ isLight, addToast, onDownloadStarted, active
       setLoading(false);
       setLoadingMore(false);
     }
-  }, [search, category, sizeBracket, paramBracket, formatFilter, sortBy, officialOnly]);
+  }, [search, category, sizeBracket, paramBracket, formatFilter, quantFilter, sortBy, officialOnly]);
 
   // Reset to initial on filter changes
   useEffect(() => {
@@ -188,6 +249,8 @@ export default function HfBrowser({ isLight, addToast, onDownloadStarted, active
 
   const handleSelectModel = async (m) => {
     setSelectedModel(m);
+    setModelDetails(null);
+    setSelectedQuantFilename('');
     setLoadingDetails(true);
     try {
       const res = await fetch(`/api/models/hf/details?model_id=${encodeURIComponent(m.id)}`);
@@ -195,6 +258,19 @@ export default function HfBrowser({ isLight, addToast, onDownloadStarted, active
         const json = await res.json();
         if (json.success) {
           setModelDetails(json);
+          const ggufFiles = (json.files || []).filter(f => f.is_gguf || f.filename?.toLowerCase().endsWith('.gguf'));
+          if (ggufFiles.length > 0) {
+            const targetQ = getModelTargetQuantLabel(m, 'Q4_K_M', quantFilter).toLowerCase().replace('_', '').replace('-', '');
+            const preferred = ggufFiles.find(f => f.filename?.toLowerCase().replace('_', '').replace('-', '').includes(targetQ))
+              || ggufFiles.find(f => f.filename?.toLowerCase().includes('q4_k_m') || f.filename?.toLowerCase().includes('q4-k-m'))
+              || ggufFiles.find(f => f.filename?.toLowerCase().includes('q4_k_s') || f.filename?.toLowerCase().includes('q4-k-s'))
+              || ggufFiles.find(f => f.filename?.toLowerCase().includes('q5_k_m') || f.filename?.toLowerCase().includes('q5-k-m'))
+              || ggufFiles.find(f => f.filename?.toLowerCase().includes('q8_0') || f.filename?.toLowerCase().includes('q8-0'))
+              || ggufFiles[0];
+            if (preferred) {
+              setSelectedQuantFilename(preferred.filename);
+            }
+          }
         }
       }
     } catch (e) {
@@ -461,7 +537,28 @@ export default function HfBrowser({ isLight, addToast, onDownloadStarted, active
             </div>
           </div>
 
-          {/* 5. ORDINAMENTO */}
+          {/* 5. TIPO QUANTIZZAZIONE */}
+          <div className="mh-select-container">
+            <span className="mh-select-label" style={{ color: '#00d2ff' }}>
+              <Sliders size={11} color="#00d2ff" /> Quantizzazione
+            </span>
+            <div className="mh-select-wrapper" style={{ background: subBg, border: subBorder }}>
+              <select
+                value={quantFilter}
+                onChange={e => setQuantFilter(e.target.value)}
+                style={{ color: textPrimary }}
+              >
+                {QUANT_OPTIONS.map(q => (
+                  <option key={q.id} value={q.id} style={{ background: isLight ? '#fff' : '#0d1019', color: textPrimary }}>
+                    {q.label}
+                  </option>
+                ))}
+              </select>
+              <ChevronDown size={14} className="mh-select-icon" color={textMuted} />
+            </div>
+          </div>
+
+          {/* 6. ORDINAMENTO */}
           <div className="mh-select-container">
             <span className="mh-select-label" style={{ color: '#bc8cff' }}>
               <ArrowUpDown size={11} color="#bc8cff" /> Ordina Per
@@ -523,6 +620,15 @@ export default function HfBrowser({ isLight, addToast, onDownloadStarted, active
                 style={{ background: 'rgba(16, 185, 129, 0.15)', color: '#10b981', border: '1px solid rgba(16, 185, 129, 0.3)' }}
               >
                 {FORMAT_OPTIONS.find(f => f.id === formatFilter)?.label} <X size={12} />
+              </span>
+            )}
+            {quantFilter !== 'all' && (
+              <span
+                onClick={() => setQuantFilter('all')}
+                className="mh-active-chip"
+                style={{ background: 'rgba(0, 210, 255, 0.15)', color: '#00d2ff', border: '1px solid rgba(0, 210, 255, 0.3)' }}
+              >
+                {QUANT_OPTIONS.find(q => q.id === quantFilter)?.label} <X size={12} />
               </span>
             )}
             {officialOnly && (
@@ -836,40 +942,60 @@ export default function HfBrowser({ isLight, addToast, onDownloadStarted, active
                           ⚡ Avvia
                         </button>
                       </div>
-                    ) : (
-                      <div style={{ display: 'flex', gap: '6px', marginTop: '10px' }}>
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleStartWholeRepoDownload(m.id);
-                          }}
-                          style={{
-                            flex: 1, padding: '7px 10px', borderRadius: '8px',
-                            border: 'none', background: 'linear-gradient(135deg, #ffb86c, #ea580c)', color: '#ffffff',
-                            fontSize: '0.74rem', fontWeight: 800, cursor: 'pointer',
-                            display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px',
-                            boxShadow: '0 0 10px rgba(255, 184, 108, 0.25)'
-                          }}
-                        >
-                          <FolderDown size={13} /> Scarica Tutto
-                        </button>
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleSelectModel(m);
-                          }}
-                          style={{
-                            padding: '7px 10px', borderRadius: '8px',
-                            border: subBorder, background: subBg, color: textPrimary,
-                            fontSize: '0.72rem', fontWeight: 700, cursor: 'pointer',
-                            display: 'flex', alignItems: 'center', justifyContent: 'center'
-                          }}
-                          title="Ispeziona file e quantizzazioni"
-                        >
-                          <FileCode size={13} />
-                        </button>
-                      </div>
-                    )}
+                    ) : (() => {
+                      const targetQuant = getModelTargetQuantLabel(m, 'Q4_K_M', quantFilter);
+                      const isGguf = (m.format?.toLowerCase().includes('gguf') || m.precision?.toLowerCase().includes('gguf') || m.id.toLowerCase().includes('gguf') || targetQuant.startsWith('Q') || targetQuant.startsWith('IQ'));
+                      return (
+                        <div style={{ display: 'flex', gap: '6px', marginTop: '10px' }}>
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleStartWholeRepoDownload(m.id);
+                            }}
+                            style={{
+                              flex: 1, padding: '7px 10px', borderRadius: '8px',
+                              border: 'none',
+                              background: isGguf
+                                ? 'linear-gradient(135deg, #10b981, #00d2ff)'
+                                : (targetQuant !== 'Modello'
+                                  ? 'linear-gradient(135deg, #00d2ff, #7928ca)'
+                                  : 'linear-gradient(135deg, #ffb86c, #ea580c)'),
+                              color: '#ffffff',
+                              fontSize: '0.74rem', fontWeight: 800, cursor: 'pointer',
+                              display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px',
+                              boxShadow: isGguf
+                                ? '0 0 10px rgba(0, 210, 255, 0.25)'
+                                : '0 0 10px rgba(255, 184, 108, 0.25)'
+                            }}
+                          >
+                            {targetQuant !== 'Modello' ? (
+                              <>
+                                <Download size={13} /> Scarica ({targetQuant})
+                              </>
+                            ) : (
+                              <>
+                                <FolderDown size={13} /> Scarica Modello
+                              </>
+                            )}
+                          </button>
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleSelectModel(m);
+                            }}
+                            style={{
+                              padding: '7px 10px', borderRadius: '8px',
+                              border: subBorder, background: subBg, color: textPrimary,
+                              fontSize: '0.72rem', fontWeight: 700, cursor: 'pointer',
+                              display: 'flex', alignItems: 'center', justifyContent: 'center'
+                            }}
+                            title="Ispeziona file e quantizzazioni"
+                          >
+                            <Sliders size={13} />
+                          </button>
+                        </div>
+                      );
+                    })()}
 
                   </div>
                 </div>
@@ -968,37 +1094,116 @@ export default function HfBrowser({ isLight, addToast, onDownloadStarted, active
               </div>
             ) : (
               <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                {/* HERO BANNER: 1-CLICK WHOLE REPO DOWNLOAD */}
-                <div style={{
-                  padding: '14px', borderRadius: '12px',
-                  background: isLight ? '#fef3c7' : 'linear-gradient(135deg, rgba(255, 184, 108, 0.15), rgba(234, 88, 12, 0.15))',
-                  border: '1.5px solid #ffb86c',
-                  display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px', flexWrap: 'wrap'
-                }}>
-                  <div>
-                    <div style={{ fontSize: '0.86rem', fontWeight: 800, color: textPrimary, display: 'flex', alignItems: 'center', gap: '6px' }}>
-                      <FolderDown size={16} color="#ffb86c" /> Scarica Intero Modello ({modelDetails?.files?.length || 1} file / shard)
-                    </div>
-                    <div style={{ fontSize: '0.7rem', color: textMuted, marginTop: '2px' }}>
-                      Scarica tutti i file (pesi, tokenizer, config) in un colpo solo per SigmaEngine.
-                    </div>
-                  </div>
+                {/* HERO BANNER: QUANTIZATION-AWARE DOWNLOAD */}
+                {(() => {
+                  const ggufFiles = (modelDetails?.files || []).filter(f => f.is_gguf || f.filename?.toLowerCase().endsWith('.gguf'));
+                  const isGgufRepo = ggufFiles.length > 0;
 
-                  <button
-                    onClick={() => handleStartWholeRepoDownload(selectedModel.id, modelDetails?.files)}
-                    disabled={downloadingRepo}
-                    style={{
-                      padding: '8px 16px', borderRadius: '8px',
-                      border: 'none', background: 'linear-gradient(135deg, #ffb86c, #ea580c)',
-                      color: '#ffffff', fontSize: '0.78rem', fontWeight: 800, cursor: 'pointer',
-                      display: 'flex', alignItems: 'center', gap: '6px',
-                      boxShadow: '0 0 12px rgba(255, 184, 108, 0.35)'
-                    }}
-                  >
-                    {downloadingRepo ? <Activity className="mh-spin" size={13} /> : <Download size={13} />}
-                    {downloadingRepo ? 'Avvio...' : 'Scarica Modello Completo'}
-                  </button>
-                </div>
+                  if (isGgufRepo) {
+                    const activeFile = ggufFiles.find(f => f.filename === selectedQuantFilename) || ggufFiles[0];
+                    return (
+                      <div style={{
+                        padding: '14px', borderRadius: '12px',
+                        background: isLight ? '#f0fdf4' : 'linear-gradient(135deg, rgba(16, 185, 129, 0.12), rgba(0, 210, 255, 0.12))',
+                        border: '1.5px solid #10b981',
+                        display: 'flex', flexDirection: 'column', gap: '12px'
+                      }}>
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px', flexWrap: 'wrap' }}>
+                          <div>
+                            <div style={{ fontSize: '0.88rem', fontWeight: 800, color: textPrimary, display: 'flex', alignItems: 'center', gap: '6px' }}>
+                              <Download size={16} color="#10b981" /> Scarica Versione Quantizzata ({ggufFiles.length} versioni)
+                            </div>
+                            <div style={{ fontSize: '0.72rem', color: textMuted, marginTop: '2px' }}>
+                              Verrà scaricata <strong>solo la versione selezionata</strong>, evitando di scaricare file duplicati.
+                            </div>
+                          </div>
+
+                          <button
+                            onClick={() => {
+                              if (activeFile) {
+                                handleStartSingleDownload(selectedModel.id, activeFile.filename, activeFile.download_url);
+                              }
+                            }}
+                            disabled={downloadingFile === activeFile?.filename}
+                            style={{
+                              padding: '8px 18px', borderRadius: '8px',
+                              border: 'none', background: 'linear-gradient(135deg, #10b981, #00d2ff)',
+                              color: '#ffffff', fontSize: '0.80rem', fontWeight: 800, cursor: 'pointer',
+                              display: 'flex', alignItems: 'center', gap: '6px',
+                              boxShadow: '0 0 12px rgba(16, 185, 129, 0.35)'
+                            }}
+                          >
+                            {downloadingFile === activeFile?.filename ? <Activity className="mh-spin" size={13} /> : <Download size={13} />}
+                            {downloadingFile === activeFile?.filename ? 'Avvio...' : `Scarica Versione Selezionata`}
+                          </button>
+                        </div>
+
+                        {/* Quantization picker chips */}
+                        <div>
+                          <div style={{ fontSize: '0.68rem', fontWeight: 800, color: textMuted, marginBottom: '6px', textTransform: 'uppercase' }}>
+                            Scegli la quantizzazione desiderata:
+                          </div>
+                          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', maxHeight: '120px', overflowY: 'auto' }}>
+                            {ggufFiles.map((gf, i) => {
+                              const isSelected = (selectedQuantFilename === gf.filename) || (!selectedQuantFilename && i === 0);
+                              const isRecommended = gf.filename?.toLowerCase().includes('q4_k_m') || gf.filename?.toLowerCase().includes('q4-k-m');
+                              return (
+                                <button
+                                  key={gf.filename}
+                                  onClick={() => setSelectedQuantFilename(gf.filename)}
+                                  style={{
+                                    padding: '5px 10px', borderRadius: '6px',
+                                    border: isSelected ? '1.5px solid #10b981' : subBorder,
+                                    background: isSelected ? 'rgba(16, 185, 129, 0.2)' : subBg,
+                                    color: isSelected ? '#10b981' : textPrimary,
+                                    fontSize: '0.70rem', fontWeight: isSelected ? 800 : 600,
+                                    cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px'
+                                  }}
+                                >
+                                  {isRecommended && '⭐ '}
+                                  {gf.filename}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  }
+
+                  return (
+                    <div style={{
+                      padding: '14px', borderRadius: '12px',
+                      background: isLight ? '#fef3c7' : 'linear-gradient(135deg, rgba(255, 184, 108, 0.15), rgba(234, 88, 12, 0.15))',
+                      border: '1.5px solid #ffb86c',
+                      display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px', flexWrap: 'wrap'
+                    }}>
+                      <div>
+                        <div style={{ fontSize: '0.86rem', fontWeight: 800, color: textPrimary, display: 'flex', alignItems: 'center', gap: '6px' }}>
+                          <FolderDown size={16} color="#ffb86c" /> Scarica Modello Completo ({modelDetails?.files?.length || 1} file / shard)
+                        </div>
+                        <div style={{ fontSize: '0.7rem', color: textMuted, marginTop: '2px' }}>
+                          Scarica tutti i file (pesi, tokenizer, config) in un colpo solo per SigmaEngine.
+                        </div>
+                      </div>
+
+                      <button
+                        onClick={() => handleStartWholeRepoDownload(selectedModel.id, modelDetails?.files)}
+                        disabled={downloadingRepo}
+                        style={{
+                          padding: '8px 16px', borderRadius: '8px',
+                          border: 'none', background: 'linear-gradient(135deg, #ffb86c, #ea580c)',
+                          color: '#ffffff', fontSize: '0.78rem', fontWeight: 800, cursor: 'pointer',
+                          display: 'flex', alignItems: 'center', gap: '6px',
+                          boxShadow: '0 0 12px rgba(255, 184, 108, 0.35)'
+                        }}
+                      >
+                        {downloadingRepo ? <Activity className="mh-spin" size={13} /> : <Download size={13} />}
+                        {downloadingRepo ? 'Avvio...' : 'Scarica Modello Completo'}
+                      </button>
+                    </div>
+                  );
+                })()}
 
                 {/* Model Specs Quick Overview Grid */}
                 <div style={{
