@@ -24,6 +24,14 @@ if errorlevel 1 (
     echo [SIGMA_SERVER] WARNING: Some Python dependencies may have warnings. Continuing...
 )
 
+:: Ensure GGUF inference kernel (llama-cpp-python) is installed for hardware acceleration
+echo [SIGMA_SERVER] Ensuring GGUF inference runtime (llama-cpp-python) is installed...
+python -c "import llama_cpp" >nul 2>nul
+if errorlevel 1 (
+    echo [SIGMA_SERVER] llama-cpp-python not found. Auto-installing optimized build for detected hardware...
+    python sigma_launcher.py --install
+)
+
 :: Check for Python
 where python >nul 2>nul
 if errorlevel 1 (

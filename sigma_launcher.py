@@ -290,15 +290,19 @@ def _llama_cpp_wheel_indexes(platform_info):
         major, minor = cuda
         # A driver runs any CUDA runtime up to the one it reports, so start at
         # the exact match and walk down.
-        for candidate in range(minor, max(minor - 3, -1), -1):
+        for candidate in range(minor, max(minor - 5, -1), -1):
             tags.append(f"cu{major}{candidate}")
     # The published set lags new driver releases; these are the tags that have
     # actually been built, tried after anything the driver hinted at.
-    for fallback in ("cu125", "cu124", "cu123", "cu122", "cu121"):
+    for fallback in ("cu132", "cu130", "cu125", "cu124", "cu123", "cu122", "cu121", "cu118"):
         if fallback not in tags:
             tags.append(fallback)
 
-    return [f"{base}/{tag}" for tag in tags] + [None]
+    wheel_urls = [f"{base}/{tag}" for tag in tags]
+    # Add Vulkan pre-built wheel index as a GPU fallback before source build
+    wheel_urls.append(f"{base}/vulkan")
+    wheel_urls.append(None)
+    return wheel_urls
 
 
 def _index_serves_package(index_url, package="llama-cpp-python", timeout=8):
@@ -315,7 +319,7 @@ def _index_serves_package(index_url, package="llama-cpp-python", timeout=8):
 
     url = f"{index_url.rstrip('/')}/{package}/"
     try:
-        req = urllib.request.Request(url, method="HEAD")
+        req = urllib.request.Request(url, method="HEAD", headers={"User-Agent": "pip"})
         with urllib.request.urlopen(req, timeout=timeout) as resp:
             return resp.status == 200
     except urllib.error.HTTPError:
@@ -350,6 +354,7 @@ def install_inference_kernels(platform_info, force=False):
     Cheap when already present: an import check short-circuits before pip is
     ever invoked, so this costs nothing on a normal launch.
     """
+    import importlib
     python_exe, _ = ensure_venv()
 
     if _module_installed(python_exe, "llama_cpp"):
@@ -404,29 +409,29 @@ def install_inference_kernels(platform_info, force=False):
         # Limita a 2 core su Raspberry Pi per evitare cali di tensione (brownout), surriscaldamento ed esaurimento RAM
         env.setdefault("CMAKE_BUILD_PARALLEL_LEVEL", "2")
 
-
     for index_url in _llama_cpp_wheel_indexes(platform_info):
         if index_url and not _index_serves_package(index_url):
             continue
-        cmd = [python_exe, "-m", "pip", "install", "--default-timeout=120",
-               "llama-cpp-python>=0.3.0"]
-        if index_url:
-            # --only-binary matters: an index tag that was never published 404s,
-            # and without it pip would quietly fall back to PyPI and compile a
-            # CPU-only build, reporting success while dropping GPU offload.
-            cmd += ["--extra-index-url", index_url, "--only-binary=:all:"]
-            print_log(f"[SIGMA] Trying prebuilt wheels from {index_url}", Colors.OKCYAN)
-        else:
-            print_log("[SIGMA] Falling back to a source build from PyPI...", Colors.OKCYAN)
-        try:
-            subprocess.check_call(cmd, env=env)
-        except subprocess.CalledProcessError:
-            continue
-        if _module_installed(python_exe, "llama_cpp"):
-            stamp[key] = {"status": "ok", "index": index_url or "pypi"}
-            _write_kernel_stamp(stamp)
-            print_log("[SIGMA] GGUF runtime ready: modelli .gguf eseguibili.", Colors.OKGREEN)
-            return True
+        for pkg_spec in ("llama-cpp-python>=0.3.0", "llama-cpp-python"):
+            cmd = [python_exe, "-m", "pip", "install", "--default-timeout=120", pkg_spec]
+            if index_url:
+                # --only-binary matters: an index tag that was never published 404s,
+                # and without it pip would quietly fall back to PyPI and compile a
+                # CPU-only build, reporting success while dropping GPU offload.
+                cmd += ["--extra-index-url", index_url, "--only-binary=:all:"]
+                print_log(f"[SIGMA] Trying prebuilt wheels from {index_url} ({pkg_spec})", Colors.OKCYAN)
+            else:
+                print_log(f"[SIGMA] Falling back to a source build from PyPI ({pkg_spec})...", Colors.OKCYAN)
+            try:
+                subprocess.check_call(cmd, env=env)
+            except subprocess.CalledProcessError:
+                continue
+            if _module_installed(python_exe, "llama_cpp"):
+                importlib.invalidate_caches()
+                stamp[key] = {"status": "ok", "index": index_url or "pypi"}
+                _write_kernel_stamp(stamp)
+                print_log("[SIGMA] GGUF runtime ready: modelli .gguf eseguibili.", Colors.OKGREEN)
+                return True
 
     stamp[key] = {"status": "failed", "reason": "pip install failed"}
     _write_kernel_stamp(stamp)

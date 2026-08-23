@@ -30,6 +30,9 @@ if errorlevel 1 (
     echo [SIGMA_INSTALL] AVVISO: Alcune dipendenze Python potrebbero aver restituito un avviso. Continuando...
 )
 
+echo [SIGMA_INSTALL] Installazione runtime GGUF e kernel di inferenza (llama-cpp-python)...
+python sigma_launcher.py --install
+
 :: 2. Controllo ed Installazione Dipendenze Frontend Node.js
 where npm >nul 2>nul
 if not errorlevel 1 (
