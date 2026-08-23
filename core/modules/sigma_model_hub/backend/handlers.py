@@ -10,7 +10,10 @@ from core.logger import get_logger
 from .hf_client import (search_hf_models, get_hf_model_details, get_effective_hf_token,
                         persist_hf_token, resolve_hf_token)
 from .downloader_engine import downloader_manager, DEFAULT_MODELS_DIR
-from .uploader_engine import uploader_manager
+try:
+    from .uploader_engine import uploader_manager
+except Exception as _up_err:
+    uploader_manager = None
 from .model_inventory import (scan_local_models, deploy_model_to_sigma_engine,
                             unload_sigma_engine_model, delete_local_model)
 
@@ -258,6 +261,10 @@ def handle_models_hf_download_remove(self):
 def handle_models_hf_whoami(self):
     """GET /api/models/hf/whoami — Verifica il token HF e restituisce username, organizzazioni e permessi di scrittura."""
     try:
+        if uploader_manager is None:
+            self.send_json_response({"authenticated": False, "error": "Modulo Hugging Face uploader non disponibile."}, 500)
+            return
+
         token = None
         if hasattr(self, 'path') and '?' in self.path:
             qs = self.path.split('?', 1)[1]
@@ -274,6 +281,10 @@ def handle_models_hf_whoami(self):
 def handle_models_hf_upload(self):
     """POST /api/models/hf/upload — Avvia il caricamento di un modello locale su Hugging Face Hub."""
     try:
+        if uploader_manager is None:
+            self.send_json_response({"success": False, "error": "Modulo Hugging Face uploader non disponibile."}, 500)
+            return
+
         body = self.read_json_body() if hasattr(self, 'read_json_body') else {}
         local_path = body.get("local_path") or body.get("path") or body.get("filename")
         repo_id = body.get("repo_id")
@@ -316,6 +327,10 @@ def handle_models_hf_upload(self):
 def handle_models_hf_upload_tasks(self):
     """GET /api/models/hf/upload/tasks — Restituisce l'elenco dei task di upload verso Hugging Face."""
     try:
+        if uploader_manager is None:
+            self.send_json_response({"success": True, "tasks": []})
+            return
+
         tasks = uploader_manager.list_tasks()
         self.send_json_response({"success": True, "tasks": tasks})
     except Exception as e:
@@ -326,6 +341,10 @@ def handle_models_hf_upload_tasks(self):
 def handle_models_hf_upload_cancel(self):
     """POST /api/models/hf/upload/cancel — Annulla un caricamento attivo verso Hugging Face."""
     try:
+        if uploader_manager is None:
+            self.send_json_response({"success": False, "error": "Modulo uploader non disponibile."}, 500)
+            return
+
         body = self.read_json_body() if hasattr(self, 'read_json_body') else {}
         task_id = body.get("task_id")
         if not task_id:
@@ -342,6 +361,10 @@ def handle_models_hf_upload_cancel(self):
 def handle_models_hf_upload_remove(self):
     """POST /api/models/hf/upload/remove — Rimuove un task completato o fallito dalla cronologia."""
     try:
+        if uploader_manager is None:
+            self.send_json_response({"success": False, "error": "Modulo uploader non disponibile."}, 500)
+            return
+
         body = self.read_json_body() if hasattr(self, 'read_json_body') else {}
         task_id = body.get("task_id")
         if not task_id:
