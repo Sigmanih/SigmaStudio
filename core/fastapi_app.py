@@ -1255,6 +1255,12 @@ async def serve_static_or_spa(path: str):
     if target_manifesti.exists() and target_manifesti.is_file():
         return FileResponse(target_manifesti)
 
+    # Missing static assets, scripts, stylesheets, fonts or images must NEVER return index.html (which causes MIME text/html errors)
+    if path.startswith("assets/") or any(path.lower().endswith(ext) for ext in [
+        ".js", ".css", ".map", ".json", ".wasm", ".png", ".jpg", ".jpeg", ".svg", ".ico", ".webp", ".woff", ".woff2", ".ttf", ".eot"
+    ]):
+        return Response(status_code=404, content=f"Asset '/{path}' non trovato.", media_type="text/plain")
+
     index_file = DIST_DIR / "index.html"
     if index_file.exists():
         return FileResponse(index_file)
