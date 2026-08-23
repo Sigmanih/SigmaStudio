@@ -167,12 +167,25 @@ def resolve_model_dir(identifier: Optional[str]) -> Optional[str]:
         if has_weights(path):
             return path
 
-    # Last resort: match ignoring separators, so 'qwen3.8-27b' still finds
-    # 'Qwen--Qwen3.8-27B'.
+    # Last resort: match ignoring separators, prioritizing exact and quantized GGUF matches
     wanted = "".join(c for c in identifier.lower() if c.isalnum())
-    for path in list_model_dirs():
+    if not wanted:
+        return None
+
+    candidates = list_model_dirs()
+    # Sort candidates: exact match first, then closest length, then GGUF/quantized
+    def _match_score(p: str) -> tuple:
+        f = "".join(c for c in os.path.basename(p).lower() if c.isalnum())
+        exact = 0 if f == wanted else 1
+        is_sub = 0 if (wanted in f or f in wanted) else 1
+        len_diff = abs(len(f) - len(wanted))
+        is_quant = 0 if any(q in f for q in ("q4", "q5", "q8", "q6", "int4", "int8")) else 1
+        return (is_sub, exact, len_diff, is_quant)
+
+    ranked = sorted(candidates, key=_match_score)
+    for path in ranked:
         folder = "".join(c for c in os.path.basename(path).lower() if c.isalnum())
-        if wanted and (wanted in folder or folder in wanted):
+        if wanted in folder or folder in wanted:
             return path
 
     return None

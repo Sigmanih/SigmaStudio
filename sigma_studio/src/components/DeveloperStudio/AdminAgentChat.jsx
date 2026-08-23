@@ -86,12 +86,16 @@ const cleanMessageText = (text) => {
   if (!text) return '';
   let cleaned = text;
   // Remove completed or in-progress tool code blocks
-  cleaned = cleaned.replace(/```tool:\w+[\s\S]*?(?:```|$)/gi, '');
-  cleaned = cleaned.replace(/```(?:json|bash|sh|powershell)?\s*\{[\s\S]*?"(?:tool|action|command|path)"[\s\S]*?(?:```|$)/gi, '');
+  cleaned = cleaned.replace(/```tool(?::\w+)?[\s\S]*?(?:```|$)/gi, '');
+  cleaned = cleaned.replace(/```(?:json|bash|sh|powershell)?\s*\{[\s\S]*?"(?:tool|action|command|path|name|tasks)"[\s\S]*?(?:```|$)/gi, '');
   // Remove completed or in-progress XML tool tags
-  cleaned = cleaned.replace(/<(?:execute_command|shell|terminal|read_file|write_to_file|list_dir|search_code|tool)>[\s\S]*?(?:<\/(?:execute_command|shell|terminal|read_file|write_to_file|list_dir|search_code|tool)>|$)/gi, '');
+  cleaned = cleaned.replace(/<(?:tool_call|execute_command|shell|terminal|read_file|write_file|write_to_file|list_dir|search_code|tool|pipeline|complete_goal)>[\s\S]*?(?:<\/(?:tool_call|execute_command|shell|terminal|read_file|write_file|write_to_file|list_dir|search_code|tool|pipeline|complete_goal)>|$)/gi, '');
   return cleaned.trim();
 };
+
+if (typeof window !== 'undefined') {
+  window.Prism = Prism;
+}
 
 function RichMessageContent({ content, isUser, onOpenFile, isLight }) {
   const containerRef = useRef(null);
@@ -105,53 +109,12 @@ function RichMessageContent({ content, isUser, onOpenFile, isLight }) {
     if (!containerRef.current) return;
     const el = containerRef.current;
 
-    // 1. Highlight code blocks with Prism & add Copy button
-    el.querySelectorAll('pre code').forEach((codeBlock) => {
-      const pre = codeBlock.parentElement;
-      if (!pre || pre.dataset.prismDone) return;
-      pre.dataset.prismDone = 'true';
-
-      const langMatch = codeBlock.className.match(/language-(\w+)/);
-      const lang = langMatch ? langMatch[1] : '';
-
-      if (lang && Prism.languages[lang]) {
-        try {
-          Prism.highlightElement(codeBlock);
-        } catch (e) {}
-      }
-
-      // Add Header with language pill and Copy Button
-      const header = document.createElement('div');
-      header.className = 'chat-code-header';
-      header.style.cssText = 'display:flex;justify-content:space-between;align-items:center;padding:4px 8px;background:rgba(0,0,0,0.35);border-bottom:1px solid rgba(255,255,255,0.06);margin:-14px -16px 10px -16px;border-radius:10px 10px 0 0;font-size:0.62rem;color:#8b949e;';
-      header.innerHTML = `
-        <span style="font-weight:700;text-transform:uppercase;color:#00d2ff;letter-spacing:0.5px;">${lang || 'CODE'}</span>
-        <button class="chat-copy-code-btn" style="background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.1);color:#c9d1d9;padding:2px 7px;border-radius:4px;cursor:pointer;font-size:0.62rem;display:flex;align-items:center;gap:3px;transition:all 0.15s;">
-          📋 Copia
-        </button>
-      `;
-      const copyBtn = header.querySelector('.chat-copy-code-btn');
-      copyBtn?.addEventListener('click', (e) => {
-        e.stopPropagation();
-        navigator.clipboard.writeText(codeBlock.textContent || '');
-        copyBtn.innerHTML = '✓ Copiato!';
-        copyBtn.style.color = '#3fb950';
-        copyBtn.style.borderColor = 'rgba(63,185,80,0.4)';
-        setTimeout(() => {
-          copyBtn.innerHTML = '📋 Copia';
-          copyBtn.style.color = '#c9d1d9';
-          copyBtn.style.borderColor = 'rgba(255,255,255,0.1)';
-        }, 2000);
-      });
-      pre.insertBefore(header, pre.firstChild);
-    });
-
-    // 2. Render Mermaid diagrams
+    // Render Mermaid diagrams safely without DOM thrashing on code blocks
     const mermaidBlocks = el.querySelectorAll('.language-mermaid');
     if (mermaidBlocks.length > 0) {
       mermaidBlocks.forEach(async (block, i) => {
         const raw = block.textContent;
-        const pre = block.closest('pre') || block;
+        const pre = block.closest('.chat-code-block-wrapper') || block.closest('pre') || block;
         if (!pre || pre.dataset.mermaidDone) return;
         pre.dataset.mermaidDone = 'true';
 
@@ -173,6 +136,28 @@ function RichMessageContent({ content, isUser, onOpenFile, isLight }) {
   }, [html]);
 
   const handleClick = (e) => {
+    // 1. Copy code button click via event delegation (zero DOM layout shifts)
+    const copyBtn = e.target.closest('.chat-copy-code-btn');
+    if (copyBtn) {
+      e.preventDefault();
+      e.stopPropagation();
+      const wrapper = copyBtn.closest('.chat-code-block-wrapper') || copyBtn.closest('pre');
+      const codeEl = wrapper?.querySelector('code');
+      const textToCopy = codeEl?.textContent || '';
+      if (textToCopy) {
+        navigator.clipboard.writeText(textToCopy);
+        const origHtml = copyBtn.innerHTML;
+        copyBtn.innerHTML = '✓ Copiato!';
+        copyBtn.classList.add('copied');
+        setTimeout(() => {
+          copyBtn.innerHTML = origHtml;
+          copyBtn.classList.remove('copied');
+        }, 2000);
+      }
+      return;
+    }
+
+    // 2. File link click
     const fileLink = e.target.closest('.chat-file-link');
     if (fileLink && onOpenFile) {
       e.preventDefault();
@@ -750,6 +735,9 @@ export default function AdminAgentChat({
       const reader = response.body.getReader();
       const decoder = new TextDecoder();
       let buffer = '';
+      let streamStartTime = Date.now();
+      let streamFirstTokenTime = null;
+      let streamTokenCount = 0;
 
       while (true) {
         const { value, done } = await reader.read();
@@ -797,26 +785,31 @@ export default function AdminAgentChat({
             }
 
             // If a subsequent turn starts (e.g. after tool execution), seal previous message and start fresh step!
-            if (event.type === 'turn_start' && event.turn > 1) {
-              setTasks(prev => prev.map(t => {
-                if (t.id === currentTaskId) {
-                  const msgs = [...t.messages];
-                  if (msgs[activeMsgIndex]) {
-                    msgs[activeMsgIndex].isStreaming = false;
+            if (event.type === 'turn_start') {
+              if (event.turn > 1) {
+                setTasks(prev => prev.map(t => {
+                  if (t.id === currentTaskId) {
+                    const msgs = [...t.messages];
+                    if (msgs[activeMsgIndex]) {
+                      msgs[activeMsgIndex].isStreaming = false;
+                    }
+                    msgs.push({
+                      role: 'assistant',
+                      content: '',
+                      thought: '',
+                      tools: [],
+                      isStreaming: true,
+                      timestamp: new Date().toISOString()
+                    });
+                    activeMsgIndex = msgs.length - 1;
+                    return { ...t, messages: msgs, updatedAt: new Date().toISOString() };
                   }
-                  msgs.push({
-                    role: 'assistant',
-                    content: '',
-                    thought: '',
-                    tools: [],
-                    isStreaming: true,
-                    timestamp: new Date().toISOString()
-                  });
-                  activeMsgIndex = msgs.length - 1;
-                  return { ...t, messages: msgs, updatedAt: new Date().toISOString() };
-                }
-                return t;
-              }));
+                  return t;
+                }));
+              }
+              streamStartTime = Date.now();
+              streamFirstTokenTime = null;
+              streamTokenCount = 0;
               continue;
             }
 
@@ -840,19 +833,40 @@ export default function AdminAgentChat({
                 const msgs = [...t.messages];
                 const cur = { ...msgs[activeMsgIndex] };
 
-                if (event.type === 'token') {
-                  cur.content = (cur.content || '') + event.token;
+                if (event.type === 'token' || event.type === 'thought') {
+                  if (event.type === 'token') {
+                    cur.content = (cur.content || '') + event.token;
+                  } else {
+                    cur.thought = (cur.thought || '') + event.token;
+                  }
                   if (agentStatus) setAgentStatus('');
-                } else if (event.type === 'thought') {
-                  cur.thought = (cur.thought || '') + event.token;
-                  if (agentStatus) setAgentStatus('');
+
+                  if (!streamFirstTokenTime) {
+                    streamFirstTokenTime = Date.now();
+                  }
+                  streamTokenCount += 1;
+                  const now = Date.now();
+                  const liveDuration = Math.max((now - streamStartTime) / 1000, 0.05);
+                  const genDuration = Math.max((now - streamFirstTokenTime) / 1000, 0.05);
+                  const liveTps = streamTokenCount > 0 ? Math.round((streamTokenCount / genDuration) * 10) / 10 : 0;
+                  const liveTtft = Math.round(streamFirstTokenTime - streamStartTime);
+
+                  cur.metrics = {
+                    tps: liveTps,
+                    ttft_ms: liveTtft,
+                    tokens: streamTokenCount,
+                    total_tokens: streamTokenCount,
+                    duration_s: Math.round(liveDuration * 10) / 10,
+                    isLive: true
+                  };
                 } else if (event.type === 'metrics') {
                   cur.metrics = {
                     tps: event.tps,
                     ttft_ms: event.ttft_ms,
                     tokens: event.tokens,
                     total_tokens: event.total_tokens,
-                    duration_s: event.duration_s
+                    duration_s: event.duration_s,
+                    isLive: false
                   };
                 } else if (event.type === 'tool_start') {
                   cur.tools = [...(cur.tools || []), { tool: event.tool, params: event.params, status: 'running' }];
@@ -1707,8 +1721,24 @@ export default function AdminAgentChat({
                 flexWrap: 'wrap'
               }}>
                 {msg.metrics.tps > 0 && (
-                  <span style={{ color: '#3fb950', fontWeight: 800 }}>
+                  <span style={{ 
+                    color: msg.metrics.isLive ? '#00f2fe' : '#3fb950', 
+                    fontWeight: 800,
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '4px'
+                  }}>
                     ⚡ {msg.metrics.tps} t/s
+                    {msg.metrics.isLive && (
+                      <span style={{ 
+                        display: 'inline-block', 
+                        width: '6px', 
+                        height: '6px', 
+                        borderRadius: '50%', 
+                        background: '#00f2fe',
+                        boxShadow: '0 0 6px #00f2fe'
+                      }} />
+                    )}
                   </span>
                 )}
                 {msg.metrics.ttft_ms > 0 && (
@@ -2067,7 +2097,15 @@ export default function AdminAgentChat({
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0, overflow: 'hidden' }}>
             <RefreshCw size={12} className="spin" />
             <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-              {agentStatus || "L'agente sta elaborando la risposta..."}
+              {agentStatus || (
+                (() => {
+                  const lastMsg = activeTask?.messages?.[activeTask?.messages?.length - 1];
+                  if (lastMsg?.metrics?.tps > 0) {
+                    return `⚡ Generazione in tempo reale: ${lastMsg.metrics.tps} t/s • ${lastMsg.metrics.tokens} tokens • ${lastMsg.metrics.duration_s}s`;
+                  }
+                  return "L'agente sta elaborando la risposta...";
+                })()
+              )}
             </span>
           </div>
           <button

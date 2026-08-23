@@ -100,17 +100,55 @@ def _nvidia_smi_telemetry() -> Dict[int, Dict[str, Any]]:
     return telemetry
 
 
-def _detect_all_gpus(cpu_pct: float) -> List[Dict[str, Any]]:
-    """
-    Reports every GPU with measured values.
+_cached_integrated_gpus: Optional[List[Dict[str, Any]]] = None
 
-    Nothing here is synthesised. An earlier version derived GPU utilisation from
-    CPU load, computed temperature and power from the device index, held VRAM
-    usage above a fixed floor, and invented a discrete card when it found no GPU
-    at all -- so the panel showed plausible numbers that described no real
-    hardware. Fields the system cannot measure are reported as null so the UI
-    can say "unknown" instead of showing a fabricated reading.
-    """
+def _get_integrated_gpus_cached(seen_names: set) -> List[Dict[str, Any]]:
+    global _cached_integrated_gpus
+    if _cached_integrated_gpus is not None:
+        return _cached_integrated_gpus
+
+    igpus: List[Dict[str, Any]] = []
+    if sys.platform == "win32":
+        try:
+            import subprocess
+            cmd = ["powershell", "-NoProfile", "-Command",
+                   "Get-CimInstance Win32_VideoController | "
+                   "Select-Object Name, AdapterRAM | ConvertTo-Json"]
+            res = subprocess.run(cmd, capture_output=True, text=True, timeout=3)
+            if res.returncode == 0 and res.stdout.strip():
+                adapters = json.loads(res.stdout)
+                if isinstance(adapters, dict):
+                    adapters = [adapters]
+                for adapter in adapters:
+                    name = (adapter.get("Name") or "").strip()
+                    if not name or name.lower() in seen_names:
+                        continue
+                    ram_bytes = adapter.get("AdapterRAM")
+                    vram_mb = int(ram_bytes // (1024 ** 2)) if ram_bytes else None
+                    is_amd = "amd" in name.lower() or "radeon" in name.lower()
+                    igpus.append({
+                        "name": name,
+                        "type": ("AMD Radeon iGPU (DirectML/DirectX 12)" if is_amd else "Integrated Graphics"),
+                        "vram_total_mb": vram_mb,
+                        "vram_used_mb": None,
+                        "vram_free_mb": None,
+                        "vram_usage_pct": None,
+                        "gpu_util_pct": None,
+                        "temp_c": None,
+                        "power_draw_w": None,
+                        "fan_speed_pct": None,
+                        "telemetry_source": "none",
+                        "is_integrated": True,
+                    })
+        except Exception as ex:
+            log.debug("CIM VideoController query failed: %s", ex)
+
+    _cached_integrated_gpus = igpus
+    return igpus
+
+
+def _detect_all_gpus(cpu_pct: float) -> List[Dict[str, Any]]:
+    """Reports every GPU with measured values."""
     gpus_list: List[Dict[str, Any]] = []
     seen_names = set()
     telemetry = _nvidia_smi_telemetry()
@@ -130,8 +168,6 @@ def _detect_all_gpus(cpu_pct: float) -> List[Dict[str, Any]]:
             total_mb = measured.get("vram_total_mb")
             used_mb = measured.get("vram_used_mb")
             if total_mb is None or used_mb is None:
-                # No driver telemetry: mem_get_info still reports true device
-                # occupancy, unlike the torch allocator counters.
                 try:
                     free_bytes, total_bytes = torch.cuda.mem_get_info(i)
                     total_mb = total_bytes / (1024 ** 2)
@@ -165,49 +201,15 @@ def _detect_all_gpus(cpu_pct: float) -> List[Dict[str, Any]]:
             })
             seen_names.add(props.name.lower())
 
-    # Integrated GPUs: enumerable on Windows, but with no usage telemetry. They
-    # are listed so the user sees the whole picture, with the unmeasurable
-    # fields left null rather than filled in with invented values.
-    if sys.platform == "win32":
-        try:
-            import subprocess
-            cmd = ["powershell", "-NoProfile", "-Command",
-                   "Get-CimInstance Win32_VideoController | "
-                   "Select-Object Name, AdapterRAM | ConvertTo-Json"]
-            res = subprocess.run(cmd, capture_output=True, text=True, timeout=6)
-            if res.returncode == 0 and res.stdout.strip():
-                adapters = json.loads(res.stdout)
-                if isinstance(adapters, dict):
-                    adapters = [adapters]
-                for adapter in adapters:
-                    name = (adapter.get("Name") or "").strip()
-                    if not name or name.lower() in seen_names:
-                        continue
-                    ram_bytes = adapter.get("AdapterRAM")
-                    vram_mb = int(ram_bytes // (1024 ** 2)) if ram_bytes else None
-                    is_amd = "amd" in name.lower() or "radeon" in name.lower()
-                    gpus_list.append({
-                        "index": len(gpus_list),
-                        "name": name,
-                        "type": ("AMD Radeon iGPU (DirectML/DirectX 12)"
-                                 if is_amd else "Integrated Graphics"),
-                        "vram_total_mb": vram_mb,
-                        "vram_used_mb": None,
-                        "vram_free_mb": None,
-                        "vram_usage_pct": None,
-                        "gpu_util_pct": None,
-                        "temp_c": None,
-                        "power_draw_w": None,
-                        "fan_speed_pct": None,
-                        "telemetry_source": "none",
-                        "is_integrated": True,
-                    })
-                    seen_names.add(name.lower())
-        except Exception as ex:
-            log.debug("CIM VideoController query failed: %s", ex)
+    # Add cached integrated GPUs without running slow powershell on every poll
+    cached_igpus = _get_integrated_gpus_cached(seen_names)
+    for igpu in cached_igpus:
+        if igpu["name"].lower() not in seen_names:
+            item = dict(igpu)
+            item["index"] = len(gpus_list)
+            gpus_list.append(item)
+            seen_names.add(igpu["name"].lower())
 
-    # No placeholder GPU when none is present: a machine without one must say
-    # so, not display a discrete card it does not have.
     return gpus_list
 
 
@@ -417,7 +419,10 @@ def get_hardware_telemetry() -> Dict[str, Any]:
         "name": _get_cpu_brand(),
         "cores_physical": phys_count,
         "cores_logical": log_count,
+        "logical_count": log_count,
+        "cpu_count": log_count,
         "usage_pct": round(cpu_pct, 1),
+        "util_pct": round(cpu_pct, 1),
         "freq_mhz": cpu_freq_val
     }
 
@@ -428,7 +433,10 @@ def get_hardware_telemetry() -> Dict[str, Any]:
             "total_gb": round(vm.total / (1024**3), 2),
             "used_gb": round(vm.used / (1024**3), 2),
             "free_gb": round(vm.available / (1024**3), 2),
-            "usage_pct": round(vm.percent, 1)
+            "usage_pct": round(vm.percent, 1),
+            "util_pct": round(vm.percent, 1),
+            "ram_used_gb": round(vm.used / (1024**3), 2),
+            "ram_total_gb": round(vm.total / (1024**3), 2)
         }
     except Exception as err:
         log.warning("RAM telemetry fallback: %s", err)
@@ -436,7 +444,10 @@ def get_hardware_telemetry() -> Dict[str, Any]:
             "total_gb": 0.0,
             "used_gb": 0.0,
             "free_gb": 0.0,
-            "usage_pct": 0.0
+            "usage_pct": 0.0,
+            "util_pct": 0.0,
+            "ram_used_gb": 0.0,
+            "ram_total_gb": 0.0
         }
 
     # 3. GPUs

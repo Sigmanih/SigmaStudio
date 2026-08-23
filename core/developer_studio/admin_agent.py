@@ -28,146 +28,247 @@ from core.developer_studio.terminal_runner import execute_shell_command_sync
 
 log = get_logger("admin_developer_agent")
 
-ADMIN_DEVELOPER_SYSTEM_PROMPT = """Sei Σ-SIGMA Developer Admin, un Pair-Programmer e Software Architect di livello esperto integrato nativamente in Sigma Studio.
-Hai permessi di AMMINISTRATORE completi sul workspace: puoi visualizzare, modificare, creare, eliminare file ed eseguire comandi da terminale (PowerShell/Bash).
+ADMIN_DEVELOPER_SYSTEM_PROMPT = """Sei Σ-SIGMA Developer Admin, un Pair-Programmer e Software Architect esperto integrato nativamente in Sigma Studio.
+Hai permessi di AMMINISTRATORE completi sul workspace per esplorare la struttura, leggere, creare, modificare, eliminare file ed eseguire comandi da terminale (PowerShell/Bash).
 
 REGOLE CRITICHE E OBBLIGATORIE:
 1. Rispondi SEMPRE ed ESCLUSIVAMENTE in lingua ITALIANA.
 2. Ragiona internamente all'interno dei tag <think> ... </think>. NON scrivere mai ragionamenti in inglese al di fuori dei tag <think>.
-3. Quando affronti compiti multi-step o complessi, definisci e aggiorna la tua pipeline di task usando il tool `pipeline`.
-4. Quando usi i tool, emetti DIRETTAMENTE i tag dei tool.
+3. Quando affronti compiti complessi o multi-step, organizza i tuoi passi con il tool `pipeline`.
+4. Quando usi i tool, emetti DIRETTAMENTE i blocchi dei tool con percorsi reali (es. path: "." per la radice).
 5. Quando ricevi i risultati dei tool, fornisci all'utente un'analisi chiara, sintetica e professionale in italiano, indicando l'avanzamento dei task e i passi successivi.
 6. Quando tutti i task della pipeline sono stati completati con successo, emetti il tool `complete_goal`.
 
+GUIDA AI PERCORSI:
+- La radice del workspace si indica con "." (oppure percorsi relativi come "core", "sigma_studio/src").
+- I percorsi dei file sono relativi alla radice del workspace (es. "sigma_server.py", "core/api_router.py", "package.json").
+
 TAG STRUTTURATI DEI TOOL:
 
-1. Per definire o aggiornare la pipeline dei task (piano d'azione):
+1. Per definire o aggiornare la pipeline dei task:
 ```tool:pipeline
 {
   "tasks": [
-    {"id": "1", "title": "Esplorazione iniziale cartelle e architettura", "status": "done"},
-    {"id": "2", "title": "Analisi codice core e discrepanze", "status": "in_progress"},
+    {"id": "1", "title": "Esplorazione struttura workspace", "status": "done"},
+    {"id": "2", "title": "Analisi architettura e codice core", "status": "in_progress"},
     {"id": "3", "title": "Verifica frontend e test", "status": "pending"},
-    {"id": "4", "title": "Relazione finale e proposte di miglioramento", "status": "pending"}
+    {"id": "4", "title": "Relazione finale punti critici", "status": "pending"}
   ]
 }
 ```
-I possibili valori di status sono: "pending", "in_progress", "done".
+Valori possibili di status: "pending", "in_progress", "done".
 
-2. Per dichiarare l'obiettivo completato:
-```tool:complete_goal
-{
-  "summary": "Obiettivo completato con successo. Tutti i punti sono stati verificati."
-}
-```
-
-3. Per esplorare una cartella:
+2. Per esplorare una cartella (usa "." per la radice):
 ```tool:list_dir
 {
-  "path": "percorso cartella"
+  "path": "."
 }
 ```
 
-4. Per leggere un file:
+3. Per leggere un file:
 ```tool:read_file
 {
-  "path": "percorso del file"
+  "path": "ARCHITECTURE.md"
 }
 ```
 
-5. Per scrivere o modificare un file:
+4. Per scrivere o modificare un file:
 ```tool:write_file
 {
-  "path": "percorso del file",
-  "content": "contenuto completo o aggiornato del file"
+  "path": "core/nuovo_file.py",
+  "content": "# codice completo o aggiornato qui"
 }
 ```
 
-6. Per eliminare un file o una cartella:
+5. Per eliminare un file o una cartella:
 ```tool:delete
 {
-  "path": "percorso da eliminare"
+  "path": "scratch/temp.txt"
 }
 ```
 
-7. Per eseguire un comando terminale:
+6. Per eseguire un comando terminale (PowerShell):
 ```tool:terminal
 {
-  "command": "comando qui",
-  "cwd": "cartella di lavoro (opzionale)"
+  "command": "Get-ChildItem -Path .",
+  "cwd": "."
 }
 ```
 
-8. Per cercare codice o testo:
+7. Per cercare codice o testo nel workspace:
 ```tool:search_code
 {
-  "query": "testo da cercare"
+  "query": "class SigmaEngine"
+}
+```
+
+8. Per dichiarare l'obiettivo completato:
+```tool:complete_goal
+{
+  "summary": "Obiettivo completato con successo."
 }
 ```
 """
 
 
-def extract_tool_invocations(text: str) -> List[Dict[str, Any]]:
-    """Extracts structured tool calls from model output (code blocks or XML/JSON)."""
-    tools = []
-    
-    # 1. Matches ```tool:name ... ```
-    tool_block_pattern = re.compile(r"```tool:(\w+)\s*\n([\s\S]*?)```", re.IGNORECASE)
-    for match in tool_block_pattern.finditer(text):
-        tool_name = match.group(1).lower()
-        body_str = match.group(2).strip()
+def resolve_workspace_path(path: Optional[str], workspace_root: str) -> str:
+    """Normalizes and safely resolves paths within the workspace root."""
+    if not workspace_root:
+        workspace_root = get_default_workspace_root()
+    workspace_root = os.path.abspath(workspace_root)
+
+    if not path or not isinstance(path, str):
+        return workspace_root
+
+    clean = path.strip().strip("'\"`")
+    if clean in (
+        "", ".", "./", ".\\", "/", "\\", "percorso cartella", "percorso_cartella",
+        "percorso del file", "percorso_file", "percorso da eliminare",
+        "root", "workspace", "project", "folder_path", "file_path", "null", "undefined"
+    ):
+        return workspace_root
+
+    # Strip redundant leading slashes and prefix words
+    clean = re.sub(r"^[./\\]+", "", clean)
+    clean = re.sub(r"^(?:Sigma_Studio|SigmaStudio|workspace)[/\\]", "", clean, flags=re.IGNORECASE)
+
+    if os.path.isabs(clean):
+        return os.path.abspath(clean)
+
+    norm = os.path.normpath(os.path.join(workspace_root, clean))
+    return norm
+
+
+def normalize_tool_params(raw_body: str, tool_name: str) -> Dict[str, Any]:
+    """Safely extracts JSON or fallback dictionary from tool body."""
+    raw_body = raw_body.strip()
+    try:
+        data = json.loads(raw_body)
+        if isinstance(data, dict):
+            return data
+        elif isinstance(data, list):
+            if tool_name in ("pipeline", "tasks", "set_tasks", "update_pipeline"):
+                return {"tasks": data}
+            return {"items": data}
+    except Exception:
+        pass
+
+    # Try extracting JSON object {...} or [...] inside text
+    json_match = re.search(r"(\{[\s\S]*\}|\[[\s\S]*\])", raw_body)
+    if json_match:
         try:
-            params = json.loads(body_str)
+            data = json.loads(json_match.group(1))
+            if isinstance(data, dict):
+                return data
+            elif isinstance(data, list) and tool_name in ("pipeline", "tasks", "set_tasks", "update_pipeline"):
+                return {"tasks": data}
         except Exception:
-            params = {"raw": body_str}
-            if tool_name in ("terminal", "shell", "exec"):
-                params = {"command": body_str}
-            elif tool_name in ("read_file", "delete", "list_dir"):
-                params = {"path": body_str}
+            pass
 
-        tools.append({
-            "tool": tool_name,
-            "params": params,
-            "raw_block": match.group(0)
-        })
+    # Fallback to key-value or raw mapping
+    if tool_name in ("terminal", "shell", "exec", "command"):
+        return {"command": raw_body}
+    elif tool_name in ("read_file", "read", "delete", "list_dir", "ls"):
+        return {"path": raw_body}
+    elif tool_name in ("search_code", "grep"):
+        return {"query": raw_body}
+    elif tool_name in ("pipeline", "tasks", "set_tasks"):
+        lines = [l.strip("- *0123456789.) ").strip() for l in raw_body.splitlines() if l.strip()]
+        tasks = [{"id": str(i+1), "title": l, "status": "pending"} for i, l in enumerate(lines)]
+        return {"tasks": tasks}
 
-    # 2. Matches XML-style <execute_command> or <shell> or <read_file>
+    return {"raw": raw_body}
+
+
+def extract_tool_invocations(text: str) -> List[Dict[str, Any]]:
+    """Extracts structured tool calls from model output (code blocks, XML, JSON)."""
+    tools = []
+
+    # 1. Matches ```tool:name ... ```
+    tool_named_block = re.compile(r"```tool:(\w+)\s*([\s\S]*?)```", re.IGNORECASE)
+    for match in tool_named_block.finditer(text):
+        tool_name = match.group(1).lower()
+        body = match.group(2)
+        params = normalize_tool_params(body, tool_name)
+        tools.append({"tool": tool_name, "params": params, "raw_block": match.group(0)})
+
+    # 2. Matches ```tool\n...``` or ```json\n{"tool": "..."}``` or ```json\n{"action": "..."}```
     if not tools:
-        xml_cmd = re.search(r"<(?:execute_command|shell|terminal)>\s*(?:<command>)?([\s\S]*?)(?:</command>)?\s*</(?:execute_command|shell|terminal)>", text, re.IGNORECASE)
-        if xml_cmd:
-            cmd = xml_cmd.group(1).strip()
-            tools.append({"tool": "terminal", "params": {"command": cmd}, "raw_block": xml_cmd.group(0)})
+        generic_block = re.compile(r"```(?:tool|json|bash|sh|powershell)?\s*([\s\S]*?)```", re.IGNORECASE)
+        for match in generic_block.finditer(text):
+            body = match.group(1).strip()
+            try:
+                data = json.loads(body)
+                if isinstance(data, dict):
+                    tool_name = (
+                        data.get("tool") or data.get("action") or data.get("name") or data.get("tool_name") or ""
+                    ).lower()
+                    if tool_name:
+                        params = data.get("parameters") or data.get("arguments") or data.get("params") or data.get("action_input") or data
+                        tools.append({"tool": tool_name, "params": params, "raw_block": match.group(0)})
+            except Exception:
+                json_match = re.search(r"(\{[\s\S]*\})", body)
+                if json_match:
+                    try:
+                        data = json.loads(json_match.group(1))
+                        if isinstance(data, dict):
+                            tool_name = (
+                                data.get("tool") or data.get("action") or data.get("name") or data.get("tool_name") or ""
+                            ).lower()
+                            if tool_name:
+                                params = data.get("parameters") or data.get("arguments") or data.get("params") or data.get("action_input") or data
+                                tools.append({"tool": tool_name, "params": params, "raw_block": match.group(0)})
+                    except Exception:
+                        pass
 
-        xml_read = re.search(r"<read_file>\s*(?:<path>)?([\s\S]*?)(?:</path>)?\s*</read_file>", text, re.IGNORECASE)
-        if xml_read:
-            p = xml_read.group(1).strip()
-            tools.append({"tool": "read_file", "params": {"path": p}, "raw_block": xml_read.group(0)})
+    # 3. Matches <tool_call>\n<name>...</name>\n<arguments>...</arguments>\n</tool_call>
+    if not tools:
+        xml_tool_calls = re.findall(r"<tool_call>([\s\S]*?)</tool_call>", text, re.IGNORECASE)
+        for tc in xml_tool_calls:
+            try:
+                data = json.loads(tc.strip())
+                if isinstance(data, dict) and ("name" in data or "tool" in data):
+                    t_name = (data.get("name") or data.get("tool", "")).lower()
+                    t_args = data.get("arguments") or data.get("parameters") or data
+                    tools.append({"tool": t_name, "params": t_args, "raw_block": f"<tool_call>{tc}</tool_call>"})
+                    continue
+            except Exception:
+                pass
 
-        xml_write = re.search(r"<write_to_file>\s*<path>([\s\S]*?)</path>\s*<content>([\s\S]*?)</content>\s*</write_to_file>", text, re.IGNORECASE)
-        if xml_write:
-            p = xml_write.group(1).strip()
-            c = xml_write.group(2)
-            tools.append({"tool": "write_file", "params": {"path": p, "content": c}, "raw_block": xml_write.group(0)})
+            name_m = re.search(r"<name>([\s\S]*?)</name>", tc, re.IGNORECASE)
+            args_m = re.search(r"<arguments>([\s\S]*?)</arguments>", tc, re.IGNORECASE)
+            if name_m:
+                t_name = name_m.group(1).strip().lower()
+                raw_args = args_m.group(1).strip() if args_m else ""
+                params = normalize_tool_params(raw_args, t_name)
+                tools.append({"tool": t_name, "params": params, "raw_block": f"<tool_call>{tc}</tool_call>"})
 
-        xml_list = re.search(r"<list_dir>\s*(?:<path>)?([\s\S]*?)(?:</path>)?\s*</list_dir>", text, re.IGNORECASE)
-        if xml_list:
-            p = xml_list.group(1).strip()
-            tools.append({"tool": "list_dir", "params": {"path": p}, "raw_block": xml_list.group(0)})
+    # 4. Matches XML-style <execute_command>, <read_file>, <write_file>, <list_dir>, <delete>, <search_code>, <pipeline>
+    if not tools:
+        for tag in ["terminal", "shell", "execute_command", "read_file", "write_file", "write_to_file", "delete", "list_dir", "search_code", "pipeline"]:
+            m = re.search(rf"<{tag}>\s*([\s\S]*?)\s*</{tag}>", text, re.IGNORECASE)
+            if m:
+                raw_content = m.group(1).strip()
+                t_name = "terminal" if tag in ("shell", "execute_command") else ("write_file" if tag == "write_to_file" else tag)
+                params = normalize_tool_params(raw_content, t_name)
+                tools.append({"tool": t_name, "params": params, "raw_block": m.group(0)})
 
     return tools
 
 
 def execute_admin_tool(tool_name: str, params: Dict[str, Any], workspace_root: str) -> Dict[str, Any]:
-    """Executes a single admin developer tool."""
+    """Executes a single admin developer tool with full workspace resolution."""
     tool_name = tool_name.lower()
     
     if tool_name in ("terminal", "shell", "exec", "command"):
         cmd = params.get("command") or params.get("raw", "")
-        cwd = params.get("cwd") or workspace_root
+        raw_cwd = params.get("cwd") or "."
+        cwd = resolve_workspace_path(raw_cwd, workspace_root)
         res = execute_shell_command_sync(cmd, cwd=cwd)
         return {
             "tool": "terminal",
             "command": cmd,
+            "cwd": cwd,
             "success": res.get("success", False),
             "stdout": res.get("stdout", ""),
             "stderr": res.get("stderr", ""),
@@ -175,16 +276,32 @@ def execute_admin_tool(tool_name: str, params: Dict[str, Any], workspace_root: s
         }
 
     elif tool_name in ("read_file", "read"):
-        path = params.get("path") or params.get("raw", "")
-        full_path = os.path.join(workspace_root, path) if not os.path.isabs(path) else path
+        raw_path = params.get("path") or params.get("raw", "")
+        full_path = resolve_workspace_path(raw_path, workspace_root)
+        
+        # If full_path is a directory instead of a file, fall back to list_dir gracefully
+        if os.path.isdir(full_path):
+            tree = get_workspace_tree(full_path, max_depth=1)
+            entries = [f"{'📁' if c.get('is_dir') else '📄'} {c.get('name')}" for c in tree.get("children", [])]
+            return {
+                "tool": "read_file",
+                "path": raw_path,
+                "success": True,
+                "content": f"'{raw_path}' è una cartella contenente:\n" + "\n".join(entries),
+                "message": f"'{raw_path}' è una cartella con {len(entries)} elementi."
+            }
+
         res = read_file_content(full_path)
-        return {"tool": "read_file", "path": path, **res}
+        return {"tool": "read_file", "path": raw_path, "full_path": full_path, **res}
 
     elif tool_name in ("write_file", "write", "save_file"):
-        path = params.get("path") or ""
-        content = params.get("content") or ""
-        full_path = os.path.join(workspace_root, path) if not os.path.isabs(path) else path
-        
+        raw_path = params.get("path") or ""
+        content = params.get("content") or params.get("raw", "")
+        full_path = resolve_workspace_path(raw_path, workspace_root)
+
+        # Create parent directories automatically
+        Path(full_path).parent.mkdir(parents=True, exist_ok=True)
+
         diff_text = None
         if os.path.exists(full_path):
             try:
@@ -202,56 +319,84 @@ def execute_admin_tool(tool_name: str, params: Dict[str, Any], workspace_root: s
         res = write_file_content(full_path, content)
         return {
             "tool": "write_file",
-            "path": path,
+            "path": raw_path,
+            "full_path": full_path,
             "diff": diff_text,
             **res
         }
 
     elif tool_name in ("delete", "delete_file", "remove_file", "rm"):
-        path = params.get("path") or params.get("raw", "")
-        full_path = os.path.join(workspace_root, path) if not os.path.isabs(path) else path
+        raw_path = params.get("path") or params.get("raw", "")
+        full_path = resolve_workspace_path(raw_path, workspace_root)
         res = delete_fs_entry(full_path)
-        return {"tool": "delete", "path": path, **res}
+        return {"tool": "delete", "path": raw_path, "full_path": full_path, **res}
 
     elif tool_name in ("list_dir", "list_directory", "ls"):
-        path = params.get("path") or params.get("raw", "")
-        full_path = os.path.join(workspace_root, path) if not os.path.isabs(path) else path
+        raw_path = params.get("path") or params.get("raw", "")
+        full_path = resolve_workspace_path(raw_path, workspace_root)
+        
+        display_rel = os.path.relpath(full_path, workspace_root) if os.path.exists(full_path) else (raw_path or ".")
+        if display_rel == ".":
+            display_rel = "root workspace"
+
         tree = get_workspace_tree(full_path, max_depth=2)
         
-        # Build simple readable list of entries
+        # Build readable list of entries with details
         entries = []
         if tree and "children" in tree:
             for c in tree["children"]:
-                entries.append(f"{'📁' if c.get('is_dir') else '📄'} {c.get('name')}")
+                is_d = c.get("is_dir", False)
+                sub_count = len(c.get("children", []))
+                if is_d:
+                    entries.append(f"📁 {c.get('name')} (cartella{f', ~{sub_count} elementi' if sub_count else ''})")
+                else:
+                    size_kb = round(c.get("size", 0) / 1024, 1)
+                    entries.append(f"📄 {c.get('name')}{f' ({size_kb} KB)' if size_kb else ''}")
 
         return {
             "tool": "list_dir",
-            "path": path,
+            "path": raw_path or ".",
             "full_path": full_path,
             "entries": entries,
             "tree": tree,
             "success": True,
-            "message": f"Trovati {len(entries)} elementi in {path or 'root'}."
+            "message": f"Trovati {len(entries)} elementi in '{display_rel}'."
         }
 
     elif tool_name in ("search_code", "grep"):
         query = params.get("query") or params.get("raw", "")
-        path = params.get("path") or workspace_root
-        res = search_workspace_files(path, query)
-        return {"tool": "search_code", "query": query, **res}
+        raw_path = params.get("path") or "."
+        full_path = resolve_workspace_path(raw_path, workspace_root)
+        res = search_workspace_files(full_path, query)
+        return {"tool": "search_code", "query": query, "path": raw_path, **res}
 
     elif tool_name in ("pipeline", "tasks", "set_tasks", "update_pipeline"):
-        tasks = params.get("tasks", [])
-        if isinstance(tasks, str):
+        raw_tasks = params.get("tasks") or params.get("task_list") or params.get("pipeline") or params.get("items") or []
+        if isinstance(raw_tasks, str):
             try:
-                tasks = json.loads(tasks)
+                raw_tasks = json.loads(raw_tasks)
             except Exception:
-                tasks = [{"id": "1", "title": tasks, "status": "in_progress"}]
+                lines = [l.strip("- *0123456789.) ").strip() for l in raw_tasks.splitlines() if l.strip()]
+                raw_tasks = [{"id": str(i+1), "title": l, "status": "pending"} for i, l in enumerate(lines)]
+
+        normalized_tasks = []
+        if isinstance(raw_tasks, list):
+            for i, t in enumerate(raw_tasks):
+                if isinstance(t, dict):
+                    t_id = str(t.get("id") or (i + 1))
+                    t_title = str(t.get("title") or t.get("name") or t.get("task") or f"Task {i+1}")
+                    t_status = str(t.get("status") or "pending").lower()
+                    if t_status not in ("pending", "in_progress", "done"):
+                        t_status = "done" if "complet" in t_status or "done" in t_status else ("in_progress" if "prog" in t_status or "corr" in t_status else "pending")
+                    normalized_tasks.append({"id": t_id, "title": t_title, "status": t_status})
+                elif isinstance(t, str) and t.strip():
+                    normalized_tasks.append({"id": str(i+1), "title": t.strip(), "status": "pending"})
+
         return {
             "tool": "pipeline",
-            "tasks": tasks,
+            "tasks": normalized_tasks,
             "success": True,
-            "message": f"Pipeline aggiornata con {len(tasks)} sotto-task."
+            "message": f"Pipeline aggiornata con {len(normalized_tasks)} sotto-task."
         }
 
     elif tool_name in ("complete_goal", "finish_task", "task_complete"):

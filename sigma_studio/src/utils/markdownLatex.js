@@ -269,6 +269,21 @@ function processInlineFormatting(text) {
   return text;
 }
 
+export function formatCodeBlockHtml(code, lang = '') {
+  const cleanLang = (lang || '').trim();
+  const displayLang = cleanLang ? cleanLang.toUpperCase() : 'CODE';
+  const langClass = cleanLang ? ` class="language-${escapeHtml(cleanLang)}"` : '';
+  const escapedCode = escapeHtml(code.trimEnd());
+
+  return `<div class="chat-code-block-wrapper" data-lang="${escapeHtml(cleanLang)}">` +
+    `<div class="chat-code-header">` +
+      `<span class="chat-code-lang">${displayLang}</span>` +
+      `<button class="chat-copy-code-btn" type="button" title="Copia codice">📋 Copia</button>` +
+    `</div>` +
+    `<pre><code${langClass}>${escapedCode}</code></pre>` +
+  `</div>`;
+}
+
 function isTableStart(lines, index) {
   if (index + 1 >= lines.length) return false;
   const current = lines[index].trim();
@@ -307,8 +322,7 @@ function processBlocks(text) {
       } else {
         // Close code block
         inCodeBlock = false;
-        const langClass = codeBlockLang ? ` class="language-${escapeHtml(codeBlockLang)}"` : '';
-        result.push(`<pre><code${langClass}>${escapeHtml(codeBlockContent)}</code></pre>`);
+        result.push(formatCodeBlockHtml(codeBlockContent, codeBlockLang));
         i++;
         continue;
       }
@@ -461,8 +475,7 @@ function processBlocks(text) {
 
   // Handle unclosed code block
   if (inCodeBlock) {
-    const langClass = codeBlockLang ? ` class="language-${escapeHtml(codeBlockLang)}"` : '';
-    result.push(`<pre><code${langClass}>${escapeHtml(codeBlockContent)}</code></pre>`);
+    result.push(formatCodeBlockHtml(codeBlockContent, codeBlockLang));
   }
 
   return result.join('\n');
@@ -492,8 +505,7 @@ export function renderMarkdownLatex(text) {
     const codeBlocks = [];
     let processed = text.replace(/```(\w*)\n([\s\S]*?)```/g, (match, lang, code) => {
       const idx = codeBlocks.length;
-      const langClass = lang ? ` class="language-${escapeHtml(lang)}"` : '';
-      codeBlocks.push(`<pre><code${langClass}>${escapeHtml(code.trimEnd())}</code></pre>`);
+      codeBlocks.push(formatCodeBlockHtml(code, lang));
       return `%%CODEBLOCK_${idx}%%`;
     });
 

@@ -341,9 +341,17 @@ class UniversalSigmaEngine:
         # If specific identifier, try direct resolve
         path = resolve_model_dir(model_identifier)
 
-        # Fallback for alias or when identifier wasn't found directly: pick first available model directory with weights
+        # Fallback for alias or when identifier wasn't found directly: pick best available quantized GGUF model directory with weights
         if path is None:
-            candidates = list_model_dirs()
+            def _rank_model(p: str) -> int:
+                b = os.path.basename(p).lower()
+                if any(q in b for q in ("q4", "q5", "q8", "q6", "int4", "int8", "fp8")):
+                    return 1
+                if "gguf" in b:
+                    return 2
+                return 3
+
+            candidates = sorted(list_model_dirs(), key=_rank_model)
             path = candidates[0] if candidates else None
 
         if path is None:
