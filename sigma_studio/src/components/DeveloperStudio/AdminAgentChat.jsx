@@ -45,10 +45,22 @@ const createNewTask = (title = 'Nuovo Task') => ({
     {
       role: 'assistant',
       content: '👋 Ciao! Sono il tuo **Admin AI Developer Agent** di Sigma Studio.\n\nHo permessi completi di amministrazione sul workspace: posso esplorare, modificare, creare ed eliminare file, ed eseguire comandi PowerShell/Bash direttamente nel terminale.\n\nCome posso aiutarti nello sviluppo?',
-      tools: []
+      tools: [],
+      timestamp: new Date().toISOString()
     }
   ]
 });
+
+const formatMessageTimestamp = (isoString) => {
+  if (!isoString) return '';
+  try {
+    const d = new Date(isoString);
+    if (isNaN(d.getTime())) return '';
+    return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+  } catch (e) {
+    return '';
+  }
+};
 
 const formatTimeAgo = (isoString) => {
   if (!isoString) return '';
@@ -68,8 +80,12 @@ const formatTimeAgo = (isoString) => {
 
 const cleanMessageText = (text) => {
   if (!text) return '';
-  let cleaned = text.replace(/```tool:\w+\s*[\s\S]*?```/gi, '');
-  cleaned = cleaned.replace(/<(?:execute_command|shell|terminal|read_file|write_to_file|list_dir|search_code)>[\s\S]*?<\/(?:execute_command|shell|terminal|read_file|write_to_file|list_dir|search_code)>/gi, '');
+  let cleaned = text;
+  // Remove completed or in-progress tool code blocks
+  cleaned = cleaned.replace(/```tool:\w+[\s\S]*?(?:```|$)/gi, '');
+  cleaned = cleaned.replace(/```(?:json|bash|sh|powershell)?\s*\{[\s\S]*?"(?:tool|action|command|path)"[\s\S]*?(?:```|$)/gi, '');
+  // Remove completed or in-progress XML tool tags
+  cleaned = cleaned.replace(/<(?:execute_command|shell|terminal|read_file|write_to_file|list_dir|search_code|tool)>[\s\S]*?(?:<\/(?:execute_command|shell|terminal|read_file|write_to_file|list_dir|search_code|tool)>|$)/gi, '');
   return cleaned.trim();
 };
 
@@ -262,7 +278,9 @@ export default function AdminAgentChat({
   const [input, setInput] = useState('');
   const [autoScroll, setAutoScroll] = useState(true);
   const [isStreaming, setIsStreaming] = useState(false);
+  const [agentStatus, setAgentStatus] = useState('');
   const [expandedThoughts, setExpandedThoughts] = useState({});
+  const [expandedTools, setExpandedTools] = useState({});
 
   // File attachments & Speech recognition state
   const [attachedFiles, setAttachedFiles] = useState([]);
@@ -326,7 +344,7 @@ export default function AdminAgentChat({
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, [showTaskMenu]);
 
-  const scrollToBottom = (instant = true) => {
+  const scrollToBottom = () => {
     if (!autoScroll || isUserScrolledUpRef.current || !messagesContainerRef.current) return;
     const container = messagesContainerRef.current;
 
@@ -336,24 +354,32 @@ export default function AdminAgentChat({
 
     rafScrollRef.current = requestAnimationFrame(() => {
       if (!container) return;
-      if (instant) {
-        container.scrollTop = container.scrollHeight;
-      } else {
-        container.scrollTo({ top: container.scrollHeight, behavior: 'smooth' });
-      }
+      container.scrollTop = container.scrollHeight;
     });
+  };
+
+  const handleWheel = (e) => {
+    if (e.deltaY < 0) {
+      isUserScrolledUpRef.current = true;
+    } else if (e.deltaY > 0 && messagesContainerRef.current) {
+      const { scrollTop, scrollHeight, clientHeight } = messagesContainerRef.current;
+      if (scrollHeight - scrollTop - clientHeight < 50) {
+        isUserScrolledUpRef.current = false;
+      }
+    }
   };
 
   const handleScrollMessages = (e) => {
     const { scrollTop, scrollHeight, clientHeight } = e.currentTarget;
-    const isAtBottom = scrollHeight - scrollTop - clientHeight < 60;
-    isUserScrolledUpRef.current = !isAtBottom;
+    if (scrollHeight - scrollTop - clientHeight < 30) {
+      isUserScrolledUpRef.current = false;
+    }
   };
 
   // Fluid Auto-scroll without animation conflicts
   useEffect(() => {
     if (autoScroll && !isUserScrolledUpRef.current) {
-      scrollToBottom(true);
+      scrollToBottom();
     }
   }, [messages, isStreaming, autoScroll]);
 
@@ -414,6 +440,13 @@ export default function AdminAgentChat({
 
   const toggleThought = (idx) => {
     setExpandedThoughts(prev => ({ ...prev, [idx]: !prev[idx] }));
+  };
+
+  const toggleTool = (toolKey) => {
+    setExpandedTools(prev => ({
+      ...prev,
+      [toolKey]: prev[toolKey] === undefined ? false : !prev[toolKey]
+    }));
   };
 
   const handleFileSelect = (e) => {
@@ -564,7 +597,7 @@ export default function AdminAgentChat({
           updatedAt: new Date().toISOString(),
           messages: [
             ...newMessages,
-            { role: 'assistant', content: '', thought: '', tools: [], isStreaming: true }
+            { role: 'assistant', content: '', thought: '', tools: [], isStreaming: true, timestamp: new Date().toISOString() }
           ]
         };
       }
@@ -573,6 +606,7 @@ export default function AdminAgentChat({
 
     setInput('');
     setIsStreaming(true);
+    setAgentStatus(`⏳ Inizializzazione e caricamento pesi modello (${selectedModel})...`);
 
     try {
       const response = await fetch('/api/developer/agent/chat', {
@@ -614,6 +648,12 @@ export default function AdminAgentChat({
           try {
             const event = JSON.parse(dataStr);
 
+            // Handle status notifications (e.g. Model loading into VRAM, Tool running)
+            if (event.type === 'status') {
+              setAgentStatus(event.text || '');
+              continue;
+            }
+
             // If a subsequent turn starts (e.g. after tool execution), seal previous message and start fresh step!
             if (event.type === 'turn_start' && event.turn > 1) {
               setTasks(prev => prev.map(t => {
@@ -627,7 +667,8 @@ export default function AdminAgentChat({
                     content: '',
                     thought: '',
                     tools: [],
-                    isStreaming: true
+                    isStreaming: true,
+                    timestamp: new Date().toISOString()
                   });
                   activeMsgIndex = msgs.length - 1;
                   return { ...t, messages: msgs, updatedAt: new Date().toISOString() };
@@ -638,6 +679,7 @@ export default function AdminAgentChat({
             }
 
             if (event.type === 'turn_end') {
+              setAgentStatus('');
               setTasks(prev => prev.map(t => {
                 if (t.id === currentTaskId) {
                   const msgs = [...t.messages];
@@ -658,8 +700,10 @@ export default function AdminAgentChat({
 
                 if (event.type === 'token') {
                   cur.content = (cur.content || '') + event.token;
+                  if (agentStatus) setAgentStatus('');
                 } else if (event.type === 'thought') {
                   cur.thought = (cur.thought || '') + event.token;
+                  if (agentStatus) setAgentStatus('');
                 } else if (event.type === 'metrics') {
                   cur.metrics = {
                     tps: event.tps,
@@ -674,13 +718,6 @@ export default function AdminAgentChat({
                   cur.tools = (cur.tools || []).map(toolItem => 
                     toolItem.tool === event.tool ? { ...toolItem, result: event.result, status: 'done' } : toolItem
                   );
-                  // Trigger tree refresh when tools complete
-                  onRefreshTree?.();
-
-                  // If diff generated, notify parent
-                  if (event.result?.diff && onApplyDiff) {
-                    onApplyDiff(event.result.diff, event.result.path, event.result.content);
-                  }
                 }
 
                 msgs[activeMsgIndex] = cur;
@@ -1018,6 +1055,7 @@ export default function AdminAgentChat({
       {/* Messages List */}
       <div 
         ref={messagesContainerRef}
+        onWheel={handleWheel}
         onScroll={handleScrollMessages}
         style={{
           flex: 1,
@@ -1034,13 +1072,23 @@ export default function AdminAgentChat({
             <div style={{
               display: 'flex',
               alignItems: 'center',
-              gap: '6px',
+              justifyContent: 'space-between',
               fontSize: '0.68rem',
               fontWeight: 700,
               color: msg.role === 'user' ? '#00f2fe' : (isLight ? '#57606a' : '#8b949e')
             }}>
-              {msg.role === 'user' ? <User size={12} /> : <Bot size={12} />}
-              <span>{msg.role === 'user' ? 'Tu' : 'Admin AI Agent'}</span>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                {msg.role === 'user' ? <User size={12} /> : <Bot size={12} />}
+                <span>{msg.role === 'user' ? 'Tu' : 'Admin AI Agent'}</span>
+              </div>
+              <span style={{
+                fontSize: '0.60rem',
+                fontWeight: 500,
+                color: isLight ? '#8c959f' : '#6e7681',
+                fontFamily: 'monospace'
+              }}>
+                {formatMessageTimestamp(msg.timestamp || new Date().toISOString())}
+              </span>
             </div>
 
             {/* Collapsible Thinking Bubble */}
@@ -1091,9 +1139,33 @@ export default function AdminAgentChat({
             {/* Message Bubble Content */}
             {(() => {
               const contentText = msg.role === 'user' ? msg.content : cleanMessageText(msg.content);
-              if (!contentText && (!msg.attachments || msg.attachments.length === 0)) return null;
+              const showLoadingBanner = msg.isStreaming && msg.role === 'assistant' && !contentText && (!msg.thought || !msg.thought.trim());
+
+              if (!contentText && (!msg.attachments || msg.attachments.length === 0) && !showLoadingBanner) return null;
               return (
                 <div>
+                  {/* Model Loading / Inference Alert Card */}
+                  {showLoadingBanner && (
+                    <div style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '8px',
+                      padding: '8px 12px',
+                      borderRadius: '8px',
+                      background: isLight ? 'rgba(0, 242, 254, 0.12)' : 'rgba(0, 242, 254, 0.08)',
+                      border: '1px solid rgba(0, 242, 254, 0.35)',
+                      color: isLight ? '#0070f3' : '#00f2fe',
+                      fontSize: '0.74rem',
+                      fontWeight: 600,
+                      boxShadow: '0 2px 8px rgba(0, 242, 254, 0.15)',
+                      animation: 'pulse 1.8s infinite',
+                      marginBottom: '4px'
+                    }}>
+                      <RefreshCw size={13} className="spin" />
+                      <span>{agentStatus || `⏳ Inizializzazione e caricamento pesi modello (${selectedModel})...`}</span>
+                    </div>
+                  )}
+
                   {msg.attachments && msg.attachments.length > 0 && (
                     <div style={{
                       display: 'flex',
@@ -1145,7 +1217,7 @@ export default function AdminAgentChat({
               );
             })()}
 
-            {/* Generation Metrics Bar (t/s, TTFT, Tokens, Duration) */}
+            {/* Generation Metrics Bar (t/s, TTFT, Tokens, Duration, Datastamp) */}
             {msg.metrics && msg.role === 'assistant' && (
               <div style={{
                 display: 'flex',
@@ -1170,6 +1242,9 @@ export default function AdminAgentChat({
                 {msg.metrics.duration_s > 0 && (
                   <span>• {msg.metrics.duration_s}s</span>
                 )}
+                <span style={{ marginLeft: 'auto', opacity: 0.75 }}>
+                  🕒 {formatMessageTimestamp(msg.timestamp || new Date().toISOString())}
+                </span>
               </div>
             )}
 
@@ -1180,6 +1255,8 @@ export default function AdminAgentChat({
                   const isDone = t.status === 'done';
                   const isSuccess = t.result ? t.result.success !== false : true;
                   const hasDiff = !!t.result?.diff;
+                  const toolKey = `${idx}_${tIdx}_${t.tool}`;
+                  const isExpanded = expandedTools[toolKey] ?? true;
 
                   return (
                     <div
@@ -1195,19 +1272,24 @@ export default function AdminAgentChat({
                         fontSize: '0.7rem'
                       }}
                     >
-                      {/* Action Header Alert Banner */}
-                      <div style={{
-                        padding: '6px 10px',
-                        background: isDone 
-                          ? (isSuccess 
-                              ? (isLight ? 'rgba(63, 185, 80, 0.1)' : 'rgba(63, 185, 80, 0.08)')
-                              : (isLight ? 'rgba(239, 68, 68, 0.1)' : 'rgba(239, 68, 68, 0.08)'))
-                          : (isLight ? 'rgba(0, 242, 254, 0.1)' : 'rgba(0, 242, 254, 0.08)'),
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'space-between',
-                        borderBottom: isLight ? '1px solid rgba(0,0,0,0.06)' : '1px solid rgba(255,255,255,0.06)'
-                      }}>
+                      {/* Action Header Alert Banner (Click to toggle expand/collapse) */}
+                      <div 
+                        onClick={() => toggleTool(toolKey)}
+                        style={{
+                          padding: '6px 10px',
+                          background: isDone 
+                            ? (isSuccess 
+                                ? (isLight ? 'rgba(63, 185, 80, 0.1)' : 'rgba(63, 185, 80, 0.08)')
+                                : (isLight ? 'rgba(239, 68, 68, 0.1)' : 'rgba(239, 68, 68, 0.08)'))
+                            : (isLight ? 'rgba(0, 242, 254, 0.1)' : 'rgba(0, 242, 254, 0.08)'),
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'space-between',
+                          borderBottom: isExpanded ? (isLight ? '1px solid rgba(0,0,0,0.06)' : '1px solid rgba(255,255,255,0.06)') : 'none',
+                          cursor: 'pointer',
+                          userSelect: 'none'
+                        }}
+                      >
                         <span style={{ 
                           fontWeight: 800, 
                           color: isDone ? (isSuccess ? '#3fb950' : '#ef4444') : '#00f2fe', 
@@ -1229,105 +1311,111 @@ export default function AdminAgentChat({
                           </span>
                         </span>
 
-                        <span style={{
-                          fontSize: '0.62rem',
-                          padding: '2px 8px',
-                          borderRadius: '12px',
-                          background: isDone 
-                            ? (isSuccess ? 'rgba(63, 185, 80, 0.2)' : 'rgba(239, 68, 68, 0.2)')
-                            : 'rgba(0, 242, 254, 0.2)',
-                          color: isDone ? (isSuccess ? '#3fb950' : '#ef4444') : '#00f2fe',
-                          fontWeight: 800,
-                          display: 'flex',
-                          alignItems: 'center',
-                          gap: '4px'
-                        }}>
-                          {isDone ? (isSuccess ? '✓ Completato' : '✕ Errore') : '⏳ In esecuzione...'}
-                        </span>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                          <span style={{
+                            fontSize: '0.62rem',
+                            padding: '2px 8px',
+                            borderRadius: '12px',
+                            background: isDone 
+                              ? (isSuccess ? 'rgba(63, 185, 80, 0.2)' : 'rgba(239, 68, 68, 0.2)')
+                              : 'rgba(0, 242, 254, 0.2)',
+                            color: isDone ? (isSuccess ? '#3fb950' : '#ef4444') : '#00f2fe',
+                            fontWeight: 800,
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '4px'
+                          }}>
+                            {isDone ? (isSuccess ? '✓ Completato' : '✕ Errore') : '⏳ In esecuzione...'}
+                          </span>
+                          {isExpanded ? <ChevronUp size={12} color="#8b949e" /> : <ChevronDown size={12} color="#8b949e" />}
+                        </div>
                       </div>
 
                       {/* Action Details Body */}
-                      <div style={{ padding: '8px 10px', display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                        {t.params?.command && (
-                          <div style={{
-                            fontFamily: '"JetBrains Mono", Consolas, monospace',
-                            color: '#3fb950',
-                            fontSize: '0.68rem',
-                            background: isLight ? '#f6f8fa' : '#161b22',
-                            padding: '4px 8px',
-                            borderRadius: '5px',
-                            border: isLight ? '1px solid #d0d7de' : '1px solid rgba(255,255,255,0.06)'
-                          }}>
-                            $ {t.params.command}
-                          </div>
-                        )}
-
-                        {t.params?.path && (
-                          <div style={{ fontFamily: 'monospace', color: isLight ? '#57606a' : '#8b949e', fontSize: '0.66rem' }}>
-                            📂 Percorso: <strong>{t.params.path}</strong>
-                          </div>
-                        )}
-
-                        {t.result?.message && (
-                          <div style={{ 
-                            color: t.result.success !== false ? (isLight ? '#24292f' : '#e6edf3') : '#ef4444', 
-                            fontSize: '0.68rem', 
-                            lineHeight: 1.4,
-                            marginTop: '2px', 
-                            fontWeight: 500 
-                          }}>
-                            {t.result.message}
-                          </div>
-                        )}
-
-                        {/* Diff Preview & Apply button */}
-                        {hasDiff && (
-                          <div style={{ marginTop: '6px', borderTop: isLight ? '1px solid #d0d7de' : '1px solid rgba(255,255,255,0.08)', paddingTop: '6px' }}>
-                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '4px' }}>
-                              <span style={{ fontSize: '0.64rem', fontWeight: 700, color: '#00f2fe' }}>
-                                ⚡ Modifiche Proposte nel File
-                              </span>
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  onApplyDiff?.(t.result.diff, t.result.path, t.result.content);
-                                }}
-                                style={{
-                                  padding: '3px 10px',
-                                  borderRadius: '5px',
-                                  background: '#3fb950',
-                                  border: 'none',
-                                  color: '#fff',
-                                  fontSize: '0.64rem',
-                                  fontWeight: 800,
-                                  cursor: 'pointer'
-                                }}
-                              >
-                                Visualizza / Applica Diff
-                              </button>
-                            </div>
-                            <pre style={{
-                              margin: 0,
-                              padding: '6px 8px',
-                              maxHeight: '120px',
-                              overflowY: 'auto',
-                              background: '#07090e',
-                              borderRadius: '4px',
-                              fontSize: '0.64rem',
-                              fontFamily: 'Consolas, monospace',
-                              lineHeight: 1.35
+                      {isExpanded && (
+                        <div style={{ padding: '8px 10px', display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                          {t.params?.command && (
+                            <div style={{
+                              fontFamily: '"JetBrains Mono", Consolas, monospace',
+                              color: '#3fb950',
+                              fontSize: '0.68rem',
+                              background: isLight ? '#f6f8fa' : '#161b22',
+                              padding: '4px 8px',
+                              borderRadius: '5px',
+                              border: isLight ? '1px solid #d0d7de' : '1px solid rgba(255,255,255,0.06)'
                             }}>
-                              {t.result.diff.split('\n').slice(0, 15).map((line, dIdx) => (
-                                <div key={dIdx} style={{
-                                  color: line.startsWith('+') ? '#3fb950' : (line.startsWith('-') ? '#ef4444' : '#8b949e')
-                                }}>
-                                  {line}
-                                </div>
-                              ))}
-                            </pre>
-                          </div>
-                        )}
-                      </div>
+                              $ {t.params.command}
+                            </div>
+                          )}
+
+                          {t.params?.path && (
+                            <div style={{ fontFamily: 'monospace', color: isLight ? '#57606a' : '#8b949e', fontSize: '0.66rem' }}>
+                              📂 Percorso: <strong>{t.params.path}</strong>
+                            </div>
+                          )}
+
+                          {t.result?.message && (
+                            <div style={{ 
+                              color: t.result.success !== false ? (isLight ? '#24292f' : '#e6edf3') : '#ef4444', 
+                              fontSize: '0.68rem', 
+                              lineHeight: 1.4,
+                              marginTop: '2px', 
+                              fontWeight: 500 
+                            }}>
+                              {t.result.message}
+                            </div>
+                          )}
+
+                          {/* Diff Preview & Apply button */}
+                          {hasDiff && (
+                            <div style={{ marginTop: '6px', borderTop: isLight ? '1px solid #d0d7de' : '1px solid rgba(255,255,255,0.08)', paddingTop: '6px' }}>
+                              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '4px' }}>
+                                <span style={{ fontSize: '0.64rem', fontWeight: 700, color: '#00f2fe' }}>
+                                  ⚡ Modifiche Proposte nel File
+                                </span>
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    onApplyDiff?.(t.result.diff, t.result.path, t.result.content);
+                                  }}
+                                  style={{
+                                    padding: '3px 10px',
+                                    borderRadius: '5px',
+                                    background: '#3fb950',
+                                    border: 'none',
+                                    color: '#fff',
+                                    fontSize: '0.64rem',
+                                    fontWeight: 800,
+                                    cursor: 'pointer'
+                                  }}
+                                >
+                                  Visualizza / Applica Diff
+                                </button>
+                              </div>
+                              <pre style={{
+                                margin: 0,
+                                padding: '6px 8px',
+                                maxHeight: '120px',
+                                overflowY: 'auto',
+                                background: '#07090e',
+                                borderRadius: '4px',
+                                fontSize: '0.64rem',
+                                fontFamily: 'Consolas, monospace',
+                                lineHeight: 1.35
+                              }}>
+                                {t.result.diff.split('\n').slice(0, 15).map((line, dIdx) => (
+                                  <div key={dIdx} style={{
+                                    color: line.startsWith('+') ? '#3fb950' : (line.startsWith('-') ? '#ef4444' : '#8b949e')
+                                  }}>
+                                    {line}
+                                  </div>
+                                ))}
+                              </pre>
+                            </div>
+                          )}
+                        </div>
+                      )}
                     </div>
                   );
                 })}
@@ -1438,6 +1526,25 @@ export default function AdminAgentChat({
               </button>
             </div>
           ))}
+        </div>
+      )}
+
+      {/* Live Agent / Engine Status Banner */}
+      {isStreaming && agentStatus && (
+        <div style={{
+          padding: '5px 12px',
+          background: isLight ? 'rgba(0, 242, 254, 0.12)' : 'rgba(0, 242, 254, 0.08)',
+          borderTop: isLight ? '1px solid rgba(0, 242, 254, 0.25)' : '1px solid rgba(0, 242, 254, 0.2)',
+          display: 'flex',
+          alignItems: 'center',
+          gap: '8px',
+          fontSize: '0.70rem',
+          fontWeight: 600,
+          color: isLight ? '#0070f3' : '#00f2fe',
+          boxShadow: '0 -2px 10px rgba(0, 242, 254, 0.06)'
+        }}>
+          <RefreshCw size={12} className="spin" />
+          <span>{agentStatus}</span>
         </div>
       )}
 

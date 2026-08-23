@@ -260,6 +260,14 @@ def stream_admin_agent_turn(
                     m_content = f"{m_content}\n\n" + "\n\n".join(att_texts)
             full_messages.append({"role": m.get("role", "user"), "content": m_content})
 
+    # Ensure full_messages fits comfortably in model context window (sliding window)
+    if len(full_messages) > 2:
+        system_msg = full_messages[0]
+        conversation = full_messages[1:]
+        while len(conversation) > 2 and sum(len(m.get("content", "")) for m in conversation) > 24000:
+            conversation.pop(0)
+        full_messages = [system_msg] + conversation
+
     last_user_prompt = full_messages[-1].get("content", "") if len(full_messages) > 1 else "Ciao"
 
     current_turn = 0
@@ -271,12 +279,17 @@ def stream_admin_agent_turn(
         current_turn += 1
         accumulated_response = []
         in_think_block = False
+        in_tool_block = False
+        has_notified_tool = False
         turn_tokens = 0
         turn_first_token_time = None
         t_call_start = time.perf_counter()
 
         yield {"type": "turn_start", "turn": current_turn}
-        yield {"type": "status", "text": "🧠 Elaborazione in corso..." if current_turn == 1 else "🔍 Sintesi risultati..."}
+        if current_turn == 1:
+            yield {"type": "status", "text": f"🧠 Preparazione e caricamento modello ({model_name or 'sigmaengine'})..."}
+        else:
+            yield {"type": "status", "text": "🔍 Sintesi e formattazione risposta..."}
 
         try:
             for chunk in sigma_engine.generate_stream(
@@ -287,6 +300,11 @@ def stream_admin_agent_turn(
                 model_name=model_name or "sigmaengine",
                 messages=full_messages
             ):
+                if chunk.get("model_status") or (chunk.get("status") and chunk.get("text")):
+                    status_text = chunk.get("model_status") or chunk.get("text")
+                    if status_text:
+                        yield {"type": "status", "text": status_text}
+
                 token = chunk.get("token", "")
                 if not token:
                     continue
@@ -316,8 +334,30 @@ def stream_admin_agent_turn(
 
                 if in_think_block:
                     yield {"type": "thought", "token": token}
-                else:
-                    yield {"type": "token", "token": token}
+                    continue
+
+                # Detect if entering or inside a structured tool block (```tool: or XML tags)
+                current_text = "".join(accumulated_response)
+                
+                if not in_tool_block:
+                    if "```tool:" in token or "```tool:" in current_text[-25:]:
+                        in_tool_block = True
+                    elif re.search(r"<(?:execute_command|shell|terminal|read_file|write_to_file|list_dir|search_code|tool)>", current_text[-35:]):
+                        in_tool_block = True
+
+                if in_tool_block:
+                    if not has_notified_tool:
+                        has_notified_tool = True
+                        yield {"type": "status", "text": "⚡ Generazione ed esecuzione azione..."}
+                    
+                    # Check if tool block closed
+                    if "```" in token and current_text.count("```") % 2 == 0:
+                        in_tool_block = False
+                    elif re.search(r"</(?:execute_command|shell|terminal|read_file|write_to_file|list_dir|search_code|tool)>", current_text[-45:]):
+                        in_tool_block = False
+                    continue
+
+                yield {"type": "token", "token": token}
 
         except Exception as e:
             yield {"type": "error", "error": f"Errore inferenza: {str(e)}"}

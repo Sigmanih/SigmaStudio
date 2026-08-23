@@ -156,7 +156,18 @@ class LlamaCppBackend(InferenceBackend):
                 "stage": "discovery",
             }
 
+        model_file = os.path.abspath(model_file)
         settings = self._plan_settings(facts, hardware, context_tokens)
+
+        # Force garbage collection and free CUDA allocator before creating Llama instance
+        import gc
+        gc.collect()
+        try:
+            import torch
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
+        except Exception:
+            pass
 
         try:
             from llama_cpp import Llama
@@ -172,9 +183,6 @@ class LlamaCppBackend(InferenceBackend):
                 verbose=False,
             )
 
-            # KV quantization needs flash attention on this backend; without it
-            # llama.cpp falls back to an unquantized cache and the plan we
-            # reported would not match what is running.
             if settings.get("kv_quant") and settings.get("flash_attn"):
                 code = _GGML_TYPES.get(settings["kv_quant"])
                 if code is not None:
@@ -188,19 +196,80 @@ class LlamaCppBackend(InferenceBackend):
             t0 = time.perf_counter()
             self._llm = self._construct(Llama, kwargs, settings)
             load_seconds = round(time.perf_counter() - t0, 2)
-
-            # Loading successfully is not the same as being able to generate.
-            # Options accepted by the constructor can still be inconsistent
-            # inside it, and that shows up mid-answer rather than here.
             self._verify_speculation(settings)
+
         except Exception as exc:
-            self._llm = None
-            return {
-                "success": False,
-                "error": f"{type(exc).__name__}: {exc}",
-                "stage": "load",
-                "settings": settings,
-            }
+            log.warning(
+                "[LlamaCpp] Primary load failed for '%s' (%s: %s). Retrying with adaptive VRAM rebalance...",
+                facts.name, type(exc).__name__, exc,
+            )
+            gc.collect()
+            try:
+                import torch
+                if torch.cuda.is_available():
+                    torch.cuda.empty_cache()
+            except Exception:
+                pass
+
+            # Fallback 1: Reduce GPU layers by ~25%, disable flash_attn and reduce batch
+            retry_settings = dict(settings)
+            cur_layers = retry_settings.get("n_gpu_layers", 0)
+            if cur_layers > 0:
+                retry_settings["n_gpu_layers"] = max(1, int(cur_layers * 0.75))
+            retry_settings["flash_attn"] = False
+            retry_settings["n_batch"] = min(retry_settings.get("n_batch", 512), 256)
+            retry_settings["kv_quant"] = None
+
+            retry_kwargs = dict(
+                model_path=model_file,
+                n_gpu_layers=retry_settings["n_gpu_layers"],
+                tensor_split=retry_settings["tensor_split"],
+                n_ctx=min(retry_settings["n_ctx"], 16384),
+                n_threads=retry_settings["n_threads"],
+                n_batch=retry_settings["n_batch"],
+                flash_attn=False,
+                verbose=False,
+            )
+
+            try:
+                t0 = time.perf_counter()
+                self._llm = self._construct(Llama, retry_kwargs, retry_settings)
+                load_seconds = round(time.perf_counter() - t0, 2)
+                settings = retry_settings
+                log.info("[LlamaCpp] Recovered '%s' with %d GPU layers", facts.name, retry_settings["n_gpu_layers"])
+            except Exception as exc2:
+                # Fallback 2: Conservative CPU/Host-RAM safe load
+                log.warning("[LlamaCpp] Partial offload retry failed (%s). Retrying in CPU safe-mode...", exc2)
+                gc.collect()
+                cpu_settings = dict(settings)
+                cpu_settings["n_gpu_layers"] = 0
+                cpu_settings["flash_attn"] = False
+                cpu_settings["n_ctx"] = min(cpu_settings.get("n_ctx", 8192), 8192)
+                cpu_settings["n_batch"] = 128
+                cpu_kwargs = dict(
+                    model_path=model_file,
+                    n_gpu_layers=0,
+                    tensor_split=None,
+                    n_ctx=cpu_settings["n_ctx"],
+                    n_threads=cpu_settings["n_threads"],
+                    n_batch=128,
+                    flash_attn=False,
+                    verbose=False,
+                )
+                try:
+                    t0 = time.perf_counter()
+                    self._llm = self._construct(Llama, cpu_kwargs, cpu_settings)
+                    load_seconds = round(time.perf_counter() - t0, 2)
+                    settings = cpu_settings
+                    log.info("[LlamaCpp] Recovered '%s' on CPU safe-mode", facts.name)
+                except Exception as exc3:
+                    self._llm = None
+                    return {
+                        "success": False,
+                        "error": f"{type(exc3).__name__}: {exc3}",
+                        "stage": "load",
+                        "settings": settings,
+                    }
 
         self._facts = facts
         self._settings = dict(settings, load_seconds=load_seconds)

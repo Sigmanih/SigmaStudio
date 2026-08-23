@@ -1091,6 +1091,15 @@ class UniversalSigmaEngine:
         )
 
         if not is_already_resident:
+            yield {
+                "token": "",
+                "status": True,
+                "type": "status",
+                "model_status": f"⏳ Caricamento pesi modello `{target_model}` in memoria/VRAM...",
+                "text": f"⏳ Caricamento pesi modello `{target_model}` in memoria/VRAM...",
+                "loading": True,
+                "done": False,
+            }
             result = self.load_native_model(target_model)
             if not result.get("success"):
                 yield {
