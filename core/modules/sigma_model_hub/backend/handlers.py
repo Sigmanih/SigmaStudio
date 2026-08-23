@@ -10,6 +10,7 @@ from core.logger import get_logger
 from .hf_client import (search_hf_models, get_hf_model_details, get_effective_hf_token,
                         persist_hf_token, resolve_hf_token)
 from .downloader_engine import downloader_manager, DEFAULT_MODELS_DIR
+from .uploader_engine import uploader_manager
 from .model_inventory import (scan_local_models, deploy_model_to_sigma_engine,
                             unload_sigma_engine_model, delete_local_model)
 
@@ -251,6 +252,106 @@ def handle_models_hf_download_remove(self):
         self.send_json_response({"success": success, "message": f"Task #{task_id} rimosso." if success else "Task non trovato."})
     except Exception as e:
         log.error("Error in handle_models_hf_download_remove: %s", e)
+        self.send_json_response({"success": False, "error": str(e)}, 500)
+
+
+def handle_models_hf_whoami(self):
+    """GET /api/models/hf/whoami — Verifica il token HF e restituisce username, organizzazioni e permessi di scrittura."""
+    try:
+        token = None
+        if hasattr(self, 'path') and '?' in self.path:
+            qs = self.path.split('?', 1)[1]
+            params = urllib.parse.parse_qs(qs)
+            token = params.get('token', [None])[0]
+
+        info = uploader_manager.get_whoami(token=token)
+        self.send_json_response(info)
+    except Exception as e:
+        log.error("Error in handle_models_hf_whoami: %s", e)
+        self.send_json_response({"authenticated": False, "error": str(e)}, 500)
+
+
+def handle_models_hf_upload(self):
+    """POST /api/models/hf/upload — Avvia il caricamento di un modello locale su Hugging Face Hub."""
+    try:
+        body = self.read_json_body() if hasattr(self, 'read_json_body') else {}
+        local_path = body.get("local_path") or body.get("path") or body.get("filename")
+        repo_id = body.get("repo_id")
+        private = bool(body.get("private", False))
+        commit_message = body.get("commit_message", "Upload model via Sigma Studio")
+        model_card = body.get("model_card")
+        token = body.get("token")
+
+        if not local_path:
+            self.send_json_response({"success": False, "error": "local_path mancante"}, 400)
+            return
+
+        if not repo_id:
+            self.send_json_response({"success": False, "error": "repo_id mancante (formato 'username/repo-name')"}, 400)
+            return
+
+        # Resolve local path if relative
+        if not os.path.isabs(local_path):
+            cfg = _load_hub_config()
+            models_dir = cfg.get("models_dir") or DEFAULT_MODELS_DIR
+            candidate = os.path.join(models_dir, local_path)
+            if os.path.exists(candidate):
+                local_path = candidate
+
+        res = uploader_manager.start_upload(
+            local_path=local_path,
+            repo_id=repo_id,
+            private=private,
+            commit_message=commit_message,
+            model_card=model_card,
+            token=token
+        )
+        status_code = 200 if res.get("success") else 400
+        self.send_json_response(res, status_code)
+    except Exception as e:
+        log.error("Error in handle_models_hf_upload: %s", e)
+        self.send_json_response({"success": False, "error": str(e)}, 500)
+
+
+def handle_models_hf_upload_tasks(self):
+    """GET /api/models/hf/upload/tasks — Restituisce l'elenco dei task di upload verso Hugging Face."""
+    try:
+        tasks = uploader_manager.list_tasks()
+        self.send_json_response({"success": True, "tasks": tasks})
+    except Exception as e:
+        log.error("Error in handle_models_hf_upload_tasks: %s", e)
+        self.send_json_response({"success": False, "error": str(e)}, 500)
+
+
+def handle_models_hf_upload_cancel(self):
+    """POST /api/models/hf/upload/cancel — Annulla un caricamento attivo verso Hugging Face."""
+    try:
+        body = self.read_json_body() if hasattr(self, 'read_json_body') else {}
+        task_id = body.get("task_id")
+        if not task_id:
+            self.send_json_response({"success": False, "error": "task_id mancante"}, 400)
+            return
+
+        success = uploader_manager.cancel_upload(task_id)
+        self.send_json_response({"success": success, "message": f"Task #{task_id} annullato." if success else "Task non trovato o non attivo."})
+    except Exception as e:
+        log.error("Error in handle_models_hf_upload_cancel: %s", e)
+        self.send_json_response({"success": False, "error": str(e)}, 500)
+
+
+def handle_models_hf_upload_remove(self):
+    """POST /api/models/hf/upload/remove — Rimuove un task completato o fallito dalla cronologia."""
+    try:
+        body = self.read_json_body() if hasattr(self, 'read_json_body') else {}
+        task_id = body.get("task_id")
+        if not task_id:
+            self.send_json_response({"success": False, "error": "task_id mancante"}, 400)
+            return
+
+        success = uploader_manager.remove_task(task_id)
+        self.send_json_response({"success": success, "message": f"Task #{task_id} rimosso." if success else "Task non trovato."})
+    except Exception as e:
+        log.error("Error in handle_models_hf_upload_remove: %s", e)
         self.send_json_response({"success": False, "error": str(e)}, 500)
 
 
@@ -674,6 +775,8 @@ def register_routes(app=None) -> None:
         '/api/models/hf/details': handle_models_hf_details,
         '/api/models/hf/downloads': handle_models_hf_downloads_list,
         '/api/models/hf/test-connection': handle_models_hf_test_connection,
+        '/api/models/hf/whoami': handle_models_hf_whoami,
+        '/api/models/hf/upload/tasks': handle_models_hf_upload_tasks,
         '/api/models/local/list': handle_models_local_list,
         '/api/models/config': handle_models_config_get,
         '/api/models/convert/info': handle_models_convert_info,
@@ -687,6 +790,9 @@ def register_routes(app=None) -> None:
         '/api/models/hf/download/cancel': handle_models_hf_download_cancel,
         '/api/models/hf/download/retry': handle_models_hf_download_retry,
         '/api/models/hf/download/remove': handle_models_hf_download_remove,
+        '/api/models/hf/upload': handle_models_hf_upload,
+        '/api/models/hf/upload/cancel': handle_models_hf_upload_cancel,
+        '/api/models/hf/upload/remove': handle_models_hf_upload_remove,
         '/api/models/hf/token/test': handle_models_hf_token_test,
         '/api/models/hf/test-connection': handle_models_hf_test_connection,
         '/api/models/local/delete': handle_models_local_delete,
@@ -706,7 +812,7 @@ def register_routes(app=None) -> None:
         for path, fn in post_routes.items():
             setattr(FastAPIHandlerAdapter, fn.__name__, fn)
             FastAPIHandlerAdapter._POST_HANDLERS[path] = fn.__name__
-        log.info('[sigma_model_hub] 10 Route Model Hub registrate su FastAPIHandlerAdapter.')
+        log.info('[sigma_model_hub] Route Model Hub registrate su FastAPIHandlerAdapter.')
     except Exception as e:
         log.warning(f'[sigma_model_hub] Avviso binding FastAPIHandlerAdapter: {e}')
 

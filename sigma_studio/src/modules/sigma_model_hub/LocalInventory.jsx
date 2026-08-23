@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { HardDrive, Zap, RefreshCw, CheckCircle2, Trash2, Folder, Power, Activity } from 'lucide-react';
+import { HardDrive, Zap, RefreshCw, CheckCircle2, Trash2, Folder, Power, Activity, Upload } from 'lucide-react';
+import HfPublishModal from './HfPublishModal.jsx';
 
 export default function LocalInventory({ isLight, addToast, onDeployRequested,
                                          activeDownloads = [] }) {
@@ -7,6 +8,7 @@ export default function LocalInventory({ isLight, addToast, onDeployRequested,
   const [loading, setLoading] = useState(true);
   const [unloading, setUnloading] = useState(false);
   const [deletingPath, setDeletingPath] = useState(null);
+  const [publishingModel, setPublishingModel] = useState(null);
 
   const cardBg = isLight ? '#ffffff' : '#0d1019';
   const cardBorder = isLight ? '1px solid rgba(190, 160, 110, 0.3)' : '1px solid rgba(255, 255, 255, 0.08)';
@@ -240,6 +242,29 @@ export default function LocalInventory({ isLight, addToast, onDeployRequested,
                 </button>
 
                 <button
+                  onClick={() => setPublishingModel(m)}
+                  title="Pubblica o carica questo modello sul tuo account Hugging Face Hub"
+                  style={{
+                    padding: '6px 12px', borderRadius: '6px',
+                    border: '1px solid rgba(255, 184, 108, 0.35)',
+                    background: isLight ? 'rgba(255, 184, 108, 0.12)' : 'rgba(255, 184, 108, 0.10)',
+                    color: '#ffb86c', fontSize: '0.74rem', fontWeight: 800, cursor: 'pointer',
+                    display: 'flex', alignItems: 'center', gap: '4px',
+                    transition: 'all 0.18s ease'
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.background = 'rgba(255, 184, 108, 0.22)';
+                    e.currentTarget.style.borderColor = '#ffb86c';
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.background = isLight ? 'rgba(255, 184, 108, 0.12)' : 'rgba(255, 184, 108, 0.10)';
+                    e.currentTarget.style.borderColor = 'rgba(255, 184, 108, 0.35)';
+                  }}
+                >
+                  <Upload size={13} /> Pubblica su HF
+                </button>
+
+                <button
                   onClick={() => handleDeleteModel(m)}
                   disabled={deletingPath === (m.path || m.filename)}
                   title="Elimina definitivamente questo modello dallo storage locale"
@@ -268,6 +293,15 @@ export default function LocalInventory({ isLight, addToast, onDeployRequested,
             </div>
           ))}
         </div>
+      )}
+
+      {publishingModel && (
+        <HfPublishModal
+          model={publishingModel}
+          onClose={() => setPublishingModel(null)}
+          isLight={isLight}
+          addToast={addToast}
+        />
       )}
     </div>
   );

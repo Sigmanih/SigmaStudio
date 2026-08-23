@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Package, Download, Play, AlertTriangle, CheckCircle2, Loader } from 'lucide-react';
+import { Package, Download, Play, AlertTriangle, CheckCircle2, Loader, Upload } from 'lucide-react';
+import HfPublishModal from './HfPublishModal.jsx';
 
 /**
  * Converts a downloaded Hugging Face checkpoint into GGUF so it can run on the
@@ -16,6 +17,7 @@ export default function GgufConverter({ isLight, addToast }) {
   const [busy, setBusy] = useState(false);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(null);
+  const [publishingModel, setPublishingModel] = useState(null);
 
   const cardBg = isLight ? '#ffffff' : 'rgba(255,255,255,0.03)';
   const cardBorder = isLight ? '1px solid #e5e7eb' : '1px solid rgba(255,255,255,0.08)';
@@ -326,12 +328,43 @@ export default function GgufConverter({ isLight, addToast }) {
                 </div>
               )}
 
-              <div style={{ fontSize: '0.72rem', color: job.status === 'failed' ? '#ef4444' : textMuted }}>
-                {job.error || job.message}
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '6px' }}>
+                <div style={{ fontSize: '0.72rem', color: job.status === 'failed' ? '#ef4444' : textMuted }}>
+                  {job.error || job.message}
+                </div>
+
+                {job.status === 'completed' && (
+                  <button
+                    onClick={() => setPublishingModel({
+                      filename: job.output_filename || `${job.source_model}-${job.quantization}.gguf`,
+                      path: job.output_path || job.output_filename,
+                      format_tag: 'GGUF',
+                      quantization: job.quantization
+                    })}
+                    style={{
+                      padding: '4px 10px', borderRadius: '6px',
+                      border: '1px solid rgba(255, 184, 108, 0.4)',
+                      background: 'rgba(255, 184, 108, 0.12)',
+                      color: '#ffb86c', fontSize: '0.70rem', fontWeight: 800,
+                      cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px'
+                    }}
+                  >
+                    <Upload size={11} /> Pubblica su Hugging Face
+                  </button>
+                )}
               </div>
             </div>
           ))}
         </div>
+      )}
+
+      {publishingModel && (
+        <HfPublishModal
+          model={publishingModel}
+          onClose={() => setPublishingModel(null)}
+          isLight={isLight}
+          addToast={addToast}
+        />
       )}
     </div>
   );
