@@ -5,7 +5,7 @@ import {
   ChevronDown, ChevronUp, SplitSquareVertical, Layers, Folder, 
   Plus, Edit2, Clock, Search, X, MessageSquare,
   Paperclip, Mic, MicOff, FileText, Upload,
-  ListTodo, CheckCircle2, Circle, CircleDot, RotateCw, Award, Play, Pause
+  ListTodo, CheckCircle2, Circle, CircleDot, RotateCw, Award, Play, Pause, Square
 } from 'lucide-react';
 import DeveloperModelSelector from './DeveloperModelSelector';
 import { renderMarkdownLatex } from '../../utils/markdownLatex';
@@ -324,6 +324,7 @@ export default function AdminAgentChat({
   const [showNewTaskInline, setShowNewTaskInline] = useState(false);
   const [loopCountdown, setLoopCountdown] = useState(null);
   const autoLoopTimeoutRef = useRef(null);
+  const abortControllerRef = useRef(null);
 
   const toggleAutoLoop = () => {
     const nextVal = !autoLoop;
@@ -337,8 +338,36 @@ export default function AdminAgentChat({
   const stopAutoLoop = () => {
     if (autoLoopTimeoutRef.current) {
       clearInterval(autoLoopTimeoutRef.current);
+      autoLoopTimeoutRef.current = null;
       setLoopCountdown(null);
     }
+  };
+
+  const handleStopGeneration = (e) => {
+    if (e) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
+    // 1. Abort active network SSE stream
+    if (abortControllerRef.current) {
+      try {
+        abortControllerRef.current.abort();
+      } catch (err) {}
+      abortControllerRef.current = null;
+    }
+    // 2. Stop Auto-Loop timer if active
+    stopAutoLoop();
+
+    // 3. Mark current streaming message as finished
+    setIsStreaming(false);
+    setAgentStatus('');
+    setTasks(prev => prev.map(t => {
+      if (t.id === activeTask.id) {
+        const msgs = (t.messages || []).map(m => m.isStreaming ? { ...m, isStreaming: false } : m);
+        return { ...t, messages: msgs, updatedAt: new Date().toISOString() };
+      }
+      return t;
+    }));
   };
 
   const toggleTaskStatus = (taskId) => {
@@ -691,10 +720,17 @@ export default function AdminAgentChat({
     setIsStreaming(true);
     setAgentStatus(`⏳ Inizializzazione e caricamento pesi modello (${selectedModel})...`);
 
+    if (abortControllerRef.current) {
+      try { abortControllerRef.current.abort(); } catch (e) {}
+    }
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
+
     try {
       const response = await fetch('/api/developer/agent/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        signal: controller.signal,
         body: JSON.stringify({
           messages: newMessages.map(m => ({ 
             role: m.role, 
@@ -837,6 +873,10 @@ export default function AdminAgentChat({
         }
       }
     } catch (err) {
+      if (err.name === 'AbortError') {
+        console.debug('Generation aborted by user');
+        return;
+      }
       setTasks(prev => prev.map(t => {
         if (t.id === currentTaskId) {
           const msgs = [...t.messages];
@@ -850,6 +890,7 @@ export default function AdminAgentChat({
         return t;
       }));
     } finally {
+      abortControllerRef.current = null;
       setIsStreaming(false);
       setAgentStatus('');
       onRefreshTree?.();
@@ -897,6 +938,16 @@ export default function AdminAgentChat({
   };
 
   const quickPrompts = [
+    ...(pipeline && pipeline.length > 0 && pipeline.some(p => p.status !== 'done') && !isStreaming ? [{
+      label: '▶️ Continua Task Pipeline',
+      prompt: "Procedi con il prossimo task pianificato nella pipeline al fine di completare l'obiettivo.",
+      highlight: true
+    }] : []),
+    ...(!isStreaming && messages.length > 1 && (!pipeline || pipeline.length === 0 || pipeline.some(p => p.status !== 'done')) ? [{
+      label: '▶️ Continua',
+      prompt: "Continua.",
+      highlight: false
+    }] : []),
     { label: '🔍 Analizza file attivo', prompt: `Analizza e descrivi l'architettura del file attivo (${activeFilePath || 'nessun file selezionato'}).` },
     { label: '🧪 Esegui test', prompt: 'Esegui i test unitari e verifica se ci sono errori da correggere.' },
     { label: '🧹 Pulisci cartella', prompt: 'Verifica la cartella data/ e rimuovi le cartelle temporanee o di prova.' }
@@ -2000,21 +2051,49 @@ export default function AdminAgentChat({
       )}
 
       {/* Live Agent / Engine Status Banner */}
-      {isStreaming && agentStatus && (
+      {isStreaming && (
         <div style={{
-          padding: '5px 12px',
+          padding: '6px 12px',
           background: isLight ? 'rgba(0, 242, 254, 0.12)' : 'rgba(0, 242, 254, 0.08)',
           borderTop: isLight ? '1px solid rgba(0, 242, 254, 0.25)' : '1px solid rgba(0, 242, 254, 0.2)',
           display: 'flex',
           alignItems: 'center',
-          gap: '8px',
+          justifyContent: 'space-between',
           fontSize: '0.70rem',
           fontWeight: 600,
           color: isLight ? '#0070f3' : '#00f2fe',
           boxShadow: '0 -2px 10px rgba(0, 242, 254, 0.06)'
         }}>
-          <RefreshCw size={12} className="spin" />
-          <span>{agentStatus}</span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0, overflow: 'hidden' }}>
+            <RefreshCw size={12} className="spin" />
+            <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+              {agentStatus || "L'agente sta elaborando la risposta..."}
+            </span>
+          </div>
+          <button
+            type="button"
+            onClick={handleStopGeneration}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '5px',
+              padding: '3px 8px',
+              borderRadius: '5px',
+              background: 'linear-gradient(135deg, #ef4444, #dc2626)',
+              border: '1px solid #b91c1c',
+              color: '#ffffff',
+              fontSize: '0.64rem',
+              fontWeight: 800,
+              cursor: 'pointer',
+              whiteSpace: 'nowrap',
+              boxShadow: '0 2px 6px rgba(239, 68, 68, 0.3)',
+              transition: 'all 0.15s ease'
+            }}
+            title="Ferma immediatamente la generazione"
+          >
+            <Square size={10} fill="#ffffff" />
+            <span>Ferma</span>
+          </button>
         </div>
       )}
 
@@ -2112,23 +2191,49 @@ export default function AdminAgentChat({
           }}
         />
 
-        <button
-          type="submit"
-          disabled={isStreaming || (!input.trim() && attachedFiles.length === 0)}
-          style={{
-            padding: '6px 12px',
-            borderRadius: '8px',
-            background: (input.trim() || attachedFiles.length > 0) && !isStreaming ? 'linear-gradient(135deg, #00f2fe, #4facfe)' : (isLight ? '#e1e4e8' : '#21262d'),
-            border: 'none',
-            color: (input.trim() || attachedFiles.length > 0) && !isStreaming ? '#000000' : '#8b949e',
-            cursor: (input.trim() || attachedFiles.length > 0) && !isStreaming ? 'pointer' : 'default',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center'
-          }}
-        >
-          {isStreaming ? <RefreshCw size={13} className="spin" /> : <Send size={13} />}
-        </button>
+        {isStreaming ? (
+          <button
+            type="button"
+            onClick={handleStopGeneration}
+            title="Ferma la generazione"
+            style={{
+              padding: '6px 12px',
+              borderRadius: '8px',
+              background: 'linear-gradient(135deg, #ef4444, #dc2626)',
+              border: '1px solid #b91c1c',
+              color: '#ffffff',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px',
+              fontWeight: 800,
+              fontSize: '0.72rem',
+              boxShadow: '0 2px 8px rgba(239, 68, 68, 0.4)',
+              transition: 'all 0.15s ease'
+            }}
+          >
+            <Square size={12} fill="#ffffff" />
+            <span>Ferma</span>
+          </button>
+        ) : (
+          <button
+            type="submit"
+            disabled={!input.trim() && attachedFiles.length === 0}
+            style={{
+              padding: '6px 12px',
+              borderRadius: '8px',
+              background: (input.trim() || attachedFiles.length > 0) ? 'linear-gradient(135deg, #00f2fe, #4facfe)' : (isLight ? '#e1e4e8' : '#21262d'),
+              border: 'none',
+              color: (input.trim() || attachedFiles.length > 0) ? '#000000' : '#8b949e',
+              cursor: (input.trim() || attachedFiles.length > 0) ? 'pointer' : 'default',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center'
+            }}
+          >
+            <Send size={13} />
+          </button>
+        )}
       </form>
 
       <style>{`

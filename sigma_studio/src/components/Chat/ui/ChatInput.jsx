@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Send, Paperclip, RefreshCw, StopCircle, Mic, MicOff, AudioLines, Volume2, VolumeX, Sliders } from 'lucide-react';
+import { Send, Paperclip, RefreshCw, StopCircle, Mic, MicOff, AudioLines, Volume2, VolumeX, Sliders, Square } from 'lucide-react';
 import { setVoiceConfig as saveVoiceConfigToSpeechEngine, getVoiceConfig } from '../audioSpeech';
 
 export default function ChatInput({
@@ -308,8 +308,22 @@ export default function ChatInput({
           {attachedFiles.length > 0 && <span className="chat-attach-count">{attachedFiles.length}</span>}
         </button>
         {loading ? (
-          <button className="chat-send-btn stop" onClick={(e) => { e.preventDefault(); onStop && onStop(e); }} title="Ferma esecuzione">
-            <Send size={16} />
+          <button 
+            className="chat-send-btn stop" 
+            onClick={(e) => { e.preventDefault(); onStop && onStop(e); }} 
+            title="Ferma task (puoi sempre riprenderlo)"
+            style={{
+              background: 'linear-gradient(135deg, #ef4444, #dc2626)',
+              borderColor: '#b91c1c',
+              color: '#ffffff',
+              boxShadow: '0 2px 8px rgba(239, 68, 68, 0.4)',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center'
+            }}
+          >
+            <Square size={14} fill="#ffffff" />
           </button>
         ) : (
           <div className="chat-input-controls-group" style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
