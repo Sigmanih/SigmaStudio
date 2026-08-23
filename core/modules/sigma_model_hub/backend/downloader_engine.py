@@ -393,6 +393,18 @@ class ModelDownloadManager:
                     os.remove(task.save_path)
                 os.rename(temp_path, task.save_path)
 
+                # Validate GGUF file integrity if applicable
+                if task.save_path.lower().endswith(".gguf") and os.path.exists(task.save_path):
+                    sz = os.path.getsize(task.save_path)
+                    if sz < 1024:
+                        with open(task.save_path, "rb") as _tf:
+                            sample = _tf.read(256)
+                        if b"git-lfs" in sample or sample.startswith(b"version https://git-lfs"):
+                            raise Exception(f"File scaricato come puntatore Git-LFS anziché binario reale ({sz} byte).")
+                    with open(task.save_path, "rb") as _tf:
+                        if _tf.read(4) != b"GGUF":
+                            raise Exception("File GGUF scaricato non valido (magic bytes errati).")
+
                 task.status = "completed"
                 task.progress_pct = 100.0
                 task.completed_at = time.time()
@@ -556,6 +568,19 @@ class ModelDownloadManager:
                         if os.path.exists(save_file):
                             os.remove(save_file)
                         os.rename(temp_file, save_file)
+
+                        # Validate GGUF shard if applicable
+                        if fname.lower().endswith(".gguf") and os.path.exists(save_file):
+                            sz = os.path.getsize(save_file)
+                            if sz < 1024:
+                                with open(save_file, "rb") as _tf:
+                                    sample = _tf.read(256)
+                                if b"git-lfs" in sample or sample.startswith(b"version https://git-lfs"):
+                                    raise Exception(f"File {fname} scaricato come puntatore Git-LFS anziché binario reale ({sz} byte).")
+                            with open(save_file, "rb") as _tf:
+                                if _tf.read(4) != b"GGUF":
+                                    raise Exception(f"File GGUF {fname} scaricato non valido (magic bytes errati).")
+
                         task.progress_pct = min(99.9, ((idx + 1) / total_files) * 100.0)
                         shard_success = True
                         break

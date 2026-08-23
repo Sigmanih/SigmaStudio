@@ -11,6 +11,8 @@
 # ==============================================================================
 import os
 import time
+import struct
+import tempfile
 from typing import Dict, Any, Generator, List, Optional, Tuple
 
 from core.logger import get_logger
@@ -20,6 +22,175 @@ from core.engine.sampling import SamplingParams
 from core.engine.cancellation import is_cancelled
 
 log = get_logger(__name__)
+
+
+class _StderrCapture:
+    """Captures low-level C stderr from llama.cpp to report precise load failure reasons."""
+    def __init__(self):
+        self._orig_fd = None
+        self._tmp = None
+        self.output = ""
+
+    def __enter__(self):
+        try:
+            self._orig_fd = os.dup(2)
+            self._tmp = tempfile.TemporaryFile(mode="w+b")
+            os.dup2(self._tmp.fileno(), 2)
+        except Exception:
+            self._orig_fd = None
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        if self._orig_fd is not None:
+            try:
+                os.dup2(self._orig_fd, 2)
+                os.close(self._orig_fd)
+                if self._tmp:
+                    self._tmp.seek(0)
+                    self.output = self._tmp.read().decode("utf-8", errors="replace")
+                    self._tmp.close()
+            except Exception:
+                pass
+
+
+def _inspect_gguf_file(filepath: str) -> Dict[str, Any]:
+    """Inspects GGUF file header to validate magic bytes, version, and architecture metadata."""
+    if not os.path.exists(filepath):
+        return {"valid": False, "error": f"File non trovato su disco: {filepath}"}
+
+    file_size = os.path.getsize(filepath)
+    if file_size == 0:
+        return {"valid": False, "error": f"File GGUF vuoto (0 byte): {os.path.basename(filepath)}"}
+
+    try:
+        with open(filepath, "rb") as f:
+            magic = f.read(4)
+            if magic != b"GGUF":
+                f.seek(0)
+                sample = f.read(256)
+                if b"git-lfs" in sample or sample.startswith(b"version https://git-lfs"):
+                    return {
+                        "valid": False,
+                        "error": (
+                            f"Il file '{os.path.basename(filepath)}' è un puntatore Git-LFS di testo ({file_size} byte) "
+                            f"invece del vero file binario GGUF. Il download da Hugging Face non è stato completato correttamente. "
+                            f"Riscarica il modello dal Model Hub."
+                        )
+                    }
+                return {
+                    "valid": False,
+                    "error": f"Header non valido: magic bytes {magic!r} invece di 'GGUF'. Il file potrebbe essere corrotto o incompleto."
+                }
+
+            version_bytes = f.read(4)
+            if len(version_bytes) < 4:
+                return {"valid": False, "error": "File GGUF troncato (impossibile leggere versione)"}
+            version, = struct.unpack("<I", version_bytes)
+
+            tensor_count_bytes = f.read(8)
+            kv_count_bytes = f.read(8)
+            if len(tensor_count_bytes) < 8 or len(kv_count_bytes) < 8:
+                return {"valid": False, "error": "File GGUF troncato (impossibile leggere metadati tensori)"}
+
+            tensor_count, kv_count = struct.unpack("<QQ", tensor_count_bytes + kv_count_bytes)
+            metadata = {}
+
+            for _ in range(min(kv_count, 80)):
+                klen_bytes = f.read(8)
+                if len(klen_bytes) < 8:
+                    break
+                klen, = struct.unpack("<Q", klen_bytes)
+                if klen > 256 or klen == 0:
+                    break
+                key_bytes = f.read(klen)
+                if len(key_bytes) < klen:
+                    break
+                key = key_bytes.decode("utf-8", errors="replace")
+
+                vtype_bytes = f.read(4)
+                if len(vtype_bytes) < 4:
+                    break
+                vtype, = struct.unpack("<I", vtype_bytes)
+
+                if vtype == 8:  # String
+                    vlen_bytes = f.read(8)
+                    if len(vlen_bytes) < 8:
+                        break
+                    vlen, = struct.unpack("<Q", vlen_bytes)
+                    if vlen > 4096:
+                        f.seek(vlen, 1)
+                        continue
+                    val_bytes = f.read(vlen)
+                    metadata[key] = val_bytes.decode("utf-8", errors="replace")
+                elif vtype == 4:  # UINT32
+                    v_bytes = f.read(4)
+                    if len(v_bytes) == 4:
+                        metadata[key] = struct.unpack("<I", v_bytes)[0]
+                elif vtype == 5:  # INT32
+                    v_bytes = f.read(4)
+                    if len(v_bytes) == 4:
+                        metadata[key] = struct.unpack("<i", v_bytes)[0]
+                elif vtype == 6:  # FLOAT32
+                    v_bytes = f.read(4)
+                    if len(v_bytes) == 4:
+                        metadata[key] = struct.unpack("<f", v_bytes)[0]
+                elif vtype == 7:  # BOOL
+                    v_bytes = f.read(1)
+                    if len(v_bytes) == 1:
+                        metadata[key] = struct.unpack("<?", v_bytes)[0]
+                else:
+                    break
+
+            arch = metadata.get("general.architecture", "sconosciuta")
+            name = metadata.get("general.name", os.path.basename(filepath))
+            return {
+                "valid": True,
+                "version": version,
+                "architecture": arch,
+                "name": name,
+                "tensor_count": tensor_count,
+                "file_size_gb": round(file_size / (1024**3), 2),
+                "metadata": metadata
+            }
+    except Exception as exc:
+        return {"valid": False, "error": f"Errore lettura header GGUF: {exc}"}
+
+
+def _diagnose_load_error(exc: Exception, captured_stderr: str, gguf_info: Dict[str, Any], settings: Dict[str, Any]) -> str:
+    """Provides specific actionable guidance on why llama.cpp failed to load the model."""
+    err_str = str(exc)
+    combined = (captured_stderr + " " + err_str).lower()
+    arch = gguf_info.get("architecture") or "sconosciuta"
+
+    if "unknown architecture" in combined or "not supported" in combined:
+        import llama_cpp
+        ver = getattr(llama_cpp, "__version__", "sconosciuta")
+        return (
+            f"Architettura GGUF '{arch}' non supportata da questa versione di llama-cpp-python (v{ver}). "
+            f"Modelli recenti come Qwen 3.5 / Qwen 3.8 richiedono una versione aggiornata di llama-cpp-python "
+            f"o una quantizzazione convertita con architettura standard (es. qwen2)."
+        )
+
+    if "failed to allocate" in combined or "out of memory" in combined or "bad_alloc" in combined or "insufficient" in combined:
+        return (
+            f"Memoria RAM/VRAM insufficiente per caricare il modello '{gguf_info.get('name', '')}' su questa macchina. "
+            f"Su architetture con poca RAM (es. Raspberry Pi o macchine senza GPU), usa un modello quantizzato più compatto (es. 1B Q4 o Q2) o riduci n_ctx."
+        )
+
+    if "invalid magic" in combined or "failed to load model from file" in err_str.lower():
+        if gguf_info.get("file_size_gb", 0) < 0.05:
+            return (
+                f"File GGUF incompleto o non valido ({gguf_info.get('file_size_gb', 0)} GB). "
+                f"Il download potrebbe essere stato interrotto o il file è un puntatore Git-LFS. Riscarica il modello."
+            )
+        if captured_stderr.strip():
+            return f"Errore caricamento llama.cpp ('{arch}'): {captured_stderr.strip()}"
+        return (
+            f"Impossibile caricare il modello GGUF ('{arch}'): {err_str}. "
+            f"Possibili cause: architettura non riconosciuta dalla build attuale di llama.cpp o memoria RAM/VRAM esaurita."
+        )
+
+    return f"{type(exc).__name__}: {exc}"
 
 # Room left on each GPU for the CUDA context and per-device scratch.
 _GPU_RESERVE_GB = 1.5
@@ -170,6 +341,24 @@ class LlamaCppBackend(InferenceBackend):
             }
 
         model_file = os.path.abspath(model_file)
+
+        # Pre-flight GGUF header inspection & file integrity check
+        gguf_info = _inspect_gguf_file(model_file)
+        if not gguf_info.get("valid"):
+            return {
+                "success": False,
+                "error": gguf_info.get("error", "File GGUF non valido"),
+                "stage": "validation",
+                "model_name": facts.name,
+                "path": model_file,
+            }
+
+        log.info(
+            "[LlamaCpp] Modello '%s' GGUF validato: architettura '%s' (v%s, %s tensori, %.2f GB)",
+            facts.name, gguf_info.get("architecture"), gguf_info.get("version"),
+            gguf_info.get("tensor_count", "?"), gguf_info.get("file_size_gb", 0.0)
+        )
+
         settings = self._plan_settings(facts, hardware, context_tokens)
 
         # Force garbage collection and free CUDA allocator before creating Llama instance
@@ -182,6 +371,12 @@ class LlamaCppBackend(InferenceBackend):
         except Exception:
             pass
 
+        captured_stderr = ""
+        last_exception = None
+
+        # ----------------------------------------------------------------------
+        # Tier 1: Primary Planned Placement
+        # ----------------------------------------------------------------------
         try:
             from llama_cpp import Llama
 
@@ -207,11 +402,14 @@ class LlamaCppBackend(InferenceBackend):
                 kwargs["draft_model"] = draft
 
             t0 = time.perf_counter()
-            self._llm = self._construct(Llama, kwargs, settings)
+            with _StderrCapture() as cap:
+                self._llm = self._construct(Llama, kwargs, settings)
+            captured_stderr = cap.output
             load_seconds = round(time.perf_counter() - t0, 2)
             self._verify_speculation(settings)
 
         except Exception as exc:
+            last_exception = exc
             log.warning(
                 "[LlamaCpp] Primary load failed for '%s' (%s: %s). Retrying with adaptive VRAM rebalance...",
                 facts.name, type(exc).__name__, exc,
@@ -224,7 +422,9 @@ class LlamaCppBackend(InferenceBackend):
             except Exception:
                 pass
 
-            # Fallback 1: Reduce GPU layers by ~25%, disable flash_attn and reduce batch
+            # ------------------------------------------------------------------
+            # Tier 2: Adaptive GPU VRAM Reduction (-25% layers, no flash_attn)
+            # ------------------------------------------------------------------
             retry_settings = dict(settings)
             cur_layers = retry_settings.get("n_gpu_layers", 0)
             if cur_layers > 0:
@@ -246,18 +446,24 @@ class LlamaCppBackend(InferenceBackend):
 
             try:
                 t0 = time.perf_counter()
-                self._llm = self._construct(Llama, retry_kwargs, retry_settings)
+                with _StderrCapture() as cap:
+                    self._llm = self._construct(Llama, retry_kwargs, retry_settings)
+                captured_stderr = cap.output
                 load_seconds = round(time.perf_counter() - t0, 2)
                 settings = retry_settings
                 log.info("[LlamaCpp] Recovered '%s' with %d GPU layers", facts.name, retry_settings["n_gpu_layers"])
             except Exception as exc2:
-                # Fallback 2: Conservative CPU/Host-RAM safe load
+                last_exception = exc2
                 log.warning("[LlamaCpp] Partial offload retry failed (%s). Retrying in CPU safe-mode...", exc2)
                 gc.collect()
+
+                # --------------------------------------------------------------
+                # Tier 3: CPU Safe-Mode (4096 context, batch 128)
+                # --------------------------------------------------------------
                 cpu_settings = dict(settings)
                 cpu_settings["n_gpu_layers"] = 0
                 cpu_settings["flash_attn"] = False
-                cpu_settings["n_ctx"] = min(cpu_settings.get("n_ctx", 8192), 8192)
+                cpu_settings["n_ctx"] = min(cpu_settings.get("n_ctx", 8192), 4096)
                 cpu_settings["n_batch"] = 128
                 cpu_kwargs = dict(
                     model_path=model_file,
@@ -271,18 +477,90 @@ class LlamaCppBackend(InferenceBackend):
                 )
                 try:
                     t0 = time.perf_counter()
-                    self._llm = self._construct(Llama, cpu_kwargs, cpu_settings)
+                    with _StderrCapture() as cap:
+                        self._llm = self._construct(Llama, cpu_kwargs, cpu_settings)
+                    captured_stderr = cap.output
                     load_seconds = round(time.perf_counter() - t0, 2)
                     settings = cpu_settings
                     log.info("[LlamaCpp] Recovered '%s' on CPU safe-mode", facts.name)
                 except Exception as exc3:
-                    self._llm = None
-                    return {
-                        "success": False,
-                        "error": f"{type(exc3).__name__}: {exc3}",
-                        "stage": "load",
-                        "settings": settings,
-                    }
+                    last_exception = exc3
+                    log.warning("[LlamaCpp] CPU standard load failed (%s). Retrying in Low-RAM Safe Mode (heap load, n_ctx=2048)...", exc3)
+                    gc.collect()
+
+                    # ----------------------------------------------------------
+                    # Tier 4: Low-Resource / Raspberry Pi Safe Mode (heap load, ctx 2048, batch 64)
+                    # ----------------------------------------------------------
+                    low_ram_settings = dict(settings)
+                    low_ram_settings["n_gpu_layers"] = 0
+                    low_ram_settings["flash_attn"] = False
+                    low_ram_settings["n_ctx"] = 2048
+                    low_ram_settings["n_batch"] = 64
+                    low_ram_kwargs = dict(
+                        model_path=model_file,
+                        n_gpu_layers=0,
+                        tensor_split=None,
+                        n_ctx=2048,
+                        n_threads=max(1, cpu_settings.get("n_threads", 4) - 1),
+                        n_batch=64,
+                        use_mmap=False,
+                        use_mlock=False,
+                        flash_attn=False,
+                        verbose=False,
+                    )
+                    try:
+                        t0 = time.perf_counter()
+                        with _StderrCapture() as cap:
+                            self._llm = self._construct(Llama, low_ram_kwargs, low_ram_settings)
+                        captured_stderr = cap.output
+                        load_seconds = round(time.perf_counter() - t0, 2)
+                        settings = low_ram_settings
+                        log.info("[LlamaCpp] Recovered '%s' on Low-RAM Safe Mode (ctx=2048)", facts.name)
+                    except Exception as exc4:
+                        last_exception = exc4
+                        log.warning("[LlamaCpp] Low-RAM Safe Mode failed (%s). Retrying with minimal context (1024)...", exc4)
+                        gc.collect()
+
+                        # ------------------------------------------------------
+                        # Tier 5: Ultra-low Context (1024 tokens)
+                        # ------------------------------------------------------
+                        micro_settings = dict(settings)
+                        micro_settings["n_gpu_layers"] = 0
+                        micro_settings["n_ctx"] = 1024
+                        micro_settings["n_batch"] = 32
+                        micro_kwargs = dict(
+                            model_path=model_file,
+                            n_gpu_layers=0,
+                            tensor_split=None,
+                            n_ctx=1024,
+                            n_threads=max(1, cpu_settings.get("n_threads", 4) - 1),
+                            n_batch=32,
+                            use_mmap=False,
+                            use_mlock=False,
+                            flash_attn=False,
+                            verbose=False,
+                        )
+                        try:
+                            t0 = time.perf_counter()
+                            with _StderrCapture() as cap:
+                                self._llm = self._construct(Llama, micro_kwargs, micro_settings)
+                            captured_stderr = cap.output
+                            load_seconds = round(time.perf_counter() - t0, 2)
+                            settings = micro_settings
+                            log.info("[LlamaCpp] Recovered '%s' with ultra-low context (1024)", facts.name)
+                        except Exception as exc5:
+                            self._llm = None
+                            diag_msg = _diagnose_load_error(exc5, captured_stderr, gguf_info, settings)
+                            log.error("[LlamaCpp] All load attempts failed for '%s': %s", facts.name, diag_msg)
+                            return {
+                                "success": False,
+                                "error": diag_msg,
+                                "stage": "load",
+                                "settings": settings,
+                                "model_name": facts.name,
+                                "architecture": gguf_info.get("architecture"),
+                                "stderr": captured_stderr.strip() if captured_stderr else None,
+                            }
 
         self._facts = facts
         self._settings = dict(settings, load_seconds=load_seconds)
@@ -674,7 +952,7 @@ class LlamaCppBackend(InferenceBackend):
         the optional keys, and the settings are corrected so the placement
         report stays true.
         """
-        optional = ("type_k", "type_v", "draft_model", "flash_attn")
+        optional = ("type_k", "type_v", "draft_model", "flash_attn", "use_mmap", "use_mlock")
         try:
             return Llama(**kwargs)
         except TypeError as exc:
