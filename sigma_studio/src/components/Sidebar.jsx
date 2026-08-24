@@ -89,13 +89,23 @@ export default function Sidebar({
   const [hiddenTabs, setHiddenTabs] = useState(() => new Set());
   
   useEffect(() => {
-    fetch('/api/skills')
-      .then(r => r.json())
-      .then(d => {
-        if (!d.success) return;
-        setHiddenTabs(new Set(d.skills.filter(s => !s.enabled && s.tab_type).map(s => s.tab_type)));
-      })
-      .catch(() => {});
+    const fetchSkills = () => {
+      fetch('/api/skills')
+        .then(r => r.json())
+        .then(d => {
+          if (!d.success) return;
+          setHiddenTabs(new Set(d.skills.filter(s => !s.enabled && s.tab_type).map(s => s.tab_type)));
+        })
+        .catch(() => {});
+    };
+    fetchSkills();
+
+    window.addEventListener('sigma_skills_updated', fetchSkills);
+    window.addEventListener('sigma_modules_updated', fetchSkills);
+    return () => {
+      window.removeEventListener('sigma_skills_updated', fetchSkills);
+      window.removeEventListener('sigma_modules_updated', fetchSkills);
+    };
   }, []);
 
   const [researchCount, setResearchCount] = useState(0);

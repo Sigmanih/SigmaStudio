@@ -27,7 +27,16 @@ export default function SkillsHub() {
     if (a.success) setApps(a.apps || []);
   }).catch(e => setMessage({ type: 'error', text: e.message })), []);
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => {
+    load();
+    const handleUpdate = () => load();
+    window.addEventListener('sigma_skills_updated', handleUpdate);
+    window.addEventListener('sigma_modules_updated', handleUpdate);
+    return () => {
+      window.removeEventListener('sigma_skills_updated', handleUpdate);
+      window.removeEventListener('sigma_modules_updated', handleUpdate);
+    };
+  }, [load]);
 
   const toggleSkill = (id, enabled) => {
     setBusy(id);
@@ -38,6 +47,8 @@ export default function SkillsHub() {
       .then(r => r.json())
       .then(d => {
         if (!d.success) setMessage({ type: 'error', text: d.error });
+        window.dispatchEvent(new CustomEvent('sigma_skills_updated'));
+        window.dispatchEvent(new CustomEvent('sigma_modules_updated', { detail: { moduleId: id, installed: enabled } }));
         return load();
       })
       .finally(() => setBusy(''));

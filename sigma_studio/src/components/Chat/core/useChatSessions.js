@@ -1,11 +1,53 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
-import { STORAGE_KEY, MAX_HISTORY, createSession, loadSessions,
+import { STORAGE_KEY, MAX_HISTORY, createSession, loadSessions, saveSessions,
          loadActiveSessionId, saveActiveSessionId } from '../chatStorage';
 
 export function useChatSessions({ selectedModel, setSelectedModel, setActionsLog, saveMessagesImmediately, loadMessagesFromStorage, welcomeMsg }) {
-  const [sessions, setSessions] = useState([]);
-  const [activeSessionId, setActiveSessionId] = useState(null);
-  const [sessionMessages, setSessionMessages] = useState({});
+  // Synchronously initialize sessions from localStorage
+  const [sessions, setSessions] = useState(() => {
+    const saved = loadSessions();
+    if (saved && saved.length > 0) return saved;
+    const s = createSession(selectedModel);
+    saveSessions([s]);
+    return [s];
+  });
+
+  // Synchronously determine active session
+  const [activeSessionId, setActiveSessionId] = useState(() => {
+    const saved = loadSessions();
+    const storedId = loadActiveSessionId();
+    if (saved && saved.length > 0) {
+      const target = (storedId ? saved.find(x => x.id === storedId) : null) || saved[0];
+      if (target) {
+        saveActiveSessionId(target.id);
+        return target.id;
+      }
+    }
+    return null;
+  });
+
+  // Synchronously initialize message cache for the active session
+  const [sessionMessages, setSessionMessages] = useState(() => {
+    const saved = loadSessions();
+    const storedId = loadActiveSessionId();
+    const target = (saved && saved.length > 0)
+      ? ((storedId ? saved.find(x => x.id === storedId) : null) || saved[0])
+      : null;
+
+    if (!target) return {};
+
+    let restored = loadMessagesFromStorage(target.id);
+    if (!restored || restored.length === 0) {
+      if (Array.isArray(target.messages) && target.messages.length > 0) {
+        restored = target.messages;
+      } else {
+        restored = [welcomeMsg];
+        saveMessagesImmediately(target.id, [welcomeMsg]);
+      }
+    }
+    return { [target.id]: restored };
+  });
+
   const [editingSessionName, setEditingSessionName] = useState(null);
   const [editNameValue, setEditNameValue] = useState('');
 
@@ -19,42 +61,12 @@ export function useChatSessions({ selectedModel, setSelectedModel, setActionsLog
   useEffect(() => { refs.sessionMessages.current = sessionMessages; }, [sessionMessages]);
   useEffect(() => { refs.activeSessionId.current = activeSessionId; }, [activeSessionId]);
 
-  // Restore the conversation on mount: auto-select the latest/first session in history and load its messages
+  // Keep active session saved in localStorage
   useEffect(() => {
-    const saved = loadSessions();
-    if (!saved || saved.length === 0) {
-      const s = createSession(selectedModel);
-      saveSessionsState([s]);
-      setSessionMessages({ [s.id]: [welcomeMsg] });
-      saveMessagesImmediately(s.id, [welcomeMsg]);
-      setActiveSessionId(s.id);
-      saveActiveSessionId(s.id);
-      return;
+    if (activeSessionId) {
+      saveActiveSessionId(activeSessionId);
     }
-
-    setSessions(saved);
-
-    // Pick the active session or the first in history (saved[0])
-    const storedId = loadActiveSessionId();
-    const target = (storedId ? saved.find(x => x.id === storedId) : null) || saved[0];
-    if (!target) return;
-
-    let restored = loadMessagesFromStorage(target.id);
-    if (!restored || restored.length === 0) {
-      if (Array.isArray(target.messages) && target.messages.length > 0) {
-        restored = target.messages;
-      } else {
-        restored = [welcomeMsg];
-      }
-    }
-
-    setSessionMessages(prev => ({ ...prev, [target.id]: restored }));
-    refs.sessionMessages.current = { [target.id]: restored };
-    setActiveSessionId(target.id);
-    refs.activeSessionId.current = target.id;
-    saveActiveSessionId(target.id);
-    if (setSelectedModel && target.model) setSelectedModel(target.model);
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [activeSessionId]);
 
   // Listen for global memory purge event to instantly reset sessions and messages
   useEffect(() => {
@@ -62,7 +74,7 @@ export function useChatSessions({ selectedModel, setSelectedModel, setActionsLog
       const s = createSession(selectedModel);
       setSessions([s]);
       refs.sessions.current = [s];
-      try { localStorage.setItem(STORAGE_KEY, JSON.stringify([s])); } catch (e) {}
+      saveSessions([s]);
       setSessionMessages({ [s.id]: [welcomeMsg] });
       refs.sessionMessages.current = { [s.id]: [welcomeMsg] };
       saveMessagesImmediately(s.id, [welcomeMsg]);
@@ -74,30 +86,30 @@ export function useChatSessions({ selectedModel, setSelectedModel, setActionsLog
     return () => window.removeEventListener('sigma-memory-cleared', handleMemoryCleared);
   }, [selectedModel, welcomeMsg, saveMessagesImmediately]);
 
-  // Remember which conversation was open, so the next load reopens it.
-  useEffect(() => {
-    saveActiveSessionId(activeSessionId);
-  }, [activeSessionId]);
-
   const saveSessionsState = useCallback((ns) => {
     setSessions(ns);
-    try { localStorage.setItem(STORAGE_KEY, JSON.stringify(ns)); } catch (e) {}
+    refs.sessions.current = ns;
+    saveSessions(ns);
   }, []);
 
   const setMessagesForSession = useCallback((sessionId, msgsOrUpdater) => {
     setSessionMessages(prev => {
-      const existing = prev[sessionId] || [];
+      const existing = prev[sessionId] || loadMessagesFromStorage(sessionId) || [];
       const next = typeof msgsOrUpdater === 'function' ? msgsOrUpdater(existing) : msgsOrUpdater;
       const updated = { ...prev, [sessionId]: next };
       refs.sessionMessages.current = updated;
+      saveMessagesImmediately(sessionId, next);
       return updated;
     });
-  }, []);
+  }, [saveMessagesImmediately, loadMessagesFromStorage]);
 
   const switchToSession = useCallback((sid) => {
     const curId = refs.activeSessionId.current;
     const curMsgs = refs.sessionMessages.current[curId];
-    if (curId && curMsgs && curMsgs.length > 0) saveMessagesImmediately(curId, curMsgs);
+    if (curId && curMsgs && curMsgs.length > 0) {
+      saveMessagesImmediately(curId, curMsgs);
+    }
+
     const s = refs.sessions.current.find(x => x.id === sid);
     if (s) {
       let msgsForSession = refs.sessionMessages.current[sid];
@@ -105,11 +117,14 @@ export function useChatSessions({ selectedModel, setSelectedModel, setActionsLog
         const stored = loadMessagesFromStorage(sid);
         msgsForSession = stored && stored.length > 0 ? stored : [welcomeMsg];
         setSessionMessages(prev => ({ ...prev, [sid]: msgsForSession }));
+        refs.sessionMessages.current[sid] = msgsForSession;
       }
       if (setSelectedModel && s.model) {
         setSelectedModel(s.model);
       }
       setActiveSessionId(sid);
+      refs.activeSessionId.current = sid;
+      saveActiveSessionId(sid);
     }
     if (setActionsLog) setActionsLog([]);
   }, [saveMessagesImmediately, loadMessagesFromStorage, welcomeMsg, setSelectedModel, setActionsLog]);
@@ -119,10 +134,13 @@ export function useChatSessions({ selectedModel, setSelectedModel, setActionsLog
     const updated = [s, ...sessions].slice(0, MAX_HISTORY);
     saveSessionsState(updated);
     setSessionMessages(prev => ({ ...prev, [s.id]: [welcomeMsg] }));
+    refs.sessionMessages.current[s.id] = [welcomeMsg];
     saveMessagesImmediately(s.id, [welcomeMsg]);
     setActiveSessionId(s.id);
+    refs.activeSessionId.current = s.id;
+    saveActiveSessionId(s.id);
     if (setActionsLog) setActionsLog([]);
-    if (setSelectedModel) setSelectedModel(s.model);
+    if (setSelectedModel && s.model) setSelectedModel(s.model);
   };
 
   const handleDeleteSession = (e, sid) => {
@@ -130,13 +148,19 @@ export function useChatSessions({ selectedModel, setSelectedModel, setActionsLog
     const ns = sessions.filter(s => s.id !== sid);
     saveSessionsState(ns);
     setSessionMessages(prev => { const next = { ...prev }; delete next[sid]; return next; });
-    try { localStorage.removeItem(`sigma_chat_msgs_${sid}`); } catch (e) {}
+    try {
+      localStorage.removeItem(`sigma_chat_msgs_${sid}`);
+      localStorage.removeItem(`sigma_chat_session_${sid}`);
+    } catch (err) {}
+
     if (activeSessionId === sid) {
-      if (ns.length > 0) switchToSession(ns[0].id);
-      else {
+      if (ns.length > 0) {
+        switchToSession(ns[0].id);
+      } else {
         const s = createSession(selectedModel);
         saveSessionsState([s]);
         setSessionMessages({ [s.id]: [welcomeMsg] });
+        refs.sessionMessages.current[s.id] = [welcomeMsg];
         saveMessagesImmediately(s.id, [welcomeMsg]);
         switchToSession(s.id);
       }
@@ -164,7 +188,7 @@ export function useChatSessions({ selectedModel, setSelectedModel, setActionsLog
   const deleteMessage = (msgIndexOrIndices) => {
     if (!activeSessionId) return;
 
-    const currentMsgs = sessionMessages[activeSessionId] || [];
+    const currentMsgs = sessionMessages[activeSessionId] || loadMessagesFromStorage(activeSessionId) || [];
     const indices = Array.isArray(msgIndexOrIndices) ? msgIndexOrIndices : [msgIndexOrIndices];
     
     // Raccoglie PID e Job ID associati ai messaggi che si stanno eliminando
@@ -201,14 +225,9 @@ export function useChatSessions({ selectedModel, setSelectedModel, setActionsLog
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ pid })
-      }).then(res => res.json())
-        .then(data => {
-          if (data.success) {
-            console.log(`[deleteMessage] Processo ${pid} terminato.`);
-          }
-        }).catch(err => {
-          console.warn(`[deleteMessage] Impossibile terminare il processo ${pid}:`, err);
-        });
+      }).catch(err => {
+        console.warn(`[deleteMessage] Impossibile terminare il processo ${pid}:`, err);
+      });
     };
 
     pidsToKill.forEach(pid => killPid(pid));
@@ -228,14 +247,10 @@ export function useChatSessions({ selectedModel, setSelectedModel, setActionsLog
         .catch(() => {});
     }
 
-    setSessionMessages(prev => {
-      const msgs = prev[activeSessionId] || [];
-      const newMsgs = msgs.filter((_, idx) => !indices.includes(idx));
-      try {
-        localStorage.setItem(`sigma_chat_session_${activeSessionId}`, JSON.stringify(newMsgs));
-      } catch (e) {}
-      return { ...prev, [activeSessionId]: newMsgs };
-    });
+    const newMsgs = currentMsgs.filter((_, idx) => !indices.includes(idx));
+    setSessionMessages(prev => ({ ...prev, [activeSessionId]: newMsgs }));
+    refs.sessionMessages.current[activeSessionId] = newMsgs;
+    saveMessagesImmediately(activeSessionId, newMsgs);
   };
 
   return {

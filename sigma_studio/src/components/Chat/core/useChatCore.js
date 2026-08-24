@@ -101,25 +101,6 @@ export default function useChatCore(extraProps = {}) {
   // Connect actions log back to sessions switch
   sessionsHook.setActionsLog = streamingHook.setActionsLog;
 
-  // Sync back actual selected model to sessions init (first load)
-  useEffect(() => {
-    if (sessionsHook.sessions.length > 0 && !sessionsHook.activeSessionId) {
-      const target = sessionsHook.sessions[0];
-      const sid = target.id;
-      let stored = loadMessagesFromStorage(sid);
-      if (!stored || stored.length === 0) {
-        if (Array.isArray(target.messages) && target.messages.length > 0) {
-          stored = target.messages;
-        } else {
-          stored = [welcomeMessageObj];
-        }
-      }
-      sessionsHook.setSessionMessages(prev => ({ ...prev, [sid]: stored }));
-      sessionsHook.setActiveSessionId(sid);
-      if (target.model) configHook.setSelectedModel(target.model);
-    }
-  }, [sessionsHook.sessions, sessionsHook.activeSessionId]);
-
   // Load configuration, models and manifestos on mount
   useEffect(() => {
     configHook.fetchConfigAndModels();
@@ -218,7 +199,7 @@ export default function useChatCore(extraProps = {}) {
 
   const messages = sessionsHook.activeSessionId
     ? (sessionsHook.sessionMessages[sessionsHook.activeSessionId] || loadMessagesFromStorage(sessionsHook.activeSessionId) || [welcomeMessageObj])
-    : [];
+    : [welcomeMessageObj];
   const currentRouting = getModelRoutingInfo(configHook.selectedModel, configHook.providerConfigs);
   const providerColors = PROVIDER_COLORS[currentRouting.provider] || { bg: '#333', color: '#ccc' };
 

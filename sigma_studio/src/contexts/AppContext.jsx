@@ -12,7 +12,7 @@ const AppContext = createContext(null);
 
 export function AppProvider({ children }) {
   const { modules, loading, fetchModules, createModule, updateModule, deleteModule } = useModules();
-  const { tasks, fetchTasks, handleTaskSave, toggleTaskStatus, deleteTask, clearAllTasks } = useTasks();
+  const { tasks, setTasks, fetchTasks, handleTaskSave, toggleTaskStatus, deleteTask, clearAllTasks } = useTasks();
   const { openTabs, activeTabId, setActiveTabId, openTab, closeTab, closeAllTabs, handleDirtyChange, handleFileDelete } = useTabs();
   const { toasts, addToast, removeToast } = useToast();
 
@@ -98,14 +98,20 @@ export function AppProvider({ children }) {
       });
       const data = await res.json();
       if (options.clearTasks) {
-        setTasks([]);
+        if (typeof clearAllTasks === 'function') {
+          await clearAllTasks();
+        } else if (typeof setTasks === 'function') {
+          setTasks([]);
+        }
       }
       if (options.clearChat) {
         try {
           localStorage.removeItem('sigma_chat_sessions');
           localStorage.removeItem('sigma_active_session');
           Object.keys(localStorage).forEach(k => {
-            if (k.startsWith('sigma_chat_msgs_')) localStorage.removeItem(k);
+            if (k.startsWith('sigma_chat_msgs_') || k.startsWith('sigma_chat_session_')) {
+              localStorage.removeItem(k);
+            }
           });
         } catch (e) {}
       }

@@ -455,6 +455,8 @@ export default function MarketplaceTab({ openTab }) {
           return nextState;
         });
         window.dispatchEvent(new CustomEvent('sigma_modules_updated', { detail: { moduleId: mod.id, installed: true } }));
+        window.dispatchEvent(new CustomEvent('sigma_skills_updated'));
+        fetchInstalledModules();
         setInstallLogs(prev => [
           ...prev,
           `[${new Date().toLocaleTimeString()}] ✅ Modulo '${mod.name}' installato e abilitato con successo!`
@@ -500,6 +502,8 @@ export default function MarketplaceTab({ openTab }) {
           return nextState;
         });
         window.dispatchEvent(new CustomEvent('sigma_modules_updated', { detail: { moduleId: mod.id, installed: false } }));
+        window.dispatchEvent(new CustomEvent('sigma_skills_updated'));
+        fetchInstalledModules();
         setInstallLogs(prev => [
           ...prev,
           `[${new Date().toLocaleTimeString()}] 🧹 Modulo '${mod.name}' disinstallato con successo!`
