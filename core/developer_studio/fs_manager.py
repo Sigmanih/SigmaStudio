@@ -8,9 +8,10 @@ Sigma Developer Studio, including tree traversal, file I/O, search, and deletion
 
 import os
 import re
+import time
 import mimetypes
 from pathlib import Path
-from typing import Dict, List, Any, Optional
+from typing import Callable, Dict, List, Any, Optional
 
 from core.logger import get_logger
 
@@ -24,6 +25,35 @@ IGNORE_DIRS = {
 IGNORE_EXTENSIONS = {
     ".pyc", ".pyd", ".pyo", ".so", ".dll", ".dylib", ".exe", ".bin", ".whl"
 }
+
+# Directories excluded from *content search* only (they may hold hundreds of GB of
+# weights, datasets and caches: walking them saturates RAM and freezes the server).
+SEARCH_IGNORE_DIRS = IGNORE_DIRS | {
+    ".backups", ".mypy_cache", ".ruff_cache", ".tox", ".turbo", ".parcel-cache",
+    ".gradle", ".svelte-kit", ".nuxt", ".expo", ".terraform", ".ipynb_checkpoints",
+    "site-packages", "coverage", "htmlcov", "out", "target",
+    "models", "checkpoints", "backbones", "shards", "weights", "wandb",
+    "hf_cache", "huggingface", "unsloth_compiled_cache"
+}
+
+# Binary / archive / weight formats that must never be read as text.
+SEARCH_IGNORE_EXTENSIONS = IGNORE_EXTENSIONS | {
+    ".gguf", ".ggml", ".safetensors", ".pt", ".pth", ".ckpt", ".onnx", ".tflite",
+    ".h5", ".npy", ".npz", ".pkl", ".pickle", ".joblib", ".arrow", ".parquet",
+    ".db", ".sqlite", ".sqlite3", ".mdb", ".pack", ".idx", ".lance",
+    ".zip", ".tar", ".gz", ".tgz", ".bz2", ".xz", ".7z", ".rar", ".msi", ".cab",
+    ".png", ".jpg", ".jpeg", ".gif", ".bmp", ".ico", ".webp", ".tif", ".tiff", ".psd",
+    ".mp3", ".wav", ".flac", ".ogg", ".mp4", ".mov", ".avi", ".mkv", ".webm",
+    ".pdf", ".doc", ".docx", ".xls", ".xlsx", ".ppt", ".pptx",
+    ".woff", ".woff2", ".ttf", ".otf", ".eot", ".map", ".class", ".jar", ".o", ".a", ".lib"
+}
+
+# Hard safety budgets for a single search request.
+SEARCH_MAX_FILE_BYTES = 2 * 1024 * 1024      # never read a file bigger than 2 MB
+SEARCH_MAX_FILES = 40_000                    # stop after this many candidate files
+SEARCH_MAX_TOTAL_BYTES = 256 * 1024 * 1024   # stop after this much text scanned
+SEARCH_TIMEOUT_SECONDS = 20.0                # wall-clock deadline
+SEARCH_MAX_MATCHES_PER_FILE = 5              # keep one noisy file from eating the cap
 
 
 def get_default_workspace_root() -> str:
@@ -274,50 +304,146 @@ def rename_fs_entry(source_path: str, target_path: str) -> Dict[str, Any]:
         return {"success": False, "error": f"Errore durante la rinomina: {str(e)}"}
 
 
+def _is_probably_binary(fp) -> bool:
+    """Detects binary content by sniffing NUL bytes in the first chunk."""
+    try:
+        head = fp.read(4096)
+    except Exception:
+        return True
+    fp.seek(0)
+    return b"\x00" in head if isinstance(head, bytes) else "\x00" in head
+
+
 def search_workspace_files(
     root_path: Optional[str] = None,
     query: str = "",
     is_regex: bool = False,
-    max_results: int = 50
+    max_results: int = 50,
+    max_file_bytes: int = SEARCH_MAX_FILE_BYTES,
+    max_files: int = SEARCH_MAX_FILES,
+    timeout_seconds: float = SEARCH_TIMEOUT_SECONDS,
+    should_cancel: Optional[Callable[[], bool]] = None
 ) -> Dict[str, Any]:
-    """Searches text occurrences across workspace files."""
+    """Searches text occurrences across workspace files under strict safety budgets.
+
+    The walk prunes heavy directories (weights, datasets, caches, node_modules) *before*
+    descending into them, skips binaries and oversized files, reads line-by-line instead
+    of loading whole files in RAM, and always stops at the deadline / file / byte caps.
+    """
     if not root_path:
         root_path = get_default_workspace_root()
 
     root = Path(root_path).resolve()
-    if not root.exists() or not query:
-        return {"success": True, "results": [], "total_matches": 0}
-
-    results: List[Dict[str, Any]] = []
-    pattern = re.compile(query if is_regex else re.escape(query), re.IGNORECASE)
+    if not root.exists() or not query or not str(query).strip():
+        return {"success": True, "results": [], "total_matches": 0, "capped": False}
 
     try:
-        for p in root.rglob("*"):
-            if not p.is_file():
-                continue
-            # Skip ignored directories & binaries
-            parts = p.parts
-            if any(ign in parts for ign in IGNORE_DIRS):
-                continue
-            if p.suffix in IGNORE_EXTENSIONS:
-                continue
+        pattern = re.compile(query if is_regex else re.escape(query), re.IGNORECASE)
+    except re.error as e:
+        return {"success": False, "error": f"Espressione regolare non valida: {e}", "results": []}
 
-            try:
-                content = p.read_text(encoding="utf-8", errors="ignore")
-                lines = content.splitlines()
-                for line_num, line in enumerate(lines, 1):
-                    if pattern.search(line):
-                        results.append({
-                            "path": str(p).replace("\\", "/"),
-                            "filename": p.name,
-                            "line_number": line_num,
-                            "line_content": line.strip()[:200]
-                        })
-                        if len(results) >= max_results:
-                            return {"success": True, "results": results, "capped": True}
-            except Exception:
-                continue
+    results: List[Dict[str, Any]] = []
+    deadline = time.monotonic() + max(1.0, float(timeout_seconds))
+    scanned_files = 0
+    skipped_files = 0
+    scanned_bytes = 0
+    stop_reason = None
+
+    def _budget_exceeded() -> Optional[str]:
+        if should_cancel is not None and should_cancel():
+            return "cancelled"
+        if time.monotonic() > deadline:
+            return "timeout"
+        if scanned_files >= max_files:
+            return "max_files"
+        if scanned_bytes >= SEARCH_MAX_TOTAL_BYTES:
+            return "max_bytes"
+        return None
+
+    try:
+        for dirpath, dirnames, filenames in os.walk(root, topdown=True, onerror=None):
+            # Prune heavy/ignored directories in place so os.walk never descends into them
+            dirnames[:] = [
+                d for d in dirnames
+                if d not in SEARCH_IGNORE_DIRS and not (d.startswith(".") and d not in {".github"})
+            ]
+
+            stop_reason = _budget_exceeded()
+            if stop_reason:
+                break
+
+            for name in filenames:
+                stop_reason = _budget_exceeded()
+                if stop_reason:
+                    break
+
+                fp = Path(dirpath) / name
+                if fp.suffix.lower() in SEARCH_IGNORE_EXTENSIONS or name.endswith((".min.js", ".min.css")):
+                    skipped_files += 1
+                    continue
+
+                try:
+                    size = fp.stat().st_size
+                except Exception:
+                    skipped_files += 1
+                    continue
+
+                if size == 0 or size > max_file_bytes:
+                    skipped_files += 1
+                    continue
+
+                scanned_files += 1
+                scanned_bytes += size
+                file_matches = 0
+
+                try:
+                    with open(fp, "rb") as bf:
+                        if _is_probably_binary(bf):
+                            skipped_files += 1
+                            scanned_files -= 1
+                            scanned_bytes -= size
+                            continue
+
+                    with open(fp, "r", encoding="utf-8", errors="ignore") as tf:
+                        for line_num, line in enumerate(tf, 1):
+                            if pattern.search(line):
+                                results.append({
+                                    "path": str(fp).replace("\\", "/"),
+                                    "filename": fp.name,
+                                    "line_number": line_num,
+                                    "line_content": line.strip()[:200]
+                                })
+                                file_matches += 1
+                                if len(results) >= max_results:
+                                    return {
+                                        "success": True,
+                                        "results": results,
+                                        "total_matches": len(results),
+                                        "capped": True,
+                                        "stop_reason": "max_results",
+                                        "scanned_files": scanned_files,
+                                        "skipped_files": skipped_files
+                                    }
+                                if file_matches >= SEARCH_MAX_MATCHES_PER_FILE:
+                                    break
+                except Exception:
+                    continue
+
+            if stop_reason:
+                break
     except Exception as e:
-        return {"success": False, "error": str(e), "results": []}
+        log.warning("Search failed under %s: %s", root, e)
+        return {"success": False, "error": str(e), "results": results, "total_matches": len(results)}
 
-    return {"success": True, "results": results, "capped": False}
+    if stop_reason:
+        log.info("Workspace search stopped early (%s) after %d files", stop_reason, scanned_files)
+
+    return {
+        "success": True,
+        "results": results,
+        "total_matches": len(results),
+        "capped": bool(stop_reason),
+        "stop_reason": stop_reason,
+        "scanned_files": scanned_files,
+        "skipped_files": skipped_files
+    }

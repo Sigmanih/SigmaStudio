@@ -12,7 +12,7 @@ import json
 import time
 import difflib
 from pathlib import Path
-from typing import Dict, List, Any, Optional, Generator
+from typing import Callable, Dict, List, Any, Optional, Generator
 
 from core.logger import get_logger
 from core.developer_studio.fs_manager import (
@@ -27,6 +27,12 @@ from core.developer_studio.fs_manager import (
 from core.developer_studio.terminal_runner import execute_shell_command_sync
 
 log = get_logger("admin_developer_agent")
+
+# Maximum characters of a single tool observation fed back to the model.
+# Without this cap a broad search or a verbose command can inflate the prompt
+# until RAM saturates and inference stalls.
+MAX_OBSERVATION_CHARS = 4000
+MAX_HISTORY_CHARS = 24000
 
 ADMIN_DEVELOPER_SYSTEM_PROMPT = """Sei Σ-SIGMA Developer Admin, un Pair-Programmer e Software Architect esperto integrato nativamente in Sigma Studio.
 Hai permessi di AMMINISTRATORE completi sul workspace per esplorare la struttura, leggere, creare, modificare, eliminare file ed eseguire comandi da terminale (PowerShell/Bash).
@@ -256,7 +262,12 @@ def extract_tool_invocations(text: str) -> List[Dict[str, Any]]:
     return tools
 
 
-def execute_admin_tool(tool_name: str, params: Dict[str, Any], workspace_root: str) -> Dict[str, Any]:
+def execute_admin_tool(
+    tool_name: str,
+    params: Dict[str, Any],
+    workspace_root: str,
+    should_cancel: Optional[Callable[[], bool]] = None
+) -> Dict[str, Any]:
     """Executes a single admin developer tool with full workspace resolution."""
     tool_name = tool_name.lower()
     
@@ -364,10 +375,16 @@ def execute_admin_tool(tool_name: str, params: Dict[str, Any], workspace_root: s
         }
 
     elif tool_name in ("search_code", "grep"):
-        query = params.get("query") or params.get("raw", "")
+        query = (params.get("query") or params.get("pattern") or params.get("raw", "") or "").strip()
         raw_path = params.get("path") or "."
         full_path = resolve_workspace_path(raw_path, workspace_root)
-        res = search_workspace_files(full_path, query)
+        if not query:
+            return {
+                "tool": "search_code", "query": "", "path": raw_path, "success": False,
+                "results": [],
+                "error": "Nessun termine di ricerca fornito: specifica il campo 'query'."
+            }
+        res = search_workspace_files(full_path, query, should_cancel=should_cancel)
         return {"tool": "search_code", "query": query, "path": raw_path, **res}
 
     elif tool_name in ("pipeline", "tasks", "set_tasks", "update_pipeline"):
@@ -418,7 +435,8 @@ def stream_admin_agent_turn(
     model_name: Optional[str] = None,
     temperature: float = 0.3,
     auto_execute_tools: bool = True,
-    max_turns: int = 3
+    max_turns: int = 3,
+    should_cancel: Optional[Callable[[], bool]] = None
 ) -> Generator[Dict[str, Any], None, None]:
     """
     Multi-Turn Autonomous Admin Developer Agent Loop:
@@ -429,6 +447,12 @@ def stream_admin_agent_turn(
     """
     if not workspace_root:
         workspace_root = get_default_workspace_root()
+
+    def _cancelled() -> bool:
+        try:
+            return bool(should_cancel and should_cancel())
+        except Exception:
+            return False
 
     from core.engine.unified_runtime import sigma_engine
 
@@ -452,13 +476,17 @@ def stream_admin_agent_turn(
                     m_content = f"{m_content}\n\n" + "\n\n".join(att_texts)
             full_messages.append({"role": m.get("role", "user"), "content": m_content})
 
-    # Ensure full_messages fits comfortably in model context window (sliding window)
-    if len(full_messages) > 2:
-        system_msg = full_messages[0]
-        conversation = full_messages[1:]
-        while len(conversation) > 2 and sum(len(m.get("content", "")) for m in conversation) > 24000:
+    def trim_history(msgs: List[Dict[str, str]]) -> List[Dict[str, str]]:
+        """Sliding window so the prompt never grows unbounded across tool turns."""
+        if len(msgs) <= 2:
+            return msgs
+        system_msg = msgs[0]
+        conversation = msgs[1:]
+        while len(conversation) > 2 and sum(len(m.get("content", "")) for m in conversation) > MAX_HISTORY_CHARS:
             conversation.pop(0)
-        full_messages = [system_msg] + conversation
+        return [system_msg] + conversation
+
+    full_messages = trim_history(full_messages)
 
     last_user_prompt = full_messages[-1].get("content", "") if len(full_messages) > 1 else "Ciao"
 
@@ -468,6 +496,9 @@ def stream_admin_agent_turn(
     overall_first_token_time = None
 
     while current_turn < max_turns:
+        if _cancelled():
+            yield {"type": "cancelled", "reason": "Interrotto dall'utente."}
+            return
         current_turn += 1
         accumulated_response = []
         in_think_block = False
@@ -496,6 +527,10 @@ def stream_admin_agent_turn(
                     status_text = chunk.get("model_status") or chunk.get("text")
                     if status_text:
                         yield {"type": "status", "text": status_text}
+
+                if _cancelled():
+                    yield {"type": "cancelled", "reason": "Interrotto dall'utente."}
+                    return
 
                 token = chunk.get("token", "")
                 if not token:
@@ -581,6 +616,9 @@ def stream_admin_agent_turn(
         # Execute tools and prepare observation for next turn
         tool_observations = []
         for t in tools_found:
+            if _cancelled():
+                yield {"type": "cancelled", "reason": "Interrotto dall'utente."}
+                return
             t_name = t["tool"]
             t_params = t["params"]
             
@@ -590,7 +628,7 @@ def stream_admin_agent_turn(
                 "params": t_params
             }
 
-            result = execute_admin_tool(t_name, t_params, workspace_root)
+            result = execute_admin_tool(t_name, t_params, workspace_root, should_cancel=should_cancel)
 
             yield {
                 "type": "tool_result",
@@ -626,8 +664,28 @@ def stream_admin_agent_turn(
                 obs_str += f"Pipeline aggiornata: {len(result.get('tasks', []))} task registrati."
             elif t_name in ("complete_goal", "finish_task", "task_complete"):
                 obs_str += f"Obiettivo finale completato: {result.get('summary', '')}"
+            elif t_name in ("search_code", "grep"):
+                matches = result.get("results", []) or []
+                if result.get("error"):
+                    obs_str = f"Tool 'search_code' non eseguito: {result.get('error')}\n"
+                elif not matches:
+                    obs_str += f"Nessuna corrispondenza per '{result.get('query')}' in '{result.get('path')}'."
+                else:
+                    lines = [
+                        f"{m.get('path')}:{m.get('line_number')}: {str(m.get('line_content', ''))[:160]}"
+                        for m in matches[:25]
+                    ]
+                    obs_str += (
+                        f"{len(matches)} corrispondenze per '{result.get('query')}' "
+                        f"(file analizzati: {result.get('scanned_files', 0)}):\n" + "\n".join(lines)
+                    )
+                    if result.get("capped"):
+                        obs_str += f"\n[Risultati troncati: {result.get('stop_reason') or 'limite raggiunto'}]"
             else:
                 obs_str += json.dumps(result, ensure_ascii=False)
+
+            if len(obs_str) > MAX_OBSERVATION_CHARS:
+                obs_str = obs_str[:MAX_OBSERVATION_CHARS] + "\n[...output troncato...]"
 
             tool_observations.append(obs_str)
 
@@ -637,6 +695,7 @@ def stream_admin_agent_turn(
         full_messages.append({"role": "assistant", "content": full_text})
         observation_prompt = "Risultati dei Tool eseguiti:\n" + "\n---\n".join(tool_observations) + "\n\nOra rispondi all'utente spiegando in modo chiaro ed esaustivo cosa è stato trovato o eseguito."
         full_messages.append({"role": "user", "content": observation_prompt})
+        full_messages = trim_history(full_messages)
         last_user_prompt = observation_prompt
 
     yield {"type": "done", "full_text": full_text}

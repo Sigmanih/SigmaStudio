@@ -268,38 +268,33 @@ def _module_installed(python_exe, module):
 def _llama_cpp_wheel_indexes(platform_info):
     """
     Prebuilt llama-cpp-python wheel indexes to try, best match first.
-
-    The CUDA index is keyed by the version the driver reports; nearby tags are
-    tried after it because the published set lags new driver releases. An empty
-    entry means plain PyPI, which is the right answer on macOS (Metal is built
-    in) and the only answer on ARM, where the package builds from source.
+    Only queries real, existing published indexes (cu124, cu123, cu122, cu121, cu118).
     """
     base = "https://abetlen.github.io/llama-cpp-python/whl"
 
     if platform_info.get("compute") == "cpu" and not platform_info.get("is_arm"):
-        # x86 CPU wheels are published too, and are far preferable to spending
-        # minutes compiling llama.cpp on a machine that has no accelerator.
         return [f"{base}/cpu", None]
 
     if platform_info.get("compute") != "cuda":
         return [None]
 
-    tags = []
+    # Valid published CUDA tags on abetlen repository
+    valid_cuda_tags = ["cu124", "cu123", "cu122", "cu121", "cu118"]
+    
     cuda = platform_info.get("cuda_version")
+    tags = []
     if cuda:
         major, minor = cuda
-        # A driver runs any CUDA runtime up to the one it reports, so start at
-        # the exact match and walk down.
-        for candidate in range(minor, max(minor - 5, -1), -1):
-            tags.append(f"cu{major}{candidate}")
-    # The published set lags new driver releases; these are the tags that have
-    # actually been built, tried after anything the driver hinted at.
-    for fallback in ("cu132", "cu130", "cu125", "cu124", "cu123", "cu122", "cu121", "cu118"):
-        if fallback not in tags:
-            tags.append(fallback)
+        detected_tag = f"cu{major}{minor}"
+        if detected_tag in valid_cuda_tags:
+            tags.append(detected_tag)
+    
+    for tag in valid_cuda_tags:
+        if tag not in tags:
+            tags.append(tag)
 
     wheel_urls = [f"{base}/{tag}" for tag in tags]
-    # Add Vulkan pre-built wheel index as a GPU fallback before source build
+    # Add Vulkan and direct PyPI as fallbacks
     wheel_urls.append(f"{base}/vulkan")
     wheel_urls.append(None)
     return wheel_urls
@@ -409,35 +404,39 @@ def install_inference_kernels(platform_info, force=False):
         # Limita a 2 core su Raspberry Pi per evitare cali di tensione (brownout), surriscaldamento ed esaurimento RAM
         env.setdefault("CMAKE_BUILD_PARALLEL_LEVEL", "2")
 
+    if sys.version_info >= (3, 13) and compute == "cuda":
+        print_log(
+            "[SIGMA] Notice: Python 3.13+ detected. Prebuilt wheels for llama-cpp-python "
+            "are currently published for Python <= 3.12. Will attempt PyPI source build / standard install.",
+            Colors.WARNING,
+        )
+
     for index_url in _llama_cpp_wheel_indexes(platform_info):
-        if index_url and not _index_serves_package(index_url):
+        if index_url and not _index_serves_package(index_url, timeout=5):
             continue
-        for pkg_spec in ("llama-cpp-python>=0.3.0", "llama-cpp-python"):
-            cmd = [python_exe, "-m", "pip", "install", "--default-timeout=120", pkg_spec]
-            if index_url:
-                # --only-binary matters: an index tag that was never published 404s,
-                # and without it pip would quietly fall back to PyPI and compile a
-                # CPU-only build, reporting success while dropping GPU offload.
-                cmd += ["--extra-index-url", index_url, "--only-binary=:all:"]
-                print_log(f"[SIGMA] Trying prebuilt wheels from {index_url} ({pkg_spec})", Colors.OKCYAN)
-            else:
-                print_log(f"[SIGMA] Falling back to a source build from PyPI ({pkg_spec})...", Colors.OKCYAN)
-            try:
-                subprocess.check_call(cmd, env=env)
-            except subprocess.CalledProcessError:
-                continue
-            if _module_installed(python_exe, "llama_cpp"):
-                importlib.invalidate_caches()
-                stamp[key] = {"status": "ok", "index": index_url or "pypi"}
-                _write_kernel_stamp(stamp)
-                print_log("[SIGMA] GGUF runtime ready: modelli .gguf eseguibili.", Colors.OKGREEN)
-                return True
+        pkg_spec = "llama-cpp-python"
+        cmd = [python_exe, "-m", "pip", "install", "--default-timeout=30", pkg_spec]
+        if index_url:
+            cmd += ["--extra-index-url", index_url, "--only-binary=:all:"]
+            print_log(f"[SIGMA] Trying prebuilt wheels from {index_url}...", Colors.OKCYAN)
+        else:
+            print_log(f"[SIGMA] Falling back to standard install from PyPI...", Colors.OKCYAN)
+        try:
+            subprocess.check_call(cmd, env=env)
+        except subprocess.CalledProcessError:
+            continue
+        if _module_installed(python_exe, "llama_cpp"):
+            importlib.invalidate_caches()
+            stamp[key] = {"status": "ok", "index": index_url or "pypi"}
+            _write_kernel_stamp(stamp)
+            print_log("[SIGMA] GGUF runtime ready: modelli .gguf eseguibili.", Colors.OKGREEN)
+            return True
 
     stamp[key] = {"status": "failed", "reason": "pip install failed"}
     _write_kernel_stamp(stamp)
     print_log(
         "[SIGMA] WARNING: llama-cpp-python could not be installed. Safetensors "
-        "models still work; GGUF checkpoints will not load until it is present.",
+        "models, Ollama, LM Studio and Cloud providers still work.",
         Colors.WARNING,
     )
     return False

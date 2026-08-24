@@ -25,11 +25,16 @@ if errorlevel 1 (
 )
 
 :: Ensure GGUF inference kernel (llama-cpp-python) is installed for hardware acceleration
-echo [SIGMA_SERVER] Ensuring GGUF inference runtime (llama-cpp-python) is installed...
+echo [SIGMA_SERVER] Checking GGUF inference runtime (llama-cpp-python)...
 python -c "import llama_cpp" >nul 2>nul
 if errorlevel 1 (
-    echo [SIGMA_SERVER] llama-cpp-python not found. Auto-installing optimized build for detected hardware...
+    echo [SIGMA_SERVER] llama-cpp-python not found in .venv. Attempting hardware-accelerated install...
     python sigma_launcher.py --install
+    python -c "import llama_cpp" >nul 2>nul
+    if errorlevel 1 (
+        echo [SIGMA_SERVER] Notice: GGUF runtime skipped or build failed.
+        echo [SIGMA_SERVER] Continuing launch: Safetensors, Ollama, LM Studio and Cloud models are fully operational.
+    )
 )
 
 :: Check for Python

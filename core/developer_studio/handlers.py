@@ -6,7 +6,9 @@
 
 import os
 import json
+import queue
 import asyncio
+import threading
 from pathlib import Path
 from typing import Dict, Any
 
@@ -169,18 +171,68 @@ async def handle_agent_chat(request: Request):
     model = body.get("model") or "sigmaengine"
     auto_execute = bool(body.get("auto_execute_tools", True))
 
+    # The agent loop is fully synchronous and blocking (model inference, filesystem
+    # search, shell commands). It MUST run on a worker thread: executing it inline on
+    # the event loop freezes every other Sigma Studio request until it finishes.
     async def sse_stream():
+        cancel_event = threading.Event()
+        events: "queue.Queue[Any]" = queue.Queue(maxsize=512)
+        DONE = object()
+
+        def producer():
+            try:
+                for event in stream_admin_agent_turn(
+                    messages=messages,
+                    workspace_root=workspace_root,
+                    model_name=model,
+                    auto_execute_tools=auto_execute,
+                    should_cancel=cancel_event.is_set
+                ):
+                    if cancel_event.is_set():
+                        break
+                    # Bounded queue: if the client stalls, block here instead of
+                    # accumulating the whole transcript in RAM.
+                    while not cancel_event.is_set():
+                        try:
+                            events.put(event, timeout=0.5)
+                            break
+                        except queue.Full:
+                            continue
+            except Exception as e:
+                log.exception("Admin agent stream failed: %s", e)
+                try:
+                    events.put({"type": "error", "error": str(e)}, timeout=1.0)
+                except queue.Full:
+                    pass
+            finally:
+                try:
+                    events.put(DONE, timeout=1.0)
+                except queue.Full:
+                    pass
+
+        worker = threading.Thread(target=producer, name="admin-agent-stream", daemon=True)
+        worker.start()
+
         try:
-            for event in stream_admin_agent_turn(
-                messages=messages,
-                workspace_root=workspace_root,
-                model_name=model,
-                auto_execute_tools=auto_execute
-            ):
+            while True:
+                try:
+                    event = await asyncio.to_thread(events.get, True, 1.0)
+                except queue.Empty:
+                    if not worker.is_alive():
+                        break
+                    # Heartbeat keeps proxies from dropping a long tool execution
+                    yield ": keep-alive\n\n"
+                    continue
+
+                if event is DONE:
+                    break
                 yield f"data: {json.dumps(event)}\n\n"
-                await asyncio.sleep(0.001)
-        except Exception as e:
-            yield f"data: {json.dumps({'type': 'error', 'error': str(e)})}\n\n"
+        except asyncio.CancelledError:
+            # Client aborted (Stop button / tab closed): stop the agent too.
+            cancel_event.set()
+            raise
+        finally:
+            cancel_event.set()
 
     return StreamingResponse(
         sse_stream(),
