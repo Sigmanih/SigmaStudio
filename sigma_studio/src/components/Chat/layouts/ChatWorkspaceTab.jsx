@@ -110,24 +110,7 @@ export default function ChatWorkspaceTab() {
       </div>
       <ChatHeader
         isPanel={false}
-        selectedModel={core.selectedModel}
-        availableModels={core.availableModels}
-        loadingModels={core.loadingModels}
-        showModelDropdown={core.showModelDropdown}
-        onToggleDropdown={core.openModelDropdown}
-        onSelectModel={core.handleModelSelect}
-        providerConfigs={core.providerConfigs}
-        modelBtnRef={core.refs.modelBtn}
-        favoriteModel={core.favoriteModel}
-        favoriteModels={core.favoriteModels}
-        onSetFavoriteModel={core.handleSetFavoriteModel}
-        activeManifesto={core.activeManifesto}
-        manifestos={core.manifestos}
-        showManifestoDropdown={core.showManifestoDropdown}
-        setShowManifestoDropdown={core.setShowManifestoDropdown}
-        onSelectManifesto={core.handleSelectManifesto}
-        onOpenQuickConfig={() => core.setShowQuickConfig(!core.showQuickConfig)}
-        showQuickConfig={core.showQuickConfig}
+        onOpenConfig={() => core.setShowQuickConfig(!core.showQuickConfig)}
         contextStats={core.contextStats}
         onCopyAll={() => {
           const msgs = core.messages || [];
@@ -205,11 +188,25 @@ export default function ChatWorkspaceTab() {
         setInput={core.setInput}
         loading={core.loading}
         selectedModel={core.selectedModel}
+        availableModels={core.availableModels}
+        loadingModels={core.loadingModels}
+        showModelDropdown={core.showModelDropdown}
+        onToggleModelDropdown={core.openModelDropdown}
+        onSelectModel={core.handleModelSelect}
+        providerConfigs={core.providerConfigs}
+        modelBtnRef={core.refs.modelBtn}
+        favoriteModel={core.favoriteModel}
+        favoriteModels={core.favoriteModels}
+        onSetFavoriteModel={core.handleSetFavoriteModel}
+        activeManifesto={core.activeManifesto}
+        manifestos={core.manifestos}
+        showManifestoDropdown={core.showManifestoDropdown}
+        setShowManifestoDropdown={core.setShowManifestoDropdown}
+        onSelectManifesto={core.handleSelectManifesto}
+        onOpenConfig={() => core.setShowQuickConfig(!core.showQuickConfig)}
         refs={core.refs}
         providerColors={core.providerColors}
         currentRouting={core.currentRouting}
-        webSearch={core.webSearch}
-        setWebSearch={core.setWebSearch}
         autoScroll={core.autoScroll}
         setAutoScroll={core.setAutoScroll}
         mcpAutoApprove={core.mcpAutoApprove}

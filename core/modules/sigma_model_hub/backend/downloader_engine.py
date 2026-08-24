@@ -328,6 +328,19 @@ class ModelDownloadManager:
                 return True
         return False
 
+    def clear_completed_tasks(self) -> int:
+        """Clears all completed, failed, or cancelled tasks from history."""
+        count = 0
+        with self.lock:
+            to_remove = [tid for tid, t in self.tasks.items() if t.status in ["completed", "failed", "cancelled"]]
+            for tid in to_remove:
+                self.dismissed_task_ids.add(tid)
+                task = self.tasks.pop(tid, None)
+                if task and task.model_id:
+                    self.dismissed_task_ids.add(task.model_id)
+                count += 1
+        return count
+
     def _sync_disk_models_to_tasks(self):
         """Scans disk models and ensures all completed downloaded models appear in download history."""
         try:

@@ -178,33 +178,38 @@ function escapeAttr(str) {
   return String(str).replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 }
 
-/**
- * Generate YouTube responsive video preview HTML block for a list of video objects or IDs.
- */
-function generateYouTubePreviewsHtml(videoList) {
-  if (!videoList || videoList.length === 0) return '';
-  
-  const cards = videoList.map(v => {
-    const id = typeof v === 'string' ? v : v.id;
-    const title = (typeof v === 'object' && v.title) ? v.title : 'Video Musicale YouTube';
-    const escapedTitle = escapeAttr(title);
+function extractYouTubeId(url) {
+  if (!url || typeof url !== 'string') return null;
+  if (url.includes('/results') || url.includes('/channel/') || url.includes('/user/') || url.includes('/c/')) {
+    return null;
+  }
+  const match = url.match(/(?:youtube\.com\/(?:watch\?v=|embed\/|shorts\/)|youtu\.be\/)([a-zA-Z0-9_-]{11})/i);
+  return match ? match[1] : null;
+}
 
-    return `
-<div class="youtube-preview-card" style="margin: 12px 0 6px 0; border-radius: 12px; overflow: hidden; background: #0c0e17; border: 1px solid rgba(0, 210, 255, 0.25); max-width: 620px; box-shadow: 0 8px 24px rgba(0,0,0,0.5); transition: transform 0.2s ease, border-color 0.2s ease;">
-  <div style="padding: 10px 14px; background: rgba(14, 17, 28, 0.95); border-bottom: 1px solid rgba(255, 255, 255, 0.06); display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap;">
+/**
+ * Generate YouTube responsive video preview HTML block for a single video.
+ */
+function generateSingleYouTubeCardHtml(id, title = 'Video YouTube') {
+  if (!id) return '';
+  const escapedTitle = escapeAttr(title || 'Video YouTube');
+
+  return `
+<div class="youtube-preview-card" style="margin: 8px 0 14px 0; border-radius: 12px; overflow: hidden; background: #0c0e17; border: 1px solid rgba(0, 210, 255, 0.25); max-width: 620px; box-shadow: 0 8px 24px rgba(0,0,0,0.5); transition: transform 0.2s ease, border-color 0.2s ease;">
+  <div style="padding: 8px 12px; background: rgba(14, 17, 28, 0.95); border-bottom: 1px solid rgba(255, 255, 255, 0.06); display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap;">
     <div style="display: flex; align-items: center; gap: 8px; overflow: hidden; min-width: 140px; flex: 1;">
-      <span style="display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; border-radius: 50%; background: #ff0000; color: #fff; font-size: 0.65rem; flex-shrink: 0; box-shadow: 0 0 10px rgba(255, 0, 0, 0.5);">▶</span>
-      <span style="font-size: 0.82rem; font-weight: 700; color: #f1f5f9; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="${escapedTitle}">${escapedTitle}</span>
+      <span style="display: inline-flex; align-items: center; justify-content: center; width: 20px; height: 20px; border-radius: 50%; background: #ff0000; color: #fff; font-size: 0.65rem; flex-shrink: 0; box-shadow: 0 0 10px rgba(255, 0, 0, 0.5);">▶</span>
+      <span style="font-size: 0.80rem; font-weight: 700; color: #f1f5f9; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="${escapedTitle}">${escapedTitle}</span>
     </div>
     
     <div style="display: flex; align-items: center; gap: 6px; flex-shrink: 0;">
-      <button class="chat-yt-fav-btn" data-yt-id="${id}" data-yt-title="${escapedTitle}" title="Salva nei Preferiti di Sigma Radio" style="display: inline-flex; align-items: center; gap: 4px; padding: 4px 9px; border-radius: 6px; background: rgba(239, 68, 68, 0.15); border: 1px solid rgba(239, 68, 68, 0.35); color: #ef4444; font-size: 0.72rem; font-weight: 700; cursor: pointer; transition: all 0.15s ease;">
+      <button class="chat-yt-fav-btn" data-yt-id="${id}" data-yt-title="${escapedTitle}" title="Salva nei Preferiti di Sigma Radio" style="display: inline-flex; align-items: center; gap: 4px; padding: 3px 8px; border-radius: 6px; background: rgba(239, 68, 68, 0.15); border: 1px solid rgba(239, 68, 68, 0.35); color: #ef4444; font-size: 0.70rem; font-weight: 700; cursor: pointer; transition: all 0.15s ease;">
         ❤️ Preferiti
       </button>
-      <button class="chat-yt-play-radio-btn" data-yt-id="${id}" data-yt-title="${escapedTitle}" title="Ascolta in background su Sigma Radio" style="display: inline-flex; align-items: center; gap: 4px; padding: 4px 9px; border-radius: 6px; background: rgba(0, 242, 254, 0.15); border: 1px solid rgba(0, 242, 254, 0.35); color: #00f2fe; font-size: 0.72rem; font-weight: 700; cursor: pointer; transition: all 0.15s ease;">
+      <button class="chat-yt-play-radio-btn" data-yt-id="${id}" data-yt-title="${escapedTitle}" title="Ascolta in background su Sigma Radio" style="display: inline-flex; align-items: center; gap: 4px; padding: 3px 8px; border-radius: 6px; background: rgba(0, 242, 254, 0.15); border: 1px solid rgba(0, 242, 254, 0.35); color: #00f2fe; font-size: 0.70rem; font-weight: 700; cursor: pointer; transition: all 0.15s ease;">
         ▶ Riproduci
       </button>
-      <a href="https://www.youtube.com/watch?v=${id}" target="_blank" rel="noopener noreferrer" class="chat-external-link" style="font-size: 0.72rem; color: #94a3b8; text-decoration: none; font-weight: 600; padding: 4px 8px; border-radius: 6px; background: rgba(255, 255, 255, 0.06); border: 1px solid rgba(255, 255, 255, 0.1);">YouTube ↗</a>
+      <a href="https://www.youtube.com/watch?v=${id}" target="_blank" rel="noopener noreferrer" class="chat-external-link" style="font-size: 0.70rem; color: #94a3b8; text-decoration: none; font-weight: 600; padding: 3px 7px; border-radius: 6px; background: rgba(255, 255, 255, 0.06); border: 1px solid rgba(255, 255, 255, 0.1);">YouTube ↗</a>
     </div>
   </div>
   <div style="position: relative; padding-bottom: 56.25%; height: 0; overflow: hidden; background: #000;">
@@ -219,11 +224,7 @@ function generateYouTubePreviewsHtml(videoList) {
       style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; border: 0;"
     ></iframe>
   </div>
-</div>
-`;
-  }).join('');
-
-  return `<div class="youtube-preview-container" style="display: flex; flex-direction: column; gap: 12px; margin-top: 12px;">${cards}</div>`;
+</div>`;
 }
 
 function isBadgeUrl(url) {
@@ -235,6 +236,8 @@ function isBadgeUrl(url) {
  * Must be called AFTER LaTeX rendering so we don't process $ inside KaTeX HTML.
  */
 function processInlineFormatting(text) {
+  const renderedYtIds = new Set();
+
   // Bold: **text**
   text = text.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
   // Italic: *text* (but not **)
@@ -255,14 +258,28 @@ function processInlineFormatting(text) {
     const caption = alt && alt.trim().length > 0 && !alt.startsWith('http') ? `<span class="chat-image-caption">${alt}</span>` : '';
     return `<div class="chat-image-preview-card" style="margin:14px 0;"><img src="${url}" alt="${alt}" class="chat-inline-image" loading="lazy" />${caption}</div>`;
   });
-  // Markdown links: [text](url)
+  // Markdown links: [text](url) — with instant inline YouTube video embed right underneath!
   text = text.replace(/\[([^\]]+)\]\(([^)]+)\)/g, (match, linkText, url) => {
-    return `<a href="${url}" target="_blank" rel="noopener noreferrer" class="chat-external-link" style="color: #00d2ff; text-decoration: underline; text-underline-offset: 3px; word-break: break-all;">${linkText}</a>`;
+    const linkHtml = `<a href="${url}" target="_blank" rel="noopener noreferrer" class="chat-external-link" style="color: #00d2ff; text-decoration: underline; text-underline-offset: 3px; word-break: break-all;">${linkText}</a>`;
+    const ytId = extractYouTubeId(url);
+    if (ytId && !renderedYtIds.has(ytId)) {
+      renderedYtIds.add(ytId);
+      return linkHtml + generateSingleYouTubeCardHtml(ytId, linkText);
+    }
+    return linkHtml;
   });
   // Auto-linkify raw URLs (https://... or http://...) that are NOT inside href="..." or existing <a> tags
   text = text.replace(
     /(?<!href="|href='|">)(https?:\/\/[^\s<>"'`\)]+?)(?=[.,;:!?\)]?(?:\s|$|<|"|'))/gi,
-    '<a href="$1" target="_blank" rel="noopener noreferrer" class="chat-external-link" style="color: #00d2ff; text-decoration: underline; text-underline-offset: 3px; word-break: break-all;">$1</a>'
+    (match, rawUrl) => {
+      const linkHtml = `<a href="${rawUrl}" target="_blank" rel="noopener noreferrer" class="chat-external-link" style="color: #00d2ff; text-decoration: underline; text-underline-offset: 3px; word-break: break-all;">${rawUrl}</a>`;
+      const ytId = extractYouTubeId(rawUrl);
+      if (ytId && !renderedYtIds.has(ytId)) {
+        renderedYtIds.add(ytId);
+        return linkHtml + generateSingleYouTubeCardHtml(ytId, 'Video YouTube');
+      }
+      return linkHtml;
+    }
   );
   // Strikethrough: ~~text~~
   text = text.replace(/~~(.+?)~~/g, '<del>$1</del>');
@@ -572,12 +589,6 @@ export function renderMarkdownLatex(text) {
 
     // Step 7: Linkify file paths
     processed = linkifyPaths(processed);
-
-    // Step 8: Extract YouTube videos and append responsive video previews
-    const ytVideos = extractYouTubeVideos(text);
-    if (ytVideos.length > 0) {
-      processed += generateYouTubePreviewsHtml(ytVideos);
-    }
 
     return processed;
   } catch (e) {

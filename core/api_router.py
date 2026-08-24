@@ -270,6 +270,7 @@ def register_post_handlers(handler_class):
         '/api/models/hf/download/cancel': 'handle_models_hf_download_cancel',
         '/api/models/hf/download/retry': 'handle_models_hf_download_retry',
         '/api/models/hf/download/remove': 'handle_models_hf_download_remove',
+        '/api/models/hf/downloads/clear': 'handle_models_hf_downloads_clear',
         '/api/models/hf/upload': 'handle_models_hf_upload',
         '/api/models/hf/upload/cancel': 'handle_models_hf_upload_cancel',
         '/api/models/hf/upload/remove': 'handle_models_hf_upload_remove',

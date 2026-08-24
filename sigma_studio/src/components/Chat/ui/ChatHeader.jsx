@@ -1,15 +1,8 @@
 import React from 'react';
-import { GripVertical, Cpu, FileText } from 'lucide-react';
-import ModelSelector from '../ModelSelector';
-
-const MANIFESTO_STYLE = { position: 'relative', marginLeft: '6px' };
+import { Cpu, MessageSquare } from 'lucide-react';
 
 export default function ChatHeader({
-  isDragging, onStartDrag, selectedModel, availableModels, loadingModels,
-  showModelDropdown, onToggleDropdown, onSelectModel, providerConfigs, modelBtnRef,
-  favoriteModel, favoriteModels, onSetFavoriteModel,
-  activeManifesto, manifestos, showManifestoDropdown, setShowManifestoDropdown,
-  onSelectManifesto, onDuplicateSession, onOpenQuickConfig, showQuickConfig,
+  isDragging, onStartDrag,
   onOpenConfig, onClose, isPanel = false, contextStats, onCopyAll,
 }) {
   const [copiedAll, setCopiedAll] = React.useState(false);
@@ -23,86 +16,47 @@ export default function ChatHeader({
     }
   };
 
-  const effectiveFavs = Array.isArray(favoriteModels) && favoriteModels.length > 0 
-    ? favoriteModels 
-    : (favoriteModel ? [favoriteModel] : []);
-
   return (
     <div 
       className="chat-header"
       onMouseDown={(e) => {
         if (!isPanel || !onStartDrag) return;
-        if (e.target.closest('button') || e.target.closest('.model-selector-popover') || e.target.closest('.model-selector-wrapper')) {
+        if (e.target.closest('button')) {
           return;
         }
         onStartDrag(e);
       }}
       style={{ 
         cursor: isPanel && onStartDrag ? (isDragging ? 'grabbing' : 'grab') : 'default',
-        userSelect: 'none'
+        userSelect: 'none',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        padding: '10px 14px',
+        borderBottom: '1px solid rgba(255, 255, 255, 0.08)',
+        background: 'rgba(10, 14, 26, 0.65)',
+        backdropFilter: 'blur(10px)'
       }}
     >
-      <div className="chat-header-left">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-          <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5" />
-        </svg>
-      </div>
-      <div className="chat-header-center">
-        <ModelSelector
-          modelBtnRef={modelBtnRef}
-          effectiveModelName={selectedModel}
-          showDropdown={showModelDropdown}
-          models={availableModels}
-          selectedModel={selectedModel}
-          loadingModels={loadingModels}
-          providerConfigs={providerConfigs}
-          onToggle={onToggleDropdown}
-          onSelect={onSelectModel}
-          onOpenConfig={onOpenConfig}
-          favoriteModel={favoriteModel}
-          favoriteModels={effectiveFavs}
-          onSetFavorite={onSetFavoriteModel}
-        />
-        <div className="model-selector-wrapper" style={{ position: 'relative', marginLeft: '6px' }}>
-          <button
-            className="model-selector-btn"
-            onClick={(e) => { e.stopPropagation(); setShowManifestoDropdown(!showManifestoDropdown); }}
-            style={{ gap: '4px', padding: '3px 8px', fontSize: '0.65rem' }}
-          >
-            <span>📋</span>
-            <span className={`model-selector-name ${!activeManifesto.name ? 'no-manifesto' : ''}`}>{activeManifesto.name || 'Scegli manifesto'}</span>
-            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <path d="m6 9 6 6 6-6" />
-            </svg>
-          </button>
-          {showManifestoDropdown && (
-            <div className="model-selector-popover" style={{ left: '0', transform: 'none', minWidth: '220px', maxHeight: '320px', overflowY: 'auto' }}>
-              {manifestos.length === 0 && <div className="model-selector-option disabled">Nessun manifesto installato</div>}
-              {manifestos.map(m => (
-                <div
-                  key={m.path}
-                  className={`model-selector-option ${activeManifesto.name === m.name ? 'selected' : ''}`}
-                  onClick={(e) => { e.stopPropagation(); onSelectManifesto(m); }}
-                  style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', padding: '6px 10px', gap: '2px' }}
-                >
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px', width: '100%', justifyContent: 'space-between' }}>
-                    <span style={{ fontWeight: 700, fontSize: '0.75rem' }}>
-                      📋 {m.name}
-                    </span>
-                    {activeManifesto.name === m.name && <span style={{ fontSize: '0.7rem', color: '#4ade80' }}>✓</span>}
-                  </div>
-                  {m.role && (
-                    <span style={{ fontSize: '0.65rem', color: 'var(--text-muted, #8b8fa3)', paddingLeft: '18px' }}>
-                      {m.role}
-                    </span>
-                  )}
-                </div>
-              ))}
-            </div>
-          )}
+      <div className="chat-header-left" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+        <div style={{
+          width: '24px', height: '24px', borderRadius: '6px',
+          background: 'rgba(0, 210, 255, 0.15)', border: '1px solid rgba(0, 210, 255, 0.3)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#00d2ff'
+        }}>
+          <MessageSquare size={13} />
         </div>
+        <span style={{ fontSize: '0.82rem', fontWeight: 800, color: '#f1f5f9', letterSpacing: '0.2px' }}>
+          Sigma Swarm Chat
+        </span>
+        {contextStats && typeof contextStats === 'object' && contextStats.usedTokens !== undefined && (
+          <span style={{ fontSize: '0.66rem', color: '#8b8fa3', paddingLeft: '4px' }}>
+            • {contextStats.usedTokens >= 1000 ? `${(contextStats.usedTokens / 1000).toFixed(1)}k` : contextStats.usedTokens} / {contextStats.numCtx >= 1000 ? `${Math.round(contextStats.numCtx / 1000)}k` : contextStats.numCtx} ctx
+          </span>
+        )}
       </div>
-      <div className="chat-header-right">
+
+      <div className="chat-header-right" style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
         {onCopyAll && (
           <button
             className={`chat-header-btn ${copiedAll ? 'copied' : ''}`}
@@ -115,7 +69,7 @@ export default function ChatHeader({
               background: copiedAll ? 'rgba(74, 222, 128, 0.15)' : 'rgba(255,255,255,0.05)',
               color: copiedAll ? '#4ade80' : 'var(--text-muted, #8b8fa3)',
               border: copiedAll ? '1px solid rgba(74, 222, 128, 0.3)' : '1px solid rgba(255,255,255,0.08)',
-              borderRadius: '4px',
+              borderRadius: '6px',
               cursor: 'pointer',
               display: 'flex',
               alignItems: 'center',
@@ -126,19 +80,36 @@ export default function ChatHeader({
           </button>
         )}
         {onOpenConfig && (
-          <button className="chat-header-btn" onClick={(e) => { e.stopPropagation(); onOpenConfig(); }} title="Configurazione completa">
+          <button
+            className="chat-header-btn"
+            onClick={(e) => { e.stopPropagation(); onOpenConfig(); }}
+            title="Configurazione AI & Modelli"
+            style={{ padding: '4px 6px', borderRadius: '6px', background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', cursor: 'pointer', color: '#8b8fa3' }}
+          >
             <Cpu size={14} />
           </button>
         )}
         {onClose && (
-          <button className="chat-header-btn" onClick={(e) => { e.stopPropagation(); onClose(); }} title="Riduci in basso nel dock">
+          <button
+            className="chat-header-btn"
+            onClick={(e) => { e.stopPropagation(); onClose(); }}
+            title="Riduci in basso nel dock"
+            style={{ padding: '4px 6px', borderRadius: '6px', background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', cursor: 'pointer', color: '#8b8fa3' }}
+          >
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
               <path d="M5 12h14" />
             </svg>
           </button>
         )}
         {onClose && (
-          <button className="chat-close-btn" onClick={(e) => { e.stopPropagation(); onClose(); }} title="Chiudi">✕</button>
+          <button
+            className="chat-close-btn"
+            onClick={(e) => { e.stopPropagation(); onClose(); }}
+            title="Chiudi"
+            style={{ padding: '4px 6px', borderRadius: '6px', background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.25)', cursor: 'pointer', color: '#ef4444', fontWeight: 700 }}
+          >
+            ✕
+          </button>
         )}
       </div>
     </div>

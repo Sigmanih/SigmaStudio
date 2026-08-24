@@ -488,6 +488,7 @@ try:
         handle_models_local_list, handle_models_local_delete, handle_models_config_get,
         handle_models_hf_download_start, handle_models_hf_download_repo, handle_models_hf_download_cancel,
         handle_models_hf_download_retry, handle_models_hf_download_remove,
+        handle_models_hf_download_pause, handle_models_hf_download_resume, handle_models_hf_downloads_clear,
         handle_models_hf_whoami, handle_models_hf_upload, handle_models_hf_upload_tasks,
         handle_models_hf_upload_cancel, handle_models_hf_upload_remove,
         handle_models_engine_load, handle_models_engine_unload, handle_models_config_save,
@@ -510,9 +511,12 @@ try:
     FastAPIHandlerAdapter.handle_models_config_get = handle_models_config_get
     FastAPIHandlerAdapter.handle_models_hf_download_start = handle_models_hf_download_start
     FastAPIHandlerAdapter.handle_models_hf_download_repo = handle_models_hf_download_repo
+    FastAPIHandlerAdapter.handle_models_hf_download_pause = handle_models_hf_download_pause
+    FastAPIHandlerAdapter.handle_models_hf_download_resume = handle_models_hf_download_resume
     FastAPIHandlerAdapter.handle_models_hf_download_cancel = handle_models_hf_download_cancel
     FastAPIHandlerAdapter.handle_models_hf_download_retry = handle_models_hf_download_retry
     FastAPIHandlerAdapter.handle_models_hf_download_remove = handle_models_hf_download_remove
+    FastAPIHandlerAdapter.handle_models_hf_downloads_clear = handle_models_hf_downloads_clear
     FastAPIHandlerAdapter.handle_models_hf_token_test = handle_models_hf_token_test
     FastAPIHandlerAdapter.handle_models_engine_load = handle_models_engine_load
     FastAPIHandlerAdapter.handle_models_engine_unload = handle_models_engine_unload
@@ -522,7 +526,6 @@ try:
     FastAPIHandlerAdapter.handle_models_convert_start = handle_models_convert_start
     FastAPIHandlerAdapter.handle_models_convert_tooling = handle_models_convert_tooling
     FastAPIHandlerAdapter.handle_models_browse_dirs = handle_models_browse_dirs
-
 
 except Exception as _mh_err:
     log.warning(f"[FastAPI] Avviso binding Model Hub: {_mh_err}")
@@ -1317,6 +1320,7 @@ from core.developer_studio.handlers import (
     handle_fs_create,
     handle_fs_rename,
     handle_fs_search,
+    handle_terminal_exec,
     handle_agent_chat,
     handle_workspace_roots,
     handle_get_tasks,

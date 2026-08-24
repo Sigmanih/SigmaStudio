@@ -1,16 +1,25 @@
 import React, { useState } from 'react';
-import { Send, Paperclip, RefreshCw, StopCircle, Mic, MicOff, AudioLines, Volume2, VolumeX, Sliders, Square } from 'lucide-react';
+import { Send, Paperclip, RefreshCw, StopCircle, Mic, MicOff, AudioLines, Volume2, VolumeX, Sliders, Square, ChevronDown } from 'lucide-react';
 import { setVoiceConfig as saveVoiceConfigToSpeechEngine, getVoiceConfig } from '../audioSpeech';
+import ModelSelector from '../ModelSelector';
 
 export default function ChatInput({
-  input, setInput, loading, selectedModel, refs, providerColors, currentRouting,
-  webSearch, setWebSearch, autoScroll, setAutoScroll,
+  input, setInput, loading, refs, providerColors, currentRouting,
+  autoScroll, setAutoScroll,
   mcpAutoApprove, setMcpAutoApprove,
   speakerEnabled, setSpeakerEnabled,
   isRecording, onToggleRecording,
   smartMicState = 'off', onToggleSmartMic,
   loopMaxIterations, setLoopMaxIterations, loopActive,
   onSend, onStop, onOpenFilePicker, attachedFiles,
+  // Model Selector props
+  selectedModel, availableModels, loadingModels,
+  showModelDropdown, onToggleModelDropdown, onSelectModel,
+  providerConfigs, modelBtnRef,
+  favoriteModel, favoriteModels, onSetFavoriteModel, onOpenConfig,
+  // Manifesto / Role Selector props
+  activeManifesto, manifestos,
+  showManifestoDropdown, setShowManifestoDropdown, onSelectManifesto,
   children,
 }) {
   const [showVoicePopover, setShowVoicePopover] = useState(false);
@@ -24,70 +33,128 @@ export default function ChatInput({
     });
   };
 
+  const effectiveFavs = Array.isArray(favoriteModels) && favoriteModels.length > 0 
+    ? favoriteModels 
+    : (favoriteModel ? [favoriteModel] : []);
+
   return (
     <div className="chat-input-area">
-      <div className="chat-input-top-row">
-        <div
-          className="chat-input-provider-badge"
-          style={{ backgroundColor: providerColors.bg, color: providerColors.color }}
-        >
-          {currentRouting.provider || 'ollama'}
-        </div>
-        <label
-          className={`chat-websearch-toggle ${webSearch ? 'active' : ''}`}
-          title={webSearch ? 'Ricerca Web Attiva: gli agenti consultano la rete per verificare informazioni e fonti' : 'Attiva Ricerca Web per consultare la rete'}
-        >
-          <input type="checkbox" checked={webSearch} onChange={e => setWebSearch(e.target.checked)} />
-          <span className="websearch-indicator" />
-          <span>🌐 Web Search</span>
-        </label>
-        <label className="chat-scroll-toggle" title="Auto-scroll">
-          <input type="checkbox" checked={autoScroll} onChange={e => setAutoScroll(e.target.checked)} />
-          <span>📜 Auto Scroll</span>
-        </label>
-        <label
-          className="chat-scroll-toggle"
-          title={mcpAutoApprove
-            ? 'Gli agenti eseguono subito anche gli strumenti che agiscono su casa, email e messaggi'
-            : 'Gli strumenti che agiscono verso l\'esterno aspettano la tua conferma in chat'}
-          style={{ color: mcpAutoApprove ? '#d29922' : undefined }}
-        >
-          <input
-            type="checkbox"
-            checked={!!mcpAutoApprove}
-            // Chiamata opzionale: ChatInput vive in due contesti, e uno che
-            // dimentichi di passare il setter deve lasciare la casella inerte,
-            // non far esplodere il gestore del clic.
-            onChange={e => setMcpAutoApprove?.(e.target.checked)}
+      {/* Modern Extended Model & Role Selection Strip */}
+      <div className="chat-input-controls-strip">
+        <div className="chat-input-model-role-group">
+          {/* 1. Extended Model Selector */}
+          <ModelSelector
+            modelBtnRef={modelBtnRef}
+            effectiveModelName={selectedModel}
+            showDropdown={showModelDropdown}
+            models={availableModels}
+            selectedModel={selectedModel}
+            loadingModels={loadingModels}
+            providerConfigs={providerConfigs}
+            onToggle={onToggleModelDropdown}
+            onSelect={onSelectModel}
+            onOpenConfig={onOpenConfig}
+            favoriteModel={favoriteModel}
+            favoriteModels={effectiveFavs}
+            onSetFavorite={onSetFavoriteModel}
           />
-          <span>{mcpAutoApprove ? '⚡' : '🛡️'} Auto Approve</span>
-        </label>
-        {setSpeakerEnabled !== undefined && (
-          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginLeft: 'auto', position: 'relative' }}>
-            <label 
-              className={`chat-speaker-toggle ${speakerEnabled ? 'active' : ''}`} 
-              title={speakerEnabled ? 'Speaker Agente Attivo: la voce dell\'agente riproduce la risposta' : 'Attiva lettura vocale della risposta dell\'agente (TTS)'}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: '5px',
-                fontSize: '0.68rem',
-                color: speakerEnabled ? '#00d2ff' : '#8b8fa3',
-                background: speakerEnabled ? 'rgba(0, 210, 255, 0.12)' : 'rgba(255, 255, 255, 0.03)',
-                border: speakerEnabled ? '1px solid rgba(0, 210, 255, 0.3)' : '1px solid rgba(255, 255, 255, 0.08)',
-                padding: '2px 8px',
-                borderRadius: '12px',
-                cursor: 'pointer',
-                fontWeight: 600,
-                transition: 'all 0.2s ease',
-              }}
+
+          {/* 2. Extended Role / Manifesto Selector */}
+          <div className="manifesto-selector-wrapper" style={{ position: 'relative' }}>
+            <button
+              type="button"
+              className={`manifesto-selector-btn ${!activeManifesto?.name ? 'no-manifesto' : ''}`}
+              onClick={(e) => { e.stopPropagation(); setShowManifestoDropdown && setShowManifestoDropdown(!showManifestoDropdown); }}
+              title="Seleziona il Ruolo / Manifesto dell'Agente per la conversazione"
             >
-              <input 
-                type="checkbox" 
-                checked={speakerEnabled} 
-                onChange={e => setSpeakerEnabled(e.target.checked)} 
-                style={{ display: 'none' }}
-              />
+              <span className="manifesto-icon">{activeManifesto?.icon || '📋'}</span>
+              <div className="manifesto-info">
+                <span className="manifesto-name">{activeManifesto?.name || 'Sigma Assistant'}</span>
+                {activeManifesto?.role && (
+                  <span className="manifesto-role-preview">{activeManifesto.role}</span>
+                )}
+              </div>
+              <ChevronDown size={11} className={`manifesto-chevron ${showManifestoDropdown ? 'open' : ''}`} />
+            </button>
+
+            {showManifestoDropdown && (
+              <div className="model-selector-popover manifesto-popover" style={{ left: 0, transform: 'none', minWidth: '280px', maxHeight: '340px', overflowY: 'auto', zIndex: 2100 }}>
+                {(!manifestos || manifestos.length === 0) && (
+                  <div className="model-selector-option disabled" style={{ padding: '8px 12px', fontSize: '0.74rem', color: '#8b8fa3' }}>
+                    Nessun manifesto installato
+                  </div>
+                )}
+                {(manifestos || []).map(m => (
+                  <div
+                    key={m.path || m.name}
+                    className={`model-selector-option ${activeManifesto?.name === m.name ? 'selected' : ''}`}
+                    onClick={(e) => { e.stopPropagation(); onSelectManifesto && onSelectManifesto(m); }}
+                    style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', padding: '8px 12px', gap: '2px', borderBottom: '1px solid rgba(255,255,255,0.04)' }}
+                  >
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', width: '100%', justifyContent: 'space-between' }}>
+                      <span style={{ fontWeight: 800, fontSize: '0.76rem', color: activeManifesto?.name === m.name ? '#00d2ff' : '#f1f5f9' }}>
+                        {m.icon || '📋'} {m.name}
+                      </span>
+                      {activeManifesto?.name === m.name && <span style={{ fontSize: '0.74rem', color: '#10b981', fontWeight: 800 }}>✓</span>}
+                    </div>
+                    {m.role && (
+                      <span style={{ fontSize: '0.64rem', color: 'var(--text-muted, #8b8fa3)', paddingLeft: '18px', lineHeight: 1.3 }}>
+                        {m.role}
+                      </span>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Right Group: Utility Toggles & Speaker Controls */}
+        <div className="chat-input-utilities-group">
+          <label className="chat-scroll-toggle" title="Auto-scroll verso l'ultimo messaggio inviato o generato">
+            <input type="checkbox" checked={autoScroll} onChange={e => setAutoScroll(e.target.checked)} />
+            <span>📜 Auto Scroll</span>
+          </label>
+          <label
+            className="chat-scroll-toggle"
+            title={mcpAutoApprove
+              ? 'Gli agenti eseguono subito anche gli strumenti che agiscono su casa, email e messaggi'
+              : 'Gli strumenti che agiscono verso l\'esterno aspettano la tua conferma in chat'}
+            style={{ color: mcpAutoApprove ? '#d29922' : undefined }}
+          >
+            <input
+              type="checkbox"
+              checked={!!mcpAutoApprove}
+              onChange={e => setMcpAutoApprove?.(e.target.checked)}
+            />
+            <span>{mcpAutoApprove ? '⚡' : '🛡️'} Auto Approve</span>
+          </label>
+          {setSpeakerEnabled !== undefined && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', position: 'relative' }}>
+              <label 
+                className={`chat-speaker-toggle ${speakerEnabled ? 'active' : ''}`} 
+                title={speakerEnabled ? 'Speaker Agente Attivo: la voce dell\'agente riproduce la risposta' : 'Attiva lettura vocale della risposta dell\'agente (TTS)'}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '5px',
+                  fontSize: '0.68rem',
+                  color: speakerEnabled ? '#00d2ff' : '#8b8fa3',
+                  background: speakerEnabled ? 'rgba(0, 210, 255, 0.12)' : 'rgba(255, 255, 255, 0.03)',
+                  border: speakerEnabled ? '1px solid rgba(0, 210, 255, 0.3)' : '1px solid rgba(255, 255, 255, 0.08)',
+                  padding: '3px 8px',
+                  borderRadius: '10px',
+                  cursor: 'pointer',
+                  fontWeight: 600,
+                  transition: 'all 0.2s ease',
+                }}
+              >
+                <input 
+                  type="checkbox" 
+                  checked={speakerEnabled} 
+                  onChange={e => setSpeakerEnabled(e.target.checked)} 
+                  style={{ display: 'none' }}
+                />
               {speakerEnabled ? <Volume2 size={13} style={{ color: '#00d2ff' }} /> : <VolumeX size={13} style={{ color: '#5a5e72' }} />}
               <span>Speaker Agente: {speakerEnabled ? 'ON' : 'OFF'}</span>
             </label>
@@ -240,6 +307,7 @@ export default function ChatInput({
             )}
           </div>
         )}
+        </div>
       </div>
       <div className="chat-input-row">
         <textarea

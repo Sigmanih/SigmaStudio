@@ -825,6 +825,13 @@ def search_hf_models(
     next_cursor = None
     try:
         search_query = query.strip()
+        if search_query.startswith("https://huggingface.co/"):
+            search_query = search_query.replace("https://huggingface.co/", "").strip("/")
+        elif search_query.startswith("http://huggingface.co/"):
+            search_query = search_query.replace("http://huggingface.co/", "").strip("/")
+        elif search_query.startswith("huggingface.co/"):
+            search_query = search_query.replace("huggingface.co/", "").strip("/")
+
         hf_sort = sort
         if sort in ["size_asc", "size_desc"]:
             hf_sort = "downloads"
@@ -832,6 +839,18 @@ def search_hf_models(
             hf_sort = "lastModified"
 
         raw_items: List[Dict[str, Any]] = []
+
+        # A0. If direct repository id is queried (e.g. author/repo), fetch exact model metadata directly
+        if "/" in search_query and not cursor:
+            try:
+                exact_url = f"{_HF_API_BASE}/models/{search_query}"
+                exact_res = _hf_session.get(exact_url, headers=_auth_headers(hf_token), timeout=8)
+                if exact_res.status_code == 200:
+                    exact_item = exact_res.json()
+                    if isinstance(exact_item, dict) and exact_item.get("id"):
+                        raw_items.append(exact_item)
+            except Exception as _ex_direct:
+                log.debug("Direct repo fetch error for %s: %s", search_query, _ex_direct)
 
         # A. If searching official models or query matches an official provider keyword, fetch from official author endpoint first!
         detected_author = None

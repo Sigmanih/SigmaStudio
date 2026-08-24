@@ -134,7 +134,7 @@ export default function ModelSelector({
 
 
       {showDropdown && (
-        <div className="model-selector-popover tabbed-popover" style={{ minWidth: '310px' }}>
+        <div className="model-selector-popover tabbed-popover" style={{ left: 0, right: 'auto', transform: 'none', minWidth: '310px' }}>
           {/* Search Bar */}
           <div className="model-selector-search-box">
             <Search size={12} className="search-icon" style={{ opacity: 0.6 }} />

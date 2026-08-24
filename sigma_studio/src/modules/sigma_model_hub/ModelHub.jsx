@@ -10,7 +10,6 @@ import LocalInventory from './LocalInventory';
 import GgufConverter from './GgufConverter';
 import DirectoryPicker from './DirectoryPicker';
 import SigmaDeployModal from './SigmaDeployModal';
-import EngineOptimizer from './EngineOptimizer';
 import './styles/model-hub.css';
 
 
@@ -372,13 +371,11 @@ export default function ModelHub({ addToast, openTab }) {
       {/* 2. NAVIGATION TABS */}
       <div style={{ display: 'flex', gap: '8px', borderBottom: subBorder, paddingBottom: '8px', flexWrap: 'wrap' }}>
         {[
-          { id: 'optimizer', label: '⚡ SigmaEngine Kernel & Ottimizzatore' },
           { id: 'browse', label: '🔍 Esplora Hugging Face' },
-          { id: 'convert', label: '📦 Conversione GGUF' },
           {
             id: 'inventory',
             label: totalActiveTasksCount > 0
-              ? `💾 Modelli Locali (${currentRunningTask ? `${currentRunningTask.progress_pct}%` : totalActiveTasksCount} in download)`
+              ? `💾 Modelli Locali & Storage (${currentRunningTask ? `${currentRunningTask.progress_pct}%` : totalActiveTasksCount} in corso)`
               : '💾 Modelli Locali & Storage'
           },
           { id: 'settings', label: '⚙️ Directory & HF Token' },
@@ -396,21 +393,11 @@ export default function ModelHub({ addToast, openTab }) {
             }}
           >
             {tab.label}
-            {tab.id === 'downloads' && currentRunningTask && (
-              <span className="mh-spin" style={{ display: 'inline-block', width: '8px', height: '8px', borderRadius: '50%', border: '2px solid #00d2ff', borderTopColor: 'transparent' }} />
-            )}
           </button>
         ))}
       </div>
 
       {/* 3. TAB CONTENT VIEWS */}
-      {activeTab === 'optimizer' && (
-        <EngineOptimizer
-          isLight={isLight}
-          addToast={addToast}
-        />
-      )}
-
       {activeTab === 'browse' && (
         <HfBrowser
           isLight={isLight}
@@ -422,18 +409,13 @@ export default function ModelHub({ addToast, openTab }) {
         />
       )}
 
-      {activeTab === 'convert' && (
-        <GgufConverter
-          isLight={isLight}
-          addToast={addToast}
-        />
-      )}
-
       {activeTab === 'inventory' && (
         <LocalInventory
           isLight={isLight}
           addToast={addToast}
           activeDownloads={activeDownloads}
+          onDownloadsChanged={fetchDownloads}
+          engineStatus={engineStatus}
           onDeployRequested={m => setDeployTargetModel(m)}
         />
       )}

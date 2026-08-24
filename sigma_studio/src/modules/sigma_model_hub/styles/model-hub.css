@@ -134,20 +134,20 @@
 
 /* Header & Card Base */
 .mh-card {
-  border-radius: 16px;
-  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  border-radius: 12px;
+  transition: all 0.18s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 .mh-card-hover:hover {
   transform: translateY(-2px);
-  box-shadow: 0 8px 25px rgba(0, 0, 0, 0.3);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.25);
 }
 
 /* Model Grid */
 .mh-models-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
-  gap: 16px;
+  grid-template-columns: repeat(auto-fill, minmax(295px, 1fr));
+  gap: 12px;
 }
 
 /* Progress Track */

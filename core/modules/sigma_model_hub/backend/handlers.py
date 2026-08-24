@@ -280,6 +280,16 @@ def handle_models_hf_download_remove(self):
         self.send_json_response({"success": False, "error": str(e)}, 500)
 
 
+def handle_models_hf_downloads_clear(self):
+    """POST /api/models/hf/downloads/clear — Rimuove tutti i download completati, falliti o annullati dalla cronologia."""
+    try:
+        cleared = downloader_manager.clear_completed_tasks()
+        self.send_json_response({"success": True, "cleared_count": cleared, "message": f"{cleared} download rimossi dalla cronologia."})
+    except Exception as e:
+        log.error("Error in handle_models_hf_downloads_clear: %s", e)
+        self.send_json_response({"success": False, "error": str(e)}, 500)
+
+
 def handle_models_hf_whoami(self):
     """GET /api/models/hf/whoami — Verifica il token HF e restituisce username, organizzazioni e permessi di scrittura."""
     try:
@@ -832,9 +842,12 @@ def register_routes(app=None) -> None:
     post_routes = {
         '/api/models/hf/download/start': handle_models_hf_download_start,
         '/api/models/hf/download/repo': handle_models_hf_download_repo,
+        '/api/models/hf/download/pause': handle_models_hf_download_pause,
+        '/api/models/hf/download/resume': handle_models_hf_download_resume,
         '/api/models/hf/download/cancel': handle_models_hf_download_cancel,
         '/api/models/hf/download/retry': handle_models_hf_download_retry,
         '/api/models/hf/download/remove': handle_models_hf_download_remove,
+        '/api/models/hf/downloads/clear': handle_models_hf_downloads_clear,
         '/api/models/hf/upload': handle_models_hf_upload,
         '/api/models/hf/upload/cancel': handle_models_hf_upload_cancel,
         '/api/models/hf/upload/remove': handle_models_hf_upload_remove,
