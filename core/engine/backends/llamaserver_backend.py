@@ -447,30 +447,53 @@ class LlamaServerBackend(InferenceBackend):
 
     def _corpo_richiesta(self, prompt: str, system_prompt: str,
                          messages: Optional[list], params: SamplingParams) -> Dict[str, Any]:
+        conversazione = []
         if messages:
-            conversazione = list(messages)
+            for m in messages:
+                if not isinstance(m, dict):
+                    continue
+                role = str(m.get("role") or "user").strip().lower()
+                if role not in ("system", "user", "assistant", "tool"):
+                    role = "user"
+                content = m.get("content")
+                if content is None:
+                    content = ""
+                elif isinstance(content, (list, dict)):
+                    try:
+                        content = json.dumps(content, ensure_ascii=False)
+                    except Exception:
+                        content = str(content)
+                else:
+                    content = str(content)
+                conversazione.append({"role": role, "content": content})
         else:
-            conversazione = []
             if system_prompt:
-                conversazione.append({"role": "system", "content": system_prompt})
-            conversazione.append({"role": "user", "content": prompt})
+                conversazione.append({"role": "system", "content": str(system_prompt)})
+            if prompt:
+                conversazione.append({"role": "user", "content": str(prompt)})
+            elif not conversazione:
+                conversazione.append({"role": "user", "content": " "})
 
         corpo: Dict[str, Any] = {
             "messages": conversazione,
             "stream": True,
-            "temperature": params.temperature,
-            "top_p": params.top_p,
-            "top_k": params.top_k,
-            "max_tokens": params.max_tokens,
         }
-        if params.min_p:
-            corpo["min_p"] = params.min_p
-        if params.repeat_penalty:
-            corpo["repeat_penalty"] = params.repeat_penalty
-        if params.seed is not None:
-            corpo["seed"] = params.seed
+        if params.temperature is not None and params.temperature >= 0:
+            corpo["temperature"] = float(params.temperature)
+        if params.top_p is not None and 0.0 < params.top_p <= 1.0:
+            corpo["top_p"] = float(params.top_p)
+        if params.top_k is not None and params.top_k > 0:
+            corpo["top_k"] = int(params.top_k)
+        if params.max_tokens is not None and params.max_tokens > 0:
+            corpo["max_tokens"] = int(params.max_tokens)
+        if params.min_p is not None and 0.0 < params.min_p < 1.0:
+            corpo["min_p"] = float(params.min_p)
+        if params.repeat_penalty is not None and params.repeat_penalty > 0:
+            corpo["repeat_penalty"] = float(params.repeat_penalty)
+        if params.seed is not None and params.seed >= 0:
+            corpo["seed"] = int(params.seed)
         if params.stop:
-            corpo["stop"] = list(params.stop)
+            corpo["stop"] = [str(s) for s in params.stop if s]
 
         # La grammatica viaggia come testo GBNF apposta: SamplingParams la
         # porta senza compilarla, e llama-server la vuole esattamente cosi'.
@@ -496,7 +519,73 @@ class LlamaServerBackend(InferenceBackend):
             data=json.dumps(corpo).encode("utf-8"),
             headers={"Content-Type": "application/json", "Accept": "text/event-stream"},
         )
-        with urllib.request.urlopen(richiesta, timeout=_AVVIO_TIMEOUT_S) as risposta:
+        try:
+            risposta = urllib.request.urlopen(richiesta, timeout=_AVVIO_TIMEOUT_S)
+        except urllib.error.HTTPError as exc:
+            corpo_dettaglio = ""
+            try:
+                raw = exc.read().decode("utf-8", errors="replace")
+                try:
+                    err_json = json.loads(raw)
+                    corpo_dettaglio = err_json.get("error", {}).get("message") or raw
+                except Exception:
+                    corpo_dettaglio = raw
+            except Exception:
+                pass
+
+            log.warning("[LlamaServer] HTTP %d su %s (%s). Tento fallback su /completion...",
+                        exc.code, percorso, corpo_dettaglio[:300])
+
+            # Se /v1/chat/completions fallisce (es. template non supportato dal nuovo modello),
+            # ripieghiamo sull'endpoint nativo /completion di llama.cpp
+            if percorso == "/v1/chat/completions":
+                messages = corpo.get("messages", [])
+                parti = []
+                for m in messages:
+                    r = m.get("role", "user")
+                    c = m.get("content", "")
+                    if r == "system":
+                        parti.append(f"System: {c}")
+                    elif r == "user":
+                        parti.append(f"User: {c}")
+                    elif r == "assistant":
+                        parti.append(f"Assistant: {c}")
+                    else:
+                        parti.append(f"{r}: {c}")
+                parti.append("Assistant: ")
+                prompt_fallback = "\n\n".join(parti)
+
+                corpo_fallback = {
+                    "prompt": prompt_fallback,
+                    "stream": True,
+                    "temperature": corpo.get("temperature", 0.7),
+                    "n_predict": corpo.get("max_tokens", 4096),
+                    "top_p": corpo.get("top_p", 0.9),
+                    "top_k": corpo.get("top_k", 40),
+                }
+                if "repeat_penalty" in corpo:
+                    corpo_fallback["repeat_penalty"] = corpo["repeat_penalty"]
+                if "stop" in corpo:
+                    corpo_fallback["stop"] = corpo["stop"]
+
+                richiesta_fallback = urllib.request.Request(
+                    self._url("/completion"),
+                    data=json.dumps(corpo_fallback).encode("utf-8"),
+                    headers={"Content-Type": "application/json", "Accept": "text/event-stream"},
+                )
+                try:
+                    risposta = urllib.request.urlopen(richiesta_fallback, timeout=_AVVIO_TIMEOUT_S)
+                except urllib.error.HTTPError as exc2:
+                    raw2 = ""
+                    try:
+                        raw2 = exc2.read().decode("utf-8", errors="replace")
+                    except Exception:
+                        pass
+                    raise RuntimeError(f"HTTP Error {exc2.code}: {raw2 or exc2.reason}") from exc2
+            else:
+                raise RuntimeError(f"HTTP Error {exc.code}: {corpo_dettaglio or exc.reason}") from exc
+
+        with risposta:
             for riga_grezza in risposta:
                 riga = riga_grezza.decode("utf-8", errors="replace").strip()
                 if not riga.startswith("data:"):
@@ -508,25 +597,18 @@ class LlamaServerBackend(InferenceBackend):
                     evento = json.loads(carico)
                 except ValueError:
                     continue
-                scelte = evento.get("choices") or []
-                if not scelte:
-                    continue
-                delta = scelte[0].get("delta") or {}
 
-                # I modelli di ragionamento mandano il pensiero su un canale
-                # separato: llama-server con --jinja mette il ragionamento in
-                # `reasoning_content` e la risposta in `content`. Leggendo solo
-                # il secondo, un Qwen3 sembra non produrre nulla per tutta la
-                # fase di ragionamento — che su una domanda breve puo' essere
-                # tutta la generazione.
-                #
-                # Si ricostruiscono i tag <think>, che e' la forma in cui il
-                # percorso in-process consegna la stessa cosa e che il resto
-                # dell'applicazione — il parser delle risposte, il canale
-                # "thought" della chat, l'agente del Developer Studio — sa gia'
-                # riconoscere. Due backend che consegnano la stessa cosa in due
-                # forme diverse sarebbero una divergenza in piu' da inseguire.
-                ragionamento = delta.get("reasoning_content")
+                contenuto = ""
+                ragionamento = None
+
+                scelte = evento.get("choices")
+                if scelte and isinstance(scelte, list) and len(scelte) > 0:
+                    delta = scelte[0].get("delta") or {}
+                    ragionamento = delta.get("reasoning_content")
+                    contenuto = delta.get("content") or ""
+                elif "content" in evento:
+                    contenuto = evento.get("content") or ""
+
                 if ragionamento:
                     if not self._in_ragionamento:
                         self._in_ragionamento = True
@@ -534,9 +616,9 @@ class LlamaServerBackend(InferenceBackend):
                     yield {"content": ragionamento}
                     continue
 
-                contenuto = delta.get("content")
                 if contenuto:
                     if self._in_ragionamento:
                         self._in_ragionamento = False
                         yield {"content": "</think>"}
                     yield {"content": contenuto}
+
