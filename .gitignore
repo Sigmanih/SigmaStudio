@@ -42,6 +42,12 @@ config.local.json
 !/core/modules/__init__.py
 !/core/modules/sigma_model_hub/
 !/core/modules/sigma_model_hub/**
+# La negazione qui sopra riapre TUTTO cio' che sta sotto sigma_model_hub,
+# bytecode compreso: e' cosi' che sette .pyc sono finiti nel repository
+# nonostante le regole __pycache__/ e *.pyc in cima al file. Le ultime regole
+# vincono, quindi vanno riescluse qui.
+/core/modules/sigma_model_hub/**/__pycache__/
+/core/modules/sigma_model_hub/**/*.pyc
 /sigma_studio/src/modules/*
 !/sigma_studio/src/modules/registry.js
 !/sigma_studio/src/modules/ModuleNotInstalled.jsx
@@ -54,9 +60,27 @@ data/marketplace_installed.json
 .coverage
 htmlcov/
 
-# Data modules (each user adds their own)
+# ==============================================================================
+# Le quattro radici dei dati
+#
+# Ognuna ha una natura diversa e nessuna appartiene al repository:
+#   data/       lavoro dell'utente: argomenti, note, immagini generate
+#   config/     configurazione della macchina, contiene credenziali
+#   var/        stato di runtime: task, cache, indici
+#   store/      artefatti scaricati: modelli, shard, strumenti dell'engine
+#
+# config/ va ignorato PRIMA di spostarci dentro i file: finche' stavano sotto
+# data/ erano coperti dalla riga qui sotto, e portarli fuori senza questa regola
+# li avrebbe resi tracciabili — token di HuggingFace compreso.
+# ==============================================================================
 data/
 !data/.gitkeep
+config/
+!config/.gitkeep
+var/
+!var/.gitkeep
+store/
+!store/.gitkeep
 
 # IDE & AI Assistants
 .vscode/

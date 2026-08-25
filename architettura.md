@@ -1,290 +1,362 @@
 # 🧬 Σ-SIGMA Studio — Architettura Tecnica & Specifica di Sistema
 
-**Versione**: 8.0 / 6.2 Refactored  
-**Stato**: Sistema Eseguibile Reale  
-**Stack Tecnologico**: Python 3.10+ (FastAPI / Uvicorn), React 19, Vite 8, PyTorch, Unsloth, HuggingFace, KaTeX, D3.js  
+**Versione**: 8.1 — Separazione Kernel / Moduli
+**Stato**: Sistema eseguibile reale. Ogni numero in questo documento è stato misurato sul codice in esecuzione, non dedotto leggendolo.
+**Stack**: Python 3.10+ (FastAPI / Uvicorn), React 19, Vite 8, PyTorch, Unsloth, HuggingFace, KaTeX, D3.js
+**Piattaforme verificate**: Windows 11 (x86_64, NVIDIA CUDA) e Raspberry Pi 5 (aarch64, solo CPU)
 
 ---
 
 ## 1. 🌐 Principi Architetturali
 
-Sigma Studio è strutturato secondo cinque principi guida:
+1. **Il codice eseguibile è l'autorità.** La documentazione insegue il codice, mai il contrario. Dove questo documento riporta un numero, quel numero è stato misurato.
 
-1. **Il Codice Eseguibile come Autorità**: La documentazione rispecchia rigorosamente il codice sorgente in esecuzione. Le configurazioni, i manifesti degli agenti e i file del workspace sono oggetti eseguibili o parsabili.
-2. **Disaccoppiamento Modulare**: Il backend (`core/`) è organizzato in moduli isolati per dominio (`chat`, `creative`, `mcp`, `orchestration`, `pipeline`, `training`, `tts`, `integrations`) coordinati da un router centralizzato (`core/api_router.py`).
-3. **Sicurezza Sandbox su Percorsi Autorizzati**: L'esecuzione degli agenti, le modifiche ai file e gli script di test sono confinati entro whitelist rigide (`core/sandbox.py`) ed esecuzioni isolate con timeout (`core/sandbox_manager.py`).
-4. **Interoperabilità Governata tramite MCP**: Gli strumenti esterni, i dispositivi hardware e i servizi interagiscono esclusivamente tramite server MCP (Model Context Protocol) con approvazione umana per le chiamate sensibili.
-5. **Esecuzione Adattiva rispetto all'Hardware**: Il motore monitora costantemente VRAM, RAM e carico GPU/CPU per adattare la precisione dei modelli, la dimensione dei batch e l'offloading della memoria KV.
+2. **Il kernel non nomina mai un modulo.** Il kernel espone *servizi* — dove stanno i file, che hardware c'è sotto, come si apre uno stream, come si carica un modello. Un modulo dichiara ciò da cui dipende. Se una funzionalità ha senso solo per un dominio (allenare, valutare, generare audio) è un modulo, anche quando il suo codice vive ancora dentro `core/`.
+
+3. **Un percorso si chiede, non si ricostruisce.** Tutte le radici passano da `core/paths.py`. Nessun file risale `__file__` per proprio conto e nessuno apre un percorso relativo alla directory di lancio: sono i due modi in cui questo sistema ha già perso dei dati (§ 4.2).
+
+4. **Sandbox su percorsi autorizzati.** Esecuzione degli agenti, modifiche ai file e script di test sono confinati entro whitelist (`core/sandbox.py`) e subprocessi isolati con timeout (`core/sandbox_manager.py`).
+
+5. **Interoperabilità governata tramite MCP.** Strumenti esterni, dispositivi e servizi passano solo per server MCP, con approvazione umana per le chiamate sensibili.
+
+6. **Esecuzione adattiva all'hardware.** Il motore misura VRAM, RAM e carico per scegliere precisione, batch e offloading della cache KV. La stessa immagine gira su una workstation con due GPU e su un Pi 5 da 8 GB.
+
+7. **Ogni scansione ha un budget.** Nessuna operazione che percorre il filesystem o legge file può essere illimitata: tetto per file, tetto totale, scadenza, e risultato parziale invece di attesa infinita. Un albero di 400 GB rende questa non una raffinatezza ma un requisito.
 
 ---
 
-## 2. 🏛️ Architettura Generale del Sistema
+## 2. 🏛️ Architettura Generale
 
 ```mermaid
 graph TD
-    Client["Browser / Client (React 19 + Vite 8 SPA)"] -->|HTTP REST / SSE Porta 8000| Server["Sigma Server (sigma_server.py / FastAPI)"]
+    Client["Browser — React 19 + Vite 8 SPA"] -->|"HTTP REST / SSE · porta 8000"| Uvicorn["Uvicorn ASGI"]
+    Uvicorn --> App["core/fastapi_app.py — pipeline unica"]
 
-    subgraph Backend Engine ["Backend Python 3.10+ (core/)"]
-        Server --> Router["API Router (core/api_router.py)"]
-        Router --> ChatEngine["Motore Chat & Prompt (core/chat/)"]
-        Router --> DynamicSwarm["Dynamic Swarm & Pipeline Engine (core/pipeline/)"]
-        Router --> TrainingLab["Training Lab & SLM Forge (core/training/)"]
-        Router --> CreativeSuite["Motore Creativo (core/creative/)"]
-        Router --> MCPHub["MCP Server Hub & Governance (core/mcp/)"]
-        Router --> SandboxManager["Sandbox & Subprocess Control (core/sandbox.py)"]
+    subgraph Kernel ["KERNEL — core/ · sempre presente"]
+        App --> Router["api_router.py · tabella rotte → handler"]
+        Router --> Adapter["FastAPIHandlerAdapter · esecuzione su thread pool"]
+        Paths["paths.py · le quattro radici"]
+        Engine["engine/ · runtime inferenza, sonda hardware, pianificatore memoria"]
+        Chat["chat/ · prompt, storia, parser risposte"]
+        Pipeline["pipeline/ · swarm DAG, self-healing"]
+        MCP["mcp/ · hub, governance, server di inferenza"]
+        Dev["developer_studio/ · agente admin, filesystem, terminale"]
+        Loader["module_loader.py · installa e registra i moduli"]
     end
 
-    subgraph StorageLayer ["Persistenza e Storage"]
-        AgentContextDB[("SQLite: agent_context.db")]
-        CreativeDB[("SQLite: creative_assets.db")]
-        DataFS[("Workspace FS: data/")]
-        ManifestsFS[("Manifesti FS: manifesti/")]
+    subgraph Moduli ["MODULI — core/modules/ · opzionali, installabili"]
+        TL["sigma_training_lab · job, forgia SLM, benchmark, autopilota"]
+        MH["sigma_model_hub · download, inventario, conversione GGUF"]
+        HL["sigma_hardware_lab · telemetria GPU e processi"]
+        KN["sigma_knowledge · grafo D3, nodi di conoscenza"]
+        AU["sigma_audio_studio · audio e radio"]
     end
 
-    subgraph ExternalBackends ["Inference & Integrazioni Esterne"]
-        OllamaLocal["Ollama Locale (Porta 11434/11435+)"]
-        RemoteAI["API Cloud (DeepSeek, OpenAI, Anthropic, Groq)"]
-        ComfyUI["ComfyUI / SD WebUI (Porta 8188)"]
-        HeadlessBlender["Rendering Headless Blender 3D"]
-        HomeAssistant["Home Assistant (Porta 8123)"]
+    Loader -->|"register_routes(app)"| Adapter
+    Loader -->|"register_mcp(hub)"| MCP
+    TL --> Loader
+    MH --> Loader
+    HL --> Loader
+    KN --> Loader
+    AU --> Loader
+
+    TL --> Paths
+    MH --> Paths
+    HL --> Engine
+
+    subgraph Dati ["LE QUATTRO RADICI"]
+        DataFS[("data/ · lavoro utente")]
+        ConfigFS[("config/ · configurazione")]
+        VarFS[("var/ · stato runtime")]
+        StoreFS[("store/ · artefatti scaricati")]
     end
 
-    ChatEngine --> AgentContextDB
-    CreativeSuite --> CreativeDB
-    SandboxManager --> DataFS
-    DynamicSwarm --> ManifestsFS
+    Paths --> DataFS
+    Paths --> ConfigFS
+    Paths --> VarFS
+    Paths --> StoreFS
 
-    ChatEngine --> OllamaLocal
-    ChatEngine --> RemoteAI
-    CreativeSuite --> ComfyUI
-    CreativeSuite --> HeadlessBlender
-    MCPHub --> HomeAssistant
+    subgraph Esterni ["Inferenza e integrazioni"]
+        Ollama["Ollama locale · 11434+"]
+        Cloud["API cloud · DeepSeek, OpenAI, Anthropic, Groq"]
+        HA["Home Assistant · 8123"]
+    end
+
+    Chat --> Ollama
+    Chat --> Cloud
+    MCP --> HA
 ```
 
+**La regola che tiene in piedi il disegno**: le frecce verso il kernel sono ammesse, quelle dal kernel verso un modulo no. Un test la sorveglia (§ 9).
+
 ---
 
-## 3. 💻 Architettura Frontend (`sigma_studio/`)
+## 3. 💻 Frontend (`sigma_studio/`)
 
-### 3.1 Stack e Tecnologie
-- **Framework**: React 19 (`react`, `react-dom` v19.2.4)
-- **Build Tool**: Vite 8 (`vite` v8.0.4)
-- **Stili**: Vanilla CSS (`src/index.css`) con token glassmorphism e tema scuro `#0e1016`.
-- **Rendering e Visualizzazione**:
-  - `KaTeX` (`katex.min.css`): Rendering Formule Matematiche inline ($...$) e display ($$...$$).
-  - `Mermaid.js`: Grafi di flusso e diagrammi di sequenza.
-  - `D3.js` (`d3` v7.9.0): Grafo relazionale interattivo della conoscenza (`MappaArgomenti.jsx`, `TopicGraph.jsx`).
-  - `Prism.js` (`prismjs` v1.30.0) + `react-simple-code-editor`: Editing codice con evidenziazione sintassi.
-  - `Three.js` (`three` v0.185.1): Viewport 3D per mesh ed asset creativi.
+### 3.1 Stack
+- **React 19** (`react`, `react-dom` v19.2.4) su **Vite 8**
+- **KaTeX** per la matematica inline e a blocchi, **Mermaid** per i diagrammi, **D3 v7** per i grafi relazionali, **Prism** per il codice, **Three.js** per il 3D
 
-### 3.2 Struttura dei Componenti Frontend
+### 3.2 Scoperta dei moduli
+`src/modules/registry.js` usa `import.meta.glob` per includere nel bundle solo i moduli **fisicamente presenti** in `src/modules/`. Un modulo non installato non entra nel bundle e `getLazyModule()` restituisce `null`, che attiva la schermata `ModuleNotInstalled`.
 
-```text
-App (App.jsx)
- ├── AppProvider (AppContext.jsx)
- ├── Sidebar (Sidebar.jsx) - Navigazione Argomenti, Moduli, Contatori
- ├── Workspace (Workspace.jsx) - Contenitore Multi-Tab
- │    ├── McpStatusBar - Stato dei Server MCP in Tempo Reale
- │    └── Componenti delle Schede:
- │         ├── WelcomeDashboard (Bacheca, Spiegazione Kernel Cognitivo, Primi Passi)
- │         ├── SigmaLabEditor (Editor MD, LaTeX, Python, Anteprime HTML)
- │         ├── ImageViewer (Visualizzatore immagini con Zoom, Pan, Sfondo Scacchiera)
- │         ├── ManifestiGallery (Galleria Modelfile Agenti)
- │         ├── ModuleView (Esploratore Sezioni Modulo: teoria, test, viz, docs)
- │         ├── ResearchLabTab (Orchestrazione e Roadmap del Team di Agenti)
- │         ├── CreativeStudio (Text2Img, 3D, Materiali, Video UI)
- │         ├── TrainingLab (Unsloth QLoRA, Autopilota, Forgia SLM, Benchmarks)
- │         ├── HardwareLab (Monitor VRAM, Processi GPU e Kill PID)
- │         ├── McpHubTab (12 Server MCP, Console JSON-RPC, Governance)
- │         ├── SkillsHub (Attivazione Skill e Integrazione App)
- │         └── AccountTab (Profilo Utente e Preferenze Voce TTS)
- ├── Pannelli Fluttuanti:
- │    ├── ChatPanel (Overlay Chat AI, Selezione Provider, Audio TTS/STT)
- │    ├── TaskFloatingPanel (Overlay Gestione Task)
- │    └── HardwareFloatingPanel (Mini Monitor GPU/CPU Overlay)
- └── Modali e Notifiche:
-      ├── ImageLightbox (Zoom Immagini Full-Screen)
-      ├── AIConfig (Impostazioni API & Provider)
-      └── ToastNotification (Sistema di Allerte)
+> ⚠️ `TAB_TO_FOLDER` nello stesso file è una mappa `tabType → cartella` scritta a mano, con venti voci di cui cinque corrispondono a moduli realmente esistenti. È l'ultimo elenco di moduli rimasto scritto nel kernel (§ 9).
+
+### 3.3 Stato
+`AppContext` centralizza lo stato, suddiviso in hook di dominio: `useModules`, `useTasks`, `useTabs`, `useFileOps`, `useModuleOps`. La chat vive in `src/components/Chat/core/` con `useChatCore`, `useChatStreaming`, `useMcpAutoApprove`, `useResearchPipeline`.
+
+---
+
+## 4. ⚙️ Backend
+
+### 4.1 Una sola pipeline
+
+`sigma_server.py` **prepara l'ambiente e avvia uvicorn**. Nient'altro.
+
+Fino alla versione 8.0 conteneva anche una seconda pipeline completa: una sottoclasse di `SimpleHTTPRequestHandler` con 121 handler montati sopra a mano, gemella di quella che `core/fastapi_app.py` monta sul suo adapter. Non veniva mai istanziata — il processo è sempre partito con uvicorn — ma andava tenuta allineata a mano, e allineata non era: due handler di sistema esistevano solo lì e rispondevano `404` sul server vero, e `handle_router_train` era scritto per intero in due file. Rimossa: `sigma_server.py` è passato da 547 a 219 righe.
+
+Il flusso di una richiesta:
+
+```
+uvicorn → app → _dispatch_route(path, method)
+                  ├─ SSE?  thread dedicato + coda asyncio → StreamingResponse
+                  └─ JSON? _api_executor (32 thread) → JSONResponse
 ```
 
----
+**Due pool separati, dimensionati sul carico e non sul numero di core.** Gli handler sono sincroni: lasciati all'executor di default di asyncio sarebbero `min(32, cpu+4)` thread — ventotto sulla workstation e **otto su un Pi 5**, abbastanza pochi che due handler lenti affamano ogni altro endpoint. Da qui `_API_WORKERS = 32` e `_STREAM_WORKERS = 16`: questi thread stanno fermi su I/O e sul lock del motore, non competono per la CPU.
 
-## 4. ⚙️ Architettura Backend (`sigma_server.py` + `core/`)
+> **Regola per ogni handler nuovo**: un'operazione bloccante non va mai eseguita sull'event loop. È il difetto che ha congelato l'intero server durante una ricerca del Developer Studio, mentre l'endpoint accanto — che usava `asyncio.to_thread` — funzionava.
 
-### 4.1 Server FastAPI & Lifecycle (`core/fastapi_app.py`)
-- **Server Web**: FastAPI su Uvicorn (`0.0.0.0:8000`).
-- **Sequenza di Avvio (`_startup_sequence`)**:
-  1. Configurazione hardware multi-GPU (`_apply_hardware_env()`).
-  2. Verifica compilazione frontend (`sigma_studio/dist/`).
-  3. Indicizzazione metadati workspace (`rebuild_modules_meta()`).
-  4. Inizializzazione modello intent router `sigma-router`.
-  5. Riconciliazione job di training orfani su GPU (`reconcile_active_jobs()`).
+### 4.2 `core/paths.py` — dove Sigma Studio tiene ogni cosa
 
-### 4.2 Tabella Completa Endpoint API (`core/api_router.py`)
+Prima di questo modulo la radice del progetto veniva ricostruita in **undici punti** con quattro tecniche diverse: risalite di `__file__` lunghe da uno a cinque livelli, `os.getcwd()`, e stringhe relative come `"data"` o `"config.json"` aperte direttamente. Entrambe le tecniche sono già costate:
 
-#### Endpoint HTTP GET
-| Percorso | Funzione Handler | Descrizione |
-|:---|:---|:---|
-| `/api/modules` | `handle_api_modules` | Restituisce la struttura dei moduli e file. |
-| `/api/topics` | `handle_api_topics` | Restituisce la gerarchia degli argomenti. |
-| `/api/tasks` | `handle_api_tasks_get` | Restituisce i task della roadmap. |
-| `/api/get_file` | `handle_get_file` | Legge il contenuto di un file nel workspace. |
-| `/api/list_manifesti` | `handle_list_manifesti` | Elenca i Modelfile degli agenti in `manifesti/`. |
-| `/api/knowledge_db` | `handle_knowledge_db` | Restituisce l'albero relazionale della conoscenza. |
-| `/api/config` | `handle_api_config_get` | Restituisce la configurazione di sistema. |
-| `/api/ollama_models` | `handle_api_ollama_models` | Elenca i modelli presenti in Ollama. |
-| `/api/agents` | `handle_agents_list` | Elenca gli agenti registrati e le metriche. |
-| `/api/research/list` | `handle_research_list` | Elenca le sessioni di ricerca attive. |
-| `/api/training/datasets` | `handle_training_list_datasets` | Elenca i dataset di addestramento locali. |
-| `/api/training/jobs` | `handle_training_list_jobs` | Elenca lo stato dei job di fine-tuning. |
-| `/api/training/hardware` | `handle_training_hardware` | Telemetria hardware GPU/VRAM/RAM. |
-| `/api/hardware/status` | `handle_hardware_status` | Statistiche di utilizzo risorse di sistema. |
-| `/api/mcp/servers` | `handle_mcp_servers` | Elenca i server MCP integrati ed esterni. |
-| `/api/mcp/tools` | `handle_mcp_tools` | Aggrega tutti i tool MCP disponibili. |
-| `/api/creative/assets` | `handle_creative_assets` | Elenca gli asset del caveau creativo. |
-| `/api/creative/backends/status` | `handle_creative_backends_status` | Stato di ComfyUI, SD WebUI e Blender. |
+- **La risalita conta i livelli della posizione attuale del file.** Spostando il Training Lab da `core/training/` a `core/modules/sigma_training_lab/training/` i `.parent` sono rimasti tre mentre i livelli erano diventati cinque. Nessun errore: il codice creava da sé un secondo albero con `mkdir(parents=True)` e ci lavorava dentro in silenzio. Il Training Lab non ha visto nessuno dei suoi 103 job per settimane.
+- **Un percorso relativo dipende dalla directory di lancio.** `python sigma_server.py` dalla radice e `uvicorn core.fastapi_app:app` da altrove davano due viste diverse degli stessi dati.
 
-#### Endpoint HTTP POST
-| Percorso | Funzione Handler | Descrizione |
-|:---|:---|:---|
-| `/api/chat` | `handle_chat` | Genera risposte LLM in streaming SSE. |
-| `/api/chat/orchestrate` | `handle_chat_orchestrate` | Avvia l'orchestrazione parallela multi-agente. |
-| `/api/swarm/plan` | `handle_swarm_plan` | Genera il grafo DAG per lo swarm di agenti. |
-| `/api/swarm/execute` | `handle_swarm_execute` | Esegue lo swarm di agenti in parallelo. |
-| `/api/create_file` | `handle_create_file` | Crea un file autorizzato nel workspace. |
-| `/api/run_test` | `handle_run_test` | Esegue script di test Python nella Sandbox. |
-| `/api/mcp/rpc` | `handle_mcp_rpc` | Gateway JSON-RPC 2.0 per tool MCP. |
-| `/api/mcp/approve` | `handle_mcp_approve` | Approva una chiamata MCP sensibile in sospeso. |
-| `/api/training/job/create` | `handle_training_job_create` | Configura un nuovo job di addestramento. |
-| `/api/training/job/start` | `handle_training_job_start` | Avvia il processo di addestramento in background. |
-| `/api/training/benchmark/run` | `handle_training_benchmark_run` | Avvia la valutazione benchmark ufficiale. |
-| `/api/creative/generate` | `handle_creative_generate` | Genera immagini (Text-to-Image / Img2Img). |
-| `/api/creative/3d` | `handle_creative_3d` | Genera mesh 3D (GLB/OBJ). |
-| `/api/creative/render` | `handle_creative_render` | Rende una scena 3D tramite Blender headless. |
+Ora la radice si calcola una volta, ancorata alla posizione del file, e tutto ne discende. `SIGMA_HOME` la sposta per intero — utile quando il codice sta sulla SD e i dati su un disco esterno.
+
+### 4.3 Le quattro radici
+
+Stavano tutte dentro `data/`, mescolate: 122 GB di pesi accanto alle note dell'utente, con il grafo della conoscenza che indicizzava i due terzi sbagliati. Il criterio che le separa è una sola domanda.
+
+| Radice | Contenuto | Se la cancelli | Backup |
+|:---|:---|:---|:---:|
+| `data/` | argomenti, note, immagini generate — ciò che l'utente ha prodotto | **perdita di dati** | sì |
+| `config/` | hardware, model hub, moduli installati, provider — **contiene credenziali** | torna ai default | sì |
+| `var/` | task del Developer Studio, indici, cache | riparte pulito | no |
+| `store/` | modelli (122 GB), shard, strumenti dell'engine | si riscarica | no |
+
+`data/` conserva il nome perché i suoi percorsi sono già scritti dentro `modules_meta.json` e nel frontend come `data/...`: rinominarla avrebbe invalidato ogni riferimento salvato.
+
+**Effetto misurato sul grafo della conoscenza**: da 38 nodi e 196 file indicizzati a **19 e 18**, zero dei quali sono pesi o strumenti. Prima 11 nodi su 38 erano cartelle di modelli.
+
+> ⚠️ `.gitignore` deve coprire tutte e quattro le radici. `config/` contiene il token HuggingFace: finché stava sotto `data/` era coperta dalla regola generale, e portarla fuori senza aggiornare le regole l'avrebbe resa tracciabile.
+
+### 4.4 Spazio Creative
+
+Il Creative archivia in `data/creative/assets/<uuid>/image.png` con i metadati in SQLite: giusto per il versioning, inservibile da sfogliare. `core/creative_gallery.py` costruisce la vista leggibile con **collegamenti fisici** — stessi byte, due nomi, zero spazio in più:
+
+```
+data/creative/
+├── assets/                     archivio interno, indicizzato per UUID
+│   └── <uuid>/image.png
+├── immagini/                   2026-08-10_due-gattini-adorabil.png
+├── modelli3d/
+├── materiali/
+└── video/
+```
+
+Il contratto per il modulo è `paths.creative_output_dir(kind)`, con `kind ∈ {image, mesh, material, video}`.
 
 ---
 
-## 5. 🤖 Orchestrazione Swarm & Agenti
+## 5. 🧩 Il sistema dei moduli
 
-### Pianificazione Swarm DAG (`core/pipeline/dynamic_swarm.py`)
+### 5.1 Ciclo di vita
+
+`core/module_loader.py` installa un modulo da `SigmaStudio-Moduli` (git sparse-checkout, con fallback su archivio ZIP) oppure da un clone locale adiacente, copiando:
+
+```
+modules/<id>/backend/   →  core/modules/<id>/
+modules/<id>/frontend/  →  sigma_studio/src/modules/<id>/
+```
+
+poi installa `requirements.txt`, ricompila il frontend e chiama `register_routes(app)` e `register_mcp(hub)`.
+
+> ⚠️ **I moduli non sono tracciati in questo repository** (`.gitignore: /core/modules/*`, con eccezione per `sigma_model_hub`). Vivono in `SigmaStudio-Moduli`. Una correzione applicata solo alla copia installata viene cancellata dalla prima reinstallazione dal marketplace: va portata anche nel repository sorgente.
+
+### 5.2 Manifest
+
+```json
+{
+  "id": "sigma_training_lab",
+  "version": "v1.0.0",
+  "backend":  { "handlers_module": "...", "routes_prefix": "/api/training" },
+  "frontend": { "entrypoint": "frontend/index.jsx" },
+  "requirements": "requirements.txt",
+  "kernel_modules_required": []
+}
+```
+
+Stato reale: **3 moduli su 5 hanno un manifest**, `kernel_modules_required` è vuoto ovunque e nessuno lo legge. È il gancio previsto per le dipendenze fra moduli, non ancora collegato (§ 9).
+
+### 5.3 Server MCP
+
+Misurati all'avvio: **5 server, 27 tool aggregati**. Uno è del kernel (`Inference MCP`), quattro arrivano dai moduli (`Training`, `Benchmark`, `Hardware`, `Topics & File Management`).
+
+---
+
+## 6. 🤖 Orchestrazione Swarm & Agenti
+
+### 6.1 Catalogo degli agenti
+
+I venti agenti di serie stanno in `core/agents/catalog/`: un `catalog.json` con i metadati e un Modelfile per agente, modificabili come file di testo. Prima erano 1.793 righe di stringhe Python dentro `core/manifests_catalog.py` — 51 KB di contenuto trattato come codice sorgente, che per cambiare una riga di prompt richiedeva di modificare il kernel. Il modulo è passato da 1.824 a 146 righe e carica i file con la stessa API di prima.
+
+### 6.2 Pianificazione DAG (`core/pipeline/dynamic_swarm.py`)
 
 ```mermaid
 graph TD
-    UserGoal["Obiettivo di Ricerca Utente"] --> SwarmPlanner["Pianificatore Swarm (create_swarm_plan)"]
-    SwarmPlanner --> ManifestoScan["Scansione Competenze manifesti/*.md"]
-    ManifestoScan --> DAGGen["Generazione Grafo DAG"]
+    UserGoal["Obiettivo di ricerca"] --> SwarmPlanner["create_swarm_plan()"]
+    SwarmPlanner --> ManifestoScan["Scansione competenze degli agenti"]
+    ManifestoScan --> DAGGen["Generazione grafo DAG"]
 
-    subgraph Fase1 ["Fase 1: Ricerca e Bozza Parallela"]
-        DAGGen --> TaskMath["Matematico (Bozza Teoremi)"]
-        DAGGen --> TaskCode["Programmatore (Bozza Codice Python)"]
+    subgraph Fase1 ["Fase 1 — ricerca e bozza in parallelo"]
+        DAGGen --> TaskMath["Matematico · bozza teoremi"]
+        DAGGen --> TaskCode["Programmatore · bozza codice"]
     end
 
-    subgraph Fase2 ["Fase 2: Revisione e Validazione Sequenziale"]
-        TaskMath --> Reviewer["Revisore (Verifica Formule)"]
-        TaskCode --> Tester["Test Engineer (Esecuzione Pytest)"]
+    subgraph Fase2 ["Fase 2 — revisione sequenziale"]
+        TaskMath --> Reviewer["Revisore · verifica formule"]
+        TaskCode --> Tester["Test engineer · esecuzione pytest"]
     end
 
-    subgraph Fase3 ["Fase 3: Sintesi Finale"]
-        Reviewer --> Architect["Sigma Architect (Sintesi e Report)"]
+    subgraph Fase3 ["Fase 3 — sintesi"]
+        Reviewer --> Architect["Sigma Architect · report finale"]
         Tester --> Architect
     end
 
-    Architect --> Output["Modulo di Conoscenza Finale Completo"]
+    Architect --> Output["Modulo di conoscenza completo"]
 ```
 
 ---
 
-## 6. 🔌 Sub-sistema MCP & Governance
-
-### Workflow Governance Sicurezza (`core/mcp/governance.py`)
+## 7. 🔌 MCP & Governance
 
 ```mermaid
 sequenceDiagram
     autonumber
     participant Agente as Agente AI / LLM
-    participant Hub as MCP Hub (mcp_hub.py)
+    participant Hub as MCP Hub
     participant Gov as Governance Policy
-    participant Coda as Coda in Sospeso
-    participant Utente as Operatore / Chat UI
-    participant Server as Server MCP Target
+    participant Coda as Coda in sospeso
+    participant Utente as Operatore
+    participant Server as Server MCP
 
-    Agente->>Hub: Chiamata Tool (es. ha_toggle_light)
-    Hub->>Gov: Verifica Classe di Sicurezza
-    alt Tool SAFE (Lettura)
-        Gov-->>Hub: Autorizza Esecuzione
-        Hub->>Server: Esegue Tool
-        Server-->>Hub: Risultato Tool
-        Hub-->>Agente: Restituisce Output
-    else Tool SENSITIVE (Modifica/Hardware) & auto_approve == False
-        Gov->>Coda: Parcheggia Chiamata (TTL 15 min)
-        Coda-->>Utente: Mostra Banner di Approvazione nella Chat
-        Utente->>Hub: /api/mcp/approve (approve=True)
-        Hub->>Server: Esegue Tool
-        Server-->>Hub: Risultato Tool
-        Hub-->>Agente: Restituisce Output
+    Agente->>Hub: Chiamata tool
+    Hub->>Gov: Verifica classe di sicurezza
+    alt Tool SAFE (sola lettura)
+        Gov-->>Hub: Autorizza
+        Hub->>Server: Esegue
+        Server-->>Hub: Risultato
+        Hub-->>Agente: Output
+    else Tool SENSITIVE e auto_approve == false
+        Gov->>Coda: Parcheggia la chiamata (TTL 15 min)
+        Coda-->>Utente: Banner di approvazione in chat
+        Utente->>Hub: POST /api/mcp/approve
+        Hub->>Server: Esegue
+        Server-->>Hub: Risultato
+        Hub-->>Agente: Output
     end
 ```
 
 ---
 
-## 7. 🔬 Training Lab & Fine-Tuning Engine
-
-### Pipeline di Addestramento
+## 8. 🔬 Training Lab (modulo `sigma_training_lab`)
 
 ```mermaid
 graph LR
-    Dataset["Dataset Grezzo (JSONL / HF Hub)"] --> Preproc["Preprocessore (datasets.py)"]
+    Dataset["Dataset (JSONL / HF Hub)"] --> Preproc["training/datasets.py"]
     Preproc --> Tokenizer["HF Tokenizer"]
-    Tokenizer --> EngineSelector{"Motore di Addestramento"}
+    Tokenizer --> EngineSelector{"Metodo"}
 
-    EngineSelector -->|Unsloth QLoRA| Unsloth["Unsloth FastLanguageModel (jobs.py)"]
-    EngineSelector -->|PEFT LoRA| PEFT["PEFT SFTTrainer"]
-    EngineSelector -->|Gradus FWE| FWE["Gradus Codebook Engine (gradus/)"]
+    EngineSelector -->|Unsloth QLoRA| Unsloth["training/jobs.py"]
+    EngineSelector -->|PEFT LoRA| PEFT["SFTTrainer"]
+    EngineSelector -->|Gradus FWE| FWE["gradus/ · generatore di pesi"]
 
-    Unsloth --> Checkpoint["Checkpoint Adapter LoRA"]
+    Unsloth --> Checkpoint["Adapter LoRA"]
     PEFT --> Checkpoint
     FWE --> Checkpoint
 
-    Checkpoint --> Merge["Merge Adapter nel Modello Base"]
-    Merge --> Quant["Quantizzatore GGUF (Q4_K_M / Q8_0)"]
-    Quant --> OllamaReg["Registro Modelli Ollama"]
+    Checkpoint --> Merge["Merge nel modello base"]
+    Merge --> Quant["Export GGUF · Q4_K_M / Q8_0"]
+    Quant --> OllamaReg["Registro Ollama"]
 ```
 
----
+**I dati di training stanno fuori dal modulo**, in `training/` e `training_lab/` sotto la radice: un fine-tuning costa ore di GPU e deve sopravvivere alla disinstallazione del modulo. Il modulo li raggiunge tramite `core/modules/sigma_training_lab/paths.py`, che chiede la radice al kernel.
 
-## 8. 🎨 Creative Engine & Grafico degli Asset
-
-### Schema del Caveau Creativo (`data/creative/creative_assets.db`)
-- Tabella `assets`: ID asset, tipo (immagine, mesh, materiale, video), nome, thumbnail, metadati JSON.
-- Tabella `asset_versions`: Cronologia versioni, percorsi file (albedo, normal, mesh, render) e parametri.
-- Tabella `asset_edges`: Tracciamento della discendenza DAG (asset padre -> asset derivato).
+**Due cose diverse si chiamano "benchmark"**:
+- `core/engine/benchmark.py` misura **prefill e decode in tok/s** per pianificare l'inferenza. È telemetria del kernel e ci resta.
+- `training/benchmarks.py` misura **MMLU, GSM8K, HumanEval** e altre nove suite. È valutazione di qualità, ed è candidata a diventare il modulo `sigma_eval` (§ 9).
 
 ---
 
-## 9. 🔒 Modello di Sicurezza e Sandbox
+## 9. 🚧 Stato del refactoring
 
-- **Whitelist dei Percorsi (`core/sandbox.py`)**: `_is_path_allowed()` limita l'accesso ai file solo a percorsi whitelisted (`data/`, `manifesti/`, `scratch/`, `sigma_studio/`, `core/`).
-- **Validazione AST del Codice**: Il codice Python generato dagli agenti viene analizzato con `ast.parse()` prima di essere eseguito.
-- **Isolamento Subprocessi**: L'esecuzione di comandi avviene con `shlex.split`, senza `shell=True` e con timeout rigorosi.
+### Fatto
+
+| Intervento | Effetto misurato |
+|:---|:---|
+| Percorsi del Training Lab riagganciati | 25 job visibili, prima 0 · autopilota e Gradus ritrovati |
+| `core/paths.py`, servizio unico dei percorsi | 11 ancoraggi `__file__` e 4 `os.getcwd()` eliminati · avvio identico da qualsiasi directory |
+| Quattro radici separate | grafo della conoscenza da 38 nodi a 19, zero pesi indicizzati |
+| Pipeline HTTP legacy rimossa | `sigma_server.py` 547 → 219 righe · 121 handler duplicati in meno |
+| Handler di sistema montati | `/api/system/capabilities` e `/api/system/available_modules` non rispondono più 404 |
+| Catalogo agenti estratto in dati | `manifests_catalog.py` 1.824 → 146 righe |
+| Ricerca del Developer Studio a budget | scansione di 400 GB da illimitata a 1,08 s |
+| Suite di test del modulo riparata | da 5 file non collezionabili a 676 test verdi |
+| Isolamento dei test dai dati reali | la suite non scrive più nell'installazione |
+
+### Da fare
+
+| Punto | Sostanza |
+|:---|:---|
+| **Registri dei moduli nel kernel** | Restano `capability_manager.MODULE_REQUIREMENTS` e `registry.js:TAB_TO_FOLDER`. Vanno letti dal manifest. |
+| **`sigma_model_hub` importato dal kernel** | `fastapi_app.py` lo importa direttamente: un modulo che il kernel importa non è un modulo. |
+| **Dipendenze fra moduli** | `kernel_modules_required` esiste e nessuno lo legge. Serve un registry che ordini il caricamento e un `kernel.require()` che dica quale modulo manca. |
+| **Scorporo di `sigma_eval`** | Il grafo è già pulito: i benchmark non importano il training, è l'autopilota a chiamare loro. |
+| **File troppo lunghi** | `training/jobs.py` 3.862 righe, `engine/unified_runtime.py` 1.812, `engine/backends/llamacpp_backend.py` 1.798. |
+| **`_sse` duplicato in cinque punti** | Tre copie usano `except` nudo e sopprimono `ClientGone`: chi chiude la tab lascia il generatore a macinare fino al budget completo di token. |
+| **Rilevamento hardware in cinque implementazioni** | `engine/hardware_probe.py` è il più completo e va promosso a servizio unico. |
+| **Build frontend bloccante** | `npm run build` sincrono a ogni installazione di modulo: su Pi 5 è il punto in cui l'operazione fallisce. |
 
 ---
 
-## 10. 📊 Matrice delle Funzionalità Implementate vs Programmate
+## 10. 🔒 Sicurezza e Sandbox
 
-| Componente di Sistema | Implementato | Parziale | Programmato | Evidenza |
-|:---|:---:|:---:|:---:|:---|
-| **Backend FastAPI ASGI** | ✅ | | | `core/fastapi_app.py` |
-| **Frontend React 19 SPA** | ✅ | | | `sigma_studio/src/App.jsx` |
-| **AI Multi-Provider (Ollama/Cloud)** | ✅ | | | `core/ai_providers.py` |
-| **12 Server MCP Integrati** | ✅ | | | `core/mcp/*.py` |
-| **Integrazione Home Assistant** | ✅ | | | `core/mcp/homeassistant_server.py` |
-| **Orchestratore Swarm DAG** | ✅ | | | `core/pipeline/dynamic_swarm.py` |
-| **Fine-Tuning Unsloth & SLM Forge** | ✅ | | | `core/training/jobs.py`, `forge.py` |
-| **Gradus FWE Weight Generator** | ✅ | | | Pacchetto `gradus/` |
-| **Caveau Asset Creativi SQLite** | ✅ | | | `core/creative/asset_graph.py` |
-| **Blender 3D Headless Rendering** | ✅ | | | `core/creative/three_d/blender_bridge.py` |
-| **Viewer Immagini In-Chat e Tab** | ✅ | | | `src/components/Workspace/ImageViewer.jsx` |
-| **Rotte RESTful DELETE/PATCH** | | ⚠️ | | `core/api_router.py:L287` (Stubs) |
-| **Container Docker & Compose** | | | ❌ PROGRAMMATO | Nessun `Dockerfile` presente |
-| **Pipeline CI/CD GitHub Actions** | | | ❌ PROGRAMMATO | Nessun `.github/workflows` presente |
-| **Supporto Nativo Raspberry Pi 5 / ARM64** | | | ❌ PROGRAMMATO | Nessun manifesto ARM64 nativo |
+- **Whitelist dei percorsi** (`core/sandbox.py`): l'accesso ai file è limitato a `data/`, `manifesti/`, `scratch/`, `sigma_studio/`, `core/`.
+- **Validazione AST**: il codice Python generato dagli agenti passa per `ast.parse()` prima di essere eseguito.
+- **Isolamento subprocessi**: `shlex.split`, niente `shell=True`, timeout rigorosi.
+- **Ricerca a budget** (`developer_studio/fs_manager.py`): pruning delle directory pesanti prima di scenderci, tetto di 2 MB per file, sniff dei byte NUL, lettura riga per riga, scadenza a 20 s. Senza questi limiti una singola ricerca ha portato il processo a 75 GB residenti.
+
+---
+
+## 11. 📊 Funzionalità: implementate, parziali, programmate
+
+| Componente | Stato | Evidenza |
+|:---|:---:|:---|
+| Backend FastAPI ASGI, pipeline unica | ✅ | `core/fastapi_app.py` |
+| Frontend React 19 SPA | ✅ | `sigma_studio/src/App.jsx` |
+| AI multi-provider (Ollama / cloud) | ✅ | `core/ai_providers.py` |
+| Hub MCP — 5 server, 27 tool | ✅ | `core/mcp/mcp_hub.py` |
+| Orchestratore swarm DAG | ✅ | `core/pipeline/dynamic_swarm.py` |
+| Servizio unico dei percorsi | ✅ | `core/paths.py` |
+| Quattro radici dei dati separate | ✅ | `core/paths.py` § 4.3 |
+| Fine-tuning Unsloth e SLM Forge | ✅ | modulo `sigma_training_lab` |
+| Gradus FWE, generatore di pesi | ✅ | `sigma_training_lab/gradus/` |
+| Galleria Creative sfogliabile | ✅ | `core/creative_gallery.py` |
+| CI GitHub Actions | ✅ | `.github/workflows/ci.yml`, `release.yml` |
+| Contratto dei moduli con dipendenze | ⚠️ | manifest presente, `kernel_modules_required` non letto |
+| Rotte RESTful DELETE / PATCH | ⚠️ | `core/api_router.py:350` — stub |
+| Motore Creative (immagini, 3D, video) | ⚠️ | modulo `sigma_creative_lab` non installato |
+| Container Docker & Compose | ❌ | nessun `Dockerfile` |
