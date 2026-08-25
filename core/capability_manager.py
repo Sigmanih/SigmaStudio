@@ -101,9 +101,17 @@ def _requisiti_dai_manifest() -> dict:
     if not radice.is_dir():
         return trovati
 
+    from core.module_links import module_manifest_path
+
     for cartella in sorted(radice.iterdir()):
-        manifest = cartella / "manifest.json"
-        if not manifest.is_file():
+        if not cartella.is_dir() or cartella.name.startswith((".", "_")):
+            continue
+        # Per un modulo collegato al repository di sviluppo il manifest sta
+        # nella radice del modulo, un livello sopra il codice: chiederlo al
+        # risolutore invece di comporlo a mano e' cio' che distingue un modulo
+        # in sviluppo da uno senza dichiarazioni.
+        manifest = module_manifest_path(cartella.name)
+        if manifest is None:
             continue
         try:
             dati = json.loads(manifest.read_text(encoding="utf-8"))
