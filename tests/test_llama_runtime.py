@@ -26,6 +26,8 @@ ASSETS = [
     "llama-b10628-bin-win-vulkan-x64.zip",
     "llama-b10628-bin-win-rocm-7.14-x64.zip",
     "llama-b10628-bin-win-sycl-x64.zip",
+    "llama-b10628-bin-ubuntu-sycl-fp16-x64.tar.gz",
+    "llama-b10628-bin-ubuntu-sycl-fp32-x64.tar.gz",
     "llama-b10628-bin-ubuntu-x64.tar.gz",
     "llama-b10628-bin-ubuntu-arm64.tar.gz",
     "llama-b10628-bin-ubuntu-vulkan-x64.tar.gz",
@@ -139,6 +141,88 @@ class TestNomiDegliArchivi(unittest.TestCase):
         self.assertTrue(asset_name("b1", "win-cpu-x64").endswith(".zip"))
         self.assertTrue(asset_name("b1", "ubuntu-x64").endswith(".tar.gz"))
         self.assertTrue(asset_name("b1", "macos-arm64").endswith(".tar.gz"))
+
+
+class TestIntel(unittest.TestCase):
+    """Intel ha due strade, e quale si prende dipende da cosa e' installato."""
+
+    def test_con_oneapi_prende_sycl(self):
+        self.assertEqual(
+            select_asset(ASSETS, BUILD, sistema="Windows", arch="AMD64", compute="sycl"),
+            "llama-b10628-bin-win-sycl-x64.zip")
+
+    def test_su_linux_preferisce_la_variante_fp16(self):
+        self.assertEqual(
+            select_asset(ASSETS, BUILD, sistema="Linux", arch="x86_64", compute="sycl"),
+            "llama-b10628-bin-ubuntu-sycl-fp16-x64.tar.gz")
+
+    def test_senza_oneapi_resta_vulkan(self):
+        """Le Xe integrate e le Arc funzionano con il solo driver grafico."""
+        self.assertEqual(
+            select_asset(ASSETS, BUILD, sistema="Windows", arch="AMD64", compute="vulkan"),
+            "llama-b10628-bin-win-vulkan-x64.zip")
+
+    def test_sycl_ripiega_se_la_build_non_c_e(self):
+        senza_sycl = [a for a in ASSETS if "sycl" not in a]
+        self.assertEqual(
+            select_asset(senza_sycl, BUILD, sistema="Windows", arch="AMD64", compute="sycl"),
+            "llama-b10628-bin-win-vulkan-x64.zip")
+
+
+class TestSceltaDellAcceleratore(unittest.TestCase):
+    """Un runtime che non si apre non deve entrare nella scelta.
+
+    E' la regola che separa "questa macchina ha una scheda AMD" da "questa
+    macchina puo' avviare una build ROCm". Confonderle da' un binario che non
+    apre le proprie librerie al primo avvio.
+    """
+
+    def _scegli(self, gpu, runtimes):
+        import core.engine.gpu_vendors as gv
+        originali = (gv.gpu_vendors, gv.available_runtimes)
+        gv.gpu_vendors = lambda: list(gpu)
+        gv.available_runtimes = lambda: dict(runtimes)
+        try:
+            return gv.preferred_compute()
+        finally:
+            gv.gpu_vendors, gv.available_runtimes = originali
+
+    SPENTI = {"cuda": False, "vulkan": False, "hip": False, "sycl": False, "metal": False}
+
+    def test_amd_senza_hip_non_prende_rocm(self):
+        scelto = self._scegli(["amd"], dict(self.SPENTI, vulkan=True))
+        self.assertEqual(scelto, "vulkan")
+
+    def test_amd_con_hip_prende_rocm(self):
+        scelto = self._scegli(["amd"], dict(self.SPENTI, hip=True, vulkan=True))
+        self.assertEqual(scelto, "rocm")
+
+    def test_intel_senza_oneapi_prende_vulkan(self):
+        scelto = self._scegli(["intel"], dict(self.SPENTI, vulkan=True))
+        self.assertEqual(scelto, "vulkan")
+
+    def test_intel_con_oneapi_prende_sycl(self):
+        scelto = self._scegli(["intel"], dict(self.SPENTI, sycl=True, vulkan=True))
+        self.assertEqual(scelto, "sycl")
+
+    def test_apu_amd_piu_scheda_nvidia_prende_cuda(self):
+        """Il caso di questa macchina, e fra i piu' comuni in circolazione.
+
+        L'enumerazione restituisce ['amd', 'nvidia'] perche' la Radeon
+        integrata nell'APU viene elencata per prima: seguire l'ordine di
+        scoperta sceglieva ROCm su una grafica integrata invece di CUDA su due
+        schede discrete.
+        """
+        scelto = self._scegli(["amd", "nvidia"],
+                              dict(self.SPENTI, cuda=True, hip=True, vulkan=True))
+        self.assertEqual(scelto, "cuda")
+
+    def test_senza_niente_resta_la_cpu(self):
+        self.assertEqual(self._scegli([], dict(self.SPENTI)), "cpu")
+
+    def test_una_scheda_senza_alcun_runtime_non_impedisce_l_avvio(self):
+        """Il requisito: su qualunque hardware Sigma Studio deve partire."""
+        self.assertEqual(self._scegli(["nvidia", "amd", "intel"], dict(self.SPENTI)), "cpu")
 
 
 if __name__ == "__main__":

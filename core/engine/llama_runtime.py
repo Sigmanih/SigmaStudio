@@ -75,12 +75,15 @@ def runtime_dir() -> Path:
 _PREFERENZE: Dict[str, List[str]] = {
     "windows-x64-cuda":   ["win-cuda-{cuda}-x64", "win-vulkan-x64", "win-cpu-x64"],
     "windows-x64-rocm":   ["win-rocm-{rocm}-x64", "win-vulkan-x64", "win-cpu-x64"],
+    "windows-x64-sycl":   ["win-sycl-x64", "win-vulkan-x64", "win-cpu-x64"],
     "windows-x64-vulkan": ["win-vulkan-x64", "win-cpu-x64"],
     "windows-x64-cpu":    ["win-cpu-x64"],
     "windows-arm64-cpu":  ["win-cpu-arm64"],
 
     "linux-x64-cuda":     ["ubuntu-x64"],
     "linux-x64-rocm":     ["ubuntu-rocm-{rocm}-x64", "ubuntu-vulkan-x64", "ubuntu-x64"],
+    "linux-x64-sycl":     ["ubuntu-sycl-fp16-x64", "ubuntu-sycl-fp32-x64",
+                           "ubuntu-vulkan-x64", "ubuntu-x64"],
     "linux-x64-vulkan":   ["ubuntu-vulkan-x64", "ubuntu-x64"],
     "linux-x64-cpu":      ["ubuntu-x64"],
     "linux-arm64-vulkan": ["ubuntu-vulkan-arm64", "ubuntu-arm64"],
@@ -105,7 +108,7 @@ def _chiave(sistema: str, arch: str, compute: str) -> str:
     arch = "arm64" if arch in ("arm64", "aarch64") else "x64"
 
     compute = (compute or "cpu").lower()
-    if compute not in ("cuda", "rocm", "vulkan", "metal"):
+    if compute not in ("cuda", "rocm", "vulkan", "metal", "sycl"):
         compute = "cpu"
 
     return f"{sistema}-{arch}-{compute}"
@@ -253,33 +256,22 @@ def _versione_cuda(acceleratori) -> Optional[str]:
 
 
 def describe_machine() -> Dict[str, Any]:
-    """Sistema, architettura e acceleratore, nel vocabolario di questo modulo."""
-    compute = "cpu"
-    cuda_version = None
+    """Sistema, architettura e acceleratore, nel vocabolario di questo modulo.
 
+    L'acceleratore lo decide core/engine/gpu_vendors, che guarda due cose
+    separate: quali schede ci sono e quali runtime si aprono davvero. Sceglierlo
+    dalle sole schede farebbe scaricare una build ROCm su una macchina senza HIP
+    SDK, o una SYCL senza oneAPI: un binario che non apre le proprie librerie,
+    cioe' l'errore al primo avvio che tutto questo lavoro serve a togliere.
+    """
     try:
-        from core.engine.hardware_probe import UniversalHardwareProbe
-        sonda = UniversalHardwareProbe.probe_accelerators()
-        # La sonda descrive il tipo per esteso — "NVIDIA_CUDA", "AMD_ROCM",
-        # "APPLE_METAL" — quindi si cerca dentro la stringa invece di
-        # confrontarla: un uguale qui riportava "cpu" su una macchina con due
-        # schede NVIDIA, e avrebbe fatto scaricare la build sbagliata.
-        tipi = " ".join(str(a.get("type", "")).lower() for a in (sonda or []))
-        if "cuda" in tipi or "nvidia" in tipi:
-            compute = "cuda"
-            cuda_version = _versione_cuda(sonda)
-        elif "rocm" in tipi or "hip" in tipi:
-            compute = "rocm"
-        elif "metal" in tipi or "mps" in tipi:
-            compute = "metal"
-        elif "vulkan" in tipi or "directml" in tipi or "intel" in tipi:
-            compute = "vulkan"
+        from core.engine.gpu_vendors import preferred_compute
+        compute = preferred_compute()
     except Exception as exc:
-        log.debug("[LlamaRuntime] Sonda acceleratori non disponibile: %s", exc)
+        log.warning("[LlamaRuntime] Rilevamento acceleratore fallito (%s): uso la CPU.", exc)
+        compute = "cpu"
 
-    if compute == "cpu" and platform.system() == "Darwin":
-        if platform.machine().lower() in ("arm64", "aarch64"):
-            compute = "metal"
+    cuda_version = _versione_cuda(None) if compute == "cuda" else None
 
     return {
         "sistema": platform.system(),
