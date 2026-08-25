@@ -161,8 +161,11 @@ def graceful_shutdown(signum, frame):
 # NameError. E' successo con `ensure_venv` dopo la rimozione della pipeline
 # legacy. `--check` esegue tutta la preparazione e si ferma prima di servire.
 
-def prepare_environment() -> dict:
-    """Prepara l'ambiente: hardware, manifesti, indice, venv, frontend."""
+def prepare_environment(solo_verifica: bool = False) -> dict:
+    """Prepara l'ambiente: hardware, manifesti, indice, venv, frontend, runtime.
+
+    Con solo_verifica non scarica niente: riferisce e basta.
+    """
     esiti: dict = {}
 
     _apply_hardware_env()
@@ -184,6 +187,19 @@ def prepare_environment() -> dict:
     esiti["venv"] = venv_ok
 
     esiti["frontend"] = _build_frontend_if_needed()
+
+    # Runtime GGUF e modello di partenza, in quest'ordine: scaricare prima il
+    # modello vorrebbe dire far scaricare mezzo giga a una macchina che poi non
+    # riesce a eseguirlo. In modalita' --check non si scarica niente e si dice
+    # soltanto a che punto e' l'installazione.
+    try:
+        from core.first_run import prepare as _primo_avvio
+        esiti["primo_avvio"] = _primo_avvio(
+            progress=lambda t: log.info(t), scarica=not solo_verifica)
+    except Exception as exc:
+        log.warning("Preparazione del primo avvio saltata: %s", exc)
+        esiti["primo_avvio"] = {"errore": str(exc)}
+
     return esiti
 
 
@@ -242,7 +258,7 @@ def main(argv: list[str] | None = None) -> int:
     signal.signal(signal.SIGINT, graceful_shutdown)
     signal.signal(signal.SIGTERM, graceful_shutdown)
 
-    esiti = prepare_environment()
+    esiti = prepare_environment(solo_verifica=solo_verifica)
 
     if solo_verifica:
         log.info("Verifica completata: %s", esiti)

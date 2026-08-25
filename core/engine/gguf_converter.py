@@ -244,9 +244,9 @@ class GgufConverter:
         # Auto-recover quantizer (llama_cpp) if not yet imported/present
         if not quantizer:
             try:
-                from sigma_launcher import detect_platform, install_inference_kernels
+                from sigma_launcher import detect_platform, install_gguf_runtime
                 platform_info = detect_platform()
-                install_inference_kernels(platform_info)
+                install_gguf_runtime(platform_info)
                 importlib.invalidate_caches()
                 quantizer = module_available("llama_cpp")
             except Exception:

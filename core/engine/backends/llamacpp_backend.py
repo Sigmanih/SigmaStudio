@@ -310,7 +310,7 @@ class LlamaCppBackend(InferenceBackend):
             try:
                 log.info("[LlamaCppBackend] llama_cpp not found, attempting dynamic on-demand install...")
                 import importlib
-                from sigma_launcher import detect_platform, install_inference_kernels
+                from sigma_launcher import detect_platform, install_inference_kernels  # noqa: E501
                 platform_info = detect_platform()
                 install_inference_kernels(platform_info, force=True)
                 importlib.invalidate_caches()

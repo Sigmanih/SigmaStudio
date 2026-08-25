@@ -214,7 +214,7 @@ def install_dependencies(platform_info):
     else:
         run_pip(os.path.join(req_dir, "cpu.txt"))
 
-    install_inference_kernels(platform_info)
+    install_gguf_runtime(platform_info)
 
     print_log("[SIGMA] Python dependencies ready.", Colors.OKGREEN)
 
@@ -342,12 +342,52 @@ def _ensure_build_toolchain(platform_info):
     return bool(shutil.which("cmake"))
 
 
+def install_gguf_runtime(platform_info, force=False):
+    """
+    Installs the official llama.cpp binaries for this machine.
+
+    This is the primary path, and it replaced installing llama-cpp-python for
+    a reason that showed up on a user's machine: the prebuilt wheels are
+    compiled with AVX2 and FMA baked in, and a processor without them stops at
+    the first vector kernel with STATUS_ILLEGAL_INSTRUCTION. The official
+    binaries are built with GGML_CPU_ALL_VARIANTS and GGML_BACKEND_DL —
+    fourteen CPU variants in one archive, chosen at runtime — so one download
+    covers every x86-64 from 2011 onward, needs no compiler, and does not care
+    which Python version is running it.
+
+    Cheap when already present: the archive is not fetched again.
+    """
+    try:
+        sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+        from core.engine.llama_runtime import install, installed_server
+    except Exception as exc:
+        print_log(f"[SIGMA] GGUF runtime installer unavailable: {exc}", Colors.WARNING)
+        return False
+
+    if not force and installed_server() is not None:
+        return True
+
+    print_log("[SIGMA] Installing the official llama.cpp runtime...", Colors.OKCYAN)
+    esito = install(progress=lambda t: print_log(f"[SIGMA] {t}", Colors.OKCYAN))
+    if esito.get("success"):
+        print_log(f"[SIGMA] GGUF runtime ready ({esito.get('asset', 'installed')}).",
+                  Colors.OKGREEN)
+        return True
+
+    print_log(f"[SIGMA] GGUF runtime not installed: {esito.get('error')}", Colors.WARNING)
+    print_log("[SIGMA] Ollama, LM Studio and Cloud providers still work.", Colors.WARNING)
+    return False
+
+
 def install_inference_kernels(platform_info, force=False):
     """
-    Installs the llama.cpp GGUF runtime for the accelerator on this machine.
+    Installs llama-cpp-python: the in-process GGUF runtime.
 
-    Cheap when already present: an import check short-circuits before pip is
-    ever invoked, so this costs nothing on a normal launch.
+    No longer part of a normal install — install_gguf_runtime() covers that,
+    on hardware where this could not. It stays because an installation that
+    already has the wheel keeps working, and because the conversion tooling
+    still reaches for it. Compiling it needs a toolchain that most machines do
+    not have, which is exactly why it stopped being the default.
     """
     import importlib
     python_exe, _ = ensure_venv()
@@ -720,7 +760,9 @@ def main():
         # Explicit --install means "try again", including builds that failed
         # before and are skipped on a normal launch.
         if not args.skip_inference_kernels:
-            install_inference_kernels(platform_info, force=True)
+            install_gguf_runtime(platform_info, force=True)
+            if "--with-llama-cpp-python" in sys.argv:
+                install_inference_kernels(platform_info, force=True)
         ensure_frontend()
         return
 
