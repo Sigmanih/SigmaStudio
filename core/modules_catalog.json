@@ -1,0 +1,55 @@
+{
+  "_commento": [
+    "Requisiti hardware dei moduli conosciuti dal marketplace.",
+    "Per un modulo INSTALLATO fa fede il suo manifest.json: questo file e' la",
+    "fonte per quelli non ancora installati, di cui la UI deve poter dire se",
+    "girerebbero su questa macchina prima di scaricarli.",
+    "Aggiungere una voce qui non richiede di toccare il codice del kernel."
+  ],
+  "moduli": {
+    "sigma_training_lab": {
+      "description": "Fine-tuning and training with LoRA/QLoRA",
+      "requires": {
+        "cuda": true
+      },
+      "recommended": {
+        "total_vram_gb": 6.0
+      },
+      "reason_if_unavailable": "Requires NVIDIA GPU with CUDA support"
+    },
+    "sigma_creative_lab": {
+      "description": "3D/2D creative asset generation",
+      "requires": {},
+      "recommended": {
+        "gpu_type": true
+      },
+      "reason_if_unavailable": null
+    },
+    "sigma_hardware_lab": {
+      "description": "GPU telemetry and hardware monitoring",
+      "requires": {},
+      "recommended": {},
+      "reason_if_unavailable": null
+    },
+    "sigma_domotica": {
+      "description": "Home Assistant smart home integration",
+      "requires": {
+        "home_assistant": true
+      },
+      "recommended": {},
+      "reason_if_unavailable": "Requires Home Assistant instance configured in settings"
+    },
+    "sigma_voice_studio": {
+      "description": "Neural text-to-speech with Kokoro",
+      "requires": {},
+      "recommended": {},
+      "reason_if_unavailable": null
+    },
+    "sigma_knowledge": {
+      "description": "Knowledge graph and vector memory",
+      "requires": {},
+      "recommended": {},
+      "reason_if_unavailable": null
+    }
+  }
+}

@@ -5,7 +5,7 @@ from core.capability_manager import (
     detect_capabilities,
     get_requirements_file,
     get_available_modules,
-    MODULE_REQUIREMENTS,
+    get_module_requirements,
 )
 
 
@@ -57,7 +57,12 @@ def test_available_modules_cuda_vs_cpu():
     )
     rpi_modules = get_available_modules(rpi_caps)
     assert rpi_modules["sigma_training_lab"]["compatible"] is False
-    assert "Requires NVIDIA GPU" in rpi_modules["sigma_training_lab"]["reason"]
+    # Il motivo arriva dal manifest del modulo, che e' l'autorita' su se stesso
+    # e lo scrive nella lingua dell'interfaccia: si verifica la sostanza, non
+    # una stringa esatta che appartiene al modulo e non al kernel.
+    motivo = rpi_modules["sigma_training_lab"]["reason"]
+    assert motivo, "un modulo incompatibile deve dire perche'"
+    assert any(parola in motivo.upper() for parola in ("NVIDIA", "CUDA", "GPU"))
     # CPU-friendly modules remain compatible
     assert rpi_modules["sigma_voice_studio"]["compatible"] is True
     assert rpi_modules["sigma_knowledge"]["compatible"] is True
@@ -72,3 +77,36 @@ def test_available_modules_home_assistant():
     ha_caps = SystemCapabilities(home_assistant=True)
     mods_ha = get_available_modules(ha_caps)
     assert mods_ha["sigma_domotica"]["compatible"] is True
+
+
+def test_i_requisiti_non_sono_piu_scritti_nel_kernel():
+    """Il kernel non deve nominare i moduli.
+
+    I requisiti arrivano da core/modules_catalog.json per i moduli conosciuti e
+    dal manifest per quelli installati, che sull'installazione fa fede: prima
+    erano un dizionario dentro capability_manager.py, e aggiungere un modulo
+    voleva dire modificare il kernel.
+    """
+    import core.capability_manager as cm
+
+    assert not hasattr(cm, "MODULE_REQUIREMENTS"), (
+        "il dizionario dei requisiti e' tornato dentro il kernel")
+
+    requisiti = get_module_requirements(refresh=True)
+    assert requisiti, "nessun requisito caricato: catalogo o manifest illeggibili"
+    assert "sigma_training_lab" in requisiti
+
+
+def test_il_manifest_di_un_modulo_installato_ha_la_precedenza():
+    """Un modulo installato e' l'autorita' sui propri requisiti."""
+    from core.capability_manager import _requisiti_dai_manifest
+
+    dai_manifest = _requisiti_dai_manifest()
+    if "sigma_training_lab" not in dai_manifest:
+        pytest.skip("Training Lab non installato su questa macchina")
+
+    dichiarato = dai_manifest["sigma_training_lab"]
+    assert dichiarato["requires"].get("cuda") is True
+
+    effettivo = get_module_requirements(refresh=True)["sigma_training_lab"]
+    assert effettivo["reason_if_unavailable"] == dichiarato["reason_if_unavailable"]

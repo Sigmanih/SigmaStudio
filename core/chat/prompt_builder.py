@@ -15,6 +15,7 @@ Responsibilities:
 import os
 import re
 from collections import OrderedDict
+from core import paths
 from core.logger import get_logger
 
 log = get_logger(__name__)
@@ -178,16 +179,13 @@ def _get_manifesto_content(manifesto_path: str) -> str:
     except OSError as exc:
         log.warning("Cannot read manifesto %s: %s", manifesto_path, exc)
 
-    # Fallback to centralized catalog if file not on disk
+    # Nessun ripiego sul catalogo: il catalogo tiene i metadati, non i corpi.
+    # Un manifesto che non e' su disco non e' installato, e un agente non
+    # installato non ha un prompt di sistema — lo dice l'orchestratore, che
+    # invita a scaricarlo, invece di farlo funzionare a meta' con una copia di
+    # riserva che nessuno teneva allineata al repository.
     if not raw_text:
-        try:
-            from core.manifests_catalog import get_manifesto_by_id_or_filename
-            clean_id = os.path.basename(manifesto_path).replace(".md", "")
-            cat_entry = get_manifesto_by_id_or_filename(clean_id)
-            if cat_entry:
-                raw_text = cat_entry.get("content", "")
-        except Exception as exc:
-            log.debug("Catalog fallback for %s failed: %s", manifesto_path, exc)
+        log.debug("Manifesto non installato: %s", manifesto_path)
 
     return _extract_system_prompt_from_modelfile(raw_text)
 
@@ -271,7 +269,7 @@ def _build_filesystem_context() -> str:
     """
     import time
 
-    data_dir = "data"
+    data_dir = str(paths.workspace_dir())
     if not os.path.isdir(data_dir):
         return ""
 

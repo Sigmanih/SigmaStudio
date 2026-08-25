@@ -2,6 +2,7 @@
 import os
 import glob
 import json
+from core import paths
 from core.logger import get_logger
 from core.store import modules_store
 
@@ -43,9 +44,11 @@ def rebuild_modules_meta() -> dict:
     Scans the entire ./data/ tree recursively into a Universal Knowledge Node Graph (TopicNodes).
     Supports arbitrary folder depth, attached multi-type files, and embedded web applications.
     """
-    data_dir = "data"
+    data_root = paths.workspace_dir()
+    data_dir = str(data_root)
+    prefix = data_root.name
     if not os.path.isdir(data_dir):
-        os.makedirs(data_dir, exist_ok=True)
+        paths.ensure(data_root)
         return {"topics": {}, "nodes": {}, "modules": {}}
 
     existing = modules_store.load()
@@ -82,7 +85,7 @@ def rebuild_modules_meta() -> dict:
 
             file_entries.append({
                 "name": f,
-                "path": f"data/{f_rel}",
+                "path": f"{prefix}/{f_rel}",
                 "type": f_meta.get("type", "text"),
                 "is_entrypoint": f_meta.get("is_entrypoint", False)
             })
@@ -93,7 +96,7 @@ def rebuild_modules_meta() -> dict:
             "id": node_id,
             "name": existing_meta.get("name", node_name),
             "parent_id": parent_id,
-            "folder": f"data/{rel_path}",
+            "folder": f"{prefix}/{rel_path}",
             "description": existing_meta.get("description", f"Nodo di conoscenza per {node_name}"),
             "files": file_entries,
             "has_app": has_app,
@@ -621,19 +624,27 @@ def handle_manifesti_install_from_hub(self):
             
             dest_path = os.path.join(manifesto_dir, found["filename"])
             
-            # Try to fetch fresh from GitHub Raw, fallback to catalog content
+            # Il corpo del manifesto arriva dal repository che lo possiede.
+            # Non esiste piu' una copia di riserva dentro il kernel: era la
+            # terza copia dello stesso testo, e una copia che nessuno aggiorna
+            # finisce per installare un agente diverso da quello pubblicato.
             content = ""
+            errore_rete = ""
             try:
                 import urllib.request
                 raw_url = f"{GITHUB_RAW_BASE_URL}/{found['filename']}"
                 req_obj = urllib.request.Request(raw_url, headers={'User-Agent': 'SigmaStudio/8.0'})
-                with urllib.request.urlopen(req_obj, timeout=5) as resp:
+                with urllib.request.urlopen(req_obj, timeout=10) as resp:
                     content = resp.read().decode('utf-8')
-            except Exception:
-                content = found.get("content", "")
+            except Exception as exc:
+                errore_rete = str(exc)
 
             if not content:
-                content = found.get("content", "")
+                return self.send_json_response({
+                    "success": False,
+                    "error": (f"Impossibile scaricare '{found['filename']}' da "
+                              f"{GITHUB_REPO_URL}: {errore_rete or 'risposta vuota'}"),
+                }, 502)
 
             with open(dest_path, "w", encoding="utf-8") as fh:
                 fh.write(content)

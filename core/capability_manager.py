@@ -4,12 +4,15 @@
 # ==============================================================================
 
 from __future__ import annotations
+import json
 import os
 import platform
 import shutil
 import subprocess
+from pathlib import Path
 from dataclasses import dataclass, field, asdict
 from typing import Optional
+from core import paths
 from core.logger import get_logger
 
 log = get_logger(__name__)
@@ -57,47 +60,81 @@ class SystemCapabilities:
         return asdict(self)
 
 
-# Module capability requirements
-# Each entry maps a module_id to its hardware/software requirements.
-# A module is "compatible" if ALL its requirements are met.
-MODULE_REQUIREMENTS: dict[str, dict] = {
-    "sigma_training_lab": {
-        "description": "Fine-tuning and training with LoRA/QLoRA",
-        "requires": {"cuda": True},
-        "recommended": {"total_vram_gb": 6.0},
-        "reason_if_unavailable": "Requires NVIDIA GPU with CUDA support",
-    },
-    "sigma_creative_lab": {
-        "description": "3D/2D creative asset generation",
-        "requires": {},  # Works on CPU, but slow
-        "recommended": {"gpu_type": True},  # Any GPU accelerates it
-        "reason_if_unavailable": None,
-    },
-    "sigma_hardware_lab": {
-        "description": "GPU telemetry and hardware monitoring",
-        "requires": {},
-        "recommended": {},
-        "reason_if_unavailable": None,
-    },
-    "sigma_domotica": {
-        "description": "Home Assistant smart home integration",
-        "requires": {"home_assistant": True},
-        "recommended": {},
-        "reason_if_unavailable": "Requires Home Assistant instance configured in settings",
-    },
-    "sigma_voice_studio": {
-        "description": "Neural text-to-speech with Kokoro",
-        "requires": {},  # CPU-friendly
-        "recommended": {},
-        "reason_if_unavailable": None,
-    },
-    "sigma_knowledge": {
-        "description": "Knowledge graph and vector memory",
-        "requires": {},
-        "recommended": {},
-        "reason_if_unavailable": None,
-    },
-}
+# ==============================================================================
+# REQUISITI DEI MODULI
+# ==============================================================================
+# Qui c'era un dizionario con i requisiti hardware di ogni modulo, scritto a
+# mano nel kernel. Era uno dei posti in cui il kernel conosceva i moduli per
+# nome: aggiungerne uno voleva dire modificare il kernel, e un modulo che
+# cambiava i propri requisiti non poteva dirlo da solo.
+#
+# Ora ci sono due fonti, in quest'ordine:
+#
+#   1. il manifest del modulo installato — e' lui l'autorita' su se stesso;
+#   2. core/modules_catalog.json — per i moduli che il marketplace conosce ma
+#      che non sono installati, di cui la UI deve comunque poter dire se
+#      girerebbero su questa macchina prima di scaricarli.
+#
+# Il kernel non nomina piu' nessun modulo.
+
+_CATALOGO_MODULI = Path(__file__).resolve().parent / "modules_catalog.json"
+
+_cache_requisiti: Optional[dict] = None
+
+
+def _requisiti_dal_catalogo() -> dict:
+    """I requisiti dei moduli conosciuti ma non installati."""
+    try:
+        dati = json.loads(_CATALOGO_MODULI.read_text(encoding="utf-8"))
+        return dati.get("moduli", {})
+    except (OSError, ValueError) as exc:
+        log.warning("[Capabilities] Catalogo dei moduli non leggibile: %s", exc)
+        return {}
+
+
+def _requisiti_dai_manifest() -> dict:
+    """I requisiti dichiarati dai moduli effettivamente installati."""
+    from core import paths
+
+    trovati: dict = {}
+    radice = paths.modules_backend_dir()
+    if not radice.is_dir():
+        return trovati
+
+    for cartella in sorted(radice.iterdir()):
+        manifest = cartella / "manifest.json"
+        if not manifest.is_file():
+            continue
+        try:
+            dati = json.loads(manifest.read_text(encoding="utf-8"))
+        except (OSError, ValueError) as exc:
+            log.warning("[Capabilities] Manifest illeggibile per '%s': %s",
+                        cartella.name, exc)
+            continue
+
+        requisiti = (dati.get("requires") or {}).get("hardware")
+        if requisiti is None:
+            # Un manifest senza sezione hardware non dichiara vincoli: il modulo
+            # e' installato, quindi gira. Non e' un errore, e' il caso normale.
+            continue
+
+        trovati[dati.get("id") or cartella.name] = {
+            "description": dati.get("description", ""),
+            "requires": requisiti.get("requires", {}),
+            "recommended": requisiti.get("recommended", {}),
+            "reason_if_unavailable": requisiti.get("reason_if_unavailable"),
+        }
+    return trovati
+
+
+def get_module_requirements(refresh: bool = False) -> dict:
+    """Requisiti di tutti i moduli noti: catalogo, sovrascritto dai manifest."""
+    global _cache_requisiti
+    if _cache_requisiti is None or refresh:
+        requisiti = dict(_requisiti_dal_catalogo())
+        requisiti.update(_requisiti_dai_manifest())
+        _cache_requisiti = requisiti
+    return _cache_requisiti
 
 
 def detect_capabilities() -> SystemCapabilities:
@@ -172,7 +209,7 @@ def detect_capabilities() -> SystemCapabilities:
     # Home Assistant check (from config.json)
     try:
         import json
-        config_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "config.json")
+        config_path = str(paths.config_file())
         if os.path.exists(config_path):
             with open(config_path, "r", encoding="utf-8") as f:
                 cfg = json.load(f)
@@ -209,7 +246,7 @@ def get_available_modules(caps: Optional[SystemCapabilities] = None) -> dict[str
         caps = detect_capabilities()
     
     result = {}
-    for module_id, req_info in MODULE_REQUIREMENTS.items():
+    for module_id, req_info in get_module_requirements().items():
         compatible = True
         reason = None
         recommended_upgrade = None
