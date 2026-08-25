@@ -124,10 +124,12 @@ _KV_QUANT_DECODE_PENALTY = 0.11
 
 _KV_QUANT_TYPE = "q8_0"
 
-# Contexts to try when the requested one does not fit, largest first. Halving
-# rather than searching keeps the choice stable, so small changes in free RAM
-# do not silently move the window between two loads of the same model.
-_MIN_CONTEXT_TOKENS = 2048
+# Contexts to try when the requested one does not fit, largest first.
+# The absolute minimum for Sigma Studio agent chat (manifesto + tools + files) is 8192
+# (or 4096 on extreme low-memory environments) to prevent prompt overflow.
+_MIN_CONTEXT_TOKENS = 8192
+_FLOOR_CONTEXT_TOKENS = 4096
+
 
 # Measured on a Raspberry Pi 5 with a 3B Q4_K_M, 2048 prompt tokens, 4 threads:
 #

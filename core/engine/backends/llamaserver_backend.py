@@ -536,22 +536,34 @@ class LlamaServerBackend(InferenceBackend):
             log.warning("[LlamaServer] HTTP %d su %s (%s). Tento fallback su /completion...",
                         exc.code, percorso, corpo_dettaglio[:300])
 
-            # Se /v1/chat/completions fallisce (es. template non supportato dal nuovo modello),
-            # ripieghiamo sull'endpoint nativo /completion di llama.cpp
-            if percorso == "/v1/chat/completions":
+            # Se la richiesta eccede il contesto o se /v1/chat/completions fallisce,
+            # ripieghiamo sull'endpoint nativo /completion di llama.cpp comprimendo il prompt se necessario
+            is_overflow = "exceed" in corpo_dettaglio.lower() or "context size" in corpo_dettaglio.lower()
+            if percorso == "/v1/chat/completions" or is_overflow:
                 messages = corpo.get("messages", [])
                 parti = []
-                for m in messages:
-                    r = m.get("role", "user")
-                    c = m.get("content", "")
-                    if r == "system":
-                        parti.append(f"System: {c}")
-                    elif r == "user":
-                        parti.append(f"User: {c}")
-                    elif r == "assistant":
-                        parti.append(f"Assistant: {c}")
-                    else:
-                        parti.append(f"{r}: {c}")
+                if is_overflow and len(messages) > 1:
+                    # In caso di overflow, conserva solo il sistema essenziale e l'ultimo turno utente
+                    sys_msg = next((m.get("content", "") for m in messages if m.get("role") == "system"), "")
+                    last_user = next((m.get("content", "") for m in reversed(messages) if m.get("role") == "user"), "")
+                    sys_trimmed = sys_msg[:1200] if sys_msg else ""
+                    user_trimmed = last_user[:2000] if last_user else ""
+                    if sys_trimmed:
+                        parti.append(f"System: {sys_trimmed}")
+                    if user_trimmed:
+                        parti.append(f"User: {user_trimmed}")
+                else:
+                    for m in messages:
+                        r = m.get("role", "user")
+                        c = m.get("content", "")
+                        if r == "system":
+                            parti.append(f"System: {c}")
+                        elif r == "user":
+                            parti.append(f"User: {c}")
+                        elif r == "assistant":
+                            parti.append(f"Assistant: {c}")
+                        else:
+                            parti.append(f"{r}: {c}")
                 parti.append("Assistant: ")
                 prompt_fallback = "\n\n".join(parti)
 
@@ -559,7 +571,7 @@ class LlamaServerBackend(InferenceBackend):
                     "prompt": prompt_fallback,
                     "stream": True,
                     "temperature": corpo.get("temperature", 0.7),
-                    "n_predict": corpo.get("max_tokens", 4096),
+                    "n_predict": min(corpo.get("max_tokens", 2048), 2048),
                     "top_p": corpo.get("top_p", 0.9),
                     "top_k": corpo.get("top_k", 40),
                 }
@@ -584,6 +596,7 @@ class LlamaServerBackend(InferenceBackend):
                     raise RuntimeError(f"HTTP Error {exc2.code}: {raw2 or exc2.reason}") from exc2
             else:
                 raise RuntimeError(f"HTTP Error {exc.code}: {corpo_dettaglio or exc.reason}") from exc
+
 
         with risposta:
             for riga_grezza in risposta:

@@ -1161,17 +1161,48 @@ Contenuto completo...
             if volatile_context else message
         )
 
-        # ── History, measured rather than counted ────────────────────────────
+        # ── History and Prompt Budgeting, measured rather than counted ────────
         # The window has to hold the system prompt, the volatile block, the
         # question and the answer. History gets what is left, and is trimmed
         # from the oldest end with the model's own tokenizer where there is one.
         tokenizer = resident_tokenizer()
+        ctx_window = _engine_context_window()
+        max_prompt_budget = max(ctx_window - 256, 512)
+
+        # Truncate volatile context or system prompt if it alone exceeds the budget
         fixed_tokens = (
             estimate_tokens(full_prompt, tokenizer)
             + estimate_tokens(final_user_turn, tokenizer)
         )
+        if fixed_tokens > max_prompt_budget:
+            # Step 1: trim volatile parts (attached files / workspace context)
+            if volatile_parts:
+                final_user_turn = message
+                fixed_tokens = estimate_tokens(full_prompt, tokenizer) + estimate_tokens(final_user_turn, tokenizer)
+
+            # Step 2: trim project structure from full_prompt if still overflowing
+            if fixed_tokens > max_prompt_budget and project_structure:
+                project_structure = ""
+                full_prompt = f"{identity_header}\n\n{system_prompt}{mcp_tools_catalogue}\n{today}\n"
+                messages[0]["content"] = full_prompt
+                fixed_tokens = estimate_tokens(full_prompt, tokenizer) + estimate_tokens(final_user_turn, tokenizer)
+
+            # Step 3: trim MCP catalogue if still overflowing
+            if fixed_tokens > max_prompt_budget and mcp_tools_catalogue:
+                mcp_tools_catalogue = ""
+                full_prompt = f"{identity_header}\n\n{system_prompt}\n{today}\n"
+                messages[0]["content"] = full_prompt
+                fixed_tokens = estimate_tokens(full_prompt, tokenizer) + estimate_tokens(final_user_turn, tokenizer)
+
+            # Step 4: hard clamp user message if still overflowing
+            if fixed_tokens > max_prompt_budget:
+                chars_avail = max(max_prompt_budget * 3, 500)
+                final_user_turn = final_user_turn[:chars_avail]
+                full_prompt = full_prompt[:chars_avail]
+                messages[0]["content"] = full_prompt
+
         budget = history_budget(
-            context_window=_engine_context_window(),
+            context_window=ctx_window,
             fixed_tokens=fixed_tokens,
             reserve_for_answer=int(profile.get("max_tokens") or 4096),
         )
@@ -1192,7 +1223,7 @@ Contenuto completo...
             "riserva risposta %d",
             fixed_tokens, history_report["tokens"], history_report["kept"],
             history_report["kept"] + history_report["dropped"],
-            _engine_context_window(), int(profile.get("max_tokens") or 4096),
+            ctx_window, int(profile.get("max_tokens") or 4096),
         )
 
         prov_endpoint = active_prov_cfg.get("endpoint", "http://localhost:11434/api/chat")
