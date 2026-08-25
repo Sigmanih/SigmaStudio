@@ -122,6 +122,16 @@ class ModelInspector:
                 if cached.get("_schema") == _FACTS_SCHEMA and cached.get("_fingerprint") == fingerprint:
                     cached.pop("_schema", None)
                     cached.pop("_fingerprint", None)
+                    # Il percorso non si prende dalla cache. La cache vive
+                    # *dentro* la cartella del modello e ne conserva la
+                    # posizione assoluta, mentre l'impronta e' fatta di nome,
+                    # dimensione e data del file: spostare la cartella non la
+                    # cambia. Chi sposta i modelli su un altro disco dal Model
+                    # Hub — cosa che l'applicazione offre — si ritroverebbe
+                    # ogni modello che dichiara di stare dove non e' piu', e il
+                    # caricamento fallirebbe con "nessun file .gguf trovato" su
+                    # un file che esiste.
+                    cached["path"] = model_path
                     return ModelFacts(**cached)
                 log.debug("[ModelInspector] Cache stale for %s, re-inspecting", model_path)
             except Exception as exc:
