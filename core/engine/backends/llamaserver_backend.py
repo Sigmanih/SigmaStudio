@@ -147,14 +147,44 @@ class LlamaServerBackend(InferenceBackend):
 
     @classmethod
     def score(cls, facts: ModelFacts, hardware: Dict[str, Any]) -> int:
-        """Preferito all'esecuzione in-process quando il binario c'e'.
+        """Preferito all'esecuzione in-processo quando il binario ha la GPU giusta.
 
         Non perche' generi piu' in fretta — e' lo stesso motore — ma perche' un
         crash del modello non si porta via il server, e perche' serve piu'
         conversazioni sullo stesso modello caricato una volta. A parita' di
         token al secondo, sono due proprieta' che si pagano volentieri.
+
+        Ma una build CPU-only su una macchina con GPU vince sull'in-process che
+        ha CUDA compilato dentro, e il risultato e' che le GPU non vengono
+        usate. Il punteggio si abbassa quando la build non ha l'acceleratore
+        giusto.
         """
+        try:
+            from core.engine.llama_runtime import installed_build_info
+            info = installed_build_info()
+        except Exception:
+            info = None
+
+        if info is None:
+            return 110
+
+        # La build ha un acceleratore? Se si', vince.
+        if info.get("acceleratori"):
+            return 110
+
+        # La build e' solo CPU. Se la macchina ha una GPU e l'in-process ha
+        # CUDA, lasciamo vincere l'in-process finche' la build non viene
+        # aggiornata.
+        accelerators = hardware.get("accelerators", [])
+        ha_gpu = any(
+            a.get("type") in ("NVIDIA_CUDA", "AMD_ROCM", "APPLE_MPS")
+            for a in accelerators
+        )
+        if ha_gpu:
+            return 80  # Sotto il punteggio implicito (100) dell'in-process.
+
         return 110
+
 
     # -------------------------------------------------------------- runtime
 
@@ -199,12 +229,14 @@ class LlamaServerBackend(InferenceBackend):
 
         log.info("[LlamaServer] Avvio: %s", " ".join(comando[1:]))
         t0 = time.perf_counter()
+        from core.engine.llama_runtime import runtime_env
         try:
             self._processo = subprocess.Popen(
                 comando,
                 stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
                 text=True, encoding="utf-8", errors="replace",
                 cwd=str(server.parent),
+                env=runtime_env(),
             )
         except OSError as exc:
             self._processo = None

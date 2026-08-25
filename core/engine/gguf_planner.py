@@ -81,7 +81,9 @@ _FLOOR_CONTEXT_TOKENS = 1024
 _GGUF_OVERHEAD_FACTOR = 1.20
 
 # Room left on each GPU for the CUDA context and per-device scratch.
-_GPU_RESERVE_GB = 1.5
+# Modern NVIDIA/AMD drivers use ~0.3-0.5 GB per device for runtime context and buffers.
+_GPU_RESERVE_GB = 0.6
+
 
 # Host RAM that must stay free for the OS, the web server and the page cache
 # llama.cpp reads mmapped weights through. A flat figure is the wrong shape:
@@ -322,8 +324,31 @@ def _plan_settings(facts: ModelFacts, hardware: Dict[str, Any], context_tokens: 
             if _kv_quant_pays_off(plain, halved, layers):
                 kv_quant = _KV_QUANT_TYPE
 
+        # Se siamo a pochissimi layer dal full offload (es. 1-3 layer su CPU),
+        # vale sempre la pena ridurre leggermente la finestra di contesto
+        # (es. da 32k a 24k o 16k) per ottenere l'offload completo (-1):
+        # la differenza di velocita' e' di oltre 10x (35 tok/s invece di 2-3 tok/s).
+        if plain != -1 and halved != -1 and layers > 0 and not env_ceiling:
+            for candidate_ctx in (24576, 16384, 12288, 8192):
+                if candidate_ctx >= n_ctx:
+                    continue
+                cand_kv_f16 = ModelInspector.estimate_kv_cache_gb(facts, candidate_ctx)
+                if _layers_that_fit(weights_gb, layers, total_usable, cand_kv_f16) == -1:
+                    n_ctx = candidate_ctx
+                    kv_gb_f16 = cand_kv_f16
+                    plain = -1
+                    kv_quant = None
+                    break
+                if _layers_that_fit(weights_gb, layers, total_usable, cand_kv_f16 / 2) == -1:
+                    n_ctx = candidate_ctx
+                    kv_gb_f16 = cand_kv_f16
+                    halved = -1
+                    kv_quant = _KV_QUANT_TYPE
+                    break
+
         kv_gb = round(kv_gb_f16 / 2, 3) if kv_quant else kv_gb_f16
         n_gpu_layers = halved if kv_quant else plain
+
 
         # A larger prefill batch only helps where there is memory to hold
         # it. On a card that is already full, it competes with the weights.

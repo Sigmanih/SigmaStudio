@@ -355,17 +355,31 @@ def install_gguf_runtime(platform_info, force=False):
     covers every x86-64 from 2011 onward, needs no compiler, and does not care
     which Python version is running it.
 
-    Cheap when already present: the archive is not fetched again.
+    Cheap when already present: the archive is not fetched again — unless the
+    installed build does not match the machine. A CPU-only build on a CUDA
+    machine wastes both GPUs, and the user sees it only as "the engine got slow".
     """
     try:
         sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-        from core.engine.llama_runtime import install, installed_server
+        from core.engine.llama_runtime import install, installed_server, needs_upgrade
     except Exception as exc:
         print_log(f"[SIGMA] GGUF runtime installer unavailable: {exc}", Colors.WARNING)
         return False
 
     if not force and installed_server() is not None:
-        return True
+        # La build c'e', ma e' quella giusta? Una build CPU-only su una macchina
+        # CUDA e' la differenza fra 100+ tok/s e 4 tok/s.
+        motivo = needs_upgrade()
+        if motivo is None:
+            return True
+        print_log(f"[SIGMA] Runtime GGUF installato ma non ottimale: {motivo}", Colors.WARNING)
+        print_log("[SIGMA] Scarico la build corretta...", Colors.OKCYAN)
+        # Elimina la build vecchia per forzare il re-download.
+        import shutil as _shutil
+        from core.engine.llama_runtime import runtime_dir
+        radice = runtime_dir()
+        if radice.is_dir():
+            _shutil.rmtree(radice, ignore_errors=True)
 
     print_log("[SIGMA] Installing the official llama.cpp runtime...", Colors.OKCYAN)
     esito = install(progress=lambda t: print_log(f"[SIGMA] {t}", Colors.OKCYAN))
@@ -377,6 +391,7 @@ def install_gguf_runtime(platform_info, force=False):
     print_log(f"[SIGMA] GGUF runtime not installed: {esito.get('error')}", Colors.WARNING)
     print_log("[SIGMA] Ollama, LM Studio and Cloud providers still work.", Colors.WARNING)
     return False
+
 
 
 def install_inference_kernels(platform_info, force=False):

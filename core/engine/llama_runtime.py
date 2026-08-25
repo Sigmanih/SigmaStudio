@@ -61,6 +61,84 @@ def runtime_dir() -> Path:
     return paths.store_dir() / "engine_runtime"
 
 
+def runtime_env() -> Dict[str, str]:
+    """Ambiente di esecuzione con i percorsi DLL dei runtime di calcolo iniettati.
+
+    Su Windows le librerie di calcolo (CUDA in torch/lib o CUDA toolkit, oneAPI
+    per SYCL, ROCm/HIP, Vulkan SDK) vivono in cartelle dedicate. Senza iniettarle
+    nel PATH del sottoprocesso, Windows non risolve le dipendenze di
+    ggml-cuda.dll o ggml-sycl.dll e llama.cpp ripiega silenziosamente sul
+    backend CPU.
+    """
+    env = os.environ.copy()
+    extra_paths = []
+
+    # 1. Cartella del runtime stesso (dove vivono le DLL di llama.cpp)
+    srv = installed_server()
+    if srv:
+        extra_paths.append(str(srv.parent))
+
+    # 2. PyTorch lib (porta cudart64_*.dll, cublas64_*.dll, c10_cuda, hip, etc.)
+    try:
+        import torch
+        tlib = os.path.join(os.path.dirname(torch.__file__), "lib")
+        if os.path.isdir(tlib):
+            extra_paths.append(tlib)
+    except Exception:
+        pass
+
+    # 3. CUDA_PATH / CUDA toolkit
+    cuda_path = os.environ.get("CUDA_PATH")
+    if cuda_path and os.path.isdir(cuda_path):
+        cbin = os.path.join(cuda_path, "bin")
+        if os.path.isdir(cbin):
+            extra_paths.append(cbin)
+
+    # 4. HIP / ROCm
+    hip_path = os.environ.get("HIP_PATH")
+    if hip_path and os.path.isdir(hip_path):
+        hbin = os.path.join(hip_path, "bin")
+        if os.path.isdir(hbin):
+            extra_paths.append(hbin)
+
+    # 5. oneAPI (Intel SYCL)
+    oneapi_root = os.environ.get("ONEAPI_ROOT") or os.environ.get("CMPLR_ROOT")
+    if oneapi_root and os.path.isdir(oneapi_root):
+        for sub in ("bin", "compiler/latest/windows/bin", "mkl/latest/bin"):
+            p = os.path.join(oneapi_root, sub)
+            if os.path.isdir(p):
+                extra_paths.append(p)
+
+    # 6. Vulkan SDK
+    vulkan_sdk = os.environ.get("VULKAN_SDK")
+    if vulkan_sdk and os.path.isdir(vulkan_sdk):
+        vbin = os.path.join(vulkan_sdk, "bin")
+        if os.path.isdir(vbin):
+            extra_paths.append(vbin)
+
+    if extra_paths:
+        current_path = env.get("PATH", "")
+        nuovi = [p for p in extra_paths if p not in current_path]
+        if nuovi:
+            env["PATH"] = os.pathsep.join(nuovi) + os.pathsep + current_path
+
+    return env
+
+
+def setup_dll_directories() -> None:
+    """Registra le directory DLL nel processo Python corrente (Windows)."""
+    if os.name != "nt" or not hasattr(os, "add_dll_directory"):
+        return
+    env = runtime_env()
+    for p in env.get("PATH", "").split(os.pathsep):
+        if p and os.path.isdir(p):
+            try:
+                os.add_dll_directory(p)
+            except Exception:
+                pass
+
+
+
 # ==============================================================================
 # SCELTA DELL'ARCHIVIO
 # ==============================================================================
@@ -236,22 +314,59 @@ def select_asset(assets: List[str], build: str, **macchina) -> Optional[str]:
 # RILEVAMENTO DELLA MACCHINA
 # ==============================================================================
 
-def _versione_cuda(acceleratori) -> Optional[str]:
+def _versione_cuda(acceleratori=None) -> Optional[str]:
     """La versione CUDA nel formato degli archivi (es. "12.4").
 
-    Serve a scegliere fra le build cuda pubblicate. Se non si riesce a
-    stabilirla, la lista delle preferenze salta la voce che la richiede e
-    ripiega su una build che esiste comunque.
+    Guarda prima le librerie CUDA effettivamente presenti nell'ambiente
+    attivo (es. torch/lib o CUDA toolkit) e solo dopo ripiega sul driver.
     """
+    # 1. Ispeziona prima le DLL del runtime CUDA presenti nel PATH / torch
     try:
         import torch
         versione = getattr(torch, "version", None)
         grezza = getattr(versione, "cuda", None) if versione else None
         if grezza:
             parti = str(grezza).split(".")
-            return f"{parti[0]}.{parti[1]}" if len(parti) >= 2 else str(grezza)
+            v = f"{parti[0]}.{parti[1]}" if len(parti) >= 2 else str(grezza)
+            # Normalizza per gli archivi pubblicati
+            if v.startswith("12."):
+                return "12.4"
+            if v.startswith("13."):
+                return "13.3"
+            if v.startswith("11."):
+                return "11.8"
+            return v
     except Exception:
         pass
+
+    try:
+        env = runtime_env()
+        for p in env.get("PATH", "").split(os.pathsep):
+            if p and os.path.isdir(p):
+                try:
+                    for f in os.listdir(p):
+                        fl = f.lower()
+                        if fl.startswith("cudart64_") and fl.endswith(".dll"):
+                            if "12" in fl:
+                                return "12.4"
+                            elif "13" in fl:
+                                return "13.3"
+                            elif "11" in fl:
+                                return "11.8"
+                except Exception:
+                    continue
+    except Exception:
+        pass
+
+    # 2. Driver nvidia-smi
+    try:
+        from sigma_launcher import _nvidia_smi_cuda_version
+        nv = _nvidia_smi_cuda_version()
+        if nv:
+            return f"{nv[0]}.{nv[1]}"
+    except Exception:
+        pass
+
     return None
 
 
@@ -321,12 +436,93 @@ def installed_server() -> Optional[Path]:
     if not radice.is_dir():
         return None
     for cartella in sorted(radice.iterdir(), reverse=True):
-        if not cartella.is_dir():
+        if not cartella.is_dir() or cartella.name.startswith("."):
             continue
         for candidato in cartella.rglob(SERVER_EXE):
             if candidato.is_file():
                 return candidato
     return None
+
+
+def installed_build_info() -> Optional[Dict[str, Any]]:
+    """Che tipo di build e' installata: CUDA, Vulkan, SYCL o solo CPU.
+
+    Ispeziona le DLL presenti nella cartella del runtime. E' l'unico modo di
+    sapere se la macchina sta usando le GPU che ha: un llama-server.exe che
+    esiste non dice niente su quali backend ha a disposizione.
+    """
+    server = installed_server()
+    if server is None:
+        return None
+
+    cartella = server.parent
+    nomi = {f.name.lower() for f in cartella.iterdir() if f.is_file()}
+
+    acceleratori = []
+    if any(n.startswith("ggml-cuda") for n in nomi):
+        acceleratori.append("cuda")
+    if any(n.startswith("ggml-vulkan") or n == "vulkan-1.dll" for n in nomi):
+        acceleratori.append("vulkan")
+    if any(n.startswith("ggml-sycl") for n in nomi):
+        acceleratori.append("sycl")
+    if any(n.startswith("ggml-rocm") or n.startswith("ggml-hip") for n in nomi):
+        acceleratori.append("rocm")
+    if any(n.startswith("ggml-metal") for n in nomi):
+        acceleratori.append("metal")
+
+    # Le varianti CPU (sse42, haswell, zen4...) sono sempre presenti nelle build
+    # ufficiali, anche in quelle accelerate.
+    varianti_cpu = [n for n in nomi if n.startswith("ggml-cpu-")]
+
+    tipo = acceleratori[0] if acceleratori else "cpu"
+    return {
+        "server": str(server),
+        "cartella": str(cartella),
+        "tipo": tipo,
+        "acceleratori": acceleratori,
+        "varianti_cpu": len(varianti_cpu),
+        "build": cartella.name,
+    }
+
+
+def needs_upgrade() -> Optional[str]:
+    """Se la build installata non e' quella ottimale per questa macchina o non puo' caricare le DLL.
+
+    Una build CPU-only o con dipendenze CUDA non corrispondenti costringe
+    llama.cpp a ripiegare sulla CPU.
+    """
+    info = installed_build_info()
+    if info is None:
+        return "Nessun runtime installato."
+
+    macchina = describe_machine()
+    compute = macchina.get("compute", "cpu")
+
+    if compute == "cpu":
+        return None  # La build CPU e' corretta per una macchina senza GPU.
+
+    if compute not in info.get("acceleratori", []):
+        return (
+            f"La build installata e' '{info['tipo']}' ma questa macchina ha "
+            f"'{compute}'. Le GPU non vengono usate. Serve la build con "
+            f"supporto {compute}."
+        )
+
+    # Verifica se le DLL dell'acceleratore riescono effettivamente a caricarsi
+    if compute == "cuda":
+        cartella = info.get("cartella")
+        if cartella:
+            dll_path = os.path.join(cartella, "ggml-cuda.dll")
+            if os.path.isfile(dll_path):
+                setup_dll_directories()
+                try:
+                    import ctypes
+                    ctypes.CDLL(dll_path)
+                except Exception as exc:
+                    return f"ggml-cuda.dll non carica le proprie dipendenze ({exc}). Richiesto cambio build."
+
+    return None
+
 
 
 def _estrai(archivio: Path, destinazione: Path) -> None:
@@ -340,12 +536,14 @@ def _estrai(archivio: Path, destinazione: Path) -> None:
 
 
 def install(progress=None, timeout: int = 600,
-            macchina: Dict[str, Any] = None) -> Dict[str, Any]:
+            macchina: Dict[str, Any] = None,
+            force: bool = False) -> Dict[str, Any]:
     """Scarica e installa il runtime giusto per questa macchina.
 
     `macchina` permette di forzare la scelta — serve per provare la variante
     CPU su una macchina che ne prenderebbe una accelerata, e per riprovare
     quando l'acceleratore rilevato non ha dato un runtime funzionante.
+    `force=True` riscarica anche se il runtime e' gia' presente.
     """
     def avvisa(testo: str) -> None:
         log.info("[LlamaRuntime] %s", testo)
@@ -369,10 +567,27 @@ def install(progress=None, timeout: int = 600,
     avvisa(f"Runtime scelto per questa macchina: {nome}")
 
     destinazione = runtime_dir() / release["build"]
-    if (destinazione / SERVER_EXE).exists() or any(destinazione.rglob(SERVER_EXE)):
-        avvisa("Runtime gia' presente.")
-        return {"success": True, "build": release["build"],
-                "server": str(installed_server()), "gia_presente": True}
+    server_esistente = destinazione / SERVER_EXE
+    if not server_esistente.exists():
+        server_esistente = next(destinazione.rglob(SERVER_EXE), None)
+
+    if not force and server_esistente and server_esistente.is_file():
+        info = installed_build_info()
+        compute_richiesto = (macchina.get("compute") or "cpu").lower()
+        
+        # Se la build installata soddisfa l'acceleratore richiesto, siamo a posto.
+        ha_acceleratore = (
+            compute_richiesto == "cpu"
+            or (info and compute_richiesto in info.get("acceleratori", []))
+        )
+        if ha_acceleratore:
+            avvisa(f"Runtime gia' presente e ottimale ({info.get('tipo', 'cpu') if info else 'ok'}).")
+            return {"success": True, "build": release["build"],
+                    "server": str(server_esistente), "gia_presente": True,
+                    "asset": nome, "macchina": macchina}
+        else:
+            avvisa(f"Runtime presente ({info.get('tipo') if info else 'non ottimale'}) ma e' richiesto '{compute_richiesto}': aggiorno...")
+            shutil.rmtree(destinazione, ignore_errors=True)
 
     paths.ensure(runtime_dir())
     temporaneo = runtime_dir() / f".{nome}"

@@ -105,15 +105,19 @@ def gia_fatto() -> bool:
 
 def _runtime_pronto(avvisa: Callable[[str], None], scarica: bool) -> Dict[str, Any]:
     """Passo 1 e 2: un runtime installato, e che parta davvero su questa CPU."""
-    from core.engine.llama_runtime import install, installed_server
+    from core.engine.llama_runtime import install, installed_server, needs_upgrade
     from core.engine.runtime_probe import check_runtime, illegal_instruction_report
 
-    if installed_server() is None:
+    upgrade_motivo = needs_upgrade()
+    if installed_server() is None or upgrade_motivo is not None:
         if not scarica:
-            return {"ok": False, "motivo": "runtime_assente",
-                    "dettaglio": "Runtime GGUF non installato."}
-        avvisa("Installo il runtime GGUF (una volta sola, ~44 MB)...")
-        esito = install(progress=avvisa)
+            return {"ok": False, "motivo": "runtime_assente" if installed_server() is None else "runtime_obsoleto",
+                    "dettaglio": upgrade_motivo or "Runtime GGUF non installato."}
+        if upgrade_motivo:
+            avvisa(f"Aggiorno il runtime GGUF ({upgrade_motivo})...")
+        else:
+            avvisa("Installo il runtime GGUF (una volta sola, ~44 MB)...")
+        esito = install(progress=avvisa, force=(upgrade_motivo is not None))
         if not esito.get("success"):
             return {"ok": False, "motivo": "runtime_non_installabile",
                     "dettaglio": esito.get("error", "")}
@@ -129,6 +133,7 @@ def _runtime_pronto(avvisa: Callable[[str], None], scarica: bool) -> Dict[str, A
                 "dettaglio": prova.get("dettaglio", "")}
 
     return {"ok": True}
+
 
 
 def _modello_pronto(avvisa: Callable[[str], None], scarica: bool) -> Dict[str, Any]:

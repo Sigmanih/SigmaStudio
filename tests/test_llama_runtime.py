@@ -225,5 +225,49 @@ class TestSceltaDellAcceleratore(unittest.TestCase):
         self.assertEqual(self._scegli(["nvidia", "amd", "intel"], dict(self.SPENTI)), "cpu")
 
 
+class TestBuildInfoEUpgrade(unittest.TestCase):
+    """Verifica il riconoscimento del tipo di build e la necessita' di upgrade."""
+
+    def test_needs_upgrade_su_macchina_cpu_con_build_cpu(self):
+        import core.engine.llama_runtime as lr
+        orig_info = lr.installed_build_info
+        orig_desc = lr.describe_machine
+        lr.installed_build_info = lambda: {"tipo": "cpu", "acceleratori": []}
+        lr.describe_machine = lambda: {"compute": "cpu"}
+        try:
+            self.assertIsNone(lr.needs_upgrade())
+        finally:
+            lr.installed_build_info = orig_info
+            lr.describe_machine = orig_desc
+
+    def test_needs_upgrade_su_macchina_cuda_con_build_cpu(self):
+        """Una build CPU su una macchina CUDA deve richiedere upgrade."""
+        import core.engine.llama_runtime as lr
+        orig_info = lr.installed_build_info
+        orig_desc = lr.describe_machine
+        lr.installed_build_info = lambda: {"tipo": "cpu", "acceleratori": []}
+        lr.describe_machine = lambda: {"compute": "cuda"}
+        try:
+            motivo = lr.needs_upgrade()
+            self.assertIsNotNone(motivo)
+            self.assertIn("cuda", motivo.lower())
+        finally:
+            lr.installed_build_info = orig_info
+            lr.describe_machine = orig_desc
+
+    def test_needs_upgrade_su_macchina_cuda_con_build_cuda(self):
+        """Una build CUDA su macchina CUDA non richiede upgrade."""
+        import core.engine.llama_runtime as lr
+        orig_info = lr.installed_build_info
+        orig_desc = lr.describe_machine
+        lr.installed_build_info = lambda: {"tipo": "cuda", "acceleratori": ["cuda"]}
+        lr.describe_machine = lambda: {"compute": "cuda"}
+        try:
+            self.assertIsNone(lr.needs_upgrade())
+        finally:
+            lr.installed_build_info = orig_info
+            lr.describe_machine = orig_desc
+
+
 if __name__ == "__main__":
-    unittest.main()
+    unittest.main()

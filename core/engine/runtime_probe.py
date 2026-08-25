@@ -60,20 +60,31 @@ def _file_cache() -> "os.PathLike[str]":
 def _impronta() -> str:
     """Cosa deve cambiare perche' l'esito possa cambiare.
 
-    La versione della ruota, l'interprete e la macchina. Non il modello: una
-    CPU che non ha AVX2 non ce l'ha per nessun modello.
+    La versione della ruota, l'interprete, la macchina e il binario installato.
+    Non il modello: una CPU che non ha AVX2 non ce l'ha per nessun modello.
+    Includere il binario fa si' che un upgrade da build CPU a build CUDA
+    invalidi la cache e la verifica venga ripetuta.
     """
     try:
         import llama_cpp
         versione = getattr(llama_cpp, "__version__", "?")
     except Exception:
         versione = "assente"
+
+    try:
+        from core.engine.llama_runtime import installed_server
+        server = str(installed_server() or "nessuno")
+    except Exception:
+        server = "errore"
+
     return "|".join((
         versione,
         f"{sys.version_info.major}.{sys.version_info.minor}",
         platform.machine().lower(),
         platform.system(),
+        server,
     ))
+
 
 
 # ==============================================================================
@@ -143,7 +154,63 @@ _SCRIPT = (
 )
 
 
+def _verifica_binario() -> Optional[Dict[str, Any]]:
+    """Verifica che il llama-server ufficiale parta su questa macchina.
+
+    Il binario e' il runtime principale: i binari ufficiali hanno 14 varianti
+    CPU e scelgono a runtime, quindi non soffrono di STATUS_ILLEGAL_INSTRUCTION.
+    La verifica usa --version, che esce subito senza caricare un modello.
+    Restituisce None se il binario non e' installato.
+    """
+    try:
+        from core.engine.llama_runtime import installed_server
+        server = installed_server()
+    except Exception:
+        return None
+
+    if server is None:
+        return None
+
+    try:
+        from core.engine.llama_runtime import runtime_env
+        esito = subprocess.run(
+            [str(server), "--version"],
+            capture_output=True, text=True, timeout=30,
+            env=runtime_env(),
+        )
+    except subprocess.TimeoutExpired:
+        return {"ok": False, "motivo": "timeout",
+                "dettaglio": f"llama-server --version non ha risposto entro 30s.",
+                "runtime": "binario"}
+    except OSError as exc:
+        if is_illegal_instruction(exc=exc):
+            return {"ok": False, "motivo": "istruzione_illegale",
+                    "dettaglio": str(exc), "runtime": "binario"}
+        return {"ok": False, "motivo": "non_avviabile",
+                "dettaglio": str(exc), "runtime": "binario"}
+
+    if esito.returncode == 0:
+        return {"ok": True, "motivo": "", "dettaglio": "",
+                "runtime": "binario", "versione": (esito.stdout or "").strip()[:200]}
+
+    uscita = (esito.stdout or "") + (esito.stderr or "")
+    if is_illegal_instruction(returncode=esito.returncode, testo=uscita):
+        return {"ok": False, "motivo": "istruzione_illegale",
+                "dettaglio": uscita.strip()[:400], "runtime": "binario"}
+
+    return {"ok": False, "motivo": "errore",
+            "dettaglio": uscita.strip()[:400], "runtime": "binario",
+            "returncode": esito.returncode}
+
+
 def _esegui_verifica() -> Dict[str, Any]:
+    # Il binario ufficiale e' il runtime principale: se c'e' e funziona,
+    # la verifica e' fatta. Se non c'e', si prova la ruota Python.
+    binario = _verifica_binario()
+    if binario is not None:
+        return binario
+
+    # Ripiego sulla ruota llama-cpp-python.
     try:
         esito = subprocess.run(
             [sys.executable, "-c", _SCRIPT],
@@ -151,24 +218,30 @@ def _esegui_verifica() -> Dict[str, Any]:
         )
     except subprocess.TimeoutExpired:
         return {"ok": False, "motivo": "timeout",
-                "dettaglio": f"Il runtime GGUF non ha risposto entro {_TIMEOUT_SECONDI}s."}
+                "dettaglio": f"Il runtime GGUF non ha risposto entro {_TIMEOUT_SECONDI}s.",
+                "runtime": "ruota"}
     except Exception as exc:
-        return {"ok": False, "motivo": "non_avviabile", "dettaglio": str(exc)}
+        return {"ok": False, "motivo": "non_avviabile", "dettaglio": str(exc),
+                "runtime": "ruota"}
 
     uscita = (esito.stdout or "") + (esito.stderr or "")
 
     if esito.returncode == 0 and "ok" in (esito.stdout or ""):
-        return {"ok": True, "motivo": "", "dettaglio": ""}
+        return {"ok": True, "motivo": "", "dettaglio": "", "runtime": "ruota"}
 
     if is_illegal_instruction(returncode=esito.returncode, testo=uscita):
         return {"ok": False, "motivo": "istruzione_illegale",
-                "dettaglio": uscita.strip()[:400], "returncode": esito.returncode}
+                "dettaglio": uscita.strip()[:400], "returncode": esito.returncode,
+                "runtime": "ruota"}
 
     if "no module named" in uscita.lower():
-        return {"ok": False, "motivo": "assente", "dettaglio": uscita.strip()[:400]}
+        return {"ok": False, "motivo": "assente", "dettaglio": uscita.strip()[:400],
+                "runtime": "ruota"}
 
     return {"ok": False, "motivo": "errore",
-            "dettaglio": uscita.strip()[:400], "returncode": esito.returncode}
+            "dettaglio": uscita.strip()[:400], "returncode": esito.returncode,
+            "runtime": "ruota"}
+
 
 
 def check_runtime(refresh: bool = False) -> Dict[str, Any]:

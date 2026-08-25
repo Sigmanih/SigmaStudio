@@ -184,6 +184,12 @@ def _libreria_apribile(nomi) -> bool:
 
 def available_runtimes() -> Dict[str, bool]:
     """Quali runtime di calcolo questa macchina puo' aprire adesso."""
+    try:
+        from core.engine.llama_runtime import setup_dll_directories
+        setup_dll_directories()
+    except Exception:
+        pass
+
     esiti = {}
     for nome, librerie in _LIBRERIE.items():
         if nome == "metal":
@@ -192,6 +198,7 @@ def available_runtimes() -> Dict[str, bool]:
             continue
         esiti[nome] = _libreria_apribile(librerie)
     return esiti
+
 
 
 # ==============================================================================
