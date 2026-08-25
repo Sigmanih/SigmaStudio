@@ -3,6 +3,7 @@
 import json
 
 from core.integrations import app_manager, skills
+from core import paths
 from core.logger import get_logger
 
 log = get_logger("integrations_api")
@@ -43,20 +44,29 @@ def handle_apps_launch(self):
 def handle_apps_autoconfigure(self):
     """POST /api/apps/autoconfigure — collega a Sigma ciò che è già installato."""
     try:
-        with open("config.json", "r", encoding="utf-8") as f:
+        with open(paths.config_file(), "r", encoding="utf-8") as f:
             cfg = json.load(f)
 
         changed = app_manager.autoconfigure(cfg)
         if changed:
-            with open("config.json", "w", encoding="utf-8") as f:
+            with open(paths.config_file(), "w", encoding="utf-8") as f:
                 json.dump(cfg, f, indent=2, ensure_ascii=False)
             # Il router tiene i backend in memoria: senza questo la modifica
-            # avrebbe effetto solo al riavvio.
-            from core.creative.creative_router import blender_bridge, model_router
-            model_router.update_config(cfg["creative"])
-            blender_path = cfg["creative"]["backends"].get("blender", {}).get("path", "")
-            if blender_path:
-                blender_bridge.blender_path = blender_path
+            # avrebbe effetto solo al riavvio. Il modulo Creative e' opzionale e
+            # puo' non essere installato: in quel caso la configurazione e' gia'
+            # stata salvata su disco e non c'e' nulla da ricaricare a caldo.
+            # Prima l'import era incondizionato dentro il try generale, quindi
+            # ogni autoconfigurazione che cambiava qualcosa rispondeva
+            # "No module named 'core.creative'" pur avendo salvato tutto.
+            try:
+                from core.creative.creative_router import blender_bridge, model_router
+            except ImportError:
+                log.info("Modulo Creative non installato: ricarica a caldo saltata.")
+            else:
+                model_router.update_config(cfg["creative"])
+                blender_path = cfg["creative"]["backends"].get("blender", {}).get("path", "")
+                if blender_path:
+                    blender_bridge.blender_path = blender_path
 
         self.send_json_response({"success": True, "changed": changed})
     except Exception as e:
@@ -67,7 +77,7 @@ def handle_apps_autoconfigure(self):
 import os
 import json
 
-STATE_FILE = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "data", "marketplace_installed.json")
+STATE_FILE = str(paths.installed_modules_file())
 
 # Kernel modules (always fixed, only Chat & Marketplace)
 _KERNEL_DEFAULTS = {}

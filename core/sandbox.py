@@ -18,10 +18,16 @@ from core.logger import get_logger
 log = get_logger(__name__)
 
 # ---------------------------------------------------------------------------
-# Project root — resolved once at import time
+# Project root — the boundary of the sandbox
 # ---------------------------------------------------------------------------
-# sigma_server.py always runs from the project root, so '.' is correct.
-_PROJECT_ROOT: pathlib.Path = pathlib.Path(".").resolve()
+# Anchored to the installation, never to the working directory. This used to be
+# `Path(".").resolve()`, under a comment claiming sigma_server.py always runs
+# from the project root — which was never guaranteed: starting the server with
+# `uvicorn core.fastapi_app:app` is a documented option and carries its own cwd.
+# Launched from the drive root, the whole boundary moved there with it, and a
+# request for "data/notes.md" resolved to a path outside the installation that
+# the sandbox then authorised, believing it was inside.
+_PROJECT_ROOT: pathlib.Path = pathlib.Path(__file__).resolve().parent.parent
 
 # ---------------------------------------------------------------------------
 # Whitelists
@@ -42,6 +48,12 @@ ROOT_FILES: frozenset[str] = frozenset({
 # Directories (recursive) allowed for file operations.
 # Research mode: data/, manifesti/, scratch/
 # Full-stack mode (code_architect): sigma_studio/, core/
+#
+# config/, var/ and store/ are deliberately absent. Until the four data roots
+# were separated they all lived inside data/, which meant the agent's file tools
+# could reach the HuggingFace token and the 122 GB of weights through a path
+# that looked like an ordinary workspace file. They are reached now only by the
+# handlers that own them.
 ALLOWED_DIRS: tuple[str, ...] = (
     "data",
     "manifesti",

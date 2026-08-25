@@ -15,16 +15,13 @@ log = get_logger(__name__)
 
 
 def _get_workspace_root() -> str:
-    """Finds the root directory containing data/ or sigma_server.py."""
-    cwd = os.getcwd()
-    if os.path.exists(os.path.join(cwd, "data")):
-        return cwd
-    curr = os.path.abspath(os.path.dirname(__file__))
-    for _ in range(6):
-        if os.path.exists(os.path.join(curr, "sigma_server.py")) or os.path.exists(os.path.join(curr, "data")):
-            return curr
-        curr = os.path.dirname(curr)
-    return cwd
+    """The installation root, from the kernel path service.
+
+    Cercava prima os.getcwd(), quindi rispondeva diversamente a seconda di
+    dove veniva lanciato il server.
+    """
+    from core.paths import project_root
+    return str(project_root())
 
 
 from core.model_paths import models_dir as _active_models_dir, project_root

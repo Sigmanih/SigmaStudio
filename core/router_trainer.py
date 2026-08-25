@@ -34,9 +34,10 @@ log = get_logger("sigma.router")
 # Paths & constants
 # ---------------------------------------------------------------------------
 
-BASE_DIR       = Path(__file__).resolve().parent.parent
-ADAPTER_META   = BASE_DIR / "training" / "jobs" / "sigma-router-ailo" / "model_meta.json"
-FEEDBACK_LOG   = BASE_DIR / "training" / "datasets" / "sigma_feedback.jsonl"
+from core import paths
+
+ADAPTER_META   = paths.training_dir() / "jobs" / "sigma-router-ailo" / "model_meta.json"
+FEEDBACK_LOG   = paths.training_dir() / "datasets" / "sigma_feedback.jsonl"
 ROUTER_MODEL_NAME = "sigma-router"
 BASE_MODEL_NAME   = "sigma-alpaca-3b:latest"
 

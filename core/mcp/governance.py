@@ -22,6 +22,7 @@ import uuid
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
+from core import paths
 from core.logger import get_logger
 
 log = get_logger(__name__)
@@ -31,7 +32,7 @@ log = get_logger(__name__)
 # avviato con `python sigma_server.py` dalla radice o con uvicorn da altrove.
 # Con un percorso relativo, la stessa configurazione salvata due volte poteva
 # atterrare in due file diversi e sembrare persa.
-DEFAULT_CONFIG_PATH = str(Path(__file__).resolve().parents[2] / "config.json")
+DEFAULT_CONFIG_PATH = str(paths.config_file())
 # I test lo dirottano su un file usa e getta; il valore predefinito resta sopra
 # così si può verificare che non dipenda dalla cartella di lavoro.
 CONFIG_PATH = DEFAULT_CONFIG_PATH

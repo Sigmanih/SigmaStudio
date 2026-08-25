@@ -21,6 +21,7 @@ import shutil
 
 from core.agent_registry import get_agent, get_specialized_agent
 from core.store import tasks_store, modules_store
+from core import paths
 from core.logger import get_logger
 from core.backup_manager import create_backup
 
@@ -641,13 +642,17 @@ def _execute_single_action(self, action: dict, action_type: str, bot_name: str, 
             })
             return
 
+        # Ancorato all'installazione, non alla directory di lancio: la stessa
+        # richiesta dell'agente doveva risolvere alla stessa cartella a
+        # prescindere da come e' stato avviato il server.
+        _root = str(paths.project_root())
         _allowed_cwd = ("sigma_studio", "data", "core", "scratch", "manifesti", "viz")
         working_dir = action.get("cwd", "")
         if working_dir and not any(working_dir.startswith(p) for p in _allowed_cwd):
             working_dir = ""
-        cwd = os.path.join(os.getcwd(), working_dir) if working_dir else os.getcwd()
+        cwd = os.path.join(_root, working_dir) if working_dir else _root
         if not os.path.isdir(cwd):
-            cwd = os.getcwd()
+            cwd = _root
 
         try:
             res = subprocess.run(

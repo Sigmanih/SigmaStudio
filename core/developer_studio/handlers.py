@@ -15,6 +15,7 @@ from typing import Dict, Any
 from fastapi import Request, Response
 from fastapi.responses import JSONResponse, StreamingResponse
 
+from core import paths
 from core.logger import get_logger
 from core.developer_studio.fs_manager import (
     get_workspace_tree,
@@ -262,9 +263,9 @@ async def handle_workspace_roots(request: Request):
 
 
 def _get_tasks_filepath() -> Path:
-    base = Path(get_default_workspace_root()) / "data"
-    base.mkdir(parents=True, exist_ok=True)
-    return base / "developer_tasks.json"
+    target = paths.developer_tasks_file()
+    paths.ensure(target.parent)
+    return target
 
 
 async def handle_get_tasks(request: Request):

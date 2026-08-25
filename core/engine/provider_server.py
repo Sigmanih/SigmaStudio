@@ -29,6 +29,7 @@ import uuid
 import datetime
 from typing import Dict, Any, List, Optional, Generator, Tuple
 
+from core import paths
 from core.logger import get_logger
 from core.engine.unified_runtime import sigma_engine
 from core.model_paths import list_model_dirs, models_dir, project_root
@@ -41,7 +42,7 @@ log = get_logger("provider_server")
 # ------------------------------------------------------------------------------
 
 def _get_config_path() -> str:
-    return os.path.join(project_root(), "data", "config.json")
+    return str(paths.provider_config_file())
 
 
 def is_provider_server_enabled() -> bool:

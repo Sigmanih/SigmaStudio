@@ -25,9 +25,9 @@ HF_TOKEN_ENV_KEYS = ("HF_TOKEN", "HUGGING_FACE_HUB_TOKEN", "HUGGINGFACE_HUB_TOKE
 
 
 def _hf_root_dir() -> str:
-    """Installation root, anchored to this file rather than the working directory."""
-    return os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(
-        os.path.dirname(os.path.abspath(__file__))))))
+    """Installation root, resolved by the kernel path service."""
+    from core.paths import project_root
+    return str(project_root())
 
 
 def _hf_config_paths() -> List[str]:

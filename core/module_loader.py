@@ -25,16 +25,17 @@ import urllib.request
 import zipfile
 from typing import Any
 
+from core import paths
 from core.logger import get_logger
 
 log = get_logger(__name__)
 
 # Paths risolti rispetto alla root del progetto
-_ROOT = os.path.dirname(os.path.dirname(__file__))
-_CORE_MODULES_DIR    = os.path.join(_ROOT, "core", "modules")
-_FRONTEND_MODULES_DIR = os.path.join(_ROOT, "sigma_studio", "src", "modules")
-_FRONTEND_DIR        = os.path.join(_ROOT, "sigma_studio")
-_STATE_FILE          = os.path.join(_ROOT, "data", "marketplace_installed.json")
+_ROOT                 = str(paths.project_root())
+_CORE_MODULES_DIR     = str(paths.modules_backend_dir())
+_FRONTEND_MODULES_DIR = str(paths.frontend_modules_dir())
+_FRONTEND_DIR         = str(paths.frontend_dir())
+_STATE_FILE           = str(paths.installed_modules_file())
 
 
 def _sanitize_git_url(raw_url: str) -> tuple[str, str, str]:

@@ -22,6 +22,7 @@ import uuid
 from dataclasses import dataclass, field, asdict
 from typing import Dict, Any, List, Optional
 
+from core import paths
 from core.logger import get_logger
 from core.engine.model_inspector import ModelInspector
 
@@ -31,7 +32,7 @@ from core.model_paths import models_dir, project_root
 
 # Resolved per call rather than captured at import: the Model Hub can point
 # the models directory somewhere else while the server is running.
-TOOLS_DIR = os.path.join(project_root(), "data", "engine_tools")
+TOOLS_DIR = str(paths.engine_tools_dir())
 
 # llama.cpp split the converter into a package: convert_hf_to_gguf.py is now a
 # thin CLI over conversion/, and the tensor mappings for newer architectures

@@ -58,11 +58,8 @@ SEARCH_MAX_MATCHES_PER_FILE = 5              # keep one noisy file from eating t
 
 def get_default_workspace_root() -> str:
     """Returns the default project root path."""
-    try:
-        from core.model_paths import project_root
-        return os.path.abspath(project_root())
-    except Exception:
-        return os.path.abspath(os.getcwd())
+    from core.paths import project_root
+    return str(project_root())
 
 
 def get_workspace_tree(

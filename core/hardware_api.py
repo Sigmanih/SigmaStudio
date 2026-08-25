@@ -10,11 +10,12 @@ import time
 import platform
 import psutil
 from typing import Dict, Any, List
+from core import paths
 from core.logger import get_logger
 from core.engine.hardware_probe import UniversalHardwareProbe
 
 log = get_logger("hardware_api")
-_CONFIG_FILE = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data", "hardware_config.json")
+_CONFIG_FILE = str(paths.hardware_config_file())
 
 # State for network and disk I/O delta calculation
 _last_net_time = 0.0

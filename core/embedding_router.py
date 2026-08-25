@@ -17,10 +17,11 @@ from core.logger import get_logger
 # not been built yet. A module-level import would make the import itself fail
 # there, and take routing down with it.
 
+from core import paths
+
 log = get_logger("sigma.embedding_router")
 
-BASE_DIR = Path(__file__).resolve().parent.parent
-EMBEDDINGS_FILE = BASE_DIR / "training" / "jobs" / "router_embeddings.json"
+EMBEDDINGS_FILE = paths.training_dir() / "jobs" / "router_embeddings.json"
 
 # In-memory anchor dataset
 ANCHORS = [

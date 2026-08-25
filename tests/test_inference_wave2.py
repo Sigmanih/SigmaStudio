@@ -567,7 +567,12 @@ class TestGgufVocabulary(unittest.TestCase):
         import os
         from core.engine.model_inspector import ModelInspector
 
-        folders = [d for d in glob.glob("data/models/*")
+        # La cartella dei modelli si chiede al kernel: "data/models" era
+        # relativo alla directory di lancio ed e' cambiato quando i pesi sono
+        # usciti dallo spazio utente per andare in store/.
+        from core.paths import models_dir
+
+        folders = [d for d in glob.glob(os.path.join(str(models_dir()), "*"))
                    if os.path.isdir(d) and glob.glob(os.path.join(d, "*.gguf"))]
         if not folders:
             self.skipTest("no local GGUF to inspect")
@@ -774,7 +779,9 @@ class TestGrammars(unittest.TestCase):
         except ImportError:
             self.skipTest("llama_cpp not installed on this host")
 
-        models = [f for d in glob.glob("data/models/*")
+        from core.paths import models_dir
+
+        models = [f for d in glob.glob(os.path.join(str(models_dir()), "*"))
                   for f in glob.glob(os.path.join(d, "*.gguf"))]
         if not models:
             self.skipTest("no local GGUF to generate with")

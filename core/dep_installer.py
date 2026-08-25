@@ -8,6 +8,7 @@ import sys
 import json
 import subprocess
 from typing import Optional, Dict, Any
+from core import paths
 from core.logger import get_logger
 from core.capability_manager import detect_capabilities, get_requirements_file, SystemCapabilities
 
@@ -15,15 +16,16 @@ log = get_logger(__name__)
 
 
 def get_pip_executable() -> str:
-    """Returns the path to pip in the current virtual environment."""
-    if sys.platform == "win32":
-        pip_path = os.path.join(".venv", "Scripts", "pip.exe")
-    else:
-        pip_path = os.path.join(".venv", "bin", "pip")
-    
-    if os.path.exists(pip_path):
-        return pip_path
-    
+    """Returns the path to pip in the virtual environment of the installation.
+
+    Il percorso era relativo a ".venv": lanciando il server da un'altra
+    cartella non lo trovava e ripiegava silenziosamente sul pip di sistema,
+    installando le dipendenze fuori dall'ambiente del progetto.
+    """
+    pip_path = paths.venv_pip()
+    if pip_path.exists():
+        return str(pip_path)
+
     # Fallback to sys.executable -m pip
     return f"{sys.executable} -m pip"
 

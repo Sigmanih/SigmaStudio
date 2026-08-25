@@ -6,6 +6,7 @@ from __future__ import annotations
 import os
 import json
 import urllib.parse
+from core import paths
 from core.logger import get_logger
 from .hf_client import (search_hf_models, get_hf_model_details, get_effective_hf_token,
                         persist_hf_token, resolve_hf_token)
@@ -19,8 +20,8 @@ from .model_inventory import (scan_local_models, deploy_model_to_sigma_engine,
 
 log = get_logger(__name__)
 
-_ROOT_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))))
-_CONFIG_PATH = os.path.join(_ROOT_DIR, "data", "model_hub_config.json")
+_ROOT_DIR = str(paths.project_root())
+_CONFIG_PATH = str(paths.model_hub_config_file())
 
 
 def _load_hub_config() -> dict:
