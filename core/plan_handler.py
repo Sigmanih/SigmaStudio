@@ -11,6 +11,7 @@ import os
 import json
 import datetime
 import re
+from core.sse import sse_writer
 from core.ai_providers import load_ai_config, resolve_provider_config, call_ollama, call_openai_compatible, call_anthropic
 from core.task_handler import execute_ai_actions
 from core.chat_handler import _get_manifesto_content, _get_time_context, _build_filesystem_context, _extract_json_from_response, _collect_context_files, _perform_web_search
@@ -311,12 +312,7 @@ def handle_chat_execute_plan(self):
         self.send_header("Access-Control-Allow-Origin", "*")
         self.end_headers()
         
-        def _sse(event):
-            try:
-                self.wfile.write(f"data: {json.dumps(event)}\n\n".encode())
-                self.wfile.flush()
-            except:
-                pass
+        _sse = sse_writer(self)
         
         _sse({
             "type": "plan_execute_start",

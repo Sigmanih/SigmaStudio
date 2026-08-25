@@ -4,6 +4,7 @@
 # Fix: quando l'AI risponde in testo normale, mostra il testo ed esce dal loop
 # ==============================================================================
 import os, json, datetime, re
+from core.sse import sse_writer
 from core.logger import get_logger
 log = get_logger("execute_loop")
 from core.ai_providers import load_ai_config, resolve_provider_config, call_ai_model, call_ollama, call_openai_compatible, call_anthropic
@@ -715,11 +716,7 @@ def handle_chat_execute(self):
         self.send_header("Access-Control-Allow-Origin", "*")
         self.end_headers()
 
-        def _sse(e):
-            try:
-                self.wfile.write(f"data: {json.dumps(e)}\n\n".encode())
-                self.wfile.flush()
-            except: pass
+        _sse = sse_writer(self)
 
         try:
             r = execute_feedback_loop(self, req, stream_callback=_sse)

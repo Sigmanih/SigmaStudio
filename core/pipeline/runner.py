@@ -13,6 +13,7 @@ import threading
 import concurrent.futures
 from urllib.parse import parse_qs, urlparse
 
+from core.sse import sse_writer
 from core.logger import get_logger
 from core.ai_providers import (
     load_ai_config, resolve_provider_config, call_ollama,
@@ -211,12 +212,7 @@ def handle_pipeline_start(self):
         self.send_header("Access-Control-Allow-Origin", "*")
         self.end_headers()
         
-        def _sse(event):
-            try:
-                self.wfile.write(f"data: {json.dumps(event)}\n\n".encode())
-                self.wfile.flush()
-            except Exception:
-                pass
+        _sse = sse_writer(self)
         
         try:
             result = run_pipeline(self, req, stream_callback=_sse)

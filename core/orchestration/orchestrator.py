@@ -13,6 +13,7 @@ import datetime
 import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
+from core.sse import sse_writer
 from core.ai_providers import load_ai_config, call_ai_model
 from core.task_handler import execute_ai_actions
 from core.agent_registry import get_all_agents, increment_usage, SIGMA_ARCHITECT_ID
@@ -381,13 +382,7 @@ def handle_chat_orchestrate(self) -> None:
 
         _sse_lock = threading.Lock()
 
-        def _sse(event):
-            with _sse_lock:
-                try:
-                    self.wfile.write(f"data: {json.dumps(event)}\n\n".encode())
-                    self.wfile.flush()
-                except Exception:
-                    pass
+        _sse = sse_writer(self, lock=_sse_lock)
 
         try:
             result = orchestrate(self, req, stream_callback=_sse)

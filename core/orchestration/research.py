@@ -16,6 +16,7 @@ import re
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 
+from core.sse import sse_writer
 from core.ai_providers import load_ai_config, call_ai_model
 from core.agent_registry import SIGMA_ARCHITECT_ID
 from core.agent_memory import save_session_memory
@@ -629,13 +630,7 @@ def handle_research_start(self) -> None:
 
         _sse_lock = threading.Lock()
 
-        def _sse(event):
-            with _sse_lock:
-                try:
-                    self.wfile.write(f"data: {json.dumps(event)}\n\n".encode())
-                    self.wfile.flush()
-                except Exception:
-                    pass
+        _sse = sse_writer(self, lock=_sse_lock)
 
         try:
             ai_cfg = load_ai_config()
