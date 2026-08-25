@@ -236,6 +236,13 @@ class UniversalHardwareProbe:
     def probe_accelerators(cls) -> List[Dict[str, Any]]:
         accelerators = []
         
+        # 0. Setup DLL directories for Windows CUDA / ROCm / SYCL loaders
+        try:
+            from core.engine.llama_runtime import setup_dll_directories
+            setup_dll_directories()
+        except Exception:
+            pass
+
         # 1. Check NVIDIA CUDA via PyTorch
         try:
             import torch
@@ -245,12 +252,6 @@ class UniversalHardwareProbe:
                     total_vram = props.total_memory
                     free_vram, _ = torch.cuda.mem_get_info(idx) if hasattr(torch.cuda, 'mem_get_info') else (total_vram, total_vram)
 
-                    # Blocks this process has reserved but is no longer using
-                    # read as "used" at the driver level, yet the allocator will
-                    # hand them straight back to the next allocation. After
-                    # unloading a model that pool can be gigabytes, and treating
-                    # it as unavailable makes every later plan needlessly
-                    # conservative.
                     reclaimable = 0
                     try:
                         reclaimable = max(
@@ -278,6 +279,42 @@ class UniversalHardwareProbe:
         except Exception as e:
             log.debug(f"[HardwareProbe] CUDA check error: {e}")
 
+        # 1b. Fallback: Check NVIDIA CUDA via nvidia-smi if PyTorch CUDA is not loaded
+        if not accelerators and platform.system() in ("Windows", "Linux"):
+            try:
+                import subprocess
+                cmd = ["nvidia-smi", "--query-gpu=index,name,memory.total,memory.free,memory.used,compute_cap",
+                       "--format=csv,noheader,nounits"]
+                res = subprocess.run(cmd, capture_output=True, text=True, timeout=5)
+                if res.returncode == 0 and res.stdout.strip():
+                    for line in res.stdout.strip().splitlines():
+                        parts = [p.strip() for p in line.split(",")]
+                        if len(parts) >= 5:
+                            try:
+                                dev_id = int(parts[0])
+                                name = parts[1]
+                                total_mb = float(parts[2])
+                                free_mb = float(parts[3])
+                                cap_str = parts[5] if len(parts) > 5 else "8.9"
+                                cap_major = float(cap_str.split(".")[0]) if "." in cap_str else 8.0
+                                accelerators.append({
+                                    "device_id": dev_id,
+                                    "type": "NVIDIA_CUDA",
+                                    "name": name,
+                                    "compute_capability": cap_str,
+                                    "total_vram_gb": round(total_mb / 1024, 2),
+                                    "free_vram_gb": round(free_mb / 1024, 2),
+                                    "reclaimable_cache_gb": 0.0,
+                                    "multi_processor_count": 80,
+                                    "supports_flash_attention": cap_major >= 8,
+                                    "supports_fp8": cap_major >= 8.9,
+                                    "supports_bf16": True,
+                                })
+                            except Exception:
+                                continue
+            except Exception as e:
+                log.debug(f"[HardwareProbe] nvidia-smi fallback probe error: {e}")
+
         # 2. Check Apple Silicon Metal Performance Shaders (MPS)
         try:
             import torch
@@ -298,7 +335,6 @@ class UniversalHardwareProbe:
         try:
             import torch
             if hasattr(torch.version, 'hip') and torch.version.hip and torch.cuda.is_available():
-                # Already captured by CUDA wrapper above, but mark as ROCm
                 for acc in accelerators:
                     acc["type"] = "AMD_ROCM"
         except Exception:

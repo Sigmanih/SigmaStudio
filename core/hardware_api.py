@@ -101,6 +101,16 @@ def _nvidia_smi_telemetry() -> Dict[int, Dict[str, Any]]:
     return telemetry
 
 
+def _is_virtual_display(name: str) -> bool:
+    """Riconosce adattatori display virtuali/remoti che non sono GPU fisiche di calcolo."""
+    low = (name or "").lower()
+    return any(k in low for k in (
+        "virtual display", "remote display", "iddsampledriver",
+        "spacedesk", "parsec", "vpx", "v-display", "microsoft basic display",
+        "citrix", "indirect display", "usb display", "displaylink"
+    ))
+
+
 _cached_integrated_gpus: Optional[List[Dict[str, Any]]] = None
 
 def _get_integrated_gpus_cached(seen_names: set) -> List[Dict[str, Any]]:
@@ -112,24 +122,52 @@ def _get_integrated_gpus_cached(seen_names: set) -> List[Dict[str, Any]]:
     if sys.platform == "win32":
         try:
             import subprocess
-            cmd = ["powershell", "-NoProfile", "-Command",
+            cmd = ["powershell", "-NoProfile", "-NonInteractive", "-Command",
                    "Get-CimInstance Win32_VideoController | "
                    "Select-Object Name, AdapterRAM | ConvertTo-Json"]
-            res = subprocess.run(cmd, capture_output=True, text=True, timeout=3)
+            res = subprocess.run(cmd, capture_output=True, text=True, timeout=5)
             if res.returncode == 0 and res.stdout.strip():
                 adapters = json.loads(res.stdout)
                 if isinstance(adapters, dict):
                     adapters = [adapters]
                 for adapter in adapters:
                     name = (adapter.get("Name") or "").strip()
-                    if not name or name.lower() in seen_names:
+                    if not name or _is_virtual_display(name):
                         continue
+                    if any(seen.lower() in name.lower() or name.lower() in seen.lower() for seen in seen_names):
+                        continue
+
+                    name_low = name.lower()
                     ram_bytes = adapter.get("AdapterRAM")
                     vram_mb = int(ram_bytes // (1024 ** 2)) if ram_bytes else None
-                    is_amd = "amd" in name.lower() or "radeon" in name.lower()
+
+                    # Identifica correttamente il tipo di GPU (Dedicata vs Integrata)
+                    is_nvidia = any(k in name_low for k in ("nvidia", "geforce", "rtx", "gtx", "quadro", "tesla"))
+                    is_amd_dedicated = ("amd" in name_low or "radeon" in name_low) and any(k in name_low for k in ("rx ", "pro ", "firepro", "vega 56", "vega 64", "xt"))
+                    is_intel_arc = "intel" in name_low and "arc" in name_low
+
+                    if is_nvidia:
+                        gpu_type = "NVIDIA CUDA Dedicated"
+                        is_integrated = False
+                    elif is_amd_dedicated:
+                        gpu_type = "AMD Radeon Dedicated (ROCm/Vulkan)"
+                        is_integrated = False
+                    elif is_intel_arc:
+                        gpu_type = "Intel Arc Dedicated (SYCL/Vulkan)"
+                        is_integrated = False
+                    elif "amd" in name_low or "radeon" in name_low:
+                        gpu_type = "AMD Radeon iGPU (Vulkan/DirectML)"
+                        is_integrated = True
+                    elif "intel" in name_low:
+                        gpu_type = "Intel(R) Integrated Graphics (Vulkan/DirectML)"
+                        is_integrated = True
+                    else:
+                        gpu_type = "Display Adapter"
+                        is_integrated = True
+
                     igpus.append({
                         "name": name,
-                        "type": ("AMD Radeon iGPU (DirectML/DirectX 12)" if is_amd else "Integrated Graphics"),
+                        "type": gpu_type,
                         "vram_total_mb": vram_mb,
                         "vram_used_mb": None,
                         "vram_free_mb": None,
@@ -138,8 +176,8 @@ def _get_integrated_gpus_cached(seen_names: set) -> List[Dict[str, Any]]:
                         "temp_c": None,
                         "power_draw_w": None,
                         "fan_speed_pct": None,
-                        "telemetry_source": "none",
-                        "is_integrated": True,
+                        "telemetry_source": "wmi",
+                        "is_integrated": is_integrated,
                     })
         except Exception as ex:
             log.debug("CIM VideoController query failed: %s", ex)
@@ -149,7 +187,13 @@ def _get_integrated_gpus_cached(seen_names: set) -> List[Dict[str, Any]]:
 
 
 def _detect_all_gpus(cpu_pct: float) -> List[Dict[str, Any]]:
-    """Reports every GPU with measured values."""
+    """Reports every physical GPU with measured values."""
+    try:
+        from core.engine.llama_runtime import setup_dll_directories
+        setup_dll_directories()
+    except Exception:
+        pass
+
     gpus_list: List[Dict[str, Any]] = []
     seen_names = set()
     telemetry = _nvidia_smi_telemetry()
@@ -201,17 +245,48 @@ def _detect_all_gpus(cpu_pct: float) -> List[Dict[str, Any]]:
                 "is_integrated": False,
             })
             seen_names.add(props.name.lower())
+    elif telemetry:
+        # PyTorch CUDA non è inizializzato nel processo, ma nvidia-smi rileva le schede NVIDIA
+        for idx, tdata in telemetry.items():
+            name = tdata.get("name") or f"NVIDIA GPU {idx}"
+            total_mb = tdata.get("vram_total_mb")
+            used_mb = tdata.get("vram_used_mb")
+            usage_pct = (
+                round(used_mb / total_mb * 100, 1)
+                if used_mb is not None and total_mb else None
+            )
+            gpus_list.append({
+                "index": idx,
+                "name": name,
+                "type": "NVIDIA CUDA Dedicated",
+                "vram_total_mb": int(total_mb) if total_mb else None,
+                "vram_used_mb": int(used_mb) if used_mb is not None else None,
+                "vram_free_mb": (
+                    int(total_mb - used_mb)
+                    if used_mb is not None and total_mb else None
+                ),
+                "vram_usage_pct": usage_pct,
+                "gpu_util_pct": tdata.get("gpu_util_pct"),
+                "temp_c": tdata.get("temp_c"),
+                "power_draw_w": tdata.get("power_draw_w"),
+                "fan_speed_pct": tdata.get("fan_speed_pct"),
+                "telemetry_source": "nvidia-smi",
+                "is_integrated": False,
+            })
+            seen_names.add(name.lower())
 
-    # Add cached integrated GPUs without running slow powershell on every poll
+    # Add cached integrated / discrete non-CUDA GPUs without slow PowerShell on every poll
     cached_igpus = _get_integrated_gpus_cached(seen_names)
     for igpu in cached_igpus:
-        if igpu["name"].lower() not in seen_names:
+        name_low = igpu["name"].lower()
+        if not any(seen in name_low or name_low in seen for seen in seen_names):
             item = dict(igpu)
             item["index"] = len(gpus_list)
             gpus_list.append(item)
-            seen_names.add(igpu["name"].lower())
+            seen_names.add(name_low)
 
     return gpus_list
+
 
 
 def _get_disks_info() -> Dict[str, Any]:
