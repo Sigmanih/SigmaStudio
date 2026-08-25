@@ -1031,36 +1031,44 @@ class LlamaCppBackend(InferenceBackend):
 
     @staticmethod
     def _resolve_gguf_file(facts: ModelFacts) -> Optional[str]:
-        """Picks the GGUF to load, preferring the first shard of a split set."""
+        """Picks the GGUF to load, preferring the first shard of a split set and ignoring mmproj."""
         if os.path.isfile(facts.path) and facts.path.endswith(".gguf"):
             return facts.path
         if not os.path.isdir(facts.path):
             return None
 
-        candidates = sorted(f for f in os.listdir(facts.path) if f.endswith(".gguf"))
-        if not candidates:
+        all_ggufs = sorted(f for f in os.listdir(facts.path) if f.endswith(".gguf"))
+        if not all_ggufs:
             return None
+
+        # Exclude mmproj / clip vision projector files from main model resolution
+        candidates = [
+            f for f in all_ggufs if not (
+                f.lower().startswith("mmproj") or "mmproj" in f.lower() or
+                "-clip-" in f.lower() or "_clip_" in f.lower() or f.lower().startswith("clip-")
+            )
+        ]
+        if not candidates:
+            candidates = all_ggufs
 
         # llama.cpp opens a split model from its first part and finds the rest.
         first_shard = [c for c in candidates if "00001-of-" in c]
         if first_shard:
             return os.path.join(facts.path, first_shard[0])
 
-        # Several unrelated GGUFs in one folder means different quantizations of
-        # the same model. Alphabetical order would pick "F16" over "Q4_K_S",
-        # loading the largest variant precisely when a smaller one was made to
-        # fit; the smallest is the one that was converted to be usable here.
         if len(candidates) > 1:
             sized = [(os.path.getsize(os.path.join(facts.path, c)), c)
                      for c in candidates]
-            chosen = min(sized)[1]
+            # Pick the largest variant (or standard quant), never a tiny clip/mmproj file
+            chosen = max(sized)[1]
             log.info(
-                "[LlamaCpp] %d GGUF variants in %s, loading the smallest (%s)",
+                "[LlamaCpp] %d GGUF variants in %s, loading (%s)",
                 len(candidates), facts.path, chosen,
             )
             return os.path.join(facts.path, chosen)
 
         return os.path.join(facts.path, candidates[0])
+
 
     # ------------------------------------------------------- pianificazione
     # I conti stanno in core/engine/gguf_planner.py: li usera' anche il backend

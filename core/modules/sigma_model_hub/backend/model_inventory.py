@@ -78,29 +78,38 @@ def scan_local_models(custom_dir: Optional[str] = None) -> List[Dict[str, Any]]:
                 if not shard_files and not part_files:
                     continue
 
-                total_bytes = sum(os.path.getsize(os.path.join(full_entry_path, f)) for f in shard_files)
+                main_shards = [f for f in shard_files if not (
+                    f.lower().startswith("mmproj") or "mmproj" in f.lower() or
+                    "-clip-" in f.lower() or "_clip_" in f.lower() or f.lower().startswith("clip-")
+                )]
+                target_shards = main_shards if main_shards else shard_files
+                has_mmproj = any(f not in main_shards for f in shard_files)
+
+                total_bytes = sum(os.path.getsize(os.path.join(full_entry_path, f)) for f in target_shards)
                 size_gb = round(total_bytes / (1024**3), 2)
                 size_mb = round(total_bytes / (1024**2), 1)
 
                 raw_name = entry.replace("--", "/")
-                is_sharded = len(shard_files) > 1
-                primary_file = os.path.join(full_entry_path, "model.safetensors.index.json") if os.path.exists(os.path.join(full_entry_path, "model.safetensors.index.json")) else (os.path.join(full_entry_path, shard_files[0]) if shard_files else full_entry_path)
+                is_sharded = len(target_shards) > 1
+                primary_file = os.path.join(full_entry_path, "model.safetensors.index.json") if os.path.exists(os.path.join(full_entry_path, "model.safetensors.index.json")) else (os.path.join(full_entry_path, target_shards[0]) if target_shards else full_entry_path)
 
                 # Check if all declared shards exist
                 is_complete = True
                 if part_files:
                     is_complete = False
-                elif not has_tokenizer and not any(f.endswith(".gguf") for f in shard_files):
+                elif not has_tokenizer and not any(f.endswith(".gguf") for f in target_shards):
                     is_complete = False
 
-                if any(f.endswith(".gguf") for f in shard_files):
-                    fmt = f"GGUF ({len(shard_files)} Shard)" if is_sharded else "GGUF"
+                if any(f.endswith(".gguf") for f in target_shards):
+                    fmt = f"GGUF ({len(target_shards)} Shard)" if is_sharded else "GGUF"
+                    if has_mmproj:
+                        fmt += " + Vision (CLIP)"
                     fmt_tag = "GGUF"
-                elif any(f.endswith(".safetensors") for f in shard_files):
+                elif any(f.endswith(".safetensors") for f in target_shards):
                     if is_complete:
-                        fmt = f"Safetensors ({len(shard_files)} Shards • Completo)" if is_sharded else "Safetensors"
+                        fmt = f"Safetensors ({len(target_shards)} Shards • Completo)" if is_sharded else "Safetensors"
                     else:
-                        fmt = f"Safetensors ({len(shard_files)} Shards • Incompleto)"
+                        fmt = f"Safetensors ({len(target_shards)} Shards • Incompleto)"
                     fmt_tag = "SAFETENSORS"
                 else:
                     fmt = "PyTorch Bin"
@@ -129,8 +138,9 @@ def scan_local_models(custom_dir: Optional[str] = None) -> List[Dict[str, Any]]:
                     "quantization": quantization,
                     "is_repo_folder": True,
                     "is_complete": is_complete,
+                    "is_multimodal": has_mmproj,
                     "has_part_files": len(part_files) > 0,
-                    "total_shards": len(shard_files),
+                    "total_shards": len(target_shards),
                     "size_gb": size_gb,
                     "size_mb": size_mb,
                     "size_label": f"~{size_gb:.1f} GB" if size_gb < 1000 else f"~{size_gb/1000:.1f} TB",
@@ -139,9 +149,10 @@ def scan_local_models(custom_dir: Optional[str] = None) -> List[Dict[str, Any]]:
                     "modified_at": time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(stat.st_mtime)),
                     "added_at": time.strftime(
                         '%Y-%m-%d %H:%M:%S',
-                        time.localtime(_earliest_weight_time(full_entry_path, shard_files))
+                        time.localtime(_earliest_weight_time(full_entry_path, target_shards))
                     ),
                 })
+
             except Exception as ex:
                 log.debug(f"[ModelInventory] Error reading directory {full_entry_path}: {ex}")
 

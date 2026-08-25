@@ -227,7 +227,14 @@ class LlamaServerBackend(InferenceBackend):
             *plan_to_args(settings),
         ]
 
+        # Aggancia l'adattatore multimodale CLIP/Vision se presente nella cartella
+        mmproj_file = self._find_mmproj_file(facts)
+        if mmproj_file:
+            comando.extend(["--mmproj", mmproj_file])
+            log.info("[LlamaServer] Rilevato e agganciato proiettore multimodale CLIP: %s", os.path.basename(mmproj_file))
+
         log.info("[LlamaServer] Avvio: %s", " ".join(comando[1:]))
+
         t0 = time.perf_counter()
         from core.engine.llama_runtime import runtime_env
         try:
@@ -408,6 +415,23 @@ class LlamaServerBackend(InferenceBackend):
         from core.engine.backends.llamacpp_backend import LlamaCppBackend
 
         return LlamaCppBackend()._resolve_gguf_file(facts)
+
+    def _find_mmproj_file(self, facts: ModelFacts) -> Optional[str]:
+        """Trova il file di proiezione multimodale (mmproj/CLIP) se presente nella cartella del modello."""
+        if not os.path.isdir(facts.path):
+            return None
+        try:
+            for f in os.listdir(facts.path):
+                low = f.lower()
+                if low.endswith(".gguf") and (
+                    low.startswith("mmproj") or "mmproj" in low or
+                    "-clip-" in low or "_clip_" in low or low.startswith("clip-")
+                ):
+                    return os.path.join(facts.path, f)
+        except OSError:
+            pass
+        return None
+
 
     def _url(self, percorso: str) -> str:
         return f"http://127.0.0.1:{self._porta}{percorso}"

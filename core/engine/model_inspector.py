@@ -239,11 +239,24 @@ class ModelInspector:
         gguf_files = sorted(f for f in files if f.endswith(".gguf"))
         if gguf_files:
             facts.weight_format = "gguf"
+            main_ggufs = [
+                f for f in gguf_files if not (
+                    f.lower().startswith("mmproj") or "mmproj" in f.lower() or
+                    "-clip-" in f.lower() or "_clip_" in f.lower() or f.lower().startswith("clip-")
+                )
+            ]
+            mmproj_files = [f for f in gguf_files if f not in main_ggufs]
+            if mmproj_files:
+                facts.is_multimodal = True
+
+            primary_gguf = main_ggufs[0] if main_ggufs else gguf_files[0]
+            target_files = main_ggufs if main_ggufs else gguf_files
             facts.total_bytes = sum(
-                os.path.getsize(os.path.join(facts.path, f)) for f in gguf_files
+                os.path.getsize(os.path.join(facts.path, f)) for f in target_files
             )
-            cls._read_gguf_metadata(facts, os.path.join(facts.path, gguf_files[0]))
+            cls._read_gguf_metadata(facts, os.path.join(facts.path, primary_gguf))
             return
+
 
         shard_files: List[str] = []
         index_path = os.path.join(facts.path, "model.safetensors.index.json")
