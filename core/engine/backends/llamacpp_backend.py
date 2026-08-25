@@ -162,6 +162,16 @@ def _diagnose_load_error(exc: Exception, captured_stderr: str, gguf_info: Dict[s
     combined = (captured_stderr + " " + err_str).lower()
     arch = gguf_info.get("architecture") or "sconosciuta"
 
+    # Va guardata per prima: 0xC000001D e' STATUS_ILLEGAL_INSTRUCTION, cioe' la
+    # CPU che incontra un'istruzione che non ha. Cadendo in fondo alla catena
+    # veniva riportata come "OSError" nudo, e il consiglio generico per la fase
+    # di load suggeriva di ridurre il contesto — che non cambia di una virgola
+    # quali istruzioni il processore supporti.
+    from core.engine.runtime_probe import illegal_instruction_report, is_illegal_instruction
+
+    if is_illegal_instruction(exc=exc, testo=captured_stderr):
+        return illegal_instruction_report()
+
     if "unknown architecture" in combined or "not supported" in combined:
         import llama_cpp
         ver = getattr(llama_cpp, "__version__", "sconosciuta")
@@ -393,6 +403,22 @@ class LlamaCppBackend(InferenceBackend):
             if not available:
                 return {"success": False, "error": reason, "stage": "availability"}
 
+        # Il runtime viene provato in un sottoprocesso prima di caricarci
+        # dentro un modello. Su Windows un'istruzione illegale arriva a ctypes
+        # come OSError e si intercetta; su Linux e macOS e' SIGILL e uccide il
+        # processo, cioe' il server. Meglio scoprirlo dove muore solo la
+        # verifica: l'esito e' in cache, quindi si paga una volta sola.
+        from core.engine.runtime_probe import check_runtime, illegal_instruction_report
+
+        prova = check_runtime()
+        if not prova.get("ok") and prova.get("motivo") == "istruzione_illegale":
+            return {
+                "success": False,
+                "error": illegal_instruction_report(prova.get("cpu")),
+                "stage": "runtime",
+                "cpu": prova.get("cpu"),
+            }
+
         model_file = self._resolve_gguf_file(facts)
         if not model_file:
             return {
@@ -421,6 +447,12 @@ class LlamaCppBackend(InferenceBackend):
         )
 
         settings = self._plan_settings(facts, hardware, context_tokens)
+
+        # Il piano calcolato puo' essere scavalcato a mano: la macchina a
+        # volte dichiara VRAM che non ha davvero, o si vuole tenere un
+        # modello su CPU apposta per lasciare la scheda libera.
+        from core.engine.load_overrides import apply_to as _applica_override
+        settings = _applica_override(settings, facts.name)
 
         # Force garbage collection and free CUDA allocator before creating Llama instance
         import gc

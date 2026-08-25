@@ -463,3 +463,62 @@ def handle_engine_optimize(self):
         log.error(f"handle_engine_optimize error: {exc}")
         return self.send_json_response({"success": False, "error": str(exc)}, 500)
 
+
+
+# ==============================================================================
+# IMPOSTAZIONI MANUALI DI CARICAMENTO
+# ==============================================================================
+# Il pianificatore decide da se' come caricare un modello, e nella maggior parte
+# dei casi va lasciato fare. Ma parte da cio' che la macchina dichiara, e a
+# volte la macchina mente: VRAM riportata e non disponibile, una scheda che va
+# in throttling, una GPU condivisa con un altro programma. Qui si scavalca a
+# mano il singolo numero, come si fa in LM Studio, senza perdere le altre
+# decisioni.
+
+def handle_engine_overrides_get(self):
+    """GET /api/engine/overrides — Impostazioni imposte a mano e campi ammessi."""
+    from core.engine.load_overrides import get_all
+    return self.send_json_response({"success": True, **get_all()})
+
+
+def handle_engine_overrides_set(self):
+    """POST /api/engine/overrides — Impone valori per un modello o per tutti.
+
+    Corpo: {"model": "nome" | null, "valori": {"n_gpu_layers": 0, ...}}
+    Un valore null cancella quel campo e restituisce la scelta al pianificatore.
+    """
+    from core.engine.load_overrides import set_for
+    body = self.read_json_body() if hasattr(self, "read_json_body") else {}
+    try:
+        stato = set_for(body.get("model") or None, body.get("valori") or {})
+    except ValueError as exc:
+        return self.send_json_response({"success": False, "error": str(exc)}, 400)
+    return self.send_json_response({"success": True, **stato})
+
+
+def handle_engine_overrides_clear(self):
+    """POST /api/engine/overrides/clear — Torna al piano calcolato."""
+    from core.engine.load_overrides import clear
+    body = self.read_json_body() if hasattr(self, "read_json_body") else {}
+    return self.send_json_response({"success": True, **clear(body.get("model") or None)})
+
+
+def handle_engine_runtime_check(self):
+    """GET /api/engine/runtime_check — Il runtime GGUF gira su questa CPU?
+
+    Risponde alla domanda che sta dietro all'errore 0xC000001D: la ruota
+    installata usa istruzioni che questo processore non ha.
+    """
+    from core.engine.runtime_probe import check_runtime, cpu_features, illegal_instruction_report
+
+    esito = check_runtime(refresh=True)
+    risposta = {
+        "success": True,
+        "runtime_ok": esito.get("ok", False),
+        "motivo": esito.get("motivo") or None,
+        "dettaglio": esito.get("dettaglio") or None,
+        "cpu": esito.get("cpu") or cpu_features(),
+    }
+    if esito.get("motivo") == "istruzione_illegale":
+        risposta["rimedio"] = illegal_instruction_report(esito.get("cpu"))
+    return self.send_json_response(risposta)

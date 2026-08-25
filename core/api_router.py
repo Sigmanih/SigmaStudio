@@ -25,6 +25,8 @@ def register_get_handlers(handler_class):
         '/api/tts/engines': 'handle_tts_engines_fallback',
         '/api/engine/status': 'handle_engine_status',
         '/api/engine/profile': 'handle_engine_profile',
+        '/api/engine/overrides': 'handle_engine_overrides_get',
+        '/api/engine/runtime_check': 'handle_engine_runtime_check',
         '/api/engine/models': 'handle_engine_models',
 
 
@@ -247,6 +249,8 @@ def register_post_handlers(handler_class):
         '/api/engine/partition': 'handle_engine_partition',
         '/api/engine/hf/import': 'handle_engine_hf_import',
         '/api/engine/optimize': 'handle_engine_optimize',
+        '/api/engine/overrides': 'handle_engine_overrides_set',
+        '/api/engine/overrides/clear': 'handle_engine_overrides_clear',
         '/api/engine/plan': 'handle_engine_plan',
         '/api/engine/unload': 'handle_engine_unload',
         '/api/engine/benchmark': 'handle_engine_benchmark',

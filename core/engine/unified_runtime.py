@@ -34,6 +34,12 @@ DEFAULT_SYSTEM_PROMPT = (
 )
 
 
+def _causa_gia_spiegata(error: str) -> bool:
+    """La diagnosi ha gia' detto perche', e con che cosa rimediare."""
+    testo = str(error or "")
+    return len(testo) > 200 and ("**" in testo or "```" in testo)
+
+
 class UniversalSigmaEngine:
     """
     Universal LLM engine for Sigma Studio.
@@ -1532,6 +1538,14 @@ class UniversalSigmaEngine:
         """Renders the real load failure, with guidance matched to the stage."""
         stage = result.get("stage", "load")
         error = result.get("error", "causa sconosciuta")
+
+        # Quando la diagnosi ha gia' spiegato la causa, un suggerimento generico
+        # in coda non aiuta: contraddice. E' successo con un'istruzione illegale
+        # (0xC000001D), che si e' presentata all'utente con il consiglio di
+        # ridurre il contesto.
+        if result.get("stage") == "runtime" or _causa_gia_spiegata(error):
+            return (f"❌ **SigmaEngine non ha potuto caricare `{target_model}`**\n\n"
+                    f"{error}")
 
         hints = {
             "discovery": (

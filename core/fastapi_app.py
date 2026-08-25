@@ -384,6 +384,11 @@ FastAPIHandlerAdapter.handle_hf_token_get = handle_hf_token_get
 FastAPIHandlerAdapter.handle_tts_engines_fallback = handle_tts_engines_fallback
 
 from core.engine import (
+    handle_engine_overrides_get,
+    handle_engine_overrides_set,
+    handle_engine_overrides_clear,
+    handle_engine_runtime_check,
+
     handle_engine_status, handle_engine_profile, handle_engine_partition,
     handle_engine_hf_import, handle_engine_models, handle_engine_optimize,
     handle_engine_plan, handle_engine_unload, handle_engine_benchmark
@@ -400,6 +405,10 @@ from core.engine.provider_server import (
 )
 FastAPIHandlerAdapter.handle_engine_status = handle_engine_status
 FastAPIHandlerAdapter.handle_engine_profile = handle_engine_profile
+FastAPIHandlerAdapter.handle_engine_overrides_get = handle_engine_overrides_get
+FastAPIHandlerAdapter.handle_engine_overrides_set = handle_engine_overrides_set
+FastAPIHandlerAdapter.handle_engine_overrides_clear = handle_engine_overrides_clear
+FastAPIHandlerAdapter.handle_engine_runtime_check = handle_engine_runtime_check
 FastAPIHandlerAdapter.handle_engine_partition = handle_engine_partition
 FastAPIHandlerAdapter.handle_engine_hf_import = handle_engine_hf_import
 FastAPIHandlerAdapter.handle_engine_models = handle_engine_models
