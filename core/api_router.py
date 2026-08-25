@@ -78,8 +78,6 @@ def register_get_handlers(handler_class):
         '/api/hardware/gpu-processes': 'handle_hardware_gpu_processes',
         '/api/system/capabilities': 'handle_system_capabilities',
         '/api/system/available_modules': 'handle_system_available_modules',
-        # Voice Synthesis Endpoints
-        '/api/tts/engines': 'handle_tts_engines',
         # MCP approvals awaiting the operator
         '/api/mcp/pending': 'handle_mcp_pending',
         # MCP Endpoints
@@ -180,7 +178,6 @@ def register_post_handlers(handler_class):
         '/api/chat/plan': 'handle_chat_plan',
         '/api/chat/execute_plan': 'handle_chat_execute_plan',
         '/api/chat/orchestrate': 'handle_chat_orchestrate',
-        '/api/tts/speak': 'handle_tts_speak',
         '/api/create_model': 'handle_api_create_model',
         '/api/ollama_models': 'handle_api_ollama_models',
         '/api/sandbox/create': 'handle_sandbox_create',

@@ -37,7 +37,12 @@ from core.logger import get_logger
 from core.sandbox import is_path_allowed
 from core.store import modules_store, tasks_store
 from core.api_router import register_get_handlers, register_post_handlers
+from core.sse import ClientGone
 from core.system_cleanup import handle_system_clear_memory, shutdown_all_tasks
+from core.system_handler import (
+    handle_system_available_modules,
+    handle_system_capabilities,
+)
 
 log = get_logger("fastapi_server")
 
@@ -111,8 +116,6 @@ _stream_executor = concurrent.futures.ThreadPoolExecutor(
 )
 
 
-class ClientGone(BrokenPipeError):
-    """Raised inside a handler thread when the SSE reader has disconnected."""
 
 
 _STREAM_SENTINEL = object()
@@ -600,6 +603,8 @@ def _handle_router_train(self):
         return self.send_json_response({"success": False, "error": str(exc)}, 500)
 FastAPIHandlerAdapter.handle_router_train = _handle_router_train
 FastAPIHandlerAdapter.handle_system_clear_memory = handle_system_clear_memory
+FastAPIHandlerAdapter.handle_system_capabilities = handle_system_capabilities
+FastAPIHandlerAdapter.handle_system_available_modules = handle_system_available_modules
 
 register_get_handlers(FastAPIHandlerAdapter)
 register_post_handlers(FastAPIHandlerAdapter)
@@ -611,6 +616,13 @@ register_post_handlers(FastAPIHandlerAdapter)
 SSE_ENDPOINTS = (
     "/api/chat",
     "/api/chat/loop",
+    # Questi due scrivono frame SSE da sempre, ma non erano dichiarati qui:
+    # il dispatcher li trattava come endpoint JSON, quindi l'adapter non aveva
+    # coda ne' loop a cui consegnare e ogni frame finiva in una queue che
+    # nessuno leggeva — accumulata in memoria per tutta la richiesta, mentre il
+    # client riceveva solo la risposta finale.
+    "/api/chat/execute",
+    "/api/chat/execute_plan",
     "/api/chat/orchestrate",
     "/api/chat/pipeline/start",
     "/api/research/start",
@@ -1407,9 +1419,9 @@ async def api_patch_dispatcher(request: Request, path: str):
 # Anchored to the installation, not the working directory: launched from
 # anywhere else, these resolved to folders that do not exist and the UI
 # served nothing but 404s.
-from core.model_paths import project_root as _project_root
-_ROOT = Path(_project_root())
-DIST_DIR = _ROOT / "sigma_studio" / "dist"
+from core import paths as _paths
+_ROOT = _paths.project_root()
+DIST_DIR = _paths.frontend_dist_dir()
 
 
 @app.get("/")
