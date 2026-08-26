@@ -412,13 +412,98 @@ def handle_models_hf_upload_remove(self):
         self.send_json_response({"success": False, "error": str(e)}, 500)
 
 
+def handle_models_hf_card_preview(self):
+    """POST /api/models/hf/card/preview — Genera un'anteprima completa della Model Card (README.md) bilingue."""
+    try:
+        body = self.read_json_body() if hasattr(self, 'read_json_body') else {}
+        local_path = body.get("local_path") or body.get("path") or body.get("filename") or ""
+        repo_id = body.get("repo_id") or "sigmanih/my-model"
+        custom_notes = body.get("custom_notes")
+        include_benchmarks = bool(body.get("include_benchmarks", True))
+        include_hardware = bool(body.get("include_hardware", True))
+        benchmark_summary = body.get("benchmark_summary")
+
+        # Resolve local path if relative
+        if local_path and not os.path.isabs(local_path):
+            cfg = _load_hub_config()
+            models_dir = cfg.get("models_dir") or DEFAULT_MODELS_DIR
+            candidate = os.path.join(models_dir, local_path)
+            if os.path.exists(candidate):
+                local_path = candidate
+
+        from .uploader_engine import generate_model_card
+        card_md = generate_model_card(
+            local_path=local_path,
+            repo_id=repo_id,
+            benchmark_summary=benchmark_summary,
+            include_benchmarks=include_benchmarks,
+            include_hardware=include_hardware,
+            custom_notes=custom_notes
+        )
+        self.send_json_response({"success": True, "card_markdown": card_md})
+    except Exception as e:
+        log.error("Error in handle_models_hf_card_preview: %s", e)
+        self.send_json_response({"success": False, "error": str(e)}, 500)
+
+
 
 def handle_models_local_list(self):
-    """GET /api/models/local/list — Restituisce elenco modelli scaricati in locale."""
+    """GET /api/models/local/list — Restituisce elenco modelli scaricati in locale con metriche benchmark."""
     try:
         cfg = _load_hub_config()
         custom_dir = cfg.get("models_dir")
         models = scan_local_models(custom_dir=custom_dir)
+
+        # Arricchisce i modelli con i dati dei benchmark eseguiti in Training Lab
+        bm_file = os.path.join("training_lab", "official_benchmark_results.json")
+        bm_map = {}
+        if os.path.exists(bm_file):
+            try:
+                with open(bm_file, "r", encoding="utf-8") as f_bm:
+                    bm_data = json.load(f_bm)
+                for j in bm_data:
+                    raw_m = j.get("model", "")
+                    clean_m = re.sub(r"^(?:sigma|ollama|lmstudio):", "", raw_m).replace("--", "/").strip().lower()
+                    if not clean_m:
+                        continue
+                    met = j.get("metrics", {})
+                    score = met.get("overall_score", 0)
+                    p_c = met.get("passed_count", 0)
+                    t_c = met.get("total_count", 0)
+                    tok_s = met.get("avg_tok_s", 0)
+                    suite = j.get("suite_name", j.get("suite", "Benchmark"))
+                    created = (j.get("created_at") or "")[:16].replace("T", " ")
+                    st = j.get("status", "")
+
+                    item_info = {
+                        "has_benchmarks": True,
+                        "latest_score": score,
+                        "best_score": score,
+                        "passed_count": p_c,
+                        "total_count": t_c,
+                        "avg_tok_s": tok_s,
+                        "suite_name": suite,
+                        "last_run_at": created,
+                        "status": st,
+                        "job_id": j.get("id")
+                    }
+                    if clean_m not in bm_map or score > bm_map[clean_m].get("best_score", 0):
+                        item_info["best_score"] = max(score, bm_map.get(clean_m, {}).get("best_score", score))
+                        bm_map[clean_m] = item_info
+            except Exception as e_bm:
+                log.debug("Errore lettura benchmark per modelli locali: %s", e_bm)
+
+        for m in models:
+            m_id = (m.get("model_id") or m.get("filename") or "").lower().replace("--", "/")
+            m_base = m_id.split("/")[-1]
+            summary = bm_map.get(m_id) or bm_map.get(m_base)
+            if not summary:
+                for k, v in bm_map.items():
+                    if k in m_id or m_id in k or (len(k) > 4 and (k in m_base or m_base in k)):
+                        summary = v
+                        break
+            m["benchmark_summary"] = summary or {"has_benchmarks": False}
+
         self.send_json_response({"success": True, "models": models})
     except Exception as e:
         log.error("Error in handle_models_local_list: %s", e)
@@ -853,6 +938,7 @@ def register_routes(app=None) -> None:
         '/api/models/hf/upload': handle_models_hf_upload,
         '/api/models/hf/upload/cancel': handle_models_hf_upload_cancel,
         '/api/models/hf/upload/remove': handle_models_hf_upload_remove,
+        '/api/models/hf/card/preview': handle_models_hf_card_preview,
         '/api/models/hf/token/test': handle_models_hf_token_test,
         '/api/models/hf/test-connection': handle_models_hf_test_connection,
         '/api/models/local/delete': handle_models_local_delete,

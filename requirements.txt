@@ -27,7 +27,12 @@ pytest>=7.4.0
 
 # AI / ML Frameworks & HuggingFace Tooling
 torch>=2.0.0
-transformers>=4.40.0
+# Legge i checkpoint. Il minimo non e' un numero prudente: e' la versione in
+# cui esistono le architetture che il Model Hub scarica oggi. Con una piu'
+# vecchia il download riesce, il caricamento no, e l'errore parla di
+# "architettura non riconosciuta" — che si legge come un checkpoint rotto e non
+# come una libreria da aggiornare. Gemma 4 (gemma4_unified) richiede la 5.10.
+transformers>=5.12.0
 datasets>=2.18.0
 peft>=0.10.0
 accelerate>=0.28.0

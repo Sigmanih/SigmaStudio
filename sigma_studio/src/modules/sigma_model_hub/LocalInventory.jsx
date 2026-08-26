@@ -3,7 +3,7 @@ import {
   HardDrive, Zap, RefreshCw, CheckCircle2, Trash2, Folder, Power,
   Activity, Upload, Download, Pause, Play, X, AlertTriangle, Package,
   RotateCcw, Search, ChevronDown, ChevronUp, Sliders, Layers, Sparkles,
-  Loader, Check
+  Loader, Check, Trophy, Award, BarChart2, Gauge, Clock, Cpu, ExternalLink
 } from 'lucide-react';
 import HfPublishModal from './HfPublishModal.jsx';
 
@@ -13,7 +13,8 @@ export default function LocalInventory({
   onDeployRequested,
   activeDownloads = [],
   onDownloadsChanged,
-  engineStatus
+  engineStatus,
+  onNavigateToConverter
 }) {
   const [models, setModels] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -23,10 +24,10 @@ export default function LocalInventory({
 
   // Search & Filter state for local inventory
   const [searchQuery, setSearchQuery] = useState('');
-  const [formatFilter, setFormatFilter] = useState('all'); // 'all' | 'gguf' | 'safetensors'
+  const [formatFilter, setFormatFilter] = useState('all'); // 'all' | 'gguf' | 'safetensors' | 'benchmarked'
 
   // GGUF Converter state
-  const [showConverter, setShowConverter] = useState(true);
+  const [showConverter, setShowConverter] = useState(false);
   const [converterModels, setConverterModels] = useState([]);
   const [quantTypes, setQuantTypes] = useState([]);
   const [tooling, setTooling] = useState(null);
@@ -39,12 +40,12 @@ export default function LocalInventory({
 
   const converterRef = useRef(null);
 
-  const cardBg = isLight ? '#ffffff' : '#0d1019';
-  const cardBorder = isLight ? '1px solid rgba(190, 160, 110, 0.3)' : '1px solid rgba(255, 255, 255, 0.08)';
+  const cardBg = isLight ? '#ffffff' : 'rgba(15, 18, 28, 0.85)';
+  const cardBorder = isLight ? '1px solid rgba(190, 160, 110, 0.28)' : '1px solid rgba(255, 255, 255, 0.08)';
   const textPrimary = isLight ? '#111827' : '#ffffff';
   const textMuted = isLight ? '#6b7280' : '#8b8fa3';
   const subBg = isLight ? '#f8f5ee' : 'rgba(255, 255, 255, 0.03)';
-  const subBorder = isLight ? '1px solid rgba(190, 160, 110, 0.22)' : '1px solid rgba(255, 255, 255, 0.06)';
+  const subBorder = isLight ? '1px solid rgba(190, 160, 110, 0.20)' : '1px solid rgba(255, 255, 255, 0.06)';
   const inputBg = isLight ? '#f3ede1' : 'rgba(0, 0, 0, 0.3)';
 
   // 1. Fetch local models
@@ -158,13 +159,12 @@ export default function LocalInventory({
         if (addToast) addToast(`❌ ${json.error || 'Errore durante l\'eliminazione del modello.'}`, 'error');
       }
     } catch (e) {
-      if (addToast) addToast(`Errore di rete: ${e.message}`, 'error');
+      if (addToast) addToast(`Errore: ${e.message}`, 'error');
     } finally {
       setDeletingPath(null);
     }
   };
 
-  // Download Task Controls
   const handlePauseDownload = async (taskId) => {
     try {
       const res = await fetch('/api/models/hf/download/pause', {
@@ -174,11 +174,11 @@ export default function LocalInventory({
       });
       const json = await res.json();
       if (json.success) {
-        if (addToast) addToast(`⏸️ Download #${taskId} messo in pausa.`, 'info');
+        if (addToast) addToast('⏸️ Download messo in pausa.', 'info');
         if (onDownloadsChanged) onDownloadsChanged();
       }
     } catch (e) {
-      if (addToast) addToast(`Errore pausa: ${e.message}`, 'error');
+      if (addToast) addToast(`Errore: ${e.message}`, 'error');
     }
   };
 
@@ -191,13 +191,11 @@ export default function LocalInventory({
       });
       const json = await res.json();
       if (json.success) {
-        if (addToast) addToast(`🚀 Ripresa del download #${taskId}!`, 'success');
+        if (addToast) addToast('▶️ Ripresa download con auto-resume da disco.', 'success');
         if (onDownloadsChanged) onDownloadsChanged();
-      } else {
-        if (addToast) addToast(`Errore ripresa: ${json.error}`, 'error');
       }
     } catch (e) {
-      if (addToast) addToast(`Errore di rete: ${e.message}`, 'error');
+      if (addToast) addToast(`Errore: ${e.message}`, 'error');
     }
   };
 
@@ -210,7 +208,7 @@ export default function LocalInventory({
       });
       const json = await res.json();
       if (json.success) {
-        if (addToast) addToast(`Download #${taskId} annullato.`, 'info');
+        if (addToast) addToast('🛑 Download annullato.', 'info');
         if (onDownloadsChanged) onDownloadsChanged();
       }
     } catch (e) {
@@ -218,60 +216,32 @@ export default function LocalInventory({
     }
   };
 
-  const handleRemoveDownloadTask = async (taskId, deleteFromDisk = false) => {
+  const handleRemoveDownloadTask = async (taskId, deleteFiles = false) => {
     try {
       const res = await fetch('/api/models/hf/download/remove', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ task_id: taskId, delete_from_disk: deleteFromDisk })
+        body: JSON.stringify({ task_id: taskId, delete_files: deleteFiles })
       });
       const json = await res.json();
       if (json.success) {
-        if (addToast) addToast(deleteFromDisk ? `🗑️ Download e file eliminati.` : `Notifica download rimossa.`, 'info');
         if (onDownloadsChanged) onDownloadsChanged();
-        fetchLocalModels();
       }
     } catch (e) {
-      if (addToast) addToast(`Errore rimozione: ${e.message}`, 'error');
+      console.error(e);
     }
   };
 
   const handleClearCompletedDownloads = async () => {
     try {
       const res = await fetch('/api/models/hf/downloads/clear', { method: 'POST' });
-      if (res.ok) {
-        const json = await res.json();
-        if (json.success) {
-          if (addToast) addToast(`🧹 ${json.message || 'Cronologia download pulita.'}`, 'info');
-          if (onDownloadsChanged) onDownloadsChanged();
-          return;
-        }
+      const json = await res.json();
+      if (json.success && onDownloadsChanged) {
+        onDownloadsChanged();
+        if (addToast) addToast('🧹 Notifiche download completate ripulite.', 'info');
       }
     } catch (e) {
-      console.warn('Backend clear endpoint error, fallback to batch remove:', e);
-    }
-
-    // Fallback: batch remove all finished/failed/cancelled tasks
-    const tasksToClear = activeDownloads.filter(t => t.status === 'completed' || t.status === 'failed' || t.status === 'cancelled');
-    if (tasksToClear.length === 0) {
-      if (addToast) addToast('Nessun download completato o terminato da rimuovere.', 'info');
-      return;
-    }
-
-    try {
-      await Promise.all(
-        tasksToClear.map(t =>
-          fetch('/api/models/hf/download/remove', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ task_id: t.task_id, delete_from_disk: false })
-          }).catch(() => {})
-        )
-      );
-      if (addToast) addToast(`🧹 ${tasksToClear.length} notifiche di download rimosse.`, 'info');
-      if (onDownloadsChanged) onDownloadsChanged();
-    } catch (err) {
-      if (addToast) addToast(`Errore pulizia: ${err.message}`, 'error');
+      console.error(e);
     }
   };
 
@@ -314,28 +284,53 @@ export default function LocalInventory({
   };
 
   const handleTriggerConvertForModel = (modelName) => {
-    setSelectedConvertModel(modelName);
-    setShowConverter(true);
-    if (converterRef.current) {
-      converterRef.current.scrollIntoView({ behavior: 'smooth' });
+    if (onNavigateToConverter) {
+      onNavigateToConverter(modelName);
+    } else {
+      setSelectedConvertModel(modelName);
+      setShowConverter(true);
+      if (converterRef.current) {
+        converterRef.current.scrollIntoView({ behavior: 'smooth' });
+      }
     }
   };
 
   // Stats calculation
   const totalModelsCount = models.length;
-  const ggufCount = models.filter(m => m.format_tag === 'GGUF' || m.filename?.toLowerCase().endsWith('.gguf')).length;
-  const safetensorsCount = models.filter(m => m.format_tag === 'Safetensors' || !m.filename?.toLowerCase().endsWith('.gguf')).length;
-  const totalStorageGb = models.reduce((sum, m) => sum + (parseFloat(m.size_gb) || 0), 0).toFixed(1);
+  const ggufModels = models.filter(m => m.format_tag === 'GGUF' || m.filename?.toLowerCase().endsWith('.gguf'));
+  const safetensorsModels = models.filter(m => m.format_tag === 'SAFETENSORS' || m.filename?.toLowerCase().endsWith('.safetensors') || (m.is_repo_folder && !m.format_tag?.includes('GGUF')));
+  const benchmarkedModels = models.filter(m => m.benchmark_summary?.has_benchmarks);
+
+  const ggufCount = ggufModels.length;
+  const safetensorsCount = safetensorsModels.length;
+  const benchmarkedCount = benchmarkedModels.length;
+
+  const ggufStorageGb = ggufModels.reduce((sum, m) => sum + (parseFloat(m.size_gb) || 0), 0);
+  const safetensorsStorageGb = safetensorsModels.reduce((sum, m) => sum + (parseFloat(m.size_gb) || 0), 0);
+  const totalStorageGb = (ggufStorageGb + safetensorsStorageGb).toFixed(1);
+
+  const ggufPct = totalStorageGb > 0 ? Math.round((ggufStorageGb / totalStorageGb) * 100) : 0;
+  const safePct = totalStorageGb > 0 ? Math.round((safetensorsStorageGb / totalStorageGb) * 100) : 0;
 
   // Filter models
   const filteredModels = models.filter(m => {
     const isGguf = m.format_tag === 'GGUF' || m.filename?.toLowerCase().endsWith('.gguf');
+    const isSafetensors = m.format_tag === 'SAFETENSORS' || m.filename?.toLowerCase().endsWith('.safetensors') || (m.is_repo_folder && !isGguf);
+    const hasBenchmark = !!m.benchmark_summary?.has_benchmarks;
+
     if (formatFilter === 'gguf' && !isGguf) return false;
-    if (formatFilter === 'safetensors' && isGguf) return false;
+    if (formatFilter === 'safetensors' && !isSafetensors) return false;
+    if (formatFilter === 'benchmarked' && !hasBenchmark) return false;
+
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase();
-      const text = `${m.filename || ''} ${m.model_id || ''} ${m.format || ''} ${m.quantization || ''}`.toLowerCase();
-      return text.includes(q);
+      const matchName = (m.filename || '').toLowerCase().includes(q);
+      const matchId = (m.model_id || '').toLowerCase().includes(q);
+      const matchDisp = (m.display_name || '').toLowerCase().includes(q);
+      const matchQuant = (m.quantization || '').toLowerCase().includes(q);
+      const matchArch = (m.architecture || '').toLowerCase().includes(q);
+      const matchSuite = (m.benchmark_summary?.suite_name || '').toLowerCase().includes(q);
+      return matchName || matchId || matchDisp || matchQuant || matchArch || matchSuite;
     }
     return true;
   });
@@ -344,28 +339,35 @@ export default function LocalInventory({
   const convertEstimate = selectedConvertModelObj?.estimated_outputs?.[selectedQuant];
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '18px' }}>
 
-      {/* 1. TOP STORAGE & ENGINE SUMMARY BANNER */}
+      {/* 1. TOP STORAGE & ENGINE DASHBOARD */}
       <div style={{
-        padding: '16px 20px', borderRadius: '16px',
+        padding: '20px 24px', borderRadius: '18px',
         background: isLight
           ? 'linear-gradient(135deg, #ffffff 0%, #faf5ec 100%)'
-          : 'linear-gradient(135deg, rgba(13, 16, 25, 0.95) 0%, rgba(26, 32, 54, 0.85) 100%)',
-        border: cardBorder,
-        boxShadow: isLight ? '0 4px 20px rgba(0,0,0,0.05)' : '0 8px 30px rgba(0,0,0,0.4)',
-        display: 'flex', flexDirection: 'column', gap: '12px'
+          : 'linear-gradient(135deg, rgba(14, 18, 28, 0.95) 0%, rgba(24, 30, 48, 0.85) 100%)',
+        border: isLight ? '1.5px solid rgba(190, 160, 110, 0.35)' : '1.5px solid rgba(0, 210, 255, 0.20)',
+        boxShadow: isLight ? '0 4px 20px rgba(0,0,0,0.05)' : '0 8px 32px rgba(0,0,0,0.45)',
+        display: 'flex', flexDirection: 'column', gap: '16px',
+        backdropFilter: 'blur(16px)'
       }}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '10px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '12px' }}>
           <div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-              <HardDrive size={18} color="#ffb86c" />
-              <h2 style={{ margin: 0, fontSize: '1.12rem', fontWeight: 800, color: textPrimary }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <div style={{
+                width: '32px', height: '32px', borderRadius: '10px',
+                background: 'linear-gradient(135deg, rgba(0, 210, 255, 0.2), rgba(188, 140, 255, 0.2))',
+                display: 'flex', alignItems: 'center', justifyContent: 'center'
+              }}>
+                <HardDrive size={18} color="#00d2ff" />
+              </div>
+              <h2 style={{ margin: 0, fontSize: '1.18rem', fontWeight: 800, color: textPrimary, letterSpacing: '-0.02em' }}>
                 Modelli Locali & Storage
               </h2>
             </div>
-            <div style={{ fontSize: '0.74rem', color: textMuted, marginTop: '2px' }}>
-              Gestisci i modelli presenti su disco, monitora i download attivi e converti checkpoint Safetensors in formato GGUF.
+            <div style={{ fontSize: '0.74rem', color: textMuted, marginTop: '3px' }}>
+              Gestisci i modelli presenti su disco, monitora i benchmark e converti checkpoint Safetensors in GGUF.
             </div>
           </div>
 
@@ -375,14 +377,14 @@ export default function LocalInventory({
               disabled={unloading}
               title="Scarica il modello attivo da VRAM/RAM e libera le risorse"
               style={{
-                padding: '6px 14px', borderRadius: '8px',
+                padding: '7px 14px', borderRadius: '10px',
                 border: '1px solid rgba(239, 68, 68, 0.4)', background: 'rgba(239, 68, 68, 0.1)',
                 color: '#ef4444', fontSize: '0.74rem', fontWeight: 800, cursor: 'pointer',
-                display: 'flex', alignItems: 'center', gap: '5px',
+                display: 'flex', alignItems: 'center', gap: '6px',
                 transition: 'all 0.15s ease'
               }}
             >
-              <Power size={12} /> {unloading ? 'Rilascio...' : 'Rilascia Memoria Motore'}
+              <Power size={13} /> {unloading ? 'Rilascio...' : 'Rilascia VRAM'}
             </button>
 
             <button
@@ -393,10 +395,10 @@ export default function LocalInventory({
               }}
               title="Ricarica elenco modelli e stato"
               style={{
-                padding: '6px 12px', borderRadius: '8px',
+                padding: '7px 14px', borderRadius: '10px',
                 border: subBorder, background: subBg,
                 color: textPrimary, fontSize: '0.74rem', fontWeight: 700, cursor: 'pointer',
-                display: 'flex', alignItems: 'center', gap: '4px'
+                display: 'flex', alignItems: 'center', gap: '5px'
               }}
             >
               <RefreshCw size={13} /> Aggiorna
@@ -404,38 +406,60 @@ export default function LocalInventory({
           </div>
         </div>
 
-        {/* Storage Metric Badges */}
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '10px' }}>
-          <div style={{ padding: '8px 12px', borderRadius: '10px', background: subBg, border: subBorder }}>
-            <div style={{ fontSize: '0.64rem', color: textMuted, fontWeight: 700, textTransform: 'uppercase' }}>MODELLI TOTALI</div>
-            <div style={{ fontSize: '1.05rem', fontWeight: 800, color: textPrimary, marginTop: '2px' }}>
-              {totalModelsCount} <span style={{ fontSize: '0.72rem', color: textMuted, fontWeight: 600 }}>modelli</span>
+        {/* Storage Metric Cards Grid */}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '12px' }}>
+          <div style={{ padding: '12px 14px', borderRadius: '12px', background: subBg, border: subBorder }}>
+            <div style={{ fontSize: '0.66rem', color: textMuted, fontWeight: 700, textTransform: 'uppercase', display: 'flex', alignItems: 'center', gap: '4px' }}>
+              <Cpu size={12} color="#00d2ff" /> MODELLI TOTALI
+            </div>
+            <div style={{ fontSize: '1.15rem', fontWeight: 900, color: textPrimary, marginTop: '3px' }}>
+              {totalModelsCount} <span style={{ fontSize: '0.72rem', color: textMuted, fontWeight: 600 }}>su disco</span>
             </div>
           </div>
 
-          <div style={{ padding: '8px 12px', borderRadius: '10px', background: subBg, border: subBorder }}>
-            <div style={{ fontSize: '0.64rem', color: textMuted, fontWeight: 700, textTransform: 'uppercase' }}>FORMATI SU DISCO</div>
-            <div style={{ fontSize: '0.90rem', fontWeight: 800, marginTop: '2px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+          <div style={{ padding: '12px 14px', borderRadius: '12px', background: subBg, border: subBorder }}>
+            <div style={{ fontSize: '0.66rem', color: textMuted, fontWeight: 700, textTransform: 'uppercase', display: 'flex', alignItems: 'center', gap: '4px' }}>
+              <Layers size={12} color="#10b981" /> FORMATI SU DISCO
+            </div>
+            <div style={{ fontSize: '0.88rem', fontWeight: 800, marginTop: '4px', display: 'flex', alignItems: 'center', gap: '6px' }}>
               <span style={{ color: '#10b981' }}>⚡ {ggufCount} GGUF</span>
               <span style={{ color: textMuted }}>•</span>
               <span style={{ color: '#00d2ff' }}>📦 {safetensorsCount} Safetensors</span>
             </div>
           </div>
 
-          <div style={{ padding: '8px 12px', borderRadius: '10px', background: subBg, border: subBorder }}>
-            <div style={{ fontSize: '0.64rem', color: textMuted, fontWeight: 700, textTransform: 'uppercase' }}>SPAZIO OCCUPATO</div>
-            <div style={{ fontSize: '1.05rem', fontWeight: 800, color: '#ffb86c', marginTop: '2px' }}>
-              {totalStorageGb} <span style={{ fontSize: '0.72rem', color: textMuted, fontWeight: 600 }}>GB totali</span>
+          <div style={{ padding: '12px 14px', borderRadius: '12px', background: subBg, border: subBorder }}>
+            <div style={{ fontSize: '0.66rem', color: textMuted, fontWeight: 700, textTransform: 'uppercase', display: 'flex', alignItems: 'center', gap: '4px' }}>
+              <Trophy size={12} color="#ffb86c" /> BENCHMARK ESEGUITI
+            </div>
+            <div style={{ fontSize: '1.15rem', fontWeight: 900, color: '#ffb86c', marginTop: '3px' }}>
+              {benchmarkedCount} <span style={{ fontSize: '0.72rem', color: textMuted, fontWeight: 600 }}>modelli valutati</span>
             </div>
           </div>
 
-          <div style={{ padding: '8px 12px', borderRadius: '10px', background: subBg, border: subBorder }}>
-            <div style={{ fontSize: '0.64rem', color: textMuted, fontWeight: 700, textTransform: 'uppercase' }}>STATO SIGMAENGINE</div>
-            <div style={{ fontSize: '0.78rem', fontWeight: 800, color: engineStatus?.loaded_model ? '#00d2ff' : textMuted, marginTop: '2px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-              {engineStatus?.loaded_model ? `⚡ ${engineStatus.loaded_model}` : 'Nessun modello caricato'}
+          <div style={{ padding: '12px 14px', borderRadius: '12px', background: subBg, border: subBorder }}>
+            <div style={{ fontSize: '0.66rem', color: textMuted, fontWeight: 700, textTransform: 'uppercase', display: 'flex', alignItems: 'center', gap: '4px' }}>
+              <HardDrive size={12} color="#bc8cff" /> SPAZIO OCCUPATO
+            </div>
+            <div style={{ fontSize: '1.15rem', fontWeight: 900, color: '#bc8cff', marginTop: '3px' }}>
+              {totalStorageGb} <span style={{ fontSize: '0.72rem', color: textMuted, fontWeight: 600 }}>GB totali</span>
             </div>
           </div>
         </div>
+
+        {/* Visual Storage Distribution Bar */}
+        {totalStorageGb > 0 && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', marginTop: '2px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.64rem', color: textMuted, fontWeight: 700 }}>
+              <span style={{ color: '#10b981' }}>⚡ GGUF: {ggufStorageGb.toFixed(1)} GB ({ggufPct}%)</span>
+              <span style={{ color: '#00d2ff' }}>📦 Safetensors: {safetensorsStorageGb.toFixed(1)} GB ({safePct}%)</span>
+            </div>
+            <div style={{ height: '6px', borderRadius: '3px', background: 'rgba(255,255,255,0.06)', overflow: 'hidden', display: 'flex' }}>
+              <div style={{ width: `${ggufPct}%`, height: '100%', background: '#10b981', transition: 'width 0.3s ease' }} title={`GGUF: ${ggufStorageGb.toFixed(1)} GB`} />
+              <div style={{ width: `${safePct}%`, height: '100%', background: '#00d2ff', transition: 'width 0.3s ease' }} title={`Safetensors: ${safetensorsStorageGb.toFixed(1)} GB`} />
+            </div>
+          </div>
+        )}
       </div>
 
       {/* 2. ACTIVE DOWNLOADS & TASK NOTIFICATIONS MANAGEMENT */}
@@ -510,7 +534,7 @@ export default function LocalInventory({
                       {isRunning && (
                         <button
                           onClick={() => handlePauseDownload(task.task_id)}
-                          title="Metti in pausa il download (i file su disco rimangono salvati)"
+                          title="Metti in pausa il download"
                           style={{
                             padding: '3px 8px', borderRadius: '5px',
                             border: '1px solid rgba(255, 184, 108, 0.4)', background: 'rgba(255, 184, 108, 0.1)',
@@ -525,7 +549,7 @@ export default function LocalInventory({
                       {(isPaused || isFailed) && (
                         <button
                           onClick={() => handleResumeDownload(task.task_id)}
-                          title="Riprendi il download dai byte già scaricati su disco"
+                          title="Riprendi il download dai byte già scaricati"
                           style={{
                             padding: '3px 8px', borderRadius: '5px',
                             border: '1px solid rgba(16, 185, 129, 0.4)', background: 'rgba(16, 185, 129, 0.1)',
@@ -599,153 +623,117 @@ export default function LocalInventory({
         style={{
           padding: '16px 20px', borderRadius: '16px',
           background: cardBg, border: cardBorder,
-          display: 'flex', flexDirection: 'column', gap: '14px',
-          boxShadow: isLight ? '0 4px 18px rgba(0,0,0,0.04)' : '0 8px 24px rgba(0,0,0,0.3)'
+          display: 'flex', flexDirection: 'column', gap: '12px'
         }}
       >
         <div
           onClick={() => setShowConverter(!showConverter)}
-          style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer', userSelect: 'none' }}
+          style={{
+            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+            cursor: 'pointer', userSelect: 'none'
+          }}
         >
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <div style={{
-              width: '32px', height: '32px', borderRadius: '8px',
-              background: 'rgba(34, 197, 94, 0.15)', border: '1px solid rgba(34, 197, 94, 0.35)',
-              display: 'flex', alignItems: 'center', justifyContent: 'center'
+            <Package size={16} color="#10b981" />
+            <span style={{ fontSize: '0.88rem', fontWeight: 800, color: textPrimary }}>
+              Convertitore & Quantizzazione GGUF (llama.cpp)
+            </span>
+            <span style={{
+              fontSize: '0.62rem', padding: '2px 6px', borderRadius: '4px',
+              background: tooling?.ready ? 'rgba(16, 185, 129, 0.15)' : 'rgba(239, 68, 68, 0.15)',
+              color: tooling?.ready ? '#10b981' : '#ef4444', fontWeight: 800
             }}>
-              <Package size={17} color="#22c55e" />
-            </div>
-            <div>
-              <div style={{ fontSize: '0.94rem', fontWeight: 800, color: textPrimary, display: 'flex', alignItems: 'center', gap: '6px' }}>
-                Conversione & Quantizzazione GGUF per SigmaEngine
-                {jobs.length > 0 && (
-                  <span style={{ fontSize: '0.64rem', padding: '1px 6px', borderRadius: '4px', background: 'rgba(34, 197, 94, 0.15)', color: '#22c55e', fontWeight: 800 }}>
-                    {jobs.length} {jobs.length === 1 ? 'job' : 'jobs'}
-                  </span>
-                )}
-              </div>
-              <div style={{ fontSize: '0.72rem', color: textMuted }}>
-                Trasforma checkpoint Safetensors / PyTorch in formato GGUF quantizzato ad alta velocità per llama.cpp
-              </div>
-            </div>
+              {tooling?.ready ? '⚡ STRUMENTI PRONTI' : '⚠️ STRUMENTI NON CONFIGURATI'}
+            </span>
           </div>
 
-          <button style={{ background: 'none', border: 'none', color: textMuted, cursor: 'pointer' }}>
-            {showConverter ? <ChevronUp size={18} /> : <ChevronDown size={18} />}
-          </button>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: textMuted }}>
+            <span style={{ fontSize: '0.70rem' }}>{showConverter ? 'Comprimi' : 'Espandi'}</span>
+            {showConverter ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+          </div>
         </div>
 
         {showConverter && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '14px', borderTop: subBorder, paddingTop: '12px' }}>
-            {/* Tooling check banner */}
-            {tooling && !tooling.ready && (
-              <div style={{
-                padding: '12px 14px', borderRadius: '10px',
-                background: 'rgba(245, 158, 11, 0.10)',
-                border: '1px solid rgba(245, 158, 11, 0.3)',
-                display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '8px'
-              }}>
-                <div>
-                  <div style={{ fontSize: '0.76rem', color: isLight ? '#92400e' : '#fbbf24', fontWeight: 800, display: 'flex', alignItems: 'center', gap: '4px' }}>
-                    <AlertTriangle size={13} /> Strumento di conversione llama.cpp non ancora installato
-                  </div>
-                  <div style={{ fontSize: '0.70rem', color: textMuted, marginTop: '2px' }}>
-                    Scarica lo script ufficiale di conversione llama.cpp (v{tooling.converter_version}) per consentire la trasformazione dei pesi.
-                  </div>
-                </div>
-
-                <button
-                  onClick={handleInstallTooling}
-                  disabled={convertingBusy}
-                  style={{
-                    padding: '6px 14px', borderRadius: '6px',
-                    border: 'none', background: 'linear-gradient(135deg, #f59e0b, #d97706)',
-                    color: '#ffffff', fontSize: '0.74rem', fontWeight: 800, cursor: 'pointer',
-                    display: 'flex', alignItems: 'center', gap: '4px'
-                  }}
-                >
-                  <Download size={12} /> Installa Tooling
-                </button>
-              </div>
-            )}
-
-            {converterError ? (
-              <div style={{ padding: '10px 14px', borderRadius: '8px', background: 'rgba(239, 68, 68, 0.1)', border: '1px solid rgba(239, 68, 68, 0.3)', color: '#ef4444', fontSize: '0.75rem' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '14px', paddingTop: '8px', borderTop: subBorder }}>
+            {converterError && (
+              <div style={{ padding: '8px 12px', borderRadius: '8px', background: 'rgba(239, 68, 68, 0.12)', border: '1px solid rgba(239, 68, 68, 0.3)', color: '#ef4444', fontSize: '0.74rem' }}>
                 {converterError}
               </div>
-            ) : converterModels.length === 0 ? (
-              <div style={{ padding: '12px 14px', borderRadius: '10px', background: subBg, border: subBorder, color: textMuted, fontSize: '0.74rem' }}>
-                ℹ️ Nessun modello Safetensors grezzo presente nella cartella storage. Scarica un modello Safetensors da Hugging Face per convertirlo in GGUF.
-              </div>
-            ) : (
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '12px' }}>
-                <div>
-                  <div style={{ fontSize: '0.68rem', fontWeight: 800, color: textMuted, textTransform: 'uppercase', marginBottom: '4px' }}>
-                    MODELLO SAFETENSORS DI PARTENZA
-                  </div>
-                  <select
-                    value={selectedConvertModel}
-                    onChange={e => setSelectedConvertModel(e.target.value)}
-                    style={{
-                      width: '100%', padding: '8px 12px', borderRadius: '8px',
-                      background: inputBg, border: subBorder, color: textPrimary,
-                      fontSize: '0.80rem', fontWeight: 700, outline: 'none'
-                    }}
-                  >
-                    {converterModels.map(m => (
-                      <option key={m.name} value={m.name} style={{ background: isLight ? '#fff' : '#0d1019', color: textPrimary }}>
-                        {m.name} ({m.params_b}B • {m.size_gb} GB)
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                <div>
-                  <div style={{ fontSize: '0.68rem', fontWeight: 800, color: textMuted, textTransform: 'uppercase', marginBottom: '4px' }}>
-                    QUANTIZZAZIONE TARGET
-                  </div>
-                  <select
-                    value={selectedQuant}
-                    onChange={e => setSelectedQuant(e.target.value)}
-                    style={{
-                      width: '100%', padding: '8px 12px', borderRadius: '8px',
-                      background: inputBg, border: subBorder, color: textPrimary,
-                      fontSize: '0.80rem', fontWeight: 700, outline: 'none'
-                    }}
-                  >
-                    {quantTypes.map(q => (
-                      <option key={q.id} value={q.id} style={{ background: isLight ? '#fff' : '#0d1019', color: textPrimary }}>
-                        {q.label}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              </div>
             )}
 
-            {/* Model estimate & compatibility bar */}
+            {/* Selection Grid */}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: '12px' }}>
+              <div>
+                <label style={{ display: 'block', fontSize: '0.68rem', fontWeight: 800, color: textMuted, marginBottom: '4px', textTransform: 'uppercase' }}>
+                  Modello Safetensors di Partenza
+                </label>
+                <select
+                  value={selectedConvertModel}
+                  onChange={e => setSelectedConvertModel(e.target.value)}
+                  disabled={convertingBusy || !converterModels.length}
+                  style={{
+                    width: '100%', padding: '8px 12px', borderRadius: '8px',
+                    background: inputBg, border: subBorder, color: textPrimary,
+                    fontSize: '0.76rem', fontWeight: 700, outline: 'none'
+                  }}
+                >
+                  {converterModels.length === 0 ? (
+                    <option value="">Nessun modello Safetensors convertibile trovato</option>
+                  ) : (
+                    converterModels.map(m => (
+                      <option key={m.name} value={m.name}>
+                        {m.name} ({m.param_size || '?'} • {m.size_gb} GB)
+                      </option>
+                    ))
+                  )}
+                </select>
+              </div>
+
+              <div>
+                <label style={{ display: 'block', fontSize: '0.68rem', fontWeight: 800, color: textMuted, marginBottom: '4px', textTransform: 'uppercase' }}>
+                  Quantizzazione Target
+                </label>
+                <select
+                  value={selectedQuant}
+                  onChange={e => setSelectedQuant(e.target.value)}
+                  disabled={convertingBusy}
+                  style={{
+                    width: '100%', padding: '8px 12px', borderRadius: '8px',
+                    background: inputBg, border: subBorder, color: textPrimary,
+                    fontSize: '0.76rem', fontWeight: 700, outline: 'none'
+                  }}
+                >
+                  {quantTypes.map(q => (
+                    <option key={q.type} value={q.type}>
+                      {q.type} ({q.description}) {q.recommended ? '★ CONSIGLIATO' : ''}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            {/* Convert Summary & Action */}
             {selectedConvertModelObj && (
               <div style={{
-                padding: '10px 14px', borderRadius: '10px',
+                padding: '12px 14px', borderRadius: '10px',
                 background: subBg, border: subBorder,
-                fontSize: '0.72rem', color: textMuted, display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '8px'
+                display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '10px'
               }}>
                 <div>
-                  <strong style={{ color: textPrimary }}>{selectedConvertModelObj.name}</strong> • Architettura: {selectedConvertModelObj.architecture} ({selectedConvertModelObj.layers} layers)
-                  <div style={{ marginTop: '2px' }}>
-                    Dimensione stimata GGUF: <strong style={{ color: '#10b981' }}>~{convertEstimate ?? '?'} GB</strong> (da {selectedConvertModelObj.size_gb} GB iniziali)
+                  <div style={{ fontSize: '0.78rem', fontWeight: 800, color: textPrimary }}>
+                    {selectedConvertModelObj.name} • Architettura: {selectedConvertModelObj.architecture || 'Auto'} ({selectedConvertModelObj.num_layers ? `${selectedConvertModelObj.num_layers} layers` : 'Standard'})
+                  </div>
+                  <div style={{ fontSize: '0.70rem', color: '#10b981', marginTop: '2px', fontWeight: 600 }}>
+                    Dimensione stimata GGUF: ~{convertEstimate?.size_gb || '?'} GB (da {selectedConvertModelObj.size_gb} GB iniziali)
                   </div>
                 </div>
 
                 <button
                   onClick={handleStartConversion}
-                  disabled={convertingBusy || !selectedConvertModel || !tooling?.ready || !!activeConvertJob}
+                  disabled={convertingBusy || !tooling?.ready || !!activeConvertJob}
                   style={{
                     padding: '8px 16px', borderRadius: '8px',
-                    border: 'none',
-                    background: (convertingBusy || !tooling?.ready || !!activeConvertJob)
-                      ? 'rgba(107, 114, 128, 0.2)'
-                      : 'linear-gradient(135deg, #10b981, #00d2ff)',
+                    border: 'none', background: 'linear-gradient(135deg, #10b981, #059669)',
                     color: '#ffffff', fontSize: '0.76rem', fontWeight: 800,
                     cursor: (convertingBusy || !tooling?.ready || !!activeConvertJob) ? 'not-allowed' : 'pointer',
                     display: 'flex', alignItems: 'center', gap: '5px',
@@ -753,60 +741,8 @@ export default function LocalInventory({
                   }}
                 >
                   {activeConvertJob ? <Activity className="mh-spin" size={13} /> : <Play size={13} />}
-                  {activeConvertJob ? 'Conversione in corso...' : 'Avvia Conversione in GGUF'}
+                  {activeConvertJob ? 'Conversione in corso...' : 'Avvia Conversione'}
                 </button>
-              </div>
-            )}
-
-            {/* Conversion jobs history */}
-            {jobs.length > 0 && (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                <span style={{ fontSize: '0.72rem', fontWeight: 800, color: textMuted, textTransform: 'uppercase' }}>
-                  Cronologia Conversioni
-                </span>
-                {jobs.map(job => (
-                  <div
-                    key={job.job_id}
-                    style={{
-                      padding: '10px 14px', borderRadius: '10px',
-                      background: inputBg, border: subBorder,
-                      display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px'
-                    }}
-                  >
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                      {job.status === 'completed' && <CheckCircle2 size={14} color="#10b981" />}
-                      {job.status === 'failed' && <AlertTriangle size={14} color="#ef4444" />}
-                      {['queued', 'converting', 'quantizing'].includes(job.status) && <Activity className="mh-spin" size={14} color="#00d2ff" />}
-                      <div>
-                        <div style={{ fontSize: '0.78rem', fontWeight: 800, color: textPrimary }}>
-                          {job.source_model} → {job.quantization}
-                        </div>
-                        <div style={{ fontSize: '0.66rem', color: textMuted }}>
-                          {job.status} • {job.elapsed_seconds}s {job.error ? `• ${job.error}` : ''}
-                        </div>
-                      </div>
-                    </div>
-
-                    {job.status === 'completed' && (
-                      <button
-                        onClick={() => setPublishingModel({
-                          filename: job.output_filename || `${job.source_model}-${job.quantization}.gguf`,
-                          path: job.output_path || job.output_filename,
-                          format_tag: 'GGUF',
-                          quantization: job.quantization
-                        })}
-                        style={{
-                          padding: '4px 10px', borderRadius: '6px',
-                          border: '1px solid rgba(255, 184, 108, 0.4)', background: 'rgba(255, 184, 108, 0.12)',
-                          color: '#ffb86c', fontSize: '0.70rem', fontWeight: 800, cursor: 'pointer',
-                          display: 'flex', alignItems: 'center', gap: '4px'
-                        }}
-                      >
-                        <Upload size={11} /> Pubblica su HF
-                      </button>
-                    )}
-                  </div>
-                ))}
               </div>
             )}
           </div>
@@ -814,27 +750,28 @@ export default function LocalInventory({
       </div>
 
       {/* 4. LOCAL MODELS CATALOG & INVENTORY */}
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
         {/* Search and Format Filter Bar */}
         <div style={{
-          padding: '12px 16px', borderRadius: '14px',
+          padding: '14px 18px', borderRadius: '16px',
           background: cardBg, border: cardBorder,
-          display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '10px'
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '12px',
+          backdropFilter: 'blur(12px)'
         }}>
           <div style={{
             display: 'flex', alignItems: 'center', gap: '8px',
-            background: subBg, border: subBorder, borderRadius: '10px',
-            padding: '6px 12px', flex: 1, minWidth: '220px'
+            background: subBg, border: subBorder, borderRadius: '12px',
+            padding: '7px 14px', flex: 1, minWidth: '240px'
           }}>
-            <Search size={14} color="#ffb86c" />
+            <Search size={15} color="#00d2ff" />
             <input
               type="text"
-              placeholder="Filtra tra i modelli scaricati..."
+              placeholder="Cerca modello per nome, quantizzazione, architettura..."
               value={searchQuery}
               onChange={e => setSearchQuery(e.target.value)}
               style={{
                 background: 'transparent', border: 'none', outline: 'none',
-                color: textPrimary, fontSize: '0.78rem', width: '100%'
+                color: textPrimary, fontSize: '0.80rem', width: '100%'
               }}
             />
             {searchQuery && (
@@ -847,22 +784,24 @@ export default function LocalInventory({
             )}
           </div>
 
-          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
             {[
-              { id: 'all', label: `Tutti (${totalModelsCount})` },
-              { id: 'gguf', label: `⚡ GGUF (${ggufCount})` },
-              { id: 'safetensors', label: `📦 Safetensors (${safetensorsCount})` },
+              { id: 'all', label: `Tutti (${totalModelsCount})`, color: '#00d2ff' },
+              { id: 'gguf', label: `⚡ GGUF (${ggufCount})`, color: '#10b981' },
+              { id: 'safetensors', label: `📦 Safetensors (${safetensorsCount})`, color: '#38bdf8' },
+              { id: 'benchmarked', label: `🏆 Valutati (${benchmarkedCount})`, color: '#ffb86c' },
             ].map(f => (
               <button
                 key={f.id}
                 onClick={() => setFormatFilter(f.id)}
                 style={{
-                  padding: '5px 12px', borderRadius: '8px',
-                  border: formatFilter === f.id ? '1px solid #ffb86c' : subBorder,
-                  background: formatFilter === f.id ? (isLight ? '#fff' : 'rgba(255, 184, 108, 0.15)') : subBg,
-                  color: formatFilter === f.id ? (isLight ? '#ea580c' : '#ffb86c') : textMuted,
-                  fontSize: '0.72rem', fontWeight: 800, cursor: 'pointer',
-                  transition: 'all 0.15s ease'
+                  padding: '6px 14px', borderRadius: '10px',
+                  border: formatFilter === f.id ? `1.5px solid ${f.color}` : subBorder,
+                  background: formatFilter === f.id ? (isLight ? '#fff' : 'rgba(255, 255, 255, 0.08)') : subBg,
+                  color: formatFilter === f.id ? f.color : textMuted,
+                  fontSize: '0.74rem', fontWeight: 800, cursor: 'pointer',
+                  transition: 'all 0.15s ease',
+                  boxShadow: formatFilter === f.id ? `0 0 12px ${f.color}22` : 'none'
                 }}
               >
                 {f.label}
@@ -873,137 +812,258 @@ export default function LocalInventory({
 
         {/* Models List */}
         {loading ? (
-          <div style={{ textAlign: 'center', padding: '40px', color: textMuted }}>
-            <Activity className="mh-spin" size={20} color="#00d2ff" style={{ margin: '0 auto 8px' }} />
-            <span>Scansione storage modelli...</span>
+          <div style={{ textAlign: 'center', padding: '50px', color: textMuted }}>
+            <Activity className="mh-spin" size={24} color="#00d2ff" style={{ margin: '0 auto 10px' }} />
+            <span style={{ fontSize: '0.84rem' }}>Scansione modelli locali in corso...</span>
           </div>
         ) : filteredModels.length === 0 ? (
           <div style={{
-            padding: '50px 20px', borderRadius: '14px', background: cardBg, border: cardBorder,
-            textAlign: 'center', color: textMuted, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '10px'
+            padding: '50px 20px', borderRadius: '16px', background: cardBg, border: cardBorder,
+            textAlign: 'center', color: textMuted, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '12px'
           }}>
-            <HardDrive size={28} color="#bc8cff" />
-            <div style={{ fontSize: '0.86rem', fontWeight: 700, color: textPrimary }}>
-              {searchQuery || formatFilter !== 'all' ? 'Nessun modello corrispondente ai filtri.' : 'Nessun modello trovato nello storage locale.'}
+            <HardDrive size={32} color="#bc8cff" />
+            <div style={{ fontSize: '0.92rem', fontWeight: 800, color: textPrimary }}>
+              {searchQuery || formatFilter !== 'all' ? 'Nessun modello corrispondente ai filtri selezionati.' : 'Nessun modello trovato nello storage locale.'}
             </div>
-            <div style={{ fontSize: '0.74rem' }}>
+            <div style={{ fontSize: '0.76rem' }}>
               Esplora la tab "🔍 Esplora Hugging Face" per scaricare modelli GGUF o Safetensors.
             </div>
           </div>
         ) : (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
             {filteredModels.map((m, idx) => {
               const isGguf = m.format_tag === 'GGUF' || m.filename?.toLowerCase().endsWith('.gguf');
+              const bm = m.benchmark_summary || {};
+              const hasBenchmark = !!bm.has_benchmarks;
+              const bmScore = bm.best_score || bm.latest_score || 0;
+              const bmScoreColor = bmScore >= 70 ? '#10b981' : (bmScore >= 40 ? '#00d2ff' : '#ffb86c');
+
               return (
                 <div
                   key={idx}
                   style={{
-                    padding: '12px 16px', borderRadius: '12px',
-                    background: m.is_active_in_engine ? (isLight ? 'rgba(0, 210, 255, 0.08)' : 'rgba(0, 210, 255, 0.06)') : cardBg,
+                    padding: '16px 20px', borderRadius: '16px',
+                    background: m.is_active_in_engine
+                      ? (isLight ? 'rgba(0, 210, 255, 0.08)' : 'linear-gradient(135deg, rgba(0, 210, 255, 0.10) 0%, rgba(15, 18, 28, 0.9) 100%)')
+                      : cardBg,
                     border: m.is_active_in_engine ? '1.5px solid #00d2ff' : cardBorder,
-                    display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px', flexWrap: 'wrap'
+                    boxShadow: m.is_active_in_engine ? '0 0 20px rgba(0, 210, 255, 0.15)' : 'none',
+                    display: 'flex', flexDirection: 'column', gap: '12px',
+                    transition: 'transform 0.15s ease, box-shadow 0.15s ease'
                   }}
                 >
-                  <div style={{ minWidth: 0, flex: 1 }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
-                      <span style={{ fontSize: '0.86rem', fontWeight: 800, color: textPrimary, wordBreak: 'break-all' }}>
-                        {m.filename}
-                      </span>
-                      <span style={{
-                        fontSize: '0.58rem', padding: '1px 5px', borderRadius: '4px',
-                        fontWeight: 800,
-                        background: isGguf ? 'rgba(34, 197, 94, 0.15)' : 'rgba(0, 210, 255, 0.15)',
-                        color: isGguf ? '#22c55e' : '#00d2ff',
-                      }}>
-                        {m.format_tag || (isGguf ? 'GGUF' : 'Safetensors')}
-                      </span>
-                      {m.quantization && (
-                        <span style={{
-                          fontSize: '0.58rem', padding: '1px 5px', borderRadius: '4px',
-                          background: 'rgba(188, 140, 255, 0.15)', color: '#bc8cff', fontWeight: 800
-                        }}>
-                          {m.quantization}
+                  {/* Top Bar: Title & Status Badges */}
+                  <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '12px', flexWrap: 'wrap' }}>
+                    <div style={{ minWidth: 0, flex: 1 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                        <span style={{ fontSize: '0.94rem', fontWeight: 900, color: textPrimary, wordBreak: 'break-all', letterSpacing: '-0.01em' }}>
+                          {m.display_name || m.filename}
                         </span>
-                      )}
-                      {m.is_active_in_engine && (
+
+                        {/* Format Tag */}
                         <span style={{
-                          fontSize: '0.58rem', padding: '1px 5px', borderRadius: '4px',
-                          background: 'rgba(16, 185, 129, 0.15)', color: '#10b981', fontWeight: 800
+                          fontSize: '0.62rem', padding: '2px 7px', borderRadius: '5px',
+                          fontWeight: 800,
+                          background: isGguf ? 'rgba(16, 185, 129, 0.15)' : 'rgba(0, 210, 255, 0.15)',
+                          color: isGguf ? '#10b981' : '#00d2ff',
+                          border: isGguf ? '1px solid rgba(16, 185, 129, 0.3)' : '1px solid rgba(0, 210, 255, 0.3)'
                         }}>
-                          ATTIVO IN SIGMAENGINE
+                          {m.format_tag || (isGguf ? 'GGUF' : 'SAFETENSORS')}
                         </span>
-                      )}
-                    </div>
-                    <div style={{ fontSize: '0.68rem', color: textMuted, marginTop: '3px' }}>
-                      {m.format || (isGguf ? 'GGUF' : 'Safetensors')} • {m.size_gb} GB • VRAM stimata ~{m.est_vram_gb} GB
-                      {m.added_at && <> • Aggiunto: {m.added_at}</>}
-                    </div>
-                  </div>
 
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexShrink: 0 }}>
-                    {/* Run in SigmaEngine */}
-                    <button
-                      onClick={() => onDeployRequested && onDeployRequested(m)}
-                      style={{
-                        padding: '5px 12px', borderRadius: '6px',
-                        border: 'none', background: 'linear-gradient(135deg, #00d2ff, #0090ff)',
-                        color: '#ffffff', fontSize: '0.72rem', fontWeight: 800, cursor: 'pointer',
-                        display: 'flex', alignItems: 'center', gap: '4px',
-                        boxShadow: '0 0 10px rgba(0, 210, 255, 0.25)'
-                      }}
-                    >
-                      <Zap size={12} /> {m.is_active_in_engine ? 'Rialloca' : '⚡ Avvia in SigmaEngine'}
-                    </button>
+                        {/* Quantization */}
+                        {m.quantization && (
+                          <span style={{
+                            fontSize: '0.62rem', padding: '2px 7px', borderRadius: '5px',
+                            background: 'rgba(188, 140, 255, 0.15)', color: '#bc8cff', fontWeight: 800,
+                            border: '1px solid rgba(188, 140, 255, 0.3)'
+                          }}>
+                            {m.quantization}
+                          </span>
+                        )}
 
-                    {/* If Safetensors, quick convert to GGUF */}
-                    {!isGguf && (
+                        {/* Parameter size */}
+                        {m.params_label && (
+                          <span style={{
+                            fontSize: '0.62rem', padding: '2px 7px', borderRadius: '5px',
+                            background: 'rgba(255, 184, 108, 0.15)', color: '#ffb86c', fontWeight: 800,
+                            border: '1px solid rgba(255, 184, 108, 0.3)'
+                          }}>
+                            ⚡ {m.params_label}
+                          </span>
+                        )}
+
+                        {/* Active in Engine badge */}
+                        {m.is_active_in_engine && (
+                          <span style={{
+                            fontSize: '0.62rem', padding: '2px 8px', borderRadius: '5px',
+                            background: 'linear-gradient(135deg, rgba(0, 210, 255, 0.25), rgba(16, 185, 129, 0.25))',
+                            color: '#00d2ff', fontWeight: 900,
+                            border: '1px solid #00d2ff',
+                            boxShadow: '0 0 10px rgba(0, 210, 255, 0.3)'
+                          }}>
+                            ⚡ CARICATO IN SIGMAENGINE
+                          </span>
+                        )}
+                      </div>
+
+                      {/* Specs Row */}
+                      <div style={{ fontSize: '0.70rem', color: textMuted, marginTop: '4px', display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                        <span>💾 <b>{m.size_gb} GB</b> su disco</span>
+                        <span>•</span>
+                        <span>⚡ VRAM stimata: <b>~{m.est_vram_gb} GB</b></span>
+                        {m.architecture && (
+                          <>
+                            <span>•</span>
+                            <span>🧬 Architettura: <b>{m.architecture}</b></span>
+                          </>
+                        )}
+                        {m.added_at && (
+                          <>
+                            <span>•</span>
+                            <span>🕒 Aggiunto: {m.added_at}</span>
+                          </>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Actions Bar */}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexShrink: 0, flexWrap: 'wrap' }}>
+                      {/* Run in SigmaEngine */}
                       <button
-                        onClick={() => handleTriggerConvertForModel(m.model_id || m.filename)}
-                        title="Configura e converti questo modello in GGUF quantizzato"
+                        onClick={() => onDeployRequested && onDeployRequested(m)}
                         style={{
-                          padding: '5px 10px', borderRadius: '6px',
-                          border: '1px solid rgba(34, 197, 94, 0.35)', background: 'rgba(34, 197, 94, 0.10)',
-                          color: '#22c55e', fontSize: '0.72rem', fontWeight: 800, cursor: 'pointer',
-                          display: 'flex', alignItems: 'center', gap: '3px'
+                          padding: '6px 14px', borderRadius: '8px',
+                          border: 'none', background: 'linear-gradient(135deg, #00d2ff, #0090ff)',
+                          color: '#ffffff', fontSize: '0.74rem', fontWeight: 800, cursor: 'pointer',
+                          display: 'flex', alignItems: 'center', gap: '5px',
+                          boxShadow: '0 0 12px rgba(0, 210, 255, 0.30)',
+                          transition: 'all 0.15s ease'
                         }}
                       >
-                        <Package size={12} /> Converti GGUF
+                        <Zap size={13} /> {m.is_active_in_engine ? 'Rialloca' : '⚡ Avvia in SigmaEngine'}
                       </button>
-                    )}
 
-                    {/* Publish to HF */}
-                    <button
-                      onClick={() => setPublishingModel(m)}
-                      title="Pubblica questo modello sul tuo account Hugging Face Hub"
-                      style={{
-                        padding: '5px 10px', borderRadius: '6px',
-                        border: '1px solid rgba(255, 184, 108, 0.35)',
-                        background: isLight ? 'rgba(255, 184, 108, 0.12)' : 'rgba(255, 184, 108, 0.10)',
-                        color: '#ffb86c', fontSize: '0.72rem', fontWeight: 800, cursor: 'pointer',
-                        display: 'flex', alignItems: 'center', gap: '3px'
-                      }}
-                    >
-                      <Upload size={12} /> Pubblica HF
-                    </button>
+                      {/* Convert Safetensors */}
+                      {!isGguf && (
+                        <button
+                          onClick={() => handleTriggerConvertForModel(m.model_id || m.filename)}
+                          title="Configura e converti questo modello in GGUF quantizzato"
+                          style={{
+                            padding: '6px 12px', borderRadius: '8px',
+                            border: '1px solid rgba(16, 185, 129, 0.35)', background: 'rgba(16, 185, 129, 0.10)',
+                            color: '#10b981', fontSize: '0.72rem', fontWeight: 800, cursor: 'pointer',
+                            display: 'flex', alignItems: 'center', gap: '4px'
+                          }}
+                        >
+                          <Package size={13} /> Converti GGUF
+                        </button>
+                      )}
 
-                    {/* Delete */}
-                    <button
-                      onClick={() => handleDeleteModel(m)}
-                      disabled={deletingPath === (m.path || m.filename)}
-                      title="Elimina definitivamente dallo storage locale"
-                      style={{
-                        padding: '5px 9px', borderRadius: '6px',
-                        border: isLight ? '1px solid rgba(239, 68, 68, 0.35)' : '1px solid rgba(239, 68, 68, 0.3)',
-                        background: isLight ? 'rgba(239, 68, 68, 0.08)' : 'rgba(239, 68, 68, 0.1)',
-                        color: '#ef4444', fontSize: '0.72rem', fontWeight: 700, cursor: 'pointer',
-                        display: 'flex', alignItems: 'center', gap: '3px',
-                        opacity: deletingPath === (m.path || m.filename) ? 0.6 : 1
-                      }}
-                    >
-                      <Trash2 size={12} />
-                      {deletingPath === (m.path || m.filename) ? '...' : 'Elimina'}
-                    </button>
+                      {/* Publish to HF */}
+                      <button
+                        onClick={() => setPublishingModel(m)}
+                        title="Pubblica questo modello su Hugging Face Hub"
+                        style={{
+                          padding: '6px 10px', borderRadius: '8px',
+                          border: '1px solid rgba(255, 184, 108, 0.35)',
+                          background: isLight ? 'rgba(255, 184, 108, 0.12)' : 'rgba(255, 184, 108, 0.10)',
+                          color: '#ffb86c', fontSize: '0.72rem', fontWeight: 800, cursor: 'pointer',
+                          display: 'flex', alignItems: 'center', gap: '4px'
+                        }}
+                      >
+                        <Upload size={13} /> Pubblica HF
+                      </button>
+
+                      {/* Delete */}
+                      <button
+                        onClick={() => handleDeleteModel(m)}
+                        disabled={deletingPath === (m.path || m.filename)}
+                        title="Elimina definitivamente dallo storage locale"
+                        style={{
+                          padding: '6px 10px', borderRadius: '8px',
+                          border: isLight ? '1px solid rgba(239, 68, 68, 0.35)' : '1px solid rgba(239, 68, 68, 0.3)',
+                          background: isLight ? 'rgba(239, 68, 68, 0.08)' : 'rgba(239, 68, 68, 0.1)',
+                          color: '#ef4444', fontSize: '0.72rem', fontWeight: 700, cursor: 'pointer',
+                          display: 'flex', alignItems: 'center', gap: '4px',
+                          opacity: deletingPath === (m.path || m.filename) ? 0.6 : 1
+                        }}
+                      >
+                        <Trash2 size={13} />
+                        {deletingPath === (m.path || m.filename) ? '...' : 'Elimina'}
+                      </button>
+                    </div>
                   </div>
+
+                  {/* Benchmark Showcase Banner */}
+                  {hasBenchmark ? (
+                    <div style={{
+                      padding: '10px 14px', borderRadius: '12px',
+                      background: isLight ? 'rgba(255, 184, 108, 0.08)' : 'linear-gradient(135deg, rgba(255, 184, 108, 0.08) 0%, rgba(16, 185, 129, 0.06) 100%)',
+                      border: '1px solid rgba(255, 184, 108, 0.30)',
+                      display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '10px'
+                    }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                        <div style={{
+                          width: '32px', height: '32px', borderRadius: '8px',
+                          background: 'rgba(255, 184, 108, 0.18)',
+                          display: 'flex', alignItems: 'center', justifyContent: 'center'
+                        }}>
+                          <Trophy size={16} color="#ffb86c" />
+                        </div>
+
+                        <div>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                            <span style={{ fontSize: '0.80rem', fontWeight: 800, color: textPrimary }}>
+                              Benchmark Ufficiale Training Lab:
+                            </span>
+                            <span style={{
+                              fontSize: '0.82rem', fontWeight: 900, color: bmScoreColor,
+                              padding: '1px 8px', borderRadius: '6px',
+                              background: `${bmScoreColor}18`, border: `1px solid ${bmScoreColor}44`
+                            }}>
+                              🏆 {bmScore}% Pass
+                            </span>
+                          </div>
+
+                          <div style={{ fontSize: '0.66rem', color: textMuted, marginTop: '2px', display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                            <span>📊 Suite: <b>{bm.suite_name}</b></span>
+                            <span>•</span>
+                            <span>⚡ Velocità: <b>{bm.avg_tok_s > 0 ? `${bm.avg_tok_s} tok/s` : 'Accelerato GPU'}</b></span>
+                            {bm.last_run_at && (
+                              <>
+                                <span>•</span>
+                                <span>⏱️ Testato: {bm.last_run_at}</span>
+                              </>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <span style={{
+                          fontSize: '0.62rem', fontWeight: 800, color: '#10b981',
+                          padding: '3px 8px', borderRadius: '5px',
+                          background: 'rgba(16, 185, 129, 0.12)', border: '1px solid rgba(16, 185, 129, 0.25)'
+                        }}>
+                          ✓ VALUTAZIONE REGISTRATA
+                        </span>
+                      </div>
+                    </div>
+                  ) : (
+                    <div style={{
+                      padding: '8px 12px', borderRadius: '10px',
+                      background: subBg, border: subBorder,
+                      display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px'
+                    }}>
+                      <span style={{ fontSize: '0.68rem', color: textMuted, display: 'flex', alignItems: 'center', gap: '5px' }}>
+                        <Award size={12} color={textMuted} /> Nessun benchmark registrato per questo modello.
+                      </span>
+                      <span style={{ fontSize: '0.64rem', color: '#ffb86c', fontWeight: 700 }}>
+                        Eseguibile dalla scheda Training Lab
+                      </span>
+                    </div>
+                  )}
                 </div>
               );
             })}

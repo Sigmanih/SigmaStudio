@@ -275,6 +275,7 @@ def register_post_handlers(handler_class):
         '/api/models/hf/upload': 'handle_models_hf_upload',
         '/api/models/hf/upload/cancel': 'handle_models_hf_upload_cancel',
         '/api/models/hf/upload/remove': 'handle_models_hf_upload_remove',
+        '/api/models/hf/card/preview': 'handle_models_hf_card_preview',
         '/api/models/hf/token/test': 'handle_models_hf_token_test',
         '/api/models/hf/test-connection': 'handle_models_hf_test_connection',
         '/api/models/local/delete': 'handle_models_local_delete',

@@ -502,7 +502,7 @@ try:
         handle_models_hf_download_retry, handle_models_hf_download_remove,
         handle_models_hf_download_pause, handle_models_hf_download_resume, handle_models_hf_downloads_clear,
         handle_models_hf_whoami, handle_models_hf_upload, handle_models_hf_upload_tasks,
-        handle_models_hf_upload_cancel, handle_models_hf_upload_remove,
+        handle_models_hf_upload_cancel, handle_models_hf_upload_remove, handle_models_hf_card_preview,
         handle_models_engine_load, handle_models_engine_unload, handle_models_config_save,
         handle_models_convert_info, handle_models_convert_jobs,
         handle_models_convert_start, handle_models_convert_tooling,
@@ -518,6 +518,7 @@ try:
     FastAPIHandlerAdapter.handle_models_hf_upload_tasks = handle_models_hf_upload_tasks
     FastAPIHandlerAdapter.handle_models_hf_upload_cancel = handle_models_hf_upload_cancel
     FastAPIHandlerAdapter.handle_models_hf_upload_remove = handle_models_hf_upload_remove
+    FastAPIHandlerAdapter.handle_models_hf_card_preview = handle_models_hf_card_preview
     FastAPIHandlerAdapter.handle_models_local_list = handle_models_local_list
     FastAPIHandlerAdapter.handle_models_local_delete = handle_models_local_delete
     FastAPIHandlerAdapter.handle_models_config_get = handle_models_config_get
@@ -809,9 +810,14 @@ async def v1_chat_completions(request: Request):
     model = body.get("model") or "sigmaengine"
     messages = body.get("messages", [])
     stream = bool(body.get("stream", False))
-    temperature = float(body.get("temperature", 0.7))
+    # Absent means "the model's own recipe", not 0.7: a client that omits a
+    # knob is asking for the default, and answering with a number nobody chose
+    # is how a checkpoint tuned for top_p 0.8 ends up served at 0.9.
+    temperature = body.get("temperature")
+    temperature = float(temperature) if temperature is not None else None
     max_tokens = int(body.get("max_tokens") or body.get("max_completion_tokens") or 4096)
-    top_p = float(body.get("top_p", 0.9))
+    top_p = body.get("top_p")
+    top_p = float(top_p) if top_p is not None else None
 
     if stream:
         async def sse_stream():
@@ -821,7 +827,8 @@ async def v1_chat_completions(request: Request):
                     model=model,
                     temperature=temperature,
                     max_tokens=max_tokens,
-                    top_p=top_p
+                    top_p=top_p,
+                    extra=body,
                 )):
                     yield chunk
             except Exception as e:
@@ -845,9 +852,11 @@ async def v1_chat_completions(request: Request):
             model=model,
             temperature=temperature,
             max_tokens=max_tokens,
-            top_p=top_p
+            top_p=top_p,
+            extra=body,
         )
-        return JSONResponse(status_code=200, content=res)
+        status = 503 if isinstance(res, dict) and res.get("error") else 200
+        return JSONResponse(status_code=status, content=res)
 
 
 @app.post("/v1/completions")
@@ -865,8 +874,18 @@ async def v1_completions(request: Request):
     if isinstance(prompt, list):
         prompt = prompt[0] if prompt else ""
     stream = bool(body.get("stream", False))
-    temperature = float(body.get("temperature", 0.7))
     max_tokens = int(body.get("max_tokens", 4096))
+
+    # /v1/completions is the raw-text protocol: there is no place in it for a
+    # persona, and a client using it is asking for a continuation of exactly
+    # the string it sent.
+    from core.engine.provider_server import (
+        _estimate_tokens, _sampler_from_request, _thinking_from_request,
+    )
+    params = _sampler_from_request(model, body.get("temperature"), max_tokens,
+                                   body.get("top_p"), body)
+    thinking = _thinking_from_request(body)
+    temperature = params.temperature
 
     messages = [{"role": "user", "content": str(prompt)}]
     if stream:
@@ -874,15 +893,18 @@ async def v1_completions(request: Request):
             req_id = f"cmpl-{uuid.uuid4().hex[:20]}"
             created_ts = int(time.time())
             from core.engine.unified_runtime import sigma_engine
+            from core.engine.evaluation import is_notice
             async for chunk in _aiter_blocking(lambda: sigma_engine.generate_stream(
                 prompt=str(prompt),
-                system_prompt="Sei Sigma Assistant.",
-                temperature=temperature,
-                max_tokens=max_tokens,
+                system_prompt="",
                 model_name=model,
                 messages=messages,
+                params=params,
+                thinking=thinking,
             )):
                 token = chunk.get("token", "")
+                if is_notice(chunk) and not chunk.get("error"):
+                    continue
                 if token:
                     payload = {
                         "id": req_id,
@@ -901,18 +923,16 @@ async def v1_completions(request: Request):
         # whole generation on the event loop and stop the server answering
         # anything else until it finished.
         def _collect():
-            return [
-                chunk.get("token", "")
-                for chunk in sigma_engine.generate_stream(
-                    prompt=str(prompt),
-                    system_prompt="Sei Sigma Assistant.",
-                    temperature=temperature,
-                    max_tokens=max_tokens,
-                    model_name=model,
-                    messages=messages,
-                )
-                if chunk.get("token")
-            ]
+            from core.engine.evaluation import collect
+            answer = collect(sigma_engine.generate_stream(
+                prompt=str(prompt),
+                system_prompt="",
+                model_name=model,
+                messages=messages,
+                params=params,
+                thinking=thinking,
+            ))
+            return [answer.text]
 
         tokens = await asyncio.get_running_loop().run_in_executor(
             _stream_executor, _collect
@@ -927,9 +947,9 @@ async def v1_completions(request: Request):
             "model": model,
             "choices": [{"text": full_text, "index": 0, "logprobs": None, "finish_reason": "stop"}],
             "usage": {
-                "prompt_tokens": max(1, len(str(prompt).split())),
-                "completion_tokens": max(1, len(tokens)),
-                "total_tokens": max(1, len(str(prompt).split())) + max(1, len(tokens))
+                "prompt_tokens": _estimate_tokens(str(prompt)),
+                "completion_tokens": _estimate_tokens(full_text),
+                "total_tokens": _estimate_tokens(str(prompt)) + _estimate_tokens(full_text),
             }
         })
 

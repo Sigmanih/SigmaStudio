@@ -127,6 +127,28 @@ def scan_local_models(custom_dir: Optional[str] = None) -> List[Dict[str, Any]]:
                     sigma_engine.loaded_model_name == full_entry_path
                 )
 
+                cfg_path = os.path.join(full_entry_path, "config.json")
+                param_label = None
+                arch_name = None
+                if os.path.exists(cfg_path):
+                    try:
+                        with open(cfg_path, "r", encoding="utf-8") as f_cfg:
+                            cfg_data = json.load(f_cfg)
+                        text_cfg = cfg_data.get("text_config") if isinstance(cfg_data.get("text_config"), dict) else cfg_data
+                        h_dim = text_cfg.get("hidden_size") or text_cfg.get("d_model")
+                        n_lay = text_cfg.get("num_hidden_layers") or text_cfg.get("n_layer")
+                        v_sz = text_cfg.get("vocab_size", 32000)
+                        inter_sz = text_cfg.get("intermediate_size") or (h_dim * 4 if h_dim else 0)
+                        arch_name = cfg_data.get("architectures", [""])[0] if cfg_data.get("architectures") else cfg_data.get("model_type", "")
+                        if h_dim and n_lay:
+                            tot_p = n_lay * (4 * h_dim**2 + 3 * h_dim * inter_sz) + v_sz * h_dim
+                            p_b = round(tot_p / 1e9, 2)
+                            param_label = f"{p_b:g}B" if p_b >= 1.0 else f"{int(p_b*1000)}M"
+                            if "assistant" in str(arch_name).lower() or "draft" in str(arch_name).lower() or "assistant" in raw_name.lower():
+                                param_label += " (Draft Assistant)"
+                    except Exception:
+                        pass
+
                 results.append({
                     "filename": raw_name,
                     "model_id": raw_name,
@@ -136,6 +158,8 @@ def scan_local_models(custom_dir: Optional[str] = None) -> List[Dict[str, Any]]:
                     "format": fmt,
                     "format_tag": fmt_tag,
                     "quantization": quantization,
+                    "params_label": param_label,
+                    "architecture": arch_name,
                     "is_repo_folder": True,
                     "is_complete": is_complete,
                     "is_multimodal": has_mmproj,

@@ -261,6 +261,8 @@ class LlamaCppBackend(InferenceBackend):
         self._llm = None
         self._facts: Optional[ModelFacts] = None
         self._settings: Dict[str, Any] = {}
+        import threading
+        self._lock = threading.RLock()
 
     # --------------------------------------------------------- capabilities
 
@@ -609,11 +611,14 @@ class LlamaCppBackend(InferenceBackend):
         messages: Optional[List[Dict[str, str]]] = None,
         params: Optional[SamplingParams] = None,
         cancel: Any = None,
+        thinking: Optional[bool] = None,
     ) -> Generator[Dict[str, Any], None, None]:
         if self._llm is None:
             yield {
                 "token": "❌ **LlamaCpp**: nessun modello caricato.",
                 "token_index": 1,
+                "notice": True,
+                "error": "no_model",
                 "done": True,
             }
             return
@@ -623,6 +628,9 @@ class LlamaCppBackend(InferenceBackend):
             if system_prompt:
                 messages.append({"role": "system", "content": system_prompt})
             messages.append({"role": "user", "content": prompt})
+
+        if thinking is False:
+            messages = self._senza_ragionamento(messages)
 
         if params is None:
             params = SamplingParams.resolve(
@@ -653,77 +661,104 @@ class LlamaCppBackend(InferenceBackend):
             if compiled is not None:
                 call_kwargs["grammar"] = compiled
 
-        try:
-            stream = self._llm.create_chat_completion(
-                messages=messages,
-                stream=True,
-                **call_kwargs,
-            )
+        with self._lock:
+            try:
+                stream = self._llm.create_chat_completion(
+                    messages=messages,
+                    stream=True,
+                    **call_kwargs,
+                )
 
-            for chunk in stream:
-                if is_cancelled(cancel):
-                    # Closing the generator unwinds llama.cpp's sampling loop;
-                    # without it the model keeps decoding into a queue nobody
-                    # drains, holding the only resident model hostage.
-                    break
+                for chunk in stream:
+                    if is_cancelled(cancel):
+                        # Closing the generator unwinds llama.cpp's sampling loop;
+                        # without it the model keeps decoding into a queue nobody
+                        # drains, holding the only resident model hostage.
+                        break
 
-                delta = chunk.get("choices", [{}])[0].get("delta", {})
-                text = delta.get("content")
-                if not text:
-                    continue
+                    delta = chunk.get("choices", [{}])[0].get("delta", {})
+                    text = delta.get("content")
+                    if not text:
+                        continue
 
-                token_count += 1
+                    token_count += 1
+                    now = time.perf_counter()
+                    # Decode-only throughput; prompt processing is reported apart as
+                    # time-to-first-token so a long context does not read as a slow
+                    # model.
+                    if not first_token_sent:
+                        first_token_at = now
+                        first_token_sent = True
+                        payload: Dict[str, Any] = {
+                            "token": text,
+                            "token_index": token_count,
+                            "ttft_ms": round((now - t_start) * 1000, 1),
+                            "done": False,
+                        }
+                    else:
+                        payload = {
+                            "token": text,
+                            "token_index": token_count,
+                            "speed_tok_s": round(
+                                (token_count - 1) / max(now - first_token_at, 1e-3), 1
+                            ),
+                            "done": False,
+                        }
+                    yield payload
+
                 now = time.perf_counter()
-                # Decode-only throughput; prompt processing is reported apart as
-                # time-to-first-token so a long context does not read as a slow
-                # model.
-                if not first_token_sent:
-                    first_token_at = now
-                    first_token_sent = True
-                    payload: Dict[str, Any] = {
-                        "token": text,
-                        "token_index": token_count,
-                        "ttft_ms": round((now - t_start) * 1000, 1),
-                        "done": False,
-                    }
-                else:
-                    payload = {
-                        "token": text,
-                        "token_index": token_count,
-                        "speed_tok_s": round(
-                            (token_count - 1) / max(now - first_token_at, 1e-3), 1
-                        ),
-                        "done": False,
-                    }
-                yield payload
+                yield {
+                    "token": "",
+                    "token_index": token_count + 1,
+                    "speed_tok_s": round(
+                        max(token_count - 1, 1) / max(now - first_token_at, 1e-3), 1
+                    ),
+                    "total_tokens": token_count,
+                    "prefill_ms": round((first_token_at - t_start) * 1000, 1),
+                    "cancelled": is_cancelled(cancel),
+                    "sampling": params.to_dict(),
+                    "done": True,
+                }
 
-            now = time.perf_counter()
-            yield {
-                "token": "",
-                "token_index": token_count + 1,
-                "speed_tok_s": round(
-                    max(token_count - 1, 1) / max(now - first_token_at, 1e-3), 1
-                ),
-                "total_tokens": token_count,
-                "prefill_ms": round((first_token_at - t_start) * 1000, 1),
-                "cancelled": is_cancelled(cancel),
-                "sampling": params.to_dict(),
-                "done": True,
-            }
+            except Exception as exc:
+                log.error("[LlamaCpp] Generation failed: %s", exc, exc_info=True)
+                yield {
+                    "token": f"\n\n❌ **Errore LlamaCpp**: {type(exc).__name__}: {exc}",
+                    "token_index": token_count + 1,
+                    "notice": True,
+                    "error": "generation_failed",
+                    "done": True,
+                }
+            finally:
+                if stream is not None:
+                    try:
+                        stream.close()
+                    except Exception as exc:
+                        log.debug("[LlamaCpp] stream close skipped: %s", exc)
 
-        except Exception as exc:
-            log.error("[LlamaCpp] Generation failed: %s", exc, exc_info=True)
-            yield {
-                "token": f"\n\n❌ **Errore LlamaCpp**: {type(exc).__name__}: {exc}",
-                "token_index": token_count + 1,
-                "done": True,
-            }
-        finally:
-            if stream is not None:
-                try:
-                    stream.close()
-                except Exception as exc:
-                    log.debug("[LlamaCpp] stream close skipped: %s", exc)
+    def _senza_ragionamento(self, messages: List[Dict[str, str]]) -> List[Dict[str, str]]:
+        """
+        Chiede al modello di rispondere senza il blocco di ragionamento.
+
+        `create_chat_completion` applica il template Jinja del GGUF senza
+        esporne gli argomenti, quindi la leva `enable_thinking` del percorso
+        transformers qui non c'e'. Resta la direttiva in banda, che pero' vale
+        solo per le famiglie che ne hanno pubblicata una: aggiungerne una
+        inventata a un modello che non la conosce non spegne niente e cambia il
+        prompt, che su un benchmark significa cambiare la misura.
+        """
+        nome = (self._facts.name if self._facts else "").lower()
+        if "qwen3" not in nome and "qwen-3" not in nome:
+            return messages
+
+        copia = [dict(m) for m in messages]
+        for messaggio in reversed(copia):
+            if messaggio.get("role") == "user":
+                testo = str(messaggio.get("content", ""))
+                if "/no_think" not in testo:
+                    messaggio["content"] = f"{testo} /no_think".strip()
+                break
+        return copia
 
     def unload(self) -> Dict[str, Any]:
         previous = self._facts.name if self._facts else None

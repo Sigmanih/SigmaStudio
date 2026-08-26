@@ -28,6 +28,27 @@ log = get_logger(__name__)
 # that next turn too.
 _PREFIX_CACHE_MIN_SPARE_GB = 1.0
 
+#: Minimum probability the option labels must hold, together, for the ranking
+#: between them to mean anything. Below this the model was about to write
+#: something else entirely, and the "choice" would be a comparison between two
+#: numbers that are both noise.
+CHOICE_MIN_MASS = 0.01
+
+#: How many tokens of the model's own punctuation to step over before giving up
+#: on finding a label. "Answer: **C**" needs one; two covers a stray space as
+#: well. Past that the model is writing prose, not decorating.
+CHOICE_DECORATION_STEPS = 2
+
+#: Text a model puts *around* an answer rather than as one.
+_DECORATION = {"*", "**", "***", "-", ":", "=", '"', "'", "(", "[", "{", "#",
+               "`", "``", "```", ".", "_", "__"}
+
+
+def _is_decoration(text: str) -> bool:
+    """Whether this token is punctuation the answer is about to appear inside."""
+    stripped = (text or "").strip()
+    return stripped in _DECORATION or (bool(text) and not stripped)
+
 DEFAULT_SYSTEM_PROMPT = (
     "Sei Sigma Assistant, un'architettura AI avanzata, precisa e utile. "
     "Rispondi in italiano in modo esaustivo, dettagliato e strutturato."
@@ -38,6 +59,186 @@ def _causa_gia_spiegata(error: str) -> bool:
     """La diagnosi ha gia' detto perche', e con che cosa rimediare."""
     testo = str(error or "")
     return len(testo) > 200 and ("**" in testo or "```" in testo)
+
+
+# ---------------------------------------------------------------------------
+# Helpers for batched and constrained inference
+# ---------------------------------------------------------------------------
+
+def _describe_exception(exc: BaseException, depth: int = 3) -> str:
+    """
+    The exception, plus the exceptions it was raised from.
+
+    Transformers hides import failures behind a lazy loader that re-raises as
+    ``ModuleNotFoundError: Could not import module 'Qwen3ForCausalLM'. Are this
+    object's requirements defined correctly?`` -- a sentence that names the
+    symbol and says nothing about why it could not be imported. The cause chain
+    carries the real reason (a missing dependency, a partially initialised
+    module, a version mismatch), and dropping it turns a five-second diagnosis
+    into an afternoon.
+    """
+    parts = [f"{type(exc).__name__}: {exc}"]
+    cause = exc.__cause__ or exc.__context__
+    seen = {id(exc)}
+    while cause is not None and depth > 0 and id(cause) not in seen:
+        seen.add(id(cause))
+        parts.append(f"causato da {type(cause).__name__}: {cause}")
+        cause = cause.__cause__ or cause.__context__
+        depth -= 1
+    return " | ".join(parts)
+
+
+def _unrecognised_architecture(error: str) -> bool:
+    """Whether this failure is transformers refusing to know the checkpoint."""
+    lowered = str(error or "").lower()
+    return ("does not recognize this architecture" in lowered
+            or "but transformers does not recognize" in lowered
+            or "unrecognized configuration class" in lowered)
+
+
+def _version_mismatch_advice(model_path: str) -> str:
+    """
+    Names the real cause when a checkpoint is newer than the library reading it.
+
+    The stock message says "your version of Transformers is out of date" and
+    then lists three things to try. The checkpoint itself carries the version it
+    was written with, and the installed one is a single import away -- so the
+    two numbers can be put side by side, and the guess becomes a statement.
+    """
+    saved = ""
+    try:
+        with open(os.path.join(model_path, "config.json"), "r", encoding="utf-8") as fh:
+            import json as _json
+            saved = str(_json.load(fh).get("transformers_version") or "")
+    except Exception:
+        saved = ""
+
+    installed = ""
+    try:
+        import transformers
+        installed = str(getattr(transformers, "__version__", ""))
+    except Exception:
+        installed = ""
+
+    def _parts(value: str):
+        numbers = []
+        for chunk in str(value).split("."):
+            digits = "".join(c for c in chunk if c.isdigit())
+            numbers.append(int(digits) if digits else 0)
+        return tuple(numbers[:3])
+
+    if saved and installed and _parts(saved) > _parts(installed):
+        return (
+            f"Il checkpoint e' stato salvato con transformers **{saved}**, "
+            f"qui e' installata la **{installed}**: questa architettura non "
+            f"esiste ancora nella versione presente.\n\n"
+            f"Aggiorna il runtime:\n\n"
+            f"```\npip install --upgrade transformers\n```\n\n"
+            f"Se non basta perche' il modello e' appena uscito:\n\n"
+            f"```\npip install git+https://github.com/huggingface/transformers.git\n```\n\n"
+            f"In alternativa usa la variante GGUF dello stesso modello, che non "
+            f"passa da transformers."
+        )
+    if saved or installed:
+        return (
+            f"Transformers **{installed or '?'}** non conosce questa "
+            f"architettura (checkpoint salvato con **{saved or '?'}**). "
+            f"Aggiorna con `pip install --upgrade transformers`, oppure usa la "
+            f"variante GGUF dello stesso modello."
+        )
+    return ("Transformers non conosce questa architettura. Aggiorna con "
+            "`pip install --upgrade transformers`, oppure usa la variante GGUF "
+            "dello stesso modello.")
+
+
+def _cut_at_stop(text: str, stop) -> Tuple[str, bool]:
+    """
+    Truncates at the first stop string, reporting whether one was found.
+
+    Batched generation cannot stop the whole batch when one row is finished --
+    the others are still decoding -- so a row that ran past its stop sequence
+    carries the tail with it. Cutting here makes the batched answer identical
+    to the streamed one instead of merely similar.
+    """
+    if not stop or not text:
+        return text, False
+    earliest = len(text)
+    found = False
+    for marker in stop:
+        if not marker:
+            continue
+        at = text.find(marker)
+        if at != -1 and at < earliest:
+            earliest, found = at, True
+    return (text[:earliest], True) if found else (text, False)
+
+
+def _with_bos(tokenizer, ids: List[int]) -> List[int]:
+    """
+    The sequence with its begin-of-sequence token, whatever the tokenizer did.
+
+    `add_special_tokens=True` is not a guarantee. Gemma's tokenizer declares a
+    BOS and then does not prepend it, and Gemma without BOS is a model outside
+    its own training distribution: " Paris" after "The capital of France is"
+    scored a log-probability of -18.7 -- a probability of seven billionths --
+    and every option ranking was ordering noise. The chat path never showed it
+    because the chat template carries the token inside.
+    """
+    bos = getattr(tokenizer, "bos_token_id", None)
+    if bos is None or (ids and ids[0] == bos):
+        return ids
+    return [int(bos)] + list(ids)
+
+
+def _decoded_length(new_ids: List[int], eos_id: Optional[int]) -> int:
+    """
+    How many tokens this row of a batch actually produced.
+
+    Every row of a batch runs for as long as the *longest* row: a sequence that
+    finished after four tokens is padded out to the other's forty. Counting the
+    padding as output reports a throughput the hardware never reached, and on a
+    benchmark that number is the headline. The end-of-sequence token is the
+    boundary -- it is generated, so it counts; everything after it is filler.
+    """
+    if eos_id is None:
+        return len(new_ids)
+    for position, token in enumerate(new_ids):
+        if int(token) == int(eos_id):
+            return position + 1
+    return len(new_ids)
+
+
+def _letter_token_ids(tokenizer, letter: str) -> List[int]:
+    """
+    The tokens that would *be* this option label, if it came next.
+
+    A tokenizer has no single id for "A": there is one for "A" opening a
+    segment and another for " A" after a space, and which one a model reaches
+    for depends on the chat template it was trained with. Both are scored, and
+    the stronger is taken.
+
+    Only spellings that are a single token qualify. This is the whole
+    correctness of the method and it is easy to get wrong: a prefixed spelling
+    like a newline or "**" followed by the letter tokenizes as *two* tokens,
+    and its first token is the newline -- which is shared by every letter. Score
+    those and every option receives the same probability, every question is won
+    by whichever letter is checked first, and every margin is zero. It looks
+    like a model with a position bias and it is a bug in the reader.
+    """
+    ids: List[int] = []
+    for spelling in (letter, " " + letter):
+        try:
+            encoded = tokenizer.encode(spelling, add_special_tokens=False)
+        except Exception:
+            continue
+        if len(encoded) == 1:
+            ids.append(int(encoded[0]))
+    seen, unique = set(), []
+    for value in ids:
+        if value not in seen:
+            seen.add(value)
+            unique.append(value)
+    return unique
 
 
 class UniversalSigmaEngine:
@@ -66,6 +267,10 @@ class UniversalSigmaEngine:
         self.last_load_error: Optional[str] = None
         self.last_device_map_report: Optional[Dict[str, Any]] = None
         self._load_lock = threading.Lock()
+        # Whether the resident checkpoint's chat template reads
+        # `enable_thinking`. Measured once per load rather than guessed from
+        # the model name, and invalidated whenever the weights change.
+        self._thinking_switch: Optional[bool] = None
 
         # One model is resident at a time, so one generation runs at a time.
         # The server is threaded and admits concurrent requests: without this,
@@ -478,14 +683,32 @@ class UniversalSigmaEngine:
 
         # -------------------------------------------------------- load
         try:
+            from core.engine.transformers_compat import ensure_transformers_compatibility
+            ensure_transformers_compatibility()
+
             import torch
-            from transformers import AutoTokenizer, AutoProcessor, BitsAndBytesConfig
+            import transformers
+            from transformers import AutoTokenizer, BitsAndBytesConfig
+
+            try:
+                AutoProcessor = getattr(transformers, "AutoProcessor", None)
+            except Exception:
+                AutoProcessor = None
 
             os.environ.setdefault(
                 "PYTORCH_CUDA_ALLOC_CONF", "expandable_segments:True"
             )
 
             has_cuda = torch.cuda.is_available()
+            if has_cuda:
+                try:
+                    torch.backends.cuda.matmul.allow_tf32 = True
+                    torch.backends.cudnn.allow_tf32 = True
+                    if hasattr(torch, "set_float32_matmul_precision"):
+                        torch.set_float32_matmul_precision("high")
+                except Exception:
+                    pass
+
             compute_dtype = (
                 torch.bfloat16
                 if has_cuda and torch.cuda.is_bf16_supported()
@@ -495,11 +718,37 @@ class UniversalSigmaEngine:
             model_cls = ModelInspector.resolve_model_class(facts)
             log.info("[SigmaEngine] Model class: %s", model_cls.__name__)
 
+            # Il livello di compatibilita' puo' far leggere la configurazione di
+            # un'architettura che questa transformers non ha, mappandola sulla
+            # parente piu' vicina. Va bene per una rinomina; non va bene quando
+            # il checkpoint e' proprio piu' nuovo della libreria, perche' allora
+            # i pesi non corrispondono ai moduli e il modello *si carica* e
+            # risponde a vanvera. Su un benchmark e' l'esito peggiore possibile:
+            # un punteggio pieno di numeri, tutti privi di senso.
+            declared = (facts.architectures or [""])[0]
+            if declared and declared != model_cls.__name__:
+                advice = _version_mismatch_advice(target_path)
+                if "salvato con transformers" in advice:
+                    error = (f"L'architettura `{declared}` non esiste in questa "
+                             f"versione di transformers. {advice}")
+                    self.last_load_error = error
+                    log.error("[SigmaEngine] %s", error)
+                    return {
+                        "success": False,
+                        "error": error,
+                        "stage": "preparation",
+                        "facts": facts.to_dict(),
+                    }
+                log.warning(
+                    "[SigmaEngine] Architettura '%s' non presente: si usa '%s'.",
+                    declared, model_cls.__name__,
+                )
+
             tokenizer = self._load_tokenizer(
                 AutoTokenizer, AutoProcessor, target_path, facts
             )
         except Exception as exc:
-            error = f"{type(exc).__name__}: {exc}"
+            error = _describe_exception(exc)
             self.last_load_error = error
             log.error("[SigmaEngine] Preparation failed: %s", error, exc_info=True)
             return {
@@ -514,6 +763,24 @@ class UniversalSigmaEngine:
             model_cls, target_path, plan, compute_dtype, has_cuda, facts
         )
 
+        # Handle INT8 / SCB parameter incompatibility by automatically retrying with NF4
+        if model is None and ("SCB" in str(load_error) or plan.quantization == "int8"):
+            log.warning(
+                "[SigmaEngine] INT8 placement encountered compatibility issue (%s). Retrying with NF4 4-bit precision...",
+                load_error,
+            )
+            self._free_cuda_cache()
+            plan = MemoryPlanner.build_plan(
+                facts,
+                self.refresh_vram(),
+                context_tokens=context_tokens,
+                force_quantization="nf4",
+                allow_host_spill=False,
+            )
+            model, load_error = self._attempt_load(
+                model_cls, target_path, plan, compute_dtype, has_cuda, facts
+            )
+
         # Any first-attempt failure is potentially recoverable. Free VRAM can
         # drop between planning and loading -- another process, or another model
         # in this one -- so re-probe instead of trusting the reading the failed
@@ -521,7 +788,7 @@ class UniversalSigmaEngine:
         # with no model at all.
         if model is None and has_cuda:
             log.warning(
-                "[SigmaEngine] First placement failed (%s). "
+                "[SigmaEngine] Placement failed (%s). "
                 "Re-probing VRAM and retrying with host RAM spill.", load_error,
             )
             self._free_cuda_cache()
@@ -529,7 +796,7 @@ class UniversalSigmaEngine:
                 facts,
                 self.refresh_vram(),
                 context_tokens=context_tokens,
-                force_quantization=force_quantization,
+                force_quantization=force_quantization or ("nf4" if "SCB" in str(load_error) else None),
                 allow_host_spill=True,
             )
             plan.warnings.append(
@@ -563,6 +830,7 @@ class UniversalSigmaEngine:
         self.placement_plan = plan
         self.loaded_model_name = display_name
         self.last_load_error = None
+        self._thinking_switch = None
 
         # The cache may grow to the context the plan reserved KV for, and no
         # further: past that it stops being a saving and becomes a second copy
@@ -644,6 +912,7 @@ class UniversalSigmaEngine:
         self.loaded_model_name = display_name
         self.placement_plan = None
         self.last_load_error = None
+        self._thinking_switch = None
         self.loaded_model = {
             "name": display_name,
             "path": facts.path,
@@ -667,6 +936,17 @@ class UniversalSigmaEngine:
             log.warning("[SigmaEngine] %s", warning)
         return result
 
+    @staticmethod
+    def _select_attn_implementation() -> Optional[str]:
+        """Chooses SDPA (FlashAttention / Memory-Efficient attention) when available."""
+        try:
+            import torch
+            if torch.cuda.is_available():
+                return "sdpa"
+        except Exception:
+            pass
+        return None
+
     def _attempt_load(
         self,
         model_cls,
@@ -682,12 +962,14 @@ class UniversalSigmaEngine:
         """
         from transformers import BitsAndBytesConfig
 
+        attn_impl = self._select_attn_implementation()
         load_kwargs: Dict[str, Any] = {
             "low_cpu_mem_usage": True,
             "trust_remote_code": True,
             "dtype": compute_dtype,
-            "attn_implementation": self._select_attn_implementation(),
         }
+        if attn_impl and has_cuda:
+            load_kwargs["attn_implementation"] = attn_impl
         device_map: Any = None
 
         if has_cuda:
@@ -719,7 +1001,37 @@ class UniversalSigmaEngine:
         )
 
         try:
-            return model_cls.from_pretrained(target_path, **load_kwargs), None
+            model = model_cls.from_pretrained(target_path, **load_kwargs)
+            if not isinstance(device_map, str) and device_map:
+                stale = self._stale_placement(model, device_map)
+                if stale:
+                    # La mappa esplicita nasce da uno scheletro costruito dalla
+                    # configurazione, e per un checkpoint multimodale quello
+                    # scheletro puo' avere moduli che il modello vero non ha —
+                    # torri vision e audio dichiarate nella config e assenti dai
+                    # pesi. Le voci che non corrispondono ad alcun modulo
+                    # vengono ignorate in silenzio: i moduli restano senza hook,
+                    # gli input finiscono su una scheda e la tabella che li
+                    # indicizza su un'altra, e la prima risposta muore con
+                    # "Expected all tensors to be on the same device".
+                    log.warning(
+                        "[SigmaEngine] La mappa esplicita cita %d moduli che il "
+                        "modello non ha (%s...): la si scarta e si lascia "
+                        "collocare ad accelerate.",
+                        len(stale), ", ".join(stale[:3]),
+                    )
+                    del model
+                    self._free_cuda_cache()
+                    load_kwargs["device_map"] = "sequential"
+                    load_kwargs["max_memory"] = plan.max_memory_for_string_strategy()
+                    self.last_device_map_report = {
+                        "summary": "mappa esplicita scartata: scheletro non "
+                                   "corrispondente al checkpoint",
+                        "fallback": "sequential",
+                        "stale_modules": stale[:20],
+                    }
+                    model = model_cls.from_pretrained(target_path, **load_kwargs)
+            return model, None
         except Exception as exc:
             return None, f"{type(exc).__name__}: {exc}"
 
@@ -741,6 +1053,8 @@ class UniversalSigmaEngine:
         """
         if facts is not None:
             try:
+                from core.engine.transformers_compat import ensure_transformers_compatibility
+                ensure_transformers_compatibility()
                 from transformers import AutoConfig
                 from core.engine.device_map_builder import DeviceMapBuilder
 
@@ -789,22 +1103,75 @@ class UniversalSigmaEngine:
         Loads the tokenizer, preferring the processor for multimodal checkpoints
         so the chat template and special image tokens stay consistent.
         """
-        if facts.is_multimodal:
+        def _ensure_chat_template(tok, facts: ModelFacts):
+            if tok is None:
+                return tok
+            if getattr(tok, "chat_template", None):
+                return tok
+            mtype = str(getattr(facts, "model_type", "") or "").lower()
+            archs = " ".join(str(a).lower() for a in (getattr(facts, "architectures", []) or []))
+            if "gemma" in mtype or "gemma" in archs:
+                tok.chat_template = (
+                    "{{ bos_token }}{% if messages[0]['role'] == 'system' %}{% set loop_messages = messages[1:] %}{% set system_message = messages[0]['content'] %}{% else %}{% set loop_messages = messages %}{% set system_message = '' %}{% endif %}"
+                    "{% for message in loop_messages %}"
+                    "{% if loop.first and system_message %}{{ '<start_of_turn>user\n' + system_message + '\n\n' + message['content'] | trim + '<end_of_turn>\n' }}"
+                    "{% elif message['role'] == 'user' %}{{ '<start_of_turn>user\n' + message['content'] | trim + '<end_of_turn>\n' }}"
+                    "{% elif message['role'] == 'assistant' %}{{ '<start_of_turn>model\n' + message['content'] | trim + '<end_of_turn>\n' }}"
+                    "{% endif %}"
+                    "{% endfor %}"
+                    "{% if add_generation_prompt %}{{ '<start_of_turn>model\n' }}{% endif %}"
+                )
+            elif "qwen" in mtype or "qwen" in archs or "chatglm" in mtype or "glm" in mtype:
+                tok.chat_template = (
+                    "{% for message in messages %}"
+                    "{{ '<|im_start|>' + message['role'] + '\n' + message['content'] + '<|im_end|>\n' }}"
+                    "{% endfor %}"
+                    "{% if add_generation_prompt %}{{ '<|im_start|>assistant\n' }}{% endif %}"
+                )
+            elif "llama" in mtype or "llama" in archs or "mistral" in mtype or "deepseek" in mtype:
+                tok.chat_template = (
+                    "{% for message in messages %}"
+                    "{% if message['role'] == 'system' %}{{ '<|start_header_id|>system<|end_header_id|>\n\n' + message['content'] + '<|eot_id|>' }}"
+                    "{% elif message['role'] == 'user' %}{{ '<|start_header_id|>user<|end_header_id|>\n\n' + message['content'] + '<|eot_id|>' }}"
+                    "{% elif message['role'] == 'assistant' %}{{ '<|start_header_id|>assistant<|end_header_id|>\n\n' + message['content'] + '<|eot_id|>' }}"
+                    "{% endif %}"
+                    "{% endfor %}"
+                    "{% if add_generation_prompt %}{{ '<|start_header_id|>assistant<|end_header_id|>\n\n' }}{% endif %}"
+                )
+            return tok
+
+        if facts.is_multimodal and AutoProcessor is not None:
             try:
                 processor = AutoProcessor.from_pretrained(
                     target_path, trust_remote_code=True
                 )
                 tokenizer = getattr(processor, "tokenizer", None)
                 if tokenizer is not None:
-                    return tokenizer
+                    return _ensure_chat_template(tokenizer, facts)
             except Exception as exc:
                 log.debug("[SigmaEngine] Processor unavailable, using tokenizer: %s", exc)
 
         try:
-            return AutoTokenizer.from_pretrained(target_path, trust_remote_code=True)
+            tok = AutoTokenizer.from_pretrained(target_path, trust_remote_code=True)
+            return _ensure_chat_template(tok, facts)
         except Exception as primary_err:
-            log.warning("[SigmaEngine] Primary tokenizer loading failed for '%s': %s. Trying fallback local tokenizers...", facts.name, primary_err)
-            
+            log.warning("[SigmaEngine] Primary AutoTokenizer loading failed for '%s': %s. Trying direct tokenizer classes...", facts.name, primary_err)
+
+            # Try specific tokenizer class directly (e.g. GemmaTokenizer, LlamaTokenizer)
+            try:
+                import transformers
+                for tok_cls_name in ("GemmaTokenizer", "GemmaTokenizerFast", "LlamaTokenizer", "LlamaTokenizerFast", "PreTrainedTokenizerFast"):
+                    tok_cls = getattr(transformers, tok_cls_name, None)
+                    if tok_cls is not None:
+                        try:
+                            tok = tok_cls.from_pretrained(target_path, trust_remote_code=True)
+                            log.info("[SigmaEngine] Successfully loaded tokenizer via %s for '%s'", tok_cls_name, facts.name)
+                            return _ensure_chat_template(tok, facts)
+                        except Exception:
+                            continue
+            except Exception as direct_err:
+                log.debug("[SigmaEngine] Direct tokenizer loading failed: %s", direct_err)
+
             # Try to borrow tokenizer from other complete local directories in data/models/
             try:
                 from core.model_paths import models_dir
@@ -817,7 +1184,7 @@ class UniversalSigmaEngine:
                                 try:
                                     tok = AutoTokenizer.from_pretrained(sub_path, trust_remote_code=True)
                                     log.info("[SigmaEngine] Successfully borrowed compatible tokenizer from '%s' for '%s'", sub, facts.name)
-                                    return tok
+                                    return _ensure_chat_template(tok, facts)
                                 except Exception:
                                     continue
             except Exception as scan_err:
@@ -893,6 +1260,7 @@ class UniversalSigmaEngine:
         self.model_facts = None
         self.placement_plan = None
         self.last_device_map_report = None
+        self._thinking_switch = None
         del model
 
         self._free_cuda_cache()
@@ -987,6 +1355,7 @@ class UniversalSigmaEngine:
         messages: Optional[List[Dict[str, str]]] = None,
         params: Optional[SamplingParams] = None,
         cancel: Any = None,
+        thinking: Optional[bool] = None,
     ) -> Generator[Dict[str, Any], None, None]:
         """
         Serialises access to the engine, then streams the answer.
@@ -1008,6 +1377,7 @@ class UniversalSigmaEngine:
                 yield {
                     "token": "",
                     "status": True,
+                    "notice": True,
                     "model_status": (
                         f"⏳ Motore occupato da un'altra richiesta"
                         f"{f' ({position - 1} in attesa)' if position > 1 else ''}..."
@@ -1031,6 +1401,8 @@ class UniversalSigmaEngine:
                     "liberare il motore."
                 ),
                 "token_index": 1,
+                "notice": True,
+                "error": "engine_busy",
                 "done": True,
             }
             return
@@ -1045,6 +1417,7 @@ class UniversalSigmaEngine:
                 messages=messages,
                 params=params,
                 cancel=cancel,
+                thinking=thinking,
             )
         finally:
             self._generation_lock.release()
@@ -1059,6 +1432,7 @@ class UniversalSigmaEngine:
         messages: Optional[List[Dict[str, str]]] = None,
         params: Optional[SamplingParams] = None,
         cancel: Any = None,
+        thinking: Optional[bool] = None,
         retried_after_oom: bool = False,
     ) -> Generator[Dict[str, Any], None, None]:
         """
@@ -1112,6 +1486,7 @@ class UniversalSigmaEngine:
                 "model_status": f"⏳ Caricamento pesi modello `{target_model}` in memoria/VRAM...",
                 "text": f"⏳ Caricamento pesi modello `{target_model}` in memoria/VRAM...",
                 "loading": True,
+                "notice": True,
                 "done": False,
             }
             result = self.load_native_model(target_model)
@@ -1119,6 +1494,8 @@ class UniversalSigmaEngine:
                 yield {
                     "token": self._format_load_failure(target_model, result),
                     "token_index": 1,
+                    "notice": True,
+                    "error": "load_failed",
                     "done": True,
                 }
                 return
@@ -1143,6 +1520,7 @@ class UniversalSigmaEngine:
                 yield {
                     "token": f"> ⚠️ {placement_warning}\n\n",
                     "status": True,
+                    "notice": True,
                     "done": False,
                 }
 
@@ -1159,6 +1537,7 @@ class UniversalSigmaEngine:
                 messages=self._as_messages(prompt, system_prompt, messages),
                 params=params,
                 cancel=cancel,
+                thinking=thinking,
             )
             return
 
@@ -1174,7 +1553,8 @@ class UniversalSigmaEngine:
             )
 
             inputs = self._build_inputs(
-                self._as_messages(prompt, system_prompt, messages)
+                self._as_messages(prompt, system_prompt, messages),
+                thinking=thinking,
             )
 
             # One sampler, resolved once, adapted here. The token budget still
@@ -1308,17 +1688,20 @@ class UniversalSigmaEngine:
                         "model_status": "♻️ VRAM esaurita: libero la cache e riprovo...",
                         "done": False,
                     }
-                    yield from self._generate_stream_locked(
+                    yield from self.generate_stream(
                         prompt=prompt, system_prompt=system_prompt,
                         temperature=temperature, max_tokens=max_tokens,
                         model_name=model_name, messages=messages,
-                        params=params, cancel=cancel, retried_after_oom=True,
+                        params=params, cancel=cancel, thinking=thinking,
+                        retried_after_oom=True,
                     )
                     return
 
                 yield {
                     "token": self._explain_generation_failure(failure),
                     "token_index": token_count + 1,
+                    "notice": True,
+                    "error": "generation_failed",
                     "done": True,
                 }
                 return
@@ -1344,8 +1727,834 @@ class UniversalSigmaEngine:
             yield {
                 "token": self._explain_generation_failure(exc),
                 "token_index": token_count + 1,
+                "notice": True,
+                "error": "generation_failed",
                 "done": True,
             }
+
+    # ------------------------------------------------------ batched inference
+
+    def _ensure_resident(self, model_name: Optional[str]) -> Dict[str, Any]:
+        """Loads the requested weights unless they are already the resident ones."""
+        model_info = self.find_valid_model_directory(model_name or self.loaded_model_name)
+        target = model_info[1] if model_info else (model_name or self.loaded_model_name)
+        if target is None:
+            return {"success": False, "error": "Nessun modello locale disponibile."}
+
+        def _clean(name):
+            if not name:
+                return ""
+            return (str(name).strip().lower().replace(".gguf", "").replace("--", "/")
+                    .split("/")[-1].split("\\")[-1])
+
+        resident = (
+            self.has_resident_model and (
+                _clean(self.loaded_model_name) == _clean(target)
+                or _clean(self.loaded_model_name) == _clean(model_name)
+            )
+        )
+        if resident:
+            return {"success": True, "model": target}
+
+        result = self.load_native_model(target)
+        result.setdefault("model", target)
+        if not result.get("success"):
+            # The same diagnosis the chat path renders, rather than a bare
+            # exception string: it names the stage and what to do about it.
+            result["message"] = self._format_load_failure(target, result)
+        return result
+
+    def auto_batch_size(self, requested: int = 0) -> int:
+        """
+        How many prompts to run together, from what the device has left.
+
+        The KV cache of a batch grows linearly with the batch, so the ceiling is
+        free memory rather than a constant. A machine that cannot spare anything
+        gets 1, which is the behaviour that existed before batching and is still
+        correct -- just slow.
+        """
+        # Checked before anything a caller can ask for: a registry backend
+        # decodes one sequence per context, so a batch of sixteen is not a
+        # preference it can decline, it is a number that would be reported in
+        # the UI ("x16") while the work happened one prompt at a time.
+        if self.active_backend_instance is not None:
+            return 1
+
+        if requested and requested > 0:
+            return max(1, min(int(requested), 64))
+
+        env = os.environ.get("SIGMA_EVAL_BATCH")
+        if env:
+            try:
+                return max(1, min(int(env), 64))
+            except ValueError:
+                pass
+
+        profile = {}
+        try:
+            profile = self.refresh_vram() or {}
+        except Exception as exc:
+            log.debug("[SigmaEngine] Batch sizing without a fresh probe: %s", exc)
+
+        accelerators = profile.get("accelerators") or []
+        free_gb = max((a.get("free_vram_gb") or 0.0) for a in accelerators) if accelerators else 0.0
+
+        if free_gb <= 0:
+            # CPU or an unreadable device: RAM is the budget, and a wrong guess
+            # here swaps rather than merely slowing down.
+            available = (profile.get("ram") or {}).get("available_gb") or 0
+            return 2 if available >= 16 else 1
+
+        for threshold, size in ((24, 32), (12, 16), (6, 8), (3, 4), (1.5, 2)):
+            if free_gb >= threshold:
+                return size
+        return 1
+
+    def generate_batch(
+        self,
+        conversations: List[List[Dict[str, str]]],
+        params: Optional[SamplingParams] = None,
+        model_name: Optional[str] = None,
+        thinking: Optional[bool] = None,
+        batch_size: int = 0,
+        cancel: Any = None,
+        on_result=None,
+    ) -> List[Dict[str, Any]]:
+        """
+        Answers many independent prompts in as few forward passes as possible.
+
+        This is the shape a benchmark actually has -- thousands of prompts that
+        do not depend on each other -- and running it one prompt at a time is
+        what makes a run take hours while the GPU sits at single-digit
+        utilisation. It is deliberately NOT used for chat: a batch cannot be
+        streamed, and a chat that answers all at once after ten seconds reads
+        as broken even when it is faster.
+
+        Results come back in the caller's order regardless of the order they
+        were computed in; the batches themselves are formed by prompt length,
+        because padding a short prompt up to a long one is compute spent on
+        nothing.
+        """
+        results: List[Dict[str, Any]] = [
+            {"index": i, "text": "", "tokens": 0, "finish_reason": "stop", "error": ""}
+            for i in range(len(conversations))
+        ]
+        if not conversations:
+            return results
+
+        acquired = self._generation_lock.acquire(timeout=self.GENERATION_QUEUE_TIMEOUT)
+        if not acquired:
+            for entry in results:
+                entry["error"] = "Motore occupato da un'altra richiesta."
+            return results
+
+        try:
+            load = self._ensure_resident(model_name)
+            if not load.get("success"):
+                message = load.get("error", "caricamento non riuscito")
+                for entry in results:
+                    entry["error"] = f"Caricamento modello fallito: {message}"
+                    # A caller running thousands of prompts must be able to tell
+                    # "this model will never answer" from "this prompt failed",
+                    # and stop rather than write the same row a thousand times.
+                    entry["fatal"] = True
+                    entry["diagnosis"] = load.get("message", "")
+                return results
+
+            if params is None:
+                params = SamplingParams.resolve(
+                    model_name=model_name or self.loaded_model_name or ""
+                )
+
+            if self.active_backend_instance is not None:
+                return self._generate_batch_sequential(
+                    conversations, params, results, thinking, cancel, on_result
+                )
+            return self._generate_batch_transformers(
+                conversations, params, results, thinking,
+                self.auto_batch_size(batch_size), cancel, on_result,
+            )
+        finally:
+            self._generation_lock.release()
+
+    def _generate_batch_sequential(
+        self, conversations, params, results, thinking, cancel, on_result,
+    ) -> List[Dict[str, Any]]:
+        """
+        One prompt at a time, for a backend that owns its own decode loop.
+
+        llama.cpp serves a single sequence per context, so there is no batch to
+        form. The path exists so callers have one API: they ask for a batch and
+        get answers, fast where the runtime allows it and correct everywhere.
+        """
+        backend = self.active_backend_instance
+        slots = 1
+        try:
+            slots = max(1, int(backend.parallel_slots()))
+        except Exception as exc:
+            log.debug("[SigmaEngine] Slot paralleli non dichiarati: %s", exc)
+
+        if slots > 1 and len(conversations) > 1:
+            return self._generate_batch_over_slots(
+                conversations, params, results, thinking, cancel, on_result, slots
+            )
+
+        for index, conversation in enumerate(conversations):
+            if is_cancelled(cancel):
+                results[index]["error"] = "annullato"
+                continue
+            pieces: List[str] = []
+            tokens = 0
+            failure = ""
+            timed_out = False
+            try:
+                for chunk in backend.generate_stream(
+                    prompt="",
+                    messages=conversation,
+                    temperature=params.temperature,
+                    max_tokens=params.max_tokens,
+                    params=params,
+                    cancel=cancel,
+                    thinking=thinking,
+                ):
+                    if chunk.get("notice") or chunk.get("error"):
+                        failure = failure or str(chunk.get("token") or "errore backend")
+                        timed_out = timed_out or chunk.get("error") == "timeout"
+                        continue
+                    token = chunk.get("token") or ""
+                    if token:
+                        pieces.append(token)
+                    if chunk.get("done"):
+                        tokens = int(chunk.get("total_tokens") or 0)
+                        if chunk.get("finish_reason") == "timeout":
+                            timed_out = True
+                            failure = failure or "generazione oltre il tetto di tempo"
+            except Exception as exc:
+                failure = f"{type(exc).__name__}: {exc}"
+
+            text = "".join(pieces)
+            # Il testo prodotto prima del guasto si tiene. Una generazione con
+            # catena di ragionamento che scade dopo millecinquecento token ha
+            # spesso gia' scritto la risposta: buttarla e contare l'item come
+            # errore misura il timeout, non il modello.
+            results[index].update({
+                "text": text,
+                "tokens": tokens or len(text.split()),
+                "error": failure if not text else "",
+                "warning": failure if text else "",
+                "finish_reason": "timeout" if timed_out else ("stop" if not failure else "error"),
+            })
+            if on_result:
+                on_result(results[index])
+        return results
+
+    def _in_shrinking_batches(self, order, batch_size, run, on_error, cancel=None,
+                              on_done=None, label="Batch"):
+        """
+        Runs a list of items in groups, shrinking the group when memory says so.
+
+        The shrink is **sticky**. Before, only the group that ran out of memory
+        was halved, and the next one started again at the original size -- so
+        every group paid an out-of-memory, split, and retried. From the outside
+        that is a run which processes many at once, then fewer, then fewer
+        still, then one at a time, then breaks: each step is a real allocation
+        failure that the previous one had already predicted.
+
+        Once the device has said no at sixteen, it will say no at sixteen again.
+        """
+        size = max(1, int(batch_size or 1))
+        queue = list(order)
+
+        while queue:
+            group, queue = queue[:size], queue[size:]
+            if is_cancelled(cancel):
+                on_error(group, "annullato")
+                continue
+            try:
+                run(group)
+            except Exception as exc:
+                if self._is_out_of_memory(exc) and len(group) > 1:
+                    size = max(1, len(group) // 2)
+                    log.warning(
+                        "[SigmaEngine] %s: memoria esaurita con %d prompt; "
+                        "si prosegue a %d.", label, len(group), size,
+                    )
+                    self._free_cuda_cache()
+                    queue = group + queue
+                    continue
+                log.error("[SigmaEngine] %s fallito: %s", label, exc, exc_info=True)
+                on_error(group, f"{type(exc).__name__}: {exc}")
+            if on_done:
+                on_done(group)
+
+    def _generate_batch_over_slots(
+        self, conversations, params, results, thinking, cancel, on_result, slots,
+    ) -> List[Dict[str, Any]]:
+        """
+        Several prompts at once through a backend that serves several at once.
+
+        The GGUF server is started with `-np 4 --cont-batching`: four slots,
+        continuous batching, already paid for. Feeding it one request at a time
+        left three of them idle for the whole run -- which is most of why a
+        hundred-question suite on a quantised model took hours while the cards
+        showed almost no work.
+
+        Not used for the in-process llama.cpp path, which has one context and is
+        not thread-safe: there, concurrency is not slower, it is wrong.
+        """
+        import concurrent.futures
+
+        backend = self.active_backend_instance
+        lock = threading.Lock()
+        degradato = {"seq": False}
+
+        def _one(index: int) -> None:
+            if is_cancelled(cancel):
+                results[index]["error"] = "annullato"
+                return
+            self._stream_one_into(backend, conversations[index], params,
+                                  thinking, cancel, results[index])
+            if results[index].get("finish_reason") == "timeout":
+                degradato["seq"] = True
+            if on_result:
+                with lock:
+                    on_result(results[index])
+
+        rimasti = list(range(len(conversations)))
+        while rimasti:
+            larghezza = 1 if degradato["seq"] else slots
+            gruppo, rimasti = rimasti[:larghezza], rimasti[larghezza:]
+            if larghezza == 1:
+                _one(gruppo[0])
+                continue
+            with concurrent.futures.ThreadPoolExecutor(max_workers=larghezza) as pool:
+                futures = [pool.submit(_one, i) for i in gruppo]
+                for future in concurrent.futures.as_completed(futures):
+                    try:
+                        future.result()
+                    except Exception as exc:
+                        log.error("[SigmaEngine] Slot fallito: %s", exc, exc_info=True)
+            if degradato["seq"]:
+                # Una scadenza con piu' richieste in volo dice che questo
+                # server, con questo modello, non regge il parallelismo che
+                # dichiara. Si prosegue una alla volta invece di raccogliere
+                # scadenze a gruppi di quattro fino alla fine del campione.
+                log.warning("[SigmaEngine] Scadenza con %d richieste in volo: "
+                            "si prosegue in sequenza.", larghezza)
+        return results
+
+    def _stream_one_into(self, backend, conversation, params, thinking, cancel,
+                         entry: Dict[str, Any]) -> None:
+        """Drains one backend generation into one result row."""
+        pieces: List[str] = []
+        tokens = 0
+        failure = ""
+        timed_out = False
+        try:
+            for chunk in backend.generate_stream(
+                prompt="",
+                messages=conversation,
+                temperature=params.temperature,
+                max_tokens=params.max_tokens,
+                params=params,
+                cancel=cancel,
+                thinking=thinking,
+            ):
+                if chunk.get("notice") or chunk.get("error"):
+                    failure = failure or str(chunk.get("token") or "errore backend")
+                    timed_out = timed_out or chunk.get("error") == "timeout"
+                    continue
+                token = chunk.get("token") or ""
+                if token:
+                    pieces.append(token)
+                if chunk.get("done"):
+                    tokens = int(chunk.get("total_tokens") or 0)
+                    if chunk.get("finish_reason") == "timeout":
+                        timed_out = True
+                        failure = failure or "generazione oltre il tetto di tempo"
+        except Exception as exc:
+            failure = f"{type(exc).__name__}: {exc}"
+
+        text = "".join(pieces)
+        entry.update({
+            "text": text,
+            "tokens": tokens or len(text.split()),
+            "error": failure if not text else "",
+            "warning": failure if text else "",
+            "finish_reason": "timeout" if timed_out else ("stop" if not failure else "error"),
+        })
+
+    def _generate_batch_transformers(
+        self, conversations, params, results, thinking, batch_size, cancel, on_result,
+    ) -> List[Dict[str, Any]]:
+        """Real batching: one `generate` call per group of padded prompts."""
+        import torch
+
+        tokenizer = self.tokenizer_instance
+        prompts = [self._render_chat(conv, thinking) for conv in conversations]
+
+        # Sorted by token count so a batch is made of prompts of similar size.
+        # Padding is computed on the longest member, so mixing a 40-token
+        # question with a 4000-token one makes the short one cost the long one.
+        lengths = [len(tokenizer(p, add_special_tokens=False)["input_ids"]) for p in prompts]
+        order = sorted(range(len(prompts)), key=lambda i: lengths[i])
+
+        def _fallito(group, message):
+            for index in group:
+                results[index]["error"] = message
+
+        def _consegna(group):
+            if on_result:
+                for index in group:
+                    on_result(results[index])
+
+        self._in_shrinking_batches(
+            order, batch_size,
+            run=lambda group: self._run_one_batch(group, prompts, params,
+                                                  results, tokenizer),
+            on_error=_fallito, cancel=cancel, on_done=_consegna,
+            label="Generazione a lotti",
+        )
+        return results
+
+    def _run_one_batch(self, group, prompts, params, results, tokenizer) -> None:
+        """Tokenises, generates and decodes a single padded group."""
+        import torch
+
+        previous_side = getattr(tokenizer, "padding_side", "right")
+        pad_id = getattr(tokenizer, "pad_token_id", None)
+        eos_id = getattr(tokenizer, "eos_token_id", None)
+        if pad_id is None:
+            # Padding on the right of a decoder-only model puts pad tokens
+            # between the prompt and the answer; padding left keeps every
+            # sequence's last real token at the last position, which is where
+            # generation continues from.
+            tokenizer.pad_token = getattr(tokenizer, "eos_token", None)
+            pad_id = getattr(tokenizer, "pad_token_id", None) or eos_id
+        tokenizer.padding_side = "left"
+
+        try:
+            batch = tokenizer(
+                [prompts[i] for i in group],
+                return_tensors="pt", padding=True, add_special_tokens=False,
+            )
+        finally:
+            tokenizer.padding_side = previous_side
+
+        device = self._input_device()
+        batch = {k: v.to(device) if hasattr(v, "to") else v for k, v in batch.items()}
+
+        prompt_len = int(batch["input_ids"].shape[-1])
+        gen_kwargs: Dict[str, Any] = dict(
+            **batch,
+            **params.for_transformers(tokenizer),
+            use_cache=True,
+        )
+        gen_kwargs["max_new_tokens"] = self._token_budget(params.max_tokens, batch)
+        gen_kwargs["pad_token_id"] = pad_id if pad_id is not None else eos_id
+
+        if params.seed is not None:
+            from transformers import set_seed
+            set_seed(params.seed)
+
+        t0 = time.perf_counter()
+        with torch.inference_mode():
+            output = self.model_instance.generate(**gen_kwargs)
+        elapsed = max(time.perf_counter() - t0, 1e-3)
+
+        sequences = getattr(output, "sequences", output)
+        generated_total = 0
+        for row, index in enumerate(group):
+            new_ids = sequences[row][prompt_len:]
+            produced = _decoded_length(new_ids.tolist(), eos_id)
+            text = tokenizer.decode(new_ids, skip_special_tokens=True)
+            trimmed, hit_stop = _cut_at_stop(text, params.stop)
+            generated_total += produced
+            results[index].update({
+                "text": trimmed.strip(),
+                "tokens": produced,
+                "finish_reason": "stop" if (hit_stop or produced < gen_kwargs["max_new_tokens"])
+                                 else "length",
+                "prompt_tokens": prompt_len,
+            })
+
+        # Throughput of the batch as a whole: what the run actually costs. Per
+        # prompt it is this divided by the batch, which is the number that made
+        # batching worth doing and must therefore be the number reported.
+        for index in group:
+            results[index]["batch_size"] = len(group)
+            results[index]["batch_tokens_per_sec"] = round(generated_total / elapsed, 2)
+            results[index]["tokens_per_sec"] = round(
+                results[index]["tokens"] / elapsed, 2
+            )
+
+    # ---------------------------------------------------- constrained choice
+
+    # ------------------------------------------------- continuation scoring
+
+    #: Una coppia palese, usata per accorgersi che il punteggio a
+    #: verosimiglianza e' fuori scala prima che diventi una tabella di numeri.
+    CALIBRATION_PAIR = ("The capital of France is", " Paris")
+    #: Sotto questa log-verosimiglianza per un token cosi' prevedibile, il
+    #: modello non sta rispondendo male: sta lavorando fuori dalla propria
+    #: distribuzione. Un token mancante all'inizio della sequenza basta.
+    CALIBRATION_FLOOR = -8.0
+
+    def calibration_check(self, model_name: Optional[str] = None) -> Dict[str, Any]:
+        """
+        Chiede al modello una cosa che sa di sicuro, e guarda quanto ci crede.
+
+        Serve perche' un punteggio a verosimiglianza sbagliato non ha l'aspetto
+        di un errore: ha l'aspetto di un modello mediocre. Il caso reale che ha
+        motivato questo controllo: il tokenizer di Gemma dichiara un token di
+        inizio sequenza e poi non lo antepone, nemmeno quando glielo si chiede.
+        Senza quel token " Paris" dopo "The capital of France is" valeva -18.7 —
+        sette miliardesimi di probabilita' — e le opzioni di ogni quesito
+        finivano ordinate dal rumore, producendo punteggi bassi ma credibili.
+        """
+        context, continuation = self.CALIBRATION_PAIR
+        rows = self.continuation_logprobs([(context, continuation)],
+                                          model_name=model_name, batch_size=1)
+        if not rows or rows[0].get("error"):
+            return {"ok": True, "skipped": rows[0].get("error") if rows else "no result"}
+
+        logprob = float(rows[0].get("logprob", 0.0))
+        sano = logprob >= self.CALIBRATION_FLOOR
+        if not sano:
+            log.warning(
+                "[SigmaEngine] Calibrazione sospetta: %r vale %.2f di "
+                "log-verosimiglianza (atteso sopra %.1f). I punteggi a "
+                "verosimiglianza di questo modello non sono affidabili.",
+                continuation, logprob, self.CALIBRATION_FLOOR,
+            )
+        return {"ok": sano, "logprob": round(logprob, 3),
+                "floor": self.CALIBRATION_FLOOR}
+
+    def continuation_logprobs(
+        self,
+        pairs: List[Tuple[str, str]],
+        model_name: Optional[str] = None,
+        batch_size: int = 0,
+    ) -> List[Dict[str, Any]]:
+        """
+        How likely each continuation is, given its context.
+
+        This is the measurement HellaSwag, ARC and TruthfulQA are actually
+        published on, and it asks a different question from letter-reading. The
+        model is not asked to pick a label; each candidate ending is scored as
+        text, and the one it finds most probable wins. A model that has never
+        seen a lettered multiple-choice format still answers this correctly,
+        which is the point -- the benchmark is about world knowledge and
+        commonsense, not about following an answer-format instruction.
+
+        Returns, per pair: the summed log-probability, the token count and the
+        character count, so the caller can normalise the way its protocol says.
+        Normalising matters: without it the shortest ending wins almost every
+        time, because every extra token can only subtract probability.
+        """
+        results: List[Dict[str, Any]] = [
+            {"index": i, "logprob": float("-inf"), "tokens": 0,
+             "characters": len(text or ""), "error": ""}
+            for i, (_, text) in enumerate(pairs)
+        ]
+        if not pairs:
+            return results
+
+        acquired = self._generation_lock.acquire(timeout=self.GENERATION_QUEUE_TIMEOUT)
+        if not acquired:
+            for entry in results:
+                entry["error"] = "Motore occupato da un'altra richiesta."
+            return results
+
+        try:
+            load = self._ensure_resident(model_name)
+            if not load.get("success"):
+                for entry in results:
+                    entry["error"] = f"Caricamento modello fallito: {load.get('error')}"
+                    entry["fatal"] = True
+                    entry["diagnosis"] = load.get("message", "")
+                return results
+
+            if self.active_backend_instance is not None:
+                for entry in results:
+                    entry["error"] = "unsupported_backend"
+                return results
+
+            return self._continuation_logprobs_transformers(
+                pairs, results, self.auto_batch_size(batch_size)
+            )
+        finally:
+            self._generation_lock.release()
+
+    def _continuation_logprobs_transformers(
+        self, pairs, results, batch_size,
+    ) -> List[Dict[str, Any]]:
+        import torch
+
+        tokenizer = self.tokenizer_instance
+        encoded: List[Tuple[List[int], List[int]]] = []
+        for position, (context, continuation) in enumerate(pairs):
+            # `add_special_tokens=True` non e' un dettaglio: la famiglia Gemma
+            # (e Llama, e altre) vuole il token di inizio sequenza, e senza di
+            # quello le statistiche del primo strato sono fuori scala. Si vede
+            # subito e si spiega male: " Paris" dopo "The capital of France is"
+            # valeva -18.7 di log-verosimiglianza, cioe' una probabilita' di
+            # sette miliardesimi, e le opzioni finivano ordinate dal rumore.
+            # Il percorso a lettere non ne soffriva perche' passa dal template
+            # di chat, che il token di inizio ce l'ha dentro.
+            context_ids = _with_bos(tokenizer,
+                                    tokenizer.encode(context, add_special_tokens=True))
+            # The continuation is tokenized *in context*, not alone: a BPE
+            # tokenizer merges across the boundary, and scoring the standalone
+            # tokenization would score a sequence the model would never emit.
+            whole_ids = _with_bos(tokenizer,
+                                  tokenizer.encode(context + continuation,
+                                                   add_special_tokens=True))
+            overlap = 0
+            limit = min(len(context_ids), len(whole_ids))
+            while overlap < limit and context_ids[overlap] == whole_ids[overlap]:
+                overlap += 1
+            continuation_ids = whole_ids[overlap:]
+            if not continuation_ids:
+                results[position]["error"] = "continuazione vuota"
+                encoded.append(([], []))
+                continue
+            encoded.append((whole_ids[:overlap], continuation_ids))
+            results[position]["tokens"] = len(continuation_ids)
+
+        order = sorted((i for i, (_, c) in enumerate(encoded) if c),
+                       key=lambda i: len(encoded[i][0]) + len(encoded[i][1]))
+        def _fallito(group, message):
+            for index in group:
+                results[index]["error"] = message
+
+        self._in_shrinking_batches(
+            order, batch_size,
+            run=lambda group: self._score_one_continuation_batch(
+                group, encoded, results, tokenizer),
+            on_error=_fallito, label="Confronto delle continuazioni",
+        )
+        return results
+
+    def _score_one_continuation_batch(self, group, encoded, results, tokenizer) -> None:
+        """One padded forward pass; reads the log-probability of each target token."""
+        import torch
+
+        sequences = [encoded[i][0] + encoded[i][1] for i in group]
+        width = max(len(s) for s in sequences)
+        pad_id = getattr(tokenizer, "pad_token_id", None)
+        if pad_id is None:
+            pad_id = getattr(tokenizer, "eos_token_id", None) or 0
+
+        # Left padding again, for the same reason as everywhere else: it keeps
+        # every row's real tokens contiguous at the end, so one offset locates
+        # the continuation in every row.
+        input_ids, attention = [], []
+        for sequence in sequences:
+            padding = width - len(sequence)
+            input_ids.append([pad_id] * padding + sequence)
+            attention.append([0] * padding + [1] * len(sequence))
+
+        device = self._input_device()
+        batch = {
+            "input_ids": torch.tensor(input_ids).to(device),
+            "attention_mask": torch.tensor(attention).to(device),
+        }
+
+        with torch.inference_mode():
+            logits = self.model_instance(**batch).logits.float()
+        log_probs = torch.log_softmax(logits, dim=-1)
+
+        for row, index in enumerate(group):
+            context_ids, continuation_ids = encoded[index]
+            # Position of the last context token in the padded row. The logits
+            # there predict the first continuation token, and so on.
+            start = width - len(continuation_ids) - 1
+            total = 0.0
+            for offset, token in enumerate(continuation_ids):
+                total += float(log_probs[row, start + offset, int(token)].item())
+            results[index]["logprob"] = total
+
+    def choice_logits(
+        self,
+        conversations: List[List[Dict[str, str]]],
+        letters: List[List[str]],
+        model_name: Optional[str] = None,
+        thinking: Optional[bool] = None,
+        batch_size: int = 0,
+        answer_prefix: str = "",
+    ) -> List[Dict[str, Any]]:
+        """
+        Scores the option letters directly, instead of reading them back out of prose.
+
+        A multiple-choice benchmark asks the model to pick one of N labels. The
+        generative protocol turns that into: produce up to a thousand tokens of
+        reasoning, then hope a regex recovers the label -- which is where both
+        the cost and the ambiguous verdicts come from. A model that writes "the
+        answer is A, so H is wrong" has not answered twice, it has answered once
+        and been misread.
+
+        Reading the logits at the first answer position removes the question.
+        There is exactly one distribution, the letters are ranked by it, and the
+        winner is a number rather than an interpretation. One forward pass, no
+        decoding, and the same answer every time.
+
+        Returns, per item: the chosen letter, the normalised probability of each
+        letter, and the margin over the runner-up -- the margin being what tells
+        a genuine choice from a coin toss the parser would have had to guess at.
+        """
+        outcomes: List[Dict[str, Any]] = [
+            {"index": i, "choice": None, "probs": {}, "margin": 0.0, "error": ""}
+            for i in range(len(conversations))
+        ]
+        if not conversations:
+            return outcomes
+
+        acquired = self._generation_lock.acquire(timeout=self.GENERATION_QUEUE_TIMEOUT)
+        if not acquired:
+            for entry in outcomes:
+                entry["error"] = "Motore occupato da un'altra richiesta."
+            return outcomes
+
+        try:
+            load = self._ensure_resident(model_name)
+            if not load.get("success"):
+                for entry in outcomes:
+                    entry["error"] = f"Caricamento modello fallito: {load.get('error')}"
+                    entry["fatal"] = True
+                    entry["diagnosis"] = load.get("message", "")
+                return outcomes
+
+            if self.active_backend_instance is not None:
+                for entry in outcomes:
+                    entry["error"] = "unsupported_backend"
+                return outcomes
+
+            return self._choice_logits_transformers(
+                conversations, letters, outcomes, thinking,
+                self.auto_batch_size(batch_size), answer_prefix,
+            )
+        finally:
+            self._generation_lock.release()
+
+    def _choice_logits_transformers(
+        self, conversations, letters, outcomes, thinking, batch_size,
+        answer_prefix: str = "",
+    ) -> List[Dict[str, Any]]:
+        import torch
+
+        tokenizer = self.tokenizer_instance
+        # The answer prefix opens the assistant's turn for it. Without one, the
+        # position being read is the first token of a free reply, and a model
+        # -- especially a small one -- opens with "When", "To" or "Since": the
+        # labels are ranked correctly among themselves but hold a thousandth of
+        # the probability mass, so the ranking is between two numbers that are
+        # both noise. Primed with "Answer:", the very next token is the label.
+        prompts = [self._render_chat(conv, thinking) + answer_prefix
+                   for conv in conversations]
+
+        # Models decorate. Asked for a label after "Answer:", a chat model very
+        # often writes "**C**" -- so the position being read holds ` **` at
+        # 0.99 and the labels share a thousandth between them. The ranking among
+        # the labels is still right, but reading it there would mean trusting
+        # numbers that round to zero. Instead the model is followed into its own
+        # formatting: whatever punctuation it insists on is appended to the
+        # prompt and the next position is read. A couple of steps is plenty --
+        # after that it is not decorating, it is answering in prose.
+        def _fallito(group, message):
+            for index in group:
+                outcomes[index]["error"] = message
+
+        remaining = list(range(len(prompts)))
+        for _ in range(CHOICE_DECORATION_STEPS + 1):
+            if not remaining:
+                break
+            retry: List[int] = []
+            self._in_shrinking_batches(
+                sorted(remaining, key=lambda i: len(prompts[i])), batch_size,
+                run=lambda group: retry.extend(self._score_one_choice_batch(
+                    group, prompts, letters, outcomes, tokenizer)),
+                on_error=_fallito, label="Lettura delle scelte",
+            )
+            remaining = retry
+        return outcomes
+
+    def _score_one_choice_batch(self, group, prompts, letters, outcomes,
+                                tokenizer) -> List[int]:
+        """
+        Reads one padded group's next-token distribution.
+
+        Returns the items whose answer position turned out to hold decoration
+        rather than a label: their prompt has been extended with that
+        decoration, and they are worth reading again one token further on.
+        """
+        import torch
+
+        previous_side = getattr(tokenizer, "padding_side", "right")
+        if getattr(tokenizer, "pad_token_id", None) is None:
+            tokenizer.pad_token = getattr(tokenizer, "eos_token", None)
+        tokenizer.padding_side = "left"
+        try:
+            batch = tokenizer(
+                [prompts[i] for i in group],
+                return_tensors="pt", padding=True, add_special_tokens=False,
+            )
+        finally:
+            tokenizer.padding_side = previous_side
+
+        device = self._input_device()
+        batch = {k: v.to(device) if hasattr(v, "to") else v for k, v in batch.items()}
+
+        with torch.inference_mode():
+            logits = self.model_instance(**batch).logits[:, -1, :].float()
+        probabilities = torch.softmax(logits, dim=-1)
+        leaders = torch.argmax(probabilities, dim=-1).tolist()
+
+        retry: List[int] = []
+        for row, index in enumerate(group):
+            options = [str(letter) for letter in (letters[index] or [])]
+            scores: Dict[str, float] = {}
+            for letter in options:
+                ids = _letter_token_ids(tokenizer, letter)
+                if not ids:
+                    continue
+                scores[letter] = float(max(probabilities[row, i].item() for i in ids))
+            if len(scores) < 2:
+                outcomes[index]["error"] = "nessun token di scelta rappresentabile"
+                continue
+
+            total = sum(scores.values())
+            if total < CHOICE_MIN_MASS or len(set(scores.values())) == 1:
+                # Either the model is about to write something that is not a
+                # label, or every label scored identically -- which is not a tie
+                # a model produces, it is a reader that handed them all the same
+                # token. Neither is a choice, and naming the alphabetically
+                # first one would be inventing an answer.
+                lead = tokenizer.decode([int(leaders[row])])
+                if _is_decoration(lead):
+                    prompts[index] = prompts[index] + lead
+                    retry.append(index)
+                    continue
+                outcomes[index].update({
+                    "error": "distribuzione non concludente",
+                    "mass": round(total, 6),
+                })
+                continue
+
+            normalised = {k: round(v / total, 6) for k, v in scores.items()}
+            ranked = sorted(normalised.items(), key=lambda kv: kv[1], reverse=True)
+            outcomes[index].update({
+                "choice": ranked[0][0],
+                "probs": normalised,
+                "margin": round(ranked[0][1] - (ranked[1][1] if len(ranked) > 1 else 0.0), 6),
+                # How much of the model's next-token probability sat on the
+                # labels at all. A high-scoring answer with almost no mass
+                # behind it is a coin toss dressed as a decision, and the review
+                # queue should be able to sort by it.
+                "mass": round(total, 6),
+                "error": "",
+            })
+        return retry
 
     def _explain_generation_failure(self, exc: BaseException) -> str:
         """
@@ -1461,16 +2670,19 @@ class UniversalSigmaEngine:
         if self.model_facts:
             window = self.model_facts.max_position_embeddings or 0
         if self.placement_plan and self.placement_plan.context_tokens:
-            # The plan reserved KV for this many tokens; going beyond it is what
-            # turns a comfortable placement into an out-of-memory mid-answer.
-            window = min(window, self.placement_plan.context_tokens) if window                 else self.placement_plan.context_tokens
+            window = min(window, self.placement_plan.context_tokens) if window \
+                else self.placement_plan.context_tokens
 
-        if window:
-            room = window - prompt_tokens - 16      # leave the template a margin
-            if room > 0:
-                limit = min(limit, room)
+        if not window:
+            window = 32768
 
-        return max(1, limit)
+        room = window - prompt_tokens - 16
+        if room > 0:
+            limit = min(limit, room)
+        else:
+            limit = max(limit, 1024)
+
+        return max(512, limit)
 
     @staticmethod
     def _as_messages(
@@ -1493,42 +2705,163 @@ class UniversalSigmaEngine:
         conversation.append({"role": "user", "content": prompt})
         return conversation
 
-    def _build_inputs(self, messages: List[Dict[str, str]]) -> Dict[str, Any]:
-        """Applies the model's chat template and moves tensors to the input device."""
-        import torch
+    # ------------------------------------------------------- prompt rendering
+
+    def _template_honours_thinking(self) -> bool:
+        """
+        Whether this checkpoint's chat template actually reads ``enable_thinking``.
+
+        Asked instead of assumed. ``apply_chat_template`` forwards unknown
+        keyword arguments into the Jinja context, where a template that never
+        mentions them ignores them silently -- so passing the flag proves
+        nothing. Rendering the same conversation both ways and comparing does:
+        if the two strings are identical the switch is inert, and suppressing
+        the reasoning block needs a different lever.
+        """
+        if self._thinking_switch is not None:
+            return self._thinking_switch
+
+        probe = [{"role": "user", "content": "ping"}]
+        self._thinking_switch = False
+        try:
+            on = self.tokenizer_instance.apply_chat_template(
+                probe, tokenize=False, add_generation_prompt=True,
+                enable_thinking=True,
+            )
+            off = self.tokenizer_instance.apply_chat_template(
+                probe, tokenize=False, add_generation_prompt=True,
+                enable_thinking=False,
+            )
+            self._thinking_switch = on != off
+        except Exception as exc:
+            log.debug("[SigmaEngine] Thinking switch probe skipped: %s", exc)
+        return self._thinking_switch
+
+    def _suppress_thinking_directive(
+        self, messages: List[Dict[str, str]]
+    ) -> List[Dict[str, str]]:
+        """
+        Last resort for templates whose thinking switch is inert.
+
+        Only families that published an in-band directive get one. Inventing a
+        directive for a family that has none does not disable anything -- it
+        adds a line of noise to the prompt, which on a benchmark is a change to
+        the measurement rather than to the model.
+        """
+        name = (self.loaded_model_name or "").lower()
+        if "qwen3" not in name and "qwen-3" not in name:
+            return messages
+
+        patched = [dict(m) for m in messages]
+        for message in reversed(patched):
+            if message.get("role") == "user":
+                content = str(message.get("content", ""))
+                if "/no_think" not in content:
+                    message["content"] = f"{content} /no_think".strip()
+                break
+        return patched
+
+    def _render_chat(
+        self,
+        messages: List[Dict[str, str]],
+        thinking: Optional[bool] = None,
+    ) -> str:
+        """
+        The prompt string this model expects, as text.
+
+        ``thinking`` is tri-state on purpose: None leaves the checkpoint on its
+        own default, which is what a chat wants, while False is an explicit
+        request to answer without a reasoning block -- what a benchmark and a
+        served endpoint want, because a ``<think>`` block spends the token
+        budget before the answer and then gets truncated away.
+        """
+        template_kwargs: Dict[str, Any] = {}
+        if thinking is not None:
+            if self._template_honours_thinking():
+                template_kwargs["enable_thinking"] = bool(thinking)
+            elif thinking is False:
+                messages = self._suppress_thinking_directive(messages)
 
         try:
-            formatted = self.tokenizer_instance.apply_chat_template(
-                messages, tokenize=False, add_generation_prompt=True
+            return self.tokenizer_instance.apply_chat_template(
+                messages, tokenize=False, add_generation_prompt=True,
+                **template_kwargs
             )
         except Exception:
             # No chat template: render the whole transcript rather than
             # dropping every turn but the last.
-            formatted = "\n".join(
+            return "\n".join(
                 f"{m.get('role', 'user').capitalize()}: {m.get('content', '')}"
                 for m in messages
             ) + "\nAssistant:"
 
+    @staticmethod
+    def _stale_placement(model, device_map: Dict[str, Any]) -> List[str]:
+        """I moduli citati dalla mappa che nel modello caricato non esistono.
+
+        Una mappa con voci fantasma non e' rumore: accelerate colloca solo cio'
+        che riconosce, e cio' che non riconosce resta dove capita e senza hook.
+        """
+        try:
+            reali = {name for name, _ in model.named_modules() if name}
+        except Exception:
+            return []
+        return [name for name in device_map
+                if name and name not in reali
+                and not any(r.startswith(name + ".") for r in reali)]
+
+    def _input_device(self):
+        """
+        Where `input_ids` has to land for this placement to accept them.
+
+        Asked of the embedding table itself, not guessed from the placement map.
+        The map is keyed by module path and a multimodal checkpoint has several
+        modules whose name contains "embed" -- text, vision, audio, and on
+        Gemma 4 a per-layer input embedding as well. Picking whichever came
+        first put the token indices on one card while the table they index sat
+        on another, and the model answered with "Expected all tensors to be on
+        the same device". The table that consumes `input_ids` is knowable, so it
+        is asked rather than inferred.
+        """
+        import torch
+
+        try:
+            embeddings = self.model_instance.get_input_embeddings()
+            weight = getattr(embeddings, "weight", None)
+            device = getattr(weight, "device", None)
+            # An offloaded layer reports `meta`: it has no memory of its own and
+            # accelerate will move the input when the hook fires.
+            if device is not None and getattr(device, "type", "") != "meta":
+                return device
+        except Exception as exc:
+            log.debug("[SigmaEngine] Input embedding device unavailable: %s", exc)
+
+        device_map = getattr(self.model_instance, "hf_device_map", None)
+        if device_map:
+            # Second best: the map, but only for the entries that can plausibly
+            # be the token embedding, longest-path last so a nested text model
+            # wins over a top-level container.
+            for key in ("embed_tokens", "wte", "word_embeddings", "embed"):
+                for module_name, device in device_map.items():
+                    if key in module_name:
+                        return f"cuda:{device}" if isinstance(device, int) else device
+        try:
+            return next(self.model_instance.parameters()).device
+        except Exception:
+            return "cuda" if torch.cuda.is_available() else "cpu"
+
+    def _build_inputs(
+        self,
+        messages: List[Dict[str, str]],
+        thinking: Optional[bool] = None,
+    ) -> Dict[str, Any]:
+        """Applies the model's chat template and moves tensors to the input device."""
+        formatted = self._render_chat(messages, thinking)
         inputs = self.tokenizer_instance(formatted, return_tensors="pt")
 
         # With a sharded model, inputs must land on the device holding the
         # embedding layer, which is not necessarily cuda:0.
-        target_device = None
-        device_map = getattr(self.model_instance, "hf_device_map", None)
-        if device_map:
-            for module_name, device in device_map.items():
-                if "embed" in module_name:
-                    target_device = device
-                    break
-        if target_device is None:
-            try:
-                target_device = next(self.model_instance.parameters()).device
-            except Exception:
-                target_device = "cuda" if torch.cuda.is_available() else "cpu"
-
-        if isinstance(target_device, int):
-            target_device = f"cuda:{target_device}"
-
+        target_device = self._input_device()
         return {
             k: v.to(target_device) if hasattr(v, "to") else v
             for k, v in inputs.items()
@@ -1564,6 +2897,17 @@ class UniversalSigmaEngine:
             ),
         }
 
+        # Un'architettura sconosciuta non e' un problema di memoria, e il
+        # suggerimento su contesto e quantizzazione mandava a cercare dalla
+        # parte sbagliata. Qui la causa e' nota e si puo' dire per nome.
+        if _unrecognised_architecture(error):
+            info = result.get("facts") or {}
+            hints["load"] = _version_mismatch_advice(
+                str(info.get("path") or result.get("path") or "")
+            )
+            hints["inspection"] = hints["load"]
+            hints["preparation"] = hints["load"]
+
         message = (
             f"❌ **SigmaEngine non ha potuto caricare `{target_model}`**\n\n"
             f"**Fase**: {stage}\n"
@@ -1588,7 +2932,8 @@ class UniversalSigmaEngine:
             "1. Apri **Model Hub** e scarica un modello Hugging Face.\n"
             "2. Oppure configura un provider Cloud in **Impostazioni** (⚙️)."
         )
-        yield {"token": message, "token_index": 1, "done": True}
+        yield {"token": message, "token_index": 1, "notice": True,
+               "error": "no_model", "done": True}
 
     # -------------------------------------------------------------- status
 

@@ -52,6 +52,30 @@ _AVVIO_INTERVALLO_S = 0.4
 #: Quanto aspettare la chiusura ordinata prima di forzarla.
 _CHIUSURA_TIMEOUT_S = 10
 
+#: Quanto puo' restare muto lo stream prima di dichiararlo bloccato. E' un
+#: timeout fra un token e l'altro, non sull'intera generazione: un modello che
+#: produce lentamente sta lavorando, uno che non produce niente per cinque
+#: minuti non sta lavorando. Copre anche l'elaborazione del prompt, che su un
+#: 12B quantizzato con un contesto lungo precede il primo token di parecchio.
+_STALLO_TIMEOUT_S = 300
+
+#: Il tetto complessivo, calcolato sul budget di token richiesto. Serviva
+#: separarlo dal timeout d'avvio: usare quello — trecento secondi pensati per
+#: il caricamento del modello — significava dichiarare fallita ogni generazione
+#: con catena di ragionamento, che a due-tremila token su un 12B quantizzato ne
+#: dura legittimamente il triplo.
+_GENERAZIONE_MIN_S = 600
+_GENERAZIONE_MAX_S = 3600
+#: Secondi concessi per token generato: un pavimento pessimistico (un token e
+#: mezzo al secondo), non una previsione.
+_SECONDI_PER_TOKEN = 0.7
+
+
+def _limite_generazione(max_tokens: int) -> float:
+    """Il tetto in secondi per una generazione con questo budget."""
+    stimato = _GENERAZIONE_MIN_S + max(int(max_tokens or 0), 0) * _SECONDI_PER_TOKEN
+    return min(max(stimato, _GENERAZIONE_MIN_S), _GENERAZIONE_MAX_S)
+
 
 # ==============================================================================
 # TRADUZIONE DEL PIANO
@@ -130,8 +154,11 @@ class LlamaServerBackend(InferenceBackend):
         self._facts: Optional[ModelFacts] = None
         self._settings: Dict[str, Any] = {}
         self._lock = threading.Lock()
-        #: Se lo stream sta consegnando il ragionamento invece della risposta.
-        self._in_ragionamento = False
+        #: Quante generazioni sono in volo adesso. Serve a dimensionare
+        #: l'attesa: con quattro richieste sullo stesso server, ognuna puo'
+        #: legittimamente restare in coda mentre le altre decodificano.
+        self._in_volo = 0
+        self._conta_lock = threading.Lock()
 
     # --------------------------------------------------------- capabilities
 
@@ -296,19 +323,25 @@ class LlamaServerBackend(InferenceBackend):
         messages: Optional[list] = None,
         params: Optional[SamplingParams] = None,
         cancel: Any = None,
+        thinking: Optional[bool] = None,
     ) -> Generator[Dict[str, Any], None, None]:
         if not self.is_loaded:
             yield {"token": "\n\n❌ **Nessun modello caricato nel runtime GGUF**",
-                   "token_index": 0, "done": True}
+                   "token_index": 0, "notice": True, "error": "no_model",
+                   "done": True}
             return
 
         params = params or SamplingParams(temperature=temperature, max_tokens=max_tokens)
-        corpo = self._corpo_richiesta(prompt, system_prompt, messages, params)
-        self._in_ragionamento = False
+        corpo = self._corpo_richiesta(prompt, system_prompt, messages, params,
+                                      thinking)
+        in_ragionamento = False
 
         t_start = time.perf_counter()
         primo_token_a = None
         contatore = 0
+
+        scadenza = time.perf_counter() + _limite_generazione(params.max_tokens)
+        scaduto = False
 
         try:
             for pezzo in self._stream_http("/v1/chat/completions", corpo):
@@ -316,9 +349,30 @@ class LlamaServerBackend(InferenceBackend):
                     log.info("[LlamaServer] Generazione annullata dal chiamante.")
                     break
 
+                if time.perf_counter() > scadenza:
+                    # Si chiude qui invece di aspettare che sia il socket a
+                    # cedere: cosi' cio' che il modello ha gia' scritto resta al
+                    # chiamante, e con una catena di ragionamento lunga la
+                    # risposta e' spesso proprio li' dentro.
+                    scaduto = True
+                    log.warning("[LlamaServer] Generazione oltre il tetto di %ds "
+                                "dopo %d token: interrotta.",
+                                int(_limite_generazione(params.max_tokens)), contatore)
+                    break
+
                 testo = pezzo.get("content") or ""
                 if not testo:
                     continue
+
+                genere = pezzo.get("kind")
+                if genere == "reasoning" and not in_ragionamento:
+                    in_ragionamento = True
+                    contatore += 1
+                    yield {"token": "<think>", "token_index": contatore, "done": False}
+                elif genere == "content" and in_ragionamento:
+                    in_ragionamento = False
+                    contatore += 1
+                    yield {"token": "</think>", "token_index": contatore, "done": False}
 
                 contatore += 1
                 adesso = time.perf_counter()
@@ -332,11 +386,11 @@ class LlamaServerBackend(InferenceBackend):
                                (contatore - 1) / max(adesso - primo_token_a, 1e-3), 1),
                            "done": False}
 
-            if self._in_ragionamento:
+            if in_ragionamento:
                 # Un troncamento a meta' ragionamento lascerebbe un <think>
                 # aperto, e chi lo interpreta a valle nasconderebbe tutto il
                 # resto della conversazione.
-                self._in_ragionamento = False
+                in_ragionamento = False
                 contatore += 1
                 yield {"token": "</think>", "token_index": contatore, "done": False}
 
@@ -346,11 +400,29 @@ class LlamaServerBackend(InferenceBackend):
                 "speed_tok_s": round(
                     max(contatore - 1, 0) / max(adesso - (primo_token_a or adesso), 1e-3), 1),
                 "total_tokens": contatore,
+                "finish_reason": "timeout" if scaduto else "stop",
+                "truncated": scaduto,
             }
         except Exception as exc:
             log.error("[LlamaServer] Generazione fallita: %s", exc, exc_info=True)
+            # `notice` ed `error` sono la differenza fra un guasto e una
+            # risposta. Senza, questo testo veniva concatenato come se lo avesse
+            # scritto il modello: un benchmark ha corretto "Errore llama-server:
+            # TimeoutError" come tentativo di soluzione a un esercizio di
+            # programmazione, e lo ha contato come risposta sbagliata.
+            scaduto = isinstance(exc, (TimeoutError, socket.timeout))
             yield {"token": f"\n\n❌ **Errore llama-server**: {type(exc).__name__}: {exc}",
-                   "token_index": contatore + 1, "done": True}
+                   "token_index": contatore + 1,
+                   "notice": True,
+                   "error": "timeout" if scaduto else "generation_failed",
+                   # Chiesto al momento del guasto, non tre fallimenti dopo:
+                   # "processo morto" e "modello lentissimo" si vedono uguali e
+                   # hanno rimedi opposti.
+                   "diagnosi": self.diagnosi(),
+                   "done": True}
+        finally:
+            with self._conta_lock:
+                self._in_volo = max(0, self._in_volo - 1)
 
     # --------------------------------------------------------- osservazione
 
@@ -371,6 +443,22 @@ class LlamaServerBackend(InferenceBackend):
 
     def telemetry(self) -> Dict[str, Any]:
         return dict(self._settings)
+
+    def parallel_slots(self) -> int:
+        """Gli slot con cui il server e' stato avviato (`-np`).
+
+        Il processo li ha gia': avviarlo con quattro e poi mandargli una
+        richiesta per volta e' capacita' pagata e non usata.
+        """
+        if self._processo is None:
+            return 1
+        try:
+            # Stesso valore, stesso ripiego della riga di comando in
+            # `_argomenti`: leggerlo con un default diverso significherebbe
+            # avviare il server con quattro slot e crederne di averne uno.
+            return max(1, int(self._settings.get("parallel_slots") or 4))
+        except (TypeError, ValueError):
+            return 1
 
     def benchmark(self, prompt_tokens: int = 128, decode_tokens: int = 24) -> Dict[str, Any]:
         """Prefill e decode separati, misurati dal server stesso.
@@ -459,6 +547,39 @@ class LlamaServerBackend(InferenceBackend):
 
         return (False, f"llama-server non ha risposto entro {_AVVIO_TIMEOUT_S}s.")
 
+    def diagnosi(self) -> str:
+        """Perche' il server non risponde: processo morto, occupato, o sano.
+
+        Serve a distinguere due situazioni che da fuori si vedono uguali — pesi
+        in VRAM e schede a zero — e che hanno rimedi opposti. Se il processo e'
+        finito, i pesi che si vedono in memoria sono un fantasma del driver e
+        va ricaricato. Se risponde, il modello sta solo generando piano, e
+        riavviarlo butterebbe via il lavoro fatto.
+        """
+        if self._processo is None:
+            return "Il runtime GGUF non e' stato avviato."
+
+        codice = self._processo.poll()
+        if codice is not None:
+            uscita = self._raccogli_uscita()
+            return (f"Il processo llama-server e' terminato (codice {codice}). "
+                    f"I pesi che risultano ancora in VRAM sono memoria non "
+                    f"rilasciata dal driver: ricarica il modello dal Model Hub."
+                    + ("\n\n" + uscita[-600:] if uscita else ""))
+
+        try:
+            with urllib.request.urlopen(self._url("/health"), timeout=5) as risposta:
+                if risposta.status == 200:
+                    return ("Il runtime GGUF risponde: il modello sta generando, "
+                            "solo molto lentamente. Abbassa il budget di token "
+                            "del protocollo, oppure usa il checkpoint safetensors "
+                            "che consente i lotti veri.")
+                return f"Il runtime GGUF risponde con HTTP {risposta.status}."
+        except Exception as exc:
+            return (f"Il processo llama-server e' vivo ma non risponde su "
+                    f"/health ({type(exc).__name__}): e' bloccato. Ricarica il "
+                    f"modello dal Model Hub.")
+
     def _raccogli_uscita(self) -> str:
         if self._processo is None or self._processo.stdout is None:
             return ""
@@ -470,7 +591,8 @@ class LlamaServerBackend(InferenceBackend):
         return ""
 
     def _corpo_richiesta(self, prompt: str, system_prompt: str,
-                         messages: Optional[list], params: SamplingParams) -> Dict[str, Any]:
+                         messages: Optional[list], params: SamplingParams,
+                         thinking: Optional[bool] = None) -> Dict[str, Any]:
         conversazione = []
         if messages:
             for m in messages:
@@ -502,6 +624,12 @@ class LlamaServerBackend(InferenceBackend):
             "messages": conversazione,
             "stream": True,
         }
+        if thinking is not None:
+            # llama-server passa questo blocco al template Jinja del GGUF: e'
+            # la stessa leva di `apply_chat_template`, esposta via HTTP. Un
+            # template che non la conosce la ignora, quindi inviarla non puo'
+            # rompere un modello che non ragiona.
+            corpo["chat_template_kwargs"] = {"enable_thinking": bool(thinking)}
         if params.temperature is not None and params.temperature >= 0:
             corpo["temperature"] = float(params.temperature)
         if params.top_p is not None and 0.0 < params.top_p <= 1.0:
@@ -544,7 +672,7 @@ class LlamaServerBackend(InferenceBackend):
             headers={"Content-Type": "application/json", "Accept": "text/event-stream"},
         )
         try:
-            risposta = urllib.request.urlopen(richiesta, timeout=_AVVIO_TIMEOUT_S)
+            risposta = urllib.request.urlopen(richiesta, timeout=_STALLO_TIMEOUT_S)
         except urllib.error.HTTPError as exc:
             corpo_dettaglio = ""
             try:
@@ -646,16 +774,14 @@ class LlamaServerBackend(InferenceBackend):
                 elif "content" in evento:
                     contenuto = evento.get("content") or ""
 
+                # Si dice *che cosa* e' questo pezzo e basta. La marcatura del
+                # blocco di ragionamento e' stato che appartiene a una singola
+                # generazione, e teneva su `self`: con quattro slot in parallelo
+                # i <think> di una risposta finivano dentro un'altra.
                 if ragionamento:
-                    if not self._in_ragionamento:
-                        self._in_ragionamento = True
-                        yield {"content": "<think>"}
-                    yield {"content": ragionamento}
+                    yield {"content": ragionamento, "kind": "reasoning"}
                     continue
 
                 if contenuto:
-                    if self._in_ragionamento:
-                        self._in_ragionamento = False
-                        yield {"content": "</think>"}
-                    yield {"content": contenuto}
+                    yield {"content": contenuto, "kind": "content"}
 

@@ -73,6 +73,7 @@ class InferenceBackend(ABC):
         messages: Optional[list] = None,
         params: Optional["SamplingParams"] = None,
         cancel: Any = None,
+        thinking: Optional[bool] = None,
     ) -> Generator[Dict[str, Any], None, None]:
         """
         Yields token chunks shaped like the engine's streaming contract.
@@ -87,6 +88,13 @@ class InferenceBackend(ABC):
 
         `cancel` is a CancellationToken, checked between tokens so an
         abandoned request stops costing compute.
+
+        `thinking` is tri-state. None leaves the checkpoint on its own default.
+        False asks for an answer without a reasoning block -- what a benchmark
+        and a served endpoint need, since a `<think>` block spends the token
+        budget before the answer and is then thrown away. A backend that cannot
+        express the request answers normally rather than failing: a reasoning
+        block is a cost, not an error.
         """
 
     @abstractmethod
@@ -105,6 +113,19 @@ class InferenceBackend(ABC):
     def telemetry(self) -> Dict[str, Any]:
         """Backend-specific settings that are genuinely in effect."""
         return {}
+
+    def parallel_slots(self) -> int:
+        """
+        How many generations this backend can serve at once.
+
+        One by default, and that default is a statement about safety rather
+        than about speed: an in-process llama.cpp context is not thread-safe,
+        and two callers into it do not run twice as fast, they corrupt each
+        other. A backend that genuinely serves concurrent requests -- a server
+        process with several slots -- says so here, and the caller stops
+        queueing work the hardware was ready to take.
+        """
+        return 1
 
     def benchmark(self, prompt_tokens: int = 128, decode_tokens: int = 24) -> Dict[str, Any]:
         """

@@ -79,6 +79,31 @@ def tool_call_grammar(tool_names: Iterable[str]) -> Optional[str]:
     )
 
 
+def choice_grammar(letters: Iterable[str]) -> Optional[str]:
+    """
+    A grammar admitting exactly one option label and nothing else.
+
+    This is the multiple-choice counterpart of constraining a tool call. The
+    benchmark asks the model to pick one of N labels; unconstrained, it answers
+    with a page of reasoning that a regex then has to mine for a letter, and
+    every answer containing two letters becomes a verdict nobody can defend.
+    Masked against this grammar the model emits one label, always parseable and
+    always single -- and it emits it in one token instead of a thousand.
+
+    Note what is being measured either way: which option the model ranks first.
+    The grammar does not help it choose, it only removes the prose in which the
+    choice used to get lost.
+    """
+    valid = [str(letter).strip() for letter in letters if str(letter).strip()]
+    if not valid:
+        return None
+    # Bare terminals, not JSON strings: the answer here is the letter itself,
+    # so quoting it the way _gbnf_string does would make the model emit `"A"`.
+    alternatives = " | ".join('"%s"' % v.replace('\\', '\\\\').replace('"', '\\"')
+                              for v in valid)
+    return "root ::= " + alternatives + "\n"
+
+
 def json_object_grammar(schema: Optional[Dict[str, Any]] = None) -> str:
     """
     A grammar for one JSON object, optionally with required keys in order.

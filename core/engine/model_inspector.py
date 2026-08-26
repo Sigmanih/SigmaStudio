@@ -606,22 +606,21 @@ class ModelInspector:
     @classmethod
     def resolve_model_class(cls, facts: ModelFacts):
         """
-        Returns the transformers class this checkpoint declares.
-
-        Using config.architectures directly is the only approach that works for
-        every checkpoint: AutoModelForCausalLM silently picks a text-only class
-        for multimodal configs and then fails on missing top-level fields.
+        Returns the transformers class this checkpoint declares, with automatic
+        architecture alias fallback for newly released or unified models.
         """
+        from core.engine.transformers_compat import ensure_transformers_compatibility, resolve_model_architecture_class
+        ensure_transformers_compatibility()
+
         import transformers
 
         for arch in facts.architectures:
-            model_cls = getattr(transformers, arch, None)
+            model_cls = resolve_model_architecture_class(arch, is_multimodal=facts.is_multimodal)
             if model_cls is not None:
                 return model_cls
-            log.debug("[ModelInspector] '%s' not exported by transformers", arch)
 
         if facts.is_multimodal:
-            fallback = getattr(transformers, "AutoModelForImageTextToText", None)
+            fallback = getattr(transformers, "AutoModelForImageTextToText", None) or getattr(transformers, "AutoModelForVision2Seq", None)
             if fallback is not None:
                 log.info("[ModelInspector] Falling back to AutoModelForImageTextToText")
                 return fallback

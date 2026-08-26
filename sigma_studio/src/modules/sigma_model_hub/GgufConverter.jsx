@@ -7,17 +7,23 @@ import HfPublishModal from './HfPublishModal.jsx';
  * llama.cpp backend. Sits after the download tab because that is the order the
  * work happens in: fetch the weights, then make them runnable on this machine.
  */
-export default function GgufConverter({ isLight, addToast }) {
+export default function GgufConverter({ isLight, addToast, initialModel }) {
   const [models, setModels] = useState([]);
   const [quantTypes, setQuantTypes] = useState([]);
   const [tooling, setTooling] = useState(null);
   const [jobs, setJobs] = useState([]);
-  const [selected, setSelected] = useState('');
+  const [selected, setSelected] = useState(initialModel || '');
   const [quant, setQuant] = useState('Q4_K_M');
   const [busy, setBusy] = useState(false);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(null);
   const [publishingModel, setPublishingModel] = useState(null);
+
+  useEffect(() => {
+    if (initialModel) {
+      setSelected(initialModel);
+    }
+  }, [initialModel]);
 
   const cardBg = isLight ? '#ffffff' : 'rgba(255,255,255,0.03)';
   const cardBorder = isLight ? '1px solid #e5e7eb' : '1px solid rgba(255,255,255,0.08)';
@@ -29,9 +35,6 @@ export default function GgufConverter({ isLight, addToast }) {
     try {
       const res = await fetch('/api/models/convert/info');
       if (!res.ok) {
-        // Distinguish "the server could not answer" from "there is nothing to
-        // convert": showing the empty-state for a 404 sent us hunting for
-        // missing models when the endpoint simply was not registered.
         setLoadError(
           res.status === 404
             ? 'Endpoint di conversione non registrato: riavvia il server Sigma Studio.'
@@ -46,14 +49,14 @@ export default function GgufConverter({ isLight, addToast }) {
         setQuantTypes(json.quantization_types || []);
         setTooling(json.tooling || null);
         setJobs(json.jobs || []);
-        if (!selected && json.models?.length) setSelected(json.models[0].name);
+        if (!selected && json.models?.length) setSelected(initialModel || json.models[0].name);
       }
     } catch (e) {
       setLoadError(`Impossibile contattare il server: ${e.message}`);
     } finally {
       setLoading(false);
     }
-  }, [addToast, selected]);
+  }, [initialModel, selected]);
 
   useEffect(() => { fetchInfo(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -260,9 +263,8 @@ export default function GgufConverter({ isLight, addToast }) {
               </div>
             )}
             {model.is_multimodal && (
-              <div style={{ marginTop: '6px', color: isLight ? '#92400e' : '#fbbf24' }}>
-                I modelli multimodali perdono la parte visiva nella conversione:
-                il GGUF conterrà solo il modello di linguaggio.
+              <div style={{ marginTop: '6px', color: isLight ? '#0369a1' : '#38bdf8', fontSize: '0.73rem' }}>
+                ℹ️ Per i checkpoint multimodali (visione/audio), la conversione GGUF quantizza il modello di linguaggio (LLM core) per l'esecuzione ad altissima velocità.
               </div>
             )}
             {model.already_converted && (

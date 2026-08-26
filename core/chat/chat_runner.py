@@ -85,12 +85,25 @@ def _sanitize_history_message(content: str) -> str:
     clean = re.sub(r'SYSTEM\s+"""[\s\S]*?"""', '', clean, flags=re.IGNORECASE)
     clean = re.sub(r'Ruolo\s+attivo:[\s\S]*?\n', '', clean, flags=re.IGNORECASE)
     clean = re.sub(r'Analyze\s+User\s+Input:[\s\S]*?(?:Final\s+Output\s+Generation:|Proceeds\.?|✅|\n\n)', '', clean, flags=re.IGNORECASE)
-    clean = re.sub(r'<think>[\s\S]*?</think>', '', clean, flags=re.IGNORECASE)
+    clean = re.sub(r'<(think|thinking|thought|reasoning)>[\s\S]*?</\1>', '', clean, flags=re.IGNORECASE)
+    clean = re.sub(r'<\|channel\>thought[\s\S]*?<channel\|>', '', clean, flags=re.IGNORECASE)
+    clean = re.sub(r'<\|thought\|>[\s\S]*?</\|thought\|>', '', clean, flags=re.IGNORECASE)
+    clean = re.sub(r'<\|channel\>thought', '', clean, flags=re.IGNORECASE)
+    clean = re.sub(r'<channel\|>', '', clean, flags=re.IGNORECASE)
+    clean = re.sub(r'^thought\s*\n', '', clean, flags=re.IGNORECASE)
     clean = re.sub(r'📁\s*\*\*File salvati con successo su disco:\*\*[\s\S]*$', '', clean, flags=re.IGNORECASE)
     return clean.strip()
 
 
-_THINK_TAG_RE = re.compile(r"</?(?:think|thinking|reasoning|rationale|scratchpad)>", re.IGNORECASE)
+_THINK_TAG_RE = re.compile(
+    r"</?(?:think|thinking|reasoning|rationale|scratchpad|thought)>"
+    r"|<\|channel\>thought"
+    r"|<\|channel\|\>thought"
+    r"|<channel\|>"
+    r"|<\|channel\|\>"
+    r"|</?\|?thought\|?>",
+    re.IGNORECASE
+)
 
 
 def _new_cancellation_token():
@@ -134,13 +147,18 @@ def _resolve_sampling(model, provider_key, provider_cfg, profile, reasoning):
 class _ThinkTagRouter:
     """Split a token stream into answer text and reasoning text on the fly.
 
-    Cleanly routes `<think>...</think>` blocks to the thinking channel,
-    holding back only partial tag prefixes like `<th` until resolved.
+    Cleanly routes `<think>...</think>`, `<|channel>thought...<channel|>`, etc.
+    blocks to the thinking channel, holding back only partial tag prefixes like `<th` until resolved.
     """
 
     def __init__(self):
         self._buffer = ""
         self._in_thinking = False
+
+    @staticmethod
+    def _is_close_tag(tag: str) -> bool:
+        t = tag.lower()
+        return t.startswith("</") or "channel|" in t or "/thought" in t
 
     def feed(self, text: str) -> list[tuple[str, str]]:
         """Return [(channel, text), …] where channel is 'token' or 'thinking'."""
@@ -154,12 +172,12 @@ class _ThinkTagRouter:
             before = self._buffer[:match.start()]
             if before:
                 out.append(("thinking" if self._in_thinking else "token", before))
-            self._in_thinking = not match.group().startswith("</")
+            self._in_thinking = not self._is_close_tag(match.group())
             self._buffer = self._buffer[match.end():]
 
-        # Hold back trailing '<' that might be part of an incoming <think> or </think> tag
+        # Hold back trailing '<' that might be part of an incoming tag (up to 18 chars for <|channel>thought)
         cut = self._buffer.rfind("<")
-        if cut != -1 and len(self._buffer) - cut <= 12:
+        if cut != -1 and len(self._buffer) - cut <= 18:
             emit, self._buffer = self._buffer[:cut], self._buffer[cut:]
         else:
             emit, self._buffer = self._buffer, ""

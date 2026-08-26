@@ -21,10 +21,17 @@ function cleanModelTags(text) {
   if (!text) return text;
   let cleaned = text;
 
-  // 1. Remove XML thinking tags
-  cleaned = cleaned.replace(/<(think|thinking|Thought|reasoning|Rationale|scratchpad)>[\s\S]*?<\/\1>/gi, '');
+  // 1. Remove XML and channel thinking tags
+  cleaned = cleaned.replace(/<(think|thinking|Thought|thought|reasoning|Rationale|scratchpad)>[\s\S]*?<\/\1>/gi, '');
+  cleaned = cleaned.replace(/<\|channel\>thought[\s\S]*?<channel\|>/gi, '');
+  cleaned = cleaned.replace(/<\|thought\|>[\s\S]*?<\/\|thought\|>/gi, '');
   // Unclosed reasoning block (stream cut short): drop it rather than render it.
-  cleaned = cleaned.replace(/<(think|thinking|reasoning|scratchpad)>[\s\S]*$/gi, '');
+  cleaned = cleaned.replace(/<(think|thinking|reasoning|scratchpad|thought)>[\s\S]*$/gi, '');
+  cleaned = cleaned.replace(/<\|channel\>thought[\s\S]*$/gi, '');
+  cleaned = cleaned.replace(/<\|thought\|>[\s\S]*$/gi, '');
+  cleaned = cleaned.replace(/<\|channel\>thought/gi, '');
+  cleaned = cleaned.replace(/<channel\|>/gi, '');
+  cleaned = cleaned.replace(/^thought\s*\n/i, '');
 
   // 2. Remove "Here's a thinking process:" and English self-analysis blocks
   cleaned = cleaned.replace(/^(?:We\s+need\s+to|We\s+must|Need\s+(?:maybe|to|include|ensure)|Let'?s\s+(?:craft|think|final|structure)|Let\s+me\s+think|The\s+instruction:|Potential\s+issue:|Here'?s\s+a\s+thinking\s+process|Analyze\s+User\s+Input|Determine\s+Output\s+Structure|Draft\s+Content|Self-Correction|Execution|Plan|Requirements\s+from\s+System\s+Prompt)[\s\S]*?(?=\n#|\nEcco|\n1️⃣|\n[A-ZÀ-Ü]|\n\{|\n\n|\Z)/gi, '');

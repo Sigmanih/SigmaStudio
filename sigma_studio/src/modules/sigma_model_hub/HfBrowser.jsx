@@ -82,6 +82,58 @@ const SORT_OPTIONS = [
   { id: 'size_desc', label: '💾 Peso Maggiore prima (GB ↓)' },
 ];
 
+const FEATURED_PROVIDERS = [
+  { id: 'sigmanih', label: '⚡ Sigmanih (Ufficiale)', query: 'sigmanih', color: '#00d2ff', bg: 'rgba(0, 210, 255, 0.15)', border: 'rgba(0, 210, 255, 0.4)' },
+  { id: 'thudm', label: '🏮 GLM / THUDM', query: 'THUDM', color: '#ffb86c', bg: 'rgba(255, 184, 108, 0.15)', border: 'rgba(255, 184, 108, 0.4)' },
+  { id: 'qwen', label: '⚡ Qwen', query: 'Qwen', color: '#10b981', bg: 'rgba(16, 185, 129, 0.15)', border: 'rgba(16, 185, 129, 0.4)' },
+  { id: 'deepseek', label: '🧠 DeepSeek', query: 'deepseek-ai', color: '#38bdf8', bg: 'rgba(56, 189, 248, 0.15)', border: 'rgba(56, 189, 248, 0.4)' },
+  { id: 'llama', label: '🦙 Meta LLaMA', query: 'meta-llama', color: '#818cf8', bg: 'rgba(129, 140, 248, 0.15)', border: 'rgba(129, 140, 248, 0.4)' },
+  { id: 'mistral', label: '⚡ Mistral AI', query: 'mistralai', color: '#f59e0b', bg: 'rgba(245, 158, 11, 0.15)', border: 'rgba(245, 158, 11, 0.4)' },
+  { id: 'gemma', label: '💎 Gemma (Google)', query: 'google', color: '#ec4899', bg: 'rgba(236, 72, 153, 0.15)', border: 'rgba(236, 72, 153, 0.4)' },
+  { id: 'microsoft', label: '🔷 Phi (Microsoft)', query: 'microsoft', color: '#00d2ff', bg: 'rgba(0, 210, 255, 0.15)', border: 'rgba(0, 210, 255, 0.4)' },
+  { id: 'bartowski', label: '🚀 Bartowski (GGUF)', query: 'bartowski', color: '#34d399', bg: 'rgba(52, 211, 153, 0.15)', border: 'rgba(52, 211, 153, 0.4)' },
+  { id: 'unsloth', label: '⚡ Unsloth (GGUF)', query: 'unsloth', color: '#c084fc', bg: 'rgba(192, 132, 252, 0.15)', border: 'rgba(192, 132, 252, 0.4)' },
+];
+
+const getProviderBadge = (m) => {
+  if (!m) return null;
+  const auth = (m.author || '').toLowerCase();
+  const id = (m.id || '').toLowerCase();
+  if (auth === 'sigmanih' || id.startsWith('sigmanih/')) {
+    return {
+      label: '⚡ Sigmanih Ufficiale',
+      color: '#00d2ff',
+      bg: 'rgba(0, 210, 255, 0.15)',
+      border: '1px solid rgba(0, 210, 255, 0.4)'
+    };
+  }
+  if (auth === 'thudm' || auth === 'zhipuai' || id.includes('glm')) {
+    return {
+      label: '🏮 GLM (THUDM)',
+      color: '#ffb86c',
+      bg: 'rgba(255, 184, 108, 0.15)',
+      border: '1px solid rgba(255, 184, 108, 0.4)'
+    };
+  }
+  if (['bartowski', 'unsloth', 'thebloke', 'mradermacher', 'turboderp', 'casperhansen'].includes(auth)) {
+    return {
+      label: '🚀 Premier GGUF',
+      color: '#34d399',
+      bg: 'rgba(52, 211, 153, 0.15)',
+      border: '1px solid rgba(52, 211, 153, 0.4)'
+    };
+  }
+  if (m.is_official) {
+    return {
+      label: '🛡️ Ufficiale',
+      color: '#3b82f6',
+      bg: 'rgba(59, 130, 246, 0.15)',
+      border: '1px solid rgba(59, 130, 246, 0.3)'
+    };
+  }
+  return null;
+};
+
 const getModelTargetQuantLabel = (m, preferredQuant = 'Q4_K_M', activeFilterQuant = 'all') => {
   if (!m) return 'Modello';
   const text = `${m.id || ''} ${m.name || ''} ${m.precision || ''} ${m.default_file || ''}`.toUpperCase().replace(/-/g, '_');
@@ -529,6 +581,40 @@ export default function HfBrowser({ isLight, addToast, onDownloadStarted, active
           )}
         </div>
 
+        {/* Quick Featured Providers Chips */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', overflowX: 'auto', paddingBottom: '2px' }}>
+          <span style={{ fontSize: '0.66rem', fontWeight: 800, color: textMuted, whiteSpace: 'nowrap', textTransform: 'uppercase', marginRight: '2px' }}>
+            Provider:
+          </span>
+          {FEATURED_PROVIDERS.map(p => {
+            const isSelected = search.toLowerCase() === p.query.toLowerCase();
+            return (
+              <button
+                key={p.id}
+                onClick={() => {
+                  if (isSelected) {
+                    setSearch('');
+                  } else {
+                    setSearch(p.query);
+                  }
+                }}
+                style={{
+                  display: 'flex', alignItems: 'center', gap: '4px',
+                  padding: '5px 10px', borderRadius: '8px',
+                  background: isSelected ? p.bg : subBg,
+                  border: isSelected ? `1.5px solid ${p.color}` : subBorder,
+                  color: isSelected ? p.color : textPrimary,
+                  fontSize: '0.74rem', fontWeight: 700,
+                  cursor: 'pointer', whiteSpace: 'nowrap', transition: 'all 0.15s ease'
+                }}
+                title={`Filtra per ${p.label}`}
+              >
+                {p.label}
+              </button>
+            );
+          })}
+        </div>
+
         {/* Bottom Row: 5 Clean Select Dropdowns (Category, Size, Params, Format, Sort) */}
         <div className="mh-filter-selects-grid">
           {/* 1. CATEGORIA */}
@@ -797,15 +883,19 @@ export default function HfBrowser({ isLight, addToast, onDownloadStarted, active
                         <span style={{ fontSize: '0.62rem', color: textMuted, textTransform: 'uppercase', fontWeight: 800, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '120px' }}>
                           {m.author}
                         </span>
-                        {m.is_official && (
-                          <span style={{
-                            fontSize: '0.54rem', padding: '1px 4px', borderRadius: '3px',
-                            background: 'rgba(59, 130, 246, 0.15)', color: '#3b82f6', border: '1px solid rgba(59, 130, 246, 0.3)',
-                            fontWeight: 800, display: 'flex', alignItems: 'center', gap: '2px', flexShrink: 0
-                          }}>
-                            <ShieldCheck size={9} /> Ufficiale
-                          </span>
-                        )}
+                        {(() => {
+                          const pBadge = getProviderBadge(m);
+                          if (!pBadge) return null;
+                          return (
+                            <span style={{
+                              fontSize: '0.54rem', padding: '1px 5px', borderRadius: '3px',
+                              background: pBadge.bg, color: pBadge.color, border: pBadge.border,
+                              fontWeight: 800, display: 'flex', alignItems: 'center', gap: '2px', flexShrink: 0
+                            }}>
+                              <ShieldCheck size={9} /> {pBadge.label}
+                            </span>
+                          );
+                        })()}
                       </div>
 
                       <div style={{ display: 'flex', alignItems: 'center', gap: '4px', flexShrink: 0 }}>

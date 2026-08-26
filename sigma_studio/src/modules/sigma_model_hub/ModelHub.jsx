@@ -29,8 +29,9 @@ export default function ModelHub({ addToast, openTab }) {
   const { theme } = useApp();
   const isLight = theme === 'light';
 
-  const [activeTab, setActiveTab] = useState('browse'); // 'optimizer' | 'browse' | 'downloads' | 'inventory' | 'settings'
+  const [activeTab, setActiveTab] = useState('browse'); // 'browse' | 'inventory' | 'converter' | 'settings'
   const [deployTargetModel, setDeployTargetModel] = useState(null);
+  const [preselectedConvertModel, setPreselectedConvertModel] = useState('');
 
 
   // Active Downloads Tracking
@@ -378,6 +379,7 @@ export default function ModelHub({ addToast, openTab }) {
               ? `💾 Modelli Locali & Storage (${currentRunningTask ? `${currentRunningTask.progress_pct}%` : totalActiveTasksCount} in corso)`
               : '💾 Modelli Locali & Storage'
           },
+          { id: 'converter', label: '⚡ Convertitore GGUF & Quantizzazione' },
           { id: 'settings', label: '⚙️ Directory & HF Token' },
         ].map(tab => (
           <button
@@ -417,6 +419,18 @@ export default function ModelHub({ addToast, openTab }) {
           onDownloadsChanged={fetchDownloads}
           engineStatus={engineStatus}
           onDeployRequested={m => setDeployTargetModel(m)}
+          onNavigateToConverter={modelName => {
+            setPreselectedConvertModel(modelName);
+            setActiveTab('converter');
+          }}
+        />
+      )}
+
+      {activeTab === 'converter' && (
+        <GgufConverter
+          isLight={isLight}
+          addToast={addToast}
+          initialModel={preselectedConvertModel}
         />
       )}
 

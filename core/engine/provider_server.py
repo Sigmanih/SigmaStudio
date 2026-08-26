@@ -34,6 +34,7 @@ from core.logger import get_logger
 from core.engine.unified_runtime import sigma_engine
 from core.model_paths import list_model_dirs, models_dir, project_root
 from core.ai_providers import load_ai_config, resolve_provider_config, call_ai_model
+from core.engine.evaluation import collect, is_notice
 
 log = get_logger("provider_server")
 
@@ -56,6 +57,174 @@ def is_provider_server_enabled() -> bool:
     except Exception as e:
         log.debug("Error reading provider_server_enabled config: %s", e)
     return True
+
+
+# ------------------------------------------------------------------------------
+# Serving contract
+# ------------------------------------------------------------------------------
+# What a client gets when Sigma Studio is the endpoint rather than the app.
+#
+# The default is the raw model. A client that connects to an OpenAI-compatible
+# URL -- Continue, Cline, an SDK, another evaluation harness -- sent its own
+# system prompt and expects that prompt to be the whole instruction. Injecting
+# a persona underneath it changes an API contract silently: the same request
+# against the same weights answers differently here than anywhere else, and the
+# difference is invisible in the request and in the response.
+#
+# Studio's own chat is unaffected: it goes through the chat runner, which
+# assembles its persona, its tools and its memory explicitly, and passes them
+# as messages like any other client would.
+
+
+def serving_persona() -> str:
+    """
+    The system prompt to add when the client sent none. Normally nothing.
+
+    Turned on with ``"proxy_persona"`` in the provider config, for the case
+    where somebody is deliberately exposing *Sigma Assistant* rather than the
+    model underneath it. Off by default because the honest reading of "serve
+    this model over an API" is: serve this model.
+    """
+    try:
+        cfg_path = _get_config_path()
+        if os.path.exists(cfg_path):
+            with open(cfg_path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+            persona = data.get("proxy_persona")
+            if persona is True:
+                from core.engine.unified_runtime import DEFAULT_SYSTEM_PROMPT
+                return DEFAULT_SYSTEM_PROMPT
+            if isinstance(persona, str) and persona.strip():
+                return persona.strip()
+    except Exception as exc:
+        log.debug("Error reading proxy_persona config: %s", exc)
+    return ""
+
+
+def _split_conversation(messages: List[Dict[str, Any]]) -> Tuple[str, List[Dict[str, str]]]:
+    """
+    The client's system prompt and the client's turns, unchanged.
+
+    Several system messages are joined rather than reduced to the last one:
+    OpenAI clients legitimately send a stack of them (a base instruction, then
+    a per-request rider), and keeping only the final one drops the base.
+    """
+    system_parts: List[str] = []
+    conversation: List[Dict[str, str]] = []
+
+    for message in messages or []:
+        if not isinstance(message, dict):
+            continue
+        role = str(message.get("role") or "user").strip().lower()
+        content = message.get("content", "")
+        if isinstance(content, (list, dict)):
+            # Multimodal content parts: keep the text, which is what a text
+            # model can act on, instead of stringifying the whole structure.
+            if isinstance(content, list):
+                content = "".join(
+                    part.get("text", "") for part in content
+                    if isinstance(part, dict) and part.get("type") == "text"
+                )
+            else:
+                content = json.dumps(content, ensure_ascii=False)
+        content = "" if content is None else str(content)
+
+        if role == "system":
+            if content:
+                system_parts.append(content)
+        elif content or role == "assistant":
+            conversation.append({"role": role, "content": content})
+
+    system_prompt = "\n\n".join(system_parts)
+    if not system_prompt:
+        system_prompt = serving_persona()
+    if system_prompt:
+        conversation.insert(0, {"role": "system", "content": system_prompt})
+    if not any(m["role"] != "system" for m in conversation):
+        conversation.append({"role": "user", "content": "Ciao"})
+    return system_prompt, conversation
+
+
+def _sampler_from_request(
+    model_name: str,
+    temperature: Optional[float],
+    max_tokens: int,
+    top_p: Optional[float],
+    body: Optional[Dict[str, Any]] = None,
+):
+    """
+    The sampler the client asked for, with the model's recipe only where it did not.
+
+    Before this, top_p arrived at the endpoint and was dropped on the floor,
+    stop sequences were never forwarded, and seed was ignored -- so an
+    OpenAI-compatible client could not make this endpoint deterministic even by
+    asking. Anything the request does not mention still falls back to the family
+    recipe, which is the right default for a chat client that sends nothing.
+    """
+    from core.engine.sampling import SamplingParams
+
+    body = body or {}
+    params = SamplingParams.resolve(model_name=model_name or "")
+
+    overrides: Dict[str, Any] = {}
+    if temperature is not None:
+        overrides["temperature"] = float(temperature)
+    if max_tokens:
+        overrides["max_tokens"] = int(max_tokens)
+    if top_p is not None:
+        overrides["top_p"] = float(top_p)
+    for key, cast in (("top_k", int), ("min_p", float), ("seed", int),
+                      ("num_ctx", int)):
+        if body.get(key) is not None:
+            try:
+                overrides[key] = cast(body[key])
+            except (TypeError, ValueError):
+                pass
+    penalty = body.get("repetition_penalty", body.get("frequency_penalty"))
+    if penalty is not None:
+        try:
+            # OpenAI's frequency_penalty is additive around 0; llama-style
+            # repeat_penalty is multiplicative around 1. Mapping one onto the
+            # other is the only way a client that speaks OpenAI can reach this
+            # knob at all, and 0 must keep meaning "no penalty".
+            value = float(penalty)
+            overrides["repeat_penalty"] = value if value >= 1.0 else 1.0 + max(value, 0.0)
+        except (TypeError, ValueError):
+            pass
+
+    if overrides:
+        params = params.with_overrides(**overrides)
+
+    stop = body.get("stop")
+    if isinstance(stop, str):
+        stop = [stop]
+    if isinstance(stop, list):
+        from dataclasses import replace
+        params = replace(params, stop=tuple(s for s in stop if isinstance(s, str) and s))
+
+    return params
+
+
+def _thinking_from_request(body: Optional[Dict[str, Any]]) -> Optional[bool]:
+    """
+    Whether the client asked for a reasoning block, in any of the spellings in use.
+
+    Ollama sends ``think``, some OpenAI-compatible gateways send
+    ``chat_template_kwargs.enable_thinking``, and a client that says nothing
+    gets the checkpoint's own default -- which is the only answer that cannot
+    surprise it.
+    """
+    body = body or {}
+    for key in ("think", "thinking", "enable_thinking"):
+        if body.get(key) is not None:
+            return bool(body[key])
+    kwargs = body.get("chat_template_kwargs")
+    if isinstance(kwargs, dict) and kwargs.get("enable_thinking") is not None:
+        return bool(kwargs["enable_thinking"])
+    reasoning = body.get("reasoning")
+    if isinstance(reasoning, dict) and reasoning.get("enabled") is not None:
+        return bool(reasoning["enabled"])
+    return None
 
 
 def set_provider_server_enabled(enabled: bool) -> bool:
@@ -354,14 +523,61 @@ def handle_v1_model_retrieve(self, model_id: str):
     })
 
 
+def _delta_chunk(req_id: str, created_ts: int, model: str, content: str) -> str:
+    """One SSE content delta, in the shape every OpenAI client expects."""
+    payload = {
+        "id": req_id,
+        "object": "chat.completion.chunk",
+        "created": created_ts,
+        "model": model,
+        "choices": [{"index": 0, "delta": {"content": content}, "finish_reason": None}],
+    }
+    return f"data: {json.dumps(payload)}\n\n"
+
+
+def _cut_at_stop(text: str, stop) -> Tuple[str, bool]:
+    """Truncates at the first stop string, reporting whether one was found."""
+    if not stop or not text:
+        return text, False
+    earliest, found = len(text), False
+    for marker in stop:
+        if not marker:
+            continue
+        at = text.find(marker)
+        if at != -1 and at < earliest:
+            earliest, found = at, True
+    return (text[:earliest], True) if found else (text, False)
+
+
+def _estimate_tokens(text: str) -> int:
+    """
+    A token count when the runtime did not give one.
+
+    Not a word count: a tokenizer produces roughly four characters per token on
+    prose and fewer on code, while splitting on whitespace produces one per
+    word. The difference is about a third on English and far more elsewhere,
+    and it lands directly in the tokens-per-second a caller reports.
+    """
+    if not text:
+        return 0
+    return max(1, round(len(text) / 4))
+
+
 def stream_openai_chat_generator(
     messages: List[Dict[str, str]],
     model: str = "sigmaengine",
-    temperature: float = 0.7,
+    temperature: Optional[float] = None,
     max_tokens: int = 4096,
-    top_p: float = 0.9,
+    top_p: Optional[float] = None,
+    extra: Optional[Dict[str, Any]] = None,
 ) -> Generator[str, None, None]:
-    """Generates standard SSE formatted data chunks for OpenAI chat completions."""
+    """
+    Generates standard SSE formatted data chunks for OpenAI chat completions.
+
+    ``extra`` is the rest of the request body, so knobs the signature does not
+    name -- stop, seed, top_k, think -- still reach the sampler instead of being
+    silently discarded.
+    """
     req_id = f"chatcmpl-{uuid.uuid4().hex[:20]}"
     created_ts = int(time.time())
 
@@ -377,24 +593,14 @@ def stream_openai_chat_generator(
         yield "data: [DONE]\n\n"
         return
 
-    # Extract system prompt and conversation messages
-    system_prompt = "Sei Sigma Assistant, un'architettura AI avanzata, precisa e utile."
-    sanitized_messages = []
-    for msg in messages:
-        role = msg.get("role", "user")
-        content = msg.get("content", "")
-        if role == "system" and content:
-            system_prompt = str(content)
-        else:
-            sanitized_messages.append({"role": role, "content": str(content)})
-
-    if not sanitized_messages:
-        sanitized_messages = [{"role": "user", "content": "Ciao"}]
-
+    # The client's conversation, unchanged: no persona unless one is configured.
+    system_prompt, sanitized_messages = _split_conversation(messages)
     prompt_text = sanitized_messages[-1].get("content", "")
 
     # Resolve target model & execution backend
     resolved_model, exec_mode, prov_cfg = resolve_target_model(model)
+    params = _sampler_from_request(resolved_model, temperature, max_tokens, top_p, extra)
+    thinking = _thinking_from_request(extra)
 
     # Emit initial role delta chunk
     initial_chunk = {
@@ -429,9 +635,9 @@ def stream_openai_chat_generator(
                 endpoint=endpoint,
                 api_url=api_url,
                 api_key=api_key,
-                temperature=temperature,
-                max_tokens=max_tokens,
-                top_p=top_p,
+                temperature=params.temperature,
+                max_tokens=params.max_tokens,
+                top_p=params.top_p,
                 request_timeout=300
             )
             if err:
@@ -459,30 +665,39 @@ def stream_openai_chat_generator(
 
     else:
         # Execution Mode: Native Local SigmaEngine (CUDA/MPS/DirectML + Sharding)
+        emitted = ""
         for chunk in sigma_engine.generate_stream(
             prompt=prompt_text,
             system_prompt=system_prompt,
-            temperature=temperature,
-            max_tokens=max_tokens,
             model_name=resolved_model,
             messages=sanitized_messages,
+            params=params,
+            thinking=thinking,
         ):
             token = chunk.get("token", "")
-            if token:
-                payload = {
-                    "id": req_id,
-                    "object": "chat.completion.chunk",
-                    "created": created_ts,
-                    "model": model,
-                    "choices": [
-                        {
-                            "index": 0,
-                            "delta": {"content": token},
-                            "finish_reason": None
-                        }
-                    ]
-                }
-                yield f"data: {json.dumps(payload)}\n\n"
+            if is_notice(chunk):
+                # Progress narration belongs in Studio's own bubble, not in an
+                # API response: a client concatenating deltas would receive
+                # "Caricamento pesi modello..." as part of the assistant's
+                # answer. A failure still has to reach the client, so only the
+                # engine's error text is forwarded.
+                if not chunk.get("error") or not token:
+                    continue
+            if not token:
+                continue
+
+            # Stop sequences the runtime could not enforce itself. Checked on
+            # the accumulated text, because a stop string can straddle two
+            # tokens and would never be seen in either one alone.
+            previous, emitted = emitted, emitted + token
+            trimmed, hit_stop = _cut_at_stop(emitted, params.stop)
+            if hit_stop:
+                tail = trimmed[len(previous):] if len(trimmed) > len(previous) else ""
+                if tail:
+                    yield _delta_chunk(req_id, created_ts, model, tail)
+                break
+
+            yield _delta_chunk(req_id, created_ts, model, token)
 
     # Final stop chunk + [DONE]
     final_chunk = {
@@ -505,9 +720,10 @@ def stream_openai_chat_generator(
 def execute_openai_chat_non_stream(
     messages: List[Dict[str, str]],
     model: str = "sigmaengine",
-    temperature: float = 0.7,
+    temperature: Optional[float] = None,
     max_tokens: int = 4096,
-    top_p: float = 0.9,
+    top_p: Optional[float] = None,
+    extra: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     """Generates standard non-streaming JSON completion in OpenAI format."""
     req_id = f"chatcmpl-{uuid.uuid4().hex[:20]}"
@@ -522,23 +738,17 @@ def execute_openai_chat_non_stream(
             }
         }
 
-    system_prompt = "Sei Sigma Assistant, un'architettura AI avanzata, precisa e utile."
-    sanitized_messages = []
-    for msg in messages:
-        role = msg.get("role", "user")
-        content = msg.get("content", "")
-        if role == "system" and content:
-            system_prompt = str(content)
-        else:
-            sanitized_messages.append({"role": role, "content": str(content)})
-
-    if not sanitized_messages:
-        sanitized_messages = [{"role": "user", "content": "Ciao"}]
-
+    system_prompt, sanitized_messages = _split_conversation(messages)
     prompt_text = sanitized_messages[-1].get("content", "")
     resolved_model, exec_mode, prov_cfg = resolve_target_model(model)
+    params = _sampler_from_request(resolved_model, temperature, max_tokens, top_p, extra)
+    thinking = _thinking_from_request(extra)
 
     full_content = ""
+    finish_reason = "stop"
+    prompt_tokens = 0
+    completion_tokens = 0
+
     if exec_mode == "cloud":
         ai_cfg = load_ai_config()
         p_name = prov_cfg.get("provider", "openai")
@@ -550,30 +760,49 @@ def execute_openai_chat_non_stream(
             endpoint=prov_cfg.get("endpoint", ""),
             api_url=prov_cfg.get("api_url", ""),
             api_key=prov_cfg.get("api_key", ""),
-            temperature=temperature,
-            max_tokens=max_tokens,
-            top_p=top_p,
+            temperature=params.temperature,
+            max_tokens=params.max_tokens,
+            top_p=params.top_p,
             request_timeout=300
         )
         if err:
             full_content = f"⚠️ Errore Cloud Provider ({p_name}): {err}"
     else:
-        tokens = []
-        for chunk in sigma_engine.generate_stream(
+        answer = collect(sigma_engine.generate_stream(
             prompt=prompt_text,
             system_prompt=system_prompt,
-            temperature=temperature,
-            max_tokens=max_tokens,
             model_name=resolved_model,
             messages=sanitized_messages,
-        ):
-            t = chunk.get("token", "")
-            if t:
-                tokens.append(t)
-        full_content = "".join(tokens)
+            params=params,
+            thinking=thinking,
+        ))
+        if answer.error and not answer.text:
+            return {
+                "error": {
+                    "message": answer.error,
+                    "type": "engine_error",
+                    "code": "inference_failed",
+                }
+            }
+        full_content, _ = _cut_at_stop(answer.text, params.stop)
+        prompt_tokens = answer.prompt_tokens
+        completion_tokens = answer.tokens
+        if completion_tokens and completion_tokens >= params.max_tokens:
+            # The budget ran out mid-answer. Reporting "stop" here tells a
+            # client the model was done when it was cut off, and an agent that
+            # believes it will not retry with a larger budget.
+            finish_reason = "length"
 
-    prompt_tokens_est = max(1, sum(len(m.get("content", "").split()) for m in sanitized_messages) * 2)
-    completion_tokens_est = max(1, len(full_content.split()))
+    # Real counts where the engine reported them. The estimate that used to
+    # stand in for them counted whitespace-separated words, which understates a
+    # tokenizer by roughly a third on English and much more on code -- and it
+    # was the number the benchmark divided by to report tokens per second.
+    if not prompt_tokens:
+        prompt_tokens = _estimate_tokens(
+            "\n".join(m.get("content", "") for m in sanitized_messages)
+        )
+    if not completion_tokens:
+        completion_tokens = _estimate_tokens(full_content)
 
     return {
         "id": req_id,
@@ -587,13 +816,13 @@ def execute_openai_chat_non_stream(
                     "role": "assistant",
                     "content": full_content
                 },
-                "finish_reason": "stop"
+                "finish_reason": finish_reason
             }
         ],
         "usage": {
-            "prompt_tokens": prompt_tokens_est,
-            "completion_tokens": completion_tokens_est,
-            "total_tokens": prompt_tokens_est + completion_tokens_est
+            "prompt_tokens": prompt_tokens,
+            "completion_tokens": completion_tokens,
+            "total_tokens": prompt_tokens + completion_tokens
         }
     }
 
@@ -760,18 +989,8 @@ def stream_ollama_chat_generator(
         yield json.dumps({"error": "SigmaEngine Provider Server è disabilitato."}) + "\n"
         return
 
-    system_prompt = "Sei Sigma Assistant, un'architettura AI avanzata, precisa e utile."
-    sanitized_messages = []
-    for msg in messages:
-        role = msg.get("role", "user")
-        content = msg.get("content", "")
-        if role == "system" and content:
-            system_prompt = str(content)
-        else:
-            sanitized_messages.append({"role": role, "content": str(content)})
-
-    if not sanitized_messages:
-        sanitized_messages = [{"role": "user", "content": "Ciao"}]
+    # The client's conversation, unchanged: no persona unless one is configured.
+    system_prompt, sanitized_messages = _split_conversation(messages)
 
     prompt_text = sanitized_messages[-1].get("content", "")
     resolved_model, exec_mode, prov_cfg = resolve_target_model(model)
@@ -821,6 +1040,11 @@ def stream_ollama_chat_generator(
             messages=sanitized_messages,
         ):
             token = chunk.get("token", "")
+            # Engine narration ("caricamento pesi...", queue notices) is UI
+            # text, not the model's answer: an Ollama client concatenates
+            # every delta it receives.
+            if is_notice(chunk) and not chunk.get("error"):
+                continue
             if token:
                 token_count += 1
                 line_obj = {
@@ -867,18 +1091,8 @@ def execute_ollama_chat_non_stream(
     if not is_provider_server_enabled():
         return {"error": "SigmaEngine Provider Server è disabilitato."}
 
-    system_prompt = "Sei Sigma Assistant, un'architettura AI avanzata, precisa e utile."
-    sanitized_messages = []
-    for msg in messages:
-        role = msg.get("role", "user")
-        content = msg.get("content", "")
-        if role == "system" and content:
-            system_prompt = str(content)
-        else:
-            sanitized_messages.append({"role": role, "content": str(content)})
-
-    if not sanitized_messages:
-        sanitized_messages = [{"role": "user", "content": "Ciao"}]
+    # The client's conversation, unchanged: no persona unless one is configured.
+    system_prompt, sanitized_messages = _split_conversation(messages)
 
     prompt_text = sanitized_messages[-1].get("content", "")
     resolved_model, exec_mode, prov_cfg = resolve_target_model(model)
@@ -913,6 +1127,8 @@ def execute_ollama_chat_non_stream(
             messages=sanitized_messages,
         ):
             t = chunk.get("token", "")
+            if is_notice(chunk) and not chunk.get("error"):
+                continue
             if t:
                 tokens.append(t)
         full_text = "".join(tokens)
@@ -982,13 +1198,18 @@ def stream_ollama_generate_generator(
     else:
         for chunk in sigma_engine.generate_stream(
             prompt=prompt,
-            system_prompt=system or "Sei Sigma Assistant, un'architettura AI avanzata, precisa e utile.",
+            system_prompt=system or serving_persona(),
             temperature=temperature,
             max_tokens=max_tokens,
             model_name=resolved_model,
             messages=[{"role": "user", "content": prompt}],
         ):
             token = chunk.get("token", "")
+            # Engine narration ("caricamento pesi...", queue notices) is UI
+            # text, not the model's answer: an Ollama client concatenates
+            # every delta it receives.
+            if is_notice(chunk) and not chunk.get("error"):
+                continue
             if token:
                 token_count += 1
                 line_obj = {
@@ -1048,13 +1269,15 @@ def execute_ollama_generate_non_stream(
         tokens = []
         for chunk in sigma_engine.generate_stream(
             prompt=prompt,
-            system_prompt=system or "Sei Sigma Assistant, un'architettura AI avanzata, precisa e utile.",
+            system_prompt=system or serving_persona(),
             temperature=temperature,
             max_tokens=max_tokens,
             model_name=resolved_model,
             messages=[{"role": "user", "content": prompt}],
         ):
             t = chunk.get("token", "")
+            if is_notice(chunk) and not chunk.get("error"):
+                continue
             if t:
                 tokens.append(t)
         full_text = "".join(tokens)
@@ -1084,18 +1307,8 @@ def execute_ollama_chat_non_stream(
     if not is_provider_server_enabled():
         return {"error": "SigmaEngine Provider Server è disabilitato."}
 
-    system_prompt = "Sei Sigma Assistant, un'architettura AI avanzata, precisa e utile."
-    sanitized_messages = []
-    for msg in messages:
-        role = msg.get("role", "user")
-        content = msg.get("content", "")
-        if role == "system" and content:
-            system_prompt = str(content)
-        else:
-            sanitized_messages.append({"role": role, "content": str(content)})
-
-    if not sanitized_messages:
-        sanitized_messages = [{"role": "user", "content": "Ciao"}]
+    # The client's conversation, unchanged: no persona unless one is configured.
+    system_prompt, sanitized_messages = _split_conversation(messages)
 
     prompt_text = sanitized_messages[-1].get("content", "")
     resolved_model, exec_mode, prov_cfg = resolve_target_model(model)
@@ -1130,6 +1343,8 @@ def execute_ollama_chat_non_stream(
             messages=sanitized_messages,
         ):
             t = chunk.get("token", "")
+            if is_notice(chunk) and not chunk.get("error"):
+                continue
             if t:
                 tokens.append(t)
         full_text = "".join(tokens)
@@ -1199,13 +1414,18 @@ def stream_ollama_generate_generator(
     else:
         for chunk in sigma_engine.generate_stream(
             prompt=prompt,
-            system_prompt=system or "Sei Sigma Assistant, un'architettura AI avanzata, precisa e utile.",
+            system_prompt=system or serving_persona(),
             temperature=temperature,
             max_tokens=max_tokens,
             model_name=resolved_model,
             messages=[{"role": "user", "content": prompt}],
         ):
             token = chunk.get("token", "")
+            # Engine narration ("caricamento pesi...", queue notices) is UI
+            # text, not the model's answer: an Ollama client concatenates
+            # every delta it receives.
+            if is_notice(chunk) and not chunk.get("error"):
+                continue
             if token:
                 token_count += 1
                 line_obj = {

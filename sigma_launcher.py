@@ -178,6 +178,76 @@ def activate_venv_env():
     if "PYTHONHOME" in os.environ:
         del os.environ["PYTHONHOME"]
 
+#: Versioni minime che non sono prudenza ma correttezza: sotto questa soglia il
+#: Model Hub scarica checkpoint che il motore non riesce ad aprire, e l'errore
+#: che ne esce ("architettura non riconosciuta") si legge come un download rotto
+#: invece che come una libreria da aggiornare. Deve restare allineata a
+#: requirements/ai-core.txt.
+CRITICAL_VERSIONS = {
+    "transformers": ("5.12.0", "leggere i checkpoint recenti (Gemma 4, Qwen 3)"),
+}
+
+
+def _installed_version(python_exe, module):
+    """La versione del pacchetto dentro il venv, o "" se non e' leggibile."""
+    try:
+        out = subprocess.check_output(
+            [python_exe, "-c",
+             f"import {module}; print(getattr({module}, '__version__', ''))"],
+            stderr=subprocess.DEVNULL, text=True, timeout=60,
+        )
+        return out.strip()
+    except Exception:
+        return ""
+
+
+def _version_tuple(value):
+    numbers = []
+    for chunk in str(value).split("."):
+        digits = "".join(c for c in chunk if c.isdigit())
+        numbers.append(int(digits) if digits else 0)
+    return tuple(numbers[:3])
+
+
+def verify_critical_versions(python_exe):
+    """Controlla cio' che e' davvero installato, non cio' che il file chiedeva.
+
+    pip puo' lasciare una versione vecchia in piedi per un conflitto con un
+    altro pacchetto, e riportarlo come successo. Il costo di scoprirlo dopo e'
+    un benchmark che gira per ore e finisce con "modello non caricabile".
+    """
+    ok = True
+    for module, (minimo, motivo) in CRITICAL_VERSIONS.items():
+        presente = _installed_version(python_exe, module)
+        if not presente:
+            continue
+        if _version_tuple(presente) < _version_tuple(minimo):
+            ok = False
+            print_log(
+                f"[SIGMA] {module} {presente} e' sotto il minimo {minimo} "
+                f"(serve per {motivo}). Aggiorno...", Colors.WARNING,
+            )
+            try:
+                subprocess.check_call([python_exe, "-m", "pip", "install",
+                                       "--upgrade", f"{module}>={minimo}"])
+                presente = _installed_version(python_exe, module)
+                if _version_tuple(presente) >= _version_tuple(minimo):
+                    print_log(f"[SIGMA] {module} aggiornato a {presente}.",
+                              Colors.OKGREEN)
+                    ok = True
+                    continue
+            except subprocess.CalledProcessError as err:
+                print_log(f"[SIGMA] Aggiornamento di {module} non riuscito: {err}",
+                          Colors.WARNING)
+            print_log(
+                f"[SIGMA] {module} resta alla {presente}: i checkpoint che "
+                f"richiedono la {minimo} non si caricheranno. Aggiornalo a mano "
+                f"con `pip install --upgrade {module}`, oppure usa le varianti "
+                f"GGUF che non passano da {module}.", Colors.WARNING,
+            )
+    return ok
+
+
 def install_dependencies(platform_info):
     python_exe, _ = ensure_venv()
     print_log("[SIGMA] Checking and ensuring Python dependencies are installed...", Colors.OKCYAN)
@@ -215,6 +285,10 @@ def install_dependencies(platform_info):
         run_pip(os.path.join(req_dir, "cpu.txt"))
 
     install_gguf_runtime(platform_info)
+
+    # Entrambi i percorsi devono funzionare: il GGUF appena installato e i
+    # checkpoint safetensors, che dipendono dalla versione di transformers.
+    verify_critical_versions(python_exe)
 
     print_log("[SIGMA] Python dependencies ready.", Colors.OKGREEN)
 

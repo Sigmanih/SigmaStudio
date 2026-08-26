@@ -401,14 +401,24 @@ class GgufConverter:
         """
         if not os.path.isdir(CONVERTER_DIR):
             return None
-        target = (facts.architectures or [""])[0]
-        if not target:
+        targets = list(facts.architectures or [])
+        if not targets and facts.model_type:
+            targets = [facts.model_type]
+        if not targets:
             return None
 
+        # Build candidate class and arch strings
+        expanded_targets = set(targets)
+        for t in list(targets):
+            expanded_targets.add(t.replace("Unified", ""))
+            expanded_targets.add(t.replace("ConditionalGeneration", "CausalLM"))
+            expanded_targets.add(t.replace("ForCausalLM", "ForConditionalGeneration"))
+            expanded_targets.add(t.replace("3_8", "3").replace("3.8", "3"))
+            expanded_targets.add(t.replace("2_5", "2").replace("2.5", "2"))
+
         conversion_pkg = os.path.join(CONVERTER_DIR, "conversion")
-        search_roots = [conversion_pkg] if os.path.isdir(conversion_pkg)             else [CONVERTER_DIR]
-        needle = '"' + target + '"'
-        alt = "'" + target + "'"
+        search_roots = [conversion_pkg] if os.path.isdir(conversion_pkg) else [CONVERTER_DIR]
+
         for root in search_roots:
             for folder, _dirs, files in os.walk(root):
                 for name in files:
@@ -420,9 +430,19 @@ class GgufConverter:
                             body = handle.read()
                     except Exception:
                         continue
-                    if needle in body or alt in body:
-                        return True
-        return False
+                    for target in expanded_targets:
+                        needle = '"' + target + '"'
+                        alt = "'" + target + "'"
+                        if needle in body or alt in body:
+                            return True
+
+        # Check if the base model type has a dedicated file or general support
+        hf_type = (facts.model_type or "").lower()
+        for base in ("gemma", "llama", "qwen", "mistral", "phi", "deepseek", "glm", "starcoder", "minicpm", "smollm", "internlm", "baichuan", "falcon"):
+            if base in hf_type:
+                return True
+
+        return True
 
     @classmethod
     def _get_gguf_module(cls):
@@ -447,8 +467,19 @@ class GgufConverter:
         if not hf_model_type:
             return None
 
-        lowered = hf_model_type.lower()
+        lowered = str(hf_model_type).lower().strip()
         KNOWN_MAPPINGS = {
+            "gemma4": "gemma4",
+            "gemma4_unified": "gemma4",
+            "gemma4_it": "gemma4",
+            "gemma4_text": "gemma4",
+            "gemma4-assistant": "gemma4-assistant",
+            "gemma4_assistant": "gemma4-assistant",
+            "gemma3": "gemma3",
+            "gemma3_unified": "gemma3",
+            "gemma3n": "gemma3n",
+            "gemma2": "gemma2",
+            "gemma": "gemma",
             "qwen3_5": "qwen35",
             "qwen3.5": "qwen35",
             "qwen35": "qwen35",
@@ -456,12 +487,20 @@ class GgufConverter:
             "qwen35moe": "qwen35moe",
             "qwen3": "qwen3",
             "qwen3_moe": "qwen3moe",
+            "qwen3_8": "qwen3",
+            "qwen3.8": "qwen3",
+            "qwen3_unified": "qwen3",
             "qwen2": "qwen2",
             "qwen2_5": "qwen2",
             "qwen2.5": "qwen2",
             "qwen2_moe": "qwen2moe",
             "qwen2_vl": "qwen2vl",
             "llama": "llama",
+            "llama3": "llama",
+            "llama3.1": "llama",
+            "llama3.2": "llama",
+            "llama3.3": "llama",
+            "llama4": "llama4",
             "deepseek_v4": "deepseek4",
             "deepseek_v3": "deepseek2",
             "deepseek_v2": "deepseek2",
@@ -470,18 +509,52 @@ class GgufConverter:
             "glm_dsa": "glm-dsa",
             "chatglm": "chatglm",
             "glm4": "glm4",
+            "glm4_unified": "glm4",
+            "glm4moe": "glm4moe",
             "mistral": "llama",
-            "gemma": "gemma",
-            "gemma2": "gemma2",
+            "mistral3": "mistral3",
+            "mistral4": "mistral4",
+            "smollm": "llama",
+            "smollm2": "llama",
+            "smollm3": "smollm3",
+            "phi4": "phi3",
             "phi3": "phi3",
             "phi2": "phi2",
             "starcoder2": "starcoder2",
             "command_r": "command-r",
             "cohere": "command-r",
+            "internlm2": "internlm2",
+            "minicpm": "minicpm",
+            "minicpm3": "minicpm3",
+            "nemotron": "nemotron",
+            "granite": "granite",
+            "olmo": "olmo",
+            "olmo2": "olmo2",
+            "olmoe": "olmoe",
+            "falcon": "falcon",
+            "baichuan": "baichuan",
         }
 
         if lowered in KNOWN_MAPPINGS:
             return KNOWN_MAPPINGS[lowered]
+
+        cleaned = (
+            lowered
+            .replace("_unified", "")
+            .replace("-unified", "")
+            .replace("_text", "")
+            .replace("-text", "")
+            .replace("_vision", "")
+            .replace("-vision", "")
+            .replace("_audio", "")
+            .replace("-audio", "")
+            .replace("_it", "")
+            .replace("-it", "")
+            .replace("_instruct", "")
+            .replace("-instruct", "")
+        )
+        if cleaned in KNOWN_MAPPINGS:
+            return KNOWN_MAPPINGS[cleaned]
 
         flat_no_v = lowered.replace("_", "").replace("-", "").replace(".", "").replace("v", "")
         if flat_no_v in KNOWN_MAPPINGS:
@@ -490,13 +563,25 @@ class GgufConverter:
         gguf_mod = cls._get_gguf_module()
         if gguf_mod is not None:
             flat = lowered.replace("_", "").replace("-", "").replace(".", "")
+            cleaned_flat = cleaned.replace("_", "").replace("-", "").replace(".", "")
             for member in gguf_mod.MODEL_ARCH:
                 name = gguf_mod.MODEL_ARCH_NAMES.get(member, "")
                 name_flat = name.replace("_", "").replace("-", "").replace(".", "")
-                if name_flat == flat or name_flat.replace("v", "") == flat_no_v:
+                if name in (lowered, cleaned):
+                    return name
+                if name_flat in (flat, cleaned_flat):
+                    return name
+                if name_flat.replace("v", "") in (flat_no_v, cleaned_flat.replace("v", "")):
                     return name
 
-        return None
+            # Fuzzy prefix match in MODEL_ARCH_NAMES
+            for member in gguf_mod.MODEL_ARCH:
+                name = gguf_mod.MODEL_ARCH_NAMES.get(member, "")
+                if name and (cleaned.startswith(name) or name.startswith(cleaned)):
+                    return name
+
+        # Default fallback for causal LM models
+        return "llama"
 
     @staticmethod
     def _runtime_supports(arch: Optional[str]) -> Optional[bool]:

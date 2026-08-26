@@ -85,6 +85,14 @@ class DeviceMapBuilder:
         device_map, moves = cls._repair_critical_modules(
             device_map, sizes, max_memory
         )
+        device_map, colocations = cls._colocate_token_consumers(
+            device_map, sizes, max_memory
+        )
+        moves.extend(colocations)
+
+        if cls._weights_are_tied(config):
+            device_map, tie_moves = cls._align_tied_head(device_map, sizes)
+            moves.extend(tie_moves)
 
         report = cls._build_report(device_map, sizes, max_memory, moves)
         log.info(
@@ -197,6 +205,146 @@ class DeviceMapBuilder:
                 "reason": "per-token module kept off CPU",
             })
 
+        return device_map, moves
+
+    @staticmethod
+    def _weights_are_tied(config) -> bool:
+        """Se la tabella dei token e la testa di uscita sono lo stesso tensore.
+
+        Quando lo sono, assegnarle a due schede diverse non produce due copie:
+        ne produce una sola, dove finisce la seconda, mentre la mappa continua a
+        dichiarare la prima. Da li' in poi `hf_device_map` dice una cosa e la
+        memoria ne dice un'altra, gli input vengono spediti dove la mappa
+        indica, e la moltiplicazione fallisce con "Expected all tensors to be on
+        the same device" — un errore che sembra un bug di accelerate e invece e'
+        una mappa che chiede l'impossibile.
+        """
+        for holder in (config, getattr(config, "text_config", None)):
+            if holder is not None and getattr(holder, "tie_word_embeddings", False):
+                return True
+        return False
+
+    @classmethod
+    def _align_tied_head(
+        cls,
+        device_map: Dict[str, Any],
+        sizes: Dict[str, int],
+    ) -> Tuple[Dict[str, Any], List[Dict[str, Any]]]:
+        """
+        Puts the output head on the device of the token table it shares memory with.
+
+        No capacity check, because there is no second allocation to fit: tied
+        weights are one tensor with two names. The planner sizes them as two,
+        so moving them together *releases* memory on the device that loses its
+        copy rather than consuming any on the one that keeps it.
+
+        Getting this wrong is silent and total. The tensor lives wherever the
+        second of the two was placed, while the map keeps promising the first;
+        inputs are then sent to the promised device, and every forward pass
+        dies on "Expected all tensors to be on the same device" -- with a device
+        map that, read on its own, looks perfectly reasonable.
+        """
+        heads = [name for name in device_map if "lm_head" in name]
+        tables = [name for name in device_map
+                  if any(hint in name for hint in ("embed_tokens", "wte",
+                                                   "word_embeddings", "embed_in"))]
+        if not heads or not tables:
+            return device_map, []
+
+        target = device_map[tables[0]]
+        moves: List[Dict[str, Any]] = []
+        for head in heads:
+            if str(device_map[head]) == str(target):
+                continue
+            moves.append({
+                "module": head,
+                "from": str(device_map[head]),
+                "to": target,
+                "size_gb": round(sizes.get(head, 0) / 2**30, 2),
+                "reason": "pesi legati: testa e tabella sono lo stesso tensore",
+            })
+            device_map[head] = target
+        return device_map, moves
+
+    @classmethod
+    def _colocate_token_consumers(
+        cls,
+        device_map: Dict[str, Any],
+        sizes: Dict[str, int],
+        max_memory: Dict[Any, int],
+    ) -> Tuple[Dict[str, Any], List[Dict[str, Any]]]:
+        """
+        Keeps every table indexed by the raw token ids on one device.
+
+        A text-only checkpoint has one such table and the question never comes
+        up. A unified multimodal one has several -- text, vision, audio, and on
+        Gemma 4 a per-layer input embedding -- and `infer_auto_device_map` is
+        free to scatter them, because as far as it can see they are just weights
+        of similar shape. They are not: they all read the same `input_ids`
+        tensor, which exists on exactly one device.
+
+        Accelerate's hooks move a module's *inputs* when that module is called,
+        which covers most of it; what it does not cover is an embedding looked
+        up functionally inside a forward, and that is precisely what fails, with
+        "Expected all tensors to be on the same device". Putting them together
+        removes the question instead of answering it per call site.
+        """
+        gpu_devices = [d for d in max_memory if isinstance(d, int)]
+        consumers = [name for name in device_map if "embed" in name.lower()]
+        if len(consumers) < 2 or not gpu_devices:
+            return device_map, []
+
+        placed = {name: device_map[name] for name in consumers}
+        if len({str(d) for d in placed.values()}) == 1:
+            return device_map, []                     # gia' insieme
+
+        used = cls._usage_by_device(device_map, sizes)
+        totale = sum(sizes.get(name, 0) for name in consumers)
+
+        # Si preferisce la scheda che ne ospita gia' la maggior parte: sposta
+        # meno byte, e quella e' quasi sempre la scheda del testo.
+        peso_per_device: Dict[Any, int] = {}
+        for name, device in placed.items():
+            if isinstance(device, int):
+                peso_per_device[device] = peso_per_device.get(device, 0) + sizes.get(name, 0)
+        candidati = sorted(gpu_devices,
+                           key=lambda d: (-peso_per_device.get(d, 0), d))
+
+        target = None
+        for device in candidati:
+            libero = max_memory.get(device, 0) - used.get(device, 0)
+            gia_qui = peso_per_device.get(device, 0)
+            if libero + gia_qui >= totale + _REPAIR_MARGIN_BYTES:
+                target = device
+                break
+
+        moves: List[Dict[str, Any]] = []
+        if target is None:
+            # Nessuna scheda li tiene tutti. Meglio dirlo che spostarli a forza
+            # e scoprire l'esaurimento memoria a meta' della prima risposta.
+            log.warning(
+                "[DeviceMapBuilder] Le %d tabelle indicizzate dai token pesano "
+                "%.2f GB: nessuna scheda le tiene insieme. Il modello potrebbe "
+                "rifiutare l'input multimodale.",
+                len(consumers), totale / 2**30,
+            )
+            return device_map, moves
+
+        for name in consumers:
+            origin = device_map[name]
+            if str(origin) == str(target):
+                continue
+            needed = sizes.get(name, 0)
+            device_map[name] = target
+            used[target] = used.get(target, 0) + needed
+            used[origin] = max(used.get(origin, 0) - needed, 0)
+            moves.append({
+                "module": name,
+                "from": str(origin),
+                "to": target,
+                "size_gb": round(needed / 2**30, 2),
+                "reason": "tabelle indicizzate dai token tenute insieme",
+            })
         return device_map, moves
 
     @staticmethod

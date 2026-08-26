@@ -24,10 +24,14 @@ log = logging.getLogger("sigma.response_parser")
 _TAG_PATTERNS: dict[str, list[str]] = {
     "thinking": [
         r"<thinking>(.*?)</thinking>",
+        r"<thought>(.*?)</thought>",
         r"<Thought>(.*?)</Thought>",
+        r"<think>(.*?)</think>",
         r"<reasoning>(.*?)</reasoning>",
         r"<Rationale>(.*?)</Rationale>",
         r"<scratchpad>(.*?)</scratchpad>",
+        r"<\|channel\>thought([\s\S]*?)<channel\|>",
+        r"<\|thought\|>([\s\S]*?)<\/\|thought\|>",
     ],
     "container": [
         r"</?response>", r"</?Response>",
@@ -751,6 +755,14 @@ def _clean_meta_reasoning(text: str) -> str:
     """Strip meta-reasoning scratchpads, internal headers, and prompt echo from output."""
     if not text or not isinstance(text, str):
         return text
+
+    # Remove channel/thought blocks
+    text = re.sub(r"<\|channel\>thought[\s\S]*?<channel\|>", "", text, flags=re.IGNORECASE)
+    text = re.sub(r"<\|thought\|>[\s\S]*?</\|thought\|>", "", text, flags=re.IGNORECASE)
+    text = re.sub(r"<(think|thinking|thought|reasoning)>[\s\S]*?</\1>", "", text, flags=re.IGNORECASE)
+    text = re.sub(r"<\|channel\>thought", "", text, flags=re.IGNORECASE)
+    text = re.sub(r"<channel\|>", "", text, flags=re.IGNORECASE)
+    text = re.sub(r"^thought\s*\n", "", text, flags=re.IGNORECASE)
 
     # Remove English thinking starters & chain-of-thought blocks if any leaked into response
     text = re.sub(r"^(?:We\s+need\s+to|We\s+must|Let\'?s\s+craft|Here\'?s\s+a\s+thinking\s+process|Analyze\s+User\s+Input|Determine\s+Output\s+Structure|Draft\s+Content|Self-Correction|Execution|Plan|Requirements\s+from\s+System\s+Prompt)[\s\S]*?(?=\n#|\nEcco|\n1️⃣|\n[A-Z\u00c0-\u00dc]|\n\n|\Z)", "", text, flags=re.IGNORECASE).strip()

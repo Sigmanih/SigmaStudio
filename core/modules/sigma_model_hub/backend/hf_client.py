@@ -153,15 +153,39 @@ def persist_hf_token(token: Optional[str]) -> Dict[str, Any]:
     return {"hf_has_token": bool(token), "written": written}
 
 
-# Recognized verified official organizations and AI labs
+# Recognized verified official organizations, AI labs and premier open-weight providers
 OFFICIAL_ORGANIZATIONS = {
+    # SigmaStudio Ecosystem & User
+    'sigmanih', 'sigma', 'sigmastudio',
+
+    # Frontier Open-Weight Labs & Creators
     'qwen', 'meta-llama', 'deepseek-ai', 'mistralai', 'google', 'microsoft',
-    'anthropic', 'cohereforai', 'thudm', '01-ai', 'nvidia', 'facebook', 'baai',
+    'anthropic', 'cohereforai', 'thudm', 'zhipuai', '01-ai', 'nvidia', 'facebook', 'baai',
     'stabilityai', 'black-forest-labs', 'allenai', 'apple', 'openai', 'tiiuae',
-    'bytedance', 'internlm', 'systran', 'bigcode', 'salesforce', 'openchat'
+    'bytedance', 'internlm', 'shanghai-ai-lab', 'systran', 'bigcode', 'salesforce',
+    'openchat', 'nousresearch', 'upstage', 'snowflake', 'kyutai', 'liquid-ai',
+    'ai21labs', 'minimax', 'kwai', 'kwaivgi', 'deci', 'nexusflow', 'writer',
+
+    # Premier GGUF & Quantization Providers
+    'bartowski', 'mradermacher', 'thebloke', 'unsloth', 'turboderp',
+    'casperhansen', 'mlx-community', 'ggml-org', 'city96', 'undi95',
+    'solidrust', 'second-state', 'lone-striker', 'oobabooga'
 }
 
 OFFICIAL_AUTHOR_MAP = {
+    # Sigma Ecosystem
+    'sigmanih': 'sigmanih',
+    'sigma': 'sigmanih',
+
+    # GLM & THUDM (Zhipu AI)
+    'thudm': 'THUDM',
+    'glm': 'THUDM',
+    'zhipu': 'THUDM',
+    'chatglm': 'THUDM',
+    'cogvideo': 'THUDM',
+    'cogview': 'THUDM',
+
+    # Major Frontier Labs
     'qwen': 'Qwen',
     'llama': 'meta-llama',
     'meta': 'meta-llama',
@@ -181,23 +205,41 @@ OFFICIAL_AUTHOR_MAP = {
     'flux': 'black-forest-labs',
     'apple': 'apple',
     'internlm': 'internlm',
-    'thudm': 'THUDM',
-    'glm': 'THUDM'
+    'allenai': 'allenai',
+    'olmo': 'allenai',
+    'baai': 'BAAI',
+    'tiiuae': 'tiiuae',
+    'falcon': 'tiiuae',
+    'nous': 'NousResearch',
+    'snowflake': 'Snowflake',
+    'smollm': 'HuggingFaceTB',
+    'starcoder': 'bigcode',
+
+    # Famous Quantization & GGUF Creators
+    'bartowski': 'bartowski',
+    'mradermacher': 'mradermacher',
+    'unsloth': 'unsloth',
+    'thebloke': 'TheBloke',
+    'casperhansen': 'casperhansen',
+    'city96': 'city96',
+    'turboderp': 'turboderp',
+    'mlx': 'mlx-community',
 }
 
 
 def is_official_provider(author: str, model_id: str) -> bool:
-    """Checks if the model author or repository organization is an official AI lab or provider."""
+    """Checks if the model author or repository organization is an official AI lab, verified creator or premier provider."""
     auth_low = (author or "").lower().strip()
     id_low = (model_id or "").lower().strip()
     org = id_low.split('/')[0] if '/' in id_low else auth_low
-    
+
     if org in OFFICIAL_ORGANIZATIONS:
         return True
-    return any(o in org for o in [
-        'qwen', 'meta-llama', 'deepseek-ai', 'mistralai', 'google', 'microsoft',
-        'cohereforai', 'nvidia', 'baai', 'stabilityai', 'black-forest-labs',
-        'allenai', 'apple', 'tiiuae', 'bytedance', 'internlm', 'systran', '01-ai', 'thudm'
+    return any(o in org for o in OFFICIAL_ORGANIZATIONS) or any(k in id_low for k in [
+        'sigmanih', 'thudm', 'glm', 'zhipu', 'qwen', 'meta-llama', 'deepseek', 'mistral',
+        'google', 'microsoft', 'cohere', 'nvidia', 'baai', 'stability', 'black-forest',
+        'allenai', 'apple', 'tiiuae', 'bytedance', 'internlm', '01-ai', 'bartowski',
+        'mradermacher', 'unsloth', 'thebloke', 'nousresearch'
     ])
 
 
@@ -289,6 +331,14 @@ def parse_model_specs(model_id: str, name: str, tags: List[str] = None, raw_item
                         total_b = active_b
                         active_label = f"{int(val_m)}M"
                         total_label = f"{int(val_m)}M"
+
+    # Check if assistant / draft / speculative model
+    is_draft = any(k in text for k in ("-assistant", "_assistant", "/assistant", "-draft", "_draft", "speculative"))
+    if is_draft:
+        active_b = 0.5
+        total_b = 0.5
+        active_label = "~0.5B (Draft)"
+        total_label = "~0.5B (Draft Assistant)"
 
     # Refine with exact parameter count from Hugging Face metadata if available
     if raw_item:
@@ -598,6 +648,54 @@ def _matches_quant_filter(quant_filter: str, text_corpus: str, specs: Optional[D
 # Curated Popular Official & Featured Models with direct HF links
 POPULAR_MODELS = [
     {
+        "id": "THUDM/glm-4-9b-chat",
+        "name": "GLM 4 9B Chat",
+        "author": "THUDM",
+        "category": "llm",
+        "params_b": 9.0,
+        "params_label": "9B",
+        "active_params_label": "9B",
+        "total_params_label": "9B",
+        "precision": "FP16 (16-bit)",
+        "size_gb": 18.0,
+        "format": "Safetensors",
+        "downloads": 480000,
+        "likes": 5600,
+        "is_official": True,
+        "created_at": "2024-06-05T10:00:00Z",
+        "last_modified": "2024-06-10T12:00:00Z",
+        "release_date_label": "5 Giu 2024",
+        "description": "Modello conversazionale bilingue ufficiale di Zhipu AI / THUDM con 128k context window.",
+        "quantizations": ["Safetensors (18 GB)", "GGUF Q4_K_M (5.5 GB)"],
+        "pipeline_tag": "text-generation",
+        "default_file": "model.safetensors",
+        "hf_url": "https://huggingface.co/THUDM/glm-4-9b-chat",
+    },
+    {
+        "id": "bartowski/glm-4-9b-chat-GGUF",
+        "name": "GLM 4 9B Chat (GGUF)",
+        "author": "bartowski",
+        "category": "llm",
+        "params_b": 9.0,
+        "params_label": "9B",
+        "active_params_label": "9B",
+        "total_params_label": "9B",
+        "precision": "GGUF Q4_K_M (4-bit)",
+        "size_gb": 5.5,
+        "format": "GGUF",
+        "downloads": 95000,
+        "likes": 1800,
+        "is_official": True,
+        "created_at": "2024-06-06T12:00:00Z",
+        "last_modified": "2024-06-08T14:00:00Z",
+        "release_date_label": "6 Giu 2024",
+        "description": "Quantizzazione GGUF ad altissima efficienza per THUDM GLM-4 9B Chat per inferenza locale rapida.",
+        "quantizations": ["Q4_K_M (5.5 GB)", "Q5_K_M (6.4 GB)", "Q8_0 (9.5 GB)"],
+        "pipeline_tag": "text-generation",
+        "default_file": "glm-4-9b-chat-Q4_K_M.gguf",
+        "hf_url": "https://huggingface.co/bartowski/glm-4-9b-chat-GGUF",
+    },
+    {
         "id": "Qwen/Qwen2.5-Coder-14B-Instruct",
         "name": "Qwen 2.5 Coder 14B Instruct",
         "author": "Qwen",
@@ -707,7 +805,7 @@ POPULAR_MODELS = [
         "format": "GGUF",
         "downloads": 128000,
         "likes": 2400,
-        "is_official": False,
+        "is_official": True,
         "created_at": "2025-01-22T08:00:00Z",
         "last_modified": "2025-01-24T12:30:00Z",
         "release_date_label": "22 Gen 2025",

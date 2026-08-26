@@ -90,8 +90,15 @@ export function cleanTextForSpeech(text) {
   let out = text;
 
   // 1. Thinking / reasoning tags and thoughts are NEVER read aloud
-  out = out.replace(/<(think|thinking|reasoning|Thought|scratchpad)>[\s\S]*?<\/\1>/gi, ' ');
-  out = out.replace(/<(think|thinking|reasoning|scratchpad)>[\s\S]*$/gi, ' ');
+  out = out.replace(/<(think|thinking|reasoning|Thought|scratchpad|thought)>[\s\S]*?<\/\1>/gi, ' ');
+  out = out.replace(/<\|channel\>thought[\s\S]*?<channel\|>/gi, ' ');
+  out = out.replace(/<\|thought\|>[\s\S]*?<\/\|thought\|>/gi, ' ');
+  out = out.replace(/<(think|thinking|reasoning|scratchpad|thought)>[\s\S]*$/gi, ' ');
+  out = out.replace(/<\|channel\>thought[\s\S]*$/gi, ' ');
+  out = out.replace(/<\|thought\|>[\s\S]*$/gi, ' ');
+  out = out.replace(/<\|channel\>thought/gi, ' ');
+  out = out.replace(/<channel\|>/gi, ' ');
+  out = out.replace(/^thought\s*\n/i, ' ');
   out = out.replace(/^(?:We\s+need\s+to|We\s+must|Need\s+(?:maybe|to|include|ensure)|Let'?s\s+(?:craft|think|final|structure)|Let\s+me\s+think|The\s+instruction:|Potential\s+issue:|Here'?s\s+a\s+thinking\s+process|Analyze\s+User\s+Input|Determine\s+Output\s+Structure|Draft\s+Content|Self-Correction|Execution|Plan|Requirements\s+from\s+System\s+Prompt)[\s\S]*?(?=\n#|\nEcco|\n1️⃣|\n[A-ZÀ-Ü]|\n\{|\n\n|\Z)/gi, ' ');
   out = out.replace(/\n*📁\s+\*\*File creati e salvati su disco:\*\*[\s\S]*$/gi, ' ');
   out = out.replace(/\n*###\s+📋\s+Sintesi dei Contenuti Generati[\s\S]*?(?=\n\n|\Z)/gi, ' ');
