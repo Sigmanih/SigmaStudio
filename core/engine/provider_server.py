@@ -102,6 +102,7 @@ def handle_provider_server_toggle(self):
 
 # Default fallback aliases so external tools with hardcoded names always resolve
 STANDARD_ALIASES = [
+    {"id": "sigma", "name": "Sigma (Proxy Principale)", "size": 4.5 * 1024**3, "family": "llama", "quant": "proxy"},
     {"id": "sigmaengine", "name": "SigmaEngine (Auto-Risolto / Nativo)", "size": 4.5 * 1024**3, "family": "llama", "quant": "auto"},
     {"id": "sigma-native:latest", "name": "Sigma Native Local Model", "size": 4.5 * 1024**3, "family": "llama", "quant": "Q4_K_M"},
     {"id": "sigma:latest", "name": "Sigma General Assistant", "size": 4.5 * 1024**3, "family": "llama", "quant": "Q4_K_M"},
@@ -113,6 +114,7 @@ STANDARD_ALIASES = [
     {"id": "claude-3-5-sonnet", "name": "Anthropic Claude 3.5 Sonnet", "size": 4.5 * 1024**3, "family": "claude", "quant": "cloud"},
     {"id": "deepseek-chat", "name": "DeepSeek V3 / Chat", "size": 4.5 * 1024**3, "family": "deepseek", "quant": "cloud"},
 ]
+
 
 
 def get_all_available_models() -> List[Dict[str, Any]]:
@@ -231,12 +233,21 @@ def resolve_target_model(requested_model: Optional[str] = None) -> Tuple[str, st
     Intelligently resolves any requested model name to:
     (resolved_model_name, execution_mode: 'local' | 'cloud', provider_config: dict)
     """
-    alias_keywords = ("sigmaengine", "sigma-native:latest", "sigma:latest", "default", "auto", "native", "")
+    alias_keywords = ("sigma", "sigmaengine", "sigma-native:latest", "sigma:latest", "default", "auto", "native", "")
     req = str(requested_model or "").strip()
     ai_cfg = load_ai_config()
 
-    # 1. Alias or Empty -> Resolve to Resident model or Active configured model or first local model
+    # 1. Alias or Empty -> Resolve to configured sigma_proxy_model, Resident model, or Active model
     if not req or req.lower() in alias_keywords:
+        # User configured explicit proxy model
+        proxy_m = ai_cfg.get("sigma_proxy_model")
+        if proxy_m and proxy_m.lower() not in alias_keywords:
+            from core.model_paths import resolve_model_dir
+            local_path = resolve_model_dir(proxy_m)
+            if local_path:
+                return os.path.basename(local_path.rstrip(os.sep + "/")), "local", {}
+            return proxy_m, "local", {}
+
         if sigma_engine.has_resident_model and sigma_engine.loaded_model_name:
             return sigma_engine.loaded_model_name, "local", {}
 
@@ -253,6 +264,7 @@ def resolve_target_model(requested_model: Optional[str] = None) -> Tuple[str, st
             return os.path.basename(candidates[0].rstrip(os.sep + "/")), "local", {}
 
         return "sigma-native:latest", "local", {}
+
 
     # 2. Check if it corresponds to a local model on disk
     from core.model_paths import resolve_model_dir
@@ -1059,15 +1071,177 @@ def execute_ollama_generate_non_stream(
     }
 
 
+def execute_ollama_chat_non_stream(
+    messages: List[Dict[str, str]],
+    model: str = "sigmaengine",
+    temperature: float = 0.7,
+    max_tokens: int = 4096,
+) -> Dict[str, Any]:
+    """Generates non-streaming Ollama chat response JSON."""
+    start_time = time.perf_counter()
+    now_iso = datetime.datetime.now(datetime.timezone.utc).isoformat()
+
+    if not is_provider_server_enabled():
+        return {"error": "SigmaEngine Provider Server è disabilitato."}
+
+    system_prompt = "Sei Sigma Assistant, un'architettura AI avanzata, precisa e utile."
+    sanitized_messages = []
+    for msg in messages:
+        role = msg.get("role", "user")
+        content = msg.get("content", "")
+        if role == "system" and content:
+            system_prompt = str(content)
+        else:
+            sanitized_messages.append({"role": role, "content": str(content)})
+
+    if not sanitized_messages:
+        sanitized_messages = [{"role": "user", "content": "Ciao"}]
+
+    prompt_text = sanitized_messages[-1].get("content", "")
+    resolved_model, exec_mode, prov_cfg = resolve_target_model(model)
+    full_text = ""
+
+    if exec_mode == "cloud":
+        ai_cfg = load_ai_config()
+        p_name = prov_cfg.get("provider", "openai")
+        full_text, _, err = call_ai_model(
+            messages=sanitized_messages,
+            ai_cfg=ai_cfg,
+            model=resolved_model,
+            provider=p_name,
+            endpoint=prov_cfg.get("endpoint", ""),
+            api_url=prov_cfg.get("api_url", ""),
+            api_key=prov_cfg.get("api_key", ""),
+            temperature=temperature,
+            max_tokens=max_tokens,
+            top_p=0.9,
+            request_timeout=300
+        )
+        if err:
+            full_text = f"⚠️ {err}"
+    else:
+        tokens = []
+        for chunk in sigma_engine.generate_stream(
+            prompt=prompt_text,
+            system_prompt=system_prompt,
+            temperature=temperature,
+            max_tokens=max_tokens,
+            model_name=resolved_model,
+            messages=sanitized_messages,
+        ):
+            t = chunk.get("token", "")
+            if t:
+                tokens.append(t)
+        full_text = "".join(tokens)
+
+    total_dur_ns = int((time.perf_counter() - start_time) * 1e9)
+
+    return {
+        "model": model,
+        "created_at": now_iso,
+        "message": {
+            "role": "assistant",
+            "content": full_text
+        },
+        "done": True,
+        "total_duration": total_dur_ns,
+        "load_duration": 50000000,
+        "prompt_eval_count": max(1, len(prompt_text.split()) * 2),
+        "prompt_eval_duration": 100000000,
+        "eval_count": max(1, len(full_text.split())),
+        "eval_duration": max(1, total_dur_ns - 150000000)
+    }
+
+
+def stream_ollama_generate_generator(
+    prompt: str,
+    system: str = "",
+    model: str = "sigmaengine",
+    temperature: float = 0.7,
+    max_tokens: int = 4096,
+) -> Generator[str, None, None]:
+    """Streams NDJSON formatted line chunks for Ollama /api/generate."""
+    start_time = time.perf_counter()
+    now_iso = datetime.datetime.now(datetime.timezone.utc).isoformat()
+
+    if not is_provider_server_enabled():
+        yield json.dumps({"error": "SigmaEngine Provider Server è disabilitato."}) + "\n"
+        return
+
+    resolved_model, exec_mode, prov_cfg = resolve_target_model(model)
+    token_count = 0
+
+    if exec_mode == "cloud":
+        ai_cfg = load_ai_config()
+        p_name = prov_cfg.get("provider", "openai")
+        try:
+            full_res, _, err = call_ai_model(
+                messages=[{"role": "user", "content": prompt}],
+                ai_cfg=ai_cfg,
+                model=resolved_model,
+                provider=p_name,
+                endpoint=prov_cfg.get("endpoint", ""),
+                api_url=prov_cfg.get("api_url", ""),
+                api_key=prov_cfg.get("api_key", ""),
+                temperature=temperature,
+                max_tokens=max_tokens,
+                top_p=0.9,
+                request_timeout=300
+            )
+            if full_res:
+                words = full_res.split(" ")
+                for i, w in enumerate(words):
+                    chunk_text = w + (" " if i < len(words) - 1 else "")
+                    token_count += 1
+                    yield json.dumps({"model": model, "created_at": now_iso, "response": chunk_text, "done": False}) + "\n"
+        except Exception as e:
+            yield json.dumps({"error": str(e)}) + "\n"
+    else:
+        for chunk in sigma_engine.generate_stream(
+            prompt=prompt,
+            system_prompt=system or "Sei Sigma Assistant, un'architettura AI avanzata, precisa e utile.",
+            temperature=temperature,
+            max_tokens=max_tokens,
+            model_name=resolved_model,
+            messages=[{"role": "user", "content": prompt}],
+        ):
+            token = chunk.get("token", "")
+            if token:
+                token_count += 1
+                line_obj = {
+                    "model": model,
+                    "created_at": now_iso,
+                    "response": token,
+                    "done": False
+                }
+                yield json.dumps(line_obj) + "\n"
+
+    total_dur_ns = int((time.perf_counter() - start_time) * 1e9)
+    final_obj = {
+        "model": model,
+        "created_at": now_iso,
+        "response": "",
+        "done": True,
+        "total_duration": total_dur_ns,
+        "eval_count": max(1, token_count)
+    }
+    yield json.dumps(final_obj) + "\n"
+
+
 # ==============================================================================
 # 3. SIGMA ENGINE SERVER INFO
 # ==============================================================================
 
 def handle_engine_server_info(self):
-    """GET /api/engine/server_info — Returns comprehensive connection info for external clients."""
+    """GET /api/engine/server_info — Diagnostic metadata on engine and active server endpoints."""
     models = get_all_available_models()
     resident = sigma_engine.loaded_model_name or "Nessun modello caricato"
     is_enabled = is_provider_server_enabled()
+    ai_cfg = load_ai_config()
+    server_port = int(ai_cfg.get("provider_server_port") or 8000)
+    server_host = str(ai_cfg.get("provider_server_host") or "localhost")
+    proxy_alias = str(ai_cfg.get("sigma_proxy_alias") or "sigma")
+    base_url = f"http://{server_host}:{server_port}"
 
     return self.send_json_response({
         "success": True,
@@ -1080,13 +1254,21 @@ def handle_engine_server_info(self):
         "has_resident_model": sigma_engine.has_resident_model,
         "total_models_available": len(models),
         "available_models": models,
+        "port": server_port,
+        "host": server_host,
+        "proxy_alias": proxy_alias,
+        "proxy_model": ai_cfg.get("sigma_proxy_model") or "sigma",
         "endpoints": {
-            "openai_base_url": "http://localhost:8000/v1",
-            "openai_chat_url": "http://localhost:8000/v1/chat/completions",
-            "openai_models_url": "http://localhost:8000/v1/models",
-            "ollama_base_url": "http://localhost:8000",
-            "ollama_chat_url": "http://localhost:8000/api/chat",
-            "ollama_tags_url": "http://localhost:8000/api/tags",
-            "ollama_generate_url": "http://localhost:8000/api/generate",
+            "openai_base_url": f"{base_url}/v1",
+            "openai_chat_url": f"{base_url}/v1/chat/completions",
+            "openai_models_url": f"{base_url}/v1/models",
+            "ollama_base_url": f"{base_url}",
+            "ollama_chat_url": f"{base_url}/api/chat",
+            "ollama_tags_url": f"{base_url}/api/tags",
+            "ollama_generate_url": f"{base_url}/api/generate",
         }
     })
+
+
+# Backward-compatible alias
+handle_server_info = handle_engine_server_info

@@ -6,16 +6,10 @@ import {
   Code, Terminal, Layers, Globe, Play, CheckCircle, FileText, Settings, Share2,
   Monitor, X, ChevronRight, Wifi, ArrowUpRight, HardDrive, Box,
   Activity, ArrowRight, CornerDownRight, CheckSquare, Power, Radio,
-  Maximize2, SlidersHorizontal, CheckCheck
+  Maximize2, SlidersHorizontal, CheckCheck, HelpCircle, Edit3, List, CheckCircle as CheckIcon
 } from 'lucide-react';
 import { useApp } from '../contexts/AppContext';
-
-// Dedicated SVG Github Icon
-const GithubIcon = ({ size = 16, color = 'currentColor' }) => (
-  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-    <path d="M9 19c-5 1.5-5-2.5-7-3m14 6v-3.87a3.37 3.37 0 0 0-.94-2.61c3.14-.35 6.44-1.54 6.44-7A5.44 5.44 0 0 0 20 4.77 5.07 5.07 0 0 0 19.91 1S18.73.65 16 2.48a13.38 13.38 0 0 0-7 0C6.27.65 5.09 1 5.09 1A5.07 5.07 0 0 0 5 4.77a5.44 5.44 0 0 0-1.5 3.78c0 5.42 3.3 6.61 6.44 7A3.37 3.37 0 0 0 9 18.13V22" />
-  </svg>
-);
+import CustomSelect from './common/CustomSelect';
 
 // High-quality dedicated SVG brand icons for providers & GitHub engines
 export const ProviderIcons = {
@@ -160,155 +154,13 @@ export const ProviderIcons = {
       <path d="M12 3L14.5 9L21 9.5L16 14L17.5 20.5L12 17L6.5 20.5L8 14L3 9.5L9.5 9L12 3Z" stroke={color} strokeWidth="1.8" fill={`${color}22`} strokeLinejoin="round" />
     </svg>
   ),
-  custom: ({ size = 20, color = '#10b981' }) => (
+  custom: ({ size = 20, color = '#eab308' }) => (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none">
-      <rect x="3" y="4" width="18" height="6" rx="2" stroke={color} strokeWidth="1.8" fill={`${color}20`} />
-      <rect x="3" y="14" width="18" height="6" rx="2" stroke={color} strokeWidth="1.8" fill={`${color}20`} />
-      <circle cx="7" cy="7" r="1" fill={color} />
-      <circle cx="7" cy="17" r="1" fill={color} />
-      <path d="M14 7H17M14 17H17" stroke={color} strokeWidth="1.5" strokeLinecap="round" />
+      <circle cx="12" cy="12" r="9" stroke={color} strokeWidth="1.8" fill={`${color}15`} />
+      <path d="M12 7V17M7 12H17" stroke={color} strokeWidth="1.8" strokeLinecap="round" />
     </svg>
   )
 };
-
-// Curated Open-Source Inference Engines & Providers Downloadable from GitHub & Official Portals
-export const GITHUB_ENGINES = [
-  {
-    id: 'lmstudio',
-    name: 'LM Studio',
-    badge: 'DESKTOP & SERVER',
-    color: '#6366f1',
-    iconKey: 'lmstudio',
-    tagline: 'L\'app desktop più celebre per scoprire, scaricare ed eseguire modelli GGUF locali.',
-    description: 'Scarica modelli da Hugging Face con 1 clic, chatta con accelerazione GPU CUDA/Metal e avvia il server locale OpenAI-compatibile su porta :1234.',
-    repoUrl: 'https://github.com/lmstudio-ai',
-    releasesUrl: 'https://lmstudio.ai',
-    defaultPort: '1234',
-    defaultEndpoint: 'http://localhost:1234/v1',
-    protocol: 'OpenAI Compatible (/v1)',
-    providerId: 'lmstudio'
-  },
-  {
-    id: 'ollama',
-    name: 'Ollama',
-    badge: '100% LOCALE',
-    color: '#00d2ff',
-    iconKey: 'ollama',
-    tagline: 'Il framework più diffuso per eseguire Llama, Qwen, DeepSeek e Gemma in locale.',
-    description: 'Esegui modelli quantizzati con supporto automatico GPU (NVIDIA CUDA, Apple Silicon Metal, AMD ROCm) e gestione Modelfile.',
-    repoUrl: 'https://github.com/ollama/ollama',
-    releasesUrl: 'https://github.com/ollama/ollama/releases',
-    defaultPort: '11434',
-    defaultEndpoint: 'http://localhost:11434',
-    protocol: 'Ollama API & OpenAI (/v1)',
-    providerId: 'ollama'
-  },
-  {
-    id: 'ailoflow',
-    name: 'AiloFlow',
-    badge: 'FLOW ENGINE',
-    color: '#00f2fe',
-    iconKey: 'ailoflow',
-    tagline: 'Engine a nodi per flussi di prompt visivi e prompt graphs multi-tier.',
-    description: 'Framework locale ad alte prestazioni per orchestrazione di prompt strutturati, routing dinamico e sharding neurale multi-tier.',
-    repoUrl: 'https://github.com/xxrickyxx/AiloFlow',
-    releasesUrl: 'https://github.com/xxrickyxx/AiloFlow/releases',
-    defaultPort: '5000',
-    defaultEndpoint: 'http://localhost:5000/v1',
-    protocol: 'OpenAI (/v1) & Graph API',
-    providerId: 'ailoflow'
-  },
-  {
-    id: 'llamacpp',
-    name: 'llama.cpp',
-    badge: 'C++ PURE SPEED',
-    color: '#f59e0b',
-    iconKey: 'llamacpp',
-    tagline: 'Il motore C/C++ di riferimento per inferenza quantizzata GGUF ultra-efficiente.',
-    description: 'Esecuzione ad altissima velocità su CPU e GPU. Include il binario standalone `llama-server` conforme alle specifiche OpenAI.',
-    repoUrl: 'https://github.com/ggerganov/llama.cpp',
-    releasesUrl: 'https://github.com/ggerganov/llama.cpp/releases',
-    defaultPort: '8080',
-    defaultEndpoint: 'http://localhost:8080/v1',
-    protocol: 'OpenAI Compatible (/v1)',
-    providerId: 'custom'
-  },
-  {
-    id: 'vllm',
-    name: 'vLLM',
-    badge: 'PAGED ATTENTION',
-    color: '#38bdf8',
-    iconKey: 'vllm',
-    tagline: 'Libreria di inferenza ad alto throughput con continuous batching e PagedAttention.',
-    description: 'Ideale per server di produzione e GPU con elevata VRAM. Fornisce un server API OpenAI nativo ultra-performante.',
-    repoUrl: 'https://github.com/vllm-project/vllm',
-    releasesUrl: 'https://github.com/vllm-project/vllm/releases',
-    defaultPort: '8000',
-    defaultEndpoint: 'http://localhost:8000/v1',
-    protocol: 'OpenAI Compatible (/v1)',
-    providerId: 'custom'
-  },
-  {
-    id: 'localai',
-    name: 'LocalAI',
-    badge: 'SELF-HOSTED HUB',
-    color: '#10b981',
-    iconKey: 'localai',
-    tagline: 'Sostituto drop-in self-hosted e gratuito di OpenAI per testo, audio e immagini.',
-    description: 'Supporta molteplici backend (llama.cpp, Transformers, Piper TTS, Whisper) senza richiedere account o dipendenze cloud.',
-    repoUrl: 'https://github.com/mudler/LocalAI',
-    releasesUrl: 'https://github.com/mudler/LocalAI/releases',
-    defaultPort: '8080',
-    defaultEndpoint: 'http://localhost:8080/v1',
-    protocol: 'OpenAI Compatible (/v1)',
-    providerId: 'custom'
-  },
-  {
-    id: 'koboldcpp',
-    name: 'KoboldCpp',
-    badge: 'STANDALONE GUI',
-    color: '#ec4899',
-    iconKey: 'koboldcpp',
-    tagline: 'Distribuzione single-file per modelli GGUF con UI web per scrittura creativa.',
-    description: 'Zero configurazioni: un solo eseguibile `.exe` con interfaccia web interattiva ed endpoint compatibili Kobold & OpenAI.',
-    repoUrl: 'https://github.com/LostRuins/koboldcpp',
-    releasesUrl: 'https://github.com/LostRuins/koboldcpp/releases',
-    defaultPort: '5001',
-    defaultEndpoint: 'http://localhost:5001/v1',
-    protocol: 'OpenAI Compatible & Kobold API',
-    providerId: 'custom'
-  },
-  {
-    id: 'tabby',
-    name: 'Tabby',
-    badge: 'AI CODE ASSISTANT',
-    color: '#a855f7',
-    iconKey: 'tabby',
-    tagline: 'Server di completamento codice self-hosted open-source alternativo a GitHub Copilot.',
-    description: 'Ottimizzato per autocomplete multi-riga e chat contestuale del repository su VS Code, JetBrains e Neovim.',
-    repoUrl: 'https://github.com/TabbyML/tabby',
-    releasesUrl: 'https://github.com/TabbyML/tabby/releases',
-    defaultPort: '8080',
-    defaultEndpoint: 'http://localhost:8080/v1',
-    protocol: 'OpenAI Compatible (/v1)',
-    providerId: 'custom'
-  },
-  {
-    id: 'oobabooga',
-    name: 'Text Generation WebUI',
-    badge: 'MULTI-BACKEND UI',
-    color: '#f97316',
-    iconKey: 'oobabooga',
-    tagline: 'La celebre interfaccia Gradio multi-backend per Transformers, ExLlamaV2 e GGUF.',
-    description: 'Ampia suite di estensioni, supporto LoRA, caricamento dinamico di modelli e server API OpenAI integrato.',
-    repoUrl: 'https://github.com/oobabooga/text-generation-webui',
-    releasesUrl: 'https://github.com/oobabooga/text-generation-webui/releases',
-    defaultPort: '5000',
-    defaultEndpoint: 'http://localhost:5000/v1',
-    protocol: 'OpenAI Compatible (/v1)',
-    providerId: 'custom'
-  }
-];
 
 export const PROVIDER_CATALOG = {
   sigma_engine: {
@@ -448,291 +300,162 @@ export const PROVIDER_CATALOG = {
   },
   openrouter: {
     id: 'openrouter',
-    label: 'OpenRouter (Multi-Hub)',
-    category: 'hub',
+    label: 'OpenRouter (Multi-Model Router)',
+    category: 'cloud',
     color: '#6366f1',
-    badge: '200+ MODELLI',
+    badge: '300+ MODELLI',
     endpoint: '',
     api_url: 'https://openrouter.ai/api/v1/chat/completions',
     api_key_required: true,
     key_placeholder: 'sk-or-v1-...',
     docs_url: 'https://openrouter.ai/keys',
-    hint: 'Hub unificato per oltre 200 modelli globali.',
-    default_model: 'openai/gpt-4o-mini',
-    popular_models: ['openai/gpt-4o-mini', 'anthropic/claude-3.5-sonnet', 'deepseek/deepseek-r1', 'google/gemini-2.0-flash-001', 'meta-llama/llama-3.3-70b-instruct']
+    hint: 'Hub unificato con oltre 300 modelli (Claude, DeepSeek, Llama, Qwen).',
+    default_model: 'anthropic/claude-3.5-sonnet',
+    popular_models: ['anthropic/claude-3.5-sonnet', 'deepseek/deepseek-r1', 'meta-llama/llama-3.3-70b-instruct', 'google/gemini-2.0-flash-thinking-exp:free', 'qwen/qwen-2.5-coder-32b-instruct']
   },
   mistral: {
     id: 'mistral',
-    label: 'Mistral AI',
-    category: 'fast',
+    label: 'Mistral AI (La Plateforme)',
+    category: 'cloud',
     color: '#ff7000',
-    badge: 'CODESTRAL',
+    badge: 'LE CHAT & LARGE',
     endpoint: '',
     api_url: 'https://api.mistral.ai/v1/chat/completions',
     api_key_required: true,
-    key_placeholder: 'Chiave API Mistral...',
+    key_placeholder: 'Bearer token Mistral...',
     docs_url: 'https://console.mistral.ai/api-keys',
-    hint: 'Mistral Large 2, Codestral e Mistral Small.',
+    hint: 'Mistral Large 2, Mistral Small 3, Codestral e Pixtral 12B.',
     default_model: 'mistral-large-latest',
-    popular_models: ['mistral-large-latest', 'codestral-latest', 'mistral-small-latest', 'open-mistral-nemo']
+    popular_models: ['mistral-large-latest', 'mistral-small-latest', 'codestral-latest', 'pixtral-12b-2409', 'open-mistral-nemo']
   },
   xai: {
     id: 'xai',
     label: 'xAI (Grok)',
-    category: 'hub',
-    color: '#e11d48',
+    category: 'cloud',
+    color: '#ffffff',
     badge: 'GROK 2',
     endpoint: '',
     api_url: 'https://api.x.ai/v1/chat/completions',
     api_key_required: true,
     key_placeholder: 'xai-...',
     docs_url: 'https://console.x.ai',
-    hint: 'Modelli Grok-2 e Grok-2 Vision di xAI.',
-    default_model: 'grok-2',
-    popular_models: ['grok-2', 'grok-2-mini', 'grok-beta']
+    hint: 'Grok-2 e Grok-2 Vision.',
+    default_model: 'grok-2-latest',
+    popular_models: ['grok-2-latest', 'grok-2-vision-latest', 'grok-beta']
   },
   perplexity: {
     id: 'perplexity',
-    label: 'Perplexity AI',
-    category: 'hub',
+    label: 'Perplexity AI (Sonar Search)',
+    category: 'cloud',
     color: '#06b6d4',
-    badge: 'SONAR SEARCH',
+    badge: 'LIVE WEB SEARCH',
     endpoint: '',
     api_url: 'https://api.perplexity.ai/chat/completions',
     api_key_required: true,
     key_placeholder: 'pplx-...',
     docs_url: 'https://www.perplexity.ai/settings/api',
-    hint: 'Modelli Sonar con grounding web live.',
-    default_model: 'sonar-pro',
-    popular_models: ['sonar-pro', 'sonar', 'llama-3.1-sonar-large-128k-online']
+    hint: 'Sonar con ricerca web integrata in tempo reale e citazione fonti.',
+    default_model: 'sonar-reasoning-pro',
+    popular_models: ['sonar-reasoning-pro', 'sonar-reasoning', 'sonar-pro', 'sonar']
   },
   together: {
     id: 'together',
     label: 'Together AI',
-    category: 'fast',
+    category: 'cloud',
     color: '#3b82f6',
-    badge: 'OPEN CLOUD',
+    badge: 'OPEN SOURCE CLOUD',
     endpoint: '',
     api_url: 'https://api.together.xyz/v1/chat/completions',
     api_key_required: true,
-    key_placeholder: 'Together API key...',
-    docs_url: 'https://api.together.xyz/settings/api-keys',
-    hint: 'Cluster cloud veloce per Llama 3.3, Qwen e DeepSeek.',
-    default_model: 'meta-llama/Llama-3.3-70B-Instruct-Turbo',
-    popular_models: ['meta-llama/Llama-3.3-70B-Instruct-Turbo', 'deepseek-ai/deepseek-coder-v2-instruct', 'Qwen/Qwen2.5-72B-Instruct-Turbo']
+    key_placeholder: 'together-...',
+    docs_url: 'https://api.together.ai/settings/api-keys',
+    hint: 'DeepSeek R1, Llama 3.3 70B, Qwen 2.5 Coder e Flux Image.',
+    default_model: 'deepseek-ai/DeepSeek-R1',
+    popular_models: ['deepseek-ai/DeepSeek-R1', 'meta-llama/Llama-3.3-70B-Instruct-Turbo', 'Qwen/Qwen2.5-Coder-32B-Instruct', 'mistralai/Mixtral-8x22B-Instruct-v0.1']
   },
   qwen: {
     id: 'qwen',
-    label: 'Qwen (DashScope)',
-    category: 'chinese',
+    label: 'Alibaba Cloud (DashScope / Qwen)',
+    category: 'cloud',
     color: '#8b5cf6',
-    badge: 'QWEN 2.5',
+    badge: 'QWEN MAX & CODER',
     endpoint: '',
     api_url: 'https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions',
     api_key_required: true,
     key_placeholder: 'sk-...',
-    docs_url: 'https://dashscope.console.aliyun.com',
-    hint: 'Qwen 2.5 Max, Coder e Math.',
-    default_model: 'qwen-max',
-    popular_models: ['qwen-max', 'qwen-plus', 'qwen-turbo', 'qwen2.5-72b-instruct', 'qwen2.5-coder-32b-instruct']
+    docs_url: 'https://dashscope.console.aliyun.com/apiKey',
+    hint: 'Qwen-Max, Qwen-Plus, Qwen2.5-Coder e Qwen-VL.',
+    default_model: 'qwen-max-latest',
+    popular_models: ['qwen-max-latest', 'qwen-plus', 'qwen-turbo', 'qwen2.5-coder-32b-instruct', 'qwen-vl-max']
   },
   glm: {
     id: 'glm',
-    label: 'GLM (Zhipu AI)',
-    category: 'chinese',
+    label: 'Zhipu AI (GLM-4)',
+    category: 'cloud',
     color: '#0284c7',
-    badge: 'GLM-4 PLUS',
+    badge: 'GLM-4 & LONG CONTEXT',
     endpoint: '',
     api_url: 'https://open.bigmodel.cn/api/paas/v4/chat/completions',
     api_key_required: true,
-    key_placeholder: 'Zhipu API key...',
-    docs_url: 'https://open.bigmodel.cn',
-    hint: 'Modelli GLM-4 Plus e GLM-4 Long.',
+    key_placeholder: 'API Key Zhipu...',
+    docs_url: 'https://open.bigmodel.cn/usercenter/apikeys',
+    hint: 'GLM-4-Plus, GLM-4-0520 e GLM-4-Flash.',
     default_model: 'glm-4-plus',
     popular_models: ['glm-4-plus', 'glm-4-air', 'glm-4-flash', 'glm-4-long']
   },
   custom: {
     id: 'custom',
-    label: 'API Custom (OpenAI)',
+    label: 'Custom OpenAI / Local Server',
     category: 'custom',
-    color: '#10b981',
-    badge: 'ENDPOINT PROPRIO',
-    endpoint: '',
-    api_url: '',
+    color: '#eab308',
+    badge: 'OPEN COMPATIBLE',
+    endpoint: 'http://localhost:8080',
+    api_url: 'http://localhost:8080/v1/chat/completions',
     api_key_required: false,
-    key_placeholder: 'Chiave API (se richiesta)...',
+    key_placeholder: 'Opzionale: Bearer token...',
     docs_url: '',
-    hint: 'Collega gateway aziendali, vLLM, llama.cpp, LM Studio o LocalAI.',
-    default_model: '',
-    popular_models: []
+    hint: 'Qualsiasi server compatibile OpenAI (vLLM, LocalAI, llama.cpp, KoboldCpp, Tabby).',
+    default_model: 'default',
+    popular_models: ['default', 'qwen', 'llama3', 'mistral', 'deepseek']
   }
 };
 
-// Sleek Custom Model Selector Dropdown with smooth internal scrolling
-function CustomModelSelect({ providerId, value, options, onChange, isLight, titleColor, subtitleColor, innerCardBg, innerCardBorder }) {
-  const [isOpen, setIsOpen] = useState(false);
-  const [search, setSearch] = useState('');
-  const dropdownRef = useRef(null);
-
-  useEffect(() => {
-    const handleClickOutside = (e) => {
-      if (dropdownRef.current && !dropdownRef.current.contains(e.target)) {
-        setIsOpen(false);
-      }
-    };
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, []);
-
-  const filteredOptions = useMemo(() => {
-    if (!options || options.length === 0) return [];
-    if (!search.trim()) return options;
-    return options.filter(opt => {
-      const optStr = typeof opt === 'string' ? opt : (opt?.name || opt?.id || '');
-      return optStr.toLowerCase().includes(search.toLowerCase().trim());
-    });
-  }, [options, search]);
-
-  const selectedDisplay = value || (options?.[0] ? (typeof options[0] === 'string' ? options[0] : options[0]?.name) : 'Seleziona modello');
-
-  return (
-    <div ref={dropdownRef} style={{ position: 'relative', width: '100%' }}>
-      <button
-        type="button"
-        onClick={() => setIsOpen(!isOpen)}
-        style={{
-          width: '100%',
-          padding: '6px 10px',
-          borderRadius: '8px',
-          background: innerCardBg,
-          border: isOpen ? '1px solid #00d2ff' : innerCardBorder,
-          color: titleColor,
-          fontSize: '0.76rem',
-          fontWeight: 600,
-          cursor: 'pointer',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          gap: '6px',
-          textAlign: 'left'
-        }}
-      >
-        <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-          {selectedDisplay}
-        </span>
-        <ChevronDown size={12} style={{ flexShrink: 0, opacity: 0.7, transform: isOpen ? 'rotate(180deg)' : 'none', transition: 'transform 0.15s ease' }} />
-      </button>
-
-      {isOpen && (
-        <div style={{
-          position: 'absolute',
-          top: 'calc(100% + 4px)',
-          left: 0,
-          right: 0,
-          zIndex: 999,
-          background: isLight ? '#ffffff' : '#161922',
-          border: isLight ? '1px solid rgba(190, 160, 110, 0.4)' : '1px solid rgba(255, 255, 255, 0.15)',
-          borderRadius: '8px',
-          boxShadow: isLight ? '0 6px 20px rgba(0,0,0,0.12)' : '0 8px 24px rgba(0,0,0,0.6)',
-          overflow: 'hidden',
-          padding: '4px'
-        }}>
-          {options && options.length > 4 && (
-            <div style={{ padding: '4px 6px', borderBottom: isLight ? '1px solid #f0f0f0' : '1px solid rgba(255,255,255,0.06)' }}>
-              <input
-                type="text"
-                placeholder="Filtra modelli..."
-                value={search}
-                onChange={e => setSearch(e.target.value)}
-                onClick={e => e.stopPropagation()}
-                autoFocus
-                style={{
-                  width: '100%',
-                  padding: '4px 6px',
-                  borderRadius: '6px',
-                  background: isLight ? '#f9f9f9' : 'rgba(255,255,255,0.05)',
-                  border: isLight ? '1px solid #ddd' : '1px solid rgba(255,255,255,0.1)',
-                  color: titleColor,
-                  fontSize: '0.72rem',
-                  outline: 'none',
-                  boxSizing: 'border-box'
-                }}
-              />
-            </div>
-          )}
-
-          <div style={{ maxHeight: '160px', overflowY: 'auto', padding: '2px 0' }}>
-            {filteredOptions.length === 0 ? (
-              <div style={{ padding: '8px', fontSize: '0.72rem', color: subtitleColor, textAlign: 'center' }}>
-                Nessun modello trovato
-              </div>
-            ) : (
-              filteredOptions.map(opt => {
-                const optStr = typeof opt === 'string' ? opt : (opt?.name || opt?.id || '');
-                const isSelected = value === optStr;
-                return (
-                  <button
-                    key={optStr}
-                    type="button"
-                    onClick={() => {
-                      onChange(optStr);
-                      setIsOpen(false);
-                      setSearch('');
-                    }}
-                    style={{
-                      width: '100%',
-                      padding: '6px 8px',
-                      borderRadius: '6px',
-                      background: isSelected ? (isLight ? '#00d2ff18' : '#00d2ff22') : 'transparent',
-                      color: isSelected ? '#00d2ff' : titleColor,
-                      fontSize: '0.74rem',
-                      fontWeight: isSelected ? 700 : 500,
-                      border: 'none',
-                      cursor: 'pointer',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'space-between',
-                      textAlign: 'left'
-                    }}
-                  >
-                    <span>{optStr}</span>
-                    {isSelected && <Check size={12} color="#00d2ff" />}
-                  </button>
-                );
-              })
-            )}
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
-
-export default function AIConfigTab({ openTab }) {
+export default function AIConfigTab() {
   const { theme } = useApp();
   const isLight = theme === 'light';
 
-  // Styling tokens (Modern Glassmorphism & Cyber Luxe Dark Mode)
-  const bg = isLight ? '#fcfaf6' : '#080a0f';
-  const cardBg = isLight ? '#fffdf9' : '#10131c';
-  const cardBorder = isLight ? '1px solid rgba(190, 160, 110, 0.3)' : '1px solid rgba(255, 255, 255, 0.08)';
-  const innerCardBg = isLight ? '#f8f5ee' : 'rgba(255, 255, 255, 0.035)';
+  // Theme Styles
+  const cardBg = isLight ? '#f4eedb' : 'rgba(13, 20, 36, 0.75)';
+  const innerCardBg = isLight ? 'rgba(235, 225, 200, 0.6)' : 'rgba(9, 13, 22, 0.65)';
+  const cardBorder = isLight ? '1px solid rgba(190, 160, 110, 0.4)' : '1px solid rgba(0, 242, 254, 0.15)';
   const innerCardBorder = isLight ? '1px solid rgba(190, 160, 110, 0.25)' : '1px solid rgba(255, 255, 255, 0.06)';
   const titleColor = isLight ? '#111827' : '#ffffff';
   const subtitleColor = isLight ? '#4b5563' : '#a0a6bc';
   const cardShadow = isLight ? '0 2px 12px rgba(190, 160, 110, 0.1)' : '0 6px 24px rgba(0, 0, 0, 0.45)';
 
-  // Navigation state (Single-page with smooth scroll anchors)
-  const [activeCategory, setActiveCategory] = useState('all');
+  // TWO MAIN TABS: 'engine_server' (Output / Proxy) | 'external_providers' (Input / Aggregation)
+  const [mainHubTab, setMainHubTab] = useState('engine_server');
+
+  // External providers sub-filter
+  const [activeCategory, setActiveCategory] = useState('all'); // 'all' | 'cloud' | 'local'
   const [searchQuery, setSearchQuery] = useState('');
-  const [activeSectionAnchor, setActiveSectionAnchor] = useState('engine'); // 'engine' | 'github' | 'cloud'
+
+  // Callable Models List Search & Filter in Tab 1
+  const [callableSearch, setCallableSearch] = useState('');
+  const [callableFilter, setCallableFilter] = useState('all'); // 'all' | 'local' | 'vram' | 'cloud'
 
   // Central Config State
   const [activeProvider, setActiveProvider] = useState('sigma_engine');
   const [activeModel, setActiveModel] = useState('sigma:latest');
   const [providerSettings, setProviderSettings] = useState({});
+  const [localDiskModels, setLocalDiskModels] = useState([]);
   const [ollamaLocalModels, setOllamaLocalModels] = useState([]);
-  const [loadingModels, setLoadingModels] = useState(false);
+
+  // Server Output Custom Configuration (Port, Host, Proxy Alias, Proxy Target Model)
+  const [serverPort, setServerPort] = useState(8000);
+  const [serverHost, setServerHost] = useState('localhost');
+  const [proxyAlias, setProxyAlias] = useState('sigma');
+  const [selectedGuideModel, setSelectedGuideModel] = useState('sigma');
 
   // Global Inference Parameters
   const [parameters, setParameters] = useState({
@@ -753,12 +476,10 @@ export default function AIConfigTab({ openTab }) {
   const [saving, setSaving] = useState(false);
   const [saveToast, setSaveToast] = useState(null);
   const [hardwareProfile, setHardwareProfile] = useState(null);
-  const [tieringPlan, setTieringPlan] = useState(null);
 
   // VS Code & SigmaEngine Server Interoperability State
   const [serverInfo, setServerInfo] = useState(null);
   const [providerServerEnabled, setProviderServerEnabled] = useState(true);
-  const [selectedGuideModel, setSelectedGuideModel] = useState('sigmaengine');
   const [activeVsCodeTab, setActiveVsCodeTab] = useState('continue'); // 'continue' | 'cline' | 'copilot' | 'python' | 'node' | 'curl'
   const [liveTestState, setLiveTestState] = useState({
     protocol: 'openai',
@@ -770,15 +491,34 @@ export default function AIConfigTab({ openTab }) {
     error: null
   });
 
-  // Smooth scroll to section in single page
-  const scrollToSection = (sectionId) => {
-    setActiveSectionAnchor(sectionId);
-    const el = document.getElementById(`section-${sectionId}`);
-    if (el) {
-      el.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    }
+  // Dynamic Base URL calculated from state
+  const effectiveBaseUrl = useMemo(() => {
+    const host = serverHost || 'localhost';
+    const port = serverPort || 8000;
+    return `http://${host}:${port}`;
+  }, [serverHost, serverPort]);
+
+  // Copy helper
+  const copyKeyToClipboard = (keyId, textToCopy) => {
+    navigator.clipboard.writeText(textToCopy);
+    setCopiedKey(keyId);
+    setTimeout(() => setCopiedKey(null), 2000);
   };
 
+  // Fetch local disk models from /api/models/local/list
+  const fetchLocalDiskModels = useCallback(async () => {
+    try {
+      const res = await fetch('/api/models/local/list');
+      const data = await res.json();
+      if (data.success && Array.isArray(data.models)) {
+        setLocalDiskModels(data.models);
+      }
+    } catch (e) {
+      console.debug("Local disk models fetch:", e);
+    }
+  }, []);
+
+  // Fetch server info
   const fetchServerInfo = useCallback(async () => {
     try {
       const res = await fetch('/api/engine/server_info');
@@ -788,12 +528,17 @@ export default function AIConfigTab({ openTab }) {
         if (data.provider_server_enabled !== undefined) {
           setProviderServerEnabled(data.provider_server_enabled);
         }
+        if (data.port) setServerPort(data.port);
+        if (data.host) setServerHost(data.host);
+        if (data.proxy_alias) setProxyAlias(data.proxy_alias);
+        if (data.proxy_model) setSelectedGuideModel(data.proxy_model);
       }
     } catch (e) {
       console.debug("Server info fetch:", e);
     }
   }, []);
 
+  // Toggle provider server
   const toggleProviderServer = async (targetState) => {
     const nextState = targetState !== undefined ? targetState : !providerServerEnabled;
     try {
@@ -807,7 +552,7 @@ export default function AIConfigTab({ openTab }) {
         setProviderServerEnabled(data.provider_server_enabled);
         setSaveToast({
           type: 'success',
-          msg: `SigmaEngine Provider Server ${data.provider_server_enabled ? 'ABILITATO 🟢 (Port 8000)' : 'DISABILITATO 🔴'}`
+          msg: `SigmaEngine Server ${data.provider_server_enabled ? `ABILITATO 🟢 (Port :${serverPort})` : 'DISABILITATO 🔴'}`
         });
         setTimeout(() => setSaveToast(null), 3500);
         fetchServerInfo();
@@ -818,210 +563,122 @@ export default function AIConfigTab({ openTab }) {
     }
   };
 
-  // Enumerate all available models for the VS Code guide selector
+  // Build model options for CustomSelect & Registry Table
   const allAvailableGuideModels = useMemo(() => {
     const list = [
-      { id: 'sigmaengine', name: '⚡ sigmaengine (Auto-Risoluzione dinamica / Modello Residente)', type: 'alias' }
+      { 
+        value: 'sigma', 
+        label: `⚡ ${proxyAlias || 'sigma'} (Proxy Principale - Modello Selezionato)`, 
+        badge: 'PROXY ALIAS',
+        desc: 'Inoltra le richieste al modello proxy configurato o residente',
+        color: '#00f2fe',
+        category: 'proxy',
+        isProxyOption: true
+      },
+      { 
+        value: 'sigmaengine', 
+        label: '⚡ sigmaengine (Auto-Risoluzione Dinamica)', 
+        badge: 'AUTO ROUTER',
+        desc: 'Risolve automaticamente il modello residente in VRAM o attivo',
+        color: '#00d2ff',
+        category: 'proxy',
+        isProxyOption: true
+      }
     ];
+
+    // Resident model in VRAM if active
     if (serverInfo?.resident_model && serverInfo.resident_model !== 'Nessun modello caricato') {
-      list.push({ id: serverInfo.resident_model, name: `🔥 ${serverInfo.resident_model} (In VRAM)`, type: 'resident' });
+      list.push({
+        value: serverInfo.resident_model,
+        label: `🔥 ${serverInfo.resident_model}`,
+        badge: 'IN VRAM',
+        desc: 'Modello attualmente residente e pronto in memoria GPU/RAM',
+        color: '#faa03c',
+        category: 'vram',
+        isResident: true
+      });
     }
+
+    // Add all local models on disk
+    localDiskModels.forEach(m => {
+      const mId = m.filename || m.model_id;
+      if (mId && !list.some(x => x.value === mId)) {
+        list.push({
+          value: mId,
+          label: `🏠 ${m.display_name || m.filename}`,
+          badge: m.is_multimodal ? 'GGUF + VISION' : (m.format_tag || 'GGUF'),
+          desc: `${m.size_label || 'Su Disco'} • ${m.quantization || ''} • Parametri: ${m.parameter_size || 'N/D'}`,
+          color: '#3fb950',
+          category: 'local',
+          sizeLabel: m.size_label,
+          quant: m.quantization,
+          isMultimodal: m.is_multimodal,
+          filePath: m.path
+        });
+      }
+    });
+
+    // Add server available models
     (serverInfo?.available_models || []).forEach(m => {
-      if (!list.some(x => x.id === m.id)) {
-        const icon = m.category === 'cloud' ? '☁️' : (m.is_resident ? '🔥' : '🏠');
-        list.push({ id: m.id, name: `${icon} ${m.name || m.id}`, type: m.category || 'local' });
+      if (!list.some(x => x.value === m.id)) {
+        const isCloud = m.category === 'cloud';
+        list.push({
+          value: m.id,
+          label: `${isCloud ? '☁️' : '🏠'} ${m.name || m.id}`,
+          badge: m.category ? m.category.toUpperCase() : 'LOCAL',
+          desc: isCloud ? 'Provider Cloud configurato' : 'Modello runtime locale',
+          color: isCloud ? '#a855f7' : '#38bdf8',
+          category: isCloud ? 'cloud' : 'local'
+        });
       }
     });
-    (ollamaLocalModels || []).forEach(m => {
-      const mName = typeof m === 'string' ? m : m.name;
-      if (mName && !list.some(x => x.id === mName)) {
-        list.push({ id: mName, name: `🏠 ${mName} (Locale GGUF/Ollama)`, type: 'local' });
-      }
-    });
+
+    // Add cloud configured models
     Object.entries(providerSettings).forEach(([pId, pCfg]) => {
       if (pId !== 'sigma_engine') {
         const mod = pCfg?.custom_model || pCfg?.model || PROVIDER_CATALOG[pId]?.default_model;
-        if (mod && !list.some(x => x.id === mod)) {
-          list.push({ id: mod, name: `☁️ ${mod} (${PROVIDER_CATALOG[pId]?.label || pId})`, type: 'cloud' });
+        if (mod && !list.some(x => x.value === mod)) {
+          list.push({
+            value: mod,
+            label: `☁️ ${mod} (${PROVIDER_CATALOG[pId]?.label || pId})`,
+            badge: 'CLOUD API',
+            desc: `API Vault: ${PROVIDER_CATALOG[pId]?.label || pId}`,
+            color: '#a855f7',
+            category: 'cloud'
+          });
         }
       }
     });
+
     return list;
-  }, [serverInfo, ollamaLocalModels, providerSettings]);
+  }, [serverInfo, localDiskModels, providerSettings, proxyAlias]);
 
-  const downloadContinueConfig = () => {
-    const targetModel = selectedGuideModel || 'sigmaengine';
-    const cfg = {
-      models: [
-        {
-          title: `SigmaEngine (${targetModel})`,
-          provider: "openai",
-          model: targetModel,
-          apiBase: "http://localhost:8000/v1",
-          apiKey: "sigma"
-        },
-        {
-          title: `SigmaEngine Ollama (${targetModel})`,
-          provider: "ollama",
-          model: targetModel,
-          apiBase: "http://localhost:8000"
-        }
-      ],
-      tabAutocompleteModel: {
-        title: "SigmaEngine Autocomplete (7B Coder)",
-        provider: "openai",
-        model: "qwen2.5-coder:7b",
-        apiBase: "http://localhost:8000/v1",
-        apiKey: "sigma"
-      }
-    };
-    const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(cfg, null, 2));
-    const a = document.createElement('a');
-    a.setAttribute("href", dataStr);
-    a.setAttribute("download", `continue_config_${targetModel.replace(/[^a-zA-Z0-9_-]/g, '_')}.json`);
-    a.click();
+  // Filtered callable models for the table
+  const filteredCallableModels = useMemo(() => {
+    return allAvailableGuideModels.filter(item => {
+      const matchCategory = callableFilter === 'all' || 
+                            (callableFilter === 'local' && item.category === 'local') ||
+                            (callableFilter === 'vram' && (item.category === 'vram' || item.isResident)) ||
+                            (callableFilter === 'cloud' && item.category === 'cloud');
+      const matchSearch = !callableSearch || 
+                          item.value.toLowerCase().includes(callableSearch.toLowerCase()) ||
+                          item.label.toLowerCase().includes(callableSearch.toLowerCase()) ||
+                          (item.desc && item.desc.toLowerCase().includes(callableSearch.toLowerCase()));
+      return matchCategory && matchSearch;
+    });
+  }, [allAvailableGuideModels, callableFilter, callableSearch]);
+
+  // Set proxy model handler
+  const handleSetProxyModel = (modelId) => {
+    setSelectedGuideModel(modelId);
+    setSaveToast({
+      type: 'success',
+      msg: `Modello "${modelId}" impostato come Proxy "${proxyAlias || 'sigma'}"! Ricordati di salvare. 🎯`
+    });
+    setTimeout(() => setSaveToast(null), 3500);
   };
 
-  const runLiveServerTest = async () => {
-    const targetModel = selectedGuideModel || 'sigmaengine';
-    setLiveTestState(prev => ({ ...prev, isTesting: true, outputText: '', error: null, latency: null, ttft: null }));
-    const startTime = performance.now();
-    let firstTokenRecorded = false;
-
-    try {
-      if (liveTestState.protocol === 'openai') {
-        const resp = await fetch('/v1/chat/completions', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            model: targetModel,
-            messages: [{ role: 'user', content: liveTestState.prompt || 'Ciao da VS Code!' }],
-            stream: true,
-            max_tokens: 300,
-            temperature: parameters.temperature || 0.7
-          })
-        });
-
-        if (!resp.ok) {
-          const errText = await resp.text();
-          let parsedErr = errText;
-          try {
-            const errObj = JSON.parse(errText);
-            parsedErr = errObj.error?.message || errObj.error || errText;
-          } catch (_) {}
-          throw new Error(`HTTP ${resp.status}: ${parsedErr}`);
-        }
-
-        const reader = resp.body.getReader();
-        const decoder = new TextDecoder('utf-8');
-        let fullText = '';
-
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
-          const chunk = decoder.decode(value, { stream: true });
-          const lines = chunk.split('\n');
-          for (const line of lines) {
-            if (line.startsWith('data: ') && line.trim() !== 'data: [DONE]') {
-              try {
-                const parsed = JSON.parse(line.slice(6));
-                if (parsed.error) {
-                  const errMsg = typeof parsed.error === 'object' ? (parsed.error.message || JSON.stringify(parsed.error)) : parsed.error;
-                  setLiveTestState(prev => ({ ...prev, error: errMsg }));
-                }
-                const token = parsed.choices?.[0]?.delta?.content || '';
-                if (token) {
-                  if (!firstTokenRecorded) {
-                    firstTokenRecorded = true;
-                    setLiveTestState(prev => ({ ...prev, ttft: Math.round(performance.now() - startTime) }));
-                  }
-                  fullText += token;
-                  setLiveTestState(prev => ({ ...prev, outputText: fullText }));
-                }
-              } catch (e) {}
-            }
-          }
-        }
-        setLiveTestState(prev => ({ ...prev, isTesting: false, latency: Math.round(performance.now() - startTime) }));
-      } else {
-        // Ollama protocol
-        const resp = await fetch('/api/chat', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            model: targetModel,
-            messages: [{ role: 'user', content: liveTestState.prompt || 'Ciao da VS Code!' }],
-            stream: true,
-            options: { num_predict: 300, temperature: parameters.temperature || 0.7 }
-          })
-        });
-
-        if (!resp.ok) {
-          const errText = await resp.text();
-          let parsedErr = errText;
-          try {
-            const errObj = JSON.parse(errText);
-            parsedErr = errObj.error || errText;
-          } catch (_) {}
-          throw new Error(`HTTP ${resp.status}: ${parsedErr}`);
-        }
-
-        const reader = resp.body.getReader();
-        const decoder = new TextDecoder('utf-8');
-        let fullText = '';
-
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
-          const chunk = decoder.decode(value, { stream: true });
-          const lines = chunk.split('\n');
-          for (const line of lines) {
-            if (line.trim()) {
-              try {
-                const parsed = JSON.parse(line.trim());
-                if (parsed.error) {
-                  setLiveTestState(prev => ({ ...prev, error: parsed.error }));
-                }
-                const token = parsed.message?.content || '';
-                if (token) {
-                  if (!firstTokenRecorded) {
-                    firstTokenRecorded = true;
-                    setLiveTestState(prev => ({ ...prev, ttft: Math.round(performance.now() - startTime) }));
-                  }
-                  fullText += token;
-                  setLiveTestState(prev => ({ ...prev, outputText: fullText }));
-                }
-              } catch (e) {}
-            }
-          }
-        }
-        setLiveTestState(prev => ({ ...prev, isTesting: false, latency: Math.round(performance.now() - startTime) }));
-      }
-    } catch (err) {
-      setLiveTestState(prev => ({ ...prev, isTesting: false, error: err.message }));
-    }
-  };
-
-  const fetchEngineProfile = useCallback(async () => {
-    try {
-      const res = await fetch('/api/engine/profile');
-      const data = await res.json();
-      if (data.success && data.profile) {
-        setHardwareProfile(data.profile);
-      }
-      const res2 = await fetch('/api/engine/partition', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ total_layers: 32, model_size_gb: 8.0 })
-      });
-      const data2 = await res2.json();
-      if (data2.success && data2.tiering_plan) {
-        setTieringPlan(data2.tiering_plan);
-      }
-    } catch (e) {}
-  }, []);
-
-  // Fetch initial config from backend
+  // Fetch initial config
   const fetchConfig = useCallback(async () => {
     try {
       const res = await fetch('/api/config');
@@ -1030,6 +687,12 @@ export default function AIConfigTab({ openTab }) {
         const cfg = data.config;
         setActiveProvider(cfg.active_provider || cfg.provider || 'sigma_engine');
         setActiveModel(cfg.active_model || cfg.model || 'sigma:latest');
+        if (cfg.sigma_proxy_model) {
+          setSelectedGuideModel(cfg.sigma_proxy_model);
+        }
+        if (cfg.provider_server_port) setServerPort(Number(cfg.provider_server_port));
+        if (cfg.provider_server_host) setServerHost(cfg.provider_server_host);
+        if (cfg.sigma_proxy_alias) setProxyAlias(cfg.sigma_proxy_alias);
         
         // Populate per-provider data
         const provs = cfg.providers || {};
@@ -1063,28 +726,23 @@ export default function AIConfigTab({ openTab }) {
     }
   }, []);
 
-  // Fetch Ollama models ONLY if explicitly requested/configured
-  const fetchOllamaModels = useCallback(async (isExplicit = false) => {
-    if (!isExplicit) return;
-    setLoadingModels(true);
+  // Fetch hardware profile
+  const fetchEngineProfile = useCallback(async () => {
     try {
-      const res = await fetch('/api/tags');
+      const res = await fetch('/api/engine/profile');
       const data = await res.json();
-      if (data.models && Array.isArray(data.models)) {
-        setOllamaLocalModels(data.models.map(m => m.name));
+      if (data.success) {
+        setHardwareProfile(data);
       }
-    } catch (e) {
-      console.debug("Ollama models query offline:", e);
-    } finally {
-      setLoadingModels(false);
-    }
+    } catch (e) {}
   }, []);
 
   useEffect(() => {
     fetchConfig();
     fetchServerInfo();
+    fetchLocalDiskModels();
     fetchEngineProfile();
-  }, [fetchConfig, fetchServerInfo, fetchEngineProfile]);
+  }, [fetchConfig, fetchServerInfo, fetchLocalDiskModels, fetchEngineProfile]);
 
   // Save All Configuration to Server
   const saveAllConfig = async () => {
@@ -1095,6 +753,10 @@ export default function AIConfigTab({ openTab }) {
         active_model: activeModel,
         provider: activeProvider,
         model: activeModel,
+        sigma_proxy_model: selectedGuideModel,
+        sigma_proxy_alias: proxyAlias,
+        provider_server_port: Number(serverPort),
+        provider_server_host: serverHost,
         temperature: parameters.temperature,
         max_tokens: parameters.max_tokens,
         top_p: parameters.top_p,
@@ -1106,11 +768,13 @@ export default function AIConfigTab({ openTab }) {
 
       Object.entries(providerSettings).forEach(([pId, pCfg]) => {
         payload.providers[pId] = {
-          endpoint: pCfg.endpoint || '',
-          api_url: pCfg.api_url || '',
-          model: pCfg.custom_model || pCfg.model || PROVIDER_CATALOG[pId]?.default_model || '',
-          api_key: pCfg.api_key || undefined
+          endpoint: pCfg.endpoint,
+          api_url: pCfg.api_url,
+          model: pCfg.custom_model || pCfg.model
         };
+        if (pCfg.api_key && pCfg.api_key.trim()) {
+          payload.providers[pId].api_key = pCfg.api_key.trim();
+        }
       });
 
       const res = await fetch('/api/config', {
@@ -1118,674 +782,963 @@ export default function AIConfigTab({ openTab }) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)
       });
-
       const data = await res.json();
+
       if (data.success) {
-        setSaveToast({ type: 'success', msg: 'Configurazione salvata con successo!' });
+        setSaveToast({ type: 'success', msg: 'Configurazione, Porte e Modello Proxy salvati con successo! 🚀' });
         fetchConfig();
+        fetchServerInfo();
       } else {
-        setSaveToast({ type: 'error', msg: data.error || 'Errore salvataggio' });
+        setSaveToast({ type: 'error', msg: data.error || 'Errore durante il salvataggio.' });
       }
-    } catch (err) {
-      setSaveToast({ type: 'error', msg: err.message });
+    } catch (e) {
+      setSaveToast({ type: 'error', msg: `Errore rete: ${e.message}` });
     } finally {
       setSaving(false);
       setTimeout(() => setSaveToast(null), 4000);
     }
   };
 
-  // Test single provider connection
+  // Test single provider connectivity
   const testProviderConnection = async (pId) => {
     setTestingProvider(pId);
-    setTestResults(prev => ({ ...prev, [pId]: { status: 'testing', msg: 'Test connessione in corso...' } }));
-
+    setTestResults(prev => ({ ...prev, [pId]: { testing: true } }));
     const p = providerSettings[pId] || {};
-    const modelToTest = p.custom_model || p.model || PROVIDER_CATALOG[pId]?.default_model;
+    const t0 = performance.now();
 
     try {
-      let url = '/v1/chat/completions';
-      let headers = { 'Content-Type': 'application/json' };
-      let body = {
-        model: modelToTest,
-        messages: [{ role: 'user', content: 'Ping connection test' }],
-        max_tokens: 10
-      };
-
-      if (pId === 'sigma_engine') {
-        url = '/v1/chat/completions';
-      }
-
-      const res = await fetch(url, {
+      const res = await fetch('/api/test_provider', {
         method: 'POST',
-        headers,
-        body: JSON.stringify(body)
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          provider: pId,
+          api_key: p.api_key || '',
+          endpoint: p.endpoint || '',
+          api_url: p.api_url || '',
+          model: p.custom_model || p.model || ''
+        })
       });
+      const data = await res.json();
+      const latency = Math.round(performance.now() - t0);
 
-      if (res.ok) {
-        setTestResults(prev => ({ ...prev, [pId]: { status: 'success', msg: '🟢 Connessione attiva e rispondente!' } }));
-      } else {
-        const txt = await res.text();
-        setTestResults(prev => ({ ...prev, [pId]: { status: 'error', msg: `🔴 Errore HTTP ${res.status}: ${txt.slice(0, 80)}` } }));
-      }
-    } catch (err) {
-      setTestResults(prev => ({ ...prev, [pId]: { status: 'error', msg: `🔴 Connessione fallita: ${err.message}` } }));
+      setTestResults(prev => ({
+        ...prev,
+        [pId]: {
+          success: data.success,
+          message: data.message || (data.success ? 'Connessione stabilita con successo!' : 'Connessione fallita.'),
+          latency,
+          models: data.models || []
+        }
+      }));
+    } catch (e) {
+      setTestResults(prev => ({
+        ...prev,
+        [pId]: {
+          success: false,
+          message: `Errore: ${e.message}`,
+          latency: null
+        }
+      }));
     } finally {
       setTestingProvider(null);
     }
   };
 
-  // One-click Connect for GitHub Engines & Local Runtimes
-  const handleConnectGitHubEngine = (engine) => {
-    if (engine.providerId === 'ailoflow') {
-      setActiveProvider('ailoflow');
-      setProviderSettings(prev => ({
-        ...prev,
-        ailoflow: {
-          ...prev.ailoflow,
-          endpoint: engine.defaultEndpoint,
-          api_url: engine.defaultEndpoint
+  // Live Server SSE Tester
+  const runLiveServerTest = async () => {
+    setLiveTestState(prev => ({
+      ...prev,
+      isTesting: true,
+      outputText: '',
+      latency: null,
+      ttft: null,
+      error: null
+    }));
+
+    const t0 = performance.now();
+    let ttftRecorded = false;
+
+    try {
+      const isOllama = liveTestState.protocol === 'ollama';
+      const endpoint = isOllama ? `${effectiveBaseUrl}/api/chat` : `${effectiveBaseUrl}/v1/chat/completions`;
+      const targetModel = selectedGuideModel || proxyAlias || 'sigma';
+
+      const payload = isOllama
+        ? { model: targetModel, messages: [{ role: 'user', content: liveTestState.prompt }], stream: true }
+        : { model: targetModel, messages: [{ role: 'user', content: liveTestState.prompt }], stream: true };
+
+      const response = await fetch(endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer sigma' },
+        body: JSON.stringify(payload)
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder('utf-8');
+      let fullText = '';
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        if (!ttftRecorded) {
+          ttftRecorded = true;
+          setLiveTestState(p => ({ ...p, ttft: Math.round(performance.now() - t0) }));
         }
+
+        const chunk = decoder.decode(value, { stream: true });
+        const lines = chunk.split('\n').filter(l => l.trim().length > 0);
+
+        for (const line of lines) {
+          if (isOllama) {
+            try {
+              const parsed = JSON.parse(line);
+              if (parsed.message?.content) {
+                fullText += parsed.message.content;
+                setLiveTestState(p => ({ ...p, outputText: fullText }));
+              }
+            } catch (e) {}
+          } else {
+            if (line.startsWith('data: ')) {
+              const dataStr = line.replace(/^data:\s*/, '').trim();
+              if (dataStr === '[DONE]') continue;
+              try {
+                const parsed = JSON.parse(dataStr);
+                const delta = parsed.choices?.[0]?.delta?.content;
+                if (delta) {
+                  fullText += delta;
+                  setLiveTestState(p => ({ ...p, outputText: fullText }));
+                }
+              } catch (e) {}
+            }
+          }
+        }
+      }
+
+      setLiveTestState(p => ({
+        ...p,
+        isTesting: false,
+        latency: Math.round(performance.now() - t0)
       }));
-    } else if (engine.providerId === 'ollama') {
-      setActiveProvider('ollama');
-      setProviderSettings(prev => ({
-        ...prev,
-        ollama: {
-          ...prev.ollama,
-          endpoint: engine.defaultEndpoint
-        }
-      }));
-      fetchOllamaModels(true);
-    } else if (engine.providerId === 'lmstudio') {
-      setActiveProvider('lmstudio');
-      setProviderSettings(prev => ({
-        ...prev,
-        lmstudio: {
-          ...prev.lmstudio,
-          endpoint: 'http://localhost:1234',
-          api_url: engine.defaultEndpoint
-        }
-      }));
-    } else {
-      // Custom OpenAI Compatible endpoint
-      setActiveProvider('custom');
-      setProviderSettings(prev => ({
-        ...prev,
-        custom: {
-          ...prev.custom,
-          api_url: engine.defaultEndpoint,
-          model: engine.name.toLowerCase().replace(/[^a-z0-9]/g, '')
-        }
+    } catch (err) {
+      setLiveTestState(p => ({
+        ...p,
+        isTesting: false,
+        error: err.message
       }));
     }
-
-    setSaveToast({
-      type: 'success',
-      msg: `Configurato ${engine.name} (${engine.defaultEndpoint}) come provider attivo! Clicca "Salva & Applica" per confermare.`
-    });
-    setTimeout(() => setSaveToast(null), 4500);
-
-    // Scroll to cloud/custom section
-    scrollToSection('cloud');
   };
 
-  const copyKeyToClipboard = (keyId, text) => {
-    navigator.clipboard.writeText(text);
-    setCopiedKey(keyId);
-    setTimeout(() => setCopiedKey(null), 2000);
-  };
-
-  const toggleKeyVisibility = (pId) => {
-    setVisibleKeys(prev => ({ ...prev, [pId]: !prev[pId] }));
-  };
-
-  const updateProviderField = (pId, field, val) => {
-    setProviderSettings(prev => ({
-      ...prev,
-      [pId]: {
-        ...(prev[pId] || {}),
-        [field]: val
+  // Download Continue config.json
+  const downloadContinueConfig = () => {
+    const targetModel = selectedGuideModel || proxyAlias || 'sigma';
+    const cfg = {
+      models: [
+        {
+          title: `SigmaEngine (${targetModel})`,
+          provider: "openai",
+          model: targetModel,
+          apiBase: `${effectiveBaseUrl}/v1`,
+          apiKey: "sigma"
+        }
+      ],
+      tabAutocompleteModel: {
+        title: "SigmaEngine Autocomplete",
+        provider: "openai",
+        model: "qwen2.5-coder:7b",
+        apiBase: `${effectiveBaseUrl}/v1`,
+        apiKey: "sigma"
       }
-    }));
-  };
-
-  const handleExportBackup = () => {
-    const backupData = {
-      timestamp: new Date().toISOString(),
-      active_provider: activeProvider,
-      active_model: activeModel,
-      parameters,
-      providers: providerSettings
     };
-    const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(backupData, null, 2));
+    const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(cfg, null, 2));
     const dlAnchor = document.createElement('a');
     dlAnchor.setAttribute("href", dataStr);
-    dlAnchor.setAttribute("download", "sigma_providers_backup.json");
+    dlAnchor.setAttribute("download", "continue_config.json");
     dlAnchor.click();
   };
 
-  const handleResetDefault = () => {
-    if (window.confirm("Vuoi ripristinare le impostazioni predefinite dei provider?")) {
-      setActiveProvider('sigma_engine');
-      setActiveModel('sigma:latest');
-      fetchConfig();
-    }
-  };
-
-  // Filtered cloud & general providers
+  // Filtered external providers
   const filteredProviders = useMemo(() => {
-    return Object.values(PROVIDER_CATALOG).filter(p => {
-      const matchCategory = activeCategory === 'all' || p.category === activeCategory;
-      const matchSearch = searchQuery.trim() === '' || 
-        p.label.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        p.id.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        p.hint.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        (p.popular_models || []).some(m => m.toLowerCase().includes(searchQuery.toLowerCase()));
-      return matchCategory && matchSearch;
+    return Object.keys(PROVIDER_CATALOG).filter(k => {
+      if (k === 'sigma_engine') return false; // Handled separately in Tab 1
+      const p = PROVIDER_CATALOG[k];
+      const matchCat = activeCategory === 'all' || 
+                       (activeCategory === 'cloud' && p.category === 'cloud') ||
+                       (activeCategory === 'local' && (p.category === 'local' || p.category === 'custom'));
+      const matchQuery = !searchQuery || 
+                         p.label.toLowerCase().includes(searchQuery.toLowerCase()) || 
+                         k.toLowerCase().includes(searchQuery.toLowerCase());
+      return matchCat && matchQuery;
     });
   }, [activeCategory, searchQuery]);
 
-  const configuredTokensCount = useMemo(() => {
-    return Object.keys(providerSettings).filter(k => {
-      const p = providerSettings[k];
-      return k === 'ollama' || k === 'sigma_engine' || k === 'lmstudio' || p?.has_api_key || (p?.api_key && p?.api_key.trim().length > 0);
-    }).length;
-  }, [providerSettings]);
-
-  const activeProviderMeta = PROVIDER_CATALOG[activeProvider] || PROVIDER_CATALOG.sigma_engine;
-  const ActiveIconComponent = ProviderIcons[activeProvider] || ProviderIcons.sigma_engine;
-
   return (
-    <div className="providers-hub-page" style={{
-      padding: '24px 32px 80px 32px',
-      background: bg,
-      minHeight: '100%',
-      maxHeight: '100%',
-      height: '100%',
-      overflowY: 'auto',
-      color: titleColor,
-      fontFamily: 'inherit',
-      boxSizing: 'border-box',
-      scrollBehavior: 'smooth'
-    }}>
-      {/* ========================================================================= */}
-      {/* TOP HERO STATUS BAR */}
-      {/* ========================================================================= */}
-      <div style={{
-        padding: '20px 24px',
-        borderRadius: '18px',
-        background: isLight ? '#ffffff' : 'linear-gradient(135deg, #111522, #0c0e15)',
-        border: isLight ? `1px solid ${activeProviderMeta.color}50` : `1px solid ${activeProviderMeta.color}40`,
-        boxShadow: cardShadow,
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'space-between',
-        flexWrap: 'wrap',
-        gap: '16px',
-        marginBottom: '16px',
-        position: 'relative',
-        overflow: 'hidden'
-      }}>
-        <div style={{
-          position: 'absolute',
-          top: '-40px',
-          right: '-40px',
-          width: '180px',
-          height: '180px',
-          background: `radial-gradient(circle, ${activeProviderMeta.color}25 0%, transparent 70%)`,
-          pointerEvents: 'none',
-          borderRadius: '50%'
-        }} />
+    <div 
+      className="providers-hub-page-container" 
+      style={{
+        width: '100%',
+        maxWidth: '100%',
+        height: '100%',
+        minHeight: '100%',
+        overflowY: 'auto',
+        overflowX: 'hidden',
+        boxSizing: 'border-box',
+        padding: '24px 32px 60px 32px',
+        color: titleColor,
+        fontFamily: 'Inter, system-ui, -apple-system, sans-serif'
+      }}
+    >
 
-        <div style={{ display: 'flex', alignItems: 'center', gap: '16px', zIndex: 1 }}>
-          <div style={{
-            width: '48px',
-            height: '48px',
-            borderRadius: '14px',
-            background: `${activeProviderMeta.color}18`,
-            border: `1px solid ${activeProviderMeta.color}45`,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            boxShadow: `0 0 20px ${activeProviderMeta.color}30`
-          }}>
-            <ActiveIconComponent size={26} color={activeProviderMeta.color} />
-          </div>
-
-          <div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '3px' }}>
-              <span style={{
-                fontSize: '0.64rem',
-                fontWeight: 800,
-                color: activeProviderMeta.color,
-                background: `${activeProviderMeta.color}15`,
-                border: `1px solid ${activeProviderMeta.color}35`,
-                padding: '2px 8px',
-                borderRadius: '8px',
-                letterSpacing: '0.5px'
-              }}>
-                PROVIDER ATTIVO SIGMA STUDIO
-              </span>
-              <span style={{
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: '4px',
-                fontSize: '0.7rem',
-                fontWeight: 800,
-                color: '#3fb950'
-              }}>
-                <span style={{ width: '7px', height: '7px', borderRadius: '50%', background: '#3fb950', display: 'inline-block', boxShadow: '0 0 8px #3fb950' }} />
-                Online
-              </span>
-            </div>
-
-            <h1 style={{ margin: '0 0 3px 0', fontSize: '1.35rem', fontWeight: 800, color: titleColor }}>
-              ⚙️ Providers Hub & Local Server Gateway
-            </h1>
-            <p style={{ margin: 0, fontSize: '0.76rem', color: subtitleColor }}>
-              Motore: <strong style={{ color: activeProviderMeta.color }}>{activeProviderMeta.label}</strong> • 
-              Modello: <strong>{activeModel || activeProviderMeta.default_model}</strong> • 
-              Server Esterno: <strong style={{ color: providerServerEnabled ? '#3fb950' : '#ef4444' }}>{providerServerEnabled ? 'Port :8000 ATTIVO 🟢' : 'DISABILITATO 🔴'}</strong> • 
-              Chiavi Configurate: <strong>{configuredTokensCount}/{Object.keys(PROVIDER_CATALOG).length}</strong>
-            </p>
-          </div>
-        </div>
-
-        {/* Global CTA Actions */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap', zIndex: 1 }}>
-          <button
-            onClick={() => testProviderConnection(activeProvider)}
-            disabled={testingProvider !== null}
-            style={{
-              padding: '8px 14px',
-              borderRadius: '10px',
-              background: innerCardBg,
-              border: innerCardBorder,
-              color: titleColor,
-              fontSize: '0.76rem',
-              fontWeight: 700,
-              cursor: 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '6px'
-            }}
-          >
-            {testingProvider === activeProvider ? <RefreshCw size={13} className="spin" /> : <Zap size={13} color="#faa03c" />}
-            Testa Provider
-          </button>
-
-          <button
-            onClick={saveAllConfig}
-            disabled={saving}
-            style={{
-              padding: '8px 18px',
-              borderRadius: '10px',
-              background: `linear-gradient(135deg, ${activeProviderMeta.color}, #00a8ff)`,
-              border: 'none',
-              color: '#000000',
-              fontSize: '0.78rem',
-              fontWeight: 800,
-              cursor: 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '6px',
-              boxShadow: `0 4px 14px ${activeProviderMeta.color}35`
-            }}
-          >
-            {saving ? <RefreshCw size={14} className="spin" /> : <Save size={14} />}
-            Salva & Applica
-          </button>
-        </div>
-      </div>
-
-      {/* Save Notification Toast */}
+      {/* Toast Notification */}
       {saveToast && (
         <div style={{
-          padding: '10px 14px',
+          position: 'fixed',
+          bottom: '24px',
+          right: '24px',
+          zIndex: 9999,
+          padding: '12px 18px',
           borderRadius: '10px',
-          background: saveToast.type === 'success' ? 'rgba(63, 185, 80, 0.15)' : (saveToast.type === 'error' ? 'rgba(239, 68, 68, 0.15)' : 'rgba(0, 210, 255, 0.15)'),
-          border: saveToast.type === 'success' ? '1px solid #3fb950' : (saveToast.type === 'error' ? '1px solid #ef4444' : '1px solid #00d2ff'),
-          color: titleColor,
-          fontSize: '0.78rem',
+          background: saveToast.type === 'success' ? '#0f3a22' : '#451212',
+          border: `1px solid ${saveToast.type === 'success' ? '#3fb950' : '#ef4444'}`,
+          color: '#ffffff',
+          boxShadow: '0 8px 24px rgba(0,0,0,0.6)',
+          fontSize: '0.82rem',
           fontWeight: 700,
-          marginBottom: '14px',
           display: 'flex',
           alignItems: 'center',
-          gap: '8px'
+          gap: '8px',
+          animation: 'fadeIn 0.2s ease-out'
         }}>
-          {saveToast.type === 'success' ? <CheckCircle2 size={16} color="#3fb950" /> : <AlertCircle size={16} />}
+          {saveToast.type === 'success' ? <CheckCircle2 size={16} color="#3fb950" /> : <AlertCircle size={16} color="#ef4444" />}
           <span>{saveToast.msg}</span>
         </div>
       )}
 
+      {/* Page Header (Full Width) */}
+      <div style={{ marginBottom: '20px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '14px', width: '100%' }}>
+        <div>
+          <h1 style={{ margin: 0, fontSize: '1.5rem', fontWeight: 800, color: titleColor, display: 'flex', alignItems: 'center', gap: '10px' }}>
+            <SlidersHorizontal size={26} color="#00f2fe" />
+            <span>Providers Hub & SigmaEngine Gateway</span>
+          </h1>
+          <p style={{ margin: '4px 0 0 0', fontSize: '0.82rem', color: subtitleColor }}>
+            Gestisci il Server Locale SigmaEngine per client esterni (VS Code, Cursor, Python) e connetti i tuoi provider AI esterni.
+          </p>
+        </div>
+
+        <button
+          onClick={saveAllConfig}
+          disabled={saving}
+          style={{
+            padding: '9px 20px',
+            borderRadius: '10px',
+            background: 'linear-gradient(135deg, #00f2fe, #4facfe)',
+            border: 'none',
+            color: '#000',
+            fontSize: '0.82rem',
+            fontWeight: 800,
+            cursor: saving ? 'not-allowed' : 'pointer',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '6px',
+            boxShadow: '0 4px 16px rgba(0, 242, 254, 0.3)',
+            transition: 'all 0.15s ease'
+          }}
+        >
+          {saving ? <RefreshCw size={14} className="spin" /> : <Save size={14} />}
+          <span>{saving ? 'Salvataggio...' : 'Salva Modifiche'}</span>
+        </button>
+      </div>
+
       {/* ========================================================================= */}
-      {/* STICKY QUICK NAVIGATION BAR (3 LOGICAL PILLARS) */}
+      {/* 2 MAIN TOP-LEVEL TABS (OUTPUT / PROXY vs INPUT / AGGREGATION) */}
       {/* ========================================================================= */}
       <div style={{
         display: 'flex',
         alignItems: 'center',
-        justifyContent: 'space-between',
-        flexWrap: 'wrap',
         gap: '10px',
-        padding: '8px 14px',
-        borderRadius: '12px',
+        padding: '6px',
+        borderRadius: '14px',
         background: cardBg,
         border: cardBorder,
         boxShadow: cardShadow,
-        marginBottom: '20px',
-        position: 'sticky',
-        top: 0,
-        zIndex: 50,
-        backdropFilter: 'blur(12px)'
+        marginBottom: '24px',
+        width: '100%'
       }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
-          {[
-            { id: 'engine', label: '⚡ 1. SigmaEngine (Server :8000 & Parametri)', color: '#00f2fe' },
-            { id: 'github', label: '🐙 2. Motori Open-Source & LM Studio', color: '#6366f1' },
-            { id: 'cloud', label: '☁️ 3. Cloud Providers & API Vault', color: '#10a37f' }
-          ].map(sec => {
-            const active = activeSectionAnchor === sec.id;
-            return (
-              <button
-                key={sec.id}
-                onClick={() => scrollToSection(sec.id)}
-                style={{
-                  padding: '6px 12px',
-                  borderRadius: '8px',
-                  fontSize: '0.75rem',
-                  fontWeight: 700,
-                  border: active ? `1px solid ${sec.color}60` : '1px solid transparent',
-                  cursor: 'pointer',
-                  background: active ? `${sec.color}20` : 'transparent',
-                  color: active ? sec.color : subtitleColor,
-                  transition: 'all 0.15s ease'
-                }}
-              >
-                {sec.label}
-              </button>
-            );
-          })}
-        </div>
+        {/* TAB 1: SIGMAENGINE SERVER (OUTPUT / PROXY) */}
+        <button
+          onClick={() => setMainHubTab('engine_server')}
+          style={{
+            flex: 1,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: '10px',
+            padding: '11px 20px',
+            borderRadius: '10px',
+            fontSize: '0.84rem',
+            fontWeight: 800,
+            cursor: 'pointer',
+            background: mainHubTab === 'engine_server' 
+              ? 'linear-gradient(135deg, rgba(0, 242, 254, 0.22), rgba(0, 180, 255, 0.12))' 
+              : 'transparent',
+            border: mainHubTab === 'engine_server' 
+              ? '1px solid #00f2fe' 
+              : '1px solid transparent',
+            color: mainHubTab === 'engine_server' ? '#00f2fe' : subtitleColor,
+            boxShadow: mainHubTab === 'engine_server' ? '0 0 16px rgba(0, 242, 254, 0.25)' : 'none',
+            transition: 'all 0.18s ease'
+          }}
+        >
+          <Zap size={17} color={mainHubTab === 'engine_server' ? '#00f2fe' : 'currentColor'} />
+          <span>⚡ 1. SigmaEngine Server (Output / Proxy)</span>
+          <span style={{
+            fontSize: '0.66rem',
+            padding: '2px 8px',
+            borderRadius: '6px',
+            background: providerServerEnabled ? 'rgba(63, 185, 80, 0.15)' : 'rgba(239, 68, 68, 0.15)',
+            color: providerServerEnabled ? '#3fb950' : '#ef4444',
+            border: `1px solid ${providerServerEnabled ? 'rgba(63, 185, 80, 0.4)' : 'rgba(239, 68, 68, 0.4)'}`,
+            fontWeight: 700
+          }}>
+            {providerServerEnabled ? `:${serverPort} ATTIVO 🟢` : 'DISATTIVATO 🔴'}
+          </span>
+        </button>
 
-        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-          <button
-            onClick={handleExportBackup}
-            title="Esporta copia di backup JSON"
-            style={{
-              padding: '5px 10px',
-              borderRadius: '8px',
-              background: innerCardBg,
-              border: innerCardBorder,
-              color: titleColor,
-              fontSize: '0.7rem',
-              fontWeight: 700,
-              cursor: 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '4px'
-            }}
-          >
-            <Download size={12} color="#00d2ff" /> Backup
-          </button>
-          <button
-            onClick={handleResetDefault}
-            title="Ripristina valori predefiniti"
-            style={{
-              padding: '5px 10px',
-              borderRadius: '8px',
-              background: 'rgba(239, 68, 68, 0.08)',
-              border: '1px solid rgba(239, 68, 68, 0.25)',
-              color: '#ef4444',
-              fontSize: '0.7rem',
-              fontWeight: 700,
-              cursor: 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '4px'
-            }}
-          >
-            <Trash2 size={12} /> Reset
-          </button>
-        </div>
+        {/* TAB 2: EXTERNAL PROVIDERS (INPUT / AGGREGATION) */}
+        <button
+          onClick={() => setMainHubTab('external_providers')}
+          style={{
+            flex: 1,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: '10px',
+            padding: '11px 20px',
+            borderRadius: '10px',
+            fontSize: '0.84rem',
+            fontWeight: 800,
+            cursor: 'pointer',
+            background: mainHubTab === 'external_providers' 
+              ? 'linear-gradient(135deg, rgba(168, 85, 247, 0.22), rgba(99, 102, 241, 0.12))' 
+              : 'transparent',
+            border: mainHubTab === 'external_providers' 
+              ? '1px solid #a855f7' 
+              : '1px solid transparent',
+            color: mainHubTab === 'external_providers' ? '#c084fc' : subtitleColor,
+            boxShadow: mainHubTab === 'external_providers' ? '0 0 16px rgba(168, 85, 247, 0.25)' : 'none',
+            transition: 'all 0.18s ease'
+          }}
+        >
+          <Globe size={17} color={mainHubTab === 'external_providers' ? '#c084fc' : 'currentColor'} />
+          <span>🌐 2. Provider Esterni (Input / Aggregazione)</span>
+          <span style={{
+            fontSize: '0.66rem',
+            padding: '2px 8px',
+            borderRadius: '6px',
+            background: 'rgba(168, 85, 247, 0.15)',
+            color: '#c084fc',
+            border: '1px solid rgba(168, 85, 247, 0.35)',
+            fontWeight: 700
+          }}>
+            Cloud & GitHub
+          </span>
+        </button>
       </div>
 
       {/* ========================================================================= */}
-      {/* SECTION 1: ⚡ SIGMAENGINE — LOCAL SERVER CONSOLE & DUAL ARCHITECTURE */}
+      {/* TAB 1 CONTENT: ⚡ SIGMAENGINE SERVER & PROXY GATEWAY */}
       {/* ========================================================================= */}
-      <div id="section-engine" style={{ marginBottom: '36px', scrollMarginTop: '65px' }}>
-        
-        {/* Section Heading */}
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '10px', marginBottom: '14px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-            <div style={{
-              width: '36px',
-              height: '36px',
-              borderRadius: '10px',
-              background: 'rgba(0, 242, 254, 0.15)',
-              border: '1px solid rgba(0, 242, 254, 0.4)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              boxShadow: '0 0 16px rgba(0, 242, 254, 0.2)'
-            }}>
-              <Zap size={20} color="#00f2fe" />
-            </div>
-            <div>
-              <h2 style={{ margin: 0, fontSize: '1.2rem', fontWeight: 800, color: titleColor }}>
-                1. ⚡ SigmaEngine — Server Locale & Architettura Duale
-              </h2>
-              <p style={{ margin: 0, fontSize: '0.76rem', color: subtitleColor }}>
-                Motore ad alte prestazioni integrato in Sigma Studio ed esposto come Server API compatibile OpenAI / Ollama per qualsiasi client esterno.
-              </p>
-            </div>
-          </div>
-
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <span style={{
-              fontSize: '0.72rem',
-              fontWeight: 800,
-              color: providerServerEnabled ? '#3fb950' : '#ef4444',
-              background: providerServerEnabled ? 'rgba(63, 185, 80, 0.12)' : 'rgba(239, 68, 68, 0.12)',
-              border: providerServerEnabled ? '1px solid rgba(63, 185, 80, 0.35)' : '1px solid rgba(239, 68, 68, 0.35)',
-              padding: '4px 10px',
-              borderRadius: '8px',
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: '6px'
-            }}>
-              <span style={{
-                width: '8px',
-                height: '8px',
-                borderRadius: '50%',
-                background: providerServerEnabled ? '#3fb950' : '#ef4444',
-                boxShadow: providerServerEnabled ? '0 0 8px #3fb950' : 'none'
-              }} />
-              {providerServerEnabled ? 'SERVER ATTIVO (Port :8000)' : 'SERVER DISABILITATO'}
-            </span>
-
-            <button
-              onClick={() => toggleProviderServer()}
-              style={{
-                padding: '6px 14px',
-                borderRadius: '8px',
-                background: providerServerEnabled ? 'rgba(239, 68, 68, 0.15)' : 'linear-gradient(135deg, #3fb950, #2ea043)',
-                border: providerServerEnabled ? '1px solid rgba(239, 68, 68, 0.35)' : 'none',
-                color: providerServerEnabled ? '#ef4444' : '#fff',
-                fontSize: '0.74rem',
-                fontWeight: 800,
-                cursor: 'pointer',
+      {mainHubTab === 'engine_server' && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '22px', width: '100%' }}>
+          
+          {/* Top Server Status Strip */}
+          <div style={{
+            padding: '18px 22px',
+            borderRadius: '16px',
+            background: cardBg,
+            border: '1px solid rgba(0, 242, 254, 0.3)',
+            boxShadow: cardShadow,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            flexWrap: 'wrap',
+            gap: '14px',
+            width: '100%',
+            boxSizing: 'border-box'
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+              <div style={{
+                width: '44px',
+                height: '44px',
+                borderRadius: '12px',
+                background: 'rgba(0, 242, 254, 0.15)',
+                border: '1px solid rgba(0, 242, 254, 0.4)',
                 display: 'flex',
                 alignItems: 'center',
-                gap: '5px'
-              }}
-            >
-              <Power size={13} />
-              {providerServerEnabled ? 'Arresta Server' : 'Avvia Server :8000'}
-            </button>
-          </div>
-        </div>
-
-        {/* LM Studio-style Local Server Control Dashboard Card */}
-        <div style={{
-          padding: '20px',
-          borderRadius: '16px',
-          background: cardBg,
-          border: '1px solid rgba(0, 242, 254, 0.3)',
-          boxShadow: cardShadow,
-          marginBottom: '16px'
-        }}>
-          {/* Top Status & Specs Strip */}
-          <div style={{
-            display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
-            gap: '10px',
-            marginBottom: '16px'
-          }}>
-            <div style={{ padding: '10px 12px', borderRadius: '10px', background: innerCardBg, border: innerCardBorder }}>
-              <div style={{ fontSize: '0.64rem', color: subtitleColor, fontWeight: 700 }}>SERVER BASE URL</div>
-              <div style={{ fontSize: '0.86rem', fontWeight: 800, color: '#00f2fe', marginTop: '2px', fontFamily: 'monospace' }}>
-                http://localhost:8000
+                justifyContent: 'center',
+                boxShadow: '0 0 16px rgba(0, 242, 254, 0.2)'
+              }}>
+                <Zap size={24} color="#00f2fe" />
               </div>
-            </div>
-
-            <div style={{ padding: '10px 12px', borderRadius: '10px', background: innerCardBg, border: innerCardBorder }}>
-              <div style={{ fontSize: '0.64rem', color: subtitleColor, fontWeight: 700 }}>PROTOCOLLI ESPOSTI</div>
-              <div style={{ fontSize: '0.82rem', fontWeight: 800, color: titleColor, marginTop: '2px' }}>
-                OpenAI (/v1) + Ollama (/api)
-              </div>
-            </div>
-
-            <div style={{ padding: '10px 12px', borderRadius: '10px', background: innerCardBg, border: innerCardBorder }}>
-              <div style={{ fontSize: '0.64rem', color: subtitleColor, fontWeight: 700 }}>MODELLO RESIDENTE VRAM</div>
-              <div style={{ fontSize: '0.82rem', fontWeight: 800, color: '#faa03c', marginTop: '2px' }}>
-                {serverInfo?.resident_model || 'sigmaengine (Auto-Load)'}
-              </div>
-            </div>
-
-            <div style={{ padding: '10px 12px', borderRadius: '10px', background: innerCardBg, border: innerCardBorder }}>
-              <div style={{ fontSize: '0.64rem', color: subtitleColor, fontWeight: 700 }}>SICUREZZA & CORS</div>
-              <div style={{ fontSize: '0.82rem', fontWeight: 800, color: '#3fb950', marginTop: '2px' }}>
-                CORS * (Tutti i client abilitati)
-              </div>
-            </div>
-          </div>
-
-          {/* Dual Architecture Blueprint (Ruolo 1 vs Ruolo 2) */}
-          <div style={{
-            display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fit, minmax(310px, 1fr))',
-            gap: '12px',
-            marginBottom: '16px'
-          }}>
-            {/* Ruolo 1: Motore Interno */}
-            <div style={{
-              padding: '16px',
-              borderRadius: '12px',
-              background: isLight ? '#fbf8f0' : 'rgba(0, 242, 254, 0.04)',
-              border: '1px solid rgba(0, 242, 254, 0.25)',
-              display: 'flex',
-              flexDirection: 'column',
-              justifyContent: 'space-between'
-            }}>
               <div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px' }}>
-                  <Cpu size={16} color="#00f2fe" />
-                  <span style={{ fontSize: '0.66rem', fontWeight: 800, color: '#00f2fe', letterSpacing: '0.5px' }}>
-                    RUOLO 1: MOTORE INTERNO SIGMA STUDIO
-                  </span>
-                </div>
-                <h4 style={{ margin: '0 0 6px 0', fontSize: '0.92rem', fontWeight: 800, color: titleColor }}>
-                  ⚡ Inferenza Locale Diretta in-Memory
-                </h4>
-                <p style={{ margin: 0, fontSize: '0.74rem', color: subtitleColor, lineHeight: 1.45 }}>
-                  SigmaEngine è il motore neurale integrato in Sigma Studio. Esegue modelli residenti (GGUF, Safetensors) sfruttando <strong>CUDA FlashAttention-2</strong>, <strong>partizionamento dinamico della VRAM</strong> e <strong>Multi-Drive Sharding Lookahead</strong>, garantendo massima privacy e zero dipendenze dal cloud.
+                <h3 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 800, color: titleColor }}>
+                  Server API Locale SigmaEngine (:{serverPort})
+                </h3>
+                <p style={{ margin: '2px 0 0 0', fontSize: '0.76rem', color: subtitleColor }}>
+                  Espone i modelli locali con protocolli standard OpenAI (<code style={{ color: '#00f2fe' }}>/v1</code>) e Ollama (<code style={{ color: '#00d2ff' }}>/api</code>) a qualsiasi client esterno.
                 </p>
               </div>
-              <div style={{ marginTop: '10px', display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.7rem', color: '#3fb950', fontWeight: 700 }}>
-                <CheckCheck size={14} color="#3fb950" />
-                <span>Attivo per tutte le chat, task di coding ed agent interni di Sigma Studio.</span>
+            </div>
+
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+              <span style={{
+                fontSize: '0.74rem',
+                fontWeight: 800,
+                color: providerServerEnabled ? '#3fb950' : '#ef4444',
+                background: providerServerEnabled ? 'rgba(63, 185, 80, 0.12)' : 'rgba(239, 68, 68, 0.12)',
+                border: providerServerEnabled ? '1px solid rgba(63, 185, 80, 0.35)' : '1px solid rgba(239, 68, 68, 0.35)',
+                padding: '6px 14px',
+                borderRadius: '8px',
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '6px'
+              }}>
+                <span style={{
+                  width: '8px',
+                  height: '8px',
+                  borderRadius: '50%',
+                  background: providerServerEnabled ? '#3fb950' : '#ef4444',
+                  boxShadow: providerServerEnabled ? '0 0 8px #3fb950' : 'none'
+                }} />
+                {providerServerEnabled ? `ATTIVO (Port ${serverPort})` : 'DISABILITATO'}
+              </span>
+
+              <button
+                onClick={() => toggleProviderServer()}
+                style={{
+                  padding: '8px 18px',
+                  borderRadius: '8px',
+                  background: providerServerEnabled ? 'rgba(239, 68, 68, 0.15)' : 'linear-gradient(135deg, #3fb950, #2ea043)',
+                  border: providerServerEnabled ? '1px solid rgba(239, 68, 68, 0.35)' : 'none',
+                  color: providerServerEnabled ? '#ef4444' : '#fff',
+                  fontSize: '0.78rem',
+                  fontWeight: 800,
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px'
+                }}
+              >
+                <Power size={14} />
+                {providerServerEnabled ? 'Arresta Server' : `Avvia Server :${serverPort}`}
+              </button>
+            </div>
+          </div>
+
+          {/* CARD 1: IMPOSTAZIONI DI RETE, PORTA E MODELLO PROXY "SIGMA" */}
+          <div style={{
+            padding: '22px',
+            borderRadius: '16px',
+            background: cardBg,
+            border: '1px solid rgba(0, 242, 254, 0.3)',
+            boxShadow: cardShadow,
+            width: '100%',
+            boxSizing: 'border-box'
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px', flexWrap: 'wrap', gap: '10px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <Sliders size={20} color="#00f2fe" />
+                <h4 style={{ margin: 0, fontSize: '0.98rem', fontWeight: 800, color: titleColor }}>
+                  🎯 Configurazione Proxy & Porta di Uscita
+                </h4>
+              </div>
+
+              <button
+                onClick={saveAllConfig}
+                style={{
+                  padding: '5px 12px',
+                  borderRadius: '6px',
+                  background: 'rgba(0, 242, 254, 0.15)',
+                  border: '1px solid rgba(0, 242, 254, 0.4)',
+                  color: '#00f2fe',
+                  fontSize: '0.72rem',
+                  fontWeight: 700,
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '4px'
+                }}
+              >
+                <Save size={12} /> Salva Parametri Rete
+              </button>
+            </div>
+
+            {/* Editable Network & Proxy Inputs Grid */}
+            <div style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
+              gap: '14px',
+              marginBottom: '16px'
+            }}>
+              {/* Field 1: Porta Server */}
+              <div style={{ padding: '12px 14px', borderRadius: '10px', background: innerCardBg, border: innerCardBorder }}>
+                <label style={{ fontSize: '0.68rem', fontWeight: 700, color: subtitleColor, display: 'block', marginBottom: '4px' }}>
+                  PORTA SERVER (ROUTE DI USCITA)
+                </label>
+                <input
+                  type="number"
+                  value={serverPort}
+                  onChange={e => setServerPort(Number(e.target.value))}
+                  placeholder="8000"
+                  style={{
+                    width: '100%',
+                    padding: '6px 10px',
+                    borderRadius: '7px',
+                    background: isLight ? '#ffffff' : '#07090e',
+                    border: '1px solid rgba(0, 242, 254, 0.4)',
+                    color: '#00f2fe',
+                    fontSize: '0.86rem',
+                    fontWeight: 800,
+                    fontFamily: 'monospace',
+                    outline: 'none'
+                  }}
+                />
+              </div>
+
+              {/* Field 2: Host / IP di Ascolto */}
+              <div style={{ padding: '12px 14px', borderRadius: '10px', background: innerCardBg, border: innerCardBorder }}>
+                <label style={{ fontSize: '0.68rem', fontWeight: 700, color: subtitleColor, display: 'block', marginBottom: '4px' }}>
+                  HOST / INDIRIZZO IP DI ASCOLTO
+                </label>
+                <input
+                  type="text"
+                  value={serverHost}
+                  onChange={e => setServerHost(e.target.value)}
+                  placeholder="localhost"
+                  style={{
+                    width: '100%',
+                    padding: '6px 10px',
+                    borderRadius: '7px',
+                    background: isLight ? '#ffffff' : '#07090e',
+                    border: '1px solid rgba(0, 242, 254, 0.4)',
+                    color: titleColor,
+                    fontSize: '0.86rem',
+                    fontWeight: 800,
+                    fontFamily: 'monospace',
+                    outline: 'none'
+                  }}
+                />
+              </div>
+
+              {/* Field 3: Nome Alias Proxy */}
+              <div style={{ padding: '12px 14px', borderRadius: '10px', background: innerCardBg, border: innerCardBorder }}>
+                <label style={{ fontSize: '0.68rem', fontWeight: 700, color: subtitleColor, display: 'block', marginBottom: '4px' }}>
+                  NOME ALIAS PROXY ESPORTATO
+                </label>
+                <input
+                  type="text"
+                  value={proxyAlias}
+                  onChange={e => setProxyAlias(e.target.value)}
+                  placeholder="sigma"
+                  style={{
+                    width: '100%',
+                    padding: '6px 10px',
+                    borderRadius: '7px',
+                    background: isLight ? '#ffffff' : '#07090e',
+                    border: '1px solid rgba(0, 242, 254, 0.4)',
+                    color: '#3fb950',
+                    fontSize: '0.86rem',
+                    fontWeight: 800,
+                    fontFamily: 'monospace',
+                    outline: 'none'
+                  }}
+                />
+              </div>
+
+              {/* Field 4: Modello Destinazione Proxy */}
+              <div style={{ padding: '12px 14px', borderRadius: '10px', background: innerCardBg, border: innerCardBorder, gridColumn: 'span 1' }}>
+                <label style={{ fontSize: '0.68rem', fontWeight: 700, color: subtitleColor, display: 'block', marginBottom: '4px' }}>
+                  MODELLO PROXY ATTIVO
+                </label>
+                <CustomSelect
+                  value={selectedGuideModel}
+                  onChange={val => {
+                    setSelectedGuideModel(val);
+                  }}
+                  options={allAvailableGuideModels}
+                  placeholder="Seleziona modello proxy..."
+                  searchable={true}
+                  variant="cyan"
+                />
               </div>
             </div>
 
-            {/* Ruolo 2: Provider Server Esterno */}
+            {/* Explanation of Proxy Alias vs Direct Exact Name Routing */}
             <div style={{
-              padding: '16px',
-              borderRadius: '12px',
-              background: isLight ? '#fbf8f0' : 'rgba(99, 102, 241, 0.04)',
-              border: '1px solid rgba(99, 102, 241, 0.25)',
-              display: 'flex',
-              flexDirection: 'column',
-              justifyContent: 'space-between'
+              display: 'grid',
+              gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))',
+              gap: '14px'
             }}>
-              <div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px' }}>
-                  <Globe size={16} color="#6366f1" />
-                  <span style={{ fontSize: '0.66rem', fontWeight: 800, color: '#6366f1', letterSpacing: '0.5px' }}>
-                    RUOLO 2: LOCAL PROVIDER PER ALTRI PROGRAMMI
-                  </span>
+              {/* Option 1: Proxy Alias */}
+              <div style={{
+                padding: '16px',
+                borderRadius: '12px',
+                background: innerCardBg,
+                border: '1px solid rgba(0, 242, 254, 0.3)'
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '6px' }}>
+                  <span style={{ fontSize: '0.72rem', fontWeight: 800, color: '#00f2fe' }}>OPZIONE 1: ALIAS PROXY "{proxyAlias || 'sigma'}"</span>
                 </div>
-                <h4 style={{ margin: '0 0 6px 0', fontSize: '0.92rem', fontWeight: 800, color: titleColor }}>
-                  🔌 Server API Standard OpenAI & Ollama
-                </h4>
-                <p style={{ margin: 0, fontSize: '0.74rem', color: subtitleColor, lineHeight: 1.45 }}>
-                  Avviando il server (:8000), qualsiasi software esterno come <strong>Visual Studio Code</strong> (Continue, Cline, Roo Code), <strong>Cursor</strong>, <strong>Windsurf</strong>, <strong>Open WebUI</strong> o script Python può connettersi a SigmaEngine come se fosse OpenAI o Ollama.
+                <p style={{ margin: 0, fontSize: '0.76rem', color: subtitleColor, lineHeight: 1.5 }}>
+                  Imposta nel tuo client esterno <code style={{ color: '#00f2fe' }}>model: "{proxyAlias || 'sigma'}"</code> (o <code style={{ color: '#00f2fe' }}>"sigmaengine"</code>). Le richieste verranno inoltrate istantaneamente al modello scelto (<strong style={{ color: '#ffffff' }}>{selectedGuideModel}</strong>) senza dover riconfigurare l'IDE ogni volta che cambi modello!
                 </p>
               </div>
-              <div style={{ marginTop: '10px', display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.7rem', color: '#6366f1', fontWeight: 700 }}>
-                <CheckCheck size={14} color="#6366f1" />
-                <span>Interoperabilità istantanea con zero configurazioni complesse.</span>
+
+              {/* Option 2: Direct Model Name */}
+              <div style={{
+                padding: '16px',
+                borderRadius: '12px',
+                background: innerCardBg,
+                border: '1px solid rgba(168, 85, 247, 0.3)'
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '6px' }}>
+                  <span style={{ fontSize: '0.72rem', fontWeight: 800, color: '#c084fc' }}>OPZIONE 2: CHIAMATA DIRETTA PER NOME</span>
+                </div>
+                <p style={{ margin: 0, fontSize: '0.76rem', color: subtitleColor, lineHeight: 1.5 }}>
+                  Puoi richiedere direttamente qualsiasi modello presente su disco passando il suo nome esatto (es. <code style={{ color: '#c084fc' }}>"Qwen3.5-9B-GGUF"</code> o <code style={{ color: '#c084fc' }}>"sigma-alpaca-3b-gguf"</code>). Il router di SigmaEngine caricherà il modello richiesto on-demand.
+                </p>
               </div>
             </div>
           </div>
 
-          {/* Endpoints Table Strip (Like LM Studio Server Route List) */}
+          {/* ========================================================================= */}
+          {/* CARD 2: LISTA MODELLI RICHIAMABILI CON TASTO COPIA & SCELTA PROXY */}
+          {/* ========================================================================= */}
           <div style={{
-            padding: '14px',
-            borderRadius: '12px',
-            background: innerCardBg,
-            border: innerCardBorder,
-            marginBottom: '16px'
+            padding: '22px',
+            borderRadius: '16px',
+            background: cardBg,
+            border: '1px solid rgba(0, 242, 254, 0.3)',
+            boxShadow: cardShadow,
+            width: '100%',
+            boxSizing: 'border-box'
           }}>
-            <div style={{ fontSize: '0.74rem', fontWeight: 800, color: titleColor, marginBottom: '10px', display: 'flex', alignItems: 'center', gap: '6px' }}>
-              <Radio size={14} color="#00f2fe" />
-              <span>Route API Esportate da SigmaEngine (:8000)</span>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px', flexWrap: 'wrap', gap: '12px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <div style={{
+                  width: '32px',
+                  height: '32px',
+                  borderRadius: '8px',
+                  background: 'rgba(0, 242, 254, 0.15)',
+                  border: '1px solid rgba(0, 242, 254, 0.35)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center'
+                }}>
+                  <List size={18} color="#00f2fe" />
+                </div>
+                <div>
+                  <h4 style={{ margin: 0, fontSize: '1rem', fontWeight: 800, color: titleColor }}>
+                    📋 Registro Modelli Richiamabili & Selezione Rapida Proxy
+                  </h4>
+                  <p style={{ margin: '2px 0 0 0', fontSize: '0.74rem', color: subtitleColor }}>
+                    Tutti i modelli disponibili in Sigma Studio con tasto Copia per il <strong>Model ID</strong> esatto e pulsante per impostare il proxy <code>{proxyAlias || 'sigma'}</code>.
+                  </p>
+                </div>
+              </div>
+
+              {/* Search & Filter pills */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                {/* Search */}
+                <div style={{ position: 'relative', width: '220px' }}>
+                  <Search size={14} color="#a0a6bc" style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)' }} />
+                  <input
+                    type="text"
+                    value={callableSearch}
+                    onChange={e => setCallableSearch(e.target.value)}
+                    placeholder="Filtra modelli..."
+                    style={{
+                      width: '100%',
+                      padding: '6px 10px 6px 30px',
+                      borderRadius: '7px',
+                      background: innerCardBg,
+                      border: innerCardBorder,
+                      color: titleColor,
+                      fontSize: '0.74rem',
+                      outline: 'none'
+                    }}
+                  />
+                </div>
+
+                {/* Category Filter Pills */}
+                <div style={{ display: 'flex', gap: '4px' }}>
+                  {[
+                    { id: 'all', label: 'Tutti' },
+                    { id: 'local', label: '🏠 Locali GGUF' },
+                    { id: 'vram', label: '🔥 In VRAM' },
+                    { id: 'cloud', label: '☁️ Cloud' }
+                  ].map(f => (
+                    <button
+                      key={f.id}
+                      onClick={() => setCallableFilter(f.id)}
+                      style={{
+                        padding: '5px 10px',
+                        borderRadius: '6px',
+                        fontSize: '0.7rem',
+                        fontWeight: 700,
+                        border: 'none',
+                        cursor: 'pointer',
+                        background: callableFilter === f.id ? '#00f2fe' : innerCardBg,
+                        color: callableFilter === f.id ? '#000' : subtitleColor,
+                        transition: 'all 0.15s ease'
+                      }}
+                    >
+                      {f.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
             </div>
 
+            {/* Models Table / List */}
             <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+              {filteredCallableModels.length === 0 ? (
+                <div style={{ padding: '24px', textAlign: 'center', color: subtitleColor, fontSize: '0.8rem', background: innerCardBg, borderRadius: '10px' }}>
+                  Nessun modello trovato corrispondente ai criteri di ricerca.
+                </div>
+              ) : (
+                filteredCallableModels.map((item, idx) => {
+                  const isCurrentProxy = selectedGuideModel === item.value;
+                  const itemKey = `callable_model_${item.value}_${idx}`;
+
+                  return (
+                    <div
+                      key={itemKey}
+                      style={{
+                        padding: '12px 16px',
+                        borderRadius: '10px',
+                        background: isCurrentProxy 
+                          ? (isLight ? 'rgba(0, 242, 254, 0.1)' : 'rgba(0, 242, 254, 0.08)') 
+                          : (isLight ? '#ffffff' : '#07090e'),
+                        border: isCurrentProxy 
+                          ? '1px solid rgba(0, 242, 254, 0.45)' 
+                          : innerCardBorder,
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        flexWrap: 'wrap',
+                        gap: '12px',
+                        transition: 'all 0.15s ease'
+                      }}
+                    >
+                      {/* Left: Model Name, Badge & Details */}
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '12px', minWidth: '240px', flex: 1 }}>
+                        <div style={{
+                          width: '10px',
+                          height: '10px',
+                          borderRadius: '50%',
+                          background: item.color || '#00f2fe',
+                          boxShadow: `0 0 8px ${item.color || '#00f2fe'}`
+                        }} />
+
+                        <div>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                            <span style={{ fontSize: '0.84rem', fontWeight: 800, color: titleColor }}>
+                              {item.label}
+                            </span>
+
+                            {item.badge && (
+                              <span style={{
+                                fontSize: '0.62rem',
+                                padding: '2px 6px',
+                                borderRadius: '4px',
+                                background: `${item.color || '#00f2fe'}18`,
+                                color: item.color || '#00f2fe',
+                                border: `1px solid ${item.color || '#00f2fe'}35`,
+                                fontWeight: 700
+                              }}>
+                                {item.badge}
+                              </span>
+                            )}
+
+                            {isCurrentProxy && (
+                              <span style={{
+                                fontSize: '0.62rem',
+                                padding: '2px 8px',
+                                borderRadius: '4px',
+                                background: 'linear-gradient(135deg, rgba(0, 242, 254, 0.25), rgba(79, 172, 254, 0.25))',
+                                color: '#00f2fe',
+                                border: '1px solid #00f2fe',
+                                fontWeight: 800,
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '3px'
+                              }}>
+                                <Zap size={10} /> PROXY ATTIVO ("{proxyAlias || 'sigma'}")
+                              </span>
+                            )}
+                          </div>
+
+                          {item.desc && (
+                            <div style={{ fontSize: '0.7rem', color: subtitleColor, marginTop: '2px' }}>
+                              {item.desc}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Center: Exact Model ID Code Tag */}
+                      <div style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '6px',
+                        padding: '4px 10px',
+                        borderRadius: '6px',
+                        background: isLight ? 'rgba(0,0,0,0.05)' : 'rgba(255,255,255,0.05)',
+                        border: '1px solid rgba(255,255,255,0.08)'
+                      }}>
+                        <span style={{ fontSize: '0.64rem', color: subtitleColor, fontWeight: 700 }}>MODEL ID:</span>
+                        <code style={{ fontSize: '0.78rem', color: item.color || '#00f2fe', fontWeight: 800 }}>
+                          {item.value}
+                        </code>
+                      </div>
+
+                      {/* Right: Actions (Copy Model ID + Set as Proxy) */}
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        {/* Copy Model ID Button */}
+                        <button
+                          onClick={() => copyKeyToClipboard(`copy_model_${item.value}`, item.value)}
+                          style={{
+                            padding: '5px 12px',
+                            borderRadius: '6px',
+                            background: innerCardBg,
+                            border: innerCardBorder,
+                            color: titleColor,
+                            fontSize: '0.72rem',
+                            fontWeight: 700,
+                            cursor: 'pointer',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '4px',
+                            transition: 'all 0.15s ease'
+                          }}
+                        >
+                          {copiedKey === `copy_model_${item.value}` ? (
+                            <>
+                              <Check size={12} color="#3fb950" />
+                              <span style={{ color: '#3fb950' }}>Copiato!</span>
+                            </>
+                          ) : (
+                            <>
+                              <Copy size={12} />
+                              <span>Copia ID</span>
+                            </>
+                          )}
+                        </button>
+
+                        {/* Set as Proxy Button */}
+                        {isCurrentProxy ? (
+                          <div style={{
+                            padding: '5px 12px',
+                            borderRadius: '6px',
+                            background: 'rgba(63, 185, 80, 0.15)',
+                            border: '1px solid rgba(63, 185, 80, 0.4)',
+                            color: '#3fb950',
+                            fontSize: '0.72rem',
+                            fontWeight: 800,
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '4px'
+                          }}>
+                            <CheckCircle2 size={13} color="#3fb950" />
+                            <span>Proxy Agganciato</span>
+                          </div>
+                        ) : (
+                          <button
+                            onClick={() => handleSetProxyModel(item.value)}
+                            style={{
+                              padding: '5px 12px',
+                              borderRadius: '6px',
+                              background: 'linear-gradient(135deg, rgba(0, 242, 254, 0.18), rgba(0, 180, 255, 0.12))',
+                              border: '1px solid rgba(0, 242, 254, 0.4)',
+                              color: '#00f2fe',
+                              fontSize: '0.72rem',
+                              fontWeight: 700,
+                              cursor: 'pointer',
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: '4px',
+                              transition: 'all 0.15s ease'
+                            }}
+                          >
+                            <Zap size={12} />
+                            <span>Imposta come Proxy</span>
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+          </div>
+
+          {/* CARD 3: ROUTE API ESPORTATE */}
+          <div style={{
+            padding: '20px 22px',
+            borderRadius: '16px',
+            background: cardBg,
+            border: cardBorder,
+            boxShadow: cardShadow,
+            width: '100%',
+            boxSizing: 'border-box'
+          }}>
+            <div style={{ fontSize: '0.88rem', fontWeight: 800, color: titleColor, marginBottom: '14px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <Radio size={18} color="#00f2fe" />
+              <span>Route API Esportate da SigmaEngine (:{serverPort})</span>
+            </div>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
               {/* Route 1: OpenAI Chat Completions */}
               <div style={{
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'space-between',
-                padding: '8px 12px',
-                borderRadius: '8px',
+                padding: '12px 16px',
+                borderRadius: '10px',
                 background: isLight ? '#ffffff' : '#07090e',
                 border: innerCardBorder,
                 flexWrap: 'wrap',
-                gap: '8px'
+                gap: '10px'
               }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                  <span style={{ fontSize: '0.64rem', fontWeight: 800, color: '#10a37f', background: 'rgba(16, 163, 127, 0.15)', padding: '2px 6px', borderRadius: '4px' }}>POST</span>
-                  <code style={{ fontSize: '0.78rem', color: titleColor, fontWeight: 700 }}>http://localhost:8000/v1/chat/completions</code>
-                  <span style={{ fontSize: '0.68rem', color: subtitleColor }}>Standard OpenAI Chat (Streaming SSE)</span>
+                  <span style={{ fontSize: '0.68rem', fontWeight: 800, color: '#10a37f', background: 'rgba(16, 163, 127, 0.15)', padding: '2px 8px', borderRadius: '4px' }}>POST</span>
+                  <code style={{ fontSize: '0.84rem', color: titleColor, fontWeight: 700 }}>{effectiveBaseUrl}/v1/chat/completions</code>
+                  <span style={{ fontSize: '0.72rem', color: subtitleColor }}>Standard OpenAI Chat (Streaming SSE)</span>
                 </div>
                 <button
-                  onClick={() => copyKeyToClipboard('route_openai_chat', 'http://localhost:8000/v1/chat/completions')}
+                  onClick={() => copyKeyToClipboard('route_openai_chat', `${effectiveBaseUrl}/v1/chat/completions`)}
                   style={{
-                    padding: '3px 8px',
+                    padding: '5px 12px',
                     borderRadius: '6px',
                     background: innerCardBg,
                     border: innerCardBorder,
                     color: titleColor,
-                    fontSize: '0.68rem',
+                    fontSize: '0.72rem',
                     fontWeight: 700,
                     cursor: 'pointer',
                     display: 'flex',
                     alignItems: 'center',
-                    gap: '4px'
+                    gap: '5px'
                   }}
                 >
-                  {copiedKey === 'route_openai_chat' ? <Check size={12} color="#3fb950" /> : <Copy size={12} />} Copia URL
+                  {copiedKey === 'route_openai_chat' ? <Check size={13} color="#3fb950" /> : <Copy size={13} />} 
+                  <span>{copiedKey === 'route_openai_chat' ? 'Copiato!' : 'Copia URL'}</span>
                 </button>
               </div>
 
@@ -1794,35 +1747,36 @@ export default function AIConfigTab({ openTab }) {
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'space-between',
-                padding: '8px 12px',
-                borderRadius: '8px',
+                padding: '12px 16px',
+                borderRadius: '10px',
                 background: isLight ? '#ffffff' : '#07090e',
                 border: innerCardBorder,
                 flexWrap: 'wrap',
-                gap: '8px'
+                gap: '10px'
               }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                  <span style={{ fontSize: '0.64rem', fontWeight: 800, color: '#38bdf8', background: 'rgba(56, 189, 248, 0.15)', padding: '2px 6px', borderRadius: '4px' }}>GET</span>
-                  <code style={{ fontSize: '0.78rem', color: titleColor, fontWeight: 700 }}>http://localhost:8000/v1/models</code>
-                  <span style={{ fontSize: '0.68rem', color: subtitleColor }}>Rilevamento Modelli Disponibili</span>
+                  <span style={{ fontSize: '0.68rem', fontWeight: 800, color: '#38bdf8', background: 'rgba(56, 189, 248, 0.15)', padding: '2px 8px', borderRadius: '4px' }}>GET</span>
+                  <code style={{ fontSize: '0.84rem', color: titleColor, fontWeight: 700 }}>{effectiveBaseUrl}/v1/models</code>
+                  <span style={{ fontSize: '0.72rem', color: subtitleColor }}>Rilevamento Modelli Disponibili</span>
                 </div>
                 <button
-                  onClick={() => copyKeyToClipboard('route_openai_models', 'http://localhost:8000/v1/models')}
+                  onClick={() => copyKeyToClipboard('route_openai_models', `${effectiveBaseUrl}/v1/models`)}
                   style={{
-                    padding: '3px 8px',
+                    padding: '5px 12px',
                     borderRadius: '6px',
                     background: innerCardBg,
                     border: innerCardBorder,
                     color: titleColor,
-                    fontSize: '0.68rem',
+                    fontSize: '0.72rem',
                     fontWeight: 700,
                     cursor: 'pointer',
                     display: 'flex',
                     alignItems: 'center',
-                    gap: '4px'
+                    gap: '5px'
                   }}
                 >
-                  {copiedKey === 'route_openai_models' ? <Check size={12} color="#3fb950" /> : <Copy size={12} />} Copia URL
+                  {copiedKey === 'route_openai_models' ? <Check size={13} color="#3fb950" /> : <Copy size={13} />} 
+                  <span>{copiedKey === 'route_openai_models' ? 'Copiato!' : 'Copia URL'}</span>
                 </button>
               </div>
 
@@ -1831,83 +1785,66 @@ export default function AIConfigTab({ openTab }) {
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'space-between',
-                padding: '8px 12px',
-                borderRadius: '8px',
+                padding: '12px 16px',
+                borderRadius: '10px',
                 background: isLight ? '#ffffff' : '#07090e',
                 border: innerCardBorder,
                 flexWrap: 'wrap',
-                gap: '8px'
+                gap: '10px'
               }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                  <span style={{ fontSize: '0.64rem', fontWeight: 800, color: '#00d2ff', background: 'rgba(0, 210, 255, 0.15)', padding: '2px 6px', borderRadius: '4px' }}>POST</span>
-                  <code style={{ fontSize: '0.78rem', color: titleColor, fontWeight: 700 }}>http://localhost:8000/api/chat</code>
-                  <span style={{ fontSize: '0.68rem', color: subtitleColor }}>Standard Ollama Protocol (NDJSON Stream)</span>
+                  <span style={{ fontSize: '0.68rem', fontWeight: 800, color: '#00d2ff', background: 'rgba(0, 210, 255, 0.15)', padding: '2px 8px', borderRadius: '4px' }}>POST</span>
+                  <code style={{ fontSize: '0.84rem', color: titleColor, fontWeight: 700 }}>{effectiveBaseUrl}/api/chat</code>
+                  <span style={{ fontSize: '0.72rem', color: subtitleColor }}>Standard Ollama Protocol (NDJSON Stream)</span>
                 </div>
                 <button
-                  onClick={() => copyKeyToClipboard('route_ollama_chat', 'http://localhost:8000/api/chat')}
+                  onClick={() => copyKeyToClipboard('route_ollama_chat', `${effectiveBaseUrl}/api/chat`)}
                   style={{
-                    padding: '3px 8px',
+                    padding: '5px 12px',
                     borderRadius: '6px',
                     background: innerCardBg,
                     border: innerCardBorder,
                     color: titleColor,
-                    fontSize: '0.68rem',
+                    fontSize: '0.72rem',
                     fontWeight: 700,
                     cursor: 'pointer',
                     display: 'flex',
                     alignItems: 'center',
-                    gap: '4px'
+                    gap: '5px'
                   }}
                 >
-                  {copiedKey === 'route_ollama_chat' ? <Check size={12} color="#3fb950" /> : <Copy size={12} />} Copia URL
+                  {copiedKey === 'route_ollama_chat' ? <Check size={13} color="#3fb950" /> : <Copy size={13} />} 
+                  <span>{copiedKey === 'route_ollama_chat' ? 'Copiato!' : 'Copia URL'}</span>
                 </button>
               </div>
             </div>
           </div>
 
-          {/* Developer Integration & Code Exporter (LM Studio Style) */}
-          <div>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '10px', flexWrap: 'wrap', gap: '8px' }}>
+          {/* CARD 4: SNIPPET DI INTEGRAZIONE RAPIDA (CON TASTI COPIA) */}
+          <div style={{
+            padding: '22px',
+            borderRadius: '16px',
+            background: cardBg,
+            border: cardBorder,
+            boxShadow: cardShadow,
+            width: '100%',
+            boxSizing: 'border-box'
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px', flexWrap: 'wrap', gap: '8px' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <Code size={16} color="#00f2fe" />
-                <span style={{ fontSize: '0.78rem', fontWeight: 800, color: titleColor }}>
-                  Generatore di Configurazione & Snippet per Software Esterni
-                </span>
-              </div>
-
-              {/* Model Target Selector */}
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <span style={{ fontSize: '0.68rem', color: subtitleColor, fontWeight: 700 }}>Modello Esportato:</span>
-                <select
-                  value={selectedGuideModel}
-                  onChange={e => setSelectedGuideModel(e.target.value)}
-                  style={{
-                    padding: '4px 10px',
-                    borderRadius: '8px',
-                    background: innerCardBg,
-                    border: '1px solid rgba(0, 242, 254, 0.4)',
-                    color: titleColor,
-                    fontSize: '0.74rem',
-                    fontWeight: 700,
-                    outline: 'none',
-                    cursor: 'pointer'
-                  }}
-                >
-                  {allAvailableGuideModels.map(m => (
-                    <option key={m.id} value={m.id}>
-                      {m.name}
-                    </option>
-                  ))}
-                </select>
+                <Code size={20} color="#00f2fe" />
+                <h4 style={{ margin: 0, fontSize: '0.98rem', fontWeight: 800, color: titleColor }}>
+                  Integrazione Istantanea nei tuoi Tool di Sviluppo
+                </h4>
               </div>
             </div>
 
             {/* Integration Tabs Switcher */}
-            <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap', marginBottom: '10px' }}>
+            <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', marginBottom: '14px' }}>
               {[
                 { id: 'continue', label: '🧩 Continue (VS Code)' },
                 { id: 'cline', label: '🤖 Cline / Roo Code' },
-                { id: 'copilot', label: '🚀 Cursor / Copilot' },
+                { id: 'copilot', label: '🚀 Cursor / Windsurf' },
                 { id: 'python', label: '🐍 Python SDK' },
                 { id: 'node', label: '📦 Node.js / TS' },
                 { id: 'curl', label: '💻 cURL Test' }
@@ -1916,11 +1853,11 @@ export default function AIConfigTab({ openTab }) {
                   key={tab.id}
                   onClick={() => setActiveVsCodeTab(tab.id)}
                   style={{
-                    padding: '5px 12px',
+                    padding: '7px 16px',
                     borderRadius: '8px',
-                    fontSize: '0.72rem',
+                    fontSize: '0.76rem',
                     fontWeight: 700,
-                    border: isLight ? '1px solid rgba(190, 160, 110, 0.25)' : '1px solid rgba(255, 255, 255, 0.08)',
+                    border: 'none',
                     cursor: 'pointer',
                     background: activeVsCodeTab === tab.id ? '#00f2fe' : innerCardBg,
                     color: activeVsCodeTab === tab.id ? '#000000' : subtitleColor,
@@ -1935,19 +1872,19 @@ export default function AIConfigTab({ openTab }) {
             {/* TAB CONTENT: CONTINUE */}
             {activeVsCodeTab === 'continue' && (
               <div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
-                  <p style={{ margin: 0, fontSize: '0.73rem', color: subtitleColor }}>
-                    Incolla questo blocco nel file di configurazione di Continue (<code style={{ color: '#00f2fe' }}>~/.continue/config.json</code>):
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                  <p style={{ margin: 0, fontSize: '0.76rem', color: subtitleColor }}>
+                    Incolla questo blocco nel file <code style={{ color: '#00f2fe' }}>~/.continue/config.json</code>:
                   </p>
                   <button
                     onClick={downloadContinueConfig}
                     style={{
-                      padding: '4px 10px',
+                      padding: '5px 12px',
                       borderRadius: '6px',
                       background: 'linear-gradient(135deg, #00f2fe, #4facfe)',
                       border: 'none',
                       color: '#000',
-                      fontSize: '0.7rem',
+                      fontSize: '0.72rem',
                       fontWeight: 800,
                       cursor: 'pointer',
                       display: 'flex',
@@ -1955,50 +1892,43 @@ export default function AIConfigTab({ openTab }) {
                       gap: '4px'
                     }}
                   >
-                    <Download size={11} /> Scarica config.json
+                    <Download size={12} /> Scarica config.json
                   </button>
                 </div>
                 <div style={{ position: 'relative' }}>
                   <pre style={{
-                    padding: '12px 14px',
+                    padding: '16px 18px',
                     borderRadius: '10px',
                     background: '#07090e',
                     border: '1px solid rgba(255, 255, 255, 0.08)',
                     color: '#00f2fe',
-                    fontSize: '0.74rem',
+                    fontSize: '0.78rem',
                     fontFamily: 'Consolas, monospace',
                     overflowX: 'auto',
                     margin: 0
                   }}>{`{
   "models": [
     {
-      "title": "SigmaEngine (${selectedGuideModel})",
+      "title": "SigmaEngine (${selectedGuideModel || proxyAlias || 'sigma'})",
       "provider": "openai",
-      "model": "${selectedGuideModel}",
-      "apiBase": "http://localhost:8000/v1",
+      "model": "${selectedGuideModel || proxyAlias || 'sigma'}",
+      "apiBase": "${effectiveBaseUrl}/v1",
       "apiKey": "sigma"
     }
-  ],
-  "tabAutocompleteModel": {
-    "title": "SigmaEngine Autocomplete",
-    "provider": "openai",
-    "model": "qwen2.5-coder:7b",
-    "apiBase": "http://localhost:8000/v1",
-    "apiKey": "sigma"
-  }
+  ]
 }`}</pre>
                   <button
-                    onClick={() => copyKeyToClipboard('continue_code', `{\n  "models": [\n    {\n      "title": "SigmaEngine (${selectedGuideModel})",\n      "provider": "openai",\n      "model": "${selectedGuideModel}",\n      "apiBase": "http://localhost:8000/v1",\n      "apiKey": "sigma"\n    }\n  ]\n}`)}
+                    onClick={() => copyKeyToClipboard('continue_code', `{\n  "models": [\n    {\n      "title": "SigmaEngine (${selectedGuideModel || proxyAlias || 'sigma'})",\n      "provider": "openai",\n      "model": "${selectedGuideModel || proxyAlias || 'sigma'}",\n      "apiBase": "${effectiveBaseUrl}/v1",\n      "apiKey": "sigma"\n    }\n  ]\n}`)}
                     style={{
                       position: 'absolute',
-                      top: '8px',
-                      right: '8px',
-                      padding: '4px 8px',
+                      top: '10px',
+                      right: '10px',
+                      padding: '5px 12px',
                       borderRadius: '6px',
-                      background: 'rgba(255,255,255,0.1)',
+                      background: 'rgba(255,255,255,0.12)',
                       border: '1px solid rgba(255,255,255,0.2)',
                       color: '#fff',
-                      fontSize: '0.64rem',
+                      fontSize: '0.7rem',
                       fontWeight: 700,
                       cursor: 'pointer',
                       display: 'flex',
@@ -2006,7 +1936,8 @@ export default function AIConfigTab({ openTab }) {
                       gap: '4px'
                     }}
                   >
-                    {copiedKey === 'continue_code' ? <Check size={11} color="#3fb950" /> : <Copy size={11} />} Copia JSON
+                    {copiedKey === 'continue_code' ? <Check size={13} color="#3fb950" /> : <Copy size={13} />} 
+                    <span>{copiedKey === 'continue_code' ? 'Copiato!' : 'Copia JSON'}</span>
                   </button>
                 </div>
               </div>
@@ -2014,36 +1945,36 @@ export default function AIConfigTab({ openTab }) {
 
             {/* TAB CONTENT: CLINE / ROO CODE */}
             {activeVsCodeTab === 'cline' && (
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '8px' }}>
-                <div style={{ padding: '8px 12px', borderRadius: '8px', background: isLight ? '#ffffff' : '#07090e', border: innerCardBorder }}>
-                  <div style={{ fontSize: '0.64rem', color: subtitleColor, fontWeight: 700 }}>API PROVIDER</div>
-                  <div style={{ fontSize: '0.78rem', fontWeight: 800, color: titleColor, marginTop: '2px' }}>OpenAI Compatible</div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '12px' }}>
+                <div style={{ padding: '12px 16px', borderRadius: '8px', background: isLight ? '#ffffff' : '#07090e', border: innerCardBorder }}>
+                  <div style={{ fontSize: '0.66rem', color: subtitleColor, fontWeight: 700 }}>API PROVIDER</div>
+                  <div style={{ fontSize: '0.84rem', fontWeight: 800, color: titleColor, marginTop: '2px' }}>OpenAI Compatible</div>
                 </div>
-                <div style={{ padding: '8px 12px', borderRadius: '8px', background: isLight ? '#ffffff' : '#07090e', border: innerCardBorder, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div style={{ padding: '12px 16px', borderRadius: '8px', background: isLight ? '#ffffff' : '#07090e', border: innerCardBorder, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   <div>
-                    <div style={{ fontSize: '0.64rem', color: subtitleColor, fontWeight: 700 }}>BASE URL</div>
-                    <div style={{ fontSize: '0.78rem', fontWeight: 800, color: '#00f2fe', marginTop: '2px' }}>http://localhost:8000/v1</div>
+                    <div style={{ fontSize: '0.66rem', color: subtitleColor, fontWeight: 700 }}>BASE URL</div>
+                    <div style={{ fontSize: '0.84rem', fontWeight: 800, color: '#00f2fe', marginTop: '2px' }}>{effectiveBaseUrl}/v1</div>
                   </div>
-                  <button onClick={() => copyKeyToClipboard('cline_base', 'http://localhost:8000/v1')} style={{ background: 'none', border: 'none', color: subtitleColor, cursor: 'pointer' }}>
-                    {copiedKey === 'cline_base' ? <Check size={12} color="#3fb950" /> : <Copy size={12} />}
+                  <button onClick={() => copyKeyToClipboard('cline_base', `${effectiveBaseUrl}/v1`)} style={{ background: 'none', border: 'none', color: subtitleColor, cursor: 'pointer' }}>
+                    {copiedKey === 'cline_base' ? <Check size={15} color="#3fb950" /> : <Copy size={15} />}
                   </button>
                 </div>
-                <div style={{ padding: '8px 12px', borderRadius: '8px', background: isLight ? '#ffffff' : '#07090e', border: innerCardBorder, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div style={{ padding: '12px 16px', borderRadius: '8px', background: isLight ? '#ffffff' : '#07090e', border: innerCardBorder, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   <div>
-                    <div style={{ fontSize: '0.64rem', color: subtitleColor, fontWeight: 700 }}>API KEY</div>
-                    <div style={{ fontSize: '0.78rem', fontWeight: 800, color: titleColor, marginTop: '2px' }}>sigma</div>
+                    <div style={{ fontSize: '0.66rem', color: subtitleColor, fontWeight: 700 }}>API KEY</div>
+                    <div style={{ fontSize: '0.84rem', fontWeight: 800, color: titleColor, marginTop: '2px' }}>sigma</div>
                   </div>
                   <button onClick={() => copyKeyToClipboard('cline_key', 'sigma')} style={{ background: 'none', border: 'none', color: subtitleColor, cursor: 'pointer' }}>
-                    {copiedKey === 'cline_key' ? <Check size={12} color="#3fb950" /> : <Copy size={12} />}
+                    {copiedKey === 'cline_key' ? <Check size={15} color="#3fb950" /> : <Copy size={15} />}
                   </button>
                 </div>
-                <div style={{ padding: '8px 12px', borderRadius: '8px', background: isLight ? '#ffffff' : '#07090e', border: innerCardBorder, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div style={{ padding: '12px 16px', borderRadius: '8px', background: isLight ? '#ffffff' : '#07090e', border: innerCardBorder, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   <div>
-                    <div style={{ fontSize: '0.64rem', color: subtitleColor, fontWeight: 700 }}>MODEL ID</div>
-                    <div style={{ fontSize: '0.78rem', fontWeight: 800, color: '#00d2ff', marginTop: '2px' }}>{selectedGuideModel}</div>
+                    <div style={{ fontSize: '0.66rem', color: subtitleColor, fontWeight: 700 }}>MODEL ID</div>
+                    <div style={{ fontSize: '0.84rem', fontWeight: 800, color: '#00d2ff', marginTop: '2px' }}>{selectedGuideModel || proxyAlias || 'sigma'}</div>
                   </div>
-                  <button onClick={() => copyKeyToClipboard('cline_model', selectedGuideModel)} style={{ background: 'none', border: 'none', color: subtitleColor, cursor: 'pointer' }}>
-                    {copiedKey === 'cline_model' ? <Check size={12} color="#3fb950" /> : <Copy size={12} />}
+                  <button onClick={() => copyKeyToClipboard('cline_model', selectedGuideModel || proxyAlias || 'sigma')} style={{ background: 'none', border: 'none', color: subtitleColor, cursor: 'pointer' }}>
+                    {copiedKey === 'cline_model' ? <Check size={15} color="#3fb950" /> : <Copy size={15} />}
                   </button>
                 </div>
               </div>
@@ -2051,67 +1982,116 @@ export default function AIConfigTab({ openTab }) {
 
             {/* TAB CONTENT: CURSOR / COPILOT */}
             {activeVsCodeTab === 'copilot' && (
-              <pre style={{
-                padding: '12px 14px',
-                borderRadius: '10px',
-                background: '#07090e',
-                border: '1px solid rgba(255, 255, 255, 0.08)',
-                color: '#3fb950',
-                fontSize: '0.74rem',
-                fontFamily: 'Consolas, monospace',
-                overflowX: 'auto',
-                margin: 0
-              }}>{`# Variabili di ambiente per Cursor, Windsurf, Aider o terminale:
-export OPENAI_BASE_URL="http://localhost:8000/v1"
+              <div style={{ position: 'relative' }}>
+                <pre style={{
+                  padding: '16px 18px',
+                  borderRadius: '10px',
+                  background: '#07090e',
+                  border: '1px solid rgba(255, 255, 255, 0.08)',
+                  color: '#3fb950',
+                  fontSize: '0.78rem',
+                  fontFamily: 'Consolas, monospace',
+                  overflowX: 'auto',
+                  margin: 0
+                }}>{`# Variabili di ambiente per Cursor, Windsurf, Aider o shell:
+export OPENAI_BASE_URL="${effectiveBaseUrl}/v1"
 export OPENAI_API_KEY="sigma"
-export OPENAI_MODEL="${selectedGuideModel}"`}</pre>
+export OPENAI_MODEL="${selectedGuideModel || proxyAlias || 'sigma'}"`}</pre>
+                <button
+                  onClick={() => copyKeyToClipboard('copilot_code', `export OPENAI_BASE_URL="${effectiveBaseUrl}/v1"\nexport OPENAI_API_KEY="sigma"\nexport OPENAI_MODEL="${selectedGuideModel || proxyAlias || 'sigma'}"`)}
+                  style={{
+                    position: 'absolute',
+                    top: '10px',
+                    right: '10px',
+                    padding: '5px 12px',
+                    borderRadius: '6px',
+                    background: 'rgba(255,255,255,0.12)',
+                    border: '1px solid rgba(255,255,255,0.2)',
+                    color: '#fff',
+                    fontSize: '0.7rem',
+                    fontWeight: 700,
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '4px'
+                  }}
+                >
+                  {copiedKey === 'copilot_code' ? <Check size={13} color="#3fb950" /> : <Copy size={13} />} 
+                  <span>{copiedKey === 'copilot_code' ? 'Copiato!' : 'Copia'}</span>
+                </button>
+              </div>
             )}
 
             {/* TAB CONTENT: PYTHON SDK */}
             {activeVsCodeTab === 'python' && (
-              <pre style={{
-                padding: '12px 14px',
-                borderRadius: '10px',
-                background: '#07090e',
-                border: '1px solid rgba(255, 255, 255, 0.08)',
-                color: '#faa03c',
-                fontSize: '0.74rem',
-                fontFamily: 'Consolas, monospace',
-                overflowX: 'auto',
-                margin: 0
-              }}>{`from openai import OpenAI
+              <div style={{ position: 'relative' }}>
+                <pre style={{
+                  padding: '16px 18px',
+                  borderRadius: '10px',
+                  background: '#07090e',
+                  border: '1px solid rgba(255, 255, 255, 0.08)',
+                  color: '#faa03c',
+                  fontSize: '0.78rem',
+                  fontFamily: 'Consolas, monospace',
+                  overflowX: 'auto',
+                  margin: 0
+                }}>{`from openai import OpenAI
 
-client = OpenAI(base_url="http://localhost:8000/v1", api_key="sigma")
+client = OpenAI(base_url="${effectiveBaseUrl}/v1", api_key="sigma")
 response = client.chat.completions.create(
-    model="${selectedGuideModel}",
-    messages=[{"role": "user", "content": "Ciao da Visual Studio Code!"}],
+    model="${selectedGuideModel || proxyAlias || 'sigma'}",
+    messages=[{"role": "user", "content": "Ciao da Python!"}],
     stream=True
 )
 for chunk in response:
     print(chunk.choices[0].delta.content or "", end="", flush=True)`}</pre>
+                <button
+                  onClick={() => copyKeyToClipboard('python_code', `from openai import OpenAI\n\nclient = OpenAI(base_url="${effectiveBaseUrl}/v1", api_key="sigma")\nresponse = client.chat.completions.create(\n    model="${selectedGuideModel || proxyAlias || 'sigma'}",\n    messages=[{"role": "user", "content": "Ciao da Python!"}],\n    stream=True\n)\nfor chunk in response:\n    print(chunk.choices[0].delta.content or "", end="", flush=True)`)}
+                  style={{
+                    position: 'absolute',
+                    top: '10px',
+                    right: '10px',
+                    padding: '5px 12px',
+                    borderRadius: '6px',
+                    background: 'rgba(255,255,255,0.12)',
+                    border: '1px solid rgba(255,255,255,0.2)',
+                    color: '#fff',
+                    fontSize: '0.7rem',
+                    fontWeight: 700,
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '4px'
+                  }}
+                >
+                  {copiedKey === 'python_code' ? <Check size={13} color="#3fb950" /> : <Copy size={13} />} 
+                  <span>{copiedKey === 'python_code' ? 'Copiato!' : 'Copia'}</span>
+                </button>
+              </div>
             )}
 
             {/* TAB CONTENT: NODE.JS / TYPESCRIPT */}
             {activeVsCodeTab === 'node' && (
-              <pre style={{
-                padding: '12px 14px',
-                borderRadius: '10px',
-                background: '#07090e',
-                border: '1px solid rgba(255, 255, 255, 0.08)',
-                color: '#38bdf8',
-                fontSize: '0.74rem',
-                fontFamily: 'Consolas, monospace',
-                overflowX: 'auto',
-                margin: 0
-              }}>{`import OpenAI from 'openai';
+              <div style={{ position: 'relative' }}>
+                <pre style={{
+                  padding: '16px 18px',
+                  borderRadius: '10px',
+                  background: '#07090e',
+                  border: '1px solid rgba(255, 255, 255, 0.08)',
+                  color: '#38bdf8',
+                  fontSize: '0.78rem',
+                  fontFamily: 'Consolas, monospace',
+                  overflowX: 'auto',
+                  margin: 0
+                }}>{`import OpenAI from 'openai';
 
 const client = new OpenAI({
-  baseURL: 'http://localhost:8000/v1',
+  baseURL: '${effectiveBaseUrl}/v1',
   apiKey: 'sigma'
 });
 
 const stream = await client.chat.completions.create({
-  model: '${selectedGuideModel}',
+  model: '${selectedGuideModel || proxyAlias || 'sigma'}',
   messages: [{ role: 'user', content: 'Ciao da Node.js!' }],
   stream: true
 });
@@ -2119,926 +2099,617 @@ const stream = await client.chat.completions.create({
 for await (const chunk of stream) {
   process.stdout.write(chunk.choices[0]?.delta?.content || '');
 }`}</pre>
+                <button
+                  onClick={() => copyKeyToClipboard('node_code', `import OpenAI from 'openai';\n\nconst client = new OpenAI({\n  baseURL: '${effectiveBaseUrl}/v1',\n  apiKey: 'sigma'\n});\n\nconst stream = await client.chat.completions.create({\n  model: '${selectedGuideModel || proxyAlias || 'sigma'}',\n  messages: [{ role: 'user', content: 'Ciao da Node.js!' }],\n  stream: true\n});\n\nfor await (const chunk of stream) {\n  process.stdout.write(chunk.choices[0]?.delta?.content || '');\n}`)}
+                  style={{
+                    position: 'absolute',
+                    top: '10px',
+                    right: '10px',
+                    padding: '5px 12px',
+                    borderRadius: '6px',
+                    background: 'rgba(255,255,255,0.12)',
+                    border: '1px solid rgba(255,255,255,0.2)',
+                    color: '#fff',
+                    fontSize: '0.7rem',
+                    fontWeight: 700,
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '4px'
+                  }}
+                >
+                  {copiedKey === 'node_code' ? <Check size={13} color="#3fb950" /> : <Copy size={13} />} 
+                  <span>{copiedKey === 'node_code' ? 'Copiato!' : 'Copia'}</span>
+                </button>
+              </div>
             )}
 
             {/* TAB CONTENT: CURL */}
             {activeVsCodeTab === 'curl' && (
-              <pre style={{
-                padding: '12px 14px',
+              <div style={{ position: 'relative' }}>
+                <pre style={{
+                  padding: '16px 18px',
+                  borderRadius: '10px',
+                  background: '#07090e',
+                  border: '1px solid rgba(255, 255, 255, 0.08)',
+                  color: '#00f2fe',
+                  fontSize: '0.78rem',
+                  fontFamily: 'Consolas, monospace',
+                  overflowX: 'auto',
+                  margin: 0
+                }}>{`curl ${effectiveBaseUrl}/v1/chat/completions \\
+  -H "Content-Type: application/json" \\
+  -H "Authorization: Bearer sigma" \\
+  -d '{
+    "model": "${selectedGuideModel || proxyAlias || 'sigma'}",
+    "messages": [{"role": "user", "content": "Ciao SigmaEngine!"}],
+    "stream": true
+  }'`}</pre>
+                <button
+                  onClick={() => copyKeyToClipboard('curl_code', `curl ${effectiveBaseUrl}/v1/chat/completions -H "Content-Type: application/json" -H "Authorization: Bearer sigma" -d "{\\"model\\":\\"${selectedGuideModel || proxyAlias || 'sigma'}\\",\\"messages\\":[{\\"role\\":\\"user\\",\\"content\\":\\"Ciao SigmaEngine!\\"}],\\"stream\\":true}"`)}
+                  style={{
+                    position: 'absolute',
+                    top: '10px',
+                    right: '10px',
+                    padding: '5px 12px',
+                    borderRadius: '6px',
+                    background: 'rgba(255,255,255,0.12)',
+                    border: '1px solid rgba(255,255,255,0.2)',
+                    color: '#fff',
+                    fontSize: '0.7rem',
+                    fontWeight: 700,
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '4px'
+                  }}
+                >
+                  {copiedKey === 'curl_code' ? <Check size={13} color="#3fb950" /> : <Copy size={13} />} 
+                  <span>{copiedKey === 'curl_code' ? 'Copiato!' : 'Copia'}</span>
+                </button>
+              </div>
+            )}
+          </div>
+
+          {/* CARD 5: PARAMETRI MOTORE & FALLBACK SERVER */}
+          <div style={{
+            padding: '22px',
+            borderRadius: '16px',
+            background: cardBg,
+            border: '1px solid rgba(250, 160, 60, 0.3)',
+            boxShadow: cardShadow,
+            width: '100%',
+            boxSizing: 'border-box'
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px', flexWrap: 'wrap', gap: '8px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <Sliders size={20} color="#faa03c" />
+                <h4 style={{ margin: 0, fontSize: '0.98rem', fontWeight: 800, color: titleColor }}>
+                  Parametri di Inferenza & Limiti di Contesto Predefiniti
+                </h4>
+              </div>
+            </div>
+
+            <div style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))',
+              gap: '16px'
+            }}>
+              {/* Box 1: Temperatura & Sampling */}
+              <div style={{ padding: '16px', borderRadius: '12px', background: innerCardBg, border: innerCardBorder }}>
+                <div style={{ fontSize: '0.76rem', fontWeight: 800, color: '#00d2ff', marginBottom: '12px' }}>
+                  🌡️ Temperatura & Campionamento Statistico
+                </div>
+
+                {/* Temperature */}
+                <div style={{ marginBottom: '14px' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
+                    <label style={{ fontSize: '0.74rem', fontWeight: 700, color: titleColor }}>Temperatura</label>
+                    <span style={{ fontSize: '0.76rem', fontWeight: 800, color: '#00d2ff' }}>{parameters.temperature}</span>
+                  </div>
+                  <input
+                    type="range"
+                    min="0.0"
+                    max="1.0"
+                    step="0.05"
+                    value={parameters.temperature}
+                    onChange={e => setParameters(p => ({ ...p, temperature: parseFloat(e.target.value) }))}
+                    style={{ width: '100%', accentColor: '#00d2ff' }}
+                  />
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.64rem', color: subtitleColor, marginTop: '2px' }}>
+                    <span>0.0 (Codice / Deterministico)</span>
+                    <span>0.7 (Bilanciato)</span>
+                    <span>1.0 (Creativo)</span>
+                  </div>
+                </div>
+
+                {/* Top P */}
+                <div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
+                    <label style={{ fontSize: '0.74rem', fontWeight: 700, color: titleColor }}>Top_P (Nucleus Sampling)</label>
+                    <span style={{ fontSize: '0.76rem', fontWeight: 800, color: '#bc8cff' }}>{parameters.top_p}</span>
+                  </div>
+                  <input
+                    type="range"
+                    min="0.1"
+                    max="1.0"
+                    step="0.05"
+                    value={parameters.top_p}
+                    onChange={e => setParameters(p => ({ ...p, top_p: parseFloat(e.target.value) }))}
+                    style={{ width: '100%', accentColor: '#bc8cff' }}
+                  />
+                </div>
+              </div>
+
+              {/* Box 2: Context Window & Tokens */}
+              <div style={{ padding: '16px', borderRadius: '12px', background: innerCardBg, border: innerCardBorder }}>
+                <div style={{ fontSize: '0.76rem', fontWeight: 800, color: '#faa03c', marginBottom: '12px' }}>
+                  💾 Finestra di Contesto VRAM & Limite Token
+                </div>
+
+                {/* Num Ctx */}
+                <div style={{ marginBottom: '14px' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px' }}>
+                    <label style={{ fontSize: '0.74rem', fontWeight: 700, color: titleColor }}>Finestra di Contesto (num_ctx)</label>
+                    <span style={{ fontSize: '0.76rem', fontWeight: 800, color: '#faa03c' }}>{parameters.num_ctx.toLocaleString()} token</span>
+                  </div>
+                  <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                    {[8192, 16384, 32768, 65536, 131072].map(ctx => (
+                      <button
+                        key={ctx}
+                        onClick={() => setParameters(p => ({ ...p, num_ctx: ctx }))}
+                        style={{
+                          padding: '4px 10px',
+                          borderRadius: '6px',
+                          fontSize: '0.7rem',
+                          fontWeight: 700,
+                          border: 'none',
+                          cursor: 'pointer',
+                          background: parameters.num_ctx === ctx ? '#faa03c' : (isLight ? '#ffffff' : '#07090e'),
+                          color: parameters.num_ctx === ctx ? '#000000' : subtitleColor
+                        }}
+                      >
+                        {ctx >= 1000 ? `${ctx / 1024}K` : ctx}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Max Tokens */}
+                <div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px' }}>
+                    <label style={{ fontSize: '0.74rem', fontWeight: 700, color: titleColor }}>Max Token Risposta</label>
+                    <span style={{ fontSize: '0.76rem', fontWeight: 800, color: '#00d2ff' }}>{parameters.max_tokens.toLocaleString()}</span>
+                  </div>
+                  <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                    {[4096, 8192, 16384, 32768].map(tok => (
+                      <button
+                        key={tok}
+                        onClick={() => setParameters(p => ({ ...p, max_tokens: tok }))}
+                        style={{
+                          padding: '4px 10px',
+                          borderRadius: '6px',
+                          fontSize: '0.7rem',
+                          fontWeight: 700,
+                          border: 'none',
+                          cursor: 'pointer',
+                          background: parameters.max_tokens === tok ? '#00d2ff' : (isLight ? '#ffffff' : '#07090e'),
+                          color: parameters.max_tokens === tok ? '#000000' : subtitleColor
+                        }}
+                      >
+                        {tok >= 1024 ? `${tok / 1024}K` : tok}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* CARD 6: TEST LIVE RISPOSTA STREAMING */}
+          <div style={{
+            padding: '22px',
+            borderRadius: '16px',
+            background: cardBg,
+            border: '1px solid rgba(0, 242, 254, 0.25)',
+            boxShadow: cardShadow,
+            width: '100%',
+            boxSizing: 'border-box'
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '12px', flexWrap: 'wrap', gap: '8px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <Zap size={20} color="#00f2fe" />
+                <h4 style={{ margin: 0, fontSize: '0.96rem', fontWeight: 800, color: titleColor }}>
+                  Test Live Risposta Streaming Server (:{serverPort})
+                </h4>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <button
+                  onClick={() => setLiveTestState(p => ({ ...p, protocol: 'openai' }))}
+                  style={{
+                    padding: '5px 12px',
+                    borderRadius: '6px',
+                    fontSize: '0.72rem',
+                    fontWeight: 700,
+                    border: 'none',
+                    cursor: 'pointer',
+                    background: liveTestState.protocol === 'openai' ? '#10a37f' : innerCardBg,
+                    color: liveTestState.protocol === 'openai' ? '#fff' : subtitleColor
+                  }}
+                >
+                  OpenAI (/v1)
+                </button>
+                <button
+                  onClick={() => setLiveTestState(p => ({ ...p, protocol: 'ollama' }))}
+                  style={{
+                    padding: '5px 12px',
+                    borderRadius: '6px',
+                    fontSize: '0.72rem',
+                    fontWeight: 700,
+                    border: 'none',
+                    cursor: 'pointer',
+                    background: liveTestState.protocol === 'ollama' ? '#00d2ff' : innerCardBg,
+                    color: liveTestState.protocol === 'ollama' ? '#fff' : subtitleColor
+                  }}
+                >
+                  Ollama (/api)
+                </button>
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', gap: '10px', marginBottom: '12px' }}>
+              <input
+                type="text"
+                value={liveTestState.prompt}
+                onChange={e => setLiveTestState(p => ({ ...p, prompt: e.target.value }))}
+                placeholder="Inserisci un prompt di test..."
+                style={{
+                  flex: 1,
+                  padding: '9px 14px',
+                  borderRadius: '8px',
+                  background: innerCardBg,
+                  border: innerCardBorder,
+                  color: titleColor,
+                  fontSize: '0.8rem',
+                  outline: 'none'
+                }}
+              />
+              <button
+                onClick={runLiveServerTest}
+                disabled={liveTestState.isTesting}
+                style={{
+                  padding: '9px 18px',
+                  borderRadius: '8px',
+                  background: 'linear-gradient(135deg, #00f2fe, #4facfe)',
+                  border: 'none',
+                  color: '#000',
+                  fontSize: '0.78rem',
+                  fontWeight: 800,
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px'
+                }}
+              >
+                {liveTestState.isTesting ? <RefreshCw size={14} className="spin" /> : <Play size={14} />}
+                <span>Test Streaming</span>
+              </button>
+            </div>
+
+            {(liveTestState.outputText || liveTestState.isTesting || liveTestState.error) && (
+              <div style={{
+                padding: '14px 16px',
                 borderRadius: '10px',
                 background: '#07090e',
-                border: '1px solid rgba(255, 255, 255, 0.08)',
-                color: '#00f2fe',
-                fontSize: '0.74rem',
-                fontFamily: 'Consolas, monospace',
-                overflowX: 'auto',
-                margin: 0
-              }}>{`curl http://localhost:8000/v1/chat/completions -H "Content-Type: application/json" -d "{\\"model\\":\\"${selectedGuideModel}\\",\\"messages\\":[{\\"role\\":\\"user\\",\\"content\\":\\"Ciao SigmaEngine!\\"}]}"`}</pre>
+                border: '1px solid rgba(0, 242, 254, 0.3)',
+                fontSize: '0.8rem',
+                color: '#e2e8f0',
+                lineHeight: 1.5
+              }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px', fontSize: '0.7rem', color: subtitleColor }}>
+                  <span>Protocollo: <strong>{liveTestState.protocol.toUpperCase()}</strong> • Modello: <strong style={{ color: '#00f2fe' }}>{selectedGuideModel || proxyAlias || 'sigma'}</strong></span>
+                  {liveTestState.ttft && <span>TTFT: <strong style={{ color: '#00f2fe' }}>{liveTestState.ttft}ms</strong> • Totale: <strong style={{ color: '#3fb950' }}>{liveTestState.latency || '...'}ms</strong></span>}
+                </div>
+                {liveTestState.error ? (
+                  <div style={{ color: '#ef4444' }}>❌ {liveTestState.error}</div>
+                ) : (
+                  <div style={{ whiteSpace: 'pre-wrap' }}>
+                    {liveTestState.outputText}
+                    {liveTestState.isTesting && <span style={{ display: 'inline-block', width: '6px', height: '14px', background: '#00f2fe', marginLeft: '3px', verticalAlign: 'middle', animation: 'blink 1s infinite' }} />}
+                  </div>
+                )}
+              </div>
             )}
           </div>
         </div>
-
-        {/* ===================================================================== */}
-        {/* DEFAULT ENGINE INFERENCE & CONTEXT PARAMETERS (STUDIO & SERVER FALLBACK) */}
-        {/* ===================================================================== */}
-        <div style={{
-          padding: '18px 20px',
-          borderRadius: '16px',
-          background: cardBg,
-          border: '1px solid rgba(250, 160, 60, 0.35)',
-          boxShadow: cardShadow,
-          marginBottom: '16px'
-        }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '12px', flexWrap: 'wrap', gap: '8px' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <div style={{
-                width: '30px',
-                height: '30px',
-                borderRadius: '8px',
-                background: 'rgba(250, 160, 60, 0.15)',
-                border: '1px solid rgba(250, 160, 60, 0.4)',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center'
-              }}>
-                <Sliders size={16} color="#faa03c" />
-              </div>
-              <div>
-                <h4 style={{ margin: 0, fontSize: '0.92rem', fontWeight: 800, color: titleColor }}>
-                  ⚙️ Parametri di Inferenza Predefiniti del Motore (Sigma Studio & Fallback Server :8000)
-                </h4>
-                <p style={{ margin: 0, fontSize: '0.72rem', color: subtitleColor }}>
-                  Controllano la temperatura, il campionamento (Top_P) e la finestra di contesto caricata in VRAM per le chat/agenti interni e come valori di default per le richieste al server :8000.
-                </p>
-              </div>
-            </div>
-
-            <button
-              onClick={saveAllConfig}
-              disabled={saving}
-              style={{
-                padding: '6px 14px',
-                borderRadius: '8px',
-                background: 'linear-gradient(135deg, #faa03c, #f97316)',
-                border: 'none',
-                color: '#000',
-                fontSize: '0.72rem',
-                fontWeight: 800,
-                cursor: 'pointer',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '5px'
-              }}
-            >
-              <Save size={12} /> Applica al Motore
-            </button>
-          </div>
-
-          <div style={{
-            display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))',
-            gap: '14px'
-          }}>
-            {/* Box 1: Temperatura & Campionamento */}
-            <div style={{ padding: '14px', borderRadius: '12px', background: innerCardBg, border: innerCardBorder }}>
-              <div style={{ fontSize: '0.74rem', fontWeight: 800, color: '#00d2ff', marginBottom: '10px' }}>
-                🌡️ Temperatura & Campionamento Statistico
-              </div>
-
-              {/* Temperature Slider */}
-              <div style={{ marginBottom: '12px' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
-                  <label style={{ fontSize: '0.72rem', fontWeight: 700, color: titleColor }}>Temperatura</label>
-                  <span style={{ fontSize: '0.74rem', fontWeight: 800, color: '#00d2ff' }}>{parameters.temperature}</span>
-                </div>
-                <input
-                  type="range"
-                  min="0.0"
-                  max="1.0"
-                  step="0.05"
-                  value={parameters.temperature}
-                  onChange={e => setParameters(p => ({ ...p, temperature: parseFloat(e.target.value) }))}
-                  style={{ width: '100%', accentColor: '#00d2ff' }}
-                />
-                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.62rem', color: subtitleColor, marginTop: '2px' }}>
-                  <span>0.0 (Deterministico / Codice)</span>
-                  <span>0.7 (Bilanciato)</span>
-                  <span>1.0 (Creativo)</span>
-                </div>
-              </div>
-
-              {/* Top P Slider */}
-              <div style={{ marginBottom: '12px' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
-                  <label style={{ fontSize: '0.72rem', fontWeight: 700, color: titleColor }}>Top_P (Nucleus Sampling)</label>
-                  <span style={{ fontSize: '0.74rem', fontWeight: 800, color: '#bc8cff' }}>{parameters.top_p}</span>
-                </div>
-                <input
-                  type="range"
-                  min="0.1"
-                  max="1.0"
-                  step="0.05"
-                  value={parameters.top_p}
-                  onChange={e => setParameters(p => ({ ...p, top_p: parseFloat(e.target.value) }))}
-                  style={{ width: '100%', accentColor: '#bc8cff' }}
-                />
-              </div>
-
-              {/* Repeat Penalty */}
-              <div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
-                  <label style={{ fontSize: '0.72rem', fontWeight: 700, color: titleColor }}>Penalità di Ripetizione</label>
-                  <span style={{ fontSize: '0.74rem', fontWeight: 800, color: '#3fb950' }}>{parameters.repeat_penalty}</span>
-                </div>
-                <input
-                  type="range"
-                  min="1.0"
-                  max="1.5"
-                  step="0.05"
-                  value={parameters.repeat_penalty}
-                  onChange={e => setParameters(p => ({ ...p, repeat_penalty: parseFloat(e.target.value) }))}
-                  style={{ width: '100%', accentColor: '#3fb950' }}
-                />
-              </div>
-            </div>
-
-            {/* Box 2: Finestra di Contesto & Token */}
-            <div style={{ padding: '14px', borderRadius: '12px', background: innerCardBg, border: innerCardBorder }}>
-              <div style={{ fontSize: '0.74rem', fontWeight: 800, color: '#faa03c', marginBottom: '10px' }}>
-                💾 Finestra di Contesto VRAM & Limite Token
-              </div>
-
-              {/* Num Ctx */}
-              <div style={{ marginBottom: '14px' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px' }}>
-                  <label style={{ fontSize: '0.72rem', fontWeight: 700, color: titleColor }}>Contesto Massimo (num_ctx)</label>
-                  <span style={{ fontSize: '0.74rem', fontWeight: 800, color: '#faa03c' }}>{parameters.num_ctx.toLocaleString()} token</span>
-                </div>
-                <div style={{ display: 'flex', gap: '5px', flexWrap: 'wrap', marginBottom: '4px' }}>
-                  {[8192, 16384, 32768, 65536, 131072, 262144].map(ctx => (
-                    <button
-                      key={ctx}
-                      onClick={() => setParameters(p => ({ ...p, num_ctx: ctx }))}
-                      style={{
-                        padding: '3px 7px',
-                        borderRadius: '6px',
-                        fontSize: '0.66rem',
-                        fontWeight: 700,
-                        border: 'none',
-                        cursor: 'pointer',
-                        background: parameters.num_ctx === ctx ? '#faa03c' : (isLight ? '#ffffff' : '#07090e'),
-                        color: parameters.num_ctx === ctx ? '#000000' : subtitleColor
-                      }}
-                    >
-                      {ctx >= 1000 ? `${ctx / 1024}K` : ctx}
-                    </button>
-                  ))}
-                </div>
-                <span style={{ fontSize: '0.62rem', color: subtitleColor }}>Allocazione memoria KV Cache in VRAM/RAM</span>
-              </div>
-
-              {/* Max Output Tokens */}
-              <div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px' }}>
-                  <label style={{ fontSize: '0.72rem', fontWeight: 700, color: titleColor }}>Max Token di Risposta</label>
-                  <span style={{ fontSize: '0.74rem', fontWeight: 800, color: '#00d2ff' }}>{parameters.max_tokens.toLocaleString()} token</span>
-                </div>
-                <div style={{ display: 'flex', gap: '5px', flexWrap: 'wrap' }}>
-                  {[4096, 8192, 16384, 32768, 65536].map(tok => (
-                    <button
-                      key={tok}
-                      onClick={() => setParameters(p => ({ ...p, max_tokens: tok }))}
-                      style={{
-                        padding: '3px 7px',
-                        borderRadius: '6px',
-                        fontSize: '0.66rem',
-                        fontWeight: 700,
-                        border: 'none',
-                        cursor: 'pointer',
-                        background: parameters.max_tokens === tok ? '#00d2ff' : (isLight ? '#ffffff' : '#07090e'),
-                        color: parameters.max_tokens === tok ? '#000000' : subtitleColor
-                      }}
-                    >
-                      {tok >= 1024 ? `${tok / 1024}K` : tok}
-                    </button>
-                  ))}
-                </div>
-                <span style={{ fontSize: '0.62rem', color: subtitleColor, marginTop: '4px', display: 'block' }}>Limite massimo di generazione per singola risposta</span>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* Interactive Live Server SSE Probe Tester (LM Studio Playground Style) */}
-        <div style={{
-          padding: '16px 20px',
-          borderRadius: '14px',
-          background: cardBg,
-          border: '1px solid rgba(0, 242, 254, 0.25)',
-          boxShadow: cardShadow
-        }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '10px', flexWrap: 'wrap', gap: '8px' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <Zap size={16} color="#00f2fe" />
-              <h4 style={{ margin: 0, fontSize: '0.88rem', fontWeight: 800, color: titleColor }}>
-                Test Live Risposta Server (:8000)
-              </h4>
-            </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-              <button
-                onClick={() => setLiveTestState(p => ({ ...p, protocol: 'openai' }))}
-                style={{
-                  padding: '3px 8px',
-                  borderRadius: '6px',
-                  fontSize: '0.68rem',
-                  fontWeight: 700,
-                  border: 'none',
-                  cursor: 'pointer',
-                  background: liveTestState.protocol === 'openai' ? '#10a37f' : innerCardBg,
-                  color: liveTestState.protocol === 'openai' ? '#fff' : subtitleColor
-                }}
-              >
-                OpenAI (/v1)
-              </button>
-              <button
-                onClick={() => setLiveTestState(p => ({ ...p, protocol: 'ollama' }))}
-                style={{
-                  padding: '3px 8px',
-                  borderRadius: '6px',
-                  fontSize: '0.68rem',
-                  fontWeight: 700,
-                  border: 'none',
-                  cursor: 'pointer',
-                  background: liveTestState.protocol === 'ollama' ? '#00d2ff' : innerCardBg,
-                  color: liveTestState.protocol === 'ollama' ? '#fff' : subtitleColor
-                }}
-              >
-                Ollama (/api)
-              </button>
-            </div>
-          </div>
-
-          <div style={{ display: 'flex', gap: '8px', marginBottom: '10px' }}>
-            <input
-              type="text"
-              value={liveTestState.prompt}
-              onChange={e => setLiveTestState(p => ({ ...p, prompt: e.target.value }))}
-              placeholder="Inserisci un prompt di test..."
-              style={{
-                flex: 1,
-                padding: '7px 10px',
-                borderRadius: '8px',
-                background: innerCardBg,
-                border: innerCardBorder,
-                color: titleColor,
-                fontSize: '0.76rem',
-                outline: 'none'
-              }}
-            />
-            <button
-              onClick={runLiveServerTest}
-              disabled={liveTestState.isTesting}
-              style={{
-                padding: '7px 14px',
-                borderRadius: '8px',
-                background: 'linear-gradient(135deg, #00f2fe, #4facfe)',
-                border: 'none',
-                color: '#000',
-                fontSize: '0.74rem',
-                fontWeight: 800,
-                cursor: 'pointer',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '5px'
-              }}
-            >
-              {liveTestState.isTesting ? <RefreshCw size={12} className="spin" /> : <Play size={12} />}
-              Test Streaming
-            </button>
-          </div>
-
-          {(liveTestState.outputText || liveTestState.isTesting || liveTestState.error) && (
-            <div style={{
-              padding: '12px',
-              borderRadius: '10px',
-              background: '#07090e',
-              border: '1px solid rgba(0, 242, 254, 0.3)',
-              fontSize: '0.76rem',
-              color: '#e2e8f0',
-              lineHeight: 1.45
-            }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px', fontSize: '0.66rem', color: subtitleColor }}>
-                <span>Protocollo: <strong>{liveTestState.protocol.toUpperCase()}</strong> • Modello: <strong style={{ color: '#00f2fe' }}>{selectedGuideModel}</strong></span>
-                {liveTestState.ttft && <span>TTFT: <strong style={{ color: '#00f2fe' }}>{liveTestState.ttft}ms</strong> • Totale: <strong style={{ color: '#3fb950' }}>{liveTestState.latency || '...'}ms</strong></span>}
-              </div>
-              {liveTestState.error ? (
-                <div style={{ color: '#ef4444' }}>❌ {liveTestState.error}</div>
-              ) : (
-                <div style={{ whiteSpace: 'pre-wrap' }}>
-                  {liveTestState.outputText}
-                  {liveTestState.isTesting && <span style={{ display: 'inline-block', width: '6px', height: '12px', background: '#00f2fe', marginLeft: '3px', verticalAlign: 'middle', animation: 'blink 1s infinite' }} />}
-                </div>
-              )}
-            </div>
-          )}
-        </div>
-      </div>
+      )}
 
       {/* ========================================================================= */}
-      {/* SECTION 2: 🐙 MOTORI OPEN-SOURCE & PROVIDERS SCARICABILI DA GITHUB */}
+      {/* TAB 2 CONTENT: 🌐 PROVIDER ESTERNI (INPUT / AGGREGAZIONE) */}
       {/* ========================================================================= */}
-      <div id="section-github" style={{ marginBottom: '36px', scrollMarginTop: '65px' }}>
-        {/* Section Header */}
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '10px', marginBottom: '14px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-            <div style={{
-              width: '36px',
-              height: '36px',
-              borderRadius: '10px',
-              background: 'rgba(99, 102, 241, 0.15)',
-              border: '1px solid rgba(99, 102, 241, 0.4)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              boxShadow: '0 0 16px rgba(99, 102, 241, 0.2)'
-            }}>
-              <GithubIcon size={20} color="#6366f1" />
-            </div>
-            <div>
-              <h2 style={{ margin: 0, fontSize: '1.2rem', fontWeight: 800, color: titleColor }}>
-                2. 🐙 Motori & Providers Open-Source (GitHub & Software Locali)
-              </h2>
-              <p style={{ margin: 0, fontSize: '0.74rem', color: subtitleColor }}>
-                I migliori motori di inferenza e framework locali della community. Puoi scaricarli da GitHub o dal sito ufficiale, avviarli sul tuo PC e collegarli a Sigma Studio in 1 clic.
-              </p>
-            </div>
-          </div>
-          <span style={{ fontSize: '0.68rem', fontWeight: 700, color: '#6366f1', background: 'rgba(99, 102, 241, 0.12)', border: '1px solid rgba(99, 102, 241, 0.3)', padding: '3px 10px', borderRadius: '10px' }}>
-            {GITHUB_ENGINES.length} Motori Curati
-          </span>
-        </div>
-
-        {/* GitHub Engines Grid */}
-        <div style={{
-          display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fill, minmax(295px, 1fr))',
-          gap: '14px'
-        }}>
-          {GITHUB_ENGINES.map(engine => {
-            const IconComp = ProviderIcons[engine.iconKey] || ProviderIcons.sigma_engine;
-            const isCurrentlyActive = (engine.providerId === 'ailoflow' && activeProvider === 'ailoflow') ||
-                                      (engine.providerId === 'ollama' && activeProvider === 'ollama') ||
-                                      (engine.providerId === 'lmstudio' && activeProvider === 'lmstudio') ||
-                                      (engine.providerId === 'custom' && activeProvider === 'custom' && providerSettings.custom?.api_url?.includes(engine.defaultPort));
-
-            return (
-              <div
-                key={engine.id}
-                style={{
-                  padding: '16px',
-                  borderRadius: '14px',
-                  background: cardBg,
-                  border: isCurrentlyActive ? `2px solid ${engine.color}` : cardBorder,
-                  boxShadow: isCurrentlyActive ? `0 4px 18px ${engine.color}25` : cardShadow,
-                  display: 'flex',
-                  flexDirection: 'column',
-                  justifyContent: 'space-between',
-                  gap: '12px',
-                  transition: 'all 0.2s ease',
-                  position: 'relative'
-                }}
-              >
-                <div>
-                  {/* Card Top */}
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                      <div style={{
-                        width: '36px',
-                        height: '36px',
-                        borderRadius: '10px',
-                        background: `${engine.color}15`,
-                        border: `1px solid ${engine.color}35`,
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        flexShrink: 0
-                      }}>
-                        <IconComp size={20} color={engine.color} />
-                      </div>
-                      <div>
-                        <h3 style={{ margin: 0, fontSize: '0.92rem', fontWeight: 800, color: titleColor }}>
-                          {engine.name}
-                        </h3>
-                        <span style={{ fontSize: '0.62rem', fontWeight: 800, color: engine.color, letterSpacing: '0.4px' }}>
-                          {engine.badge}
-                        </span>
-                      </div>
-                    </div>
-
-                    {isCurrentlyActive && (
-                      <span style={{
-                        fontSize: '0.62rem',
-                        fontWeight: 800,
-                        color: '#3fb950',
-                        background: 'rgba(63, 185, 80, 0.15)',
-                        border: '1px solid rgba(63, 185, 80, 0.3)',
-                        padding: '2px 6px',
-                        borderRadius: '6px'
-                      }}>
-                        IN USO
-                      </span>
-                    )}
-                  </div>
-
-                  <p style={{ margin: '0 0 6px 0', fontSize: '0.74rem', fontWeight: 600, color: titleColor, lineHeight: 1.35 }}>
-                    {engine.tagline}
-                  </p>
-                  <p style={{ margin: 0, fontSize: '0.7rem', color: subtitleColor, lineHeight: 1.4 }}>
-                    {engine.description}
-                  </p>
-
-                  <div style={{
-                    marginTop: '8px',
-                    padding: '5px 8px',
-                    borderRadius: '6px',
-                    background: innerCardBg,
-                    border: innerCardBorder,
-                    fontSize: '0.68rem',
-                    color: subtitleColor,
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'space-between'
-                  }}>
-                    <span>Porta Predefinita: <strong style={{ color: engine.color }}>:{engine.defaultPort}</strong></span>
-                    <span style={{ fontSize: '0.64rem', color: subtitleColor }}>{engine.protocol}</span>
-                  </div>
-                </div>
-
-                {/* Card Actions (GitHub Repo, Download, Connect in Sigma) */}
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', borderTop: isLight ? '1px solid rgba(0,0,0,0.06)' : '1px solid rgba(255,255,255,0.05)', paddingTop: '10px' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                    <a
-                      href={engine.repoUrl}
-                      target="_blank"
-                      rel="noreferrer"
-                      style={{
-                        flex: 1,
-                        padding: '5px 8px',
-                        borderRadius: '8px',
-                        background: innerCardBg,
-                        border: innerCardBorder,
-                        color: titleColor,
-                        fontSize: '0.68rem',
-                        fontWeight: 700,
-                        textDecoration: 'none',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        gap: '4px'
-                      }}
-                    >
-                      <GithubIcon size={12} /> GitHub Repo <ArrowUpRight size={10} />
-                    </a>
-
-                    <a
-                      href={engine.releasesUrl}
-                      target="_blank"
-                      rel="noreferrer"
-                      style={{
-                        padding: '5px 10px',
-                        borderRadius: '8px',
-                        background: `${engine.color}15`,
-                        border: `1px solid ${engine.color}35`,
-                        color: engine.color,
-                        fontSize: '0.68rem',
-                        fontWeight: 700,
-                        textDecoration: 'none',
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '3px'
-                      }}
-                    >
-                      <Download size={11} /> Download
-                    </a>
-                  </div>
-
-                  <button
-                    onClick={() => handleConnectGitHubEngine(engine)}
-                    style={{
-                      width: '100%',
-                      padding: '6px 10px',
-                      borderRadius: '8px',
-                      background: isCurrentlyActive ? 'rgba(63, 185, 80, 0.15)' : `linear-gradient(135deg, ${engine.color}25, ${engine.color}10)`,
-                      border: isCurrentlyActive ? '1px solid rgba(63, 185, 80, 0.4)' : `1px solid ${engine.color}40`,
-                      color: isCurrentlyActive ? '#3fb950' : engine.color,
-                      fontSize: '0.72rem',
-                      fontWeight: 800,
-                      cursor: 'pointer',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      gap: '5px'
-                    }}
-                  >
-                    <Zap size={12} />
-                    {isCurrentlyActive ? 'Connesso come Provider Attivo' : `⚡ Collega ${engine.name} in Sigma Studio`}
-                  </button>
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      </div>
-
-      {/* ========================================================================= */}
-      {/* SECTION 3: ☁️ CLOUD PROVIDERS & API HUB */}
-      {/* ========================================================================= */}
-      <div id="section-cloud" style={{ marginBottom: '36px', scrollMarginTop: '65px' }}>
-        {/* Section Header & Filters */}
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '12px', marginBottom: '14px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-            <div style={{
-              width: '36px',
-              height: '36px',
-              borderRadius: '10px',
-              background: 'rgba(16, 163, 127, 0.15)',
-              border: '1px solid rgba(16, 163, 127, 0.4)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              boxShadow: '0 0 16px rgba(16, 163, 127, 0.2)'
-            }}>
-              <Key size={20} color="#10a37f" />
-            </div>
-            <div>
-              <h2 style={{ margin: 0, fontSize: '1.2rem', fontWeight: 800, color: titleColor }}>
-                3. ☁️ Cloud Providers & API Vault (OpenAI, Claude, DeepSeek, Gemini, ecc.)
-              </h2>
-              <p style={{ margin: 0, fontSize: '0.74rem', color: subtitleColor }}>
-                Configura chiavi API, modelli e parametri di connessione per i principali provider cloud globali e gateway personalizzati.
-              </p>
-            </div>
-          </div>
-
-          {/* Search Box */}
+      {mainHubTab === 'external_providers' && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '22px', width: '100%' }}>
+          
+          {/* Top Filter & Search Bar */}
           <div style={{
             display: 'flex',
             alignItems: 'center',
-            gap: '6px',
-            padding: '5px 10px',
-            borderRadius: '8px',
-            background: innerCardBg,
-            border: innerCardBorder
+            justifyContent: 'space-between',
+            flexWrap: 'wrap',
+            gap: '14px',
+            padding: '14px 18px',
+            borderRadius: '14px',
+            background: cardBg,
+            border: cardBorder,
+            boxShadow: cardShadow,
+            width: '100%',
+            boxSizing: 'border-box'
           }}>
-            <Search size={13} color={subtitleColor} />
-            <input
-              type="text"
-              placeholder="Cerca provider o modello..."
-              value={searchQuery}
-              onChange={e => setSearchQuery(e.target.value)}
-              style={{
-                background: 'transparent',
-                border: 'none',
-                color: titleColor,
-                fontSize: '0.74rem',
-                outline: 'none',
-                width: '160px'
-              }}
-            />
-          </div>
-        </div>
+            {/* Category Pills */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+              {[
+                { id: 'all', label: 'Tutti i Provider' },
+                { id: 'cloud', label: '☁️ Cloud API Vault (OpenAI, DeepSeek, Claude...)' },
+                { id: 'local', label: '🐙 Motori Locali (Ollama, LM Studio...)' }
+              ].map(cat => (
+                <button
+                  key={cat.id}
+                  onClick={() => setActiveCategory(cat.id)}
+                  style={{
+                    padding: '7px 14px',
+                    borderRadius: '8px',
+                    fontSize: '0.76rem',
+                    fontWeight: 700,
+                    border: 'none',
+                    cursor: 'pointer',
+                    background: activeCategory === cat.id ? '#a855f7' : innerCardBg,
+                    color: activeCategory === cat.id ? '#ffffff' : subtitleColor,
+                    transition: 'all 0.15s ease'
+                  }}
+                >
+                  {cat.label}
+                </button>
+              ))}
+            </div>
 
-        {/* Category Filter Pills */}
-        <div style={{
-          display: 'flex',
-          alignItems: 'center',
-          gap: '6px',
-          flexWrap: 'wrap',
-          marginBottom: '16px'
-        }}>
-          {[
-            { id: 'all', label: `Tutti (${Object.keys(PROVIDER_CATALOG).length})` },
-            { id: 'local', label: '🏠 Locali (4)' },
-            { id: 'cloud', label: '⚡ Top Cloud (4)' },
-            { id: 'fast', label: '🚀 Ultra-Fast (3)' },
-            { id: 'hub', label: '🌐 Hub Multi-Modello (3)' },
-            { id: 'chinese', label: '🎋 Asia (2)' },
-            { id: 'custom', label: '🛠️ Custom API (1)' }
-          ].map(cat => {
-            const active = activeCategory === cat.id;
-            return (
-              <button
-                key={cat.id}
-                onClick={() => setActiveCategory(cat.id)}
+            {/* Search Input */}
+            <div style={{ position: 'relative', width: '260px' }}>
+              <Search size={15} color="#a0a6bc" style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)' }} />
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={e => setSearchQuery(e.target.value)}
+                placeholder="Cerca provider..."
                 style={{
-                  padding: '4px 10px',
+                  width: '100%',
+                  padding: '7px 10px 7px 32px',
                   borderRadius: '8px',
-                  fontSize: '0.72rem',
-                  fontWeight: 700,
-                  border: isLight ? '1px solid rgba(190, 160, 110, 0.25)' : '1px solid rgba(255, 255, 255, 0.08)',
-                  cursor: 'pointer',
-                  transition: 'all 0.18s ease',
-                  background: active ? '#00d2ff' : cardBg,
-                  color: active ? '#000000' : subtitleColor
+                  background: innerCardBg,
+                  border: innerCardBorder,
+                  color: titleColor,
+                  fontSize: '0.76rem',
+                  outline: 'none'
                 }}
-              >
-                {cat.label}
-              </button>
-            );
-          })}
-        </div>
+              />
+            </div>
+          </div>
 
-        {/* Providers Grid */}
-        <div style={{
-          display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fill, minmax(290px, 1fr))',
-          gap: '14px'
-        }}>
-          {filteredProviders.map(prov => {
-            const pState = providerSettings[prov.id] || {};
-            const isSelected = activeProvider === prov.id;
-            const hasKey = prov.id === 'ollama' || prov.id === 'sigma_engine' || prov.id === 'lmstudio' ? true : (pState.has_api_key || (pState.api_key && pState.api_key.trim().length > 0));
-            const isVisible = visibleKeys[prov.id];
-            const test = testResults[prov.id];
-            const isTesting = testingProvider === prov.id;
-            const IconComp = ProviderIcons[prov.id] || ProviderIcons.ollama;
+          {/* Providers Grid (Full Width) */}
+          <div style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fill, minmax(340px, 1fr))',
+            gap: '18px',
+            width: '100%'
+          }}>
+            {filteredProviders.map(pKey => {
+              const p = PROVIDER_CATALOG[pKey];
+              const pConfig = providerSettings[pKey] || {};
+              const testRes = testResults[pKey];
+              const isTestingThis = testingProvider === pKey;
+              const showKey = visibleKeys[pKey];
+              const IconComp = ProviderIcons[pKey] || ProviderIcons.sigma_engine;
+              const hasConfiguredKey = pConfig.has_api_key || Boolean(pConfig.api_key);
 
-            const modelOptions = prov.id === 'ollama' && ollamaLocalModels.length > 0 
-              ? ollamaLocalModels 
-              : prov.popular_models;
+              // Model Options for CustomSelect
+              const modelOptions = (p.popular_models || []).map(m => ({
+                value: m,
+                label: m,
+                badge: p.badge
+              }));
 
-            return (
-              <div
-                key={prov.id}
-                style={{
-                  padding: '14px 16px',
-                  borderRadius: '14px',
-                  background: cardBg,
-                  border: isSelected 
-                    ? `2px solid ${prov.color}` 
-                    : (isLight ? '1px solid rgba(190, 160, 110, 0.25)' : '1px solid rgba(255, 255, 255, 0.07)'),
-                  boxShadow: isSelected ? `0 4px 16px ${prov.color}20` : cardShadow,
-                  display: 'flex',
-                  flexDirection: 'column',
-                  justifyContent: 'space-between',
-                  gap: '10px'
-                }}
-              >
-                <div>
-                  {/* Card Header */}
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                      <div style={{
-                        width: '32px',
-                        height: '32px',
-                        borderRadius: '10px',
-                        background: `${prov.color}15`,
-                        border: `1px solid ${prov.color}35`,
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        flexShrink: 0
-                      }}>
-                        <IconComp size={18} color={prov.color} />
+              return (
+                <div
+                  key={pKey}
+                  style={{
+                    padding: '18px',
+                    borderRadius: '14px',
+                    background: cardBg,
+                    border: hasConfiguredKey ? `1px solid ${p.color}40` : cardBorder,
+                    boxShadow: cardShadow,
+                    display: 'flex',
+                    flexDirection: 'column',
+                    justifyContent: 'space-between',
+                    gap: '14px',
+                    boxSizing: 'border-box'
+                  }}
+                >
+                  {/* Card Top: Icon, Label, Badge */}
+                  <div>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '10px' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                        <div style={{
+                          width: '34px',
+                          height: '34px',
+                          borderRadius: '8px',
+                          background: `${p.color}15`,
+                          border: `1px solid ${p.color}35`,
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center'
+                        }}>
+                          <IconComp size={20} color={p.color} />
+                        </div>
+                        <div>
+                          <div style={{ fontSize: '0.9rem', fontWeight: 800, color: titleColor }}>{p.label}</div>
+                          <div style={{ fontSize: '0.66rem', color: subtitleColor }}>{p.badge}</div>
+                        </div>
                       </div>
-                      <div>
-                        <h3 style={{ margin: 0, fontSize: '0.86rem', fontWeight: 800, color: titleColor }}>
-                          {prov.label}
-                        </h3>
-                        <span style={{ fontSize: '0.6rem', fontWeight: 800, color: prov.color, letterSpacing: '0.4px' }}>
-                          {prov.badge}
+
+                      {hasConfiguredKey ? (
+                        <span style={{
+                          fontSize: '0.64rem',
+                          fontWeight: 700,
+                          color: '#3fb950',
+                          background: 'rgba(63, 185, 80, 0.12)',
+                          padding: '2px 8px',
+                          borderRadius: '4px',
+                          border: '1px solid rgba(63, 185, 80, 0.3)'
+                        }}>
+                          CONFIGURATO 🟢
                         </span>
-                      </div>
-                    </div>
-
-                    <button
-                      onClick={() => {
-                        setActiveProvider(prov.id);
-                        if (pState.custom_model || pState.model) {
-                          setActiveModel(pState.custom_model || pState.model);
-                        } else if (prov.default_model) {
-                          setActiveModel(prov.default_model);
-                        }
-                      }}
-                      style={{
-                        padding: '3px 8px',
-                        borderRadius: '6px',
-                        fontSize: '0.66rem',
-                        fontWeight: 800,
-                        cursor: 'pointer',
-                        background: isSelected ? prov.color : innerCardBg,
-                        border: isSelected ? 'none' : innerCardBorder,
-                        color: isSelected ? '#000000' : subtitleColor,
-                        transition: 'all 0.15s ease'
-                      }}
-                    >
-                      {isSelected ? '✓ Principale' : 'Imposta'}
-                    </button>
-                  </div>
-
-                  <p style={{ margin: '0 0 10px 0', fontSize: '0.72rem', color: subtitleColor, lineHeight: 1.35 }}>
-                    {prov.hint}
-                  </p>
-
-                  {/* Model Selector */}
-                  <div style={{ marginBottom: '8px' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '4px' }}>
-                      <label style={{ fontSize: '0.68rem', fontWeight: 700, color: subtitleColor }}>
-                        Modello
-                      </label>
-                      {prov.id === 'ollama' && (
-                        <button
-                          onClick={() => fetchOllamaModels(true)}
-                          disabled={loadingModels}
-                          style={{
-                            background: 'none',
-                            border: 'none',
-                            color: '#00d2ff',
-                            fontSize: '0.65rem',
-                            cursor: 'pointer',
-                            fontWeight: 700,
-                            display: 'flex',
-                            alignItems: 'center',
-                            gap: '3px',
-                            padding: 0
-                          }}
-                        >
-                          <RefreshCw size={10} className={loadingModels ? 'spin' : ''} />
-                          Rileva ({ollamaLocalModels.length})
-                        </button>
+                      ) : (
+                        <span style={{
+                          fontSize: '0.64rem',
+                          fontWeight: 700,
+                          color: '#a0a6bc',
+                          background: 'rgba(255, 255, 255, 0.05)',
+                          padding: '2px 8px',
+                          borderRadius: '4px',
+                          border: '1px solid rgba(255, 255, 255, 0.1)'
+                        }}>
+                          INATTIVO
+                        </span>
                       )}
                     </div>
 
-                    <CustomModelSelect
-                      providerId={prov.id}
-                      value={pState.custom_model || pState.model || prov.default_model}
-                      options={modelOptions}
-                      onChange={(mod) => {
-                        updateProviderField(prov.id, 'model', mod);
-                        updateProviderField(prov.id, 'custom_model', '');
-                        if (isSelected) setActiveModel(mod);
-                      }}
-                      isLight={isLight}
-                      titleColor={titleColor}
-                      subtitleColor={subtitleColor}
-                      innerCardBg={innerCardBg}
-                      innerCardBorder={innerCardBorder}
-                    />
-                  </div>
+                    <p style={{ margin: '0 0 12px 0', fontSize: '0.74rem', color: subtitleColor, lineHeight: 1.45 }}>
+                      {p.hint}
+                    </p>
 
-                  {/* API Key Vault Input (if required) */}
-                  {prov.api_key_required && (
-                    <div style={{ marginBottom: '8px' }}>
-                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '4px' }}>
-                        <label style={{ fontSize: '0.68rem', fontWeight: 700, color: subtitleColor, display: 'flex', alignItems: 'center', gap: '3px' }}>
-                          <Lock size={10} color={hasKey ? '#3fb950' : subtitleColor} />
-                          Chiave API / Token
-                        </label>
-                        {prov.docs_url && (
-                          <a
-                            href={prov.docs_url}
-                            target="_blank"
-                            rel="noreferrer"
+                    {/* API Key Input (if required) */}
+                    {p.api_key_required && (
+                      <div style={{ marginBottom: '12px' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
+                          <label style={{ fontSize: '0.7rem', fontWeight: 700, color: subtitleColor }}>API Key</label>
+                          {p.docs_url && (
+                            <a href={p.docs_url} target="_blank" rel="noreferrer" style={{ fontSize: '0.66rem', color: '#00f2fe', textDecoration: 'none', display: 'flex', alignItems: 'center', gap: '2px' }}>
+                              Ottieni Chiave <ExternalLink size={10} />
+                            </a>
+                          )}
+                        </div>
+                        <div style={{ position: 'relative' }}>
+                          <input
+                            type={showKey ? 'text' : 'password'}
+                            value={pConfig.api_key || ''}
+                            onChange={e => {
+                              const val = e.target.value;
+                              setProviderSettings(prev => ({
+                                ...prev,
+                                [pKey]: { ...prev[pKey], api_key: val }
+                              }));
+                            }}
+                            placeholder={pConfig.has_api_key ? '•••••••••••••••• (Chiave Salvata)' : p.key_placeholder}
                             style={{
-                              color: prov.color,
-                              fontSize: '0.64rem',
-                              fontWeight: 700,
-                              textDecoration: 'none',
-                              display: 'flex',
-                              alignItems: 'center',
-                              gap: '2px'
+                              width: '100%',
+                              padding: '7px 30px 7px 10px',
+                              borderRadius: '7px',
+                              background: innerCardBg,
+                              border: innerCardBorder,
+                              color: titleColor,
+                              fontSize: '0.76rem',
+                              outline: 'none',
+                              fontFamily: showKey ? 'monospace' : 'inherit'
+                            }}
+                          />
+                          <button
+                            type="button"
+                            onClick={() => setVisibleKeys(prev => ({ ...prev, [pKey]: !prev[pKey] }))}
+                            style={{
+                              position: 'absolute',
+                              right: '8px',
+                              top: '50%',
+                              transform: 'translateY(-50%)',
+                              background: 'none',
+                              border: 'none',
+                              color: subtitleColor,
+                              cursor: 'pointer'
                             }}
                           >
-                            Ottieni Key <ExternalLink size={9} />
-                          </a>
-                        )}
-                      </div>
-
-                      <div style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        background: innerCardBg,
-                        border: hasKey ? (isLight ? `1px solid ${prov.color}60` : `1px solid ${prov.color}50`) : innerCardBorder,
-                        borderRadius: '8px',
-                        padding: '0 6px'
-                      }}>
-                        <input
-                          type={isVisible ? 'text' : 'password'}
-                          placeholder={pState.has_api_key ? '•••••••••••••••• (Salvata nel Vault)' : prov.key_placeholder}
-                          value={pState.api_key || ''}
-                          onChange={e => updateProviderField(prov.id, 'api_key', e.target.value)}
-                          style={{
-                            flex: 1,
-                            padding: '6px 2px',
-                            background: 'transparent',
-                            border: 'none',
-                            color: titleColor,
-                            fontSize: '0.74rem',
-                            outline: 'none'
-                          }}
-                        />
-
-                        <button
-                          onClick={() => toggleKeyVisibility(prov.id)}
-                          title={isVisible ? 'Nascondi token' : 'Mostra token'}
-                          style={{ background: 'none', border: 'none', color: subtitleColor, cursor: 'pointer', padding: '3px' }}
-                        >
-                          {isVisible ? <EyeOff size={13} /> : <Eye size={13} />}
-                        </button>
-
-                        {pState.api_key && (
-                          <button
-                            onClick={() => copyKeyToClipboard(prov.id, pState.api_key)}
-                            title="Copia token"
-                            style={{ background: 'none', border: 'none', color: subtitleColor, cursor: 'pointer', padding: '3px' }}
-                          >
-                            {copiedKey === prov.id ? <Check size={13} color="#3fb950" /> : <Copy size={13} />}
+                            {showKey ? <EyeOff size={14} /> : <Eye size={14} />}
                           </button>
-                        )}
+                        </div>
                       </div>
-                    </div>
-                  )}
+                    )}
 
-                  {/* Endpoint Override (for Ollama, LM Studio, Custom or Proxies) */}
-                  {(prov.id === 'ollama' || prov.id === 'custom' || prov.id === 'ailoflow' || prov.id === 'lmstudio') && (
-                    <div style={{ marginBottom: '8px' }}>
-                      <label style={{ fontSize: '0.68rem', fontWeight: 700, color: subtitleColor, display: 'block', marginBottom: '3px' }}>
-                        Endpoint URL
+                    {/* Model Selection via CustomSelect */}
+                    <div>
+                      <label style={{ fontSize: '0.7rem', fontWeight: 700, color: subtitleColor, marginBottom: '4px', display: 'block' }}>
+                        Modello Predefinito
                       </label>
-                      <input
-                        type="text"
-                        placeholder={prov.endpoint || prov.api_url || 'http://localhost:1234/v1'}
-                        value={pState.endpoint || pState.api_url || ''}
-                        onChange={e => {
-                          if (prov.id === 'ollama') updateProviderField(prov.id, 'endpoint', e.target.value);
-                          else updateProviderField(prov.id, 'api_url', e.target.value);
+                      <CustomSelect
+                        value={pConfig.model || p.default_model}
+                        onChange={val => {
+                          setProviderSettings(prev => ({
+                            ...prev,
+                            [pKey]: { ...prev[pKey], model: val }
+                          }));
                         }}
+                        options={modelOptions}
+                        placeholder="Seleziona modello..."
+                        variant="purple"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Card Bottom: Test Connection & Status */}
+                  <div style={{ borderTop: innerCardBorder, paddingTop: '12px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px' }}>
+                      <button
+                        onClick={() => testProviderConnection(pKey)}
+                        disabled={isTestingThis}
                         style={{
-                          width: '100%',
-                          padding: '5px 8px',
-                          borderRadius: '8px',
+                          flex: 1,
+                          padding: '7px 12px',
+                          borderRadius: '7px',
                           background: innerCardBg,
                           border: innerCardBorder,
                           color: titleColor,
-                          fontSize: '0.72rem',
-                          outline: 'none',
-                          boxSizing: 'border-box'
+                          fontSize: '0.74rem',
+                          fontWeight: 700,
+                          cursor: isTestingThis ? 'not-allowed' : 'pointer',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          gap: '6px'
                         }}
-                      />
+                      >
+                        {isTestingThis ? <RefreshCw size={13} className="spin" /> : <Wifi size={13} color={p.color} />}
+                        <span>{isTestingThis ? 'Verifica in corso...' : 'Verifica Connessione'}</span>
+                      </button>
                     </div>
-                  )}
-                </div>
 
-                {/* Card Bottom: Test Results & Action */}
-                <div>
-                  {test && (
-                    <div style={{
-                      padding: '5px 8px',
-                      borderRadius: '6px',
-                      fontSize: '0.68rem',
-                      fontWeight: 700,
-                      marginBottom: '8px',
-                      background: test.status === 'success' ? 'rgba(63, 185, 80, 0.15)' : (test.status === 'error' ? 'rgba(239, 68, 68, 0.15)' : 'rgba(0, 210, 255, 0.15)'),
-                      color: test.status === 'success' ? '#3fb950' : (test.status === 'error' ? '#ef4444' : '#00d2ff'),
-                      border: test.status === 'success' ? '1px solid #3fb950' : (test.status === 'error' ? '1px solid #ef4444' : '1px solid #00d2ff')
-                    }}>
-                      {test.msg}
-                    </div>
-                  )}
-
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px' }}>
-                    <button
-                      onClick={() => testProviderConnection(prov.id)}
-                      disabled={isTesting}
-                      style={{
-                        padding: '5px 10px',
-                        borderRadius: '8px',
-                        background: `${prov.color}15`,
-                        border: `1px solid ${prov.color}35`,
-                        color: prov.color,
+                    {/* Test result message */}
+                    {testRes && (
+                      <div style={{
+                        marginTop: '8px',
+                        padding: '6px 10px',
+                        borderRadius: '6px',
                         fontSize: '0.7rem',
                         fontWeight: 700,
-                        cursor: 'pointer',
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '4px'
-                      }}
-                    >
-                      {isTesting ? <RefreshCw size={11} className="spin" /> : <Zap size={11} />}
-                      Testa
-                    </button>
-
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '5px', fontSize: '0.68rem', color: hasKey ? '#3fb950' : subtitleColor, fontWeight: 700 }}>
-                      <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: hasKey ? '#3fb950' : '#888' }} />
-                      {hasKey ? 'Configurato' : 'Non Impostato'}
-                    </div>
+                        background: testRes.success ? 'rgba(63, 185, 80, 0.12)' : 'rgba(239, 68, 68, 0.12)',
+                        color: testRes.success ? '#3fb950' : '#ef4444',
+                        border: `1px solid ${testRes.success ? 'rgba(63, 185, 80, 0.3)' : 'rgba(239, 68, 68, 0.3)'}`
+                      }}>
+                        {testRes.success ? `✅ ${testRes.message} (${testRes.latency}ms)` : `❌ ${testRes.message}`}
+                      </div>
+                    )}
                   </div>
                 </div>
-              </div>
-            );
-          })}
+              );
+            })}
+          </div>
         </div>
-      </div>
+      )}
     </div>
   );
 }
