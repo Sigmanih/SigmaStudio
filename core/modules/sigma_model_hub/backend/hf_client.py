@@ -10,6 +10,7 @@ import time
 import urllib.request
 import urllib.parse
 from typing import Dict, Any, List, Optional
+from core.net_utils import safe_urlopen
 from core.logger import get_logger
 
 log = get_logger(__name__)
@@ -752,7 +753,7 @@ def _fetch_from_hf_api(params: Dict[str, Any], hf_token: Optional[str] = None) -
         req.add_header("Authorization", f"Bearer {hf_token}")
 
     try:
-        with urllib.request.urlopen(req, timeout=10) as response:
+        with safe_urlopen(req, timeout=10) as response:
             if response.status == 200:
                 raw = json.loads(response.read().decode("utf-8"))
                 link = response.headers.get("Link", "")
@@ -1037,7 +1038,7 @@ def get_hf_model_details(model_id: str, hf_token: Optional[str] = None) -> Dict[
         if hf_token:
             req.add_header("Authorization", f"Bearer {hf_token}")
 
-        with urllib.request.urlopen(req, timeout=8) as response:
+        with safe_urlopen(req, timeout=8) as response:
             if response.status == 200:
                 data = json.loads(response.read().decode("utf-8"))
                 siblings = data.get("siblings", [])

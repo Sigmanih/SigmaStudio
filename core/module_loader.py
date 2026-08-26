@@ -27,6 +27,7 @@ from typing import Any
 
 from core import paths
 from core.logger import get_logger
+from core.net_utils import safe_urlopen
 
 log = get_logger(__name__)
 
@@ -373,7 +374,7 @@ class ModuleLoader:
 
         try:
             req = urllib.request.Request(zip_url, headers={"User-Agent": "SigmaStudio/1.0"})
-            with urllib.request.urlopen(req, timeout=30) as resp, open(zip_path, "wb") as out_f:
+            with safe_urlopen(req, timeout=30) as resp, open(zip_path, "wb") as out_f:
                 shutil.copyfileobj(resp, out_f)
 
             with zipfile.ZipFile(zip_path, "r") as zf:

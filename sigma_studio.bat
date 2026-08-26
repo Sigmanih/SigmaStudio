@@ -24,17 +24,12 @@ if errorlevel 1 (
     echo [SIGMA_SERVER] WARNING: Some Python dependencies may have warnings. Continuing...
 )
 
-:: Ensure GGUF inference kernel (llama-cpp-python) is installed for hardware acceleration
-echo [SIGMA_SERVER] Checking GGUF inference runtime (llama-cpp-python)...
-python -c "import llama_cpp" >nul 2>nul
+:: Ensure GGUF inference engine runtime (llama.cpp) is installed for hardware acceleration
+echo [SIGMA_SERVER] Checking GGUF inference runtime (llama.cpp)...
+python -c "from core.engine.llama_runtime import installed_server; exit(0 if installed_server() else 1)" >nul 2>nul
 if errorlevel 1 (
-    echo [SIGMA_SERVER] llama-cpp-python not found in .venv. Attempting hardware-accelerated install...
+    echo [SIGMA_SERVER] llama.cpp runtime not found. Attempting install...
     python sigma_launcher.py --install
-    python -c "import llama_cpp" >nul 2>nul
-    if errorlevel 1 (
-        echo [SIGMA_SERVER] Notice: GGUF runtime skipped or build failed.
-        echo [SIGMA_SERVER] Continuing launch: Safetensors, Ollama, LM Studio and Cloud models are fully operational.
-    )
 )
 
 :: Check for Python
@@ -45,38 +40,25 @@ if errorlevel 1 (
     exit /b 1
 )
 
-:: Check for npm
-where npm >nul 2>nul
-if not errorlevel 1 (
-    if not exist "sigma_studio\node_modules" (
-        echo [SIGMA_SERVER] Installing Frontend dependencies - npm install...
+:: Check for Frontend Build
+if not exist "sigma_studio\dist\index.html" (
+    where npm >nul 2>nul
+    if not errorlevel 1 (
+        echo [SIGMA_SERVER] Frontend build missing. Building assets...
         cd sigma_studio
-        call npm install
+        if not exist "node_modules" (
+            echo [SIGMA_SERVER] Installing Frontend dependencies - npm install...
+            call npm install
+        )
+        echo [SIGMA_SERVER] Building frontend assets...
+        call npm run build
         if errorlevel 1 (
-            echo [SIGMA_SERVER] WARNING: npm install returned an error.
+            echo [SIGMA_SERVER] WARNING: Frontend build returned an error.
         )
         cd ..
-    )
-    echo [SIGMA_SERVER] Cleaning Vite cache...
-    if exist sigma_studio\node_modules\.vite (
-        rmdir /s /q sigma_studio\node_modules\.vite
-    )
-    echo [SIGMA_SERVER] Removing old build...
-    if exist sigma_studio\dist (
-        rmdir /s /q sigma_studio\dist
-    )
-    echo [SIGMA_SERVER] Building frontend assets...
-    cd sigma_studio
-    call npm run build
-    if errorlevel 1 (
-        echo [SIGMA_SERVER] WARNING: Frontend build failed.
-    )
-    cd ..
-) else (
-    echo [SIGMA_SERVER] WARNING: Node.js/npm not found. Skipping automatic frontend build.
-    if not exist "sigma_studio\dist" (
+    ) else (
         echo [SIGMA_SERVER] ERROR: Frontend build folder sigma_studio\dist is missing and Node.js/npm is not installed.
-        echo [SIGMA_SERVER] Please install Node.js to build the frontend.
+        echo [SIGMA_SERVER] Please install Node.js (>= 20 LTS) to build the frontend.
         pause
         exit /b 1
     )

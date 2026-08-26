@@ -46,10 +46,29 @@ from typing import Any, Dict, List, Optional
 
 from core import paths
 from core.logger import get_logger
+from core.net_utils import safe_urlopen
 
 log = get_logger(__name__)
 
 RELEASES_API = "https://api.github.com/repos/ggml-org/llama.cpp/releases"
+FALLBACK_STABLE_BUILD = "b10632"
+KNOWN_VARIANTS = [
+    "win-cpu-x64", "win-cpu-arm64", "win-cuda-12.4-x64", "win-cuda-13.3-x64",
+    "win-vulkan-x64", "win-rocm-7.14-x64", "win-sycl-x64",
+    "ubuntu-x64", "ubuntu-arm64", "ubuntu-vulkan-x64", "ubuntu-vulkan-arm64",
+    "ubuntu-rocm-7.14-x64", "ubuntu-sycl-fp16-x64", "ubuntu-sycl-fp32-x64",
+    "macos-arm64", "macos-x64"
+]
+
+
+def _build_fallback_release(build_tag: str = FALLBACK_STABLE_BUILD) -> Dict[str, Any]:
+    assets = {}
+    for var in KNOWN_VARIANTS:
+        ext = ".zip" if var.startswith("win-") else ".tar.gz"
+        name = f"llama-{build_tag}-bin-{var}{ext}"
+        url = f"https://github.com/ggml-org/llama.cpp/releases/download/{build_tag}/{name}"
+        assets[name] = url
+    return {"build": build_tag, "assets": assets}
 
 #: Nome dell'eseguibile che serve a noi: espone un'API HTTP compatibile OpenAI,
 #: cioe' quella che Sigma Studio gia' parla.
@@ -411,23 +430,26 @@ def latest_build(timeout: int = 15) -> Optional[Dict[str, Any]]:
         f"{RELEASES_API}?per_page=10",
         headers={"User-Agent": "SigmaStudio", "Accept": "application/vnd.github+json"},
     )
+    releases = None
     try:
-        with urllib.request.urlopen(richiesta, timeout=timeout) as risposta:
+        with safe_urlopen(richiesta, timeout=timeout) as risposta:
             releases = json.loads(risposta.read().decode("utf-8"))
     except Exception as exc:
-        log.warning("[LlamaRuntime] Elenco release non raggiungibile: %s", exc)
-        return None
+        log.warning("[LlamaRuntime] Elenco release API non raggiungibile (%s): uso fallback release stabile.", exc)
 
-    for release in releases:
-        archivi = [a for a in release.get("assets", [])
-                   if a.get("name", "").startswith("llama-")
-                   and a.get("name", "").endswith((".zip", ".tar.gz"))]
-        if archivi:
-            return {
-                "build": release.get("tag_name", ""),
-                "assets": {a["name"]: a["browser_download_url"] for a in archivi},
-            }
-    return None
+    if isinstance(releases, list):
+        for release in releases:
+            archivi = [a for a in release.get("assets", [])
+                       if a.get("name", "").startswith("llama-")
+                       and a.get("name", "").endswith((".zip", ".tar.gz"))]
+            if archivi:
+                return {
+                    "build": release.get("tag_name", ""),
+                    "assets": {a["name"]: a["browser_download_url"] for a in archivi},
+                }
+
+    # Fallback su release nota stabile se l'API GitHub ha superato il rate-limit o e' irraggiungibile
+    return _build_fallback_release(FALLBACK_STABLE_BUILD)
 
 
 def installed_server() -> Optional[Path]:
@@ -595,7 +617,7 @@ def install(progress=None, timeout: int = 600,
         avvisa(f"Scarico {nome}...")
         richiesta = urllib.request.Request(
             release["assets"][nome], headers={"User-Agent": "SigmaStudio"})
-        with urllib.request.urlopen(richiesta, timeout=timeout) as risposta, \
+        with safe_urlopen(richiesta, timeout=timeout) as risposta, \
                 open(temporaneo, "wb") as uscita:
             shutil.copyfileobj(risposta, uscita)
 

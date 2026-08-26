@@ -311,11 +311,15 @@ def _index_serves_package(index_url, package="llama-cpp-python", timeout=8):
     """
     import urllib.request
     import urllib.error
+    try:
+        from core.net_utils import safe_urlopen
+    except Exception:
+        safe_urlopen = urllib.request.urlopen
 
     url = f"{index_url.rstrip('/')}/{package}/"
     try:
         req = urllib.request.Request(url, method="HEAD", headers={"User-Agent": "pip"})
-        with urllib.request.urlopen(req, timeout=timeout) as resp:
+        with safe_urlopen(req, timeout=timeout) as resp:
             return resp.status == 200
     except urllib.error.HTTPError:
         return False
@@ -624,12 +628,13 @@ def ensure_frontend():
         print_log("[SIGMA] Frontend build required. Preparing assets...", Colors.OKCYAN)
         lock_file = os.path.join(frontend_dir, "package-lock.json")
         
+        use_shell = (os.name == 'nt')
         if not os.path.exists(node_modules_dir):
             print_log("[SIGMA] Installing frontend dependencies (npm install)...", Colors.OKCYAN)
-            subprocess.run([npm_bin, "install", "--include=optional"], cwd=frontend_dir, check=False)
+            subprocess.run([npm_bin, "install", "--include=optional"], cwd=frontend_dir, check=False, shell=use_shell)
             
         print_log("[SIGMA] Running Vite build (npm run build)...", Colors.OKCYAN)
-        res = subprocess.run([npm_bin, "run", "build"], cwd=frontend_dir)
+        res = subprocess.run([npm_bin, "run", "build"], cwd=frontend_dir, shell=use_shell)
         
         # Self-healing for cross-platform optionalDependencies bug (e.g. missing native rolldown/esbuild binding on arm64)
         if res.returncode != 0:
@@ -642,9 +647,9 @@ def ensure_frontend():
                 except Exception:
                     pass
             print_log("[SIGMA] Reinstalling frontend dependencies with optional native packages...", Colors.OKCYAN)
-            subprocess.run([npm_bin, "install", "--include=optional"], cwd=frontend_dir, check=False)
+            subprocess.run([npm_bin, "install", "--include=optional"], cwd=frontend_dir, check=False, shell=use_shell)
             print_log("[SIGMA] Retrying Vite build...", Colors.OKCYAN)
-            res = subprocess.run([npm_bin, "run", "build"], cwd=frontend_dir)
+            res = subprocess.run([npm_bin, "run", "build"], cwd=frontend_dir, shell=use_shell)
         
         if res.returncode == 0:
             try:

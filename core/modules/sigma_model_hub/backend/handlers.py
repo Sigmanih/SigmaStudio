@@ -6,6 +6,7 @@ from __future__ import annotations
 import os
 import json
 import urllib.parse
+from core.net_utils import safe_urlopen
 from core import paths
 from core.logger import get_logger
 from .hf_client import (search_hf_models, get_hf_model_details, get_effective_hf_token,
@@ -559,7 +560,7 @@ def handle_models_hf_test_connection(self):
     try:
         req = urllib.request.Request("https://huggingface.co/api/models?limit=1")
         req.add_header("User-Agent", "SigmaStudio-ModelHub/2.0")
-        with urllib.request.urlopen(req, timeout=8) as resp:
+        with safe_urlopen(req, timeout=8) as resp:
             if resp.status == 200:
                 reachability_ok = True
                 latency_ms = round((time.time() - t_start) * 1000, 1)
@@ -583,7 +584,7 @@ def handle_models_hf_test_connection(self):
             req_auth = urllib.request.Request("https://huggingface.co/api/whoami-v2")
             req_auth.add_header("Authorization", f"Bearer {token}")
             req_auth.add_header("User-Agent", "SigmaStudio-ModelHub/2.0")
-            with urllib.request.urlopen(req_auth, timeout=8) as resp:
+            with safe_urlopen(req_auth, timeout=8) as resp:
                 if resp.status == 200:
                     data = json.loads(resp.read().decode("utf-8"))
                     token_valid = True
@@ -641,7 +642,7 @@ def handle_models_hf_token_test(self):
         req.add_header("User-Agent", "SigmaStudio-ModelHub/2.0")
 
         try:
-            with urllib.request.urlopen(req, timeout=10) as resp:
+            with safe_urlopen(req, timeout=10) as resp:
                 if resp.status == 200:
                     data = json.loads(resp.read().decode("utf-8"))
                     username = data.get("name") or data.get("fullname") or "Utente HF"

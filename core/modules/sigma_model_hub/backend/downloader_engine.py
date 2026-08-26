@@ -14,6 +14,7 @@ import socket
 from typing import Dict, Any, List, Optional
 from dataclasses import dataclass, field
 from core.logger import get_logger
+from core.net_utils import safe_urlopen
 
 log = get_logger(__name__)
 
@@ -417,7 +418,7 @@ class ModelDownloadManager:
                 if existing_bytes > 0:
                     req.add_header("Range", f"bytes={existing_bytes}-")
 
-                with urllib.request.urlopen(req, timeout=25) as response:
+                with safe_urlopen(req, timeout=25) as response:
                     content_len = response.headers.get("Content-Length")
                     if content_len:
                         task.total_bytes = int(content_len) + existing_bytes
@@ -598,7 +599,7 @@ class ModelDownloadManager:
                         if existing_bytes > 0:
                             req.add_header("Range", f"bytes={existing_bytes}-")
 
-                        with urllib.request.urlopen(req, timeout=30) as resp:
+                        with safe_urlopen(req, timeout=30) as resp:
                             mode = "ab" if existing_bytes > 0 else "wb"
                             os.makedirs(os.path.dirname(temp_file), exist_ok=True)
                             with open(temp_file, mode) as out_f:
