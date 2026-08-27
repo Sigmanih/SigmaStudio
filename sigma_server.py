@@ -19,6 +19,52 @@ warnings.filterwarnings("ignore", message=".*dropout option adds dropout.*")
 warnings.filterwarnings("ignore", message=".*weight_norm is deprecated.*")
 warnings.filterwarnings("ignore", message=".*Redirects are currently not supported.*")
 
+# ==============================================================================
+# Verifica delle dipendenze, prima di tutto il resto
+#
+# Questo file puo' essere lanciato direttamente — a mano, da un servizio, da un
+# .bat scritto male — e in quel caso l'ambiente puo' essere vuoto. Senza questo
+# controllo l'avvio proseguiva comunque: il router segnalava "No module named
+# 'requests'", la preparazione "No module named 'psutil'", il frontend falliva
+# con "vite non e' riconosciuto", e solo alla fine il processo moriva su
+# `import uvicorn`. Quattro sintomi diversi di un unico fatto — le dipendenze
+# non erano installate — e nessuno dei quattro che lo dicesse.
+# ==============================================================================
+
+#: Modulo -> a cosa serve. Se manca uno di questi, il server non parte comunque.
+_DIPENDENZE_ESSENZIALI = (
+    ("uvicorn", "il server ASGI che serve l'applicazione"),
+    ("fastapi", "le rotte HTTP"),
+    ("requests", "le chiamate ai provider e al Model Hub"),
+    ("psutil", "il rilevamento dell'hardware"),
+)
+
+
+def _dipendenze_mancanti() -> list[tuple[str, str]]:
+    import importlib.util
+
+    mancanti = []
+    for modulo, motivo in _DIPENDENZE_ESSENZIALI:
+        try:
+            if importlib.util.find_spec(modulo) is None:
+                mancanti.append((modulo, motivo))
+        except Exception:
+            mancanti.append((modulo, motivo))
+    return mancanti
+
+
+def _spiega_ambiente_incompleto(mancanti: list[tuple[str, str]]) -> str:
+    elenco = "\n".join(f"    - {modulo}: {motivo}" for modulo, motivo in mancanti)
+    avvio = "sigma_studio.bat" if os.name == "nt" else "./sigma_studio.sh"
+    return (
+        "\n  L'ambiente Python non e' completo. Mancano:\n\n"
+        f"{elenco}\n\n"
+        f"  Avvia Sigma Studio con `{avvio}`: installa cio' che serve e poi\n"
+        "  parte da solo. Per reinstallare tutto da capo:\n\n"
+        f"      {avvio} --install\n"
+    )
+
+
 # --- Core modules ---
 from core import paths
 from core.logger import get_logger
@@ -205,24 +251,42 @@ def prepare_environment(solo_verifica: bool = False) -> dict:
 
 def _build_frontend_if_needed() -> bool:
     """Ricompila il frontend solo se i sorgenti sono cambiati."""
-    npm_path = shutil.which("npm")
+    npm_path = shutil.which("npm") or (shutil.which("npm.cmd") if os.name == "nt" else None)
     if not npm_path:
-        log.warning("npm not found — skipping frontend build.")
+        log.warning("npm non trovato: build del frontend saltata. Se in "
+                    "sigma_studio/dist c'e' gia' un'interfaccia compilata "
+                    "viene servita quella.")
         return False
 
     if not _needs_frontend_rebuild():
         log.info("Frontend source unchanged — skipping build.")
         return True
 
+    # Le dipendenze del frontend prima del comando che le usa. Senza, `npm run
+    # build` fallisce con "vite non e' riconosciuto come comando interno o
+    # esterno": un messaggio che nomina lo strumento e non la causa, ed e' la
+    # riga che su una copia appena clonata mandava fuori strada.
+    frontend = str(paths.frontend_dir())
+    if not os.path.isdir(os.path.join(frontend, "node_modules")):
+        log.info("Dipendenze del frontend assenti: le installo (solo la prima volta)...")
+        installa = subprocess.run(
+            [npm_path, "install"], cwd=frontend,
+            capture_output=True, text=True, shell=(os.name == "nt"),
+        )
+        if installa.returncode != 0:
+            log.error("npm install non riuscito:\n%s", (installa.stderr or "")[-1500:])
+            return False
+
     log.info("Frontend source changed — rebuilding...")
     res = subprocess.run(
         [npm_path, "run", "build"],
-        cwd=str(paths.frontend_dir()),
+        cwd=frontend,
         capture_output=True,
         text=True,
+        shell=(os.name == "nt"),
     )
     if res.returncode != 0:
-        log.error("Frontend build failed:\n%s", res.stderr)
+        log.error("Build del frontend non riuscita:\n%s", (res.stderr or "")[-1500:])
         return False
 
     _write_build_stamp()
@@ -254,6 +318,13 @@ def serve(host: str = "0.0.0.0", port: int = 8000) -> None:
 def main(argv: list[str] | None = None) -> int:
     argomenti = list(sys.argv[1:] if argv is None else argv)
     solo_verifica = "--check" in argomenti
+
+    mancanti = _dipendenze_mancanti()
+    if mancanti:
+        # Prima di ogni altra cosa e senza traccia di stack: qui non c'e' un
+        # difetto da diagnosticare, c'e' un passaggio di installazione saltato.
+        print(_spiega_ambiente_incompleto(mancanti), file=sys.stderr)
+        return 1
 
     signal.signal(signal.SIGINT, graceful_shutdown)
     signal.signal(signal.SIGTERM, graceful_shutdown)

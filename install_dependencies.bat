@@ -1,55 +1,63 @@
 @echo off
-title Sigma Studio - Installer Dipendenze
+:: ============================================================================
+:: Sigma Studio - Installazione delle dipendenze su Windows
+::
+:: Una riga sola di lavoro: `sigma_launcher.py --install`. Tutto il resto qui
+:: dentro e' trovare un Python con cui eseguirla.
+::
+:: Prima installava per conto suo, e sbagliava in due modi. Usava
+:: requirements.txt, che tira giu' l'intero stack CUDA anche su una macchina
+:: senza scheda NVIDIA — parecchi gigabyte che non serviranno mai — mentre il
+:: launcher sceglie il file giusto per l'acceleratore che ha trovato. E teneva
+:: una seconda procedura di installazione accanto a quella vera, che nessuno
+:: aggiornava insieme all'altra.
+:: ============================================================================
+title Sigma Studio - Installazione
 cd /d "%~dp0"
 
-echo =======================================================
-echo          Sigma Studio Dependency Installer
-echo =======================================================
+echo.
+echo   Sigma Studio - installazione delle dipendenze
 echo.
 
-:: 1. Creazione / Controllo Ambiente Virtuale Python
-if not exist ".venv\Scripts\activate.bat" (
-    echo [SIGMA_INSTALL] Creazione ambiente virtuale Python (.venv)...
-    python -m venv .venv
-    if errorlevel 1 (
-        echo [SIGMA_INSTALL] ERRORE: Impossibile creare l'ambiente virtuale. Assicurati che Python sia installato.
-        pause
-        exit /b 1
-    )
+set "SIGMA_PY="
+py -3 --version >nul 2>&1 && set "SIGMA_PY=py -3"
+if not defined SIGMA_PY (
+    python --version >nul 2>&1 && set "SIGMA_PY=python"
 )
 
-echo [SIGMA_INSTALL] Attivazione ambiente virtuale...
-call .venv\Scripts\activate.bat
+if not defined SIGMA_PY (
+    echo   Python 3 non trovato.
+    echo.
+    echo   Installalo da https://www.python.org/downloads/ ^(serve la 3.10 o
+    echo   successiva^), spuntando "Add Python to PATH", poi rilancia.
+    echo.
+    pause
+    exit /b 1
+)
 
-echo [SIGMA_INSTALL] Aggiornamento pip...
-python -m pip install --upgrade pip
-
-echo [SIGMA_INSTALL] Installazione librerie Python da requirements.txt...
-pip install -r requirements.txt
+%SIGMA_PY% -c "import sys; raise SystemExit(0 if sys.version_info >= (3,10) else 1)" >nul 2>&1
 if errorlevel 1 (
-    echo [SIGMA_INSTALL] AVVISO: Alcune dipendenze Python potrebbero aver restituito un avviso. Continuando...
+    echo   Sigma Studio richiede Python 3.10 o successivo.
+    %SIGMA_PY% -c "import sys; print('   Versione trovata: ' + sys.version.split()[0])"
+    echo.
+    pause
+    exit /b 1
 )
 
-echo [SIGMA_INSTALL] Installazione runtime GGUF ufficiale (llama.cpp)...
-python sigma_launcher.py --install
+:: Virtualenv, pacchetti Python per questo acceleratore, Node, runtime GGUF e
+:: build del frontend: li fa tutti il launcher, nello stesso ordine su ogni
+:: sistema operativo.
+%SIGMA_PY% sigma_launcher.py --install
 
-:: 2. Controllo ed Installazione Dipendenze Frontend Node.js
-where npm >nul 2>nul
-if not errorlevel 1 (
-    echo [SIGMA_INSTALL] Installazione dipendenze Frontend Node.js - npm...
-    cd sigma_studio
-    call npm install
-    echo [SIGMA_INSTALL] Compilazione frontend assets - npm run build...
-    call npm run build
-    cd ..
-) else (
-    echo [SIGMA_INSTALL] NOTA: Node.js/npm non trovato. Verra utilizzata la build pre-compilata in sigma_studio/dist.
+if errorlevel 1 (
+    echo.
+    echo   Installazione non riuscita. Il messaggio qui sopra dice dove.
+    echo.
+    pause
+    exit /b 1
 )
 
 echo.
-echo =======================================================
-echo       Installazione completata con successo!
-echo =======================================================
-echo Puoi ora avviare Sigma Studio eseguendo sigma_studio.bat
+echo   Fatto. Avvia Sigma Studio con sigma_studio.bat
 echo.
 pause

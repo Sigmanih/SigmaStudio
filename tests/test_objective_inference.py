@@ -17,6 +17,7 @@
 # tokenizer with a fake model exercises them identically on a CUDA desktop and
 # on a Raspberry Pi.
 # ==============================================================================
+import os
 import unittest
 
 from core.engine import evaluation
@@ -776,13 +777,22 @@ class TestBenchmarkPreparation(unittest.TestCase):
         self.assertIn("d", benchmarks._IN_MEMORY_SUITES)
 
     def test_preparation_announces_each_suite(self):
+        import tempfile
+        from unittest import mock
         from core.modules.sigma_training_lab.training import benchmarks
 
         seen = []
-        benchmarks.get_benchmark_items("mmlu,gsm8k", mode="sample",
-                                       num_samples=10, progress=seen.append)
-        # "preparing" with no message reads as a freeze; the suite names turn a
-        # download into something the user can wait for.
+        # Un preset gia' salvato restituisce il campione in un millisecondo e
+        # non ha niente da annunciare: giusto cosi', ma qui si sta provando la
+        # preparazione vera, quindi il preset va messo altrove.
+        with tempfile.TemporaryDirectory() as vuota:
+            with mock.patch.object(benchmarks, "_get_preset_path",
+                                   side_effect=lambda s, m, n: os.path.join(
+                                       vuota, f"{s}_{m}_{n}.json".replace(",", "_"))):
+                benchmarks.get_benchmark_items("mmlu,gsm8k", mode="sample",
+                                               num_samples=10, progress=seen.append)
+        # "preparing" senza messaggi si legge come un blocco; i nomi delle suite
+        # trasformano un'attesa in qualcosa che si puo' aspettare.
         self.assertTrue(any("MMLU" in line for line in seen), seen)
 
     def test_an_unloadable_model_stops_the_run(self):
@@ -1631,6 +1641,357 @@ class TestPerItemTiming(unittest.TestCase):
         self.assertTrue(all(r["latency_ms"] >= 0 for r in results.values()))
         tempi = [r["latency_ms"] for r in results.values()]
         self.assertLessEqual(max(tempi) - min(tempi), max(tempi) + 1)
+
+
+# ---------------------------------------------------------------------------
+# `-np N` non aggiunge contesto: lo divide
+# ---------------------------------------------------------------------------
+
+class TestSlotContext(unittest.TestCase):
+    """Il caso che ha piantato un benchmark a meta' campione.
+
+    `-c 16384 -np 4` da' a ogni generazione 4096 token. Il protocollo `math` ne
+    chiedeva 3072, lasciandone meno di mille al prompt. Superato quel confine
+    llama-server non risponde con un errore: si pianta. /health continua a dire
+    "ok" perche' non tocca la coda, /slots va in timeout, le schede restano a
+    zero con i pesi in memoria, e il run si ferma senza spiegazioni.
+    """
+
+    def test_the_slot_count_comes_from_the_context(self):
+        from core.engine.backends.llamaserver_backend import (
+            slot_per_contesto, _SLOT_CTX_MINIMO,
+        )
+        # La divisione non puo' portare uno slot sotto il minimo utile. Con una
+        # finestra gia' piu' piccola del minimo non c'e' niente da dividere: uno
+        # slot stretto e' l'unica opzione, ed e' comunque tutta la finestra.
+        for finestra in (8192, 16384, 32768, 65536):
+            slot = slot_per_contesto(finestra)
+            self.assertGreaterEqual(finestra // slot, _SLOT_CTX_MINIMO, finestra)
+        self.assertEqual(slot_per_contesto(4096), 1)
+
+    def test_a_small_context_gets_a_single_slot(self):
+        from core.engine.backends.llamaserver_backend import slot_per_contesto
+
+        # Quattro slot fissi erano il difetto: su una finestra piccola
+        # spezzavano l'unica cosa che serviva intera.
+        self.assertEqual(slot_per_contesto(4096), 1)
+        self.assertEqual(slot_per_contesto(16384), 2)
+        self.assertEqual(slot_per_contesto(0), 1)
+
+    def test_the_command_line_uses_the_computed_count(self):
+        import inspect
+        from core.engine.backends import llamaserver_backend
+
+        source = inspect.getsource(llamaserver_backend.LlamaServerBackend.load)
+        self.assertIn("slot_per_contesto", source)
+        self.assertNotIn('"-np", str(int(settings.get("parallel_slots") or 4))', source)
+
+
+class TestSlotTokenBudget(unittest.TestCase):
+    """La rete di sicurezza che al percorso in-process c'era e qui mancava."""
+
+    def _backend(self, slot_ctx):
+        from core.engine.backends.llamaserver_backend import LlamaServerBackend
+
+        backend = LlamaServerBackend()
+        backend._settings = {"slot_ctx": slot_ctx}
+        return backend
+
+    def test_a_request_cannot_exceed_its_slot(self):
+        backend = self._backend(4096)
+        richiesta = [{"role": "user", "content": "x" * 1200}]
+        concesso = backend._budget_token(3072, richiesta)
+        self.assertLess(concesso, 3072)
+        self.assertLess(concesso + 300, 4096)   # prompt e margine ci stanno
+
+    def test_a_roomy_slot_grants_what_was_asked(self):
+        self.assertEqual(
+            self._backend(8192)._budget_token(3072, [{"role": "user", "content": "x" * 400}]),
+            3072)
+
+    def test_a_prompt_that_fills_the_slot_still_gets_an_answer(self):
+        # Meglio una risposta corta di una richiesta che pianta il runtime.
+        concesso = self._backend(4096)._budget_token(
+            3072, [{"role": "user", "content": "x" * 40000}])
+        self.assertGreater(concesso, 0)
+        self.assertLessEqual(concesso, 256)
+
+    def test_an_unknown_slot_size_changes_nothing(self):
+        from core.engine.backends.llamaserver_backend import LlamaServerBackend
+
+        backend = LlamaServerBackend()
+        backend._settings = {}
+        self.assertEqual(backend._budget_token(3072, [{"role": "user", "content": "q"}]),
+                         3072)
+
+
+class TestWedgedServerDiagnosis(unittest.TestCase):
+    """/health non e' una prova di vita del motore."""
+
+    def _backend(self):
+        from core.engine.backends.llamaserver_backend import LlamaServerBackend
+
+        backend = LlamaServerBackend()
+        backend._processo = type("_P", (), {"poll": lambda self: None})()
+        backend._porta = 1
+        backend._settings = {"slot_ctx": 4096, "parallel_slots": 4, "port": 1}
+        return backend
+
+    def test_healthy_socket_with_a_stuck_loop_is_called_a_block(self):
+        import io as _io
+        from unittest import mock
+        from core.engine.backends import llamaserver_backend
+
+        def _urlopen(url, timeout=None):
+            indirizzo = url if isinstance(url, str) else url.full_url
+            if "/health" in indirizzo:
+                risposta = mock.MagicMock()
+                risposta.status = 200
+                risposta.__enter__ = lambda s: s
+                risposta.__exit__ = lambda *a: False
+                return risposta
+            raise TimeoutError("timed out")
+
+        with mock.patch.object(llamaserver_backend.urllib.request, "urlopen", _urlopen):
+            diagnosi = self._backend().diagnosi()
+
+        # Non si sbilancia in nessuna delle due direzioni: /slots e' servito
+        # dalla stessa coda delle generazioni, quindi tace anche su un server
+        # che lavora. Dice cosa ha visto e mostra le ultime righe del runtime.
+        self.assertIn("o e' fermo", diagnosi)
+        self.assertIn("4096", diagnosi)     # il contesto per slot, che va saputo
+
+    def test_a_working_server_is_not_accused(self):
+        import json as _json
+        from unittest import mock
+        from core.engine.backends import llamaserver_backend
+
+        def _urlopen(url, timeout=None):
+            indirizzo = url if isinstance(url, str) else url.full_url
+            risposta = mock.MagicMock()
+            risposta.status = 200
+            risposta.read.return_value = _json.dumps(
+                [{"state": 1}, {"state": 0}]).encode()
+            risposta.__enter__ = lambda s: s
+            risposta.__exit__ = lambda *a: False
+            return risposta
+
+        with mock.patch.object(llamaserver_backend.urllib.request, "urlopen", _urlopen):
+            diagnosi = self._backend().diagnosi()
+        self.assertIn("risponde", diagnosi)
+        self.assertIn("1 slot occupati", diagnosi)
+
+
+# ---------------------------------------------------------------------------
+# L'avvio: due costi che non si aspettano a vicenda
+# ---------------------------------------------------------------------------
+
+class TestStartupOverlap(unittest.TestCase):
+    """Preparare i quesiti e caricare i pesi sono lavori indipendenti."""
+
+    def test_a_cloud_model_has_nothing_to_preload(self):
+        from core.modules.sigma_training_lab.training import benchmarks
+
+        self.assertIsNone(benchmarks._avvia_caricamento("openai:gpt-4"))
+        self.assertIsNone(benchmarks._avvia_caricamento("ollama:llama3"))
+
+    def test_the_weights_start_before_the_questions_are_ready(self):
+        import threading, time
+        from unittest import mock
+        from core.modules.sigma_training_lab.training import benchmarks
+
+        partito = threading.Event()
+
+        class _Engine:
+            def _ensure_resident(self, name):
+                partito.set()
+                time.sleep(0.05)
+                return {"success": True, "model": name}
+
+        with mock.patch.dict("sys.modules",
+                             {"core.engine.unified_runtime": mock.MagicMock(
+                                 sigma_engine=_Engine())}):
+            caricamento = benchmarks._avvia_caricamento("sigma:tiny")
+            # Il punto e' proprio questo: il caricamento e' gia' in corso
+            # mentre il chiamante sta ancora preparando i quesiti.
+            self.assertTrue(partito.wait(timeout=2.0))
+            self.assertTrue(caricamento.attendi()["success"])
+
+    def test_a_tight_machine_keeps_them_in_a_queue(self):
+        from unittest import mock
+        from core.modules.sigma_training_lab.training import benchmarks
+
+        with mock.patch.object(benchmarks, "_ram_disponibile_gb", return_value=1.5):
+            caricamento = benchmarks._avvia_caricamento("sigma:tiny")
+        # Due picchi di memoria insieme su una scheda da 8 GB non fanno
+        # guadagnare tempo: lo fanno perdere passando dallo swap.
+        self.assertIsNone(caricamento._thread)
+
+    def test_a_failed_preload_is_delivered_not_swallowed(self):
+        from unittest import mock
+        from core.modules.sigma_training_lab.training import benchmarks
+
+        class _Engine:
+            def _ensure_resident(self, name):
+                raise RuntimeError("VRAM esaurita")
+
+        with mock.patch.dict("sys.modules",
+                             {"core.engine.unified_runtime": mock.MagicMock(
+                                 sigma_engine=_Engine())}):
+            esito = benchmarks._avvia_caricamento("sigma:tiny").attendi()
+
+        # Anticipare il caricamento non deve nascondere un fallimento: chi
+        # aspetta riceve lo stesso esito che avrebbe avuto in linea.
+        self.assertFalse(esito["success"])
+        self.assertIn("VRAM", esito["error"])
+
+    def test_waiting_without_a_preload_still_loads(self):
+        from unittest import mock
+        from core.modules.sigma_training_lab.training import benchmarks
+
+        class _Engine:
+            def _ensure_resident(self, name):
+                return {"success": True, "in_linea": True}
+
+        caricamento = benchmarks._CaricamentoAnticipato("tiny", consentito=False)
+        with mock.patch.dict("sys.modules",
+                             {"core.engine.unified_runtime": mock.MagicMock(
+                                 sigma_engine=_Engine())}):
+            esito = caricamento.attendi()
+        self.assertTrue(esito["in_linea"])
+
+
+class TestParallelDownloads(unittest.TestCase):
+    """Undici dataset presi in fila sono undici attese di rete in fila."""
+
+    def test_missing_suites_are_fetched_together(self):
+        import time
+        from unittest import mock
+        from core.modules.sigma_training_lab.training import benchmarks
+
+        contemporanei, massimo = [], [0]
+
+        def _finto(sid, limit=0):
+            contemporanei.append(1)
+            massimo[0] = max(massimo[0], len(contemporanei))
+            time.sleep(0.05)
+            contemporanei.pop()
+            return {"success": True, "count": 10, "suite": sid}
+
+        with mock.patch.object(benchmarks, "download_suite", _finto), \
+             mock.patch.object(benchmarks, "_ram_disponibile_gb", return_value=32.0):
+            benchmarks._scarica_insieme(["a", "b", "c", "d"], lambda m: None)
+
+        self.assertGreater(massimo[0], 1)
+        self.assertLessEqual(massimo[0], benchmarks._DOWNLOAD_INSIEME)
+
+    def test_a_tight_machine_downloads_one_at_a_time(self):
+        from unittest import mock
+        from core.modules.sigma_training_lab.training import benchmarks
+
+        chiamate = []
+        with mock.patch.object(benchmarks, "download_suite",
+                               lambda sid, limit=0: chiamate.append(sid)), \
+             mock.patch.object(benchmarks, "_ram_disponibile_gb", return_value=1.0):
+            benchmarks._scarica_insieme(["a", "b", "c"], lambda m: None)
+
+        # Non scarica niente qui: lascia che sia il percorso normale, uno alla
+        # volta, a farlo. Tre dataset in costruzione sono tre picchi insieme.
+        self.assertEqual(chiamate, [])
+
+    def test_a_failed_download_does_not_stop_the_others(self):
+        from unittest import mock
+        from core.modules.sigma_training_lab.training import benchmarks
+
+        def _finto(sid, limit=0):
+            if sid == "b":
+                raise RuntimeError("rete assente")
+            return {"success": True, "count": 10, "suite": sid}
+
+        annunci = []
+        with mock.patch.object(benchmarks, "download_suite", _finto), \
+             mock.patch.object(benchmarks, "_ram_disponibile_gb", return_value=32.0):
+            benchmarks._scarica_insieme(["a", "b", "c"], annunci.append)
+        self.assertTrue(any("2/3" in a or "3/3" in a for a in annunci), annunci)
+
+
+class TestPartialDownloadNeverShrinks(unittest.TestCase):
+    """Un assaggio non si paga con la suite intera."""
+
+    def test_an_existing_larger_cache_is_left_alone(self):
+        from unittest import mock
+        from core.modules.sigma_training_lab.training import benchmarks
+
+        scaricato = []
+        with mock.patch.object(benchmarks, "_is_cached", return_value=True), \
+             mock.patch.object(benchmarks, "_load_cached",
+                               return_value=[{"id": n} for n in range(14042)]), \
+             mock.patch.object(benchmarks, "_load_meta", return_value={"complete": True}), \
+             mock.patch("datasets.load_dataset",
+                        side_effect=lambda *a, **k: scaricato.append(a)):
+            esito = benchmarks.download_suite("mmlu", limit=300)
+
+        # "Scarica le prime 300 righe" sovrascriveva quattordicimila quesiti di
+        # MMLU con trecento: un baratto mai accettato, e irreversibile senza
+        # riscaricare tutto.
+        self.assertTrue(esito["success"])
+        self.assertEqual(esito["count"], 14042)
+        self.assertEqual(scaricato, [])
+
+
+class TestChildProcessPipe(unittest.TestCase):
+    """La riga mancante che ha causato ogni blocco a meta' benchmark."""
+
+    def test_the_child_output_is_drained_continuously(self):
+        import inspect
+        from core.engine.backends import llamaserver_backend
+
+        load = inspect.getsource(llamaserver_backend.LlamaServerBackend.load)
+        # `Popen(stdout=PIPE)` senza nessuno che legga: il tubo ha un buffer di
+        # poche decine di kilobyte, llama-server registra ogni richiesta, e
+        # quando si riempie la `write` del figlio non ritorna piu'. Il server
+        # smette di servire, le schede vanno a zero, i pesi restano in memoria
+        # e /health continua a rispondere perche' e' un altro thread.
+        self.assertIn("stdout=subprocess.PIPE", load)
+        self.assertIn("_avvia_lettore_uscita", load)
+        # E deve partire prima di qualunque attesa sul figlio.
+        self.assertLess(load.index("_avvia_lettore_uscita"), load.index("_attendi"))
+
+    def test_the_reader_keeps_a_bounded_tail(self):
+        from core.engine.backends.llamaserver_backend import (
+            LlamaServerBackend, _RIGHE_LOG_TENUTE,
+        )
+
+        backend = LlamaServerBackend()
+        for n in range(_RIGHE_LOG_TENUTE * 3):
+            backend._uscita.append(f"riga {n}")
+        # Tenerle tutte non aggiunge diagnosi e cresce per sempre.
+        self.assertEqual(len(backend._uscita), _RIGHE_LOG_TENUTE)
+        self.assertIn(f"riga {_RIGHE_LOG_TENUTE * 3 - 1}", backend._raccogli_uscita())
+
+    def test_the_reader_survives_a_closed_pipe(self):
+        import io as _io
+        from core.engine.backends.llamaserver_backend import LlamaServerBackend
+
+        class _Proc:
+            stdout = _io.StringIO("prima\nseconda\n")
+            def poll(self): return None
+
+        backend = LlamaServerBackend()
+        backend._processo = _Proc()
+        backend._avvia_lettore_uscita()
+        backend._lettore.join(timeout=3)
+        self.assertIn("seconda", backend._raccogli_uscita())
+
+    def test_the_diagnosis_no_longer_calls_a_busy_server_blocked(self):
+        import inspect
+        from core.engine.backends import llamaserver_backend
+
+        diagnosi = inspect.getsource(llamaserver_backend.LlamaServerBackend.diagnosi)
+        # /slots e' servito dalla stessa coda delle generazioni: va in timeout
+        # anche su un server che sta lavorando benissimo. Misurato.
+        self.assertNotIn("il ciclo di inferenza no", diagnosi)
+        self.assertIn("o e' fermo", diagnosi)
 
 
 if __name__ == "__main__":

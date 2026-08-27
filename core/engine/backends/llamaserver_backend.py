@@ -34,6 +34,7 @@ import threading
 import time
 import urllib.error
 import urllib.request
+from collections import deque
 from typing import Any, Dict, Generator, List, Optional, Tuple
 
 from core.engine import gguf_planner
@@ -52,6 +53,11 @@ _AVVIO_INTERVALLO_S = 0.4
 #: Quanto aspettare la chiusura ordinata prima di forzarla.
 _CHIUSURA_TIMEOUT_S = 10
 
+#: Righe di log del processo figlio tenute per la diagnosi. Servono a spiegare
+#: un avvio fallito; tenerle tutte non aggiungerebbe niente e crescerebbe per
+#: sempre.
+_RIGHE_LOG_TENUTE = 400
+
 #: Quanto puo' restare muto lo stream prima di dichiararlo bloccato. E' un
 #: timeout fra un token e l'altro, non sull'intera generazione: un modello che
 #: produce lentamente sta lavorando, uno che non produce niente per cinque
@@ -69,6 +75,34 @@ _GENERAZIONE_MAX_S = 3600
 #: Secondi concessi per token generato: un pavimento pessimistico (un token e
 #: mezzo al secondo), non una previsione.
 _SECONDI_PER_TOKEN = 0.7
+
+
+#: Contesto minimo che ogni slot deve avere per essere utile. `-np N` non
+#: aggiunge contesto: **divide** quello che c'e'. Con `-c 16384 -np 4` ogni
+#: generazione vive in 4096 token, e una catena di ragionamento che ne chiede
+#: 3072 lascia meno di mille token al prompt. Superato quel confine llama-server
+#: non risponde con un errore: si pianta. Il ciclo di inferenza smette di girare
+#: — /health continua a dire "ok" perche' non tocca la coda, /slots va in
+#: timeout, le schede restano a zero con i pesi ancora in memoria — e da fuori
+#: si vede un benchmark che si blocca a meta'.
+_SLOT_CTX_MINIMO = 8192
+
+#: Slot massimi. Oltre questo il guadagno e' marginale e la memoria per la cache
+#: KV cresce con il contesto totale, non con quello per slot.
+_SLOT_MASSIMI = 4
+
+
+def slot_per_contesto(n_ctx: int) -> int:
+    """Quanti slot stanno in questo contesto senza stringere troppo ciascuno.
+
+    Il numero di slot non e' una preferenza di velocita': e' una divisione della
+    finestra. Sceglierlo prima di sapere quanto contesto c'e' significa decidere
+    quanto ne resta a ogni risposta senza guardare.
+    """
+    finestra = int(n_ctx or 0)
+    if finestra <= 0:
+        return 1
+    return max(1, min(_SLOT_MASSIMI, finestra // _SLOT_CTX_MINIMO))
 
 
 def _limite_generazione(max_tokens: int) -> float:
@@ -159,6 +193,11 @@ class LlamaServerBackend(InferenceBackend):
         #: legittimamente restare in coda mentre le altre decodificano.
         self._in_volo = 0
         self._conta_lock = threading.Lock()
+        #: Ultime righe di log del processo figlio, e il thread che le legge.
+        #: Vedi `_avvia_lettore_uscita`: senza qualcuno che svuoti la pipe il
+        #: server si ferma, e non c'e' modo di accorgersene dall'esterno.
+        self._uscita: "deque[str]" = deque(maxlen=_RIGHE_LOG_TENUTE)
+        self._lettore: Optional[threading.Thread] = None
 
     # --------------------------------------------------------- capabilities
 
@@ -249,7 +288,8 @@ class LlamaServerBackend(InferenceBackend):
             # principale di risposte formattate male.
             "--jinja",
             # Piu' conversazioni sullo stesso modello caricato una volta.
-            "-np", str(int(settings.get("parallel_slots") or 4)),
+            "-np", str(int(settings.get("parallel_slots")
+                            or slot_per_contesto(settings.get("n_ctx")))),
             "-cb",
             *plan_to_args(settings),
         ]
@@ -277,6 +317,11 @@ class LlamaServerBackend(InferenceBackend):
             return {"success": False, "stage": "load",
                     "error": f"Impossibile avviare llama-server: {exc}"}
 
+        # Prima di qualunque attesa: da questo istante il figlio puo' scrivere
+        # quanto vuole senza mai bloccarsi.
+        self._uscita.clear()
+        self._avvia_lettore_uscita()
+
         self._porta = porta
         pronto, motivo = self._attendi_pronto()
         if not pronto:
@@ -285,9 +330,13 @@ class LlamaServerBackend(InferenceBackend):
             return {"success": False, "stage": "load", "error": motivo,
                     "stderr": uscita, "settings": settings}
 
+        slot = int(settings.get("parallel_slots")
+                   or slot_per_contesto(settings.get("n_ctx")))
         self._facts = facts
         self._settings = dict(settings, load_seconds=round(time.perf_counter() - t0, 2),
-                              port=porta)
+                              port=porta, parallel_slots=slot,
+                              # Il numero che conta per ogni singola risposta.
+                              slot_ctx=max(1, int(settings.get("n_ctx") or 0) // slot))
         log.info("[LlamaServer] '%s' pronto in %.1fs su :%d",
                  facts.name, time.perf_counter() - t0, porta)
         return {"success": True, "settings": self._settings, "model_name": facts.name}
@@ -332,6 +381,9 @@ class LlamaServerBackend(InferenceBackend):
             return
 
         params = params or SamplingParams(temperature=temperature, max_tokens=max_tokens)
+        params = params.with_overrides(
+            max_tokens=self._budget_token(params.max_tokens, messages)
+        )
         corpo = self._corpo_richiesta(prompt, system_prompt, messages, params,
                                       thinking)
         in_ragionamento = False
@@ -343,8 +395,18 @@ class LlamaServerBackend(InferenceBackend):
         scadenza = time.perf_counter() + _limite_generazione(params.max_tokens)
         scaduto = False
 
+        with self._conta_lock:
+            self._in_volo += 1
+            in_volo = self._in_volo
+        # L'attesa fra un token e l'altro va misurata su quante richieste
+        # condividono il server. Con quattro in volo, la prima che arriva
+        # decodifica mentre le altre restano in coda: cinque minuti di silenzio
+        # sono normali, e un tetto pensato per una richiesta sola le dichiara
+        # tutte fallite insieme, allo stesso secondo.
+        stallo = min(_STALLO_TIMEOUT_S * in_volo, _GENERAZIONE_MAX_S)
+
         try:
-            for pezzo in self._stream_http("/v1/chat/completions", corpo):
+            for pezzo in self._stream_http("/v1/chat/completions", corpo, stallo):
                 if cancel is not None and getattr(cancel, "is_cancelled", lambda: False)():
                     log.info("[LlamaServer] Generazione annullata dal chiamante.")
                     break
@@ -444,6 +506,47 @@ class LlamaServerBackend(InferenceBackend):
     def telemetry(self) -> Dict[str, Any]:
         return dict(self._settings)
 
+    def _budget_token(self, richiesti: int, messaggi: Optional[list]) -> int:
+        """Quanti token nuovi stanno in cio' che resta dello slot.
+
+        Rete di sicurezza indipendente dalla pianificazione: qualunque cosa
+        chieda il protocollo, la richiesta non puo' superare la finestra che lo
+        slot ha davvero. Il percorso in-process ce l'aveva da sempre; qui
+        mancava, e una richiesta da 3072 token in uno slot da 4096 e' arrivata
+        intatta fino al server — che invece di rifiutarla si e' piantato.
+        """
+        limite = richiesti if richiesti and richiesti > 0 else 2048
+        slot_ctx = int(self._settings.get("slot_ctx") or 0)
+        if slot_ctx <= 0:
+            return limite
+
+        testo = ""
+        for m in (messaggi or []):
+            if isinstance(m, dict):
+                testo += str(m.get("content") or "") + " "
+        # Quattro caratteri per token e' la direzione prudente: sovrastimare il
+        # prompt lascia margine, sottostimarlo lo toglie proprio dove serve.
+        prompt_token = len(testo) // 4
+
+        # Un quinto della finestra tenuto libero: il template di chat aggiunge
+        # token di controllo, e llama.cpp vuole margine per il proprio lavoro.
+        margine = max(256, slot_ctx // 5)
+        spazio = slot_ctx - prompt_token - margine
+        if spazio <= 0:
+            log.warning(
+                "[LlamaServer] Il prompt (~%d token) riempie lo slot da %d: "
+                "resta spazio per una risposta minima. Ricarica il modello con "
+                "un contesto piu' ampio.", prompt_token, slot_ctx,
+            )
+            return 128
+        if limite > spazio:
+            log.info(
+                "[LlamaServer] Budget ridotto da %d a %d token: lo slot ne ha "
+                "%d e il prompt ne occupa circa %d.",
+                limite, spazio, slot_ctx, prompt_token,
+            )
+        return max(64, min(limite, spazio))
+
     def parallel_slots(self) -> int:
         """Gli slot con cui il server e' stato avviato (`-np`).
 
@@ -459,6 +562,24 @@ class LlamaServerBackend(InferenceBackend):
             return max(1, int(self._settings.get("parallel_slots") or 4))
         except (TypeError, ValueError):
             return 1
+
+    def unload(self) -> Dict[str, Any]:
+        previous = self._facts.name if self._facts else None
+        if self._processo is not None:
+            try:
+                self._processo.terminate()
+                try:
+                    self._processo.wait(timeout=2.0)
+                except subprocess.TimeoutExpired:
+                    self._processo.kill()
+                    self._processo.wait(timeout=2.0)
+            except Exception as exc:
+                log.debug("[LlamaServer] Process termination skipped/failed: %s", exc)
+            self._processo = None
+        self._facts = None
+        self._settings = {}
+        self._porta = None
+        return {"unloaded": previous}
 
     def benchmark(self, prompt_tokens: int = 128, decode_tokens: int = 24) -> Dict[str, Any]:
         """Prefill e decode separati, misurati dal server stesso.
@@ -567,28 +688,82 @@ class LlamaServerBackend(InferenceBackend):
                     f"rilasciata dal driver: ricarica il modello dal Model Hub."
                     + ("\n\n" + uscita[-600:] if uscita else ""))
 
+        # /health non e' una prova di vita del motore: risponde senza toccare
+        # la coda di inferenza, quindi dice "ok" anche con il ciclo piantato.
+        # E' successo davvero, ed e' il motivo per cui questa diagnosi
+        # rassicurava mentre le schede erano a zero e i pesi in memoria. La
+        # prova vera e' /slots, che una risposta la deve chiedere alla coda.
         try:
             with urllib.request.urlopen(self._url("/health"), timeout=5) as risposta:
-                if risposta.status == 200:
-                    return ("Il runtime GGUF risponde: il modello sta generando, "
-                            "solo molto lentamente. Abbassa il budget di token "
-                            "del protocollo, oppure usa il checkpoint safetensors "
-                            "che consente i lotti veri.")
-                return f"Il runtime GGUF risponde con HTTP {risposta.status}."
+                if risposta.status != 200:
+                    return f"Il runtime GGUF risponde con HTTP {risposta.status}."
         except Exception as exc:
-            return (f"Il processo llama-server e' vivo ma non risponde su "
-                    f"/health ({type(exc).__name__}): e' bloccato. Ricarica il "
-                    f"modello dal Model Hub.")
+            return (f"Il processo llama-server e' vivo ma non risponde nemmeno "
+                    f"su /health ({type(exc).__name__}). Ricarica il modello "
+                    f"dal Model Hub.")
+
+        # /slots non distingue "fermo" da "occupato": e' servito dalla stessa
+        # coda delle generazioni, quindi va in timeout anche su un server che
+        # sta lavorando benissimo. Misurato, non dedotto — e una versione
+        # precedente di questa diagnosi ci si era fidata, dichiarando bloccato
+        # un runtime che stava solo macinando. Cio' che dice sempre qualcosa di
+        # vero sono le ultime righe che il server ha scritto.
+        try:
+            with urllib.request.urlopen(self._url("/slots"), timeout=10) as risposta:
+                stato = json.loads(risposta.read().decode("utf-8"))
+            occupati = sum(1 for s in (stato or []) if s.get("state"))
+            return (f"Il runtime GGUF risponde: {occupati} slot occupati su "
+                    f"{len(stato or [])}. Il modello genera, solo lentamente. "
+                    f"Abbassa il budget di token del protocollo, oppure usa il "
+                    f"checkpoint safetensors che consente i lotti veri.")
+        except Exception:
+            coda = self._raccogli_uscita()
+            ultime = chr(10).join(coda.splitlines()[-12:]) if coda else ""
+            return (
+                "Il processo llama-server risponde su /health ma non sulla coda "
+                "di inferenza: o e' occupato da generazioni lunghe, o e' fermo. "
+                "Le sue ultime righe di log dicono quale dei due.\n\n"
+                f"Contesto per slot: {self._settings.get('slot_ctx', '?')} token "
+                f"su {self._settings.get('parallel_slots', '?')} slot.\n\n"
+                + (f"Ultime righe del runtime:\n{ultime}" if ultime
+                   else "Il runtime non ha scritto niente di recente.")
+            )
+
+    def _avvia_lettore_uscita(self) -> None:
+        """Svuota di continuo lo stdout del processo figlio.
+
+        Questa e' la riga che mancava, ed e' costata tutti i blocchi a meta'
+        benchmark. `Popen(stdout=PIPE)` crea un tubo con un buffer di poche
+        decine di kilobyte; llama-server registra ogni richiesta che serve.
+        Quando il tubo si riempie e nessuno legge, la `write` del figlio non
+        ritorna piu': il server smette di servire, le schede scendono a zero,
+        i pesi restano in memoria e /health continua a rispondere perche' e' un
+        altro thread. Da fuori si vede un benchmark che si ferma sempre intorno
+        allo stesso numero di quesiti — che e' semplicemente quanti ne servono
+        per riempire il buffer.
+
+        Le ultime righe restano in memoria per la diagnosi di un avvio fallito,
+        che e' l'unica ragione per cui la pipe esiste.
+        """
+        if self._processo is None or self._processo.stdout is None:
+            return
+
+        flusso = self._processo.stdout
+
+        def _leggi() -> None:
+            try:
+                for riga in flusso:
+                    self._uscita.append(riga.rstrip())
+            except Exception as err:
+                log.debug("[LlamaServer] Lettura log interrotta: %s", err)
+
+        self._lettore = threading.Thread(target=_leggi, name="llama-server-log",
+                                         daemon=True)
+        self._lettore.start()
 
     def _raccogli_uscita(self) -> str:
-        if self._processo is None or self._processo.stdout is None:
-            return ""
-        try:
-            if self._processo.poll() is not None:
-                return self._processo.stdout.read() or ""
-        except Exception:
-            pass
-        return ""
+        """Le ultime righe che il processo figlio ha scritto."""
+        return chr(10).join(self._uscita)
 
     def _corpo_richiesta(self, prompt: str, system_prompt: str,
                          messages: Optional[list], params: SamplingParams,
@@ -663,16 +838,23 @@ class LlamaServerBackend(InferenceBackend):
         with urllib.request.urlopen(richiesta, timeout=timeout) as risposta:
             return json.loads(risposta.read().decode("utf-8"))
 
-    def _stream_http(self, percorso: str, corpo: Dict[str, Any]
+    def _stream_http(self, percorso: str, corpo: Dict[str, Any],
+                     stallo: Optional[float] = None
                      ) -> Generator[Dict[str, Any], None, None]:
-        """Legge lo stream SSE del server e restituisce i pezzi di contenuto."""
+        """Legge lo stream SSE del server e restituisce i pezzi di contenuto.
+
+        `stallo` e' il silenzio massimo tollerato fra due letture, non la durata
+        della generazione: il socket lo applica a ogni `read`, quindi un modello
+        che produce piano non lo tocca mai e uno che non produce niente lo
+        raggiunge subito.
+        """
         richiesta = urllib.request.Request(
             self._url(percorso),
             data=json.dumps(corpo).encode("utf-8"),
             headers={"Content-Type": "application/json", "Accept": "text/event-stream"},
         )
         try:
-            risposta = urllib.request.urlopen(richiesta, timeout=_STALLO_TIMEOUT_S)
+            risposta = urllib.request.urlopen(richiesta, timeout=stallo or _STALLO_TIMEOUT_S)
         except urllib.error.HTTPError as exc:
             corpo_dettaglio = ""
             try:
@@ -738,7 +920,8 @@ class LlamaServerBackend(InferenceBackend):
                     headers={"Content-Type": "application/json", "Accept": "text/event-stream"},
                 )
                 try:
-                    risposta = urllib.request.urlopen(richiesta_fallback, timeout=_AVVIO_TIMEOUT_S)
+                    risposta = urllib.request.urlopen(richiesta_fallback,
+                                                      timeout=stallo or _STALLO_TIMEOUT_S)
                 except urllib.error.HTTPError as exc2:
                     raw2 = ""
                     try:
