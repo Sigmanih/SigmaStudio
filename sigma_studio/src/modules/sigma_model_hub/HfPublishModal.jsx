@@ -11,6 +11,8 @@ export default function HfPublishModal({ model, onClose, isLight, addToast }) {
   const [loadingUser, setLoadingUser] = useState(true);
   const [targetNamespace, setTargetNamespace] = useState('');
   const [repoSlug, setRepoSlug] = useState('');
+  const [repoStatus, setRepoStatus] = useState(null);
+  const [checkingRepo, setCheckingRepo] = useState(false);
   const [isPrivate, setIsPrivate] = useState(false);
   const [commitMsg, setCommitMsg] = useState('Upload model via Sigma Studio');
   const [customCardNotes, setCustomCardNotes] = useState('');
@@ -159,6 +161,76 @@ export default function HfPublishModal({ model, onClose, isLight, addToast }) {
       if (pollTimerRef.current) clearInterval(pollTimerRef.current);
     };
   }, []);
+
+  // Sapere in anticipo se il repository esiste cambia cosa si sta per fare:
+  // "pubblica" e "aggiorna" hanno conseguenze diverse per chi quel modello lo
+  // ha gia' scaricato. Caricare su un repository esistente funzionava da
+  // sempre, ma nessuno lo diceva prima di premere il pulsante.
+  // Se questo modello e' gia' pubblicato, il repository e' quello: riscriverlo
+  // a mano e' l'occasione per sbagliarlo, e sbagliarlo non da' errore — crea un
+  // secondo repository, e da quel momento ce ne sono due senza che niente dica
+  // quale sia quello buono.
+  useEffect(() => {
+    const collegato = model?.publication?.repo_id;
+    if (!collegato || !collegato.includes('/')) return;
+    const [autore, ...resto] = collegato.split('/');
+    setTargetNamespace(autore);
+    setRepoSlug(resto.join('/'));
+  }, [model]);
+
+  useEffect(() => {
+    if (!whoami?.authenticated || !targetNamespace || !repoSlug) {
+      setRepoStatus(null);
+      return undefined;
+    }
+    let annullato = false;
+    const timer = setTimeout(async () => {
+      setCheckingRepo(true);
+      try {
+        const res = await fetch('/api/models/hf/repo/status', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ repo_id: `${targetNamespace}/${repoSlug}` })
+        });
+        const json = await res.json();
+        if (!annullato) setRepoStatus(json.success ? json : null);
+      } catch {
+        if (!annullato) setRepoStatus(null);
+      } finally {
+        if (!annullato) setCheckingRepo(false);
+      }
+    }, 600);
+    return () => { annullato = true; clearTimeout(timer); };
+  }, [whoami, targetNamespace, repoSlug]);
+
+  const handleRenameRepo = async () => {
+    const attuale = `${targetNamespace}/${repoSlug}`;
+    const nuovo = window.prompt(
+      'Nuovo nome completo del repository su Hugging Face (autore/modello). '
+      + 'Hugging Face lascia un rimando dal vecchio nome al nuovo, quindi chi '
+      + 'lo aveva gia trovato continua a raggiungerlo.',
+      attuale
+    );
+    if (!nuovo || nuovo.trim() === attuale) return;
+    try {
+      const res = await fetch('/api/models/hf/repo/rename', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ from_id: attuale, to_id: nuovo.trim() })
+      });
+      const json = await res.json();
+      if (json.success) {
+        const parti = nuovo.trim().split('/');
+        setTargetNamespace(parti[0]);
+        setRepoSlug(parti.slice(1).join('/'));
+        if (addToast) addToast(`Repository rinominato in ${json.repo_id}`, 'success');
+      } else if (addToast) {
+        addToast(`${json.error}`, 'error');
+      }
+    } catch (e) {
+      if (addToast) addToast(`Errore: ${e.message}`, 'error');
+    }
+  };
 
   const handleStartPublish = async () => {
     if (!whoami?.authenticated) {
@@ -397,6 +469,46 @@ export default function HfPublishModal({ model, onClose, isLight, addToast }) {
                             <option key={org.name} value={org.name}>🏢 {org.fullname || org.name}</option>
                           ))}
                         </select>
+                      </div>
+                    )}
+
+                    {/* Cosa succede davvero premendo il pulsante. "Pubblica" su
+                        un repository che esiste gia' non crea niente di nuovo:
+                        sovrascrive, e chi quel modello lo ha gia' scaricato se
+                        ne accorge dopo. */}
+                    {checkingRepo && (
+                      <div style={{ fontSize: '0.68rem', color: textMuted, marginTop: '6px' }}>
+                        Verifico se il repository esiste...
+                      </div>
+                    )}
+                    {!checkingRepo && repoStatus?.exists && (
+                      <div style={{
+                        marginTop: '8px', padding: '8px 10px', borderRadius: '8px',
+                        background: 'rgba(255, 184, 108, 0.10)',
+                        border: '1px solid rgba(255, 184, 108, 0.35)',
+                        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                        gap: '8px', flexWrap: 'wrap'
+                      }}>
+                        <span style={{ fontSize: '0.7rem', color: '#ffb86c', fontWeight: 700 }}>
+                          Questo repository esiste già ({repoStatus.files} file
+                          {repoStatus.private ? ', privato' : ''}): la pubblicazione lo aggiorna.
+                        </span>
+                        <button
+                          onClick={handleRenameRepo}
+                          style={{
+                            padding: '4px 10px', borderRadius: '6px',
+                            border: '1px solid rgba(255,184,108,0.4)',
+                            background: 'transparent', color: '#ffb86c',
+                            fontSize: '0.66rem', fontWeight: 800, cursor: 'pointer'
+                          }}
+                        >
+                          Rinomina su HF
+                        </button>
+                      </div>
+                    )}
+                    {!checkingRepo && repoStatus && !repoStatus.exists && (
+                      <div style={{ fontSize: '0.68rem', color: '#10b981', marginTop: '6px', fontWeight: 700 }}>
+                        Nuovo repository: verrà creato alla pubblicazione.
                       </div>
                     )}
                   </div>
@@ -779,7 +891,8 @@ export default function HfPublishModal({ model, onClose, isLight, addToast }) {
                   boxShadow: (!whoami?.authenticated || !repoSlug) ? 'none' : '0 0 14px rgba(255, 184, 108, 0.3)'
                 }}
               >
-                <Upload size={13} /> Pubblica su Hugging Face
+                <Upload size={13} />
+                {repoStatus?.exists ? 'Aggiorna su Hugging Face' : 'Pubblica su Hugging Face'}
               </button>
             </div>
           )}

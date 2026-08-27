@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
-  HardDrive, Zap, RefreshCw, CheckCircle2, Trash2, Folder, Power,
+  HardDrive, Zap, RefreshCw, CheckCircle2, Trash2, Folder, Power, Pencil,
   Activity, Upload, Download, Pause, Play, X, AlertTriangle, Package,
   RotateCcw, Search, ChevronDown, ChevronUp, Sliders, Layers, Sparkles,
   Loader, Check, Trophy, Award, BarChart2, Gauge, Clock, Cpu, ExternalLink
@@ -24,6 +24,11 @@ export default function LocalInventory({
 
   // Search & Filter state for local inventory
   const [searchQuery, setSearchQuery] = useState('');
+  const [renamingPath, setRenamingPath] = useState(null);
+  const [speedTesting, setSpeedTesting] = useState(null);
+  const [speedResult, setSpeedResult] = useState({});
+  const [updatingCard, setUpdatingCard] = useState(null);
+  const [discovering, setDiscovering] = useState(false);
   const [formatFilter, setFormatFilter] = useState('all'); // 'all' | 'gguf' | 'safetensors' | 'benchmarked'
 
   // GGUF Converter state
@@ -128,6 +133,163 @@ export default function LocalInventory({
       if (addToast) addToast(`Errore: ${e.message}`, 'error');
     } finally {
       setUnloading(false);
+    }
+  };
+
+  // Rinominare non e' cosmetica: il nome della cartella e' l'identificativo con
+  // cui il motore lo carica, con cui il Training Lab lo cerca nei referti e con
+  // cui viene proposto su Hugging Face. Per questo la rinomina passa dal
+  // backend, che scarica il modello dal motore prima di toccarne i file.
+  const handleRenameModel = async (model) => {
+    const attuale = model.model_id || model.filename || '';
+    const nuovo = window.prompt(
+      'Nuovo nome del modello.\n\nPuoi usare la forma autore/modello: sul disco '
+      + 'diventa autore--modello, come i modelli scaricati da Hugging Face.',
+      attuale
+    );
+    if (nuovo === null) return;
+    if (!nuovo.trim() || nuovo.trim() === attuale) return;
+
+    setRenamingPath(model.path || model.filename);
+    try {
+      const res = await fetch('/api/models/local/rename', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          model_path: model.path,
+          model_id: model.model_id || model.filename,
+          new_name: nuovo.trim()
+        })
+      });
+      const json = await res.json();
+      if (res.ok && json.success) {
+        if (addToast) addToast(
+          json.renamed ? `✏️ Rinominato in "${json.new_name}"` : (json.message || 'Nessuna modifica'),
+          'success');
+        fetchLocalModels();
+        fetchConverterInfo();
+      } else if (addToast) {
+        addToast(`❌ ${json.error || 'Rinomina non riuscita.'}`, 'error');
+      }
+    } catch (e) {
+      if (addToast) addToast(`Errore: ${e.message}`, 'error');
+    } finally {
+      setRenamingPath(null);
+    }
+  };
+
+  // Una misura di velocita' senza la risposta che l'ha prodotta si puo' leggere
+  // come si vuole. Qui vanno insieme: i due tempi che il motore cronometra —
+  // lettura del prompt e generazione — e il testo che il modello ha davvero
+  // scritto su questa macchina.
+  // Il testo del paper, una correzione, un benchmark rifatto: sono modifiche al
+  // README, non ai pesi. Ricaricare gigabyte per cambiare una frase è tempo e
+  // banda spesi per niente, e su un repository con cronologia aggiunge un
+  // commit enorme che non contiene nessuna modifica ai pesi.
+  // Tutto cio' che e' stato pubblicato prima che esistesse il registro e' su
+  // Hugging Face senza che niente lo colleghi al modello locale: "aggiorna la
+  // scheda" non trova un repository, e la pubblicazione successiva ne creerebbe
+  // uno nuovo. Qui si cercano e si collegano, ma solo dopo conferma: un
+  // collegamento sbagliato manderebbe un aggiornamento sul repository di
+  // qualcun altro.
+  const handleDiscoverRepos = async () => {
+    setDiscovering(true);
+    try {
+      const res = await fetch('/api/models/hf/repo/discover', { method: 'POST' });
+      const json = await res.json();
+      if (!json.success) {
+        if (addToast) addToast(`${json.error || 'Ricerca non riuscita'}`, 'error');
+        return;
+      }
+      const certi = (json.matches || []).filter(m => m.repo_id);
+      const dubbi = (json.matches || []).filter(m => m.ambiguous);
+      if (!certi.length) {
+        if (addToast) addToast(
+          dubbi.length
+            ? `Nessuna corrispondenza univoca (${dubbi.length} ambigue: collegale a mano).`
+            : 'Nessun repository da collegare: sono già tutti collegati o non ce ne sono.',
+          'info');
+        return;
+      }
+      const elenco = certi.map(m => `  ${m.model_id}  →  ${m.repo_id}`).join('\n');
+      const salto = String.fromCharCode(10, 10);
+      const domanda = 'Collego questi modelli ai repository trovati sul tuo account?'
+        + salto + elenco + salto
+        + 'Nessun file viene caricato o modificato su Hugging Face.';
+      if (!window.confirm(domanda)) return;
+
+      let collegati = 0;
+      for (const m of certi) {
+        const r = await fetch('/api/models/hf/repo/attach', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ local_path: m.local_ref, repo_id: m.repo_id })
+        });
+        if ((await r.json()).success) collegati += 1;
+      }
+      if (addToast) addToast(`${collegati} modelli collegati al proprio repository.`, 'success');
+      fetchLocalModels();
+    } catch (e) {
+      if (addToast) addToast(`Errore: ${e.message}`, 'error');
+    } finally {
+      setDiscovering(false);
+    }
+  };
+
+  const handleUpdateCard = async (model) => {
+    const chiave = model.path || model.filename;
+    const note = window.prompt(
+      'Note da inserire nella scheda su Hugging Face (il testo del paper, una '
+      + 'correzione, un aggiornamento). Lascia vuoto per rigenerarla soltanto '
+      + 'con i benchmark e le misure più recenti.',
+      ''
+    );
+    if (note === null) return;
+
+    setUpdatingCard(chiave);
+    try {
+      const res = await fetch('/api/models/hf/card/update', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          local_path: model.path || model.filename,
+          model_id: model.model_id,
+          custom_notes: note.trim() || undefined
+        })
+      });
+      const json = await res.json();
+      if (json.success && addToast) {
+        addToast(`Scheda aggiornata su ${json.repo_id} (${json.characters} caratteri)`, 'success');
+      } else if (addToast) {
+        addToast(`${json.error || 'Aggiornamento non riuscito'}`, 'error');
+      }
+    } catch (e) {
+      if (addToast) addToast(`Errore: ${e.message}`, 'error');
+    } finally {
+      setUpdatingCard(null);
+    }
+  };
+
+  const handleSpeedTest = async (model) => {
+    const chiave = model.path || model.filename;
+    setSpeedTesting(chiave);
+    setSpeedResult(r => ({ ...r, [chiave]: null }));
+    try {
+      const res = await fetch('/api/models/speedtest', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ model: model.model_id || model.filename, max_tokens: 96 })
+      });
+      const json = await res.json();
+      if (json.success) {
+        setSpeedResult(r => ({ ...r, [chiave]: json }));
+      } else if (addToast) {
+        addToast(`${json.error || 'Prova non riuscita'}`, 'error');
+      }
+    } catch (e) {
+      if (addToast) addToast(`Errore: ${e.message}`, 'error');
+    } finally {
+      setSpeedTesting(null);
     }
   };
 
@@ -369,6 +531,21 @@ export default function LocalInventory({
             <div style={{ fontSize: '0.74rem', color: textMuted, marginTop: '3px' }}>
               Gestisci i modelli presenti su disco, monitora i benchmark e converti checkpoint Safetensors in GGUF.
             </div>
+            <button
+              onClick={handleDiscoverRepos}
+              disabled={discovering}
+              title="Cerca sul tuo account Hugging Face i repository che corrispondono ai modelli locali e li collega, così da poterli aggiornare"
+              style={{
+                marginTop: '8px', padding: '5px 11px', borderRadius: '7px',
+                border: '1px solid rgba(255,184,108,0.35)',
+                background: 'rgba(255,184,108,0.08)', color: '#ffb86c',
+                fontSize: '0.68rem', fontWeight: 700, cursor: discovering ? 'wait' : 'pointer',
+                display: 'inline-flex', alignItems: 'center', gap: '5px'
+              }}
+            >
+              <ExternalLink size={11} />
+              {discovering ? 'Cerco su Hugging Face...' : 'Collega repository già pubblicati'}
+            </button>
           </div>
 
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
@@ -835,7 +1012,7 @@ export default function LocalInventory({
               const isGguf = m.format_tag === 'GGUF' || m.filename?.toLowerCase().endsWith('.gguf');
               const bm = m.benchmark_summary || {};
               const hasBenchmark = !!bm.has_benchmarks;
-              const bmScore = bm.best_score || bm.latest_score || 0;
+              const bmScore = bm.score ?? bm.best_score ?? bm.latest_score ?? 0;
               const bmScoreColor = bmScore >= 70 ? '#10b981' : (bmScore >= 40 ? '#00d2ff' : '#ffb86c');
 
               return (
@@ -975,6 +1152,42 @@ export default function LocalInventory({
                         <Upload size={13} /> Pubblica HF
                       </button>
 
+                      {/* Prova di inferenza */}
+                      <button
+                        onClick={() => handleSpeedTest(m)}
+                        disabled={speedTesting === (m.path || m.filename)}
+                        title="Genera una risposta vera e misura la velocità su questo hardware"
+                        style={{
+                          padding: '6px 10px', borderRadius: '8px',
+                          border: '1px solid rgba(0,210,255,0.35)',
+                          background: 'rgba(0,210,255,0.10)',
+                          color: '#00d2ff', fontSize: '0.72rem', fontWeight: 700, cursor: 'pointer',
+                          display: 'flex', alignItems: 'center', gap: '4px',
+                          opacity: speedTesting === (m.path || m.filename) ? 0.6 : 1
+                        }}
+                      >
+                        <Gauge size={13} />
+                        {speedTesting === (m.path || m.filename) ? 'Misuro...' : 'Prova inferenza'}
+                      </button>
+
+                      {/* Rename */}
+                      <button
+                        onClick={() => handleRenameModel(m)}
+                        disabled={renamingPath === (m.path || m.filename)}
+                        title="Rinomina il modello sul disco"
+                        style={{
+                          padding: '6px 10px', borderRadius: '8px',
+                          border: isLight ? '1px solid rgba(148,163,184,0.35)' : '1px solid rgba(148,163,184,0.28)',
+                          background: isLight ? 'rgba(148,163,184,0.10)' : 'rgba(148,163,184,0.10)',
+                          color: textMuted, fontSize: '0.72rem', fontWeight: 700, cursor: 'pointer',
+                          display: 'flex', alignItems: 'center', gap: '4px',
+                          opacity: renamingPath === (m.path || m.filename) ? 0.6 : 1
+                        }}
+                      >
+                        <Pencil size={13} />
+                        {renamingPath === (m.path || m.filename) ? '...' : 'Rinomina'}
+                      </button>
+
                       {/* Delete */}
                       <button
                         onClick={() => handleDeleteModel(m)}
@@ -994,6 +1207,83 @@ export default function LocalInventory({
                       </button>
                     </div>
                   </div>
+
+                  {/* Esito della prova di inferenza: i due tempi che il motore
+                      cronometra, e la risposta che li ha prodotti. Il numero da
+                      solo non dice a cosa si riferisce. */}
+                  {speedResult[m.path || m.filename] && (() => {
+                    const sr = speedResult[m.path || m.filename];
+                    return (
+                      <div style={{
+                        padding: '10px 14px', borderRadius: '12px', marginTop: '8px',
+                        background: isLight ? 'rgba(0,210,255,0.06)' : 'rgba(0,210,255,0.07)',
+                        border: '1px solid rgba(0,210,255,0.28)'
+                      }}>
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '14px', alignItems: 'baseline' }}>
+                          <span style={{ fontSize: '0.78rem', fontWeight: 800, color: '#00d2ff' }}>
+                            {sr.decode_tok_s} tok/s
+                          </span>
+                          <span style={{ fontSize: '0.66rem', color: textMuted }}>
+                            generazione, una risposta alla volta — è quello che si sente in chat
+                          </span>
+                          <span style={{ fontSize: '0.66rem', color: textMuted }}>
+                            • lettura prompt <b>{sr.prefill_tok_s} tok/s</b>
+                          </span>
+                          <span style={{ fontSize: '0.66rem', color: textMuted }}>
+                            • prima parola dopo <b>{sr.ttft_ms} ms</b>
+                          </span>
+                        </div>
+                        <div style={{ fontSize: '0.64rem', color: textMuted, marginTop: '4px' }}>
+                          Risposta reale: <b>{sr.answer_tokens} token in {sr.answer_seconds}s</b>
+                          {sr.hardware?.device ? ` su ${sr.hardware.device}` : ''}
+                          {sr.backend ? ` · ${sr.backend}` : ''}
+                        </div>
+                        {sr.answer && (
+                          <div style={{
+                            fontSize: '0.66rem', color: textPrimary, marginTop: '6px',
+                            padding: '6px 8px', borderRadius: '8px', background: subBg,
+                            maxHeight: '90px', overflow: 'auto', whiteSpace: 'pre-wrap'
+                          }}>
+                            {sr.answer}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })()}
+
+                  {/* Repository collegato: senza questo, aggiornare la scheda
+                      significava ricordarsi a mano dove si era pubblicato, e
+                      sbagliare l'identificativo creava un secondo repository. */}
+                  {m.publication?.repo_id && (
+                    <div style={{
+                      padding: '8px 12px', borderRadius: '10px', marginTop: '8px',
+                      background: subBg, border: subBorder,
+                      display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                      gap: '8px', flexWrap: 'wrap'
+                    }}>
+                      <span style={{ fontSize: '0.68rem', color: textMuted, display: 'flex', alignItems: 'center', gap: '5px' }}>
+                        <ExternalLink size={12} />
+                        Pubblicato su{' '}
+                        <a href={m.publication.url} target="_blank" rel="noreferrer"
+                          style={{ color: '#ffb86c', fontWeight: 700 }}>
+                          {m.publication.repo_id}
+                        </a>
+                        {m.publication.publish_count > 1 ? ` · ${m.publication.publish_count} pubblicazioni` : ''}
+                      </span>
+                      <button
+                        onClick={() => handleUpdateCard(m)}
+                        disabled={updatingCard === (m.path || m.filename)}
+                        title="Riscrive solo la scheda (paper, note, benchmark) senza ricaricare i pesi"
+                        style={{
+                          padding: '4px 10px', borderRadius: '6px',
+                          border: '1px solid rgba(255,184,108,0.4)', background: 'transparent',
+                          color: '#ffb86c', fontSize: '0.66rem', fontWeight: 800, cursor: 'pointer'
+                        }}
+                      >
+                        {updatingCard === (m.path || m.filename) ? 'Aggiorno...' : 'Aggiorna scheda'}
+                      </button>
+                    </div>
+                  )}
 
                   {/* Benchmark Showcase Banner */}
                   {hasBenchmark ? (
@@ -1029,14 +1319,51 @@ export default function LocalInventory({
                           <div style={{ fontSize: '0.66rem', color: textMuted, marginTop: '2px', display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
                             <span>📊 Suite: <b>{bm.suite_name}</b></span>
                             <span>•</span>
-                            <span>⚡ Velocità: <b>{bm.avg_tok_s > 0 ? `${bm.avg_tok_s} tok/s` : 'Accelerato GPU'}</b></span>
+                            <span>⚡ Velocità: <b>{bm.tokens_per_sec > 0 ? `${bm.tokens_per_sec} tok/s` : '—'}</b></span>
                             {bm.last_run_at && (
                               <>
                                 <span>•</span>
                                 <span>⏱️ Testato: {bm.last_run_at}</span>
                               </>
                             )}
+                            {bm.tests_total > 0 && (
+                              <>
+                                <span>•</span>
+                                <span>✅ <b>{bm.tests_passed}/{bm.tests_total}</b> superati</span>
+                              </>
+                            )}
                           </div>
+
+                          {/* Un punteggio complessivo da solo non dice quali
+                              materie il modello regge e quali no: e' proprio il
+                              dettaglio per suite il parametro che serve a
+                              scegliere un modello per un compito. */}
+                          {bm.suites && Object.keys(bm.suites).length > 0 && (
+                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px', marginTop: '6px' }}>
+                              {Object.entries(bm.suites).map(([sid, st]) => {
+                                const quota = st.total ? Math.round((st.passed / st.total) * 100) : 0;
+                                const colore = quota >= 70 ? '#10b981' : quota >= 40 ? '#ffb86c' : '#ef4444';
+                                return (
+                                  <span key={sid} title={`${st.passed} superati su ${st.total}`}
+                                    style={{
+                                      fontSize: '0.58rem', fontWeight: 700, padding: '1px 6px',
+                                      borderRadius: '5px', whiteSpace: 'nowrap',
+                                      background: `${colore}14`, border: `1px solid ${colore}40`, color: colore,
+                                    }}>
+                                    {sid} {quota}%
+                                  </span>
+                                );
+                              })}
+                            </div>
+                          )}
+
+                          {(bm.dataset_complete === false || bm.completed === false) && (
+                            <div style={{ fontSize: '0.6rem', color: '#ffb86c', marginTop: '4px' }}>
+                              ⚠️ {bm.completed === false
+                                ? 'Valutazione non conclusa: la percentuale copre solo i quesiti eseguiti.'
+                                : 'Misurato su una porzione del dataset: non confrontabile con un run sulla suite intera.'}
+                            </div>
+                          )}
                         </div>
                       </div>
 

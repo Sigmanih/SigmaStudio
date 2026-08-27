@@ -363,6 +363,130 @@ def unload_sigma_engine_model() -> Dict[str, Any]:
     }
 
 
+def _percorso_modello(model_path_or_id: str, base_dir: str) -> Optional[str]:
+    """Il percorso su disco di un modello, dato il nome o il percorso stesso."""
+    raw = str(model_path_or_id or "").strip()
+    if not raw:
+        return None
+    if os.path.isabs(raw) and os.path.exists(raw):
+        return os.path.abspath(raw)
+    for candidato in (
+        os.path.join(base_dir, raw),
+        os.path.join(base_dir, raw.replace("/", "--")),
+        os.path.join(base_dir, os.path.basename(raw)),
+    ):
+        if os.path.exists(candidato):
+            return os.path.abspath(candidato)
+    return None
+
+
+def _dentro_la_cartella(base_dir: str, percorso: str) -> bool:
+    """Se un percorso sta davvero dentro la cartella dei modelli."""
+    try:
+        return os.path.abspath(os.path.commonpath([base_dir, percorso])) == base_dir
+    except Exception:
+        return False
+
+
+def rename_local_model(model_path_or_id: str, new_name: str,
+                       custom_dir: Optional[str] = None) -> Dict[str, Any]:
+    """
+    Rinomina un modello sul disco, con le stesse protezioni della cancellazione.
+
+    Il nuovo nome viene trattato come il nome di una cartella, non come un
+    percorso: una barra o un `..` dentro il nome sposterebbero il modello fuori
+    dalla cartella dei modelli, e una rinomina non deve poter fare quello che
+    una cancellazione ha il divieto di fare. La forma `autore/modello` resta
+    ammessa perche' e' come Hugging Face nomina le cose, e diventa
+    `autore--modello` sul disco — la stessa convenzione con cui il modello e'
+    arrivato.
+
+    Se il modello e' caricato nel motore viene prima scaricato: rinominare la
+    cartella sotto un runtime che la sta leggendo lascia in memoria pesi che
+    puntano a un percorso che non esiste piu'.
+    """
+    base_dir = os.path.abspath(custom_dir if custom_dir and os.path.exists(custom_dir)
+                               else _models_dir())
+
+    origine = _percorso_modello(model_path_or_id, base_dir)
+    if not origine or not os.path.exists(origine):
+        return {"success": False, "error": f"Modello '{model_path_or_id}' non trovato su disco"}
+    if not _dentro_la_cartella(base_dir, origine):
+        return {"success": False, "error": "Operazione non consentita al di fuori della cartella modelli"}
+    if origine == base_dir:
+        return {"success": False, "error": "Non è possibile rinominare la cartella radice dei modelli"}
+
+    grezzo = str(new_name or "").strip()
+    if not grezzo:
+        return {"success": False, "error": "Il nuovo nome è vuoto"}
+    # Il controllo va fatto sul nome come e' stato scritto, non su quello gia'
+    # ripulito: togliendo prima le barre iniziali, `/tmp/x` diventa `tmp/x` e
+    # non sembra piu' un percorso assoluto. Restava dentro la cartella, ma
+    # veniva accettato e trasformato in `tmp--x` senza che nessuno lo dicesse.
+    if os.path.isabs(grezzo) or ".." in grezzo or ":" in grezzo:
+        return {"success": False, "error": "Il nuovo nome non può essere un percorso"}
+
+    pulito = grezzo.strip("/\\")
+    if not pulito:
+        return {"success": False, "error": "Il nuovo nome è vuoto"}
+
+    # `autore/modello` -> `autore--modello`: e' la convenzione con cui i modelli
+    # scaricati da Hugging Face stanno gia' sul disco.
+    cartella = pulito.replace("/", "--").replace("\\", "--")
+    if any(c in cartella for c in '<>:"|?*'):
+        return {"success": False, "error": "Il nuovo nome contiene caratteri non ammessi"}
+
+    destinazione = os.path.abspath(os.path.join(base_dir, cartella))
+    if not _dentro_la_cartella(base_dir, destinazione):
+        return {"success": False, "error": "Il nuovo nome porterebbe fuori dalla cartella modelli"}
+    if destinazione == origine:
+        return {"success": True, "renamed": False, "path": origine,
+                "message": "Il nome era già questo"}
+    if os.path.exists(destinazione):
+        return {"success": False,
+                "error": f"Esiste già un modello chiamato '{cartella}'"}
+
+    # Un modello residente tiene aperti i suoi file: su Windows la rinomina
+    # fallirebbe, su Linux riuscirebbe lasciando il runtime a puntare al nulla.
+    try:
+        residente = sigma_engine.loaded_model_name or ""
+        percorso_residente = (sigma_engine.loaded_model or {}).get("path", "")
+        if residente and (os.path.basename(origine).lower() in residente.lower()
+                          or (percorso_residente
+                              and os.path.abspath(percorso_residente) == origine)):
+            log.info("[ModelInventory] Scarico '%s' prima di rinominarlo.", residente)
+            sigma_engine.unload()
+    except Exception as err:
+        log.warning("[ModelInventory] Scaricamento prima della rinomina non riuscito: %s", err)
+
+    try:
+        os.rename(origine, destinazione)
+    except OSError as err:
+        return {"success": False,
+                "error": f"Rinomina non riuscita: {err}. "
+                         f"Se il modello è in uso, scaricalo dal motore e riprova."}
+
+    # Il repository su Hugging Face segue il modello: senza, una rinomina gli
+    # farebbe perdere il collegamento, e la pubblicazione successiva ne creerebbe
+    # uno nuovo lasciando due copie senza indicazioni su quale sia quella buona.
+    try:
+        from core.modules.sigma_model_hub.backend import publications
+        publications.rename_local_reference(os.path.basename(origine), cartella)
+    except Exception as err:
+        log.debug("[ModelInventory] Legame di pubblicazione non aggiornato: %s", err)
+
+    log.info("[ModelInventory] Modello rinominato: %s -> %s",
+             os.path.basename(origine), cartella)
+    return {
+        "success": True,
+        "renamed": True,
+        "old_name": os.path.basename(origine),
+        "new_name": cartella,
+        "model_id": pulito if "/" in pulito else cartella.replace("--", "/"),
+        "path": destinazione,
+    }
+
+
 def delete_local_model(model_path_or_id: str, custom_dir: Optional[str] = None) -> Dict[str, Any]:
     """
     Safely deletes a downloaded model file or repository folder from disk.

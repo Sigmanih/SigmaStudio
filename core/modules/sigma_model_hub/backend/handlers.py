@@ -454,55 +454,49 @@ def handle_models_local_list(self):
         custom_dir = cfg.get("models_dir")
         models = scan_local_models(custom_dir=custom_dir)
 
-        # Arricchisce i modelli con i dati dei benchmark eseguiti in Training Lab
-        bm_file = os.path.join("training_lab", "official_benchmark_results.json")
-        bm_map = {}
-        if os.path.exists(bm_file):
-            try:
-                with open(bm_file, "r", encoding="utf-8") as f_bm:
-                    bm_data = json.load(f_bm)
-                for j in bm_data:
-                    raw_m = j.get("model", "")
-                    clean_m = re.sub(r"^(?:sigma|ollama|lmstudio):", "", raw_m).replace("--", "/").strip().lower()
-                    if not clean_m:
-                        continue
-                    met = j.get("metrics", {})
-                    score = met.get("overall_score", 0)
-                    p_c = met.get("passed_count", 0)
-                    t_c = met.get("total_count", 0)
-                    tok_s = met.get("avg_tok_s", 0)
-                    suite = j.get("suite_name", j.get("suite", "Benchmark"))
-                    created = (j.get("created_at") or "")[:16].replace("T", " ")
-                    st = j.get("status", "")
+        # I referti dei benchmark li legge il Training Lab, che e' il modulo che
+        # li produce: qui si chiedono, non si interpretano. Il Model Hub deve
+        # funzionare anche senza quel modulo installato — i moduli sono
+        # sganciabili — quindi la sua assenza significa "nessun benchmark", non
+        # un errore.
+        from core.modules.sigma_model_hub.backend import publications as pubblicazioni
 
-                    item_info = {
-                        "has_benchmarks": True,
-                        "latest_score": score,
-                        "best_score": score,
-                        "passed_count": p_c,
-                        "total_count": t_c,
-                        "avg_tok_s": tok_s,
-                        "suite_name": suite,
-                        "last_run_at": created,
-                        "status": st,
-                        "job_id": j.get("id")
-                    }
-                    if clean_m not in bm_map or score > bm_map[clean_m].get("best_score", 0):
-                        item_info["best_score"] = max(score, bm_map.get(clean_m, {}).get("best_score", score))
-                        bm_map[clean_m] = item_info
-            except Exception as e_bm:
-                log.debug("Errore lettura benchmark per modelli locali: %s", e_bm)
+        referti = {}
+        try:
+            from core.modules.sigma_training_lab.training.model_scores import (
+                normalizza, scores_by_model,
+            )
+            # Con il dettaglio per suite: e' il parametro che serve davvero a
+            # scegliere un modello per un compito, e un punteggio complessivo
+            # da solo non dice quali materie regge e quali no.
+            referti = scores_by_model(include_suites=True)
+        except Exception as err:
+            log.debug("Referti di benchmark non disponibili: %s", err)
+            normalizza = None
 
         for m in models:
-            m_id = (m.get("model_id") or m.get("filename") or "").lower().replace("--", "/")
-            m_base = m_id.split("/")[-1]
-            summary = bm_map.get(m_id) or bm_map.get(m_base)
-            if not summary:
-                for k, v in bm_map.items():
-                    if k in m_id or m_id in k or (len(k) > 4 and (k in m_base or m_base in k)):
-                        summary = v
-                        break
+            summary = None
+            if normalizza is not None:
+                chiave = normalizza(m.get("model_id") or m.get("filename") or "")
+                summary = referti.get(chiave)
+                if summary is None and chiave:
+                    # Solo il nome finale, quando una delle due forme non porta
+                    # l'autore. Mai per sottostringa: e' cosi' che un
+                    # checkpoint ereditava il punteggio della propria
+                    # quantizzazione, che e' un altro artefatto.
+                    coda = chiave.split("/")[-1]
+                    summary = next((r for k, r in referti.items()
+                                    if k.split("/")[-1] == coda), None)
             m["benchmark_summary"] = summary or {"has_benchmarks": False}
+            # Dove questo modello e' gia' pubblicato, se lo e'. Serve a poterlo
+            # aggiornare senza riscrivere a mano l'identificativo del
+            # repository — che riscritto sbagliato non da' errore, crea un
+            # secondo repository.
+            try:
+                m["publication"] = pubblicazioni.get_publication(
+                    m.get("path") or m.get("model_id") or m.get("filename") or "")
+            except Exception:
+                m["publication"] = None
 
         self.send_json_response({"success": True, "models": models})
     except Exception as e:
@@ -526,6 +520,206 @@ def handle_models_local_delete(self):
         self.send_json_response(res, status_code)
     except Exception as e:
         log.error("Error in handle_models_local_delete: %s", e)
+        self.send_json_response({"success": False, "error": str(e)}, 500)
+
+
+def handle_models_speedtest(self):
+    """POST /api/models/speedtest — Prova di inferenza vera su questo hardware.
+
+    Due cose insieme, perche' separate si prestano a essere confuse: la misura
+    di velocita' e la risposta che il modello ha effettivamente prodotto. Un
+    numero senza la risposta si puo' leggere come si vuole; la risposta accanto
+    dice a cosa quel numero si riferisce.
+
+    La velocita' riportata e' quella di **una richiesta alla volta**, che e' cio'
+    che sente chi chatta — non il throughput aggregato di una valutazione a
+    lotti, che con piu' richieste in volo e' sempre piu' alto.
+    """
+    import time as _time
+    try:
+        body = self.read_json_body() if hasattr(self, 'read_json_body') else {}
+        model = body.get("model") or body.get("model_id")
+        prompt = (body.get("prompt") or
+                  "Spiega in tre frasi perché il cielo è azzurro.").strip()
+        budget = max(16, min(int(body.get("max_tokens") or 96), 512))
+
+        from core.engine.unified_runtime import sigma_engine
+        from core.engine import evaluation
+
+        # 1. La sonda del motore: prefill e decode separati, cronometrati da chi
+        #    li esegue. Sono le due fasi che si sentono come cose diverse — la
+        #    pausa prima della prima parola, e il ritmo delle successive.
+        sonda = sigma_engine.benchmark(prompt_tokens=128, decode_tokens=64,
+                                       model_name=model)
+        if not sonda.get("success"):
+            self.send_json_response(
+                {"success": False, "error": sonda.get("error", "Sonda non riuscita")},
+                400)
+            return
+
+        # 2. Una risposta vera, cronometrata dall'esterno come la vede l'utente.
+        inizio = _time.perf_counter()
+        risposta = evaluation.complete(
+            [{"role": "user", "content": prompt}],
+            model_name=model, max_tokens=budget, thinking=None,
+        )
+        trascorso = max(_time.perf_counter() - inizio, 1e-3)
+
+        hardware = {}
+        try:
+            profilo = sigma_engine.hardware_profile or {}
+            schede = profilo.get("accelerators") or []
+            if schede:
+                hardware = {"device": schede[0].get("name", ""),
+                            "vram_gb": schede[0].get("total_vram_gb", 0)}
+        except Exception as err:
+            log.debug("Profilo hardware non disponibile: %s", err)
+
+        self.send_json_response({
+            "success": True,
+            "model": model or sigma_engine.loaded_model_name,
+            "backend": sonda.get("backend", ""),
+            "hardware": hardware,
+            # Le due fasi, misurate dal motore.
+            "prefill_tok_s": sonda.get("prefill_tok_s", 0),
+            "decode_tok_s": sonda.get("decode_tok_s", 0),
+            "prefill_ms": sonda.get("prefill_ms", 0),
+            # La risposta vera e il suo tempo, cronometrati da fuori.
+            "prompt": prompt,
+            "answer": risposta.text,
+            "answer_tokens": risposta.tokens,
+            "answer_seconds": round(trascorso, 2),
+            "answer_tok_s": round(risposta.tokens / trascorso, 2) if risposta.tokens else 0,
+            "ttft_ms": round(risposta.ttft_ms, 1),
+            "error": risposta.error,
+        })
+    except Exception as e:
+        log.error("Error in handle_models_speedtest: %s", e)
+        self.send_json_response({"success": False, "error": str(e)}, 500)
+
+
+def handle_models_local_rename(self):
+    """POST /api/models/local/rename — Rinomina un modello sul disco."""
+    try:
+        body = self.read_json_body() if hasattr(self, 'read_json_body') else {}
+        sorgente = (body.get("model_path") or body.get("model_id")
+                    or body.get("path") or body.get("filename"))
+        nuovo = body.get("new_name") or body.get("name")
+        if not sorgente or not nuovo:
+            self.send_json_response(
+                {"success": False,
+                 "error": "Servono il modello da rinominare e il nuovo nome"}, 400)
+            return
+
+        from core.modules.sigma_model_hub.backend.model_inventory import rename_local_model
+        cfg = _load_hub_config()
+        esito = rename_local_model(sorgente, nuovo, custom_dir=cfg.get("models_dir"))
+        self.send_json_response(esito, 200 if esito.get("success") else 400)
+    except Exception as e:
+        log.error("Error in handle_models_local_rename: %s", e)
+        self.send_json_response({"success": False, "error": str(e)}, 500)
+
+
+def handle_models_hf_repo_discover(self):
+    """POST /api/models/hf/repo/discover — Cerca i repository gia' pubblicati."""
+    try:
+        cfg = _load_hub_config()
+        models = scan_local_models(custom_dir=cfg.get("models_dir"))
+        from core.modules.sigma_model_hub.backend.uploader_engine import discover_publications
+        body = self.read_json_body() if hasattr(self, 'read_json_body') else {}
+        esito = discover_publications(models, body.get("token"))
+        self.send_json_response(esito, 200 if esito.get("success") else 400)
+    except Exception as e:
+        log.error("Error in handle_models_hf_repo_discover: %s", e)
+        self.send_json_response({"success": False, "error": str(e)}, 500)
+
+
+def handle_models_hf_repo_attach(self):
+    """POST /api/models/hf/repo/attach — Collega un modello a un repository esistente."""
+    try:
+        body = self.read_json_body() if hasattr(self, 'read_json_body') else {}
+        from core.modules.sigma_model_hub.backend.uploader_engine import attach_publication
+        esito = attach_publication(
+            body.get("local_path") or body.get("local_ref") or body.get("model_id"),
+            (body.get("repo_id") or "").strip(),
+            body.get("token"),
+        )
+        self.send_json_response(esito, 200 if esito.get("success") else 400)
+    except Exception as e:
+        log.error("Error in handle_models_hf_repo_attach: %s", e)
+        self.send_json_response({"success": False, "error": str(e)}, 500)
+
+
+def handle_models_hf_card_update(self):
+    """POST /api/models/hf/card/update — Riscrive solo la scheda su HF."""
+    try:
+        body = self.read_json_body() if hasattr(self, 'read_json_body') else {}
+        local_ref = (body.get("local_path") or body.get("model_id")
+                     or body.get("filename"))
+        if not local_ref:
+            self.send_json_response({"success": False,
+                                     "error": "Modello non indicato"}, 400)
+            return
+        from core.modules.sigma_model_hub.backend.uploader_engine import update_model_card
+        esito = update_model_card(
+            local_ref,
+            repo_id=body.get("repo_id"),
+            card=body.get("card"),
+            token=body.get("token"),
+            custom_notes=body.get("custom_notes") or None,
+            include_benchmarks=bool(body.get("include_benchmarks", True)),
+            include_hardware=bool(body.get("include_hardware", True)),
+        )
+        self.send_json_response(esito, 200 if esito.get("success") else 400)
+    except Exception as e:
+        log.error("Error in handle_models_hf_card_update: %s", e)
+        self.send_json_response({"success": False, "error": str(e)}, 500)
+
+
+def handle_models_publication_forget(self):
+    """POST /api/models/publication/forget — Dimentica il legame con HF."""
+    try:
+        body = self.read_json_body() if hasattr(self, 'read_json_body') else {}
+        from core.modules.sigma_model_hub.backend import publications
+        riferimento = (body.get("local_path") or body.get("model_id")
+                       or body.get("filename") or "")
+        # Solo il legame locale: su Hugging Face non tocca niente, e dirlo
+        # conta perche' "dimentica" accanto a un repository si puo' leggere
+        # come "cancella".
+        self.send_json_response({"success": True,
+                                 "forgotten": publications.forget_publication(riferimento),
+                                 "note": "Il repository su Hugging Face resta intatto."})
+    except Exception as e:
+        log.error("Error in handle_models_publication_forget: %s", e)
+        self.send_json_response({"success": False, "error": str(e)}, 500)
+
+
+def handle_models_hf_repo_status(self):
+    """POST /api/models/hf/repo/status — Se il repository esiste gia' su HF."""
+    try:
+        body = self.read_json_body() if hasattr(self, 'read_json_body') else {}
+        repo_id = (body.get("repo_id") or "").strip()
+        if not repo_id:
+            self.send_json_response({"success": False, "error": "repo_id mancante"}, 400)
+            return
+        from core.modules.sigma_model_hub.backend.uploader_engine import hf_repo_status
+        self.send_json_response(hf_repo_status(repo_id, body.get("token")))
+    except Exception as e:
+        log.error("Error in handle_models_hf_repo_status: %s", e)
+        self.send_json_response({"success": False, "error": str(e)}, 500)
+
+
+def handle_models_hf_repo_rename(self):
+    """POST /api/models/hf/repo/rename — Sposta un repository a un altro nome."""
+    try:
+        body = self.read_json_body() if hasattr(self, 'read_json_body') else {}
+        from core.modules.sigma_model_hub.backend.uploader_engine import rename_hf_repo
+        esito = rename_hf_repo(body.get("from_id") or body.get("repo_id"),
+                               body.get("to_id") or body.get("new_repo_id"),
+                               body.get("token"))
+        self.send_json_response(esito, 200 if esito.get("success") else 400)
+    except Exception as e:
+        log.error("Error in handle_models_hf_repo_rename: %s", e)
         self.send_json_response({"success": False, "error": str(e)}, 500)
 
 
@@ -942,6 +1136,14 @@ def register_routes(app=None) -> None:
         '/api/models/hf/token/test': handle_models_hf_token_test,
         '/api/models/hf/test-connection': handle_models_hf_test_connection,
         '/api/models/local/delete': handle_models_local_delete,
+        '/api/models/local/rename': handle_models_local_rename,
+        '/api/models/speedtest': handle_models_speedtest,
+        '/api/models/hf/repo/status': handle_models_hf_repo_status,
+        '/api/models/hf/repo/discover': handle_models_hf_repo_discover,
+        '/api/models/hf/repo/attach': handle_models_hf_repo_attach,
+        '/api/models/hf/card/update': handle_models_hf_card_update,
+        '/api/models/publication/forget': handle_models_publication_forget,
+        '/api/models/hf/repo/rename': handle_models_hf_repo_rename,
         '/api/models/delete': handle_models_local_delete,
         '/api/models/engine/load': handle_models_engine_load,
         '/api/models/engine/unload': handle_models_engine_unload,

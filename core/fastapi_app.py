@@ -494,52 +494,27 @@ try:
 except Exception as _mod_err:
     log.warning(f"[FastAPI] Avviso inizializzazione ModuleLoader: {_mod_err}")
 
+# Gli handler del Model Hub si agganciano tutti insieme, non uno per uno.
+#
+# Prima erano tre elenchi scritti a mano — l'import, l'assegnazione all'adapter
+# e la tabella delle rotte in core/api_router.py — e un endpoint nuovo doveva
+# comparire in tutti e tre. Dimenticarne uno non da' errore da nessuna parte:
+# il server parte, la rotta risponde 404, e la causa e' una riga mancante in un
+# file che non c'entra con la funzione appena scritta. Qui si aggancia cio' che
+# il modulo espone, quindi una funzione `handle_...` nuova e' collegata per il
+# fatto di esistere.
 try:
-    from core.modules.sigma_model_hub.backend.handlers import (
-        handle_models_hf_search, handle_models_hf_details, handle_models_hf_downloads_list,
-        handle_models_local_list, handle_models_local_delete, handle_models_config_get,
-        handle_models_hf_download_start, handle_models_hf_download_repo, handle_models_hf_download_cancel,
-        handle_models_hf_download_retry, handle_models_hf_download_remove,
-        handle_models_hf_download_pause, handle_models_hf_download_resume, handle_models_hf_downloads_clear,
-        handle_models_hf_whoami, handle_models_hf_upload, handle_models_hf_upload_tasks,
-        handle_models_hf_upload_cancel, handle_models_hf_upload_remove, handle_models_hf_card_preview,
-        handle_models_engine_load, handle_models_engine_unload, handle_models_config_save,
-        handle_models_convert_info, handle_models_convert_jobs,
-        handle_models_convert_start, handle_models_convert_tooling,
-        handle_models_browse_dirs, handle_models_hf_token_test,
-        handle_models_hf_test_connection
-    )
-    FastAPIHandlerAdapter.handle_models_hf_search = handle_models_hf_search
-    FastAPIHandlerAdapter.handle_models_hf_details = handle_models_hf_details
-    FastAPIHandlerAdapter.handle_models_hf_downloads_list = handle_models_hf_downloads_list
-    FastAPIHandlerAdapter.handle_models_hf_test_connection = handle_models_hf_test_connection
-    FastAPIHandlerAdapter.handle_models_hf_whoami = handle_models_hf_whoami
-    FastAPIHandlerAdapter.handle_models_hf_upload = handle_models_hf_upload
-    FastAPIHandlerAdapter.handle_models_hf_upload_tasks = handle_models_hf_upload_tasks
-    FastAPIHandlerAdapter.handle_models_hf_upload_cancel = handle_models_hf_upload_cancel
-    FastAPIHandlerAdapter.handle_models_hf_upload_remove = handle_models_hf_upload_remove
-    FastAPIHandlerAdapter.handle_models_hf_card_preview = handle_models_hf_card_preview
-    FastAPIHandlerAdapter.handle_models_local_list = handle_models_local_list
-    FastAPIHandlerAdapter.handle_models_local_delete = handle_models_local_delete
-    FastAPIHandlerAdapter.handle_models_config_get = handle_models_config_get
-    FastAPIHandlerAdapter.handle_models_hf_download_start = handle_models_hf_download_start
-    FastAPIHandlerAdapter.handle_models_hf_download_repo = handle_models_hf_download_repo
-    FastAPIHandlerAdapter.handle_models_hf_download_pause = handle_models_hf_download_pause
-    FastAPIHandlerAdapter.handle_models_hf_download_resume = handle_models_hf_download_resume
-    FastAPIHandlerAdapter.handle_models_hf_download_cancel = handle_models_hf_download_cancel
-    FastAPIHandlerAdapter.handle_models_hf_download_retry = handle_models_hf_download_retry
-    FastAPIHandlerAdapter.handle_models_hf_download_remove = handle_models_hf_download_remove
-    FastAPIHandlerAdapter.handle_models_hf_downloads_clear = handle_models_hf_downloads_clear
-    FastAPIHandlerAdapter.handle_models_hf_token_test = handle_models_hf_token_test
-    FastAPIHandlerAdapter.handle_models_engine_load = handle_models_engine_load
-    FastAPIHandlerAdapter.handle_models_engine_unload = handle_models_engine_unload
-    FastAPIHandlerAdapter.handle_models_config_save = handle_models_config_save
-    FastAPIHandlerAdapter.handle_models_convert_info = handle_models_convert_info
-    FastAPIHandlerAdapter.handle_models_convert_jobs = handle_models_convert_jobs
-    FastAPIHandlerAdapter.handle_models_convert_start = handle_models_convert_start
-    FastAPIHandlerAdapter.handle_models_convert_tooling = handle_models_convert_tooling
-    FastAPIHandlerAdapter.handle_models_browse_dirs = handle_models_browse_dirs
+    from core.modules.sigma_model_hub.backend import handlers as _model_hub_handlers
 
+    _agganciati = 0
+    for _nome in dir(_model_hub_handlers):
+        if not _nome.startswith("handle_"):
+            continue
+        _fn = getattr(_model_hub_handlers, _nome)
+        if callable(_fn):
+            setattr(FastAPIHandlerAdapter, _nome, _fn)
+            _agganciati += 1
+    log.info("[FastAPI] Model Hub: %d handler agganciati.", _agganciati)
 except Exception as _mh_err:
     log.warning(f"[FastAPI] Avviso binding Model Hub: {_mh_err}")
 
