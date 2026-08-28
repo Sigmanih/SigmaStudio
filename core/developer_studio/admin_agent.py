@@ -42,13 +42,16 @@ Hai permessi di AMMINISTRATORE completi sul workspace per esplorare la struttura
 REGOLE CRITICHE E OBBLIGATORIE:
 1. Rispondi SEMPRE ed ESCLUSIVAMENTE in lingua ITALIANA.
 2. Ragiona internamente all'interno dei tag <think> ... </think>. NON scrivere mai ragionamenti in inglese al di fuori dei tag <think>.
-3. Quando ricevi una richiesta di sviluppo o modifica:
+3. PIANO D'AZIONE & ROADMAP DINAMICA:
+   - All'inizio di ogni nuovo sviluppo o richiesta, definisci SUBITO la pipeline dei task usando `tool:pipeline`:
+   - Aggiorna la pipeline ad ogni turno per mostrare il progresso all'utente ("in_progress", "done", "pending").
+4. FLUSSO DI LAVORO OPERATIVO:
    - FASE 1: Esplora il workspace con `list_dir`, `read_file` o `search_code` per capire la struttura esistente.
    - FASE 2: Definisci la pipeline dei task da fare (tutti con status "pending" o "in_progress").
    - FASE 3: Esegui le modifiche necessarie scrivendo file completi con `write_file` o eseguendo comandi con `terminal`.
    - FASE 4: Solo quando tutti i file sono stati REALMENTE creati/modificati e verificati, emetti `complete_goal`.
-4. NON dichiarare MAI un task o un obiettivo completato senza aver PRIMA letto o scritto file reali con i tool.
-5. NON emettere MAI `complete_goal` al primo turno di una richiesta di sviluppo.
+5. NON dichiarare MAI un task o un obiettivo completato senza aver PRIMA letto o scritto file reali con i tool.
+6. NON emettere MAI `complete_goal` al primo turno di una richiesta di sviluppo.
 
 GUIDA AI PERCORSI:
 - La radice del workspace si indica con "." (oppure percorsi relativi come "core", "sigma_studio/src").
@@ -78,7 +81,7 @@ TAG STRUTTURATI DEI TOOL:
 }
 ```
 
-4. Per definire la pipeline dei task da eseguire:
+4. Per definire o aggiornare la pipeline dei task da eseguire:
 ```tool:pipeline
 {
   "tasks": [
@@ -112,27 +115,57 @@ TAG STRUTTURATI DEI TOOL:
 }
 ```
 
-7. Per ripristinare un file allo stato di backup precedente (se una modifica ha causato errori):
+8. Per ripristinare un file allo stato di backup precedente (se una modifica ha causato errori):
 ```tool:restore_file
 {
   "path": "sigma_server.py"
 }
 ```
 
-8. Per visualizzare lo storico dei backup di un file o del workspace:
+9. Per visualizzare lo storico dei backup di un file o del workspace:
 ```tool:list_backups
 {
   "path": "sigma_server.py"
 }
 ```
 
-9. Per dichiarare il completamento:
+10. Per dichiarare il completamento finale dell'obiettivo:
 ```tool:complete_goal
 {
   "summary": "Implementazione completata con successo e verificata."
 }
 ```
 """
+
+
+def extract_implicit_pipeline_from_text(text: str) -> List[Dict[str, Any]]:
+    """
+    Detects markdown task lists, numbered steps, or checklists in model output
+    when the model wrote a plan in natural text without an explicit tool:pipeline call.
+    """
+    clean_text = re.sub(r"<think>[\s\S]*?</think>", "", text, flags=re.IGNORECASE)
+    clean_text = re.sub(r"```[\s\S]*?```", "", clean_text)
+    
+    tasks = []
+    # 1. Checklist lines: - [ ] or - [x] or * [ ]
+    checklist = re.findall(r"^[ \t]*[-*]\s*\[([ xX])\]\s*(.+)$", clean_text, re.MULTILINE)
+    if checklist and len(checklist) >= 2:
+        for idx, (check, title) in enumerate(checklist):
+            status = "done" if check.lower() == "x" else ("in_progress" if idx == 0 else "pending")
+            tasks.append({"id": str(idx + 1), "title": title.strip(), "status": status})
+        return tasks
+
+    # 2. Numbered steps: 1. ... 2. ... 3. ...
+    numbered = re.findall(r"^[ \t]*(\d+)[\.\)]\s+([^\n\r]+)", clean_text, re.MULTILINE)
+    if numbered and len(numbered) >= 2:
+        for idx, (num, title) in enumerate(numbered):
+            t_clean = title.strip().strip("*`_")
+            if len(t_clean) > 3 and not t_clean.lower().startswith(("http", "www")):
+                tasks.append({"id": str(idx + 1), "title": t_clean, "status": "in_progress" if idx == 0 else "pending"})
+        if len(tasks) >= 2:
+            return tasks
+
+    return []
 
 
 def resolve_workspace_path(path: Optional[str], workspace_root: str) -> str:
@@ -677,6 +710,17 @@ def stream_admin_agent_turn(
 
         # Detect tools
         tools_found = extract_tool_invocations(full_text)
+
+        # Check if pipeline was defined via implicit markdown text if no pipeline tool call was issued
+        has_pipeline_tool = any(t["tool"] in ("pipeline", "tasks", "set_tasks", "update_pipeline") for t in tools_found)
+        if not has_pipeline_tool:
+            implicit_tasks = extract_implicit_pipeline_from_text(full_text)
+            if implicit_tasks:
+                yield {
+                    "type": "pipeline_update",
+                    "tasks": implicit_tasks
+                }
+
         if not tools_found or not auto_execute_tools:
             # Finished - no tools requested
             break

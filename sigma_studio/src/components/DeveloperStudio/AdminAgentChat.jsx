@@ -946,24 +946,34 @@ export default function AdminAgentChat({
 
           const isLoopOn = thisTask.autoLoop ?? true;
           const isCompleted = thisTask.isGoalCompleted ?? false;
-          const pTasks = thisTask.pipeline || [];
-          const hasPending = pTasks.length > 0 && pTasks.some(p => p.status !== 'done');
+          if (!isLoopOn || isCompleted) return currentTasks;
 
-          if (isLoopOn && !isCompleted && hasPending) {
-            setLoopCountdown(2);
-            let count = 2;
-            const timer = setInterval(() => {
-              count -= 1;
-              if (count <= 0) {
-                clearInterval(timer);
-                setLoopCountdown(null);
-                handleSendMessage("Procedi con il prossimo task pianificato nella pipeline al fine di completare l'obiettivo.");
-              } else {
-                setLoopCountdown(count);
-              }
-            }, 800);
-            autoLoopTimeoutRef.current = timer;
+          const pTasks = thisTask.pipeline || [];
+          const pendingTask = pTasks.find(p => p.status === 'in_progress') || pTasks.find(p => p.status === 'pending');
+
+          let nextPrompt = '';
+          if (pendingTask) {
+            nextPrompt = `Procedi con il task pianificato: "${pendingTask.title}". Esegui i tool necessari (scrittura file con write_file o comandi terminale) per completarlo ed aggiorna lo stato del task con tool:pipeline.`;
+          } else if (pTasks.length > 0 && pTasks.every(p => p.status === 'done')) {
+            nextPrompt = `Tutti i task pianificati nella pipeline risultano completati. Effettua una verifica finale o dichiara complete_goal con il riepilogo del lavoro svolto.`;
+          } else {
+            nextPrompt = `Continua l'implementazione: definisci la pipeline dei task tramite tool:pipeline ed esegui le modifiche ai file del workspace.`;
           }
+
+          setLoopCountdown(2);
+          let count = 2;
+          const timer = setInterval(() => {
+            count -= 1;
+            if (count <= 0) {
+              clearInterval(timer);
+              setLoopCountdown(null);
+              handleSendMessage(nextPrompt);
+            } else {
+              setLoopCountdown(count);
+            }
+          }, 800);
+          autoLoopTimeoutRef.current = timer;
+
           return currentTasks;
         });
       }, 400);
@@ -1296,232 +1306,264 @@ export default function AdminAgentChat({
           isLight={isLight}
         />
 
-        {/* Dynamic Task Pipeline Widget */}
-        {pipeline && pipeline.length > 0 && (
-          <div style={{
-            borderRadius: '8px',
-            background: isLight ? '#ffffff' : '#111620',
-            border: isGoalCompleted
-              ? '1px solid rgba(63, 185, 80, 0.35)'
-              : '1px solid rgba(0, 242, 254, 0.25)',
-            boxShadow: isLight ? '0 1px 4px rgba(0,0,0,0.06)' : '0 2px 10px rgba(0,0,0,0.25)',
-            overflow: 'hidden',
-            marginTop: '2px'
-          }}>
-            {/* Pipeline Header */}
-            <div 
-              onClick={() => setShowPipeline(!showPipeline)}
-              style={{
-                padding: '6px 10px',
-                background: isGoalCompleted
-                  ? (isLight ? 'rgba(63, 185, 80, 0.12)' : 'rgba(63, 185, 80, 0.08)')
-                  : (isLight ? 'rgba(0, 242, 254, 0.08)' : 'rgba(0, 242, 254, 0.05)'),
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-                cursor: 'pointer',
-                userSelect: 'none'
-              }}
-            >
-              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                <ListTodo size={13} color={isGoalCompleted ? '#3fb950' : '#00f2fe'} />
-                <span style={{
-                  fontSize: '0.68rem',
-                  fontWeight: 800,
-                  color: isGoalCompleted ? '#3fb950' : (isLight ? '#24292f' : '#f0f6fc')
-                }}>
-                  Pipeline Task ({pipeline.filter(p => p.status === 'done').length}/{pipeline.length})
+        {/* Dynamic Action Plan & Task Pipeline Widget (Always Visible) */}
+        <div style={{
+          borderRadius: '8px',
+          background: isLight ? '#ffffff' : '#111620',
+          border: isGoalCompleted
+            ? '1px solid rgba(63, 185, 80, 0.35)'
+            : (pipeline && pipeline.length > 0 ? '1px solid rgba(0, 242, 254, 0.25)' : (isLight ? '1px solid #e1e4e8' : '1px solid rgba(255,255,255,0.08)')),
+          boxShadow: isLight ? '0 1px 4px rgba(0,0,0,0.06)' : '0 2px 10px rgba(0,0,0,0.25)',
+          overflow: 'hidden',
+          marginTop: '2px'
+        }}>
+          {/* Pipeline Header */}
+          <div 
+            onClick={() => setShowPipeline(!showPipeline)}
+            style={{
+              padding: '6px 10px',
+              background: isGoalCompleted
+                ? (isLight ? 'rgba(63, 185, 80, 0.12)' : 'rgba(63, 185, 80, 0.08)')
+                : (pipeline && pipeline.length > 0 
+                    ? (isLight ? 'rgba(0, 242, 254, 0.08)' : 'rgba(0, 242, 254, 0.05)')
+                    : (isLight ? '#f6f8fa' : '#161b22')),
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              cursor: 'pointer',
+              userSelect: 'none'
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <ListTodo size={13} color={isGoalCompleted ? '#3fb950' : (pipeline && pipeline.length > 0 ? '#00f2fe' : '#8b949e')} />
+              <span style={{
+                fontSize: '0.68rem',
+                fontWeight: 800,
+                color: isGoalCompleted ? '#3fb950' : (pipeline && pipeline.length > 0 ? (isLight ? '#24292f' : '#f0f6fc') : '#8b949e')
+              }}>
+                📋 Piano d'Azione & Roadmap {pipeline && pipeline.length > 0 ? `(${pipeline.filter(p => p.status === 'done').length}/${pipeline.length})` : '(In attesa di pianificazione)'}
+              </span>
+              {isGoalCompleted && (
+                <span style={{ fontSize: '0.60rem', padding: '1px 6px', borderRadius: '10px', background: 'rgba(63, 185, 80, 0.2)', color: '#3fb950', fontWeight: 800 }}>
+                  ✓ Obiettivo Raggiunto
                 </span>
-                {isGoalCompleted && (
-                  <span style={{ fontSize: '0.60rem', padding: '1px 6px', borderRadius: '10px', background: 'rgba(63, 185, 80, 0.2)', color: '#3fb950', fontWeight: 800 }}>
-                    ✓ Obiettivo Raggiunto
-                  </span>
-                )}
-              </div>
-
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                {/* Progress bar */}
-                <div style={{
-                  width: '80px',
-                  height: '5px',
-                  borderRadius: '3px',
-                  background: isLight ? '#e1e4e8' : 'rgba(255,255,255,0.1)',
-                  overflow: 'hidden'
-                }}>
-                  <div style={{
-                    width: `${Math.round((pipeline.filter(p => p.status === 'done').length / Math.max(pipeline.length, 1)) * 100)}%`,
-                    height: '100%',
-                    background: isGoalCompleted ? '#3fb950' : 'linear-gradient(90deg, #00f2fe, #4facfe)',
-                    transition: 'width 0.3s ease'
-                  }} />
-                </div>
-                <span style={{ fontSize: '0.62rem', fontWeight: 700, color: '#8b949e' }}>
-                  {Math.round((pipeline.filter(p => p.status === 'done').length / Math.max(pipeline.length, 1)) * 100)}%
-                </span>
-                {showPipeline ? <ChevronUp size={12} color="#8b949e" /> : <ChevronDown size={12} color="#8b949e" />}
-              </div>
+              )}
             </div>
 
-            {/* Pipeline Body */}
-            {showPipeline && (
-              <div style={{ padding: '8px 12px', display: 'flex', flexDirection: 'column', gap: '6px', borderTop: isLight ? '1px solid rgba(0,0,0,0.05)' : '1px solid rgba(255,255,255,0.05)' }}>
-                {pipeline.length === 0 ? (
-                  <div style={{ padding: '6px 4px', fontSize: '0.66rem', color: '#8b949e', fontStyle: 'italic' }}>
-                    💡 Nessun task nella pipeline. L'agente definirà automaticamente i task o puoi aggiungerne uno manualmente qui sotto.
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              {/* Progress bar */}
+              {pipeline && pipeline.length > 0 && (
+                <>
+                  <div style={{
+                    width: '70px',
+                    height: '5px',
+                    borderRadius: '3px',
+                    background: isLight ? '#e1e4e8' : 'rgba(255,255,255,0.1)',
+                    overflow: 'hidden'
+                  }}>
+                    <div style={{
+                      width: `${Math.round((pipeline.filter(p => p.status === 'done').length / Math.max(pipeline.length, 1)) * 100)}%`,
+                      height: '100%',
+                      background: isGoalCompleted ? '#3fb950' : 'linear-gradient(90deg, #00f2fe, #4facfe)',
+                      transition: 'width 0.3s ease'
+                    }} />
                   </div>
-                ) : (
-                  pipeline.map((item) => {
-                    const isDone = item.status === 'done';
-                    const inProgress = item.status === 'in_progress';
+                  <span style={{ fontSize: '0.62rem', fontWeight: 700, color: '#8b949e' }}>
+                    {Math.round((pipeline.filter(p => p.status === 'done').length / Math.max(pipeline.length, 1)) * 100)}%
+                  </span>
+                </>
+              )}
+              {showPipeline ? <ChevronUp size={12} color="#8b949e" /> : <ChevronDown size={12} color="#8b949e" />}
+            </div>
+          </div>
 
-                    return (
+          {/* Pipeline Body */}
+          {showPipeline && (
+            <div style={{ padding: '8px 12px', display: 'flex', flexDirection: 'column', gap: '6px', borderTop: isLight ? '1px solid rgba(0,0,0,0.05)' : '1px solid rgba(255,255,255,0.05)' }}>
+              {(!pipeline || pipeline.length === 0) ? (
+                <div style={{
+                  padding: '10px',
+                  borderRadius: '6px',
+                  background: isLight ? 'rgba(0,0,0,0.02)' : 'rgba(255,255,255,0.02)',
+                  fontSize: '0.68rem',
+                  color: isLight ? '#57606a' : '#8b949e',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  gap: '8px'
+                }}>
+                  <span>💡 Nessun task ancora definito. L'agente creerà la scaletta al primo messaggio oppure aggiungine uno manualmente.</span>
+                  <button
+                    type="button"
+                    onClick={(e) => { e.stopPropagation(); setShowNewTaskInline(true); }}
+                    style={{
+                      padding: '3px 8px',
+                      borderRadius: '4px',
+                      background: 'rgba(0, 242, 254, 0.12)',
+                      border: '1px solid rgba(0, 242, 254, 0.35)',
+                      color: '#00f2fe',
+                      fontSize: '0.64rem',
+                      fontWeight: 700,
+                      cursor: 'pointer',
+                      flexShrink: 0
+                    }}
+                  >
+                    + Aggiungi Task
+                  </button>
+                </div>
+              ) : (
+                pipeline.map((item) => {
+                  const isDone = item.status === 'done';
+                  const inProgress = item.status === 'in_progress';
+
+                  return (
+                    <div 
+                      key={item.id}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'flex-start',
+                        justifyContent: 'space-between',
+                        padding: '5px 8px',
+                        borderRadius: '6px',
+                        background: inProgress 
+                          ? (isLight ? 'rgba(0, 242, 254, 0.12)' : 'rgba(0, 242, 254, 0.08)') 
+                          : (isDone ? (isLight ? 'rgba(63, 185, 80, 0.06)' : 'rgba(63, 185, 80, 0.04)') : 'transparent'),
+                        border: inProgress ? '1px solid rgba(0, 242, 254, 0.25)' : (isDone ? '1px solid rgba(63, 185, 80, 0.15)' : '1px solid transparent'),
+                        fontSize: '0.68rem',
+                        gap: '8px'
+                      }}
+                    >
                       <div 
-                        key={item.id}
-                        style={{
-                          display: 'flex',
-                          alignItems: 'flex-start',
-                          justifyContent: 'space-between',
-                          padding: '5px 8px',
-                          borderRadius: '6px',
-                          background: inProgress 
-                            ? (isLight ? 'rgba(0, 242, 254, 0.12)' : 'rgba(0, 242, 254, 0.08)') 
-                            : (isDone ? (isLight ? 'rgba(63, 185, 80, 0.06)' : 'rgba(63, 185, 80, 0.04)') : 'transparent'),
-                          border: inProgress ? '1px solid rgba(0, 242, 254, 0.25)' : (isDone ? '1px solid rgba(63, 185, 80, 0.15)' : '1px solid transparent'),
-                          fontSize: '0.68rem',
-                          gap: '8px'
-                        }}
+                        onClick={() => toggleTaskStatus(item.id)}
+                        style={{ display: 'flex', alignItems: 'flex-start', gap: '7px', cursor: 'pointer', flex: 1, minWidth: 0 }}
+                        title="Clicca per cambiare stato del task"
                       >
-                        <div 
-                          onClick={() => toggleTaskStatus(item.id)}
-                          style={{ display: 'flex', alignItems: 'flex-start', gap: '7px', cursor: 'pointer', flex: 1, minWidth: 0 }}
-                          title="Clicca per cambiare stato del task"
-                        >
-                          <div style={{ marginTop: '2px' }}>
-                            {isDone ? (
-                              <CheckCircle2 size={13} color="#3fb950" />
-                            ) : inProgress ? (
-                              <CircleDot size={13} color="#00f2fe" />
-                            ) : (
-                              <Circle size={13} color="#8b949e" />
-                            )}
-                          </div>
-                          <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', flex: 1, minWidth: 0 }}>
-                            <span style={{
-                              color: isDone ? '#8b949e' : (inProgress ? '#00f2fe' : (isLight ? '#24292f' : '#e6edf3')),
-                              textDecoration: isDone ? 'line-through' : 'none',
-                              fontWeight: inProgress ? 800 : 600,
-                              overflow: 'hidden',
-                              textOverflow: 'ellipsis',
-                              whiteSpace: 'nowrap'
-                            }}>
-                              {item.title}
-                            </span>
-                            {item.description && item.description !== item.title && (
-                              <span style={{
-                                fontSize: '0.60rem',
-                                color: isLight ? '#57606a' : '#8b949e',
-                                lineHeight: 1.3
-                              }}>
-                                {item.description}
-                              </span>
-                            )}
-                          </div>
+                        <div style={{ marginTop: '2px' }}>
+                          {isDone ? (
+                            <CheckCircle2 size={13} color="#3fb950" />
+                          ) : inProgress ? (
+                            <CircleDot size={13} color="#00f2fe" />
+                          ) : (
+                            <Circle size={13} color="#8b949e" />
+                          )}
                         </div>
-
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '5px', marginTop: '2px' }}>
-                          <span 
-                            onClick={() => toggleTaskStatus(item.id)}
-                            style={{
-                              fontSize: '0.58rem',
-                              padding: '2px 6px',
-                              borderRadius: '8px',
-                              fontWeight: 800,
-                              cursor: 'pointer',
-                              background: isDone 
-                                ? 'rgba(63, 185, 80, 0.2)' 
-                                : (inProgress ? 'rgba(0, 242, 254, 0.2)' : 'rgba(255,255,255,0.08)'),
-                              color: isDone ? '#3fb950' : (inProgress ? '#00f2fe' : '#8b949e')
-                            }}
-                            title="Cambia stato"
-                          >
-                            {isDone ? '✓ FATTO' : (inProgress ? '⚡ IN CORSO' : '⏳ IN CODA')}
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', flex: 1, minWidth: 0 }}>
+                          <span style={{
+                            color: isDone ? '#8b949e' : (inProgress ? '#00f2fe' : (isLight ? '#24292f' : '#e6edf3')),
+                            textDecoration: isDone ? 'line-through' : 'none',
+                            fontWeight: inProgress ? 800 : 600,
+                            overflow: 'hidden',
+                            textOverflow: 'ellipsis',
+                            whiteSpace: 'nowrap'
+                          }}>
+                            {item.title}
                           </span>
-                          <button
-                            type="button"
-                            onClick={() => removePipelineTask(item.id)}
-                            style={{ background: 'none', border: 'none', color: '#8b949e', cursor: 'pointer', padding: '2px' }}
-                            title="Rimuovi task"
-                          >
-                            <X size={12} />
-                          </button>
+                          {item.description && item.description !== item.title && (
+                            <span style={{
+                              fontSize: '0.60rem',
+                              color: isLight ? '#57606a' : '#8b949e',
+                              lineHeight: 1.3
+                            }}>
+                              {item.description}
+                            </span>
+                          )}
                         </div>
                       </div>
-                    );
-                  })
-                )}
 
-                {/* Inline Add Sub-task */}
-                {showNewTaskInline ? (
-                  <form onSubmit={handleAddPipelineTask} style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginTop: '4px', padding: '6px', borderRadius: '6px', background: isLight ? 'rgba(0,0,0,0.03)' : 'rgba(255,255,255,0.03)', border: '1px solid rgba(0, 242, 254, 0.3)' }}>
-                    <input
-                      type="text"
-                      placeholder="Titolo sotto-task (es. Creazione endpoint backend)..."
-                      value={newPipelineInput}
-                      onChange={e => setNewPipelineInput(e.target.value)}
-                      style={{
-                        padding: '4px 8px',
-                        borderRadius: '4px',
-                        border: '1px solid #00f2fe',
-                        background: isLight ? '#fff' : '#07090e',
-                        color: isLight ? '#000' : '#fff',
-                        fontSize: '0.68rem',
-                        outline: 'none'
-                      }}
-                      autoFocus
-                    />
-                    <input
-                      type="text"
-                      placeholder="Dettagli opzionali (file coinvolti, requisiti)..."
-                      value={newPipelineDesc}
-                      onChange={e => setNewPipelineDesc(e.target.value)}
-                      style={{
-                        padding: '4px 8px',
-                        borderRadius: '4px',
-                        border: isLight ? '1px solid #d0d7de' : '1px solid rgba(255,255,255,0.1)',
-                        background: isLight ? '#fff' : '#07090e',
-                        color: isLight ? '#000' : '#fff',
-                        fontSize: '0.64rem',
-                        outline: 'none'
-                      }}
-                    />
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '6px' }}>
-                      <button
-                        type="button"
-                        onClick={() => { setShowNewTaskInline(false); setNewPipelineInput(''); setNewPipelineDesc(''); }}
-                        style={{ background: 'none', border: 'none', color: '#8b949e', cursor: 'pointer', fontSize: '0.62rem' }}
-                      >
-                        Annulla
-                      </button>
-                      <button
-                        type="submit"
-                        disabled={!newPipelineInput.trim()}
-                        style={{
-                          padding: '3px 10px',
-                          borderRadius: '4px',
-                          background: '#00f2fe',
-                          color: '#000',
-                          fontWeight: 800,
-                          border: 'none',
-                          fontSize: '0.64rem',
-                          cursor: newPipelineInput.trim() ? 'pointer' : 'default',
-                          opacity: newPipelineInput.trim() ? 1 : 0.5
-                        }}
-                      >
-                        + Aggiungi Task
-                      </button>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '5px', marginTop: '2px' }}>
+                        <span 
+                          onClick={() => toggleTaskStatus(item.id)}
+                          style={{
+                            fontSize: '0.58rem',
+                            padding: '2px 6px',
+                            borderRadius: '8px',
+                            fontWeight: 800,
+                            cursor: 'pointer',
+                            background: isDone 
+                              ? 'rgba(63, 185, 80, 0.2)' 
+                              : (inProgress ? 'rgba(0, 242, 254, 0.2)' : 'rgba(255,255,255,0.08)'),
+                            color: isDone ? '#3fb950' : (inProgress ? '#00f2fe' : '#8b949e')
+                          }}
+                          title="Cambia stato"
+                        >
+                          {isDone ? '✓ FATTO' : (inProgress ? '⚡ IN CORSO' : '⏳ IN CODA')}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => removePipelineTask(item.id)}
+                          style={{ background: 'none', border: 'none', color: '#8b949e', cursor: 'pointer', padding: '2px' }}
+                          title="Rimuovi task"
+                        >
+                          <X size={12} />
+                        </button>
+                      </div>
                     </div>
-                  </form>
-                ) : (
+                  );
+                })
+              )}
+
+              {/* Inline Add Sub-task */}
+              {showNewTaskInline ? (
+                <form onSubmit={handleAddPipelineTask} style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginTop: '4px', padding: '6px', borderRadius: '6px', background: isLight ? 'rgba(0,0,0,0.03)' : 'rgba(255,255,255,0.03)', border: '1px solid rgba(0, 242, 254, 0.3)' }}>
+                  <input
+                    type="text"
+                    placeholder="Titolo sotto-task (es. Creazione endpoint backend)..."
+                    value={newPipelineInput}
+                    onChange={e => setNewPipelineInput(e.target.value)}
+                    style={{
+                      padding: '4px 8px',
+                      borderRadius: '4px',
+                      border: '1px solid #00f2fe',
+                      background: isLight ? '#fff' : '#07090e',
+                      color: isLight ? '#000' : '#fff',
+                      fontSize: '0.68rem',
+                      outline: 'none'
+                    }}
+                    autoFocus
+                  />
+                  <input
+                    type="text"
+                    placeholder="Dettagli opzionali (file coinvolti, requisiti)..."
+                    value={newPipelineDesc}
+                    onChange={e => setNewPipelineDesc(e.target.value)}
+                    style={{
+                      padding: '4px 8px',
+                      borderRadius: '4px',
+                      border: isLight ? '1px solid #d0d7de' : '1px solid rgba(255,255,255,0.1)',
+                      background: isLight ? '#fff' : '#07090e',
+                      color: isLight ? '#000' : '#fff',
+                      fontSize: '0.64rem',
+                      outline: 'none'
+                    }}
+                  />
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '6px' }}>
+                    <button
+                      type="button"
+                      onClick={() => { setShowNewTaskInline(false); setNewPipelineInput(''); setNewPipelineDesc(''); }}
+                      style={{ background: 'none', border: 'none', color: '#8b949e', cursor: 'pointer', fontSize: '0.62rem' }}
+                    >
+                      Annulla
+                    </button>
+                    <button
+                      type="submit"
+                      disabled={!newPipelineInput.trim()}
+                      style={{
+                        padding: '3px 8px',
+                        borderRadius: '4px',
+                        background: '#00f2fe',
+                        border: 'none',
+                        color: '#000',
+                        fontSize: '0.64rem',
+                        fontWeight: 700,
+                        cursor: 'pointer'
+                      }}
+                    >
+                      Salva Task
+                    </button>
+                  </div>
+                </form>
+              ) : (
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: '2px', paddingTop: '4px', borderTop: isLight ? '1px solid rgba(0,0,0,0.04)' : '1px solid rgba(255,255,255,0.04)' }}>
                   <button
                     type="button"
                     onClick={() => setShowNewTaskInline(true)}
@@ -1542,11 +1584,11 @@ export default function AdminAgentChat({
                     <Plus size={12} />
                     <span>Aggiungi sotto-task alla pipeline</span>
                   </button>
-                )}
-              </div>
-            )}
-          </div>
-        )}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
 
         {/* Auto-Loop Countdown Alert Banner */}
         {loopCountdown !== null && (
