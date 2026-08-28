@@ -191,6 +191,8 @@ class FastAPIHandlerAdapter:
     """Bridge adapter that allows existing core handlers to run seamlessly on FastAPI."""
 
     _is_path_allowed = staticmethod(is_path_allowed)
+    _GET_HANDLERS: dict[str, str] = {}
+    _POST_HANDLERS: dict[str, str] = {}
 
     def __init__(self, request_path: str, headers: dict, body_bytes: bytes):
         self.path = request_path
@@ -486,42 +488,6 @@ FastAPIHandlerAdapter.handle_hardware_config = handle_hardware_config
 FastAPIHandlerAdapter.handle_hardware_restart_ollama = handle_hardware_restart_ollama
 FastAPIHandlerAdapter.handle_hardware_gpu_kill = handle_hardware_gpu_kill
 
-# Caricamento dinamico dei moduli opzionali installati (Creative Lab, Domotica, Model Hub, etc.)
-try:
-    from core.module_loader import ModuleLoader
-    module_loader = ModuleLoader()
-    module_loader.load_installed(app)
-except Exception as _mod_err:
-    log.warning(f"[FastAPI] Avviso inizializzazione ModuleLoader: {_mod_err}")
-
-# Gli handler del Model Hub si agganciano tutti insieme, non uno per uno.
-#
-# Prima erano tre elenchi scritti a mano — l'import, l'assegnazione all'adapter
-# e la tabella delle rotte in core/api_router.py — e un endpoint nuovo doveva
-# comparire in tutti e tre. Dimenticarne uno non da' errore da nessuna parte:
-# il server parte, la rotta risponde 404, e la causa e' una riga mancante in un
-# file che non c'entra con la funzione appena scritta. Qui si aggancia cio' che
-# il modulo espone, quindi una funzione `handle_...` nuova e' collegata per il
-# fatto di esistere.
-try:
-    from core.modules.sigma_model_hub.backend import handlers as _model_hub_handlers
-
-    _agganciati = 0
-    for _nome in dir(_model_hub_handlers):
-        if not _nome.startswith("handle_"):
-            continue
-        _fn = getattr(_model_hub_handlers, _nome)
-        if callable(_fn):
-            setattr(FastAPIHandlerAdapter, _nome, _fn)
-            _agganciati += 1
-    log.info("[FastAPI] Model Hub: %d handler agganciati.", _agganciati)
-except Exception as _mh_err:
-    log.warning(f"[FastAPI] Avviso binding Model Hub: {_mh_err}")
-
-
-
-
-
 from core.integrations.handlers import (
     handle_skills_list, handle_skills_toggle, handle_apps_status,
     handle_apps_launch, handle_apps_autoconfigure,
@@ -591,8 +557,33 @@ FastAPIHandlerAdapter.handle_system_clear_memory = handle_system_clear_memory
 FastAPIHandlerAdapter.handle_system_capabilities = handle_system_capabilities
 FastAPIHandlerAdapter.handle_system_available_modules = handle_system_available_modules
 
+# Core routes registration
 register_get_handlers(FastAPIHandlerAdapter)
 register_post_handlers(FastAPIHandlerAdapter)
+
+# Caricamento dinamico dei moduli opzionali installati (Creative Lab, Domotica, Model Hub, etc.)
+try:
+    from core.module_loader import ModuleLoader
+    module_loader = ModuleLoader()
+    module_loader.load_installed(app)
+except Exception as _mod_err:
+    log.warning(f"[FastAPI] Avviso inizializzazione ModuleLoader: {_mod_err}")
+
+# Gli handler del Model Hub si agganciano tutti insieme
+try:
+    from core.modules.sigma_model_hub.backend import handlers as _model_hub_handlers
+
+    _agganciati = 0
+    for _nome in dir(_model_hub_handlers):
+        if not _nome.startswith("handle_"):
+            continue
+        _fn = getattr(_model_hub_handlers, _nome)
+        if callable(_fn):
+            setattr(FastAPIHandlerAdapter, _nome, _fn)
+            _agganciati += 1
+    log.info("[FastAPI] Model Hub: %d handler agganciati.", _agganciati)
+except Exception as _mh_err:
+    log.warning(f"[FastAPI] Avviso binding Model Hub: {_mh_err}")
 
 
 # Endpoints whose handlers push SSE events on `wfile` instead of returning JSON.
