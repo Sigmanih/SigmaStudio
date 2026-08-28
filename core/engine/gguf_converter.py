@@ -14,6 +14,7 @@
 #      llama_model_quantize(), so no external binary is required.
 # ==============================================================================
 import os
+import json
 import time
 import shutil
 import threading
@@ -361,22 +362,39 @@ class GgufConverter:
         # runtime for the Hugging Face spelling reports every such model as
         # unsupported when it runs perfectly well.
         gguf_arch = cls._gguf_arch_name(hf_type)
+        converter_ok = cls._converter_supports(facts)
+        writer_ok = gguf_arch is not None
+        runtime_ok = cls._runtime_supports(gguf_arch) if gguf_arch else False
+
         report = {
             "architecture": hf_type,
             "gguf_architecture": gguf_arch,
             "hf_class": (facts.architectures or ["?"])[0],
-            "converter": cls._converter_supports(facts),
-            "writer": gguf_arch is not None,
-            "runtime": cls._runtime_supports(gguf_arch),
+            "converter": converter_ok,
+            "writer": writer_ok,
+            "runtime": runtime_ok,
         }
         blocking = [name for name in ("converter", "writer", "runtime")
                     if report[name] is False]
-        report["convertible"] = report["converter"] is not False and             report["writer"] is not False
+        report["convertible"] = report["converter"] is not False and report["writer"] is not False
         report["runnable"] = report["runtime"] is not False
         report["blocked_by"] = blocking
 
+        raw_archs_str = " ".join(facts.architectures or []).lower()
+        is_experimental_hc = (
+            "qwen4_exp" in hf_type or "qwen4exp" in hf_type or
+            "qwen4exp" in raw_archs_str or "hyper_connection" in raw_archs_str
+        )
+
         if not blocking:
             report["summary"] = "Compatibile: conversione ed esecuzione supportate."
+        elif is_experimental_hc:
+            arch_name = (facts.architectures or [hf_type])[0]
+            report["summary"] = (
+                f"L'architettura sperimentale '{arch_name}' utilizza moduli (Hyper-Connections / Linear Attention Mixer) "
+                "non supportati dal formato GGUF e da llama.cpp. "
+                "Il modello può essere eseguito direttamente nel runtime nativo Transformers / PyTorch di SigmaEngine."
+            )
         elif blocking == ["runtime"]:
             report["summary"] = (
                 "llama.cpp installato non sa eseguire l'architettura '"
@@ -406,6 +424,32 @@ class GgufConverter:
             targets = [facts.model_type]
         if not targets:
             return None
+
+        # 1. Explicit blocklist for experimental architectures not implemented in llama.cpp
+        hf_type = (facts.model_type or "").lower()
+        raw_archs = [str(a).lower() for a in (facts.architectures or [])]
+        if any("qwen4_exp" in a or "qwen4exp" in a for a in [hf_type] + raw_archs):
+            return False
+        if any("hyper_connection" in a for a in [hf_type] + raw_archs):
+            return False
+
+        # Check config on disk for hyper-connections / linear attention mixer if available
+        if hasattr(facts, "path") and facts.path and os.path.isdir(facts.path):
+            cfg_file = os.path.join(facts.path, "config.json")
+            if os.path.exists(cfg_file):
+                try:
+                    with open(cfg_file, "r", encoding="utf-8") as f_cfg:
+                        cfg_content = json.load(f_cfg)
+                    text_cfg = cfg_content.get("text_config", {}) if isinstance(cfg_content, dict) else {}
+                    if (
+                        text_cfg.get("hc_count") or
+                        cfg_content.get("hc_count") or
+                        "hyper_connection" in str(cfg_content).lower() or
+                        "linear_attention" in str(text_cfg.get("layer_types", []))
+                    ):
+                        return False
+                except Exception:
+                    pass
 
         # Build candidate class and arch strings
         expanded_targets = set(targets)
@@ -437,12 +481,11 @@ class GgufConverter:
                             return True
 
         # Check if the base model type has a dedicated file or general support
-        hf_type = (facts.model_type or "").lower()
         for base in ("gemma", "llama", "qwen", "mistral", "phi", "deepseek", "glm", "starcoder", "minicpm", "smollm", "internlm", "baichuan", "falcon"):
             if base in hf_type:
                 return True
 
-        return True
+        return False
 
     @classmethod
     def _get_gguf_module(cls):
@@ -580,8 +623,12 @@ class GgufConverter:
                 if name and (cleaned.startswith(name) or name.startswith(cleaned)):
                     return name
 
-        # Default fallback for causal LM models
-        return "llama"
+        # Fallback to llama ONLY if the model type is genuinely in the llama family
+        llama_like = ("llama", "alpaca", "vicuna", "wizard", "openllama")
+        if any(like in lowered for like in llama_like):
+            return "llama"
+
+        return None
 
     @staticmethod
     def _runtime_supports(arch: Optional[str]) -> Optional[bool]:
@@ -618,6 +665,13 @@ class GgufConverter:
         source = os.path.join(models_dir(), model_name)
         if not os.path.isdir(source):
             return {"success": False, "error": "Modello non trovato: " + str(model_name)}
+
+        part_files = [f for f in os.listdir(source) if f.endswith((".part", ".download", ".tmp"))]
+        if part_files:
+            return {
+                "success": False,
+                "error": f"Il modello su disco ha un download incompleto ({len(part_files)} file .part in sospeso). Completa o riprendi il download dal Model Hub prima di convertire."
+            }
 
         if quantization not in {q["id"] for q in QUANT_TYPES}:
             return {"success": False,
@@ -777,6 +831,31 @@ class GgufConverter:
         """
         import sys
 
+        # 1. Pre-conversion completeness check
+        if os.path.isdir(source):
+            dir_files = os.listdir(source)
+            part_files = [f for f in dir_files if f.endswith((".part", ".download", ".tmp"))]
+            if part_files:
+                raise RuntimeError(
+                    f"Il modello su disco ha un download incompleto ({len(part_files)} file .part/download in sospeso). "
+                    f"Completa o riprendi il download dal Model Hub prima di avviare la conversione GGUF."
+                )
+            index_path = os.path.join(source, "model.safetensors.index.json")
+            if os.path.exists(index_path):
+                try:
+                    with open(index_path, "r", encoding="utf-8") as f_idx:
+                        idx_data = json.load(f_idx)
+                    weight_map = idx_data.get("weight_map", {})
+                    declared_shards = set(weight_map.values())
+                    missing = [f for f in declared_shards if not os.path.exists(os.path.join(source, f))]
+                    if missing:
+                        raise RuntimeError(
+                            f"Il modello è incompleto: mancano {len(missing)} shard su {len(declared_shards)} dichiarati. "
+                            f"Completa il download dal Model Hub prima di convertire."
+                        )
+                except (json.JSONDecodeError, OSError):
+                    pass
+
         command = [
             sys.executable, CONVERTER_PATH, source,
             "--outfile", output, "--outtype", "f16",
@@ -794,6 +873,11 @@ class GgufConverter:
         )
         if result.returncode != 0:
             output_text = (result.stderr or result.stdout or "").strip()
+            # Diagnostic for experimental / unmapped architectures or tensors
+            if "is not supported" in output_text or "Can not map tensor" in output_text:
+                lines = [l for l in output_text.splitlines() if "ERROR" in l or "ValueError" in l or "Can not map" in l or "not supported" in l]
+                tail = lines[-3:] if lines else output_text.splitlines()[-3:]
+                raise RuntimeError("L'architettura o i tensori del modello non sono ancora supportati da convert_hf_to_gguf di llama.cpp: " + " | ".join(tail))
             tail = output_text.splitlines()[-4:] or ["nessun output"]
             raise RuntimeError("convert_hf_to_gguf ha fallito: " + " | ".join(tail))
         if not os.path.exists(output):

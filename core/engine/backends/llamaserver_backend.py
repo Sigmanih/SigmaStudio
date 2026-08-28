@@ -630,13 +630,14 @@ class LlamaServerBackend(InferenceBackend):
         if not os.path.isdir(facts.path):
             return None
         try:
-            for f in os.listdir(facts.path):
-                low = f.lower()
-                if low.endswith(".gguf") and (
-                    low.startswith("mmproj") or "mmproj" in low or
-                    "-clip-" in low or "_clip_" in low or low.startswith("clip-")
-                ):
-                    return os.path.join(facts.path, f)
+            for root, _dirs, files in os.walk(facts.path):
+                for f in files:
+                    low = f.lower()
+                    if low.endswith(".gguf") and (
+                        low.startswith("mmproj") or "mmproj" in low or
+                        "-clip-" in low or "_clip_" in low or low.startswith("clip-")
+                    ):
+                        return os.path.join(root, f)
         except OSError:
             pass
         return None
@@ -656,6 +657,16 @@ class LlamaServerBackend(InferenceBackend):
                 codice = self._processo.poll() if self._processo else None
                 if is_illegal_instruction(returncode=codice, testo=uscita):
                     return (False, illegal_instruction_report())
+                if "unknown model architecture" in uscita.lower():
+                    import re
+                    m_arch = re.search(r"unknown model architecture:\s*['\"]?([a-zA-Z0-9_\-]+)['\"]?", uscita, re.IGNORECASE)
+                    arch_tag = m_arch.group(1) if m_arch else "sperimentale"
+                    return (
+                        False,
+                        f"Architettura GGUF '{arch_tag}' non supportata dalla versione compilata di llama.cpp/llama-server. "
+                        f"I modelli di ricerca di nuova generazione (come Qwen 3.8 Flash Next con 512 esperti MoE, State Space Model SSM e Hyper-Connections) "
+                        f"richiedono una build di llama.cpp aggiornata con i kernel specifici per questa architettura."
+                    )
                 return (False, f"llama-server e' terminato (codice {codice}).\n{uscita[-800:]}")
 
             try:

@@ -70,17 +70,21 @@ def scan_local_models(custom_dir: Optional[str] = None) -> List[Dict[str, Any]]:
         # 1. Check if entry is a directory (e.g. Qwen--Qwen3.8-27B or Multi-Shard Model Repository)
         if os.path.isdir(full_entry_path):
             try:
-                dir_files = os.listdir(full_entry_path)
+                dir_files = []
+                for root, _dirs, f_list in os.walk(full_entry_path):
+                    for f in sorted(f_list):
+                        dir_files.append(os.path.relpath(os.path.join(root, f), full_entry_path).replace("\\", "/"))
+
                 shard_files = [f for f in dir_files if f.endswith((".safetensors", ".bin", ".gguf", ".pt"))]
                 part_files = [f for f in dir_files if f.endswith((".part", ".download", ".tmp"))]
-                has_tokenizer = any(f in dir_files for f in ("tokenizer.json", "tokenizer_config.json", "vocab.json", "tokenizer.model")) or any(f.endswith(".gguf") for f in shard_files)
+                has_tokenizer = any(os.path.basename(f) in ("tokenizer.json", "tokenizer_config.json", "vocab.json", "tokenizer.model") for f in dir_files) or any(f.endswith(".gguf") for f in shard_files)
                 
                 if not shard_files and not part_files:
                     continue
 
                 main_shards = [f for f in shard_files if not (
-                    f.lower().startswith("mmproj") or "mmproj" in f.lower() or
-                    "-clip-" in f.lower() or "_clip_" in f.lower() or f.lower().startswith("clip-")
+                    os.path.basename(f).lower().startswith("mmproj") or "mmproj" in os.path.basename(f).lower() or
+                    "-clip-" in os.path.basename(f).lower() or "_clip_" in os.path.basename(f).lower() or os.path.basename(f).lower().startswith("clip-")
                 )]
                 target_shards = main_shards if main_shards else shard_files
                 has_mmproj = any(f not in main_shards for f in shard_files)
@@ -93,12 +97,35 @@ def scan_local_models(custom_dir: Optional[str] = None) -> List[Dict[str, Any]]:
                 is_sharded = len(target_shards) > 1
                 primary_file = os.path.join(full_entry_path, "model.safetensors.index.json") if os.path.exists(os.path.join(full_entry_path, "model.safetensors.index.json")) else (os.path.join(full_entry_path, target_shards[0]) if target_shards else full_entry_path)
 
-                # Check if all declared shards exist
+                # Check declared shards vs present shards
+                total_shards_declared = len(target_shards) if target_shards else 1
+                for f in target_shards + part_files:
+                    m_match = re.search(r"-of-(\d+)\.(safetensors|gguf)", f)
+                    if m_match:
+                        try:
+                            total_shards_declared = max(total_shards_declared, int(m_match.group(1)))
+                        except Exception:
+                            pass
+
+                idx_path = os.path.join(full_entry_path, "model.safetensors.index.json")
+                if os.path.exists(idx_path):
+                    try:
+                        with open(idx_path, "r", encoding="utf-8") as f_idx:
+                            idx_d = json.load(f_idx)
+                        declared_set = set(idx_d.get("weight_map", {}).values())
+                        total_shards_declared = max(total_shards_declared, len(declared_set))
+                    except Exception:
+                        pass
+
                 is_complete = True
-                if part_files:
+                if part_files or len(part_files) > 0:
+                    is_complete = False
+                elif total_shards_declared > 1 and (len(target_shards) < total_shards_declared or (any(f.endswith(".safetensors") for f in target_shards) and not os.path.exists(idx_path))):
                     is_complete = False
                 elif not has_tokenizer and not any(f.endswith(".gguf") for f in target_shards):
                     is_complete = False
+
+                missing_shards_count = max(0, total_shards_declared - len(target_shards))
 
                 if any(f.endswith(".gguf") for f in target_shards):
                     fmt = f"GGUF ({len(target_shards)} Shard)" if is_sharded else "GGUF"
@@ -109,13 +136,14 @@ def scan_local_models(custom_dir: Optional[str] = None) -> List[Dict[str, Any]]:
                     if is_complete:
                         fmt = f"Safetensors ({len(target_shards)} Shards • Completo)" if is_sharded else "Safetensors"
                     else:
-                        fmt = f"Safetensors ({len(target_shards)} Shards • Incompleto)"
+                        fmt = f"Safetensors ({len(target_shards)}/{total_shards_declared} Shards • Incompleto)"
                     fmt_tag = "SAFETENSORS"
                 else:
                     fmt = "PyTorch Bin"
                     fmt_tag = "BIN"
 
-                quant_match = re.search(r'(Q[0-9]_[A-Z0-9_]+|FP16|FP32|BF16|FP8|INT8|INT4|AWQ|EXL2)', entry, re.IGNORECASE)
+                sample_tag_text = f"{entry} {' '.join(target_shards[:3])}"
+                quant_match = re.search(r'(Q[0-9]_[A-Z0-9_]+|FP16|FP32|BF16|FP8|INT8|INT4|AWQ|EXL2)', sample_tag_text, re.IGNORECASE)
                 quantization = quant_match.group(1).upper() if quant_match else ("FP16 / BF16" if "safetensors" in fmt.lower() else "Standard")
 
                 est_vram_gb = round(size_gb * 1.15 + 0.8, 1)
@@ -149,6 +177,23 @@ def scan_local_models(custom_dir: Optional[str] = None) -> List[Dict[str, Any]]:
                     except Exception:
                         pass
 
+                if not param_label:
+                    try:
+                        from core.engine.model_inspector import ModelInspector
+                        f_info = ModelInspector.inspect(full_entry_path)
+                        if f_info:
+                            arch_name = (f_info.architectures or [f_info.model_type or ""])[0]
+                            if f_info.param_count:
+                                p_b = round(f_info.param_count / 1e9, 2)
+                                param_label = f"{p_b:g}B" if p_b >= 1.0 else f"{int(p_b*1000)}M"
+                            elif f_info.total_bytes:
+                                p_b = round(f_info.total_bytes * 8 / 4.8 / 1e9, 1)
+                                param_label = f"~{p_b:g}B"
+                            if f_info.is_moe and f_info.num_experts:
+                                param_label = f"MoE {f_info.num_experts}x" + (f" ({param_label})" if param_label else "")
+                    except Exception:
+                        pass
+
                 results.append({
                     "filename": raw_name,
                     "model_id": raw_name,
@@ -165,6 +210,9 @@ def scan_local_models(custom_dir: Optional[str] = None) -> List[Dict[str, Any]]:
                     "is_multimodal": has_mmproj,
                     "has_part_files": len(part_files) > 0,
                     "total_shards": len(target_shards),
+                    "shards_present": len(target_shards),
+                    "total_shards_declared": total_shards_declared,
+                    "missing_shards_count": missing_shards_count,
                     "size_gb": size_gb,
                     "size_mb": size_mb,
                     "size_label": f"~{size_gb:.1f} GB" if size_gb < 1000 else f"~{size_gb/1000:.1f} TB",
@@ -258,6 +306,12 @@ def deploy_model_to_sigma_engine(
     model_name = os.path.basename(resolved_path).replace("--", "/")
     
     if os.path.isdir(resolved_path):
+        part_files = [f for f in os.listdir(resolved_path) if f.endswith((".part", ".download", ".tmp"))]
+        if part_files:
+            return {
+                "success": False,
+                "error": f"Impossibile attivare '{model_name}': il download su disco è incompleto ({len(part_files)} file .part ancora in sospeso). Completa o riprendi il download dal Model Hub."
+            }
         dir_files = [os.path.join(resolved_path, f) for f in os.listdir(resolved_path) if f.endswith((".safetensors", ".bin", ".gguf", ".pt"))]
         file_size_gb = round(sum(os.path.getsize(f) for f in dir_files) / (1024**3), 2) if dir_files else 10.0
     else:

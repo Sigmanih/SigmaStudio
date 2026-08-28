@@ -52,17 +52,25 @@ WEIGHT_SUFFIXES = (".safetensors", ".gguf", ".bin", ".pt")
 
 
 def has_weights(folder: str) -> bool:
-    """Se una directory contiene davvero pesi di un modello."""
+    """Se una directory contiene davvero pesi di un modello (anche in sottocartelle come Q4_K_M/)."""
     if not os.path.isdir(folder):
         return False
     try:
         entries = os.listdir(folder)
     except OSError:
         return False
-    return any(
+    if any(
         name.endswith(WEIGHT_SUFFIXES) or name == "model.safetensors.index.json"
         for name in entries
-    )
+    ):
+        return True
+    try:
+        for _root, _dirs, files in os.walk(folder):
+            if any(name.endswith(WEIGHT_SUFFIXES) or name == "model.safetensors.index.json" for name in files):
+                return True
+    except OSError:
+        pass
+    return False
 
 
 def list_model_dirs() -> List[str]:

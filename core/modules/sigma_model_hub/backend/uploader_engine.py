@@ -162,11 +162,28 @@ def _detect_model_config(local_path: str) -> Dict[str, Any]:
         "heads": None,
         "vocab_size": None,
         "context_window": 32768,
-        "quantization": "Q4_K_M",
-        "format": "GGUF",
+        # Non si parte da un formato: si parte da "non lo so". I valori qui
+        # sono cio' che finisce nella scheda se l'ispezione non trova niente, e
+        # un formato scritto per riempire il campo diventa un'affermazione sui
+        # file che si stanno distribuendo.
+        "quantization": "sconosciuta",
+        "format": "Sconosciuto",
         "size_gb": 0.0,
         "is_moe": False
     }
+
+    # L'estensione e' un fatto sull'artefatto, non una supposizione sul suo
+    # contenuto: un file che si chiama `.gguf` e che si sta caricando come tale
+    # e' un GGUF, anche prima di aprirlo. Vale anche quando il percorso non
+    # esiste piu' — un'anteprima di scheda si chiede spesso su un nome, non su
+    # un file.
+    nome_base = os.path.basename(str(local_path or ""))
+    if nome_base.lower().endswith(".gguf"):
+        cfg["format"] = "GGUF"
+        trovata = re.search(r"(?:^|[.\-_])((?:IQ|Q)\d[A-Za-z0-9_]*|F16|BF16|F32)(?:\.gguf)?$",
+                            nome_base, re.IGNORECASE)
+        if trovata:
+            cfg["quantization"] = trovata.group(1).upper()
 
     if not os.path.exists(local_path):
         return cfg
@@ -236,7 +253,17 @@ def _detect_model_config(local_path: str) -> Dict[str, Any]:
             cfg["format"] = "PyTorch Bin"
             cfg["quantization"] = "FP32 / FP16"
         else:
-            cfg["format"] = "GGUF" if "gguf" in os.path.basename(local_path).lower() else "Safetensors"
+            # Nessun file di pesi riconosciuto. Il nome della cartella puo'
+            # dire GGUF, ma non puo' dire "safetensors": quella era una
+            # supposizione presentata come un fatto, e sulla scheda diventava
+            # `tags: safetensors, transformers, pytorch` su una cartella di cui
+            # non si era trovato un solo file di pesi.
+            if "gguf" in os.path.basename(local_path).lower():
+                cfg["format"] = "GGUF"
+            else:
+                cfg["format"] = "Sconosciuto"
+                log.warning("[_detect_model_config] Nessun file di pesi in '%s': "
+                            "il formato resta non dichiarato.", local_path)
 
         # Read config.json for fallback / enrichment
         config_path = os.path.join(local_path, "config.json")
@@ -526,8 +553,13 @@ def generate_model_card(
                 tags.append(q_token)
     elif cfg["format"] == "Safetensors":
         tags.extend(["safetensors", "transformers", "pytorch"])
-    else:
-        tags.extend(["pytorch", "weights"])
+    elif cfg["format"] == "PyTorch Bin":
+        tags.extend(["pytorch", "transformers"])
+    elif cfg["format"] == "Weights":
+        tags.append("weights")
+    # Formato sconosciuto: nessun tag di framework. I tag di una scheda dicono
+    # a chi cerca con che cosa si carica il modello; scriverne uno che non si e'
+    # verificato manda le persone a provare un runtime che non lo apre.
 
     tags_yaml = "\n".join([f"- {t}" for t in tags])
 

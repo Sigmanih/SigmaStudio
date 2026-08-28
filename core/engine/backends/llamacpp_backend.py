@@ -1072,15 +1072,20 @@ class LlamaCppBackend(InferenceBackend):
         if not os.path.isdir(facts.path):
             return None
 
-        all_ggufs = sorted(f for f in os.listdir(facts.path) if f.endswith(".gguf"))
+        all_ggufs = []
+        for root, _dirs, files in os.walk(facts.path):
+            for f in sorted(files):
+                if f.endswith(".gguf"):
+                    all_ggufs.append(os.path.relpath(os.path.join(root, f), facts.path))
+
         if not all_ggufs:
             return None
 
         # Exclude mmproj / clip vision projector files from main model resolution
         candidates = [
             f for f in all_ggufs if not (
-                f.lower().startswith("mmproj") or "mmproj" in f.lower() or
-                "-clip-" in f.lower() or "_clip_" in f.lower() or f.lower().startswith("clip-")
+                os.path.basename(f).lower().startswith("mmproj") or "mmproj" in os.path.basename(f).lower() or
+                "-clip-" in os.path.basename(f).lower() or "_clip_" in os.path.basename(f).lower() or os.path.basename(f).lower().startswith("clip-")
             )
         ]
         if not candidates:

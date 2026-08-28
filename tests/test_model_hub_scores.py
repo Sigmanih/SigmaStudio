@@ -437,5 +437,56 @@ class TestCardProvenance(unittest.TestCase):
         self.assertIn("card_license", sorgente)
 
 
+class TestWeightFormatTags(unittest.TestCase):
+    """I tag dicono a chi cerca con che cosa si carica il modello."""
+
+    def _tags(self, cartella):
+        from core.modules.sigma_model_hub.backend.uploader_engine import generate_model_card
+
+        scheda = generate_model_card(cartella, "tizio/prova")
+        blocco = scheda[scheda.index("tags:"):scheda.index("pipeline_tag")]
+        return [r.strip("- ").strip() for r in blocco.splitlines()[1:] if r.strip()]
+
+    def test_a_gguf_is_not_announced_as_safetensors(self):
+        cartella = tempfile.mkdtemp()
+        with open(os.path.join(cartella, "modello.Q4_K_M.gguf"), "wb") as fh:
+            fh.write(b"GGUF" + bytes(64))
+        tag = self._tags(cartella)
+        self.assertIn("gguf", tag)
+        for sbagliato in ("safetensors", "transformers"):
+            self.assertNotIn(sbagliato, tag)
+
+    def test_safetensors_keeps_its_own_tags(self):
+        cartella = tempfile.mkdtemp()
+        with open(os.path.join(cartella, "model.safetensors"), "wb") as fh:
+            fh.write(bytes(64))
+        tag = self._tags(cartella)
+        self.assertIn("safetensors", tag)
+        self.assertNotIn("gguf", tag)
+
+    def test_an_unrecognised_folder_declares_no_format(self):
+        from core.modules.sigma_model_hub.backend.uploader_engine import _detect_model_config
+
+        cartella = tempfile.mkdtemp()
+        with open(os.path.join(cartella, "leggimi.txt"), "w") as fh:
+            fh.write("niente pesi qui")
+
+        # Il nome di una cartella può dire "gguf", ma non può dire
+        # "safetensors": era una supposizione presentata come un fatto, e sulla
+        # scheda diventava `tags: safetensors, transformers, pytorch` su una
+        # cartella in cui non era stato trovato un solo file di pesi.
+        self.assertEqual(_detect_model_config(cartella)["format"], "Sconosciuto")
+        tag = self._tags(cartella)
+        for inventato in ("safetensors", "gguf", "pytorch", "transformers"):
+            self.assertNotIn(inventato, tag)
+
+    def test_a_missing_path_invents_nothing(self):
+        from core.modules.sigma_model_hub.backend.uploader_engine import _detect_model_config
+
+        cfg = _detect_model_config("/percorso/che/non/esiste")
+        self.assertEqual(cfg["format"], "Sconosciuto")
+        self.assertEqual(cfg["quantization"], "sconosciuta")
+
+
 if __name__ == "__main__":
     unittest.main()

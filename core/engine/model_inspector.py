@@ -8,6 +8,7 @@
 # ==============================================================================
 import os
 import json
+import re
 import struct
 from dataclasses import dataclass, field, asdict
 from typing import Dict, Any, List, Optional, Tuple
@@ -22,7 +23,7 @@ log = get_logger(__name__)
 # existed would keep reporting the old, incomplete answer forever. Raised to 4
 # when the GGUF path began reading vocab_size, which the llama.cpp planner needs
 # to size its prefill batch.
-_FACTS_SCHEMA = 4
+_FACTS_SCHEMA = 5
 
 # Bytes per element, by safetensors dtype string.
 _DTYPE_BYTES = {
@@ -62,6 +63,13 @@ class ModelFacts:
     tie_word_embeddings: bool = False
     layer_types: List[str] = field(default_factory=list)
     torch_dtype: str = "bfloat16"
+
+    # Completeness and shard tracking
+    is_complete: bool = True
+    has_part_files: bool = False
+    total_shards_declared: int = 1
+    shards_present: int = 1
+    missing_shards_count: int = 0
 
     # Structure flags
     is_moe: bool = False
@@ -168,16 +176,18 @@ class ModelInspector:
         """
         try:
             entries = []
-            for name in sorted(os.listdir(model_path)):
-                if name.startswith("."):
-                    continue
-                if not name.endswith((".safetensors", ".gguf", ".bin", ".json")):
-                    continue
-                full = os.path.join(model_path, name)
-                if not os.path.isfile(full):
-                    continue
-                stat = os.stat(full)
-                entries.append(f"{name}:{stat.st_size}:{int(stat.st_mtime)}")
+            for root, _dirs, files in os.walk(model_path):
+                for name in sorted(files):
+                    if name.startswith("."):
+                        continue
+                    if not name.endswith((".safetensors", ".gguf", ".bin", ".json")):
+                        continue
+                    full = os.path.join(root, name)
+                    if not os.path.isfile(full):
+                        continue
+                    stat = os.stat(full)
+                    rel = os.path.relpath(full, model_path).replace("\\", "/")
+                    entries.append(f"{rel}:{stat.st_size}:{int(stat.st_mtime)}")
             return "|".join(entries)
         except Exception:
             return ""
@@ -234,15 +244,19 @@ class ModelInspector:
     @classmethod
     def _read_weight_layout(cls, facts: ModelFacts) -> None:
         """Discovers the real layer prefix and measures true tensor sizes."""
-        files = os.listdir(facts.path)
+        # Check for GGUF files (at root or in subfolders)
+        gguf_files: List[str] = []
+        for root, _dirs, files in os.walk(facts.path):
+            for f in sorted(files):
+                if f.endswith(".gguf"):
+                    gguf_files.append(os.path.relpath(os.path.join(root, f), facts.path))
 
-        gguf_files = sorted(f for f in files if f.endswith(".gguf"))
         if gguf_files:
             facts.weight_format = "gguf"
             main_ggufs = [
                 f for f in gguf_files if not (
-                    f.lower().startswith("mmproj") or "mmproj" in f.lower() or
-                    "-clip-" in f.lower() or "_clip_" in f.lower() or f.lower().startswith("clip-")
+                    os.path.basename(f).lower().startswith("mmproj") or "mmproj" in os.path.basename(f).lower() or
+                    "-clip-" in os.path.basename(f).lower() or "_clip_" in os.path.basename(f).lower() or os.path.basename(f).lower().startswith("clip-")
                 )
             ]
             mmproj_files = [f for f in gguf_files if f not in main_ggufs]
@@ -251,15 +265,21 @@ class ModelInspector:
 
             primary_gguf = main_ggufs[0] if main_ggufs else gguf_files[0]
             target_files = main_ggufs if main_ggufs else gguf_files
+            facts.shards_present = len(target_files)
+            facts.total_shards_declared = len(target_files)
             facts.total_bytes = sum(
                 os.path.getsize(os.path.join(facts.path, f)) for f in target_files
             )
             cls._read_gguf_metadata(facts, os.path.join(facts.path, primary_gguf))
             return
 
-
-        shard_files: List[str] = []
+        files = os.listdir(facts.path)
         index_path = os.path.join(facts.path, "model.safetensors.index.json")
+
+        part_files = [f for f in files if f.endswith((".part", ".download", ".tmp"))]
+        if part_files:
+            facts.has_part_files = True
+            facts.is_complete = False
 
         if os.path.exists(index_path):
             try:
@@ -268,12 +288,19 @@ class ModelInspector:
                 weight_map = index.get("weight_map", {})
                 facts.total_bytes = int(index.get("metadata", {}).get("total_size", 0))
                 cls._detect_prefixes(facts, list(weight_map.keys()))
-                shard_files = sorted(set(weight_map.values()))
+                declared_shards = sorted(set(weight_map.values()))
+                facts.total_shards_declared = len(declared_shards)
+                shard_files = [f for f in declared_shards if os.path.exists(os.path.join(facts.path, f))]
+                facts.shards_present = len(shard_files)
+                if len(shard_files) < len(declared_shards):
+                    facts.is_complete = False
+                    facts.missing_shards_count = len(declared_shards) - len(shard_files)
             except Exception as exc:
                 log.warning("[ModelInspector] Unreadable weight index: %s", exc)
 
         if not shard_files:
             shard_files = sorted(f for f in files if f.endswith(".safetensors"))
+            facts.shards_present = len(shard_files)
             if not shard_files:
                 facts.weight_format = "bin"
                 facts.total_bytes = sum(
@@ -281,6 +308,21 @@ class ModelInspector:
                     for f in files if f.endswith(".bin")
                 )
                 return
+
+            # Check if this is a multi-shard repo without index file
+            max_shard_idx = 1
+            for sf in shard_files:
+                m_match = re.search(r"-of-(\d+)\.safetensors", sf)
+                if m_match:
+                    try:
+                        max_shard_idx = max(max_shard_idx, int(m_match.group(1)))
+                    except Exception:
+                        pass
+            facts.total_shards_declared = max_shard_idx
+            if max_shard_idx > 1:
+                if len(shard_files) < max_shard_idx or not os.path.exists(index_path):
+                    facts.is_complete = False
+                    facts.missing_shards_count = max(0, max_shard_idx - len(shard_files))
 
         cls._measure_tensors(facts, shard_files)
 

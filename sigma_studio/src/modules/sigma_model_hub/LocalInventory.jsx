@@ -25,6 +25,7 @@ export default function LocalInventory({
   const [deletingPath, setDeletingPath] = useState(null);
   const [publishingModel, setPublishingModel] = useState(null);
   const [inferenceTestingModel, setInferenceTestingModel] = useState(null);
+  const [resumingModelId, setResumingModelId] = useState(null);
 
   // Search & Filter state for local inventory
   const [searchQuery, setSearchQuery] = useState('');
@@ -286,6 +287,31 @@ export default function LocalInventory({
       if (addToast) addToast(`Errore: ${e.message}`, 'error');
     } finally {
       setDeletingPath(null);
+    }
+  };
+
+  // Resume Incomplete Model Download
+  const handleResumeDownload = async (model) => {
+    const modelId = model.model_id || model.filename;
+    setResumingModelId(modelId);
+    try {
+      const res = await fetch('/api/models/hf/download/repo', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ model_id: modelId })
+      });
+      const json = await res.json();
+      if (json.success) {
+        if (addToast) addToast(`🚀 Ripresa download avviata per ${modelId}! Mostro log e avanzamento.`, 'success');
+        if (onDownloadsChanged) onDownloadsChanged();
+        setTimeout(() => fetchLocalModels(), 1000);
+      } else {
+        if (addToast) addToast(`❌ Errore ripresa download: ${json.error}`, 'error');
+      }
+    } catch (e) {
+      if (addToast) addToast(`❌ Errore di rete: ${e.message}`, 'error');
+    } finally {
+      setResumingModelId(null);
     }
   };
 
@@ -778,6 +804,20 @@ export default function LocalInventory({
                             {m.format_tag || (isGguf ? 'GGUF' : 'SAFETENSORS')}
                           </span>
 
+                          {/* Incomplete / Partial Download Badge */}
+                          {(!m.is_complete || m.has_part_files) && (
+                            <span style={{
+                              fontSize: '0.62rem', padding: '2px 8px', borderRadius: '5px',
+                              fontWeight: 800,
+                              background: 'rgba(239, 68, 68, 0.15)',
+                              color: '#ef4444',
+                              border: '1px solid rgba(239, 68, 68, 0.4)',
+                              display: 'inline-flex', alignItems: 'center', gap: '4px'
+                            }}>
+                              <AlertTriangle size={10} /> INCOMPLETO ({m.shards_present || m.total_shards}/{m.total_shards_declared || '?'} Shard)
+                            </span>
+                          )}
+
                           {/* Quantization */}
                           {m.quantization && (
                             <span style={{
@@ -832,8 +872,42 @@ export default function LocalInventory({
                           )}
                         </div>
 
+                        {/* Incomplete Model Notification & Resume Banner */}
+                        {(!m.is_complete || m.has_part_files) && (
+                          <div style={{
+                            marginTop: '8px',
+                            padding: '8px 12px', borderRadius: '10px',
+                            background: isLight ? 'rgba(255, 184, 108, 0.16)' : 'rgba(255, 184, 108, 0.08)',
+                            border: '1px solid rgba(255, 184, 108, 0.35)',
+                            color: '#ffb86c', fontSize: '0.72rem', fontWeight: 600,
+                            display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '8px'
+                          }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '7px' }}>
+                              <AlertTriangle size={14} color="#ffb86c" />
+                              <span>
+                                Download incompleto: scaricati solo <b>{m.shards_present || m.total_shards}</b> su <b>{m.total_shards_declared || '?'}</b> shard ({m.size_gb} GB presenti su disco).
+                              </span>
+                            </div>
+                            <button
+                              onClick={() => handleResumeDownload(m)}
+                              disabled={resumingModelId === (m.model_id || m.filename)}
+                              style={{
+                                padding: '5px 12px', borderRadius: '7px',
+                                background: 'linear-gradient(135deg, #ffb86c, #f59e0b)',
+                                border: 'none', color: '#111827', fontSize: '0.70rem', fontWeight: 900,
+                                cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '5px',
+                                boxShadow: '0 0 10px rgba(255, 184, 108, 0.35)',
+                                transition: 'all 0.15s ease'
+                              }}
+                            >
+                              {resumingModelId === (m.model_id || m.filename) ? <Activity className="mh-spin" size={12} /> : <Download size={12} />}
+                              {resumingModelId === (m.model_id || m.filename) ? 'Avvio ripresa...' : '📥 Continua Download'}
+                            </button>
+                          </div>
+                        )}
+
                         {/* Specs Row */}
-                        <div style={{ fontSize: '0.70rem', color: textMuted, marginTop: '4px', display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                        <div style={{ fontSize: '0.70rem', color: textMuted, marginTop: '5px', display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
                           <span>💾 <b>{m.size_gb} GB</b> su disco</span>
                           <span>•</span>
                           <span>⚡ VRAM stimata: <b>~{m.est_vram_gb} GB</b></span>
@@ -854,24 +928,49 @@ export default function LocalInventory({
 
                       {/* Actions Bar */}
                       <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexShrink: 0, flexWrap: 'wrap' }}>
-                        {/* Run in SigmaEngine */}
-                        <button
-                          onClick={() => onDeployRequested && onDeployRequested(m)}
-                          style={{
-                            padding: '6px 14px', borderRadius: '8px',
-                            border: 'none', background: 'linear-gradient(135deg, #00d2ff, #0090ff)',
-                            color: '#ffffff', fontSize: '0.74rem', fontWeight: 800, cursor: 'pointer',
-                            display: 'flex', alignItems: 'center', gap: '5px',
-                            boxShadow: '0 0 12px rgba(0, 210, 255, 0.30)',
-                            transition: 'all 0.15s ease'
-                          }}
-                        >
-                          <Zap size={13} /> {m.is_active_in_engine ? 'Rialloca' : '⚡ Avvia'}
-                        </button>
+                        {/* Primary Button: Continua Download for incomplete, otherwise Run in SigmaEngine */}
+                        {(!m.is_complete || m.has_part_files) ? (
+                          <button
+                            onClick={() => handleResumeDownload(m)}
+                            disabled={resumingModelId === (m.model_id || m.filename)}
+                            title="Riprendi il download degli shard mancanti da Hugging Face"
+                            style={{
+                              padding: '6px 14px', borderRadius: '8px',
+                              border: 'none', background: 'linear-gradient(135deg, #ffb86c, #f59e0b)',
+                              color: '#111827', fontSize: '0.74rem', fontWeight: 900, cursor: 'pointer',
+                              display: 'flex', alignItems: 'center', gap: '5px',
+                              boxShadow: '0 0 14px rgba(255, 184, 108, 0.40)',
+                              transition: 'all 0.15s ease'
+                            }}
+                          >
+                            {resumingModelId === (m.model_id || m.filename) ? <Activity className="mh-spin" size={13} /> : <Download size={13} />}
+                            {resumingModelId === (m.model_id || m.filename) ? 'Ripresa...' : '📥 Continua Download'}
+                          </button>
+                        ) : (
+                          <button
+                            onClick={() => onDeployRequested && onDeployRequested(m)}
+                            style={{
+                              padding: '6px 14px', borderRadius: '8px',
+                              border: 'none', background: 'linear-gradient(135deg, #00d2ff, #0090ff)',
+                              color: '#ffffff', fontSize: '0.74rem', fontWeight: 800, cursor: 'pointer',
+                              display: 'flex', alignItems: 'center', gap: '5px',
+                              boxShadow: '0 0 12px rgba(0, 210, 255, 0.30)',
+                              transition: 'all 0.15s ease'
+                            }}
+                          >
+                            <Zap size={13} /> {m.is_active_in_engine ? 'Rialloca' : '⚡ Avvia'}
+                          </button>
+                        )}
 
                         {/* Prova Inferenza Interactive Modal */}
                         <button
-                          onClick={() => setInferenceTestingModel(m)}
+                          onClick={() => {
+                            if (!m.is_complete || m.has_part_files) {
+                              if (addToast) addToast('⚠️ Il modello è incompleto. Clicca "Continua Download" per completarlo prima di testare l\'inferenza.', 'warning');
+                              return;
+                            }
+                            setInferenceTestingModel(m);
+                          }}
                           title="Apri il playground per scrivere prompt ed eseguire la telemetria t/s"
                           style={{
                             padding: '6px 12px', borderRadius: '8px',
@@ -903,7 +1002,13 @@ export default function LocalInventory({
                         {/* Convert Safetensors */}
                         {!isGguf && (
                           <button
-                            onClick={() => handleTriggerConvertForModel(m.model_id || m.filename)}
+                            onClick={() => {
+                              if (!m.is_complete || m.has_part_files) {
+                                if (addToast) addToast('⚠️ Non puoi convertire un modello incompleto. Clicca "Continua Download" per completarlo prima.', 'warning');
+                                return;
+                              }
+                              handleTriggerConvertForModel(m.model_id || m.filename);
+                            }}
                             title="Configura e converti questo modello in GGUF quantizzato"
                             style={{
                               padding: '6px 10px', borderRadius: '8px',

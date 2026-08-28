@@ -1185,7 +1185,7 @@ def search_hf_models(
 def get_hf_model_details(model_id: str, hf_token: Optional[str] = None) -> Dict[str, Any]:
     """Fetches detailed metadata, file list, dates, and available quantizations for a model."""
     try:
-        url = f"{HF_API_BASE}/models/{model_id}"
+        url = f"{HF_API_BASE}/models/{model_id}?blobs=true"
         req = urllib.request.Request(url)
         req.add_header("User-Agent", "SigmaStudio-ModelHub/2.0")
         if hf_token:
@@ -1199,9 +1199,11 @@ def get_hf_model_details(model_id: str, hf_token: Optional[str] = None) -> Dict[
                 files = []
                 for s in siblings:
                     rfilename = s.get("rfilename", "")
+                    f_sz = s.get("size") or (s.get("lfs") or {}).get("size") or 0
                     if any(rfilename.endswith(ext) for ext in [".gguf", ".safetensors", ".bin", ".json", ".pt"]):
                         files.append({
                             "filename": rfilename,
+                            "size": f_sz,
                             "is_gguf": rfilename.endswith(".gguf"),
                             "is_safetensors": rfilename.endswith(".safetensors"),
                             "download_url": f"https://huggingface.co/{model_id}/resolve/main/{rfilename}"
@@ -1212,6 +1214,14 @@ def get_hf_model_details(model_id: str, hf_token: Optional[str] = None) -> Dict[
                 release_date_label = _format_date_label(created_at or last_modified)
 
                 specs = parse_model_specs(model_id, data.get("id", ""), data.get("tags", []), raw_item=data)
+                
+                # Check if exact usedStorage is available from HF
+                used_storage = data.get("usedStorage")
+                if used_storage and used_storage > 0:
+                    real_gb = round(used_storage / (1024**3), 2)
+                    specs["size_gb"] = real_gb
+                    specs["size_label"] = f"~{real_gb:.1f} GB" if real_gb < 1000 else f"~{real_gb/1000:.1f} TB"
+
                 author = data.get("author", model_id.split("/")[0] if "/" in model_id else "Community")
 
                 return {

@@ -521,7 +521,12 @@ def _stream_chat_response(handler, messages, ai_cfg, model, provider,
                 if cancel is not None and cancel.cancelled:
                     return False
                 if chunk.get("error"):
-                    error_msg = chunk.get("message", "Errore sconosciuto")
+                    error_msg = (
+                        chunk.get("message")
+                        or chunk.get("token")
+                        or (chunk["error"] if isinstance(chunk["error"], str) and chunk["error"] != "load_failed" else None)
+                        or "Impossibile caricare o eseguire il modello selezionato."
+                    )
                     return False
                 # Native reasoning channel: already separated by the provider.
                 coalescer.feed("thinking", chunk.get("thinking", ""))

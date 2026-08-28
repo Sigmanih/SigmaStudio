@@ -1003,10 +1003,10 @@ def handle_models_convert_start(self):
             model_name=body.get("model"),
             quantization=body.get("quantization", "Q4_K_M"),
         )
-        self.send_json_response(res, 200 if res.get("success") else 400)
+        self.send_json_response(res, 200)
     except Exception as e:
         log.error("Error in handle_models_convert_start: %s", e)
-        self.send_json_response({"success": False, "error": str(e)}, 500)
+        self.send_json_response({"success": False, "error": str(e)}, 200)
 
 
 def handle_models_convert_jobs(self):

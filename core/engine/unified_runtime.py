@@ -477,12 +477,21 @@ class UniversalSigmaEngine:
             smallest_gb = facts.total_bytes / 2**30
 
         alternative = self._gguf_twin(facts)
-        suffix = (
-            f" Sullo stesso disco c'e' gia' '{alternative}', in GGUF: usa quello."
-            if alternative else
-            " Converti il modello in GGUF dal Model Hub: llama.cpp lo esegue "
-            "quantizzato e a blocchi, senza doverlo tenere tutto in memoria."
-        )
+        if alternative:
+            suffix = f" Sullo stesso disco c'e' gia' '{alternative}', in GGUF: usa quello."
+        else:
+            try:
+                from core.engine.gguf_converter import GgufConverter
+                compat = GgufConverter.check_compatibility(facts)
+                if compat.get("convertible"):
+                    suffix = (
+                        " Converti il modello in GGUF dal Model Hub: llama.cpp lo esegue "
+                        "quantizzato e a blocchi, senza doverlo tenere tutto in memoria."
+                    )
+                else:
+                    suffix = " Questo modello ha un'architettura sperimentale non convertibile in GGUF; per eseguirlo è necessario un hardware con maggiore memoria oppure un modello di parametri inferiori."
+            except Exception:
+                suffix = " Seleziona un modello con requisiti di memoria compatibili con l'hardware disponibile."
 
         if not accelerators:
             # CPU-only: transformers has no quantized CPU kernel path here, so
@@ -644,6 +653,18 @@ class UniversalSigmaEngine:
         # and on NEON on an ARM board without the caller knowing the difference.
         if facts.weight_format != "safetensors":
             return self._load_via_backend(facts, display_name, context_tokens)
+
+        # Check completeness before attempting PyTorch / Transformers loading
+        if not getattr(facts, "is_complete", True) or getattr(facts, "has_part_files", False):
+            missing_text = f"{facts.shards_present}/{facts.total_shards_declared} shard presenti" if getattr(facts, "total_shards_declared", 1) > 1 else "download parziale"
+            error = (
+                f"Il checkpoint '{facts.name}' è incompleto su disco ({missing_text}). "
+                f"Mancano l'indice dei pesi ('model.safetensors.index.json') o gli shard successivi. "
+                f"Completa o riprendi il download dal Model Hub per usarlo in chat."
+            )
+            self.last_load_error = error
+            log.warning("[SigmaEngine] %s", error)
+            return {"success": False, "error": error, "stage": "inspection", "facts": facts.to_dict()}
 
         # -------------------------------------------------------- plan
         profile = self.refresh_vram()
@@ -1491,8 +1512,10 @@ class UniversalSigmaEngine:
             }
             result = self.load_native_model(target_model)
             if not result.get("success"):
+                err_text = self._format_load_failure(target_model, result)
                 yield {
-                    "token": self._format_load_failure(target_model, result),
+                    "token": err_text,
+                    "message": err_text,
                     "token_index": 1,
                     "notice": True,
                     "error": "load_failed",
@@ -2897,10 +2920,19 @@ class UniversalSigmaEngine:
             ),
         }
 
+        # Check for missing files / incomplete checkpoints
+        err_lower = error.lower()
+        if "no file named model.safetensors" in err_lower or "incompleto" in err_lower or "incomplete" in err_lower or "mancano" in err_lower:
+            hints["load"] = (
+                "⚠️ **Checkpoint incompleto su disco**: mancano file di pesi o l'indice `model.safetensors.index.json`. "
+                "Apri **Model Hub** nella barra laterale per completare il download, oppure seleziona un modello GGUF pronto all'uso."
+            )
+            hints["inspection"] = hints["load"]
+
         # Un'architettura sconosciuta non e' un problema di memoria, e il
         # suggerimento su contesto e quantizzazione mandava a cercare dalla
         # parte sbagliata. Qui la causa e' nota e si puo' dire per nome.
-        if _unrecognised_architecture(error):
+        elif _unrecognised_architecture(error):
             info = result.get("facts") or {}
             hints["load"] = _version_mismatch_advice(
                 str(info.get("path") or result.get("path") or "")
