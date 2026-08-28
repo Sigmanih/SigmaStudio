@@ -27,6 +27,7 @@ export default function HfPublishModal({ model, onClose, isLight, addToast }) {
   const [activeTask, setActiveTask] = useState(null);
   const [isPublishing, setIsPublishing] = useState(false);
   const [publishError, setPublishError] = useState(null);
+  const [updatingCardOnly, setUpdatingCardOnly] = useState(false);
 
   // Manual token input if whoami fails
   const [manualToken, setManualToken] = useState('');
@@ -232,6 +233,32 @@ export default function HfPublishModal({ model, onClose, isLight, addToast }) {
     }
   };
 
+  const handleQuickCardUpdate = async () => {
+    setUpdatingCardOnly(true);
+    try {
+      const localPath = model.path || model.filename;
+      const res = await fetch('/api/models/hf/card/update', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          local_path: localPath,
+          model_id: model.model_id || model.filename,
+          custom_notes: customCardNotes.trim() || undefined
+        })
+      });
+      const json = await res.json();
+      if (json.success) {
+        if (addToast) addToast(`✅ Scheda README.md aggiornata su ${json.repo_id} (${json.characters} caratteri)!`, 'success');
+      } else {
+        if (addToast) addToast(`❌ ${json.error || 'Aggiornamento scheda fallito.'}`, 'error');
+      }
+    } catch (e) {
+      if (addToast) addToast(`Errore: ${e.message}`, 'error');
+    } finally {
+      setUpdatingCardOnly(false);
+    }
+  };
+
   const handleStartPublish = async () => {
     if (!whoami?.authenticated) {
       if (addToast) addToast('Token Hugging Face non valido o mancante', 'error');
@@ -296,6 +323,7 @@ export default function HfPublishModal({ model, onClose, isLight, addToast }) {
 
   const fullTargetRepo = `${targetNamespace || 'username'}/${repoSlug || 'repo-name'}`;
   const hasBm = model?.benchmark_summary?.has_benchmarks;
+  const isAlreadyPublished = Boolean(model?.publication?.repo_id || repoStatus?.exists);
 
   return (
     <div
@@ -326,10 +354,12 @@ export default function HfPublishModal({ model, onClose, isLight, addToast }) {
             <span style={{ fontSize: '1.5rem' }}>🤗</span>
             <div>
               <h3 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 800, color: textPrimary, display: 'flex', alignItems: 'center', gap: '6px' }}>
-                Pubblica su Hugging Face Hub
+                {isAlreadyPublished ? 'Aggiorna Repository su Hugging Face' : 'Pubblica su Hugging Face Hub'}
               </h3>
               <div style={{ fontSize: '0.72rem', color: textMuted, marginTop: '2px' }}>
-                Condividi il tuo modello o checkpoint con scheda bilingue, benchmark e branding Sigma Studio
+                {isAlreadyPublished
+                  ? 'Sincronizza modifiche, aggiorna la scheda/benchmark o ricarica i pesi su Hugging Face'
+                  : 'Condividi il tuo modello o checkpoint con scheda bilingue, benchmark e branding Sigma Studio'}
               </div>
             </div>
           </div>
@@ -398,7 +428,22 @@ export default function HfPublishModal({ model, onClose, isLight, addToast }) {
                     {model.filename || model.display_name}
                   </div>
                 </div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                  <span style={{
+                    fontSize: '0.70rem', fontWeight: 800, padding: '3px 8px', borderRadius: '6px',
+                    background: (model.format_tag === 'GGUF' || model.filename?.toLowerCase().endsWith('.gguf'))
+                      ? 'rgba(16, 185, 129, 0.15)'
+                      : 'rgba(0, 210, 255, 0.15)',
+                    color: (model.format_tag === 'GGUF' || model.filename?.toLowerCase().endsWith('.gguf'))
+                      ? '#10b981'
+                      : '#00d2ff',
+                    border: (model.format_tag === 'GGUF' || model.filename?.toLowerCase().endsWith('.gguf'))
+                      ? '1px solid rgba(16, 185, 129, 0.35)'
+                      : '1px solid rgba(0, 210, 255, 0.35)'
+                  }}>
+                    ⚡ {model.format_tag || (model.filename?.toLowerCase().endsWith('.gguf') ? 'GGUF' : 'SAFETENSORS')}
+                    {model.quantization ? ` • ${model.quantization}` : ''}
+                  </span>
                   {hasBm && (
                     <span style={{
                       fontSize: '0.70rem', fontWeight: 800, padding: '3px 8px', borderRadius: '6px',
@@ -481,32 +526,62 @@ export default function HfPublishModal({ model, onClose, isLight, addToast }) {
                         Verifico se il repository esiste...
                       </div>
                     )}
-                    {!checkingRepo && repoStatus?.exists && (
+                    {!checkingRepo && (repoStatus?.exists || isAlreadyPublished) && (
                       <div style={{
-                        marginTop: '8px', padding: '8px 10px', borderRadius: '8px',
-                        background: 'rgba(255, 184, 108, 0.10)',
-                        border: '1px solid rgba(255, 184, 108, 0.35)',
-                        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                        gap: '8px', flexWrap: 'wrap'
+                        marginTop: '8px', padding: '12px 14px', borderRadius: '10px',
+                        background: 'linear-gradient(135deg, rgba(255, 184, 108, 0.12) 0%, rgba(245, 158, 11, 0.06) 100%)',
+                        border: '1px solid rgba(255, 184, 108, 0.4)',
+                        display: 'flex', flexDirection: 'column',
+                        gap: '10px'
                       }}>
-                        <span style={{ fontSize: '0.7rem', color: '#ffb86c', fontWeight: 700 }}>
-                          Questo repository esiste già ({repoStatus.files} file
-                          {repoStatus.private ? ', privato' : ''}): la pubblicazione lo aggiorna.
-                        </span>
-                        <button
-                          onClick={handleRenameRepo}
-                          style={{
-                            padding: '4px 10px', borderRadius: '6px',
-                            border: '1px solid rgba(255,184,108,0.4)',
-                            background: 'transparent', color: '#ffb86c',
-                            fontSize: '0.66rem', fontWeight: 800, cursor: 'pointer'
-                          }}
-                        >
-                          Rinomina su HF
-                        </button>
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px', flexWrap: 'wrap' }}>
+                          <span style={{ fontSize: '0.74rem', color: '#ffb86c', fontWeight: 800, display: 'flex', alignItems: 'center', gap: '6px' }}>
+                            <CheckCircle2 size={13} color="#10b981" />
+                            Repository esistente: {targetNamespace}/{repoSlug}
+                            {repoStatus?.files ? ` (${repoStatus.files} file${repoStatus.private ? ', privato' : ''})` : ''}
+                          </span>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                            <button
+                              onClick={handleRenameRepo}
+                              style={{
+                                padding: '4px 10px', borderRadius: '6px',
+                                border: '1px solid rgba(255,184,108,0.4)',
+                                background: 'transparent', color: '#ffb86c',
+                                fontSize: '0.66rem', fontWeight: 800, cursor: 'pointer'
+                              }}
+                            >
+                              Rinomina su HF
+                            </button>
+                          </div>
+                        </div>
+
+                        {/* Quick Model Card Update Action */}
+                        <div style={{
+                          padding: '10px 12px', borderRadius: '8px', background: subBg, border: subBorder,
+                          display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '8px'
+                        }}>
+                          <div style={{ fontSize: '0.68rem', color: textMuted }}>
+                            <strong style={{ color: textPrimary }}>Vuoi aggiornare solo il README & i Benchmark?</strong>
+                            <div style={{ marginTop: '2px' }}>Modifica istantanea su HF senza ricaricare gigabyte di pesi.</div>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={handleQuickCardUpdate}
+                            disabled={updatingCardOnly}
+                            style={{
+                              padding: '5px 12px', borderRadius: '6px',
+                              background: 'rgba(255, 184, 108, 0.15)', border: '1px solid rgba(255, 184, 108, 0.4)',
+                              color: '#ffb86c', fontSize: '0.70rem', fontWeight: 800, cursor: updatingCardOnly ? 'wait' : 'pointer',
+                              display: 'flex', alignItems: 'center', gap: '4px'
+                            }}
+                          >
+                            {updatingCardOnly ? <Loader2 size={11} className="mh-spin" /> : <RefreshCw size={11} />}
+                            {updatingCardOnly ? 'Aggiorno Scheda...' : '⚡ Aggiorna Scheda Ora'}
+                          </button>
+                        </div>
                       </div>
                     )}
-                    {!checkingRepo && repoStatus && !repoStatus.exists && (
+                    {!checkingRepo && repoStatus && !repoStatus.exists && !isAlreadyPublished && (
                       <div style={{ fontSize: '0.68rem', color: '#10b981', marginTop: '6px', fontWeight: 700 }}>
                         Nuovo repository: verrà creato alla pubblicazione.
                       </div>

@@ -185,6 +185,7 @@ export default function HfBrowser({ isLight, addToast, onDownloadStarted, active
   const [quantFilter, setQuantFilter] = useState('all');
   const [sortBy, setSortBy] = useState('newest');
   const [officialOnly, setOfficialOnly] = useState(false);
+  const [providerFilter, setProviderFilter] = useState('all');
 
   const [results, setResults] = useState([]);
   const [nextCursor, setNextCursor] = useState(null);
@@ -227,16 +228,18 @@ export default function HfBrowser({ isLight, addToast, onDownloadStarted, active
   const subBg = isLight ? '#f8f5ee' : 'rgba(255, 255, 255, 0.03)';
   const subBorder = isLight ? '1px solid rgba(190, 160, 110, 0.22)' : '1px solid rgba(255, 255, 255, 0.06)';
 
-  const hasActiveFilters = category !== 'all' || sizeBracket !== 'all' || paramBracket !== 'all' || formatFilter !== 'all' || quantFilter !== 'all' || officialOnly || search.trim() !== '';
+  const hasActiveFilters = category !== 'all' || sizeBracket !== 'all' || paramBracket !== 'all' || formatFilter !== 'all' || quantFilter !== 'all' || officialOnly || providerFilter !== 'all' || search.trim() !== '';
 
   const handleResetFilters = () => {
     setSearch('');
     setCategory('all');
     setSizeBracket('all');
+    setSizeBracket('all');
     setParamBracket('all');
     setFormatFilter('all');
     setQuantFilter('all');
     setOfficialOnly(false);
+    setProviderFilter('all');
   };
 
   const fetchModels = useCallback(async (targetCursor = null, append = false) => {
@@ -249,7 +252,7 @@ export default function HfBrowser({ isLight, addToast, onDownloadStarted, active
 
     try {
       const q = encodeURIComponent(search);
-      let url = `/api/models/hf/search?q=${q}&category=${category}&size_bracket=${sizeBracket}&param_bracket=${paramBracket}&format_filter=${formatFilter}&quant_filter=${quantFilter}&sort=${sortBy}&official_only=${officialOnly}&limit=30`;
+      let url = `/api/models/hf/search?q=${q}&category=${category}&size_bracket=${sizeBracket}&param_bracket=${paramBracket}&format_filter=${formatFilter}&quant_filter=${quantFilter}&sort=${sortBy}&official_only=${officialOnly}&provider=${encodeURIComponent(providerFilter)}&limit=30`;
       if (targetCursor) {
         url += `&cursor=${encodeURIComponent(targetCursor)}`;
       }
@@ -279,7 +282,7 @@ export default function HfBrowser({ isLight, addToast, onDownloadStarted, active
       setLoading(false);
       setLoadingMore(false);
     }
-  }, [search, category, sizeBracket, paramBracket, formatFilter, quantFilter, sortBy, officialOnly]);
+  }, [search, category, sizeBracket, paramBracket, formatFilter, quantFilter, sortBy, officialOnly, providerFilter]);
 
   // Reset to initial on filter changes
   useEffect(() => {
@@ -587,16 +590,12 @@ export default function HfBrowser({ isLight, addToast, onDownloadStarted, active
             Provider:
           </span>
           {FEATURED_PROVIDERS.map(p => {
-            const isSelected = search.toLowerCase() === p.query.toLowerCase();
+            const isSelected = providerFilter === p.id;
             return (
               <button
                 key={p.id}
                 onClick={() => {
-                  if (isSelected) {
-                    setSearch('');
-                  } else {
-                    setSearch(p.query);
-                  }
+                  setProviderFilter(isSelected ? 'all' : p.id);
                 }}
                 style={{
                   display: 'flex', alignItems: 'center', gap: '4px',
@@ -607,7 +606,7 @@ export default function HfBrowser({ isLight, addToast, onDownloadStarted, active
                   fontSize: '0.74rem', fontWeight: 700,
                   cursor: 'pointer', whiteSpace: 'nowrap', transition: 'all 0.15s ease'
                 }}
-                title={`Filtra per ${p.label}`}
+                title={`Filtra solo modelli ufficiali rilasciati da ${p.label}`}
               >
                 {p.label}
               </button>
@@ -793,6 +792,15 @@ export default function HfBrowser({ isLight, addToast, onDownloadStarted, active
                 style={{ background: 'rgba(0, 210, 255, 0.15)', color: '#00d2ff', border: '1px solid rgba(0, 210, 255, 0.3)' }}
               >
                 {QUANT_OPTIONS.find(q => q.id === quantFilter)?.label} <X size={12} />
+              </span>
+            )}
+            {providerFilter !== 'all' && (
+              <span
+                onClick={() => setProviderFilter('all')}
+                className="mh-active-chip"
+                style={{ background: 'rgba(0, 210, 255, 0.15)', color: '#00d2ff', border: '1px solid rgba(0, 210, 255, 0.35)' }}
+              >
+                Provider: {FEATURED_PROVIDERS.find(p => p.id === providerFilter)?.label || providerFilter} <X size={12} />
               </span>
             )}
             {officialOnly && (

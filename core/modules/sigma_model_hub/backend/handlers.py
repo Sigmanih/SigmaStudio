@@ -69,8 +69,10 @@ def handle_models_hf_search(self):
         size_bracket = "all"
         param_bracket = "all"
         format_filter = "all"
+        quant_filter = "all"
         sort = "downloads"
         official_only = False
+        provider = "all"
         cursor = None
         page = 1
         limit = 30
@@ -87,6 +89,7 @@ def handle_models_hf_search(self):
             quant_filter = params.get('quant_filter', ['all'])[0]
             sort = params.get('sort', ['downloads'])[0]
             official_only = params.get('official_only', ['false'])[0].lower() in ['true', '1', 'yes']
+            provider = params.get('provider', ['all'])[0]
             cursor = params.get('cursor', [''])[0] or None
             page = int(params.get('page', ['1'])[0])
             limit = int(params.get('limit', ['30'])[0])
@@ -102,6 +105,7 @@ def handle_models_hf_search(self):
             quant_filter=quant_filter,
             sort=sort,
             official_only=official_only,
+            provider=provider,
             cursor=cursor,
             page=page,
             limit=limit,

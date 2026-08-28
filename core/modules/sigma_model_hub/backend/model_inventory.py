@@ -282,10 +282,13 @@ def deploy_model_to_sigma_engine(
     # it, briefly holding two copies in VRAM and spilling the second to CPU.
     if sigma_engine.model_instance is None:
         sigma_engine.loaded_model_name = canonical_name
+        is_gguf = resolved_path.endswith(".gguf") or (
+            os.path.isdir(resolved_path) and any(f.endswith(".gguf") for f in os.listdir(resolved_path))
+        )
         sigma_engine.loaded_model = {
             "name": canonical_name,
             "path": resolved_path,
-            "format": "GGUF" if resolved_path.endswith(".gguf") else "Safetensors",
+            "format": "GGUF" if is_gguf else "Safetensors",
             "size_gb": file_size_gb,
             "quantization": (
                 quantization or tiering.get("quantization", "Auto (Tiered)")

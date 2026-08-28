@@ -174,3 +174,23 @@
 .mh-spin {
   animation: mh-spin 1s linear infinite;
 }
+
+/* Neon Glow & Card Accents */
+.mh-card-glow-cyan {
+  box-shadow: 0 0 20px rgba(0, 210, 255, 0.22);
+}
+
+.mh-card-glow-amber {
+  box-shadow: 0 0 20px rgba(255, 184, 108, 0.22);
+}
+
+.mh-card-glow-emerald {
+  box-shadow: 0 0 20px rgba(16, 185, 129, 0.22);
+}
+
+/* Responsive adjustments for sidebar */
+@media (max-width: 1024px) {
+  .mh-split-workspace {
+    flex-direction: column !important;
+  }
+}

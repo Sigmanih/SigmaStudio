@@ -55,6 +55,8 @@ class ModelDownloadTask:
             self.is_repo_download = True
 
     def to_dict(self) -> Dict[str, Any]:
+        c_label = time.strftime('%Y-%m-%d %H:%M', time.localtime(self.created_at)) if self.created_at else None
+        comp_label = time.strftime('%Y-%m-%d %H:%M', time.localtime(self.completed_at)) if self.completed_at else (c_label if self.status == "completed" else None)
         return {
             "task_id": self.task_id,
             "model_id": self.model_id,
@@ -71,6 +73,8 @@ class ModelDownloadTask:
             "eta_seconds": int(self.eta_seconds),
             "created_at": self.created_at,
             "completed_at": self.completed_at,
+            "created_at_label": c_label,
+            "completed_at_label": comp_label,
             "error_message": self.error_message,
             "is_repo_download": self.is_repo_download,
             "total_files": len(self.files_queue) if self.files_queue else 1,
@@ -355,6 +359,13 @@ class ModelDownloadManager:
                     continue
                 if task_id not in self.tasks and not any(t.model_id == m_id for t in self.tasks.values()):
                     size_bytes = int(m.get("size_gb", 0) * (1024**3))
+                    mod_time = time.time()
+                    try:
+                        m_path = m.get("path")
+                        if m_path and os.path.exists(m_path):
+                            mod_time = os.path.getmtime(m_path)
+                    except Exception:
+                        pass
                     self.tasks[task_id] = ModelDownloadTask(
                         task_id=task_id,
                         model_id=m_id,
@@ -365,6 +376,8 @@ class ModelDownloadManager:
                         total_bytes=size_bytes,
                         downloaded_bytes=size_bytes,
                         progress_pct=100.0,
+                        created_at=mod_time,
+                        completed_at=mod_time,
                         is_repo_download=m.get("is_repo_folder", False),
                         files_queue=[{}] * m.get("total_shards", 1)
                     )

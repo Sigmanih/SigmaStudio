@@ -5,6 +5,7 @@
 from __future__ import annotations
 import os
 import io
+import re
 import time
 import json
 import uuid
@@ -150,7 +151,8 @@ class ModelUploadTask:
 
 
 def _detect_model_config(local_path: str) -> Dict[str, Any]:
-    """Inspects a local model directory or GGUF file to extract detailed configuration."""
+    """Inspects a local model directory or GGUF file to extract detailed configuration, geometry, format, and quantization."""
+    import re
     cfg = {
         "architecture": "CausalLM",
         "params_label": "7B",
@@ -169,13 +171,74 @@ def _detect_model_config(local_path: str) -> Dict[str, Any]:
     if not os.path.exists(local_path):
         return cfg
 
-    # Compute size
+    # 1. Inspect directory vs single file
     if os.path.isdir(local_path):
-        total_b = sum(os.path.getsize(os.path.join(r, f)) for r, _, files in os.walk(local_path) for f in files)
-        cfg["size_gb"] = round(total_b / (1024 ** 3), 2)
-        cfg["format"] = "Safetensors"
-        cfg["quantization"] = "BF16 / FP16"
+        all_files = []
+        for r, _, files in os.walk(local_path):
+            for f in files:
+                all_files.append((os.path.join(r, f), f))
 
+        total_b = sum(os.path.getsize(fp) for fp, f in all_files if not f.startswith("."))
+        cfg["size_gb"] = round(total_b / (1024 ** 3), 2)
+
+        gguf_files = [f for _, f in all_files if f.lower().endswith(".gguf")]
+        safetensors_files = [f for _, f in all_files if f.lower().endswith(".safetensors")]
+        bin_files = [f for _, f in all_files if f.lower().endswith((".bin", ".pt"))]
+
+        # Check format priority: GGUF vs Safetensors vs Bin
+        if gguf_files:
+            cfg["format"] = "GGUF"
+            # Detect quantization from all gguf filenames and folder name
+            quant_candidates = []
+            for g_name in gguf_files:
+                q_match = re.search(r'(Q[0-9]_[A-Z0-9_]+|IQ[0-9]_[A-Z0-9_]+|FP16|FP32|BF16|FP8|INT8|INT4)', g_name, re.IGNORECASE)
+                if q_match:
+                    quant_candidates.append(q_match.group(1).upper())
+            
+            if not quant_candidates:
+                folder_q_match = re.search(r'(Q[0-9]_[A-Z0-9_]+|IQ[0-9]_[A-Z0-9_]+|FP16|FP32|BF16|FP8|INT8|INT4)', os.path.basename(local_path), re.IGNORECASE)
+                if folder_q_match:
+                    quant_candidates.append(folder_q_match.group(1).upper())
+
+            if quant_candidates:
+                unique_quants = list(dict.fromkeys(quant_candidates))
+                cfg["quantization"] = " / ".join(unique_quants) if len(unique_quants) <= 3 else f"{unique_quants[0]} (+{len(unique_quants)-1} quants)"
+            else:
+                cfg["quantization"] = "Q4_K_M"
+
+            # Try Ground-truth facts inspection if available
+            try:
+                from core.engine.model_inspector import ModelInspector
+                facts = ModelInspector.inspect(local_path)
+                if facts:
+                    if facts.architectures:
+                        cfg["architecture"] = facts.architectures[0]
+                    elif facts.model_type and facts.model_type != "unknown":
+                        cfg["architecture"] = f"{facts.model_type.capitalize()}ForCausalLM"
+                    if facts.num_hidden_layers:
+                        cfg["layers"] = facts.num_hidden_layers
+                    if facts.hidden_size:
+                        cfg["hidden_size"] = facts.hidden_size
+                    if facts.num_attention_heads:
+                        cfg["heads"] = facts.num_attention_heads
+                    if facts.vocab_size:
+                        cfg["vocab_size"] = facts.vocab_size
+                    if facts.max_position_embeddings:
+                        cfg["context_window"] = facts.max_position_embeddings
+                    cfg["is_moe"] = facts.is_moe
+            except Exception as e_insp:
+                log.debug("[_detect_model_config] ModelInspector: %s", e_insp)
+
+        elif safetensors_files:
+            cfg["format"] = "Safetensors"
+            cfg["quantization"] = "BF16 / FP16"
+        elif bin_files:
+            cfg["format"] = "PyTorch Bin"
+            cfg["quantization"] = "FP32 / FP16"
+        else:
+            cfg["format"] = "GGUF" if "gguf" in os.path.basename(local_path).lower() else "Safetensors"
+
+        # Read config.json for fallback / enrichment
         config_path = os.path.join(local_path, "config.json")
         if os.path.exists(config_path):
             try:
@@ -187,29 +250,37 @@ def _detect_model_config(local_path: str) -> Dict[str, Any]:
                 elif data.get("model_type"):
                     cfg["architecture"] = f"{data['model_type'].capitalize()}ForCausalLM"
 
-                cfg["layers"] = data.get("num_hidden_layers") or data.get("num_layers") or data.get("n_layer")
-                cfg["hidden_size"] = data.get("hidden_size") or data.get("d_model")
-                cfg["heads"] = data.get("num_attention_heads") or data.get("n_head")
-                cfg["vocab_size"] = data.get("vocab_size")
-                cfg["context_window"] = data.get("max_position_embeddings") or data.get("seq_length") or 32768
+                cfg["layers"] = cfg["layers"] or data.get("num_hidden_layers") or data.get("num_layers") or data.get("n_layer")
+                cfg["hidden_size"] = cfg["hidden_size"] or data.get("hidden_size") or data.get("d_model")
+                cfg["heads"] = cfg["heads"] or data.get("num_attention_heads") or data.get("n_head")
+                cfg["vocab_size"] = cfg["vocab_size"] or data.get("vocab_size")
+                cfg["context_window"] = cfg["context_window"] or data.get("max_position_embeddings") or data.get("seq_length") or 32768
                 if data.get("num_experts") or data.get("num_local_experts"):
                     cfg["is_moe"] = True
+                if cfg["format"] == "Safetensors" and data.get("torch_dtype"):
+                    cfg["quantization"] = str(data["torch_dtype"]).replace("torch.", "").upper()
             except Exception as e_cfg:
                 log.debug("Error reading config.json: %s", e_cfg)
+
     else:
+        # Single file
         cfg["size_gb"] = round(os.path.getsize(local_path) / (1024 ** 3), 2)
         fname_lower = os.path.basename(local_path).lower()
-        cfg["format"] = "GGUF" if fname_lower.endswith(".gguf") else "Weights"
+        if fname_lower.endswith(".gguf"):
+            cfg["format"] = "GGUF"
+        elif fname_lower.endswith(".safetensors"):
+            cfg["format"] = "Safetensors"
+        else:
+            cfg["format"] = "Weights"
 
         # Detect quantization from filename
-        for q in ["Q8_0", "Q6_K", "Q5_K_M", "Q5_K_S", "Q4_K_M", "Q4_K_S", "Q4_0", "Q3_K_M", "Q3_K_S", "Q2_K", "IQ4_XS", "IQ3_M", "FP16", "BF16"]:
+        for q in ["Q8_0", "Q6_K", "Q5_K_M", "Q5_K_S", "Q5_0", "Q4_K_M", "Q4_K_S", "Q4_0", "Q3_K_M", "Q3_K_S", "Q2_K", "IQ4_XS", "IQ3_M", "IQ2_XXS", "FP16", "BF16", "FP8", "INT8", "INT4"]:
             if q.lower() in fname_lower:
                 cfg["quantization"] = q
                 break
 
     # Estimate active parameters from size / name
     fname_str = os.path.basename(local_path).lower()
-    import re
     p_match = re.search(r'(\d+(?:\.\d+)?)\s*[bm]', fname_str)
     if p_match:
         val = float(p_match.group(1))
@@ -221,7 +292,6 @@ def _detect_model_config(local_path: str) -> Dict[str, Any]:
             cfg["params_label"] = f"{val:g}B"
             cfg["active_params_b"] = val
     elif cfg["size_gb"] > 0:
-        # rough estimate
         est_b = round(cfg["size_gb"] / 0.6, 1)
         cfg["params_label"] = f"~{est_b:g}B"
         cfg["active_params_b"] = est_b
@@ -448,13 +518,16 @@ def generate_model_card(
         else:
             bm_tok_s = 8.0
 
-    # Dynamic tier calculation
-
     tags = ["text-generation", "sigma-studio", "sigmanih", "conversational", "custom-model"]
     if cfg["format"] == "GGUF":
-        tags.extend(["gguf", "llama.cpp", "quantized", cfg["quantization"].lower()])
-    else:
+        tags.extend(["gguf", "llama.cpp", "quantized"])
+        for q_token in re.findall(r'[a-zA-Z0-9_]+', cfg["quantization"].lower()):
+            if q_token not in tags and len(q_token) >= 2:
+                tags.append(q_token)
+    elif cfg["format"] == "Safetensors":
         tags.extend(["safetensors", "transformers", "pytorch"])
+    else:
+        tags.extend(["pytorch", "weights"])
 
     tags_yaml = "\n".join([f"- {t}" for t in tags])
 
@@ -1111,10 +1184,14 @@ class ModelUploaderManager:
                 # Directory upload
                 log.info(f"[ModelUploader][Task {task.task_id}] Uploading folder '{task.local_path}' to '{task.repo_id}'...")
                 
-                # Walk and upload files with progress tracking
+                # Walk and upload files with progress tracking, ignoring internal cache files
                 all_files = []
                 for root, _, files in os.walk(task.local_path):
                     for f in files:
+                        if f.startswith(".") and f != ".gitattributes":
+                            continue
+                        if f.endswith((".tmp", ".log", ".pyc", ".bak")):
+                            continue
                         full_path = os.path.join(root, f)
                         rel_path = os.path.relpath(full_path, task.local_path).replace("\\", "/")
                         size = os.path.getsize(full_path)
