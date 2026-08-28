@@ -1340,7 +1340,10 @@ from core.developer_studio.handlers import (
     handle_agent_chat,
     handle_workspace_roots,
     handle_get_tasks,
-    handle_save_tasks
+    handle_save_tasks,
+    handle_orchestrator_run,
+    handle_orchestrator_status,
+    handle_roles_list,
 )
 
 @app.get("/api/developer/tasks")
@@ -1394,6 +1397,20 @@ async def dev_agent_chat_route(request: Request):
 @app.get("/api/developer/workspace/roots")
 async def dev_workspace_roots_route(request: Request):
     return await handle_workspace_roots(request)
+
+# --- Developer Studio Orchestrator & Roles ---
+
+@app.post("/api/developer/orchestrator/run")
+async def dev_orchestrator_run_route(request: Request):
+    return await handle_orchestrator_run(request)
+
+@app.get("/api/developer/orchestrator/status")
+async def dev_orchestrator_status_route(request: Request):
+    return await handle_orchestrator_status(request)
+
+@app.get("/api/developer/roles")
+async def dev_roles_list_route(request: Request):
+    return await handle_roles_list(request)
 
 
 # ------------------------------------------------------------------------------

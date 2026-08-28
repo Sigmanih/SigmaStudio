@@ -294,3 +294,112 @@ async def handle_save_tasks(request: Request):
     except Exception as e:
         log.error("Could not write developer_tasks.json: %s", e)
         return JSONResponse(status_code=500, content={"success": False, "error": str(e)})
+
+
+async def handle_orchestrator_run(request: Request):
+    """POST /api/developer/orchestrator/run — Executes a full development workflow via SSE streaming."""
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+
+    goal = body.get("goal", "")
+    mode = body.get("mode", "interactive")
+    model = body.get("model") or "sigmaengine"
+    workspace_root = body.get("workspace_root") or get_default_workspace_root()
+
+    if not goal:
+        return JSONResponse(status_code=400, content={"success": False, "error": "Parametro 'goal' richiesto."})
+
+    from core.developer_studio.orchestrator import DevOrchestrator
+
+    async def sse_stream():
+        cancel_event = threading.Event()
+        events: "queue.Queue[Any]" = queue.Queue(maxsize=512)
+        DONE = object()
+
+        def producer():
+            try:
+                orchestrator = DevOrchestrator(
+                    workspace_root=workspace_root,
+                    model_name=model,
+                )
+                for event in orchestrator.execute_goal(
+                    goal=goal,
+                    mode=mode,
+                    model_name=model,
+                ):
+                    if cancel_event.is_set():
+                        orchestrator.cancel()
+                        break
+                    while not cancel_event.is_set():
+                        try:
+                            events.put(event, timeout=0.5)
+                            break
+                        except queue.Full:
+                            continue
+            except Exception as e:
+                log.exception("Orchestrator stream failed: %s", e)
+                try:
+                    events.put({"type": "error", "error": str(e)}, timeout=1.0)
+                except queue.Full:
+                    pass
+            finally:
+                try:
+                    events.put(DONE, timeout=1.0)
+                except queue.Full:
+                    pass
+
+        worker = threading.Thread(target=producer, name="orchestrator-stream", daemon=True)
+        worker.start()
+
+        try:
+            while True:
+                try:
+                    event = await asyncio.to_thread(events.get, True, 1.0)
+                except queue.Empty:
+                    if not worker.is_alive():
+                        break
+                    yield ": keep-alive\n\n"
+                    continue
+
+                if event is DONE:
+                    break
+                yield f"data: {json.dumps(event)}\n\n"
+        except asyncio.CancelledError:
+            cancel_event.set()
+            raise
+        finally:
+            cancel_event.set()
+
+    return StreamingResponse(
+        sse_stream(),
+        media_type="text/event-stream; charset=utf-8",
+        headers={"Cache-Control": "no-cache", "Connection": "keep-alive"}
+    )
+
+
+async def handle_orchestrator_status(request: Request):
+    """GET /api/developer/orchestrator/status — Returns current orchestrator state."""
+    return JSONResponse(status_code=200, content={
+        "success": True,
+        "status": "idle",
+        "message": "Orchestrator pronto. Invia un goal con POST /api/developer/orchestrator/run."
+    })
+
+
+async def handle_roles_list(request: Request):
+    """GET /api/developer/roles — Lists all available development roles."""
+    from core.developer_studio.role_engine import DEV_ROLES
+    roles = [
+        {
+            "id": r.id,
+            "name": r.name,
+            "icon": r.icon,
+            "temperature": r.temperature,
+            "tools": list(r.tools),
+            "focus_areas": list(r.focus_areas),
+        }
+        for r in DEV_ROLES.values()
+    ]
+    return JSONResponse(status_code=200, content={"success": True, "roles": roles})

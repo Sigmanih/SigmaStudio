@@ -32,7 +32,10 @@ from core.developer_studio.handlers import (
     handle_fs_search,
     handle_terminal_exec,
     handle_agent_chat,
-    handle_workspace_roots
+    handle_workspace_roots,
+    handle_orchestrator_run,
+    handle_orchestrator_status,
+    handle_roles_list,
 )
 
 __all__ = [
@@ -58,4 +61,7 @@ __all__ = [
     "handle_terminal_exec",
     "handle_agent_chat",
     "handle_workspace_roots",
+    "handle_orchestrator_run",
+    "handle_orchestrator_status",
+    "handle_roles_list",
 ]

@@ -436,7 +436,8 @@ def stream_admin_agent_turn(
     temperature: float = 0.3,
     auto_execute_tools: bool = True,
     max_turns: int = 3,
-    should_cancel: Optional[Callable[[], bool]] = None
+    should_cancel: Optional[Callable[[], bool]] = None,
+    system_prompt_override: Optional[str] = None,
 ) -> Generator[Dict[str, Any], None, None]:
     """
     Multi-Turn Autonomous Admin Developer Agent Loop:
@@ -457,7 +458,19 @@ def stream_admin_agent_turn(
     from core.engine.unified_runtime import sigma_engine
 
     # Prepare conversation history
-    full_messages = [{"role": "system", "content": ADMIN_DEVELOPER_SYSTEM_PROMPT}]
+    # Allow Role Engine to inject role-specific system prompts
+    active_system_prompt = system_prompt_override or ADMIN_DEVELOPER_SYSTEM_PROMPT
+
+    # Append MCP developer tools section if available
+    try:
+        from core.developer_studio.mcp_tools.bridge import build_mcp_tools_section
+        mcp_section = build_mcp_tools_section()
+        if mcp_section:
+            active_system_prompt = active_system_prompt + "\n" + mcp_section
+    except Exception:
+        pass  # MCP tools not yet registered — proceed without them
+
+    full_messages = [{"role": "system", "content": active_system_prompt}]
     for m in messages:
         if m.get("role") != "system":
             m_content = m.get("content", "")
@@ -517,7 +530,7 @@ def stream_admin_agent_turn(
         try:
             for chunk in sigma_engine.generate_stream(
                 prompt=last_user_prompt,
-                system_prompt=ADMIN_DEVELOPER_SYSTEM_PROMPT,
+                system_prompt=active_system_prompt,
                 temperature=temperature,
                 max_tokens=4096,
                 model_name=model_name or "sigmaengine",
@@ -628,7 +641,15 @@ def stream_admin_agent_turn(
                 "params": t_params
             }
 
-            result = execute_admin_tool(t_name, t_params, workspace_root, should_cancel=should_cancel)
+            # Route through MCP Hub for Git/Lint/Test tools, local for FS/Terminal
+            try:
+                from core.developer_studio.mcp_tools.bridge import is_mcp_tool, execute_via_mcp
+                if is_mcp_tool(t_name):
+                    result = execute_via_mcp(t_name, t_params)
+                else:
+                    result = execute_admin_tool(t_name, t_params, workspace_root, should_cancel=should_cancel)
+            except ImportError:
+                result = execute_admin_tool(t_name, t_params, workspace_root, should_cancel=should_cancel)
 
             yield {
                 "type": "tool_result",
