@@ -1332,9 +1332,9 @@ from core.developer_studio.handlers import (
     handle_workspace_roots,
     handle_get_tasks,
     handle_save_tasks,
-    handle_orchestrator_run,
-    handle_orchestrator_status,
     handle_roles_list,
+    handle_fs_backups,
+    handle_fs_restore,
 )
 
 @app.get("/api/developer/tasks")
@@ -1364,6 +1364,14 @@ async def dev_fs_write_route(request: Request):
 @app.post("/api/developer/fs/delete")
 async def dev_fs_delete_route(request: Request):
     return await handle_fs_delete(request)
+
+@app.get("/api/developer/fs/backups")
+async def dev_fs_backups_route(request: Request):
+    return await handle_fs_backups(request)
+
+@app.post("/api/developer/fs/restore")
+async def dev_fs_restore_route(request: Request):
+    return await handle_fs_restore(request)
 
 @app.post("/api/developer/fs/create")
 async def dev_fs_create_route(request: Request):
@@ -1402,6 +1410,24 @@ async def dev_orchestrator_status_route(request: Request):
 @app.get("/api/developer/roles")
 async def dev_roles_list_route(request: Request):
     return await handle_roles_list(request)
+
+# --- System Cleanup & Resource Optimization ---
+from core.system_cleanup import get_cleanup_stats, execute_selective_cleanup
+
+@app.get("/api/system/cleanup/stats")
+async def system_cleanup_stats_route(request: Request):
+    stats = await asyncio.to_thread(get_cleanup_stats)
+    return JSONResponse(status_code=200, content=stats)
+
+@app.post("/api/system/cleanup/execute")
+@app.post("/api/system/clear-memory")
+async def system_cleanup_execute_route(request: Request):
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+    res = await asyncio.to_thread(execute_selective_cleanup, body)
+    return JSONResponse(status_code=200 if res.get("success") else 500, content=res)
 
 
 # ------------------------------------------------------------------------------

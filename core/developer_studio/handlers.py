@@ -25,7 +25,9 @@ from core.developer_studio.fs_manager import (
     create_fs_entry,
     rename_fs_entry,
     search_workspace_files,
-    get_default_workspace_root
+    get_default_workspace_root,
+    list_file_backups,
+    restore_file_backup,
 )
 from core.developer_studio.terminal_runner import execute_shell_command_sync, stream_shell_command
 from core.developer_studio.admin_agent import stream_admin_agent_turn, execute_admin_tool
@@ -63,7 +65,7 @@ async def handle_fs_raw(request: Request):
 
 
 async def handle_fs_write(request: Request):
-    """POST /api/developer/fs/write — Writes content to a file."""
+    """POST /api/developer/fs/write — Writes content to a file with automatic backup snapshot."""
     try:
         body = await request.json()
     except Exception:
@@ -88,6 +90,28 @@ async def handle_fs_delete(request: Request):
         return JSONResponse(status_code=400, content={"success": False, "error": "Parametro 'path' mancante."})
     res = await asyncio.to_thread(delete_fs_entry, path, recursive)
     return JSONResponse(status_code=200 if res.get("success") else 500, content=res)
+
+
+async def handle_fs_backups(request: Request):
+    """GET /api/developer/fs/backups?path=<optional>&limit=50 — Lists previous file backup snapshots."""
+    path = request.query_params.get("path")
+    limit = int(request.query_params.get("limit", 50))
+    backups = await asyncio.to_thread(list_file_backups, file_path=path, limit=limit)
+    return JSONResponse(status_code=200, content={"success": True, "backups": backups, "count": len(backups)})
+
+
+async def handle_fs_restore(request: Request):
+    """POST /api/developer/fs/restore — Restores a file to its previous backup snapshot."""
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+    path = body.get("path")
+    backup_id = body.get("backup_id")
+    if not path:
+        return JSONResponse(status_code=400, content={"success": False, "error": "Parametro 'path' mancante."})
+    res = await asyncio.to_thread(restore_file_backup, file_path=path, backup_id=backup_id)
+    return JSONResponse(status_code=200 if res.get("success") else 400, content=res)
 
 
 async def handle_fs_create(request: Request):
@@ -171,6 +195,7 @@ async def handle_agent_chat(request: Request):
     workspace_root = body.get("workspace_root") or get_default_workspace_root()
     model = body.get("model") or "sigmaengine"
     auto_execute = bool(body.get("auto_execute_tools", True))
+    pipeline = body.get("pipeline", [])
 
     # The agent loop is fully synchronous and blocking (model inference, filesystem
     # search, shell commands). It MUST run on a worker thread: executing it inline on
@@ -187,7 +212,8 @@ async def handle_agent_chat(request: Request):
                     workspace_root=workspace_root,
                     model_name=model,
                     auto_execute_tools=auto_execute,
-                    should_cancel=cancel_event.is_set
+                    should_cancel=cancel_event.is_set,
+                    current_pipeline=pipeline,
                 ):
                     if cancel_event.is_set():
                         break

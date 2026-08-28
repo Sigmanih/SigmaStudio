@@ -22,7 +22,9 @@ from core.developer_studio.fs_manager import (
     create_fs_entry,
     get_workspace_tree,
     search_workspace_files,
-    get_default_workspace_root
+    get_default_workspace_root,
+    restore_file_backup,
+    list_file_backups,
 )
 from core.developer_studio.terminal_runner import execute_shell_command_sync
 
@@ -40,10 +42,13 @@ Hai permessi di AMMINISTRATORE completi sul workspace per esplorare la struttura
 REGOLE CRITICHE E OBBLIGATORIE:
 1. Rispondi SEMPRE ed ESCLUSIVAMENTE in lingua ITALIANA.
 2. Ragiona internamente all'interno dei tag <think> ... </think>. NON scrivere mai ragionamenti in inglese al di fuori dei tag <think>.
-3. Quando affronti compiti complessi o multi-step, organizza i tuoi passi con il tool `pipeline`.
-4. Quando usi i tool, emetti DIRETTAMENTE i blocchi dei tool con percorsi reali (es. path: "." per la radice).
-5. Quando ricevi i risultati dei tool, fornisci all'utente un'analisi chiara, sintetica e professionale in italiano, indicando l'avanzamento dei task e i passi successivi.
-6. Quando tutti i task della pipeline sono stati completati con successo, emetti il tool `complete_goal`.
+3. Quando ricevi una richiesta di sviluppo o modifica:
+   - FASE 1: Esplora il workspace con `list_dir`, `read_file` o `search_code` per capire la struttura esistente.
+   - FASE 2: Definisci la pipeline dei task da fare (tutti con status "pending" o "in_progress").
+   - FASE 3: Esegui le modifiche necessarie scrivendo file completi con `write_file` o eseguendo comandi con `terminal`.
+   - FASE 4: Solo quando tutti i file sono stati REALMENTE creati/modificati e verificati, emetti `complete_goal`.
+4. NON dichiarare MAI un task o un obiettivo completato senza aver PRIMA letto o scritto file reali con i tool.
+5. NON emettere MAI `complete_goal` al primo turno di una richiesta di sviluppo.
 
 GUIDA AI PERCORSI:
 - La radice del workspace si indica con "." (oppure percorsi relativi come "core", "sigma_studio/src").
@@ -51,67 +56,80 @@ GUIDA AI PERCORSI:
 
 TAG STRUTTURATI DEI TOOL:
 
-1. Per definire o aggiornare la pipeline dei task:
-```tool:pipeline
-{
-  "tasks": [
-    {"id": "1", "title": "Esplorazione struttura workspace", "status": "done"},
-    {"id": "2", "title": "Analisi architettura e codice core", "status": "in_progress"},
-    {"id": "3", "title": "Verifica frontend e test", "status": "pending"},
-    {"id": "4", "title": "Relazione finale punti critici", "status": "pending"}
-  ]
-}
-```
-Valori possibili di status: "pending", "in_progress", "done".
-
-2. Per esplorare una cartella (usa "." per la radice):
+1. Per esplorare una cartella (usa "." per la radice):
 ```tool:list_dir
 {
   "path": "."
 }
 ```
 
-3. Per leggere un file:
+2. Per leggere un file esistente:
 ```tool:read_file
 {
   "path": "ARCHITECTURE.md"
 }
 ```
 
-4. Per scrivere o modificare un file:
+3. Per scrivere o creare un file:
 ```tool:write_file
 {
-  "path": "core/nuovo_file.py",
-  "content": "# codice completo o aggiornato qui"
+  "path": "core/modules/mio_modulo/handlers.py",
+  "content": "# codice completo qui"
 }
 ```
 
-5. Per eliminare un file o una cartella:
+4. Per definire la pipeline dei task da eseguire:
+```tool:pipeline
+{
+  "tasks": [
+    {"id": "1", "title": "Esplorazione struttura moduli esistenti", "status": "in_progress"},
+    {"id": "2", "title": "Creazione backend e route", "status": "pending"},
+    {"id": "3", "title": "Creazione interfaccia frontend", "status": "pending"},
+    {"id": "4", "title": "Verifica e test", "status": "pending"}
+  ]
+}
+```
+
+5. Per eseguire un comando terminale (PowerShell):
+```tool:terminal
+{
+  "command": "python -m pytest tests/ -v",
+  "cwd": "."
+}
+```
+
+6. Per cercare codice nel workspace:
+```tool:search_code
+{
+  "query": "class NetworkLab"
+}
+```
+
+7. Per eliminare un file temporaneo:
 ```tool:delete
 {
   "path": "scratch/temp.txt"
 }
 ```
 
-6. Per eseguire un comando terminale (PowerShell):
-```tool:terminal
+7. Per ripristinare un file allo stato di backup precedente (se una modifica ha causato errori):
+```tool:restore_file
 {
-  "command": "Get-ChildItem -Path .",
-  "cwd": "."
+  "path": "sigma_server.py"
 }
 ```
 
-7. Per cercare codice o testo nel workspace:
-```tool:search_code
+8. Per visualizzare lo storico dei backup di un file o del workspace:
+```tool:list_backups
 {
-  "query": "class SigmaEngine"
+  "path": "sigma_server.py"
 }
 ```
 
-8. Per dichiarare l'obiettivo completato:
+9. Per dichiarare il completamento:
 ```tool:complete_goal
 {
-  "summary": "Obiettivo completato con successo."
+  "summary": "Implementazione completata con successo e verificata."
 }
 ```
 """
@@ -327,7 +345,7 @@ def execute_admin_tool(
             except Exception:
                 pass
 
-        res = write_file_content(full_path, content)
+        res = write_file_content(full_path, content, root=workspace_root)
         return {
             "tool": "write_file",
             "path": raw_path,
@@ -339,7 +357,7 @@ def execute_admin_tool(
     elif tool_name in ("delete", "delete_file", "remove_file", "rm"):
         raw_path = params.get("path") or params.get("raw", "")
         full_path = resolve_workspace_path(raw_path, workspace_root)
-        res = delete_fs_entry(full_path)
+        res = delete_fs_entry(full_path, root=workspace_root)
         return {"tool": "delete", "path": raw_path, "full_path": full_path, **res}
 
     elif tool_name in ("list_dir", "list_directory", "ls"):
@@ -416,6 +434,26 @@ def execute_admin_tool(
             "message": f"Pipeline aggiornata con {len(normalized_tasks)} sotto-task."
         }
 
+    elif tool_name in ("restore_file", "undo_file", "restore_backup", "revert_file"):
+        raw_path = params.get("path") or params.get("file_path") or params.get("target") or ""
+        backup_id = params.get("backup_id")
+        full_path = resolve_workspace_path(raw_path, workspace_root)
+        res = restore_file_backup(full_path, backup_id=backup_id, root=workspace_root)
+        return {"tool": "restore_file", "path": raw_path, **res}
+
+    elif tool_name in ("list_backups", "get_backups", "backup_history"):
+        raw_path = params.get("path") or params.get("file_path")
+        full_path = resolve_workspace_path(raw_path, workspace_root) if raw_path else None
+        backups = list_file_backups(full_path, root=workspace_root, limit=20)
+        return {
+            "tool": "list_backups",
+            "path": raw_path or "tutti",
+            "count": len(backups),
+            "backups": backups,
+            "success": True,
+            "message": f"Trovati {len(backups)} snapshot di backup."
+        }
+
     elif tool_name in ("complete_goal", "finish_task", "task_complete"):
         summary = params.get("summary") or params.get("message") or "Obiettivo completato con successo."
         return {
@@ -435,9 +473,10 @@ def stream_admin_agent_turn(
     model_name: Optional[str] = None,
     temperature: float = 0.3,
     auto_execute_tools: bool = True,
-    max_turns: int = 3,
+    max_turns: int = 8,
     should_cancel: Optional[Callable[[], bool]] = None,
     system_prompt_override: Optional[str] = None,
+    current_pipeline: Optional[List[Dict[str, Any]]] = None,
 ) -> Generator[Dict[str, Any], None, None]:
     """
     Multi-Turn Autonomous Admin Developer Agent Loop:
@@ -460,6 +499,22 @@ def stream_admin_agent_turn(
     # Prepare conversation history
     # Allow Role Engine to inject role-specific system prompts
     active_system_prompt = system_prompt_override or ADMIN_DEVELOPER_SYSTEM_PROMPT
+
+    # Inject current pipeline status if present
+    if current_pipeline and isinstance(current_pipeline, list) and len(current_pipeline) > 0:
+        pipeline_lines = ["\n## 📋 STATO ATTUALE DELLA PIPELINE DEI TASK:"]
+        for p in current_pipeline:
+            pid = p.get("id", "")
+            title = p.get("title", "")
+            desc = p.get("description", "")
+            status = p.get("status", "pending")
+            status_tag = "✅ FATTO" if status == "done" else ("⚡ IN CORSO" if status == "in_progress" else "⏳ IN CODA")
+            line = f"- [{status_tag}] Task #{pid}: {title}"
+            if desc and desc != title:
+                line += f" — Dettagli: {desc}"
+            pipeline_lines.append(line)
+        pipeline_lines.append("\nPuoi aggiornare la pipeline (modificare stati, descrizioni o aggiungere task) usando il tool `pipeline`.")
+        active_system_prompt = active_system_prompt + "\n" + "\n".join(pipeline_lines)
 
     # Append MCP developer tools section if available
     try:
@@ -663,10 +718,18 @@ def stream_admin_agent_turn(
                     "tasks": result.get("tasks", [])
                 }
             elif t_name in ("complete_goal", "finish_task", "task_complete"):
-                yield {
-                    "type": "goal_complete",
-                    "summary": result.get("summary", "")
-                }
+                # If complete_goal is called on turn 1 without any prior action, reject it
+                if current_turn <= 1 and not any(t["tool"] in ("write_file", "terminal", "read_file", "search_code") for t in tools_found):
+                    result = {
+                        "tool": "complete_goal",
+                        "success": False,
+                        "error": "Azione prematura: prima di completare l'obiettivo devi eseguire le modifiche ai file con write_file o verificare la struttura con list_dir/read_file."
+                    }
+                else:
+                    yield {
+                        "type": "goal_complete",
+                        "summary": result.get("summary", "")
+                    }
 
             # Format concise observation for the model
             obs_str = f"Tool '{t_name}' eseguito con successo.\n"

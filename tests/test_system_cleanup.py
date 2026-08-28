@@ -1,32 +1,34 @@
 # ==============================================================================
-# tests/test_system_cleanup.py — Unit Tests for System Cleanup & Shutdown
+# tests/test_system_cleanup.py — System Cleanup & Resource Optimization Tests
 # ==============================================================================
 import pytest
-from core.system_cleanup import shutdown_all_tasks, clear_system_memory
-from core.store import tasks_store, agent_tasks_store
+from core.system_cleanup import get_cleanup_stats, execute_selective_cleanup
 
 
-def test_shutdown_all_tasks_executes_safely():
-    """Verify shutdown_all_tasks runs without raising exceptions even when idle."""
-    shutdown_all_tasks()
+def test_get_cleanup_stats_structure():
+    stats = get_cleanup_stats()
+    assert stats["success"] is True
+    assert "memory" in stats
+    assert "tasks" in stats
+    assert "history" in stats
+    assert "backups" in stats
+    assert "cache" in stats
+    assert "total_disk_formatted" in stats
+    assert isinstance(stats["tasks"]["bytes"], int)
+    assert isinstance(stats["backups"]["bytes"], int)
 
 
-def test_clear_system_memory_resets_stores():
-    """Verify clear_system_memory clears tasks_store and agent_tasks_store."""
-    # Seed some dummy tasks
-    tasks_store.save([{"id": 1, "titolo": "Test Task", "status": "in_corso"}])
-    agent_tasks_store.save({"active_agent_task": "Running inference"})
-
-    assert len(tasks_store.load()) == 1
-    assert len(agent_tasks_store.load()) == 1
-
-    # Purge memory
-    result = clear_system_memory(clear_tasks=True, clear_history=True)
-
-    assert result["success"] is True
-    assert "tasks_roadmap" in result["cleaned"]
-    assert "agent_tasks_cache" in result["cleaned"]
-
-    # Verify stores are now empty
-    assert tasks_store.load() == []
-    assert agent_tasks_store.load() == {}
+def test_execute_selective_cleanup_safe():
+    # Test safe cache and memory purge without resetting developer tasks
+    res = execute_selective_cleanup({
+        "free_memory": True,
+        "stop_background_tasks": False,
+        "clear_tasks": False,
+        "clear_history": False,
+        "clear_backups": False,
+        "clear_cache": True
+    })
+    assert res["success"] is True
+    assert "cleaned" in res
+    assert isinstance(res["cleaned"], list)
+    assert "freed_disk_formatted" in res

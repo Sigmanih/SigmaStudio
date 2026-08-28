@@ -82,7 +82,7 @@ export default function Sidebar({
   tasks = [],
   topicsCount = 0
 }) {
-  const { theme, toggleTheme, clearSystemMemory } = useApp();
+  const { theme, toggleTheme, clearSystemMemory, openCleanupModal } = useApp();
   const isLight = theme === 'light';
 
   const [chatCount, setChatCount] = useState(0);
@@ -760,15 +760,11 @@ export default function Sidebar({
           <div style={{ marginTop: '14px', paddingTop: '10px', borderTop: isLight ? '1px solid #e0d8cc' : '1px solid rgba(255,255,255,0.06)' }}>
             <SidebarItem
               icon={Trash2}
-              label="Pulisci Memoria"
-              badge="RESET"
-              badgeColor="rgba(239, 68, 68, 0.2)"
+              label="Pulisci & Ottimizza"
+              badge="CLEAN"
+              badgeColor="rgba(0, 242, 254, 0.2)"
               active={false}
-              onClick={() => {
-                if (window.confirm("Vuoi cancellare i task salvati, liberare la memoria RAM/VRAM e arrestare tutti i processi in background?")) {
-                  clearSystemMemory({ clearTasks: true, clearChat: true });
-                }
-              }}
+              onClick={openCleanupModal}
             />
           </div>
         </nav>

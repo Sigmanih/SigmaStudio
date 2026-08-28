@@ -82,6 +82,11 @@ export function AppProvider({ children }) {
   const [isTaskModalOpen, setIsTaskModalOpen] = useState(false);
   const [editingTask, setEditingTask] = useState(null);
 
+  // System Cleanup Modal state
+  const [isCleanupModalOpen, setIsCleanupModalOpen] = useState(false);
+  const openCleanupModal = () => setIsCleanupModalOpen(true);
+  const closeCleanupModal = () => setIsCleanupModalOpen(false);
+
   const onTaskSave = async (taskData) => {
     if (await handleTaskSave(taskData, editingTask)) {
       setIsTaskModalOpen(false);
@@ -154,6 +159,12 @@ export function AppProvider({ children }) {
     setIsTaskModalOpen,
     editingTask,
     setEditingTask,
+
+    // System Cleanup Modal
+    isCleanupModalOpen,
+    setIsCleanupModalOpen,
+    openCleanupModal,
+    closeCleanupModal,
     
     // Tabs
     openTabs,

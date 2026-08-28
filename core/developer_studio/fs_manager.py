@@ -19,7 +19,7 @@ log = get_logger("developer_fs")
 
 IGNORE_DIRS = {
     ".git", "node_modules", "__pycache__", ".venv", "venv", ".pytest_cache",
-    ".idea", ".vscode", "dist", "build", ".next", ".cache"
+    ".idea", ".vscode", "dist", "build", ".next", ".cache", ".sigma_backups"
 }
 
 IGNORE_EXTENSIONS = {
@@ -29,7 +29,7 @@ IGNORE_EXTENSIONS = {
 # Directories excluded from *content search* only (they may hold hundreds of GB of
 # weights, datasets and caches: walking them saturates RAM and freezes the server).
 SEARCH_IGNORE_DIRS = IGNORE_DIRS | {
-    ".backups", ".mypy_cache", ".ruff_cache", ".tox", ".turbo", ".parcel-cache",
+    ".backups", ".sigma_backups", ".mypy_cache", ".ruff_cache", ".tox", ".turbo", ".parcel-cache",
     ".gradle", ".svelte-kit", ".nuxt", ".expo", ".terraform", ".ipynb_checkpoints",
     "site-packages", "coverage", "htmlcov", "out", "target",
     "models", "checkpoints", "backbones", "shards", "weights", "wandb",
@@ -223,30 +223,228 @@ def read_file_content(file_path: str, max_bytes: int = 5 * 1024 * 1024) -> Dict[
         return {"success": False, "error": f"Impossibile leggere il file: {str(e)}"}
 
 
-def write_file_content(file_path: str, content: str) -> Dict[str, Any]:
-    """Writes or overwrites a file in admin mode, creating parent folders if needed."""
+def find_workspace_root_for_path(p: Path) -> Path:
+    """Finds the root workspace directory containing a file by looking for markers."""
+    curr = p.parent if (p.is_file() or not p.exists()) else p
+    for _ in range(12):
+        if (curr / ".git").exists() or (curr / "package.json").exists() or (curr / ".sigma_backups").exists() or (curr / "requirements").exists():
+            return curr
+        if curr == curr.parent:
+            break
+        curr = curr.parent
+    return Path(get_default_workspace_root()).resolve()
+
+
+def get_backup_dir(root: Optional[str] = None) -> Path:
+    """Returns the .sigma_backups directory inside the project/workspace root."""
+    ws = Path(root or get_default_workspace_root()).resolve()
+    backup_dir = ws / ".sigma_backups"
+    backup_dir.mkdir(parents=True, exist_ok=True)
+    return backup_dir
+
+
+def backup_file_snapshot(
+    file_path: str,
+    reason: str = "before_write",
+    root: Optional[str] = None
+) -> Optional[Dict[str, Any]]:
+    """
+    Creates an immutable timestamped backup snapshot of a file before modification or deletion.
+    Returns metadata about the backup or None if the file didn't exist.
+    """
     try:
         p = Path(file_path).resolve()
+        if not p.exists() or not p.is_file():
+            return None
+
+        ws = Path(root).resolve() if root else find_workspace_root_for_path(p)
+        try:
+            rel_path = str(p.relative_to(ws)).replace("\\", "/")
+        except ValueError:
+            rel_path = p.name
+
+        backup_dir = get_backup_dir(root=str(ws))
+        now_ms = int(time.time() * 1000) % 1000
+        now_str = f"{time.strftime('%Y%m%d_%H%M%S')}_{now_ms:03d}"
+        safe_rel = rel_path.replace("/", "__").replace("\\", "__")
+        backup_filename = f"{safe_rel}.{now_str}.bak"
+        backup_path = backup_dir / backup_filename
+
+        # Write backup snapshot
+        content_bytes = p.read_bytes()
+        backup_path.write_bytes(content_bytes)
+
+        meta = {
+            "backup_id": backup_filename,
+            "original_path": str(p).replace("\\", "/"),
+            "rel_path": rel_path,
+            "timestamp": time.strftime("%Y-%m-%d %H:%M:%S"),
+            "backup_file": str(backup_path).replace("\\", "/"),
+            "size": len(content_bytes),
+            "reason": reason
+        }
+
+        # Append to index log
+        index_file = backup_dir / "backups_index.jsonl"
+        import json
+        with open(index_file, "a", encoding="utf-8") as f:
+            f.write(json.dumps(meta) + "\n")
+
+        log.info("Created backup snapshot for %s -> %s (%d bytes)", rel_path, backup_filename, len(content_bytes))
+        return meta
+    except Exception as e:
+        log.warning("Failed to create file backup for %s: %s", file_path, e)
+        return None
+
+
+def list_file_backups(
+    file_path: Optional[str] = None,
+    root: Optional[str] = None,
+    limit: int = 50,
+    exclude_restore_snapshots: bool = False
+) -> List[Dict[str, Any]]:
+    """Lists available backup snapshots, optionally filtered by file path."""
+    p = Path(file_path).resolve() if file_path else None
+    ws = Path(root).resolve() if root else (find_workspace_root_for_path(p) if p else Path(get_default_workspace_root()).resolve())
+    backup_dir = get_backup_dir(str(ws))
+    index_file = backup_dir / "backups_index.jsonl"
+    if not index_file.exists():
+        return []
+
+    import json
+    backups = []
+    target_rel = None
+    if p:
+        try:
+            target_rel = str(p.relative_to(ws)).replace("\\", "/").lower()
+        except ValueError:
+            target_rel = p.name.lower()
+
+    try:
+        with open(index_file, "r", encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    entry = json.loads(line)
+                    if exclude_restore_snapshots and entry.get("reason") == "before_restore":
+                        continue
+                    if target_rel:
+                        entry_rel = str(entry.get("rel_path", "")).replace("\\", "/").lower()
+                        entry_orig = str(entry.get("original_path", "")).replace("\\", "/").lower()
+                        t_norm = target_rel.replace("\\", "/").lower()
+                        t_orig = str(p).replace("\\", "/").lower()
+                        if t_norm != entry_rel and not entry_orig.endswith(t_norm) and t_orig != entry_orig:
+                            continue
+                    # Check if backup file still exists on disk
+                    b_file = Path(entry.get("backup_file", ""))
+                    if b_file.exists():
+                        backups.append(entry)
+                except Exception:
+                    continue
+    except Exception as e:
+        log.error("Error reading backups index: %s", e)
+
+    backups.reverse()  # Newest first
+    return backups[:limit]
+
+
+def restore_file_backup(
+    file_path: str,
+    backup_id: Optional[str] = None,
+    root: Optional[str] = None
+) -> Dict[str, Any]:
+    """
+    Restores a file to its state from a previous backup snapshot.
+    If backup_id is not specified, uses the most recent available backup.
+    """
+    try:
+        p = Path(file_path).resolve()
+        ws = Path(root).resolve() if root else find_workspace_root_for_path(p)
+        backup_dir = get_backup_dir(str(ws))
+
+        target_backup_file = None
+        backup_meta = None
+
+        if backup_id:
+            candidate = backup_dir / backup_id
+            if candidate.exists():
+                target_backup_file = candidate
+        else:
+            # Pick the most recent non-restore backup
+            available = list_file_backups(file_path=str(p), root=str(ws), limit=1, exclude_restore_snapshots=True)
+            if not available:
+                available = list_file_backups(file_path=str(p), root=str(ws), limit=1)
+            if available:
+                backup_meta = available[0]
+                candidate = Path(backup_meta["backup_file"])
+                if candidate.exists():
+                    target_backup_file = candidate
+
+        if not target_backup_file or not target_backup_file.exists():
+            return {
+                "success": False,
+                "error": f"Nessun backup trovato per {p.name}" + (f" con ID {backup_id}" if backup_id else "")
+            }
+
+        p.parent.mkdir(parents=True, exist_ok=True)
+        content_bytes = target_backup_file.read_bytes()
+        p.write_bytes(content_bytes)
+
+        ts = backup_meta.get("timestamp") if backup_meta else "precedente"
+        log.info("Restored %s from backup %s (%d bytes)", p.name, target_backup_file.name, len(content_bytes))
+        return {
+            "success": True,
+            "restored_path": str(p).replace("\\", "/"),
+            "backup_id": target_backup_file.name,
+            "timestamp": ts,
+            "size": len(content_bytes),
+            "message": f"File '{p.name}' ripristinato con successo allo stato del {ts} ({len(content_bytes)} byte)."
+        }
+    except Exception as e:
+        log.error("Restore failed for %s: %s", file_path, e)
+        return {"success": False, "error": f"Errore durante il ripristino: {str(e)}"}
+
+
+def write_file_content(file_path: str, content: str, root: Optional[str] = None) -> Dict[str, Any]:
+    """Writes or overwrites a file in admin mode, creating parent folders and taking an automatic backup."""
+    try:
+        p = Path(file_path).resolve()
+        ws = Path(root).resolve() if root else find_workspace_root_for_path(p)
+        
+        # Automatic backup snapshot before modifying an existing file
+        backup_info = None
+        if p.exists() and p.is_file():
+            backup_info = backup_file_snapshot(str(p), reason="before_write", root=str(ws))
+
         p.parent.mkdir(parents=True, exist_ok=True)
         p.write_text(content, encoding="utf-8")
-        return {
+        res = {
             "success": True,
             "path": str(p).replace("\\", "/"),
             "size": p.stat().st_size,
             "message": f"File salvato con successo: {p.name}"
         }
+        if backup_info:
+            res["backup_id"] = backup_info.get("backup_id")
+            res["backup_timestamp"] = backup_info.get("timestamp")
+        return res
     except Exception as e:
         return {"success": False, "error": f"Errore scrittura file: {str(e)}"}
 
 
-def delete_fs_entry(target_path: str, recursive: bool = True) -> Dict[str, Any]:
-    """Deletes a file or directory in admin mode."""
+def delete_fs_entry(target_path: str, recursive: bool = True, root: Optional[str] = None) -> Dict[str, Any]:
+    """Deletes a file or directory in admin mode, taking a backup snapshot first if it's a file."""
     try:
         p = Path(target_path).resolve()
         if not p.exists():
             return {"success": False, "error": f"Percorso non trovato: {target_path}"}
 
+        ws = Path(root).resolve() if root else find_workspace_root_for_path(p)
+
         if p.is_file():
+            backup_file_snapshot(str(p), reason="before_delete", root=str(ws))
             p.unlink()
             return {"success": True, "message": f"File eliminato: {p.name}", "is_dir": False}
         elif p.is_dir():

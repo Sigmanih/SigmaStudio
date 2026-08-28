@@ -303,18 +303,26 @@ export default function AdminAgentChat({
   const isGoalCompleted = activeTask.isGoalCompleted ?? false;
   const pipeline = activeTask.pipeline || [];
 
-  // Pipeline UI & Auto-Loop state
+  // Pipeline UI & Auto-Loop
   const [showPipeline, setShowPipeline] = useState(true);
   const [newPipelineInput, setNewPipelineInput] = useState('');
+  const [newPipelineDesc, setNewPipelineDesc] = useState('');
   const [showNewTaskInline, setShowNewTaskInline] = useState(false);
   const [loopCountdown, setLoopCountdown] = useState(null);
   const autoLoopTimeoutRef = useRef(null);
   const abortControllerRef = useRef(null);
 
+  // Keep a ref to always have the latest tasks state in async callbacks
+  const latestTasksRef = useRef(tasks);
+  useEffect(() => {
+    latestTasksRef.current = tasks;
+  }, [tasks]);
+
   const toggleAutoLoop = () => {
     const nextVal = !autoLoop;
     if (!nextVal && autoLoopTimeoutRef.current) {
       clearInterval(autoLoopTimeoutRef.current);
+      autoLoopTimeoutRef.current = null;
       setLoopCountdown(null);
     }
     setTasks(prev => prev.map(t => t.id === activeTask.id ? { ...t, autoLoop: nextVal } : t));
@@ -386,6 +394,7 @@ export default function AdminAgentChat({
     const newTaskObj = {
       id: `task_${Date.now()}_${Math.random().toString(36).substring(2, 5)}`,
       title: newPipelineInput.trim(),
+      description: newPipelineDesc.trim() || undefined,
       status: 'pending'
     };
     setTasks(prev => prev.map(t => {
@@ -395,6 +404,7 @@ export default function AdminAgentChat({
       return t;
     }));
     setNewPipelineInput('');
+    setNewPipelineDesc('');
     setShowNewTaskInline(false);
   };
 
@@ -668,11 +678,20 @@ export default function AdminAgentChat({
       setIsListening(false);
     }
 
+    // Stop any pending auto-loop countdown
+    stopAutoLoop();
+
+    // Read the true latest task state from latestTasksRef to avoid stale closure
+    const currentTasks = latestTasksRef.current || tasks;
+    const currentTask = currentTasks.find(t => t.id === activeTaskId) || currentTasks[0] || activeTask;
+    const currentTaskId = currentTask.id;
+    const existingMessages = currentTask.messages || [];
+
     // Auto-update task title from first user prompt if still generic
-    const isGenericTitle = activeTask.title.startsWith('Nuovo Task') || activeTask.title.startsWith('Task #');
+    const isGenericTitle = currentTask.title.startsWith('Nuovo Task') || currentTask.title.startsWith('Task #');
     const newTitle = isGenericTitle 
       ? (userPrompt ? (userPrompt.slice(0, 36) + (userPrompt.length > 36 ? '...' : '')) : `Allegati (${currentAttachments.length})`) 
-      : activeTask.title;
+      : currentTask.title;
 
     const userMsgObj = { 
       role: 'user', 
@@ -681,11 +700,10 @@ export default function AdminAgentChat({
       timestamp: new Date().toISOString()
     };
 
-    const newMessages = [...messages, userMsgObj];
+    const newMessages = [...existingMessages, userMsgObj];
     let activeMsgIndex = newMessages.length;
 
     // Append user message + first assistant turn placeholder
-    const currentTaskId = activeTask.id;
     setTasks(prev => prev.map(t => {
       if (t.id === currentTaskId) {
         return {
@@ -722,6 +740,7 @@ export default function AdminAgentChat({
             content: m.content,
             attachments: m.attachments
           })),
+          pipeline: currentTask.pipeline || [],
           workspace_root: workspaceRoot,
           model: selectedModel,
           auto_execute_tools: autoExecuteTools
@@ -1345,118 +1364,162 @@ export default function AdminAgentChat({
 
             {/* Pipeline Body */}
             {showPipeline && (
-              <div style={{ padding: '6px 10px', display: 'flex', flexDirection: 'column', gap: '4px', borderTop: isLight ? '1px solid rgba(0,0,0,0.05)' : '1px solid rgba(255,255,255,0.05)' }}>
-                {pipeline.map((item) => {
-                  const isDone = item.status === 'done';
-                  const inProgress = item.status === 'in_progress';
+              <div style={{ padding: '8px 12px', display: 'flex', flexDirection: 'column', gap: '6px', borderTop: isLight ? '1px solid rgba(0,0,0,0.05)' : '1px solid rgba(255,255,255,0.05)' }}>
+                {pipeline.length === 0 ? (
+                  <div style={{ padding: '6px 4px', fontSize: '0.66rem', color: '#8b949e', fontStyle: 'italic' }}>
+                    💡 Nessun task nella pipeline. L'agente definirà automaticamente i task o puoi aggiungerne uno manualmente qui sotto.
+                  </div>
+                ) : (
+                  pipeline.map((item) => {
+                    const isDone = item.status === 'done';
+                    const inProgress = item.status === 'in_progress';
 
-                  return (
-                    <div 
-                      key={item.id}
-                      style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'space-between',
-                        padding: '3px 6px',
-                        borderRadius: '5px',
-                        background: inProgress 
-                          ? (isLight ? 'rgba(0, 242, 254, 0.08)' : 'rgba(0, 242, 254, 0.06)') 
-                          : 'transparent',
-                        fontSize: '0.68rem'
-                      }}
-                    >
+                    return (
                       <div 
-                        onClick={() => toggleTaskStatus(item.id)}
-                        style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', flex: 1, minWidth: 0 }}
-                        title="Clicca per cambiare stato"
+                        key={item.id}
+                        style={{
+                          display: 'flex',
+                          alignItems: 'flex-start',
+                          justifyContent: 'space-between',
+                          padding: '5px 8px',
+                          borderRadius: '6px',
+                          background: inProgress 
+                            ? (isLight ? 'rgba(0, 242, 254, 0.12)' : 'rgba(0, 242, 254, 0.08)') 
+                            : (isDone ? (isLight ? 'rgba(63, 185, 80, 0.06)' : 'rgba(63, 185, 80, 0.04)') : 'transparent'),
+                          border: inProgress ? '1px solid rgba(0, 242, 254, 0.25)' : (isDone ? '1px solid rgba(63, 185, 80, 0.15)' : '1px solid transparent'),
+                          fontSize: '0.68rem',
+                          gap: '8px'
+                        }}
                       >
-                        {isDone ? (
-                          <CheckCircle2 size={13} color="#3fb950" />
-                        ) : inProgress ? (
-                          <CircleDot size={13} color="#00f2fe" />
-                        ) : (
-                          <Circle size={13} color="#8b949e" />
-                        )}
-                        <span style={{
-                          color: isDone ? '#8b949e' : (inProgress ? '#00f2fe' : (isLight ? '#24292f' : '#e6edf3')),
-                          textDecoration: isDone ? 'line-through' : 'none',
-                          fontWeight: inProgress ? 700 : 500,
-                          overflow: 'hidden',
-                          textOverflow: 'ellipsis',
-                          whiteSpace: 'nowrap'
-                        }}>
-                          {item.title}
-                        </span>
-                      </div>
-
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                        <span style={{
-                          fontSize: '0.58rem',
-                          padding: '1px 5px',
-                          borderRadius: '8px',
-                          fontWeight: 700,
-                          background: isDone 
-                            ? 'rgba(63, 185, 80, 0.15)' 
-                            : (inProgress ? 'rgba(0, 242, 254, 0.15)' : 'rgba(255,255,255,0.06)'),
-                          color: isDone ? '#3fb950' : (inProgress ? '#00f2fe' : '#8b949e')
-                        }}>
-                          {isDone ? 'FATTO' : (inProgress ? 'IN CORSO' : 'IN CODA')}
-                        </span>
-                        <button
-                          type="button"
-                          onClick={() => removePipelineTask(item.id)}
-                          style={{ background: 'none', border: 'none', color: '#8b949e', cursor: 'pointer', padding: '1px' }}
-                          title="Rimuovi task"
+                        <div 
+                          onClick={() => toggleTaskStatus(item.id)}
+                          style={{ display: 'flex', alignItems: 'flex-start', gap: '7px', cursor: 'pointer', flex: 1, minWidth: 0 }}
+                          title="Clicca per cambiare stato del task"
                         >
-                          <X size={11} />
-                        </button>
+                          <div style={{ marginTop: '2px' }}>
+                            {isDone ? (
+                              <CheckCircle2 size={13} color="#3fb950" />
+                            ) : inProgress ? (
+                              <CircleDot size={13} color="#00f2fe" />
+                            ) : (
+                              <Circle size={13} color="#8b949e" />
+                            )}
+                          </div>
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', flex: 1, minWidth: 0 }}>
+                            <span style={{
+                              color: isDone ? '#8b949e' : (inProgress ? '#00f2fe' : (isLight ? '#24292f' : '#e6edf3')),
+                              textDecoration: isDone ? 'line-through' : 'none',
+                              fontWeight: inProgress ? 800 : 600,
+                              overflow: 'hidden',
+                              textOverflow: 'ellipsis',
+                              whiteSpace: 'nowrap'
+                            }}>
+                              {item.title}
+                            </span>
+                            {item.description && item.description !== item.title && (
+                              <span style={{
+                                fontSize: '0.60rem',
+                                color: isLight ? '#57606a' : '#8b949e',
+                                lineHeight: 1.3
+                              }}>
+                                {item.description}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '5px', marginTop: '2px' }}>
+                          <span 
+                            onClick={() => toggleTaskStatus(item.id)}
+                            style={{
+                              fontSize: '0.58rem',
+                              padding: '2px 6px',
+                              borderRadius: '8px',
+                              fontWeight: 800,
+                              cursor: 'pointer',
+                              background: isDone 
+                                ? 'rgba(63, 185, 80, 0.2)' 
+                                : (inProgress ? 'rgba(0, 242, 254, 0.2)' : 'rgba(255,255,255,0.08)'),
+                              color: isDone ? '#3fb950' : (inProgress ? '#00f2fe' : '#8b949e')
+                            }}
+                            title="Cambia stato"
+                          >
+                            {isDone ? '✓ FATTO' : (inProgress ? '⚡ IN CORSO' : '⏳ IN CODA')}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => removePipelineTask(item.id)}
+                            style={{ background: 'none', border: 'none', color: '#8b949e', cursor: 'pointer', padding: '2px' }}
+                            title="Rimuovi task"
+                          >
+                            <X size={12} />
+                          </button>
+                        </div>
                       </div>
-                    </div>
-                  );
-                })}
+                    );
+                  })
+                )}
 
                 {/* Inline Add Sub-task */}
                 {showNewTaskInline ? (
-                  <form onSubmit={handleAddPipelineTask} style={{ display: 'flex', alignItems: 'center', gap: '4px', marginTop: '4px' }}>
+                  <form onSubmit={handleAddPipelineTask} style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginTop: '4px', padding: '6px', borderRadius: '6px', background: isLight ? 'rgba(0,0,0,0.03)' : 'rgba(255,255,255,0.03)', border: '1px solid rgba(0, 242, 254, 0.3)' }}>
                     <input
                       type="text"
-                      placeholder="Nuovo sotto-task..."
+                      placeholder="Titolo sotto-task (es. Creazione endpoint backend)..."
                       value={newPipelineInput}
                       onChange={e => setNewPipelineInput(e.target.value)}
                       style={{
-                        flex: 1,
-                        padding: '3px 8px',
+                        padding: '4px 8px',
                         borderRadius: '4px',
                         border: '1px solid #00f2fe',
                         background: isLight ? '#fff' : '#07090e',
                         color: isLight ? '#000' : '#fff',
-                        fontSize: '0.66rem',
+                        fontSize: '0.68rem',
                         outline: 'none'
                       }}
                       autoFocus
                     />
-                    <button
-                      type="submit"
+                    <input
+                      type="text"
+                      placeholder="Dettagli opzionali (file coinvolti, requisiti)..."
+                      value={newPipelineDesc}
+                      onChange={e => setNewPipelineDesc(e.target.value)}
                       style={{
-                        padding: '3px 8px',
+                        padding: '4px 8px',
                         borderRadius: '4px',
-                        background: '#00f2fe',
-                        color: '#000',
-                        fontWeight: 800,
-                        border: 'none',
+                        border: isLight ? '1px solid #d0d7de' : '1px solid rgba(255,255,255,0.1)',
+                        background: isLight ? '#fff' : '#07090e',
+                        color: isLight ? '#000' : '#fff',
                         fontSize: '0.64rem',
-                        cursor: 'pointer'
+                        outline: 'none'
                       }}
-                    >
-                      Aggiungi
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setShowNewTaskInline(false)}
-                      style={{ background: 'none', border: 'none', color: '#8b949e', cursor: 'pointer' }}
-                    >
-                      <X size={12} />
-                    </button>
+                    />
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '6px' }}>
+                      <button
+                        type="button"
+                        onClick={() => { setShowNewTaskInline(false); setNewPipelineInput(''); setNewPipelineDesc(''); }}
+                        style={{ background: 'none', border: 'none', color: '#8b949e', cursor: 'pointer', fontSize: '0.62rem' }}
+                      >
+                        Annulla
+                      </button>
+                      <button
+                        type="submit"
+                        disabled={!newPipelineInput.trim()}
+                        style={{
+                          padding: '3px 10px',
+                          borderRadius: '4px',
+                          background: '#00f2fe',
+                          color: '#000',
+                          fontWeight: 800,
+                          border: 'none',
+                          fontSize: '0.64rem',
+                          cursor: newPipelineInput.trim() ? 'pointer' : 'default',
+                          opacity: newPipelineInput.trim() ? 1 : 0.5
+                        }}
+                      >
+                        + Aggiungi Task
+                      </button>
+                    </div>
                   </form>
                 ) : (
                   <button
@@ -1466,18 +1529,18 @@ export default function AdminAgentChat({
                       background: 'none',
                       border: 'none',
                       color: '#00f2fe',
-                      fontSize: '0.62rem',
+                      fontSize: '0.64rem',
                       fontWeight: 700,
                       cursor: 'pointer',
                       display: 'inline-flex',
                       alignItems: 'center',
                       gap: '4px',
-                      padding: '3px 0',
+                      padding: '4px 0',
                       marginTop: '2px'
                     }}
                   >
-                    <Plus size={11} />
-                    <span>Aggiungi sotto-task manualmente</span>
+                    <Plus size={12} />
+                    <span>Aggiungi sotto-task alla pipeline</span>
                   </button>
                 )}
               </div>
@@ -2229,13 +2292,13 @@ export default function AdminAgentChat({
           }}
         />
 
-        {isStreaming ? (
+        {isStreaming || loopCountdown !== null ? (
           <button
             type="button"
             onClick={handleStopGeneration}
-            title="Ferma la generazione"
+            title="Ferma il loop e l'elaborazione dell'agente"
             style={{
-              padding: '6px 12px',
+              padding: '6px 14px',
               borderRadius: '8px',
               background: 'linear-gradient(135deg, #ef4444, #dc2626)',
               border: '1px solid #b91c1c',
@@ -2245,20 +2308,20 @@ export default function AdminAgentChat({
               alignItems: 'center',
               gap: '6px',
               fontWeight: 800,
-              fontSize: '0.72rem',
-              boxShadow: '0 2px 8px rgba(239, 68, 68, 0.4)',
+              fontSize: '0.74rem',
+              boxShadow: '0 2px 10px rgba(239, 68, 68, 0.45)',
               transition: 'all 0.15s ease'
             }}
           >
-            <Square size={12} fill="#ffffff" />
-            <span>Ferma</span>
+            <Square size={13} fill="#ffffff" />
+            <span>Ferma Loop</span>
           </button>
         ) : (
           <button
             type="submit"
             disabled={!input.trim() && attachedFiles.length === 0}
             style={{
-              padding: '6px 12px',
+              padding: '6px 14px',
               borderRadius: '8px',
               background: (input.trim() || attachedFiles.length > 0) ? 'linear-gradient(135deg, #00f2fe, #4facfe)' : (isLight ? '#e1e4e8' : '#21262d'),
               border: 'none',
