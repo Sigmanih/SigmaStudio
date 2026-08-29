@@ -9,7 +9,9 @@
 # acceleratore), separata dal download apposta per poterla verificare qui.
 # ==============================================================================
 import unittest
+from unittest import mock
 
+from core.engine import llama_runtime
 from core.engine.llama_runtime import (
     _cuda_compatibile,
     asset_name,
@@ -269,5 +271,42 @@ class TestBuildInfoEUpgrade(unittest.TestCase):
             lr.describe_machine = orig_desc
 
 
+
+class TestRimozioneBuildObsolete(unittest.TestCase):
+    """Le build vecchie si tolgono dopo, non prima.
+
+    Il launcher cancellava tutta la cartella dei runtime per forzare il
+    ri-download, e per l'intera durata di quel download l'applicazione non
+    aveva piu' un motore: chi stava chattando riceveva "architettura non
+    riconosciuta" da un ripiego piu' vecchio. Ora si installa, e solo dopo si
+    fa pulizia.
+    """
+
+    def setUp(self):
+        import tempfile, shutil
+        from pathlib import Path
+        self.radice = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, self.radice, True)
+        for nome in ("b10630", "b10679", "b10682", ".llama-b10682.zip"):
+            (self.radice / nome).mkdir()
+        self._patch = mock.patch.object(
+            llama_runtime, "runtime_dir", lambda: self.radice)
+        self._patch.start()
+        self.addCleanup(self._patch.stop)
+
+    def test_tiene_quella_indicata_e_toglie_le_altre(self):
+        rimosse = llama_runtime.rimuovi_build_obsolete("b10682")
+        self.assertTrue((self.radice / "b10682").is_dir())
+        self.assertCountEqual(rimosse, ["b10630", "b10679"])
+
+    def test_non_tocca_i_file_di_lavoro(self):
+        """Gli archivi in corso di download iniziano per punto: non sono build."""
+        llama_runtime.rimuovi_build_obsolete("b10682")
+        self.assertTrue((self.radice / ".llama-b10682.zip").exists())
+
+    def test_senza_niente_da_tenere_non_esplode(self):
+        rimosse = llama_runtime.rimuovi_build_obsolete("")
+        self.assertEqual(len(rimosse), 3)
+
 if __name__ == "__main__":
-    unittest.main()
+    unittest.main()

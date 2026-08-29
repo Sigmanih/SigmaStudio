@@ -8,21 +8,38 @@ import { getModelSpecs } from '../Chat/core/modelSpecsHelper';
 export default function DeveloperModelSelector({
   selectedModel,
   onSelectModel,
+  contextTokens = 32768,
+  onSelectContextTokens,
+  contextMetrics,
   theme,
   isLight
 }) {
   const [isOpen, setIsOpen] = useState(false);
+  const [isContextMenuOpen, setIsContextMenuOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [activeCategory, setActiveCategory] = useState('all');
   const [localModels, setLocalModels] = useState([]);
   const [serverInfo, setServerInfo] = useState(null);
   const dropdownRef = useRef(null);
+  const contextMenuRef = useRef(null);
+
+  const CONTEXT_PRESETS = [
+    { label: '4K', tokens: 4096, desc: 'Leggero (4,096 tok)' },
+    { label: '8K', tokens: 8192, desc: 'Bilanciato (8,192 tok)' },
+    { label: '16K', tokens: 16384, desc: 'Esteso (16,384 tok)' },
+    { label: '32K', tokens: 32768, desc: 'Consigliato Code (32,768 tok)' },
+    { label: '64K', tokens: 65536, desc: 'Lungo Contesto (65,536 tok)' },
+    { label: '128K', tokens: 131072, desc: 'Massimo Workspace (131,072 tok)' }
+  ];
 
   // Close dropdown on outside click
   useEffect(() => {
     const handleOutside = (e) => {
       if (dropdownRef.current && !dropdownRef.current.contains(e.target)) {
         setIsOpen(false);
+      }
+      if (contextMenuRef.current && !contextMenuRef.current.contains(e.target)) {
+        setIsContextMenuOpen(false);
       }
     };
     document.addEventListener('mousedown', handleOutside);
@@ -99,17 +116,16 @@ export default function DeveloperModelSelector({
       list.push({
         id: id,
         name: rawName,
-        shortName: rawName.replace(/^.*\//, '').replace(/\.gguf$/i, ''),
+        shortName: rawName.replace(/--/g, '/').split('/').pop().replace(/\.gguf$/i, ''),
         provider: 'local',
         category: 'local',
         params: paramLabel,
-        size: m.size_label || (m.size_gb ? `~${m.size_gb.toFixed(1)} GB` : 'Locale'),
+        size: m.size_formatted || (m.size_bytes ? `${(m.size_bytes / (1024 ** 3)).toFixed(1)} GB` : null),
         quant: quantLabel,
-        format: m.format || (rawName.toLowerCase().includes('gguf') ? 'GGUF' : 'Safetensors'),
+        format: m.format || (id.endsWith('.gguf') ? 'GGUF' : 'Safetensors'),
         isResident: isResident,
         isComplete: isComplete,
-        hasPartFiles: !!m.has_part_files,
-        estVram: m.est_vram_gb ? `~${m.est_vram_gb} GB VRAM` : null
+        description: `Modello locale pronto all'uso con caricamento ultra-rapido.`
       });
     });
 
@@ -145,41 +161,44 @@ export default function DeveloperModelSelector({
     return list;
   }, [localModels, serverInfo]);
 
-  // Active selected model object
+  // Selected Model Object
   const activeModelObj = useMemo(() => {
-    return allModels.find(m => m.id === selectedModel) || allModels[0];
+    if (!selectedModel || selectedModel === 'sigmaengine') {
+      return allModels[0];
+    }
+    return allModels.find(m => m.id === selectedModel || m.name === selectedModel) || {
+      id: selectedModel,
+      name: selectedModel,
+      shortName: selectedModel.replace(/--/g, '/').split('/').pop(),
+      provider: 'custom',
+      params: 'Custom',
+      isResident: false
+    };
   }, [allModels, selectedModel]);
 
-  // Filtered models by search query and category
+  // Filtered list for search & categories
   const filteredModels = useMemo(() => {
     return allModels.filter(m => {
-      const matchCat = activeCategory === 'all' || 
-        (activeCategory === 'local' && m.category === 'local') ||
-        (activeCategory === 'cloud' && m.category === 'cloud') ||
-        (activeCategory === 'resident' && m.isResident);
-
-      if (!matchCat) return false;
-      if (!searchQuery.trim()) return true;
-
-      const q = searchQuery.toLowerCase();
-      return (
-        m.name.toLowerCase().includes(q) ||
-        m.id.toLowerCase().includes(q) ||
-        (m.params && m.params.toLowerCase().includes(q)) ||
-        (m.quant && m.quant.toLowerCase().includes(q)) ||
-        (m.size && m.size.toLowerCase().includes(q))
-      );
+      const matchCat = activeCategory === 'all' || m.category === activeCategory;
+      const matchSearch = !searchQuery.trim() || 
+        m.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        (m.params && m.params.toLowerCase().includes(searchQuery.toLowerCase())) ||
+        (m.quant && m.quant.toLowerCase().includes(searchQuery.toLowerCase()));
+      return matchCat && matchSearch;
     });
   }, [allModels, activeCategory, searchQuery]);
 
+  const activeContextLabel = CONTEXT_PRESETS.find(p => p.tokens === contextTokens)?.label || `${Math.round(contextTokens / 1024)}K`;
+
   return (
-    <div ref={dropdownRef} style={{ position: 'relative', width: '100%' }}>
-      {/* Active Model Trigger Button */}
+    <div style={{ position: 'relative', width: '100%', display: 'flex', alignItems: 'center', gap: '6px' }} ref={dropdownRef}>
+      {/* Main Model Selector Button */}
       <button
         type="button"
         onClick={() => setIsOpen(!isOpen)}
         style={{
-          width: '100%',
+          flex: 1,
+          minWidth: 0,
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
@@ -264,8 +283,103 @@ export default function DeveloperModelSelector({
           </div>
         </div>
 
-        <ChevronDown size={14} color="#8b949e" style={{ transform: isOpen ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s ease' }} />
+        <ChevronDown size={14} color="#8b949e" style={{ transform: isOpen ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s ease', flexShrink: 0 }} />
       </button>
+
+      {/* Context Length Quick Control & Meter */}
+      <div style={{ position: 'relative' }} ref={contextMenuRef}>
+        <button
+          type="button"
+          onClick={() => setIsContextMenuOpen(!isContextMenuOpen)}
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '6px',
+            padding: '6px 8px',
+            borderRadius: '8px',
+            background: isLight ? '#ffffff' : '#161b22',
+            border: isLight ? '1px solid #d0d7de' : '1px solid rgba(163, 113, 247, 0.35)',
+            cursor: 'pointer',
+            height: '100%',
+            transition: 'all 0.15s ease'
+          }}
+          title={`Lunghezza Finestra di Contesto: ${contextTokens.toLocaleString()} token. Clicca per modificare.`}
+        >
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+              <Sparkles size={11} color="#a371f7" />
+              <span style={{ fontSize: '0.66rem', fontWeight: 800, color: '#a371f7' }}>
+                {activeContextLabel} Ctx
+              </span>
+            </div>
+            {contextMetrics?.promptTokens ? (
+              <span style={{ fontSize: '0.56rem', color: '#8b949e', whiteSpace: 'nowrap' }}>
+                ~{(contextMetrics.promptTokens / 1000).toFixed(1)}K / {activeContextLabel}
+              </span>
+            ) : (
+              <span style={{ fontSize: '0.56rem', color: '#8b949e', whiteSpace: 'nowrap' }}>
+                {contextTokens.toLocaleString()} tok
+              </span>
+            )}
+          </div>
+          <ChevronDown size={12} color="#8b949e" style={{ transform: isContextMenuOpen ? 'rotate(180deg)' : 'none', transition: 'transform 0.15s' }} />
+        </button>
+
+        {/* Context Presets Menu */}
+        {isContextMenuOpen && (
+          <div style={{
+            position: 'absolute',
+            top: 'calc(100% + 4px)',
+            right: 0,
+            zIndex: 110,
+            width: '210px',
+            borderRadius: '8px',
+            background: isLight ? '#ffffff' : '#161b22',
+            border: isLight ? '1px solid #d0d7de' : '1px solid rgba(163, 113, 247, 0.4)',
+            boxShadow: '0 8px 24px rgba(0,0,0,0.4)',
+            padding: '6px',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '2px'
+          }}>
+            <div style={{ padding: '4px 6px', fontSize: '0.62rem', fontWeight: 800, color: '#a371f7', borderBottom: isLight ? '1px solid #e1e4e8' : '1px solid rgba(255,255,255,0.06)', marginBottom: '4px' }}>
+              🧠 Finestra Contesto (RAM/VRAM)
+            </div>
+            {CONTEXT_PRESETS.map(p => {
+              const isSelected = p.tokens === contextTokens;
+              return (
+                <div
+                  key={p.tokens}
+                  onClick={() => {
+                    onSelectContextTokens?.(p.tokens);
+                    setIsContextMenuOpen(false);
+                  }}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    padding: '5px 8px',
+                    borderRadius: '5px',
+                    background: isSelected ? 'rgba(163, 113, 247, 0.15)' : 'transparent',
+                    cursor: 'pointer',
+                    fontSize: '0.66rem',
+                    color: isSelected ? '#a371f7' : (isLight ? '#24292f' : '#f0f6fc'),
+                    transition: 'background 0.1s'
+                  }}
+                  onMouseEnter={e => { if (!isSelected) e.currentTarget.style.background = isLight ? '#f6f8fa' : 'rgba(255,255,255,0.05)'; }}
+                  onMouseLeave={e => { if (!isSelected) e.currentTarget.style.background = 'transparent'; }}
+                >
+                  <div style={{ display: 'flex', flexDirection: 'column' }}>
+                    <span style={{ fontWeight: isSelected ? 800 : 600 }}>{p.label} Tokens</span>
+                    <span style={{ fontSize: '0.56rem', color: '#8b949e' }}>{p.desc}</span>
+                  </div>
+                  {isSelected && <Check size={12} color="#a371f7" />}
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
 
       {/* Popover Dropdown */}
       {isOpen && (

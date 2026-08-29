@@ -84,6 +84,14 @@ _GGUF_OVERHEAD_FACTOR = 1.20
 # Modern NVIDIA/AMD drivers use ~0.3-0.5 GB per device for runtime context and buffers.
 _GPU_RESERVE_GB = 0.6
 
+# Quello che llama.cpp alloca su ogni scheda oltre ai pesi e alla cache KV: il
+# grafo di calcolo e i suoi buffer intermedi. Misurato su questa collocazione,
+# 1809 MiB sulla scheda principale con n_batch 540 e un vocabolario da 248k --
+# quasi tre volte la riserva che basta a un modello denso. Non contarlo ha
+# prodotto un piano che stava nei conti e non stava nella scheda: 15721 MiB
+# proiettati su 15037 liberi, e il caricamento morto in allocazione.
+_MOE_COMPUTE_SLACK_GB = 0.9
+
 
 # Host RAM that must stay free for the OS, the web server and the page cache
 # llama.cpp reads mmapped weights through. A flat figure is the wrong shape:
@@ -306,6 +314,15 @@ def _plan_settings(facts: ModelFacts, hardware: Dict[str, Any], context_tokens: 
     if len(gpus) > 1 and total_usable > 0:
         tensor_split = [round(u / total_usable, 4) for u in usable]
 
+    # Un modello a esperti non si colloca contando i layer: la parte densa e'
+    # piccola e sta sulla scheda, gli esperti sono quasi tutto il peso e un
+    # token ne accende una manciata. Se e' questo il caso, la scelta e' quali
+    # tensori restano in RAM, non quanti layer partono.
+    moe = _plan_moe_offload(facts, hardware, usable, total_usable,
+                            n_ctx, n_threads, n_threads_batch)
+    if moe is not None:
+        return moe
+
     # The split and the host fit depend on each other: the KV cache that
     # stays in host RAM is set by how many layers missed the accelerator,
     # and shrinking the context to fit host RAM changes how many fit. Two
@@ -400,6 +417,154 @@ def _plan_settings(facts: ModelFacts, hardware: Dict[str, Any], context_tokens: 
     # folded in: _merge_host_fit appends to whatever is already there
     # rather than replacing it, and both warnings matter.
     settings.update(_throughput_forecast(facts, settings, hardware))
+    return _merge_host_fit(settings, fit)
+
+
+def _plan_moe_offload(facts: ModelFacts, hardware: Dict[str, Any],
+                      usable: List[float], total_usable: float,
+                      n_ctx: int, n_threads: int, n_threads_batch: int
+) -> Optional[Dict[str, Any]]:
+    """
+    La collocazione di un modello a esperti: densa in VRAM, esperti in RAM.
+
+    Vale solo quando cambia qualcosa. Se gli esperti entrano tutti in VRAM la
+    strada normale (quanti layer offloadare) da' lo stesso risultato scritta
+    meglio, e se non entra nemmeno la parte densa questa non ha niente da
+    offrire: in entrambi i casi torna None e decide il ladder dei layer.
+
+    Su piu' schede la ripartizione non viene fissata. `--n-cpu-moe` lascia in
+    VRAM gli esperti degli *ultimi* layer, e una divisione proporzionale
+    assegna proprio quelli alla scheda piu' piccola: 15 GB chiesti a una 5060
+    da 8, con il caricamento che muore prima di iniziare. llama.cpp sa
+    distribuire da solo guardando la memoria libera di ogni scheda, ma si
+    ferma se trova un tensor_split imposto da noi -- lo dice a chiare lettere
+    nel log, "tensor_split already set by user, abort". Qui la sua misura vale
+    piu' della nostra proporzione.
+
+    Il peso degli esperti non viene passato al fit della RAM. Quel controllo
+    esiste per le allocazioni vere -- il buffer dei logits che ha fatto morire
+    un Raspberry Pi -- mentre gli esperti arrivano da un file mappato in
+    memoria: sono page cache, si liberano sotto pressione e non fanno fallire
+    un caricamento, rendono lento un token. Contarli li' avrebbe ristretto la
+    finestra di contesto per fare spazio a byte che non stanno nella finestra,
+    senza guadagnare un solo GB. Quanto costano in velocita' lo dice la
+    previsione, che e' il posto giusto per dirlo.
+    """
+    layers = facts.num_hidden_layers or 0
+    expert_gb = (getattr(facts, "expert_bytes", 0) or 0) / 2**30
+    host_only_gb = (getattr(facts, "host_only_bytes", 0) or 0) / 2**30
+    if not layers or expert_gb <= 0:
+        return None
+
+    dense_gb = max(facts.total_bytes / 2**30 - expert_gb - host_only_gb, 0.0)
+    kv_quant = None
+    su_host = 0
+    kv_gb_f16 = 0.0
+    n_batch = _N_BATCH_DEFAULT
+    tensor_split = None
+    fit = None
+
+    for _ in range(2):
+        kv_gb_f16 = ModelInspector.estimate_kv_cache_gb(facts, n_ctx)
+        su_host = _experts_on_host(facts, total_usable, kv_gb_f16)
+        if su_host is None:
+            return None
+
+        # Dimezzare la cache qui non compra layer: compra layer di esperti.
+        kv_quant = None
+        if n_ctx > _KV_QUANT_CONTEXT_THRESHOLD:
+            dimezzata = _experts_on_host(facts, total_usable, kv_gb_f16 / 2)
+            if dimezzata is not None and su_host - dimezzata >= 2:
+                kv_quant = _KV_QUANT_TYPE
+                su_host = dimezzata
+
+        if su_host <= 0:
+            return None          # tutto in VRAM: non serve questa strada
+
+        kv_gb = round(kv_gb_f16 / 2, 3) if kv_quant else kv_gb_f16
+
+        headroom_gb = total_usable - (dense_gb * _GGUF_OVERHEAD_FACTOR + kv_gb)
+        n_batch = _cap_batch(
+            _N_BATCH_ROOMY if headroom_gb > 1.0 else _N_BATCH_DEFAULT, facts
+        )
+
+        # Il conto sopra guarda la VRAM come se fosse una sola, e guarda solo
+        # i pesi. Nessuna delle due cose e' vera: i layer che tengono gli
+        # esperti sono gli ultimi, tutti insieme, e vanno dati a una scheda
+        # che li regga; e su ogni scheda llama.cpp vuole anche il grafo di
+        # calcolo. Se nessuna li regge, un altro layer di esperti passa alla
+        # CPU e si riprova: costa un cinquantesimo del traffico per volta ed
+        # e' quello che rende il caricamento possibile invece che teorico.
+        riserva = _MOE_COMPUTE_SLACK_GB + _logits_buffer_gb(facts, n_batch)
+        per_scheda = [max(u - riserva, 0.0) for u in usable]
+
+        dense_per_layer = dense_gb / layers
+        expert_per_layer = expert_gb / layers
+        kv_per_layer = kv_gb / layers
+        conteggi = None
+        while su_host < layers:
+            conteggi = _moe_layers_per_device(
+                per_scheda, layers, su_host, dense_per_layer, expert_per_layer,
+                kv_per_layer)
+            if conteggi is not None:
+                break
+            su_host += 1
+        if conteggi is None:
+            # Tutti gli esperti sulla CPU: resta da vedere se la parte densa
+            # entra. Se no, questa strada non ha niente da offrire.
+            su_host = layers
+            conteggi = _moe_layers_per_device(
+                per_scheda, layers, su_host, dense_per_layer, expert_per_layer,
+                kv_per_layer)
+        if conteggi is None:
+            return None
+        tensor_split = ([round(c / layers, 4) for c in conteggi]
+                        if len(conteggi) > 1 else None)
+        fit = _fit_to_host_memory(
+            facts, hardware, requested_ctx=n_ctx,
+            host_weights_gb=0.0, n_batch=n_batch, want_speculation=True,
+            kv_host_fraction=0.0,
+            kv_bytes_per_element=1 if kv_quant else 2,
+        )
+        if fit["n_ctx"] == n_ctx:
+            break
+        n_ctx = fit["n_ctx"]
+
+    if fit is None:
+        return None
+
+    kv_gb = round(kv_gb_f16 / 2, 3) if kv_quant else kv_gb_f16
+    host_expert_gb = expert_gb * su_host / layers
+
+    settings = {
+        "n_gpu_layers": -1,
+        "n_cpu_moe": su_host,
+        "tensor_split": tensor_split,
+        "n_ctx": n_ctx,
+        "n_threads": n_threads,
+        "n_threads_batch": n_threads_batch,
+        "n_batch": n_batch,
+        "flash_attn": True,
+        "kv_quant": kv_quant,
+        "prompt_lookup_tokens": fit["prompt_lookup_tokens"],
+        "device": "cuda",
+        # Esplicito perche' questa collocazione ci conta: senza mmap gli
+        # esperti diventerebbero un'allocazione da decine di GB invece che
+        # pagine di file, e la macchina se ne accorgerebbe.
+        "use_mmap": True,
+        "usable_vram_gb": round(total_usable, 2),
+        "weights_gb": round(facts.total_bytes / 2**30, 2),
+        "dense_gb": round(dense_gb, 2),
+        "experts_gb": round(expert_gb, 2),
+        "experts_on_host_gb": round(host_expert_gb, 2),
+        "host_only_gb": round(host_only_gb, 2),
+        "kv_cache_gb": kv_gb,
+        "kv_cache_gb_f16": kv_gb_f16,
+    }
+    if kv_quant:
+        settings["kv_saving_gb"] = round(kv_gb_f16 - kv_gb, 2)
+    settings.update(
+        _moe_forecast(facts, settings, hardware, host_expert_gb, host_only_gb))
     return _merge_host_fit(settings, fit)
 
 
@@ -756,6 +921,143 @@ def _layers_that_fit(
     per_layer = (weights_gb / layers) * _GGUF_OVERHEAD_FACTOR
     budget = max(usable_gb - kv_gb, 0.0)
     return min(max(int(budget / max(per_layer, 1e-6)), 0), layers)
+
+
+def _experts_on_host(facts: ModelFacts, usable_gb: float, kv_gb: float) -> Optional[int]:
+    """
+    Quanti layer devono lasciare gli esperti in RAM perche' il resto stia in VRAM.
+
+    `--n-cpu-moe N` tiene su CPU gli esperti dei primi N layer: alla scheda
+    restano attenzione, norme, esperti condivisi, la cache KV e gli esperti dei
+    layer da N in poi. Il numero piu' piccolo che ci sta e' quello giusto --
+    ogni layer di esperti che rimane in VRAM e' traffico che non passa dal bus
+    a ogni token.
+
+    None quando il modello non e' a esperti o quando nemmeno la parte densa
+    entra: li' la domanda torna a essere quanti layer offloadare, che e' la
+    strada che il pianificatore percorre gia'.
+    """
+    layers = facts.num_hidden_layers or 0
+    expert_gb = (getattr(facts, "expert_bytes", 0) or 0) / 2**30
+    if not layers or expert_gb <= 0:
+        return None
+
+    # La tabella di embedding per layer non finisce su nessun acceleratore:
+    # llama.cpp la tiene in RAM comunque. Contarla come VRAM fa sembrare
+    # impossibile da collocare un modello che invece si colloca -- sono 33
+    # dei 111 GiB di Qwen3.8-Flash-Next.
+    host_only_gb = (getattr(facts, "host_only_bytes", 0) or 0) / 2**30
+    dense_gb = max(facts.total_bytes / 2**30 - expert_gb - host_only_gb, 0.0)
+
+    budget = usable_gb - kv_gb - dense_gb * _GGUF_OVERHEAD_FACTOR
+    if budget <= 0:
+        return None
+
+    per_layer = (expert_gb / layers) * _GGUF_OVERHEAD_FACTOR
+    if per_layer <= 0:
+        return None
+    in_vram = int(budget // per_layer)
+    return max(layers - min(in_vram, layers), 0)
+
+
+def _moe_layers_per_device(usable: List[float], layers: int, n_cpu_moe: int,
+                           dense_per_layer: float, expert_per_layer: float,
+                           kv_per_layer: float) -> Optional[List[int]]:
+    """
+    Quanti layer prende ogni scheda, misurati in byte invece che in numero.
+
+    Con `--n-cpu-moe` i layer non pesano piu' uguale: i primi portano solo
+    attenzione e norme, gli ultimi si tengono anche gli esperti, e sono venti
+    volte piu' pesanti. llama.cpp divide gli intervalli in proporzione a
+    tensor_split, quindi una proporzione fatta sulla VRAM totale manda alla
+    scheda piccola proprio la coda pesante: 15 GB chiesti a una 5060 da 8, e
+    il caricamento muore prima di cominciare.
+
+    L'assegnazione e' quella che llama.cpp sa applicare -- intervalli
+    contigui, in ordine -- riempiendo una scheda alla volta.
+
+    None quando i layer finiscono le schede: vuol dire che sulla GPU ne
+    restano troppi, e chi chiama ne sposta un altro sulla CPU.
+    """
+    if not usable:
+        return None
+    conteggi = [0] * len(usable)
+    residuo = list(usable)
+    scheda = 0
+    for indice in range(layers):
+        costo = (dense_per_layer
+                 + (expert_per_layer if indice >= n_cpu_moe else 0.0)
+                 ) * _GGUF_OVERHEAD_FACTOR + kv_per_layer
+        while scheda < len(residuo) and residuo[scheda] < costo:
+            scheda += 1
+        if scheda >= len(residuo):
+            return None
+        residuo[scheda] -= costo
+        conteggi[scheda] += 1
+    return conteggi
+
+
+def _moe_forecast(facts: ModelFacts, settings: Dict[str, Any],
+                  hardware: Dict[str, Any], host_expert_gb: float,
+                  host_only_gb: float) -> Dict[str, Any]:
+    """
+    Cosa aspettarsi da un modello a esperti con gli esperti in RAM.
+
+    La previsione dei modelli densi non vale qui e sbaglia di un ordine di
+    grandezza: conta i byte lasciati fuori dalla VRAM come byte letti a ogni
+    token, mentre di cinquecentododici esperti per layer un token ne accende
+    dieci. Quello che si legge davvero e' la frazione instradata.
+
+    L'altra meta' del conto e' dove quei byte stanno. Se gli esperti non
+    entrano nella RAM libera, la parte che avanza arriva dal file a ogni
+    token: non e' "un po' piu' lento", e' un'altra scala di tempi, e va detto
+    prima e non dopo.
+    """
+    esperti = facts.num_experts or 0
+    attivi = getattr(facts, "experts_used", 0) or 0
+    # Senza il dato si assume il caso peggiore: tutti gli esperti letti.
+    frazione = (attivi / esperti) if (esperti and attivi) else 1.0
+    per_token_gb = host_expert_gb * frazione
+
+    free_ram = float((hardware.get("ram") or {}).get("available_gb", 0.0) or 0.0)
+    residente_gb = host_expert_gb + host_only_gb
+    in_ram = min(free_ram / residente_gb, 1.0) if residente_gb > 0 else 1.0
+
+    secondi = (
+        (per_token_gb * in_ram) / _HOST_BANDWIDTH_GB_S
+        + (per_token_gb * (1.0 - in_ram)) / _DISK_BANDWIDTH_GB_S
+    )
+    ceiling = round(1.0 / secondi, 2) if secondi > 0 else 0.0
+
+    forecast = {
+        "placement": "moe_split",
+        "experts_on_host_gb": round(host_expert_gb, 1),
+        "experts_used_per_token": attivi or esperti,
+        "experts_total": esperti,
+        "host_gb_per_token": round(per_token_gb, 2),
+        "host_resident_gb": round(residente_gb, 1),
+        "free_ram_gb": round(free_ram, 1),
+        "cached_fraction": round(in_ram, 2),
+        "pages_from_disk": in_ram < 1.0,
+        "estimated_tokens_per_second": ceiling,
+    }
+
+    if in_ram < 1.0:
+        settings["warning"] = (
+            f"Gli esperti che restano fuori dalla VRAM occupano "
+            f"{residente_gb:.0f} GB e la RAM libera e' {free_ram:.0f} GB: "
+            f"il {100 * (1 - in_ram):.0f}% viene letto dal disco a ogni token. "
+            f"Attesa realistica: {_render_rate(ceiling)}. Una quantizzazione "
+            f"piu' compatta entrerebbe in RAM e andrebbe molto piu' veloce."
+        )
+    else:
+        settings["warning"] = (
+            f"Esperti in RAM ({residente_gb:.0f} GB), il resto del modello in "
+            f"VRAM: di {esperti} esperti per layer se ne leggono {attivi}, "
+            f"{per_token_gb:.2f} GB a ogni token. Tetto stimato "
+            f"{_render_rate(ceiling)}."
+        )
+    return {"forecast": forecast}
 
 
 def _kv_quant_pays_off(plain: int, halved: int, layers: int) -> bool:

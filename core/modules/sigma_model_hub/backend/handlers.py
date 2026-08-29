@@ -984,10 +984,16 @@ def handle_models_convert_info(self):
 
 
 def handle_models_convert_tooling(self):
-    """POST /api/models/convert/tooling — Scarica lo script di conversione."""
+    """POST /api/models/convert/tooling — Scarica lo script di conversione.
+
+    Con {"force": true} riscarica sopra la copia esistente. Serve perche' il
+    riferimento e' un ramo che si muove: senza, la prima copia scaricata resta
+    li' per sempre e le architetture uscite dopo risultano non convertibili.
+    """
     try:
         from core.engine.gguf_converter import GgufConverter
-        res = GgufConverter.fetch_converter()
+        body = self.read_json_body() if hasattr(self, "read_json_body") else {}
+        res = GgufConverter.fetch_converter(force=bool((body or {}).get("force")))
         self.send_json_response(res, 200 if res.get("success") else 502)
     except Exception as e:
         log.error("Error in handle_models_convert_tooling: %s", e)

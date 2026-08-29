@@ -15,12 +15,17 @@
 # davvero nel binario. Un flag rinominato a monte non da' un errore di Python,
 # da' un llama-server che rifiuta di partire sulla macchina di qualcun altro.
 # ==============================================================================
+import os
+import shutil
 import subprocess
+import tempfile
 import unittest
+from unittest import mock
 
 from core.engine import gguf_planner
 from core.engine.backends.llamacpp_backend import LlamaCppBackend
 from core.engine.backends.llamaserver_backend import LlamaServerBackend, plan_to_args
+from core.engine.model_inspector import ModelFacts
 from core.engine.backends.registry import all_backends
 from core.engine.llama_runtime import installed_server
 
@@ -58,6 +63,58 @@ class TestStessoContratto(unittest.TestCase):
                               f"{backend.name} non usa il pianificatore condiviso")
 
 
+class TestArchitetturaConosciutaDalMotore(unittest.TestCase):
+    """Leggere il formato non e' saper leggere il modello.
+
+    I due backend eseguono lo stesso motore ma non la stessa versione: uno e'
+    il binario ufficiale che si aggiorna dal pannello, l'altro la llama.cpp
+    compilata dentro la ruota Python, ferma a quando la ruota fu costruita.
+    Trattarli come intercambiabili significa che, nel minuto in cui il primo
+    non c'e' (un aggiornamento del runtime, per dire), la selezione ripiega
+    sul secondo e un modello valido risponde "architettura non riconosciuta".
+    """
+
+    def setUp(self):
+        self.cartella = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, self.cartella, True)
+        self.facts = ModelFacts(path="", name="flash-next", model_type="qwen4exp",
+                                weight_format="gguf")
+
+    def _libreria(self, contenuto: bytes) -> str:
+        percorso = os.path.join(self.cartella, "llama.dll")
+        with open(percorso, "wb") as f:
+            f.write(contenuto)
+        return percorso
+
+    def test_una_build_che_non_la_conosce_si_tira_indietro(self):
+        lib = self._libreria(b"llama\x00qwen3\x00qwen3next\x00llama4\x00")
+        with mock.patch.object(LlamaCppBackend, "_libraries", classmethod(lambda cls: [lib])):
+            self.assertFalse(LlamaCppBackend.supports(self.facts, {}))
+
+    def test_una_build_che_la_conosce_la_accetta(self):
+        lib = self._libreria(b"qwen3next\x00qwen4exp\x00llama\x00")
+        with mock.patch.object(LlamaCppBackend, "_libraries", classmethod(lambda cls: [lib])):
+            self.assertTrue(LlamaCppBackend.supports(self.facts, {}))
+
+    def test_un_prefisso_non_conta_come_supporto(self):
+        """'qwen3' sta dentro 'qwen3next': cercarlo senza terminatore basta a
+        far sembrare supportata meta' della famiglia."""
+        lib = self._libreria(b"qwen3next\x00qwen4expmoe\x00")
+        with mock.patch.object(LlamaCppBackend, "_libraries", classmethod(lambda cls: [lib])):
+            self.assertFalse(LlamaCppBackend.supports(self.facts, {}))
+
+    def test_senza_librerie_da_leggere_non_si_nega_niente(self):
+        """Non lo so non e' non si puo': negare per una libreria introvabile
+        sarebbe peggio del problema che questo controllo risolve."""
+        with mock.patch.object(LlamaCppBackend, "_libraries", classmethod(lambda cls: [])):
+            self.assertTrue(LlamaCppBackend.supports(self.facts, {}))
+
+    def test_un_modello_non_gguf_non_passa_di_qui(self):
+        altro = ModelFacts(path="", name="hf", model_type="qwen3",
+                           weight_format="safetensors")
+        self.assertFalse(LlamaCppBackend.supports(altro, {}))
+
+
 class TestTraduzioneDelPiano(unittest.TestCase):
     """Il piano e' uno; ogni backend lo rende nella propria forma."""
 
@@ -80,6 +137,28 @@ class TestTraduzioneDelPiano(unittest.TestCase):
         self.assertIn("-ts 0.7,0.3", testo)
         self.assertIn("--no-mmap", testo)
         self.assertIn("--mlock", testo)
+
+    def test_gli_esperti_su_cpu_arrivano_alla_riga_di_comando(self):
+        """Il piano di un MoE decide quali tensori, non quanti layer.
+
+        Senza questo flag -ngl sposta layer interi, esperti compresi, e la
+        collocazione che il pianificatore ha calcolato -- densa sulla scheda,
+        esperti in RAM -- non arriva mai al binario.
+        """
+        testo = " ".join(plan_to_args({"n_gpu_layers": -1, "n_cpu_moe": 40}))
+        self.assertIn("-ncmoe 40", testo)
+
+    def test_una_regola_esplicita_sui_tensori_passa_intatta(self):
+        self.assertIn(
+            "-ot exps=CPU",
+            " ".join(plan_to_args({"override_tensor": "exps=CPU"})),
+        )
+
+    def test_un_modello_denso_non_riceve_flag_da_moe(self):
+        """Il piano di un modello denso non nomina gli esperti: neanche i flag."""
+        testo = " ".join(plan_to_args({"n_gpu_layers": 32, "n_ctx": 4096}))
+        self.assertNotIn("-ncmoe", testo)
+        self.assertNotIn("-ot", testo)
 
     def test_flash_attention_disattivata_si_dice_esplicitamente(self):
         """Il binario vuole on/off/auto: un booleano Python non basta."""
@@ -105,6 +184,7 @@ class TestTraduzioneDelPiano(unittest.TestCase):
         parametri_di_caricamento = {
             "n_gpu_layers", "n_ctx", "n_batch", "n_threads", "n_threads_batch",
             "flash_attn", "kv_quant", "tensor_split", "use_mmap", "use_mlock",
+            "n_cpu_moe", "override_tensor",
         }
         for chiave in parametri_di_caricamento:
             with self.subTest(chiave=chiave):
@@ -134,6 +214,7 @@ class TestFlagRealmenteEsistenti(unittest.TestCase):
             "n_gpu_layers": 1, "n_ctx": 1, "n_batch": 1, "n_threads": 1,
             "n_threads_batch": 1, "flash_attn": True, "kv_quant": "q8_0",
             "tensor_split": [1.0], "use_mmap": False, "use_mlock": True,
+            "n_cpu_moe": 1, "override_tensor": "exps=CPU",
         }
         for argomento in plan_to_args(piano):
             if not argomento.startswith("-"):

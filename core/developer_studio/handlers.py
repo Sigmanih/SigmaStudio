@@ -196,6 +196,8 @@ async def handle_agent_chat(request: Request):
     model = body.get("model") or "sigmaengine"
     auto_execute = bool(body.get("auto_execute_tools", True))
     pipeline = body.get("pipeline", [])
+    context_tokens = int(body.get("context_tokens") or body.get("context_length") or 32768)
+    max_tokens = int(body.get("max_tokens") or 4096)
 
     # The agent loop is fully synchronous and blocking (model inference, filesystem
     # search, shell commands). It MUST run on a worker thread: executing it inline on
@@ -214,6 +216,8 @@ async def handle_agent_chat(request: Request):
                     auto_execute_tools=auto_execute,
                     should_cancel=cancel_event.is_set,
                     current_pipeline=pipeline,
+                    context_tokens=context_tokens,
+                    max_tokens=max_tokens,
                 ):
                     if cancel_event.is_set():
                         break

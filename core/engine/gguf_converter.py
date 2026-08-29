@@ -271,29 +271,59 @@ class GgufConverter:
             "converter_script": script,
             "converter_version": CONVERTER_TAG,
             "converter_path": CONVERTER_PATH,
+            # Da quale giorno di "master" viene questo albero. Senza la data
+            # la versione dice "master" per sempre, che di un ramo che si
+            # muove ogni giorno non dice niente.
+            "fetched_at": cls._converter_fetched_at(),
             "ready": writer and quantizer and script,
         }
 
+    @staticmethod
+    def _converter_fetched_at() -> Optional[str]:
+        """Quando e' stato scaricato lo snapshot del convertitore."""
+        try:
+            return time.strftime(
+                "%Y-%m-%d", time.localtime(os.path.getmtime(CONVERTER_PATH)))
+        except Exception:
+            return None
+
     @classmethod
-    def fetch_converter(cls, timeout: int = 300) -> Dict[str, Any]:
+    def fetch_converter(cls, timeout: int = 300, force: bool = False) -> Dict[str, Any]:
         """
         Downloads llama.cpp's conversion tooling.
 
         Kept as an explicit action rather than something a conversion triggers
         on its own: it fetches code from the internet that then executes
         locally, which should be a decision the operator makes knowingly.
+
+        `force` re-downloads over a copy that is already there. Without it
+        there was no way to move the snapshot forward: the ref is "master",
+        which sounds like something that keeps up, but the first fetch froze
+        it and every later call returned "already present". Months of
+        architectures accumulated upstream while the local tree stayed at the
+        day it was pulled, and the failure it produced -- a model llama.cpp
+        runs but the converter has never heard of -- reads like the model is
+        unsupported rather than like the toolchain is old.
+
+        The new tree is assembled beside the old one and swapped in only once
+        it is complete: a download that dies halfway leaves the converter that
+        was working exactly where it was.
         """
         import io as _io
         import tarfile
         import urllib.request
 
-        if os.path.exists(CONVERTER_PATH):
+        if os.path.exists(CONVERTER_PATH) and not force:
             return {
                 "success": True, "cached": True, "path": CONVERTER_PATH,
+                "fetched_at": cls._converter_fetched_at(),
                 "message": "Convertitore gia' presente.",
             }
 
         os.makedirs(TOOLS_DIR, exist_ok=True)
+        destinazione = CONVERTER_DIR + ".new" if force else CONVERTER_DIR
+        if force:
+            shutil.rmtree(destinazione, ignore_errors=True)
         wanted_prefixes = ("convert_hf_to_gguf.py", "conversion/", "gguf-py/")
 
         try:
@@ -314,8 +344,8 @@ class GgufConverter:
                     if not relative.startswith(wanted_prefixes):
                         continue
                     # Never let an archive path escape the target directory.
-                    target = os.path.normpath(os.path.join(CONVERTER_DIR, relative))
-                    if not target.startswith(os.path.normpath(CONVERTER_DIR)):
+                    target = os.path.normpath(os.path.join(destinazione, relative))
+                    if not target.startswith(os.path.normpath(destinazione)):
                         continue
                     os.makedirs(os.path.dirname(target), exist_ok=True)
                     source = archive.extractfile(member)
@@ -325,16 +355,27 @@ class GgufConverter:
                         handle.write(source.read())
                     extracted += 1
 
-            if not os.path.exists(CONVERTER_PATH):
+            if not os.path.exists(os.path.join(destinazione, "convert_hf_to_gguf.py")):
                 raise RuntimeError("l'archivio non conteneva convert_hf_to_gguf.py")
+
+            if destinazione != CONVERTER_DIR:
+                precedente = CONVERTER_DIR + ".old"
+                shutil.rmtree(precedente, ignore_errors=True)
+                if os.path.isdir(CONVERTER_DIR):
+                    os.rename(CONVERTER_DIR, precedente)
+                os.rename(destinazione, CONVERTER_DIR)
+                shutil.rmtree(precedente, ignore_errors=True)
 
         except Exception as exc:
             log.error("[GgufConverter] Fetch failed: %s", exc)
+            if destinazione != CONVERTER_DIR:
+                shutil.rmtree(destinazione, ignore_errors=True)
             return {"success": False, "error": str(type(exc).__name__) + ": " + str(exc)}
 
         return {
             "success": True,
             "path": CONVERTER_PATH,
+            "fetched_at": cls._converter_fetched_at(),
             "files": extracted,
             "size_mb": round(len(payload) / 2**20, 1),
             "message": (
@@ -363,7 +404,7 @@ class GgufConverter:
         # unsupported when it runs perfectly well.
         gguf_arch = cls._gguf_arch_name(hf_type)
         converter_ok = cls._converter_supports(facts)
-        writer_ok = gguf_arch is not None
+        writer_ok = cls._writer_supports(gguf_arch) if gguf_arch else False
         runtime_ok = cls._runtime_supports(gguf_arch) if gguf_arch else False
 
         report = {
@@ -380,32 +421,44 @@ class GgufConverter:
         report["runnable"] = report["runtime"] is not False
         report["blocked_by"] = blocking
 
-        raw_archs_str = " ".join(facts.architectures or []).lower()
-        is_experimental_hc = (
-            "qwen4_exp" in hf_type or "qwen4exp" in hf_type or
-            "qwen4exp" in raw_archs_str or "hyper_connection" in raw_archs_str
+        nome = str(gguf_arch or hf_type)
+        build = cls._runtime_build()
+        report["runtime_build"] = build
+
+        # Ogni messaggio nomina il componente indietro e come si aggiorna: sono
+        # due cose diverse, tenute da due bottoni diversi, e dire soltanto
+        # "non supportata" ha lasciato per giorni un modello valido fermo su
+        # disco senza indicare che bastava aggiornare il motore.
+        aggiorna_motore = (
+            "Aggiorna il runtime dal pannello del motore (build installata: "
+            + (build or "nessuna") + ")."
+        )
+        aggiorna_convertitore = (
+            "Aggiorna gli strumenti di conversione dal Model Hub "
+            "(Convertitore GGUF -> Aggiorna)."
         )
 
         if not blocking:
             report["summary"] = "Compatibile: conversione ed esecuzione supportate."
-        elif is_experimental_hc:
-            arch_name = (facts.architectures or [hf_type])[0]
-            report["summary"] = (
-                f"L'architettura sperimentale '{arch_name}' utilizza moduli (Hyper-Connections / Linear Attention Mixer) "
-                "non supportati dal formato GGUF e da llama.cpp. "
-                "Il modello può essere eseguito direttamente nel runtime nativo Transformers / PyTorch di SigmaEngine."
-            )
         elif blocking == ["runtime"]:
             report["summary"] = (
-                "llama.cpp installato non sa eseguire l'architettura '"
-                + str(gguf_arch or hf_type) +
-                "'. La conversione riuscirebbe, ma il GGUF non sarebbe "
-                "caricabile finche' non aggiorni llama-cpp-python."
+                "Il runtime llama.cpp installato non conosce l'architettura '"
+                + nome + "'. La conversione riuscirebbe, ma il GGUF non "
+                "sarebbe caricabile. " + aggiorna_motore
+            )
+        elif "runtime" not in blocking:
+            report["summary"] = (
+                "Il motore esegue l'architettura '" + nome + "', ma "
+                + ("il convertitore non la scrive" if "converter" in blocking
+                   else "il pacchetto gguf non la sa scrivere")
+                + ". Un GGUF gia' pronto di questo modello si carica lo stesso; "
+                "per produrne uno dai safetensors: " + aggiorna_convertitore
             )
         else:
             report["summary"] = (
-                "Architettura '" + hf_type + "' non supportata da: "
-                + ", ".join(blocking) + "."
+                "Architettura '" + nome + "' non supportata da: "
+                + ", ".join(blocking) + ". " + aggiorna_motore + " "
+                + aggiorna_convertitore
             )
         return report
 
@@ -425,31 +478,17 @@ class GgufConverter:
         if not targets:
             return None
 
-        # 1. Explicit blocklist for experimental architectures not implemented in llama.cpp
         hf_type = (facts.model_type or "").lower()
-        raw_archs = [str(a).lower() for a in (facts.architectures or [])]
-        if any("qwen4_exp" in a or "qwen4exp" in a for a in [hf_type] + raw_archs):
-            return False
-        if any("hyper_connection" in a for a in [hf_type] + raw_archs):
-            return False
 
-        # Check config on disk for hyper-connections / linear attention mixer if available
-        if hasattr(facts, "path") and facts.path and os.path.isdir(facts.path):
-            cfg_file = os.path.join(facts.path, "config.json")
-            if os.path.exists(cfg_file):
-                try:
-                    with open(cfg_file, "r", encoding="utf-8") as f_cfg:
-                        cfg_content = json.load(f_cfg)
-                    text_cfg = cfg_content.get("text_config", {}) if isinstance(cfg_content, dict) else {}
-                    if (
-                        text_cfg.get("hc_count") or
-                        cfg_content.get("hc_count") or
-                        "hyper_connection" in str(cfg_content).lower() or
-                        "linear_attention" in str(text_cfg.get("layer_types", []))
-                    ):
-                        return False
-                except Exception:
-                    pass
+        # There is deliberately no blocklist here. Which architectures can be
+        # converted is a property of the converter on disk, not of this file:
+        # a hand-written list of "experimental, impossible" ones goes stale the
+        # moment upstream implements them, and from then on it refuses models
+        # that work. qwen4exp is the case that proved it -- hyper-connections
+        # and the linear-attention mixer were declared unsupportable by GGUF
+        # while llama.cpp had already shipped both, and a valid 119GB quant sat
+        # on disk unusable because this function answered from memory instead
+        # of looking. The walk below asks the converter we actually have.
 
         # Build candidate class and arch strings
         expanded_targets = set(targets)
@@ -480,10 +519,14 @@ class GgufConverter:
                         if needle in body or alt in body:
                             return True
 
-        # Check if the base model type has a dedicated file or general support
+        # The family has a file, but this exact class is not registered in it.
+        # That is "unknown", not "supported": the class name is how the
+        # converter dispatches, and claiming support for one it never
+        # registered promises a conversion that dies on the first tensor.
+        # Unknown does not block -- it only stops us from guaranteeing.
         for base in ("gemma", "llama", "qwen", "mistral", "phi", "deepseek", "glm", "starcoder", "minicpm", "smollm", "internlm", "baichuan", "falcon"):
             if base in hf_type:
-                return True
+                return None
 
         return False
 
@@ -530,6 +573,10 @@ class GgufConverter:
             "qwen35moe": "qwen35moe",
             "qwen3": "qwen3",
             "qwen3_moe": "qwen3moe",
+            "qwen3_next": "qwen3next",
+            "qwen3next": "qwen3next",
+            "qwen4_exp": "qwen4exp",
+            "qwen4exp": "qwen4exp",
             "qwen3_8": "qwen3",
             "qwen3.8": "qwen3",
             "qwen3_unified": "qwen3",
@@ -631,7 +678,42 @@ class GgufConverter:
         return None
 
     @staticmethod
-    def _runtime_supports(arch: Optional[str]) -> Optional[bool]:
+    def _runtime_libraries() -> List[str]:
+        """The shared libraries of the engine that actually answers requests.
+
+        The llama.cpp build under store/engine_runtime comes first: that is what
+        llamaserver_backend launches. The llama_cpp package is only a fallback
+        for installations that still run in-process.
+        """
+        libraries: List[str] = []
+        try:
+            from core.engine import llama_runtime
+            server = llama_runtime.installed_server()
+            if server is not None:
+                libraries.extend(
+                    str(f) for f in server.parent.iterdir()
+                    if f.is_file() and f.name.lower().startswith(("llama", "libllama"))
+                    and f.suffix.lower() in (".dll", ".so", ".dylib")
+                )
+        except Exception:
+            pass
+        if libraries:
+            return libraries
+        try:
+            import llama_cpp
+            lib_dir = os.path.join(os.path.dirname(llama_cpp.__file__), "lib")
+            if os.path.isdir(lib_dir):
+                libraries.extend(
+                    os.path.join(lib_dir, name) for name in os.listdir(lib_dir)
+                    if name.lower().startswith(("llama", "libllama"))
+                    and name.endswith((".dll", ".so", ".dylib"))
+                )
+        except Exception:
+            pass
+        return libraries
+
+    @classmethod
+    def _runtime_supports(cls, arch: Optional[str]) -> Optional[bool]:
         """
         Whether the installed llama.cpp runtime knows this architecture.
 
@@ -639,21 +721,58 @@ class GgufConverter:
         for in the shared library's string table. Coarse, but it distinguishes a
         runtime that predates an architecture from one that has it, which is the
         question that matters.
+
+        The libraries read are the engine's own. Reading llama_cpp's bundled
+        lib, as this did, answered about a package the server has not used
+        since it moved to the standalone binaries: it reported "unknown" for
+        architectures the engine knows, and would have promised support for
+        ones it cannot load.
         """
         if not arch:
             return None
-        try:
-            import llama_cpp
-            lib_dir = os.path.join(os.path.dirname(llama_cpp.__file__), "lib")
-            if not os.path.isdir(lib_dir):
-                return None
-            for name in os.listdir(lib_dir):
-                if not name.startswith("llama") or not name.endswith((".dll", ".so", ".dylib")):
-                    continue
-                with open(os.path.join(lib_dir, name), "rb") as handle:
-                    if arch.encode("ascii", "ignore") in handle.read():
+        libraries = cls._runtime_libraries()
+        if not libraries:
+            return None
+        # The null terminator is part of the needle. Without it "qwen3" matches
+        # inside "qwen3next" and every runtime appears to support everything
+        # that shares a prefix with something it has.
+        needle = arch.encode("ascii", "ignore") + b"\x00"
+        for path in libraries:
+            try:
+                with open(path, "rb") as handle:
+                    if needle in handle.read():
                         return True
-            return False
+            except Exception:
+                continue
+        return False
+
+    @classmethod
+    def _runtime_build(cls) -> Optional[str]:
+        """The engine build name, for messages that have to name what is behind."""
+        try:
+            from core.engine import llama_runtime
+            info = llama_runtime.installed_build_info()
+            return info.get("build") if info else None
+        except Exception:
+            return None
+
+    @classmethod
+    def _writer_supports(cls, arch: Optional[str]) -> Optional[bool]:
+        """
+        Whether the bundled gguf package can write this architecture.
+
+        Asked of the package rather than of a mapping table in this file: the
+        table only says how transformers and GGUF spell the same architecture,
+        which is true whether or not the writer implements it. Deriving one
+        from the other reports a model as writable because we know its name.
+        """
+        if not arch:
+            return None
+        gguf_mod = cls._get_gguf_module()
+        if gguf_mod is None:
+            return None
+        try:
+            return arch in set(gguf_mod.MODEL_ARCH_NAMES.values())
         except Exception:
             return None
 

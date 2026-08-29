@@ -90,6 +90,28 @@ def explain_unsupported(facts: ModelFacts) -> str:
             f"Nessun backend conosce il formato '{facts.weight_format}' "
             f"per '{facts.name}'."
         )
+    # Il formato lo leggono, ma l'architettura dentro al file puo' essere piu'
+    # recente di ogni motore installato. E' una diagnosi diversa e ha un
+    # rimedio diverso -- si aggiorna il runtime, non si cambia modello -- e
+    # confonderla con "formato non gestito" manda la persona a riscaricare
+    # cose che ha gia'.
+    from core.engine.backends.base import gguf_architecture
+
+    arch = gguf_architecture(facts)
+    installati = [b for b in handlers if b.availability()[0]]
+    if arch and installati and not any(b.supports(facts, {}) for b in installati):
+        try:
+            from core.engine.llama_runtime import installed_build_info
+            info = installed_build_info()
+            build = (info or {}).get("build", "nessuna")
+        except Exception:
+            build = "nessuna"
+        return (
+            f"Nessun motore installato conosce l'architettura '{arch}' di "
+            f"'{facts.name}'. Il file GGUF e' valido: aggiorna il runtime dal "
+            f"pannello del motore (build attuale: {build}) e riprova."
+        )
+
     reasons = "; ".join(f"{b.name}: {b.availability()[1]}" for b in handlers)
     return (
         f"'{facts.name}' e' in formato {facts.weight_format}, gestito da "

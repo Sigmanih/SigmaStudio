@@ -312,6 +312,24 @@ export default function AdminAgentChat({
   const autoLoopTimeoutRef = useRef(null);
   const abortControllerRef = useRef(null);
 
+  // Context Length (RAM/VRAM Window) State
+  const [contextTokens, setContextTokens] = useState(() => {
+    try {
+      const saved = localStorage.getItem('sigma_dev_context_tokens');
+      return saved ? parseInt(saved, 10) : 32768;
+    } catch {
+      return 32768;
+    }
+  });
+  const [contextMetrics, setContextMetrics] = useState(null);
+
+  const handleSelectContextTokens = (tokens) => {
+    setContextTokens(tokens);
+    try {
+      localStorage.setItem('sigma_dev_context_tokens', String(tokens));
+    } catch {}
+  };
+
   // Keep a ref to always have the latest tasks state in async callbacks
   const latestTasksRef = useRef(tasks);
   useEffect(() => {
@@ -743,7 +761,8 @@ export default function AdminAgentChat({
           pipeline: currentTask.pipeline || [],
           workspace_root: workspaceRoot,
           model: selectedModel,
-          auto_execute_tools: autoExecuteTools
+          auto_execute_tools: autoExecuteTools,
+          context_tokens: contextTokens
         })
       });
 
@@ -773,6 +792,16 @@ export default function AdminAgentChat({
 
           try {
             const event = JSON.parse(dataStr);
+
+            // Handle context window metadata from engine
+            if (event.type === 'context_info') {
+              setContextMetrics({
+                promptTokens: event.prompt_tokens,
+                limit: event.context_limit,
+                maxTokens: event.max_tokens
+              });
+              continue;
+            }
 
             // Handle status notifications (e.g. Model loading into VRAM, Tool running)
             if (event.type === 'status') {
@@ -1298,10 +1327,13 @@ export default function AdminAgentChat({
           )}
         </div>
 
-        {/* Row 3: Model Selector with Specs & Weights */}
+        {/* Row 3: Model Selector with Specs, Weights & Context Window Selector */}
         <DeveloperModelSelector
           selectedModel={selectedModel}
           onSelectModel={handleModelChange}
+          contextTokens={contextTokens}
+          onSelectContextTokens={handleSelectContextTokens}
+          contextMetrics={contextMetrics}
           theme={theme}
           isLight={isLight}
         />

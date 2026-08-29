@@ -510,6 +510,8 @@ def stream_admin_agent_turn(
     should_cancel: Optional[Callable[[], bool]] = None,
     system_prompt_override: Optional[str] = None,
     current_pipeline: Optional[List[Dict[str, Any]]] = None,
+    context_tokens: int = 32768,
+    max_tokens: int = 4096,
 ) -> Generator[Dict[str, Any], None, None]:
     """
     Multi-Turn Autonomous Admin Developer Agent Loop:
@@ -577,15 +579,19 @@ def stream_admin_agent_turn(
                     m_content = f"{m_content}\n\n" + "\n\n".join(att_texts)
             full_messages.append({"role": m.get("role", "user"), "content": m_content})
 
+    # Dynamic sliding window proportional to context_tokens
+    max_history_chars = max(32000, context_tokens * 3)
+
     def trim_history(msgs: List[Dict[str, str]]) -> List[Dict[str, str]]:
-        """Sliding window so the prompt never grows unbounded across tool turns."""
-        if len(msgs) <= 2:
+        """Smart sliding window: preserves system prompt and root user objective while trimming middle tool noise."""
+        if len(msgs) <= 3:
             return msgs
         system_msg = msgs[0]
-        conversation = msgs[1:]
-        while len(conversation) > 2 and sum(len(m.get("content", "")) for m in conversation) > MAX_HISTORY_CHARS:
-            conversation.pop(0)
-        return [system_msg] + conversation
+        first_user_msg = msgs[1]
+        rest = msgs[2:]
+        while len(rest) > 1 and sum(len(m.get("content", "")) for m in rest) > max_history_chars:
+            rest.pop(0)
+        return [system_msg, first_user_msg] + rest
 
     full_messages = trim_history(full_messages)
 
@@ -611,6 +617,13 @@ def stream_admin_agent_turn(
 
         yield {"type": "turn_start", "turn": current_turn}
         if current_turn == 1:
+            approx_tokens = sum(len(m.get("content", "")) for m in full_messages) // 4
+            yield {
+                "type": "context_info",
+                "prompt_tokens": approx_tokens,
+                "context_limit": context_tokens,
+                "max_tokens": max_tokens,
+            }
             yield {"type": "status", "text": f"🧠 Preparazione e caricamento modello ({model_name or 'sigmaengine'})..."}
         else:
             yield {"type": "status", "text": "🔍 Sintesi e formattazione risposta..."}
@@ -620,7 +633,7 @@ def stream_admin_agent_turn(
                 prompt=last_user_prompt,
                 system_prompt=active_system_prompt,
                 temperature=temperature,
-                max_tokens=4096,
+                max_tokens=max_tokens,
                 model_name=model_name or "sigmaengine",
                 messages=full_messages
             ):

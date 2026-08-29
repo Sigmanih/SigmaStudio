@@ -38,7 +38,9 @@ from collections import deque
 from typing import Any, Dict, Generator, List, Optional, Tuple
 
 from core.engine import gguf_planner
-from core.engine.backends.base import InferenceBackend
+from core.engine.backends.base import (
+    InferenceBackend, gguf_architecture, library_knows_architecture,
+)
 from core.engine.model_inspector import ModelFacts
 from core.engine.sampling import SamplingParams
 from core.logger import get_logger
@@ -128,6 +130,20 @@ def plan_to_args(settings: Dict[str, Any]) -> List[str]:
             argomenti.extend([flag, str(valore)])
 
     aggiungi("-ngl", settings.get("n_gpu_layers"))
+
+    # Su un modello a esperti la domanda non e' quanti layer offloadare ma
+    # quali tensori. Gli esperti sono la parte grossa e la parte che un
+    # singolo token quasi non tocca -- dieci su cinquecentododici, in
+    # Qwen3.8-Flash-Next -- quindi restano in RAM mentre attenzione, norme,
+    # esperti condivisi e cache KV stanno sulla scheda. Senza questo flag
+    # -ngl sposta layer interi, esperti compresi: su un modello che pesa
+    # dieci volte la VRAM non ne entra praticamente nessuno, e una scheda
+    # che avrebbe retto tutta la parte densa resta inutilizzata.
+    aggiungi("-ncmoe", settings.get("n_cpu_moe"))
+    # La regola esplicita, per i casi che il pianificatore non copre: la
+    # sintassi e' quella di llama.cpp (`regex=buffer`), passata cosi' com'e'.
+    aggiungi("-ot", settings.get("override_tensor"))
+
     aggiungi("-c", settings.get("n_ctx"))
     aggiungi("-b", settings.get("n_batch"))
     aggiungi("-t", settings.get("n_threads"))
@@ -200,6 +216,39 @@ class LlamaServerBackend(InferenceBackend):
         self._lettore: Optional[threading.Thread] = None
 
     # --------------------------------------------------------- capabilities
+
+    @classmethod
+    def _librerie(cls) -> List[str]:
+        """Le librerie della build installata: quelle che eseguiranno davvero."""
+        from core.engine.llama_runtime import installed_server
+
+        server = installed_server()
+        if server is None:
+            return []
+        try:
+            return [
+                str(f) for f in server.parent.iterdir()
+                if f.is_file() and f.name.lower().startswith(("llama", "libllama"))
+                and f.suffix.lower() in (".dll", ".so", ".dylib")
+            ]
+        except Exception:
+            return []
+
+    @classmethod
+    def supports(cls, facts: ModelFacts, hardware: Dict[str, Any]) -> bool:
+        """Se la build installata conosce l'architettura scritta nel file.
+
+        Un GGUF valido che questa build non sa leggere non e' un modello
+        rotto: e' un motore piu' vecchio del modello. Dirlo qui, prima di
+        avviare il processo, e' quello che permette al registry di spiegarlo
+        invece di lasciarlo scoprire da un caricamento fallito.
+        """
+        if facts.weight_format not in cls.supported_formats:
+            return False
+        arch = gguf_architecture(facts)
+        if not arch:
+            return True
+        return library_knows_architecture(cls._librerie(), arch) is not False
 
     @classmethod
     def availability(cls) -> Tuple[bool, str]:
@@ -491,7 +540,8 @@ class LlamaServerBackend(InferenceBackend):
     def describe_placement(self) -> Dict[str, Any]:
         offloaded = self._settings.get("n_gpu_layers", 0)
         totale = getattr(self._facts, "num_hidden_layers", 0) or 0
-        return {
+        su_cpu = self._settings.get("n_cpu_moe")
+        posizione = {
             "mode": "llama_server",
             "layers_total": totale,
             "layers_on_gpu": offloaded,
@@ -502,6 +552,14 @@ class LlamaServerBackend(InferenceBackend):
             "prefill_batch": self._settings.get("n_batch"),
             "port": self._settings.get("port"),
         }
+        if su_cpu:
+            # "Tutti i layer sulla GPU" e' vero e insieme fuorviante quando gli
+            # esperti di quaranta di quei layer stanno in RAM: sono i due terzi
+            # del modello, e sono la ragione della velocita' che si misura.
+            posizione["expert_layers_on_cpu"] = su_cpu
+            posizione["experts_on_host_gb"] = self._settings.get("experts_on_host_gb")
+            posizione["fully_offloaded"] = False
+        return posizione
 
     def telemetry(self) -> Dict[str, Any]:
         return dict(self._settings)
@@ -620,10 +678,18 @@ class LlamaServerBackend(InferenceBackend):
     # ------------------------------------------------------------- interni
 
     def _file_gguf(self, facts: ModelFacts) -> Optional[str]:
-        """Il .gguf da caricare, con la stessa logica dell'altro backend."""
+        """Il .gguf da caricare, con la stessa logica dell'altro backend.
+
+        Restituito assoluto: il processo figlio parte con `cwd` nella cartella
+        del runtime, quindi un percorso relativo che qui esiste li' non esiste
+        piu', e llama-server muore in un decimo di secondo con "failed to load
+        model" -- che si legge come un file rotto invece che come un file
+        cercato altrove.
+        """
         from core.engine.backends.llamacpp_backend import LlamaCppBackend
 
-        return LlamaCppBackend()._resolve_gguf_file(facts)
+        percorso = LlamaCppBackend()._resolve_gguf_file(facts)
+        return os.path.abspath(percorso) if percorso else None
 
     def _find_mmproj_file(self, facts: ModelFacts) -> Optional[str]:
         """Trova il file di proiezione multimodale (mmproj/CLIP) se presente nella cartella del modello."""
@@ -661,11 +727,20 @@ class LlamaServerBackend(InferenceBackend):
                     import re
                     m_arch = re.search(r"unknown model architecture:\s*['\"]?([a-zA-Z0-9_\-]+)['\"]?", uscita, re.IGNORECASE)
                     arch_tag = m_arch.group(1) if m_arch else "sperimentale"
+                    # Non e' il modello a essere impossibile: e' il motore a
+                    # essere piu' vecchio di lui. La differenza conta, perche'
+                    # una ha rimedio in un minuto e l'altra no -- e il
+                    # messaggio che dichiarava "architettura sperimentale, non
+                    # supportata da GGUF" ha tenuto fermo per giorni un
+                    # modello che una build piu' recente carica e basta.
+                    from core.engine import llama_runtime
+                    info = llama_runtime.installed_build_info()
+                    build = (info or {}).get("build", "sconosciuta")
                     return (
                         False,
-                        f"Architettura GGUF '{arch_tag}' non supportata dalla versione compilata di llama.cpp/llama-server. "
-                        f"I modelli di ricerca di nuova generazione (come Qwen 3.8 Flash Next con 512 esperti MoE, State Space Model SSM e Hyper-Connections) "
-                        f"richiedono una build di llama.cpp aggiornata con i kernel specifici per questa architettura."
+                        f"La build di llama.cpp installata ({build}) non conosce "
+                        f"l'architettura '{arch_tag}'. Il file GGUF e' valido: "
+                        f"aggiorna il runtime dal pannello del motore e riprova."
                     )
                 return (False, f"llama-server e' terminato (codice {codice}).\n{uscita[-800:]}")
 

@@ -43,7 +43,10 @@ from core.engine.gguf_planner import (  # noqa: F401
     _env_context_ceiling,
 )
 from core.engine.model_inspector import ModelFacts, ModelInspector
-from core.engine.backends.base import InferenceBackend, module_available
+from core.engine.backends.base import (
+    InferenceBackend, gguf_architecture, library_knows_architecture,
+    module_available,
+)
 from core.engine.sampling import SamplingParams
 from core.engine.cancellation import is_cancelled
 
@@ -256,6 +259,44 @@ class LlamaCppBackend(InferenceBackend):
     #: speculative decoding (see _verify_speculation). Remembered per process so
     #: later loads do not request a drafter that is already known to be unusable.
     _prompt_lookup_broken = False
+
+    @classmethod
+    def _libraries(cls) -> List[str]:
+        """The llama.cpp shared libraries this backend actually calls into."""
+        try:
+            import llama_cpp
+            lib_dir = os.path.join(os.path.dirname(llama_cpp.__file__), "lib")
+            if not os.path.isdir(lib_dir):
+                return []
+            return [
+                os.path.join(lib_dir, name) for name in os.listdir(lib_dir)
+                if name.lower().startswith(("llama", "libllama"))
+                and name.endswith((".dll", ".so", ".dylib"))
+            ]
+        except Exception:
+            return []
+
+    @classmethod
+    def supports(cls, facts: ModelFacts, hardware: Dict[str, Any]) -> bool:
+        """
+        Whether this wheel's llama.cpp knows the architecture in the file.
+
+        Reading the format is not the same as reading the model. This backend
+        carries its own llama.cpp inside the Python wheel, pinned to whenever
+        that wheel was built, and it is routinely older than the standalone
+        binary next to it. Without this check the registry treats the two as
+        interchangeable: when the separate process is briefly unavailable --
+        during a runtime upgrade, for instance -- selection falls through to
+        this one, which fails on an architecture the other runs fine, and the
+        user is told the model is unsupported rather than that the fallback is
+        old. That is exactly what happened with qwen4exp.
+        """
+        if facts.weight_format not in cls.supported_formats:
+            return False
+        arch = gguf_architecture(facts)
+        if not arch:
+            return True
+        return library_knows_architecture(cls._libraries(), arch) is not False
 
     def __init__(self):
         self._llm = None

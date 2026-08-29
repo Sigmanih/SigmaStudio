@@ -11,7 +11,7 @@
 # plan that cannot execute, which is worse than reporting none.
 # ==============================================================================
 from abc import ABC, abstractmethod
-from typing import Dict, Any, Generator, Optional, Tuple
+from typing import Dict, Any, Generator, List, Optional, Tuple
 
 from core.engine.model_inspector import ModelFacts
 from core.engine.sampling import SamplingParams
@@ -142,6 +142,50 @@ class InferenceBackend(ABC):
             "error": f"Il backend '{self.name}' non espone ancora un benchmark.",
             "backend": self.name,
         }
+
+
+def gguf_architecture(facts: ModelFacts) -> Optional[str]:
+    """L'architettura che il file GGUF dichiara di essere, se e' un GGUF.
+
+    Per un GGUF l'ispettore mette in `model_type` la stringa letta da
+    `general.architecture`: e' gia' la parola che llama.cpp cerca nella sua
+    tabella, senza traduzioni di mezzo.
+    """
+    if facts.weight_format != "gguf":
+        return None
+    arch = (facts.model_type or "").strip().lower()
+    return arch or None
+
+
+def library_knows_architecture(libraries: List[str], arch: str) -> Optional[bool]:
+    """
+    Se una di queste librerie condivise nomina questa architettura GGUF.
+
+    Non esiste un'API che le elenchi, quindi la si cerca nella tabella delle
+    stringhe del binario. E' grossolano, ma distingue le due cose che contano:
+    un motore piu' vecchio dell'architettura e uno che la conosce.
+
+    None quando non c'e' niente da leggere: "non lo so" non e' "non si puo'",
+    e negare un modello per una libreria che non si trova sarebbe peggio del
+    problema che questa funzione risolve.
+    """
+    if not arch or not libraries:
+        return None
+    # Il terminatore nullo fa parte dell'ago: senza, "qwen3" si trova dentro
+    # "qwen3next" e ogni runtime sembra supportare tutto cio' che gli
+    # somiglia.
+    needle = arch.encode("ascii", "ignore") + b"\x00"
+    letta = False
+    for percorso in libraries:
+        try:
+            with open(percorso, "rb") as handle:
+                contenuto = handle.read()
+        except Exception:
+            continue
+        letta = True
+        if needle in contenuto:
+            return True
+    return False if letta else None
 
 
 def module_available(name: str) -> bool:

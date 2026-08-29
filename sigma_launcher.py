@@ -452,18 +452,29 @@ def install_gguf_runtime(platform_info, force=False):
             return True
         print_log(f"[SIGMA] Runtime GGUF installato ma non ottimale: {motivo}", Colors.WARNING)
         print_log("[SIGMA] Scarico la build corretta...", Colors.OKCYAN)
-        # Elimina la build vecchia per forzare il re-download.
-        import shutil as _shutil
-        from core.engine.llama_runtime import runtime_dir
-        radice = runtime_dir()
-        if radice.is_dir():
-            _shutil.rmtree(radice, ignore_errors=True)
+        # La build vecchia resta al suo posto finche' la nuova non e' pronta.
+        # Cancellare qui tutto engine_runtime lasciava l'applicazione senza
+        # motore per l'intera durata del download: il backend a processo
+        # separato risultava non installato, la selezione ripiegava sulla
+        # ruota llama-cpp-python -- che porta una llama.cpp piu' vecchia -- e
+        # un modello perfettamente valido rispondeva "architettura non
+        # riconosciuta" a chi stava chattando in quel momento. install() sa
+        # riscrivere solo la cartella della build che installa.
+        force = True
 
     print_log("[SIGMA] Installing the official llama.cpp runtime...", Colors.OKCYAN)
-    esito = install(progress=lambda t: print_log(f"[SIGMA] {t}", Colors.OKCYAN))
+    esito = install(progress=lambda t: print_log(f"[SIGMA] {t}", Colors.OKCYAN),
+                    force=force)
     if esito.get("success"):
         print_log(f"[SIGMA] GGUF runtime ready ({esito.get('asset', 'installed')}).",
                   Colors.OKGREEN)
+        # Le build superate si tolgono adesso, non prima: adesso ce n'e' una
+        # che funziona.
+        from core.engine.llama_runtime import rimuovi_build_obsolete
+        rimosse = rimuovi_build_obsolete(esito.get("build", ""))
+        if rimosse:
+            print_log(f"[SIGMA] Runtime superati rimossi: {', '.join(rimosse)}",
+                      Colors.OKCYAN)
         return True
 
     print_log(f"[SIGMA] GGUF runtime not installed: {esito.get('error')}", Colors.WARNING)

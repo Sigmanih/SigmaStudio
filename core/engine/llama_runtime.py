@@ -51,7 +51,7 @@ from core.net_utils import safe_urlopen
 log = get_logger(__name__)
 
 RELEASES_API = "https://api.github.com/repos/ggml-org/llama.cpp/releases"
-FALLBACK_STABLE_BUILD = "b10632"
+FALLBACK_STABLE_BUILD = "b10679"
 KNOWN_VARIANTS = [
     "win-cpu-x64", "win-cpu-arm64", "win-cuda-12.4-x64", "win-cuda-13.3-x64",
     "win-vulkan-x64", "win-rocm-7.14-x64", "win-sycl-x64",
@@ -557,6 +557,49 @@ def _estrai(archivio: Path, destinazione: Path) -> None:
             tf.extractall(destinazione)
 
 
+def _sostituisci(destinazione: Path, nuova: Path) -> None:
+    """Mette `nuova` al posto di `destinazione`, tenendo la vecchia fino all'ultimo.
+
+    Su Windows il rinomina puo' fallire: un llama-server ancora vivo tiene
+    aperte le sue DLL. In quel caso si copia sopra -- che e' la strada che si
+    percorreva sempre -- e la cartella resta comunque utilizzabile, perche' i
+    file arrivano gia' interi da un albero completo.
+    """
+    vecchia = destinazione.with_name(destinazione.name + ".old")
+    shutil.rmtree(vecchia, ignore_errors=True)
+    try:
+        destinazione.rename(vecchia)
+    except OSError:
+        shutil.copytree(nuova, destinazione, dirs_exist_ok=True)
+        shutil.rmtree(nuova, ignore_errors=True)
+        return
+    try:
+        nuova.rename(destinazione)
+    except OSError:
+        vecchia.rename(destinazione)      # com'era prima: meglio del niente
+        raise
+    shutil.rmtree(vecchia, ignore_errors=True)
+
+
+def rimuovi_build_obsolete(tenere: str) -> List[str]:
+    """Cancella le build che non sono quella indicata. Restituisce cosa ha tolto.
+
+    Si chiama dopo un'installazione riuscita, mai prima: la cartella vecchia e'
+    l'unico motore che l'applicazione ha finche' la nuova non e' a posto.
+    """
+    rimosse: List[str] = []
+    radice = runtime_dir()
+    if not radice.is_dir():
+        return rimosse
+    for cartella in radice.iterdir():
+        if not cartella.is_dir() or cartella.name.startswith(".") or cartella.name == tenere:
+            continue
+        shutil.rmtree(cartella, ignore_errors=True)
+        if not cartella.exists():
+            rimosse.append(cartella.name)
+    return rimosse
+
+
 def install(progress=None, timeout: int = 600,
             macchina: Dict[str, Any] = None,
             force: bool = False) -> Dict[str, Any]:
@@ -612,6 +655,7 @@ def install(progress=None, timeout: int = 600,
             shutil.rmtree(destinazione, ignore_errors=True)
 
     paths.ensure(runtime_dir())
+    preesistente = destinazione.is_dir()
     temporaneo = runtime_dir() / f".{nome}"
     try:
         avvisa(f"Scarico {nome}...")
@@ -622,16 +666,35 @@ def install(progress=None, timeout: int = 600,
             shutil.copyfileobj(risposta, uscita)
 
         avvisa("Estraggo...")
-        _estrai(temporaneo, destinazione)
+        # L'albero si completa prima di sostituire quello che c'e'. Estrarre
+        # dentro la cartella in uso la lascia incompleta per tutta la durata
+        # dell'estrazione, e in quella finestra `installed_server()` non trova
+        # niente: la selezione dei backend dichiara non disponibile il
+        # processo separato e ripiega su quello in-processo, che porta una
+        # llama.cpp piu' vecchia. Il risultato visto dall'utente e' un modello
+        # che funziona e risponde "architettura non riconosciuta".
+        if preesistente:
+            provvisoria = destinazione.with_name(destinazione.name + ".new")
+            shutil.rmtree(provvisoria, ignore_errors=True)
+            _estrai(temporaneo, provvisoria)
+            _sostituisci(destinazione, provvisoria)
+        else:
+            _estrai(temporaneo, destinazione)
     except Exception as exc:
-        shutil.rmtree(destinazione, ignore_errors=True)
+        shutil.rmtree(destinazione.with_name(destinazione.name + ".new"),
+                      ignore_errors=True)
+        if not preesistente:
+            shutil.rmtree(destinazione, ignore_errors=True)
         return {"success": False, "error": f"Installazione fallita: {exc}"}
     finally:
         temporaneo.unlink(missing_ok=True)
 
-    server = installed_server()
+    # Cercato dentro la cartella appena scritta: `installed_server()` guarda
+    # tutto l'albero e direbbe di si' anche per il server di un'altra build.
+    server = next(destinazione.rglob(SERVER_EXE), None)
     if server is None:
-        shutil.rmtree(destinazione, ignore_errors=True)
+        if not preesistente:
+            shutil.rmtree(destinazione, ignore_errors=True)
         return {"success": False,
                 "error": f"L'archivio {nome} non conteneva {SERVER_EXE}."}
 

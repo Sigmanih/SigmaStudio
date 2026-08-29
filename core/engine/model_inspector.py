@@ -23,7 +23,7 @@ log = get_logger(__name__)
 # existed would keep reporting the old, incomplete answer forever. Raised to 4
 # when the GGUF path began reading vocab_size, which the llama.cpp planner needs
 # to size its prefill batch.
-_FACTS_SCHEMA = 5
+_FACTS_SCHEMA = 6
 
 # Bytes per element, by safetensors dtype string.
 _DTYPE_BYTES = {
@@ -74,6 +74,7 @@ class ModelFacts:
     # Structure flags
     is_moe: bool = False
     num_experts: int = 0
+    experts_used: int = 0                        # experts routed per token
     is_multimodal: bool = False
     has_mtp: bool = False                        # native multi-token-prediction head
 
@@ -83,6 +84,8 @@ class ModelFacts:
 
     # Real measured sizes
     total_bytes: int = 0
+    expert_bytes: int = 0                        # MoE expert tensors, measured
+    host_only_bytes: int = 0                     # tensors llama.cpp keeps in RAM
     param_count: int = 0
     quantizable_params: int = 0
     resident_params: int = 0                     # params bnb keeps in compute dtype
@@ -239,6 +242,14 @@ class ModelInspector:
                 facts.is_moe = True
                 break
 
+        # How many of them actually run per token. Without it the experts look
+        # like weights that are read on every token, which is the opposite of
+        # why they can be left in host memory.
+        for key in ("num_experts_per_tok", "num_experts_per_token", "moe_topk"):
+            if text.get(key):
+                facts.experts_used = int(text[key])
+                break
+
     # ------------------------------------------------------------ weight layout
 
     @classmethod
@@ -271,6 +282,8 @@ class ModelInspector:
                 os.path.getsize(os.path.join(facts.path, f)) for f in target_files
             )
             cls._read_gguf_metadata(facts, os.path.join(facts.path, primary_gguf))
+            cls._read_gguf_tensor_sizes(
+                facts, [os.path.join(facts.path, f) for f in target_files])
             return
 
         files = os.listdir(facts.path)
@@ -392,6 +405,7 @@ class ModelInspector:
         )
         facts.max_position_embeddings = geometry("context_length")
         facts.num_experts = geometry("expert_count")
+        facts.experts_used = geometry("expert_used_count")
         facts.is_moe = facts.num_experts > 0
 
         head_dim = geometry("attention.key_length")
@@ -429,6 +443,83 @@ class ModelInspector:
         facts.param_count = 0
         facts.quantizable_params = 0
         facts.resident_params = 0
+
+    @classmethod
+    def _read_gguf_tensor_sizes(cls, facts: ModelFacts, gguf_paths: List[str]) -> None:
+        """
+        How many bytes the mixture-of-experts tensors occupy, across all shards.
+
+        On a MoE model the placement question is not "how many layers fit on
+        the accelerator" but "which tensors". The experts are both the largest
+        part and the part a single token barely touches -- ten of five hundred
+        and twelve, here -- so they are what belongs in host memory while the
+        rest of the model sits on the card. Deciding that needs their real
+        size, and the ratio is nothing like constant: two thirds of the weights
+        in one model, a fifth in another.
+
+        The size of a tensor is taken as the distance to the next one rather
+        than computed from its quantization type. The file already records
+        where each begins, whereas a table of block sizes is a second copy of
+        ggml's type list that would go stale every time a type is added.
+
+        Shared experts are deliberately excluded: they run for every token, so
+        moving them off the accelerator costs on every token too. Only the
+        routed experts (`_exps`) are counted.
+
+        Measured alongside them is what llama.cpp will not put on a device at
+        all: the per-layer embedding table, which is a lookup rather than a
+        matrix multiply and stays in host memory however deep the offload
+        goes. It is 33 of the 111 GiB in Qwen3.8-Flash-Next, so counting it as
+        VRAM-bound makes a model that runs look impossible to place.
+        """
+        alignment = 32
+        total = 0
+        host_only = 0
+        for path in gguf_paths:
+            try:
+                size_on_disk = os.path.getsize(path)
+                with open(path, "rb") as handle:
+                    if handle.read(4) != b"GGUF":
+                        continue
+                    handle.seek(4, os.SEEK_CUR)  # format version
+                    tensor_count = struct.unpack("<Q", handle.read(8))[0]
+                    kv_count = struct.unpack("<Q", handle.read(8))[0]
+
+                    for _ in range(kv_count):
+                        key = cls._read_gguf_string(handle)
+                        value_type = struct.unpack("<I", handle.read(4))[0]
+                        value = cls._read_gguf_value(handle, value_type)
+                        if key == "general.alignment" and isinstance(value, int) and value > 0:
+                            alignment = value
+
+                    entries = []
+                    for _ in range(tensor_count):
+                        name = cls._read_gguf_string(handle) or ""
+                        dim_count = struct.unpack("<I", handle.read(4))[0]
+                        handle.seek(8 * dim_count + 4, os.SEEK_CUR)  # dims + ggml type
+                        offset = struct.unpack("<Q", handle.read(8))[0]
+                        entries.append((offset, name))
+
+                    data_start = handle.tell()
+                    if data_start % alignment:
+                        data_start += alignment - (data_start % alignment)
+
+                entries.sort()
+                payload = size_on_disk - data_start
+                for index, (offset, name) in enumerate(entries):
+                    end = entries[index + 1][0] if index + 1 < len(entries) else payload
+                    if "_exps" in name:
+                        total += max(end - offset, 0)
+                    elif "per_layer_token_embd" in name:
+                        host_only += max(end - offset, 0)
+            except Exception as exc:
+                log.debug("[ModelInspector] Tensor table unreadable in %s: %s", path, exc)
+                return
+
+        facts.expert_bytes = total
+        facts.host_only_bytes = host_only
+        if total and not facts.is_moe:
+            facts.is_moe = True
 
     @classmethod
     def _read_gguf_string(cls, handle) -> Optional[str]:
@@ -520,6 +611,7 @@ class ModelInspector:
         quantizable = 0
         resident = 0
         measured_bytes = 0
+        expert_bytes = 0
 
         for shard in shard_files:
             full_path = os.path.join(facts.path, shard)
@@ -539,7 +631,12 @@ class ModelInspector:
                 for dim in shape:
                     numel *= int(dim)
                 total_params += numel
-                measured_bytes += int(numel * _DTYPE_BYTES.get(dtype, 2))
+                tensor_bytes = int(numel * _DTYPE_BYTES.get(dtype, 2))
+                measured_bytes += tensor_bytes
+                # Same question as on the GGUF side, asked of the checkpoint's
+                # own naming: "model.layers.N.mlp.experts.M.up_proj.weight".
+                if ".experts." in name:
+                    expert_bytes += tensor_bytes
 
                 is_linear_weight = (
                     len(shape) == 2
@@ -555,6 +652,8 @@ class ModelInspector:
             facts.param_count = total_params
             facts.quantizable_params = quantizable
             facts.resident_params = resident
+        if expert_bytes:
+            facts.expert_bytes = expert_bytes
         if measured_bytes and not facts.total_bytes:
             facts.total_bytes = measured_bytes
 
