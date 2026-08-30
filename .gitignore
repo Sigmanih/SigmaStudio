@@ -179,6 +179,9 @@ training_lab/ollama_instances.json
 *.ipynb
 sigma_studio/.build_stamp
 .backups/*
+.sigma_backups/
+.sigma_backups/*
+.sigma_studio_backups/*
 .training/*
 .training_lab/*.json
 # ==============================================================================

@@ -47,8 +47,10 @@ ADMIN_TO_MCP: Dict[str, str] = {
 
 # Admin agent tools that should NOT be bridged (handled locally)
 LOCAL_TOOLS = {
-    "list_dir", "read_file", "write_file", "delete", "terminal",
+    "list_dir", "read_file", "write_file", "edit_file", "glob", "delete", "terminal",
     "search_code", "pipeline", "complete_goal",
+    # edit_file / glob aliases
+    "edit", "replace_in_file", "str_replace", "find_files", "glob_files",
     # Aliases
     "read", "write", "save_file", "ls", "shell", "exec", "command",
     "delete_file", "remove_file", "rm", "grep", "tasks", "set_tasks",

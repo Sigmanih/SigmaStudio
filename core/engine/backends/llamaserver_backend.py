@@ -94,17 +94,51 @@ _SLOT_CTX_MINIMO = 8192
 _SLOT_MASSIMI = 4
 
 
+def _slot_richiesti_da_ambiente() -> Optional[int]:
+    """Il numero di slot imposto da SIGMA_PARALLEL_SLOTS, se valido."""
+    grezzo = os.environ.get("SIGMA_PARALLEL_SLOTS", "").strip()
+    if not grezzo:
+        return None
+    try:
+        valore = int(grezzo)
+    except ValueError:
+        log.warning(
+            "[LlamaServer] SIGMA_PARALLEL_SLOTS='%s' non e' un intero: ignorato.",
+            grezzo,
+        )
+        return None
+    return valore if valore > 0 else None
+
+
 def slot_per_contesto(n_ctx: int) -> int:
     """Quanti slot stanno in questo contesto senza stringere troppo ciascuno.
 
     Il numero di slot non e' una preferenza di velocita': e' una divisione della
     finestra. Sceglierlo prima di sapere quanto contesto c'e' significa decidere
     quanto ne resta a ogni risposta senza guardare.
+
+    Il default e' UNO. Dividere la finestra ha senso solo se piu' richieste
+    sono davvero in volo insieme, e in questo progetto non lo sono mai:
+    ``UniversalSigmaEngine.generate_stream`` prende un lock di processo prima
+    di generare, quindi gli slot in piu' tengono cache KV riservata che nessuno
+    puo' usare, sottraendola all'unica conversazione che esiste. Il costo si
+    misurava cosi':
+
+        HTTP 400: request (12185 tokens) exceeds the available context (8192)
+        Budget ridotto da 20000 a 538 token: lo slot ne ha 8192
+
+    Chi serve piu' utenti insieme, e ha tolto la serializzazione, alza
+    SIGMA_PARALLEL_SLOTS e riottiene la divisione di prima.
     """
     finestra = int(n_ctx or 0)
     if finestra <= 0:
         return 1
-    return max(1, min(_SLOT_MASSIMI, finestra // _SLOT_CTX_MINIMO))
+
+    richiesti = _slot_richiesti_da_ambiente()
+    if richiesti is None:
+        return 1
+
+    return max(1, min(richiesti, _SLOT_MASSIMI, max(1, finestra // _SLOT_CTX_MINIMO)))
 
 
 def _limite_generazione(max_tokens: int) -> float:
@@ -422,6 +456,8 @@ class LlamaServerBackend(InferenceBackend):
         params: Optional[SamplingParams] = None,
         cancel: Any = None,
         thinking: Optional[bool] = None,
+        tools: Optional[list] = None,
+        tool_choice: Optional[Any] = None,
     ) -> Generator[Dict[str, Any], None, None]:
         if not self.is_loaded:
             yield {"token": "\n\n❌ **Nessun modello caricato nel runtime GGUF**",
@@ -434,7 +470,7 @@ class LlamaServerBackend(InferenceBackend):
             max_tokens=self._budget_token(params.max_tokens, messages)
         )
         corpo = self._corpo_richiesta(prompt, system_prompt, messages, params,
-                                      thinking)
+                                      thinking, tools, tool_choice)
         in_ragionamento = False
 
         t_start = time.perf_counter()
@@ -471,11 +507,16 @@ class LlamaServerBackend(InferenceBackend):
                                 int(_limite_generazione(params.max_tokens)), contatore)
                     break
 
+                genere = pezzo.get("kind")
+                if genere == "tool_calls":
+                    # Non e' testo e non va contato come token generato: e'
+                    # struttura, e chi la riceve la ricompone.
+                    yield {"tool_calls": pezzo.get("tool_calls"), "done": False}
+                    continue
+
                 testo = pezzo.get("content") or ""
                 if not testo:
                     continue
-
-                genere = pezzo.get("kind")
                 if genere == "reasoning" and not in_ragionamento:
                     in_ragionamento = True
                     contatore += 1
@@ -853,7 +894,9 @@ class LlamaServerBackend(InferenceBackend):
 
     def _corpo_richiesta(self, prompt: str, system_prompt: str,
                          messages: Optional[list], params: SamplingParams,
-                         thinking: Optional[bool] = None) -> Dict[str, Any]:
+                         thinking: Optional[bool] = None,
+                         tools: Optional[list] = None,
+                         tool_choice: Optional[Any] = None) -> Dict[str, Any]:
         conversazione = []
         if messages:
             for m in messages:
@@ -913,6 +956,19 @@ class LlamaServerBackend(InferenceBackend):
         grammatica = getattr(params, "grammar", None)
         if grammatica:
             corpo["grammar"] = grammatica
+
+        # I tool viaggiano nella forma OpenAI cosi' come arrivano: llama-server
+        # li passa al template Jinja del modello, che sa gia' come presentarli.
+        # Riscriverli qui vorrebbe dire indovinare la convenzione di ogni
+        # famiglia, che e' esattamente il lavoro che il template fa meglio.
+        #
+        # Una grammatica e i tool insieme si escluderebbero a vicenda: la prima
+        # vincola la forma dell'uscita, i secondi la fanno decidere al template.
+        # Vince la grammatica, perche' chi la passa lo ha fatto apposta.
+        if tools and not grammatica:
+            corpo["tools"] = tools
+            if tool_choice is not None:
+                corpo["tool_choice"] = tool_choice
         return corpo
 
     def _post(self, percorso: str, corpo: Dict[str, Any], timeout: int = 60) -> Dict[str, Any]:
@@ -1034,12 +1090,14 @@ class LlamaServerBackend(InferenceBackend):
 
                 contenuto = ""
                 ragionamento = None
+                chiamate = None
 
                 scelte = evento.get("choices")
                 if scelte and isinstance(scelte, list) and len(scelte) > 0:
                     delta = scelte[0].get("delta") or {}
                     ragionamento = delta.get("reasoning_content")
                     contenuto = delta.get("content") or ""
+                    chiamate = delta.get("tool_calls")
                 elif "content" in evento:
                     contenuto = evento.get("content") or ""
 
@@ -1047,6 +1105,14 @@ class LlamaServerBackend(InferenceBackend):
                 # blocco di ragionamento e' stato che appartiene a una singola
                 # generazione, e teneva su `self`: con quattro slot in parallelo
                 # i <think> di una risposta finivano dentro un'altra.
+                # I frammenti di tool_calls arrivano spezzati come il testo:
+                # il nome in un delta, gli argomenti in venti. Vengono passati
+                # cosi' come sono, perche' ad accumularli e' lo strato che deve
+                # poi riemetterli nel formato del chiamante.
+                if chiamate:
+                    yield {"tool_calls": chiamate, "kind": "tool_calls"}
+                    continue
+
                 if ragionamento:
                     yield {"content": ragionamento, "kind": "reasoning"}
                     continue

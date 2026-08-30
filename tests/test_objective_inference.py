@@ -1657,26 +1657,48 @@ class TestSlotContext(unittest.TestCase):
     zero con i pesi in memoria, e il run si ferma senza spiegazioni.
     """
 
-    def test_the_slot_count_comes_from_the_context(self):
+    def test_uno_slot_lascia_la_finestra_intera(self):
+        """Senza divisione, ogni risposta dispone di tutto il contesto."""
+        from core.engine.backends.llamaserver_backend import slot_per_contesto
+
+        for finestra in (8192, 16384, 32768, 65536):
+            self.assertEqual(finestra // slot_per_contesto(finestra), finestra)
+
+    def test_uno_slot_per_default(self):
+        """La finestra non si divide se nessuno lo chiede.
+
+        Dividerla era il difetto: `generate_stream` prende un lock di processo
+        prima di generare, quindi una sola richiesta e' mai in volo e gli slot
+        in piu' tenevano cache KV riservata che nessuno poteva usare. Il costo
+        si misurava in HTTP 400 sopra gli 8192 token con una finestra da 32768.
+        """
+        from core.engine.backends.llamaserver_backend import slot_per_contesto
+
+        for finestra in (0, 4096, 16384, 32768, 131072):
+            self.assertEqual(slot_per_contesto(finestra), 1, finestra)
+
+    def test_la_divisione_si_ottiene_chiedendola(self):
+        """Chi serve piu' utenti insieme riottiene gli slot con una variabile."""
+        import os
         from core.engine.backends.llamaserver_backend import (
             slot_per_contesto, _SLOT_CTX_MINIMO,
         )
-        # La divisione non puo' portare uno slot sotto il minimo utile. Con una
-        # finestra gia' piu' piccola del minimo non c'e' niente da dividere: uno
-        # slot stretto e' l'unica opzione, ed e' comunque tutta la finestra.
-        for finestra in (8192, 16384, 32768, 65536):
-            slot = slot_per_contesto(finestra)
-            self.assertGreaterEqual(finestra // slot, _SLOT_CTX_MINIMO, finestra)
-        self.assertEqual(slot_per_contesto(4096), 1)
 
-    def test_a_small_context_gets_a_single_slot(self):
-        from core.engine.backends.llamaserver_backend import slot_per_contesto
-
-        # Quattro slot fissi erano il difetto: su una finestra piccola
-        # spezzavano l'unica cosa che serviva intera.
-        self.assertEqual(slot_per_contesto(4096), 1)
-        self.assertEqual(slot_per_contesto(16384), 2)
-        self.assertEqual(slot_per_contesto(0), 1)
+        precedente = os.environ.get("SIGMA_PARALLEL_SLOTS")
+        os.environ["SIGMA_PARALLEL_SLOTS"] = "4"
+        try:
+            self.assertEqual(slot_per_contesto(32768), 4)
+            # Nemmeno su richiesta uno slot puo' scendere sotto il minimo utile:
+            # e' la garanzia che il test originale proteggeva, e vale ancora.
+            for finestra in (8192, 16384, 32768, 65536):
+                slot = slot_per_contesto(finestra)
+                self.assertGreaterEqual(finestra // slot, _SLOT_CTX_MINIMO, finestra)
+            self.assertEqual(slot_per_contesto(4096), 1)
+        finally:
+            if precedente is None:
+                os.environ.pop("SIGMA_PARALLEL_SLOTS", None)
+            else:
+                os.environ["SIGMA_PARALLEL_SLOTS"] = precedente
 
     def test_the_command_line_uses_the_computed_count(self):
         import inspect

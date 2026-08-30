@@ -197,7 +197,19 @@ async def handle_agent_chat(request: Request):
     auto_execute = bool(body.get("auto_execute_tools", True))
     pipeline = body.get("pipeline", [])
     context_tokens = int(body.get("context_tokens") or body.get("context_length") or 32768)
-    max_tokens = int(body.get("max_tokens") or 4096)
+    # A tool call that carries a whole source file needs room for it.
+    max_tokens = int(body.get("max_tokens") or 20000)
+    # Requested off, but do not rely on it: on checkpoints whose chat
+    # template ignores `enable_thinking` — Qwen3.8-27B among them — this
+    # flag is inert and `/no_think` is ignored as well. The reasoning
+    # block is then unavoidable, which is why max_tokens above has to
+    # accommodate the reasoning *and* the file being written.
+    thinking = body.get("thinking")
+    thinking = False if thinking is None else bool(thinking)
+    # A real development goal needs many more tool round-trips than a chat
+    # answer: read, edit, re-read, test, fix. Capping at a handful of turns is
+    # what made the agent stop half-way through its own plan.
+    max_turns = max(1, min(int(body.get("max_turns") or 30), 100))
 
     # The agent loop is fully synchronous and blocking (model inference, filesystem
     # search, shell commands). It MUST run on a worker thread: executing it inline on
@@ -218,6 +230,8 @@ async def handle_agent_chat(request: Request):
                     current_pipeline=pipeline,
                     context_tokens=context_tokens,
                     max_tokens=max_tokens,
+                    max_turns=max_turns,
+                    thinking=thinking,
                 ):
                     if cancel_event.is_set():
                         break

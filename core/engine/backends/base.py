@@ -74,6 +74,8 @@ class InferenceBackend(ABC):
         params: Optional["SamplingParams"] = None,
         cancel: Any = None,
         thinking: Optional[bool] = None,
+        tools: Optional[list] = None,
+        tool_choice: Optional[Any] = None,
     ) -> Generator[Dict[str, Any], None, None]:
         """
         Yields token chunks shaped like the engine's streaming contract.
@@ -88,6 +90,12 @@ class InferenceBackend(ABC):
 
         `cancel` is a CancellationToken, checked between tokens so an
         abandoned request stops costing compute.
+
+        `tools` carries the OpenAI-shaped function declarations a caller wants
+        the model to be able to call, and `tool_choice` how insistently. A
+        backend whose runtime has no notion of them ignores both and answers in
+        prose, which is what it would have done anyway; one that understands
+        them yields `tool_calls` chunks alongside the text.
 
         `thinking` is tri-state. None leaves the checkpoint on its own default.
         False asks for an answer without a reasoning block -- what a benchmark

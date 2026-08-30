@@ -8,6 +8,7 @@ import {
   ListTodo, CheckCircle2, Circle, CircleDot, RotateCw, Award, Play, Pause, Square
 } from 'lucide-react';
 import DeveloperModelSelector from './DeveloperModelSelector';
+import AgentWorkMonitor from './AgentWorkMonitor';
 import { renderMarkdownLatex } from '../../utils/markdownLatex';
 import 'katex/dist/katex.min.css';
 import Prism from 'prismjs';
@@ -322,6 +323,12 @@ export default function AdminAgentChat({
     }
   });
   const [contextMetrics, setContextMetrics] = useState(null);
+  // Mirror of the backend session ledger: exactly what the model sees as
+  // its own working state, so the user and the agent never disagree about
+  // what has already been done.
+  const [ledgerState, setLedgerState] = useState(null);
+  const [gateReason, setGateReason] = useState(null);
+  const [truncationCount, setTruncationCount] = useState(0);
 
   const handleSelectContextTokens = (tokens) => {
     setContextTokens(tokens);
@@ -809,6 +816,25 @@ export default function AdminAgentChat({
               continue;
             }
 
+            // Working-state snapshot, emitted after every tool execution.
+            if (event.type === 'ledger') {
+              setLedgerState(event.state || null);
+              continue;
+            }
+
+            // The completion gate refused: show why, so a stalled run is
+            // diagnosable without reading the transcript.
+            if (event.type === 'completion_rejected') {
+              setGateReason(event.reason || null);
+              continue;
+            }
+
+            // The model's output hit the token budget mid-tool-call.
+            if (event.type === 'output_truncated') {
+              setTruncationCount(n => n + 1);
+              continue;
+            }
+
             // Handle pipeline task updates from model
             if (event.type === 'pipeline_update' && Array.isArray(event.tasks)) {
               setTasks(prev => prev.map(t => {
@@ -822,6 +848,7 @@ export default function AdminAgentChat({
 
             // Handle final goal completion
             if (event.type === 'goal_complete') {
+              setGateReason(null);
               setTasks(prev => prev.map(t => {
                 if (t.id === currentTaskId) {
                   const updatedPipeline = (t.pipeline || []).map(p => ({ ...p, status: 'done' }));
@@ -1336,6 +1363,14 @@ export default function AdminAgentChat({
           contextMetrics={contextMetrics}
           theme={theme}
           isLight={isLight}
+        />
+
+        {/* What the agent has actually done so far */}
+        <AgentWorkMonitor
+          ledger={ledgerState}
+          isLight={isLight}
+          gateReason={gateReason}
+          truncationCount={truncationCount}
         />
 
         {/* Dynamic Action Plan & Task Pipeline Widget (Always Visible) */}
@@ -1945,12 +1980,16 @@ export default function AdminAgentChat({
                           {t.tool === 'terminal' && <Terminal size={13} />}
                           {t.tool === 'read_file' && <FileCode size={13} />}
                           {t.tool === 'write_file' && <SplitSquareVertical size={13} />}
+                          {t.tool === 'edit_file' && <Edit2 size={13} />}
+                          {t.tool === 'glob' && <Search size={13} />}
                           {t.tool === 'delete' && <Trash2 size={13} />}
                           {t.tool === 'list_dir' && <Layers size={13} />}
                           {(t.tool === 'pipeline' || t.tool === 'tasks' || t.tool === 'set_tasks') && <ListTodo size={13} />}
                           {(t.tool === 'complete_goal' || t.tool === 'finish_task') && <Award size={13} />}
                           <span>
-                            {t.tool === 'write_file' ? 'MODIFICA / SCRITTURA FILE' :
+                            {t.tool === 'edit_file' ? 'MODIFICA CHIRURGICA FILE' :
+                             t.tool === 'glob' ? 'RICERCA FILE PER PATTERN' :
+                             t.tool === 'write_file' ? 'MODIFICA / SCRITTURA FILE' :
                              t.tool === 'terminal' ? 'ESECUZIONE TERMINALE' :
                              t.tool === 'delete' ? 'ELIMINAZIONE FILE / CARTELLA' :
                              t.tool === 'read_file' ? 'LETTURA FILE' :

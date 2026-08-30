@@ -120,7 +120,17 @@ class GgufConverter:
             path = os.path.join(base, entry)
             if not os.path.isdir(path):
                 continue
-            facts = ModelInspector.inspect(path)
+            # A store accumulates half-downloaded, hand-copied and foreign
+            # directories. One of them failing to parse must not empty the
+            # whole list: skip it, say so in the log, keep scanning.
+            try:
+                facts = ModelInspector.inspect(path)
+            except Exception as exc:  # noqa: BLE001 - any malformed directory
+                log.warning(
+                    "[GgufConverter] '%s' non ispezionabile, escluso dalla lista: %s",
+                    entry, exc,
+                )
+                continue
             if facts is None or facts.weight_format not in ("safetensors", "gguf"):
                 continue
 
@@ -133,6 +143,15 @@ class GgufConverter:
             if already_gguf and not cls._is_requantizable(path):
                 continue
 
+            try:
+                estimated = cls._estimate_outputs(facts)
+                compatibility = cls.check_compatibility(facts)
+            except Exception as exc:  # noqa: BLE001 - stima non essenziale
+                log.warning(
+                    "[GgufConverter] stima non riuscita per '%s': %s", entry, exc
+                )
+                estimated, compatibility = [], {}
+
             results.append({
                 "name": entry,
                 "path": path,
@@ -142,10 +161,10 @@ class GgufConverter:
                 "size_gb": round(facts.total_bytes / 2**30, 2),
                 "layers": facts.num_hidden_layers,
                 "is_multimodal": facts.is_multimodal,
-                "estimated_outputs": cls._estimate_outputs(facts),
-                "fits_in_vram": cls._vram_fit(cls._estimate_outputs(facts)),
+                "estimated_outputs": estimated,
+                "fits_in_vram": cls._vram_fit(estimated),
                 "already_converted": os.path.isdir(path + "-GGUF"),
-                "compatibility": cls.check_compatibility(facts),
+                "compatibility": compatibility,
             })
         return results
 

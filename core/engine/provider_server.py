@@ -205,6 +205,246 @@ def _sampler_from_request(
     return params
 
 
+
+def _tools_from_request(body: Optional[Dict[str, Any]]) -> Tuple[Optional[list], Optional[Any]]:
+    """Le funzioni dichiarate dal client, nella forma in cui le manda.
+
+    Non vengono validate qui: il template del modello sa quali campi legge, e
+    rifiutare in anticipo una dichiarazione che quel template avrebbe accettato
+    e' un modo di rompere l'interoperabilita' invece di garantirla. Si controlla
+    solo che sia una lista non vuota, perche' `tools: []` significa "nessuno" e
+    inoltrarlo cambierebbe il prompt per niente.
+    """
+    body = body or {}
+    tools = body.get("tools")
+    if not isinstance(tools, list) or not tools:
+        return None, None
+    return tools, body.get("tool_choice")
+
+
+class _ToolCallAccumulator:
+    """Ricompone le tool_calls che arrivano spezzate nei delta.
+
+    Vengono trasmesse come frammenti numerati: il nome in uno, gli argomenti in
+    venti, e nulla garantisce che siano contigui. Accumulare per indice e'
+    l'unico modo di ottenere JSON valido alla fine; concatenare in ordine di
+    arrivo fonde due chiamate in una appena il modello ne emette due.
+    """
+
+    def __init__(self) -> None:
+        self._per_index: Dict[int, Dict[str, Any]] = {}
+
+    def add(self, deltas: Any) -> None:
+        if not isinstance(deltas, list):
+            return
+        for delta in deltas:
+            if not isinstance(delta, dict):
+                continue
+            idx = delta.get("index")
+            idx = int(idx) if isinstance(idx, int) else len(self._per_index)
+            slot = self._per_index.setdefault(
+                idx,
+                {"id": "", "type": "function", "function": {"name": "", "arguments": ""}},
+            )
+            if delta.get("id"):
+                slot["id"] = str(delta["id"])
+            if delta.get("type"):
+                slot["type"] = str(delta["type"])
+            fn = delta.get("function") or {}
+            if fn.get("name"):
+                slot["function"]["name"] = str(fn["name"])
+            if fn.get("arguments"):
+                slot["function"]["arguments"] += str(fn["arguments"])
+
+    def result(self) -> List[Dict[str, Any]]:
+        """Le chiamate complete, in ordine di indice, con un id se mancava."""
+        out = []
+        for idx in sorted(self._per_index):
+            call = self._per_index[idx]
+            if not call["function"]["name"]:
+                continue
+            if not call["id"]:
+                # Un client correla il risultato alla chiamata per id: senza,
+                # non saprebbe a quale delle due sta rispondendo.
+                call["id"] = f"call_{uuid.uuid4().hex[:20]}"
+            out.append(call)
+        return out
+
+
+
+#: I modi in cui una famiglia annuncia una chiamata nel testo. L'ordine conta
+#: solo per la leggibilita': si prova tutto e si tiene cio' che nomina un tool
+#: davvero dichiarato.
+_TOOL_CALL_WRAPPERS = (
+    "tool_call", "tools", "tool", "function_call", "function",
+)
+
+
+def _declared_tool_names(tools: Optional[list]) -> set:
+    """I nomi che il client ha dichiarato, come insieme."""
+    names = set()
+    for entry in tools or []:
+        if not isinstance(entry, dict):
+            continue
+        fn = entry.get("function") if isinstance(entry.get("function"), dict) else entry
+        name = fn.get("name")
+        if isinstance(name, str) and name:
+            names.add(name)
+    return names
+
+
+
+def _balanced_objects(text: str) -> List[str]:
+    """Ogni oggetto JSON bilanciato presente nel testo, dal piu' esterno.
+
+    Le graffe dentro le stringhe non contano come struttura: gli argomenti di
+    una funzione contengono spesso codice, e chiudere l'oggetto alla prima
+    graffa di una f-string produce frammenti che non parsano.
+    """
+    out: List[str] = []
+    depth = 0
+    start = -1
+    in_string = False
+    escaped = False
+    for i, ch in enumerate(text):
+        if in_string:
+            if escaped:
+                escaped = False
+            elif ch == "\\":
+                escaped = True
+            elif ch == '"':
+                in_string = False
+            continue
+        if ch == '"':
+            in_string = True
+        elif ch == "{":
+            if depth == 0:
+                start = i
+            depth += 1
+        elif ch == "}":
+            if depth:
+                depth -= 1
+                if depth == 0 and start >= 0:
+                    out.append(text[start:i + 1])
+                    start = -1
+    return out
+
+
+def _candidate_payloads(text: str) -> List[str]:
+    """I frammenti JSON che potrebbero essere una chiamata, dal piu' esplicito."""
+    import re as _re
+
+    found: List[str] = []
+    for tag in _TOOL_CALL_WRAPPERS:
+        for match in _re.finditer(
+            rf"<{tag}>\s*(.*?)\s*</{tag}>", text, _re.DOTALL | _re.IGNORECASE
+        ):
+            found.append(match.group(1))
+    for match in _re.finditer(r"```(?:json)?\s*(\{.*?\})\s*```", text, _re.DOTALL):
+        found.append(match.group(1))
+    # Un oggetto nudo: ultimo perche' e' il piu' facile da confondere con
+    # prosa. Bilanciato e non a regex, perche' `arguments` e' quasi sempre un
+    # oggetto e la forma piu' comune di chiamata e' proprio quella annidata.
+    for blocco in _balanced_objects(text):
+        if '"name"' in blocco or '"function"' in blocco:
+            found.append(blocco)
+
+    # Lo stesso payload viene trovato sia dentro il suo tag sia dalla scansione
+    # bilanciata: senza deduplica una chiamata sola ne genererebbe due, e il
+    # client eseguirebbe l'azione due volte.
+    unici: List[str] = []
+    visti = set()
+    for frammento in found:
+        chiave = "".join(frammento.split())
+        if chiave in visti:
+            continue
+        visti.add(chiave)
+        unici.append(frammento)
+    return unici
+
+
+def _tool_calls_from_text(text: str, tools: Optional[list]) -> Tuple[str, List[Dict[str, Any]]]:
+    """Estrae le chiamate annunciate nel testo, restituendo (testo residuo, chiamate).
+
+    Conservativo di proposito: senza tool dichiarati non tocca nulla, e scarta
+    ogni frammento il cui nome non compare fra quelli che il client ha offerto.
+    Il rischio da evitare non e' perdere una chiamata — quella il modello la
+    ripete — ma trasformare una risposta legittima in una chiamata inventata.
+    """
+    declared = _declared_tool_names(tools)
+    if not declared or not text:
+        return text, []
+
+    calls: List[Dict[str, Any]] = []
+    residuo = text
+    for payload in _candidate_payloads(text):
+        try:
+            data = json.loads(payload)
+        except (ValueError, TypeError):
+            continue
+        if not isinstance(data, dict):
+            continue
+        name = data.get("name") or (data.get("function") or {}).get("name")
+        if name not in declared:
+            continue
+        arguments = data.get("arguments")
+        if arguments is None:
+            arguments = (data.get("function") or {}).get("arguments", {})
+        if not isinstance(arguments, str):
+            try:
+                arguments = json.dumps(arguments, ensure_ascii=False)
+            except (TypeError, ValueError):
+                arguments = "{}"
+        calls.append({
+            "id": f"call_{uuid.uuid4().hex[:20]}",
+            "type": "function",
+            "function": {"name": name, "arguments": arguments},
+        })
+        residuo = residuo.replace(payload, "", 1)
+
+    if not calls:
+        return text, []
+
+    # Ripulisce i tag rimasti vuoti e gli spazi che tenevano insieme il testo.
+    import re as _re
+    for tag in _TOOL_CALL_WRAPPERS:
+        residuo = _re.sub(rf"</?{tag}>", "", residuo, flags=_re.IGNORECASE)
+    residuo = _re.sub(r"```(?:json)?\s*```", "", residuo)
+    return residuo.strip(), calls
+
+
+
+def _forced_tool_grammar(tools: Optional[list], tool_choice: Any) -> Optional[str]:
+    """La grammatica da imporre, se il client ha chiesto una chiamata obbligata.
+
+    Restituisce None per `auto` e per l'assenza di scelta: li' il modello deve
+    poter rispondere in prosa, ed e' il caso piu' comune.
+    """
+    if not tools:
+        return None
+
+    scelta = tool_choice
+    nomi = _declared_tool_names(tools)
+    if not nomi:
+        return None
+
+    if isinstance(scelta, dict):
+        fn = scelta.get("function") if isinstance(scelta.get("function"), dict) else {}
+        nome = fn.get("name") or scelta.get("name")
+        if nome in nomi:
+            nomi = {nome}
+        else:
+            return None
+    elif scelta != "required":
+        return None
+
+    try:
+        from core.engine.grammars import openai_tool_call_grammar
+    except ImportError:
+        return None
+    return openai_tool_call_grammar(sorted(nomi))
+
+
 def _thinking_from_request(body: Optional[Dict[str, Any]]) -> Optional[bool]:
     """
     Whether the client asked for a reasoning block, in any of the spellings in use.
@@ -601,6 +841,13 @@ def stream_openai_chat_generator(
     resolved_model, exec_mode, prov_cfg = resolve_target_model(model)
     params = _sampler_from_request(resolved_model, temperature, max_tokens, top_p, extra)
     thinking = _thinking_from_request(extra)
+    tools, tool_choice = _tools_from_request(extra)
+    saw_tool_call = False
+    if tool_choice == "none":
+        tools, tool_choice = None, None
+    grammatica_tool = _forced_tool_grammar(tools, tool_choice)
+    if grammatica_tool:
+        params = params.with_grammar(grammatica_tool)
 
     # Emit initial role delta chunk
     initial_chunk = {
@@ -673,7 +920,24 @@ def stream_openai_chat_generator(
             messages=sanitized_messages,
             params=params,
             thinking=thinking,
+            tools=tools,
+            tool_choice=tool_choice,
         ):
+            # I frammenti di chiamata si inoltrano cosi' come sono: il client
+            # li accumula gia' per conto suo ed e' lui a decidere quando la
+            # chiamata e' completa.
+            deltas = chunk.get("tool_calls")
+            if deltas:
+                saw_tool_call = True
+                payload = {
+                    "id": req_id, "object": "chat.completion.chunk",
+                    "created": created_ts, "model": model,
+                    "choices": [{"index": 0, "delta": {"tool_calls": deltas},
+                                 "finish_reason": None}],
+                }
+                yield f"data: {json.dumps(payload)}" + chr(10) + chr(10)
+                continue
+
             token = chunk.get("token", "")
             if is_notice(chunk):
                 # Progress narration belongs in Studio's own bubble, not in an
@@ -709,7 +973,10 @@ def stream_openai_chat_generator(
             {
                 "index": 0,
                 "delta": {},
-                "finish_reason": "stop"
+                # Un client distingue "ha finito di parlare" da "ti sta
+                # chiedendo di eseguire qualcosa" da questo campo: dichiarare
+                # "stop" dopo una chiamata gli dice di non eseguirla.
+                "finish_reason": "tool_calls" if saw_tool_call else "stop"
             }
         ]
     }
@@ -743,6 +1010,16 @@ def execute_openai_chat_non_stream(
     resolved_model, exec_mode, prov_cfg = resolve_target_model(model)
     params = _sampler_from_request(resolved_model, temperature, max_tokens, top_p, extra)
     thinking = _thinking_from_request(extra)
+    tools, tool_choice = _tools_from_request(extra)
+    accumulator = _ToolCallAccumulator()
+
+    # `none` significa "ho dei tool ma non usarli": inoltrarli cambierebbe il
+    # prompt per nulla, e alcuni template li presentano comunque al modello.
+    if tool_choice == "none":
+        tools, tool_choice = None, None
+    grammatica_tool = _forced_tool_grammar(tools, tool_choice)
+    if grammatica_tool:
+        params = params.with_grammar(grammatica_tool)
 
     full_content = ""
     finish_reason = "stop"
@@ -768,14 +1045,25 @@ def execute_openai_chat_non_stream(
         if err:
             full_content = f"⚠️ Errore Cloud Provider ({p_name}): {err}"
     else:
-        answer = collect(sigma_engine.generate_stream(
+        def _senza_chiamate(stream):
+            """Trattiene le tool_calls e lascia passare il resto a `collect`."""
+            for chunk in stream:
+                deltas = chunk.get("tool_calls")
+                if deltas:
+                    accumulator.add(deltas)
+                    continue
+                yield chunk
+
+        answer = collect(_senza_chiamate(sigma_engine.generate_stream(
             prompt=prompt_text,
             system_prompt=system_prompt,
             model_name=resolved_model,
             messages=sanitized_messages,
             params=params,
             thinking=thinking,
-        ))
+            tools=tools,
+            tool_choice=tool_choice,
+        )))
         if answer.error and not answer.text:
             return {
                 "error": {
@@ -804,6 +1092,29 @@ def execute_openai_chat_non_stream(
     if not completion_tokens:
         completion_tokens = _estimate_tokens(full_content)
 
+    # Se il runtime non ha riconosciuto la chiamata, cercarla nel testo: la
+    # differenza fra i due casi e' quale convenzione ha usato il modello, non
+    # se ha deciso di chiamare qualcosa.
+    if tools and not accumulator.result():
+        full_content, recuperate = _tool_calls_from_text(full_content, tools)
+        for call in recuperate:
+            accumulator.add([{
+                "index": len(accumulator.result()),
+                "id": call["id"],
+                "type": "function",
+                "function": call["function"],
+            }])
+
+    message: Dict[str, Any] = {"role": "assistant", "content": full_content}
+
+    # Una chiamata a funzione ha la precedenza sul motivo di arresto calcolato
+    # prima: il modello non ha finito, ha chiesto qualcosa. Un client che legge
+    # "stop" non esegue la chiamata e la conversazione si ferma li'.
+    chiamate = accumulator.result()
+    if chiamate:
+        message["tool_calls"] = chiamate
+        finish_reason = "tool_calls"
+
     return {
         "id": req_id,
         "object": "chat.completion",
@@ -812,10 +1123,7 @@ def execute_openai_chat_non_stream(
         "choices": [
             {
                 "index": 0,
-                "message": {
-                    "role": "assistant",
-                    "content": full_content
-                },
+                "message": message,
                 "finish_reason": finish_reason
             }
         ],

@@ -294,6 +294,12 @@ class ModelInspector:
             facts.has_part_files = True
             facts.is_complete = False
 
+        # Bound before the branch that may not run: a model saved as a single
+        # `model.safetensors` has no index, and so does one whose index fails
+        # to parse. Both are ordinary, and neither should reach the fallback
+        # below with this name unbound.
+        shard_files: List[str] = []
+
         if os.path.exists(index_path):
             try:
                 with open(index_path, "r", encoding="utf-8") as f:

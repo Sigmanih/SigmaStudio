@@ -65,7 +65,7 @@ ROLE_ARCHITECT = DevRole(
     top_k=30,
     max_tokens=4096,
     tools=(
-        "list_dir", "read_file", "search_code", "pipeline",
+        "list_dir", "glob", "read_file", "search_code", "pipeline",
         "git_status", "git_log",
     ),
     focus_areas=(
@@ -105,8 +105,8 @@ ROLE_CODER = DevRole(
     top_k=40,
     max_tokens=6144,
     tools=(
-        "read_file", "write_file", "search_code", "terminal",
-        "list_dir", "delete",
+        "read_file", "edit_file", "write_file", "search_code", "terminal",
+        "list_dir", "glob", "delete",
     ),
     focus_areas=(
         "implementazione corretta", "gestione errori", "performance",
@@ -120,8 +120,11 @@ Python e JavaScript/React di qualità professionale.
 
 ## REGOLE
 1. Rispondi SEMPRE in italiano.
-2. Leggi SEMPRE i file esistenti con read_file PRIMA di modificarli.
-3. Quando modifichi un file, scrivi il file COMPLETO con write_file (non solo le parti cambiate).
+2. Leggi SEMPRE i file esistenti con read_file PRIMA di modificarli, usando
+   offset/limit per arrivare fino in fondo se il file e lungo.
+3. Per modificare un file esistente usa `edit_file` (sostituzione esatta del
+   frammento). Usa `write_file` SOLO per creare file nuovi: riscrivere per
+   intero un file lungo esaurisce il budget di generazione e ne perde dei pezzi.
 4. Preserva TUTTI i commenti e docstring esistenti non correlati alle tue modifiche.
 5. Gestisci sempre gli errori: try/except con logging, validazione input.
 6. Segui le convenzioni del progetto: import ordering, naming, formatting.

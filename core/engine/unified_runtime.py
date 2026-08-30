@@ -1377,6 +1377,8 @@ class UniversalSigmaEngine:
         params: Optional[SamplingParams] = None,
         cancel: Any = None,
         thinking: Optional[bool] = None,
+        tools: Optional[List[Dict[str, Any]]] = None,
+        tool_choice: Optional[Any] = None,
     ) -> Generator[Dict[str, Any], None, None]:
         """
         Serialises access to the engine, then streams the answer.
@@ -1439,6 +1441,8 @@ class UniversalSigmaEngine:
                 params=params,
                 cancel=cancel,
                 thinking=thinking,
+                tools=tools,
+                tool_choice=tool_choice,
             )
         finally:
             self._generation_lock.release()
@@ -1454,6 +1458,8 @@ class UniversalSigmaEngine:
         params: Optional[SamplingParams] = None,
         cancel: Any = None,
         thinking: Optional[bool] = None,
+        tools: Optional[List[Dict[str, Any]]] = None,
+        tool_choice: Optional[Any] = None,
         retried_after_oom: bool = False,
     ) -> Generator[Dict[str, Any], None, None]:
         """
@@ -1561,6 +1567,8 @@ class UniversalSigmaEngine:
                 params=params,
                 cancel=cancel,
                 thinking=thinking,
+                tools=tools,
+                tool_choice=tool_choice,
             )
             return
 
@@ -1716,6 +1724,7 @@ class UniversalSigmaEngine:
                         temperature=temperature, max_tokens=max_tokens,
                         model_name=model_name, messages=messages,
                         params=params, cancel=cancel, thinking=thinking,
+                        tools=tools, tool_choice=tool_choice,
                         retried_after_oom=True,
                     )
                     return

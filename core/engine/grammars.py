@@ -79,6 +79,63 @@ def tool_call_grammar(tool_names: Iterable[str]) -> Optional[str]:
     )
 
 
+def fenced_tool_grammar(tool_names: Iterable[str]) -> Optional[str]:
+    """
+    A grammar admitting exactly one ```tool:NAME block and nothing else.
+
+    The Developer Studio does not use the ``sigma-tool`` JSON envelope: its
+    agent emits a fenced block whose language tag carries the tool name. That
+    shape is what has to be constrained, because every failure observed in it
+    was a failure of shape -- a fence left unclosed once the JSON looked
+    finished, an argument object interrupted mid-string, a turn spent
+    reasoning that produced no block at all.
+
+    The name is limited to the alternation actually offered, so a plausible
+    invention is unreachable. The arguments stay a free JSON object: their keys
+    differ per tool, and a wrong key that parses can be answered with an error
+    the model can act on, whereas an over-constrained grammar turns it into no
+    output at all.
+    """
+    names = [n for n in dict.fromkeys(tool_names) if n]
+    if not names:
+        return None
+
+    # Bare terminals here, unlike tool_call_grammar: the name sits in the fence
+    # info string, not inside JSON, so quoting it would emit ```tool:"read_file".
+    alternation = " | ".join(
+        '"%s"' % n.replace("\\", "\\\\").replace('"', '\\"') for n in names
+    )
+    return (
+        'root      ::= "```tool:" toolname "\n" object "\n```"\n'
+        f"toolname  ::= ({alternation})\n"
+        + _JSON_PRIMITIVES
+    )
+
+def openai_tool_call_grammar(tool_names: Iterable[str]) -> Optional[str]:
+    """
+    A grammar admitting one ``{"name": ..., "arguments": {...}}`` call.
+
+    The shape is the one an OpenAI-compatible caller expects to get back, and
+    the one the text-level recovery already recognises, so a constrained decode
+    and a rescued one produce the same object rather than two that have to be
+    reconciled later.
+
+    Only the name is constrained. Argument keys differ per function and per
+    caller, and a grammar that pinned them would turn a model's wrong argument
+    -- answerable with an error it can act on -- into no output at all.
+    """
+    names = [n for n in dict.fromkeys(tool_names) if n]
+    if not names:
+        return None
+
+    alternation = " | ".join(_gbnf_string(name) for name in names)
+    return (
+        'root      ::= "{" ws "\\"name\\"" ws ":" ws toolname ws "," ws '
+        '"\\"arguments\\"" ws ":" ws object "}" ws\n'
+        f"toolname  ::= ({alternation}) ws\n"
+        + _JSON_PRIMITIVES
+    )
+
 def choice_grammar(letters: Iterable[str]) -> Optional[str]:
     """
     A grammar admitting exactly one option label and nothing else.
