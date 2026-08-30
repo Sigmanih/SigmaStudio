@@ -634,3 +634,113 @@ import base64
 from unittest.mock import patch, MagicMock
 
 
+
+# ---------------------------------------------------------------------------
+# Task 6b — Route peer-to-peer
+# ---------------------------------------------------------------------------
+# La verifica della firma e' l'unico controllo che distingue un peer dal resto
+# di internet, ed era il punto in cui il codice generato sbagliava: confrontava
+# la firma del chiamante con la chiave pubblica di QUESTO nodo, cioe' non
+# verificava nulla di attribuibile al mittente. Questi test fissano l'ordine
+# corretto — prima si stabilisce chi parla, poi si verifica con la sua chiave.
+
+import base64 as _base64
+
+from core.modules.sigma_network.identity import sign as _sign
+
+
+def _peer_client(tmp_path):
+    """TestClient sul router, con i singleton isolati in tmp_path."""
+    import core.modules.sigma_network.handlers as h
+
+    h._reset_singletons()
+    h._identity_file = str(tmp_path / "identity.json")
+    h._peers_file = str(tmp_path / "peers.json")
+    h._wallet_file = str(tmp_path / "wallet.json")
+    app = FastAPI()
+    app.include_router(h.router)
+    return TestClient(app), h
+
+
+def _peer_firmatario(tmp_path, nome="altro"):
+    """Un peer esterno con identita' propria e un messaggio gia' firmato."""
+    identita = generate_identity(str(tmp_path / f"{nome}.json"))
+    messaggio = "richiesta-di-inferenza"
+    firma = _sign(_base64.b64decode(identita["private_key"]), messaggio)
+    return identita, messaggio, firma
+
+
+def test_p2p_hello_espone_identita_e_impostazioni(tmp_path):
+    """Nome, versione e modelli vengono dalle impostazioni, non dall'identita."""
+    client, _ = _peer_client(tmp_path)
+    body = client.get("/p2p/hello").json()
+
+    assert body["peer_id"]
+    assert body["name"]
+    assert body["version"]
+    assert "private_key" not in body
+    assert body["accepting"] is False
+
+
+def test_p2p_infer_senza_firma_401(tmp_path):
+    client, _ = _peer_client(tmp_path)
+    assert client.post("/p2p/infer", json={"peer_id": "x" * 32}).status_code == 401
+
+
+def test_p2p_infer_peer_sconosciuto_401(tmp_path):
+    client, _ = _peer_client(tmp_path)
+    identita, messaggio, firma = _peer_firmatario(tmp_path)
+    resp = client.post("/p2p/infer", json={
+        "peer_id": identita["peer_id"], "message": messaggio, "signature": firma,
+    })
+    assert resp.status_code == 401
+
+
+def test_p2p_infer_firma_di_un_altro_peer_401(tmp_path):
+    """Il caso che il codice originale lasciava passare per la ragione sbagliata."""
+    client, h = _peer_client(tmp_path)
+    vero, messaggio, _ = _peer_firmatario(tmp_path, "vero")
+    _, _, firma_altrui = _peer_firmatario(tmp_path, "impostore")
+
+    h._get_registry().add_peer(
+        host="10.0.0.9", port=8000, peer_id=vero["peer_id"],
+        public_key=vero["public_key"], name="vero", models=[],
+    )
+    h._get_registry().set_state(vero["peer_id"], "trusted")
+
+    resp = client.post("/p2p/infer", json={
+        "peer_id": vero["peer_id"], "message": messaggio, "signature": firma_altrui,
+    })
+    assert resp.status_code == 401
+
+
+def test_p2p_infer_peer_non_trusted_403(tmp_path):
+    """Firma valida ma fiducia mai concessa: la scoperta non e' un permesso."""
+    client, h = _peer_client(tmp_path)
+    identita, messaggio, firma = _peer_firmatario(tmp_path)
+
+    h._get_registry().add_peer(
+        host="10.0.0.9", port=8000, peer_id=identita["peer_id"],
+        public_key=identita["public_key"], name="altro", models=[],
+    )
+    resp = client.post("/p2p/infer", json={
+        "peer_id": identita["peer_id"], "message": messaggio, "signature": firma,
+    })
+    assert resp.status_code == 403
+
+
+def test_p2p_infer_rifiuta_se_la_condivisione_e_spenta(tmp_path):
+    """Default spento: mettere il proprio hardware a disposizione e' una scelta."""
+    client, h = _peer_client(tmp_path)
+    identita, messaggio, firma = _peer_firmatario(tmp_path)
+
+    h._get_registry().add_peer(
+        host="10.0.0.9", port=8000, peer_id=identita["peer_id"],
+        public_key=identita["public_key"], name="altro", models=[],
+    )
+    h._get_registry().set_state(identita["peer_id"], "trusted")
+
+    resp = client.post("/p2p/infer", json={
+        "peer_id": identita["peer_id"], "message": messaggio, "signature": firma,
+    })
+    assert resp.status_code == 429

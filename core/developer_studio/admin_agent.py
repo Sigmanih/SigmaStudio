@@ -1438,8 +1438,13 @@ def stream_admin_agent_turn(
 
             # A call repeated verbatim after failing will fail verbatim again.
             # Saying so costs one line and saves the rest of the turn budget.
+            # Un comando non e' mai una ripetizione inutile: fra la volta scorsa
+            # e adesso puo' esserci stata la correzione che deve verificare.
+            # Rifiutarlo significa impedire il ciclo correggi-verifica, che e'
+            # il solo modo che l'agente ha di sapere se ha finito.
             call_signature = (t_name, json.dumps(t_params, sort_keys=True, default=str)[:600])
-            if call_signature in failed_call_signatures:
+            ripetibile = t_name in ("terminal", "shell", "exec", "command")
+            if not ripetibile and call_signature in failed_call_signatures:
                 repeat_note = (
                     f"Tool '{t_name}' NON eseguito: hai gia effettuato questa "
                     "identica chiamata e ha gia fallito. Ripeterla dara lo stesso "
@@ -1468,6 +1473,11 @@ def stream_admin_agent_turn(
             if result.get("success") and t_name in PRODUCTIVE_TOOLS:
                 turn_was_productive = True
                 consecutive_truncations = 0
+                # Il workspace e' cambiato: nessuna chiamata fallita prima di
+                # ora e' piu' garantita fallire, e tenerne memoria bloccherebbe
+                # proprio i tentativi che la correzione ha reso sensati.
+                failed_call_signatures.clear()
+                inert_call_signatures.clear()
             if t_name == "read_file" and result.get("success") and result.get("path"):
                 reads_this_turn.append(str(result["path"]))
             if result.get("success") and t_name in ("list_dir", "list_directory", "ls", "glob"):

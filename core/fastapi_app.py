@@ -1411,6 +1411,11 @@ async def dev_orchestrator_status_route(request: Request):
 async def dev_roles_list_route(request: Request):
     return await handle_roles_list(request)
 
+# --- Sigma Network ---
+from core.modules.sigma_network import router as sigma_network_router
+
+app.include_router(sigma_network_router, prefix="/api/sigma_network", tags=["Sigma Network"])
+
 # --- System Cleanup & Resource Optimization ---
 from core.system_cleanup import get_cleanup_stats, execute_selective_cleanup
 
