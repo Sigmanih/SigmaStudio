@@ -75,16 +75,16 @@ export default function DeveloperModelSelector({
     // 1. Default Auto / SigmaEngine Option
     list.push({
       id: 'sigmaengine',
-      name: '⚡ SigmaEngine (Auto-Risoluzione Nativa)',
-      shortName: 'SigmaEngine Auto',
+      name: '⚡ SigmaEngine (Auto Coder / Nativo)',
+      shortName: 'SigmaEngine Auto Coder',
       provider: 'sigma_engine',
       category: 'local',
-      params: residentName ? (residentName.match(/([0-9.]+[bBmM])/)?.[1]?.toUpperCase() || 'Auto') : 'Auto',
+      params: residentName ? (residentName.match(/([0-9.]+[bBmM])/)?.[1]?.toUpperCase() || 'Auto Coder') : 'Auto Coder',
       size: residentName ? 'Residente in VRAM' : 'Auto GPU Sharding',
       quant: 'Auto FlashAttn-2',
       format: 'Nativo',
       isResident: true,
-      description: 'Seleziona automaticamente il modello residente in VRAM o il miglior modello locale disponibile.'
+      description: 'Instradamento intelligente preferenziale su modelli Coder specializzati (es. Qwen2.5-Coder) con dual-GPU sharding automatico.'
     });
 
     // 2. Local Models from Disk (GGUF & Safetensors)

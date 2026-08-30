@@ -27,6 +27,7 @@ from core.developer_studio.fs_manager import (
     list_file_backups,
 )
 from core.developer_studio.fs_tools import (
+    would_truncate,
     read_file_slice,
     edit_file_content,
     append_file_content,
@@ -39,6 +40,7 @@ from core.developer_studio.session_ledger import (
 )
 from core.engine.grammars import fenced_tool_grammar
 from core.engine.sampling import SamplingParams
+from core.developer_studio.visual_check import capture as capture_screenshot, describe as describe_screenshot
 from core.developer_studio.terminal_runner import execute_shell_command_sync
 
 log = get_logger("admin_developer_agent")
@@ -59,6 +61,7 @@ OBSERVATION_BUDGETS = {
     "list_dir": 8_000,
     "edit_file": 12_000,       # the diff, so the model can verify its own patch
     "append_file": 2_000,
+    "screenshot": 1_500,
     "write_file": 4_000,
     "_default": 8_000,
 }
@@ -153,6 +156,11 @@ ancora, la posizione e' la fine del file.
 `terminal` — esegue un comando (PowerShell).
 {"command": "COMANDO", "cwd": "."}
 
+`screenshot` — apre una pagina in un browser e ne salva l'immagine. Usalo dopo
+aver modificato l'interfaccia: il build verde dice che il codice compila, non
+che la pagina si veda.
+{"url": "http://127.0.0.1:8000", "path": "PERCORSO_PNG"}
+
 `glob` — trova file per pattern.
 {"pattern": "PATTERN"}
 
@@ -176,11 +184,13 @@ Emettilo una volta all'inizio e aggiornalo solo quando lo stato cambia davvero.
 `complete_goal` — dichiara finito il lavoro.
 {"summary": "COSA_HAI_FATTO"}
 
-## VINCOLI
-- I percorsi sono relativi alla radice del workspace ("." e la radice).
+## VINCOLI E ARCHITETTURA
+- I percorsi sono relativi alla radice del workspace ("." e la radice). I file frontend vivono in `sigma_studio/src/`.
+- **Frontend React:** usa solo React standard (`useState`, `useEffect`), icone di `lucide-react` e CSS in `styles/`. NON importare `@mui`, `antd`, `bootstrap` o altre librerie esterne.
+- **Backend Python:** scrivi implementazioni complete e prive di stub `pass` o placeholder. Gestisci sempre eccezioni, timeout e codici di ritorno.
 - Rispondi in italiano.
 - Se un tool fallisce, leggi l'errore e correggi la chiamata. Non ripeterla identica.
-- Non inventare percorsi o contenuti: verificali con i tool.
+- Non inventare percorsi o contenuti: verificali con i tool prima di agire.
 """
 
 
@@ -489,7 +499,37 @@ def resolve_workspace_path(path: Optional[str], workspace_root: str) -> str:
 
     # Strip redundant leading slashes and prefix words
     clean = re.sub(r"^[./\\]+", "", clean)
-    clean = re.sub(r"^(?:Sigma_Studio|SigmaStudio|workspace)[/\\]", "", clean, flags=re.IGNORECASE)
+
+    # Un modello scrive spesso il nome del progetto in testa al percorso, e
+    # altrettanto spesso omette la cartella del frontend. Le due correzioni si
+    # contraddicono quando il progetto `Sigma_Studio` contiene un
+    # `sigma_studio/`, e il nome non basta a distinguerle: su un filesystem
+    # case-insensitive i due segmenti sono lo stesso.
+    #
+    # Si decide quindi per prova. Ogni ipotesi e' un percorso; quella giusta e'
+    # quella che corrisponde a qualcosa che esiste -- il file stesso, o la
+    # cartella che dovrebbe contenerlo se il file e' nuovo.
+    ipotesi = [clean]
+    senza_progetto = re.sub(
+        r"^(?:Sigma_Studio|SigmaStudio|workspace)[/\\]", "", clean, flags=re.IGNORECASE
+    )
+    if senza_progetto != clean:
+        ipotesi.append(senza_progetto)
+    if clean.startswith(("src/", "src\\")):
+        ipotesi.append("sigma_studio/" + clean)
+
+    def _plausibile(candidato: str) -> int:
+        """2 se il percorso esiste, 1 se esiste la cartella che lo conterrebbe."""
+        intero = os.path.normpath(os.path.join(workspace_root, candidato))
+        if os.path.exists(intero):
+            return 2
+        if os.path.isdir(os.path.dirname(intero)):
+            return 1
+        return 0
+
+    migliore = max(ipotesi, key=_plausibile)
+    if _plausibile(migliore) > 0:
+        clean = migliore
 
     if os.path.isabs(clean):
         return os.path.abspath(clean)
@@ -690,12 +730,57 @@ def execute_admin_tool(
             offset=params.get("offset") or params.get("start_line") or 1,
             limit=params.get("limit") or params.get("max_lines"),
         )
+        
+        # Anti-hallucination fuzzy suggestion if file does not exist
+        if not res.get("success") and "File non trovato" in str(res.get("error", "")):
+            try:
+                # Nessun import locale: in Python un `import` dentro una
+                # funzione rende il nome locale a TUTTA la funzione, quindi
+                # questa riga oscurava l'import di modulo e il ramo `glob`
+                # piu' sotto trovava il nome non assegnato. Il tool `glob`
+                # falliva sempre, per una riga che non lo riguardava.
+                glob_res = glob_workspace_files(workspace_root, pattern="**/*", limit=150)
+                file_names = [f["rel"] for f in glob_res.get("files", [])]
+                close = difflib.get_close_matches(raw_path.replace("\\", "/"), file_names, n=3, cutoff=0.4)
+                if close:
+                    res["error"] = (
+                        f"{res.get('error')}. Forse intendevi uno di questi file esistenti: "
+                        + ", ".join(f"`{c}`" for c in close)
+                        + "? Usa search_code o glob per trovare i percorsi corretti."
+                    )
+            except Exception:
+                pass
+
         return {"tool": "read_file", "path": raw_path, "full_path": full_path, **res}
 
     elif tool_name in ("write_file", "write", "save_file"):
         raw_path = _path_of(params)
         content = params.get("content") or params.get("raw", "")
         full_path = resolve_workspace_path(raw_path, workspace_root)
+
+        # Una riscrittura che azzera un file esistente e' quasi sempre un
+        # incidente, e la validazione di sintassi non la vede: un file vuoto
+        # compila. Si chiede conferma invece di scoprirlo alla suite di test.
+        if os.path.exists(full_path) and not params.get("allow_truncate"):
+            try:
+                precedente = Path(full_path).read_text(encoding="utf-8", errors="replace")
+            except OSError:
+                precedente = ""
+            if would_truncate(precedente, content):
+                return {
+                    "tool": "write_file",
+                    "path": raw_path,
+                    "full_path": full_path,
+                    "success": False,
+                    "error": (
+                        f"Rifiutato: la nuova versione di '{raw_path}' e molto piu "
+                        f"corta di quella attuale ({len(content.strip())} caratteri "
+                        f"contro {len(precedente.strip())}), quindi cancellerebbe la "
+                        "maggior parte del file. Se vuoi modificarne una parte usa "
+                        "edit_file. Se la riduzione e voluta, ripeti con "
+                        '"allow_truncate": true.'
+                    ),
+                }
 
         # Create parent directories automatically
         Path(full_path).parent.mkdir(parents=True, exist_ok=True)
@@ -715,6 +800,22 @@ def execute_admin_tool(
                 pass
 
         res = write_file_content(full_path, content, root=workspace_root)
+        
+        # AST Syntax Validation for Python files
+        if res.get("success") and full_path.endswith(".py") and os.path.exists(full_path):
+            import ast
+            try:
+                py_code = Path(full_path).read_text(encoding="utf-8", errors="replace")
+                ast.parse(py_code, filename=full_path)
+                res["ast_valid"] = True
+            except SyntaxError as syn_err:
+                res["ast_valid"] = False
+                res["ast_error"] = f"Errore di sintassi Python (riga {syn_err.lineno}): {syn_err.msg}"
+                res["message"] = (
+                    f"{res.get('message', '')} ⚠️ ATTENZIONE: Il file contiene un errore di sintassi Python "
+                    f"alla riga {syn_err.lineno}: {syn_err.msg}. Correggilo subito con edit_file prima di proseguire."
+                )
+
         return {
             "tool": "write_file",
             "path": raw_path,
@@ -733,6 +834,22 @@ def execute_admin_tool(
             replace_all=bool(params.get("replace_all") or params.get("all")),
             root=workspace_root,
         )
+        
+        # AST Syntax Validation for Python files
+        if res.get("success") and full_path.endswith(".py") and os.path.exists(full_path):
+            import ast
+            try:
+                py_code = Path(full_path).read_text(encoding="utf-8", errors="replace")
+                ast.parse(py_code, filename=full_path)
+                res["ast_valid"] = True
+            except SyntaxError as syn_err:
+                res["ast_valid"] = False
+                res["ast_error"] = f"Errore di sintassi Python generato (riga {syn_err.lineno}): {syn_err.msg}"
+                res["message"] = (
+                    f"{res.get('message', '')} ⚠️ ATTENZIONE: La modifica ha introdotto un errore di sintassi Python "
+                    f"alla riga {syn_err.lineno}: {syn_err.msg}. Correggilo subito con edit_file."
+                )
+
         return {"tool": "edit_file", "path": raw_path, "full_path": full_path, **res}
 
     elif tool_name in ("append_file", "append", "add_to_file"):
@@ -743,7 +860,38 @@ def execute_admin_tool(
             content=params.get("content") or params.get("text") or "",
             root=workspace_root,
         )
+        
+        # AST Syntax Validation for Python files
+        if res.get("success") and full_path.endswith(".py") and os.path.exists(full_path):
+            import ast
+            try:
+                py_code = Path(full_path).read_text(encoding="utf-8", errors="replace")
+                ast.parse(py_code, filename=full_path)
+                res["ast_valid"] = True
+            except SyntaxError as syn_err:
+                res["ast_valid"] = False
+                res["ast_error"] = f"Errore di sintassi Python generato (riga {syn_err.lineno}): {syn_err.msg}"
+                res["message"] = (
+                    f"{res.get('message', '')} ⚠️ ATTENZIONE: Il codice aggiunto ha causato un errore di sintassi Python "
+                    f"alla riga {syn_err.lineno}: {syn_err.msg}. Correggilo subito."
+                )
+
         return {"tool": "append_file", "path": raw_path, "full_path": full_path, **res}
+
+    elif tool_name in ("screenshot", "visual_check", "guarda"):
+        url = params.get("url") or params.get("indirizzo") or "http://127.0.0.1:8000"
+        destinazione = _path_of(params)
+        full_path = (
+            resolve_workspace_path(destinazione, workspace_root)
+            if destinazione else None
+        )
+        res = capture_screenshot(
+            url,
+            output_path=full_path,
+            width=int(params.get("width") or 1440),
+            height=int(params.get("height") or 900),
+        )
+        return {"tool": "screenshot", "url": url, **res}
 
     elif tool_name in ("glob", "find_files", "glob_files"):
         pattern = params.get("pattern") or params.get("glob") or params.get("raw") or "**/*"
@@ -888,6 +1036,27 @@ def stream_admin_agent_turn(
     """
     if not workspace_root:
         workspace_root = get_default_workspace_root()
+
+    # Intelligent Coder Model Prioritization for Developer Agent
+    if not model_name or str(model_name).lower().strip() in ("sigmaengine", "auto", "default", "native", ""):
+        try:
+            from core.model_paths import list_model_dirs
+            available = list_model_dirs()
+            coder_candidates = [
+                m for m in available
+                if any(k in os.path.basename(m).lower() for k in ("coder", "code-", "-code", "deepseek-coder", "starcoder"))
+            ]
+            if coder_candidates:
+                def _rank_c(p: str) -> int:
+                    b = os.path.basename(p).lower()
+                    if any(q in b for q in ("q4", "q5", "q8", "q6")):
+                        return 1
+                    return 2
+                best_coder = sorted(coder_candidates, key=_rank_c)[0]
+                model_name = os.path.basename(best_coder.rstrip(os.sep + "/"))
+                log.info("[AdminAgent] Routing automatico preferenziale su modello Coder specializzato: %s", model_name)
+        except Exception as e:
+            log.debug("[AdminAgent] Coder model routing fallback: %s", e)
 
     def _cancelled() -> bool:
         try:
@@ -1564,10 +1733,21 @@ def stream_admin_agent_turn(
                         )
             elif t_name == "terminal":
                 obs_str += f"Output terminale (exit code {result.get('returncode')}):\n{result.get('stdout', '')}\n{result.get('stderr', '')}"
+                if ledger._consecutive_dup_commands >= 1 and result.get("success"):
+                    obs_str += (
+                        "\n[AVVISO: Questo comando e gia stato eseguito con successo e nulla e cambiato nel codice. "
+                        "Non ripeterlo identico: procedi con il prossimo task della pipeline o dichiara completato l'obiettivo con complete_goal.]\n"
+                    )
             elif t_name == "delete":
                 obs_str += result.get("message", "Eliminato.")
             elif t_name == "write_file":
                 obs_str += result.get("message", "File salvato.")
+            elif t_name == "screenshot":
+                obs_str = (
+                    f"Tool 'screenshot': {describe_screenshot(result)}\n"
+                    if not result.get("success")
+                    else f"{obs_str}{describe_screenshot(result)}"
+                )
             elif t_name == "append_file":
                 if not result.get("success"):
                     obs_str = f"Tool 'append_file' fallito: {result.get('error')}\n"

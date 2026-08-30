@@ -10,8 +10,16 @@
 
 import { useState, useEffect, useCallback } from 'react';
 
-// Optional modules — these can be installed / uninstalled by the user.
-// All modules default to FALSE until the backend confirms otherwise.
+// Optional modules — valori di partenza, non l'elenco autorevole.
+//
+// L'elenco vero lo tiene il backend, che lo compone dai manifest presenti in
+// core/modules/. Questa lista serve solo a dare uno stato iniziale coerente
+// prima che la risposta arrivi: un modulo nuovo NON va aggiunto qui, basta che
+// abbia il suo manifest.
+//
+// Tenerne due copie era il difetto: aggiungere un modulo e ricordarsi di una
+// sola produce il caso piu' confondente — route registrate, build verde, test
+// verdi, e nessuna tab.
 const OPTIONAL_MODULE_IDS = [
   // Media & Generazione
   'sigma_creative_lab',  // Creative Lab 3D/2D
@@ -80,14 +88,19 @@ export function useModuleState() {
         if (data.modules_state) {
           setModulesState(prev => {
             const next = { ...prev };
-            // Only override optional module states from backend
-            OPTIONAL_MODULE_IDS.forEach(id => {
+            // Si prendono TUTTI gli id che il backend riporta, non solo quelli
+            // noti a questo file: e' il backend a sapere quali moduli esistono,
+            // e filtrare qui rende invisibile un modulo installato davvero.
+            const idsDalBackend = Object.keys(data.modules_state || {});
+            const daAggiornare = new Set([...OPTIONAL_MODULE_IDS, ...idsDalBackend]);
+            daAggiornare.forEach(id => {
+              if (KERNEL_MODULE_IDS.includes(id)) return;
               next[id] = data.modules_state[id] === true;
             });
             // Persist to localStorage
             try {
               const existing = JSON.parse(localStorage.getItem('sigma_modules_state') || '{}');
-              OPTIONAL_MODULE_IDS.forEach(id => { existing[id] = next[id]; });
+              daAggiornare.forEach(id => { existing[id] = next[id]; });
               localStorage.setItem('sigma_modules_state', JSON.stringify(existing));
             } catch (e) {}
             return next;

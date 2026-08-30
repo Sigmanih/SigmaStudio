@@ -306,6 +306,18 @@ export default function Workspace({
         </React.Suspense>
       );
     }
+    if (tab.type === 'sigma_network') {
+      const isSigmaNetInstalled = modulesState.sigma_network === true;
+      const LazySigmaNet = getLazyModule('sigma_network');
+      if (!isSigmaNetInstalled || !LazySigmaNet) {
+        return <ModuleNotInstalled tabType="sigma_network" openTab={openTab} />;
+      }
+      return (
+        <React.Suspense fallback={<div style={{ padding: '32px', color: '#94a3b8', textAlign: 'center' }}>Caricamento Sigma Network...</div>}>
+          <LazySigmaNet openTab={openTab} />
+        </React.Suspense>
+      );
+    }
     if (tab.type === 'email_client') {
       const isEmailInstalled = modulesState.sigma_email_client === true;
       const LazyEmail = getLazyModule('email_client');

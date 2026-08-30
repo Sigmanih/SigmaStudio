@@ -50,6 +50,9 @@ class FileRecord:
     writes: int = 0
     created: bool = False
     last_error: Optional[str] = None
+    #: Errore di sintassi rilevato all'ultima scrittura, se il file
+    #: non compila. Vuoto appena una scrittura successiva lo ripara.
+    syntax_error: Optional[str] = None
     # Top-level names the file defines. Kept because an agent that has
     # forgotten a module's API does not ask again, it invents one.
     symbols: List[str] = field(default_factory=list)
@@ -176,6 +179,11 @@ class DevSessionLedger:
         self._decisions: List[str] = []
         self._failures: List[str] = []
         self._pipeline: List[Dict[str, Any]] = []
+        #: Schermate non vuote scattate in questa sessione, per il monitor.
+        self._screenshots: List[Dict[str, Any]] = []
+        self._diffs: Dict[str, str] = {}
+        self._searches: List[Dict[str, Any]] = []
+        self._consecutive_dup_commands = 0
         self._lock = threading.RLock()
         self.started_at = time.time()
         self.goal_paths: List[str] = _extract_paths(goal)
@@ -238,7 +246,7 @@ class DevSessionLedger:
                 else:
                     rec.last_error = str(result.get("error", ""))[:MAX_ERROR_CHARS]
 
-            elif tool in ("write_file", "edit_file") and path:
+            elif tool in ("write_file", "edit_file", "append_file") and path:
                 rec = self._file(path)
                 rec.last_touch = time.time()
                 if ok:
@@ -246,30 +254,69 @@ class DevSessionLedger:
                         rec.edits += 1
                         if result.get("lines_after") is not None:
                             rec.total_lines = result.get("lines_after")
+                    elif tool == "append_file":
+                        rec.edits += 1
+                        if result.get("total_lines") is not None:
+                            rec.total_lines = result.get("total_lines")
                     else:
                         rec.writes += 1
                         rec.created = rec.created or rec.reads == 0
                         # A full rewrite invalidates every previously read window.
                         rec.lines_seen = []
                         rec.total_lines = None
+                    
+                    if result.get("diff"):
+                        self._diffs[path] = result.get("diff")
+
                     rec.last_error = None
+                    # `ast_valid` e' assente per i file non Python: solo un
+                    # False esplicito significa "non compila".
+                    if result.get("ast_valid") is False:
+                        rec.syntax_error = str(result.get("ast_error", "sintassi non valida"))
+                    else:
+                        rec.syntax_error = None
                 else:
                     rec.last_error = str(result.get("error", ""))[:MAX_ERROR_CHARS]
 
             elif tool == "terminal":
                 cmd = str(params.get("command") or result.get("command") or "")[:200]
                 rc = result.get("returncode", 0)
+                
+                # Check for duplicate consecutive command loops
+                if self._commands and self._commands[-1].get("command") == cmd:
+                    self._consecutive_dup_commands += 1
+                else:
+                    self._consecutive_dup_commands = 0
+
                 entry = {
                     "command": cmd,
                     "returncode": rc,
                     "ok": ok and rc == 0,
                     "at": time.time(),
+                    "stdout": (result.get("stdout") or "")[:400],
                 }
                 if not entry["ok"]:
                     tail = (result.get("stderr") or result.get("stdout") or "").strip()
                     entry["error"] = tail[-MAX_ERROR_CHARS:]
                 self._commands.append(entry)
                 del self._commands[:-MAX_TRACKED_COMMANDS]
+
+            elif tool in ("search_code", "grep"):
+                q = str(params.get("query") or "")
+                if q:
+                    self._searches.append({"query": q, "count": len(result.get("results", [])), "ok": ok})
+                    del self._searches[:-10]
+
+            elif tool in ("screenshot", "visual_check", "guarda"):
+                # Una schermata vuota non e' una verifica: registrarla come
+                # tale renderebbe il cancello sempre soddisfatto.
+                if ok and not result.get("likely_blank"):
+                    self._screenshots.append({
+                        "path": str(result.get("path", "")),
+                        "url": str(params.get("url") or result.get("url") or ""),
+                        "at": time.time(),
+                    })
+                    del self._screenshots[:-8]
 
             elif tool in ("pipeline", "tasks", "set_tasks", "update_pipeline"):
                 self._pipeline = list(result.get("tasks") or [])
@@ -294,6 +341,50 @@ class DevSessionLedger:
     def has_modifications(self) -> bool:
         return bool(self.modified_files)
 
+    def has_visual_proof(self) -> bool:
+        """Se esiste almeno una schermata non vuota di cio' che e' stato fatto."""
+        with self._lock:
+            return bool(self._screenshots)
+
+    def broken_files(self) -> List[Dict[str, str]]:
+        """I file scritti in questa sessione che non compilano."""
+        with self._lock:
+            return [
+                {"path": r.path, "error": r.syntax_error}
+                for r in self._files.values()
+                if r.syntax_error
+            ]
+
+    def has_reads(self) -> bool:
+        with self._lock:
+            return any(r.reads > 0 for r in self._files.values())
+
+    def has_searches(self) -> bool:
+        with self._lock:
+            return bool(self._searches)
+
+    def is_exploration_task(self) -> bool:
+        """Determines if the goal is an audit, explanation, search, or review rather than coding."""
+        g = (self.goal or "").lower().strip()
+        if not g:
+            return False
+        
+        exploration_keywords = (
+            "analizza", "analisi", "spiega", "spiegami", "descrivi", "ispeziona", "ispezione",
+            "controlla", "verifica se", "cerca", "trova", "quali sono", "come funziona",
+            "audit", "review", "leggi", "mostra", "elenca", "overview", "panoramica",
+            "valuta", "dimmi", "riassumi", "confronta", "differenze", "rapporto",
+        )
+        modification_keywords = (
+            "modifica", "crea", "aggiungi", "elimina", "rimuovi", "refactoring", "scrivi",
+            "correggi", "fixa", "implementa", "aggiorna", "integra", "sviluppa", "risolvi",
+            "adatta", "cambia", "sostituisci", "trasforma",
+        )
+        
+        has_mod = any(k in g for k in modification_keywords)
+        has_exp = any(k in g for k in exploration_keywords)
+        return has_exp and not has_mod
+
     def was_read_before_change(self, path: str) -> bool:
         with self._lock:
             rec = self._files.get(self._rel(path))
@@ -311,13 +402,23 @@ class DevSessionLedger:
         with self._lock:
             return self._commands[-1] if self._commands else None
 
-    def last_verification(self) -> Optional[Dict[str, Any]]:
-        """The most recent command that plausibly proves the code works.
+    def failed_verifications(self) -> List[Dict[str, Any]]:
+        """Le verifiche il cui esito piu' recente e' un fallimento.
 
-        Recency matters more than existence: an agent that ran a green test
-        suite, then broke the code, then ran nothing has not verified anything
-        about the code as it now stands.
+        Si giudica per comando distinto, non per sequenza: un test fallito e poi
+        rieseguito con successo e' stato risolto, mentre un `npm run build`
+        fallito resta fallito anche se dopo di lui un `pytest` e' passato. Erano
+        due domande diverse, e solo una ha ricevuto risposta.
         """
+        with self._lock:
+            ultimo_per_comando: Dict[str, Dict[str, Any]] = {}
+            for c in self._commands:
+                if looks_like_verification(c["command"]):
+                    ultimo_per_comando[c["command"]] = c
+            return [c for c in ultimo_per_comando.values() if not c["ok"]]
+
+    def last_verification(self) -> Optional[Dict[str, Any]]:
+        """The most recent command that plausibly proves the code works."""
         with self._lock:
             for c in reversed(self._commands):
                 if looks_like_verification(c["command"]):
@@ -329,6 +430,7 @@ class DevSessionLedger:
         with self._lock:
             return {
                 "goal": self.goal,
+                "is_exploration": self.is_exploration_task(),
                 "elapsed_s": round(time.time() - self.started_at, 1),
                 "files": [
                     {
@@ -340,10 +442,13 @@ class DevSessionLedger:
                         "fully_read": r.fully_read,
                         "created": r.created,
                         "last_error": r.last_error,
+                        "diff": self._diffs.get(r.path),
                     }
                     for r in sorted(self._files.values(), key=lambda x: -x.last_touch)
                 ],
                 "commands": list(self._commands),
+                "screenshots": list(self._screenshots),
+                "diffs": dict(self._diffs),
                 "decisions": list(self._decisions),
                 "failures": list(self._failures),
                 "pipeline": list(self._pipeline),
@@ -358,6 +463,8 @@ class DevSessionLedger:
 
             if self.goal:
                 parts.append(f"\n**Obiettivo:** {self.goal}")
+                if self.is_exploration_task():
+                    parts.append("*(Modalità Analisi/Audit attiva: consulta i file con read_file o search_code prima di sintetizzare la risposta)*")
 
             if self.goal_paths:
                 parts.append(
@@ -389,7 +496,9 @@ class DevSessionLedger:
                     line = f"- `{r.path}` — {', '.join(what)}"
                     if r.total_lines:
                         line += f" ({r.total_lines} righe)"
-                    if r.last_error:
+                    if r.syntax_error:
+                        line += f"  !! NON COMPILA: {r.syntax_error}"
+                    elif r.last_error:
                         line += f"  !! ultimo errore: {r.last_error}"
                     parts.append(line)
 
@@ -437,7 +546,7 @@ VERIFICATION_HINTS = (
     "pytest", "unittest", "npm test", "npm run test", "yarn test", "vitest",
     "jest", "ruff", "flake8", "mypy", "pylint", "eslint", "tsc",
     "npm run build", "npm run lint", "py_compile", "-m compileall",
-    "import ", "node -e",
+    "import ", "node -e", "test-path",
 )
 
 
@@ -450,61 +559,99 @@ def looks_like_verification(command: str) -> bool:
 def check_completion_allowed(ledger: DevSessionLedger) -> Dict[str, Any]:
     """Decides whether `complete_goal` may be honoured yet.
 
-    An agent declaring success is the cheapest token it can emit and the most
-    expensive one to trust: the whole point of an autonomous loop is that
-    nobody is checking behind it. So completion is gated on evidence that
-    already exists in the ledger, not on the model's own assessment.
+    Dual-Mode Aware:
+    1. If files were modified -> strictly requires a green verification command.
+    2. If no files were modified, but the task is an analysis/audit task ->
+       allows completion if evidence was gathered via read_file or search_code.
+    3. If no files were modified and the task required coding -> rejects completion.
     """
-    if not ledger.has_modifications():
+    # Un file che non compila rende irrilevante ogni altra prova: qualunque
+    # cosa sia passata, e' passata senza toccarlo.
+    rotti = ledger.broken_files()
+    if rotti:
+        elenco = "; ".join(f"`{f['path']}` ({f['error']})" for f in rotti[:3])
         return {
             "allowed": False,
             "reason": (
-                "Nessun file risulta creato o modificato in questa sessione. "
-                "Non puoi dichiarare completato un obiettivo di sviluppo senza "
-                "aver scritto codice reale con write_file o edit_file."
+                f"Ci sono file con errori di sintassi: {elenco}. "
+                "Correggili con edit_file prima di completare: un file che non "
+                "compila non e' consegnabile, qualunque test sia passato."
             ),
         }
 
-    # A failure that was subsequently fixed must not block forever, so only the
-    # *current* state of the workspace is judged: the last command run, and the
-    # last verification run. Anything older has been superseded.
-    last = ledger.last_command()
-    if last and not last["ok"]:
+    # Case 1: Files were modified -> standard coding verification gate
+    if ledger.has_modifications():
+        verification = ledger.last_verification()
+        if verification is None:
+            return {
+                "allowed": False,
+                "reason": (
+                    "Hai modificato dei file ma non hai ancora VERIFICATO nulla. "
+                    "Esegui con `terminal` almeno un test, un lint o un import del "
+                    "codice che hai scritto (es. `python -m pytest`, `python -m "
+                    "py_compile <file>`, `npm run build`) e ottieni exit code 0, "
+                    "poi richiama complete_goal."
+                ),
+            }
+        fallite = ledger.failed_verifications()
+        if fallite:
+            elenco = "; ".join(f"`{c['command']}`" for c in fallite[:3])
+            return {
+                "allowed": False,
+                "reason": (
+                    f"Ci sono verifiche ancora fallite: {elenco}. "
+                    "Una verifica diversa passata dopo non le sostituisce: "
+                    "rispondevano a domande diverse. Correggi e rilancia "
+                    "OGNUNA di esse con esito positivo."
+                ),
+            }
+
+        if not verification["ok"]:
+            return {
+                "allowed": False,
+                "reason": (
+                    f"L'ultima verifica eseguita e fallita: `{verification['command']}`. "
+                    "Il codice non e in uno stato consegnabile: correggilo e rilancia "
+                    "la verifica con esito positivo."
+                ),
+            }
+
         return {
-            "allowed": False,
-            "reason": (
-                f"L'ultimo comando eseguito e fallito (exit {last['returncode']}): "
-                f"`{last['command']}`. Correggi la causa e rilancialo con esito "
-                "positivo prima di completare."
-            ),
+            "allowed": True,
+            "mode": "coding",
+            "evidence": {
+                "modified_files": ledger.modified_files,
+                "verified_by": verification["command"],
+            },
         }
 
-    verification = ledger.last_verification()
-    if verification is None:
-        return {
-            "allowed": False,
-            "reason": (
-                "Hai modificato dei file ma non hai ancora VERIFICATO nulla. "
-                "Esegui con `terminal` almeno un test, un lint o un import del "
-                "codice che hai scritto (es. `python -m pytest`, `python -m "
-                "py_compile <file>`, `npm run build`) e ottieni exit code 0, "
-                "poi richiama complete_goal."
-            ),
-        }
-    if not verification["ok"]:
-        return {
-            "allowed": False,
-            "reason": (
-                f"L'ultima verifica eseguita e fallita: `{verification['command']}`. "
-                "Il codice non e in uno stato consegnabile: correggilo e rilancia "
-                "la verifica con esito positivo."
-            ),
-        }
+    # Case 2: No modifications. Check if this is an audit / exploration goal.
+    if ledger.is_exploration_task() or not ledger.goal:
+        if ledger.has_reads() or ledger.has_searches() or not ledger.goal:
+            return {
+                "allowed": True,
+                "mode": "exploration",
+                "evidence": {
+                    "read_files": ledger.read_files,
+                    "scanned_count": len(ledger._files),
+                },
+            }
+        else:
+            return {
+                "allowed": False,
+                "reason": (
+                    "Obiettivo di analisi/audit: prima di completare devi consultare i file "
+                    "reali del progetto con `read_file`, `search_code` o `glob` per "
+                    "ancorare il tuo report a righe di codice reali del workspace."
+                ),
+            }
 
+    # Case 3: Pure coding goal with no modifications
     return {
-        "allowed": True,
-        "evidence": {
-            "modified_files": ledger.modified_files,
-            "verified_by": verification["command"],
-        },
+        "allowed": False,
+        "reason": (
+            "Nessun file risulta creato o modificato in questa sessione. "
+            "Non puoi dichiarare completato un obiettivo di sviluppo senza "
+            "aver scritto codice reale con write_file o edit_file."
+        ),
     }

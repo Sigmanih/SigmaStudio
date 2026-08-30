@@ -280,6 +280,24 @@ def _gia_presente(originale: str, aggiunta: str) -> bool:
     return normalizzata in _normalizza(originale)
 
 
+
+#: Sotto questa frazione del contenuto precedente, una riscrittura si comporta
+#: come una cancellazione e va confermata. Il valore e' basso di proposito:
+#: deve lasciar passare una semplificazione onesta e fermare uno svuotamento.
+TRUNCATION_RATIO = 0.25
+#: Sotto questa dimensione il file e' cosi' piccolo che qualunque riscrittura
+#: e' plausibile, e la guardia darebbe solo fastidio.
+TRUNCATION_MIN_CHARS = 200
+
+
+def would_truncate(previous: str, new: str) -> bool:
+    """Se la nuova versione riduce il file al punto da somigliare a una cancellazione."""
+    prima = len((previous or "").strip())
+    if prima < TRUNCATION_MIN_CHARS:
+        return False
+    return len((new or "").strip()) < prima * TRUNCATION_RATIO
+
+
 def append_file_content(
     file_path: str,
     content: str,

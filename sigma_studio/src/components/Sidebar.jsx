@@ -4,7 +4,7 @@ import {
   FlaskConical, Brain, Zap, User, Server, Wrench, Palette, Blocks, Sun, 
   Moon, Store, Package, Sliders, Key, Sparkles, FolderGit2, Compass,
   Cpu, Box, Radio, Music, Mic, Terminal, Globe, Mail, Send, DownloadCloud, Settings, Trash2
-} from 'lucide-react';
+, Share2 } from 'lucide-react';
 import { useApp } from '../contexts/AppContext';
 import { useModuleState } from '../hooks/useModuleState';
 
@@ -138,13 +138,18 @@ export default function Sidebar({
   const isVoiceInstalled = modulesState.sigma_voice_studio === true;
   const isDevInstalled = modulesState.sigma_developer_lab === true;
   const isNetworkInstalled = modulesState.sigma_network_lab === true;
+  // NOTA: queste bandiere sono scritte a mano una per modulo. Il backend
+  // scopre i moduli dai manifest e useModuleState ne riporta lo stato, ma
+  // la sidebar li elenca ancora qui: un modulo installato senza la sua riga
+  // resta invisibile pur funzionando in tutto il resto.
+  const isSigmaNetworkInstalled = modulesState.sigma_network === true;
   const isEmailInstalled = modulesState.sigma_email_client === true;
   const isMessagingInstalled = modulesState.sigma_messaging_hub === true;
 
   // Verifica se ci sono skill installate per ciascun sottoargomento
   const hasMultimodal = isCreativeInstalled || isVoiceInstalled || isDomoticaInstalled || isAudioInstalled;
   const hasStudio = isTrainingInstalled || isResearchInstalled || isRoadmapInstalled || isKnowledgeInstalled;
-  const hasInfra = isDevInstalled || isHardwareInstalled || isNetworkInstalled;
+  const hasInfra = isDevInstalled || isHardwareInstalled || isNetworkInstalled || isSigmaNetworkInstalled;
   const hasComms = isEmailInstalled || isMessagingInstalled;
 
   // Poll for counts (chat sessions, manifesti, topics, etc.)
@@ -232,7 +237,7 @@ export default function Sidebar({
   const totalActiveSkills = [
     isCreativeInstalled, isVoiceInstalled, isDomoticaInstalled, isAudioInstalled,
     isTrainingInstalled, isResearchInstalled, isRoadmapInstalled, isKnowledgeInstalled,
-    isDevInstalled, isHardwareInstalled, isNetworkInstalled,
+    isDevInstalled, isHardwareInstalled, isNetworkInstalled, isSigmaNetworkInstalled,
     isEmailInstalled, isMessagingInstalled,
     ...dynamicInstalledModules.map(() => true)
   ].filter(Boolean).length;
@@ -674,6 +679,17 @@ export default function Sidebar({
                       badgeColor="rgba(63,185,80,0.15)"
                       active={activeTabId != null && activeTabId.startsWith('network_lab')}
                       onClick={() => openTab({ name: '🌐 Network Lab' }, 'network_lab')} 
+                    />
+                  )}
+
+                  {isSigmaNetworkInstalled && (
+                    <SidebarItem
+                      icon={Share2}
+                      label="Sigma Network"
+                      badge="P2P"
+                      badgeColor="rgba(88,101,242,0.15)"
+                      active={activeTabId != null && activeTabId.startsWith('sigma_network')}
+                      onClick={() => openTab({ name: '🔗 Sigma Network' }, 'sigma_network')}
                     />
                   )}
                 </div>

@@ -101,8 +101,37 @@ _OPTIONAL_DEFAULTS = {
     "sigma_messaging_hub": False,  # Messaging & Notification Hub
 }
 
+def _discovered_modules() -> dict:
+    """Gli id dei moduli che hanno un manifest sotto core/modules/.
+
+    Letti dal disco invece che da un elenco scritto a mano, perche' un modulo
+    che porta il proprio manifest ha gia' dichiarato tutto quello che serve per
+    conoscerlo, e chiedere in piu' una riga nel kernel significa che prima o
+    poi quella riga manchera'. Un manifest illeggibile viene saltato: un
+    modulo malformato costa se stesso, non l'intero elenco.
+    """
+    trovati = {}
+    base = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "modules")
+    if not os.path.isdir(base):
+        return trovati
+
+    for nome in sorted(os.listdir(base)):
+        manifest = os.path.join(base, nome, "manifest.json")
+        if not os.path.isfile(manifest):
+            continue
+        try:
+            with open(manifest, "r", encoding="utf-8") as f:
+                dati = json.load(f)
+            module_id = str(dati.get("id") or nome).strip()
+            if module_id:
+                trovati[module_id] = False
+        except (OSError, ValueError) as exc:
+            log.warning("[Marketplace] manifest di '%s' non leggibile: %s", nome, exc)
+    return trovati
+
+
 def _get_installed_modules_state():
-    state = {**_KERNEL_DEFAULTS, **_OPTIONAL_DEFAULTS}
+    state = {**_KERNEL_DEFAULTS, **_OPTIONAL_DEFAULTS, **_discovered_modules()}
     try:
         if os.path.exists(STATE_FILE):
             with open(STATE_FILE, "r", encoding="utf-8") as f:
@@ -134,7 +163,9 @@ def handle_marketplace_modules(self):
         
         # Build installed list based strictly on active state
         installed_list = []
-        for mod_id in _OPTIONAL_DEFAULTS.keys():
+        # Si itera sullo stato completo, non sul solo elenco scritto a
+        # mano: un modulo scoperto dal manifest deve poter comparire.
+        for mod_id in state.keys():
             is_installed = state.get(mod_id, False)
             if is_installed:
                 installed_list.append({"id": mod_id, "status": "active", "installed": True})

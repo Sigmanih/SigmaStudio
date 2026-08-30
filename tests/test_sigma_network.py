@@ -744,3 +744,76 @@ def test_p2p_infer_rifiuta_se_la_condivisione_e_spenta(tmp_path):
         "peer_id": identita["peer_id"], "message": messaggio, "signature": firma,
     })
     assert resp.status_code == 429
+
+
+# ---------------------------------------------------------------------------
+# /p2p/receipt — controfirma delle ricevute AiloCoin
+# ---------------------------------------------------------------------------
+# Il difetto della verifica di firma si ripeteva identico qui: la firma del
+# chiamante veniva confrontata con la chiave pubblica di questo nodo. E la
+# route non controfirmava affatto — costruiva una ricevuta nuova, lasciando le
+# due parti con due documenti diversi invece che con lo stesso.
+
+
+def _ricevuta_firmata(tmp_path, handlers, provider_identity):
+    """Una ricevuta emessa e firmata da un provider esterno."""
+    return handlers._get_wallet().issue_receipt(
+        request_id="req-1",
+        provider_id=provider_identity["peer_id"],
+        consumer_id=handlers._get_identity()["peer_id"],
+        model="modello-di-prova",
+        tokens=1000,
+        rate=1000,
+        private_key_bytes=_base64.b64decode(provider_identity["private_key"]),
+    )
+
+
+def test_receipt_da_peer_sconosciuto_401(tmp_path):
+    client, h = _peer_client(tmp_path)
+    prov, messaggio, firma = _peer_firmatario(tmp_path, "prov")
+    corpo = {
+        "receipt": _ricevuta_firmata(tmp_path, h, prov),
+        "peer_id": prov["peer_id"], "message": messaggio, "signature": firma,
+    }
+    assert client.post("/p2p/receipt", json=corpo).status_code == 401
+
+
+def test_receipt_da_peer_non_trusted_403(tmp_path):
+    client, h = _peer_client(tmp_path)
+    prov, messaggio, firma = _peer_firmatario(tmp_path, "prov")
+    h._get_registry().add_peer(
+        host="10.0.0.5", port=8000, peer_id=prov["peer_id"],
+        public_key=prov["public_key"], name="prov", models=[],
+    )
+    corpo = {
+        "receipt": _ricevuta_firmata(tmp_path, h, prov),
+        "peer_id": prov["peer_id"], "message": messaggio, "signature": firma,
+    }
+    assert client.post("/p2p/receipt", json=corpo).status_code == 403
+
+
+def test_receipt_controfirma_senza_alterare_quella_del_provider(tmp_path):
+    """Le due parti devono restare in possesso dello STESSO documento."""
+    client, h = _peer_client(tmp_path)
+    prov, messaggio, firma = _peer_firmatario(tmp_path, "prov")
+    h._get_registry().add_peer(
+        host="10.0.0.5", port=8000, peer_id=prov["peer_id"],
+        public_key=prov["public_key"], name="prov", models=[],
+    )
+    h._get_registry().set_state(prov["peer_id"], "trusted")
+
+    originale = _ricevuta_firmata(tmp_path, h, prov)
+    resp = client.post("/p2p/receipt", json={
+        "receipt": originale, "peer_id": prov["peer_id"],
+        "message": messaggio, "signature": firma,
+    })
+
+    assert resp.status_code == 200
+    controfirmata = resp.json()["countersigned"]
+    assert controfirmata["consumer_signature"]
+    assert controfirmata["provider_signature"] == originale["provider_signature"]
+
+
+def test_receipt_senza_campi_obbligatori_400(tmp_path):
+    client, _ = _peer_client(tmp_path)
+    assert client.post("/p2p/receipt", json={"peer_id": "x" * 32}).status_code == 400

@@ -21,6 +21,7 @@ const installedFloatingPanels = import.meta.glob([
 
 // Mappatura tabType → nome cartella modulo
 const TAB_TO_FOLDER = {
+  sigma_network: 'sigma_network',
   // Multimodale & Grafica
   creative_studio: 'sigma_creative_lab',
 
