@@ -1,11 +1,7 @@
 import React from 'react';
 import { Play, Save, Trash2 } from 'lucide-react';
 import Editor from 'react-simple-code-editor';
-import Prism from 'prismjs';
-import 'prismjs/components/prism-python';
-import 'prismjs/themes/prism-tomorrow.css';
-
-const { highlight, languages } = Prism;
+import { highlight, languages } from '../../utils/prism';
 
 const CodeEditor = typeof Editor === 'function' ? Editor : Editor.default;
 
