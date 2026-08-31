@@ -806,6 +806,47 @@ export default function HfPublishModal({ model, onClose, isLight, addToast }) {
                     <Star size={11} color="#ffb86c" />
                     Include automaticamente il logo Sigma Studio, Call to Action Star/Like e versione bilingue (EN + IT).
                   </div>
+
+                  {includeBenchmarks && hasBm && model.benchmark_summary && (
+                    <div style={{
+                      padding: '10px 12px', borderRadius: '10px',
+                      background: isLight ? 'rgba(255, 184, 108, 0.12)' : 'rgba(255, 184, 108, 0.06)',
+                      border: '1px solid rgba(255, 184, 108, 0.3)',
+                      display: 'flex', flexDirection: 'column', gap: '8px'
+                    }}>
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '6px' }}>
+                        <span style={{ fontSize: '0.74rem', fontWeight: 800, color: '#ffb86c', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                          <Trophy size={14} /> Benchmark Training Lab: <b>{model.benchmark_summary.score || model.benchmark_summary.overall_score || 0}% Pass</b>
+                        </span>
+                        <span style={{ fontSize: '0.68rem', fontWeight: 700, color: textPrimary }}>
+                          ✅ {model.benchmark_summary.tests_passed || 0}/{model.benchmark_summary.tests_total || 0} quesiti superati
+                        </span>
+                      </div>
+
+                      {model.benchmark_summary.suites && Object.keys(model.benchmark_summary.suites).length > 0 && (
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px', marginTop: '2px' }}>
+                          {Object.entries(model.benchmark_summary.suites).map(([sName, sStat]) => {
+                            const sTot = sStat.total || 0;
+                            const sPass = sStat.passed || 0;
+                            const sPct = sTot ? Math.round((sPass / sTot) * 100) : 0;
+                            const col = sPct >= 70 ? '#10b981' : (sPct >= 40 ? '#ffb86c' : '#ef4444');
+                            return (
+                              <span
+                                key={sName}
+                                style={{
+                                  fontSize: '0.62rem', padding: '2px 7px', borderRadius: '5px',
+                                  background: `${col}18`, color: col, border: `1px solid ${col}44`,
+                                  fontWeight: 700, whiteSpace: 'nowrap'
+                                }}
+                              >
+                                {sName.toUpperCase()} <b>{sPass}/{sTot}</b> ({sPct}%)
+                              </span>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
 
                 {/* Commit Message */}

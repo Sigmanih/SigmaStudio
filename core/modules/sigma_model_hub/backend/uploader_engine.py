@@ -361,6 +361,64 @@ _NOMI_SUITE = {
     "bbh": "BIG-Bench Hard",
 }
 
+_SUITE_META = {
+    "mmlu": {
+        "name": "MMLU",
+        "domain_en": "General Knowledge & Multi-Subject",
+        "domain_it": "Conoscenza Generale Multidisciplinare",
+    },
+    "mmlu_pro": {
+        "name": "MMLU-Pro",
+        "domain_en": "Advanced Multi-Step Reasoning",
+        "domain_it": "Ragionamento Avanzato Multi-Step",
+    },
+    "gsm8k": {
+        "name": "GSM8K",
+        "domain_en": "Multi-Step Grade School Math",
+        "domain_it": "Matematica & Logica Multi-Step",
+    },
+    "math": {
+        "name": "MATH",
+        "domain_en": "Championship Competition Math",
+        "domain_it": "Matematica Olimpica & Competitiva",
+    },
+    "humaneval": {
+        "name": "HumanEval",
+        "domain_en": "Python Coding (pass@1)",
+        "domain_it": "Sintesi Codice Python (pass@1)",
+    },
+    "mbpp": {
+        "name": "MBPP",
+        "domain_en": "Python Programming with Unit Tests",
+        "domain_it": "Programmazione Python con Unit Test",
+    },
+    "arc": {
+        "name": "ARC-Challenge",
+        "domain_en": "Science & Grade-School Reasoning",
+        "domain_it": "Ragionamento Scientifico Avanzato",
+    },
+    "hellaswag": {
+        "name": "HellaSwag",
+        "domain_en": "Commonsense Reasoning & Situational NLI",
+        "domain_it": "Buon Senso & Comprensione Situazionale",
+    },
+    "truthfulqa": {
+        "name": "TruthfulQA",
+        "domain_en": "Factuality & Anti-Hallucination",
+        "domain_it": "Fattualità & Resistenza ad Allucinazioni",
+    },
+    "gpqa": {
+        "name": "GPQA",
+        "domain_en": "Graduate-Level Academic Reasoning",
+        "domain_it": "Ragionamento Accademico di Livello Laurea",
+    },
+    "bbh": {
+        "name": "BIG-Bench Hard",
+        "domain_en": "Complex Multi-Task Logic & Symbolics",
+        "domain_it": "Logica Complessa & Compiti Multi-Fase",
+    },
+}
+
 
 def _base_model_da_cartella(local_path: str) -> str:
     """Il modello da cui questo deriva, dedotto dal nome della cartella.
@@ -394,38 +452,69 @@ def _benchmark_detail_lines(bm_data: Optional[Dict[str, Any]],
     """Il dettaglio per suite e il protocollo con cui e' stato misurato.
 
     Un punteggio complessivo da solo non e' confrontabile con niente: chi legge
-    la scheda non sa quante suite copre, ne' se le domande a scelta multipla
-    sono state decise leggendo i logit o facendo ragionare il modello. Sono
-    proprio le righe che rendono un numero verificabile invece che dichiarato.
+    la scheda deve sapere quante suite copre, quali dataset sono stati testati
+    e quanti quesiti sono stati superati su ciascuno.
     """
     if not isinstance(bm_data, dict):
         return []
 
     righe: List[str] = []
-    suites = bm_data.get("suites") or {}
+    suites = bm_data.get("suites") or bm_data.get("suite_breakdown") or {}
+    if not suites and bm_data.get("job_id"):
+        try:
+            from core.modules.sigma_training_lab.training import benchmark_store as store
+            suites = store.suite_breakdown(bm_data["job_id"])
+        except Exception:
+            suites = {}
+
     if suites:
+        righe.append("#### " + ("📋 Dettaglio Punteggi per Singolo Dataset" if italiano
+                                else "📋 Per-Dataset Evaluation Breakdown"))
         righe.append("")
-        righe.append("<details>")
-        righe.append("<summary>" + ("Dettaglio per suite" if italiano
-                                    else "Per-suite breakdown") + "</summary>")
-        righe.append("")
-        righe.append("| Suite | Pass | Totale | % |" if italiano
-                     else "| Suite | Passed | Total | % |")
-        righe.append("| :--- | :---: | :---: | :---: |")
+        if italiano:
+            righe.append("| Dataset / Suite di Test | Ambito / Dominio | Corretti / Totale | Accuratezza (%) | Esito |")
+        else:
+            righe.append("| Dataset / Benchmark Suite | Domain / Category | Correct / Total | Accuracy (%) | Status |")
+        righe.append("| :--- | :--- | :---: | :---: | :---: |")
+
+        tot_pass = 0
+        tot_items = 0
         for sid in sorted(suites):
             stat = suites[sid] or {}
-            totale = stat.get("total", 0)
-            passati = stat.get("passed", 0)
+            totale = int(stat.get("total", 0) or 0)
+            passati = int(stat.get("passed", 0) or 0)
+            tot_pass += passati
+            tot_items += totale
             quota = f"{(passati / totale * 100):.0f}%" if totale else "—"
-            righe.append(f"| {_NOMI_SUITE.get(sid, sid)} | {passati} | {totale} | {quota} |")
+            meta = _SUITE_META.get(sid, {})
+            nome = meta.get("name") or _NOMI_SUITE.get(sid, sid.upper())
+            dominio = (meta.get("domain_it") if italiano else meta.get("domain_en")) or "Benchmark Dataset"
+
+            if totale > 0:
+                pct_num = (passati / totale * 100)
+                if pct_num >= 70:
+                    status = "✅ " + ("Superato" if italiano else "Passed")
+                elif pct_num >= 40:
+                    status = "⚡ " + ("Discreto" if italiano else "Fair")
+                else:
+                    status = "⚠️ " + ("Migliorabile" if italiano else "Low")
+            else:
+                status = "—"
+
+            righe.append(f"| **{nome}** | {dominio} | **{passati} / {totale}** | `{quota}` | {status} |")
+
+        if tot_items > 0:
+            tot_pct = f"{(tot_pass / tot_items * 100):.0f}%"
+            tot_label = "TOTALE COMPLESSIVO" if italiano else "OVERALL TOTAL"
+            all_label = "Tutti i Dataset Valutati" if italiano else "All Evaluated Datasets"
+            righe.append(f"| **🏆 {tot_label}** | **{all_label}** | **`{tot_pass} / {tot_items}`** | **`{tot_pct}`** | **🏆 {tot_pct} Pass** |")
+
         righe.append("")
-        righe.append("</details>")
 
     protocolli = bm_data.get("protocols") or {}
     if protocolli:
         modi = sorted({str(p.get("mode", "")) for p in protocolli.values() if p.get("mode")})
         if modi:
-            righe.append("")
             righe.append(("**Protocollo:** " if italiano else "**Protocol:** ")
                          + ", ".join(modi)
                          + f" · temp {bm_data.get('temperature', 0.0)}"
@@ -504,13 +593,29 @@ def generate_model_card(
     chat_tok_s = 0.0
     prefill_tok_s = 0.0
     if has_benchmark and isinstance(bm_data, dict):
+        if not bm_data.get("suites"):
+            if bm_data.get("job_id"):
+                try:
+                    from core.modules.sigma_training_lab.training import benchmark_store as store
+                    bm_data["suites"] = store.suite_breakdown(bm_data["job_id"])
+                except Exception:
+                    pass
+            if not bm_data.get("suites"):
+                try:
+                    from core.modules.sigma_training_lab.training.model_scores import scores_for_model
+                    ref = (scores_for_model(repo_id, include_suites=True)
+                           or scores_for_model(os.path.basename(local_path), include_suites=True))
+                    if ref and ref.get("suites"):
+                        bm_data["suites"] = ref["suites"]
+                        if not bm_data.get("tests_passed") and ref.get("tests_passed"):
+                            bm_data["tests_passed"] = ref["tests_passed"]
+                            bm_data["tests_total"] = ref["tests_total"]
+                except Exception:
+                    pass
+
         singolo = bm_data.get("single_stream") or {}
         chat_tok_s = float(singolo.get("decode_tok_s") or 0.0)
         prefill_tok_s = float(singolo.get("prefill_tok_s") or 0.0)
-        # I nomi sono quelli che il motore scrive davvero. Prima se ne
-        # leggevano altri — `avg_tok_s`, `pass_count`, `total_questions` — che
-        # non esistono in nessun referto: assenti valgono zero, e la scheda
-        # pubblicava "0 quesiti superati" accanto a un punteggio vero.
         bm_score = float(bm_data.get("score")
                          or bm_data.get("best_score")
                          or bm_data.get("overall_score") or 0.0)
@@ -648,11 +753,11 @@ def generate_model_card(
         lines.append("### 🏆 Official Benchmark Performance")
         lines.append(f"Evaluated directly on GPU via **Sigma Studio Training Lab** (Deterministic seed 42, Temp 0.0):")
         lines.append("")
-        lines.append("| Benchmark Suite | Score / Accuracy | Pass Rate | Test Date | Execution Engine |")
-        lines.append("| :--- | :---: | :---: | :---: | :---: |")
-        lines.append(f"| **{bm_suite}** | **`{bm_score:.1f}%`** | {bm_pass_fail or 'Verificato'} | `{bm_date}` | ⚡ SigmaEngine Direct GPU |")
+        lines.append("| Benchmark Suite | Score / Accuracy | Total Questions Evaluated | Pass Rate | Test Date | Execution Engine |")
+        lines.append("| :--- | :---: | :---: | :---: | :---: | :---: |")
+        lines.append(f"| **{bm_suite}** | **`{bm_score:.1f}%`** | **{bm_pass_fail or 'Verificato'}** | **`{bm_score:.1f}% Pass`** | `{bm_date}` | ⚡ SigmaEngine Direct GPU |")
         lines.append("")
-        lines.extend(_benchmark_detail_lines(bm_data))
+        lines.extend(_benchmark_detail_lines(bm_data, italiano=False))
 
     if include_hardware:
         lines.append("### ⚡ Measured Speed on the Publishing Machine")

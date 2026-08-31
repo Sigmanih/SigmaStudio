@@ -1316,11 +1316,11 @@ export default function LocalInventory({
                                   return (
                                     <span key={sid} title={`${st.passed} superati su ${st.total}`}
                                       style={{
-                                        fontSize: '0.58rem', fontWeight: 700, padding: '1px 6px',
+                                        fontSize: '0.60rem', fontWeight: 700, padding: '2px 7px',
                                         borderRadius: '5px', whiteSpace: 'nowrap',
                                         background: `${colore}14`, border: `1px solid ${colore}40`, color: colore,
                                       }}>
-                                      {sid} {quota}%
+                                      {sid} <b>{st.passed}/{st.total}</b> ({quota}%)
                                     </span>
                                   );
                                 })}

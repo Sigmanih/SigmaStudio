@@ -545,6 +545,28 @@ class TestBenchmarkExtensionAndSuiteFiltering(unittest.TestCase):
             self.assertIn("mbpp", breakdown)
             self.assertEqual(breakdown["mmlu"]["passed"], 1)
             self.assertEqual(breakdown["arc"]["failed"], 1)
+
+            # 6. Test read_all_results and replace_job_results
+            all_res = store.read_all_results(job_id)
+            self.assertEqual(len(all_res), 4)
+
+            # Update arc item from fail to pass
+            updated = []
+            for r in all_res:
+                if r["id"] == "item_2":
+                    r = dict(r, verdict="pass", passed=True)
+                updated.append(r)
+            store.replace_job_results(job_id, updated)
+
+            reloaded = store.read_all_results(job_id)
+            self.assertEqual(len(reloaded), 4)
+            arc_item = next(r for r in reloaded if r["id"] == "item_2")
+            self.assertEqual(arc_item["verdict"], "pass")
+            self.assertTrue(arc_item["passed"])
+
+            new_breakdown = store.suite_breakdown(job_id)
+            self.assertEqual(new_breakdown["arc"]["passed"], 1)
+            self.assertEqual(new_breakdown["arc"]["failed"], 0)
         finally:
             store.delete_results(job_id)
 

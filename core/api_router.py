@@ -236,6 +236,7 @@ def register_post_handlers(handler_class):
         '/api/training/forge/unload': 'handle_training_forge_unload',
         '/api/training/benchmark/run': 'handle_training_benchmark_run',
         '/api/training/benchmark/extend': 'handle_training_benchmark_extend',
+        '/api/training/benchmark/rerun_suite': 'handle_training_benchmark_rerun_suite',
         '/api/training/benchmark/delete': 'handle_training_benchmark_delete',
         '/api/training/benchmark/cancel': 'handle_training_benchmark_cancel',
         '/api/training/benchmark/pause': 'handle_training_benchmark_pause',
