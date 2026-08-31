@@ -16,7 +16,8 @@ export const SidebarItem = ({
   badge, 
   badgeColor, 
   badgeSecondary, 
-  badgeSecondaryColor 
+  badgeSecondaryColor,
+  isKernel = false
 }) => {
   const { theme } = useApp();
   const isLight = theme === 'light';
@@ -24,18 +25,32 @@ export const SidebarItem = ({
   const computedBadgeSecondaryColor = isLight ? '#2e2820' : (badgeSecondaryColor || '#d29922');
 
   return (
-    <div className={`sidebar-item ${active ? 'active' : ''}`} onClick={onClick} title={label}>
+    <div className={`sidebar-item ${isKernel ? 'kernel-item' : ''} ${active ? 'active' : ''}`} onClick={onClick} title={label}>
       <Icon size={15} style={{ flexShrink: 0 }} />
       <span style={{ 
         flex: 1, 
         whiteSpace: 'nowrap', 
         fontSize: '0.76rem',
-        fontWeight: 600,
+        fontWeight: isKernel ? 700 : 600,
         letterSpacing: '-0.1px',
         lineHeight: 1.2
       }}>
         {label}
       </span>
+      {isKernel && (
+        <span 
+          style={{ 
+            width: '5px', 
+            height: '5px', 
+            borderRadius: '50%', 
+            background: isLight ? '#d97706' : '#eab308',
+            boxShadow: isLight ? '0 0 6px rgba(217, 119, 6, 0.6)' : '0 0 6px rgba(234, 179, 8, 0.8)',
+            flexShrink: 0,
+            marginRight: (badge !== undefined || badgeSecondary !== undefined) ? '4px' : '0px'
+          }}
+          title="Funzione Kernel Nativa"
+        />
+      )}
       {(badge !== undefined || badgeSecondary !== undefined) && (
         <span className="sidebar-badges" style={{ display: 'flex', alignItems: 'center', gap: '3px', flexShrink: 0 }}>
           {badgeSecondary !== undefined && (
@@ -350,16 +365,18 @@ export default function Sidebar({
               fontWeight: 800, 
               padding: '1px 6px', 
               borderRadius: '6px', 
-              background: isLight ? 'rgba(234, 88, 12, 0.12)' : 'rgba(0, 210, 255, 0.15)', 
-              color: isLight ? '#c2410c' : '#00d2ff' 
+              background: isLight ? 'rgba(217, 119, 6, 0.14)' : 'rgba(234, 179, 8, 0.18)', 
+              color: isLight ? '#b45309' : '#facc15',
+              border: isLight ? '1px solid rgba(217, 119, 6, 0.35)' : '1px solid rgba(234, 179, 8, 0.4)'
             }}>
-              NATIVE
+              KERNEL NATIVE
             </span>
           </div>
 
           <SidebarItem 
             icon={Home} 
             label="Bacheca" 
+            isKernel={true}
             active={activeTabId === null}
             onClick={goHome}
           />
@@ -367,8 +384,9 @@ export default function Sidebar({
           <SidebarItem 
             icon={MessageSquare} 
             label="Chat AI" 
+            isKernel={true}
             badge={chatCount > 0 ? chatCount : 0}
-            badgeColor="rgba(0,210,255,0.15)"
+            badgeColor="rgba(234,179,8,0.18)"
             active={activeTabId != null && activeTabId.startsWith('chat')}
             onClick={() => openTab({ name: 'Chat AI', path: 'chat-tab' }, 'chat')} 
           />
@@ -376,6 +394,7 @@ export default function Sidebar({
           <SidebarItem 
             icon={DownloadCloud} 
             label="Modelli Hub" 
+            isKernel={true}
             badge="LOCAL"
             badgeColor="rgba(255,184,108,0.2)"
             active={activeTabId != null && activeTabId.startsWith('model_hub')}
@@ -385,8 +404,9 @@ export default function Sidebar({
           <SidebarItem 
             icon={Sliders} 
             label="Providers Hub" 
+            isKernel={true}
             badge="ROUTING"
-            badgeColor="rgba(0,210,255,0.15)"
+            badgeColor="rgba(234,179,8,0.18)"
             active={activeTabId != null && (activeTabId.startsWith('ai_config') || activeTabId.startsWith('config'))}
             onClick={() => openTab({ name: '⚙️ Providers Hub' }, 'ai_config')} 
           />
@@ -394,8 +414,9 @@ export default function Sidebar({
           <SidebarItem 
             icon={Terminal} 
             label="Developer Studio" 
+            isKernel={true}
             badge="ADMIN IDE"
-            badgeColor="rgba(0,242,254,0.25)"
+            badgeColor="rgba(234,179,8,0.25)"
             active={activeTabId != null && activeTabId.startsWith('developer_studio')}
             onClick={() => openTab({ name: '💻 Developer Studio' }, 'developer_studio')} 
           />
@@ -403,6 +424,7 @@ export default function Sidebar({
           <SidebarItem 
             icon={FileText} 
             label="Manifesti Hub" 
+            isKernel={true}
             badge={manifestiCount + modules.reduce((acc, m) => acc + (m.whitepapers?.length || 0), 0)}
             badgeColor="rgba(188,140,255,0.15)"
             active={activeTabId != null && (activeTabId.startsWith('whitepaper') || activeTabId.startsWith('whitepapers_lib'))}
@@ -413,6 +435,7 @@ export default function Sidebar({
             <SidebarItem 
               icon={Wrench} 
               label="MCP Tools Hub" 
+              isKernel={true}
               badge={6}
               badgeColor="rgba(63,185,80,0.15)"
               active={activeTabId != null && activeTabId.startsWith('mcp_hub')}
@@ -423,6 +446,7 @@ export default function Sidebar({
           <SidebarItem 
             icon={Settings} 
             label="Impostazioni" 
+            isKernel={true}
             badge="CONFIG"
             badgeColor="rgba(188,140,255,0.15)"
             active={activeTabId != null && (activeTabId.startsWith('account') || activeTabId.startsWith('settings'))}

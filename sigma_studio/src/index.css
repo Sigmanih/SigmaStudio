@@ -1065,6 +1065,35 @@ body.theme-light,
   color: #111111 !important;
 }
 
+/* Light Theme: Kernel Native Highlight in Warm Amber / Gold */
+.theme-light .sidebar-item.kernel-item {
+  border-left: 2.5px solid #d97706 !important;
+  background: rgba(245, 158, 11, 0.03) !important;
+}
+
+.theme-light .sidebar-item.kernel-item svg {
+  color: #d97706 !important;
+  filter: none !important;
+}
+
+.theme-light .sidebar-item.kernel-item:hover:not(.active) {
+  background: rgba(245, 158, 11, 0.12) !important;
+  color: #78350f !important;
+  border-color: rgba(245, 158, 11, 0.35) !important;
+}
+
+.theme-light .sidebar-item.kernel-item.active {
+  background: linear-gradient(90deg, rgba(245, 158, 11, 0.22) 0%, rgba(245, 158, 11, 0.08) 100%) !important;
+  color: #78350f !important;
+  border-left-color: #b45309 !important;
+  border-color: rgba(245, 158, 11, 0.5) !important;
+  font-weight: 800 !important;
+}
+
+.theme-light .sidebar-item.kernel-item.active svg {
+  color: #b45309 !important;
+}
+
 /* ==============================================================================
    Warm Cream Theme Adapters for Manifesti, Pianificazione & Argomenti
    ============================================================================== */
