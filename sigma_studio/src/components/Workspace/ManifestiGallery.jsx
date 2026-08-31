@@ -463,16 +463,16 @@ Il tuo creatore è l'**Ing. Diego Saitta**, fondatore di Sigma Studio.
               textTransform: 'uppercase',
               marginBottom: '6px'
             }}>
-              <ScrollText size={14} /> Σ COGNITIVE KERNEL MODELFILES & PROFESSIONS HUB
+              <ScrollText size={14} /> Σ COGNITIVE KERNEL MODELFILES & RUOLI AI
             </div>
             <h1 style={{ fontSize: '1.4rem', fontWeight: 800, margin: '0 0 6px 0', color: textPrimary, letterSpacing: '-0.3px', textShadow: 'none' }}>
               Galleria <span style={{
                 color: isLight ? '#c2410c' : '#00d2ff',
                 fontWeight: 800
-              }}>Manifesti & Hub Professioni</span>
+              }}>Ruoli AI & Hub Professioni</span>
             </h1>
             <p style={{ fontSize: '0.82rem', color: textSecondary, maxWidth: '780px', lineHeight: 1.45, margin: 0, fontWeight: isLight ? 500 : 400 }}>
-              Il modello unificato del Kernel è <strong style={{ color: textPrimary }}>sigma</strong>. I manifesti Modelfile ne stabiliscono il ruolo, i parametri di campionamento e le istruzioni di sistema eseguite runtime in chat o nelle pipeline autonome.
+              Il modello unificato del Kernel è <strong style={{ color: textPrimary }}>sigma</strong>. I ruoli e manifesti Modelfile ne stabiliscono il comportamento, i parametri di campionamento e le istruzioni di sistema eseguite runtime in chat o nelle pipeline autonome.
             </p>
           </div>
 
@@ -497,7 +497,7 @@ Il tuo creatore è l'**Ing. Diego Saitta**, fondatore di Sigma Studio.
                 transition: 'all 0.2s ease'
               }}
             >
-              <Plus size={16} /> Nuovo Manifesto
+              <Plus size={16} /> Nuovo Ruolo AI
             </button>
 
             <button

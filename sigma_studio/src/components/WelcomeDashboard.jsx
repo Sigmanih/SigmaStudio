@@ -302,16 +302,16 @@ export default function WelcomeDashboard({ modules, openTab }) {
                   <Scroll size={18} color="#bc8cff" />
                 </div>
                 <h3 style={{ margin: 0, fontSize: '0.92rem', fontWeight: 800, color: titleColor }}>
-                  2. Manifesti & Ruoli Specialistici
+                  2. Ruoli AI & Professioni Specialistiche
                 </h3>
               </div>
               <p style={{ margin: 0, fontSize: '0.78rem', color: subtitleColor, lineHeight: 1.5 }}>
-                Trasforma all'istante l'assistente in un esperto di codice, ingegneria, medicina o ricerca: i manifesti applicano <strong>regole etiche e direttive disciplinari</strong> senza dover riaddestrare il modello.
+                Trasforma all'istante l'assistente in un esperto di codice, ingegneria, medicina o ricerca: i manifesti e ruoli applicano <strong>regole etiche e direttive disciplinari</strong> senza dover riaddestrare il modello.
               </p>
               <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.72rem', color: '#bc8cff', fontWeight: 700, marginTop: 'auto', cursor: 'pointer' }}
-                onClick={() => openTab({ name: 'Manifesti' }, 'whitepapers_lib')}
+                onClick={() => openTab({ name: 'Ruoli AI' }, 'whitepapers_lib')}
               >
-                <span>Esplora Manifesti e Ruoli</span> <ArrowRight size={12} />
+                <span>Esplora Ruoli AI e Professioni</span> <ArrowRight size={12} />
               </div>
             </div>
 

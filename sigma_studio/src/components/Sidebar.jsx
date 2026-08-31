@@ -406,12 +406,12 @@ export default function Sidebar({
 
           <SidebarItem 
             icon={FileText} 
-            label="Manifesti" 
+            label="Ruoli AI" 
             isKernel={true}
             badge={manifestiCount + modules.reduce((acc, m) => acc + (m.whitepapers?.length || 0), 0)}
             badgeColor="rgba(188,140,255,0.15)"
             active={activeTabId != null && (activeTabId.startsWith('whitepaper') || activeTabId.startsWith('whitepapers_lib'))}
-            onClick={() => openTab({ name: 'Manifesti' }, 'whitepapers_lib')} 
+            onClick={() => openTab({ name: 'Ruoli AI' }, 'whitepapers_lib')} 
           />
 
           {!hiddenTabs.has('mcp_hub') && (
