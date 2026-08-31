@@ -144,17 +144,43 @@ def runtime_env() -> Dict[str, str]:
     return env
 
 
+#: Directory DLL gia' registrate in questo processo, con il loro handle.
+#: Windows concede poche centinaia di handle di directory DLL e non riusa
+#: quello di una directory gia' registrata: chiamare add_dll_directory due
+#: volte sullo stesso percorso ne consuma due. Con 54 voci nel PATH e una
+#: telemetria GPU interrogata a ogni poll, il processo li esauriva in
+#: un'ottantina di poll -- e da quel momento ogni registrazione successiva
+#: falliva con WinError 206, "nome del file o estensione troppo lunga", che
+#: parla di lunghezza dei percorsi e manda a cercare la causa dove non e'.
+#: A cadere per prima era la quantizzazione, che importa llama_cpp e quindi
+#: registra la propria lib: riusciva a server appena avviato e falliva dopo
+#: qualche minuto di uptime, a parita' di modello.
+_dll_dirs_registrate: Dict[str, Any] = {}
+
+
 def setup_dll_directories() -> None:
-    """Registra le directory DLL nel processo Python corrente (Windows)."""
+    """Registra le directory DLL nel processo Python corrente (Windows).
+
+    Idempotente. Gli handle restano referenziati qui perche' rilasciarli
+    annullerebbe la registrazione che sono serviti a ottenere.
+    """
     if os.name != "nt" or not hasattr(os, "add_dll_directory"):
         return
     env = runtime_env()
     for p in env.get("PATH", "").split(os.pathsep):
-        if p and os.path.isdir(p):
-            try:
-                os.add_dll_directory(p)
-            except Exception:
-                pass
+        if not p:
+            continue
+        chiave = os.path.normcase(p)
+        if chiave in _dll_dirs_registrate:
+            continue
+        if not os.path.isdir(p):
+            continue
+        try:
+            _dll_dirs_registrate[chiave] = os.add_dll_directory(p)
+        except OSError:
+            # Una directory che Windows rifiuta va ricordata comunque: senza
+            # questo, ogni poll la ritenterebbe per sempre.
+            _dll_dirs_registrate[chiave] = None
 
 
 

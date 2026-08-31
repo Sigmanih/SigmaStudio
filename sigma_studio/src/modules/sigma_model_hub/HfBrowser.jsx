@@ -84,7 +84,8 @@ const SORT_OPTIONS = [
 
 const FEATURED_PROVIDERS = [
   { id: 'sigmanih', label: '⚡ Sigmanih (Ufficiale)', query: 'sigmanih', color: '#00d2ff', bg: 'rgba(0, 210, 255, 0.15)', border: 'rgba(0, 210, 255, 0.4)' },
-  { id: 'thudm', label: '🏮 GLM / THUDM', query: 'THUDM', color: '#ffb86c', bg: 'rgba(255, 184, 108, 0.15)', border: 'rgba(255, 184, 108, 0.4)' },
+  { id: 'zai', label: '🏮 ZAI / GLM (zai-org)', query: 'zai-org', color: '#ffb86c', bg: 'rgba(255, 184, 108, 0.15)', border: 'rgba(255, 184, 108, 0.4)' },
+  { id: 'thudm', label: '🏮 THUDM / Zhipu', query: 'THUDM', color: '#ffb86c', bg: 'rgba(255, 184, 108, 0.15)', border: 'rgba(255, 184, 108, 0.4)' },
   { id: 'qwen', label: '⚡ Qwen', query: 'Qwen', color: '#10b981', bg: 'rgba(16, 185, 129, 0.15)', border: 'rgba(16, 185, 129, 0.4)' },
   { id: 'deepseek', label: '🧠 DeepSeek', query: 'deepseek-ai', color: '#38bdf8', bg: 'rgba(56, 189, 248, 0.15)', border: 'rgba(56, 189, 248, 0.4)' },
   { id: 'llama', label: '🦙 Meta LLaMA', query: 'meta-llama', color: '#818cf8', bg: 'rgba(129, 140, 248, 0.15)', border: 'rgba(129, 140, 248, 0.4)' },
@@ -97,38 +98,86 @@ const FEATURED_PROVIDERS = [
 
 const getProviderBadge = (m) => {
   if (!m) return null;
-  const auth = (m.author || '').toLowerCase();
+  const auth = (m.author || (m.id && m.id.includes('/') ? m.id.split('/')[0] : '')).toLowerCase();
   const id = (m.id || '').toLowerCase();
   if (auth === 'sigmanih' || id.startsWith('sigmanih/')) {
     return {
       label: '⚡ Sigmanih Ufficiale',
       color: '#00d2ff',
-      bg: 'rgba(0, 210, 255, 0.15)',
-      border: '1px solid rgba(0, 210, 255, 0.4)'
+      bg: 'rgba(0, 210, 255, 0.18)',
+      border: '1px solid rgba(0, 210, 255, 0.45)'
     };
   }
-  if (auth === 'thudm' || auth === 'zhipuai' || id.includes('glm')) {
+  if (auth === 'zai-org' || auth === 'zai' || auth === 'thudm' || auth === 'zhipuai' || id.startsWith('zai-org/') || id.startsWith('thudm/') || id.includes('glm')) {
     return {
-      label: '🏮 GLM (THUDM)',
+      label: '🏮 ZAI / GLM (Ufficiale)',
       color: '#ffb86c',
-      bg: 'rgba(255, 184, 108, 0.15)',
-      border: '1px solid rgba(255, 184, 108, 0.4)'
+      bg: 'rgba(255, 184, 108, 0.18)',
+      border: '1px solid rgba(255, 184, 108, 0.5)'
     };
   }
-  if (['bartowski', 'unsloth', 'thebloke', 'mradermacher', 'turboderp', 'casperhansen'].includes(auth)) {
+  if (auth === 'qwen' || id.startsWith('qwen/')) {
+    return {
+      label: '⚡ Qwen Ufficiale',
+      color: '#10b981',
+      bg: 'rgba(16, 185, 129, 0.18)',
+      border: '1px solid rgba(16, 185, 129, 0.45)'
+    };
+  }
+  if (auth === 'deepseek-ai' || id.startsWith('deepseek-ai/')) {
+    return {
+      label: '🧠 DeepSeek Ufficiale',
+      color: '#38bdf8',
+      bg: 'rgba(56, 189, 248, 0.18)',
+      border: '1px solid rgba(56, 189, 248, 0.45)'
+    };
+  }
+  if (auth === 'meta-llama' || id.startsWith('meta-llama/')) {
+    return {
+      label: '🦙 Meta Ufficiale',
+      color: '#818cf8',
+      bg: 'rgba(129, 140, 248, 0.18)',
+      border: '1px solid rgba(129, 140, 248, 0.45)'
+    };
+  }
+  if (auth === 'mistralai' || id.startsWith('mistralai/')) {
+    return {
+      label: '⚡ Mistral Ufficiale',
+      color: '#f59e0b',
+      bg: 'rgba(245, 158, 11, 0.18)',
+      border: '1px solid rgba(245, 158, 11, 0.45)'
+    };
+  }
+  if (auth === 'google' || id.startsWith('google/')) {
+    return {
+      label: '💎 Google Ufficiale',
+      color: '#ec4899',
+      bg: 'rgba(236, 72, 153, 0.18)',
+      border: '1px solid rgba(236, 72, 153, 0.45)'
+    };
+  }
+  if (auth === 'microsoft' || id.startsWith('microsoft/')) {
+    return {
+      label: '🔷 Microsoft Ufficiale',
+      color: '#00d2ff',
+      bg: 'rgba(0, 210, 255, 0.18)',
+      border: '1px solid rgba(0, 210, 255, 0.45)'
+    };
+  }
+  if (['bartowski', 'unsloth', 'thebloke', 'mradermacher', 'turboderp', 'casperhansen', 'city96'].includes(auth)) {
     return {
       label: '🚀 Premier GGUF',
       color: '#34d399',
-      bg: 'rgba(52, 211, 153, 0.15)',
-      border: '1px solid rgba(52, 211, 153, 0.4)'
+      bg: 'rgba(52, 211, 153, 0.18)',
+      border: '1px solid rgba(52, 211, 153, 0.45)'
     };
   }
   if (m.is_official) {
     return {
       label: '🛡️ Ufficiale',
       color: '#3b82f6',
-      bg: 'rgba(59, 130, 246, 0.15)',
-      border: '1px solid rgba(59, 130, 246, 0.3)'
+      bg: 'rgba(59, 130, 246, 0.18)',
+      border: '1px solid rgba(59, 130, 246, 0.4)'
     };
   }
   return null;
@@ -886,19 +935,31 @@ export default function HfBrowser({ isLight, addToast, onDownloadStarted, active
                 >
                   <div>
                     {/* Card Top: Author & Badges */}
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '6px', marginBottom: '2px' }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '4px', overflow: 'hidden' }}>
-                        <span style={{ fontSize: '0.62rem', color: textMuted, textTransform: 'uppercase', fontWeight: 800, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '120px' }}>
-                          {m.author}
-                        </span>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '6px', marginBottom: '4px', flexWrap: 'wrap' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '5px', overflow: 'hidden', flexWrap: 'wrap' }}>
+                        <div style={{
+                          fontSize: '0.66rem', fontWeight: 800,
+                          color: '#ffffff',
+                          background: 'rgba(255, 255, 255, 0.08)',
+                          border: '1px solid rgba(255, 255, 255, 0.18)',
+                          borderRadius: '5px',
+                          padding: '1px 6px',
+                          display: 'inline-flex', alignItems: 'center', gap: '4px',
+                          boxShadow: '0 1px 4px rgba(0, 0, 0, 0.2)'
+                        }}>
+                          <span style={{ color: '#00d2ff', fontSize: '0.62rem', fontWeight: 900 }}>🏢 Rilasciato da:</span>
+                          <span style={{ color: '#ffffff', fontWeight: 800 }}>
+                            {m.author || (m.id && m.id.includes('/') ? m.id.split('/')[0] : 'Community')}
+                          </span>
+                        </div>
                         {(() => {
                           const pBadge = getProviderBadge(m);
                           if (!pBadge) return null;
                           return (
                             <span style={{
-                              fontSize: '0.54rem', padding: '1px 5px', borderRadius: '3px',
+                              fontSize: '0.56rem', padding: '1px 6px', borderRadius: '4px',
                               background: pBadge.bg, color: pBadge.color, border: pBadge.border,
-                              fontWeight: 800, display: 'flex', alignItems: 'center', gap: '2px', flexShrink: 0
+                              fontWeight: 800, display: 'flex', alignItems: 'center', gap: '3px', flexShrink: 0
                             }}>
                               <ShieldCheck size={9} /> {pBadge.label}
                             </span>
@@ -1200,7 +1261,36 @@ export default function HfBrowser({ isLight, addToast, onDownloadStarted, active
                     <ExternalLink size={11} /> Scheda Hugging Face
                   </a>
                 </div>
-                <h3 style={{ margin: '2px 0 0 0', fontSize: '1.05rem', fontWeight: 800, color: textPrimary }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '4px', flexWrap: 'wrap' }}>
+                  <div style={{
+                    fontSize: '0.72rem', fontWeight: 800,
+                    background: 'rgba(255, 255, 255, 0.08)',
+                    border: '1px solid rgba(255, 255, 255, 0.18)',
+                    borderRadius: '6px', padding: '2px 8px',
+                    display: 'inline-flex', alignItems: 'center', gap: '5px',
+                    color: '#ffffff'
+                  }}>
+                    <span style={{ color: '#00d2ff', fontWeight: 900 }}>🏢 Rilasciato da:</span>
+                    <span>{selectedModel.author || (selectedModel.id.includes('/') ? selectedModel.id.split('/')[0] : 'Community')}</span>
+                  </div>
+                  {(() => {
+                    const pBadge = getProviderBadge(selectedModel);
+                    if (!pBadge) return null;
+                    return (
+                      <span style={{
+                        fontSize: '0.62rem', padding: '2px 8px', borderRadius: '5px',
+                        background: pBadge.bg, color: pBadge.color, border: pBadge.border,
+                        fontWeight: 800, display: 'flex', alignItems: 'center', gap: '4px'
+                      }}>
+                        <ShieldCheck size={11} /> {pBadge.label}
+                      </span>
+                    );
+                  })()}
+                  <span style={{ fontSize: '0.70rem', color: textMuted, fontFamily: 'monospace' }}>
+                    HF: <strong>{selectedModel.id}</strong>
+                  </span>
+                </div>
+                <h3 style={{ margin: '4px 0 0 0', fontSize: '1.05rem', fontWeight: 800, color: textPrimary }}>
                   {selectedModel.name}
                 </h3>
               </div>

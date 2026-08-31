@@ -4,7 +4,7 @@ import {
   Activity, Upload, Download, Pause, Play, X, AlertTriangle, Package,
   RotateCcw, Search, ChevronDown, ChevronUp, Sliders, Layers, Sparkles,
   Loader, Check, Trophy, Award, BarChart2, Gauge, Clock, Cpu, ExternalLink,
-  PanelRightClose, PanelRightOpen, ArrowRight
+  PanelRightClose, PanelRightOpen, ArrowRight, ShieldCheck
 } from 'lucide-react';
 import HfPublishModal from './HfPublishModal.jsx';
 import InferenceTestModal from './InferenceTestModal.jsx';
@@ -239,6 +239,7 @@ export default function LocalInventory({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           local_path: model.path || model.filename,
+          repo_id: model.publication?.repo_id || undefined,
           model_id: model.model_id,
           custom_notes: note.trim() || undefined
         })
@@ -246,6 +247,7 @@ export default function LocalInventory({
       const json = await res.json();
       if (json.success && addToast) {
         addToast(`Scheda aggiornata su ${json.repo_id} (${json.characters} caratteri)`, 'success');
+        fetchLocalModels();
       } else if (addToast) {
         addToast(`${json.error || 'Aggiornamento non riuscito'}`, 'error');
       }
@@ -253,6 +255,88 @@ export default function LocalInventory({
       if (addToast) addToast(`Errore: ${e.message}`, 'error');
     } finally {
       setUpdatingCard(null);
+    }
+  };
+
+  const handleForgetPublication = async (model) => {
+    if (!window.confirm(`Vuoi scollegare questo modello locale dal repository Hugging Face "${model.publication?.repo_id}"?\n\nIl repository su Hugging Face resterà intatto.`)) {
+      return;
+    }
+    try {
+      const res = await fetch('/api/models/publication/forget', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          local_path: model.path || model.filename,
+          model_id: model.model_id || model.filename
+        })
+      });
+      const json = await res.json();
+      if (json.success) {
+        if (addToast) addToast('Modello scollegato da Hugging Face.', 'info');
+        fetchLocalModels();
+      }
+    } catch (e) {
+      if (addToast) addToast(`Errore: ${e.message}`, 'error');
+    }
+  };
+
+  const handleRenameHfRepoFromInventory = async (model) => {
+    const attuale = model.publication?.repo_id || '';
+    const nuovo = window.prompt(
+      'Nuovo nome completo del repository su Hugging Face (autore/modello).\n\n'
+      + 'Hugging Face sposterà il repository mantenendo cronologia e download, '
+      + 'e aggiornerà automaticamente la scheda e il titolo.',
+      attuale
+    );
+    if (!nuovo || nuovo.trim() === attuale) return;
+    try {
+      const res = await fetch('/api/models/hf/repo/rename', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ from_id: attuale, to_id: nuovo.trim() })
+      });
+      const json = await res.json();
+      if (json.success) {
+        if (addToast) addToast(`Repository rinominato in ${json.repo_id}`, 'success');
+        fetchLocalModels();
+      } else if (addToast) {
+        addToast(`${json.error}`, 'error');
+      }
+    } catch (e) {
+      if (addToast) addToast(`Errore: ${e.message}`, 'error');
+    }
+  };
+
+  const handleAttachHfRepo = async (model) => {
+    const defaultRepo = model.publication?.repo_id || `sigmanih/${model.filename?.replace(/\\/g, '/').replace(/--/g, '/').replace(/[^a-zA-Z0-9._-]/g, '-') || ''}`;
+    const targetRepo = window.prompt(
+      'Inserisci il repository Hugging Face a cui collegare questo modello locale (es: username/nome-modello):\n\n'
+      + 'Verrà verificata l\'esistenza del repository su Hugging Face e il modello verrà agganciato per la sincronizzazione di schede, paper e benchmark.',
+      defaultRepo
+    );
+    if (!targetRepo || !targetRepo.trim()) return;
+
+    try {
+      const res = await fetch('/api/models/hf/repo/attach', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          local_path: model.path || model.filename,
+          local_ref: model.path || model.filename,
+          model_id: model.model_id || model.filename,
+          repo_id: targetRepo.trim()
+        })
+      });
+      const json = await res.json();
+      if (json.success) {
+        if (addToast) addToast(`Modello collegato con successo a ${json.repo_id}!`, 'success');
+        fetchLocalModels();
+      } else {
+        if (addToast) addToast(`❌ ${json.error || 'Impossibile collegare il repository.'}`, 'error');
+      }
+    } catch (e) {
+      if (addToast) addToast(`Errore: ${e.message}`, 'error');
     }
   };
 
@@ -787,10 +871,40 @@ export default function LocalInventory({
                   >
                     {/* Top Bar: Title & Status Badges */}
                     <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '12px', flexWrap: 'wrap' }}>
-                      <div style={{ minWidth: 0, flex: 1 }}>
+                      <div style={{ minWidth: 0, flex: 1, display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                        {/* Author / Organization Pill */}
+                        {(m.author || (m.display_name && m.display_name.includes('/'))) && (
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                            <div style={{
+                              fontSize: '0.68rem', fontWeight: 800,
+                              color: '#ffffff',
+                              background: 'rgba(255, 255, 255, 0.08)',
+                              border: '1px solid rgba(255, 255, 255, 0.18)',
+                              borderRadius: '6px',
+                              padding: '2px 8px',
+                              display: 'inline-flex', alignItems: 'center', gap: '4px',
+                            }}>
+                              <span style={{ color: '#00d2ff', fontSize: '0.64rem', fontWeight: 900 }}>🏢 Rilasciato da:</span>
+                              <span style={{ color: '#ffffff', fontWeight: 800 }}>
+                                {m.author || m.display_name.split('/')[0]}
+                              </span>
+                            </div>
+                            {m.is_official && (
+                              <span style={{
+                                fontSize: '0.58rem', padding: '2px 7px', borderRadius: '5px',
+                                background: 'rgba(59, 130, 246, 0.18)', color: '#38bdf8',
+                                border: '1px solid rgba(59, 130, 246, 0.4)',
+                                fontWeight: 800, display: 'inline-flex', alignItems: 'center', gap: '3px'
+                              }}>
+                                <ShieldCheck size={9} /> Ufficiale
+                              </span>
+                            )}
+                          </div>
+                        )}
+
                         <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
                           <span style={{ fontSize: '0.98rem', fontWeight: 900, color: textPrimary, wordBreak: 'break-all', letterSpacing: '-0.01em' }}>
-                            {m.display_name || m.filename}
+                            {m.clean_name || m.display_name || m.filename}
                           </span>
 
                           {/* Format Tag */}
@@ -984,20 +1098,38 @@ export default function LocalInventory({
                         </button>
 
                         {/* Publish vs Update on HF */}
-                        <button
-                          onClick={() => setPublishingModel(m)}
-                          title={isPublished ? `Modello già pubblicato su HF (${m.publication.repo_id}): clicca per sincronizzare o aggiornare la scheda` : "Pubblica questo modello su Hugging Face Hub"}
-                          style={{
-                            padding: '6px 11px', borderRadius: '8px',
-                            border: isPublished ? '1px solid rgba(255, 184, 108, 0.5)' : '1px solid rgba(255, 184, 108, 0.35)',
-                            background: isPublished ? 'rgba(255, 184, 108, 0.18)' : (isLight ? 'rgba(255, 184, 108, 0.12)' : 'rgba(255, 184, 108, 0.10)'),
-                            color: '#ffb86c', fontSize: '0.72rem', fontWeight: 800, cursor: 'pointer',
-                            display: 'flex', alignItems: 'center', gap: '4px'
-                          }}
-                        >
-                          {isPublished ? <RefreshCw size={12} /> : <Upload size={12} />}
-                          {isPublished ? 'Aggiorna su HF' : 'Pubblica HF'}
-                        </button>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                          <button
+                            onClick={() => setPublishingModel(m)}
+                            title={isPublished ? `Modello già pubblicato su HF (${m.publication.repo_id}): clicca per sincronizzare o aggiornare la scheda` : "Pubblica questo modello su Hugging Face Hub"}
+                            style={{
+                              padding: '6px 11px', borderRadius: '8px',
+                              border: isPublished ? '1px solid rgba(255, 184, 108, 0.5)' : '1px solid rgba(255, 184, 108, 0.35)',
+                              background: isPublished ? 'rgba(255, 184, 108, 0.18)' : (isLight ? 'rgba(255, 184, 108, 0.12)' : 'rgba(255, 184, 108, 0.10)'),
+                              color: '#ffb86c', fontSize: '0.72rem', fontWeight: 800, cursor: 'pointer',
+                              display: 'flex', alignItems: 'center', gap: '4px'
+                            }}
+                          >
+                            {isPublished ? <RefreshCw size={12} /> : <Upload size={12} />}
+                            {isPublished ? 'Aggiorna su HF' : 'Pubblica HF'}
+                          </button>
+
+                          {!isPublished && (
+                            <button
+                              onClick={() => handleAttachHfRepo(m)}
+                              title="Collega direttamente a un repository già esistente su Hugging Face"
+                              style={{
+                                padding: '6px 9px', borderRadius: '8px',
+                                border: '1px solid rgba(0,210,255,0.3)',
+                                background: 'rgba(0,210,255,0.08)',
+                                color: '#00d2ff', fontSize: '0.70rem', fontWeight: 700, cursor: 'pointer',
+                                display: 'flex', alignItems: 'center', gap: '3px'
+                              }}
+                            >
+                              Collega HF
+                            </button>
+                          )}
+                        </div>
 
                         {/* Convert Safetensors */}
                         {!isGguf && (
@@ -1086,6 +1218,42 @@ export default function LocalInventory({
                             }}
                           >
                             {updatingCard === (m.path || m.filename) ? 'Aggiorno...' : 'Aggiorna scheda'}
+                          </button>
+
+                          <button
+                            onClick={() => handleRenameHfRepoFromInventory(m)}
+                            title="Rinomina il repository su Hugging Face e aggiorna la scheda con il nuovo titolo"
+                            style={{
+                              padding: '3px 9px', borderRadius: '6px',
+                              border: '1px solid rgba(255,184,108,0.25)', background: 'transparent',
+                              color: '#ffb86c', fontSize: '0.66rem', fontWeight: 700, cursor: 'pointer'
+                            }}
+                          >
+                            Rinomina
+                          </button>
+
+                          <button
+                            onClick={() => handleAttachHfRepo(m)}
+                            title="Modifica o ricollega questo modello a un altro repository Hugging Face"
+                            style={{
+                              padding: '3px 9px', borderRadius: '6px',
+                              border: '1px solid rgba(0,210,255,0.3)', background: 'transparent',
+                              color: '#00d2ff', fontSize: '0.66rem', fontWeight: 700, cursor: 'pointer'
+                            }}
+                          >
+                            Modifica link
+                          </button>
+
+                          <button
+                            onClick={() => handleForgetPublication(m)}
+                            title="Scollega questo modello dal repository HF (non tocca niente su HF)"
+                            style={{
+                              padding: '3px 8px', borderRadius: '6px',
+                              border: subBorder, background: 'transparent',
+                              color: textMuted, fontSize: '0.66rem', fontWeight: 600, cursor: 'pointer'
+                            }}
+                          >
+                            Scollega
                           </button>
                         </div>
                       </div>

@@ -1412,9 +1412,38 @@ async def dev_roles_list_route(request: Request):
     return await handle_roles_list(request)
 
 # --- Sigma Network ---
-from core.modules.sigma_network import router as sigma_network_router
+# Il modulo ha dipendenze proprie: su un clone appena fatto non sono ancora
+# installate, e prima un import fallito qui impediva l'avvio dell'intero Sigma
+# Studio per un modulo opzionale.
+try:
+    from core.modules.sigma_network import router as sigma_network_router
+    app.include_router(sigma_network_router, prefix="/api/sigma_network",
+                       tags=["Sigma Network"])
+except Exception as _sn_exc:
+    # Exception e non ImportError soltanto: il modulo esegue codice al
+    # caricamento -- identita', registro dei peer -- e un file di stato
+    # illeggibile lo ferma senza essere un errore di import.
+    log.warning("[FastAPI] Sigma Network non caricato: %s", _sn_exc, exc_info=True)
+    from fastapi import APIRouter
 
-app.include_router(sigma_network_router, prefix="/api/sigma_network", tags=["Sigma Network"])
+    _SIGMA_NETWORK_MOTIVO = f"{type(_sn_exc).__name__}: {_sn_exc}"
+    sigma_network_router = APIRouter()
+
+    @sigma_network_router.api_route(
+        "/{path:path}", methods=["GET", "POST", "PUT", "DELETE"]
+    )
+    async def _sigma_network_non_disponibile(path: str):
+        # 503 col motivo, non 404: l'endpoint esiste, e' il modulo a non essere
+        # partito. Un 404 muto e' indistinguibile da un errore di routing e
+        # manda a cercare il guasto dalla parte sbagliata.
+        return JSONResponse(status_code=503, content={
+            "error": "Modulo Sigma Network non caricato.",
+            "reason": _SIGMA_NETWORK_MOTIVO,
+            "hint": "pip install -r core/modules/sigma_network/requirements.txt",
+        })
+
+    app.include_router(sigma_network_router, prefix="/api/sigma_network",
+                       tags=["Sigma Network"])
 
 # --- System Cleanup & Resource Optimization ---
 from core.system_cleanup import get_cleanup_stats, execute_selective_cleanup

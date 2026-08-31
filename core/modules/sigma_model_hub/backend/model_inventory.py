@@ -52,6 +52,47 @@ def _earliest_weight_time(folder: str, weight_files) -> float:
     return min(times) if times else os.path.getctime(folder)
 
 
+def _extract_author_and_name(raw_name: str) -> tuple[str, str, bool]:
+    """Extracts author/organization, clean model name, and official provider status."""
+    try:
+        from core.modules.sigma_model_hub.backend.hf_client import is_official_provider
+    except Exception:
+        def is_official_provider(a, m): return False
+
+    name_clean = raw_name.replace('\\', '/')
+    if name_clean.startswith("models--"):
+        parts = name_clean.split("--")
+        if len(parts) >= 3:
+            author = parts[1]
+            m_name = "--".join(parts[2:])
+            return author, m_name, is_official_provider(author, f"{author}/{m_name}")
+    if '/' in name_clean:
+        parts = name_clean.split('/')
+        author = parts[0]
+        m_name = "/".join(parts[1:])
+        return author, m_name, is_official_provider(author, name_clean)
+
+    low = name_clean.lower()
+    if low.startswith("sigma"):
+        return "sigmanih", name_clean, True
+    if low.startswith("qwen"):
+        return "Qwen", name_clean, True
+    if low.startswith("deepseek"):
+        return "deepseek-ai", name_clean, True
+    if low.startswith("llama") or low.startswith("meta"):
+        return "meta-llama", name_clean, True
+    if low.startswith("gemma") or low.startswith("google"):
+        return "google", name_clean, True
+    if low.startswith("glm") or low.startswith("thudm") or low.startswith("chatglm") or low.startswith("zai"):
+        return "zai-org", name_clean, True
+    if low.startswith("mistral"):
+        return "mistralai", name_clean, True
+    if low.startswith("phi"):
+        return "microsoft", name_clean, True
+
+    return "", name_clean, False
+
+
 def scan_local_models(custom_dir: Optional[str] = None) -> List[Dict[str, Any]]:
     """Scans local disk for downloaded model files (.gguf, .safetensors, .bin, multi-shard repos)."""
     base_dir = custom_dir if custom_dir and os.path.exists(custom_dir) else _models_dir()
@@ -194,10 +235,15 @@ def scan_local_models(custom_dir: Optional[str] = None) -> List[Dict[str, Any]]:
                     except Exception:
                         pass
 
+                author, clean_name, is_official = _extract_author_and_name(raw_name)
+
                 results.append({
                     "filename": raw_name,
                     "model_id": raw_name,
                     "display_name": raw_name,
+                    "clean_name": clean_name,
+                    "author": author,
+                    "is_official": is_official,
                     "path": full_entry_path,
                     "primary_file": primary_file,
                     "format": fmt,
@@ -248,10 +294,15 @@ def scan_local_models(custom_dir: Optional[str] = None) -> List[Dict[str, Any]]:
                     sigma_engine.loaded_model_name == full_entry_path
                 )
 
+                author, clean_name, is_official = _extract_author_and_name(entry)
+
                 results.append({
                     "filename": entry,
                     "model_id": entry,
                     "display_name": entry,
+                    "clean_name": clean_name,
+                    "author": author,
+                    "is_official": is_official,
                     "path": full_entry_path,
                     "primary_file": full_entry_path,
                     "format": fmt,

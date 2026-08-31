@@ -1034,9 +1034,28 @@ def rename_hf_repo(from_id: str, to_id: str,
     except Exception as err:
         return {"success": False, "error": f"Rinomina non riuscita: {str(err)[:250]}"}
 
+    # Sincronizza il registro locale delle pubblicazioni con il nuovo repo_id
+    try:
+        from core.modules.sigma_model_hub.backend import publications
+        publications.update_repo_id(partenza, arrivo)
+    except Exception as err:
+        log.warning("[ModelUploader] Impossibile aggiornare registro dopo rinomina: %s", err)
+
+    # Aggiorna la scheda README.md sul nuovo repository con il nuovo titolo e link
+    try:
+        from core.modules.sigma_model_hub.backend import publications
+        for k, v in publications.all_publications().items():
+            if isinstance(v, dict) and v.get("repo_id") == arrivo:
+                loc_ref = v.get("local_ref") or k
+                update_model_card(loc_ref, repo_id=arrivo, token=effettivo)
+                break
+    except Exception as err:
+        log.debug("[ModelUploader] Aggiornamento scheda dopo rinomina repo: %s", err)
+
     log.info("[ModelUploader] Repository rinominato: %s -> %s", partenza, arrivo)
     return {"success": True, "renamed": True, "from": partenza, "repo_id": arrivo,
             "url": f"https://huggingface.co/{arrivo}"}
+
 
 
 class ModelUploaderManager:

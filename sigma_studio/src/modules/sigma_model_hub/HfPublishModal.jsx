@@ -2,8 +2,17 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   Upload, X, Globe, Lock, CheckCircle2, AlertTriangle, ExternalLink,
   Loader2, RefreshCw, Key, Shield, User, Sparkles, FileText, Eye, Edit3,
-  Trophy, Cpu, Heart, Star, Check
+  Trophy, Cpu, Heart, Star, Check, RotateCcw
 } from 'lucide-react';
+
+const buildDefaultSlug = (m) => {
+  if (!m) return 'my-model';
+  const raw = m.filename || m.display_name || m.model_id || 'my-model';
+  // Strip ONLY recognized model weight extensions, preserving decimal parameter numbers (e.g. 0.6B, 2.5, 3.2)
+  const withoutExt = String(raw).replace(/\.(gguf|safetensors|bin|pt|pth|onnx)$/i, '');
+  const normalized = withoutExt.replace(/\\/g, '/').replace(/--/g, '/');
+  return normalized.replace(/[^a-zA-Z0-9._-]/g, '-').replace(/^[.-]+|[.-]+$/g, '') || 'my-model';
+};
 
 export default function HfPublishModal({ model, onClose, isLight, addToast }) {
   const [activeModalTab, setActiveModalTab] = useState('config'); // 'config' | 'preview'
@@ -43,15 +52,20 @@ export default function HfPublishModal({ model, onClose, isLight, addToast }) {
   const subBorder = isLight ? '1px solid rgba(190, 160, 110, 0.22)' : '1px solid rgba(255, 255, 255, 0.06)';
   const inputBg = isLight ? '#ffffff' : '#141824';
 
-  // Initialize repo slug from model filename
+  // Initialize repo slug from model filename / linked publication
   useEffect(() => {
     if (model) {
-      const rawName = (model.filename || model.display_name || model.model_id || 'my-model')
-        .replace(/\.[^/.]+$/, '') // remove extension like .gguf
-        .replace(/[^a-zA-Z0-9._-]/g, '-');
-      setRepoSlug(rawName);
+      const collegato = model?.publication?.repo_id;
+      if (collegato && collegato.includes('/')) {
+        const [autore, ...resto] = collegato.split('/');
+        setTargetNamespace(autore);
+        setRepoSlug(resto.join('/'));
+      } else {
+        setRepoSlug(buildDefaultSlug(model));
+      }
     }
   }, [model]);
+
 
   // Fetch current Hugging Face user profile
   const fetchWhoami = useCallback(async (tokenToTest = null) => {
@@ -158,28 +172,6 @@ export default function HfPublishModal({ model, onClose, isLight, addToast }) {
   }, [addToast]);
 
   useEffect(() => {
-    return () => {
-      if (pollTimerRef.current) clearInterval(pollTimerRef.current);
-    };
-  }, []);
-
-  // Sapere in anticipo se il repository esiste cambia cosa si sta per fare:
-  // "pubblica" e "aggiorna" hanno conseguenze diverse per chi quel modello lo
-  // ha gia' scaricato. Caricare su un repository esistente funzionava da
-  // sempre, ma nessuno lo diceva prima di premere il pulsante.
-  // Se questo modello e' gia' pubblicato, il repository e' quello: riscriverlo
-  // a mano e' l'occasione per sbagliarlo, e sbagliarlo non da' errore — crea un
-  // secondo repository, e da quel momento ce ne sono due senza che niente dica
-  // quale sia quello buono.
-  useEffect(() => {
-    const collegato = model?.publication?.repo_id;
-    if (!collegato || !collegato.includes('/')) return;
-    const [autore, ...resto] = collegato.split('/');
-    setTargetNamespace(autore);
-    setRepoSlug(resto.join('/'));
-  }, [model]);
-
-  useEffect(() => {
     if (!whoami?.authenticated || !targetNamespace || !repoSlug) {
       setRepoStatus(null);
       return undefined;
@@ -209,7 +201,7 @@ export default function HfPublishModal({ model, onClose, isLight, addToast }) {
     const nuovo = window.prompt(
       'Nuovo nome completo del repository su Hugging Face (autore/modello). '
       + 'Hugging Face lascia un rimando dal vecchio nome al nuovo, quindi chi '
-      + 'lo aveva gia trovato continua a raggiungerlo.',
+      + 'lo aveva già trovato continua a raggiungerlo.',
       attuale
     );
     if (!nuovo || nuovo.trim() === attuale) return;
@@ -237,13 +229,19 @@ export default function HfPublishModal({ model, onClose, isLight, addToast }) {
     setUpdatingCardOnly(true);
     try {
       const localPath = model.path || model.filename;
+      const fullRepoId = `${targetNamespace || 'username'}/${repoSlug || 'my-model'}`.replace(/\/+/g, '/');
       const res = await fetch('/api/models/hf/card/update', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           local_path: localPath,
+          repo_id: fullRepoId,
           model_id: model.model_id || model.filename,
-          custom_notes: customCardNotes.trim() || undefined
+          card: cardMarkdown || undefined,
+          custom_notes: customCardNotes.trim() || undefined,
+          include_benchmarks: includeBenchmarks,
+          include_hardware: includeHardware,
+          token: manualToken.trim() || undefined
         })
       });
       const json = await res.json();
@@ -256,6 +254,33 @@ export default function HfPublishModal({ model, onClose, isLight, addToast }) {
       if (addToast) addToast(`Errore: ${e.message}`, 'error');
     } finally {
       setUpdatingCardOnly(false);
+    }
+  };
+
+  const handleAttachRepoInModal = async () => {
+    const fullRepoId = `${targetNamespace || 'username'}/${repoSlug || 'my-model'}`.replace(/\/+/g, '/');
+    try {
+      const localPath = model.path || model.filename;
+      const res = await fetch('/api/models/hf/repo/attach', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          local_path: localPath,
+          local_ref: localPath,
+          model_id: model.model_id || model.filename,
+          repo_id: fullRepoId,
+          token: manualToken.trim() || undefined
+        })
+      });
+      const json = await res.json();
+      if (json.success) {
+        if (addToast) addToast(`Modello collegato con successo a ${json.repo_id}!`, 'success');
+        if (onClose) onClose();
+      } else {
+        if (addToast) addToast(`❌ ${json.error || 'Errore collegamento.'}`, 'error');
+      }
+    } catch (e) {
+      if (addToast) addToast(`Errore: ${e.message}`, 'error');
     }
   };
 
@@ -541,6 +566,21 @@ export default function HfPublishModal({ model, onClose, isLight, addToast }) {
                             {repoStatus?.files ? ` (${repoStatus.files} file${repoStatus.private ? ', privato' : ''})` : ''}
                           </span>
                           <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                            {!isAlreadyPublished && (
+                              <button
+                                type="button"
+                                onClick={handleAttachRepoInModal}
+                                title="Collega questo modello al repository esistente senza ricaricare i file"
+                                style={{
+                                  padding: '4px 10px', borderRadius: '6px',
+                                  border: '1px solid rgba(0,210,255,0.4)',
+                                  background: 'rgba(0,210,255,0.1)', color: '#00d2ff',
+                                  fontSize: '0.66rem', fontWeight: 800, cursor: 'pointer'
+                                }}
+                              >
+                                Collega a questo repo
+                              </button>
+                            )}
                             <button
                               onClick={handleRenameRepo}
                               style={{
@@ -629,9 +669,23 @@ export default function HfPublishModal({ model, onClose, isLight, addToast }) {
               {/* 3. Repository Configuration */}
               <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                  <label style={{ fontSize: '0.70rem', fontWeight: 800, color: textMuted, textTransform: 'uppercase' }}>
-                    Nome Repository Target
-                  </label>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <label style={{ fontSize: '0.70rem', fontWeight: 800, color: textMuted, textTransform: 'uppercase' }}>
+                      Nome Repository Target
+                    </label>
+                    <button
+                      type="button"
+                      onClick={() => setRepoSlug(buildDefaultSlug(model))}
+                      title="Ricalcola il nome pulito a partire dal modello locale (preservando dimensioni e quantizzazione esatte come 0.6B)"
+                      style={{
+                        background: 'none', border: 'none', color: '#00d2ff',
+                        fontSize: '0.66rem', fontWeight: 700, cursor: 'pointer',
+                        display: 'inline-flex', alignItems: 'center', gap: '4px'
+                      }}
+                    >
+                      <RotateCcw size={10} /> Ripristina da nome locale
+                    </button>
+                  </div>
                   <div style={{
                     display: 'flex', alignItems: 'center', gap: '6px',
                     padding: '8px 12px', borderRadius: '10px', background: inputBg, border: subBorder

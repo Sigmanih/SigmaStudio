@@ -29,7 +29,7 @@ import ctypes
 import os
 import platform
 import subprocess
-from typing import Dict, List
+from typing import Dict, List, Optional
 
 from core.logger import get_logger
 
@@ -50,6 +50,10 @@ _PCI_VENDOR = {
 
 def gpu_vendors() -> List[str]:
     """I costruttori delle GPU presenti, misurati e non dedotti."""
+    global _cache_vendors
+    if _cache_vendors is not None:
+        return list(_cache_vendors)
+
     sistema = platform.system()
     if sistema == "Windows":
         trovati = _vendor_windows()
@@ -64,7 +68,9 @@ def gpu_vendors() -> List[str]:
     for nome in _vendor_torch():
         if nome not in trovati:
             trovati.append(nome)
-    return trovati
+
+    _cache_vendors = trovati
+    return list(trovati)
 
 
 def _vendor_windows() -> List[str]:
@@ -172,6 +178,16 @@ _LIBRERIE = {
 }
 
 
+#: Il runtime CUDA, che e' cosa diversa dal driver. `nvcuda.dll` arriva col
+#: driver grafico e c'e' su ogni macchina NVIDIA; `ggml-cuda.dll` invece si lega
+#: a `cudart64_*.dll`, che arriva col CUDA Toolkit o dentro torch. Senza runtime
+#: la build CUDA di llama.cpp non apre le proprie librerie e il primo avvio
+#: fallisce, mentre Vulkan -- che arriva col driver grafico -- funziona.
+#: I nomi sono quelli reali delle release: CUDA 11 spedisce cudart64_110.dll,
+#: CUDA 12 cudart64_12.dll, CUDA 13 cudart64_13.dll.
+_CUDA_RUNTIME = ("cudart64_13.dll", "cudart64_12.dll", "cudart64_110.dll")
+
+
 def _libreria_apribile(nomi) -> bool:
     for nome in nomi:
         try:
@@ -182,8 +198,28 @@ def _libreria_apribile(nomi) -> bool:
     return False
 
 
+#: Le risposte delle due sonde, calcolate una volta per processo. Le schede
+#: installate e i runtime presenti non cambiano mentre il programma gira, e
+#: rifare la misura costa: `gpu_vendors()` su Windows lancia PowerShell con un
+#: timeout di venti secondi, e `describe()` chiamava la coppia due volte di fila.
+_cache_runtimes: Optional[Dict[str, bool]] = None
+_cache_vendors: Optional[List[str]] = None
+
+
+def reset_cache() -> None:
+    """Dimentica le misure. Serve ai test e a un eventuale ricontrollo esplicito."""
+    global _cache_runtimes, _cache_vendors
+    _cache_runtimes = None
+    _cache_vendors = None
+
+
 def available_runtimes() -> Dict[str, bool]:
     """Quali runtime di calcolo questa macchina puo' aprire adesso."""
+    global _cache_runtimes
+    if _cache_runtimes is not None:
+        # Una copia: il chiamante non deve poter alterare la misura per tutti.
+        return dict(_cache_runtimes)
+
     try:
         from core.engine.llama_runtime import setup_dll_directories
         setup_dll_directories()
@@ -197,7 +233,22 @@ def available_runtimes() -> Dict[str, bool]:
                            and platform.machine().lower() in ("arm64", "aarch64"))
             continue
         esiti[nome] = _libreria_apribile(librerie)
-    return esiti
+
+        # Il driver da solo non basta. Su una macchina con scheda NVIDIA ma
+        # senza Toolkit, dichiarare CUDA fa scaricare una build che non parte;
+        # escluderlo fa scegliere Vulkan, che con quel driver c'e' gia'.
+        if nome == "cuda" and esiti[nome] and platform.system() == "Windows":
+            if not _libreria_apribile(_CUDA_RUNTIME):
+                log.info(
+                    "[GpuVendors] Driver CUDA presente ma runtime assente "
+                    "(nessuna fra %s si apre): CUDA escluso, si ripiega su "
+                    "Vulkan o CPU. Il CUDA Toolkit lo riabilita.",
+                    ", ".join(_CUDA_RUNTIME),
+                )
+                esiti[nome] = False
+
+    _cache_runtimes = esiti
+    return dict(esiti)
 
 
 

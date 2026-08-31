@@ -180,3 +180,38 @@ def rename_local_reference(vecchio: str, nuovo: str) -> None:
         dati[a] = riga
         _salva(dati)
     log.info("[Publications] Riferimento locale seguito: %s -> %s", da, a)
+
+
+def update_repo_id(old_repo_id: str, new_repo_id: str, new_url: str = "") -> bool:
+    """Aggiorna l'identificativo del repository remoto nel registro delle pubblicazioni.
+
+    Serve quando un repository viene rinominato su Hugging Face: il legame locale
+    deve puntare al nuovo identificativo, altrimenti i successivi aggiornamenti
+    della scheda cercano il vecchio repository o ne creano uno duplicato.
+    """
+    import re as _re
+    raw_old = str(old_repo_id or "").strip()
+    old_id = raw_old.lower()
+    new_id = str(new_repo_id or "").strip()
+    if not old_id or not new_id:
+        return False
+    with _lock:
+        dati = _carica()
+        updated = False
+        for k, v in list(dati.items()):
+            if isinstance(v, dict) and str(v.get("repo_id", "")).strip().lower() == old_id:
+                v["repo_id"] = new_id
+                v["url"] = new_url or f"https://huggingface.co/{new_id}"
+                card = v.get("model_card", "")
+                if card:
+                    old_name = raw_old.split("/")[-1]
+                    new_name = new_id.split("/")[-1]
+                    card = _re.sub(_re.escape(raw_old), new_id, card, flags=_re.IGNORECASE)
+                    card = _re.sub(_re.escape(old_name), new_name, card, flags=_re.IGNORECASE)
+                    v["model_card"] = card
+                updated = True
+        if updated:
+            _salva(dati)
+            log.info("[Publications] Repository aggiornato nel registro: %s -> %s", old_id, new_id)
+        return updated
+

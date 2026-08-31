@@ -11,6 +11,7 @@ import json
 import os
 import tempfile
 import unittest
+import uuid
 from unittest import mock
 
 
@@ -293,6 +294,23 @@ class TestPublicationLink(unittest.TestCase):
         self.assertFalse(esito["success"])
         self.assertIn("non risulta pubblicato", esito["error"])
 
+    def test_update_repo_id_updates_registry_and_card(self):
+        publications, patch = self._registro()
+        with patch:
+            publications.record_publication("Qwen--Qwen3-0.6B-GGUF-Q4_K_S", "sigmanih/Qwen-Qwen3-0", model_card="# ⚡ Qwen-Qwen3-0")
+            updated = publications.update_repo_id("sigmanih/Qwen-Qwen3-0", "sigmanih/Qwen-Qwen3-0.6B-GGUF-Q4_K_S")
+            self.assertTrue(updated)
+            pub = publications.get_publication("Qwen/Qwen3-0.6B-GGUF-Q4_K_S")
+            self.assertEqual(pub["repo_id"], "sigmanih/Qwen-Qwen3-0.6B-GGUF-Q4_K_S")
+            self.assertIn("Qwen-Qwen3-0.6B-GGUF-Q4_K_S", pub["model_card"])
+
+    def test_model_card_title_handles_decimal_parameter_models(self):
+        from core.modules.sigma_model_hub.backend.uploader_engine import generate_model_card
+        card = generate_model_card("Qwen--Qwen3-0.6B-GGUF-Q4_K_S", "sigmanih/Qwen-Qwen3-0.6B-GGUF-Q4_K_S")
+        self.assertIn("# ⚡ Qwen-Qwen3-0.6B-GGUF-Q4_K_S", card)
+        self.assertIn("sigmanih/Qwen-Qwen3-0.6B-GGUF-Q4_K_S", card)
+
+
 
 class TestHonestSpeedReporting(unittest.TestCase):
     """Due velocità diverse non possono comparire come se fossero la stessa."""
@@ -486,6 +504,49 @@ class TestWeightFormatTags(unittest.TestCase):
         cfg = _detect_model_config("/percorso/che/non/esiste")
         self.assertEqual(cfg["format"], "Sconosciuto")
         self.assertEqual(cfg["quantization"], "sconosciuta")
+
+
+class TestBenchmarkExtensionAndSuiteFiltering(unittest.TestCase):
+    def test_store_read_page_suite_filtering(self):
+        from core.modules.sigma_training_lab.training import benchmark_store as store
+
+        job_id = f"test_filter_{uuid.uuid4().hex[:8]}"
+        items = [
+            {"id": "item_1", "suite": "mmlu", "suite_name": "MMLU", "verdict": "pass", "prompt": "MMLU Q1"},
+            {"id": "item_2", "suite": "arc", "suite_name": "ARC", "verdict": "fail", "prompt": "ARC Q1"},
+            {"id": "item_3", "suite": "mbpp", "suite_name": "MBPP", "verdict": "pass", "prompt": "MBPP Q1"},
+            {"id": "item_4", "suite": "mmlu_pro", "suite_name": "MMLU-Pro", "verdict": "pass", "prompt": "MMLU-Pro Q1"},
+        ]
+        store.append_results(job_id, items)
+
+        try:
+            # 1. Read all
+            all_page = store.read_page(job_id, page=1, page_size=10, suite="all")
+            self.assertEqual(all_page["total"], 4)
+
+            # 2. Filter by exact suite
+            mmlu_page = store.read_page(job_id, page=1, page_size=10, suite="mmlu")
+            self.assertEqual(mmlu_page["total"], 1)
+            self.assertEqual(mmlu_page["results"][0]["id"], "item_1")
+
+            # 3. Filter with case/hyphen variation
+            mmlu_pro_page = store.read_page(job_id, page=1, page_size=10, suite="MMLU-Pro")
+            self.assertEqual(mmlu_pro_page["total"], 1)
+            self.assertEqual(mmlu_pro_page["results"][0]["id"], "item_4")
+
+            # 4. Get evaluated item ids
+            ids = store.get_evaluated_item_ids(job_id)
+            self.assertEqual(ids, {"item_1", "item_2", "item_3", "item_4"})
+
+            # 5. Suite breakdown
+            breakdown = store.suite_breakdown(job_id)
+            self.assertIn("mmlu", breakdown)
+            self.assertIn("arc", breakdown)
+            self.assertIn("mbpp", breakdown)
+            self.assertEqual(breakdown["mmlu"]["passed"], 1)
+            self.assertEqual(breakdown["arc"]["failed"], 1)
+        finally:
+            store.delete_results(job_id)
 
 
 if __name__ == "__main__":

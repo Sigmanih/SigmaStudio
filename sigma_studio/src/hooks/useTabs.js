@@ -1,8 +1,25 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 
 // ==============================================================================
 // useTabs Hook | Open, close, manage tabs
 // ==============================================================================
+
+//: Nomi leggibili per le schede aperte da URL. Chi non compare qui riceve il
+//: proprio tipo come titolo: e' brutto ma corretto, e non richiede di
+//: aggiornare questa mappa ogni volta che nasce un modulo.
+const TITOLI_DA_URL = {
+  sigma_network: '\u{1F517} Sigma Network',
+  network_lab: '\u{1F310} Network Lab',
+  developer_studio: '\u{1F4BB} Developer Studio',
+  model_hub: '\u26A1 Modelli Hub',
+  chat: '\u{1F4AC} Chat AI',
+  creative_studio: '\u{1F3A8} Creative Lab',
+  research_lab: '\u{1F9EA} Pipelines Lab',
+  training_lab: '\u{1F393} Training Lab',
+  hardware_lab: '\u26A1 Hardware',
+  knowledge: '\u{1F4DA} Argomenti & Memoria',
+  marketplace: '\u{1F4E6} Hub Skills & Estensioni',
+};
 
 export function useTabs() {
   const [openTabs, setOpenTabs] = useState([]);
@@ -26,6 +43,24 @@ export function useTabs() {
     });
     setActiveTabId(tabId);
   }, []);
+
+  // Apertura da URL: ?tab=sigma_network apre quella scheda al primo render.
+  // Il ref impedisce che un cambio di dipendenze la riapra dopo che l'utente
+  // l'ha chiusa, cosa che renderebbe impossibile chiuderla.
+  const deepLinkFatto = useRef(false);
+  useEffect(() => {
+    if (deepLinkFatto.current) return;
+    deepLinkFatto.current = true;
+    try {
+      const richiesta = new URLSearchParams(window.location.search).get('tab');
+      if (!richiesta) return;
+      const tipo = richiesta.trim();
+      if (!/^[a-z0-9_]+$/i.test(tipo)) return;   // solo tipi plausibili
+      openTab({ name: TITOLI_DA_URL[tipo] || tipo }, tipo);
+    } catch (e) {
+      // Un URL malformato non deve impedire l'avvio dell'applicazione.
+    }
+  }, [openTab]);
 
 
   const removeTab = useCallback((id) => {

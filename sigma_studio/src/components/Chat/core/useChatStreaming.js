@@ -215,8 +215,8 @@ export function useChatStreaming({
     // batching changes only how often React is told about it -- never what it
     // is eventually told. A frame is read at paint time, so it always carries
     // the newest text rather than the text as of when it was scheduled.
-    let paintHandle = null;
-    let paintIsRaf = false;
+    let rafHandle = null;
+    let timerHandle = null;
     let paintDirty = false;
 
     const commitStreamState = () => {
@@ -315,34 +315,44 @@ export function useChatStreaming({
       }
     };
 
+    const clearHandles = () => {
+      if (rafHandle !== null) { cancelAnimationFrame(rafHandle); rafHandle = null; }
+      if (timerHandle !== null) { clearTimeout(timerHandle); timerHandle = null; }
+    };
+
     const paintNow = () => {
-      paintHandle = null;
+      clearHandles();
       paintDirty = false;
       commitStreamState();
     };
 
+    // Both a frame and a timer, and the first to run cancels the other.
+    //
+    // rAF alone is what a foreground tab wants -- the commit lands with the
+    // paint -- but the browser suspends it entirely when the tab goes to the
+    // background. The booked frame never arrives, the handle stays taken, and
+    // since a scheduled paint short-circuits this function nobody ever books
+    // another: the chat freezes for the rest of the stream, and stays frozen
+    // on returning to the tab.
+    //
+    // A timer alone survives that, but is throttled to roughly a second in a
+    // background tab and is not frame-aligned in the foreground. Booking both
+    // costs nothing while the tab is visible -- the frame always wins at 16ms
+    // against 100 -- and keeps the stream moving when it is not.
     const schedulePaint = () => {
       paintDirty = true;
-      if (paintHandle !== null) return;
+      if (rafHandle !== null || timerHandle !== null) return;
       if (typeof requestAnimationFrame === 'function') {
-        paintIsRaf = true;
-        paintHandle = requestAnimationFrame(paintNow);
-      } else {
-        // Node, jsdom, a background tab that throttles rAF: the stream must
-        // still arrive, just on a timer instead of a frame.
-        paintIsRaf = false;
-        paintHandle = setTimeout(paintNow, 16);
+        rafHandle = requestAnimationFrame(paintNow);
       }
+      // Node, jsdom, or a hidden tab where the frame will never come.
+      timerHandle = setTimeout(paintNow, 100);
     };
 
-    // Called before anything reads the final message: a frame still in flight
+    // Called before anything reads the final message: a paint still in flight
     // would otherwise land after the final content and overwrite it.
     const flushPaint = () => {
-      if (paintHandle !== null) {
-        if (paintIsRaf) cancelAnimationFrame(paintHandle);
-        else clearTimeout(paintHandle);
-        paintHandle = null;
-      }
+      clearHandles();
       if (paintDirty) paintNow();
     };
 

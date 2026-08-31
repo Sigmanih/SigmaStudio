@@ -100,6 +100,16 @@ class ConversionJob:
         return data
 
 
+#: Byte per parametro degli intermedi che il convertitore sa produrre. Non
+#: stime: sono le larghezze dei tipi.
+#: "auto" lascia scegliere allo script il tipo a 16 bit di massima fedelta
+#: per quel modello (bf16 se il modello e bf16), che occupa quanto f16.
+_INTERMEDIATE_BPP = {"auto": 2.0, "f16": 2.0, "bf16": 2.0, "q8_0": 1.0625}
+#: Margine da lasciare sul volume. Riempire un disco fino all'ultimo byte fa
+#: fallire altro, non solo la conversione.
+_DISK_HEADROOM_GB = 5.0
+
+
 class GgufConverter:
     """Converts local Hugging Face checkpoints into GGUF, with quantization."""
 
@@ -153,6 +163,7 @@ class GgufConverter:
                 estimated, compatibility = [], {}
 
             results.append({
+                "moe": cls._moe_note(facts),
                 "name": entry,
                 "path": path,
                 "source_format": facts.weight_format,
@@ -167,6 +178,85 @@ class GgufConverter:
                 "compatibility": compatibility,
             })
         return results
+
+    @staticmethod
+    def _free_disk_gb(path: str) -> float:
+        """Spazio libero sul volume che ospita `path`, in GB."""
+        import shutil
+
+        try:
+            return shutil.disk_usage(os.path.dirname(os.path.abspath(path))).free / 2**30
+        except OSError:
+            return 0.0
+
+    @classmethod
+    def _plan_conversion_space(cls, facts, quantization: str,
+                               output_dir: str) -> Dict[str, Any]:
+        """Se la conversione ci sta sul disco, e con quale intermedio.
+
+        Intermedio e file finale coesistono: il quantizzatore legge il primo
+        mentre scrive il secondo, quindi serve la somma dei due e non il
+        maggiore. E' l'errore che fa scoprire il disco pieno a meta' strada.
+        """
+        params = getattr(facts, "param_count", 0) or 0
+        if not params:
+            # Senza il numero di parametri non si puo' decidere: si lascia
+            # procedere invece di bloccare su un'incertezza nostra.
+            return {"ok": True, "intermediate": "auto", "reason": "dimensione ignota"}
+
+        finale_bpw = next((q["bpw"] for q in QUANT_TYPES if q["id"] == quantization), 4.87)
+        finale_gb = params * finale_bpw / 8 / 2**30
+        libero_gb = cls._free_disk_gb(output_dir) - _DISK_HEADROOM_GB
+
+        for tipo in ("auto", "q8_0"):
+            intermedio_gb = params * _INTERMEDIATE_BPP[tipo] / 2**30
+            if intermedio_gb + finale_gb <= libero_gb:
+                return {
+                    "ok": True,
+                    "intermediate": tipo,
+                    "intermediate_gb": round(intermedio_gb, 1),
+                    "final_gb": round(finale_gb, 1),
+                    "free_gb": round(libero_gb, 1),
+                    "downgraded": tipo != "auto",
+                }
+
+        minimo_gb = params * _INTERMEDIATE_BPP["q8_0"] / 2**30 + finale_gb
+        return {
+            "ok": False,
+            "intermediate": "q8_0",
+            "intermediate_gb": round(params * _INTERMEDIATE_BPP["q8_0"] / 2**30, 1),
+            "final_gb": round(finale_gb, 1),
+            "free_gb": round(libero_gb, 1),
+            "needed_gb": round(minimo_gb, 1),
+            "missing_gb": round(minimo_gb - libero_gb, 1),
+        }
+
+    @staticmethod
+    def _moe_note(facts) -> Optional[Dict[str, Any]]:
+        """Cosa dire della VRAM quando il modello e' a esperti.
+
+        Un MoE non tiene tutti gli esperti sulla scheda: di 512 un token ne
+        accende 10, e il pianificatore li lascia in RAM con `-ncmoe`. Misurare
+        il peso intero contro la VRAM risponde a una domanda che nessuno ha
+        fatto, e la risposta scoraggia una configurazione che funziona.
+        """
+        if not getattr(facts, "is_moe", False):
+            return None
+
+        totali = int(getattr(facts, "num_experts", 0) or 0)
+        attivi = int(getattr(facts, "experts_used", 0) or 0)
+        return {
+            "is_moe": True,
+            "experts_total": totali,
+            "experts_used_per_token": attivi,
+            "note": (
+                f"Modello a esperti ({attivi} attivi su {totali} per token): gli "
+                "esperti restano in RAM con l'offload `-ncmoe` e non occupano "
+                "VRAM. Il peso complessivo NON e quindi il requisito della "
+                "scheda. Il vincolo reale e la RAM libera: gli esperti che non "
+                "ci stanno vengono letti dal disco a ogni token."
+            ),
+        }
 
     @staticmethod
     def _is_requantizable(path: str) -> bool:
@@ -457,7 +547,21 @@ class GgufConverter:
             "(Convertitore GGUF -> Aggiorna)."
         )
 
-        if not blocking:
+        # Il writer e' il segnale autorevole: il pacchetto gguf e il runtime
+        # llama.cpp nascono dallo stesso progetto, quindi se il writer non
+        # conosce l'architettura non la conoscera' nemmeno una build piu'
+        # recente. Consigliare un aggiornamento manderebbe a cercare una
+        # versione che nessuno ha pubblicato.
+        if report["writer"] is False:
+            report["upstream_missing"] = True
+            report["summary"] = (
+                "L'architettura '" + nome + "' non e ancora implementata in "
+                "llama.cpp: il writer GGUF non la conosce, e non la conoscera "
+                "nemmeno un runtime piu recente finche il supporto non arriva "
+                "a monte. Aggiornare gli strumenti non aiuta. Il modello resta "
+                "utilizzabile con il backend transformers, se la memoria basta."
+            )
+        elif not blocking:
             report["summary"] = "Compatibile: conversione ed esecuzione supportate."
         elif blocking == ["runtime"]:
             report["summary"] = (
@@ -825,6 +929,27 @@ class GgufConverter:
                     "compatibility": compat,
                 }
 
+        # Lo spazio si verifica prima di iniziare: le dimensioni sono note, e
+        # scoprire il disco pieno a meta' costa dieci minuti e un file enorme
+        # da cancellare a mano.
+        piano_spazio = {"ok": True, "intermediate": "auto"}
+        if facts is not None:
+            piano_spazio = cls._plan_conversion_space(facts, quantization, models_dir())
+            if not piano_spazio["ok"]:
+                return {
+                    "success": False,
+                    "error": (
+                        f"Spazio su disco insufficiente: servono circa "
+                        f"{piano_spazio['needed_gb']} GB "
+                        f"({piano_spazio['intermediate_gb']} GB di file intermedio "
+                        f"piu {piano_spazio['final_gb']} GB di risultato, che "
+                        f"coesistono durante la quantizzazione) e ne sono liberi "
+                        f"{piano_spazio['free_gb']} GB. "
+                        f"Liberane almeno {piano_spazio['missing_gb']} GB e riprova."
+                    ),
+                    "disk_plan": piano_spazio,
+                }
+
         status = cls.converter_status()
         if not status["ready"]:
             missing = [k for k in ("gguf_writer", "quantizer", "converter_script")
@@ -848,7 +973,11 @@ class GgufConverter:
             )
             cls._jobs[job.job_id] = job
 
-        threading.Thread(target=cls._run, args=(job, source), daemon=True).start()
+        threading.Thread(
+            target=cls._run,
+            args=(job, source, piano_spazio.get("intermediate", "auto")),
+            daemon=True,
+        ).start()
         return {"success": True, "job": job.to_dict()}
 
     @classmethod
@@ -866,7 +995,7 @@ class GgufConverter:
     # ------------------------------------------------------------ execution
 
     @classmethod
-    def _run(cls, job: ConversionJob, source: str) -> None:
+    def _run(cls, job: ConversionJob, source: str, outtype: str = "auto") -> None:
         # A GGUF source already lives in a '-GGUF' folder; reuse it rather
         # than nesting another one inside it.
         base_name = job.source_model
@@ -885,7 +1014,9 @@ class GgufConverter:
             models_dir(), base_name + "-GGUF-" + job.quantization
         )
         os.makedirs(target_dir, exist_ok=True)
-        intermediate = os.path.join(target_dir, job.source_model + "-f16.gguf")
+        intermediate = os.path.join(
+            target_dir, job.source_model + "-" + outtype + ".gguf"
+        )
         final_name = job.source_model + "." + job.quantization + ".gguf"
         final_path = os.path.join(target_dir, final_name)
 
@@ -897,14 +1028,32 @@ class GgufConverter:
                 # was done on a previous run, so go straight to quantizing it.
                 intermediate = existing_gguf
                 job.stage = "reuse_gguf"
-                job.message = "GGUF gia' presente: si passa alla quantizzazione."
                 job.progress = 50
+                sorgente = os.path.basename(existing_gguf)
+                if cls._precisione_gguf(sorgente) < 8.5:
+                    # Quantizzare da un file gia' quantizzato arrotonda due
+                    # volte, e nel risultato non si vede: va detto qui, perche'
+                    # dopo non lo dira' piu' nessuno.
+                    job.message = (
+                        "Si riparte da " + sorgente + ", gia' quantizzato: il "
+                        "risultato subira' due arrotondamenti. Per la qualita' "
+                        "migliore converti di nuovo dai safetensors."
+                    )
+                else:
+                    job.message = (
+                        "Si riparte da " + sorgente + ": si passa direttamente "
+                        "alla quantizzazione."
+                    )
             else:
                 job.status = "converting"
                 job.stage = "hf_to_gguf"
-                job.message = "Conversione dei pesi in GGUF F16..."
+                job.message = (
+                    "Conversione dei pesi in GGUF ("
+                    + ("massima fedelta a 16 bit" if outtype == "auto" else outtype)
+                    + ")..."
+                )
                 job.progress = 5
-                cls._convert_to_f16(source, intermediate)
+                cls._convert_to_intermediate(source, intermediate, outtype)
 
             if job.quantization == "F16":
                 if existing_gguf:
@@ -950,16 +1099,49 @@ class GgufConverter:
         finally:
             job.finished_at = time.time()
 
-    @staticmethod
-    def _existing_gguf(source: str) -> Optional[str]:
-        """The GGUF already in a source directory, if it holds one."""
+    #: Bit per peso impliciti nel nome di un GGUF. Servono a scegliere la
+    #: sorgente quando in una cartella ce n'e' piu' d'uno. L'ordine conta:
+    #: "F16" e' contenuto in "BF16", quindi il piu' specifico va prima.
+    _PRECISIONE_NOME = (
+        ("F32", 32.0), ("BF16", 16.0), ("F16", 16.0),
+        ("Q8_0", 8.5), ("Q6_K", 6.6),
+        ("Q5_K_M", 5.7), ("Q5_K_S", 5.5), ("Q5_0", 5.5),
+        ("Q4_K_M", 4.9), ("Q4_K_S", 4.6), ("Q4_0", 4.5),
+        ("Q3_K_M", 3.9), ("Q3_K_S", 3.5), ("Q2_K", 3.0),
+    )
+
+    @classmethod
+    def _precisione_gguf(cls, nome: str) -> float:
+        """Quanti bit per peso promette il nome di questo file."""
+        alto = os.path.basename(nome).upper()
+        for tag, bpw in cls._PRECISIONE_NOME:
+            if tag in alto:
+                return bpw
+        # Senza indizi si assume l'intermedio a 16 bit: e' cio' che produce
+        # questo convertitore quando non mette un tag nel nome.
+        return 16.0
+
+    @classmethod
+    def _existing_gguf(cls, source: str) -> Optional[str]:
+        """Il GGUF a precisione piu' alta gia' presente nella cartella.
+
+        Prima si prendeva il primo in ordine alfabetico. Con un Q8_0 e un
+        Q4_K_M nella stessa cartella, "Q4_K_M" viene prima: si ripartiva dal
+        piu' povero dei due e il risultato portava due arrotondamenti invece di
+        uno, senza che niente lo dicesse.
+        """
         if not os.path.isdir(source):
             return None
-        names = sorted(f for f in os.listdir(source) if f.endswith(".gguf"))
-        return os.path.join(source, names[0]) if names else None
+        nomi = [f for f in os.listdir(source) if f.endswith(".gguf")]
+        if not nomi:
+            return None
+        # A parita' di precisione il nome decide, cosi' la scelta e' stabile.
+        migliore = max(nomi, key=lambda n: (cls._precisione_gguf(n), n))
+        return os.path.join(source, migliore)
 
     @staticmethod
-    def _convert_to_f16(source: str, output: str) -> None:
+    def _convert_to_intermediate(source: str, output: str,
+                                 outtype: str = "auto") -> None:
         """
         Runs llama.cpp's converter in a subprocess.
 
@@ -996,7 +1178,7 @@ class GgufConverter:
 
         command = [
             sys.executable, CONVERTER_PATH, source,
-            "--outfile", output, "--outtype", "f16",
+            "--outfile", output, "--outtype", outtype,
         ]
         # The converter and the gguf writer must come from the same revision;
         # letting it fall back to the pip-installed gguf pairs a new converter
@@ -1021,8 +1203,8 @@ class GgufConverter:
         if not os.path.exists(output):
             raise RuntimeError("la conversione non ha prodotto alcun file")
 
-    @staticmethod
-    def _quantize(source: str, output: str, quant_type: str) -> None:
+    @classmethod
+    def _quantize(cls, source: str, output: str, quant_type: str) -> None:
         """Quantizes in-process through llama.dll, so no external tool is needed."""
         import ctypes
         from llama_cpp import llama_cpp as C
@@ -1035,8 +1217,91 @@ class GgufConverter:
         params.ftype = ftype
         params.nthread = max((os.cpu_count() or 4) - 1, 1)
 
-        code = C.llama_model_quantize(
-            source.encode("utf-8"), output.encode("utf-8"), ctypes.byref(params)
-        )
+        # Il log della libreria si raccoglie: senza, un fallimento arriva
+        # all'utente come "ha restituito 1" e il motivo -- un tensore con
+        # dimensioni non divisibili per 256, il disco pieno, un file corrotto --
+        # resta sullo stderr del server, dove nessuno lo cerca.
+        cls._assicura_log_llama(C)
+        cls._log_righe = []
+        try:
+            code = C.llama_model_quantize(
+                source.encode("utf-8"), output.encode("utf-8"), ctypes.byref(params)
+            )
+            righe = list(cls._log_righe)
+        finally:
+            cls._log_righe = None
+
         if code != 0:
-            raise RuntimeError("llama_model_quantize ha restituito " + str(code))
+            dettaglio = cls._motivo_quantizzazione(righe, quant_type)
+            raise RuntimeError(
+                "quantizzazione in " + str(quant_type) + " fallita (codice "
+                + str(code) + "). " + dettaglio
+            )
+
+    #: La callback di log di llama.cpp e il suo bersaglio. Si installa una
+    #: volta sola e non si toglie mai: `llama_log_set(None, ...)` solleva
+    #: ArgumentError invece di disinstallare, e una callback raccolta dal
+    #: garbage collector mentre la libreria puo' ancora chiamarla fa cadere il
+    #: processo. La raccolta si accende riempiendo `_log_righe`.
+    _log_cb = None
+    _log_righe: Optional[List[str]] = None
+
+    @classmethod
+    def _assicura_log_llama(cls, C) -> None:
+        """Instrada il log di llama.cpp, una volta per processo."""
+        import ctypes
+
+        if cls._log_cb is not None:
+            return
+
+        @ctypes.CFUNCTYPE(None, ctypes.c_int, ctypes.c_char_p, ctypes.c_void_p)
+        def _inoltra(_livello, testo, _dati):
+            try:
+                riga = (testo or b"").decode("utf-8", errors="replace").strip()
+            except Exception:
+                return
+            if not riga:
+                return
+            bersaglio = cls._log_righe
+            if bersaglio is not None:
+                # Solo la coda: una conversione riuscita ne produce migliaia, e
+                # quando fallisce il messaggio utile e' in fondo.
+                bersaglio.append(riga)
+                del bersaglio[:-40]
+            log.debug("[llama.cpp] %s", riga)
+
+        cls._log_cb = _inoltra
+        C.llama_log_set(_inoltra, ctypes.c_void_p(0))
+
+    #: Righe di llama.cpp che spiegano un fallimento, con la traduzione di cosa
+    #: puo' farci l'utente. La prima che compare vince.
+    _CAUSE_NOTE = (
+        ("not divisible by",
+         "Il modello ha tensori con righe non multiple di 256, che i tipi K "
+         "(Q2_K, Q3_K, Q4_K...) non sanno dividere in blocchi. Prova Q8_0 o "
+         "Q4_0, che non hanno questo vincolo."),
+        ("failed to write",
+         "Scrittura interrotta: quasi sempre spazio esaurito sul volume di "
+         "destinazione mentre il file intermedio e' ancora li'."),
+        ("No space left",
+         "Disco pieno durante la scrittura del risultato."),
+        ("unknown model architecture",
+         "L'architettura non e' supportata da questa build di llama.cpp."),
+        ("failed to load model",
+         "Il file di partenza non si apre: se e' un intermedio rimasto da una "
+         "conversione interrotta, cancellalo e rifai la conversione."),
+    )
+
+    @classmethod
+    def _motivo_quantizzazione(cls, righe: List[str], quant_type: str) -> str:
+        """Da cosa ha scritto llama.cpp a cosa puo' farci chi legge."""
+        testo = " ".join(righe)
+        for indizio, spiegazione in cls._CAUSE_NOTE:
+            if indizio.lower() in testo.lower():
+                return spiegazione
+        ultima = next((r for r in reversed(righe) if r), "")
+        if ultima:
+            return "llama.cpp ha riportato: " + ultima
+        return ("llama.cpp non ha lasciato dettagli. Cause tipiche: spazio su "
+                "disco esaurito, oppure un tipo K su un modello con dimensioni "
+                "non compatibili.")

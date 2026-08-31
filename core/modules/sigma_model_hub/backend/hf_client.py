@@ -160,7 +160,7 @@ OFFICIAL_ORGANIZATIONS = {
 
     # Frontier Open-Weight Labs & Creators
     'qwen', 'meta-llama', 'deepseek-ai', 'mistralai', 'google', 'microsoft',
-    'anthropic', 'cohereforai', 'thudm', 'zhipuai', '01-ai', 'nvidia', 'facebook', 'baai',
+    'anthropic', 'cohereforai', 'thudm', 'zhipuai', 'zai-org', 'zai', 'zhipu', '01-ai', 'nvidia', 'facebook', 'baai',
     'stabilityai', 'black-forest-labs', 'allenai', 'apple', 'openai', 'tiiuae',
     'bytedance', 'internlm', 'shanghai-ai-lab', 'systran', 'bigcode', 'salesforce',
     'openchat', 'nousresearch', 'upstage', 'snowflake', 'kyutai', 'liquid-ai',
@@ -175,7 +175,9 @@ OFFICIAL_ORGANIZATIONS = {
 
 PROVIDER_AUTHOR_MAP = {
     'sigmanih': ['sigmanih'],
-    'thudm': ['THUDM', 'ZhipuAI'],
+    'thudm': ['THUDM', 'ZhipuAI', 'zai-org', 'zai'],
+    'zai': ['zai-org', 'zai', 'THUDM', 'ZhipuAI'],
+    'glm': ['zai-org', 'THUDM', 'ZhipuAI'],
     'qwen': ['Qwen'],
     'deepseek': ['deepseek-ai'],
     'llama': ['meta-llama'],
@@ -200,10 +202,12 @@ OFFICIAL_AUTHOR_MAP = {
     'sigmanih': 'sigmanih',
     'sigma': 'sigmanih',
 
-    # GLM & THUDM (Zhipu AI)
+    # GLM & THUDM & ZAI (Zhipu AI)
+    'zai-org': 'zai-org',
+    'zai': 'zai-org',
     'thudm': 'THUDM',
-    'glm': 'THUDM',
-    'zhipu': 'THUDM',
+    'glm': 'zai-org',
+    'zhipu': 'zai-org',
     'chatglm': 'THUDM',
     'cogvideo': 'THUDM',
     'cogview': 'THUDM',
@@ -664,6 +668,30 @@ def _matches_quant_filter(quant_filter: str, text_corpus: str, specs: Optional[D
 # Curated Popular Official & Featured Models with direct HF links
 POPULAR_MODELS = [
     {
+        "id": "zai-org/GLM-5.3-Flash",
+        "name": "GLM 5.3 Flash",
+        "author": "zai-org",
+        "category": "llm",
+        "params_b": 9.0,
+        "params_label": "Flash",
+        "active_params_label": "Flash",
+        "total_params_label": "Flash",
+        "precision": "FP16 / BF16",
+        "size_gb": 18.0,
+        "format": "Safetensors",
+        "downloads": 350000,
+        "likes": 4800,
+        "is_official": True,
+        "created_at": "2025-02-15T10:00:00Z",
+        "last_modified": "2025-02-20T12:00:00Z",
+        "release_date_label": "15 Feb 2025",
+        "description": "Modello ufficiale ad altissima velocità, reasoning avanzato e architettura multimodale di ZAI (Zhipu AI).",
+        "quantizations": ["Safetensors (18 GB)", "GGUF Q4_K_M (5.5 GB)"],
+        "pipeline_tag": "text-generation",
+        "default_file": "model.safetensors",
+        "hf_url": "https://huggingface.co/zai-org/GLM-5.3-Flash",
+    },
+    {
         "id": "THUDM/glm-4-9b-chat",
         "name": "GLM 4 9B Chat",
         "author": "THUDM",
@@ -999,7 +1027,7 @@ def search_hf_models(
         # B. If official_only is enabled without a specific provider: query official lab authors
         elif official_only:
             if not search_query:
-                official_target_authors = ["sigmanih", "Qwen", "deepseek-ai", "meta-llama", "THUDM", "mistralai", "google", "microsoft", "bartowski", "unsloth"]
+                official_target_authors = ["sigmanih", "zai-org", "Qwen", "deepseek-ai", "meta-llama", "THUDM", "mistralai", "google", "microsoft", "bartowski", "unsloth"]
                 for auth in official_target_authors:
                     auth_params = {
                         "author": auth,
