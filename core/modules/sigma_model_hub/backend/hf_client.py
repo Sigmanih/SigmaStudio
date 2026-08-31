@@ -439,14 +439,23 @@ def parse_model_specs(model_id: str, name: str, tags: List[str] = None, raw_item
         bytes_per_param = 2.0
 
     # Total repository storage / download size
-    # Check if exact usedStorage is available from Hugging Face
+    # Strategy: 1) usedStorage from HF  2) sum of siblings file sizes  3) formula estimate
     used_storage_bytes = raw_item.get("usedStorage") if raw_item else None
+    siblings_size_sum = 0
+    if raw_item:
+        for sib in raw_item.get("siblings") or []:
+            sib_sz = sib.get("size") or 0
+            if not sib_sz:
+                lfs = sib.get("lfs") or {}
+                sib_sz = lfs.get("size") or 0
+            siblings_size_sum += sib_sz
+
     if used_storage_bytes and isinstance(used_storage_bytes, (int, float)) and used_storage_bytes > 0:
         if not is_gguf:
             # Safetensors / FP16 / BF16 repos: usedStorage = real download size
             size_gb = round(used_storage_bytes / (1024**3), 1)
         else:
-            # GGUF repo: check if it has multiple GGUF variants (usedStorage would be sum of all)
+            # GGUF repo: check if it has multiple GGUF variants
             siblings = raw_item.get("siblings") or []
             gguf_files = [s for s in siblings if s.get("rfilename", "").lower().endswith(".gguf")]
             if len(gguf_files) <= 1:
@@ -454,8 +463,28 @@ def parse_model_specs(model_id: str, name: str, tags: List[str] = None, raw_item
             else:
                 # Multiple GGUF variants: usedStorage is sum of all; use formula for one variant
                 size_gb = round(total_b * bytes_per_param, 1)
+    elif siblings_size_sum > 0:
+        # Fallback: sum of individual file sizes from siblings listing
+        computed_gb = round(siblings_size_sum / (1024**3), 1)
+        formula_gb = round(total_b * bytes_per_param, 1)
+        # For non-GGUF repos, always trust file sizes (they're the real download).
+        # For GGUF repos with many variants, only use it if single variant or small repo.
+        if not is_gguf:
+            size_gb = computed_gb
+        else:
+            siblings_list = raw_item.get("siblings") or []
+            gguf_files = [s for s in siblings_list if s.get("rfilename", "").lower().endswith(".gguf")]
+            if len(gguf_files) <= 1:
+                size_gb = computed_gb
+            else:
+                size_gb = formula_gb
     else:
         size_gb = round(total_b * bytes_per_param, 1)
+
+    # Sanity check: if formula says X GB but real repo is > 3× bigger, trust the real data
+    formula_est = round(total_b * bytes_per_param, 1)
+    if size_gb < formula_est * 0.5 and formula_est > 1.0:
+        size_gb = formula_est  # Real data seems too small (e.g. only config files counted)
 
     # Active inference VRAM footprint is based on active_b
     active_vram_gb = round(active_b * bytes_per_param, 1)
@@ -897,11 +926,12 @@ POPULAR_MODELS = [
 
 def _fetch_from_hf_api(params: Dict[str, Any], hf_token: Optional[str] = None) -> tuple[List[Dict[str, Any]], Optional[str]]:
     """Helper to query Hugging Face API and extract items and next_cursor."""
-    # expand[]=usedStorage asks HF to include the real on-disk repo size in
-    # every result — without it parse_model_specs can only guess from the
-    # parameter count, which is often wrong for multi-shard safetensors repos.
+    # Ask HF to include usedStorage (real on-disk repo size) and siblings
+    # (file listing with sizes) in every result, so parse_model_specs can
+    # compute the real download size instead of guessing from parameter count.
+    # Note: HF API accepts both expand[]=X and expand%5B%5D=X.
     base_qs = urllib.parse.urlencode(params)
-    url = f"{HF_API_BASE}/models?{base_qs}&expand[]=usedStorage&expand[]=siblings"
+    url = f"{HF_API_BASE}/models?{base_qs}&expand%5B%5D=usedStorage&expand%5B%5D=siblings&blobs=true"
     req = urllib.request.Request(url)
     req.add_header("User-Agent", "SigmaStudio-ModelHub/2.0")
     if hf_token:
