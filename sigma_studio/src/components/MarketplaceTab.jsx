@@ -559,10 +559,10 @@ export default function MarketplaceTab({ openTab }) {
   const filteredKernel = KERNEL_MODULES.filter(searchFn);
   const filteredOptionalInstalled = OPTIONAL_MODULES.filter(m => optionalInstalledState[m.id] === true && searchFn(m));
 
-  // Tab "Repository Remoti": optional modules + remote catalog (excluding installed optionals from this view)
-  const filteredOptionalRemote = OPTIONAL_MODULES.filter(searchFn);
-  const filteredRemoteCatalog = REMOTE_CATALOG_MODULES.filter(searchFn);
-  const filteredRemote = [...filteredOptionalRemote, ...filteredRemoteCatalog];
+  // Tab "Installa nuovi Moduli": optional modules + remote catalog NOT yet installed
+  const filteredOptionalNotInstalled = OPTIONAL_MODULES.filter(m => optionalInstalledState[m.id] !== true && searchFn(m));
+  const filteredRemoteCatalogNotInstalled = REMOTE_CATALOG_MODULES.filter(m => optionalInstalledState[m.id] !== true && searchFn(m));
+  const filteredAvailableToInstall = [...filteredOptionalNotInstalled, ...filteredRemoteCatalogNotInstalled];
 
   const installedCount = KERNEL_MODULES.length + filteredOptionalInstalled.length;
 
@@ -686,7 +686,7 @@ export default function MarketplaceTab({ openTab }) {
               transition: 'all 0.2s ease'
             }}
           >
-            <Sparkles size={16} /> Moduli da Repository Git Remoti ({filteredRemote.length})
+            <Sparkles size={16} /> Installa nuovi Moduli ({filteredAvailableToInstall.length})
           </button>
         </div>
       </div>
@@ -821,54 +821,85 @@ export default function MarketplaceTab({ openTab }) {
         )}
 
         {/* =================================================================== */}
-        {/* TAB 2: MODULI DA REPOSITORY GIT REMOTI */}
+        {/* TAB 2: INSTALLA NUOVI MODULI */}
         {/* =================================================================== */}
         {activeSubTab === 'remote' && (
           <div>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '12px' }}>
-              {filteredRemote.map(mod => {
-                const isInstalling = installingId === mod.id;
-                const isInstalled = optionalInstalledState[mod.id] === true;
-                const badge = isInstalled
-                  ? <span style={{ display: 'inline-flex', alignItems: 'center', gap: '3px', padding: '2px 7px', borderRadius: '6px', background: 'rgba(63, 185, 80, 0.15)', border: '1px solid rgba(63, 185, 80, 0.4)', color: '#3fb950', fontSize: '0.62rem', fontWeight: 800, textTransform: 'uppercase', flexShrink: 0 }}><Check size={10} /> Installato</span>
-                  : <span style={{ display: 'inline-flex', alignItems: 'center', gap: '3px', padding: '2px 7px', borderRadius: '6px', background: isLight ? 'rgba(234, 88, 12, 0.12)' : 'rgba(0, 210, 255, 0.15)', border: isLight ? '1px solid rgba(234, 88, 12, 0.35)' : '1px solid rgba(0, 210, 255, 0.4)', color: accentColor, fontSize: '0.62rem', fontWeight: 800, textTransform: 'uppercase', flexShrink: 0 }}>Disponibile</span>;
+            {filteredAvailableToInstall.length === 0 ? (
+              <div style={{
+                padding: '48px 24px',
+                borderRadius: '16px',
+                background: cardBg,
+                border: cardBorder,
+                textAlign: 'center',
+                color: textSecondary,
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                gap: '12px'
+              }}>
+                <CheckCircle2 size={36} color="#10b981" />
+                <div style={{ fontSize: '0.96rem', fontWeight: 800, color: textPrimary }}>
+                  Tutti i moduli disponibili sono attualmente installati!
+                </div>
+                <div style={{ fontSize: '0.78rem' }}>
+                  Puoi gestire, configurare o disinstallare i moduli attivi dalla scheda "Moduli Installati".
+                </div>
+              </div>
+            ) : (
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '12px' }}>
+                {filteredAvailableToInstall.map(mod => {
+                  const isInstalling = installingId === mod.id;
+                  const badge = (
+                    <span style={{
+                      display: 'inline-flex', alignItems: 'center', gap: '3px',
+                      padding: '2px 7px', borderRadius: '6px',
+                      background: isLight ? 'rgba(234, 88, 12, 0.12)' : 'rgba(0, 210, 255, 0.15)',
+                      border: isLight ? '1px solid rgba(234, 88, 12, 0.35)' : '1px solid rgba(0, 210, 255, 0.4)',
+                      color: accentColor, fontSize: '0.62rem', fontWeight: 800,
+                      textTransform: 'uppercase', flexShrink: 0
+                    }}>
+                      Disponibile
+                    </span>
+                  );
 
-                const actions = isInstalled ? (
-                  <>
-                    <button onClick={() => handleUninstallModule(mod)} disabled={uninstallingId === mod.id}
-                      style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', padding: '5px 8px', borderRadius: '6px', background: 'rgba(239, 68, 68, 0.12)', border: '1px solid rgba(239, 68, 68, 0.35)', color: '#ef4444', fontSize: '0.72rem', fontWeight: 700, cursor: uninstallingId === mod.id ? 'not-allowed' : 'pointer' }}>
-                      <Trash2 size={11} /> {uninstallingId === mod.id ? '...' : 'Disinstalla'}
+                  const actions = (
+                    <button
+                      onClick={() => handleInstallModule(mod)}
+                      disabled={isInstalling}
+                      style={{
+                        display: 'inline-flex', alignItems: 'center', gap: '5px',
+                        padding: '6px 14px', borderRadius: '7px',
+                        background: isLight ? 'linear-gradient(135deg, #ea580c 0%, #d97706 100%)' : 'linear-gradient(135deg, #00d2ff 0%, #3b82f6 100%)',
+                        border: 'none', color: '#fff', fontSize: '0.74rem', fontWeight: 800,
+                        cursor: isInstalling ? 'not-allowed' : 'pointer',
+                        transition: 'all 0.15s ease',
+                        boxShadow: isLight ? '0 2px 8px rgba(234, 88, 12, 0.25)' : '0 2px 10px rgba(0, 210, 255, 0.25)'
+                      }}
+                    >
+                      {isInstalling ? <RefreshCw size={12} className="animate-spin" /> : <Download size={12} />}
+                      {isInstalling ? 'Installazione...' : 'Installa Modulo'}
                     </button>
-                    <button onClick={() => openTab && openTab({ name: mod.name }, mod.tabType)}
-                      style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', padding: '5px 10px', borderRadius: '6px', background: 'rgba(63, 185, 80, 0.15)', border: '1px solid rgba(63, 185, 80, 0.4)', color: '#3fb950', fontSize: '0.72rem', fontWeight: 800, cursor: 'pointer' }}>
-                      <Play size={11} /> Apri
-                    </button>
-                  </>
-                ) : (
-                  <button onClick={() => handleInstallModule(mod)} disabled={isInstalling}
-                    style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', padding: '5px 12px', borderRadius: '6px', background: isLight ? 'linear-gradient(135deg, #ea580c 0%, #d97706 100%)' : 'linear-gradient(135deg, #00d2ff 0%, #3b82f6 100%)', border: 'none', color: '#fff', fontSize: '0.74rem', fontWeight: 800, cursor: isInstalling ? 'not-allowed' : 'pointer', transition: 'all 0.15s ease' }}>
-                    {isInstalling ? <RefreshCw size={11} /> : <Download size={11} />}
-                    {isInstalling ? 'Installazione...' : 'Installa Modulo'}
-                  </button>
-                );
+                  );
 
-                return (
-                  <ModuleCard
-                    key={mod.id}
-                    mod={mod}
-                    isLight={isLight}
-                    cardBg={cardBg}
-                    cardBorder={cardBorder}
-                    textPrimary={textPrimary}
-                    textSecondary={textSecondary}
-                    accentColor={accentColor}
-                    badge={badge}
-                    actions={actions}
-                    gitUrl={mod.gitUrl}
-                  />
-                );
-              })}
-            </div>
+                  return (
+                    <ModuleCard
+                      key={mod.id}
+                      mod={mod}
+                      isLight={isLight}
+                      cardBg={cardBg}
+                      cardBorder={cardBorder}
+                      textPrimary={textPrimary}
+                      textSecondary={textSecondary}
+                      accentColor={accentColor}
+                      badge={badge}
+                      actions={actions}
+                      gitUrl={mod.gitUrl}
+                    />
+                  );
+                })}
+              </div>
+            )}
           </div>
         )}
 
