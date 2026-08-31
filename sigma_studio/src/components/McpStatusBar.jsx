@@ -86,7 +86,7 @@ export default function McpStatusBar({ openTab }) {
     >
       {/* 🔌 MCP Hub Status Pill */}
       <div
-        onClick={() => openTab && openTab({ name: '⚡ MCP Tools' }, 'mcp_hub')}
+        onClick={() => openTab && openTab({ name: 'MCP Tools' }, 'mcp_hub')}
         style={{
           display: 'inline-flex',
           alignItems: 'center',
@@ -106,7 +106,7 @@ export default function McpStatusBar({ openTab }) {
         title="MCP Hub — 100% Attivo (12 Server)"
       >
         <span style={{ display: 'inline-block', width: '6px', height: '6px', borderRadius: '50%', background: '#3fb950', boxShadow: '0 0 6px #3fb950' }} />
-        <span>🔌 MCP Hub</span>
+        <span>🔌 MCP Tools</span>
         <span style={{ background: 'rgba(63, 185, 80, 0.2)', padding: '1px 6px', borderRadius: '10px', fontSize: '0.65rem' }}>
           {activeCount}/12 ({activePct}%)
         </span>
@@ -114,7 +114,7 @@ export default function McpStatusBar({ openTab }) {
 
       {/* ⚡ Hardware Cluster Status Pill */}
       <div
-        onClick={() => openTab && openTab({ name: '⚡ Hardware' }, 'hardware_lab')}
+        onClick={() => openTab && openTab({ name: 'Monitor Hardware' }, 'hardware_lab')}
         style={{
           display: 'inline-flex',
           alignItems: 'center',
@@ -142,7 +142,7 @@ export default function McpStatusBar({ openTab }) {
 
       {/* 🏠 Home Assistant Status Pill */}
       <div
-        onClick={() => openTab && openTab({ name: '🏠 Domotica & Home Assistant' }, 'domotica')}
+        onClick={() => openTab && openTab({ name: 'Domotica' }, 'domotica')}
         style={{
           display: 'inline-flex',
           alignItems: 'center',

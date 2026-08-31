@@ -79,7 +79,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="Σ-SIGMA Studio API",
     description="Unified Research Environment & Cognitive Orchestration Engine",
-    version="8.0",
+    version="0.8.2",
     docs_url="/docs",
     redoc_url="/redoc",
     lifespan=lifespan,

@@ -353,29 +353,12 @@ export default function Sidebar({
         </div>
 
         {/* ================================================================= */}
-        {/* 1. SEZIONE FONDAMENTALE: SKILLS KERNEL (ORCHESTRAZIONE & CORE)    */}
+        {/* 1. SEZIONE FONDAMENTALE: FUNZIONI KERNEL                          */}
         {/* ================================================================= */}
         <nav className="nav-section" style={{ marginBottom: '18px' }}>
-          <div className="section-title" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-            <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-              <span>🧬</span> SKILLS KERNEL
-            </span>
-            <span style={{ 
-              fontSize: '0.58rem', 
-              fontWeight: 800, 
-              padding: '1px 6px', 
-              borderRadius: '6px', 
-              background: isLight ? 'rgba(217, 119, 6, 0.14)' : 'rgba(234, 179, 8, 0.18)', 
-              color: isLight ? '#b45309' : '#facc15',
-              border: isLight ? '1px solid rgba(217, 119, 6, 0.35)' : '1px solid rgba(234, 179, 8, 0.4)'
-            }}>
-              KERNEL NATIVE
-            </span>
-          </div>
-
           <SidebarItem 
             icon={Home} 
-            label="Bacheca" 
+            label="Home" 
             isKernel={true}
             active={activeTabId === null}
             onClick={goHome}
@@ -383,63 +366,63 @@ export default function Sidebar({
 
           <SidebarItem 
             icon={MessageSquare} 
-            label="Chat AI" 
+            label="Chat" 
             isKernel={true}
             badge={chatCount > 0 ? chatCount : 0}
             badgeColor="rgba(234,179,8,0.18)"
             active={activeTabId != null && activeTabId.startsWith('chat')}
-            onClick={() => openTab({ name: 'Chat AI', path: 'chat-tab' }, 'chat')} 
+            onClick={() => openTab({ name: 'Chat', path: 'chat-tab' }, 'chat')} 
           />
 
           <SidebarItem 
             icon={DownloadCloud} 
-            label="Modelli Hub" 
+            label="Modelli" 
             isKernel={true}
             badge="LOCAL"
             badgeColor="rgba(255,184,108,0.2)"
             active={activeTabId != null && activeTabId.startsWith('model_hub')}
-            onClick={() => openTab({ name: '⚡ Modelli Hub' }, 'model_hub')} 
+            onClick={() => openTab({ name: 'Modelli' }, 'model_hub')} 
           />
 
           <SidebarItem 
             icon={Sliders} 
-            label="Providers Hub" 
+            label="Providers" 
             isKernel={true}
             badge="ROUTING"
             badgeColor="rgba(234,179,8,0.18)"
             active={activeTabId != null && (activeTabId.startsWith('ai_config') || activeTabId.startsWith('config'))}
-            onClick={() => openTab({ name: '⚙️ Providers Hub' }, 'ai_config')} 
+            onClick={() => openTab({ name: 'Providers' }, 'ai_config')} 
           />
 
           <SidebarItem 
             icon={Package} 
-            label="Hub Skills & Estensioni" 
+            label="Skills" 
             isKernel={true}
             badge="STORE"
             badgeColor="rgba(234,179,8,0.2)"
             active={activeTabId != null && activeTabId.startsWith('marketplace')}
-            onClick={() => openTab({ name: '📦 Hub Skills & Estensioni' }, 'marketplace')} 
+            onClick={() => openTab({ name: 'Skills' }, 'marketplace')} 
           />
 
           <SidebarItem 
             icon={FileText} 
-            label="Manifesti Hub" 
+            label="Manifesti" 
             isKernel={true}
             badge={manifestiCount + modules.reduce((acc, m) => acc + (m.whitepapers?.length || 0), 0)}
             badgeColor="rgba(188,140,255,0.15)"
             active={activeTabId != null && (activeTabId.startsWith('whitepaper') || activeTabId.startsWith('whitepapers_lib'))}
-            onClick={() => openTab({ name: '📜 Manifesti Hub' }, 'whitepapers_lib')} 
+            onClick={() => openTab({ name: 'Manifesti' }, 'whitepapers_lib')} 
           />
 
           {!hiddenTabs.has('mcp_hub') && (
             <SidebarItem 
               icon={Wrench} 
-              label="MCP Tools Hub" 
+              label="MCP Tools" 
               isKernel={true}
               badge={6}
               badgeColor="rgba(63,185,80,0.15)"
               active={activeTabId != null && activeTabId.startsWith('mcp_hub')}
-              onClick={() => openTab({ name: '⚡ MCP Tools' }, 'mcp_hub')} 
+              onClick={() => openTab({ name: 'MCP Tools' }, 'mcp_hub')} 
             />
           )}
 
@@ -450,7 +433,7 @@ export default function Sidebar({
             badge="CONFIG"
             badgeColor="rgba(188,140,255,0.15)"
             active={activeTabId != null && (activeTabId.startsWith('account') || activeTabId.startsWith('settings'))}
-            onClick={() => openTab({ name: '⚙️ Impostazioni' }, 'account')} 
+            onClick={() => openTab({ name: 'Impostazioni' }, 'account')} 
           />
         </nav>
 
@@ -506,11 +489,11 @@ export default function Sidebar({
                   {isCreativeInstalled && (
                     <SidebarItem
                       icon={Palette}
-                      label="Creative Lab"
+                      label="Creative"
                       badge={assetCount > 0 ? assetCount : 0}
                       badgeColor="rgba(255,80,100,0.15)"
                       active={activeTabId != null && activeTabId.startsWith('creative_studio')}
-                      onClick={() => openTab({ name: '🎨 Creative Lab' }, 'creative_studio')}
+                      onClick={() => openTab({ name: 'Creative' }, 'creative_studio')}
                     />
                   )}
 
@@ -521,29 +504,29 @@ export default function Sidebar({
                       badge="TTS"
                       badgeColor="rgba(255,121,198,0.15)"
                       active={activeTabId != null && activeTabId.startsWith('voice_studio')}
-                      onClick={() => openTab({ name: '🎙️ Voice Studio' }, 'voice_studio')}
+                      onClick={() => openTab({ name: 'Voice Studio' }, 'voice_studio')}
                     />
                   )}
 
                   {isDomoticaInstalled && (
                     <SidebarItem 
                       icon={Home} 
-                      label="Domotica & IoT" 
+                      label="Domotica" 
                       badge="HA"
                       badgeColor="rgba(167,139,250,0.2)"
                       active={activeTabId != null && (activeTabId.startsWith('domotica') || activeTabId.startsWith('home_assistant'))}
-                      onClick={() => openTab({ name: '🏠 Domotica' }, 'domotica')} 
+                      onClick={() => openTab({ name: 'Domotica' }, 'domotica')} 
                     />
                   )}
 
                   {isAudioInstalled && (
                     <SidebarItem 
                       icon={Radio} 
-                      label="Musica & Radio FM" 
+                      label="Musica" 
                       badge="LOUNGE"
                       badgeColor="rgba(0,242,254,0.2)"
                       active={activeTabId != null && (activeTabId.startsWith('music') || activeTabId === 'audio_studio' || activeTabId === 'music_lounge')}
-                      onClick={() => openTab({ name: '📻 Musica & Radio FM' }, 'music')} 
+                      onClick={() => openTab({ name: 'Musica' }, 'music')} 
                     />
                   )}
                 </div>
@@ -583,22 +566,22 @@ export default function Sidebar({
                   {isTrainingInstalled && (
                     <SidebarItem
                       icon={Brain}
-                      label="Training Lab & SLM"
+                      label="Training"
                       badge={trainingCompleted > 0 ? trainingCompleted : 0}
                       badgeColor="rgba(0,210,255,0.15)"
                       active={activeTabId != null && activeTabId.startsWith('training_lab')}
-                      onClick={() => openTab({ name: '🧠 Training Lab' }, 'training_lab')}
+                      onClick={() => openTab({ name: 'Training' }, 'training_lab')}
                     />
                   )}
 
                   {isResearchInstalled && (
                     <SidebarItem 
                       icon={FlaskConical} 
-                      label="Pipelines Lab" 
+                      label="Pipelines" 
                       badge={researchCount > 0 ? researchCount : 0}
                       badgeColor="rgba(188,140,255,0.15)"
                       active={activeTabId != null && activeTabId.startsWith('research_lab')}
-                      onClick={() => openTab({ name: '🔬 Pipelines Lab' }, 'research_lab')} 
+                      onClick={() => openTab({ name: 'Pipelines' }, 'research_lab')} 
                     />
                   )}
 
@@ -611,14 +594,14 @@ export default function Sidebar({
                       badgeSecondary={taskDone > 0 ? taskDone : undefined}
                       badgeSecondaryColor="rgba(63,185,80,0.15)"
                       active={activeTabId != null && activeTabId.startsWith('roadmap')}
-                      onClick={() => openTab({ name: '📅 Pianificazione & Audit' }, 'roadmap')} 
+                      onClick={() => openTab({ name: 'Pianificazione & Task' }, 'roadmap')} 
                     />
                   )}
 
                   {isKnowledgeInstalled && (
                     <SidebarItem 
                       icon={PieChart} 
-                      label="Argomenti & Memoria" 
+                      label="Argomenti" 
                       badge={localTopicsCount > 0 || topicsCount > 0 ? Math.max(localTopicsCount, topicsCount) : 0}
                       badgeColor="rgba(0,210,255,0.15)"
                       active={activeTabId != null && activeTabId.startsWith('knowledge')}
@@ -662,33 +645,33 @@ export default function Sidebar({
                   {isDevInstalled && (
                     <SidebarItem
                       icon={Terminal}
-                      label="Developer Studio"
+                      label="Developer Sigma"
                       badge="ADMIN IDE"
                       badgeColor="rgba(0,242,254,0.18)"
                       active={activeTabId != null && (activeTabId.startsWith('developer_studio') || activeTabId.startsWith('developer_lab'))}
-                      onClick={() => openTab({ name: '💻 Developer Studio' }, 'developer_studio')}
+                      onClick={() => openTab({ name: 'Developer Sigma' }, 'developer_studio')}
                     />
                   )}
 
                   {isHardwareInstalled && (
                     <SidebarItem 
                       icon={Zap} 
-                      label="Hardware & GPU" 
+                      label="Monitor Hardware" 
                       badge="VRAM"
                       badgeColor="rgba(0,242,254,0.15)"
                       active={activeTabId != null && activeTabId.startsWith('hardware_lab')}
-                      onClick={() => openTab({ name: '⚡ Hardware' }, 'hardware_lab')} 
+                      onClick={() => openTab({ name: 'Monitor Hardware' }, 'hardware_lab')} 
                     />
                   )}
 
                   {isNetworkInstalled && (
                     <SidebarItem 
                       icon={Globe} 
-                      label="Network Lab" 
+                      label="AI Web Browser" 
                       badge="NET"
                       badgeColor="rgba(63,185,80,0.15)"
                       active={activeTabId != null && activeTabId.startsWith('network_lab')}
-                      onClick={() => openTab({ name: '🌐 Network Lab' }, 'network_lab')} 
+                      onClick={() => openTab({ name: 'AI Web Browser' }, 'network_lab')} 
                     />
                   )}
 
@@ -699,7 +682,7 @@ export default function Sidebar({
                       badge="P2P"
                       badgeColor="rgba(88,101,242,0.15)"
                       active={activeTabId != null && activeTabId.startsWith('sigma_network')}
-                      onClick={() => openTab({ name: '🔗 Sigma Network' }, 'sigma_network')}
+                      onClick={() => openTab({ name: 'Sigma Network' }, 'sigma_network')}
                     />
                   )}
                 </div>

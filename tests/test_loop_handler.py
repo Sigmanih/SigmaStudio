@@ -1,6 +1,6 @@
 # ==============================================================================
 # tests/test_loop_handler.py — Test Suite for Autonomous Task-Driven Loop
-# Sigma Studio v8.2 — Test Coverage Expansion
+# Sigma Studio v0.8.2 — Test Coverage Expansion
 # ==============================================================================
 """Unit tests for task-driven autonomous loop: context extraction, tasks state,
 and robust JSON extractor.

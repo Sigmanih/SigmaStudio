@@ -593,7 +593,7 @@ export const SKILLS_CATALOG = [
     icon: DownloadCloud,
     color: '#ffb86c',
     tabType: 'model_hub',
-    version: 'v8.2.0',
+    version: 'v0.8.2',
     size: 'Kernel',
     gitUrl: 'https://huggingface.co/models',
     image: '/images/hardware_cluster_lab.jpg',
@@ -878,7 +878,7 @@ function SkillSlideCard({
             </button>
           ) : (
             <button
-              onClick={() => openTab({ name: '📦 Hub Skills & Estensioni' }, 'marketplace')}
+              onClick={() => openTab({ name: 'Skills' }, 'marketplace')}
               style={{
                 padding: '8px 18px',
                 borderRadius: '10px',
@@ -898,7 +898,7 @@ function SkillSlideCard({
               }}
             >
               <Download size={15} />
-              Installa dall'Hub
+              Installa dalle Skills
             </button>
           )}
         </div>
@@ -920,11 +920,11 @@ function SkillSlideCard({
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.78rem', color: isLight ? '#9a3412' : '#00d2ff', fontWeight: 700 }}>
           <Sparkles size={15} style={{ flexShrink: 0 }} />
           <span>
-            <strong>Skills 100% Gratuite & Modulari:</strong> Espandi Sigma Studio aggiungendo nuove funzionalità da GitHub con un solo click dall'<strong style={{ color: isLight ? '#ea580c' : '#ffffff' }}>Hub Skills & Estensioni</strong> senza appesantire il sistema.
+            <strong>Skills 100% Gratuite & Modulari:</strong> Espandi Sigma Studio aggiungendo nuove funzionalità da GitHub con un solo click dalla scheda <strong style={{ color: isLight ? '#ea580c' : '#ffffff' }}>Skills</strong> senza appesantire il sistema.
           </span>
         </div>
         <button
-          onClick={() => openTab({ name: '📦 Hub Skills & Estensioni' }, 'marketplace')}
+          onClick={() => openTab({ name: 'Skills' }, 'marketplace')}
           style={{
             background: 'none',
             border: 'none',
@@ -1365,7 +1365,7 @@ export default function SkillsShowcaseSlider({ openTab }) {
         {/* Pulsante rapido verso l'Hub Skills */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
           <button
-            onClick={() => openTab({ name: '📦 Hub Skills & Estensioni' }, 'marketplace')}
+            onClick={() => openTab({ name: 'Skills' }, 'marketplace')}
             style={{
               padding: '9px 18px',
               borderRadius: '12px',

@@ -79,7 +79,7 @@ export default function WelcomeDashboard({ modules, openTab }) {
                   color: isLight ? '#c2410c' : '#00d2ff',
                   border: isLight ? '1px solid rgba(234, 88, 12, 0.3)' : '1px solid rgba(0, 210, 255, 0.35)'
                 }}>
-                  Σ v8.2 KERNEL
+                  Σ v0.8.2 KERNEL
                 </span>
               </div>
               <h1 style={{
@@ -105,7 +105,7 @@ export default function WelcomeDashboard({ modules, openTab }) {
           {/* Azioni Rapide nell'Header */}
           <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', alignItems: 'center' }}>
             <button
-              onClick={() => openTab({ name: 'AI Chat Workspace' }, 'chat')}
+              onClick={() => openTab({ name: 'Chat' }, 'chat')}
               style={{
                 padding: '9px 18px',
                 borderRadius: '10px',
@@ -121,11 +121,11 @@ export default function WelcomeDashboard({ modules, openTab }) {
                 gap: '8px'
               }}
             >
-              💬 Avvia Chat AI
+              💬 Chat
             </button>
 
             <button
-              onClick={() => openTab({ name: '⚡ Modelli Hub' }, 'model_hub')}
+              onClick={() => openTab({ name: 'Modelli' }, 'model_hub')}
               style={{
                 padding: '9px 15px',
                 borderRadius: '10px',
@@ -140,11 +140,11 @@ export default function WelcomeDashboard({ modules, openTab }) {
                 gap: '6px'
               }}
             >
-              ⚡ Modelli Hub
+              ⚡ Modelli
             </button>
 
             <button
-              onClick={() => openTab({ name: '📦 Hub Skills & Estensioni' }, 'marketplace')}
+              onClick={() => openTab({ name: 'Skills' }, 'marketplace')}
               style={{
                 padding: '9px 15px',
                 borderRadius: '10px',
@@ -277,9 +277,9 @@ export default function WelcomeDashboard({ modules, openTab }) {
                 Scarica qualsiasi modello open-source (GGUF, Safetensors) da Hugging Face ed eseguilo in locale con <strong>gestione automatica della VRAM/RAM</strong> per massime prestazioni sul tuo hardware.
               </p>
               <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.72rem', color: '#00d2ff', fontWeight: 700, marginTop: 'auto', cursor: 'pointer' }}
-                onClick={() => openTab({ name: '⚡ Modelli Hub' }, 'model_hub')}
+                onClick={() => openTab({ name: 'Modelli' }, 'model_hub')}
               >
-                <span>Gestisci modelli in Modelli Hub</span> <ArrowRight size={12} />
+                <span>Gestisci modelli in Modelli</span> <ArrowRight size={12} />
               </div>
             </div>
 
@@ -309,7 +309,7 @@ export default function WelcomeDashboard({ modules, openTab }) {
                 Trasforma all'istante l'assistente in un esperto di codice, ingegneria, medicina o ricerca: i manifesti applicano <strong>regole etiche e direttive disciplinari</strong> senza dover riaddestrare il modello.
               </p>
               <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.72rem', color: '#bc8cff', fontWeight: 700, marginTop: 'auto', cursor: 'pointer' }}
-                onClick={() => openTab({ name: '📜 Manifesti Hub' }, 'whitepapers_lib')}
+                onClick={() => openTab({ name: 'Manifesti' }, 'whitepapers_lib')}
               >
                 <span>Esplora Manifesti e Ruoli</span> <ArrowRight size={12} />
               </div>
@@ -366,16 +366,16 @@ export default function WelcomeDashboard({ modules, openTab }) {
                   <Layers size={18} color="#3fb950" />
                 </div>
                 <h3 style={{ margin: 0, fontSize: '0.92rem', fontWeight: 800, color: titleColor }}>
-                  4. Hub Skills & Estensioni da GitHub
+                  4. Skills ed Estensioni Modulari
                 </h3>
               </div>
               <p style={{ margin: 0, fontSize: '0.78rem', color: subtitleColor, lineHeight: 1.5 }}>
                 Scarica e attiva con un click nuovi moduli ed estensioni (Creative Lab 3D, Audio Studio, Training Lab, Hardware Monitor) mantenendo il <strong>kernel sempre pulito e leggero</strong>.
               </p>
               <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.72rem', color: '#3fb950', fontWeight: 700, marginTop: 'auto', cursor: 'pointer' }}
-                onClick={() => openTab({ name: '📦 Hub Skills & Estensioni' }, 'marketplace')}
+                onClick={() => openTab({ name: 'Skills' }, 'marketplace')}
               >
-                <span>Apri Hub Skills & Moduli</span> <ArrowRight size={12} />
+                <span>Apri Skills & Moduli</span> <ArrowRight size={12} />
               </div>
             </div>
           </div>
@@ -399,14 +399,14 @@ export default function WelcomeDashboard({ modules, openTab }) {
                   Pronto per iniziare?
                 </div>
                 <div style={{ fontSize: '0.75rem', color: subtitleColor }}>
-                  Apri la Chat per dialogare con l'assistente oppure visita il Modelli Hub per scaricare il tuo primo LLM locale.
+                  Apri la Chat per dialogare con l'assistente oppure visita la scheda Modelli per scaricare il tuo primo LLM locale.
                 </div>
               </div>
             </div>
 
             <div style={{ display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap' }}>
               <button
-                onClick={() => openTab({ name: 'AI Chat Workspace' }, 'chat')}
+                onClick={() => openTab({ name: 'Chat' }, 'chat')}
                 style={{
                   padding: '7px 14px', borderRadius: '8px',
                   background: isLight ? '#ea580c' : '#00d2ff',
@@ -415,10 +415,10 @@ export default function WelcomeDashboard({ modules, openTab }) {
                   display: 'flex', alignItems: 'center', gap: '6px'
                 }}
               >
-                💬 Apri Chat AI
+                💬 Chat
               </button>
               <button
-                onClick={() => openTab({ name: '⚡ Modelli Hub' }, 'model_hub')}
+                onClick={() => openTab({ name: 'Modelli' }, 'model_hub')}
                 style={{
                   padding: '7px 14px', borderRadius: '8px',
                   background: isLight ? '#ffffff' : 'rgba(255,255,255,0.08)',
@@ -428,7 +428,7 @@ export default function WelcomeDashboard({ modules, openTab }) {
                   display: 'flex', alignItems: 'center', gap: '6px'
                 }}
               >
-                ⚡ Modelli Hub
+                ⚡ Modelli
               </button>
             </div>
           </div>
@@ -491,7 +491,7 @@ export default function WelcomeDashboard({ modules, openTab }) {
 
           <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
             <span style={{ color: '#3fb950' }}>●</span>
-            <span>Sigma Studio v8.2 • Pronto e operativo</span>
+            <span>Sigma Studio v0.8.2 • Pronto e operativo</span>
           </div>
         </div>
 

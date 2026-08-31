@@ -198,7 +198,7 @@ export default function ModuleNotInstalled({ tabType, openTab }) {
 
         {/* Secondary Hub Button */}
         <button
-          onClick={() => openTab && openTab({ name: '📦 Hub Skills & Estensioni' }, 'marketplace')}
+          onClick={() => openTab && openTab({ name: 'Skills' }, 'marketplace')}
           style={{
             display: 'flex',
             alignItems: 'center',

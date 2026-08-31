@@ -41,7 +41,7 @@ export default function AccountTab({ openTab }) {
       window.dispatchEvent(new CustomEvent('sigma_open_hf_token_settings'));
     } catch { /* the hub falls back to its default tab */ }
     if (openTab) {
-      openTab({ name: '\u26a1 Modelli Hub' }, 'model_hub');
+      openTab({ name: 'Modelli' }, 'model_hub');
     }
   };
 

@@ -108,7 +108,7 @@ export default function MusicFloatingWidget({ onOpenTab }) {
         <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
           {onOpenTab && (
             <button
-              onClick={() => onOpenTab({ name: '📻 Hi-Fi & Radio FM' }, 'music')}
+              onClick={() => onOpenTab({ name: 'Musica' }, 'music')}
               title="Apri Tab Radio & Musica Completa"
               style={{
                 background: 'transparent',

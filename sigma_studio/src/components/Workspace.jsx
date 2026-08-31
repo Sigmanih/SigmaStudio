@@ -377,14 +377,14 @@ export default function Workspace({
   return (
     <main className="workspace">
       <div className="tab-bar">
-        {/* Bacheca tab — always visible */}
+        {/* Home tab — always visible */}
         <div
           className={`tab ${activeTabId === null ? 'active' : ''}`}
           onClick={() => setActiveTabId(null)}
           style={{ cursor: 'pointer' }}
         >
           <Home size={16} />
-          <span>Bacheca</span>
+          <span>Home</span>
         </div>
         {openTabs.map(tab => (
           <div key={tab.id} className={`tab ${activeTabId === tab.id ? 'active' : ''}`} onClick={() => setActiveTabId(tab.id)}>
