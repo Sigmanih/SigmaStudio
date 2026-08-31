@@ -38,6 +38,7 @@ const TAB_TO_FOLDER = {
   model_hub:       'sigma_model_hub',
   research_lab:    'sigma_research_lab',
   developer_lab:   'sigma_developer_lab',
+  developer_studio: 'sigma_developer_lab',
   network_lab:     'sigma_network_lab',
 
   // Knowledge & MCP

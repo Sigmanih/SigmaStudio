@@ -1,6 +1,6 @@
 # 🧬 Σ-SIGMA Studio — Architettura Tecnica & Specifica di Sistema
 
-**Versione**: 8.2 — Architettura Micro-Kernel & Catalogo Skills Unificato
+**Versione**: 8.3 — Architettura Micro-Kernel & Developer Studio Modulare
 **Stato**: Sistema eseguibile reale. Ogni numero in questo documento è stato misurato sul codice in esecuzione, non dedotto leggendolo.
 **Suite Test**: 603 test del Kernel (100% verdi, verificati su Pytest).
 **Stack**: Python 3.10+ (FastAPI / Uvicorn), React 19, Vite 8, PyTorch, Unsloth, HuggingFace, KaTeX, D3.js
@@ -12,7 +12,7 @@
 
 1. **Il codice eseguibile è l'autorità.** La documentazione insegue il codice, mai il contrario. Dove questo documento riporta un numero, quel numero è stato misurato.
 
-2. **Il kernel non nomina mai un modulo.** Il kernel espone *servizi* — dove stanno i file, che hardware c'è sotto, come si apre uno stream, come si carica un modello. Un modulo dichiara ciò da cui dipende. Se una funzionalità ha senso solo per un dominio (allenare, valutare, generare audio) è un modulo, anche quando il suo codice vive ancora dentro `core/`.
+2. **Il kernel non nomina mai un modulo.** Il kernel espone *servizi* — dove stanno i file, che hardware c'è sotto, come si apre uno stream, come si carica un modello. Un modulo dichiara ciò da cui dipende. Se una funzionalità ha senso solo per un dominio (allenare, valutare, generare audio, sviluppo IDE avanzato) è un modulo opzionale installabile.
 
 3. **Un percorso si chiede, non si ricostruisce.** Tutte le radici passano da `core/paths.py`. Nessun file risale `__file__` per proprio conto e nessuno apre un percorso relativo alla directory di lancio: sono i due modi in cui questo sistema ha già perso dei dati (§ 4.2).
 
@@ -41,11 +41,11 @@ graph TD
         Chat["chat/ · prompt, storia, parser risposte"]
         Pipeline["pipeline/ · swarm DAG, self-healing"]
         MCP["mcp/ · hub, governance, server di inferenza"]
-        Dev["developer_studio/ · agente admin, filesystem, terminale"]
         Loader["module_loader.py · installa e registra i moduli"]
     end
 
     subgraph Moduli ["MODULI — core/modules/ · opzionali, installabili"]
+        DEV["sigma_developer_lab · Monaco IDE, terminale, task DAG, MCP Git/Lint/Test"]
         TL["sigma_training_lab · job, forgia SLM, benchmark, autopilota"]
         MH["sigma_model_hub · download, inventario, conversione GGUF"]
         HL["sigma_hardware_lab · telemetria GPU e processi"]
@@ -55,6 +55,7 @@ graph TD
 
     Loader -->|"register_routes(app)"| Adapter
     Loader -->|"register_mcp(hub)"| MCP
+    DEV --> Loader
     TL --> Loader
     MH --> Loader
     HL --> Loader

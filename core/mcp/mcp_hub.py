@@ -28,16 +28,7 @@ BUILTIN_SERVERS = [
     InferenceMCPServer,
 ]
 
-# Developer Studio MCP servers — registered lazily to avoid import errors when
-# the developer_studio package has not been initialised yet.
-_DEV_SERVER_CLASSES = []
-try:
-    from core.developer_studio.mcp_tools.git_server import GitMCPServer
-    from core.developer_studio.mcp_tools.lint_server import LintMCPServer
-    from core.developer_studio.mcp_tools.test_server import TestMCPServer
-    _DEV_SERVER_CLASSES = [GitMCPServer, LintMCPServer, TestMCPServer]
-except ImportError:
-    pass  # developer_studio not yet available at import time
+
 
 
 
@@ -83,7 +74,7 @@ class MCPHub:
 
 
     def _initialize_servers(self):
-        for server_cls in BUILTIN_SERVERS + _DEV_SERVER_CLASSES:
+        for server_cls in BUILTIN_SERVERS:
             try:
                 server = server_cls()
             except Exception as exc:

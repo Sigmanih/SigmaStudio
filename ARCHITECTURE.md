@@ -1,6 +1,6 @@
 # Sigma Studio — Architecture Overview
 
-**Version 8.2 — Micro-Kernel & Unified Skills Ecosystem**
+**Version 8.3 — Micro-Kernel & Modular Developer Studio**
 **Verified on**: Windows 11 (x86_64, NVIDIA CUDA) and Raspberry Pi 5 (aarch64, CPU only)
 **Kernel Test Suite**: 603 passed tests (100% green on Pytest).
 
@@ -27,13 +27,14 @@ Behind it sit two layers with one rule between them.
     ┌───────────────────────┴────────────────────────┐
     │  KERNEL — core/                                │
     │  paths · engine · chat · pipeline · mcp ·      │
-    │  developer_studio · module_loader              │
+    │  module_loader                                 │
     └───────────────────────┬────────────────────────┘
                             ▲   register_routes() / register_mcp()
     ┌───────────────────────┴────────────────────────┐
     │  MODULES — core/modules/  (optional)           │
-    │  training_lab · model_hub · hardware_lab ·     │
-    │  knowledge · audio_studio · domotica · network │
+    │  developer_lab · training_lab · model_hub ·    │
+    │  hardware_lab · knowledge · audio_studio ·     │
+    │  domotica · network_lab                        │
     └────────────────────────────────────────────────┘
 ```
 

@@ -412,16 +412,6 @@ export default function Sidebar({
           />
 
           <SidebarItem 
-            icon={Terminal} 
-            label="Developer Studio" 
-            isKernel={true}
-            badge="ADMIN IDE"
-            badgeColor="rgba(234,179,8,0.25)"
-            active={activeTabId != null && activeTabId.startsWith('developer_studio')}
-            onClick={() => openTab({ name: '💻 Developer Studio' }, 'developer_studio')} 
-          />
-
-          <SidebarItem 
             icon={FileText} 
             label="Manifesti Hub" 
             isKernel={true}
@@ -676,11 +666,11 @@ export default function Sidebar({
                   {isDevInstalled && (
                     <SidebarItem
                       icon={Terminal}
-                      label="Developer Lab"
-                      badge="DOCKER"
-                      badgeColor="rgba(0,210,255,0.15)"
-                      active={activeTabId != null && activeTabId.startsWith('developer_lab')}
-                      onClick={() => openTab({ name: '💻 Developer Lab' }, 'developer_lab')}
+                      label="Developer Studio"
+                      badge="ADMIN IDE"
+                      badgeColor="rgba(0,242,254,0.18)"
+                      active={activeTabId != null && (activeTabId.startsWith('developer_studio') || activeTabId.startsWith('developer_lab'))}
+                      onClick={() => openTab({ name: '💻 Developer Studio' }, 'developer_studio')}
                     />
                   )}
 
