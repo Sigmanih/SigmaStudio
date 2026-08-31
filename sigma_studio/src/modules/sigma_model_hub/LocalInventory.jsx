@@ -3,7 +3,8 @@ import {
   HardDrive, Zap, RefreshCw, Trash2, Power, Pencil,
   Activity, Upload, Download, Search, ChevronDown, ChevronUp, Sliders, Layers, Sparkles,
   Trophy, Award, Gauge, Cpu, ExternalLink,
-  RotateCcw, Code, Brain, Eye, Tag, User, Dna, Boxes, CheckCircle2, AlertTriangle, Package
+  RotateCcw, Code, Brain, Eye, Tag, User, Dna, Boxes, CheckCircle2, AlertTriangle, Package,
+  X, Check, ChevronRight, BarChart2, CornerDownRight, Minimize2, Maximize2
 } from 'lucide-react';
 import HfPublishModal from './HfPublishModal.jsx';
 import InferenceTestModal from './InferenceTestModal.jsx';
@@ -18,72 +19,72 @@ const FAMILY_CONFIG = {
     brand: 'Sigmanih Ecosystem',
     icon: Sparkles,
     color: '#ffb86c',
-    gradient: 'linear-gradient(135deg, rgba(255, 184, 108, 0.22) 0%, rgba(0, 210, 255, 0.16) 100%)',
-    borderColor: 'rgba(255, 184, 108, 0.45)'
+    gradient: 'linear-gradient(135deg, rgba(255, 184, 108, 0.20) 0%, rgba(0, 210, 255, 0.14) 100%)',
+    borderColor: 'rgba(255, 184, 108, 0.40)'
   },
   gemma: {
     title: 'Famiglia Gemma',
     brand: 'Google DeepMind',
     icon: Dna,
     color: '#00d2ff',
-    gradient: 'linear-gradient(135deg, rgba(0, 210, 255, 0.18) 0%, rgba(59, 130, 246, 0.12) 100%)',
-    borderColor: 'rgba(0, 210, 255, 0.35)'
+    gradient: 'linear-gradient(135deg, rgba(0, 210, 255, 0.16) 0%, rgba(59, 130, 246, 0.10) 100%)',
+    borderColor: 'rgba(0, 210, 255, 0.30)'
   },
   qwen: {
     title: 'Famiglia Qwen',
     brand: 'Alibaba Cloud',
     icon: Dna,
     color: '#a855f7',
-    gradient: 'linear-gradient(135deg, rgba(168, 85, 247, 0.18) 0%, rgba(192, 132, 252, 0.12) 100%)',
-    borderColor: 'rgba(168, 85, 247, 0.35)'
+    gradient: 'linear-gradient(135deg, rgba(168, 85, 247, 0.16) 0%, rgba(192, 132, 252, 0.10) 100%)',
+    borderColor: 'rgba(168, 85, 247, 0.30)'
   },
   llama: {
     title: 'Famiglia Llama',
     brand: 'Meta AI',
     icon: Dna,
     color: '#38bdf8',
-    gradient: 'linear-gradient(135deg, rgba(56, 189, 248, 0.18) 0%, rgba(99, 102, 241, 0.12) 100%)',
-    borderColor: 'rgba(56, 189, 248, 0.35)'
+    gradient: 'linear-gradient(135deg, rgba(56, 189, 248, 0.16) 0%, rgba(99, 102, 241, 0.10) 100%)',
+    borderColor: 'rgba(56, 189, 248, 0.30)'
   },
   deepseek: {
     title: 'Famiglia DeepSeek',
     brand: 'DeepSeek AI',
     icon: Brain,
     color: '#f43f5e',
-    gradient: 'linear-gradient(135deg, rgba(244, 63, 94, 0.18) 0%, rgba(239, 68, 68, 0.12) 100%)',
-    borderColor: 'rgba(244, 63, 94, 0.35)'
+    gradient: 'linear-gradient(135deg, rgba(244, 63, 94, 0.16) 0%, rgba(239, 68, 68, 0.10) 100%)',
+    borderColor: 'rgba(244, 63, 94, 0.30)'
   },
   mistral: {
     title: 'Famiglia Mistral & Mixtral',
     brand: 'Mistral AI',
     icon: Dna,
     color: '#10b981',
-    gradient: 'linear-gradient(135deg, rgba(16, 185, 129, 0.18) 0%, rgba(5, 150, 105, 0.12) 100%)',
-    borderColor: 'rgba(16, 185, 129, 0.35)'
+    gradient: 'linear-gradient(135deg, rgba(16, 185, 129, 0.16) 0%, rgba(5, 150, 105, 0.10) 100%)',
+    borderColor: 'rgba(16, 185, 129, 0.30)'
   },
   phi: {
     title: 'Famiglia Phi',
     brand: 'Microsoft Research',
     icon: Dna,
     color: '#fb923c',
-    gradient: 'linear-gradient(135deg, rgba(251, 146, 60, 0.18) 0%, rgba(245, 158, 11, 0.12) 100%)',
-    borderColor: 'rgba(251, 146, 60, 0.35)'
+    gradient: 'linear-gradient(135deg, rgba(251, 146, 60, 0.16) 0%, rgba(245, 158, 11, 0.10) 100%)',
+    borderColor: 'rgba(251, 146, 60, 0.30)'
   },
   glm: {
     title: 'Famiglia GLM & ChatGLM',
     brand: 'Zhipu AI',
     icon: Dna,
     color: '#06b6d4',
-    gradient: 'linear-gradient(135deg, rgba(6, 182, 212, 0.18) 0%, rgba(14, 165, 233, 0.12) 100%)',
-    borderColor: 'rgba(6, 182, 212, 0.35)'
+    gradient: 'linear-gradient(135deg, rgba(6, 182, 212, 0.16) 0%, rgba(14, 165, 233, 0.10) 100%)',
+    borderColor: 'rgba(6, 182, 212, 0.30)'
   },
   altro: {
     title: 'Altre Famiglie & Modelli',
     brand: 'Open Source Community',
     icon: Boxes,
     color: '#94a3b8',
-    gradient: 'linear-gradient(135deg, rgba(148, 163, 184, 0.14) 0%, rgba(100, 116, 139, 0.08) 100%)',
-    borderColor: 'rgba(148, 163, 184, 0.30)'
+    gradient: 'linear-gradient(135deg, rgba(148, 163, 184, 0.12) 0%, rgba(100, 116, 139, 0.06) 100%)',
+    borderColor: 'rgba(148, 163, 184, 0.25)'
   }
 };
 
@@ -106,13 +107,16 @@ export default function LocalInventory({
 
   // Search, Filters & Sorting state
   const [searchQuery, setSearchQuery] = useState('');
-  const [familyFilter, setFamilyFilter] = useState('all');       // 'all' | 'Gemma' | 'Qwen' | 'Llama' | 'DeepSeek' | 'Mistral' | 'Phi' | 'GLM' | 'Altro'
+  const [familyFilter, setFamilyFilter] = useState('all');       // 'all' | 'sigmanih' | 'gemma' | 'qwen' | 'llama' | 'deepseek' | 'mistral' | 'phi' | 'glm' | 'altro'
   const [categoryFilter, setCategoryFilter] = useState('all');   // 'all' | 'sigmanih' | 'reasoning' | 'code' | 'vision' | 'moe' | 'llm' | 'gguf' | 'safetensors' | 'benchmarked' | 'published'
   const [publisherFilter, setPublisherFilter] = useState('all'); // 'all' | 'sigmanih' | 'google' | 'qwen' | 'meta' | 'deepseek' | 'mistralai' | 'microsoft'
   const [sortBy, setSortBy] = useState('recent');                // 'recent' | 'size_desc' | 'size_asc' | 'vram_desc' | 'benchmark' | 'name'
 
-  // Collapsed state for family sections (all expanded by default)
+  // Sector Collapsing: map of familyKey -> bool
   const [collapsedFamilies, setCollapsedFamilies] = useState({});
+
+  // Expanded Details per model card: set of model identifiers
+  const [expandedCards, setExpandedCards] = useState(() => new Set());
 
   const [renamingPath, setRenamingPath] = useState(null);
   const [updatingCard, setUpdatingCard] = useState(null);
@@ -485,37 +489,27 @@ export default function LocalInventory({
   const safetensorsModels = models.filter(m => getModelInfo(m).isSafetensors);
   const benchmarkedModels = models.filter(m => getModelInfo(m).hasBenchmark);
   const publishedModels = models.filter(m => getModelInfo(m).isPublished);
-  const reasoningModels = models.filter(m => getModelInfo(m).category === 'reasoning');
-  const codeModels = models.filter(m => getModelInfo(m).category === 'code');
-  const visionModels = models.filter(m => getModelInfo(m).category === 'vision');
 
   const sigmanihCount = sigmanihModels.length;
   const ggufCount = ggufModels.length;
   const safetensorsCount = safetensorsModels.length;
   const benchmarkedCount = benchmarkedModels.length;
-  const publishedCount = publishedModels.length;
-  const reasoningCount = reasoningModels.length;
-  const codeCount = codeModels.length;
-  const visionCount = visionModels.length;
 
   const ggufStorageGb = ggufModels.reduce((sum, m) => sum + (parseFloat(m.size_gb) || 0), 0);
   const safetensorsStorageGb = safetensorsModels.reduce((sum, m) => sum + (parseFloat(m.size_gb) || 0), 0);
   const totalStorageGb = (ggufStorageGb + safetensorsStorageGb).toFixed(1);
 
-  const ggufPct = totalStorageGb > 0 ? Math.round((ggufStorageGb / totalStorageGb) * 100) : 0;
-  const safePct = totalStorageGb > 0 ? Math.round((safetensorsStorageGb / totalStorageGb) * 100) : 0;
-
-  // Lista dinamica delle famiglie e publisher presenti
-  const availableFamilies = Array.from(new Set(models.map(m => getModelInfo(m).family).filter(Boolean))).sort();
-  const availablePublishers = Array.from(new Set(models.map(m => getModelInfo(m).publisher).filter(Boolean))).sort();
-
   // Multi-Filter & Search models
   const filteredModels = models.filter(m => {
     const info = getModelInfo(m);
 
-    // 1. Filtro Famiglia
-    if (familyFilter !== 'all' && info.family.toLowerCase() !== familyFilter.toLowerCase()) {
-      return false;
+    // 1. Filtro Settore / Famiglia
+    if (familyFilter !== 'all') {
+      if (familyFilter === 'sigmanih' && !info.isSigmanih) return false;
+      if (familyFilter !== 'sigmanih') {
+        if (info.isSigmanih) return false;
+        if (info.familyKey !== familyFilter) return false;
+      }
     }
 
     // 2. Filtro Publisher / Autore
@@ -591,7 +585,7 @@ export default function LocalInventory({
     return acc;
   }, {});
 
-  // Aggiungi eventuali famiglie non predefinite sotto 'altro' o come gruppi separati
+  // Aggiungi eventuali famiglie non predefinite sotto 'altro'
   const knownKeys = new Set(familyOrder);
   sortedModels.forEach(m => {
     const info = getModelInfo(m);
@@ -603,6 +597,7 @@ export default function LocalInventory({
     }
   });
 
+  // Toggle Sector Accordion
   const toggleFamilyCollapse = (famKey) => {
     setCollapsedFamilies(prev => ({
       ...prev,
@@ -610,242 +605,256 @@ export default function LocalInventory({
     }));
   };
 
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '18px' }}>
+  const collapseAllSectors = () => {
+    const allCollapsed = {};
+    Object.keys(groupedByFamily).forEach(k => { allCollapsed[k] = true; });
+    setCollapsedFamilies(allCollapsed);
+  };
 
-      {/* 1. TOP STORAGE & ENGINE DASHBOARD */}
+  const expandAllSectors = () => {
+    setCollapsedFamilies({});
+  };
+
+  // Toggle Model Card Details
+  const toggleCardDetails = (modelKey) => {
+    setExpandedCards(prev => {
+      const next = new Set(prev);
+      if (next.has(modelKey)) next.delete(modelKey);
+      else next.add(modelKey);
+      return next;
+    });
+  };
+
+  // Count models per family
+  const getFamilyCount = (key) => {
+    return models.filter(m => {
+      const info = getModelInfo(m);
+      if (key === 'sigmanih') return info.isSigmanih;
+      if (info.isSigmanih) return false;
+      return info.familyKey === key;
+    }).length;
+  };
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+
+      {/* 1. COMPACT STORAGE & TELEMETRY STRIP */}
       <div style={{
-        padding: '18px 22px', borderRadius: '18px',
+        padding: '12px 18px', borderRadius: '14px',
         background: isLight
-          ? 'linear-gradient(135deg, #ffffff 0%, #faf5ec 100%)'
-          : 'linear-gradient(135deg, rgba(14, 18, 28, 0.95) 0%, rgba(24, 30, 48, 0.85) 100%)',
-        border: isLight ? '1.5px solid rgba(190, 160, 110, 0.35)' : '1.5px solid rgba(0, 210, 255, 0.20)',
-        boxShadow: isLight ? '0 4px 20px rgba(0,0,0,0.05)' : '0 8px 32px rgba(0,0,0,0.45)',
-        display: 'flex', flexDirection: 'column', gap: '14px',
-        backdropFilter: 'blur(16px)'
+          ? 'linear-gradient(135deg, #ffffff 0%, #faf6ee 100%)'
+          : 'linear-gradient(135deg, rgba(14, 18, 28, 0.95) 0%, rgba(20, 26, 42, 0.85) 100%)',
+        border: isLight ? '1px solid rgba(190, 160, 110, 0.35)' : '1px solid rgba(0, 210, 255, 0.18)',
+        boxShadow: isLight ? '0 2px 10px rgba(0,0,0,0.04)' : '0 4px 18px rgba(0,0,0,0.35)',
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '12px'
       }}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '12px' }}>
-          <div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <div style={{
-                width: '36px', height: '36px', borderRadius: '10px',
-                background: 'linear-gradient(135deg, rgba(0, 210, 255, 0.25), rgba(188, 140, 255, 0.25))',
-                display: 'flex', alignItems: 'center', justifyContent: 'center'
-              }}>
-                <HardDrive size={19} color="#00d2ff" />
-              </div>
-              <h2 style={{ margin: 0, fontSize: '1.24rem', fontWeight: 900, color: textPrimary, letterSpacing: '-0.02em' }}>
-                Modelli Locali & Hub Storage
-              </h2>
+        {/* Left: Title + Key Metrics Pill */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <div style={{
+              width: '30px', height: '30px', borderRadius: '8px',
+              background: 'linear-gradient(135deg, rgba(0, 210, 255, 0.2), rgba(188, 140, 255, 0.2))',
+              display: 'flex', alignItems: 'center', justifyContent: 'center'
+            }}>
+              <HardDrive size={16} color="#00d2ff" />
             </div>
-            <div style={{ fontSize: '0.74rem', color: textMuted, marginTop: '3px' }}>
-              Gestisci i modelli presenti su disco raggruppati per famiglia, prova l'inferenza con telemetria tok/s e sincronizza con Hugging Face.
-            </div>
+            <h3 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 900, color: textPrimary, letterSpacing: '-0.02em' }}>
+              Modelli Locali & Storage
+            </h3>
           </div>
 
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+            <span style={{
+              fontSize: '0.70rem', fontWeight: 800, padding: '3px 8px', borderRadius: '6px',
+              background: subBg, border: subBorder, color: textPrimary
+            }}>
+              📦 <b>{totalModelsCount}</b> Modelli
+            </span>
+            <span style={{
+              fontSize: '0.70rem', fontWeight: 800, padding: '3px 8px', borderRadius: '6px',
+              background: 'rgba(255, 184, 108, 0.12)', border: '1px solid rgba(255, 184, 108, 0.3)', color: '#ffb86c'
+            }}>
+              ✨ <b>{sigmanihCount}</b> Sigmanih
+            </span>
+            <span style={{
+              fontSize: '0.70rem', fontWeight: 800, padding: '3px 8px', borderRadius: '6px',
+              background: 'rgba(16, 185, 129, 0.10)', border: '1px solid rgba(16, 185, 129, 0.25)', color: '#10b981'
+            }}>
+              ⚡ <b>{ggufCount}</b> GGUF
+            </span>
+            <span style={{
+              fontSize: '0.70rem', fontWeight: 800, padding: '3px 8px', borderRadius: '6px',
+              background: 'rgba(0, 210, 255, 0.10)', border: '1px solid rgba(0, 210, 255, 0.25)', color: '#00d2ff'
+            }}>
+              📦 <b>{safetensorsCount}</b> Safe
+            </span>
+            <span style={{
+              fontSize: '0.70rem', fontWeight: 800, padding: '3px 8px', borderRadius: '6px',
+              background: 'rgba(188, 140, 255, 0.10)', border: '1px solid rgba(188, 140, 255, 0.25)', color: '#bc8cff'
+            }}>
+              💾 <b>{totalStorageGb} GB</b> Totali
+            </span>
+          </div>
+        </div>
+
+        {/* Right: Quick Global Action Buttons */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+          <button
+            onClick={handleDiscoverRepos}
+            disabled={discovering}
+            title="Cerca sul tuo account Hugging Face i repository corrispondenti"
+            style={{
+              padding: '5px 10px', borderRadius: '7px',
+              border: '1px solid rgba(255,184,108,0.35)', background: 'rgba(255,184,108,0.08)',
+              color: '#ffb86c', fontSize: '0.68rem', fontWeight: 700, cursor: discovering ? 'wait' : 'pointer',
+              display: 'inline-flex', alignItems: 'center', gap: '4px'
+            }}
+          >
+            <ExternalLink size={11} />
+            {discovering ? 'Cerco...' : 'Collega HF'}
+          </button>
+
+          <button
+            onClick={handleUnloadModel}
+            disabled={unloading}
+            title="Scarica il modello attivo da VRAM/RAM"
+            style={{
+              padding: '5px 10px', borderRadius: '7px',
+              border: '1px solid rgba(239, 68, 68, 0.4)', background: 'rgba(239, 68, 68, 0.1)',
+              color: '#ef4444', fontSize: '0.68rem', fontWeight: 800, cursor: 'pointer',
+              display: 'flex', alignItems: 'center', gap: '4px'
+            }}
+          >
+            <Power size={11} /> {unloading ? 'Rilascio...' : 'Libera VRAM'}
+          </button>
+
+          <button
+            onClick={() => {
+              fetchLocalModels();
+              if (onDownloadsChanged) onDownloadsChanged();
+            }}
+            title="Ricarica elenco modelli"
+            style={{
+              padding: '5px 10px', borderRadius: '7px',
+              border: subBorder, background: subBg,
+              color: textPrimary, fontSize: '0.68rem', fontWeight: 700, cursor: 'pointer',
+              display: 'flex', alignItems: 'center', gap: '4px'
+            }}
+          >
+            <RefreshCw size={11} /> Aggiorna
+          </button>
+        </div>
+      </div>
+
+      {/* 2. MAIN 2-COLUMN WORKSPACE: SECTORIZED CATALOG + DOWNLOAD SIDEBAR */}
+      <div style={{ display: 'flex', gap: '14px', alignItems: 'flex-start', position: 'relative' }}>
+
+        {/* LEFT / CENTER COLUMN: SECTORIZED MODELS */}
+        <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: '10px' }}>
+
+          {/* ── SETTORIALIZZAZIONE RAPIDA: SECTOR TABS (FAMIGLIE MODELLI) ── */}
+          <div style={{
+            display: 'flex', alignItems: 'center', gap: '6px', overflowX: 'auto',
+            paddingBottom: '4px', scrollbarWidth: 'none'
+          }}>
             <button
-              onClick={handleDiscoverRepos}
-              disabled={discovering}
-              title="Cerca sul tuo account Hugging Face i repository che corrispondono ai modelli locali e li collega, così da poterli aggiornare"
+              onClick={() => setFamilyFilter('all')}
               style={{
                 padding: '6px 12px', borderRadius: '8px',
-                border: '1px solid rgba(255,184,108,0.35)',
-                background: 'rgba(255,184,108,0.08)', color: '#ffb86c',
-                fontSize: '0.72rem', fontWeight: 700, cursor: discovering ? 'wait' : 'pointer',
-                display: 'inline-flex', alignItems: 'center', gap: '5px'
-              }}
-            >
-              <ExternalLink size={12} />
-              {discovering ? 'Cerco su Hugging Face...' : 'Collega repo HF esistenti'}
-            </button>
-
-            <button
-              onClick={handleUnloadModel}
-              disabled={unloading}
-              title="Scarica il modello attivo da VRAM/RAM e libera le risorse"
-              style={{
-                padding: '6px 13px', borderRadius: '8px',
-                border: '1px solid rgba(239, 68, 68, 0.4)', background: 'rgba(239, 68, 68, 0.1)',
-                color: '#ef4444', fontSize: '0.72rem', fontWeight: 800, cursor: 'pointer',
-                display: 'flex', alignItems: 'center', gap: '6px',
+                border: familyFilter === 'all' ? '1.5px solid #00d2ff' : subBorder,
+                background: familyFilter === 'all' ? 'rgba(0, 210, 255, 0.15)' : cardBg,
+                color: familyFilter === 'all' ? '#00d2ff' : textMuted,
+                fontSize: '0.72rem', fontWeight: 800, cursor: 'pointer', whiteSpace: 'nowrap',
+                display: 'inline-flex', alignItems: 'center', gap: '5px',
+                boxShadow: familyFilter === 'all' ? '0 0 10px rgba(0, 210, 255, 0.25)' : 'none',
                 transition: 'all 0.15s ease'
               }}
             >
-              <Power size={12} /> {unloading ? 'Rilascio...' : 'Rilascia VRAM'}
+              <Boxes size={13} />
+              <span>Tutti i Settori</span>
+              <span style={{ fontSize: '0.62rem', opacity: 0.8 }}>({totalModelsCount})</span>
             </button>
 
-            <button
-              onClick={() => {
-                fetchLocalModels();
-                if (onDownloadsChanged) onDownloadsChanged();
-              }}
-              title="Ricarica elenco modelli e stato"
-              style={{
-                padding: '6px 13px', borderRadius: '8px',
-                border: subBorder, background: subBg,
-                color: textPrimary, fontSize: '0.72rem', fontWeight: 700, cursor: 'pointer',
-                display: 'flex', alignItems: 'center', gap: '5px'
-              }}
-            >
-              <RefreshCw size={12} /> Ricarica
-            </button>
-          </div>
-        </div>
+            {familyOrder.map(fKey => {
+              const conf = FAMILY_CONFIG[fKey];
+              const count = getFamilyCount(fKey);
+              if (count === 0) return null;
+              const Icon = conf.icon;
+              const active = familyFilter === fKey;
+              const isSig = fKey === 'sigmanih';
 
-        {/* Storage Metric Cards Grid */}
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '10px' }}>
-          <div style={{ padding: '10px 14px', borderRadius: '12px', background: subBg, border: subBorder }}>
-            <div style={{ fontSize: '0.64rem', color: textMuted, fontWeight: 700, textTransform: 'uppercase', display: 'flex', alignItems: 'center', gap: '4px' }}>
-              <Cpu size={12} color="#00d2ff" /> MODELLI TOTALI
-            </div>
-            <div style={{ fontSize: '1.15rem', fontWeight: 900, color: textPrimary, marginTop: '2px' }}>
-              {totalModelsCount} <span style={{ fontSize: '0.70rem', color: textMuted, fontWeight: 600 }}>su disco</span>
-            </div>
-          </div>
-
-          <div style={{ padding: '10px 14px', borderRadius: '12px', background: 'rgba(255, 184, 108, 0.08)', border: '1px solid rgba(255, 184, 108, 0.25)' }}>
-            <div style={{ fontSize: '0.64rem', color: '#ffb86c', fontWeight: 800, textTransform: 'uppercase', display: 'flex', alignItems: 'center', gap: '4px' }}>
-              <Sparkles size={12} color="#ffb86c" /> SIGMANIH RELEASES
-            </div>
-            <div style={{ fontSize: '1.15rem', fontWeight: 900, color: '#ffb86c', marginTop: '2px' }}>
-              {sigmanihCount} <span style={{ fontSize: '0.70rem', color: textMuted, fontWeight: 600 }}>modelli</span>
-            </div>
-          </div>
-
-          <div style={{ padding: '10px 14px', borderRadius: '12px', background: subBg, border: subBorder }}>
-            <div style={{ fontSize: '0.64rem', color: textMuted, fontWeight: 700, textTransform: 'uppercase', display: 'flex', alignItems: 'center', gap: '4px' }}>
-              <Layers size={12} color="#10b981" /> FORMATI SU DISCO
-            </div>
-            <div style={{ fontSize: '0.86rem', fontWeight: 800, marginTop: '4px', display: 'flex', alignItems: 'center', gap: '6px' }}>
-              <span style={{ color: '#10b981' }}>⚡ {ggufCount} GGUF</span>
-              <span style={{ color: textMuted }}>•</span>
-              <span style={{ color: '#00d2ff' }}>📦 {safetensorsCount} Safe</span>
-            </div>
-          </div>
-
-          <div style={{ padding: '10px 14px', borderRadius: '12px', background: subBg, border: subBorder }}>
-            <div style={{ fontSize: '0.64rem', color: textMuted, fontWeight: 700, textTransform: 'uppercase', display: 'flex', alignItems: 'center', gap: '4px' }}>
-              <Trophy size={12} color="#ffb86c" /> BENCHMARK
-            </div>
-            <div style={{ fontSize: '1.15rem', fontWeight: 900, color: '#ffb86c', marginTop: '2px' }}>
-              {benchmarkedCount} <span style={{ fontSize: '0.70rem', color: textMuted, fontWeight: 600 }}>valutati</span>
-            </div>
-          </div>
-
-          <div style={{ padding: '10px 14px', borderRadius: '12px', background: subBg, border: subBorder }}>
-            <div style={{ fontSize: '0.64rem', color: textMuted, fontWeight: 700, textTransform: 'uppercase', display: 'flex', alignItems: 'center', gap: '4px' }}>
-              <HardDrive size={12} color="#bc8cff" /> SPAZIO DISCO
-            </div>
-            <div style={{ fontSize: '1.15rem', fontWeight: 900, color: '#bc8cff', marginTop: '2px' }}>
-              {totalStorageGb} <span style={{ fontSize: '0.70rem', color: textMuted, fontWeight: 600 }}>GB</span>
-            </div>
-          </div>
-        </div>
-
-        {/* Visual Storage Distribution Bar */}
-        {totalStorageGb > 0 && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.62rem', color: textMuted, fontWeight: 700 }}>
-              <span style={{ color: '#10b981' }}>⚡ GGUF: {ggufStorageGb.toFixed(1)} GB ({ggufPct}%)</span>
-              <span style={{ color: '#00d2ff' }}>📦 Safetensors: {safetensorsStorageGb.toFixed(1)} GB ({safePct}%)</span>
-            </div>
-            <div style={{ height: '5px', borderRadius: '3px', background: 'rgba(255,255,255,0.06)', overflow: 'hidden', display: 'flex' }}>
-              <div style={{ width: `${ggufPct}%`, height: '100%', background: '#10b981', transition: 'width 0.3s ease' }} />
-              <div style={{ width: `${safePct}%`, height: '100%', background: '#00d2ff', transition: 'width 0.3s ease' }} />
-            </div>
-          </div>
-        )}
-      </div>
-
-      {/* 2. MAIN 2-COLUMN WORKSPACE: MODEL CATALOG + DOWNLOAD LOG SIDEBAR */}
-      <div style={{ display: 'flex', gap: '18px', alignItems: 'flex-start', position: 'relative' }}>
-
-        {/* LEFT / CENTER COLUMN: MODELS CATALOG */}
-        <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: '14px' }}>
-
-          {/* ADVANCED MULTI-FILTER CONTROL BAR */}
-          <div style={{
-            padding: '14px 18px', borderRadius: '16px',
-            background: cardBg, border: cardBorder,
-            display: 'flex', flexDirection: 'column', gap: '12px',
-            backdropFilter: 'blur(12px)', boxShadow: '0 4px 16px rgba(0,0,0,0.15)'
-          }}>
-            {/* Top Row: Search Input + Sorting + Live Counter */}
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '10px' }}>
-              <div style={{
-                display: 'flex', alignItems: 'center', gap: '8px',
-                background: subBg, border: subBorder, borderRadius: '10px',
-                padding: '7px 12px', flex: 1, minWidth: '240px'
-              }}>
-                <Search size={15} color="#00d2ff" />
-                <input
-                  type="text"
-                  placeholder="Cerca per nome, famiglia (Gemma, Qwen...), categoria o repo HF..."
-                  value={searchQuery}
-                  onChange={e => setSearchQuery(e.target.value)}
+              return (
+                <button
+                  key={fKey}
+                  onClick={() => setFamilyFilter(fKey)}
                   style={{
-                    background: 'transparent', border: 'none', outline: 'none',
-                    color: textPrimary, fontSize: '0.80rem', width: '100%'
-                  }}
-                />
-                {searchQuery && (
-                  <button
-                    onClick={() => setSearchQuery('')}
-                    style={{ background: 'none', border: 'none', color: textMuted, cursor: 'pointer', padding: 0 }}
-                  >
-                    <X size={13} />
-                  </button>
-                )}
-              </div>
-
-              {/* Sorting Selector */}
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <span style={{ fontSize: '0.68rem', fontWeight: 700, color: textMuted, display: 'flex', alignItems: 'center', gap: '4px' }}>
-                  <Sliders size={12} /> Ordina:
-                </span>
-                <select
-                  value={sortBy}
-                  onChange={e => setSortBy(e.target.value)}
-                  style={{
-                    padding: '6px 10px', borderRadius: '8px',
-                    background: inputBg, border: subBorder, color: textPrimary,
-                    fontSize: '0.72rem', fontWeight: 700, outline: 'none', cursor: 'pointer'
+                    padding: '6px 12px', borderRadius: '8px',
+                    border: active ? `1.5px solid ${conf.color}` : subBorder,
+                    background: active
+                      ? (isSig ? 'linear-gradient(135deg, rgba(255, 184, 108, 0.25), rgba(0, 210, 255, 0.15))' : `${conf.color}18`)
+                      : cardBg,
+                    color: active ? conf.color : textMuted,
+                    fontSize: '0.72rem', fontWeight: active ? 900 : 700, cursor: 'pointer', whiteSpace: 'nowrap',
+                    display: 'inline-flex', alignItems: 'center', gap: '5px',
+                    boxShadow: active ? `0 0 10px ${conf.color}35` : 'none',
+                    transition: 'all 0.15s ease'
                   }}
                 >
-                  <option value="recent">⏱️ Più Recenti</option>
-                  <option value="size_desc">💾 Più Pesanti (GB ↓)</option>
-                  <option value="size_asc">💾 Più Leggeri (GB ↑)</option>
-                  <option value="vram_desc">⚡ Più VRAM (GB ↓)</option>
-                  <option value="benchmark">🏆 Top Benchmark (%)</option>
-                  <option value="name">🔤 Nome Alfabetico (A-Z)</option>
-                </select>
+                  <Icon size={12} color={active ? conf.color : textMuted} />
+                  <span>{isSig ? 'Sigmanih' : conf.title.replace('Famiglia ', '')}</span>
+                  <span style={{
+                    fontSize: '0.60rem', padding: '1px 5px', borderRadius: '4px',
+                    background: active ? `${conf.color}25` : subBg, color: active ? conf.color : textMuted,
+                    fontWeight: 800
+                  }}>
+                    {count}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
 
-                <div style={{
-                  fontSize: '0.68rem', fontWeight: 800, padding: '4px 9px', borderRadius: '6px',
-                  background: 'rgba(0, 210, 255, 0.10)', border: '1px solid rgba(0, 210, 255, 0.25)',
-                  color: '#00d2ff'
-                }}>
-                  {sortedModels.length} / {totalModelsCount} Modelli
-                </div>
-              </div>
+          {/* ── TOOLBAR DI RICERCA & FILTRI COMPATTI ── */}
+          <div style={{
+            padding: '10px 14px', borderRadius: '12px',
+            background: cardBg, border: cardBorder,
+            display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '8px'
+          }}>
+            {/* Search Input */}
+            <div style={{
+              display: 'flex', alignItems: 'center', gap: '6px',
+              background: subBg, border: subBorder, borderRadius: '8px',
+              padding: '5px 10px', flex: 1, minWidth: '200px'
+            }}>
+              <Search size={13} color="#00d2ff" />
+              <input
+                type="text"
+                placeholder="Cerca modello, tag quantizzazione, publisher o repo..."
+                value={searchQuery}
+                onChange={e => setSearchQuery(e.target.value)}
+                style={{
+                  background: 'transparent', border: 'none', outline: 'none',
+                  color: textPrimary, fontSize: '0.76rem', width: '100%'
+                }}
+              />
+              {searchQuery && (
+                <button
+                  onClick={() => setSearchQuery('')}
+                  style={{ background: 'none', border: 'none', color: textMuted, cursor: 'pointer', padding: 0 }}
+                >
+                  <X size={12} />
+                </button>
+              )}
             </div>
 
-            {/* Middle Row: Quick Category Pills */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
-              <span style={{ fontSize: '0.66rem', fontWeight: 800, color: textMuted, textTransform: 'uppercase', marginRight: '2px', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                <Tag size={11} /> Categoria:
-              </span>
+            {/* Quick Category & Format Filters */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '4px', flexWrap: 'wrap' }}>
               {[
-                { id: 'all', label: `Tutti (${totalModelsCount})`, color: '#00d2ff' },
-                { id: 'sigmanih', label: `✨ Sigmanih (${sigmanihCount})`, color: '#ffb86c', isSpecial: true },
-                { id: 'reasoning', label: `🧠 Reasoning (${reasoningCount})`, color: '#f43f5e' },
-                { id: 'code', label: `💻 Coding (${codeCount})`, color: '#38bdf8' },
-                { id: 'vision', label: `👁️ Vision (${visionCount})`, color: '#a855f7' },
-                { id: 'gguf', label: `⚡ GGUF (${ggufCount})`, color: '#10b981' },
-                { id: 'safetensors', label: `📦 Safetensors (${safetensorsCount})`, color: '#00d2ff' },
-                { id: 'benchmarked', label: `🏆 Valutati (${benchmarkedCount})`, color: '#ffb86c' },
-                { id: 'published', label: `🤗 Pubblicati (${publishedCount})`, color: '#ff79c6' },
+                { id: 'all', label: 'Tutti' },
+                { id: 'gguf', label: '⚡ GGUF' },
+                { id: 'safetensors', label: '📦 Safe' },
+                { id: 'benchmarked', label: '🏆 Valutati' },
+                { id: 'published', label: '🤗 Pubblicati' }
               ].map(f => {
                 const active = categoryFilter === f.id;
                 return (
@@ -853,17 +862,11 @@ export default function LocalInventory({
                     key={f.id}
                     onClick={() => setCategoryFilter(f.id)}
                     style={{
-                      padding: '5px 10px', borderRadius: '8px',
-                      border: active
-                        ? (f.isSpecial ? '1.5px solid #ffb86c' : `1.5px solid ${f.color}`)
-                        : subBorder,
-                      background: active
-                        ? (f.isSpecial ? 'linear-gradient(135deg, rgba(255, 184, 108, 0.25), rgba(0, 210, 255, 0.15))' : `${f.color}18`)
-                        : subBg,
-                      color: active ? (f.isSpecial ? '#ffb86c' : f.color) : textMuted,
-                      fontSize: '0.70rem', fontWeight: active ? 900 : 700, cursor: 'pointer',
-                      boxShadow: active && f.isSpecial ? '0 0 10px rgba(255, 184, 108, 0.35)' : 'none',
-                      transition: 'all 0.15s ease'
+                      padding: '4px 8px', borderRadius: '6px',
+                      border: active ? '1px solid #00d2ff' : subBorder,
+                      background: active ? 'rgba(0, 210, 255, 0.12)' : subBg,
+                      color: active ? '#00d2ff' : textMuted,
+                      fontSize: '0.66rem', fontWeight: active ? 800 : 600, cursor: 'pointer'
                     }}
                   >
                     {f.label}
@@ -872,64 +875,41 @@ export default function LocalInventory({
               })}
             </div>
 
-            {/* Bottom Row: Model Family & Publisher Filter Selectors */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: '14px', flexWrap: 'wrap', paddingTop: '8px', borderTop: subBorder }}>
-              {/* Family Selector */}
-              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                <span style={{ fontSize: '0.68rem', fontWeight: 800, color: '#c084fc', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                  <Dna size={12} /> Famiglia Modello:
-                </span>
-                <select
-                  value={familyFilter}
-                  onChange={e => setFamilyFilter(e.target.value)}
-                  style={{
-                    padding: '5px 10px', borderRadius: '7px',
-                    background: inputBg, border: familyFilter !== 'all' ? '1.5px solid #c084fc' : subBorder,
-                    color: familyFilter !== 'all' ? '#c084fc' : textPrimary,
-                    fontSize: '0.72rem', fontWeight: 800, outline: 'none', cursor: 'pointer'
-                  }}
-                >
-                  <option value="all">🧬 Tutte le Famiglie ({totalModelsCount})</option>
-                  {availableFamilies.map(fam => {
-                    const cnt = models.filter(m => getModelInfo(m).family.toLowerCase() === fam.toLowerCase()).length;
-                    return (
-                      <option key={fam} value={fam}>
-                        {fam} ({cnt})
-                      </option>
-                    );
-                  })}
-                </select>
-              </div>
+            {/* Sorting & Sector View Controls */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <select
+                value={sortBy}
+                onChange={e => setSortBy(e.target.value)}
+                style={{
+                  padding: '4px 8px', borderRadius: '6px',
+                  background: inputBg, border: subBorder, color: textPrimary,
+                  fontSize: '0.68rem', fontWeight: 700, outline: 'none', cursor: 'pointer'
+                }}
+              >
+                <option value="recent">⏱️ Recenti</option>
+                <option value="size_desc">💾 Peso (GB ↓)</option>
+                <option value="size_asc">💾 Peso (GB ↑)</option>
+                <option value="vram_desc">⚡ VRAM (GB ↓)</option>
+                <option value="benchmark">🏆 Benchmark (%)</option>
+                <option value="name">🔤 Nome (A-Z)</option>
+              </select>
 
-              {/* Publisher Selector */}
-              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                <span style={{ fontSize: '0.68rem', fontWeight: 800, color: '#00d2ff', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                  <User size={12} /> Rilasciato da / Publisher:
-                </span>
-                <select
-                  value={publisherFilter}
-                  onChange={e => setPublisherFilter(e.target.value)}
-                  style={{
-                    padding: '5px 10px', borderRadius: '7px',
-                    background: inputBg, border: publisherFilter !== 'all' ? '1.5px solid #ffb86c' : subBorder,
-                    color: publisherFilter !== 'all' ? '#ffb86c' : textPrimary,
-                    fontSize: '0.72rem', fontWeight: 800, outline: 'none', cursor: 'pointer'
-                  }}
-                >
-                  <option value="all">🏢 Tutti i Publisher ({totalModelsCount})</option>
-                  {availablePublishers.map(pub => {
-                    const cnt = models.filter(m => getModelInfo(m).publisher.toLowerCase() === pub.toLowerCase()).length;
-                    const isSig = pub.toLowerCase() === 'sigmanih';
-                    return (
-                      <option key={pub} value={pub}>
-                        {isSig ? `✨ ${pub} (Ufficiale Sigmanih)` : pub} ({cnt})
-                      </option>
-                    );
-                  })}
-                </select>
-              </div>
+              {/* Expand / Collapse All Sectors */}
+              <button
+                onClick={Object.keys(collapsedFamilies).length > 0 ? expandAllSectors : collapseAllSectors}
+                title={Object.keys(collapsedFamilies).length > 0 ? 'Espandi tutti i settori' : 'Comprimi tutti i settori'}
+                style={{
+                  padding: '4px 8px', borderRadius: '6px',
+                  border: subBorder, background: subBg, color: textMuted,
+                  fontSize: '0.66rem', fontWeight: 700, cursor: 'pointer',
+                  display: 'flex', alignItems: 'center', gap: '3px'
+                }}
+              >
+                {Object.keys(collapsedFamilies).length > 0 ? <Maximize2 size={11} /> : <Minimize2 size={11} />}
+                <span>{Object.keys(collapsedFamilies).length > 0 ? 'Espandi' : 'Comprimi'}</span>
+              </button>
 
-              {/* Active filters reset */}
+              {/* Reset filter button if any active */}
               {(familyFilter !== 'all' || publisherFilter !== 'all' || categoryFilter !== 'all' || searchQuery) && (
                 <button
                   onClick={() => {
@@ -938,126 +918,101 @@ export default function LocalInventory({
                     setCategoryFilter('all');
                     setSearchQuery('');
                   }}
+                  title="Resetta tutti i filtri"
                   style={{
-                    padding: '4px 9px', borderRadius: '6px',
+                    padding: '4px 7px', borderRadius: '6px',
                     background: 'rgba(239, 68, 68, 0.12)', border: '1px solid rgba(239, 68, 68, 0.3)',
-                    color: '#ef4444', fontSize: '0.68rem', fontWeight: 800, cursor: 'pointer',
-                    display: 'inline-flex', alignItems: 'center', gap: '4px'
+                    color: '#ef4444', fontSize: '0.66rem', fontWeight: 800, cursor: 'pointer'
                   }}
                 >
-                  <RotateCcw size={11} /> Reset Filtri
+                  <RotateCcw size={10} />
                 </button>
               )}
             </div>
           </div>
 
-          {/* MODELS LIST GROUPED BY FAMILY */}
+          {/* ── MODELS LIST: SECTORIZED & ERGONOMIC ── */}
           {loading ? (
-            <div style={{ textAlign: 'center', padding: '50px', color: textMuted }}>
-              <Activity className="mh-spin" size={24} color="#00d2ff" style={{ margin: '0 auto 10px' }} />
-              <span style={{ fontSize: '0.84rem' }}>Scansione modelli locali in corso...</span>
+            <div style={{ textAlign: 'center', padding: '40px', color: textMuted }}>
+              <Activity className="mh-spin" size={22} color="#00d2ff" style={{ margin: '0 auto 8px' }} />
+              <span style={{ fontSize: '0.78rem' }}>Caricamento inventario locale...</span>
             </div>
           ) : Object.keys(groupedByFamily).length === 0 ? (
             <div style={{
-              padding: '50px 20px', borderRadius: '16px', background: cardBg, border: cardBorder,
-              textAlign: 'center', color: textMuted, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '12px'
+              padding: '40px 20px', borderRadius: '14px', background: cardBg, border: cardBorder,
+              textAlign: 'center', color: textMuted, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '10px'
             }}>
-              <HardDrive size={32} color="#bc8cff" />
-              <div style={{ fontSize: '0.92rem', fontWeight: 800, color: textPrimary }}>
+              <HardDrive size={28} color="#bc8cff" />
+              <div style={{ fontSize: '0.86rem', fontWeight: 800, color: textPrimary }}>
                 {searchQuery || familyFilter !== 'all' || publisherFilter !== 'all' || categoryFilter !== 'all'
                   ? 'Nessun modello corrispondente ai filtri selezionati.'
                   : 'Nessun modello trovato nello storage locale.'}
               </div>
-              <div style={{ fontSize: '0.76rem' }}>
-                Esplora la tab "🔍 Esplora Hugging Face" per scaricare modelli GGUF o Safetensors.
-              </div>
             </div>
           ) : (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
               {Object.entries(groupedByFamily).map(([famKey, famModels]) => {
-                const conf = FAMILY_CONFIG[famKey] || {
-                  title: `Famiglia ${famKey.toUpperCase()}`,
-                  brand: 'Architettura Open Source',
-                  icon: Dna,
-                  color: '#00d2ff',
-                  gradient: 'linear-gradient(135deg, rgba(0, 210, 255, 0.15), rgba(59, 130, 246, 0.10))',
-                  borderColor: 'rgba(0, 210, 255, 0.35)'
-                };
+                const conf = FAMILY_CONFIG[famKey] || FAMILY_CONFIG.altro;
                 const FamIcon = conf.icon;
                 const isCollapsed = Boolean(collapsedFamilies[famKey]);
                 const famSizeGb = famModels.reduce((sum, m) => sum + (parseFloat(m.size_gb) || 0), 0).toFixed(1);
-                const famGgufCount = famModels.filter(m => getModelInfo(m).isGguf).length;
-                const famSafeCount = famModels.length - famGgufCount;
 
                 return (
                   <div
                     key={famKey}
                     style={{
-                      borderRadius: '16px',
-                      background: isLight ? 'rgba(255, 255, 255, 0.65)' : 'rgba(12, 16, 26, 0.55)',
+                      borderRadius: '12px',
+                      background: isLight ? 'rgba(255, 255, 255, 0.70)' : 'rgba(12, 16, 26, 0.60)',
                       border: `1px solid ${conf.borderColor}`,
-                      boxShadow: '0 4px 18px rgba(0,0,0,0.12)',
-                      backdropFilter: 'blur(10px)',
                       overflow: 'hidden',
                       display: 'flex',
                       flexDirection: 'column'
                     }}
                   >
-                    {/* FAMILY HEADER ACCORDION */}
+                    {/* SECTOR HEADER (SLIM ACCORDION) */}
                     <div
                       onClick={() => toggleFamilyCollapse(famKey)}
                       style={{
-                        padding: '12px 18px',
+                        padding: '8px 14px',
                         background: conf.gradient,
                         borderBottom: isCollapsed ? 'none' : `1px solid ${conf.borderColor}`,
                         display: 'flex',
                         alignItems: 'center',
                         justifyContent: 'space-between',
                         cursor: 'pointer',
-                        userSelect: 'none',
-                        transition: 'background 0.15s ease'
+                        userSelect: 'none'
                       }}
                     >
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                        <div style={{
-                          width: '32px', height: '32px', borderRadius: '8px',
-                          background: `${conf.color}25`, border: `1px solid ${conf.color}50`,
-                          display: 'flex', alignItems: 'center', justifyContent: 'center'
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <FamIcon size={14} color={conf.color} />
+                        <span style={{ fontSize: '0.82rem', fontWeight: 900, color: textPrimary }}>
+                          {conf.title}
+                        </span>
+                        <span style={{
+                          fontSize: '0.58rem', fontWeight: 800, padding: '1px 5px', borderRadius: '4px',
+                          background: `${conf.color}18`, border: `1px solid ${conf.color}35`, color: conf.color
                         }}>
-                          <FamIcon size={17} color={conf.color} />
-                        </div>
-                        <div>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                            <span style={{ fontSize: '0.94rem', fontWeight: 900, color: textPrimary }}>
-                              {conf.title}
-                            </span>
-                            <span style={{
-                              fontSize: '0.60rem', fontWeight: 800, padding: '2px 7px', borderRadius: '5px',
-                              background: `${conf.color}18`, border: `1px solid ${conf.color}40`, color: conf.color
-                            }}>
-                              {conf.brand}
-                            </span>
-                          </div>
-                          <div style={{ fontSize: '0.68rem', color: textMuted, marginTop: '1px' }}>
-                            {famModels.length} {famModels.length === 1 ? 'modello' : 'modelli'} ({famGgufCount} GGUF, {famSafeCount} Safetensors) • {famSizeGb} GB totali
-                          </div>
-                        </div>
+                          {conf.brand}
+                        </span>
+                        <span style={{ fontSize: '0.64rem', color: textMuted }}>
+                          • {famModels.length} {famModels.length === 1 ? 'modello' : 'modelli'} ({famSizeGb} GB)
+                        </span>
                       </div>
 
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                         <span style={{
-                          fontSize: '0.68rem', fontWeight: 800, padding: '3px 9px', borderRadius: '6px',
+                          fontSize: '0.62rem', fontWeight: 800, padding: '2px 6px', borderRadius: '4px',
                           background: isLight ? 'rgba(0,0,0,0.06)' : 'rgba(255,255,255,0.08)', color: textPrimary
                         }}>
                           {famModels.length}
                         </span>
-                        {isCollapsed ? <ChevronDown size={16} color={textMuted} /> : <ChevronUp size={16} color={textMuted} />}
+                        {isCollapsed ? <ChevronDown size={14} color={textMuted} /> : <ChevronUp size={14} color={textMuted} />}
                       </div>
                     </div>
 
-                    {/* FAMILY MODEL CARDS LIST */}
+                    {/* COMPACT MODEL CARDS LIST */}
                     {!isCollapsed && (
-                      <div style={{ padding: '14px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                      <div style={{ padding: '8px', display: 'flex', flexDirection: 'column', gap: '6px' }}>
                         {famModels.map((m, idx) => {
                           const info = getModelInfo(m);
                           const isGguf = info.isGguf;
@@ -1067,546 +1022,387 @@ export default function LocalInventory({
                           const bmScore = bm.score ?? bm.best_score ?? bm.latest_score ?? bm.overall_pass_rate ?? 0;
                           const bmScoreColor = bmScore >= 75 ? '#10b981' : (bmScore >= 50 ? '#00d2ff' : '#ffb86c');
                           const isPublished = info.isPublished;
+                          const cardKey = m.path || m.filename || String(idx);
+                          const isExpanded = expandedCards.has(cardKey);
 
                           return (
                             <div
-                              key={idx}
+                              key={cardKey}
                               style={{
-                                padding: '16px 20px', borderRadius: '14px',
+                                borderRadius: '10px',
                                 background: m.is_active_in_engine
                                   ? (isLight ? 'rgba(0, 210, 255, 0.08)' : 'linear-gradient(135deg, rgba(0, 210, 255, 0.12) 0%, rgba(15, 18, 28, 0.92) 100%)')
                                   : (isSigmanih
-                                    ? (isLight ? 'linear-gradient(135deg, #ffffff 0%, #fffcf5 100%)' : 'linear-gradient(135deg, rgba(20, 24, 38, 0.92) 0%, rgba(15, 18, 28, 0.96) 100%)')
+                                    ? (isLight ? 'linear-gradient(135deg, #ffffff 0%, #fffcf5 100%)' : 'linear-gradient(135deg, rgba(22, 26, 40, 0.90) 0%, rgba(15, 18, 28, 0.95) 100%)')
                                     : cardBg),
                                 border: m.is_active_in_engine
                                   ? '1.5px solid #00d2ff'
-                                  : (isSigmanih ? '1.5px solid rgba(255, 184, 108, 0.35)' : cardBorder),
+                                  : (isSigmanih ? '1px solid rgba(255, 184, 108, 0.35)' : cardBorder),
                                 boxShadow: m.is_active_in_engine
-                                  ? '0 0 20px rgba(0, 210, 255, 0.20)'
-                                  : (isSigmanih ? '0 4px 18px rgba(255, 184, 108, 0.06)' : 'none'),
-                                display: 'flex', flexDirection: 'column', gap: '12px',
-                                transition: 'transform 0.15s ease, box-shadow 0.15s ease'
+                                  ? '0 0 14px rgba(0, 210, 255, 0.18)'
+                                  : 'none',
+                                overflow: 'hidden',
+                                transition: 'all 0.15s ease'
                               }}
                             >
-                              {/* TOP HEADER: PUBLISHER + FAMILY + CATEGORY + STATUS TAGS */}
-                              <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '12px', flexWrap: 'wrap' }}>
-                                <div style={{ minWidth: 0, flex: 1, display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                              {/* ── ROW PRINCIPALE: COMPATTA, ELEGANTE & VELOCE ── */}
+                              <div style={{
+                                padding: '8px 12px',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'space-between',
+                                gap: '10px',
+                                flexWrap: 'wrap'
+                              }}>
+                                {/* Left Side: Badges + Model Name + Size & VRAM */}
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flex: 1, minWidth: '260px', flexWrap: 'wrap' }}>
 
-                                  {/* Badges Bar: Rilasciato da + Famiglia + Categoria */}
-                                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
-
-                                    {/* Publisher Pill */}
-                                    {isSigmanih ? (
-                                      <div style={{
-                                        fontSize: '0.68rem', fontWeight: 900,
-                                        background: 'linear-gradient(135deg, rgba(255, 184, 108, 0.22) 0%, rgba(0, 210, 255, 0.16) 100%)',
-                                        border: '1px solid rgba(255, 184, 108, 0.55)',
-                                        color: '#ffb86c', borderRadius: '7px', padding: '3px 10px',
-                                        display: 'inline-flex', alignItems: 'center', gap: '5px',
-                                        boxShadow: '0 0 10px rgba(255, 184, 108, 0.25)'
-                                      }}>
-                                        <Sparkles size={11} color="#ffb86c" />
-                                        <span style={{ color: '#00d2ff', fontSize: '0.62rem', fontWeight: 900 }}>🏢 Rilasciato da:</span>
-                                        <span style={{ color: '#ffb86c', fontWeight: 900, letterSpacing: '0.02em' }}>sigmanih</span>
-                                        <span style={{ fontSize: '0.54rem', padding: '1px 5px', borderRadius: '4px', background: 'rgba(255, 184, 108, 0.25)', color: '#ffffff', fontWeight: 800 }}>
-                                          UFFICIALE
-                                        </span>
-                                      </div>
-                                    ) : (
-                                      <div style={{
-                                        fontSize: '0.68rem', fontWeight: 800,
-                                        color: '#ffffff', background: 'rgba(255, 255, 255, 0.08)',
-                                        border: '1px solid rgba(255, 255, 255, 0.16)',
-                                        borderRadius: '7px', padding: '3px 9px',
-                                        display: 'inline-flex', alignItems: 'center', gap: '4px'
-                                      }}>
-                                        <span style={{ color: '#00d2ff', fontSize: '0.62rem', fontWeight: 900 }}>🏢 Rilasciato da:</span>
-                                        <span style={{ color: textPrimary, fontWeight: 800 }}>{info.publisher}</span>
-                                        {m.is_official && (
-                                          <span style={{ fontSize: '0.54rem', padding: '1px 5px', borderRadius: '4px', background: 'rgba(59, 130, 246, 0.2)', color: '#38bdf8', fontWeight: 800 }}>
-                                            Ufficiale
-                                          </span>
-                                        )}
-                                      </div>
-                                    )}
-
-                                    {/* Family Pill */}
-                                    <div style={{
-                                      fontSize: '0.66rem', fontWeight: 800,
-                                      color: '#c084fc', background: 'rgba(192, 132, 252, 0.12)',
-                                      border: '1px solid rgba(192, 132, 252, 0.32)',
-                                      borderRadius: '7px', padding: '3px 8px',
-                                      display: 'inline-flex', alignItems: 'center', gap: '4px'
-                                    }}>
-                                      <span>🧬 Famiglia:</span>
-                                      <b style={{ color: '#f0abfc' }}>{info.family}</b>
-                                    </div>
-
-                                    {/* Category Pill */}
-                                    {info.category === 'code' && (
-                                      <div style={{
-                                        fontSize: '0.64rem', fontWeight: 800,
-                                        color: '#38bdf8', background: 'rgba(56, 189, 248, 0.12)',
-                                        border: '1px solid rgba(56, 189, 248, 0.35)',
-                                        borderRadius: '6px', padding: '2px 7px',
-                                        display: 'inline-flex', alignItems: 'center', gap: '4px'
-                                      }}>
-                                        <Code size={11} /> Coding & Dev
-                                      </div>
-                                    )}
-
-                                    {info.category === 'reasoning' && (
-                                      <div style={{
-                                        fontSize: '0.64rem', fontWeight: 800,
-                                        color: '#f43f5e', background: 'rgba(244, 63, 94, 0.12)',
-                                        border: '1px solid rgba(244, 63, 94, 0.35)',
-                                        borderRadius: '6px', padding: '2px 7px',
-                                        display: 'inline-flex', alignItems: 'center', gap: '4px'
-                                      }}>
-                                        <Brain size={11} /> Reasoning & R1
-                                      </div>
-                                    )}
-
-                                    {info.category === 'vision' && (
-                                      <div style={{
-                                        fontSize: '0.64rem', fontWeight: 800,
-                                        color: '#a855f7', background: 'rgba(168, 85, 247, 0.12)',
-                                        border: '1px solid rgba(168, 85, 247, 0.35)',
-                                        borderRadius: '6px', padding: '2px 7px',
-                                        display: 'inline-flex', alignItems: 'center', gap: '4px'
-                                      }}>
-                                        <Eye size={11} /> Vision & VL
-                                      </div>
-                                    )}
-                                  </div>
-
-                                  {/* Model Main Name & HF Direct Link */}
-                                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap', marginTop: '2px' }}>
-                                    <span style={{ fontSize: '1.02rem', fontWeight: 900, color: textPrimary, wordBreak: 'break-all', letterSpacing: '-0.01em' }}>
-                                      {m.clean_name || m.display_name || m.filename}
-                                    </span>
-
-                                    {/* Format Tag */}
+                                  {/* Publisher Badge */}
+                                  {isSigmanih ? (
                                     <span style={{
-                                      fontSize: '0.64rem', padding: '3px 8px', borderRadius: '6px',
-                                      fontWeight: 800,
-                                      background: isGguf ? 'rgba(16, 185, 129, 0.15)' : 'rgba(0, 210, 255, 0.15)',
-                                      color: isGguf ? '#10b981' : '#00d2ff',
-                                      border: isGguf ? '1px solid rgba(16, 185, 129, 0.35)' : '1px solid rgba(0, 210, 255, 0.35)'
+                                      fontSize: '0.62rem', fontWeight: 900,
+                                      background: 'linear-gradient(135deg, rgba(255, 184, 108, 0.20), rgba(0, 210, 255, 0.15))',
+                                      border: '1px solid rgba(255, 184, 108, 0.45)', color: '#ffb86c',
+                                      borderRadius: '5px', padding: '2px 6px',
+                                      display: 'inline-flex', alignItems: 'center', gap: '3px'
                                     }}>
-                                      {m.format_tag || (isGguf ? 'GGUF' : 'SAFETENSORS')}
+                                      <Sparkles size={9} color="#ffb86c" /> sigmanih
                                     </span>
-
-                                    {/* Quantization */}
-                                    {m.quantization && (
-                                      <span style={{
-                                        fontSize: '0.64rem', padding: '3px 8px', borderRadius: '6px',
-                                        background: 'rgba(188, 140, 255, 0.15)', color: '#bc8cff', fontWeight: 800,
-                                        border: '1px solid rgba(188, 140, 255, 0.35)'
-                                      }}>
-                                        {m.quantization}
-                                      </span>
-                                    )}
-
-                                    {/* Parameter size */}
-                                    {m.params_label && (
-                                      <span style={{
-                                        fontSize: '0.64rem', padding: '3px 8px', borderRadius: '6px',
-                                        background: 'rgba(255, 184, 108, 0.15)', color: '#ffb86c', fontWeight: 800,
-                                        border: '1px solid rgba(255, 184, 108, 0.35)'
-                                      }}>
-                                        ⚡ {m.params_label}
-                                      </span>
-                                    )}
-
-                                    {/* Active in Engine badge */}
-                                    {m.is_active_in_engine && (
-                                      <span style={{
-                                        fontSize: '0.64rem', padding: '3px 9px', borderRadius: '6px',
-                                        background: 'linear-gradient(135deg, rgba(0, 210, 255, 0.25), rgba(16, 185, 129, 0.25))',
-                                        color: '#00d2ff', fontWeight: 900,
-                                        border: '1px solid #00d2ff',
-                                        boxShadow: '0 0 12px rgba(0, 210, 255, 0.35)'
-                                      }}>
-                                        ⚡ CARICATO IN SIGMAENGINE
-                                      </span>
-                                    )}
-
-                                    {/* Hugging Face Link Pill */}
-                                    {isPublished && (
-                                      <a
-                                        href={m.publication.url}
-                                        target="_blank"
-                                        rel="noreferrer"
-                                        title={`Pubblicato su Hugging Face: ${m.publication.repo_id}`}
-                                        style={{
-                                          fontSize: '0.64rem', padding: '3px 9px', borderRadius: '6px',
-                                          background: 'rgba(255, 184, 108, 0.15)', color: '#ffb86c', fontWeight: 800,
-                                          border: '1px solid rgba(255, 184, 108, 0.35)', textDecoration: 'none',
-                                          display: 'inline-flex', alignItems: 'center', gap: '4px'
-                                        }}
-                                      >
-                                        🤗 HF: <span style={{ textDecoration: 'underline' }}>{m.publication.repo_id}</span> <ExternalLink size={10} />
-                                      </a>
-                                    )}
-                                  </div>
-
-                                  {/* Incomplete / Partial Download Alert */}
-                                  {(!m.is_complete || m.has_part_files) && (
-                                    <div style={{
-                                      marginTop: '8px',
-                                      padding: '8px 12px', borderRadius: '10px',
-                                      background: isLight ? 'rgba(255, 184, 108, 0.16)' : 'rgba(255, 184, 108, 0.08)',
-                                      border: '1px solid rgba(255, 184, 108, 0.35)',
-                                      color: '#ffb86c', fontSize: '0.72rem', fontWeight: 600,
-                                      display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '8px'
+                                  ) : (
+                                    <span style={{
+                                      fontSize: '0.60rem', fontWeight: 800,
+                                      background: subBg, border: subBorder, color: textMuted,
+                                      borderRadius: '5px', padding: '2px 5px'
                                     }}>
-                                      <div style={{ display: 'flex', alignItems: 'center', gap: '7px' }}>
-                                        <AlertTriangle size={14} color="#ffb86c" />
-                                        <span>
-                                          Download incompleto: scaricati solo <b>{m.shards_present || m.total_shards}</b> su <b>{m.total_shards_declared || '?'}</b> shard ({m.size_gb} GB presenti su disco).
-                                        </span>
-                                      </div>
-                                      <button
-                                        onClick={() => handleResumeDownload(m)}
-                                        disabled={resumingModelId === (m.model_id || m.filename)}
-                                        style={{
-                                          padding: '5px 12px', borderRadius: '7px',
-                                          background: 'linear-gradient(135deg, #ffb86c, #f59e0b)',
-                                          border: 'none', color: '#111827', fontSize: '0.70rem', fontWeight: 900,
-                                          cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '5px',
-                                          boxShadow: '0 0 10px rgba(255, 184, 108, 0.35)',
-                                          transition: 'all 0.15s ease'
-                                        }}
-                                      >
-                                        {resumingModelId === (m.model_id || m.filename) ? <Activity className="mh-spin" size={12} /> : <Download size={12} />}
-                                        {resumingModelId === (m.model_id || m.filename) ? 'Avvio ripresa...' : '📥 Continua Download'}
-                                      </button>
-                                    </div>
+                                      {info.publisher}
+                                    </span>
                                   )}
 
-                                  {/* Specs Row */}
-                                  <div style={{ fontSize: '0.72rem', color: textMuted, marginTop: '4px', display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
-                                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
-                                      💾 <b>{m.size_gb} GB</b> su disco
-                                    </span>
+                                  {/* Model Clean Name */}
+                                  <span style={{
+                                    fontSize: '0.84rem', fontWeight: 800, color: textPrimary,
+                                    letterSpacing: '-0.01em', wordBreak: 'break-all'
+                                  }}>
+                                    {m.clean_name || m.display_name || m.filename}
+                                  </span>
+
+                                  {/* Format & Quantization Pill */}
+                                  <span style={{
+                                    fontSize: '0.58rem', fontWeight: 800, padding: '2px 6px', borderRadius: '4px',
+                                    background: isGguf ? 'rgba(16, 185, 129, 0.15)' : 'rgba(0, 210, 255, 0.15)',
+                                    color: isGguf ? '#10b981' : '#00d2ff',
+                                    border: isGguf ? '1px solid rgba(16, 185, 129, 0.3)' : '1px solid rgba(0, 210, 255, 0.3)'
+                                  }}>
+                                    {m.quantization ? `${m.format_tag || 'GGUF'} ${m.quantization}` : (m.format_tag || (isGguf ? 'GGUF' : 'SAFETENSORS'))}
+                                  </span>
+
+                                  {/* Storage & VRAM metrics */}
+                                  <span style={{ fontSize: '0.68rem', color: textMuted, display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+                                    <span>💾 <b>{m.size_gb} GB</b></span>
                                     <span>•</span>
-                                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
-                                      ⚡ VRAM stimata: <b>~{m.est_vram_gb} GB</b>
+                                    <span style={{ color: isLight ? '#0284c7' : '#00d2ff' }}>⚡ VRAM: <b>~{m.est_vram_gb} GB</b></span>
+                                  </span>
+
+                                  {/* Active in Engine Badge */}
+                                  {m.is_active_in_engine && (
+                                    <span style={{
+                                      fontSize: '0.58rem', fontWeight: 900, padding: '2px 6px', borderRadius: '4px',
+                                      background: 'rgba(0, 210, 255, 0.20)', border: '1px solid #00d2ff', color: '#00d2ff'
+                                    }}>
+                                      ⚡ ATTIVO
                                     </span>
-                                    {m.architecture && (
-                                      <>
-                                        <span>•</span>
-                                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
-                                          🧬 Architettura: <b>{m.architecture}</b>
-                                        </span>
-                                      </>
-                                    )}
-                                    {m.added_at && (
-                                      <>
-                                        <span>•</span>
-                                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
-                                          🕒 Aggiunto: {m.added_at}
-                                        </span>
-                                      </>
-                                    )}
-                                  </div>
+                                  )}
+
+                                  {/* Benchmark Score Pill (if present) */}
+                                  {hasBenchmark && (
+                                    <span style={{
+                                      fontSize: '0.58rem', fontWeight: 800, padding: '1px 5px', borderRadius: '4px',
+                                      background: `${bmScoreColor}18`, border: `1px solid ${bmScoreColor}35`, color: bmScoreColor,
+                                      display: 'inline-flex', alignItems: 'center', gap: '3px'
+                                    }}>
+                                      🏆 {bmScore}%
+                                    </span>
+                                  )}
+
+                                  {/* Incomplete Warning Badge */}
+                                  {(!m.is_complete || m.has_part_files) && (
+                                    <span style={{
+                                      fontSize: '0.58rem', fontWeight: 800, padding: '1px 6px', borderRadius: '4px',
+                                      background: 'rgba(255, 184, 108, 0.20)', border: '1px solid #ffb86c', color: '#ffb86c',
+                                      display: 'inline-flex', alignItems: 'center', gap: '3px'
+                                    }}>
+                                      <AlertTriangle size={10} /> INCOMPLETO ({m.shards_present || 1}/{m.total_shards_declared || 1})
+                                    </span>
+                                  )}
                                 </div>
 
-                                {/* Actions Bar */}
-                                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexShrink: 0, flexWrap: 'wrap' }}>
-                                  {/* Primary Button: Continua Download for incomplete, otherwise Run in SigmaEngine */}
+                                {/* Right Side: Actions Strip */}
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '5px', flexShrink: 0 }}>
+                                  {/* Primary Run / Resume Button */}
                                   {(!m.is_complete || m.has_part_files) ? (
                                     <button
                                       onClick={() => handleResumeDownload(m)}
                                       disabled={resumingModelId === (m.model_id || m.filename)}
-                                      title="Riprendi il download degli shard mancanti da Hugging Face"
+                                      title="Riprendi download degli shard mancanti"
                                       style={{
-                                        padding: '7px 15px', borderRadius: '9px',
+                                        padding: '5px 11px', borderRadius: '7px',
                                         border: 'none', background: 'linear-gradient(135deg, #ffb86c, #f59e0b)',
-                                        color: '#111827', fontSize: '0.74rem', fontWeight: 900, cursor: 'pointer',
-                                        display: 'flex', alignItems: 'center', gap: '5px',
-                                        boxShadow: '0 0 14px rgba(255, 184, 108, 0.40)',
-                                        transition: 'all 0.15s ease'
+                                        color: '#111827', fontSize: '0.68rem', fontWeight: 900, cursor: 'pointer',
+                                        display: 'flex', alignItems: 'center', gap: '4px'
                                       }}
                                     >
-                                      {resumingModelId === (m.model_id || m.filename) ? <Activity className="mh-spin" size={13} /> : <Download size={13} />}
-                                      {resumingModelId === (m.model_id || m.filename) ? 'Ripresa...' : '📥 Continua Download'}
+                                      {resumingModelId === (m.model_id || m.filename) ? <Activity className="mh-spin" size={11} /> : <Download size={11} />}
+                                      <span>Continua</span>
                                     </button>
                                   ) : (
                                     <button
                                       onClick={() => onDeployRequested && onDeployRequested(m)}
+                                      title={m.is_active_in_engine ? 'Rialloca in SigmaEngine' : 'Carica ed esegui in SigmaEngine'}
                                       style={{
-                                        padding: '7px 15px', borderRadius: '9px',
-                                        border: 'none', background: 'linear-gradient(135deg, #00d2ff, #0090ff)',
-                                        color: '#ffffff', fontSize: '0.74rem', fontWeight: 800, cursor: 'pointer',
-                                        display: 'flex', alignItems: 'center', gap: '5px',
-                                        boxShadow: '0 0 14px rgba(0, 210, 255, 0.35)',
-                                        transition: 'all 0.15s ease'
+                                        padding: '5px 12px', borderRadius: '7px',
+                                        border: 'none', background: 'linear-gradient(135deg, #00d2ff, #0088ff)',
+                                        color: '#ffffff', fontSize: '0.70rem', fontWeight: 800, cursor: 'pointer',
+                                        display: 'flex', alignItems: 'center', gap: '4px',
+                                        boxShadow: '0 2px 8px rgba(0, 210, 255, 0.25)'
                                       }}
                                     >
-                                      <Zap size={13} /> {m.is_active_in_engine ? 'Rialloca' : '⚡ Avvia'}
+                                      <Zap size={11} /> {m.is_active_in_engine ? 'Rialloca' : 'Avvia'}
                                     </button>
                                   )}
 
-                                  {/* Prova Inferenza Interactive Modal */}
+                                  {/* Prova Inferenza Quick Playground */}
                                   <button
                                     onClick={() => {
                                       if (!m.is_complete || m.has_part_files) {
-                                        if (addToast) addToast('⚠️ Il modello è incompleto. Clicca "Continua Download" per completarlo prima di testare l\'inferenza.', 'warning');
+                                        if (addToast) addToast('⚠️ Il modello è incompleto. Clicca "Continua" per completarlo prima del test.', 'warning');
                                         return;
                                       }
                                       setInferenceTestingModel(m);
                                     }}
-                                    title="Apri il playground per scrivere prompt ed eseguire la telemetria t/s"
+                                    title="Playground inferenza con telemetria tok/s"
                                     style={{
-                                      padding: '7px 13px', borderRadius: '9px',
-                                      border: '1px solid rgba(0,210,255,0.4)',
-                                      background: 'rgba(0,210,255,0.12)',
-                                      color: '#00d2ff', fontSize: '0.72rem', fontWeight: 800, cursor: 'pointer',
-                                      display: 'flex', alignItems: 'center', gap: '5px'
+                                      padding: '5px 10px', borderRadius: '7px',
+                                      border: '1px solid rgba(0, 210, 255, 0.35)', background: 'rgba(0, 210, 255, 0.10)',
+                                      color: '#00d2ff', fontSize: '0.68rem', fontWeight: 800, cursor: 'pointer',
+                                      display: 'flex', alignItems: 'center', gap: '4px'
                                     }}
                                   >
-                                    <Gauge size={13} /> Prova Inferenza
+                                    <Gauge size={11} /> Prova
                                   </button>
 
-                                  {/* Publish vs Update on HF */}
+                                  {/* Toggle Details Drawer Button */}
                                   <button
-                                    onClick={() => setPublishingModel(m)}
-                                    title={isPublished ? 'Aggiorna questo modello o carica nuove quantizzazioni su Hugging Face' : 'Pubblica questo modello su Hugging Face'}
+                                    onClick={() => toggleCardDetails(cardKey)}
+                                    title={isExpanded ? 'Chiudi dettagli' : 'Apri dettagli, benchmark e opzioni HF'}
                                     style={{
-                                      padding: '7px 12px', borderRadius: '9px',
-                                      border: '1px solid rgba(255, 184, 108, 0.40)',
-                                      background: isPublished ? 'rgba(255, 184, 108, 0.18)' : 'rgba(255, 184, 108, 0.08)',
-                                      color: '#ffb86c', fontSize: '0.72rem', fontWeight: 800, cursor: 'pointer',
-                                      display: 'flex', alignItems: 'center', gap: '5px'
+                                      padding: '5px 8px', borderRadius: '7px',
+                                      border: isExpanded ? '1px solid #ffb86c' : subBorder,
+                                      background: isExpanded ? 'rgba(255, 184, 108, 0.12)' : subBg,
+                                      color: isExpanded ? '#ffb86c' : textMuted,
+                                      fontSize: '0.68rem', fontWeight: 700, cursor: 'pointer',
+                                      display: 'flex', alignItems: 'center', gap: '3px'
                                     }}
                                   >
-                                    <Upload size={13} /> {isPublished ? 'Aggiorna su HF' : 'Pubblica su HF'}
-                                  </button>
-
-                                  {/* GGUF Converter shortcut (navigates to dedicated Converter tab) */}
-                                  {(!isGguf || m.is_repo_folder) && (
-                                    <button
-                                      onClick={() => {
-                                        if (!m.is_complete || m.has_part_files) {
-                                          if (addToast) addToast('⚠️ Il modello Safetensors è incompleto. Completa prima il download per convertirlo in GGUF.', 'warning');
-                                          return;
-                                        }
-                                        if (onNavigateToConverter) {
-                                          onNavigateToConverter(m.model_id || m.filename);
-                                        }
-                                      }}
-                                      title="Apri la scheda Convertitore GGUF per questo modello"
-                                      style={{
-                                        padding: '7px 11px', borderRadius: '9px',
-                                        border: '1px solid rgba(16, 185, 129, 0.35)', background: 'rgba(16, 185, 129, 0.10)',
-                                        color: '#10b981', fontSize: '0.72rem', fontWeight: 800, cursor: 'pointer',
-                                        display: 'flex', alignItems: 'center', gap: '4px'
-                                      }}
-                                    >
-                                      <Package size={13} /> Converti GGUF
-                                    </button>
-                                  )}
-
-                                  {/* Rename */}
-                                  <button
-                                    onClick={() => handleRenameModel(m)}
-                                    disabled={renamingPath === (m.path || m.filename)}
-                                    title="Rinomina il modello sul disco"
-                                    style={{
-                                      padding: '7px 9px', borderRadius: '9px',
-                                      border: subBorder, background: subBg,
-                                      color: textMuted, fontSize: '0.72rem', fontWeight: 700, cursor: 'pointer',
-                                      display: 'flex', alignItems: 'center', gap: '3px',
-                                      opacity: renamingPath === (m.path || m.filename) ? 0.6 : 1
-                                    }}
-                                  >
-                                    <Pencil size={13} />
-                                  </button>
-
-                                  {/* Delete */}
-                                  <button
-                                    onClick={() => handleDeleteModel(m)}
-                                    disabled={deletingPath === (m.path || m.filename)}
-                                    title="Elimina definitivamente dallo storage locale"
-                                    style={{
-                                      padding: '7px 9px', borderRadius: '9px',
-                                      border: '1px solid rgba(239, 68, 68, 0.3)', background: 'rgba(239, 68, 68, 0.1)',
-                                      color: '#ef4444', fontSize: '0.72rem', fontWeight: 700, cursor: 'pointer',
-                                      display: 'flex', alignItems: 'center', gap: '3px',
-                                      opacity: deletingPath === (m.path || m.filename) ? 0.6 : 1
-                                    }}
-                                  >
-                                    <Trash2 size={13} />
+                                    <span>Opzioni</span>
+                                    {isExpanded ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
                                   </button>
                                 </div>
                               </div>
 
-                              {/* REPOSITORY COLLEGATO SU HUGGING FACE */}
-                              {isPublished && (
+                              {/* ── SUB-DRAWER: DETTAGLI ESPANSIBILI ON-DEMAND ── */}
+                              {isExpanded && (
                                 <div style={{
-                                  padding: '10px 14px', borderRadius: '12px',
-                                  background: isLight ? 'rgba(255, 184, 108, 0.08)' : 'rgba(255, 184, 108, 0.06)',
-                                  border: '1px solid rgba(255, 184, 108, 0.25)',
-                                  display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                                  gap: '10px', flexWrap: 'wrap'
+                                  padding: '10px 14px',
+                                  borderTop: subBorder,
+                                  background: isLight ? 'rgba(0,0,0,0.02)' : 'rgba(0,0,0,0.20)',
+                                  display: 'flex',
+                                  flexDirection: 'column',
+                                  gap: '10px'
                                 }}>
-                                  <span style={{ fontSize: '0.72rem', color: textMuted, display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                    <ExternalLink size={13} color="#ffb86c" />
-                                    Repository Hugging Face:
-                                    <a href={m.publication.url} target="_blank" rel="noreferrer"
-                                      style={{ color: '#ffb86c', fontWeight: 800, textDecoration: 'none' }}>
-                                      {m.publication.repo_id}
-                                    </a>
-                                    {m.publication.publish_count > 1 ? ` · ${m.publication.publish_count} sincronizzazioni` : ''}
-                                  </span>
-
-                                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                    <button
-                                      onClick={() => handleUpdateCard(m)}
-                                      disabled={updatingCard === (m.path || m.filename)}
-                                      title="Riscrive solo la scheda (paper, note, benchmark) senza ricaricare i pesi"
-                                      style={{
-                                        padding: '4px 10px', borderRadius: '6px',
-                                        border: '1px solid rgba(255,184,108,0.4)', background: 'transparent',
-                                        color: '#ffb86c', fontSize: '0.68rem', fontWeight: 800, cursor: 'pointer'
-                                      }}
-                                    >
-                                      {updatingCard === (m.path || m.filename) ? 'Aggiorno...' : 'Aggiorna scheda'}
-                                    </button>
-
-                                    <button
-                                      onClick={() => handleRenameHfRepoFromInventory(m)}
-                                      title="Rinomina il repository su Hugging Face e aggiorna la scheda con il nuovo titolo"
-                                      style={{
-                                        padding: '4px 10px', borderRadius: '6px',
-                                        border: '1px solid rgba(255,184,108,0.25)', background: 'transparent',
-                                        color: '#ffb86c', fontSize: '0.68rem', fontWeight: 700, cursor: 'pointer'
-                                      }}
-                                    >
-                                      Rinomina
-                                    </button>
-
-                                    <button
-                                      onClick={() => handleAttachHfRepo(m)}
-                                      title="Modifica o ricollega questo modello a un altro repository Hugging Face"
-                                      style={{
-                                        padding: '4px 10px', borderRadius: '6px',
-                                        border: '1px solid rgba(0,210,255,0.3)', background: 'transparent',
-                                        color: '#00d2ff', fontSize: '0.68rem', fontWeight: 700, cursor: 'pointer'
-                                      }}
-                                    >
-                                      Modifica link
-                                    </button>
-
-                                    <button
-                                      onClick={() => handleForgetPublication(m)}
-                                      title="Scollega questo modello dal repository HF (non tocca niente su HF)"
-                                      style={{
-                                        padding: '4px 9px', borderRadius: '6px',
-                                        border: subBorder, background: 'transparent',
-                                        color: textMuted, fontSize: '0.68rem', fontWeight: 600, cursor: 'pointer'
-                                      }}
-                                    >
-                                      Scollega
-                                    </button>
-                                  </div>
-                                </div>
-                              )}
-
-                              {/* BENCHMARK SHOWCASE BANNER */}
-                              {hasBenchmark ? (
-                                <div style={{
-                                  padding: '12px 16px', borderRadius: '12px',
-                                  background: isLight ? 'rgba(255, 184, 108, 0.08)' : 'linear-gradient(135deg, rgba(255, 184, 108, 0.08) 0%, rgba(16, 185, 129, 0.06) 100%)',
-                                  border: '1px solid rgba(255, 184, 108, 0.30)',
-                                  display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '12px'
-                                }}>
-                                  <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flex: 1, minWidth: 0 }}>
-                                    <div style={{
-                                      width: '36px', height: '36px', borderRadius: '10px',
-                                      background: 'rgba(255, 184, 108, 0.18)',
-                                      display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0
-                                    }}>
-                                      <Trophy size={18} color="#ffb86c" />
+                                  {/* ROW 1: HUGGING FACE SYNC & ACTIONS */}
+                                  <div style={{
+                                    padding: '8px 12px', borderRadius: '8px',
+                                    background: isPublished ? 'rgba(255, 184, 108, 0.08)' : subBg,
+                                    border: isPublished ? '1px solid rgba(255, 184, 108, 0.25)' : subBorder,
+                                    display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                                    gap: '10px', flexWrap: 'wrap'
+                                  }}>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.70rem' }}>
+                                      <ExternalLink size={12} color="#ffb86c" />
+                                      {isPublished ? (
+                                        <span>
+                                          Repository HF: <a href={m.publication.url} target="_blank" rel="noreferrer" style={{ color: '#ffb86c', fontWeight: 800, textDecoration: 'none' }}>
+                                            {m.publication.repo_id}
+                                          </a>
+                                          {m.publication.publish_count > 1 && ` · ${m.publication.publish_count} sincronizzazioni`}
+                                        </span>
+                                      ) : (
+                                        <span style={{ color: textMuted }}>
+                                          Modello non ancora pubblicato su Hugging Face
+                                        </span>
+                                      )}
                                     </div>
 
-                                    <div style={{ flex: 1, minWidth: 0 }}>
-                                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-                                        <span style={{ fontSize: '0.82rem', fontWeight: 800, color: textPrimary }}>
-                                          Benchmark Ufficiale Training Lab:
-                                        </span>
-                                        <span style={{
-                                          fontSize: '0.84rem', fontWeight: 900, color: bmScoreColor,
-                                          padding: '2px 9px', borderRadius: '6px',
-                                          background: `${bmScoreColor}18`, border: `1px solid ${bmScoreColor}44`
-                                        }}>
-                                          🏆 {bmScore}% Pass
-                                        </span>
-                                      </div>
-
-                                      <div style={{ fontSize: '0.68rem', color: textMuted, marginTop: '3px', display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-                                        <span>📊 Suite: <b>{bm.suite_name}</b></span>
-                                        <span>•</span>
-                                        <span>⚡ Velocità: <b>{bm.tokens_per_sec > 0 ? `${bm.tokens_per_sec} tok/s` : '—'}</b></span>
-                                        {bm.last_run_at && (
-                                          <>
-                                            <span>•</span>
-                                            <span>⏱️ Testato: {bm.last_run_at}</span>
-                                          </>
-                                        )}
-                                        {bm.tests_total > 0 && (
-                                          <>
-                                            <span>•</span>
-                                            <span>✅ <b>{bm.tests_passed}/{bm.tests_total}</b> superati</span>
-                                          </>
-                                        )}
-                                      </div>
-
-                                      {bm.suites && Object.keys(bm.suites).length > 0 && (
-                                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '5px', marginTop: '8px' }}>
-                                          {Object.entries(bm.suites).map(([sid, st]) => {
-                                            const quota = st.total ? Math.round((st.passed / st.total) * 100) : 0;
-                                            const colore = quota >= 75 ? '#10b981' : quota >= 50 ? '#ffb86c' : '#ef4444';
-                                            return (
-                                              <span key={sid} title={`${st.passed} superati su ${st.total}`}
-                                                style={{
-                                                  fontSize: '0.62rem', fontWeight: 700, padding: '3px 8px',
-                                                  borderRadius: '6px', whiteSpace: 'nowrap',
-                                                  background: `${colore}14`, border: `1px solid ${colore}40`, color: colore,
-                                                }}>
-                                                {sid} <b>{st.passed}/{st.total}</b> ({quota}%)
-                                              </span>
-                                            );
-                                          })}
-                                        </div>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '5px', flexWrap: 'wrap' }}>
+                                      {isPublished ? (
+                                        <>
+                                          <button
+                                            onClick={() => handleUpdateCard(m)}
+                                            disabled={updatingCard === (m.path || m.filename)}
+                                            style={{
+                                              padding: '3px 8px', borderRadius: '5px',
+                                              border: '1px solid rgba(255,184,108,0.4)', background: 'transparent',
+                                              color: '#ffb86c', fontSize: '0.65rem', fontWeight: 800, cursor: 'pointer'
+                                            }}
+                                          >
+                                            {updatingCard === (m.path || m.filename) ? 'Aggiorno...' : 'Aggiorna scheda'}
+                                          </button>
+                                          <button
+                                            onClick={() => handleRenameHfRepoFromInventory(m)}
+                                            style={{
+                                              padding: '3px 8px', borderRadius: '5px',
+                                              border: '1px solid rgba(255,184,108,0.25)', background: 'transparent',
+                                              color: '#ffb86c', fontSize: '0.65rem', fontWeight: 700, cursor: 'pointer'
+                                            }}
+                                          >
+                                            Rinomina HF
+                                          </button>
+                                          <button
+                                            onClick={() => handleAttachHfRepo(m)}
+                                            style={{
+                                              padding: '3px 8px', borderRadius: '5px',
+                                              border: '1px solid rgba(0,210,255,0.3)', background: 'transparent',
+                                              color: '#00d2ff', fontSize: '0.65rem', fontWeight: 700, cursor: 'pointer'
+                                            }}
+                                          >
+                                            Modifica link
+                                          </button>
+                                          <button
+                                            onClick={() => handleForgetPublication(m)}
+                                            style={{
+                                              padding: '3px 7px', borderRadius: '5px',
+                                              border: subBorder, background: 'transparent',
+                                              color: textMuted, fontSize: '0.65rem', fontWeight: 600, cursor: 'pointer'
+                                            }}
+                                          >
+                                            Scollega
+                                          </button>
+                                        </>
+                                      ) : (
+                                        <button
+                                          onClick={() => setPublishingModel(m)}
+                                          style={{
+                                            padding: '4px 10px', borderRadius: '6px',
+                                            border: '1px solid rgba(255, 184, 108, 0.40)', background: 'rgba(255, 184, 108, 0.12)',
+                                            color: '#ffb86c', fontSize: '0.66rem', fontWeight: 800, cursor: 'pointer',
+                                            display: 'inline-flex', alignItems: 'center', gap: '4px'
+                                          }}
+                                        >
+                                          <Upload size={11} /> Pubblica su Hugging Face
+                                        </button>
                                       )}
                                     </div>
                                   </div>
 
-                                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                    <span style={{
-                                      fontSize: '0.64rem', fontWeight: 800, color: '#10b981',
-                                      padding: '4px 9px', borderRadius: '6px',
-                                      background: 'rgba(16, 185, 129, 0.12)', border: '1px solid rgba(16, 185, 129, 0.25)'
+                                  {/* ROW 2: BENCHMARK BREAKDOWN (IF AVAILABLE) */}
+                                  {hasBenchmark && (
+                                    <div style={{
+                                      padding: '8px 12px', borderRadius: '8px',
+                                      background: 'rgba(255, 184, 108, 0.05)',
+                                      border: '1px solid rgba(255, 184, 108, 0.20)',
+                                      display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                                      gap: '10px', flexWrap: 'wrap'
                                     }}>
-                                      ✓ VALUTAZIONE REGISTRATA
-                                    </span>
+                                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                        <Trophy size={13} color="#ffb86c" />
+                                        <span style={{ fontSize: '0.70rem', fontWeight: 800, color: textPrimary }}>
+                                          Benchmark Training Lab:
+                                        </span>
+                                        <span style={{ fontSize: '0.72rem', fontWeight: 900, color: bmScoreColor }}>
+                                          {bmScore}% Pass
+                                        </span>
+                                        {bm.speed_tok_s && (
+                                          <span style={{ fontSize: '0.66rem', color: '#00d2ff' }}>
+                                            • ⚡ {bm.speed_tok_s} tok/s
+                                          </span>
+                                        )}
+                                      </div>
+
+                                      {bm.results && Object.keys(bm.results).length > 0 && (
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '4px', flexWrap: 'wrap' }}>
+                                          {Object.entries(bm.results).slice(0, 5).map(([tKey, tRes]) => (
+                                            <span
+                                              key={tKey}
+                                              style={{
+                                                fontSize: '0.58rem', padding: '1px 5px', borderRadius: '4px',
+                                                background: subBg, border: subBorder, color: textPrimary
+                                              }}
+                                            >
+                                              {tKey}: <b>{tRes.score ?? tRes.pass_rate ?? tRes}%</b>
+                                            </span>
+                                          ))}
+                                        </div>
+                                      )}
+                                    </div>
+                                  )}
+
+                                  {/* ROW 3: FILE OPERATIONS & TECHNICAL DETAILS */}
+                                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px', flexWrap: 'wrap', fontSize: '0.68rem', color: textMuted }}>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                                      {m.architecture && <span>🧬 Architettura: <b>{m.architecture}</b></span>}
+                                      {m.added_at && <span>🕒 Aggiunto: <b>{m.added_at}</b></span>}
+                                      {m.path && <span title={m.path} style={{ maxWidth: '300px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>📁 {m.path}</span>}
+                                    </div>
+
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                      {/* Convert GGUF Shortcut */}
+                                      {(!isGguf || m.is_repo_folder) && (
+                                        <button
+                                          onClick={() => {
+                                            if (onNavigateToConverter) {
+                                              onNavigateToConverter(m.model_id || m.filename);
+                                            }
+                                          }}
+                                          style={{
+                                            padding: '4px 8px', borderRadius: '5px',
+                                            border: '1px solid rgba(16, 185, 129, 0.35)', background: 'rgba(16, 185, 129, 0.10)',
+                                            color: '#10b981', fontSize: '0.66rem', fontWeight: 800, cursor: 'pointer',
+                                            display: 'inline-flex', alignItems: 'center', gap: '3px'
+                                          }}
+                                        >
+                                          <Package size={11} /> Converti GGUF
+                                        </button>
+                                      )}
+
+                                      {/* Rename */}
+                                      <button
+                                        onClick={() => handleRenameModel(m)}
+                                        disabled={renamingPath === (m.path || m.filename)}
+                                        style={{
+                                          padding: '4px 8px', borderRadius: '5px',
+                                          border: subBorder, background: subBg,
+                                          color: textMuted, fontSize: '0.66rem', fontWeight: 700, cursor: 'pointer',
+                                          display: 'inline-flex', alignItems: 'center', gap: '3px'
+                                        }}
+                                      >
+                                        <Pencil size={11} /> Rinomina
+                                      </button>
+
+                                      {/* Delete */}
+                                      <button
+                                        onClick={() => handleDeleteModel(m)}
+                                        disabled={deletingPath === (m.path || m.filename)}
+                                        style={{
+                                          padding: '4px 8px', borderRadius: '5px',
+                                          border: '1px solid rgba(239, 68, 68, 0.3)', background: 'rgba(239, 68, 68, 0.1)',
+                                          color: '#ef4444', fontSize: '0.66rem', fontWeight: 700, cursor: 'pointer',
+                                          display: 'inline-flex', alignItems: 'center', gap: '3px'
+                                        }}
+                                      >
+                                        <Trash2 size={11} /> Elimina
+                                      </button>
+                                    </div>
                                   </div>
-                                </div>
-                              ) : (
-                                <div style={{
-                                  padding: '9px 14px', borderRadius: '10px',
-                                  background: subBg, border: subBorder,
-                                  display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px'
-                                }}>
-                                  <span style={{ fontSize: '0.68rem', color: textMuted, display: 'flex', alignItems: 'center', gap: '5px' }}>
-                                    <Award size={13} color={textMuted} /> Nessun benchmark registrato per questo modello.
-                                  </span>
-                                  <span style={{ fontSize: '0.64rem', color: '#ffb86c', fontWeight: 700 }}>
-                                    Eseguibile dalla scheda Training Lab
-                                  </span>
                                 </div>
                               )}
                             </div>
