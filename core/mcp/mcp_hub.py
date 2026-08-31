@@ -46,16 +46,23 @@ class MCPHub:
         self._initialize_servers()
         self.reload_external_servers()
 
-    def register_server(self, server_cls_or_instance) -> bool:
+    def register_server(self, server_cls_or_instance, name: Optional[str] = None) -> bool:
         """Registra dinamicamente un server MCP da un modulo opzionale."""
         try:
+            # Support inverted argument order: register_server("id", server)
+            if isinstance(server_cls_or_instance, str) and not isinstance(name, str):
+                name, server_cls_or_instance = server_cls_or_instance, name
+
             if isinstance(server_cls_or_instance, type):
                 server = server_cls_or_instance()
             else:
                 server = server_cls_or_instance
+
+            srv_name = getattr(server, "name", None) or name or type(server).__name__
+            srv_version = getattr(server, "version", "1.0.0")
             with self._lock:
-                self.servers[server.name] = server
-            log.info("Dynamically Registered Module MCP Server: '%s' (v%s)", server.name, server.version)
+                self.servers[srv_name] = server
+            log.info("Dynamically Registered Module MCP Server: '%s' (v%s)", srv_name, srv_version)
             return True
         except Exception as exc:
             log.error("Errore registrazione server MCP dinamico: %s", exc, exc_info=True)
@@ -172,18 +179,30 @@ class MCPHub:
 
         tools = []
         for server in self._all_servers():
-            server_off = server.name in disabled_servers
-            for tool in server.list_tools():
-                enabled = not server_off and tool["name"] not in disabled_tools
+            srv_name = getattr(server, "name", type(server).__name__)
+            server_off = srv_name in disabled_servers
+            raw_tools = []
+            try:
+                if hasattr(server, "list_tools") and callable(server.list_tools):
+                    raw_tools = server.list_tools()
+                elif hasattr(server, "get_tools") and callable(server.get_tools):
+                    raw_tools = server.get_tools()
+            except Exception as tool_err:
+                log.warning("Errore recupero tools per server '%s': %s", srv_name, tool_err)
+                continue
+
+            for tool in raw_tools:
+                tool_name = tool.get("name") if isinstance(tool, dict) else getattr(tool, "name", str(tool))
+                enabled = not server_off and tool_name not in disabled_tools
                 if only_enabled and not enabled:
                     continue
-                entry = dict(tool)
-                entry["server"] = server.name
+                entry = dict(tool) if isinstance(tool, dict) else {"name": tool_name}
+                entry["server"] = srv_name
                 entry["enabled"] = enabled
                 entry["external"] = isinstance(server, ExternalMCPServer)
                 entry.setdefault("safety", governance.SAFE)
                 try:
-                    entry["ready"] = server.is_configured()
+                    entry["ready"] = server.is_configured() if hasattr(server, "is_configured") else True
                 except Exception:
                     entry["ready"] = False
                 tools.append(entry)
