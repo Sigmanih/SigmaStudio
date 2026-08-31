@@ -11,7 +11,7 @@ import {
   Layers, Filter, FolderPlus, Zap, CheckCircle2, SlidersHorizontal, 
   RadioTower, Waves, Building2, Globe, X, RotateCcw, PlayCircle
 } from 'lucide-react';
-import { useMusic } from '../../context/MusicContext';
+import { useMusic } from '../../contexts/MusicContext';
 import { useApp } from '../../contexts/AppContext';
 
 const YoutubeIcon = ({ size = 18, color = '#ff0000' }) => (

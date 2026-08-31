@@ -7,8 +7,9 @@ import json
 import datetime
 import uuid
 import threading
+from core import paths
 
-RESEARCH_SESSIONS_DIR = "research_sessions"
+RESEARCH_SESSIONS_DIR = str(paths.research_sessions_dir())
 
 
 def _ensure_dir():

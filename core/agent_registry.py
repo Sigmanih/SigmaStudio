@@ -1,10 +1,9 @@
-"""Agent Registry for Sigma Studio — Gestione strutturata degli agenti AI."""
 import os
 import json
 import datetime
+from core import paths
 
-
-AGENTS_META_FILE = "agents_meta.json"
+AGENTS_META_FILE = str(paths.agents_meta_file())
 
 # Default agent registry seed data
 DEFAULT_AGENTS_REGISTRY = {
@@ -35,8 +34,10 @@ def get_all_agents() -> list:
     agents = meta.get("agents", {})
     result = []
     known_ids = set()
+    root_str = str(paths.project_root())
     for agent_id, agent_data in agents.items():
-        manifesto_path = agent_data.get("manifesto", f"manifesti/{agent_id}.md")
+        rel_man = agent_data.get("manifesto", f"manifesti/{agent_id}.md")
+        manifesto_path = os.path.join(root_str, rel_man) if not os.path.isabs(rel_man) else rel_man
         if os.path.exists(manifesto_path) or agent_id == "sigma_assistant":
             entry = {"id": agent_id, **agent_data}
             entry.pop("parent_id", None)
@@ -44,7 +45,7 @@ def get_all_agents() -> list:
             known_ids.add(agent_id)
 
     # Auto-discover unlisted manifests from manifesti/ and manifesti/Private/
-    manifesto_dir = 'manifesti'
+    manifesto_dir = str(paths.manifests_dir())
     if os.path.isdir(manifesto_dir):
         for f in os.listdir(manifesto_dir):
             if f.endswith('.md') and f.lower() != 'readme.md':

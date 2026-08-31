@@ -4,7 +4,7 @@ import { renderMarkdownLatex } from '../../utils/markdownLatex';
 import McpToolStrip from './McpToolStrip';
 import ImageLightbox from './ImageLightbox';
 import { useApp } from '../../contexts/AppContext';
-import { useMusic } from '../../context/MusicContext';
+import { useMusic } from '../../contexts/MusicContext';
 import { getModelSpecs } from './core/modelSpecsHelper';
 import 'katex/dist/katex.min.css';
 

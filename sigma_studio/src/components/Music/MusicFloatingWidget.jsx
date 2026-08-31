@@ -9,7 +9,7 @@ import {
   Heart, Music, Sparkles, Radio, ExternalLink, ChevronUp, ChevronDown, 
   RadioTower, Waves
 } from 'lucide-react';
-import { useMusic } from '../../context/MusicContext';
+import { useMusic } from '../../contexts/MusicContext';
 import { useApp } from '../../contexts/AppContext';
 
 export default function MusicFloatingWidget({ onOpenTab }) {

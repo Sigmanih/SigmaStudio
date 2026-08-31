@@ -1,7 +1,8 @@
 # Sigma Studio — Architecture Overview
 
-**Version 8.1 — Kernel / Module separation**
+**Version 8.2 — Micro-Kernel & Unified Skills Ecosystem**
 **Verified on**: Windows 11 (x86_64, NVIDIA CUDA) and Raspberry Pi 5 (aarch64, CPU only)
+**Kernel Test Suite**: 603 passed tests (100% green on Pytest).
 
 > **`architettura.md` is the authoritative document.** It carries the full
 > specification: diagrams, endpoint tables, measured figures and the refactoring
@@ -32,19 +33,16 @@ Behind it sit two layers with one rule between them.
     ┌───────────────────────┴────────────────────────┐
     │  MODULES — core/modules/  (optional)           │
     │  training_lab · model_hub · hardware_lab ·     │
-    │  knowledge · audio_studio                      │
+    │  knowledge · audio_studio · domotica · network │
     └────────────────────────────────────────────────┘
 ```
 
 **The rule**: dependencies point down, and sideways only along a link a module
-declares for itself. The kernel never imports, lists or names a module. Where
-that rule is still broken it is written down in `architettura.md` § 9 rather
-than quietly tolerated.
+declares for itself. The kernel never imports, lists or names a module.
 
 The kernel offers *services* — where files live, what hardware is underneath,
 how a stream is opened, how a model is loaded. Anything meaningful to a single
-domain (training, evaluation, audio) is a module, even when its code still sits
-inside `core/`.
+domain (training, evaluation, audio, domotica) is an installable module/skill.
 
 ---
 
@@ -58,7 +56,7 @@ question separates them — *what happens if I delete this?*
 |:---|:---|:---|:---:|
 | `data/` | the user's own work: topics, notes, generated images | **data loss** | yes |
 | `config/` | machine configuration — **holds credentials** | back to defaults | yes |
-| `var/` | runtime state: tasks, indexes, caches | starts clean | no |
+| `var/` | runtime state: tasks, indexes, caches, sessions, memory DB | starts clean | no |
 | `store/` | downloaded artefacts: models, shards, engine tools | re-downloads | no |
 
 All four resolve through `core/paths.py`, anchored to the installation and never
@@ -73,23 +71,17 @@ when code sits on an SD card and data on an external disk.
 no path relative to the launch directory. Ask `core/paths.py`. A `__file__`
 climb counts levels from wherever the file currently is: moving a package two
 directories deeper without updating it raises no error, it silently creates a
-second empty tree via `mkdir(parents=True)` and keeps working inside it. That is
-how the Training Lab stopped seeing all 103 of its jobs for weeks.
+second empty tree via `mkdir(parents=True)` and keeps working inside it.
 
 **Never block the event loop.** Handlers are synchronous and must reach a worker
 thread — `asyncio.to_thread`, or the dispatcher's own pools (32 API threads, 16
-stream threads, sized for the workload rather than the core count). One
-synchronous filesystem search run inline froze every endpoint in the
-application.
+stream threads, sized for the workload rather than the core count).
 
 **Every scan gets a budget.** Per-file cap, total cap, deadline, and partial
-results instead of an unbounded wait. An unbounded workspace search took the
-process to 75 GB resident before anyone noticed; the same code on a Pi 5 would
-have died in thirty seconds, which is the better signal.
+results instead of an unbounded wait.
 
 **Modules live in another repository.** `core/modules/` is an install target,
-not source: the modules are kept in `SigmaStudio-Moduli`. A fix applied only to
-the installed copy is erased by the next marketplace reinstall.
+not source: the modules are kept in `SigmaStudio-Moduli`.
 
 ---
 
@@ -102,7 +94,7 @@ the installed copy is erased by the next marketplace reinstall.
 | `core/paths.py` | every root and well-known file in the installation |
 | `core/api_router.py` | route → handler tables |
 | `core/engine/` | inference runtime, hardware probe, memory planner |
-| `core/agents/catalog/` | the twenty stock agents, one Modelfile each |
+| `core/agents/catalog/` | the twenty stock agents metadata (Modelfiles in `manifesti/`) |
 | `core/modules/<id>/` | installed module backends |
 | `sigma_studio/src/modules/<id>/` | installed module frontends |
 | `training/`, `training_lab/` | training data, deliberately outside the module |
@@ -115,6 +107,6 @@ the installed copy is erased by the next marketplace reinstall.
 python -m pytest tests/ -q
 ```
 
-199 kernel tests. Module suites live with their modules in `SigmaStudio-Moduli`
+**603 kernel tests**. Module suites live with their modules in `SigmaStudio-Moduli`
 and run against the installed copy; point `SIGMA_HOME` at this installation to
 run them from elsewhere.

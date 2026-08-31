@@ -3,8 +3,9 @@ Permette agli agenti di ricordare esperienze passate, decisioni e pattern appres
 import os
 import json
 import datetime
+from core import paths
 
-AGENT_MEMORY_DIR = "agent_memory"
+AGENT_MEMORY_DIR = str(paths.agent_memory_dir())
 MAX_MEMORY_ENTRIES = 50  # Max entries per agent per memory type
 
 

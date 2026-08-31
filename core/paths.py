@@ -113,15 +113,25 @@ def _con_ripiego(nuovo: Path, nome_storico: str) -> Path:
     if nuovo.exists():
         return nuovo
 
-    storico = project_root() / _LEGACY_ROOT / nome_storico
-    if storico.exists():
+    storico_data = project_root() / _LEGACY_ROOT / nome_storico
+    if storico_data.exists():
         if nome_storico not in _avvisi_migrazione:
             _avvisi_migrazione.add(nome_storico)
             log.info(
                 "[Paths] '%s' si trova ancora in %s/: spostalo in %s/ quando puoi.",
                 nome_storico, _LEGACY_ROOT, nuovo.parent.name,
             )
-        return storico
+        return storico_data
+
+    storico_root = project_root() / nome_storico
+    if storico_root.exists():
+        if nome_storico not in _avvisi_migrazione:
+            _avvisi_migrazione.add(nome_storico)
+            log.info(
+                "[Paths] '%s' si trova ancora nella root: spostalo in %s/ quando puoi.",
+                nome_storico, nuovo.parent.name,
+            )
+        return storico_root
 
     return nuovo
 
@@ -133,8 +143,13 @@ def _con_ripiego(nuovo: Path, nome_storico: str) -> Path:
 # a mano in due punti e' un nome che prima o poi diverge.
 
 def config_file() -> Path:
-    """`config.json`, la configurazione principale. Sta nella radice."""
-    return project_root() / "config.json"
+    """`config.json`, la configurazione principale. Sta in config/."""
+    return _con_ripiego(config_dir() / "config.json", "config.json")
+
+
+def config_example_file() -> Path:
+    """`config.example.json`, file di configurazione template."""
+    return _con_ripiego(config_dir() / "config.example.json", "config.example.json")
 
 
 def hardware_config_file() -> Path:
@@ -145,6 +160,11 @@ def model_hub_config_file() -> Path:
     return _con_ripiego(config_dir() / "model_hub_config.json", "model_hub_config.json")
 
 
+def agents_meta_file() -> Path:
+    """Registro e metadati degli agenti personalizzati e di serie."""
+    return _con_ripiego(config_dir() / "agents_meta.json", "agents_meta.json")
+
+
 def installed_modules_file() -> Path:
     """Quali moduli opzionali risultano installati."""
     return _con_ripiego(config_dir() / "marketplace_installed.json",
@@ -153,6 +173,31 @@ def installed_modules_file() -> Path:
 
 def developer_tasks_file() -> Path:
     return _con_ripiego(var_dir() / "developer_tasks.json", "developer_tasks.json")
+
+
+def tasks_file() -> Path:
+    """File tasks per roadmap e task utente."""
+    return _con_ripiego(var_dir() / "tasks.json", "tasks.json")
+
+
+def agent_tasks_cache_file() -> Path:
+    """Cache interna per l'esecuzione dei task degli agenti."""
+    return _con_ripiego(var_dir() / "agent_tasks_cache.json", "agent_tasks_cache.json")
+
+
+def agent_context_db() -> Path:
+    """Database SQLite per contesti, memoria ed esecuzioni condivise degli agenti."""
+    return _con_ripiego(var_dir() / "agent_context.db", "agent_context.db")
+
+
+def agent_memory_dir() -> Path:
+    """Cartella della memoria persistente degli agenti (episodica, decisioni, pattern)."""
+    return _con_ripiego(var_dir() / "agent_memory", "agent_memory")
+
+
+def research_sessions_dir() -> Path:
+    """Cartella delle sessioni di ricerca multi-agente."""
+    return _con_ripiego(var_dir() / "research_sessions", "research_sessions")
 
 
 def provider_config_file() -> Path:
@@ -226,17 +271,17 @@ def modules_meta_file() -> Path:
 # ==============================================================================
 
 def training_dir() -> Path:
-    """Job, dataset e script di addestramento: dati dell'utente.
+    """Job, dataset e script di addestramento: conservati in store/training/.
 
     Fuori dai moduli di proposito: un fine-tuning costa ore di GPU e deve
     sopravvivere alla disinstallazione del Training Lab.
     """
-    return project_root() / "training"
+    return _con_ripiego(store_dir() / "training", "training")
 
 
 def training_lab_dir() -> Path:
-    """Stato dell'autopilota e risultati ufficiali dei benchmark."""
-    return project_root() / "training_lab"
+    """Stato dell'autopilota e risultati ufficiali dei benchmark in store/training_lab/."""
+    return _con_ripiego(store_dir() / "training_lab", "training_lab")
 
 
 def manifests_dir() -> Path:

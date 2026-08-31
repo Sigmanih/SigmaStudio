@@ -132,15 +132,17 @@ class JsonStore:
         return copy.deepcopy(self._default)
 
 
+from core import paths
+
 # ---------------------------------------------------------------------------
 # Singleton stores — import these everywhere instead of open() calls
 # ---------------------------------------------------------------------------
 
 #: Global store for ``tasks.json`` — default is an empty list (reserved for User Roadmap).
-tasks_store = JsonStore("tasks.json", default=[])
+tasks_store = JsonStore(str(paths.tasks_file()), default=[])
 
 #: Global store for ``agent_tasks_cache.json`` — internal AI agent task execution cache.
-agent_tasks_store = JsonStore("agent_tasks_cache.json", default={})
+agent_tasks_store = JsonStore(str(paths.agent_tasks_cache_file()), default={})
 
 #: Global store for ``modules_meta.json`` — default is an empty dict.
-modules_store = JsonStore("modules_meta.json", default={"topics": {}, "modules": {}})
+modules_store = JsonStore(str(paths.modules_meta_file()), default={"topics": {}, "modules": {}})

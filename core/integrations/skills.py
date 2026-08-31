@@ -14,11 +14,12 @@ import json
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from core import paths
 from core.logger import get_logger
 
 log = get_logger("skills")
 
-CONFIG_PATH = Path("config.json")
+CONFIG_PATH = paths.config_file()
 
 
 @dataclass(frozen=True)

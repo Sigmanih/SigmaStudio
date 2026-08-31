@@ -561,29 +561,13 @@ FastAPIHandlerAdapter.handle_system_available_modules = handle_system_available_
 register_get_handlers(FastAPIHandlerAdapter)
 register_post_handlers(FastAPIHandlerAdapter)
 
-# Caricamento dinamico dei moduli opzionali installati (Creative Lab, Domotica, Model Hub, etc.)
+# Caricamento dinamico dei moduli opzionali installati (Model Hub, Training Lab, Creative Lab, Domotica, etc.)
 try:
     from core.module_loader import ModuleLoader
     module_loader = ModuleLoader()
     module_loader.load_installed(app)
 except Exception as _mod_err:
     log.warning(f"[FastAPI] Avviso inizializzazione ModuleLoader: {_mod_err}")
-
-# Gli handler del Model Hub si agganciano tutti insieme
-try:
-    from core.modules.sigma_model_hub.backend import handlers as _model_hub_handlers
-
-    _agganciati = 0
-    for _nome in dir(_model_hub_handlers):
-        if not _nome.startswith("handle_"):
-            continue
-        _fn = getattr(_model_hub_handlers, _nome)
-        if callable(_fn):
-            setattr(FastAPIHandlerAdapter, _nome, _fn)
-            _agganciati += 1
-    log.info("[FastAPI] Model Hub: %d handler agganciati.", _agganciati)
-except Exception as _mh_err:
-    log.warning(f"[FastAPI] Avviso binding Model Hub: {_mh_err}")
 
 
 # Endpoints whose handlers push SSE events on `wfile` instead of returning JSON.

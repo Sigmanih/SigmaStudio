@@ -7,8 +7,9 @@ import os
 import json
 import sqlite3
 import datetime
+from core import paths
 
-CONTEXT_DB = "agent_context.db"
+CONTEXT_DB = str(paths.agent_context_db())
 
 
 def _get_conn() -> sqlite3.Connection:

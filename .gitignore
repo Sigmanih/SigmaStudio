@@ -77,6 +77,8 @@ data/
 !data/.gitkeep
 config/
 !config/.gitkeep
+!config/config.example.json
+!config/engine_overrides.json
 var/
 !var/.gitkeep
 store/

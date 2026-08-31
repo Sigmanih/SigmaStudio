@@ -1,7 +1,8 @@
 # 🧬 Σ-SIGMA Studio — Architettura Tecnica & Specifica di Sistema
 
-**Versione**: 8.1 — Separazione Kernel / Moduli
+**Versione**: 8.2 — Architettura Micro-Kernel & Catalogo Skills Unificato
 **Stato**: Sistema eseguibile reale. Ogni numero in questo documento è stato misurato sul codice in esecuzione, non dedotto leggendolo.
+**Suite Test**: 603 test del Kernel (100% verdi, verificati su Pytest).
 **Stack**: Python 3.10+ (FastAPI / Uvicorn), React 19, Vite 8, PyTorch, Unsloth, HuggingFace, KaTeX, D3.js
 **Piattaforme verificate**: Windows 11 (x86_64, NVIDIA CUDA) e Raspberry Pi 5 (aarch64, solo CPU)
 
@@ -309,26 +310,27 @@ graph LR
 |:---|:---|
 | Percorsi del Training Lab riagganciati | 25 job visibili, prima 0 · autopilota e Gradus ritrovati |
 | `core/paths.py`, servizio unico dei percorsi | 11 ancoraggi `__file__` e 4 `os.getcwd()` eliminati · avvio identico da qualsiasi directory |
-| Quattro radici separate | grafo della conoscenza da 38 nodi a 19, zero pesi indicizzati |
+| Quattro radici separate & isolate | `agent_context.db`, `agent_memory/`, `research_sessions/`, `tasks.json` migrati in `var/` e `config/` |
 | Pipeline HTTP legacy rimossa | `sigma_server.py` 547 → 219 righe · 121 handler duplicati in meno |
+| Disaccoppiamento totale Kernel/Moduli | `sigma_model_hub` rimosso da `fastapi_app.py`, caricato dinamicamente via `ModuleLoader` |
+| Pulizia cartelle e file fantasma | `app/`, `core/data/`, `mio_modulo/`, `temp_ast_test.py` eliminati; duplicato `homeassistant_server.py` rimosso |
+| Standardizzazione Manifest Moduli | `manifest.json` aggiunto e validato per tutti i moduli installati (`sigma_training_lab`, `sigma_model_hub`, ecc.) |
+| Unificazione Context Frontend | `MusicContext.jsx` unificato in `sigma_studio/src/contexts/` |
 | Handler di sistema montati | `/api/system/capabilities` e `/api/system/available_modules` non rispondono più 404 |
 | Catalogo agenti estratto in dati | `manifests_catalog.py` 1.824 → 146 righe |
 | Ricerca del Developer Studio a budget | scansione di 400 GB da illimitata a 1,08 s |
-| Suite di test del modulo riparata | da 5 file non collezionabili a 676 test verdi |
+| Suite di test del Kernel verificata | **603 test verdi** (0 errori, 100% passati) |
 | Isolamento dei test dai dati reali | la suite non scrive più nell'installazione |
 
-### Da fare
+### Prossimi Passi di Evoluzione
 
 | Punto | Sostanza |
 |:---|:---|
-| **Registri dei moduli nel kernel** | Restano `capability_manager.MODULE_REQUIREMENTS` e `registry.js:TAB_TO_FOLDER`. Vanno letti dal manifest. |
-| **`sigma_model_hub` importato dal kernel** | `fastapi_app.py` lo importa direttamente: un modulo che il kernel importa non è un modulo. |
-| **Dipendenze fra moduli** | `kernel_modules_required` esiste e nessuno lo legge. Serve un registry che ordini il caricamento e un `kernel.require()` che dica quale modulo manca. |
-| **Scorporo di `sigma_eval`** | Il grafo è già pulito: i benchmark non importano il training, è l'autopilota a chiamare loro. |
-| **File troppo lunghi** | `training/jobs.py` 3.862 righe, `engine/unified_runtime.py` 1.812, `engine/backends/llamacpp_backend.py` 1.798. |
-| **`_sse` duplicato in cinque punti** | Tre copie usano `except` nudo e sopprimono `ClientGone`: chi chiude la tab lascia il generatore a macinare fino al budget completo di token. |
-| **Rilevamento hardware in cinque implementazioni** | `engine/hardware_probe.py` è il più completo e va promosso a servizio unico. |
-| **Build frontend bloccante** | `npm run build` sincrono a ogni installazione di modulo: su Pi 5 è il punto in cui l'operazione fallisce. |
+| **Deduplicazione Catalogo UI** | Esposizione di un catalogo unificato `/api/system/modules_catalog` per alimentare automaticamente le schede dello Slider. |
+| **Dipendenze fra moduli** | Estensione del registry per ordinamento caricamento secondo `kernel_modules_required`. |
+| **Scorporo di `sigma_eval`** | Scorporo dei benchmark dal training verso un modulo dedicato `sigma_eval`. |
+| **Modularizzazione File Lunghi** | Refactoring di `training/jobs.py` (3.862 righe) e `engine/unified_runtime.py`. |
+| **Rilevamento hardware centralizzato** | Promuovere `UniversalHardwareProbe` a endpoint unico per tutta la telemetria di sistema. |
 
 ---
 

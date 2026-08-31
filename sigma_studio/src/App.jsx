@@ -12,7 +12,7 @@ import { ModuleModal, TaskModal, NewFileModal, SystemCleanupModal } from './comp
 
 // Context
 import { AppProvider, useApp } from './contexts/AppContext';
-import { MusicProvider } from './context/MusicContext';
+import { MusicProvider } from './contexts/MusicContext';
 
 // Hooks
 import { useModuleState } from './hooks/useModuleState';
