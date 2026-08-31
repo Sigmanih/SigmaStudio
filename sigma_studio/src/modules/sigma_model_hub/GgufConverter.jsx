@@ -1,5 +1,8 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Package, Download, Play, AlertTriangle, CheckCircle2, Loader, Upload } from 'lucide-react';
+import {
+  Package, Download, Play, AlertTriangle, CheckCircle2, Loader, Upload,
+  Layers, Cpu, Zap, HardDrive, ShieldCheck, ChevronDown, Check, Info, Dna, Sparkles, Activity
+} from 'lucide-react';
 import HfPublishModal from './HfPublishModal.jsx';
 
 /**
@@ -25,11 +28,14 @@ export default function GgufConverter({ isLight, addToast, initialModel }) {
     }
   }, [initialModel]);
 
-  const cardBg = isLight ? '#ffffff' : 'rgba(255,255,255,0.03)';
-  const cardBorder = isLight ? '1px solid #e5e7eb' : '1px solid rgba(255,255,255,0.08)';
-  const textPrimary = isLight ? '#111827' : '#e5e7eb';
-  const textMuted = isLight ? '#6b7280' : '#9ca3af';
-  const inputBg = isLight ? '#f9fafb' : 'rgba(0,0,0,0.25)';
+  const cardBg = isLight ? '#ffffff' : 'rgba(15, 18, 28, 0.85)';
+  const cardBorder = isLight ? '1px solid rgba(190, 160, 110, 0.28)' : '1px solid rgba(255, 255, 255, 0.08)';
+  const textPrimary = isLight ? '#111827' : '#ffffff';
+  const textMuted = isLight ? '#6b7280' : '#8b8fa3';
+  const subBg = isLight ? '#f8f5ee' : 'rgba(255, 255, 255, 0.03)';
+  const subBorder = isLight ? '1px solid rgba(190, 160, 110, 0.20)' : '1px solid rgba(255, 255, 255, 0.06)';
+  const inputBg = isLight ? '#f4eee2' : 'rgba(8, 10, 18, 0.85)';
+  const optionBg = isLight ? '#ffffff' : '#0d111d';
 
   const fetchInfo = useCallback(async () => {
     try {
@@ -100,7 +106,7 @@ export default function GgufConverter({ isLight, addToast, initialModel }) {
       const json = await res.json();
       if (json.success) {
         setJobs([json.job, ...jobs]);
-        if (addToast) addToast('🔄 Conversione avviata.', 'info');
+        if (addToast) addToast('🔄 Conversione avviata con successo.', 'info');
       } else if (addToast) addToast(`❌ ${json.error}`, 'error');
     } catch (e) {
       if (addToast) addToast(`Errore: ${e.message}`, 'error');
@@ -113,64 +119,98 @@ export default function GgufConverter({ isLight, addToast, initialModel }) {
   const estimate = model?.estimated_outputs?.[quant];
   const quantMeta = quantTypes.find(q => q.id === quant);
 
-  const panel = {
-    padding: '18px', borderRadius: '14px', background: cardBg,
-    border: cardBorder, display: 'flex', flexDirection: 'column', gap: '14px',
-  };
-  const label = { fontSize: '0.72rem', fontWeight: 800, color: textMuted, marginBottom: '4px' };
-  const field = {
-    width: '100%', padding: '9px 12px', borderRadius: '8px', background: inputBg,
-    border: cardBorder, color: textPrimary, fontSize: '0.82rem',
-  };
+  // Quick Preset Quantizations
+  const POPULAR_QUANTS = [
+    { id: 'Q4_K_M', label: '⚡ Q4_K_M', tag: 'Consigliato', color: '#10b981' },
+    { id: 'Q5_K_M', label: '⚡ Q5_K_M', tag: 'Alta Fedeltà', color: '#00d2ff' },
+    { id: 'Q8_0', label: '⚡ Q8_0', tag: 'Lossless', color: '#bc8cff' },
+    { id: 'Q4_K_S', label: '⚡ Q4_K_S', tag: 'Leggero', color: '#38bdf8' },
+    { id: 'Q3_K_M', label: '⚡ Q3_K_M', tag: 'Basso VRAM', color: '#f59e0b' },
+    { id: 'Q6_K', label: '⚡ Q6_K', tag: 'Bilanciato', color: '#a855f7' },
+    { id: 'IQ4_XS', label: '⚡ IQ4_XS', tag: 'iMatrix', color: '#ff79c6' },
+  ];
 
   if (loading) {
-    return <div style={{ ...panel, color: textMuted }}>Lettura dei modelli locali…</div>;
+    return (
+      <div style={{
+        padding: '30px', borderRadius: '14px', background: cardBg, border: cardBorder,
+        textAlign: 'center', color: textMuted, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '8px'
+      }}>
+        <Activity className="mh-spin" size={22} color="#00d2ff" />
+        <span style={{ fontSize: '0.80rem' }}>Scansione modelli Safetensors e strumenti di conversione…</span>
+      </div>
+    );
   }
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-      <div style={panel}>
-        <div>
-          <h2 style={{ margin: 0, fontSize: '1rem', fontWeight: 800, color: textPrimary }}>
-            <Package size={15} style={{ verticalAlign: '-2px', marginRight: '6px' }} />
-            Conversione in GGUF
-          </h2>
-          <div style={{ fontSize: '0.74rem', color: textMuted, marginTop: '4px' }}>
-            Trasforma un modello safetensors in GGUF quantizzato, eseguibile dal
-            backend llama.cpp su GPU, Apple Metal o CPU ARM.
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+      <div style={{
+        padding: '18px 20px', borderRadius: '14px', background: cardBg,
+        border: cardBorder, display: 'flex', flexDirection: 'column', gap: '16px',
+        boxShadow: isLight ? '0 2px 12px rgba(0,0,0,0.04)' : '0 4px 20px rgba(0,0,0,0.25)'
+      }}>
+        {/* Header Title */}
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '10px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+            <div style={{
+              width: '36px', height: '36px', borderRadius: '10px',
+              background: 'linear-gradient(135deg, rgba(16, 185, 129, 0.25), rgba(0, 210, 255, 0.15))',
+              border: '1px solid rgba(16, 185, 129, 0.4)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center'
+            }}>
+              <Package size={19} color="#10b981" />
+            </div>
+            <div>
+              <h2 style={{ margin: 0, fontSize: '1.08rem', fontWeight: 900, color: textPrimary, letterSpacing: '-0.02em' }}>
+                Convertitore GGUF & Quantizzazione
+              </h2>
+              <div style={{ fontSize: '0.72rem', color: textMuted, marginTop: '2px' }}>
+                Trasforma un checkpoint Safetensors in GGUF quantizzato, ottimizzato per l'inferenza ultra-rapida su llama.cpp (GPU, Apple Metal o CPU).
+              </div>
+            </div>
           </div>
+
+          {tooling?.ready && (
+            <div style={{
+              fontSize: '0.66rem', fontWeight: 800, padding: '3px 8px', borderRadius: '6px',
+              background: 'rgba(16, 185, 129, 0.12)', border: '1px solid rgba(16, 185, 129, 0.35)',
+              color: '#10b981', display: 'flex', alignItems: 'center', gap: '4px'
+            }}>
+              <ShieldCheck size={12} /> Tooling llama.cpp v{tooling.converter_version || 'ready'}
+            </div>
+          )}
         </div>
 
+        {/* Tooling Alert Banner */}
         {tooling && !tooling.ready && (
           <div style={{
-            padding: '12px 14px', borderRadius: '10px',
-            background: 'rgba(245, 158, 11, 0.12)',
+            padding: '12px 16px', borderRadius: '10px',
+            background: 'rgba(245, 158, 11, 0.10)',
             border: '1px solid rgba(245, 158, 11, 0.35)',
             display: 'flex', flexDirection: 'column', gap: '8px',
           }}>
-            <div style={{ fontSize: '0.78rem', color: isLight ? '#92400e' : '#fbbf24', fontWeight: 700 }}>
-              <AlertTriangle size={13} style={{ verticalAlign: '-2px', marginRight: '6px' }} />
+            <div style={{ fontSize: '0.78rem', color: isLight ? '#92400e' : '#fbbf24', fontWeight: 800, display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <AlertTriangle size={14} color="#fbbf24" />
               Strumento di conversione non ancora installato
             </div>
             <div style={{ fontSize: '0.72rem', color: textMuted, lineHeight: 1.5 }}>
-              La conversione usa lo script ufficiale di llama.cpp
-              (versione <code>{tooling.converter_version}</code>), che viene scaricato
-              una sola volta e poi eseguito in locale. La quantizzazione invece
-              gira interamente in-process, senza programmi esterni.
+              La conversione usa lo script ufficiale di <code>llama.cpp</code>
+              (versione <code>{tooling.converter_version}</code>), scaricato una sola volta e poi eseguito localmente.
+              La quantizzazione gira interamente in-process a massima efficienza.
             </div>
             <button
               onClick={installTooling}
               disabled={busy}
               style={{
-                alignSelf: 'flex-start', padding: '7px 14px', borderRadius: '8px',
-                border: '1px solid rgba(245, 158, 11, 0.5)',
-                background: 'rgba(245, 158, 11, 0.15)',
-                color: isLight ? '#92400e' : '#fbbf24',
-                fontSize: '0.75rem', fontWeight: 800, cursor: busy ? 'wait' : 'pointer',
+                alignSelf: 'flex-start', padding: '6px 14px', borderRadius: '7px',
+                border: 'none', background: 'linear-gradient(135deg, #fbbf24, #f59e0b)',
+                color: '#111827', fontSize: '0.72rem', fontWeight: 900, cursor: busy ? 'wait' : 'pointer',
+                display: 'inline-flex', alignItems: 'center', gap: '5px',
+                boxShadow: '0 2px 10px rgba(245, 158, 11, 0.35)'
               }}
             >
-              <Download size={12} style={{ verticalAlign: '-2px', marginRight: '5px' }} />
-              Scarica lo strumento
+              <Download size={12} />
+              {busy ? 'Installazione in corso...' : 'Scarica lo strumento'}
             </button>
           </div>
         )}
@@ -180,158 +220,330 @@ export default function GgufConverter({ isLight, addToast, initialModel }) {
             padding: '12px 14px', borderRadius: '10px',
             background: 'rgba(239, 68, 68, 0.1)',
             border: '1px solid rgba(239, 68, 68, 0.35)',
-            fontSize: '0.78rem', color: '#ef4444',
+            fontSize: '0.76rem', color: '#ef4444',
           }}>
             {loadError}
           </div>
         ) : models.length === 0 ? (
-          <div style={{ fontSize: '0.78rem', color: textMuted }}>
-            Nessun modello safetensors nella cartella modelli. I GGUF non
-            compaiono qui perché sono già nel formato di destinazione.
+          <div style={{
+            padding: '24px', borderRadius: '10px', background: subBg, border: subBorder,
+            textAlign: 'center', color: textMuted, fontSize: '0.78rem'
+          }}>
+            📦 Nessun modello Safetensors trovato nello storage locale. I modelli GGUF non compaiono qui perché sono già pronti.
           </div>
         ) : (
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px' }}>
-            <div>
-              <div style={label}>MODELLO DI PARTENZA</div>
-              <select style={field} value={selected} onChange={e => setSelected(e.target.value)}>
-                {models.map(m => (
-                  <option key={m.name} value={m.name}>
-                    {m.name} — {m.params_b}B, {m.size_gb} GB
-                  </option>
-                ))}
-              </select>
+          /* STYLED DUAL SELECT ROW */
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '16px' }}>
+
+            {/* 1. SELECT MODELLO DI PARTENZA */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+              <div style={{
+                fontSize: '0.68rem', fontWeight: 800, color: '#00d2ff',
+                letterSpacing: '0.03em', textTransform: 'uppercase',
+                display: 'flex', alignItems: 'center', gap: '5px'
+              }}>
+                <Layers size={13} color="#00d2ff" /> MODELLO SAFETENSORS DI PARTENZA
+              </div>
+
+              <div style={{
+                position: 'relative',
+                display: 'flex',
+                alignItems: 'center',
+                background: inputBg,
+                border: isLight ? '1.5px solid rgba(0, 210, 255, 0.4)' : '1px solid rgba(0, 210, 255, 0.3)',
+                borderRadius: '10px',
+                padding: '0 12px',
+                transition: 'all 0.15s ease',
+                boxShadow: isLight ? '0 1px 4px rgba(0,0,0,0.03)' : '0 2px 8px rgba(0,0,0,0.25)'
+              }}>
+                <select
+                  value={selected}
+                  onChange={e => setSelected(e.target.value)}
+                  style={{
+                    width: '100%',
+                    padding: '10px 24px 10px 0',
+                    background: 'transparent',
+                    border: 'none',
+                    outline: 'none',
+                    color: textPrimary,
+                    fontSize: '0.80rem',
+                    fontWeight: 700,
+                    cursor: 'pointer',
+                    appearance: 'none',
+                    WebkitAppearance: 'none'
+                  }}
+                >
+                  {models.map(m => (
+                    <option
+                      key={m.name}
+                      value={m.name}
+                      style={{ background: optionBg, color: textPrimary, padding: '8px' }}
+                    >
+                      📦 {m.name} ({m.params_b ? `${m.params_b}B params` : ''} • {m.size_gb} GB)
+                    </option>
+                  ))}
+                </select>
+                <div style={{ position: 'absolute', right: '12px', pointerEvents: 'none', display: 'flex', alignItems: 'center' }}>
+                  <ChevronDown size={15} color="#00d2ff" />
+                </div>
+              </div>
             </div>
-            <div>
-              <div style={label}>QUANTIZZAZIONE</div>
-              <select style={field} value={quant} onChange={e => setQuant(e.target.value)}>
-                {quantTypes.map(q => (
-                  <option key={q.id} value={q.id}>{q.label}</option>
-                ))}
-              </select>
+
+            {/* 2. SELECT QUANTIZZAZIONE */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+              <div style={{
+                fontSize: '0.68rem', fontWeight: 800, color: '#ffb86c',
+                letterSpacing: '0.03em', textTransform: 'uppercase',
+                display: 'flex', alignItems: 'center', gap: '5px'
+              }}>
+                <Cpu size={13} color="#ffb86c" /> FORMATO & QUANTIZZAZIONE GGUF
+              </div>
+
+              <div style={{
+                position: 'relative',
+                display: 'flex',
+                alignItems: 'center',
+                background: inputBg,
+                border: isLight ? '1.5px solid rgba(255, 184, 108, 0.45)' : '1px solid rgba(255, 184, 108, 0.35)',
+                borderRadius: '10px',
+                padding: '0 12px',
+                transition: 'all 0.15s ease',
+                boxShadow: isLight ? '0 1px 4px rgba(0,0,0,0.03)' : '0 2px 8px rgba(0,0,0,0.25)'
+              }}>
+                <select
+                  value={quant}
+                  onChange={e => setQuant(e.target.value)}
+                  style={{
+                    width: '100%',
+                    padding: '10px 24px 10px 0',
+                    background: 'transparent',
+                    border: 'none',
+                    outline: 'none',
+                    color: textPrimary,
+                    fontSize: '0.80rem',
+                    fontWeight: 700,
+                    cursor: 'pointer',
+                    appearance: 'none',
+                    WebkitAppearance: 'none'
+                  }}
+                >
+                  {quantTypes.map(q => (
+                    <option
+                      key={q.id}
+                      value={q.id}
+                      style={{ background: optionBg, color: textPrimary, padding: '8px' }}
+                    >
+                      ⚡ {q.label} {q.note ? `— ${q.note}` : ''}
+                    </option>
+                  ))}
+                </select>
+                <div style={{ position: 'absolute', right: '12px', pointerEvents: 'none', display: 'flex', alignItems: 'center' }}>
+                  <ChevronDown size={15} color="#ffb86c" />
+                </div>
+              </div>
             </div>
           </div>
         )}
 
+        {/* QUICK QUANT PRESET PILLS */}
+        {models.length > 0 && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+            <div style={{ fontSize: '0.64rem', color: textMuted, fontWeight: 700, textTransform: 'uppercase' }}>
+              Preset Rapidi Quantizzazione:
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+              {POPULAR_QUANTS.map(p => {
+                const active = quant === p.id;
+                return (
+                  <button
+                    key={p.id}
+                    onClick={() => setQuant(p.id)}
+                    style={{
+                      padding: '4px 9px', borderRadius: '7px',
+                      border: active ? `1.5px solid ${p.color}` : subBorder,
+                      background: active ? `${p.color}22` : subBg,
+                      color: active ? p.color : textMuted,
+                      fontSize: '0.68rem', fontWeight: active ? 900 : 700, cursor: 'pointer',
+                      display: 'inline-flex', alignItems: 'center', gap: '5px',
+                      boxShadow: active ? `0 0 10px ${p.color}35` : 'none',
+                      transition: 'all 0.15s ease'
+                    }}
+                  >
+                    <span>{p.label}</span>
+                    <span style={{
+                      fontSize: '0.56rem', padding: '1px 4px', borderRadius: '3px',
+                      background: active ? `${p.color}35` : 'rgba(255,255,255,0.06)',
+                      color: active ? '#ffffff' : textMuted, fontWeight: 800
+                    }}>
+                      {p.tag}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        {/* MODEL TELEMETRY & VRAM ESTIMATION CARD */}
         {model && (
           <div style={{
-            padding: '12px 14px', borderRadius: '10px', background: inputBg,
-            border: cardBorder, fontSize: '0.75rem', color: textMuted, lineHeight: 1.6,
+            padding: '14px 16px', borderRadius: '12px',
+            background: isLight ? 'rgba(0, 210, 255, 0.04)' : 'linear-gradient(135deg, rgba(0, 210, 255, 0.06) 0%, rgba(15, 18, 28, 0.95) 100%)',
+            border: isLight ? '1px solid rgba(0, 210, 255, 0.25)' : '1px solid rgba(0, 210, 255, 0.18)',
+            display: 'flex', flexDirection: 'column', gap: '10px'
           }}>
-            <div>
-              <strong style={{ color: textPrimary }}>{model.architecture}</strong>
-              {' · '}{model.layers} layer
-              {model.is_multimodal && ' · multimodale'}
-            </div>
-            <div>
-              {model.size_gb} GB → <strong style={{ color: textPrimary }}>
-                ~{estimate ?? '?'} GB
-              </strong> in {quant}
-              {model.fits_in_vram?.per_quantization && (
+            {/* Top Specs Row */}
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '8px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
                 <span style={{
-                  marginLeft: '8px', fontWeight: 700,
-                  color: model.fits_in_vram.per_quantization[quant]
-                    ? (isLight ? '#166534' : '#4ade80') : '#f59e0b',
+                  fontSize: '0.74rem', fontWeight: 900, color: textPrimary,
+                  display: 'inline-flex', alignItems: 'center', gap: '4px'
                 }}>
-                  {model.fits_in_vram.per_quantization[quant]
-                    ? '• entra in VRAM'
-                    : `• NON entra in ${model.fits_in_vram.usable_vram_gb} GB di VRAM`}
+                  <Dna size={14} color="#00d2ff" /> {model.architecture || 'Architettura LLM'}
                 </span>
-              )}
-            </div>
-            {model.fits_in_vram?.largest_that_fits
-              && !model.fits_in_vram.per_quantization?.[quant] && (
-              <div style={{ marginTop: '4px', color: isLight ? '#92400e' : '#fbbf24' }}>
-                Con questa scelta la maggior parte dei layer girerebbe dalla RAM,
-                circa dieci volte più lentamente. La più fedele che entra in VRAM
-                è <strong>{model.fits_in_vram.largest_that_fits}</strong>.
-              </div>
-            )}
-            {quantMeta && <div style={{ marginTop: '4px' }}>{quantMeta.note}</div>}
-            {model.compatibility && (
-              <div style={{
-                marginTop: '6px',
-                color: model.compatibility.blocked_by?.length
-                  ? '#ef4444'
-                  : (isLight ? '#166534' : '#4ade80'),
-              }}>
-                {model.compatibility.summary}
-                {model.compatibility.gguf_architecture && (
-                  <span style={{ color: textMuted }}>
-                    {' '}(GGUF: <code>{model.compatibility.gguf_architecture}</code>)
+                <span style={{ fontSize: '0.68rem', color: textMuted }}>
+                  • {model.layers} layer totali
+                </span>
+                {model.is_multimodal && (
+                  <span style={{
+                    fontSize: '0.60rem', padding: '1px 6px', borderRadius: '4px',
+                    background: 'rgba(168, 85, 247, 0.15)', border: '1px solid rgba(168, 85, 247, 0.35)', color: '#a855f7', fontWeight: 800
+                  }}>
+                    👁️ Multimodale (Vision/Audio)
                   </span>
                 )}
               </div>
-            )}
-            {model.is_multimodal && (
-              <div style={{ marginTop: '6px', color: isLight ? '#0369a1' : '#38bdf8', fontSize: '0.73rem' }}>
-                ℹ️ Per i checkpoint multimodali (visione/audio), la conversione GGUF quantizza il modello di linguaggio (LLM core) per l'esecuzione ad altissima velocità.
+
+              {/* VRAM Fit Badge */}
+              {model.fits_in_vram?.per_quantization && (
+                <div>
+                  {model.fits_in_vram.per_quantization[quant] ? (
+                    <span style={{
+                      fontSize: '0.68rem', fontWeight: 800, padding: '3px 8px', borderRadius: '6px',
+                      background: 'rgba(16, 185, 129, 0.15)', border: '1px solid rgba(16, 185, 129, 0.4)',
+                      color: '#10b981', display: 'inline-flex', alignItems: 'center', gap: '4px'
+                    }}>
+                      <CheckCircle2 size={12} color="#10b981" /> Entra in VRAM ({model.fits_in_vram.usable_vram_gb} GB disponibili)
+                    </span>
+                  ) : (
+                    <span style={{
+                      fontSize: '0.68rem', fontWeight: 800, padding: '3px 8px', borderRadius: '6px',
+                      background: 'rgba(245, 158, 11, 0.15)', border: '1px solid rgba(245, 158, 11, 0.4)',
+                      color: '#fbbf24', display: 'inline-flex', alignItems: 'center', gap: '4px'
+                    }}>
+                      <AlertTriangle size={12} color="#fbbf24" /> Richiede RAM di sistema ({model.fits_in_vram.usable_vram_gb} GB VRAM)
+                    </span>
+                  )}
+                </div>
+              )}
+            </div>
+
+            {/* Size Compression Bar */}
+            <div style={{
+              padding: '10px 14px', borderRadius: '10px',
+              background: subBg, border: subBorder,
+              display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '10px'
+            }}>
+              <div style={{ fontSize: '0.74rem', color: textPrimary, fontWeight: 700, display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <span>📦 Originale: <b>{model.size_gb} GB</b> (Safetensors)</span>
+                <span style={{ color: '#00d2ff' }}>➔</span>
+                <span style={{ color: '#10b981' }}>⚡ Output GGUF: <b>~{estimate ?? '?'} GB</b> ({quant})</span>
+              </div>
+
+              {quantMeta?.note && (
+                <div style={{ fontSize: '0.68rem', color: textMuted, fontStyle: 'italic' }}>
+                  ℹ️ {quantMeta.note}
+                </div>
+              )}
+            </div>
+
+            {/* VRAM Recommendations if too large */}
+            {model.fits_in_vram?.largest_that_fits && !model.fits_in_vram.per_quantization?.[quant] && (
+              <div style={{
+                fontSize: '0.70rem', color: isLight ? '#92400e' : '#fbbf24',
+                background: 'rgba(245, 158, 11, 0.08)', padding: '6px 10px', borderRadius: '6px',
+                border: '1px solid rgba(245, 158, 11, 0.25)'
+              }}>
+                💡 Con questa scelta la maggior parte dei layer girerebbe dalla RAM di sistema. La quantizzazione più fedele che entra completamente in VRAM è <b>{model.fits_in_vram.largest_that_fits}</b>.
               </div>
             )}
+
             {model.already_converted && (
-              <div style={{ marginTop: '6px' }}>
-                Esiste già una cartella <code>{model.name}-GGUF</code>.
+              <div style={{ fontSize: '0.68rem', color: '#ffb86c' }}>
+                ℹ️ Esiste già una versione convertita nella cartella <code>{model.name}-GGUF</code>.
               </div>
             )}
           </div>
         )}
 
+        {/* PRIMARY CONVERT BUTTON */}
         <button
           onClick={startConversion}
-          disabled={busy || !selected || !tooling?.ready || !!activeJob
-            || !!model?.compatibility?.blocked_by?.length}
+          disabled={busy || !selected || !tooling?.ready || !!activeJob || !!model?.compatibility?.blocked_by?.length}
           style={{
-            alignSelf: 'flex-start', padding: '9px 18px', borderRadius: '9px',
-            border: '1px solid rgba(34,197,94,0.4)',
+            alignSelf: 'flex-start', padding: '9px 20px', borderRadius: '10px',
+            border: 'none',
             background: (busy || !tooling?.ready || !!activeJob)
-              ? 'rgba(107,114,128,0.15)' : 'rgba(34,197,94,0.15)',
-            color: (busy || !tooling?.ready || !!activeJob) ? textMuted : '#22c55e',
-            fontSize: '0.8rem', fontWeight: 800,
+              ? 'rgba(107,114,128,0.2)'
+              : 'linear-gradient(135deg, #10b981, #059669)',
+            color: (busy || !tooling?.ready || !!activeJob) ? textMuted : '#ffffff',
+            fontSize: '0.78rem', fontWeight: 900,
             cursor: (busy || !tooling?.ready || !!activeJob) ? 'not-allowed' : 'pointer',
+            display: 'inline-flex', alignItems: 'center', gap: '6px',
+            boxShadow: (busy || !tooling?.ready || !!activeJob) ? 'none' : '0 2px 14px rgba(16, 185, 129, 0.35)',
+            transition: 'all 0.15s ease'
           }}
         >
-          <Play size={13} style={{ verticalAlign: '-2px', marginRight: '6px' }} />
-          {activeJob ? 'Conversione in corso…' : 'Converti in GGUF'}
+          {activeJob ? <Activity className="mh-spin" size={13} /> : <Play size={13} />}
+          <span>{activeJob ? 'Conversione in corso…' : '⚡ Avvia Conversione in GGUF'}</span>
         </button>
       </div>
 
+      {/* RECENT / ACTIVE CONVERSION JOBS */}
       {jobs.length > 0 && (
-        <div style={panel}>
-          <div style={{ fontSize: '0.85rem', fontWeight: 800, color: textPrimary }}>
-            Conversioni
+        <div style={{
+          padding: '16px 18px', borderRadius: '14px', background: cardBg,
+          border: cardBorder, display: 'flex', flexDirection: 'column', gap: '10px'
+        }}>
+          <div style={{ fontSize: '0.82rem', fontWeight: 800, color: textPrimary, display: 'flex', alignItems: 'center', gap: '6px' }}>
+            <Activity size={14} color="#00d2ff" /> Storico & Attività di Conversione
           </div>
+
           {jobs.map(job => (
             <div key={job.job_id} style={{
-              padding: '12px 14px', borderRadius: '10px',
-              background: inputBg, border: cardBorder,
+              padding: '10px 14px', borderRadius: '10px',
+              background: subBg, border: subBorder,
               display: 'flex', flexDirection: 'column', gap: '6px',
             }}>
               <div style={{
-                display: 'flex', justifyContent: 'space-between',
-                fontSize: '0.78rem', color: textPrimary, fontWeight: 700,
+                display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                fontSize: '0.76rem', color: textPrimary, fontWeight: 700,
               }}>
-                <span>
-                  {job.status === 'completed' && <CheckCircle2 size={13} style={{ verticalAlign: '-2px', marginRight: '5px', color: '#22c55e' }} />}
-                  {job.status === 'failed' && <AlertTriangle size={13} style={{ verticalAlign: '-2px', marginRight: '5px', color: '#ef4444' }} />}
-                  {['queued', 'converting', 'quantizing'].includes(job.status) && <Loader size={13} className="mh-spin" style={{ verticalAlign: '-2px', marginRight: '5px' }} />}
-                  {job.source_model} → {job.quantization}
+                <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  {job.status === 'completed' && <CheckCircle2 size={14} color="#10b981" />}
+                  {job.status === 'failed' && <AlertTriangle size={14} color="#ef4444" />}
+                  {['queued', 'converting', 'quantizing'].includes(job.status) && <Loader size={14} className="mh-spin" color="#00d2ff" />}
+                  <span>{job.source_model}</span>
+                  <span style={{ color: '#00d2ff' }}>➔</span>
+                  <span style={{ color: '#10b981' }}>{job.quantization}</span>
                 </span>
-                <span style={{ color: textMuted, fontWeight: 600 }}>
+                <span style={{ color: textMuted, fontSize: '0.68rem', fontWeight: 600 }}>
                   {job.elapsed_seconds}s
                 </span>
               </div>
 
               {['converting', 'quantizing'].includes(job.status) && (
-                <div style={{ height: '5px', borderRadius: '3px', background: 'rgba(255,255,255,0.08)' }}>
+                <div style={{ height: '5px', borderRadius: '3px', background: 'rgba(255,255,255,0.08)', overflow: 'hidden' }}>
                   <div style={{
                     width: `${job.progress}%`, height: '100%', borderRadius: '3px',
-                    background: 'linear-gradient(90deg,#00d2ff,#3a7bd5)',
+                    background: 'linear-gradient(90deg, #00d2ff, #10b981)',
                     transition: 'width 0.4s ease',
                   }} />
                 </div>
               )}
 
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '6px' }}>
-                <div style={{ fontSize: '0.72rem', color: job.status === 'failed' ? '#ef4444' : textMuted }}>
+                <div style={{ fontSize: '0.70rem', color: job.status === 'failed' ? '#ef4444' : textMuted }}>
                   {job.error || job.message}
                 </div>
 
@@ -347,7 +559,7 @@ export default function GgufConverter({ isLight, addToast, initialModel }) {
                       padding: '4px 10px', borderRadius: '6px',
                       border: '1px solid rgba(255, 184, 108, 0.4)',
                       background: 'rgba(255, 184, 108, 0.12)',
-                      color: '#ffb86c', fontSize: '0.70rem', fontWeight: 800,
+                      color: '#ffb86c', fontSize: '0.68rem', fontWeight: 800,
                       cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px'
                     }}
                   >
