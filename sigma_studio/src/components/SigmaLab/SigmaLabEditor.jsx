@@ -3,7 +3,7 @@ import { Play, Save, Trash2, Eye, FileText, ChevronRight, X } from 'lucide-react
 import { renderMarkdownLatex } from '../../utils/markdownLatex';
 import mermaid from 'mermaid';
 import Editor from 'react-simple-code-editor';
-import { highlight, languages } from 'prismjs/components/prism-core';
+import Prism from 'prismjs';
 import 'prismjs/components/prism-clike';
 import 'prismjs/components/prism-python';
 import 'prismjs/components/prism-markup';
@@ -11,6 +11,8 @@ import 'prismjs/components/prism-css';
 import 'prismjs/components/prism-javascript';
 import 'prismjs/themes/prism-tomorrow.css';
 import 'katex/dist/katex.min.css';
+
+const { highlight, languages } = Prism;
 
 // ==============================================================================
 // SigmaLabEditor — Editor/Preview unificato (v2.0)
