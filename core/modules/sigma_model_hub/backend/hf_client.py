@@ -254,11 +254,16 @@ OFFICIAL_AUTHOR_MAP = {
 }
 
 
-def is_official_provider(author: str, model_id: str) -> bool:
+def is_official_provider(author: str, model_id: str, custom_officials: Optional[List[str]] = None) -> bool:
     """Checks if the model author or repository organization is an official AI lab, verified creator or premier provider."""
     auth_low = (author or "").lower().strip()
     id_low = (model_id or "").lower().strip()
     org = id_low.split('/')[0] if '/' in id_low else auth_low
+
+    if custom_officials:
+        custom_set = {str(o).lower().strip() for o in custom_officials if o}
+        if org in custom_set or auth_low in custom_set:
+            return True
 
     return org in OFFICIAL_ORGANIZATIONS or auth_low in OFFICIAL_ORGANIZATIONS
 
@@ -923,7 +928,8 @@ def search_hf_models(
     cursor: Optional[str] = None,
     page: int = 1,
     limit: int = 30,
-    hf_token: Optional[str] = None
+    hf_token: Optional[str] = None,
+    custom_officials: Optional[List[str]] = None
 ) -> Dict[str, Any]:
     """
     Searches models on Hugging Face API dynamically in real time.
@@ -945,7 +951,7 @@ def search_hf_models(
             m_author = (m.get("author") or m["id"].split("/")[0]).lower()
             if target_provider_authors and m_author not in target_provider_authors:
                 continue
-            if official_only and not is_official_provider(m.get("author", ""), m["id"]):
+            if official_only and not is_official_provider(m.get("author", ""), m["id"], custom_officials=custom_officials):
                 continue
             if q_low:
                 if q_low not in m["id"].lower() and q_low not in m["name"].lower() and q_low not in m["description"].lower():
@@ -1027,8 +1033,10 @@ def search_hf_models(
         # B. If official_only is enabled without a specific provider: query official lab authors
         elif official_only:
             if not search_query:
-                official_target_authors = ["sigmanih", "zai-org", "Qwen", "deepseek-ai", "meta-llama", "THUDM", "mistralai", "google", "microsoft", "bartowski", "unsloth"]
-                for auth in official_target_authors:
+                official_target_authors = custom_officials if (custom_officials and len(custom_officials) > 0) else [
+                    "sigmanih", "zai-org", "Qwen", "deepseek-ai", "meta-llama", "THUDM", "mistralai", "google", "microsoft", "bartowski", "unsloth"
+                ]
+                for auth in official_target_authors[:15]:
                     auth_params = {
                         "author": auth,
                         "limit": 15,
@@ -1096,7 +1104,7 @@ def search_hf_models(
                 continue
 
             author = mid.split("/")[0] if "/" in mid else "HuggingFace"
-            is_official = is_official_provider(author, mid)
+            is_official = is_official_provider(author, mid, custom_officials=custom_officials)
 
             # Strict author filtering when provider is selected
             if target_provider_authors and author.lower() not in target_provider_authors:

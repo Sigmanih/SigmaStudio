@@ -2,7 +2,8 @@ import React, { useState, useEffect, useCallback } from 'react';
 import {
   DownloadCloud, Search, HardDrive, Zap, Shield, Key,
   CheckCircle2, RefreshCw, Folder, Layers, Activity, Sparkles, ExternalLink,
-  ArrowRight, XCircle, RotateCcw, Eye, EyeOff, ShieldCheck, AlertTriangle, Check
+  ArrowRight, XCircle, RotateCcw, Eye, EyeOff, ShieldCheck, AlertTriangle, Check,
+  Plus, X, Tag
 } from 'lucide-react';
 import { useApp } from '../../contexts/AppContext';
 import HfBrowser from './HfBrowser';
@@ -24,6 +25,13 @@ const HF_TOKEN_SOURCE_LABELS = {
   cli_cache: 'Login huggingface-cli',
 };
 
+const DEFAULT_OFFICIAL_PUBLISHERS = [
+  'sigmanih', 'google', 'qwen', 'meta-llama', 'deepseek-ai', 'mistralai',
+  'microsoft', 'thudm', 'zai-org', 'zai', '01-ai', 'nvidia', 'stabilityai',
+  'black-forest-labs', 'allenai', 'apple', 'openai', 'tiiuae', 'bytedance',
+  'internlm', 'bartowski', 'unsloth', 'mradermacher', 'thebloke', 'casperhansen'
+];
+
 
 export default function ModelHub({ addToast, openTab }) {
   const { theme } = useApp();
@@ -42,8 +50,10 @@ export default function ModelHub({ addToast, openTab }) {
     models_dir: '',
     hf_token: '',
     auto_deploy_on_download: true,
-    preferred_quantization: 'Q4_K_M'
+    preferred_quantization: 'Q4_K_M',
+    official_publishers: DEFAULT_OFFICIAL_PUBLISHERS
   });
+  const [newPublisherInput, setNewPublisherInput] = useState('');
   const [savingConfig, setSavingConfig] = useState(false);
   const [pickingDir, setPickingDir] = useState(false);
 
@@ -238,6 +248,36 @@ export default function ModelHub({ addToast, openTab }) {
     if (ok) setConfig(prev => ({ ...prev, hf_token: '' }));
   };
 
+  const handleAddPublisher = () => {
+    const clean = newPublisherInput.trim().toLowerCase();
+    if (!clean) return;
+    const current = config.official_publishers || [];
+    if (current.map(p => p.toLowerCase()).includes(clean)) {
+      if (addToast) addToast(`L'autore "${clean}" è già presente nella lista`, 'info');
+      return;
+    }
+    setConfig(prev => ({
+      ...prev,
+      official_publishers: [...(prev.official_publishers || []), clean]
+    }));
+    setNewPublisherInput('');
+  };
+
+  const handleRemovePublisher = (pubToRemove) => {
+    setConfig(prev => ({
+      ...prev,
+      official_publishers: (prev.official_publishers || []).filter(p => p.toLowerCase() !== pubToRemove.toLowerCase())
+    }));
+  };
+
+  const handleResetPublishers = () => {
+    setConfig(prev => ({
+      ...prev,
+      official_publishers: [...DEFAULT_OFFICIAL_PUBLISHERS]
+    }));
+    if (addToast) addToast('Lista autori ufficiali ripristinata ai valori predefiniti', 'success');
+  };
+
   const handleSaveConfig = async () => {
     setSavingConfig(true);
     try {
@@ -248,12 +288,13 @@ export default function ModelHub({ addToast, openTab }) {
           models_dir: config.models_dir || 'data/models',
           hf_token: (config.hf_token || '').trim(),
           auto_deploy_on_download: config.auto_deploy_on_download ?? true,
-          preferred_quantization: config.preferred_quantization || 'Q4_K_M'
+          preferred_quantization: config.preferred_quantization || 'Q4_K_M',
+          official_publishers: config.official_publishers || DEFAULT_OFFICIAL_PUBLISHERS
         })
       });
       const json = await res.json();
       if (json.success) {
-        if (addToast) addToast('⚡ Configurazione e Token salvati con successo!', 'success');
+        if (addToast) addToast('⚡ Impostazioni salvate con successo!', 'success');
         fetchDownloads();
         fetchConfig();
       } else {
@@ -380,7 +421,7 @@ export default function ModelHub({ addToast, openTab }) {
               : '💾 Modelli Locali & Storage'
           },
           { id: 'converter', label: '⚡ Convertitore GGUF & Quantizzazione' },
-          { id: 'settings', label: '⚙️ Directory & HF Token' },
+          { id: 'settings', label: '⚙️ Impostazioni & HF Token' },
         ].map(tab => (
           <button
             key={tab.id}
@@ -742,40 +783,150 @@ export default function ModelHub({ addToast, openTab }) {
                 </button>
               </div>
             </div>
+          </div>
 
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingTop: '10px', borderTop: '1px solid rgba(255,255,255,0.06)', flexWrap: 'wrap', gap: '10px' }}>
+          {/* SEZIONE 3: PROVIDER & AUTORI UFFICIALI (HUGGING FACE) */}
+          <div style={{
+            padding: '24px', borderRadius: '16px',
+            background: cardBg, border: cardBorder, boxShadow: cardShadow,
+            display: 'flex', flexDirection: 'column', gap: '16px'
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid rgba(255,255,255,0.06)', paddingBottom: '12px', flexWrap: 'wrap', gap: '10px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <div style={{
+                  width: '36px', height: '36px', borderRadius: '10px',
+                  background: 'linear-gradient(135deg, rgba(0, 210, 255, 0.2), rgba(188, 140, 255, 0.2))',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center'
+                }}>
+                  <ShieldCheck size={20} color="#00d2ff" />
+                </div>
+                <div>
+                  <h2 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 800, color: textPrimary }}>
+                    Provider & Autori Ufficiali
+                  </h2>
+                  <div style={{ fontSize: '0.74rem', color: textMuted, marginTop: '2px' }}>
+                    Personalizza l'elenco dei creator e laboratori AI riconosciuti dal filtro "Solo Ufficiali"
+                  </div>
+                </div>
+              </div>
+
               <button
-                onClick={handleSaveConfig}
-                disabled={savingConfig}
+                type="button"
+                onClick={handleResetPublishers}
                 style={{
-                  padding: '11px 24px', borderRadius: '10px',
-                  border: 'none', background: 'linear-gradient(135deg, #10b981, #00d2ff)',
-                  color: '#ffffff', fontSize: '0.84rem', fontWeight: 800, cursor: 'pointer',
-                  display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px',
-                  boxShadow: '0 4px 20px rgba(16, 185, 129, 0.3)'
+                  fontSize: '0.72rem', color: '#ffb86c', background: 'rgba(255, 184, 108, 0.1)',
+                  border: '1px solid rgba(255, 184, 108, 0.3)', borderRadius: '8px', padding: '6px 12px',
+                  fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px'
                 }}
               >
-                {savingConfig ? <Activity className="mh-spin" size={16} /> : <CheckCircle2 size={16} />}
-                {savingConfig ? 'Salvataggio...' : 'Salva Impostazioni'}
+                <RotateCcw size={12} /> Ripristina Predefiniti
               </button>
-
-              {lastFailedTask && (
-                <button
-                  onClick={() => {
-                    handleSaveConfig().then(() => handleRetryTask(lastFailedTask.task_id));
-                  }}
-                  style={{
-                    padding: '11px 20px', borderRadius: '10px',
-                    border: '1px solid rgba(255, 184, 108, 0.4)',
-                    background: 'rgba(255, 184, 108, 0.12)',
-                    color: '#ffb86c', fontSize: '0.82rem', fontWeight: 800, cursor: 'pointer',
-                    display: 'flex', alignItems: 'center', gap: '6px'
-                  }}
-                >
-                  <RotateCcw size={14} /> Salva e Riprendi Download Interrotto
-                </button>
-              )}
             </div>
+
+            {/* Input per aggiungere nuovo autore */}
+            <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+              <input
+                type="text"
+                value={newPublisherInput}
+                onChange={e => setNewPublisherInput(e.target.value)}
+                onKeyDown={e => { if (e.key === 'Enter') handleAddPublisher(); }}
+                placeholder="es. google, meta-llama, qwen, sigmanih, bartowski..."
+                style={{
+                  flex: '1 1 240px', padding: '10px 14px', borderRadius: '10px',
+                  background: subBg, border: subBorder,
+                  color: textPrimary, fontSize: '0.82rem', fontFamily: 'monospace', outline: 'none'
+                }}
+              />
+              <button
+                type="button"
+                onClick={handleAddPublisher}
+                disabled={!newPublisherInput.trim()}
+                style={{
+                  padding: '10px 18px', borderRadius: '10px', border: 'none',
+                  background: 'linear-gradient(135deg, #00d2ff, #0088ff)',
+                  color: '#ffffff', fontSize: '0.80rem', fontWeight: 800,
+                  cursor: !newPublisherInput.trim() ? 'not-allowed' : 'pointer',
+                  opacity: !newPublisherInput.trim() ? 0.6 : 1,
+                  display: 'flex', alignItems: 'center', gap: '6px', whiteSpace: 'nowrap'
+                }}
+              >
+                <Plus size={14} /> Aggiungi Autore
+              </button>
+            </div>
+
+            {/* Tags elenco autori attivi */}
+            <div style={{
+              display: 'flex', flexWrap: 'wrap', gap: '7px', maxHeight: '180px',
+              overflowY: 'auto', padding: '10px', background: subBg, borderRadius: '10px', border: subBorder
+            }}>
+              {(config.official_publishers || DEFAULT_OFFICIAL_PUBLISHERS).map(pub => {
+                const isSig = pub.toLowerCase() === 'sigmanih';
+                return (
+                  <span
+                    key={pub}
+                    style={{
+                      fontSize: '0.72rem', fontWeight: 700, padding: '4px 9px', borderRadius: '6px',
+                      background: isSig ? 'rgba(255, 184, 108, 0.20)' : (isLight ? '#ffffff' : 'rgba(255,255,255,0.08)'),
+                      border: isSig ? '1px solid rgba(255, 184, 108, 0.45)' : subBorder,
+                      color: isSig ? '#ffb86c' : textPrimary,
+                      display: 'inline-flex', alignItems: 'center', gap: '6px'
+                    }}
+                  >
+                    <span>{pub}</span>
+                    <button
+                      type="button"
+                      onClick={() => handleRemovePublisher(pub)}
+                      title={`Rimuovi ${pub}`}
+                      style={{
+                        background: 'none', border: 'none', color: textMuted,
+                        cursor: 'pointer', padding: 0, display: 'flex', alignItems: 'center'
+                      }}
+                    >
+                      <X size={12} />
+                    </button>
+                  </span>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* PULSANTI SALVATAGGIO CONFIGURAZIONE COMPLESSIVA */}
+          <div style={{
+            padding: '16px 24px', borderRadius: '16px',
+            background: cardBg, border: cardBorder,
+            display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '10px'
+          }}>
+            <button
+              onClick={handleSaveConfig}
+              disabled={savingConfig}
+              style={{
+                padding: '11px 24px', borderRadius: '10px',
+                border: 'none', background: 'linear-gradient(135deg, #10b981, #00d2ff)',
+                color: '#ffffff', fontSize: '0.84rem', fontWeight: 800, cursor: 'pointer',
+                display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px',
+                boxShadow: '0 4px 20px rgba(16, 185, 129, 0.3)'
+              }}
+            >
+              {savingConfig ? <Activity className="mh-spin" size={16} /> : <CheckCircle2 size={16} />}
+              {savingConfig ? 'Salvataggio...' : 'Salva Tutte le Impostazioni'}
+            </button>
+
+            {lastFailedTask && (
+              <button
+                onClick={() => {
+                  handleSaveConfig().then(() => handleRetryTask(lastFailedTask.task_id));
+                }}
+                style={{
+                  padding: '11px 20px', borderRadius: '10px',
+                  border: '1px solid rgba(255, 184, 108, 0.4)',
+                  background: 'rgba(255, 184, 108, 0.12)',
+                  color: '#ffb86c', fontSize: '0.82rem', fontWeight: 800, cursor: 'pointer',
+                  display: 'flex', alignItems: 'center', gap: '6px'
+                }}
+              >
+                <RotateCcw size={14} /> Salva e Riprendi Download Interrotto
+              </button>
+            )}
           </div>
         </div>
       )}

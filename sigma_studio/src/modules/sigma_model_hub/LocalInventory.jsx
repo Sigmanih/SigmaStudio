@@ -1365,7 +1365,7 @@ export default function LocalInventory({
                                               <Trophy size={13} color="#ffb86c" />
                                             </div>
                                             <span style={{ fontSize: '0.74rem', fontWeight: 900, color: textPrimary }}>
-                                              Benchmark Ufficiale Training Lab:
+                                              Benchmark:
                                             </span>
                                             <span style={{
                                               fontSize: '0.76rem', fontWeight: 900, color: bmScoreColor,

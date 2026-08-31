@@ -25,13 +25,22 @@ _ROOT_DIR = str(paths.project_root())
 _CONFIG_PATH = str(paths.model_hub_config_file())
 
 
+DEFAULT_OFFICIAL_PUBLISHERS = [
+    'sigmanih', 'google', 'qwen', 'meta-llama', 'deepseek-ai', 'mistralai',
+    'microsoft', 'thudm', 'zai-org', 'zai', '01-ai', 'nvidia', 'stabilityai',
+    'black-forest-labs', 'allenai', 'apple', 'openai', 'tiiuae', 'bytedance',
+    'internlm', 'bartowski', 'unsloth', 'mradermacher', 'thebloke', 'casperhansen'
+]
+
+
 def _load_hub_config() -> dict:
     from .hf_client import get_effective_hf_token
     cfg = {
         "models_dir": DEFAULT_MODELS_DIR,
         "hf_token": "",
         "auto_deploy_on_download": True,
-        "preferred_quantization": "Q4_K_M"
+        "preferred_quantization": "Q4_K_M",
+        "official_publishers": list(DEFAULT_OFFICIAL_PUBLISHERS)
     }
     if os.path.exists(_CONFIG_PATH):
         try:
@@ -41,6 +50,9 @@ def _load_hub_config() -> dict:
                     cfg.update(saved)
         except Exception:
             pass
+
+    if not cfg.get("official_publishers"):
+        cfg["official_publishers"] = list(DEFAULT_OFFICIAL_PUBLISHERS)
 
     # If hf_token is empty in config, check env vars or cached token
     if not cfg.get("hf_token"):
@@ -96,6 +108,7 @@ def handle_models_hf_search(self):
 
         cfg = _load_hub_config()
         token = cfg.get("hf_token") or None
+        officials = cfg.get("official_publishers") or None
         data = search_hf_models(
             query=query,
             category=category,
@@ -109,7 +122,8 @@ def handle_models_hf_search(self):
             cursor=cursor,
             page=page,
             limit=limit,
-            hf_token=token
+            hf_token=token,
+            custom_officials=officials
         )
 
         self.send_json_response({
