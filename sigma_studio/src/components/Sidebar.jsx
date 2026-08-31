@@ -412,6 +412,16 @@ export default function Sidebar({
           />
 
           <SidebarItem 
+            icon={Package} 
+            label="Hub Skills & Estensioni" 
+            isKernel={true}
+            badge="STORE"
+            badgeColor="rgba(234,179,8,0.2)"
+            active={activeTabId != null && activeTabId.startsWith('marketplace')}
+            onClick={() => openTab({ name: '📦 Hub Skills & Estensioni' }, 'marketplace')} 
+          />
+
+          <SidebarItem 
             icon={FileText} 
             label="Manifesti Hub" 
             isKernel={true}
@@ -441,20 +451,6 @@ export default function Sidebar({
             badgeColor="rgba(188,140,255,0.15)"
             active={activeTabId != null && (activeTabId.startsWith('account') || activeTabId.startsWith('settings'))}
             onClick={() => openTab({ name: '⚙️ Impostazioni' }, 'account')} 
-          />
-        </nav>
-
-        {/* ================================================================= */}
-        {/* HUB SKILLS & ESTENSIONI (MARKETPLACE)                             */}
-        {/* ================================================================= */}
-        <nav className="nav-section" style={{ marginBottom: '10px' }}>
-          <SidebarItem 
-            icon={Package} 
-            label="Hub Skills & Estensioni" 
-            badge="STORE ↗"
-            badgeColor="rgba(0,210,255,0.2)"
-            active={activeTabId != null && activeTabId.startsWith('marketplace')}
-            onClick={() => openTab({ name: '📦 Hub Skills & Estensioni' }, 'marketplace')} 
           />
         </nav>
 
