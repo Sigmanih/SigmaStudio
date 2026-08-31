@@ -1260,6 +1260,36 @@ def get_hf_model_details(model_id: str, hf_token: Optional[str] = None) -> Dict[
 
                 author = data.get("author", model_id.split("/")[0] if "/" in model_id else "Community")
 
+                # Extract eval_results / benchmarks from HF model card metadata
+                eval_results = []
+                card_data = data.get("cardData") or {}
+                raw_evals = card_data.get("eval_results") or card_data.get("model-index") or []
+                # model-index is a list of dicts with "results" key
+                if isinstance(raw_evals, list):
+                    for entry in raw_evals:
+                        if isinstance(entry, dict):
+                            if "results" in entry:
+                                # model-index format
+                                for r in entry.get("results", []):
+                                    dataset = r.get("dataset", {})
+                                    for metric in r.get("metrics", []):
+                                        eval_results.append({
+                                            "task": r.get("task", {}).get("type", "unknown"),
+                                            "dataset": dataset.get("name", dataset.get("type", "unknown")),
+                                            "metric": metric.get("name", metric.get("type", "unknown")),
+                                            "value": metric.get("value", 0),
+                                            "verified": metric.get("verified", False),
+                                        })
+                            elif "task" in entry or "metric" in entry:
+                                # flat eval_results format
+                                eval_results.append({
+                                    "task": entry.get("task", "unknown"),
+                                    "dataset": entry.get("dataset", "unknown"),
+                                    "metric": entry.get("metric", "unknown"),
+                                    "value": entry.get("value", 0),
+                                    "verified": entry.get("verified", False),
+                                })
+
                 return {
                     "success": True,
                     "id": model_id,
@@ -1285,6 +1315,7 @@ def get_hf_model_details(model_id: str, hf_token: Optional[str] = None) -> Dict[
                     "pipeline_tag": data.get("pipeline_tag", "text-generation"),
                     "tags": data.get("tags", []),
                     "files": files,
+                    "eval_results": eval_results,
                     "card_url": f"https://huggingface.co/{model_id}",
                     "hf_url": f"https://huggingface.co/{model_id}"
                 }

@@ -878,14 +878,14 @@ export default function HfBrowser({ isLight, addToast, onDownloadStarted, active
                       <span style={{ color: isLight ? '#0284c7' : '#00d2ff' }}>⚡ VRAM: <b>{m.active_vram_label || `~${m.active_vram_gb || 8} GB`}</b></span>
                     </span>
 
-                    {/* Target GPU badge */}
-                    {m.recommended_gpu && (
+                    {/* Release Date */}
+                    {m.release_date_label && (
                       <span style={{
-                        fontSize: '0.56rem', padding: '1px 5px', borderRadius: '4px',
-                        background: 'rgba(0, 210, 255, 0.08)', border: '1px solid rgba(0, 210, 255, 0.2)',
-                        color: '#00d2ff', fontWeight: 700
+                        fontSize: '0.58rem', padding: '1px 6px', borderRadius: '4px',
+                        background: isLight ? 'rgba(0,0,0,0.04)' : 'rgba(255, 255, 255, 0.06)',
+                        border: subBorder, color: textMuted, fontWeight: 700
                       }}>
-                        🎯 {m.recommended_gpu}
+                        📅 {m.release_date_label}
                       </span>
                     )}
 
@@ -964,10 +964,10 @@ export default function HfBrowser({ isLight, addToast, onDownloadStarted, active
                       </button>
                     )}
 
-                    {/* Toggle Options Drawer Button */}
+                    {/* Toggle Details Drawer Button */}
                     <button
                       onClick={() => toggleCardDetails(m)}
-                      title={isExpanded ? 'Chiudi opzioni' : 'Mostra quantizzazioni, file e opzioni'}
+                      title={isExpanded ? 'Chiudi dettagli' : 'Mostra quantizzazioni, file e dettagli'}
                       style={{
                         padding: '5px 9px', borderRadius: '7px',
                         border: isExpanded ? '1px solid #ffb86c' : subBorder,
@@ -977,7 +977,7 @@ export default function HfBrowser({ isLight, addToast, onDownloadStarted, active
                         display: 'flex', alignItems: 'center', gap: '3px'
                       }}
                     >
-                      <span>Opzioni</span>
+                      <span>Visualizza</span>
                       {isExpanded ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
                     </button>
                   </div>
@@ -1098,7 +1098,59 @@ export default function HfBrowser({ isLight, addToast, onDownloadStarted, active
                       })()
                     ) : null}
 
-                    {/* Row 3: File Tree Shards */}
+                    {/* Row 3: Sigmanih Benchmark Results (eval_results from HF card_data) */}
+                    {isSigmanih && details?.eval_results && details.eval_results.length > 0 && (
+                      <div style={{
+                        padding: '10px 12px', borderRadius: '8px',
+                        background: isLight ? 'rgba(255, 184, 108, 0.06)' : 'rgba(255, 184, 108, 0.08)',
+                        border: '1px solid rgba(255, 184, 108, 0.25)',
+                        display: 'flex', flexDirection: 'column', gap: '8px'
+                      }}>
+                        <div style={{ fontSize: '0.72rem', fontWeight: 800, color: '#ffb86c', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                          <Sparkles size={13} color="#ffb86c" />
+                          <span>Benchmark & Valutazioni Sigmanih ({details.eval_results.length} metriche):</span>
+                        </div>
+                        <div style={{
+                          display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: '6px',
+                          maxHeight: '160px', overflowY: 'auto'
+                        }}>
+                          {details.eval_results.map((ev, evIdx) => {
+                            const pct = typeof ev.value === 'number'
+                              ? (ev.value > 1 ? ev.value : ev.value * 100)
+                              : parseFloat(ev.value) || 0;
+                            const barColor = pct >= 80 ? '#10b981' : pct >= 60 ? '#f59e0b' : '#ef4444';
+                            return (
+                              <div key={evIdx} style={{
+                                padding: '6px 8px', borderRadius: '6px',
+                                background: subBg, border: subBorder
+                              }}>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '3px' }}>
+                                  <span style={{ fontSize: '0.62rem', fontWeight: 800, color: textPrimary }}>
+                                    {ev.dataset || ev.task}
+                                  </span>
+                                  <span style={{ fontSize: '0.62rem', fontWeight: 900, color: barColor }}>
+                                    {pct.toFixed(1)}%
+                                  </span>
+                                </div>
+                                <div style={{ height: '4px', borderRadius: '2px', background: 'rgba(255,255,255,0.08)' }}>
+                                  <div style={{
+                                    height: '100%', borderRadius: '2px',
+                                    width: `${Math.min(pct, 100)}%`,
+                                    background: barColor,
+                                    transition: 'width 0.4s ease'
+                                  }} />
+                                </div>
+                                <div style={{ fontSize: '0.54rem', color: textMuted, marginTop: '2px' }}>
+                                  {ev.metric}{ev.verified ? ' ✓' : ''}
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Row 4: File Tree Shards */}
                     {details?.files && details.files.length > 0 && (
                       <div>
                         <div style={{ fontSize: '0.68rem', fontWeight: 800, color: textMuted, textTransform: 'uppercase', marginBottom: '4px' }}>
