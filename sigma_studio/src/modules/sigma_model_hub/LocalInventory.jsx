@@ -482,6 +482,36 @@ export default function LocalInventory({
     };
   };
 
+  // Helper per estrazione dettagliata delle suite di benchmark
+  const getSuiteEntries = (bm) => {
+    if (!bm) return [];
+    if (bm.suites && typeof bm.suites === 'object' && Object.keys(bm.suites).length > 0) {
+      return Object.entries(bm.suites).map(([name, data]) => {
+        if (!data || typeof data !== 'object') {
+          return { name, passed: 0, failed: 0, total: 0, pct: 0 };
+        }
+        const passed = data.passed ?? 0;
+        const failed = data.failed ?? 0;
+        const total = data.total ?? (passed + failed) ?? 0;
+        const pct = total > 0 ? Math.round((passed / total) * 100) : (data.score ?? data.pass_rate ?? 0);
+        return { name, passed, failed, total, pct };
+      });
+    }
+    if (bm.results && typeof bm.results === 'object' && Object.keys(bm.results).length > 0) {
+      return Object.entries(bm.results).map(([name, data]) => {
+        if (typeof data === 'number') {
+          return { name, passed: data, failed: 0, total: 100, pct: data };
+        }
+        const passed = data.passed ?? data.score ?? 0;
+        const total = data.total ?? 100;
+        const failed = data.failed ?? (total - passed);
+        const pct = data.score ?? (total > 0 ? Math.round((passed / total) * 100) : 0);
+        return { name, passed, failed, total, pct };
+      });
+    }
+    return [];
+  };
+
   // Stats calculation
   const totalModelsCount = models.length;
   const sigmanihModels = models.filter(m => getModelInfo(m).isSigmanih);
@@ -1116,11 +1146,17 @@ export default function LocalInventory({
                                   {/* Benchmark Score Pill (if present) */}
                                   {hasBenchmark && (
                                     <span style={{
-                                      fontSize: '0.58rem', fontWeight: 800, padding: '1px 5px', borderRadius: '4px',
+                                      fontSize: '0.58rem', fontWeight: 800, padding: '2px 7px', borderRadius: '5px',
                                       background: `${bmScoreColor}18`, border: `1px solid ${bmScoreColor}35`, color: bmScoreColor,
-                                      display: 'inline-flex', alignItems: 'center', gap: '3px'
+                                      display: 'inline-flex', alignItems: 'center', gap: '4px'
                                     }}>
-                                      🏆 {bmScore}%
+                                      <Trophy size={10} color={bmScoreColor} />
+                                      <span>{bmScore}% Pass</span>
+                                      {bm.tests_total > 0 && (
+                                        <span style={{ opacity: 0.85, fontSize: '0.54rem' }}>
+                                          ({bm.tests_passed || 0}/{bm.tests_total})
+                                        </span>
+                                      )}
                                     </span>
                                   )}
 
@@ -1304,47 +1340,96 @@ export default function LocalInventory({
                                     </div>
                                   </div>
 
-                                  {/* ROW 2: BENCHMARK BREAKDOWN (IF AVAILABLE) */}
-                                  {hasBenchmark && (
-                                    <div style={{
-                                      padding: '8px 12px', borderRadius: '8px',
-                                      background: 'rgba(255, 184, 108, 0.05)',
-                                      border: '1px solid rgba(255, 184, 108, 0.20)',
-                                      display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                                      gap: '10px', flexWrap: 'wrap'
-                                    }}>
-                                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                        <Trophy size={13} color="#ffb86c" />
-                                        <span style={{ fontSize: '0.70rem', fontWeight: 800, color: textPrimary }}>
-                                          Benchmark Training Lab:
-                                        </span>
-                                        <span style={{ fontSize: '0.72rem', fontWeight: 900, color: bmScoreColor }}>
-                                          {bmScore}% Pass
-                                        </span>
-                                        {bm.speed_tok_s && (
-                                          <span style={{ fontSize: '0.66rem', color: '#00d2ff' }}>
-                                            • ⚡ {bm.speed_tok_s} tok/s
-                                          </span>
+                                  {/* ROW 2: BENCHMARK BREAKDOWN & TEST SUITE OUTCOMES */}
+                                  {hasBenchmark && (() => {
+                                    const suiteEntries = getSuiteEntries(bm);
+                                    const totalPassed = bm.tests_passed ?? 0;
+                                    const totalTests = bm.tests_total ?? 0;
+                                    const totalFailed = bm.tests_failed ?? (totalTests > totalPassed ? totalTests - totalPassed : 0);
+                                    const tokSpeed = bm.tokens_per_sec || bm.speed_tok_s || null;
+
+                                    return (
+                                      <div style={{
+                                        padding: '10px 14px', borderRadius: '10px',
+                                        background: isLight ? 'rgba(255, 184, 108, 0.08)' : 'linear-gradient(135deg, rgba(255, 184, 108, 0.08) 0%, rgba(16, 185, 129, 0.05) 100%)',
+                                        border: '1px solid rgba(255, 184, 108, 0.28)',
+                                        display: 'flex', flexDirection: 'column', gap: '8px'
+                                      }}>
+                                        {/* Top Benchmark Summary Line */}
+                                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '8px' }}>
+                                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                                            <div style={{
+                                              width: '24px', height: '24px', borderRadius: '6px',
+                                              background: 'rgba(255, 184, 108, 0.20)', display: 'flex', alignItems: 'center', justifyContent: 'center'
+                                            }}>
+                                              <Trophy size={13} color="#ffb86c" />
+                                            </div>
+                                            <span style={{ fontSize: '0.74rem', fontWeight: 900, color: textPrimary }}>
+                                              Benchmark Ufficiale Training Lab:
+                                            </span>
+                                            <span style={{
+                                              fontSize: '0.76rem', fontWeight: 900, color: bmScoreColor,
+                                              padding: '2px 8px', borderRadius: '5px', background: `${bmScoreColor}20`, border: `1px solid ${bmScoreColor}40`
+                                            }}>
+                                              🏆 {bmScore}% Pass
+                                            </span>
+
+                                            {totalTests > 0 && (
+                                              <span style={{ fontSize: '0.70rem', color: textPrimary, fontWeight: 700 }}>
+                                                • <span style={{ color: '#10b981' }}>✅ {totalPassed} superati</span> su <b>{totalTests}</b> test totali
+                                                {totalFailed > 0 && <span style={{ color: '#ef4444' }}> (❌ {totalFailed} non superati)</span>}
+                                              </span>
+                                            )}
+                                          </div>
+
+                                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.66rem', color: textMuted, flexWrap: 'wrap' }}>
+                                            {bm.suite_name && <span>📊 Suite: <b>{bm.suite_name}</b></span>}
+                                            {tokSpeed && <span style={{ color: '#00d2ff', fontWeight: 700 }}>• ⚡ {tokSpeed} tok/s</span>}
+                                            {bm.last_run_at && <span>• ⏱️ {bm.last_run_at}</span>}
+                                          </div>
+                                        </div>
+
+                                        {/* Individual Test Suite Breakdown Cards */}
+                                        {suiteEntries.length > 0 && (
+                                          <div style={{
+                                            display: 'grid',
+                                            gridTemplateColumns: 'repeat(auto-fill, minmax(130px, 1fr))',
+                                            gap: '6px',
+                                            paddingTop: '6px',
+                                            borderTop: '1px solid rgba(255, 184, 108, 0.15)'
+                                          }}>
+                                            {suiteEntries.map(s => {
+                                              const sColor = s.pct >= 75 ? '#10b981' : (s.pct >= 50 ? '#00d2ff' : '#ffb86c');
+                                              return (
+                                                <div
+                                                  key={s.name}
+                                                  style={{
+                                                    padding: '6px 9px', borderRadius: '7px',
+                                                    background: subBg, border: subBorder,
+                                                    display: 'flex', flexDirection: 'column', gap: '4px'
+                                                  }}
+                                                >
+                                                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: '0.64rem', fontWeight: 800 }}>
+                                                    <span style={{ color: textPrimary, textTransform: 'uppercase' }}>{s.name}</span>
+                                                    <span style={{ color: sColor, fontWeight: 900 }}>{s.pct}%</span>
+                                                  </div>
+
+                                                  <div style={{ height: '3px', borderRadius: '2px', background: 'rgba(255,255,255,0.06)', overflow: 'hidden' }}>
+                                                    <div style={{ width: `${Math.min(100, Math.max(0, s.pct))}%`, height: '100%', background: sColor }} />
+                                                  </div>
+
+                                                  <div style={{ fontSize: '0.58rem', color: textMuted, display: 'flex', justifyContent: 'space-between' }}>
+                                                    <span>{s.passed}/{s.total} superati</span>
+                                                    {s.failed > 0 && <span style={{ color: '#ef4444' }}>-{s.failed}</span>}
+                                                  </div>
+                                                </div>
+                                              );
+                                            })}
+                                          </div>
                                         )}
                                       </div>
-
-                                      {bm.results && Object.keys(bm.results).length > 0 && (
-                                        <div style={{ display: 'flex', alignItems: 'center', gap: '4px', flexWrap: 'wrap' }}>
-                                          {Object.entries(bm.results).slice(0, 5).map(([tKey, tRes]) => (
-                                            <span
-                                              key={tKey}
-                                              style={{
-                                                fontSize: '0.58rem', padding: '1px 5px', borderRadius: '4px',
-                                                background: subBg, border: subBorder, color: textPrimary
-                                              }}
-                                            >
-                                              {tKey}: <b>{tRes.score ?? tRes.pass_rate ?? tRes}%</b>
-                                            </span>
-                                          ))}
-                                        </div>
-                                      )}
-                                    </div>
-                                  )}
+                                    );
+                                  })()}
 
                                   {/* ROW 3: FILE OPERATIONS & TECHNICAL DETAILS */}
                                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px', flexWrap: 'wrap', fontSize: '0.68rem', color: textMuted }}>
