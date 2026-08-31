@@ -442,14 +442,18 @@ def parse_model_specs(model_id: str, name: str, tags: List[str] = None, raw_item
     # Check if exact usedStorage is available from Hugging Face
     used_storage_bytes = raw_item.get("usedStorage") if raw_item else None
     if used_storage_bytes and isinstance(used_storage_bytes, (int, float)) and used_storage_bytes > 0:
-        # Check if the repo has only 1 primary GGUF variant or is safetensors
-        siblings = raw_item.get("siblings") or []
-        gguf_files = [s for s in siblings if s.get("rfilename", "").lower().endswith(".gguf")]
-        if len(gguf_files) <= 1:
+        if not is_gguf:
+            # Safetensors / FP16 / BF16 repos: usedStorage = real download size
             size_gb = round(used_storage_bytes / (1024**3), 1)
         else:
-            # Multiple GGUF variants: usedStorage is sum of all; use accurate single variant formula
-            size_gb = round(total_b * bytes_per_param, 1)
+            # GGUF repo: check if it has multiple GGUF variants (usedStorage would be sum of all)
+            siblings = raw_item.get("siblings") or []
+            gguf_files = [s for s in siblings if s.get("rfilename", "").lower().endswith(".gguf")]
+            if len(gguf_files) <= 1:
+                size_gb = round(used_storage_bytes / (1024**3), 1)
+            else:
+                # Multiple GGUF variants: usedStorage is sum of all; use formula for one variant
+                size_gb = round(total_b * bytes_per_param, 1)
     else:
         size_gb = round(total_b * bytes_per_param, 1)
 
@@ -893,7 +897,11 @@ POPULAR_MODELS = [
 
 def _fetch_from_hf_api(params: Dict[str, Any], hf_token: Optional[str] = None) -> tuple[List[Dict[str, Any]], Optional[str]]:
     """Helper to query Hugging Face API and extract items and next_cursor."""
-    url = f"{HF_API_BASE}/models?{urllib.parse.urlencode(params)}"
+    # expand[]=usedStorage asks HF to include the real on-disk repo size in
+    # every result — without it parse_model_specs can only guess from the
+    # parameter count, which is often wrong for multi-shard safetensors repos.
+    base_qs = urllib.parse.urlencode(params)
+    url = f"{HF_API_BASE}/models?{base_qs}&expand[]=usedStorage&expand[]=siblings"
     req = urllib.request.Request(url)
     req.add_header("User-Agent", "SigmaStudio-ModelHub/2.0")
     if hf_token:
