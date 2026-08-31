@@ -502,6 +502,34 @@ def handle_models_local_list(self):
             except Exception:
                 m["publication"] = None
 
+            # Accurate publisher & attribution resolution
+            pub = m.get("publication")
+            repo_id = (pub.get("repo_id") if isinstance(pub, dict) else "") or ""
+            raw_author = m.get("author") or ""
+            raw_name = m.get("clean_name") or m.get("display_name") or m.get("filename") or ""
+
+            if repo_id.lower().startswith("sigmanih/") or raw_author.lower() == "sigmanih" or "sigmanih" in raw_name.lower():
+                m["author"] = "sigmanih"
+                m["publisher"] = "sigmanih"
+                m["is_official"] = True
+                m["is_sigmanih"] = True
+            elif repo_id and "/" in repo_id:
+                m["publisher"] = repo_id.split("/")[0]
+                m["author"] = repo_id.split("/")[0]
+            else:
+                m["publisher"] = raw_author or "Altro"
+
+            # Re-evaluate family and category with full publication context
+            from core.modules.sigma_model_hub.backend.model_inventory import detect_family_and_category
+            family, category = detect_family_and_category(
+                name=raw_name,
+                architecture=m.get("architecture") or "",
+                author=m.get("publisher") or m.get("author") or "",
+                is_multimodal=m.get("is_multimodal", False)
+            )
+            m["family"] = family
+            m["category"] = category
+
         self.send_json_response({"success": True, "models": models})
     except Exception as e:
         log.error("Error in handle_models_local_list: %s", e)

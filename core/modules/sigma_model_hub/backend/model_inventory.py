@@ -93,6 +93,55 @@ def _extract_author_and_name(raw_name: str) -> tuple[str, str, bool]:
     return "", name_clean, False
 
 
+def detect_family_and_category(name: str, architecture: str = "", author: str = "", is_multimodal: bool = False) -> tuple[str, str]:
+    """Detects model architecture family (e.g. Gemma, Qwen, Llama) and task category (e.g. reasoning, code, vision, llm)."""
+    text = f"{name} {architecture} {author}".lower()
+    
+    # 1. Family detection
+    family = "Altro"
+    if "gemma" in text:
+        family = "Gemma"
+    elif "qwen" in text:
+        family = "Qwen"
+    elif "llama" in text or "meta" in text:
+        family = "Llama"
+    elif "deepseek" in text:
+        family = "DeepSeek"
+    elif "mistral" in text or "mixtral" in text or "codestral" in text or "pixtral" in text:
+        family = "Mistral"
+    elif "phi" in text:
+        family = "Phi"
+    elif "glm" in text or "chatglm" in text or "zai" in text:
+        family = "GLM"
+    elif "stheno" in text:
+        family = "Stheno"
+    elif "solar" in text:
+        family = "Solar"
+    elif "yi" in text:
+        family = "Yi"
+    elif "command" in text or "cohere" in text:
+        family = "Command"
+    elif "granite" in text or "ibm" in text:
+        family = "Granite"
+    elif architecture:
+        family = architecture.capitalize()
+
+    # 2. Category detection
+    category = "llm"
+    if author.lower() == "sigmanih" or "sigmanih" in text:
+        category = "sigmanih"
+    elif "r1" in text or "reason" in text or "think" in text or "qwq" in text or "marco" in text:
+        category = "reasoning"
+    elif "coder" in text or "code" in text or "dev" in text or "starcoder" in text:
+        category = "code"
+    elif is_multimodal or "vision" in text or "vl" in text or "clip" in text or "mmproj" in text:
+        category = "vision"
+    elif "moe" in text or "expert" in text or "8x" in text or "16x" in text:
+        category = "moe"
+
+    return family, category
+
+
 def scan_local_models(custom_dir: Optional[str] = None) -> List[Dict[str, Any]]:
     """Scans local disk for downloaded model files (.gguf, .safetensors, .bin, multi-shard repos)."""
     base_dir = custom_dir if custom_dir and os.path.exists(custom_dir) else _models_dir()
@@ -236,6 +285,12 @@ def scan_local_models(custom_dir: Optional[str] = None) -> List[Dict[str, Any]]:
                         pass
 
                 author, clean_name, is_official = _extract_author_and_name(raw_name)
+                family, category = detect_family_and_category(
+                    name=clean_name or raw_name,
+                    architecture=arch_name or "",
+                    author=author or "",
+                    is_multimodal=has_mmproj
+                )
 
                 results.append({
                     "filename": raw_name,
@@ -243,6 +298,9 @@ def scan_local_models(custom_dir: Optional[str] = None) -> List[Dict[str, Any]]:
                     "display_name": raw_name,
                     "clean_name": clean_name,
                     "author": author,
+                    "publisher": author or "Altro",
+                    "family": family,
+                    "category": category,
                     "is_official": is_official,
                     "path": full_entry_path,
                     "primary_file": primary_file,
@@ -295,6 +353,12 @@ def scan_local_models(custom_dir: Optional[str] = None) -> List[Dict[str, Any]]:
                 )
 
                 author, clean_name, is_official = _extract_author_and_name(entry)
+                family, category = detect_family_and_category(
+                    name=clean_name or entry,
+                    architecture="",
+                    author=author or "",
+                    is_multimodal=False
+                )
 
                 results.append({
                     "filename": entry,
@@ -302,6 +366,9 @@ def scan_local_models(custom_dir: Optional[str] = None) -> List[Dict[str, Any]]:
                     "display_name": entry,
                     "clean_name": clean_name,
                     "author": author,
+                    "publisher": author or "Altro",
+                    "family": family,
+                    "category": category,
                     "is_official": is_official,
                     "path": full_entry_path,
                     "primary_file": full_entry_path,
