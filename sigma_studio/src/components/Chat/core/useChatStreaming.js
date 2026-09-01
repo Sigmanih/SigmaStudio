@@ -2,10 +2,12 @@ import { useState, useCallback, useRef, useEffect } from 'react';
 import { MAX_ATTACHMENTS, createSession, MAX_HISTORY } from '../chatStorage';
 import { getModelRoutingInfo } from '../modelProviderMap';
 import { getAgentStyle } from '../AgentMessage';
+import { recordModelChatSpeed } from './modelSpecsHelper';
 import {
   speakAgentMessage, stopSpeech,
   startSpeechStream, pushSpeechStream, endSpeechStream,
 } from '../audioSpeech';
+
 
 let globalAbortController = null;
 
@@ -193,28 +195,17 @@ export function useChatStreaming({
     let streamToolApprovals = [];
     let streamRoutingTimeMs = null;
     let streamLoadDurationMs = null;
+    let streamGenerationTimeMs = null;
+    let streamTokenCount = null;
     let streamTps = null;
-    // True once the runtime has reported a real figure. From that point the
-    // word-count estimate below must not overwrite it: splitting on whitespace
-    // undercounts Italian by roughly the tokenizer's words-per-token ratio, so
-    // replacing a measured 40 tok/s with an estimated 24 is not a fallback,
-    // it is a downgrade.
+    let streamWps = null;
     let tpsFromRuntime = false;
     let streamHardwareNote = null;
     let firstTokenTime = null;
     let generatedTokenCount = 0;
+    let generatedWordCount = 0;
 
     // ── One React commit per frame, not per SSE event ──────────────────
-    // Every event used to run a full setSessionMessages: array copy, object
-    // spread, and a re-render of the whole message through markdown, KaTeX and
-    // Mermaid. At the ten tokens a second of a large local model that is
-    // invisible; at the hundred-plus of a small one the interface becomes the
-    // slowest stage in the pipeline and the stream visibly stutters.
-    //
-    // The text itself is accumulated synchronously in fullText/fullThinking, so
-    // batching changes only how often React is told about it -- never what it
-    // is eventually told. A frame is read at paint time, so it always carries
-    // the newest text rather than the text as of when it was scheduled.
     let rafHandle = null;
     let timerHandle = null;
     let paintDirty = false;
@@ -244,18 +235,26 @@ export function useChatStreaming({
               tool_approvals: streamToolApprovals,
               routing_time_ms: streamRoutingTimeMs,
               load_duration_ms: streamLoadDurationMs,
+              generation_time_ms: streamGenerationTimeMs,
+              token_count: streamTokenCount || (generatedTokenCount > 0 ? Math.round(generatedTokenCount) : undefined),
               tokens_per_second: streamTps,
+              words_per_second: streamWps,
               hardware_note: streamHardwareNote,
               metrics: {
                 routing_time_ms: streamRoutingTimeMs,
                 load_duration_ms: streamLoadDurationMs,
+                generation_time_ms: streamGenerationTimeMs,
+                token_count: streamTokenCount || (generatedTokenCount > 0 ? Math.round(generatedTokenCount) : undefined),
                 tokens_per_second: streamTps,
+                words_per_second: streamWps,
                 hardware_note: streamHardwareNote
               }
             };
           } else {
             n.push({
               role: 'assistant',
+
+
               content: fullText,
               agent_id: streamAgentId,
               agentName: `${resolvedRole} (${selectedModel})`,
@@ -390,6 +389,12 @@ export function useChatStreaming({
               if (p.metrics.load_duration_ms !== undefined && p.metrics.load_duration_ms !== null) {
                 streamLoadDurationMs = p.metrics.load_duration_ms;
               }
+              if (p.metrics.generation_time_ms !== undefined && p.metrics.generation_time_ms !== null) {
+                streamGenerationTimeMs = p.metrics.generation_time_ms;
+              }
+              if (p.metrics.token_count !== undefined && p.metrics.token_count !== null) {
+                streamTokenCount = p.metrics.token_count;
+              }
               if (p.metrics.hardware_note) {
                 streamHardwareNote = p.metrics.hardware_note;
               }
@@ -398,6 +403,7 @@ export function useChatStreaming({
                 tpsFromRuntime = true;
               }
             }
+
             if (p.tool_result) {
               streamToolCalls = [...streamToolCalls, p.tool_result];
             }
@@ -474,31 +480,39 @@ export function useChatStreaming({
               isCurrentlyThinking = true;
               fullThinking += p.thinking;
               if (!firstTokenTime) firstTokenTime = performance.now();
-              generatedTokenCount += Math.max(1, p.thinking.split(/\s+/).filter(Boolean).length);
+              generatedTokenCount += Math.max(1, p.thinking.length / 3.65);
+              generatedWordCount += Math.max(1, (p.thinking.match(/\S+/g) || []).length);
             }
             if (p.token) {
               isCurrentlyThinking = false;
               fullText += p.token;
               if (!p.status) {
                 if (!firstTokenTime) firstTokenTime = performance.now();
-                generatedTokenCount += Math.max(1, p.token.split(/\s+/).filter(Boolean).length);
+                generatedTokenCount += Math.max(1, p.token.length / 3.65);
+                generatedWordCount += Math.max(1, (p.token.match(/\S+/g) || []).length);
               }
             }
             else if (p.response) {
               isCurrentlyThinking = false;
               fullText += p.response;
               if (!firstTokenTime) firstTokenTime = performance.now();
-              generatedTokenCount += Math.max(1, p.response.split(/\s+/).filter(Boolean).length);
+              generatedTokenCount += Math.max(1, p.response.length / 3.65);
+              generatedWordCount += Math.max(1, (p.response.match(/\S+/g) || []).length);
             }
 
-            if (!tpsFromRuntime && firstTokenTime && generatedTokenCount > 1) {
+            if (firstTokenTime && (generatedTokenCount > 1 || generatedWordCount > 1)) {
               const elapsedSec = (performance.now() - firstTokenTime) / 1000;
-              if (elapsedSec > 0.4) {
-                streamTps = parseFloat(
-                  ((generatedTokenCount - 1) / elapsedSec).toFixed(1)
-                );
+              if (elapsedSec > 0.3) {
+                streamGenerationTimeMs = Math.round(elapsedSec * 1000);
+                streamTokenCount = Math.round(generatedTokenCount);
+                streamWps = parseFloat((generatedWordCount / elapsedSec).toFixed(1));
+                if (!tpsFromRuntime) {
+                  streamTps = parseFloat((generatedTokenCount / elapsedSec).toFixed(1));
+                }
               }
             }
+
+
 
             schedulePaint();
           } catch (e) {}
@@ -566,7 +580,17 @@ export function useChatStreaming({
         }
       }
 
-      if (!streamTps && firstTokenTime) {
+      if (!streamGenerationTimeMs && firstTokenTime) {
+        streamGenerationTimeMs = Math.round(performance.now() - firstTokenTime);
+      }
+      if (!streamTokenCount && generatedTokenCount > 0) {
+        streamTokenCount = Math.round(generatedTokenCount);
+      }
+
+      // La velocità pura t/s è rigorosamente Token / Tempo Generazione
+      if (streamTokenCount && streamGenerationTimeMs && streamGenerationTimeMs > 0) {
+        streamTps = parseFloat((streamTokenCount / (streamGenerationTimeMs / 1000)).toFixed(1));
+      } else if (!streamTps && firstTokenTime) {
         const elapsedSec = (performance.now() - firstTokenTime) / 1000;
         if (elapsedSec > 0.2) {
           if (!tpsFromRuntime) {
@@ -574,6 +598,11 @@ export function useChatStreaming({
           }
         }
       }
+
+      if (streamTps && modelName) {
+        recordModelChatSpeed(modelName, streamTps);
+      }
+
 
       setSessionMessages(prev => {
         const n = [...(prev[sessionId] || [])];
@@ -593,13 +622,24 @@ export function useChatStreaming({
             tool_calls: streamToolCalls,
             tool_approvals: streamToolApprovals,
             routing_time_ms: streamRoutingTimeMs || n[n.length - 1].routing_time_ms,
+            load_duration_ms: streamLoadDurationMs || n[n.length - 1].load_duration_ms,
+            generation_time_ms: streamGenerationTimeMs || n[n.length - 1].generation_time_ms,
+            token_count: streamTokenCount || n[n.length - 1].token_count,
             tokens_per_second: streamTps || n[n.length - 1].tokens_per_second,
+            words_per_second: streamWps || n[n.length - 1].words_per_second,
             metrics: {
               routing_time_ms: streamRoutingTimeMs || n[n.length - 1].routing_time_ms,
-              tokens_per_second: streamTps || n[n.length - 1].tokens_per_second
+              load_duration_ms: streamLoadDurationMs || n[n.length - 1].load_duration_ms,
+              generation_time_ms: streamGenerationTimeMs || n[n.length - 1].generation_time_ms,
+              token_count: streamTokenCount || n[n.length - 1].token_count,
+              tokens_per_second: streamTps || n[n.length - 1].tokens_per_second,
+              words_per_second: streamWps || n[n.length - 1].words_per_second,
+              hardware_note: streamHardwareNote || n[n.length - 1].hardware_note
             }
           };
         }
+
+
         saveMessagesImmediately(sessionId, n);
         try { localStorage.setItem(`sigma_chat_msgs_${sessionId}`, JSON.stringify(n)); } catch (err) {}
         if (addToast && streamActionsLog.length > 0) {

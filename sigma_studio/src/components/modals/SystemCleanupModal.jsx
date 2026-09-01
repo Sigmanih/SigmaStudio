@@ -96,8 +96,9 @@ export default function SystemCleanupModal({ isOpen, onClose }) {
               }
             });
           } catch (e) {}
+          window.dispatchEvent(new CustomEvent('sigma-chat-cleared', { detail: { clear_history: true } }));
         }
-        window.dispatchEvent(new CustomEvent('sigma-memory-cleared'));
+        window.dispatchEvent(new CustomEvent('sigma-system-cleanup-done', { detail: options }));
         await fetchStats();
       } else {
         addToast(data.error || 'Errore durante la pulizia.', 'error');

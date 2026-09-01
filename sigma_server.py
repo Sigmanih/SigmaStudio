@@ -294,10 +294,47 @@ def _build_frontend_if_needed() -> bool:
     return True
 
 
-def serve(host: str = "0.0.0.0", port: int = 8000) -> None:
-    """Avvia il server ASGI."""
-    log.info("Listening on http://localhost:%d (FastAPI ASGI v8.0)", port)
-    log.info("Interactive OpenAPI Docs available at http://localhost:%d/docs", port)
+def _get_configured_host_port() -> tuple[str, int]:
+    """Recupera host e porta configurati da provider.json / config.json."""
+    host = "0.0.0.0"
+    port = 8000
+    try:
+        from core.paths import provider_config_file
+        cfg_path = provider_config_file()
+        if cfg_path.exists():
+            with open(cfg_path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+            p = data.get("provider_server_port") or data.get("server_port")
+            if p:
+                port = int(p)
+            h = data.get("provider_server_host") or data.get("server_host")
+            if h:
+                host = str(h)
+    except Exception:
+        pass
+    return host, port
+
+
+def serve(host: str | None = None, port: int | None = None) -> None:
+    """Avvia il server ASGI su host e porta specificati o configurati."""
+    cfg_host, cfg_port = _get_configured_host_port()
+    final_host = host if host is not None else cfg_host
+    final_port = port if port is not None else cfg_port
+
+    lan_ip = "127.0.0.1"
+    try:
+        import socket
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        s.connect(("8.8.8.8", 80))
+        lan_ip = s.getsockname()[0]
+        s.close()
+    except Exception:
+        pass
+
+    log.info("Listening on http://localhost:%d (FastAPI ASGI v8.0)", final_port)
+    if final_host in ("0.0.0.0", "") and lan_ip != "127.0.0.1":
+        log.info("Wi-Fi & LAN Network access available at http://%s:%d", lan_ip, final_port)
+    log.info("Interactive OpenAPI Docs available at http://localhost:%d/docs", final_port)
     try:
         import uvicorn
         from core.fastapi_app import app
@@ -305,8 +342,8 @@ def serve(host: str = "0.0.0.0", port: int = 8000) -> None:
         # inattive del browser quando si preme Ctrl+C.
         uvicorn.run(
             app,
-            host=host,
-            port=port,
+            host=final_host,
+            port=final_port,
             log_level="info",
             timeout_graceful_shutdown=1,
             timeout_keep_alive=5,

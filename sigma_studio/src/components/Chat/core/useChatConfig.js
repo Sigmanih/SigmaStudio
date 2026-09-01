@@ -91,6 +91,7 @@ export function useChatConfig({ saveSessionsState, sessionRefs }) {
               const mName = m.display_name || m.filename || m.model_id;
               if (!known.has(mName)) {
                 models.unshift({
+                  ...m,
                   name: mName,
                   filename: m.filename,
                   model_id: m.model_id,
@@ -104,11 +105,16 @@ export function useChatConfig({ saveSessionsState, sessionRefs }) {
                   format_tag: m.format_tag,
                   quantization: m.quantization,
                   est_vram_gb: m.est_vram_gb,
+                  benchmark_summary: m.benchmark_summary,
+                  family: m.family,
+                  publisher: m.publisher,
+                  category: m.category,
                   is_local_hub: true
                 });
                 known.add(mName);
               }
             });
+
           }
         }
       } catch (locErr) {

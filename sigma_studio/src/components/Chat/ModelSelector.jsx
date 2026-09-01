@@ -1,7 +1,14 @@
-import React, { useState, useMemo } from 'react';
-import { Cpu, ChevronDown, Check, Loader, Search, Key, Sparkles, HardDrive, Zap } from 'lucide-react';
+import React, { useState, useMemo, useEffect } from 'react';
+import {
+  Cpu, ChevronDown, Check, Loader, Search, Key, Sparkles, HardDrive, Zap,
+  Trophy, Award, Gauge, Brain, Dna, Boxes
+} from 'lucide-react';
 import { PROVIDER_COLORS, getProviderForModel } from './modelProviderMap';
-import { getModelSpecs } from './core/modelSpecsHelper';
+import {
+  getModelSpecs, detectModelFamily, isSigmanihModel, getModelChatSpeed,
+  FAMILY_CONFIG
+} from './core/modelSpecsHelper';
+
 
 export default function ModelSelector({
   modelBtnRef, effectiveModelName, showDropdown, models,
@@ -9,12 +16,22 @@ export default function ModelSelector({
   favoriteModel, favoriteModels, onSetFavorite
 }) {
   const [activeTab, setActiveTab] = useState('all');
+  const [familyFilter, setFamilyFilter] = useState('all');
   const [searchQuery, setSearchQuery] = useState('');
+  const [speedVersion, setSpeedVersion] = useState(0);
+
+  // Listen to live model speed updates after chatting
+  useEffect(() => {
+    const handleSpeedUpdated = () => {
+      setSpeedVersion(v => v + 1);
+    };
+    window.addEventListener('sigma-model-speed-updated', handleSpeedUpdated);
+    return () => window.removeEventListener('sigma-model-speed-updated', handleSpeedUpdated);
+  }, []);
 
   const activeSpecs = useMemo(() => {
     return getModelSpecs(effectiveModelName || selectedModel, models);
-  }, [effectiveModelName, selectedModel, models]);
-
+  }, [effectiveModelName, selectedModel, models, speedVersion]);
 
   const favList = useMemo(() => {
     if (Array.isArray(favoriteModels) && favoriteModels.length > 0) return favoriteModels;
@@ -24,10 +41,7 @@ export default function ModelSelector({
 
   const primaryFav = favList[0] || '';
 
-  // Group models by provider and STRICTLY FILTER to only available/configured providers:
-  // - Respect user-disabled providers (e.g. Ollama removed/disabled)
-  // - SigmaEngine (nativo): sempre attivo
-  // - Cloud Providers: SOLO se l'utente ha inserito la chiave API o endpoint custom
+  // Group models by provider and strictly filter to only configured/available providers
   const modelsWithProvider = useMemo(() => {
     const disabledMap = (() => {
       try {
@@ -40,7 +54,8 @@ export default function ModelSelector({
     return (models || [])
       .map(m => {
         const provider = m.provider || getProviderForModel(m.name, providerConfigs) || 'sigma_engine';
-        return { ...m, provider };
+        const family = detectModelFamily(m);
+        return { ...m, provider, family };
       })
       .filter(m => {
         if (disabledMap[m.provider] === true) return false;
@@ -54,7 +69,6 @@ export default function ModelSelector({
         );
       });
   }, [models, providerConfigs]);
-
 
   // Extract unique providers present in active models + ⭐ PREFERITI Tab
   const providerTabs = useMemo(() => {
@@ -90,8 +104,59 @@ export default function ModelSelector({
     }));
   }, [modelsWithProvider, favList]);
 
+  // Compute models matching the active provider tab and search query for family counting
+  const modelsInCurrentTab = useMemo(() => {
+    return modelsWithProvider.filter(m => {
+      let matchesTab = true;
+      if (activeTab === 'favorites') {
+        matchesTab = favList.includes(m.name);
+      } else if (activeTab !== 'all') {
+        matchesTab = m.provider === activeTab;
+      }
+      return matchesTab;
+    });
+  }, [modelsWithProvider, activeTab, favList]);
 
-  // Filter models based on active tab and search query
+  // Compute available families for the family filter bar
+  const familyPills = useMemo(() => {
+    const counts = { all: modelsInCurrentTab.length };
+    counts.sigmanih = modelsInCurrentTab.filter(m => isSigmanihModel(m)).length;
+
+    modelsInCurrentTab.forEach(m => {
+      const fam = detectModelFamily(m);
+      if (fam !== 'sigmanih') {
+        counts[fam] = (counts[fam] || 0) + 1;
+      }
+    });
+
+    const familyKeys = ['all', 'sigmanih', 'gemma', 'qwen', 'llama', 'deepseek', 'mistral', 'phi', 'glm', 'altro'];
+    
+    return familyKeys
+      .filter(k => k === 'all' || (counts[k] && counts[k] > 0))
+      .map(k => {
+        if (k === 'all') {
+          return {
+            id: 'all',
+            title: 'Tutte',
+            count: counts.all || 0,
+            color: '#00d2ff',
+            bg: 'rgba(0, 210, 255, 0.15)',
+            border: 'rgba(0, 210, 255, 0.35)'
+          };
+        }
+        const conf = FAMILY_CONFIG[k] || FAMILY_CONFIG.altro;
+        return {
+          id: k,
+          title: conf.title,
+          count: counts[k] || 0,
+          color: conf.color,
+          bg: conf.bg,
+          border: conf.border
+        };
+      });
+  }, [modelsInCurrentTab]);
+
+  // Filter models based on active provider tab, family filter, and search query
   const filteredModels = useMemo(() => {
     return modelsWithProvider.filter(m => {
       let matchesTab = true;
@@ -100,10 +165,22 @@ export default function ModelSelector({
       } else if (activeTab !== 'all') {
         matchesTab = m.provider === activeTab;
       }
+
+      let matchesFamily = true;
+      if (familyFilter !== 'all') {
+        if (familyFilter === 'sigmanih') {
+          matchesFamily = isSigmanihModel(m);
+        } else {
+          matchesFamily = (detectModelFamily(m) === familyFilter);
+        }
+      }
+
       const matchesSearch = !searchQuery.trim() || m.name.toLowerCase().includes(searchQuery.toLowerCase().trim());
-      return matchesTab && matchesSearch;
+      
+      return matchesTab && matchesFamily && matchesSearch;
     });
-  }, [modelsWithProvider, activeTab, searchQuery, favList]);
+  }, [modelsWithProvider, activeTab, familyFilter, searchQuery, favList]);
+
 
   const handleOpenConfig = (e) => {
     e.stopPropagation();
@@ -119,6 +196,20 @@ export default function ModelSelector({
       <button className={`model-selector-btn ${!effectiveModelName ? 'no-model' : ''}`} onClick={onToggle}>
         <Cpu size={12} />
         <span className="model-selector-name">{effectiveModelName || 'Scegli modello'}</span>
+        
+        {activeSpecs?.chatSpeed !== null && activeSpecs?.chatSpeed !== undefined && (
+          <span
+            title={`Velocità live misurata: ${activeSpecs.chatSpeed} tok/s`}
+            style={{
+              fontSize: '0.58rem', padding: '1px 5px', borderRadius: '4px',
+              background: 'rgba(0, 210, 255, 0.16)', color: '#00d2ff', fontWeight: 800,
+              display: 'inline-flex', alignItems: 'center', gap: '2px', whiteSpace: 'nowrap'
+            }}
+          >
+            ⚡ {activeSpecs.chatSpeed} t/s
+          </span>
+        )}
+
         {activeSpecs?.params && (
           <span style={{ fontSize: '0.58rem', padding: '1px 5px', borderRadius: '4px', background: 'rgba(0, 210, 255, 0.16)', color: '#00d2ff', fontWeight: 800, whiteSpace: 'nowrap' }}>
             ⚡ {activeSpecs.params}
@@ -132,16 +223,15 @@ export default function ModelSelector({
         <ChevronDown size={10} className={`model-selector-chevron ${showDropdown ? 'open' : ''}`} />
       </button>
 
-
       {showDropdown && (
-        <div className="model-selector-popover tabbed-popover" style={{ left: 0, right: 'auto', transform: 'none', minWidth: '310px' }}>
+        <div className="model-selector-popover tabbed-popover" style={{ left: 0, right: 'auto', transform: 'none' }}>
           {/* Search Bar */}
           <div className="model-selector-search-box">
             <Search size={12} className="search-icon" style={{ opacity: 0.6 }} />
             <input
               type="text"
               className="model-selector-search-input"
-              placeholder="Cerca modello disponibile..."
+              placeholder="Cerca modello disponibile per nome, tag o architettura..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               autoFocus
@@ -157,7 +247,10 @@ export default function ModelSelector({
               <button
                 key={tab.id}
                 className={`model-tab-btn ${activeTab === tab.id ? 'active' : ''}`}
-                onClick={(e) => { e.stopPropagation(); setActiveTab(tab.id); }}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setActiveTab(tab.id);
+                }}
                 style={{ '--tab-color': tab.color }}
               >
                 {tab.id !== 'all' && tab.id !== 'favorites' && (
@@ -171,6 +264,37 @@ export default function ModelSelector({
               </button>
             ))}
           </div>
+
+          {/* 🧬 Family Filter Pill Bar */}
+          {familyPills.length > 1 && (
+            <div className="model-selector-family-bar">
+              <span style={{ fontSize: '0.60rem', color: '#8b8fa3', fontWeight: 800, textTransform: 'uppercase', marginRight: '3px' }}>
+                Famiglia:
+              </span>
+              {familyPills.map(fam => {
+                const isActive = familyFilter === fam.id;
+                return (
+                  <button
+                    key={fam.id}
+                    type="button"
+                    className={`model-family-pill ${isActive ? 'active' : ''}`}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setFamilyFilter(fam.id);
+                    }}
+                    style={{
+                      '--family-color': fam.color,
+                      '--family-bg': fam.bg,
+                      '--family-glow': `${fam.color}40`
+                    }}
+                  >
+                    <span>{fam.title}</span>
+                    <span className="model-family-pill-count">{fam.count}</span>
+                  </button>
+                );
+              })}
+            </div>
+          )}
 
           {/* Models List */}
           <div className="model-selector-list">
@@ -193,23 +317,41 @@ export default function ModelSelector({
               ) : (
                 <div className="model-selector-empty" style={{ padding: '16px 12px', textAlign: 'center' }}>
                   <p style={{ margin: '0 0 8px 0', fontSize: '0.78rem' }}>
-                    {searchQuery ? `Nessun modello per "${searchQuery}"` : 'Nessun modello attivo in questa categoria.'}
+                    {searchQuery ? `Nessun modello per "${searchQuery}"` : 'Nessun modello trovato per i filtri selezionati.'}
                   </p>
-                  <button
-                    onClick={handleOpenConfig}
-                    style={{
-                      background: 'rgba(0, 210, 255, 0.1)',
-                      border: '1px solid rgba(0, 210, 255, 0.3)',
-                      color: '#00d2ff',
-                      padding: '4px 10px',
-                      borderRadius: '8px',
-                      fontSize: '0.72rem',
-                      fontWeight: 700,
-                      cursor: 'pointer'
-                    }}
-                  >
-                    Configura Provider AI ⚙️
-                  </button>
+                  <div style={{ display: 'flex', gap: '8px', justifyContent: 'center', flexWrap: 'wrap' }}>
+                    {familyFilter !== 'all' && (
+                      <button
+                        onClick={() => setFamilyFilter('all')}
+                        style={{
+                          background: 'rgba(255, 255, 255, 0.06)',
+                          border: '1px solid rgba(255, 255, 255, 0.15)',
+                          color: '#fff',
+                          padding: '4px 10px',
+                          borderRadius: '8px',
+                          fontSize: '0.70rem',
+                          cursor: 'pointer'
+                        }}
+                      >
+                        Azzera filtro famiglia
+                      </button>
+                    )}
+                    <button
+                      onClick={handleOpenConfig}
+                      style={{
+                        background: 'rgba(0, 210, 255, 0.1)',
+                        border: '1px solid rgba(0, 210, 255, 0.3)',
+                        color: '#00d2ff',
+                        padding: '4px 10px',
+                        borderRadius: '8px',
+                        fontSize: '0.72rem',
+                        fontWeight: 700,
+                        cursor: 'pointer'
+                      }}
+                    >
+                      Configura Provider AI ⚙️
+                    </button>
+                  </div>
                 </div>
               )
             )}
@@ -218,15 +360,35 @@ export default function ModelSelector({
               const isSelected = selectedModel === m.name;
               const isFavorite = favList.includes(m.name);
               const isPrimary = m.name === primaryFav;
+              const itemSpecs = getModelSpecs(m.name, models);
+              const isSig = isSigmanihModel(m);
+              const famKey = detectModelFamily(m);
+              const familyConf = FAMILY_CONFIG[famKey] || FAMILY_CONFIG.altro;
+
+              // Benchmark metrics
+              const bm = m.benchmark_summary || itemSpecs?.benchmark || null;
+              const hasBm = Boolean(bm && (bm.has_benchmarks || bm.score !== undefined || bm.overall_pass_rate !== undefined));
+              const bmScore = hasBm ? (bm.score ?? bm.overall_pass_rate ?? bm.best_score ?? 0) : null;
+              const bmColor = bmScore !== null ? (bmScore >= 75 ? '#10b981' : (bmScore >= 50 ? '#00d2ff' : '#ffb86c')) : '#8b8fa3';
+
+              // Live Speed (tokens/sec)
+              const chatTps = getModelChatSpeed(m.name, m) ?? (m.benchmark_summary?.tokens_per_sec || null);
+
               return (
                 <div
                   key={m.name}
                   className={`model-selector-option ${isSelected ? 'active' : ''}`}
                   onClick={() => onSelect(m.name)}
-                  style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '6px', cursor: 'pointer' }}
+                  style={{
+                    display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                    gap: '8px', cursor: 'pointer', padding: '7px 10px',
+                    borderRadius: '8px', transition: 'all 0.15s ease'
+                  }}
                 >
+                  {/* Left part: Star + Provider dot + Family chip + Name */}
                   <div style={{ display: 'flex', alignItems: 'center', gap: '6px', minWidth: 0, flex: 1 }}>
                     <button
+                      type="button"
                       className="model-star-btn"
                       onClick={(e) => {
                         e.stopPropagation();
@@ -244,73 +406,147 @@ export default function ModelSelector({
                         transition: 'transform 0.15s ease, color 0.15s ease',
                         display: 'flex',
                         alignItems: 'center',
-                        justifyContent: 'center'
+                        justifyContent: 'center',
+                        flexShrink: 0
                       }}
                       onMouseEnter={(e) => { if (!isFavorite) e.currentTarget.style.color = '#facc15'; }}
                       onMouseLeave={(e) => { if (!isFavorite) e.currentTarget.style.color = 'rgba(255, 255, 255, 0.25)'; }}
                     >
                       {isFavorite ? '⭐' : '☆'}
                     </button>
+
                     <span
                       className="model-selector-provider-dot"
-                      style={{ backgroundColor: colors.color }}
-                      title={m.provider}
+                      style={{ backgroundColor: colors.color, flexShrink: 0 }}
+                      title={`Provider: ${m.provider}`}
                     />
-                    <span className="model-selector-opt-name" style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                      {m.name}
+
+                    {/* Sigmanih badge if model belongs to Sigmanih */}
+                    {isSig && (
+                      <span
+                        title="Modello Sigmanih Ecosystem"
+                        style={{
+                          fontSize: '0.56rem', fontWeight: 800, padding: '1px 5px', borderRadius: '4px',
+                          background: 'rgba(255, 184, 108, 0.15)', border: '1px solid rgba(255, 184, 108, 0.35)',
+                          color: '#ffb86c', flexShrink: 0
+                        }}
+                      >
+                        Sigmanih
+                      </span>
+                    )}
+
+                    {/* Family chip if recognized */}
+                    {famKey && famKey !== 'altro' && famKey !== 'sigmanih' && (
+                      <span
+                        title={`Famiglia architetturale: ${familyConf.title}`}
+                        style={{
+                          fontSize: '0.56rem', fontWeight: 800, padding: '1px 5px', borderRadius: '4px',
+                          background: familyConf.bg, border: `1px solid ${familyConf.border}`,
+                          color: familyConf.color, flexShrink: 0
+                        }}
+                      >
+                        {familyConf.title}
+                      </span>
+                    )}
+
+
+                    <span
+                      className="model-selector-opt-name"
+                      title={m.display_name || m.clean_name || m.name}
+                      style={{
+                        overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                        fontWeight: isSelected ? 800 : 600, fontSize: '0.78rem',
+                        flex: '1 1 auto', minWidth: '160px'
+                      }}
+                    >
+                      {m.display_name || m.clean_name || m.name}
                     </span>
                   </div>
+
+
+                  {/* Right part: Benchmark Badge + Speed t/s + Specs + Provider */}
                   <div style={{ display: 'flex', alignItems: 'center', gap: '5px', flexShrink: 0 }}>
+                    {/* Default pill */}
                     {isPrimary && (
-                      <span style={{ fontSize: '0.62rem', fontWeight: 700, color: '#facc15', background: 'rgba(234, 179, 8, 0.15)', padding: '1px 5px', borderRadius: '4px', border: '1px solid rgba(234, 179, 8, 0.3)' }}>
+                      <span style={{ fontSize: '0.60rem', fontWeight: 800, color: '#facc15', background: 'rgba(234, 179, 8, 0.15)', padding: '1px 5px', borderRadius: '4px', border: '1px solid rgba(234, 179, 8, 0.3)' }}>
                         Default
                       </span>
                     )}
-                    {isFavorite && !isPrimary && (
-                      <span style={{ fontSize: '0.62rem', fontWeight: 700, color: '#facc15', background: 'rgba(234, 179, 8, 0.1)', padding: '1px 5px', borderRadius: '4px', border: '1px solid rgba(234, 179, 8, 0.2)' }}>
-                        ⭐
+
+                    {/* 🏆 Benchmark Characteristics Badge */}
+                    <span
+                      title={hasBm
+                        ? `Valutazione Benchmark: ${Math.round(bmScore)}% ${bm.tests_total ? `(${bm.tests_passed || 0}/${bm.tests_total} quesiti superati)` : ''}`
+                        : 'Nessun benchmark registrato per questo modello'
+                      }
+                      style={{
+                        fontSize: '0.58rem', fontWeight: 800, padding: '1px 6px', borderRadius: '4px',
+                        background: hasBm ? `${bmColor}18` : 'rgba(255, 255, 255, 0.04)',
+                        border: hasBm ? `1px solid ${bmColor}40` : '1px solid rgba(255, 255, 255, 0.08)',
+                        color: bmColor,
+                        display: 'inline-flex', alignItems: 'center', gap: '3px'
+                      }}
+                    >
+                      <Trophy size={10} color={bmColor} />
+                      <span>{hasBm ? `${Math.round(bmScore)}%` : '-'}</span>
+                    </span>
+
+                    {/* ⚡ Live Generation Speed (t/s) Badge */}
+                    <span
+                      title={chatTps !== null
+                        ? `Velocità inferenza registrata: ${chatTps} token/secondo`
+                        : 'Nessuna misurazione live. I t/s si calcolano automaticamente non appena chatti con questo modello.'
+                      }
+                      style={{
+                        fontSize: '0.58rem', fontWeight: 800, padding: '1px 6px', borderRadius: '4px',
+                        background: chatTps !== null ? 'rgba(0, 210, 255, 0.14)' : 'rgba(255, 255, 255, 0.04)',
+                        border: chatTps !== null ? '1px solid rgba(0, 210, 255, 0.35)' : '1px solid rgba(255, 255, 255, 0.08)',
+                        color: chatTps !== null ? '#00d2ff' : '#8b8fa3',
+                        display: 'inline-flex', alignItems: 'center', gap: '2px'
+                      }}
+                    >
+                      <Zap size={9} color={chatTps !== null ? '#00d2ff' : '#8b8fa3'} />
+                      <span>{chatTps !== null ? `${chatTps} t/s` : '-'}</span>
+                    </span>
+
+                    {/* Parameter size */}
+                    {itemSpecs?.params && (
+                      <span style={{ fontSize: '0.58rem', padding: '1px 5px', borderRadius: '4px', background: 'rgba(0, 210, 255, 0.12)', color: '#00d2ff', fontWeight: 800 }}>
+                        {itemSpecs.params}
                       </span>
                     )}
-                    {(() => {
-                      const itemSpecs = getModelSpecs(m.name, models);
-                      return (
-                        <>
-                          {itemSpecs?.params && (
-                            <span style={{ fontSize: '0.58rem', padding: '1px 5px', borderRadius: '4px', background: 'rgba(0, 210, 255, 0.14)', color: '#00d2ff', fontWeight: 800 }}>
-                              ⚡ {itemSpecs.params}
-                            </span>
-                          )}
-                          {itemSpecs?.size && (
-                            <span style={{ fontSize: '0.58rem', padding: '1px 5px', borderRadius: '4px', background: 'rgba(255, 184, 108, 0.14)', color: '#ffb86c', fontWeight: 800 }}>
-                              💾 {itemSpecs.size}
-                            </span>
-                          )}
-                        </>
-                      );
-                    })()}
+
+                    {/* Disk size */}
+                    {itemSpecs?.size && (
+                      <span style={{ fontSize: '0.58rem', padding: '1px 5px', borderRadius: '4px', background: 'rgba(255, 184, 108, 0.12)', color: '#ffb86c', fontWeight: 800 }}>
+                        {itemSpecs.size}
+                      </span>
+                    )}
+
+                    {/* Provider badge */}
                     <span className="model-selector-provider-badge" style={{ backgroundColor: colors.bg, color: colors.color }}>
                       {m.provider === 'sigma_engine' ? 'SIGMA' : m.provider}
                     </span>
-                    {isSelected && <Check size={12} className="model-selector-check" />}
+
+                    {isSelected && <Check size={13} color="#00d2ff" className="model-selector-check" />}
                   </div>
                 </div>
               );
             })}
-
           </div>
 
           {/* Quick Footer for AI Configuration */}
           <div style={{
             padding: '8px 12px',
             borderTop: '1px solid rgba(255, 255, 255, 0.08)',
-            background: 'rgba(0, 0, 0, 0.15)',
+            background: 'rgba(0, 0, 0, 0.18)',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'space-between',
             gap: '8px'
           }}>
             <span style={{ fontSize: '0.68rem', opacity: 0.7, display: 'flex', alignItems: 'center', gap: '4px' }}>
-              <Sparkles size={11} color="#3fb950" /> Solo modelli attivi
+              <Sparkles size={11} color="#3fb950" /> Modelli pronti all'uso
             </span>
             <button
               onClick={handleOpenConfig}

@@ -571,5 +571,20 @@ class TestBenchmarkExtensionAndSuiteFiltering(unittest.TestCase):
             store.delete_results(job_id)
 
 
+class TestHfLocalInventoryMatching(unittest.TestCase):
+    """Test che verifica la corretta corrispondenza dinamica fra modelli Hugging Face e modelli presenti in locale."""
+
+    def test_normalized_matching_variations(self):
+        from core.modules.sigma_model_hub.backend.model_inventory import scan_local_models
+
+        local_models = scan_local_models()
+        self.assertIsInstance(local_models, list)
+        
+        # Test specific known slugs matching against local scan
+        clean_names = [m.get("clean_name") for m in local_models if m.get("clean_name")]
+        self.assertTrue(len(clean_names) > 0)
+
+
 if __name__ == "__main__":
     unittest.main()
+

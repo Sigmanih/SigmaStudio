@@ -9,6 +9,7 @@ import re
 import time
 import json
 import uuid
+import shutil
 import threading
 from typing import Dict, Any, List, Optional, Callable
 from core.logger import get_logger
@@ -1115,12 +1116,11 @@ def rename_hf_repo(from_id: str, to_id: str,
     if not partenza or not arrivo:
         return {"success": False, "error": "Servono sia il nome attuale sia quello nuovo"}
     if partenza == arrivo:
-        return {"success": True, "renamed": False, "repo_id": arrivo,
+        return {"success": True, "renamed": False, "repo_id": arrivo, "new_repo_id": arrivo,
                 "message": "Il nome era già questo"}
     if "/" not in arrivo:
         return {"success": False,
-                "error": "Il nuovo nome deve essere completo, nella forma "
-                         "`autore/modello`"}
+                "error": "Il nuovo nome deve essere completo, nella forma `autore/modello`"}
 
     from core.modules.sigma_model_hub.backend.hf_client import get_effective_hf_token
     effettivo = get_effective_hf_token(token)
@@ -1159,7 +1159,7 @@ def rename_hf_repo(from_id: str, to_id: str,
 
     log.info("[ModelUploader] Repository rinominato: %s -> %s", partenza, arrivo)
     return {"success": True, "renamed": True, "from": partenza, "repo_id": arrivo,
-            "url": f"https://huggingface.co/{arrivo}"}
+            "new_repo_id": arrivo, "url": f"https://huggingface.co/{arrivo}"}
 
 
 
@@ -1291,8 +1291,43 @@ class ModelUploaderManager:
         log.info(f"[ModelUploader] Launched upload task {task_id} for '{task.local_path}' -> '{task.repo_id}' ({_format_bytes(total_size)})")
         return {"success": True, "task": task.to_dict()}
 
+    def _dividi_i_troppo_grandi(self, task: ModelUploadTask, elenco):
+        """Sostituisce i file oltre il limite di Hugging Face con i loro shard.
+
+        Si fa prima di aprire la connessione: il client hasha l'intero file
+        prima di scoprire il rifiuto, e su un modello da 170 GB sono minuti
+        buttati per un errore che si poteva prevedere leggendo una dimensione.
+        """
+        from . import hf_split
+
+        risultato = []
+        temporanei = []
+        for full_path, rel_path, fsize in elenco:
+            if not hf_split.serve_dividere(full_path):
+                risultato.append((full_path, rel_path, fsize))
+                continue
+
+            log.info("[ModelUploader][Task %s] '%s' supera il limite per file "
+                     "di Hugging Face: divisione in shard.", task.task_id, rel_path)
+            task.status = "splitting"
+            esito = hf_split.dividi(full_path)
+            if not esito.get("success"):
+                raise RuntimeError(esito.get("error") or "divisione non riuscita")
+
+            temporanei.append(esito["cartella"])
+            dentro = rel_path.rsplit("/", 1)[0] + "/" if "/" in rel_path else ""
+            for shard in esito["shards"]:
+                risultato.append((shard, dentro + os.path.basename(shard),
+                                  os.path.getsize(shard)))
+            log.info("[ModelUploader][Task %s] %d shard pronti in %s.",
+                     task.task_id, len(esito["shards"]), esito["cartella"])
+
+        task.status = "uploading"
+        return risultato, temporanei
+
     def _run_upload_worker(self, task: ModelUploadTask, token: str):
         """Worker thread executing the Hugging Face upload."""
+        temporanei: List[str] = []
         task.status = "uploading"
         task._start_time = time.time()
         task._last_progress_time = time.time()
@@ -1336,12 +1371,14 @@ class ModelUploaderManager:
                 return
 
             # 3. Upload model file(s)
+            #
+            # Cartella e file singolo seguono la stessa strada: serve un elenco
+            # unico su cui passare il controllo delle dimensioni, perche' il
+            # limite per file di Hugging Face vale in entrambi i casi e
+            # altrimenti si scopre solo a hash finito, con un 422.
+            all_files: List[Any] = []
             if task.is_dir:
-                # Directory upload
                 log.info(f"[ModelUploader][Task {task.task_id}] Uploading folder '{task.local_path}' to '{task.repo_id}'...")
-                
-                # Walk and upload files with progress tracking, ignoring internal cache files
-                all_files = []
                 for root, _, files in os.walk(task.local_path):
                     for f in files:
                         if f.startswith(".") and f != ".gitattributes":
@@ -1350,44 +1387,36 @@ class ModelUploaderManager:
                             continue
                         full_path = os.path.join(root, f)
                         rel_path = os.path.relpath(full_path, task.local_path).replace("\\", "/")
-                        size = os.path.getsize(full_path)
-                        all_files.append((full_path, rel_path, size))
-
-                accumulated_bytes = 0
-                for full_path, rel_path, fsize in all_files:
-                    if task.is_cancelled():
-                        return
-                    
-                    def file_progress(read_in_file, total_in_file):
-                        task.update_progress(accumulated_bytes + read_in_file, task.total_bytes)
-
-                    with open(full_path, "rb") as raw_f:
-                        wrapped = ProgressReader(raw_f, fsize, file_progress, task.is_cancelled)
-                        api.upload_file(
-                            path_or_fileobj=wrapped,
-                            path_in_repo=rel_path,
-                            repo_id=task.repo_id,
-                            repo_type="model",
-                            commit_message=task.commit_message
-                        )
-                    accumulated_bytes += fsize
+                        all_files.append((full_path, rel_path, os.path.getsize(full_path)))
             else:
-                # Single file upload (e.g. .gguf)
-                target_filename = task.filename
-                log.info(f"[ModelUploader][Task {task.task_id}] Uploading file '{task.local_path}' as '{target_filename}'...")
-                
-                def file_progress(read_in_file, total_in_file):
-                    task.update_progress(read_in_file, total_in_file)
+                log.info(f"[ModelUploader][Task {task.task_id}] Uploading file '{task.local_path}' as '{task.filename}'...")
+                all_files.append((task.local_path, task.filename,
+                                  os.path.getsize(task.local_path)))
 
-                with open(task.local_path, "rb") as raw_f:
-                    wrapped = ProgressReader(raw_f, task.total_bytes, file_progress, task.is_cancelled)
+            all_files, temporanei = self._dividi_i_troppo_grandi(task, all_files)
+            task.total_bytes = sum(dimensione for _, _, dimensione in all_files)
+
+            if task.is_cancelled():
+                return
+
+            accumulated_bytes = 0
+            for full_path, rel_path, fsize in all_files:
+                if task.is_cancelled():
+                    return
+
+                def file_progress(read_in_file, total_in_file, _gia=accumulated_bytes):
+                    task.update_progress(_gia + read_in_file, task.total_bytes)
+
+                with open(full_path, "rb") as raw_f:
+                    wrapped = ProgressReader(raw_f, fsize, file_progress, task.is_cancelled)
                     api.upload_file(
                         path_or_fileobj=wrapped,
-                        path_in_repo=target_filename,
+                        path_in_repo=rel_path,
                         repo_id=task.repo_id,
                         repo_type="model",
                         commit_message=task.commit_message
                     )
+                accumulated_bytes += fsize
 
             # Upload successfully finished
             task.progress_pct = 100.0
@@ -1420,6 +1449,18 @@ class ModelUploaderManager:
             task.status = "failed"
             task.error_message = str(e)
             log.error(f"[ModelUploader][Task {task.task_id}] Upload FAILED: {e}", exc_info=True)
+        finally:
+            # Gli shard esistono solo per il caricamento: sono una seconda
+            # copia del modello, e lasciarli sul disco raddoppierebbe lo spazio
+            # occupato a ogni pubblicazione.
+            for cartella in temporanei:
+                try:
+                    shutil.rmtree(cartella, ignore_errors=True)
+                    log.info("[ModelUploader][Task %s] Shard temporanei rimossi: %s",
+                             task.task_id, cartella)
+                except Exception as err:
+                    log.warning("[ModelUploader] Shard non rimossi da %s: %s",
+                                cartella, err)
 
     def cancel_upload(self, task_id: str) -> bool:
         with self._lock:

@@ -1,9 +1,10 @@
 import React from 'react';
 import { FileText, Plus, Bot, Trash2, ChevronDown } from 'lucide-react';
+import { getSessionStats, formatSessionTime } from './chatStorage';
 
 export default function ChatHistory({
   showHistory, onToggle,
-  sessions, groupedSessions,
+  sessions, groupedSessions, sessionMessages,
   activeSessionId, onSwitchSession,
   editingSessionName, editNameValue, onEditNameChange, onFinishRename, onKeyDown,
   onStartRename, onDeleteSession, onNewSession, onDuplicateSession
@@ -36,20 +37,35 @@ export default function ChatHistory({
             {Object.entries(groupedSessions).map(([label, sesis]) => (
               <div key={label} className="chat-history-group">
                 <div className="chat-history-group-label">{label}</div>
-                {sesis.map(session => (
-                  <div key={session.id} className={`chat-history-item ${activeSessionId === session.id ? 'active' : ''}`} onClick={() => onSwitchSession(session.id)}>
-                    <div className="chat-history-item-icon"><Bot size={12} /></div>
-                    <div className="chat-history-item-content">
-                      {editingSessionName === session.id ? (
-                        <input className="chat-history-item-edit" value={editNameValue} onChange={e => onEditNameChange(e.target.value)} onBlur={() => onFinishRename(session.id)} onKeyDown={e => onKeyDown(e, session.id)} autoFocus onClick={e => e.stopPropagation()} />
-                      ) : (
-                        <span className="chat-history-item-name" onDoubleClick={e => onStartRename(e, session.id)}>{session.name}</span>
-                      )}
-                      <span className="chat-history-item-meta">{session.model} · {session.messages?.length || 0} msg</span>
+                {sesis.map(session => {
+                  const { count: msgCount, lastTime } = getSessionStats(session, sessionMessages);
+                  const timeStr = formatSessionTime(lastTime);
+                  const modelName = session.model ? session.model.split('/').pop() : 'Default';
+
+                  return (
+                    <div key={session.id} className={`chat-history-item ${activeSessionId === session.id ? 'active' : ''}`} onClick={() => onSwitchSession(session.id)}>
+                      <div className="chat-history-item-icon"><Bot size={12} /></div>
+                      <div className="chat-history-item-content">
+                        {editingSessionName === session.id ? (
+                          <input className="chat-history-item-edit" value={editNameValue} onChange={e => onEditNameChange(e.target.value)} onBlur={() => onFinishRename(session.id)} onKeyDown={e => onKeyDown(e, session.id)} autoFocus onClick={e => e.stopPropagation()} />
+                        ) : (
+                          <span className="chat-history-item-name" onDoubleClick={e => onStartRename(e, session.id)} title={session.name}>{session.name}</span>
+                        )}
+                        <div className="chat-history-item-meta">
+                          <span className="chat-history-item-meta-main" title={session.model || 'Modello default'}>
+                            {modelName} · {msgCount} msg
+                          </span>
+                          {timeStr && (
+                            <span className="chat-history-item-meta-time" title={`Ultimo messaggio: ${timeStr}`}>
+                              {timeStr}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                      <button className="chat-history-item-delete" onClick={e => onDeleteSession(e, session.id)} title="Elimina sessione"><Trash2 size={10} /></button>
                     </div>
-                    <button className="chat-history-item-delete" onClick={e => onDeleteSession(e, session.id)}><Trash2 size={10} /></button>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             ))}
           </div>

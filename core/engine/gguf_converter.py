@@ -18,6 +18,7 @@ import json
 import time
 import shutil
 import threading
+from contextlib import contextmanager
 import subprocess
 import uuid
 from dataclasses import dataclass, field, asdict
@@ -89,6 +90,9 @@ class ConversionJob:
     output_path: Optional[str] = None
     output_size_gb: float = 0.0
     error: Optional[str] = None
+    #: Tensori riportati a un tipo piu' compatto perche' da soli sforavano il
+    #: limite per file di Hugging Face. Vuoto quando non ce n'e' stato bisogno.
+    tensor_overrides: List[Dict[str, Any]] = field(default_factory=list)
     started_at: float = field(default_factory=time.time)
     finished_at: Optional[float] = None
 
@@ -105,6 +109,28 @@ class ConversionJob:
 #: "auto" lascia scegliere allo script il tipo a 16 bit di massima fedelta
 #: per quel modello (bf16 se il modello e bf16), che occupa quanto f16.
 _INTERMEDIATE_BPP = {"auto": 2.0, "f16": 2.0, "bf16": 2.0, "q8_0": 1.0625}
+#: Limite di Hugging Face per singolo file. Un tensore piu' grande di cosi'
+#: rende il modello impubblicabile e non c'e' split che rimedi: gguf-split
+#: taglia fra un tensore e l'altro, mai dentro.
+_LIMITE_FILE_HF_GB = 50.0
+#: Sotto quanto restare. Il margine copre l'intestazione dello shard e la
+#: differenza fra i GiB che contiamo noi e i GB decimali che conta HF.
+_LIMITE_TENSORE_GB = 45.0
+
+#: Tipi di ripiego per un tensore fuori misura, dal piu' fedele al meno.
+#: Il terzo campo e' la lunghezza di riga richiesta: i tipi K lavorano a
+#: blocchi di 256, i legacy a blocchi di 32. E' il motivo per cui llama.cpp
+#: sceglie da solo q5_0 e non q5_K su `per_layer_token_embd`, che ha righe da
+#: 160: 160 non e' divisibile per 256, per 32 si'.
+_RIPIEGHI_TENSORE = (
+    ("q6_K", 6.5625, 256),
+    ("q5_K", 5.5,    256),
+    ("q5_1", 6.0,     32),
+    ("q5_0", 5.5,     32),
+    ("q4_1", 5.0,     32),
+    ("q4_0", 4.5,     32),
+)
+
 #: Margine da lasciare sul volume. Riempire un disco fino all'ultimo byte fa
 #: fallire altro, non solo la conversione.
 _DISK_HEADROOM_GB = 5.0
@@ -902,7 +928,8 @@ class GgufConverter:
     # ----------------------------------------------------------------- jobs
 
     @classmethod
-    def start(cls, model_name: str, quantization: str = "Q4_K_M") -> Dict[str, Any]:
+    def start(cls, model_name: str, quantization: str = "Q4_K_M",
+              keep_intermediate: bool = False) -> Dict[str, Any]:
         """Queues a conversion and returns at once; poll the job for progress."""
         source = os.path.join(models_dir(), model_name)
         if not os.path.isdir(source):
@@ -976,6 +1003,7 @@ class GgufConverter:
         threading.Thread(
             target=cls._run,
             args=(job, source, piano_spazio.get("intermediate", "auto")),
+            kwargs={"piano": piano_spazio, "conserva_intermedio": keep_intermediate},
             daemon=True,
         ).start()
         return {"success": True, "job": job.to_dict()}
@@ -992,18 +1020,68 @@ class GgufConverter:
         found = cls._jobs.get(job_id)
         return found.to_dict() if found else None
 
+    @classmethod
+    @contextmanager
+    def _avanzamento_da_file(cls, job, path: str, atteso_gb: float,
+                             da_pct: int, a_pct: int, etichetta: str):
+        """Ricava l'avanzamento dalla dimensione del file che sta crescendo.
+
+        Ne' il convertitore ne' il quantizzatore riportano una percentuale: per
+        un 180B la barra restava a 5 per mezz'ora, indistinguibile da un blocco.
+        Il file che cresce e' l'unico segnale disponibile, e la dimensione
+        finale la conosciamo gia' dal piano spazio.
+        """
+        if not atteso_gb or atteso_gb <= 0:
+            yield          # senza una taglia attesa la frazione non esiste
+            return
+
+        basta = threading.Event()
+
+        def osserva():
+            while not basta.wait(2.0):
+                try:
+                    scritti_gb = os.path.getsize(path) / 2**30
+                except OSError:
+                    continue   # non ancora creato, o sostituito: si riprova
+                frazione = min(scritti_gb / atteso_gb, 1.0)
+                job.progress = int(da_pct + (a_pct - da_pct) * frazione)
+                job.message = (
+                    etichetta + " " + str(round(scritti_gb, 1)) + " / "
+                    + str(round(atteso_gb, 1)) + " GB"
+                )
+
+        vedetta = threading.Thread(target=osserva, daemon=True)
+        vedetta.start()
+        try:
+            yield
+        finally:
+            basta.set()
+            vedetta.join(timeout=3.0)
+
     # ------------------------------------------------------------ execution
 
     @classmethod
-    def _run(cls, job: ConversionJob, source: str, outtype: str = "auto") -> None:
+    def _run(cls, job: ConversionJob, source: str, outtype: str = "auto",
+             piano: Optional[Dict[str, Any]] = None,
+             conserva_intermedio: bool = False) -> None:
         # A GGUF source already lives in a '-GGUF' folder; reuse it rather
         # than nesting another one inside it.
+        #
+        # I due suffissi vanno tolti in quest'ordine e finche' ce n'e': una
+        # cartella si chiama "<base>-GGUF-<QUANT>", quindi togliendo prima
+        # "-GGUF" non si trova nulla da togliere e resta dentro il nome.
+        # Ripartendo da "...-GGUF-Q8_0" per fare un Q4 si otteneva
+        # "...-GGUF-GGUF-Q4_K_M", e il nome giusto restava occupato.
         base_name = job.source_model
-        if base_name.endswith("-GGUF"):
-            base_name = base_name[:-5]
-        for suffix in ("-" + q["id"] for q in QUANT_TYPES):
-            if base_name.endswith(suffix):
-                base_name = base_name[: -len(suffix)]
+        while True:
+            prima = base_name
+            for suffix in ("-" + q["id"] for q in QUANT_TYPES):
+                if base_name.endswith(suffix):
+                    base_name = base_name[: -len(suffix)]
+                    break
+            if base_name.endswith("-GGUF"):
+                base_name = base_name[: -len("-GGUF")]
+            if base_name == prima:
                 break
 
         # One directory per quantization. Sharing a folder made every variant
@@ -1014,10 +1092,26 @@ class GgufConverter:
             models_dir(), base_name + "-GGUF-" + job.quantization
         )
         os.makedirs(target_dir, exist_ok=True)
-        intermediate = os.path.join(
-            target_dir, job.source_model + "-" + outtype + ".gguf"
-        )
-        final_name = job.source_model + "." + job.quantization + ".gguf"
+
+        # Conservare l'intermedio significa promuoverlo a modello: cartella
+        # propria e nome col formato, altrimenti l'inventario lo vedrebbe come
+        # un secondo file dentro la cartella del Q3 e ricadremmo nel problema
+        # che le cartelle per quantizzazione servivano a evitare.
+        tag_intermedio = "Q8_0" if outtype == "q8_0" else "F16"
+        conserva = conserva_intermedio and job.quantization != "F16"
+        if conserva:
+            dir_intermedio = os.path.join(
+                models_dir(), base_name + "-GGUF-" + tag_intermedio
+            )
+            os.makedirs(dir_intermedio, exist_ok=True)
+            intermediate = os.path.join(
+                dir_intermedio, base_name + "." + tag_intermedio + ".gguf"
+            )
+        else:
+            intermediate = os.path.join(
+                target_dir, job.source_model + "-" + outtype + ".gguf"
+            )
+        final_name = base_name + "." + job.quantization + ".gguf"
         final_path = os.path.join(target_dir, final_name)
 
         existing_gguf = cls._existing_gguf(source)
@@ -1053,7 +1147,13 @@ class GgufConverter:
                     + ")..."
                 )
                 job.progress = 5
-                cls._convert_to_intermediate(source, intermediate, outtype)
+                with cls._avanzamento_da_file(
+                    job, intermediate, (piano or {}).get("intermediate_gb", 0),
+                    5, 55,
+                    "Conversione dei pesi in GGUF ("
+                    + ("16 bit" if outtype == "auto" else outtype) + "):",
+                ):
+                    cls._convert_to_intermediate(source, intermediate, outtype)
 
             if job.quantization == "F16":
                 if existing_gguf:
@@ -1064,14 +1164,35 @@ class GgufConverter:
             else:
                 job.status = "quantizing"
                 job.stage = "quantize"
+                # Prima di quantizzare si guarda se qualche tensore, da solo,
+                # sfora il limite per file: se resta com'e' il modello nasce
+                # gia' impubblicabile, e nessuno se ne accorge fino all'upload.
+                override = cls._tensori_fuori_misura(
+                    intermediate, job.quantization)
+                job.tensor_overrides = override
+                if override:
+                    ridotti = [v for v in override if v.get("tipo")]
+                    irriducibili = [v for v in override if not v.get("tipo")]
+                    if ridotti:
+                        log.info("[GgufConverter] tensori riportati sotto il "
+                                 "limite: %s", ridotti)
+                    if irriducibili:
+                        log.warning("[GgufConverter] tensori non riducibili: %s",
+                                    irriducibili)
+
                 job.message = "Quantizzazione in " + job.quantization + "..."
                 job.progress = 60
-                cls._quantize(intermediate, final_path, job.quantization)
+                with cls._avanzamento_da_file(
+                    job, final_path, (piano or {}).get("final_gb", 0), 60, 99,
+                    "Quantizzazione in " + job.quantization + ":",
+                ):
+                    cls._quantize(intermediate, final_path, job.quantization,
+                                  override)
                 # Remove the F16 intermediate we produced ourselves: it is
                 # several times the final file and would fill the disk on every
                 # conversion. A pre-existing source GGUF is the user's, and
                 # stays where it is.
-                if not existing_gguf and os.path.exists(intermediate):
+                if not existing_gguf and not conserva and os.path.exists(intermediate):
                     os.remove(intermediate)
 
             job.output_path = final_path
@@ -1083,6 +1204,22 @@ class GgufConverter:
                 final_name + " pronto (" + str(job.output_size_gb) + " GB). "
                 "Selezionalo dal Model Hub per usarlo con il backend llama.cpp."
             )
+            ridotti = [v for v in (job.tensor_overrides or []) if v.get("tipo")]
+            if ridotti:
+                job.message += (
+                    " " + str(len(ridotti)) + " tensore/i superava il limite di "
+                    + str(int(_LIMITE_FILE_HF_GB)) + " GB per file ed e' stato "
+                    "portato a un tipo piu' compatto ("
+                    + ", ".join(v["tensore"] + " -> " + v["tipo"] for v in ridotti)
+                    + "): senza, il modello non sarebbe pubblicabile su "
+                    "Hugging Face, perche' lo split non taglia dentro un tensore."
+                )
+            if conserva and os.path.exists(intermediate):
+                job.message += (
+                    " Conservato anche " + os.path.basename(intermediate)
+                    + ": e' un modello a se', e le prossime quantizzazioni "
+                    "possono ripartire da li' saltando la conversione."
+                )
             log.info("[GgufConverter] %s -> %s", job.source_model, final_path)
 
         except Exception as exc:
@@ -1091,13 +1228,29 @@ class GgufConverter:
             job.message = "Conversione fallita."
             log.error("[GgufConverter] Job %s failed: %s", job.job_id, exc,
                       exc_info=True)
-            if not existing_gguf and os.path.exists(intermediate):
+            if not existing_gguf and not conserva and os.path.exists(intermediate):
                 try:
                     os.remove(intermediate)
                 except Exception:
                     pass
+            # Senza questo, la cartella creata a inizio job resta li' vuota e
+            # tiene occupato il nome: il tentativo successivo lo trova preso, e
+            # anche rinominare a mano fallisce con "esiste gia' un modello".
+            cls._rimuovi_se_senza_gguf(target_dir)
         finally:
             job.finished_at = time.time()
+
+    @staticmethod
+    def _rimuovi_se_senza_gguf(cartella: str) -> None:
+        """Toglie una cartella di destinazione che non contiene alcun GGUF."""
+        try:
+            if not os.path.isdir(cartella):
+                return
+            if any(n.lower().endswith(".gguf") for n in os.listdir(cartella)):
+                return
+            shutil.rmtree(cartella, ignore_errors=True)
+        except Exception:
+            pass
 
     #: Bit per peso impliciti nel nome di un GGUF. Servono a scegliere la
     #: sorgente quando in una cartella ce n'e' piu' d'uno. L'ordine conta:
@@ -1204,9 +1357,152 @@ class GgufConverter:
             raise RuntimeError("la conversione non ha prodotto alcun file")
 
     @classmethod
-    def _quantize(cls, source: str, output: str, quant_type: str) -> None:
-        """Quantizes in-process through llama.dll, so no external tool is needed."""
+    def _tensori_fuori_misura(cls, gguf_path: str, quant_type: str,
+                              limite_gb: float = _LIMITE_TENSORE_GB
+                              ) -> List[Dict[str, Any]]:
+        """I tensori che da soli sforerebbero il limite per file, col ripiego.
+
+        Un singolo tensore piu' grande del limite di Hugging Face condanna il
+        modello a restare non pubblicabile, perche' lo split non entra dentro
+        un tensore. Qui si guarda quali sono e a che tipo vanno riportati.
+
+        La misura e' quella che il tensore avra' *in uscita*, non quella che ha
+        nell'intermedio: partendo da un q8_0 per fare un Q4, un tensore da 50 GB
+        ne occupera' 29 da solo, e forzargli un tipo sarebbe scavalcare una
+        scelta che llama.cpp fa gia' bene. Il margine fra la soglia e il limite
+        vero copre il fatto che le tabelle di embedding vengono tenute piu'
+        fedeli del nominale.
+        """
+        bpw_uscita = next((q["bpw"] for q in QUANT_TYPES if q["id"] == quant_type),
+                          None)
+        if bpw_uscita is None:
+            return []
+        try:
+            from gguf.gguf_reader import GGUFReader
+        except Exception:
+            return []
+        try:
+            lettore = GGUFReader(gguf_path)
+        except Exception:
+            return []
+
+        piano: List[Dict[str, Any]] = []
+        for tensore in getattr(lettore, "tensors", []):
+            try:
+                elementi = 1
+                for dimensione in tensore.shape:
+                    elementi *= int(dimensione)
+                riga = int(tensore.shape[0])
+                gb = elementi * bpw_uscita / 8 / 2**30
+                if gb <= limite_gb:
+                    continue
+            except Exception:
+                continue
+
+            for nome_tipo, bpw, blocco in _RIPIEGHI_TENSORE:
+                if riga % blocco:
+                    continue      # il tipo non sa dividere righe di questa lunghezza
+                previsto = elementi * bpw / 8 / 2**30
+                if previsto <= limite_gb and bpw < bpw_uscita:
+                    piano.append({
+                        "tensore": str(tensore.name),
+                        "tipo": nome_tipo,
+                        "gb_prima": round(gb, 2),
+                        "gb_dopo": round(previsto, 2),
+                    })
+                    break
+            else:
+                # Nessun tipo lo riporta sotto: va detto, non taciuto.
+                piano.append({
+                    "tensore": str(tensore.name),
+                    "tipo": None,
+                    "gb_prima": round(gb, 2),
+                    "gb_dopo": None,
+                })
+        return piano
+
+    @classmethod
+    def _va_riquantizzato(cls, source: str) -> bool:
+        """Se la sorgente e' gia' quantizzata e non a virgola mobile."""
+        return cls._precisione_gguf(os.path.basename(source)) <= 8.5
+
+    @classmethod
+    def _quantize_binario(cls) -> Optional[str]:
+        """Il quantizzatore della build del motore, se e' installata."""
+        try:
+            from core.engine import llama_runtime
+            info = llama_runtime.installed_build_info() or {}
+        except Exception:
+            return None
+        cartella = info.get("cartella")
+        if not cartella:
+            return None
+        for nome in ("llama-quantize.exe", "llama-quantize"):
+            percorso = os.path.join(cartella, nome)
+            if os.path.isfile(percorso):
+                return percorso
+        return None
+
+    @classmethod
+    def _quantize_con_motore(cls, binario: str, source: str, output: str,
+                             quant_type: str,
+                             override: Optional[List[Dict[str, Any]]] = None) -> None:
+        """Quantizza con l'eseguibile del motore, in un processo separato."""
+        comando = [binario]
+        for voce in (override or []):
+            if voce.get("tipo"):
+                comando += ["--tensor-type",
+                            str(voce["tensore"]) + "=" + str(voce["tipo"])]
+        if cls._va_riquantizzato(source):
+            # llama.cpp rifiuta di default di ripartire da un file gia'
+            # quantizzato. Il divieto protegge da un doppio arrotondamento
+            # involontario, ma qui e' voluto: o il piano spazio ha scelto q8_0
+            # come intermedio, o la sorgente e' un GGUF che l'utente ha scelto.
+            comando.append("--allow-requantize")
+        comando += [source, output, quant_type,
+                    str(max((os.cpu_count() or 4) - 1, 1))]
+        esito = subprocess.run(
+            comando, capture_output=True, text=True, errors="replace",
+            timeout=6 * 60 * 60, cwd=os.path.dirname(binario),
+        )
+        if esito.returncode != 0:
+            uscita = (esito.stderr or "") + os.linesep + (esito.stdout or "")
+            righe = [r.strip() for r in uscita.splitlines() if r.strip()]
+            raise RuntimeError(
+                "quantizzazione in " + str(quant_type) + " fallita (codice "
+                + str(esito.returncode) + "). "
+                + cls._motivo_quantizzazione(righe, quant_type)
+            )
+        if not os.path.exists(output):
+            raise RuntimeError("la quantizzazione non ha prodotto alcun file")
+
+    @classmethod
+    def _quantize(cls, source: str, output: str, quant_type: str,
+                  override: Optional[List[Dict[str, Any]]] = None) -> None:
+        """Quantizza, preferendo la build del motore a quella del pacchetto pip.
+
+        Le due non conoscono le stesse architetture. Il controllo di
+        compatibilita' interroga le librerie del motore, ma quantizzare
+        in-process usa la llama.dll che viaggia dentro llama_cpp, che e' piu'
+        vecchia: per qwen4exp il primo prometteva "supportata" e la seconda
+        rispondeva "unknown model architecture" dopo mezz'ora di conversione e
+        175 GB scritti. Si quantizza con cio' su cui si e' promesso.
+        """
         import ctypes
+
+        binario = cls._quantize_binario()
+        if binario:
+            cls._quantize_con_motore(binario, source, output, quant_type, override)
+            return
+
+        if any(v.get("tipo") for v in (override or [])):
+            raise RuntimeError(
+                "Il modello ha tensori oltre i "
+                + str(int(_LIMITE_TENSORE_GB)) + " GB che vanno riportati a un "
+                "tipo piu' compatto, ma solo llama-quantize del motore sa farlo "
+                "per singolo tensore. Installa la build del motore dal Model Hub."
+            )
+
         from llama_cpp import llama_cpp as C
 
         ftype = getattr(C, "LLAMA_FTYPE_MOSTLY_" + quant_type, None)
@@ -1215,6 +1511,8 @@ class GgufConverter:
 
         params = C.llama_model_quantize_default_params()
         params.ftype = ftype
+        if cls._va_riquantizzato(source):
+            params.allow_requantize = True
         params.nthread = max((os.cpu_count() or 4) - 1, 1)
 
         # Il log della libreria si raccoglie: senza, un fallimento arriva

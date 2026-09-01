@@ -48,6 +48,21 @@ def set_models_dir(new_dir: str) -> str:
     return str(_paths.set_models_dir(new_dir))
 
 
+def extra_models_dirs(refresh: bool = False) -> List[str]:
+    """L'elenco delle cartelle modelli aggiuntive configurate."""
+    return [str(p) for p in _paths.extra_models_dirs(refresh=refresh)]
+
+
+def all_models_dirs(refresh: bool = False) -> List[str]:
+    """Tutte le cartelle modelli attive (principale + aggiuntive)."""
+    return [str(p) for p in _paths.all_models_dirs(refresh=refresh)]
+
+
+def set_extra_models_dirs(dirs: List[str]) -> List[str]:
+    """Aggiorna le cartelle modelli aggiuntive."""
+    return [str(p) for p in _paths.set_extra_models_dirs(dirs)]
+
+
 WEIGHT_SUFFIXES = (".safetensors", ".gguf", ".bin", ".pt")
 
 
@@ -74,18 +89,22 @@ def has_weights(folder: str) -> bool:
 
 
 def list_model_dirs() -> List[str]:
-    """Ogni sottocartella della cartella modelli attiva che contiene pesi."""
-    base = models_dir()
-    if not os.path.isdir(base):
-        return []
-    try:
-        entries = sorted(os.listdir(base))
-    except OSError:
-        return []
-    return [
-        os.path.join(base, name) for name in entries
-        if has_weights(os.path.join(base, name))
-    ]
+    """Ogni sottocartella delle cartelle modelli attive che contiene pesi."""
+    results: List[str] = []
+    seen = set()
+    for base in all_models_dirs():
+        if not os.path.isdir(base):
+            continue
+        try:
+            entries = sorted(os.listdir(base))
+        except OSError:
+            continue
+        for name in entries:
+            full = os.path.join(base, name)
+            if full not in seen and has_weights(full):
+                seen.add(full)
+                results.append(full)
+    return results
 
 
 def resolve_model_dir(identifier: Optional[str]) -> Optional[str]:
@@ -93,25 +112,28 @@ def resolve_model_dir(identifier: Optional[str]) -> Optional[str]:
     Trova la cartella di un modello a partire da un riferimento, tollerando le
     grafie che circolano in questa applicazione: 'Qwen/Qwen3-27B',
     'Qwen--Qwen3-27B', un nome di cartella nudo, o un percorso assoluto.
+    Cerca sia nella directory principale che nei percorsi aggiuntivi configurati.
     """
     if not identifier:
         return None
 
-    if os.path.isabs(identifier) and has_weights(identifier):
+    if os.path.isabs(identifier) and (has_weights(identifier) or (os.path.isfile(identifier) and identifier.endswith(WEIGHT_SUFFIXES))):
         return identifier
 
-    base = models_dir()
-    for candidate in (
-        identifier,
-        identifier.replace("/", "--"),
-        identifier.replace("--", "/"),
-        identifier.replace(":", "-"),
-        identifier.split("/")[-1],
-        identifier.split(":")[0],
-    ):
-        path = os.path.join(base, candidate)
-        if has_weights(path):
-            return path
+    candidates_bases = all_models_dirs()
+
+    for base in candidates_bases:
+        for candidate in (
+            identifier,
+            identifier.replace("/", "--"),
+            identifier.replace("--", "/"),
+            identifier.replace(":", "-"),
+            identifier.split("/")[-1],
+            identifier.split(":")[0],
+        ):
+            path = os.path.join(base, candidate)
+            if has_weights(path) or (os.path.isfile(path) and path.endswith(WEIGHT_SUFFIXES)):
+                return path
 
     # Ultima risorsa: confronto ignorando i separatori, dando la precedenza alle
     # corrispondenze esatte e a quelle quantizzate GGUF.
@@ -136,3 +158,4 @@ def resolve_model_dir(identifier: Optional[str]) -> Optional[str]:
             return path
 
     return None
+

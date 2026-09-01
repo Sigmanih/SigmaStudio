@@ -94,7 +94,7 @@ export function AppProvider({ children }) {
     }
   };
 
-  const clearSystemMemory = async (options = { clearTasks: true, clearChat: true }) => {
+  const clearSystemMemory = async (options = { clearTasks: true, clearChat: false }) => {
     try {
       const res = await fetch('/api/system/clear-memory', {
         method: 'POST',
@@ -119,9 +119,10 @@ export function AppProvider({ children }) {
             }
           });
         } catch (e) {}
+        window.dispatchEvent(new CustomEvent('sigma-chat-cleared', { detail: { clear_history: true } }));
       }
-      window.dispatchEvent(new CustomEvent('sigma-memory-cleared'));
-      addToast(data.message || 'Memoria e task ripuliti con successo.', 'success');
+      window.dispatchEvent(new CustomEvent('sigma-system-cleanup-done', { detail: options }));
+      addToast(data.message || 'Memoria e risorse ripulite con successo.', 'success');
       return data;
     } catch (err) {
       console.error('Clear system memory error:', err);

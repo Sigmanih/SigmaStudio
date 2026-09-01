@@ -557,20 +557,12 @@ def _stream_chat_response(handler, messages, ai_cfg, model, provider,
                     # speed_tok_s from real decoded tokens; Ollama reports
                     # tokens_per_second. Recomputing from a word count here
                     # would replace a true number with an estimate that is off
-                    # by the tokenizer's words-per-token ratio.
-                    tps = chunk.get("speed_tok_s") or chunk.get("tokens_per_second")
-                    if tps:
-                        calculated_tps = tps
+                    gen_duration_ms = None
+                    raw_eval_dur = chunk.get("eval_duration")
+                    if raw_eval_dur and raw_eval_dur > 0:
+                        gen_duration_ms = round(raw_eval_dur / 1e6, 1)
                     elif t_first_token:
-                        gen_sec = time.perf_counter() - t_first_token
-                        if gen_sec > 0:
-                            calculated_tps = round(generated_token_count / gen_sec, 1)
-
-                    raw_load = chunk.get("load_duration")
-                    if raw_load:
-                        load_duration_ms = round(raw_load / 1e6, 1)
-                    elif t_first_token:
-                        load_duration_ms = round((t_first_token - t_call_start) * 1000, 1)
+                        gen_duration_ms = round((time.perf_counter() - t_first_token) * 1000, 1)
 
                     # The engine reports real token counts; the word-split
                     # tally here is only a fallback for providers that don't.
@@ -580,7 +572,23 @@ def _stream_chat_response(handler, messages, ai_cfg, model, provider,
                         or generated_token_count
                     )
 
+                    raw_load = chunk.get("load_duration")
+                    if raw_load:
+                        load_duration_ms = round(raw_load / 1e6, 1)
+                    elif t_first_token:
+                        load_duration_ms = round((t_first_token - t_call_start) * 1000, 1)
+
+                    # Coherent TPS calculation: Token count divided by generation decode seconds
+                    gen_sec = (gen_duration_ms / 1000.0) if gen_duration_ms and gen_duration_ms > 0 else (
+                        (time.perf_counter() - t_first_token) if t_first_token else 0
+                    )
+                    if reported_tokens and gen_sec > 0:
+                        calculated_tps = round(reported_tokens / gen_sec, 1)
+                    else:
+                        calculated_tps = chunk.get("speed_tok_s") or chunk.get("tokens_per_second")
+
                     coalescer.flush()
+
 
                     # Forwarded so the client can trigger auto-continuation on truncation.
                     _push({
@@ -589,6 +597,7 @@ def _stream_chat_response(handler, messages, ai_cfg, model, provider,
                         "metrics": {
                             "routing_time_ms": routing_time_ms,
                             "load_duration_ms": load_duration_ms,
+                            "generation_time_ms": gen_duration_ms,
                             "tokens_per_second": calculated_tps,
                             "token_count": reported_tokens,
                             "hardware_note": hw_info,
@@ -596,6 +605,7 @@ def _stream_chat_response(handler, messages, ai_cfg, model, provider,
                         }
                     })
                     return True
+
             return True
         except Exception as exc:
             log.error("Streaming chat failed: %s", exc, exc_info=True)
@@ -739,11 +749,13 @@ def _stream_chat_response(handler, messages, ai_cfg, model, provider,
             "metrics": {
                 "routing_time_ms": routing_time_ms,
                 "load_duration_ms": load_duration_ms,
+                "generation_time_ms": round((time.perf_counter() - t_call_start) * 1000, 1),
                 "tokens_per_second": calculated_tps,
                 "token_count": generated_token_count,
                 "hardware_note": hw_info
             }
         })
+
 
     try:
         handler.wfile.write(b"data: [DONE]\n\n")

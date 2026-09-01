@@ -45,14 +45,17 @@ export function generateId() {
 }
 
 export function createSession(model, name) {
+  const nowIso = new Date().toISOString();
   return {
     id: generateId(),
     name: name || `Chat ${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`,
     model: model || '',
     manifestoPath: 'auto',
     messages: [],
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString()
+    messageCount: 0,
+    lastMessageAt: nowIso,
+    createdAt: nowIso,
+    updatedAt: nowIso
   };
 }
 
@@ -103,9 +106,19 @@ export function saveMessagesToStorage(sessionId, messages) {
   try {
     localStorage.setItem(`sigma_chat_msgs_${sessionId}`, JSON.stringify(messages));
     
-    // Also touch the session in session list with new updatedAt
+    // Also touch the session in session list with new updatedAt, messageCount and lastMessageAt
     const sessions = loadSessions();
     let updated = false;
+    const nowIso = new Date().toISOString();
+
+    let lastMsgTime = nowIso;
+    if (messages.length > 0) {
+      const lastMsg = messages[messages.length - 1];
+      if (lastMsg && (lastMsg.timestamp || lastMsg.time)) {
+        lastMsgTime = lastMsg.timestamp || lastMsg.time;
+      }
+    }
+
     const nextSessions = sessions.map(s => {
       if (s.id === sessionId) {
         updated = true;
@@ -118,7 +131,13 @@ export function saveMessagesToStorage(sessionId, messages) {
             if (snippet) nextName = `${snippet}...`;
           }
         }
-        return { ...s, name: nextName, updatedAt: new Date().toISOString() };
+        return {
+          ...s,
+          name: nextName,
+          messageCount: messages.length,
+          lastMessageAt: lastMsgTime,
+          updatedAt: nowIso
+        };
       }
       return s;
     });
@@ -127,6 +146,75 @@ export function saveMessagesToStorage(sessionId, messages) {
       saveSessions(nextSessions);
     }
   } catch (e) {}
+}
+
+export function getSessionStats(session, sessionMessages) {
+  if (!session) return { count: 0, lastTime: '' };
+
+  let count = 0;
+  let lastTime = session.lastMessageAt || session.updatedAt || session.createdAt || '';
+
+  if (sessionMessages && sessionMessages[session.id] && Array.isArray(sessionMessages[session.id])) {
+    const msgs = sessionMessages[session.id];
+    count = msgs.length;
+    if (msgs.length > 0) {
+      const lastMsg = msgs[msgs.length - 1];
+      if (lastMsg && (lastMsg.timestamp || lastMsg.time)) {
+        lastTime = lastMsg.timestamp || lastMsg.time;
+      }
+    }
+  } else if (session.messageCount !== undefined && session.messageCount !== null) {
+    count = session.messageCount;
+  } else if (Array.isArray(session.messages) && session.messages.length > 0) {
+    count = session.messages.length;
+  } else {
+    const stored = loadMessagesFromStorage(session.id);
+    if (stored && Array.isArray(stored)) {
+      count = stored.length;
+      if (stored.length > 0) {
+        const lastMsg = stored[stored.length - 1];
+        if (lastMsg && (lastMsg.timestamp || lastMsg.time)) {
+          lastTime = lastMsg.timestamp || lastMsg.time;
+        }
+      }
+    }
+  }
+
+  return { count, lastTime };
+}
+
+export function formatSessionTime(val) {
+  if (!val) return '';
+  try {
+    const d = new Date(val);
+    if (isNaN(d.getTime())) return '';
+    const now = new Date();
+    const isToday = d.toDateString() === now.toDateString();
+
+    const yesterday = new Date(now);
+    yesterday.setDate(yesterday.getDate() - 1);
+    const isYesterday = d.toDateString() === yesterday.toDateString();
+
+    const timeStr = d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+    if (isToday) {
+      return timeStr;
+    }
+    if (isYesterday) {
+      return `Ieri ${timeStr}`;
+    }
+
+    const monthNames = ['Gen', 'Feb', 'Mar', 'Apr', 'Mag', 'Giu', 'Lug', 'Ago', 'Set', 'Ott', 'Nov', 'Dic'];
+    const day = d.getDate();
+    const month = monthNames[d.getMonth()];
+
+    if (d.getFullYear() === now.getFullYear()) {
+      return `${day} ${month} ${timeStr}`;
+    }
+    return `${day}/${d.getMonth() + 1}/${d.getFullYear().toString().slice(-2)} ${timeStr}`;
+  } catch {
+    return '';
+  }
 }
 
 export function loadPosition(defaultWidth = 480, defaultHeight = 600) {

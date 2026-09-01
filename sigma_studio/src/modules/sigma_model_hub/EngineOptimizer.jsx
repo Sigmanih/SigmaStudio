@@ -117,7 +117,7 @@ export default function EngineOptimizer({ isLight, addToast }) {
         <div style={{ display: 'flex', gap: '8px' }}>
           <input
             type="text"
-            placeholder="Incolla repo Hugging Face (es. bartowski/DeepSeek-R1-Distill-Qwen-14B-GGUF o Qwen/Qwen2.5-Coder-7B-Instruct)..."
+            placeholder="Incolla repo Hugging Face (es. deepseek-ai/DeepSeek-R1-Distill-Qwen-14B o Qwen/Qwen2.5-Coder-7B-Instruct)..."
             value={hfInputRepo}
             onChange={e => setHfInputRepo(e.target.value)}
             style={{

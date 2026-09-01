@@ -309,8 +309,15 @@ def execute_selective_cleanup(options: Dict[str, Any]) -> Dict[str, Any]:
     cleaned = []
     freed_bytes_estimate = 0
 
+    do_free_memory = bool(options.get("free_memory") or options.get("freeMemory")) if ("free_memory" in options or "freeMemory" in options) else True
+    do_stop_tasks = bool(options.get("stop_background_tasks") or options.get("stopBackgroundTasks"))
+    do_clear_tasks = bool(options.get("clear_tasks") or options.get("clearTasks"))
+    do_clear_history = bool(options.get("clear_history") or options.get("clearHistory") or options.get("clearChat"))
+    do_clear_backups = bool(options.get("clear_backups") or options.get("clearBackups"))
+    do_clear_cache = bool(options.get("clear_cache") or options.get("clearCache"))
+
     # 1. Free Memory (RAM/VRAM)
-    if options.get("free_memory", True):
+    if do_free_memory:
         try:
             from core.engine.unified_runtime import sigma_engine
             if sigma_engine.loaded_model_name:
@@ -331,7 +338,7 @@ def execute_selective_cleanup(options: Dict[str, Any]) -> Dict[str, Any]:
         cleaned.append("Garbage Collection eseguita (RAM liberata)")
 
     # 2. Stop Background Tasks
-    if options.get("stop_background_tasks", False):
+    if do_stop_tasks:
         try:
             from core.modules.sigma_model_hub.backend.downloader_engine import downloader_manager
             with downloader_manager.lock:
@@ -352,7 +359,7 @@ def execute_selective_cleanup(options: Dict[str, Any]) -> Dict[str, Any]:
             pass
 
     # 3. Clear Tasks
-    if options.get("clear_tasks", False):
+    if do_clear_tasks:
         data_dir = str(paths.data_dir()) if hasattr(paths, "data_dir") else "data"
         for fname in ("developer_tasks.json", "tasks.json", "agent_tasks_cache.json"):
             fp = os.path.join(data_dir, fname)
@@ -365,8 +372,8 @@ def execute_selective_cleanup(options: Dict[str, Any]) -> Dict[str, Any]:
                 except Exception as e:
                     log.warning("Clear task file %s error: %s", fname, e)
 
-    # 4. Clear History
-    if options.get("clear_history", False):
+    # 4. Clear History (ONLY if explicitly requested)
+    if do_clear_history:
         try:
             from core.context_broker import context_broker
             context_broker.shares.clear()
@@ -385,7 +392,7 @@ def execute_selective_cleanup(options: Dict[str, Any]) -> Dict[str, Any]:
             cleaned.append("Cronologia sessioni chat rimossa")
 
     # 5. Clear Backups
-    if options.get("clear_backups", False):
+    if do_clear_backups:
         backups_dir = os.path.join(os.getcwd(), ".sigma_backups")
         if os.path.exists(backups_dir):
             import shutil
@@ -396,7 +403,7 @@ def execute_selective_cleanup(options: Dict[str, Any]) -> Dict[str, Any]:
             cleaned.append(f"Snapshot backup rimossi ({_format_bytes(sz)})")
 
     # 6. Clear Cache
-    if options.get("clear_cache", False):
+    if do_clear_cache:
         import shutil
         for root_dir in ("core", "tests"):
             for root, dirs, _ in os.walk(root_dir):
@@ -423,11 +430,11 @@ def execute_selective_cleanup(options: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 
-def clear_system_memory(clear_tasks: bool = True, clear_history: bool = True) -> Dict[str, Any]:
+def clear_system_memory(clear_tasks: bool = True, clear_history: bool = False) -> Dict[str, Any]:
     """Legacy wrapper for clearing memory, tasks and background tasks."""
     return execute_selective_cleanup({
         "free_memory": True,
-        "stop_background_tasks": True,
+        "stop_background_tasks": False,
         "clear_tasks": clear_tasks,
         "clear_history": clear_history,
         "clear_backups": False,

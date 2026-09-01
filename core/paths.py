@@ -49,8 +49,10 @@ log = get_logger(__name__)
 #: piccole dove il codice sta sulla SD e i dati su un disco esterno.
 _HOME_ENV = "SIGMA_HOME"
 
-_LOCK = threading.Lock()
+_LOCK = threading.RLock()
 _MODELS_DIR_CACHE: Optional[Path] = None
+_EXTRA_MODELS_DIRS_CACHE: Optional[list[Path]] = None
+
 
 
 # ==============================================================================
@@ -431,15 +433,97 @@ def _configured_models_dir() -> Optional[Path]:
     if not configured or not str(configured).strip():
         return None
 
-    # Il valore salvato dal Model Hub e' spesso relativo ("data/models"). Va
-    # risolto rispetto all'installazione, non alla directory di lancio: con
-    # abspath() lanciare il server da un'altra cartella creava una cartella
-    # modelli nuova e vuota li' accanto, e l'applicazione riportava zero modelli
-    # installati mentre i 122 GB erano al loro posto.
     candidate = Path(str(configured)).expanduser()
     if not candidate.is_absolute():
         candidate = project_root() / candidate
     return candidate.resolve()
+
+
+def extra_models_dirs(refresh: bool = False) -> list[Path]:
+    """Elenco delle cartelle modelli aggiuntive configurate.
+
+    Restituisce i percorsi risolti e validati, escludendo duplicati o percorsi identici
+    alla cartella modelli principale.
+    """
+    global _EXTRA_MODELS_DIRS_CACHE
+    with _LOCK:
+        if _EXTRA_MODELS_DIRS_CACHE is not None and not refresh:
+            return list(_EXTRA_MODELS_DIRS_CACHE)
+
+        configured_list = _configured_extra_models_dirs()
+        main_dir = models_dir(refresh=refresh)
+        valid_paths: list[Path] = []
+        seen = {main_dir.resolve()}
+
+        for p in configured_list:
+            try:
+                resolved = p.resolve()
+                if resolved not in seen and resolved.exists() and resolved.is_dir():
+                    valid_paths.append(resolved)
+                    seen.add(resolved)
+            except Exception as exc:
+                log.debug("[Paths] Percorso modelli extra non accessibile '%s': %s", p, exc)
+
+        _EXTRA_MODELS_DIRS_CACHE = valid_paths
+        return list(valid_paths)
+
+
+def all_models_dirs(refresh: bool = False) -> list[Path]:
+    """Tutte le cartelle modelli attive: la principale seguita da quelle aggiuntive."""
+    main = models_dir(refresh=refresh)
+    extras = extra_models_dirs(refresh=refresh)
+    return [main] + [e for e in extras if e != main]
+
+
+def set_extra_models_dirs(dirs: list[str | Path]) -> list[Path]:
+    """Aggiorna le cartelle modelli aggiuntive in memoria e invalida la cache."""
+    global _EXTRA_MODELS_DIRS_CACHE
+    valid_paths: list[Path] = []
+    seen = set()
+    for d in dirs:
+        if not d:
+            continue
+        try:
+            cand = Path(str(d)).expanduser()
+            if not cand.is_absolute():
+                cand = project_root() / cand
+            res = cand.resolve()
+            if res not in seen and res.exists() and res.is_dir():
+                valid_paths.append(res)
+                seen.add(res)
+        except Exception:
+            pass
+
+    with _LOCK:
+        _EXTRA_MODELS_DIRS_CACHE = valid_paths
+    return list(valid_paths)
+
+
+def _configured_extra_models_dirs() -> list[Path]:
+    import json
+
+    path = model_hub_config_file()
+    if not path.exists():
+        return []
+    try:
+        data = json.loads(path.read_text(encoding="utf-8")) or {}
+        raw_extras = data.get("extra_models_dirs", [])
+        if not isinstance(raw_extras, list):
+            return []
+    except (OSError, ValueError) as exc:
+        log.debug("[Paths] Config del Model Hub illeggibile per extra_models_dirs: %s", exc)
+        return []
+
+    result = []
+    for item in raw_extras:
+        if not item or not str(item).strip():
+            continue
+        candidate = Path(str(item).strip()).expanduser()
+        if not candidate.is_absolute():
+            candidate = project_root() / candidate
+        result.append(candidate)
+    return result
+
 
 
 # ==============================================================================

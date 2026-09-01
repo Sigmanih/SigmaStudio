@@ -108,10 +108,13 @@ class ModelDownloadManager:
         self,
         model_id: str,
         filename: str,
-        download_url: str,
+        download_url: Optional[str] = None,
         hf_token: Optional[str] = None
     ) -> Dict[str, Any]:
         """Starts a background download task for a single file."""
+        if not download_url:
+            download_url = f"https://huggingface.co/{model_id}/resolve/main/{filename}"
+
         clean_mid = model_id.replace("/", "--")
         target_dir = os.path.join(self.models_dir, clean_mid)
         os.makedirs(target_dir, exist_ok=True)

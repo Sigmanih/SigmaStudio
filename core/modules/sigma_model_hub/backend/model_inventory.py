@@ -24,7 +24,8 @@ def _get_workspace_root() -> str:
     return str(project_root())
 
 
-from core.model_paths import models_dir as _active_models_dir, project_root
+from core.model_paths import (models_dir as _active_models_dir, all_models_dirs,
+                              extra_models_dirs, project_root)
 
 ROOT_DIR = project_root()
 
@@ -32,6 +33,7 @@ ROOT_DIR = project_root()
 def _models_dir() -> str:
     """The active models directory, shared with the engine and downloader."""
     return _active_models_dir()
+
 
 
 def _earliest_weight_time(folder: str, weight_files) -> float:
@@ -142,12 +144,12 @@ def detect_family_and_category(name: str, architecture: str = "", author: str = 
     return family, category
 
 
-def scan_local_models(custom_dir: Optional[str] = None) -> List[Dict[str, Any]]:
-    """Scans local disk for downloaded model files (.gguf, .safetensors, .bin, multi-shard repos)."""
-    base_dir = custom_dir if custom_dir and os.path.exists(custom_dir) else _models_dir()
-    os.makedirs(base_dir, exist_ok=True)
-    results = []
+def _scan_single_dir(base_dir: str, is_extra: bool = False) -> List[Dict[str, Any]]:
+    """Scansiona una specifica cartella su disco per modelli (.gguf, .safetensors, .bin, multi-shard)."""
+    if not os.path.exists(base_dir) or not os.path.isdir(base_dir):
+        return []
 
+    results = []
     try:
         entries = os.listdir(base_dir)
     except Exception as e:
@@ -168,7 +170,7 @@ def scan_local_models(custom_dir: Optional[str] = None) -> List[Dict[str, Any]]:
                 shard_files = [f for f in dir_files if f.endswith((".safetensors", ".bin", ".gguf", ".pt"))]
                 part_files = [f for f in dir_files if f.endswith((".part", ".download", ".tmp"))]
                 has_tokenizer = any(os.path.basename(f) in ("tokenizer.json", "tokenizer_config.json", "vocab.json", "tokenizer.model") for f in dir_files) or any(f.endswith(".gguf") for f in shard_files)
-                
+
                 if not shard_files and not part_files:
                     continue
 
@@ -303,6 +305,8 @@ def scan_local_models(custom_dir: Optional[str] = None) -> List[Dict[str, Any]]:
                     "category": category,
                     "is_official": is_official,
                     "path": full_entry_path,
+                    "source_dir": base_dir,
+                    "is_extra_dir": is_extra,
                     "primary_file": primary_file,
                     "format": fmt,
                     "format_tag": fmt_tag,
@@ -371,6 +375,8 @@ def scan_local_models(custom_dir: Optional[str] = None) -> List[Dict[str, Any]]:
                     "category": category,
                     "is_official": is_official,
                     "path": full_entry_path,
+                    "source_dir": base_dir,
+                    "is_extra_dir": is_extra,
                     "primary_file": full_entry_path,
                     "format": fmt,
                     "format_tag": fmt_tag,
@@ -388,8 +394,48 @@ def scan_local_models(custom_dir: Optional[str] = None) -> List[Dict[str, Any]]:
             except Exception as ex:
                 log.debug(f"[ModelInventory] Error reading file {full_entry_path}: {ex}")
 
+    return results
+
+
+def scan_local_models(custom_dir: Optional[str] = None) -> List[Dict[str, Any]]:
+    """Scans local disk for downloaded model files (.gguf, .safetensors, .bin, multi-shard repos).
+    
+    Aggregates models from the primary models directory (or custom_dir if provided)
+    and all configured extra directories (e.g. secondary drives or external paths).
+    """
+    primary_dir = os.path.abspath(custom_dir) if (custom_dir and os.path.exists(custom_dir)) else os.path.abspath(_models_dir())
+    os.makedirs(primary_dir, exist_ok=True)
+
+    results: List[Dict[str, Any]] = []
+    seen_paths = set()
+
+    # 1. Scansiona directory primaria
+    for m in _scan_single_dir(primary_dir, is_extra=False):
+        try:
+            canon = os.path.abspath(m["path"])
+            if canon not in seen_paths:
+                seen_paths.add(canon)
+                results.append(m)
+        except Exception:
+            results.append(m)
+
+    # 2. Scansiona tutte le cartelle secondarie / extra collegate
+    for extra_d in extra_models_dirs(refresh=True):
+        try:
+            extra_abs = os.path.abspath(extra_d)
+            if extra_abs != primary_dir and os.path.exists(extra_abs) and os.path.isdir(extra_abs):
+                for m in _scan_single_dir(extra_abs, is_extra=True):
+                    canon = os.path.abspath(m["path"])
+                    if canon not in seen_paths:
+                        seen_paths.add(canon)
+                        results.append(m)
+        except Exception as ex:
+            log.debug(f"[ModelInventory] Errore scansione directory modelli extra '{extra_d}': {ex}")
+
     results.sort(key=lambda x: x.get("modified_at", ""), reverse=True)
     return results
+
+
 
 
 def deploy_model_to_sigma_engine(
@@ -549,6 +595,9 @@ def _percorso_modello(model_path_or_id: str, base_dir: str) -> Optional[str]:
         os.path.join(base_dir, raw),
         os.path.join(base_dir, raw.replace("/", "--")),
         os.path.join(base_dir, os.path.basename(raw)),
+        os.path.join(base_dir, f"{raw}.gguf"),
+        os.path.join(base_dir, f"{raw.replace('/', '--')}.gguf"),
+        os.path.join(base_dir, f"{os.path.basename(raw)}.gguf"),
     ):
         if os.path.exists(candidato):
             return os.path.abspath(candidato)
@@ -563,27 +612,35 @@ def _dentro_la_cartella(base_dir: str, percorso: str) -> bool:
         return False
 
 
+def _trova_base_e_percorso(model_path_or_id: str, custom_dir: Optional[str] = None) -> tuple[str, Optional[str]]:
+    """Identifica la cartella base appropriata e il percorso reale del modello."""
+    raw = str(model_path_or_id or "").strip()
+    if not raw:
+        return os.path.abspath(_models_dir()), None
+    if custom_dir and os.path.exists(custom_dir):
+        base_dirs = [os.path.abspath(custom_dir)]
+    else:
+        base_dirs = [os.path.abspath(d) for d in all_models_dirs() if os.path.exists(d)]
+        if not base_dirs:
+            base_dirs = [os.path.abspath(_models_dir())]
+
+    for base in base_dirs:
+        p = _percorso_modello(raw, base)
+        if p and os.path.exists(p):
+            return base, p
+    return base_dirs[0], None
+
+
+
 def rename_local_model(model_path_or_id: str, new_name: str,
                        custom_dir: Optional[str] = None) -> Dict[str, Any]:
     """
     Rinomina un modello sul disco, con le stesse protezioni della cancellazione.
 
-    Il nuovo nome viene trattato come il nome di una cartella, non come un
-    percorso: una barra o un `..` dentro il nome sposterebbero il modello fuori
-    dalla cartella dei modelli, e una rinomina non deve poter fare quello che
-    una cancellazione ha il divieto di fare. La forma `autore/modello` resta
-    ammessa perche' e' come Hugging Face nomina le cose, e diventa
-    `autore--modello` sul disco — la stessa convenzione con cui il modello e'
-    arrivato.
-
-    Se il modello e' caricato nel motore viene prima scaricato: rinominare la
-    cartella sotto un runtime che la sta leggendo lascia in memoria pesi che
-    puntano a un percorso che non esiste piu'.
+    Il nuovo nome viene trattato come il nome di una cartella o di un file (.gguf).
+    La forma `autore/modello` resta ammessa e diventa `autore--modello` sul disco.
     """
-    base_dir = os.path.abspath(custom_dir if custom_dir and os.path.exists(custom_dir)
-                               else _models_dir())
-
-    origine = _percorso_modello(model_path_or_id, base_dir)
+    base_dir, origine = _trova_base_e_percorso(model_path_or_id, custom_dir)
     if not origine or not os.path.exists(origine):
         return {"success": False, "error": f"Modello '{model_path_or_id}' non trovato su disco"}
     if not _dentro_la_cartella(base_dir, origine):
@@ -594,10 +651,6 @@ def rename_local_model(model_path_or_id: str, new_name: str,
     grezzo = str(new_name or "").strip()
     if not grezzo:
         return {"success": False, "error": "Il nuovo nome è vuoto"}
-    # Il controllo va fatto sul nome come e' stato scritto, non su quello gia'
-    # ripulito: togliendo prima le barre iniziali, `/tmp/x` diventa `tmp/x` e
-    # non sembra piu' un percorso assoluto. Restava dentro la cartella, ma
-    # veniva accettato e trasformato in `tmp--x` senza che nessuno lo dicesse.
     if os.path.isabs(grezzo) or ".." in grezzo or ":" in grezzo:
         return {"success": False, "error": "Il nuovo nome non può essere un percorso"}
 
@@ -610,6 +663,12 @@ def rename_local_model(model_path_or_id: str, new_name: str,
     cartella = pulito.replace("/", "--").replace("\\", "--")
     if any(c in cartella for c in '<>:"|?*'):
         return {"success": False, "error": "Il nuovo nome contiene caratteri non ammessi"}
+
+    # Se l'origine e' un file singolo (es. .gguf), mantieni l'estensione del file se non specificata
+    if os.path.isfile(origine):
+        orig_ext = os.path.splitext(origine)[1]
+        if orig_ext and not cartella.lower().endswith(orig_ext.lower()):
+            cartella = f"{cartella}{orig_ext}"
 
     destinazione = os.path.abspath(os.path.join(base_dir, cartella))
     if not _dentro_la_cartella(base_dir, destinazione):
@@ -671,27 +730,10 @@ def delete_local_model(model_path_or_id: str, custom_dir: Optional[str] = None) 
     if not model_path_or_id or not str(model_path_or_id).strip():
         return {"success": False, "error": "Identificativo o percorso del modello non valido"}
 
-    base_dir = os.path.abspath(custom_dir if custom_dir and os.path.exists(custom_dir) else _models_dir())
-    raw_target = str(model_path_or_id).strip()
-
-    # 1. Determine target full path
-    target_path = None
-    if os.path.isabs(raw_target) and os.path.exists(raw_target):
-        target_path = os.path.abspath(raw_target)
-    else:
-        # Check standard model naming variations
-        candidates = [
-            os.path.join(base_dir, raw_target),
-            os.path.join(base_dir, raw_target.replace("/", "--")),
-            os.path.join(base_dir, os.path.basename(raw_target)),
-        ]
-        for c in candidates:
-            if os.path.exists(c):
-                target_path = os.path.abspath(c)
-                break
+    base_dir, target_path = _trova_base_e_percorso(model_path_or_id, custom_dir)
 
     if not target_path or not os.path.exists(target_path):
-        return {"success": False, "error": f"Modello '{raw_target}' non trovato su disco"}
+        return {"success": False, "error": f"Modello '{model_path_or_id}' non trovato su disco"}
 
     # 2. Security sandbox check: target must be inside base_dir
     try:

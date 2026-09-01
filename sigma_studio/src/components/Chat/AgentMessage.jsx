@@ -899,6 +899,7 @@ export default function AgentMessage({
                         </span>
                       </div>
                     )}
+
                     {(m.tool_calls?.length > 0 || m.tool_approvals?.length > 0) && (
                       <McpToolStrip calls={m.tool_calls} approvals={m.tool_approvals} />
                     )}
@@ -1002,9 +1003,27 @@ export default function AgentMessage({
                     ? (rawLoad >= 1000 ? `${(rawLoad / 1000).toFixed(2)}s` : `${Math.round(rawLoad)}ms`)
                     : null;
 
+                  const rawTokens = m.token_count ?? m.metrics?.token_count ?? m.eval_count ?? m.metrics?.eval_count ?? first.token_count ?? first.metrics?.token_count;
+                  const tokensDisplay = rawTokens !== undefined && rawTokens !== null
+                    ? `${rawTokens} tok`
+                    : null;
+
+                  const rawGenDuration = m.generation_time_ms ?? m.metrics?.generation_time_ms ?? m.eval_duration_ms ?? m.metrics?.eval_duration_ms ?? m.duration_ms ?? m.metrics?.duration_ms ?? first.generation_time_ms ?? first.metrics?.generation_time_ms;
+                  const genDurationDisplay = rawGenDuration !== undefined && rawGenDuration !== null
+                    ? (rawGenDuration >= 1000 ? `${(rawGenDuration / 1000).toFixed(2)}s` : `${Math.round(rawGenDuration)}ms`)
+                    : null;
+
                   const rawTps = m.tokens_per_second ?? m.metrics?.tokens_per_second ?? first.tokens_per_second ?? first.metrics?.tokens_per_second;
-                  const tpsDisplay = rawTps !== undefined && rawTps !== null
-                    ? `${typeof rawTps === 'number' ? rawTps.toFixed(1) : rawTps}`
+                  const pureTps = (rawTokens && rawGenDuration && rawGenDuration > 0)
+                    ? (rawTokens / (rawGenDuration / 1000.0))
+                    : (rawTps !== undefined && rawTps !== null ? (typeof rawTps === 'number' ? rawTps : parseFloat(rawTps)) : null);
+                  const tpsDisplay = pureTps !== undefined && pureTps !== null && !isNaN(pureTps)
+                    ? `${pureTps.toFixed(1)}`
+                    : null;
+
+                  const rawWps = m.words_per_second ?? m.metrics?.words_per_second ?? first.words_per_second ?? first.metrics?.words_per_second;
+                  const wpsDisplay = rawWps !== undefined && rawWps !== null
+                    ? `${typeof rawWps === 'number' ? rawWps.toFixed(1) : rawWps}`
                     : null;
 
                   const rawEngine = m.engine || m.metrics?.engine || first.engine || first.metrics?.engine;
@@ -1015,7 +1034,7 @@ export default function AgentMessage({
                     ? `${Math.round(rawTtft)}ms`
                     : null;
 
-                  if (!routingDisplay && !loadDisplay && !tpsDisplay && !engineDisplay && !ttftDisplay) return null;
+                  if (!routingDisplay && !loadDisplay && !tokensDisplay && !genDurationDisplay && !tpsDisplay && !engineDisplay && !ttftDisplay) return null;
 
                   return (
                     <div className="chat-msg-footer-metrics" style={{
@@ -1033,7 +1052,7 @@ export default function AgentMessage({
                     }}>
                       {loadDisplay && (
                         <span title="Tempo impiegato per caricare il modello in memoria / VRAM" style={{ display: 'inline-flex', alignItems: 'center', gap: '3px' }}>
-                          <span>⚡</span>
+                          <span>⏳</span>
                           <span>Caricamento: <strong style={{ color: '#eab308', fontWeight: 600 }}>{loadDisplay}</strong></span>
                         </span>
                       )}
@@ -1055,14 +1074,30 @@ export default function AgentMessage({
                           <span>Scelta centralino: <strong style={{ color: '#00d2ff', fontWeight: 600 }}>{routingDisplay}</strong></span>
                         </span>
                       )}
-                      {tpsDisplay && (
-                        <span title="Velocità di generazione del modello (tokens al secondo)" style={{ display: 'inline-flex', alignItems: 'center', gap: '3px' }}>
-                          <span>🚀</span>
-                          <span>Velocità: <strong style={{ color: '#4ade80', fontWeight: 600 }}>{tpsDisplay} t/s</strong></span>
+                      {tokensDisplay && (
+                        <span title="Numero totale di token generati nella risposta" style={{ display: 'inline-flex', alignItems: 'center', gap: '3px' }}>
+                          <span>🔢</span>
+                          <span>Token: <strong style={{ color: '#38bdf8', fontWeight: 600 }}>{tokensDisplay}</strong></span>
                         </span>
                       )}
+                      {genDurationDisplay && (
+                        <span title="Tempo effettivo impiegato per la sola generazione / decodifica dei token (esclude caricamento e centralino)" style={{ display: 'inline-flex', alignItems: 'center', gap: '3px' }}>
+                          <span>⏱️</span>
+                          <span>Tempo Generazione: <strong style={{ color: '#00d2ff', fontWeight: 600 }}>{genDurationDisplay}</strong></span>
+                        </span>
+                      )}
+                      {tpsDisplay && (
+                        <span title={tokensDisplay && genDurationDisplay ? `${tokensDisplay} in ${genDurationDisplay} (Velocità pura: ${tpsDisplay} t/s${wpsDisplay ? ` · ~${wpsDisplay} parole/s` : ''})` : "Velocità effettiva di generazione"} style={{ display: 'inline-flex', alignItems: 'center', gap: '3px' }}>
+                          <span>⚡</span>
+                          <span>Velocità: <strong style={{ color: '#4ade80', fontWeight: 600 }}>{tpsDisplay} t/s</strong>{wpsDisplay ? <span style={{ color: '#8b8fa3', fontWeight: 400, marginLeft: '3px' }}>({wpsDisplay} par/s)</span> : null}</span>
+                        </span>
+                      )}
+
                     </div>
                   );
+
+
+
 
                 })()}
 

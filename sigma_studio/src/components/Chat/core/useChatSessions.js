@@ -6,7 +6,24 @@ export function useChatSessions({ selectedModel, setSelectedModel, setActionsLog
   // Synchronously initialize sessions from localStorage
   const [sessions, setSessions] = useState(() => {
     const saved = loadSessions();
-    if (saved && saved.length > 0) return saved;
+    if (saved && saved.length > 0) {
+      const enriched = saved.map(s => {
+        if (s.messageCount === undefined || s.lastMessageAt === undefined) {
+          const stored = loadMessagesFromStorage(s.id);
+          const count = stored ? stored.length : (Array.isArray(s.messages) ? s.messages.length : 0);
+          let lastTime = s.updatedAt || s.createdAt || new Date().toISOString();
+          if (stored && stored.length > 0) {
+            const lastMsg = stored[stored.length - 1];
+            if (lastMsg && (lastMsg.timestamp || lastMsg.time)) {
+              lastTime = lastMsg.timestamp || lastMsg.time;
+            }
+          }
+          return { ...s, messageCount: count, lastMessageAt: lastTime };
+        }
+        return s;
+      });
+      return enriched;
+    }
     const s = createSession(selectedModel);
     saveSessions([s]);
     return [s];
@@ -68,9 +85,12 @@ export function useChatSessions({ selectedModel, setSelectedModel, setActionsLog
     }
   }, [activeSessionId]);
 
-  // Listen for global memory purge event to instantly reset sessions and messages
+  // Listen for explicit chat history purge event ONLY when clear_history / clear_chat is true
   useEffect(() => {
-    const handleMemoryCleared = () => {
+    const handleChatCleared = (e) => {
+      if (e?.detail && e.detail.clear_history === false && e.detail.clearChat === false) {
+        return;
+      }
       const s = createSession(selectedModel);
       setSessions([s]);
       refs.sessions.current = [s];
@@ -82,8 +102,8 @@ export function useChatSessions({ selectedModel, setSelectedModel, setActionsLog
       refs.activeSessionId.current = s.id;
       saveActiveSessionId(s.id);
     };
-    window.addEventListener('sigma-memory-cleared', handleMemoryCleared);
-    return () => window.removeEventListener('sigma-memory-cleared', handleMemoryCleared);
+    window.addEventListener('sigma-chat-cleared', handleChatCleared);
+    return () => window.removeEventListener('sigma-chat-cleared', handleChatCleared);
   }, [selectedModel, welcomeMsg, saveMessagesImmediately]);
 
   const saveSessionsState = useCallback((ns) => {
@@ -99,6 +119,43 @@ export function useChatSessions({ selectedModel, setSelectedModel, setActionsLog
       const updated = { ...prev, [sessionId]: next };
       refs.sessionMessages.current = updated;
       saveMessagesImmediately(sessionId, next);
+
+      // Update session metadata in sessions state
+      const nowIso = new Date().toISOString();
+      let lastMsgTime = nowIso;
+      if (next.length > 0) {
+        const lastMsg = next[next.length - 1];
+        if (lastMsg && (lastMsg.timestamp || lastMsg.time)) {
+          lastMsgTime = lastMsg.timestamp || lastMsg.time;
+        }
+      }
+
+      setSessions(prevSessions => {
+        const nextSessions = prevSessions.map(s => {
+          if (s.id === sessionId) {
+            let nextName = s.name;
+            if (s.name.startsWith('Chat ') && next.length > 1) {
+              const firstUser = next.find(m => m.role === 'user');
+              if (firstUser && firstUser.content) {
+                const snippet = firstUser.content.trim().slice(0, 40).replace(/\n/g, ' ');
+                if (snippet) nextName = `${snippet}...`;
+              }
+            }
+            return {
+              ...s,
+              name: nextName,
+              messageCount: next.length,
+              lastMessageAt: lastMsgTime,
+              updatedAt: nowIso
+            };
+          }
+          return s;
+        });
+        refs.sessions.current = nextSessions;
+        saveSessions(nextSessions);
+        return nextSessions;
+      });
+
       return updated;
     });
   }, [saveMessagesImmediately, loadMessagesFromStorage]);
@@ -251,6 +308,32 @@ export function useChatSessions({ selectedModel, setSelectedModel, setActionsLog
     setSessionMessages(prev => ({ ...prev, [activeSessionId]: newMsgs }));
     refs.sessionMessages.current[activeSessionId] = newMsgs;
     saveMessagesImmediately(activeSessionId, newMsgs);
+
+    const nowIso = new Date().toISOString();
+    let lastMsgTime = nowIso;
+    if (newMsgs.length > 0) {
+      const lastMsg = newMsgs[newMsgs.length - 1];
+      if (lastMsg && (lastMsg.timestamp || lastMsg.time)) {
+        lastMsgTime = lastMsg.timestamp || lastMsg.time;
+      }
+    }
+
+    setSessions(prevSessions => {
+      const nextSessions = prevSessions.map(s => {
+        if (s.id === activeSessionId) {
+          return {
+            ...s,
+            messageCount: newMsgs.length,
+            lastMessageAt: lastMsgTime,
+            updatedAt: nowIso
+          };
+        }
+        return s;
+      });
+      refs.sessions.current = nextSessions;
+      saveSessions(nextSessions);
+      return nextSessions;
+    });
   };
 
   return {

@@ -44,8 +44,8 @@ class ModelHubMCPServer(BaseMCPServer):
             input_schema={
                 "type": "object",
                 "properties": {
-                    "model_id": {"type": "string", "description": "ID del repository su Hugging Face (es. 'bartowski/DeepSeek-R1-Distill-Qwen-14B-GGUF')."},
-                    "filename": {"type": "string", "description": "Nome del file specifico da scaricare (es. 'DeepSeek-R1-Distill-Qwen-14B-Q4_K_M.gguf')."}
+                    "model_id": {"type": "string", "description": "ID del repository su Hugging Face (es. 'Qwen/Qwen2.5-Coder-14B-Instruct-GGUF' o 'deepseek-ai/DeepSeek-R1-Distill-Qwen-14B')."},
+                    "filename": {"type": "string", "description": "Nome del file specifico da scaricare (es. 'qwen2.5-coder-14b-instruct-q4_k_m.gguf')."}
                 },
                 "required": ["model_id", "filename"]
             },

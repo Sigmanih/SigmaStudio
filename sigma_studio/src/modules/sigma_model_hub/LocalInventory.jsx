@@ -110,7 +110,9 @@ export default function LocalInventory({
   const [familyFilter, setFamilyFilter] = useState('all');       // 'all' | 'sigmanih' | 'gemma' | 'qwen' | 'llama' | 'deepseek' | 'mistral' | 'phi' | 'glm' | 'altro'
   const [categoryFilter, setCategoryFilter] = useState('all');   // 'all' | 'sigmanih' | 'reasoning' | 'code' | 'vision' | 'moe' | 'llm' | 'gguf' | 'safetensors' | 'benchmarked' | 'published'
   const [publisherFilter, setPublisherFilter] = useState('all'); // 'all' | 'sigmanih' | 'google' | 'qwen' | 'meta' | 'deepseek' | 'mistralai' | 'microsoft'
+  const [storageFilter, setStorageFilter] = useState('all');     // 'all' | 'primary' | 'extra'
   const [sortBy, setSortBy] = useState('recent');                // 'recent' | 'size_desc' | 'size_asc' | 'vram_desc' | 'benchmark' | 'name'
+
 
   // Sector Collapsing: map of familyKey -> bool
   const [collapsedFamilies, setCollapsedFamilies] = useState({});
@@ -170,7 +172,7 @@ export default function LocalInventory({
   };
 
   const handleRenameModel = async (model) => {
-    const attuale = model.model_id || model.filename || '';
+    const attuale = model.clean_name || model.model_id || model.filename || '';
     const nuovo = window.prompt(
       'Nuovo nome del modello.\n\nPuoi usare la forma autore/modello: sul disco '
       + 'diventa autore--modello, come i modelli scaricati da Hugging Face.',
@@ -186,7 +188,8 @@ export default function LocalInventory({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           model_path: model.path,
-          model_id: model.model_id || model.filename,
+          model_id: model.model_id || model.clean_name || model.filename,
+          filename: model.filename,
           new_name: nuovo.trim()
         })
       });
@@ -237,11 +240,14 @@ export default function LocalInventory({
   };
 
   const handleResumeDownload = async (model) => {
-    const rawTarget = model.model_id || model.filename || '';
+    const rawTarget = model.model_id || model.filename || (model.path ? model.path.split(/[/\\]/).pop() : '') || '';
     const cleanRepoId = rawTarget.replace(/--/g, '/');
-    const mid = model.publication?.repo_id || cleanRepoId;
+    let mid = model.publication?.repo_id || cleanRepoId;
+    if (!mid.includes('/') && model.author && model.author !== 'Community') {
+      mid = `${model.author}/${mid}`;
+    }
     const isSingleFile = !model.is_repo_folder;
-    const fname = isSingleFile ? (model.filename?.split('/').pop() || model.filename) : undefined;
+    const fname = isSingleFile ? (model.filename?.split(/[/\\]/).pop() || model.filename) : undefined;
 
     setResumingModelId(rawTarget);
     if (addToast) addToast(`📥 Ripresa download per "${mid}" in corso...`, 'info');
@@ -253,6 +259,7 @@ export default function LocalInventory({
         body: JSON.stringify({
           model_id: mid,
           filename: fname,
+          is_repo: model.is_repo_folder,
           resume: true
         })
       });
@@ -386,30 +393,34 @@ export default function LocalInventory({
   };
 
   const handleRenameHfRepoFromInventory = async (model) => {
-    const vecchioRepo = model.publication?.repo_id;
+    const vecchioRepo = model.publication?.repo_id || model.repo_id;
     if (!vecchioRepo) return;
+    const vecchioNomeSolo = vecchioRepo.includes('/') ? vecchioRepo.split('/')[1] : vecchioRepo;
     const nuovoNome = window.prompt(
       `Rinomina il repository "${vecchioRepo}" su Hugging Face.\n\n`
       + 'Puoi inserire solo il nuovo nome (il tuo username resta invariato) '
       + 'oppure "nuovo-username/nuovo-nome".',
-      vecchioRepo.split('/')[1] || vecchioRepo
+      vecchioNomeSolo
     );
     if (nuovoNome === null) return;
-    if (!nuovoNome.trim()) return;
+    if (!nuovoNome.trim() || nuovoNome.trim() === vecchioNomeSolo || nuovoNome.trim() === vecchioRepo) return;
 
     try {
       const res = await fetch('/api/models/hf/repo/rename', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          from_id: vecchioRepo,
           repo_id: vecchioRepo,
+          to_id: nuovoNome.trim(),
           new_name: nuovoNome.trim(),
+          new_repo_id: nuovoNome.trim(),
           model_path: model.path
         })
       });
       const json = await res.json();
       if (res.ok && json.success) {
-        if (addToast) addToast(`✏️ Repository rinominato in "${json.new_repo_id}"!`, 'success');
+        if (addToast) addToast(`✏️ Repository rinominato in "${json.repo_id || json.new_repo_id || nuovoNome.trim()}"!`, 'success');
         fetchLocalModels();
       } else if (addToast) {
         addToast(`❌ Rinomina su HF non riuscita: ${json.error || 'errore'}`, 'error');
@@ -458,16 +469,18 @@ export default function LocalInventory({
     else if (m.is_multimodal || combinedText.includes('vision') || combinedText.includes('vl') || combinedText.includes('clip')) category = 'vision';
     else if (combinedText.includes('moe') || combinedText.includes('expert') || combinedText.includes('8x')) category = 'moe';
 
-    // Chiave famiglia standardizzata
+    // Chiave famiglia architetturale standardizzata
     let familyKey = 'altro';
-    if (isSigmanih) familyKey = 'sigmanih';
-    else if (family.toLowerCase() === 'gemma') familyKey = 'gemma';
-    else if (family.toLowerCase() === 'qwen') familyKey = 'qwen';
-    else if (family.toLowerCase() === 'llama') familyKey = 'llama';
-    else if (family.toLowerCase() === 'deepseek') familyKey = 'deepseek';
-    else if (family.toLowerCase() === 'mistral') familyKey = 'mistral';
-    else if (family.toLowerCase() === 'phi') familyKey = 'phi';
-    else if (family.toLowerCase() === 'glm') familyKey = 'glm';
+    const fLower = family.toLowerCase();
+    if (fLower === 'gemma') familyKey = 'gemma';
+    else if (fLower === 'qwen') familyKey = 'qwen';
+    else if (fLower === 'llama') familyKey = 'llama';
+    else if (fLower === 'deepseek') familyKey = 'deepseek';
+    else if (fLower === 'mistral') familyKey = 'mistral';
+    else if (fLower === 'phi') familyKey = 'phi';
+    else if (fLower === 'glm') familyKey = 'glm';
+    else familyKey = fLower;
+
 
     return {
       isGguf,
@@ -535,9 +548,9 @@ export default function LocalInventory({
 
     // 1. Filtro Settore / Famiglia
     if (familyFilter !== 'all') {
-      if (familyFilter === 'sigmanih' && !info.isSigmanih) return false;
-      if (familyFilter !== 'sigmanih') {
-        if (info.isSigmanih) return false;
+      if (familyFilter === 'sigmanih') {
+        if (!info.isSigmanih) return false;
+      } else {
         if (info.familyKey !== familyFilter) return false;
       }
     }
@@ -558,7 +571,11 @@ export default function LocalInventory({
     if (categoryFilter === 'benchmarked' && !info.hasBenchmark) return false;
     if (categoryFilter === 'published' && !info.isPublished) return false;
 
-    // 4. Ricerca testuale
+    // 4. Filtro Storage (Principale vs Percorsi Aggiuntivi)
+    if (storageFilter === 'primary' && m.is_extra_dir) return false;
+    if (storageFilter === 'extra' && !m.is_extra_dir) return false;
+
+    // 5. Ricerca testuale
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase();
       const matchName = (m.filename || '').toLowerCase().includes(q);
@@ -603,10 +620,12 @@ export default function LocalInventory({
   // Raggruppamento per Famiglia
   const familyOrder = ['sigmanih', 'gemma', 'qwen', 'llama', 'deepseek', 'mistral', 'phi', 'glm', 'altro'];
   const groupedByFamily = familyOrder.reduce((acc, famKey) => {
+    if (familyFilter !== 'all' && famKey !== familyFilter) {
+      return acc;
+    }
     const items = sortedModels.filter(m => {
       const info = getModelInfo(m);
       if (famKey === 'sigmanih') return info.isSigmanih;
-      if (info.isSigmanih) return false;
       return info.familyKey === famKey;
     });
     if (items.length > 0) {
@@ -619,7 +638,7 @@ export default function LocalInventory({
   const knownKeys = new Set(familyOrder);
   sortedModels.forEach(m => {
     const info = getModelInfo(m);
-    if (!knownKeys.has(info.familyKey) && !info.isSigmanih) {
+    if (!knownKeys.has(info.familyKey)) {
       if (!groupedByFamily['altro']) groupedByFamily['altro'] = [];
       if (!groupedByFamily['altro'].includes(m)) {
         groupedByFamily['altro'].push(m);
@@ -657,13 +676,11 @@ export default function LocalInventory({
 
   // Count models per family
   const getFamilyCount = (key) => {
-    return models.filter(m => {
-      const info = getModelInfo(m);
-      if (key === 'sigmanih') return info.isSigmanih;
-      if (info.isSigmanih) return false;
-      return info.familyKey === key;
-    }).length;
+    if (key === 'all') return models.length;
+    if (key === 'sigmanih') return models.filter(m => getModelInfo(m).isSigmanih).length;
+    return models.filter(m => getModelInfo(m).familyKey === key).length;
   };
+
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
@@ -784,8 +801,8 @@ export default function LocalInventory({
 
           {/* ── SETTORIALIZZAZIONE RAPIDA: SECTOR TABS (FAMIGLIE MODELLI) ── */}
           <div style={{
-            display: 'flex', alignItems: 'center', gap: '6px', overflowX: 'auto',
-            paddingBottom: '4px', scrollbarWidth: 'none'
+            display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '7px',
+            paddingBottom: '4px'
           }}>
             <button
               onClick={() => setFamilyFilter('all')}
@@ -903,7 +920,27 @@ export default function LocalInventory({
                   </button>
                 );
               })}
+
+              <div style={{ width: '1px', height: '16px', background: 'rgba(255,255,255,0.1)', margin: '0 2px' }} />
+
+              {/* Storage Filter */}
+              <button
+                onClick={() => setStorageFilter(f => f === 'extra' ? 'all' : 'extra')}
+                title="Mostra solo i modelli provenienti da percorsi aggiuntivi o altri dischi"
+                style={{
+                  padding: '4px 8px', borderRadius: '6px',
+                  border: storageFilter === 'extra' ? '1px solid #c084fc' : subBorder,
+                  background: storageFilter === 'extra' ? 'rgba(168, 85, 247, 0.15)' : subBg,
+                  color: storageFilter === 'extra' ? '#c084fc' : textMuted,
+                  fontSize: '0.66rem', fontWeight: storageFilter === 'extra' ? 800 : 600, cursor: 'pointer',
+                  display: 'inline-flex', alignItems: 'center', gap: '4px'
+                }}
+              >
+                <HardDrive size={11} color={storageFilter === 'extra' ? '#c084fc' : textMuted} />
+                <span>Solo Esterni</span>
+              </button>
             </div>
+
 
             {/* Sorting & Sector View Controls */}
             <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
@@ -1142,6 +1179,21 @@ export default function LocalInventory({
                                       ⚡ ATTIVO
                                     </span>
                                   )}
+
+                                  {/* Extra Directory Badge */}
+                                  {m.is_extra_dir && (
+                                    <span
+                                      title={`Modello su percorso secondario:\n${m.source_dir || ''}`}
+                                      style={{
+                                        fontSize: '0.58rem', fontWeight: 800, padding: '2px 6px', borderRadius: '4px',
+                                        background: 'rgba(168, 85, 247, 0.15)', border: '1px solid rgba(168, 85, 247, 0.35)', color: '#c084fc',
+                                        display: 'inline-flex', alignItems: 'center', gap: '3px'
+                                      }}
+                                    >
+                                      <HardDrive size={9} /> Esterno
+                                    </span>
+                                  )}
+
 
                                   {/* Benchmark Score Pill (if present) */}
                                   {hasBenchmark && (
@@ -1436,8 +1488,14 @@ export default function LocalInventory({
                                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
                                       {m.architecture && <span>🧬 Architettura: <b>{m.architecture}</b></span>}
                                       {m.added_at && <span>🕒 Aggiunto: <b>{m.added_at}</b></span>}
+                                      {m.is_extra_dir && m.source_dir && (
+                                        <span style={{ color: '#c084fc', fontWeight: 700, display: 'inline-flex', alignItems: 'center', gap: '3px' }}>
+                                          <HardDrive size={10} /> Percorso: {m.source_dir}
+                                        </span>
+                                      )}
                                       {m.path && <span title={m.path} style={{ maxWidth: '300px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>📁 {m.path}</span>}
                                     </div>
+
 
                                     <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                                       {/* Convert GGUF Shortcut */}

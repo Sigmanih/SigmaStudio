@@ -509,30 +509,42 @@ def handle_provider_server_toggle(self):
         return self.send_json_response({"success": False, "error": str(e)}, status=500)
 
 
-# Default fallback aliases so external tools with hardcoded names always resolve
+# Default fallback aliases for Sigma Studio Provider Server
 STANDARD_ALIASES = [
     {"id": "sigma", "name": "Sigma (Proxy Principale)", "size": 4.5 * 1024**3, "family": "llama", "quant": "proxy"},
-    {"id": "sigmaengine", "name": "SigmaEngine (Auto-Risolto / Nativo)", "size": 4.5 * 1024**3, "family": "llama", "quant": "auto"},
-    {"id": "sigma-native:latest", "name": "Sigma Native Local Model", "size": 4.5 * 1024**3, "family": "llama", "quant": "Q4_K_M"},
-    {"id": "sigma:latest", "name": "Sigma General Assistant", "size": 4.5 * 1024**3, "family": "llama", "quant": "Q4_K_M"},
-    {"id": "qwen2.5-coder:7b", "name": "Qwen 2.5 Coder 7B", "size": 4.7 * 1024**3, "family": "qwen2", "quant": "Q4_K_M"},
-    {"id": "deepseek-r1:8b", "name": "DeepSeek R1 Distill 8B", "size": 4.9 * 1024**3, "family": "llama", "quant": "Q4_K_M"},
-    {"id": "llama3.2:3b", "name": "Llama 3.2 3B Instruct", "size": 2.0 * 1024**3, "family": "llama", "quant": "Q4_K_M"},
-    {"id": "gpt-4o", "name": "OpenAI GPT-4o (Sigma Studio Router)", "size": 4.5 * 1024**3, "family": "gpt", "quant": "cloud"},
-    {"id": "gpt-4o-mini", "name": "OpenAI GPT-4o Mini", "size": 4.5 * 1024**3, "family": "gpt", "quant": "cloud"},
-    {"id": "claude-3-5-sonnet", "name": "Anthropic Claude 3.5 Sonnet", "size": 4.5 * 1024**3, "family": "claude", "quant": "cloud"},
-    {"id": "deepseek-chat", "name": "DeepSeek V3 / Chat", "size": 4.5 * 1024**3, "family": "deepseek", "quant": "cloud"},
+    {"id": "sigmaengine", "name": "SigmaEngine (Auto-Risoluzione)", "size": 4.5 * 1024**3, "family": "llama", "quant": "auto"},
+    {"id": "sigma:latest", "name": "Sigma (Proxy / Ultimo Attivo)", "size": 4.5 * 1024**3, "family": "llama", "quant": "proxy"},
 ]
 
 
 
 def get_all_available_models() -> List[Dict[str, Any]]:
-    """Discovers all local models on disk + resident model + configured cloud models + standard aliases."""
+    """
+    Discovers all local models on disk + resident model + proxy aliases exported by Sigma Studio.
+    Cloud services are excluded: external clients connect directly to cloud providers if needed.
+    """
     models_map: Dict[str, Dict[str, Any]] = {}
+    seen_keys: set[str] = set()
 
-    # 1. Active Resident Model
-    if sigma_engine.loaded_model_name:
-        resident_name = sigma_engine.loaded_model_name
+    # 1. Standard Aliases for Sigma Studio Provider Server
+    for alias in STANDARD_ALIASES:
+        a_id = alias["id"]
+        models_map[a_id] = {
+            "id": a_id,
+            "name": alias["name"],
+            "size": alias["size"],
+            "family": alias["family"],
+            "quant": alias["quant"],
+            "is_resident": False,
+            "category": "alias",
+            "created": 1700000000,
+        }
+        seen_keys.add(a_id.lower())
+
+    # 2. Resident Model in VRAM
+    resident_name = sigma_engine.loaded_model_name or ""
+    if resident_name and resident_name != "Nessun modello caricato":
+        r_key = resident_name.lower().replace(".gguf", "")
         models_map[resident_name] = {
             "id": resident_name,
             "name": f"{resident_name} (In VRAM)",
@@ -543,34 +555,55 @@ def get_all_available_models() -> List[Dict[str, Any]]:
             "category": "local",
             "created": int(time.time()),
         }
+        seen_keys.add(r_key)
 
-    # 2. Local Models in data/models/
+    # 3. Local Models on Disk (data/models/ and extra directories)
     try:
         from core.modules.sigma_model_hub.backend.model_inventory import scan_local_models
         local_items = scan_local_models()
         for item in local_items:
-            m_id = item.get("name") or item.get("filename") or os.path.basename(item.get("path", ""))
-            if m_id and m_id not in models_map:
-                models_map[m_id] = {
-                    "id": m_id,
-                    "name": item.get("name") or m_id,
-                    "size": item.get("size_bytes") or int(float(item.get("size_gb", 4.0)) * 1024**3),
-                    "family": item.get("family", "llama"),
-                    "quant": item.get("quantization", "GGUF"),
-                    "path": item.get("path", ""),
-                    "is_resident": False,
-                    "category": "local",
-                    "created": int(time.time()),
-                }
+            m_id = item.get("name") or item.get("clean_name") or item.get("filename") or os.path.basename(item.get("path", ""))
+            if not m_id:
+                continue
+
+            k_norm = m_id.lower().replace(".gguf", "")
+            if k_norm in seen_keys or m_id in models_map:
+                # If this item matches the resident model, ensure it's marked as resident
+                if resident_name and (k_norm == resident_name.lower().replace(".gguf", "") or m_id == resident_name):
+                    for existing in models_map.values():
+                        if existing.get("id") == resident_name:
+                            existing["path"] = item.get("path", "")
+                            existing["size"] = item.get("size_bytes") or existing["size"]
+                            existing["quant"] = item.get("quantization") or existing["quant"]
+                continue
+
+            seen_keys.add(k_norm)
+            is_res = bool(resident_name and (k_norm == resident_name.lower().replace(".gguf", "") or m_id.lower() == resident_name.lower()))
+
+            models_map[m_id] = {
+                "id": m_id,
+                "name": item.get("name") or item.get("clean_name") or m_id,
+                "size": item.get("size_bytes") or int(float(item.get("size_gb", 4.0)) * 1024**3),
+                "family": item.get("family", "llama"),
+                "quant": item.get("quantization", "GGUF"),
+                "path": item.get("path", ""),
+                "is_resident": is_res,
+                "category": "local",
+                "created": int(time.time()),
+            }
     except Exception as exc:
         log.debug("Local scanner fallback: %s", exc)
 
-    # 3. Direct directory listing fallback
+    # 4. Direct directory listing fallback for unindexed model folders
     try:
         dirs = list_model_dirs()
         for d in dirs:
             bname = os.path.basename(d.rstrip(os.sep + "/"))
-            if bname and bname not in models_map:
+            if not bname:
+                continue
+            k_norm = bname.lower().replace(".gguf", "")
+            if k_norm not in seen_keys and bname not in models_map:
+                seen_keys.add(k_norm)
                 models_map[bname] = {
                     "id": bname,
                     "name": bname,
@@ -584,55 +617,6 @@ def get_all_available_models() -> List[Dict[str, Any]]:
                 }
     except Exception:
         pass
-
-    # 4. Configured Cloud & External Models in Sigma Studio
-    try:
-        ai_cfg = load_ai_config()
-        providers = ai_cfg.get("providers", {})
-        for p_id, p_info in providers.items():
-            if p_id in ("sigma_engine",):
-                continue
-            model_name = p_info.get("model") or p_info.get("default_model")
-            if model_name and model_name not in models_map:
-                models_map[model_name] = {
-                    "id": model_name,
-                    "name": f"{model_name} ({p_info.get('label', p_id)})",
-                    "size": 4.5 * 1024**3,
-                    "family": p_id,
-                    "quant": "cloud",
-                    "is_resident": False,
-                    "category": "cloud",
-                    "created": int(time.time()),
-                }
-            for extra_m in p_info.get("models", []):
-                if extra_m and extra_m not in models_map:
-                    models_map[extra_m] = {
-                        "id": extra_m,
-                        "name": f"{extra_m} ({p_info.get('label', p_id)})",
-                        "size": 4.5 * 1024**3,
-                        "family": p_id,
-                        "quant": "cloud",
-                        "is_resident": False,
-                        "category": "cloud",
-                        "created": int(time.time()),
-                    }
-    except Exception as exc:
-        log.debug("Cloud models listing: %s", exc)
-
-    # 5. Standard Aliases for broad client compatibility (Continue, Copilot, Cline, etc.)
-    for alias in STANDARD_ALIASES:
-        a_id = alias["id"]
-        if a_id not in models_map:
-            models_map[a_id] = {
-                "id": a_id,
-                "name": alias["name"],
-                "size": alias["size"],
-                "family": alias["family"],
-                "quant": alias["quant"],
-                "is_resident": False,
-                "category": "alias",
-                "created": 1700000000,
-            }
 
     return list(models_map.values())
 
@@ -1761,15 +1745,42 @@ def stream_ollama_generate_generator(
 # ==============================================================================
 
 def handle_engine_server_info(self):
-    """GET /api/engine/server_info — Diagnostic metadata on engine and active server endpoints."""
+    """GET /api/engine/server_info — Diagnostic metadata on engine, LAN network addresses and active endpoints."""
     models = get_all_available_models()
     resident = sigma_engine.loaded_model_name or "Nessun modello caricato"
     is_enabled = is_provider_server_enabled()
     ai_cfg = load_ai_config()
     server_port = int(ai_cfg.get("provider_server_port") or 8000)
-    server_host = str(ai_cfg.get("provider_server_host") or "localhost")
+    server_host = str(ai_cfg.get("provider_server_host") or "0.0.0.0")
     proxy_alias = str(ai_cfg.get("sigma_proxy_alias") or "sigma")
     base_url = f"http://{server_host}:{server_port}"
+
+    # Discover local LAN IPv4 addresses (Wi-Fi / Ethernet)
+    import socket
+    local_lan_ip = "127.0.0.1"
+    all_lan_ips = []
+    try:
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        s.settimeout(0.5)
+        s.connect(("8.8.8.8", 80))
+        local_lan_ip = s.getsockname()[0]
+        s.close()
+    except Exception:
+        pass
+
+    try:
+        hostname = socket.gethostname()
+        for info in socket.getaddrinfo(hostname, None, socket.AF_INET):
+            cand = info[4][0]
+            if cand and not cand.startswith("127.") and cand not in all_lan_ips:
+                all_lan_ips.append(cand)
+    except Exception:
+        pass
+
+    if local_lan_ip not in all_lan_ips and local_lan_ip != "127.0.0.1":
+        all_lan_ips.insert(0, local_lan_ip)
+
+    lan_url = f"http://{local_lan_ip}:{server_port}" if local_lan_ip != "127.0.0.1" else None
 
     return self.send_json_response({
         "success": True,
@@ -1784,6 +1795,10 @@ def handle_engine_server_info(self):
         "available_models": models,
         "port": server_port,
         "host": server_host,
+        "lan_ip": local_lan_ip if local_lan_ip != "127.0.0.1" else None,
+        "all_lan_ips": all_lan_ips,
+        "lan_url": lan_url,
+        "is_bind_all": server_host in ("0.0.0.0", ""),
         "proxy_alias": proxy_alias,
         "proxy_model": ai_cfg.get("sigma_proxy_model") or "sigma",
         "endpoints": {
@@ -1794,6 +1809,8 @@ def handle_engine_server_info(self):
             "ollama_chat_url": f"{base_url}/api/chat",
             "ollama_tags_url": f"{base_url}/api/tags",
             "ollama_generate_url": f"{base_url}/api/generate",
+            "lan_openai_base_url": f"{lan_url}/v1" if lan_url else None,
+            "lan_openai_chat_url": f"{lan_url}/v1/chat/completions" if lan_url else None
         }
     })
 

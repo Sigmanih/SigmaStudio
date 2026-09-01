@@ -1,4 +1,5 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+
 import {
   Search, Download, Star, ArrowDown, Sparkles, Filter, CheckCircle2,
   Layers, Cpu, Activity, ExternalLink, HardDrive, ArrowUpDown, ChevronDown, ChevronUp,
@@ -78,24 +79,40 @@ const SORT_OPTIONS = [
   { id: 'size_desc', label: '💾 Peso Maggiore prima (GB ↓)' },
 ];
 
-const HF_SECTORS = [
-  { id: 'all', label: 'Tutti i Settori', icon: Globe, color: '#38bdf8', provider: 'all' },
-  { id: 'sigmanih', label: '✨ Sigmanih', icon: Sparkles, color: '#ffb86c', provider: 'sigmanih' },
-  { id: 'gemma', label: '💎 Google / Gemma', icon: Sparkles, color: '#ec4899', provider: 'gemma' },
-  { id: 'qwen', label: '⚡ Qwen', icon: Cpu, color: '#10b981', provider: 'qwen' },
-  { id: 'llama', label: '🦙 Meta Llama', icon: Shield, color: '#818cf8', provider: 'llama' },
-  { id: 'deepseek', label: '🧠 DeepSeek', icon: Brain, color: '#00d2ff', provider: 'deepseek' },
-  { id: 'mistral', label: '⚡ Mistral', icon: Zap, color: '#f59e0b', provider: 'mistral' },
-  { id: 'microsoft', label: '🔷 Phi / Microsoft', icon: Layers, color: '#60a5fa', provider: 'microsoft' },
-  { id: 'glm', label: '🏮 GLM / ZAI', icon: Flame, color: '#f43f5e', provider: 'glm' },
-  { id: 'bartowski', label: '🚀 Bartowski GGUF', icon: Boxes, color: '#34d399', provider: 'bartowski' },
-  { id: 'unsloth', label: '⚡ Unsloth GGUF', icon: Zap, color: '#c084fc', provider: 'unsloth' },
-];
+const KNOWN_SECTOR_META = {
+  sigmanih: { label: '✨ Sigmanih', icon: Sparkles, color: '#ffb86c' },
+  google: { label: '💎 Google / Gemma', icon: Sparkles, color: '#ec4899' },
+  gemma: { label: '💎 Google / Gemma', icon: Sparkles, color: '#ec4899' },
+  qwen: { label: '⚡ Qwen', icon: Cpu, color: '#10b981' },
+  'meta-llama': { label: '🦙 Meta Llama', icon: Shield, color: '#818cf8' },
+  llama: { label: '🦙 Meta Llama', icon: Shield, color: '#818cf8' },
+  'deepseek-ai': { label: '🧠 DeepSeek', icon: Brain, color: '#00d2ff' },
+  deepseek: { label: '🧠 DeepSeek', icon: Brain, color: '#00d2ff' },
+  mistralai: { label: '⚡ Mistral', icon: Zap, color: '#f59e0b' },
+  mistral: { label: '⚡ Mistral', icon: Zap, color: '#f59e0b' },
+  microsoft: { label: '🔷 Phi / Microsoft', icon: Layers, color: '#60a5fa' },
+  phi: { label: '🔷 Phi / Microsoft', icon: Layers, color: '#60a5fa' },
+  'zai-org': { label: '🏮 GLM / ZAI', icon: Flame, color: '#f43f5e' },
+  zai: { label: '🏮 GLM / ZAI', icon: Flame, color: '#f43f5e' },
+  thudm: { label: '🏮 THUDM / GLM', icon: Flame, color: '#f43f5e' },
+  glm: { label: '🏮 GLM / ZAI', icon: Flame, color: '#f43f5e' },
+  nvidia: { label: '🟢 NVIDIA', icon: Cpu, color: '#76b900' },
+  apple: { label: '🍎 Apple', icon: Sparkles, color: '#a3a3a3' },
+  openai: { label: '🤖 OpenAI', icon: Brain, color: '#10a37f' },
+  stabilityai: { label: '🎨 Stability AI', icon: Sparkles, color: '#8b5cf6' },
+  '01-ai': { label: '🌟 01.AI (Yi)', icon: Sparkles, color: '#38bdf8' },
+  internlm: { label: '🌐 InternLM', icon: Globe, color: '#06b6d4' },
+  tiiuae: { label: '🦅 Falcon / TII', icon: Shield, color: '#eab308' },
+  allenai: { label: '🔬 AllenAI (OLMo)', icon: Brain, color: '#f97316' },
+  'black-forest-labs': { label: '🌌 FLUX / BFL', icon: Sparkles, color: '#f43f5e' },
+};
 
-const getProviderBadge = (m) => {
+const getProviderBadge = (m, officialPublishers = []) => {
   if (!m) return null;
-  const auth = (m.author || (m.id && m.id.includes('/') ? m.id.split('/')[0] : '')).toLowerCase();
-  const id = (m.id || '').toLowerCase();
+  const auth = (m.author || (m.id && m.id.includes('/') ? m.id.split('/')[0] : '')).toLowerCase().trim();
+  const id = (m.id || '').toLowerCase().trim();
+  const org = id.includes('/') ? id.split('/')[0] : auth;
+
   if (auth === 'sigmanih' || id.startsWith('sigmanih/')) {
     return {
       label: '⚡ Sigmanih Ufficiale',
@@ -104,76 +121,27 @@ const getProviderBadge = (m) => {
       border: '1px solid rgba(255, 184, 108, 0.45)'
     };
   }
-  if (auth === 'zai-org' || auth === 'zai' || auth === 'thudm' || auth === 'zhipuai' || id.startsWith('zai-org/') || id.startsWith('thudm/') || id.includes('glm')) {
+
+  const known = KNOWN_SECTOR_META[org] || KNOWN_SECTOR_META[auth];
+  if (known) {
     return {
-      label: '🏮 ZAI / GLM (Ufficiale)',
-      color: '#f43f5e',
-      bg: 'rgba(244, 63, 94, 0.18)',
-      border: '1px solid rgba(244, 63, 94, 0.45)'
+      label: known.label,
+      color: known.color,
+      bg: `${known.color}22`,
+      border: `1px solid ${known.color}55`
     };
   }
-  if (auth === 'qwen' || id.startsWith('qwen/')) {
+
+  const isCustomOfficial = (officialPublishers || []).some(
+    p => p.toLowerCase() === org || p.toLowerCase() === auth
+  );
+
+  if (isCustomOfficial || m.is_official) {
     return {
-      label: '⚡ Qwen Ufficiale',
-      color: '#10b981',
-      bg: 'rgba(16, 185, 129, 0.18)',
-      border: '1px solid rgba(16, 185, 129, 0.45)'
-    };
-  }
-  if (auth === 'deepseek-ai' || id.startsWith('deepseek-ai/')) {
-    return {
-      label: '🧠 DeepSeek Ufficiale',
-      color: '#00d2ff',
-      bg: 'rgba(0, 210, 255, 0.18)',
-      border: '1px solid rgba(0, 210, 255, 0.45)'
-    };
-  }
-  if (auth === 'meta-llama' || id.startsWith('meta-llama/')) {
-    return {
-      label: '🦙 Meta Ufficiale',
-      color: '#818cf8',
-      bg: 'rgba(129, 140, 248, 0.18)',
-      border: '1px solid rgba(129, 140, 248, 0.45)'
-    };
-  }
-  if (auth === 'mistralai' || id.startsWith('mistralai/')) {
-    return {
-      label: '⚡ Mistral Ufficiale',
-      color: '#f59e0b',
-      bg: 'rgba(245, 158, 11, 0.18)',
-      border: '1px solid rgba(245, 158, 11, 0.45)'
-    };
-  }
-  if (auth === 'google' || id.startsWith('google/')) {
-    return {
-      label: '💎 Google Ufficiale',
-      color: '#ec4899',
-      bg: 'rgba(236, 72, 153, 0.18)',
-      border: '1px solid rgba(236, 72, 153, 0.45)'
-    };
-  }
-  if (auth === 'microsoft' || id.startsWith('microsoft/')) {
-    return {
-      label: '🔷 Microsoft Ufficiale',
-      color: '#60a5fa',
-      bg: 'rgba(96, 165, 250, 0.18)',
-      border: '1px solid rgba(96, 165, 250, 0.45)'
-    };
-  }
-  if (['bartowski', 'unsloth', 'thebloke', 'mradermacher', 'turboderp', 'casperhansen', 'city96'].includes(auth)) {
-    return {
-      label: '🚀 Premier GGUF',
-      color: '#34d399',
-      bg: 'rgba(52, 211, 153, 0.18)',
-      border: '1px solid rgba(52, 211, 153, 0.45)'
-    };
-  }
-  if (m.is_official) {
-    return {
-      label: '🛡️ Ufficiale',
-      color: '#3b82f6',
-      bg: 'rgba(59, 130, 246, 0.18)',
-      border: '1px solid rgba(59, 130, 246, 0.4)'
+      label: `🛡️ ${m.author || org} (Ufficiale)`,
+      color: '#38bdf8',
+      bg: 'rgba(56, 189, 248, 0.18)',
+      border: '1px solid rgba(56, 189, 248, 0.45)'
     };
   }
   return null;
@@ -217,7 +185,76 @@ const getModelTargetQuantLabel = (m, preferredQuant = 'Q4_K_M', activeFilterQuan
   return 'Modello';
 };
 
-export default function HfBrowser({ isLight, addToast, onDownloadStarted, activeDownloads = [] }) {
+// Helper to normalize model strings for robust comparison between Hugging Face repo IDs and local inventory names
+const normalizeModelKey = (s) => {
+  if (!s) return '';
+  let str = String(s).toLowerCase().trim();
+  str = str.replace(/\.gguf$/i, '').replace(/\.bin$/i, '').replace(/\.safetensors$/i, '');
+  str = str.replace(/[\/\\_]/g, '-').replace(/--+/g, '-');
+  while (str.includes('--')) {
+    str = str.replace(/--/g, '-');
+  }
+  return str.replace(/^-+|-+$/g, '');
+};
+
+const checkIsModelLocal = (m, localList = []) => {
+  if (!m || !localList || localList.length === 0) return null;
+
+  const mId = (m.id || '').toLowerCase().trim();
+  const mSlug = (mId.includes('/') ? mId.split('/').slice(1).join('/') : mId).toLowerCase().trim();
+  const mNormFull = normalizeModelKey(mId);
+  const mNormSlug = normalizeModelKey(mSlug);
+
+  return localList.find(loc => {
+    const locId = (loc.model_id || '').toLowerCase().trim();
+    const locFile = (loc.filename || '').toLowerCase().trim();
+    const locClean = (loc.clean_name || '').toLowerCase().trim();
+    const locPub = (loc.publication?.repo_id || '').toLowerCase().trim();
+
+    // 1. Direct publication repo_id match
+    if (locPub && (locPub === mId || locPub.endsWith(`/${mSlug}`))) return true;
+
+    // 2. Direct model_id match
+    if (locId && (locId === mId || locId === mSlug || locId.endsWith(`/${mSlug}`))) return true;
+
+    // 3. Exact normalized matches
+    const locNormId = normalizeModelKey(locId);
+    const locNormFile = normalizeModelKey(locFile);
+    const locNormClean = normalizeModelKey(locClean);
+    const locNormPub = normalizeModelKey(locPub);
+
+    if (locNormPub && (locNormPub === mNormFull || locNormPub === mNormSlug)) return true;
+    if (locNormId && (locNormId === mNormFull || locNormId === mNormSlug)) return true;
+    if (locNormFile && (locNormFile === mNormFull || locNormFile === mNormSlug)) return true;
+    if (locNormClean && (locNormClean === mNormFull || locNormClean === mNormSlug)) return true;
+
+    // 4. EndsWith / startsWith match
+    if (locNormFile && (locNormFile.endsWith(mNormSlug) || mNormFull.endsWith(locNormFile))) return true;
+    if (locNormClean && (locNormClean.endsWith(mNormSlug) || mNormSlug.endsWith(locNormClean))) return true;
+    if (locNormId && (locNormId.endsWith(mNormSlug) || mNormFull.endsWith(locNormId))) return true;
+
+    // 5. Check if multi-file repo has any file matching local model
+    if (Array.isArray(loc.files) && loc.files.some(f => {
+      const fNorm = normalizeModelKey(f);
+      return fNorm === mNormSlug || fNorm.includes(mNormSlug) || mNormSlug.includes(fNorm);
+    })) return true;
+
+    return false;
+  }) || null;
+};
+
+const checkIsFileLocal = (fileName, localList = []) => {
+  if (!fileName || !localList || localList.length === 0) return false;
+  const fNorm = normalizeModelKey(fileName.split('/').pop());
+  return localList.some(loc => {
+    const locFileNorm = normalizeModelKey(loc.filename?.split('/').pop());
+    const locCleanNorm = normalizeModelKey(loc.clean_name);
+    const locIdNorm = normalizeModelKey(loc.model_id?.split('/').pop());
+    return locFileNorm === fNorm || locCleanNorm === fNorm || locIdNorm === fNorm || (fNorm && locFileNorm.endsWith(fNorm));
+  });
+};
+
+export default function HfBrowser({ isLight, addToast, onDownloadStarted, activeDownloads = [], officialPublishers = [], localModels = [] }) {
   const [search, setSearch] = useState('');
   const [category, setCategory] = useState('all');
   const [sizeBracket, setSizeBracket] = useState('all');
@@ -229,10 +266,60 @@ export default function HfBrowser({ isLight, addToast, onDownloadStarted, active
   const [officialOnly, setOfficialOnly] = useState(true);
   const [providerFilter, setProviderFilter] = useState('all');
 
+  // Local Inventory Cache & Poll
+  const [internalLocalModels, setInternalLocalModels] = useState([]);
+  const fetchLocalInventory = useCallback(async () => {
+    try {
+      const res = await fetch('/api/models/local/list');
+      if (res.ok) {
+        const json = await res.json();
+        if (json.success && Array.isArray(json.models)) {
+          setInternalLocalModels(json.models);
+        }
+      }
+    } catch (e) {
+      console.debug("Local models fetch in HfBrowser:", e);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchLocalInventory();
+  }, [fetchLocalInventory, activeDownloads]);
+
+  const effectiveLocalModels = (localModels && localModels.length > 0) ? localModels : internalLocalModels;
+
+  const activeSectors = useMemo(() => {
+    const base = [{ id: 'all', label: 'Tutti i Settori', icon: Globe, color: '#38bdf8', provider: 'all' }];
+    const pubs = officialPublishers && officialPublishers.length > 0
+      ? officialPublishers
+      : ['sigmanih', 'google', 'qwen', 'meta-llama', 'deepseek-ai', 'mistralai', 'microsoft', 'thudm', 'zai-org'];
+
+    const seen = new Set(['all']);
+    pubs.forEach(p => {
+      const key = String(p).toLowerCase().trim();
+      if (!key || seen.has(key)) return;
+      seen.add(key);
+      const meta = KNOWN_SECTOR_META[key] || {
+        label: `🛡️ ${p}`,
+        icon: ShieldCheck,
+        color: '#38bdf8'
+      };
+      base.push({
+        id: key,
+        label: meta.label,
+        icon: meta.icon,
+        color: meta.color,
+        provider: key
+      });
+    });
+    return base;
+  }, [officialPublishers]);
+
   const [results, setResults] = useState([]);
   const [nextCursor, setNextCursor] = useState(null);
   const [hasMore, setHasMore] = useState(false);
   const [loading, setLoading] = useState(false);
+
   const [loadingMore, setLoadingMore] = useState(false);
   const [loadedPagesCount, setLoadedPagesCount] = useState(1);
 
@@ -479,12 +566,12 @@ export default function HfBrowser({ isLight, addToast, onDownloadStarted, active
     <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', position: 'relative' }}>
       <div ref={topRef} />
 
-      {/* 1. HORIZONTAL SECTOR TABS (Identico allo stile di LocalInventory) */}
+      {/* 1. HORIZONTAL SECTOR TABS (Auto-wrapping tag bar) */}
       <div style={{
-        display: 'flex', alignItems: 'center', gap: '6px',
-        overflowX: 'auto', padding: '2px 0 6px 0', scrollbarWidth: 'none'
+        display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '7px',
+        padding: '2px 0 6px 0'
       }}>
-        {HF_SECTORS.map(sec => {
+        {activeSectors.map(sec => {
           const isSelected = (sec.id === 'all' && providerFilter === 'all') || (providerFilter === sec.provider);
           const SecIcon = sec.icon;
           return (
@@ -514,6 +601,7 @@ export default function HfBrowser({ isLight, addToast, onDownloadStarted, active
           );
         })}
       </div>
+
 
       {/* 2. MODERN COMPACT SEARCH & FILTER TOOLBAR */}
       <div
@@ -785,8 +873,12 @@ export default function HfBrowser({ isLight, addToast, onDownloadStarted, active
             const isLoadingDetails = loadingDetailsId === m.id;
             const targetQuant = getModelTargetQuantLabel(m, 'Q4_K_M', quantFilter);
             const isGguf = (m.format?.toLowerCase().includes('gguf') || m.precision?.toLowerCase().includes('gguf') || m.id.toLowerCase().includes('gguf') || targetQuant.startsWith('Q') || targetQuant.startsWith('IQ'));
-            const pBadge = getProviderBadge(m);
+            const pBadge = getProviderBadge(m, officialPublishers);
             const isSigmanih = (m.author || '').toLowerCase() === 'sigmanih' || m.id.toLowerCase().startsWith('sigmanih/');
+
+            // Local Inventory Matching Check
+            const localMatch = checkIsModelLocal(m, effectiveLocalModels);
+            const isLocallyInstalled = !!localMatch;
 
             // Active / Completed / Failed Task Check
             const activeTask = activeDownloads.find(t => t.model_id === m.id && (t.status === 'downloading' || t.status === 'queued'));
@@ -805,8 +897,10 @@ export default function HfBrowser({ isLight, addToast, onDownloadStarted, active
                       : cardBg),
                   border: activeTask
                     ? '1.5px solid #00d2ff'
-                    : (failedTask ? '1.5px solid rgba(239, 68, 68, 0.4)' : (isSigmanih ? '1px solid rgba(255, 184, 108, 0.35)' : cardBorder)),
-                  boxShadow: activeTask ? '0 0 14px rgba(0, 210, 255, 0.18)' : 'none',
+                    : (isLocallyInstalled
+                      ? (isLight ? '1.5px solid rgba(16, 185, 129, 0.45)' : '1.5px solid rgba(16, 185, 129, 0.35)')
+                      : (failedTask ? '1.5px solid rgba(239, 68, 68, 0.4)' : (isSigmanih ? '1px solid rgba(255, 184, 108, 0.35)' : cardBorder))),
+                  boxShadow: activeTask ? '0 0 14px rgba(0, 210, 255, 0.18)' : (isLocallyInstalled ? '0 0 10px rgba(16, 185, 129, 0.08)' : 'none'),
                   overflow: 'hidden',
                   transition: 'all 0.15s ease'
                 }}
@@ -847,6 +941,19 @@ export default function HfBrowser({ isLight, addToast, onDownloadStarted, active
                         background: subBg, border: subBorder, color: textMuted
                       }}>
                         {m.author || (m.id.includes('/') ? m.id.split('/')[0] : 'Community')}
+                      </span>
+                    )}
+
+                    {/* Local Inventory Installed Badge */}
+                    {isLocallyInstalled && (
+                      <span style={{
+                        fontSize: '0.60rem', fontWeight: 900, padding: '2px 7px', borderRadius: '5px',
+                        background: 'rgba(16, 185, 129, 0.18)', color: '#10b981',
+                        border: '1px solid rgba(16, 185, 129, 0.45)',
+                        display: 'inline-flex', alignItems: 'center', gap: '3px',
+                        boxShadow: '0 0 8px rgba(16, 185, 129, 0.2)'
+                      }}>
+                        <CheckCircle2 size={10} color="#10b981" /> IN LOCALE
                       </span>
                     )}
 
@@ -931,6 +1038,16 @@ export default function HfBrowser({ isLight, addToast, onDownloadStarted, active
                       >
                         <RotateCcw size={11} /> Riprendi
                       </button>
+                    ) : isLocallyInstalled ? (
+                      <div style={{
+                        padding: '4px 10px', borderRadius: '7px',
+                        background: 'rgba(16, 185, 129, 0.15)', border: '1px solid #10b981',
+                        color: '#10b981', fontSize: '0.68rem', fontWeight: 800,
+                        display: 'inline-flex', alignItems: 'center', gap: '4px'
+                      }}>
+                        <CheckCircle2 size={12} color="#10b981" />
+                        <span>Già in Locale</span>
+                      </div>
                     ) : completedTask ? (
                       <span style={{
                         fontSize: '0.68rem', fontWeight: 800, padding: '4px 9px', borderRadius: '6px',
@@ -1036,6 +1153,7 @@ export default function HfBrowser({ isLight, addToast, onDownloadStarted, active
                         const ggufFiles = details.files.filter(f => f.is_gguf || f.filename?.toLowerCase().endsWith('.gguf'));
                         const currentSel = selectedQuantMap[m.id] || ggufFiles[0]?.filename;
                         const activeFile = ggufFiles.find(f => f.filename === currentSel) || ggufFiles[0];
+                        const isActiveFileDownloaded = activeFile ? (checkIsFileLocal(activeFile.filename, effectiveLocalModels) || isLocallyInstalled) : false;
 
                         return (
                           <div style={{
@@ -1050,23 +1168,35 @@ export default function HfBrowser({ isLight, addToast, onDownloadStarted, active
                                 <span>Versioni Quantizzate Disponibili ({ggufFiles.length}):</span>
                               </div>
 
-                              <button
-                                onClick={() => {
-                                  if (activeFile) {
-                                    handleStartSingleDownload(m.id, activeFile.filename, activeFile.download_url);
-                                  }
-                                }}
-                                disabled={downloadingFile === activeFile?.filename}
-                                style={{
-                                  padding: '5px 12px', borderRadius: '6px',
-                                  border: 'none', background: 'linear-gradient(135deg, #10b981, #00d2ff)',
-                                  color: '#ffffff', fontSize: '0.70rem', fontWeight: 800, cursor: 'pointer',
-                                  display: 'flex', alignItems: 'center', gap: '4px'
-                                }}
-                              >
-                                {downloadingFile === activeFile?.filename ? <Activity className="mh-spin" size={11} /> : <Download size={11} />}
-                                <span>Scarica Selezionata ({activeFile?.filename ? activeFile.filename.split('/').pop() : 'GGUF'})</span>
-                              </button>
+                              {isActiveFileDownloaded ? (
+                                <div style={{
+                                  padding: '4px 10px', borderRadius: '6px',
+                                  background: 'rgba(16, 185, 129, 0.15)', border: '1px solid #10b981',
+                                  color: '#10b981', fontSize: '0.68rem', fontWeight: 800,
+                                  display: 'inline-flex', alignItems: 'center', gap: '4px'
+                                }}>
+                                  <CheckCircle2 size={11} color="#10b981" />
+                                  <span>Già in Locale ({activeFile?.filename ? activeFile.filename.split('/').pop() : 'GGUF'})</span>
+                                </div>
+                              ) : (
+                                <button
+                                  onClick={() => {
+                                    if (activeFile) {
+                                      handleStartSingleDownload(m.id, activeFile.filename, activeFile.download_url);
+                                    }
+                                  }}
+                                  disabled={downloadingFile === activeFile?.filename}
+                                  style={{
+                                    padding: '5px 12px', borderRadius: '6px',
+                                    border: 'none', background: 'linear-gradient(135deg, #10b981, #00d2ff)',
+                                    color: '#ffffff', fontSize: '0.70rem', fontWeight: 800, cursor: 'pointer',
+                                    display: 'flex', alignItems: 'center', gap: '4px'
+                                  }}
+                                >
+                                  {downloadingFile === activeFile?.filename ? <Activity className="mh-spin" size={11} /> : <Download size={11} />}
+                                  <span>Scarica Selezionata ({activeFile?.filename ? activeFile.filename.split('/').pop() : 'GGUF'})</span>
+                                </button>
+                              )}
                             </div>
 
                             {/* Preset chips */}
@@ -1074,20 +1204,25 @@ export default function HfBrowser({ isLight, addToast, onDownloadStarted, active
                               {ggufFiles.map((gf) => {
                                 const isSelected = currentSel === gf.filename;
                                 const isRecommended = gf.filename?.toLowerCase().includes('q4_k_m') || gf.filename?.toLowerCase().includes('q4-k-m');
+                                const isGfDownloaded = checkIsFileLocal(gf.filename, effectiveLocalModels) || isLocallyInstalled;
                                 return (
                                   <button
                                     key={gf.filename}
                                     onClick={() => setSelectedQuantMap(prev => ({ ...prev, [m.id]: gf.filename }))}
                                     style={{
                                       padding: '3px 8px', borderRadius: '5px',
-                                      border: isSelected ? '1.5px solid #10b981' : subBorder,
-                                      background: isSelected ? 'rgba(16, 185, 129, 0.25)' : subBg,
-                                      color: isSelected ? '#10b981' : textPrimary,
-                                      fontSize: '0.66rem', fontWeight: isSelected ? 800 : 600,
+                                      border: isSelected 
+                                        ? '1.5px solid #10b981' 
+                                        : (isGfDownloaded ? '1px solid rgba(16, 185, 129, 0.45)' : subBorder),
+                                      background: isSelected 
+                                        ? 'rgba(16, 185, 129, 0.25)' 
+                                        : (isGfDownloaded ? 'rgba(16, 185, 129, 0.08)' : subBg),
+                                      color: isSelected ? '#10b981' : (isGfDownloaded ? '#10b981' : textPrimary),
+                                      fontSize: '0.66rem', fontWeight: (isSelected || isGfDownloaded) ? 800 : 600,
                                       cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '3px'
                                     }}
                                   >
-                                    {isRecommended && '⭐ '}
+                                    {isGfDownloaded ? '✅ ' : (isRecommended ? '⭐ ' : '')}
                                     {gf.filename.split('/').pop()}
                                   </button>
                                 );

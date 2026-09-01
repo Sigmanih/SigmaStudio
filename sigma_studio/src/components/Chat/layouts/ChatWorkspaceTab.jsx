@@ -130,6 +130,7 @@ export default function ChatWorkspaceTab() {
           onToggle={() => core.setShowHistory(!core.showHistory)}
           sessions={core.sessions}
           groupedSessions={groupedSessions}
+          sessionMessages={core.sessionMessages}
           activeSessionId={core.activeSessionId}
           onSwitchSession={core.switchToSession}
           editingSessionName={core.editingSessionName}

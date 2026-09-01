@@ -1,10 +1,11 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import {
   DownloadCloud, Search, HardDrive, Zap, Shield, Key,
-  CheckCircle2, RefreshCw, Folder, Layers, Activity, Sparkles, ExternalLink,
+  CheckCircle2, RefreshCw, Folder, FolderOpen, Layers, Activity, Sparkles, ExternalLink,
   ArrowRight, XCircle, RotateCcw, Eye, EyeOff, ShieldCheck, AlertTriangle, Check,
-  Plus, X, Tag
+  Plus, X, Tag, FolderPlus, Link2, Copy, FileText, Package
 } from 'lucide-react';
+
 import { useApp } from '../../contexts/AppContext';
 import HfBrowser from './HfBrowser';
 import LocalInventory from './LocalInventory';
@@ -25,16 +26,27 @@ const HF_TOKEN_SOURCE_LABELS = {
   cli_cache: 'Login huggingface-cli',
 };
 
+// Le fasi di una conversione, come le chiama il backend.
+const CONVERSION_STAGE_LABELS = {
+  queued: 'In coda',
+  converting: 'Conversione in GGUF',
+  quantizing: 'Quantizzazione',
+};
+
 const DEFAULT_OFFICIAL_PUBLISHERS = [
   'sigmanih', 'google', 'qwen', 'meta-llama', 'deepseek-ai', 'mistralai',
   'microsoft', 'thudm', 'zai-org', 'zai', '01-ai', 'nvidia', 'stabilityai',
   'black-forest-labs', 'allenai', 'apple', 'openai', 'tiiuae', 'bytedance',
-  'internlm', 'bartowski', 'unsloth', 'mradermacher', 'thebloke', 'casperhansen'
+  'internlm'
 ];
 
 
-export default function ModelHub({ addToast, openTab }) {
-  const { theme } = useApp();
+export default function ModelHub({ addToast: addToastProp, openTab }) {
+  // Workspace monta l'hub passando uno stub vuoto come addToast, quindi ogni
+  // notifica finiva nel nulla: errori di conversione compresi. Quella vera sta
+  // nel contesto, ed e' la stessa che App rende a schermo.
+  const { theme, addToast: appAddToast } = useApp();
+  const addToast = appAddToast || addToastProp;
   const isLight = theme === 'light';
 
   const [activeTab, setActiveTab] = useState('browse'); // 'browse' | 'inventory' | 'converter' | 'settings'
@@ -45,17 +57,32 @@ export default function ModelHub({ addToast, openTab }) {
   // Active Downloads Tracking
   const [activeDownloads, setActiveDownloads] = useState([]);
 
+  // Active Conversions Tracking. Una quantizzazione gira per minuti sul server
+  // e non si ferma cambiando scheda: il polling sta qui, non nel convertitore,
+  // cosi' l'avanzamento resta visibile da qualunque scheda dell'hub.
+  const [conversionJobs, setConversionJobs] = useState([]);
+
   // Hub Settings state
   const [config, setConfig] = useState({
     models_dir: '',
+    extra_models_dirs: [],
     hf_token: '',
     auto_deploy_on_download: true,
     preferred_quantization: 'Q4_K_M',
     official_publishers: DEFAULT_OFFICIAL_PUBLISHERS
   });
   const [newPublisherInput, setNewPublisherInput] = useState('');
+  const [newExtraDirInput, setNewExtraDirInput] = useState('');
   const [savingConfig, setSavingConfig] = useState(false);
   const [pickingDir, setPickingDir] = useState(false);
+  const [pickingExtraDir, setPickingExtraDir] = useState(false);
+
+  // Local Model Import state
+  const [importSourcePath, setImportSourcePath] = useState('');
+  const [importMode, setImportMode] = useState('add_path'); // 'add_path' | 'copy' | 'symlink'
+  const [importingModel, setImportingModel] = useState(false);
+  const [pickingImportItem, setPickingImportItem] = useState(false);
+
 
   // Token and connection testing state
   const [showToken, setShowToken] = useState(false);
@@ -68,6 +95,21 @@ export default function ModelHub({ addToast, openTab }) {
 
   // Engine status
   const [engineStatus, setEngineStatus] = useState(null);
+  const [localModels, setLocalModels] = useState([]);
+
+  const fetchLocalModels = useCallback(async () => {
+    try {
+      const res = await fetch('/api/models/local/list');
+      if (res.ok) {
+        const json = await res.json();
+        if (json.success && Array.isArray(json.models)) {
+          setLocalModels(json.models);
+        }
+      }
+    } catch (e) {
+      console.debug('Error fetching local models:', e);
+    }
+  }, []);
 
   const fetchDownloads = useCallback(async () => {
     try {
@@ -82,6 +124,31 @@ export default function ModelHub({ addToast, openTab }) {
       // silent background poll
     }
   }, []);
+
+  const fetchConversionJobs = useCallback(async () => {
+    try {
+      const res = await fetch('/api/models/convert/jobs');
+      if (res.ok) {
+        const json = await res.json();
+        if (json.success) setConversionJobs(json.jobs || []);
+      }
+    } catch {
+      // silent background poll: il tick successivo riprova
+    }
+  }, []);
+
+  const activeConversion = conversionJobs.find(
+    j => ['queued', 'converting', 'quantizing'].includes(j.status)
+  );
+  const conversionRunning = !!activeConversion;
+
+  // Due cadenze: fitta mentre converte, rada altrimenti, che serve solo ad
+  // accorgersi di un job avviato altrove o gia' in corso al mount.
+  useEffect(() => {
+    fetchConversionJobs();
+    const interval = setInterval(fetchConversionJobs, conversionRunning ? 2000 : 15000);
+    return () => clearInterval(interval);
+  }, [fetchConversionJobs, conversionRunning]);
 
   const fetchConfig = useCallback(async () => {
     try {
@@ -124,9 +191,10 @@ export default function ModelHub({ addToast, openTab }) {
     fetchConfig();
     fetchEngineStatus();
     fetchDownloads();
+    fetchLocalModels();
     const interval = setInterval(fetchDownloads, 1500);
     return () => clearInterval(interval);
-  }, [fetchConfig, fetchEngineStatus, fetchDownloads]);
+  }, [fetchConfig, fetchEngineStatus, fetchDownloads, fetchLocalModels]);
 
   // Anything that used to send the user to Impostazioni for the token now sends
   // them here instead. The flag covers the tab being opened by that request;
@@ -248,7 +316,7 @@ export default function ModelHub({ addToast, openTab }) {
     if (ok) setConfig(prev => ({ ...prev, hf_token: '' }));
   };
 
-  const handleAddPublisher = () => {
+  const handleAddPublisher = async () => {
     const clean = newPublisherInput.trim().toLowerCase();
     if (!clean) return;
     const current = config.official_publishers || [];
@@ -256,26 +324,180 @@ export default function ModelHub({ addToast, openTab }) {
       if (addToast) addToast(`L'autore "${clean}" è già presente nella lista`, 'info');
       return;
     }
+    const updated = [...current, clean];
     setConfig(prev => ({
       ...prev,
-      official_publishers: [...(prev.official_publishers || []), clean]
+      official_publishers: updated
     }));
     setNewPublisherInput('');
+
+    try {
+      const res = await fetch('/api/models/config', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ...config,
+          official_publishers: updated
+        })
+      });
+      const json = await res.json();
+      if (json.success) {
+        if (addToast) addToast(`✅ Autore "${clean}" aggiunto e sincronizzato con Esplora Hugging Face!`, 'success');
+        fetchConfig();
+      }
+    } catch {
+      if (addToast) addToast(`Autore aggiunto: ${clean}`, 'info');
+    }
   };
 
-  const handleRemovePublisher = (pubToRemove) => {
+  const handleRemovePublisher = async (pubToRemove) => {
+    const updated = (config.official_publishers || []).filter(p => p.toLowerCase() !== pubToRemove.toLowerCase());
     setConfig(prev => ({
       ...prev,
-      official_publishers: (prev.official_publishers || []).filter(p => p.toLowerCase() !== pubToRemove.toLowerCase())
+      official_publishers: updated
     }));
+
+    try {
+      const res = await fetch('/api/models/config', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ...config,
+          official_publishers: updated
+        })
+      });
+      const json = await res.json();
+      if (json.success) {
+        if (addToast) addToast(`Autore "${pubToRemove}" rimosso e sincronizzato.`, 'info');
+        fetchConfig();
+      }
+    } catch {
+      if (addToast) addToast(`Autore "${pubToRemove}" rimosso.`, 'info');
+    }
   };
 
-  const handleResetPublishers = () => {
+  const handleResetPublishers = async () => {
+    const updated = [...DEFAULT_OFFICIAL_PUBLISHERS];
     setConfig(prev => ({
       ...prev,
-      official_publishers: [...DEFAULT_OFFICIAL_PUBLISHERS]
+      official_publishers: updated
     }));
-    if (addToast) addToast('Lista autori ufficiali ripristinata ai valori predefiniti', 'success');
+
+    try {
+      const res = await fetch('/api/models/config', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ...config,
+          official_publishers: updated
+        })
+      });
+      const json = await res.json();
+      if (json.success) {
+        if (addToast) addToast('✅ Lista autori ufficiali ripristinata e sincronizzata con Esplora HF', 'success');
+        fetchConfig();
+      }
+    } catch {
+      if (addToast) addToast('Lista autori ufficiali ripristinata ai valori predefiniti', 'success');
+    }
+  };
+
+
+  const handleAddExtraDir = async (dirCandidate) => {
+    const raw = (dirCandidate || newExtraDirInput || '').trim();
+    if (!raw) return;
+    const clean = raw.replace(/[\\/]+$/, '');
+    const currentList = config.extra_models_dirs || [];
+    if (currentList.some(d => d.toLowerCase() === clean.toLowerCase())) {
+      if (addToast) addToast('Questo percorso è già presente nell\'elenco.', 'info');
+      setNewExtraDirInput('');
+      return;
+    }
+    const updatedList = [...currentList, clean];
+    setConfig(prev => ({
+      ...prev,
+      extra_models_dirs: updatedList
+    }));
+    setNewExtraDirInput('');
+
+    // Salva immediatamente sul backend per sincronizzare la scansione
+    try {
+      const res = await fetch('/api/models/config', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ...config,
+          extra_models_dirs: updatedList
+        })
+      });
+      const json = await res.json();
+      if (json.success) {
+        if (addToast) addToast(`✅ Cartella "${clean}" collegata con successo! Modelli scansionati automaticamente.`, 'success');
+        fetchConfig();
+      } else {
+        if (addToast) addToast(`Cartella aggiunta: ${clean}.`, 'info');
+      }
+    } catch {
+      if (addToast) addToast(`Cartella aggiunta: ${clean}.`, 'info');
+    }
+  };
+
+  const handleRemoveExtraDir = async (dirToRemove) => {
+    const updatedList = (config.extra_models_dirs || []).filter(d => d.toLowerCase() !== dirToRemove.toLowerCase());
+    setConfig(prev => ({
+      ...prev,
+      extra_models_dirs: updatedList
+    }));
+
+    try {
+      const res = await fetch('/api/models/config', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ...config,
+          extra_models_dirs: updatedList
+        })
+      });
+      const json = await res.json();
+      if (json.success) {
+        if (addToast) addToast(`Percorso "${dirToRemove}" rimosso.`, 'info');
+        fetchConfig();
+      }
+    } catch {
+      if (addToast) addToast(`Percorso "${dirToRemove}" rimosso.`, 'info');
+    }
+  };
+
+
+  const handleExecuteLocalImport = async () => {
+    const target = (importSourcePath || '').trim();
+    if (!target) {
+      if (addToast) addToast('Seleziona prima un file o una cartella da importare.', 'error');
+      return;
+    }
+    setImportingModel(true);
+    try {
+      const res = await fetch('/api/models/local/import', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          path: target,
+          mode: importMode
+        })
+      });
+      const json = await res.json();
+      if (json.success) {
+        if (addToast) addToast(`✅ ${json.message}`, 'success');
+        setImportSourcePath('');
+        fetchConfig();
+      } else {
+        if (addToast) addToast(`❌ Errore importazione: ${json.error || 'Errore'}`, 'error');
+      }
+    } catch (err) {
+      if (addToast) addToast(`Errore durante l'importazione: ${err.message}`, 'error');
+    } finally {
+      setImportingModel(false);
+    }
   };
 
   const handleSaveConfig = async () => {
@@ -285,7 +507,8 @@ export default function ModelHub({ addToast, openTab }) {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          models_dir: config.models_dir || 'data/models',
+          models_dir: config.models_dir || 'store/models',
+          extra_models_dirs: config.extra_models_dirs || [],
           hf_token: (config.hf_token || '').trim(),
           auto_deploy_on_download: config.auto_deploy_on_download ?? true,
           preferred_quantization: config.preferred_quantization || 'Q4_K_M',
@@ -306,6 +529,7 @@ export default function ModelHub({ addToast, openTab }) {
       setSavingConfig(false);
     }
   };
+
 
   const cardBg = isLight ? '#fffdf9' : '#0d1019';
   const cardBorder = isLight ? '1px solid rgba(190, 160, 110, 0.3)' : '1px solid rgba(255, 255, 255, 0.08)';
@@ -420,7 +644,12 @@ export default function ModelHub({ addToast, openTab }) {
               ? `💾 Modelli Locali & Storage (${currentRunningTask ? `${currentRunningTask.progress_pct}%` : totalActiveTasksCount} in corso)`
               : '💾 Modelli Locali & Storage'
           },
-          { id: 'converter', label: '⚡ Convertitore GGUF & Quantizzazione' },
+          {
+            id: 'converter',
+            label: activeConversion
+              ? `⚡ Convertitore GGUF (${activeConversion.progress || 0}% in corso)`
+              : '⚡ Convertitore GGUF & Quantizzazione'
+          },
           { id: 'settings', label: '⚙️ Impostazioni & HF Token' },
         ].map(tab => (
           <button
@@ -446,11 +675,15 @@ export default function ModelHub({ addToast, openTab }) {
           isLight={isLight}
           addToast={addToast}
           activeDownloads={activeDownloads}
+          officialPublishers={config.official_publishers || DEFAULT_OFFICIAL_PUBLISHERS}
+          localModels={localModels}
           onDownloadStarted={() => {
             fetchDownloads();
+            fetchLocalModels();
           }}
         />
       )}
+
 
       {activeTab === 'inventory' && (
         <LocalInventory
@@ -472,6 +705,8 @@ export default function ModelHub({ addToast, openTab }) {
           isLight={isLight}
           addToast={addToast}
           initialModel={preselectedConvertModel}
+          jobs={conversionJobs}
+          onJobsChanged={fetchConversionJobs}
         />
       )}
 
@@ -785,12 +1020,260 @@ export default function ModelHub({ addToast, openTab }) {
             </div>
           </div>
 
+          {/* SEZIONE 2-BIS: PERCORSI MODELLI AGGIUNTIVI & IMPORTAZIONE LOCALE */}
+          <div style={{
+            padding: '24px', borderRadius: '16px',
+            background: cardBg, border: cardBorder, boxShadow: cardShadow,
+            display: 'flex', flexDirection: 'column', gap: '20px'
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid rgba(255,255,255,0.06)', paddingBottom: '14px', flexWrap: 'wrap', gap: '10px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <div style={{
+                  width: '36px', height: '36px', borderRadius: '10px',
+                  background: 'linear-gradient(135deg, rgba(0, 210, 255, 0.2), rgba(168, 85, 247, 0.2))',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center'
+                }}>
+                  <HardDrive size={20} color="#00d2ff" />
+                </div>
+                <div>
+                  <h2 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 800, color: textPrimary }}>
+                    Percorsi Modelli Aggiuntivi & Importazione Locale
+                  </h2>
+                  <div style={{ fontSize: '0.74rem', color: textMuted, marginTop: '2px' }}>
+                    Collega altre cartelle del tuo computer o importa modelli (GGUF, Safetensors) da qualsiasi percorso su disco
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Aggiunta nuova cartella */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+              <label style={{ fontSize: '0.74rem', fontWeight: 700, color: textPrimary, display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <FolderPlus size={14} color="#00d2ff" /> Aggiungi Cartella da Scansionare:
+              </label>
+              <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                <input
+                  type="text"
+                  value={newExtraDirInput}
+                  onChange={e => setNewExtraDirInput(e.target.value)}
+                  onKeyDown={e => { if (e.key === 'Enter') handleAddExtraDir(); }}
+                  placeholder="es. D:\Modelli_AI, C:\Ollama\models, E:\LLM_Archive..."
+                  style={{
+                    flex: '1 1 280px', padding: '10px 14px', borderRadius: '10px',
+                    background: subBg, border: subBorder,
+                    color: textPrimary, fontSize: '0.82rem', fontFamily: 'monospace', outline: 'none'
+                  }}
+                />
+                <button
+                  type="button"
+                  onClick={() => setPickingExtraDir(true)}
+                  title="Sfoglia cartelle su disco"
+                  style={{
+                    padding: '10px 16px', borderRadius: '10px', border: subBorder,
+                    background: subBg, color: textPrimary,
+                    fontSize: '0.8rem', fontWeight: 700, cursor: 'pointer',
+                    whiteSpace: 'nowrap', display: 'flex', alignItems: 'center', gap: '6px'
+                  }}
+                >
+                  <Folder size={14} color="#ffb86c" /> Sfoglia...
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleAddExtraDir()}
+                  disabled={!newExtraDirInput.trim()}
+                  style={{
+                    padding: '10px 18px', borderRadius: '10px', border: 'none',
+                    background: 'linear-gradient(135deg, #00d2ff, #0088ff)',
+                    color: '#ffffff', fontSize: '0.80rem', fontWeight: 800,
+                    cursor: !newExtraDirInput.trim() ? 'not-allowed' : 'pointer',
+                    opacity: !newExtraDirInput.trim() ? 0.6 : 1,
+                    display: 'flex', alignItems: 'center', gap: '6px', whiteSpace: 'nowrap'
+                  }}
+                >
+                  <Plus size={14} /> Aggiungi Percorso
+                </button>
+              </div>
+            </div>
+
+            {/* Lista directory aggiuntive attive */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+              <div style={{ fontSize: '0.72rem', fontWeight: 700, color: textMuted, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                Cartelle Secondarie Monitorate ({(config.extra_models_dirs || []).length}):
+              </div>
+
+              {(config.extra_models_dirs || []).length > 0 ? (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', maxHeight: '200px', overflowY: 'auto' }}>
+                  {(config.extra_models_dirs || []).map((dirPath, idx) => (
+                    <div
+                      key={idx}
+                      style={{
+                        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                        padding: '10px 14px', borderRadius: '10px',
+                        background: subBg, border: subBorder, gap: '10px'
+                      }}
+                    >
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '10px', minWidth: 0, overflow: 'hidden' }}>
+                        <div style={{
+                          width: '28px', height: '28px', borderRadius: '6px',
+                          background: 'rgba(0, 210, 255, 0.12)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0
+                        }}>
+                          <HardDrive size={15} color="#00d2ff" />
+                        </div>
+                        <code style={{ fontSize: '0.78rem', color: textPrimary, wordBreak: 'break-all', fontFamily: 'monospace' }}>
+                          {dirPath}
+                        </code>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => handleRemoveExtraDir(dirPath)}
+                        title="Rimuovi questo percorso"
+                        style={{
+                          padding: '6px 10px', borderRadius: '8px', border: '1px solid rgba(239,68,68,0.3)',
+                          background: 'rgba(239,68,68,0.1)', color: '#ef4444',
+                          fontSize: '0.72rem', fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px', flexShrink: 0
+                        }}
+                      >
+                        <X size={12} /> Rimuovi
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div style={{
+                  padding: '14px', borderRadius: '10px', background: 'rgba(0, 210, 255, 0.03)',
+                  border: '1px dashed rgba(0, 210, 255, 0.2)', fontSize: '0.74rem', color: textMuted,
+                  display: 'flex', alignItems: 'center', gap: '8px'
+                }}>
+                  <Sparkles size={16} color="#00d2ff" style={{ flexShrink: 0 }} />
+                  <span>
+                    Nessun percorso aggiuntivo impostato. Aggiungi directory esterne (es. da altri dischi o app terze) per scansionare automaticamente tutti i modelli senza doverli copiare né occupare spazio sul disco principale.
+                  </span>
+                </div>
+              )}
+            </div>
+
+            {/* Pannello Importazione Rapida File/Modello */}
+            <div style={{
+              padding: '16px', borderRadius: '12px',
+              background: isLight ? 'rgba(0,0,0,0.02)' : 'rgba(255,255,255,0.02)',
+              border: isLight ? '1px solid rgba(190,160,110,0.22)' : '1px solid rgba(255,255,255,0.06)',
+              display: 'flex', flexDirection: 'column', gap: '12px'
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <Package size={17} color="#ffb86c" />
+                <strong style={{ fontSize: '0.84rem', color: textPrimary }}>
+                  Importazione Rapida (File Singolo o Cartella Esterna)
+                </strong>
+              </div>
+              <div style={{ fontSize: '0.72rem', color: textMuted }}>
+                Seleziona un singolo file di pesi (.gguf, .safetensors) o una cartella di un modello scaricato da un'altra sorgente per importarlo immediatamente.
+              </div>
+
+              <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                <input
+                  type="text"
+                  value={importSourcePath}
+                  onChange={e => setImportSourcePath(e.target.value)}
+                  placeholder="Seleziona file o cartella del modello (es. D:\Download\Qwen-7B-Q4.gguf)..."
+                  style={{
+                    flex: '1 1 280px', padding: '10px 14px', borderRadius: '10px',
+                    background: subBg, border: subBorder,
+                    color: textPrimary, fontSize: '0.82rem', fontFamily: 'monospace', outline: 'none'
+                  }}
+                />
+                <button
+                  type="button"
+                  onClick={() => setPickingImportItem(true)}
+                  title="Sfoglia file o cartella su disco"
+                  style={{
+                    padding: '10px 16px', borderRadius: '10px', border: subBorder,
+                    background: subBg, color: textPrimary,
+                    fontSize: '0.8rem', fontWeight: 700, cursor: 'pointer',
+                    whiteSpace: 'nowrap', display: 'flex', alignItems: 'center', gap: '6px'
+                  }}
+                >
+                  <FolderOpen size={14} color="#00d2ff" /> Sfoglia File/Cartella...
+                </button>
+              </div>
+
+              {/* Modalità importazione */}
+              <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', alignItems: 'center' }}>
+                <span style={{ fontSize: '0.72rem', fontWeight: 700, color: textMuted }}>Modalità:</span>
+                
+                <button
+                  type="button"
+                  onClick={() => setImportMode('add_path')}
+                  style={{
+                    padding: '6px 12px', borderRadius: '8px',
+                    border: importMode === 'add_path' ? '1px solid #00d2ff' : subBorder,
+                    background: importMode === 'add_path' ? 'rgba(0, 210, 255, 0.15)' : subBg,
+                    color: importMode === 'add_path' ? '#00d2ff' : textMuted,
+                    fontSize: '0.72rem', fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px'
+                  }}
+                >
+                  <Zap size={13} color={importMode === 'add_path' ? '#00d2ff' : textMuted} />
+                  ⚡ Collega Cartella (Zero-Copy)
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setImportMode('copy')}
+                  style={{
+                    padding: '6px 12px', borderRadius: '8px',
+                    border: importMode === 'copy' ? '1px solid #ffb86c' : subBorder,
+                    background: importMode === 'copy' ? 'rgba(255, 184, 108, 0.15)' : subBg,
+                    color: importMode === 'copy' ? '#ffb86c' : textMuted,
+                    fontSize: '0.72rem', fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px'
+                  }}
+                >
+                  <Copy size={13} color={importMode === 'copy' ? '#ffb86c' : textMuted} />
+                  📁 Copia Fisica in store/models
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setImportMode('symlink')}
+                  style={{
+                    padding: '6px 12px', borderRadius: '8px',
+                    border: importMode === 'symlink' ? '1px solid #a855f7' : subBorder,
+                    background: importMode === 'symlink' ? 'rgba(168, 85, 247, 0.15)' : subBg,
+                    color: importMode === 'symlink' ? '#a855f7' : textMuted,
+                    fontSize: '0.72rem', fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px'
+                  }}
+                >
+                  <Link2 size={13} color={importMode === 'symlink' ? '#a855f7' : textMuted} />
+                  🔗 Collegamento Simbolico (Symlink)
+                </button>
+
+                <div style={{ marginLeft: 'auto' }}>
+                  <button
+                    type="button"
+                    onClick={handleExecuteLocalImport}
+                    disabled={importingModel || !importSourcePath.trim()}
+                    style={{
+                      padding: '8px 18px', borderRadius: '8px', border: 'none',
+                      background: 'linear-gradient(135deg, #00d2ff, #0088ff)',
+                      color: '#ffffff', fontSize: '0.78rem', fontWeight: 800,
+                      cursor: importingModel || !importSourcePath.trim() ? 'not-allowed' : 'pointer',
+                      opacity: importingModel || !importSourcePath.trim() ? 0.6 : 1,
+                      display: 'flex', alignItems: 'center', gap: '6px'
+                    }}
+                  >
+                    {importingModel ? <Activity className="mh-spin" size={14} /> : <Check size={14} />}
+                    {importingModel ? 'Importazione in corso...' : 'Importa Modello'}
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+
           {/* SEZIONE 3: PROVIDER & AUTORI UFFICIALI (HUGGING FACE) */}
           <div style={{
             padding: '24px', borderRadius: '16px',
             background: cardBg, border: cardBorder, boxShadow: cardShadow,
             display: 'flex', flexDirection: 'column', gap: '16px'
           }}>
+
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid rgba(255,255,255,0.06)', paddingBottom: '12px', flexWrap: 'wrap', gap: '10px' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                 <div style={{
@@ -830,7 +1313,7 @@ export default function ModelHub({ addToast, openTab }) {
                 value={newPublisherInput}
                 onChange={e => setNewPublisherInput(e.target.value)}
                 onKeyDown={e => { if (e.key === 'Enter') handleAddPublisher(); }}
-                placeholder="es. google, meta-llama, qwen, sigmanih, bartowski..."
+                placeholder="es. google, meta-llama, qwen, sigmanih, mistralai..."
                 style={{
                   flex: '1 1 240px', padding: '10px 14px', borderRadius: '10px',
                   background: subBg, border: subBorder,
@@ -931,7 +1414,72 @@ export default function ModelHub({ addToast, openTab }) {
         </div>
       )}
 
-      {/* 4. SLEEK LIVE FLOATING DOWNLOAD HUD BANNER (Visible across any tab when downloading or interrupted) */}
+      {/* 4. LIVE FLOATING CONVERSION HUD BANNER (visibile da ogni scheda) */}
+      {activeConversion && activeTab !== 'converter' && (
+        <div
+          onClick={() => setActiveTab('converter')}
+          style={{
+            position: 'sticky', bottom: '16px', zIndex: 100,
+            padding: '12px 18px', borderRadius: '14px',
+            background: isLight ? 'rgba(255, 255, 255, 0.96)' : 'rgba(13, 16, 25, 0.95)',
+            backdropFilter: 'blur(12px)',
+            border: '1.5px solid #10b981',
+            boxShadow: '0 10px 30px rgba(16, 185, 129, 0.25)',
+            display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '14px',
+            cursor: 'pointer', transition: 'all 0.2s ease'
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px', minWidth: 0, flex: 1 }}>
+            <Activity className="mh-spin" size={20} color="#10b981" style={{ flexShrink: 0 }} />
+            <div style={{ minWidth: 0, flex: 1 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <span style={{ fontSize: '0.82rem', fontWeight: 800, color: textPrimary, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                  {CONVERSION_STAGE_LABELS[activeConversion.status] || 'Conversione'} in corso: {activeConversion.source_model} ➔ {activeConversion.quantization}
+                </span>
+                <span style={{ fontSize: '0.78rem', fontWeight: 800, color: '#10b981', fontFamily: 'monospace' }}>
+                  {activeConversion.progress || 0}%
+                </span>
+              </div>
+              <div style={{
+                height: '4px', borderRadius: '3px', marginTop: '6px',
+                background: isLight ? 'rgba(0,0,0,0.08)' : 'rgba(255,255,255,0.08)', overflow: 'hidden'
+              }}>
+                <div style={{
+                  width: `${activeConversion.progress || 0}%`, height: '100%', borderRadius: '3px',
+                  background: 'linear-gradient(90deg, #00d2ff, #10b981)',
+                  transition: 'width 0.4s ease'
+                }} />
+              </div>
+              <div style={{ fontSize: '0.68rem', color: textMuted, marginTop: '4px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                {activeConversion.message || 'Elaborazione dei pesi in corso…'}
+                {' • '}
+                <span style={{ color: '#ffb86c', fontWeight: 700 }}>
+                  {Math.round(activeConversion.elapsed_seconds || 0)}s
+                </span>
+              </div>
+            </div>
+          </div>
+
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0 }}>
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                setActiveTab('converter');
+              }}
+              style={{
+                padding: '6px 12px', borderRadius: '8px', border: 'none',
+                background: 'linear-gradient(135deg, #10b981, #059669)', color: '#ffffff',
+                fontSize: '0.74rem', fontWeight: 800, cursor: 'pointer',
+                display: 'flex', alignItems: 'center', gap: '4px'
+              }}
+            >
+              Apri Dettagli <ArrowRight size={12} />
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* 5. SLEEK LIVE FLOATING DOWNLOAD HUD BANNER (Visible across any tab when downloading or interrupted) */}
       {currentRunningTask && activeTab !== 'inventory' && (
         <div
           onClick={() => setActiveTab('inventory')}
@@ -1069,10 +1617,36 @@ export default function ModelHub({ addToast, openTab }) {
         <DirectoryPicker
           initialPath={config.models_dir}
           isLight={isLight}
+          title="Scegli Cartella di Salvataggio Principale"
+          confirmLabel="Usa come cartella principale"
           onSelect={dir => setConfig(c => ({ ...c, models_dir: dir }))}
           onClose={() => setPickingDir(false)}
         />
       )}
+
+      {pickingExtraDir && (
+        <DirectoryPicker
+          initialPath={config.models_dir}
+          isLight={isLight}
+          title="Scegli Cartella Modelli da Aggiungere"
+          confirmLabel="Aggiungi questa cartella"
+          onSelect={dir => handleAddExtraDir(dir)}
+          onClose={() => setPickingExtraDir(false)}
+        />
+      )}
+
+      {pickingImportItem && (
+        <DirectoryPicker
+          initialPath={config.models_dir}
+          isLight={isLight}
+          title="Seleziona Modello o Cartella da Importare"
+          confirmLabel="Importa questo elemento"
+          includeFiles={true}
+          onSelect={path => setImportSourcePath(path)}
+          onClose={() => setPickingImportItem(false)}
+        />
+      )}
+
 
       {/* 5. DEPLOY TO SIGMA ENGINE MODAL */}
       {deployTargetModel && (

@@ -153,7 +153,7 @@ def persist_hf_token(token: Optional[str]) -> Dict[str, Any]:
     return {"hf_has_token": bool(token), "written": written}
 
 
-# Recognized verified official organizations, AI labs and premier open-weight providers
+# Recognized verified official organizations and AI labs
 OFFICIAL_ORGANIZATIONS = {
     # SigmaStudio Ecosystem & User
     'sigmanih', 'sigma', 'sigmastudio',
@@ -166,35 +166,43 @@ OFFICIAL_ORGANIZATIONS = {
     'openchat', 'nousresearch', 'upstage', 'snowflake', 'kyutai', 'liquid-ai',
     'ai21labs', 'minimax', 'kwai', 'kwaivgi', 'deci', 'nexusflow', 'writer',
     'huggingfacetb',
-
-    # Premier GGUF & Quantization Providers
-    'bartowski', 'mradermacher', 'thebloke', 'unsloth', 'turboderp',
-    'casperhansen', 'mlx-community', 'ggml-org', 'city96', 'undi95',
-    'solidrust', 'second-state', 'lone-striker', 'oobabooga'
 }
 
 PROVIDER_AUTHOR_MAP = {
     'sigmanih': ['sigmanih'],
-    'thudm': ['THUDM', 'ZhipuAI', 'zai-org', 'zai'],
-    'zai': ['zai-org', 'zai', 'THUDM', 'ZhipuAI'],
-    'glm': ['zai-org', 'THUDM', 'ZhipuAI'],
-    'qwen': ['Qwen'],
-    'deepseek': ['deepseek-ai'],
-    'llama': ['meta-llama'],
-    'mistral': ['mistralai'],
+    'google': ['google'],
     'gemma': ['google'],
+    'qwen': ['Qwen'],
+    'meta-llama': ['meta-llama', 'meta', 'facebook'],
+    'llama': ['meta-llama', 'meta', 'facebook'],
+    'meta': ['meta-llama', 'meta', 'facebook'],
+    'deepseek-ai': ['deepseek-ai'],
+    'deepseek': ['deepseek-ai'],
+    'mistralai': ['mistralai'],
+    'mistral': ['mistralai'],
     'microsoft': ['microsoft'],
-    'bartowski': ['bartowski'],
-    'unsloth': ['unsloth'],
-    'thebloke': ['TheBloke'],
-    'mradermacher': ['mradermacher'],
-    'nous': ['NousResearch'],
+    'phi': ['microsoft'],
+    'zai-org': ['zai-org', 'THUDM', 'ZhipuAI', 'zai'],
+    'zai': ['zai-org', 'THUDM', 'ZhipuAI', 'zai'],
+    'thudm': ['THUDM', 'zai-org', 'ZhipuAI', 'zai'],
+    'glm': ['zai-org', 'THUDM', 'ZhipuAI', 'zai'],
+    'zhipu': ['zai-org', 'THUDM', 'ZhipuAI', 'zai'],
     'nvidia': ['nvidia'],
-    'cohere': ['CohereForAI'],
-    '01-ai': ['01-ai'],
     'apple': ['apple'],
+    'openai': ['openai'],
+    'stabilityai': ['stabilityai'],
     'stability': ['stabilityai'],
+    '01-ai': ['01-ai'],
+    'black-forest-labs': ['black-forest-labs'],
+    'black-forest': ['black-forest-labs'],
     'allenai': ['allenai'],
+    'tiiuae': ['tiiuae'],
+    'internlm': ['internlm'],
+    'bytedance': ['bytedance'],
+    'cohere': ['CohereForAI'],
+    'cohereforai': ['CohereForAI'],
+    'nous': ['NousResearch'],
+    'nousresearch': ['NousResearch'],
 }
 
 OFFICIAL_AUTHOR_MAP = {
@@ -241,16 +249,6 @@ OFFICIAL_AUTHOR_MAP = {
     'snowflake': 'Snowflake',
     'smollm': 'HuggingFaceTB',
     'starcoder': 'bigcode',
-
-    # Famous Quantization & GGUF Creators
-    'bartowski': 'bartowski',
-    'mradermacher': 'mradermacher',
-    'unsloth': 'unsloth',
-    'thebloke': 'TheBloke',
-    'casperhansen': 'casperhansen',
-    'city96': 'city96',
-    'turboderp': 'turboderp',
-    'mlx': 'mlx-community',
 }
 
 
@@ -754,28 +752,28 @@ POPULAR_MODELS = [
         "hf_url": "https://huggingface.co/THUDM/glm-4-9b-chat",
     },
     {
-        "id": "bartowski/glm-4-9b-chat-GGUF",
-        "name": "GLM 4 9B Chat (GGUF)",
-        "author": "bartowski",
+        "id": "google/gemma-2-9b-it",
+        "name": "Google Gemma 2 9B Instruct",
+        "author": "google",
         "category": "llm",
         "params_b": 9.0,
         "params_label": "9B",
         "active_params_label": "9B",
         "total_params_label": "9B",
-        "precision": "GGUF Q4_K_M (4-bit)",
-        "size_gb": 5.5,
-        "format": "GGUF",
-        "downloads": 95000,
-        "likes": 1800,
+        "precision": "FP16 (16-bit)",
+        "size_gb": 18.0,
+        "format": "Safetensors",
+        "downloads": 650000,
+        "likes": 7200,
         "is_official": True,
-        "created_at": "2024-06-06T12:00:00Z",
-        "last_modified": "2024-06-08T14:00:00Z",
-        "release_date_label": "6 Giu 2024",
-        "description": "Quantizzazione GGUF ad altissima efficienza per THUDM GLM-4 9B Chat per inferenza locale rapida.",
-        "quantizations": ["Q4_K_M (5.5 GB)", "Q5_K_M (6.4 GB)", "Q8_0 (9.5 GB)"],
+        "created_at": "2024-06-27T10:00:00Z",
+        "last_modified": "2024-07-01T12:00:00Z",
+        "release_date_label": "27 Giu 2024",
+        "description": "Modello ufficiale Google Gemma 2 da 9B parametri ad alte prestazioni conversazionali e reasoning.",
+        "quantizations": ["Safetensors (18 GB)", "GGUF Q4_K_M (5.8 GB)"],
         "pipeline_tag": "text-generation",
-        "default_file": "glm-4-9b-chat-Q4_K_M.gguf",
-        "hf_url": "https://huggingface.co/bartowski/glm-4-9b-chat-GGUF",
+        "default_file": "model.safetensors",
+        "hf_url": "https://huggingface.co/google/gemma-2-9b-it",
     },
     {
         "id": "Qwen/Qwen2.5-Coder-14B-Instruct",
@@ -874,28 +872,28 @@ POPULAR_MODELS = [
         "hf_url": "https://huggingface.co/meta-llama/Llama-3.3-70B-Instruct",
     },
     {
-        "id": "bartowski/DeepSeek-R1-Distill-Qwen-14B-GGUF",
-        "name": "DeepSeek R1 Distill Qwen 14B (GGUF)",
-        "author": "bartowski",
-        "category": "reasoning",
-        "params_b": 14.0,
-        "params_label": "14B",
-        "active_params_label": "14B",
-        "total_params_label": "14B",
-        "precision": "GGUF Q4_K_M (4-bit)",
-        "size_gb": 8.9,
-        "format": "GGUF",
-        "downloads": 128000,
-        "likes": 2400,
+        "id": "mistralai/Mistral-7B-Instruct-v0.3",
+        "name": "Mistral 7B Instruct v0.3",
+        "author": "mistralai",
+        "category": "llm",
+        "params_b": 7.0,
+        "params_label": "7B",
+        "active_params_label": "7B",
+        "total_params_label": "7B",
+        "precision": "FP16 (16-bit)",
+        "size_gb": 14.5,
+        "format": "Safetensors",
+        "downloads": 580000,
+        "likes": 6400,
         "is_official": True,
-        "created_at": "2025-01-22T08:00:00Z",
-        "last_modified": "2025-01-24T12:30:00Z",
-        "release_date_label": "22 Gen 2025",
-        "description": "Quantizzazione GGUF ad alta efficienza per DeepSeek R1 14B.",
-        "quantizations": ["Q4_K_M (8.9 GB)", "Q5_K_M (10.5 GB)", "Q8_0 (15.2 GB)"],
+        "created_at": "2024-05-22T08:00:00Z",
+        "last_modified": "2024-05-25T14:00:00Z",
+        "release_date_label": "22 Mag 2024",
+        "description": "Modello ufficiale Mistral AI da 7B con supporto per function calling e 32k context window.",
+        "quantizations": ["Safetensors (14.5 GB)", "GGUF Q4_K_M (4.4 GB)"],
         "pipeline_tag": "text-generation",
-        "default_file": "DeepSeek-R1-Distill-Qwen-14B-Q4_K_M.gguf",
-        "hf_url": "https://huggingface.co/bartowski/DeepSeek-R1-Distill-Qwen-14B-GGUF",
+        "default_file": "model.safetensors",
+        "hf_url": "https://huggingface.co/mistralai/Mistral-7B-Instruct-v0.3",
     },
     {
         "id": "Qwen/Qwen2.5-7B-Instruct",
@@ -926,12 +924,8 @@ POPULAR_MODELS = [
 
 def _fetch_from_hf_api(params: Dict[str, Any], hf_token: Optional[str] = None) -> tuple[List[Dict[str, Any]], Optional[str]]:
     """Helper to query Hugging Face API and extract items and next_cursor."""
-    # Ask HF to include usedStorage (real on-disk repo size) and siblings
-    # (file listing with sizes) in every result, so parse_model_specs can
-    # compute the real download size instead of guessing from parameter count.
-    # Note: HF API accepts both expand[]=X and expand%5B%5D=X.
     base_qs = urllib.parse.urlencode(params)
-    url = f"{HF_API_BASE}/models?{base_qs}&expand%5B%5D=usedStorage&expand%5B%5D=siblings&blobs=true"
+    url = f"{HF_API_BASE}/models?{base_qs}&expand%5B%5D=siblings&full=true"
     req = urllib.request.Request(url)
     req.add_header("User-Agent", "SigmaStudio-ModelHub/2.0")
     if hf_token:
@@ -1035,12 +1029,16 @@ def search_hf_models(
         # A0. If direct repository id is queried (e.g. author/repo), fetch exact model metadata directly
         if "/" in search_query and not cursor:
             try:
-                exact_url = f"{_HF_API_BASE}/models/{search_query}"
-                exact_res = _hf_session.get(exact_url, headers=_auth_headers(hf_token), timeout=8)
-                if exact_res.status_code == 200:
-                    exact_item = exact_res.json()
-                    if isinstance(exact_item, dict) and exact_item.get("id"):
-                        raw_items.append(exact_item)
+                exact_url = f"{HF_API_BASE}/models/{search_query}"
+                exact_req = urllib.request.Request(exact_url)
+                exact_req.add_header("User-Agent", "SigmaStudio-ModelHub/2.0")
+                if hf_token:
+                    exact_req.add_header("Authorization", f"Bearer {hf_token}")
+                with safe_urlopen(exact_req, timeout=8) as exact_res:
+                    if exact_res.status == 200:
+                        exact_item = json.loads(exact_res.read().decode("utf-8"))
+                        if isinstance(exact_item, dict) and exact_item.get("id"):
+                            raw_items.append(exact_item)
             except Exception as _ex_direct:
                 log.debug("Direct repo fetch error for %s: %s", search_query, _ex_direct)
 
@@ -1072,7 +1070,7 @@ def search_hf_models(
         elif official_only:
             if not search_query:
                 official_target_authors = custom_officials if (custom_officials and len(custom_officials) > 0) else [
-                    "sigmanih", "zai-org", "Qwen", "deepseek-ai", "meta-llama", "THUDM", "mistralai", "google", "microsoft", "bartowski", "unsloth"
+                    "sigmanih", "zai-org", "Qwen", "deepseek-ai", "meta-llama", "THUDM", "mistralai", "google", "microsoft"
                 ]
                 for auth in official_target_authors[:15]:
                     auth_params = {

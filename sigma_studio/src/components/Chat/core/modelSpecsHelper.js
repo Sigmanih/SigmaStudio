@@ -1,10 +1,206 @@
 // ==============================================================================
 // sigma_studio/src/components/Chat/core/modelSpecsHelper.js
 // Utility to dynamically parse and enrich model parameter count, file size in GB,
-// format and quantization directly from the real model inventory (zero hardcoding/guesses).
+// format, quantization, family recognition, benchmark metadata, and live tokens/sec.
 // ==============================================================================
 
 let _localModelsCache = [];
+const SPEED_STORAGE_KEY = 'sigma_model_chat_speeds';
+
+export const FAMILY_CONFIG = {
+  sigmanih: {
+    id: 'sigmanih',
+    title: 'Sigmanih',
+    brand: 'Sigmanih Ecosystem',
+    color: '#ffb86c',
+    bg: 'rgba(255, 184, 108, 0.15)',
+    border: 'rgba(255, 184, 108, 0.35)'
+  },
+  gemma: {
+    id: 'gemma',
+    title: 'Gemma',
+    brand: 'Google DeepMind',
+    color: '#00d2ff',
+    bg: 'rgba(0, 210, 255, 0.15)',
+    border: 'rgba(0, 210, 255, 0.35)'
+  },
+  qwen: {
+    id: 'qwen',
+    title: 'Qwen',
+    brand: 'Alibaba Cloud',
+    color: '#a855f7',
+    bg: 'rgba(168, 85, 247, 0.15)',
+    border: 'rgba(168, 85, 247, 0.35)'
+  },
+  llama: {
+    id: 'llama',
+    title: 'Llama',
+    brand: 'Meta AI',
+    color: '#38bdf8',
+    bg: 'rgba(56, 189, 248, 0.15)',
+    border: 'rgba(56, 189, 248, 0.35)'
+  },
+  deepseek: {
+    id: 'deepseek',
+    title: 'DeepSeek',
+    brand: 'DeepSeek AI',
+    color: '#f43f5e',
+    bg: 'rgba(244, 63, 94, 0.15)',
+    border: 'rgba(244, 63, 94, 0.35)'
+  },
+  mistral: {
+    id: 'mistral',
+    title: 'Mistral',
+    brand: 'Mistral AI',
+    color: '#10b981',
+    bg: 'rgba(168, 85, 247, 0.15)',
+    border: 'rgba(16, 185, 129, 0.35)'
+  },
+  phi: {
+    id: 'phi',
+    title: 'Phi',
+    brand: 'Microsoft Research',
+    color: '#fb923c',
+    bg: 'rgba(251, 146, 60, 0.15)',
+    border: 'rgba(251, 146, 60, 0.35)'
+  },
+  glm: {
+    id: 'glm',
+    title: 'GLM',
+    brand: 'Zhipu AI',
+    color: '#06b6d4',
+    bg: 'rgba(6, 182, 212, 0.15)',
+    border: 'rgba(6, 182, 212, 0.35)'
+  },
+  altro: {
+    id: 'altro',
+    title: 'Altro',
+    brand: 'Community',
+    color: '#94a3b8',
+    bg: 'rgba(148, 163, 184, 0.12)',
+    border: 'rgba(148, 163, 184, 0.25)'
+  }
+};
+
+/**
+ * Check if a model belongs to the Sigmanih ecosystem.
+ */
+export function isSigmanihModel(modelOrName) {
+  if (!modelOrName) return false;
+  const model = typeof modelOrName === 'object' ? modelOrName : { name: modelOrName };
+  const rawName = String(model.name || model.display_name || model.filename || model.model_id || '').toLowerCase();
+  const repoId = String(model.publication?.repo_id || '').toLowerCase();
+  const author = String(model.author || model.publisher || '').toLowerCase();
+  return Boolean(
+    model.is_sigmanih ||
+    repoId.startsWith('sigmanih/') ||
+    author === 'sigmanih' ||
+    rawName.startsWith('sigmanih') ||
+    rawName.startsWith('sigma-')
+  );
+}
+
+/**
+ * Detect architectural family for a model object or string name.
+ */
+export function detectModelFamily(modelOrName) {
+  if (!modelOrName) return 'altro';
+  const model = typeof modelOrName === 'object' ? modelOrName : { name: modelOrName };
+  const rawName = String(model.name || model.display_name || model.filename || model.model_id || '').toLowerCase();
+  const repoId = String(model.publication?.repo_id || '').toLowerCase();
+  const author = String(model.author || model.publisher || '').toLowerCase();
+  const arch = String(model.architecture || '').toLowerCase();
+  const combined = `${rawName} ${repoId} ${author} ${arch}`;
+
+  // Base architecture check
+  if (combined.includes('gemma')) return 'gemma';
+  if (combined.includes('qwen') || combined.includes('qwq')) return 'qwen';
+  if (combined.includes('llama') || combined.includes('meta')) return 'llama';
+  if (combined.includes('deepseek') || combined.includes('r1')) return 'deepseek';
+  if (combined.includes('mistral') || combined.includes('mixtral') || combined.includes('codestral') || combined.includes('pixtral') || combined.includes('ministral')) return 'mistral';
+  if (combined.includes('phi')) return 'phi';
+  if (combined.includes('glm') || combined.includes('chatglm') || combined.includes('zai')) return 'glm';
+
+  if (isSigmanihModel(model)) {
+    return 'sigmanih';
+  }
+
+  if (model.family) {
+    const fLower = String(model.family).toLowerCase();
+    if (FAMILY_CONFIG[fLower]) return fLower;
+  }
+  return 'altro';
+}
+
+
+/**
+ * Retrieves all saved chat generation speeds (t/s) from localStorage.
+ */
+export function getAllModelChatSpeeds() {
+  try {
+    const raw = localStorage.getItem(SPEED_STORAGE_KEY);
+    return raw ? JSON.parse(raw) : {};
+  } catch {
+    return {};
+  }
+}
+
+/**
+ * Records live measured tokens per second (t/s) for a model after chatting.
+ */
+export function recordModelChatSpeed(modelName, tps) {
+  if (!modelName || tps === undefined || tps === null || isNaN(tps) || tps <= 0) return;
+  const num = parseFloat(Number(tps).toFixed(1));
+  const rawKey = String(modelName).trim();
+  const cleanKey = rawKey.toLowerCase().replace(/\.gguf$/i, '').replace(/^[a-z0-9_-]+--/i, '').replace(/^[a-z0-9_-]+\//i, '');
+
+  try {
+    const speeds = getAllModelChatSpeeds();
+    speeds[rawKey] = { tps: num, timestamp: Date.now() };
+    speeds[rawKey.toLowerCase()] = { tps: num, timestamp: Date.now() };
+    if (cleanKey && cleanKey !== rawKey.toLowerCase()) {
+      speeds[cleanKey] = { tps: num, timestamp: Date.now() };
+    }
+    localStorage.setItem(SPEED_STORAGE_KEY, JSON.stringify(speeds));
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('sigma-model-speed-updated', { detail: { model: modelName, tps: num } }));
+    }
+  } catch (e) {
+    console.debug('[modelSpecsHelper] speed record error:', e);
+  }
+}
+
+/**
+ * Gets recorded chat speed (t/s) for a model, or null if never chatted.
+ */
+export function getModelChatSpeed(modelName, modelObj = null) {
+  if (!modelName && !modelObj) return null;
+  const speeds = getAllModelChatSpeeds();
+  const candidates = [
+    modelName,
+    typeof modelName === 'string' ? modelName.toLowerCase() : null,
+    modelObj?.name,
+    modelObj?.name?.toLowerCase?.(),
+    modelObj?.filename,
+    modelObj?.filename?.toLowerCase?.(),
+    modelObj?.model_id,
+    modelObj?.model_id?.toLowerCase?.(),
+    modelObj?.display_name,
+    modelObj?.display_name?.toLowerCase?.()
+  ].filter(Boolean);
+
+  for (const k of candidates) {
+    if (speeds[k]?.tps !== undefined) {
+      return speeds[k].tps;
+    }
+    const clean = k.replace(/\.gguf$/i, '').replace(/^[a-z0-9_-]+--/i, '').replace(/^[a-z0-9_-]+\//i, '');
+    if (speeds[clean]?.tps !== undefined) {
+      return speeds[clean].tps;
+    }
+  }
+
+  return null;
+}
 
 /**
  * Register scanned local models from backend into cache for instant resolution anywhere.
@@ -18,16 +214,16 @@ export function registerLocalModels(models = []) {
 /**
  * Lazily fetch local models inventory if cache is empty.
  */
-export async function syncLocalModelsCache() {
+export function syncLocalModelsCache() {
   try {
-    const res = await fetch('/api/models/local/list');
-    if (res.ok) {
-      const json = await res.json();
-      if (json.success && Array.isArray(json.models)) {
-        registerLocalModels(json.models);
-        return json.models;
-      }
-    }
+    fetch('/api/models/local/list')
+      .then(res => res.json())
+      .then(json => {
+        if (json.success && Array.isArray(json.models)) {
+          registerLocalModels(json.models);
+        }
+      })
+      .catch(e => console.debug('[modelSpecsHelper] sync error:', e));
   } catch (e) {
     console.debug('[modelSpecsHelper] sync error:', e);
   }
@@ -104,13 +300,20 @@ export function getModelSpecs(modelName, availableModels = []) {
         size = found.size;
       }
 
+      const family = detectModelFamily(found);
+      const chatSpeed = getModelChatSpeed(found.name || raw, found);
+
       return {
         name: found.display_name || found.name || raw,
         params: params || '',
         size: size || '',
         format: format || '',
         quantization: quant || '',
-        provider: found.provider || 'sigma_engine'
+        provider: found.provider || 'sigma_engine',
+        family,
+        benchmark: found.benchmark_summary || null,
+        chatSpeed: chatSpeed !== null ? chatSpeed : null,
+        rawModel: found
       };
     }
   }
@@ -160,12 +363,18 @@ export function getModelSpecs(modelName, availableModels = []) {
   else if (lower.startsWith('gemini')) provider = 'google';
   else if (lower.startsWith('deepseek-chat') || lower.startsWith('deepseek-reasoner')) provider = 'deepseek';
 
+  const family = detectModelFamily({ name: raw });
+  const chatSpeed = getModelChatSpeed(raw);
+
   return {
     name: raw,
     params: params || '',
     size: size || '',
     format: format || '',
     quantization: quant || '',
-    provider
+    provider,
+    family,
+    benchmark: null,
+    chatSpeed: chatSpeed !== null ? chatSpeed : null
   };
 }

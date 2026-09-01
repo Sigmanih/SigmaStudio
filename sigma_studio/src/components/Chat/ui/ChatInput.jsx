@@ -42,70 +42,76 @@ export default function ChatInput({
       {/* Modern Extended Model & Role Selection Strip */}
       <div className="chat-input-controls-strip">
         <div className="chat-input-model-role-group">
-          {/* 1. Extended Model Selector */}
-          <ModelSelector
-            modelBtnRef={modelBtnRef}
-            effectiveModelName={selectedModel}
-            showDropdown={showModelDropdown}
-            models={availableModels}
-            selectedModel={selectedModel}
-            loadingModels={loadingModels}
-            providerConfigs={providerConfigs}
-            onToggle={onToggleModelDropdown}
-            onSelect={onSelectModel}
-            onOpenConfig={onOpenConfig}
-            favoriteModel={favoriteModel}
-            favoriteModels={effectiveFavs}
-            onSetFavorite={onSetFavoriteModel}
-          />
+          {/* 1. Extended Model Selector with explicit Label */}
+          <div className="chat-control-field">
+            <span className="chat-control-label">Modello:</span>
+            <ModelSelector
+              modelBtnRef={modelBtnRef}
+              effectiveModelName={selectedModel}
+              showDropdown={showModelDropdown}
+              models={availableModels}
+              selectedModel={selectedModel}
+              loadingModels={loadingModels}
+              providerConfigs={providerConfigs}
+              onToggle={onToggleModelDropdown}
+              onSelect={onSelectModel}
+              onOpenConfig={onOpenConfig}
+              favoriteModel={favoriteModel}
+              favoriteModels={effectiveFavs}
+              onSetFavorite={onSetFavoriteModel}
+            />
+          </div>
 
-          {/* 2. Extended Role / Manifesto Selector */}
-          <div className="manifesto-selector-wrapper" style={{ position: 'relative' }}>
-            <button
-              type="button"
-              className={`manifesto-selector-btn ${!activeManifesto?.name ? 'no-manifesto' : ''}`}
-              onClick={(e) => { e.stopPropagation(); setShowManifestoDropdown && setShowManifestoDropdown(!showManifestoDropdown); }}
-              title="Seleziona il Ruolo / Manifesto dell'Agente per la conversazione"
-            >
-              <span className="manifesto-icon">{activeManifesto?.icon || '📋'}</span>
-              <div className="manifesto-info">
-                <span className="manifesto-name">{activeManifesto?.name || 'Sigma Assistant'}</span>
-                {activeManifesto?.role && (
-                  <span className="manifesto-role-preview">{activeManifesto.role}</span>
-                )}
-              </div>
-              <ChevronDown size={11} className={`manifesto-chevron ${showManifestoDropdown ? 'open' : ''}`} />
-            </button>
+          {/* 2. Extended Role / Manifesto Selector with explicit Label */}
+          <div className="chat-control-field">
+            <span className="chat-control-label">Ruolo:</span>
+            <div className="manifesto-selector-wrapper" style={{ position: 'relative' }}>
+              <button
+                type="button"
+                className={`manifesto-selector-btn ${!activeManifesto?.name ? 'no-manifesto' : ''}`}
+                onClick={(e) => { e.stopPropagation(); setShowManifestoDropdown && setShowManifestoDropdown(!showManifestoDropdown); }}
+                title="Seleziona il Ruolo / Manifesto dell'Agente per la conversazione"
+              >
+                <span className="manifesto-icon">{activeManifesto?.icon || '📋'}</span>
+                <div className="manifesto-info">
+                  <span className="manifesto-name">{activeManifesto?.name || 'Sigma Assistant'}</span>
+                  {activeManifesto?.role && (
+                    <span className="manifesto-role-preview">{activeManifesto.role}</span>
+                  )}
+                </div>
+                <ChevronDown size={11} className={`manifesto-chevron ${showManifestoDropdown ? 'open' : ''}`} />
+              </button>
 
-            {showManifestoDropdown && (
-              <div className="model-selector-popover manifesto-popover" style={{ left: 0, transform: 'none', minWidth: '280px', maxHeight: '340px', overflowY: 'auto', zIndex: 2100 }}>
-                {(!manifestos || manifestos.length === 0) && (
-                  <div className="model-selector-option disabled" style={{ padding: '8px 12px', fontSize: '0.74rem', color: '#8b8fa3' }}>
-                    Nessun manifesto installato
-                  </div>
-                )}
-                {(manifestos || []).map(m => (
-                  <div
-                    key={m.path || m.name}
-                    className={`model-selector-option ${activeManifesto?.name === m.name ? 'selected' : ''}`}
-                    onClick={(e) => { e.stopPropagation(); onSelectManifesto && onSelectManifesto(m); }}
-                    style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', padding: '8px 12px', gap: '2px', borderBottom: '1px solid rgba(255,255,255,0.04)' }}
-                  >
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', width: '100%', justifyContent: 'space-between' }}>
-                      <span style={{ fontWeight: 800, fontSize: '0.76rem', color: activeManifesto?.name === m.name ? '#00d2ff' : '#f1f5f9' }}>
-                        {m.icon || '📋'} {m.name}
-                      </span>
-                      {activeManifesto?.name === m.name && <span style={{ fontSize: '0.74rem', color: '#10b981', fontWeight: 800 }}>✓</span>}
+              {showManifestoDropdown && (
+                <div className="model-selector-popover manifesto-popover" style={{ left: 0, transform: 'none', minWidth: '280px', maxHeight: '340px', overflowY: 'auto', zIndex: 2100 }}>
+                  {(!manifestos || manifestos.length === 0) && (
+                    <div className="model-selector-option disabled" style={{ padding: '8px 12px', fontSize: '0.74rem', color: '#8b8fa3' }}>
+                      Nessun manifesto installato
                     </div>
-                    {m.role && (
-                      <span style={{ fontSize: '0.64rem', color: 'var(--text-muted, #8b8fa3)', paddingLeft: '18px', lineHeight: 1.3 }}>
-                        {m.role}
-                      </span>
-                    )}
-                  </div>
-                ))}
-              </div>
-            )}
+                  )}
+                  {(manifestos || []).map(m => (
+                    <div
+                      key={m.path || m.name}
+                      className={`model-selector-option ${activeManifesto?.name === m.name ? 'selected' : ''}`}
+                      onClick={(e) => { e.stopPropagation(); onSelectManifesto && onSelectManifesto(m); }}
+                      style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', padding: '8px 12px', gap: '2px', borderBottom: '1px solid rgba(255,255,255,0.04)' }}
+                    >
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px', width: '100%', justifyContent: 'space-between' }}>
+                        <span style={{ fontWeight: 800, fontSize: '0.76rem', color: activeManifesto?.name === m.name ? '#00d2ff' : '#f1f5f9' }}>
+                          {m.icon || '📋'} {m.name}
+                        </span>
+                        {activeManifesto?.name === m.name && <span style={{ fontSize: '0.74rem', color: '#10b981', fontWeight: 800 }}>✓</span>}
+                      </div>
+                      {m.role && (
+                        <span style={{ fontSize: '0.64rem', color: 'var(--text-muted, #8b8fa3)', paddingLeft: '18px', lineHeight: 1.3 }}>
+                          {m.role}
+                        </span>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
         </div>
 
