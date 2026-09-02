@@ -128,3 +128,153 @@
   background: rgba(255, 255, 255, 0.08);
   border-color: var(--sigma-primary-border);
 }
+
+/* Sub-navigation tree for Sidebar (Chat sessions & Model tabs) */
+.sidebar-subnav {
+  margin: 2px 0 6px 12px;
+  padding-left: 10px;
+  border-left: 1.5px solid rgba(255, 255, 255, 0.08);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  animation: fadeIn 0.18s ease;
+}
+
+.theme-light .sidebar-subnav {
+  border-left-color: rgba(190, 160, 110, 0.25);
+}
+
+.sidebar-new-chat-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  padding: 5px 8px;
+  margin: 3px 0 5px 0;
+  border-radius: 6px;
+  background: rgba(0, 210, 255, 0.1);
+  border: 1px solid rgba(0, 210, 255, 0.25);
+  color: #00d2ff;
+  font-size: 0.68rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  text-align: left;
+}
+
+.sidebar-new-chat-btn:hover {
+  background: rgba(0, 210, 255, 0.2);
+  border-color: rgba(0, 210, 255, 0.4);
+  transform: translateY(-1px);
+}
+
+.theme-light .sidebar-new-chat-btn {
+  background: rgba(234, 88, 12, 0.1);
+  border-color: rgba(234, 88, 12, 0.25);
+  color: #ea580c;
+}
+
+.theme-light .sidebar-new-chat-btn:hover {
+  background: rgba(234, 88, 12, 0.2);
+}
+
+.sidebar-sessions-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-height: 220px;
+  overflow-y: auto;
+  scrollbar-width: thin;
+}
+
+.sidebar-session-item,
+.sidebar-subitem {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  border-radius: 6px;
+  color: var(--sigma-text-dim, #8b8fa3);
+  font-size: 0.7rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  user-select: none;
+  border: 1px solid transparent;
+}
+
+.sidebar-session-item:hover,
+.sidebar-subitem:hover {
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--sigma-text, #ffffff);
+}
+
+.sidebar-session-item.active,
+.sidebar-subitem.active {
+  background: rgba(0, 210, 255, 0.15);
+  color: #00d2ff;
+  font-weight: 700;
+  border-color: rgba(0, 210, 255, 0.3);
+}
+
+.theme-light .sidebar-session-item.active,
+.theme-light .sidebar-subitem.active {
+  background: rgba(234, 88, 12, 0.15);
+  color: #ea580c;
+  border-color: rgba(234, 88, 12, 0.3);
+}
+
+.sidebar-session-dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.25);
+  flex-shrink: 0;
+}
+
+.sidebar-session-item.active .sidebar-session-dot {
+  background: #00d2ff;
+  box-shadow: 0 0 6px rgba(0, 210, 255, 0.6);
+}
+
+.theme-light .sidebar-session-item.active .sidebar-session-dot {
+  background: #ea580c;
+}
+
+.sidebar-session-name,
+.sidebar-subitem-label {
+  flex: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.sidebar-session-delete-btn {
+  opacity: 0;
+  background: none;
+  border: none;
+  color: #8b8fa3;
+  padding: 2px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+  transition: opacity 0.15s ease, color 0.15s ease;
+}
+
+.sidebar-session-item:hover .sidebar-session-delete-btn {
+  opacity: 0.7;
+}
+
+.sidebar-session-delete-btn:hover {
+  opacity: 1 !important;
+  color: #ef4444 !important;
+}
+
+.sidebar-subitem-empty {
+  font-size: 0.64rem;
+  color: var(--sigma-text-dim, #64748b);
+  padding: 4px 8px;
+  font-style: italic;
+}

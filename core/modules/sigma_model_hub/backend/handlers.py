@@ -512,9 +512,7 @@ def handle_models_hf_card_preview(self):
 def handle_models_local_list(self):
     """GET /api/models/local/list — Restituisce elenco modelli scaricati in locale con metriche benchmark."""
     try:
-        cfg = _load_hub_config()
-        custom_dir = cfg.get("models_dir")
-        models = scan_local_models(custom_dir=custom_dir)
+        models = scan_local_models()
 
         # I referti dei benchmark li legge il Training Lab, che e' il modulo che
         # li produce: qui si chiedono, non si interpretano. Il Model Hub deve
@@ -715,8 +713,7 @@ def handle_models_local_rename(self):
 def handle_models_hf_repo_discover(self):
     """POST /api/models/hf/repo/discover — Cerca i repository gia' pubblicati."""
     try:
-        cfg = _load_hub_config()
-        models = scan_local_models(custom_dir=cfg.get("models_dir"))
+        models = scan_local_models()
         from core.modules.sigma_model_hub.backend.uploader_engine import discover_publications
         body = self.read_json_body() if hasattr(self, 'read_json_body') else {}
         esito = discover_publications(models, body.get("token"))

@@ -1276,12 +1276,56 @@ async def engine_provider_server_toggle_route(request: Request):
 async def engine_server_info_route():
     """GET /api/engine/server_info — Returns comprehensive connection info for external clients."""
     from core.engine.unified_runtime import sigma_engine
+    from core.ai_providers import load_ai_config
+    from core.ssl_manager import get_lan_ip
+    import socket
+
     models = get_all_available_models()
     resident = sigma_engine.loaded_model_name or "Nessun modello caricato"
     is_enabled = is_provider_server_enabled()
+    ai_cfg = load_ai_config()
+    server_port = int(ai_cfg.get("provider_server_port") or ai_cfg.get("server_port") or 8000)
+    server_host = str(ai_cfg.get("provider_server_host") or ai_cfg.get("server_host") or "0.0.0.0")
+    proxy_alias = str(ai_cfg.get("sigma_proxy_alias") or "sigma")
+    is_ssl = bool(ai_cfg.get("ssl_enabled", False))
+    proto = "https" if is_ssl else "http"
+    base_url = f"{proto}://{server_host}:{server_port}"
+
+    local_lan_ip = "127.0.0.1"
+    all_lan_ips = []
+    try:
+        local_lan_ip = get_lan_ip()
+    except Exception:
+        pass
+
+    try:
+        hostname = socket.gethostname()
+        for info in socket.getaddrinfo(hostname, None, socket.AF_INET):
+            cand = info[4][0]
+            if cand and not cand.startswith("127.") and cand not in all_lan_ips:
+                all_lan_ips.append(cand)
+    except Exception:
+        pass
+
+    if local_lan_ip not in all_lan_ips and local_lan_ip != "127.0.0.1":
+        all_lan_ips.insert(0, local_lan_ip)
+
+    lan_url = f"{proto}://{local_lan_ip}:{server_port}" if local_lan_ip != "127.0.0.1" else None
+
+    try:
+        from core.ssl_manager import ssl_status
+        # ssl_status interroga il trust store del sistema: fuori dall'event loop.
+        tls = await asyncio.to_thread(ssl_status)
+    except Exception:
+        tls = {}
 
     return JSONResponse(status_code=200, content={
         "success": True,
+        "ssl_enabled": is_ssl,
+        "ssl": tls,
+        # Relativo: base_url puo' valere 0.0.0.0, che non e' un indirizzo raggiungibile.
+        "ca_download_url": "/ssl/ca.crt",
+        "lan_ca_download_url": f"{lan_url}/ssl/ca.crt" if lan_url else None,
         "engine_name": "SigmaEngine Universal Runtime",
         "version": "8.0",
         "provider_server_enabled": is_enabled,
@@ -1291,14 +1335,24 @@ async def engine_server_info_route():
         "has_resident_model": sigma_engine.has_resident_model,
         "total_models_available": len(models),
         "available_models": models,
+        "port": server_port,
+        "host": server_host,
+        "lan_ip": local_lan_ip if local_lan_ip != "127.0.0.1" else None,
+        "all_lan_ips": all_lan_ips,
+        "lan_url": lan_url,
+        "is_bind_all": server_host in ("0.0.0.0", ""),
+        "proxy_alias": proxy_alias,
+        "proxy_model": ai_cfg.get("sigma_proxy_model") or "sigma",
         "endpoints": {
-            "openai_base_url": "http://localhost:8000/v1",
-            "openai_chat_url": "http://localhost:8000/v1/chat/completions",
-            "openai_models_url": "http://localhost:8000/v1/models",
-            "ollama_base_url": "http://localhost:8000",
-            "ollama_chat_url": "http://localhost:8000/api/chat",
-            "ollama_tags_url": "http://localhost:8000/api/tags",
-            "ollama_generate_url": "http://localhost:8000/api/generate",
+            "openai_base_url": f"{base_url}/v1",
+            "openai_chat_url": f"{base_url}/v1/chat/completions",
+            "openai_models_url": f"{base_url}/v1/models",
+            "ollama_base_url": f"{base_url}",
+            "ollama_chat_url": f"{base_url}/api/chat",
+            "ollama_tags_url": f"{base_url}/api/tags",
+            "ollama_generate_url": f"{base_url}/api/generate",
+            "lan_openai_base_url": f"{lan_url}/v1" if lan_url else None,
+            "lan_openai_chat_url": f"{lan_url}/v1/chat/completions" if lan_url else None,
         }
     })
 
@@ -1339,6 +1393,65 @@ except Exception as _sn_exc:
     app.include_router(sigma_network_router, prefix="/api/sigma_network",
                        tags=["Sigma Network"])
 
+# --- SSL / TLS: Certificate Authority locale ---
+
+@app.get("/ssl/ca.crt")
+@app.get("/api/ssl/ca.crt")
+@app.get("/ssl/sigma-ca.pem")
+async def ssl_ca_download_route():
+    """GET /ssl/ca.crt — Scarica la CA locale da installare su PC, smartphone e tablet."""
+    from core.ssl_manager import ensure_local_ca
+
+    ca_path, _ = await asyncio.to_thread(ensure_local_ca)
+    if not ca_path or not ca_path.exists():
+        return JSONResponse(status_code=503, content={
+            "error": "Certificate Authority locale non disponibile.",
+            "hint": "Verifica che il pacchetto 'cryptography' sia installato.",
+        })
+    # Il media type x-x509-ca-cert fa aprire la procedura guidata di installazione
+    # su Windows, Android e iOS invece di mostrare il file come testo.
+    return FileResponse(
+        path=str(ca_path),
+        media_type="application/x-x509-ca-cert",
+        filename="sigma-studio-ca.crt",
+    )
+
+
+@app.get("/api/ssl/status")
+async def ssl_status_route():
+    """GET /api/ssl/status — Stato della CA locale e dei certificati HTTPS."""
+    from core.ssl_manager import ssl_status
+
+    return JSONResponse(status_code=200, content=await asyncio.to_thread(ssl_status))
+
+
+@app.post("/api/ssl/install_ca")
+async def ssl_install_ca_route():
+    """POST /api/ssl/install_ca — Installa la CA locale nel trust store di questa macchina."""
+    from core.ssl_manager import install_ca_into_trust_store, ssl_status
+
+    ok, message = await asyncio.to_thread(install_ca_into_trust_store)
+    return JSONResponse(status_code=200 if ok else 500, content={
+        "success": ok,
+        "message": message,
+        "status": await asyncio.to_thread(ssl_status),
+    })
+
+
+@app.post("/api/ssl/regenerate")
+async def ssl_regenerate_route():
+    """POST /api/ssl/regenerate — Rigenera il certificato del server (nuovi IP LAN, scadenza)."""
+    from core.ssl_manager import generate_server_cert, ssl_status
+
+    ok = await asyncio.to_thread(generate_server_cert)
+    return JSONResponse(status_code=200 if ok else 500, content={
+        "success": ok,
+        "message": ("Certificato rigenerato. Riavvia il server per applicarlo."
+                    if ok else "Rigenerazione del certificato non riuscita."),
+        "status": await asyncio.to_thread(ssl_status),
+    })
+
+
 # --- System Cleanup & Resource Optimization ---
 from core.system_cleanup import get_cleanup_stats, execute_selective_cleanup
 
@@ -1356,6 +1469,71 @@ async def system_cleanup_execute_route(request: Request):
         body = {}
     res = await asyncio.to_thread(execute_selective_cleanup, body)
     return JSONResponse(status_code=200 if res.get("success") else 500, content=res)
+
+
+@app.post("/api/system/restart")
+async def system_restart_route(request: Request):
+    """POST /api/system/restart — Riavvia il server di Sigma Studio e notifica il client."""
+    import sys
+    import os
+    import subprocess
+    import threading
+    import time
+    from core.paths import project_root
+    from core.config_handler import load_ai_config
+    from core.ssl_manager import get_lan_ip
+
+    ai_cfg = load_ai_config()
+    server_port = int(ai_cfg.get("provider_server_port") or ai_cfg.get("server_port") or 8000)
+    is_ssl = bool(ai_cfg.get("ssl_enabled", False))
+    proto = "https" if is_ssl else "http"
+    lan_ip = get_lan_ip()
+    target_url = f"{proto}://localhost:{server_port}"
+    target_lan_url = f"{proto}://{lan_ip}:{server_port}" if lan_ip != "127.0.0.1" else target_url
+
+    def _restart_process():
+        time.sleep(0.8)
+        log.info("[System] Riavvio del server Sigma Studio in corso...")
+        try:
+            py_exe = sys.executable
+            root = str(project_root())
+            if os.name == "nt":
+                # Su Windows avvia detached senza bloccare il processo padre
+                flags = 0
+                if hasattr(subprocess, "CREATE_NEW_PROCESS_GROUP"):
+                    flags |= subprocess.CREATE_NEW_PROCESS_GROUP
+                if hasattr(subprocess, "DETACHED_PROCESS"):
+                    flags |= subprocess.DETACHED_PROCESS
+                subprocess.Popen(
+                    [py_exe, "sigma_server.py"],
+                    cwd=root,
+                    creationflags=flags,
+                    close_fds=True
+                )
+            else:
+                subprocess.Popen(
+                    [py_exe, "sigma_server.py"],
+                    cwd=root,
+                    start_new_session=True,
+                    close_fds=True
+                )
+        except Exception as exc:
+            log.error("[System] Errore avvio nuovo processo: %s", exc)
+        finally:
+            os._exit(0)
+
+    t = threading.Thread(target=_restart_process, daemon=True)
+    t.start()
+
+    return JSONResponse(status_code=200, content={
+        "success": True,
+        "message": "Server in riavvio...",
+        "target_url": target_url,
+        "target_lan_url": target_lan_url,
+        "port": server_port,
+        "ssl_enabled": is_ssl,
+        "protocol": proto
+    })
 
 
 # ------------------------------------------------------------------------------

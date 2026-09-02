@@ -199,6 +199,10 @@ export default function LocalInventory({
           json.renamed ? `✏️ Rinominato in "${json.new_name}"` : (json.message || 'Nessuna modifica'),
           'success');
         fetchLocalModels();
+        try {
+          window.dispatchEvent(new CustomEvent('ai-config-updated'));
+          window.dispatchEvent(new CustomEvent('models-updated'));
+        } catch (e) {}
       } else if (addToast) {
         addToast(`❌ ${json.error || 'Rinomina non riuscita.'}`, 'error');
       }
@@ -229,6 +233,10 @@ export default function LocalInventory({
       if (json.success) {
         if (addToast) addToast(`🗑️ ${json.message}`, 'info');
         fetchLocalModels();
+        try {
+          window.dispatchEvent(new CustomEvent('ai-config-updated'));
+          window.dispatchEvent(new CustomEvent('models-updated'));
+        } catch (e) {}
       } else {
         if (addToast) addToast(`❌ ${json.error}`, 'error');
       }

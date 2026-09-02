@@ -1,5 +1,5 @@
 import React from 'react';
-import { FileText, Plus, Bot, Trash2, ChevronDown } from 'lucide-react';
+import { FileText, Plus, Bot, Trash2, ChevronDown, X } from 'lucide-react';
 import { getSessionStats, formatSessionTime } from './chatStorage';
 
 export default function ChatHistory({
@@ -9,27 +9,76 @@ export default function ChatHistory({
   editingSessionName, editNameValue, onEditNameChange, onFinishRename, onKeyDown,
   onStartRename, onDeleteSession, onNewSession, onDuplicateSession
 }) {
+  const handleItemSelect = (sessionId) => {
+    onSwitchSession(sessionId);
+    if (typeof window !== 'undefined' && window.innerWidth <= 768) {
+      onToggle();
+    }
+  };
+
+  const handleNewSessionMobile = () => {
+    onNewSession();
+    if (typeof window !== 'undefined' && window.innerWidth <= 768) {
+      onToggle();
+    }
+  };
+
+  const handleDuplicateMobile = () => {
+    onDuplicateSession();
+    if (typeof window !== 'undefined' && window.innerWidth <= 768) {
+      onToggle();
+    }
+  };
+
   return (
     <>
+      {/* Mobile Backdrop overlay to close drawer by tapping outside */}
+      {showHistory && (
+        <div
+          className="chat-history-backdrop"
+          onClick={onToggle}
+          title="Chiudi cronologia"
+        />
+      )}
+
       <button className="chat-collapse-btn" onClick={onToggle} title={showHistory ? 'Nascondi cronologia' : 'Mostra cronologia'}>
         <ChevronDown size={14} style={{ transform: showHistory ? 'rotate(270deg)' : 'rotate(90deg)', transition: 'transform 0.2s ease' }} />
       </button>
       <div className={`chat-history-panel ${showHistory ? '' : 'collapsed'}`}>
         <div className="chat-history-header">
-          <span className="chat-history-title"><FileText size={12} /> Cronologia</span>
-          {showHistory && (
-            <div style={{ display: 'flex', gap: '5px' }}>
-              <button 
-                className="chat-new-session-btn" 
-                onClick={onDuplicateSession} 
-                title="Duplica chat attiva corrente"
-                style={{ background: 'rgba(255,255,255,0.05)', borderColor: 'rgba(255,255,255,0.1)' }}
-              >
-                Duplica
-              </button>
-              <button className="chat-new-session-btn" onClick={onNewSession}><Plus size={12} /> Nuova</button>
-            </div>
-          )}
+          <div className="chat-history-header-left">
+            <FileText size={13} />
+            <span className="chat-history-title">Cronologia</span>
+          </div>
+
+          <div className="chat-history-header-actions">
+            {showHistory && (
+              <>
+                <button 
+                  className="chat-new-session-btn" 
+                  onClick={handleDuplicateMobile} 
+                  title="Duplica chat attiva corrente"
+                >
+                  Duplica
+                </button>
+                <button
+                  className="chat-new-session-btn highlight"
+                  onClick={handleNewSessionMobile}
+                  title="Nuova conversazione"
+                >
+                  <Plus size={12} /> Nuova
+                </button>
+              </>
+            )}
+            <button
+              className="chat-history-close-btn"
+              onClick={onToggle}
+              title="Chiudi cronologia"
+              aria-label="Chiudi cronologia"
+            >
+              <X size={14} />
+            </button>
+          </div>
         </div>
         {showHistory && (
           <div className="chat-history-list">
@@ -43,7 +92,11 @@ export default function ChatHistory({
                   const modelName = session.model ? session.model.split('/').pop() : 'Default';
 
                   return (
-                    <div key={session.id} className={`chat-history-item ${activeSessionId === session.id ? 'active' : ''}`} onClick={() => onSwitchSession(session.id)}>
+                    <div
+                      key={session.id}
+                      className={`chat-history-item ${activeSessionId === session.id ? 'active' : ''}`}
+                      onClick={() => handleItemSelect(session.id)}
+                    >
                       <div className="chat-history-item-icon"><Bot size={12} /></div>
                       <div className="chat-history-item-content">
                         {editingSessionName === session.id ? (

@@ -2,7 +2,7 @@ import { useState, useCallback, useRef, useEffect } from 'react';
 import { MAX_ATTACHMENTS, createSession, MAX_HISTORY } from '../chatStorage';
 import { getModelRoutingInfo } from '../modelProviderMap';
 import { getAgentStyle } from '../AgentMessage';
-import { recordModelChatSpeed } from './modelSpecsHelper';
+import { recordModelChatSpeed, removeModelChatSpeed, isErrorMessage } from './modelSpecsHelper';
 import {
   speakAgentMessage, stopSpeech,
   startSpeechStream, pushSpeechStream, endSpeechStream,
@@ -113,7 +113,7 @@ export function useChatStreaming({
   const [autoApprove, setAutoApprove] = useState(false);
   const [currentPlan, setCurrentPlan] = useState(null);
   const [planExecuting, setPlanExecuting] = useState(false);
-  const [showHistory, setShowHistory] = useState(true);
+  const [showHistory, setShowHistory] = useState(false);
   const [showFilePicker, setShowFilePicker] = useState(false);
 
   const abortRef = useRef(null);
@@ -580,27 +580,39 @@ export function useChatStreaming({
         }
       }
 
-      if (!streamGenerationTimeMs && firstTokenTime) {
-        streamGenerationTimeMs = Math.round(performance.now() - firstTokenTime);
-      }
-      if (!streamTokenCount && generatedTokenCount > 0) {
-        streamTokenCount = Math.round(generatedTokenCount);
-      }
+      const isStreamError = Boolean(hasError || isErrorMessage(finalContent) || isErrorMessage(fullText) || isErrorMessage(streamErrorMsg));
 
-      // La velocità pura t/s è rigorosamente Token / Tempo Generazione
-      if (streamTokenCount && streamGenerationTimeMs && streamGenerationTimeMs > 0) {
-        streamTps = parseFloat((streamTokenCount / (streamGenerationTimeMs / 1000)).toFixed(1));
-      } else if (!streamTps && firstTokenTime) {
-        const elapsedSec = (performance.now() - firstTokenTime) / 1000;
-        if (elapsedSec > 0.2) {
-          if (!tpsFromRuntime) {
-            streamTps = parseFloat((generatedTokenCount / elapsedSec).toFixed(1));
+      if (isStreamError) {
+        streamTps = null;
+        streamTokenCount = null;
+        streamGenerationTimeMs = null;
+        streamWps = null;
+        if (modelName) {
+          removeModelChatSpeed(modelName);
+        }
+      } else {
+        if (!streamGenerationTimeMs && firstTokenTime) {
+          streamGenerationTimeMs = Math.round(performance.now() - firstTokenTime);
+        }
+        if (!streamTokenCount && generatedTokenCount > 0) {
+          streamTokenCount = Math.round(generatedTokenCount);
+        }
+
+        // La velocità pura t/s è rigorosamente Token / Tempo Generazione (solo per risposte andate a buon fine)
+        if (streamTokenCount && streamGenerationTimeMs && streamGenerationTimeMs > 0) {
+          streamTps = parseFloat((streamTokenCount / (streamGenerationTimeMs / 1000)).toFixed(1));
+        } else if (!streamTps && firstTokenTime) {
+          const elapsedSec = (performance.now() - firstTokenTime) / 1000;
+          if (elapsedSec > 0.2) {
+            if (!tpsFromRuntime) {
+              streamTps = parseFloat((generatedTokenCount / elapsedSec).toFixed(1));
+            }
           }
         }
-      }
 
-      if (streamTps && modelName) {
-        recordModelChatSpeed(modelName, streamTps);
+        if (streamTps && modelName) {
+          recordModelChatSpeed(modelName, streamTps);
+        }
       }
 
 
@@ -613,21 +625,22 @@ export function useChatStreaming({
           n[n.length - 1] = {
             ...n[n.length - 1],
             content: finalContent,
-            thinking: resolvedThinking,
+            error: isStreamError ? (streamErrorMsg || true) : undefined,
+            thinking: isStreamError ? undefined : resolvedThinking,
             streaming: false,
             streamingThinking: false,
             statusMessage: undefined,
-            created_files: streamCreatedFiles.length > 0 ? streamCreatedFiles : n[n.length - 1].created_files,
-            actions_log: streamActionsLog.length > 0 ? streamActionsLog : n[n.length - 1].actions_log,
-            tool_calls: streamToolCalls,
-            tool_approvals: streamToolApprovals,
-            routing_time_ms: streamRoutingTimeMs || n[n.length - 1].routing_time_ms,
-            load_duration_ms: streamLoadDurationMs || n[n.length - 1].load_duration_ms,
-            generation_time_ms: streamGenerationTimeMs || n[n.length - 1].generation_time_ms,
-            token_count: streamTokenCount || n[n.length - 1].token_count,
-            tokens_per_second: streamTps || n[n.length - 1].tokens_per_second,
-            words_per_second: streamWps || n[n.length - 1].words_per_second,
-            metrics: {
+            created_files: isStreamError ? [] : (streamCreatedFiles.length > 0 ? streamCreatedFiles : n[n.length - 1].created_files),
+            actions_log: isStreamError ? [] : (streamActionsLog.length > 0 ? streamActionsLog : n[n.length - 1].actions_log),
+            tool_calls: isStreamError ? [] : streamToolCalls,
+            tool_approvals: isStreamError ? [] : streamToolApprovals,
+            routing_time_ms: isStreamError ? undefined : (streamRoutingTimeMs || n[n.length - 1].routing_time_ms),
+            load_duration_ms: isStreamError ? undefined : (streamLoadDurationMs || n[n.length - 1].load_duration_ms),
+            generation_time_ms: isStreamError ? undefined : (streamGenerationTimeMs || n[n.length - 1].generation_time_ms),
+            token_count: isStreamError ? undefined : (streamTokenCount || n[n.length - 1].token_count),
+            tokens_per_second: isStreamError ? undefined : (streamTps || n[n.length - 1].tokens_per_second),
+            words_per_second: isStreamError ? undefined : (streamWps || n[n.length - 1].words_per_second),
+            metrics: isStreamError ? undefined : {
               routing_time_ms: streamRoutingTimeMs || n[n.length - 1].routing_time_ms,
               load_duration_ms: streamLoadDurationMs || n[n.length - 1].load_duration_ms,
               generation_time_ms: streamGenerationTimeMs || n[n.length - 1].generation_time_ms,
@@ -687,26 +700,32 @@ export function useChatStreaming({
       const routedStyle = getAgentStyle(routedAgentId);
       const resolvedRole = data.agent_role || routedStyle?.name || data.agent_name || (routedAgentId ? routedAgentId.replace('_', ' ') : 'Sigma Assistant');
       const resolvedImage = data.agent_image || routedStyle?.image || '/images/default.png';
-      const routingTimeMs = data.routing_time_ms ?? data.metrics?.routing_time_ms ?? null;
-      const tokensPerSecond = data.tokens_per_second ?? data.metrics?.tokens_per_second ?? null;
+      const isJsonError = Boolean(data.error || isErrorMessage(data.response));
+      const routingTimeMs = isJsonError ? null : (data.routing_time_ms ?? data.metrics?.routing_time_ms ?? null);
+      const tokensPerSecond = isJsonError ? null : (data.tokens_per_second ?? data.metrics?.tokens_per_second ?? null);
+
+      if (isJsonError && selectedModel) {
+        removeModelChatSpeed(selectedModel);
+      } else if (tokensPerSecond && selectedModel) {
+        recordModelChatSpeed(selectedModel, tokensPerSecond);
+      }
+
       const assistant = {
         role: 'assistant',
         content: cleanModelTags(data.response) || '⚠️ Nessuna risposta.',
-        thinking: data.thinking || null,
-        actions_log: data.actions_log || [],
-        // La corsia veloce risponde qui invece che in streaming: gli strumenti
-        // eseguiti e le conferme in attesa arrivano per questa strada.
-        tool_calls: data.tool_calls || [],
-        tool_approvals: data.tool_approvals || [],
+        thinking: isJsonError ? null : (data.thinking || null),
+        actions_log: isJsonError ? [] : (data.actions_log || []),
+        tool_calls: isJsonError ? [] : (data.tool_calls || []),
+        tool_approvals: isJsonError ? [] : (data.tool_approvals || []),
         timestamp: new Date().toISOString(),
-        error: data.error || null,
+        error: isJsonError ? (data.error || true) : null,
         agent_id: routedAgentId,
         agentName: `${resolvedRole} (${selectedModel})`,
         agentRole: resolvedRole,
         agentImage: resolvedImage,
         routing_time_ms: routingTimeMs,
         tokens_per_second: tokensPerSecond,
-        metrics: {
+        metrics: isJsonError ? undefined : {
           routing_time_ms: routingTimeMs,
           tokens_per_second: tokensPerSecond
         }

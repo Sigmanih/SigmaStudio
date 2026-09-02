@@ -1,8 +1,29 @@
 /* ==============================================================================
    LAYER 2 (MODULES) | Chat Mobile & Responsive Display Optimizer
    Ottimizzazione completa per smartphone e monitor a risoluzione ridotta (< 768px)
+   Sigma Studio - Chat Swarm & Assistente AI
    ============================================================================== */
 
+/* --- Default Desktop Styles for Elements Managed by Mobile Optimizer --- */
+.chat-history-backdrop {
+  display: none;
+}
+
+.chat-history-close-btn {
+  display: none;
+}
+
+.chat-header-copy-short {
+  display: none;
+}
+
+.context-gauge-text-short {
+  display: none;
+}
+
+/* ==============================================================================
+   MOBILE BREAKPOINT (< 768px)
+   ============================================================================== */
 @media (max-width: 768px) {
   /* 1. Fullscreen Mobile Chat Floating Panel / Modal */
   .ai-chat-panel {
@@ -20,11 +41,11 @@
     min-height: 0 !important;
     border-radius: 0 !important;
     border: none !important;
-    z-index: var(--z-modal) !important;
+    z-index: var(--z-modal, 1000) !important;
     resize: none !important;
     transform: none !important;
     box-shadow: none !important;
-    background: var(--sigma-bg) !important;
+    background: var(--sigma-bg, #0a0e1a) !important;
     display: flex !important;
     flex-direction: column !important;
   }
@@ -40,201 +61,563 @@
     display: flex !important;
     flex-direction: column !important;
     overflow: hidden !important;
-    background: var(--sigma-bg) !important;
+    background: var(--sigma-bg, #0a0e1a) !important;
+    position: relative !important;
   }
 
-  /* Banner Compatta su Mobile */
-  .chat-workspace-root > div:first-child {
+  /* 3. Hero Visual Banner - Ultra-Compatto su Mobile */
+  .chat-workspace-banner {
     padding: 8px 12px !important;
     min-height: auto !important;
+    border-radius: 0 !important;
+    flex-shrink: 0 !important;
   }
 
-  .chat-workspace-root > div:first-child h1 {
+  .chat-workspace-banner-inner {
+    display: flex !important;
+    align-items: center !important;
+    justify-content: space-between !important;
+    gap: 8px !important;
+    width: 100% !important;
+    flex-wrap: nowrap !important;
+  }
+
+  .chat-workspace-banner-content {
+    max-width: calc(100% - 145px) !important;
+    min-width: 0 !important;
+  }
+
+  .chat-workspace-banner-badge {
+    display: none !important;
+  }
+
+  .chat-workspace-banner-title {
     font-size: 0.95rem !important;
     margin: 0 !important;
+    line-height: 1.25 !important;
+    white-space: nowrap !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+    font-weight: 800 !important;
   }
 
-  .chat-workspace-root > div:first-child p {
+  .chat-workspace-banner-desc {
     display: none !important;
   }
 
-  .chat-workspace-root > div:first-child div[style*="inline-flex"] {
-    display: none !important;
+  .chat-workspace-banner-actions {
+    display: flex !important;
+    align-items: center !important;
+    gap: 6px !important;
+    flex-shrink: 0 !important;
   }
 
-  .chat-workspace-root > div:first-child button {
-    padding: 5px 8px !important;
-    font-size: 0.7rem !important;
-    border-radius: 6px !important;
+  .chat-workspace-banner-btn {
+    padding: 5px 9px !important;
+    font-size: 0.72rem !important;
+    border-radius: 8px !important;
+    height: 32px !important;
+    font-weight: 700 !important;
+    white-space: nowrap !important;
+    cursor: pointer !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
   }
 
-  /* 3. Chat Header */
+  .chat-workspace-banner-btn.secondary.active {
+    background: rgba(0, 210, 255, 0.2) !important;
+    border-color: rgba(0, 210, 255, 0.4) !important;
+    color: #00d2ff !important;
+  }
+
+  /* 4. Chat Header */
   .chat-header,
   .chat-workspace-header {
-    padding: 8px 10px !important;
-    min-height: 40px !important;
+    padding: 6px 10px !important;
+    min-height: 38px !important;
+    flex-shrink: 0 !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: space-between !important;
   }
 
-  .chat-header-left span:first-of-type {
+  .chat-header-title {
     font-size: 0.78rem !important;
+    font-weight: 800 !important;
   }
 
-  .chat-header-left span:nth-of-type(2) {
-    font-size: 0.6rem !important;
+  .chat-header-tokens {
+    font-size: 0.62rem !important;
     max-width: 100px !important;
     overflow: hidden !important;
     text-overflow: ellipsis !important;
     white-space: nowrap !important;
   }
 
-  /* 4. Chat Body & Messages Area */
+  .chat-header-copy-btn {
+    padding: 3px 6px !important;
+    font-size: 0.68rem !important;
+  }
+
+  .chat-header-copy-full {
+    display: none !important;
+  }
+
+  .chat-header-copy-short {
+    display: inline !important;
+  }
+
+  /* 5. Chat Body & Off-Canvas Drawer Cronologia */
   .chat-body,
   .chat-workspace-body {
     position: relative !important;
     flex: 1 !important;
     min-height: 0 !important;
     overflow: hidden !important;
+    display: flex !important;
   }
 
-  /* Chat History as an Overlay Drawer on Mobile */
+  /* Backdrop oscurante quando la cronologia è aperta su mobile */
+  .chat-history-backdrop {
+    display: block !important;
+    position: fixed !important;
+    top: 0 !important;
+    left: 0 !important;
+    right: 0 !important;
+    bottom: 0 !important;
+    width: 100vw !important;
+    height: 100vh !important;
+    height: 100dvh !important;
+    background: rgba(0, 0, 0, 0.7) !important;
+    backdrop-filter: blur(4px) !important;
+    -webkit-backdrop-filter: blur(4px) !important;
+    z-index: 180 !important;
+    transition: opacity 0.2s ease !important;
+  }
+
+  /* Drawer off-canvas per la cronologia */
   .chat-history-panel {
-    position: absolute !important;
+    position: fixed !important;
     top: 0 !important;
     bottom: 0 !important;
     left: 0 !important;
-    width: 85% !important;
-    max-width: 290px !important;
-    z-index: 150 !important;
-    box-shadow: 0 0 50px rgba(0, 0, 0, 0.9) !important;
-    background: var(--sigma-card-bg) !important;
-    border-right: 1px solid var(--sigma-primary-border) !important;
+    width: 82% !important;
+    max-width: 310px !important;
+    height: 100vh !important;
+    height: 100dvh !important;
+    z-index: 190 !important;
+    background: var(--sigma-card-bg, #0d1222) !important;
+    box-shadow: 0 0 60px rgba(0, 0, 0, 0.95) !important;
+    border-right: 1px solid rgba(0, 210, 255, 0.3) !important;
+    display: flex !important;
+    flex-direction: column !important;
+    transition: transform 0.28s cubic-bezier(0.16, 1, 0.3, 1) !important;
+    transform: translateX(0) !important;
   }
 
+  /* Quando collassato: scorre completamente a sinistra fuori schermo */
+  .chat-history-panel.collapsed {
+    transform: translateX(-100%) !important;
+    pointer-events: none !important;
+    box-shadow: none !important;
+    width: 0 !important;
+    min-width: 0 !important;
+    visibility: hidden !important;
+  }
+
+  /* Nascondi la linguetta collassa fissa su desktop per non intralciare su mobile */
+  .chat-collapse-btn {
+    display: none !important;
+  }
+
+  /* Pulsante chiudi ✕ nella cronologia */
+  .chat-history-close-btn {
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    width: 28px !important;
+    height: 28px !important;
+    border-radius: 6px !important;
+    background: rgba(255, 255, 255, 0.08) !important;
+    border: 1px solid rgba(255, 255, 255, 0.15) !important;
+    color: #cbd5e1 !important;
+    cursor: pointer !important;
+    transition: all 0.15s ease !important;
+  }
+
+  .chat-history-close-btn:active {
+    background: rgba(239, 68, 68, 0.25) !important;
+    color: #ef4444 !important;
+  }
+
+  .chat-history-header {
+    display: flex !important;
+    align-items: center !important;
+    justify-content: space-between !important;
+    padding: 12px 14px !important;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08) !important;
+    background: rgba(0, 0, 0, 0.25) !important;
+  }
+
+  .chat-history-header-left {
+    display: flex !important;
+    align-items: center !important;
+    gap: 8px !important;
+    font-size: 0.88rem !important;
+    font-weight: 700 !important;
+    color: #f1f5f9 !important;
+  }
+
+  .chat-history-header-actions {
+    display: flex !important;
+    align-items: center !important;
+    gap: 6px !important;
+  }
+
+  .chat-new-session-btn {
+    padding: 4px 8px !important;
+    font-size: 0.72rem !important;
+    border-radius: 6px !important;
+  }
+
+  .chat-history-list {
+    flex: 1 !important;
+    overflow-y: auto !important;
+    padding: 8px 6px !important;
+    -webkit-overflow-scrolling: touch !important;
+  }
+
+  .chat-history-item {
+    padding: 10px 12px !important;
+    border-radius: 8px !important;
+    margin: 4px 0 !important;
+    min-height: 48px !important; /* Facile da toccare con le dita */
+    box-sizing: border-box !important;
+  }
+
+  .chat-history-item-name {
+    font-size: 0.82rem !important;
+    font-weight: 600 !important;
+  }
+
+  .chat-history-item-meta {
+    font-size: 0.68rem !important;
+  }
+
+  .chat-history-item-delete {
+    width: 28px !important;
+    height: 28px !important;
+    opacity: 0.75 !important;
+  }
+
+  /* 6. Messages Area & Message Bubbles */
   .chat-messages,
   .chat-workspace-messages {
     flex: 1 !important;
     min-height: 0 !important;
     overflow-y: auto !important;
-    padding: 8px 10px !important;
-    gap: 10px !important;
+    padding: 8px 8px !important;
+    gap: 8px !important;
     width: 100% !important;
     -webkit-overflow-scrolling: touch !important;
-  }
-
-  /* 5. Message Bubbles (User & Agent) */
-  .chat-msg-row,
-  .agent-msg-box,
-  .user-msg-box {
-    max-width: 100% !important;
-    width: 100% !important;
-    padding: 10px 12px !important;
-    border-radius: var(--sigma-radius-md) !important;
     box-sizing: border-box !important;
   }
 
-  .agent-msg-header,
-  .user-msg-header {
-    margin-bottom: 6px !important;
+  .chat-message-wrapper {
+    width: 100% !important;
+    max-width: 100% !important;
   }
 
-  .agent-msg-content,
-  .user-msg-content {
-    font-size: 0.88rem !important;
-    line-height: 1.45 !important;
+  .chat-message {
+    width: 100% !important;
+    max-width: 100% !important;
+    box-sizing: border-box !important;
+  }
+
+  .chat-bubble {
+    width: 100% !important;
+    max-width: 100% !important;
+    border-radius: 10px !important;
+    box-sizing: border-box !important;
+  }
+
+  /* Header del messaggio su Mobile */
+  .chat-msg-header {
+    padding: 6px 10px !important;
+    gap: 8px !important;
+    border-radius: 10px 10px 0 0 !important;
+    flex-wrap: wrap !important;
+    align-items: center !important;
+  }
+
+  /* Avatar compatto da 30px anziché 48px */
+  .chat-msg-avatar {
+    width: 30px !important;
+    height: 30px !important;
+    min-width: 30px !important;
+    min-height: 30px !important;
+    border-width: 1.5px !important;
+  }
+
+  .chat-msg-role {
+    font-size: 0.78rem !important;
+    font-weight: 700 !important;
+  }
+
+  .chat-msg-model {
+    font-size: 0.64rem !important;
+    max-width: 120px !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+    white-space: nowrap !important;
+  }
+
+  .chat-msg-time {
+    font-size: 0.58rem !important;
+  }
+
+  .chat-msg-copy-btn {
+    margin-left: auto !important;
+    padding: 2px 6px !important;
+    font-size: 0.62rem !important;
+  }
+
+  .chat-msg-delete-btn {
+    opacity: 0.7 !important;
+    position: static !important;
+    margin-left: 4px !important;
+  }
+
+  .chat-msg-agent-badge {
+    padding: 4px 8px !important;
+    font-size: 0.68rem !important;
+  }
+
+  /* Area Contenuto del messaggio */
+  .chat-msg-content,
+  .chat-content.chat-md {
+    padding: 8px 10px !important;
+    font-size: 0.85rem !important;
+    line-height: 1.5 !important;
     word-break: break-word !important;
     overflow-wrap: anywhere !important;
   }
 
-  /* Code Blocks, Tables & Mermaid Diagrams in Messages */
+  /* Blocchi di codice Markdown & Pre formattazione */
+  .chat-content.chat-md pre,
   .agent-msg-content pre,
   .markdown-body pre,
   .prose pre {
-    max-width: calc(100vw - 44px) !important;
+    max-width: calc(100vw - 36px) !important;
     overflow-x: auto !important;
-    font-size: 0.74rem !important;
+    -webkit-overflow-scrolling: touch !important;
+    font-size: 0.72rem !important;
     padding: 8px 10px !important;
-    border-radius: 8px !important;
+    border-radius: 6px !important;
+    margin: 6px 0 !important;
+    box-sizing: border-box !important;
   }
 
+  /* Tabelle Markdown */
+  .chat-content.chat-md table,
   .agent-msg-content table,
   .markdown-body table {
     display: block !important;
     width: 100% !important;
     max-width: 100% !important;
     overflow-x: auto !important;
+    -webkit-overflow-scrolling: touch !important;
+    font-size: 0.72rem !important;
+    margin: 6px 0 !important;
   }
 
-  /* Reasoning Collapsible Box */
-  .reasoning-box,
-  .thinking-box {
-    max-width: 100% !important;
-    padding: 8px 10px !important;
-    font-size: 0.78rem !important;
-  }
-
-  /* 6. Actions Bar */
-  .actions-bar {
-    padding: 4px 8px !important;
-    gap: 4px !important;
+  /* Formule KaTeX */
+  .katex-display {
+    max-width: calc(100vw - 40px) !important;
     overflow-x: auto !important;
-    scrollbar-width: none !important;
+    overflow-y: hidden !important;
+    -webkit-overflow-scrolling: touch !important;
+    padding: 4px 0 !important;
   }
 
-  .actions-bar::-webkit-scrollbar {
+  /* Ragionamento e Thinking Collapsible */
+  .chat-thinking,
+  .chat-thinking-section,
+  details {
+    max-width: 100% !important;
+    font-size: 0.78rem !important;
+    padding: 6px 8px !important;
+    box-sizing: border-box !important;
+  }
+
+  /* Barra Audio TTS Player */
+  .chat-audio-player-bar {
+    padding: 6px 8px !important;
+    flex-wrap: wrap !important;
+    gap: 6px !important;
+    font-size: 0.7rem !important;
+  }
+
+  .chat-audio-player-controls {
+    gap: 4px !important;
+  }
+
+  .chat-audio-btn {
+    padding: 3px 6px !important;
+    font-size: 0.65rem !important;
+  }
+
+  /* 7. Actions Bar (Modalità Operative & Gauge Contesto) */
+  .chat-actions-bar {
+    padding: 4px 8px !important;
+    gap: 6px !important;
+    min-height: 38px !important;
+    flex-shrink: 0 !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: space-between !important;
+    background: rgba(0, 0, 0, 0.3) !important;
+  }
+
+  .chat-modes-group {
+    display: flex !important;
+    align-items: center !important;
+    gap: 3px !important;
+  }
+
+  .chat-mode-btn {
+    padding: 3px 8px !important;
+    font-size: 0.72rem !important;
+    height: 28px !important;
+    border-radius: 6px !important;
+  }
+
+  .chat-mode-icon {
+    font-size: 0.8rem !important;
+  }
+
+  .chat-mode-label {
+    font-size: 0.72rem !important;
+    font-weight: 700 !important;
+  }
+
+  .chat-actions-right {
+    display: flex !important;
+    align-items: center !important;
+    gap: 4px !important;
+  }
+
+  .context-gauge-pill {
+    padding: 2px 6px !important;
+    height: 24px !important;
+    display: flex !important;
+    align-items: center !important;
+    gap: 4px !important;
+  }
+
+  .context-gauge-bar-outer {
+    width: 32px !important;
+    height: 4px !important;
+  }
+
+  .context-gauge-text {
     display: none !important;
   }
 
-  /* 7. Input Area & Control Strip */
+  .context-gauge-text-short {
+    display: inline !important;
+    font-size: 0.65rem !important;
+    font-weight: 700 !important;
+    color: #00d2ff !important;
+  }
+
+  /* 8. Input Area & Control Strip */
   .chat-input-area,
   .chat-workspace-input-area {
-    padding: 6px 8px env(safe-area-inset-bottom, 8px) !important;
-    background: var(--sigma-surface) !important;
-    border-top: 1px solid var(--sigma-border) !important;
+    padding: 6px 8px 4px !important;
+    background: var(--sigma-surface, #0c101c) !important;
+    border-top: 1px solid var(--sigma-border, rgba(255, 255, 255, 0.08)) !important;
     flex-shrink: 0 !important;
+    display: flex !important;
+    flex-direction: column !important;
+    gap: 4px !important;
   }
 
   .chat-input-controls-strip {
     display: flex !important;
     flex-direction: column !important;
-    gap: 6px !important;
-    padding: 2px 0 6px !important;
+    gap: 4px !important;
+    padding: 1px 0 3px !important;
   }
 
   .chat-input-model-role-group {
-    display: grid !important;
-    grid-template-columns: 1fr 1fr !important;
-    gap: 6px !important;
+    display: flex !important;
+    flex-direction: column !important;
+    gap: 5px !important;
     width: 100% !important;
+    min-width: 0 !important;
   }
 
   .chat-control-field {
-    min-width: 0 !important;
+    display: flex !important;
+    align-items: center !important;
     width: 100% !important;
+    min-width: 0 !important;
+    gap: 8px !important;
   }
 
   .chat-control-label {
-    display: none !important;
+    display: inline-block !important;
+    font-size: 0.65rem !important;
+    font-weight: 800 !important;
+    color: var(--primary, #00d2ff) !important;
+    min-width: 54px !important;
+    flex-shrink: 0 !important;
+    text-transform: uppercase !important;
+    letter-spacing: 0.5px !important;
+    user-select: none !important;
+  }
+
+  .model-selector-wrapper,
+  .manifesto-selector-wrapper {
+    flex: 1 !important;
+    min-width: 0 !important;
+    width: 100% !important;
+    display: flex !important;
   }
 
   .model-selector-btn,
   .manifesto-selector-btn {
     width: 100% !important;
-    padding: 4px 8px !important;
-    font-size: 0.72rem !important;
+    max-width: 100% !important;
+    padding: 4px 10px !important;
+    font-size: 0.74rem !important;
     height: 32px !important;
+    border-radius: 8px !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: space-between !important;
+    box-sizing: border-box !important;
+    gap: 6px !important;
   }
 
   .manifesto-info,
   .model-selector-info {
     overflow: hidden !important;
+    min-width: 0 !important;
+    flex: 1 !important;
   }
 
   .manifesto-name,
   .model-selector-name {
-    font-size: 0.72rem !important;
+    font-size: 0.74rem !important;
     overflow: hidden !important;
     text-overflow: ellipsis !important;
     white-space: nowrap !important;
+    flex: 1 !important;
+    min-width: 0 !important;
+    text-align: left !important;
   }
 
   .manifesto-role-preview,
@@ -242,39 +625,55 @@
     display: none !important;
   }
 
-  /* Popover Dropdowns inside Modal / Screen */
+  /* Dropdown Popovers a Bottom-Sheet su Mobile */
   .model-selector-popover,
   .manifesto-popover {
     position: fixed !important;
-    left: 8px !important;
-    right: 8px !important;
-    bottom: 90px !important;
+    left: 6px !important;
+    right: 6px !important;
+    bottom: 80px !important;
     top: auto !important;
     width: auto !important;
-    max-width: calc(100vw - 16px) !important;
-    max-height: 55vh !important;
+    max-width: calc(100vw - 12px) !important;
+    max-height: 60vh !important;
     z-index: 2500 !important;
-    box-shadow: 0 16px 48px rgba(0, 0, 0, 0.9) !important;
+    box-shadow: 0 16px 48px rgba(0, 0, 0, 0.95) !important;
+    border-radius: 12px !important;
+    border: 1px solid rgba(0, 210, 255, 0.3) !important;
   }
 
-  /* Utilities Strip on Mobile */
+  /* Utilities Strip su Mobile (scorrimento orizzontale continuo su una riga) */
   .chat-input-utilities-group {
     display: flex !important;
     align-items: center !important;
-    justify-content: space-between !important;
+    flex-wrap: nowrap !important;
+    overflow-x: auto !important;
+    -webkit-overflow-scrolling: touch !important;
+    scrollbar-width: none !important;
     width: 100% !important;
     gap: 4px !important;
-    overflow-x: auto !important;
-    scrollbar-width: none !important;
     padding: 2px 0 !important;
   }
 
-  .chat-scroll-toggle span {
-    font-size: 0.65rem !important;
+  .chat-input-utilities-group::-webkit-scrollbar {
+    display: none !important;
   }
 
-  .chat-speaker-toggle {
-    padding: 3px 6px !important;
+  .chat-scroll-toggle,
+  .chat-speaker-toggle,
+  .chat-voice-tune-btn {
+    flex-shrink: 0 !important;
+    padding: 2px 6px !important;
+    height: 25px !important;
+    font-size: 0.62rem !important;
+    white-space: nowrap !important;
+  }
+
+  .chat-scroll-toggle span {
+    font-size: 0.62rem !important;
+  }
+
+  .chat-speaker-toggle span {
     font-size: 0.62rem !important;
   }
 
@@ -283,46 +682,119 @@
   .chat-workspace-input-row {
     display: flex !important;
     align-items: center !important;
-    gap: 6px !important;
+    gap: 5px !important;
     width: 100% !important;
     box-sizing: border-box !important;
   }
 
+  /* 16px previene lo zoom forzato su iOS Safari/WebKit quando l'input riceve il focus */
   .chat-input {
     min-height: 38px !important;
-    max-height: 85px !important;
-    font-size: 0.88rem !important;
-    padding: 8px 10px !important;
-    border-radius: var(--sigma-radius-sm) !important;
+    max-height: 90px !important;
+    font-size: 16px !important;
+    padding: 7px 10px !important;
+    border-radius: 8px !important;
     flex: 1 !important;
+    min-width: 0 !important;
+    box-sizing: border-box !important;
   }
 
   .chat-attach-inline-btn {
     width: 36px !important;
     height: 36px !important;
+    min-width: 36px !important;
+    min-height: 36px !important;
     padding: 0 !important;
     display: flex !important;
     align-items: center !important;
     justify-content: center !important;
     flex-shrink: 0 !important;
+    border-radius: 8px !important;
   }
 
   .chat-send-btn {
     width: 38px !important;
     height: 38px !important;
+    min-width: 38px !important;
+    min-height: 38px !important;
     padding: 0 !important;
     display: flex !important;
     align-items: center !important;
     justify-content: center !important;
     flex-shrink: 0 !important;
-    border-radius: var(--sigma-radius-sm) !important;
+    border-radius: 8px !important;
   }
 
   .chat-loop-wrapper {
     display: none !important;
   }
 
-  /* 8. Floating Dock Bar on Mobile */
+  /* 9. QuickConfigPanel Modal su Mobile */
+  .chat-quick-config {
+    position: fixed !important;
+    inset: 0 !important;
+    top: auto !important;
+    bottom: 0 !important;
+    width: 100% !important;
+    max-height: 80vh !important;
+    overflow-y: auto !important;
+    z-index: 2400 !important;
+    border-radius: 16px 16px 0 0 !important;
+    border: 1px solid rgba(0, 210, 255, 0.3) !important;
+    box-shadow: 0 -10px 40px rgba(0, 0, 0, 0.9) !important;
+    padding: 14px 12px !important;
+  }
+
+  .chat-quick-config-grid {
+    grid-template-columns: 1fr !important;
+    gap: 8px !important;
+  }
+
+  .qc-presets-row {
+    display: flex !important;
+    flex-wrap: nowrap !important;
+    overflow-x: auto !important;
+    scrollbar-width: none !important;
+    gap: 4px !important;
+    padding-bottom: 4px !important;
+  }
+
+  .qc-preset-btn {
+    flex-shrink: 0 !important;
+    font-size: 0.68rem !important;
+    padding: 4px 8px !important;
+    white-space: nowrap !important;
+  }
+
+  /* 9b. Chat Workspace Footer Mobile */
+  .chat-workspace-footer {
+    display: flex !important;
+    align-items: center !important;
+    justify-content: space-between !important;
+    padding: 6px 12px max(14px, env(safe-area-inset-bottom, 14px)) !important;
+    background: rgba(10, 14, 26, 0.95) !important;
+    border-top: 1px solid rgba(255, 255, 255, 0.05) !important;
+    font-size: 0.62rem !important;
+    color: var(--text-muted, #8b8fa3) !important;
+    flex-shrink: 0 !important;
+    min-height: 34px !important;
+    z-index: 10 !important;
+  }
+
+  .chat-footer-hint {
+    display: none !important;
+  }
+
+  .chat-footer-session-info {
+    display: none !important;
+  }
+
+  .chat-footer-model-name {
+    max-width: 140px !important;
+    font-size: 0.62rem !important;
+  }
+
+  /* 10. Floating Dock Bar on Mobile */
   .ai-float-dock-bar {
     bottom: 12px !important;
     left: 50% !important;

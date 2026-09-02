@@ -5,7 +5,7 @@ import McpToolStrip from './McpToolStrip';
 import ImageLightbox from './ImageLightbox';
 import { useApp } from '../../contexts/AppContext';
 import { useMusic } from '../../contexts/MusicContext';
-import { getModelSpecs } from './core/modelSpecsHelper';
+import { getModelSpecs, isErrorMessage } from './core/modelSpecsHelper';
 import 'katex/dist/katex.min.css';
 
 
@@ -991,8 +991,8 @@ export default function AgentMessage({
 
                 {m.error && <div className="chat-error">⚠️ {m.error}</div>}
 
-                {/* Performance & Hardware Metrics in bottom right */}
-                {!isUser && !isSystem && (() => {
+                {/* Performance & Hardware Metrics in bottom right (excluded on errors) */}
+                {!isUser && !isSystem && !m.error && !first.error && !isErrorMessage(m.content) && !isErrorMessage(first.content) && (() => {
                   const rawRouting = m.routing_time_ms ?? m.metrics?.routing_time_ms ?? first.routing_time_ms ?? first.metrics?.routing_time_ms;
                   const routingDisplay = rawRouting !== undefined && rawRouting !== null
                     ? (rawRouting >= 1000 ? `${(rawRouting / 1000).toFixed(2)}s` : `${Math.round(rawRouting)}ms`)

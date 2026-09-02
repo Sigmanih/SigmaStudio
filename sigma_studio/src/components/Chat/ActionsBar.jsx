@@ -66,6 +66,9 @@ export default function ActionsBar({
             <span className="context-gauge-text">
               {contextStats.usedTokens >= 1000 ? `${(contextStats.usedTokens / 1000).toFixed(1)}K` : contextStats.usedTokens} / {contextStats.numCtx >= 1000 ? `${Math.round(contextStats.numCtx / 1000)}K` : contextStats.numCtx}
             </span>
+            <span className="context-gauge-text-short">
+              {contextStats.pct || 0}% ctx
+            </span>
           </div>
         )}
         <button

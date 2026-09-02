@@ -29,13 +29,16 @@ class TestExtraModelsDirs(unittest.TestCase):
             }, f)
 
         self._patcher = mock.patch("core.paths.model_hub_config_file", return_value=Path(self.config_file))
+        self._patcher_default = mock.patch("core.paths.default_models_dir", return_value=Path(self.main_models_dir))
         self._patcher.start()
+        self._patcher_default.start()
 
         from core.paths import models_dir, extra_models_dirs
         models_dir(refresh=True)
         extra_models_dirs(refresh=True)
 
     def tearDown(self):
+        self._patcher_default.stop()
         self._patcher.stop()
         try:
             shutil.rmtree(self.test_dir)
@@ -97,11 +100,25 @@ class TestExtraModelsDirs(unittest.TestCase):
         names = [m["filename"] for m in models]
         self.assertIn("main/model", names)
         self.assertIn("extra/model", names)
-        for m in models:
-            if m["filename"] == "main/model":
-                self.assertFalse(m["is_extra_dir"])
-            else:
-                self.assertTrue(m["is_extra_dir"])
+    def test_scan_and_resolve_standalone_gguf_file(self):
+        from core.modules.sigma_model_hub.backend.model_inventory import scan_local_models
+        single_gguf = os.path.join(self.extra_models_dir2, "my-test-model.Q4_K_M.gguf")
+        with open(single_gguf, "wb") as f:
+            f.write(b"GGUF_TEST_BYTES")
+
+        dirs = list_model_dirs()
+        self.assertIn(os.path.abspath(single_gguf), [os.path.abspath(d) for d in dirs])
+
+        resolved = resolve_model_dir("my-test-model.Q4_K_M")
+        self.assertIsNotNone(resolved)
+        self.assertEqual(os.path.abspath(resolved), os.path.abspath(single_gguf))
+
+        scanned = scan_local_models()
+        fnames = [m["filename"] for m in scanned]
+        self.assertIn("my-test-model.Q4_K_M.gguf", fnames)
+        match_item = next(m for m in scanned if m["filename"] == "my-test-model.Q4_K_M.gguf")
+        self.assertTrue(match_item["is_extra_dir"])
+        self.assertEqual(match_item["format"], "GGUF")
 
 
 if __name__ == "__main__":

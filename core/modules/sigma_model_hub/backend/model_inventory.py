@@ -400,10 +400,18 @@ def _scan_single_dir(base_dir: str, is_extra: bool = False) -> List[Dict[str, An
 def scan_local_models(custom_dir: Optional[str] = None) -> List[Dict[str, Any]]:
     """Scans local disk for downloaded model files (.gguf, .safetensors, .bin, multi-shard repos).
     
-    Aggregates models from the primary models directory (or custom_dir if provided)
-    and all configured extra directories (e.g. secondary drives or external paths).
+    If custom_dir is provided and non-empty, scans that specific directory.
+    Otherwise, aggregates models from the primary models directory,
+    the default store/models directory, and all configured extra directories.
     """
-    primary_dir = os.path.abspath(custom_dir) if (custom_dir and os.path.exists(custom_dir)) else os.path.abspath(_models_dir())
+    if custom_dir:
+        primary_dir = os.path.abspath(custom_dir)
+        os.makedirs(primary_dir, exist_ok=True)
+        results = _scan_single_dir(primary_dir, is_extra=False)
+        results.sort(key=lambda x: x.get("modified_at", ""), reverse=True)
+        return results
+
+    primary_dir = os.path.abspath(_models_dir())
     os.makedirs(primary_dir, exist_ok=True)
 
     results: List[Dict[str, Any]] = []
@@ -419,18 +427,18 @@ def scan_local_models(custom_dir: Optional[str] = None) -> List[Dict[str, Any]]:
         except Exception:
             results.append(m)
 
-    # 2. Scansiona tutte le cartelle secondarie / extra collegate
-    for extra_d in extra_models_dirs(refresh=True):
+    # 2. Scansiona tutte le cartelle note e configurate da all_models_dirs
+    for d in all_models_dirs(refresh=True):
         try:
-            extra_abs = os.path.abspath(extra_d)
-            if extra_abs != primary_dir and os.path.exists(extra_abs) and os.path.isdir(extra_abs):
-                for m in _scan_single_dir(extra_abs, is_extra=True):
+            d_abs = os.path.abspath(str(d))
+            if d_abs != primary_dir and os.path.exists(d_abs) and os.path.isdir(d_abs):
+                for m in _scan_single_dir(d_abs, is_extra=True):
                     canon = os.path.abspath(m["path"])
                     if canon not in seen_paths:
                         seen_paths.add(canon)
                         results.append(m)
         except Exception as ex:
-            log.debug(f"[ModelInventory] Errore scansione directory modelli extra '{extra_d}': {ex}")
+            log.debug(f"[ModelInventory] Errore scansione directory modelli '{d}': {ex}")
 
     results.sort(key=lambda x: x.get("modified_at", ""), reverse=True)
     return results
@@ -617,12 +625,18 @@ def _trova_base_e_percorso(model_path_or_id: str, custom_dir: Optional[str] = No
     raw = str(model_path_or_id or "").strip()
     if not raw:
         return os.path.abspath(_models_dir()), None
+
+    base_dirs = []
     if custom_dir and os.path.exists(custom_dir):
-        base_dirs = [os.path.abspath(custom_dir)]
-    else:
-        base_dirs = [os.path.abspath(d) for d in all_models_dirs() if os.path.exists(d)]
-        if not base_dirs:
-            base_dirs = [os.path.abspath(_models_dir())]
+        base_dirs.append(os.path.abspath(custom_dir))
+
+    for d in all_models_dirs(refresh=True):
+        d_abs = os.path.abspath(str(d))
+        if d_abs not in base_dirs and os.path.exists(d_abs):
+            base_dirs.append(d_abs)
+
+    if not base_dirs:
+        base_dirs = [os.path.abspath(_models_dir())]
 
     for base in base_dirs:
         p = _percorso_modello(raw, base)

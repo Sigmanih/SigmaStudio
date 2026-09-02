@@ -38,6 +38,20 @@ export default function ChatFloatingPanel({ openFiles, onClose, onOpenConfig, on
     return g;
   })();
 
+  const handleSwitchSession = (sessionId) => {
+    core.switchToSession(sessionId);
+    if (typeof window !== 'undefined' && window.innerWidth <= 768) {
+      core.setShowHistory(false);
+    }
+  };
+
+  const handleNewSession = () => {
+    core.handleNewSession();
+    if (typeof window !== 'undefined' && window.innerWidth <= 768) {
+      core.setShowHistory(false);
+    }
+  };
+
   return (
     <div
       className={`ai-chat-panel ${resizing ? 'is-resizing' : ''} ${core.dragOver ? 'drag-over' : ''}`}
@@ -79,7 +93,7 @@ export default function ChatFloatingPanel({ openFiles, onClose, onOpenConfig, on
           groupedSessions={groupedSessions}
           sessionMessages={core.sessionMessages}
           activeSessionId={core.activeSessionId}
-          onSwitchSession={core.switchToSession}
+          onSwitchSession={handleSwitchSession}
           editingSessionName={core.editingSessionName}
           editNameValue={core.editNameValue}
           onEditNameChange={core.setEditNameValue}
@@ -87,7 +101,7 @@ export default function ChatFloatingPanel({ openFiles, onClose, onOpenConfig, on
           onKeyDown={core.handleRenameKeyDown}
           onStartRename={core.handleStartRename}
           onDeleteSession={core.handleDeleteSession}
-          onNewSession={core.handleNewSession}
+          onNewSession={handleNewSession}
           onDuplicateSession={core.handleDuplicateSession}
         />
         <ChatMessages
@@ -173,6 +187,28 @@ export default function ChatFloatingPanel({ openFiles, onClose, onOpenConfig, on
         onOpenFilePicker={() => core.setShowFilePicker(true)}
         attachedFiles={core.attachedFiles}
       />
+
+      {/* Chat Footer / Status Bar */}
+      <footer className="chat-workspace-footer">
+        <div className="chat-workspace-footer-left">
+          <span className="chat-footer-status-dot" title="Sigma Swarm Kernel Online" />
+          <span className="chat-footer-model-name">
+            {core.selectedModel ? core.selectedModel.split('/').pop() : 'Sigma AI Engine'}
+          </span>
+          <span className="chat-footer-divider">•</span>
+          <span className="chat-footer-hint">
+            <kbd>Enter</kbd> invia · <kbd>Shift</kbd>+<kbd>Enter</kbd> a capo
+          </span>
+        </div>
+        <div className="chat-workspace-footer-right">
+          {core.activeSessionId && (
+            <span className="chat-footer-session-info">
+              {core.sessions.find(s => s.id === core.activeSessionId)?.name || 'Chat Attiva'}
+            </span>
+          )}
+          <span className="chat-footer-badge">Σ-Studio</span>
+        </div>
+      </footer>
 
       {core.dragOver && <div className="chat-drop-overlay"><div>📤 Trascina i file qui per allegarli</div></div>}
       {core.showFilePicker && (

@@ -5,6 +5,10 @@ import react from '@vitejs/plugin-react'
 export default defineConfig({
   plugins: [react()],
 
+  build: {
+    cssCodeSplit: false,
+  },
+
   resolve: {
     // Un modulo in sviluppo non e' copiato dentro src/modules/: e' un
     // collegamento al repository dei moduli, cosi' una modifica fatta dentro

@@ -146,6 +146,46 @@ export function getAllModelChatSpeeds() {
 }
 
 /**
+ * Checks if a message text is an error output rather than valid generated inference content.
+ */
+export function isErrorMessage(text) {
+  if (!text || typeof text !== 'string') return false;
+  const trimmed = text.trim();
+  return (
+    trimmed.startsWith('❌') ||
+    trimmed.startsWith('⚠️') ||
+    trimmed.startsWith('Error:') ||
+    trimmed.startsWith('Errore:') ||
+    /^(?:❌|⚠️|\*\*Errore|\*\*Error|Error:|Errore:)/i.test(trimmed) ||
+    /SigmaEngine non ha potuto caricare/i.test(trimmed) ||
+    /llama-server non ha risposto/i.test(trimmed) ||
+    /non ha potuto caricare/i.test(trimmed) ||
+    /Errore caricamento modello/i.test(trimmed)
+  );
+}
+
+/**
+ * Removes recorded chat speed for a model (e.g. if an error occurred or speed was corrupted).
+ */
+export function removeModelChatSpeed(modelName) {
+  if (!modelName) return;
+  const rawKey = String(modelName).trim();
+  const cleanKey = rawKey.toLowerCase().replace(/\.gguf$/i, '').replace(/^[a-z0-9_-]+--/i, '').replace(/^[a-z0-9_-]+\//i, '');
+  try {
+    const speeds = getAllModelChatSpeeds();
+    delete speeds[rawKey];
+    delete speeds[rawKey.toLowerCase()];
+    if (cleanKey) delete speeds[cleanKey];
+    localStorage.setItem(SPEED_STORAGE_KEY, JSON.stringify(speeds));
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('sigma-model-speed-updated', { detail: { model: modelName, tps: null } }));
+    }
+  } catch (e) {
+    console.debug('[modelSpecsHelper] speed remove error:', e);
+  }
+}
+
+/**
  * Records live measured tokens per second (t/s) for a model after chatting.
  */
 export function recordModelChatSpeed(modelName, tps) {
@@ -378,3 +418,155 @@ export function getModelSpecs(modelName, availableModels = []) {
     chatSpeed: chatSpeed !== null ? chatSpeed : null
   };
 }
+
+/**
+ * Convert parameter string (e.g. "70B", "32B", "340M", "1.5B", "2.4T", "16x17B") to numeric value in billions.
+ */
+export function parseParamsNumeric(paramsStr, modelObj = null) {
+  if (modelObj?.params_count && !isNaN(modelObj.params_count)) {
+    return Number(modelObj.params_count);
+  }
+  let str = paramsStr || modelObj?.params_label || modelObj?.parameters || '';
+  if (!str) {
+    const raw = String(modelObj?.name || modelObj?.filename || modelObj?.model_id || '');
+    const m = raw.match(/(?:^|[_\-./ ])([0-9.]+)\s*([bBmMtT])(?:[_\-./ ]|$)/) || raw.match(/([0-9.]+)\s*([bBmMtT])/);
+    if (m) str = `${m[1]}${m[2]}`;
+  }
+  if (!str || typeof str !== 'string') return 0;
+
+  // Handle MoE e.g. "16x17B"
+  const moeMatch = str.match(/(\d+)\s*[xX]\s*(\d+(?:\.\d+)?)\s*([bBmMtT])?/i);
+  if (moeMatch) {
+    const numExperts = parseFloat(moeMatch[1]);
+    const expertSize = parseFloat(moeMatch[2]);
+    const unit = (moeMatch[3] || 'B').toUpperCase();
+    let mult = 1;
+    if (unit === 'T') mult = 1000;
+    else if (unit === 'M') mult = 0.001;
+    return numExperts * expertSize * mult;
+  }
+
+  // Handle formats like "95B (2.4T)" or "37B (671B)"
+  const firstMatch = str.match(/([0-9.]+)\s*([bBmMtT])/i);
+  if (firstMatch) {
+    const val = parseFloat(firstMatch[1]);
+    const unit = firstMatch[2].toUpperCase();
+    if (unit === 'T') return val * 1000;
+    if (unit === 'B') return val;
+    if (unit === 'M') return val * 0.001;
+    if (unit === 'K') return val * 0.000001;
+  }
+  return 0;
+}
+
+/**
+ * Convert size string or raw bytes/gb into numeric GB.
+ */
+export function parseSizeNumericGB(sizeStr, modelObj = null) {
+  if (modelObj?.size_gb !== undefined && modelObj.size_gb !== null && !isNaN(modelObj.size_gb)) {
+    return Number(modelObj.size_gb);
+  }
+  if (modelObj?.size_bytes !== undefined && modelObj.size_bytes !== null && !isNaN(modelObj.size_bytes)) {
+    return Number(modelObj.size_bytes) / (1024 * 1024 * 1024);
+  }
+  const s = sizeStr || modelObj?.size || modelObj?.size_label || '';
+  if (!s || typeof s !== 'string') return 0;
+
+  const match = s.match(/([0-9.]+)\s*([tTgGmMkK]b?)/i);
+  if (match) {
+    const val = parseFloat(match[1]);
+    const unit = match[2].toUpperCase();
+    if (unit.startsWith('T')) return val * 1024;
+    if (unit.startsWith('G')) return val;
+    if (unit.startsWith('M')) return val / 1024;
+    if (unit.startsWith('K')) return val / (1024 * 1024);
+  }
+  return 0;
+}
+
+/**
+ * Extract benchmark score percentage (0 - 100).
+ */
+export function getBenchmarkScoreNumeric(modelObj, itemSpecs = null) {
+  const bm = modelObj?.benchmark_summary || itemSpecs?.benchmark || null;
+  if (!bm) return 0;
+  const score = bm.score ?? bm.overall_pass_rate ?? bm.best_score;
+  if (score !== undefined && score !== null && !isNaN(score)) {
+    return Number(score);
+  }
+  return 0;
+}
+
+/**
+ * Extract live tokens per second.
+ */
+export function getSpeedTpsNumeric(modelObj) {
+  const chatTps = getModelChatSpeed(modelObj?.name, modelObj) ?? modelObj?.benchmark_summary?.tokens_per_sec;
+  if (chatTps !== undefined && chatTps !== null && !isNaN(chatTps)) {
+    return Number(chatTps);
+  }
+  return 0;
+}
+
+/**
+ * Sorts a list of models according to criterion ('default', 'size', 'params', 'speed', 'benchmark', 'name') and order ('desc', 'asc').
+ */
+export function sortModelsList(modelsList = [], sortBy = 'default', sortOrder = 'desc', allModelsPool = []) {
+  if (!Array.isArray(modelsList) || modelsList.length <= 1) return modelsList;
+  if (sortBy === 'default') {
+    if (sortOrder === 'asc') {
+      return [...modelsList].sort((a, b) => {
+        const nameA = String(a.display_name || a.clean_name || a.name || '').toLowerCase();
+        const nameB = String(b.display_name || b.clean_name || b.name || '').toLowerCase();
+        return nameA.localeCompare(nameB);
+      });
+    }
+    return modelsList;
+  }
+
+  const sorted = [...modelsList].sort((a, b) => {
+    const specsA = getModelSpecs(a.name, allModelsPool);
+    const specsB = getModelSpecs(b.name, allModelsPool);
+
+    let valA = 0;
+    let valB = 0;
+
+    switch (sortBy) {
+      case 'size':
+        valA = parseSizeNumericGB(specsA?.size, a);
+        valB = parseSizeNumericGB(specsB?.size, b);
+        break;
+      case 'params':
+        valA = parseParamsNumeric(specsA?.params, a);
+        valB = parseParamsNumeric(specsB?.params, b);
+        break;
+      case 'speed':
+        valA = getSpeedTpsNumeric(a) || (specsA?.chatSpeed ?? 0);
+        valB = getSpeedTpsNumeric(b) || (specsB?.chatSpeed ?? 0);
+        break;
+      case 'benchmark':
+        valA = getBenchmarkScoreNumeric(a, specsA);
+        valB = getBenchmarkScoreNumeric(b, specsB);
+        break;
+      case 'name': {
+        const nameA = String(a.display_name || a.clean_name || a.name || '').toLowerCase();
+        const nameB = String(b.display_name || b.clean_name || b.name || '').toLowerCase();
+        return sortOrder === 'asc' ? nameA.localeCompare(nameB) : nameB.localeCompare(nameA);
+      }
+      default:
+        return 0;
+    }
+
+    if (valA !== valB) {
+      return sortOrder === 'asc' ? valA - valB : valB - valA;
+    }
+
+    // Tie breaker: name A-Z
+    const nameA = String(a.display_name || a.clean_name || a.name || '').toLowerCase();
+    const nameB = String(b.display_name || b.clean_name || b.name || '').toLowerCase();
+    return nameA.localeCompare(nameB);
+  });
+
+  return sorted;
+}
+

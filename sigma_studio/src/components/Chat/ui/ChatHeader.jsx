@@ -46,11 +46,11 @@ export default function ChatHeader({
         }}>
           <MessageSquare size={13} />
         </div>
-        <span style={{ fontSize: '0.82rem', fontWeight: 800, color: '#f1f5f9', letterSpacing: '0.2px' }}>
+        <span className="chat-header-title" style={{ fontSize: '0.82rem', fontWeight: 800, color: '#f1f5f9', letterSpacing: '0.2px' }}>
           Sigma Swarm Chat
         </span>
         {contextStats && typeof contextStats === 'object' && contextStats.usedTokens !== undefined && (
-          <span style={{ fontSize: '0.66rem', color: '#8b8fa3', paddingLeft: '4px' }}>
+          <span className="chat-header-tokens" style={{ fontSize: '0.66rem', color: '#8b8fa3', paddingLeft: '4px' }}>
             • {contextStats.usedTokens >= 1000 ? `${(contextStats.usedTokens / 1000).toFixed(1)}k` : contextStats.usedTokens} / {contextStats.numCtx >= 1000 ? `${Math.round(contextStats.numCtx / 1000)}k` : contextStats.numCtx} ctx
           </span>
         )}
@@ -59,7 +59,7 @@ export default function ChatHeader({
       <div className="chat-header-right" style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
         {onCopyAll && (
           <button
-            className={`chat-header-btn ${copiedAll ? 'copied' : ''}`}
+            className={`chat-header-btn chat-header-copy-btn ${copiedAll ? 'copied' : ''}`}
             onClick={handleCopyAll}
             title="Copia l'intera conversazione negli appunti"
             style={{
@@ -76,7 +76,8 @@ export default function ChatHeader({
               transition: 'all 0.2s ease'
             }}
           >
-            {copiedAll ? '✓ Copiato!' : '📋 Copia Tutto'}
+            <span className="chat-header-copy-full">{copiedAll ? '✓ Copiato!' : '📋 Copia Tutto'}</span>
+            <span className="chat-header-copy-short">{copiedAll ? '✓' : '📋 Copia'}</span>
           </button>
         )}
         {onOpenConfig && (

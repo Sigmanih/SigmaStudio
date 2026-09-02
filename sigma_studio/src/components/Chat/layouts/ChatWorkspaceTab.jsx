@@ -11,7 +11,7 @@ import ActionsBar from '../ActionsBar';
 import QuickConfigPanel from '../ui/QuickConfigPanel';
 
 export default function ChatWorkspaceTab() {
-  const { theme } = useApp();
+  const { theme, setLeftVisible, setMobileSidebarOpen } = useApp();
   const core = useChatCore({});
 
 
@@ -24,86 +24,84 @@ export default function ChatWorkspaceTab() {
     return acc;
   }, {});
 
+  const handleSwitchSession = (sessionId) => {
+    core.switchToSession(sessionId);
+    if (typeof window !== 'undefined' && window.innerWidth <= 768) {
+      core.setShowHistory(false);
+    }
+  };
+
+  const handleNewSession = () => {
+    core.handleNewSession();
+    if (typeof window !== 'undefined' && window.innerWidth <= 768) {
+      core.setShowHistory(false);
+    }
+  };
+
   return (
     <div className="chat-workspace-root">
       {/* Hero Visual Banner with Standardized Theme System & Dimensions */}
-      <div style={{
-        position: 'relative',
-        borderRadius: 0,
-        overflow: 'hidden',
-        padding: '24px 32px',
-        minHeight: '110px',
-        borderBottom: theme === 'light' ? '1px solid rgba(234, 88, 12, 0.35)' : '1px solid rgba(0, 210, 255, 0.25)',
-        boxShadow: theme === 'light' ? '0 8px 24px rgba(234, 88, 12, 0.08)' : '0 8px 32px rgba(0,0,0,0.4)',
-        backgroundImage: theme === 'light'
-          ? 'linear-gradient(135deg, rgba(254, 252, 247, 0.76) 0%, rgba(248, 242, 232, 0.70) 100%), url("/images/chat_swarm_banner.jpg")'
-          : 'linear-gradient(135deg, rgba(10, 14, 26, 0.85) 0%, rgba(14, 22, 42, 0.80) 100%), url("/images/chat_swarm_banner.jpg")',
-        backgroundSize: 'cover',
-        backgroundRepeat: 'no-repeat',
-        backgroundPosition: 'center center',
-        flexShrink: 0
-      }}>
-        <div style={{ position: 'relative', zIndex: 2, display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '16px' }}>
-          <div style={{ maxWidth: '680px' }}>
-            <div style={{
-              display: 'inline-flex', alignItems: 'center', gap: '6px',
-              padding: '3px 12px', borderRadius: '14px',
+      <div
+        className="chat-workspace-banner"
+        style={{
+          borderBottom: theme === 'light' ? '1px solid rgba(234, 88, 12, 0.35)' : '1px solid rgba(0, 210, 255, 0.25)',
+          boxShadow: theme === 'light' ? '0 8px 24px rgba(234, 88, 12, 0.08)' : '0 8px 32px rgba(0,0,0,0.4)',
+          backgroundImage: theme === 'light'
+            ? 'linear-gradient(135deg, rgba(254, 252, 247, 0.76) 0%, rgba(248, 242, 232, 0.70) 100%), url("/images/chat_swarm_banner.jpg")'
+            : 'linear-gradient(135deg, rgba(10, 14, 26, 0.85) 0%, rgba(14, 22, 42, 0.80) 100%), url("/images/chat_swarm_banner.jpg")',
+          backgroundSize: 'cover',
+          backgroundRepeat: 'no-repeat',
+          backgroundPosition: 'center center',
+          flexShrink: 0
+        }}
+      >
+        <div className="chat-workspace-banner-inner">
+          <div className="chat-workspace-banner-content">
+            <div className="chat-workspace-banner-badge" style={{
               background: theme === 'light' ? 'rgba(234, 88, 12, 0.12)' : 'rgba(0, 210, 255, 0.15)', 
               border: theme === 'light' ? '1px solid rgba(234, 88, 12, 0.35)' : '1px solid rgba(0, 210, 255, 0.35)',
               color: theme === 'light' ? '#ea580c' : '#00d2ff', 
-              fontSize: '0.68rem', fontWeight: 800, letterSpacing: '1px', textTransform: 'uppercase', marginBottom: '6px'
             }}>
-              <MessageSquare size={14} /> SWARM AGENTS & MULTI-MODEL CHAT
+              <MessageSquare size={13} /> SWARM AGENTS & MULTI-MODEL CHAT
             </div>
-            <h1 style={{ margin: '0 0 6px 0', fontSize: '1.4rem', fontWeight: 800, color: theme === 'light' ? '#111111' : '#fff', letterSpacing: '-0.3px', textShadow: 'none' }}>
-              💬 Chat Swarm & <span style={{
-                color: theme === 'light' ? '#c2410c' : '#00d2ff',
-                fontWeight: 800
-              }}>Assistente AI</span>
+            <h1 className="chat-workspace-banner-title" style={{ color: theme === 'light' ? '#111111' : '#fff' }}>
+              💬 Chat Swarm & <span style={{ color: theme === 'light' ? '#c2410c' : '#00d2ff' }}>Assistente AI</span>
             </h1>
-            <p style={{ margin: 0, fontSize: '0.82rem', color: theme === 'light' ? '#4b5563' : '#cbd5e0', lineHeight: 1.45 }}>
+            <p className="chat-workspace-banner-desc" style={{ color: theme === 'light' ? '#4b5563' : '#cbd5e0' }}>
               Assistente agentico multi-modello con controlli TTS, memoria episodica e bus strumenti MCP Hub.
             </p>
           </div>
 
           {/* Action Buttons on the Right */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+          <div className="chat-workspace-banner-actions">
             <button
-              onClick={core.handleNewSession}
+              onClick={handleNewSession}
+              className="chat-workspace-banner-btn primary"
               style={{
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: '6px',
-                padding: '10px 18px',
-                borderRadius: '12px',
                 background: theme === 'light' ? '#ea580c' : '#00d2ff',
                 color: theme === 'light' ? '#fff' : '#0a0d14',
-                border: 'none',
-                fontSize: '0.82rem',
-                fontWeight: 800,
-                cursor: 'pointer',
                 boxShadow: theme === 'light' ? '0 4px 14px rgba(234, 88, 12, 0.25)' : '0 4px 16px rgba(0, 210, 255, 0.3)'
               }}
             >
               + Nuova Conversazione
             </button>
             <button
-              onClick={() => core.setShowHistory(!core.showHistory)}
+              onClick={() => {
+                if (typeof window !== 'undefined' && window.innerWidth <= 768) {
+                  if (setMobileSidebarOpen) setMobileSidebarOpen(true);
+                } else {
+                  if (setLeftVisible) setLeftVisible(true);
+                }
+              }}
+              className="chat-workspace-banner-btn secondary"
               style={{
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: '6px',
-                padding: '10px 18px',
-                borderRadius: '12px',
                 background: theme === 'light' ? '#fffdf9' : '#181b28',
                 color: theme === 'light' ? '#111' : '#fff',
                 border: theme === 'light' ? '1px solid rgba(190, 160, 110, 0.4)' : '1px solid rgba(255, 255, 255, 0.15)',
-                fontSize: '0.82rem',
-                fontWeight: 800,
-                cursor: 'pointer'
               }}
+              title="Visualizza e gestisci le sessioni nella barra laterale sinistra"
             >
-              📜 Cronologia Sessioni
+              📜 Cronologia (Sidebar)
             </button>
           </div>
         </div>
@@ -125,14 +123,15 @@ export default function ChatWorkspaceTab() {
       />
 
       <div className="chat-workspace-body">
-        <ChatHistory
-          showHistory={core.showHistory}
-          onToggle={() => core.setShowHistory(!core.showHistory)}
+        {core.showHistory && (
+          <ChatHistory
+            showHistory={core.showHistory}
+            onToggle={() => core.setShowHistory(!core.showHistory)}
           sessions={core.sessions}
           groupedSessions={groupedSessions}
           sessionMessages={core.sessionMessages}
           activeSessionId={core.activeSessionId}
-          onSwitchSession={core.switchToSession}
+          onSwitchSession={handleSwitchSession}
           editingSessionName={core.editingSessionName}
           editNameValue={core.editNameValue}
           onEditNameChange={core.setEditNameValue}
@@ -140,9 +139,10 @@ export default function ChatWorkspaceTab() {
           onKeyDown={core.handleRenameKeyDown}
           onStartRename={core.handleStartRename}
           onDeleteSession={core.handleDeleteSession}
-          onNewSession={core.handleNewSession}
+          onNewSession={handleNewSession}
           onDuplicateSession={core.handleDuplicateSession}
         />
+        )}
         <ChatMessages
           messages={core.messages}
           loading={core.loading}
@@ -226,6 +226,28 @@ export default function ChatWorkspaceTab() {
         onOpenFilePicker={() => core.setShowFilePicker(true)}
         attachedFiles={core.attachedFiles}
       />
+
+      {/* Workspace Chat Footer / Status Bar */}
+      <footer className="chat-workspace-footer">
+        <div className="chat-workspace-footer-left">
+          <span className="chat-footer-status-dot" title="Sigma Swarm Kernel Online" />
+          <span className="chat-footer-model-name">
+            {core.selectedModel ? core.selectedModel.split('/').pop() : 'Sigma AI Engine'}
+          </span>
+          <span className="chat-footer-divider">•</span>
+          <span className="chat-footer-hint">
+            <kbd>Enter</kbd> invia · <kbd>Shift</kbd>+<kbd>Enter</kbd> a capo
+          </span>
+        </div>
+        <div className="chat-workspace-footer-right">
+          {core.activeSessionId && (
+            <span className="chat-footer-session-info">
+              {core.sessions.find(s => s.id === core.activeSessionId)?.name || 'Chat Attiva'}
+            </span>
+          )}
+          <span className="chat-footer-badge">Σ-Studio</span>
+        </div>
+      </footer>
 
       {core.showFilePicker && (
         <FilePicker

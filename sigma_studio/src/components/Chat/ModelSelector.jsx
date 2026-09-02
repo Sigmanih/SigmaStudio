@@ -1,13 +1,22 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import {
   Cpu, ChevronDown, Check, Loader, Search, Key, Sparkles, HardDrive, Zap,
-  Trophy, Award, Gauge, Brain, Dna, Boxes
+  Trophy, Award, Gauge, Brain, Dna, Boxes, ArrowDownUp, RefreshCw
 } from 'lucide-react';
 import { PROVIDER_COLORS, getProviderForModel } from './modelProviderMap';
 import {
   getModelSpecs, detectModelFamily, isSigmanihModel, getModelChatSpeed,
-  FAMILY_CONFIG
+  sortModelsList, FAMILY_CONFIG
 } from './core/modelSpecsHelper';
+
+const SORT_OPTIONS = [
+  { id: 'default', label: 'Default', icon: Boxes, title: 'Ordinamento predefinito' },
+  { id: 'size', label: 'Peso', icon: HardDrive, title: 'Ordina per dimensione file / VRAM (GB)' },
+  { id: 'params', label: 'Parametri', icon: Cpu, title: 'Ordina per conteggio parametri (es. 70B > 32B > 7B)' },
+  { id: 'speed', label: 't/s', icon: Zap, title: 'Ordina per velocità live di inferenza (tokens/sec)' },
+  { id: 'benchmark', label: 'Benchmark', icon: Trophy, title: 'Ordina per punteggio di benchmark (%)' },
+  { id: 'name', label: 'Nome', icon: null, title: 'Ordina alfabeticamente per nome modello' }
+];
 
 
 export default function ModelSelector({
@@ -17,8 +26,19 @@ export default function ModelSelector({
 }) {
   const [activeTab, setActiveTab] = useState('all');
   const [familyFilter, setFamilyFilter] = useState('all');
+  const [sortBy, setSortBy] = useState('default');
+  const [sortOrder, setSortOrder] = useState('desc');
   const [searchQuery, setSearchQuery] = useState('');
   const [speedVersion, setSpeedVersion] = useState(0);
+
+  const handleSortChange = (newSort) => {
+    if (sortBy === newSort) {
+      setSortOrder(prev => prev === 'desc' ? 'asc' : 'desc');
+    } else {
+      setSortBy(newSort);
+      setSortOrder(newSort === 'name' ? 'asc' : 'desc');
+    }
+  };
 
   // Listen to live model speed updates after chatting
   useEffect(() => {
@@ -156,9 +176,9 @@ export default function ModelSelector({
       });
   }, [modelsInCurrentTab]);
 
-  // Filter models based on active provider tab, family filter, and search query
-  const filteredModels = useMemo(() => {
-    return modelsWithProvider.filter(m => {
+  // Filter and sort models based on active provider tab, family filter, search query, and sort criteria
+  const filteredAndSortedModels = useMemo(() => {
+    const filtered = modelsWithProvider.filter(m => {
       let matchesTab = true;
       if (activeTab === 'favorites') {
         matchesTab = favList.includes(m.name);
@@ -179,7 +199,9 @@ export default function ModelSelector({
       
       return matchesTab && matchesFamily && matchesSearch;
     });
-  }, [modelsWithProvider, activeTab, familyFilter, searchQuery, favList]);
+
+    return sortModelsList(filtered, sortBy, sortOrder, models);
+  }, [modelsWithProvider, activeTab, familyFilter, searchQuery, favList, sortBy, sortOrder, models]);
 
 
   const handleOpenConfig = (e) => {
@@ -199,6 +221,7 @@ export default function ModelSelector({
         
         {activeSpecs?.chatSpeed !== null && activeSpecs?.chatSpeed !== undefined && (
           <span
+            className="model-spec-badge"
             title={`Velocità live misurata: ${activeSpecs.chatSpeed} tok/s`}
             style={{
               fontSize: '0.58rem', padding: '1px 5px', borderRadius: '4px',
@@ -211,12 +234,12 @@ export default function ModelSelector({
         )}
 
         {activeSpecs?.params && (
-          <span style={{ fontSize: '0.58rem', padding: '1px 5px', borderRadius: '4px', background: 'rgba(0, 210, 255, 0.16)', color: '#00d2ff', fontWeight: 800, whiteSpace: 'nowrap' }}>
+          <span className="model-spec-badge" style={{ fontSize: '0.58rem', padding: '1px 5px', borderRadius: '4px', background: 'rgba(0, 210, 255, 0.16)', color: '#00d2ff', fontWeight: 800, whiteSpace: 'nowrap' }}>
             ⚡ {activeSpecs.params}
           </span>
         )}
         {activeSpecs?.size && (
-          <span style={{ fontSize: '0.58rem', padding: '1px 5px', borderRadius: '4px', background: 'rgba(255, 184, 108, 0.16)', color: '#ffb86c', fontWeight: 800, whiteSpace: 'nowrap' }}>
+          <span className="model-spec-badge" style={{ fontSize: '0.58rem', padding: '1px 5px', borderRadius: '4px', background: 'rgba(255, 184, 108, 0.15)', color: '#ffb86c', fontWeight: 800, whiteSpace: 'nowrap' }}>
             💾 {activeSpecs.size}
           </span>
         )}
@@ -237,8 +260,31 @@ export default function ModelSelector({
               autoFocus
             />
             {searchQuery && (
-              <button className="search-clear-btn" onClick={() => setSearchQuery('')}>✕</button>
+              <button className="search-clear-btn" onClick={() => setSearchQuery('')} title="Cancella ricerca">✕</button>
             )}
+            <button
+              className="search-clear-btn"
+              title="Riscansiona modelli da tutte le cartelle (store/models e cartelle collegate)"
+              onClick={(e) => {
+                e.stopPropagation();
+                try {
+                  window.dispatchEvent(new CustomEvent('models-updated'));
+                  window.dispatchEvent(new CustomEvent('ai-config-updated'));
+                } catch (err) {}
+              }}
+              style={{
+                background: 'none',
+                border: 'none',
+                color: '#00d2ff',
+                cursor: 'pointer',
+                padding: '2px 5px',
+                display: 'flex',
+                alignItems: 'center',
+                opacity: 0.85
+              }}
+            >
+              <RefreshCw size={11} className={loadingModels ? "spin" : ""} />
+            </button>
           </div>
 
           {/* Provider Tabs Header (Includes ⭐ Preferiti, Tutti, and configured providers) */}
@@ -296,6 +342,37 @@ export default function ModelSelector({
             </div>
           )}
 
+          {/* 🔀 Sorting Bar (Peso, Parametri, t/s, Benchmark, Nome) */}
+          <div className="model-selector-sort-bar">
+            <span style={{ fontSize: '0.60rem', color: '#8b8fa3', fontWeight: 800, textTransform: 'uppercase', marginRight: '3px', display: 'flex', alignItems: 'center', gap: '3px' }}>
+              <ArrowDownUp size={10} color="#00d2ff" /> Ordina:
+            </span>
+            {SORT_OPTIONS.map(opt => {
+              const isActive = sortBy === opt.id;
+              const IconComponent = opt.icon;
+              return (
+                <button
+                  key={opt.id}
+                  type="button"
+                  className={`model-sort-pill ${isActive ? 'active' : ''}`}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleSortChange(opt.id);
+                  }}
+                  title={opt.title}
+                >
+                  {IconComponent && <IconComponent size={10} />}
+                  <span>{opt.label}</span>
+                  {isActive && opt.id !== 'default' && (
+                    <span className="model-sort-pill-indicator">
+                      {sortOrder === 'desc' ? '↓' : '↑'}
+                    </span>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+
           {/* Models List */}
           <div className="model-selector-list">
             {loadingModels && (
@@ -303,7 +380,7 @@ export default function ModelSelector({
                 <Loader size={12} className="spin" /> Caricamento modelli disponibili...
               </div>
             )}
-            {!loadingModels && filteredModels.length === 0 && (
+            {!loadingModels && filteredAndSortedModels.length === 0 && (
               activeTab === 'favorites' ? (
                 <div className="model-selector-empty" style={{ padding: '20px 14px', textAlign: 'center' }}>
                   <span style={{ fontSize: '1.4rem', display: 'block', marginBottom: '6px' }}>⭐</span>
@@ -355,7 +432,7 @@ export default function ModelSelector({
                 </div>
               )
             )}
-            {!loadingModels && filteredModels.map(m => {
+            {!loadingModels && filteredAndSortedModels.map(m => {
               const colors = PROVIDER_COLORS[m.provider] || PROVIDER_COLORS.ollama;
               const isSelected = selectedModel === m.name;
               const isFavorite = favList.includes(m.name);
@@ -481,8 +558,9 @@ export default function ModelSelector({
                       }
                       style={{
                         fontSize: '0.58rem', fontWeight: 800, padding: '1px 6px', borderRadius: '4px',
-                        background: hasBm ? `${bmColor}18` : 'rgba(255, 255, 255, 0.04)',
-                        border: hasBm ? `1px solid ${bmColor}40` : '1px solid rgba(255, 255, 255, 0.08)',
+                        background: sortBy === 'benchmark' ? `${bmColor}30` : (hasBm ? `${bmColor}18` : 'rgba(255, 255, 255, 0.04)'),
+                        border: sortBy === 'benchmark' ? `1px solid ${bmColor}` : (hasBm ? `1px solid ${bmColor}40` : '1px solid rgba(255, 255, 255, 0.08)'),
+                        boxShadow: sortBy === 'benchmark' ? `0 0 8px ${bmColor}40` : 'none',
                         color: bmColor,
                         display: 'inline-flex', alignItems: 'center', gap: '3px'
                       }}
@@ -499,8 +577,9 @@ export default function ModelSelector({
                       }
                       style={{
                         fontSize: '0.58rem', fontWeight: 800, padding: '1px 6px', borderRadius: '4px',
-                        background: chatTps !== null ? 'rgba(0, 210, 255, 0.14)' : 'rgba(255, 255, 255, 0.04)',
-                        border: chatTps !== null ? '1px solid rgba(0, 210, 255, 0.35)' : '1px solid rgba(255, 255, 255, 0.08)',
+                        background: sortBy === 'speed' ? 'rgba(0, 210, 255, 0.28)' : (chatTps !== null ? 'rgba(0, 210, 255, 0.14)' : 'rgba(255, 255, 255, 0.04)'),
+                        border: sortBy === 'speed' ? '1px solid #00d2ff' : (chatTps !== null ? '1px solid rgba(0, 210, 255, 0.35)' : '1px solid rgba(255, 255, 255, 0.08)'),
+                        boxShadow: sortBy === 'speed' ? '0 0 8px rgba(0, 210, 255, 0.4)' : 'none',
                         color: chatTps !== null ? '#00d2ff' : '#8b8fa3',
                         display: 'inline-flex', alignItems: 'center', gap: '2px'
                       }}
@@ -511,14 +590,26 @@ export default function ModelSelector({
 
                     {/* Parameter size */}
                     {itemSpecs?.params && (
-                      <span style={{ fontSize: '0.58rem', padding: '1px 5px', borderRadius: '4px', background: 'rgba(0, 210, 255, 0.12)', color: '#00d2ff', fontWeight: 800 }}>
+                      <span style={{
+                        fontSize: '0.58rem', padding: '1px 5px', borderRadius: '4px',
+                        background: sortBy === 'params' ? 'rgba(0, 210, 255, 0.28)' : 'rgba(0, 210, 255, 0.12)',
+                        border: sortBy === 'params' ? '1px solid #00d2ff' : 'none',
+                        boxShadow: sortBy === 'params' ? '0 0 8px rgba(0, 210, 255, 0.4)' : 'none',
+                        color: '#00d2ff', fontWeight: 800
+                      }}>
                         {itemSpecs.params}
                       </span>
                     )}
 
                     {/* Disk size */}
                     {itemSpecs?.size && (
-                      <span style={{ fontSize: '0.58rem', padding: '1px 5px', borderRadius: '4px', background: 'rgba(255, 184, 108, 0.12)', color: '#ffb86c', fontWeight: 800 }}>
+                      <span style={{
+                        fontSize: '0.58rem', padding: '1px 5px', borderRadius: '4px',
+                        background: sortBy === 'size' ? 'rgba(255, 184, 108, 0.28)' : 'rgba(255, 184, 108, 0.12)',
+                        border: sortBy === 'size' ? '1px solid #ffb86c' : 'none',
+                        boxShadow: sortBy === 'size' ? '0 0 8px rgba(255, 184, 108, 0.4)' : 'none',
+                        color: '#ffb86c', fontWeight: 800
+                      }}>
                         {itemSpecs.size}
                       </span>
                     )}

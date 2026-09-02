@@ -52,6 +52,29 @@ _HOME_ENV = "SIGMA_HOME"
 _LOCK = threading.RLock()
 _MODELS_DIR_CACHE: Optional[Path] = None
 _EXTRA_MODELS_DIRS_CACHE: Optional[list[Path]] = None
+_LAST_CONFIG_MTIME: float = -1.0
+
+
+def _check_config_mtime() -> bool:
+    """Verifica se il file di configurazione del Model Hub e' cambiato su disco."""
+    global _LAST_CONFIG_MTIME, _MODELS_DIR_CACHE, _EXTRA_MODELS_DIRS_CACHE
+    try:
+        cfg_p = model_hub_config_file()
+        if cfg_p.exists():
+            mtime = cfg_p.stat().st_mtime
+            if mtime != _LAST_CONFIG_MTIME:
+                _LAST_CONFIG_MTIME = mtime
+                _MODELS_DIR_CACHE = None
+                _EXTRA_MODELS_DIRS_CACHE = None
+                return True
+        elif _LAST_CONFIG_MTIME != 0.0:
+            _LAST_CONFIG_MTIME = 0.0
+            _MODELS_DIR_CACHE = None
+            _EXTRA_MODELS_DIRS_CACHE = None
+            return True
+    except Exception:
+        pass
+    return False
 
 
 
@@ -385,10 +408,10 @@ def models_dir(refresh: bool = False) -> Path:
     """La cartella dei modelli attiva.
 
     Quella configurata nel Model Hub se e' utilizzabile, altrimenti la
-    predefinita. In cache perche' viene consultata a ogni lookup di modello:
-    passare refresh=True dopo aver cambiato l'impostazione.
+    predefinita. In cache con invalidazione automatica quando la configurazione cambia.
     """
     global _MODELS_DIR_CACHE
+    _check_config_mtime()
     with _LOCK:
         if _MODELS_DIR_CACHE is not None and not refresh:
             return _MODELS_DIR_CACHE
@@ -415,11 +438,12 @@ def models_dir(refresh: bool = False) -> Path:
 
 def set_models_dir(new_dir: str | Path) -> Path:
     """Punta ogni consumatore a una nuova cartella e invalida la cache."""
-    global _MODELS_DIR_CACHE
+    global _MODELS_DIR_CACHE, _EXTRA_MODELS_DIRS_CACHE
     resolved = Path(new_dir).expanduser().resolve()
     resolved.mkdir(parents=True, exist_ok=True)
     with _LOCK:
         _MODELS_DIR_CACHE = resolved
+        _EXTRA_MODELS_DIRS_CACHE = None
     log.info("[Paths] Cartella modelli impostata su %s", resolved)
     return resolved
 
@@ -452,6 +476,7 @@ def extra_models_dirs(refresh: bool = False) -> list[Path]:
     alla cartella modelli principale.
     """
     global _EXTRA_MODELS_DIRS_CACHE
+    _check_config_mtime()
     with _LOCK:
         if _EXTRA_MODELS_DIRS_CACHE is not None and not refresh:
             return list(_EXTRA_MODELS_DIRS_CACHE)
@@ -475,10 +500,34 @@ def extra_models_dirs(refresh: bool = False) -> list[Path]:
 
 
 def all_models_dirs(refresh: bool = False) -> list[Path]:
-    """Tutte le cartelle modelli attive: la principale seguita da quelle aggiuntive."""
+    """Tutte le cartelle modelli attive: la principale, la predefinita store/models, e tutte le extra."""
     main = models_dir(refresh=refresh)
     extras = extra_models_dirs(refresh=refresh)
-    return [main] + [e for e in extras if e != main]
+    default_dir = default_models_dir()
+
+    all_dirs: list[Path] = [main]
+    seen = {main.resolve()}
+
+    # Includi la cartella predefinita store/models se esistente e diversa dalla principale
+    try:
+        def_res = default_dir.resolve()
+        if def_res not in seen and def_res.exists() and def_res.is_dir():
+            all_dirs.append(def_res)
+            seen.add(def_res)
+    except Exception:
+        pass
+
+    # Includi tutte le cartelle secondarie collegate
+    for e in extras:
+        try:
+            e_res = e.resolve()
+            if e_res not in seen and e_res.exists() and e_res.is_dir():
+                all_dirs.append(e_res)
+                seen.add(e_res)
+        except Exception:
+            pass
+
+    return all_dirs
 
 
 def set_extra_models_dirs(dirs: list[str | Path]) -> list[Path]:

@@ -111,11 +111,31 @@ class ModelInspector:
     @classmethod
     def inspect(cls, model_path: str, use_cache: bool = True) -> Optional[ModelFacts]:
         """
-        Reads config + weight index + safetensors headers.
+        Reads config + weight index + safetensors/GGUF headers.
         Results are cached in the model dir so repeated loads are instant.
+        Supports both directories and direct single model files (.gguf, .safetensors).
         """
+        if os.path.isfile(model_path):
+            facts = ModelFacts(path=model_path, name=os.path.basename(model_path))
+            if model_path.lower().endswith(".gguf"):
+                facts.weight_format = "gguf"
+                facts.total_bytes = os.path.getsize(model_path)
+                facts.shards_present = 1
+                facts.total_shards_declared = 1
+                cls._read_gguf_metadata(facts, model_path)
+                cls._read_gguf_tensor_sizes(facts, [model_path])
+            else:
+                facts.weight_format = "safetensors" if model_path.lower().endswith(".safetensors") else "bin"
+                facts.total_bytes = os.path.getsize(model_path)
+                facts.shards_present = 1
+                facts.total_shards_declared = 1
+            if facts.num_hidden_layers and not facts.layer_types:
+                facts.layer_types = ["full_attention"] * facts.num_hidden_layers
+            log.info("[ModelInspector] %s", facts.summary())
+            return facts
+
         if not os.path.isdir(model_path):
-            log.warning("[ModelInspector] Not a directory: %s", model_path)
+            log.warning("[ModelInspector] Not a directory or valid file: %s", model_path)
             return None
 
         cache_file = os.path.join(model_path, ".sigma_facts.json")

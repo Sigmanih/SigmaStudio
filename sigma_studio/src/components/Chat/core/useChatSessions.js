@@ -78,12 +78,24 @@ export function useChatSessions({ selectedModel, setSelectedModel, setActionsLog
   useEffect(() => { refs.sessionMessages.current = sessionMessages; }, [sessionMessages]);
   useEffect(() => { refs.activeSessionId.current = activeSessionId; }, [activeSessionId]);
 
-  // Keep active session saved in localStorage
+  const notifySessionsChanged = useCallback((ns, activeId) => {
+    try {
+      window.dispatchEvent(new CustomEvent('sigma-chat-sessions-updated', {
+        detail: {
+          sessions: ns || refs.sessions.current,
+          activeSessionId: activeId || refs.activeSessionId.current
+        }
+      }));
+    } catch (e) {}
+  }, []);
+
+  // Keep active session saved in localStorage & notify
   useEffect(() => {
     if (activeSessionId) {
       saveActiveSessionId(activeSessionId);
+      notifySessionsChanged(refs.sessions.current, activeSessionId);
     }
-  }, [activeSessionId]);
+  }, [activeSessionId, notifySessionsChanged]);
 
   // Listen for explicit chat history purge event ONLY when clear_history / clear_chat is true
   useEffect(() => {
@@ -101,16 +113,18 @@ export function useChatSessions({ selectedModel, setSelectedModel, setActionsLog
       setActiveSessionId(s.id);
       refs.activeSessionId.current = s.id;
       saveActiveSessionId(s.id);
+      notifySessionsChanged([s], s.id);
     };
     window.addEventListener('sigma-chat-cleared', handleChatCleared);
     return () => window.removeEventListener('sigma-chat-cleared', handleChatCleared);
-  }, [selectedModel, welcomeMsg, saveMessagesImmediately]);
+  }, [selectedModel, welcomeMsg, saveMessagesImmediately, notifySessionsChanged]);
 
   const saveSessionsState = useCallback((ns) => {
     setSessions(ns);
     refs.sessions.current = ns;
     saveSessions(ns);
-  }, []);
+    notifySessionsChanged(ns, refs.activeSessionId.current);
+  }, [notifySessionsChanged]);
 
   const setMessagesForSession = useCallback((sessionId, msgsOrUpdater) => {
     setSessionMessages(prev => {
@@ -332,9 +346,29 @@ export function useChatSessions({ selectedModel, setSelectedModel, setActionsLog
       });
       refs.sessions.current = nextSessions;
       saveSessions(nextSessions);
+      notifySessionsChanged(nextSessions, activeSessionId);
       return nextSessions;
     });
   };
+
+  // Listen for actions dispatched from external controls (e.g. main application sidebar)
+  useEffect(() => {
+    const handleSwitch = (e) => {
+      if (e?.detail) switchToSession(e.detail);
+    };
+    const handleNew = () => handleNewSession();
+    const handleDelete = (e) => {
+      if (e?.detail) handleDeleteSession(null, e.detail);
+    };
+    window.addEventListener('sigma-chat-switch-session', handleSwitch);
+    window.addEventListener('sigma-chat-new-session', handleNew);
+    window.addEventListener('sigma-chat-delete-session', handleDelete);
+    return () => {
+      window.removeEventListener('sigma-chat-switch-session', handleSwitch);
+      window.removeEventListener('sigma-chat-new-session', handleNew);
+      window.removeEventListener('sigma-chat-delete-session', handleDelete);
+    };
+  }, [switchToSession, handleNewSession, handleDeleteSession]);
 
   return {
     sessions,

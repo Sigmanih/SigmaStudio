@@ -458,6 +458,7 @@ export default function AIConfigTab() {
   const [proxyAlias, setProxyAlias] = useState('sigma');
   const [selectedGuideModel, setSelectedGuideModel] = useState('sigma');
   const [sslEnabled, setSslEnabled] = useState(false);
+  const [installingCa, setInstallingCa] = useState(false);
 
   // Global Inference Parameters
   const [parameters, setParameters] = useState({
@@ -501,6 +502,53 @@ export default function AIConfigTab() {
     return `${proto}://${host}:${port}`;
   }, [serverHost, serverPort, sslEnabled]);
 
+  // Server Restart & Automatic Reload State
+  const [restartModalOpen, setRestartModalOpen] = useState(false);
+  const [restartingState, setRestartingState] = useState({
+    isRestarting: false,
+    countdown: 4,
+    targetUrl: '',
+    error: null
+  });
+
+  const executeServerRestart = async () => {
+    setRestartModalOpen(false);
+    const host = serverInfo?.lan_ip || (serverHost === '0.0.0.0' ? (typeof window !== 'undefined' ? window.location.hostname : '192.168.1.2') : serverHost) || 'localhost';
+    const port = serverPort || (typeof window !== 'undefined' && window.location.port ? window.location.port : 8014);
+    const proto = sslEnabled ? 'https' : 'http';
+    const computedTarget = `${proto}://${host}:${port}`;
+
+    setRestartingState({
+      isRestarting: true,
+      countdown: 4,
+      targetUrl: computedTarget,
+      error: null
+    });
+
+    try {
+      const res = await fetch('/api/system/restart', { method: 'POST' });
+      const data = await res.json();
+      const finalUrl = data.target_lan_url || data.target_url || computedTarget;
+      setRestartingState(prev => ({ ...prev, targetUrl: finalUrl }));
+    } catch (e) {
+      console.debug("Restart request sent (server shutting down):", e);
+    }
+
+    let timer = 4;
+    const interval = setInterval(() => {
+      timer -= 1;
+      setRestartingState(prev => {
+        if (timer <= 0) {
+          clearInterval(interval);
+          const dest = prev.targetUrl || computedTarget;
+          window.location.href = dest;
+          return { ...prev, countdown: 0 };
+        }
+        return { ...prev, countdown: timer };
+      });
+    }, 1000);
+  };
+
 
   // Copy helper
   const copyKeyToClipboard = (keyId, textToCopy) => {
@@ -541,6 +589,28 @@ export default function AIConfigTab() {
       console.debug("Server info fetch:", e);
     }
   }, []);
+
+  // Installa la CA locale nel trust store: senza questo passaggio Chrome
+  // rifiuta il certificato con ERR_CERT_AUTHORITY_INVALID.
+  const installLocalCa = async () => {
+    setInstallingCa(true);
+    try {
+      const res = await fetch('/api/ssl/install_ca', { method: 'POST' });
+      const data = await res.json();
+      setSaveToast({
+        type: data.success ? 'success' : 'error',
+        msg: data.success
+          ? 'Certificato CA installato 🔒 Riavvia il browser per vedere il lucchetto verde.'
+          : `Installazione non riuscita: ${data.message || 'errore sconosciuto'}`
+      });
+      await fetchServerInfo();
+    } catch (e) {
+      setSaveToast({ type: 'error', msg: `Installazione CA non riuscita: ${e.message}` });
+    } finally {
+      setInstallingCa(false);
+      setTimeout(() => setSaveToast(null), 6000);
+    }
+  };
 
   // Toggle provider server
   const toggleProviderServer = async (targetState) => {
@@ -822,7 +892,18 @@ export default function AIConfigTab() {
       const data = await res.json();
 
       if (data.success) {
-        setSaveToast({ type: 'success', msg: 'Configurazione, Porte e Modello Proxy salvati con successo! 🚀' });
+        const isPortChanged = typeof window !== 'undefined' && window.location.port && Number(window.location.port) !== Number(serverPort);
+        const isProtoChanged = typeof window !== 'undefined' && ((window.location.protocol === 'https:' && !sslEnabled) || (window.location.protocol === 'http:' && sslEnabled));
+        
+        if (isPortChanged || isProtoChanged) {
+          setSaveToast({ 
+            type: 'success', 
+            msg: `Impostazioni salvate! ⚠️ Riavvia il server per attivare ${sslEnabled ? 'HTTPS' : 'HTTP'} sulla porta :${serverPort}.` 
+          });
+          setRestartModalOpen(true);
+        } else {
+          setSaveToast({ type: 'success', msg: 'Configurazione, Porte e Modello Proxy salvati con successo! 🚀' });
+        }
         fetchConfig();
         fetchServerInfo();
       } else {
@@ -1089,28 +1170,53 @@ export default function AIConfigTab() {
           </p>
         </div>
 
-        <button
-          onClick={saveAllConfig}
-          disabled={saving}
-          style={{
-            padding: '9px 20px',
-            borderRadius: '10px',
-            background: 'linear-gradient(135deg, #00f2fe, #4facfe)',
-            border: 'none',
-            color: '#000',
-            fontSize: '0.82rem',
-            fontWeight: 800,
-            cursor: saving ? 'not-allowed' : 'pointer',
-            display: 'flex',
-            alignItems: 'center',
-            gap: '6px',
-            boxShadow: '0 4px 16px rgba(0, 242, 254, 0.3)',
-            transition: 'all 0.15s ease'
-          }}
-        >
-          {saving ? <RefreshCw size={14} className="spin" /> : <Save size={14} />}
-          <span>{saving ? 'Salvataggio...' : 'Salva Modifiche'}</span>
-        </button>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+          <button
+            onClick={() => setRestartModalOpen(true)}
+            style={{
+              padding: '9px 18px',
+              borderRadius: '10px',
+              background: 'rgba(255, 184, 108, 0.15)',
+              border: '1px solid rgba(255, 184, 108, 0.4)',
+              color: '#ffb86c',
+              fontSize: '0.82rem',
+              fontWeight: 800,
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px',
+              boxShadow: '0 2px 12px rgba(255, 184, 108, 0.15)',
+              transition: 'all 0.15s ease'
+            }}
+            title="Riavvia il server per applicare porte, HTTPS e certificati di rete"
+          >
+            <RefreshCw size={14} />
+            <span>🔄 Riavvia Server</span>
+          </button>
+
+          <button
+            onClick={saveAllConfig}
+            disabled={saving}
+            style={{
+              padding: '9px 20px',
+              borderRadius: '10px',
+              background: 'linear-gradient(135deg, #00f2fe, #4facfe)',
+              border: 'none',
+              color: '#000',
+              fontSize: '0.82rem',
+              fontWeight: 800,
+              cursor: saving ? 'not-allowed' : 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px',
+              boxShadow: '0 4px 16px rgba(0, 242, 254, 0.3)',
+              transition: 'all 0.15s ease'
+            }}
+          >
+            {saving ? <RefreshCw size={14} className="spin" /> : <Save size={14} />}
+            <span>{saving ? 'Salvataggio...' : 'Salva Modifiche'}</span>
+          </button>
+        </div>
       </div>
 
       {/* ========================================================================= */}
@@ -1354,9 +1460,26 @@ export default function AIConfigTab() {
                     PORTA SERVER (ROUTE DI USCITA)
                   </label>
                   {typeof window !== 'undefined' && window.location.port && Number(window.location.port) !== Number(serverPort) && (
-                    <span style={{ fontSize: '0.60rem', color: '#faa03c', fontWeight: 700 }}>
-                      ⚡ Attivo su :{window.location.port || '8000'}
-                    </span>
+                    <button 
+                      type="button"
+                      onClick={() => setRestartModalOpen(true)}
+                      style={{ 
+                        fontSize: '0.60rem', 
+                        color: '#faa03c', 
+                        fontWeight: 800, 
+                        background: 'rgba(250, 160, 60, 0.18)', 
+                        padding: '2px 8px', 
+                        borderRadius: '5px', 
+                        border: '1px solid rgba(250, 160, 60, 0.4)',
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '4px'
+                      }}
+                      title="Clicca per riavviare il server e ricaricare la pagina su questa porta"
+                    >
+                      <span>⚡ Attivo su :{window.location.port || '8000'} (Clicca per Riavviare su :{serverPort})</span>
+                    </button>
                   )}
                 </div>
                 <input
@@ -1543,6 +1666,117 @@ export default function AIConfigTab() {
                 </div>
               </div>
             </div>
+
+            {/* Sub-Section: Certificato CA locale — richiesto per il lucchetto verde su HTTPS */}
+            {sslEnabled && (() => {
+              const caTrusted = Boolean(serverInfo?.ssl?.ca_trusted);
+              const caFingerprint = serverInfo?.ssl?.ca_fingerprint || null;
+              const lanHost = serverInfo?.lan_ip || (typeof window !== 'undefined' ? window.location.hostname : '192.168.1.2');
+              const caLanUrl = `https://${lanHost}:${serverPort}/ssl/ca.crt`;
+              const accent = caTrusted ? '#3fb950' : '#f59e0b';
+              return (
+                <div style={{
+                  padding: '16px',
+                  borderRadius: '12px',
+                  background: caTrusted ? 'rgba(63, 185, 80, 0.06)' : 'rgba(245, 158, 11, 0.07)',
+                  border: `1px solid ${caTrusted ? 'rgba(63, 185, 80, 0.3)' : 'rgba(245, 158, 11, 0.35)'}`,
+                  marginBottom: '16px'
+                }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px', flexWrap: 'wrap', marginBottom: '8px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      {caTrusted ? <Lock size={16} color={accent} /> : <AlertCircle size={16} color={accent} />}
+                      <span style={{ fontSize: '0.82rem', fontWeight: 800, color: accent }}>
+                        {caTrusted
+                          ? '🔒 Certificato CA attendibile — nessun avviso nel browser'
+                          : '⚠️ Certificato CA da installare (altrimenti: ERR_CERT_AUTHORITY_INVALID)'}
+                      </span>
+                    </div>
+                    {caFingerprint && (
+                      <span style={{ fontSize: '0.58rem', color: subtitleColor, fontFamily: 'monospace' }}>
+                        SHA-1 {caFingerprint.match(/.{1,2}/g).join(':')}
+                      </span>
+                    )}
+                  </div>
+
+                  <div style={{ fontSize: '0.70rem', color: subtitleColor, lineHeight: 1.6, marginBottom: '12px' }}>
+                    Sigma Studio firma il proprio certificato HTTPS con una <strong>autorità locale</strong>.
+                    Va resa attendibile <strong>una sola volta</strong> per ogni dispositivo: dopo, il lucchetto
+                    è verde su <code>localhost</code> e sull'indirizzo Wi-Fi, anche dopo un cambio di IP.
+                  </div>
+
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', marginBottom: '10px' }}>
+                    <button
+                      type="button"
+                      onClick={installLocalCa}
+                      disabled={installingCa}
+                      style={{
+                        padding: '7px 14px',
+                        borderRadius: '8px',
+                        fontSize: '0.70rem',
+                        fontWeight: 800,
+                        border: 'none',
+                        cursor: installingCa ? 'wait' : 'pointer',
+                        background: caTrusted ? (isLight ? '#e2e8f0' : 'rgba(255,255,255,0.1)') : 'linear-gradient(135deg, #f59e0b, #f97316)',
+                        color: caTrusted ? subtitleColor : '#000',
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '6px'
+                      }}
+                    >
+                      {installingCa
+                        ? <><RefreshCw size={12} className="spin" /> Installazione...</>
+                        : <><ShieldCheck size={12} /> {caTrusted ? 'Reinstalla su questo PC' : 'Installa CA su questo PC'}</>}
+                    </button>
+                    <a
+                      href="/ssl/ca.crt"
+                      download="sigma-studio-ca.crt"
+                      style={{
+                        padding: '7px 14px',
+                        borderRadius: '8px',
+                        fontSize: '0.70rem',
+                        fontWeight: 800,
+                        textDecoration: 'none',
+                        border: `1px solid ${isLight ? '#cbd5e1' : 'rgba(255,255,255,0.15)'}`,
+                        background: 'transparent',
+                        color: subtitleColor,
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '6px'
+                      }}
+                    >
+                      <Download size={12} /> Scarica sigma-studio-ca.crt
+                    </a>
+                    <button
+                      type="button"
+                      onClick={() => copyKeyToClipboard('ca_lan_url', caLanUrl)}
+                      style={{
+                        padding: '7px 14px',
+                        borderRadius: '8px',
+                        fontSize: '0.70rem',
+                        fontWeight: 800,
+                        cursor: 'pointer',
+                        border: `1px solid ${isLight ? '#cbd5e1' : 'rgba(255,255,255,0.15)'}`,
+                        background: 'transparent',
+                        color: subtitleColor,
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '6px'
+                      }}
+                    >
+                      {copiedKey === 'ca_lan_url' ? <Check size={12} color="#3fb950" /> : <Copy size={12} />}
+                      Link CA per smartphone
+                    </button>
+                  </div>
+
+                  <div style={{ fontSize: '0.64rem', color: subtitleColor, lineHeight: 1.7 }}>
+                    <div><strong>Windows / Chrome / Edge:</strong> usa il pulsante qui sopra, poi riavvia il browser.</div>
+                    <div><strong>Android:</strong> apri <code>{caLanUrl}</code>, poi Impostazioni → Sicurezza → Installa certificato → Certificato CA.</div>
+                    <div><strong>iPhone / iPad:</strong> apri lo stesso link in Safari, installa il profilo, poi Impostazioni → Generali → Info → Attendibilità certificati.</div>
+                    <div><strong>Firefox:</strong> ha un archivio proprio — Impostazioni → Certificati → Autorità → Importa.</div>
+                  </div>
+                </div>
+              );
+            })()}
 
             {/* Sub-Section: Accesso Wi-Fi / Rete Locale (LAN) */}
             <div style={{
@@ -3058,6 +3292,205 @@ for await (const chunk of stream) {
                 </div>
               );
             })}
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================================= */}
+      {/* MODAL 1: CONFERMA RIAVVIO SERVER */}
+      {/* ========================================================================= */}
+      {restartModalOpen && (
+        <div style={{
+          position: 'fixed',
+          top: 0, left: 0, right: 0, bottom: 0,
+          background: 'rgba(0, 0, 0, 0.75)',
+          backdropFilter: 'blur(8px)',
+          zIndex: 99999,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          padding: '20px'
+        }}>
+          <div style={{
+            background: isLight ? '#ffffff' : '#0d1117',
+            border: '1px solid rgba(0, 242, 254, 0.4)',
+            borderRadius: '16px',
+            boxShadow: '0 12px 40px rgba(0, 0, 0, 0.6), 0 0 24px rgba(0, 242, 254, 0.25)',
+            maxWidth: '520px',
+            width: '100%',
+            padding: '26px',
+            color: titleColor
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '14px' }}>
+              <div style={{
+                width: '42px', height: '42px', borderRadius: '12px',
+                background: 'rgba(0, 242, 254, 0.15)',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                color: '#00f2fe'
+              }}>
+                <RefreshCw size={22} />
+              </div>
+              <div>
+                <h3 style={{ margin: 0, fontSize: '1.15rem', fontWeight: 800, color: titleColor }}>
+                  Riavviare Sigma Studio?
+                </h3>
+                <p style={{ margin: '2px 0 0 0', fontSize: '0.78rem', color: subtitleColor }}>
+                  Applica immediatamente le nuove impostazioni di rete, porta e certificati HTTPS.
+                </p>
+              </div>
+            </div>
+
+            <div style={{
+              background: innerCardBg,
+              border: innerCardBorder,
+              borderRadius: '10px',
+              padding: '14px',
+              marginBottom: '20px',
+              fontSize: '0.82rem',
+              lineHeight: 1.5
+            }}>
+              <div style={{ marginBottom: '8px', color: subtitleColor }}>
+                Il server verrà riavviato e la pagina verrà ricaricata automaticamente su:
+              </div>
+              <div style={{
+                padding: '8px 12px',
+                borderRadius: '8px',
+                background: isLight ? '#f1f5f9' : '#05070a',
+                border: '1px solid rgba(0, 242, 254, 0.3)',
+                color: '#00f2fe',
+                fontWeight: 800,
+                fontFamily: 'monospace',
+                fontSize: '0.88rem',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px'
+              }}>
+                <ShieldCheck size={16} color={sslEnabled ? '#00f2fe' : '#8b8fa3'} />
+                <span>{sslEnabled ? 'https' : 'http'}://{serverInfo?.lan_ip || (typeof window !== 'undefined' ? window.location.hostname : '192.168.1.2')}:{serverPort}</span>
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
+              <button
+                type="button"
+                onClick={() => setRestartModalOpen(false)}
+                style={{
+                  padding: '9px 18px',
+                  borderRadius: '8px',
+                  background: isLight ? '#e2e8f0' : 'rgba(255, 255, 255, 0.08)',
+                  border: 'none',
+                  color: titleColor,
+                  fontSize: '0.82rem',
+                  fontWeight: 700,
+                  cursor: 'pointer'
+                }}
+              >
+                Annulla
+              </button>
+              <button
+                type="button"
+                onClick={executeServerRestart}
+                style={{
+                  padding: '9px 20px',
+                  borderRadius: '8px',
+                  background: 'linear-gradient(135deg, #00f2fe, #4facfe)',
+                  border: 'none',
+                  color: '#000',
+                  fontSize: '0.82rem',
+                  fontWeight: 800,
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px',
+                  boxShadow: '0 4px 16px rgba(0, 242, 254, 0.35)'
+                }}
+              >
+                <Zap size={15} />
+                <span>⚡ Riavvia & Ricarica Ora</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================================= */}
+      {/* MODAL 2: FULLSCREEN RESTARTING COUNTDOWN OVERLAY */}
+      {/* ========================================================================= */}
+      {restartingState.isRestarting && (
+        <div style={{
+          position: 'fixed',
+          top: 0, left: 0, right: 0, bottom: 0,
+          background: 'rgba(5, 7, 10, 0.92)',
+          backdropFilter: 'blur(16px)',
+          zIndex: 999999,
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          justifyContent: 'center',
+          padding: '24px',
+          color: '#ffffff'
+        }}>
+          <div style={{
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            textAlign: 'center',
+            maxWidth: '540px'
+          }}>
+            <div style={{
+              width: '74px', height: '74px', borderRadius: '22px',
+              background: 'linear-gradient(135deg, rgba(0, 242, 254, 0.25), rgba(0, 114, 255, 0.25))',
+              border: '2px solid #00f2fe',
+              boxShadow: '0 0 35px rgba(0, 242, 254, 0.5)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              marginBottom: '20px',
+              animation: 'pulse 1.8s infinite'
+            }}>
+              <RefreshCw size={36} color="#00f2fe" className="spin" />
+            </div>
+
+            <h2 style={{ fontSize: '1.6rem', fontWeight: 900, margin: '0 0 8px 0', color: '#ffffff' }}>
+              Riavvio di Sigma Studio in corso...
+            </h2>
+            <p style={{ fontSize: '0.9rem', color: '#94a3b8', margin: '0 0 24px 0', lineHeight: 1.5 }}>
+              Il server sta applicando la nuova configurazione {sslEnabled ? '🔒 HTTPS' : 'HTTP'} sulla porta :{serverPort}.
+            </p>
+
+            <div style={{
+              fontSize: '3rem',
+              fontWeight: 900,
+              color: '#00f2fe',
+              fontFamily: 'monospace',
+              textShadow: '0 0 20px rgba(0, 242, 254, 0.7)',
+              marginBottom: '18px'
+            }}>
+              {restartingState.countdown}s
+            </div>
+
+            <div style={{
+              padding: '10px 18px',
+              borderRadius: '10px',
+              background: 'rgba(0, 0, 0, 0.4)',
+              border: '1px solid rgba(0, 242, 254, 0.3)',
+              fontSize: '0.84rem',
+              color: '#38bdf8',
+              fontFamily: 'monospace',
+              marginBottom: '20px'
+            }}>
+              Reindirizzamento su: {restartingState.targetUrl}
+            </div>
+
+            <a
+              href={restartingState.targetUrl}
+              style={{
+                fontSize: '0.78rem',
+                color: '#94a3b8',
+                textDecoration: 'underline',
+                cursor: 'pointer'
+              }}
+            >
+              Non sei stato reindirizzato? Clicca qui per aprire la pagina
+            </a>
           </div>
         </div>
       )}

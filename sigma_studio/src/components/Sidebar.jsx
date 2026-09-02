@@ -3,8 +3,9 @@ import {
   Home, FileText, Activity, PieChart, Layers, ChevronRight, ChevronDown, MessageSquare, 
   FlaskConical, Brain, Zap, User, Server, Wrench, Palette, Blocks, Sun, 
   Moon, Store, Package, Sliders, Key, Sparkles, FolderGit2, Compass,
-  Cpu, Box, Radio, Music, Mic, Terminal, Globe, Mail, Send, DownloadCloud, Settings, Trash2
-, Share2 } from 'lucide-react';
+  Cpu, Box, Radio, Music, Mic, Terminal, Globe, Mail, Send, DownloadCloud, Settings, Trash2,
+  Share2, Plus, Search, HardDrive
+} from 'lucide-react';
 import { useApp } from '../contexts/AppContext';
 import { useModuleState } from '../hooks/useModuleState';
 
@@ -17,7 +18,10 @@ export const SidebarItem = ({
   badgeColor, 
   badgeSecondary, 
   badgeSecondaryColor,
-  isKernel = false
+  isKernel = false,
+  expandable = false,
+  expanded = false,
+  onToggleExpand = null
 }) => {
   const { theme } = useApp();
   const isLight = theme === 'light';
@@ -81,6 +85,29 @@ export const SidebarItem = ({
           )}
         </span>
       )}
+      {expandable && (
+        <span
+          onClick={(e) => {
+            e.stopPropagation();
+            if (onToggleExpand) onToggleExpand();
+          }}
+          className="sidebar-expand-arrow"
+          style={{
+            marginLeft: '4px',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            width: '18px',
+            height: '18px',
+            borderRadius: '4px',
+            cursor: 'pointer',
+            opacity: 0.7
+          }}
+          title={expanded ? 'Comprimi sotto-voci' : 'Espandi sotto-voci'}
+        >
+          <ChevronDown size={12} style={{ transform: expanded ? 'rotate(0deg)' : 'rotate(-90deg)', transition: 'transform 0.2s ease' }} />
+        </span>
+      )}
     </div>
   );
 };
@@ -106,6 +133,93 @@ export default function Sidebar({
   };
 
   const [chatCount, setChatCount] = useState(0);
+  const [chatSessions, setChatSessions] = useState(() => {
+    try {
+      const raw = localStorage.getItem('sigma_chat_sessions');
+      return raw ? JSON.parse(raw) : [];
+    } catch {
+      return [];
+    }
+  });
+  const [activeSessionId, setActiveSessionId] = useState(() => {
+    try {
+      return localStorage.getItem('sigma_active_chat_session_id') || null;
+    } catch {
+      return null;
+    }
+  });
+
+  const [chatExpanded, setChatExpanded] = useState(true);
+  const [modelsExpanded, setModelsExpanded] = useState(true);
+  const [activeModelTab, setActiveModelTab] = useState(() => {
+    try {
+      return localStorage.getItem('sigma_model_hub_active_subtab') || 'browse';
+    } catch {
+      return 'browse';
+    }
+  });
+
+  useEffect(() => {
+    const handleSessionsUpdate = (e) => {
+      if (e?.detail) {
+        if (Array.isArray(e.detail.sessions)) {
+          setChatSessions(e.detail.sessions);
+          setChatCount(e.detail.sessions.length);
+        }
+        if (e.detail.activeSessionId) setActiveSessionId(e.detail.activeSessionId);
+      }
+    };
+    const handleModelTabChange = (e) => {
+      if (e?.detail) setActiveModelTab(e.detail);
+    };
+
+    window.addEventListener('sigma-chat-sessions-updated', handleSessionsUpdate);
+    window.addEventListener('sigma-model-hub-tab-changed', handleModelTabChange);
+    return () => {
+      window.removeEventListener('sigma-chat-sessions-updated', handleSessionsUpdate);
+      window.removeEventListener('sigma-model-hub-tab-changed', handleModelTabChange);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (activeTabId != null) {
+      if (activeTabId.startsWith('chat')) {
+        setChatExpanded(true);
+      } else if (activeTabId.startsWith('model_hub')) {
+        setModelsExpanded(true);
+      }
+    }
+  }, [activeTabId]);
+
+  const handleSelectChatSession = (sessionId) => {
+    setActiveSessionId(sessionId);
+    openTab({ name: 'Chat', path: 'chat-tab' }, 'chat');
+    window.dispatchEvent(new CustomEvent('sigma-chat-switch-session', { detail: sessionId }));
+    if (setMobileSidebarOpen) setMobileSidebarOpen(false);
+  };
+
+  const handleNewChatSession = (e) => {
+    if (e && e.stopPropagation) e.stopPropagation();
+    openTab({ name: 'Chat', path: 'chat-tab' }, 'chat');
+    window.dispatchEvent(new CustomEvent('sigma-chat-new-session'));
+    if (setMobileSidebarOpen) setMobileSidebarOpen(false);
+  };
+
+  const handleDeleteChatSession = (e, sessionId) => {
+    if (e && e.stopPropagation) e.stopPropagation();
+    window.dispatchEvent(new CustomEvent('sigma-chat-delete-session', { detail: sessionId }));
+    setChatSessions(prev => prev.filter(s => s.id !== sessionId));
+  };
+
+  const handleSelectModelTab = (tabId) => {
+    setActiveModelTab(tabId);
+    try {
+      localStorage.setItem('sigma_model_hub_active_subtab', tabId);
+    } catch {}
+    openTab({ name: 'Modelli' }, 'model_hub');
+    window.dispatchEvent(new CustomEvent('sigma-model-hub-set-tab', { detail: tabId }));
+    if (setMobileSidebarOpen) setMobileSidebarOpen(false);
+  };
   const [hiddenTabs, setHiddenTabs] = useState(() => new Set());
   
   useEffect(() => {
@@ -376,8 +490,57 @@ export default function Sidebar({
             badge={chatCount > 0 ? chatCount : 0}
             badgeColor="rgba(234,179,8,0.18)"
             active={activeTabId != null && activeTabId.startsWith('chat')}
-            onClick={() => openTab({ name: 'Chat', path: 'chat-tab' }, 'chat')} 
+            onClick={() => {
+              openTab({ name: 'Chat', path: 'chat-tab' }, 'chat');
+              setChatExpanded(true);
+            }} 
+            expandable={true}
+            expanded={chatExpanded}
+            onToggleExpand={() => setChatExpanded(prev => !prev)}
           />
+
+          {chatExpanded && (
+            <div className="sidebar-subnav sidebar-chat-subnav">
+              <button
+                type="button"
+                className="sidebar-new-chat-btn"
+                onClick={handleNewChatSession}
+                title="Avvia una nuova conversazione"
+              >
+                <Plus size={12} />
+                <span>Nuova Conversazione</span>
+              </button>
+
+              <div className="sidebar-sessions-list">
+                {chatSessions.length === 0 ? (
+                  <div className="sidebar-subitem-empty">Nessuna sessione</div>
+                ) : (
+                  chatSessions.slice(0, 15).map(s => {
+                    const isSelected = activeTabId != null && activeTabId.startsWith('chat') && activeSessionId === s.id;
+                    return (
+                      <div
+                        key={s.id}
+                        className={`sidebar-session-item ${isSelected ? 'active' : ''}`}
+                        onClick={() => handleSelectChatSession(s.id)}
+                        title={s.name}
+                      >
+                        <span className="sidebar-session-dot" />
+                        <span className="sidebar-session-name">{s.name || 'Chat'}</span>
+                        <button
+                          type="button"
+                          className="sidebar-session-delete-btn"
+                          onClick={(e) => handleDeleteChatSession(e, s.id)}
+                          title="Elimina conversazione"
+                        >
+                          <Trash2 size={11} />
+                        </button>
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+            </div>
+          )}
 
           <SidebarItem 
             icon={DownloadCloud} 
@@ -386,8 +549,38 @@ export default function Sidebar({
             badge="LOCAL"
             badgeColor="rgba(255,184,108,0.2)"
             active={activeTabId != null && activeTabId.startsWith('model_hub')}
-            onClick={() => openTab({ name: 'Modelli' }, 'model_hub')} 
+            onClick={() => {
+              openTab({ name: 'Modelli' }, 'model_hub');
+              setModelsExpanded(true);
+            }} 
+            expandable={true}
+            expanded={modelsExpanded}
+            onToggleExpand={() => setModelsExpanded(prev => !prev)}
           />
+
+          {modelsExpanded && (
+            <div className="sidebar-subnav sidebar-models-subnav">
+              {[
+                { id: 'browse', label: 'Esplora HF', icon: Search },
+                { id: 'inventory', label: 'Modelli Locali', icon: HardDrive },
+                { id: 'converter', label: 'Convertitore GGUF', icon: Zap },
+                { id: 'settings', label: 'Impostazioni & Token', icon: Settings },
+              ].map(sub => {
+                const isSelected = activeTabId != null && activeTabId.startsWith('model_hub') && activeModelTab === sub.id;
+                const SubIcon = sub.icon;
+                return (
+                  <div
+                    key={sub.id}
+                    className={`sidebar-subitem ${isSelected ? 'active' : ''}`}
+                    onClick={() => handleSelectModelTab(sub.id)}
+                  >
+                    <SubIcon size={12} style={{ flexShrink: 0 }} />
+                    <span className="sidebar-subitem-label">{sub.label}</span>
+                  </div>
+                );
+              })}
+            </div>
+          )}
 
           <SidebarItem 
             icon={Sliders} 

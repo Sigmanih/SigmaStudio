@@ -36,6 +36,7 @@
 @import './styles/config.css';
 @import './styles/whitepapers.css';
 @import './styles/editor.css';
+@import './modules/sigma_model_hub/styles/model-hub.css';
 
 /* --- LAYER 3: ADVANCED THEMES & PRESETS --- */
 @import './styles/04-themes/presets.css';

@@ -3,7 +3,7 @@ import {
   DownloadCloud, Search, HardDrive, Zap, Shield, Key,
   CheckCircle2, RefreshCw, Folder, FolderOpen, Layers, Activity, Sparkles, ExternalLink,
   ArrowRight, XCircle, RotateCcw, Eye, EyeOff, ShieldCheck, AlertTriangle, Check,
-  Plus, X, Tag, FolderPlus, Link2, Copy, FileText, Package
+  Plus, X, Tag, FolderPlus, Link2, Copy, FileText, Package, Settings
 } from 'lucide-react';
 
 import { useApp } from '../../contexts/AppContext';
@@ -41,6 +41,33 @@ const DEFAULT_OFFICIAL_PUBLISHERS = [
 ];
 
 
+const TAB_METADATA = {
+  browse: {
+    title: 'Esplora Hugging Face',
+    icon: Search,
+    badge: 'ESPLORA',
+    desc: 'Cerca e scarica modelli GGUF e Safetensors da Hugging Face per SigmaEngine.'
+  },
+  inventory: {
+    title: 'Modelli Locali & Storage',
+    icon: HardDrive,
+    badge: 'STORAGE',
+    desc: 'Gestione pesi locali, storage su disco, benchmark e deploy su SigmaEngine.'
+  },
+  converter: {
+    title: 'Convertitore GGUF & Quantizzazione',
+    icon: Zap,
+    badge: 'CONVERTITORE',
+    desc: 'Converti checkpoint Hugging Face in GGUF e applica la quantizzazione desiderata.'
+  },
+  settings: {
+    title: 'Impostazioni & HF Token',
+    icon: Settings,
+    badge: 'CONFIG',
+    desc: 'Cartelle di salvataggio modelli, token Hugging Face e parametri ufficiali.'
+  }
+};
+
 export default function ModelHub({ addToast: addToastProp, openTab }) {
   // Workspace monta l'hub passando uno stub vuoto come addToast, quindi ogni
   // notifica finiva nel nulla: errori di conversione compresi. Quella vera sta
@@ -49,9 +76,36 @@ export default function ModelHub({ addToast: addToastProp, openTab }) {
   const addToast = appAddToast || addToastProp;
   const isLight = theme === 'light';
 
-  const [activeTab, setActiveTab] = useState('browse'); // 'browse' | 'inventory' | 'converter' | 'settings'
+  const [activeTab, setActiveTab] = useState(() => {
+    try {
+      return localStorage.getItem('sigma_model_hub_active_subtab') || 'browse';
+    } catch {
+      return 'browse';
+    }
+  }); // 'browse' | 'inventory' | 'converter' | 'settings'
+  const currentTabMeta = TAB_METADATA[activeTab] || TAB_METADATA.browse;
+  const TabIcon = currentTabMeta.icon;
   const [deployTargetModel, setDeployTargetModel] = useState(null);
   const [preselectedConvertModel, setPreselectedConvertModel] = useState('');
+
+  // Support external sub-tab switching (e.g. from the main application sidebar)
+  useEffect(() => {
+    const handleSetTab = (e) => {
+      if (e?.detail && ['browse', 'inventory', 'converter', 'settings'].includes(e.detail)) {
+        setActiveTab(e.detail);
+      }
+    };
+    window.addEventListener('sigma-model-hub-set-tab', handleSetTab);
+    return () => window.removeEventListener('sigma-model-hub-set-tab', handleSetTab);
+  }, []);
+
+  // Notify sidebar and persist to localStorage when activeTab changes
+  useEffect(() => {
+    try {
+      localStorage.setItem('sigma_model_hub_active_subtab', activeTab);
+      window.dispatchEvent(new CustomEvent('sigma-model-hub-tab-changed', { detail: activeTab }));
+    } catch (e) {}
+  }, [activeTab]);
 
 
   // Active Downloads Tracking
@@ -434,6 +488,11 @@ export default function ModelHub({ addToast: addToastProp, openTab }) {
       if (json.success) {
         if (addToast) addToast(`✅ Cartella "${clean}" collegata con successo! Modelli scansionati automaticamente.`, 'success');
         fetchConfig();
+        fetchLocalModels();
+        try {
+          window.dispatchEvent(new CustomEvent('ai-config-updated'));
+          window.dispatchEvent(new CustomEvent('models-updated'));
+        } catch (e) {}
       } else {
         if (addToast) addToast(`Cartella aggiunta: ${clean}.`, 'info');
       }
@@ -462,6 +521,11 @@ export default function ModelHub({ addToast: addToastProp, openTab }) {
       if (json.success) {
         if (addToast) addToast(`Percorso "${dirToRemove}" rimosso.`, 'info');
         fetchConfig();
+        fetchLocalModels();
+        try {
+          window.dispatchEvent(new CustomEvent('ai-config-updated'));
+          window.dispatchEvent(new CustomEvent('models-updated'));
+        } catch (e) {}
       }
     } catch {
       if (addToast) addToast(`Percorso "${dirToRemove}" rimosso.`, 'info');
@@ -490,6 +554,11 @@ export default function ModelHub({ addToast: addToastProp, openTab }) {
         if (addToast) addToast(`✅ ${json.message}`, 'success');
         setImportSourcePath('');
         fetchConfig();
+        fetchLocalModels();
+        try {
+          window.dispatchEvent(new CustomEvent('ai-config-updated'));
+          window.dispatchEvent(new CustomEvent('models-updated'));
+        } catch (e) {}
       } else {
         if (addToast) addToast(`❌ Errore importazione: ${json.error || 'Errore'}`, 'error');
       }
@@ -520,6 +589,11 @@ export default function ModelHub({ addToast: addToastProp, openTab }) {
         if (addToast) addToast('⚡ Impostazioni salvate con successo!', 'success');
         fetchDownloads();
         fetchConfig();
+        fetchLocalModels();
+        try {
+          window.dispatchEvent(new CustomEvent('ai-config-updated'));
+          window.dispatchEvent(new CustomEvent('models-updated'));
+        } catch (e) {}
       } else {
         if (addToast) addToast(`❌ Errore salvataggio: ${json.error || 'Errore'}`, 'error');
       }
@@ -572,102 +646,109 @@ export default function ModelHub({ addToast: addToastProp, openTab }) {
 
   return (
     <div className="model-hub-container" style={{ backgroundColor: isLight ? '#f4efe4' : '#07090e', color: textPrimary }}>
-      {/* 1. FUTURISTIC HEADER */}
-      <div style={{
-        padding: '16px 20px', borderRadius: '16px',
+      {/* 1. FUTURISTIC RESPONSIVE HEADER */}
+      <div className="mh-header" style={{
         background: isLight
           ? 'linear-gradient(135deg, #ffffff 0%, #faf6ec 100%)'
           : 'linear-gradient(135deg, rgba(13, 16, 25, 0.95) 0%, rgba(20, 26, 42, 0.85) 100%)',
         border: cardBorder, boxShadow: cardShadow,
-        display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '14px'
       }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
-          <div style={{
-            width: '46px', height: '46px', borderRadius: '12px',
-            background: 'radial-gradient(circle at 30% 30%, rgba(255, 184, 108, 0.25), rgba(255, 184, 108, 0.05))',
-            border: '1px solid rgba(255, 184, 108, 0.35)',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            boxShadow: '0 0 20px rgba(255, 184, 108, 0.2)'
-          }}>
-            <DownloadCloud size={24} color="#ffb86c" />
+        <div className="mh-header-main">
+          <div className="mh-header-icon-box">
+            <TabIcon size={22} color={isLight ? '#ea580c' : '#ffb86c'} />
           </div>
-          <div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-              <h1 style={{ margin: 0, fontSize: '1.25rem', fontWeight: 800, letterSpacing: '-0.3px', color: textPrimary }}>
-                Model Hub & <span style={{ color: '#ffb86c' }}>Hugging Face Downloader</span>
+          <div className="mh-header-titles">
+            <div className="mh-header-title-row">
+              <h1 className="mh-header-title" style={{ color: textPrimary }}>
+                Model Hub <span style={{ opacity: 0.35 }}>/</span> <span style={{ color: isLight ? '#ea580c' : '#ffb86c' }}>{currentTabMeta.title}</span>
               </h1>
-              <button
-                onClick={handleTestConnection}
-                disabled={testingConn}
-                title="Esegui test connettività verso Hugging Face e verifica token"
-                style={{
-                  fontSize: '0.68rem', padding: '3px 10px', borderRadius: '12px',
-                  background: connResult?.connected ? 'rgba(16, 185, 129, 0.15)' : 'rgba(255, 184, 108, 0.15)',
-                  color: connResult?.connected ? '#10b981' : '#ffb86c',
-                  border: connResult?.connected ? '1px solid rgba(16, 185, 129, 0.4)' : '1px solid rgba(255, 184, 108, 0.3)',
-                  fontWeight: 800, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px'
-                }}
-              >
-                {testingConn ? <Activity className="mh-spin" size={11} /> : <RefreshCw size={11} />}
-                {testingConn ? 'Verifica in corso...' : connResult?.latency_ms ? `HF Connesso (${connResult.latency_ms}ms)` : '🧪 Test Connessione'}
-              </button>
+              <span className="mh-view-badge">
+                {currentTabMeta.badge}
+              </span>
+              {totalActiveTasksCount > 0 && (
+                <span
+                  className="mh-active-task-pill"
+                  onClick={() => setActiveTab('inventory')}
+                  title="Clicca per visualizzare i download attivi"
+                >
+                  <Activity size={10} className="mh-spin" />
+                  <span>{currentRunningTask ? `${currentRunningTask.progress_pct}%` : `${totalActiveTasksCount} download`}</span>
+                </span>
+              )}
+              {activeConversion && (
+                <span
+                  className="mh-active-task-pill"
+                  onClick={() => setActiveTab('converter')}
+                  title="Clicca per visualizzare la conversione in corso"
+                  style={{ background: 'rgba(255, 184, 108, 0.18)', color: '#ffb86c', borderColor: 'rgba(255, 184, 108, 0.35)' }}
+                >
+                  <Zap size={10} className="mh-spin" />
+                  <span>{activeConversion.progress || 0}% conv</span>
+                </span>
+              )}
             </div>
-            <p style={{ margin: '2px 0 0 0', fontSize: '0.75rem', color: textMuted }}>
-              Scarica modelli GGUF e Safetensors da Hugging Face e avviali direttamente con <strong>⚡ SigmaEngine</strong>.
+            <p className="mh-header-sub" style={{ color: textMuted }}>
+              {currentTabMeta.desc}
             </p>
           </div>
         </div>
 
-        {/* Engine Live Status Pill */}
-        <div style={{
-          padding: '8px 14px', borderRadius: '10px',
-          background: subBg, border: subBorder,
-          display: 'flex', alignItems: 'center', gap: '8px'
-        }}>
-          <Zap size={15} color="#00d2ff" />
-          <div style={{ fontSize: '0.72rem' }}>
-            <div style={{ color: textMuted, fontWeight: 700 }}>MOTORE ATTIVO</div>
-            <div style={{ color: '#00d2ff', fontWeight: 800 }}>
-              {engineStatus?.loaded_model || 'Nessun modello caricato (Standby)'}
+        {/* Right Tools & Engine Status */}
+        <div className="mh-header-tools">
+          <button
+            onClick={handleTestConnection}
+            disabled={testingConn}
+            title="Esegui test connettività verso Hugging Face e verifica token"
+            className="mh-conn-btn"
+            style={{
+              background: connResult?.connected ? 'rgba(16, 185, 129, 0.15)' : (isLight ? 'rgba(234, 88, 12, 0.12)' : 'rgba(255, 184, 108, 0.15)'),
+              color: connResult?.connected ? '#10b981' : (isLight ? '#ea580c' : '#ffb86c'),
+              border: connResult?.connected ? '1px solid rgba(16, 185, 129, 0.4)' : (isLight ? '1px solid rgba(234, 88, 12, 0.3)' : '1px solid rgba(255, 184, 108, 0.3)'),
+            }}
+          >
+            {testingConn ? <Activity className="mh-spin" size={11} /> : <RefreshCw size={11} />}
+            <span>{testingConn ? 'Verifica...' : connResult?.latency_ms ? `HF (${connResult.latency_ms}ms)` : 'Test HF'}</span>
+          </button>
+
+          {/* Engine Live Status Pill */}
+          <div className="mh-engine-pill" style={{ background: subBg, border: subBorder }}>
+            <Zap size={13} color="#00d2ff" style={{ flexShrink: 0 }} />
+            <div>
+              <div className="mh-engine-pill-title" style={{ color: textMuted }}>MOTORE ATTIVO</div>
+              <div className="mh-engine-pill-val" style={{ color: '#00d2ff' }}>
+                {engineStatus?.loaded_model || 'Standby'}
+              </div>
             </div>
           </div>
         </div>
       </div>
 
-      {/* 2. NAVIGATION TABS */}
-      <div style={{ display: 'flex', gap: '8px', borderBottom: subBorder, paddingBottom: '8px', flexWrap: 'wrap' }}>
+      {/* Modern Cyber-Segmented Pill Switcher */}
+      <div className="mh-segmented-nav">
         {[
-          { id: 'browse', label: '🔍 Esplora Hugging Face' },
-          {
-            id: 'inventory',
-            label: totalActiveTasksCount > 0
-              ? `💾 Modelli Locali & Storage (${currentRunningTask ? `${currentRunningTask.progress_pct}%` : totalActiveTasksCount} in corso)`
-              : '💾 Modelli Locali & Storage'
-          },
-          {
-            id: 'converter',
-            label: activeConversion
-              ? `⚡ Convertitore GGUF (${activeConversion.progress || 0}% in corso)`
-              : '⚡ Convertitore GGUF & Quantizzazione'
-          },
-          { id: 'settings', label: '⚙️ Impostazioni & HF Token' },
-        ].map(tab => (
-          <button
-            key={tab.id}
-            onClick={() => setActiveTab(tab.id)}
-            style={{
-              padding: '8px 16px', borderRadius: '10px',
-              border: activeTab === tab.id ? '1px solid #ffb86c' : '1px solid transparent',
-              background: activeTab === tab.id ? (isLight ? '#ffffff' : 'rgba(255, 184, 108, 0.15)') : subBg,
-              color: activeTab === tab.id ? (isLight ? '#ea580c' : '#ffb86c') : textMuted,
-              fontSize: '0.8rem', fontWeight: 800, cursor: 'pointer',
-              transition: 'all 0.15s ease', display: 'flex', alignItems: 'center', gap: '6px'
-            }}
-          >
-            {tab.label}
-          </button>
-        ))}
+          { id: 'browse', label: 'Esplora HF', icon: Search },
+          { id: 'inventory', label: totalActiveTasksCount > 0 ? `Modelli Locali (${currentRunningTask ? `${currentRunningTask.progress_pct}%` : totalActiveTasksCount})` : 'Modelli Locali', icon: HardDrive },
+          { id: 'converter', label: activeConversion ? `Convertitore (${activeConversion.progress || 0}%)` : 'Convertitore GGUF', icon: Zap },
+          { id: 'settings', label: 'Impostazioni & Token', icon: Settings },
+        ].map(tab => {
+          const Icon = tab.icon;
+          const isActive = activeTab === tab.id;
+          return (
+            <button
+              key={tab.id}
+              type="button"
+              onClick={() => setActiveTab(tab.id)}
+              className={`mh-segmented-item ${isActive ? 'active' : ''}`}
+            >
+              <Icon size={13} style={{ flexShrink: 0 }} />
+              <span>{tab.label}</span>
+            </button>
+          );
+        })}
       </div>
+
+      {/* 2. TAB CONTENT VIEWS */}
+      <div className="mh-view-container">
 
       {/* 3. TAB CONTENT VIEWS */}
       {activeTab === 'browse' && (
@@ -1611,6 +1692,7 @@ export default function ModelHub({ addToast: addToastProp, openTab }) {
           </div>
         </div>
       )}
+      </div>
 
 
       {pickingDir && (

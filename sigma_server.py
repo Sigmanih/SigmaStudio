@@ -334,6 +334,39 @@ def _get_configured_host_port_ssl() -> tuple[str, int, bool, str | None, str | N
     return host, port, ssl_enabled, ssl_certfile, ssl_keyfile
 
 
+def _log_ca_trust_hint(port: int, lan_ip: str) -> None:
+    """Ricorda come rendere attendibile la CA locale se il browser mostra ancora l'avviso."""
+    from core.ssl_manager import ca_cert_path, is_ca_trusted
+
+    if is_ca_trusted():
+        log.info("[SSL] CA locale gia' attendibile su questa macchina: nessun avviso nel browser.")
+        return
+
+    log.warning("[SSL] La CA locale non e' ancora installata: il browser mostrera' "
+                "ERR_CERT_AUTHORITY_INVALID finche' non la si rende attendibile.")
+    log.warning("[SSL] Installazione su questo PC:  python sigma_server.py --install-ca")
+    log.warning("[SSL] Certificato CA da installare: %s", ca_cert_path())
+    if lan_ip != "127.0.0.1":
+        log.warning("[SSL] Su smartphone e tablet apri: https://%s:%d/ssl/ca.crt", lan_ip, port)
+
+
+def _install_ca_cli() -> int:
+    """Installa la CA locale nel trust store di sistema dalla riga di comando."""
+    from core.ssl_manager import ca_cert_path, ca_fingerprint, ensure_local_ca, install_ca_into_trust_store
+
+    ensure_local_ca()
+    ok, message = install_ca_into_trust_store()
+    if ok:
+        log.info("[SSL] %s", message)
+        log.info("[SSL] Impronta SHA-1: %s", ca_fingerprint())
+        log.info("[SSL] Riavvia il browser: https://localhost non mostrera' piu' avvisi.")
+        return 0
+
+    log.error("[SSL] Installazione automatica non riuscita: %s", message)
+    log.error("[SSL] Installa manualmente il file: %s", ca_cert_path())
+    return 1
+
+
 def serve(host: str | None = None, port: int | None = None, ssl: bool | None = None) -> None:
     """Avvia il server ASGI su host e porta specificati o configurati, con supporto opzionale HTTPS."""
     cfg_host, cfg_port, cfg_ssl, cfg_cert, cfg_key = _get_configured_host_port_ssl()
@@ -355,6 +388,7 @@ def serve(host: str | None = None, port: int | None = None, ssl: bool | None = N
             ssl_key_path = str(key_p)
             scheme = "https"
             log.info("[SSL] Modalita' HTTPS (TLS/SSL) abilitata con successo.")
+            _log_ca_trust_hint(final_port, lan_ip)
         else:
             log.warning("[SSL] Impossibile abilitare HTTPS: certificati non generati. Avvio in HTTP standard.")
 
@@ -362,6 +396,23 @@ def serve(host: str | None = None, port: int | None = None, ssl: bool | None = N
     if final_host in ("0.0.0.0", "") and lan_ip != "127.0.0.1":
         log.info("Wi-Fi & LAN Network access available at %s://%s:%d", scheme, lan_ip, final_port)
     log.info("Interactive OpenAPI Docs available at %s://localhost:%d/docs", scheme, final_port)
+
+    # Apertura automatica del browser all'avvio (disattivabile con --no-browser o SIGMA_NO_BROWSER=1)
+    if "--no-browser" not in sys.argv and not os.environ.get("SIGMA_NO_BROWSER"):
+        import threading
+        import time
+        import webbrowser
+
+        browser_url = f"{scheme}://localhost:{final_port}"
+        def _open_browser():
+            time.sleep(1.2)
+            try:
+                log.info("[Browser] Apertura automatica pagina Sigma Studio: %s", browser_url)
+                webbrowser.open(browser_url)
+            except Exception as ex:
+                log.debug("[Browser] Apertura browser non riuscita: %s", ex)
+
+        threading.Thread(target=_open_browser, daemon=True).start()
 
     try:
         import uvicorn
@@ -415,6 +466,10 @@ def main(argv: list[str] | None = None) -> int:
         # difetto da diagnosticare, c'e' un passaggio di installazione saltato.
         print(_spiega_ambiente_incompleto(mancanti), file=sys.stderr)
         return 1
+
+    # Rende attendibile la CA locale e termina, senza avviare il server.
+    if "--install-ca" in argomenti or "--trust-ca" in argomenti:
+        return _install_ca_cli()
 
     signal.signal(signal.SIGINT, graceful_shutdown)
     signal.signal(signal.SIGTERM, graceful_shutdown)

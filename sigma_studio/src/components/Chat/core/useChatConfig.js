@@ -375,13 +375,42 @@ export function useChatConfig({ saveSessionsState, sessionRefs }) {
     } catch (e) {}
   };
 
+  const handleToggleModelDropdown = useCallback((valOrFn) => {
+    setShowModelDropdown(prev => {
+      const next = typeof valOrFn === 'function' ? valOrFn(prev) : valOrFn;
+      if (next && !prev) {
+        // Refresh live dei modelli all'apertura del dropdown
+        fetchOllamaModels();
+      }
+      return next;
+    });
+  }, [fetchOllamaModels]);
+
   useEffect(() => {
     const handleConfigUpdated = () => {
       fetchConfigAndModels();
     };
+    const handleModelsUpdated = () => {
+      fetchOllamaModels();
+    };
+    const handleVisibilityOrFocus = () => {
+      if (document.visibilityState === 'visible') {
+        fetchOllamaModels();
+      }
+    };
+
     window.addEventListener('ai-config-updated', handleConfigUpdated);
-    return () => window.removeEventListener('ai-config-updated', handleConfigUpdated);
-  }, [fetchConfigAndModels]);
+    window.addEventListener('models-updated', handleModelsUpdated);
+    window.addEventListener('visibilitychange', handleVisibilityOrFocus);
+    window.addEventListener('focus', handleVisibilityOrFocus);
+
+    return () => {
+      window.removeEventListener('ai-config-updated', handleConfigUpdated);
+      window.removeEventListener('models-updated', handleModelsUpdated);
+      window.removeEventListener('visibilitychange', handleVisibilityOrFocus);
+      window.removeEventListener('focus', handleVisibilityOrFocus);
+    };
+  }, [fetchConfigAndModels, fetchOllamaModels]);
 
   return {
     favoriteModel,
@@ -412,7 +441,7 @@ export function useChatConfig({ saveSessionsState, sessionRefs }) {
     showManifestoDropdown,
     setShowManifestoDropdown,
     showModelDropdown,
-    setShowModelDropdown,
+    setShowModelDropdown: handleToggleModelDropdown,
     showQuickConfig,
     setShowQuickConfig,
     quickConfig,
