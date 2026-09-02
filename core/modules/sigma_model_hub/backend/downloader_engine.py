@@ -502,10 +502,15 @@ class ModelDownloadManager:
 
             except urllib.error.HTTPError as ex:
                 if ex.code in (401, 403):
+                    if token:
+                        log.warning(f"[ModelDownloader] Token non valido/scaduto ({ex.code}) per {task.filename}. Tentativo download anonimo...")
+                        token = None
+                        task.hf_token = None
+                        time.sleep(1)
+                        continue
                     auth_err = (
                         f"Autenticazione richiesta (HTTP {ex.code}): Il modello '{task.model_id}' "
-                        f"richiede un Hugging Face Access Token valido e l'accettazione della licenza del modello su huggingface.co. "
-                        f"Inserisci il tuo Token (read) nella scheda 'Directory & HF Token' di Model Hub."
+                        f"è protetto/gated e richiede un Hugging Face Access Token valido e l'accettazione della licenza su huggingface.co."
                     )
                     task.status = "failed"
                     task.error_message = auth_err
@@ -688,10 +693,15 @@ class ModelDownloadManager:
 
                     except urllib.error.HTTPError as ex:
                         if ex.code in (401, 403):
+                            if token:
+                                log.warning(f"[ModelDownloader] Repo task token non valido/scaduto ({ex.code}) su {fname}. Tentativo anonimo...")
+                                token = None
+                                task.hf_token = None
+                                time.sleep(1)
+                                continue
                             auth_err = (
                                 f"Autenticazione richiesta (HTTP {ex.code}): Il modello '{task.model_id}' "
-                                f"richiede un Hugging Face Access Token valido e l'accettazione della licenza del modello su huggingface.co. "
-                                f"Inserisci il tuo Token (read) nella scheda 'Directory & HF Token' di Model Hub."
+                                f"è protetto/gated e richiede un Hugging Face Access Token valido e l'accettazione della licenza su huggingface.co."
                             )
                             task.status = "failed"
                             task.error_message = auth_err

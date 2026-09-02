@@ -923,16 +923,17 @@ POPULAR_MODELS = [
 
 
 def _fetch_from_hf_api(params: Dict[str, Any], hf_token: Optional[str] = None) -> tuple[List[Dict[str, Any]], Optional[str]]:
-    """Helper to query Hugging Face API and extract items and next_cursor."""
+    """Helper to query Hugging Face API and extract items and next_cursor, with anonymous fallback if token is invalid or absent."""
     base_qs = urllib.parse.urlencode(params)
     url = f"{HF_API_BASE}/models?{base_qs}&expand%5B%5D=siblings&full=true"
-    req = urllib.request.Request(url)
-    req.add_header("User-Agent", "SigmaStudio-ModelHub/2.0")
-    if hf_token:
-        req.add_header("Authorization", f"Bearer {hf_token}")
 
-    try:
-        with safe_urlopen(req, timeout=10) as response:
+    def _do_fetch(tok: Optional[str]):
+        req = urllib.request.Request(url)
+        req.add_header("User-Agent", "SigmaStudio-ModelHub/2.0")
+        if tok and str(tok).strip():
+            req.add_header("Authorization", f"Bearer {str(tok).strip()}")
+
+        with safe_urlopen(req, timeout=12) as response:
             if response.status == 200:
                 raw = json.loads(response.read().decode("utf-8"))
                 link = response.headers.get("Link", "")
@@ -942,7 +943,25 @@ def _fetch_from_hf_api(params: Dict[str, Any], hf_token: Optional[str] = None) -
                     if match:
                         next_cursor = urllib.parse.unquote(match.group(1))
                 return raw, next_cursor
+        return [], None
+
+    try:
+        return _do_fetch(hf_token)
+    except urllib.error.HTTPError as http_err:
+        # If token is invalid or expired (401/403), retry anonymously for public models
+        if hf_token and http_err.code in (401, 403):
+            log.warning(f"[HF_Client] Token Hugging Face non valido o scaduto ({http_err.code}). Eseguo ricerca anonima...")
+            try:
+                return _do_fetch(None)
+            except Exception as ex_retry:
+                log.debug(f"[HF_Client] Anonymous retry failed: {ex_retry}")
+        log.debug(f"[HF_Client] HF API HTTP error for {params}: {http_err}")
     except Exception as ex:
+        if hf_token:
+            try:
+                return _do_fetch(None)
+            except Exception:
+                pass
         log.debug(f"[HF_Client] HF API fetch error for {params}: {ex}")
     return [], None
 
@@ -1146,8 +1165,8 @@ def search_hf_models(
             if target_provider_authors and author.lower() not in target_provider_authors:
                 continue
 
-            # Strict official filtering when official_only is enabled
-            if official_only and not is_official:
+            # Strict official filtering when official_only is enabled AND no specific text search query was entered
+            if official_only and not is_official and not search_query:
                 continue
 
             m_name = mid.split("/")[-1] if "/" in mid else mid
@@ -1255,31 +1274,51 @@ def search_hf_models(
 
 
 def get_hf_model_details(model_id: str, hf_token: Optional[str] = None) -> Dict[str, Any]:
-    """Fetches detailed metadata, file list, dates, and available quantizations for a model."""
-    try:
+    """Fetches detailed metadata, file list, dates, and available quantizations for a model, with anonymous fallback if token fails."""
+    def _do_details(tok: Optional[str]):
         url = f"{HF_API_BASE}/models/{model_id}?blobs=true"
         req = urllib.request.Request(url)
         req.add_header("User-Agent", "SigmaStudio-ModelHub/2.0")
-        if hf_token:
-            req.add_header("Authorization", f"Bearer {hf_token}")
-
-        with safe_urlopen(req, timeout=8) as response:
+        if tok and str(tok).strip():
+            req.add_header("Authorization", f"Bearer {str(tok).strip()}")
+        with safe_urlopen(req, timeout=10) as response:
             if response.status == 200:
-                data = json.loads(response.read().decode("utf-8"))
-                siblings = data.get("siblings", [])
-                
-                files = []
-                for s in siblings:
-                    rfilename = s.get("rfilename", "")
-                    f_sz = s.get("size") or (s.get("lfs") or {}).get("size") or 0
-                    if any(rfilename.endswith(ext) for ext in [".gguf", ".safetensors", ".bin", ".json", ".pt"]):
-                        files.append({
-                            "filename": rfilename,
-                            "size": f_sz,
-                            "is_gguf": rfilename.endswith(".gguf"),
-                            "is_safetensors": rfilename.endswith(".safetensors"),
-                            "download_url": f"https://huggingface.co/{model_id}/resolve/main/{rfilename}"
-                        })
+                return json.loads(response.read().decode("utf-8"))
+        return None
+
+    try:
+        data = None
+        try:
+            data = _do_details(hf_token)
+        except urllib.error.HTTPError as http_err:
+            if hf_token and http_err.code in (401, 403):
+                log.warning(f"[HF_Client] get_hf_model_details: token non valido ({http_err.code}). Tentativo anonimo...")
+                data = _do_details(None)
+            else:
+                raise
+        except Exception:
+            if hf_token:
+                try:
+                    data = _do_details(None)
+                except Exception:
+                    data = None
+
+        if not data:
+            return {"success": False, "error": f"Modello {model_id} non trovato o non accessibile"}
+
+        siblings = data.get("siblings", [])
+        files = []
+        for s in siblings:
+            rfilename = s.get("rfilename", "")
+            f_sz = s.get("size") or (s.get("lfs") or {}).get("size") or 0
+            if any(rfilename.endswith(ext) for ext in [".gguf", ".safetensors", ".bin", ".json", ".pt"]):
+                files.append({
+                    "filename": rfilename,
+                    "size": f_sz,
+                    "is_gguf": rfilename.endswith(".gguf"),
+                    "is_safetensors": rfilename.endswith(".safetensors"),
+                    "download_url": f"https://huggingface.co/{model_id}/resolve/main/{rfilename}"
+                })
 
                 created_at = data.get("createdAt")
                 last_modified = data.get("lastModified")
