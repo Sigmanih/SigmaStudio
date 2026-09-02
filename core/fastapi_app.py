@@ -565,13 +565,32 @@ FastAPIHandlerAdapter.handle_system_updates_apply = handle_system_updates_apply
 register_get_handlers(FastAPIHandlerAdapter)
 register_post_handlers(FastAPIHandlerAdapter)
 
-# Caricamento dinamico dei moduli opzionali installati (Model Hub, Training Lab, Creative Lab, Domotica, etc.)
+# ==============================================================================
+# sigma_model_hub — Modulo core sempre attivo
+#
+# Viene caricato qui direttamente, senza dipendere da marketplace_installed.json.
+# Questo garantisce che /api/models/* funzioni su qualunque installazione fresca
+# (Raspberry Pi, server remoto, clone da git) anche prima che l'utente abbia
+# configurato il marketplace o salvato qualsiasi impostazione.
+# ==============================================================================
+try:
+    from core.modules.sigma_model_hub.backend import handlers as _hub_handlers
+    _hub_handlers.register_routes(app)
+    log.info("[FastAPI] sigma_model_hub caricato come modulo core.")
+except Exception as _hub_err:
+    import traceback as _hub_tb
+    log.warning(
+        f"[FastAPI] sigma_model_hub non caricato (verrà riprovato dal ModuleLoader): "
+        f"{type(_hub_err).__name__}: {_hub_err}\n{_hub_tb.format_exc()}"
+    )
+
+# Caricamento dinamico dei moduli opzionali installati (Training Lab, Creative Lab, Domotica, etc.)
 _module_loader_error: str | None = None
 try:
     from core.module_loader import ModuleLoader
     module_loader = ModuleLoader()
     module_loader.load_installed(app)
-    log.info(f"[FastAPI] Moduli caricati: {module_loader.list_loaded()}")
+    log.info(f"[FastAPI] Moduli opzionali caricati: {module_loader.list_loaded()}")
 except Exception as _mod_err:
     import traceback as _tb
     _module_loader_error = f"{type(_mod_err).__name__}: {_mod_err}\n{_tb.format_exc()}"
