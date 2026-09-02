@@ -34,11 +34,21 @@ export default function WelcomeDashboard({ modules, openTab }) {
     downloadUrl: 'https://github.com/Sigmanih/SigmaStudio/archive/refs/heads/main.zip',
     activeRolesCount: 20,
     hasRoleUpdates: false,
+    // Stato commit locale / remoto
+    gitAvailable: false,
+    commitsBehind: 0,
+    newCommits: [],
+    localCommit: '',
+    localBranch: '',
+    remoteCommit: '',
+    remoteBranch: 'main',
+    diverged: false,
     lastChecked: null,
     error: null,
     applying: false,
     applyResult: null
   });
+  const [showCommits, setShowCommits] = useState(false);
 
   // Check for updates
   const checkForUpdates = useCallback(async (isManual = false) => {
@@ -46,7 +56,7 @@ export default function WelcomeDashboard({ modules, openTab }) {
       setUpdateState(p => ({ ...p, checking: true, error: null, applyResult: null }));
     }
     try {
-      const res = await fetch('/api/system/updates/check');
+      const res = await fetch(`/api/system/updates/check${isManual ? '?force=1' : ''}`);
       const data = await res.json();
       if (data && data.success) {
         setUpdateState(p => ({
@@ -64,6 +74,14 @@ export default function WelcomeDashboard({ modules, openTab }) {
           downloadUrl: data.download_url || 'https://github.com/Sigmanih/SigmaStudio/archive/refs/heads/main.zip',
           activeRolesCount: data.active_roles_count || 20,
           hasRoleUpdates: !!data.has_role_updates,
+          gitAvailable: !!data.git_available,
+          commitsBehind: data.commits_behind || 0,
+          newCommits: Array.isArray(data.new_commits) ? data.new_commits : [],
+          localCommit: data.local_commit || '',
+          localBranch: data.local_branch || '',
+          remoteCommit: data.remote_commit || '',
+          remoteBranch: data.remote_branch || 'main',
+          diverged: !!data.diverged,
           lastChecked: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
           error: null
         }));
@@ -96,9 +114,10 @@ export default function WelcomeDashboard({ modules, openTab }) {
         applyResult: {
           success: data.success,
           message: data.message || (data.success ? 'Aggiornamento applicato con successo!' : 'Verifica manuale richiesta.'),
-          log: data.log || ''
+          log: data.log || '',
+          restartRequired: !!data.restart_required
         },
-        updateAvailable: false
+        updateAvailable: data.success ? false : p.updateAvailable
       }));
       // Re-check after 2 seconds
       setTimeout(() => checkForUpdates(false), 2000);
@@ -348,7 +367,9 @@ export default function WelcomeDashboard({ modules, openTab }) {
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
                 <span style={{ fontSize: '0.88rem', fontWeight: 800, color: titleColor }}>
                   {updateState.updateAvailable
-                    ? `⚡ Nuova Versione Rilasciata su GitHub: v${updateState.latestVersion}`
+                    ? (updateState.commitsBehind > 0
+                        ? `⚡ ${updateState.commitsBehind} ${updateState.commitsBehind === 1 ? 'nuovo commit disponibile' : 'nuovi commit disponibili'} su GitHub`
+                        : `⚡ Nuova Versione Rilasciata su GitHub: v${updateState.latestVersion}`)
                     : `🟢 Sigma AI Studio v${updateState.currentVersion} • Sistema & Ruoli Aggiornati`}
                 </span>
                 <span style={{
@@ -366,7 +387,12 @@ export default function WelcomeDashboard({ modules, openTab }) {
 
               <div style={{ fontSize: '0.74rem', color: subtitleColor, marginTop: '3px' }}>
                 {updateState.updateAvailable ? (
-                  <span>{updateState.releaseTitle || 'Disponibile nuova versione con miglioramenti kernel e nuovi manifesti.'}</span>
+                  <span>{updateState.releaseNotes || updateState.releaseTitle || 'Disponibile nuova versione con miglioramenti kernel e nuovi manifesti.'}</span>
+                ) : updateState.gitAvailable && updateState.localCommit ? (
+                  <span>
+                    Allineato al commit <code style={{ fontFamily: 'monospace', opacity: 0.95 }}>{updateState.localCommit}</code>
+                    {updateState.localBranch ? ` · ramo ${updateState.localBranch}` : ''}
+                  </span>
                 ) : (
                   <span>Versione open per la community. Repository GitHub sincronizzato con il catalogo dei ruoli attivi.</span>
                 )}
@@ -374,6 +400,32 @@ export default function WelcomeDashboard({ modules, openTab }) {
                   <span style={{ marginLeft: '6px', opacity: 0.8 }}>• Verificato alle {updateState.lastChecked}</span>
                 )}
               </div>
+
+              {/* Riepilogo commit locale → remoto */}
+              {updateState.updateAvailable && updateState.commitsBehind > 0 && (
+                <div style={{ fontSize: '0.7rem', color: subtitleColor, marginTop: '4px', display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                  <span style={{ fontFamily: 'monospace' }}>
+                    {updateState.localCommit} → {updateState.remoteCommit}
+                  </span>
+                  <span style={{ opacity: 0.75 }}>· ramo {updateState.remoteBranch}</span>
+                  {updateState.newCommits.length > 0 && (
+                    <button
+                      onClick={() => setShowCommits(v => !v)}
+                      style={{
+                        background: 'none',
+                        border: 'none',
+                        color: '#faa03c',
+                        cursor: 'pointer',
+                        fontSize: '0.7rem',
+                        fontWeight: 700,
+                        padding: 0
+                      }}
+                    >
+                      {showCommits ? 'Nascondi novità' : 'Vedi cosa cambia'}
+                    </button>
+                  )}
+                </div>
+              )}
             </div>
           </div>
 
@@ -469,9 +521,33 @@ export default function WelcomeDashboard({ modules, openTab }) {
               }}
             >
               <ExternalLink size={12} />
-              <span>Release GitHub</span>
+              <span>{updateState.commitsBehind > 0 ? 'Vedi su GitHub' : 'Release GitHub'}</span>
             </a>
           </div>
+
+          {/* Elenco dei nuovi commit disponibili */}
+          {showCommits && updateState.newCommits.length > 0 && (
+            <div style={{
+              width: '100%',
+              padding: '10px 12px',
+              borderRadius: '10px',
+              background: isLight ? 'rgba(0,0,0,0.04)' : 'rgba(0,0,0,0.35)',
+              border: isLight ? '1px solid rgba(190, 160, 110, 0.3)' : '1px solid rgba(255,255,255,0.1)',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '6px',
+              maxHeight: '190px',
+              overflowY: 'auto'
+            }}>
+              {updateState.newCommits.map(c => (
+                <div key={c.sha} style={{ display: 'flex', alignItems: 'baseline', gap: '8px', fontSize: '0.72rem' }}>
+                  <code style={{ fontFamily: 'monospace', color: '#faa03c', flexShrink: 0 }}>{c.sha}</code>
+                  <span style={{ color: titleColor, flex: 1, minWidth: 0, wordBreak: 'break-word' }}>{c.message}</span>
+                  <span style={{ color: subtitleColor, flexShrink: 0, opacity: 0.8 }}>{c.date}</span>
+                </div>
+              ))}
+            </div>
+          )}
 
           {/* Toast / Feedback Aggiornamento Applicato */}
           {updateState.applyResult && (
@@ -493,6 +569,11 @@ export default function WelcomeDashboard({ modules, openTab }) {
                 {updateState.applyResult.success ? <Check size={14} /> : <AlertCircle size={14} />}
                 <span>{updateState.applyResult.message}</span>
               </div>
+              {updateState.applyResult.log && (
+                <span style={{ fontWeight: 500, opacity: 0.85, fontSize: '0.68rem', flex: 1, textAlign: 'right' }}>
+                  {updateState.applyResult.log.split('\n')[0]}
+                </span>
+              )}
               <button
                 onClick={() => setUpdateState(p => ({ ...p, applyResult: null }))}
                 style={{ background: 'none', border: 'none', color: 'inherit', cursor: 'pointer', fontSize: '0.8rem', padding: '0 4px' }}

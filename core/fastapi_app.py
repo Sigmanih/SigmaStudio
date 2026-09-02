@@ -566,12 +566,58 @@ register_get_handlers(FastAPIHandlerAdapter)
 register_post_handlers(FastAPIHandlerAdapter)
 
 # Caricamento dinamico dei moduli opzionali installati (Model Hub, Training Lab, Creative Lab, Domotica, etc.)
+_module_loader_error: str | None = None
 try:
     from core.module_loader import ModuleLoader
     module_loader = ModuleLoader()
     module_loader.load_installed(app)
+    log.info(f"[FastAPI] Moduli caricati: {module_loader.list_loaded()}")
 except Exception as _mod_err:
+    import traceback as _tb
+    _module_loader_error = f"{type(_mod_err).__name__}: {_mod_err}\n{_tb.format_exc()}"
     log.warning(f"[FastAPI] Avviso inizializzazione ModuleLoader: {_mod_err}")
+
+
+@app.get("/api/modules/status")
+async def api_modules_status():
+    """Diagnostica: quali moduli opzionali sono caricati e quali route /api/models/* sono registrate."""
+    import os
+    from core import paths
+
+    # Leggi stato installazione
+    installed: dict = {}
+    try:
+        import json as _json
+        state_file = str(paths.installed_modules_file())
+        if os.path.exists(state_file):
+            with open(state_file, encoding="utf-8") as _f:
+                installed = _json.load(_f)
+    except Exception as _e:
+        installed = {"error": str(_e)}
+
+    # Moduli registrati nel loader
+    loaded_modules: list = []
+    try:
+        loaded_modules = module_loader.list_loaded()
+    except Exception:
+        loaded_modules = ["(ModuleLoader non disponibile)"]
+
+    # Route registrate
+    model_get_routes = [p for p in FastAPIHandlerAdapter._GET_HANDLERS if p.startswith("/api/models")]
+    model_post_routes = [p for p in FastAPIHandlerAdapter._POST_HANDLERS if p.startswith("/api/models")]
+    total_get = len(FastAPIHandlerAdapter._GET_HANDLERS)
+    total_post = len(FastAPIHandlerAdapter._POST_HANDLERS)
+
+    return JSONResponse(status_code=200, content={
+        "module_loader_error": _module_loader_error,
+        "installed_state": installed,
+        "loaded_modules": loaded_modules,
+        "sigma_model_hub_active": "sigma_model_hub" in loaded_modules,
+        "model_hub_get_routes": sorted(model_get_routes),
+        "model_hub_post_routes": sorted(model_post_routes),
+        "total_registered_get": total_get,
+        "total_registered_post": total_post,
+    })
 
 
 # Endpoints whose handlers push SSE events on `wfile` instead of returning JSON.

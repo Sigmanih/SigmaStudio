@@ -265,6 +265,7 @@ class ModuleLoader:
 
     def _load_module(self, module_id: str, app: Any) -> bool:
         """Importa dinamicamente gli handler del modulo e registra le route e i server MCP."""
+        import traceback
         if _CORE_MODULES_DIR not in sys.path:
             sys.path.insert(0, os.path.dirname(_CORE_MODULES_DIR))
         if _ROOT not in sys.path:
@@ -286,13 +287,35 @@ class ModuleLoader:
                     mod = importlib.import_module(handler_module_path)
                 loaded_path = handler_module_path
                 break
-            except ModuleNotFoundError:
+            except ModuleNotFoundError as mnfe:
+                # Se il modulo mancante è proprio quello che stiamo provando a
+                # importare, è normale: passiamo al candidato successivo.
+                # Se è una dipendenza interna che manca, è un errore reale.
+                missing_name = mnfe.name or ""
+                if missing_name and not handler_module_path.startswith(missing_name) and \
+                        not missing_name.startswith(handler_module_path.rsplit(".", 1)[0]):
+                    log.error(
+                        f"[ModuleLoader] Dipendenza mancante per '{module_id}' "
+                        f"(import '{handler_module_path}'): {mnfe}\n"
+                        f"{traceback.format_exc()}"
+                    )
+                    # Non continuare: il modulo è presente ma incompleto
+                    break
+                # Il percorso candidato non esiste su disco → proviamo il prossimo
                 continue
             except Exception as e:
-                log.error(f"[ModuleLoader] Errore import '{handler_module_path}': {e}")
+                log.error(
+                    f"[ModuleLoader] Errore import '{handler_module_path}' per '{module_id}': "
+                    f"{type(e).__name__}: {e}\n{traceback.format_exc()}"
+                )
+                # Errore reale (SyntaxError, ImportError su deps, ecc.): stop
+                break
 
         if mod is None:
-            log.warning(f"[ModuleLoader] Nessun handler trovato per modulo '{module_id}' su disco.")
+            log.warning(
+                f"[ModuleLoader] Modulo '{module_id}' non caricato: "
+                f"handler non trovati in {candidate_module_paths}"
+            )
             return False
 
         try:
@@ -311,7 +334,10 @@ class ModuleLoader:
             self._loaded[module_id] = mod
             return True
         except Exception as e:
-            log.error(f"[ModuleLoader] Errore esecuzione register_routes/register_mcp per '{module_id}': {e}")
+            log.error(
+                f"[ModuleLoader] Errore register_routes/register_mcp per '{module_id}': "
+                f"{type(e).__name__}: {e}\n{traceback.format_exc()}"
+            )
             return False
 
     def _rebuild_frontend(self) -> None:
