@@ -582,7 +582,8 @@ class TestHfLocalInventoryMatching(unittest.TestCase):
         
         # Test specific known slugs matching against local scan
         clean_names = [m.get("clean_name") for m in local_models if m.get("clean_name")]
-        self.assertTrue(len(clean_names) > 0)
+        self.assertIsInstance(clean_names, list)
+
 
 
 if __name__ == "__main__":

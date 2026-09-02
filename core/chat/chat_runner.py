@@ -578,16 +578,13 @@ def _stream_chat_response(handler, messages, ai_cfg, model, provider,
                     elif t_first_token:
                         load_duration_ms = round((t_first_token - t_call_start) * 1000, 1)
 
-                    # Coherent TPS calculation: Token count divided by generation decode seconds
-                    gen_sec = (gen_duration_ms / 1000.0) if gen_duration_ms and gen_duration_ms > 0 else (
-                        (time.perf_counter() - t_first_token) if t_first_token else 0
-                    )
-                    if reported_tokens and gen_sec > 0:
+                    # Coherent TPS calculation: Prefer explicit runtime speed, else calculate from decode time
+                    calculated_tps = chunk.get("speed_tok_s") or chunk.get("tokens_per_second")
+                    if not calculated_tps and reported_tokens and gen_sec > 0:
                         calculated_tps = round(reported_tokens / gen_sec, 1)
-                    else:
-                        calculated_tps = chunk.get("speed_tok_s") or chunk.get("tokens_per_second")
 
                     coalescer.flush()
+
 
 
                     # Forwarded so the client can trigger auto-continuation on truncation.

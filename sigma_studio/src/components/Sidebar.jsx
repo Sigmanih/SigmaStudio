@@ -97,8 +97,13 @@ export default function Sidebar({
   tasks = [],
   topicsCount = 0
 }) {
-  const { theme, toggleTheme, clearSystemMemory, openCleanupModal } = useApp();
-  const isLight = theme === 'light';
+  const { theme, toggleTheme, clearSystemMemory, openCleanupModal, mobileSidebarOpen, setMobileSidebarOpen } = useApp();
+  const isLight = theme === 'light' || theme === 'cream';
+
+  const handleNavClick = (fn) => {
+    if (typeof fn === 'function') fn();
+    if (setMobileSidebarOpen) setMobileSidebarOpen(false);
+  };
 
   const [chatCount, setChatCount] = useState(0);
   const [hiddenTabs, setHiddenTabs] = useState(() => new Set());
@@ -258,7 +263,7 @@ export default function Sidebar({
   ].filter(Boolean).length;
 
   return (
-    <aside className="sidebar">
+    <aside className={`sidebar ${mobileSidebarOpen ? 'mobile-open' : ''}`}>
       <button className="collapse-btn left" onClick={() => setLeftVisible(!leftVisible)}>
          {leftVisible ? <ChevronRight size={14} style={{transform: 'rotate(180deg)'}} /> : <ChevronRight size={14} />}
       </button>
@@ -268,7 +273,7 @@ export default function Sidebar({
         <div className="sidebar-header">
           <div 
             className="logo" 
-            onClick={goHome}
+            onClick={() => handleNavClick(goHome)}
             title="Torna alla Bacheca"
             style={{ 
               marginBottom: '16px', 
@@ -405,7 +410,7 @@ export default function Sidebar({
           />
 
           <SidebarItem 
-            icon={FileText} 
+            icon={Brain} 
             label="Ruoli AI" 
             isKernel={true}
             badge={manifestiCount + modules.reduce((acc, m) => acc + (m.whitepapers?.length || 0), 0)}
@@ -433,7 +438,17 @@ export default function Sidebar({
             badge="CONFIG"
             badgeColor="rgba(188,140,255,0.15)"
             active={activeTabId != null && (activeTabId.startsWith('account') || activeTabId.startsWith('settings'))}
-            onClick={() => openTab({ name: 'Impostazioni' }, 'account')} 
+            onClick={() => handleNavClick(() => openTab({ name: 'Impostazioni' }, 'account'))} 
+          />
+
+          <SidebarItem 
+            icon={Palette} 
+            label="Tema" 
+            isKernel={true}
+            badge="COLORI"
+            badgeColor="rgba(0,210,255,0.18)"
+            active={activeTabId != null && (activeTabId.startsWith('theme') || activeTabId.startsWith('palette'))}
+            onClick={() => handleNavClick(() => openTab({ name: 'Tema' }, 'theme'))} 
           />
         </nav>
 

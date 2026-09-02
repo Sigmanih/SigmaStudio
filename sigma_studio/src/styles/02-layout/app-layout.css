@@ -1,0 +1,143 @@
+/* ==============================================================================
+   LAYER 2 (LAYOUT) | Main App Grid, Viewport Container & Responsive Breakpoints
+   ============================================================================== */
+
+/* Main Layout Grid */
+.app-container {
+  display: grid;
+  grid-template-columns: var(--sidebar-w) 1fr 0px;
+  height: 100vh;
+  height: 100dvh;
+  max-height: 100vh;
+  max-height: 100dvh;
+  width: 100vw;
+  overflow: hidden;
+  align-items: stretch;
+  background: #000;
+  position: relative;
+}
+
+/* Left collapsed desktop state */
+.app-container.left-collapsed {
+  grid-template-columns: 0px 1fr 0px;
+}
+
+.app-container.left-collapsed .sidebar {
+  width: 0;
+  min-width: 0;
+  border-right: none;
+  pointer-events: none;
+  overflow: visible;
+}
+
+.app-container.left-collapsed .sidebar-content {
+  opacity: 0;
+  visibility: hidden;
+}
+
+.app-container.left-collapsed .collapse-btn.left {
+  right: -28px;
+  visibility: visible;
+  opacity: 1;
+  pointer-events: auto;
+  z-index: 3000;
+  top: 72px;
+  width: 24px;
+  height: 24px;
+  background: var(--sigma-surface-bright);
+  border: 1px solid var(--sigma-primary-border);
+  color: var(--sigma-primary);
+  border-radius: 0 6px 6px 0;
+  border-left: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: var(--trans-fast);
+  box-shadow: 0 0 12px var(--sigma-primary-glow);
+}
+
+.app-container.left-collapsed .collapse-btn.left:hover {
+  background: var(--sigma-primary);
+  color: #000;
+}
+
+/* Mobile Drawer Backdrop */
+.mobile-sidebar-backdrop {
+  display: none;
+}
+
+/* ==============================================================================
+   RESPONSIVE BREAKPOINTS (TABLET & MOBILE)
+   ============================================================================== */
+
+@media (max-width: 1024px) {
+  .app-container {
+    grid-template-columns: 1fr 0px;
+  }
+
+  /* Mobile Drawer Sidebar */
+  .sidebar {
+    position: fixed !important;
+    top: 0;
+    bottom: 0;
+    left: 0;
+    width: 290px !important;
+    max-width: 85vw;
+    z-index: var(--z-mobile-drawer) !important;
+    transform: translateX(-100%);
+    transition: transform var(--trans-smooth);
+    box-shadow: 0 0 40px rgba(0, 0, 0, 0.8);
+  }
+
+  .sidebar.mobile-open {
+    transform: translateX(0);
+  }
+
+  .mobile-sidebar-backdrop {
+    display: block;
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.65);
+    backdrop-filter: blur(4px);
+    -webkit-backdrop-filter: blur(4px);
+    z-index: var(--z-backdrop);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity var(--trans-fast);
+  }
+
+  .mobile-sidebar-backdrop.active {
+    opacity: 1;
+    pointer-events: auto;
+  }
+
+  /* Mobile Header toggle button */
+  .mobile-menu-btn {
+    display: flex !important;
+  }
+
+  /* Nascondi il menu flottante Strumenti AI su schermi mobile/tablet */
+  .ai-float-dock-container {
+    display: none !important;
+  }
+}
+
+
+@media (max-width: 640px) {
+  /* Safe padding on small screens */
+  .workspace {
+    padding-bottom: env(safe-area-inset-bottom, 12px);
+  }
+
+  /* Full-width responsive cards */
+  .skills-grid,
+  .ws-grid,
+  .ws-metrics,
+  .wg-metrics {
+    grid-template-columns: 1fr !important;
+  }
+}

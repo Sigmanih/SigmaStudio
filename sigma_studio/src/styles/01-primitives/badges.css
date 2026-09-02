@@ -1,0 +1,100 @@
+/* ==============================================================================
+   LAYER 1 (PRIMITIVES) | Badges, Tags & Status Indicators
+   ============================================================================== */
+
+.sigma-badge,
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 7px;
+  border-radius: var(--sigma-radius-sm);
+  font-size: 0.68rem;
+  font-weight: 700;
+  line-height: 1.2;
+  white-space: nowrap;
+}
+
+.badge-primary {
+  background: var(--sigma-primary-glow);
+  color: var(--sigma-primary);
+  border: 1px solid var(--sigma-primary-border);
+}
+
+.badge-accent {
+  background: var(--sigma-accent-glow);
+  color: var(--sigma-accent);
+  border: 1px solid var(--sigma-accent-border);
+}
+
+.badge-success {
+  background: var(--sigma-success-glow);
+  color: var(--sigma-success);
+  border: 1px solid rgba(63, 185, 80, 0.3);
+}
+
+.badge-warning {
+  background: var(--sigma-warning-glow);
+  color: var(--sigma-warning);
+  border: 1px solid rgba(255, 184, 108, 0.3);
+}
+
+.badge-error {
+  background: var(--sigma-error-glow);
+  color: var(--sigma-error);
+  border: 1px solid rgba(255, 85, 85, 0.3);
+}
+
+/* Mod number counter */
+.mod-num {
+  background: var(--sigma-primary-glow);
+  color: var(--sigma-primary);
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.72rem;
+  font-weight: 700;
+  padding: 2px 6px;
+  border-radius: var(--sigma-radius-xs);
+  border: 1px solid var(--sigma-primary-border);
+}
+
+/* Topic Domain Tags */
+.ws-domain-tag {
+  display: inline-flex;
+  align-items: center;
+  font-size: 0.65rem;
+  font-weight: 700;
+  padding: 3px 8px;
+  border-radius: 6px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.ws-domain-tag.domain-analisi {
+  background: rgba(0, 210, 255, 0.1);
+  color: var(--sigma-primary);
+  border: 1px solid var(--sigma-primary-border);
+}
+
+.ws-domain-tag.domain-algebra {
+  background: rgba(188, 140, 255, 0.1);
+  color: var(--sigma-accent);
+  border: 1px solid var(--sigma-accent-border);
+}
+
+.ws-domain-tag.domain-fisica {
+  background: rgba(255, 80, 100, 0.1);
+  color: #ff5064;
+  border: 1px solid rgba(255, 80, 100, 0.3);
+}
+
+.ws-domain-tag.domain-informatica {
+  background: rgba(63, 185, 80, 0.1);
+  color: var(--sigma-success);
+  border: 1px solid rgba(63, 185, 80, 0.3);
+}
+
+.ws-domain-tag.domain-generale {
+  background: rgba(250, 160, 60, 0.1);
+  color: #faa03c;
+  border: 1px solid rgba(250, 160, 60, 0.3);
+}

@@ -1,0 +1,201 @@
+/* ==============================================================================
+   LAYER 3 (THEMES) | Preset Themes Engine for Sigma Studio
+   Definizioni semantiche dei temi senza clausole !important disordinate
+   ============================================================================== */
+
+/* ------------------------------------------------------------------------------
+   1. WARM CREAM THEME (Luce / Chiaro)
+   ------------------------------------------------------------------------------ */
+[data-theme="light"],
+[data-theme="cream"],
+.theme-light {
+  --sigma-bg: #f7f4ed;
+  --sigma-bg-subtle: #eee9dc;
+  --sigma-surface: #f2ede2;
+  --sigma-surface-bright: #e7e0d2;
+
+  --sigma-card-bg: #ffffff;
+  --sigma-card-border: rgba(190, 160, 110, 0.35);
+  --sigma-card-shadow: 0 4px 16px rgba(180, 150, 100, 0.1);
+  --sigma-card-hover-border: #ea580c;
+  --sigma-card-hover-shadow: 0 8px 24px rgba(234, 88, 12, 0.16);
+
+  --sigma-primary: #ea580c;
+  --sigma-primary-glow: rgba(234, 88, 12, 0.15);
+  --sigma-primary-border: rgba(234, 88, 12, 0.4);
+  --sigma-primary-contrast: #ffffff;
+
+  --sigma-accent: #8b5cf6;
+  --sigma-accent-glow: rgba(139, 92, 246, 0.15);
+  --sigma-accent-border: rgba(139, 92, 246, 0.4);
+
+  --sigma-text: #111111;
+  --sigma-text-secondary: #2e2820;
+  --sigma-text-dim: #554e42;
+  --sigma-text-dark: #8a7e6b;
+  --sigma-text-inverse: #ffffff;
+
+  --sigma-border: rgba(190, 160, 110, 0.28);
+  --sigma-border-bright: rgba(190, 160, 110, 0.45);
+
+  --sigma-bg-glow-a: hsla(191, 80%, 42%, 0.08);
+  --sigma-bg-glow-b: hsla(266, 70%, 55%, 0.06);
+  --sigma-bg-dot: rgba(150, 120, 70, 0.14);
+  --sigma-bg-grid: rgba(150, 120, 70, 0.06);
+}
+
+/* ------------------------------------------------------------------------------
+   2. OLED MIDNIGHT (Nero Assoluto)
+   ------------------------------------------------------------------------------ */
+[data-theme="oled-midnight"] {
+  --sigma-bg: #000000;
+  --sigma-bg-subtle: #050508;
+  --sigma-surface: #000000;
+  --sigma-surface-bright: #0c0c10;
+
+  --sigma-card-bg: #0b0b10;
+  --sigma-card-border: rgba(255, 255, 255, 0.12);
+  --sigma-card-shadow: 0 4px 24px rgba(0, 0, 0, 0.9);
+  --sigma-card-hover-border: #38bdf8;
+  --sigma-card-hover-shadow: 0 8px 32px rgba(56, 189, 248, 0.2);
+
+  --sigma-primary: #38bdf8;
+  --sigma-primary-glow: rgba(56, 189, 248, 0.18);
+  --sigma-primary-border: rgba(56, 189, 248, 0.35);
+  --sigma-primary-contrast: #000000;
+
+  --sigma-accent: #10b981;
+  --sigma-accent-glow: rgba(16, 185, 129, 0.18);
+  --sigma-accent-border: rgba(16, 185, 129, 0.35);
+
+  --sigma-text: #ffffff;
+  --sigma-text-secondary: #e2e8f0;
+  --sigma-text-dim: #94a3b8;
+  --sigma-text-dark: #64748b;
+  --sigma-text-inverse: #000000;
+
+  --sigma-border: rgba(255, 255, 255, 0.08);
+  --sigma-border-bright: rgba(255, 255, 255, 0.16);
+
+  --sigma-bg-glow-a: rgba(56, 189, 248, 0.04);
+  --sigma-bg-glow-b: rgba(16, 185, 129, 0.04);
+  --sigma-bg-dot: rgba(255, 255, 255, 0.06);
+  --sigma-bg-grid: rgba(255, 255, 255, 0.03);
+}
+
+/* ------------------------------------------------------------------------------
+   3. NORDIC SLATE (Ardesia & Emerald)
+   ------------------------------------------------------------------------------ */
+[data-theme="nord-slate"] {
+  --sigma-bg: #1a202c;
+  --sigma-bg-subtle: #141a24;
+  --sigma-surface: #1e2636;
+  --sigma-surface-bright: #253044;
+
+  --sigma-card-bg: #222b3d;
+  --sigma-card-border: rgba(136, 192, 208, 0.15);
+  --sigma-card-shadow: 0 4px 20px rgba(10, 14, 22, 0.5);
+  --sigma-card-hover-border: #88c0d0;
+  --sigma-card-hover-shadow: 0 8px 30px rgba(136, 192, 208, 0.2);
+
+  --sigma-primary: #88c0d0;
+  --sigma-primary-glow: rgba(136, 192, 208, 0.18);
+  --sigma-primary-border: rgba(136, 192, 208, 0.35);
+  --sigma-primary-contrast: #1a202c;
+
+  --sigma-accent: #a3be8c;
+  --sigma-accent-glow: rgba(163, 190, 140, 0.18);
+  --sigma-accent-border: rgba(163, 190, 140, 0.35);
+
+  --sigma-text: #eceff4;
+  --sigma-text-secondary: #e5e9f0;
+  --sigma-text-dim: #d8dee9;
+  --sigma-text-dark: #7b889b;
+  --sigma-text-inverse: #1a202c;
+
+  --sigma-border: rgba(255, 255, 255, 0.06);
+  --sigma-border-bright: rgba(255, 255, 255, 0.12);
+
+  --sigma-bg-glow-a: rgba(136, 192, 208, 0.05);
+  --sigma-bg-glow-b: rgba(163, 190, 140, 0.05);
+  --sigma-bg-dot: rgba(236, 239, 244, 0.04);
+  --sigma-bg-grid: rgba(236, 239, 244, 0.02);
+}
+
+/* ------------------------------------------------------------------------------
+   4. SYNTHWAVE SUNSET (Cyberpunk Viola / Fucsia / Arancio)
+   ------------------------------------------------------------------------------ */
+[data-theme="synthwave"] {
+  --sigma-bg: #120924;
+  --sigma-bg-subtle: #0d061a;
+  --sigma-surface: #180d30;
+  --sigma-surface-bright: #221244;
+
+  --sigma-card-bg: #1e103b;
+  --sigma-card-border: rgba(244, 63, 94, 0.25);
+  --sigma-card-shadow: 0 4px 24px rgba(18, 9, 36, 0.7);
+  --sigma-card-hover-border: #f43f5e;
+  --sigma-card-hover-shadow: 0 8px 32px rgba(244, 63, 94, 0.3);
+
+  --sigma-primary: #f43f5e;
+  --sigma-primary-glow: rgba(244, 63, 94, 0.22);
+  --sigma-primary-border: rgba(244, 63, 94, 0.45);
+  --sigma-primary-contrast: #ffffff;
+
+  --sigma-accent: #f97316;
+  --sigma-accent-glow: rgba(249, 115, 22, 0.22);
+  --sigma-accent-border: rgba(249, 115, 22, 0.45);
+
+  --sigma-text: #fdf4ff;
+  --sigma-text-secondary: #fae8ff;
+  --sigma-text-dim: #d8b4fe;
+  --sigma-text-dark: #9333ea;
+  --sigma-text-inverse: #120924;
+
+  --sigma-border: rgba(244, 63, 94, 0.15);
+  --sigma-border-bright: rgba(244, 63, 94, 0.3);
+
+  --sigma-bg-glow-a: rgba(244, 63, 94, 0.08);
+  --sigma-bg-glow-b: rgba(249, 115, 22, 0.08);
+  --sigma-bg-dot: rgba(244, 63, 94, 0.08);
+  --sigma-bg-grid: rgba(244, 63, 94, 0.03);
+}
+
+/* ------------------------------------------------------------------------------
+   5. MONOKAI PRO (Giallo Oro & Corallo)
+   ------------------------------------------------------------------------------ */
+[data-theme="monokai-pro"] {
+  --sigma-bg: #1c1d1f;
+  --sigma-bg-subtle: #161718;
+  --sigma-surface: #222326;
+  --sigma-surface-bright: #2a2c30;
+
+  --sigma-card-bg: #2d3036;
+  --sigma-card-border: rgba(255, 216, 102, 0.15);
+  --sigma-card-shadow: 0 4px 20px rgba(0, 0, 0, 0.6);
+  --sigma-card-hover-border: #ffd866;
+  --sigma-card-hover-shadow: 0 8px 30px rgba(255, 216, 102, 0.2);
+
+  --sigma-primary: #ffd866;
+  --sigma-primary-glow: rgba(255, 216, 102, 0.18);
+  --sigma-primary-border: rgba(255, 216, 102, 0.4);
+  --sigma-primary-contrast: #1c1d1f;
+
+  --sigma-accent: #ff6188;
+  --sigma-accent-glow: rgba(255, 97, 136, 0.18);
+  --sigma-accent-border: rgba(255, 97, 136, 0.4);
+
+  --sigma-text: #fcfcfa;
+  --sigma-text-secondary: #e6e6e6;
+  --sigma-text-dim: #939293;
+  --sigma-text-dark: #69676c;
+  --sigma-text-inverse: #1c1d1f;
+
+  --sigma-border: rgba(255, 255, 255, 0.07);
+  --sigma-border-bright: rgba(255, 255, 255, 0.14);
+
+  --sigma-bg-glow-a: rgba(255, 216, 102, 0.04);
+  --sigma-bg-glow-b: rgba(255, 97, 136, 0.04);
+  --sigma-bg-dot: rgba(255, 216, 102, 0.05);
+  --sigma-bg-grid: rgba(255, 255, 255, 0.025);
+}

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { X, FileText, Terminal, PieChart, BookOpen, Trash2, ChevronRight, Home, MessageSquare, FlaskConical, Brain, Zap, User, Palette, Blocks, Image, Store, Key, Music, DownloadCloud, Settings, Sliders } from 'lucide-react';
+import { X, FileText, Terminal, PieChart, BookOpen, Trash2, ChevronRight, Home, MessageSquare, FlaskConical, Brain, Zap, User, Palette, Blocks, Image, Store, Key, Music, DownloadCloud, Settings, Sliders, Menu } from 'lucide-react';
 import WelcomeDashboard from './WelcomeDashboard';
 import SkillsHub from './SkillsHub';
 import StudioEditor from './Workspace/StudioEditor';
@@ -9,6 +9,7 @@ import ModuleView from './Workspace/ModuleView';
 import { MarkdownPreview, SigmaLabEditor } from './SigmaLab';
 import ChatWorkspace from './Chat/ChatWorkspace';
 
+import ThemeTab from './ThemeTab';
 import AccountTab from './AccountTab';
 import McpHubTab from './McpHubTab';
 import DomoticaTab from './Workspace/DomoticaTab';
@@ -18,6 +19,7 @@ import MusicTab from './Music/MusicTab';
 import { useModuleState } from '../hooks/useModuleState';
 import { getLazyModule } from '../modules/registry';
 import ModuleNotInstalled from '../modules/ModuleNotInstalled';
+import { useApp } from '../contexts/AppContext';
 
 // ==============================================================================
 // Workspace — Content area that renders based on active tab type
@@ -371,35 +373,66 @@ export default function Workspace({
     if (tab.type === 'ai_config' || tab.type === 'config') {
       return <AIConfigTab openTab={openTab} />;
     }
+    if (tab.type === 'theme' || tab.type === 'themes' || tab.type === 'palette') {
+      return <ThemeTab openTab={openTab} />;
+    }
     return <div className="placeholder-content">Content type {tab.type} not implemented in preview.</div>;
   };
+
+  const { toggleMobileSidebar } = useApp ? useApp() : { toggleMobileSidebar: () => {} };
 
   return (
     <main className="workspace">
       <div className="tab-bar">
-        {/* Home tab — always visible */}
-        <div
-          className={`tab ${activeTabId === null ? 'active' : ''}`}
-          onClick={() => setActiveTabId(null)}
-          style={{ cursor: 'pointer' }}
+        {/* Mobile Hamburger Toggle Button */}
+        <button
+          className="mobile-menu-btn"
+          onClick={toggleMobileSidebar}
+          title="Apri Menu Navigazione"
         >
-          <Home size={16} />
-          <span>Home</span>
-        </div>
-        {openTabs.map(tab => (
-          <div key={tab.id} className={`tab ${activeTabId === tab.id ? 'active' : ''}`} onClick={() => setActiveTabId(tab.id)}>
-            <FileIcon type={tab.type} />
-            <span>{tab.name}{tab.isDirty && " *"}</span>
-            <button className="tab-close" onClick={(e) => closeTab(e, tab.id)}><X size={14} /></button>
+          <Menu size={18} />
+        </button>
+
+        <div className="tabs-scroll-container">
+          {/* Home tab — always visible */}
+          <div
+            className={`tab tab-home ${activeTabId === null ? 'active' : ''}`}
+            onClick={() => setActiveTabId(null)}
+            title="Home"
+          >
+            <Home size={16} />
+            <span className="tab-title">Home</span>
           </div>
-        ))}
-        <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center' }}>
-          {openTabs.length > 0 && (
-            <button onClick={closeAllTabs} title="Chiudi tutte le schede" className="btn-close-all">
+          {openTabs.map(tab => (
+            <div
+              key={tab.id}
+              className={`tab ${activeTabId === tab.id ? 'active' : ''}`}
+              onClick={() => setActiveTabId(tab.id)}
+              title={`${tab.name}${tab.isDirty ? ' *' : ''}`}
+            >
+              <FileIcon type={tab.type} />
+              <span className="tab-title">{tab.name}{tab.isDirty && " *"}</span>
+              <button
+                className="tab-close"
+                onClick={(e) => closeTab(e, tab.id)}
+                title="Chiudi scheda"
+              >
+                <X size={14} />
+              </button>
+            </div>
+          ))}
+        </div>
+        {openTabs.length > 0 && (
+          <div className="tab-bar-actions">
+            <button
+              onClick={closeAllTabs}
+              title="Chiudi tutte le schede"
+              className="btn-close-all"
+            >
               <X size={16} />
             </button>
-          )}
-        </div>
+          </div>
+        )}
       </div>
       <div className="content-area">
         {getActiveContent()}

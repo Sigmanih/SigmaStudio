@@ -1,0 +1,159 @@
+/* ==============================================================================
+   LAYER 2 (LAYOUT) | Workspace, Tab Bar, Touch Horizontal Scrolling
+   ============================================================================== */
+
+.workspace {
+  margin: 0;
+  transition: var(--trans-smooth);
+  position: relative;
+  z-index: var(--z-base);
+  min-height: 0;
+  overflow: hidden;
+  background-color: var(--sigma-bg);
+  background-image: var(--sigma-bg-pattern);
+  background-size: var(--sigma-bg-pattern-size);
+  background-attachment: fixed;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+/* Tab Bar */
+.tab-bar {
+  height: var(--header-h);
+  background: var(--sigma-surface);
+  border-bottom: 1px solid var(--sigma-border);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 8px;
+  position: relative;
+  z-index: var(--z-header);
+  flex-shrink: 0;
+}
+
+.tabs-scroll-container {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex: 1;
+  overflow-x: auto;
+  overflow-y: hidden;
+  height: 100%;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+  -webkit-overflow-scrolling: touch;
+  padding: 0 4px;
+}
+
+.tabs-scroll-container::-webkit-scrollbar {
+  display: none;
+}
+
+/* Individual Tab */
+.tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 36px;
+  padding: 0 12px;
+  border-radius: var(--sigma-radius-sm);
+  background: transparent;
+  color: var(--sigma-text-dim);
+  font-size: 0.78rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: var(--trans-fast);
+  white-space: nowrap;
+  border: 1px solid transparent;
+  user-select: none;
+  flex-shrink: 0;
+}
+
+.tab:hover:not(.active) {
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--sigma-text);
+}
+
+.tab.active {
+  background: var(--sigma-primary-glow) !important;
+  color: var(--sigma-primary) !important;
+  border-color: var(--sigma-primary-border) !important;
+  font-weight: 700;
+}
+
+.tab.active svg {
+  color: var(--sigma-primary);
+}
+
+.tab-title {
+  max-width: 140px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tab-close {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 4px;
+  color: var(--sigma-text-dim);
+  transition: var(--trans-fast);
+}
+
+.tab-close:hover {
+  background: rgba(255, 85, 85, 0.2);
+  color: var(--sigma-error);
+}
+
+/* Mobile Hamburger Toggle Button */
+.mobile-menu-btn {
+  display: none;
+  align-items: center;
+  justify-content: center;
+  width: 38px;
+  height: 38px;
+  border-radius: var(--sigma-radius-sm);
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--sigma-border-bright);
+  color: var(--sigma-text);
+  cursor: pointer;
+  margin-right: 8px;
+  flex-shrink: 0;
+  transition: var(--trans-fast);
+}
+
+.mobile-menu-btn:hover {
+  background: var(--sigma-primary-glow);
+  color: var(--sigma-primary);
+  border-color: var(--sigma-primary-border);
+}
+
+/* Workspace Content Area */
+.content-area {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  position: relative;
+}
+
+/* Close all tabs button */
+.btn-close-all {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: var(--sigma-radius-xs);
+  color: var(--sigma-text-dark);
+  transition: var(--trans-fast);
+  margin-left: 6px;
+}
+
+.btn-close-all:hover {
+  color: var(--sigma-error);
+  background: rgba(255, 85, 85, 0.15);
+}

@@ -15,9 +15,8 @@ export default function ChatFloatingPanel({ openFiles, onClose, onOpenConfig, on
   const { panelPos, setPanelPos, isDragging, startDrag } = useChatDrag({ width: 800, height: 600 });
   const { panelSize, resizing, resizeHandles, handleResizeStart } = useChatResize(panelPos, setPanelPos);
 
-  const safeX = (panelPos.x !== undefined && !isNaN(panelPos.x) && panelPos.x > -500) ? panelPos.x : undefined;
-  const safeY = (panelPos.y !== undefined && !isNaN(panelPos.y) && panelPos.y > 0) ? panelPos.y : undefined;
-  const panelStyle = {
+  const isMobile = typeof window !== 'undefined' && window.innerWidth <= 768;
+  const panelStyle = isMobile ? {} : {
     ...(safeX !== undefined ? { left: safeX, right: 'auto' } : { right: 24 }),
     ...(safeY !== undefined ? { bottom: 'auto', top: safeY } : { bottom: 80 }),
     width: panelSize.width, height: panelSize.height,

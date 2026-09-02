@@ -61,6 +61,8 @@ function AppContent() {
     setAiConfigOpen,
     leftVisible,
     setLeftVisible,
+    mobileSidebarOpen,
+    setMobileSidebarOpen,
     fileOps,
     moduleOps
   } = useApp();
@@ -179,6 +181,12 @@ function AppContent() {
 
   return (
     <div className={`app-container ${!leftVisible ? 'left-collapsed' : ''}`}>
+      {/* Mobile Drawer Backdrop */}
+      <div 
+        className={`mobile-sidebar-backdrop ${mobileSidebarOpen ? 'active' : ''}`} 
+        onClick={() => setMobileSidebarOpen(false)} 
+      />
+
       <Sidebar
         modules={modules}
         manifestiCount={manifesti.length}

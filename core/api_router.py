@@ -80,6 +80,7 @@ def register_get_handlers(handler_class):
         '/api/hardware/gpu-processes': 'handle_hardware_gpu_processes',
         '/api/system/capabilities': 'handle_system_capabilities',
         '/api/system/available_modules': 'handle_system_available_modules',
+        '/api/system/updates/check': 'handle_system_updates_check',
         # MCP approvals awaiting the operator
         '/api/mcp/pending': 'handle_mcp_pending',
         # MCP Endpoints
@@ -300,6 +301,8 @@ def register_post_handlers(handler_class):
         # System & Memory Cleanup
         '/api/system/clear-memory': 'handle_system_clear_memory',
         '/api/tasks/clear-all': 'handle_system_clear_memory',
+        # GitHub Updates
+        '/api/system/updates/apply': 'handle_system_updates_apply',
     }
     existing = getattr(handler_class, '_POST_HANDLERS', None) or {}
     handler_class._POST_HANDLERS = {**core_routes, **existing}

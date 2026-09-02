@@ -1,0 +1,63 @@
+/* ==============================================================================
+   LAYER 0 (KERNEL) | Typography & Font System
+   ============================================================================== */
+
+@import url('https://fonts.googleapis.com/css2?family=Inter:ital,opsz,wght@0,14..32,100..900;1,14..32,100..900&family=JetBrains+Mono:ital,wght@0,100..800;1,100..800&display=swap');
+
+/* Typography utilities */
+.mono, code, kbd, samp, pre {
+  font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-feature-settings: "liga" 0;
+  letter-spacing: -0.2px;
+}
+
+.heading-1 {
+  font-size: clamp(1.4rem, 2.5vw, 2.2rem);
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  color: var(--sigma-text);
+  line-height: 1.2;
+}
+
+.heading-2 {
+  font-size: clamp(1.15rem, 2vw, 1.6rem);
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: var(--sigma-text);
+  line-height: 1.25;
+}
+
+.heading-3 {
+  font-size: 1.1rem;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  color: var(--sigma-text);
+}
+
+.heading-sub {
+  font-size: 0.85rem;
+  color: var(--sigma-text-dim);
+  line-height: 1.5;
+}
+
+.text-dim {
+  color: var(--sigma-text-dim);
+}
+
+.text-dark {
+  color: var(--sigma-text-dark);
+}
+
+.text-primary {
+  color: var(--sigma-primary);
+}
+
+.text-accent {
+  color: var(--sigma-accent);
+}
+
+.text-truncate {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

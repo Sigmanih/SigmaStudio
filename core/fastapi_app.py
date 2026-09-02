@@ -42,6 +42,8 @@ from core.system_cleanup import handle_system_clear_memory, shutdown_all_tasks
 from core.system_handler import (
     handle_system_available_modules,
     handle_system_capabilities,
+    handle_system_updates_check,
+    handle_system_updates_apply,
 )
 
 log = get_logger("fastapi_server")
@@ -79,7 +81,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="Σ-SIGMA Studio API",
     description="Unified Research Environment & Cognitive Orchestration Engine",
-    version="0.8.2",
+    version="0.9.0-beta",
     docs_url="/docs",
     redoc_url="/redoc",
     lifespan=lifespan,
@@ -556,6 +558,8 @@ FastAPIHandlerAdapter.handle_router_train = _handle_router_train
 FastAPIHandlerAdapter.handle_system_clear_memory = handle_system_clear_memory
 FastAPIHandlerAdapter.handle_system_capabilities = handle_system_capabilities
 FastAPIHandlerAdapter.handle_system_available_modules = handle_system_available_modules
+FastAPIHandlerAdapter.handle_system_updates_check = handle_system_updates_check
+FastAPIHandlerAdapter.handle_system_updates_apply = handle_system_updates_apply
 
 # Core routes registration
 register_get_handlers(FastAPIHandlerAdapter)

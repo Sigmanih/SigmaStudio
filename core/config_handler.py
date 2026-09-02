@@ -18,6 +18,41 @@ def handle_api_config_get(self):
     safe_cfg['active_model'] = ai_cfg.get('active_model', 'sigma-native:latest')
     safe_cfg['favorite_model'] = ai_cfg.get('favorite_model', '')
     safe_cfg['favorite_models'] = ai_cfg.get('favorite_models', ([ai_cfg['favorite_model']] if ai_cfg.get('favorite_model') else []))
+    
+    # Proxy, Network & Port settings
+    port_val = ai_cfg.get('provider_server_port') or ai_cfg.get('server_port') or 8000
+    try:
+        port_val = int(port_val)
+    except (ValueError, TypeError):
+        port_val = 8000
+    host_val = str(ai_cfg.get('provider_server_host') or ai_cfg.get('server_host') or '0.0.0.0')
+
+    safe_cfg['provider_server_port'] = port_val
+    safe_cfg['provider_server_host'] = host_val
+    safe_cfg['server_port'] = port_val
+    safe_cfg['server_host'] = host_val
+    safe_cfg['sigma_proxy_alias'] = str(ai_cfg.get('sigma_proxy_alias') or 'sigma')
+    safe_cfg['sigma_proxy_model'] = str(ai_cfg.get('sigma_proxy_model') or '')
+    
+    # SSL / HTTPS settings
+    safe_cfg['ssl_enabled'] = bool(ai_cfg.get('ssl_enabled', False))
+    safe_cfg['ssl_certfile'] = str(ai_cfg.get('ssl_certfile') or '')
+    safe_cfg['ssl_keyfile'] = str(ai_cfg.get('ssl_keyfile') or '')
+
+    # LAN Network detection
+    from core.ssl_manager import get_lan_ip, certs_dir
+    lan_ip = get_lan_ip()
+    safe_cfg['lan_ip'] = lan_ip
+    is_ssl = safe_cfg['ssl_enabled']
+    proto = "https" if is_ssl else "http"
+    safe_cfg['lan_web_url'] = f"{proto}://{lan_ip}:{port_val}"
+    safe_cfg['lan_api_url'] = f"{proto}://{lan_ip}:{port_val}/v1"
+    
+    # Check if SSL certs exist on disk
+    default_cert = certs_dir() / "cert.pem"
+    default_key = certs_dir() / "key.pem"
+    safe_cfg['ssl_cert_exists'] = bool(default_cert.exists() and default_key.exists())
+
     safe_cfg['providers'] = {}
     for pk, pv in ai_cfg.get('providers', {}).items():
         safe_cfg['providers'][pk] = {k: v for k, v in pv.items() if k != 'api_key'}
@@ -63,6 +98,43 @@ def handle_api_config_post(self):
             ai_cfg['active_provider'] = req['provider']
         if 'model' in req and req['model']:
             ai_cfg['active_model'] = req['model']
+
+        # Persist Proxy, Network, Port & SSL settings
+        if 'provider_server_port' in req or 'server_port' in req:
+            p_val = req.get('provider_server_port') or req.get('server_port')
+            try:
+                p_int = int(p_val)
+                ai_cfg['provider_server_port'] = p_int
+                ai_cfg['server_port'] = p_int
+            except (ValueError, TypeError):
+                pass
+        
+        if 'provider_server_host' in req or 'server_host' in req:
+            h_val = str(req.get('provider_server_host') or req.get('server_host'))
+            ai_cfg['provider_server_host'] = h_val
+            ai_cfg['server_host'] = h_val
+
+        if 'sigma_proxy_alias' in req:
+            ai_cfg['sigma_proxy_alias'] = str(req['sigma_proxy_alias'])
+        if 'sigma_proxy_model' in req:
+            ai_cfg['sigma_proxy_model'] = str(req['sigma_proxy_model'])
+
+        if 'ssl_enabled' in req:
+            ssl_on = bool(req['ssl_enabled'])
+            ai_cfg['ssl_enabled'] = ssl_on
+            if ssl_on:
+                # Pre-generate SSL certificates if not already generated
+                try:
+                    from core.ssl_manager import ensure_ssl_certificates
+                    ensure_ssl_certificates()
+                except Exception as exc:
+                    log.warning("Generazione automatica certificati SSL fallita: %s", exc)
+
+        if 'ssl_certfile' in req:
+            ai_cfg['ssl_certfile'] = str(req['ssl_certfile'])
+        if 'ssl_keyfile' in req:
+            ai_cfg['ssl_keyfile'] = str(req['ssl_keyfile'])
+
         active_provider = ai_cfg.get('active_provider', 'sigma_engine')
         if active_provider in ai_cfg.get('providers', {}):
             prov = ai_cfg['providers'][active_provider]
@@ -73,7 +145,38 @@ def handle_api_config_post(self):
                 prov['api_key'] = req['api_key']
             if 'model' in req and req['model']:
                 prov['model'] = req['model']
+
+        # Persist to config.json
         save_ai_config(ai_cfg)
+
+        # Also sync to config/provider.json if provider_config_file exists or is needed
+        try:
+            from core.paths import provider_config_file
+            p_cfg_path = provider_config_file()
+            p_data = {}
+            if p_cfg_path.exists():
+                try:
+                    with open(p_cfg_path, "r", encoding="utf-8") as pf:
+                        p_data = json.load(pf)
+                except Exception:
+                    pass
+            p_data.update({
+                "provider_server_port": ai_cfg.get("provider_server_port", 8000),
+                "server_port": ai_cfg.get("server_port", 8000),
+                "provider_server_host": ai_cfg.get("provider_server_host", "0.0.0.0"),
+                "server_host": ai_cfg.get("server_host", "0.0.0.0"),
+                "ssl_enabled": ai_cfg.get("ssl_enabled", False),
+                "ssl_certfile": ai_cfg.get("ssl_certfile", ""),
+                "ssl_keyfile": ai_cfg.get("ssl_keyfile", ""),
+                "sigma_proxy_alias": ai_cfg.get("sigma_proxy_alias", "sigma"),
+                "sigma_proxy_model": ai_cfg.get("sigma_proxy_model", ""),
+            })
+            p_cfg_path.parent.mkdir(parents=True, exist_ok=True)
+            with open(p_cfg_path, "w", encoding="utf-8") as pf:
+                json.dump(p_data, pf, indent=4)
+        except Exception as exc:
+            log.warning("Sync to provider.json non riuscita: %s", exc)
+
         self.send_json_response({"success": True})
     except Exception as exc:
         log.error("handle_api_config_post: %s", exc)

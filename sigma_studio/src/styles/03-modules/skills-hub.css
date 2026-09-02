@@ -1,0 +1,226 @@
+/* ==============================================================================
+   LAYER 2 (MODULES) | Skills Hub — Composable Skills & Support Engines
+   ============================================================================== */
+
+.skills-hub {
+  height: 100%;
+  overflow-y: auto;
+  padding: 28px 32px 60px;
+  display: flex;
+  flex-direction: column;
+  gap: 26px;
+  color: var(--sigma-text);
+  max-width: 1400px;
+  margin: 0 auto;
+}
+
+.skills-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 24px;
+  flex-wrap: wrap;
+}
+
+.skills-header h1 {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0 0 8px;
+  font-size: 1.35rem;
+  font-weight: 800;
+  color: var(--sigma-text);
+}
+
+.skills-header p {
+  margin: 0;
+  color: var(--sigma-text-dim);
+  font-size: 0.85rem;
+  max-width: 640px;
+  line-height: 1.5;
+}
+
+.skills-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.skills-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  background: var(--sigma-primary-glow);
+  border: 1px solid var(--sigma-primary-border);
+  color: var(--sigma-primary);
+  border-radius: var(--sigma-radius-sm);
+  padding: 8px 14px;
+  font-size: 0.82rem;
+  font-weight: 600;
+  cursor: pointer;
+  text-decoration: none;
+  transition: var(--trans-fast);
+}
+
+.skills-btn:hover:not(:disabled) {
+  background: var(--sigma-primary);
+  color: var(--sigma-primary-contrast);
+}
+
+.skills-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.skills-btn.ghost {
+  background: rgba(255, 255, 255, 0.05);
+  border-color: var(--sigma-border-bright);
+  color: var(--sigma-text-dim);
+}
+
+.skills-btn.ghost:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.1);
+  color: var(--sigma-text);
+}
+
+.skills-btn.small {
+  padding: 6px 10px;
+  font-size: 0.76rem;
+}
+
+.skills-message {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  border-radius: var(--sigma-radius-sm);
+  font-size: 0.84rem;
+}
+
+.skills-message.ok {
+  background: var(--sigma-success-glow);
+  border: 1px solid rgba(63, 185, 80, 0.35);
+  color: var(--sigma-success);
+}
+
+.skills-message.error {
+  background: var(--sigma-error-glow);
+  border: 1px solid rgba(255, 85, 85, 0.35);
+  color: var(--sigma-error);
+}
+
+.skills-message button {
+  margin-left: auto;
+  background: none;
+  border: none;
+  color: inherit;
+  cursor: pointer;
+  font-size: 1.1rem;
+}
+
+.skills-hub section h2 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: var(--sigma-text-dim);
+  margin: 0 0 12px;
+}
+
+.skills-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(290px, 1fr));
+  gap: 14px;
+}
+
+.skill-card {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 16px;
+}
+
+.skill-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 10px;
+}
+
+.skill-info {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  flex: 1;
+  min-width: 0;
+}
+
+.skill-icon {
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  background: var(--sigma-primary-glow);
+  color: var(--sigma-primary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.skill-name {
+  font-weight: 700;
+  font-size: 0.92rem;
+  color: var(--sigma-text);
+  margin-bottom: 2px;
+}
+
+.skill-desc {
+  font-size: 0.78rem;
+  color: var(--sigma-text-dim);
+  line-height: 1.45;
+}
+
+.skill-meta {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  align-items: center;
+  font-size: 0.72rem;
+}
+
+.skill-status {
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-weight: 600;
+  font-size: 0.68rem;
+}
+
+.skill-status.enabled {
+  background: var(--sigma-success-glow);
+  color: var(--sigma-success);
+}
+
+.skill-status.disabled {
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--sigma-text-dark);
+}
+
+.skill-actions {
+  display: flex;
+  gap: 6px;
+  margin-top: auto;
+  padding-top: 8px;
+  border-top: 1px solid var(--sigma-border);
+}
+
+@media (max-width: 768px) {
+  .skills-hub {
+    padding: 16px 14px 40px;
+    gap: 18px;
+  }
+  .skills-grid {
+    grid-template-columns: 1fr;
+  }
+}

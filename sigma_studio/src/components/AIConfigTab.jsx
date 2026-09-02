@@ -452,11 +452,12 @@ export default function AIConfigTab() {
   const [localDiskModels, setLocalDiskModels] = useState([]);
   const [ollamaLocalModels, setOllamaLocalModels] = useState([]);
 
-  // Server Output Custom Configuration (Port, Host, Proxy Alias, Proxy Target Model)
+  // Server Output Custom Configuration (Port, Host, Proxy Alias, Proxy Target Model, SSL/HTTPS)
   const [serverPort, setServerPort] = useState(8000);
   const [serverHost, setServerHost] = useState('localhost');
   const [proxyAlias, setProxyAlias] = useState('sigma');
   const [selectedGuideModel, setSelectedGuideModel] = useState('sigma');
+  const [sslEnabled, setSslEnabled] = useState(false);
 
   // Global Inference Parameters
   const [parameters, setParameters] = useState({
@@ -496,8 +497,10 @@ export default function AIConfigTab() {
   const effectiveBaseUrl = useMemo(() => {
     const host = serverHost || 'localhost';
     const port = serverPort || 8000;
-    return `http://${host}:${port}`;
-  }, [serverHost, serverPort]);
+    const proto = sslEnabled ? 'https' : 'http';
+    return `${proto}://${host}:${port}`;
+  }, [serverHost, serverPort, sslEnabled]);
+
 
   // Copy helper
   const copyKeyToClipboard = (keyId, textToCopy) => {
@@ -722,6 +725,7 @@ export default function AIConfigTab() {
         if (cfg.provider_server_port) setServerPort(Number(cfg.provider_server_port));
         if (cfg.provider_server_host) setServerHost(cfg.provider_server_host);
         if (cfg.sigma_proxy_alias) setProxyAlias(cfg.sigma_proxy_alias);
+        if (cfg.ssl_enabled !== undefined) setSslEnabled(Boolean(cfg.ssl_enabled));
         
         // Populate per-provider data
         const provs = cfg.providers || {};
@@ -785,7 +789,10 @@ export default function AIConfigTab() {
         sigma_proxy_model: selectedGuideModel,
         sigma_proxy_alias: proxyAlias,
         provider_server_port: Number(serverPort),
+        server_port: Number(serverPort),
         provider_server_host: serverHost,
+        server_host: serverHost,
+        ssl_enabled: Boolean(sslEnabled),
         temperature: parameters.temperature,
         max_tokens: parameters.max_tokens,
         top_p: parameters.top_p,
@@ -794,6 +801,7 @@ export default function AIConfigTab() {
         num_ctx: parameters.num_ctx,
         providers: {}
       };
+
 
       Object.entries(providerSettings).forEach(([pId, pCfg]) => {
         payload.providers[pId] = {
@@ -1475,6 +1483,65 @@ export default function AIConfigTab() {
                   variant="cyan"
                 />
               </div>
+
+              {/* Field 5: Connessione Sicura HTTPS / TLS */}
+              <div style={{
+                padding: '12px 14px',
+                borderRadius: '10px',
+                background: innerCardBg,
+                border: sslEnabled ? '1px solid rgba(0, 242, 254, 0.4)' : innerCardBorder,
+                gridColumn: 'span 1',
+                display: 'flex',
+                flexDirection: 'column',
+                justifyContent: 'space-between'
+              }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+                  <label style={{ fontSize: '0.68rem', fontWeight: 700, color: subtitleColor, display: 'flex', alignItems: 'center', gap: '5px' }}>
+                    <ShieldCheck size={14} color={sslEnabled ? '#00f2fe' : '#8b8fa3'} />
+                    <span>HTTPS / TLS (LAN & MICROFONO)</span>
+                  </label>
+                  <span style={{
+                    fontSize: '0.58rem',
+                    padding: '1px 6px',
+                    borderRadius: '4px',
+                    fontWeight: 800,
+                    background: sslEnabled ? 'rgba(0, 242, 254, 0.15)' : 'rgba(255, 255, 255, 0.05)',
+                    color: sslEnabled ? '#00f2fe' : '#8b8fa3'
+                  }}>
+                    {sslEnabled ? '🔒 HTTPS ATTIVO' : '🔓 HTTP'}
+                  </span>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px' }}>
+                  <span style={{ fontSize: '0.70rem', color: subtitleColor }}>
+                    {sslEnabled ? 'TLS locale abilitato' : 'Crittografia disattivata'}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const nextSsl = !sslEnabled;
+                      setSslEnabled(nextSsl);
+                      setSaveToast({
+                        type: 'success',
+                        msg: nextSsl ? 'HTTPS abilitato 🔒! Clicca "Salva Parametri" per applicare.' : 'HTTPS disabilitato (HTTP standard).'
+                      });
+                      setTimeout(() => setSaveToast(null), 3000);
+                    }}
+                    style={{
+                      padding: '4px 12px',
+                      borderRadius: '6px',
+                      fontSize: '0.68rem',
+                      fontWeight: 800,
+                      border: 'none',
+                      cursor: 'pointer',
+                      background: sslEnabled ? 'linear-gradient(135deg, #00f2fe, #0072ff)' : (isLight ? '#e2e8f0' : 'rgba(255,255,255,0.1)'),
+                      color: sslEnabled ? '#000' : subtitleColor,
+                      transition: 'all 0.2s ease'
+                    }}
+                  >
+                    {sslEnabled ? 'Disattiva' : 'Abilita HTTPS ⚡'}
+                  </button>
+                </div>
+              </div>
             </div>
 
             {/* Sub-Section: Accesso Wi-Fi / Rete Locale (LAN) */}
@@ -1492,20 +1559,38 @@ export default function AIConfigTab() {
                     🌐 Accesso da Rete Locale & Dispositivi Wi-Fi (Smartphone, Tablet, Altri PC)
                   </span>
                 </div>
-                <span style={{
-                  fontSize: '0.62rem',
-                  padding: '2px 8px',
-                  borderRadius: '4px',
-                  background: 'rgba(63, 185, 80, 0.15)',
-                  color: '#3fb950',
-                  border: '1px solid rgba(63, 185, 80, 0.35)',
-                  fontWeight: 800,
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  gap: '4px'
-                }}>
-                  <CheckCircle2 size={11} /> PRONTO SU RETE LOCALE (0.0.0.0)
-                </span>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  {sslEnabled && (
+                    <span style={{
+                      fontSize: '0.62rem',
+                      padding: '2px 8px',
+                      borderRadius: '4px',
+                      background: 'rgba(0, 242, 254, 0.15)',
+                      color: '#00f2fe',
+                      border: '1px solid rgba(0, 242, 254, 0.35)',
+                      fontWeight: 800,
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '4px'
+                    }}>
+                      🔒 TLS / HTTPS ATTIVO
+                    </span>
+                  )}
+                  <span style={{
+                    fontSize: '0.62rem',
+                    padding: '2px 8px',
+                    borderRadius: '4px',
+                    background: 'rgba(63, 185, 80, 0.15)',
+                    color: '#3fb950',
+                    border: '1px solid rgba(63, 185, 80, 0.35)',
+                    fontWeight: 800,
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '4px'
+                  }}>
+                    <CheckCircle2 size={11} /> PRONTO SU RETE LOCALE (0.0.0.0)
+                  </span>
+                </div>
               </div>
 
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '10px', marginBottom: '10px' }}>
@@ -1514,11 +1599,11 @@ export default function AIConfigTab() {
                   <div>
                     <div style={{ fontSize: '0.64rem', color: subtitleColor, fontWeight: 700 }}>LINK WEB UI (PER SMARTPHONE & BROWSER)</div>
                     <code style={{ fontSize: '0.82rem', color: '#00f2fe', fontWeight: 800 }}>
-                      http://{serverInfo?.lan_ip || '192.168.1.2'}:{serverPort}
+                      {sslEnabled ? 'https' : 'http'}://{serverInfo?.lan_ip || '192.168.1.2'}:{serverPort}
                     </code>
                   </div>
                   <button
-                    onClick={() => copyKeyToClipboard('lan_web_ui', `http://${serverInfo?.lan_ip || '192.168.1.2'}:${serverPort}`)}
+                    onClick={() => copyKeyToClipboard('lan_web_ui', `${sslEnabled ? 'https' : 'http'}://${serverInfo?.lan_ip || '192.168.1.2'}:${serverPort}`)}
                     style={{
                       padding: '4px 10px',
                       borderRadius: '6px',
@@ -1543,11 +1628,11 @@ export default function AIConfigTab() {
                   <div>
                     <div style={{ fontSize: '0.64rem', color: subtitleColor, fontWeight: 700 }}>API BASE URL (CURSOR / CLINE / CONTINUE SU ALTRI PC)</div>
                     <code style={{ fontSize: '0.82rem', color: '#38bdf8', fontWeight: 800 }}>
-                      http://{serverInfo?.lan_ip || '192.168.1.2'}:{serverPort}/v1
+                      {sslEnabled ? 'https' : 'http'}://{serverInfo?.lan_ip || '192.168.1.2'}:{serverPort}/v1
                     </code>
                   </div>
                   <button
-                    onClick={() => copyKeyToClipboard('lan_api_url', `http://${serverInfo?.lan_ip || '192.168.1.2'}:${serverPort}/v1`)}
+                    onClick={() => copyKeyToClipboard('lan_api_url', `${sslEnabled ? 'https' : 'http'}://${serverInfo?.lan_ip || '192.168.1.2'}:${serverPort}/v1`)}
                     style={{
                       padding: '4px 10px',
                       borderRadius: '6px',
@@ -1569,9 +1654,10 @@ export default function AIConfigTab() {
               </div>
 
               <p style={{ margin: 0, fontSize: '0.72rem', color: subtitleColor, lineHeight: 1.4 }}>
-                💡 <strong>Come connetterti:</strong> Assicurati che lo smartphone o l'altro PC sia connesso alla stessa rete Wi-Fi di questo computer. Apri il browser e incolla il link web sopra per chattare ed eseguire modelli da remoto.
+                💡 <strong>Come connetterti:</strong> Assicurati che lo smartphone o l'altro PC sia connesso alla stessa rete Wi-Fi di questo computer. {sslEnabled ? 'Con HTTPS attivo, i browser mobile su smartphone e tablet (iOS Safari, Android Chrome) sbloccano l\'accesso al microfono per la Voice Chat locale.' : 'Puoi abilitare HTTPS per consentire l\'uso del microfono da smartphone/tablet.'}
               </p>
             </div>
+
 
             {/* Sub-Section 1: Parametri di Inferenza & Limiti di Contesto Predefiniti */}
             <div style={{

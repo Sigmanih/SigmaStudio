@@ -1,0 +1,130 @@
+/* ==============================================================================
+   LAYER 2 (LAYOUT) | Sidebar Navigation, Header Logo, Items & Theme Switcher
+   ============================================================================== */
+
+.sidebar {
+  background: var(--sigma-surface);
+  backdrop-filter: var(--glass);
+  -webkit-backdrop-filter: var(--glass);
+  display: flex;
+  flex-direction: column;
+  position: relative;
+  transition: var(--trans-smooth);
+  border-right: 1px solid var(--sigma-border);
+  z-index: var(--z-sidebar);
+  height: 100%;
+  overflow: hidden;
+  min-height: 0;
+}
+
+.sidebar-content {
+  padding: 24px 18px 20px;
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+/* Sidebar Logo & Navigation */
+.logo {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  cursor: pointer;
+  user-select: none;
+}
+
+.logo h2 {
+  font-size: 1.15rem;
+  font-weight: 800;
+  letter-spacing: -0.5px;
+  color: var(--sigma-text);
+  margin: 0;
+}
+
+.logo span {
+  color: var(--sigma-primary);
+  font-weight: 700;
+}
+
+.section-title {
+  font-size: 0.65rem;
+  font-weight: 800;
+  color: var(--sigma-text-dark);
+  text-transform: uppercase;
+  letter-spacing: 1.8px;
+  margin: 24px 0 10px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  user-select: none;
+}
+
+/* Sidebar Items */
+.sidebar-item,
+.module-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 12px;
+  border-radius: var(--sigma-radius-sm);
+  cursor: pointer;
+  color: var(--sigma-text-dim);
+  transition: var(--trans-fast);
+  margin-bottom: 3px;
+  border: 1px solid transparent;
+  font-size: 0.78rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.sidebar-item:hover {
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--sigma-text);
+  border-color: var(--sigma-border-bright);
+}
+
+.sidebar-item.active {
+  background: var(--sigma-primary-glow) !important;
+  color: var(--sigma-primary) !important;
+  border-color: var(--sigma-primary-border) !important;
+  font-weight: 700;
+}
+
+.sidebar-item.active svg {
+  color: var(--sigma-primary);
+}
+
+/* Kernel Native Highlight in Golden Amber */
+.sidebar-item.kernel-item {
+  position: relative;
+  border-left: 2.5px solid rgba(234, 179, 8, 0.6);
+  background: rgba(234, 179, 8, 0.03);
+}
+
+.sidebar-item.kernel-item:hover:not(.active) {
+  background: rgba(234, 179, 8, 0.1);
+  color: var(--sigma-text);
+  border-color: rgba(234, 179, 8, 0.3);
+}
+
+/* Theme Switcher Pill in Sidebar */
+.theme-switcher-pill {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 12px;
+  margin-bottom: 18px;
+  border-radius: var(--sigma-radius-md);
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--sigma-border-bright);
+  cursor: pointer;
+  transition: var(--trans-fast);
+}
+
+.theme-switcher-pill:hover {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: var(--sigma-primary-border);
+}

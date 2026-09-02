@@ -1,0 +1,126 @@
+/* ==============================================================================
+   LAYER 1 (PRIMITIVES) | Buttons & Interactive Triggers
+   ============================================================================== */
+
+/* Base Button */
+.sigma-btn,
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 8px 16px;
+  border-radius: var(--sigma-radius-sm);
+  font-size: 0.82rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: var(--trans-fast);
+  text-decoration: none;
+  border: 1px solid transparent;
+  user-select: none;
+  white-space: nowrap;
+}
+
+.sigma-btn:disabled,
+.btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
+/* Primary Button */
+.sigma-btn-primary,
+.btn-primary,
+.skills-btn:not(.ghost),
+.mg-btn-primary {
+  background: var(--sigma-primary) !important;
+  color: var(--sigma-primary-contrast) !important;
+  border: 1px solid transparent !important;
+  box-shadow: 0 0 16px var(--sigma-primary-glow);
+  font-weight: 700;
+}
+
+.sigma-btn-primary:hover,
+.btn-primary:hover,
+.skills-btn:not(.ghost):hover,
+.mg-btn-primary:hover {
+  filter: brightness(1.1);
+  box-shadow: 0 0 24px var(--sigma-primary-glow);
+  transform: translateY(-1px);
+}
+
+/* Ghost / Secondary Button */
+.sigma-btn-ghost,
+.btn-ghost,
+.btn-secondary,
+.skills-btn.ghost,
+.mg-btn:not(.mg-btn-primary) {
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--sigma-border-bright);
+  color: var(--sigma-text);
+}
+
+.sigma-btn-ghost:hover,
+.btn-ghost:hover,
+.btn-secondary:hover,
+.skills-btn.ghost:hover,
+.mg-btn:not(.mg-btn-primary):hover {
+  background: rgba(255, 255, 255, 0.1);
+  border-color: var(--sigma-primary-border);
+  color: #fff;
+  transform: translateY(-1px);
+}
+
+/* Accent Button */
+.sigma-btn-accent {
+  background: var(--sigma-accent);
+  color: #000;
+  font-weight: 700;
+  box-shadow: 0 0 16px var(--sigma-accent-glow);
+}
+
+.sigma-btn-accent:hover {
+  filter: brightness(1.1);
+  box-shadow: 0 0 24px var(--sigma-accent-glow);
+}
+
+/* Danger Button */
+.sigma-btn-danger,
+.btn-danger {
+  background: rgba(255, 85, 85, 0.15);
+  border: 1px solid rgba(255, 85, 85, 0.35);
+  color: var(--sigma-error);
+}
+
+.sigma-btn-danger:hover,
+.btn-danger:hover {
+  background: var(--sigma-error);
+  color: #fff;
+}
+
+/* Size Variants */
+.sigma-btn-sm,
+.btn-small,
+.skills-btn.small {
+  padding: 5px 10px;
+  font-size: 0.74rem;
+  border-radius: var(--sigma-radius-xs);
+  gap: 5px;
+}
+
+.sigma-btn-lg {
+  padding: 12px 24px;
+  font-size: 0.95rem;
+  border-radius: var(--sigma-radius-md);
+  gap: 10px;
+}
+
+.sigma-btn-icon {
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  border-radius: var(--sigma-radius-sm);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}

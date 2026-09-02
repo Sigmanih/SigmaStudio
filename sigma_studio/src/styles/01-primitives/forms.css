@@ -1,0 +1,111 @@
+/* ==============================================================================
+   LAYER 1 (PRIMITIVES) | Form Controls, Inputs & Sliders
+   ============================================================================== */
+
+.sigma-input,
+.sigma-select,
+.config-field input,
+.config-field select {
+  width: 100%;
+  background: rgba(0, 0, 0, 0.4);
+  border: 1px solid var(--sigma-border-bright);
+  border-radius: var(--sigma-radius-sm);
+  padding: 8px 12px;
+  font-size: 0.82rem;
+  color: var(--sigma-text);
+  outline: none;
+  transition: var(--trans-fast);
+}
+
+[data-theme="light"] .sigma-input,
+[data-theme="light"] .sigma-select,
+.theme-light .sigma-input,
+.theme-light .sigma-select,
+.theme-light .config-field input,
+.theme-light .config-field select {
+  background: #ffffff;
+  color: #111111;
+  border-color: rgba(190, 160, 110, 0.35);
+}
+
+.sigma-input:focus,
+.sigma-select:focus,
+.config-field input:focus,
+.config-field select:focus {
+  border-color: var(--sigma-primary);
+  box-shadow: 0 0 0 2px var(--sigma-primary-glow);
+}
+
+/* Range Slider */
+.sigma-range,
+input[type="range"] {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  height: 6px;
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: var(--sigma-radius-full);
+  outline: none;
+}
+
+input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--sigma-primary);
+  cursor: pointer;
+  box-shadow: 0 0 8px var(--sigma-primary-glow);
+  transition: transform 0.15s ease;
+}
+
+input[type="range"]::-webkit-slider-thumb:hover {
+  transform: scale(1.2);
+}
+
+/* Toggle Switch */
+.sigma-switch {
+  position: relative;
+  display: inline-block;
+  width: 40px;
+  height: 22px;
+}
+
+.sigma-switch input {
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.sigma-slider {
+  position: absolute;
+  cursor: pointer;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background-color: rgba(255, 255, 255, 0.1);
+  transition: .3s cubic-bezier(0.4, 0, 0.2, 1);
+  border-radius: 34px;
+  border: 1px solid var(--sigma-border-bright);
+}
+
+.sigma-slider:before {
+  position: absolute;
+  content: "";
+  height: 14px;
+  width: 14px;
+  left: 3px;
+  bottom: 3px;
+  background-color: white;
+  transition: .3s cubic-bezier(0.4, 0, 0.2, 1);
+  border-radius: 50%;
+}
+
+.sigma-switch input:checked + .sigma-slider {
+  background-color: var(--sigma-primary);
+  border-color: var(--sigma-primary);
+}
+
+.sigma-switch input:checked + .sigma-slider:before {
+  transform: translateX(18px);
+  background-color: var(--sigma-primary-contrast);
+}

@@ -211,6 +211,12 @@ def provider_config_file() -> Path:
     return _con_ripiego(config_dir() / "provider.json", "config.json")
 
 
+def certs_dir() -> Path:
+    """Cartella per i certificati SSL/TLS e chiavi private per HTTPS."""
+    return _con_ripiego(config_dir() / "certs", "certs")
+
+
+
 def engine_tools_dir() -> Path:
     """Strumenti dell'engine scaricati, come il convertitore GGUF di llama.cpp."""
     return _con_ripiego(store_dir() / "engine_tools", "engine_tools")

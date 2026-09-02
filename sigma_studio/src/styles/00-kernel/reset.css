@@ -1,0 +1,150 @@
+/* ==============================================================================
+   LAYER 0 (KERNEL) | Reset, Box-Sizing & Global Base Setup
+   ============================================================================== */
+
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html {
+  font-size: 16px;
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+  color-scheme: dark;
+}
+
+[data-theme="light"], .theme-light {
+  color-scheme: light;
+}
+
+body {
+  background-color: var(--sigma-bg);
+  background-image: var(--sigma-bg-pattern);
+  background-size: var(--sigma-bg-pattern-size);
+  background-attachment: fixed;
+  color: var(--sigma-text);
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  overflow: hidden;
+  height: 100vh;
+  height: 100dvh;
+  width: 100vw;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  line-height: 1.5;
+}
+
+/* Custom background image overlay when configured */
+body.has-custom-bg {
+  background-image: linear-gradient(
+    rgba(3, 3, 5, var(--sigma-bg-overlay-opacity, 0.85)),
+    rgba(3, 3, 5, var(--sigma-bg-overlay-opacity, 0.85))
+  ), var(--sigma-bg-custom-image);
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+  background-attachment: fixed;
+}
+
+/* Global focus visible indicator */
+:focus-visible {
+  outline: 2px solid var(--sigma-primary);
+  outline-offset: 2px;
+}
+
+/* Custom Scrollbars */
+::-webkit-scrollbar {
+  width: 5px;
+  height: 5px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.12);
+  border-radius: var(--sigma-radius-full);
+  transition: var(--trans-fast);
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--sigma-primary);
+}
+
+[data-theme="light"] ::-webkit-scrollbar-thumb,
+.theme-light ::-webkit-scrollbar-thumb {
+  background: rgba(0, 0, 0, 0.18);
+}
+
+[data-theme="light"] ::-webkit-scrollbar-thumb:hover,
+.theme-light ::-webkit-scrollbar-thumb:hover {
+  background: var(--sigma-primary);
+}
+
+/* Text selection styling */
+::selection {
+  background: var(--sigma-primary-glow);
+  color: var(--sigma-primary);
+}
+
+/* Base interactive elements */
+a {
+  color: var(--sigma-primary);
+  text-decoration: none;
+  transition: var(--trans-fast);
+}
+
+a:hover {
+  text-decoration: underline;
+}
+
+button {
+  font-family: inherit;
+  font-size: inherit;
+  border: none;
+  background: none;
+  cursor: pointer;
+}
+
+input, textarea, select {
+  font-family: inherit;
+  font-size: inherit;
+}
+
+img, svg, video, canvas {
+  display: block;
+  max-width: 100%;
+}
+
+/* Global Keyframe Animations */
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes modalIn {
+  from { opacity: 0; transform: scale(0.96) translateY(12px); }
+  to { opacity: 1; transform: scale(1) translateY(0); }
+}
+
+@keyframes slideInLeft {
+  from { transform: translateX(-100%); }
+  to { transform: translateX(0); }
+}
+
+@keyframes slideInRight {
+  from { transform: translateX(100%); }
+  to { transform: translateX(0); }
+}
+
+@keyframes pulseGlow {
+  0%, 100% { opacity: 0.4; }
+  50% { opacity: 0.85; }
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}

@@ -1,0 +1,147 @@
+/* ==============================================================================
+   LAYER 1 (PRIMITIVES) | Standardized 100% Solid & Non-Transparent Cards System
+   Garantisce massima leggibilità su tutte le tab e isolamento dal background
+   ============================================================================== */
+
+/* Base Standard Solid Card */
+.sigma-card,
+.skill-card,
+.primi-passi-card,
+.wg-showcase-card,
+.wg-status-card,
+.hw-card,
+.tl-card,
+.manifesto-card,
+.mcp-server-card,
+.kanban-task-card,
+.roadmap-card,
+.mg-card,
+.ws-card,
+.ws-metric,
+.wg-metric,
+.doc-card,
+.market-card,
+.ai-agent-card,
+.theme-card {
+  background: var(--sigma-card-bg) !important;
+  border: 1px solid var(--sigma-card-border) !important;
+  box-shadow: var(--sigma-card-shadow) !important;
+  border-radius: var(--sigma-radius-md);
+  opacity: 1 !important;
+  position: relative;
+  transition: transform var(--trans-fast), border-color var(--trans-fast), box-shadow var(--trans-fast);
+  color: var(--sigma-text);
+  overflow: hidden;
+}
+
+/* Hover Elevation */
+.sigma-card:hover,
+.skill-card:hover,
+.primi-passi-card:hover,
+.wg-showcase-card:hover,
+.hw-card:hover,
+.manifesto-card:hover,
+.mcp-server-card:hover,
+.mg-card:hover,
+.ws-card:hover,
+.market-card:hover,
+.theme-card:hover {
+  border-color: var(--sigma-card-hover-border) !important;
+  box-shadow: var(--sigma-card-hover-shadow) !important;
+  transform: translateY(-2px);
+}
+
+/* Card Header */
+.card-header,
+.sigma-card-header,
+.ws-card-head,
+.mg-card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 18px;
+  border-bottom: 1px solid var(--sigma-border);
+  background: rgba(255, 255, 255, 0.02);
+}
+
+[data-theme="light"] .card-header,
+.theme-light .card-header,
+[data-theme="light"] .ws-card-head,
+.theme-light .ws-card-head {
+  background: rgba(0, 0, 0, 0.02);
+}
+
+/* Card Body */
+.card-body,
+.sigma-card-body,
+.ws-card-body {
+  padding: 16px 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+/* Card Footer */
+.card-footer,
+.sigma-card-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 18px;
+  border-top: 1px solid var(--sigma-border);
+  background: rgba(0, 0, 0, 0.1);
+}
+
+/* Card Titles */
+.card-title,
+.sigma-card-title,
+.ws-card-title,
+.mg-card-name {
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: var(--sigma-text);
+  letter-spacing: -0.2px;
+  margin: 0;
+}
+
+/* Card Subtitle / Description */
+.card-desc,
+.sigma-card-desc,
+.ws-topic-desc {
+  font-size: 0.8rem;
+  color: var(--sigma-text-dim);
+  line-height: 1.5;
+}
+
+/* Card Banner / Image Container */
+.card-media-banner {
+  width: 100%;
+  height: 130px;
+  overflow: hidden;
+  position: relative;
+  background: #000;
+}
+
+.card-media-banner img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transition: transform 0.4s ease;
+}
+
+.sigma-card:hover .card-media-banner img,
+.mg-card:hover .card-media-banner img {
+  transform: scale(1.05);
+}
+
+/* Empty State Card */
+.card-empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 36px 20px;
+  text-align: center;
+  color: var(--sigma-text-dim);
+  gap: 12px;
+}

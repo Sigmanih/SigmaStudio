@@ -4,6 +4,7 @@
 # ==============================================================================
 
 import os
+import json
 import hashlib
 import subprocess
 import mimetypes
@@ -11,6 +12,7 @@ import signal
 import sys
 import shutil
 import warnings
+
 
 warnings.filterwarnings("ignore", category=UserWarning, module="torch")
 warnings.filterwarnings("ignore", category=FutureWarning, module="torch")
@@ -294,60 +296,91 @@ def _build_frontend_if_needed() -> bool:
     return True
 
 
-def _get_configured_host_port() -> tuple[str, int]:
-    """Recupera host e porta configurati da provider.json / config.json."""
+def _get_configured_host_port_ssl() -> tuple[str, int, bool, str | None, str | None]:
+    """Recupera host, porta e configurazione SSL da config.json / provider.json."""
     host = "0.0.0.0"
     port = 8000
+    ssl_enabled = False
+    ssl_certfile = None
+    ssl_keyfile = None
     try:
-        from core.paths import provider_config_file
-        cfg_path = provider_config_file()
-        if cfg_path.exists():
-            with open(cfg_path, "r", encoding="utf-8") as f:
-                data = json.load(f)
-            p = data.get("provider_server_port") or data.get("server_port")
-            if p:
-                port = int(p)
-            h = data.get("provider_server_host") or data.get("server_host")
-            if h:
-                host = str(h)
-    except Exception:
-        pass
-    return host, port
+        from core.paths import provider_config_file, project_root
+        cfg_files = [provider_config_file(), project_root() / "config.json"]
+
+        for cfg_path in cfg_files:
+            if cfg_path.exists():
+                with open(cfg_path, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                ai_data = data.get("ai", {}) if isinstance(data.get("ai"), dict) else {}
+                p = (data.get("provider_server_port") or data.get("server_port") or
+                     ai_data.get("provider_server_port") or ai_data.get("server_port"))
+                if p:
+                    port = int(p)
+                h = (data.get("provider_server_host") or data.get("server_host") or
+                     ai_data.get("provider_server_host") or ai_data.get("server_host"))
+                if h:
+                    host = str(h)
+                ssl_on = data.get("ssl_enabled") if "ssl_enabled" in data else ai_data.get("ssl_enabled")
+                if ssl_on is not None:
+                    ssl_enabled = bool(ssl_on)
+                cert = data.get("ssl_certfile") or ai_data.get("ssl_certfile")
+                if cert:
+                    ssl_certfile = str(cert)
+                key = data.get("ssl_keyfile") or ai_data.get("ssl_keyfile")
+                if key:
+                    ssl_keyfile = str(key)
+    except Exception as exc:
+        log.warning("Impossibile leggere configurazione porta/host/ssl: %s", exc)
+    return host, port, ssl_enabled, ssl_certfile, ssl_keyfile
 
 
-def serve(host: str | None = None, port: int | None = None) -> None:
-    """Avvia il server ASGI su host e porta specificati o configurati."""
-    cfg_host, cfg_port = _get_configured_host_port()
+def serve(host: str | None = None, port: int | None = None, ssl: bool | None = None) -> None:
+    """Avvia il server ASGI su host e porta specificati o configurati, con supporto opzionale HTTPS."""
+    cfg_host, cfg_port, cfg_ssl, cfg_cert, cfg_key = _get_configured_host_port_ssl()
     final_host = host if host is not None else cfg_host
     final_port = port if port is not None else cfg_port
+    final_ssl = ssl if ssl is not None else cfg_ssl
 
-    lan_ip = "127.0.0.1"
-    try:
-        import socket
-        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        s.connect(("8.8.8.8", 80))
-        lan_ip = s.getsockname()[0]
-        s.close()
-    except Exception:
-        pass
+    from core.ssl_manager import get_lan_ip, ensure_ssl_certificates
+    lan_ip = get_lan_ip()
 
-    log.info("Listening on http://localhost:%d (FastAPI ASGI v8.0)", final_port)
+    ssl_key_path = None
+    ssl_cert_path = None
+    scheme = "http"
+
+    if final_ssl:
+        cert_p, key_p = ensure_ssl_certificates(cfg_cert, cfg_key)
+        if cert_p and key_p and cert_p.exists() and key_p.exists():
+            ssl_cert_path = str(cert_p)
+            ssl_key_path = str(key_p)
+            scheme = "https"
+            log.info("[SSL] Modalita' HTTPS (TLS/SSL) abilitata con successo.")
+        else:
+            log.warning("[SSL] Impossibile abilitare HTTPS: certificati non generati. Avvio in HTTP standard.")
+
+    log.info("Listening on %s://localhost:%d (FastAPI ASGI v8.0)", scheme, final_port)
     if final_host in ("0.0.0.0", "") and lan_ip != "127.0.0.1":
-        log.info("Wi-Fi & LAN Network access available at http://%s:%d", lan_ip, final_port)
-    log.info("Interactive OpenAPI Docs available at http://localhost:%d/docs", final_port)
+        log.info("Wi-Fi & LAN Network access available at %s://%s:%d", scheme, lan_ip, final_port)
+    log.info("Interactive OpenAPI Docs available at %s://localhost:%d/docs", scheme, final_port)
+
     try:
         import uvicorn
         from core.fastapi_app import app
         # timeout_graceful_shutdown=1 chiude subito le connessioni keep-alive
         # inattive del browser quando si preme Ctrl+C.
-        uvicorn.run(
-            app,
-            host=final_host,
-            port=final_port,
-            log_level="info",
-            timeout_graceful_shutdown=1,
-            timeout_keep_alive=5,
-        )
+        uvicorn_kwargs = {
+            "app": app,
+            "host": final_host,
+            "port": final_port,
+            "log_level": "info",
+            "timeout_graceful_shutdown": 1,
+            "timeout_keep_alive": 5,
+        }
+        if ssl_cert_path and ssl_key_path:
+            uvicorn_kwargs["ssl_certfile"] = ssl_cert_path
+            uvicorn_kwargs["ssl_keyfile"] = ssl_key_path
+
+        uvicorn.run(**uvicorn_kwargs)
     except (KeyboardInterrupt, SystemExit):
         log.info("Server arrestato correttamente.")
 
@@ -355,6 +388,26 @@ def serve(host: str | None = None, port: int | None = None) -> None:
 def main(argv: list[str] | None = None) -> int:
     argomenti = list(sys.argv[1:] if argv is None else argv)
     solo_verifica = "--check" in argomenti
+
+    # CLI flag overrides
+    enable_ssl = None
+    if "--https" in argomenti or "--ssl" in argomenti:
+        enable_ssl = True
+    elif "--http" in argomenti or "--no-ssl" in argomenti:
+        enable_ssl = False
+
+    custom_port = None
+    for i, arg in enumerate(argomenti):
+        if (arg == "--port" or arg == "-p") and i + 1 < len(argomenti):
+            try:
+                custom_port = int(argomenti[i + 1])
+            except ValueError:
+                pass
+
+    custom_host = None
+    for i, arg in enumerate(argomenti):
+        if (arg == "--host" or arg == "-h") and i + 1 < len(argomenti):
+            custom_host = argomenti[i + 1]
 
     mancanti = _dipendenze_mancanti()
     if mancanti:
@@ -372,8 +425,13 @@ def main(argv: list[str] | None = None) -> int:
         log.info("Verifica completata: %s", esiti)
         return 0
 
-    serve()
+    if custom_host is None and custom_port is None and enable_ssl is None:
+        serve()
+    else:
+        serve(host=custom_host, port=custom_port, ssl=enable_ssl)
     return 0
+
+
 
 
 if __name__ == "__main__":

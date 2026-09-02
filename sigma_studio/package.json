@@ -2,7 +2,7 @@
   "name": "sigma-studio-frontend",
   "private": true,
   "license": "(GPL-3.0-only OR LicenseRef-Commercial)",
-  "version": "0.8.2",
+  "version": "0.9.0",
   "type": "module",
   "scripts": {
     "dev": "vite",

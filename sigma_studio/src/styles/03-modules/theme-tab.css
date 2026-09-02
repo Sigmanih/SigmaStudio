@@ -1,0 +1,244 @@
+/* ==============================================================================
+   LAYER 2 (MODULES) | Theme Customizer & Background Engine Tab
+   ============================================================================== */
+
+.theme-tab-container {
+  height: 100%;
+  overflow-y: auto;
+  padding: 28px 32px 60px;
+  display: flex;
+  flex-direction: column;
+  gap: 32px;
+  max-width: 1300px;
+  margin: 0 auto;
+  color: var(--sigma-text);
+  animation: fadeIn 0.3s ease-out;
+}
+
+.theme-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 20px;
+  flex-wrap: wrap;
+  border-bottom: 1px solid var(--sigma-border);
+  padding-bottom: 20px;
+}
+
+.theme-header-left h1 {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 1.6rem;
+  font-weight: 800;
+  margin: 0 0 6px;
+  letter-spacing: -0.5px;
+}
+
+.theme-header-left p {
+  color: var(--sigma-text-dim);
+  font-size: 0.88rem;
+  margin: 0;
+  max-width: 680px;
+  line-height: 1.5;
+}
+
+.theme-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+/* Sections */
+.theme-section {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.theme-section-title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: var(--sigma-text);
+  letter-spacing: -0.2px;
+}
+
+.theme-section-title span {
+  font-size: 0.78rem;
+  color: var(--sigma-text-dim);
+  font-weight: normal;
+}
+
+/* Preset Cards Grid */
+.presets-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 16px;
+}
+
+.preset-card {
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  cursor: pointer;
+  border: 2px solid transparent !important;
+  transition: var(--trans-fast);
+}
+
+.preset-card.active {
+  border-color: var(--sigma-primary) !important;
+  box-shadow: 0 0 20px var(--sigma-primary-glow) !important;
+}
+
+.preset-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.preset-name {
+  font-size: 0.95rem;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.preset-palette-preview {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 4px;
+}
+
+.palette-swatch {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  border: 2px solid rgba(255, 255, 255, 0.2);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
+}
+
+/* Customizer Grid */
+.customizer-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  gap: 20px;
+}
+
+.custom-color-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 14px;
+  border-radius: var(--sigma-radius-sm);
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid var(--sigma-border);
+}
+
+.custom-color-label {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.custom-color-name {
+  font-size: 0.84rem;
+  font-weight: 600;
+}
+
+.custom-color-desc {
+  font-size: 0.72rem;
+  color: var(--sigma-text-dim);
+}
+
+.custom-color-input-wrapper {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.custom-color-picker {
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  appearance: none;
+  width: 36px;
+  height: 36px;
+  background-color: transparent;
+  border: none;
+  cursor: pointer;
+  border-radius: 50%;
+}
+
+.custom-color-picker::-webkit-color-swatch {
+  border-radius: 50%;
+  border: 2px solid var(--sigma-border-bright);
+}
+
+.custom-color-picker::-moz-color-swatch {
+  border-radius: 50%;
+  border: 2px solid var(--sigma-border-bright);
+}
+
+/* Background Engine Options */
+.bg-engine-options {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 14px;
+}
+
+.bg-option-card {
+  padding: 16px;
+  border-radius: var(--sigma-radius-md);
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  transition: var(--trans-fast);
+}
+
+.bg-option-card.active {
+  border-color: var(--sigma-primary) !important;
+  background: var(--sigma-primary-glow) !important;
+}
+
+.bg-option-title {
+  font-size: 0.9rem;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* Live Preview Box */
+.theme-live-preview {
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  border-radius: var(--sigma-radius-lg);
+}
+
+.preview-elements-row {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
+}
+
+@media (max-width: 768px) {
+  .theme-tab-container {
+    padding: 18px 14px 40px;
+    gap: 24px;
+  }
+  .presets-grid,
+  .customizer-grid,
+  .bg-engine-options {
+    grid-template-columns: 1fr;
+  }
+}

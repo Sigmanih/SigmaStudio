@@ -1,0 +1,128 @@
+/* ==============================================================================
+   LAYER 0 (KERNEL) | Design Tokens & System Variables
+   Definizione centralizzata di tutti i token semantici di Sigma Studio
+   ============================================================================== */
+
+:root {
+  /* --- Brand & Accent (Default Cyber Dark) --- */
+  --sigma-primary: #00d2ff;
+  --sigma-primary-glow: hsla(191, 100%, 50%, 0.14);
+  --sigma-primary-border: rgba(0, 210, 255, 0.25);
+  --sigma-primary-contrast: #000000;
+
+  --sigma-accent: #bc8cff;
+  --sigma-accent-glow: hsla(266, 100%, 77%, 0.14);
+  --sigma-accent-border: rgba(188, 140, 255, 0.3);
+
+  /* --- Status Colors --- */
+  --sigma-success: #3fb950;
+  --sigma-success-glow: rgba(63, 185, 80, 0.15);
+  --sigma-warning: #ffb86c;
+  --sigma-warning-glow: rgba(255, 184, 108, 0.15);
+  --sigma-error: #ff5555;
+  --sigma-error-glow: rgba(255, 85, 85, 0.15);
+  --sigma-info: #58a6ff;
+
+  /* --- Background & Surfaces --- */
+  --sigma-bg: #030305;
+  --sigma-bg-subtle: #090910;
+  --sigma-surface: rgba(10, 10, 15, 0.95);
+  --sigma-surface-bright: #12121e;
+
+  /* --- Card Solid Surface (100% Opaca contro interferenze dello sfondo) --- */
+  --sigma-card-bg: #121622;
+  --sigma-card-border: rgba(255, 255, 255, 0.08);
+  --sigma-card-shadow: 0 4px 20px rgba(0, 0, 0, 0.45);
+  --sigma-card-hover-border: rgba(0, 210, 255, 0.35);
+  --sigma-card-hover-shadow: 0 8px 30px rgba(0, 0, 0, 0.65), 0 0 15px rgba(0, 210, 255, 0.12);
+
+  /* --- Text & Typography --- */
+  --sigma-text: #f0f0f5;
+  --sigma-text-secondary: #c9c9d6;
+  --sigma-text-dim: #9494a5;
+  --sigma-text-dark: #5a5a6a;
+  --sigma-text-inverse: #030305;
+
+  /* --- Borders & Dividers --- */
+  --sigma-border: rgba(255, 255, 255, 0.06);
+  --sigma-border-bright: rgba(255, 255, 255, 0.12);
+
+  /* --- Atmosphere & Background Engine Tokens --- */
+  --sigma-bg-glow-a: hsla(191, 100%, 50%, 0.04);
+  --sigma-bg-glow-b: hsla(266, 100%, 77%, 0.04);
+  --sigma-bg-dot: rgba(255, 255, 255, 0.045);
+  --sigma-bg-grid: rgba(255, 255, 255, 0.022);
+  --sigma-bg-overlay-opacity: 0.85;
+  --sigma-bg-custom-image: none;
+
+  --sigma-bg-pattern:
+    radial-gradient(at 0% 0%, var(--sigma-bg-glow-a) 0, transparent 50%),
+    radial-gradient(at 100% 100%, var(--sigma-bg-glow-b) 0, transparent 50%),
+    radial-gradient(var(--sigma-bg-dot) 1px, transparent 1px),
+    linear-gradient(var(--sigma-bg-grid) 1px, transparent 1px),
+    linear-gradient(90deg, var(--sigma-bg-grid) 1px, transparent 1px);
+  --sigma-bg-pattern-size: 100% 100%, 100% 100%, 32px 32px, 96px 96px, 96px 96px;
+
+  /* --- Radii & Geometry --- */
+  --sigma-radius-xs: 4px;
+  --sigma-radius-sm: 8px;
+  --sigma-radius-md: 14px;
+  --sigma-radius-lg: 20px;
+  --sigma-radius-xl: 26px;
+  --sigma-radius-full: 9999px;
+
+  /* --- Layout & Dimensions --- */
+  --sidebar-w: 280px;
+  --sidebar-collapsed-w: 0px;
+  --header-h: 52px;
+  --mobile-header-h: 56px;
+  --bottom-dock-h: 60px;
+
+  /* --- Z-Index Layer System --- */
+  --z-base: 1;
+  --z-card: 10;
+  --z-sticky: 100;
+  --z-header: 200;
+  --z-sidebar: 300;
+  --z-backdrop: 450;
+  --z-mobile-drawer: 500;
+  --z-floating-dock: 600;
+  --z-modal: 1000;
+  --z-toast: 2000;
+
+  /* --- Transitions & Animations --- */
+  --trans-fast: all 0.15s cubic-bezier(0.4, 0, 0.2, 1);
+  --trans-smooth: all 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+  --trans-spring: all 0.5s cubic-bezier(0.34, 1.56, 0.64, 1);
+  --glass: blur(18px) saturate(180%);
+  --shadow-l: 0 32px 64px -16px rgba(0, 0, 0, 0.6);
+  --glass-border: 1px solid var(--sigma-border);
+
+  /* --- Retrocompatibilità alias legacy --- */
+  --bg: var(--sigma-bg);
+  --surface: var(--sigma-surface);
+  --surface-bright: var(--sigma-surface-bright);
+  --primary: var(--sigma-primary);
+  --primary-glow: var(--sigma-primary-glow);
+  --primary-border: var(--sigma-primary-border);
+  --accent: var(--sigma-accent);
+  --accent-glow: var(--sigma-accent-glow);
+  --success: var(--sigma-success);
+  --success-glow: var(--sigma-success-glow);
+  --warning: var(--sigma-warning);
+  --error: var(--sigma-error);
+  --text: var(--sigma-text);
+  --text-dim: var(--sigma-text-dim);
+  --text-dark: var(--sigma-text-dark);
+  --border: var(--sigma-border);
+  --border-bright: var(--sigma-border-bright);
+  --radius-s: var(--sigma-radius-sm);
+  --radius-m: var(--sigma-radius-md);
+  --radius-l: var(--sigma-radius-xl);
+  --bg-glow-a: var(--sigma-bg-glow-a);
+  --bg-glow-b: var(--sigma-bg-glow-b);
+  --bg-dot: var(--sigma-bg-dot);
+  --bg-grid: var(--sigma-bg-grid);
+  --bg-pattern: var(--sigma-bg-pattern);
+  --bg-pattern-size: var(--sigma-bg-pattern-size);
+}

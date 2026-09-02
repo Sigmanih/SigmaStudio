@@ -1,8 +1,10 @@
-import React from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { 
   MessageSquare, Scroll, ExternalLink,
   DownloadCloud, Layers, Cpu, ShieldCheck, Terminal, 
-  ArrowRight, Sparkles, Zap, Wrench, Globe, CheckCircle2
+  ArrowRight, Sparkles, Zap, Wrench, Globe, CheckCircle2,
+  RefreshCw, AlertCircle, Download, GitBranch, Check,
+  Users, Bell, Info
 } from 'lucide-react';
 
 import { useApp } from '../contexts/AppContext';
@@ -16,6 +18,105 @@ export default function WelcomeDashboard({ modules, openTab }) {
   const subtitleColor = isLight ? '#4b5563' : '#94a3b8';
   const cardBorder = isLight ? '1px solid rgba(190, 160, 110, 0.35)' : '1px solid rgba(255, 255, 255, 0.08)';
   const cardShadow = isLight ? '0 4px 20px rgba(190, 160, 110, 0.12)' : '0 10px 30px rgba(0, 0, 0, 0.4)';
+
+  // GitHub & Roles Update Check State
+  const [updateState, setUpdateState] = useState({
+    loading: true,
+    checking: false,
+    updateAvailable: false,
+    latestVersion: '0.9.0',
+    currentVersion: '0.9.0',
+    phase: 'Beta Open Release',
+    releaseTitle: 'Sigma AI Studio v0.9.0 (Beta)',
+    releaseNotes: '',
+    publishedAt: '',
+    htmlUrl: 'https://github.com/Sigmanih/SigmaStudio/releases',
+    downloadUrl: 'https://github.com/Sigmanih/SigmaStudio/archive/refs/heads/main.zip',
+    activeRolesCount: 20,
+    hasRoleUpdates: false,
+    lastChecked: null,
+    error: null,
+    applying: false,
+    applyResult: null
+  });
+
+  // Check for updates
+  const checkForUpdates = useCallback(async (isManual = false) => {
+    if (isManual) {
+      setUpdateState(p => ({ ...p, checking: true, error: null, applyResult: null }));
+    }
+    try {
+      const res = await fetch('/api/system/updates/check');
+      const data = await res.json();
+      if (data && data.success) {
+        setUpdateState(p => ({
+          ...p,
+          loading: false,
+          checking: false,
+          updateAvailable: !!data.update_available,
+          latestVersion: data.latest_version || '0.9.0',
+          currentVersion: data.current_version || '0.9.0',
+          phase: data.phase || 'Beta Open Release',
+          releaseTitle: data.release_title || `Sigma AI Studio v${data.current_version || '0.9.0'}`,
+          releaseNotes: data.release_notes || '',
+          publishedAt: data.published_at || '',
+          htmlUrl: data.html_url || 'https://github.com/Sigmanih/SigmaStudio/releases',
+          downloadUrl: data.download_url || 'https://github.com/Sigmanih/SigmaStudio/archive/refs/heads/main.zip',
+          activeRolesCount: data.active_roles_count || 20,
+          hasRoleUpdates: !!data.has_role_updates,
+          lastChecked: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+          error: null
+        }));
+      } else {
+        setUpdateState(p => ({ ...p, loading: false, checking: false }));
+      }
+    } catch (e) {
+      console.debug("Update check fallback:", e);
+      setUpdateState(p => ({
+        ...p,
+        loading: false,
+        checking: false,
+        lastChecked: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+      }));
+    }
+  }, []);
+
+  // Apply update (trigger git pull & catalog sync)
+  const applyUpdate = async () => {
+    setUpdateState(p => ({ ...p, applying: true, applyResult: null }));
+    try {
+      const res = await fetch('/api/system/updates/apply', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' }
+      });
+      const data = await res.json();
+      setUpdateState(p => ({
+        ...p,
+        applying: false,
+        applyResult: {
+          success: data.success,
+          message: data.message || (data.success ? 'Aggiornamento applicato con successo!' : 'Verifica manuale richiesta.'),
+          log: data.log || ''
+        },
+        updateAvailable: false
+      }));
+      // Re-check after 2 seconds
+      setTimeout(() => checkForUpdates(false), 2000);
+    } catch (err) {
+      setUpdateState(p => ({
+        ...p,
+        applying: false,
+        applyResult: {
+          success: false,
+          message: `Errore durante l'aggiornamento: ${err.message}`
+        }
+      }));
+    }
+  };
+
+  useEffect(() => {
+    checkForUpdates(false);
+  }, [checkForUpdates]);
 
   return (
     <div className="wg-container" style={{ position: 'relative' }}>
@@ -67,7 +168,7 @@ export default function WelcomeDashboard({ modules, openTab }) {
               />
             </div>
             <div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px', flexWrap: 'wrap' }}>
                 <span style={{
                   fontSize: '0.68rem',
                   fontWeight: 800,
@@ -75,11 +176,22 @@ export default function WelcomeDashboard({ modules, openTab }) {
                   textTransform: 'uppercase',
                   padding: '2px 8px',
                   borderRadius: '6px',
-                  background: isLight ? 'rgba(234, 88, 12, 0.12)' : 'rgba(0, 210, 255, 0.15)',
-                  color: isLight ? '#c2410c' : '#00d2ff',
-                  border: isLight ? '1px solid rgba(234, 88, 12, 0.3)' : '1px solid rgba(0, 210, 255, 0.35)'
+                  background: 'linear-gradient(135deg, rgba(0, 210, 255, 0.2), rgba(168, 85, 247, 0.2))',
+                  color: '#00d2ff',
+                  border: '1px solid rgba(0, 210, 255, 0.4)'
                 }}>
-                  Σ v0.8.2 KERNEL
+                  Σ v0.9.0 BETA • OPEN COMMUNITY RELEASE
+                </span>
+                <span style={{
+                  fontSize: '0.64rem',
+                  fontWeight: 700,
+                  padding: '2px 7px',
+                  borderRadius: '5px',
+                  background: 'rgba(63, 185, 80, 0.15)',
+                  color: '#3fb950',
+                  border: '1px solid rgba(63, 185, 80, 0.3)'
+                }}>
+                  {updateState.activeRolesCount} Ruoli Attivi
                 </span>
               </div>
               <h1 style={{
@@ -188,9 +300,210 @@ export default function WelcomeDashboard({ modules, openTab }) {
       </div>
 
       {/* Corpo Principale */}
-      <div style={{ padding: '20px 24px 28px 24px', display: 'flex', flexDirection: 'column', gap: '22px', flex: 1 }}>
+      <div style={{ padding: '20px 24px 28px 24px', display: 'flex', flexDirection: 'column', gap: '20px', flex: 1 }}>
         
-        {/* ── DIV DI BENVENUTO E SPIEGAZIONE APPROFONDITA DI SIGMA STUDIO ──────── */}
+        {/* ── ALERT DIRETTO GITHUB: AGGIORNAMENTI RELEASE & RUOLI ATTIVI ──────── */}
+        <div style={{
+          padding: '16px 20px',
+          borderRadius: '16px',
+          background: updateState.updateAvailable
+            ? (isLight ? 'linear-gradient(135deg, rgba(254, 243, 199, 0.95), rgba(254, 215, 170, 0.9))' : 'linear-gradient(135deg, rgba(30, 27, 75, 0.95), rgba(23, 37, 84, 0.95))')
+            : (isLight ? 'rgba(255, 255, 255, 0.9)' : 'rgba(12, 17, 29, 0.95)'),
+          border: updateState.updateAvailable
+            ? '1px solid rgba(250, 160, 60, 0.6)'
+            : '1px solid rgba(0, 210, 255, 0.25)',
+          boxShadow: updateState.updateAvailable
+            ? '0 6px 24px rgba(250, 160, 60, 0.2)'
+            : cardShadow,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          flexWrap: 'wrap',
+          gap: '14px',
+          transition: 'all 0.2s ease'
+        }}>
+          {/* Left: Icon & Update Summary */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '14px', minWidth: '280px', flex: 1 }}>
+            <div style={{
+              width: '42px',
+              height: '42px',
+              borderRadius: '12px',
+              background: updateState.updateAvailable ? 'rgba(250, 160, 60, 0.2)' : 'rgba(0, 210, 255, 0.12)',
+              border: updateState.updateAvailable ? '1px solid #faa03c' : '1px solid rgba(0, 210, 255, 0.3)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              flexShrink: 0
+            }}>
+              {updateState.checking ? (
+                <RefreshCw size={20} className="spin" color="#00d2ff" />
+              ) : updateState.updateAvailable ? (
+                <Bell size={20} color="#faa03c" />
+              ) : (
+                <CheckCircle2 size={20} color="#3fb950" />
+              )}
+            </div>
+
+            <div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                <span style={{ fontSize: '0.88rem', fontWeight: 800, color: titleColor }}>
+                  {updateState.updateAvailable
+                    ? `⚡ Nuova Versione Rilasciata su GitHub: v${updateState.latestVersion}`
+                    : `🟢 Sigma AI Studio v${updateState.currentVersion} • Sistema & Ruoli Aggiornati`}
+                </span>
+                <span style={{
+                  fontSize: '0.62rem',
+                  padding: '2px 7px',
+                  borderRadius: '4px',
+                  background: updateState.updateAvailable ? 'rgba(250, 160, 60, 0.2)' : 'rgba(63, 185, 80, 0.15)',
+                  color: updateState.updateAvailable ? '#faa03c' : '#3fb950',
+                  border: `1px solid ${updateState.updateAvailable ? '#faa03c' : '#3fb950'}40`,
+                  fontWeight: 700
+                }}>
+                  {updateState.updateAvailable ? 'Aggiornamento Disponibile' : 'Ultima Release Beta'}
+                </span>
+              </div>
+
+              <div style={{ fontSize: '0.74rem', color: subtitleColor, marginTop: '3px' }}>
+                {updateState.updateAvailable ? (
+                  <span>{updateState.releaseTitle || 'Disponibile nuova versione con miglioramenti kernel e nuovi manifesti.'}</span>
+                ) : (
+                  <span>Versione open per la community. Repository GitHub sincronizzato con il catalogo dei ruoli attivi.</span>
+                )}
+                {updateState.lastChecked && (
+                  <span style={{ marginLeft: '6px', opacity: 0.8 }}>• Verificato alle {updateState.lastChecked}</span>
+                )}
+              </div>
+            </div>
+          </div>
+
+          {/* Right: Actions (Check, Download / Apply, GitHub Release) */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+            {/* Manual Refresh Button */}
+            <button
+              onClick={() => checkForUpdates(true)}
+              disabled={updateState.checking || updateState.applying}
+              style={{
+                padding: '6px 12px',
+                borderRadius: '8px',
+                background: isLight ? '#ffffff' : 'rgba(255,255,255,0.06)',
+                border: isLight ? '1px solid rgba(190, 160, 110, 0.35)' : '1px solid rgba(255, 255, 255, 0.15)',
+                color: titleColor,
+                fontSize: '0.74rem',
+                fontWeight: 700,
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '5px'
+              }}
+              title="Controlla se ci sono nuove release o manifesti su GitHub"
+            >
+              <RefreshCw size={12} className={updateState.checking ? "spin" : ""} />
+              <span>{updateState.checking ? 'Controllo...' : 'Verifica Aggiornamenti'}</span>
+            </button>
+
+            {/* Direct Download & Update Button */}
+            {updateState.updateAvailable ? (
+              <button
+                onClick={applyUpdate}
+                disabled={updateState.applying}
+                style={{
+                  padding: '7px 16px',
+                  borderRadius: '8px',
+                  background: 'linear-gradient(135deg, #faa03c, #ff5064)',
+                  border: 'none',
+                  color: '#ffffff',
+                  fontSize: '0.76rem',
+                  fontWeight: 800,
+                  cursor: 'pointer',
+                  boxShadow: '0 4px 14px rgba(250, 160, 60, 0.35)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px'
+                }}
+              >
+                {updateState.applying ? <RefreshCw size={13} className="spin" /> : <Download size={13} />}
+                <span>{updateState.applying ? 'Download & Aggiornamento...' : 'Scarica & Aggiorna Ora'}</span>
+              </button>
+            ) : (
+              <button
+                onClick={applyUpdate}
+                disabled={updateState.applying}
+                style={{
+                  padding: '6px 13px',
+                  borderRadius: '8px',
+                  background: 'linear-gradient(135deg, rgba(0, 210, 255, 0.15), rgba(79, 172, 254, 0.15))',
+                  border: '1px solid rgba(0, 210, 255, 0.4)',
+                  color: '#00d2ff',
+                  fontSize: '0.74rem',
+                  fontWeight: 700,
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '5px'
+                }}
+                title="Sincronizza i manifesti e ruoli dal repository ufficiale"
+              >
+                {updateState.applying ? <RefreshCw size={12} className="spin" /> : <GitBranch size={12} />}
+                <span>{updateState.applying ? 'Sincronizzazione...' : 'Sincronizza Ruoli'}</span>
+              </button>
+            )}
+
+            {/* External GitHub Releases Link */}
+            <a
+              href={updateState.htmlUrl || "https://github.com/Sigmanih/SigmaStudio/releases"}
+              target="_blank"
+              rel="noreferrer"
+              style={{
+                padding: '6px 12px',
+                borderRadius: '8px',
+                background: isLight ? 'rgba(0,0,0,0.04)' : 'rgba(255,255,255,0.05)',
+                border: isLight ? '1px solid rgba(190, 160, 110, 0.3)' : '1px solid rgba(255, 255, 255, 0.1)',
+                color: subtitleColor,
+                fontSize: '0.74rem',
+                fontWeight: 600,
+                textDecoration: 'none',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '4px'
+              }}
+            >
+              <ExternalLink size={12} />
+              <span>Release GitHub</span>
+            </a>
+          </div>
+
+          {/* Toast / Feedback Aggiornamento Applicato */}
+          {updateState.applyResult && (
+            <div style={{
+              width: '100%',
+              padding: '8px 12px',
+              borderRadius: '8px',
+              background: updateState.applyResult.success ? 'rgba(63, 185, 80, 0.15)' : 'rgba(255, 85, 85, 0.15)',
+              border: `1px solid ${updateState.applyResult.success ? 'rgba(63, 185, 80, 0.4)' : 'rgba(255, 85, 85, 0.4)'}`,
+              color: updateState.applyResult.success ? '#3fb950' : '#ff5555',
+              fontSize: '0.74rem',
+              fontWeight: 700,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              gap: '8px'
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                {updateState.applyResult.success ? <Check size={14} /> : <AlertCircle size={14} />}
+                <span>{updateState.applyResult.message}</span>
+              </div>
+              <button
+                onClick={() => setUpdateState(p => ({ ...p, applyResult: null }))}
+                style={{ background: 'none', border: 'none', color: 'inherit', cursor: 'pointer', fontSize: '0.8rem', padding: '0 4px' }}
+              >
+                ✕
+              </button>
+            </div>
+          )}
+        </div>
+
+        {/* ── BACHECA DI BENVENUTO ALLA VERSIONE 0.9.0 & COMMUNITY RELEASE ──────── */}
         <div style={{
           padding: '28px 32px',
           borderRadius: '20px',
@@ -205,7 +518,7 @@ export default function WelcomeDashboard({ modules, openTab }) {
         }}>
           {/* Header del Benvenuto */}
           <div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px', flexWrap: 'wrap' }}>
               <span style={{
                 fontSize: '0.68rem',
                 fontWeight: 800,
@@ -217,10 +530,10 @@ export default function WelcomeDashboard({ modules, openTab }) {
                 color: isLight ? '#c2410c' : '#00d2ff',
                 border: isLight ? '1px solid rgba(234, 88, 12, 0.3)' : '1px solid rgba(0, 210, 255, 0.3)'
               }}>
-                ⚡ Piattaforma AI Locale & Modulare
+                ⚡ Versione 0.9.0 (Beta) • Open Community
               </span>
               <span style={{ fontSize: '0.76rem', color: subtitleColor, fontWeight: 600 }}>
-                • Autonomia Sovrana & Zero Costi API
+                • Autonomia Sovrana, Zero Costi API & Privacy Assoluta
               </span>
             </div>
 
@@ -231,17 +544,27 @@ export default function WelcomeDashboard({ modules, openTab }) {
               color: titleColor,
               letterSpacing: '-0.3px'
             }}>
-              Benvenuto in Sigma AI Studio
+              Benvenuto nella Versione 0.9.0 di Sigma AI Studio
             </h2>
 
             <p style={{
-              margin: 0,
+              margin: '0 0 12px 0',
               fontSize: '0.88rem',
               color: subtitleColor,
               lineHeight: 1.65,
-              maxWidth: '1000px'
+              maxWidth: '1050px'
             }}>
-              Grazie al motore <strong>SigmaEngine</strong> integrato con Sigma Studio, puoi fare il download dei modelli open-source, quantizzarli e <strong>ottimizzarli su misura per il tuo hardware</strong> — da workstation con GPU dedicate a dispositivi a basso consumo come il Raspberry Pi 5. Tutto viene eseguito in locale, garantendo <strong>privacy assoluta</strong>, <strong>zero latenza di rete</strong> e totale indipendenza dal cloud.
+              <strong>Sigma AI Studio</strong> è attualmente in <strong>fase Beta di rilascio aperto</strong>: l'intera community di sviluppatori, ricercatori e appassionati è <strong>completamente libera di utilizzarlo</strong>, sperimentare con i modelli linguistici locali, creare nuovi ruoli e condividere estensioni modulari.
+            </p>
+
+            <p style={{
+              margin: 0,
+              fontSize: '0.86rem',
+              color: subtitleColor,
+              lineHeight: 1.6,
+              maxWidth: '1050px'
+            }}>
+              Grazie al motore <strong>SigmaEngine</strong> integrato, puoi scaricare modelli open-source (GGUF, Safetensors), quantizzarli e <strong>ottimizzarli su misura per il tuo hardware</strong> — da potenti workstation con GPU dedicate a dispositivi a basso consumo come il Raspberry Pi 5. Tutto gira in locale: <strong>nessun abbonamento, zero latenza cloud e privacy garantita</strong>.
             </p>
           </div>
 
@@ -274,7 +597,7 @@ export default function WelcomeDashboard({ modules, openTab }) {
                 </h3>
               </div>
               <p style={{ margin: 0, fontSize: '0.78rem', color: subtitleColor, lineHeight: 1.5 }}>
-                Scarica qualsiasi modello open-source (GGUF, Safetensors) da Hugging Face ed eseguilo in locale con <strong>gestione automatica della VRAM/RAM</strong> per massime prestazioni sul tuo hardware.
+                Scarica qualsiasi modello open-source (GGUF, Safetensors) da Hugging Face ed eseguilo in locale con <strong>gestione dinamica VRAM/RAM</strong> per massime prestazioni sul tuo hardware.
               </p>
               <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.72rem', color: '#00d2ff', fontWeight: 700, marginTop: 'auto', cursor: 'pointer' }}
                 onClick={() => openTab({ name: 'Modelli' }, 'model_hub')}
@@ -306,12 +629,12 @@ export default function WelcomeDashboard({ modules, openTab }) {
                 </h3>
               </div>
               <p style={{ margin: 0, fontSize: '0.78rem', color: subtitleColor, lineHeight: 1.5 }}>
-                Trasforma all'istante l'assistente in un esperto di codice, ingegneria, medicina o ricerca: i manifesti e ruoli applicano <strong>regole etiche e direttive disciplinari</strong> senza dover riaddestrare il modello.
+                Trasforma all'istante l'assistente in un esperto di codice, ingegneria, medicina o ricerca: i manifesti e ruoli applicano <strong>regole etiche e direttive disciplinari</strong> pronte all'uso.
               </p>
               <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.72rem', color: '#bc8cff', fontWeight: 700, marginTop: 'auto', cursor: 'pointer' }}
                 onClick={() => openTab({ name: 'Ruoli AI' }, 'whitepapers_lib')}
               >
-                <span>Esplora Ruoli AI e Professioni</span> <ArrowRight size={12} />
+                <span>Esplora {updateState.activeRolesCount} Ruoli Attivi</span> <ArrowRight size={12} />
               </div>
             </div>
 
@@ -338,7 +661,7 @@ export default function WelcomeDashboard({ modules, openTab }) {
                 </h3>
               </div>
               <p style={{ margin: 0, fontSize: '0.78rem', color: subtitleColor, lineHeight: 1.5 }}>
-                Dai all'AI strumenti pratici tramite <strong>Model Context Protocol</strong>: esecuzione di script, gestione file, diagnostica hardware in tempo reale e controllo domotico IoT.
+                Fornisci all'AI strumenti pratici tramite <strong>Model Context Protocol</strong>: esecuzione di script, gestione file, diagnostica hardware in tempo reale e controllo domotico IoT.
               </p>
               <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.72rem', color: '#ff5064', fontWeight: 700, marginTop: 'auto', cursor: 'pointer' }}
                 onClick={() => openTab({ name: 'MCP Tools' }, 'mcp_hub')}
@@ -491,7 +814,7 @@ export default function WelcomeDashboard({ modules, openTab }) {
 
           <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
             <span style={{ color: '#3fb950' }}>●</span>
-            <span>Sigma Studio v0.8.2 • Pronto e operativo</span>
+            <span>Sigma AI Studio v0.9.0 (Beta) • Community Open Release • Pronto e operativo</span>
           </div>
         </div>
 

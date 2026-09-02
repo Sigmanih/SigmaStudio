@@ -780,6 +780,22 @@ def kill_stale_port(port=8000):
         # Ignore errors if port is not in use or command fails
         pass
 
+def kill_stale_ports():
+    ports = {8000}
+    try:
+        for p_file in ["config.json", os.path.join("config", "provider.json")]:
+            if os.path.exists(p_file):
+                with open(p_file, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                ai_d = data.get("ai", {}) if isinstance(data.get("ai"), dict) else {}
+                p = data.get("provider_server_port") or data.get("server_port") or ai_d.get("provider_server_port") or ai_d.get("server_port")
+                if p:
+                    ports.add(int(p))
+    except Exception:
+        pass
+    for p in ports:
+        kill_stale_port(p)
+
 def set_hardware_env():
     print_log("[SIGMA] Configuring hardware environment variables...", Colors.OKCYAN)
     config_path = "config.json"
@@ -793,23 +809,19 @@ def set_hardware_env():
                 hardware_cfg = data.get("hardware", {})
         except Exception as e:
             print_log(f"[SIGMA] Warning: Failed to parse config.json: {e}", Colors.WARNING)
-            
-    # Set OMP_NUM_THREADS
-    threads = hardware_cfg.get("num_threads", os.cpu_count())
-    os.environ["OMP_NUM_THREADS"] = str(threads)
+    
+    # Global environment vars for threads
+    threads = str(hardware_cfg.get("num_threads", os.cpu_count() or 4))
+    os.environ["OMP_NUM_THREADS"] = threads
+    os.environ["MKL_NUM_THREADS"] = threads
+    os.environ["OPENBLAS_NUM_THREADS"] = threads
+    os.environ["VECLIB_MAXIMUM_THREADS"] = threads
+    os.environ["NUMEXPR_NUM_THREADS"] = threads
     
     # CUDA config
     cuda_devices = hardware_cfg.get("cuda_visible_devices", "")
     if cuda_devices:
         os.environ["CUDA_VISIBLE_DEVICES"] = cuda_devices
-        
-    # Ollama overrides
-    if "ollama_host" in hardware_cfg:
-        os.environ["OLLAMA_HOST"] = hardware_cfg["ollama_host"]
-        
-    # Platform specific PyTorch memory allocator config
-    if os.name != 'nt':
-        os.environ["PYTORCH_CUDA_ALLOC_CONF"] = hardware_cfg.get("pytorch_alloc_conf", "expandable_segments:True")
         
     print_log(f"[SIGMA] Hardware config applied. Threads: {threads}", Colors.OKCYAN)
 
@@ -882,7 +894,7 @@ def main():
         return
         
     ensure_frontend()
-    kill_stale_port(8000)
+    kill_stale_ports()
     set_hardware_env()
     launch_server()
 
