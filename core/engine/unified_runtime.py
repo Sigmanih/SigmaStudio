@@ -3001,6 +3001,36 @@ class UniversalSigmaEngine:
             return int(self.model_facts.max_position_embeddings)
         return 0
 
+    def effective_context_window(self) -> int:
+        """La finestra che una singola generazione ha davvero, in token.
+
+        Diversa da `context_window()` quando il backend serve piu' slot:
+        `-np N` non aggiunge contesto, lo **divide**. Con `-c 32768 -np 4` il
+        server dichiara 32768 e ogni generazione ne vede 8192.
+
+        La distinzione non e' pedanteria. Chi costruisce un prompt budgetando
+        sulla cifra dichiarata ne prepara uno quattro volte piu' grande di
+        quello che entra: nel caso migliore viene troncato in silenzio, nel
+        caso peggiore — documentato in llamaserver_backend — il server smette
+        di rispondere con i pesi ancora in memoria.
+        """
+        totale = self.context_window()
+        if not totale:
+            return 0
+        backend = self.active_backend_instance
+        if backend is None:
+            return totale
+        try:
+            slot = int(backend.parallel_slots())
+        except Exception:
+            # La telemetria di un backend puo' fallire in molti modi — processo
+            # morto, socket chiuso, risposta malformata — e nessuno di essi
+            # giustifica far saltare la generazione. Senza il numero di slot si
+            # torna alla cifra dichiarata: e' ottimistica, ma un budget nullo
+            # bloccherebbe il run del tutto.
+            return totale
+        return max(1, totale // max(1, slot))
+
     def get_status(self) -> Dict[str, Any]:
         """Returns engine state, hardware allocation and the active plan."""
         return {

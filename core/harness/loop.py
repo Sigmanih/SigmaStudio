@@ -1343,6 +1343,23 @@ def stream_admin_agent_turn(
             goal_text = str(m.get("content", ""))[:1500]
             break
 
+    # La finestra su cui budgetare non e' quella richiesta: e' quella che una
+    # singola generazione ha davvero. Con `-np 4` il server dichiara 32768 e ne
+    # da' 8192 per slot, e budgetare sulla cifra dichiarata prepara un prompt
+    # quattro volte piu' grande di quello che entra — nel caso migliore troncato
+    # in silenzio, nel peggiore un server che smette di rispondere.
+    try:
+        from core.engine.unified_runtime import sigma_engine as _motore
+        reale = _motore.effective_context_window()
+        if reale and reale < context_tokens:
+            log.info(
+                "[AdminAgent] finestra reale %d token invece dei %d richiesti "
+                "(il backend divide il contesto fra gli slot)", reale, context_tokens,
+            )
+            context_tokens = reale
+    except Exception as exc:
+        log.debug("[AdminAgent] finestra effettiva non determinabile: %s", exc)
+
     ledger, ripreso = resolve_ledger(session_id, ledger, goal_text, workspace_root)
     if current_pipeline:
         ledger.set_pipeline(current_pipeline)
@@ -1503,6 +1520,7 @@ def stream_admin_agent_turn(
                 "type": "context_info",
                 "prompt_tokens": approx_tokens,
                 "context_limit": context_tokens,
+                "context_is_per_slot": True,
                 "max_tokens": max_tokens,
             }
             if ripreso:
