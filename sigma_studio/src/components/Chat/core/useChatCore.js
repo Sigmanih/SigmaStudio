@@ -226,18 +226,9 @@ export default function useChatCore(extraProps = {}) {
     abort: streamingHook.streamingRefs.abort,
   };
 
-  const handleDuplicateSession = useCallback(() => {
-    const activeModel = configHook.selectedModel || '';
-    const activeName = sessionsHook.sessions.find(s => s.id === sessionsHook.activeSessionId)?.name || 'Chat';
-    const dup = createSession(activeModel, 'Copia di ' + activeName);
-    const msgs = sessionsHook.activeSessionId ? (sessionsHook.sessionMessages[sessionsHook.activeSessionId] || []) : [];
-    
-    sessionsHook.setSessionMessages(prev => ({ ...prev, [dup.id]: [...msgs] }));
-    saveMessagesImmediately(dup.id, [...msgs]);
-    const updated = [dup, ...sessionsHook.sessions].slice(0, 25);
-    sessionsHook.saveSessionsState(updated);
-    sessionsHook.setActiveSessionId(dup.id);
-  }, [configHook.selectedModel, sessionsHook.activeSessionId, sessionsHook.sessions, sessionsHook.sessionMessages, sessionsHook.saveSessionsState, sessionsHook.setSessionMessages, sessionsHook.setActiveSessionId]);
+  const handleDuplicateSession = useCallback((e, sid) => {
+    sessionsHook.handleDuplicateSession(e, sid);
+  }, [sessionsHook.handleDuplicateSession]);
 
   // Voice Command Audio Recording State
   const [isRecording, setIsRecording] = useState(false);

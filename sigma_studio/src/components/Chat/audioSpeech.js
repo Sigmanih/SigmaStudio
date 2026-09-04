@@ -1644,6 +1644,7 @@ export function initSpeechRecognition({ onResult, onError, onEnd, lang = 'it-IT'
 // --- Wake-word microphone ----------------------------------------------------
 
 const WAKE_WORD = 'sigma';
+const WAKE_WORDS = ['sigma', 'sygma', 'signa', 'ehi sigma', 'hey sigma', 'ok sigma', 'ciao sigma'];
 const SILENCE_MS = 2000;
 // Fired by the browser during normal operation; restarting is the answer, not
 // an error message.
@@ -1652,6 +1653,44 @@ const BENIGN_RECOGNITION_ERRORS = ['no-speech', 'aborted', 'audio-capture'];
 /** Lowercase and strip combining accents so "Sìgma" still matches the wake word. */
 function normalizeForMatch(text) {
   return text.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+}
+
+/**
+ * Plays a pleasant modern audio chime when the wake word "Sigma" is recognized.
+ */
+export function playWakeWordAcknowledge() {
+  try {
+    const AudioContext = window.AudioContext || window.webkitAudioContext;
+    if (!AudioContext) return;
+    const ctx = new AudioContext();
+    const now = ctx.currentTime;
+
+    // Tone 1: 587.33 Hz (D5)
+    const osc1 = ctx.createOscillator();
+    const gain1 = ctx.createGain();
+    osc1.type = 'sine';
+    osc1.frequency.setValueAtTime(587.33, now);
+    gain1.gain.setValueAtTime(0.12, now);
+    gain1.gain.exponentialRampToValueAtTime(0.001, now + 0.15);
+    osc1.connect(gain1);
+    gain1.connect(ctx.destination);
+    osc1.start(now);
+    osc1.stop(now + 0.15);
+
+    // Tone 2: 880 Hz (A5)
+    const osc2 = ctx.createOscillator();
+    const gain2 = ctx.createGain();
+    osc2.type = 'sine';
+    osc2.frequency.setValueAtTime(880, now + 0.12);
+    gain2.gain.setValueAtTime(0.15, now + 0.12);
+    gain2.gain.exponentialRampToValueAtTime(0.001, now + 0.32);
+    osc2.connect(gain2);
+    gain2.connect(ctx.destination);
+    osc2.start(now + 0.12);
+    osc2.stop(now + 0.35);
+  } catch (e) {
+    console.warn('Could not play wake word chime:', e);
+  }
 }
 
 /**
@@ -1681,7 +1720,6 @@ export function createWakeWordMic({
     return null;
   }
 
-  const wake = normalizeForMatch(wakeWord);
   const recognition = new SpeechRecognition();
   recognition.continuous = true;
   recognition.interimResults = true;
@@ -1742,22 +1780,34 @@ export function createWakeWordMic({
     const normalized = normalizeForMatch(transcript);
 
     if (!armed) {
-      const at = normalized.indexOf(wake);
+      let at = -1;
+      for (const w of WAKE_WORDS) {
+        const pos = normalized.indexOf(w);
+        if (pos !== -1 && (at === -1 || pos < at)) {
+          at = pos;
+        }
+      }
       if (at === -1) return;                 // still nothing addressed to us
       armed = true;
       wakeIndex = at;
       setState('listening');
       // Barge-in: the user talking to the agent outranks the agent talking.
       stopSpeech();
+      playWakeWordAcknowledge();
     }
 
     if (wakeIndex === -1) {
-      wakeIndex = normalized.indexOf(wake);
+      for (const w of WAKE_WORDS) {
+        const pos = normalized.indexOf(w);
+        if (pos !== -1 && (wakeIndex === -1 || pos < wakeIndex)) {
+          wakeIndex = pos;
+        }
+      }
     }
 
     // Keep only what was said after the initial wake word, punctuation trimmed.
     if (wakeIndex !== -1) {
-      captured = transcript.slice(wakeIndex + wakeWord.length).replace(/^[\s,.;:!?]+/, '');
+      captured = transcript.slice(wakeIndex).replace(/^(?:ehi\s+|hey\s+|ok\s+|ciao\s+)?(?:sigma|sygma|signa)\b/i, '').replace(/^[\s,.;:!?]+/, '');
     } else {
       captured = transcript.replace(/^[\s,.;:!?]+/, '');
     }

@@ -28,6 +28,7 @@ from core.logger import get_logger
 from core.developer_studio.role_engine import RoleEngine, DEV_ROLES
 from core.developer_studio.context_manager import DevContextManager
 from core.developer_studio.task_pipeline import TaskNode, TaskPipeline, TaskStatus
+from core.developer_studio.session_ledger import DevSessionLedger
 
 log = get_logger(__name__)
 
@@ -74,12 +75,20 @@ class DevOrchestrator:
     """
 
     def __init__(self, workspace_root: Optional[str] = None,
-                 model_name: Optional[str] = None):
+                 model_name: Optional[str] = None,
+                 session_id: Optional[str] = None):
         self.role_engine = RoleEngine()
         self.context = DevContextManager(workspace_root)
         self.pipeline: Optional[TaskPipeline] = None
         self.model_name = model_name
         self.mode = ExecutionMode.INTERACTIVE
+        self.session_id = session_id
+        # Un solo ledger per obiettivo, condiviso da tutti i ruoli. E' cio' che
+        # rende l'orchestratore una squadra invece di cinque estranei: il
+        # Tester vede i file che il Coder ha scritto, il Reviewer sa quali
+        # verifiche sono gia' passate, e nessuno rilegge quello che un altro
+        # ha gia' letto.
+        self.ledger: Optional[DevSessionLedger] = None
         self._cancel_event = threading.Event()
 
     def cancel(self) -> None:
@@ -105,6 +114,21 @@ class DevOrchestrator:
         self._cancel_event.clear()
         self.context.set_goal(goal)
         model = model_name or self.model_name
+
+        # Lo stato di lavoro nasce qui e vive per tutto l'obiettivo: se la
+        # sessione era gia' nota, riparte da dove si era interrotta.
+        radice = self.context.session.workspace_root
+        self.ledger = None
+        if self.session_id:
+            try:
+                from core.developer_studio import session_store
+                self.ledger = session_store.load_ledger(self.session_id, goal, radice)
+            except Exception as exc:
+                log.debug("[Orchestrator] ripresa sessione fallita: %s", exc)
+        if self.ledger is None:
+            self.ledger = DevSessionLedger(goal=goal, workspace_root=radice)
+        else:
+            self.ledger.set_goal(goal)
 
         yield {
             "type": "orchestrator_start",
@@ -210,6 +234,9 @@ class DevOrchestrator:
         for event in self.role_engine.generate_with_role(
             "architect", prompt, context, model,
             should_cancel=self._cancelled,
+            workspace_root=self.context.session.workspace_root,
+            ledger=self.ledger,
+            session_id=self.session_id,
         ):
             yield event
             # Capture text output for context
@@ -219,6 +246,7 @@ class DevOrchestrator:
             if event.get("type") == "pipeline_update":
                 tasks = event.get("tasks", [])
                 self._build_pipeline_from_architect(tasks, goal)
+                self._sync_pipeline()
 
         full_output = "".join(architect_output)
         self.context.record_role_output("architect", full_output)
@@ -239,6 +267,9 @@ class DevOrchestrator:
         for event in self.role_engine.generate_with_role(
             "devops", prompt, context, model,
             should_cancel=self._cancelled,
+            workspace_root=self.context.session.workspace_root,
+            ledger=self.ledger,
+            session_id=self.session_id,
         ):
             yield event
             if event.get("type") == "token":
@@ -298,6 +329,9 @@ class DevOrchestrator:
         for event in self.role_engine.generate_with_role(
             "tester", prompt, context, model,
             should_cancel=self._cancelled,
+            workspace_root=self.context.session.workspace_root,
+            ledger=self.ledger,
+            session_id=self.session_id,
         ):
             yield event
             if event.get("type") == "token":
@@ -324,6 +358,9 @@ class DevOrchestrator:
             for event in self.role_engine.generate_with_role(
                 "reviewer", review_prompt, review_context, model,
                 should_cancel=self._cancelled,
+                workspace_root=self.context.session.workspace_root,
+                ledger=self.ledger,
+                session_id=self.session_id,
             ):
                 yield event
 
@@ -349,10 +386,32 @@ class DevOrchestrator:
         for event in self.role_engine.generate_with_role(
             "devops", prompt, context, model,
             should_cancel=self._cancelled,
+            workspace_root=self.context.session.workspace_root,
+            ledger=self.ledger,
+            session_id=self.session_id,
         ):
             yield event
 
     # -- Helpers -------------------------------------------------------------
+
+    def _sync_pipeline(self) -> None:
+        """Riversa il piano nel ledger, che e' cio' che viene salvato.
+
+        Il piano viveva solo in memoria nel processo: un refresh della pagina
+        lo perdeva insieme al suo avanzamento, e con esso il senso del
+        pannello che lo mostra. Passando dal ledger, il piano finisce sia nel
+        blocco di stato che il modello legge a ogni turno sia nel file della
+        sessione su disco, senza un secondo percorso di persistenza da tenere
+        allineato.
+        """
+        if not (self.ledger and self.pipeline):
+            return
+        try:
+            self.ledger.set_pipeline(
+                [n.to_dict() for n in self.pipeline.nodes.values()]
+            )
+        except Exception as exc:
+            log.debug("[Orchestrator] piano non sincronizzato: %s", exc)
 
     def _build_pipeline_from_architect(self, tasks: List[Dict], goal: str) -> None:
         """Convert Architect's task list into a TaskPipeline."""
@@ -401,6 +460,9 @@ class DevOrchestrator:
         for event in self.role_engine.generate_with_role(
             task.role, task.description, context, model,
             should_cancel=self._cancelled,
+            workspace_root=self.context.session.workspace_root,
+            ledger=self.ledger,
+            session_id=self.session_id,
         ):
             yield event
             if event.get("type") == "token":
@@ -426,6 +488,7 @@ class DevOrchestrator:
             yield {"type": "task_failed", "task_id": task.id, "title": task.title}
 
         # Emit pipeline status
+        self._sync_pipeline()
         yield {
             "type": "pipeline_update",
             "tasks": [n.to_dict() for n in self.pipeline.nodes.values()],
@@ -447,6 +510,9 @@ class DevOrchestrator:
         for event in self.role_engine.generate_with_role(
             "coder", prompt, context, model,
             should_cancel=self._cancelled,
+            workspace_root=self.context.session.workspace_root,
+            ledger=self.ledger,
+            session_id=self.session_id,
         ):
             yield event
 
@@ -479,6 +545,9 @@ class DevOrchestrator:
             for event in self.role_engine.generate_with_role(
                 "coder", prompt, context, model,
                 should_cancel=self._cancelled,
+                workspace_root=self.context.session.workspace_root,
+                ledger=self.ledger,
+                session_id=self.session_id,
             ):
                 yield event
 
@@ -491,6 +560,9 @@ class DevOrchestrator:
             for event in self.role_engine.generate_with_role(
                 "tester", test_prompt, test_context, model,
                 should_cancel=self._cancelled,
+                workspace_root=self.context.session.workspace_root,
+                ledger=self.ledger,
+                session_id=self.session_id,
             ):
                 yield event
                 if event.get("type") == "tool_result":

@@ -44,6 +44,34 @@
   transition: all 0.2s ease;
 }
 
+/* Mobile Filter Toggle Button (nascosto su desktop) */
+.mh-mobile-filters-toggle-btn {
+  display: none;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 12px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: #8b8fa3;
+  font-size: 0.76rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.mh-mobile-filters-toggle-btn:hover {
+  border-color: #ffb86c;
+  color: #ffb86c;
+}
+
+.mh-mobile-filters-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #ffb86c;
+}
+
 /* Modern Search Box */
 .mh-search-hero {
   display: flex;
@@ -504,14 +532,53 @@
     gap: 10px !important;
   }
 
+  /* SU MOBILE: Disattiviamo position sticky così non segue lo scrolling e non copre i modelli */
+  .mh-sticky-filters {
+    position: static !important;
+    top: auto !important;
+    z-index: 1 !important;
+    padding: 8px 10px !important;
+    border-radius: 10px !important;
+    gap: 8px !important;
+    box-shadow: none !important;
+  }
+
+  .mh-mobile-filters-toggle-btn {
+    display: inline-flex !important;
+  }
+
+  /* I 6 filtri avanzati sono nascosti di default su mobile per non occupare spazio */
   .mh-filter-selects-grid {
+    display: none !important;
     grid-template-columns: 1fr 1fr !important;
     gap: 6px !important;
+    margin-top: 4px;
+    padding-top: 8px;
+    border-top: 1px solid rgba(255, 255, 255, 0.06);
+  }
+
+  .mh-filter-selects-grid.mobile-open {
+    display: grid !important;
+  }
+
+  .mh-select-container {
+    gap: 2px !important;
+  }
+
+  .mh-select-label {
+    font-size: 0.58rem !important;
+  }
+
+  .mh-select-wrapper select {
+    padding: 4px 8px !important;
+    font-size: 0.70rem !important;
+    height: 28px !important;
   }
 
   .mh-search-hero {
-    padding: 8px 10px !important;
+    padding: 7px 10px !important;
     gap: 8px !important;
+    min-width: 130px !important;
   }
 
   .mh-segmented-nav {
@@ -531,7 +598,7 @@
 }
 
 @media (max-width: 480px) {
-  .mh-filter-selects-grid {
+  .mh-filter-selects-grid.mobile-open {
     grid-template-columns: 1fr !important;
   }
 }

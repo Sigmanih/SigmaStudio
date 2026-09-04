@@ -18,6 +18,7 @@ from typing import Any, Callable, Dict, Generator, List, Optional
 
 from core.logger import get_logger
 from core.engine.sampling import SamplingParams
+from core.developer_studio.tool_policy import ToolPolicy
 
 log = get_logger(__name__)
 
@@ -40,6 +41,11 @@ class DevRole:
     max_tokens: int = 4096
     tools: tuple = ()               # subset of tool names this role may use
     focus_areas: tuple = ()         # what this role should pay attention to
+    #: Round-trip di tool concessi al ruolo in un singolo incarico. Non e' un
+    #: dettaglio di tuning: con cinque turni per tutti, un Coder che deve
+    #: leggere due file, modificarne uno e verificare non arriva mai in fondo,
+    #: e il fallimento sembra del modello invece che del budget.
+    max_turns: int = 12
 
     def to_sampling(self) -> SamplingParams:
         """Convert role parameters to a SamplingParams instance."""
@@ -63,7 +69,8 @@ ROLE_ARCHITECT = DevRole(
     temperature=0.3,
     top_p=0.85,
     top_k=30,
-    max_tokens=4096,
+    max_tokens=6000,
+    max_turns=10,
     tools=(
         "list_dir", "glob", "read_file", "search_code", "pipeline",
         "git_status", "git_log",
@@ -103,7 +110,8 @@ ROLE_CODER = DevRole(
     temperature=0.2,
     top_p=0.9,
     top_k=40,
-    max_tokens=6144,
+    max_tokens=12000,
+    max_turns=26,
     tools=(
         "read_file", "edit_file", "write_file", "search_code", "terminal",
         "list_dir", "glob", "delete",
@@ -145,7 +153,8 @@ ROLE_REVIEWER = DevRole(
     temperature=0.1,
     top_p=0.85,
     top_k=20,
-    max_tokens=4096,
+    max_tokens=6000,
+    max_turns=12,
     tools=(
         "read_file", "search_code", "write_file", "list_dir",
     ),
@@ -184,7 +193,8 @@ ROLE_TESTER = DevRole(
     temperature=0.2,
     top_p=0.9,
     top_k=40,
-    max_tokens=6144,
+    max_tokens=9000,
+    max_turns=18,
     tools=(
         "read_file", "write_file", "terminal", "search_code",
         "list_dir", "run_tests",
@@ -223,7 +233,8 @@ ROLE_DEVOPS = DevRole(
     temperature=0.1,
     top_p=0.8,
     top_k=20,
-    max_tokens=2048,
+    max_tokens=4000,
+    max_turns=10,
     tools=(
         "terminal", "git_status", "git_diff", "git_log",
         "git_branch_create", "git_checkout", "git_add",
@@ -316,24 +327,45 @@ class RoleEngine:
         context: str = "",
         model_name: Optional[str] = None,
         should_cancel: Optional[Callable[[], bool]] = None,
+        workspace_root: Optional[str] = None,
+        ledger: Optional[Any] = None,
+        max_turns: Optional[int] = None,
+        session_id: Optional[str] = None,
     ) -> Generator[Dict[str, Any], None, None]:
         """Generate a response using a specific role, with streaming.
 
         Yields the same event dict format as stream_admin_agent_turn:
         {type: "token"/"thought"/"status"/"tool_start"/"tool_result"/...}
+
+        Tre parametri decidono se il ruolo lavora davvero o solo per finta.
+
+        `workspace_root` va propagato: senza, il loop ricadeva sulla radice di
+        default e ogni ruolo orchestrato modificava il progetto sbagliato,
+        ignorando la cartella scelta dall'utente.
+
+        `ledger` va condiviso fra i ruoli di uno stesso obiettivo: e' l'unico
+        modo perche' il Tester sappia cosa ha scritto il Coder. Senza, ogni
+        ruolo ripartiva da uno stato vuoto e rileggeva tutto.
+
+        `max_turns` viene dal ruolo quando non e' imposto da fuori: un tetto
+        unico e basso valeva cinque turni anche per il Coder, cioe' meno di
+        quanti ne servono per leggere, modificare e verificare un file.
         """
         role = self.switch_role(role_id)
-
-        # Build the full system prompt: role prompt + context
-        full_system = role.system_prompt
-        if context:
-            full_system = f"{full_system}\n\n{context}"
 
         # Import here to avoid circular dependency
         from core.developer_studio.admin_agent import (
             stream_admin_agent_turn,
             ADMIN_DEVELOPER_SYSTEM_PROMPT,
         )
+
+        # Il prompt del ruolo si SOMMA al protocollo, non lo sostituisce.
+        # Sostituendolo — com'era — il ruolo ereditava la propria identita' ma
+        # perdeva il formato delle tool call, il ciclo di lavoro e l'elenco dei
+        # tool: sapeva di essere il Tester e non sapeva come si esegue un test.
+        full_system = f"{ADMIN_DEVELOPER_SYSTEM_PROMPT}\n\n---\n\n{role.system_prompt}"
+        if context:
+            full_system = f"{full_system}\n\n{context}"
 
         # Build messages with role-specific system prompt
         messages = [
@@ -347,23 +379,35 @@ class RoleEngine:
             "role_id": role_id,
             "role_name": role.name,
             "role_icon": role.icon,
+            "max_turns": int(max_turns or role.max_turns),
         }
 
         # Delegate to the existing admin agent loop but with our role's params
         for event in stream_admin_agent_turn(
             messages=messages,
-            workspace_root=None,  # uses default
+            workspace_root=workspace_root,
             model_name=model_name,
             temperature=role.temperature,
             auto_execute_tools=True,
-            max_turns=5,
+            max_turns=int(max_turns or role.max_turns),
+            max_tokens=role.max_tokens,
             should_cancel=should_cancel,
             system_prompt_override=full_system,
+            ledger=ledger,
+            session_id=session_id,
+            allowed_tools=list(role.tools) or None,
+            policy_label=role.name,
         ):
             yield event
 
     def is_tool_allowed(self, role_id: str, tool_name: str) -> bool:
-        """Check if a tool is in the allowed set for a role."""
+        """Check if a tool is in the allowed set for a role.
+
+        Delega a `ToolPolicy`, che e' anche cio' che il loop applica davvero:
+        due risposte diverse alla stessa domanda — una qui per la UI, una la'
+        per l'esecuzione — sarebbero il modo piu' rapido di far divergere il
+        permesso mostrato da quello concesso.
+        """
         role = self.roles.get(role_id)
         if not role:
             return False
@@ -371,10 +415,9 @@ class RoleEngine:
         if not role.tools:
             return True
         # Match by prefix for namespaced tools (git_status → git_*)
-        return tool_name in role.tools or any(
-            tool_name.startswith(t.rstrip("*"))
-            for t in role.tools if t.endswith("*")
-        )
+        if any(tool_name.startswith(t.rstrip("*")) for t in role.tools if t.endswith("*")):
+            return True
+        return ToolPolicy.of(role.tools, label=role.name).permits(tool_name)
 
     def get_stats(self) -> Dict[str, Any]:
         return {

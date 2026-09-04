@@ -423,10 +423,10 @@ export default function AgentMessage({
     ? (userProfile.name || 'Tu')
     : ((rawRole && rawRole.toLowerCase() !== 'auto') ? rawRole : 'Sigma Assistant');
 
-  const rawModelName = first.agentName || effectiveModelName || 'AI';
-  const modelName = isUser ? '' : (rawModelName.toLowerCase().startsWith('auto ') || rawModelName.toLowerCase() === 'auto' ? `${roleName} (${effectiveModelName || 'AI'})` : rawModelName);
-  const targetModelForSpecs = (first.agentName || effectiveModelName || '').replace(/^.*?\((.*?)\).*$/, '$1');
+  const targetModelForSpecs = (first.model || first.agentName || effectiveModelName || '').replace(/^.*?\((.*?)\).*$/, '$1');
   const modelSpecs = !isUser && !isSystem ? getModelSpecs(targetModelForSpecs) : null;
+  const rawCleanName = modelSpecs?.name || (first.model || (first.agentName && !first.agentName.toLowerCase().startsWith('auto') ? first.agentName : null) || effectiveModelName || 'AI');
+  const cleanModelName = isUser ? '' : (rawCleanName.includes(':\\') ? rawCleanName.split(/[/\\]/).pop() : rawCleanName);
 
   const loadingSteps = [
     "Sto pensando...",
@@ -460,34 +460,13 @@ export default function AgentMessage({
               onError={(e) => { e.target.style.display = 'none'; }}
             />
           </div>
-          <div className="chat-msg-role">{roleName}</div>
-          {modelName && (
-            <div className="chat-msg-model" style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', flexWrap: 'wrap' }}>
-              <span>· {modelName}</span>
-              {modelSpecs?.params && (
-                <span style={{
-                  fontSize: '0.58rem', padding: '1px 5px', borderRadius: '4px',
-                  background: 'rgba(0, 210, 255, 0.16)', color: '#00d2ff', fontWeight: 800
-                }}>
-                  ⚡ {modelSpecs.params}
-                </span>
-              )}
-              {modelSpecs?.size && (
-                <span style={{
-                  fontSize: '0.58rem', padding: '1px 5px', borderRadius: '4px',
-                  background: 'rgba(255, 184, 108, 0.16)', color: '#ffb86c', fontWeight: 800
-                }}>
-                  💾 {modelSpecs.size}
-                </span>
-              )}
-              {modelSpecs?.format && (
-                <span style={{
-                  fontSize: '0.56rem', padding: '1px 4px', borderRadius: '3px',
-                  background: 'rgba(188, 140, 255, 0.14)', color: '#bc8cff', fontWeight: 700
-                }}>
-                  {modelSpecs.format}
-                </span>
-              )}
+          {/* Se è un messaggio utente o di sistema mostriamo il nome/ruolo (es: Tu) */}
+          {(isUser || isSystem) && <div className="chat-msg-role">{roleName}</div>}
+
+          {/* Nell'header dell'assistente mostriamo il nome del modello */}
+          {!isUser && !isSystem && cleanModelName && (
+            <div className="chat-msg-role" style={{ color: '#00d2ff', fontWeight: 700, letterSpacing: '0.1px' }}>
+              {cleanModelName}
             </div>
           )}
           {isOrchestrated && <span className="chat-msg-orchestrated" title="Assegnato dall'Orchestrator">🎯</span>}
@@ -623,14 +602,14 @@ export default function AgentMessage({
           </div>
         )}
 
-        {/* Active agent role banner */}
-        {!isUser && !isSystem && (agentId || first.agentRole) && (
+        {/* Active agent role banner con i dati del modello (che non duplichiamo nell'header) */}
+        {!isUser && !isSystem && (
           <div className="chat-msg-agent-badge" style={{
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'space-between',
             gap: '8px',
-            padding: '8px 12px',
+            padding: '7px 12px',
             background: 'rgba(255,255,255,0.02)',
             borderBottom: '1px solid rgba(255,255,255,0.04)',
             fontSize: '0.72rem',
@@ -644,21 +623,31 @@ export default function AgentMessage({
 
             {modelSpecs && (
               <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.66rem' }}>
-                <span style={{ color: '#8b8fa3' }}>Modello: <strong style={{ color: 'var(--text-primary, #ffffff)' }}>{modelSpecs.name}</strong></span>
                 {modelSpecs.params && (
                   <span style={{
-                    fontSize: '0.58rem', padding: '1px 5px', borderRadius: '4px',
-                    background: 'rgba(0, 210, 255, 0.16)', color: '#00d2ff', fontWeight: 800
+                    fontSize: '0.60rem', padding: '2px 6px', borderRadius: '4px',
+                    background: 'rgba(0, 210, 255, 0.16)', color: '#00d2ff', fontWeight: 800,
+                    border: '1px solid rgba(0, 210, 255, 0.25)'
                   }}>
                     ⚡ {modelSpecs.params}
                   </span>
                 )}
                 {modelSpecs.size && (
                   <span style={{
-                    fontSize: '0.58rem', padding: '1px 5px', borderRadius: '4px',
-                    background: 'rgba(255, 184, 108, 0.16)', color: '#ffb86c', fontWeight: 800
+                    fontSize: '0.60rem', padding: '2px 6px', borderRadius: '4px',
+                    background: 'rgba(255, 184, 108, 0.16)', color: '#ffb86c', fontWeight: 800,
+                    border: '1px solid rgba(255, 184, 108, 0.25)'
                   }}>
                     💾 {modelSpecs.size}
+                  </span>
+                )}
+                {modelSpecs.format && (
+                  <span style={{
+                    fontSize: '0.58rem', padding: '2px 5px', borderRadius: '3px',
+                    background: 'rgba(188, 140, 255, 0.14)', color: '#bc8cff', fontWeight: 700,
+                    border: '1px solid rgba(188, 140, 255, 0.25)'
+                  }}>
+                    {modelSpecs.format}
                   </span>
                 )}
               </div>

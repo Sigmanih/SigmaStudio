@@ -225,6 +225,16 @@ def research_sessions_dir() -> Path:
     return _con_ripiego(var_dir() / "research_sessions", "research_sessions")
 
 
+def dev_sessions_dir() -> Path:
+    """Cartella dello stato di lavoro dell'agente sviluppatore.
+
+    Sta in var/ perche' e' stato di runtime ricreabile: il transcritto della
+    conversazione vive nel client, qui si conserva solo cio' che il server sa
+    e il client non puo' sapere — file letti, comandi eseguiti, verifiche.
+    """
+    return var_dir() / "dev_sessions"
+
+
 def provider_config_file() -> Path:
     """Impostazioni del server provider (compatibilita' OpenAI/Ollama).
 

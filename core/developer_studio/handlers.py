@@ -210,6 +210,10 @@ async def handle_agent_chat(request: Request):
     # answer: read, edit, re-read, test, fix. Capping at a handful of turns is
     # what made the agent stop half-way through its own plan.
     max_turns = max(1, min(int(body.get("max_turns") or 30), 100))
+    # L'identificativo di sessione lega il run allo stato salvato su disco:
+    # senza, ogni richiesta riparte da un ledger vuoto e l'agente rilegge
+    # quello che aveva gia' letto un minuto prima.
+    session_id = str(body.get("session_id") or "").strip() or None
 
     # The agent loop is fully synchronous and blocking (model inference, filesystem
     # search, shell commands). It MUST run on a worker thread: executing it inline on
@@ -232,6 +236,7 @@ async def handle_agent_chat(request: Request):
                     max_tokens=max_tokens,
                     max_turns=max_turns,
                     thinking=thinking,
+                    session_id=session_id,
                 ):
                     if cancel_event.is_set():
                         break
@@ -351,6 +356,7 @@ async def handle_orchestrator_run(request: Request):
     mode = body.get("mode", "interactive")
     model = body.get("model") or "sigmaengine"
     workspace_root = body.get("workspace_root") or get_default_workspace_root()
+    session_id = str(body.get("session_id") or "").strip() or None
 
     if not goal:
         return JSONResponse(status_code=400, content={"success": False, "error": "Parametro 'goal' richiesto."})
@@ -367,6 +373,7 @@ async def handle_orchestrator_run(request: Request):
                 orchestrator = DevOrchestrator(
                     workspace_root=workspace_root,
                     model_name=model,
+                    session_id=session_id,
                 )
                 for event in orchestrator.execute_goal(
                     goal=goal,
@@ -441,9 +448,116 @@ async def handle_roles_list(request: Request):
             "name": r.name,
             "icon": r.icon,
             "temperature": r.temperature,
+            "max_turns": r.max_turns,
+            "max_tokens": r.max_tokens,
             "tools": list(r.tools),
             "focus_areas": list(r.focus_areas),
         }
         for r in DEV_ROLES.values()
     ]
     return JSONResponse(status_code=200, content={"success": True, "roles": roles})
+
+
+async def handle_sessions_list(request: Request):
+    """GET /api/developer/sessions?limit=50 — Elenca le sessioni di lavoro salvate."""
+    from core.developer_studio import session_store
+    try:
+        limite = int(request.query_params.get("limit") or 50)
+    except (TypeError, ValueError):
+        limite = 50
+    return JSONResponse(status_code=200, content={
+        "success": True,
+        "sessions": session_store.list_sessions(limit=limite),
+    })
+
+
+async def handle_session_get(request: Request):
+    """GET /api/developer/session?session_id=<id> — Stato di lavoro di una sessione.
+
+    E' il pannello «cosa sa l'agente»: quali file conosce, cosa ha verificato,
+    a che punto e' il piano. Serve alla UI dopo un refresh, e a un client
+    esterno che voglia riprendere un lavoro senza rifare l'esplorazione.
+    """
+    from core.developer_studio import session_store
+    session_id = (request.query_params.get("session_id") or "").strip()
+    if not session_id:
+        return JSONResponse(status_code=400, content={
+            "success": False, "error": "Parametro 'session_id' richiesto."
+        })
+    documento = session_store.load(session_id)
+    if not documento:
+        return JSONResponse(status_code=404, content={
+            "success": False, "error": f"Sessione '{session_id}' non trovata."
+        })
+    return JSONResponse(status_code=200, content={"success": True, "session": documento})
+
+
+async def handle_session_delete(request: Request):
+    """POST /api/developer/session/delete — Rimuove una sessione salvata."""
+    from core.developer_studio import session_store
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+    session_id = str(body.get("session_id") or "").strip()
+    if not session_id:
+        return JSONResponse(status_code=400, content={
+            "success": False, "error": "Parametro 'session_id' richiesto."
+        })
+    return JSONResponse(status_code=200, content={
+        "success": session_store.delete(session_id),
+        "session_id": session_id,
+    })
+
+
+async def handle_project_rules(request: Request):
+    """GET /api/developer/project/rules?workspace_root=<path> — Le regole del progetto.
+
+    Dice quali istruzioni l'agente sta effettivamente applicando su questo
+    workspace: e' l'unico modo che l'utente ha di accorgersi che il file di
+    regole esiste ma sta nella cartella sbagliata, o che non esiste affatto.
+    """
+    from core.developer_studio import project_rules
+    radice = (request.query_params.get("workspace_root") or "").strip() or get_default_workspace_root()
+    trovati = project_rules.discover(radice)
+    sezione = project_rules.load_section(radice)
+    return JSONResponse(status_code=200, content={
+        "success": True,
+        "workspace_root": radice,
+        "files": trovati,
+        "chars": len(sezione),
+        "supported": list(project_rules.RULE_FILES),
+    })
+
+
+# ---------------------------------------------------------------------------
+# Tabella delle route
+# ---------------------------------------------------------------------------
+#
+# Vive qui, accanto agli handler, e non nel modulo installabile che la
+# registra: sono due file che si copiano l'uno dall'altro, e una rotta
+# aggiunta solo da una parte e' una rotta che in produzione non esiste.
+ROUTES = (
+    ("/api/developer/tasks", handle_get_tasks, ["GET"]),
+    ("/api/developer/tasks", handle_save_tasks, ["POST"]),
+    ("/api/developer/fs/tree", handle_fs_tree, ["GET"]),
+    ("/api/developer/fs/read", handle_fs_read, ["GET"]),
+    ("/api/developer/fs/raw", handle_fs_raw, ["GET"]),
+    ("/api/developer/fs/write", handle_fs_write, ["POST"]),
+    ("/api/developer/fs/delete", handle_fs_delete, ["POST"]),
+    ("/api/developer/fs/backups", handle_fs_backups, ["GET"]),
+    ("/api/developer/fs/restore", handle_fs_restore, ["POST"]),
+    ("/api/developer/fs/create", handle_fs_create, ["POST"]),
+    ("/api/developer/fs/rename", handle_fs_rename, ["POST"]),
+    ("/api/developer/fs/search", handle_fs_search, ["POST"]),
+    ("/api/developer/terminal/exec", handle_terminal_exec, ["POST"]),
+    ("/api/developer/agent/chat", handle_agent_chat, ["POST"]),
+    ("/api/developer/workspace/roots", handle_workspace_roots, ["GET"]),
+    ("/api/developer/orchestrator/run", handle_orchestrator_run, ["POST"]),
+    ("/api/developer/orchestrator/status", handle_orchestrator_status, ["GET"]),
+    ("/api/developer/roles", handle_roles_list, ["GET"]),
+    ("/api/developer/sessions", handle_sessions_list, ["GET"]),
+    ("/api/developer/session", handle_session_get, ["GET"]),
+    ("/api/developer/session/delete", handle_session_delete, ["POST"]),
+    ("/api/developer/project/rules", handle_project_rules, ["GET"]),
+)

@@ -173,3 +173,272 @@
 .wg-modal-foot { display: flex; align-items: center; justify-content: flex-end; gap: 12px; padding: 16px 24px; border-top: 1px solid var(--border); }
 .wg-domain-pill { display: inline-flex; align-items: center; gap: 6px; padding: 7px 14px; border-radius: 20px; font-size: 0.72rem; font-weight: 700; cursor: pointer; border: 1.5px solid var(--border); background: rgba(255,255,255,0.02); color: var(--text-dim); }
 .theme-light .wg-domain-pill { background: #f7f4ed !important; border-color: rgba(190, 160, 110, 0.35) !important; color: #000000 !important; }
+
+/* ==============================================================================
+   Welcome Dashboard & Skills Showcase Opacity & Mobile Adaptation
+   ============================================================================== */
+
+/* 1. Opacified Welcome Cards (100% Solid Surfaces, Zero Bleed-through) */
+.welcome-main-card {
+  padding: 28px 32px;
+  border-radius: 20px;
+  background: linear-gradient(135deg, #0e121c 0%, #0a0d14 100%) !important;
+  border: 1px solid rgba(255, 255, 255, 0.08) !important;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.6) !important;
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.theme-light .welcome-main-card {
+  background: #ffffff !important;
+  border: 1px solid rgba(190, 160, 110, 0.45) !important;
+  box-shadow: 0 8px 24px rgba(190, 160, 110, 0.15) !important;
+}
+
+.welcome-pillars-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 16px;
+}
+
+.welcome-pillar-card {
+  padding: 18px 20px;
+  border-radius: 14px;
+  background: #121622 !important;
+  border: 1px solid rgba(255, 255, 255, 0.08) !important;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.35) !important;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.theme-light .welcome-pillar-card {
+  background: #fbf8f2 !important;
+  border: 1px solid rgba(190, 160, 110, 0.35) !important;
+  box-shadow: 0 2px 10px rgba(190, 160, 110, 0.1) !important;
+}
+
+.welcome-guide-card {
+  padding: 16px 20px;
+  border-radius: 12px;
+  background: #121622 !important;
+  border: 1px solid rgba(255, 255, 255, 0.08) !important;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.35) !important;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 14px;
+}
+
+.theme-light .welcome-guide-card {
+  background: #fbf8f2 !important;
+  border: 1px solid rgba(190, 160, 110, 0.35) !important;
+}
+
+.welcome-update-card {
+  border-radius: 16px;
+  background: linear-gradient(135deg, #0e121c 0%, #0a0d14 100%) !important;
+  border: 1px solid rgba(255, 255, 255, 0.08) !important;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4) !important;
+  padding: 16px 20px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 14px;
+  transition: all 0.2s ease;
+}
+
+.theme-light .welcome-update-card {
+  background: #ffffff !important;
+  border: 1px solid rgba(190, 160, 110, 0.45) !important;
+  box-shadow: 0 4px 16px rgba(190, 160, 110, 0.15) !important;
+}
+
+/* 2. Skills Slider Responsive & Mobile Centering */
+.skills-slider-track-item {
+  width: 100%;
+  flex-shrink: 0;
+  padding: 28px;
+  box-sizing: border-box;
+}
+
+.skills-card-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 16px;
+  margin-bottom: 20px;
+  padding-bottom: 16px;
+}
+
+.skills-card-header-left {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.skills-card-header-badges {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 4px;
+}
+
+.skills-card-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.skills-card-body-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 20px;
+}
+
+.skills-cat-filter-container {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+/* Mobile Media Query (max-width: 768px) */
+@media (max-width: 768px) {
+  .welcome-content-body {
+    padding: 12px 10px 24px 10px !important;
+    gap: 14px !important;
+  }
+
+  .welcome-main-card {
+    padding: 16px 14px !important;
+    gap: 18px !important;
+    border-radius: 16px !important;
+  }
+
+  .welcome-pillars-grid {
+    grid-template-columns: 1fr !important;
+    gap: 12px !important;
+  }
+
+  .welcome-pillar-card {
+    padding: 14px 14px !important;
+  }
+
+  .welcome-guide-card {
+    flex-direction: column !important;
+    align-items: stretch !important;
+    text-align: center !important;
+    gap: 14px !important;
+  }
+
+  .welcome-guide-card > div:first-child {
+    flex-direction: column !important;
+    align-items: center !important;
+    justify-content: center !important;
+    text-align: center !important;
+  }
+
+  .welcome-guide-buttons {
+    justify-content: center !important;
+  }
+
+  .welcome-update-card {
+    padding: 14px 14px !important;
+    flex-direction: column !important;
+    align-items: stretch !important;
+    gap: 12px !important;
+  }
+
+  .welcome-update-card > div:first-child {
+    min-width: 0 !important;
+    flex-direction: column !important;
+    align-items: center !important;
+    text-align: center !important;
+    gap: 10px !important;
+  }
+
+  .welcome-update-actions {
+    width: 100% !important;
+    justify-content: center !important;
+    gap: 8px !important;
+  }
+
+  .welcome-update-actions button,
+  .welcome-update-actions a {
+    flex: 1 1 45% !important;
+    text-align: center !important;
+    justify-content: center !important;
+  }
+
+  /* Skills Slider Centering for Mobile */
+  .skills-slider-track-item {
+    padding: 16px 12px !important;
+  }
+
+  .skills-card-header {
+    flex-direction: column !important;
+    align-items: center !important;
+    text-align: center !important;
+    gap: 14px !important;
+  }
+
+  .skills-card-header-left {
+    flex-direction: column !important;
+    align-items: center !important;
+    justify-content: center !important;
+    text-align: center !important;
+    gap: 10px !important;
+  }
+
+  .skills-card-header-badges {
+    justify-content: center !important;
+  }
+
+  .skills-card-header-actions {
+    width: 100% !important;
+    justify-content: center !important;
+    gap: 8px !important;
+  }
+
+  .skills-card-header-actions button,
+  .skills-card-header-actions a {
+    flex: 1 1 45% !important;
+    justify-content: center !important;
+  }
+
+  .skills-card-body-grid {
+    grid-template-columns: 1fr !important;
+    gap: 12px !important;
+  }
+
+  .skills-cat-filter-container {
+    overflow-x: auto !important;
+    flex-wrap: nowrap !important;
+    width: 100% !important;
+    padding-bottom: 6px !important;
+    -webkit-overflow-scrolling: touch !important;
+    scrollbar-width: none !important;
+  }
+
+  .skills-cat-filter-container::-webkit-scrollbar {
+    display: none !important;
+  }
+
+  .skills-cat-filter-btn {
+    white-space: nowrap !important;
+    flex-shrink: 0 !important;
+  }
+
+  /* On mobile, hide the overlapping floating side arrows and rely on touch-swipe + bottom arrows */
+  .skills-floating-arrow {
+    display: none !important;
+  }
+}

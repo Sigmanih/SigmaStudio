@@ -10,6 +10,7 @@ import {
 } from 'lucide-react';
 import { useApp } from '../contexts/AppContext';
 import CustomSelect from './common/CustomSelect';
+import TabHeader from './common/TabHeader';
 import { getModelSpecs, getModelChatSpeed, detectModelFamily, FAMILY_CONFIG, isSigmanihModel } from './Chat/core/modelSpecsHelper';
 
 // High-quality dedicated SVG brand icons for providers & GitHub engines
@@ -435,7 +436,28 @@ export default function AIConfigTab() {
   const cardShadow = isLight ? '0 2px 12px rgba(190, 160, 110, 0.1)' : '0 6px 24px rgba(0, 0, 0, 0.45)';
 
   // TWO MAIN TABS: 'engine_server' (Output / Proxy) | 'external_providers' (Input / Aggregation)
-  const [mainHubTab, setMainHubTab] = useState('engine_server');
+  const [mainHubTab, setMainHubTab] = useState(() => {
+    try {
+      return localStorage.getItem('sigma_providers_active_subtab') || 'engine_server';
+    } catch {
+      return 'engine_server';
+    }
+  });
+
+  useEffect(() => {
+    const handleSetTab = (e) => {
+      if (e?.detail) setMainHubTab(e.detail);
+    };
+    window.addEventListener('sigma-providers-set-tab', handleSetTab);
+    return () => window.removeEventListener('sigma-providers-set-tab', handleSetTab);
+  }, []);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('sigma_providers_active_subtab', mainHubTab);
+    } catch {}
+    window.dispatchEvent(new CustomEvent('sigma-providers-tab-changed', { detail: mainHubTab }));
+  }, [mainHubTab]);
 
   // External providers sub-filter
   const [activeCategory, setActiveCategory] = useState('all'); // 'all' | 'cloud' | 'local'
@@ -1158,162 +1180,41 @@ export default function AIConfigTab() {
         </div>
       )}
 
-      {/* Page Header (Full Width) */}
-      <div style={{ marginBottom: '20px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '14px', width: '100%' }}>
-        <div>
-          <h1 style={{ margin: 0, fontSize: '1.5rem', fontWeight: 800, color: titleColor, display: 'flex', alignItems: 'center', gap: '10px' }}>
-            <SlidersHorizontal size={26} color="#00f2fe" />
-            <span>Providers Hub & SigmaEngine Gateway</span>
-          </h1>
-          <p style={{ margin: '4px 0 0 0', fontSize: '0.82rem', color: subtitleColor }}>
-            Gestisci il Server Locale SigmaEngine per client esterni (VS Code, Cursor, Python) e connetti i tuoi provider AI esterni.
-          </p>
-        </div>
+      {/* Unified Kernel Tab Header */}
+      <TabHeader
+        badge="GATEWAY & INFERENCE ORCHESTRATION"
+        badgeIcon={SlidersHorizontal}
+        icon={mainHubTab === 'engine_server' ? Server : Globe}
+        title="Providers Hub / "
+        highlight={mainHubTab === 'engine_server' ? 'Server Locale & Proxy' : 'Provider Esterni'}
+        description={
+          mainHubTab === 'engine_server'
+            ? 'Gestisci il Server Locale SigmaEngine per client esterni (VS Code, Cursor, Python), routing porte e proxy OpenAI.'
+            : 'Connetti e configura i provider AI esterni (OpenAI, Anthropic, DeepSeek, Ollama, Groq, Mistral, LocalAI).'
+        }
+        actions={
+          <>
+            <button
+              onClick={() => setRestartModalOpen(true)}
+              className="sigma-tab-btn sigma-tab-btn-ghost"
+              title="Riavvia il server per applicare porte, HTTPS e certificati di rete"
+            >
+              <RefreshCw size={14} />
+              <span>Riavvia Server</span>
+            </button>
 
-        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-          <button
-            onClick={() => setRestartModalOpen(true)}
-            style={{
-              padding: '9px 18px',
-              borderRadius: '10px',
-              background: 'rgba(255, 184, 108, 0.15)',
-              border: '1px solid rgba(255, 184, 108, 0.4)',
-              color: '#ffb86c',
-              fontSize: '0.82rem',
-              fontWeight: 800,
-              cursor: 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '6px',
-              boxShadow: '0 2px 12px rgba(255, 184, 108, 0.15)',
-              transition: 'all 0.15s ease'
-            }}
-            title="Riavvia il server per applicare porte, HTTPS e certificati di rete"
-          >
-            <RefreshCw size={14} />
-            <span>🔄 Riavvia Server</span>
-          </button>
-
-          <button
-            onClick={saveAllConfig}
-            disabled={saving}
-            style={{
-              padding: '9px 20px',
-              borderRadius: '10px',
-              background: 'linear-gradient(135deg, #00f2fe, #4facfe)',
-              border: 'none',
-              color: '#000',
-              fontSize: '0.82rem',
-              fontWeight: 800,
-              cursor: saving ? 'not-allowed' : 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '6px',
-              boxShadow: '0 4px 16px rgba(0, 242, 254, 0.3)',
-              transition: 'all 0.15s ease'
-            }}
-          >
-            {saving ? <RefreshCw size={14} className="spin" /> : <Save size={14} />}
-            <span>{saving ? 'Salvataggio...' : 'Salva Modifiche'}</span>
-          </button>
-        </div>
-      </div>
-
-      {/* ========================================================================= */}
-      {/* 2 MAIN TOP-LEVEL TABS (OUTPUT / PROXY vs INPUT / AGGREGATION) */}
-      {/* ========================================================================= */}
-      <div style={{
-        display: 'flex',
-        alignItems: 'center',
-        gap: '10px',
-        padding: '6px',
-        borderRadius: '14px',
-        background: cardBg,
-        border: cardBorder,
-        boxShadow: cardShadow,
-        marginBottom: '24px',
-        width: '100%'
-      }}>
-        {/* TAB 1: SIGMAENGINE SERVER (OUTPUT / PROXY) */}
-        <button
-          onClick={() => setMainHubTab('engine_server')}
-          style={{
-            flex: 1,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            gap: '10px',
-            padding: '11px 20px',
-            borderRadius: '10px',
-            fontSize: '0.84rem',
-            fontWeight: 800,
-            cursor: 'pointer',
-            background: mainHubTab === 'engine_server' 
-              ? 'linear-gradient(135deg, rgba(0, 242, 254, 0.22), rgba(0, 180, 255, 0.12))' 
-              : 'transparent',
-            border: mainHubTab === 'engine_server' 
-              ? '1px solid #00f2fe' 
-              : '1px solid transparent',
-            color: mainHubTab === 'engine_server' ? '#00f2fe' : subtitleColor,
-            boxShadow: mainHubTab === 'engine_server' ? '0 0 16px rgba(0, 242, 254, 0.25)' : 'none',
-            transition: 'all 0.18s ease'
-          }}
-        >
-          <Zap size={17} color={mainHubTab === 'engine_server' ? '#00f2fe' : 'currentColor'} />
-          <span>⚡ 1. SigmaEngine Server (Output / Proxy)</span>
-          <span style={{
-            fontSize: '0.66rem',
-            padding: '2px 8px',
-            borderRadius: '6px',
-            background: providerServerEnabled ? 'rgba(63, 185, 80, 0.15)' : 'rgba(239, 68, 68, 0.15)',
-            color: providerServerEnabled ? '#3fb950' : '#ef4444',
-            border: `1px solid ${providerServerEnabled ? 'rgba(63, 185, 80, 0.4)' : 'rgba(239, 68, 68, 0.4)'}`,
-            fontWeight: 700
-          }}>
-            {providerServerEnabled ? `:${serverPort} ATTIVO 🟢` : 'DISATTIVATO 🔴'}
-          </span>
-        </button>
-
-        {/* TAB 2: EXTERNAL PROVIDERS (INPUT / AGGREGATION) */}
-        <button
-          onClick={() => setMainHubTab('external_providers')}
-          style={{
-            flex: 1,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            gap: '10px',
-            padding: '11px 20px',
-            borderRadius: '10px',
-            fontSize: '0.84rem',
-            fontWeight: 800,
-            cursor: 'pointer',
-            background: mainHubTab === 'external_providers' 
-              ? 'linear-gradient(135deg, rgba(168, 85, 247, 0.22), rgba(99, 102, 241, 0.12))' 
-              : 'transparent',
-            border: mainHubTab === 'external_providers' 
-              ? '1px solid #a855f7' 
-              : '1px solid transparent',
-            color: mainHubTab === 'external_providers' ? '#c084fc' : subtitleColor,
-            boxShadow: mainHubTab === 'external_providers' ? '0 0 16px rgba(168, 85, 247, 0.25)' : 'none',
-            transition: 'all 0.18s ease'
-          }}
-        >
-          <Globe size={17} color={mainHubTab === 'external_providers' ? '#c084fc' : 'currentColor'} />
-          <span>🌐 2. Provider Esterni (Input / Aggregazione)</span>
-          <span style={{
-            fontSize: '0.66rem',
-            padding: '2px 8px',
-            borderRadius: '6px',
-            background: 'rgba(168, 85, 247, 0.15)',
-            color: '#c084fc',
-            border: '1px solid rgba(168, 85, 247, 0.35)',
-            fontWeight: 700
-          }}>
-            Cloud & GitHub
-          </span>
-        </button>
-      </div>
+            <button
+              onClick={saveAllConfig}
+              disabled={saving}
+              className="sigma-tab-btn sigma-tab-btn-primary"
+            >
+              {saving ? <RefreshCw size={14} className="spin" /> : <Save size={14} />}
+              <span>{saving ? 'Salvataggio...' : 'Salva Modifiche'}</span>
+            </button>
+          </>
+        }
+        style={{ marginBottom: '20px', borderRadius: '12px' }}
+      />
 
       {/* ========================================================================= */}
       {/* TAB 1 CONTENT: ⚡ SIGMAENGINE SERVER & PROXY GATEWAY */}

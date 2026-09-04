@@ -26,6 +26,7 @@
 @import './styles/02-layout/app-layout.css';
 @import './styles/02-layout/sidebar.css';
 @import './styles/02-layout/workspace-tabs.css';
+@import './styles/02-layout/tab-header.css';
 
 @import './styles/03-modules/theme-tab.css';
 @import './styles/03-modules/skills-hub.css';

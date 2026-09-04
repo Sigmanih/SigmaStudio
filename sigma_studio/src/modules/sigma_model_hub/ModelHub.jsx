@@ -3,7 +3,7 @@ import {
   DownloadCloud, Search, HardDrive, Zap, Shield, Key,
   CheckCircle2, RefreshCw, Folder, FolderOpen, Layers, Activity, Sparkles, ExternalLink,
   ArrowRight, XCircle, RotateCcw, Eye, EyeOff, ShieldCheck, AlertTriangle, Check,
-  Plus, X, Tag, FolderPlus, Link2, Copy, FileText, Package, Settings
+  Plus, X, Tag, FolderPlus, Link2, Copy, FileText, Package, Settings, Star
 } from 'lucide-react';
 
 import { useApp } from '../../contexts/AppContext';
@@ -12,6 +12,7 @@ import LocalInventory from './LocalInventory';
 import GgufConverter from './GgufConverter';
 import DirectoryPicker from './DirectoryPicker';
 import SigmaDeployModal from './SigmaDeployModal';
+import TabHeader from '../../components/common/TabHeader';
 import './styles/model-hub.css';
 
 
@@ -34,7 +35,7 @@ const CONVERSION_STAGE_LABELS = {
 };
 
 const DEFAULT_OFFICIAL_PUBLISHERS = [
-  'sigmanih', 'google', 'qwen', 'meta-llama', 'deepseek-ai', 'mistralai',
+  'bartowski', 'TheBloke', 'sigmanih', 'google', 'qwen', 'meta-llama', 'deepseek-ai', 'mistralai',
   'microsoft', 'thudm', 'zai-org', 'zai', '01-ai', 'nvidia', 'stabilityai',
   'black-forest-labs', 'allenai', 'apple', 'openai', 'tiiuae', 'bytedance',
   'internlm'
@@ -396,11 +397,11 @@ export default function ModelHub({ addToast: addToastProp, openTab }) {
       });
       const json = await res.json();
       if (json.success) {
-        if (addToast) addToast(`✅ Autore "${clean}" aggiunto e sincronizzato con Esplora Hugging Face!`, 'success');
+        if (addToast) addToast(`✅ Creator "${clean}" aggiunto ai Preferiti di Esplora Hugging Face!`, 'success');
         fetchConfig();
       }
     } catch {
-      if (addToast) addToast(`Autore aggiunto: ${clean}`, 'info');
+      if (addToast) addToast(`Creator aggiunto: ${clean}`, 'info');
     }
   };
 
@@ -422,11 +423,11 @@ export default function ModelHub({ addToast: addToastProp, openTab }) {
       });
       const json = await res.json();
       if (json.success) {
-        if (addToast) addToast(`Autore "${pubToRemove}" rimosso e sincronizzato.`, 'info');
+        if (addToast) addToast(`Creator "${pubToRemove}" rimosso dai Preferiti.`, 'info');
         fetchConfig();
       }
     } catch {
-      if (addToast) addToast(`Autore "${pubToRemove}" rimosso.`, 'info');
+      if (addToast) addToast(`Creator "${pubToRemove}" rimosso.`, 'info');
     }
   };
 
@@ -448,11 +449,11 @@ export default function ModelHub({ addToast: addToastProp, openTab }) {
       });
       const json = await res.json();
       if (json.success) {
-        if (addToast) addToast('✅ Lista autori ufficiali ripristinata e sincronizzata con Esplora HF', 'success');
+        if (addToast) addToast('✅ Lista creator preferiti ripristinata e sincronizzata con Esplora HF', 'success');
         fetchConfig();
       }
     } catch {
-      if (addToast) addToast('Lista autori ufficiali ripristinata ai valori predefiniti', 'success');
+      if (addToast) addToast('Lista creator preferiti ripristinata ai valori predefiniti', 'success');
     }
   };
 
@@ -646,106 +647,63 @@ export default function ModelHub({ addToast: addToastProp, openTab }) {
 
   return (
     <div className="model-hub-container" style={{ backgroundColor: isLight ? '#f4efe4' : '#07090e', color: textPrimary }}>
-      {/* 1. FUTURISTIC RESPONSIVE HEADER */}
-      <div className="mh-header" style={{
-        background: isLight
-          ? 'linear-gradient(135deg, #ffffff 0%, #faf6ec 100%)'
-          : 'linear-gradient(135deg, rgba(13, 16, 25, 0.95) 0%, rgba(20, 26, 42, 0.85) 100%)',
-        border: cardBorder, boxShadow: cardShadow,
-      }}>
-        <div className="mh-header-main">
-          <div className="mh-header-icon-box">
-            <TabIcon size={22} color={isLight ? '#ea580c' : '#ffb86c'} />
-          </div>
-          <div className="mh-header-titles">
-            <div className="mh-header-title-row">
-              <h1 className="mh-header-title" style={{ color: textPrimary }}>
-                Model Hub <span style={{ opacity: 0.35 }}>/</span> <span style={{ color: isLight ? '#ea580c' : '#ffb86c' }}>{currentTabMeta.title}</span>
-              </h1>
-              <span className="mh-view-badge">
-                {currentTabMeta.badge}
+      {/* Unified Kernel Tab Header */}
+      <TabHeader
+        badge="AI MODEL MANAGEMENT & INFERENCE ENGINE"
+        badgeIcon={DownloadCloud}
+        icon={TabIcon}
+        title="Model Hub / "
+        highlight={currentTabMeta.title}
+        description={currentTabMeta.desc}
+        bannerImage="/images/hero_banner.jpg"
+        actions={
+          <>
+            {totalActiveTasksCount > 0 && (
+              <span
+                className="mh-active-task-pill"
+                onClick={() => setActiveTab('inventory')}
+                title="Clicca per visualizzare i download attivi"
+                style={{ cursor: 'pointer' }}
+              >
+                <Activity size={12} className="mh-spin" />
+                <span>{currentRunningTask ? `${currentRunningTask.progress_pct}%` : `${totalActiveTasksCount} download`}</span>
               </span>
-              {totalActiveTasksCount > 0 && (
-                <span
-                  className="mh-active-task-pill"
-                  onClick={() => setActiveTab('inventory')}
-                  title="Clicca per visualizzare i download attivi"
-                >
-                  <Activity size={10} className="mh-spin" />
-                  <span>{currentRunningTask ? `${currentRunningTask.progress_pct}%` : `${totalActiveTasksCount} download`}</span>
-                </span>
-              )}
-              {activeConversion && (
-                <span
-                  className="mh-active-task-pill"
-                  onClick={() => setActiveTab('converter')}
-                  title="Clicca per visualizzare la conversione in corso"
-                  style={{ background: 'rgba(255, 184, 108, 0.18)', color: '#ffb86c', borderColor: 'rgba(255, 184, 108, 0.35)' }}
-                >
-                  <Zap size={10} className="mh-spin" />
-                  <span>{activeConversion.progress || 0}% conv</span>
-                </span>
-              )}
-            </div>
-            <p className="mh-header-sub" style={{ color: textMuted }}>
-              {currentTabMeta.desc}
-            </p>
-          </div>
-        </div>
+            )}
+            {activeConversion && (
+              <span
+                className="mh-active-task-pill"
+                onClick={() => setActiveTab('converter')}
+                title="Clicca per visualizzare la conversione in corso"
+                style={{ background: 'rgba(255, 184, 108, 0.18)', color: '#ffb86c', borderColor: 'rgba(255, 184, 108, 0.35)', cursor: 'pointer' }}
+              >
+                <Zap size={12} className="mh-spin" />
+                <span>{activeConversion.progress || 0}% conv</span>
+              </span>
+            )}
 
-        {/* Right Tools & Engine Status */}
-        <div className="mh-header-tools">
-          <button
-            onClick={handleTestConnection}
-            disabled={testingConn}
-            title="Esegui test connettività verso Hugging Face e verifica token"
-            className="mh-conn-btn"
-            style={{
-              background: connResult?.connected ? 'rgba(16, 185, 129, 0.15)' : (isLight ? 'rgba(234, 88, 12, 0.12)' : 'rgba(255, 184, 108, 0.15)'),
-              color: connResult?.connected ? '#10b981' : (isLight ? '#ea580c' : '#ffb86c'),
-              border: connResult?.connected ? '1px solid rgba(16, 185, 129, 0.4)' : (isLight ? '1px solid rgba(234, 88, 12, 0.3)' : '1px solid rgba(255, 184, 108, 0.3)'),
-            }}
-          >
-            {testingConn ? <Activity className="mh-spin" size={11} /> : <RefreshCw size={11} />}
-            <span>{testingConn ? 'Verifica...' : connResult?.latency_ms ? `HF (${connResult.latency_ms}ms)` : 'Test HF'}</span>
-          </button>
+            <button
+              onClick={handleTestConnection}
+              disabled={testingConn}
+              title="Esegui test connettività verso Hugging Face e verifica token"
+              className="sigma-tab-btn sigma-tab-btn-ghost"
+            >
+              {testingConn ? <Activity className="mh-spin" size={13} /> : <RefreshCw size={13} />}
+              <span>{testingConn ? 'Verifica...' : connResult?.latency_ms ? `HF (${connResult.latency_ms}ms)` : 'Test HF'}</span>
+            </button>
 
-          {/* Engine Live Status Pill */}
-          <div className="mh-engine-pill" style={{ background: subBg, border: subBorder }}>
-            <Zap size={13} color="#00d2ff" style={{ flexShrink: 0 }} />
-            <div>
-              <div className="mh-engine-pill-title" style={{ color: textMuted }}>MOTORE ATTIVO</div>
-              <div className="mh-engine-pill-val" style={{ color: '#00d2ff' }}>
-                {engineStatus?.loaded_model || 'Standby'}
+            {/* Engine Live Status Pill */}
+            <div className="mh-engine-pill" style={{ background: isLight ? 'rgba(0,0,0,0.04)' : 'rgba(255,255,255,0.05)', border: subBorder }}>
+              <Zap size={13} color={isLight ? '#ea580c' : '#00d2ff'} style={{ flexShrink: 0 }} />
+              <div>
+                <div className="mh-engine-pill-title" style={{ color: textMuted }}>MOTORE ATTIVO</div>
+                <div className="mh-engine-pill-val" style={{ color: isLight ? '#ea580c' : '#00d2ff' }}>
+                  {engineStatus?.loaded_model || 'Standby'}
+                </div>
               </div>
             </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Modern Cyber-Segmented Pill Switcher */}
-      <div className="mh-segmented-nav">
-        {[
-          { id: 'browse', label: 'Esplora HF', icon: Search },
-          { id: 'inventory', label: totalActiveTasksCount > 0 ? `Modelli Locali (${currentRunningTask ? `${currentRunningTask.progress_pct}%` : totalActiveTasksCount})` : 'Modelli Locali', icon: HardDrive },
-          { id: 'converter', label: activeConversion ? `Convertitore (${activeConversion.progress || 0}%)` : 'Convertitore GGUF', icon: Zap },
-          { id: 'settings', label: 'Impostazioni & Token', icon: Settings },
-        ].map(tab => {
-          const Icon = tab.icon;
-          const isActive = activeTab === tab.id;
-          return (
-            <button
-              key={tab.id}
-              type="button"
-              onClick={() => setActiveTab(tab.id)}
-              className={`mh-segmented-item ${isActive ? 'active' : ''}`}
-            >
-              <Icon size={13} style={{ flexShrink: 0 }} />
-              <span>{tab.label}</span>
-            </button>
-          );
-        })}
-      </div>
+          </>
+        }
+      />
 
       {/* 2. TAB CONTENT VIEWS */}
       <div className="mh-view-container">
@@ -1348,7 +1306,7 @@ export default function ModelHub({ addToast: addToastProp, openTab }) {
             </div>
           </div>
 
-          {/* SEZIONE 3: PROVIDER & AUTORI UFFICIALI (HUGGING FACE) */}
+          {/* SEZIONE 3: AUTORI & CREATOR PREFERITI (HUGGING FACE) */}
           <div style={{
             padding: '24px', borderRadius: '16px',
             background: cardBg, border: cardBorder, boxShadow: cardShadow,
@@ -1359,17 +1317,17 @@ export default function ModelHub({ addToast: addToastProp, openTab }) {
               <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                 <div style={{
                   width: '36px', height: '36px', borderRadius: '10px',
-                  background: 'linear-gradient(135deg, rgba(0, 210, 255, 0.2), rgba(188, 140, 255, 0.2))',
+                  background: 'linear-gradient(135deg, rgba(245, 158, 11, 0.2), rgba(251, 191, 36, 0.2))',
                   display: 'flex', alignItems: 'center', justifyContent: 'center'
                 }}>
-                  <ShieldCheck size={20} color="#00d2ff" />
+                  <Star size={20} color="#f59e0b" />
                 </div>
                 <div>
                   <h2 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 800, color: textPrimary }}>
-                    Provider & Autori Ufficiali
+                    Autori & Creator Preferiti
                   </h2>
                   <div style={{ fontSize: '0.74rem', color: textMuted, marginTop: '2px' }}>
-                    Personalizza l'elenco dei creator e laboratori AI riconosciuti dal filtro "Solo Ufficiali"
+                    Gestisci la lista dei creator che rilasciano modelli su Hugging Face contrassegnati dal badge "⭐ Preferito" e filtrati con "Da Preferiti"
                   </div>
                 </div>
               </div>
@@ -1378,8 +1336,8 @@ export default function ModelHub({ addToast: addToastProp, openTab }) {
                 type="button"
                 onClick={handleResetPublishers}
                 style={{
-                  fontSize: '0.72rem', color: '#ffb86c', background: 'rgba(255, 184, 108, 0.1)',
-                  border: '1px solid rgba(255, 184, 108, 0.3)', borderRadius: '8px', padding: '6px 12px',
+                  fontSize: '0.72rem', color: '#f59e0b', background: 'rgba(245, 158, 11, 0.1)',
+                  border: '1px solid rgba(245, 158, 11, 0.3)', borderRadius: '8px', padding: '6px 12px',
                   fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px'
                 }}
               >
@@ -1387,14 +1345,14 @@ export default function ModelHub({ addToast: addToastProp, openTab }) {
               </button>
             </div>
 
-            {/* Input per aggiungere nuovo autore */}
+            {/* Input per aggiungere nuovo creator */}
             <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
               <input
                 type="text"
                 value={newPublisherInput}
                 onChange={e => setNewPublisherInput(e.target.value)}
                 onKeyDown={e => { if (e.key === 'Enter') handleAddPublisher(); }}
-                placeholder="es. google, meta-llama, qwen, sigmanih, mistralai..."
+                placeholder="es. bartowski, TheBloke, sigmanih, Qwen, meta-llama, mistralai..."
                 style={{
                   flex: '1 1 240px', padding: '10px 14px', borderRadius: '10px',
                   background: subBg, border: subBorder,
@@ -1407,14 +1365,14 @@ export default function ModelHub({ addToast: addToastProp, openTab }) {
                 disabled={!newPublisherInput.trim()}
                 style={{
                   padding: '10px 18px', borderRadius: '10px', border: 'none',
-                  background: 'linear-gradient(135deg, #00d2ff, #0088ff)',
+                  background: 'linear-gradient(135deg, #f59e0b, #d97706)',
                   color: '#ffffff', fontSize: '0.80rem', fontWeight: 800,
                   cursor: !newPublisherInput.trim() ? 'not-allowed' : 'pointer',
                   opacity: !newPublisherInput.trim() ? 0.6 : 1,
                   display: 'flex', alignItems: 'center', gap: '6px', whiteSpace: 'nowrap'
                 }}
               >
-                <Plus size={14} /> Aggiungi Autore
+                <Plus size={14} /> Aggiungi Creator
               </button>
             </div>
 
@@ -1429,13 +1387,14 @@ export default function ModelHub({ addToast: addToastProp, openTab }) {
                   <span
                     key={pub}
                     style={{
-                      fontSize: '0.72rem', fontWeight: 700, padding: '4px 9px', borderRadius: '6px',
-                      background: isSig ? 'rgba(255, 184, 108, 0.20)' : (isLight ? '#ffffff' : 'rgba(255,255,255,0.08)'),
-                      border: isSig ? '1px solid rgba(255, 184, 108, 0.45)' : subBorder,
-                      color: isSig ? '#ffb86c' : textPrimary,
+                      fontSize: '0.72rem', fontWeight: 700, padding: '4px 10px', borderRadius: '6px',
+                      background: isSig ? 'rgba(255, 184, 108, 0.20)' : (isLight ? '#ffffff' : 'rgba(245, 158, 11, 0.08)'),
+                      border: isSig ? '1px solid rgba(255, 184, 108, 0.45)' : '1px solid rgba(245, 158, 11, 0.25)',
+                      color: isSig ? '#ffb86c' : (isLight ? '#92400e' : '#fbbf24'),
                       display: 'inline-flex', alignItems: 'center', gap: '6px'
                     }}
                   >
+                    <Star size={11} color={isSig ? '#ffb86c' : '#f59e0b'} fill={isSig ? '#ffb86c' : '#f59e0b'} />
                     <span>{pub}</span>
                     <button
                       type="button"

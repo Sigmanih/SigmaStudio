@@ -454,6 +454,102 @@ class DevSessionLedger:
                 "pipeline": list(self._pipeline),
             }
 
+    # -- serialization -------------------------------------------------------
+
+    def serialize(self) -> Dict[str, Any]:
+        """Lo stato completo, in forma salvabile su disco.
+
+        Diverso da `snapshot()`, che e' pensato per il pannello e omette cio'
+        che al pannello non serve: le finestre di lettura, i simboli estratti,
+        l'errore di sintassi corrente. Rimetterlo in piedi da `snapshot()`
+        significherebbe far ricominciare l'agente da un ledger che ha
+        dimenticato meta' di cio' che sapeva, cioe' fargli rileggere tutto.
+        """
+        with self._lock:
+            return {
+                "version": 1,
+                "goal": self.goal,
+                "workspace_root": self.workspace_root,
+                "started_at": self.started_at,
+                "goal_paths": list(self.goal_paths),
+                "files": [
+                    {
+                        "path": r.path,
+                        "total_lines": r.total_lines,
+                        "lines_seen": [list(s) for s in r.lines_seen],
+                        "reads": r.reads,
+                        "edits": r.edits,
+                        "writes": r.writes,
+                        "created": r.created,
+                        "last_error": r.last_error,
+                        "syntax_error": r.syntax_error,
+                        "symbols": list(r.symbols),
+                        "last_touch": r.last_touch,
+                    }
+                    for r in self._files.values()
+                ],
+                "commands": list(self._commands),
+                "decisions": list(self._decisions),
+                "failures": list(self._failures),
+                "pipeline": list(self._pipeline),
+                "screenshots": list(self._screenshots),
+                "diffs": dict(self._diffs),
+                "searches": list(self._searches),
+                "consecutive_dup_commands": self._consecutive_dup_commands,
+            }
+
+    @classmethod
+    def restore(cls, state: Dict[str, Any]) -> "DevSessionLedger":
+        """Il ledger descritto da `serialize()`.
+
+        Tollerante per costruzione: uno stato salvato da una versione
+        precedente deve produrre un ledger parziale, non un'eccezione. Un
+        campo mancante costa all'agente una rilettura; un errore qui gli
+        costa l'intera sessione.
+        """
+        state = state or {}
+        ledger = cls(
+            goal=str(state.get("goal") or ""),
+            workspace_root=state.get("workspace_root") or None,
+        )
+        ledger.started_at = float(state.get("started_at") or time.time())
+        if state.get("goal_paths"):
+            ledger.goal_paths = [str(p) for p in state["goal_paths"]]
+
+        for raw in state.get("files") or []:
+            try:
+                percorso = str(raw.get("path") or "")
+                if not percorso:
+                    continue
+                rec = FileRecord(path=percorso)
+                rec.total_lines = raw.get("total_lines")
+                rec.lines_seen = [
+                    (int(a), int(b)) for a, b in (raw.get("lines_seen") or [])
+                ]
+                rec.reads = int(raw.get("reads") or 0)
+                rec.edits = int(raw.get("edits") or 0)
+                rec.writes = int(raw.get("writes") or 0)
+                rec.created = bool(raw.get("created"))
+                rec.last_error = raw.get("last_error")
+                rec.syntax_error = raw.get("syntax_error")
+                rec.symbols = [str(s) for s in (raw.get("symbols") or [])]
+                rec.last_touch = float(raw.get("last_touch") or time.time())
+                ledger._files[percorso] = rec
+            except (TypeError, ValueError) as exc:
+                log.debug("[Ledger] record di file scartato al ripristino: %s", exc)
+
+        ledger._commands = list(state.get("commands") or [])
+        ledger._decisions = list(state.get("decisions") or [])
+        ledger._failures = list(state.get("failures") or [])
+        ledger._pipeline = list(state.get("pipeline") or [])
+        ledger._screenshots = list(state.get("screenshots") or [])
+        ledger._diffs = dict(state.get("diffs") or {})
+        ledger._searches = list(state.get("searches") or [])
+        ledger._consecutive_dup_commands = int(
+            state.get("consecutive_dup_commands") or 0
+        )
+        return ledger
+
     # -- prompt rendering ----------------------------------------------------
 
     def render_state_block(self) -> str:

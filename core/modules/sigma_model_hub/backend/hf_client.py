@@ -158,6 +158,9 @@ OFFICIAL_ORGANIZATIONS = {
     # SigmaStudio Ecosystem & User
     'sigmanih', 'sigma', 'sigmastudio',
 
+    # Top GGUF Quantizers & Community Creators
+    'bartowski', 'thebloke', 'mradermacher',
+
     # Frontier Open-Weight Labs & Creators
     'qwen', 'meta-llama', 'deepseek-ai', 'mistralai', 'google', 'microsoft',
     'anthropic', 'cohereforai', 'thudm', 'zhipuai', 'zai-org', 'zai', 'zhipu', '01-ai', 'nvidia', 'facebook', 'baai',
@@ -170,6 +173,8 @@ OFFICIAL_ORGANIZATIONS = {
 
 PROVIDER_AUTHOR_MAP = {
     'sigmanih': ['sigmanih'],
+    'bartowski': ['bartowski'],
+    'thebloke': ['TheBloke'],
     'google': ['google'],
     'gemma': ['google'],
     'qwen': ['Qwen'],
@@ -209,6 +214,8 @@ OFFICIAL_AUTHOR_MAP = {
     # Sigma Ecosystem
     'sigmanih': 'sigmanih',
     'sigma': 'sigmanih',
+    'bartowski': 'bartowski',
+    'thebloke': 'TheBloke',
 
     # GLM & THUDM & ZAI (Zhipu AI)
     'zai-org': 'zai-org',
@@ -258,10 +265,10 @@ def is_official_provider(author: str, model_id: str, custom_officials: Optional[
     id_low = (model_id or "").lower().strip()
     org = id_low.split('/')[0] if '/' in id_low else auth_low
 
-    if custom_officials:
+    if custom_officials is not None:
         custom_set = {str(o).lower().strip() for o in custom_officials if o}
-        if org in custom_set or auth_low in custom_set:
-            return True
+        if len(custom_set) > 0:
+            return org in custom_set or auth_low in custom_set
 
     return org in OFFICIAL_ORGANIZATIONS or auth_low in OFFICIAL_ORGANIZATIONS
 
@@ -1089,7 +1096,7 @@ def search_hf_models(
         elif official_only:
             if not search_query:
                 official_target_authors = custom_officials if (custom_officials and len(custom_officials) > 0) else [
-                    "sigmanih", "zai-org", "Qwen", "deepseek-ai", "meta-llama", "THUDM", "mistralai", "google", "microsoft"
+                    "bartowski", "TheBloke", "sigmanih", "Qwen", "deepseek-ai", "meta-llama", "mistralai", "google", "microsoft"
                 ]
                 for auth in official_target_authors[:15]:
                     auth_params = {
@@ -1165,8 +1172,8 @@ def search_hf_models(
             if target_provider_authors and author.lower() not in target_provider_authors:
                 continue
 
-            # Strict official filtering when official_only is enabled AND no specific text search query was entered
-            if official_only and not is_official and not search_query:
+            # Strict favorite filtering when official_only (Da Preferiti) is enabled
+            if official_only and not is_official:
                 continue
 
             m_name = mid.split("/")[-1] if "/" in mid else mid
@@ -1239,6 +1246,7 @@ def search_hf_models(
                 "downloads": item.get("downloads", 0),
                 "likes": item.get("likes", 0),
                 "is_official": is_official,
+                "is_favorite": is_official,
                 "created_at": created_at,
                 "last_modified": last_modified,
                 "release_date_label": date_label,

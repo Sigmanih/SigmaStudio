@@ -1,0 +1,322 @@
+/* ==============================================================================
+   SIGMA KERNEL DESIGN SYSTEM | Layer 2 (Layout)
+   Unified Modern & Stylish Tab Header (.sigma-tab-header)
+   Desktop & Mobile High-Performance Glassmorphic Header Component
+   ============================================================================== */
+
+.sigma-tab-header {
+  position: relative;
+  width: 100%;
+  box-sizing: border-box;
+  padding: 22px 32px;
+  min-height: 96px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  flex-shrink: 0;
+  border-bottom: 1px solid rgba(0, 210, 255, 0.2);
+  background: linear-gradient(135deg, rgba(10, 14, 26, 0.88) 0%, rgba(14, 22, 42, 0.82) 100%);
+  backdrop-filter: blur(16px) saturate(180%);
+  -webkit-backdrop-filter: blur(16px) saturate(180%);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.45);
+  overflow: hidden;
+  transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+  z-index: 10;
+}
+
+/* Luminous Bottom Accent Line */
+.sigma-tab-header::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  width: 100%;
+  height: 1px;
+  background: linear-gradient(90deg, transparent 0%, rgba(0, 210, 255, 0.7) 30%, rgba(188, 140, 255, 0.6) 70%, transparent 100%);
+  pointer-events: none;
+}
+
+/* Optional Background Image Overlay (with smooth cyber blending) */
+.sigma-tab-header.has-bg {
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+}
+
+/* Light Theme Variant */
+.theme-light .sigma-tab-header,
+[data-theme="light"] .sigma-tab-header {
+  background: linear-gradient(135deg, rgba(254, 252, 247, 0.88) 0%, rgba(246, 240, 228, 0.84) 100%);
+  border-bottom: 1px solid rgba(234, 88, 12, 0.25);
+  box-shadow: 0 8px 24px rgba(234, 88, 12, 0.08);
+}
+
+.theme-light .sigma-tab-header::after,
+[data-theme="light"] .sigma-tab-header::after {
+  background: linear-gradient(90deg, transparent 0%, rgba(234, 88, 12, 0.8) 30%, rgba(217, 119, 6, 0.6) 70%, transparent 100%);
+}
+
+/* --- LEFT CONTENT (Badge, Title, Subtitle) --- */
+.sigma-tab-header-main {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-width: 820px;
+  min-width: 0;
+  position: relative;
+  z-index: 2;
+}
+
+/* Cyber Tag / Tech Pill */
+.sigma-tab-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  align-self: flex-start;
+  padding: 3px 11px;
+  border-radius: 12px;
+  font-size: 0.66rem;
+  font-weight: 800;
+  letter-spacing: 0.85px;
+  text-transform: uppercase;
+  background: rgba(0, 210, 255, 0.12);
+  border: 1px solid rgba(0, 210, 255, 0.35);
+  color: #00d2ff;
+  box-shadow: 0 0 12px rgba(0, 210, 255, 0.15);
+  transition: all 0.2s ease;
+  user-select: none;
+}
+
+.theme-light .sigma-tab-badge,
+[data-theme="light"] .sigma-tab-badge {
+  background: rgba(234, 88, 12, 0.1);
+  border-color: rgba(234, 88, 12, 0.35);
+  color: #c2410c;
+  box-shadow: 0 0 10px rgba(234, 88, 12, 0.1);
+}
+
+.sigma-tab-badge svg {
+  flex-shrink: 0;
+}
+
+/* Title Row */
+.sigma-tab-title-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.sigma-tab-icon-wrapper {
+  width: 38px;
+  height: 38px;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 210, 255, 0.12);
+  border: 1px solid rgba(0, 210, 255, 0.3);
+  color: #00d2ff;
+  box-shadow: 0 0 16px rgba(0, 210, 255, 0.2);
+  flex-shrink: 0;
+  transition: transform 0.2s ease;
+}
+
+.theme-light .sigma-tab-icon-wrapper,
+[data-theme="light"] .sigma-tab-icon-wrapper {
+  background: rgba(234, 88, 12, 0.12);
+  border-color: rgba(234, 88, 12, 0.35);
+  color: #ea580c;
+  box-shadow: 0 0 14px rgba(234, 88, 12, 0.15);
+}
+
+.sigma-tab-title {
+  margin: 0;
+  font-size: 1.38rem;
+  font-weight: 800;
+  letter-spacing: -0.35px;
+  line-height: 1.25;
+  color: #ffffff;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.theme-light .sigma-tab-title,
+[data-theme="light"] .sigma-tab-title {
+  color: #111827;
+}
+
+.sigma-tab-title-highlight {
+  color: #00d2ff;
+  font-weight: 800;
+  background: linear-gradient(135deg, #00d2ff 0%, #3a7bd5 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.theme-light .sigma-tab-title-highlight,
+[data-theme="light"] .sigma-tab-title-highlight {
+  color: #ea580c;
+  background: linear-gradient(135deg, #ea580c 0%, #c2410c 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+/* Subtitle / Description */
+.sigma-tab-subtitle {
+  margin: 0;
+  font-size: 0.81rem;
+  line-height: 1.45;
+  color: #94a3b8;
+  max-width: 780px;
+}
+
+.theme-light .sigma-tab-subtitle,
+[data-theme="light"] .sigma-tab-subtitle {
+  color: #4b5563;
+}
+
+/* --- RIGHT TOOLS & ACTIONS --- */
+.sigma-tab-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  flex-shrink: 0;
+  position: relative;
+  z-index: 2;
+}
+
+/* Standard Header Action Buttons */
+.sigma-tab-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  padding: 8px 16px;
+  border-radius: 10px;
+  font-size: 0.8rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  white-space: nowrap;
+  user-select: none;
+  border: 1px solid transparent;
+  outline: none;
+}
+
+.sigma-tab-btn-primary {
+  background: linear-gradient(135deg, #00d2ff 0%, #0077ff 100%);
+  color: #ffffff;
+  border: none;
+  box-shadow: 0 4px 14px rgba(0, 210, 255, 0.28);
+}
+
+.sigma-tab-btn-primary:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: 0 6px 18px rgba(0, 210, 255, 0.4);
+  filter: brightness(1.08);
+}
+
+.theme-light .sigma-tab-btn-primary,
+[data-theme="light"] .sigma-tab-btn-primary {
+  background: linear-gradient(135deg, #ea580c 0%, #d97706 100%);
+  box-shadow: 0 4px 14px rgba(234, 88, 12, 0.25);
+}
+
+.sigma-tab-btn-ghost {
+  background: rgba(255, 255, 255, 0.05);
+  color: #e2e8f0;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+.sigma-tab-btn-ghost:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.1);
+  color: #ffffff;
+  border-color: rgba(255, 255, 255, 0.25);
+  transform: translateY(-1px);
+}
+
+.theme-light .sigma-tab-btn-ghost,
+[data-theme="light"] .sigma-tab-btn-ghost {
+  background: rgba(0, 0, 0, 0.04);
+  color: #1f2937;
+  border-color: rgba(0, 0, 0, 0.12);
+}
+
+.theme-light .sigma-tab-btn-ghost:hover:not(:disabled) {
+  background: rgba(0, 0, 0, 0.08);
+  border-color: rgba(0, 0, 0, 0.2);
+}
+
+.sigma-tab-btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+  transform: none !important;
+}
+
+/* ==============================================================================
+   RESPONSIVE DESIGN (Tablets & Mobile Viewports)
+   ============================================================================== */
+
+@media (max-width: 900px) {
+  .sigma-tab-header {
+    padding: 18px 20px;
+    gap: 16px;
+  }
+  
+  .sigma-tab-title {
+    font-size: 1.25rem;
+  }
+}
+
+@media (max-width: 640px) {
+  .sigma-tab-header {
+    flex-direction: column;
+    align-items: stretch;
+    padding: 14px 16px;
+    gap: 14px;
+    min-height: auto;
+  }
+
+  .sigma-tab-header-main {
+    width: 100%;
+    max-width: 100%;
+    gap: 5px;
+  }
+
+  .sigma-tab-title-row {
+    gap: 8px;
+  }
+
+  .sigma-tab-icon-wrapper {
+    width: 32px;
+    height: 32px;
+    border-radius: 8px;
+  }
+
+  .sigma-tab-title {
+    font-size: 1.15rem;
+  }
+
+  .sigma-tab-subtitle {
+    font-size: 0.76rem;
+    line-height: 1.4;
+  }
+
+  .sigma-tab-header-actions {
+    width: 100%;
+    justify-content: flex-start;
+    gap: 8px;
+  }
+
+  .sigma-tab-btn {
+    flex: 1;
+    min-width: 120px;
+    padding: 8px 12px;
+    font-size: 0.75rem;
+  }
+}

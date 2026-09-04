@@ -1,6 +1,16 @@
 import React, { useState } from 'react';
 
-export default function QuickConfigPanel({ quickConfig, setQuickConfig, onClose }) {
+export default function QuickConfigPanel({
+  quickConfig,
+  setQuickConfig,
+  onClose,
+  selectedModel,
+  onSelectModel,
+  availableModels = [],
+  activeManifesto,
+  onSelectManifesto,
+  manifestos = []
+}) {
   const [hoveredKey, setHoveredKey] = useState(null);
 
   const applyPreset = (preset) => {
@@ -36,10 +46,87 @@ export default function QuickConfigPanel({ quickConfig, setQuickConfig, onClose 
       <div className="chat-quick-config-header">
         <div className="qc-header-title">
           <span className="qc-icon">⚙️</span>
-          <span>IMPOSTAZIONI INTERAZIONE & PARAMETRI MODELLO</span>
+          <span>IMPOSTAZIONI CHAT & PARAMETRI MODELLO</span>
         </div>
         <button className="qc-close-btn" onClick={onClose} title="Chiudi impostazioni">✕</button>
       </div>
+
+      {/* SEZIONE: SCELTA MODELLO & RUOLO (Ideale per Mobile e Rapida Selezione) */}
+      {((availableModels && availableModels.length > 0) || (manifestos && manifestos.length > 0)) && (
+        <div style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
+          gap: '10px',
+          padding: '12px 14px',
+          background: 'rgba(0, 210, 255, 0.05)',
+          border: '1px solid rgba(0, 210, 255, 0.20)',
+          borderRadius: '10px',
+          marginBottom: '12px'
+        }}>
+          {availableModels && availableModels.length > 0 && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+              <label style={{ fontSize: '0.72rem', fontWeight: 800, color: '#00d2ff', display: 'flex', alignItems: 'center', gap: '5px' }}>
+                <span>⚡ Modello Principale:</span>
+              </label>
+              <select
+                value={selectedModel || ''}
+                onChange={(e) => onSelectModel && onSelectModel(e.target.value)}
+                style={{
+                  padding: '7px 10px',
+                  borderRadius: '8px',
+                  background: 'rgba(15, 20, 32, 0.95)',
+                  border: '1px solid rgba(0, 210, 255, 0.3)',
+                  color: '#ffffff',
+                  fontSize: '0.78rem',
+                  outline: 'none',
+                  cursor: 'pointer',
+                  width: '100%',
+                  boxSizing: 'border-box'
+                }}
+              >
+                {availableModels.map(m => (
+                  <option key={m.id || m.name} value={m.id || m.name} style={{ background: '#0f1420', color: '#fff' }}>
+                    {m.name || m.id} {m.size_gb ? `(${m.size_gb} GB)` : ''}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+
+          {manifestos && manifestos.length > 0 && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+              <label style={{ fontSize: '0.72rem', fontWeight: 800, color: '#ffb86c', display: 'flex', alignItems: 'center', gap: '5px' }}>
+                <span>🎭 Ruolo / Manifesto:</span>
+              </label>
+              <select
+                value={activeManifesto?.name || ''}
+                onChange={(e) => {
+                  const found = manifestos.find(m => m.name === e.target.value);
+                  if (found && onSelectManifesto) onSelectManifesto(found);
+                }}
+                style={{
+                  padding: '7px 10px',
+                  borderRadius: '8px',
+                  background: 'rgba(15, 20, 32, 0.95)',
+                  border: '1px solid rgba(255, 184, 108, 0.3)',
+                  color: '#ffffff',
+                  fontSize: '0.78rem',
+                  outline: 'none',
+                  cursor: 'pointer',
+                  width: '100%',
+                  boxSizing: 'border-box'
+                }}
+              >
+                {manifestos.map(m => (
+                  <option key={m.name} value={m.name} style={{ background: '#0f1420', color: '#fff' }}>
+                    {m.icon || '📋'} {m.name} {m.role ? `— ${m.role}` : ''}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Preset bar */}
       <div className="qc-presets-row">

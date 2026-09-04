@@ -16,6 +16,8 @@ export default function ChatFloatingPanel({ openFiles, onClose, onOpenConfig, on
   const { panelSize, resizing, resizeHandles, handleResizeStart } = useChatResize(panelPos, setPanelPos);
 
   const isMobile = typeof window !== 'undefined' && window.innerWidth <= 768;
+  const safeX = panelPos?.x;
+  const safeY = panelPos?.y;
   const panelStyle = isMobile ? {} : {
     ...(safeX !== undefined ? { left: safeX, right: 'auto' } : { right: 24 }),
     ...(safeY !== undefined ? { bottom: 'auto', top: safeY } : { bottom: 80 }),
@@ -70,6 +72,7 @@ export default function ChatFloatingPanel({ openFiles, onClose, onOpenConfig, on
         isPanel={true}
         isDragging={isDragging}
         onStartDrag={startDrag}
+        onNewSession={handleNewSession}
         onOpenConfig={onOpenConfig}
         onClose={onClose}
         contextStats={core.contextStats}
@@ -85,25 +88,7 @@ export default function ChatFloatingPanel({ openFiles, onClose, onOpenConfig, on
         }}
       />
 
-      <div className="chat-body">
-        <ChatHistory
-          showHistory={core.showHistory}
-          onToggle={() => core.setShowHistory(!core.showHistory)}
-          sessions={core.sessions}
-          groupedSessions={groupedSessions}
-          sessionMessages={core.sessionMessages}
-          activeSessionId={core.activeSessionId}
-          onSwitchSession={handleSwitchSession}
-          editingSessionName={core.editingSessionName}
-          editNameValue={core.editNameValue}
-          onEditNameChange={core.setEditNameValue}
-          onFinishRename={core.handleFinishRename}
-          onKeyDown={core.handleRenameKeyDown}
-          onStartRename={core.handleStartRename}
-          onDeleteSession={core.handleDeleteSession}
-          onNewSession={handleNewSession}
-          onDuplicateSession={core.handleDuplicateSession}
-        />
+      <div className="chat-body" style={{ flex: 1, minHeight: 0 }}>
         <ChatMessages
           messages={core.messages}
           loading={core.loading}
@@ -126,6 +111,12 @@ export default function ChatFloatingPanel({ openFiles, onClose, onOpenConfig, on
           quickConfig={core.quickConfig}
           setQuickConfig={core.setQuickConfig}
           onClose={() => core.setShowQuickConfig(false)}
+          selectedModel={core.selectedModel}
+          onSelectModel={core.handleModelSelect}
+          availableModels={core.availableModels}
+          activeManifesto={core.activeManifesto}
+          onSelectManifesto={core.handleSelectManifesto}
+          manifestos={core.manifestos}
         />
       )}
 
@@ -188,27 +179,7 @@ export default function ChatFloatingPanel({ openFiles, onClose, onOpenConfig, on
         attachedFiles={core.attachedFiles}
       />
 
-      {/* Chat Footer / Status Bar */}
-      <footer className="chat-workspace-footer">
-        <div className="chat-workspace-footer-left">
-          <span className="chat-footer-status-dot" title="Sigma Swarm Kernel Online" />
-          <span className="chat-footer-model-name">
-            {core.selectedModel ? core.selectedModel.split('/').pop() : 'Sigma AI Engine'}
-          </span>
-          <span className="chat-footer-divider">•</span>
-          <span className="chat-footer-hint">
-            <kbd>Enter</kbd> invia · <kbd>Shift</kbd>+<kbd>Enter</kbd> a capo
-          </span>
-        </div>
-        <div className="chat-workspace-footer-right">
-          {core.activeSessionId && (
-            <span className="chat-footer-session-info">
-              {core.sessions.find(s => s.id === core.activeSessionId)?.name || 'Chat Attiva'}
-            </span>
-          )}
-          <span className="chat-footer-badge">Σ-Studio</span>
-        </div>
-      </footer>
+
 
       {core.dragOver && <div className="chat-drop-overlay"><div>📤 Trascina i file qui per allegarli</div></div>}
       {core.showFilePicker && (

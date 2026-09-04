@@ -367,10 +367,10 @@
 
   .chat-msg-model {
     font-size: 0.64rem !important;
-    max-width: 120px !important;
-    overflow: hidden !important;
-    text-overflow: ellipsis !important;
-    white-space: nowrap !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    gap: 4px !important;
+    flex-wrap: wrap !important;
   }
 
   .chat-msg-time {
@@ -552,11 +552,7 @@
   }
 
   .chat-input-model-role-group {
-    display: flex !important;
-    flex-direction: column !important;
-    gap: 5px !important;
-    width: 100% !important;
-    min-width: 0 !important;
+    display: none !important;
   }
 
   .chat-control-field {
@@ -689,14 +685,37 @@
 
   /* 16px previene lo zoom forzato su iOS Safari/WebKit quando l'input riceve il focus */
   .chat-input {
-    min-height: 38px !important;
-    max-height: 90px !important;
+    min-height: 52px !important;
+    max-height: 140px !important;
     font-size: 16px !important;
-    padding: 7px 10px !important;
-    border-radius: 8px !important;
+    padding: 9px 12px !important;
+    border-radius: 10px !important;
     flex: 1 !important;
     min-width: 0 !important;
     box-sizing: border-box !important;
+    line-height: 1.45 !important;
+  }
+
+  .chat-header {
+    padding: 5px 10px !important;
+    min-height: 36px !important;
+  }
+
+  .chat-header-title {
+    font-size: 0.76rem !important;
+  }
+
+  .chat-header-new-btn {
+    padding: 2px 6px !important;
+    font-size: 0.64rem !important;
+  }
+
+  .chat-header-tokens {
+    display: none !important;
+  }
+
+  .chat-workspace-footer {
+    display: none !important;
   }
 
   .chat-attach-inline-btn {

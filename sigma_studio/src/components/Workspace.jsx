@@ -19,6 +19,7 @@ import MusicTab from './Music/MusicTab';
 import { useModuleState } from '../hooks/useModuleState';
 import { getLazyModule } from '../modules/registry';
 import ModuleNotInstalled from '../modules/ModuleNotInstalled';
+import TechSpaceCanvas from './common/TechSpaceCanvas';
 import { useApp } from '../contexts/AppContext';
 
 // ==============================================================================
@@ -379,10 +380,14 @@ export default function Workspace({
     return <div className="placeholder-content">Content type {tab.type} not implemented in preview.</div>;
   };
 
-  const { toggleMobileSidebar } = useApp ? useApp() : { toggleMobileSidebar: () => {} };
+  const { theme, toggleMobileSidebar } = useApp ? useApp() : { theme: 'dark', toggleMobileSidebar: () => {} };
+  const isLight = theme === 'light';
 
   return (
     <main className="workspace">
+      {/* Background animato Cyber/Space applicato a tutte le schede */}
+      <TechSpaceCanvas isLight={isLight} />
+
       <div className="tab-bar">
         {/* Mobile Hamburger Toggle Button */}
         <button

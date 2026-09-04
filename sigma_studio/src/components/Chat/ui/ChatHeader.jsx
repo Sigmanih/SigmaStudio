@@ -1,9 +1,10 @@
 import React from 'react';
-import { Cpu, MessageSquare } from 'lucide-react';
+import { Settings, MessageSquare, Plus } from 'lucide-react';
 
 export default function ChatHeader({
   isDragging, onStartDrag,
   onOpenConfig, onClose, isPanel = false, contextStats, onCopyAll,
+  onNewSession
 }) {
   const [copiedAll, setCopiedAll] = React.useState(false);
 
@@ -32,25 +33,54 @@ export default function ChatHeader({
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'space-between',
-        padding: '10px 14px',
+        padding: '6px 12px',
         borderBottom: '1px solid rgba(255, 255, 255, 0.08)',
-        background: 'rgba(10, 14, 26, 0.65)',
-        backdropFilter: 'blur(10px)'
+        background: 'rgba(10, 14, 26, 0.75)',
+        backdropFilter: 'blur(10px)',
+        minHeight: '38px',
+        boxSizing: 'border-box'
       }}
     >
-      <div className="chat-header-left" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+      <div className="chat-header-left" style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
         <div style={{
-          width: '24px', height: '24px', borderRadius: '6px',
+          width: '22px', height: '22px', borderRadius: '6px',
           background: 'rgba(0, 210, 255, 0.15)', border: '1px solid rgba(0, 210, 255, 0.3)',
           display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#00d2ff'
         }}>
-          <MessageSquare size={13} />
+          <MessageSquare size={12} />
         </div>
-        <span className="chat-header-title" style={{ fontSize: '0.82rem', fontWeight: 800, color: '#f1f5f9', letterSpacing: '0.2px' }}>
-          Sigma Swarm Chat
+        <span className="chat-header-title" style={{ fontSize: '0.80rem', fontWeight: 800, color: '#f1f5f9', letterSpacing: '0.2px' }}>
+          Chat AI
         </span>
+
+        {/* Tastino laterale Nuova Conversazione */}
+        {onNewSession && (
+          <button
+            className="chat-header-new-btn"
+            onClick={(e) => { e.stopPropagation(); onNewSession(); }}
+            title="Avvia una nuova conversazione"
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '4px',
+              padding: '3px 8px',
+              borderRadius: '6px',
+              background: 'rgba(0, 210, 255, 0.12)',
+              border: '1px solid rgba(0, 210, 255, 0.3)',
+              color: '#00d2ff',
+              fontSize: '0.68rem',
+              fontWeight: 700,
+              cursor: 'pointer',
+              transition: 'all 0.15s ease'
+            }}
+          >
+            <Plus size={11} />
+            <span>Nuova Conversazione</span>
+          </button>
+        )}
+
         {contextStats && typeof contextStats === 'object' && contextStats.usedTokens !== undefined && (
-          <span className="chat-header-tokens" style={{ fontSize: '0.66rem', color: '#8b8fa3', paddingLeft: '4px' }}>
+          <span className="chat-header-tokens" style={{ fontSize: '0.65rem', color: '#8b8fa3', paddingLeft: '2px' }}>
             • {contextStats.usedTokens >= 1000 ? `${(contextStats.usedTokens / 1000).toFixed(1)}k` : contextStats.usedTokens} / {contextStats.numCtx >= 1000 ? `${Math.round(contextStats.numCtx / 1000)}k` : contextStats.numCtx} ctx
           </span>
         )}
@@ -64,7 +94,7 @@ export default function ChatHeader({
             title="Copia l'intera conversazione negli appunti"
             style={{
               gap: '4px',
-              fontSize: '0.72rem',
+              fontSize: '0.68rem',
               padding: '3px 8px',
               background: copiedAll ? 'rgba(74, 222, 128, 0.15)' : 'rgba(255,255,255,0.05)',
               color: copiedAll ? '#4ade80' : 'var(--text-muted, #8b8fa3)',
@@ -77,17 +107,27 @@ export default function ChatHeader({
             }}
           >
             <span className="chat-header-copy-full">{copiedAll ? '✓ Copiato!' : '📋 Copia Tutto'}</span>
-            <span className="chat-header-copy-short">{copiedAll ? '✓' : '📋 Copia'}</span>
+            <span className="chat-header-copy-short">{copiedAll ? '✓' : '📋'}</span>
           </button>
         )}
         {onOpenConfig && (
           <button
             className="chat-header-btn"
             onClick={(e) => { e.stopPropagation(); onOpenConfig(); }}
-            title="Configurazione AI & Modelli"
-            style={{ padding: '4px 6px', borderRadius: '6px', background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', cursor: 'pointer', color: '#8b8fa3' }}
+            title="Impostazioni AI, Modello, Ruolo & Parametri"
+            style={{
+              padding: '4px 7px',
+              borderRadius: '6px',
+              background: 'rgba(255,255,255,0.05)',
+              border: '1px solid rgba(255,255,255,0.1)',
+              cursor: 'pointer',
+              color: '#00d2ff',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center'
+            }}
           >
-            <Cpu size={14} />
+            <Settings size={13} />
           </button>
         )}
         {onClose && (

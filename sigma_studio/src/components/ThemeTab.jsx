@@ -4,6 +4,7 @@ import {
   Layers, Image as ImageIcon, Sliders, CheckCircle2, Eye, Layout, Shield
 } from 'lucide-react';
 import { useApp, THEME_PRESETS, DEFAULT_CUSTOM_THEME } from '../contexts/AppContext';
+import TabHeader from './common/TabHeader';
 
 export default function ThemeTab({ openTab }) {
   const { 
@@ -101,37 +102,35 @@ export default function ThemeTab({ openTab }) {
 
   return (
     <div className="theme-tab-container">
-      {/* Header */}
-      <div className="theme-header">
-        <div className="theme-header-left">
-          <h1>
-            <Palette size={26} style={{ color: 'var(--sigma-primary)' }} />
-            Personalizzazione Tema & Colori
-          </h1>
-          <p>
-            Gestisci la palette cromatica, i preset di visualizzazione per monitor o dispositivi mobili, 
-            e personalizza lo sfondo globale con card ad alta leggibilità 100% opache.
-          </p>
-        </div>
-        <div className="theme-header-actions">
-          <button className="sigma-btn sigma-btn-ghost" onClick={handleExportTheme} title="Esporta Tema in JSON">
-            <Download size={14} /> Esporta
-          </button>
-          <button className="sigma-btn sigma-btn-ghost" onClick={() => jsonImportRef.current?.click()} title="Importa Tema da JSON">
-            <Upload size={14} /> Importa
-          </button>
-          <input 
-            type="file" 
-            ref={jsonImportRef} 
-            accept=".json" 
-            style={{ display: 'none' }} 
-            onChange={handleImportTheme} 
-          />
-          <button className="sigma-btn sigma-btn-danger" onClick={resetThemeToDefault} title="Ripristina Predefiniti">
-            <RefreshCw size={14} /> Ripristina
-          </button>
-        </div>
-      </div>
+      {/* Unified Kernel Tab Header */}
+      <TabHeader
+        badge="SISTEMA TEMI & PALETTE CROMATICHE"
+        badgeIcon={Palette}
+        icon={Palette}
+        title="Personalizzazione "
+        highlight="Tema & Colori"
+        description="Gestisci la palette cromatica, i preset di visualizzazione per monitor o dispositivi mobili, e personalizza lo sfondo globale con card ad alta leggibilità 100% opache."
+        actions={
+          <>
+            <button className="sigma-tab-btn sigma-tab-btn-ghost" onClick={handleExportTheme} title="Esporta Tema in JSON">
+              <Download size={14} /> <span>Esporta</span>
+            </button>
+            <button className="sigma-tab-btn sigma-tab-btn-ghost" onClick={() => jsonImportRef.current?.click()} title="Importa Tema da JSON">
+              <Upload size={14} /> <span>Importa</span>
+            </button>
+            <input 
+              type="file" 
+              ref={jsonImportRef} 
+              accept=".json" 
+              style={{ display: 'none' }} 
+              onChange={handleImportTheme} 
+            />
+            <button className="sigma-tab-btn sigma-tab-btn-ghost" style={{ color: '#ff5555', borderColor: 'rgba(255,85,85,0.3)' }} onClick={resetThemeToDefault} title="Ripristina Predefiniti">
+              <RefreshCw size={14} /> <span>Ripristina</span>
+            </button>
+          </>
+        }
+      />
 
       {/* 1. Preset Ufficiali */}
       <section className="theme-section">

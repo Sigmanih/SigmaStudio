@@ -122,6 +122,20 @@ const getProviderBadge = (m, officialPublishers = []) => {
     };
   }
 
+  const isCustomFavorite = (officialPublishers || []).some(
+    p => p.toLowerCase() === org || p.toLowerCase() === auth
+  );
+
+  if (isCustomFavorite || m.is_favorite || m.is_official) {
+    const displayName = m.author || org;
+    return {
+      label: `⭐ ${displayName}`,
+      color: '#f59e0b',
+      bg: 'rgba(245, 158, 11, 0.15)',
+      border: '1px solid rgba(245, 158, 11, 0.40)'
+    };
+  }
+
   const known = KNOWN_SECTOR_META[org] || KNOWN_SECTOR_META[auth];
   if (known) {
     return {
@@ -132,18 +146,6 @@ const getProviderBadge = (m, officialPublishers = []) => {
     };
   }
 
-  const isCustomOfficial = (officialPublishers || []).some(
-    p => p.toLowerCase() === org || p.toLowerCase() === auth
-  );
-
-  if (isCustomOfficial || m.is_official) {
-    return {
-      label: `🛡️ ${m.author || org} (Ufficiale)`,
-      color: '#38bdf8',
-      bg: 'rgba(56, 189, 248, 0.18)',
-      border: '1px solid rgba(56, 189, 248, 0.45)'
-    };
-  }
   return null;
 };
 
@@ -262,9 +264,10 @@ export default function HfBrowser({ isLight, addToast, onDownloadStarted, active
   const [formatFilter, setFormatFilter] = useState('all');
   const [quantFilter, setQuantFilter] = useState('all');
   const [sortBy, setSortBy] = useState('newest');
-  // Default: check ufficiali abilitato
-  const [officialOnly, setOfficialOnly] = useState(true);
-  const [providerFilter, setProviderFilter] = useState('all');
+  // Filtro Da Preferiti (false di default per permettere ricerca aperta su tutto HF)
+  const [officialOnly, setOfficialOnly] = useState(false);
+  // Stato visibilità filtri secondari su Mobile
+  const [showMobileFilters, setShowMobileFilters] = useState(false);
 
   // Local Inventory Cache & Poll
   const [internalLocalModels, setInternalLocalModels] = useState([]);
@@ -288,32 +291,7 @@ export default function HfBrowser({ isLight, addToast, onDownloadStarted, active
 
   const effectiveLocalModels = (localModels && localModels.length > 0) ? localModels : internalLocalModels;
 
-  const activeSectors = useMemo(() => {
-    const base = [{ id: 'all', label: 'Tutti i Settori', icon: Globe, color: '#38bdf8', provider: 'all' }];
-    const pubs = officialPublishers && officialPublishers.length > 0
-      ? officialPublishers
-      : ['sigmanih', 'google', 'qwen', 'meta-llama', 'deepseek-ai', 'mistralai', 'microsoft', 'thudm', 'zai-org'];
 
-    const seen = new Set(['all']);
-    pubs.forEach(p => {
-      const key = String(p).toLowerCase().trim();
-      if (!key || seen.has(key)) return;
-      seen.add(key);
-      const meta = KNOWN_SECTOR_META[key] || {
-        label: `🛡️ ${p}`,
-        icon: ShieldCheck,
-        color: '#38bdf8'
-      };
-      base.push({
-        id: key,
-        label: meta.label,
-        icon: meta.icon,
-        color: meta.color,
-        provider: key
-      });
-    });
-    return base;
-  }, [officialPublishers]);
 
   const [results, setResults] = useState([]);
   const [nextCursor, setNextCursor] = useState(null);
@@ -358,7 +336,7 @@ export default function HfBrowser({ isLight, addToast, onDownloadStarted, active
   const subBg = isLight ? '#f8f5ee' : 'rgba(255, 255, 255, 0.03)';
   const subBorder = isLight ? '1px solid rgba(190, 160, 110, 0.22)' : '1px solid rgba(255, 255, 255, 0.06)';
 
-  const hasActiveFilters = category !== 'all' || sizeBracket !== 'all' || paramBracket !== 'all' || formatFilter !== 'all' || quantFilter !== 'all' || !officialOnly || providerFilter !== 'all' || search.trim() !== '';
+  const hasActiveFilters = category !== 'all' || sizeBracket !== 'all' || paramBracket !== 'all' || formatFilter !== 'all' || quantFilter !== 'all' || officialOnly || search.trim() !== '';
 
   const handleResetFilters = () => {
     setSearch('');
@@ -367,8 +345,7 @@ export default function HfBrowser({ isLight, addToast, onDownloadStarted, active
     setParamBracket('all');
     setFormatFilter('all');
     setQuantFilter('all');
-    setOfficialOnly(true);
-    setProviderFilter('all');
+    setOfficialOnly(false);
   };
 
   // Dynamic Live Query with debounce
@@ -382,7 +359,7 @@ export default function HfBrowser({ isLight, addToast, onDownloadStarted, active
 
     try {
       const q = encodeURIComponent(search);
-      let url = `/api/models/hf/search?q=${q}&category=${category}&size_bracket=${sizeBracket}&param_bracket=${paramBracket}&format_filter=${formatFilter}&quant_filter=${quantFilter}&sort=${sortBy}&official_only=${officialOnly}&provider=${encodeURIComponent(providerFilter)}&limit=30`;
+      let url = `/api/models/hf/search?q=${q}&category=${category}&size_bracket=${sizeBracket}&param_bracket=${paramBracket}&format_filter=${formatFilter}&quant_filter=${quantFilter}&sort=${sortBy}&official_only=${officialOnly}&limit=30`;
       if (targetCursor) {
         url += `&cursor=${encodeURIComponent(targetCursor)}`;
       }
@@ -412,7 +389,7 @@ export default function HfBrowser({ isLight, addToast, onDownloadStarted, active
       setLoading(false);
       setLoadingMore(false);
     }
-  }, [search, category, sizeBracket, paramBracket, formatFilter, quantFilter, sortBy, officialOnly, providerFilter]);
+  }, [search, category, sizeBracket, paramBracket, formatFilter, quantFilter, sortBy, officialOnly]);
 
   // Trigger dynamic query on filter change with smooth debounce
   useEffect(() => {
@@ -566,41 +543,7 @@ export default function HfBrowser({ isLight, addToast, onDownloadStarted, active
     <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', position: 'relative' }}>
       <div ref={topRef} />
 
-      {/* 1. HORIZONTAL SECTOR TABS (Auto-wrapping tag bar) */}
-      <div style={{
-        display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '7px',
-        padding: '2px 0 6px 0'
-      }}>
-        {activeSectors.map(sec => {
-          const isSelected = (sec.id === 'all' && providerFilter === 'all') || (providerFilter === sec.provider);
-          const SecIcon = sec.icon;
-          return (
-            <button
-              key={sec.id}
-              onClick={() => {
-                if (sec.id === 'all') setProviderFilter('all');
-                else setProviderFilter(sec.provider);
-              }}
-              style={{
-                display: 'inline-flex', alignItems: 'center', gap: '6px',
-                padding: '6px 12px', borderRadius: '8px',
-                background: isSelected
-                  ? (isLight ? '#ffffff' : `${sec.color}22`)
-                  : (isLight ? 'rgba(0,0,0,0.04)' : 'rgba(255,255,255,0.04)'),
-                border: isSelected
-                  ? `1.5px solid ${sec.color}`
-                  : (isLight ? '1px solid rgba(190, 160, 110, 0.25)' : '1px solid rgba(255, 255, 255, 0.08)'),
-                color: isSelected ? (isLight ? '#111827' : sec.color) : textMuted,
-                fontSize: '0.74rem', fontWeight: isSelected ? 900 : 600,
-                cursor: 'pointer', whiteSpace: 'nowrap', transition: 'all 0.15s ease'
-              }}
-            >
-              <SecIcon size={12} color={sec.color} />
-              <span>{sec.label}</span>
-            </button>
-          );
-        })}
-      </div>
+
 
 
       {/* 2. MODERN COMPACT SEARCH & FILTER TOOLBAR */}
@@ -644,25 +587,41 @@ export default function HfBrowser({ isLight, addToast, onDownloadStarted, active
             )}
           </div>
 
-          {/* "Solo Ufficiali" Checkbox Toggle (Abilitato di Default) */}
+          {/* "Da Preferiti" Button Toggle */}
           <label style={{
             display: 'flex', alignItems: 'center', gap: '7px',
             padding: '8px 14px', borderRadius: '10px',
-            background: officialOnly ? (isLight ? 'rgba(59, 130, 246, 0.10)' : 'rgba(59, 130, 246, 0.15)') : subBg,
-            border: officialOnly ? '1.5px solid #3b82f6' : subBorder,
+            background: officialOnly ? (isLight ? 'rgba(245, 158, 11, 0.12)' : 'rgba(245, 158, 11, 0.18)') : subBg,
+            border: officialOnly ? '1.5px solid #f59e0b' : subBorder,
+            boxShadow: officialOnly ? '0 0 10px rgba(245, 158, 11, 0.25)' : 'none',
             cursor: 'pointer', userSelect: 'none', transition: 'all 0.15s ease'
           }}>
             <input
               type="checkbox"
               checked={officialOnly}
               onChange={e => setOfficialOnly(e.target.checked)}
-              style={{ accentColor: '#3b82f6', cursor: 'pointer' }}
+              style={{ accentColor: '#f59e0b', cursor: 'pointer' }}
             />
-            <ShieldCheck size={15} color={officialOnly ? '#3b82f6' : textMuted} />
-            <span style={{ fontSize: '0.78rem', fontWeight: 800, color: officialOnly ? '#3b82f6' : textPrimary }}>
-              Solo Ufficiali
+            <Star size={15} color={officialOnly ? '#f59e0b' : textMuted} fill={officialOnly ? '#f59e0b' : 'none'} />
+            <span style={{ fontSize: '0.78rem', fontWeight: 800, color: officialOnly ? '#f59e0b' : textPrimary }}>
+              Da Preferiti
             </span>
           </label>
+ 
+          {/* Mobile Filters Toggle Button */}
+          <button
+            type="button"
+            className="mh-mobile-filters-toggle-btn"
+            onClick={() => setShowMobileFilters(prev => !prev)}
+            title="Mostra / Nascondi filtri avanzati"
+          >
+            <Sliders size={13} />
+            <span>Filtri</span>
+            {hasActiveFilters && (
+              <span className="mh-mobile-filters-dot" />
+            )}
+            <ChevronDown size={12} style={{ transform: showMobileFilters ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s ease' }} />
+          </button>
 
           {/* Reset Filters Button */}
           {hasActiveFilters && (
@@ -682,7 +641,7 @@ export default function HfBrowser({ isLight, addToast, onDownloadStarted, active
         </div>
 
         {/* Bottom Row: 5 Clean Select Dropdowns (Category, Size, Params, Format, Quant, Sort) */}
-        <div className="mh-filter-selects-grid">
+        <div className={`mh-filter-selects-grid ${showMobileFilters ? 'mobile-open' : ''}`}>
           {/* 1. CATEGORIA */}
           <div className="mh-select-container">
             <span className="mh-select-label" style={{ color: textMuted }}>
@@ -823,11 +782,8 @@ export default function HfBrowser({ isLight, addToast, onDownloadStarted, active
           <span>•</span>
           <span>{loadedPagesCount} {loadedPagesCount === 1 ? 'blocco' : 'blocchi'} caricati</span>
           {officialOnly && (
-            <span style={{
-              fontSize: '0.60rem', padding: '1px 6px', borderRadius: '4px',
-              background: 'rgba(59, 130, 246, 0.15)', color: '#3b82f6', fontWeight: 800
-            }}>
-              Solo Creator & Lab Ufficiali
+            <span style={{ fontSize: '0.66rem', color: '#f59e0b', fontWeight: 700, display: 'inline-flex', alignItems: 'center', gap: '3px' }}>
+              <Star size={11} fill="#f59e0b" /> Da Creator Preferiti
             </span>
           )}
         </div>
@@ -862,7 +818,7 @@ export default function HfBrowser({ isLight, addToast, onDownloadStarted, active
             Nessun modello trovato per i filtri selezionati.
           </div>
           <div style={{ fontSize: '0.72rem' }}>
-            Prova a disattivare "Solo Ufficiali" o a selezionare "Tutti i Pesi".
+            Prova a disattivare "Da Preferiti" o a selezionare "Tutti i Pesi".
           </div>
         </div>
       ) : (
@@ -933,7 +889,7 @@ export default function HfBrowser({ isLight, addToast, onDownloadStarted, active
                         background: pBadge.bg, color: pBadge.color, border: pBadge.border,
                         display: 'inline-flex', alignItems: 'center', gap: '3px'
                       }}>
-                        <ShieldCheck size={9} /> {m.author || (m.id.includes('/') ? m.id.split('/')[0] : 'Ufficiale')}
+                        <Star size={9} fill={pBadge.color} /> {pBadge.label}
                       </span>
                     ) : (
                       <span style={{

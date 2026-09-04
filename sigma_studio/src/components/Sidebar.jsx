@@ -4,7 +4,7 @@ import {
   FlaskConical, Brain, Zap, User, Server, Wrench, Palette, Blocks, Sun, 
   Moon, Store, Package, Sliders, Key, Sparkles, FolderGit2, Compass,
   Cpu, Box, Radio, Music, Mic, Terminal, Globe, Mail, Send, DownloadCloud, Settings, Trash2,
-  Share2, Plus, Search, HardDrive
+  Share2, Plus, Search, HardDrive, Copy, UserCheck
 } from 'lucide-react';
 import { useApp } from '../contexts/AppContext';
 import { useModuleState } from '../hooks/useModuleState';
@@ -159,6 +159,33 @@ export default function Sidebar({
     }
   });
 
+  const [providersExpanded, setProvidersExpanded] = useState(false);
+  const [activeProvidersTab, setActiveProvidersTab] = useState(() => {
+    try {
+      return localStorage.getItem('sigma_providers_active_subtab') || 'engine_server';
+    } catch {
+      return 'engine_server';
+    }
+  });
+
+  const [skillsExpanded, setSkillsExpanded] = useState(false);
+  const [activeSkillsTab, setActiveSkillsTab] = useState(() => {
+    try {
+      return localStorage.getItem('sigma_marketplace_active_subtab') || 'installed';
+    } catch {
+      return 'installed';
+    }
+  });
+
+  const [manifestiExpanded, setManifestiExpanded] = useState(false);
+  const [activeManifestiTab, setActiveManifestiTab] = useState(() => {
+    try {
+      return localStorage.getItem('sigma_manifesti_active_subtab') || 'installed';
+    } catch {
+      return 'installed';
+    }
+  });
+
   useEffect(() => {
     const handleSessionsUpdate = (e) => {
       if (e?.detail) {
@@ -172,12 +199,27 @@ export default function Sidebar({
     const handleModelTabChange = (e) => {
       if (e?.detail) setActiveModelTab(e.detail);
     };
+    const handleProvidersTabChange = (e) => {
+      if (e?.detail) setActiveProvidersTab(e.detail);
+    };
+    const handleSkillsTabChange = (e) => {
+      if (e?.detail) setActiveSkillsTab(e.detail);
+    };
+    const handleManifestiTabChange = (e) => {
+      if (e?.detail) setActiveManifestiTab(e.detail);
+    };
 
     window.addEventListener('sigma-chat-sessions-updated', handleSessionsUpdate);
     window.addEventListener('sigma-model-hub-tab-changed', handleModelTabChange);
+    window.addEventListener('sigma-providers-tab-changed', handleProvidersTabChange);
+    window.addEventListener('sigma-marketplace-tab-changed', handleSkillsTabChange);
+    window.addEventListener('sigma-manifesti-tab-changed', handleManifestiTabChange);
     return () => {
       window.removeEventListener('sigma-chat-sessions-updated', handleSessionsUpdate);
       window.removeEventListener('sigma-model-hub-tab-changed', handleModelTabChange);
+      window.removeEventListener('sigma-providers-tab-changed', handleProvidersTabChange);
+      window.removeEventListener('sigma-marketplace-tab-changed', handleSkillsTabChange);
+      window.removeEventListener('sigma-manifesti-tab-changed', handleManifestiTabChange);
     };
   }, []);
 
@@ -187,6 +229,12 @@ export default function Sidebar({
         setChatExpanded(true);
       } else if (activeTabId.startsWith('model_hub')) {
         setModelsExpanded(true);
+      } else if (activeTabId.startsWith('ai_config') || activeTabId.startsWith('config')) {
+        setProvidersExpanded(true);
+      } else if (activeTabId.startsWith('marketplace')) {
+        setSkillsExpanded(true);
+      } else if (activeTabId.startsWith('whitepaper') || activeTabId.startsWith('whitepapers_lib')) {
+        setManifestiExpanded(true);
       }
     }
   }, [activeTabId]);
@@ -211,6 +259,11 @@ export default function Sidebar({
     setChatSessions(prev => prev.filter(s => s.id !== sessionId));
   };
 
+  const handleDuplicateChatSession = (e, sessionId) => {
+    if (e && e.stopPropagation) e.stopPropagation();
+    window.dispatchEvent(new CustomEvent('sigma-chat-duplicate-session', { detail: sessionId }));
+  };
+
   const handleSelectModelTab = (tabId) => {
     setActiveModelTab(tabId);
     try {
@@ -218,6 +271,36 @@ export default function Sidebar({
     } catch {}
     openTab({ name: 'Modelli' }, 'model_hub');
     window.dispatchEvent(new CustomEvent('sigma-model-hub-set-tab', { detail: tabId }));
+    if (setMobileSidebarOpen) setMobileSidebarOpen(false);
+  };
+
+  const handleSelectProvidersTab = (tabId) => {
+    setActiveProvidersTab(tabId);
+    try {
+      localStorage.setItem('sigma_providers_active_subtab', tabId);
+    } catch {}
+    openTab({ name: 'Providers' }, 'ai_config');
+    window.dispatchEvent(new CustomEvent('sigma-providers-set-tab', { detail: tabId }));
+    if (setMobileSidebarOpen) setMobileSidebarOpen(false);
+  };
+
+  const handleSelectSkillsTab = (tabId) => {
+    setActiveSkillsTab(tabId);
+    try {
+      localStorage.setItem('sigma_marketplace_active_subtab', tabId);
+    } catch {}
+    openTab({ name: 'Skills' }, 'marketplace');
+    window.dispatchEvent(new CustomEvent('sigma-marketplace-set-tab', { detail: tabId }));
+    if (setMobileSidebarOpen) setMobileSidebarOpen(false);
+  };
+
+  const handleSelectManifestiTab = (tabId) => {
+    setActiveManifestiTab(tabId);
+    try {
+      localStorage.setItem('sigma_manifesti_active_subtab', tabId);
+    } catch {}
+    openTab({ name: 'Ruoli AI' }, 'whitepapers_lib');
+    window.dispatchEvent(new CustomEvent('sigma-manifesti-set-tab', { detail: tabId }));
     if (setMobileSidebarOpen) setMobileSidebarOpen(false);
   };
   const [hiddenTabs, setHiddenTabs] = useState(() => new Set());
@@ -423,52 +506,6 @@ export default function Sidebar({
               Sigma <span style={{ color: isLight ? '#ea580c' : '#00d2ff' }}>Studio</span>
             </h2>
           </div>
-
-          {/* Theme Switcher Pill */}
-          <div 
-            onClick={toggleTheme} 
-            title="Cambia Tema (Scuro / Crema Chiaro)"
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-              padding: '6px 12px',
-              marginBottom: '18px',
-              borderRadius: '12px',
-              background: theme === 'dark' ? 'rgba(255, 255, 255, 0.05)' : 'rgba(190, 160, 110, 0.18)',
-              border: theme === 'dark' ? '1px solid rgba(255, 255, 255, 0.1)' : '1px solid rgba(190, 160, 110, 0.35)',
-              cursor: 'pointer',
-              transition: 'all 0.25s ease'
-            }}
-          >
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.68rem', fontWeight: 800, color: theme === 'dark' ? '#e2e8f0' : '#111111' }}>
-              {theme === 'dark' ? <Moon size={13} style={{ color: '#bc8cff' }} /> : <Sun size={13} style={{ color: '#ea580c' }} />}
-              <span>TEMA {theme === 'dark' ? 'SCURO' : 'CREMA'}</span>
-            </div>
-
-            <div style={{
-              width: '34px',
-              height: '18px',
-              borderRadius: '9px',
-              background: theme === 'dark' ? 'rgba(188, 140, 255, 0.25)' : 'rgba(234, 88, 12, 0.25)',
-              border: theme === 'dark' ? '1px solid rgba(188, 140, 255, 0.45)' : '1px solid rgba(234, 88, 12, 0.5)',
-              position: 'relative',
-              transition: 'all 0.25s ease',
-              display: 'flex',
-              alignItems: 'center',
-              padding: '2px'
-            }}>
-              <div style={{
-                width: '12px',
-                height: '12px',
-                borderRadius: '50%',
-                background: theme === 'dark' ? '#bc8cff' : '#ea580c',
-                transform: theme === 'dark' ? 'translateX(0px)' : 'translateX(16px)',
-                transition: 'transform 0.25s cubic-bezier(0.34, 1.56, 0.64, 1)',
-                boxShadow: '0 0 6px rgba(0,0,0,0.3)'
-              }} />
-            </div>
-          </div>
         </div>
 
         {/* ================================================================= */}
@@ -526,14 +563,24 @@ export default function Sidebar({
                       >
                         <span className="sidebar-session-dot" />
                         <span className="sidebar-session-name">{s.name || 'Chat'}</span>
-                        <button
-                          type="button"
-                          className="sidebar-session-delete-btn"
-                          onClick={(e) => handleDeleteChatSession(e, s.id)}
-                          title="Elimina conversazione"
-                        >
-                          <Trash2 size={11} />
-                        </button>
+                        <div className="sidebar-session-actions" style={{ display: 'flex', alignItems: 'center', gap: '2px', flexShrink: 0 }}>
+                          <button
+                            type="button"
+                            className="sidebar-session-duplicate-btn"
+                            onClick={(e) => handleDuplicateChatSession(e, s.id)}
+                            title="Duplica conversazione"
+                          >
+                            <Copy size={11} />
+                          </button>
+                          <button
+                            type="button"
+                            className="sidebar-session-delete-btn"
+                            onClick={(e) => handleDeleteChatSession(e, s.id)}
+                            title="Elimina conversazione"
+                          >
+                            <Trash2 size={11} />
+                          </button>
+                        </div>
                       </div>
                     );
                   })
@@ -589,8 +636,35 @@ export default function Sidebar({
             badge="ROUTING"
             badgeColor="rgba(234,179,8,0.18)"
             active={activeTabId != null && (activeTabId.startsWith('ai_config') || activeTabId.startsWith('config'))}
-            onClick={() => openTab({ name: 'Providers' }, 'ai_config')} 
+            onClick={() => {
+              openTab({ name: 'Providers' }, 'ai_config');
+              setProvidersExpanded(true);
+            }} 
+            expandable={true}
+            expanded={providersExpanded}
+            onToggleExpand={() => setProvidersExpanded(prev => !prev)}
           />
+          {providersExpanded && (
+            <div className="sidebar-subnav sidebar-models-subnav">
+              {[
+                { id: 'engine_server', label: 'Server Locale & Proxy', icon: Server },
+                { id: 'external_providers', label: 'Provider Esterni', icon: Globe },
+              ].map(sub => {
+                const isSelected = activeTabId != null && (activeTabId.startsWith('ai_config') || activeTabId.startsWith('config')) && activeProvidersTab === sub.id;
+                const SubIcon = sub.icon;
+                return (
+                  <div
+                    key={sub.id}
+                    className={`sidebar-subitem ${isSelected ? 'active' : ''}`}
+                    onClick={() => handleSelectProvidersTab(sub.id)}
+                  >
+                    <SubIcon size={12} style={{ flexShrink: 0 }} />
+                    <span className="sidebar-subitem-label">{sub.label}</span>
+                  </div>
+                );
+              })}
+            </div>
+          )}
 
           <SidebarItem 
             icon={Package} 
@@ -599,8 +673,35 @@ export default function Sidebar({
             badge="STORE"
             badgeColor="rgba(234,179,8,0.2)"
             active={activeTabId != null && activeTabId.startsWith('marketplace')}
-            onClick={() => openTab({ name: 'Skills' }, 'marketplace')} 
+            onClick={() => {
+              openTab({ name: 'Skills' }, 'marketplace');
+              setSkillsExpanded(true);
+            }} 
+            expandable={true}
+            expanded={skillsExpanded}
+            onToggleExpand={() => setSkillsExpanded(prev => !prev)}
           />
+          {skillsExpanded && (
+            <div className="sidebar-subnav sidebar-models-subnav">
+              {[
+                { id: 'installed', label: 'Moduli Installati', icon: Cpu },
+                { id: 'remote', label: 'Catalogo Moduli', icon: Sparkles },
+              ].map(sub => {
+                const isSelected = activeTabId != null && activeTabId.startsWith('marketplace') && activeSkillsTab === sub.id;
+                const SubIcon = sub.icon;
+                return (
+                  <div
+                    key={sub.id}
+                    className={`sidebar-subitem ${isSelected ? 'active' : ''}`}
+                    onClick={() => handleSelectSkillsTab(sub.id)}
+                  >
+                    <SubIcon size={12} style={{ flexShrink: 0 }} />
+                    <span className="sidebar-subitem-label">{sub.label}</span>
+                  </div>
+                );
+              })}
+            </div>
+          )}
 
           <SidebarItem 
             icon={Brain} 
@@ -609,8 +710,35 @@ export default function Sidebar({
             badge={manifestiCount + modules.reduce((acc, m) => acc + (m.whitepapers?.length || 0), 0)}
             badgeColor="rgba(188,140,255,0.15)"
             active={activeTabId != null && (activeTabId.startsWith('whitepaper') || activeTabId.startsWith('whitepapers_lib'))}
-            onClick={() => openTab({ name: 'Ruoli AI' }, 'whitepapers_lib')} 
+            onClick={() => {
+              openTab({ name: 'Ruoli AI' }, 'whitepapers_lib');
+              setManifestiExpanded(true);
+            }} 
+            expandable={true}
+            expanded={manifestiExpanded}
+            onToggleExpand={() => setManifestiExpanded(prev => !prev)}
           />
+          {manifestiExpanded && (
+            <div className="sidebar-subnav sidebar-models-subnav">
+              {[
+                { id: 'installed', label: 'Ruoli Kernel', icon: UserCheck },
+                { id: 'hub', label: 'Hub Community', icon: Globe },
+              ].map(sub => {
+                const isSelected = activeTabId != null && (activeTabId.startsWith('whitepaper') || activeTabId.startsWith('whitepapers_lib')) && activeManifestiTab === sub.id;
+                const SubIcon = sub.icon;
+                return (
+                  <div
+                    key={sub.id}
+                    className={`sidebar-subitem ${isSelected ? 'active' : ''}`}
+                    onClick={() => handleSelectManifestiTab(sub.id)}
+                  >
+                    <SubIcon size={12} style={{ flexShrink: 0 }} />
+                    <span className="sidebar-subitem-label">{sub.label}</span>
+                  </div>
+                );
+              })}
+            </div>
+          )}
 
           {!hiddenTabs.has('mcp_hub') && (
             <SidebarItem 

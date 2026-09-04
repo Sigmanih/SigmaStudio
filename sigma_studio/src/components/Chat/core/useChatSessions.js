@@ -238,6 +238,48 @@ export function useChatSessions({ selectedModel, setSelectedModel, setActionsLog
     }
   };
 
+  const handleDuplicateSession = (e, sid) => {
+    if (e && e.stopPropagation) e.stopPropagation();
+    const targetId = sid || activeSessionId;
+    const targetSession = sessions.find(s => s.id === targetId);
+    if (!targetSession) return;
+
+    const newId = `chat_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+    const nowIso = new Date().toISOString();
+    const newName = `${targetSession.name || 'Chat'} (Copia)`;
+
+    const existingMsgs = sessionMessages[targetId] || loadMessagesFromStorage(targetId) || [welcomeMsg];
+    let clonedMsgs;
+    try {
+      clonedMsgs = JSON.parse(JSON.stringify(existingMsgs));
+    } catch {
+      clonedMsgs = [...existingMsgs];
+    }
+
+    const newSession = {
+      ...targetSession,
+      id: newId,
+      name: newName,
+      createdAt: nowIso,
+      updatedAt: nowIso,
+      messageCount: clonedMsgs.length
+    };
+
+    const sIndex = sessions.findIndex(s => s.id === targetId);
+    const updated = [...sessions];
+    if (sIndex >= 0) {
+      updated.splice(sIndex + 1, 0, newSession);
+    } else {
+      updated.unshift(newSession);
+    }
+
+    saveSessionsState(updated.slice(0, MAX_HISTORY));
+    setSessionMessages(prev => ({ ...prev, [newId]: clonedMsgs }));
+    refs.sessionMessages.current[newId] = clonedMsgs;
+    saveMessagesImmediately(newId, clonedMsgs);
+    switchToSession(newId);
+  };
+
   const handleStartRename = (e, sid) => {
     if (e && e.stopPropagation) e.stopPropagation();
     const s = sessions.find(x => x.id === sid);
@@ -360,15 +402,21 @@ export function useChatSessions({ selectedModel, setSelectedModel, setActionsLog
     const handleDelete = (e) => {
       if (e?.detail) handleDeleteSession(null, e.detail);
     };
+    const handleDuplicate = (e) => {
+      if (e?.detail) handleDuplicateSession(null, e.detail);
+      else handleDuplicateSession(null, activeSessionId);
+    };
     window.addEventListener('sigma-chat-switch-session', handleSwitch);
     window.addEventListener('sigma-chat-new-session', handleNew);
     window.addEventListener('sigma-chat-delete-session', handleDelete);
+    window.addEventListener('sigma-chat-duplicate-session', handleDuplicate);
     return () => {
       window.removeEventListener('sigma-chat-switch-session', handleSwitch);
       window.removeEventListener('sigma-chat-new-session', handleNew);
       window.removeEventListener('sigma-chat-delete-session', handleDelete);
+      window.removeEventListener('sigma-chat-duplicate-session', handleDuplicate);
     };
-  }, [switchToSession, handleNewSession, handleDeleteSession]);
+  }, [switchToSession, handleNewSession, handleDeleteSession, handleDuplicateSession, activeSessionId]);
 
   return {
     sessions,
@@ -386,6 +434,7 @@ export function useChatSessions({ selectedModel, setSelectedModel, setActionsLog
     switchToSession,
     handleNewSession,
     handleDeleteSession,
+    handleDuplicateSession,
     handleStartRename,
     handleFinishRename,
     handleRenameKeyDown,

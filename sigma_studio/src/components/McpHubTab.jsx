@@ -8,6 +8,7 @@ import {
 import { useApp } from '../contexts/AppContext';
 import TechSpaceCanvas from './common/TechSpaceCanvas';
 import McpIntegrationsPanel from './McpIntegrationsPanel';
+import TabHeader from './common/TabHeader';
 
 // MCP Category System & Theme Badges
 const MCP_CATEGORIES = [
@@ -586,92 +587,50 @@ export default function McpHubTab() {
       {/* Animated Translucent Cyber Space Background Canvas */}
       <TechSpaceCanvas isLight={theme === 'light'} />
 
-      {/* Hero Visual Banner with Generated Graphic */}
-      <div style={{
-        position: 'relative',
-        zIndex: 1,
-        borderRadius: 0,
-        overflow: 'hidden',
-        padding: '24px 32px',
-        minHeight: '110px',
-        borderBottom: theme === 'light' ? '1px solid rgba(234, 88, 12, 0.35)' : '1px solid rgba(0, 210, 255, 0.25)',
-        boxShadow: theme === 'light' ? '0 8px 24px rgba(234, 88, 12, 0.08)' : '0 8px 32px rgba(0,0,0,0.4)',
-        backgroundImage: theme === 'light'
-          ? 'linear-gradient(135deg, rgba(254, 252, 247, 0.76) 0%, rgba(248, 242, 232, 0.70) 100%), url("/images/mcp_protocol_hub.jpg")'
-          : 'linear-gradient(135deg, rgba(10, 14, 26, 0.85) 0%, rgba(14, 22, 42, 0.80) 100%), url("/images/mcp_protocol_hub.jpg")',
-        backgroundSize: 'cover',
-        backgroundRepeat: 'no-repeat',
-        backgroundPosition: 'center center',
-        marginBottom: '20px',
-        flexShrink: 0
-      }}>
-        <div style={{ position: 'relative', zIndex: 2, display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '16px' }}>
-          <div style={{ maxWidth: '680px' }}>
-            <div style={{
-              display: 'inline-flex', alignItems: 'center', gap: '6px',
-              padding: '3px 12px', borderRadius: '14px',
-              background: theme === 'light' ? 'rgba(234, 88, 12, 0.12)' : 'rgba(0, 210, 255, 0.15)', 
-              border: theme === 'light' ? '1px solid rgba(234, 88, 12, 0.35)' : '1px solid rgba(0, 210, 255, 0.35)',
-              color: theme === 'light' ? '#ea580c' : '#00d2ff', 
-              fontSize: '0.68rem', fontWeight: 800, letterSpacing: '1px', textTransform: 'uppercase', marginBottom: '6px'
-            }}>
-              <Zap size={14} /> MODEL CONTEXT PROTOCOL (MCP) BUS
-            </div>
-            <h1 style={{ margin: '0 0 6px 0', fontSize: '1.4rem', fontWeight: 800, color: theme === 'light' ? '#111111' : '#fff', letterSpacing: '-0.3px', textShadow: 'none' }}>
-              MCP Tools & <span style={{
-                color: theme === 'light' ? '#c2410c' : '#00d2ff',
-                fontWeight: 800
-              }}>Protocol Server Hub</span>
-            </h1>
-            <p style={{ margin: 0, fontSize: '0.82rem', color: theme === 'light' ? '#4b5563' : '#cbd5e0', lineHeight: 1.45 }}>
-              Bus di I/O decentralizzato per integrare Filesystem, Memory, Home Assistant, SQLite e Microservizi direttamente con gli Agenti AI.
-            </p>
-          </div>
-
-          <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
+      {/* Unified Kernel Tab Header */}
+      <TabHeader
+        badge="MODEL CONTEXT PROTOCOL (MCP) BUS"
+        badgeIcon={Zap}
+        icon={Wrench}
+        title="MCP Tools & "
+        highlight="Protocol Server Hub"
+        description="Bus di I/O decentralizzato per integrare Filesystem, Memory, Home Assistant, SQLite e Microservizi direttamente con gli Agenti AI."
+        bannerImage="/images/mcp_protocol_hub.jpg"
+        actions={
+          <>
             <button
               onClick={toggleAutoApprove}
               title={autoApprove ? 'Gli agenti eseguono ogni strumento attivo senza chiedere.' : 'Gli strumenti che agiscono verso l\'esterno aspettano la tua conferma.'}
+              className="sigma-tab-btn sigma-tab-btn-ghost"
               style={{
                 background: autoApprove ? 'rgba(210,153,34,0.14)' : 'rgba(63,185,80,0.12)',
                 border: `1px solid ${autoApprove ? 'rgba(210,153,34,0.35)' : 'rgba(63,185,80,0.3)'}`,
                 color: autoApprove ? '#d29922' : '#3fb950',
-                padding: '10px 16px', borderRadius: '12px', cursor: 'pointer',
-                display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.82rem', fontWeight: 800
               }}
             >
-              {autoApprove ? <ShieldAlert size={16} /> : <ShieldCheck size={16} />}
+              {autoApprove ? <ShieldAlert size={15} /> : <ShieldCheck size={15} />}
               <span>{autoApprove ? 'Esecuzione Automatica' : 'Conferma Richiesta'}</span>
             </button>
 
             <button
               onClick={handleTestAllTools}
               disabled={runningFullTest}
-              style={{
-                background: 'linear-gradient(135deg, #00d2ff, #0072ff)',
-                border: 'none', color: '#fff', padding: '10px 18px', borderRadius: '12px',
-                fontWeight: 800, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px',
-                fontSize: '0.82rem', boxShadow: '0 4px 16px rgba(0, 210, 255, 0.25)'
-              }}
+              className="sigma-tab-btn sigma-tab-btn-primary"
             >
-              {runningFullTest ? <RefreshCw className="spin" size={16} /> : <Play size={16} />}
-              <span>{runningFullTest ? 'Collaudo in corso...' : '⚡ Collauda Skills MCP'}</span>
+              {runningFullTest ? <RefreshCw className="spin" size={15} /> : <Play size={15} />}
+              <span>{runningFullTest ? 'Collaudo...' : '⚡ Collauda Skills'}</span>
             </button>
 
             <button
               onClick={loadMcpData}
-              style={{
-                background: 'rgba(255, 255, 255, 0.08)', border: '1px solid rgba(255, 255, 255, 0.12)',
-                color: '#e2e4eb', padding: '10px 16px', borderRadius: '12px', cursor: 'pointer',
-                display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.82rem', fontWeight: 700
-              }}
+              className="sigma-tab-btn sigma-tab-btn-ghost"
             >
-              <RefreshCw size={15} className={loading ? 'spin' : ''} />
-              <span>Aggiorna Hub</span>
+              <RefreshCw size={14} className={loading ? 'spin' : ''} />
+              <span>Aggiorna</span>
             </button>
-          </div>
-        </div>
-      </div>
+          </>
+        }
+      />
 
       {/* Main Workspace Body Wrapper */}
       <div style={{ padding: '0 24px 24px 24px', display: 'flex', flexDirection: 'column', gap: '20px', flex: 1 }}>

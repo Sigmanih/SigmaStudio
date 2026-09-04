@@ -708,7 +708,7 @@ function SkillSlideCard({
   return (
     <div style={{ display: 'flex', flexDirection: 'column', width: '100%' }}>
       {/* Header Card: Icona, Titolo, Categoria, Badge e Azioni Top */}
-      <div style={{
+      <div className="skills-card-header" style={{
         display: 'flex',
         alignItems: 'flex-start',
         justifyContent: 'space-between',
@@ -718,7 +718,7 @@ function SkillSlideCard({
         borderBottom: isLight ? '1px solid rgba(190, 160, 110, 0.25)' : '1px solid rgba(255,255,255,0.08)',
         paddingBottom: '16px'
       }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '16px', flexWrap: 'wrap' }}>
+        <div className="skills-card-header-left" style={{ display: 'flex', alignItems: 'center', gap: '16px', flexWrap: 'wrap' }}>
           {/* Icona Skill */}
           <div style={{
             width: '54px',
@@ -737,7 +737,7 @@ function SkillSlideCard({
           </div>
 
           <div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap', marginBottom: '4px' }}>
+            <div className="skills-card-header-badges" style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap', marginBottom: '4px' }}>
               {/* Badge Categoria */}
               <span style={{
                 display: 'inline-flex',
@@ -803,7 +803,7 @@ function SkillSlideCard({
         </div>
 
         {/* Pulsanti di Azione Destra */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+        <div className="skills-card-header-actions" style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
           <button
             onClick={onOpenModal}
             title="Guida approfondita ed esempi di integrazione"
@@ -944,7 +944,7 @@ function SkillSlideCard({
       </div>
 
       {/* Body Card: Layout a 3 Colonne */}
-      <div style={{
+      <div className="skills-card-body-grid" style={{
         display: 'grid',
         gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))',
         gap: '20px',
@@ -1402,7 +1402,7 @@ export default function SkillsShowcaseSlider({ openTab }) {
         border: isLight ? '1px solid rgba(190, 160, 110, 0.35)' : '1px solid rgba(255,255,255,0.07)'
       }}>
         {/* Pills Categoria */}
-        <div style={{
+        <div className="skills-cat-filter-container" style={{
           display: 'flex',
           alignItems: 'center',
           gap: '6px',
@@ -1415,6 +1415,7 @@ export default function SkillsShowcaseSlider({ openTab }) {
             return (
               <button
                 key={cat.id}
+                className="skills-cat-filter-btn"
                 onClick={() => { setActiveCategory(cat.id); setCurrentIndex(0); }}
                 style={{
                   padding: '6px 12px',
@@ -1542,6 +1543,7 @@ export default function SkillsShowcaseSlider({ openTab }) {
           {/* Freccia Flottante Sinistra */}
           {filteredSkills.length > 1 && (
             <button
+              className="skills-floating-arrow"
               onClick={(e) => { e.stopPropagation(); handlePrev(); }}
               aria-label="Skill precedente"
               style={{
@@ -1580,6 +1582,7 @@ export default function SkillsShowcaseSlider({ openTab }) {
           {/* Freccia Flottante Destra */}
           {filteredSkills.length > 1 && (
             <button
+              className="skills-floating-arrow"
               onClick={(e) => { e.stopPropagation(); handleNext(); }}
               aria-label="Prossima skill"
               style={{
@@ -1633,10 +1636,10 @@ export default function SkillsShowcaseSlider({ openTab }) {
               return (
                 <div
                   key={skill.id}
+                  className="skills-slider-track-item"
                   style={{
                     width: `${100 / filteredSkills.length}%`,
                     flexShrink: 0,
-                    padding: '28px',
                     boxSizing: 'border-box'
                   }}
                 >

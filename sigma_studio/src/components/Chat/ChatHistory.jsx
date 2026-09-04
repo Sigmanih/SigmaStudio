@@ -1,5 +1,5 @@
 import React from 'react';
-import { FileText, Plus, Bot, Trash2, ChevronDown, X } from 'lucide-react';
+import { FileText, Plus, Bot, Trash2, ChevronDown, X, Copy } from 'lucide-react';
 import { getSessionStats, formatSessionTime } from './chatStorage';
 
 export default function ChatHistory({
@@ -115,7 +115,26 @@ export default function ChatHistory({
                           )}
                         </div>
                       </div>
-                      <button className="chat-history-item-delete" onClick={e => onDeleteSession(e, session.id)} title="Elimina sessione"><Trash2 size={10} /></button>
+                      <div className="chat-history-item-actions" style={{ display: 'flex', alignItems: 'center', gap: '3px', flexShrink: 0 }}>
+                        {onDuplicateSession && (
+                          <button 
+                            type="button"
+                            className="chat-history-item-duplicate" 
+                            onClick={e => onDuplicateSession(e, session.id)} 
+                            title="Duplica sessione"
+                          >
+                            <Copy size={11} />
+                          </button>
+                        )}
+                        <button 
+                          type="button"
+                          className="chat-history-item-delete" 
+                          onClick={e => onDeleteSession(e, session.id)} 
+                          title="Elimina sessione"
+                        >
+                          <Trash2 size={11} />
+                        </button>
+                      </div>
                     </div>
                   );
                 })}

@@ -1031,11 +1031,8 @@ class GgufConverter:
         Il file che cresce e' l'unico segnale disponibile, e la dimensione
         finale la conosciamo gia' dal piano spazio.
         """
-        if not atteso_gb or atteso_gb <= 0:
-            yield          # senza una taglia attesa la frazione non esiste
-            return
-
         basta = threading.Event()
+        misurabile = bool(atteso_gb) and atteso_gb > 0
 
         def osserva():
             while not basta.wait(2.0):
@@ -1043,12 +1040,20 @@ class GgufConverter:
                     scritti_gb = os.path.getsize(path) / 2**30
                 except OSError:
                     continue   # non ancora creato, o sostituito: si riprova
-                frazione = min(scritti_gb / atteso_gb, 1.0)
-                job.progress = int(da_pct + (a_pct - da_pct) * frazione)
-                job.message = (
-                    etichetta + " " + str(round(scritti_gb, 1)) + " / "
-                    + str(round(atteso_gb, 1)) + " GB"
-                )
+                if misurabile:
+                    frazione = min(scritti_gb / atteso_gb, 1.0)
+                    job.progress = int(da_pct + (a_pct - da_pct) * frazione)
+                    job.message = (
+                        etichetta + " " + str(round(scritti_gb, 1)) + " / "
+                        + str(round(atteso_gb, 1)) + " GB"
+                    )
+                else:
+                    # Senza taglia attesa la percentuale sarebbe inventata, ma
+                    # i GB che crescono rispondono lo stesso alla domanda che
+                    # uno si fa guardando la barra: si e' piantato?
+                    job.message = (
+                        etichetta + " " + str(round(scritti_gb, 1)) + " GB scritti"
+                    )
 
         vedetta = threading.Thread(target=osserva, daemon=True)
         vedetta.start()
@@ -1183,7 +1188,9 @@ class GgufConverter:
                 job.message = "Quantizzazione in " + job.quantization + "..."
                 job.progress = 60
                 with cls._avanzamento_da_file(
-                    job, final_path, (piano or {}).get("final_gb", 0), 60, 99,
+                    job, final_path,
+                    cls._taglia_attesa_gb(intermediate, job.quantization, piano),
+                    60, 99,
                     "Quantizzazione in " + job.quantization + ":",
                 ):
                     cls._quantize(intermediate, final_path, job.quantization,
@@ -1355,6 +1362,53 @@ class GgufConverter:
             raise RuntimeError("convert_hf_to_gguf ha fallito: " + " | ".join(tail))
         if not os.path.exists(output):
             raise RuntimeError("la conversione non ha prodotto alcun file")
+
+    @staticmethod
+    def _parametri_gguf(percorso: str) -> int:
+        """Quanti pesi contiene un GGUF, contati sui tensori.
+
+        `ModelInspector` legge il numero di parametri dal config di Hugging
+        Face, che in una cartella GGUF non c'e': restituisce zero, il piano
+        spazio esce con "dimensione ignota" e chi si aspetta da li' una taglia
+        attesa resta senza. Qui si contano gli elementi dei tensori, che nel
+        GGUF ci sono sempre.
+        """
+        try:
+            from gguf.gguf_reader import GGUFReader
+            lettore = GGUFReader(percorso)
+        except Exception:
+            return 0
+        totale = 0
+        for tensore in getattr(lettore, "tensors", []):
+            try:
+                elementi = 1
+                for dimensione in tensore.shape:
+                    elementi *= int(dimensione)
+                totale += elementi
+            except Exception:
+                continue
+        return totale
+
+    @classmethod
+    def _taglia_attesa_gb(cls, sorgente_gguf: str, quantization: str,
+                          piano: Optional[Dict[str, Any]]) -> float:
+        """Quanto pesera' il risultato, per far muovere la barra.
+
+        Il piano spazio la conosce quando si parte dai safetensors. Ripartendo
+        da un GGUF non la conosce, e allora si ricava dai tensori della
+        sorgente: e' una stima, ma una barra che si muove con qualche punto di
+        errore vale piu' di una ferma al 60 che sembra un blocco.
+        """
+        dal_piano = (piano or {}).get("final_gb")
+        if dal_piano:
+            return float(dal_piano)
+        bpw = next((q["bpw"] for q in QUANT_TYPES if q["id"] == quantization), None)
+        if not bpw:
+            return 0.0
+        parametri = cls._parametri_gguf(sorgente_gguf)
+        if not parametri:
+            return 0.0
+        return parametri * bpw / 8 / 2**30
 
     @classmethod
     def _tensori_fuori_misura(cls, gguf_path: str, quant_type: str,

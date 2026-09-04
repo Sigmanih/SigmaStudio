@@ -38,6 +38,7 @@ from core.developer_studio.session_ledger import (
     DevSessionLedger,
     check_completion_allowed,
 )
+from core.developer_studio.tool_policy import ToolPolicy
 from core.engine.grammars import fenced_tool_grammar
 from core.engine.sampling import SamplingParams
 from core.developer_studio.visual_check import capture as capture_screenshot, describe as describe_screenshot
@@ -184,13 +185,15 @@ Emettilo una volta all'inizio e aggiornalo solo quando lo stato cambia davvero.
 `complete_goal` — dichiara finito il lavoro.
 {"summary": "COSA_HAI_FATTO"}
 
-## VINCOLI E ARCHITETTURA
-- I percorsi sono relativi alla radice del workspace ("." e la radice). I file frontend vivono in `sigma_studio/src/`.
-- **Frontend React:** usa solo React standard (`useState`, `useEffect`), icone di `lucide-react` e CSS in `styles/`. NON importare `@mui`, `antd`, `bootstrap` o altre librerie esterne.
-- **Backend Python:** scrivi implementazioni complete e prive di stub `pass` o placeholder. Gestisci sempre eccezioni, timeout e codici di ritorno.
-- Rispondi in italiano.
+## VINCOLI GENERALI
+- I percorsi sono relativi alla radice del workspace ("." e la radice).
+- Scrivi implementazioni complete: niente stub `pass`, niente segnaposto lasciati
+  da riempire. Gestisci eccezioni, timeout e codici di ritorno.
+- Le convenzioni del progetto su cui stai lavorando, se il workspace le dichiara,
+  sono riportate piu sotto e PREVALGONO su queste regole generali.
 - Se un tool fallisce, leggi l'errore e correggi la chiamata. Non ripeterla identica.
 - Non inventare percorsi o contenuti: verificali con i tool prima di agire.
+- Rispondi in italiano.
 """
 
 
@@ -255,6 +258,115 @@ MAX_ASSISTANT_HISTORY_CHARS = 1500
 
 _THINK_BLOCK_RE = re.compile(r"<think>.*?</think>", re.DOTALL | re.IGNORECASE)
 _THINK_OPEN_RE = re.compile(r"<think>.*$", re.DOTALL | re.IGNORECASE)
+
+
+#: Ricordato in coda allo stato quando il lavoro deve ancora avanzare.
+STATE_TAIL_ACT = (
+    "Attieniti allo stato qui sopra: non ripetere azioni gia svolte. "
+    "Emetti ORA un solo blocco tool, e nient'altro."
+)
+#: Ricordato in coda allo stato quando il cancello di completamento ha ceduto.
+STATE_TAIL_SUMMARISE = (
+    "Il lavoro risulta completo e verificato: scrivi il riepilogo per l'utente."
+)
+
+
+def _with_state_block(
+    messages: List[Dict[str, str]],
+    state_block: str,
+    tail_hint: str = STATE_TAIL_ACT,
+) -> List[Dict[str, str]]:
+    """La conversazione da inviare questo turno, con lo stato in coda.
+
+    Il blocco di stato cambia a ogni turno, quindi dove lo si mette decide
+    quanta parte del prompt e' riutilizzabile. Concatenato al system prompt
+    stava in posizione 0, e il prefisso KV condiviso con il turno precedente
+    finiva li': ogni turno riprefillava l'intero transcritto. Appeso invece
+    all'ultimo messaggio, tutto cio' che lo precede e' identico byte per byte
+    al turno scorso e la cache copre l'intera cronologia — resta da prefillare
+    solo lo stato e il turno nuovo.
+
+    La coda non viene mai accumulata in `messages`: e' ricostruita a ogni giro
+    da questa funzione, che restituisce una copia.
+    """
+    if not state_block or not messages:
+        return messages
+    coda = dict(messages[-1])
+    pezzi = [str(coda.get("content", "")), state_block]
+    if tail_hint:
+        pezzi.append(tail_hint)
+    coda["content"] = "\n\n".join(p for p in pezzi if p)
+    return messages[:-1] + [coda]
+
+
+def resolve_ledger(
+    session_id: Optional[str],
+    provided: Optional["DevSessionLedger"],
+    goal_text: str,
+    workspace_root: Optional[str],
+) -> tuple:
+    """Il ledger da usare per questo run, e se e' stato ripreso dal disco.
+
+    Tre provenienze, in ordine di precedenza:
+
+    1. quello passato dal chiamante — e' l'orchestratore, che fa lavorare piu'
+       ruoli sullo stesso obiettivo e ha bisogno che condividano lo stato;
+    2. quello salvato per questa sessione — l'utente ha ricaricato la pagina o
+       il server e' stato riavviato, e cio' che era gia' stato letto e
+       verificato non va rifatto;
+    3. uno nuovo.
+
+    Ritorna `(ledger, ripreso)`. Nessun errore di lettura puo' propagarsi: un
+    ripristino fallito significa ripartire da zero, che e' lento ma corretto.
+    """
+    if provided is not None:
+        if goal_text and not provided.goal:
+            provided.set_goal(goal_text)
+        return provided, False
+
+    if session_id:
+        try:
+            from core.developer_studio import session_store
+            ripristinato = session_store.load_ledger(session_id, goal_text, workspace_root)
+            if ripristinato is not None:
+                return ripristinato, True
+        except Exception as exc:
+            log.debug("[AdminAgent] ripresa sessione fallita: %s", exc)
+
+    return DevSessionLedger(goal=goal_text, workspace_root=workspace_root), False
+
+
+def _persist_session(
+    session_id: Optional[str],
+    ledger: "DevSessionLedger",
+    model_name: Optional[str],
+    run_metrics: Dict[str, Any],
+    status: str = "running",
+    force: bool = False,
+) -> None:
+    """Salva lo stato del run, senza mai poter interromperlo.
+
+    La persistenza serve a rendere ripristinabile una sessione: se fallisce,
+    si perde quella possibilita', e non c'e' ragione di perdere anche il
+    lavoro in corso. Ogni errore qui e' quindi assorbito.
+    """
+    if not session_id:
+        return
+    try:
+        from core.developer_studio import session_store
+        if status == "running":
+            session_store.save(
+                session_id, ledger,
+                model=model_name or "", status=status,
+                metrics=run_metrics, force=force,
+            )
+        else:
+            session_store.mark_finished(
+                session_id, ledger,
+                model=model_name or "", status=status, metrics=run_metrics,
+            )
+    except Exception as exc:
+        log.debug("[AdminAgent] sessione '%s' non salvata: %s", session_id, exc)
 
 
 def _as_history(full_text: str) -> str:
@@ -1026,6 +1138,10 @@ def stream_admin_agent_turn(
     context_tokens: int = 32768,
     max_tokens: int = 20000,
     thinking: Optional[bool] = False,
+    session_id: Optional[str] = None,
+    ledger: Optional["DevSessionLedger"] = None,
+    allowed_tools: Optional[List[str]] = None,
+    policy_label: str = "",
 ) -> Generator[Dict[str, Any], None, None]:
     """
     Multi-Turn Autonomous Admin Developer Agent Loop:
@@ -1033,6 +1149,17 @@ def stream_admin_agent_turn(
     2. Streams reasoning (<think>...) and response tokens.
     3. If a tool call is detected: executes it, emits the tool event, and automatically
        feeds the observation back to the model to produce the final conversational answer!
+
+    `session_id` collega il run allo stato salvato su disco: se la sessione e'
+    gia' nota, il ledger riparte da li' invece che da zero, e l'agente non
+    rilegge cio' che aveva gia' letto prima del refresh.
+
+    `ledger` ha la precedenza su `session_id` e serve all'orchestratore, che
+    fa lavorare piu' ruoli sullo stesso obiettivo: passando lo stesso ledger, il
+    Tester sa cosa ha scritto il Coder.
+
+    `allowed_tools` restringe i tool utilizzabili in questo run (vedi
+    `tool_policy`). None significa nessuna restrizione.
     """
     if not workspace_root:
         workspace_root = get_default_workspace_root()
@@ -1079,6 +1206,18 @@ def stream_admin_agent_turn(
     except Exception:
         pass  # MCP tools not yet registered — proceed without them
 
+    # Le convenzioni del workspace, se le dichiara. Vanno in fondo al system
+    # prompt perche' devono poter contraddire le regole generali che le
+    # precedono, e restano immutabili per tutto il run: il system prompt e' la
+    # parte del prefisso KV che non deve mai cambiare.
+    try:
+        from core.developer_studio import project_rules
+        regole = project_rules.load_section(workspace_root)
+        if regole:
+            base_system_prompt = f"{base_system_prompt}\n\n{regole}"
+    except Exception as exc:
+        log.debug("[AdminAgent] regole di progetto non caricate: %s", exc)
+
     # Durable working state. Facts about the workspace live here rather than in
     # the transcript, so trimming old turns can no longer make the agent forget
     # what it has already read, written or verified.
@@ -1087,12 +1226,30 @@ def stream_admin_agent_turn(
         if m.get("role") == "user":
             goal_text = str(m.get("content", ""))[:1500]
             break
-    ledger = DevSessionLedger(goal=goal_text, workspace_root=workspace_root)
+
+    ledger, ripreso = resolve_ledger(session_id, ledger, goal_text, workspace_root)
     if current_pipeline:
         ledger.set_pipeline(current_pipeline)
-    active_system_prompt = base_system_prompt
+    # I tool ammessi in questo run. Dichiararli nel prompt e verificarli prima
+    # dell'esecuzione sono due meta' della stessa regola: la prima evita il
+    # tentativo, la seconda lo impedisce quando avviene lo stesso.
+    policy = ToolPolicy.of(allowed_tools, label=policy_label)
+    if policy.restricted:
+        base_system_prompt = f"{base_system_prompt}\n{policy.prompt_section()}"
 
-    full_messages = [{"role": "system", "content": active_system_prompt}]
+    # Contatori del run, riportati alla UI e salvati con la sessione: senza
+    # misure, ogni intervento sull'harness resta un'impressione.
+    run_metrics: Dict[str, Any] = {
+        "turns": 0,
+        "generated_tokens": 0,
+        "tool_calls": 0,
+        "tool_failures": 0,
+        "tool_refusals": 0,
+        "started_at": time.time(),
+        "resumed": ripreso,
+    }
+
+    full_messages = [{"role": "system", "content": base_system_prompt}]
     for m in messages:
         if m.get("role") != "system":
             m_content = m.get("content", "")
@@ -1151,16 +1308,21 @@ def stream_admin_agent_turn(
 
     while current_turn < max_turns:
         if _cancelled():
+            _persist_session(session_id, ledger, model_name, run_metrics, status="cancelled")
             yield {"type": "cancelled", "reason": "Interrotto dall'utente."}
             return
         current_turn += 1
 
-        # Re-emit the distilled working state with the system prompt. This is
-        # the only copy of it the model gets: it replaces the old turns that
-        # trimming has thrown away.
-        state_block = ledger.render_state_block()
-        active_system_prompt = f"{base_system_prompt}\n\n{state_block}"
-        full_messages[0] = {"role": "system", "content": active_system_prompt}
+        # Re-emit the distilled working state. This is the only copy of it the
+        # model gets: it replaces the old turns that trimming has thrown away.
+        # Va in coda alla conversazione, non nel system prompt: il system
+        # prompt resta immutabile per tutto il run e diventa cosi' parte del
+        # prefisso KV riusabile invece di invalidarlo a ogni turno.
+        render_messages = _with_state_block(
+            full_messages,
+            ledger.render_state_block(),
+            STATE_TAIL_SUMMARISE if goal_reached else STATE_TAIL_ACT,
+        )
 
         accumulated_response = []
         in_think_block = False
@@ -1172,6 +1334,7 @@ def stream_admin_agent_turn(
         t_call_start = time.perf_counter()
 
         yield {"type": "turn_start", "turn": current_turn}
+        run_metrics["turns"] = current_turn
         if current_turn == 1:
             approx_tokens = sum(len(m.get("content", "")) for m in full_messages) // 4
             yield {
@@ -1180,6 +1343,19 @@ def stream_admin_agent_turn(
                 "context_limit": context_tokens,
                 "max_tokens": max_tokens,
             }
+            if ripreso:
+                yield {
+                    "type": "session_resumed",
+                    "session_id": session_id,
+                    "files_known": len(ledger.read_files),
+                    "commands_known": len(ledger.successful_commands),
+                }
+                yield {
+                    "type": "status",
+                    "text": (
+                        f"↺ Sessione ripresa: {len(ledger.read_files)} file gia noti"
+                    ),
+                }
             yield {"type": "status", "text": f"🧠 Preparazione e caricamento modello ({model_name or 'sigmaengine'})..."}
         else:
             yield {"type": "status", "text": "🔍 Sintesi e formattazione risposta..."}
@@ -1202,11 +1378,11 @@ def stream_admin_agent_turn(
 
             for chunk in sigma_engine.generate_stream(
                 prompt=last_user_prompt,
-                system_prompt=active_system_prompt,
+                system_prompt=base_system_prompt,
                 temperature=temperature,
                 max_tokens=max_tokens,
                 model_name=model_name or "sigmaengine",
-                messages=full_messages,
+                messages=render_messages,
                 params=turn_params,
                 thinking=thinking,
             ):
@@ -1216,6 +1392,7 @@ def stream_admin_agent_turn(
                         yield {"type": "status", "text": status_text}
 
                 if _cancelled():
+                    _persist_session(session_id, ledger, model_name, run_metrics, status="cancelled")
                     yield {"type": "cancelled", "reason": "Interrotto dall'utente."}
                     return
 
@@ -1291,6 +1468,7 @@ def stream_admin_agent_turn(
             pending_out = ""
 
         except Exception as e:
+            _persist_session(session_id, ledger, model_name, run_metrics, status="error")
             yield {"type": "error", "error": f"Errore inferenza: {str(e)}"}
             return
 
@@ -1455,6 +1633,7 @@ def stream_admin_agent_turn(
         # can be short-circuited instead of burning a turn on the same error.
         for t in tools_found:
             if _cancelled():
+                _persist_session(session_id, ledger, model_name, run_metrics, status="cancelled")
                 yield {"type": "cancelled", "reason": "Interrotto dall'utente."}
                 return
             t_name = t["tool"]
@@ -1465,6 +1644,28 @@ def stream_admin_agent_turn(
                 "tool": t_name,
                 "params": t_params
             }
+            run_metrics["tool_calls"] += 1
+
+            # Il permesso si verifica prima di ogni altro controllo: un tool
+            # che il ruolo non puo' usare non va nemmeno valutato per la sua
+            # utilita', e il rifiuto deve arrivare identico sia che la
+            # chiamata fosse sensata sia che non lo fosse.
+            if not policy.permits(t_name):
+                msg = policy.refusal(t_name)
+                run_metrics["tool_refusals"] += 1
+                yield {
+                    "type": "tool_denied",
+                    "tool": t_name,
+                    "reason": msg,
+                    "allowed": list(policy.visible_tools()),
+                }
+                yield {
+                    "type": "tool_result",
+                    "tool": t_name,
+                    "result": {"tool": t_name, "success": False, "error": msg},
+                }
+                tool_observations.append(msg + "\n")
+                continue
 
             # During a forced-action turn the only useful move is to write.
             # Refusing exploration outright is blunter than asking again, and
@@ -1654,9 +1855,15 @@ def stream_admin_agent_turn(
                     (t_name, json.dumps(t_params, sort_keys=True, default=str)[:400])
                 )
             if not result.get("success"):
+                run_metrics["tool_failures"] += 1
                 failed_call_signatures.add(
                     (t_name, json.dumps(t_params, sort_keys=True, default=str)[:600])
                 )
+
+            # Il ledger e' appena cambiato: e' il momento in cui vale la pena
+            # metterlo su disco. La frequenza la decide lo store, che rifiuta
+            # i salvataggi troppo ravvicinati.
+            _persist_session(session_id, ledger, model_name, run_metrics)
 
             yield {
                 "type": "tool_result",
@@ -1881,4 +2088,18 @@ def stream_admin_agent_turn(
         full_messages = trim_history(full_messages)
         last_user_prompt = observation_prompt
 
+    run_metrics["generated_tokens"] = total_generated_tokens
+    run_metrics["elapsed_s"] = round(time.time() - run_metrics["started_at"], 2)
+    run_metrics["ttft_ms"] = (
+        round((overall_first_token_time - t_turn_start) * 1000, 1)
+        if overall_first_token_time else None
+    )
+    run_metrics["goal_reached"] = goal_reached
+    run_metrics["exhausted_turns"] = current_turn >= max_turns and not goal_reached
+    _persist_session(
+        session_id, ledger, model_name, run_metrics,
+        status="done" if goal_reached else "stopped",
+    )
+
+    yield {"type": "run_metrics", **run_metrics}
     yield {"type": "done", "full_text": full_text}

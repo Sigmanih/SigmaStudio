@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { 
-  MessageSquare, Scroll, ExternalLink,
+  Home, MessageSquare, Scroll, ExternalLink,
   DownloadCloud, Layers, Cpu, ShieldCheck, Terminal, 
   ArrowRight, Sparkles, Zap, Wrench, Globe, CheckCircle2,
   RefreshCw, AlertCircle, Download, GitBranch, Check,
@@ -8,7 +8,6 @@ import {
 } from 'lucide-react';
 
 import { useApp } from '../contexts/AppContext';
-import TechSpaceCanvas from './common/TechSpaceCanvas';
 import SkillsShowcaseSlider from './SkillsShowcaseSlider';
 
 export default function WelcomeDashboard({ modules, openTab }) {
@@ -139,208 +138,59 @@ export default function WelcomeDashboard({ modules, openTab }) {
 
   return (
     <div className="wg-container" style={{ position: 'relative' }}>
-      {/* Canvas Sfondo Spaziale Animato */}
-      <TechSpaceCanvas isLight={isLight} />
-
-      {/* Hero Header Moderno */}
+      {/* Minimal Header in Stile Chat AI — Compatto e Senza Bottoni */}
       <div style={{
         position: 'relative',
-        zIndex: 1,
-        padding: '24px 32px',
-        borderBottom: isLight ? '1px solid rgba(234, 88, 12, 0.25)' : '1px solid rgba(0, 210, 255, 0.2)',
-        backgroundImage: isLight
-          ? 'linear-gradient(135deg, rgba(254, 252, 247, 0.88) 0%, rgba(248, 242, 232, 0.8) 100%), url("/images/hero_banner.jpg")'
-          : 'linear-gradient(135deg, rgba(10, 14, 26, 0.9) 0%, rgba(14, 22, 42, 0.85) 100%), url("/images/hero_banner.jpg")',
-        backgroundSize: 'cover',
-        backgroundPosition: 'center center',
+        zIndex: 2,
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        padding: '6px 14px',
+        borderBottom: isLight ? '1px solid rgba(0, 0, 0, 0.08)' : '1px solid rgba(255, 255, 255, 0.08)',
+        background: isLight ? 'rgba(255, 255, 255, 0.85)' : 'rgba(10, 14, 26, 0.75)',
+        backdropFilter: 'blur(10px)',
+        minHeight: '38px',
+        boxSizing: 'border-box',
         flexShrink: 0
       }}>
-        <div style={{
-          position: 'relative',
-          zIndex: 2,
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          flexWrap: 'wrap',
-          gap: '18px'
-        }}>
-          {/* Logo & Headline */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '18px', maxWidth: '750px' }}>
-            <div style={{
-              width: '54px',
-              height: '54px',
-              borderRadius: '16px',
-              overflow: 'hidden',
-              border: isLight ? '2px solid #ea580c' : '2px solid #00d2ff',
-              boxShadow: isLight ? '0 0 16px rgba(234, 88, 12, 0.3)' : '0 0 20px rgba(0, 210, 255, 0.4)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              background: '#0a0d14',
-              flexShrink: 0
-            }}>
-              <img 
-                src="/images/sigma_logo_harmonic_flow.jpg" 
-                alt="Sigma Logo" 
-                style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-                onError={(e) => { e.target.src = '/sigma_logo.jpg'; }}
-              />
-            </div>
-            <div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px', flexWrap: 'wrap' }}>
-                <span style={{
-                  fontSize: '0.68rem',
-                  fontWeight: 800,
-                  letterSpacing: '1px',
-                  textTransform: 'uppercase',
-                  padding: '2px 8px',
-                  borderRadius: '6px',
-                  background: 'linear-gradient(135deg, rgba(0, 210, 255, 0.2), rgba(168, 85, 247, 0.2))',
-                  color: '#00d2ff',
-                  border: '1px solid rgba(0, 210, 255, 0.4)'
-                }}>
-                  Σ v0.9.0 BETA • OPEN COMMUNITY RELEASE
-                </span>
-                <span style={{
-                  fontSize: '0.64rem',
-                  fontWeight: 700,
-                  padding: '2px 7px',
-                  borderRadius: '5px',
-                  background: 'rgba(63, 185, 80, 0.15)',
-                  color: '#3fb950',
-                  border: '1px solid rgba(63, 185, 80, 0.3)'
-                }}>
-                  {updateState.activeRolesCount} Ruoli Attivi
-                </span>
-              </div>
-              <h1 style={{
-                fontSize: '1.45rem',
-                fontWeight: 800,
-                color: titleColor,
-                margin: '0 0 4px 0',
-                letterSpacing: '-0.3px'
-              }}>
-                Sigma AI Studio
-              </h1>
-              <p style={{
-                fontSize: '0.82rem',
-                color: subtitleColor,
-                lineHeight: 1.4,
-                margin: 0
-              }}>
-                L'ambiente operativo per l'Intelligenza Artificiale locale, autonoma e modulare.
-              </p>
-            </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+          <div style={{
+            width: '22px', height: '22px', borderRadius: '6px',
+            background: isLight ? 'rgba(234, 88, 12, 0.15)' : 'rgba(0, 210, 255, 0.15)',
+            border: isLight ? '1px solid rgba(234, 88, 12, 0.3)' : '1px solid rgba(0, 210, 255, 0.3)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            color: isLight ? '#ea580c' : '#00d2ff'
+          }}>
+            <Home size={12} />
           </div>
+          <span style={{ fontSize: '0.80rem', fontWeight: 800, color: titleColor, letterSpacing: '0.2px' }}>
+            Sigma Studio Home
+          </span>
+          <span style={{ fontSize: '0.65rem', color: subtitleColor, paddingLeft: '2px' }}>
+            • v{updateState.currentVersion} • {updateState.activeRolesCount} Ruoli Attivi
+          </span>
+        </div>
 
-          {/* Azioni Rapide nell'Header */}
-          <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', alignItems: 'center' }}>
-            <button
-              onClick={() => openTab({ name: 'Chat' }, 'chat')}
-              style={{
-                padding: '9px 18px',
-                borderRadius: '10px',
-                background: isLight ? '#ea580c' : '#00d2ff',
-                border: 'none',
-                color: '#ffffff',
-                fontWeight: 700,
-                fontSize: '0.82rem',
-                cursor: 'pointer',
-                boxShadow: isLight ? '0 4px 14px rgba(234, 88, 12, 0.3)' : '0 4px 16px rgba(0, 210, 255, 0.35)',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '8px'
-              }}
-            >
-              💬 Chat
-            </button>
-
-            <button
-              onClick={() => openTab({ name: 'Modelli' }, 'model_hub')}
-              style={{
-                padding: '9px 15px',
-                borderRadius: '10px',
-                background: isLight ? '#ffffff' : 'rgba(255,255,255,0.06)',
-                border: isLight ? '1px solid rgba(190, 160, 110, 0.4)' : '1px solid rgba(255, 255, 255, 0.15)',
-                color: isLight ? '#111827' : '#ffffff',
-                fontWeight: 600,
-                fontSize: '0.82rem',
-                cursor: 'pointer',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '6px'
-              }}
-            >
-              ⚡ Modelli
-            </button>
-
-            <button
-              onClick={() => openTab({ name: 'Skills' }, 'marketplace')}
-              style={{
-                padding: '9px 15px',
-                borderRadius: '10px',
-                background: isLight ? '#ffffff' : 'rgba(255,255,255,0.06)',
-                border: isLight ? '1px solid rgba(190, 160, 110, 0.4)' : '1px solid rgba(255, 255, 255, 0.15)',
-                color: isLight ? '#111827' : '#ffffff',
-                fontWeight: 600,
-                fontSize: '0.82rem',
-                cursor: 'pointer',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '6px'
-              }}
-            >
-              📦 Hub Skills
-            </button>
-
-            <a
-              href="https://github.com/Sigmanih/SigmaStudio"
-              target="_blank"
-              rel="noreferrer"
-              style={{
-                padding: '9px 14px',
-                borderRadius: '10px',
-                background: isLight ? 'rgba(0,0,0,0.04)' : 'rgba(255,255,255,0.04)',
-                border: isLight ? '1px solid rgba(190, 160, 110, 0.3)' : '1px solid rgba(255, 255, 255, 0.1)',
-                color: isLight ? '#4b5563' : '#cbd5e1',
-                fontWeight: 600,
-                fontSize: '0.82rem',
-                textDecoration: 'none',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '6px'
-              }}
-            >
-              <ExternalLink size={14} />
-              GitHub
-            </a>
-          </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <span style={{
+            fontSize: '0.62rem',
+            padding: '2px 7px',
+            borderRadius: '4px',
+            background: updateState.updateAvailable ? 'rgba(250, 160, 60, 0.2)' : 'rgba(63, 185, 80, 0.15)',
+            color: updateState.updateAvailable ? '#faa03c' : '#3fb950',
+            border: `1px solid ${updateState.updateAvailable ? '#faa03c' : '#3fb950'}40`,
+            fontWeight: 700
+          }}>
+            {updateState.updateAvailable ? '⚡ Aggiornamento Disponibile' : '🟢 Sistema Online'}
+          </span>
         </div>
       </div>
 
       {/* Corpo Principale */}
-      <div style={{ padding: '20px 24px 28px 24px', display: 'flex', flexDirection: 'column', gap: '20px', flex: 1 }}>
+      <div className="welcome-content-body" style={{ padding: '20px 24px 28px 24px', display: 'flex', flexDirection: 'column', gap: '20px', flex: 1 }}>
         
         {/* ── ALERT DIRETTO GITHUB: AGGIORNAMENTI RELEASE & RUOLI ATTIVI ──────── */}
-        <div style={{
-          padding: '16px 20px',
-          borderRadius: '16px',
-          background: updateState.updateAvailable
-            ? (isLight ? 'linear-gradient(135deg, rgba(254, 243, 199, 0.95), rgba(254, 215, 170, 0.9))' : 'linear-gradient(135deg, rgba(30, 27, 75, 0.95), rgba(23, 37, 84, 0.95))')
-            : (isLight ? 'rgba(255, 255, 255, 0.9)' : 'rgba(12, 17, 29, 0.95)'),
-          border: updateState.updateAvailable
-            ? '1px solid rgba(250, 160, 60, 0.6)'
-            : '1px solid rgba(0, 210, 255, 0.25)',
-          boxShadow: updateState.updateAvailable
-            ? '0 6px 24px rgba(250, 160, 60, 0.2)'
-            : cardShadow,
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          flexWrap: 'wrap',
-          gap: '14px',
-          transition: 'all 0.2s ease'
-        }}>
+        <div className="welcome-update-card">
           {/* Left: Icon & Update Summary */}
           <div style={{ display: 'flex', alignItems: 'center', gap: '14px', minWidth: '280px', flex: 1 }}>
             <div style={{
@@ -430,7 +280,7 @@ export default function WelcomeDashboard({ modules, openTab }) {
           </div>
 
           {/* Right: Actions (Check, Download / Apply, GitHub Release) */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+          <div className="welcome-update-actions" style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
             {/* Manual Refresh Button */}
             <button
               onClick={() => checkForUpdates(true)}
@@ -585,18 +435,7 @@ export default function WelcomeDashboard({ modules, openTab }) {
         </div>
 
         {/* ── BACHECA DI BENVENUTO ALLA VERSIONE 0.9.0 & COMMUNITY RELEASE ──────── */}
-        <div style={{
-          padding: '28px 32px',
-          borderRadius: '20px',
-          background: isLight 
-            ? 'linear-gradient(135deg, #ffffff 0%, #faf8f5 100%)' 
-            : 'linear-gradient(135deg, rgba(17, 21, 34, 0.96) 0%, rgba(11, 14, 23, 0.98) 100%)',
-          border: cardBorder,
-          boxShadow: cardShadow,
-          display: 'flex',
-          flexDirection: 'column',
-          gap: '24px'
-        }}>
+        <div className="welcome-main-card">
           {/* Header del Benvenuto */}
           <div>
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px', flexWrap: 'wrap' }}>
@@ -650,21 +489,9 @@ export default function WelcomeDashboard({ modules, openTab }) {
           </div>
 
           {/* I 4 Pilastri del Sistema Sintetizzati ed Enfatici */}
-          <div style={{
-            display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))',
-            gap: '16px'
-          }}>
+          <div className="welcome-pillars-grid">
             {/* Pilastro 1: SigmaEngine & Download Modelli */}
-            <div style={{
-              padding: '18px 20px',
-              borderRadius: '14px',
-              background: isLight ? 'rgba(0, 210, 255, 0.04)' : 'rgba(0, 210, 255, 0.03)',
-              border: isLight ? '1px solid rgba(0, 210, 255, 0.25)' : '1px solid rgba(0, 210, 255, 0.15)',
-              display: 'flex',
-              flexDirection: 'column',
-              gap: '10px'
-            }}>
+            <div className="welcome-pillar-card">
               <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                 <div style={{
                   width: '36px', height: '36px', borderRadius: '10px',
@@ -688,15 +515,7 @@ export default function WelcomeDashboard({ modules, openTab }) {
             </div>
 
             {/* Pilastro 2: Manifesti & Ruoli Specialistici */}
-            <div style={{
-              padding: '18px 20px',
-              borderRadius: '14px',
-              background: isLight ? 'rgba(188, 140, 255, 0.04)' : 'rgba(188, 140, 255, 0.03)',
-              border: isLight ? '1px solid rgba(188, 140, 255, 0.25)' : '1px solid rgba(188, 140, 255, 0.15)',
-              display: 'flex',
-              flexDirection: 'column',
-              gap: '10px'
-            }}>
+            <div className="welcome-pillar-card">
               <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                 <div style={{
                   width: '36px', height: '36px', borderRadius: '10px',
@@ -720,15 +539,7 @@ export default function WelcomeDashboard({ modules, openTab }) {
             </div>
 
             {/* Pilastro 3: Protocollo MCP & Automazione */}
-            <div style={{
-              padding: '18px 20px',
-              borderRadius: '14px',
-              background: isLight ? 'rgba(255, 80, 100, 0.04)' : 'rgba(255, 80, 100, 0.03)',
-              border: isLight ? '1px solid rgba(255, 80, 100, 0.25)' : '1px solid rgba(255, 80, 100, 0.15)',
-              display: 'flex',
-              flexDirection: 'column',
-              gap: '10px'
-            }}>
+            <div className="welcome-pillar-card">
               <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                 <div style={{
                   width: '36px', height: '36px', borderRadius: '10px',
@@ -752,15 +563,7 @@ export default function WelcomeDashboard({ modules, openTab }) {
             </div>
 
             {/* Pilastro 4: Hub Skills & Estensioni da GitHub */}
-            <div style={{
-              padding: '18px 20px',
-              borderRadius: '14px',
-              background: isLight ? 'rgba(63, 185, 80, 0.04)' : 'rgba(63, 185, 80, 0.03)',
-              border: isLight ? '1px solid rgba(63, 185, 80, 0.25)' : '1px solid rgba(63, 185, 80, 0.15)',
-              display: 'flex',
-              flexDirection: 'column',
-              gap: '10px'
-            }}>
+            <div className="welcome-pillar-card">
               <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                 <div style={{
                   width: '36px', height: '36px', borderRadius: '10px',
@@ -785,17 +588,7 @@ export default function WelcomeDashboard({ modules, openTab }) {
           </div>
 
           {/* Quick Guide: Come iniziare */}
-          <div style={{
-            padding: '16px 20px',
-            borderRadius: '12px',
-            background: isLight ? 'rgba(0,0,0,0.03)' : 'rgba(255,255,255,0.03)',
-            border: isLight ? '1px solid rgba(190, 160, 110, 0.25)' : '1px solid rgba(255, 255, 255, 0.06)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            flexWrap: 'wrap',
-            gap: '14px'
-          }}>
+          <div className="welcome-guide-card">
             <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
               <Sparkles size={20} color={isLight ? '#c2410c' : '#00d2ff'} />
               <div>
@@ -808,7 +601,7 @@ export default function WelcomeDashboard({ modules, openTab }) {
               </div>
             </div>
 
-            <div style={{ display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap' }}>
+            <div className="welcome-guide-buttons" style={{ display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap' }}>
               <button
                 onClick={() => openTab({ name: 'Chat' }, 'chat')}
                 style={{

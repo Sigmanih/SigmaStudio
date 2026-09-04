@@ -8,6 +8,7 @@ import {
 } from 'lucide-react';
 import { useApp } from '../../contexts/AppContext';
 import TechSpaceCanvas from '../common/TechSpaceCanvas';
+import TabHeader from '../common/TabHeader';
 
 const CUSTOM_NAMES_KEY = 'domotica_custom_names';
 
@@ -596,86 +597,46 @@ export default function DomoticaTab() {
       }}>
       <TechSpaceCanvas isLight={theme === 'light'} />
 
-      {/* Hero Visual Banner with Generated Graphic Backdrop */}
-      <div style={{
-        position: 'relative',
-        borderRadius: 0,
-        overflow: 'hidden',
-        padding: '24px 32px',
-        minHeight: '110px',
-        borderBottom: isThemeLight ? '1px solid rgba(234, 88, 12, 0.35)' : '1px solid rgba(0, 210, 255, 0.25)',
-        boxShadow: isThemeLight ? '0 8px 24px rgba(234, 88, 12, 0.08)' : '0 8px 32px rgba(0,0,0,0.4)',
-        backgroundImage: isThemeLight
-          ? 'linear-gradient(135deg, rgba(254, 252, 247, 0.76) 0%, rgba(248, 242, 232, 0.70) 100%), url("/images/domotica_smart_hub.jpg")'
-          : 'linear-gradient(135deg, rgba(10, 14, 26, 0.85) 0%, rgba(14, 22, 42, 0.80) 100%), url("/images/domotica_smart_hub.jpg")',
-        backgroundSize: 'cover',
-        backgroundRepeat: 'no-repeat',
-        backgroundPosition: 'center center',
-        flexShrink: 0
-      }}>
-        <div style={{ position: 'relative', zIndex: 2, display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '16px' }}>
-          <div style={{ maxWidth: '680px' }}>
+      {/* Unified Kernel Tab Header */}
+      <TabHeader
+        badge="MCP HOME ASSISTANT BUS & SMART DOMOTICA ENGINE"
+        badgeIcon={Zap}
+        icon={Home}
+        title="Controllo Domotico IoT & "
+        highlight="Gestione Dispositivi Reali"
+        description="Scansiona, cerca e controlla in tempo reale luci, climatizzazione, sensori e serrature della tua abitazione o laboratorio."
+        bannerImage="/images/domotica_smart_hub.jpg"
+        actions={
+          <>
             <div style={{
-              display: 'inline-flex', alignItems: 'center', gap: '6px',
-              padding: '3px 12px', borderRadius: '14px',
-              background: isThemeLight ? 'rgba(234, 88, 12, 0.12)' : 'rgba(0, 210, 255, 0.15)', 
-              border: isThemeLight ? '1px solid rgba(234, 88, 12, 0.35)' : '1px solid rgba(0, 210, 255, 0.35)',
-              color: isThemeLight ? '#ea580c' : '#00d2ff', 
-              fontSize: '0.68rem', fontWeight: 800, letterSpacing: '1px', textTransform: 'uppercase', marginBottom: '6px'
-            }}>
-              <Zap size={14} /> MCP Home Assistant Bus & Smart Domotica Engine
-            </div>
-            <h1 style={{ margin: '0 0 6px 0', fontSize: '1.4rem', fontWeight: 800, color: isThemeLight ? '#111111' : '#fff', letterSpacing: '-0.3px', textShadow: 'none' }}>
-              Controllo Domotico IoT & <span style={{
-                color: isThemeLight ? '#c2410c' : '#00d2ff',
-                fontWeight: 800
-              }}>Gestione Dispositivi Reali</span>
-            </h1>
-            <p style={{ margin: 0, fontSize: '0.82rem', color: isThemeLight ? '#4b5563' : '#cbd5e0', lineHeight: 1.45 }}>
-              Scansiona, cerca e controlla in tempo reale luci, climatizzazione, sensori e serrature della tua abitazione o laboratorio.
-            </p>
-          </div>
-
-          <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
-            <div style={{
-              padding: '8px 16px', borderRadius: '20px',
+              padding: '6px 14px', borderRadius: '16px',
               background: isConfigured ? 'rgba(63, 185, 80, 0.15)' : 'rgba(210, 153, 34, 0.15)',
               border: `1px solid ${isConfigured ? 'rgba(63, 185, 80, 0.4)' : 'rgba(210, 153, 34, 0.4)'}`,
-              color: isConfigured ? '#3fb950' : '#d29922', fontSize: '0.78rem', fontWeight: 800,
+              color: isConfigured ? '#3fb950' : '#d29922', fontSize: '0.74rem', fontWeight: 800,
               display: 'flex', alignItems: 'center', gap: '8px'
             }}>
-              <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: isConfigured ? '#3fb950' : '#d29922', boxShadow: `0 0 10px ${isConfigured ? '#3fb950' : '#d29922'}` }} />
-              {isConfigured ? `Home Assistant Connesso (${devices.length} Entità)` : 'HA Non Connesso'}
+              <span style={{ width: '7px', height: '7px', borderRadius: '50%', background: isConfigured ? '#3fb950' : '#d29922', boxShadow: `0 0 8px ${isConfigured ? '#3fb950' : '#d29922'}` }} />
+              <span>{isConfigured ? `HA Connesso (${devices.length})` : 'HA Non Connesso'}</span>
             </div>
 
             <button
               onClick={() => { setTestStatus(null); setShowConfigModal(true); }}
-              style={{
-                padding: '10px 16px', borderRadius: '12px',
-                background: 'rgba(0, 210, 255, 0.12)', border: '1px solid rgba(0, 210, 255, 0.35)',
-                color: '#00d2ff', fontSize: '0.82rem', fontWeight: 800, cursor: 'pointer',
-                display: 'flex', alignItems: 'center', gap: '6px'
-              }}
+              className="sigma-tab-btn sigma-tab-btn-ghost"
             >
-              <Key size={15} /> Configura Token HA
+              <Key size={14} /> <span>Configura Token HA</span>
             </button>
 
             <button
               onClick={fetchHaEntities}
               disabled={loading}
-              style={{
-                padding: '10px 18px', borderRadius: '12px',
-                background: 'linear-gradient(135deg, #00d2ff, #7c5bf0)', border: 'none',
-                color: '#fff', fontSize: '0.82rem', fontWeight: 800, cursor: 'pointer',
-                display: 'flex', alignItems: 'center', gap: '6px', boxShadow: '0 4px 16px rgba(0, 210, 255, 0.25)'
-              }}
+              className="sigma-tab-btn sigma-tab-btn-primary"
             >
-              <RefreshCw size={15} className={loading ? 'spin' : ''} />
-              {loading ? 'Scansione in corso...' : '🔍 Rileva Nuovi Dispositivi'}
+              <RefreshCw size={14} className={loading ? 'spin' : ''} />
+              <span>{loading ? 'Scansione...' : '🔍 Rileva Dispositivi'}</span>
             </button>
-          </div>
-        </div>
-      </div>
+          </>
+        }
+      />
 
       {/* Main Workspace Body */}
       <div style={{ padding: '32px', flex: 1, maxWidth: '1440px', width: '100%', margin: '0 auto', boxSizing: 'border-box' }}>

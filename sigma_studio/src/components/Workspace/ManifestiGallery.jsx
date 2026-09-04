@@ -9,6 +9,7 @@ import {
   Trash2, UserCheck, Star, Eye, ScrollText
 } from 'lucide-react';
 import { useApp } from '../../contexts/AppContext';
+import TabHeader from '../common/TabHeader';
 
 // ==============================================================================
 // Icon Mapper for Dynamic Role Icons
@@ -30,7 +31,28 @@ export default function ManifestiGallery({
   const isLight = theme === 'light';
 
   // Main View Tab: 'installed' | 'hub'
-  const [activeGalleryView, setActiveGalleryView] = useState('installed');
+  const [activeGalleryView, setActiveGalleryView] = useState(() => {
+    try {
+      return localStorage.getItem('sigma_manifesti_active_subtab') || 'installed';
+    } catch {
+      return 'installed';
+    }
+  });
+
+  useEffect(() => {
+    const handleSetTab = (e) => {
+      if (e?.detail) setActiveGalleryView(e.detail);
+    };
+    window.addEventListener('sigma-manifesti-set-tab', handleSetTab);
+    return () => window.removeEventListener('sigma-manifesti-set-tab', handleSetTab);
+  }, []);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('sigma_manifesti_active_subtab', activeGalleryView);
+    } catch {}
+    window.dispatchEvent(new CustomEvent('sigma-manifesti-tab-changed', { detail: activeGalleryView }));
+  }, [activeGalleryView]);
 
   // Installed Roles State
   const [manifestiList, setManifestiList] = useState(initialManifesti);
@@ -456,138 +478,39 @@ Creato per l'ecosistema sovrano Sigma AI Studio.
       color: textPrimary,
       overflowY: 'auto'
     }}>
-      {/* ── HEADER MODERNO: RUOLI AI & PROFESSIONI SPECIALISTICHE ──────── */}
-      <div style={{
-        position: 'relative',
-        padding: '24px 32px',
-        background: isLight
-          ? 'linear-gradient(135deg, rgba(255, 255, 255, 0.92) 0%, rgba(241, 245, 249, 0.88) 100%), url("/images/sigma_logo_harmonic_flow.jpg")'
-          : 'linear-gradient(135deg, rgba(10, 14, 26, 0.92) 0%, rgba(14, 22, 42, 0.88) 100%), url("/images/sigma_logo_harmonic_flow.jpg")',
-        backgroundSize: 'cover',
-        backgroundPosition: 'center',
-        borderBottom: isLight ? '1px solid rgba(234, 88, 12, 0.35)' : '1px solid rgba(0, 210, 255, 0.25)',
-        boxShadow: isLight ? '0 8px 24px rgba(234, 88, 12, 0.08)' : '0 8px 32px rgba(0,0,0,0.4)',
-        flexShrink: 0
-      }}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '18px' }}>
-          <div>
-            <div style={{
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: '6px',
-              padding: '3px 12px',
-              borderRadius: '14px',
-              background: isLight ? 'rgba(234, 88, 12, 0.12)' : 'rgba(0, 210, 255, 0.15)',
-              border: isLight ? '1px solid rgba(234, 88, 12, 0.35)' : '1px solid rgba(0, 210, 255, 0.4)',
-              color: isLight ? '#c2410c' : '#00d2ff',
-              fontSize: '0.68rem',
-              fontWeight: 800,
-              letterSpacing: '1px',
-              textTransform: 'uppercase',
-              marginBottom: '6px'
-            }}>
-              <Brain size={14} /> Σ RUOLI AI & PROFILI COGNITIVI SPECIALISTICI
-            </div>
-            <h1 style={{ fontSize: '1.45rem', fontWeight: 800, margin: '0 0 6px 0', color: textPrimary, letterSpacing: '-0.3px' }}>
-              Catalogo <span style={{ color: isLight ? '#ea580c' : '#00d2ff', fontWeight: 800 }}>Ruoli AI & Professioni Specialistiche</span>
-            </h1>
-            <p style={{ fontSize: '0.82rem', color: textSecondary, maxWidth: '850px', lineHeight: 1.45, margin: 0 }}>
-              I Ruoli AI applicano direttive deontologiche, competenze e parametri di campionamento al motore <strong style={{ color: textPrimary }}>sigma</strong>, trasformando l'assistente in uno specialista verticale per codice, ingegneria, medicina, matematica e ricerca senza riaddestramento.
-            </p>
-          </div>
-
-          <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', alignItems: 'center' }}>
+      {/* ── UNIFIED KERNEL TAB HEADER ──────── */}
+      <TabHeader
+        badge="Σ RUOLI AI & PROFILI COGNITIVI SPECIALISTICI"
+        badgeIcon={Brain}
+        icon={activeGalleryView === 'installed' ? UserCheck : Globe}
+        title="Ruoli AI / "
+        highlight={activeGalleryView === 'installed' ? `Ruoli Attivi nel Kernel (${manifestiList.length})` : 'Hub Professioni & Community'}
+        description={
+          activeGalleryView === 'installed'
+            ? "I Ruoli AI applicano direttive deontologiche, competenze e parametri di campionamento al motore sigma, trasformando l'assistente in uno specialista verticale."
+            : "Esplora, importa e sincronizza ruoli AI specializzati creati dalla community direttamente da GitHub."
+        }
+        bannerImage="/images/manifesti_gallery_banner.jpg"
+        actions={
+          <>
             <button
               onClick={() => setNewManifestoModalOpen(true)}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: '8px',
-                padding: '9px 18px',
-                borderRadius: '10px',
-                background: isLight
-                  ? 'linear-gradient(135deg, #ea580c 0%, #d97706 100%)'
-                  : 'linear-gradient(135deg, #00d2ff 0%, #0077ff 100%)',
-                border: 'none',
-                color: '#fff',
-                fontWeight: 800,
-                fontSize: '0.82rem',
-                cursor: 'pointer',
-                boxShadow: isLight ? '0 4px 14px rgba(234, 88, 12, 0.25)' : '0 4px 16px rgba(0, 210, 255, 0.3)',
-                transition: 'all 0.15s ease'
-              }}
+              className="sigma-tab-btn sigma-tab-btn-primary"
             >
-              <Plus size={15} /> Nuovo Ruolo AI
+              <Plus size={14} /> <span>Nuovo Ruolo AI</span>
             </button>
 
             <button
               onClick={() => { loadManifesti(); loadHubCatalog(); }}
               title="Ricarica Ruoli dal Kernel e da GitHub"
-              style={{
-                padding: '9px 12px',
-                borderRadius: '10px',
-                background: isLight ? '#ffffff' : 'rgba(255, 255, 255, 0.06)',
-                border: isLight ? '1px solid rgba(226, 232, 240, 0.9)' : '1px solid rgba(255, 255, 255, 0.15)',
-                color: textPrimary,
-                fontSize: '0.78rem',
-                fontWeight: 700,
-                cursor: 'pointer',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '6px'
-              }}
+              className="sigma-tab-btn sigma-tab-btn-ghost"
             >
               <RefreshCw size={14} className={(loading || loadingHub) ? 'spin' : ''} />
               <span>Ricarica</span>
             </button>
-          </div>
-        </div>
-
-        {/* View Switcher Tabs (Installed vs Hub) */}
-        <div style={{ display: 'flex', gap: '10px', marginTop: '20px', flexWrap: 'wrap' }}>
-          <button
-            onClick={() => setActiveGalleryView('installed')}
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: '8px',
-              padding: '9px 18px',
-              borderRadius: '10px',
-              background: activeGalleryView === 'installed' ? accentColor : (isLight ? '#ffffff' : 'rgba(255,255,255,0.06)'),
-              color: activeGalleryView === 'installed' ? '#fff' : textPrimary,
-              border: activeGalleryView === 'installed' ? `1px solid ${accentColor}` : (isLight ? '1px solid rgba(226, 232, 240, 0.9)' : '1px solid rgba(255,255,255,0.1)'),
-              fontWeight: 800,
-              fontSize: '0.82rem',
-              cursor: 'pointer',
-              boxShadow: activeGalleryView === 'installed' ? '0 4px 14px rgba(234, 88, 12, 0.25)' : 'none',
-              transition: 'all 0.15s ease'
-            }}
-          >
-            <UserCheck size={16} /> Ruoli Attivi nel Kernel ({manifestiList.length})
-          </button>
-
-          <button
-            onClick={() => setActiveGalleryView('hub')}
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: '8px',
-              padding: '9px 18px',
-              borderRadius: '10px',
-              background: activeGalleryView === 'hub' ? (isLight ? '#7c3aed' : '#a855f7') : (isLight ? '#ffffff' : 'rgba(255,255,255,0.06)'),
-              color: activeGalleryView === 'hub' ? '#fff' : textPrimary,
-              border: activeGalleryView === 'hub' ? `1px solid ${isLight ? '#7c3aed' : '#a855f7'}` : (isLight ? '1px solid rgba(226, 232, 240, 0.9)' : '1px solid rgba(255,255,255,0.1)'),
-              fontWeight: 800,
-              fontSize: '0.82rem',
-              cursor: 'pointer',
-              boxShadow: activeGalleryView === 'hub' ? '0 4px 14px rgba(168, 85, 247, 0.25)' : 'none',
-              transition: 'all 0.15s ease'
-            }}
-          >
-            <Globe size={16} /> Hub Professioni & Community (GitHub)
-          </button>
-        </div>
-      </div>
+          </>
+        }
+      />
 
       {/* ── CORPO PRINCIPALE IN DUAL-PANE LAYOUT ──────── */}
       <div style={{ padding: '20px 24px', width: '100%', boxSizing: 'border-box', flex: 1 }}>

@@ -139,19 +139,19 @@ export default function ChatInput({
             <div style={{ display: 'flex', alignItems: 'center', gap: '6px', position: 'relative' }}>
               <label 
                 className={`chat-speaker-toggle ${speakerEnabled ? 'active' : ''}`} 
-                title={speakerEnabled ? 'Speaker Agente Attivo: la voce dell\'agente riproduce la risposta' : 'Attiva lettura vocale della risposta dell\'agente (TTS)'}
+                title={speakerEnabled ? 'Speaker Agente: ON (Voce attiva - Clicca per disattivare)' : 'Speaker Agente: OFF (Clicca per attivare la lettura vocale TTS)'}
                 style={{
-                  display: 'flex',
+                  display: 'inline-flex',
                   alignItems: 'center',
-                  gap: '5px',
-                  fontSize: '0.68rem',
+                  justifyContent: 'center',
+                  width: '28px',
+                  height: '24px',
                   color: speakerEnabled ? '#00d2ff' : '#8b8fa3',
-                  background: speakerEnabled ? 'rgba(0, 210, 255, 0.12)' : 'rgba(255, 255, 255, 0.03)',
-                  border: speakerEnabled ? '1px solid rgba(0, 210, 255, 0.3)' : '1px solid rgba(255, 255, 255, 0.08)',
-                  padding: '3px 8px',
-                  borderRadius: '10px',
+                  background: speakerEnabled ? 'rgba(0, 210, 255, 0.16)' : 'rgba(255, 255, 255, 0.04)',
+                  border: speakerEnabled ? '1px solid rgba(0, 210, 255, 0.45)' : '1px solid rgba(255, 255, 255, 0.08)',
+                  boxShadow: speakerEnabled ? '0 0 10px rgba(0, 210, 255, 0.35)' : 'none',
+                  borderRadius: '7px',
                   cursor: 'pointer',
-                  fontWeight: 600,
                   transition: 'all 0.2s ease',
                 }}
               >
@@ -161,9 +161,8 @@ export default function ChatInput({
                   onChange={e => setSpeakerEnabled(e.target.checked)} 
                   style={{ display: 'none' }}
                 />
-              {speakerEnabled ? <Volume2 size={13} style={{ color: '#00d2ff' }} /> : <VolumeX size={13} style={{ color: '#5a5e72' }} />}
-              <span>Speaker Agente: {speakerEnabled ? 'ON' : 'OFF'}</span>
-            </label>
+                {speakerEnabled ? <Volume2 size={13} style={{ color: '#00d2ff' }} /> : <VolumeX size={13} style={{ color: '#64748b' }} />}
+              </label>
 
             {/* Volume Slider accanto al pulsante Speaker Agente */}
             {speakerEnabled && (
@@ -337,44 +336,38 @@ export default function ChatInput({
             : {}
           }
         />
-        {onToggleRecording && (
-          <button 
-            className={`chat-attach-inline-btn ${isRecording ? 'recording' : ''}`} 
-            onClick={onToggleRecording} 
-            title={isRecording ? 'Interrompi registrazione comando vocale' : 'Registra comando vocale (STT)'}
-            style={{
-              color: isRecording ? '#ff5555' : 'var(--text-muted)',
-              background: isRecording ? 'rgba(255, 85, 85, 0.15)' : 'transparent',
-              borderColor: isRecording ? 'rgba(255, 85, 85, 0.4)' : 'transparent',
-              animation: isRecording ? 'pulseMic 1.2s infinite' : 'none'
-            }}
-          >
-            {isRecording ? <MicOff size={14} /> : <Mic size={14} />}
-          </button>
-        )}
-        {onToggleSmartMic && (
+        {(onToggleSmartMic || onToggleRecording) && (
           <button
-            className={`chat-attach-inline-btn ${smartMicState !== 'off' ? 'recording' : ''}`}
-            onClick={onToggleSmartMic}
+            className={`chat-attach-inline-btn ${smartMicState !== 'off' || isRecording ? 'recording' : ''}`}
+            onClick={onToggleSmartMic || onToggleRecording}
             title={
-              smartMicState === 'listening' ? 'Ti sto ascoltando — invio automatico dopo 2 secondi di silenzio'
-              : smartMicState === 'waiting' ? '✨ Microfono intelligente attivo — Pronuncia "Sigma" ed inizia a fare la tua domanda'
-              : '✨ Microfono intelligente: Pronuncia "Sigma" ed inizia a fare la tua domanda'
+              smartMicState === 'listening'
+                ? '🎤 Ti sto ascoltando... Parla adesso (invio automatico al termine)'
+                : smartMicState === 'waiting'
+                ? '✨ Microfono in ascolto: pronuncia "Sigma" ed inizia a fare la tua domanda'
+                : 'Attiva microfono vocale (risponde ed ascolta pronunciando "Sigma")'
             }
             style={{
-              color: smartMicState === 'listening' ? '#4ade80'
+              color: smartMicState === 'listening' ? '#22c55e'
                 : smartMicState === 'waiting' ? '#00d2ff'
-                : 'var(--text-muted)',
-              background: smartMicState === 'listening' ? 'rgba(74, 222, 128, 0.15)'
-                : smartMicState === 'waiting' ? 'rgba(0, 210, 255, 0.12)'
+                : 'var(--text-muted, #8b8fa3)',
+              background: smartMicState === 'listening' ? 'rgba(34, 197, 94, 0.18)'
+                : smartMicState === 'waiting' ? 'rgba(0, 210, 255, 0.15)'
                 : 'transparent',
-              borderColor: smartMicState === 'listening' ? 'rgba(74, 222, 128, 0.4)'
-                : smartMicState === 'waiting' ? 'rgba(0, 210, 255, 0.35)'
+              borderColor: smartMicState === 'listening' ? 'rgba(34, 197, 94, 0.5)'
+                : smartMicState === 'waiting' ? 'rgba(0, 210, 255, 0.4)'
                 : 'transparent',
+              boxShadow: smartMicState === 'listening' ? '0 0 12px rgba(34, 197, 94, 0.4)'
+                : smartMicState === 'waiting' ? '0 0 12px rgba(0, 210, 255, 0.35)'
+                : 'none',
               animation: smartMicState === 'listening' ? 'pulseMic 1.2s infinite' : 'none'
             }}
           >
-            <AudioLines size={14} />
+            {smartMicState === 'listening' || smartMicState === 'waiting' || isRecording ? (
+              <Mic size={15} />
+            ) : (
+              <MicOff size={15} />
+            )}
           </button>
         )}
         <button className="chat-attach-inline-btn" onClick={onOpenFilePicker} title="Allega file">

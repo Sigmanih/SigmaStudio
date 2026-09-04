@@ -8,6 +8,7 @@ import {
 } from 'lucide-react';
 
 import { useApp } from '../contexts/AppContext';
+import TabHeader from './common/TabHeader';
 
 // ==============================================================================
 // Built-in Kernel Modules Data
@@ -354,7 +355,29 @@ export default function MarketplaceTab({ openTab }) {
   const isLight = theme === 'light';
 
   // Active View Tab: 'installed' | 'remote'
-  const [activeSubTab, setActiveSubTab] = useState('installed');
+  const [activeSubTab, setActiveSubTab] = useState(() => {
+    try {
+      return localStorage.getItem('sigma_marketplace_active_subtab') || 'installed';
+    } catch {
+      return 'installed';
+    }
+  });
+
+  useEffect(() => {
+    const handleSetTab = (e) => {
+      if (e?.detail) setActiveSubTab(e.detail);
+    };
+    window.addEventListener('sigma-marketplace-set-tab', handleSetTab);
+    return () => window.removeEventListener('sigma-marketplace-set-tab', handleSetTab);
+  }, []);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('sigma_marketplace_active_subtab', activeSubTab);
+    } catch {}
+    window.dispatchEvent(new CustomEvent('sigma-marketplace-tab-changed', { detail: activeSubTab }));
+  }, [activeSubTab]);
+
   const [search, setSearch] = useState('');
   const [installingId, setInstallingId] = useState(null);
   const [uninstallingId, setUninstallingId] = useState(null);
@@ -576,120 +599,31 @@ export default function MarketplaceTab({ openTab }) {
       overflowY: 'auto',
       padding: '0'
     }}>
-      {/* Hero Visual Header with Standardized Color Coding & Dimensions */}
-      <div style={{
-        position: 'relative',
-        padding: '24px 32px',
-        minHeight: '110px',
-        background: isLight 
-          ? 'linear-gradient(135deg, rgba(254, 252, 247, 0.76) 0%, rgba(248, 242, 232, 0.70) 100%), url("/images/sigma_logo_harmonic_flow.jpg")'
-          : 'linear-gradient(135deg, rgba(10, 14, 26, 0.85) 0%, rgba(14, 22, 42, 0.80) 100%), url("/images/sigma_logo_harmonic_flow.jpg")',
-        backgroundSize: 'cover',
-        backgroundPosition: 'center',
-        borderBottom: isLight ? '1px solid rgba(234, 88, 12, 0.35)' : '1px solid rgba(0, 210, 255, 0.25)',
-        boxShadow: isLight ? '0 8px 24px rgba(234, 88, 12, 0.08)' : '0 8px 32px rgba(0,0,0,0.4)',
-        flexShrink: 0
-      }}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '20px' }}>
-          <div>
-            <div style={{
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: '6px',
-              padding: '3px 12px',
-              borderRadius: '14px',
-              background: isLight ? 'rgba(234, 88, 12, 0.12)' : 'rgba(0, 210, 255, 0.15)',
-              border: isLight ? '1px solid rgba(234, 88, 12, 0.35)' : '1px solid rgba(0, 210, 255, 0.4)',
-              color: accentColor,
-              fontSize: '0.68rem',
-              fontWeight: 800,
-              letterSpacing: '1px',
-              textTransform: 'uppercase',
-              marginBottom: '6px'
-            }}>
-              <Package size={14} /> Σ HUB SKILLS & ESTENSIONI KERNEL
-            </div>
-            <h1 style={{ fontSize: '1.4rem', fontWeight: 800, margin: '0 0 6px 0', color: textPrimary, letterSpacing: '-0.3px', textShadow: 'none' }}>
-              Architettura Modulare a <span style={{
-                color: isLight ? '#c2410c' : '#00d2ff',
-                fontWeight: 800
-              }}>Skills, Kernel & Plug-in</span>
-            </h1>
-            <p style={{ fontSize: '0.82rem', color: textSecondary, maxWidth: '750px', lineHeight: 1.45, margin: 0 }}>
-              Sigma Studio opera come un <strong>Kernel Cognitivo modulare</strong>. Ogni skill e funzionalità avanzata (Creative Lab, Pipelines, Training Lab, Domotica, Voice Studio) è un modulo indipendente collegabile a caldo o installabile da repository Git esterni.
-            </p>
-          </div>
-
-          {/* Quick Actions */}
-          <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
-            <button
-              onClick={handleTriggerRebuild}
-              disabled={isRebuilding}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: '8px',
-                padding: '10px 18px',
-                borderRadius: '12px',
-                background: isLight ? 'rgba(234, 88, 12, 0.12)' : 'rgba(0, 210, 255, 0.15)',
-                border: isLight ? '1px solid rgba(234, 88, 12, 0.45)' : '1px solid rgba(0, 210, 255, 0.5)',
-                color: accentColor,
-                fontWeight: 700,
-                fontSize: '0.85rem',
-                cursor: isRebuilding ? 'not-allowed' : 'pointer',
-                boxShadow: isLight ? '0 4px 14px rgba(234, 88, 12, 0.15)' : '0 4px 16px rgba(0, 210, 255, 0.2)',
-                transition: 'all 0.2s ease'
-              }}
-            >
-              <RefreshCw size={16} className={isRebuilding ? 'animate-spin' : ''} />
-              <span>{isRebuilding ? 'Ricompilazione in corso...' : 'Rebuild / Aggiorna Bundle'}</span>
-            </button>
-          </div>
-        </div>
-
-        {/* View Switcher Tabs */}
-        <div style={{ display: 'flex', gap: '12px', marginTop: '24px' }}>
+      {/* Unified Kernel Tab Header */}
+      <TabHeader
+        badge="Σ HUB SKILLS & ESTENSIONI KERNEL"
+        badgeIcon={Package}
+        icon={activeSubTab === 'installed' ? Cpu : Sparkles}
+        title="Skills & Moduli / "
+        highlight={activeSubTab === 'installed' ? `Moduli Installati (${installedCount})` : `Catalogo Moduli (${filteredAvailableToInstall.length})`}
+        description={
+          activeSubTab === 'installed'
+            ? 'Visualizza e gestisci i moduli nativi integrati nel kernel e le estensioni opzionali attive.'
+            : 'Esplora e installa nuovi moduli e funzionalità aggiuntive direttamente da repository Git esterni.'
+        }
+        bannerImage="/images/sigma_logo_harmonic_flow.jpg"
+        actions={
           <button
-            onClick={() => setActiveSubTab('installed')}
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: '8px',
-              padding: '10px 20px',
-              borderRadius: '12px',
-              background: activeSubTab === 'installed' ? accentColor : (isLight ? 'rgba(190, 160, 110, 0.12)' : 'rgba(255,255,255,0.06)'),
-              color: activeSubTab === 'installed' ? (isLight ? '#fff' : '#0a0d14') : textPrimary,
-              border: activeSubTab === 'installed' ? `1px solid ${accentColor}` : (isLight ? '1px solid rgba(190, 160, 110, 0.3)' : '1px solid rgba(255,255,255,0.1)'),
-              fontWeight: 800,
-              fontSize: '0.85rem',
-              cursor: 'pointer',
-              transition: 'all 0.2s ease'
-            }}
+            onClick={handleTriggerRebuild}
+            disabled={isRebuilding}
+            className="sigma-tab-btn sigma-tab-btn-primary"
+            title="Esegui rebuild del frontend di Sigma Studio"
           >
-            <Cpu size={16} /> Moduli Installati ({installedCount})
+            <RefreshCw size={15} className={isRebuilding ? 'animate-spin' : ''} />
+            <span>{isRebuilding ? 'Ricompilazione in corso...' : 'Rebuild Bundle'}</span>
           </button>
-
-          <button
-            onClick={() => setActiveSubTab('remote')}
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: '8px',
-              padding: '10px 20px',
-              borderRadius: '12px',
-              background: activeSubTab === 'remote' ? accentColor : (isLight ? 'rgba(190, 160, 110, 0.12)' : 'rgba(255,255,255,0.06)'),
-              color: activeSubTab === 'remote' ? (isLight ? '#fff' : '#0a0d14') : textPrimary,
-              border: activeSubTab === 'remote' ? `1px solid ${accentColor}` : (isLight ? '1px solid rgba(190, 160, 110, 0.3)' : '1px solid rgba(255,255,255,0.1)'),
-              fontWeight: 800,
-              fontSize: '0.85rem',
-              cursor: 'pointer',
-              transition: 'all 0.2s ease'
-            }}
-          >
-            <Sparkles size={16} /> Installa nuovi Moduli ({filteredAvailableToInstall.length})
-          </button>
-        </div>
-      </div>
+        }
+      />
 
       {/* Main Content Area — Full Width */}
       <div style={{ padding: '16px 20px', width: '100%', boxSizing: 'border-box', flex: 1 }}>
@@ -960,7 +894,6 @@ export default function MarketplaceTab({ openTab }) {
             ))}
           </div>
         </div>
-
       </div>
     );
   }
