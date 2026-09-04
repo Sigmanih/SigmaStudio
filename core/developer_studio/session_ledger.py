@@ -269,10 +269,9 @@ class DevSessionLedger:
                         self._diffs[path] = result.get("diff")
 
                     rec.last_error = None
-                    # `ast_valid` e' assente per i file non Python: solo un
-                    # False esplicito significa "non compila".
-                    if result.get("ast_valid") is False:
-                        rec.syntax_error = str(result.get("ast_error", "sintassi non valida"))
+                    # `ast_valid` o `syntax_valid` False indica che il file non compila o ha errori di sintassi
+                    if result.get("ast_valid") is False or result.get("syntax_valid") is False:
+                        rec.syntax_error = str(result.get("syntax_error") or result.get("ast_error") or "sintassi non valida")
                     else:
                         rec.syntax_error = None
                 else:

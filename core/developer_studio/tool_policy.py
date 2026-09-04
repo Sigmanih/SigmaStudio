@@ -42,6 +42,13 @@ ALIASES: Dict[str, str] = {
     "search_code": "search_code",
     # rimozione
     "rm": "delete",
+    # ricerca simboli AST
+    "find_symbol": "find_symbol",
+    "symbol": "find_symbol",
+    "definition": "find_symbol",
+    "where_is": "find_symbol",
+    # rimozione
+    "rm": "delete",
     "delete_file": "delete",
     "remove_file": "delete",
     "delete": "delete",
@@ -64,11 +71,11 @@ ALIASES: Dict[str, str] = {
 CONTROL_TOOLS: Set[str] = {"pipeline", "complete_goal"}
 
 READ_ONLY_TOOLS: Set[str] = {
-    "read_file", "list_dir", "glob", "search_code", "screenshot", "pipeline", "complete_goal"
+    "read_file", "list_dir", "glob", "search_code", "find_symbol", "screenshot", "pipeline", "complete_goal"
 }
 
 PLAN_ONLY_TOOLS: Set[str] = {
-    "read_file", "list_dir", "glob", "search_code", "pipeline", "complete_goal"
+    "read_file", "list_dir", "glob", "search_code", "find_symbol", "pipeline", "complete_goal"
 }
 
 

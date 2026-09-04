@@ -51,6 +51,9 @@ from core.developer_studio.terminal_runner import (
     list_background_processes,
 )
 
+from core.developer_studio.diagnostics import validate_code_syntax
+from core.developer_studio.symbol_index import find_symbol_definitions
+
 log = get_logger("admin_developer_agent")
 
 # How many characters of a tool observation are fed back to the model.
@@ -951,19 +954,16 @@ def execute_admin_tool(
 
         res = write_file_content(full_path, content, root=workspace_root)
         
-        # AST Syntax Validation for Python files
-        if res.get("success") and full_path.endswith(".py") and os.path.exists(full_path):
-            import ast
-            try:
-                py_code = Path(full_path).read_text(encoding="utf-8", errors="replace")
-                ast.parse(py_code, filename=full_path)
-                res["ast_valid"] = True
-            except SyntaxError as syn_err:
-                res["ast_valid"] = False
-                res["ast_error"] = f"Errore di sintassi Python (riga {syn_err.lineno}): {syn_err.msg}"
+        # Multi-language Syntax & Structure Validation (Python, JS/TS, JSX, CSS, JSON)
+        if res.get("success") and os.path.exists(full_path):
+            diag = validate_code_syntax(full_path)
+            res["syntax_valid"] = diag.get("valid", True)
+            if not diag.get("valid"):
+                res["syntax_error"] = diag.get("error")
+                res["ast_error"] = diag.get("error")
                 res["message"] = (
-                    f"{res.get('message', '')} ⚠️ ATTENZIONE: Il file contiene un errore di sintassi Python "
-                    f"alla riga {syn_err.lineno}: {syn_err.msg}. Correggilo subito con edit_file prima di proseguire."
+                    f"{res.get('message', '')} ⚠️ ATTENZIONE: Il file contiene un errore di sintassi "
+                    f"({diag.get('language')}): {diag.get('error')}. Correggilo subito con edit_file."
                 )
 
         return {
@@ -985,19 +985,16 @@ def execute_admin_tool(
             root=workspace_root,
         )
         
-        # AST Syntax Validation for Python files
-        if res.get("success") and full_path.endswith(".py") and os.path.exists(full_path):
-            import ast
-            try:
-                py_code = Path(full_path).read_text(encoding="utf-8", errors="replace")
-                ast.parse(py_code, filename=full_path)
-                res["ast_valid"] = True
-            except SyntaxError as syn_err:
-                res["ast_valid"] = False
-                res["ast_error"] = f"Errore di sintassi Python generato (riga {syn_err.lineno}): {syn_err.msg}"
+        # Multi-language Syntax & Structure Validation (Python, JS/TS, JSX, CSS, JSON)
+        if res.get("success") and os.path.exists(full_path):
+            diag = validate_code_syntax(full_path)
+            res["syntax_valid"] = diag.get("valid", True)
+            if not diag.get("valid"):
+                res["syntax_error"] = diag.get("error")
+                res["ast_error"] = diag.get("error")
                 res["message"] = (
-                    f"{res.get('message', '')} ⚠️ ATTENZIONE: La modifica ha introdotto un errore di sintassi Python "
-                    f"alla riga {syn_err.lineno}: {syn_err.msg}. Correggilo subito con edit_file."
+                    f"{res.get('message', '')} ⚠️ ATTENZIONE: La modifica ha introdotto un errore di sintassi "
+                    f"({diag.get('language')}): {diag.get('error')}. Correggilo subito con edit_file."
                 )
 
         return {"tool": "edit_file", "path": raw_path, "full_path": full_path, **res}
@@ -1011,19 +1008,16 @@ def execute_admin_tool(
             root=workspace_root,
         )
         
-        # AST Syntax Validation for Python files
-        if res.get("success") and full_path.endswith(".py") and os.path.exists(full_path):
-            import ast
-            try:
-                py_code = Path(full_path).read_text(encoding="utf-8", errors="replace")
-                ast.parse(py_code, filename=full_path)
-                res["ast_valid"] = True
-            except SyntaxError as syn_err:
-                res["ast_valid"] = False
-                res["ast_error"] = f"Errore di sintassi Python generato (riga {syn_err.lineno}): {syn_err.msg}"
+        # Multi-language Syntax & Structure Validation (Python, JS/TS, JSX, CSS, JSON)
+        if res.get("success") and os.path.exists(full_path):
+            diag = validate_code_syntax(full_path)
+            res["syntax_valid"] = diag.get("valid", True)
+            if not diag.get("valid"):
+                res["syntax_error"] = diag.get("error")
+                res["ast_error"] = diag.get("error")
                 res["message"] = (
-                    f"{res.get('message', '')} ⚠️ ATTENZIONE: Il codice aggiunto ha causato un errore di sintassi Python "
-                    f"alla riga {syn_err.lineno}: {syn_err.msg}. Correggilo subito."
+                    f"{res.get('message', '')} ⚠️ ATTENZIONE: Il codice aggiunto ha causato un errore di sintassi "
+                    f"({diag.get('language')}): {diag.get('error')}. Correggilo subito."
                 )
 
         return {"tool": "append_file", "path": raw_path, "full_path": full_path, **res}
@@ -1149,6 +1143,12 @@ def execute_admin_tool(
             "success": True,
             "message": f"Trovati {len(backups)} snapshot di backup."
         }
+
+    elif tool_name in ("find_symbol", "symbol", "definition", "where_is"):
+        q = str(params.get("query") or params.get("symbol") or params.get("name") or params.get("raw") or "").strip()
+        limit = int(params.get("limit") or 25)
+        res = find_symbol_definitions(q, root_path=workspace_root, limit=limit)
+        return {"tool": "find_symbol", **res}
 
     elif tool_name in ("complete_goal", "finish_task", "task_complete"):
         summary = params.get("summary") or params.get("message") or "Obiettivo completato con successo."
