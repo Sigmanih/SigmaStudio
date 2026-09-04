@@ -3,7 +3,7 @@
 # ==============================================================================
 import unittest
 
-from core.developer_studio.admin_agent import extract_tool_invocations, execute_admin_tool
+from core.harness.loop import extract_tool_invocations, execute_admin_tool
 
 
 class TestMultiToolExecution(unittest.TestCase):

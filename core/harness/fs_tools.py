@@ -1,6 +1,6 @@
 # ==============================================================================
-# core/developer_studio/fs_tools.py — Paginated & Surgical Filesystem Primitives
-# Sigma Studio v8 — Developer Studio AI-Native IDE
+# core/harness/fs_tools.py — Paginated & Surgical Filesystem Primitives
+# Sigma Studio v8 — Agent Harness (kernel)
 # ==============================================================================
 """Filesystem primitives sized for an *agent's* prompt window, not a human's screen.
 
@@ -24,7 +24,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from core.logger import get_logger
-from core.developer_studio.fs_manager import (
+from core.harness.fs_manager import (
     SEARCH_IGNORE_DIRS,
     SEARCH_IGNORE_EXTENSIONS,
     backup_file_snapshot,

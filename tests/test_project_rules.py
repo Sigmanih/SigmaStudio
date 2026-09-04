@@ -7,7 +7,7 @@ comportamento che rende l'harness portabile — leggere le regole dal progetto,
 e non inventarne quando il progetto non ne dichiara.
 """
 
-from core.developer_studio import project_rules
+from core.harness import rules as project_rules
 
 
 def _scrivi(radice, nome, testo):

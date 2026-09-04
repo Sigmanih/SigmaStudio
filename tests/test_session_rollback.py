@@ -4,16 +4,16 @@
 import unittest
 from unittest.mock import MagicMock, patch
 
-from core.developer_studio.session_ledger import DevSessionLedger
-from core.developer_studio import session_store
+from core.harness.ledger import DevSessionLedger
+from core.harness import store as session_store
 
 
 class TestSessionRollback(unittest.TestCase):
     """Verifica il rollback coordinato dei file modificati in una sessione."""
 
-    @patch("core.developer_studio.fs_manager.restore_file_backup")
-    @patch("core.developer_studio.session_store.load")
-    @patch("core.developer_studio.session_store._path_for")
+    @patch("core.harness.fs_manager.restore_file_backup")
+    @patch("core.harness.store.load")
+    @patch("core.harness.store._path_for")
     def test_rollback_session_files_success(self, mock_path_for, mock_load, mock_restore):
         mock_load.return_value = {
             "session_id": "sess_test_123",

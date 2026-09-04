@@ -4,14 +4,14 @@
 import unittest
 from unittest.mock import MagicMock, patch
 
-from core.developer_studio.provider_bridge import stream_dev_generation
+from core.harness.providers import stream_dev_generation
 
 
 class TestDevProviderRouting(unittest.TestCase):
     """Verifica che stream_dev_generation instradi correttamente a SigmaEngine o ai provider esterni."""
 
-    @patch("core.developer_studio.provider_bridge.sigma_engine")
-    @patch("core.developer_studio.provider_bridge.load_ai_config")
+    @patch("core.harness.providers.sigma_engine")
+    @patch("core.harness.providers.load_ai_config")
     def test_routes_to_sigma_engine_by_default(self, mock_load_cfg, mock_engine):
         mock_load_cfg.return_value = {"active_provider": "sigma_engine", "active_model": "sigma-test"}
         mock_engine.generate_stream.return_value = iter([{"token": "Hello"}, {"token": " World"}])
@@ -25,8 +25,8 @@ class TestDevProviderRouting(unittest.TestCase):
         self.assertEqual("".join(c["token"] for c in chunks), "Hello World")
         mock_engine.generate_stream.assert_called_once()
 
-    @patch("core.developer_studio.provider_bridge.call_ai_model_stream")
-    @patch("core.developer_studio.provider_bridge.load_ai_config")
+    @patch("core.harness.providers.call_ai_model_stream")
+    @patch("core.harness.providers.load_ai_config")
     def test_routes_to_external_provider(self, mock_load_cfg, mock_call_ai):
         mock_load_cfg.return_value = {
             "active_provider": "sigma_engine",

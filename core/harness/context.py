@@ -1,6 +1,6 @@
 # ==============================================================================
-# core/developer_studio/context_manager.py — Shared Context Between Roles
-# Sigma Studio v8 — Developer Studio AI-Native IDE
+# core/harness/context.py — Shared Context Between Roles
+# Sigma Studio v8 — Agent Harness (kernel)
 # ==============================================================================
 """Manages the shared context between development roles, optimising what each
 role sees in its prompt window.
@@ -22,7 +22,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Set, Tuple
 
 from core.logger import get_logger
-from core.developer_studio.fs_manager import get_workspace_tree, get_default_workspace_root
+from core.harness.fs_manager import get_workspace_tree, get_default_workspace_root
 
 log = get_logger(__name__)
 

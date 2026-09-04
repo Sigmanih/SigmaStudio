@@ -7,14 +7,14 @@ import tempfile
 from pathlib import Path
 import pytest
 
-from core.developer_studio.fs_manager import (
+from core.harness.fs_manager import (
     write_file_content,
     delete_fs_entry,
     backup_file_snapshot,
     list_file_backups,
     restore_file_backup,
 )
-from core.developer_studio.admin_agent import execute_admin_tool
+from core.harness.loop import execute_admin_tool
 
 
 @pytest.fixture

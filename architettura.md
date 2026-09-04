@@ -340,7 +340,7 @@ graph LR
 - **Whitelist dei percorsi** (`core/sandbox.py`): l'accesso ai file è limitato a `data/`, `manifesti/`, `scratch/`, `sigma_studio/`, `core/`.
 - **Validazione AST**: il codice Python generato dagli agenti passa per `ast.parse()` prima di essere eseguito.
 - **Isolamento subprocessi**: `shlex.split`, niente `shell=True`, timeout rigorosi.
-- **Ricerca a budget** (`developer_studio/fs_manager.py`): pruning delle directory pesanti prima di scenderci, tetto di 2 MB per file, sniff dei byte NUL, lettura riga per riga, scadenza a 20 s. Senza questi limiti una singola ricerca ha portato il processo a 75 GB residenti.
+- **Ricerca a budget** (`core/harness/fs_manager.py`): pruning delle directory pesanti prima di scenderci, tetto di 2 MB per file, sniff dei byte NUL, lettura riga per riga, scadenza a 20 s. Senza questi limiti una singola ricerca ha portato il processo a 75 GB residenti.
 
 ---
 

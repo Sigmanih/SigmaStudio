@@ -1,5 +1,5 @@
 # ==============================================================================
-# core/developer_studio/fs_manager.py — Admin Filesystem & Workspace Engine
+# core/harness/fs_manager.py — Admin Filesystem & Workspace Engine
 # Sigma Studio v8 — Developer Studio Backend (Full Filesystem Admin Access)
 # ==============================================================================
 """Provides high-performance, unrestricted filesystem operations for the

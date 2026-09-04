@@ -1,6 +1,6 @@
 # ==============================================================================
-# core/developer_studio/role_engine.py — Multi-Role AI on a Single Model
-# Sigma Studio v8 — Developer Studio AI-Native IDE
+# core/harness/roles.py — Multi-Role AI on a Single Model
+# Sigma Studio v8 — Agent Harness (kernel)
 # ==============================================================================
 """Switch between specialised development roles without reloading the model.
 
@@ -18,7 +18,7 @@ from typing import Any, Callable, Dict, Generator, List, Optional
 
 from core.logger import get_logger
 from core.engine.sampling import SamplingParams
-from core.developer_studio.tool_policy import ToolPolicy
+from core.harness.policy import ToolPolicy
 
 log = get_logger(__name__)
 
@@ -354,7 +354,7 @@ class RoleEngine:
         role = self.switch_role(role_id)
 
         # Import here to avoid circular dependency
-        from core.developer_studio.admin_agent import (
+        from core.harness.loop import (
             stream_admin_agent_turn,
             ADMIN_DEVELOPER_SYSTEM_PROMPT,
         )

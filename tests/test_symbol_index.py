@@ -4,7 +4,7 @@
 import unittest
 from pathlib import Path
 
-from core.developer_studio.symbol_index import (
+from core.harness.symbol_index import (
     _extract_py_symbols,
     _extract_js_symbols,
     find_symbol_definitions,

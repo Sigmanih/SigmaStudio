@@ -1,6 +1,6 @@
 # ==============================================================================
-# core/developer_studio/symbol_index.py — Workspace AST & Symbol Indexer
-# Sigma Studio v8 — Developer Studio AI-Native IDE
+# core/harness/symbol_index.py — Workspace AST & Symbol Indexer
+# Sigma Studio v8 — Agent Harness (kernel)
 # ==============================================================================
 """Indexes functions, classes, and exported components across Python, JavaScript,
 and TypeScript files in the workspace for instantaneous symbol resolution.
@@ -14,7 +14,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
 from core.logger import get_logger
-from core.developer_studio.fs_manager import (
+from core.harness.fs_manager import (
     SEARCH_IGNORE_DIRS,
     SEARCH_IGNORE_EXTENSIONS,
     get_default_workspace_root,

@@ -1379,6 +1379,7 @@ class UniversalSigmaEngine:
         thinking: Optional[bool] = None,
         tools: Optional[List[Dict[str, Any]]] = None,
         tool_choice: Optional[Any] = None,
+        cache_slot: Optional[str] = None,
     ) -> Generator[Dict[str, Any], None, None]:
         """
         Serialises access to the engine, then streams the answer.
@@ -1443,6 +1444,7 @@ class UniversalSigmaEngine:
                 thinking=thinking,
                 tools=tools,
                 tool_choice=tool_choice,
+                cache_slot=cache_slot,
             )
         finally:
             self._generation_lock.release()
@@ -1460,6 +1462,7 @@ class UniversalSigmaEngine:
         thinking: Optional[bool] = None,
         tools: Optional[List[Dict[str, Any]]] = None,
         tool_choice: Optional[Any] = None,
+        cache_slot: Optional[str] = None,
         retried_after_oom: bool = False,
     ) -> Generator[Dict[str, Any], None, None]:
         """
@@ -1608,7 +1611,7 @@ class UniversalSigmaEngine:
             reused_tokens = 0
             if self.prefix_cache_enabled and self.prefix_cache_retained:
                 past, reused_tokens = self.prefix_cache.take(
-                    prompt_ids, self.loaded_model_name or ""
+                    prompt_ids, self.loaded_model_name or "", slot=cache_slot or "default"
                 )
                 if past is not None:
                     gen_kwargs["past_key_values"] = past
@@ -1695,7 +1698,7 @@ class UniversalSigmaEngine:
 
             thread.join(timeout=5.0)
 
-            self._retain_prefix_cache(generation_output, cancel)
+            self._retain_prefix_cache(generation_output, cancel, cache_slot)
 
             if generation_error:
                 failure = generation_error[0]
@@ -2649,7 +2652,8 @@ class UniversalSigmaEngine:
         text = str(exc).lower()
         return "out of memory" in text or "cuda error: out of memory" in text
 
-    def _retain_prefix_cache(self, generation_output: List[Any], cancel: Any) -> None:
+    def _retain_prefix_cache(self, generation_output: List[Any], cancel: Any,
+                             cache_slot: Optional[str] = None) -> None:
         """
         Keeps the KV cache a finished generation left, for the next turn.
 
@@ -2680,7 +2684,8 @@ class UniversalSigmaEngine:
             self.prefix_cache.clear("unreadable sequence")
             return
 
-        self.prefix_cache.store(ids, cache, self.loaded_model_name or "")
+        self.prefix_cache.store(ids, cache, self.loaded_model_name or "",
+                                slot=cache_slot or "default")
 
     def _token_budget(self, requested: int, inputs: Dict[str, Any]) -> int:
         """

@@ -2,7 +2,7 @@
 # tests/test_role_engine.py — Unit Tests for Developer Studio Role Engine
 # ==============================================================================
 import pytest
-from core.developer_studio.role_engine import RoleEngine, DEV_ROLES, DevRole
+from core.harness.roles import RoleEngine, DEV_ROLES, DevRole
 
 
 def test_dev_roles_definition():

@@ -14,7 +14,7 @@ incompletabile) e quando un fallimento e' stato davvero superato.
 
 import unittest
 
-from core.developer_studio.session_ledger import (
+from core.harness.ledger import (
     DevSessionLedger,
     check_completion_allowed,
     looks_like_verification,
@@ -287,14 +287,14 @@ class TestGuardiaSvuotamento(unittest.TestCase):
     """
 
     def test_una_riscrittura_che_azzera_viene_riconosciuta(self):
-        from core.developer_studio.fs_tools import would_truncate
+        from core.harness.fs_tools import would_truncate
 
         precedente = "# " + "x" * 400 + "\ndef f():\n    return 1\n"
         self.assertTrue(would_truncate(precedente, ""))
         self.assertTrue(would_truncate(precedente, "# nota\n"))
 
     def test_una_riscrittura_di_pari_dimensione_passa(self):
-        from core.developer_studio.fs_tools import would_truncate
+        from core.harness.fs_tools import would_truncate
 
         precedente = "# " + "x" * 400 + "\ndef f():\n    return 1\n"
         nuova = "# " + "y" * 400 + "\ndef f():\n    return 2\n"
@@ -302,7 +302,7 @@ class TestGuardiaSvuotamento(unittest.TestCase):
 
     def test_i_file_piccoli_non_sono_sorvegliati(self):
         """Sotto una certa soglia qualunque riscrittura e' plausibile."""
-        from core.developer_studio.fs_tools import would_truncate
+        from core.harness.fs_tools import would_truncate
 
         self.assertFalse(would_truncate("x = 1\n", ""))
 

@@ -1,6 +1,6 @@
 # ==============================================================================
-# core/developer_studio/project_rules.py — Istruzioni di progetto per l'agente
-# Sigma Studio v8 — Developer Studio AI-Native IDE
+# core/harness/rules.py — Istruzioni di progetto per l'agente
+# Sigma Studio v8 — Agent Harness (kernel)
 # ==============================================================================
 """Le convenzioni del progetto su cui l'agente sta lavorando, lette dal disco.
 

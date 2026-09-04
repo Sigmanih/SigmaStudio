@@ -5,7 +5,7 @@ import time
 import sys
 import unittest
 
-from core.developer_studio.terminal_runner import (
+from core.harness.terminal import (
     execute_shell_command_sync,
     start_background_process,
     get_background_process_status,

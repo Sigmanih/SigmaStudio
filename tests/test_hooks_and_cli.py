@@ -4,7 +4,7 @@
 import unittest
 from unittest.mock import patch
 
-from core.developer_studio.hooks import (
+from core.harness.hooks import (
     register_pre_hook,
     register_post_hook,
     run_pre_hooks,

@@ -2,8 +2,21 @@
 # tests/test_dev_orchestrator.py — Unit Tests for Developer Studio Orchestrator
 # ==============================================================================
 import pytest
-from core.developer_studio.orchestrator import DevOrchestrator, ExecutionMode, PHASES
-from core.developer_studio.context_manager import DevContextManager
+
+# L'orchestratore e' passato al modulo installabile: il flusso di sviluppo a
+# cinque fasi riguarda l'IDE, non il runtime dell'agente. Su una macchina che
+# il modulo non lo ha installato questi test non hanno nulla da verificare.
+pytest.importorskip(
+    "core.modules.sigma_developer_lab.orchestrator",
+    reason="modulo sigma_developer_lab non installato",
+)
+
+from core.modules.sigma_developer_lab.orchestrator import (  # noqa: E402
+    DevOrchestrator,
+    ExecutionMode,
+    PHASES,
+)
+from core.harness.context import DevContextManager  # noqa: E402
 
 
 def test_orchestrator_initialization():

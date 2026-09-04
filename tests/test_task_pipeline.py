@@ -2,7 +2,7 @@
 # tests/test_task_pipeline.py — Unit Tests for Developer Studio Task Pipeline
 # ==============================================================================
 import pytest
-from core.developer_studio.task_pipeline import TaskPipeline, TaskNode, TaskStatus
+from core.harness.pipeline import TaskPipeline, TaskNode, TaskStatus
 
 
 def test_task_node_creation():

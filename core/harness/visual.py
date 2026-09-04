@@ -1,6 +1,6 @@
 # ==============================================================================
-# core/developer_studio/visual_check.py — Verifica visiva delle modifiche
-# Sigma Studio v8 — Developer Studio AI-Native IDE
+# core/harness/visual.py — Verifica visiva delle modifiche
+# Sigma Studio v8 — Agent Harness (kernel)
 # ==============================================================================
 """Guardare la pagina, perche' nessun test testuale la guarda.
 

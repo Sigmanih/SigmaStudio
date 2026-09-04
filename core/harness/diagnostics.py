@@ -1,6 +1,6 @@
 # ==============================================================================
-# core/developer_studio/diagnostics.py — Fast Multi-Language Syntax Validator
-# Sigma Studio v8 — Developer Studio AI-Native IDE
+# core/harness/diagnostics.py — Fast Multi-Language Syntax Validator
+# Sigma Studio v8 — Agent Harness (kernel)
 # ==============================================================================
 """Provides fast, zero-external-dependency syntax validation for Python, JSON,
 JavaScript, JSX, TypeScript, TSX, and CSS before and after edits.

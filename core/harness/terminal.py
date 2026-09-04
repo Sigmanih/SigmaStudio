@@ -1,5 +1,5 @@
 # ==============================================================================
-# core/developer_studio/terminal_runner.py — Terminal & Shell Command Engine
+# core/harness/terminal.py — Terminal & Shell Command Engine
 # Sigma Studio v8 — Developer Studio Terminal Backend with Background Support
 # ==============================================================================
 """Provides asynchronous execution, real-time streaming, and background process
@@ -17,7 +17,7 @@ from pathlib import Path
 from typing import Callable, Dict, Any, List, Optional, Generator
 
 from core.logger import get_logger
-from core.developer_studio.fs_manager import get_default_workspace_root
+from core.harness.fs_manager import get_default_workspace_root
 
 log = get_logger("developer_terminal")
 

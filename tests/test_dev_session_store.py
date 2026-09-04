@@ -12,8 +12,8 @@ progetto e' peggio di nessuno stato, perche' l'agente ci crede.
 
 import pytest
 
-from core.developer_studio import session_store
-from core.developer_studio.session_ledger import DevSessionLedger
+from core.harness import store as session_store
+from core.harness.ledger import DevSessionLedger
 
 WS = "C:/progetto"
 
@@ -86,7 +86,7 @@ class TestSerializzazione:
 
     def test_il_cancello_di_completamento_da_lo_stesso_esito(self):
         """La prova raccolta prima del riavvio deve valere anche dopo."""
-        from core.developer_studio.session_ledger import check_completion_allowed
+        from core.harness.ledger import check_completion_allowed
         originale = _ledger_lavorato()
         ripristinato = DevSessionLedger.restore(originale.serialize())
         assert (check_completion_allowed(ripristinato)["allowed"]

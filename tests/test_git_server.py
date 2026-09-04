@@ -2,7 +2,7 @@
 # tests/test_git_server.py — Unit Tests for Developer Studio Git MCP Server
 # ==============================================================================
 import pytest
-from core.developer_studio.mcp_tools.git_server import GitMCPServer, _sanitize_branch_name
+from core.modules.sigma_developer_lab.mcp_tools.git_server import GitMCPServer, _sanitize_branch_name
 from core.mcp.governance import SAFE, SENSITIVE
 
 

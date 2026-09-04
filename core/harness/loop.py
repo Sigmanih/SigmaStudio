@@ -1,6 +1,6 @@
 # ==============================================================================
-# core/developer_studio/admin_agent.py — Multi-Step Autonomous AI Developer Agent
-# Sigma Studio v8 — Developer Studio AI Pair Programmer & Multi-Turn Tool Loop
+# core/harness/loop.py — Multi-Step Autonomous AI Developer Agent
+# Sigma Studio v8 — Agent Harness: ciclo tool multi-turno
 # ==============================================================================
 """Provides the autonomous Admin Developer Agent that performs multi-turn coding,
 file modifications with diff generation, and terminal executions across the workspace.
@@ -15,7 +15,7 @@ from pathlib import Path
 from typing import Callable, Dict, List, Any, Optional, Generator
 
 from core.logger import get_logger
-from core.developer_studio.fs_manager import (
+from core.harness.fs_manager import (
     read_file_content,
     write_file_content,
     delete_fs_entry,
@@ -26,24 +26,24 @@ from core.developer_studio.fs_manager import (
     restore_file_backup,
     list_file_backups,
 )
-from core.developer_studio.fs_tools import (
+from core.harness.fs_tools import (
     would_truncate,
     read_file_slice,
     edit_file_content,
     append_file_content,
     glob_workspace_files,
 )
-from core.developer_studio.session_ledger import (
+from core.harness.ledger import (
     RECENT_TURNS_KEPT,
     DevSessionLedger,
     check_completion_allowed,
 )
-from core.developer_studio.tool_policy import ToolPolicy
+from core.harness.policy import ToolPolicy
 from core.engine.grammars import fenced_tool_grammar
 from core.engine.sampling import SamplingParams
-from core.developer_studio.provider_bridge import stream_dev_generation
-from core.developer_studio.visual_check import capture as capture_screenshot, describe as describe_screenshot
-from core.developer_studio.terminal_runner import (
+from core.harness.providers import stream_dev_generation
+from core.harness.visual import capture as capture_screenshot, describe as describe_screenshot
+from core.harness.terminal import (
     execute_shell_command_sync,
     start_background_process,
     get_background_process_status,
@@ -51,8 +51,8 @@ from core.developer_studio.terminal_runner import (
     list_background_processes,
 )
 
-from core.developer_studio.diagnostics import validate_code_syntax
-from core.developer_studio.symbol_index import find_symbol_definitions
+from core.harness.diagnostics import validate_code_syntax
+from core.harness.symbol_index import find_symbol_definitions
 
 log = get_logger("admin_developer_agent")
 
@@ -107,6 +107,10 @@ PRODUCTIVE_TOOLS = ("write_file", "write", "save_file", "append_file", "append",
 # Consecutive orientation-only turns tolerated before the transcript is
 # rebuilt from the ledger and exploration is suspended for one turn.
 MAX_UNPRODUCTIVE_TURNS = 3
+# Quanti turni si spendono per ottenere una specifica prima di rinunciare.
+# Due: al primo la grammatica costringe alla forma, al secondo si corregge un
+# elenco vuoto. Insistere oltre trasformerebbe una salvaguardia in uno stallo.
+MAX_SPEC_ATTEMPTS = 2
 # The tools a recovery turn may emit. Narrow on purpose: the point of that
 # turn is to change the workspace, and read_file stays out because reading
 # again is what the agent was doing instead.
@@ -133,16 +137,26 @@ Formato, sempre identico:
 ```
 
 ## CICLO DI LAVORO
-1. ORIENTATI: `glob` o `search_code` per trovare i file, `list_dir` per esplorare.
-2. LEGGI: `read_file` su OGNI file che devi toccare. Obbligatorio.
-3. AGISCI: `edit_file` per modificare, `write_file` solo per file NUOVI.
-4. VERIFICA: `terminal` con un test, un lint o un import. Deve uscire con codice 0.
-5. CHIUDI: `complete_goal`.
+1. SPECIFICA: `spec` — riformula per esteso cosa ti e stato chiesto ed elenca i
+   criteri verificabili che rendono il lavoro finito. E' il PRIMO tool che
+   emetti, prima ancora di guardare i file.
+2. PIANIFICA: `pipeline` — i task che portano a quei criteri.
+3. ORIENTATI: `glob` o `search_code` per trovare i file, `list_dir` per esplorare.
+4. LEGGI: `read_file` su OGNI file che devi toccare. Obbligatorio.
+5. AGISCI: `edit_file` per modificare, `write_file` solo per file NUOVI.
+6. VERIFICA: `terminal` con un test, un lint o un import. Deve uscire con codice 0.
+7. CHIUDI: `complete_goal`, dichiarando per ogni criterio la prova che lo soddisfa.
 
-Non puoi saltare il passo 2: senza aver letto un file non conosci il testo
+Non puoi saltare il passo 1: senza criteri non esiste una definizione di
+"finito", e il completamento verra rifiutato.
+Non puoi saltare il passo 4: senza aver letto un file non conosci il testo
 esatto da sostituire e `edit_file` verra rifiutato.
-Non puoi saltare il passo 4: `complete_goal` viene rifiutato senza una verifica
+Non puoi saltare il passo 6: `complete_goal` viene rifiutato senza una verifica
 riuscita dopo l'ultima modifica.
+
+Una richiesta breve non e una richiesta piccola: espandila al passo 1. Se
+l'utente chiede "aggiungi X", i criteri includono anche che X sia raggiungibile,
+verificato e coerente col resto del progetto.
 
 ## TOOL DISPONIBILI
 
@@ -192,8 +206,19 @@ che la pagina si veda.
 I titoli devono descrivere QUESTO obiettivo, non un esempio generico.
 Emettilo una volta all'inizio e aggiornalo solo quando lo stato cambia davvero.
 
-`complete_goal` — dichiara finito il lavoro.
-{"summary": "COSA_HAI_FATTO"}
+`spec` — registra cosa significa "finito" per questo obiettivo. Primo tool.
+{"understanding": "LA RICHIESTA RIFORMULATA PER ESTESO",
+ "criteria": ["CRITERIO VERIFICABILE 1", "CRITERIO VERIFICABILE 2"]}
+Ogni criterio deve essere dimostrabile da un file modificato o da un comando
+eseguito. "Il codice e migliore" non e un criterio; "esiste il test
+tests/test_x.py e passa" lo e.
+
+`complete_goal` — dichiara finito il lavoro, con la prova di ogni criterio.
+{"summary": "COSA_HAI_FATTO",
+ "criteria": [{"id": "1", "evidence": "FILE O COMANDO CHE LO DIMOSTRA"}]}
+La prova deve citare qualcosa che hai davvero fatto in questa sessione: un file
+che hai toccato o un comando che hai eseguito. Una prova generica viene
+rifiutata e il completamento con essa.
 
 ## VINCOLI GENERALI
 - I percorsi sono relativi alla radice del workspace ("." e la radice).
@@ -276,6 +301,12 @@ STATE_TAIL_ACT = (
     "Emetti ORA un solo blocco tool, e nient'altro."
 )
 #: Ricordato in coda allo stato quando il cancello di completamento ha ceduto.
+STATE_TAIL_SPEC = (
+    "Prima di toccare qualunque file: emetti ORA il tool `spec` con la "
+    "richiesta riformulata per esteso e i criteri verificabili che rendono "
+    "il lavoro finito. Un solo blocco tool, nient altro."
+)
+#: Ricordato in coda allo stato quando il cancello di completamento ha ceduto.
 STATE_TAIL_SUMMARISE = (
     "Il lavoro risulta completo e verificato: scrivi il riepilogo per l'utente."
 )
@@ -336,7 +367,7 @@ def resolve_ledger(
 
     if session_id:
         try:
-            from core.developer_studio import session_store
+            from core.harness import store as session_store
             ripristinato = session_store.load_ledger(session_id, goal_text, workspace_root)
             if ripristinato is not None:
                 return ripristinato, True
@@ -363,7 +394,7 @@ def _persist_session(
     if not session_id:
         return
     try:
-        from core.developer_studio import session_store
+        from core.harness import store as session_store
         if status == "running":
             session_store.save(
                 session_id, ledger,
@@ -806,7 +837,7 @@ def execute_admin_tool(
 
     # Lifecycle Pre-Hook execution
     try:
-        from core.developer_studio.hooks import run_pre_hooks, run_post_hooks
+        from core.harness.hooks import run_pre_hooks, run_post_hooks
         pre_result = run_pre_hooks(tool_name, params, workspace_root)
         if pre_result is not None:
             return pre_result
@@ -1164,9 +1195,44 @@ def execute_admin_tool(
         return {
             "tool": "complete_goal",
             "summary": summary,
+            "criteria": params.get("criteria") or params.get("criteri") or [],
             "is_completed": True,
             "success": True,
             "message": summary
+        }
+
+    elif tool_name in ("spec", "requirements", "criteri", "specifica"):
+        # La specifica non tocca il workspace: viene registrata nel ledger dal
+        # loop, che e' l'unico a possederlo. Qui si normalizza soltanto, cosi'
+        # che un modello che scrive `criteria: ["a", "b"]` e uno che scrive
+        # `[{"id": "1", "text": "a"}]` producano la stessa cosa.
+        grezzi = (
+            params.get("criteria") or params.get("criteri")
+            or params.get("acceptance") or []
+        )
+        if isinstance(grezzi, str):
+            grezzi = [r.strip(" -*\t") for r in grezzi.split("\n") if r.strip(" -*\t")]
+        capito = str(
+            params.get("understanding") or params.get("capito")
+            or params.get("summary") or ""
+        ).strip()
+        if not grezzi:
+            return {
+                "tool": "spec",
+                "success": False,
+                "error": (
+                    "Specifica rifiutata: manca l'elenco dei criteri. Riemetti "
+                    'nella forma {"understanding": "COSA VA FATTO, PER ESTESO", '
+                    '"criteria": ["criterio verificabile 1", "criterio 2"]}. '
+                    "Ogni criterio deve poter essere dimostrato da un file "
+                    "modificato o da un comando eseguito."
+                ),
+            }
+        return {
+            "tool": "spec",
+            "success": True,
+            "understanding": capito,
+            "criteria": grezzi,
         }
 
     return {"tool": tool_name, "success": False, "error": f"Tool sconosciuto: {tool_name}"}
@@ -1189,6 +1255,7 @@ def stream_admin_agent_turn(
     ledger: Optional["DevSessionLedger"] = None,
     allowed_tools: Optional[List[str]] = None,
     policy_label: str = "",
+    profile: Optional[str] = None,
     provider: Optional[str] = None,
 ) -> Generator[Dict[str, Any], None, None]:
     """
@@ -1247,7 +1314,7 @@ def stream_admin_agent_turn(
 
     # Append MCP developer tools section if available
     try:
-        from core.developer_studio.mcp_tools.bridge import build_mcp_tools_section
+        from core.modules.sigma_developer_lab.mcp_tools.bridge import build_mcp_tools_section
         mcp_section = build_mcp_tools_section()
         if mcp_section:
             base_system_prompt = base_system_prompt + "\n" + mcp_section
@@ -1259,7 +1326,7 @@ def stream_admin_agent_turn(
     # precedono, e restano immutabili per tutto il run: il system prompt e' la
     # parte del prefisso KV che non deve mai cambiare.
     try:
-        from core.developer_studio import project_rules
+        from core.harness import rules as project_rules
         regole = project_rules.load_section(workspace_root)
         if regole:
             base_system_prompt = f"{base_system_prompt}\n\n{regole}"
@@ -1281,12 +1348,30 @@ def stream_admin_agent_turn(
     # I tool ammessi in questo run. Dichiararli nel prompt e verificarli prima
     # dell'esecuzione sono due meta' della stessa regola: la prima evita il
     # tentativo, la seconda lo impedisce quando avviene lo stesso.
+    # Due sorgenti di restrizione, con precedenze diverse. Il profilo lo sceglie
+    # l'utente ed e' un limite superiore: in sola lettura nessun ruolo puo'
+    # scrivere, per quanti tool dichiari. L'elenco del ruolo restringe
+    # ulteriormente dentro quel limite, non lo allarga.
     policy = ToolPolicy.of(allowed_tools, label=policy_label)
+    if profile:
+        profilo = ToolPolicy.for_profile(profile)
+        if profilo.restricted:
+            policy = profilo.intersect(policy)
     if policy.restricted:
         base_system_prompt = f"{base_system_prompt}\n{policy.prompt_section()}"
 
     # Contatori del run, riportati alla UI e salvati con la sessione: senza
     # misure, ogni intervento sull'harness resta un'impressione.
+    # Lo slot di prefisso KV di questo run. Il ruolo e' la chiave giusta:
+    # il system prompt e' costante dentro un ruolo e diverso fra ruoli, che e'
+    # esattamente la condizione perche' una cache di prefissi serva a qualcosa.
+    # Senza ruolo — la chat libera del Developer Studio — si usa la sessione,
+    # cosi' due task aperti in parallelo non si sfrattano a vicenda.
+    cache_slot = (
+        f"role:{policy_label}" if policy_label
+        else (f"session:{session_id}" if session_id else "default")
+    )
+
     run_metrics: Dict[str, Any] = {
         "turns": 0,
         "generated_tokens": 0,
@@ -1346,6 +1431,10 @@ def stream_admin_agent_turn(
     unproductive_turns = 0
     force_action_turn = False
     consecutive_truncations = 0
+    # Quante volte si e' forzato il turno di specifica. Oltre il tetto si
+    # rinuncia e si lascia lavorare l'agente: un modello che non riesce a
+    # scrivere i criteri non deve restare bloccato a non scrivere altro.
+    spec_attempts = 0
     last_pipeline_signature = None
     failed_call_signatures: set = set()
     # Successful calls whose repetition cannot produce new information.
@@ -1366,10 +1455,24 @@ def stream_admin_agent_turn(
         # Va in coda alla conversazione, non nel system prompt: il system
         # prompt resta immutabile per tutto il run e diventa cosi' parte del
         # prefisso KV riusabile invece di invalidarlo a ogni turno.
+        # Un obiettivo di sviluppo comincia dalla definizione di "finito".
+        # Gli audit no: li' non c'e' nulla da consegnare, e pretendere criteri
+        # di accettazione da una domanda costerebbe un turno per niente.
+        needs_spec_turn = (
+            not ledger.has_spec()
+            and bool(ledger.goal)
+            and not ledger.is_exploration_task()
+            and not force_action_turn
+            and spec_attempts < MAX_SPEC_ATTEMPTS
+        )
+        if needs_spec_turn:
+            spec_attempts += 1
+
         render_messages = _with_state_block(
             full_messages,
             ledger.render_state_block(),
-            STATE_TAIL_SUMMARISE if goal_reached else STATE_TAIL_ACT,
+            STATE_TAIL_SPEC if needs_spec_turn
+            else (STATE_TAIL_SUMMARISE if goal_reached else STATE_TAIL_ACT),
         )
 
         accumulated_response = []
@@ -1414,7 +1517,25 @@ def stream_admin_agent_turn(
             # when an action was required; a grammar makes both unreachable
             # rather than merely discouraged.
             turn_params = None
-            if force_action_turn:
+            if needs_spec_turn:
+                # Il primo turno di un obiettivo di sviluppo produce la
+                # specifica, e la produce per forza. Chiederlo nel prompt non
+                # basta: un modello locale a cui si dice "prima scrivi i
+                # criteri" comincia lo stesso a leggere file, e da li' non
+                # torna piu' indietro. La grammatica rende l'alternativa
+                # irraggiungibile invece che sconsigliata.
+                gbnf = fenced_tool_grammar(("spec",))
+                if gbnf:
+                    turn_params = (
+                        SamplingParams.resolve(model_name=model_name or "")
+                        .with_overrides(temperature=temperature, max_tokens=max_tokens)
+                        .with_grammar(gbnf)
+                    )
+                    yield {
+                        "type": "status",
+                        "text": "Primo turno: definizione dei criteri di accettazione",
+                    }
+            elif force_action_turn:
                 gbnf = fenced_tool_grammar(RECOVERY_TOOLS)
                 if gbnf:
                     turn_params = (
@@ -1425,6 +1546,7 @@ def stream_admin_agent_turn(
                     yield {"type": "status", "text": "\u2699 Decodifica vincolata a una tool call"}
 
             for chunk in stream_dev_generation(
+                cache_slot=cache_slot,
                 messages=render_messages,
                 prompt=last_user_prompt,
                 system_prompt=base_system_prompt,
@@ -1628,7 +1750,8 @@ def stream_admin_agent_turn(
         # the whole point of a tool loop: the edit is written before the read has
         # returned, and the completion is claimed before either has been seen.
         # Serialising restores the observe-then-act cycle the loop exists for.
-        bookkeeping = ("pipeline", "tasks", "set_tasks", "update_pipeline")
+        bookkeeping = ("spec", "requirements", "criteri", "specifica",
+                       "pipeline", "tasks", "set_tasks", "update_pipeline")
         serialised = []
         for t in tools_found:
             if t["tool"] not in bookkeeping:
@@ -1881,7 +2004,7 @@ def stream_admin_agent_turn(
 
             # Route through MCP Hub for Git/Lint/Test tools, local for FS/Terminal
             try:
-                from core.developer_studio.mcp_tools.bridge import is_mcp_tool, execute_via_mcp
+                from core.modules.sigma_developer_lab.mcp_tools.bridge import is_mcp_tool, execute_via_mcp
                 if is_mcp_tool(t_name):
                     result = execute_via_mcp(t_name, t_params)
                 else:
@@ -1928,11 +2051,41 @@ def stream_admin_agent_turn(
                     "type": "pipeline_update",
                     "tasks": result.get("tasks", [])
                 }
+            elif t_name in ("spec", "requirements", "criteri", "specifica"):
+                if result.get("success"):
+                    registrati = ledger.set_spec(
+                        result.get("understanding", ""),
+                        result.get("criteria", []),
+                    )
+                    result["registered"] = registrati
+                    yield {"type": "spec_registered", "criteria": registrati,
+                           "understanding": result.get("understanding", "")}
+
             elif t_name in ("complete_goal", "finish_task", "task_complete"):
+                # Le prove dei criteri si registrano PRIMA del cancello: e' la
+                # chiamata di chiusura che dichiara quale file o comando
+                # soddisfa cosa, e il ledger rifiuta le dichiarazioni che non
+                # citano nulla di realmente accaduto.
+                rifiutate = []
+                for voce in (result.get("criteria") or []):
+                    if not isinstance(voce, dict):
+                        continue
+                    esito = ledger.mark_requirement(
+                        str(voce.get("id") or ""),
+                        str(voce.get("evidence") or voce.get("prova") or ""),
+                    )
+                    if not esito["ok"]:
+                        rifiutate.append(esito["reason"])
+                if rifiutate:
+                    yield {"type": "evidence_rejected", "reasons": rifiutate}
+
                 # Completion is granted on evidence in the ledger, never on the
                 # model's own say-so: nobody is checking behind an autonomous
                 # loop, so "done" has to mean something was actually verified.
                 gate = check_completion_allowed(ledger)
+                if not gate["allowed"] and rifiutate:
+                    gate = dict(gate)
+                    gate["reason"] = gate["reason"] + " " + " ".join(rifiutate[:2])
                 if not gate["allowed"]:
                     result = {
                         "tool": "complete_goal",
@@ -2031,6 +2184,16 @@ def stream_admin_agent_turn(
                     )
                     if result.get("truncated"):
                         obs_str += "\n[Elenco troncato: restringi il pattern.]"
+            elif t_name in ("spec", "requirements", "criteri", "specifica"):
+                registrati = result.get("registered") or []
+                if registrati:
+                    obs_str += (
+                        f"Specifica registrata: {len(registrati)} criteri di "
+                        "accettazione. Da ora sono nello stato del lavoro e il "
+                        "completamento verra rifiutato finche non sono tutti "
+                        "soddisfatti con una prova.\n"
+                        + "\n".join(f"  #{c['id']} {c['text']}" for c in registrati)
+                    )
             elif t_name in ("pipeline", "tasks", "set_tasks", "update_pipeline"):
                 obs_str += f"Pipeline aggiornata: {len(result.get('tasks', []))} task registrati."
             elif t_name in ("complete_goal", "finish_task", "task_complete"):

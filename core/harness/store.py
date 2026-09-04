@@ -1,6 +1,6 @@
 # ==============================================================================
-# core/developer_studio/session_store.py — Persistenza delle sessioni di lavoro
-# Sigma Studio v8 — Developer Studio AI-Native IDE
+# core/harness/store.py — Persistenza delle sessioni di lavoro
+# Sigma Studio v8 — Agent Harness (kernel)
 # ==============================================================================
 """Lo stato di lavoro dell'agente, che sopravvive alla richiesta HTTP.
 
@@ -31,7 +31,7 @@ from typing import Any, Dict, List, Optional
 
 from core.logger import get_logger
 from core.paths import dev_sessions_dir
-from core.developer_studio.session_ledger import DevSessionLedger
+from core.harness.ledger import DevSessionLedger
 
 log = get_logger("dev_session_store")
 
@@ -275,7 +275,7 @@ def rollback_session_files(
     files_map = ledger_data.get("files") or {}
     root = workspace_root or doc.get("workspace_root") or None
 
-    from core.developer_studio.fs_manager import restore_file_backup
+    from core.harness.fs_manager import restore_file_backup
     restored = []
     failed = []
 

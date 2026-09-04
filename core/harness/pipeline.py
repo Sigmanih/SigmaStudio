@@ -1,6 +1,6 @@
 # ==============================================================================
-# core/developer_studio/task_pipeline.py — Dynamic DAG Task Pipeline
-# Sigma Studio v8 — Developer Studio AI-Native IDE
+# core/harness/pipeline.py — Dynamic DAG Task Pipeline
+# Sigma Studio v8 — Agent Harness (kernel)
 # ==============================================================================
 """Dynamic DAG-based task pipeline with dependency resolution, parallel
 scheduling, failure recovery, and runtime reordering.
@@ -144,6 +144,50 @@ class TaskPipeline:
                 if deps_met:
                     ready.append(node)
             return ready
+
+    def next_role_batch(self, preferred_role: Optional[str] = None) -> List[TaskNode]:
+        """Il prossimo blocco di task pronti che condividono lo stesso ruolo.
+
+        Il grafo dice quali task *possono* partire; questo decide in quale
+        ordine conviene farlo. Con un modello per ruolo l'ordine conta piu'
+        di quanto sembri: eseguire i task nell'ordine in cui l'Architect li ha
+        scritti — architect, coder, tester, architect, coder, tester — vuol
+        dire un cambio di modello per ogni task, e su hardware locale il
+        cambio costa piu' del task.
+
+        Due preferenze, in quest'ordine: il ruolo gia' caricato, perche' non
+        cambiare nulla e' sempre la mossa piu' economica; altrimenti il gruppo
+        piu' numeroso, perche' ammortizza il cambio su piu' lavoro.
+
+        Ritorna una lista vuota quando non c'e' piu' niente di pronto: puo'
+        succedere anche a pipeline incompleta, se cio' che resta dipende da
+        task falliti.
+        """
+        pronti = self.get_ready_tasks()
+        if not pronti:
+            return []
+
+        per_ruolo: Dict[str, List[TaskNode]] = {}
+        for nodo in pronti:
+            per_ruolo.setdefault(nodo.role or "", []).append(nodo)
+
+        if preferred_role and per_ruolo.get(preferred_role):
+            return per_ruolo[preferred_role]
+        return max(per_ruolo.values(), key=len)
+
+    def role_switch_count(self, order: List[TaskNode]) -> int:
+        """Quanti cambi di ruolo comporta un dato ordine di esecuzione.
+
+        Esiste per poter misurare l'effetto del raggruppamento invece di
+        doverlo dare per buono: e' il numero che il batching deve abbassare.
+        """
+        cambi = 0
+        precedente = None
+        for nodo in order:
+            if precedente is not None and nodo.role != precedente:
+                cambi += 1
+            precedente = nodo.role
+        return cambi
 
     def get_parallel_groups(self) -> List[List[TaskNode]]:
         """Partition remaining work into groups that can execute concurrently.

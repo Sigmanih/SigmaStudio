@@ -1,13 +1,13 @@
 # ==============================================================================
-# core/developer_studio/cli.py — Headless CLI Runner for Developer Studio Agent
-# Sigma Studio v8 — Developer Studio AI-Native IDE
+# core/harness/cli.py — Headless CLI Runner for Developer Studio Agent
+# Sigma Studio v8 — Agent Harness (kernel)
 # ==============================================================================
 """Provides headless command-line execution for the Developer Studio agent,
 enabling non-interactive CI automation and external project integration.
 
 Usage:
-    python -m core.developer_studio.cli --goal "Fix broken import in core/paths.py"
-    python -m core.developer_studio.cli --goal "Analyze dependencies" --profile read_only
+    python -m core.harness.cli --goal "Fix broken import in core/paths.py"
+    python -m core.harness.cli --goal "Analyze dependencies" --profile read_only
 """
 
 import argparse
@@ -16,8 +16,8 @@ import sys
 import time
 from pathlib import Path
 
-from core.developer_studio.admin_agent import stream_admin_agent_turn
-from core.developer_studio.tool_policy import ToolPolicy
+from core.harness.loop import stream_admin_agent_turn
+from core.harness.policy import ToolPolicy
 
 
 def main() -> int:

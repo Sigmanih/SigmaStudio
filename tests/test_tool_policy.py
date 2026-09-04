@@ -16,8 +16,8 @@ deve valere come divieto totale.
 
 import pytest
 
-from core.developer_studio.role_engine import DEV_ROLES, RoleEngine
-from core.developer_studio.tool_policy import (
+from core.harness.roles import DEV_ROLES, RoleEngine
+from core.harness.policy import (
     CONTROL_TOOLS,
     ToolPolicy,
     canonical,

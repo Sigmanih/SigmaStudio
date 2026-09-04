@@ -11,7 +11,7 @@ precedente. Questi test fissano quella proprieta', che e' invisibile a occhio
 e si perde con una modifica di una riga.
 """
 
-from core.developer_studio.admin_agent import (
+from core.harness.loop import (
     STATE_TAIL_ACT,
     STATE_TAIL_SUMMARISE,
     _with_state_block,

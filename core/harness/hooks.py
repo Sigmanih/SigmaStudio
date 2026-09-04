@@ -1,6 +1,6 @@
 # ==============================================================================
-# core/developer_studio/hooks.py — Pre/Post Tool Execution Hooks
-# Sigma Studio v8 — Developer Studio AI-Native IDE
+# core/harness/hooks.py — Pre/Post Tool Execution Hooks
+# Sigma Studio v8 — Agent Harness (kernel)
 # ==============================================================================
 """Provides extensible pre-tool and post-tool lifecycle hooks for custom
 project workflows (e.g. running formatting, security gating, linting).

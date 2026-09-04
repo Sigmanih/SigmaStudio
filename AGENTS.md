@@ -12,7 +12,8 @@ quando serve davvero.
 |:---|:---|
 | `core/` | il kernel Python: paths, engine, chat, pipeline, mcp, module_loader |
 | `core/modules/` | moduli opzionali installabili; il kernel non li importa mai |
-| `core/developer_studio/` | l'harness dell'agente sviluppatore |
+| `core/harness/` | il runtime dell'agente: ciclo tool, ruoli, ledger, permessi |
+| `core/modules/sigma_developer_lab/` | il Developer Studio: rotte, fasi, MCP di sviluppo |
 | `sigma_studio/src/` | la SPA React 19 servita da Vite |
 | `tests/` | la suite pytest del kernel |
 | `data/` | lavoro dell'utente — **non cancellare mai nulla qui** |
@@ -45,22 +46,21 @@ solo con `register_routes()` / `register_mcp()`.
   `marked`, `prismjs`, `katex`, `react-simple-code-editor`. Non aggiungerne
   altre senza che sia stato chiesto.
 
-## Il Developer Studio esiste in due copie
+## Harness nel kernel, IDE nel modulo
 
-`core/developer_studio/` e' il sorgente tracciato: si modifica quello, e i test
-girano su quello. `core/modules/sigma_developer_lab/` e' la copia installata
-(ignorata da git) che il module loader importa **davvero** a runtime.
+Il runtime dell'agente vive in `core/harness/`: ciclo tool, ruoli, ledger,
+permessi, primitive di filesystem e terminale, instradamento fra provider.
+E' kernel perche' serve a ogni modulo che debba far eseguire un compito a un
+modello, non solo all'IDE.
 
-Dopo ogni modifica al sorgente:
+Il Developer Studio e' il modulo installabile `core/modules/sigma_developer_lab/`
+(ignorato da git, pubblicato sul repository dei moduli): tiene le rotte
+`/api/developer/*`, il flusso a cinque fasi, i server MCP di git/lint/test e la
+UI in `sigma_studio/src/modules/sigma_developer_lab/`.
 
-```
-python scripts/sync_developer_lab.py
-```
-
-Saltarlo significa passare tutti i test su un file che il server non esegue.
-Il test `tests/test_developer_lab_sync.py` fallisce se le due copie divergono.
-Lo stesso vale per il frontend del modulo, che vive solo in
-`sigma_studio/src/modules/sigma_developer_lab/`.
+**La direzione delle dipendenze:** il modulo importa `core.harness`, mai il
+contrario. Se stai per scrivere `from core.modules...` dentro `core/`, ti sei
+perso.
 
 ## Verifica
 

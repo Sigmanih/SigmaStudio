@@ -1,6 +1,6 @@
 # ==============================================================================
-# core/developer_studio/session_ledger.py — Durable Working State for the Agent
-# Sigma Studio v8 — Developer Studio AI-Native IDE
+# core/harness/ledger.py — Durable Working State for the Agent
+# Sigma Studio v8 — Agent Harness (kernel)
 # ==============================================================================
 """What the agent must never forget, kept separate from what it may.
 
@@ -35,7 +35,25 @@ RECENT_TURNS_KEPT = 6
 MAX_TRACKED_FILES = 60
 MAX_TRACKED_COMMANDS = 25
 MAX_TRACKED_DECISIONS = 20
+#: Oltre una ventina non e' piu' una specifica, e' un progetto: va spezzato.
+MAX_TRACKED_REQUIREMENTS = 20
 MAX_ERROR_CHARS = 300
+
+
+@dataclass
+class Requirement:
+    """Un criterio di accettazione: cosa deve essere vero perche' sia finito."""
+
+    id: str
+    text: str
+    met: bool = False
+    #: Cio' che lo dimostra: un file toccato, un comando eseguito. Non una
+    #: dichiarazione — quella la sa fare anche un modello che non ha fatto nulla.
+    evidence: str = ""
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {"id": self.id, "text": self.text, "met": self.met,
+                "evidence": self.evidence}
 
 
 @dataclass
@@ -179,6 +197,10 @@ class DevSessionLedger:
         self._decisions: List[str] = []
         self._failures: List[str] = []
         self._pipeline: List[Dict[str, Any]] = []
+        #: Cosa significa «fatto» per questo obiettivo, e come si dimostra.
+        self._requirements: Dict[str, Requirement] = {}
+        #: La richiesta dell'utente riformulata dall'agente, per esteso.
+        self._intake: str = ""
         #: Schermate non vuote scattate in questa sessione, per il monitor.
         self._screenshots: List[Dict[str, Any]] = []
         self._diffs: Dict[str, str] = {}
@@ -197,6 +219,127 @@ class DevSessionLedger:
     def set_pipeline(self, tasks: List[Dict[str, Any]]) -> None:
         with self._lock:
             self._pipeline = list(tasks or [])
+
+    # -- specifica e criteri di accettazione ---------------------------------
+
+    def set_spec(self, understanding: str, criteria: List[Any]) -> List[Dict[str, str]]:
+        """Registra cosa significa «fatto» per questo obiettivo.
+
+        Una richiesta dell'utente e' quasi sempre piu' corta di cio' che serve
+        per soddisfarla, e un modello locale colma il vuoto facendo la cosa
+        piu' piccola che assomigli alla richiesta: modifica un file, lancia i
+        test, dichiara finito. Scrivere in anticipo i criteri verificabili
+        sposta quel giudizio dal modello a un elenco, e il cancello di
+        completamento puo' finalmente controllarlo.
+
+        Ritorna i criteri normalizzati, cosi' il chiamante puo' rimandarli al
+        modello nella forma esatta in cui dovra' richiamarli.
+        """
+        with self._lock:
+            self._intake = str(understanding or "").strip()[:2000]
+            self._requirements = {}
+            for indice, grezzo in enumerate(criteria or [], start=1):
+                if isinstance(grezzo, dict):
+                    rid = str(grezzo.get("id") or indice).strip() or str(indice)
+                    testo = str(grezzo.get("text") or grezzo.get("criterio") or "").strip()
+                else:
+                    rid, testo = str(indice), str(grezzo or "").strip()
+                if not testo:
+                    continue
+                self._requirements[rid] = Requirement(id=rid, text=testo[:400])
+                if len(self._requirements) >= MAX_TRACKED_REQUIREMENTS:
+                    break
+            return [{"id": r.id, "text": r.text} for r in self._requirements.values()]
+
+    def mark_requirement(self, req_id: str, evidence: str) -> Dict[str, Any]:
+        """Segna un criterio come soddisfatto, se la prova regge.
+
+        La prova deve nominare qualcosa che questa sessione ha davvero fatto —
+        un file toccato, un comando eseguito. Senza questo vincolo il criterio
+        si soddisfa scrivendo «fatto», che e' esattamente la parola del modello
+        che il ledger esiste per non dover credere.
+        """
+        with self._lock:
+            rid = str(req_id or "").strip()
+            requisito = self._requirements.get(rid)
+            if requisito is None:
+                return {
+                    "ok": False,
+                    "reason": (
+                        f"Criterio '{rid}' inesistente. Quelli registrati sono: "
+                        + ", ".join(self._requirements) + "."
+                    ),
+                }
+            prova = str(evidence or "").strip()
+            if len(prova) < 8:
+                return {
+                    "ok": False,
+                    "reason": (
+                        f"Criterio '{rid}': la prova e' vuota o troppo generica. "
+                        "Cita il file modificato o il comando che lo dimostra."
+                    ),
+                }
+            if not self._evidence_is_grounded(prova):
+                return {
+                    "ok": False,
+                    "reason": (
+                        f"Criterio '{rid}': la prova «{prova[:80]}» non cita nulla "
+                        "che tu abbia fatto in questa sessione. Nomina un file che "
+                        "hai letto o modificato, oppure un comando che hai eseguito."
+                    ),
+                }
+            requisito.met = True
+            requisito.evidence = prova[:400]
+            return {"ok": True}
+
+    def _evidence_is_grounded(self, evidence: str) -> bool:
+        """Se la prova nomina un file toccato o un comando eseguito.
+
+        Confronto volutamente generoso: basta il nome del file, non il percorso
+        completo, perche' il modello lo abbrevia sempre. Un falso positivo
+        costa un criterio segnato a torto; un falso negativo blocca un run
+        corretto, che e' peggio.
+        """
+        testo = evidence.lower().replace("\\", "/")
+        for percorso in self._files:
+            p = percorso.lower()
+            if p in testo or p.rsplit("/", 1)[-1] in testo:
+                return True
+        for comando in self._commands:
+            c = str(comando.get("command", "")).lower().strip()
+            if not c:
+                continue
+            if c in testo:
+                return True
+            # Un pezzo distintivo del comando basta: la prova dice «verificato
+            # con pytest», non ricopia `python -m pytest tests/ -q`. Si scartano
+            # i frammenti corti perche' `-q`, `-m` e `.` comparirebbero ovunque.
+            for pezzo in c.replace("-", " ").split():
+                if len(pezzo) >= 4 and pezzo not in ("python", "sudo") and pezzo in testo:
+                    return True
+        for scatto in self._screenshots:
+            if str(scatto.get("path", "")).lower().rsplit("/", 1)[-1] in testo:
+                return True
+        return False
+
+    @property
+    def requirements(self) -> List["Requirement"]:
+        return list(self._requirements.values())
+
+    def has_spec(self) -> bool:
+        return bool(self._requirements)
+
+    def unmet_requirements(self) -> List["Requirement"]:
+        return [r for r in self._requirements.values() if not r.met]
+
+    def open_tasks(self) -> List[Dict[str, Any]]:
+        """I task del piano non ancora chiusi, in nessun modo."""
+        aperti = []
+        for t in self._pipeline:
+            stato = str(t.get("status", "pending")).lower()
+            if stato not in ("done", "completed", "skipped", "failed"):
+                aperti.append(t)
+        return aperti
 
     def add_decision(self, text: str) -> None:
         with self._lock:
@@ -451,6 +594,8 @@ class DevSessionLedger:
                 "decisions": list(self._decisions),
                 "failures": list(self._failures),
                 "pipeline": list(self._pipeline),
+                "intake": self._intake,
+                "requirements": [r.to_dict() for r in self._requirements.values()],
             }
 
     # -- serialization -------------------------------------------------------
@@ -491,6 +636,8 @@ class DevSessionLedger:
                 "decisions": list(self._decisions),
                 "failures": list(self._failures),
                 "pipeline": list(self._pipeline),
+                "intake": self._intake,
+                "requirements": [r.to_dict() for r in self._requirements.values()],
                 "screenshots": list(self._screenshots),
                 "diffs": dict(self._diffs),
                 "searches": list(self._searches),
@@ -541,6 +688,20 @@ class DevSessionLedger:
         ledger._decisions = list(state.get("decisions") or [])
         ledger._failures = list(state.get("failures") or [])
         ledger._pipeline = list(state.get("pipeline") or [])
+        ledger._intake = str(state.get("intake") or "")
+        for grezzo in state.get("requirements") or []:
+            try:
+                rid = str(grezzo.get("id") or "").strip()
+                if not rid:
+                    continue
+                ledger._requirements[rid] = Requirement(
+                    id=rid,
+                    text=str(grezzo.get("text") or ""),
+                    met=bool(grezzo.get("met")),
+                    evidence=str(grezzo.get("evidence") or ""),
+                )
+            except (AttributeError, TypeError) as exc:
+                log.debug("[Ledger] criterio scartato al ripristino: %s", exc)
         ledger._screenshots = list(state.get("screenshots") or [])
         ledger._diffs = dict(state.get("diffs") or {})
         ledger._searches = list(state.get("searches") or [])
@@ -567,6 +728,21 @@ class DevSessionLedger:
                     "non inventarne altri:**"
                 )
                 parts.extend(f"- `{p}`" for p in self.goal_paths)
+
+            if self._intake:
+                parts.append(f"\n**Cosa hai capito che va fatto:** {self._intake}")
+
+            if self._requirements:
+                parts.append(
+                    "\n**Criteri di accettazione — il lavoro non e finito finche "
+                    "non sono TUTTI soddisfatti:**"
+                )
+                for r in self._requirements.values():
+                    segno = "[OK]" if r.met else "[DA FARE]"
+                    riga = f"- {segno} #{r.id} {r.text}"
+                    if r.met and r.evidence:
+                        riga += f"\n      prova: {r.evidence}"
+                    parts.append(riga)
 
             if self._pipeline:
                 parts.append("\n**Pipeline:**")
@@ -660,6 +836,40 @@ def check_completion_allowed(ledger: DevSessionLedger) -> Dict[str, Any]:
        allows completion if evidence was gathered via read_file or search_code.
     3. If no files were modified and the task required coding -> rejects completion.
     """
+    # I criteri di accettazione vengono prima di tutto il resto: sono la sola
+    # cosa che sappia distinguere «ho fatto qualcosa e i test passano» da «ho
+    # fatto cio' che era stato chiesto». Senza di essi il cancello lasciava
+    # passare il primo task di cinque, purche' qualcosa fosse verde.
+    mancanti = ledger.unmet_requirements()
+    if mancanti:
+        elenco = "; ".join(f"#{r.id} {r.text}" for r in mancanti[:4])
+        resto = f" (e altri {len(mancanti) - 4})" if len(mancanti) > 4 else ""
+        return {
+            "allowed": False,
+            "reason": (
+                f"Criteri di accettazione non ancora soddisfatti: {elenco}{resto}. "
+                "Completali, poi richiama complete_goal dichiarando per OGNUNO "
+                'la prova, nella forma {"criteria": [{"id": "1", "evidence": '
+                '"file o comando che lo dimostra"}]}.'
+            ),
+            "unmet": [r.to_dict() for r in mancanti],
+        }
+
+    # Un piano dichiarato e poi lasciato a meta' e' la stessa promessa non
+    # mantenuta, in un'altra forma.
+    aperti = ledger.open_tasks()
+    if aperti:
+        elenco = "; ".join(f"#{t.get('id', '?')} {t.get('title', '')}" for t in aperti[:4])
+        return {
+            "allowed": False,
+            "reason": (
+                f"Nel piano ci sono ancora task non chiusi: {elenco}. "
+                "Eseguili, oppure aggiorna la pipeline segnandoli 'skipped' "
+                "e spiegando perche' non servono."
+            ),
+            "open_tasks": aperti[:8],
+        }
+
     # Un file che non compila rende irrilevante ogni altra prova: qualunque
     # cosa sia passata, e' passata senza toccarlo.
     rotti = ledger.broken_files()

@@ -1,5 +1,5 @@
 # ==============================================================================
-# core/developer_studio/provider_bridge.py — Provider Routing for Dev Agent
+# core/harness/providers.py — Provider Routing for Dev Agent
 # Sigma Studio v8 — Multi-Provider Support & SigmaEngine Acceleration
 # ==============================================================================
 """Bridges the Developer Studio agent loop to multiple AI backends:
@@ -26,6 +26,7 @@ def stream_dev_generation(
     params: Any = None,
     thinking: Optional[bool] = False,
     cancel_check: Optional[Callable[[], bool]] = None,
+    cache_slot: Optional[str] = None,
 ) -> Generator[Dict[str, Any], None, None]:
     """Streams inference tokens and status events from either SigmaEngine or an external provider.
 
@@ -47,6 +48,9 @@ def stream_dev_generation(
                 messages=messages,
                 params=params,
                 thinking=thinking,
+                # Un prefisso KV per ruolo: alternare Architect e Coder non
+                # deve piu' far sfrattare all'uno il prompt dell'altro.
+                cache_slot=cache_slot,
             ):
                 yield chunk
         except Exception as ex:

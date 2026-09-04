@@ -9,9 +9,9 @@ salvato di un altro workspace e' il caso peggiore, perche' l'agente ci crede.
 
 import pytest
 
-from core.developer_studio import session_store
-from core.developer_studio.admin_agent import resolve_ledger
-from core.developer_studio.session_ledger import DevSessionLedger
+from core.harness import store as session_store
+from core.harness.loop import resolve_ledger
+from core.harness.ledger import DevSessionLedger
 
 WS = "C:/progetto"
 

@@ -3,7 +3,7 @@
 # ==============================================================================
 import unittest
 
-from core.developer_studio.diagnostics import validate_code_syntax
+from core.harness.diagnostics import validate_code_syntax
 
 
 class TestFrontendDiagnostics(unittest.TestCase):

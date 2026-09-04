@@ -1,6 +1,6 @@
 # ==============================================================================
-# core/developer_studio/tool_policy.py — Quali tool puo' usare chi
-# Sigma Studio v8 — Developer Studio AI-Native IDE
+# core/harness/policy.py — Quali tool puo' usare chi
+# Sigma Studio v8 — Agent Harness (kernel)
 # ==============================================================================
 """Il permesso d'uso dei tool e profili operativi (Read-Only, Plan-Only, Autonomous).
 """
@@ -40,8 +40,6 @@ ALIASES: Dict[str, str] = {
     "glob": "glob",
     "grep": "search_code",
     "search_code": "search_code",
-    # rimozione
-    "rm": "delete",
     # ricerca simboli AST
     "find_symbol": "find_symbol",
     "symbol": "find_symbol",
@@ -58,6 +56,10 @@ ALIASES: Dict[str, str] = {
     "guarda": "screenshot",
     "screenshot": "screenshot",
     # controllo
+    "spec": "spec",
+    "requirements": "spec",
+    "criteri": "spec",
+    "specifica": "spec",
     "tasks": "pipeline",
     "set_tasks": "pipeline",
     "update_pipeline": "pipeline",
@@ -68,14 +70,14 @@ ALIASES: Dict[str, str] = {
 }
 
 #: Non toccano il workspace: registrano il piano e chiudono il lavoro.
-CONTROL_TOOLS: Set[str] = {"pipeline", "complete_goal"}
+CONTROL_TOOLS: Set[str] = {"spec", "pipeline", "complete_goal"}
 
 READ_ONLY_TOOLS: Set[str] = {
-    "read_file", "list_dir", "glob", "search_code", "find_symbol", "screenshot", "pipeline", "complete_goal"
+    "spec", "read_file", "list_dir", "glob", "search_code", "find_symbol", "screenshot", "pipeline", "complete_goal"
 }
 
 PLAN_ONLY_TOOLS: Set[str] = {
-    "read_file", "list_dir", "glob", "search_code", "find_symbol", "pipeline", "complete_goal"
+    "spec", "read_file", "list_dir", "glob", "search_code", "find_symbol", "pipeline", "complete_goal"
 }
 
 
@@ -121,6 +123,23 @@ class ToolPolicy:
         if not canonici:
             return cls.unrestricted()
         return cls(allowed=frozenset(canonici | CONTROL_TOOLS), label=label)
+
+    def intersect(self, altra: "ToolPolicy") -> "ToolPolicy":
+        """Il permesso che soddisfa entrambe le restrizioni.
+
+        Serve quando un profilo scelto dall'utente e un elenco dichiarato da un
+        ruolo valgono insieme: il profilo e' un tetto — in sola lettura nessun
+        ruolo puo' scrivere, per quanti tool dichiari — e il ruolo restringe
+        dentro quel tetto. Prendere l'unione, o lasciare vincere l'ultimo
+        arrivato, renderebbe il profilo aggirabile scegliendo il ruolo giusto.
+        """
+        if altra.allowed is None:
+            return self
+        if self.allowed is None:
+            return altra
+        comune = frozenset(self.allowed & altra.allowed) | CONTROL_TOOLS
+        etichetta = " + ".join(x for x in (self.label, altra.label) if x)
+        return ToolPolicy(allowed=comune, label=etichetta)
 
     @property
     def restricted(self) -> bool:
