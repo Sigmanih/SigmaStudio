@@ -801,8 +801,17 @@ def execute_admin_tool(
     workspace_root: str,
     should_cancel: Optional[Callable[[], bool]] = None
 ) -> Dict[str, Any]:
-    """Executes a single admin developer tool with full workspace resolution."""
+    """Executes a single admin developer tool with full workspace resolution and lifecycle hooks."""
     tool_name = tool_name.lower()
+
+    # Lifecycle Pre-Hook execution
+    try:
+        from core.developer_studio.hooks import run_pre_hooks, run_post_hooks
+        pre_result = run_pre_hooks(tool_name, params, workspace_root)
+        if pre_result is not None:
+            return pre_result
+    except ImportError:
+        run_post_hooks = None
 
     if params.get("__malformed__"):
         return {
