@@ -41,8 +41,15 @@ from core.developer_studio.session_ledger import (
 from core.developer_studio.tool_policy import ToolPolicy
 from core.engine.grammars import fenced_tool_grammar
 from core.engine.sampling import SamplingParams
+from core.developer_studio.provider_bridge import stream_dev_generation
 from core.developer_studio.visual_check import capture as capture_screenshot, describe as describe_screenshot
-from core.developer_studio.terminal_runner import execute_shell_command_sync
+from core.developer_studio.terminal_runner import (
+    execute_shell_command_sync,
+    start_background_process,
+    get_background_process_status,
+    kill_background_process,
+    list_background_processes,
+)
 
 log = get_logger("admin_developer_agent")
 
@@ -807,10 +814,41 @@ def execute_admin_tool(
         }
     
     if tool_name in ("terminal", "shell", "exec", "command"):
+        action = params.get("action", "").lower().strip()
+        if action == "list":
+            procs = list_background_processes()
+            return {"tool": "terminal", "action": "list", "processes": procs, "success": True}
+        elif action == "status":
+            p_id = str(params.get("process_id") or params.get("pid") or "")
+            res = get_background_process_status(p_id)
+            return {"tool": "terminal", "action": "status", **res}
+        elif action == "kill":
+            p_id = str(params.get("process_id") or params.get("pid") or "")
+            res = kill_background_process(p_id)
+            return {"tool": "terminal", "action": "kill", **res}
+
         cmd = params.get("command") or params.get("raw", "")
         raw_cwd = params.get("cwd") or "."
         cwd = resolve_workspace_path(raw_cwd, workspace_root)
-        res = execute_shell_command_sync(cmd, cwd=cwd)
+        is_bg = bool(params.get("background") or params.get("is_daemon") or params.get("daemon"))
+
+        if is_bg:
+            p_id = params.get("process_id")
+            res = start_background_process(cmd, cwd=cwd, process_id=p_id)
+            return {
+                "tool": "terminal",
+                "command": cmd,
+                "cwd": cwd,
+                "background": True,
+                "success": res.get("success", False),
+                "process_id": res.get("process_id"),
+                "pid": res.get("pid"),
+                "status": res.get("status", "running"),
+                "message": f"Processo in background avviato con ID '{res.get('process_id')}' (PID {res.get('pid')})."
+            }
+
+        timeout_sec = int(params.get("timeout_seconds") or params.get("timeout") or 300)
+        res = execute_shell_command_sync(cmd, cwd=cwd, timeout_seconds=timeout_sec, should_cancel=should_cancel)
         return {
             "tool": "terminal",
             "command": cmd,
@@ -1142,6 +1180,7 @@ def stream_admin_agent_turn(
     ledger: Optional["DevSessionLedger"] = None,
     allowed_tools: Optional[List[str]] = None,
     policy_label: str = "",
+    provider: Optional[str] = None,
 ) -> Generator[Dict[str, Any], None, None]:
     """
     Multi-Turn Autonomous Admin Developer Agent Loop:
@@ -1376,15 +1415,17 @@ def stream_admin_agent_turn(
                     )
                     yield {"type": "status", "text": "\u2699 Decodifica vincolata a una tool call"}
 
-            for chunk in sigma_engine.generate_stream(
+            for chunk in stream_dev_generation(
+                messages=render_messages,
                 prompt=last_user_prompt,
                 system_prompt=base_system_prompt,
+                provider=provider,
+                model_name=model_name,
                 temperature=temperature,
                 max_tokens=max_tokens,
-                model_name=model_name or "sigmaengine",
-                messages=render_messages,
                 params=turn_params,
                 thinking=thinking,
+                cancel_check=_cancelled,
             ):
                 if chunk.get("model_status") or (chunk.get("status") and chunk.get("text")):
                     status_text = chunk.get("model_status") or chunk.get("text")

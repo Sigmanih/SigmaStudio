@@ -258,6 +258,53 @@ def delete(session_id: str) -> bool:
     return True
 
 
+def rollback_session_files(
+    session_id: str,
+    workspace_root: Optional[str] = None,
+) -> Dict[str, Any]:
+    """Ripristina tutti i file modificati durante la sessione allo stato antecedente.
+
+    Legge l'elenco dei file modificati nel ledger della sessione ed esegue il
+    restore_file_backup per ciascuno di essi.
+    """
+    doc = load(session_id)
+    if not doc:
+        return {"success": False, "error": f"Sessione '{session_id}' non trovata."}
+
+    ledger_data = doc.get("ledger") or {}
+    files_map = ledger_data.get("files") or {}
+    root = workspace_root or doc.get("workspace_root") or None
+
+    from core.developer_studio.fs_manager import restore_file_backup
+    restored = []
+    failed = []
+
+    for rel_path, f_info in files_map.items():
+        if f_info.get("edits") or f_info.get("writes"):
+            res = restore_file_backup(rel_path, root=root)
+            if res.get("success"):
+                restored.append(rel_path)
+            else:
+                failed.append({"path": rel_path, "error": res.get("error")})
+
+    # Aggiorna lo stato della sessione
+    doc["status"] = "rolled_back"
+    doc["rolled_back_at"] = time.time()
+    dest = _path_for(session_id)
+    try:
+        dest.write_text(json.dumps(doc, ensure_ascii=False, indent=1, default=str), encoding="utf-8")
+    except Exception:
+        pass
+
+    return {
+        "success": len(failed) == 0,
+        "session_id": session_id,
+        "restored_files": restored,
+        "failed_files": failed,
+        "message": f"Ripristinati {len(restored)} file su {len(restored) + len(failed)} modificati."
+    }
+
+
 def prune(keep: int = MAX_SESSIONS) -> int:
     """Elimina le sessioni piu' vecchie oltre `keep`. Ritorna quante ne ha tolte."""
     cartella = dev_sessions_dir()
@@ -281,3 +328,5 @@ def prune(keep: int = MAX_SESSIONS) -> int:
     if rimossi:
         log.info("[DevSessions] %d sessioni vecchie rimosse", rimossi)
     return rimossi
+
+

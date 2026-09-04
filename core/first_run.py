@@ -53,8 +53,8 @@ def modello_predefinito_file():
 #: su una scheda da 8 GB senza GPU come su una workstation, e il primo contatto
 #: con l'applicazione non puo' essere un'attesa di venti minuti.
 MODELLO_PREDEFINITO = {
-    "repo": "sigmanih/Qwen3-0.6B-GGUF-Q4_K_S",
-    "nome_locale": "sigmanih--Qwen3-0.6B-GGUF-Q4_K_S",
+    "repo": "sigmanih/Qwen-Qwen3-0.6B-GGUF-Q4_K_S",
+    "nome_locale": "sigmanih--Qwen-Qwen3-0.6B-GGUF-Q4_K_S",
     "quantizzazione": "Q4_K_S",
     "dimensione_mb": 460,
     "descrizione": "Assistente di partenza: piccolo, veloce, gira ovunque.",
