@@ -15,8 +15,8 @@ finche' non e' un harness a bloccarsi.
 import json
 import unittest
 
+from core.engine.tool_calls import ToolCallAccumulator
 from core.engine.provider_server import (
-    _ToolCallAccumulator,
     _balanced_objects,
     _declared_tool_names,
     _forced_tool_grammar,
@@ -62,7 +62,7 @@ class TestAccumulatore(unittest.TestCase):
     """Le chiamate arrivano spezzate: il nome in un delta, gli argomenti in venti."""
 
     def test_i_frammenti_si_ricompongono_per_indice(self):
-        acc = _ToolCallAccumulator()
+        acc = ToolCallAccumulator()
         acc.add([{"index": 0, "id": "call_1",
                   "function": {"name": "get_weather", "arguments": '{"ci'}}])
         acc.add([{"index": 0, "function": {"arguments": 'ty": "Roma"}'}}])
@@ -74,7 +74,7 @@ class TestAccumulatore(unittest.TestCase):
 
     def test_due_chiamate_non_si_fondono(self):
         """Concatenare in ordine di arrivo produrrebbe un JSON solo e invalido."""
-        acc = _ToolCallAccumulator()
+        acc = ToolCallAccumulator()
         acc.add([{"index": 0, "function": {"name": "get_weather", "arguments": '{"a":1}'}}])
         acc.add([{"index": 1, "function": {"name": "get_time", "arguments": '{"b":2}'}}])
 
@@ -85,12 +85,12 @@ class TestAccumulatore(unittest.TestCase):
 
     def test_un_id_viene_generato_se_manca(self):
         """Il client correla il risultato alla chiamata per id: senza, non puo'."""
-        acc = _ToolCallAccumulator()
+        acc = ToolCallAccumulator()
         acc.add([{"index": 0, "function": {"name": "get_time", "arguments": "{}"}}])
         self.assertTrue(acc.result()[0]["id"])
 
     def test_un_frammento_senza_nome_non_e_una_chiamata(self):
-        acc = _ToolCallAccumulator()
+        acc = ToolCallAccumulator()
         acc.add([{"index": 0, "function": {"arguments": "{}"}}])
         self.assertEqual(acc.result(), [])
 

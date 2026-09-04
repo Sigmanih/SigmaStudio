@@ -46,6 +46,14 @@ class DevRole:
     #: leggere due file, modificarne uno e verificare non arriva mai in fondo,
     #: e il fallimento sembra del modello invece che del budget.
     max_turns: int = 12
+    #: Il modello che questo ruolo preferisce. E' una preferenza, non un
+    #: requisito: su una macchina che non ce l'ha il ruolo funziona lo
+    #: stesso con quello residente, solo peggio. Vuoto significa
+    #: "qualunque", ed e' il default perche' un ruolo utile su un solo
+    #: checkpoint non e' un ruolo, e' una configurazione.
+    model: str = ""
+    #: Server MCP che il ruolo puo' usare, oltre ai tool locali.
+    mcp: tuple = ()
 
     def to_sampling(self) -> SamplingParams:
         """Convert role parameters to a SamplingParams instance."""
@@ -294,10 +302,20 @@ class RoleEngine:
     5. Reuses the KV-cache prefix for the shared project context
     """
 
-    def __init__(self):
-        self.roles = dict(DEV_ROLES)
+    def __init__(self, roles: Optional[Dict[str, "DevRole"]] = None):
+        # I ruoli arrivano dal registro, che sovrappone `config/roles.json` ai
+        # predefiniti di questo file. Passarli espliciti serve ai test e a chi
+        # vuole una squadra diversa senza toccare la configurazione globale.
+        if roles is None:
+            try:
+                from core.harness.role_registry import load_roles
+                roles = load_roles()
+            except Exception as exc:  # un registro rotto non ferma il lavoro
+                log.warning("[RoleEngine] registro non leggibile (%s): uso i predefiniti", exc)
+                roles = dict(DEV_ROLES)
+        self.roles = dict(roles)
         self.active_role_id: Optional[str] = None
-        self._generation_count: Dict[str, int] = {r: 0 for r in DEV_ROLES}
+        self._generation_count: Dict[str, int] = {r: 0 for r in self.roles}
 
     @property
     def active_role(self) -> Optional[DevRole]:

@@ -36,6 +36,8 @@ from core.model_paths import list_model_dirs, models_dir, project_root
 from core.ai_providers import load_ai_config, resolve_provider_config, call_ai_model
 from core.engine.evaluation import collect, is_notice
 
+from core.engine.tool_calls import ToolCallAccumulator
+
 log = get_logger("provider_server")
 
 # ------------------------------------------------------------------------------
@@ -220,56 +222,6 @@ def _tools_from_request(body: Optional[Dict[str, Any]]) -> Tuple[Optional[list],
     if not isinstance(tools, list) or not tools:
         return None, None
     return tools, body.get("tool_choice")
-
-
-class _ToolCallAccumulator:
-    """Ricompone le tool_calls che arrivano spezzate nei delta.
-
-    Vengono trasmesse come frammenti numerati: il nome in uno, gli argomenti in
-    venti, e nulla garantisce che siano contigui. Accumulare per indice e'
-    l'unico modo di ottenere JSON valido alla fine; concatenare in ordine di
-    arrivo fonde due chiamate in una appena il modello ne emette due.
-    """
-
-    def __init__(self) -> None:
-        self._per_index: Dict[int, Dict[str, Any]] = {}
-
-    def add(self, deltas: Any) -> None:
-        if not isinstance(deltas, list):
-            return
-        for delta in deltas:
-            if not isinstance(delta, dict):
-                continue
-            idx = delta.get("index")
-            idx = int(idx) if isinstance(idx, int) else len(self._per_index)
-            slot = self._per_index.setdefault(
-                idx,
-                {"id": "", "type": "function", "function": {"name": "", "arguments": ""}},
-            )
-            if delta.get("id"):
-                slot["id"] = str(delta["id"])
-            if delta.get("type"):
-                slot["type"] = str(delta["type"])
-            fn = delta.get("function") or {}
-            if fn.get("name"):
-                slot["function"]["name"] = str(fn["name"])
-            if fn.get("arguments"):
-                slot["function"]["arguments"] += str(fn["arguments"])
-
-    def result(self) -> List[Dict[str, Any]]:
-        """Le chiamate complete, in ordine di indice, con un id se mancava."""
-        out = []
-        for idx in sorted(self._per_index):
-            call = self._per_index[idx]
-            if not call["function"]["name"]:
-                continue
-            if not call["id"]:
-                # Un client correla il risultato alla chiamata per id: senza,
-                # non saprebbe a quale delle due sta rispondendo.
-                call["id"] = f"call_{uuid.uuid4().hex[:20]}"
-            out.append(call)
-        return out
-
 
 
 #: I modi in cui una famiglia annuncia una chiamata nel testo. L'ordine conta
@@ -995,7 +947,7 @@ def execute_openai_chat_non_stream(
     params = _sampler_from_request(resolved_model, temperature, max_tokens, top_p, extra)
     thinking = _thinking_from_request(extra)
     tools, tool_choice = _tools_from_request(extra)
-    accumulator = _ToolCallAccumulator()
+    accumulator = ToolCallAccumulator()
 
     # `none` significa "ho dei tool ma non usarli": inoltrarli cambierebbe il
     # prompt per nulla, e alcuni template li presentano comunque al modello.

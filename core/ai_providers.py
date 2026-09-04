@@ -957,6 +957,8 @@ def call_openai_compatible_stream(
     timeout: int = 120,
     params=None,
     cancel=None,
+    tools=None,
+    tool_choice=None,
 ):
     if not REQUESTS_AVAILABLE:
         yield {"error": True, "message": "requests library not available"}
@@ -974,6 +976,13 @@ def call_openai_compatible_stream(
             "messages": messages,
             "stream": True,
         }
+        if tools:
+            # Il percorso nativo: lo schema dei tool viaggia nella richiesta e
+            # il modello risponde con `tool_calls` strutturate invece che con
+            # un blocco di testo da riconoscere a valle.
+            payload["tools"] = tools
+            if tool_choice is not None:
+                payload["tool_choice"] = tool_choice
         if params is not None:
             payload.update(params.for_openai())
         else:
@@ -986,6 +995,8 @@ def call_openai_compatible_stream(
         if resp.status_code != 200:
             yield {"error": True, "message": f"API error {resp.status_code}: {resp.text[:200]}"}
             return
+        from core.engine.tool_calls import ToolCallAccumulator
+        accumulatore = ToolCallAccumulator()
         for line in resp.iter_lines(chunk_size=1, decode_unicode=True):
             if _cancelled(cancel):
                 resp.close()
@@ -997,6 +1008,9 @@ def call_openai_compatible_stream(
                 continue
             data_str = line[5:].strip()
             if data_str == "[DONE]":
+                complete = accumulatore.result()
+                if complete:
+                    yield {"tool_calls": complete}
                 yield {"done": True}
                 break
             try:
@@ -1005,6 +1019,10 @@ def call_openai_compatible_stream(
                 delta = choice.get("delta", {})
                 content = delta.get("content", "")
                 thinking = delta.get("reasoning_content", delta.get("reasoning", ""))
+                if delta.get("tool_calls"):
+                    # Frammenti numerati: si accumulano e si emettono intere
+                    # alla fine. Emetterli man mano darebbe JSON incompleto.
+                    accumulatore.add(delta["tool_calls"])
                 result = {}
                 if content:
                     result["token"] = content
@@ -1014,6 +1032,9 @@ def call_openai_compatible_stream(
                     yield result
                 finish_reason = choice.get("finish_reason")
                 if finish_reason:
+                    complete = accumulatore.result()
+                    if complete:
+                        yield {"tool_calls": complete}
                     yield {"done": True, "done_reason": finish_reason, "truncated": finish_reason == "length"}
                     break
             except json.JSONDecodeError:
@@ -1076,7 +1097,7 @@ def call_anthropic(
 
 def call_ai_model_stream(messages, ai_cfg, model, provider, endpoint, api_url, api_key,
                          temperature, max_tokens, top_p, request_timeout,
-                         params=None, cancel=None):
+                         params=None, cancel=None, tools=None, tool_choice=None):
     """
     Unified generator yielding chunks of tokens.
 
@@ -1111,7 +1132,7 @@ def call_ai_model_stream(messages, ai_cfg, model, provider, endpoint, api_url, a
                 params=params, cancel=cancel)
         elif route_provider == "api":
             return call_openai_compatible_stream(messages, model, api_url, api_key, temperature, max_tokens, top_p, request_timeout,
-                params=params, cancel=cancel)
+                params=params, cancel=cancel, tools=tools, tool_choice=tool_choice)
         elif route_provider == "anthropic":
             # Anthropic fallback to non-stream, yielding the entire text as a single token
             content, thinking = call_anthropic(messages, model, api_url, api_key, temperature, max_tokens, top_p)

@@ -39,6 +39,7 @@ from core.harness.ledger import (
     check_completion_allowed,
 )
 from core.harness.policy import ToolPolicy
+from core.harness.tool_schema import schemas_for, tool_calls_to_invocations
 from core.engine.grammars import fenced_tool_grammar
 from core.engine.sampling import SamplingParams
 from core.harness.providers import stream_dev_generation
@@ -1372,6 +1373,14 @@ def stream_admin_agent_turn(
         else (f"session:{session_id}" if session_id else "default")
     )
 
+    # Il catalogo dichiarabile, ristretto ai tool che questo run puo' usare:
+    # offrire un tool che poi verrebbe rifiutato costa un turno per una
+    # possibilita' che non esisteva. Il bridge lo consegna soltanto ai
+    # provider che sanno usarlo; per il motore locale resta inerte.
+    tool_catalogue = schemas_for(policy.visible_tools() if policy.restricted else None)
+    native_mode = False
+    native_announced = False
+
     run_metrics: Dict[str, Any] = {
         "turns": 0,
         "generated_tokens": 0,
@@ -1476,6 +1485,8 @@ def stream_admin_agent_turn(
         )
 
         accumulated_response = []
+        # Le chiamate strutturate di questo turno, se il provider le produce.
+        native_calls: List[Dict[str, Any]] = []
         in_think_block = False
         in_tool_block = False
         has_notified_tool = False
@@ -1557,7 +1568,21 @@ def stream_admin_agent_turn(
                 params=turn_params,
                 thinking=thinking,
                 cancel_check=_cancelled,
+                tools=tool_catalogue,
             ):
+                # Il provider ha accettato i tool dichiarati: da qui in poi la
+                # chiamata arriva strutturata e il testo non va piu' setacciato.
+                if chunk.get("native_tools"):
+                    native_mode = True
+                    if not native_announced:
+                        native_announced = True
+                        yield {"type": "status",
+                               "text": "Tool-calling nativo attivo per questo provider"}
+                    continue
+                if chunk.get("tool_calls"):
+                    native_calls.extend(chunk["tool_calls"])
+                    continue
+
                 if chunk.get("model_status") or (chunk.get("status") and chunk.get("text")):
                     status_text = chunk.get("model_status") or chunk.get("text")
                     if status_text:
@@ -1661,8 +1686,14 @@ def stream_admin_agent_turn(
 
         full_text = "".join(accumulated_response)
 
-        # Detect tools
-        tools_found = extract_tool_invocations(full_text)
+        # Detect tools. Due strade, una sola forma in uscita: cio' che segue —
+        # permessi, esecuzione, ledger, cancello di completamento — non sa quale
+        # delle due sia stata percorsa, ed e' cio' che impedisce al tool-calling
+        # nativo di diventare un secondo agente con regole proprie.
+        if native_calls:
+            tools_found = tool_calls_to_invocations(native_calls)
+        else:
+            tools_found = extract_tool_invocations(full_text)
 
         # An output cut off by the token budget is indistinguishable, to the
         # extractor, from an output that contained no tool at all — and the two
@@ -2307,6 +2338,7 @@ def stream_admin_agent_turn(
         round((overall_first_token_time - t_turn_start) * 1000, 1)
         if overall_first_token_time else None
     )
+    run_metrics["native_tool_calling"] = native_mode
     run_metrics["goal_reached"] = goal_reached
     run_metrics["exhausted_turns"] = current_turn >= max_turns and not goal_reached
     _persist_session(

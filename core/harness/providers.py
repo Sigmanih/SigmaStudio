@@ -11,6 +11,7 @@ from typing import Any, Callable, Dict, Generator, List, Optional
 from core.logger import get_logger
 from core.ai_providers import load_ai_config, call_ai_model_stream
 from core.engine.unified_runtime import sigma_engine
+from core.harness.tool_schema import supports_native_tools
 
 log = get_logger("dev_provider_bridge")
 
@@ -27,6 +28,7 @@ def stream_dev_generation(
     thinking: Optional[bool] = False,
     cancel_check: Optional[Callable[[], bool]] = None,
     cache_slot: Optional[str] = None,
+    tools: Optional[List[Dict[str, Any]]] = None,
 ) -> Generator[Dict[str, Any], None, None]:
     """Streams inference tokens and status events from either SigmaEngine or an external provider.
 
@@ -80,6 +82,14 @@ def stream_dev_generation(
 
     cancel_obj = _CancelToken(cancel_check) if cancel_check else None
 
+    # I tool si dichiarano solo a chi sa usarli. Mandarli a un endpoint che
+    # non li implementa costa un 400 a meta' del run; ometterli con chi li
+    # implementa costa molto di piu', perche' quel modello viene usato nella
+    # sua modalita' peggiore per tutto il lavoro.
+    tool_nativi = tools if (tools and supports_native_tools(active_prov)) else None
+    if tool_nativi:
+        yield {"native_tools": True, "provider": active_prov, "status": True, "token": ""}
+
     try:
         gen = call_ai_model_stream(
             messages=formatted_messages,
@@ -95,6 +105,7 @@ def stream_dev_generation(
             request_timeout=req_timeout,
             params=params,
             cancel=cancel_obj,
+            tools=tool_nativi,
         )
         for chunk in gen:
             yield chunk

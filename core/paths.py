@@ -225,6 +225,16 @@ def research_sessions_dir() -> Path:
     return _con_ripiego(var_dir() / "research_sessions", "research_sessions")
 
 
+def roles_config_file() -> Path:
+    """Definizioni dei ruoli dell'agente, modificabili dall'utente.
+
+    Sta in config/ e non in var/ perche' non e' stato di runtime ricreabile:
+    e' una scelta dell'utente su come lavorano i suoi agenti — quale prompt,
+    quali tool, quale modello — e va conservata come la configurazione.
+    """
+    return config_dir() / "roles.json"
+
+
 def dev_sessions_dir() -> Path:
     """Cartella dello stato di lavoro dell'agente sviluppatore.
 
