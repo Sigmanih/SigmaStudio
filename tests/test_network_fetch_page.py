@@ -9,7 +9,15 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from core.modules.sigma_network_lab.handlers import (
+# Il modulo di rete e' installabile e ignorato da git: su una macchina che non
+# lo ha, questi test non hanno nulla da verificare e non devono far fallire la
+# suite del kernel.
+pytest.importorskip(
+    "core.modules.sigma_network_lab.handlers",
+    reason="modulo sigma_network_lab non installato",
+)
+
+from core.modules.sigma_network_lab.handlers import (  # noqa: E402
     router,
     _extract_title,
     _extract_readable_text,
