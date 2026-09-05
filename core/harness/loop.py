@@ -220,8 +220,16 @@ ancora, la posizione e' la fine del file.
 
 `write_file` — crea un file nuovo, o ne riscrive uno da zero.
 {"path": "PERCORSO", "content": "CONTENUTO_COMPLETO"}
+Scrivi al massimo ~120 righe per chiamata. Oltre, la chiamata viene troncata a
+meta' e il file non viene creato affatto: per un file piu' lungo scrivi le
+prime 120 righe con write_file e aggiungi il resto con append_file, un pezzo
+per volta. E' piu' veloce che riprovare una scrittura che non entra.
 
 `terminal` — esegue un comando (PowerShell).
+NON usarlo per scrivere file: niente `python -c "...write_text(...)"`, niente
+`echo ... > file`, niente `Set-Content`. Un file scritto cosi non ha backup,
+non viene controllato per errori di sintassi e non risulta fra le tue
+modifiche. Per scrivere ci sono write_file, append_file ed edit_file.
 {"command": "COMANDO", "cwd": "."}
 
 `screenshot` — apre una pagina in un browser e ne salva l'immagine. Usalo dopo
@@ -466,6 +474,41 @@ def strip_ansi(testo: str) -> str:
     messaggio d'errore vero.
     """
     return _ANSI_RE.sub("", testo or "")
+
+
+#: Comandi che scrivono un file del workspace scrivendone il contenuto nella
+#: riga di comando. Non sono build, non sono test: sono `write_file` fatto a
+#: mano, e vanno riconosciuti perche' aggirano tutto cio' che rende sicura una
+#: scrittura — il backup, la validazione della sintassi, il diff, il ledger.
+_INLINE_WRITE_PATTERNS = (
+    # python -c "... write_text(...)" oppure open(..., 'w')
+    re.compile(
+        r"python\d?(?:\.\d+)?\s+-c\b.*?"
+        r"(?:write_text|writelines|\.write\(|open\s*\([^)]*['\"][wa])",
+        re.I | re.S,
+    ),
+    # echo o printf con redirezione su file
+    re.compile(r"^\s*(?:echo|printf)\b[^|\n]*?>{1,2}\s*\S", re.I | re.M),
+    # equivalenti PowerShell
+    re.compile(r"\b(?:set-content|out-file|add-content)\b", re.I),
+    # here-doc: cat > file << EOF
+    re.compile(r"^\s*cat\s*>{1,2}\s*\S", re.I | re.M),
+    re.compile(r"\bnew-item\b[^\n]*-value\b", re.I),
+)
+
+
+def authors_a_file_inline(command: str) -> bool:
+    """Se il comando sta scrivendo un file invece di verificarne uno.
+
+    L'agente ci arriva quando una `write_file` gli viene troncata: ripiega su
+    `python -c "...write_text(...)"` per creare comunque il file. Funziona, e
+    proprio per questo e' peggio di un fallimento — il file finisce su disco
+    senza backup, senza controllo di sintassi, senza diff e senza traccia nel
+    ledger, quindi il cancello di completamento non lo vede e l'agente non puo'
+    dimostrare di averlo scritto.
+    """
+    testo = str(command or "")
+    return any(p.search(testo) for p in _INLINE_WRITE_PATTERNS)
 
 
 def _as_history(full_text: str) -> str:
@@ -973,6 +1016,23 @@ def execute_admin_tool(
             return {"tool": "terminal", "action": "kill", **res}
 
         cmd = params.get("command") or params.get("raw", "")
+        if authors_a_file_inline(cmd):
+            return {
+                "tool": "terminal",
+                "command": cmd,
+                "success": False,
+                "error": (
+                    "Comando RIFIUTATO: sta scrivendo un file dalla riga di "
+                    "comando. Un file scritto cosi non ha backup, non viene "
+                    "controllato per errori di sintassi e non risulta fra le tue "
+                    "modifiche, quindi non potrai dimostrare di averlo scritto.\n"
+                    "Usa i tool: `write_file` per crearlo, `append_file` per "
+                    "aggiungere in fondo, `edit_file` per cambiarne una parte.\n"
+                    "Se il contenuto e troppo lungo per una sola chiamata, "
+                    "scrivine una prima meta con write_file e aggiungi il resto "
+                    "con append_file, un pezzo per volta."
+                ),
+            }
         raw_cwd = params.get("cwd") or "."
         cwd = resolve_workspace_path(raw_cwd, workspace_root)
         is_bg = bool(params.get("background") or params.get("is_daemon") or params.get("daemon"))

@@ -297,3 +297,61 @@ class TestCosaContaComeVerifica:
         led.record_tool("terminal", {"command": "python -m pytest -q"},
                         {"success": True, "returncode": 0, "command": "python -m pytest -q"})
         assert check_completion_allowed(led)["allowed"] is True
+
+
+class TestScrittureDalTerminale:
+    """La scappatoia che l'agente imbocca quando una write_file gli viene troncata.
+
+    Ripiegare su `python -c "...write_text(...)"` funziona, ed e' proprio per
+    questo che e' peggio di un fallimento: il file finisce su disco senza
+    backup, senza controllo di sintassi, senza diff e senza traccia nel ledger.
+    Il cancello di completamento non lo vede, quindi l'agente non puo'
+    dimostrare di averlo scritto — e su un run reale ha passato dieci turni a
+    inseguire quella prova mancante.
+    """
+
+    def test_le_scritture_inline_vengono_riconosciute(self):
+        from core.harness.loop import authors_a_file_inline
+        for cmd in (
+            "python -c \"import pathlib; pathlib.Path('x.py').write_text('a')\"",
+            "python -c \"open('x.py','w').write('a')\"",
+            "echo contenuto > file.txt",
+            "printf 'a' >> file.txt",
+            "Set-Content -Path x.py -Value 'abc'",
+            "Out-File -FilePath x.py",
+            "cat > file.py << EOF",
+            "New-Item x.py -Value 'a'",
+        ):
+            assert authors_a_file_inline(cmd) is True, cmd
+
+    def test_i_comandi_legittimi_passano(self):
+        """Un falso positivo qui bloccherebbe la verifica, che e' il passo obbligatorio."""
+        from core.harness.loop import authors_a_file_inline
+        for cmd in (
+            "python -m pytest tests/ -q",
+            "npm run build",
+            "npm --prefix sigma_studio run lint",
+            "git status",
+            "python -c \"import core.harness.loop\"",
+            "python -m py_compile core/x.py",
+            "ruff check core/",
+        ):
+            assert authors_a_file_inline(cmd) is False, cmd
+
+    def test_il_rifiuto_indica_i_tool_giusti(self):
+        from core.harness.loop import execute_admin_tool
+        res = execute_admin_tool(
+            "terminal",
+            {"command": "python -c \"import pathlib; pathlib.Path('x.py').write_text('a')\""},
+            ".",
+        )
+        assert res["success"] is False
+        for tool in ("write_file", "append_file", "edit_file"):
+            assert tool in res["error"]
+
+    def test_un_comando_di_verifica_viene_eseguito(self):
+        """La guardia non deve impedire cio' che il cancello pretende."""
+        from core.harness.loop import execute_admin_tool
+        res = execute_admin_tool("terminal", {"command": "python -c \"pass\""}, ".")
+        assert res["tool"] == "terminal"
+        assert "RIFIUTATO" not in str(res.get("error", ""))
