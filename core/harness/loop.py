@@ -39,6 +39,7 @@ from core.harness.ledger import (
     check_completion_allowed,
 )
 from core.harness.policy import ToolPolicy
+from core.harness.roles import GENERIC_MODEL_ALIASES
 from core.harness.tool_schema import schemas_for, tool_calls_to_invocations
 from core.engine.grammars import fenced_tool_grammar
 from core.engine.sampling import SamplingParams
@@ -115,10 +116,51 @@ MAX_SPEC_ATTEMPTS = 2
 # The tools a recovery turn may emit. Narrow on purpose: the point of that
 # turn is to change the workspace, and read_file stays out because reading
 # again is what the agent was doing instead.
-RECOVERY_TOOLS = ("write_file", "edit_file", "append_file", "terminal")
+#: `read_file` e' incluso di proposito: il rifiuto che porta qui dice spesso
+#: "leggi prima di modificare", e una grammatica che vieti proprio quella
+#: lettura mette l'agente in una posizione senza uscita — obbligato a
+#: scrivere, e rifiutato ogni volta perche' non ha letto. Le guardie contro
+#: la rilettura inutile restano attive e bastano a evitare il ciclo opposto.
+RECOVERY_TOOLS = ("write_file", "edit_file", "append_file", "terminal", "read_file")
 # Suspended during a recovery turn. Only the tools that scan the tree: reading
 # a specific file stays available, because a recovery turn follows a transcript
 # reset and the file the agent needs is exactly what was just discarded.
+EXPLORATION_RECOVERY_TOOLS = ("list_dir", "glob", "search_code")
+#: Chi ha guardato la struttura ma non ha aperto niente ha un solo passo utile.
+READING_RECOVERY_TOOLS = ("read_file",)
+
+
+def recovery_stage(ledger) -> str:
+    """A che punto e' rimasto indietro l'agente: "explore", "read" o "act".
+
+    Tre stalli si assomigliano e vogliono cure opposte, e confonderli e' costato
+    due run interi. Chi non ha guardato nulla e viene spinto a scrivere si
+    inventa il progetto — un Blueprint Flask dentro FastAPI, in un file mai
+    esistito. Chi ha elencato la cartella dieci volte senza aprire un file e
+    viene spinto a esplorare la rielenca all'infinito, perche' esplorare e'
+    proprio cio' che sta gia' facendo. Solo chi ha letto qualcosa e non decide
+    va spinto a scrivere.
+    """
+    if ledger is None:
+        return "act"
+    try:
+        if ledger.has_reads():
+            return "act"
+        if ledger.has_listings() or ledger.has_searches():
+            return "read"
+        return "explore"
+    except Exception:
+        return "act"
+
+
+def recovery_tools(ledger) -> tuple:
+    """I tool ammessi nel turno di recupero, secondo lo stadio."""
+    return {
+        "explore": EXPLORATION_RECOVERY_TOOLS,
+        "read": READING_RECOVERY_TOOLS,
+    }.get(recovery_stage(ledger), RECOVERY_TOOLS)
+
+
 SUSPENDED_DURING_RECOVERY = (
     "list_dir", "list_directory", "ls", "glob", "find_files", "glob_files",
     "search_code", "grep",
@@ -411,6 +453,21 @@ def _persist_session(
         log.debug("[AdminAgent] sessione '%s' non salvata: %s", session_id, exc)
 
 
+_ANSI_RE = re.compile(r"\[[0-9;?]*[A-Za-z]")
+
+
+def strip_ansi(testo: str) -> str:
+    """Toglie le sequenze di colore dall'output di un comando.
+
+    pytest, npm ed eslint colorano l'output anche quando nessuno lo
+    guardera' a schermo. Nel contesto del modello quei codici non sono
+    solo illeggibili: sono token pagati per niente, e su un output lungo
+    sono centinaia — presi dallo stesso budget che serve a far entrare il
+    messaggio d'errore vero.
+    """
+    return _ANSI_RE.sub("", testo or "")
+
+
 def _as_history(full_text: str) -> str:
     """An assistant turn reduced to what later turns actually need.
 
@@ -452,6 +509,50 @@ def _recovery_directive(ledger: Optional["DevSessionLedger"] = None) -> str:
             "read_file e ammesso solo su file mai letti in questa sessione: i "
             "nomi definiti dai file che hai gia letto sono elencati nello stato "
             "del lavoro qui sopra."
+        )
+
+    # Un agente che non ha ancora guardato nulla non e' bloccato
+    # nell'esplorazione: non ha ancora cominciato. Dirgli "STOP ESPLORAZIONE,
+    # scrivi il file" lo porta a inventarsi un percorso e un framework — e' il
+    # modo in cui un run e' finito con un Blueprint Flask dentro un progetto
+    # FastAPI, in un file che non e' mai esistito.
+    stadio = recovery_stage(ledger)
+
+    if stadio == "read":
+        noti = sorted(ledger._listings)[:6] if ledger else []
+        dove = (
+            "Cartelle che hai gia elencato: " + ", ".join(f"`{d}`" for d in noti)
+            if noti else "Hai gia guardato la struttura."
+        )
+        return (
+            "BASTA ELENCARE. Hai gia guardato la struttura del progetto e non "
+            "hai ancora aperto un solo file: rielencare la stessa cartella "
+            "restituisce le stesse righe e non ti dice come e fatto il codice "
+            "che devi modificare.\n\n"
+            f"{dove}\n\n"
+            "Nel prossimo messaggio emetti UN SOLO blocco ```tool:read_file sul "
+            "file che ti serve — quello che gia contiene le route o le funzioni "
+            "vicine a cio che devi aggiungere. Solo dopo averlo letto potrai "
+            "modificarlo."
+        )
+
+    if stadio == "explore":
+        percorsi = ledger.goal_paths if ledger else []
+        indizio = (
+            "I percorsi citati dall'obiettivo sono: "
+            + ", ".join(f"`{p}`" for p in percorsi[:5])
+            if percorsi else
+            "Parti dalla radice: ```tool:list_dir con {\"path\": \".\"}"
+        )
+        return (
+            "FERMATI. Stai per modificare un progetto che non hai ancora "
+            "guardato: finora non hai letto nessun file ne fatto nessuna "
+            "ricerca, quindi qualunque percorso o struttura tu stia usando te "
+            "lo sei inventato.\n\n"
+            f"{indizio}\n\n"
+            "Nel prossimo messaggio emetti UN SOLO blocco tool fra `list_dir`, "
+            "`glob` o `search_code` per vedere cosa c'e davvero. Non scrivere "
+            "nulla finche non hai visto i file reali."
         )
 
     return (
@@ -1280,26 +1381,28 @@ def stream_admin_agent_turn(
     if not workspace_root:
         workspace_root = get_default_workspace_root()
 
-    # Intelligent Coder Model Prioritization for Developer Agent
-    if not model_name or str(model_name).lower().strip() in ("sigmaengine", "auto", "default", "native", ""):
+    # Quale modello, quando il chiamante non ne ha scelto uno.
+    #
+    # Qui c'era un'euristica che cercava fra i modelli installati uno col nome
+    # contenente "coder" e lo imponeva. Sembrava ragionevole e faceva danno:
+    # scavalcava in silenzio il modello configurato dall'utente, e il nome di
+    # un file non dice niente su quanto quel checkpoint sia adatto — su questa
+    # macchina il "coder" cosi' scelto era tre volte piu' lento, end to end,
+    # del modello generale che l'utente aveva scelto apposta.
+    #
+    # La configurazione vince. La chat libera del Developer Studio *e'* il
+    # ruolo Coder, quindi ne eredita il binding: chi cambia quel binding cambia
+    # anche questa, che e' l'unico modo perche' un solo posto resti la verita'.
+    if not model_name or str(model_name).lower().strip() in GENERIC_MODEL_ALIASES:
         try:
-            from core.model_paths import list_model_dirs
-            available = list_model_dirs()
-            coder_candidates = [
-                m for m in available
-                if any(k in os.path.basename(m).lower() for k in ("coder", "code-", "-code", "deepseek-coder", "starcoder"))
-            ]
-            if coder_candidates:
-                def _rank_c(p: str) -> int:
-                    b = os.path.basename(p).lower()
-                    if any(q in b for q in ("q4", "q5", "q8", "q6")):
-                        return 1
-                    return 2
-                best_coder = sorted(coder_candidates, key=_rank_c)[0]
-                model_name = os.path.basename(best_coder.rstrip(os.sep + "/"))
-                log.info("[AdminAgent] Routing automatico preferenziale su modello Coder specializzato: %s", model_name)
-        except Exception as e:
-            log.debug("[AdminAgent] Coder model routing fallback: %s", e)
+            from core.harness.role_registry import get_role
+            coder = get_role("coder")
+            legato = (getattr(coder, "model", "") or "").strip() if coder else ""
+            if legato:
+                model_name = legato
+                log.info("[AdminAgent] Modello dal binding del ruolo coder: %s", model_name)
+        except Exception as exc:
+            log.debug("[AdminAgent] binding del ruolo non leggibile: %s", exc)
 
     def _cancelled() -> bool:
         try:
@@ -1565,7 +1668,7 @@ def stream_admin_agent_turn(
                         "text": "Primo turno: definizione dei criteri di accettazione",
                     }
             elif force_action_turn:
-                gbnf = fenced_tool_grammar(RECOVERY_TOOLS)
+                gbnf = fenced_tool_grammar(recovery_tools(ledger))
                 if gbnf:
                     turn_params = (
                         SamplingParams.resolve(model_name=model_name or "")
@@ -1851,6 +1954,14 @@ def stream_admin_agent_turn(
         tool_observations = []
         reads_this_turn: List[str] = []
         turn_was_productive = False
+        # Un rifiuto che dice esattamente qual e' il passo mancante — leggi
+        # prima di modificare, usa un percorso reale — non e' uno stallo:
+        # e' l'informazione che serviva. Contarlo come turno improduttivo
+        # faceva scattare il recupero proprio mentre l'agente stava per
+        # imboccare la strada giusta, e il recupero gli imponeva di
+        # scrivere: e' cosi' che un file inesistente e' diventato un file
+        # inventato.
+        turn_gave_direction = False
         # Signatures of calls that have already failed, so an identical retry
         # can be short-circuited instead of burning a turn on the same error.
         for t in tools_found:
@@ -1892,7 +2003,9 @@ def stream_admin_agent_turn(
             # During a forced-action turn the only useful move is to write.
             # Refusing exploration outright is blunter than asking again, and
             # asking again is exactly what has already failed several times.
-            if force_action_turn and t_name in SUSPENDED_DURING_RECOVERY:
+            if (force_action_turn and t_name in SUSPENDED_DURING_RECOVERY
+                    and recovery_stage(ledger) == "act"):
+                turn_gave_direction = True
                 msg = (
                     f"Tool '{t_name}' SOSPESO: hai gia esplorato la struttura "
                     "del progetto e non hai ancora scritto nulla. Se ti serve il "
@@ -1939,6 +2052,7 @@ def stream_admin_agent_turn(
                     resolve_workspace_path(probe, workspace_root).replace("\\", "/")
                 )
                 if already:
+                    turn_gave_direction = True
                     msg = (
                         f"Tool 'read_file' SOSPESO su '{probe}': lo hai gia letto "
                         "in questa sessione, e i nomi che quel file definisce sono "
@@ -1962,6 +2076,7 @@ def stream_admin_agent_turn(
                     marker in m.get("content", "") for m in full_messages[2:]
                 )
                 if still_visible:
+                    turn_gave_direction = True
                     msg = (
                         f"Tool 'read_file' NON eseguito: il contenuto di "
                         f"'{probe}' e gia presente qui sopra in questa "
@@ -1987,6 +2102,7 @@ def stream_admin_agent_turn(
                     if candidates
                     else "Usa `glob` o `list_dir` per trovare il percorso reale."
                 )
+                turn_gave_direction = True
                 msg = (
                     f"Tool '{t_name}' NON eseguito: i parametri "
                     f"{', '.join(placeholder_keys)} contengono un segnaposto del "
@@ -2020,6 +2136,15 @@ def stream_admin_agent_turn(
                             "e ricopia le righe dal risultato, senza i numeri di riga."
                         ),
                     }
+                    turn_gave_direction = True
+                    # Senza questo, la stessa chiamata rifiutata tornava
+                    # identica all'infinito: il percorso di rifiuto esce dal
+                    # ciclo prima del punto in cui le firme fallite vengono
+                    # registrate, e un run e' finito con ventitre edit_file
+                    # identici di fila.
+                    failed_call_signatures.add(
+                        (t_name, json.dumps(t_params, sort_keys=True, default=str)[:600])
+                    )
                     ledger.record_tool(t_name, t_params, result)
                     yield {"type": "tool_result", "tool": t_name, "result": result}
                     yield {"type": "ledger", "state": ledger.snapshot()}
@@ -2062,8 +2187,14 @@ def stream_admin_agent_turn(
                 result = execute_admin_tool(t_name, t_params, workspace_root, should_cancel=should_cancel)
 
             ledger.record_tool(t_name, t_params, result)
-            if result.get("success") and t_name in PRODUCTIVE_TOOLS:
+            # Qualunque tool riuscito e' progresso. Contare solo scritture e
+            # comandi faceva scattare il recupero al terzo turno di OGNI run:
+            # `spec` e `pipeline` sono passi obbligatori del ciclo di lavoro,
+            # ed esplorare e' cio' che si deve fare prima di scrivere — tutti
+            # e tre venivano contati contro l'agente.
+            if result.get("success"):
                 turn_was_productive = True
+            if result.get("success") and t_name in PRODUCTIVE_TOOLS:
                 consecutive_truncations = 0
                 # Il workspace e' cambiato: nessuna chiamata fallita prima di
                 # ora e' piu' garantita fallire, e tenerne memoria bloccherebbe
@@ -2071,6 +2202,16 @@ def stream_admin_agent_turn(
                 failed_call_signatures.clear()
                 inert_call_signatures.clear()
             if t_name == "read_file" and result.get("success") and result.get("path"):
+                reads_this_turn.append(str(result["path"]))
+            # Una scrittura invalida la lettura precedente dello stesso file
+            # tanto quanto una rilettura. Senza questo, la vecchia copia
+            # restava nel transcritto e la guardia "lo hai gia' letto"
+            # rifiutava la rilettura: l'agente si ritrovava a modificare un
+            # file guardando una versione che aveva appena sostituito, ed e'
+            # esattamente il ciclo edit-test-rileggi-rifiutato osservato.
+            if (result.get("success")
+                    and t_name in ("write_file", "edit_file", "append_file", "restore_file")
+                    and result.get("path")):
                 reads_this_turn.append(str(result["path"]))
             if result.get("success") and t_name in ("list_dir", "list_directory", "ls", "glob"):
                 inert_call_signatures.add(
@@ -2292,6 +2433,12 @@ def stream_admin_agent_turn(
         if turn_was_productive:
             unproductive_turns = 0
             force_action_turn = False
+        elif turn_gave_direction:
+            # Il turno non ha cambiato il workspace ma ha cambiato cio' che
+            # l'agente sa. Una ripetizione identica viene comunque bloccata
+            # altrove, e quel rifiuto li' non e' informativo: la via d'uscita
+            # dal ciclo resta aperta.
+            pass
         else:
             unproductive_turns += 1
 

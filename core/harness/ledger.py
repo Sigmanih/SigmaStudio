@@ -205,6 +205,9 @@ class DevSessionLedger:
         self._screenshots: List[Dict[str, Any]] = []
         self._diffs: Dict[str, str] = {}
         self._searches: List[Dict[str, Any]] = []
+        #: Cartelle e pattern gia' elencati: dicono che l'agente ha guardato
+        #: la struttura, anche se non ha ancora aperto un file.
+        self._listings: set = set()
         self._consecutive_dup_commands = 0
         self._lock = threading.RLock()
         self.started_at = time.time()
@@ -378,6 +381,17 @@ class DevSessionLedger:
 
         with self._lock:
             if tool == "read_file" and path:
+                # Un `read_file` su una cartella restituisce l'elenco, non un
+                # file: registrarlo come lettura faceva credere all'agente di
+                # aver aperto il codice, e al recupero di poterlo mandare a
+                # scrivere. Da li' non usciva piu': gli veniva vietato di
+                # leggere e rifiutato ogni tentativo di modifica.
+                if ok and result.get("total_lines") is None and (
+                        "cartella" in str(result.get("message", "")).lower()
+                        or "e' una cartella" in str(result.get("content", "")).lower()
+                        or "è una cartella" in str(result.get("content", "")).lower()):
+                    self._listings.add(path)
+                    return
                 rec = self._file(path)
                 if ok:
                     rec.mark_read(
@@ -443,6 +457,14 @@ class DevSessionLedger:
                 self._commands.append(entry)
                 del self._commands[:-MAX_TRACKED_COMMANDS]
 
+            elif tool in ("list_dir", "list_directory", "ls", "glob",
+                          "find_files", "glob_files"):
+                # Elencare non e' leggere, ma non e' nemmeno non aver
+                # guardato: sono due stalli diversi e chiedono cure opposte.
+                if ok:
+                    dove = str(params.get("path") or params.get("pattern") or ".")
+                    self._listings.add(dove.replace("\\", "/"))
+
             elif tool in ("search_code", "grep"):
                 q = str(params.get("query") or "")
                 if q:
@@ -500,6 +522,10 @@ class DevSessionLedger:
     def has_reads(self) -> bool:
         with self._lock:
             return any(r.reads > 0 for r in self._files.values())
+
+    def has_listings(self) -> bool:
+        with self._lock:
+            return bool(self._listings)
 
     def has_searches(self) -> bool:
         with self._lock:
@@ -641,6 +667,7 @@ class DevSessionLedger:
                 "screenshots": list(self._screenshots),
                 "diffs": dict(self._diffs),
                 "searches": list(self._searches),
+                "listings": sorted(self._listings),
                 "consecutive_dup_commands": self._consecutive_dup_commands,
             }
 
@@ -705,6 +732,7 @@ class DevSessionLedger:
         ledger._screenshots = list(state.get("screenshots") or [])
         ledger._diffs = dict(state.get("diffs") or {})
         ledger._searches = list(state.get("searches") or [])
+        ledger._listings = set(state.get("listings") or [])
         ledger._consecutive_dup_commands = int(
             state.get("consecutive_dup_commands") or 0
         )
@@ -821,9 +849,29 @@ VERIFICATION_HINTS = (
 )
 
 
+#: Segni che il comando *scrive* invece di controllare. Un comando che modifica
+#: il workspace non ne e' una verifica, per quanti indizi contenga.
+MUTATION_HINTS = (
+    "write_text", "writelines", ".write(", "open(", ">>", " > ", "echo ",
+    "set-content", "out-file", "add-content", "new-item", "copy-item",
+    "shutil.", "os.remove", "os.rename", "mkdir", "touch ",
+)
+
+
 def looks_like_verification(command: str) -> bool:
-    """Whether a shell command plausibly proves the code works."""
+    """Whether a shell command plausibly proves the code works.
+
+    Un comando che scrive non conta, anche quando contiene la parola giusta.
+    L'agente usa `python -c "import pathlib; ...write_text(...)"` per creare
+    file quando la tool call gli e' stata troncata, e quel comando contiene
+    `import `: se fallisce viene registrato come verifica fallita, e da quel
+    momento il cancello di completamento resta chiuso per sempre — su un run
+    reale ha bruciato dieci turni a inseguire una verifica che non era mai
+    stata una verifica.
+    """
     c = (command or "").lower()
+    if any(segno in c for segno in MUTATION_HINTS):
+        return False
     return any(hint in c for hint in VERIFICATION_HINTS)
 
 
