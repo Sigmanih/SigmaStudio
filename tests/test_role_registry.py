@@ -152,3 +152,49 @@ class TestIntegrazioneColMotore:
             assert isinstance(voce["tools"], list)
             assert isinstance(voce["focus_areas"], list)
             assert "model" in voce and "mcp" in voce
+
+
+class TestBindingDelModello:
+    """Quale modello vince, fra quello del ruolo e quello chiesto dal chiamante.
+
+    Il campo `model` di un ruolo sarebbe l'ennesima dichiarazione senza effetto
+    se il chiamante lo scavalcasse sempre — e il selettore della UI sarebbe
+    inerte se non lo scavalcasse mai. La distinzione sta nel riconoscere che
+    "sigmaengine" non e' una scelta: e' il valore che arriva quando nessuno ha
+    scelto.
+    """
+
+    def _ruolo(self, modello=""):
+        from dataclasses import replace
+        return replace(DEV_ROLES["coder"], model=modello)
+
+    def test_una_scelta_esplicita_vince_sul_binding(self):
+        from core.harness.roles import resolve_model_for_role
+        ruolo = self._ruolo("qwen3-27b")
+        assert resolve_model_for_role(ruolo, "gemma-4-12b") == "gemma-4-12b"
+
+    @pytest.mark.parametrize(
+        "generico", ["sigmaengine", "sigma_engine", "auto", "default", "native", "", None]
+    )
+    def test_un_alias_generico_lascia_vincere_il_binding(self, generico):
+        from core.harness.roles import resolve_model_for_role
+        ruolo = self._ruolo("qwen3-27b")
+        assert resolve_model_for_role(ruolo, generico) == "qwen3-27b"
+
+    def test_l_alias_e_riconosciuto_a_prescindere_dal_maiuscolo(self):
+        from core.harness.roles import resolve_model_for_role
+        assert resolve_model_for_role(self._ruolo("qwen3-27b"), " SigmaEngine ") == "qwen3-27b"
+
+    def test_senza_binding_passa_cio_che_chiede_il_chiamante(self):
+        """Un ruolo senza modello dichiarato non deve imporre nulla."""
+        from core.harness.roles import resolve_model_for_role
+        assert resolve_model_for_role(self._ruolo(""), "sigmaengine") == "sigmaengine"
+        assert resolve_model_for_role(self._ruolo(""), "gemma") == "gemma"
+
+    def test_il_binding_di_questa_macchina_e_applicato(self, config_isolata):
+        """Il file di configurazione arriva fino alla scelta del modello."""
+        from core.harness.roles import resolve_model_for_role
+        _scrivi(config_isolata, {"coder": {"model": "Qwen--Qwen3.8-27B-GGUF-Q4_K_S"}})
+        role_registry.invalidate()
+        coder = role_registry.load_roles()["coder"]
+        assert resolve_model_for_role(coder, "sigmaengine") == "Qwen--Qwen3.8-27B-GGUF-Q4_K_S"

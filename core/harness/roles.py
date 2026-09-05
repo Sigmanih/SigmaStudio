@@ -291,6 +291,28 @@ DEV_ROLES: Dict[str, DevRole] = {
 # Role Engine
 # ---------------------------------------------------------------------------
 
+#: Nomi che significano "scegli tu": non sono una scelta dell'utente, sono
+#: l'assenza di una scelta, e non devono prevalere sul binding del ruolo.
+GENERIC_MODEL_ALIASES = frozenset({
+    "", "sigmaengine", "sigma_engine", "sigma", "auto", "default", "native", "local",
+})
+
+
+def resolve_model_for_role(role: "DevRole", requested: Optional[str]) -> Optional[str]:
+    """Quale modello usare per questo ruolo.
+
+    Un modello scelto esplicitamente dall'utente vince: e' una decisione presa
+    guardando lo schermo, e ignorarla renderebbe inerte il selettore. Ma
+    "sigmaengine" non e' una scelta — e' il valore che arriva quando nessuno ha
+    scelto — e li' deve valere il binding dichiarato dal ruolo, altrimenti il
+    campo `model` sarebbe l'ennesima dichiarazione senza effetto.
+    """
+    esplicito = str(requested or "").strip()
+    if esplicito and esplicito.lower() not in GENERIC_MODEL_ALIASES:
+        return esplicito
+    return (getattr(role, "model", "") or "").strip() or requested
+
+
 class RoleEngine:
     """Manages switching between development roles on a single loaded model.
 
@@ -398,13 +420,15 @@ class RoleEngine:
             "role_name": role.name,
             "role_icon": role.icon,
             "max_turns": int(max_turns or role.max_turns),
+            "model": modello_effettivo,
         }
 
         # Delegate to the existing admin agent loop but with our role's params
+        modello_effettivo = resolve_model_for_role(role, model_name)
         for event in stream_admin_agent_turn(
             messages=messages,
             workspace_root=workspace_root,
-            model_name=model_name,
+            model_name=modello_effettivo,
             temperature=role.temperature,
             auto_execute_tools=True,
             max_turns=int(max_turns or role.max_turns),
