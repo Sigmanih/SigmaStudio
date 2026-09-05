@@ -1,0 +1,57 @@
+{
+  "id": "sigma_hardware_lab",
+  "name": "Hardware Lab & VRAM Telemetry",
+  "version": "v1.0.0",
+  "category": "Infrastruttura & GPU",
+  "tabType": "hardware_lab",
+  "sidebarLabel": "Hardware & GPU",
+  "sidebarIcon": "Zap",
+  "sidebarBadge": "VRAM",
+  "sidebarBadgeColor": "rgba(0,242,254,0.15)",
+  "sidebarCategory": "Infrastruttura & Sistema",
+  "description": "Telemetria in tempo reale di GPU VRAM, RAM di sistema, carico CPU, gestione processi CUDA e terminazione selettiva dei processi zombie.",
+  "author": "Sigma Core Team",
+  "repository": "https://github.com/Sigmanih/SigmaStudio-Moduli",
+  "branch": "main",
+  "path": "modules/sigma_hardware_lab",
+  "tags": [
+    "NVIDIA NVML",
+    "GPU VRAM",
+    "Ollama Daemon",
+    "Process Manager",
+    "CUDA Telemetry"
+  ],
+  "size": "~1 MB",
+  "icon": "Zap",
+  "color": "#00d2ff",
+  "frontend": {
+    "entrypoint": "frontend/index.jsx",
+    "styles": [
+      "frontend/styles/hardware-lab.css"
+    ],
+    "install_to": "sigma_studio/src/modules/sigma_hardware_lab/"
+  },
+  "backend": {
+    "handlers_module": "core.modules.sigma_hardware_lab.backend.handlers",
+    "mcp_server_module": "core.modules.sigma_hardware_lab.backend.mcp_server",
+    "routes_prefix": "/api/hardware",
+    "install_to": "core/modules/sigma_hardware_lab/"
+  },
+  "requirements": "requirements.txt",
+  "kernel_modules_required": [],
+  "changelog": [
+    {
+      "version": "v1.0.0",
+      "date": "2026-08-15",
+      "notes": "Initial release — extracted Hardware Lab and GPU telemetry from Sigma Studio kernel."
+    }
+  ],
+  "requires": {
+    "hardware": {
+      "requires": {},
+      "recommended": {},
+      "reason_if_unavailable": null
+    },
+    "modules": []
+  }
+}

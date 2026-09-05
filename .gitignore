@@ -48,11 +48,19 @@ config.local.json
 # vincono, quindi vanno riescluse qui.
 /core/modules/sigma_model_hub/**/__pycache__/
 /core/modules/sigma_model_hub/**/*.pyc
+# Hardware Lab: non e' un modulo scaricabile come gli altri, e' il pannello che
+# si adatta all'hardware della macchina su cui gira. Va versionato qui.
+!/core/modules/sigma_hardware_lab/
+!/core/modules/sigma_hardware_lab/**
+/core/modules/sigma_hardware_lab/**/__pycache__/
+/core/modules/sigma_hardware_lab/**/*.pyc
 /sigma_studio/src/modules/*
 !/sigma_studio/src/modules/registry.js
 !/sigma_studio/src/modules/ModuleNotInstalled.jsx
 !/sigma_studio/src/modules/sigma_model_hub/
 !/sigma_studio/src/modules/sigma_model_hub/**
+!/sigma_studio/src/modules/sigma_hardware_lab/
+!/sigma_studio/src/modules/sigma_hardware_lab/**
 data/marketplace_installed.json
 
 # Tests & Coverage

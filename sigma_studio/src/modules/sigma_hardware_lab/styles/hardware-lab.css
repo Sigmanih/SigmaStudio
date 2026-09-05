@@ -1,0 +1,641 @@
+/* ==============================================================================
+   Hardware & GPU Lab — Cyberpunk / Dark Glassmorphic Styling (Sigma Studio)
+   ============================================================================== */
+
+.hardware-lab-container {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  width: 100%;
+  overflow-y: auto;
+  overflow-x: hidden;
+  background: var(--bg, #030305);
+  color: var(--text, #f0f0f5);
+  padding: 24px;
+  gap: 24px;
+  font-family: 'Inter', sans-serif;
+}
+
+/* Header */
+.hardware-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  padding-bottom: 18px;
+  flex-wrap: wrap;
+  gap: 16px;
+}
+
+.hardware-header-title {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.hardware-header-icon {
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
+  background: radial-gradient(circle at 30% 30%, rgba(0, 242, 254, 0.2), rgba(0, 210, 255, 0.05));
+  border: 1px solid rgba(0, 242, 254, 0.3);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 0 20px rgba(0, 242, 254, 0.15);
+}
+
+.hardware-header-title h1 {
+  font-size: 22px;
+  font-weight: 700;
+  margin: 0;
+  color: var(--text, #fff);
+  letter-spacing: -0.3px;
+}
+
+.hardware-header-subtitle {
+  font-size: 12px;
+  color: var(--text-dim, #9494a5);
+  margin-top: 2px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.hardware-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.hw-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border-radius: 20px;
+  font-size: 12px;
+  font-weight: 600;
+  background: rgba(0, 242, 254, 0.1);
+  color: #00f2fe;
+  border: 1px solid rgba(0, 242, 254, 0.25);
+  box-shadow: 0 0 12px rgba(0, 242, 254, 0.08);
+}
+
+.hw-badge-live {
+  background: rgba(16, 185, 129, 0.12);
+  color: #10b981;
+  border-color: rgba(16, 185, 129, 0.3);
+}
+
+.hw-badge-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #10b981;
+  box-shadow: 0 0 8px #10b981;
+  animation: pulse-dot 2s infinite;
+}
+
+@keyframes pulse-dot {
+  0% { transform: scale(0.95); opacity: 0.8; }
+  50% { transform: scale(1.2); opacity: 1; box-shadow: 0 0 14px #10b981; }
+  100% { transform: scale(0.95); opacity: 0.8; }
+}
+
+.hw-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 16px;
+  border-radius: 10px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: var(--trans-fast, all 0.15s ease);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--text, #f0f0f5);
+}
+
+.hw-btn:hover {
+  background: rgba(255, 255, 255, 0.09);
+  border-color: rgba(255, 255, 255, 0.2);
+  transform: translateY(-1px);
+}
+
+.hw-btn-primary {
+  background: linear-gradient(135deg, #00c6ff 0%, #0072ff 100%);
+  border: none;
+  color: #fff;
+  box-shadow: 0 4px 16px rgba(0, 114, 255, 0.35);
+}
+
+.hw-btn-primary:hover {
+  background: linear-gradient(135deg, #00d2ff 0%, #0082ff 100%);
+  box-shadow: 0 6px 24px rgba(0, 114, 255, 0.5);
+}
+
+/* GPU Card Container */
+.gpu-cards-container {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  width: 100%;
+}
+
+.gpu-card {
+  background: rgba(10, 12, 18, 0.8);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 16px;
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.4);
+  position: relative;
+  overflow: visible;
+  transition: border-color 0.3s ease, box-shadow 0.3s ease;
+}
+
+.gpu-card:hover {
+  border-color: rgba(0, 242, 254, 0.2);
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.5), 0 0 20px rgba(0, 242, 254, 0.05);
+}
+
+.gpu-card::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  border-radius: 16px 16px 0 0;
+  background: linear-gradient(90deg, #00f2fe, #bc8cff, #3fb950);
+}
+
+/* GPU Card Header */
+.gpu-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.gpu-title {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.gpu-index-pill {
+  min-width: 32px;
+  height: 32px;
+  padding: 0 8px;
+  border-radius: 10px;
+  background: rgba(0, 242, 254, 0.15);
+  color: #00f2fe;
+  border: 1px solid rgba(0, 242, 254, 0.3);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 800;
+  font-size: 13px;
+  font-family: 'JetBrains Mono', monospace;
+}
+
+.gpu-name {
+  font-size: 17px;
+  font-weight: 700;
+  color: #ffffff;
+  letter-spacing: -0.2px;
+}
+
+.gpu-bus-info {
+  font-size: 11px;
+  color: var(--text-dim, #9494a5);
+  font-family: 'JetBrains Mono', monospace;
+  margin-top: 2px;
+}
+
+.gpu-header-badges {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.gpu-stat-badge {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  font-size: 12px;
+  font-weight: 600;
+  font-family: 'JetBrains Mono', monospace;
+}
+
+/* Instant Progress Metrics */
+.gpu-metrics-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 16px;
+  background: rgba(0, 0, 0, 0.25);
+  border-radius: 12px;
+  padding: 16px;
+  border: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.metric-row {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.metric-label-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  font-size: 12px;
+  font-weight: 600;
+  color: #cbd5e1;
+}
+
+.metric-label-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  font-size: 11px;
+  color: var(--text-dim, #9494a5);
+}
+
+.metric-label-value {
+  font-family: 'JetBrains Mono', monospace;
+  font-weight: 700;
+  font-size: 13px;
+}
+
+.metric-progress-track {
+  height: 8px;
+  background: rgba(255, 255, 255, 0.06);
+  border-radius: 6px;
+  overflow: hidden;
+  position: relative;
+}
+
+.metric-progress-bar {
+  height: 100%;
+  border-radius: 6px;
+  transition: width 0.4s ease, background 0.3s ease;
+  position: relative;
+}
+
+.metric-progress-bar::after {
+  content: '';
+  position: absolute;
+  top: 0; right: 0; bottom: 0; left: 0;
+  background: linear-gradient(90deg, transparent, rgba(255,255,255,0.25), transparent);
+  animation: bar-shimmer 2.5s infinite;
+}
+
+@keyframes bar-shimmer {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(100%); }
+}
+
+.bar-cyan { background: linear-gradient(90deg, #00c6ff, #0072ff); }
+.bar-purple { background: linear-gradient(90deg, #a855f7, #6366f1); }
+.bar-amber { background: linear-gradient(90deg, #f59e0b, #ef4444); }
+
+/* Charts Layout Grid */
+.charts-section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 6px;
+  margin-bottom: 4px;
+}
+
+.charts-section-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-dim, #9494a5);
+}
+
+.charts-grid-main {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(360px, 1fr));
+  gap: 16px;
+}
+
+.charts-grid-secondary {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 16px;
+  margin-top: 12px;
+}
+
+/* Individual Telemetry Chart Card */
+.hw-chart-card {
+  background: rgba(13, 16, 25, 0.7);
+  backdrop-filter: blur(12px);
+  border-radius: 14px;
+  padding: 16px;
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  position: relative;
+  transition: all 0.25s ease;
+}
+
+.hw-chart-card:hover {
+  background: rgba(18, 22, 34, 0.85);
+  border-color: rgba(255, 255, 255, 0.15);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+}
+
+.hw-chart-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.hw-chart-title-box {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.hw-chart-icon-wrap {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 6px;
+}
+
+.hw-chart-label {
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #cbd5e1;
+}
+
+.hw-chart-val-box {
+  display: flex;
+  align-items: baseline;
+  gap: 4px;
+  font-family: 'JetBrains Mono', monospace;
+}
+
+.hw-chart-val {
+  font-size: 16px;
+  font-weight: 800;
+}
+
+.hw-chart-unit {
+  font-size: 11px;
+  color: var(--text-dim, #9494a5);
+  font-weight: 500;
+}
+
+/* Chart Canvas & SVG Container */
+.hw-chart-body {
+  position: relative;
+  width: 100%;
+  height: 110px;
+  overflow: visible;
+  padding-top: 10px;
+}
+
+.hw-chart-svg {
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+}
+
+.hw-chart-placeholder {
+  height: 100px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  color: var(--text-dim, #9494a5);
+  font-size: 13px;
+  font-style: italic;
+}
+
+.hw-chart-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 11px;
+  color: var(--text-dim, #9494a5);
+  font-family: 'JetBrains Mono', monospace;
+  padding-top: 8px;
+  border-top: 1px dashed rgba(255, 255, 255, 0.06);
+}
+
+.hw-chart-stat-pill {
+  padding: 2px 8px;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.04);
+  color: #cbd5e1;
+  font-size: 10px;
+}
+
+/* Interactive Floating Tooltip */
+.hw-chart-tooltip {
+  position: absolute;
+  top: -8px;
+  transform: translateX(-50%);
+  background: rgba(10, 14, 23, 0.95);
+  backdrop-filter: blur(10px);
+  border: 1px solid #00f2fe;
+  color: #ffffff;
+  padding: 4px 8px;
+  border-radius: 6px;
+  font-size: 11px;
+  font-weight: 700;
+  font-family: 'JetBrains Mono', monospace;
+  pointer-events: none;
+  white-space: nowrap;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.6);
+  z-index: 30;
+}
+
+/* Multi-GPU Tuning Section */
+.hw-section {
+  background: rgba(10, 12, 18, 0.8);
+  backdrop-filter: blur(16px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 16px;
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.4);
+}
+
+.hw-section-title {
+  font-size: 16px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: #f8fafc;
+}
+
+.hw-form-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 20px;
+}
+
+.hw-form-group {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.hw-form-group label {
+  font-size: 12px;
+  font-weight: 600;
+  color: #cbd5e1;
+  display: flex;
+  justify-content: space-between;
+}
+
+.hw-select {
+  padding: 12px 14px;
+  border-radius: 10px;
+  background: rgba(15, 23, 42, 0.9);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  color: #f8fafc;
+  font-size: 13px;
+  font-family: 'Inter', sans-serif;
+  outline: none;
+  transition: all 0.2s ease;
+  cursor: pointer;
+}
+
+.hw-select:focus {
+  border-color: #00f2fe;
+  box-shadow: 0 0 0 3px rgba(0, 242, 254, 0.2);
+}
+
+.hw-help-text {
+  font-size: 11px;
+  color: var(--text-dim, #9494a5);
+  line-height: 1.4;
+}
+
+/* ==============================================================================
+   Tema Chiaro / Crema — Card e Container 100% Opachi
+   ============================================================================== */
+.theme-light .hardware-lab-container {
+  background-color: #f7f4ed !important;
+  color: #111111;
+}
+
+.theme-light .hw-floating-panel {
+  background-color: #fffdf9 !important;
+  border-color: rgba(190, 160, 110, 0.45) !important;
+  color: #111111 !important;
+}
+
+.theme-light .gpu-card {
+  background-color: #fffdf9 !important;
+  background-image: none !important;
+  border-color: rgba(190, 160, 110, 0.35) !important;
+  opacity: 1 !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+
+.theme-light .hw-section {
+  background-color: #fffdf9 !important;
+  background-image: none !important;
+  opacity: 1 !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  border-color: rgba(190, 160, 110, 0.35) !important;
+}
+
+.theme-light .hw-chart-card {
+  background-color: #f9f6f0 !important;
+  background-image: none !important;
+  border-color: rgba(190, 160, 110, 0.35) !important;
+  opacity: 1 !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+
+.theme-light .gpu-card::before {
+  background: linear-gradient(90deg, #ea580c, #d97706, #16a34a);
+}
+
+.theme-light .gpu-name {
+  color: #111111 !important;
+}
+
+.theme-light .gpu-bus-info {
+  color: #6b7280 !important;
+}
+
+.theme-light .hw-section-title {
+  color: #111111 !important;
+}
+
+.theme-light .hw-select {
+  background: #ffffff !important;
+  border-color: rgba(190, 160, 110, 0.4) !important;
+  color: #111111 !important;
+}
+
+.theme-light .hw-select:focus {
+  border-color: #ea580c !important;
+  box-shadow: 0 0 0 3px rgba(234, 88, 12, 0.15) !important;
+}
+
+.theme-light .hw-btn {
+  background: #f4efe4;
+  border-color: rgba(190, 160, 110, 0.35);
+  color: #111111;
+}
+
+.theme-light .hw-btn:hover {
+  background: #ebe4d5;
+  border-color: rgba(190, 160, 110, 0.55);
+}
+
+.theme-light .hw-btn-primary {
+  background: linear-gradient(135deg, #ea580c 0%, #d97706 100%) !important;
+  color: #ffffff !important;
+  border: none !important;
+}
+
+.theme-light .gpu-stat-badge {
+  background: #f4efe4 !important;
+  border-color: rgba(190, 160, 110, 0.35) !important;
+  color: #111111 !important;
+}
+
+.theme-light .metric-progress-track {
+  background: rgba(0, 0, 0, 0.06) !important;
+}
