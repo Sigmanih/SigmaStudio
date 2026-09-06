@@ -33,11 +33,19 @@ export default function DownloadManager({ isLight, addToast, onDeployRequested }
     }
   }, []);
 
+  const hasActiveDownloads = downloads.some(
+    d => ['downloading', 'pending', 'resuming'].includes(d.status)
+  );
+
   useEffect(() => {
     fetchDownloads();
-    const interval = setInterval(fetchDownloads, 1200);
+    const interval = setInterval(() => {
+      if (document.visibilityState !== 'hidden') {
+        fetchDownloads();
+      }
+    }, hasActiveDownloads ? 2000 : 12000);
     return () => clearInterval(interval);
-  }, [fetchDownloads]);
+  }, [fetchDownloads, hasActiveDownloads]);
 
   const handlePauseDownload = async (taskId) => {
     try {

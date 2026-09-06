@@ -214,15 +214,19 @@ export default function useChatCore(extraProps = {}) {
   const contextPct = Math.min(100, Math.round((usedTokens / numCtx) * 100));
   const contextStats = { usedTokens, numCtx, pct: contextPct, messagesTokens, attachedTokens, systemTokens };
 
+  const modelBtnRef = useRef(null);
+  const inputRef = useRef(null);
+  const panelRef = useRef(null);
+
   // Sync references for the parent layout components
   const combinedRefs = {
     ...sessionsHook.sessionRefs,
     ...configHook.configRefs,
     ...streamingHook.streamingRefs,
     messagesEnd: streamingHook.streamingRefs.messagesEnd || { current: null },
-    input: { current: null },
-    modelBtn: { current: null },
-    panel: { current: null },
+    input: inputRef,
+    modelBtn: modelBtnRef,
+    panel: panelRef,
     abort: streamingHook.streamingRefs.abort,
   };
 
@@ -467,10 +471,8 @@ export default function useChatCore(extraProps = {}) {
     handleSetFavorite: configHook.handleSetFavoriteModel,
     handleSelectManifesto,
     handleDuplicateSession,
-    openModelDropdown: async () => {
-      await configHook.refreshConfig();
-      await configHook.fetchOllamaModels();
-      configHook.setShowModelDropdown(!configHook.showModelDropdown);
+    openModelDropdown: () => {
+      configHook.setShowModelDropdown(prev => !prev);
     },
     removePcFile: streamingHook.removePcFile,
     handleDragOver: streamingHook.handleDragOver,

@@ -195,13 +195,23 @@ export default function ModelHub({ addToast: addToastProp, openTab }) {
   const activeConversion = conversionJobs.find(
     j => ['queued', 'converting', 'quantizing'].includes(j.status)
   );
+  // Booleano, non l'oggetto: `activeConversion` viene ricreato da `.find()` a
+  // ogni render, e come dipendenza dell'effetto ricreerebbe l'intervallo di
+  // continuo. Cosi' cambia solo quando una conversione parte o finisce.
   const conversionRunning = !!activeConversion;
+  const hasActiveDownloads = activeDownloads.some(
+    d => ['downloading', 'pending', 'resuming'].includes(d.status)
+  );
 
   // Due cadenze: fitta mentre converte, rada altrimenti, che serve solo ad
   // accorgersi di un job avviato altrove o gia' in corso al mount.
   useEffect(() => {
     fetchConversionJobs();
-    const interval = setInterval(fetchConversionJobs, conversionRunning ? 2000 : 15000);
+    const interval = setInterval(() => {
+      if (document.visibilityState !== 'hidden') {
+        fetchConversionJobs();
+      }
+    }, conversionRunning ? 2500 : 15000);
     return () => clearInterval(interval);
   }, [fetchConversionJobs, conversionRunning]);
 
@@ -247,9 +257,13 @@ export default function ModelHub({ addToast: addToastProp, openTab }) {
     fetchEngineStatus();
     fetchDownloads();
     fetchLocalModels();
-    const interval = setInterval(fetchDownloads, 1500);
+    const interval = setInterval(() => {
+      if (document.visibilityState !== 'hidden') {
+        fetchDownloads();
+      }
+    }, hasActiveDownloads ? 2500 : 12000);
     return () => clearInterval(interval);
-  }, [fetchConfig, fetchEngineStatus, fetchDownloads, fetchLocalModels]);
+  }, [fetchConfig, fetchEngineStatus, fetchDownloads, fetchLocalModels, hasActiveDownloads]);
 
   // Anything that used to send the user to Impostazioni for the token now sends
   // them here instead. The flag covers the tab being opened by that request;

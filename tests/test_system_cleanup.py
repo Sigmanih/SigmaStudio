@@ -13,14 +13,20 @@ def test_get_cleanup_stats_structure():
     assert "history" in stats
     assert "backups" in stats
     assert "cache" in stats
+    assert "system_ram" in stats
+    assert "orphans" in stats
     assert "total_disk_formatted" in stats
     assert isinstance(stats["tasks"]["bytes"], int)
     assert isinstance(stats["backups"]["bytes"], int)
+    assert isinstance(stats["orphans"]["count"], int)
+    assert isinstance(stats["orphans"]["bytes"], int)
+    assert "items" in stats["orphans"]
 
 
 def test_execute_selective_cleanup_safe():
     # Test safe cache and memory purge without resetting developer tasks
     res = execute_selective_cleanup({
+        "terminate_orphans": False,
         "free_memory": True,
         "stop_background_tasks": False,
         "clear_tasks": False,

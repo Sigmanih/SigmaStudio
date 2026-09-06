@@ -754,7 +754,10 @@ async def _dispatch_route(request: Request, method: str):
     # Standard JSON dispatch. Its own pool, so a burst of long-running POSTs
     # cannot leave a status poll with no thread to run on.
     loop = asyncio.get_running_loop()
-    await loop.run_in_executor(_api_executor, handler_fn)
+    try:
+        await loop.run_in_executor(_api_executor, handler_fn)
+    except asyncio.CancelledError:
+        return Response(status_code=499)
 
     if adapter._response_data is not None:
         return JSONResponse(status_code=adapter._response_status, content=adapter._response_data)

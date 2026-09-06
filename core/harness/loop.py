@@ -38,7 +38,8 @@ from core.harness.ledger import (
     DevSessionLedger,
     check_completion_allowed,
 )
-from core.harness.policy import ToolPolicy, filter_tool_docs
+from core.harness.policy import ToolPolicy, canonical, filter_tool_docs
+from core.harness import review
 from core.harness.roles import GENERIC_MODEL_ALIASES
 from core.harness.tool_schema import schemas_for, tool_calls_to_invocations
 from core.engine.grammars import fenced_tool_grammar
@@ -122,6 +123,12 @@ MAX_SPEC_ATTEMPTS = 2
 #: scrivere, e rifiutato ogni volta perche' non ha letto. Le guardie contro
 #: la rilettura inutile restano attive e bastano a evitare il ciclo opposto.
 RECOVERY_TOOLS = ("write_file", "edit_file", "append_file", "terminal", "read_file")
+
+#: I tool che cambiano un file sul disco, e che quindi possono passare dal
+#: gate di revisione. Il terminale non c'e': un comando puo' toccare mezzo
+#: progetto, e mostrarne il diff vorrebbe dire fotografare tutto prima e
+#: dopo. Chi non si fida di un comando toglie `terminal` dal ruolo.
+REVIEWABLE_TOOLS = ("write_file", "edit_file", "append_file", "delete")
 # Suspended during a recovery turn. Only the tools that scan the tree: reading
 # a specific file stays available, because a recovery turn follows a transcript
 # reset and the file the agent needs is exactly what was just discarded.
@@ -1419,6 +1426,7 @@ def stream_admin_agent_turn(
     policy_label: str = "",
     profile: Optional[str] = None,
     provider: Optional[str] = None,
+    review_writes: bool = False,
 ) -> Generator[Dict[str, Any], None, None]:
     """
     Multi-Turn Autonomous Admin Developer Agent Loop:
@@ -1437,6 +1445,12 @@ def stream_admin_agent_turn(
 
     `allowed_tools` restringe i tool utilizzabili in questo run (vedi
     `tool_policy`). None significa nessuna restrizione.
+
+    `review_writes` mette ogni modifica al disco davanti a un umano prima
+    che resti: il run si ferma sull'evento `write_proposed` finche' non
+    arriva una decisione, e cio' che viene rifiutato torna com'era. Fuori
+    dal Developer Studio resta spento, perche' un run senza nessuno che
+    guarda si fermerebbe alla prima scrittura.
     """
     if not workspace_root:
         workspace_root = get_default_workspace_root()
@@ -1527,6 +1541,11 @@ def stream_admin_agent_turn(
     # argomento e senza questo lavorerebbero sul progetto sbagliato.
     from core.harness.workspace import reset_active_root, set_active_root
     _token_workspace = set_active_root(workspace_root)
+
+    # Il gate di revisione, se questo run lo prevede. Vive nel registro per
+    # sessione perche' chi decide arriva su una richiesta HTTP diversa da
+    # quella che sta streammando il lavoro.
+    review_gate = review.gate_for(session_id) if review_writes else None
 
     ledger, ripreso = resolve_ledger(session_id, ledger, goal_text, workspace_root)
     if current_pipeline:
@@ -2245,6 +2264,17 @@ def stream_admin_agent_turn(
                 tool_observations.append(repeat_note + "\n")
                 continue
 
+            # Com'era il file prima: serve a mostrare il diff vero e a saper
+            # tornare indietro se la modifica non viene approvata.
+            istantanea = None
+            if review_gate is not None and canonical(t_name) in REVIEWABLE_TOOLS:
+                try:
+                    istantanea = review.FileSnapshot.take(
+                        resolve_workspace_path(_path_of(t_params), workspace_root)
+                    )
+                except Exception as exc:
+                    log.debug("[Review] istantanea non riuscita: %s", exc)
+
             # Route through MCP Hub for Git/Lint/Test tools, local for FS/Terminal
             try:
                 from core.modules.sigma_developer_lab.mcp_tools.bridge import is_mcp_tool, execute_via_mcp
@@ -2254,6 +2284,43 @@ def stream_admin_agent_turn(
                     result = execute_admin_tool(t_name, t_params, workspace_root, should_cancel=should_cancel)
             except ImportError:
                 result = execute_admin_tool(t_name, t_params, workspace_root, should_cancel=should_cancel)
+
+            # Il gate di revisione. La modifica e' gia' sul disco — ha superato
+            # backup, guardia sul troncamento e controllo di sintassi — ma resta
+            # solo se qualcuno la conferma; il perche' di questo ordine sta in
+            # core/harness/review.py. Il giudizio arriva prima che il ledger
+            # registri l'esito, cosi' una modifica annullata non risulta fra le
+            # prove del lavoro fatto.
+            if istantanea is not None and result.get("success"):
+                percorso = result.get("path") or istantanea.path
+                proposta = review_gate.open(
+                    path=percorso,
+                    diff=istantanea.diff(),
+                    tool=t_name,
+                    summary=str(result.get("message") or ""),
+                )
+                yield {"type": "write_proposed", "session_id": session_id, **proposta}
+                decisione = review_gate.wait(proposta["id"])
+                if decisione == review.APPROVED:
+                    result["review_decision"] = decisione
+                else:
+                    annullata = istantanea.revert()
+                    result = {
+                        "tool": t_name,
+                        "path": percorso,
+                        "success": False,
+                        "error": review.rejection_message(percorso, decisione, annullata),
+                        "review_decision": decisione,
+                        "reverted": annullata,
+                    }
+                    yield {
+                        "type": "write_reverted",
+                        "session_id": session_id,
+                        "id": proposta["id"],
+                        "path": percorso,
+                        "decision": decisione,
+                        "reverted": annullata,
+                    }
 
             ledger.record_tool(t_name, t_params, result)
             # Qualunque tool riuscito e' progresso. Contare solo scritture e
@@ -2593,6 +2660,11 @@ def stream_admin_agent_turn(
     # La radice torna com'era: un run finito non deve lasciare il proprio
     # progetto come predefinito per chi viene dopo sullo stesso thread.
     reset_active_root(_token_workspace)
+    if review_gate is not None:
+        # Nessuno rispondera' piu' a proposte di un run finito, e lasciarle
+        # aperte terrebbe in vita decisioni che non hanno piu' un thread
+        # ad attenderle.
+        review.release_gate(session_id)
 
     yield {"type": "run_metrics", **run_metrics}
     yield {"type": "done", "full_text": full_text}

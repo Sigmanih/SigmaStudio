@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { 
   Trash2, X, RefreshCw, Cpu, Database, History, 
-  ShieldAlert, Sparkles, CheckSquare, Square, AlertCircle, HardDrive, CheckCircle2
+  ShieldAlert, Sparkles, CheckSquare, Square, AlertCircle, HardDrive, CheckCircle2,
+  Zap, Activity
 } from 'lucide-react';
 import { useApp } from '../../contexts/AppContext';
 
@@ -16,6 +17,7 @@ export default function SystemCleanupModal({ isOpen, onClose }) {
 
   // Selected options
   const [options, setOptions] = useState({
+    terminate_orphans: true,
     free_memory: true,
     stop_background_tasks: true,
     clear_tasks: true,
@@ -54,6 +56,7 @@ export default function SystemCleanupModal({ isOpen, onClose }) {
 
   const selectAll = () => {
     setOptions({
+      terminate_orphans: true,
       free_memory: true,
       stop_background_tasks: true,
       clear_tasks: true,
@@ -65,6 +68,7 @@ export default function SystemCleanupModal({ isOpen, onClose }) {
 
   const deselectAll = () => {
     setOptions({
+      terminate_orphans: false,
       free_memory: false,
       stop_background_tasks: false,
       clear_tasks: false,
@@ -262,6 +266,109 @@ export default function SystemCleanupModal({ isOpen, onClose }) {
               >
                 Deseleziona
               </button>
+            </div>
+          </div>
+
+          {/* System Memory Overview Banner */}
+          {stats?.system_ram && (
+            <div style={{
+              padding: '10px 14px',
+              borderRadius: '10px',
+              background: isLight ? 'rgba(0, 242, 254, 0.05)' : 'rgba(0, 242, 254, 0.04)',
+              border: isLight ? '1px solid #d0d7de' : '1px solid rgba(255, 255, 255, 0.08)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              flexWrap: 'wrap',
+              gap: '8px'
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <Activity size={15} color="#00f2fe" />
+                <span style={{ fontSize: '0.72rem', fontWeight: 600 }}>
+                  RAM di Sistema: <strong style={{ color: stats.system_ram.percent > 80 ? '#ef4444' : '#00f2fe' }}>{stats.system_ram.used_formatted}</strong> / {stats.system_ram.total_formatted} ({stats.system_ram.percent}%)
+                </span>
+              </div>
+              <div style={{ fontSize: '0.68rem', color: isLight ? '#57606a' : '#8b949e' }}>
+                Processo Server Sigma: <strong>{stats?.memory?.ram_formatted || '~350 MB'}</strong>
+              </div>
+            </div>
+          )}
+
+          {/* Termina Processi Orfani & Zombie */}
+          <div 
+            onClick={() => toggleOption('terminate_orphans')}
+            style={{
+              padding: '12px 14px',
+              borderRadius: '12px',
+              background: options.terminate_orphans 
+                ? (isLight ? 'rgba(239, 68, 68, 0.08)' : 'rgba(239, 68, 68, 0.06)')
+                : (isLight ? '#f6f8fa' : '#161b22'),
+              border: options.terminate_orphans 
+                ? '1px solid rgba(239, 68, 68, 0.4)' 
+                : (isLight ? '1px solid #e1e4e8' : '1px solid rgba(255,255,255,0.06)'),
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'flex-start',
+              gap: '12px',
+              transition: 'all 0.15s ease'
+            }}
+          >
+            <div style={{ marginTop: '2px', color: options.terminate_orphans ? '#ef4444' : '#8b949e' }}>
+              {options.terminate_orphans ? <CheckSquare size={16} /> : <Square size={16} />}
+            </div>
+            <div style={{ flex: 1 }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <Zap size={15} color="#ef4444" />
+                  <span style={{ fontSize: '0.82rem', fontWeight: 700 }}>Termina Processi Orfani & Zombie</span>
+                </div>
+                <span style={{
+                  fontSize: '0.68rem',
+                  fontWeight: 800,
+                  padding: '2px 8px',
+                  borderRadius: '12px',
+                  background: (stats?.orphans?.count || 0) > 0 ? 'rgba(239, 68, 68, 0.15)' : 'rgba(63, 185, 80, 0.15)',
+                  color: (stats?.orphans?.count || 0) > 0 ? '#ef4444' : '#3fb950'
+                }}>
+                  {(stats?.orphans?.count || 0) > 0 
+                    ? `${stats.orphans.count} rilevati (${stats.orphans.formatted})`
+                    : 'Nessun orfano rilevato'}
+                </span>
+              </div>
+              <p style={{ margin: '4px 0 0 0', fontSize: '0.70rem', color: isLight ? '#57606a' : '#8b949e', lineHeight: 1.4 }}>
+                Rileva e termina in sicurezza processi pytest bloccati, vecchi llama-server o server orfani lasciati in background, liberando memoria RAM e contesti GPU.
+              </p>
+              {options.terminate_orphans && stats?.orphans?.items?.length > 0 && (
+                <div style={{
+                  marginTop: '8px',
+                  padding: '6px 10px',
+                  borderRadius: '6px',
+                  background: isLight ? 'rgba(0,0,0,0.03)' : 'rgba(255,255,255,0.03)',
+                  fontSize: '0.66rem',
+                  color: isLight ? '#57606a' : '#8b949e',
+                  display: 'flex',
+                  flexWrap: 'wrap',
+                  gap: '6px'
+                }}>
+                  {stats.orphans.items.slice(0, 5).map((item, idx) => (
+                    <span key={idx} style={{
+                      padding: '1px 6px',
+                      borderRadius: '4px',
+                      background: isLight ? '#eaeef2' : '#21262d',
+                      color: isLight ? '#24292f' : '#c9d1d9',
+                      fontSize: '0.64rem',
+                      fontFamily: 'monospace'
+                    }}>
+                      PID {item.pid}: {item.name} ({item.memory_formatted})
+                    </span>
+                  ))}
+                  {stats.orphans.items.length > 5 && (
+                    <span style={{ fontSize: '0.64rem', fontStyle: 'italic', alignSelf: 'center' }}>
+                      +{stats.orphans.items.length - 5} altri...
+                    </span>
+                  )}
+                </div>
+              )}
             </div>
           </div>
 
@@ -569,7 +676,9 @@ export default function SystemCleanupModal({ isOpen, onClose }) {
               Spazio selezionato da liberare:
             </div>
             <div style={{ fontSize: '0.86rem', fontWeight: 800, color: '#00f2fe' }}>
-              {formatBytes(selectedDiskBytes)} {options.free_memory ? '+ RAM/VRAM' : ''}
+              {formatBytes(selectedDiskBytes)}
+              {options.terminate_orphans && stats?.orphans?.bytes ? ` + ${stats.orphans.formatted} Orfani` : ''}
+              {options.free_memory ? ' + RAM/VRAM' : ''}
             </div>
           </div>
 
@@ -593,7 +702,7 @@ export default function SystemCleanupModal({ isOpen, onClose }) {
             <button
               type="button"
               onClick={handleExecuteCleanup}
-              disabled={cleaning || (!options.free_memory && !options.stop_background_tasks && !options.clear_tasks && !options.clear_history && !options.clear_backups && !options.clear_cache)}
+              disabled={cleaning || (!options.terminate_orphans && !options.free_memory && !options.stop_background_tasks && !options.clear_tasks && !options.clear_history && !options.clear_backups && !options.clear_cache)}
               style={{
                 padding: '8px 18px',
                 borderRadius: '8px',

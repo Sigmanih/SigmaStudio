@@ -21,6 +21,8 @@ warnings.filterwarnings("ignore", message=".*dropout option adds dropout.*")
 warnings.filterwarnings("ignore", message=".*weight_norm is deprecated.*")
 warnings.filterwarnings("ignore", message=".*Redirects are currently not supported.*")
 
+os.environ["SIGMA_SERVER_RUNNING"] = "1"
+
 # ==============================================================================
 # Verifica delle dipendenze, prima di tutto il resto
 #
@@ -367,11 +369,56 @@ def _install_ca_cli() -> int:
     return 1
 
 
+def _is_port_free(host: str, port: int) -> bool:
+    import socket
+    try:
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+            s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            s.bind((host if host not in ("0.0.0.0", "") else "0.0.0.0", port))
+            return True
+    except OSError:
+        return False
+
+
+def _resolve_available_port(host: str, desired_port: int, max_offset: int = 20) -> int:
+    """Verifica la disponibilita della porta e tenta di liberarla o usa la prima libera."""
+    if _is_port_free(host, desired_port):
+        return desired_port
+
+    # Tenta di terminare processi python orfani che occupano la porta
+    try:
+        import psutil
+        my_pid = os.getpid()
+        for p in psutil.process_iter(['pid', 'name']):
+            if p.info['name'] and 'python' in p.info['name'].lower() and p.info['pid'] != my_pid:
+                try:
+                    for c in p.net_connections(kind='inet'):
+                        if c.laddr and c.laddr.port == desired_port:
+                            p.kill()
+                except Exception:
+                    pass
+    except Exception:
+        pass
+
+    import time
+    time.sleep(0.3)
+    if _is_port_free(host, desired_port):
+        return desired_port
+
+    for offset in range(1, max_offset + 1):
+        candidate = desired_port + offset
+        if _is_port_free(host, candidate):
+            log.warning("[Server] Porta %d occupata: fallback automatico su porta libera %d.", desired_port, candidate)
+            return candidate
+    return desired_port
+
+
 def serve(host: str | None = None, port: int | None = None, ssl: bool | None = None) -> None:
     """Avvia il server ASGI su host e porta specificati o configurati, con supporto opzionale HTTPS."""
     cfg_host, cfg_port, cfg_ssl, cfg_cert, cfg_key = _get_configured_host_port_ssl()
     final_host = host if host is not None else cfg_host
-    final_port = port if port is not None else cfg_port
+    requested_port = port if port is not None else cfg_port
+    final_port = _resolve_available_port(final_host, requested_port)
     final_ssl = ssl if ssl is not None else cfg_ssl
 
     from core.ssl_manager import get_lan_ip, ensure_ssl_certificates
@@ -424,8 +471,8 @@ def serve(host: str | None = None, port: int | None = None, ssl: bool | None = N
             "host": final_host,
             "port": final_port,
             "log_level": "info",
-            "timeout_graceful_shutdown": 1,
-            "timeout_keep_alive": 5,
+            "timeout_graceful_shutdown": 5,
+            "timeout_keep_alive": 30,
         }
         if ssl_cert_path and ssl_key_path:
             uvicorn_kwargs["ssl_certfile"] = ssl_cert_path
@@ -470,9 +517,6 @@ def main(argv: list[str] | None = None) -> int:
     # Rende attendibile la CA locale e termina, senza avviare il server.
     if "--install-ca" in argomenti or "--trust-ca" in argomenti:
         return _install_ca_cli()
-
-    signal.signal(signal.SIGINT, graceful_shutdown)
-    signal.signal(signal.SIGTERM, graceful_shutdown)
 
     esiti = prepare_environment(solo_verifica=solo_verifica)
 

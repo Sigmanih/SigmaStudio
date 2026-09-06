@@ -85,7 +85,7 @@ def shutdown_all_tasks():
     except Exception as exc:
         _safe_log("debug", "[SystemCleanup] Avviso arresto pipeline: %s", exc)
 
-    # 5. Unload active model from SigmaEngine (free VRAM & RAM)
+    # 5. Unload active model from SigmaEngine (free VRAM & RAM) and kill orphaned llama-server
     try:
         from core.engine.unified_runtime import sigma_engine
         if sigma_engine.loaded_model_name:
@@ -93,6 +93,13 @@ def shutdown_all_tasks():
             sigma_engine.unload()
     except Exception as exc:
         _safe_log("debug", "[SystemCleanup] Avviso scaricamento modello: %s", exc)
+
+    try:
+        import sys
+        if os.environ.get("SIGMA_SERVER_RUNNING") == "1" or (sys.argv and any("sigma_server" in a for a in sys.argv)):
+            terminate_orphan_processes(os.getpid())
+    except Exception as exc:
+        _safe_log("debug", "[SystemCleanup] Avviso terminazione processi orfani: %s", exc)
 
     # 6. Clear agent temporary tasks cache
     try:
@@ -111,6 +118,205 @@ def shutdown_all_tasks():
         pass
 
     _safe_log("info", "[SystemCleanup] Tutti i task sono stati staccati e le risorse liberate.")
+
+
+def _get_protected_pids(current_pid: int | None = None) -> set[int]:
+    """
+    Restituisce i PID che non devono MAI essere terminati:
+    il processo attivo corrente, i suoi antenati, e qualsiasi processo
+    attivamente in ascolto sulle porte di servizio di Sigma Studio.
+    """
+    protected = set()
+    my_pid = current_pid or os.getpid()
+    protected.add(my_pid)
+    try:
+        import psutil
+        cur = psutil.Process(my_pid)
+        for parent in cur.parents():
+            protected.add(parent.pid)
+    except Exception:
+        pass
+
+    try:
+        import psutil
+        for conn in psutil.net_connections(kind='inet'):
+            if conn.status == psutil.CONN_LISTEN and conn.laddr and conn.laddr.port in (8000, 8014):
+                if conn.pid:
+                    protected.add(conn.pid)
+                    try:
+                        p_parent = psutil.Process(conn.pid).parent()
+                        if p_parent:
+                            protected.add(p_parent.pid)
+                    except Exception:
+                        pass
+    except Exception:
+        pass
+
+    return protected
+
+
+def detect_orphan_processes(current_pid: int | None = None) -> Dict[str, Any]:
+    """
+    Rileva processi orfani o bloccati collegati a Sigma Studio:
+    1. Motori llama-server / llama-quantize orfani
+    2. Runner pytest bloccati o orfani
+    3. Processi wrapper (bash/timeout) dedicati a pytest
+    4. Server o launcher duplicati/orfani (con PID diverso dal server attivo)
+    5. Processi figli del progetto rimasti orfani (parent PID defunto)
+    """
+    import psutil
+    protected_pids = _get_protected_pids(current_pid)
+
+    candidates = []
+    total_rss = 0
+    total_vms = 0
+
+    for p in psutil.process_iter(['pid', 'name', 'cmdline', 'memory_info', 'ppid']):
+        try:
+            pid = p.info['pid']
+            if pid in protected_pids:
+                continue
+
+            name = (p.info.get('name') or '').lower()
+            cmdline_list = p.info.get('cmdline') or []
+            cmdline = ' '.join(cmdline_list).lower()
+            ppid = p.info.get('ppid')
+            parent_alive = psutil.pid_exists(ppid) if ppid else False
+
+            is_orphan = False
+            category = ""
+            details = ""
+
+            # 1. llama-server or quantize
+            if any(k in name for k in ('llama-server', 'llama_server', 'llama-cli', 'llama-quantize')):
+                is_orphan = True
+                category = "llama_engine"
+                details = f"Processo motore llama-server ({name})"
+
+            # 2. pytest runners bloccati
+            elif 'pytest' in cmdline or 'pytest' in name or ('tests/' in cmdline and 'python' in name):
+                is_orphan = True
+                category = "pytest"
+                details = "Runner test pytest bloccato in background"
+
+            # 3. wrapper bash o timeout associati a pytest
+            elif name in ('bash.exe', 'bash', 'timeout.exe', 'timeout') and ('pytest' in cmdline or 'tests/' in cmdline):
+                is_orphan = True
+                category = "test_wrapper"
+                details = f"Wrapper shell test ({name})"
+
+            # 4. Server o launcher duplicati
+            elif 'sigma_server.py' in cmdline:
+                is_orphan = True
+                category = "duplicate_server"
+                details = "Istanza orfana o duplicata di sigma_server"
+            elif 'sigma_launcher.py' in cmdline and not parent_alive:
+                is_orphan = True
+                category = "duplicate_launcher"
+                details = "Launcher orfano di Sigma Studio"
+
+            # 5. Processi figli orfani della cartella di progetto
+            elif not parent_alive and any(k in cmdline for k in ('sigma_studio', 'sigma_network', 'gguf_converter')):
+                is_orphan = True
+                category = "abandoned_worker"
+                details = "Worker di background con processo genitore terminato"
+
+            if is_orphan:
+                mem = p.info.get('memory_info')
+                rss = mem.rss if mem else 0
+                vms = mem.vms if mem else 0
+                total_rss += rss
+                total_vms += vms
+                candidates.append({
+                    "pid": pid,
+                    "name": name,
+                    "category": category,
+                    "details": details,
+                    "rss_bytes": rss,
+                    "vms_bytes": vms,
+                    "memory_formatted": _format_bytes(rss),
+                    "cmdline": cmdline[:120]
+                })
+        except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
+            continue
+
+    return {
+        "count": len(candidates),
+        "total_rss": total_rss,
+        "total_vms": total_vms,
+        "formatted": _format_bytes(total_rss),
+        "total_vms_formatted": _format_bytes(total_vms),
+        "items": candidates
+    }
+
+
+def terminate_orphan_processes(current_pid: int | None = None, orphan_items: list = None) -> Dict[str, Any]:
+    """
+    Termina in modo sicuro i processi orfani rilevati senza chiudere il server attivo.
+    """
+    import psutil
+    import time
+
+    if orphan_items is None:
+        detected = detect_orphan_processes(current_pid)
+        orphan_items = detected["items"]
+
+    protected_pids = _get_protected_pids(current_pid)
+    killed_pids = []
+    freed_rss = 0
+    categories_count: Dict[str, int] = {}
+
+    for item in orphan_items:
+        pid = item["pid"]
+        if pid in protected_pids:
+            continue
+        try:
+            p = psutil.Process(pid)
+            freed_rss += item.get("rss_bytes", 0)
+            cat = item.get("category", "altro")
+            categories_count[cat] = categories_count.get(cat, 0) + 1
+            killed_pids.append(pid)
+            try:
+                p.terminate()
+            except Exception:
+                pass
+        except (psutil.NoSuchProcess, psutil.AccessDenied):
+            continue
+
+    # Breve pausa per permettere chiusura ordinata, poi kill forzato
+    if killed_pids:
+        time.sleep(0.3)
+        for pid in killed_pids:
+            try:
+                if psutil.pid_exists(pid):
+                    p = psutil.Process(pid)
+                    p.kill()
+            except (psutil.NoSuchProcess, psutil.AccessDenied):
+                pass
+
+    summary_parts = []
+    if categories_count.get("pytest"):
+        summary_parts.append(f"{categories_count['pytest']} pytest")
+    if categories_count.get("test_wrapper"):
+        summary_parts.append(f"{categories_count['test_wrapper']} wrapper shell")
+    if categories_count.get("llama_engine"):
+        summary_parts.append(f"{categories_count['llama_engine']} llama-server")
+    if categories_count.get("duplicate_server"):
+        summary_parts.append(f"{categories_count['duplicate_server']} server orfani")
+    if categories_count.get("duplicate_launcher"):
+        summary_parts.append(f"{categories_count['duplicate_launcher']} launcher orfani")
+    if categories_count.get("abandoned_worker"):
+        summary_parts.append(f"{categories_count['abandoned_worker']} worker orfani")
+    if not summary_parts and killed_pids:
+        summary_parts.append(f"{len(killed_pids)} processi")
+
+    return {
+        "success": True,
+        "count": len(killed_pids),
+        "freed_bytes": freed_rss,
+        "freed_formatted": _format_bytes(freed_rss),
+        "summary": ", ".join(summary_parts) if summary_parts else "nessun processo orfano"
+    }
 
 
 def _format_bytes(bytes_count: int) -> str:
@@ -248,10 +454,45 @@ def get_cleanup_stats() -> Dict[str, Any]:
                 cache_bytes += sz
                 cache_count += cnt
 
+    # System RAM stats (RAM globale fisica e virtuale)
+    sys_ram_total = 0
+    sys_ram_used = 0
+    sys_ram_avail = 0
+    sys_ram_pct = 0
+    try:
+        import psutil
+        vmem = psutil.virtual_memory()
+        sys_ram_total = vmem.total
+        sys_ram_used = vmem.used
+        sys_ram_avail = vmem.available
+        sys_ram_pct = vmem.percent
+    except Exception:
+        pass
+
+    # Orphan processes detection
+    orphans_data = detect_orphan_processes(os.getpid())
+
     total_disk_bytes = tasks_bytes + history_bytes + backups_bytes + cache_bytes
 
     return {
         "success": True,
+        "system_ram": {
+            "total_bytes": sys_ram_total,
+            "used_bytes": sys_ram_used,
+            "available_bytes": sys_ram_avail,
+            "percent": sys_ram_pct,
+            "total_formatted": _format_bytes(sys_ram_total),
+            "used_formatted": _format_bytes(sys_ram_used),
+            "available_formatted": _format_bytes(sys_ram_avail)
+        },
+        "orphans": {
+            "count": orphans_data["count"],
+            "bytes": orphans_data["total_rss"],
+            "formatted": orphans_data["formatted"],
+            "total_vms": orphans_data["total_vms"],
+            "total_vms_formatted": orphans_data["total_vms_formatted"],
+            "items": orphans_data["items"]
+        },
         "memory": {
             "loaded_model": loaded_model,
             "provider": loaded_engine,
@@ -299,6 +540,7 @@ def execute_selective_cleanup(options: Dict[str, Any]) -> Dict[str, Any]:
     """
     Executes selective cleanup based on user choices without stopping Sigma Studio:
     - free_memory (bool): Unloads resident LLM models and triggers garbage collection.
+    - terminate_orphans (bool): Kills orphaned pytest runners, dead servers and llama processes.
     - stop_background_tasks (bool): Cancels running downloads, conversions, and background jobs.
     - clear_tasks (bool): Cleans tasks.json, developer_tasks.json and agent cache.
     - clear_history (bool): Cleans conversation logs and context shares.
@@ -310,11 +552,22 @@ def execute_selective_cleanup(options: Dict[str, Any]) -> Dict[str, Any]:
     freed_bytes_estimate = 0
 
     do_free_memory = bool(options.get("free_memory") or options.get("freeMemory")) if ("free_memory" in options or "freeMemory" in options) else True
+    do_terminate_orphans = bool(options.get("terminate_orphans") if "terminate_orphans" in options else (options.get("terminateOrphans") if "terminateOrphans" in options else True))
     do_stop_tasks = bool(options.get("stop_background_tasks") or options.get("stopBackgroundTasks"))
     do_clear_tasks = bool(options.get("clear_tasks") or options.get("clearTasks"))
     do_clear_history = bool(options.get("clear_history") or options.get("clearHistory") or options.get("clearChat"))
     do_clear_backups = bool(options.get("clear_backups") or options.get("clearBackups"))
     do_clear_cache = bool(options.get("clear_cache") or options.get("clearCache"))
+
+    # 0. Terminate Orphan & Zombie Processes (pytest, llama-server, dead servers)
+    if do_terminate_orphans:
+        try:
+            res_orphans = terminate_orphan_processes(os.getpid())
+            if res_orphans.get("count", 0) > 0:
+                cleaned.append(f"Terminati {res_orphans['count']} processi orfani ({res_orphans['summary']}) — {res_orphans['freed_formatted']} liberati")
+                freed_bytes_estimate += res_orphans.get("freed_bytes", 0)
+        except Exception as exc:
+            log.warning("Orphan processes cleanup error: %s", exc)
 
     # 1. Free Memory (RAM/VRAM)
     if do_free_memory:
@@ -335,6 +588,14 @@ def execute_selective_cleanup(options: Dict[str, Any]) -> Dict[str, Any]:
                 cleaned.append("Cache CUDA VRAM liberata")
         except Exception:
             pass
+
+        if os.name == "nt":
+            try:
+                import ctypes
+                ctypes.windll.psapi.EmptyWorkingSet(ctypes.c_size_t(-1))
+            except Exception:
+                pass
+
         cleaned.append("Garbage Collection eseguita (RAM liberata)")
 
     # 2. Stop Background Tasks

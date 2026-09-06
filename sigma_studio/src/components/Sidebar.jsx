@@ -438,7 +438,11 @@ export default function Sidebar({
     };
 
     updateCounts();
-    const interval = setInterval(updateCounts, 5000);
+    const interval = setInterval(() => {
+      if (document.visibilityState !== 'hidden') {
+        updateCounts();
+      }
+    }, 10000);
     return () => clearInterval(interval);
   }, [isResearchInstalled, isTrainingInstalled, isCreativeInstalled, isKnowledgeInstalled]);
 
