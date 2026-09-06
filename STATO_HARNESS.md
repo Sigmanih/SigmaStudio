@@ -8,7 +8,7 @@ Rapporto tecnico completo sull'evoluzione dell'harness dell'agente nel kernel, l
 
 | Metrica | Audit Iniziale | Stato Attuale | Progresso |
 |:---|:---:|:---:|:---:|
-| **Test verdi nel kernel** | 895 | **1041 passed** | +146 test |
+| **Test verdi nel kernel** | 895 | **1044 passed** | +149 test |
 | **Punti Audit Chiusi** | 0 / 11 | **11 / 11 completati (100%)** | Tutti i punti dell'Audit Tecnico chiusi e validati |
 | **Turni medi al completamento** | 30 (fallito/deadlock) | **12 / 30 turni** | Completamento effettivo con criteri dimostrati |
 | **Frontend Vite Build** | N/D | **Verde (778ms)** | Nessuna regressione |
