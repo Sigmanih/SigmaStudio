@@ -2337,6 +2337,16 @@ def stream_admin_agent_turn(
                     gate = dict(gate)
                     gate["reason"] = gate["reason"] + " " + " ".join(rifiutate[:2])
                 if not gate["allowed"]:
+                    # La firma va registrata qui e non piu' su: il cancello
+                    # riscrive l'esito *dopo* il punto in cui le chiamate
+                    # fallite vengono memorizzate, quindi una chiusura
+                    # respinta non risultava mai fallita e il modello la
+                    # ripeteva identica. Su un run reale otto volte di fila,
+                    # quarantacinque secondi su sessantadue.
+                    run_metrics["tool_failures"] += 1
+                    failed_call_signatures.add(
+                        (t_name, json.dumps(t_params, sort_keys=True, default=str)[:600])
+                    )
                     result = {
                         "tool": "complete_goal",
                         "success": False,

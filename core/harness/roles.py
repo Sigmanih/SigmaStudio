@@ -414,6 +414,11 @@ class RoleEngine:
 
         self._generation_count[role_id] = self._generation_count.get(role_id, 0) + 1
 
+        # Risolto prima di annunciarlo: l'evento `role_switch` dichiara alla UI
+        # su quale modello sta per girare il ruolo, e leggerlo prima di
+        # calcolarlo faceva morire ogni nodo agente con un NameError.
+        modello_effettivo = resolve_model_for_role(role, model_name)
+
         yield {
             "type": "role_switch",
             "role_id": role_id,
@@ -424,7 +429,6 @@ class RoleEngine:
         }
 
         # Delegate to the existing admin agent loop but with our role's params
-        modello_effettivo = resolve_model_for_role(role, model_name)
         for event in stream_admin_agent_turn(
             messages=messages,
             workspace_root=workspace_root,

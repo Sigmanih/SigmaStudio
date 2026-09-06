@@ -198,3 +198,66 @@ class TestBindingDelModello:
         role_registry.invalidate()
         coder = role_registry.load_roles()["coder"]
         assert resolve_model_for_role(coder, "sigmaengine") == "Qwen--Qwen3.8-27B-GGUF-Q4_K_S"
+
+
+class TestGenerazioneConRuolo:
+    """Il percorso vero di `generate_with_role`, fino alla delega al ciclo.
+
+    Nessun test lo attraversava: quelli sui ruoli si fermavano al registro,
+    quelli sui nodi di pipeline sostituivano l'intero motore. In mezzo era
+    rimasto un uso di variabile prima dell'assegnazione — l'evento
+    `role_switch` annunciava il modello effettivo una riga prima che venisse
+    calcolato — e ogni nodo agente moriva con un NameError alla prima
+    esecuzione vera.
+    """
+
+    def _motore_con_delega_finta(self, monkeypatch, cattura):
+        import core.harness.loop as loop
+
+        def finto(**kwargs):
+            cattura.update(kwargs)
+            yield {"type": "token", "token": "ok"}
+
+        monkeypatch.setattr(loop, "stream_admin_agent_turn", finto)
+        return RoleEngine()
+
+    def test_il_ruolo_gira_fino_alla_delega(self, monkeypatch):
+        cattura = {}
+        engine = self._motore_con_delega_finta(monkeypatch, cattura)
+        eventi = list(engine.generate_with_role("coder", "Fai una cosa"))
+        assert any(e["type"] == "role_switch" for e in eventi)
+        assert any(e["type"] == "token" for e in eventi)
+
+    def test_l_evento_di_cambio_ruolo_dichiara_il_modello(self, monkeypatch):
+        """E' il punto in cui il difetto si manifestava."""
+        cattura = {}
+        engine = self._motore_con_delega_finta(monkeypatch, cattura)
+        cambi = [e for e in engine.generate_with_role("coder", "x")
+                 if e["type"] == "role_switch"]
+        assert len(cambi) == 1
+        assert "model" in cambi[0]
+        assert cambi[0]["role_id"] == "coder"
+
+    def test_il_ruolo_propaga_workspace_ledger_e_tool(self, monkeypatch):
+        cattura = {}
+        engine = self._motore_con_delega_finta(monkeypatch, cattura)
+        sentinella = object()
+        list(engine.generate_with_role(
+            "coder", "x", workspace_root="C:/progetto", ledger=sentinella,
+        ))
+        assert cattura["workspace_root"] == "C:/progetto"
+        assert cattura["ledger"] is sentinella
+        assert cattura["policy_label"]
+        assert cattura["allowed_tools"]
+
+    def test_il_budget_di_turni_viene_dal_ruolo(self, monkeypatch):
+        cattura = {}
+        engine = self._motore_con_delega_finta(monkeypatch, cattura)
+        list(engine.generate_with_role("coder", "x"))
+        assert cattura["max_turns"] == DEV_ROLES["coder"].max_turns
+
+    def test_un_ruolo_inesistente_lo_dice(self, monkeypatch):
+        cattura = {}
+        engine = self._motore_con_delega_finta(monkeypatch, cattura)
+        with pytest.raises(ValueError):
+            list(engine.generate_with_role("mai_definito", "x"))

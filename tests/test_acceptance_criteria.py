@@ -281,3 +281,49 @@ class TestPolicy:
         assert "spec" in CONTROL_TOOLS
         assert canonical("requirements") == "spec"
         assert ToolPolicy.of(("read_file",)).permits("spec")
+
+
+class TestChiusuraRespintaNonSiRipete:
+    """Una `complete_goal` rifiutata dal cancello deve contare come fallita.
+
+    Emerso da un run reale di pipeline: il nodo con ruolo architect ha chiamato
+    `complete_goal` otto volte di fila, identica, e il cancello l'ha respinta
+    ogni volta. Quarantacinque secondi su sessantadue spesi a ripetere la
+    stessa mossa.
+
+    La causa e' un ordine: il cancello riscrive l'esito della chiamata *dopo*
+    il punto in cui il ciclo memorizza le chiamate fallite, quindi quella
+    chiusura non risultava mai fallita e la guardia contro le ripetizioni
+    identiche non la vedeva.
+    """
+
+    def test_il_ciclo_registra_la_firma_prima_di_riscrivere_l_esito(self):
+        """L'ordine nel sorgente e' la cosa che si e' rotta: si verifica quello."""
+        import inspect
+        from core.harness.loop import stream_admin_agent_turn
+
+        sorgente = inspect.getsource(stream_admin_agent_turn)
+        rifiuto = sorgente.index('"error": f"Completamento rifiutato.')
+        blocco = sorgente[max(0, rifiuto - 900):rifiuto]
+        assert "failed_call_signatures.add(" in blocco, (
+            "la firma della chiusura respinta non viene registrata"
+        )
+
+    def test_una_chiusura_senza_prove_viene_respinta(self):
+        """Il motivo per cui veniva respinta, che resta giusto."""
+        led = _ledger()
+        led.set_spec("x", ["il prefisso e documentato"])
+        _ha_modificato(led)
+        _ha_verificato(led)
+        esito = check_completion_allowed(led)
+        assert esito["allowed"] is False
+        assert esito["unmet"]
+
+    def test_dopo_aver_fornito_le_prove_la_chiusura_passa(self):
+        """La ripetizione va bloccata, non il secondo tentativo informato."""
+        led = _ledger()
+        led.set_spec("x", ["il prefisso e documentato"])
+        _ha_modificato(led, "core/api.py")
+        _ha_verificato(led)
+        assert led.mark_requirement("1", "scritto in core/api.py")["ok"]
+        assert check_completion_allowed(led)["allowed"] is True
