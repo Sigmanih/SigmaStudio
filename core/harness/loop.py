@@ -1523,6 +1523,11 @@ def stream_admin_agent_turn(
     except Exception as exc:
         log.debug("[AdminAgent] finestra effettiva non determinabile: %s", exc)
 
+    # Dichiarata per tutto il run: i server MCP non ricevono il workspace come
+    # argomento e senza questo lavorerebbero sul progetto sbagliato.
+    from core.harness.workspace import reset_active_root, set_active_root
+    _token_workspace = set_active_root(workspace_root)
+
     ledger, ripreso = resolve_ledger(session_id, ledger, goal_text, workspace_root)
     if current_pipeline:
         ledger.set_pipeline(current_pipeline)
@@ -2580,6 +2585,10 @@ def stream_admin_agent_turn(
         session_id, ledger, model_name, run_metrics,
         status="done" if goal_reached else "stopped",
     )
+
+    # La radice torna com'era: un run finito non deve lasciare il proprio
+    # progetto come predefinito per chi viene dopo sullo stesso thread.
+    reset_active_root(_token_workspace)
 
     yield {"type": "run_metrics", **run_metrics}
     yield {"type": "done", "full_text": full_text}
