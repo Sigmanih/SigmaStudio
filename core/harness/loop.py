@@ -39,7 +39,7 @@ from core.harness.ledger import (
     check_completion_allowed,
 )
 from core.harness.policy import ToolPolicy, canonical, filter_tool_docs
-from core.harness import review
+from core.harness import review, worktree
 from core.harness.roles import GENERIC_MODEL_ALIASES
 from core.harness.tool_schema import schemas_for, tool_calls_to_invocations
 from core.engine.grammars import fenced_tool_grammar
@@ -1427,6 +1427,7 @@ def stream_admin_agent_turn(
     profile: Optional[str] = None,
     provider: Optional[str] = None,
     review_writes: bool = False,
+    isolate_worktree: bool = False,
 ) -> Generator[Dict[str, Any], None, None]:
     """
     Multi-Turn Autonomous Admin Developer Agent Loop:
@@ -1536,6 +1537,15 @@ def stream_admin_agent_turn(
             context_tokens = reale
     except Exception as exc:
         log.debug("[AdminAgent] finestra effettiva non determinabile: %s", exc)
+
+    # Isolamento del run tramite Git Worktree: se richiesto e su un repo git,
+    # l'agente lavorera' in una copia fisica isolata senza toccare l'albero vivo.
+    session_wt = None
+    if isolate_worktree and session_id and worktree.is_git_repository(workspace_root):
+        session_wt = worktree.create_session_worktree(workspace_root, session_id)
+        if session_wt:
+            workspace_root = str(session_wt.worktree_path)
+            log.info("[AdminAgent] Run isolato nel worktree git: %s", workspace_root)
 
     # Dichiarata per tutto il run: i server MCP non ricevono il workspace come
     # argomento e senza questo lavorerebbero sul progetto sbagliato.
@@ -2608,6 +2618,9 @@ def stream_admin_agent_turn(
             last_user_prompt = directive
             continue
 
+        if session_wt is not None:
+            session_wt.checkpoint(current_turn)
+
         full_messages.append({"role": "assistant", "content": _as_history(full_text)})
         # A fresh view of a file supersedes every older view of it.
         for read_path in reads_this_turn:
@@ -2665,6 +2678,11 @@ def stream_admin_agent_turn(
         # aperte terrebbe in vita decisioni che non hanno piu' un thread
         # ad attenderle.
         review.release_gate(session_id)
+
+    if session_wt is not None:
+        # Trasferisci le modifiche all'albero principale solo se l'obiettivo e' stato
+        # raggiunto con successo e tutte le verifiche sono state superate.
+        worktree.release_session_worktree(session_id, apply_changes=bool(goal_reached))
 
     yield {"type": "run_metrics", **run_metrics}
     yield {"type": "done", "full_text": full_text}

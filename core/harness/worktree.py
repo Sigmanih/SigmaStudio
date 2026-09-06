@@ -1,0 +1,251 @@
+# ==============================================================================
+# core/harness/worktree.py — Isolamento fisico del workspace tramite Git Worktree
+# Sigma Studio v8 — Agent Harness (kernel)
+# ==============================================================================
+"""Isolamento dell'agente tramite Git Worktree e checkpoint di turno.
+
+Finora l'agente scriveva direttamente nell'albero vivo del repository dal quale
+l'applicazione stessa e' in esecuzione. I backup erano gestiti per singolo file,
+rendendo impossibile l'operazione essenziale «annulla tutto cio' che l'agente ha
+fatto negli ultimi N turni» in caso di deriva.
+
+Questo modulo alloca un `git worktree` separato e isolato per ogni sessione di
+sviluppo:
+1. L'agente legge, scrive e compila in una copia fisica del repository.
+2. A ogni turno concluso viene creato un checkpoint (commit locale sul branch di
+   sessione).
+3. Se l'agente va in stallo o sbaglia approccio, un rollback ripristina
+   istantaneamente l'albero di lavoro all'esatto checkpoint desiderato via
+   `git reset --hard`.
+4. Al termine del run, le modifiche possono essere trasferite sull'albero
+   principale (tramite merge/checkout) oppure eliminate senza lasciare residui.
+"""
+
+import os
+import shutil
+import subprocess
+from dataclasses import dataclass, field
+from pathlib import Path
+from typing import Any, Dict, List, Optional
+
+from core import paths
+from core.logger import get_logger
+
+log = get_logger("worktree")
+
+
+def _run_git(args: List[str], cwd: Path, timeout_s: float = 30.0) -> subprocess.CompletedProcess:
+    """Esegue un comando git nel percorso indicato gestendo codifiche ed errori."""
+    return subprocess.run(
+        ["git"] + args,
+        cwd=str(cwd),
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        timeout=timeout_s,
+    )
+
+
+def is_git_repository(path: Path | str) -> bool:
+    """Verifica se il percorso fa parte di un repository Git valido."""
+    p = Path(path)
+    if not p.is_dir():
+        return False
+    try:
+        res = _run_git(["rev-parse", "--is-inside-work-tree"], cwd=p, timeout_s=5.0)
+        return res.returncode == 0 and "true" in res.stdout.lower()
+    except (OSError, subprocess.SubprocessError):
+        return False
+
+
+@dataclass
+class WorktreeSession:
+    """Rappresenta un worktree isolato allocato per un run dell'agente."""
+
+    session_id: str
+    repo_root: Path
+    worktree_path: Path
+    branch_name: str
+    checkpoints: List[Dict[str, Any]] = field(default_factory=list)
+
+    def checkpoint(self, turn_idx: int, message: str = "") -> Optional[str]:
+        """Crea uno snapshot di turno committando tutte le modifiche sul branch isolato."""
+        if not self.worktree_path.is_dir():
+            return None
+        try:
+            # 1. Aggiungi tutti i file toccati
+            _run_git(["add", "-A"], cwd=self.worktree_path)
+
+            # 2. Controlla se c'e' qualcosa di nuovo da salvare
+            status = _run_git(["status", "--porcelain"], cwd=self.worktree_path)
+            has_changes = bool(status.stdout.strip())
+
+            msg = f"sigma-run[{self.session_id}] turno {turn_idx}"
+            if message:
+                msg += f": {message}"
+
+            res = _run_git(["commit", "-m", msg, "--allow-empty"], cwd=self.worktree_path)
+            if res.returncode != 0:
+                log.warning("[Worktree] Checkpoint turno %d non riuscito: %s", turn_idx, res.stderr)
+                return None
+
+            # Ottieni l'hash del commit appena generato
+            rev = _run_git(["rev-parse", "HEAD"], cwd=self.worktree_path)
+            commit_hash = rev.stdout.strip()
+
+            record = {
+                "turn": turn_idx,
+                "commit": commit_hash,
+                "has_changes": has_changes,
+                "message": msg,
+            }
+            self.checkpoints.append(record)
+            log.info("[Worktree] Checkpoint creato per turno %d (%s)", turn_idx, commit_hash[:8])
+            return commit_hash
+        except (OSError, subprocess.SubprocessError) as exc:
+            log.warning("[Worktree] Errore durante il checkpoint del turno %d: %s", turn_idx, exc)
+            return None
+
+    def rollback(self, turns_back: int = 1) -> bool:
+        """Annulla il lavoro degli ultimi N turni ripristinando l'albero via git reset."""
+        if not self.worktree_path.is_dir() or turns_back <= 0:
+            return False
+        try:
+            target = f"HEAD~{turns_back}"
+            res = _run_git(["reset", "--hard", target], cwd=self.worktree_path)
+            if res.returncode != 0:
+                log.error("[Worktree] Rollback a %s fallito: %s", target, res.stderr)
+                return False
+
+            _run_git(["clean", "-fd"], cwd=self.worktree_path)
+            # Rimuovi i checkpoint annullati dalla cronologia locale
+            del self.checkpoints[-turns_back:]
+            log.info("[Worktree] Rollback di %d turni eseguito con successo su %s", turns_back, target)
+            return True
+        except (OSError, subprocess.SubprocessError) as exc:
+            log.error("[Worktree] Errore durante il rollback: %s", exc)
+            return False
+
+    def diff_from_main(self) -> str:
+        """Calcola il diff complessivo tra il branch di sessione e lo stato iniziale del repo."""
+        if not self.worktree_path.is_dir():
+            return ""
+        try:
+            res = _run_git(["diff", "HEAD~" + str(len(self.checkpoints)), "HEAD"], cwd=self.worktree_path)
+            return res.stdout
+        except (OSError, subprocess.SubprocessError):
+            return ""
+
+    def apply_to_main(self) -> bool:
+        """Applica le modifiche validate dal worktree al repository principale."""
+        if not self.worktree_path.is_dir() or not self.repo_root.is_dir():
+            return False
+        try:
+            # Crea una patch unificata dal branch del worktree e applicala sul repo originario
+            diff_res = _run_git(["diff", f"HEAD~{len(self.checkpoints)}", "HEAD"], cwd=self.worktree_path)
+            patch = diff_res.stdout
+            if not patch.strip():
+                return True  # Nessuna modifica da applicare
+
+            apply_res = subprocess.run(
+                ["git", "apply", "--whitespace=nowarn", "-"],
+                input=patch,
+                cwd=str(self.repo_root),
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                timeout=30.0,
+            )
+            if apply_res.returncode != 0:
+                log.error("[Worktree] Applicazione modifiche a main fallita: %s", apply_res.stderr)
+                return False
+            log.info("[Worktree] Modifiche della sessione %s applicate con successo a main", self.session_id)
+            return True
+        except (OSError, subprocess.SubprocessError) as exc:
+            log.error("[Worktree] Errore applicazione a main: %s", exc)
+            return False
+
+    def close(self, discard_branch: bool = True) -> None:
+        """Rilascia il worktree e rimuove il branch temporaneo."""
+        try:
+            # 1. Rimuovi il worktree tramite comando git
+            if self.repo_root.is_dir():
+                _run_git(["worktree", "remove", "--force", str(self.worktree_path)], cwd=self.repo_root)
+                if discard_branch:
+                    _run_git(["branch", "-D", self.branch_name], cwd=self.repo_root)
+
+            # 2. Pulizia fisica della cartella se rimasta
+            if self.worktree_path.exists():
+                shutil.rmtree(self.worktree_path, ignore_errors=True)
+            log.info("[Worktree] Sessione %s rilasciata correttamente", self.session_id)
+        except Exception as exc:
+            log.warning("[Worktree] Pulizia worktree %s: %s", self.session_id, exc)
+
+
+# ---------------------------------------------------------------------------
+# Registro globale delle sessioni worktree
+# ---------------------------------------------------------------------------
+
+_active_worktrees: Dict[str, WorktreeSession] = {}
+
+
+def create_session_worktree(repo_root: Path | str, session_id: str) -> Optional[WorktreeSession]:
+    """Crea e isola un worktree git dedicato per la sessione specificata."""
+    root = Path(repo_root).resolve()
+    if not is_git_repository(root):
+        log.debug("[Worktree] '%s' non e' un repo git valido: isolamento worktree saltato", root)
+        return None
+
+    sid = str(session_id or "").strip()
+    if not sid:
+        return None
+
+    target_dir = paths.var_dir() / "dev_worktrees" / sid
+    target_dir.parent.mkdir(parents=True, exist_ok=True)
+
+    branch_name = f"sigma-run/{sid}"
+
+    try:
+        # Se esisteva gia' un worktree orfano, rimuovilo prima
+        if target_dir.exists():
+            _run_git(["worktree", "remove", "--force", str(target_dir)], cwd=root)
+            shutil.rmtree(target_dir, ignore_errors=True)
+
+        # Crea il nuovo worktree basato su HEAD con branch dedicato
+        res = _run_git(["worktree", "add", "-B", branch_name, str(target_dir), "HEAD"], cwd=root)
+        if res.returncode != 0:
+            log.warning("[Worktree] Impossibile creare worktree per %s: %s", sid, res.stderr)
+            return None
+
+        session = WorktreeSession(
+            session_id=sid,
+            repo_root=root,
+            worktree_path=target_dir,
+            branch_name=branch_name,
+        )
+        _active_worktrees[sid] = session
+        log.info("[Worktree] Isolamento attivato per sessione %s in %s", sid, target_dir)
+        return session
+    except (OSError, subprocess.SubprocessError) as exc:
+        log.warning("[Worktree] Eccezione allocazione worktree: %s", exc)
+        return None
+
+
+def get_session_worktree(session_id: str) -> Optional[WorktreeSession]:
+    """Recupera la sessione worktree attiva per una session_id."""
+    return _active_worktrees.get(str(session_id or "").strip())
+
+
+def release_session_worktree(session_id: str, apply_changes: bool = False) -> bool:
+    """Chiude e rilascia il worktree di una sessione."""
+    sid = str(session_id or "").strip()
+    session = _active_worktrees.pop(sid, None)
+    if session is None:
+        return False
+
+    success = True
+    if apply_changes:
+        success = session.apply_to_main()
+    session.close(discard_branch=not apply_changes)
+    return success
