@@ -40,6 +40,7 @@ from core.harness.ledger import (
 )
 from core.harness.policy import ToolPolicy, canonical, filter_tool_docs
 from core.harness import review, worktree
+from core.harness.compaction import compact_history_with_memory
 from core.harness.roles import GENERIC_MODEL_ALIASES
 from core.harness.tool_schema import schemas_for, tool_calls_to_invocations
 from core.engine.grammars import fenced_tool_grammar
@@ -1637,23 +1638,22 @@ def stream_admin_agent_turn(
     # right unit: six turns of directory listings and six turns of source files
     # are not remotely the same amount of context.
     max_history_chars = int(context_tokens * CHARS_PER_TOKEN * 0.55)
+    current_turn = 0
 
-    def trim_history(msgs: List[Dict[str, str]]) -> List[Dict[str, str]]:
-        """Keeps the system prompt, the root objective and the recent turns."""
-        if len(msgs) <= 3:
-            return msgs
-        system_msg, first_user_msg, rest = msgs[0], msgs[1], msgs[2:]
-        while len(rest) > 1 and sum(len(m.get("content", "")) for m in rest) > max_history_chars:
-            rest.pop(0)
-        while len(rest) > MAX_RECENT_TURNS:
-            rest.pop(0)
-        return [system_msg, first_user_msg] + rest
+    def trim_history(msgs: List[Dict[str, str]], turn_num: Optional[int] = None) -> List[Dict[str, str]]:
+        """Keeps recent turns within budget and distils evicted turns into durable session memory."""
+        eff_turn = current_turn if turn_num is None else turn_num
+        return compact_history_with_memory(
+            messages=msgs,
+            ledger=ledger,
+            max_history_chars=max_history_chars,
+            max_recent_turns=MAX_RECENT_TURNS,
+            current_turn=eff_turn,
+        )
 
     full_messages = trim_history(full_messages)
 
     last_user_prompt = full_messages[-1].get("content", "") if len(full_messages) > 1 else "Ciao"
-
-    current_turn = 0
     goal_reached = False
     unproductive_turns = 0
     force_action_turn = False

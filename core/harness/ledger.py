@@ -36,6 +36,7 @@ RECENT_TURNS_KEPT = 6
 MAX_TRACKED_FILES = 60
 MAX_TRACKED_COMMANDS = 25
 MAX_TRACKED_DECISIONS = 20
+MAX_TRACKED_MEMORIES = 20
 #: Oltre una ventina non e' piu' una specifica, e' un progetto: va spezzato.
 MAX_TRACKED_REQUIREMENTS = 20
 MAX_ERROR_CHARS = 300
@@ -196,6 +197,7 @@ class DevSessionLedger:
         self._files: Dict[str, FileRecord] = {}
         self._commands: List[Dict[str, Any]] = []
         self._decisions: List[str] = []
+        self._session_memory: List[Dict[str, Any]] = []
         self._failures: List[str] = []
         self._pipeline: List[Dict[str, Any]] = []
         #: Cosa significa «fatto» per questo obiettivo, e come si dimostra.
@@ -351,6 +353,34 @@ class DevSessionLedger:
             if text and text not in self._decisions:
                 self._decisions.append(text)
                 del self._decisions[:-MAX_TRACKED_DECISIONS]
+
+    def add_session_memory(self, summary: str, turn_range: str = "", decisions: Optional[List[str]] = None) -> None:
+        """Registra una sintesi progressiva delle motivazioni e decisioni prese.
+
+        Permette run lunghi (30+ turni) senza amnesia decisionale: quando i turni
+        vecchi vengono sfrattati dalla finestra di contesto, la loro motivazione
+        resta distillata qui e viene re-inviata con lo state block ad ogni turno.
+        """
+        with self._lock:
+            s = (summary or "").strip()
+            if not s:
+                return
+            entry = {
+                "summary": s[:1500],
+                "turn_range": str(turn_range or "").strip(),
+                "at": time.time(),
+            }
+            if decisions:
+                entry["decisions"] = [str(d).strip() for d in decisions if str(d).strip()]
+                for d in entry["decisions"]:
+                    self.add_decision(d)
+            self._session_memory.append(entry)
+            del self._session_memory[:-MAX_TRACKED_MEMORIES]
+
+    @property
+    def session_memory(self) -> List[Dict[str, Any]]:
+        with self._lock:
+            return list(self._session_memory)
 
     def _rel(self, path: str) -> str:
         """Workspace-relative form of a path, or the path itself if outside."""
@@ -636,6 +666,7 @@ class DevSessionLedger:
                 "pipeline": list(self._pipeline),
                 "intake": self._intake,
                 "requirements": [r.to_dict() for r in self._requirements.values()],
+                "session_memory": list(self._session_memory),
             }
 
     # -- serialization -------------------------------------------------------
@@ -678,6 +709,7 @@ class DevSessionLedger:
                 "pipeline": list(self._pipeline),
                 "intake": self._intake,
                 "requirements": [r.to_dict() for r in self._requirements.values()],
+                "session_memory": list(self._session_memory),
                 "screenshots": list(self._screenshots),
                 "diffs": dict(self._diffs),
                 "searches": list(self._searches),
@@ -745,6 +777,7 @@ class DevSessionLedger:
                 log.debug("[Ledger] criterio scartato al ripristino: %s", exc)
         ledger._screenshots = list(state.get("screenshots") or [])
         ledger._diffs = dict(state.get("diffs") or {})
+        ledger._session_memory = list(state.get("session_memory") or [])
         ledger._searches = list(state.get("searches") or [])
         ledger._listings = set(state.get("listings") or [])
         ledger._consecutive_dup_commands = int(
@@ -841,6 +874,12 @@ class DevSessionLedger:
             if self._decisions:
                 parts.append("\n**Decisioni prese:**")
                 parts.extend(f"- {d}" for d in self._decisions)
+
+            if self._session_memory:
+                parts.append("\n**Memoria della sessione (decisioni e motivazioni storiche):**")
+                for m in self._session_memory:
+                    tr = f"[{m['turn_range']}] " if m.get("turn_range") else ""
+                    parts.append(f"- {tr}{m.get('summary', '')}")
 
             if self._failures:
                 parts.append("\n**Errori recenti da non ripetere:**")
