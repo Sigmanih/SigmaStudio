@@ -42,7 +42,12 @@ from core.harness.policy import ToolPolicy, canonical, filter_tool_docs
 from core.harness import review, worktree
 from core.harness.compaction import compact_history_with_memory
 from core.harness.roles import GENERIC_MODEL_ALIASES
-from core.harness.tool_schema import schemas_for, tool_calls_to_invocations
+from core.harness.tool_schema import (
+    schemas_for,
+    tool_calls_to_invocations,
+    adapt_prompt_for_native_tools,
+    supports_native_tools,
+)
 from core.engine.grammars import fenced_tool_grammar
 from core.engine.sampling import SamplingParams
 from core.harness.providers import stream_dev_generation
@@ -1597,7 +1602,9 @@ def stream_admin_agent_turn(
     # possibilita' che non esisteva. Il bridge lo consegna soltanto ai
     # provider che sanno usarlo; per il motore locale resta inerte.
     tool_catalogue = schemas_for(policy.visible_tools() if policy.restricted else None)
-    native_mode = False
+    native_mode = supports_native_tools(provider)
+    if native_mode:
+        base_system_prompt = adapt_prompt_for_native_tools(base_system_prompt)
     native_announced = False
 
     run_metrics: Dict[str, Any] = {

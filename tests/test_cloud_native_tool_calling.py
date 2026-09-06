@@ -168,6 +168,78 @@ class TestCloudNativeToolCalling(unittest.TestCase):
         self.assertTrue(len(tool_results) >= 1)
         self.assertEqual(tool_results[0].get("tool"), "terminal")
 
+    def test_adapt_prompt_for_native_tools(self):
+        """Verifica che il prompt sia depurato dalle istruzioni di fence quando il tool calling è nativo."""
+        from core.harness.tool_schema import adapt_prompt_for_native_tools
+        from core.harness.loop import ADMIN_DEVELOPER_SYSTEM_PROMPT
+
+        adapted = adapt_prompt_for_native_tools(ADMIN_DEVELOPER_SYSTEM_PROMPT)
+        self.assertNotIn("```tool:NOME_DEL_TOOL", adapted)
+        self.assertIn("TOOL-CALLING NATIVO ATTIVO", adapted)
+        self.assertIn("CICLO DI LAVORO", adapted)
+
+    @patch("core.ai_providers.requests.post")
+    def test_anthropic_native_tool_calling(self, mock_post):
+        """Verifica che l'API Anthropic riceva tools con input_schema e restituisca tool_use convertiti."""
+        from core.ai_providers import call_anthropic
+
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        mock_resp.json.return_value = {
+            "content": [
+                {"type": "text", "text": "Sto per leggere il file."},
+                {
+                    "type": "tool_use",
+                    "id": "toolu_01ABC",
+                    "name": "read_file",
+                    "input": {"path": "core/api.py", "offset": 10},
+                },
+            ]
+        }
+        mock_post.return_value = mock_resp
+
+        tools = schemas_for(["read_file"])
+        text, err, tool_calls = call_anthropic(
+            messages=[{"role": "user", "content": "leggi api.py"}],
+            model="claude-3-5-sonnet-20241022",
+            api_url="https://api.anthropic.com/v1/messages",
+            api_key="sk-ant-test",
+            tools=tools,
+        )
+
+        self.assertIsNone(err)
+        self.assertEqual(text, "Sto per leggere il file.")
+        self.assertEqual(len(tool_calls), 1)
+        self.assertEqual(tool_calls[0]["id"], "toolu_01ABC")
+        self.assertEqual(tool_calls[0]["function"]["name"], "read_file")
+        self.assertEqual(json.loads(tool_calls[0]["function"]["arguments"]), {"path": "core/api.py", "offset": 10})
+
+        # Verifica payload inviato ad Anthropic
+        _, kwargs = mock_post.call_args
+        payload = kwargs.get("json", {})
+        self.assertIn("tools", payload)
+        self.assertEqual(payload["tools"][0]["name"], "read_file")
+        self.assertIn("input_schema", payload["tools"][0])
+
+    @patch("core.harness.loop.stream_dev_generation")
+    def test_loop_uses_adapted_prompt_for_cloud_providers(self, mock_stream_dev):
+        """Verifica che lo stream_dev_generation riceva il prompt adattato senza fence per provider cloud."""
+        mock_stream_dev.return_value = iter([{"done": True}])
+
+        events = list(stream_admin_agent_turn(
+            session_id="test-cloud-prompt",
+            messages=[{"role": "user", "content": "esegui"}],
+            provider="openai",
+            model_name="gpt-4o",
+            max_turns=1,
+        ))
+
+        mock_stream_dev.assert_called_once()
+        _, kwargs = mock_stream_dev.call_args
+        system_prompt = kwargs.get("system_prompt", "")
+        self.assertNotIn("```tool:NOME_DEL_TOOL", system_prompt)
+        self.assertIn("TOOL-CALLING NATIVO ATTIVO", system_prompt)
+
 
 if __name__ == "__main__":
     unittest.main()

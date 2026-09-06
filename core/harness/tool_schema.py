@@ -20,6 +20,7 @@ forma interna che produce l'estrattore testuale — cosi' il resto del ciclo non
 sa nemmeno quale delle due strade e' stata percorsa.
 """
 
+import re
 import json
 from typing import Any, Dict, List, Optional
 
@@ -163,3 +164,33 @@ def tool_calls_to_invocations(tool_calls: Any) -> List[Dict[str, Any]]:
             "native": True,
         })
     return invocazioni
+
+
+def adapt_prompt_for_native_tools(prompt: str) -> str:
+    """Adatta il system prompt quando il provider supporta i tool nativi.
+
+    Rimuove l'obbligo di formattare il testo con blocchi recintati ```tool:...```
+    evitando che modelli cloud avanzati (OpenAI, Anthropic, DeepSeek) si confondano
+    fra l'emissione di testo e l'emissione di chiamate di funzione strutturate.
+    """
+    if not prompt:
+        return ""
+
+    # Sostituisce la regola del formato recintato con l'istruzione per i tool nativi
+    p = re.sub(
+        r"## REGOLA FONDAMENTALE[\s\S]*?```tool:NOME_DEL_TOOL[\s\S]*?```",
+        "## REGOLA FONDAMENTALE (TOOL-CALLING NATIVO ATTIVO)\n"
+        "Hai a disposizione strumenti dichiarati nativamente nella piattaforma.\n"
+        "Ad ogni turno invoca lo strumento appropriato per compiere un'azione concreta.\n"
+        "Non emettere blocchi markdown per invocare i tool: usa le chiamate di funzione della piattaforma.\n"
+        "Segui rigorosamente il ciclo di lavoro (specifica -> pianifica -> orientati -> leggi -> agisci -> verifica -> chiudi).",
+        prompt,
+    )
+
+    # Rimuove l'elenco testuale dei parametri tool se già descritti nello schema nativo
+    p = re.sub(
+        r"## TOOL DISPONIBILI[\s\S]*?(?=\n## |\Z)",
+        "## TOOL DISPONIBILI\nI parametri dettagliati di ciascun tool sono descritti nello schema strutturato fornito al modello.\n",
+        p,
+    )
+    return p.strip()

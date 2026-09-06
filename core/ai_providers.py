@@ -1053,11 +1053,12 @@ def call_anthropic(
     temperature: float = 0.7,
     max_tokens: int = 4096,
     top_p: float = 0.9,
+    tools: list = None,
 ) -> tuple:
     if not REQUESTS_AVAILABLE:
-        return None, "requests library not available."
+        return None, "requests library not available.", None
     if not api_url:
-        return None, "API URL non configurata."
+        return None, "API URL non configurata.", None
     try:
         system_msg = ""
         anthropic_msgs = []
@@ -1081,18 +1082,44 @@ def call_anthropic(
         if system_msg.strip():
             payload["system"] = system_msg.strip()
 
+        if tools:
+            anthropic_tools = []
+            for t in tools:
+                fn = t.get("function", {}) if isinstance(t, dict) else {}
+                if fn.get("name"):
+                    anthropic_tools.append({
+                        "name": fn["name"],
+                        "description": fn.get("description", ""),
+                        "input_schema": fn.get("parameters", {"type": "object", "properties": {}}),
+                    })
+            if anthropic_tools:
+                payload["tools"] = anthropic_tools
+
         resp = requests.post(api_url, json=payload, headers=headers, timeout=120)
         if resp.status_code == 200:
             data = resp.json()
-            return data.get("content", [{}])[0].get("text", ""), None
+            content_blocks = data.get("content", [])
+            text_parts = [b.get("text", "") for b in content_blocks if b.get("type") == "text"]
+            tool_calls = []
+            for b in content_blocks:
+                if b.get("type") == "tool_use":
+                    tool_calls.append({
+                        "id": b.get("id", ""),
+                        "type": "function",
+                        "function": {
+                            "name": b.get("name", ""),
+                            "arguments": json.dumps(b.get("input", {})),
+                        },
+                    })
+            return "".join(text_parts), None, tool_calls
 
         try:
             detail = resp.json().get("error", {}).get("message", resp.text)
         except Exception:
             detail = resp.text
-        return None, f"Anthropic error {resp.status_code}: {detail}"
+        return None, f"Anthropic error {resp.status_code}: {detail}", None
     except Exception as e:
-        return None, str(e)
+        return None, str(e), None
 
 
 def call_ai_model_stream(messages, ai_cfg, model, provider, endpoint, api_url, api_key,
@@ -1134,11 +1161,15 @@ def call_ai_model_stream(messages, ai_cfg, model, provider, endpoint, api_url, a
             return call_openai_compatible_stream(messages, model, api_url, api_key, temperature, max_tokens, top_p, request_timeout,
                 params=params, cancel=cancel, tools=tools, tool_choice=tool_choice)
         elif route_provider == "anthropic":
-            # Anthropic fallback to non-stream, yielding the entire text as a single token
-            content, thinking = call_anthropic(messages, model, api_url, api_key, temperature, max_tokens, top_p)
+            content, err, tool_calls = call_anthropic(messages, model, api_url, api_key, temperature, max_tokens, top_p, tools=tools)
             def _single_gen():
-                if content: yield {"token": content}
-                if thinking: yield {"thinking": thinking}
+                if err:
+                    yield {"error": True, "message": err}
+                    return
+                if content:
+                    yield {"token": content}
+                if tool_calls:
+                    yield {"tool_calls": tool_calls}
                 yield {"done": True}
             return _single_gen()
     except Exception as e:
