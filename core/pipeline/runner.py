@@ -27,6 +27,8 @@ from core.chat_handler import (
     _extract_json_from_response, _collect_context_files
 )
 from core.output_validator import validate_agent_output
+from core.harness.ledger import DevSessionLedger
+from core.harness.node_runner import run_node
 from core.pipeline.self_healing import MAX_FEEDBACK_ITERATIONS, _evaluate_condition, _get_role_instructions
 from core.pipeline.report_builder import (
     _get_pipeline, _set_pipeline, _delete_pipeline, _load_checkpoints,
@@ -132,6 +134,13 @@ def run_pipeline(self, req: dict, stream_callback=None) -> dict:
             "execution_order": execution_order,
         })
 
+    # Un solo ledger per pipeline: e' cio' che distingue una squadra da una
+    # fila di estranei. Il nodo che verifica vede i file che il nodo che
+    # implementa ha scritto, e nessuno rilegge quello che un altro ha letto.
+    workspace_root = req.get("workspace_root") or None
+    model_override = req.get("model") or None
+    ledger = DevSessionLedger(goal=goal, workspace_root=workspace_root)
+
     outputs = {}
     for node_id in execution_order:
         node_def = _get_node_by_id(nodes, node_id)
@@ -147,8 +156,53 @@ def run_pipeline(self, req: dict, stream_callback=None) -> dict:
                 "label": node_def.get("label", node_id),
             })
 
-        # Node execution output simulation
-        out_text = f"Esecuzione nodo '{node_def.get('label', node_id)}' per l'obiettivo: {goal}"
+        # Il nodo viene eseguito dall'harness: stessi tool, stesso ledger e
+        # stesso cancello di completamento dell'agente sviluppatore. Qui prima
+        # c'era una simulazione — una stringa segnaposto passata al nodo
+        # successivo come se fosse un risultato — e una pipeline intera poteva
+        # "completarsi" senza che nessun modello avesse mai risposto.
+        monte = {
+            uid: outputs.get(uid, "")
+            for uid in _get_upstream_nodes(node_id, connections)
+            if outputs.get(uid)
+        }
+
+        out_text = ""
+        errore = None
+        for evento in run_node(
+            node_def, goal,
+            upstream_outputs=monte,
+            ledger=ledger,
+            workspace_root=workspace_root,
+            session_id=pipeline_id,
+            model_override=model_override,
+        ):
+            tipo = evento.get("type")
+            if tipo == "node_output":
+                out_text = evento.get("output", "")
+                continue
+            if tipo == "node_failed":
+                errore = evento.get("error") or "errore sconosciuto"
+                continue
+            if stream_callback:
+                stream_callback({**evento, "pipeline_id": pipeline_id,
+                                 "node_id": node_id})
+
+        if errore:
+            pipeline_status["nodes"][node_id]["status"] = "failed"
+            pipeline_status["nodes"][node_id]["error"] = errore
+            _set_pipeline(pipeline_id, pipeline_status)
+            if stream_callback:
+                stream_callback({
+                    "type": "node_failed",
+                    "pipeline_id": pipeline_id,
+                    "node_id": node_id,
+                    "error": errore,
+                })
+            # I nodi a valle dipendono da questo: proseguire significherebbe
+            # passargli un risultato che non esiste.
+            break
+
         outputs[node_id] = out_text
         pipeline_status["nodes"][node_id]["status"] = "completed"
         pipeline_status["nodes"][node_id]["output"] = out_text
