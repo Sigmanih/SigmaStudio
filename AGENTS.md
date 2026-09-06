@@ -70,7 +70,7 @@ corrisponde a cio' che hai toccato:
 ```
 python -m pytest tests/ -q                    # kernel Python
 python -m pytest tests/test_<modulo>.py -q    # una sola area
-npm --prefix sigma_studio run lint            # frontend
+npm --prefix sigma_studio run lint:undef      # frontend: riferimenti non definiti (no-undef)
 npm --prefix sigma_studio run build           # frontend, prova piu forte
 python -c "import core.<modulo>"              # verifica minima di import
 ```

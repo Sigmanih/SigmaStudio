@@ -8,6 +8,7 @@
     "dev": "vite",
     "build": "vite build",
     "lint": "eslint .",
+    "lint:undef": "eslint -c eslint.config.undef.js --no-inline-config src/",
     "preview": "vite preview"
   },
   "dependencies": {
