@@ -9,7 +9,7 @@ Rapporto tecnico completo sull'evoluzione dell'harness dell'agente nel kernel, l
 | Metrica | Audit Iniziale | Stato Attuale | Progresso |
 |:---|:---:|:---:|:---:|
 | **Test verdi nel kernel** | 895 | **1010 passed** | +115 test |
-| **Punti Audit Chiusi** | 0 / 11 | **5 / 11 completati** | Punti 1, 3, 4, 6, 8 chiusi; Punto 2 provato dal vivo |
+| **Punti Audit Chiusi** | 0 / 11 | **6 / 11 completati** | Punti 1, 3, 4, 5, 6, 8 chiusi; Punto 2 provato dal vivo |
 | **Turni medi al completamento** | 30 (fallito/deadlock) | **12 / 30 turni** | Completamento effettivo con criteri dimostrati |
 | **Frontend Vite Build** | N/D | **Verde (822ms)** | Nessuna regressione |
 | **Controllo Riferimenti non definiti** | Fallito (invisibile tra 815 errori) | **0 no-undef (isolato)** | Comando dedicato `npm run lint:undef` |
@@ -84,7 +84,7 @@ Rapporto tecnico completo sull'evoluzione dell'harness dell'agente nel kernel, l
 | **2** | **Orchestratore 5 fasi dal vivo** | **IN CORSO** | Primi run eseguiti; corretti isolamento workspace e policy tool. Necessita ulteriori test end-to-end con Architect/Reviewer. |
 | **3** | **Gate di revisione del diff** | **CHIUSO (Kernel)** | Backend e test pronti (commit `f18627e`). Resta la UI nel Developer Studio per mostrare il diff. |
 | **4** | **Worktree git per run** | **CHIUSO** | Implementato `core/harness/worktree.py` con allocazione worktree isolata, checkpoint di turno e rollback automatico. |
-| **5** | **Ledger e cancello nella Chat** | **APERTO** | Portare ledger e vincoli di verifica in `core/chat/` per eliminare file spazzatura e allucinazioni. |
+| **5** | **Ledger e cancello nella Chat** | **CHIUSO** | Implementato `core/chat/ledger.py` con cancello di mutazione `is_mutation_permitted` in `file_extractor.py`, bloccando scritture involontarie da query informative. |
 | **6** | **Verifica strutturata anziché solo exit code** | **CHIUSO** | Implementato `core/harness/verification.py` e integrato nel ledger (commit `84ef969`). Rifiuta test a vuoto e documenta i test superati. |
 | **7** | **Errori di console nel controllo visivo** | **APERTO** | Intercettare log di console e ReferenceError nel subagent browser headless post-modifica UI. |
 | **8** | **Controllo mirato sui riferimenti non definiti** | **CHIUSO** | Implementato `npm run lint:undef` e registrato in `AGENTS.md` (commit `d46d601`). |

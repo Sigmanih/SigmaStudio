@@ -14,6 +14,7 @@ from core.logger import get_logger
 from core.data_handler import rebuild_modules_meta
 from core.backup_manager import create_backup
 from core.task_handler import _compute_diff
+from core.chat.ledger import is_mutation_permitted, get_chat_ledger
 
 log = get_logger(__name__)
 
@@ -152,12 +153,20 @@ def _strip_reasoning_monologue(text: str) -> str:
     return text.strip()
 
 
-def _extract_and_create_files_from_text(clean_response: str, prompt_topic: str = "", force_save: bool = False) -> tuple[list[str], list[dict]]:
+def _extract_and_create_files_from_text(clean_response: str, prompt_topic: str = "", force_save: bool = False, session_id: str = "") -> tuple[list[str], list[dict]]:
     """Extract multiple files from markdown text response, save them with backup, AST validation, and diff tracking.
     
     Returns:
         tuple of (created_paths, actions_log) where each action contains backup_id and diff.
     """
+    # Cancello di mutazione per la chat: una richiesta informativa non deve toccare il filesystem
+    allowed, reason = is_mutation_permitted(prompt_topic, force_save=force_save)
+    if not allowed:
+        chat_led = get_chat_ledger(session_id)
+        chat_led.record_rejection(reason, prompt_topic[:80])
+        log.debug("[ChatGate] Estrazione file saltata: %s (prompt: '%s')", reason, prompt_topic[:80])
+        return [], []
+
     clean_response = _strip_reasoning_monologue(clean_response)
     created_paths = []
     actions_log = []
@@ -217,6 +226,14 @@ def _extract_and_create_files_from_text(clean_response: str, prompt_topic: str =
             "backup_id": backup_id,
             "diff": file_diff
         })
+
+        chat_led = get_chat_ledger(session_id)
+        chat_led.record_write(
+            clean_path,
+            "edit_file" if old_content else "create_file",
+            backup_id=backup_id,
+            diff=file_diff,
+        )
 
         # Developer MCP Verification for Python files
         if clean_path.endswith('.py'):
@@ -367,12 +384,10 @@ def _extract_and_create_files_from_text(clean_response: str, prompt_topic: str =
                     clean_path = _determine_default_module_path(topic_slug, folder, fname)
                     _save_file_with_backup(clean_path, file_content)
 
-    # Pattern 4: Fallback — save entire response as a structured topic file (requires explicit creation intent)
+    # Pattern 4: Fallback — salva l'intera risposta solo se il salvataggio e' esplicitamente richiesto
     is_reasoning_only = clean_response.strip().startswith("Analyze User Input:") or clean_response.strip().startswith("Identify Constraints")
     is_admin_action = any(w in prompt_topic.lower() for w in ('rinomina', 'elimina', 'cancella', 'rimuovi', 'cambia nome'))
-    should_fallback = not is_reasoning_only and not is_admin_action and (
-        force_save or (len(clean_response) > 50 and user_wants_file_creation)
-    )
+    should_fallback = (force_save or "argomento" in prompt_topic.lower() or "topic" in prompt_topic.lower()) and not is_reasoning_only and not is_admin_action
     if not created_paths and should_fallback:
         title_match = re.search(r'^#\s+(.+)', clean_response, re.MULTILINE)
         raw_title = title_match.group(1).strip() if title_match else raw_prompt or topic_slug
