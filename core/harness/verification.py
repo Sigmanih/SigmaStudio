@@ -343,3 +343,9 @@ def parse_verification(
         is_valid=is_valid,
         summary="comando completato con codice 0" if is_valid else f"comando uscito con codice {returncode}",
     )
+
+
+def looks_like_test_run(command: str) -> bool:
+    """Riconosce se un comando shell intende eseguire una suite di test."""
+    c = (command or "").lower()
+    return any(k in c for k in ("pytest", "unittest", "vitest", "jest", "npm test", "npm run test", "yarn test"))

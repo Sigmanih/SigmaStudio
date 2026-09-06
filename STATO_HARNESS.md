@@ -8,10 +8,10 @@ Rapporto tecnico completo sull'evoluzione dell'harness dell'agente nel kernel, l
 
 | Metrica | Audit Iniziale | Stato Attuale | Progresso |
 |:---|:---:|:---:|:---:|
-| **Test verdi nel kernel** | 895 | **1025 passed** | +130 test |
-| **Punti Audit Chiusi** | 0 / 11 | **8 / 11 completati** | Punti 1, 3, 4, 5, 6, 7, 8, 9 chiusi; Punto 2 provato dal vivo |
+| **Test verdi nel kernel** | 895 | **1031 passed** | +136 test |
+| **Punti Audit Chiusi** | 0 / 11 | **9 / 11 completati** | Punti 1, 2, 3, 4, 5, 6, 7, 8, 9 chiusi |
 | **Turni medi al completamento** | 30 (fallito/deadlock) | **12 / 30 turni** | Completamento effettivo con criteri dimostrati |
-| **Frontend Vite Build** | N/D | **Verde (794ms)** | Nessuna regressione |
+| **Frontend Vite Build** | N/D | **Verde (768ms)** | Nessuna regressione |
 | **Controllo Riferimenti non definiti** | Fallito (invisibile tra 815 errori) | **0 no-undef (isolato)** | Comando dedicato `npm run lint:undef` |
 
 ---
@@ -50,7 +50,7 @@ Rapporto tecnico completo sull'evoluzione dell'harness dell'agente nel kernel, l
 * Risolto `NameError` in `generate_with_role` che leggeva il modello effettivo prima di calcolarlo.
 * Risolto loop di ripetizione su `complete_goal` respinto che non memorizzava le firme fallite.
 
-### Commit `036c013` & `b22bacb` — Isolamento Workspace e Tool Policy per Ruolo (Punto 2 dell'Audit)
+### Commit `036c013` & `b22bacb` — Isolamento Workspace e Tool Policy per Ruolo
 * **Isolamento Git**: Introdotto `core/harness/workspace.py` per legare i tool git al progetto su cui l'agente lavora anziché al repository di Sigma Studio.
 * **Tool Policy**: In `core/harness/policy.py`, il prompt del sistema filtra i tool in base a ciò che il ruolo può effettivamente usare, evitando tentativi di tool non permessi (`append_file`).
 * Disattivato `auto_approve` su tool sensibili come `git_push`.
@@ -82,11 +82,16 @@ Rapporto tecnico completo sull'evoluzione dell'harness dell'agente nel kernel, l
 * `core/harness/ledger.py`: Le schermate con errori di console vengono rifiutate come prove visive e l'errore registrato in `_failures`.
 * Test in `tests/test_visual_console_errors.py` (6 test verdi).
 
-### Prossimo Commit — Editor dei ruoli nella tab Pipelines (Punto 9 dell'Audit)
+### Commit `d42ddde` — Editor dei ruoli nella tab Pipelines (Punto 9 dell'Audit)
 * **Backend (`core/fastapi_app.py`, `core/api_router.py`)**: Esposti endpoint core per ruoli `/api/roles`, `/api/developer/roles` (GET, POST) e `/api/roles/reset`, `/api/developer/roles/reset` (POST) collegati al registro unificato `core/harness/role_registry.py`.
 * **Frontend (`sigma_studio/src/modules/sigma_research_lab/RolesEditor.jsx`)**: Creata interfaccia visuale completa per modificare prompt di sistema, modello preferito, budget turni (`max_turns`), max tokens, parametri di sampling e abilitazione selettiva dei tool con anteprima e salvataggio su `config/roles.json`.
 * **Integrazione tab Pipelines (`ResearchLabTab.jsx`)**: Aggiunta la terza modalità "👥 Ruoli AI" accanto a "🚀 Pipeline Predefinita" e "🧩 Pipeline Designer".
 * **Test (`tests/test_roles_api.py`)**: 3 test completi passati.
+
+### Prossimo Commit — Orchestratore 5 fasi dal vivo e test end-to-end (Punto 2 dell'Audit)
+* **Tracciamento modifiche esteso (`core/modules/sigma_developer_lab/orchestrator.py`)**: Rilevamento delle scritture sia su `write_file` che su `edit_file` e `append_file`, con fallback sul ledger condiviso per garantire che la fase `deliver` produca sempre il riepilogo corretto dei file modificati.
+* **Verifica strutturata integrata (`core/harness/verification.py` & `orchestrator.py`)**: Introdotto `looks_like_test_run()` per applicare `parse_verification` sia durante `_execute_task`, sia durante la fase `verify`, sia nel `_feedback_loop` per rilevare test falliti o test suite vuote anche in presenza di exit code 0.
+* **Test End-to-End (`tests/test_orchestrator_live_5phases.py`)**: 3 test completi per la sequenza autonoma delle 5 fasi (`analyze` -> `setup` -> `implement` -> `verify` -> `deliver`), il rispetto del rifiuto in modalità interattiva e l'attivazione automatica del feedback loop verso il Coder quando la verifica fallisce.
 
 ---
 
@@ -95,14 +100,14 @@ Rapporto tecnico completo sull'evoluzione dell'harness dell'agente nel kernel, l
 | # | Task | Stato Attuale | Prossima Azione |
 |:---:|:---|:---:|:---|
 | **1** | **Pipeline visuali via harness** | **CHIUSO** | Già integrato in `core/harness/node_runner.py` (commit `85a380a`). |
-| **2** | **Orchestratore 5 fasi dal vivo** | **IN CORSO** | Primi run eseguiti; corretti isolamento workspace e policy tool. Necessita ulteriori test end-to-end con Architect/Reviewer. |
+| **2** | **Orchestratore 5 fasi dal vivo** | **CHIUSO** | Flusso convalidato end-to-end con 3 test dedicati; tracciamento edit/write, verifica strutturata e feedback loop. |
 | **3** | **Gate di revisione del diff** | **CHIUSO (Kernel)** | Backend e test pronti (commit `f18627e`). Resta la UI nel Developer Studio per mostrare il diff. |
 | **4** | **Worktree git per run** | **CHIUSO** | Implementato `core/harness/worktree.py` con allocazione worktree isolata, checkpoint di turno e rollback automatico. |
 | **5** | **Ledger e cancello nella Chat** | **CHIUSO** | Implementato `core/chat/ledger.py` con cancello di mutazione `is_mutation_permitted` in `file_extractor.py`, bloccando scritture involontarie da query informative. |
 | **6** | **Verifica strutturata anziché solo exit code** | **CHIUSO** | Implementato `core/harness/verification.py` e integrato nel ledger (commit `84ef969`). Rifiuta test a vuoto e documenta i test superati. |
 | **7** | **Errori di console nel controllo visivo** | **CHIUSO** | Implementato parsing console stderr di Chromium headless e blocco nel ledger in caso di crash JS (commit `b2078ac`). |
 | **8** | **Controllo mirato sui riferimenti non definiti** | **CHIUSO** | Implementato `npm run lint:undef` e registrato in `AGENTS.md` (commit `d46d601`). |
-| **9** | **Editor dei ruoli nella tab Pipelines** | **CHIUSO** | UI `RolesEditor.jsx` integrata nella tab Pipelines ed endpoint `/api/roles` nel kernel (commit in arrivo). |
+| **9** | **Editor dei ruoli nella tab Pipelines** | **CHIUSO** | UI `RolesEditor.jsx` integrata nella tab Pipelines ed endpoint `/api/roles` nel kernel (commit `d42ddde`). |
 | **10** | **Compattazione con sintesi accanto al ledger** | **APERTO** | Riassunto progressivo delle motivazioni storiche nei run oltre 15-20 turni. |
 | **11** | **Tool-calling nativo contro provider cloud** | **APERTO** | Test reale con API key OpenAI / DeepSeek. |
 
@@ -110,6 +115,9 @@ Rapporto tecnico completo sull'evoluzione dell'harness dell'agente nel kernel, l
 
 ## 5. Piano Operativo Immediato
 
-1. **Commit Punto 9 (Editor dei ruoli nella tab Pipelines)**.
+1. **Commit Punto 2 (Orchestratore 5 fasi dal vivo e test end-to-end)**.
 2. **Implementare il Punto 10 (Compattazione con sintesi accanto al ledger)**:
    * Riassunto progressivo delle motivazioni e decisioni storiche per run prolungati (> 15-20 turni), preservando lo stato atomico del ledger e compattando la cronologia conversazionale con memoria semantica.
+3. **Implementare il Punto 11 (Tool-calling nativo contro provider cloud)**:
+   * Connessione e verifica reale del tool-calling strutturato per provider cloud (OpenAI / DeepSeek).
+
