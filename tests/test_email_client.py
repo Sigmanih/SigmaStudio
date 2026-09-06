@@ -144,3 +144,30 @@ def test_config_save_live_fields(client, app):
     assert saved["address"] == "tu@esempio.it"
     assert saved["smtp_host"] == "smtp.example.com"
     assert saved["demo_mode"] is False
+
+
+def test_inbox_unconfigured_returns_empty_200(client, app):
+    """Verifica che un account non configurato ritorni 200 con lista vuota senza sollevare errore 500."""
+    cfg = email_handlers.CONFIG_PATH
+    _write_config(cfg, {"demo_mode": False})
+    with patch.object(email_handlers, "_get_email_server") as mock_srv:
+        mock_srv.return_value.is_configured.return_value = False
+        res = client.get("/api/email/inbox?limit=50")
+    assert res.status_code == 200
+    body = res.json()
+    assert body["status"] == "ok"
+    assert body["messages"] == []
+    assert body["total"] == 0
+
+
+def test_get_config_returns_fields(client, app):
+    """Verifica la rotta GET /api/email/config per pre-popolare il form."""
+    cfg = email_handlers.CONFIG_PATH
+    _write_config(cfg, {"address": "test@dominio.it", "smtp_host": "smtp.dominio.it"})
+    res = client.get("/api/email/config")
+    assert res.status_code == 200
+    body = res.json()
+    assert body["status"] == "ok"
+    assert body["config"]["address"] == "test@dominio.it"
+    assert body["config"]["smtp_host"] == "smtp.dominio.it"
+
