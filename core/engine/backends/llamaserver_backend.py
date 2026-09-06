@@ -26,6 +26,7 @@
 # ==============================================================================
 from __future__ import annotations
 
+import atexit
 import json
 import os
 import socket
@@ -47,10 +48,38 @@ from core.logger import get_logger
 
 log = get_logger(__name__)
 
-#: Quanto aspettare che il server risponda dopo l'avvio. Su una scheda piccola
-#: con un modello sul disco lento il caricamento e' lento davvero.
+#: Quanto aspettare che il server risponda dopo l'avvio, per un modello di
+#: taglia ordinaria. Su una scheda piccola con un modello sul disco lento il
+#: caricamento e' lento davvero.
 _AVVIO_TIMEOUT_S = 300
 _AVVIO_INTERVALLO_S = 0.4
+
+#: Banda assunta per il primo caricamento da disco freddo. Molto sotto il
+#: dato di targa di un NVMe, e di proposito: qui non si legge un file di
+#: seguito, si mappa in memoria e lo si tocca a pagine mentre il resto del
+#: sistema usa la stessa cache. Serve a trasformare i gigabyte in secondi di
+#: attesa concessa, non a stimare un throughput.
+_BANDA_CARICAMENTO_GB_S = 0.25
+
+#: Tetto assoluto. Oltre, qualcosa non sta caricando: sta morendo piano.
+_AVVIO_TIMEOUT_MASSIMO_S = 3600
+
+
+def _timeout_avvio(dimensione_gb: float) -> int:
+    """Quanti secondi concedere all'avvio, dato quanto pesa il modello.
+
+    Trecento secondi fissi sono la scelta giusta per un modello da dieci
+    gigabyte e quella sbagliata per uno da centocinquanta: alla banda di un
+    disco quel file non si finisce di leggere nemmeno in teoria, e il timeout
+    uccide un caricamento che stava procedendo. E' successo — con un MoE da
+    157 GB che in un'altra occasione era arrivato in fondo — e dall'esterno si
+    vede solo "llama-server non ha risposto", che manda a cercare il problema
+    ovunque tranne che qui.
+    """
+    if dimensione_gb <= 0:
+        return _AVVIO_TIMEOUT_S
+    lettura_s = dimensione_gb / _BANDA_CARICAMENTO_GB_S
+    return int(min(max(_AVVIO_TIMEOUT_S, lettura_s * 1.5), _AVVIO_TIMEOUT_MASSIMO_S))
 
 #: Quanto aspettare la chiusura ordinata prima di forzarla.
 _CHIUSURA_TIMEOUT_S = 10
@@ -222,6 +251,71 @@ def _porta_libera() -> int:
         return s.getsockname()[1]
 
 
+def _assign_kill_on_close(proc: subprocess.Popen) -> None:
+    """Su Windows, associa il processo a un Job Object con KILL_ON_JOB_CLOSE.
+    Garantisce che il kernel Windows termini llama-server se Python muore o si chiude.
+    """
+    if os.name != "nt":
+        return
+    try:
+        import ctypes
+        from ctypes import wintypes
+        kernel32 = ctypes.windll.kernel32
+
+        job = kernel32.CreateJobObjectW(None, None)
+        if not job:
+            return
+
+        class JOBOBJECT_BASIC_LIMIT_INFORMATION(ctypes.Structure):
+            _fields_ = [
+                ("PerProcessUserTimeLimit", wintypes.LARGE_INTEGER),
+                ("PerJobUserTimeLimit", wintypes.LARGE_INTEGER),
+                ("LimitFlags", wintypes.DWORD),
+                ("MinimumWorkingSetSize", ctypes.c_size_t),
+                ("MaximumWorkingSetSize", ctypes.c_size_t),
+                ("ActiveProcessLimit", wintypes.DWORD),
+                ("Affinity", ctypes.c_size_t),
+                ("PriorityClass", wintypes.DWORD),
+                ("SchedulingClass", wintypes.DWORD),
+            ]
+
+        class IO_COUNTERS(ctypes.Structure):
+            _fields_ = [
+                ("ReadOperationCount", ctypes.c_uint64),
+                ("WriteOperationCount", ctypes.c_uint64),
+                ("OtherOperationCount", ctypes.c_uint64),
+                ("ReadTransferCount", ctypes.c_uint64),
+                ("WriteTransferCount", ctypes.c_uint64),
+                ("OtherTransferCount", ctypes.c_uint64),
+            ]
+
+        class JOBOBJECT_EXTENDED_LIMIT_INFORMATION(ctypes.Structure):
+            _fields_ = [
+                ("BasicLimitInformation", JOBOBJECT_BASIC_LIMIT_INFORMATION),
+                ("IoInfo", IO_COUNTERS),
+                ("ProcessMemoryLimit", ctypes.c_size_t),
+                ("JobMemoryLimit", ctypes.c_size_t),
+                ("PeakProcessMemoryLimit", ctypes.c_size_t),
+                ("PeakJobMemoryLimit", ctypes.c_size_t),
+            ]
+
+        JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE = 0x2000
+        JobObjectExtendedLimitInformation = 9
+
+        info = JOBOBJECT_EXTENDED_LIMIT_INFORMATION()
+        info.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE
+
+        kernel32.SetInformationJobObject(
+            job,
+            JobObjectExtendedLimitInformation,
+            ctypes.byref(info),
+            ctypes.sizeof(info),
+        )
+        kernel32.AssignProcessToJobObject(job, int(proc._handle))
+    except Exception as exc:
+        log.debug("[LlamaServer] JobObject auto-kill non associato: %s", exc)
+
+
 # ==============================================================================
 # IL BACKEND
 # ==============================================================================
@@ -355,6 +449,14 @@ class LlamaServerBackend(InferenceBackend):
             return {"success": False, "stage": "discovery",
                     "error": f"Nessun file .gguf trovato in {facts.path}"}
 
+        # Prima di pianificare: questo modello ci sta, in qualunque modo lo si
+        # collochi? Un rifiuto immediato costa una frase; il tentativo costa
+        # cinque minuti di attesa, la RAM satura e un processo da uccidere a mano.
+        impossibile = gguf_planner.placement_is_impossible(facts, hardware)
+        if impossibile:
+            log.warning("[llama-server] caricamento rifiutato: %s", impossibile)
+            return {"success": False, "stage": "capacity", "error": impossibile}
+
         settings = gguf_planner._plan_settings(facts, hardware, context_tokens)
         from core.engine.load_overrides import apply_to
         settings = apply_to(settings, facts.name)
@@ -395,6 +497,8 @@ class LlamaServerBackend(InferenceBackend):
                 cwd=str(server.parent),
                 env=runtime_env(),
             )
+            _assign_kill_on_close(self._processo)
+            atexit.register(self.unload)
         except OSError as exc:
             self._processo = None
             return {"success": False, "stage": "load",
@@ -406,7 +510,17 @@ class LlamaServerBackend(InferenceBackend):
         self._avvia_lettore_uscita()
 
         self._porta = porta
-        pronto, motivo = self._attendi_pronto()
+        try:
+            dimensione_gb = os.path.getsize(modello) / 2**30
+        except OSError:
+            dimensione_gb = 0.0
+        concesso = _timeout_avvio(dimensione_gb)
+        if concesso > _AVVIO_TIMEOUT_S:
+            log.info(
+                "[llama-server] modello da %.0f GB: concessi %d s per l'avvio "
+                "invece dei %d abituali.", dimensione_gb, concesso, _AVVIO_TIMEOUT_S,
+            )
+        pronto, motivo = self._attendi_pronto(concesso)
         if not pronto:
             uscita = self._raccogli_uscita()
             self.unload()
@@ -753,9 +867,10 @@ class LlamaServerBackend(InferenceBackend):
     def _url(self, percorso: str) -> str:
         return f"http://127.0.0.1:{self._porta}{percorso}"
 
-    def _attendi_pronto(self) -> Tuple[bool, str]:
+    def _attendi_pronto(self, timeout_s: Optional[int] = None) -> Tuple[bool, str]:
         """Aspetta che il server risponda, o che il processo muoia dicendo perche'."""
-        scadenza = time.time() + _AVVIO_TIMEOUT_S
+        concesso = int(timeout_s or _AVVIO_TIMEOUT_S)
+        scadenza = time.time() + concesso
         while time.time() < scadenza:
             if self._processo is None or self._processo.poll() is not None:
                 uscita = self._raccogli_uscita()
@@ -793,7 +908,12 @@ class LlamaServerBackend(InferenceBackend):
                 pass
             time.sleep(_AVVIO_INTERVALLO_S)
 
-        return (False, f"llama-server non ha risposto entro {_AVVIO_TIMEOUT_S}s.")
+        return (False, (
+            f"llama-server non ha risposto entro {concesso}s. Se il modello e' "
+            "grande e il disco freddo, il caricamento puo' non essere ancora "
+            "finito: la prima volta e' la piu' lenta, dalla seconda il file e' "
+            "in page cache."
+        ))
 
     def diagnosi(self) -> str:
         """Perche' il server non risponde: processo morto, occupato, o sano.

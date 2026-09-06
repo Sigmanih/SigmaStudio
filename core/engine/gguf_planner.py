@@ -904,6 +904,85 @@ def suggest_smaller_variant(
     return best
 
 
+#: Quanta parte della memoria totale della macchina — VRAM piu' RAM — puo'
+#: arrivare a occupare il solo peso dei pesi. Il resto serve alla cache KV, ai
+#: buffer di calcolo e al sistema operativo, che continua a esistere anche
+#: mentre si carica un modello.
+_CAPIENZA_MASSIMA = 0.90
+
+
+def placement_is_impossible(
+    facts: ModelFacts, hardware: Dict[str, Any]
+) -> Optional[str]:
+    """Il motivo per cui questo modello non puo' girare qui, o None.
+
+    Il pianificatore e' permissivo di proposito: una collocazione lenta resta
+    una collocazione, e le previsioni dicono quanto costera'. Esiste pero' una
+    soglia oltre la quale "lento" non e' piu' la parola giusta. Un modello che
+    supera la memoria totale della macchina non viene caricato piano: viene
+    mappato da disco e riletto senza sosta, il server non arriva mai a
+    rispondere, il timeout di avvio scatta dopo cinque minuti, e nel frattempo
+    la page cache si e' mangiata la RAM.
+
+    **Cosa si misura non e' la dimensione del file.** Per un modello a esperti
+    mappato in memoria la maggior parte dei byte non e' residente: gli esperti
+    si leggono a pagine, e di cinquecento per layer un token ne accende dieci.
+    Un Q8_0 da 157 GB puo' quindi girare — piano — su una macchina che di
+    memoria ne ha 118, e il confronto giusto e' fra la memoria e cio' che deve
+    starci davvero: la parte densa, i tensori che llama.cpp tiene in RAM per
+    forza, e la cache. Confrontare la taglia del file rifiuterebbe modelli che
+    funzionano.
+    """
+    pesi_gb = facts.total_bytes / 2**30
+    if pesi_gb <= 0:
+        return None
+
+    # Gli esperti di un MoE arrivano da un file mappato: sono page cache, si
+    # liberano sotto pressione e non fanno fallire un caricamento. Quanto
+    # costano in velocita' lo dice `_moe_forecast`, che e' il posto giusto.
+    esperti_gb = float(getattr(facts, "expert_bytes", 0) or 0) / 2**30
+    residente_gb = max(pesi_gb - esperti_gb, 0.0)
+
+    vram_gb = sum(
+        float(a.get("total_vram_gb") or a.get("free_vram_gb") or 0.0)
+        for a in (hardware.get("accelerators") or [])
+        if a.get("type") in ("NVIDIA_CUDA", "AMD_ROCM")
+    )
+    ram = hardware.get("ram") or {}
+    ram_gb = float(ram.get("total_gb") or ram.get("available_gb") or 0.0)
+    totale_gb = vram_gb + ram_gb
+
+    # Senza una misura dell'hardware non si rifiuta niente: un rifiuto basato
+    # su zero fermerebbe anche i modelli che entrerebbero benissimo.
+    if totale_gb <= 0 or residente_gb <= totale_gb * _CAPIENZA_MASSIMA:
+        return None
+
+    quota = (
+        f"{residente_gb:.0f} GB da tenere residenti (su {pesi_gb:.0f} di file, "
+        f"il resto sono esperti letti a pagine)"
+        if esperti_gb > 0 else f"{pesi_gb:.0f} GB"
+    )
+    motivo = (
+        f"'{facts.name}' richiede {quota} e questa macchina ha "
+        f"{totale_gb:.0f} GB in tutto ({vram_gb:.0f} di VRAM piu' "
+        f"{ram_gb:.0f} di RAM). Non e' una questione di lentezza: quella parte "
+        "non puo' stare in memoria, verrebbe riletta dal disco a ogni token e "
+        "il server non arriverebbe mai a rispondere."
+    )
+
+    alternativa = suggest_smaller_variant(facts, hardware)
+    if alternativa and alternativa.get("name"):
+        misura = alternativa.get("size_gb")
+        quanto = f" ({misura:.0f} GB)" if isinstance(misura, (int, float)) else ""
+        motivo += (
+            f" Sulla stessa macchina entra invece "
+            f"'{alternativa['name']}'{quanto}."
+        )
+    else:
+        motivo += " Serve una quantizzazione piu' compatta di questo modello."
+    return motivo
+
+
 def _layers_that_fit(
     weights_gb: float, layers: int, usable_gb: float, kv_gb: float
 ) -> int:
