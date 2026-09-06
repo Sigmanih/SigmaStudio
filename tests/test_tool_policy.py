@@ -127,3 +127,70 @@ class TestCoerenzaConIRuoli:
     def test_ogni_ruolo_ha_un_budget_di_turni_sufficiente(self, role_id):
         """Cinque turni per tutti era il difetto: non bastano a leggere, modificare e verificare."""
         assert DEV_ROLES[role_id].max_turns >= 10
+
+
+class TestDocumentazioneCoerenteColRuolo:
+    """Il prompt non deve offrire tool che il ruolo poi si vede rifiutare.
+
+    Su un run reale dell'orchestratore l'Architect e il Coder hanno provato
+    entrambi `append_file`: documentato nel prompt di sistema, assente dai loro
+    elenchi. Un turno a testa perso per una possibilita' che non esisteva.
+
+    Un elenco corretto costa meno di un elenco sbagliato seguito dalla sua
+    smentita — e soprattutto non lascia al modello modo di sceglierli.
+    """
+
+    def _tool_documentati(self, prompt):
+        return {
+            riga.strip()[1:].split("`", 1)[0]
+            for riga in prompt.split("\n")
+            if riga.strip().startswith("`") and "` —" in riga
+        }
+
+    def test_senza_restrizioni_il_prompt_non_cambia(self):
+        from core.harness.loop import ADMIN_DEVELOPER_SYSTEM_PROMPT as P
+        from core.harness.policy import filter_tool_docs
+        assert filter_tool_docs(P, ToolPolicy.unrestricted()) == P
+
+    def test_i_tool_vietati_spariscono_dalla_documentazione(self):
+        from core.harness.loop import ADMIN_DEVELOPER_SYSTEM_PROMPT as P
+        from core.harness.policy import filter_tool_docs
+
+        policy = ToolPolicy.of(DEV_ROLES["architect"].tools, label="Architect")
+        documentati = self._tool_documentati(filter_tool_docs(P, policy))
+        assert "append_file" not in documentati
+        assert "write_file" not in documentati
+
+    def test_i_tool_permessi_restano_documentati(self):
+        from core.harness.loop import ADMIN_DEVELOPER_SYSTEM_PROMPT as P
+        from core.harness.policy import filter_tool_docs
+
+        policy = ToolPolicy.of(DEV_ROLES["coder"].tools, label="Coder")
+        documentati = self._tool_documentati(filter_tool_docs(P, policy))
+        assert {"read_file", "edit_file", "write_file", "terminal"} <= documentati
+
+    def test_i_tool_di_controllo_restano_sempre(self):
+        """Senza `spec` e `complete_goal` documentati il ruolo non sa come chiudere."""
+        from core.harness.loop import ADMIN_DEVELOPER_SYSTEM_PROMPT as P
+        from core.harness.policy import filter_tool_docs
+
+        policy = ToolPolicy.of(DEV_ROLES["devops"].tools, label="DevOps")
+        documentati = self._tool_documentati(filter_tool_docs(P, policy))
+        assert {"spec", "complete_goal", "pipeline"} <= documentati
+
+    @pytest.mark.parametrize("role_id", sorted(DEV_ROLES))
+    def test_nessun_ruolo_vede_documentato_cio_che_non_puo_usare(self, role_id):
+        """La proprieta' generale, che vale la pena non perdere piu'."""
+        from core.harness.loop import ADMIN_DEVELOPER_SYSTEM_PROMPT as P
+        from core.harness.policy import filter_tool_docs
+
+        policy = ToolPolicy.of(DEV_ROLES[role_id].tools, label=role_id)
+        for nome in self._tool_documentati(filter_tool_docs(P, policy)):
+            assert policy.permits(nome), f"{role_id} vede documentato {nome}"
+
+    def test_un_prompt_senza_la_sezione_attesa_resta_intatto(self):
+        """Un prompt personalizzato non deve essere tagliato a caso."""
+        from core.harness.policy import filter_tool_docs
+        prompt = "Sei un assistente. Fai il tuo lavoro."
+        policy = ToolPolicy.of(("read_file",))
+        assert filter_tool_docs(prompt, policy) == prompt

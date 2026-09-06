@@ -86,6 +86,49 @@ def canonical(tool_name: str) -> str:
     return ALIASES.get(str(tool_name or "").strip().lower(), str(tool_name or "").strip().lower())
 
 
+#: Dove comincia e dove finisce l'elenco dei tool nel prompt di sistema.
+_INIZIO_TOOL = "## TOOL DISPONIBILI"
+_FINE_TOOL = "## VINCOLI GENERALI"
+
+
+def filter_tool_docs(prompt: str, policy: "ToolPolicy") -> str:
+    """Il prompt con documentati solo i tool che questo run puo' usare.
+
+    Dichiarare un tool e poi rifiutarlo non e' neutro: il modello lo legge, lo
+    sceglie perche' e' quello adatto al passo, e si prende un rifiuto. Su un run
+    reale dell'orchestratore l'Architect e il Coder hanno provato entrambi
+    `append_file` — documentato nel prompt, assente dai loro ruoli — e hanno
+    perso un turno a testa per una possibilita' che non esisteva.
+
+    Il filtro toglie le voci dei tool non permessi invece di aggiungere una
+    riga che li vieta: un elenco corretto costa meno di un elenco sbagliato piu'
+    la sua smentita, e soprattutto non lascia al modello modo di sceglierli.
+    """
+    if not policy.restricted:
+        return prompt
+
+    inizio = prompt.find(_INIZIO_TOOL)
+    fine = prompt.find(_FINE_TOOL, inizio + 1) if inizio >= 0 else -1
+    if inizio < 0 or fine < 0:
+        # Prompt personalizzato senza la sezione attesa: meglio lasciarlo
+        # com'e' che tagliarlo a caso.
+        return prompt
+
+    permessi = set(policy.visible_tools())
+    tenuti = []
+    for blocco in prompt[inizio:fine].split("\n\n"):
+        spoglio = blocco.strip()
+        if not spoglio.startswith("`"):
+            # Intestazione della sezione o testo di raccordo: resta.
+            tenuti.append(blocco)
+            continue
+        nome = spoglio[1:].split("`", 1)[0]
+        if canonical(nome) in permessi:
+            tenuti.append(blocco)
+
+    return prompt[:inizio] + "\n\n".join(tenuti) + prompt[fine:]
+
+
 @dataclass(frozen=True)
 class ToolPolicy:
     """L'insieme dei tool che un run puo' usare."""

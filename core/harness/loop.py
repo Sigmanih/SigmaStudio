@@ -38,7 +38,7 @@ from core.harness.ledger import (
     DevSessionLedger,
     check_completion_allowed,
 )
-from core.harness.policy import ToolPolicy
+from core.harness.policy import ToolPolicy, filter_tool_docs
 from core.harness.roles import GENERIC_MODEL_ALIASES
 from core.harness.tool_schema import schemas_for, tool_calls_to_invocations
 from core.engine.grammars import fenced_tool_grammar
@@ -1544,6 +1544,10 @@ def stream_admin_agent_turn(
         if profilo.restricted:
             policy = profilo.intersect(policy)
     if policy.restricted:
+        # Prima si toglie dal prompt cio' che non si puo' usare, poi si dichiara
+        # cosa resta. L'ordine conta: filtrare dopo aver aggiunto la sezione dei
+        # permessi cancellerebbe anche quella.
+        base_system_prompt = filter_tool_docs(base_system_prompt, policy)
         base_system_prompt = f"{base_system_prompt}\n{policy.prompt_section()}"
 
     # Contatori del run, riportati alla UI e salvati con la sessione: senza
