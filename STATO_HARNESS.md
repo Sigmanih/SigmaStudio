@@ -8,8 +8,8 @@ Rapporto tecnico completo sull'evoluzione dell'harness dell'agente nel kernel, l
 
 | Metrica | Audit Iniziale | Stato Attuale | Progresso |
 |:---|:---:|:---:|:---:|
-| **Test verdi nel kernel** | 895 | **1010 passed** | +115 test |
-| **Punti Audit Chiusi** | 0 / 11 | **6 / 11 completati** | Punti 1, 3, 4, 5, 6, 8 chiusi; Punto 2 provato dal vivo |
+| **Test verdi nel kernel** | 895 | **1025 passed** | +130 test |
+| **Punti Audit Chiusi** | 0 / 11 | **7 / 11 completati** | Punti 1, 3, 4, 5, 6, 7, 8 chiusi; Punto 2 provato dal vivo |
 | **Turni medi al completamento** | 30 (fallito/deadlock) | **12 / 30 turni** | Completamento effettivo con criteri dimostrati |
 | **Frontend Vite Build** | N/D | **Verde (822ms)** | Nessuna regressione |
 | **Controllo Riferimenti non definiti** | Fallito (invisibile tra 815 errori) | **0 no-undef (isolato)** | Comando dedicato `npm run lint:undef` |
@@ -56,23 +56,31 @@ Rapporto tecnico completo sull'evoluzione dell'harness dell'agente nel kernel, l
 * Disattivato `auto_approve` su tool sensibili come `git_push`.
 
 ### Commit `f18627e` — Gate di Revisione del Diff e Igiene di Runtime (Punto 3 dell'Audit)
-* **Kernel (`core/harness/review.py`)**:
-  * Pattern *apply-and-revert*: applica la modifica sul disco reale, calcola il diff unificato e ripristina byte per byte se rifiutata o in caso di timeout (300s).
-  * `FileSnapshot` con gestione dei file cancellati, file nuovi e preservazione dei fine riga CRLF/LF.
-  * Thread-safe tramite `RLock` e registro per sessione `gate_for(session_id)`.
-* **Ciclo agente (`core/harness/loop.py`)**:
-  * Flag `review_writes` integrata. Emissione eventi SSE `write_proposed` e `write_reverted`.
-  * La registrazione nel ledger avviene solo dopo approvazione umana; il rifiuto viene restituito all'agente come tool fallito per evitare che finisca come prova di lavoro.
-* **Test (`tests/test_review_gate.py`)**: 29 test completi passati.
-* **Server e Sistema**:
-  * In `core/system_cleanup.py`: rilevamento e kill sicuro di processi orfani/zombie (pytest rimasti appesi, server orfani, vecchi llama-server), monitoraggio RAM reale di sistema e `EmptyWorkingSet`.
-  * In `sigma_server.py`: porta dinamica `_resolve_available_port` con abbattimento processi orfani su porta 8000 e timeout aumentati.
-  * In `sigma_studio`: polling del frontend sospeso quando il tab è nascosto (`document.visibilityState !== 'hidden'`).
+* **Kernel (`core/harness/review.py`)**: Pattern *apply-and-revert* con diff unificato, `FileSnapshot` e thread safety.
+* **Ciclo agente (`core/harness/loop.py`)**: `review_writes` integrata, eventi SSE `write_proposed` / `write_reverted`.
+* **Server e Sistema**: Pulizia processi orfani/zombie e monitoraggio RAM in `core/system_cleanup.py`.
 
 ### Commit `d46d601` — Controllo mirato `no-undef` (Punto 8 dell'Audit)
-* Configurato `sigma_studio/eslint.config.undef.js` mirato unicamente all'errore `no-undef`.
-* Aggiunto comando `npm run lint:undef` in `package.json`.
-* Aggiunto il comando alla sezione Verifica di `AGENTS.md`.
+* Configurato `sigma_studio/eslint.config.undef.js` mirato a `no-undef`.
+* Comando `npm run lint:undef` in `package.json` e aggiornato `AGENTS.md`.
+
+### Commit `84ef969` — Verifica strutturata anziché solo exit code (Punto 6 dell'Audit)
+* Implementato `core/harness/verification.py` con parser strutturati per pytest, unittest, vitest e linter.
+* Rifiuto esplicito di suite con 0 test raccolti o 0 eseguiti.
+
+### Commit `18d444e` — Git worktree isolato per run (Punto 4 dell'Audit)
+* Creato `core/harness/worktree.py` con allocazione worktree git isolata in `.sigma_worktrees/<session_id>`.
+* Checkpoint di turno e rollback automatico a inizio sessione o turno specifico.
+
+### Commit `78420d0` — Ledger e cancello di mutazione nella Chat (Punto 5 dell'Audit)
+* Creato `core/chat/ledger.py` con `is_mutation_permitted()` e `ChatLedger`.
+* Integrato in `core/chat/file_extractor.py` per bloccare estrazioni file su query informative/conversazionali.
+
+### Prossimo Commit — Errori di console nel controllo visivo (Punto 7 dell'Audit)
+* `core/harness/visual.py`: Aggiunto `--enable-logging=stderr` a Chromium headless; implementato `extract_console_errors()` per catturare eccezioni `ReferenceError`, `TypeError`, `Uncaught ...`.
+* Se si verificano crash JS, `capture()` ritorna `success: False` con dettaglio degli errori.
+* `core/harness/ledger.py`: Le schermate con errori di console vengono rifiutate come prove visive e l'errore registrato in `_failures`.
+* Test in `tests/test_visual_console_errors.py` (6 test verdi).
 
 ---
 
@@ -86,9 +94,9 @@ Rapporto tecnico completo sull'evoluzione dell'harness dell'agente nel kernel, l
 | **4** | **Worktree git per run** | **CHIUSO** | Implementato `core/harness/worktree.py` con allocazione worktree isolata, checkpoint di turno e rollback automatico. |
 | **5** | **Ledger e cancello nella Chat** | **CHIUSO** | Implementato `core/chat/ledger.py` con cancello di mutazione `is_mutation_permitted` in `file_extractor.py`, bloccando scritture involontarie da query informative. |
 | **6** | **Verifica strutturata anziché solo exit code** | **CHIUSO** | Implementato `core/harness/verification.py` e integrato nel ledger (commit `84ef969`). Rifiuta test a vuoto e documenta i test superati. |
-| **7** | **Errori di console nel controllo visivo** | **APERTO** | Intercettare log di console e ReferenceError nel subagent browser headless post-modifica UI. |
+| **7** | **Errori di console nel controllo visivo** | **CHIUSO** | Implementato parsing console stderr di Chromium headless e blocco nel ledger in caso di crash JS (commit in arrivo). |
 | **8** | **Controllo mirato sui riferimenti non definiti** | **CHIUSO** | Implementato `npm run lint:undef` e registrato in `AGENTS.md` (commit `d46d601`). |
-| **9** | **Editor dei ruoli nella tab Pipelines** | **APERTO** | UI per la modifica interattiva di prompt, tool, modelli e budget di `config/roles.json`. |
+| **9** | **Editor dei ruoli nella tab Pipelines** | **IN CORSO** | UI ed endpoint per la modifica interattiva di prompt, tool, modelli e budget di `config/roles.json`. |
 | **10** | **Compattazione con sintesi accanto al ledger** | **APERTO** | Riassunto progressivo delle motivazioni storiche nei run oltre 15-20 turni. |
 | **11** | **Tool-calling nativo contro provider cloud** | **APERTO** | Test reale con API key OpenAI / DeepSeek. |
 
@@ -96,12 +104,8 @@ Rapporto tecnico completo sull'evoluzione dell'harness dell'agente nel kernel, l
 
 ## 5. Piano Operativo Immediato
 
-1. **Implementare il Punto 6 (Verifica Strutturata)**:
-   * Creare `core/harness/verification.py` per fare il parsing rigoroso degli output dei comandi (`pytest`, `unittest`, `npm run lint:undef`, `npm run build`, ecc.).
-   * Nel cancello `check_completion_allowed()` e nel ledger, rifiutare comandi di test con 0 test raccolti o 0 passati.
-   * Scrivere la suite di test in `tests/test_structured_verification.py`.
-2. **Implementare il Punto 4 (Git Worktree per Run)**:
-   * Creazione automatica di un worktree git per la sessione dell'agente.
-   * Checkpoint di turno per rollback istantaneo su più turni.
-3. **Completare il Punto 9 (Editor Ruoli UI)**:
-   * Frontend nella tab Pipelines per gestire ruoli, prompt e modelli.
+1. **Commit Punto 7 (Errori di console visivi)**.
+2. **Realizzazione Punto 9 (Editor dei Ruoli nella tab Pipelines)**:
+   * Backend: verificare le rotte per leggere e salvare `config/roles.json` tramite `core/harness/roles.py`.
+   * Frontend: inserire l'editor di configurazione ruoli (prompt, tool abilitati, modello selezionato, budget turni) all'interno del modulo Pipelines / Developer Studio.
+   * Verifica con test del backend e build frontend.

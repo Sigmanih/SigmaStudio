@@ -28,12 +28,55 @@ import shutil
 import subprocess
 import tempfile
 import time
+import re
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from core.logger import get_logger
 
 log = get_logger("developer_visual")
+
+_CONSOLE_MSG_RE = re.compile(
+    r':CONSOLE(?:(?::|\()(?P<line>\d+)\)?)?\]\s*"(?P<msg>[^"]+)"(?:,\s*source:\s*(?P<source>[^\s\(\)]+)(?:\s*\((?P<source_line>\d+)\))?)?',
+    re.IGNORECASE,
+)
+
+_CONSOLE_ERROR_KEYWORDS = (
+    "uncaught", "referenceerror", "typeerror", "syntaxerror",
+    "rangeerror", "evalerror", "urierror", "failed to load resource",
+    "cannot read properties", "is not defined", "is not a function",
+    "unhandled promise rejection",
+)
+
+
+def extract_console_errors(stderr: str) -> List[Dict[str, Any]]:
+    """Estrae gli errori JavaScript e le eccezioni non catturate dall'output di Chromium."""
+    if not stderr:
+        return []
+
+    trovati = []
+    for line in stderr.splitlines():
+        m = _CONSOLE_MSG_RE.search(line)
+        if m:
+            msg = m.group("msg")
+            source = m.group("source") or ""
+            line_no = m.group("line") or m.group("source_line") or ""
+            lower = msg.lower()
+            if any(kw in lower for kw in _CONSOLE_ERROR_KEYWORDS) or ":error:" in line.lower():
+                trovati.append({
+                    "message": msg,
+                    "source": source,
+                    "line": line_no,
+                })
+        else:
+            lower_line = line.lower()
+            if "uncaught " in lower_line and any(kw in lower_line for kw in ("referenceerror", "typeerror", "syntaxerror")):
+                trovati.append({
+                    "message": line.strip(),
+                    "source": "",
+                    "line": "",
+                })
+    return trovati
 
 #: Tempo massimo concesso al browser per aprire la pagina e scattare.
 CAPTURE_TIMEOUT_S = 45
@@ -125,6 +168,7 @@ def capture(
         "--headless=new",
         "--disable-gpu",
         "--hide-scrollbars",
+        "--enable-logging=stderr",
         # Il profilo temporaneo evita di toccare quello dell'utente, che
         # potrebbe essere aperto: due processi sullo stesso profilo si
         # ostacolano e lo screenshot non arriva mai.
@@ -153,8 +197,15 @@ def capture(
         }
 
     dimensione = os.path.getsize(output_path)
+    console_errors = extract_console_errors(esito.stderr)
+    has_errs = bool(console_errors)
+    err_msg = (
+        f"Errori di console JavaScript rilevati durante la cattura: {'; '.join(e['message'] for e in console_errors[:3])}"
+        if has_errs else None
+    )
     return {
-        "success": True,
+        "success": not has_errs,
+        "error": err_msg,
         "path": str(Path(output_path)).replace("\\", "/"),
         "bytes": dimensione,
         "width": int(width),
@@ -163,6 +214,8 @@ def capture(
         # Un PNG minuscolo a queste dimensioni e' una pagina bianca: lo si dice
         # subito, perche' altrimenti l'agente conclude che ha verificato.
         "likely_blank": dimensione < SUSPICIOUSLY_SMALL_BYTES,
+        "console_errors": console_errors,
+        "has_console_errors": has_errs,
     }
 
 
@@ -182,5 +235,15 @@ def describe(result: Dict[str, Any]) -> str:
             "quindi la pagina e probabilmente VUOTA o non montata. Controlla "
             "la console del browser e che il componente sia esportato e "
             "registrato."
+        )
+    if result.get("has_console_errors"):
+        dettagli = [
+            f"'{e['message']}'" + (f" ({e['source']}:{e['line']})" if e.get("line") else "")
+            for e in result.get("console_errors", [])[:3]
+        ]
+        riga += (
+            f" ATTENZIONE CRITICA: RILEVATI {len(result['console_errors'])} ERRORI DI CONSOLE JS: "
+            f"{'; '.join(dettagli)}. "
+            "La pagina ha generato eccezioni di runtime nel frontend (es. ReferenceError). Correggi il componente!"
         )
     return riga

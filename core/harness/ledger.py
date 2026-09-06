@@ -487,9 +487,8 @@ class DevSessionLedger:
                     del self._searches[:-10]
 
             elif tool in ("screenshot", "visual_check", "guarda"):
-                # Una schermata vuota non e' una verifica: registrarla come
-                # tale renderebbe il cancello sempre soddisfatto.
-                if ok and not result.get("likely_blank"):
+                # Una schermata vuota o con errori JS di console non e' una verifica valida.
+                if ok and not result.get("likely_blank") and not result.get("has_console_errors"):
                     self._screenshots.append({
                         "path": str(result.get("path", "")),
                         "url": str(params.get("url") or result.get("url") or ""),
