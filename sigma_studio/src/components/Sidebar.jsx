@@ -4,7 +4,7 @@ import {
   FlaskConical, Brain, Zap, User, Server, Wrench, Palette, Blocks, Sun, 
   Moon, Store, Package, Sliders, Key, Sparkles, FolderGit2, Compass,
   Cpu, Box, Radio, Music, Mic, Terminal, Globe, Mail, Send, DownloadCloud, Settings, Trash2,
-  Share2, Plus, Search, HardDrive, Copy, UserCheck
+  Share2, Plus, Search, HardDrive, Copy, UserCheck, X
 } from 'lucide-react';
 import { useApp } from '../contexts/AppContext';
 import { useModuleState } from '../hooks/useModuleState';
@@ -103,9 +103,8 @@ export const SidebarItem = ({
             cursor: 'pointer',
             opacity: 0.7
           }}
-          title={expanded ? 'Comprimi sotto-voci' : 'Espandi sotto-voci'}
         >
-          <ChevronDown size={12} style={{ transform: expanded ? 'rotate(0deg)' : 'rotate(-90deg)', transition: 'transform 0.2s ease' }} />
+          {expanded ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
         </span>
       )}
     </div>
@@ -124,7 +123,16 @@ export default function Sidebar({
   tasks = [],
   topicsCount = 0
 }) {
-  const { theme, toggleTheme, clearSystemMemory, openCleanupModal, mobileSidebarOpen, setMobileSidebarOpen } = useApp();
+  const { 
+    theme, 
+    toggleTheme, 
+    clearSystemMemory, 
+    openCleanupModal, 
+    mobileSidebarOpen, 
+    setMobileSidebarOpen,
+    openTabs,
+    closeAllTabs
+  } = useApp();
   const isLight = theme === 'light' || theme === 'cream';
 
   const handleNavClick = (fn) => {
@@ -516,13 +524,44 @@ export default function Sidebar({
         {/* 1. SEZIONE FONDAMENTALE: FUNZIONI KERNEL                          */}
         {/* ================================================================= */}
         <nav className="nav-section" style={{ marginBottom: '18px' }}>
-          <SidebarItem 
-            icon={Home} 
-            label="Home" 
-            isKernel={true}
-            active={activeTabId === null}
-            onClick={goHome}
-          />
+          <div style={{ display: 'flex', alignItems: 'center', gap: '4px', width: '100%' }}>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <SidebarItem 
+                icon={Home} 
+                label="Home" 
+                isKernel={true}
+                active={activeTabId === null}
+                onClick={goHome}
+              />
+            </div>
+            {openTabs && openTabs.length > 0 && (
+              <button
+                type="button"
+                onClick={closeAllTabs}
+                title={`Chiudi tutte le schede aperte (${openTabs.length})`}
+                style={{
+                  background: isLight ? 'rgba(207, 34, 46, 0.08)' : 'rgba(248, 81, 73, 0.12)',
+                  border: isLight ? '1px solid rgba(207, 34, 46, 0.3)' : '1px solid rgba(248, 81, 73, 0.35)',
+                  color: isLight ? '#cf222e' : '#f85149',
+                  borderRadius: '6px',
+                  padding: '3px 7px',
+                  cursor: 'pointer',
+                  fontSize: '0.62rem',
+                  fontWeight: 700,
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '4px',
+                  height: '28px',
+                  whiteSpace: 'nowrap',
+                  flexShrink: 0,
+                  transition: 'all 0.15s ease'
+                }}
+              >
+                <X size={11} />
+                <span>Chiudi ({openTabs.length})</span>
+              </button>
+            )}
+          </div>
 
           <SidebarItem 
             icon={MessageSquare} 
