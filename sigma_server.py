@@ -463,15 +463,18 @@ def serve(host: str | None = None, port: int | None = None, ssl: bool | None = N
 
     try:
         import uvicorn
+        from core.runtime_env import patch_asyncio_windows_proactor
+        patch_asyncio_windows_proactor()
+
         from core.fastapi_app import app
-        # timeout_graceful_shutdown=1 chiude subito le connessioni keep-alive
-        # inattive del browser quando si preme Ctrl+C.
+        # timeout_graceful_shutdown=2 chiude rapidamente le connessioni keep-alive
+        # del browser quando si preme Ctrl+C, evitando attese inutili.
         uvicorn_kwargs = {
             "app": app,
             "host": final_host,
             "port": final_port,
             "log_level": "info",
-            "timeout_graceful_shutdown": 5,
+            "timeout_graceful_shutdown": 2,
             "timeout_keep_alive": 30,
         }
         if ssl_cert_path and ssl_key_path:

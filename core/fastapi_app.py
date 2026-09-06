@@ -56,7 +56,28 @@ async def lifespan(app: FastAPI):
     # threads with everything else. Pointing it at our own pool makes the size
     # a property of the workload -- blocking I/O and a serialised engine -- and
     # not of how many cores the machine happens to have.
-    asyncio.get_running_loop().set_default_executor(_api_executor)
+    loop = asyncio.get_running_loop()
+    loop.set_default_executor(_api_executor)
+
+    # Su Windows, intercetta e silenzia disconnessioni socket remote brutali (WinError 10054)
+    # sia a livello di trasporto proactor che di callback non gestite del loop.
+    try:
+        from core.runtime_env import patch_asyncio_windows_proactor
+        patch_asyncio_windows_proactor()
+
+        orig_handler = loop.get_exception_handler()
+        def _proactor_safe_exception_handler(current_loop, context):
+            exc = context.get("exception")
+            if isinstance(exc, (ConnectionResetError, BrokenPipeError)):
+                return
+            if orig_handler is not None:
+                orig_handler(current_loop, context)
+            else:
+                current_loop.default_exception_handler(context)
+        loop.set_exception_handler(_proactor_safe_exception_handler)
+    except Exception as exc:
+        log.debug("[FastAPI] Gestore eccezioni socket proactor non impostato: %s", exc)
+
     # Idempotent: a no-op when sigma_server.py already applied it, and the only
     # place it happens when uvicorn is pointed straight at this module.
     try:

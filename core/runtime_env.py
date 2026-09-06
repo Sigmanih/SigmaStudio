@@ -157,5 +157,69 @@ def apply_hardware_env(force: bool = False) -> dict:
         os.environ["HUGGINGFACE_TOKEN"] = hf_token
         applied["hf_token"] = f"{hf_token[:8]}..." if len(hf_token) > 8 else "set"
 
+    # --- Windows asyncio Proactor socket cleanup fix ------------------------
+    if sys.platform == "win32":
+        patch_asyncio_windows_proactor()
+
     _applied = True
     return applied
+
+
+def patch_asyncio_windows_proactor() -> bool:
+    """Silenzia il noto bug di asyncio su Windows (WinError 10054 in _call_connection_lost).
+
+    Su Windows con Python 3.8-3.12, ProactorBasePipeTransport tenta socket.shutdown()
+    senza protezione try/except OSError nel blocco finally quando l'host remoto (browser o client HTTP)
+    ha gia chiuso bruscamente il socket o durante l'arresto con Ctrl+C.
+    Questo solleva ConnectionResetError [WinError 10054] nella callback dell'event loop,
+    impedendo la chiusura pulita del socket e sporcando il terminale con stack trace
+    ad ogni connessione keep-alive terminata.
+    """
+    if sys.platform != "win32":
+        return False
+
+    try:
+        import socket
+        import asyncio.proactor_events
+
+        base_pipe = asyncio.proactor_events._ProactorBasePipeTransport
+        if getattr(base_pipe, "_sigma_proactor_patched", False):
+            return True
+
+        def _safe_call_connection_lost(self, exc):
+            if self._called_connection_lost:
+                return
+            try:
+                self._protocol.connection_lost(exc)
+            finally:
+                sock = getattr(self, "_sock", None)
+                if sock is not None:
+                    if hasattr(sock, "shutdown") and getattr(sock, "fileno", lambda: -1)() != -1:
+                        try:
+                            sock.shutdown(socket.SHUT_RDWR)
+                        except OSError:
+                            # L'host remoto si e' gia disconnesso (WSAECONNRESET 10054 / WSAENOTSOCK 10038)
+                            pass
+                    try:
+                        sock.close()
+                    except OSError:
+                        pass
+                    self._sock = None
+
+                server = getattr(self, "_server", None)
+                if server is not None:
+                    try:
+                        server._detach()
+                    except Exception:
+                        pass
+                    self._server = None
+
+                self._called_connection_lost = True
+
+        base_pipe._call_connection_lost = _safe_call_connection_lost
+        base_pipe._sigma_proactor_patched = True
+        return True
+    except Exception as exc:
+        log.debug("[RuntimeEnv] Patch asyncio Windows Proactor non applicata: %s", exc)
+        return False
+
