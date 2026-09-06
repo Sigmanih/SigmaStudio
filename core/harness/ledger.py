@@ -26,6 +26,7 @@ from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Tuple
 
 from core.logger import get_logger
+from core.harness.verification import parse_verification
 
 log = get_logger(__name__)
 
@@ -437,6 +438,8 @@ class DevSessionLedger:
             elif tool == "terminal":
                 cmd = str(params.get("command") or result.get("command") or "")[:200]
                 rc = result.get("returncode", 0)
+                stdout_txt = result.get("stdout") or ""
+                stderr_txt = result.get("stderr") or ""
                 
                 # Check for duplicate consecutive command loops
                 if self._commands and self._commands[-1].get("command") == cmd:
@@ -444,16 +447,28 @@ class DevSessionLedger:
                 else:
                     self._consecutive_dup_commands = 0
 
+                is_ok = ok and rc == 0
+                verif_dict = None
+                if looks_like_verification(cmd):
+                    v_report = parse_verification(cmd, rc, stdout=stdout_txt, stderr=stderr_txt)
+                    is_ok = v_report.is_valid
+                    verif_dict = v_report.to_dict()
+
                 entry = {
                     "command": cmd,
                     "returncode": rc,
-                    "ok": ok and rc == 0,
+                    "ok": is_ok,
                     "at": time.time(),
-                    "stdout": (result.get("stdout") or "")[:400],
+                    "stdout": stdout_txt[:400],
                 }
+                if verif_dict:
+                    entry["verification"] = verif_dict
                 if not entry["ok"]:
-                    tail = (result.get("stderr") or result.get("stdout") or "").strip()
-                    entry["error"] = tail[-MAX_ERROR_CHARS:]
+                    tail = (stderr_txt or stdout_txt).strip()
+                    if verif_dict and verif_dict.get("summary") and not is_ok:
+                        entry["error"] = verif_dict["summary"]
+                    else:
+                        entry["error"] = tail[-MAX_ERROR_CHARS:]
                 self._commands.append(entry)
                 del self._commands[:-MAX_TRACKED_COMMANDS]
 
@@ -843,7 +858,7 @@ class DevSessionLedger:
 # having merely looked at the code again.
 VERIFICATION_HINTS = (
     "pytest", "unittest", "npm test", "npm run test", "yarn test", "vitest",
-    "jest", "ruff", "flake8", "mypy", "pylint", "eslint", "tsc",
+    "jest", "ruff", "flake8", "mypy", "pylint", "eslint", "lint:undef", "tsc",
     "npm run build", "npm run lint", "py_compile", "-m compileall",
     "import ", "node -e", "test-path",
 )
@@ -969,12 +984,14 @@ def check_completion_allowed(ledger: DevSessionLedger) -> Dict[str, Any]:
                 ),
             }
 
+        v_summary = (verification.get("verification") or {}).get("summary")
+        v_label = f"{verification['command']} ({v_summary})" if v_summary else verification["command"]
         return {
             "allowed": True,
             "mode": "coding",
             "evidence": {
                 "modified_files": ledger.modified_files,
-                "verified_by": verification["command"],
+                "verified_by": v_label,
             },
         }
 
