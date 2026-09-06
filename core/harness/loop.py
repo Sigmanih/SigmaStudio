@@ -1732,11 +1732,12 @@ def stream_admin_agent_turn(
                 "max_tokens": max_tokens,
             }
             if ripreso:
+                commands_count = len(ledger.successful_commands()) if callable(ledger.successful_commands) else len(ledger.successful_commands)
                 yield {
                     "type": "session_resumed",
                     "session_id": session_id,
                     "files_known": len(ledger.read_files),
-                    "commands_known": len(ledger.successful_commands),
+                    "commands_known": commands_count,
                 }
                 yield {
                     "type": "status",
