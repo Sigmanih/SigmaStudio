@@ -9,9 +9,9 @@ Rapporto tecnico completo sull'evoluzione dell'harness dell'agente nel kernel, l
 | Metrica | Audit Iniziale | Stato Attuale | Progresso |
 |:---|:---:|:---:|:---:|
 | **Test verdi nel kernel** | 895 | **1025 passed** | +130 test |
-| **Punti Audit Chiusi** | 0 / 11 | **7 / 11 completati** | Punti 1, 3, 4, 5, 6, 7, 8 chiusi; Punto 2 provato dal vivo |
+| **Punti Audit Chiusi** | 0 / 11 | **8 / 11 completati** | Punti 1, 3, 4, 5, 6, 7, 8, 9 chiusi; Punto 2 provato dal vivo |
 | **Turni medi al completamento** | 30 (fallito/deadlock) | **12 / 30 turni** | Completamento effettivo con criteri dimostrati |
-| **Frontend Vite Build** | N/D | **Verde (822ms)** | Nessuna regressione |
+| **Frontend Vite Build** | N/D | **Verde (794ms)** | Nessuna regressione |
 | **Controllo Riferimenti non definiti** | Fallito (invisibile tra 815 errori) | **0 no-undef (isolato)** | Comando dedicato `npm run lint:undef` |
 
 ---
@@ -76,11 +76,17 @@ Rapporto tecnico completo sull'evoluzione dell'harness dell'agente nel kernel, l
 * Creato `core/chat/ledger.py` con `is_mutation_permitted()` e `ChatLedger`.
 * Integrato in `core/chat/file_extractor.py` per bloccare estrazioni file su query informative/conversazionali.
 
-### Prossimo Commit — Errori di console nel controllo visivo (Punto 7 dell'Audit)
+### Commit `b2078ac` — Errori di console nel controllo visivo (Punto 7 dell'Audit)
 * `core/harness/visual.py`: Aggiunto `--enable-logging=stderr` a Chromium headless; implementato `extract_console_errors()` per catturare eccezioni `ReferenceError`, `TypeError`, `Uncaught ...`.
 * Se si verificano crash JS, `capture()` ritorna `success: False` con dettaglio degli errori.
 * `core/harness/ledger.py`: Le schermate con errori di console vengono rifiutate come prove visive e l'errore registrato in `_failures`.
 * Test in `tests/test_visual_console_errors.py` (6 test verdi).
+
+### Prossimo Commit — Editor dei ruoli nella tab Pipelines (Punto 9 dell'Audit)
+* **Backend (`core/fastapi_app.py`, `core/api_router.py`)**: Esposti endpoint core per ruoli `/api/roles`, `/api/developer/roles` (GET, POST) e `/api/roles/reset`, `/api/developer/roles/reset` (POST) collegati al registro unificato `core/harness/role_registry.py`.
+* **Frontend (`sigma_studio/src/modules/sigma_research_lab/RolesEditor.jsx`)**: Creata interfaccia visuale completa per modificare prompt di sistema, modello preferito, budget turni (`max_turns`), max tokens, parametri di sampling e abilitazione selettiva dei tool con anteprima e salvataggio su `config/roles.json`.
+* **Integrazione tab Pipelines (`ResearchLabTab.jsx`)**: Aggiunta la terza modalità "👥 Ruoli AI" accanto a "🚀 Pipeline Predefinita" e "🧩 Pipeline Designer".
+* **Test (`tests/test_roles_api.py`)**: 3 test completi passati.
 
 ---
 
@@ -94,9 +100,9 @@ Rapporto tecnico completo sull'evoluzione dell'harness dell'agente nel kernel, l
 | **4** | **Worktree git per run** | **CHIUSO** | Implementato `core/harness/worktree.py` con allocazione worktree isolata, checkpoint di turno e rollback automatico. |
 | **5** | **Ledger e cancello nella Chat** | **CHIUSO** | Implementato `core/chat/ledger.py` con cancello di mutazione `is_mutation_permitted` in `file_extractor.py`, bloccando scritture involontarie da query informative. |
 | **6** | **Verifica strutturata anziché solo exit code** | **CHIUSO** | Implementato `core/harness/verification.py` e integrato nel ledger (commit `84ef969`). Rifiuta test a vuoto e documenta i test superati. |
-| **7** | **Errori di console nel controllo visivo** | **CHIUSO** | Implementato parsing console stderr di Chromium headless e blocco nel ledger in caso di crash JS (commit in arrivo). |
+| **7** | **Errori di console nel controllo visivo** | **CHIUSO** | Implementato parsing console stderr di Chromium headless e blocco nel ledger in caso di crash JS (commit `b2078ac`). |
 | **8** | **Controllo mirato sui riferimenti non definiti** | **CHIUSO** | Implementato `npm run lint:undef` e registrato in `AGENTS.md` (commit `d46d601`). |
-| **9** | **Editor dei ruoli nella tab Pipelines** | **IN CORSO** | UI ed endpoint per la modifica interattiva di prompt, tool, modelli e budget di `config/roles.json`. |
+| **9** | **Editor dei ruoli nella tab Pipelines** | **CHIUSO** | UI `RolesEditor.jsx` integrata nella tab Pipelines ed endpoint `/api/roles` nel kernel (commit in arrivo). |
 | **10** | **Compattazione con sintesi accanto al ledger** | **APERTO** | Riassunto progressivo delle motivazioni storiche nei run oltre 15-20 turni. |
 | **11** | **Tool-calling nativo contro provider cloud** | **APERTO** | Test reale con API key OpenAI / DeepSeek. |
 
@@ -104,8 +110,6 @@ Rapporto tecnico completo sull'evoluzione dell'harness dell'agente nel kernel, l
 
 ## 5. Piano Operativo Immediato
 
-1. **Commit Punto 7 (Errori di console visivi)**.
-2. **Realizzazione Punto 9 (Editor dei Ruoli nella tab Pipelines)**:
-   * Backend: verificare le rotte per leggere e salvare `config/roles.json` tramite `core/harness/roles.py`.
-   * Frontend: inserire l'editor di configurazione ruoli (prompt, tool abilitati, modello selezionato, budget turni) all'interno del modulo Pipelines / Developer Studio.
-   * Verifica con test del backend e build frontend.
+1. **Commit Punto 9 (Editor dei ruoli nella tab Pipelines)**.
+2. **Implementare il Punto 10 (Compattazione con sintesi accanto al ledger)**:
+   * Riassunto progressivo delle motivazioni e decisioni storiche per run prolungati (> 15-20 turni), preservando lo stato atomico del ledger e compattando la cronologia conversazionale con memoria semantica.

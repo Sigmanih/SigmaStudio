@@ -28,10 +28,8 @@ def register_get_handlers(handler_class):
         '/api/engine/overrides': 'handle_engine_overrides_get',
         '/api/engine/runtime_check': 'handle_engine_runtime_check',
         '/api/engine/models': 'handle_engine_models',
-
-
-
-
+        '/api/roles': 'handle_roles_list',
+        '/api/developer/roles': 'handle_roles_list',
         '/api/sandbox/list': 'handle_sandbox_list',
         '/api/agents': 'handle_agents_list',
         '/api/agents/get': 'handle_agents_get',
@@ -206,6 +204,10 @@ def register_post_handlers(handler_class):
         '/api/agents/upload_image': 'handle_upload_agent_image',
         '/api/upload_user_avatar': 'handle_upload_user_avatar',
         '/api/ai/action': 'handle_api_action',
+        '/api/roles': 'handle_role_save',
+        '/api/developer/roles': 'handle_role_save',
+        '/api/roles/reset': 'handle_role_reset',
+        '/api/developer/roles/reset': 'handle_role_reset',
         '/api/rename_file': 'handle_rename_file',
         '/api/rollback': 'handle_api_rollback',
         # Training Lab

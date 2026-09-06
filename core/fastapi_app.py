@@ -561,6 +561,44 @@ FastAPIHandlerAdapter.handle_system_available_modules = handle_system_available_
 FastAPIHandlerAdapter.handle_system_updates_check = handle_system_updates_check
 FastAPIHandlerAdapter.handle_system_updates_apply = handle_system_updates_apply
 
+def _handle_roles_list(self):
+    try:
+        from core.harness.role_registry import list_roles
+        return self.send_json_response({"success": True, "roles": list_roles()})
+    except Exception as exc:
+        return self.send_json_response({"success": False, "error": str(exc)}, 500)
+
+def _handle_role_save(self):
+    try:
+        from core.harness.role_registry import save_role
+        body = self.read_json_body() or {}
+        role_id = str(body.get("id") or body.get("role_id") or "").strip()
+        patch = body.get("patch") or {k: v for k, v in body.items() if k not in ("id", "role_id")}
+        if not role_id:
+            return self.send_json_response({"success": False, "error": "Parametro 'id' richiesto."}, 400)
+        res = save_role(role_id, patch)
+        return self.send_json_response({"success": True, "role": res})
+    except ValueError as exc:
+        return self.send_json_response({"success": False, "error": str(exc)}, 400)
+    except Exception as exc:
+        return self.send_json_response({"success": False, "error": str(exc)}, 500)
+
+def _handle_role_reset(self):
+    try:
+        from core.harness.role_registry import delete_role
+        body = self.read_json_body() or {}
+        role_id = str(body.get("id") or body.get("role_id") or "").strip()
+        if not role_id:
+            return self.send_json_response({"success": False, "error": "Parametro 'id' richiesto."}, 400)
+        rimosso = delete_role(role_id)
+        return self.send_json_response({"success": True, "reset": rimosso, "id": role_id})
+    except Exception as exc:
+        return self.send_json_response({"success": False, "error": str(exc)}, 500)
+
+FastAPIHandlerAdapter.handle_roles_list = _handle_roles_list
+FastAPIHandlerAdapter.handle_role_save = _handle_role_save
+FastAPIHandlerAdapter.handle_role_reset = _handle_role_reset
+
 # Core routes registration
 register_get_handlers(FastAPIHandlerAdapter)
 register_post_handlers(FastAPIHandlerAdapter)
