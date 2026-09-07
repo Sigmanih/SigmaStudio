@@ -135,15 +135,53 @@ class WorktreeSession:
             log.error("[Worktree] Errore durante il rollback: %s", exc)
             return False
 
-    def diff_from_main(self) -> str:
-        """Calcola il diff complessivo tra il branch di sessione e lo stato iniziale del repo."""
+    def _diff(self, extra: List[str]) -> str:
+        """Il confronto fra il punto di partenza e lo stato attuale del lavoro.
+
+        Due cose lo rendono diverso da un `git diff` qualsiasi, e sono le due
+        che servono a chi deve rivedere:
+
+        **La base e' il commit di partenza**, non `HEAD~<numero checkpoint>`.
+        Il conteggio mente appena c'e' stato un rollback, ed e' lo stesso
+        difetto che faceva applicare all'albero principale la porzione
+        sbagliata del lavoro.
+
+        **Si guarda l'albero di lavoro, non l'ultimo commit.** L'ultimo turno
+        puo' avere scritto dopo l'ultimo checkpoint, e i file nuovi non sono
+        ancora tracciati: `git add -A` li mette nell'indice — senza committare
+        — cosi' il diff comprende tutto cio' che il run ha prodotto. Mostrare
+        meno significherebbe far approvare qualcosa di diverso da cio' che poi
+        viene applicato.
+        """
         if not self.worktree_path.is_dir():
             return ""
-        try:
-            res = _run_git(["diff", "HEAD~" + str(len(self.checkpoints)), "HEAD"], cwd=self.worktree_path)
-            return res.stdout
-        except (OSError, subprocess.SubprocessError):
+        base = self.base_commit
+        if not base:
             return ""
+        try:
+            _run_git(["add", "-A"], cwd=self.worktree_path)
+            res = _run_git(["diff", "--cached", base] + extra, cwd=self.worktree_path)
+            return res.stdout
+        except (OSError, subprocess.SubprocessError) as exc:
+            log.warning("[Worktree] diff non calcolabile: %s", exc)
+            return ""
+
+    def diff_from_main(self) -> str:
+        """Il diff completo di tutto cio' che il run ha prodotto."""
+        return self._diff([])
+
+    def diff_stat_from_main(self) -> str:
+        """L'elenco dei file toccati con quante righe: la vista d'insieme.
+
+        Su un lavoro da duecento file il diff intero non si legge; questo si',
+        ed e' quello che dice se il run ha toccato cio' che doveva.
+        """
+        return self._diff(["--stat"])
+
+    def changed_files(self) -> List[str]:
+        """I file toccati dal run, per contarli e nominarli."""
+        grezzo = self._diff(["--name-only"])
+        return [r.strip() for r in grezzo.splitlines() if r.strip()]
 
     def apply_to_main(self) -> bool:
         """Applica le modifiche validate dal worktree al repository principale."""

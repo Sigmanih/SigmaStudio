@@ -1434,6 +1434,7 @@ def _stream_agent_turn_impl(
     provider: Optional[str] = None,
     review_writes: bool = False,
     isolate_worktree: bool = False,
+    review_run: bool = False,
     _chiusura: Optional[Dict[str, Any]] = None,
 ) -> Generator[Dict[str, Any], None, None]:
     """
@@ -1459,6 +1460,13 @@ def _stream_agent_turn_impl(
     arriva una decisione, e cio' che viene rifiutato torna com'era. Fuori
     dal Developer Studio resta spento, perche' un run senza nessuno che
     guarda si fermerebbe alla prima scrittura.
+
+    `review_run` fa la stessa cosa una volta sola, alla fine, sul diff
+    complessivo. E' la forma che serve quando il lavoro tocca molti file:
+    duecento approvazioni una per una nessuno le da', e il risultato
+    sarebbe spegnere la revisione proprio dove serve di piu'. Richiede
+    `isolate_worktree`, perche' rifiutare ha senso solo se il lavoro non e'
+    ancora nell'albero vivo.
     """
     if not workspace_root:
         workspace_root = get_default_workspace_root()
@@ -1559,10 +1567,20 @@ def _stream_agent_turn_impl(
     from core.harness.workspace import reset_active_root, set_active_root
     _token_workspace = set_active_root(workspace_root)
 
+    # La revisione dell'intero run ha senso solo se il lavoro sta in una copia
+    # separata: senza worktree le modifiche sono gia' nell'albero vivo, e
+    # "rifiuto" non avrebbe niente da rifiutare. Meglio dirlo che fingere.
+    if review_run and session_wt is None:
+        review_run = False
+        yield {
+            "type": "status",
+            "text": "Revisione del run non attiva: richiede l'isolamento in worktree",
+        }
+
     # Il gate di revisione, se questo run lo prevede. Vive nel registro per
     # sessione perche' chi decide arriva su una richiesta HTTP diversa da
     # quella che sta streammando il lavoro.
-    review_gate = review.gate_for(session_id) if review_writes else None
+    review_gate = review.gate_for(session_id) if (review_writes or review_run) else None
 
     # Cio' che va rilasciato viene dichiarato adesso, non alla fine: se il run
     # viene abbandonato a meta' — l'utente preme stop, il client chiude lo
@@ -2693,11 +2711,26 @@ def _stream_agent_turn_impl(
         status="done" if goal_reached else "stopped",
     )
 
+    # La revisione dell'intero lavoro, quando e' prevista: si guarda una volta
+    # cio' che il run ha prodotto e si decide se trasferirlo. Sta qui e non
+    # nella chiusura garantita perche' aspetta una persona, e un `finally` non
+    # e' il posto dove far attendere chi ha appena premuto stop.
+    applica = bool(goal_reached)
+    if review_run and session_wt is not None and review_gate is not None:
+        for evento in _rivedi_lavoro_del_run(
+            session_wt, review_gate, session_id, goal_reached
+        ):
+            if evento.get("type") == "__decisione__":
+                applica = bool(evento.get("apply"))
+                continue
+            yield evento
+
     # La chiusura vera avviene fuori di qui, nel `finally` del chiamante, e
     # vale anche per i run abbandonati. Qui si dice soltanto com'e' andata:
     # e' l'unica cosa che quel `finally` non puo' sapere da solo.
     if _chiusura is not None:
         _chiusura["goal_reached"] = bool(goal_reached)
+        _chiusura["apply_changes"] = applica
 
     # Se il run ha toccato dei file di un modulo, quel lavoro appartiene al
     # repository del modulo, non a questo. Senza questo passo non finirebbe in
@@ -2742,6 +2775,74 @@ def _sincronizza_moduli_toccati(ledger: Any, obiettivo: str = "") -> Optional[Di
         return None
 
 
+#: Quanto diff mandare nell'evento. Il resto si legge sul branch: un diff da
+#: duecento file non entra in un messaggio e non lo leggerebbe nessuno tutto
+#: intero — la vista d'insieme e' lo `stat`.
+MAX_CARATTERI_DIFF_RUN = 60_000
+
+
+def _rivedi_lavoro_del_run(
+    sessione_wt: Any,
+    gate: Any,
+    session_id: Optional[str],
+    goal_reached: bool,
+) -> Generator[Dict[str, Any], None, None]:
+    """Mostra una volta tutto cio' che il run ha prodotto, e attende il giudizio.
+
+    Emette gli eventi per chi guarda e, in mezzo, un evento interno
+    `__decisione__` che il chiamante intercetta per sapere se applicare. E'
+    brutto ma e' l'unico modo che ha un generatore di restituire un valore
+    mentre continua a produrne.
+    """
+    try:
+        stat = sessione_wt.diff_stat_from_main()
+        file_toccati = sessione_wt.changed_files()
+        diff = sessione_wt.diff_from_main()
+    except Exception as exc:
+        log.warning("[AdminAgent] diff del run non calcolabile: %s", exc)
+        yield {"type": "__decisione__", "apply": bool(goal_reached)}
+        return
+
+    if not file_toccati:
+        # Un run che non ha toccato niente non ha niente da far rivedere.
+        yield {"type": "__decisione__", "apply": bool(goal_reached)}
+        return
+
+    troncato = len(diff) > MAX_CARATTERI_DIFF_RUN
+    proposta = gate.open(
+        path=getattr(sessione_wt, "branch_name", ""),
+        diff=(diff[:MAX_CARATTERI_DIFF_RUN] if troncato else diff),
+        tool="run",
+        summary=f"{len(file_toccati)} file modificati",
+    )
+    yield {
+        "type": "run_diff_proposed",
+        "session_id": session_id,
+        "id": proposta["id"],
+        "branch": getattr(sessione_wt, "branch_name", ""),
+        "files": file_toccati,
+        "file_count": len(file_toccati),
+        "stat": stat,
+        "diff": proposta["diff"],
+        "truncated": troncato,
+        "goal_reached": bool(goal_reached),
+    }
+
+    decisione = gate.wait(proposta["id"])
+    applica = decisione == review.APPROVED
+    yield {
+        "type": "run_diff_decided",
+        "session_id": session_id,
+        "id": proposta["id"],
+        "decision": decisione,
+        "applied": applica,
+        # Il lavoro non applicato non si perde: resta sul branch della
+        # sessione, ed e' l'unica cosa che chi ha rifiutato deve sapere.
+        "branch": getattr(sessione_wt, "branch_name", ""),
+    }
+    yield {"type": "__decisione__", "apply": applica}
+
+
 def _chiudi_run(chiusura: Dict[str, Any]) -> Dict[str, Any]:
     """Rilascia tutto cio' che il run teneva aperto. Sempre, comunque sia finito.
 
@@ -2754,7 +2855,9 @@ def _chiudi_run(chiusura: Dict[str, Any]) -> Dict[str, Any]:
     chiusura["chiuso"] = True
 
     session_id = chiusura.get("session_id")
-    raggiunto = bool(chiusura.get("goal_reached"))
+    # La decisione di chi ha rivisto, quando c'e' stata; altrimenti vale il
+    # criterio di sempre, cioe' l'obiettivo raggiunto.
+    raggiunto = bool(chiusura.get("apply_changes", chiusura.get("goal_reached")))
 
     # La radice torna com'era: un run finito non deve lasciare il proprio
     # progetto come predefinito per chi viene dopo sullo stesso thread.
