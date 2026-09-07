@@ -737,7 +737,9 @@ export default function AIConfigTab() {
         chatSpeed,
         benchmark: bm,
         hasBenchmark: hasBm,
-        benchmarkScore: bmScore
+        benchmarkScore: bmScore,
+        publication: m.publication || specs?.publication || null,
+        isPublished: Boolean(m.publication?.repo_id || specs?.isPublished || m.is_published || m.published)
       });
     });
 
@@ -1146,10 +1148,13 @@ export default function AIConfigTab() {
         maxWidth: '100%',
         height: '100%',
         minHeight: '100%',
-        overflowY: 'auto',
-        overflowX: 'hidden',
+        display: 'flex',
+        flexDirection: 'column',
+        overflow: 'hidden',
         boxSizing: 'border-box',
-        padding: '24px 32px 60px 32px',
+        padding: 0,
+        margin: 0,
+        backgroundColor: isLight ? '#f4efe4' : '#07090e',
         color: titleColor,
         fontFamily: 'Inter, system-ui, -apple-system, sans-serif'
       }}
@@ -1180,18 +1185,20 @@ export default function AIConfigTab() {
         </div>
       )}
 
-      {/* Unified Kernel Tab Header */}
+      {/* Unified Kernel Tab Header — Stile Compatto Bacheca & Chat */}
       <TabHeader
-        badge="GATEWAY & INFERENCE ORCHESTRATION"
-        badgeIcon={SlidersHorizontal}
         icon={mainHubTab === 'engine_server' ? Server : Globe}
-        title="Providers Hub / "
-        highlight={mainHubTab === 'engine_server' ? 'Server Locale & Proxy' : 'Provider Esterni'}
+        title="Providers"
+        tabs={[
+          { id: 'engine_server', label: 'Server Locale & Proxy', icon: Server, active: mainHubTab === 'engine_server', onClick: () => setMainHubTab('engine_server') },
+          { id: 'external_providers', label: 'Provider Esterni', icon: Globe, active: mainHubTab === 'external_providers', onClick: () => setMainHubTab('external_providers') }
+        ]}
         description={
           mainHubTab === 'engine_server'
-            ? 'Gestisci il Server Locale SigmaEngine per client esterni (VS Code, Cursor, Python), routing porte e proxy OpenAI.'
+            ? 'Server SigmaEngine locale per client esterni (VS Code, Cursor, Python), routing porte e proxy OpenAI.'
             : 'Connetti e configura i provider AI esterni (OpenAI, Anthropic, DeepSeek, Ollama, Groq, Mistral, LocalAI).'
         }
+        style={{ margin: 0, width: '100%', top: 0, left: 0, right: 0 }}
         actions={
           <>
             <button
@@ -1199,7 +1206,7 @@ export default function AIConfigTab() {
               className="sigma-tab-btn sigma-tab-btn-ghost"
               title="Riavvia il server per applicare porte, HTTPS e certificati di rete"
             >
-              <RefreshCw size={14} />
+              <RefreshCw size={13} />
               <span>Riavvia Server</span>
             </button>
 
@@ -1208,13 +1215,24 @@ export default function AIConfigTab() {
               disabled={saving}
               className="sigma-tab-btn sigma-tab-btn-primary"
             >
-              {saving ? <RefreshCw size={14} className="spin" /> : <Save size={14} />}
+              {saving ? <RefreshCw size={13} className="spin" /> : <Save size={13} />}
               <span>{saving ? 'Salvataggio...' : 'Salva Modifiche'}</span>
             </button>
           </>
         }
-        style={{ marginBottom: '20px', borderRadius: '12px' }}
       />
+
+      {/* Scrollable Page Body */}
+      <div style={{
+        flex: 1,
+        overflowY: 'auto',
+        overflowX: 'hidden',
+        padding: '20px 28px 60px 28px',
+        boxSizing: 'border-box',
+        display: 'flex',
+        flexDirection: 'column',
+        gap: '20px'
+      }}>
 
       {/* ========================================================================= */}
       {/* TAB 1 CONTENT: ⚡ SIGMAENGINE SERVER & PROXY GATEWAY */}
@@ -2283,6 +2301,28 @@ export default function AIConfigTab() {
                               >
                                 <Trophy size={10} />
                                 <span>🏆 {item.benchmarkScore}% Pass</span>
+                              </span>
+                            )}
+
+                            {/* Flag Pubblicato */}
+                            {item.isPublished && (
+                              <span
+                                title={`Pubblicato su Hugging Face (${item.publication?.repo_id || ''})`}
+                                style={{
+                                  fontSize: '0.62rem',
+                                  padding: '2px 7px',
+                                  borderRadius: '4px',
+                                  background: 'rgba(16, 185, 129, 0.16)',
+                                  color: '#10b981',
+                                  border: '1px solid rgba(16, 185, 129, 0.4)',
+                                  fontWeight: 800,
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  gap: '3px'
+                                }}
+                              >
+                                <CheckCircle2 size={10} />
+                                <span>Pubblicato</span>
                               </span>
                             )}
 
@@ -3395,6 +3435,7 @@ for await (const chunk of stream) {
           </div>
         </div>
       )}
+      </div>
     </div>
   );
 }

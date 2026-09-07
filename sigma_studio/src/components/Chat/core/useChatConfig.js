@@ -38,9 +38,9 @@ export function useChatConfig({ saveSessionsState, sessionRefs }) {
   const [availableModels, setAvailableModels] = useState([]);
   const [loadingModels, setLoadingModels] = useState(false);
   const [providerConfigs, setProviderConfigs] = useState({});
-  const [activeManifesto, setActiveManifesto] = useState({ name: 'Sigma Assistant', path: 'manifesti/sigma_assistant.md', exists: true, image: '/images/default.png' });
+  const [activeManifesto, setActiveManifesto] = useState({ name: 'Sigma Assistant', path: 'Ruoli/sigma_assistant.md', exists: true, image: '/images/default.png' });
   const [manifestos, setManifestos] = useState([]);
-  const [selectedManifestoPath, setSelectedManifestoPath] = useState('manifesti/sigma_assistant.md');
+  const [selectedManifestoPath, setSelectedManifestoPath] = useState('Ruoli/sigma_assistant.md');
   const [manifestoManuallySelected, setManifestoManuallySelected] = useState(false);
   const [showManifestoDropdown, setShowManifestoDropdown] = useState(false);
   const [showModelDropdown, setShowModelDropdown] = useState(false);

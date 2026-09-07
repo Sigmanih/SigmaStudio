@@ -342,21 +342,22 @@
     box-sizing: border-box !important;
   }
 
-  /* Header del messaggio su Mobile */
+  /* Header del messaggio su Mobile: 2 colonne */
   .chat-msg-header {
     padding: 6px 10px !important;
-    gap: 8px !important;
+    gap: 10px !important;
     border-radius: 10px 10px 0 0 !important;
-    flex-wrap: wrap !important;
+    flex-wrap: nowrap !important;
     align-items: center !important;
   }
 
-  /* Avatar compatto da 30px anziché 48px */
+  /* Avatar su mobile: 38px */
   .chat-msg-avatar {
-    width: 30px !important;
-    height: 30px !important;
-    min-width: 30px !important;
-    min-height: 30px !important;
+    width: 38px !important;
+    height: 38px !important;
+    min-width: 38px !important;
+    min-height: 38px !important;
+    border-radius: 8px !important;
     border-width: 1.5px !important;
   }
 
@@ -390,8 +391,9 @@
   }
 
   .chat-msg-agent-badge {
-    padding: 4px 8px !important;
-    font-size: 0.68rem !important;
+    padding: 0 !important;
+    font-size: 0.65rem !important;
+    gap: 4px !important;
   }
 
   /* Area Contenuto del messaggio */

@@ -1,7 +1,7 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import {
   Cpu, ChevronDown, Check, Loader, Search, Key, Sparkles, HardDrive, Zap,
-  Trophy, Award, Gauge, Brain, Dna, Boxes, ArrowDownUp, RefreshCw
+  Trophy, Award, Gauge, Brain, Dna, Boxes, ArrowDownUp, RefreshCw, CheckCircle2
 } from 'lucide-react';
 import { PROVIDER_COLORS, getProviderForModel } from './modelProviderMap';
 import {
@@ -450,6 +450,7 @@ export default function ModelSelector({
 
               // Live Speed (tokens/sec)
               const chatTps = getModelChatSpeed(m.name, m) ?? (m.benchmark_summary?.tokens_per_sec || null);
+              const isPublished = Boolean(m.publication?.repo_id || itemSpecs?.publication?.repo_id || itemSpecs?.isPublished);
 
               return (
                 <div
@@ -568,6 +569,21 @@ export default function ModelSelector({
                       <Trophy size={10} color={bmColor} />
                       <span>{hasBm ? `${Math.round(bmScore)}%` : '-'}</span>
                     </span>
+
+                    {/* Flag Pubblicato */}
+                    {isPublished && (
+                      <span
+                        title={`Pubblicato su Hugging Face (${m.publication?.repo_id || itemSpecs?.publication?.repo_id || ''})`}
+                        style={{
+                          fontSize: '0.58rem', fontWeight: 800, padding: '1px 6px', borderRadius: '4px',
+                          background: 'rgba(16, 185, 129, 0.15)', border: '1px solid rgba(16, 185, 129, 0.35)', color: '#10b981',
+                          display: 'inline-flex', alignItems: 'center', gap: '3px'
+                        }}
+                      >
+                        <CheckCircle2 size={9} color="#10b981" />
+                        <span>Pubblicato</span>
+                      </span>
+                    )}
 
                     {/* ⚡ Live Generation Speed (t/s) Badge */}
                     <span

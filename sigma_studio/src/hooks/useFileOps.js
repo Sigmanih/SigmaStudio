@@ -12,13 +12,15 @@ export function useFileOps({ fetchManifesti, fetchModules, openTab, openTabs, ha
     if (type === 'whitepaper') {
       finalPath = `${folder}/docs/WHITEPAPER_${filename}`;
     }
-    if (type === 'manifesti') {
-      finalPath = `manifesti/${filename}`;
+    if (type === 'ruoli' || type === 'manifesti') {
+      finalPath = `Ruoli/${filename}`;
     }
 
     const initialContent = (type === 'scripts' || type === 'test') 
       ? "# Sigma Validation & Calculation Script\nimport os\n\ndef run():\n    print('Running script...')\n\nif __name__ == '__main__':\n    run()" 
-      : "# Nuovo Manifesto Sigma\n= = = = = = = = = = = =\n\n**Sezione**: \n\nContenuto del manifesto...";
+      : (type === 'ruoli' || type === 'manifesti')
+      ? "# Nuovo Ruolo AI\n= = = = = = = = = = = =\n\n## RUOLO\nDescrizione della specializzazione e direttive dell'agente.\n\n## REGOLE\n1. Rispondi in italiano.\n2. Sii conciso e rigoroso."
+      : "# Nuova Sezione Sigma\n= = = = = = = = = = = =\n\n**Sezione**: \n\nContenuto del file...";
     
     try {
       const res = await fetch('/api/create_file', {
@@ -29,7 +31,7 @@ export function useFileOps({ fetchManifesti, fetchModules, openTab, openTabs, ha
       const data = await res.json();
       if (data.success) {
         setIsFileModalOpen(false);
-        if (type === 'manifesti') {
+        if (type === 'ruoli' || type === 'manifesti') {
           if (fetchManifesti) fetchManifesti();
         } else {
           if (fetchModules) fetchModules();

@@ -212,7 +212,7 @@ export default function ManifestiGallery({
   const handleLaunchChat = (manifesto) => {
     if (!manifesto) return;
     const agentId = manifesto.filename ? manifesto.filename.replace('.md', '') : manifesto.id;
-    const manifestoPath = manifesto.path || `manifesti/${manifesto.filename}`;
+    const manifestoPath = manifesto.path ? manifesto.path.replace('manifesti/', 'Ruoli/') : `Ruoli/${manifesto.filename}`;
     
     try {
       localStorage.setItem('sigma_preload_agent', agentId);
@@ -239,7 +239,7 @@ export default function ManifestiGallery({
   const handleEditManifesto = (manifesto) => {
     if (openTab && manifesto) {
       openTab({ 
-        path: manifesto.path || `manifesti/${manifesto.filename}`, 
+        path: manifesto.path ? manifesto.path.replace('manifesti/', 'Ruoli/') : `Ruoli/${manifesto.filename}`, 
         filename: manifesto.filename || `${manifesto.id}.md` 
       }, 'editor');
     }
@@ -401,7 +401,7 @@ Creato per l'ecosistema sovrano Sigma AI Studio.
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          path: `manifesti/${finalFileName}`,
+          path: `Ruoli/${finalFileName}`,
           content: modelfileContent
         })
       });
@@ -476,28 +476,28 @@ Creato per l'ecosistema sovrano Sigma AI Studio.
       flexDirection: 'column',
       background: isLight ? '#f8fafc' : 'var(--bg-main, #090c14)',
       color: textPrimary,
-      overflowY: 'auto'
+      overflow: 'hidden'
     }}>
-      {/* ── UNIFIED KERNEL TAB HEADER ──────── */}
+      {/* ── UNIFIED KERNEL TAB HEADER — Stile Compatto Bacheca & Chat ──────── */}
       <TabHeader
-        badge="Σ RUOLI AI & PROFILI COGNITIVI SPECIALISTICI"
-        badgeIcon={Brain}
-        icon={activeGalleryView === 'installed' ? UserCheck : Globe}
-        title="Ruoli AI / "
-        highlight={activeGalleryView === 'installed' ? `Ruoli Attivi nel Kernel (${manifestiList.length})` : 'Hub Professioni & Community'}
+        icon={activeGalleryView === 'installed' ? Brain : Globe}
+        title="Ruoli AI"
+        tabs={[
+          { id: 'installed', label: `Ruoli Kernel (${manifestiList.length})`, icon: Brain, active: activeGalleryView === 'installed', onClick: () => setActiveGalleryView('installed') },
+          { id: 'hub', label: 'Hub Community', icon: Globe, active: activeGalleryView === 'hub', onClick: () => setActiveGalleryView('hub') }
+        ]}
         description={
           activeGalleryView === 'installed'
-            ? "I Ruoli AI applicano direttive deontologiche, competenze e parametri di campionamento al motore sigma, trasformando l'assistente in uno specialista verticale."
-            : "Esplora, importa e sincronizza ruoli AI specializzati creati dalla community direttamente da GitHub."
+            ? "Profili cognitivi specialistici e direttive applicate a SigmaEngine."
+            : "Esplora, importa e sincronizza ruoli AI specializzati dalla community GitHub."
         }
-        bannerImage="/images/manifesti_gallery_banner.jpg"
         actions={
           <>
             <button
               onClick={() => setNewManifestoModalOpen(true)}
               className="sigma-tab-btn sigma-tab-btn-primary"
             >
-              <Plus size={14} /> <span>Nuovo Ruolo AI</span>
+              <Plus size={12} /> <span>Nuovo Ruolo</span>
             </button>
 
             <button
@@ -505,7 +505,7 @@ Creato per l'ecosistema sovrano Sigma AI Studio.
               title="Ricarica Ruoli dal Kernel e da GitHub"
               className="sigma-tab-btn sigma-tab-btn-ghost"
             >
-              <RefreshCw size={14} className={(loading || loadingHub) ? 'spin' : ''} />
+              <RefreshCw size={12} className={(loading || loadingHub) ? 'spin' : ''} />
               <span>Ricarica</span>
             </button>
           </>
@@ -513,7 +513,7 @@ Creato per l'ecosistema sovrano Sigma AI Studio.
       />
 
       {/* ── CORPO PRINCIPALE IN DUAL-PANE LAYOUT ──────── */}
-      <div style={{ padding: '20px 24px', width: '100%', boxSizing: 'border-box', flex: 1 }}>
+      <div style={{ padding: '20px 24px', width: '100%', boxSizing: 'border-box', flex: 1, overflowY: 'auto' }}>
         
         {/* Toast / Notification Banner */}
         {hubMessage && (

@@ -660,16 +660,28 @@ export default function ModelHub({ addToast: addToastProp, openTab }) {
 
 
   return (
-    <div className="model-hub-container" style={{ backgroundColor: isLight ? '#f4efe4' : '#07090e', color: textPrimary }}>
-      {/* Unified Kernel Tab Header */}
+    <div 
+      className="model-hub-container" 
+      style={{ 
+        backgroundColor: isLight ? '#f4efe4' : '#07090e', 
+        color: textPrimary,
+        padding: 0,
+        margin: 0,
+        width: '100%',
+        height: '100%'
+      }}
+    >
+      {/* Unified Kernel Tab Header — Stile Compatto Bacheca & Chat */}
       <TabHeader
-        badge="AI MODEL MANAGEMENT & INFERENCE ENGINE"
-        badgeIcon={DownloadCloud}
         icon={TabIcon}
-        title="Model Hub / "
-        highlight={currentTabMeta.title}
+        title="Model Hub"
+        tabs={[
+          { id: 'inventory', label: 'Modelli Locali', icon: HardDrive, active: activeTab === 'inventory', onClick: () => setActiveTab('inventory') },
+          { id: 'browse', label: 'Download Hugging Face', icon: Search, active: activeTab === 'browse', onClick: () => setActiveTab('browse') },
+          { id: 'converter', label: 'Convertitore GGUF', icon: Zap, active: activeTab === 'converter', onClick: () => setActiveTab('converter') },
+          { id: 'settings', label: 'Token & Opzioni', icon: Settings, active: activeTab === 'settings', onClick: () => setActiveTab('settings') }
+        ]}
         description={currentTabMeta.desc}
-        bannerImage="/images/hero_banner.jpg"
         actions={
           <>
             {totalActiveTasksCount > 0 && (
@@ -701,16 +713,21 @@ export default function ModelHub({ addToast: addToastProp, openTab }) {
               title="Esegui test connettività verso Hugging Face e verifica token"
               className="sigma-tab-btn sigma-tab-btn-ghost"
             >
-              {testingConn ? <Activity className="mh-spin" size={13} /> : <RefreshCw size={13} />}
+              {testingConn ? <Activity className="mh-spin" size={12} /> : <RefreshCw size={12} />}
               <span>{testingConn ? 'Verifica...' : connResult?.latency_ms ? `HF (${connResult.latency_ms}ms)` : 'Test HF'}</span>
             </button>
 
             {/* Engine Live Status Pill */}
-            <div className="mh-engine-pill" style={{ background: isLight ? 'rgba(0,0,0,0.04)' : 'rgba(255,255,255,0.05)', border: subBorder }}>
-              <Zap size={13} color={isLight ? '#ea580c' : '#00d2ff'} style={{ flexShrink: 0 }} />
+            <div className="mh-engine-pill" style={{
+              background: isLight ? 'rgba(0,0,0,0.04)' : 'rgba(255,255,255,0.05)',
+              border: subBorder,
+              padding: '2px 8px',
+              borderRadius: '6px'
+            }}>
+              <Zap size={12} color={isLight ? '#ea580c' : '#00d2ff'} style={{ flexShrink: 0 }} />
               <div>
-                <div className="mh-engine-pill-title" style={{ color: textMuted }}>MOTORE ATTIVO</div>
-                <div className="mh-engine-pill-val" style={{ color: isLight ? '#ea580c' : '#00d2ff' }}>
+                <div className="mh-engine-pill-title" style={{ color: textMuted, fontSize: '0.58rem' }}>MOTORE ATTIVO</div>
+                <div className="mh-engine-pill-val" style={{ color: isLight ? '#ea580c' : '#00d2ff', fontSize: '0.68rem' }}>
                   {engineStatus?.loaded_model || 'Standby'}
                 </div>
               </div>

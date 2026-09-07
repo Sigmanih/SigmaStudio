@@ -451,7 +451,9 @@ export default function AgentMessage({
       className={`chat-message ${isUser ? 'chat-user' : isSystem ? 'chat-system' : 'chat-assistant'} ${agentId ? 'chat-agent-message' : ''} ${isGrouped ? 'chat-message-grouped' : ''}`}
     >
       <div className="chat-bubble">
+        {/* Header del messaggio a 2 Colonne: Col 1 = Avatar grande, Col 2 = 2 righe (Top: Modello/Tempo/Azioni, Bottom: Ruolo/Specifiche) */}
         <div className="chat-msg-header">
+          {/* COLONNA 1: Avatar Grande */}
           <div className="chat-msg-avatar" style={{ borderColor: avatarBg }}>
             <img
               src={avatarSrc}
@@ -460,62 +462,38 @@ export default function AgentMessage({
               onError={(e) => { e.target.style.display = 'none'; }}
             />
           </div>
-          {/* Se è un messaggio utente o di sistema mostriamo il nome/ruolo (es: Tu) */}
-          {(isUser || isSystem) && <div className="chat-msg-role">{roleName}</div>}
 
-          {/* Nell'header dell'assistente mostriamo il nome del modello */}
-          {!isUser && !isSystem && cleanModelName && (
-            <div className="chat-msg-role" style={{ color: '#00d2ff', fontWeight: 700, letterSpacing: '0.1px' }}>
-              {cleanModelName}
-            </div>
-          )}
-          {isOrchestrated && <span className="chat-msg-orchestrated" title="Assegnato dall'Orchestrator">🎯</span>}
-          <div className="chat-msg-header-spacer" />
-          <div className="chat-msg-time">{formatTimestamp(first.timestamp)}</div>
+          {/* COLONNA 2: Info su due righe */}
+          <div className="chat-msg-header-body">
+            {/* RIGA 1: Nome Modello / Ruolo + Orario + Bottoni Azione */}
+            <div className="chat-msg-header-top">
+              {/* Se è un messaggio utente o di sistema mostriamo il nome/ruolo (es: Tu) */}
+              {(isUser || isSystem) && (
+                <div className="chat-msg-role">{roleName}</div>
+              )}
 
-          <button
-            className={`chat-msg-copy-btn ${copiedMsg ? 'copied' : ''}`}
-            title="Copia messaggio negli appunti"
-            onClick={handleCopyMessage}
-            style={{
-              background: copiedMsg ? 'rgba(74, 222, 128, 0.15)' : 'rgba(255,255,255,0.04)',
-              border: copiedMsg ? '1px solid rgba(74, 222, 128, 0.3)' : '1px solid rgba(255,255,255,0.08)',
-              color: copiedMsg ? '#4ade80' : 'var(--text-muted, #8b8fa3)',
-              fontSize: '0.68rem',
-              cursor: 'pointer',
-              padding: '2px 7px',
-              borderRadius: '4px',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '4px',
-              marginLeft: '8px',
-              transition: 'all 0.2s ease'
-            }}
-          >
-            {copiedMsg ? '✓ Copiato!' : '📋 Copia'}
-          </button>
-          {!isUser && !isSystem && (() => {
-            const isMessageStreaming = messages.some(m => m.streaming || m.streamingThinking) || Boolean(isLoading);
-            return (
+              {/* Nell'header dell'assistente mostriamo il nome del modello */}
+              {!isUser && !isSystem && cleanModelName && (
+                <div className="chat-msg-role" style={{ color: '#00d2ff', fontWeight: 700, letterSpacing: '0.1px', fontSize: '0.80rem' }}>
+                  {cleanModelName}
+                </div>
+              )}
+              {isOrchestrated && <span className="chat-msg-orchestrated" title="Assegnato dall'Orchestrator">🎯</span>}
+
+              <div className="chat-msg-header-spacer" />
+
+              <div className="chat-msg-time">{formatTimestamp(first.timestamp)}</div>
+
               <button
-                disabled={isMessageStreaming}
-                onClick={() => {
-                  if (isMessageStreaming) return;
-                  if (isPlayingAudio) {
-                    stopSpeech();
-                  } else {
-                    const textToRead = messages.map(m => m.content || m.text || '').join(' ');
-                    speakAgentMessage(textToRead, null, null, speechId);
-                  }
-                }}
-                title={isMessageStreaming ? 'In attesa del completamento della risposta...' : (isPlayingAudio ? 'Ferma lettura' : 'Ascolta risposta vocale (TTS)')}
+                className={`chat-msg-copy-btn ${copiedMsg ? 'copied' : ''}`}
+                title="Copia messaggio negli appunti"
+                onClick={handleCopyMessage}
                 style={{
-                  background: isPlayingAudio ? 'rgba(0,210,255,0.2)' : 'rgba(255,255,255,0.04)',
-                  border: isPlayingAudio ? '1px solid rgba(0,210,255,0.4)' : '1px solid rgba(255,255,255,0.08)',
-                  color: isMessageStreaming ? '#55596e' : (isPlayingAudio ? '#00d2ff' : 'var(--text-muted, #8b8fa3)'),
-                  opacity: isMessageStreaming ? 0.45 : 1,
+                  background: copiedMsg ? 'rgba(74, 222, 128, 0.15)' : 'rgba(255,255,255,0.04)',
+                  border: copiedMsg ? '1px solid rgba(74, 222, 128, 0.3)' : '1px solid rgba(255,255,255,0.08)',
+                  color: copiedMsg ? '#4ade80' : 'var(--text-muted, #8b8fa3)',
                   fontSize: '0.68rem',
-                  cursor: isMessageStreaming ? 'not-allowed' : 'pointer',
+                  cursor: 'pointer',
                   padding: '2px 7px',
                   borderRadius: '4px',
                   display: 'flex',
@@ -525,13 +503,112 @@ export default function AgentMessage({
                   transition: 'all 0.2s ease'
                 }}
               >
-                {isPlayingAudio ? '⏹️ Ferma' : '🔊 Ascolta'}
+                {copiedMsg ? '✓ Copiato!' : '📋 Copia'}
               </button>
-            );
-          })()}
-          {onDeleteMessage && (
-            <button className="chat-msg-delete-btn" title="Elimina" onClick={() => onDeleteMessage(msgIndex)}>✕</button>
-          )}
+
+              {!isUser && !isSystem && (() => {
+                const isMessageStreaming = messages.some(m => m.streaming || m.streamingThinking) || Boolean(isLoading);
+                return (
+                  <button
+                    disabled={isMessageStreaming}
+                    onClick={() => {
+                      if (isMessageStreaming) return;
+                      if (isPlayingAudio) {
+                        stopSpeech();
+                      } else {
+                        const textToRead = messages.map(m => m.content || m.text || '').join(' ');
+                        speakAgentMessage(textToRead, null, null, speechId);
+                      }
+                    }}
+                    title={isMessageStreaming ? 'In attesa del completamento della risposta...' : (isPlayingAudio ? 'Ferma lettura' : 'Ascolta risposta vocale (TTS)')}
+                    style={{
+                      background: isPlayingAudio ? 'rgba(0,210,255,0.2)' : 'rgba(255,255,255,0.04)',
+                      border: isPlayingAudio ? '1px solid rgba(0,210,255,0.4)' : '1px solid rgba(255,255,255,0.08)',
+                      color: isMessageStreaming ? '#55596e' : (isPlayingAudio ? '#00d2ff' : 'var(--text-muted, #8b8fa3)'),
+                      opacity: isMessageStreaming ? 0.45 : 1,
+                      fontSize: '0.68rem',
+                      cursor: isMessageStreaming ? 'not-allowed' : 'pointer',
+                      padding: '2px 7px',
+                      borderRadius: '4px',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '4px',
+                      marginLeft: '6px',
+                      transition: 'all 0.2s ease'
+                    }}
+                  >
+                    {isPlayingAudio ? '⏹️ Ferma' : '🔊 Ascolta'}
+                  </button>
+                );
+              })()}
+
+              {onDeleteMessage && (
+                <button className="chat-msg-delete-btn" title="Elimina" onClick={() => onDeleteMessage(msgIndex)}>✕</button>
+              )}
+            </div>
+
+            {/* RIGA 2: Ruolo attivo e Metadati Modello */}
+            {!isUser && !isSystem && (
+              <div className="chat-msg-agent-badge">
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', minWidth: 0 }}>
+                  <span style={{ fontSize: '0.85rem' }}>{agentStyle?.icon || '🤖'}</span>
+                  <span style={{ fontSize: '0.70rem', color: '#8b8fa3' }}>
+                    Ruolo attivo: <strong style={{ color: 'var(--primary)' }}>{roleName}</strong>
+                  </span>
+                </div>
+
+                {modelSpecs && (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '5px', fontSize: '0.64rem', flexWrap: 'wrap' }}>
+                    {modelSpecs.params && (
+                      <span style={{
+                        fontSize: '0.58rem', padding: '1px 5px', borderRadius: '4px',
+                        background: 'rgba(0, 210, 255, 0.16)', color: '#00d2ff', fontWeight: 800,
+                        border: '1px solid rgba(0, 210, 255, 0.25)'
+                      }}>
+                        ⚡ {modelSpecs.params}
+                      </span>
+                    )}
+                    {modelSpecs.size && (
+                      <span style={{
+                        fontSize: '0.58rem', padding: '1px 5px', borderRadius: '4px',
+                        background: 'rgba(255, 184, 108, 0.16)', color: '#ffb86c', fontWeight: 800,
+                        border: '1px solid rgba(255, 184, 108, 0.25)'
+                      }}>
+                        💾 {modelSpecs.size}
+                      </span>
+                    )}
+                    {modelSpecs.format && (
+                      <span style={{
+                        fontSize: '0.58rem', padding: '1px 5px', borderRadius: '3px',
+                        background: 'rgba(188, 140, 255, 0.14)', color: '#bc8cff', fontWeight: 700,
+                        border: '1px solid rgba(188, 140, 255, 0.25)'
+                      }}>
+                        {modelSpecs.format}
+                      </span>
+                    )}
+                    {modelSpecs.benchmark_score && (
+                      <span style={{
+                        fontSize: '0.58rem', padding: '1px 5px', borderRadius: '4px',
+                        background: 'rgba(63, 185, 80, 0.16)', color: '#3fb950', fontWeight: 800,
+                        border: '1px solid rgba(63, 185, 80, 0.25)'
+                      }}>
+                        🏆 {modelSpecs.benchmark_score}%
+                      </span>
+                    )}
+                    {modelSpecs.isPublished && (
+                      <span style={{
+                        fontSize: '0.58rem', padding: '1px 5px', borderRadius: '4px',
+                        background: 'rgba(16, 185, 129, 0.16)', color: '#10b981', fontWeight: 800,
+                        border: '1px solid rgba(16, 185, 129, 0.25)'
+                      }}>
+                        ✅ Pubblicato
+                      </span>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
         </div>
 
         {/* Audio Player Control Bar when playing */}
@@ -601,60 +678,6 @@ export default function AgentMessage({
             </div>
           </div>
         )}
-
-        {/* Active agent role banner con i dati del modello (che non duplichiamo nell'header) */}
-        {!isUser && !isSystem && (
-          <div className="chat-msg-agent-badge" style={{
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            gap: '8px',
-            padding: '7px 12px',
-            background: 'rgba(255,255,255,0.02)',
-            borderBottom: '1px solid rgba(255,255,255,0.04)',
-            fontSize: '0.72rem',
-            color: '#8b8fa3',
-            flexWrap: 'wrap'
-          }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <span style={{ fontSize: '1rem' }}>{agentStyle?.icon || '🤖'}</span>
-              <span>Ruolo attivo: <strong style={{ color: 'var(--primary)' }}>{roleName}</strong></span>
-            </div>
-
-            {modelSpecs && (
-              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.66rem' }}>
-                {modelSpecs.params && (
-                  <span style={{
-                    fontSize: '0.60rem', padding: '2px 6px', borderRadius: '4px',
-                    background: 'rgba(0, 210, 255, 0.16)', color: '#00d2ff', fontWeight: 800,
-                    border: '1px solid rgba(0, 210, 255, 0.25)'
-                  }}>
-                    ⚡ {modelSpecs.params}
-                  </span>
-                )}
-                {modelSpecs.size && (
-                  <span style={{
-                    fontSize: '0.60rem', padding: '2px 6px', borderRadius: '4px',
-                    background: 'rgba(255, 184, 108, 0.16)', color: '#ffb86c', fontWeight: 800,
-                    border: '1px solid rgba(255, 184, 108, 0.25)'
-                  }}>
-                    💾 {modelSpecs.size}
-                  </span>
-                )}
-                {modelSpecs.format && (
-                  <span style={{
-                    fontSize: '0.58rem', padding: '2px 5px', borderRadius: '3px',
-                    background: 'rgba(188, 140, 255, 0.14)', color: '#bc8cff', fontWeight: 700,
-                    border: '1px solid rgba(188, 140, 255, 0.25)'
-                  }}>
-                    {modelSpecs.format}
-                  </span>
-                )}
-              </div>
-            )}
-          </div>
-        )}
-
 
         {/* Content area */}
         <div className="chat-msg-content">

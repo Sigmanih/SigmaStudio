@@ -85,16 +85,13 @@ export default function SkillsHub() {
   };
 
   return (
-    <div className="skills-hub" style={{ padding: 0, display: 'flex', flexDirection: 'column', overflowY: 'auto' }}>
-      {/* Unified Kernel Tab Header */}
+    <div className="skills-hub" style={{ padding: 0, height: '100%', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+      {/* Unified Kernel Tab Header — Stile Compatto Bacheca & Chat */}
       <TabHeader
-        badge="SIGMA KERNEL SKILLS & ENGINE CATALOG"
-        badgeIcon={Blocks}
         icon={Wrench}
-        title="Skills & "
-        highlight="Motori Componibili"
-        description="Sigma Studio è il kernel dell'Agente: ogni skill è una capacità componibile ed ogni motore è una dipendenza di calcolo locale."
-        bannerImage="/images/skills_engines_banner.jpg"
+        title="Skills & Motori"
+        highlight="Catalogo Capacità"
+        description="Capacità componibili e dipendenze di calcolo locale per gli Agenti AI del Kernel."
         actions={
           <>
             <button
@@ -102,22 +99,23 @@ export default function SkillsHub() {
               disabled={busy === 'auto'}
               className="sigma-tab-btn sigma-tab-btn-primary"
             >
-              {busy === 'auto' ? <Loader size={14} className="cs-spin" /> : <Wrench size={14} />}
+              {busy === 'auto' ? <Loader size={12} className="cs-spin" /> : <Wrench size={12} />}
               <span>Collega installati</span>
             </button>
 
             <button
               onClick={load}
               className="sigma-tab-btn sigma-tab-btn-ghost"
+              title="Ricarica skills"
             >
-              <RefreshCw size={14} /> <span>Aggiorna</span>
+              <RefreshCw size={12} /> <span>Aggiorna</span>
             </button>
           </>
         }
       />
 
       {/* Main Workspace Body Wrapper */}
-      <div style={{ padding: '0 24px 24px 24px', display: 'flex', flexDirection: 'column', gap: '20px', flex: 1 }}>
+      <div style={{ padding: '16px 24px 24px 24px', display: 'flex', flexDirection: 'column', gap: '20px', flex: 1, overflowY: 'auto' }}>
         {message && (
           <div className={`skills-message ${message.type}`}>
             {message.type === 'ok' ? <CheckCircle2 size={15} /> : <AlertTriangle size={15} />}

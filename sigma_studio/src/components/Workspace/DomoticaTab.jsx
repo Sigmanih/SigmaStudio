@@ -593,37 +593,35 @@ export default function DomoticaTab() {
         background: T.bg,
         color: T.text,
         fontFamily: 'Inter, system-ui, sans-serif',
-        overflowY: 'auto'
+        overflow: 'hidden'
       }}>
       <TechSpaceCanvas isLight={theme === 'light'} />
 
-      {/* Unified Kernel Tab Header */}
+      {/* Unified Kernel Tab Header — Stile Compatto Bacheca & Chat */}
       <TabHeader
-        badge="MCP HOME ASSISTANT BUS & SMART DOMOTICA ENGINE"
-        badgeIcon={Zap}
         icon={Home}
-        title="Controllo Domotico IoT & "
-        highlight="Gestione Dispositivi Reali"
-        description="Scansiona, cerca e controlla in tempo reale luci, climatizzazione, sensori e serrature della tua abitazione o laboratorio."
-        bannerImage="/images/domotica_smart_hub.jpg"
+        title="Domotica IoT"
+        highlight="Home Assistant MCP"
+        description="Controllo in tempo reale di luci, sensori e dispositivi della tua abitazione o laboratorio."
         actions={
           <>
             <div style={{
-              padding: '6px 14px', borderRadius: '16px',
+              padding: '2px 8px', borderRadius: '6px',
               background: isConfigured ? 'rgba(63, 185, 80, 0.15)' : 'rgba(210, 153, 34, 0.15)',
-              border: `1px solid ${isConfigured ? 'rgba(63, 185, 80, 0.4)' : 'rgba(210, 153, 34, 0.4)'}`,
-              color: isConfigured ? '#3fb950' : '#d29922', fontSize: '0.74rem', fontWeight: 800,
-              display: 'flex', alignItems: 'center', gap: '8px'
+              border: `1px solid ${isConfigured ? 'rgba(63, 185, 80, 0.3)' : 'rgba(210, 153, 34, 0.3)'}`,
+              color: isConfigured ? '#3fb950' : '#d29922', fontSize: '0.66rem', fontWeight: 700,
+              display: 'inline-flex', alignItems: 'center', gap: '6px'
             }}>
-              <span style={{ width: '7px', height: '7px', borderRadius: '50%', background: isConfigured ? '#3fb950' : '#d29922', boxShadow: `0 0 8px ${isConfigured ? '#3fb950' : '#d29922'}` }} />
+              <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: isConfigured ? '#3fb950' : '#d29922' }} />
               <span>{isConfigured ? `HA Connesso (${devices.length})` : 'HA Non Connesso'}</span>
             </div>
 
             <button
               onClick={() => { setTestStatus(null); setShowConfigModal(true); }}
               className="sigma-tab-btn sigma-tab-btn-ghost"
+              title="Configura Token e URL di Home Assistant"
             >
-              <Key size={14} /> <span>Configura Token HA</span>
+              <Key size={12} /> <span>Token HA</span>
             </button>
 
             <button
@@ -631,15 +629,15 @@ export default function DomoticaTab() {
               disabled={loading}
               className="sigma-tab-btn sigma-tab-btn-primary"
             >
-              <RefreshCw size={14} className={loading ? 'spin' : ''} />
-              <span>{loading ? 'Scansione...' : '🔍 Rileva Dispositivi'}</span>
+              <RefreshCw size={12} className={loading ? 'spin' : ''} />
+              <span>{loading ? 'Scansione...' : 'Rileva Dispositivi'}</span>
             </button>
           </>
         }
       />
 
       {/* Main Workspace Body */}
-      <div style={{ padding: '32px', flex: 1, maxWidth: '1440px', width: '100%', margin: '0 auto', boxSizing: 'border-box' }}>
+      <div style={{ padding: '24px 32px', flex: 1, maxWidth: '1440px', width: '100%', margin: '0 auto', boxSizing: 'border-box', overflowY: 'auto' }}>
 
         {/* Preset Smart Scenes Quick Action Toolbar */}
         <div className="domotica-scene-card primi-passi-card" style={{

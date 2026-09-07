@@ -583,19 +583,16 @@ export default function McpHubTab() {
   const enabledCount = tools.filter(t => !disabledTools[t.name]).length;
 
   return (
-    <div style={{ padding: 0, background: 'var(--bg)', color: '#e2e4eb', minHeight: '100%', display: 'flex', flexDirection: 'column', position: 'relative', overflowY: 'auto' }}>
+    <div style={{ padding: 0, background: 'var(--bg)', color: '#e2e4eb', height: '100%', minHeight: '100%', display: 'flex', flexDirection: 'column', position: 'relative', overflow: 'hidden' }}>
       {/* Animated Translucent Cyber Space Background Canvas */}
       <TechSpaceCanvas isLight={theme === 'light'} />
 
-      {/* Unified Kernel Tab Header */}
+      {/* Unified Kernel Tab Header — Stile Compatto Bacheca & Chat */}
       <TabHeader
-        badge="MODEL CONTEXT PROTOCOL (MCP) BUS"
-        badgeIcon={Zap}
         icon={Wrench}
-        title="MCP Tools & "
+        title="MCP Tools"
         highlight="Protocol Server Hub"
-        description="Bus di I/O decentralizzato per integrare Filesystem, Memory, Home Assistant, SQLite e Microservizi direttamente con gli Agenti AI."
-        bannerImage="/images/mcp_protocol_hub.jpg"
+        description="Bus di I/O per integrare Filesystem, Memory, Home Assistant, SQLite e Microservizi con gli Agenti AI."
         actions={
           <>
             <button
@@ -608,8 +605,8 @@ export default function McpHubTab() {
                 color: autoApprove ? '#d29922' : '#3fb950',
               }}
             >
-              {autoApprove ? <ShieldAlert size={15} /> : <ShieldCheck size={15} />}
-              <span>{autoApprove ? 'Esecuzione Automatica' : 'Conferma Richiesta'}</span>
+              {autoApprove ? <ShieldAlert size={12} /> : <ShieldCheck size={12} />}
+              <span>{autoApprove ? 'Esecuzione Auto' : 'Conferma Richiesta'}</span>
             </button>
 
             <button
@@ -617,15 +614,16 @@ export default function McpHubTab() {
               disabled={runningFullTest}
               className="sigma-tab-btn sigma-tab-btn-primary"
             >
-              {runningFullTest ? <RefreshCw className="spin" size={15} /> : <Play size={15} />}
-              <span>{runningFullTest ? 'Collaudo...' : '⚡ Collauda Skills'}</span>
+              {runningFullTest ? <RefreshCw className="spin" size={12} /> : <Play size={12} />}
+              <span>{runningFullTest ? 'Collaudo...' : 'Collauda Skills'}</span>
             </button>
 
             <button
               onClick={loadMcpData}
               className="sigma-tab-btn sigma-tab-btn-ghost"
+              title="Ricarica configurazione MCP"
             >
-              <RefreshCw size={14} className={loading ? 'spin' : ''} />
+              <RefreshCw size={12} className={loading ? 'spin' : ''} />
               <span>Aggiorna</span>
             </button>
           </>
@@ -633,7 +631,7 @@ export default function McpHubTab() {
       />
 
       {/* Main Workspace Body Wrapper */}
-      <div style={{ padding: '0 24px 24px 24px', display: 'flex', flexDirection: 'column', gap: '20px', flex: 1 }}>
+      <div style={{ padding: '16px 24px 24px 24px', display: 'flex', flexDirection: 'column', gap: '16px', flex: 1, overflowY: 'auto' }}>
 
         {/* Primary Sub Tabs Bar */}
       <div style={{ display: 'flex', gap: '10px', borderBottom: '1px solid rgba(255, 255, 255, 0.08)', paddingBottom: '8px', flexWrap: 'wrap' }}>

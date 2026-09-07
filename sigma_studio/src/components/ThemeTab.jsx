@@ -102,21 +102,19 @@ export default function ThemeTab({ openTab }) {
 
   return (
     <div className="theme-tab-container">
-      {/* Unified Kernel Tab Header */}
+      {/* Unified Kernel Tab Header — Stile Compatto Bacheca & Chat */}
       <TabHeader
-        badge="SISTEMA TEMI & PALETTE CROMATICHE"
-        badgeIcon={Palette}
         icon={Palette}
-        title="Personalizzazione "
-        highlight="Tema & Colori"
-        description="Gestisci la palette cromatica, i preset di visualizzazione per monitor o dispositivi mobili, e personalizza lo sfondo globale con card ad alta leggibilità 100% opache."
+        title="Personalizzazione Temi"
+        highlight="Colori & Display"
+        description="Gestisci palette cromatica, preset per desktop e mobile, e isolamento dello sfondo globale."
         actions={
           <>
             <button className="sigma-tab-btn sigma-tab-btn-ghost" onClick={handleExportTheme} title="Esporta Tema in JSON">
-              <Download size={14} /> <span>Esporta</span>
+              <Download size={12} /> <span>Esporta</span>
             </button>
             <button className="sigma-tab-btn sigma-tab-btn-ghost" onClick={() => jsonImportRef.current?.click()} title="Importa Tema da JSON">
-              <Upload size={14} /> <span>Importa</span>
+              <Upload size={12} /> <span>Importa</span>
             </button>
             <input 
               type="file" 
@@ -126,12 +124,13 @@ export default function ThemeTab({ openTab }) {
               onChange={handleImportTheme} 
             />
             <button className="sigma-tab-btn sigma-tab-btn-ghost" style={{ color: '#ff5555', borderColor: 'rgba(255,85,85,0.3)' }} onClick={resetThemeToDefault} title="Ripristina Predefiniti">
-              <RefreshCw size={14} /> <span>Ripristina</span>
+              <RefreshCw size={12} /> <span>Ripristina</span>
             </button>
           </>
         }
       />
 
+      <div className="theme-tab-body">
       {/* 1. Preset Ufficiali */}
       <section className="theme-section">
         <div className="theme-section-title">
@@ -451,6 +450,7 @@ export default function ThemeTab({ openTab }) {
           </div>
         </div>
       </section>
+      </div>
     </div>
   );
 }

@@ -908,11 +908,19 @@
 .theme-light .chat-bubble { background: #ffffff !important; border: 1px solid rgba(0, 0, 0, 0.1) !important; box-shadow: 0 4px 14px rgba(0, 0, 0, 0.06) !important; }
 .theme-light .chat-user .chat-bubble { background: #f0f9ff !important; border-color: rgba(0, 210, 255, 0.3) !important; }
 
-/* Message header inside bubble: dark background, blue text, flex row */
-.chat-msg-header { display: flex; align-items: center; gap: 8px; padding: 6px 12px; background: rgba(0,0,0,0.18); border-bottom: 1px solid rgba(255,255,255,0.04); border-radius: 10px 10px 0 0; }
-.chat-msg-avatar { width: 30px; height: 30px; min-width: 30px; border-radius: 50%; overflow: hidden; display: flex; align-items: center; justify-content: center; border: 1.5px solid var(--primary); background: #0e1016; flex-shrink: 0; }
+/* Message header inside bubble: 2 columns (col 1: avatar grande, col 2: 2 righe) */
+.chat-msg-header { display: flex; align-items: center; gap: 12px; padding: 8px 12px; background: rgba(0,0,0,0.18); border-bottom: 1px solid rgba(255,255,255,0.04); border-radius: 10px 10px 0 0; min-height: 48px; box-sizing: border-box; }
+.chat-msg-avatar { width: 44px; height: 44px; min-width: 44px; min-height: 44px; border-radius: 10px; overflow: hidden; display: flex; align-items: center; justify-content: center; border: 1.5px solid var(--primary); background: #0e1016; flex-shrink: 0; box-shadow: 0 2px 8px rgba(0, 0, 0, 0.35); }
 .chat-msg-avatar img { width: 100%; height: 100%; object-fit: cover; }
 .chat-msg-avatar-loading { background: rgba(188,140,255,0.15); color: var(--accent); border-color: var(--accent); display: flex; align-items: center; justify-content: center; }
+
+/* Colonna 2: Contenitore verticale per le 2 righe */
+.chat-msg-header-body { display: flex; flex-direction: column; justify-content: center; gap: 3px; flex: 1; min-width: 0; }
+.chat-msg-header-top { display: flex; align-items: center; gap: 8px; min-width: 0; width: 100%; }
+
+/* Riga 2: Ruolo attivo e metadati modello */
+.chat-msg-agent-badge { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 0; background: transparent; border: none; font-size: 0.68rem; color: #8b8fa3; flex-wrap: wrap; width: 100%; min-width: 0; }
+
 .chat-msg-role { font-size: 0.78rem; font-weight: 700; color: var(--primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .chat-msg-model { font-size: 0.65rem; color: var(--primary); opacity: 0.8; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .chat-msg-orchestrated { font-size: 0.62rem; margin-left: 2px; }

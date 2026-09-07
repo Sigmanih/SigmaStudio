@@ -4,14 +4,15 @@
 
 .skills-hub {
   height: 100%;
-  overflow-y: auto;
-  padding: 28px 32px 60px;
+  width: 100%;
+  max-width: 100%;
+  overflow: hidden;
+  padding: 0 !important;
+  margin: 0 !important;
   display: flex;
   flex-direction: column;
-  gap: 26px;
+  gap: 0 !important;
   color: var(--sigma-text);
-  max-width: 1400px;
-  margin: 0 auto;
 }
 
 .skills-header {

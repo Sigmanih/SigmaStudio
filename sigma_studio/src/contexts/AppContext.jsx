@@ -277,10 +277,13 @@ export function AppProvider({ children }) {
     addToast,
     removeToast,
     
-    // Local / manifesti state
+    // Local / manifesti (Ruoli) state
     manifesti,
     setManifesti,
     fetchManifesti,
+    ruoli: manifesti,
+    setRuoli: setManifesti,
+    fetchRuoli: fetchManifesti,
     topicsCount,
     setTopicsCount,
     fetchTopicsCount,

@@ -353,6 +353,8 @@ export function getModelSpecs(modelName, availableModels = []) {
         family,
         benchmark: found.benchmark_summary || null,
         chatSpeed: chatSpeed !== null ? chatSpeed : null,
+        publication: found.publication || null,
+        isPublished: Boolean(found.publication?.repo_id || found.is_published || found.published),
         rawModel: found
       };
     }

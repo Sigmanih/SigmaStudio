@@ -96,7 +96,7 @@ export default function QuickConfigPanel({
           {manifestos && manifestos.length > 0 && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
               <label style={{ fontSize: '0.72rem', fontWeight: 800, color: '#ffb86c', display: 'flex', alignItems: 'center', gap: '5px' }}>
-                <span>🎭 Ruolo / Manifesto:</span>
+                <span>🎭 Ruolo Specialistico:</span>
               </label>
               <select
                 value={activeManifesto?.name || ''}

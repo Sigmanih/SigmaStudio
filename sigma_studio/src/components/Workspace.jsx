@@ -29,6 +29,7 @@ import { useApp } from '../contexts/AppContext';
 const FileIcon = ({ type }) => {
   switch (type) {
     case 'manifesti': case 'manifesto':
+    case 'ruoli': case 'ruolo':
     case 'scripts': case 'test': return <Terminal size={16} />;
     case 'viz': return <PieChart size={16} />;
     case 'module': return <BookOpen size={16} />;
@@ -133,8 +134,8 @@ export default function Workspace({
       );
     }
     
-    // All file types (teoria, docs, whitepaper, manifesti, scripts, test, viz, editor) use the unified SigmaLabEditor
-    if (tab.type === 'teoria' || tab.type === 'docs' || tab.type === 'whitepaper' || tab.type === 'manifesti' || tab.type === 'scripts' || tab.type === 'test' || tab.type === 'viz' || tab.type === 'editor') {
+    // All file types (teoria, docs, whitepaper, manifesti, ruoli, scripts, test, viz, editor) use the unified SigmaLabEditor
+    if (tab.type === 'teoria' || tab.type === 'docs' || tab.type === 'whitepaper' || tab.type === 'manifesti' || tab.type === 'ruoli' || tab.type === 'ruolo' || tab.type === 'scripts' || tab.type === 'test' || tab.type === 'viz' || tab.type === 'editor') {
       return (
         <SigmaLabEditor
           tab={tab}

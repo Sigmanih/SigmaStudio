@@ -168,33 +168,31 @@ export default function AccountTab({ openTab }) {
         flexDirection: 'column',
         fontFamily: 'Inter, system-ui, sans-serif',
         boxSizing: 'border-box',
-        overflowY: 'auto'
+        overflow: 'hidden'
       }}
     >
       <TechSpaceCanvas isLight={theme === 'light'} />
       
-      {/* Unified Kernel Tab Header */}
+      {/* Unified Kernel Tab Header — Stile Compatto Bacheca & Chat */}
       <TabHeader
-        badge="ACCOUNT & PREFERENCE HUB"
-        badgeIcon={User}
         icon={User}
-        title="Profilo Utente & "
-        highlight="Credenziali Esterne"
-        description="Personalizza il tuo avatar, ruolo di sistema e configura i token di integrazione esterna per il download di modelli e dataset."
+        title="Profilo Utente"
+        highlight="Account & Credenziali"
+        description="Personalizza avatar, credenziali e token di integrazione per modelli e dataset."
         actions={
           <button
             onClick={handleSave}
             className="sigma-tab-btn sigma-tab-btn-primary"
             style={savedSuccess ? { background: 'rgba(63, 185, 80, 0.2)', border: '1px solid rgba(63, 185, 80, 0.5)', color: '#3fb950' } : {}}
           >
-            {savedSuccess ? <Check size={15} /> : <Sparkles size={15} />}
+            {savedSuccess ? <Check size={12} /> : <Sparkles size={12} />}
             <span>{savedSuccess ? 'Profilo Salvato!' : 'Salva Modifiche'}</span>
           </button>
         }
       />
 
       {/* Content Grid */}
-      <div style={{ padding: '0 24px 32px 24px', flex: 1, display: 'flex', flexDirection: 'column', gap: '16px' }}>
+      <div style={{ padding: '20px 24px 32px 24px', flex: 1, display: 'flex', flexDirection: 'column', gap: '16px', overflowY: 'auto' }}>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', flex: 1, minHeight: 0, alignItems: 'stretch' }}>
         
           {/* COLONNA SINISTRA — PROFILO UTENTE & AVATAR */}

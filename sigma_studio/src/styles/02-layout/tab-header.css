@@ -7,34 +7,26 @@
 .sigma-tab-header {
   position: relative;
   width: 100%;
+  margin: 0;
   box-sizing: border-box;
-  padding: 22px 32px;
-  min-height: 96px;
+  padding: 6px 14px;
+  min-height: 38px;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 20px;
+  gap: 10px;
   flex-shrink: 0;
-  border-bottom: 1px solid rgba(0, 210, 255, 0.2);
-  background: linear-gradient(135deg, rgba(10, 14, 26, 0.88) 0%, rgba(14, 22, 42, 0.82) 100%);
-  backdrop-filter: blur(16px) saturate(180%);
-  -webkit-backdrop-filter: blur(16px) saturate(180%);
-  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.45);
-  overflow: hidden;
-  transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(10, 14, 26, 0.75);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  transition: all 0.2s ease;
   z-index: 10;
 }
 
-/* Luminous Bottom Accent Line */
+/* Luminous Bottom Accent Line — Hidden in compact header */
 .sigma-tab-header::after {
-  content: '';
-  position: absolute;
-  left: 0;
-  bottom: 0;
-  width: 100%;
-  height: 1px;
-  background: linear-gradient(90deg, transparent 0%, rgba(0, 210, 255, 0.7) 30%, rgba(188, 140, 255, 0.6) 70%, transparent 100%);
-  pointer-events: none;
+  display: none;
 }
 
 /* Optional Background Image Overlay (with smooth cyber blending) */
@@ -47,14 +39,14 @@
 /* Light Theme Variant */
 .theme-light .sigma-tab-header,
 [data-theme="light"] .sigma-tab-header {
-  background: linear-gradient(135deg, rgba(254, 252, 247, 0.88) 0%, rgba(246, 240, 228, 0.84) 100%);
-  border-bottom: 1px solid rgba(234, 88, 12, 0.25);
-  box-shadow: 0 8px 24px rgba(234, 88, 12, 0.08);
+  background: rgba(255, 255, 255, 0.85);
+  border-bottom: 1px solid rgba(0, 0, 0, 0.08);
+  box-shadow: none;
 }
 
 .theme-light .sigma-tab-header::after,
 [data-theme="light"] .sigma-tab-header::after {
-  background: linear-gradient(90deg, transparent 0%, rgba(234, 88, 12, 0.8) 30%, rgba(217, 119, 6, 0.6) 70%, transparent 100%);
+  display: none;
 }
 
 /* --- LEFT CONTENT (Badge, Title, Subtitle) --- */
@@ -190,18 +182,18 @@
   z-index: 2;
 }
 
-/* Standard Header Action Buttons */
+/* Standard Header Action Buttons — Compact cyber style */
 .sigma-tab-btn {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 7px;
-  padding: 8px 16px;
-  border-radius: 10px;
-  font-size: 0.8rem;
+  gap: 5px;
+  padding: 4px 10px;
+  border-radius: 6px;
+  font-size: 0.70rem;
   font-weight: 700;
   cursor: pointer;
-  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  transition: all 0.15s ease;
   white-space: nowrap;
   user-select: none;
   border: 1px solid transparent;
@@ -264,59 +256,21 @@
 
 @media (max-width: 900px) {
   .sigma-tab-header {
-    padding: 18px 20px;
-    gap: 16px;
-  }
-  
-  .sigma-tab-title {
-    font-size: 1.25rem;
+    padding: 6px 12px;
+    gap: 8px;
+    margin: 0;
   }
 }
 
 @media (max-width: 640px) {
   .sigma-tab-header {
-    flex-direction: column;
-    align-items: stretch;
-    padding: 14px 16px;
-    gap: 14px;
-    min-height: auto;
-  }
-
-  .sigma-tab-header-main {
-    width: 100%;
-    max-width: 100%;
-    gap: 5px;
-  }
-
-  .sigma-tab-title-row {
+    padding: 6px 10px;
     gap: 8px;
-  }
-
-  .sigma-tab-icon-wrapper {
-    width: 32px;
-    height: 32px;
-    border-radius: 8px;
-  }
-
-  .sigma-tab-title {
-    font-size: 1.15rem;
-  }
-
-  .sigma-tab-subtitle {
-    font-size: 0.76rem;
-    line-height: 1.4;
+    margin: 0;
+    min-height: 38px;
   }
 
   .sigma-tab-header-actions {
-    width: 100%;
-    justify-content: flex-start;
-    gap: 8px;
-  }
-
-  .sigma-tab-btn {
-    flex: 1;
-    min-width: 120px;
-    padding: 8px 12px;
-    font-size: 0.75rem;
+    gap: 6px;
   }
 }

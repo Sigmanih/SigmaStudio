@@ -596,22 +596,22 @@ export default function MarketplaceTab({ openTab }) {
       flexDirection: 'column',
       background: isLight ? '#f7f4ed' : 'var(--bg-main, #0e1016)',
       color: textPrimary,
-      overflowY: 'auto',
+      overflow: 'hidden',
       padding: '0'
     }}>
-      {/* Unified Kernel Tab Header */}
+      {/* Unified Kernel Tab Header — Stile Compatto Bacheca & Chat */}
       <TabHeader
-        badge="Σ HUB SKILLS & ESTENSIONI KERNEL"
-        badgeIcon={Package}
         icon={activeSubTab === 'installed' ? Cpu : Sparkles}
-        title="Skills & Moduli / "
-        highlight={activeSubTab === 'installed' ? `Moduli Installati (${installedCount})` : `Catalogo Moduli (${filteredAvailableToInstall.length})`}
+        title="Skills & Moduli"
+        tabs={[
+          { id: 'installed', label: `Installati (${installedCount})`, icon: Cpu, active: activeSubTab === 'installed', onClick: () => setActiveSubTab('installed') },
+          { id: 'remote', label: `Catalogo (${filteredAvailableToInstall.length})`, icon: Sparkles, active: activeSubTab === 'remote', onClick: () => setActiveSubTab('remote') }
+        ]}
         description={
           activeSubTab === 'installed'
             ? 'Visualizza e gestisci i moduli nativi integrati nel kernel e le estensioni opzionali attive.'
             : 'Esplora e installa nuovi moduli e funzionalità aggiuntive direttamente da repository Git esterni.'
         }
-        bannerImage="/images/sigma_logo_harmonic_flow.jpg"
         actions={
           <button
             onClick={handleTriggerRebuild}
@@ -619,14 +619,14 @@ export default function MarketplaceTab({ openTab }) {
             className="sigma-tab-btn sigma-tab-btn-primary"
             title="Esegui rebuild del frontend di Sigma Studio"
           >
-            <RefreshCw size={15} className={isRebuilding ? 'animate-spin' : ''} />
-            <span>{isRebuilding ? 'Ricompilazione in corso...' : 'Rebuild Bundle'}</span>
+            <RefreshCw size={12} className={isRebuilding ? 'spin' : ''} />
+            <span>{isRebuilding ? 'Ricompilazione...' : 'Rebuild Bundle'}</span>
           </button>
         }
       />
 
       {/* Main Content Area — Full Width */}
-      <div style={{ padding: '16px 20px', width: '100%', boxSizing: 'border-box', flex: 1 }}>
+      <div style={{ padding: '16px 20px', width: '100%', boxSizing: 'border-box', flex: 1, overflowY: 'auto' }}>
         
         {/* Search & Filter Bar */}
         <div style={{

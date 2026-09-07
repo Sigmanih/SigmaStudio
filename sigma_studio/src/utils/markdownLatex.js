@@ -113,7 +113,7 @@ function renderLatexInText(text, katexBlocks = null) {
 function linkifyPaths(text) {
   if (typeof text !== 'string') return '';
   return text.replace(
-    /((?:data\/|manifesti\/)[^\s<>"'`]+\.(?:md|py|html|js|jsx|css|json|txt|png|jpg|jpeg|webp|svg|gif))/gi,
+    /((?:data\/|manifesti\/|Ruoli\/|ruoli\/)[^\s<>"'`]+\.(?:md|py|html|js|jsx|css|json|txt|png|jpg|jpeg|webp|svg|gif))/gi,
     (match) => {
       const isImage = /\.(?:png|jpg|jpeg|webp|svg|gif)$/i.test(match);
       if (isImage) {

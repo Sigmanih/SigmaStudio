@@ -499,7 +499,7 @@ export default function LocalInventory({
       familyKey,
       category,
       hasBenchmark: !!m.benchmark_summary?.has_benchmarks,
-      isPublished: Boolean(repoId)
+      isPublished: Boolean(repoId || m.is_published || m.published || m.publication?.repo_id)
     };
   };
 
@@ -1220,6 +1220,29 @@ export default function LocalInventory({
                                     </span>
                                   )}
 
+                                  {/* Flag "Pubblicato" accanto al tag della % dei test fatti dal benchmark */}
+                                  {isPublished && (
+                                    <a
+                                      href={m.publication?.url || (m.publication?.repo_id ? `https://huggingface.co/${m.publication.repo_id}` : '#')}
+                                      target="_blank"
+                                      rel="noreferrer"
+                                      title={`Pubblicato su Hugging Face: ${m.publication?.repo_id || ''}\nClicca per aprire la scheda online`}
+                                      onClick={(e) => e.stopPropagation()}
+                                      style={{
+                                        fontSize: '0.58rem', fontWeight: 800, padding: '2px 7px', borderRadius: '5px',
+                                        background: 'rgba(16, 185, 129, 0.15)', border: '1px solid rgba(16, 185, 129, 0.38)', color: '#10b981',
+                                        display: 'inline-flex', alignItems: 'center', gap: '3px', textDecoration: 'none', cursor: 'pointer',
+                                        transition: 'all 0.15s ease'
+                                      }}
+                                    >
+                                      <CheckCircle2 size={10} color="#10b981" />
+                                      <span>Pubblicato</span>
+                                      {m.publication?.repo_id && (
+                                        <ExternalLink size={9} style={{ opacity: 0.75 }} />
+                                      )}
+                                    </a>
+                                  )}
+
                                   {/* Incomplete Warning Badge */}
                                   {(!m.is_complete || m.has_part_files) && (
                                     <span style={{
@@ -1418,10 +1441,10 @@ export default function LocalInventory({
                                         {/* Top Benchmark Summary Line */}
                                         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '8px' }}>
                                           <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-                                            <div style={{
-                                              width: '24px', height: '24px', borderRadius: '6px',
-                                              background: 'rgba(255, 184, 108, 0.20)', display: 'flex', alignItems: 'center', justifyContent: 'center'
-                                            }}>
+                                              <div style={{
+                                                width: '24px', height: '24px', borderRadius: '6px',
+                                                background: 'rgba(255, 184, 108, 0.20)', display: 'flex', alignItems: 'center', justifyContent: 'center'
+                                              }}>
                                               <Trophy size={13} color="#ffb86c" />
                                             </div>
                                             <span style={{ fontSize: '0.74rem', fontWeight: 900, color: textPrimary }}>
@@ -1433,6 +1456,27 @@ export default function LocalInventory({
                                             }}>
                                               🏆 {bmScore}% Pass
                                             </span>
+
+                                            {/* Flag Pubblicato */}
+                                            {isPublished && (
+                                              <a
+                                                href={m.publication?.url || (m.publication?.repo_id ? `https://huggingface.co/${m.publication.repo_id}` : '#')}
+                                                target="_blank"
+                                                rel="noreferrer"
+                                                title={`Modello pubblicato su Hugging Face: ${m.publication?.repo_id || ''}`}
+                                                onClick={(e) => e.stopPropagation()}
+                                                style={{
+                                                  fontSize: '0.70rem', fontWeight: 800, color: '#10b981',
+                                                  padding: '2px 8px', borderRadius: '5px', background: 'rgba(16, 185, 129, 0.15)',
+                                                  border: '1px solid rgba(16, 185, 129, 0.38)', display: 'inline-flex', alignItems: 'center', gap: '4px',
+                                                  textDecoration: 'none', cursor: 'pointer'
+                                                }}
+                                              >
+                                                <CheckCircle2 size={11} color="#10b981" />
+                                                <span>Pubblicato</span>
+                                                {m.publication?.repo_id && <ExternalLink size={10} style={{ opacity: 0.8 }} />}
+                                              </a>
+                                            )}
 
                                             {totalTests > 0 && (
                                               <span style={{ fontSize: '0.70rem', color: textPrimary, fontWeight: 700 }}>
