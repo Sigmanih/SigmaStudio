@@ -33,6 +33,7 @@ import os
 import re
 import shutil
 import subprocess
+import tempfile
 import threading
 import time
 from dataclasses import dataclass, field
@@ -191,12 +192,19 @@ class Rispecchiamento:
             )
 
 
-def mirror_tree(sorgente: Path, destinazione: Path) -> Rispecchiamento:
+def mirror_tree(sorgente: Path, destinazione: Path,
+                apply: bool = True) -> Rispecchiamento:
     """Rende `destinazione` identica a `sorgente`, cancellazioni comprese.
 
     Cancellare e' la meta' che serve davvero: senza, un file rinominato qui
     resta anche col vecchio nome nel repository, e chi installa il modulo si
     ritrova due versioni dello stesso codice.
+
+    Con `apply=False` calcola e basta, senza toccare niente. Serve alla prova
+    a vuoto, che altrimenti non sarebbe una prova: rispecchiando davvero,
+    consumava le differenze che stava elencando, e la volta dopo dichiarava
+    tutto allineato. Chi guardava il pannello avrebbe letto "niente da
+    pubblicare" su del lavoro mai pubblicato.
     """
     esito = Rispecchiamento()
     if not sorgente.is_dir():
@@ -218,21 +226,25 @@ def mirror_tree(sorgente: Path, destinazione: Path) -> Rispecchiamento:
         dst = destinazione / relativo
         chiave = str(relativo).replace("\\", "/")
         if not dst.exists():
-            dst.parent.mkdir(parents=True, exist_ok=True)
-            _copia(src, dst)
+            if apply:
+                dst.parent.mkdir(parents=True, exist_ok=True)
+                _copia(src, dst)
             esito.aggiunti.append(chiave)
         elif not filecmp.cmp(src, dst, shallow=False):
-            _copia(src, dst)
+            if apply:
+                _copia(src, dst)
             esito.modificati.append(chiave)
 
     if destinazione.is_dir():
         for relativo in list(_file_rilevanti(destinazione)):
             if relativo in attesi:
                 continue
-            (destinazione / relativo).unlink(missing_ok=True)
+            if apply:
+                (destinazione / relativo).unlink(missing_ok=True)
             esito.rimossi.append(str(relativo).replace("\\", "/"))
 
-    _rimuovi_cartelle_vuote(destinazione)
+    if apply:
+        _rimuovi_cartelle_vuote(destinazione)
     return esito
 
 
@@ -250,10 +262,15 @@ def _rimuovi_cartelle_vuote(radice: Path) -> None:
             pass
 
 
-def stage_module(modulo: ModuloLocale, radice_repo: Path) -> Rispecchiamento:
-    """Porta un modulo dall'albero vivo dentro la copia del suo repository."""
+def stage_module(modulo: ModuloLocale, radice_repo: Path,
+                 apply: bool = True) -> Rispecchiamento:
+    """Porta un modulo dall'albero vivo dentro la copia del suo repository.
+
+    Con `apply=False` dice soltanto cosa cambierebbe.
+    """
     destinazione = radice_repo / modulo.path_nel_repo
-    destinazione.mkdir(parents=True, exist_ok=True)
+    if apply:
+        destinazione.mkdir(parents=True, exist_ok=True)
 
     esito = Rispecchiamento()
 
@@ -265,23 +282,30 @@ def stage_module(modulo: ModuloLocale, radice_repo: Path) -> Rispecchiamento:
         if not origine.is_file():
             continue
         if not arrivo.exists():
-            _copia(origine, arrivo)
+            if apply:
+                arrivo.parent.mkdir(parents=True, exist_ok=True)
+                _copia(origine, arrivo)
             esito.aggiunti.append(nome)
         elif not filecmp.cmp(origine, arrivo, shallow=False):
-            _copia(origine, arrivo)
+            if apply:
+                _copia(origine, arrivo)
             esito.modificati.append(nome)
 
     # Il backend, meno i file di radice che hanno gia' il loro posto.
-    backend_esito = _mirror_backend(modulo.backend_dir, destinazione / "backend")
+    backend_esito = _mirror_backend(modulo.backend_dir, destinazione / "backend", apply)
     esito.unisci(backend_esito, "backend/")
 
     if modulo.frontend_dir:
-        esito.unisci(mirror_tree(modulo.frontend_dir, destinazione / "frontend"), "frontend/")
+        esito.unisci(
+            mirror_tree(modulo.frontend_dir, destinazione / "frontend", apply),
+            "frontend/",
+        )
 
     return esito
 
 
-def _mirror_backend(sorgente: Path, destinazione: Path) -> Rispecchiamento:
+def _mirror_backend(sorgente: Path, destinazione: Path,
+                    apply: bool = True) -> Rispecchiamento:
     """Come `mirror_tree`, ma senza i file che appartengono alla radice.
 
     Copiarli anche qui li duplicherebbe: il loader li rimettera' comunque nel
@@ -290,10 +314,11 @@ def _mirror_backend(sorgente: Path, destinazione: Path) -> Rispecchiamento:
     if not sorgente.is_dir():
         return Rispecchiamento()
 
-    temporanea = destinazione.parent / f".{destinazione.name}.staging"
-    if temporanea.exists():
-        shutil.rmtree(temporanea, ignore_errors=True)
-    temporanea.mkdir(parents=True, exist_ok=True)
+    # La cartella d'appoggio sta FUORI dal repository. Metterla dentro creava
+    # l'albero del modulo anche durante una prova a vuoto — che a quel punto
+    # non era piu' a vuoto — e lasciava una cartella nascosta dentro il
+    # repository se qualcosa si fermava a meta'.
+    temporanea = Path(tempfile.mkdtemp(prefix="sigma_module_sync_"))
     try:
         for relativo in _file_rilevanti(sorgente):
             if relativo.parent == Path(".") and relativo.name in FILE_DI_RADICE:
@@ -301,7 +326,7 @@ def _mirror_backend(sorgente: Path, destinazione: Path) -> Rispecchiamento:
             arrivo = temporanea / relativo
             arrivo.parent.mkdir(parents=True, exist_ok=True)
             _copia(sorgente / relativo, arrivo)
-        return mirror_tree(temporanea, destinazione)
+        return mirror_tree(temporanea, destinazione, apply)
     finally:
         shutil.rmtree(temporanea, ignore_errors=True)
 
@@ -453,7 +478,7 @@ def sync_modules(
 
         cambiati: Dict[str, Rispecchiamento] = {}
         for modulo in gruppo:
-            rispecchiato = stage_module(modulo, radice)
+            rispecchiato = stage_module(modulo, radice, apply=not dry_run)
             esito["skipped_secrets"].extend(
                 f"{modulo.module_id}/{s}" for s in rispecchiato.segreti_saltati
             )
@@ -579,6 +604,14 @@ PREDEFINITI: Dict[str, Any] = {
     #: senza attesa ogni battuta di "salva" diventerebbe un commit, e la
     #: storia del repository dei moduli sarebbe illeggibile.
     "min_interval_s": 180,
+    #: Se mostrare il pannello di pubblicazione nel Developer Studio.
+    #:
+    #: Spento di default, e non e' prudenza generica: pubblicare vuol dire
+    #: spingere su un repository che appartiene a qualcuno. Chi installa Sigma
+    #: Studio non ha i permessi su SigmaStudio-Moduli, e un pulsante che
+    #: fallisce sempre e' peggio di un pulsante assente. Lo accende chi quei
+    #: permessi ce li ha.
+    "show_publish_ui": False,
 }
 
 

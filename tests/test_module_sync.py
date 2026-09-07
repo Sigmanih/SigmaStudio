@@ -662,3 +662,81 @@ class TestUnaModificaNonSparisce:
         assert esito["success"] is False
         assert esito["committed"] is False
         assert any("git non registra" in e for e in esito["errors"])
+
+
+class TestIlPannelloDiPubblicazione:
+    """Pubblicare significa spingere su un repository che appartiene a
+    qualcuno: chi non ha quei permessi vedrebbe solo un pulsante che fallisce
+    sempre, ed e' peggio di un pulsante assente."""
+
+    def test_di_default_il_pannello_non_si_vede(self, albero_vivo):
+        assert module_sync.load_config()["show_publish_ui"] is False
+
+    def test_si_puo_accendere(self, albero_vivo):
+        module_sync.save_config({"show_publish_ui": True})
+        assert module_sync.load_config()["show_publish_ui"] is True
+
+    def test_esiste_una_rotta_che_lo_dice_all_interfaccia(self):
+        import inspect
+        from core import fastapi_app
+
+        assert '"/api/modules/sync/config"' in inspect.getsource(fastapi_app)
+
+    def test_il_pannello_e_montato_nel_developer_studio(self):
+        """Il difetto ricorrente di questo progetto: scritto, testato, scollegato."""
+        from pathlib import Path
+
+        studio = Path("sigma_studio/src/modules/sigma_developer_lab/DeveloperStudio.jsx")
+        if not studio.is_file():
+            pytest.skip("modulo Developer Studio non installato")
+        sorgente = studio.read_text(encoding="utf-8")
+        assert "import ModulePublisher" in sorgente
+        assert "<ModulePublisher" in sorgente
+
+
+class TestLaProvaAVuotoNonConsumaLeDifferenze:
+    """Difetto visto guardando il pannello: la prova a vuoto rispecchiava
+    davvero, quindi consumava le differenze che stava elencando. Al secondo
+    aggiornamento l'elenco si svuotava e chi guardava leggeva «tutto
+    allineato» su del lavoro mai pubblicato — la bugia peggiore che un
+    pannello di pubblicazione possa dire."""
+
+    def test_due_prove_di_fila_dicono_la_stessa_cosa(self, albero_vivo, remoto):
+        _scrivi_modulo(albero_vivo, str(remoto))
+
+        prima = module_sync.sync_modules(dry_run=True)
+        seconda = module_sync.sync_modules(dry_run=True)
+
+        assert seconda["changed"] == prima["changed"]
+        assert "modulo_prova" in seconda["changed"]
+
+    def test_la_prova_non_scrive_nella_copia_di_lavoro(self, albero_vivo, remoto):
+        _scrivi_modulo(albero_vivo, str(remoto))
+
+        module_sync.sync_modules(dry_run=True)
+
+        copia = module_sync.repo_workdir(str(remoto))
+        assert not (copia / "modules" / "modulo_prova").exists()
+        assert _git(["status", "--porcelain"], copia).stdout.strip() == ""
+
+    def test_dopo_la_prova_la_pubblicazione_vera_funziona(
+        self, albero_vivo, remoto, tmp_path
+    ):
+        _scrivi_modulo(albero_vivo, str(remoto))
+
+        module_sync.sync_modules(dry_run=True)
+        module_sync.sync_modules(dry_run=True)
+        esito = module_sync.sync_modules(push=True)
+
+        assert esito["success"] is True, esito["errors"]
+        verifica = tmp_path / "verifica_dopo_prove"
+        _git(["clone", str(remoto), str(verifica)], tmp_path)
+        assert (verifica / "modules/modulo_prova/backend/handlers.py").is_file()
+
+    def test_dopo_la_pubblicazione_la_prova_dice_che_non_resta_niente(
+        self, albero_vivo, remoto
+    ):
+        _scrivi_modulo(albero_vivo, str(remoto))
+        module_sync.sync_modules(push=True)
+
+        assert module_sync.sync_modules(dry_run=True)["changed"] == {}
