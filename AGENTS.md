@@ -79,6 +79,26 @@ Il server di sviluppo si avvia con `python sigma_server.py` sulla porta 8000.
 Non avviarlo per verificare una modifica al backend: un import basta ed e'
 istantaneo.
 
+### Quando la prova non e' una suite di test
+
+Certi lavori non si dimostrano con pytest. Che ogni chiave di traduzione esista
+in ogni lingua, che nessun modulo dichiari una rotta inesistente, che nessun
+file superi un limite: sono controlli scritti apposta, e per contare come prova
+devono dire **quanti elementi hanno esaminato**. Un controllo che non ha
+guardato niente esce con codice zero esattamente come uno che ha guardato tutto
+senza trovare nulla.
+
+Fai emettere al tuo controllo una riga come questa, l'ultima dell'output:
+
+```
+SIGMA-CHECK {"check": "i18n", "checked": 214, "problems": 0}
+```
+
+`checked` e' il numero di elementi esaminati, `problems` quelli con un problema.
+L'harness la legge: con `checked` a zero, o senza la riga, il controllo **non**
+vale come verifica e il cancello di completamento resta chiuso. Esci con codice
+diverso da zero quando `problems` non e' zero.
+
 ## Lingua e stile
 
 - Rispondi in italiano. I commenti nel codice: in italiano quelli nuovi,
