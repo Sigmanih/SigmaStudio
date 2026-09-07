@@ -136,6 +136,25 @@ def discover_modules() -> List[ModuloLocale]:
 # ---------------------------------------------------------------------------
 
 
+def _copia(sorgente: Path, destinazione: Path) -> None:
+    """Copia il contenuto, non la data.
+
+    `shutil.copy2` avrebbe portato con se' anche la data del file di partenza,
+    e li' nasceva un difetto intermittente: git decide se un file e' cambiato
+    guardando prima la coppia (data, dimensione) registrata nell'indice, e solo
+    se una delle due e' diversa va a rileggere il contenuto. Due versioni della
+    stessa riga hanno la stessa dimensione; con la data ereditata dal sorgente
+    capitava che coincidesse anche quella, e allora `git status` dichiarava il
+    file invariato. La modifica era sul disco, il commit non partiva, e non lo
+    diceva nessuno.
+
+    Una data nuova a ogni copia toglie il caso: e' sempre piu' recente di
+    quella nell'indice. Del resto qui non si sta facendo un backup, si sta
+    pubblicando: la data che conta e' quella del commit.
+    """
+    shutil.copyfile(sorgente, destinazione)
+
+
 def _da_ignorare(nome: str) -> bool:
     if nome in ESCLUSI:
         return True
@@ -200,10 +219,10 @@ def mirror_tree(sorgente: Path, destinazione: Path) -> Rispecchiamento:
         chiave = str(relativo).replace("\\", "/")
         if not dst.exists():
             dst.parent.mkdir(parents=True, exist_ok=True)
-            shutil.copy2(src, dst)
+            _copia(src, dst)
             esito.aggiunti.append(chiave)
         elif not filecmp.cmp(src, dst, shallow=False):
-            shutil.copy2(src, dst)
+            _copia(src, dst)
             esito.modificati.append(chiave)
 
     if destinazione.is_dir():
@@ -246,10 +265,10 @@ def stage_module(modulo: ModuloLocale, radice_repo: Path) -> Rispecchiamento:
         if not origine.is_file():
             continue
         if not arrivo.exists():
-            shutil.copy2(origine, arrivo)
+            _copia(origine, arrivo)
             esito.aggiunti.append(nome)
         elif not filecmp.cmp(origine, arrivo, shallow=False):
-            shutil.copy2(origine, arrivo)
+            _copia(origine, arrivo)
             esito.modificati.append(nome)
 
     # Il backend, meno i file di radice che hanno gia' il loro posto.
@@ -281,7 +300,7 @@ def _mirror_backend(sorgente: Path, destinazione: Path) -> Rispecchiamento:
                 continue
             arrivo = temporanea / relativo
             arrivo.parent.mkdir(parents=True, exist_ok=True)
-            shutil.copy2(sorgente / relativo, arrivo)
+            _copia(sorgente / relativo, arrivo)
         return mirror_tree(temporanea, destinazione)
     finally:
         shutil.rmtree(temporanea, ignore_errors=True)
@@ -462,6 +481,24 @@ def sync_modules(
         _esegui_git(["add", "-A"], radice)
         stato = _esegui_git(["status", "--porcelain"], radice)
         if not stato.stdout.strip():
+            # Il rispecchiamento ha scritto qualcosa e git non lo vede: e' la
+            # cache di stat dell'indice. Si forza una rilettura vera invece di
+            # concludere che non c'era niente da fare — e' esattamente cosi'
+            # che una modifica spariva senza un messaggio.
+            log.warning(
+                "[ModuleSync] %s: %d moduli modificati ma git non vede nulla, "
+                "rileggo l'indice", repository, len(cambiati),
+            )
+            _esegui_git(["update-index", "--really-refresh"], radice)
+            _esegui_git(["add", "-A"], radice)
+            stato = _esegui_git(["status", "--porcelain"], radice)
+        if not stato.stdout.strip():
+            esito["success"] = False
+            esito["errors"].append(
+                f"{repository}: {len(cambiati)} moduli risultano modificati ma "
+                "git non registra alcuna differenza. Il lavoro e' in "
+                f"{radice}: controllalo prima di rifare la sincronizzazione."
+            )
             continue
 
         commit = _esegui_git(
@@ -639,3 +676,60 @@ def auto_sync_in_background(paths_toccati: Iterable[str], nota: str = "") -> Non
         name="module-sync",
         daemon=True,
     ).start()
+
+
+# ---------------------------------------------------------------------------
+# Uso da riga di comando
+# ---------------------------------------------------------------------------
+#     python -m core.module_sync            cosa partirebbe, senza far partire niente
+#     python -m core.module_sync --push     pubblica
+#     python -m core.module_sync --push --module sigma_network
+
+
+def _main(argv: Optional[List[str]] = None) -> int:
+    import argparse
+
+    parser = argparse.ArgumentParser(
+        description="Riporta il lavoro fatto sui moduli nel loro repository.",
+    )
+    parser.add_argument("--push", action="store_true",
+                        help="pubblica sul remoto (senza, si ferma al commit locale)")
+    parser.add_argument("--module", action="append", dest="modules", metavar="ID",
+                        help="limita a un modulo; ripetibile")
+    parser.add_argument("--note", default="", help="riga di contesto nel messaggio di commit")
+    parser.add_argument("--commit", action="store_true",
+                        help="committa in locale (senza --push ne' --commit e' una prova a vuoto)")
+    args = parser.parse_args(argv)
+
+    esito = sync_modules(
+        module_ids=args.modules,
+        push=args.push,
+        nota=args.note,
+        dry_run=not (args.push or args.commit),
+    )
+
+    cambiati = esito.get("changed") or {}
+    if not cambiati:
+        print("Nessuna modifica da pubblicare.")
+    for nome in sorted(cambiati):
+        c = cambiati[nome]
+        print("%-26s +%-4d ~%-4d -%d" % (
+            nome, len(c["aggiunti"]), len(c["modificati"]), len(c["rimossi"])))
+
+    for sospetto in esito.get("skipped_secrets") or []:
+        print(f"NON pubblicato (sembra una credenziale): {sospetto}")
+
+    if esito.get("dry_run") and cambiati:
+        print("\nProva a vuoto: niente e' stato committato. Aggiungi --push per pubblicare.")
+    elif esito.get("pushed"):
+        print("\nPubblicato.")
+    elif esito.get("committed"):
+        print("\nCommit creato in locale, non pubblicato. Aggiungi --push per mandarlo.")
+
+    for errore in esito.get("errors") or []:
+        print(f"ERRORE: {errore}")
+    return 0 if esito.get("success") else 1
+
+
+if __name__ == "__main__":
+    raise SystemExit(_main())

@@ -543,3 +543,122 @@ class TestUnaCopiaDiLavoroSporca:
 
         assert errore == ""
         assert "modulo_prova" in _git(["log", "--oneline"], radice).stdout
+
+
+class TestRigaDiComando:
+    """Con il push a mano, la riga di comando e' il gesto quotidiano: se non
+    funziona, l'automatismo a meta' non serve a niente."""
+
+    def test_senza_argomenti_e_una_prova_a_vuoto(self, albero_vivo, remoto, capsys, tmp_path):
+        _scrivi_modulo(albero_vivo, str(remoto))
+
+        assert module_sync._main([]) == 0
+
+        assert "modulo_prova" in capsys.readouterr().out
+        verifica = tmp_path / "verifica_cli"
+        _git(["clone", str(remoto), str(verifica)], tmp_path)
+        assert not (verifica / "modules").exists()
+
+    def test_push_pubblica(self, albero_vivo, remoto, tmp_path):
+        _scrivi_modulo(albero_vivo, str(remoto))
+
+        assert module_sync._main(["--push"]) == 0
+
+        verifica = tmp_path / "verifica_cli2"
+        _git(["clone", str(remoto), str(verifica)], tmp_path)
+        assert (verifica / "modules/modulo_prova/backend/handlers.py").is_file()
+
+    def test_commit_senza_push_si_ferma_in_locale(self, albero_vivo, remoto, tmp_path):
+        _scrivi_modulo(albero_vivo, str(remoto))
+
+        assert module_sync._main(["--commit"]) == 0
+
+        verifica = tmp_path / "verifica_cli3"
+        _git(["clone", str(remoto), str(verifica)], tmp_path)
+        assert not (verifica / "modules").exists()
+        copia = module_sync.repo_workdir(str(remoto))
+        assert "modulo_prova" in _git(["log", "--oneline"], copia).stdout
+
+    def test_un_errore_si_vede_nel_codice_di_uscita(self, albero_vivo, remoto, monkeypatch):
+        _scrivi_modulo(albero_vivo, str(remoto))
+        monkeypatch.setattr(module_sync, "sync_modules",
+                            lambda **kw: {"success": False, "errors": ["rotto"], "changed": {}})
+        assert module_sync._main(["--push"]) == 1
+
+
+class TestUnaModificaNonSparisce:
+    """Difetto vero e intermittente, trovato riproducendolo: la modifica
+    finiva nella copia di lavoro e il commit non partiva.
+
+    `shutil.copy2` portava con se' anche la data del file di partenza, e git
+    decide se un file e' cambiato guardando prima la coppia (data, dimensione)
+    registrata nell'indice: due versioni della stessa riga hanno la stessa
+    dimensione, e quando coincideva anche la data `git status` dichiarava il
+    file invariato. Una volta su quattro, `VERSIONE = 2` restava a terra e
+    nessuno lo diceva.
+    """
+
+    def test_la_copia_non_eredita_la_data_del_sorgente(self, tmp_path):
+        """E' la causa in una riga: una data nuova e' sempre piu' recente di
+        quella nell'indice, e git va a rileggere il contenuto."""
+        import os
+        import time
+
+        src, dst = tmp_path / "a", tmp_path / "b"
+        src.mkdir()
+        f = src / "uno.py"
+        f.write_text("X = 1\n", encoding="utf-8")
+        vecchia = time.time() - 86400
+        os.utime(f, (vecchia, vecchia))
+
+        mirror_tree(src, dst)
+
+        assert (dst / "uno.py").stat().st_mtime > vecchia + 3600, (
+            "la copia ha ereditato la data del sorgente: git puo' non "
+            "accorgersi della modifica"
+        )
+
+    def test_due_versioni_della_stessa_lunghezza_arrivano_entrambe(
+        self, albero_vivo, remoto, tmp_path
+    ):
+        """La forma esatta del difetto: stessa dimensione, scritture ravvicinate."""
+        backend, _ = _scrivi_modulo(albero_vivo, str(remoto))
+
+        for versione in ("2", "3", "4"):
+            (backend / "handlers.py").write_text(
+                f"VERSIONE = {versione}\n", encoding="utf-8")
+            esito = module_sync.sync_modules(push=True)
+            assert esito["success"] is True, esito["errors"]
+
+            verifica = tmp_path / f"verifica_{versione}"
+            _git(["clone", str(remoto), str(verifica)], tmp_path)
+            assert (verifica / "modules/modulo_prova/backend/handlers.py").read_text(
+                encoding="utf-8") == f"VERSIONE = {versione}\n", (
+                f"la versione {versione} non e' arrivata sul remoto"
+            )
+
+    def test_una_contraddizione_fra_mirror_e_git_viene_detta(
+        self, albero_vivo, remoto, monkeypatch
+    ):
+        """Se il rispecchiamento dice che qualcosa e' cambiato e git dice di no,
+        la sincronizzazione deve fallire rumorosamente invece di concludere che
+        non c'era niente da fare."""
+        _scrivi_modulo(albero_vivo, str(remoto))
+
+        vero = module_sync._esegui_git
+
+        def git_cieco(args, cwd, timeout_s=120.0):
+            if args and args[0] == "status":
+                class Muto:
+                    returncode = 0
+                    stdout = ""
+                    stderr = ""
+                return Muto()
+            return vero(args, cwd, timeout_s)
+
+        monkeypatch.setattr(module_sync, "_esegui_git", git_cieco)
+        esito = module_sync.sync_modules(push=True)
+
+        assert esito["success"] is False
+        assert esito["committed"] is False
+        assert any("git non registra" in e for e in esito["errors"])
