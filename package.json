@@ -1,7 +1,7 @@
 {
   "name": "sigma-studio",
   "version": "6.0.0",
-  "license": "(GPL-3.0-only OR LicenseRef-Commercial)",
+  "license": "(AGPL-3.0-only OR LicenseRef-Commercial)",
   "private": false,
   "scripts": {
     "postinstall": "npm --prefix sigma_studio install",

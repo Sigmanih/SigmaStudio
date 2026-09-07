@@ -175,5 +175,15 @@ Tutti i test del kernel verificano la governance MCP, il routing agenti, le API 
 
 ---
 
-## 📜 Licenza & Aggiornamenti
-Sigma Studio è rilasciato sotto licenza **Apache-2.0**. Nuove funzionalità ed ottimizzazioni del kernel vengono rilasciate con frequenza costante sul [Repository GitHub Ufficiale](https://github.com/Sigmanih/SigmaStudio).
+## 📜 Licenza & Modello Dual License
+Sigma Studio è un software open source distribuito con modello **Dual License**:
+- **GNU Affero General Public License v3 (AGPL-3.0)** per la comunità open source, sviluppatori e ricercatori.
+- **Licenza Commerciale Proprietaria** per aziende, integrazioni OEM e distribuzione SaaS chiusa.
+
+Consulta il file [LICENSE](file:///LICENSE) per i termini contrattuali completi, le linee guida sui marchi (Trademark Policy) e le informazioni di contatto per licenze commerciali.
+
+### Contributi e Community
+- [CONTRIBUTING.md](file:///CONTRIBUTING.md) — Guida ai contributi, DCO e accordo di contribuzione CLA
+- [SECURITY.md](file:///SECURITY.md) — Policy per la segnalazione responsabile delle vulnerabilità
+- [CODE_OF_CONDUCT.md](file:///CODE_OF_CONDUCT.md) — Codice di condotta Contributor Covenant v2.1
+- [Repository GitHub Ufficiale](https://github.com/Sigmanih/SigmaStudio) — Rilasci e aggiornamenti
