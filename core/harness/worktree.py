@@ -14,11 +14,14 @@ sviluppo:
 1. L'agente legge, scrive e compila in una copia fisica del repository.
 2. A ogni turno concluso viene creato un checkpoint (commit locale sul branch di
    sessione).
-3. Se l'agente va in stallo o sbaglia approccio, un rollback ripristina
-   istantaneamente l'albero di lavoro all'esatto checkpoint desiderato via
-   `git reset --hard`.
-4. Al termine del run, le modifiche possono essere trasferite sull'albero
-   principale (tramite merge/checkout) oppure eliminate senza lasciare residui.
+3. `rollback()` riporta l'albero a un checkpoint preciso via `git reset
+   --hard`. E' un'operazione disponibile, non automatica: nessuno la invoca da
+   solo, perche' uno stallo del modello non dice che il codice scritto fino a
+   quel punto sia sbagliato, e annullarlo d'ufficio butterebbe via lavoro buono.
+   Chi la usa deve essere qualcuno che ha guardato.
+4. Al termine del run, a obiettivo raggiunto le modifiche passano sull'albero
+   principale. **Altrimenti restano sul branch della sessione**: non vengono
+   cancellate. Vedi `release_session_worktree` per il perche'.
 """
 
 import os
@@ -67,6 +70,11 @@ class WorktreeSession:
     repo_root: Path
     worktree_path: Path
     branch_name: str
+    #: Il commit da cui il worktree e' partito. E' la base rispetto a cui si
+    #: calcola cosa ha fatto il run: contare i checkpoint per risalire indietro
+    #: con `HEAD~N` da' la stessa risposta solo finche' i due numeri coincidono,
+    #: e smettono di coincidere al primo rollback o al primo checkpoint fallito.
+    base_commit: str = ""
     checkpoints: List[Dict[str, Any]] = field(default_factory=list)
 
     def checkpoint(self, turn_idx: int, message: str = "") -> Optional[str]:
@@ -142,8 +150,15 @@ class WorktreeSession:
         if not self.worktree_path.is_dir() or not self.repo_root.is_dir():
             return False
         try:
+            # L'ultimo turno puo' avere scritto dopo l'ultimo checkpoint: il
+            # diff guarda solo cio' che e' stato committato, e senza questo si
+            # perderebbe in silenzio proprio la modifica finale — quella che
+            # ha chiuso l'obiettivo.
+            self.checkpoint(len(self.checkpoints) + 1, "chiusura del run")
+
             # Crea una patch unificata dal branch del worktree e applicala sul repo originario
-            diff_res = _run_git(["diff", f"HEAD~{len(self.checkpoints)}", "HEAD"], cwd=self.worktree_path)
+            base = self.base_commit or f"HEAD~{len(self.checkpoints)}"
+            diff_res = _run_git(["diff", base, "HEAD"], cwd=self.worktree_path)
             patch = diff_res.stdout
             if not patch.strip():
                 return True  # Nessuna modifica da applicare
@@ -166,8 +181,19 @@ class WorktreeSession:
             log.error("[Worktree] Errore applicazione a main: %s", exc)
             return False
 
+    def has_work(self) -> bool:
+        """True se almeno un checkpoint ha davvero salvato qualcosa.
+
+        I checkpoint di turno si fanno con `--allow-empty`, quindi la loro
+        esistenza non dice nulla: un run che non ha toccato niente ne accumula
+        uno per turno. Cio' che conta e' se qualcuno di quei commit conteneva
+        modifiche vere, ed e' l'unica domanda che deve decidere se il branch
+        vale la pena di essere conservato.
+        """
+        return any(c.get("has_changes") for c in self.checkpoints)
+
     def close(self, discard_branch: bool = True) -> None:
-        """Rilascia il worktree e rimuove il branch temporaneo."""
+        """Rilascia il worktree. Il branch resta, se non si chiede di buttarlo."""
         try:
             # 1. Rimuovi il worktree tramite comando git
             if self.repo_root.is_dir():
@@ -218,11 +244,13 @@ def create_session_worktree(repo_root: Path | str, session_id: str) -> Optional[
             log.warning("[Worktree] Impossibile creare worktree per %s: %s", sid, res.stderr)
             return None
 
+        rev = _run_git(["rev-parse", "HEAD"], cwd=target_dir)
         session = WorktreeSession(
             session_id=sid,
             repo_root=root,
             worktree_path=target_dir,
             branch_name=branch_name,
+            base_commit=rev.stdout.strip() if rev.returncode == 0 else "",
         )
         _active_worktrees[sid] = session
         log.info("[Worktree] Isolamento attivato per sessione %s in %s", sid, target_dir)
@@ -237,15 +265,49 @@ def get_session_worktree(session_id: str) -> Optional[WorktreeSession]:
     return _active_worktrees.get(str(session_id or "").strip())
 
 
-def release_session_worktree(session_id: str, apply_changes: bool = False) -> bool:
-    """Chiude e rilascia il worktree di una sessione."""
+def release_session_worktree(session_id: str, apply_changes: bool = False) -> Dict[str, Any]:
+    """Chiude il worktree di una sessione e dice cosa ne e' stato del lavoro.
+
+    **Un run che non raggiunge l'obiettivo non e' un run da buttare.** Qui
+    prima si cancellava il branch ogni volta che `apply_changes` era falso, e
+    poiche' il cancello di completamento e' severo per costruzione — richiede
+    una verifica verde, non la parola dell'agente — "obiettivo non raggiunto"
+    e' l'esito ordinario, non quello eccezionale. Trenta turni di lavoro buono
+    sparivano perche' mancava l'ultimo passo, e sparivano in silenzio.
+
+    Adesso il branch resta. Costa una riga in `git branch` e vale l'intero
+    contenuto del run: chi non lo vuole lo cancella, chi lo vuole lo ritrova.
+    Si butta solo quando non c'e' niente da salvare, o quando il lavoro e' gia'
+    stato trasferito sull'albero principale.
+
+    Ritorna un resoconto: cosa e' stato applicato, quale branch e' rimasto, e
+    quanti checkpoint conteneva — serve a dirlo a chi ha lanciato il run,
+    perche' un branch di cui nessuno conosce il nome e' perso comunque.
+    """
     sid = str(session_id or "").strip()
     session = _active_worktrees.pop(sid, None)
     if session is None:
-        return False
+        return {"released": False, "applied": False, "branch": "", "checkpoints": 0}
 
-    success = True
+    aveva_lavoro = session.has_work()
+    applicato = False
     if apply_changes:
-        success = session.apply_to_main()
-    session.close(discard_branch=not apply_changes)
-    return success
+        applicato = session.apply_to_main()
+
+    # Il branch si butta solo se il lavoro e' al sicuro altrove, o se non c'e'.
+    scarta_branch = applicato or not aveva_lavoro
+    session.close(discard_branch=scarta_branch)
+
+    resoconto = {
+        "released": True,
+        "applied": applicato,
+        "branch": "" if scarta_branch else session.branch_name,
+        "checkpoints": len([c for c in session.checkpoints if c.get("has_changes")]),
+    }
+    if resoconto["branch"]:
+        log.info(
+            "[Worktree] Lavoro della sessione %s conservato sul branch '%s' "
+            "(%d checkpoint con modifiche)",
+            sid, resoconto["branch"], resoconto["checkpoints"],
+        )
+    return resoconto

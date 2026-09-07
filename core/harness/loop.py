@@ -1413,7 +1413,7 @@ def execute_admin_tool(
     return {"tool": tool_name, "success": False, "error": f"Tool sconosciuto: {tool_name}"}
 
 
-def stream_admin_agent_turn(
+def _stream_agent_turn_impl(
     messages: List[Dict[str, str]],
     workspace_root: Optional[str] = None,
     model_name: Optional[str] = None,
@@ -1434,6 +1434,7 @@ def stream_admin_agent_turn(
     provider: Optional[str] = None,
     review_writes: bool = False,
     isolate_worktree: bool = False,
+    _chiusura: Optional[Dict[str, Any]] = None,
 ) -> Generator[Dict[str, Any], None, None]:
     """
     Multi-Turn Autonomous Admin Developer Agent Loop:
@@ -1562,6 +1563,20 @@ def stream_admin_agent_turn(
     # sessione perche' chi decide arriva su una richiesta HTTP diversa da
     # quella che sta streammando il lavoro.
     review_gate = review.gate_for(session_id) if review_writes else None
+
+    # Cio' che va rilasciato viene dichiarato adesso, non alla fine: se il run
+    # viene abbandonato a meta' — l'utente preme stop, il client chiude lo
+    # stream — l'ultima riga di questa funzione non viene mai eseguita, mentre
+    # il worktree, il gate e la radice dichiarata restano. Chi chiude lo fa da
+    # fuori, e per farlo deve sapere cosa c'e' da chiudere.
+    if _chiusura is not None:
+        _chiusura.update({
+            "session_id": session_id,
+            "token_workspace": _token_workspace,
+            "review_gate": review_gate,
+            "worktree": session_wt,
+            "goal_reached": False,
+        })
 
     ledger, ripreso = resolve_ledger(session_id, ledger, goal_text, workspace_root)
     if current_pipeline:
@@ -2678,19 +2693,99 @@ def stream_admin_agent_turn(
         status="done" if goal_reached else "stopped",
     )
 
-    # La radice torna com'era: un run finito non deve lasciare il proprio
-    # progetto come predefinito per chi viene dopo sullo stesso thread.
-    reset_active_root(_token_workspace)
-    if review_gate is not None:
-        # Nessuno rispondera' piu' a proposte di un run finito, e lasciarle
-        # aperte terrebbe in vita decisioni che non hanno piu' un thread
-        # ad attenderle.
-        review.release_gate(session_id)
-
-    if session_wt is not None:
-        # Trasferisci le modifiche all'albero principale solo se l'obiettivo e' stato
-        # raggiunto con successo e tutte le verifiche sono state superate.
-        worktree.release_session_worktree(session_id, apply_changes=bool(goal_reached))
+    # La chiusura vera avviene fuori di qui, nel `finally` del chiamante, e
+    # vale anche per i run abbandonati. Qui si dice soltanto com'e' andata:
+    # e' l'unica cosa che quel `finally` non puo' sapere da solo.
+    if _chiusura is not None:
+        _chiusura["goal_reached"] = bool(goal_reached)
 
     yield {"type": "run_metrics", **run_metrics}
     yield {"type": "done", "full_text": full_text}
+
+
+def _chiudi_run(chiusura: Dict[str, Any]) -> Dict[str, Any]:
+    """Rilascia tutto cio' che il run teneva aperto. Sempre, comunque sia finito.
+
+    Idempotente e senza eccezioni: e' codice di chiusura, e una chiusura che
+    fallisce a meta' lascia esattamente i residui che dovrebbe togliere.
+    """
+    esito: Dict[str, Any] = {}
+    if not chiusura or chiusura.get("chiuso"):
+        return esito
+    chiusura["chiuso"] = True
+
+    session_id = chiusura.get("session_id")
+    raggiunto = bool(chiusura.get("goal_reached"))
+
+    # La radice torna com'era: un run finito non deve lasciare il proprio
+    # progetto come predefinito per chi viene dopo sullo stesso thread.
+    try:
+        token = chiusura.get("token_workspace")
+        if token is not None:
+            from core.harness.workspace import reset_active_root
+            reset_active_root(token)
+    except Exception as exc:
+        log.debug("[AdminAgent] ripristino radice non riuscito: %s", exc)
+
+    # Nessuno rispondera' piu' a proposte di un run finito, e lasciarle aperte
+    # terrebbe fermo un thread su una decisione che non arrivera'.
+    try:
+        if chiusura.get("review_gate") is not None:
+            review.release_gate(session_id)
+    except Exception as exc:
+        log.debug("[AdminAgent] rilascio gate non riuscito: %s", exc)
+
+    # Le modifiche passano sull'albero principale solo a obiettivo raggiunto;
+    # negli altri casi restano sul branch della sessione, che non viene
+    # buttato via (vedi `release_session_worktree`).
+    try:
+        if chiusura.get("worktree") is not None:
+            esito = worktree.release_session_worktree(
+                session_id, apply_changes=raggiunto
+            ) or {}
+    except Exception as exc:
+        log.warning("[AdminAgent] rilascio worktree non riuscito: %s", exc)
+    return esito
+
+
+def stream_admin_agent_turn(*args: Any, **kwargs: Any) -> Generator[Dict[str, Any], None, None]:
+    """Il ciclo dell'agente, con la garanzia che cio' che apre venga chiuso.
+
+    Il ciclo vero e' `_stream_agent_turn_impl`. Questo involucro esiste per una
+    ragione sola: un generatore abbandonato non esegue le proprie ultime righe.
+    Quando l'utente preme stop, il consumatore esce dal `for` e il generatore
+    viene chiuso a meta' — e cio' che stava dopo il ciclo non accade. Restavano
+    quindi un worktree git per ogni run interrotto, un gate di revisione con
+    dentro le sue attese, e la radice del workspace ancora dichiarata.
+
+    Un `finally` qui vale anche per quel caso, perche' la chiusura del
+    generatore lo attraversa.
+    """
+    chiusura: Dict[str, Any] = {}
+    completato = False
+    try:
+        for evento in _stream_agent_turn_impl(*args, _chiusura=chiusura, **kwargs):
+            yield evento
+        completato = True
+    finally:
+        esito = _chiudi_run(chiusura)
+
+    # Dove e' finito il lavoro, quando c'e' un worktree di mezzo. Un branch di
+    # cui nessuno conosce il nome e' perso quanto uno cancellato.
+    #
+    # Solo sul percorso normale: durante la chiusura di un generatore non si
+    # puo' emettere altro, e a quel punto non c'e' nemmeno piu' nessuno che
+    # ascolta.
+    if completato and esito.get("branch"):
+        yield {
+            "type": "worktree_preserved",
+            "branch": esito["branch"],
+            "checkpoints": esito.get("checkpoints", 0),
+            # Un branch rimasto ha due cause diverse: l'obiettivo non e' stato
+            # chiuso, oppure lo e' stato ma il trasferimento sull'albero
+            # principale non e' riuscito (tipicamente un conflitto). Sono due
+            # messaggi diversi per chi legge, e solo il secondo chiede di fare
+            # qualcosa adesso.
+            "goal_reached": bool(chiusura.get("goal_reached")),
+            "apply_failed": bool(chiusura.get("goal_reached")) and not esito.get("applied"),
+        }

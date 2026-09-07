@@ -8,7 +8,7 @@ Rapporto tecnico completo sull'evoluzione dell'harness dell'agente nel kernel, l
 
 | Metrica | Audit Iniziale | Stato Attuale | Progresso |
 |:---|:---:|:---:|:---:|
-| **Test verdi nel kernel** | 895 | **1056 passed** | +161 test |
+| **Test verdi nel kernel** | 895 | **1076 passed** | +181 test |
 | **Punti Audit Chiusi** | 0 / 11 | **11 / 11 completati (100%)** | Tutti i punti dell'Audit Tecnico chiusi e validati |
 | **Turni medi al completamento** | 30 (fallito/deadlock) | **12 / 30 turni** | Completamento effettivo con criteri dimostrati |
 | **Frontend Vite Build** | N/D | **Verde (807ms)** | Nessuna regressione |
@@ -113,7 +113,7 @@ Rapporto tecnico completo sull'evoluzione dell'harness dell'agente nel kernel, l
 | **1** | **Pipeline visuali via harness** | **CHIUSO** | Integrato in `core/harness/node_runner.py` (commit `85a380a`). |
 | **2** | **Orchestratore 5 fasi dal vivo** | **CHIUSO** | Flusso convalidato end-to-end con Architect, DevOps, Coder, Tester, Reviewer (commit `ae60e00`). |
 | **3** | **Gate di revisione del diff** | **CHIUSO (Kernel)** | Backend e test pronti con pattern apply-and-revert (commit `f18627e`). |
-| **4** | **Worktree git per run** | **CHIUSO** | Implementato `core/harness/worktree.py` con allocazione worktree isolata e rollback (commit `18d444e`). |
+| **4** | **Worktree git per run** | **CHIUSO** | `core/harness/worktree.py` con worktree isolato, checkpoint di turno e rollback manuale. Reso raggiungibile dalla chat e dai ruoli, con chiusura garantita e conservazione del lavoro (revisione successiva). |
 | **5** | **Ledger e cancello nella Chat** | **CHIUSO** | Cancello di mutazione `is_mutation_permitted` in `core/chat/ledger.py` (commit `78420d0`). |
 | **6** | **Verifica strutturata anziché solo exit code** | **CHIUSO** | Parser strutturati per pytest/vitest/linters con rifiuto test a vuoto (commit `84ef969`). |
 | **7** | **Errori di console nel controllo visivo** | **CHIUSO** | Intercettazione stderr Chromium e blocco nel ledger in caso di crash JS (commit `b2078ac`). |
@@ -124,6 +124,21 @@ Rapporto tecnico completo sull'evoluzione dell'harness dell'agente nel kernel, l
 
 ---
 
-## 5. Risultato Finale: Audit Tecnico 100% Completato
+## 5. Revisione di Integrazione — 7 Settembre 2026
 
-Tutte le 11 lacune aperte identificate nell'Audit Tecnico del 6 settembre 2026 sono state **interamente risolte, integrate nel kernel e coperte da test automatizzati**. Il sistema Sigma Studio dispone ora di un Agent Harness robusto, autonomo, isolato e privo di punti singoli di fallimento.
+Le 11 lacune dell'Audit sono chiuse. Una rilettura mirata **ai punti in cui i moduli nuovi incontrano il ciclo dell'agente** ha pero' trovato quattro difetti che i test dei singoli moduli non potevano vedere, tutti sul punto 4. Sono stati corretti e coperti (`tests/test_run_teardown.py`, 17 test).
+
+| Difetto | Effetto | Correzione |
+|:---|:---|:---|
+| `isolate_worktree` dichiarato nella firma del ciclo e **mai passato da nessuno** | L'intero isolamento — copia fisica, checkpoint, rollback — non era accendibile da alcun percorso di produzione | Collegato al gestore della chat, ai ruoli e alla UI (interruttore «Isolamento») |
+| Chiusura del run **fuori da un `finally`** | Un generatore abbandonato non esegue le ultime righe: ogni stop lasciava un worktree e un branch orfani, e un gate di revisione con le sue attese | Il ciclo e' ora avvolto da `stream_admin_agent_turn`, che chiude in `finally` anche i run interrotti |
+| `git branch -D` su ogni run con `goal_reached` falso | Il cancello di completamento e' severo per costruzione, quindi quello e' l'esito **ordinario**: trenta turni di lavoro buono sparivano per l'ultimo passo mancante | Il branch resta e viene annunciato (`worktree_preserved`); si butta solo se il lavoro e' gia' sull'albero principale o se non c'e' |
+| `apply_to_main` usava `HEAD~N` come base e ignorava l'ultimo turno | Base sbagliata dopo un rollback; e la modifica che aveva **chiuso** l'obiettivo non arrivava all'albero principale | Base registrata alla creazione (`base_commit`) e checkpoint di chiusura prima del trasferimento |
+
+Estese inoltre a `RoleEngine.generate_with_role` le due garanzie che valevano solo per la chat libera — revisione del diff e isolamento — perche' l'orchestratore e' l'unico posto dove cinque ruoli lavorano di fila senza che nessuno guardi.
+
+**Stato:** 1076 test verdi, build Vite verde, `npm run lint:undef` pulito.
+
+### Il pattern che continua a ripresentarsi
+
+Quattro volte in questo progetto una funzionalita' e' stata scritta, testata e lasciata scollegata: `is_tool_allowed`, i profili operativi, il binding del modello per ruolo, e ora l'isolamento in worktree. I test del modulo passavano tutti, ogni volta. **Un test che non parte da un percorso raggiungibile dall'utente non dimostra che la funzionalita' esista.** I test in `test_run_teardown.py::TestLIsolamentoEAccendibile` verificano proprio la catena di collegamento, ed e' il tipo di test che serve accanto a ogni nuova capacita'.

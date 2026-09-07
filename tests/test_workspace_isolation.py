@@ -151,10 +151,14 @@ class TestGitSegueIlRun:
 
 class TestIlCicloDichiaraLaRadice:
     def test_il_ciclo_apre_e_chiude_la_dichiarazione(self):
-        """Se il ciclo smettesse di dichiararla, git tornerebbe a sbagliare repository."""
-        import inspect
-        from core.harness.loop import stream_admin_agent_turn
+        """Se il ciclo smettesse di dichiararla, git tornerebbe a sbagliare repository.
 
-        sorgente = inspect.getsource(stream_admin_agent_turn)
-        assert "set_active_root(workspace_root)" in sorgente
-        assert "reset_active_root(" in sorgente
+        Apertura e chiusura stanno in due funzioni diverse da quando la
+        chiusura vale anche per i run abbandonati: il ciclo dichiara la radice,
+        `_chiudi_run` la ripristina qualunque cosa succeda.
+        """
+        import inspect
+        from core.harness.loop import _chiudi_run, _stream_agent_turn_impl
+
+        assert "set_active_root(workspace_root)" in inspect.getsource(_stream_agent_turn_impl)
+        assert "reset_active_root(" in inspect.getsource(_chiudi_run)

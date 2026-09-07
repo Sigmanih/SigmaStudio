@@ -87,10 +87,14 @@ class TestCicloDiVitaWorktree:
         assert file_uno.exists()
         assert len(session.checkpoints) == 1
 
-        # Rilascio pulito
-        release_ok = release_session_worktree(session_id, apply_changes=False)
-        assert release_ok is True
+        # Rilascio senza applicare: la cartella sparisce, il lavoro no.
+        esito = release_session_worktree(session_id, apply_changes=False)
+        assert esito["released"] is True
+        assert esito["applied"] is False
         assert not session.worktree_path.exists()
+        # Il branch resta, perche' c'era del lavoro vero da conservare.
+        assert esito["branch"] == session.branch_name
+        assert esito["checkpoints"] == 1
 
     def test_applicazione_modifiche_validate_a_main(self, repo_temporaneo, monkeypatch, tmp_path):
         var_mock = tmp_path / "var"
@@ -105,8 +109,10 @@ class TestCicloDiVitaWorktree:
         session.checkpoint(1, "nuovo file validato")
 
         # Rilascia con apply_changes=True
-        success = release_session_worktree(session_id, apply_changes=True)
-        assert success is True
+        esito = release_session_worktree(session_id, apply_changes=True)
+        assert esito["applied"] is True
+        # Il lavoro e' sull'albero principale: il branch non serve piu'.
+        assert esito["branch"] == ""
 
         # Ora il file deve esistere nel repository principale
         assert (repo_temporaneo / "nuovo.py").exists()

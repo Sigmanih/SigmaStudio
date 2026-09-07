@@ -371,6 +371,8 @@ class RoleEngine:
         ledger: Optional[Any] = None,
         max_turns: Optional[int] = None,
         session_id: Optional[str] = None,
+        review_writes: bool = False,
+        isolate_worktree: bool = False,
     ) -> Generator[Dict[str, Any], None, None]:
         """Generate a response using a specific role, with streaming.
 
@@ -443,6 +445,13 @@ class RoleEngine:
             session_id=session_id,
             allowed_tools=list(role.tools) or None,
             policy_label=role.name,
+            # Le stesse due garanzie della chat libera valgono per una fase
+            # orchestrata: dichiararle solo nel ciclo e non passarle di qui
+            # significherebbe che l'orchestratore — l'unico posto dove girano
+            # cinque ruoli di fila senza che nessuno guardi — e' anche l'unico
+            # che non puo' usarle.
+            review_writes=review_writes,
+            isolate_worktree=isolate_worktree,
         ):
             yield event
 

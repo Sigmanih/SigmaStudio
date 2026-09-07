@@ -300,9 +300,9 @@ class TestChiusuraRespintaNonSiRipete:
     def test_il_ciclo_registra_la_firma_prima_di_riscrivere_l_esito(self):
         """L'ordine nel sorgente e' la cosa che si e' rotta: si verifica quello."""
         import inspect
-        from core.harness.loop import stream_admin_agent_turn
+        from core.harness.loop import _stream_agent_turn_impl
 
-        sorgente = inspect.getsource(stream_admin_agent_turn)
+        sorgente = inspect.getsource(_stream_agent_turn_impl)
         rifiuto = sorgente.index('"error": f"Completamento rifiutato.')
         blocco = sorgente[max(0, rifiuto - 900):rifiuto]
         assert "failed_call_signatures.add(" in blocco, (
