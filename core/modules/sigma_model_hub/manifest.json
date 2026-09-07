@@ -14,20 +14,15 @@
   "repository": "https://github.com/Sigmanih/SigmaStudio-Moduli",
   "branch": "main",
   "path": "modules/sigma_model_hub",
-  "tags": ["Hugging Face", "GGUF", "Quantization", "Model Inventory", "SigmaEngine"],
+  "tags": [
+    "Hugging Face",
+    "GGUF",
+    "Quantization",
+    "Model Inventory",
+    "SigmaEngine"
+  ],
   "size": "~2 MB",
   "icon": "Package",
   "color": "#ffd200",
-  "frontend": {
-    "entrypoint": "frontend/index.jsx",
-    "install_to": "sigma_studio/src/modules/sigma_model_hub/"
-  },
-  "backend": {
-    "handlers_module": "core.modules.sigma_model_hub.backend.handlers",
-    "mcp_server_module": "core.modules.sigma_model_hub.backend.mcp_server",
-    "routes_prefix": "/api/models",
-    "install_to": "core/modules/sigma_model_hub/"
-  },
-  "requirements": "requirements.txt",
-  "kernel_modules_required": []
+  "requirements": "requirements.txt"
 }

@@ -271,6 +271,12 @@ class ModuleLoader:
         if _ROOT not in sys.path:
             sys.path.insert(0, _ROOT)
 
+        # Gli handler si trovano per convenzione, non per dichiarazione. Nei
+        # manifest c'era un campo `backend.handlers_module` che nessuno leggeva:
+        # in 7 moduli su 15 indicava un percorso che dal vivo non esiste, e
+        # nessuno se n'era accorto proprio perche' non veniva letto. E' stato
+        # tolto; se un giorno servira' davvero dichiararlo, va prima reso
+        # l'unica sorgente di verita', non aggiunto accanto a questa lista.
         candidate_module_paths = [
             f"core.modules.{module_id}.handlers",
             f"core.modules.{module_id}.backend.handlers",

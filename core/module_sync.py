@@ -341,6 +341,16 @@ def ensure_clone(repository: str, branch: str = "main") -> Tuple[Optional[Path],
     if fetch.returncode != 0:
         return destinazione, f"fetch fallito: {fetch.stderr.strip()[:400]}"
 
+    # Il rispecchiamento di una volta precedente puo' aver lasciato modifiche
+    # non committate — una prova a vuoto le lascia sempre — e `rebase` su un
+    # albero sporco si rifiuta di partire. Quei file si buttano senza pensarci:
+    # non li ha scritti nessuno a mano, li produce `stage_module` dall'albero
+    # vivo, e verranno riprodotti identici fra un istante.
+    sporco = _esegui_git(["status", "--porcelain"], destinazione)
+    if sporco.stdout.strip():
+        _esegui_git(["checkout", "--", "."], destinazione)
+        _esegui_git(["clean", "-fd"], destinazione)
+
     # `rebase` e non `reset --hard`: se un push precedente non era andato a
     # buon fine, i commit locali sono l'unica copia di quel lavoro e azzerarli
     # sarebbe esattamente il difetto che questo modulo esiste per togliere.

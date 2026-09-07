@@ -24,21 +24,7 @@
   "size": "~1 MB",
   "icon": "Zap",
   "color": "#00d2ff",
-  "frontend": {
-    "entrypoint": "frontend/index.jsx",
-    "styles": [
-      "frontend/styles/hardware-lab.css"
-    ],
-    "install_to": "sigma_studio/src/modules/sigma_hardware_lab/"
-  },
-  "backend": {
-    "handlers_module": "core.modules.sigma_hardware_lab.backend.handlers",
-    "mcp_server_module": "core.modules.sigma_hardware_lab.backend.mcp_server",
-    "routes_prefix": "/api/hardware",
-    "install_to": "core/modules/sigma_hardware_lab/"
-  },
   "requirements": "requirements.txt",
-  "kernel_modules_required": [],
   "changelog": [
     {
       "version": "v1.0.0",

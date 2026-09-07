@@ -512,3 +512,34 @@ class TestGliIngressiSonoCollegati:
         sorgente = inspect.getsource(fastapi_app)
         assert '"/api/modules/sync"' in sorgente
         assert '"/api/modules/sync/status"' in sorgente
+
+
+class TestUnaCopiaDiLavoroSporca:
+    """Una prova a vuoto lascia sempre il rispecchiamento non committato, e
+    `git rebase` su un albero sporco si rifiuta di partire: senza ripulitura
+    la sincronizzazione successiva falliva sempre dopo un dry-run."""
+
+    def test_dopo_una_prova_a_vuoto_la_sincronizzazione_vera_riesce(
+        self, albero_vivo, remoto, tmp_path
+    ):
+        _scrivi_modulo(albero_vivo, str(remoto))
+
+        module_sync.sync_modules(dry_run=True)
+        esito = module_sync.sync_modules(push=True)
+
+        assert esito["success"] is True, esito["errors"]
+        assert esito["pushed"] is True
+        verifica = tmp_path / "verifica_sporca"
+        _git(["clone", str(remoto), str(verifica)], tmp_path)
+        assert (verifica / "modules/modulo_prova/backend/handlers.py").is_file()
+
+    def test_la_ripulitura_non_tocca_i_commit_locali(self, albero_vivo, remoto):
+        """Butta solo cio' che il rispecchiamento sa riprodurre."""
+        backend, _ = _scrivi_modulo(albero_vivo, str(remoto))
+        module_sync.sync_modules(push=False)      # commit locale mai pubblicato
+        module_sync.sync_modules(dry_run=True)    # sporca l'albero
+
+        radice, errore = module_sync.ensure_clone(str(remoto), "main")
+
+        assert errore == ""
+        assert "modulo_prova" in _git(["log", "--oneline"], radice).stdout
