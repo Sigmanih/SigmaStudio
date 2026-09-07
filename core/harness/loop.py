@@ -2318,7 +2318,13 @@ def _stream_agent_turn_impl(
             # Com'era il file prima: serve a mostrare il diff vero e a saper
             # tornare indietro se la modifica non viene approvata.
             istantanea = None
-            if review_gate is not None and canonical(t_name) in REVIEWABLE_TOOLS:
+            # `review_writes`, non "esiste un gate": il gate esiste anche per la
+            # revisione di fine run, e confondere le due cose faceva fermare
+            # ogni singola scrittura in un run che aveva chiesto di essere
+            # rivisto una volta sola. Su una prova dal vivo le due scritture
+            # sono scadute per timeout e sono state annullate: il run non ha
+            # prodotto niente, e non c'era piu' niente da rivedere alla fine.
+            if review_writes and review_gate is not None and canonical(t_name) in REVIEWABLE_TOOLS:
                 try:
                     istantanea = review.FileSnapshot.take(
                         resolve_workspace_path(_path_of(t_params), workspace_root)

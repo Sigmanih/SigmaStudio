@@ -263,3 +263,59 @@ class TestRaggiungibilita:
 
         sorgente = inspect.getsource(_stream_agent_turn_impl)
         assert "if review_run and session_wt is None:" in sorgente
+
+
+class TestLeDueRevisioniNonSiConfondono:
+    """Difetto trovato su una prova dal vivo: chiedendo la revisione di fine
+    run si attivava anche il cancello per singola scrittura. Le due scritture
+    sono scadute per timeout e sono state annullate, il run non ha prodotto
+    niente, e alla fine non c'era piu' niente da rivedere — la revisione di
+    fine run aveva cancellato il lavoro che doveva farti vedere."""
+
+    def _run(self, tmp_path, monkeypatch, **opzioni):
+        from core.harness import loop as modulo_loop
+
+        risposte = [
+            '```tool:write_file\n{"path": "nota.py", "content": "X = 1\n"}\n```',
+            "Fatto.",
+        ]
+        stato = {"i": 0}
+
+        def finto(**kw):
+            i = min(stato["i"], len(risposte) - 1)
+            stato["i"] += 1
+            yield {"token": risposte[i]}
+
+        monkeypatch.setattr(modulo_loop, "stream_dev_generation", finto)
+        return list(modulo_loop.stream_admin_agent_turn(
+            messages=[{"role": "user", "content": "scrivi nota.py"}],
+            workspace_root=str(tmp_path), model_name="finto", max_turns=2,
+            **opzioni,
+        ))
+
+    def test_la_revisione_di_fine_run_non_ferma_le_singole_scritture(
+        self, tmp_path, monkeypatch
+    ):
+        eventi = self._run(
+            tmp_path, monkeypatch,
+            session_id="sess-solo-run", review_run=True,
+        )
+        try:
+            assert not [e for e in eventi if e.get("type") == "write_proposed"], (
+                "la revisione di fine run ha attivato il cancello per scrittura"
+            )
+            assert (tmp_path / "nota.py").read_text(encoding="utf-8") == "X = 1\n"
+        finally:
+            review.release_gate("sess-solo-run")
+
+    def test_senza_isolamento_lo_dice_e_non_finge(self, tmp_path, monkeypatch):
+        eventi = self._run(
+            tmp_path, monkeypatch,
+            session_id="sess-senza-wt", review_run=True,
+        )
+        try:
+            avvisi = [e for e in eventi
+                      if e.get("type") == "status" and "worktree" in str(e.get("text", ""))]
+            assert avvisi, "un run senza worktree deve dire che la revisione non e' attiva"
+        finally:
+            review.release_gate("sess-senza-wt")
