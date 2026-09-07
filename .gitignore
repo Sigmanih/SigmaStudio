@@ -140,9 +140,10 @@ data/creative/creative_assets.db
 # Research sessions (user-specific)
 research_sessions/
 
-# Private/Personal manifests & training data (not tracked in git)
-manifesti/Private/
-!manifesti/Private/.gitkeep
+# Cartelle Ruoli e manifesti (non tracciate in git)
+Ruoli/
+ruoli/
+manifesti/
 training/Private/*
 !training/Private/.gitkeep
 !training/Private/*/.gitkeep
@@ -234,3 +235,8 @@ viz/peaks_*.json
 *.safetensors
 *.bin
 !**/tokenizer.bin
+
+# Ruoli / Manifesti locali degli agenti
+Ruoli/
+ruoli/
+manifesti/

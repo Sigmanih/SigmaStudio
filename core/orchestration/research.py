@@ -800,7 +800,7 @@ Format:
 
 ### REGOLA PIÙ IMPORTANTE — STRUTTURA MODULARE WHITELIST
 Puoi creare/modificare file SOLO all'interno di queste cartelle: teoria/, test/, docs/, viz/.
-Tutti i percorsi devono essere relativi e iniziare con data/ o manifesti/ o scratch/ (es. data/argomento/NN_modulo/teoria/file.md).
+Tutti i percorsi devono essere relativi e iniziare con data/ o Ruoli/ o scratch/ (es. data/argomento/NN_modulo/teoria/file.md).
 MAI creare file al di fuori di queste cartelle."""
 
                 messages = [

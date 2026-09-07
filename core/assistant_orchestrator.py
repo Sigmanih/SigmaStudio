@@ -18,20 +18,23 @@ from core.agent_registry import get_agent
 log = logging.getLogger("sigma.orchestrator")
 
 def get_routable_agents() -> dict:
-    """Dynamically scan manifesti/ and manifesti/Private/ for all routable agents."""
+    """Dynamically scan Ruoli/ and Ruoli/Private/ for all routable agents."""
     agents = {}
-    manifesto_dir = 'manifesti'
+    from core import paths
+    manifesto_dir = str(paths.ruoli_dir())
+    root_str = str(paths.project_root())
+    rel_folder = os.path.relpath(manifesto_dir, root_str).replace("\\", "/")
     if os.path.isdir(manifesto_dir):
         for f in os.listdir(manifesto_dir):
             if f.endswith('.md') and f.lower() != 'readme.md':
                 agent_id = f[:-3]
-                agents[agent_id] = f"manifesti/{f}"
+                agents[agent_id] = f"{rel_folder}/{f}"
         p_dir = os.path.join(manifesto_dir, 'Private')
         if os.path.isdir(p_dir):
             for f in os.listdir(p_dir):
                 if f.endswith('.md'):
                     agent_id = f[:-3]
-                    agents[agent_id] = f"manifesti/Private/{f}"
+                    agents[agent_id] = f"{rel_folder}/Private/{f}"
     return agents
 
 

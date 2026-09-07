@@ -561,6 +561,8 @@ def handle_models_local_list(self):
             # Accurate publisher & attribution resolution
             pub = m.get("publication")
             repo_id = (pub.get("repo_id") if isinstance(pub, dict) else "") or ""
+            m["is_published"] = bool(repo_id)
+            m["published"] = bool(repo_id)
             raw_author = m.get("author") or ""
             raw_name = m.get("clean_name") or m.get("display_name") or m.get("filename") or ""
 

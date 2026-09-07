@@ -29,23 +29,28 @@ def save_agents_meta(meta: dict) -> None:
 
 
 def get_all_agents() -> list:
-    """Get list of all registered agents with their metadata, auto-discovering all manifests in manifesti/."""
+    """Get list of all registered agents with their metadata, auto-discovering all roles in Ruoli/."""
     meta = load_agents_meta()
     agents = meta.get("agents", {})
     result = []
     known_ids = set()
     root_str = str(paths.project_root())
     for agent_id, agent_data in agents.items():
-        rel_man = agent_data.get("manifesto", f"manifesti/{agent_id}.md")
+        rel_man = agent_data.get("manifesto", f"Ruoli/{agent_id}.md")
         manifesto_path = os.path.join(root_str, rel_man) if not os.path.isabs(rel_man) else rel_man
+        if not os.path.exists(manifesto_path):
+            alt = os.path.join(root_str, rel_man.replace("manifesti", "Ruoli").replace("manifesti", "ruoli"))
+            if os.path.exists(alt):
+                manifesto_path = alt
         if os.path.exists(manifesto_path) or agent_id == "sigma_assistant":
             entry = {"id": agent_id, **agent_data}
             entry.pop("parent_id", None)
             result.append(entry)
             known_ids.add(agent_id)
 
-    # Auto-discover unlisted manifests from manifesti/ and manifesti/Private/
-    manifesto_dir = str(paths.manifests_dir())
+    # Auto-discover unlisted roles from Ruoli/ and Ruoli/Private/
+    manifesto_dir = str(paths.ruoli_dir())
+    rel_folder = os.path.relpath(manifesto_dir, root_str).replace("\\", "/")
     if os.path.isdir(manifesto_dir):
         for f in os.listdir(manifesto_dir):
             if f.endswith('.md') and f.lower() != 'readme.md':
@@ -54,7 +59,7 @@ def get_all_agents() -> list:
                     result.append({
                         "id": aid,
                         "name": aid.replace('_', ' ').title(),
-                        "manifesto": f"manifesti/{f}",
+                        "manifesto": f"{rel_folder}/{f}",
                         "status": "active",
                         "specialization": aid
                     })
@@ -68,7 +73,7 @@ def get_all_agents() -> list:
                         result.append({
                             "id": aid,
                             "name": aid.replace('_', ' ').title(),
-                            "manifesto": f"manifesti/Private/{f}",
+                            "manifesto": f"{rel_folder}/Private/{f}",
                             "status": "active",
                             "specialization": aid
                         })

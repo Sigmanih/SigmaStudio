@@ -388,10 +388,11 @@ def classify_agent_with_router(message: str, timeout: float = 8.0) -> str:
             )
             if match:
                 agent_id = match.group(1).lower()
-                manifesto_path = f"manifesti/{agent_id}.md"
-                if os.path.exists(manifesto_path):
-                    log.info("🧠 Ollama Router (%sms) → agent: %s", dur, agent_id)
-                    return manifesto_path
+                for r_prefix in ("Ruoli", "ruoli", "manifesti"):
+                    manifesto_path = f"{r_prefix}/{agent_id}.md"
+                    if os.path.exists(manifesto_path):
+                        log.info("🧠 Ollama Router (%sms) → agent: %s", dur, agent_id)
+                        return manifesto_path
     except Exception as exc:
         log.debug("Router model query failed (%s), falling back", exc)
 

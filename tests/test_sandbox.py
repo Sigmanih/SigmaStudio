@@ -21,6 +21,8 @@ class TestSandboxAllowedPaths:
 
     def test_allowed_manifesti_path(self):
         assert is_path_allowed("manifesti/sigma.md") is True
+        assert is_path_allowed("Ruoli/sigma.md") is True
+        assert is_path_allowed("ruoli/sigma.md") is True
 
     def test_allowed_scratch_path(self):
         assert is_path_allowed("scratch/tmp.py") is True

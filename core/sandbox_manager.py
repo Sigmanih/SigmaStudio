@@ -18,7 +18,7 @@ import shutil
 
 SANDBOXES_FILE = "sandboxes.json"
 ALLOWED_SANDBOX_DIRS = frozenset({
-    'sigma_studio', 'core', 'data', 'scratch', 'manifesti', 'viz',
+    'sigma_studio', 'core', 'data', 'scratch', 'Ruoli', 'ruoli', 'manifesti', 'viz',
 })
 
 

@@ -463,7 +463,10 @@ def _benchmark_detail_lines(bm_data: Optional[Dict[str, Any]],
     suites = bm_data.get("suites") or bm_data.get("suite_breakdown") or {}
     if not suites and bm_data.get("job_id"):
         try:
-            from core.modules.sigma_training_lab.training import benchmark_store as store
+            try:
+                from core.modules.sigma_benchmark_lab import benchmark_store as store
+            except ImportError:
+                from core.modules.sigma_training_lab.training import benchmark_store as store
             suites = store.suite_breakdown(bm_data["job_id"])
         except Exception:
             suites = {}
@@ -597,7 +600,10 @@ def generate_model_card(
         if not bm_data.get("suites"):
             if bm_data.get("job_id"):
                 try:
-                    from core.modules.sigma_training_lab.training import benchmark_store as store
+                    try:
+                        from core.modules.sigma_benchmark_lab import benchmark_store as store
+                    except ImportError:
+                        from core.modules.sigma_training_lab.training import benchmark_store as store
                     bm_data["suites"] = store.suite_breakdown(bm_data["job_id"])
                 except Exception:
                     pass

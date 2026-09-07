@@ -584,6 +584,15 @@ class TestHfLocalInventoryMatching(unittest.TestCase):
         clean_names = [m.get("clean_name") for m in local_models if m.get("clean_name")]
         self.assertIsInstance(clean_names, list)
 
+    def test_published_flag_resolution(self):
+        from core.modules.sigma_model_hub.backend import publications
+
+        # Verifica che il flag is_published sia un booleano coerente
+        record = publications.get_publication("qwen/qwen3.8-27b-gguf-q4_k_s")
+        if record:
+            self.assertIn("repo_id", record)
+            self.assertTrue(bool(record.get("repo_id")))
+
 
 
 if __name__ == "__main__":

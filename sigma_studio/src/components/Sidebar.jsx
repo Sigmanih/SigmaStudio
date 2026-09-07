@@ -4,7 +4,7 @@ import {
   FlaskConical, Brain, Zap, User, Server, Wrench, Palette, Blocks, Sun, 
   Moon, Store, Package, Sliders, Key, Sparkles, FolderGit2, Compass,
   Cpu, Box, Radio, Music, Mic, Terminal, Globe, Mail, Send, DownloadCloud, Settings, Trash2,
-  Share2, Plus, Search, HardDrive, Copy, UserCheck
+  Share2, Plus, Search, HardDrive, Copy, UserCheck, Award
 } from 'lucide-react';
 import { useApp } from '../contexts/AppContext';
 import { useModuleState } from '../hooks/useModuleState';
@@ -356,6 +356,7 @@ export default function Sidebar({
   const isModelHubInstalled = modulesState.sigma_model_hub === true;
   const isResearchInstalled = modulesState.sigma_research_lab === true;
   const isTrainingInstalled = modulesState.sigma_training_lab === true;
+  const isBenchmarkInstalled = modulesState.sigma_benchmark_lab === true;
   const isRoadmapInstalled = modulesState.sigma_roadmap === true;
   const isKnowledgeInstalled = modulesState.sigma_knowledge === true;
   const isVoiceInstalled = modulesState.sigma_voice_studio === true;
@@ -371,7 +372,7 @@ export default function Sidebar({
 
   // Verifica se ci sono skill installate per ciascun sottoargomento
   const hasMultimodal = isCreativeInstalled || isVoiceInstalled || isDomoticaInstalled || isAudioInstalled;
-  const hasStudio = isTrainingInstalled || isResearchInstalled || isRoadmapInstalled || isKnowledgeInstalled;
+  const hasStudio = isBenchmarkInstalled || isTrainingInstalled || isResearchInstalled || isRoadmapInstalled || isKnowledgeInstalled;
   const hasInfra = isDevInstalled || isHardwareInstalled || isNetworkInstalled || isSigmaNetworkInstalled;
   const hasComms = isEmailInstalled || isMessagingInstalled;
 
@@ -909,6 +910,16 @@ export default function Sidebar({
 
               {!collapsedSections.studio && (
                 <div style={{ paddingLeft: '4px', marginTop: '2px' }}>
+                  {isBenchmarkInstalled && (
+                    <SidebarItem
+                      icon={Award}
+                      label="Benchmark"
+                      badgeColor="rgba(0,210,255,0.15)"
+                      active={activeTabId != null && (activeTabId.startsWith('benchmark_lab') || activeTabId.startsWith('benchmark'))}
+                      onClick={() => openTab({ name: 'Benchmark' }, 'benchmark_lab')}
+                    />
+                  )}
+
                   {isTrainingInstalled && (
                     <SidebarItem
                       icon={Brain}

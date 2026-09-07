@@ -18,20 +18,7 @@
 # Qui la radice si calcola una volta sola, ancorata alla posizione di questo
 # file, e tutto il resto ne discende. Chi ha bisogno di un percorso lo chiede;
 # nessuno lo ricostruisce.
-#
-# Le quattro radici hanno nature diverse e vanno tenute separate, perche' la
-# domanda "posso cancellarla?" ha quattro risposte diverse:
-#
-#   config/     configurazione       -> si torna ai default
-#   var/        stato di runtime     -> il sistema riparte pulito
-#   store/      artefatti scaricati  -> si riscarica, costa tempo e banda
-#   data/       lavoro dell'utente   -> perdita di dati
-#
-# Stavano tutte e quattro dentro data/, mescolate: 122 GB di pesi accanto alle
-# note dell'utente, con il grafo della conoscenza che indicizzava i due terzi
-# sbagliati. Ora data/ contiene solo cio' che l'utente ha prodotto, direttamente
-# o tramite un modulo, ed e' l'unica radice che vale la pena mettere sotto
-# backup.
+
 # ==============================================================================
 from __future__ import annotations
 
@@ -335,8 +322,23 @@ def training_lab_dir() -> Path:
     return _con_ripiego(store_dir() / "training_lab", "training_lab")
 
 
+def ruoli_dir() -> Path:
+    """La cartella dei ruoli (ex-manifesti) dell'agente."""
+    r_upper = project_root() / "Ruoli"
+    if r_upper.exists():
+        return r_upper
+    r_lower = project_root() / "ruoli"
+    if r_lower.exists():
+        return r_lower
+    r_leg = project_root() / "manifesti"
+    if r_leg.exists():
+        return r_leg
+    return r_upper
+
+
 def manifests_dir() -> Path:
-    return project_root() / "manifesti"
+    """Alias retrocompatibile per ruoli_dir()."""
+    return ruoli_dir()
 
 
 def scratch_dir() -> Path:

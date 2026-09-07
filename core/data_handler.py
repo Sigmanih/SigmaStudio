@@ -416,12 +416,13 @@ def _parse_manifesto_file(fpath: str, fname: str, meta: dict, manifesto_images: 
 
 
 def handle_list_manifesti(self):
-    """GET /api/list_manifesti — List all available agent manifests with dynamic Modelfile metadata.
+    """GET /api/list_manifesti (o /api/list_ruoli) — Elenca tutti i ruoli agente disponibili con metadati Modelfile.
     
-    Scans both manifesti/ root and manifesti/Private/ subdirectory for .md files.
+    Scansiona Ruoli/ e la sottodirectory Ruoli/Private/ per file .md.
     """
     try:
-        manifesto_dir = 'manifesti'
+        from core import paths
+        manifesto_dir = str(paths.ruoli_dir())
         manifesti = []
         
         from core.agent_registry import load_agents_meta
@@ -429,12 +430,12 @@ def handle_list_manifesti(self):
         manifesto_images = meta.get("manifesto_images", {})
 
         if os.path.isdir(manifesto_dir):
-            # Scan main directory for official manifests
+            # Scan main directory for official manifests/roles
             for f in sorted(os.listdir(manifesto_dir)):
                 fpath = os.path.join(manifesto_dir, f)
                 if os.path.isfile(fpath) and f.lower().endswith('.md') and f.lower() != 'readme.md':
                     manifesti.append(_parse_manifesto_file(fpath, f, meta, manifesto_images))
-            # Scan Private/ subdirectory for personal manifests
+            # Scan Private/ subdirectory for personal manifests/roles
             private_dir = os.path.join(manifesto_dir, 'Private')
             if os.path.isdir(private_dir):
                 for f in sorted(os.listdir(private_dir)):
@@ -442,10 +443,13 @@ def handle_list_manifesti(self):
                     if os.path.isfile(fpath) and f.lower().endswith('.md'):
                         manifesti.append(_parse_manifesto_file(fpath, f, meta, manifesto_images))
                         
-        self.send_json_response({"success": True, "manifesti": manifesti, "files": manifesti})
+        self.send_json_response({"success": True, "manifesti": manifesti, "ruoli": manifesti, "files": manifesti})
     except Exception as exc:
         log.error("handle_list_manifesti: %s", exc)
         self.send_json_response({"error": str(exc)}, 500)
+
+
+handle_list_ruoli = handle_list_manifesti
 
 
 def handle_update_manifesto_image(self):
@@ -575,10 +579,10 @@ from core.agent_registry import register_agent, unregister_agent, load_agents_me
 
 
 def handle_manifesti_hub(self):
-    """GET /api/manifesti/hub — Returns the catalog of profession manifestos available for download."""
+    """GET /api/manifesti/hub (o /api/ruoli/hub) — Catalogo dei ruoli scaricabili."""
     try:
-        # Check which ones are already installed in manifesti/ or manifesti/Private/
-        manifesto_dir = 'manifesti'
+        from core import paths
+        manifesto_dir = str(paths.ruoli_dir())
         installed_files = set()
         if os.path.isdir(manifesto_dir):
             for f in os.listdir(manifesto_dir):
@@ -606,15 +610,21 @@ def handle_manifesti_hub(self):
         self.send_json_response({"error": str(exc)}, 500)
 
 
+handle_ruoli_hub = handle_manifesti_hub
+
+
 def handle_manifesti_install_from_hub(self):
-    """POST /api/manifesti/install_from_hub — Install a profession manifesto from catalog or raw URL."""
+    """POST /api/manifesti/install_from_hub (o /api/ruoli/install_from_hub) — Installa un ruolo dall'hub o URL."""
     try:
         req = self.read_json_body()
-        manifesto_id = req.get("manifesto_id", "")
+        manifesto_id = req.get("manifesto_id", "") or req.get("ruolo_id", "")
         custom_url = req.get("url", "")
         custom_name = req.get("name", "")
 
-        manifesto_dir = 'manifesti'
+        from core import paths
+        manifesto_dir = str(paths.ruoli_dir())
+        root_str = str(paths.project_root())
+        rel_folder = os.path.relpath(manifesto_dir, root_str).replace("\\", "/")
         os.makedirs(manifesto_dir, exist_ok=True)
 
         if manifesto_id:
@@ -654,7 +664,7 @@ def handle_manifesti_install_from_hub(self):
             register_agent(
                 agent_id=aid,
                 name=found["name"],
-                manifesto=f"manifesti/{found['filename']}",
+                manifesto=f"{rel_folder}/{found['filename']}",
                 specialization=found.get("role", aid),
                 capabilities=found.get("capabilities", []),
                 models=["llama3.2", "deepseek-v4-flash", "qwen3.6:35b"],
@@ -664,7 +674,7 @@ def handle_manifesti_install_from_hub(self):
 
             return self.send_json_response({
                 "success": True,
-                "message": f"Manifesto '{found['name']}' scaricato e attivato con successo nel Kernel!",
+                "message": f"Ruolo '{found['name']}' scaricato e attivato con successo nel Kernel!",
                 "filename": found["filename"],
                 "path": dest_path.replace('\\', '/'),
                 "agent_id": aid
@@ -689,7 +699,7 @@ def handle_manifesti_install_from_hub(self):
             register_agent(
                 agent_id=aid,
                 name=custom_name.strip() if custom_name.strip() else aid.replace('_', ' ').title(),
-                manifesto=f"manifesti/{fname}",
+                manifesto=f"{rel_folder}/{fname}",
                 specialization="custom_role",
                 capabilities=["Custom Capability"],
                 temperature=0.3,
@@ -698,7 +708,7 @@ def handle_manifesti_install_from_hub(self):
 
             return self.send_json_response({
                 "success": True,
-                "message": f"Manifesto importato con successo da {custom_url}!",
+                "message": f"Ruolo importato con successo da {custom_url}!",
                 "filename": fname,
                 "path": dest_path.replace('\\', '/'),
                 "agent_id": aid
@@ -712,11 +722,14 @@ def handle_manifesti_install_from_hub(self):
         self.send_json_response({"error": str(exc)}, 500)
 
 
+handle_ruoli_install_from_hub = handle_manifesti_install_from_hub
+
+
 def handle_manifesti_uninstall(self):
-    """POST /api/manifesti/uninstall — Remove/uninstall an agent manifesto from local manifesti/."""
+    """POST /api/manifesti/uninstall (o /api/ruoli/uninstall) — Disinstalla un ruolo da Ruoli/."""
     try:
         req = self.read_json_body()
-        manifesto_id = req.get("manifesto_id", "") or req.get("filename", "") or req.get("path", "")
+        manifesto_id = req.get("manifesto_id", "") or req.get("ruolo_id", "") or req.get("filename", "") or req.get("path", "")
         
         if not manifesto_id:
             return self.send_json_response({"success": False, "error": "Specificare 'manifesto_id' o 'filename'"}, 400)
@@ -732,18 +745,28 @@ def handle_manifesti_uninstall(self):
                 "error": "Sigma Assistant è l'assistente di default del sistema e non può essere disinstallato."
             }, 400)
             
-        target_path = os.path.join('manifesti', fname)
-        if os.path.exists(target_path):
+        from core import paths
+        target_path = paths.ruoli_dir() / fname
+        if target_path.exists():
             os.remove(target_path)
+            
+        # Also check legacy path
+        legacy_path = paths.project_root() / "manifesti" / fname
+        if legacy_path.exists():
+            os.remove(legacy_path)
             
         # Also unregister from agent_registry
         unregister_agent(aid)
         
         return self.send_json_response({
             "success": True,
-            "message": f"Manifesto '{fname}' disinstallato con successo dal Kernel.",
+            "message": f"Ruolo '{fname}' disinstallato con successo dal Kernel.",
             "filename": fname
         })
     except Exception as exc:
         log.error("handle_manifesti_uninstall: %s", exc)
         self.send_json_response({"error": str(exc)}, 500)
+
+
+handle_ruoli_uninstall = handle_manifesti_uninstall
+handle_update_ruolo_image = handle_update_manifesto_image

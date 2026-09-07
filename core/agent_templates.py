@@ -204,10 +204,16 @@ def register_agent_from_template(self, req) -> dict:
         # Generate Modelfile
         modelfile_content = generate_modelfile(template_key, display_name, base_model, temperature)
 
-        # Write Modelfile to manifesti/
-        manifesto_path = f"manifesti/{name}.md"
+        # Write Modelfile to Ruoli/
+        from core import paths
+        r_dir = paths.ruoli_dir()
+        r_dir.mkdir(parents=True, exist_ok=True)
+        manifesto_path = r_dir / f"{name}.md"
         with open(manifesto_path, "w", encoding="utf-8") as f:
             f.write(modelfile_content)
+
+        rel_folder = os.path.relpath(str(r_dir), str(paths.project_root())).replace("\\", "/")
+        manifesto_rel = f"{rel_folder}/{name}.md"
 
         # Register in agent registry
         agent_model = base_model or template["base_model"]
@@ -218,7 +224,7 @@ def register_agent_from_template(self, req) -> dict:
         success, result = register_agent(
             agent_id=name,
             name=display_name,
-            manifesto=manifesto_path,
+            manifesto=manifesto_rel,
             specialization=template_key,
             capabilities=capabilities,
             models=[agent_model],

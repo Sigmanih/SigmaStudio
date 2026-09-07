@@ -93,7 +93,7 @@ class InferenceMCPServer(BaseMCPServer):
             routed_manifesto = classify_agent_with_router(target_prompt)
             return {"success": True, "prompt": target_prompt, "manifesto_path": routed_manifesto}
         except Exception as exc:
-            return {"success": False, "manifesto_path": "manifesti/sigma_assistant.md", "error": str(exc)}
+            return {"success": False, "manifesto_path": "Ruoli/sigma_assistant.md", "error": str(exc)}
 
     def _handle_swap_kv_cache(self, session_id: str = "session_active", target_agent: str = "agent_default", **kwargs):
         s_id = session_id or "session_active"

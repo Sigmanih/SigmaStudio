@@ -9,6 +9,8 @@ import { useApp } from '../contexts/AppContext';
 
 const MODULE_META = {
   creative_studio: { id: 'sigma_creative_lab',  icon: '🎨', name: 'Creative Lab 3D/2D',            color: '#ff5064', desc: 'Studio generativo 3D/2D: FLUX, SDXL, Blender headless e rimozione sfondo SAM2.' },
+  benchmark_lab:   { id: 'sigma_benchmark_lab',  icon: '🏆', name: 'Benchmark Lab & Evaluation',     color: '#00d2ff', desc: '11 Benchmark Ufficiali (MMLU, GSM8K, HumanEval...), calibrazione oggettiva e audit riproducibile.' },
+  benchmark:       { id: 'sigma_benchmark_lab',  icon: '🏆', name: 'Benchmark Lab & Evaluation',     color: '#00d2ff', desc: '11 Benchmark Ufficiali (MMLU, GSM8K, HumanEval...), calibrazione oggettiva e audit riproducibile.' },
   training_lab:    { id: 'sigma_training_lab',   icon: '🧠', name: 'Training Lab & SLM Forge',       color: '#d29922', desc: 'Fine-tuning QLoRA Unsloth, forgia SLM e 11 benchmark ufficiali.' },
   hardware_lab:    { id: 'sigma_hardware_lab',   icon: '⚡', name: 'Hardware Lab & VRAM',            color: '#00d2ff', desc: 'Telemetria in tempo reale di GPU VRAM, RAM, CPU e gestione processi CUDA.' },
   hardware:        { id: 'sigma_hardware_lab',   icon: '⚡', name: 'Hardware Lab & VRAM',            color: '#00d2ff', desc: 'Telemetria in tempo reale di GPU VRAM, RAM, CPU e gestione processi CUDA.' },

@@ -4,7 +4,7 @@ import {
   ExternalLink, Terminal, GitBranch, Cpu, Sparkles, Layers, 
   Palette, FlaskConical, Brain, Zap, Home, Wrench, ArrowRight,
   PlusCircle, AlertCircle, Play, Check, X, Search, Radio, Trash2, Calendar, PieChart, Mic,
-  Globe, Mail, Send
+  Globe, Mail, Send, Award
 } from 'lucide-react';
 
 import { useApp } from '../contexts/AppContext';
@@ -108,6 +108,21 @@ const OPTIONAL_MODULES = [
     branch: 'main',
     tags: ['Swarm DAG', 'Multi-Agent', 'Workflow Automation', 'Pipeline Designer', 'Self-Healing'],
     size: '1.5 MB',
+    author: 'Sigma Core Team'
+  },
+  {
+    id: 'sigma_benchmark_lab',
+    name: 'Benchmark Lab & Model Evaluation',
+    category: 'Valutazione & Benchmark',
+    icon: Award,
+    color: '#00d2ff',
+    tabType: 'benchmark_lab',
+    version: 'v1.0.0',
+    description: 'Suite ufficiale di 11 benchmark (MMLU, GSM8K, HumanEval, ARC, MATH, MMLU-Pro, TruthfulQA...), inferenza oggettiva locale multi-scheda e audit scientifico.',
+    gitUrl: 'https://github.com/Sigmanih/SigmaStudio-Moduli/tree/main/modules/sigma_benchmark_lab',
+    branch: 'main',
+    tags: ['Benchmarks', 'MMLU', 'GSM8K', 'HumanEval', 'MMLU-Pro', 'Evaluation', 'McNemar'],
+    size: '2 MB',
     author: 'Sigma Core Team'
   },
   {

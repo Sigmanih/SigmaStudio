@@ -415,7 +415,7 @@ def _stream_chat_response(handler, messages, ai_cfg, model, provider,
     handler.send_header("Access-Control-Allow-Origin", "*")
     handler.end_headers()
 
-    resolved_agent_id = agent_id or (manifesto_path or "").replace("manifesti/", "").replace(".md", "") \
+    resolved_agent_id = agent_id or os.path.splitext(os.path.basename(manifesto_path or ""))[0] \
         or bot_name.lower().replace(" ", "_")
 
     hw_info = hardware_note or _detect_hardware_note(provider, model)
@@ -1002,7 +1002,7 @@ def handle_chat(self):
         hardware_note = _detect_hardware_note(active_provider, model)
 
         # Resolve dynamic manifesto if in auto mode or empty
-        if not manifesto_path or manifesto_path == "auto" or manifesto_path == "manifesti/auto.md":
+        if not manifesto_path or manifesto_path == "auto" or os.path.basename(manifesto_path) == "auto.md":
             manifesto_path = _determine_agent_by_request(message, ai_cfg, model)
 
         t_routing_end = time.perf_counter()

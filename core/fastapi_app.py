@@ -310,18 +310,25 @@ class FastAPIHandlerAdapter:
 from core.data_handler import (
     handle_api_modules, handle_api_topics, handle_knowledge_db, handle_list_manifesti,
     handle_update_manifesto_image, handle_upload_agent_image, handle_upload_user_avatar,
-    handle_manifesti_hub, handle_manifesti_install_from_hub, handle_manifesti_uninstall
+    handle_manifesti_hub, handle_manifesti_install_from_hub, handle_manifesti_uninstall,
+    handle_list_ruoli, handle_update_ruolo_image, handle_ruoli_hub,
+    handle_ruoli_install_from_hub, handle_ruoli_uninstall
 )
 FastAPIHandlerAdapter.handle_api_modules = handle_api_modules
 FastAPIHandlerAdapter.handle_api_topics = handle_api_topics
 FastAPIHandlerAdapter.handle_knowledge_db = handle_knowledge_db
 FastAPIHandlerAdapter.handle_list_manifesti = handle_list_manifesti
+FastAPIHandlerAdapter.handle_list_ruoli = handle_list_ruoli
 FastAPIHandlerAdapter.handle_update_manifesto_image = handle_update_manifesto_image
+FastAPIHandlerAdapter.handle_update_ruolo_image = handle_update_ruolo_image
 FastAPIHandlerAdapter.handle_upload_agent_image = handle_upload_agent_image
 FastAPIHandlerAdapter.handle_upload_user_avatar = handle_upload_user_avatar
 FastAPIHandlerAdapter.handle_manifesti_hub = handle_manifesti_hub
+FastAPIHandlerAdapter.handle_ruoli_hub = handle_ruoli_hub
 FastAPIHandlerAdapter.handle_manifesti_install_from_hub = handle_manifesti_install_from_hub
+FastAPIHandlerAdapter.handle_ruoli_install_from_hub = handle_ruoli_install_from_hub
 FastAPIHandlerAdapter.handle_manifesti_uninstall = handle_manifesti_uninstall
+FastAPIHandlerAdapter.handle_ruoli_uninstall = handle_ruoli_uninstall
 
 
 from core.mcp_handler import (
@@ -1756,9 +1763,9 @@ async def serve_static_or_spa(path: str):
     if target_data.exists() and target_data.is_file():
         return FileResponse(target_data)
 
-    target_manifesti = _ROOT / "manifesti" / path
-    if target_manifesti.exists() and target_manifesti.is_file():
-        return FileResponse(target_manifesti)
+    for r_cand in (_ROOT / "Ruoli" / path, _ROOT / "ruoli" / path, _ROOT / "manifesti" / path):
+        if r_cand.exists() and r_cand.is_file():
+            return FileResponse(r_cand)
 
     # Missing static assets, scripts, stylesheets, fonts or images must NEVER return index.html (which causes MIME text/html errors)
     if path.startswith("assets/") or any(path.lower().endswith(ext) for ext in [

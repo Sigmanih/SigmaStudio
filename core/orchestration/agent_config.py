@@ -39,7 +39,7 @@ def get_agent_color(agent_id: str) -> dict:
             meta = load_agents_meta()
             manifesto_images = meta.get("manifesto_images", {})
             for mpath, img in manifesto_images.items():
-                if f"manifesti/{agent_id}.md" == mpath or f"{agent_id}.md" in mpath:
+                if f"Ruoli/{agent_id}.md" == mpath or f"manifesti/{agent_id}.md" == mpath or f"{agent_id}.md" in mpath:
                     base["image"] = img
                     break
     except Exception:

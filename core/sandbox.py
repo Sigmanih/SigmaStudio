@@ -56,6 +56,8 @@ ROOT_FILES: frozenset[str] = frozenset({
 # handlers that own them.
 ALLOWED_DIRS: tuple[str, ...] = (
     "data",
+    "Ruoli",
+    "ruoli",
     "manifesti",
     "scratch",
     "sigma_studio",

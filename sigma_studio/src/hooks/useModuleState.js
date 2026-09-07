@@ -29,6 +29,7 @@ const OPTIONAL_MODULE_IDS = [
   // Sviluppo & Sandbox
   'sigma_developer_lab', // Developer Lab & Docker Sandbox
   // Infrastruttura Lab
+  'sigma_benchmark_lab', // Benchmark Lab & Model Evaluation
   'sigma_training_lab',  // Training Lab & SLM Forge
   'sigma_hardware_lab',  // Hardware Lab & VRAM
   'sigma_research_lab',  // Pipelines Lab & Dynamic Swarm

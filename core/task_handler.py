@@ -119,7 +119,7 @@ def _normalize_action_path(path: str, auto_module: bool = False) -> str:
         return ""
     if "/" not in clean:
         return f"data/scratch/{clean}"
-    if clean.startswith(("data/", "manifesti/", "sigma_studio/", "core/", "scratch/")):
+    if clean.startswith(("data/", "Ruoli/", "ruoli/", "manifesti/", "sigma_studio/", "core/", "scratch/")):
         return clean
     return f"data/{clean}"
 
@@ -646,7 +646,7 @@ def _execute_single_action(self, action: dict, action_type: str, bot_name: str, 
         # richiesta dell'agente doveva risolvere alla stessa cartella a
         # prescindere da come e' stato avviato il server.
         _root = str(paths.project_root())
-        _allowed_cwd = ("sigma_studio", "data", "core", "scratch", "manifesti", "viz")
+        _allowed_cwd = ("sigma_studio", "data", "core", "scratch", "Ruoli", "ruoli", "manifesti", "viz")
         working_dir = action.get("cwd", "")
         if working_dir and not any(working_dir.startswith(p) for p in _allowed_cwd):
             working_dir = ""

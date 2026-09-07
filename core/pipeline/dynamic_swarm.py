@@ -17,10 +17,14 @@ log = get_logger(__name__)
 class DynamicAgentRegistry:
     """
     Dynamic Registry that auto-discovers and indexes all available agent manifestos
-    in the `manifesti/` directory regardless of subject or domain.
+    in the `Ruoli/` directory regardless of subject or domain.
     """
-    def __init__(self, manifesti_dir: str = "manifesti"):
-        self.manifesti_dir = manifesti_dir
+    def __init__(self, manifesti_dir: Optional[str] = None):
+        if manifesti_dir is None:
+            from core import paths
+            self.manifesti_dir = str(paths.ruoli_dir())
+        else:
+            self.manifesti_dir = manifesti_dir
         self.agents: Dict[str, Dict[str, Any]] = {}
         self.reload_registry()
 

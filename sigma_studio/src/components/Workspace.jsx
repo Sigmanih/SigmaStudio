@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { X, FileText, Terminal, PieChart, BookOpen, Trash2, ChevronRight, Home, MessageSquare, FlaskConical, Brain, Zap, User, Palette, Blocks, Image, Store, Key, Music, DownloadCloud, Settings, Sliders, Menu } from 'lucide-react';
+import { X, FileText, Terminal, PieChart, BookOpen, Trash2, ChevronRight, Home, MessageSquare, FlaskConical, Brain, Zap, User, Palette, Blocks, Image, Store, Key, Music, DownloadCloud, Settings, Sliders, Menu, Award } from 'lucide-react';
 import WelcomeDashboard from './WelcomeDashboard';
 import SkillsHub from './SkillsHub';
 import StudioEditor from './Workspace/StudioEditor';
@@ -35,6 +35,7 @@ const FileIcon = ({ type }) => {
     case 'module': return <BookOpen size={16} />;
     case 'chat': return <MessageSquare size={16} />;
     case 'research_lab': return <FlaskConical size={16} />;
+    case 'benchmark_lab': case 'benchmark': return <Award size={16} />;
     case 'training_lab': return <Brain size={16} />;
     case 'hardware_lab': return <Zap size={16} />;
     case 'model_hub': return <DownloadCloud size={16} />;
@@ -209,6 +210,19 @@ export default function Workspace({
       return (
         <React.Suspense fallback={<div style={{ padding: '32px', color: '#94a3b8', textAlign: 'center' }}>Caricamento Pipelines Lab...</div>}>
           <LazyResearch onTasksUpdated={() => {}} addToast={(msg, type, duration) => {}} openTab={openTab} />
+        </React.Suspense>
+      );
+    }
+
+    if (tab.type === 'benchmark_lab' || tab.type === 'benchmark') {
+      const isBenchmarkInstalled = modulesState.sigma_benchmark_lab === true;
+      const LazyBenchmark = getLazyModule('benchmark_lab');
+      if (!isBenchmarkInstalled || !LazyBenchmark) {
+        return <ModuleNotInstalled tabType="benchmark_lab" openTab={openTab} />;
+      }
+      return (
+        <React.Suspense fallback={<div style={{ padding: '32px', color: '#94a3b8', textAlign: 'center' }}>Caricamento Benchmark Lab...</div>}>
+          <LazyBenchmark addToast={(msg, type, dur) => {}} openTab={openTab} />
         </React.Suspense>
       );
     }

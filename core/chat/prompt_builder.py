@@ -14,6 +14,7 @@ Responsibilities:
 
 import os
 import re
+from typing import Optional
 from collections import OrderedDict
 from core import paths
 from core.logger import get_logger
@@ -171,11 +172,21 @@ def _get_manifesto_content(manifesto_path: str) -> str:
             with open(manifesto_path, "r", encoding="utf-8") as fh:
                 raw_text = fh.read()
         else:
-            # Try looking inside manifesti/ directory
-            alt_path = os.path.join("manifesti", os.path.basename(manifesto_path))
-            if os.path.exists(alt_path):
-                with open(alt_path, "r", encoding="utf-8") as fh:
-                    raw_text = fh.read()
+            # Try looking inside Ruoli/, ruoli/, or manifesti/ directory
+            from core import paths
+            r_dir = paths.ruoli_dir()
+            bname = os.path.basename(manifesto_path)
+            alt_candidates = [
+                r_dir / bname,
+                paths.project_root() / "Ruoli" / bname,
+                paths.project_root() / "ruoli" / bname,
+                paths.project_root() / "manifesti" / bname,
+            ]
+            for alt in alt_candidates:
+                if alt.exists():
+                    with open(alt, "r", encoding="utf-8") as fh:
+                        raw_text = fh.read()
+                    break
     except OSError as exc:
         log.warning("Cannot read manifesto %s: %s", manifesto_path, exc)
 
@@ -191,10 +202,10 @@ def _get_manifesto_content(manifesto_path: str) -> str:
 
 
 def _resolve_manifesto_for_model(model_name: str) -> str:
-    """Find the best matching manifesto for *model_name*.
+    """Find the best matching role/manifesto for *model_name*.
 
     Search order:
-    1. Exact filename matches in ``manifesti/``.
+    1. Exact filename matches in ``Ruoli/``, ``ruoli/``, or ``manifesti/``.
     2. Prefix match (model name starts with manifesto name).
 
     Returns:
@@ -203,25 +214,31 @@ def _resolve_manifesto_for_model(model_name: str) -> str:
     if not model_name:
         return ""
 
-    base_name = model_name.replace(":latest", "").replace(":", "_")
-    candidates = [
-        f"manifesti/{model_name}.md",
-        f"manifesti/{base_name}.md",
-        f"manifesti/{model_name.split(':')[0]}.md",
-    ]
-    for candidate in candidates:
-        candidate = candidate.replace(":", "_")
-        if os.path.exists(candidate):
-            return candidate
+    from core import paths
+    ruoli_folder = str(paths.ruoli_dir())
+    root_str = str(paths.project_root())
+    rel_folder = os.path.relpath(ruoli_folder, root_str).replace("\\", "/")
 
-    manifesti_dir = "manifesti"
-    if os.path.isdir(manifesti_dir):
-        for fname in sorted(os.listdir(manifesti_dir)):
-            if fname.endswith(".md"):
-                fname_stem = fname[:-3].lower()
-                mname = model_name.lower()
-                if fname_stem in mname or mname.startswith(fname_stem):
-                    return os.path.join(manifesti_dir, fname)
+    base_name = model_name.replace(":latest", "").replace(":", "_")
+    for folder in [rel_folder, "Ruoli", "ruoli", "manifesti"]:
+        candidates = [
+            f"{folder}/{model_name}.md",
+            f"{folder}/{base_name}.md",
+            f"{folder}/{model_name.split(':')[0]}.md",
+        ]
+        for candidate in candidates:
+            candidate = candidate.replace(":", "_")
+            if os.path.exists(candidate):
+                return candidate
+
+    for d in [ruoli_folder, "Ruoli", "ruoli", "manifesti"]:
+        if os.path.isdir(d):
+            for fname in sorted(os.listdir(d)):
+                if fname.endswith(".md"):
+                    fname_stem = fname[:-3].lower()
+                    mname = model_name.lower()
+                    if fname_stem in mname or mname.startswith(fname_stem):
+                        return os.path.join(d, fname)
     return ""
 
 
@@ -418,6 +435,13 @@ def _resolve_agent_by_request(message: str, ai_cfg: dict, model_override: str) -
 
     msg_lower = message.lower().strip()
 
+    def _trova_ruolo(nome: str) -> Optional[str]:
+        for d in ("Ruoli", "ruoli", "manifesti"):
+            p = f"{d}/{nome}.md"
+            if os.path.exists(p):
+                return p
+        return None
+
     # 1. Simple Greetings & General Front-Desk Chat -> sigma_assistant
     simple_greetings = [
         "ciao", "salve", "buongiorno", "buonasera", "chi sei", "chi sei?",
@@ -425,9 +449,10 @@ def _resolve_agent_by_request(message: str, ai_cfg: dict, model_override: str) -
         "come funzioni", "cosa sei", "hey", "hola"
     ]
     if msg_lower in simple_greetings or (len(msg_lower.split()) <= 3 and any(w in msg_lower for w in ["ciao", "salve", "buongiorno", "grazie", "hey"])):
-        if os.path.exists("manifesti/sigma_assistant.md"):
-            log.info("Centralino Switchboard (Front-Desk Chat) -> manifesti/sigma_assistant.md")
-            return "manifesti/sigma_assistant.md"
+        target = _trova_ruolo("sigma_assistant")
+        if target:
+            log.info("Centralino Switchboard (Front-Desk Chat) -> %s", target)
+            return target
 
     # The dedicated 'sigma-router' Ollama model used to be consulted here. It
     # required a separate Ollama daemon on :11434, and when that is not running
@@ -438,16 +463,18 @@ def _resolve_agent_by_request(message: str, ai_cfg: dict, model_override: str) -
     # 2. Visualizations, D3.js & Charts -> viz_designer
     viz_patterns = [r'\b(d3|canvas|grafic|diagramm|plot|chart|visualizz)\w*']
     if any(re.search(p, msg_lower, re.IGNORECASE) for p in viz_patterns):
-        if os.path.exists("manifesti/viz_designer.md"):
-            log.info("Centralino Switchboard (Semantic match: Viz & Charts) -> manifesti/viz_designer.md")
-            return "manifesti/viz_designer.md"
+        target = _trova_ruolo("viz_designer")
+        if target:
+            log.info("Centralino Switchboard (Semantic match: Viz & Charts) -> %s", target)
+            return target
 
     # 3. Testing & Pytest -> test_engineer
     test_patterns = [r'\b(pytest|unit\s*test|asserzion|coverag)\w*']
     if any(re.search(p, msg_lower, re.IGNORECASE) for p in test_patterns):
-        if os.path.exists("manifesti/test_engineer.md"):
-            log.info("Centralino Switchboard (Semantic match: Testing) -> manifesti/test_engineer.md")
-            return "manifesti/test_engineer.md"
+        target = _trova_ruolo("test_engineer")
+        if target:
+            log.info("Centralino Switchboard (Semantic match: Testing) -> %s", target)
+            return target
 
     # 4. Explicit Code & Software Engineering -> code_architect
     code_patterns = [
@@ -456,9 +483,10 @@ def _resolve_agent_by_request(message: str, ai_cfg: dict, model_override: str) -
         r'\b(funzione\s+python|scrivi\s+codice|crea\s+script|programma\s+python|scrivi\s+script|script\s+python|refactor|bug|fix|endpoint|react|jsx|python|javascript|css|html|backend|frontend)\w*'
     ]
     if any(re.search(p, msg_lower, re.IGNORECASE) for p in code_patterns):
-        if os.path.exists("manifesti/code_architect.md"):
-            log.info("Centralino Switchboard (Semantic match: Code & Software) -> manifesti/code_architect.md")
-            return "manifesti/code_architect.md"
+        target = _trova_ruolo("code_architect")
+        if target:
+            log.info("Centralino Switchboard (Semantic match: Code & Software) -> %s", target)
+            return target
 
     # 5. Pure & Applied Mathematics, Physics & Theory -> math_researcher
     math_stems = [
@@ -470,111 +498,111 @@ def _resolve_agent_by_request(message: str, ai_cfg: dict, model_override: str) -
         r'\b(matemat|frattal|dimostr|teorem|lemm|congett|equazion|disequazion|formul|integr|derivat|esponenz|logarit|matric|vettor|probabil|statist|topolog|algebra|geometri|calcol|analis|spazi|misura|induzion|ricorsio|invers|inclusio|insiem|combinator|convergenz|serie|successio|funzion|grado|parabol|polinom|zeri|radic|frazion|aritmetic|numerat|denominat|divis)\w*'
     ]
     if any(re.search(p, msg_lower, re.IGNORECASE) for p in math_stems):
-        if os.path.exists("manifesti/math_researcher.md"):
-            log.info("Centralino Switchboard (Semantic match: Pure & Applied Math) -> manifesti/math_researcher.md")
-            return "manifesti/math_researcher.md"
+        target = _trova_ruolo("math_researcher")
+        if target:
+            log.info("Centralino Switchboard (Semantic match: Pure & Applied Math) -> %s", target)
+            return target
 
     # 6. Physics & Simulations -> physics_professor
     physics_patterns = [r'\b(fisic|quantistic|schrodinger|maxwell|relativit|elettromagnet|termodinamic|newton|meccanica|cinematica|ottica|gravit|dinamica)\w*']
     if any(re.search(p, msg_lower, re.IGNORECASE) for p in physics_patterns):
-        if os.path.exists("manifesti/physics_professor.md"):
-            log.info("Centralino Switchboard (Semantic match: Physics) -> manifesti/physics_professor.md")
-            return "manifesti/physics_professor.md"
+        target = _trova_ruolo("physics_professor")
+        if target:
+            log.info("Centralino Switchboard (Semantic match: Physics) -> %s", target)
+            return target
 
     # 7. Chemistry & Molecular Modeling -> chemistry_professor
     chem_patterns = [r'\b(chimic|molecol|stechiometr|titolazion|reazion|organica|inorganica|ph|soluzion|legame\s+chimico|orbital|idrocarb)\w*']
     if any(re.search(p, msg_lower, re.IGNORECASE) for p in chem_patterns):
-        if os.path.exists("manifesti/chemistry_professor.md"):
-            log.info("Centralino Switchboard (Semantic match: Chemistry) -> manifesti/chemistry_professor.md")
-            return "manifesti/chemistry_professor.md"
+        target = _trova_ruolo("chemistry_professor")
+        if target:
+            log.info("Centralino Switchboard (Semantic match: Chemistry) -> %s", target)
+            return target
 
     # 8. Medicine, Health & Pharmacology -> medico_divulgatore
     med_patterns = [r'\b(medic|salute|farmac|terapi|patolog|sintom|refert|fisiolog|anatom|clinica|diagnos|paziente)\w*']
     if any(re.search(p, msg_lower, re.IGNORECASE) for p in med_patterns):
-        if os.path.exists("manifesti/medico_divulgatore.md"):
-            log.info("Centralino Switchboard (Semantic match: Medicine) -> manifesti/medico_divulgatore.md")
-            return "manifesti/medico_divulgatore.md"
+        target = _trova_ruolo("medico_divulgatore")
+        if target:
+            log.info("Centralino Switchboard (Semantic match: Medicine) -> %s", target)
+            return target
 
     # 9. Law, Contracts & Compliance -> consulente_legale
     legal_patterns = [r'\b(legal|giurid|contratt|clausol|normativ|gdpr|ai\s*act|diritto|avvocat|illecit|responsabilit|decreto|legge)\w*']
     if any(re.search(p, msg_lower, re.IGNORECASE) for p in legal_patterns):
-        if os.path.exists("manifesti/consulente_legale.md"):
-            log.info("Centralino Switchboard (Semantic match: Legal) -> manifesti/consulente_legale.md")
-            return "manifesti/consulente_legale.md"
+        target = _trova_ruolo("consulente_legale")
+        if target:
+            log.info("Centralino Switchboard (Semantic match: Legal) -> %s", target)
+            return target
 
     # 10. Finance, Valuation & Economics -> financial_analyst
     fin_patterns = [r'\b(finanz|bilanc|dcf|ebitda|investim|portafogl|wacc|roe|roi|azion|macroeconom|inflazion|tassi|banca)\w*']
     if any(re.search(p, msg_lower, re.IGNORECASE) for p in fin_patterns):
-        if os.path.exists("manifesti/financial_analyst.md"):
-            log.info("Centralino Switchboard (Semantic match: Finance) -> manifesti/financial_analyst.md")
-            return "manifesti/financial_analyst.md"
+        target = _trova_ruolo("financial_analyst")
+        if target:
+            log.info("Centralino Switchboard (Semantic match: Finance) -> %s", target)
+            return target
 
     # 11. Data Science & Machine Learning -> data_scientist
     ds_patterns = [r'\b(data\s*science|machine\s*learning|pandas|pytorch|scikit|feature|cross\s*validation|clustering|regression|dataset|eda)\w*']
     if any(re.search(p, msg_lower, re.IGNORECASE) for p in ds_patterns):
-        if os.path.exists("manifesti/data_scientist.md"):
-            log.info("Centralino Switchboard (Semantic match: Data Science) -> manifesti/data_scientist.md")
-            return "manifesti/data_scientist.md"
+        target = _trova_ruolo("data_scientist")
+        if target:
+            log.info("Centralino Switchboard (Semantic match: Data Science) -> %s", target)
+            return target
 
     # 12. Foreign Languages & Translation -> docente_lingue
     lang_patterns = [r'\b(traduzion|traduc|inglese|spagnolo|francese|tedesco|grammatica\s+inglese|ielts|toefl|fonetica\s+ipa)\w*']
     if any(re.search(p, msg_lower, re.IGNORECASE) for p in lang_patterns):
-        if os.path.exists("manifesti/docente_lingue.md"):
-            log.info("Centralino Switchboard (Semantic match: Languages) -> manifesti/docente_lingue.md")
-            return "manifesti/docente_lingue.md"
+        target = _trova_ruolo("docente_lingue")
+        if target:
+            log.info("Centralino Switchboard (Semantic match: Languages) -> %s", target)
+            return target
 
     # 13. Mechanical & Structural Engineering -> ingegnere_strutturista
     eng_patterns = [r'\b(struttur|meccanic|scienza\s+costruzioni|trave|flession|taglio|torsion|fem|cad|von\s*mises|sollecitaz)\w*']
     if any(re.search(p, msg_lower, re.IGNORECASE) for p in eng_patterns):
-        if os.path.exists("manifesti/ingegnere_strutturista.md"):
-            log.info("Centralino Switchboard (Semantic match: Engineering) -> manifesti/ingegnere_strutturista.md")
-            return "manifesti/ingegnere_strutturista.md"
+        target = _trova_ruolo("ingegnere_strutturista")
+        if target:
+            log.info("Centralino Switchboard (Semantic match: Engineering) -> %s", target)
+            return target
 
     # 14. Copywriting & Creative Storytelling -> copywriter_storyteller
     copy_patterns = [r'\b(copywriting|storytelling|sceneggiatur|racconto|romanzo|aida|copy\s+pubblicitar|campagna\s+social|post\s+instagram)\w*']
     if any(re.search(p, msg_lower, re.IGNORECASE) for p in copy_patterns):
-        if os.path.exists("manifesti/copywriter_storyteller.md"):
-            log.info("Centralino Switchboard (Semantic match: Copywriting) -> manifesti/copywriter_storyteller.md")
-            return "manifesti/copywriter_storyteller.md"
+        target = _trova_ruolo("copywriter_storyteller")
+        if target:
+            log.info("Centralino Switchboard (Semantic match: Copywriting) -> %s", target)
+            return target
 
     # 15. Exams, Quizzes & Grading -> academic_examiner
     exam_patterns = [r'\b(esam|quiz|prova\s+scritta|test\s+multiple|griglia\s+valutazione|rubrica|voto|correzion\s+compito)\w*']
     if any(re.search(p, msg_lower, re.IGNORECASE) for p in exam_patterns):
-        if os.path.exists("manifesti/academic_examiner.md"):
-            log.info("Centralino Switchboard (Semantic match: Examiner) -> manifesti/academic_examiner.md")
-            return "manifesti/academic_examiner.md"
+        target = _trova_ruolo("academic_examiner")
+        if target:
+            log.info("Centralino Switchboard (Semantic match: Examiner) -> %s", target)
+            return target
 
     # 16. Web Research & News Journalism -> online_journalist
     journ_patterns = [r'\b(cerca\s+sul\s+web|ricerca\s+online|notizie|ultime\s+notizie|rassegna\s+stampa|fact\s*check|giornalist|inchiesta)\w*']
     if any(re.search(p, msg_lower, re.IGNORECASE) for p in journ_patterns):
-        if os.path.exists("manifesti/online_journalist.md"):
-            log.info("Centralino Switchboard (Semantic match: Journalism) -> manifesti/online_journalist.md")
-            return "manifesti/online_journalist.md"
+        target = _trova_ruolo("online_journalist")
+        if target:
+            log.info("Centralino Switchboard (Semantic match: Journalism) -> %s", target)
+            return target
 
     # 17. System Architecture & Roadmap -> sigma_architect
     arch_patterns = [r'\b(architettur|roadmap|pianific|modul|struttura\s+progetto)\w*']
     if any(re.search(p, msg_lower, re.IGNORECASE) for p in arch_patterns):
-        if os.path.exists("manifesti/sigma_architect.md"):
-            log.info("Centralino Switchboard (Semantic match: Architecture) -> manifesti/sigma_architect.md")
-            return "manifesti/sigma_architect.md"
+        target = _trova_ruolo("sigma_architect")
+        if target:
+            log.info("Centralino Switchboard (Semantic match: Architecture) -> %s", target)
+            return target
 
     # 18. Fallback: vector-similarity intent router.
-    #
-    # This used to be a full inference pass: the chat model was asked, in
-    # prose, which manifesto to use, and the user waited for the whole
-    # generation before their answer even started. On a 27B that is the single
-    # largest fixed cost in front of the first token, paid on every message
-    # that the pattern tiers above did not already resolve.
-    #
-    # core/embedding_router.py answers the same question by similarity against
-    # curated anchor phrases. With sentence-transformers installed it is a
-    # multilingual embedding lookup; without it, the module falls back to an
-    # n-gram TF-IDF cosine that is pure standard library. Both land in single
-    # -digit milliseconds and both run anywhere Python runs, which the model
-    # pass never did.
     routable_ids = {
         a["id"] for a in get_all_agents()
-        if a.get("status") == "active" and os.path.exists(f"manifesti/{a['id']}.md")
+        if a.get("status") == "active" and _trova_ruolo(a["id"])
     }
 
     try:
@@ -588,14 +616,14 @@ def _resolve_agent_by_request(message: str, ai_cfg: dict, model_override: str) -
                     "Centralino Switchboard (Embedding Router, conf=%.2f) -> %s",
                     verdict.get("confidence", 0.0), agent,
                 )
-                return f"manifesti/{agent}.md"
+                target = _trova_ruolo(agent)
+                if target:
+                    return target
             log.debug(
-                "Embedding Router chose '%s', which has no installed manifesto; "
+                "Embedding Router chose '%s', which has no installed role; "
                 "falling through to the front desk.", agent,
             )
     except Exception as exc:
-        # A router that cannot answer is not an error worth failing a chat
-        # over: the front desk handles anything unrouted perfectly well.
         log.debug("Embedding Router unavailable (%s); using the front desk.", exc)
 
-    return "manifesti/sigma_assistant.md"
+    return _trova_ruolo("sigma_assistant") or "Ruoli/sigma_assistant.md"

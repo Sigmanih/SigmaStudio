@@ -199,6 +199,20 @@ def _env_context_ceiling() -> Optional[int]:
     return value if value > 0 else None
 
 
+def is_usb_or_removable_drive(path: Any, hardware: Dict[str, Any]) -> bool:
+    """Verifica se il percorso del modello risiede su un'unita' rimovibile o bus USB."""
+    if not path or not isinstance(hardware, dict):
+        return False
+    str_path = str(path).replace("/", "\\").upper()
+    for drive in hardware.get("storage_drives", []) or []:
+        mp = str(drive.get("mountpoint", "")).replace("/", "\\").upper()
+        dev = str(drive.get("device", "")).replace("/", "\\").upper()
+        if (mp and str_path.startswith(mp)) or (dev and str_path.startswith(dev)):
+            if drive.get("is_removable") or drive.get("speed_class") == "usb" or drive.get("bus_type") == "USB":
+                return True
+    return False
+
+
 # ------------------------------------------------------------------ pianificazione
 
 def _plan_settings(facts: ModelFacts, hardware: Dict[str, Any], context_tokens: int
@@ -213,6 +227,7 @@ def _plan_settings(facts: ModelFacts, hardware: Dict[str, Any], context_tokens: 
     accelerators = hardware.get("accelerators", [])
     cpu = hardware.get("cpu", {})
     system = hardware.get("system", {})
+    on_usb = is_usb_or_removable_drive(getattr(facts, "path", None), hardware)
 
     gpus = [
         a for a in accelerators
@@ -261,7 +276,13 @@ def _plan_settings(facts: ModelFacts, hardware: Dict[str, Any], context_tokens: 
             ),
             "prompt_lookup_tokens": fit["prompt_lookup_tokens"],
             "device": "metal",
+            "use_mmap": False if on_usb else True,
         }
+        if on_usb:
+            settings.setdefault("notes", []).append(
+                "Modello collocato su storage USB/rimovibile: disattivato memory mapping (mmap) "
+                "per prevenire errori di paginazione I/O."
+            )
         return _merge_host_fit(settings, fit)
 
     if not gpus:
@@ -295,7 +316,13 @@ def _plan_settings(facts: ModelFacts, hardware: Dict[str, Any], context_tokens: 
             "prompt_lookup_tokens": fit["prompt_lookup_tokens"],
             "device": "arm_neon" if is_arm else "cpu",
             "weights_gb": round(weights_gb, 2),
+            "use_mmap": False if on_usb else True,
         }
+        if on_usb:
+            settings.setdefault("notes", []).append(
+                "Modello collocato su storage USB/rimovibile: disattivato memory mapping (mmap) "
+                "per prevenire errori di paginazione I/O."
+            )
         if n_ctx > requested_ctx and not env_ceiling:
             settings.setdefault("notes", []).append(
                 f"Contesto limitato a {requested_ctx} token su CPU: senza "
@@ -406,11 +433,17 @@ def _plan_settings(facts: ModelFacts, hardware: Dict[str, Any], context_tokens: 
         "kv_quant": kv_quant,
         "prompt_lookup_tokens": fit["prompt_lookup_tokens"],
         "device": "cuda",
+        "use_mmap": False if on_usb else True,
         "usable_vram_gb": round(total_usable, 2),
         "weights_gb": round(weights_gb, 2),
         "kv_cache_gb": kv_gb,
         "kv_cache_gb_f16": kv_gb_f16,
     }
+    if on_usb:
+        settings.setdefault("notes", []).append(
+            "Modello collocato su storage USB/rimovibile: disattivato memory mapping (mmap) "
+            "per prevenire STATUS_IN_PAGE_ERROR (0xC0000006) durante il trasferimento VRAM."
+        )
     if kv_quant:
         settings["kv_saving_gb"] = round(kv_gb_f16 - kv_gb, 2)
     # The forecast writes its own `warning`, so it runs before the fit is
@@ -456,6 +489,7 @@ def _plan_moe_offload(facts: ModelFacts, hardware: Dict[str, Any],
     if not layers or expert_gb <= 0:
         return None
 
+    on_usb = is_usb_or_removable_drive(getattr(facts, "path", None), hardware)
     dense_gb = max(facts.total_bytes / 2**30 - expert_gb - host_only_gb, 0.0)
     kv_quant = None
     su_host = 0
@@ -548,10 +582,9 @@ def _plan_moe_offload(facts: ModelFacts, hardware: Dict[str, Any],
         "kv_quant": kv_quant,
         "prompt_lookup_tokens": fit["prompt_lookup_tokens"],
         "device": "cuda",
-        # Esplicito perche' questa collocazione ci conta: senza mmap gli
-        # esperti diventerebbero un'allocazione da decine di GB invece che
-        # pagine di file, e la macchina se ne accorgerebbe.
-        "use_mmap": True,
+        # Su disco USB/rimovibile disattiviamo mmap per evitare STATUS_IN_PAGE_ERROR (0xC0000006);
+        # su disco fisso mmap rimane abilitato per gli esperti residenti in host.
+        "use_mmap": False if on_usb else True,
         "usable_vram_gb": round(total_usable, 2),
         "weights_gb": round(facts.total_bytes / 2**30, 2),
         "dense_gb": round(dense_gb, 2),
@@ -561,6 +594,11 @@ def _plan_moe_offload(facts: ModelFacts, hardware: Dict[str, Any],
         "kv_cache_gb": kv_gb,
         "kv_cache_gb_f16": kv_gb_f16,
     }
+    if on_usb:
+        settings.setdefault("notes", []).append(
+            "Modello collocato su storage USB/rimovibile: disattivato memory mapping (mmap) "
+            "per prevenire STATUS_IN_PAGE_ERROR (0xC0000006) durante il caricamento."
+        )
     if kv_quant:
         settings["kv_saving_gb"] = round(kv_gb_f16 - kv_gb, 2)
     settings.update(

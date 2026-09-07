@@ -23,6 +23,8 @@ const TITOLI_DA_URL = {
   domotica: 'Domotica',
   music: 'Musica',
   audio_studio: 'Musica',
+  benchmark_lab: 'Benchmark',
+  benchmark: 'Benchmark',
   training_lab: 'Training',
   research_lab: 'Pipelines',
   knowledge: 'Argomenti',
@@ -44,7 +46,7 @@ export function useTabs() {
   const openTab = useCallback((item, type) => {
     // Singleton types (no path needed — one tab per type)
     const SINGLETON_TYPES = [
-      'chat', 'research_lab', 'training_lab', 'hardware_lab', 'hardware',
+      'chat', 'benchmark_lab', 'benchmark', 'research_lab', 'training_lab', 'hardware_lab', 'hardware',
       'roadmap', 'whitepapers_lib', 'knowledge', 'mappa_argomenti',
       'account', 'settings', 'marketplace', 'skills_hub',
       'model_hub', 'hf_hub', 'ai_config', 'config', 'mcp_hub',

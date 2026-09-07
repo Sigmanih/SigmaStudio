@@ -32,6 +32,8 @@ const TAB_TO_FOLDER = {
   voice_studio:    'sigma_voice_studio',
 
   // Lab & Infrastruttura
+  benchmark_lab:   'sigma_benchmark_lab',
+  benchmark:       'sigma_benchmark_lab',
   training_lab:    'sigma_training_lab',
   hardware_lab:    'sigma_hardware_lab',
   hardware:        'sigma_hardware_lab',

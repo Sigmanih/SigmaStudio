@@ -155,16 +155,18 @@ def _write_build_stamp() -> None:
         pass
 
 
-def _init_manifesti() -> None:
-    """Ensure the manifesti/ directory exists (default manifestos are already stored here)."""
-    manifesti_dir = "manifesti"
-
-    if not os.path.exists(manifesti_dir):
+def _init_ruoli() -> None:
+    """Ensure the Ruoli/ directory exists (default role Modelfiles are stored here)."""
+    ruoli_dir = str(paths.ruoli_dir())
+    if not os.path.exists(ruoli_dir):
         try:
-            os.makedirs(manifesti_dir)
-            log.info("Created directory %s/", manifesti_dir)
+            os.makedirs(ruoli_dir, exist_ok=True)
+            log.info("Created directory %s/", ruoli_dir)
         except OSError as exc:
-            log.error("Failed to create directory %s: %s", manifesti_dir, exc)
+            log.error("Failed to create directory %s: %s", ruoli_dir, exc)
+
+
+_init_manifesti = _init_ruoli
 
 
 from core.data_handler import rebuild_modules_meta as _rebuild_modules_meta

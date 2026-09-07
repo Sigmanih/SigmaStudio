@@ -461,79 +461,112 @@ class LlamaServerBackend(InferenceBackend):
         from core.engine.load_overrides import apply_to
         settings = apply_to(settings, facts.name)
 
-        self.unload()
-
-        porta = _porta_libera()
-        comando = [
-            str(server),
-            "-m", modello,
-            "--host", "127.0.0.1",
-            "--port", str(porta),
-            # Il template di chat viene dal GGUF: indovinarlo e' la fonte
-            # principale di risposte formattate male.
-            "--jinja",
-            # Piu' conversazioni sullo stesso modello caricato una volta.
-            "-np", str(int(settings.get("parallel_slots")
-                            or slot_per_contesto(settings.get("n_ctx")))),
-            "-cb",
-            *plan_to_args(settings),
-        ]
-
-        # Aggancia l'adattatore multimodale CLIP/Vision se presente nella cartella
-        mmproj_file = self._find_mmproj_file(facts)
-        if mmproj_file:
-            comando.extend(["--mmproj", mmproj_file])
-            log.info("[LlamaServer] Rilevato e agganciato proiettore multimodale CLIP: %s", os.path.basename(mmproj_file))
-
-        log.info("[LlamaServer] Avvio: %s", " ".join(comando[1:]))
+        tentativi_settings = [settings]
+        if settings.get("use_mmap") is not False:
+            tentativi_settings.append(dict(settings, use_mmap=False))
 
         t0 = time.perf_counter()
-        from core.engine.llama_runtime import runtime_env
-        try:
-            self._processo = subprocess.Popen(
-                comando,
-                stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-                text=True, encoding="utf-8", errors="replace",
-                cwd=str(server.parent),
-                env=runtime_env(),
-            )
-            _assign_kill_on_close(self._processo)
-            atexit.register(self.unload)
-        except OSError as exc:
-            self._processo = None
-            return {"success": False, "stage": "load",
-                    "error": f"Impossibile avviare llama-server: {exc}"}
+        ultimo_errore = ""
+        ultima_uscita = ""
+        settings_correnti = settings
+        porta = 0
+        pronto = False
 
-        # Prima di qualunque attesa: da questo istante il figlio puo' scrivere
-        # quanto vuole senza mai bloccarsi.
-        self._uscita.clear()
-        self._avvia_lettore_uscita()
+        for indice_tentativo, cur_settings in enumerate(tentativi_settings):
+            settings_correnti = cur_settings
+            self.unload()
 
-        self._porta = porta
-        try:
-            dimensione_gb = os.path.getsize(modello) / 2**30
-        except OSError:
-            dimensione_gb = 0.0
-        concesso = _timeout_avvio(dimensione_gb)
-        if concesso > _AVVIO_TIMEOUT_S:
-            log.info(
-                "[llama-server] modello da %.0f GB: concessi %d s per l'avvio "
-                "invece dei %d abituali.", dimensione_gb, concesso, _AVVIO_TIMEOUT_S,
-            )
-        pronto, motivo = self._attendi_pronto(concesso)
-        if not pronto:
+            porta = _porta_libera()
+            comando = [
+                str(server),
+                "-m", modello,
+                "--host", "127.0.0.1",
+                "--port", str(porta),
+                # Il template di chat viene dal GGUF: indovinarlo e' la fonte
+                # principale di risposte formattate male.
+                "--jinja",
+                # Piu' conversazioni sullo stesso modello caricato una volta.
+                "-np", str(int(cur_settings.get("parallel_slots")
+                                or slot_per_contesto(cur_settings.get("n_ctx")))),
+                "-cb",
+                *plan_to_args(cur_settings),
+            ]
+
+            # Aggancia l'adattatore multimodale CLIP/Vision se presente nella cartella
+            mmproj_file = self._find_mmproj_file(facts)
+            if mmproj_file:
+                comando.extend(["--mmproj", mmproj_file])
+                log.info("[LlamaServer] Rilevato e agganciato proiettore multimodale CLIP: %s", os.path.basename(mmproj_file))
+
+            log.info("[LlamaServer] Avvio: %s", " ".join(comando[1:]))
+
+            from core.engine.llama_runtime import runtime_env
+            try:
+                self._processo = subprocess.Popen(
+                    comando,
+                    stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                    text=True, encoding="utf-8", errors="replace",
+                    cwd=str(server.parent),
+                    env=runtime_env(),
+                )
+                _assign_kill_on_close(self._processo)
+                atexit.register(self.unload)
+            except OSError as exc:
+                self._processo = None
+                return {"success": False, "stage": "load",
+                        "error": f"Impossibile avviare llama-server: {exc}"}
+
+            # Prima di qualunque attesa: da questo istante il figlio puo' scrivere
+            # quanto vuole senza mai bloccarsi.
+            self._uscita.clear()
+            self._avvia_lettore_uscita()
+
+            self._porta = porta
+            try:
+                dimensione_gb = os.path.getsize(modello) / 2**30
+            except OSError:
+                dimensione_gb = 0.0
+            concesso = _timeout_avvio(dimensione_gb)
+            if concesso > _AVVIO_TIMEOUT_S:
+                log.info(
+                    "[llama-server] modello da %.0f GB: concessi %d s per l'avvio "
+                    "invece dei %d abituali.", dimensione_gb, concesso, _AVVIO_TIMEOUT_S,
+                )
+            pronto, motivo = self._attendi_pronto(concesso)
+            if pronto:
+                break
+
             uscita = self._raccogli_uscita()
             self.unload()
-            return {"success": False, "stage": "load", "error": motivo,
-                    "stderr": uscita, "settings": settings}
+            ultimo_errore = motivo
+            ultima_uscita = uscita
 
-        slot = int(settings.get("parallel_slots")
-                   or slot_per_contesto(settings.get("n_ctx")))
+            is_mmap_page_error = (
+                cur_settings.get("use_mmap") is not False and (
+                    "status_in_page_error" in motivo.lower()
+                    or "prefetchvirtualmemory failed" in uscita.lower()
+                    or "errore di paginazione i/o" in motivo.lower()
+                )
+            )
+            if is_mmap_page_error and indice_tentativo == 0 and len(tentativi_settings) > 1:
+                log.warning(
+                    "[LlamaServer] Caricamento fallito per errore di paginazione mmap (STATUS_IN_PAGE_ERROR). "
+                    "Tentativo di ripristino automatico con --no-mmap..."
+                )
+                continue
+            break
+
+        if not pronto:
+            return {"success": False, "stage": "load", "error": ultimo_errore,
+                    "stderr": ultima_uscita, "settings": settings_correnti}
+
+        slot = int(settings_correnti.get("parallel_slots")
+                   or slot_per_contesto(settings_correnti.get("n_ctx")))
         self._facts = facts
-        self._settings = dict(settings, load_seconds=round(time.perf_counter() - t0, 2),
+        self._settings = dict(settings_correnti, load_seconds=round(time.perf_counter() - t0, 2),
                               port=porta, parallel_slots=slot,
                               # Il numero che conta per ogni singola risposta.
-                              slot_ctx=max(1, int(settings.get("n_ctx") or 0) // slot))
+                              slot_ctx=max(1, int(settings_correnti.get("n_ctx") or 0) // slot))
         log.info("[LlamaServer] '%s' pronto in %.1fs su :%d",
                  facts.name, time.perf_counter() - t0, porta)
         return {"success": True, "settings": self._settings, "model_name": facts.name}
@@ -897,6 +930,17 @@ class LlamaServerBackend(InferenceBackend):
                         f"La build di llama.cpp installata ({build}) non conosce "
                         f"l'architettura '{arch_tag}'. Il file GGUF e' valido: "
                         f"aggiorna il runtime dal pannello del motore e riprova."
+                    )
+                if (codice in (3221225478, -1073741818) or
+                        "prefetchvirtualmemory failed" in uscita.lower() or
+                        "status_in_page_error" in uscita.lower()):
+                    return (
+                        False,
+                        f"llama-server e' terminato con errore di paginazione I/O "
+                        f"(STATUS_IN_PAGE_ERROR / codice {codice}). Il memory mapping "
+                        f"(mmap) su periferiche esterne o bus USB ha fallito durante "
+                        f"il trasferimento dei tensori. Avvia il modello con --no-mmap "
+                        f"(use_mmap: false)."
                     )
                 return (False, f"llama-server e' terminato (codice {codice}).\n{uscita[-800:]}")
 
