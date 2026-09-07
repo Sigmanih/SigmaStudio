@@ -663,6 +663,52 @@ except Exception as _mod_err:
     log.warning(f"[FastAPI] Avviso inizializzazione ModuleLoader: {_mod_err}")
 
 
+@app.get("/api/modules/sync/status")
+async def api_modules_sync_status():
+    """Cosa partirebbe verso il repository dei moduli, senza far partire niente.
+
+    E' la prova a vuoto: rispecchia nella copia di lavoro e si ferma prima del
+    commit, cosi' si puo' guardare cosa cambierebbe.
+    """
+    from core.module_sync import sync_modules
+    try:
+        return sync_modules(dry_run=True)
+    except Exception as exc:
+        log.warning("[FastAPI] Prova di sincronizzazione moduli fallita: %s", exc)
+        return {"success": False, "errors": [str(exc)], "changed": {}}
+
+
+@app.post("/api/modules/sync")
+async def api_modules_sync(request: Request):
+    """Riporta il lavoro fatto sui moduli nel repository dei moduli.
+
+    Si sviluppa dentro Sigma Studio e si pubblica di la': questa rotta e' il
+    verso inverso dell'installazione. `push` decide se fermarsi al commit
+    locale o arrivare al remoto — sono due cose diverse, perche' la prima resta
+    su questa macchina e la seconda no.
+    """
+    from core.module_sync import sync_modules
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+
+    moduli = body.get("modules") or None
+    if moduli is not None and not isinstance(moduli, list):
+        moduli = [str(moduli)]
+
+    try:
+        return sync_modules(
+            module_ids=moduli,
+            push=bool(body.get("push", True)),
+            nota=str(body.get("note") or ""),
+            dry_run=bool(body.get("dry_run")),
+        )
+    except Exception as exc:
+        log.error("[FastAPI] Sincronizzazione moduli fallita: %s", exc)
+        return {"success": False, "errors": [str(exc)], "changed": {}}
+
+
 @app.get("/api/modules/status")
 async def api_modules_status():
     """Diagnostica: quali moduli opzionali sono caricati e quali route /api/models/* sono registrate."""

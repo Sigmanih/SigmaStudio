@@ -2699,8 +2699,47 @@ def _stream_agent_turn_impl(
     if _chiusura is not None:
         _chiusura["goal_reached"] = bool(goal_reached)
 
+    # Se il run ha toccato dei file di un modulo, quel lavoro appartiene al
+    # repository del modulo, non a questo. Senza questo passo non finirebbe in
+    # nessuno dei due: Sigma Studio i moduli li ignora, e il loro repository
+    # non lo aggiornava nessuno.
+    #
+    # Sta qui e non nella chiusura garantita perche' parla con la rete: farlo
+    # dentro il `finally` significherebbe far aspettare un push a chi ha appena
+    # premuto stop.
+    sincronizzati = _sincronizza_moduli_toccati(ledger, goal_text)
+    if sincronizzati:
+        yield sincronizzati
+
     yield {"type": "run_metrics", **run_metrics}
     yield {"type": "done", "full_text": full_text}
+
+
+def _sincronizza_moduli_toccati(ledger: Any, obiettivo: str = "") -> Optional[Dict[str, Any]]:
+    """Riporta nel loro repository i moduli che questo run ha modificato.
+
+    Accessorio per definizione: se git non risponde, il run resta valido e il
+    lavoro resta sul disco. Per questo non solleva e non blocca.
+    """
+    try:
+        from core.module_sync import auto_sync_paths
+
+        modificati = list(getattr(ledger, "modified_files", []) or [])
+        if not modificati:
+            return None
+        nota = f"Lavoro dell'agente: {str(obiettivo or '')[:200]}".strip()
+        esito = auto_sync_paths(modificati, nota=nota)
+        if not esito or not esito.get("changed"):
+            return None
+        return {
+            "type": "modules_synced",
+            "modules": sorted(esito.get("changed", {})),
+            "pushed": bool(esito.get("pushed")),
+            "errors": esito.get("errors", []),
+        }
+    except Exception as exc:
+        log.warning("[AdminAgent] sincronizzazione moduli non riuscita: %s", exc)
+        return None
 
 
 def _chiudi_run(chiusura: Dict[str, Any]) -> Dict[str, Any]:

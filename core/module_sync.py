@@ -1,0 +1,631 @@
+# ==============================================================================
+# core/module_sync.py — Il lavoro sui moduli torna al repository dei moduli
+# Sigma Studio v8
+# ==============================================================================
+"""Il verso inverso di `module_loader`: dall'albero vivo al repository dei moduli.
+
+Si sviluppa dentro Sigma Studio — e' li' che c'e' l'IDE, l'agente e il
+programma in esecuzione — ma i moduli non appartengono a questo repository:
+ognuno dichiara nel proprio `manifest.json` da quale repository viene e in
+quale cartella ci sta dentro. Il loader sa portarli da li' a qui. Finora non
+esisteva niente che li riportasse indietro, e la conseguenza era che il lavoro
+fatto sui moduli **non stava in nessun repository**: non in questo, che li
+ignora, e non nel loro, che non veniva mai aggiornato. Un `git clean` bastava
+a cancellarlo.
+
+**La sorgente di verita' e' l'albero vivo.** Si modifica qui, si pubblica di
+la'. Il file del modulo che sta in Sigma Studio vince su quello nel repository,
+perche' e' quello che gira.
+
+**Cosa viene rispecchiato, e cosa no.** Solo i due sottoalberi che il loader
+sa installare — `backend/` e `frontend/` — piu' i file di radice del modulo
+(`manifest.json`, `requirements.txt`, `README.md`). Tutto il resto di quella
+cartella nel repository, `tests/` compreso, non viene toccato: rispecchiare
+significa anche cancellare cio' che non esiste piu' qui, e cancellare file che
+questo lato non sa produrre sarebbe distruggere lavoro senza guardarlo.
+"""
+
+from __future__ import annotations
+
+import filecmp
+import json
+import os
+import re
+import shutil
+import subprocess
+import threading
+import time
+from dataclasses import dataclass, field
+from pathlib import Path
+from typing import Any, Dict, Iterable, List, Optional, Tuple
+
+from core import paths
+from core.logger import get_logger
+
+log = get_logger("module_sync")
+
+_CORE_MODULES_DIR = Path(paths.modules_backend_dir())
+_FRONTEND_MODULES_DIR = Path(paths.frontend_modules_dir())
+
+#: File di radice del modulo: il loader li copia dentro il backend installato,
+#: quindi qui li ritrova li' e li rimette al posto giusto.
+FILE_DI_RADICE = ("manifest.json", "requirements.txt", "README.md")
+
+#: Cartelle e file che non appartengono a un repository: prodotti di
+#: compilazione, cache, dipendenze scaricate.
+ESCLUSI = (
+    "__pycache__", ".git", ".pytest_cache", "node_modules", ".venv",
+    ".mypy_cache", ".ruff_cache", "dist", "build", ".DS_Store",
+)
+ESTENSIONI_ESCLUSE = (".pyc", ".pyo", ".pyd", ".log", ".tmp", ".swp")
+
+#: Nomi che di solito contengono credenziali. Un modulo non dovrebbe averne —
+#: la configurazione vive in `config/`, che sta fuori — ma se ce ne finisce uno
+#: la sincronizzazione lo pubblicherebbe su GitHub, e da li' non si torna.
+SOSPETTI_SEGRETI = re.compile(
+    r"(^\.env|(^|[._-])(secret|secrets|credential|credentials|token|apikey|api_key)([._-]|$)"
+    r"|\.pem$|\.key$|id_rsa)",
+    re.IGNORECASE,
+)
+
+
+# ---------------------------------------------------------------------------
+# Cosa c'e' da sincronizzare
+# ---------------------------------------------------------------------------
+
+
+@dataclass
+class ModuloLocale:
+    """Un modulo installato e il posto da cui viene."""
+
+    module_id: str
+    repository: str
+    branch: str
+    path_nel_repo: str
+    backend_dir: Path
+    frontend_dir: Optional[Path]
+
+    @property
+    def ha_sorgente(self) -> bool:
+        return self.backend_dir.is_dir() or bool(
+            self.frontend_dir and self.frontend_dir.is_dir()
+        )
+
+
+def _leggi_manifest(percorso: Path) -> Dict[str, Any]:
+    try:
+        return json.loads(percorso.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as exc:
+        log.warning("[ModuleSync] manifest illeggibile in %s: %s", percorso, exc)
+        return {}
+
+
+def discover_modules() -> List[ModuloLocale]:
+    """I moduli installati che dichiarano un repository di provenienza.
+
+    Un modulo senza `repository` nel manifest non e' un modulo pubblicato: non
+    si inventa dove mandarlo.
+    """
+    trovati: List[ModuloLocale] = []
+    if not _CORE_MODULES_DIR.is_dir():
+        return trovati
+
+    for cartella in sorted(_CORE_MODULES_DIR.iterdir()):
+        manifest_path = cartella / "manifest.json"
+        if not manifest_path.is_file():
+            continue
+        dati = _leggi_manifest(manifest_path)
+        repository = str(dati.get("repository") or "").strip()
+        if not repository:
+            continue
+        module_id = str(dati.get("id") or cartella.name).strip()
+        frontend = _FRONTEND_MODULES_DIR / module_id
+        trovati.append(ModuloLocale(
+            module_id=module_id,
+            repository=repository,
+            branch=str(dati.get("branch") or "main").strip() or "main",
+            path_nel_repo=str(dati.get("path") or f"modules/{module_id}").strip("/"),
+            backend_dir=cartella,
+            frontend_dir=frontend if frontend.is_dir() else None,
+        ))
+    return trovati
+
+
+# ---------------------------------------------------------------------------
+# Rispecchiamento di un sottoalbero
+# ---------------------------------------------------------------------------
+
+
+def _da_ignorare(nome: str) -> bool:
+    if nome in ESCLUSI:
+        return True
+    return any(nome.endswith(est) for est in ESTENSIONI_ESCLUSE)
+
+
+def _file_rilevanti(radice: Path) -> Iterable[Path]:
+    """I percorsi relativi dei file da pubblicare sotto `radice`."""
+    for cartella_corrente, sottocartelle, file in os.walk(radice):
+        sottocartelle[:] = [d for d in sottocartelle if not _da_ignorare(d)]
+        for nome in file:
+            if _da_ignorare(nome):
+                continue
+            yield Path(cartella_corrente, nome).relative_to(radice)
+
+
+@dataclass
+class Rispecchiamento:
+    """Cosa e' cambiato rispecchiando un sottoalbero."""
+
+    aggiunti: List[str] = field(default_factory=list)
+    modificati: List[str] = field(default_factory=list)
+    rimossi: List[str] = field(default_factory=list)
+    segreti_saltati: List[str] = field(default_factory=list)
+
+    @property
+    def vuoto(self) -> bool:
+        return not (self.aggiunti or self.modificati or self.rimossi)
+
+    def unisci(self, altro: "Rispecchiamento", prefisso: str = "") -> None:
+        for campo in ("aggiunti", "modificati", "rimossi", "segreti_saltati"):
+            getattr(self, campo).extend(
+                f"{prefisso}{v}" for v in getattr(altro, campo)
+            )
+
+
+def mirror_tree(sorgente: Path, destinazione: Path) -> Rispecchiamento:
+    """Rende `destinazione` identica a `sorgente`, cancellazioni comprese.
+
+    Cancellare e' la meta' che serve davvero: senza, un file rinominato qui
+    resta anche col vecchio nome nel repository, e chi installa il modulo si
+    ritrova due versioni dello stesso codice.
+    """
+    esito = Rispecchiamento()
+    if not sorgente.is_dir():
+        return esito
+
+    attesi = set()
+    for relativo in _file_rilevanti(sorgente):
+        if SOSPETTI_SEGRETI.search(relativo.name):
+            # Pubblicare su GitHub non si annulla: nel dubbio non parte.
+            esito.segreti_saltati.append(str(relativo).replace("\\", "/"))
+            log.warning(
+                "[ModuleSync] '%s' non pubblicato: il nome fa pensare a "
+                "credenziali", relativo,
+            )
+            continue
+        attesi.add(relativo)
+
+        src = sorgente / relativo
+        dst = destinazione / relativo
+        chiave = str(relativo).replace("\\", "/")
+        if not dst.exists():
+            dst.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(src, dst)
+            esito.aggiunti.append(chiave)
+        elif not filecmp.cmp(src, dst, shallow=False):
+            shutil.copy2(src, dst)
+            esito.modificati.append(chiave)
+
+    if destinazione.is_dir():
+        for relativo in list(_file_rilevanti(destinazione)):
+            if relativo in attesi:
+                continue
+            (destinazione / relativo).unlink(missing_ok=True)
+            esito.rimossi.append(str(relativo).replace("\\", "/"))
+
+    _rimuovi_cartelle_vuote(destinazione)
+    return esito
+
+
+def _rimuovi_cartelle_vuote(radice: Path) -> None:
+    if not radice.is_dir():
+        return
+    for cartella, _, _ in sorted(os.walk(radice), reverse=True):
+        p = Path(cartella)
+        if p == radice:
+            continue
+        try:
+            if not any(p.iterdir()):
+                p.rmdir()
+        except OSError:
+            pass
+
+
+def stage_module(modulo: ModuloLocale, radice_repo: Path) -> Rispecchiamento:
+    """Porta un modulo dall'albero vivo dentro la copia del suo repository."""
+    destinazione = radice_repo / modulo.path_nel_repo
+    destinazione.mkdir(parents=True, exist_ok=True)
+
+    esito = Rispecchiamento()
+
+    # I file di radice: il loader li deposita dentro il backend installato,
+    # quindi e' li' che stanno adesso, ed e' dalla radice che vanno ripresi.
+    for nome in FILE_DI_RADICE:
+        origine = modulo.backend_dir / nome
+        arrivo = destinazione / nome
+        if not origine.is_file():
+            continue
+        if not arrivo.exists():
+            shutil.copy2(origine, arrivo)
+            esito.aggiunti.append(nome)
+        elif not filecmp.cmp(origine, arrivo, shallow=False):
+            shutil.copy2(origine, arrivo)
+            esito.modificati.append(nome)
+
+    # Il backend, meno i file di radice che hanno gia' il loro posto.
+    backend_esito = _mirror_backend(modulo.backend_dir, destinazione / "backend")
+    esito.unisci(backend_esito, "backend/")
+
+    if modulo.frontend_dir:
+        esito.unisci(mirror_tree(modulo.frontend_dir, destinazione / "frontend"), "frontend/")
+
+    return esito
+
+
+def _mirror_backend(sorgente: Path, destinazione: Path) -> Rispecchiamento:
+    """Come `mirror_tree`, ma senza i file che appartengono alla radice.
+
+    Copiarli anche qui li duplicherebbe: il loader li rimettera' comunque nel
+    backend al momento dell'installazione, ed e' quella la copia buona.
+    """
+    if not sorgente.is_dir():
+        return Rispecchiamento()
+
+    temporanea = destinazione.parent / f".{destinazione.name}.staging"
+    if temporanea.exists():
+        shutil.rmtree(temporanea, ignore_errors=True)
+    temporanea.mkdir(parents=True, exist_ok=True)
+    try:
+        for relativo in _file_rilevanti(sorgente):
+            if relativo.parent == Path(".") and relativo.name in FILE_DI_RADICE:
+                continue
+            arrivo = temporanea / relativo
+            arrivo.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(sorgente / relativo, arrivo)
+        return mirror_tree(temporanea, destinazione)
+    finally:
+        shutil.rmtree(temporanea, ignore_errors=True)
+
+
+# ---------------------------------------------------------------------------
+# La copia di lavoro del repository dei moduli
+# ---------------------------------------------------------------------------
+
+
+def _esegui_git(args: List[str], cwd: Path, timeout_s: float = 120.0) -> subprocess.CompletedProcess:
+    return subprocess.run(
+        ["git"] + args,
+        cwd=str(cwd),
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        timeout=timeout_s,
+    )
+
+
+def _nome_cartella_repo(repository: str) -> str:
+    pulito = repository.rstrip("/")
+    if pulito.endswith(".git"):
+        pulito = pulito[:-4]
+    return pulito.rsplit("/", 1)[-1] or "moduli"
+
+
+def repo_workdir(repository: str) -> Path:
+    """Dove vive la copia di lavoro di un repository dei moduli.
+
+    Sotto `var/`, che e' stato di runtime: non appartiene a questo repository e
+    non va versionata: e' un mezzo, non un contenuto.
+    """
+    return Path(paths.var_dir()) / "module_repos" / _nome_cartella_repo(repository)
+
+
+def ensure_clone(repository: str, branch: str = "main") -> Tuple[Optional[Path], str]:
+    """La copia di lavoro aggiornata del repository. Ritorna (percorso, errore)."""
+    destinazione = repo_workdir(repository)
+    destinazione.parent.mkdir(parents=True, exist_ok=True)
+
+    if not (destinazione / ".git").is_dir():
+        if destinazione.exists():
+            shutil.rmtree(destinazione, ignore_errors=True)
+        res = subprocess.run(
+            ["git", "clone", "--branch", branch, repository, str(destinazione)],
+            capture_output=True, text=True, encoding="utf-8",
+            errors="replace", timeout=600.0,
+        )
+        if res.returncode != 0:
+            return None, f"clone fallito: {res.stderr.strip()[:400]}"
+        return destinazione, ""
+
+    fetch = _esegui_git(["fetch", "origin", branch], destinazione, timeout_s=300.0)
+    if fetch.returncode != 0:
+        return destinazione, f"fetch fallito: {fetch.stderr.strip()[:400]}"
+
+    # `rebase` e non `reset --hard`: se un push precedente non era andato a
+    # buon fine, i commit locali sono l'unica copia di quel lavoro e azzerarli
+    # sarebbe esattamente il difetto che questo modulo esiste per togliere.
+    rebase = _esegui_git(["rebase", f"origin/{branch}"], destinazione)
+    if rebase.returncode != 0:
+        _esegui_git(["rebase", "--abort"], destinazione)
+        return destinazione, (
+            "la copia locale diverge dal remoto e il riallineamento non e' "
+            "automatico: risolvi a mano in " + str(destinazione)
+        )
+    return destinazione, ""
+
+
+# ---------------------------------------------------------------------------
+# La sincronizzazione
+# ---------------------------------------------------------------------------
+
+
+def _messaggio_commit(cambiati: Dict[str, Rispecchiamento], nota: str = "") -> str:
+    nomi = sorted(cambiati)
+    if len(nomi) == 1:
+        titolo = f"Aggiorna {nomi[0]} da Sigma Studio"
+    else:
+        titolo = f"Aggiorna {len(nomi)} moduli da Sigma Studio"
+
+    righe = [titolo, ""]
+    if nota:
+        righe += [nota, ""]
+    for nome in nomi:
+        e = cambiati[nome]
+        righe.append(
+            f"* {nome}: {len(e.aggiunti)} aggiunti, "
+            f"{len(e.modificati)} modificati, {len(e.rimossi)} rimossi"
+        )
+    return "\n".join(righe)
+
+
+def sync_modules(
+    module_ids: Optional[Iterable[str]] = None,
+    push: bool = False,
+    nota: str = "",
+    dry_run: bool = False,
+) -> Dict[str, Any]:
+    """Riporta i moduli modificati nel loro repository.
+
+    `push` e' separato dal commit apposta: committare e' reversibile e resta
+    su questa macchina, pubblicare no. Chi chiama decide, e per l'automatismo
+    la decisione la prende la configurazione dell'utente, non questo modulo.
+
+    `dry_run` prepara tutto e si ferma prima di committare: serve a vedere cosa
+    partirebbe.
+    """
+    voluti = set(module_ids) if module_ids else None
+    moduli = [
+        m for m in discover_modules()
+        if m.ha_sorgente and (voluti is None or m.module_id in voluti)
+    ]
+
+    esito: Dict[str, Any] = {
+        "success": True, "repos": [], "changed": {}, "skipped_secrets": [],
+        "errors": [], "pushed": False, "committed": False, "dry_run": bool(dry_run),
+    }
+    if not moduli:
+        esito["message"] = "Nessun modulo da sincronizzare."
+        return esito
+
+    per_repo: Dict[Tuple[str, str], List[ModuloLocale]] = {}
+    for m in moduli:
+        per_repo.setdefault((m.repository, m.branch), []).append(m)
+
+    for (repository, branch), gruppo in per_repo.items():
+        radice, errore = ensure_clone(repository, branch)
+        if radice is None:
+            esito["success"] = False
+            esito["errors"].append(f"{repository}: {errore}")
+            continue
+        if errore:
+            esito["success"] = False
+            esito["errors"].append(f"{repository}: {errore}")
+            continue
+
+        cambiati: Dict[str, Rispecchiamento] = {}
+        for modulo in gruppo:
+            rispecchiato = stage_module(modulo, radice)
+            esito["skipped_secrets"].extend(
+                f"{modulo.module_id}/{s}" for s in rispecchiato.segreti_saltati
+            )
+            if not rispecchiato.vuoto:
+                cambiati[modulo.module_id] = rispecchiato
+
+        riepilogo = {
+            nome: {
+                "aggiunti": e.aggiunti, "modificati": e.modificati, "rimossi": e.rimossi,
+            }
+            for nome, e in cambiati.items()
+        }
+        esito["changed"].update(riepilogo)
+        esito["repos"].append({
+            "repository": repository, "branch": branch,
+            "workdir": str(radice), "modules": [m.module_id for m in gruppo],
+        })
+
+        if not cambiati:
+            log.info("[ModuleSync] %s: nessuna modifica da pubblicare", repository)
+            continue
+        if dry_run:
+            continue
+
+        _esegui_git(["add", "-A"], radice)
+        stato = _esegui_git(["status", "--porcelain"], radice)
+        if not stato.stdout.strip():
+            continue
+
+        commit = _esegui_git(
+            ["commit", "-m", _messaggio_commit(cambiati, nota)], radice
+        )
+        if commit.returncode != 0:
+            esito["success"] = False
+            esito["errors"].append(
+                f"{repository}: commit fallito: {commit.stderr.strip()[:300]}"
+            )
+            continue
+        esito["committed"] = True
+        log.info("[ModuleSync] %s: commit creato per %s",
+                 repository, ", ".join(sorted(cambiati)))
+
+        if push:
+            spinta = _esegui_git(["push", "origin", branch], radice, timeout_s=600.0)
+            if spinta.returncode != 0:
+                esito["success"] = False
+                esito["errors"].append(
+                    f"{repository}: push fallito: {spinta.stderr.strip()[:300]}. "
+                    "Il commit resta in " + str(radice)
+                )
+            else:
+                esito["pushed"] = True
+                log.info("[ModuleSync] %s: pubblicato su %s", repository, branch)
+
+    return esito
+
+
+def modules_touched_by(paths_toccati: Iterable[str]) -> List[str]:
+    """Quali moduli riguardano dei percorsi modificati.
+
+    Serve a chi ha appena scritto dei file e non sa se appartengano a un
+    modulo: un run dell'agente, per esempio.
+    """
+    noti = {m.module_id: m for m in discover_modules()}
+    colpiti: List[str] = []
+    for grezzo in paths_toccati:
+        try:
+            p = Path(str(grezzo)).resolve()
+        except (OSError, ValueError):
+            continue
+        for module_id, modulo in noti.items():
+            if module_id in colpiti:
+                continue
+            radici = [modulo.backend_dir]
+            if modulo.frontend_dir:
+                radici.append(modulo.frontend_dir)
+            for radice in radici:
+                try:
+                    p.relative_to(radice.resolve())
+                except ValueError:
+                    continue
+                colpiti.append(module_id)
+                break
+    return colpiti
+
+
+# ---------------------------------------------------------------------------
+# Sincronizzazione automatica
+# ---------------------------------------------------------------------------
+#
+# Si sviluppa dentro Sigma Studio e si pubblica di la': l'automatismo esiste
+# perche' il passaggio manuale e' esattamente quello che finora non avveniva
+# mai, ed e' il motivo per cui il repository dei moduli era rimasto indietro.
+
+CONFIG_FILE = "module_sync.json"
+
+#: Cosa fare quando un run tocca dei file di un modulo. Il commit e' acceso
+#: perche' e' locale e reversibile; il push perche' l'utente ha chiesto che il
+#: lavoro finisca nel posto giusto senza doverci pensare ogni volta.
+PREDEFINITI: Dict[str, Any] = {
+    "auto_commit": True,
+    "auto_push": True,
+    #: Quanto attendere prima di ripetere una sincronizzazione non
+    #: richiesta. Salvare un file nell'editor e' un gesto continuo:
+    #: senza attesa ogni battuta di "salva" diventerebbe un commit, e la
+    #: storia del repository dei moduli sarebbe illeggibile.
+    "min_interval_s": 180,
+}
+
+
+def _percorso_config() -> Path:
+    return Path(paths.config_dir()) / CONFIG_FILE
+
+
+def load_config() -> Dict[str, Any]:
+    """Le preferenze di sincronizzazione, con i predefiniti sotto."""
+    configurazione = dict(PREDEFINITI)
+    percorso = _percorso_config()
+    if percorso.is_file():
+        try:
+            salvate = json.loads(percorso.read_text(encoding="utf-8"))
+            if isinstance(salvate, dict):
+                configurazione.update(salvate)
+        except (OSError, ValueError) as exc:
+            log.warning("[ModuleSync] configurazione illeggibile: %s", exc)
+    return configurazione
+
+
+def save_config(valori: Dict[str, Any]) -> Dict[str, Any]:
+    """Scrive le preferenze, tenendo solo le chiavi note."""
+    corrente = load_config()
+    corrente.update({k: v for k, v in (valori or {}).items() if k in PREDEFINITI})
+    percorso = _percorso_config()
+    percorso.parent.mkdir(parents=True, exist_ok=True)
+    percorso.write_text(json.dumps(corrente, indent=2), encoding="utf-8")
+    return corrente
+
+
+#: Quando e' stata l'ultima sincronizzazione automatica non richiesta.
+_ultima_automatica: float = 0.0
+_lucchetto_automatica = threading.Lock()
+
+
+def auto_sync_paths(
+    paths_toccati: Iterable[str],
+    nota: str = "",
+    immediate: bool = True,
+) -> Optional[Dict[str, Any]]:
+    """Sincronizza i moduli toccati da questi percorsi, se la config lo prevede.
+
+    `immediate` distingue i due momenti in cui l'automatismo scatta. La fine di
+    un run e' un evento raro e concluso: si sincronizza subito. Il salvataggio
+    di un file nell'editor no — e' un gesto che si ripete ogni pochi secondi, e
+    trattarlo allo stesso modo riempirebbe il repository di commit da una riga.
+    Li' si aspetta `min_interval_s` fra una volta e l'altra.
+
+    Ritorna None quando non c'e' niente da fare. Non solleva mai: e' un passo
+    accessorio, e far fallire un salvataggio perche' git non risponde sarebbe
+    sproporzionato.
+    """
+    global _ultima_automatica
+    try:
+        configurazione = load_config()
+        if not configurazione.get("auto_commit", True):
+            return None
+
+        if not immediate:
+            attesa = float(configurazione.get("min_interval_s", 180) or 0)
+            with _lucchetto_automatica:
+                if time.monotonic() - _ultima_automatica < attesa:
+                    return None
+                _ultima_automatica = time.monotonic()
+        else:
+            with _lucchetto_automatica:
+                _ultima_automatica = time.monotonic()
+
+        toccati = modules_touched_by(paths_toccati)
+        if not toccati:
+            return None
+        return sync_modules(
+            module_ids=toccati,
+            push=bool(configurazione.get("auto_push", True)),
+            nota=nota,
+        )
+    except Exception as exc:
+        log.warning("[ModuleSync] sincronizzazione automatica non riuscita: %s", exc)
+        return {"success": False, "errors": [str(exc)], "changed": {}}
+
+
+def auto_sync_in_background(paths_toccati: Iterable[str], nota: str = "") -> None:
+    """Come sopra, ma senza far aspettare chi ha appena salvato un file.
+
+    Parlare con GitHub puo' richiedere secondi; un salvataggio nell'editor deve
+    tornare subito. Il thread e' `daemon` perche' una sincronizzazione in corso
+    non e' un buon motivo per tenere in vita il programma alla chiusura.
+    """
+    percorsi = [str(p) for p in paths_toccati]
+    if not percorsi:
+        return
+    threading.Thread(
+        target=lambda: auto_sync_paths(percorsi, nota=nota, immediate=False),
+        name="module-sync",
+        daemon=True,
+    ).start()
