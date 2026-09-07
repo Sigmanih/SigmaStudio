@@ -1,4 +1,4 @@
-# Stato dell'Harness · 8 settembre 2026
+# Stato dell'Harness · 8 settembre 2026 (rev. 2)
 
 Valutazione dell'harness dell'agente nel kernel: cosa regge, cosa no, e cosa serve
 prima del prossimo lavoro — rendere l'intero Sigma Studio, moduli e tab compresi,
@@ -6,11 +6,11 @@ impostabile in più lingue.
 
 | | |
 |:---|:---|
-| Test verdi | **1148** |
+| Test verdi | **1183** |
 | Build frontend | verde (~0,9 s) |
 | `npm run lint:undef` | 0 riferimenti non definiti |
 | Punti dell'audit tecnico | 11 / 11 chiusi |
-| Difetti trovati **dopo** la chiusura dell'audit | 7, tutti nell'integrazione |
+| Difetti trovati **dopo** la chiusura dell'audit | 9, tutti nell'integrazione |
 
 ---
 
@@ -57,6 +57,8 @@ modulo.
 | `shutil.copy2` nella sincronizzazione moduli | Una volta su quattro il commit veniva saltato in silenzio |
 | Prova a vuoto che rispecchiava davvero | Il pannello diceva «tutto allineato» su lavoro mai pubblicato |
 | `manifest.backend.handlers_module` mai letto | Sbagliato in 7 moduli su 15, e nessuno se n'era accorto |
+| `diff_from_main` con base sbagliata e senza i file nuovi | Chi rivede avrebbe approvato una cosa diversa da quella applicata |
+| Revisione di fine run confusa con quella per scrittura | Le scritture si fermavano una per una, scadevano, e alla fine non restava niente da rivedere |
 
 ### Il pattern
 
@@ -102,43 +104,67 @@ Il compito — rendere impostabile la lingua in tutto Sigma Studio, moduli e tab
 è per forma un intervento meccanico su centinaia di file, con poche decisioni
 difficili all'inizio e molte ripetizioni dopo. Quello che manca è tutto lì.
 
-### 1. Revisione a livello di run, non di file
-`WorktreeSession.diff_from_main()` esiste e non la chiama nessuno. Con il gate
-attuale un lavoro da 200 file chiederebbe 200 approvazioni: nessuno le dà, e il
-gate verrebbe spento — cioè la rete di sicurezza sparisce proprio quando serve di
-più. Serve il diff dell'intero run, rivisto una volta.
+### ~~1. Revisione a livello di run~~ · fatto
+`review_run` mostra una volta sola il diff di tutto ciò che il run ha prodotto e
+chiede una decisione: approvato passa all'albero principale, rifiutato resta sul
+branch della sessione. Richiede l'isolamento in worktree, e se manca lo dice
+invece di fingere.
 
-### 2. Ventaglio di run paralleli su una coda condivisa
+Due difetti trovati costruendolo, entrambi nel punto che conta. `diff_from_main`
+aveva la stessa base sbagliata già corretta in `apply_to_main`, e guardava solo i
+commit: ometteva l'ultimo turno e **tutti i file nuovi**, cioè la maggior parte di
+un lavoro di internazionalizzazione — chi rivede avrebbe approvato una cosa e ne
+sarebbe stata applicata un'altra. E la condizione del cancello per scrittura
+guardava se il gate esistesse invece di quale revisione fosse stata chiesta:
+provandolo dal vivo, le scritture si sono fermate una per una, sono scadute, e
+alla fine non restava niente da rivedere.
+
+Verificato end to end su un repository vero, in entrambi i versi.
+
+### 1. Ventaglio di run paralleli su una coda condivisa
 Oggi c'è un ciclo per volta e un orchestratore a cinque fasi **sequenziali**.
 Duecento file in sequenza non finiscono. Serve una coda di lavoro persistente
 (voce, stato, esito, riprendibile) e N run in parallelo che la consumano —
-possibile in sicurezza solo adesso che ogni run può stare nel proprio worktree.
+possibile in sicurezza solo adesso che ogni run può stare nel proprio worktree,
+e leggibile solo adesso che il lavoro di ciascuno si rivede in una volta.
+**È il pezzo che manca per primo.**
 
-### 3. Disciplina del codemod
+### 2. Disciplina del codemod
 La via efficiente non è far riscrivere 200 file a un modello: è fargli scrivere
 **uno script** che li riscrive, controllare un campione, e trattare a mano solo
 le eccezioni. Il prompt oggi spinge verso `edit_file` file per file. Serve una
 regola esplicita e un modo di applicare uno script a un insieme di file
 riportando l'esito per ciascuno.
 
-### 4. Un controllo di completezza che faccia da prova
-Il cancello di completamento vuole prove ancorate. Per questo lavoro la prova è:
-ogni chiave usata esiste in ogni lingua, nessun letterale non tradotto resta nei
-file elencati, la build passa. Serve quel controllo come comando eseguibile, e un
-parser in `verification.py` che ne legga il risultato — altrimenti l'agente
-dichiara finito un lavoro che nessuno ha misurato.
+### ~~4. Un controllo di completezza che faccia da prova~~ · fatto
+Un controllo scritto per il progetto vale ora come verifica, a una condizione:
+deve dire **quanti elementi ha esaminato**.
 
-### 5. Traduzione a lotti con i segnaposto protetti
+```
+SIGMA-CHECK {"check": "i18n", "checked": 214, "problems": 0}
+```
+
+`checked` è il punto. Un controllo che non ha guardato niente esce con codice zero
+esattamente come uno che ha guardato tutto senza trovare nulla — è la differenza
+fra una prova e un'illusione, ed è la stessa regola per cui qui una suite con zero
+test raccolti non passa. Senza la riga, o con `checked` a zero, il cancello di
+completamento resta chiuso. Contratto in `AGENTS.md`, dove l'harness lo mette
+davanti all'agente.
+
+Resta da scrivere il controllo vero per la lingua: è lavoro del prossimo compito,
+e ora ha un modo di essere creduto.
+
+### 3. Traduzione a lotti con i segnaposto protetti
 Un percorso separato dal ciclo dell'agente: catalogo → lingue, con protezione di
 `{nome}`, `%s` e degli elementi interpolati in JSX, un glossario di termini che
 non si traducono, e una validazione che i segnaposto sopravvivano. È codice nuovo,
 non harness.
 
-### 6. La lingua deve arrivare anche al backend
+### 4. La lingua deve arrivare anche al backend
 Messaggi d'errore, risposte delle rotte, prompt dei ruoli. Se l'intervento si
 ferma al frontend, metà del prodotto resta in italiano.
 
-### 7. Poi
+### 5. Poi
 Rollback manuale dal pannello (i checkpoint ci sono, il pulsante no);
 unificazione fra `tabType`/`sidebar*` nei manifest e la mappa scritta a mano in
 `registry.js`; P2P, che resta per ultimo.
