@@ -740,3 +740,89 @@ class TestLaProvaAVuotoNonConsumaLeDifferenze:
         module_sync.sync_modules(push=True)
 
         assert module_sync.sync_modules(dry_run=True)["changed"] == {}
+
+
+class TestUnModuloCheNessunoPuoPubblicare:
+    """`sigma_audio_studio` girava, aveva perso il manifest, e la
+    sincronizzazione lo saltava senza dirlo: il suo codice non stava in nessun
+    repository e nessuno se n'era accorto.
+
+    Saltare un modulo senza manifest e' giusto — non si inventa dove mandarlo.
+    Saltarlo in silenzio no.
+    """
+
+    def test_un_modulo_senza_manifest_viene_segnalato(self, albero_vivo):
+        (albero_vivo / "core" / "modules" / "smemorato").mkdir(parents=True)
+        (albero_vivo / "core" / "modules" / "smemorato" / "x.py").write_text(
+            "X = 1\n", encoding="utf-8")
+
+        orfani = module_sync.orphan_modules()
+        assert any(o["module_id"] == "smemorato" for o in orfani)
+        assert "manifest" in [o["reason"] for o in orfani
+                              if o["module_id"] == "smemorato"][0]
+
+    def test_un_manifest_senza_repository_viene_segnalato(self, albero_vivo):
+        cartella = albero_vivo / "core" / "modules" / "senza_casa"
+        cartella.mkdir(parents=True)
+        (cartella / "manifest.json").write_text(
+            json.dumps({"id": "senza_casa"}), encoding="utf-8")
+
+        orfani = module_sync.orphan_modules()
+        assert any("repository" in o["reason"] for o in orfani
+                   if o["module_id"] == "senza_casa")
+
+    def test_un_frontend_senza_backend_non_sfugge(self, albero_vivo):
+        """E' esattamente la forma in cui si era nascosto audio_studio."""
+        (albero_vivo / "sigma_studio" / "src" / "modules" / "solo_faccia").mkdir(parents=True)
+
+        assert any(o["module_id"] == "solo_faccia"
+                   for o in module_sync.orphan_modules())
+
+    def test_le_cartelle_che_non_sono_moduli_non_disturbano(self, albero_vivo):
+        """Segnalare `__pycache__` o `common` renderebbe l'elenco inutile:
+        chi lo legge smetterebbe di guardarlo."""
+        for nome in ("__pycache__", "common"):
+            (albero_vivo / "core" / "modules" / nome).mkdir(parents=True, exist_ok=True)
+
+        segnalati = {o["module_id"] for o in module_sync.orphan_modules()}
+        assert "__pycache__" not in segnalati
+        assert "common" not in segnalati
+
+    def test_gli_orfani_compaiono_nel_resoconto(self, albero_vivo, remoto):
+        _scrivi_modulo(albero_vivo, str(remoto))
+        (albero_vivo / "core" / "modules" / "dimenticato").mkdir(parents=True)
+
+        esito = module_sync.sync_modules(dry_run=True)
+        assert any(o["module_id"] == "dimenticato" for o in esito["orphans"])
+
+
+class TestIndirizziNellaFormaDelBrowser:
+    """Un manifest puo' dichiarare l'indirizzo come lo si copia dal browser —
+    '.../tree/main/modules/x' — che non e' clonabile."""
+
+    def test_viene_districato_in_indirizzo_branch_e_percorso(self, albero_vivo):
+        cartella = albero_vivo / "core" / "modules" / "dal_browser"
+        cartella.mkdir(parents=True)
+        (cartella / "manifest.json").write_text(json.dumps({
+            "id": "dal_browser",
+            "repository": "https://github.com/Sigmanih/SigmaStudio-Moduli/tree/main/modules/dal_browser",
+        }), encoding="utf-8")
+
+        modulo = [m for m in module_sync.discover_modules()
+                  if m.module_id == "dal_browser"][0]
+        assert modulo.repository.endswith(".git")
+        assert "/tree/" not in modulo.repository
+        assert modulo.branch == "main"
+        assert modulo.path_nel_repo == "modules/dal_browser"
+
+    def test_il_nome_della_cartella_vince_sull_id_dichiarato(self, albero_vivo):
+        """E' quello che il sistema usa per importare il modulo: un manifest che
+        dice altro descrive un modulo che non esiste."""
+        cartella = albero_vivo / "core" / "modules" / "sigma_qualcosa"
+        cartella.mkdir(parents=True)
+        (cartella / "manifest.json").write_text(json.dumps({
+            "id": "qualcosa", "repository": "https://esempio.invalid/m",
+        }), encoding="utf-8")
+
+        modulo = module_sync.discover_modules()[0]
+        assert modulo.module_id == "sigma_qualcosa"

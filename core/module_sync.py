@@ -119,17 +119,72 @@ def discover_modules() -> List[ModuloLocale]:
         repository = str(dati.get("repository") or "").strip()
         if not repository:
             continue
-        module_id = str(dati.get("id") or cartella.name).strip()
+        # Un manifest puo' dichiarare l'indirizzo nella forma con cui si copia
+        # dal browser — ".../tree/main/modules/x" — che non e' un indirizzo git
+        # clonabile. Il loader sa gia' districarla: si riusa quella, invece di
+        # tenerne una seconda copia che col tempo divergerebbe.
+        branch_dichiarato = str(dati.get("branch") or "").strip()
+        path_dichiarato = str(dati.get("path") or "").strip("/")
+        try:
+            from core.module_loader import _sanitize_git_url
+            repository, branch_url, path_url = _sanitize_git_url(repository)
+            branch_dichiarato = branch_dichiarato or branch_url
+            path_dichiarato = path_dichiarato or path_url
+        except ImportError:
+            pass
+        # Il nome della cartella vince sull'`id` dichiarato: e' quello che il
+        # sistema usa davvero per importare il modulo, e un manifest che dice
+        # altro descrive un modulo che non esiste.
+        module_id = cartella.name
         frontend = _FRONTEND_MODULES_DIR / module_id
         trovati.append(ModuloLocale(
             module_id=module_id,
             repository=repository,
-            branch=str(dati.get("branch") or "main").strip() or "main",
-            path_nel_repo=str(dati.get("path") or f"modules/{module_id}").strip("/"),
+            branch=branch_dichiarato or "main",
+            path_nel_repo=path_dichiarato or f"modules/{module_id}",
             backend_dir=cartella,
             frontend_dir=frontend if frontend.is_dir() else None,
         ))
     return trovati
+
+
+#: Cartelle sotto `core/modules/` che non sono moduli e non vanno segnalate.
+_NON_MODULI = frozenset({"__pycache__", "common", ".pytest_cache"})
+
+
+def orphan_modules() -> List[Dict[str, str]]:
+    """I moduli installati che nessuna sincronizzazione puo' pubblicare.
+
+    Un modulo senza `manifest.json`, o con un manifest che non dice da dove
+    viene, viene saltato: e' giusto, perche' non si inventa dove mandarlo. Ma
+    saltarlo **in silenzio** e' come non averlo — il suo codice gira e non sta
+    in nessun repository, ed e' esattamente cosi' che `sigma_audio_studio` e'
+    rimasto fuori senza che nessuno se ne accorgesse.
+
+    Qui vengono elencati con il motivo, perche' un problema che si vede si
+    risolve.
+    """
+    orfani: List[Dict[str, str]] = []
+    for radice, tipo in ((_CORE_MODULES_DIR, "backend"),
+                         (_FRONTEND_MODULES_DIR, "frontend")):
+        if not radice.is_dir():
+            continue
+        for cartella in sorted(radice.iterdir()):
+            if not cartella.is_dir() or cartella.name in _NON_MODULI:
+                continue
+            if cartella.name.startswith("."):
+                continue
+            manifest = _CORE_MODULES_DIR / cartella.name / "manifest.json"
+            if not manifest.is_file():
+                motivo = "nessun manifest.json"
+            elif not str(_leggi_manifest(manifest).get("repository") or "").strip():
+                motivo = "il manifest non dichiara da quale repository viene"
+            else:
+                continue
+            if any(o["module_id"] == cartella.name for o in orfani):
+                continue
+            orfani.append({"module_id": cartella.name, "reason": motivo, "side": tipo})
+    return orfani
 
 
 # ---------------------------------------------------------------------------
@@ -456,6 +511,8 @@ def sync_modules(
     esito: Dict[str, Any] = {
         "success": True, "repos": [], "changed": {}, "skipped_secrets": [],
         "errors": [], "pushed": False, "committed": False, "dry_run": bool(dry_run),
+        # Cio' che gira ma non puo' essere pubblicato da nessuna parte.
+        "orphans": orphan_modules(),
     }
     if not moduli:
         esito["message"] = "Nessun modulo da sincronizzare."
@@ -751,6 +808,10 @@ def _main(argv: Optional[List[str]] = None) -> int:
 
     for sospetto in esito.get("skipped_secrets") or []:
         print(f"NON pubblicato (sembra una credenziale): {sospetto}")
+
+    for orfano in esito.get("orphans") or []:
+        print("FUORI DA OGNI REPOSITORY: %s (%s)"
+              % (orfano["module_id"], orfano["reason"]))
 
     if esito.get("dry_run") and cambiati:
         print("\nProva a vuoto: niente e' stato committato. Aggiungi --push per pubblicare.")
