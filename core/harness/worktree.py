@@ -298,6 +298,54 @@ def create_session_worktree(repo_root: Path | str, session_id: str) -> Optional[
         return None
 
 
+def session_checkpoints(session_id: str) -> List[Dict[str, Any]]:
+    """I checkpoint di una sessione viva, per poterli scegliere.
+
+    Solo quelli che hanno salvato qualcosa: i checkpoint di turno si fanno con
+    `--allow-empty`, quindi offrire di tornare a un turno in cui non era
+    cambiato nulla sarebbe offrire di non fare niente.
+    """
+    sessione = _active_worktrees.get(str(session_id or "").strip())
+    if sessione is None:
+        return []
+    return [dict(c) for c in sessione.checkpoints if c.get("has_changes")]
+
+
+def rollback_session(session_id: str, turns_back: int = 1) -> Dict[str, Any]:
+    """Riporta il lavoro di una sessione indietro di N turni.
+
+    Manuale per scelta. Uno stallo del modello non dice che il codice scritto
+    fino a quel punto sia sbagliato, e annullarlo d'ufficio butterebbe via
+    lavoro buono: chi torna indietro deve essere qualcuno che ha guardato.
+    """
+    sid = str(session_id or "").strip()
+    sessione = _active_worktrees.get(sid)
+    if sessione is None:
+        return {"success": False,
+                "error": f"Nessun run isolato attivo per la sessione '{sid}'."}
+
+    indietro = max(1, int(turns_back or 1))
+    disponibili = len(sessione.checkpoints)
+    if indietro >= disponibili:
+        # Tornare oltre il primo checkpoint significherebbe annullare tutto il
+        # run: e' una cosa diversa, e va chiesta diversamente.
+        return {"success": False, "error": (
+            f"Ci sono {disponibili} checkpoint: non si puo' tornare indietro "
+            f"di {indietro}. Per annullare tutto, rifiuta il lavoro alla "
+            "revisione di fine run.")}
+
+    if not sessione.rollback(indietro):
+        return {"success": False, "error": "git non e' riuscito a tornare indietro."}
+    return {
+        "success": True,
+        "session_id": sid,
+        "turns_back": indietro,
+        "checkpoints": session_checkpoints(sid),
+        "files": sessione.changed_files(),
+        "message": f"Lavoro riportato indietro di {indietro} turni.",
+    }
+
+
 def get_session_worktree(session_id: str) -> Optional[WorktreeSession]:
     """Recupera la sessione worktree attiva per una session_id."""
     return _active_worktrees.get(str(session_id or "").strip())

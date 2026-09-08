@@ -45,7 +45,9 @@ const TAB_TO_FOLDER = {
 
   // Knowledge & MCP
   knowledge:       'sigma_knowledge',
-  mcp_hub:         'sigma_mcp_hub',
+  // 'mcp_hub' non sta qui: e' una scheda del kernel, resa da McpHubTab, e non
+  // un modulo installabile. La riga prometteva una cartella 'sigma_mcp_hub'
+  // che non esiste da nessuna parte.
   roadmap:         'sigma_roadmap',
 
   // Messaging & Email
