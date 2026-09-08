@@ -100,6 +100,32 @@ def test_ogni_interruttore_del_ciclo_ha_un_chiamante(parametro, argomenti_colleg
     )
 
 
+def _parametri_del_ventaglio():
+    import core.harness.fanout as modulo_fanout
+
+    firma = inspect.signature(modulo_fanout.run_queue)
+    return [n for n in firma.parameters
+            if not n.startswith("_") and n not in {"queue_id", "workspace_root"}]
+
+
+@pytest.mark.parametrize("parametro", _parametri_del_ventaglio())
+def test_ogni_opzione_del_ventaglio_arriva_al_run(parametro):
+    """Il ventaglio ha ricreato in casa propria il difetto che questo file
+    esiste per impedire: `deliver` era dichiarato, passato al lavoratore, e li'
+    ignorato — il ciclo decideva comunque dalla configurazione, e chiedere «non
+    consegnare» non aveva alcun effetto.
+    """
+    import core.harness.fanout as modulo_fanout
+
+    sorgente = inspect.getsource(modulo_fanout)
+    # O finisce nella chiamata al ciclo, o guida il ventaglio stesso.
+    usi = sorgente.count(parametro)
+    assert usi >= 2, (
+        f"'{parametro}' compare una volta sola in fanout.py: e' dichiarato e "
+        "non lo usa nessuno."
+    )
+
+
 def test_il_ciclo_ha_almeno_un_chiamante_di_produzione():
     """La guardia della guardia: se i chiamanti sparissero, il test sopra
     passerebbe a vuoto invece di fallire."""

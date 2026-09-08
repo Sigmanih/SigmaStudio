@@ -324,3 +324,219 @@ class TestRaggiungibilita:
         sorgente = inspect.getsource(fastapi_app.api_harness_fanout)
         assert "from core.harness.fanout import run_queue" in sorgente
         assert "run_queue(queue_id" in sorgente
+
+
+class TestLaProvaRichiestaDaUnaVoce:
+    """Difetto trovato dal vivo: un agente ha scritto il file giusto, non ha
+    saputo dimostrarlo, il cancello di completamento l'ha respinto, e la voce e'
+    stata riprovata tre volte per nulla. Dire in anticipo come si dimostra il
+    lavoro costa una riga e vale tre run."""
+
+    def test_una_voce_puo_dichiarare_il_comando_che_la_dimostra(self):
+        from core.harness.workqueue import Voce
+
+        testo = fanout._prompt_voce(
+            Voce(id="x", title="crea locales/it.json",
+                 payload={"verify": "python -m json.tool locales/it.json"}),
+            "tradurre l'interfaccia",
+        )
+        assert "VERIFICA RICHIESTA" in testo
+        assert "python -m json.tool locales/it.json" in testo
+
+    def test_il_comando_di_verifica_non_finisce_fra_i_dettagli(self):
+        from core.harness.workqueue import Voce
+
+        testo = fanout._prompt_voce(
+            Voce(id="x", title="crea x", payload={"verify": "pytest -q"}), "")
+        assert "verify: pytest -q" not in testo
+
+    def test_senza_comando_l_agente_viene_avvisato_che_dovra_trovarne_uno(self):
+        from core.harness.workqueue import Voce
+
+        testo = fanout._prompt_voce(Voce(id="x", title="crea x"), "")
+        assert "DIMOSTRARE" in testo
+        assert "codice 0" in testo
+
+
+class TestLavoroProdottoMaNonDimostrato:
+    """Non e' la stessa cosa di «non ha fatto niente», e chiede un rimedio
+    diverso: riprovare identico non aggiunge una prova."""
+
+    def test_l_errore_dice_dov_e_finito_il_lavoro(self, tmp_path, monkeypatch):
+        """Lo snapshot e' quello vero, non uno inventato: la prima versione di
+        questo test usava una chiave che nel ledger non esiste, ed e' per
+        questo che non ha visto il difetto."""
+        from core.harness import loop as modulo_loop
+        from core.harness.ledger import DevSessionLedger
+
+        led = DevSessionLedger(goal="x", workspace_root=str(tmp_path))
+        for nome in ("a.py", "b.py"):
+            led.record_tool("write_file", {"path": nome},
+                            {"success": True, "path": str(tmp_path / nome)})
+        stato = led.snapshot()
+
+        def scrive_e_non_dimostra(messages, **kw):
+            yield {"type": "ledger", "state": stato}
+            yield {"type": "run_metrics", "turns": 8, "goal_reached": False}
+
+        monkeypatch.setattr(modulo_loop, "stream_admin_agent_turn", scrive_e_non_dimostra)
+        q = workqueue.get_queue("c20", goal="x")
+        q.add_many(["una voce"])
+        eventi = list(fanout.run_queue("c20", workspace_root=".", workers=1,
+                                       deliver=False))
+
+        finita = [e for e in eventi if e["type"] == "item_finished"][0]
+        assert finita["ok"] is False
+        assert "non dimostrato" in finita["error"]
+        assert "2 file" in finita["error"]
+        assert finita["branch"].startswith("sigma-run/")
+
+    def test_non_aver_fatto_niente_si_dice_diversamente(self, monkeypatch):
+        from core.harness import loop as modulo_loop
+
+        def non_fa_niente(messages, **kw):
+            yield {"type": "run_metrics", "turns": 8, "goal_reached": False}
+
+        monkeypatch.setattr(modulo_loop, "stream_admin_agent_turn", non_fa_niente)
+        q = workqueue.get_queue("c21", goal="x")
+        q.add_many(["una voce"])
+        eventi = list(fanout.run_queue("c21", workspace_root=".", workers=1,
+                                       deliver=False))
+
+        finita = [e for e in eventi if e["type"] == "item_finished"][0]
+        assert "nessuna modifica prodotta" in finita["error"]
+
+    def test_anche_una_voce_riuscita_dice_su_quale_branch_sta(self, monkeypatch):
+        from core.harness import loop as modulo_loop
+
+        monkeypatch.setattr(modulo_loop, "stream_admin_agent_turn", _run_finto())
+        q = workqueue.get_queue("c22", goal="x")
+        q.add_many(["una voce"])
+        eventi = list(fanout.run_queue("c22", workspace_root=".", workers=1,
+                                       deliver=False))
+
+        finita = [e for e in eventi if e["type"] == "item_finished"][0]
+        assert finita["ok"] is True
+        assert finita["branch"].startswith("sigma-run/")
+
+
+class TestQualiFileHaCambiatoDavvero:
+    """Difetto trovato dal vivo: il ventaglio leggeva dallo stato del ledger una
+    chiave `modified_files` che non esiste. La lista restava sempre vuota, e il
+    resoconto diceva «nessuna modifica prodotta» su run che avevano scritto il
+    file giusto — un messaggio che mente e' il modo peggiore in cui puo'
+    rompersi un resoconto.
+
+    Il test qui sotto usa uno snapshot **vero**, non uno inventato: era proprio
+    il finto a nascondere il difetto.
+    """
+
+    def _snapshot_vero(self, tmp_path, scritti=(), letti=()):
+        from core.harness.ledger import DevSessionLedger
+
+        led = DevSessionLedger(goal="x", workspace_root=str(tmp_path))
+        for nome in letti:
+            led.record_tool("read_file", {"path": nome},
+                            {"success": True, "path": str(tmp_path / nome),
+                             "content": "x", "total_lines": 1})
+        for nome in scritti:
+            led.record_tool("write_file", {"path": nome},
+                            {"success": True, "path": str(tmp_path / nome)})
+        return led.snapshot()
+
+    def test_i_file_scritti_vengono_riconosciuti(self, tmp_path):
+        stato = self._snapshot_vero(tmp_path, scritti=("a.py", "b.py"))
+        trovati = fanout._file_modificati(stato)
+        assert len(trovati) == 2
+        assert any(t.endswith("a.py") for t in trovati)
+
+    def test_un_file_solo_letto_non_e_una_modifica(self, tmp_path):
+        stato = self._snapshot_vero(tmp_path, letti=("visto.py",))
+        assert fanout._file_modificati(stato) == []
+
+    def test_uno_stato_vuoto_non_esplode(self):
+        assert fanout._file_modificati({}) == []
+        assert fanout._file_modificati({"files": None}) == []
+
+    def test_il_ventaglio_non_dice_piu_che_non_e_stato_fatto_niente(
+        self, tmp_path, monkeypatch
+    ):
+        """Il difetto in una riga: lavoro prodotto, resoconto che lo nega."""
+        from core.harness import loop as modulo_loop
+
+        stato = self._snapshot_vero(tmp_path, scritti=("locales/it.json",))
+
+        def scrive_senza_dimostrare(messages, **kw):
+            yield {"type": "ledger", "state": stato}
+            yield {"type": "run_metrics", "turns": 12, "goal_reached": False}
+
+        monkeypatch.setattr(modulo_loop, "stream_admin_agent_turn",
+                            scrive_senza_dimostrare)
+        q = workqueue.get_queue("c23", goal="x")
+        q.add_many(["una voce"])
+        eventi = list(fanout.run_queue("c23", workspace_root=".", workers=1,
+                                       deliver=False))
+
+        finita = [e for e in eventi if e["type"] == "item_finished"][0]
+        assert "non dimostrato" in finita["error"]
+        assert "nessuna modifica" not in finita["error"]
+        assert len(finita["files"]) == 1
+
+    def test_il_branch_arriva_dall_evento_del_ciclo(self, monkeypatch):
+        from core.harness import loop as modulo_loop
+
+        def con_branch(messages, **kw):
+            yield {"type": "worktree_preserved", "branch": "sigma-run/vero", "checkpoints": 2}
+            yield {"type": "run_metrics", "turns": 5, "goal_reached": False}
+
+        monkeypatch.setattr(modulo_loop, "stream_admin_agent_turn", con_branch)
+        q = workqueue.get_queue("c24", goal="x")
+        q.add_many(["una voce"])
+        eventi = list(fanout.run_queue("c24", workspace_root=".", workers=1,
+                                       deliver=False))
+
+        finita = [e for e in eventi if e["type"] == "item_finished"][0]
+        assert finita["branch"] == "sigma-run/vero"
+
+
+class TestLaSceltaSullaConsegna:
+    """`deliver` era dichiarato, passato al lavoratore, e li' ignorato: il ciclo
+    decideva comunque dalla configurazione, e chiedere «non consegnare» non
+    aveva alcun effetto."""
+
+    def _opzioni_viste(self, monkeypatch, **kw):
+        from core.harness import loop as modulo_loop
+
+        viste = []
+
+        def finto(messages, **opzioni):
+            viste.append(opzioni)
+            yield {"type": "run_metrics", "turns": 1, "goal_reached": True}
+
+        monkeypatch.setattr(modulo_loop, "stream_admin_agent_turn", finto)
+        q = workqueue.get_queue(kw.pop("coda"), goal="x")
+        q.add_many(["una voce"])
+        list(fanout.run_queue(q.queue_id, workspace_root=".", workers=1, **kw))
+        return viste[0]
+
+    def test_non_consegnare_arriva_al_ciclo(self, monkeypatch):
+        assert self._opzioni_viste(monkeypatch, coda="c30", deliver=False)["deliver"] is False
+
+    def test_consegnare_arriva_al_ciclo(self, monkeypatch):
+        assert self._opzioni_viste(monkeypatch, coda="c31", deliver=True)["deliver"] is True
+
+    def test_la_prova_della_voce_arriva_al_ciclo(self, monkeypatch):
+        from core.harness import loop as modulo_loop
+
+        viste = []
+
+        def finto(messages, **opzioni):
+            viste.append(opzioni)
+            yield {"type": "run_metrics", "turns": 1, "goal_reached": True}
+
+        monkeypatch.setattr(modulo_loop, "stream_admin_agent_turn", finto)
+        q = workqueue.get_queue("c32", goal="x")
+        q.add_many([{"id": "v", "title": "fai", "payload": {"verify": "pytest -q"}}])
+        list(fanout.run_queue("c32", workspace_root=".", workers=1, deliver=False))
+
+        assert viste[0]["verify_command"] == "pytest -q"
