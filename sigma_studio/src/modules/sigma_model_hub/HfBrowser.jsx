@@ -31,6 +31,14 @@ const SIZE_BRACKETS = [
 
 const FIT_HEADROOM = 1.15;
 
+const formatBytes = (bytes) => {
+  if (!bytes || bytes <= 0) return '0 B';
+  const k = 1024;
+  const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  return `${(bytes / Math.pow(k, i)).toFixed(i >= 3 ? 2 : 1)} ${sizes[i]}`;
+};
+
 function annotateBrackets(brackets, totalVramGb) {
   if (!totalVramGb) return brackets;
   return brackets.map(b => (
@@ -936,9 +944,9 @@ export default function HfBrowser({ isLight, addToast, onDownloadStarted, active
 
                     {/* Storage & VRAM metrics */}
                     <span style={{ fontSize: '0.68rem', color: textMuted, display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
-                      <span>💾 <b>{m.size_label || (m.size_gb >= 1000 ? `~${(m.size_gb / 1000).toFixed(1)} TB` : `~${m.size_gb} GB`)}</b></span>
+                      <span>💾 <b>{(details?.size_label || m.size_label) || (m.size_gb >= 1000 ? `~${(m.size_gb / 1000).toFixed(1)} TB` : `~${m.size_gb} GB`)}</b></span>
                       <span>•</span>
-                      <span style={{ color: isLight ? '#0284c7' : '#00d2ff' }}>⚡ VRAM: <b>{m.active_vram_label || `~${m.active_vram_gb || 8} GB`}</b></span>
+                      <span style={{ color: isLight ? '#0284c7' : '#00d2ff' }}>⚡ VRAM: <b>{details?.active_vram_label || m.active_vram_label || `~${m.active_vram_gb || 8} GB`}</b></span>
                     </span>
 
                     {/* Release Date */}
@@ -1093,7 +1101,7 @@ export default function HfBrowser({ isLight, addToast, onDownloadStarted, active
                           }}
                         >
                           <FolderDown size={11} />
-                          {downloadingRepo ? 'Avvio...' : `Scarica Intero Repository (${details?.files?.length || 1} file)`}
+                          {downloadingRepo ? 'Avvio...' : `Scarica Intero Modello (${details?.files?.length || 1} file${details?.files ? ` • ${formatBytes(details.files.reduce((s, f) => s + (Number(f.size) || 0), 0))}` : ''})`}
                         </button>
                       </div>
                     </div>
@@ -1243,40 +1251,74 @@ export default function HfBrowser({ isLight, addToast, onDownloadStarted, active
 
                     {/* Row 4: File Tree Shards */}
                     {details?.files && details.files.length > 0 && (
-                      <div>
-                        <div style={{ fontSize: '0.68rem', fontWeight: 800, color: textMuted, textTransform: 'uppercase', marginBottom: '4px' }}>
-                          File e Shards del Modello ({details.files.length}):
-                        </div>
-                        <div style={{ maxHeight: '140px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                          {details.files.map((file, fIdx) => (
-                            <div
-                              key={fIdx}
-                              style={{
-                                padding: '5px 10px', borderRadius: '6px',
-                                background: subBg, border: subBorder,
-                                display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px'
-                              }}
-                            >
-                              <span style={{ fontSize: '0.70rem', color: textPrimary, wordBreak: 'break-all' }}>
-                                {file.filename}
-                              </span>
-                              <button
-                                onClick={() => handleStartSingleDownload(m.id, file.filename, file.download_url)}
-                                disabled={downloadingFile === file.filename}
-                                style={{
-                                  padding: '3px 8px', borderRadius: '5px',
-                                  border: subBorder, background: 'transparent',
-                                  color: textPrimary, fontSize: '0.64rem', fontWeight: 700, cursor: 'pointer',
-                                  display: 'inline-flex', alignItems: 'center', gap: '3px', flexShrink: 0
-                                }}
-                              >
-                                {downloadingFile === file.filename ? <Activity className="mh-spin" size={10} /> : <Download size={10} />}
-                                Scarica
-                              </button>
+                      (() => {
+                        const safetensorsShards = details.files.filter(f => f.is_safetensors || f.filename?.toLowerCase().endsWith('.safetensors'));
+                        const totalRepoBytes = details.files.reduce((sum, f) => sum + (Number(f.size) || 0), 0);
+                        const isMultiShard = safetensorsShards.length > 1;
+
+                        return (
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                            <div style={{
+                              display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '6px',
+                              fontSize: '0.68rem', fontWeight: 800, color: textMuted, textTransform: 'uppercase'
+                            }}>
+                              <span>File e Shards del Modello ({details.files.length} file{totalRepoBytes > 0 ? ` • ${formatBytes(totalRepoBytes)} totali` : ''}):</span>
+                              {isMultiShard && (
+                                <span style={{ color: '#ffb86c', textTransform: 'none', fontWeight: 700, display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                                  📦 {safetensorsShards.length} Shard Safetensors da unire
+                                </span>
+                              )}
                             </div>
-                          ))}
-                        </div>
-                      </div>
+
+                            {isMultiShard && (
+                              <div style={{
+                                padding: '8px 10px', borderRadius: '6px',
+                                background: 'rgba(255, 184, 108, 0.08)', border: '1px solid rgba(255, 184, 108, 0.25)',
+                                color: '#ffb86c', fontSize: '0.66rem', display: 'flex', alignItems: 'center', gap: '6px'
+                              }}>
+                                <span>💡 <b>Modello Multi-Shard:</b> Questo repository è suddiviso in {safetensorsShards.length} file safetensors ({formatBytes(totalRepoBytes)}). Scaricando l'intero repository, tutti i pezzi vengono archiviati insieme per essere caricati o convertiti in un unico modello GGUF.</span>
+                              </div>
+                            )}
+
+                            <div style={{ maxHeight: '180px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                              {details.files.map((file, fIdx) => (
+                                <div
+                                  key={fIdx}
+                                  style={{
+                                    padding: '5px 10px', borderRadius: '6px',
+                                    background: subBg, border: subBorder,
+                                    display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px'
+                                  }}
+                                >
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px', minWidth: 0 }}>
+                                    <span style={{ fontSize: '0.70rem', color: textPrimary, wordBreak: 'break-all' }}>
+                                      {file.filename}
+                                    </span>
+                                    {file.size > 0 && (
+                                      <span style={{ fontSize: '0.62rem', color: textMuted, flexShrink: 0, fontWeight: 700 }}>
+                                        ({formatBytes(file.size)})
+                                      </span>
+                                    )}
+                                  </div>
+                                  <button
+                                    onClick={() => handleStartSingleDownload(m.id, file.filename, file.download_url)}
+                                    disabled={downloadingFile === file.filename}
+                                    style={{
+                                      padding: '3px 8px', borderRadius: '5px',
+                                      border: subBorder, background: 'transparent',
+                                      color: textPrimary, fontSize: '0.64rem', fontWeight: 700, cursor: 'pointer',
+                                      display: 'inline-flex', alignItems: 'center', gap: '3px', flexShrink: 0
+                                    }}
+                                  >
+                                    {downloadingFile === file.filename ? <Activity className="mh-spin" size={10} /> : <Download size={10} />}
+                                    Scarica
+                                  </button>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        );
+                      })()
                     )}
                   </div>
                 )}
