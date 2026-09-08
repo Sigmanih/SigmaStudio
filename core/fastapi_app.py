@@ -663,6 +663,102 @@ except Exception as _mod_err:
     log.warning(f"[FastAPI] Avviso inizializzazione ModuleLoader: {_mod_err}")
 
 
+@app.get("/api/harness/queues")
+async def api_harness_queues():
+    """Le code di lavoro presenti, con il loro stato.
+
+    Un lavoro da centinaia di voci dura ore: senza un posto dove guardare a che
+    punto e', l'unico modo di saperlo sarebbe restare attaccati allo stream.
+    """
+    from core.harness.workqueue import list_queues
+    try:
+        return {"success": True, "queues": list_queues()}
+    except Exception as exc:
+        return {"success": False, "error": str(exc), "queues": []}
+
+
+@app.post("/api/harness/queue")
+async def api_harness_queue_create(request: Request):
+    """Crea o riempie una coda di lavoro.
+
+    Le voci le decide chi ha guardato il progetto: spezzare bene il lavoro e'
+    la parte difficile, e non e' una cosa che questo modulo possa indovinare.
+    """
+    from core.harness.workqueue import get_queue
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+
+    queue_id = str(body.get("queue_id") or "").strip()
+    if not queue_id:
+        return JSONResponse(status_code=400, content={
+            "success": False, "error": "Parametro 'queue_id' richiesto."})
+
+    coda = get_queue(queue_id, goal=str(body.get("goal") or ""))
+    aggiunte = coda.add_many(body.get("items") or [])
+    return {"success": True, "added": len(aggiunte), **coda.progress()}
+
+
+@app.post("/api/harness/fanout")
+async def api_harness_fanout(request: Request):
+    """Fa consumare una coda da piu' run in parallelo, raccontando i progressi.
+
+    Risponde in SSE perche' il lavoro dura: chi ha lanciato deve poter vedere
+    le voci chiudersi una per una invece di aspettare la fine senza notizie.
+    """
+    import asyncio
+    import json as _json
+    import queue as _queue
+    import threading as _threading
+
+    from core.harness.fanout import run_queue
+
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+
+    queue_id = str(body.get("queue_id") or "").strip()
+    if not queue_id:
+        return JSONResponse(status_code=400, content={
+            "success": False, "error": "Parametro 'queue_id' richiesto."})
+
+    opzioni = {
+        "workspace_root": str(body.get("workspace_root") or ""),
+        "workers": int(body.get("workers") or 2),
+        "model_name": body.get("model") or None,
+        "max_turns": int(body.get("max_turns") or 20),
+        "deliver": bool(body.get("deliver", True)),
+    }
+    if not opzioni["workspace_root"]:
+        from core.harness.fs_manager import get_default_workspace_root
+        opzioni["workspace_root"] = get_default_workspace_root()
+
+    async def flusso():
+        eventi: "_queue.Queue" = _queue.Queue(maxsize=512)
+        FINE = object()
+
+        def produttore():
+            try:
+                for evento in run_queue(queue_id, **opzioni):
+                    eventi.put(evento)
+            except Exception as exc:
+                log.exception("[FastAPI] ventaglio fallito: %s", exc)
+                eventi.put({"type": "error", "error": str(exc)})
+            finally:
+                eventi.put(FINE)
+
+        _threading.Thread(target=produttore, name="fanout-stream", daemon=True).start()
+        while True:
+            evento = await asyncio.to_thread(eventi.get)
+            if evento is FINE:
+                break
+            yield "data: " + _json.dumps(evento, default=str) + "\n\n"
+
+    return StreamingResponse(flusso(), media_type="text/event-stream")
+
+
 @app.get("/api/modules/sync/config")
 async def api_modules_sync_config():
     """Le preferenze di sincronizzazione. Costa niente: e' la domanda che

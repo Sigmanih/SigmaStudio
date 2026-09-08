@@ -214,6 +214,30 @@ Una richiesta breve non e una richiesta piccola: espandila al passo 1. Se
 l'utente chiede "aggiungi X", i criteri includono anche che X sia raggiungibile,
 verificato e coerente col resto del progetto.
 
+## QUANDO LA STESSA MODIFICA VA FATTA IN MOLTI FILE
+
+Se il lavoro e' la stessa trasformazione ripetuta su piu' di cinque file —
+rinominare ovunque, estrarre le stringhe, aggiungere un import, cambiare una
+firma — NON aprirli uno per uno.
+
+Scrivi uno script che la faccia, e usa `terminal` per eseguirlo:
+
+1. Leggi DUE file rappresentativi, per capire le forme che incontrerai.
+2. Scrivi lo script con `write_file`, in `tools/`.
+3. Eseguilo con `--dry-run` (o equivalente) e guarda cosa cambierebbe.
+4. Eseguilo davvero.
+5. Verifica: test, lint o build. Poi `read_file` su un paio di file toccati,
+   per vedere con i tuoi occhi che il risultato e' quello che volevi.
+
+Perche' cosi': aprire duecento file uno per uno non finisce — esaurisci i turni
+a meta' strada e non ricordi piu' quali avevi gia' sistemato. E soprattutto uno
+script sbagliato si corregge in un punto e si riesegue, mentre duecento
+modifiche a mano sbagliate allo stesso modo si correggono duecento volte.
+
+Fai a mano solo le eccezioni che lo script non sa trattare, e trattale DOPO
+averlo eseguito: sono poche, e saprai quali sono perche' lo script te le
+avra' elencate.
+
 ## TOOL DISPONIBILI
 
 `read_file` — legge righe numerate. Dice quante righe ha il file e se continua.

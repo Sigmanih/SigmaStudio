@@ -32,6 +32,7 @@ import os
 import re
 import shutil
 import subprocess
+import threading
 import urllib.error
 import urllib.request
 from dataclasses import dataclass, field
@@ -326,6 +327,24 @@ def _corpo_richiesta(obiettivo: str, file: List[str], branch_run: str) -> str:
     return "\n".join(righe)
 
 
+#: La consegna usa un worktree di servizio per repository: due run che
+#: consegnano insieme si troverebbero a fare merge e push nella stessa cartella,
+#: e il secondo vedrebbe l'albero a meta' del primo. Con il ventaglio di run
+#: paralleli non e' un caso limite, e' il caso normale.
+_lucchetti_consegna: Dict[str, threading.Lock] = {}
+_lucchetto_registro = threading.Lock()
+
+
+def _lucchetto_per(radice: Path) -> threading.Lock:
+    chiave = str(radice)
+    with _lucchetto_registro:
+        lucchetto = _lucchetti_consegna.get(chiave)
+        if lucchetto is None:
+            lucchetto = threading.Lock()
+            _lucchetti_consegna[chiave] = lucchetto
+        return lucchetto
+
+
 def deliver_branch(
     repo_root: Path | str,
     branch_run: str,
@@ -338,8 +357,22 @@ def deliver_branch(
     Non tocca l'albero di lavoro dell'utente: il merge avviene in un worktree
     di servizio. Se qualcosa va storto, il lavoro resta comunque sul branch del
     run — non si perde mai per un errore di consegna.
+
+    Una consegna per volta e per repository: il worktree di servizio e' uno
+    solo, e due che ci lavorassero insieme si passerebbero un albero a meta'.
     """
     radice = Path(repo_root).resolve()
+    with _lucchetto_per(radice):
+        return _deliver_branch_bloccato(radice, branch_run, obiettivo, file, configurazione)
+
+
+def _deliver_branch_bloccato(
+    radice: Path,
+    branch_run: str,
+    obiettivo: str = "",
+    file: Optional[List[str]] = None,
+    configurazione: Optional[Dict[str, Any]] = None,
+) -> Consegna:
     cfg = configurazione or load_config()
     dev = str(cfg.get("integration_branch") or BRANCH_INTEGRAZIONE)
     base = scopri_branch_principale(radice, str(cfg.get("base_branch") or ""))
