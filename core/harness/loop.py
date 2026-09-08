@@ -39,7 +39,7 @@ from core.harness.ledger import (
     check_completion_allowed,
 )
 from core.harness.policy import ToolPolicy, canonical, filter_tool_docs
-from core.harness import review, worktree
+from core.harness import delivery, review, worktree
 from core.harness.compaction import compact_history_with_memory
 from core.harness.roles import GENERIC_MODEL_ALIASES
 from core.harness.tool_schema import (
@@ -2731,12 +2731,28 @@ def _stream_agent_turn_impl(
                 continue
             yield evento
 
+    # Il lavoro approvato prende la strada normale del software: un branch di
+    # integrazione e una richiesta da accettare, invece di comparire
+    # nell'albero di lavoro. Chi deve controllare lo fa quando vuole, e anche
+    # due giorni dopo.
+    consegnato = False
+    if applica and session_wt is not None and delivery.in_pull_request_mode():
+        for evento in _consegna_il_lavoro(session_wt, workspace_root, ledger):
+            if evento.get("type") == "__consegnato__":
+                consegnato = bool(evento.get("ok"))
+                continue
+            yield evento
+        if consegnato:
+            # Consegnato altrove: nell'albero di lavoro non ci va.
+            applica = False
+
     # La chiusura vera avviene fuori di qui, nel `finally` del chiamante, e
     # vale anche per i run abbandonati. Qui si dice soltanto com'e' andata:
     # e' l'unica cosa che quel `finally` non puo' sapere da solo.
     if _chiusura is not None:
         _chiusura["goal_reached"] = bool(goal_reached)
         _chiusura["apply_changes"] = applica
+        _chiusura["delivered"] = consegnato
 
     # Se il run ha toccato dei file di un modulo, quel lavoro appartiene al
     # repository del modulo, non a questo. Senza questo passo non finirebbe in
@@ -2849,6 +2865,51 @@ def _rivedi_lavoro_del_run(
     yield {"type": "__decisione__", "apply": applica}
 
 
+def _consegna_il_lavoro(
+    sessione_wt: Any,
+    workspace_root: str,
+    ledger: Any,
+) -> Generator[Dict[str, Any], None, None]:
+    """Porta il lavoro del run su `dev` e apre la richiesta da accettare.
+
+    Emette gli eventi per chi guarda e, in mezzo, un `__consegnato__` che il
+    chiamante intercetta: solo se la consegna e' riuscita il lavoro non va
+    anche nell'albero di lavoro, altrimenti si finirebbe con il lavoro in
+    nessuno dei due posti.
+    """
+    try:
+        toccati = sessione_wt.changed_files()
+        if not toccati:
+            yield {"type": "__consegnato__", "ok": False}
+            return
+        # Tutto cio' che il run ha prodotto dev'essere in un commit prima di
+        # poter essere unito: il branch e' cio' che viene consegnato.
+        sessione_wt.checkpoint(
+            len(getattr(sessione_wt, "checkpoints", [])) + 1, "consegna"
+        )
+        obiettivo = str(getattr(ledger, "goal", "") or "")
+        esito = delivery.deliver_branch(
+            workspace_root,
+            getattr(sessione_wt, "branch_name", ""),
+            obiettivo=obiettivo,
+            file=toccati,
+        )
+    except Exception as exc:
+        log.warning("[AdminAgent] consegna non riuscita: %s", exc)
+        yield {"type": "delivery_failed", "error": str(exc)}
+        yield {"type": "__consegnato__", "ok": False}
+        return
+
+    if esito.delivered:
+        yield {"type": "run_delivered", **esito.to_dict()}
+    else:
+        # Il lavoro non si perde: resta sul branch del run, e il messaggio dice
+        # quale. Non applicarlo all'albero sarebbe punire l'utente per un
+        # errore di rete.
+        yield {"type": "delivery_failed", **esito.to_dict()}
+    yield {"type": "__consegnato__", "ok": bool(esito.delivered)}
+
+
 def _chiudi_run(chiusura: Dict[str, Any]) -> Dict[str, Any]:
     """Rilascia tutto cio' che il run teneva aperto. Sempre, comunque sia finito.
 
@@ -2924,7 +2985,7 @@ def stream_admin_agent_turn(*args: Any, **kwargs: Any) -> Generator[Dict[str, An
     # Solo sul percorso normale: durante la chiusura di un generatore non si
     # puo' emettere altro, e a quel punto non c'e' nemmeno piu' nessuno che
     # ascolta.
-    if completato and esito.get("branch"):
+    if completato and esito.get("branch") and not chiusura.get("delivered"):
         yield {
             "type": "worktree_preserved",
             "branch": esito["branch"],
