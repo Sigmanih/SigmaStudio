@@ -56,10 +56,14 @@ class EsitoVoce:
     turns: int = 0
     files: List[str] = field(default_factory=list)
     error: str = ""
+    #: Dove sta il lavoro, riuscito o no. Un branch di cui nessuno conosce
+    #: il nome e' perso quanto uno cancellato.
+    branch: str = ""
 
     def to_dict(self) -> Dict[str, Any]:
         return {"item_id": self.item_id, "title": self.title, "ok": self.ok,
-                "turns": self.turns, "files": self.files, "error": self.error}
+                "turns": self.turns, "files": self.files,
+                "error": self.error, "branch": self.branch}
 
 
 def _prompt_voce(voce: Voce, obiettivo_generale: str) -> str:
@@ -68,9 +72,17 @@ def _prompt_voce(voce: Voce, obiettivo_generale: str) -> str:
     L'obiettivo generale c'e' perche' senza di esso la voce non si capisce:
     «aggiorna sigma_network/index.jsx» non dice cosa aggiornare. Ma viene dopo
     la voce, non prima, perche' cio' che l'agente deve fare adesso e' la voce.
+
+    Se la voce dichiara un comando di verifica, quello diventa la prova
+    richiesta. Senza, l'agente deve trovarsela: il cancello di completamento
+    pretende una verifica riuscita, e su una prova dal vivo un agente ha
+    scritto il file giusto, non ha saputo dimostrarlo, e la voce e' stata
+    riprovata tre volte per nulla. Dire in anticipo come si dimostra il
+    lavoro costa una riga e vale tre run.
     """
     righe = [voce.title.strip()]
-    dettagli = voce.payload or {}
+    dettagli = dict(voce.payload or {})
+    verifica = str(dettagli.pop("verify", "") or "").strip()
     if dettagli:
         righe.append("")
         for chiave, valore in dettagli.items():
@@ -83,6 +95,21 @@ def _prompt_voce(voce: Voce, obiettivo_generale: str) -> str:
             "Occupati SOLO del pezzo qui sopra. Altri agenti stanno lavorando "
             "sugli altri in parallelo: non toccare file che non ti competono, "
             "e non riscrivere parti condivise se non e' proprio il tuo compito.",
+        ]
+    if verifica:
+        righe += [
+            "",
+            f"VERIFICA RICHIESTA: esegui `{verifica}` e chiudi solo quando "
+            "esce con codice 0. E' la prova che ti verra' chiesta.",
+        ]
+    else:
+        righe += [
+            "",
+            "Prima di chiudere devi DIMOSTRARE che il lavoro e' fatto con "
+            "un comando che esce con codice 0: un test, un lint, un import, "
+            "o la lettura del file che hai prodotto. Sceglilo al passo "
+            "`spec`, non alla fine: senza una verifica riuscita la chiusura "
+            "viene rifiutata e il tuo lavoro resta non dimostrato.",
         ]
     return "\n".join(righe)
 
@@ -173,6 +200,29 @@ def run_queue(
     yield {"type": "fanout_finished", "cancelled": annullato(), **coda.progress()}
 
 
+def _file_modificati(stato: Dict[str, Any]) -> List[str]:
+    """I file che il run ha davvero cambiato, letti dallo stato del ledger.
+
+    Lo snapshot elenca sotto `files` **tutti** i file toccati, letture comprese:
+    un file solo letto non e' una modifica. Si contano quelli con una scrittura,
+    una modifica o una creazione.
+
+    Qui c'era una chiave inventata — `modified_files` — che nello snapshot non
+    esiste: la lista restava sempre vuota, e il ventaglio riferiva «nessuna
+    modifica prodotta» su run che avevano scritto il file giusto. Il messaggio
+    mentiva, ed e' il modo peggiore in cui puo' rompersi un resoconto.
+    """
+    modificati = []
+    for voce in (stato or {}).get("files") or []:
+        if not isinstance(voce, dict):
+            continue
+        if voce.get("writes") or voce.get("edits") or voce.get("created"):
+            percorso = str(voce.get("path") or "").strip()
+            if percorso and percorso not in modificati:
+                modificati.append(percorso)
+    return modificati
+
+
 def _esegui_voce(
     voce: Voce,
     coda: WorkQueue,
@@ -194,6 +244,7 @@ def _esegui_voce(
     from core.harness.loop import stream_admin_agent_turn
 
     sessione = f"fanout_{coda.queue_id}_{voce.id}_{uuid.uuid4().hex[:6]}"
+    verifica = str((voce.payload or {}).get("verify") or "").strip()
     esito = EsitoVoce(item_id=voce.id, title=voce.title, ok=False)
     file_toccati: List[str] = []
     raggiunto = False
@@ -212,6 +263,15 @@ def _esegui_voce(
             # Nessuna revisione per run: N approvazioni in parallelo non le da'
             # nessuno. La revisione e' la richiesta che raccoglie tutto.
             review_run=False,
+            # La prova che la voce dichiara vale come verifica per questo run:
+            # chiederla nel prompt e poi non riconoscerla e' il modo piu' sicuro
+            # di far fallire un lavoro fatto bene.
+            verify_command=verifica,
+            # Non era passato: il parametro c'era, il ciclo decideva comunque
+            # dalla configurazione, e chiedere «non consegnare» non aveva alcun
+            # effetto. Lo stesso difetto che questo progetto ha gia' visto
+            # cinque volte, stavolta in casa propria.
+            deliver=deliver,
             allowed_tools=None,
             policy_label=role_id or "",
         ):
@@ -220,10 +280,14 @@ def _esegui_voce(
                 esito.turns = int(evento.get("turns") or 0)
                 raggiunto = bool(evento.get("goal_reached"))
             elif tipo == "ledger":
-                stato = evento.get("state") or {}
-                file_toccati = list(stato.get("modified_files") or file_toccati)
+                file_toccati = _file_modificati(evento.get("state") or {}) or file_toccati
             elif tipo in ("run_delivered", "delivery_failed"):
                 file_toccati = list(evento.get("files") or file_toccati)
+            elif tipo == "worktree_preserved":
+                # Il run e' finito senza chiudere: qui c'e' il branch su cui il
+                # lavoro e' rimasto, ed e' l'unica cosa che serve sapere per
+                # andarselo a riprendere.
+                esito.branch = str(evento.get("branch") or esito.branch)
     except Exception as exc:
         log.warning("[Fanout] voce '%s' interrotta da un errore: %s", voce.id, exc)
         esito.error = str(exc)
@@ -232,12 +296,22 @@ def _esegui_voce(
 
     esito.files = file_toccati
     esito.ok = raggiunto
+    esito.branch = esito.branch or ("sigma-run/" + sessione)
     if raggiunto:
         coda.complete(voce.id, {"turns": esito.turns, "files": file_toccati,
                                 "session_id": sessione, "worker": worker})
     else:
-        # Non e' detto che sia colpa della voce: puo' essere finito il budget di
-        # turni. La coda decide se vale la pena riprovare.
-        esito.error = "obiettivo non raggiunto entro i turni disponibili"
+        # Distinguere «non ha fatto niente» da «ha fatto e non l'ha
+        # dimostrato»: sono due problemi diversi e chiedono due rimedi
+        # diversi. Nel secondo caso il lavoro esiste e sta sul branch della
+        # sessione — riprovare identico non lo migliora, quello che manca e'
+        # una prova, ed e' successo dal vivo con un file scritto bene.
+        if file_toccati:
+            esito.error = (
+                "lavoro prodotto (%d file) ma non dimostrato: resta sul "
+                "branch %s" % (len(file_toccati), esito.branch)
+            )
+        else:
+            esito.error = "nessuna modifica prodotta entro i turni disponibili"
         coda.fail(voce.id, esito.error)
     return esito

@@ -130,6 +130,11 @@ MAX_SPEC_ATTEMPTS = 2
 #: la rilettura inutile restano attive e bastano a evitare il ciclo opposto.
 RECOVERY_TOOLS = ("write_file", "edit_file", "append_file", "terminal", "read_file")
 
+#: I tool che non toccano il workspace ma cambiano cio' che il cancello di
+#: completamento esamina. Dopo uno di questi, una chiusura rifiutata prima
+#: puo' essere legittima adesso.
+GATE_INPUT_TOOLS = frozenset({"spec", "pipeline"})
+
 #: I tool che cambiano un file sul disco, e che quindi possono passare dal
 #: gate di revisione. Il terminale non c'e': un comando puo' toccare mezzo
 #: progetto, e mostrarne il diff vorrebbe dire fotografare tutto prima e
@@ -1459,6 +1464,8 @@ def _stream_agent_turn_impl(
     review_writes: bool = False,
     isolate_worktree: bool = False,
     review_run: bool = False,
+    verify_command: str = "",
+    deliver: Optional[bool] = None,
     _chiusura: Optional[Dict[str, Any]] = None,
 ) -> Generator[Dict[str, Any], None, None]:
     """
@@ -1621,6 +1628,12 @@ def _stream_agent_turn_impl(
         })
 
     ledger, ripreso = resolve_ledger(session_id, ledger, goal_text, workspace_root)
+    if verify_command:
+        # Chi assegna il lavoro sa gia' come si dimostra. Senza dirlo al
+        # ledger, il sistema chiederebbe una prova, indicherebbe quale, e
+        # poi non la riconoscerebbe: e' successo dal vivo, con quattordici
+        # turni bruciati su un file scritto al secondo.
+        ledger.declare_verification(verify_command)
     if current_pipeline:
         ledger.set_pipeline(current_pipeline)
     # I tool ammessi in questo run. Dichiararli nel prompt e verificarli prima
@@ -2418,6 +2431,17 @@ def _stream_agent_turn_impl(
                 # proprio i tentativi che la correzione ha reso sensati.
                 failed_call_signatures.clear()
                 inert_call_signatures.clear()
+            elif result.get("success") and canonical(t_name) in GATE_INPUT_TOOLS:
+                # `spec` e `pipeline` non toccano il workspace, ma cambiano
+                # ESATTAMENTE cio' che il cancello di completamento guarda. Su
+                # un run vero il cancello ha detto «nel piano ci sono ancora
+                # task non chiusi», l'agente li ha chiusi, e la guardia
+                # anti-ripetizione gli ha impedito di riprovare perche' la
+                # chiamata era identica alla precedente. Aveva fatto
+                # precisamente cio' che gli era stato chiesto, e il sistema
+                # gliel'ha rinfacciato: quattordici turni per un file scritto
+                # al terzo.
+                failed_call_signatures.clear()
             if t_name == "read_file" and result.get("success") and result.get("path"):
                 reads_this_turn.append(str(result["path"]))
             # Una scrittura invalida la lettura precedente dello stesso file
@@ -2760,7 +2784,14 @@ def _stream_agent_turn_impl(
     # nell'albero di lavoro. Chi deve controllare lo fa quando vuole, e anche
     # due giorni dopo.
     consegnato = False
-    if applica and session_wt is not None and delivery.in_pull_request_mode():
+    # `None` significa «decidilo dalla configurazione», che e' il caso
+    # normale. Un chiamante puo' pero' saperne di piu': il ventaglio, per
+    # esempio, a volte vuole soltanto vedere cosa producono gli agenti
+    # senza spingere niente da nessuna parte.
+    consegna_prevista = (
+        delivery.in_pull_request_mode() if deliver is None else bool(deliver)
+    )
+    if applica and session_wt is not None and consegna_prevista:
         for evento in _consegna_il_lavoro(session_wt, workspace_root, ledger):
             if evento.get("type") == "__consegnato__":
                 consegnato = bool(evento.get("ok"))

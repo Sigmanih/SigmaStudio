@@ -374,6 +374,7 @@ class RoleEngine:
         review_writes: bool = False,
         isolate_worktree: bool = False,
         review_run: bool = False,
+        verify_command: str = "",
     ) -> Generator[Dict[str, Any], None, None]:
         """Generate a response using a specific role, with streaming.
 
@@ -454,6 +455,7 @@ class RoleEngine:
             review_writes=review_writes,
             isolate_worktree=isolate_worktree,
             review_run=review_run,
+            verify_command=verify_command,
         ):
             yield event
 

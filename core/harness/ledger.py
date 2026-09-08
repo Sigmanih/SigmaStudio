@@ -206,6 +206,9 @@ class DevSessionLedger:
         self._intake: str = ""
         #: Schermate non vuote scattate in questa sessione, per il monitor.
         self._screenshots: List[Dict[str, Any]] = []
+        #: I comandi che chi ha assegnato il lavoro considera una prova.
+        #: Vedi `declare_verification`.
+        self._declared_verifications: set = set()
         self._diffs: Dict[str, str] = {}
         self._searches: List[Dict[str, Any]] = []
         #: Cartelle e pattern gia' elencati: dicono che l'agente ha guardato
@@ -479,7 +482,7 @@ class DevSessionLedger:
 
                 is_ok = ok and rc == 0
                 verif_dict = None
-                if looks_like_verification(cmd):
+                if self.counts_as_verification(cmd):
                     v_report = parse_verification(cmd, rc, stdout=stdout_txt, stderr=stderr_txt)
                     is_ok = v_report.is_valid
                     verif_dict = v_report.to_dict()
@@ -614,6 +617,32 @@ class DevSessionLedger:
         with self._lock:
             return self._commands[-1] if self._commands else None
 
+    def declare_verification(self, command: str) -> None:
+        """Dichiara che questo comando, per questo run, vale come prova.
+
+        Serve quando chi assegna il lavoro sa gia' come si dimostra: una voce
+        di una coda che dice «esegui `python -m json.tool locales/it.json`».
+        Senza, il sistema chiede una prova, indica quale, e poi non la
+        riconosce — e' successo dal vivo, e l'agente ha bruciato quattordici
+        turni su un file scritto al secondo.
+
+        L'elenco generico (`VERIFICATION_HINTS`) non puo' bastare: non esiste
+        un elenco di tutti i modi legittimi di dimostrare qualcosa, e allargarlo
+        a indovinare farebbe passare per verifica un comando qualunque.
+        """
+        pulito = str(command or "").strip()
+        if pulito:
+            self._declared_verifications.add(pulito.lower())
+
+    def counts_as_verification(self, command: str) -> bool:
+        """Se questo comando, in questo run, vale come prova."""
+        c = str(command or "").strip().lower()
+        if not c:
+            return False
+        if any(d and d in c for d in self._declared_verifications):
+            return True
+        return looks_like_verification(command)
+
     def failed_verifications(self) -> List[Dict[str, Any]]:
         """Le verifiche il cui esito piu' recente e' un fallimento.
 
@@ -625,7 +654,7 @@ class DevSessionLedger:
         with self._lock:
             ultimo_per_comando: Dict[str, Dict[str, Any]] = {}
             for c in self._commands:
-                if looks_like_verification(c["command"]):
+                if self.counts_as_verification(c["command"]):
                     ultimo_per_comando[c["command"]] = c
             return [c for c in ultimo_per_comando.values() if not c["ok"]]
 
@@ -633,7 +662,7 @@ class DevSessionLedger:
         """The most recent command that plausibly proves the code works."""
         with self._lock:
             for c in reversed(self._commands):
-                if looks_like_verification(c["command"]):
+                if self.counts_as_verification(c["command"]):
                     return c
             return None
 
