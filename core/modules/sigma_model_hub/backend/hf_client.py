@@ -381,11 +381,18 @@ def parse_model_specs(model_id: str, name: str, tags: List[str] = None, raw_item
                 total_label = active_label
         elif isinstance(raw_item.get("safetensors"), dict) and raw_item["safetensors"].get("total"):
             exact_params = round(raw_item["safetensors"]["total"] / 1e9, 2)
-            if exact_params > 0 and not is_moe:
-                active_b = exact_params
+            if exact_params > 0:
                 total_b = exact_params
-                active_label = f"{exact_params:g}B" if exact_params < 100 else f"{int(exact_params)}B"
-                total_label = active_label
+                total_label = f"{exact_params:g}B" if exact_params < 100 else f"{int(exact_params)}B"
+                if not is_moe:
+                    active_b = exact_params
+                    active_label = total_label
+            # Rileva se safetensors contiene pesi FP8
+            st_params = raw_item["safetensors"].get("parameters", {})
+            if isinstance(st_params, dict) and any("F8" in str(k).upper() or "FP8" in str(k).upper() for k in st_params.keys()):
+                precision = "FP8 (8-bit)"
+                fmt_label = "Safetensors (FP8)"
+                bytes_per_param = 1.0
 
     # 2. Precision & Size estimation (FP8, FP16, GGUF, NVFP4)
     is_gguf = "gguf" in text
@@ -455,7 +462,20 @@ def parse_model_specs(model_id: str, name: str, tags: List[str] = None, raw_item
                 sib_sz = lfs.get("size") or 0
             siblings_size_sum += sib_sz
 
-    if used_storage_bytes and isinstance(used_storage_bytes, (int, float)) and used_storage_bytes > 0:
+    if siblings_size_sum > 0:
+        # Somma reale delle dimensioni dei file presenti nel branch principale
+        computed_gb = round(siblings_size_sum / (1024**3), 1)
+        formula_gb = round(total_b * bytes_per_param, 1)
+        if not is_gguf:
+            size_gb = computed_gb
+        else:
+            siblings_list = raw_item.get("siblings") or []
+            gguf_files = [s for s in siblings_list if s.get("rfilename", "").lower().endswith(".gguf")]
+            if len(gguf_files) <= 1:
+                size_gb = computed_gb
+            else:
+                size_gb = formula_gb
+    elif used_storage_bytes and isinstance(used_storage_bytes, (int, float)) and used_storage_bytes > 0:
         if not is_gguf:
             # Safetensors / FP16 / BF16 repos: usedStorage = real download size
             size_gb = round(used_storage_bytes / (1024**3), 1)
@@ -468,21 +488,6 @@ def parse_model_specs(model_id: str, name: str, tags: List[str] = None, raw_item
             else:
                 # Multiple GGUF variants: usedStorage is sum of all; use formula for one variant
                 size_gb = round(total_b * bytes_per_param, 1)
-    elif siblings_size_sum > 0:
-        # Fallback: sum of individual file sizes from siblings listing
-        computed_gb = round(siblings_size_sum / (1024**3), 1)
-        formula_gb = round(total_b * bytes_per_param, 1)
-        # For non-GGUF repos, always trust file sizes (they're the real download).
-        # For GGUF repos with many variants, only use it if single variant or small repo.
-        if not is_gguf:
-            size_gb = computed_gb
-        else:
-            siblings_list = raw_item.get("siblings") or []
-            gguf_files = [s for s in siblings_list if s.get("rfilename", "").lower().endswith(".gguf")]
-            if len(gguf_files) <= 1:
-                size_gb = computed_gb
-            else:
-                size_gb = formula_gb
     else:
         size_gb = round(total_b * bytes_per_param, 1)
 
@@ -715,23 +720,24 @@ POPULAR_MODELS = [
         "name": "GLM 5.3 Flash",
         "author": "zai-org",
         "category": "llm",
-        "params_b": 9.0,
-        "params_label": "Flash",
-        "active_params_label": "Flash",
-        "total_params_label": "Flash",
-        "precision": "FP16 / BF16",
-        "size_gb": 18.0,
-        "format": "Safetensors",
+        "params_b": 321.0,
+        "params_label": "321B MoE",
+        "active_params_label": "32B",
+        "total_params_label": "321B",
+        "is_moe": True,
+        "precision": "FP8 / BF16",
+        "size_gb": 305.8,
+        "format": "Safetensors (FP8)",
         "downloads": 350000,
         "likes": 4800,
         "is_official": True,
         "created_at": "2025-02-15T10:00:00Z",
         "last_modified": "2025-02-20T12:00:00Z",
         "release_date_label": "15 Feb 2025",
-        "description": "Modello ufficiale ad altissima velocità, reasoning avanzato e architettura multimodale di ZAI (Zhipu AI).",
-        "quantizations": ["Safetensors (18 GB)", "GGUF Q4_K_M (5.5 GB)"],
+        "description": "Modello ufficiale ZAI (Zhipu AI) da 321B parametri (MoE ad altissima velocità, 62 shard Safetensors FP8/BF16 per 305.8 GB di pesi).",
+        "quantizations": ["Safetensors FP8 (305.8 GB)"],
         "pipeline_tag": "text-generation",
-        "default_file": "model.safetensors",
+        "default_file": "model.safetensors.index.json",
         "hf_url": "https://huggingface.co/zai-org/GLM-5.3-Flash",
     },
     {
@@ -1316,92 +1322,113 @@ def get_hf_model_details(model_id: str, hf_token: Optional[str] = None) -> Dict[
 
         siblings = data.get("siblings", [])
         files = []
+        valid_exts = (
+            ".gguf", ".safetensors", ".bin", ".pt", ".pth", ".onnx",
+            ".json", ".model", ".txt", ".jinja", ".tiktoken", ".yaml", ".yml", ".py"
+        )
         for s in siblings:
             rfilename = s.get("rfilename", "")
+            if not rfilename:
+                continue
+            # Ignora file interni o nascosti
+            if rfilename.startswith(".") or "/." in rfilename:
+                continue
             f_sz = s.get("size") or (s.get("lfs") or {}).get("size") or 0
-            if any(rfilename.endswith(ext) for ext in [".gguf", ".safetensors", ".bin", ".json", ".pt"]):
+            if any(rfilename.lower().endswith(ext) for ext in valid_exts):
                 files.append({
                     "filename": rfilename,
                     "size": f_sz,
-                    "is_gguf": rfilename.endswith(".gguf"),
-                    "is_safetensors": rfilename.endswith(".safetensors"),
+                    "is_gguf": rfilename.lower().endswith(".gguf"),
+                    "is_safetensors": rfilename.lower().endswith(".safetensors"),
                     "download_url": f"https://huggingface.co/{model_id}/resolve/main/{rfilename}"
                 })
 
-                created_at = data.get("createdAt")
-                last_modified = data.get("lastModified")
-                release_date_label = _format_date_label(created_at or last_modified)
+        created_at = data.get("createdAt")
+        last_modified = data.get("lastModified")
+        release_date_label = _format_date_label(created_at or last_modified)
 
-                specs = parse_model_specs(model_id, data.get("id", ""), data.get("tags", []), raw_item=data)
-                
-                # Check if exact usedStorage is available from HF
-                used_storage = data.get("usedStorage")
-                if used_storage and used_storage > 0:
-                    real_gb = round(used_storage / (1024**3), 2)
-                    specs["size_gb"] = real_gb
-                    specs["size_label"] = f"~{real_gb:.1f} GB" if real_gb < 1000 else f"~{real_gb/1000:.1f} TB"
+        specs = parse_model_specs(model_id, data.get("id", ""), data.get("tags", []), raw_item=data)
 
-                author = data.get("author", model_id.split("/")[0] if "/" in model_id else "Community")
+        # Calcolo accurato dimensione di download da tutti i file/shard
+        safetensors_files = [f for f in files if f["is_safetensors"]]
+        gguf_files = [f for f in files if f["is_gguf"]]
 
-                # Extract eval_results / benchmarks from HF model card metadata
-                eval_results = []
-                card_data = data.get("cardData") or {}
-                raw_evals = card_data.get("eval_results") or card_data.get("model-index") or []
-                # model-index is a list of dicts with "results" key
-                if isinstance(raw_evals, list):
-                    for entry in raw_evals:
-                        if isinstance(entry, dict):
-                            if "results" in entry:
-                                # model-index format
-                                for r in entry.get("results", []):
-                                    dataset = r.get("dataset", {})
-                                    for metric in r.get("metrics", []):
-                                        eval_results.append({
-                                            "task": r.get("task", {}).get("type", "unknown"),
-                                            "dataset": dataset.get("name", dataset.get("type", "unknown")),
-                                            "metric": metric.get("name", metric.get("type", "unknown")),
-                                            "value": metric.get("value", 0),
-                                            "verified": metric.get("verified", False),
-                                        })
-                            elif "task" in entry or "metric" in entry:
-                                # flat eval_results format
+        if safetensors_files:
+            # Per i modelli Safetensors, il download include tutti gli shard + configurazioni e tokenizer
+            real_bytes = sum(f["size"] for f in files if not f["is_gguf"])
+        elif gguf_files:
+            # Per i modelli GGUF sharded o singoli
+            real_bytes = sum(f["size"] for f in gguf_files)
+        else:
+            real_bytes = sum(f["size"] for f in files)
+
+        if real_bytes > 0:
+            real_gb = round(real_bytes / (1024**3), 2)
+            specs["size_gb"] = real_gb
+            specs["size_label"] = f"~{real_gb:.1f} GB" if real_gb < 1000 else f"~{real_gb/1000:.1f} TB"
+        elif data.get("usedStorage") and data.get("usedStorage") > 0:
+            real_gb = round(data["usedStorage"] / (1024**3), 2)
+            specs["size_gb"] = real_gb
+            specs["size_label"] = f"~{real_gb:.1f} GB" if real_gb < 1000 else f"~{real_gb/1000:.1f} TB"
+
+        author = data.get("author", model_id.split("/")[0] if "/" in model_id else "Community")
+
+        # Extract eval_results / benchmarks from HF model card metadata
+        eval_results = []
+        card_data = data.get("cardData") or {}
+        raw_evals = card_data.get("eval_results") or card_data.get("model-index") or []
+        if isinstance(raw_evals, list):
+            for entry in raw_evals:
+                if isinstance(entry, dict):
+                    if "results" in entry:
+                        for r in entry.get("results", []):
+                            dataset = r.get("dataset", {})
+                            for metric in r.get("metrics", []):
                                 eval_results.append({
-                                    "task": entry.get("task", "unknown"),
-                                    "dataset": entry.get("dataset", "unknown"),
-                                    "metric": entry.get("metric", "unknown"),
-                                    "value": entry.get("value", 0),
-                                    "verified": entry.get("verified", False),
+                                    "task": r.get("task", {}).get("type", "unknown"),
+                                    "dataset": dataset.get("name", dataset.get("type", "unknown")),
+                                    "metric": metric.get("name", metric.get("type", "unknown")),
+                                    "value": metric.get("value", 0),
+                                    "verified": metric.get("verified", False),
                                 })
+                    elif "task" in entry or "metric" in entry:
+                        eval_results.append({
+                            "task": entry.get("task", "unknown"),
+                            "dataset": entry.get("dataset", "unknown"),
+                            "metric": entry.get("metric", "unknown"),
+                            "value": entry.get("value", 0),
+                            "verified": entry.get("verified", False),
+                        })
 
-                return {
-                    "success": True,
-                    "id": model_id,
-                    "author": author,
-                    "is_official": is_official_provider(author, model_id),
-                    "downloads": data.get("downloads", 0),
-                    "likes": data.get("likes", 0),
-                    "created_at": created_at,
-                    "last_modified": last_modified,
-                    "release_date_label": release_date_label,
-                    "params_label": specs["active_label"],
-                    "active_params_label": specs["active_label"],
-                    "total_params_label": specs["total_label"],
-                    "precision": specs["precision"],
-                    "is_moe": specs["is_moe"],
-                    "size_gb": specs["size_gb"],
-                    "size_label": specs["size_label"],
-                    "active_vram_gb": specs["active_vram_gb"],
-                    "active_vram_label": specs["active_vram_label"],
-                    "recommended_gpu": _determine_target_gpu(
-                        specs["size_gb"], specs["is_moe"],
-                        specs["active_vram_label"], specs["active_vram_gb"]),
-                    "pipeline_tag": data.get("pipeline_tag", "text-generation"),
-                    "tags": data.get("tags", []),
-                    "files": files,
-                    "eval_results": eval_results,
-                    "card_url": f"https://huggingface.co/{model_id}",
-                    "hf_url": f"https://huggingface.co/{model_id}"
-                }
+        return {
+            "success": True,
+            "id": model_id,
+            "author": author,
+            "is_official": is_official_provider(author, model_id),
+            "downloads": data.get("downloads", 0),
+            "likes": data.get("likes", 0),
+            "created_at": created_at,
+            "last_modified": last_modified,
+            "release_date_label": release_date_label,
+            "params_label": specs["active_label"],
+            "active_params_label": specs["active_label"],
+            "total_params_label": specs["total_label"],
+            "precision": specs["precision"],
+            "is_moe": specs["is_moe"],
+            "size_gb": specs["size_gb"],
+            "size_label": specs["size_label"],
+            "active_vram_gb": specs["active_vram_gb"],
+            "active_vram_label": specs["active_vram_label"],
+            "recommended_gpu": _determine_target_gpu(
+                specs["size_gb"], specs["is_moe"],
+                specs["active_vram_label"], specs["active_vram_gb"]),
+            "pipeline_tag": data.get("pipeline_tag", "text-generation"),
+            "tags": data.get("tags", []),
+            "files": files,
+            "eval_results": eval_results,
+            "card_url": f"https://huggingface.co/{model_id}",
+            "hf_url": f"https://huggingface.co/{model_id}"
+        }
     except Exception as ex:
         log.error(f"[HF_Client] get_hf_model_details error for {model_id}: {ex}")
 

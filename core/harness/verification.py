@@ -25,6 +25,7 @@ falliti o raccolti. Una verifica e' considerata valida solo se ha effettivamente
 dimostrato il funzionamento del codice.
 """
 
+import json
 import re
 from dataclasses import asdict, dataclass
 from typing import Any, Dict, Optional
@@ -289,6 +290,86 @@ def _parse_build(command: str, rc: int, text: str) -> VerificationReport:
     )
 
 
+#: Il rapporto che un controllo di progetto puo' emettere per essere creduto.
+#: Una riga sola, JSON, riconoscibile dal prefisso: cosi' il comando resta
+#: leggibile da una persona e verificabile da qui.
+#:
+#:     SIGMA-CHECK {"check": "i18n", "checked": 214, "problems": 0}
+#:
+#: `checked` non e' decorazione. Un controllo che non ha esaminato niente esce
+#: con codice zero esattamente come uno che ha esaminato tutto e non ha trovato
+#: nulla, ed e' la differenza fra una prova e un'illusione: e' la stessa regola
+#: per cui una suite con zero test raccolti qui non passa.
+_SIGMA_CHECK_RE = re.compile(r"SIGMA-CHECK\s*(?P<payload>\{.*\})", re.IGNORECASE)
+
+
+def _parse_project_check(command: str, rc: int, text: str) -> VerificationReport:
+    """Legge il rapporto di un controllo scritto per questo progetto.
+
+    Serve ai lavori la cui prova non e' una suite di test. Un intervento di
+    internazionalizzazione, per esempio, e' dimostrato da «ogni chiave usata
+    esiste in ogni lingua e non resta nessun letterale non tradotto», non da
+    pytest: senza un modo di credere a quel controllo, l'agente dichiarerebbe
+    finito un lavoro che nessuno ha misurato.
+    """
+    m = None
+    for riga in reversed(text.splitlines()):
+        m = _SIGMA_CHECK_RE.search(riga)
+        if m:
+            break
+
+    if not m:
+        # Nessun rapporto: vale la regola generica, cioe' quasi niente. Lo si
+        # dice, perche' un comando chiamato "check" che non dichiara cosa ha
+        # controllato non e' una prova.
+        return VerificationReport(
+            command=command,
+            returncode=rc,
+            kind="project_check",
+            is_valid=False,
+            summary=(
+                "controllo senza rapporto: aggiungi una riga "
+                'SIGMA-CHECK {"check": "...", "checked": N, "problems": N} '
+                "con quanti elementi hai esaminato"
+            ),
+        )
+
+    try:
+        dati = json.loads(m.group("payload"))
+    except ValueError:
+        return VerificationReport(
+            command=command, returncode=rc, kind="project_check", is_valid=False,
+            summary="rapporto SIGMA-CHECK non e' JSON valido",
+        )
+
+    nome = str(dati.get("check") or "controllo")
+    esaminati = int(dati.get("checked") or 0)
+    problemi = int(dati.get("problems") or 0)
+
+    if esaminati <= 0:
+        return VerificationReport(
+            command=command, returncode=rc, kind="project_check", is_valid=False,
+            collected=0, failed=problemi,
+            summary=f"'{nome}' non ha esaminato nulla: non dimostra niente",
+        )
+
+    valido = rc == 0 and problemi == 0
+    return VerificationReport(
+        command=command,
+        returncode=rc,
+        kind="project_check",
+        is_valid=valido,
+        collected=esaminati,
+        passed=max(esaminati - problemi, 0),
+        failed=problemi,
+        summary=(
+            f"'{nome}': {esaminati} elementi esaminati, nessun problema"
+            if valido else
+            f"'{nome}': {problemi} problemi su {esaminati} elementi esaminati"
+        ),
+    )
+
+
 def _parse_syntax(command: str, rc: int, text: str) -> VerificationReport:
     """Analizza controlli di import o py_compile."""
     is_valid = (rc == 0 and not text.strip()) or (rc == 0 and "error" not in text.lower())
@@ -330,6 +411,14 @@ def parse_verification(
 
     if any(k in cmd for k in ("build", "vite build", "tsc")):
         return _parse_build(command, returncode, full_output)
+
+    # Un controllo scritto per questo progetto, riconosciuto dal rapporto che
+    # emette invece che dal nome del comando: il nome lo sceglie chi lo scrive,
+    # il rapporto e' un impegno.
+    if "SIGMA-CHECK" in full_output.upper() or any(
+        k in cmd for k in ("check", "verifica", "--check")
+    ):
+        return _parse_project_check(command, returncode, full_output)
 
     if any(k in cmd for k in ("py_compile", "compileall", "import ")):
         return _parse_syntax(command, returncode, full_output)

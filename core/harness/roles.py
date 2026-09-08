@@ -373,6 +373,7 @@ class RoleEngine:
         session_id: Optional[str] = None,
         review_writes: bool = False,
         isolate_worktree: bool = False,
+        review_run: bool = False,
     ) -> Generator[Dict[str, Any], None, None]:
         """Generate a response using a specific role, with streaming.
 
@@ -452,6 +453,7 @@ class RoleEngine:
             # che non puo' usarle.
             review_writes=review_writes,
             isolate_worktree=isolate_worktree,
+            review_run=review_run,
         ):
             yield event
 

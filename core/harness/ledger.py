@@ -899,6 +899,13 @@ VERIFICATION_HINTS = (
     "jest", "ruff", "flake8", "mypy", "pylint", "eslint", "lint:undef", "tsc",
     "npm run build", "npm run lint", "py_compile", "-m compileall",
     "import ", "node -e", "test-path",
+    # I controlli scritti per il progetto. Ci sono lavori la cui prova non e'
+    # una suite di test: che ogni chiave di traduzione esista in ogni lingua,
+    # per dirne uno, non lo dimostra pytest. Senza questi il cancello di
+    # completamento non avrebbe niente da esigere, e l'agente dichiarerebbe
+    # finito un lavoro che nessuno ha misurato. Che il controllo abbia davvero
+    # esaminato qualcosa lo verifica `verification.parse_verification`.
+    "check_", "check.py", "--check", "run check", "verifica",
 )
 
 

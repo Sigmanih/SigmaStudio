@@ -663,6 +663,17 @@ except Exception as _mod_err:
     log.warning(f"[FastAPI] Avviso inizializzazione ModuleLoader: {_mod_err}")
 
 
+@app.get("/api/modules/sync/config")
+async def api_modules_sync_config():
+    """Le preferenze di sincronizzazione. Costa niente: e' la domanda che
+    l'interfaccia fa per sapere se ha senso mostrare il pannello."""
+    from core.module_sync import load_config
+    try:
+        return {"success": True, **load_config()}
+    except Exception as exc:
+        return {"success": False, "error": str(exc), "show_publish_ui": False}
+
+
 @app.get("/api/modules/sync/status")
 async def api_modules_sync_status():
     """Cosa partirebbe verso il repository dei moduli, senza far partire niente.
