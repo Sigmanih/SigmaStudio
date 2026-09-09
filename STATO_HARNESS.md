@@ -11,6 +11,7 @@ guida un lavoro grande da dentro Sigma Studio.
 | Punti dell'audit tecnico | 11 / 11 chiusi |
 | Difetti trovati **dopo** la chiusura dell'audit | 17, tutti nell'integrazione |
 | Ventaglio parallelo, prova dal vivo | da 0 voci su 6 a **2 su 2**, in 8 e 9 turni |
+| Banco sul protocollo dei tool | Qwen 27B **100/100**; Ornith 35B e gemma 12B **70/100** |
 
 ---
 
@@ -137,6 +138,38 @@ progetto, ed è il primo compito di chi pianifica — persona o agente.
 tutti i difetti recenti stanno negli incontri, non dentro i pezzi. Una nuova
 capacità non è finita quando i suoi test passano: è finita quando l'ha
 attraversata un run vero.
+
+---
+
+## 3bis. Quale modello, e come lo si e' deciso
+
+I benchmark che avevamo misuravano domande e risposte. E' un'altra abilita': un
+modello puo' prendere 80 su 100 e non saper chiudere un ciclo di venti turni.
+`core/harness/protocol_bench.py` misura quella — dieci prove per scenario, tutte
+su fatti osservabili nel transcript, con il risultato finale controllato sul
+disco.
+
+Scenario `file_nuovo`, 9 settembre 2026:
+
+| modello | quiz | **protocollo** | turni | tempo |
+|:---|---:|---:|:---|---:|
+| **Qwen3.8-27B-Q4_K_S** | 78 | **100 / 100** | 11, chiude | **83 s** |
+| Ornith-1.0-35B-Q4_K_M | 73 | 70 / 100 | 14, esauriti | 86 s |
+| gemma-4-12B-Q4_K_M | 79 | 70 / 100 | non chiude | > 300 s |
+
+I due che perdono **producono il file giusto** e poi non lo dimostrano: non
+eseguono la verifica, non dichiarano le prove. Sul quiz gemma vinceva di un
+punto ed era 2,4 volte piu' veloce in token al secondo.
+
+> I token al secondo non sono la metrica. Quella che conta e' il tempo fino alla
+> chiusura, e un modello che emette il triplo dei token a parita' di velocita' e'
+> piu' lento end to end. Nessun quiz lo dice.
+
+E una scoperta di configurazione: **`coder` era l'unico ruolo senza binding** e
+ricadeva sul modello attivo. La chat libera del Developer Studio e ogni
+lavoratore del ventaglio ereditano quel ruolo — tutto il lavoro reale girava su
+un modello che non chiude il ciclo. Ora tutti e cinque i ruoli usano Qwen 27B, e
+`config/roles.json` porta scritto perche'.
 
 ---
 
