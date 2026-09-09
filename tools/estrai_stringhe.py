@@ -21,9 +21,19 @@ def _e_visibile(testo: str) -> bool:
     t = testo.strip()
     if not t:
         return False
-    # Una sola parola, tutta minuscole o maiuscole, senza spazi: identificatore
-    if re.fullmatch(r"[a-zA-Z_]+", t):
+    # Numeri o colori esadecimali
+    if re.fullmatch(r"\d+", t) or re.fullmatch(r"#[0-9a-fA-F]{3,8}", t):
         return False
+    # Una sola parola: visibile solo se inizia con maiuscola (es. Wallet, Salva)
+    if re.fullmatch(r"[a-zA-Z_]+", t):
+        # Tutte minuscole o tutte maiuscole: identificatore/sigla
+        if t.islower() or t.isupper():
+            return False
+        # Contiene underscore: identificatore
+        if "_" in t:
+            return False
+        # Inizia con maiuscola: etichetta visibile
+        return True
     # Percorsi di file o import
     if t.startswith(("./", "../", "/", "@")) or ".js" in t or ".jsx" in t:
         return False
@@ -107,13 +117,17 @@ export default function Demo() {
       <button aria-label="Chiudi la finestra" onClick={() => alert("Operazione completata")}>OK</button>
       <img alt="Logo del progetto" src="/logo.png" />
       <p className="text-small">flex</p>
+      <th>Wallet</th>
+      <button>Salva</button>
+      <span>POST</span>
+      <div className="text-sm">testo</div>
     </div>
   );
 }
 '''
 
-    con_visibili = ["Connetti al peer", "Inserisci l'indirizzo", "Indirizzo del peer"]
-    con_non_visibili = ["flex center", "react", "flex"]
+    con_visibili = ["Connetti al peer", "Inserisci l'indirizzo", "Indirizzo del peer", "Wallet", "Salva"]
+    con_non_visibili = ["flex center", "react", "flex", "POST", "text-sm"]
 
     with tempfile.TemporaryDirectory() as tmp:
         p = Path(tmp) / "Demo.jsx"
