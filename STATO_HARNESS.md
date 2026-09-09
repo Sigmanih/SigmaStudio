@@ -1,56 +1,55 @@
-# Stato dell'Harness · 8 settembre 2026 (rev. 2)
+# Stato dell'Harness · 9 settembre 2026 (rev. 3)
 
-Valutazione dell'harness dell'agente nel kernel: cosa regge, cosa no, e cosa serve
-prima del prossimo lavoro — rendere l'intero Sigma Studio, moduli e tab compresi,
-impostabile in più lingue.
+Valutazione dell'harness dell'agente nel kernel: cosa regge, cosa no, e come si
+guida un lavoro grande da dentro Sigma Studio.
 
 | | |
 |:---|:---|
-| Test verdi | **1183** |
+| Test verdi | **1369** |
 | Build frontend | verde (~0,9 s) |
 | `npm run lint:undef` | 0 riferimenti non definiti |
 | Punti dell'audit tecnico | 11 / 11 chiusi |
-| Difetti trovati **dopo** la chiusura dell'audit | 9, tutti nell'integrazione |
+| Difetti trovati **dopo** la chiusura dell'audit | 17, tutti nell'integrazione |
+| Ventaglio parallelo, prova dal vivo | da 0 voci su 6 a **2 su 2**, in 8 e 9 turni |
 
 ---
 
 ## 1. Cosa c'è, e regge
 
 **Il ciclo.** Multi-turno con ledger di sessione persistente, cancello di
-completamento che pretende prove ancorate a fatti (non la parola del modello),
-recupero dallo stallo in tre stadi distinti (chi non ha visto nulla esplora, chi
-ha elencato senza leggere legge, chi ha letto agisce), compattazione della
-cronologia con memoria decisionale per i run lunghi.
+completamento che pretende prove ancorate a fatti, recupero dallo stallo in tre
+stadi distinti, compattazione della cronologia con memoria decisionale.
 
 **I ruoli come dato.** `config/roles.json` si sovrappone ai predefiniti campo per
-campo: prompt, modello, budget di turni, tool permessi. La policy dei tool è
-un'intersezione fra profilo operativo (tetto scelto dall'utente) ed elenco del
+campo. La policy dei tool è un'intersezione fra profilo operativo ed elenco del
 ruolo, e il prompt documenta soltanto i tool che quel ruolo può davvero usare.
 
-**Le tre reti di sicurezza.** Revisione del diff prima che una scrittura resti;
-isolamento del run in un worktree git con checkpoint di turno; conservazione del
-lavoro su un branch quando l'obiettivo non viene chiuso.
+**Quattro reti di sicurezza.** Revisione del diff per singola scrittura;
+revisione dell'intero lavoro di un run in una volta; isolamento in worktree git
+con checkpoint di turno e rollback manuale; conservazione del lavoro su un branch
+quando l'obiettivo non viene chiuso.
 
-**Il motore.** Prefix cache multi-slot per ruolo, finestra di contesto reale
-(divisa per gli slot del backend), tool-calling nativo dove il provider lo
-supporta e grammatica GBNF dove no, verifica strutturata dei test che rifiuta le
-suite a zero test anche con exit code 0.
+**Il lavoro grande.** Una coda persistente che sopravvive ai run, consumata da N
+agenti in parallelo, ognuno nel proprio worktree. Il lavoro approvato non compare
+nell'albero: finisce su `dev` e si accetta con una pull request.
 
-**La pubblicazione dei moduli.** Si sviluppa dentro Sigma Studio, si pubblica nel
-repository dei moduli: `core/module_sync.py` è l'inverso del loader.
+**Il contorno.** Prefix cache multi-slot per ruolo, finestra di contesto reale,
+tool-calling nativo dove il provider lo supporta, verifica strutturata dei test,
+traduzione a lotti con i segnaposto protetti, pubblicazione dei moduli nel loro
+repository.
 
 ---
 
 ## 2. Cosa ha continuato a rompersi, e perché conta
 
-Le 11 lacune dell'audit erano chiuse, con i loro test verdi. Una rilettura mirata
-**ai punti in cui i moduli nuovi incontrano il ciclo** ne ha trovati altri nove.
-Nessuno era visibile dai test dei singoli moduli, perché nessuno stava dentro un
-modulo, e due sono usciti soltanto provando il percorso vero.
+Le 11 lacune dell'audit erano chiuse, con i loro test verdi. Rileggendo **i punti
+in cui i moduli nuovi incontrano il ciclo** — e poi provandoli su un repository
+vero — ne sono usciti altri diciassette. Nessuno era visibile dai test dei singoli
+moduli; sette si sono visti solo facendo girare il sistema davvero.
 
 | Difetto | Effetto |
 |:---|:---|
-| `isolate_worktree` dichiarato e mai passato da nessuno | L'intero isolamento non era accendibile da alcun percorso reale |
+| `isolate_worktree` dichiarato e mai passato | L'intero isolamento non era accendibile da alcun percorso reale |
 | Chiusura del run fuori da un `finally` | Ogni stop lasciava un worktree e un branch orfani |
 | `git branch -D` a ogni obiettivo non raggiunto | Trenta turni di lavoro buono cancellati per l'ultimo passo mancante |
 | `apply_to_main` con base sbagliata e senza l'ultimo turno | La modifica che *chiudeva* l'obiettivo non arrivava all'albero principale |
@@ -59,112 +58,155 @@ modulo, e due sono usciti soltanto provando il percorso vero.
 | `manifest.backend.handlers_module` mai letto | Sbagliato in 7 moduli su 15, e nessuno se n'era accorto |
 | `diff_from_main` con base sbagliata e senza i file nuovi | Chi rivede avrebbe approvato una cosa diversa da quella applicata |
 | Revisione di fine run confusa con quella per scrittura | Le scritture si fermavano una per una, scadevano, e alla fine non restava niente da rivedere |
+| `sigma_audio_studio` senza manifest | Un modulo che gira e non sta in nessun repository, saltato in silenzio |
+| `rollback()` mai chiamata | Il modulo prometteva un ripristino che nessun codice manteneva |
+| `mcp_hub` → `sigma_mcp_hub` in `registry.js` | Una mappa che promette un modulo inesistente: scheda vuota |
+| Prova richiesta e non riconosciuta | Il sistema indicava il comando da eseguire e poi non lo contava |
+| Guardia anti-ripetizione dopo un piano corretto | Chi faceva ciò che gli era stato chiesto non poteva riprovare |
+| Chiave `modified_files` inventata | Il resoconto diceva «nessuna modifica» su run che avevano scritto il file giusto |
+| `deliver` dichiarato e ignorato nel ventaglio | Chiedere «non consegnare» non aveva alcun effetto |
+| Profilo operativo mai spedito dall'interfaccia | Il tetto ai tool esisteva e non lo si poteva alzare |
 
-### Il pattern
+### Primo schema: scritto, testato, scollegato
 
-Cinque volte una funzionalità è stata **scritta, testata e lasciata scollegata**:
-`is_tool_allowed`, i profili operativi, il binding del modello per ruolo,
-l'isolamento in worktree, il campo `handlers_module`. Ogni volta i test erano
-verdi, perché chiamavano la funzione direttamente.
+**Sette volte.** `is_tool_allowed`, i profili operativi, il binding del modello
+per ruolo, l'isolamento in worktree, il campo `handlers_module`, `deliver` —
+dentro codice scritto in questa stessa sessione — e la **scelta del profilo
+operativo**, che il kernel accettava e nessuna interfaccia spediva. L'ultima è
+uscita scrivendo questa stessa pagina: stavo per documentare come si usa una
+cosa che non si poteva usare. Ogni volta i test erano verdi, perché chiamavano
+la funzione direttamente.
 
 > Un test che non parte da un percorso raggiungibile dall'utente non dimostra che
 > la funzionalità esista.
 
-`tests/test_no_dead_wiring.py` cammina ora i parametri del ciclo e pretende che
-ognuno sia passato da almeno un chiamante di produzione, leggendolo dal sorgente.
-Va esteso, non aggirato: se un parametro nuovo lo fa fallire, la risposta è
-collegarlo o non dichiararlo.
+`tests/test_no_dead_wiring.py` cammina i parametri del ciclo *e del ventaglio* e
+pretende che ognuno sia passato da un chiamante di produzione. Va esteso a ogni
+nuovo punto d'ingresso, non aggirato.
 
-### Il secondo pattern, più insidioso
+### Secondo schema: successo dichiarato, lavoro perduto
 
-Quattro dei nove **riportavano successo mentre perdevano lavoro**: il branch
-cancellato, il commit saltato, la prova a vuoto che si autoconsumava, e la
-revisione di fine run che annullava il lavoro che doveva far vedere. In un
-sistema che serve a non perdere lavoro, il fallimento silenzioso è la modalità di
-guasto peggiore. Dove c'è una contraddizione fra due fonti — il mirror dice
-«cambiato», git dice «no» — adesso il sistema si ferma e lo dice.
+**Cinque volte** il sistema ha riportato successo mentre perdeva o negava
+lavoro: il branch cancellato, il commit saltato, la prova a vuoto che si
+autoconsumava, la revisione di fine run che annullava ciò che doveva mostrare, e
+il resoconto che negava file scritti davvero. In un sistema che serve a non
+perdere lavoro, il fallimento silenzioso è la modalità di guasto peggiore.
+
+Dove due fonti si contraddicono — il mirror dice «cambiato», git dice «no» — il
+sistema ora si ferma e lo dice.
+
+### Terzo schema: il sistema che si contraddice
+
+È il più insidioso, perché la colpa sembra del modello. Due casi, entrambi
+trovati facendo girare il ventaglio su un repository vero:
+
+- il cancello chiede una verifica, il prompt indica **quale**, l'agente la
+  esegue con successo, e il cancello non la riconosce;
+- il cancello dice «chiudi i task del piano», l'agente li chiude, e la guardia
+  anti-ripetizione gli impedisce di riprovare.
+
+In entrambi i casi l'agente aveva fatto esattamente ciò che gli era stato
+chiesto. Prima delle correzioni: 6 voci fallite su 6. Dopo: 2 su 2, in 8 e 9
+turni.
+
+### La lezione sui test
+
+Il difetto della chiave `modified_files` aveva un test che avrebbe dovuto
+vederlo, e non lo vedeva: usava uno snapshot **inventato**, con una chiave che
+nel ledger non esiste. Era il finto a nascondere il difetto.
+
+> Quando un test costruisce a mano il dato che il codice riceverà, prova che il
+> codice funziona su un dato immaginario.
+
+I test di quel punto costruiscono ora uno snapshot vero, con un `DevSessionLedger`
+vero.
 
 ---
 
 ## 3. Valutazione
 
-**Regge**: un obiettivo circoscritto su pochi file, con verifica eseguibile. È il
-caso su cui l'harness è stato costruito e misurato (12 turni su 30 per un
-endpoint funzionante con criteri dimostrati).
+**Regge**: un obiettivo circoscritto con verifica eseguibile, e — da questo giro
+— un lavoro spezzato in voci indipendenti, eseguito in parallelo, rivisto una
+volta sola e consegnato con una pull request.
 
-**Non regge ancora**: un lavoro che tocca *centinaia* di file. Non per un difetto,
-ma per assenza di tre cose — esecuzione parallela, una coda di lavoro che
-sopravvive ai run, e una revisione all'altezza della scala. È esattamente la
-forma del prossimo compito.
+**Non regge da solo**: la parte difficile resta **spezzare bene il lavoro**.
+Il ventaglio consuma una coda; deciderne le voci richiede di aver guardato il
+progetto, ed è il primo compito di chi pianifica — persona o agente.
+
+**Il rischio che resta**: l'harness ha ormai molte parti che si incontrano, e
+tutti i difetti recenti stanno negli incontri, non dentro i pezzi. Una nuova
+capacità non è finita quando i suoi test passano: è finita quando l'ha
+attraversata un run vero.
 
 ---
 
-## 4. Fatto in questo giro
+## 4. Come si segue un lavoro come questo da dentro Sigma Studio
 
-**Revisione a livello di run.** `review_run` mostra una volta sola il diff di
-tutto ciò che il run ha prodotto e chiede una decisione: approvato passa
-all'albero principale, rifiutato resta sul branch della sessione. Richiede
-l'isolamento in worktree, e se manca lo dice invece di fingere.
+Tutto quello che è stato fatto qui a mano si guida dal **Developer Studio**.
+Il percorso, nell'ordine:
 
-Due difetti trovati costruendolo, entrambi nel punto che conta. `diff_from_main`
-aveva la stessa base sbagliata già corretta in `apply_to_main`, e guardava solo i
-commit: ometteva l'ultimo turno e **tutti i file nuovi**, cioè la maggior parte di
-un lavoro di internazionalizzazione — chi rivede avrebbe approvato una cosa e ne
-sarebbe stata applicata un'altra. E la condizione del cancello per scrittura
-guardava se il gate esistesse invece di quale revisione fosse stata chiesta:
-provandolo dal vivo, le scritture si sono fermate una per una, sono scadute, e
-alla fine non restava niente da rivedere. Verificato end to end su un repository
-vero, in entrambi i versi.
+**1. Decidere come spezzare il lavoro.** Nella chat dell'agente, mettendo il
+selettore su *Sola Lettura* — è un tetto sopra i tool del ruolo, quindi
+l'agente esplora senza poter toccare niente: «elenca i file di ogni modulo che
+contengono stringhe visibili all'utente, uno per riga». Ne esce l'elenco che
+diventerà la coda. Questo passo non si delega al ventaglio: è la parte che
+richiede di aver guardato.
 
-**Un controllo di progetto vale come prova**, a una condizione: deve dire
-**quanti elementi ha esaminato**.
+**2. Riempire la coda.** Pannello **LAVORO IN PARALLELO** nella colonna sinistra:
+obiettivo generale in alto, una voce per riga sotto, *Aggiungi alla coda*. Le
+voci si accumulano su disco: si può chiudere tutto e riprendere domani.
 
-```
-SIGMA-CHECK {"check": "i18n", "checked": 214, "problems": 0}
-```
+**3. Dire come si dimostra il lavoro.** È il passo che vale tre run per voce.
+Ogni voce può portare con sé il comando che la prova — `python tools/check_i18n.py
+--file X` — e allora l'agente sa cosa eseguire e il cancello lo riconosce. Senza,
+l'agente deve trovarsela da solo, e a volte non ci riesce.
 
-`checked` è il punto. Un controllo che non ha guardato niente esce con codice zero
-esattamente come uno che ha guardato tutto senza trovare nulla — è la differenza
-fra una prova e un'illusione, ed è la stessa regola per cui qui una suite con zero
-test raccolti non passa. Senza la riga, o con `checked` a zero, il cancello di
-completamento resta chiuso. Contratto in `AGENTS.md`, dove l'harness lo mette
-davanti all'agente. Resta da scrivere il controllo vero per la lingua: è lavoro
-del prossimo compito, e ora ha un modo di essere creduto.
+**4. Avviare.** Si sceglie quanti agenti in parallelo (2 è il default: oltre, la
+banda verso i pesi del modello diventa il collo di bottiglia) e si preme *Avvia*.
+La barra avanza, le voci si chiudono una per una, ogni riga dice quale
+lavoratore l'ha presa. *Ferma* interrompe: ciò che è stato fatto resta fatto.
+
+**5. Rivedere.** Con **Revisione run** acceso, ogni agente si ferma a fine lavoro
+e mostra il diff completo di ciò che ha prodotto: *Applica* o *Scarta*. Scartare
+non perde niente — il lavoro resta sul branch della sessione, e il pannello lo
+dice. Se qualcosa è andato storto a metà, il rollback riporta indietro di N turni
+(`/api/developer/run/rollback`).
+
+**6. Accettare.** Il lavoro approvato non compare nell'albero: va su `dev` e si
+apre una richiesta verso `main`. Si guarda con calma, anche due giorni dopo,
+anche insieme a qualcun altro.
+
+**7. Pubblicare i moduli.** Ciò che l'agente ha toccato dentro un modulo
+appartiene al repository di quel modulo: il pannello **PUBBLICA MODULI** elenca
+cosa cambierebbe e lo manda. Il commit locale è automatico, la pubblicazione la
+si preme.
+
+**Cosa guardare mentre gira.** Il monitor del lavoro mostra il ledger dell'agente
+— cosa ha letto, cosa ha scritto, quali verifiche ha superato — cioè esattamente
+ciò che il cancello di completamento userà per decidere. Quando una voce non si
+chiude, la risposta è quasi sempre lì.
 
 ---
 
 ## 5. Cosa manca ancora, in ordine
 
-Il compito — rendere impostabile la lingua in tutto Sigma Studio, moduli e tab —
-è per forma un intervento meccanico su centinaia di file, con poche decisioni
-difficili all'inizio e molte ripetizioni dopo.
+### 1. L'estrattore delle stringhe e `check_i18n`
+Il pezzo che trasforma «rendere impostabile la lingua» in una coda di voci
+dimostrabili. La traduzione a lotti c'è, il cancello sa credere a un controllo di
+progetto, ma il controllo che scandaglia i file e produce il catalogo va scritto.
+È lavoro del compito, non dell'harness, e ora l'agente ha tutto per farlo.
 
-### 1. Ventaglio di run paralleli su una coda condivisa
-Oggi c'è un ciclo per volta e un orchestratore a cinque fasi **sequenziali**.
-Duecento file in sequenza non finiscono. Serve una coda di lavoro persistente
-(voce, stato, esito, riprendibile) e N run in parallelo che la consumano —
-possibile in sicurezza solo adesso che ogni run può stare nel proprio worktree,
-e leggibile solo adesso che il lavoro di ciascuno si rivede in una volta.
-**È il pezzo che manca per primo.**
+### 2. La lingua deve arrivare anche al backend
+Messaggi d'errore, risposte delle rotte, prompt dei ruoli. Fermarsi al frontend
+lascia metà prodotto in italiano.
 
-### 2. Disciplina del codemod
-La via efficiente non è far riscrivere 200 file a un modello: è fargli scrivere
-**uno script** che li riscrive, controllare un campione, e trattare a mano solo
-le eccezioni. Il prompt oggi spinge verso `edit_file` file per file. Serve una
-regola esplicita e un modo di applicare uno script a un insieme di file
-riportando l'esito per ciascuno.
+### 3. I campi `sidebar*` nei manifest sono metadata morta
+La sidebar è scritta a mano in `Sidebar.jsx`. A differenza di `tabType` non c'è
+nemmeno una mappa con cui confrontarli: o li consuma qualcuno, o vanno tolti.
 
-### 3. Traduzione a lotti con i segnaposto protetti
-Un percorso separato dal ciclo dell'agente: catalogo → lingue, con protezione di
-`{nome}`, `%s` e degli elementi interpolati in JSX, un glossario di termini che
-non si traducono, e una validazione che i segnaposto sopravvivano. È codice nuovo,
-non harness.
+### 4. `gh` o un `GITHUB_TOKEN`
+Senza, il branch viene spinto e la richiesta si apre a mano con un click. Con,
+sparisce anche quel passaggio.
 
-### 4. La lingua deve arrivare anche al backend
-Messaggi d'errore, risposte delle rotte, prompt dei ruoli. Se l'intervento si
-ferma al frontend, metà del prodotto resta in italiano.
-
-### 5. Poi
-Rollback manuale dal pannello (i checkpoint ci sono, il pulsante no);
-unificazione fra `tabType`/`sidebar*` nei manifest e la mappa scritta a mano in
-`registry.js`; P2P, che resta per ultimo.
+### 5. P2P
+Resta per ultimo, come deciso.

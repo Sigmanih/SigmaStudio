@@ -1160,6 +1160,12 @@ class GgufConverter:
                 ):
                     cls._convert_to_intermediate(source, intermediate, outtype)
 
+            avvisi_metadati: List[str] = []
+            if intermediate and os.path.exists(intermediate):
+                avvisi_sorgente = cls._sanifica_metadati_gguf(intermediate)
+                if avvisi_sorgente:
+                    avvisi_metadati.extend(avvisi_sorgente)
+
             if job.quantization == "F16":
                 if existing_gguf:
                     raise RuntimeError(
@@ -1202,6 +1208,10 @@ class GgufConverter:
                 if not existing_gguf and not conserva and os.path.exists(intermediate):
                     os.remove(intermediate)
 
+            avvisi_finali = cls._sanifica_metadati_gguf(final_path)
+            if avvisi_finali:
+                avvisi_metadati.extend(avvisi_finali)
+
             job.output_path = final_path
             job.output_size_gb = round(os.path.getsize(final_path) / 2**30, 2)
             job.status = "completed"
@@ -1211,6 +1221,12 @@ class GgufConverter:
                 final_name + " pronto (" + str(job.output_size_gb) + " GB). "
                 "Selezionalo dal Model Hub per usarlo con il backend llama.cpp."
             )
+            if avvisi_metadati:
+                unici = list(dict.fromkeys(avvisi_metadati))
+                job.message += (
+                    " ⚠️ Avviso: rilevata e corretta automaticamente una discrepanza nei metadati ("
+                    + "; ".join(unici) + ")."
+                )
             ridotti = [v for v in (job.tensor_overrides or []) if v.get("tipo")]
             if ridotti:
                 job.message += (
@@ -1227,6 +1243,10 @@ class GgufConverter:
                     + ": e' un modello a se', e le prossime quantizzazioni "
                     "possono ripartire da li' saltando la conversione."
                 )
+            try:
+                ModelInspector.inspect(target_dir, use_cache=False)
+            except Exception as e_insp:
+                log.debug("[GgufConverter] Aggiornamento fatti per %s saltato: %s", target_dir, e_insp)
             log.info("[GgufConverter] %s -> %s", job.source_model, final_path)
 
         except Exception as exc:
@@ -1336,10 +1356,34 @@ class GgufConverter:
                 except (json.JSONDecodeError, OSError):
                     pass
 
+        extra_args: List[str] = []
+        cfg_path = os.path.join(source, "config.json")
+        if os.path.exists(cfg_path):
+            try:
+                with open(cfg_path, "r", encoding="utf-8") as f_cfg:
+                    cfg_data = json.load(f_cfg)
+                text_cfg = cfg_data.get("text_config") if isinstance(cfg_data.get("text_config"), dict) else {}
+                mtp_layers = cfg_data.get("mtp_num_hidden_layers") or text_cfg.get("mtp_num_hidden_layers") or 0
+                if mtp_layers:
+                    has_mtp_weights = False
+                    index_path = os.path.join(source, "model.safetensors.index.json")
+                    if os.path.exists(index_path):
+                        with open(index_path, "r", encoding="utf-8") as f_idx:
+                            idx_data = json.load(f_idx)
+                        has_mtp_weights = any("mtp" in k for k in idx_data.get("weight_map", {}).keys())
+                    if not has_mtp_weights:
+                        extra_args.append("--no-mtp")
+                        log.info(
+                            "[GgufConverter] 'mtp_num_hidden_layers' presente nel config ma assente nei pesi safetensors: "
+                            "aggiunto --no-mtp per prevenire block_count errato."
+                        )
+            except Exception as e_mtp:
+                log.debug("[GgufConverter] Controllo MTP per convertitore: %s", e_mtp)
+
         command = [
             sys.executable, CONVERTER_PATH, source,
             "--outfile", output, "--outtype", outtype,
-        ]
+        ] + extra_args
         # The converter and the gguf writer must come from the same revision;
         # letting it fall back to the pip-installed gguf pairs a new converter
         # with an older writer that does not know the architectures it emits.
@@ -1362,6 +1406,86 @@ class GgufConverter:
             raise RuntimeError("convert_hf_to_gguf ha fallito: " + " | ".join(tail))
         if not os.path.exists(output):
             raise RuntimeError("la conversione non ha prodotto alcun file")
+
+    @classmethod
+    def _sanifica_metadati_gguf(cls, percorso: str) -> List[str]:
+        """Verifica e allinea in-place discrepanze nei metadati dei blocchi GGUF.
+
+        Se un modello dichiara block_count = N ma i suoi tensori fisici arrivano solo
+        fino a blk.(N-2) (ad esempio 41 blocchi dichiarati ma tensori solo da
+        blk.0 a blk.39 per via di residui MTP dichiarati nel config ma assenti nei pesi),
+        llama-server fallisce con 'check_tensor_dims: tensor blk.40.* not found'.
+
+        Rileva il massimo indice reale di blocco presente nei tensori e, se inferiore
+        a quanto dichiarato, allinea i metadati in-place restituendo un avviso.
+        """
+        import re
+        avvisi: List[str] = []
+        if not percorso or not os.path.isfile(percorso):
+            return avvisi
+        lettore = None
+        try:
+            from gguf.gguf_reader import GGUFReader
+            lettore = GGUFReader(percorso, "r+")
+        except Exception as e_r:
+            log.debug("[GgufConverter] Impossibile aprire %s per sanificazione metadati: %s", percorso, e_r)
+            return avvisi
+
+        try:
+            max_blk = -1
+            for tensore in getattr(lettore, "tensors", []):
+                nome = getattr(tensore, "name", "")
+                m = re.match(r"^blk\.(\d+)\.", nome)
+                if m:
+                    idx = int(m.group(1))
+                    if idx > max_blk:
+                        max_blk = idx
+
+            if max_blk < 0:
+                return avvisi
+
+            blocchi_effettivi = max_blk + 1
+
+            campo_bc = None
+            chiave_bc = None
+            for k, f in lettore.fields.items():
+                if k.endswith(".block_count"):
+                    chiave_bc = k
+                    campo_bc = f
+                    break
+
+            if campo_bc is not None and campo_bc.data:
+                val_attuale = int(campo_bc.parts[campo_bc.data[0]][0])
+                if val_attuale > blocchi_effettivi:
+                    handler = lettore.gguf_scalar_to_np.get(campo_bc.types[0]) if campo_bc.types else None
+                    if handler:
+                        campo_bc.parts[campo_bc.data[0]][0] = handler(blocchi_effettivi)
+                        msg = (
+                            f"{chiave_bc}: dichiarati {val_attuale} blocchi ma presenti solo "
+                            f"{blocchi_effettivi} (da blk.0 a blk.{max_blk}); corretto a {blocchi_effettivi}"
+                        )
+                        log.warning("[GgufConverter] %s", msg)
+                        avvisi.append(msg)
+
+                    for k, f in lettore.fields.items():
+                        if k.endswith(".nextn_predict_layers") and f.data:
+                            val_nextn = int(f.parts[f.data[0]][0])
+                            if val_nextn > 0:
+                                h_nextn = lettore.gguf_scalar_to_np.get(f.types[0]) if f.types else None
+                                if h_nextn:
+                                    f.parts[f.data[0]][0] = h_nextn(0)
+                                    msg_nextn = f"{k}: reimpostato da {val_nextn} a 0"
+                                    log.warning("[GgufConverter] %s", msg_nextn)
+                                    avvisi.append(msg_nextn)
+                            break
+        finally:
+            if lettore is not None and hasattr(lettore, "data") and hasattr(lettore.data, "_mmap"):
+                try:
+                    lettore.data._mmap.close()
+                except Exception:
+                    pass
+
+        return avvisi
 
     @staticmethod
     def _parametri_gguf(percorso: str) -> int:

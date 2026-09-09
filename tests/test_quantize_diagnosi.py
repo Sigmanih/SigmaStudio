@@ -101,3 +101,75 @@ class TestSceltaDellaSorgente(unittest.TestCase):
         import tempfile
         with tempfile.TemporaryDirectory() as d:
             self.assertIsNone(GgufConverter._existing_gguf(d))
+
+
+class TestSanificazioneMetadatiGguf(unittest.TestCase):
+    """Correzione automatica dei metadati quando block_count sfora i tensori."""
+
+    def test_allinea_block_count_superiore_ai_tensori_presenti(self):
+        import tempfile
+        import os
+        import numpy as np
+        import gguf
+
+        with tempfile.NamedTemporaryFile(suffix=".gguf", delete=False) as tf:
+            path = tf.name
+        try:
+            w = gguf.GGUFWriter(path, "qwen35moe")
+            w.add_block_count(5)
+            w.add_uint32("qwen35moe.nextn_predict_layers", 1)
+            t = np.zeros((2, 2), dtype=np.float32)
+            w.add_tensor("blk.0.attn_norm.weight", t)
+            w.add_tensor("blk.1.attn_norm.weight", t)
+            w.add_tensor("blk.2.attn_norm.weight", t)
+            w.write_header_to_file()
+            w.write_kv_data_to_file()
+            w.write_tensors_to_file()
+            w.close()
+
+            avvisi = GgufConverter._sanifica_metadati_gguf(path)
+            self.assertTrue(len(avvisi) >= 1)
+            self.assertIn("corretto a 3", avvisi[0])
+
+            r = gguf.GGUFReader(path)
+            try:
+                self.assertEqual(r.fields["qwen35moe.block_count"].parts[-1].tolist(), [3])
+                self.assertEqual(r.fields["qwen35moe.nextn_predict_layers"].parts[-1].tolist(), [0])
+            finally:
+                if hasattr(r.data, "_mmap"):
+                    r.data._mmap.close()
+        finally:
+            if os.path.exists(path):
+                try:
+                    os.remove(path)
+                except Exception:
+                    pass
+
+    def test_non_tocca_modelli_con_block_count_corretto(self):
+        import tempfile
+        import os
+        import numpy as np
+        import gguf
+
+        with tempfile.NamedTemporaryFile(suffix=".gguf", delete=False) as tf:
+            path = tf.name
+        try:
+            w = gguf.GGUFWriter(path, "llama")
+            w.add_block_count(2)
+            t = np.zeros((2, 2), dtype=np.float32)
+            w.add_tensor("blk.0.attn_norm.weight", t)
+            w.add_tensor("blk.1.attn_norm.weight", t)
+            w.write_header_to_file()
+            w.write_kv_data_to_file()
+            w.write_tensors_to_file()
+            w.close()
+
+            avvisi = GgufConverter._sanifica_metadati_gguf(path)
+            self.assertEqual(avvisi, [])
+        finally:
+            if os.path.exists(path):
+                try:
+                    os.remove(path)
+                except Exception:
+                    pass
+

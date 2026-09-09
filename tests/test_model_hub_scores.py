@@ -310,6 +310,14 @@ class TestPublicationLink(unittest.TestCase):
         self.assertIn("# ⚡ Qwen-Qwen3-0.6B-GGUF-Q4_K_S", card)
         self.assertIn("sigmanih/Qwen-Qwen3-0.6B-GGUF-Q4_K_S", card)
 
+    def test_model_card_includes_execution_ram_vram(self):
+        from core.modules.sigma_model_hub.backend.uploader_engine import generate_model_card
+        card = generate_model_card("Qwen--Qwen3-0.6B-GGUF-Q4_K_S", "sigmanih/Qwen-Qwen3-0.6B-GGUF-Q4_K_S")
+        self.assertIn("RAM / VRAM in Esecuzione", card)
+        self.assertIn("Inference RAM / VRAM", card)
+        self.assertIn("GB VRAM", card)
+
+
 
 
 class TestHonestSpeedReporting(unittest.TestCase):
@@ -593,6 +601,70 @@ class TestHfLocalInventoryMatching(unittest.TestCase):
             self.assertIn("repo_id", record)
             self.assertTrue(bool(record.get("repo_id")))
 
+
+
+
+class TestBenchmarkThinkingComparison(unittest.TestCase):
+    """Verifica che il confronto fra risposte Thinking e No-Thinking venga generato correttamente per HF."""
+
+    def test_benchmark_thinking_comparison_renders_bars_and_mermaid(self):
+        from core.modules.sigma_model_hub.backend.uploader_engine import _benchmark_thinking_comparison
+
+        bm_data = {
+            "overall_score": 75.0,
+            "thinking_eval": {
+                "thinking_score": 84.2,
+                "thinking_passed": 16,
+                "thinking_total": 19,
+                "no_thinking_score": 69.8,
+                "no_thinking_passed": 30,
+                "no_thinking_total": 43,
+            }
+        }
+
+        lines_en = _benchmark_thinking_comparison(bm_data, italiano=False)
+        rendered_en = "\n".join(lines_en)
+        self.assertIn("No-Thinking vs Deep Thinking", rendered_en)
+        self.assertIn("84.2%", rendered_en)
+        self.assertIn("69.8%", rendered_en)
+        self.assertIn("```mermaid", rendered_en)
+        self.assertIn("xychart-beta", rendered_en)
+
+        lines_it = _benchmark_thinking_comparison(bm_data, italiano=True)
+        rendered_it = "\n".join(lines_it)
+        self.assertIn("Confronto Modalità di Risposta: No-Thinking vs Thinking", rendered_it)
+        self.assertIn("84.2%", rendered_it)
+        self.assertIn("69.8%", rendered_it)
+        self.assertIn("```mermaid", rendered_it)
+
+    def test_referto_computes_thinking_eval(self):
+        from core.modules.sigma_training_lab.training.model_scores import _referto
+
+        mock_job = {
+            "id": "job-test-123",
+            "model": "test-model",
+            "created_at": "2026-09-08T12:00:00",
+            "metrics": {
+                "overall_score": 80.0,
+                "tests_passed": 8,
+                "tests_total": 10,
+                "avg_latency_ms": 500,
+                "thinking_mode": "auto",
+                "thinking_passed": 3,
+                "thinking_total": 4,
+                "no_thinking_passed": 5,
+                "no_thinking_total": 6,
+            }
+        }
+        res = _referto(mock_job)
+        self.assertIn("thinking_eval", res)
+        th = res["thinking_eval"]
+        self.assertEqual(th["thinking_passed"], 3)
+        self.assertEqual(th["thinking_total"], 4)
+        self.assertEqual(th["thinking_score"], 75.0)
+        self.assertEqual(th["no_thinking_passed"], 5)
+        self.assertEqual(th["no_thinking_total"], 6)
+        self.assertEqual(th["no_thinking_score"], 83.3)
 
 
 if __name__ == "__main__":

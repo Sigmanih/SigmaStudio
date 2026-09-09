@@ -745,8 +745,8 @@ def handle_models_hf_card_update(self):
     """POST /api/models/hf/card/update — Riscrive solo la scheda su HF."""
     try:
         body = self.read_json_body() if hasattr(self, 'read_json_body') else {}
-        local_ref = (body.get("local_path") or body.get("model_id")
-                     or body.get("filename"))
+        local_ref = (body.get("local_path") or body.get("model_path")
+                     or body.get("model_id") or body.get("filename"))
         if not local_ref:
             self.send_json_response({"success": False,
                                      "error": "Modello non indicato"}, 400)
@@ -1395,6 +1395,7 @@ def register_routes(app=None) -> None:
         '/api/models/hf/repo/discover': handle_models_hf_repo_discover,
         '/api/models/hf/repo/attach': handle_models_hf_repo_attach,
         '/api/models/hf/card/update': handle_models_hf_card_update,
+        '/api/models/hf/publish/card': handle_models_hf_card_update,
         '/api/models/publication/forget': handle_models_publication_forget,
         '/api/models/hf/repo/rename': handle_models_hf_repo_rename,
         '/api/models/delete': handle_models_local_delete,

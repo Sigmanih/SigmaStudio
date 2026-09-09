@@ -378,11 +378,11 @@ export default function LocalInventory({
     if (!repoId) return;
     setUpdatingCard(model.path || model.filename);
     try {
-      const res = await fetch('/api/models/hf/publish/card', {
+      const res = await fetch('/api/models/hf/card/update', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          model_path: model.path,
+          local_path: model.path || model.filename,
           model_id: model.model_id || model.filename,
           repo_id: repoId
         })
