@@ -48,6 +48,14 @@ SEGNAPOSTO_DEL_PROMPT = (
     "CONTENUTO_COMPLETO", "TESTO_DA_AGGIUNGERE", "PRIMA_RIGA", "QUANTE_RIGHE",
 )
 
+#: Quanto tempo concedere a uno scenario prima di dichiararlo perso.
+#:
+#: Serve a misurare, non a essere gentili. Un banco che aspetta all'infinito
+#: non distingue «lento» da «bloccato», e proprio la lentezza e' cio' che si
+#: vuole misurare: un modello che impiega venti minuti su un file di tre
+#: righe non e' utilizzabile in un ventaglio, e va detto in cinque.
+TETTO_SECONDI_SCENARIO = 300.0
+
 #: Comandi che creano un file dalla riga di comando invece che con i tool: il
 #: risultato non ha backup, non passa dal controllo di sintassi e non risulta
 #: fra le modifiche.
@@ -84,6 +92,8 @@ class EsitoScenario:
     errore: str = ""
     #: Dove sono rimasti i file, quando qualcosa non e' andato.
     sandbox: str = ""
+    #: True se e' stato fermato perche' ci metteva troppo.
+    scaduto: bool = False
 
     @property
     def superate(self) -> int:
@@ -100,7 +110,7 @@ class EsitoScenario:
             "totali": len(self.prove), "turni": self.turni,
             "obiettivo_raggiunto": self.obiettivo_raggiunto,
             "secondi": round(self.secondi, 1), "errore": self.errore,
-            "sandbox": self.sandbox,
+            "sandbox": self.sandbox, "scaduto": self.scaduto,
             "prove": [p.to_dict() for p in self.prove],
         }
 
@@ -117,6 +127,10 @@ class Traccia:
     chiamate: List[Dict[str, Any]] = field(default_factory=list)
     testo: str = ""
     turni: int = 0
+    #: Quanti ne sono stati visti passare, anche senza consuntivo finale.
+    turni_visti: int = 0
+    #: Perche' il motore non ha prodotto niente, se e' successo.
+    errore_motore: str = ""
     obiettivo_raggiunto: bool = False
 
     def nomi(self) -> List[str]:
@@ -150,11 +164,20 @@ def osserva(eventi) -> Traccia:
             # Alcune emissioni portano i parametri qui e il risultato dopo.
             if traccia.chiamate and not traccia.chiamate[-1].get("params"):
                 traccia.chiamate[-1]["params"] = evento.get("params") or {}
+        elif tipo == "turn_start":
+            # Contati mentre passano, non solo dal consuntivo finale: un run
+            # fermato per tempo scaduto non emette `run_metrics`, e dire
+            # «fermo dopo 0 turni» su un modello che ne ha fatti dodici e'
+            # un resoconto che mente.
+            traccia.turni_visti += 1
         elif tipo == "run_metrics":
             traccia.turni = int(evento.get("turns") or 0)
             traccia.obiettivo_raggiunto = bool(evento.get("goal_reached"))
         elif tipo in ("token", "text"):
             traccia.testo += str(evento.get("text") or evento.get("token") or "")
+        elif tipo == "error" or evento.get("error"):
+            motivo = evento.get("error") or evento.get("message")
+            traccia.errore_motore = str(motivo or "errore del motore")[:300]
     return traccia
 
 
@@ -309,6 +332,8 @@ class Scenario:
     obiettivo: str
     criteri: List[str]
     tetto_turni: int = 14
+    #: Il tempo massimo concesso, in secondi.
+    tetto_secondi: float = TETTO_SECONDI_SCENARIO
     #: Il comando che dimostra il lavoro, dichiarato in anticipo.
     verifica: str = ""
     #: Cosa deve essere vero sul disco alla fine.
@@ -421,6 +446,21 @@ def esegui_scenario(scenario: Scenario, model_name: str,
     esito = EsitoScenario(scenario=scenario.id, model=model_name)
     radice = _prepara(scenario)
     inizio = time.time()
+
+    # Il tempo e' una delle cose misurate, quindi va anche fatto rispettare:
+    # senza un tetto, un modello prolisso tiene occupata la macchina finche'
+    # qualcuno non se ne accorge, e il banco non produce un numero ma
+    # un'attesa.
+    scaduto = {"si": False}
+
+    def basta() -> bool:
+        if should_cancel and should_cancel():
+            return True
+        if time.time() - inizio > scenario.tetto_secondi:
+            scaduto["si"] = True
+            return True
+        return False
+
     try:
         traccia = osserva(stream_admin_agent_turn(
             messages=[{"role": "user", "content": scenario.obiettivo}],
@@ -429,7 +469,7 @@ def esegui_scenario(scenario: Scenario, model_name: str,
             max_turns=scenario.tetto_turni,
             session_id=f"bench_{scenario.id}",
             verify_command=scenario.verifica,
-            should_cancel=should_cancel,
+            should_cancel=basta,
         ))
     except Exception as exc:
         esito.errore = str(exc)
@@ -438,8 +478,26 @@ def esegui_scenario(scenario: Scenario, model_name: str,
     finally:
         esito.secondi = time.time() - inizio
 
-    esito.turni = traccia.turni
+    esito.turni = traccia.turni or traccia.turni_visti
     esito.obiettivo_raggiunto = traccia.obiettivo_raggiunto
+
+    # Un modello che non si e' caricato non ha un punteggio: ha un errore.
+    # Dargli 50 su 100 perche' meta' delle prove sono negative e' un numero
+    # che sembra una misura e non lo e'. E' successo davvero, con il Qwen 27B
+    # che non partiva: il banco ha stampato 50.0 e nessuno se ne sarebbe
+    # accorto senza leggere le righe di llama-server sopra il rapporto.
+    if not traccia.chiamate and not traccia.testo.strip():
+        esito.errore = (
+            traccia.errore_motore
+            or "il modello non ha prodotto nulla: probabilmente non si e' caricato"
+        )
+        pulisci(radice)
+        return esito
+    esito.scaduto = scaduto["si"]
+    if esito.scaduto:
+        esito.errore = (
+            "fermato dopo %.0fs: oltre il tempo concesso" % scenario.tetto_secondi
+        )
     esito.prove = [
         # I nomi veri sono quelli che la policy sa tradurre: alias compresi,
         # perche' `write` e `write_file` sono lo stesso tool e rifiutare il
@@ -476,15 +534,35 @@ def esegui_scenario(scenario: Scenario, model_name: str,
 
 
 def esegui(model_name: str, scenari: Optional[List[str]] = None,
-           should_cancel: Optional[Callable[[], bool]] = None) -> Dict[str, Any]:
+           should_cancel: Optional[Callable[[], bool]] = None,
+           progresso: Optional[Callable[[Dict[str, Any]], None]] = None) -> Dict[str, Any]:
     """Il banco completo su un modello. Ritorna un rapporto leggibile."""
     voluti = set(scenari) if scenari else None
-    esiti = [
-        esegui_scenario(s, model_name, should_cancel)
-        for s in SCENARI if voluti is None or s.id in voluti
-    ]
-    prove_totali = sum(len(e.prove) for e in esiti)
-    superate = sum(e.superate for e in esiti)
+    da_fare = [s for s in SCENARI if voluti is None or s.id in voluti]
+    esiti = []
+    for numero, scenario in enumerate(da_fare, 1):
+        # Si dice cosa sta per succedere, non solo com'e' andato: un banco che
+        # tace per venti minuti non distingue «lento» da «bloccato», e chi
+        # guarda non sa se convenga aspettare.
+        log.info("[ProtocolBench] %s (%d/%d) su '%s'...",
+                 scenario.id, numero, len(da_fare), model_name)
+        if progresso:
+            progresso({"fase": "inizio", "scenario": scenario.id,
+                       "numero": numero, "totale": len(da_fare)})
+        esito = esegui_scenario(scenario, model_name, should_cancel)
+        esiti.append(esito)
+        log.info("[ProtocolBench] %s: %s/%s prove in %ss%s",
+                 scenario.id, esito.superate, len(esito.prove),
+                 round(esito.secondi), " (scaduto)" if esito.scaduto else "")
+        if progresso:
+            progresso({"fase": "fine", **esito.to_dict()})
+    # Gli scenari senza misura non entrano nella media: un modello che non si
+    # carica trascinerebbe il punteggio verso il basso come se avesse provato e
+    # sbagliato, che e' un'altra cosa.
+    misurati = [e for e in esiti if e.prove]
+    prove_totali = sum(len(e.prove) for e in misurati)
+    superate = sum(e.superate for e in misurati)
+    non_misurati = [e.scenario for e in esiti if not e.prove]
     return {
         "model": model_name,
         "punteggio": round(100.0 * superate / prove_totali, 1) if prove_totali else 0.0,
@@ -493,6 +571,7 @@ def esegui(model_name: str, scenari: Optional[List[str]] = None,
         "turni_totali": sum(e.turni for e in esiti),
         "secondi": round(sum(e.secondi for e in esiti), 1),
         "scenari": [e.to_dict() for e in esiti],
+        "non_misurati": non_misurati,
         # Il rapporto che il cancello di completamento sa leggere.
         "check_line": "SIGMA-CHECK " + json.dumps(
             {"check": "protocollo-tool", "checked": prove_totali,

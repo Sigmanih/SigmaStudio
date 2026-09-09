@@ -295,3 +295,169 @@ class TestLaSandboxNonRestaInGiro:
         sorgente = inspect.getsource(PB.esegui_scenario)
         assert "pulisci(radice)" in sorgente
         assert "esito.sandbox = str(radice)" in sorgente
+
+
+class TestIlTempoEUnaMisura:
+    """Un banco che aspetta all'infinito non distingue «lento» da «bloccato»,
+    e proprio la lentezza e' cio' che si vuole misurare: gemma-12B ha tenuto la
+    macchina occupata 24 minuti su due scenari da tre righe, senza emettere una
+    riga di avanzamento. Non e' un modello da scartare per questo — e' un fatto
+    che il banco deve dire in cinque minuti invece che in venticinque.
+    """
+
+    def test_ogni_scenario_ha_un_tetto_di_tempo(self):
+        for scenario in PB.SCENARI:
+            assert scenario.tetto_secondi > 0
+
+    def test_lo_scenario_scaduto_lo_dichiara(self, monkeypatch, tmp_path):
+        """Fermarsi senza dirlo sarebbe peggio di non fermarsi."""
+        import core.harness.loop as modulo_loop
+
+        def infinito(messages, **kw):
+            # Consuma tempo davvero: senza, diecimila yield finiscono in un
+            # millisecondo e il tetto non fa in tempo a scattare — il finto
+            # sarebbe piu' veloce del fenomeno che deve simulare.
+            import time as _t
+
+            annulla = kw.get("should_cancel")
+            for _ in range(10000):
+                if annulla and annulla():
+                    break
+                _t.sleep(0.005)
+                yield {"type": "token", "text": "..."}
+            yield {"type": "run_metrics", "turns": 3, "goal_reached": False}
+
+        monkeypatch.setattr(modulo_loop, "stream_admin_agent_turn", infinito)
+        scenario = PB.Scenario(
+            id="lento", descrizione="", file={"a.py": "X = 1\n"},
+            obiettivo="fai qualcosa", criteri=["fatto"],
+            verifica="python -c \"pass\"", tetto_secondi=0.05,
+        )
+
+        esito = PB.esegui_scenario(scenario, "modello-lento")
+
+        assert esito.scaduto is True
+        assert "oltre il tempo concesso" in esito.errore
+        PB.pulisci(Path(esito.sandbox)) if esito.sandbox else None
+
+    def test_uno_scenario_veloce_non_risulta_scaduto(self, monkeypatch):
+        import core.harness.loop as modulo_loop
+
+        def svelto(messages, **kw):
+            yield {"type": "run_metrics", "turns": 2, "goal_reached": True}
+
+        monkeypatch.setattr(modulo_loop, "stream_admin_agent_turn", svelto)
+        scenario = PB.Scenario(
+            id="svelto", descrizione="", file={"a.py": "X = 1\n"},
+            obiettivo="fai", criteri=["fatto"], verifica="python -c \"pass\"",
+            tetto_secondi=60.0,
+        )
+        esito = PB.esegui_scenario(scenario, "m")
+        assert esito.scaduto is False
+        if esito.sandbox:
+            PB.pulisci(Path(esito.sandbox))
+
+
+class TestSiVedeCosaStaFacendo:
+    def test_il_banco_riferisce_scenario_per_scenario(self, monkeypatch):
+        """Venti minuti di silenzio non dicono a chi guarda se convenga
+        aspettare."""
+        import core.harness.loop as modulo_loop
+
+        def svelto(messages, **kw):
+            yield {"type": "run_metrics", "turns": 1, "goal_reached": True}
+
+        monkeypatch.setattr(modulo_loop, "stream_admin_agent_turn", svelto)
+        visti = []
+        PB.esegui("m", scenari=["file_nuovo"], progresso=visti.append)
+
+        fasi = [v["fase"] for v in visti]
+        assert "inizio" in fasi and "fine" in fasi
+        assert visti[0]["scenario"] == "file_nuovo"
+        assert visti[0]["totale"] == 1
+
+
+class TestIlConteggioDeiTurniNonMente:
+    """Un run fermato per tempo scaduto non emette il consuntivo finale: dire
+    «fermo dopo 0 turni» su un modello che ne ha fatti dodici e' un resoconto
+    che mente, ed e' esattamente cosa e' comparso nella prima misura vera."""
+
+    def test_i_turni_si_contano_anche_senza_consuntivo(self):
+        eventi = [
+            {"type": "turn_start", "turn": 1},
+            {"type": "tool_result", "tool": "spec", "result": {"success": True}},
+            {"type": "turn_start", "turn": 2},
+            {"type": "tool_result", "tool": "write_file", "result": {"success": True}},
+            {"type": "turn_start", "turn": 3},
+        ]
+        t = PB.osserva(eventi)
+        assert t.turni == 0, "senza consuntivo non c'e' un totale dichiarato"
+        assert t.turni_visti == 3
+
+    def test_il_consuntivo_quando_c_e_ha_la_precedenza(self):
+        eventi = [
+            {"type": "turn_start", "turn": 1},
+            {"type": "run_metrics", "turns": 9, "goal_reached": True},
+        ]
+        t = PB.osserva(eventi)
+        assert t.turni == 9
+
+
+class TestUnModelloCheNonRispondeNonHaUnPunteggio:
+    """E' successo davvero: il Qwen 27B non si e' caricato, e il banco ha
+    stampato 50.0 — meta' delle prove sono negative per costruzione quando non
+    succede niente. Un numero che sembra una misura e non lo e' e' peggio di
+    nessun numero, perche' finisce in una tabella e qualcuno ci decide sopra.
+    """
+
+    def _senza_risposta(self, monkeypatch, eventi):
+        import core.harness.loop as modulo_loop
+
+        def muto(messages, **kw):
+            for e in eventi:
+                yield e
+
+        monkeypatch.setattr(modulo_loop, "stream_admin_agent_turn", muto)
+        scenario = PB.Scenario(
+            id="muto", descrizione="", file={"a.py": "X = 1\n"},
+            obiettivo="fai", criteri=["fatto"], verifica="python -c \"pass\"",
+        )
+        return PB.esegui_scenario(scenario, "modello-che-non-parte")
+
+    def test_nessuna_chiamata_e_nessun_testo_non_e_un_punteggio(self, monkeypatch):
+        esito = self._senza_risposta(monkeypatch, [
+            {"type": "run_metrics", "turns": 14, "goal_reached": False},
+        ])
+        assert esito.prove == []
+        assert "non si e' caricato" in esito.errore
+
+    def test_l_errore_del_motore_viene_riportato_tale_e_quale(self, monkeypatch):
+        esito = self._senza_risposta(monkeypatch, [
+            {"type": "error", "error": "failed to load model"},
+            {"type": "run_metrics", "turns": 1, "goal_reached": False},
+        ])
+        assert "failed to load model" in esito.errore
+
+    def test_uno_scenario_non_misurato_non_entra_nella_media(self, monkeypatch):
+        import core.harness.loop as modulo_loop
+
+        def muto(messages, **kw):
+            yield {"type": "run_metrics", "turns": 1, "goal_reached": False}
+
+        monkeypatch.setattr(modulo_loop, "stream_admin_agent_turn", muto)
+        rapporto = PB.esegui("m", scenari=["file_nuovo"])
+
+        assert rapporto["totali"] == 0
+        assert rapporto["punteggio"] == 0.0
+        assert "file_nuovo" in rapporto["non_misurati"]
+
+    def test_una_risposta_anche_solo_testuale_vale_come_misura(self, monkeypatch):
+        """Un modello che parla e sbaglia e' misurabile: e' diverso da uno che
+        non c'e'."""
+        esito = self._senza_risposta(monkeypatch, [
+            {"type": "token", "text": "Ci penso io."},
+            {"type": "run_metrics", "turns": 3, "goal_reached": False},
+        ])
+        assert esito.prove, "un modello che ha parlato va misurato"
+        if esito.sandbox:
+            PB.pulisci(Path(esito.sandbox))
