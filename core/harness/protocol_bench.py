@@ -28,6 +28,7 @@ dieci volte uno che ci arriva in otto. L'efficienza fa parte dell'aderenza.
 from __future__ import annotations
 
 import json
+import os
 import re
 import subprocess
 import tempfile
@@ -81,6 +82,8 @@ class EsitoScenario:
     obiettivo_raggiunto: bool = False
     secondi: float = 0.0
     errore: str = ""
+    #: Dove sono rimasti i file, quando qualcosa non e' andato.
+    sandbox: str = ""
 
     @property
     def superate(self) -> int:
@@ -97,6 +100,7 @@ class EsitoScenario:
             "totali": len(self.prove), "turni": self.turni,
             "obiettivo_raggiunto": self.obiettivo_raggiunto,
             "secondi": round(self.secondi, 1), "errore": self.errore,
+            "sandbox": self.sandbox,
             "prove": [p.to_dict() for p in self.prove],
         }
 
@@ -371,6 +375,27 @@ SCENARI: List[Scenario] = [
 # ---------------------------------------------------------------------------
 
 
+def pulisci(radice: Path) -> None:
+    """Cancella una sandbox, anche quando git l'ha resa ostinata.
+
+    Su Windows gli oggetti dentro `.git` sono in sola lettura, e `rmtree` si
+    ferma sul primo: restano cartelle a meta' che nessuno rimuovera' mai. Ogni
+    esecuzione del banco ne lascerebbe una, e su una macchina che gira da mesi
+    diventano gigabyte di repository morti nella cartella temporanea.
+    """
+    import shutil
+    import stat
+
+    def insisti(funzione, percorso, _info):
+        try:
+            os.chmod(percorso, stat.S_IWRITE)
+            funzione(percorso)
+        except OSError:
+            pass
+
+    shutil.rmtree(radice, onerror=insisti)
+
+
 def _prepara(scenario: Scenario) -> Path:
     radice = Path(tempfile.mkdtemp(prefix=f"protobench_{scenario.id}_"))
     for percorso, contenuto in scenario.file.items():
@@ -436,6 +461,17 @@ def esegui_scenario(scenario: Scenario, model_name: str,
             "risultato_giusto", "Il file finale e' quello richiesto",
             superata=not motivo, dettaglio=motivo,
         ))
+
+    # La sandbox si butta se e' andato tutto bene, si tiene se no: quando una
+    # prova fallisce, cio' che il modello ha davvero scritto e' l'unica cosa
+    # che spiega perche'. Tenerle tutte riempirebbe il disco, buttarle tutte
+    # toglierebbe l'unico modo di capire.
+    if esito.superate == len(esito.prove):
+        pulisci(radice)
+    else:
+        esito.sandbox = str(radice)
+        log.info("[ProtocolBench] '%s': sandbox conservata in %s",
+                 scenario.id, radice)
     return esito
 
 

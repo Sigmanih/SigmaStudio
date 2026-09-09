@@ -233,8 +233,11 @@ class TestIlRapporto:
                     assert (radice / percorso).is_file(), f"{scenario.id}: manca {percorso}"
                 assert (radice / ".git").is_dir(), f"{scenario.id}: non e' un repo"
             finally:
-                import shutil
-                shutil.rmtree(radice, ignore_errors=True)
+                # `ignore_errors` lasciava mezze cartelle: su Windows gli
+                # oggetti dentro `.git` sono in sola lettura e `rmtree` si
+                # ferma sul primo, senza dirlo. Se ne trovano sei nella
+                # cartella temporanea dopo pochi giri.
+                PB.pulisci(radice)
 
     def test_ogni_scenario_dichiara_come_si_dimostra(self):
         """Senza, l'agente deve indovinare la verifica e il banco misurerebbe
@@ -257,3 +260,38 @@ class TestRaggiungibilita:
             {"check": "protocollo-tool", "checked": 20, "problems": 0})
         assert parse_verification("python -m core.harness.protocol_bench m", 0,
                                   riga).is_valid is True
+
+
+class TestLaSandboxNonRestaInGiro:
+    """Ogni esecuzione del banco allestisce un repository temporaneo. Senza
+    pulizia, su una macchina che gira da mesi diventano gigabyte di repository
+    morti — e su Windows non basta `rmtree`, perche' gli oggetti dentro `.git`
+    sono in sola lettura e la cancellazione si ferma sul primo senza dirlo."""
+
+    def test_pulisci_rimuove_anche_un_repository_git(self, tmp_path):
+        import subprocess
+
+        radice = tmp_path / "sandbox"
+        radice.mkdir()
+        (radice / "app.py").write_text("X = 1\n", encoding="utf-8")
+        for a in (["init", "-b", "main"], ["config", "user.email", "t@s"],
+                  ["config", "user.name", "T"], ["config", "commit.gpgsign", "false"]):
+            subprocess.run(["git"] + a, cwd=str(radice), capture_output=True)
+        subprocess.run(["git", "add", "-A"], cwd=str(radice), capture_output=True)
+        subprocess.run(["git", "commit", "-m", "x"], cwd=str(radice), capture_output=True)
+        assert (radice / ".git").is_dir()
+
+        PB.pulisci(radice)
+
+        assert not radice.exists(), "la sandbox non e' stata rimossa del tutto"
+
+    def test_pulisci_non_esplode_su_una_cartella_che_non_c_e(self, tmp_path):
+        PB.pulisci(tmp_path / "mai_esistita")
+
+    def test_una_prova_riuscita_non_lascia_niente(self):
+        """E una fallita lascia tutto, perche' e' l'unica cosa che spiega."""
+        import inspect
+
+        sorgente = inspect.getsource(PB.esegui_scenario)
+        assert "pulisci(radice)" in sorgente
+        assert "esito.sandbox = str(radice)" in sorgente
