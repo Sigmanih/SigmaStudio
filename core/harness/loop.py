@@ -243,6 +243,22 @@ Fai a mano solo le eccezioni che lo script non sa trattare, e trattale DOPO
 averlo eseguito: sono poche, e saprai quali sono perche' lo script te le
 avra' elencate.
 
+## SE DEVI CONTROLLARE UNA PROPRIETA DEL RISULTATO
+
+Quando la verifica non e' «gira il test» ma «il risultato ha questa
+caratteristica» — quante voci ha prodotto, se contiene una certa chiave, se il
+JSON e' valido — NON costruire una pipeline con virgolette annidate.
+
+Su Windows una riga come
+`comando | python -c "import json; d=json.load(...); assert ..."`
+si rompe sulle virgolette, e ogni tentativo di aggiustarla ne rompe un'altra:
+sono turni buttati che non ti avvicinano al risultato.
+
+Scrivi invece un file con `write_file` — per esempio `tools/controlla.py` — che
+faccia il controllo e esca con codice diverso da zero se non torna. Poi
+eseguilo con `terminal`. Un file si legge, si corregge in un punto e si
+riesegue; una riga di shell no.
+
 ## TOOL DISPONIBILI
 
 `read_file` — legge righe numerate. Dice quante righe ha il file e se continua.
