@@ -151,6 +151,89 @@ class ModelUploadTask:
         }
 
 
+def _estimate_execution_memory(cfg: Dict[str, Any], facts: Optional[Any] = None) -> Dict[str, Any]:
+    """Stima lo spazio in memoria (RAM e VRAM) richiesto in fase di esecuzione / inferenza."""
+    size_gb = float(cfg.get("size_gb") or 0.0)
+    params_b = float(cfg.get("active_params_b") or 7.0)
+    is_moe = bool(cfg.get("is_moe", False))
+    fmt = str(cfg.get("format", "")).upper()
+
+    # Se la dimensione su disco non è nota ma abbiamo i parametri, stimiamo la dimensione
+    if size_gb <= 0.0 and params_b > 0.0:
+        q_str = str(cfg.get("quantization", "")).upper()
+        if "Q4" in q_str or "IQ4" in q_str:
+            size_gb = round(params_b * 0.6, 2)
+        elif "Q8" in q_str:
+            size_gb = round(params_b * 1.1, 2)
+        elif "FP16" in q_str or "BF16" in q_str:
+            size_gb = round(params_b * 2.0, 2)
+        else:
+            size_gb = round(params_b * 0.7, 2)
+
+    # Stima KV Cache per contesto standard (~8192 token)
+    kv_cache_gb = 0.5
+    if facts is not None:
+        try:
+            from core.engine.model_inspector import ModelInspector
+            ctx_to_eval = min(int(cfg.get("context_window") or 8192), 8192)
+            est = ModelInspector.estimate_kv_cache_gb(facts, context_tokens=ctx_to_eval)
+            if est > 0:
+                kv_cache_gb = round(est, 2)
+        except Exception:
+            pass
+    elif params_b > 0:
+        kv_cache_gb = max(0.2, min(4.0, round(params_b * 0.04, 2)))
+
+    # Overhead CUDA / compute graph / buffer di attivazione
+    overhead_gb = 0.9 if is_moe else 0.6
+
+    if "GGUF" in fmt:
+        # Full GPU offload (pesi + KV cache + overhead CUDA)
+        vram_full = round(size_gb + kv_cache_gb + overhead_gb, 1)
+        # CPU / offload ibrido (pesi mmap + KV cache + context)
+        ram_exec = round(size_gb + kv_cache_gb + 0.4, 1)
+    elif "SAFETENSORS" in fmt or "PYTORCH" in fmt:
+        vram_full = round(size_gb * 1.15 + kv_cache_gb + 0.8, 1)
+        ram_exec = round(size_gb * 1.10 + kv_cache_gb + 0.5, 1)
+    else:
+        vram_full = round(size_gb * 1.15 + kv_cache_gb + 0.6, 1) if size_gb > 0 else 0.0
+        ram_exec = round(size_gb * 1.08 + kv_cache_gb + 0.4, 1) if size_gb > 0 else 0.0
+
+    # Hardware raccomandato
+    if vram_full <= 6.0:
+        rec_hw_it = "GPU con almeno 6-8 GB VRAM (o 16 GB RAM di sistema)"
+        rec_hw_en = "GPU with 6-8 GB VRAM (or 16 GB system RAM)"
+    elif vram_full <= 8.5:
+        rec_hw_it = "GPU con almeno 8-12 GB VRAM (o 16-32 GB RAM di sistema)"
+        rec_hw_en = "GPU with 8-12 GB VRAM (or 16-32 GB system RAM)"
+    elif vram_full <= 12.5:
+        rec_hw_it = "GPU con 12-16 GB VRAM (es. RTX 3060/4070 o 32 GB RAM)"
+        rec_hw_en = "GPU with 12-16 GB VRAM (e.g. RTX 3060/4070 or 32 GB RAM)"
+    elif vram_full <= 16.5:
+        rec_hw_it = "GPU con 16-20 GB VRAM (es. RTX 4080 o 32 GB RAM)"
+        rec_hw_en = "GPU with 16-20 GB VRAM (e.g. RTX 4080 or 32 GB RAM)"
+    elif vram_full <= 24.5:
+        rec_hw_it = "GPU con 24 GB VRAM (es. RTX 3090 / 4090 o 32-64 GB RAM)"
+        rec_hw_en = "GPU with 24 GB VRAM (e.g. RTX 3090 / 4090 or 32-64 GB RAM)"
+    elif vram_full <= 48.0:
+        rec_hw_it = "Configurazione Multi-GPU (2× 24 GB o RTX 6000) o 64 GB RAM"
+        rec_hw_en = "Multi-GPU setup (2× 24 GB or RTX 6000) or 64 GB system RAM"
+    elif vram_full <= 80.0:
+        rec_hw_it = "Workstation con GPU da 80 GB (A100 / H100) o Mac Studio Apple Silicon"
+        rec_hw_en = "80 GB GPU workstation (A100 / H100) or Mac Studio Apple Silicon"
+    else:
+        rec_hw_it = "Cluster Multi-GPU distribuito o Mac Studio 128-192 GB"
+        rec_hw_en = "Distributed Multi-GPU cluster or Mac Studio 128-192 GB"
+
+    return {
+        "vram_full_gb": vram_full,
+        "ram_exec_gb": ram_exec,
+        "kv_cache_gb": round(kv_cache_gb, 2),
+        "rec_hw_it": rec_hw_it,
+        "rec_hw_en": rec_hw_en,
+    }
+
+
 def _detect_model_config(local_path: str) -> Dict[str, Any]:
     """Inspects a local model directory or GGUF file to extract detailed configuration, geometry, format, and quantization."""
     import re
@@ -186,8 +269,22 @@ def _detect_model_config(local_path: str) -> Dict[str, Any]:
         if trovata:
             cfg["quantization"] = trovata.group(1).upper()
 
+    p_match = re.search(r'(\d+(?:\.\d+)?)\s*[bm]', nome_base.lower())
+    if p_match:
+        val = float(p_match.group(1))
+        unit = 'M' if 'm' in nome_base.lower()[p_match.start():p_match.end()] else 'B'
+        if unit == 'M':
+            cfg["params_label"] = f"{int(val)}M"
+            cfg["active_params_b"] = val / 1000.0
+        else:
+            cfg["params_label"] = f"{val:g}B"
+            cfg["active_params_b"] = val
+
     if not os.path.exists(local_path):
+        cfg["memory"] = _estimate_execution_memory(cfg)
         return cfg
+
+    facts = None
 
     # 1. Inspect directory vs single file
     if os.path.isdir(local_path):
@@ -307,23 +404,36 @@ def _detect_model_config(local_path: str) -> Dict[str, Any]:
                 cfg["quantization"] = q
                 break
 
-    # Estimate active parameters from size / name
-    fname_str = os.path.basename(local_path).lower()
-    p_match = re.search(r'(\d+(?:\.\d+)?)\s*[bm]', fname_str)
-    if p_match:
-        val = float(p_match.group(1))
-        unit = 'M' if 'm' in fname_str[p_match.start():p_match.end()] else 'B'
-        if unit == 'M':
-            cfg["params_label"] = f"{int(val)}M"
-            cfg["active_params_b"] = val / 1000.0
-        else:
-            cfg["params_label"] = f"{val:g}B"
-            cfg["active_params_b"] = val
-    elif cfg["size_gb"] > 0:
+        # Ground-truth facts inspection per file singolo GGUF
+        try:
+            from core.engine.model_inspector import ModelInspector
+            facts = ModelInspector.inspect(local_path)
+            if facts:
+                if facts.architectures:
+                    cfg["architecture"] = facts.architectures[0]
+                elif facts.model_type and facts.model_type != "unknown":
+                    cfg["architecture"] = f"{facts.model_type.capitalize()}ForCausalLM"
+                if facts.num_hidden_layers:
+                    cfg["layers"] = facts.num_hidden_layers
+                if facts.hidden_size:
+                    cfg["hidden_size"] = facts.hidden_size
+                if facts.num_attention_heads:
+                    cfg["heads"] = facts.num_attention_heads
+                if facts.vocab_size:
+                    cfg["vocab_size"] = facts.vocab_size
+                if facts.max_position_embeddings:
+                    cfg["context_window"] = facts.max_position_embeddings
+                cfg["is_moe"] = facts.is_moe
+        except Exception as e_insp:
+            log.debug("[_detect_model_config] Single file ModelInspector: %s", e_insp)
+
+    # Estimate active parameters from size / name if not yet set
+    if not p_match and cfg["size_gb"] > 0:
         est_b = round(cfg["size_gb"] / 0.6, 1)
         cfg["params_label"] = f"~{est_b:g}B"
         cfg["active_params_b"] = est_b
 
+    cfg["memory"] = _estimate_execution_memory(cfg, facts)
     return cfg
 
 
@@ -448,6 +558,115 @@ def _base_model_da_cartella(local_path: str) -> str:
     return f"{autore}/{modello}"
 
 
+def _benchmark_thinking_comparison(bm_data: Optional[Dict[str, Any]],
+                                  italiano: bool = False) -> List[str]:
+    """Grafico e confronto visivo fianco a fianco tra No-Thinking e Thinking per la scheda Hugging Face."""
+    if not isinstance(bm_data, dict):
+        return []
+
+    th_eval = bm_data.get("thinking_eval") or {}
+    th_score = th_eval.get("thinking_score")
+    no_th_score = th_eval.get("no_thinking_score")
+    th_p = th_eval.get("thinking_passed", 0)
+    th_t = th_eval.get("thinking_total", 0)
+    no_th_p = th_eval.get("no_thinking_passed", 0)
+    no_th_t = th_eval.get("no_thinking_total", 0)
+
+    # Fallback se non precalcolato: calcola da suites e protocolli
+    if th_score is None or no_th_score is None or (th_t == 0 and no_th_t == 0):
+        suites = bm_data.get("suites") or {}
+        protocols = bm_data.get("protocols") or {}
+        p_th, t_th = 0, 0
+        p_noth, t_noth = 0, 0
+        for sid, s in suites.items():
+            sp = int(s.get("passed", 0))
+            st = int(s.get("total", 0))
+            is_th = protocols.get(sid, {}).get("thinking")
+            if is_th is None:
+                is_th = sid in ("gsm8k", "math", "mmlu_pro", "gpqa", "bbh")
+            if is_th:
+                p_th += sp
+                t_th += st
+            else:
+                p_noth += sp
+                t_noth += st
+        if t_th > 0:
+            th_score = round(p_th / t_th * 100, 1)
+            th_p, th_t = p_th, t_th
+        if t_noth > 0:
+            no_th_score = round(p_noth / t_noth * 100, 1)
+            no_th_p, no_th_t = p_noth, t_noth
+
+    if th_score is None and no_th_score is None:
+        return []
+
+    th_val = float(th_score or 0.0)
+    no_th_val = float(no_th_score or 0.0)
+
+    def _render_bar(pct: float, width: int = 20) -> str:
+        f = int(round((pct / 100.0) * width))
+        f = max(0, min(width, f))
+        return "█" * f + "░" * (width - f)
+
+    th_bar = _render_bar(th_val)
+    no_th_bar = _render_bar(no_th_val)
+
+    delta = th_val - no_th_val
+    delta_str = f"+{delta:.1f}%" if delta > 0 else f"{delta:.1f}%"
+
+    righe: List[str] = []
+    if italiano:
+        righe.append("#### 🧠 Confronto Modalità di Risposta: No-Thinking vs Thinking")
+        righe.append("Confronto visuale tra risposta istantanea diretta (*No-Thinking*) e ragionamento guidato multi-step (*Deep Thinking CoT*):")
+        righe.append("")
+        righe.append("```text")
+        righe.append(f"⚡ No-Thinking (Risposta Diretta) : [{no_th_bar}] {no_th_val:.1f}%  ({no_th_p}/{no_th_t} superati)")
+        righe.append(f"🧠 Deep Thinking (CoT Reasoning)  : [{th_bar}] {th_val:.1f}%  ({th_p}/{th_t} superati)")
+        righe.append(f"📈 Delta Prestazionale CoT        : {delta_str}")
+        righe.append("```")
+        righe.append("")
+        righe.append("```mermaid")
+        righe.append("%%{init: {'theme': 'dark'}}%%")
+        righe.append("xychart-beta")
+        righe.append('    title "Accuratezza (%): No-Thinking vs Deep Thinking"')
+        righe.append('    x-axis ["⚡ No-Thinking (Diretto)", "🧠 Deep Thinking (CoT)"]')
+        righe.append('    y-axis "Accuratezza (%)" 0 --> 100')
+        righe.append(f"    bar [{no_th_val:.1f}, {th_val:.1f}]")
+        righe.append("```")
+        righe.append("")
+        righe.append("| Modalità di Esecuzione | Accuratezza (%) | Quesiti Superati | Profilo Operativo & Latenza |")
+        righe.append("| :--- | :---: | :---: | :--- |")
+        righe.append(f"| **⚡ No-Thinking (Risposta Diretta)** | **`{no_th_val:.1f}%`** | `{no_th_p} / {no_th_t}` | Latenza minima, token-to-first-byte istantaneo, zero overhead di ragionamento |")
+        righe.append(f"| **🧠 Deep Thinking (CoT Reasoning)** | **`{th_val:.1f}%`** | `{th_p} / {th_t}` | Risoluzione passo-passo multi-step ({delta_str}), ideale per logica complessa e matematica |")
+        righe.append("")
+    else:
+        righe.append("#### 🧠 Reasoning Mode Comparison: No-Thinking vs Thinking")
+        righe.append("Side-by-side performance comparison between direct zero-overhead answer (*No-Thinking*) and Chain-of-Thought step-by-step reasoning (*Deep Thinking CoT*):")
+        righe.append("")
+        righe.append("```text")
+        righe.append(f"⚡ No-Thinking (Direct Response) : [{no_th_bar}] {no_th_val:.1f}%  ({no_th_p}/{no_th_t} passed)")
+        righe.append(f"🧠 Deep Thinking (CoT Reasoning) : [{th_bar}] {th_val:.1f}%  ({th_p}/{th_t} passed)")
+        righe.append(f"📈 CoT Performance Delta        : {delta_str}")
+        righe.append("```")
+        righe.append("")
+        righe.append("```mermaid")
+        righe.append("%%{init: {'theme': 'dark'}}%%")
+        righe.append("xychart-beta")
+        righe.append('    title "Accuracy (%): No-Thinking vs Deep Thinking"')
+        righe.append('    x-axis ["⚡ No-Thinking (Direct)", "🧠 Deep Thinking (CoT)"]')
+        righe.append('    y-axis "Accuracy (%)" 0 --> 100')
+        righe.append(f"    bar [{no_th_val:.1f}, {th_val:.1f}]")
+        righe.append("```")
+        righe.append("")
+        righe.append("| Execution Mode | Accuracy (%) | Questions Passed | Operational Profile & Latency |")
+        righe.append("| :--- | :---: | :---: | :--- |")
+        righe.append(f"| **⚡ No-Thinking (Direct Response)** | **`{no_th_val:.1f}%`** | `{no_th_p} / {no_th_t}` | Minimal latency, immediate token-to-first-byte, zero reasoning tokens overhead |")
+        righe.append(f"| **🧠 Deep Thinking (CoT Reasoning)** | **`{th_val:.1f}%`** | `{th_p} / {th_t}` | Multi-step structured reasoning trace ({delta_str}), optimal for math & hard logic |")
+        righe.append("")
+
+    return righe
+
+
 def _benchmark_detail_lines(bm_data: Optional[Dict[str, Any]],
                             italiano: bool = False) -> List[str]:
     """Il dettaglio per suite e il protocollo con cui e' stato misurato.
@@ -563,6 +782,7 @@ def generate_model_card(
     model_name = repo_id.split("/")[-1] if "/" in repo_id else repo_id
     org_name = repo_id.split("/")[0] if "/" in repo_id else "SigmaStudio"
     cfg = _detect_model_config(local_path)
+    mem = cfg.get("memory") or _estimate_execution_memory(cfg)
 
     # 1. Hardware Detection
     gpu_name = "GPU Dedicata / Metal / CUDA"
@@ -753,6 +973,9 @@ def generate_model_card(
     if cfg["hidden_size"]:
         lines.append(f"| **Hidden Dimension** | `{cfg['hidden_size']}` |")
     lines.append(f"| **Total Disk Footprint** | `{cfg['size_gb']} GB` |")
+    if mem.get("vram_full_gb", 0) > 0:
+        lines.append(f"| **Inference RAM / VRAM** | **`~{mem['vram_full_gb']} GB VRAM`** (Full GPU offload) / **`~{mem['ram_exec_gb']} GB RAM`** (CPU/Hybrid) |")
+        lines.append(f"| **Recommended Hardware** | {mem['rec_hw_en']} |")
     lines.append(f"| **Recommended Usage** | {rec_usage_en} |")
     lines.append("")
 
@@ -764,6 +987,7 @@ def generate_model_card(
         lines.append("| :--- | :---: | :---: | :---: | :---: | :---: |")
         lines.append(f"| **{bm_suite}** | **`{bm_score:.1f}%`** | **{bm_pass_fail or 'Verificato'}** | **`{bm_score:.1f}% Pass`** | `{bm_date}` | ⚡ SigmaEngine Direct GPU |")
         lines.append("")
+        lines.extend(_benchmark_thinking_comparison(bm_data, italiano=False))
         lines.extend(_benchmark_detail_lines(bm_data, italiano=False))
 
     if include_hardware:
@@ -838,6 +1062,9 @@ def generate_model_card(
     lines.append(f"- **Architettura Base:** `{cfg['architecture']}` ({cfg['params_label']} parametri)")
     lines.append(f"- **Formato Pesi:** `{cfg['format']}` ({cfg['quantization']})")
     lines.append(f"- **Spazio su Disco:** `{cfg['size_gb']} GB`")
+    if mem.get("vram_full_gb", 0) > 0:
+        lines.append(f"- **RAM / VRAM in Esecuzione:** `~{mem['vram_full_gb']} GB VRAM` (offload GPU completo) | `~{mem['ram_exec_gb']} GB RAM` (inferenza CPU/ibrida)")
+        lines.append(f"- **Requisiti Hardware Consigliati:** {mem['rec_hw_it']}")
     lines.append(f"- **Finestra di Contesto:** `{cfg['context_window']:,} token`")
     lines.append(f"- **Profilo d'Uso Consigliato:** {rec_usage_it}")
     lines.append("")
@@ -846,6 +1073,7 @@ def generate_model_card(
         lines.append("### 📊 Risultati Benchmark Ufficiali")
         lines.append(f"- **Suite di Valutazione:** `{bm_suite}`")
         lines.append(f"- **Punteggio Ufficiale:** **`{bm_score:.1f}%`** ({bm_pass_fail or 'Completato con successo'})")
+        lines.extend(_benchmark_thinking_comparison(bm_data, italiano=True))
         lines.extend(_benchmark_detail_lines(bm_data, italiano=True))
         lines.append(f"- **Data Test:** `{bm_date}` su motore deterministico SigmaEngine")
         lines.append("")

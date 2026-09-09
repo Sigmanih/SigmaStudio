@@ -484,8 +484,8 @@
   left: 0;
   right: auto;
   transform: none;
-  width: 780px;
-  max-width: min(860px, calc(100vw - 32px));
+  width: 920px;
+  max-width: min(980px, calc(100vw - 32px));
   max-height: 580px;
   display: flex;
   flex-direction: column;
@@ -754,11 +754,11 @@
 }
 
 .model-selector-opt-name {
-  flex: 1;
-  font-weight: 500;
+  flex: 1 1 auto;
+  font-weight: 600;
   white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  overflow: visible;
+  text-overflow: clip;
 }
 
 .model-selector-provider-badge {
@@ -1030,7 +1030,7 @@
 
 /* Extended Model Selector Button in Input Strip */
 .chat-input-controls-strip .model-selector-btn {
-  max-width: 380px;
+  max-width: none;
   padding: 5px 12px;
   background: rgba(255, 255, 255, 0.04);
   border: 1px solid rgba(255, 255, 255, 0.1);
@@ -1042,7 +1042,7 @@
   align-items: center;
   gap: 6px;
   min-width: 0;
-  overflow: hidden;
+  overflow: visible;
   transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
@@ -1373,9 +1373,9 @@
 
 /* Model selector */
 .model-selector-wrapper { position: relative; display: inline-flex; }
-.model-selector-btn { display: inline-flex; align-items: center; gap: 6px; padding: 5px 12px; font-size: 0.72rem; font-weight: 600; border-radius: 10px; border: 1px solid rgba(255,255,255,0.08); background: rgba(255,255,255,0.03); color: var(--text); cursor: pointer; transition: all 0.2s ease; white-space: nowrap; font-family: inherit; max-width: 180px; }
+.model-selector-btn { display: inline-flex; align-items: center; gap: 6px; padding: 5px 12px; font-size: 0.72rem; font-weight: 600; border-radius: 10px; border: 1px solid rgba(255,255,255,0.08); background: rgba(255,255,255,0.03); color: var(--text); cursor: pointer; transition: all 0.2s ease; white-space: nowrap; font-family: inherit; max-width: none; }
 .model-selector-btn:hover { background: rgba(0,210,255,0.06); border-color: rgba(0,210,255,0.15); }
-.model-selector-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 500; }
+.model-selector-name { overflow: visible; text-overflow: clip; white-space: nowrap; font-weight: 600; }
 @keyframes popoverIn { from { opacity: 0; transform: translateX(-50%) translateY(-4px) scale(0.96); } to { opacity: 1; transform: translateX(-50%) translateY(0) scale(1); } }
 
 /* Model selector popover items */
@@ -1384,9 +1384,9 @@
   top: calc(100% + 6px);
   left: 0;
   transform: none;
-  width: 780px;
+  width: 920px;
   min-width: 320px;
-  max-width: min(860px, calc(100vw - 32px));
+  max-width: min(980px, calc(100vw - 32px));
   max-height: 580px;
   overflow-y: auto;
 
@@ -1429,13 +1429,12 @@
   box-shadow: 0 0 4px currentColor;
 }
 .model-selector-opt-name {
-  flex: 1;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  flex: 1 1 auto;
+  overflow: visible;
+  text-overflow: clip;
   white-space: nowrap;
-  min-width: 0;
-  font-size: 0.73rem;
-  font-weight: 500;
+  font-size: 0.75rem;
+  font-weight: 600;
 }
 .model-selector-provider-badge {
   font-size: 0.55rem;

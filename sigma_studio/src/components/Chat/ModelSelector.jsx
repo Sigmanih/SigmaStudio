@@ -215,9 +215,15 @@ export default function ModelSelector({
 
   return (
     <div className="model-selector-wrapper" ref={modelBtnRef}>
-      <button className={`model-selector-btn ${!effectiveModelName ? 'no-model' : ''}`} onClick={onToggle}>
+      <button
+        className={`model-selector-btn ${!effectiveModelName ? 'no-model' : ''}`}
+        onClick={onToggle}
+        title={`Modello attivo: ${effectiveModelName || 'Nessuno'}`}
+      >
         <Cpu size={12} />
-        <span className="model-selector-name">{effectiveModelName || 'Scegli modello'}</span>
+        <span className="model-selector-name" title={effectiveModelName || 'Scegli modello'}>
+          {effectiveModelName || 'Scegli modello'}
+        </span>
         
         {activeSpecs?.chatSpeed !== null && activeSpecs?.chatSpeed !== undefined && (
           <span
@@ -532,9 +538,12 @@ export default function ModelSelector({
                       className="model-selector-opt-name"
                       title={m.display_name || m.clean_name || m.name}
                       style={{
-                        overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                        fontWeight: isSelected ? 800 : 600, fontSize: '0.78rem',
-                        flex: '1 1 auto', minWidth: '160px'
+                        overflow: 'visible',
+                        textOverflow: 'clip',
+                        whiteSpace: 'nowrap',
+                        fontWeight: isSelected ? 800 : 600,
+                        fontSize: '0.78rem',
+                        flex: '1 1 auto'
                       }}
                     >
                       {m.display_name || m.clean_name || m.name}
