@@ -13,6 +13,7 @@ import {
 } from 'lucide-react';
 import { useMusic } from '../../contexts/MusicContext';
 import { useApp } from '../../contexts/AppContext';
+import TabHeader from '../common/TabHeader';
 
 const YoutubeIcon = ({ size = 18, color = '#ff0000' }) => (
   <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -216,124 +217,80 @@ export default function MusicTab() {
   };
 
   return (
-    <div className="music-tab-container" style={{
-      display: 'flex',
-      flexDirection: 'column',
-      gap: '20px',
-      padding: '20px 24px',
-      maxWidth: '1600px',
-      margin: '0 auto',
-      color: isLight ? '#0f172a' : '#e2e8f0',
-      minHeight: '100%',
-      boxSizing: 'border-box'
-    }}>
-      
-      {/* ============================================================================== */}
-      {/* 1. TOP HEADER & STUDIO ACTIONS                                                 */}
-      {/* ============================================================================== */}
-      <div style={{
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'space-between',
-        flexWrap: 'wrap',
-        gap: '14px',
-        borderBottom: isLight ? '1px solid rgba(0, 0, 0, 0.08)' : '1px solid rgba(255, 255, 255, 0.08)',
-        paddingBottom: '14px'
-      }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-          <div style={{
-            width: '42px',
-            height: '42px',
-            borderRadius: '10px',
-            background: isLight 
-              ? 'linear-gradient(135deg, #0284c7 0%, #6366f1 100%)' 
-              : 'linear-gradient(135deg, #00f2fe 0%, #4facfe 50%, #7928ca 100%)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            boxShadow: isLight ? '0 4px 14px rgba(2, 132, 199, 0.25)' : '0 4px 16px rgba(0, 242, 254, 0.35)',
-            flexShrink: 0
-          }}>
-            <RadioTower size={22} color="#ffffff" />
-          </div>
-          <div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-              <h1 style={{ margin: 0, fontSize: '1.35rem', fontWeight: 800, color: isLight ? '#0f172a' : '#f8fafc', letterSpacing: '-0.3px' }}>
-                Sigma Radio & Music Lounge
-              </h1>
-              <span style={{
-                fontSize: '0.7rem',
-                fontWeight: 800,
-                color: isLight ? '#0284c7' : '#00f2fe',
-                background: isLight ? 'rgba(2, 132, 199, 0.1)' : 'rgba(0, 242, 254, 0.12)',
-                border: isLight ? '1px solid rgba(2, 132, 199, 0.3)' : '1px solid rgba(0, 242, 254, 0.3)',
-                padding: '2px 8px',
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', width: '100%', overflowY: 'auto' }}>
+      {/* Intestazione Universale Kernel Sigma Studio */}
+      <TabHeader
+        icon={RadioTower}
+        title="Musica & Radio"
+        highlight="LIVE STREAM"
+        description="Dirette Radio FM Nazionali, YouTube Live, Brani Locali e Sintetizzatore 432Hz"
+        actions={
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <button
+              onClick={() => fileInputRef.current && fileInputRef.current.click()}
+              title="Importa file audio locali da disco"
+              style={{
+                background: isLight ? 'rgba(16, 185, 129, 0.1)' : 'rgba(74, 222, 128, 0.1)',
+                border: isLight ? '1px solid rgba(16, 185, 129, 0.35)' : '1px solid rgba(74, 222, 128, 0.3)',
+                color: isLight ? '#059669' : '#4ade80',
                 borderRadius: '6px',
-                display: 'inline-flex',
+                padding: '4px 10px',
+                fontSize: '0.72rem',
+                fontWeight: 700,
+                cursor: 'pointer',
+                display: 'flex',
                 alignItems: 'center',
-                gap: '4px'
-              }}>
-                <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: isLight ? '#0284c7' : '#00f2fe', animation: 'pulseDot 1.4s infinite' }} />
-                LIVE STREAM
-              </span>
-            </div>
-            <p style={{ margin: '2px 0 0', fontSize: '0.82rem', color: isLight ? '#475569' : '#94a3b8' }}>
-              Dirette Radio FM Nazionali, YouTube Live, Brani Locali e Sintetizzatore 432Hz
-            </p>
+                gap: '5px'
+              }}
+            >
+              <FolderPlus size={13} />
+              <span>Importa MP3</span>
+            </button>
+            <input
+              type="file"
+              ref={fileInputRef}
+              onChange={handleFileUpload}
+              multiple
+              accept="audio/*"
+              style={{ display: 'none' }}
+            />
+
+            <button
+              onClick={() => setIsAddModalOpen(true)}
+              title="Aggiungi una nuova stazione o stream radio"
+              style={{
+                background: isLight ? 'linear-gradient(135deg, #0284c7, #0369a1)' : 'linear-gradient(135deg, #00f2fe, #4facfe)',
+                border: 'none',
+                color: '#ffffff',
+                borderRadius: '6px',
+                padding: '4px 12px',
+                fontSize: '0.72rem',
+                fontWeight: 800,
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '5px'
+              }}
+            >
+              <Plus size={13} />
+              <span>Aggiungi Stream</span>
+            </button>
           </div>
-        </div>
+        }
+      />
 
-        {/* Top Actions */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
-          <button
-            onClick={() => fileInputRef.current && fileInputRef.current.click()}
-            style={{
-              background: isLight ? 'rgba(16, 185, 129, 0.1)' : 'rgba(74, 222, 128, 0.1)',
-              border: isLight ? '1px solid rgba(16, 185, 129, 0.35)' : '1px solid rgba(74, 222, 128, 0.3)',
-              color: isLight ? '#059669' : '#4ade80',
-              borderRadius: '8px',
-              padding: '7px 14px',
-              fontSize: '0.78rem',
-              fontWeight: 700,
-              cursor: 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '6px'
-            }}
-          >
-            <FolderPlus size={15} />
-            <span>Importa MP3</span>
-          </button>
-          <input
-            type="file"
-            ref={fileInputRef}
-            onChange={handleFileUpload}
-            multiple
-            accept="audio/*"
-            style={{ display: 'none' }}
-          />
-
-          <button
-            onClick={() => setIsAddModalOpen(true)}
-            style={{
-              background: isLight ? 'linear-gradient(135deg, #0284c7, #0369a1)' : 'linear-gradient(135deg, #00f2fe, #4facfe)',
-              border: 'none',
-              color: '#ffffff',
-              borderRadius: '8px',
-              padding: '7px 16px',
-              fontSize: '0.78rem',
-              fontWeight: 800,
-              cursor: 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '6px'
-            }}
-          >
-            <Plus size={15} />
-            <span>Aggiungi Stream</span>
-          </button>
-        </div>
-      </div>
+      <div className="music-tab-container" style={{
+        display: 'flex',
+        flexDirection: 'column',
+        gap: '16px',
+        padding: '16px 20px',
+        maxWidth: '1600px',
+        width: '100%',
+        margin: '0 auto',
+        color: isLight ? '#0f172a' : '#e2e8f0',
+        minHeight: '100%',
+        boxSizing: 'border-box'
+      }}>
 
       {/* ============================================================================== */}
       {/* 2. SLEEK UNCLIPPED MASTER PLAYER BAR (CLEAN & DIRECT)                          */}
@@ -1660,6 +1617,7 @@ export default function MusicTab() {
           50% { opacity: 0.3; transform: scale(1.3); }
         }
       `}</style>
+    </div>
     </div>
   );
 }
