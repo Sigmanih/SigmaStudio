@@ -352,6 +352,13 @@ export function getModelSpecs(modelName, availableModels = []) {
         provider: found.provider || 'sigma_engine',
         family,
         benchmark: found.benchmark_summary || null,
+        toolScore: found.tool_score ?? found.benchmark_summary?.tool_score ?? null,
+        toolStats: (found.tool_total || found.benchmark_summary?.tool_total)
+          ? {
+              passed: found.tool_passed ?? found.benchmark_summary?.tool_passed ?? 0,
+              total: found.tool_total ?? found.benchmark_summary?.tool_total ?? 0,
+            }
+          : null,
         chatSpeed: chatSpeed !== null ? chatSpeed : null,
         publication: found.publication || null,
         isPublished: Boolean(found.publication?.repo_id || found.is_published || found.published),
@@ -549,6 +556,10 @@ export function sortModelsList(modelsList = [], sortBy = 'default', sortOrder = 
       case 'benchmark':
         valA = getBenchmarkScoreNumeric(a, specsA);
         valB = getBenchmarkScoreNumeric(b, specsB);
+        break;
+      case 'tools':
+        valA = a.tool_score ?? a.benchmark_summary?.tool_score ?? specsA?.toolScore ?? 0;
+        valB = b.tool_score ?? b.benchmark_summary?.tool_score ?? specsB?.toolScore ?? 0;
         break;
       case 'name': {
         const nameA = String(a.display_name || a.clean_name || a.name || '').toLowerCase();

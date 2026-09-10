@@ -222,7 +222,7 @@ export default function Workspace({
       }
       return (
         <React.Suspense fallback={<div style={{ padding: '32px', color: '#94a3b8', textAlign: 'center' }}>Caricamento Benchmark Lab...</div>}>
-          <LazyBenchmark addToast={(msg, type, dur) => {}} openTab={openTab} />
+          <LazyBenchmark addToast={(msg, type, dur) => {}} openTab={openTab} activeTabId={activeTabId} />
         </React.Suspense>
       );
     }

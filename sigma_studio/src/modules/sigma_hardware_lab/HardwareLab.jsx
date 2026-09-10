@@ -8,6 +8,7 @@ import {
 } from 'lucide-react';
 import { useApp } from '../../contexts/AppContext';
 import RealtimeTelemetryChart from './RealtimeTelemetryChart';
+import TabHeader from '../../components/common/TabHeader';
 
 const INACTIVE_HARDWARE_NODES = [
   {
@@ -425,101 +426,74 @@ export default function HardwareLab({ addToast }) {
     <div style={{
       display: 'flex',
       flexDirection: 'column',
-      minHeight: '100%',
+      width: '100%',
+      height: '100%',
       backgroundColor: isLight ? '#f4efe4' : '#07090e',
       color: textPrimary,
-      padding: '20px 24px',
-      gap: '20px',
-      boxSizing: 'border-box'
+      overflow: 'hidden'
     }}>
-      {/* 1. HEADER & GLOBAL ACTIONS */}
-      <div style={{
-        padding: '16px 20px',
-        borderRadius: '16px',
-        background: isLight
-          ? 'linear-gradient(135deg, #ffffff 0%, #faf6ec 100%)'
-          : 'linear-gradient(135deg, rgba(13, 16, 25, 0.95) 0%, rgba(20, 26, 42, 0.85) 100%)',
-        border: cardBorder,
-        boxShadow: cardShadow,
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'space-between',
-        flexWrap: 'wrap',
-        gap: '14px'
-      }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
-          <div style={{
-            width: '46px', height: '46px', borderRadius: '12px',
-            background: 'radial-gradient(circle at 30% 30%, rgba(0, 242, 254, 0.25), rgba(0, 210, 255, 0.05))',
-            border: '1px solid rgba(0, 242, 254, 0.35)',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            boxShadow: '0 0 20px rgba(0, 242, 254, 0.2)'
-          }}>
-            <Zap size={22} color="#00d2ff" />
+      {/* Intestazione Universale Kernel Sigma Studio */}
+      <TabHeader
+        icon={Zap}
+        title="Hardware Lab"
+        highlight="CLUSTER TELEMETRY"
+        description="Telemetria in tempo reale: GPU, CPU, RAM, Hard Disk, Rete e tracciamento processi per modulo"
+        actions={
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+            <span style={{
+              fontSize: '0.68rem', padding: '3px 10px', borderRadius: '8px',
+              background: 'rgba(16, 185, 129, 0.12)', color: '#10b981', border: '1px solid rgba(16, 185, 129, 0.3)',
+              fontWeight: 800, display: 'flex', alignItems: 'center', gap: '5px'
+            }}>
+              <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: '#10b981' }} />
+              {gpus.length} GPU • {ram.total_gb || 94} GB RAM • {disks.length} Dischi
+            </span>
+
+            <button
+              onClick={handleClearVramMcp}
+              title="Svuota la cache VRAM GPU"
+              style={{
+                fontSize: '0.72rem', padding: '5px 12px', borderRadius: '8px',
+                border: '1px solid rgba(0, 210, 255, 0.4)',
+                background: 'rgba(0, 210, 255, 0.12)', color: isLight ? '#0284c7' : '#00d2ff',
+                fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '5px'
+              }}
+            >
+              <Zap size={13} /> Scarica VRAM
+            </button>
+
+            <button
+              onClick={() => setShowRestartAlert(true)}
+              title="Riavvia e ripulisci il runtime VRAM"
+              style={{
+                fontSize: '0.72rem', padding: '5px 12px', borderRadius: '8px',
+                border: '1px solid rgba(239, 68, 68, 0.4)',
+                background: 'rgba(239, 68, 68, 0.12)', color: '#ef4444',
+                fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '5px'
+              }}
+            >
+              <RotateCcw size={13} /> Svuota Memoria
+            </button>
+
+            <button
+              onClick={() => setAutoRefresh(!autoRefresh)}
+              style={{
+                fontSize: '0.72rem', padding: '5px 12px', borderRadius: '8px',
+                border: subCardBorder,
+                background: autoRefresh ? (isLight ? '#111827' : 'rgba(0, 210, 255, 0.15)') : subCardBg,
+                color: autoRefresh ? (isLight ? '#ffffff' : '#00d2ff') : textPrimary,
+                fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '5px'
+              }}
+            >
+              {autoRefresh ? <Pause size={13} /> : <Play size={13} />}
+              {autoRefresh ? 'Live (2s)' : 'In Pausa'}
+            </button>
           </div>
-          <div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <h1 style={{ margin: 0, fontSize: '1.25rem', fontWeight: 800, letterSpacing: '-0.3px', color: textPrimary }}>
-                Hardware Lab & <span style={{ color: '#00d2ff' }}>Cluster Telemetry</span>
-              </h1>
-              <span style={{
-                fontSize: '0.66rem', padding: '2px 8px', borderRadius: '12px',
-                background: 'rgba(16, 185, 129, 0.15)', color: '#10b981', border: '1px solid rgba(16, 185, 129, 0.3)',
-                fontWeight: 800, display: 'flex', alignItems: 'center', gap: '4px'
-              }}>
-                <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: '#10b981' }} />
-                {gpus.length} GPU • {ram.total_gb || 94} GB RAM • {disks.length} Dischi
-              </span>
-            </div>
-            <p style={{ margin: '2px 0 0 0', fontSize: '0.75rem', color: textMuted }}>
-              Telemetria in tempo reale: GPU, CPU, RAM, Hard Disk, Rete e tracciamento processi per modulo.
-            </p>
-          </div>
-        </div>
+        }
+      />
 
-        {/* Action Controls */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-          <button
-            onClick={handleClearVramMcp}
-            title="Svuota la cache VRAM GPU"
-            style={{
-              fontSize: '0.74rem', padding: '7px 12px', borderRadius: '8px',
-              border: '1px solid rgba(0, 210, 255, 0.4)',
-              background: 'rgba(0, 210, 255, 0.12)', color: isLight ? '#0284c7' : '#00d2ff',
-              fontWeight: 800, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '5px'
-            }}
-          >
-            <Zap size={13} /> Scarica VRAM
-          </button>
-
-          <button
-            onClick={() => setShowRestartAlert(true)}
-            title="Riavvia e ripulisci il runtime VRAM"
-            style={{
-              fontSize: '0.74rem', padding: '7px 12px', borderRadius: '8px',
-              border: '1px solid rgba(239, 68, 68, 0.4)',
-              background: 'rgba(239, 68, 68, 0.12)', color: '#ef4444',
-              fontWeight: 800, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '5px'
-            }}
-          >
-            <RotateCcw size={13} /> Svuota Memoria
-          </button>
-
-          <button
-            onClick={() => setAutoRefresh(!autoRefresh)}
-            style={{
-              fontSize: '0.74rem', padding: '7px 12px', borderRadius: '8px',
-              border: subCardBorder,
-              background: autoRefresh ? (isLight ? '#111827' : '#00d2ff') : subCardBg,
-              color: autoRefresh ? '#ffffff' : textPrimary,
-              fontWeight: 800, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '5px'
-            }}
-          >
-            {autoRefresh ? <Pause size={13} /> : <Play size={13} />}
-            {autoRefresh ? 'Live (2s)' : 'In Pausa'}
-          </button>
-        </div>
-      </div>
+      {/* Main Content Area Scrollable */}
+      <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: '16px 24px 32px 24px', display: 'flex', flexDirection: 'column', gap: '20px' }}>
 
       {/* 2. ROW-BASED HARDWARE MASTER LIST (LEFT) + UX CHART INSPECTOR (RIGHT) */}
       <div style={{
@@ -1213,6 +1187,8 @@ export default function HardwareLab({ addToast }) {
       </div>
 
       {/* CONFIRMATION ALERT MODAL */}
+      </div>
+
       {showRestartAlert && (
         <div style={{
           position: 'fixed', inset: 0,

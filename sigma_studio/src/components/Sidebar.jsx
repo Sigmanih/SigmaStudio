@@ -159,9 +159,9 @@ export default function Sidebar({
   const [modelsExpanded, setModelsExpanded] = useState(false);
   const [activeModelTab, setActiveModelTab] = useState(() => {
     try {
-      return localStorage.getItem('sigma_model_hub_active_subtab') || 'browse';
+      return localStorage.getItem('sigma_model_hub_active_subtab') || 'inventory';
     } catch {
-      return 'browse';
+      return 'inventory';
     }
   });
 
@@ -619,8 +619,8 @@ export default function Sidebar({
           {modelsExpanded && (
             <div className="sidebar-subnav sidebar-models-subnav">
               {[
-                { id: 'browse', label: 'Esplora HF', icon: Search },
                 { id: 'inventory', label: 'Modelli Locali', icon: HardDrive },
+                { id: 'browse', label: 'Download HF', icon: Search },
                 { id: 'converter', label: 'Convertitore GGUF', icon: Zap },
                 { id: 'settings', label: 'Impostazioni & Token', icon: Settings },
               ].map(sub => {

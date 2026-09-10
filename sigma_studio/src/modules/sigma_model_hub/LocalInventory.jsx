@@ -4,7 +4,7 @@ import {
   Activity, Upload, Download, Search, ChevronDown, ChevronUp, Sliders, Layers, Sparkles,
   Trophy, Award, Gauge, Cpu, ExternalLink,
   RotateCcw, Code, Brain, Eye, Tag, User, Dna, Boxes, CheckCircle2, AlertTriangle, Package,
-  X, Check, ChevronRight, BarChart2, CornerDownRight, Minimize2, Maximize2
+  X, Check, ChevronRight, BarChart2, CornerDownRight, Minimize2, Maximize2, Wrench
 } from 'lucide-react';
 import HfPublishModal from './HfPublishModal.jsx';
 import InferenceTestModal from './InferenceTestModal.jsx';
@@ -384,6 +384,7 @@ export default function LocalInventory({
         body: JSON.stringify({
           local_path: model.path || model.filename,
           model_id: model.model_id || model.filename,
+          clean_name: model.clean_name || '',
           repo_id: repoId
         })
       });
@@ -1096,6 +1097,12 @@ export default function LocalInventory({
                           const hasBenchmark = info.hasBenchmark;
                           const bmScore = bm.score ?? bm.best_score ?? bm.latest_score ?? bm.overall_pass_rate ?? 0;
                           const bmScoreColor = bmScore >= 75 ? '#10b981' : (bmScore >= 50 ? '#00d2ff' : '#ffb86c');
+
+                          // Tool Benchmark (Wrench icon)
+                          const toolScore = m.tool_score ?? bm.tool_score ?? null;
+                          const hasToolBenchmark = Boolean(toolScore !== null && toolScore !== undefined);
+                          const toolScoreColor = toolScore >= 75 ? '#10b981' : (toolScore >= 50 ? '#00d2ff' : '#ffb86c');
+
                           const isPublished = info.isPublished;
                           const cardKey = m.path || m.filename || String(idx);
                           const isExpanded = expandedCards.has(cardKey);
@@ -1215,6 +1222,26 @@ export default function LocalInventory({
                                       {bm.tests_total > 0 && (
                                         <span style={{ opacity: 0.85, fontSize: '0.54rem' }}>
                                           ({bm.tests_passed || 0}/{bm.tests_total})
+                                        </span>
+                                      )}
+                                    </span>
+                                  )}
+
+                                  {/* Tool Benchmark Score Pill (Wrench icon) */}
+                                  {hasToolBenchmark && (
+                                    <span
+                                      title={`Benchmark Tools (Aderenza Protocollo & Tool Use): ${toolScore}%${(m.tool_total || bm.tool_total) ? ` (${m.tool_passed ?? bm.tool_passed ?? 0}/${m.tool_total ?? bm.tool_total} prove superate)` : ''}`}
+                                      style={{
+                                        fontSize: '0.58rem', fontWeight: 800, padding: '2px 7px', borderRadius: '5px',
+                                        background: `${toolScoreColor}18`, border: `1px solid ${toolScoreColor}35`, color: toolScoreColor,
+                                        display: 'inline-flex', alignItems: 'center', gap: '4px'
+                                      }}
+                                    >
+                                      <Wrench size={10} color={toolScoreColor} />
+                                      <span>{toolScore}% Tools</span>
+                                      {(m.tool_total || bm.tool_total) > 0 && (
+                                        <span style={{ opacity: 0.85, fontSize: '0.54rem' }}>
+                                          ({m.tool_passed ?? bm.tool_passed ?? 0}/{m.tool_total ?? bm.tool_total})
                                         </span>
                                       )}
                                     </span>
@@ -1424,7 +1451,7 @@ export default function LocalInventory({
                                   </div>
 
                                   {/* ROW 2: BENCHMARK BREAKDOWN & TEST SUITE OUTCOMES */}
-                                  {hasBenchmark && (() => {
+                                  {(hasBenchmark || hasToolBenchmark) && (() => {
                                     const suiteEntries = getSuiteEntries(bm);
                                     const totalPassed = bm.tests_passed ?? 0;
                                     const totalTests = bm.tests_total ?? 0;
@@ -1450,12 +1477,28 @@ export default function LocalInventory({
                                             <span style={{ fontSize: '0.74rem', fontWeight: 900, color: textPrimary }}>
                                               Benchmark:
                                             </span>
-                                            <span style={{
-                                              fontSize: '0.76rem', fontWeight: 900, color: bmScoreColor,
-                                              padding: '2px 8px', borderRadius: '5px', background: `${bmScoreColor}20`, border: `1px solid ${bmScoreColor}40`
-                                            }}>
-                                              🏆 {bmScore}% Pass
-                                            </span>
+                                            {hasBenchmark && (
+                                              <span style={{
+                                                fontSize: '0.76rem', fontWeight: 900, color: bmScoreColor,
+                                                padding: '2px 8px', borderRadius: '5px', background: `${bmScoreColor}20`, border: `1px solid ${bmScoreColor}40`
+                                              }}>
+                                                🏆 {bmScore}% Pass
+                                              </span>
+                                            )}
+
+                                            {hasToolBenchmark && (
+                                              <span
+                                                title={`Benchmark Tools (Aderenza Protocollo & Tool Use): ${toolScore}%${(m.tool_total || bm.tool_total) ? ` (${m.tool_passed ?? bm.tool_passed ?? 0}/${m.tool_total ?? bm.tool_total} prove)` : ''}`}
+                                                style={{
+                                                  fontSize: '0.76rem', fontWeight: 900, color: toolScoreColor,
+                                                  padding: '2px 8px', borderRadius: '5px', background: `${toolScoreColor}20`, border: `1px solid ${toolScoreColor}40`,
+                                                  display: 'inline-flex', alignItems: 'center', gap: '4px'
+                                                }}
+                                              >
+                                                <Wrench size={11} color={toolScoreColor} />
+                                                <span>{toolScore}% Tools</span>
+                                              </span>
+                                            )}
 
                                             {/* Flag Pubblicato */}
                                             {isPublished && (

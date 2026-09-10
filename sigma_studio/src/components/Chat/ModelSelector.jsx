@@ -1,7 +1,7 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import {
   Cpu, ChevronDown, Check, Loader, Search, Key, Sparkles, HardDrive, Zap,
-  Trophy, Award, Gauge, Brain, Dna, Boxes, ArrowDownUp, RefreshCw, CheckCircle2
+  Trophy, Award, Gauge, Brain, Dna, Boxes, ArrowDownUp, RefreshCw, CheckCircle2, Wrench
 } from 'lucide-react';
 import { PROVIDER_COLORS, getProviderForModel } from './modelProviderMap';
 import {
@@ -15,6 +15,7 @@ const SORT_OPTIONS = [
   { id: 'params', label: 'Parametri', icon: Cpu, title: 'Ordina per conteggio parametri (es. 70B > 32B > 7B)' },
   { id: 'speed', label: 't/s', icon: Zap, title: 'Ordina per velocità live di inferenza (tokens/sec)' },
   { id: 'benchmark', label: 'Benchmark', icon: Trophy, title: 'Ordina per punteggio di benchmark (%)' },
+  { id: 'tools', label: 'Tools', icon: Wrench, title: 'Ordina per punteggio benchmark tools (%)' },
   { id: 'name', label: 'Nome', icon: null, title: 'Ordina alfabeticamente per nome modello' }
 ];
 
@@ -244,6 +245,20 @@ export default function ModelSelector({
             ⚡ {activeSpecs.params}
           </span>
         )}
+        {activeSpecs?.toolScore !== null && activeSpecs?.toolScore !== undefined && (
+          <span
+            className="model-spec-badge"
+            title={`Benchmark Tools (Aderenza Protocollo & Tool Use): ${Math.round(activeSpecs.toolScore)}%${activeSpecs.toolStats ? ` (${activeSpecs.toolStats.passed}/${activeSpecs.toolStats.total} prove superate)` : ''}`}
+            style={{
+              fontSize: '0.58rem', padding: '1px 5px', borderRadius: '4px',
+              background: 'rgba(0, 210, 255, 0.16)', color: '#00d2ff', fontWeight: 800,
+              display: 'inline-flex', alignItems: 'center', gap: '3px', whiteSpace: 'nowrap'
+            }}
+          >
+            <Wrench size={10} color="#00d2ff" />
+            <span>{Math.round(activeSpecs.toolScore)}%</span>
+          </span>
+        )}
         {activeSpecs?.size && (
           <span className="model-spec-badge" style={{ fontSize: '0.58rem', padding: '1px 5px', borderRadius: '4px', background: 'rgba(255, 184, 108, 0.15)', color: '#ffb86c', fontWeight: 800, whiteSpace: 'nowrap' }}>
             💾 {activeSpecs.size}
@@ -454,6 +469,13 @@ export default function ModelSelector({
               const bmScore = hasBm ? (bm.score ?? bm.overall_pass_rate ?? bm.best_score ?? 0) : null;
               const bmColor = bmScore !== null ? (bmScore >= 75 ? '#10b981' : (bmScore >= 50 ? '#00d2ff' : '#ffb86c')) : '#8b8fa3';
 
+              // Tool Benchmark metrics (Wrench icon)
+              const tScore = m.tool_score ?? bm?.tool_score ?? itemSpecs?.toolScore ?? null;
+              const hasTool = Boolean(tScore !== null && tScore !== undefined);
+              const toolPassed = m.tool_passed ?? bm?.tool_passed ?? itemSpecs?.toolStats?.passed ?? 0;
+              const toolTotal = m.tool_total ?? bm?.tool_total ?? itemSpecs?.toolStats?.total ?? 0;
+              const toolColor = tScore !== null ? (tScore >= 75 ? '#10b981' : (tScore >= 50 ? '#00d2ff' : '#ffb86c')) : '#8b8fa3';
+
               // Live Speed (tokens/sec)
               const chatTps = getModelChatSpeed(m.name, m) ?? (m.benchmark_summary?.tokens_per_sec || null);
               const isPublished = Boolean(m.publication?.repo_id || itemSpecs?.publication?.repo_id || itemSpecs?.isPublished);
@@ -577,6 +599,25 @@ export default function ModelSelector({
                     >
                       <Trophy size={10} color={bmColor} />
                       <span>{hasBm ? `${Math.round(bmScore)}%` : '-'}</span>
+                    </span>
+
+                    {/* 🔧 Tool Benchmark Characteristics Badge */}
+                    <span
+                      title={hasTool
+                        ? `Benchmark Tools (Aderenza Protocollo & Tool Use): ${Math.round(tScore)}%${toolTotal ? ` (${toolPassed}/${toolTotal} prove superate)` : ''}`
+                        : 'Nessun benchmark tools registrato per questo modello'
+                      }
+                      style={{
+                        fontSize: '0.58rem', fontWeight: 800, padding: '1px 6px', borderRadius: '4px',
+                        background: sortBy === 'tools' ? `${toolColor}30` : (hasTool ? `${toolColor}18` : 'rgba(255, 255, 255, 0.04)'),
+                        border: sortBy === 'tools' ? `1px solid ${toolColor}` : (hasTool ? `1px solid ${toolColor}40` : '1px solid rgba(255, 255, 255, 0.08)'),
+                        boxShadow: sortBy === 'tools' ? `0 0 8px ${toolColor}40` : 'none',
+                        color: toolColor,
+                        display: 'inline-flex', alignItems: 'center', gap: '3px'
+                      }}
+                    >
+                      <Wrench size={10} color={toolColor} />
+                      <span>{hasTool ? `${Math.round(tScore)}%` : '-'}</span>
                     </span>
 
                     {/* Flag Pubblicato */}
