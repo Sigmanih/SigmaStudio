@@ -79,12 +79,12 @@ export default function ModelHub({ addToast: addToastProp, openTab }) {
 
   const [activeTab, setActiveTab] = useState(() => {
     try {
-      return localStorage.getItem('sigma_model_hub_active_subtab') || 'browse';
+      return localStorage.getItem('sigma_model_hub_active_subtab') || 'inventory';
     } catch {
-      return 'browse';
+      return 'inventory';
     }
-  }); // 'browse' | 'inventory' | 'converter' | 'settings'
-  const currentTabMeta = TAB_METADATA[activeTab] || TAB_METADATA.browse;
+  }); // 'inventory' | 'browse' | 'converter' | 'settings'
+  const currentTabMeta = TAB_METADATA[activeTab] || TAB_METADATA.inventory;
   const TabIcon = currentTabMeta.icon;
   const [deployTargetModel, setDeployTargetModel] = useState(null);
   const [preselectedConvertModel, setPreselectedConvertModel] = useState('');

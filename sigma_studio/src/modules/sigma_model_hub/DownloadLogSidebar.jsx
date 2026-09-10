@@ -182,9 +182,9 @@ export default function DownloadLogSidebar({
   return (
     <div
       style={{
-        width: '340px',
-        minWidth: '300px',
-        maxWidth: '380px',
+        width: '460px',
+        minWidth: '380px',
+        maxWidth: '540px',
         background: cardBg,
         border: cardBorder,
         borderRadius: '18px',
@@ -309,16 +309,18 @@ export default function DownloadLogSidebar({
                 }}
               >
                 {/* Title & Status */}
-                <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '6px' }}>
+                <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '8px' }}>
                   <div style={{ minWidth: 0, flex: 1 }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
-                      {isRunning && <Activity className="mh-spin" size={12} color="#00d2ff" />}
-                      {isDone && <CheckCircle2 size={12} color="#10b981" />}
-                      {isPaused && <Pause size={12} color="#ffb86c" />}
-                      {isFailed && <AlertTriangle size={12} color="#ef4444" />}
+                    <div style={{ display: 'flex', alignItems: 'flex-start', gap: '6px' }}>
+                      <div style={{ flexShrink: 0, marginTop: '2px', display: 'flex', alignItems: 'center' }}>
+                        {isRunning && <Activity className="mh-spin" size={13} color="#00d2ff" />}
+                        {isDone && <CheckCircle2 size={13} color="#10b981" />}
+                        {isPaused && <Pause size={13} color="#ffb86c" />}
+                        {isFailed && <AlertTriangle size={13} color="#ef4444" />}
+                      </div>
                       <span style={{
                         fontSize: '0.75rem', fontWeight: 800, color: textPrimary,
-                        whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', display: 'block'
+                        wordBreak: 'break-word', overflowWrap: 'anywhere', lineHeight: 1.35, display: 'block'
                       }}>
                         {task.model_id || task.filename}
                       </span>

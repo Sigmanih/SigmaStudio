@@ -460,4 +460,61 @@ class TestUnModelloCheNonRispondeNonHaUnPunteggio:
         ])
         assert esito.prove, "un modello che ha parlato va misurato"
         if esito.sandbox:
-            PB.pulisci(Path(esito.sandbox))
+            jail = PB.SandboxJail("tmp")
+            jail.root = Path(esito.sandbox)
+            jail._active = True
+            jail.pulisci()
+
+
+class TestSandboxJail:
+    def test_creazione_e_percorsi_sicuri(self):
+        jail = PB.SandboxJail("test_sicurezza")
+        try:
+            assert jail.root.is_dir()
+            jail.setup_workspace({"prova.txt": "hello\n"})
+            assert (jail.root / "prova.txt").is_file()
+
+            # Path relativo consentito
+            assert jail.is_safe_path("prova.txt") is True
+            assert jail.is_safe_path("sottocartella/file.json") is True
+
+            # Path traversal vietato
+            assert jail.is_safe_path("../../../etc/passwd") is False
+            with pytest.raises(PB.SandboxJailError):
+                jail.resolve_safe_path("../../../fuori.py")
+
+            # Path assoluto esterno vietato
+            assert jail.is_safe_path("C:/Windows/System32") is False
+            with pytest.raises(PB.SandboxJailError):
+                jail.resolve_safe_path("C:/Users/Sigma/Desktop/Sigma_Studio/core/harness/loop.py")
+        finally:
+            jail.pulisci()
+            assert not jail.root.exists()
+
+    def test_prova_rispetto_sandbox(self):
+        jail = PB.SandboxJail("test_prova")
+        try:
+            p_ok = PB.prova_rispetto_sandbox(jail)
+            assert p_ok.superata is True
+
+            jail.violations.append("Tentativo di accesso esterno: C:/Windows")
+            p_ko = PB.prova_rispetto_sandbox(jail)
+            assert p_ko.superata is False
+            assert "C:/Windows" in p_ko.dettaglio
+        finally:
+            jail.pulisci()
+
+
+class TestScenariGraduati:
+    def test_tutti_i_livelli_sono_rappresentati(self):
+        livelli = {s.livello for s in PB.SCENARI}
+        assert 1 in livelli, "Livello 1 (Base) deve essere presente"
+        assert 2 in livelli, "Livello 2 (Intermedio) deve essere presente"
+        assert 3 in livelli, "Livello 3 (Avanzato) deve essere presente"
+
+    def test_ogni_scenario_ha_criteri_e_verifica(self):
+        for s in PB.SCENARI:
+            assert s.id, "Ogni scenario deve avere un id"
+            assert s.livello_label, f"Scenario {s.id} deve avere una label di livello"
+            assert len(s.criteri) > 0, f"Scenario {s.id} deve avere almeno un criterio"
+            assert s.verifica, f"Scenario {s.id} deve avere un comando di verifica"

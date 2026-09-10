@@ -18,6 +18,7 @@ ferme le tre proprieta' che lo rendono una garanzia invece di una formalita':
 import os
 import threading
 import time
+import uuid
 
 import pytest
 
@@ -247,23 +248,56 @@ class TestMessaggioDiRifiuto:
 # ---------------------------------------------------------------------------
 
 
-def _finto_modello(risposte):
-    """Un generatore che recita le risposte del modello, una per turno."""
+def _finto_modello(risposte, fatto=None):
+    """Un generatore che recita le risposte del modello.
+
+    Con `fatto`, non conta le chiamate: guarda **lo stato del mondo**. Contarle
+    rendeva il test fragile, perche' il ciclo puo' legittimamente interpellare
+    il modello piu' di una volta per turno — una rigenerazione dopo un
+    troncamento, un turno forzato a produrre la specifica — e una chiamata in
+    piu' faceva consumare la risposta con la scrittura, che quindi non avveniva
+    mai. Il test falliva una volta ogni tanto, sempre con «zero proposte»: il
+    modo peggiore, perche' sembrava un difetto del cancello di revisione.
+    """
     stato = {"turno": 0}
 
     def stream(**kwargs):
-        i = min(stato["turno"], len(risposte) - 1)
+        if fatto is not None:
+            i = min(1 if fatto() else 0, len(risposte) - 1)
+        else:
+            i = min(stato["turno"], len(risposte) - 1)
         stato["turno"] += 1
         yield {"token": risposte[i]}
 
     return stream
 
 
-def _esegui_run(monkeypatch, tmp_path, risposte, session_id, decisione=None):
+@pytest.fixture(autouse=True)
+def stato_isolato(tmp_path, monkeypatch):
+    """Nessun test scrive nella `var/` vera.
+
+    Le sessioni di questi test finivano in `var/dev_sessions/` con un nome fisso
+    e ci restavano: al giro dopo il ledger ne ritrovava una con lo stesso nome e
+    un workspace diverso, e il run partiva da uno stato che nessuno aveva
+    chiesto. Un test che lascia stato al successivo non e' piu' un test — e
+    questo falliva una volta ogni tanto, che e' il modo peggiore.
+    """
+    monkeypatch.setattr("core.paths.var_dir", lambda: tmp_path / "var")
+    yield
+
+
+def _sessione(prefisso):
+    """Un nome di sessione che non puo' scontrarsi con nessun altro giro."""
+    return f"{prefisso}-{uuid.uuid4().hex[:8]}"
+
+
+def _esegui_run(monkeypatch, tmp_path, risposte, session_id, decisione=None,
+                fatto=None):
     """Fa girare un turno dell'agente rispondendo alla prima proposta."""
     from core.harness import loop as modulo_loop
 
-    monkeypatch.setattr(modulo_loop, "stream_dev_generation", _finto_modello(risposte))
+    monkeypatch.setattr(modulo_loop, "stream_dev_generation",
+                        _finto_modello(risposte, fatto))
 
     eventi = []
     gen = modulo_loop.stream_admin_agent_turn(
@@ -293,7 +327,11 @@ class TestIlCicloPassaDalGate:
             '```tool:write_file\n{"path": "nota.py", "content": "VALORE = 1\\n"}\n```',
             "Fatto.",
         ]
-        eventi = _esegui_run(monkeypatch, tmp_path, risposte, "sess-approva", "approved")
+        sid = _sessione("sess-approva")
+        eventi = _esegui_run(
+            monkeypatch, tmp_path, risposte, sid, "approved",
+            fatto=lambda: (tmp_path / "nota.py").exists(),
+        )
         try:
             proposte = [e for e in eventi if e.get("type") == "write_proposed"]
             assert len(proposte) == 1
@@ -301,21 +339,25 @@ class TestIlCicloPassaDalGate:
             assert "+VALORE = 1" in proposte[0]["diff"]
             assert (tmp_path / "nota.py").read_text(encoding="utf-8") == "VALORE = 1\n"
         finally:
-            review.release_gate("sess-approva")
+            review.release_gate(sid)
 
     def test_una_scrittura_rifiutata_non_resta(self, monkeypatch, tmp_path):
         risposte = [
             '```tool:write_file\n{"path": "nota.py", "content": "VALORE = 1\\n"}\n```',
             "Va bene, non la scrivo.",
         ]
-        eventi = _esegui_run(monkeypatch, tmp_path, risposte, "sess-rifiuta", "rejected")
+        sid = _sessione("sess-rifiuta")
+        eventi = _esegui_run(
+            monkeypatch, tmp_path, risposte, sid, "rejected",
+            fatto=lambda: (tmp_path / "nota.py").exists(),
+        )
         try:
             annullamenti = [e for e in eventi if e.get("type") == "write_reverted"]
             assert len(annullamenti) == 1
             assert annullamenti[0]["reverted"] is True
             assert not (tmp_path / "nota.py").exists()
         finally:
-            review.release_gate("sess-rifiuta")
+            review.release_gate(sid)
 
     def test_l_agente_viene_informato_del_rifiuto(self, monkeypatch, tmp_path):
         """Senza saperlo, riproverebbe la stessa scrittura fino a esaurire i turni."""
@@ -323,14 +365,18 @@ class TestIlCicloPassaDalGate:
             '```tool:write_file\n{"path": "nota.py", "content": "VALORE = 1\\n"}\n```',
             "Capito.",
         ]
-        eventi = _esegui_run(monkeypatch, tmp_path, risposte, "sess-informa", "rejected")
+        sid = _sessione("sess-informa")
+        eventi = _esegui_run(
+            monkeypatch, tmp_path, risposte, sid, "rejected",
+            fatto=lambda: (tmp_path / "nota.py").exists(),
+        )
         try:
             risultati = [e for e in eventi if e.get("type") == "tool_result"]
             fallito = [r for r in risultati if not r.get("result", {}).get("success")]
             assert fallito, "il rifiuto deve arrivare all'agente come tool fallito"
             assert "NON applicata" in fallito[0]["result"]["error"]
         finally:
-            review.release_gate("sess-informa")
+            review.release_gate(sid)
 
     def test_senza_revisione_la_scrittura_non_si_ferma(self, monkeypatch, tmp_path):
         """Il comportamento storico resta intatto quando il gate e' spento:
@@ -348,7 +394,7 @@ class TestIlCicloPassaDalGate:
             workspace_root=str(tmp_path),
             model_name="finto",
             max_turns=2,
-            session_id="sess-senza-gate",
+            session_id=_sessione("sess-senza-gate"),
         ))
         assert not [e for e in eventi if e.get("type") == "write_proposed"]
         assert (tmp_path / "nota.py").read_text(encoding="utf-8") == "VALORE = 1\n"
@@ -361,11 +407,15 @@ class TestIlCicloPassaDalGate:
             '```tool:read_file\n{"path": "esistente.py"}\n```',
             "Letto.",
         ]
-        eventi = _esegui_run(monkeypatch, tmp_path, risposte, "sess-lettura")
+        sid = _sessione("sess-lettura")
+        eventi = _esegui_run(
+            monkeypatch, tmp_path, risposte, sid,
+            fatto=lambda: (tmp_path / "nota.py").exists(),
+        )
         try:
             assert not [e for e in eventi if e.get("type") == "write_proposed"]
         finally:
-            review.release_gate("sess-lettura")
+            review.release_gate(sid)
 
 
 class TestRotte:
