@@ -1033,7 +1033,8 @@ def execute_admin_tool(
     tool_name: str,
     params: Dict[str, Any],
     workspace_root: str,
-    should_cancel: Optional[Callable[[], bool]] = None
+    should_cancel: Optional[Callable[[], bool]] = None,
+    dimensioni_viste: Optional[Dict[str, int]] = None,
 ) -> Dict[str, Any]:
     """Executes a single admin developer tool with full workspace resolution and lifecycle hooks."""
     tool_name = tool_name.lower()
@@ -1179,7 +1180,11 @@ def execute_admin_tool(
                 precedente = Path(full_path).read_text(encoding="utf-8", errors="replace")
             except OSError:
                 precedente = ""
-            if would_truncate(precedente, content):
+            # Il confronto e' con la versione piu' grande vista in questo
+            # run, non con l'ultima: altrimenti la guardia si aggira
+            # riscrivendo il file un pezzo per volta.
+            massimo = (dimensioni_viste or {}).get(full_path, 0)
+            if would_truncate(precedente, content, high_water=massimo):
                 return {
                     "tool": "write_file",
                     "path": raw_path,
@@ -1187,8 +1192,9 @@ def execute_admin_tool(
                     "success": False,
                     "error": (
                         f"Rifiutato: la nuova versione di '{raw_path}' e molto piu "
-                        f"corta di quella attuale ({len(content.strip())} caratteri "
-                        f"contro {len(precedente.strip())}), quindi cancellerebbe la "
+                        f"corta ({len(content.strip())} caratteri contro "
+                        f"{max(len(precedente.strip()), massimo)} gia visti in questo "
+                        f"run), quindi cancellerebbe la "
                         "maggior parte del file. Se vuoi modificarne una parte usa "
                         "edit_file. Se la riduzione e voluta, ripeti con "
                         '"allow_truncate": true.'
@@ -1213,6 +1219,10 @@ def execute_admin_tool(
                 pass
 
         res = write_file_content(full_path, content, root=workspace_root)
+        if res.get("success") and dimensioni_viste is not None:
+            dimensioni_viste[full_path] = max(
+                dimensioni_viste.get(full_path, 0), len(content.strip())
+            )
         
         # Multi-language Syntax & Structure Validation (Python, JS/TS, JSX, CSS, JSON)
         if res.get("success") and os.path.exists(full_path):
@@ -1628,6 +1638,12 @@ def _stream_agent_turn_impl(
     # sessione perche' chi decide arriva su una richiesta HTTP diversa da
     # quella che sta streammando il lavoro.
     review_gate = review.gate_for(session_id) if (review_writes or review_run) else None
+
+    # Quanto e' stato grande ogni file durante questo run. Serve alla
+    # guardia sul troncamento: confrontando solo con la versione
+    # precedente, un agente che riscrive lo stesso file piu' volte lo
+    # erode un pezzo per volta e nessun passo viene mai rifiutato.
+    dimensioni_viste: Dict[str, int] = {}
 
     # Cio' che va rilasciato viene dichiarato adesso, non alla fine: se il run
     # viene abbandonato a meta' — l'utente preme stop, il client chiude lo
@@ -2391,9 +2407,13 @@ def _stream_agent_turn_impl(
                 if is_mcp_tool(t_name):
                     result = execute_via_mcp(t_name, t_params)
                 else:
-                    result = execute_admin_tool(t_name, t_params, workspace_root, should_cancel=should_cancel)
+                    result = execute_admin_tool(t_name, t_params, workspace_root,
+                                             should_cancel=should_cancel,
+                                             dimensioni_viste=dimensioni_viste)
             except ImportError:
-                result = execute_admin_tool(t_name, t_params, workspace_root, should_cancel=should_cancel)
+                result = execute_admin_tool(t_name, t_params, workspace_root,
+                                             should_cancel=should_cancel,
+                                             dimensioni_viste=dimensioni_viste)
 
             # Il gate di revisione. La modifica e' gia' sul disco — ha superato
             # backup, guardia sul troncamento e controllo di sintassi — ma resta
