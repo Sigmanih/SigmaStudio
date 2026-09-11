@@ -386,12 +386,25 @@ class DevSessionLedger:
             return list(self._session_memory)
 
     def _rel(self, path: str) -> str:
-        """Workspace-relative form of a path, or the path itself if outside."""
+        """Workspace-relative form of a path, or the path itself if outside.
+
+        Normalizza anche la forma, non solo il prefisso. Il ledger indicizza i
+        file per questa chiave, e senza normalizzazione `backend/index.js` e
+        `./backend/index.js` diventano due file diversi: la lettura finisce
+        sotto una chiave e la guardia «non hai ancora letto questo file» cerca
+        sotto l'altra. Su un run vero e' costato otto rifiuti di fila su un
+        file che l'agente aveva letto dieci volte — e dal suo punto di vista il
+        sistema mentiva.
+        """
+        import posixpath
+
         p = str(path or "").replace("\\", "/")
         root = self.workspace_root
         if root and p.lower().startswith(root.lower() + "/"):
-            return p[len(root) + 1:]
-        return p
+            p = p[len(root) + 1:]
+        # `./a` -> `a`, `a/../b` -> `b`, `a//b` -> `a/b`.
+        normalizzato = posixpath.normpath(p) if p else p
+        return "" if normalizzato == "." else normalizzato
 
     def _file(self, path: str) -> FileRecord:
         rec = self._files.get(path)
