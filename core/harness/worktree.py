@@ -27,6 +27,7 @@ sviluppo:
 import os
 import shutil
 import subprocess
+import threading
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -48,6 +49,18 @@ def _run_git(args: List[str], cwd: Path, timeout_s: float = 30.0) -> subprocess.
         errors="replace",
         timeout=timeout_s,
     )
+
+
+#: Cio' che l'harness scrive dentro il workspace e che non e' lavoro
+#: dell'agente: gli snapshot di backup dei file toccati.
+#:
+#: Vanno tolti dal diff, non solo per pulizia. Finivano nella patch e la
+#: facevano fallire con «.sigma_backups/backups_index.jsonl: already exists
+#: in working directory», perche' quel file esiste anche nell'albero
+#: principale: la contabilita' del sistema entrava in conflitto con se'
+#: stessa e impediva al lavoro vero di arrivare a destinazione. Su un
+#: ventaglio da otto voci e' successo quattro volte su cinque.
+ESCLUSI_DAL_DIFF = (":(exclude).sigma_backups/**", ":(exclude)node_modules/**")
 
 
 def is_git_repository(path: Path | str) -> bool:
@@ -160,7 +173,10 @@ class WorktreeSession:
             return ""
         try:
             _run_git(["add", "-A"], cwd=self.worktree_path)
-            res = _run_git(["diff", "--cached", base] + extra, cwd=self.worktree_path)
+            res = _run_git(
+                ["diff", "--cached", base] + extra + ["--"] + list(ESCLUSI_DAL_DIFF),
+                cwd=self.worktree_path,
+            )
             return res.stdout
         except (OSError, subprocess.SubprocessError) as exc:
             log.warning("[Worktree] diff non calcolabile: %s", exc)
@@ -196,7 +212,10 @@ class WorktreeSession:
 
             # Crea una patch unificata dal branch del worktree e applicala sul repo originario
             base = self.base_commit or f"HEAD~{len(self.checkpoints)}"
-            diff_res = _run_git(["diff", base, "HEAD"], cwd=self.worktree_path)
+            diff_res = _run_git(
+                ["diff", base, "HEAD", "--"] + list(ESCLUSI_DAL_DIFF),
+                cwd=self.worktree_path,
+            )
             patch = diff_res.stdout
             if not patch.strip():
                 return True  # Nessuna modifica da applicare
@@ -351,6 +370,24 @@ def get_session_worktree(session_id: str) -> Optional[WorktreeSession]:
     return _active_worktrees.get(str(session_id or "").strip())
 
 
+#: Un trasferimento per volta e per repository: con il ventaglio due run
+#: che finiscono insieme applicano due patch allo stesso albero, e la
+#: seconda trova un file gia' cambiato dalla prima. Non e' un caso limite,
+#: e' il caso normale appena i lavoratori sono piu' di uno.
+_lucchetti_applicazione: Dict[str, threading.Lock] = {}
+_registro_lucchetti = threading.Lock()
+
+
+def _lucchetto_repo(radice: Path) -> threading.Lock:
+    chiave = str(radice)
+    with _registro_lucchetti:
+        lucchetto = _lucchetti_applicazione.get(chiave)
+        if lucchetto is None:
+            lucchetto = threading.Lock()
+            _lucchetti_applicazione[chiave] = lucchetto
+        return lucchetto
+
+
 def release_session_worktree(session_id: str, apply_changes: bool = False) -> Dict[str, Any]:
     """Chiude il worktree di una sessione e dice cosa ne e' stato del lavoro.
 
@@ -378,7 +415,8 @@ def release_session_worktree(session_id: str, apply_changes: bool = False) -> Di
     aveva_lavoro = session.has_work()
     applicato = False
     if apply_changes:
-        applicato = session.apply_to_main()
+        with _lucchetto_repo(session.repo_root):
+            applicato = session.apply_to_main()
 
     # Il branch si butta solo se il lavoro e' al sicuro altrove, o se non c'e'.
     scarta_branch = applicato or not aveva_lavoro

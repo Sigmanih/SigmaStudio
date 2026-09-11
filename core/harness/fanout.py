@@ -248,6 +248,7 @@ def _esegui_voce(
     esito = EsitoVoce(item_id=voce.id, title=voce.title, ok=False)
     file_toccati: List[str] = []
     raggiunto = False
+    non_applicato = {"si": False}
 
     try:
         for evento in stream_admin_agent_turn(
@@ -283,6 +284,13 @@ def _esegui_voce(
                 file_toccati = _file_modificati(evento.get("state") or {}) or file_toccati
             elif tipo in ("run_delivered", "delivery_failed"):
                 file_toccati = list(evento.get("files") or file_toccati)
+            elif tipo == "apply_failed":
+                # L'obiettivo e' stato chiuso ma il lavoro non e' arrivato
+                # nell'albero: la voce NON e' fatta. Segnarla fatta lascerebbe
+                # la coda che dichiara un lavoro compiuto mentre il codice sta
+                # su un branch che nessuno guardera'.
+                esito.branch = str(evento.get("branch") or esito.branch)
+                non_applicato["si"] = True
             elif tipo == "worktree_preserved":
                 # Il run e' finito senza chiudere: qui c'e' il branch su cui il
                 # lavoro e' rimasto, ed e' l'unica cosa che serve sapere per
@@ -295,11 +303,20 @@ def _esegui_voce(
         return esito
 
     esito.files = file_toccati
-    esito.ok = raggiunto
+    # Chiudere l'obiettivo non basta: il lavoro deve essere arrivato dove
+    # serve. Su un ventaglio vero cinque voci su otto hanno chiuso mentre la
+    # patch verso l'albero falliva, e la coda le ha segnate fatte.
+    esito.ok = raggiunto and not non_applicato["si"]
     esito.branch = esito.branch or ("sigma-run/" + sessione)
-    if raggiunto:
+    if esito.ok:
         coda.complete(voce.id, {"turns": esito.turns, "files": file_toccati,
                                 "session_id": sessione, "worker": worker})
+    elif non_applicato["si"]:
+        esito.error = (
+            "obiettivo chiuso ma il lavoro non e' arrivato nell'albero: "
+            "resta sul branch %s" % esito.branch
+        )
+        coda.fail(voce.id, esito.error)
     else:
         # Distinguere «non ha fatto niente» da «ha fatto e non l'ha
         # dimostrato»: sono due problemi diversi e chiedono due rimedi

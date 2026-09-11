@@ -3076,6 +3076,17 @@ def stream_admin_agent_turn(*args: Any, **kwargs: Any) -> Generator[Dict[str, An
     # Solo sul percorso normale: durante la chiusura di un generatore non si
     # puo' emettere altro, e a quel punto non c'e' nemmeno piu' nessuno che
     # ascolta.
+    # Un run che ha chiuso l'obiettivo ma il cui lavoro non e' arrivato
+    # all'albero non e' un run riuscito: chi lo ha lanciato deve saperlo, e
+    # soprattutto deve saperlo il ventaglio, che altrimenti segna la voce come
+    # fatta mentre il lavoro resta su un branch.
+    if completato and chiusura.get("goal_reached") and esito.get("branch")             and not esito.get("applied") and not chiusura.get("delivered"):
+        yield {
+            "type": "apply_failed",
+            "branch": esito["branch"],
+            "checkpoints": esito.get("checkpoints", 0),
+        }
+
     if completato and esito.get("branch") and not chiusura.get("delivered"):
         yield {
             "type": "worktree_preserved",
