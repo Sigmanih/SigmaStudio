@@ -111,6 +111,8 @@ TOOL_SCHEMAS: List[Dict[str, Any]] = [
        "solo: una voce per file o per modulo, indipendenti fra loro.",
        {"queue_id": _STRINGA,
         "goal": _STRINGA,
+        "replaces": _STRINGA,
+        "reason": _STRINGA,
         "items": {"type": "array", "items": {
             "type": "object",
             "properties": {"id": _STRINGA, "title": _STRINGA,

@@ -70,7 +70,7 @@ class EsitoVoce:
                 "branch": self.branch}
 
 
-def _prompt_voce(voce: Voce, obiettivo_generale: str) -> str:
+def _prompt_voce(voce: Voce, obiettivo_generale: str, queue_id: str = "") -> str:
     """Il compito di un singolo lavoratore.
 
     L'obiettivo generale c'e' perche' senza di esso la voce non si capisce:
@@ -99,6 +99,24 @@ def _prompt_voce(voce: Voce, obiettivo_generale: str) -> str:
             "Occupati SOLO del pezzo qui sopra. Altri agenti stanno lavorando "
             "sugli altri in parallelo: non toccare file che non ti competono, "
             "e non riscrivere parti condivise se non e' proprio il tuo compito.",
+        ]
+    if queue_id:
+        # Chi lavora deve poter dire «questo e' piu' grande di quanto
+        # sembrava». Senza questa via d'uscita l'unico modo e' fallire: su una
+        # prova dal vivo un agente ha speso ventisei turni su una voce che
+        # erano tre, ha scritto cinque file e non ne ha dimostrato nessuno.
+        righe += [
+            "",
+            f"SEI SULLA VOCE `{voce.id}` DELLA CODA `{queue_id}`.",
+            "Se ti accorgi che e' piu' grande di un solo lavoro — piu' file "
+            "indipendenti, o passi che vanno in ordine — NON provare a farla "
+            "tutta: spezzala, con",
+            f'  tool:queue_add {{"queue_id": "{queue_id}", '
+            f'"replaces": "{voce.id}", "reason": "PERCHE ERA TROPPO GRANDE", '
+            '"items": [{"id": "...", "title": "...", "verify": "..."}]}',
+            "Spezzare al secondo o terzo turno vale piu' che arrivare al "
+            "ventiseiesimo senza aver dimostrato niente. Dopo averla spezzata "
+            "il tuo compito e' finito: chiudi.",
         ]
     if verifica:
         righe += [
@@ -186,7 +204,22 @@ def run_queue(
                 should_cancel=annullato, deliver=deliver,
             )
             emetti({"type": "item_finished", "worker": nome, **esito.to_dict()})
-            emetti({"type": "fanout_progress", **coda.progress()})
+            avanzamento = coda.progress()
+            emetti({"type": "fanout_progress", **avanzamento})
+            attivita.aggiorna(
+                voce_attivita,
+                progress="%s fatte su %s" % (avanzamento["done"], avanzamento["total"]),
+                queue=avanzamento,
+            )
+
+    # Il ventaglio nel registro: chi apre il Developer Studio deve vedere che
+    # c'e' un lavoro grande in corso, non solo i singoli run che lo compongono.
+    from core.harness import attivita
+
+    voce_attivita = attivita.apri(
+        "ventaglio", obiettivo or f"coda {queue_id}",
+        workspace_root=workspace_root, queue_id=queue_id, workers=numero,
+    )
 
     yield {"type": "fanout_started", "workers": numero, **coda.progress()}
 
@@ -220,7 +253,13 @@ def run_queue(
         for evento in eventi:
             yield evento
 
-    yield {"type": "fanout_finished", "cancelled": annullato(), **coda.progress()}
+    finale = coda.progress()
+    attivita.chiudi(
+        voce_attivita,
+        "annullato" if annullato() else "finito",
+        queue=finale,
+    )
+    yield {"type": "fanout_finished", "cancelled": annullato(), **finale}
 
 
 def _file_modificati(stato: Dict[str, Any]) -> List[str]:
@@ -276,7 +315,8 @@ def _esegui_voce(
 
     try:
         for evento in stream_admin_agent_turn(
-            messages=[{"role": "user", "content": _prompt_voce(voce, obiettivo)}],
+            messages=[{"role": "user",
+                       "content": _prompt_voce(voce, obiettivo, coda.queue_id)}],
             workspace_root=workspace_root,
             model_name=model_name,
             max_turns=max_turns,

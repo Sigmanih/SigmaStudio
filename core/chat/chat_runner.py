@@ -1170,6 +1170,23 @@ Contenuto completo...
         if retrieved_memory:
             volatile_parts.append(retrieved_memory)
 
+        # Se il Developer Studio sta lavorando, la chat deve saperlo: scrivono
+        # negli stessi file. Senza, la chat propone modifiche su un albero che
+        # sta cambiando sotto, e l'utente si ritrova due versioni dello stesso
+        # file senza capire perche'.
+        #
+        # Sta nella coda volatile e non nel prefisso stabile per la ragione
+        # opposta a quella dell'albero della conoscenza: questa riga cambia
+        # ogni pochi secondi, e metterla nel prefisso lo invaliderebbe a ogni
+        # messaggio. E' anche vuota quasi sempre, quindi non costa nulla.
+        try:
+            from core.harness import attivita
+            riga_agenti = attivita.riga_per_la_chat()
+            if riga_agenti:
+                volatile_parts.append(riga_agenti)
+        except Exception as exc:
+            log.debug("Registro delle attivita' non leggibile: %s", exc)
+
         # Open workspace context files
         context_files = req.get("context", {}).get("open_files", [])
         if context_files:

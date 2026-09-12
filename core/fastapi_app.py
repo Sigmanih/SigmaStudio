@@ -663,6 +663,22 @@ except Exception as _mod_err:
     log.warning(f"[FastAPI] Avviso inizializzazione ModuleLoader: {_mod_err}")
 
 
+@app.get("/api/harness/activity")
+async def api_harness_activity():
+    """Cosa sta girando adesso, chiunque lo abbia lanciato.
+
+    Un ventaglio lanciato da riga di comando non compariva da nessuna parte:
+    chi guardava l'interfaccia vedeva un sistema fermo mentre due agenti
+    stavano riscrivendo il progetto. Lo stream degli eventi vale solo per chi
+    e' attaccato allo stream, e non e' quasi mai chi apre la pagina.
+    """
+    from core.harness import attivita
+    try:
+        return {"success": True, **attivita.stato()}
+    except Exception as exc:
+        return {"success": False, "error": str(exc), "busy": False, "running": []}
+
+
 @app.get("/api/harness/queues")
 async def api_harness_queues():
     """Le code di lavoro presenti, con il loro stato.

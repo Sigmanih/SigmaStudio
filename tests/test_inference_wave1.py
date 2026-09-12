@@ -283,6 +283,15 @@ class TestPrefixReuseAcrossTurns(unittest.TestCase):
     def test_an_ordinary_question_carries_no_volatile_tail(self):
         # With nothing volatile to append, the last turn is the question alone
         # and the divergence point moves to the end of the conversation.
+        #
+        # «Nothing volatile» now includes: no agent is running. When one is,
+        # the chat is told — it and the agents write to the same files — and
+        # that line belongs precisely here, in the tail, because it changes
+        # every few seconds. The property under test is the empty case.
+        from core.harness import attivita
+        assert not attivita.attive(), (
+            "un agente in esecuzione aggiunge una riga alla coda volatile, "
+            "ed e' voluto: qui si misura il caso a riposo")
         captured = self._assemble("Cos'e' un numero primo?", [])
         self.assertEqual(
             captured["messages"][-1]["content"].strip(), "Cos'e' un numero primo?"

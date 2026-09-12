@@ -214,3 +214,103 @@ class TestIlToolEDavveroRaggiungibile:
         from core.harness.loop import ADMIN_DEVELOPER_SYSTEM_PROMPT
 
         assert "`queue_add`" in ADMIN_DEVELOPER_SYSTEM_PROMPT
+
+
+class TestUnaVoceTroppoGrandeSiSpezza:
+    """La mossa che mancava a chi sta lavorando. Su una prova dal vivo un
+    agente ha speso 26 turni su una voce che erano tre, ha scritto cinque file
+    e non ne ha dimostrato nessuno: non aveva modo di dire «questa e' piu'
+    grande di quanto sembrava» se non fallendo."""
+
+    def test_i_pezzi_prendono_il_posto_della_voce(self, coda):
+        coda.add_many([{"id": "grande", "title": "fai tutto"}])
+        esito = coda.sostituisci("grande", [
+            {"id": "p1", "title": "primo pezzo"},
+            {"id": "p2", "title": "secondo pezzo", "depends_on": ["p1"]},
+        ], motivo="erano tre lavori")
+
+        assert esito["ok"] is True
+        assert esito["created"] == ["p1", "p2"]
+        voci = {v.id: v for v in coda.items()}
+        assert voci["grande"].state == "done"
+        assert voci["grande"].result["spezzata_in"] == ["p1", "p2"]
+        assert voci["grande"].result["motivo"] == "erano tre lavori"
+
+    def test_chi_aspettava_la_voce_adesso_aspetta_i_pezzi(self, coda):
+        """Senza, la dipendenza sarebbe soddisfatta appena si chiude la voce
+        spezzata — cioe' subito, prima che i pezzi esistano, che e' il
+        contrario di cio' che quella dipendenza voleva dire."""
+        coda.add_many([
+            {"id": "grande", "title": "fai tutto"},
+            {"id": "dopo", "title": "il seguito", "depends_on": ["grande"]},
+        ])
+        coda.sostituisci("grande", [{"id": "p1", "title": "pezzo"}])
+
+        voci = {v.id: v for v in coda.items()}
+        assert voci["dopo"].depends_on == ["p1"]
+        assert [v.id for v in coda.items() if v.state == "todo"] == ["dopo", "p1"]
+        assert coda.claim("w1").id == "p1", "il seguito deve ancora aspettare"
+
+    def test_i_pezzi_ereditano_cio_che_la_voce_aspettava(self, coda):
+        """Se la voce non poteva partire, i suoi pezzi non possono partire."""
+        coda.add_many([
+            {"id": "prima", "title": "prima"},
+            {"id": "grande", "title": "fai tutto", "depends_on": ["prima"]},
+        ])
+        coda.sostituisci("grande", [{"id": "p1", "title": "pezzo"}])
+        voci = {v.id: v for v in coda.items()}
+        assert "prima" in voci["p1"].depends_on
+
+    def test_spezzare_una_voce_che_non_esiste_viene_detto(self, coda):
+        esito = coda.sostituisci("mai_esistita", [{"id": "x", "title": "x"}])
+        assert esito["ok"] is False
+        assert "non esiste" in esito["error"]
+
+    def test_senza_pezzi_non_si_spezza_niente(self, coda):
+        coda.add_many([{"id": "grande", "title": "fai tutto"}])
+        esito = coda.sostituisci("grande", [])
+        assert esito["ok"] is False
+        assert {v.id: v.state for v in coda.items()}["grande"] == "todo"
+
+
+class TestLAgenteSaSpezzare:
+    def test_il_tool_accetta_replaces(self, coda, tmp_path):
+        coda.add_many([{"id": "grande", "title": "fai tutto"}])
+        esito = execute_admin_tool("queue_add", {
+            "queue_id": "prova", "replaces": "grande",
+            "reason": "erano tre lavori indipendenti",
+            "items": [{"id": "a", "title": "uno"}, {"id": "b", "title": "due"}],
+        }, workspace_root=str(tmp_path))
+
+        assert esito["success"] is True
+        assert esito["replaced"] == "grande"
+        assert esito["added"] == 2
+        assert "spezzata" in esito["message"]
+
+    def test_lo_schema_lo_dichiara(self):
+        from core.harness.tool_schema import TOOL_SCHEMAS
+
+        schema = [s for s in TOOL_SCHEMAS
+                  if s["function"]["name"] == "queue_add"][0]
+        proprieta = schema["function"]["parameters"]["properties"]
+        assert "replaces" in proprieta and "reason" in proprieta
+
+    def test_il_prompt_della_voce_glielo_dice(self):
+        """Una via d'uscita che l'agente non sa di avere non e' una via
+        d'uscita."""
+        from core.harness.fanout import _prompt_voce
+        from core.harness.workqueue import Voce
+
+        testo = _prompt_voce(Voce(id="03_rotte", title="Scrivi le rotte"),
+                             "obiettivo", "biblioteca")
+        assert "03_rotte" in testo
+        assert '"replaces": "03_rotte"' in testo
+        assert "spezzala" in testo
+
+    def test_senza_coda_il_prompt_non_ne_parla(self):
+        """Fuori da un ventaglio non c'e' nessuna voce da spezzare."""
+        from core.harness.fanout import _prompt_voce
+        from core.harness.workqueue import Voce
+
+        testo = _prompt_voce(Voce(id="x", title="fai"), "obiettivo")
+        assert "replaces" not in testo

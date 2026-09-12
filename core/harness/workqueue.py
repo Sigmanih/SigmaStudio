@@ -234,6 +234,59 @@ class WorkQueue:
             self._salva()
         return create
 
+    def sostituisci(self, item_id: str, voci: Iterable[Any],
+                    motivo: str = "") -> Dict[str, Any]:
+        """Una voce troppo grande diventa le voci piu' piccole che la compongono.
+
+        E' la mossa che mancava a chi sta lavorando. Su una prova dal vivo un
+        agente ha speso ventisei turni su una voce che era tre voci, ha scritto
+        cinque file e non ne ha dimostrato nessuno: non aveva modo di dire
+        «questa e' piu' grande di quanto sembrava» se non fallendo.
+
+        La voce originale non viene cancellata ma chiusa come `done` con il
+        motivo: cancellarla perderebbe la traccia di cosa era stato chiesto, e
+        lasciarla `todo` la farebbe riprendere da qualcun altro.
+
+        **Chi la aspettava aspetta i pezzi.** Senza questo, una dipendenza
+        verso la voce spezzata sarebbe soddisfatta appena la si chiude — cioe'
+        subito, prima che i pezzi siano fatti, che e' esattamente il contrario
+        di cio' che quella dipendenza voleva dire.
+        """
+        with self._lock:
+            originale = self._voci.get(str(item_id))
+            if originale is None:
+                return {"ok": False, "error": f"la voce '{item_id}' non esiste"}
+
+            avvisi: List[str] = []
+            nuove = self.add_many(voci, avvisi=avvisi)
+            if not nuove:
+                return {"ok": False, "error": "nessuna voce nuova da mettere al posto",
+                        "warnings": avvisi}
+
+            ids_nuove = [v.id for v in nuove]
+            for voce in self._voci.values():
+                if voce.id in ids_nuove or originale.id not in voce.depends_on:
+                    continue
+                voce.depends_on = [d for d in voce.depends_on if d != originale.id]
+                voce.depends_on.extend(i for i in ids_nuove if i not in voce.depends_on)
+
+            # I pezzi ereditano cio' che la voce originale aspettava: se non
+            # poteva partire prima, non possono partire nemmeno loro.
+            for nuova in nuove:
+                for dipendenza in originale.depends_on:
+                    if dipendenza not in nuova.depends_on and dipendenza != nuova.id:
+                        nuova.depends_on.append(dipendenza)
+
+            originale.state = FATTA
+            originale.result = {"spezzata_in": ids_nuove, "motivo": str(motivo or "")}
+            originale.error = ""
+            originale.updated_at = time.time()
+            avvisi.extend(self._spezza_cicli())
+            self._salva()
+            log.info("[WorkQueue] '%s' spezzata in %s", item_id, ", ".join(ids_nuove))
+            return {"ok": True, "replaced": originale.id, "created": ids_nuove,
+                    "warnings": avvisi}
+
     def _spezza_cicli(self) -> List[str]:
         """Toglie gli archi che chiudono un anello. Da chiamare nel lucchetto.
 
