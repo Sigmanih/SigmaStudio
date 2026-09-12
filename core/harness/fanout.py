@@ -154,6 +154,13 @@ def run_queue(
         while not annullato():
             voce = coda.claim(worker=nome)
             if voce is None:
+                # Niente da prendere non vuol dire niente da fare: l'unica
+                # voce rimasta puo' essere in attesa di quella che un altro
+                # lavoratore ha in mano adesso. Andarsene qui chiuderebbe i
+                # thread con la coda a meta'.
+                if coda.attesa_utile():
+                    time.sleep(0.5)
+                    continue
                 return
             emetti({"type": "item_started", "worker": nome,
                     "item_id": voce.id, "title": voce.title})

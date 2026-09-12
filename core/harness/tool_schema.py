@@ -96,12 +96,28 @@ TOOL_SCHEMAS: List[Dict[str, Any]] = [
     _f("spec", "Registra cosa significa 'finito': la richiesta riformulata e i criteri verificabili.",
        {"understanding": _STRINGA,
         "criteria": {"type": "array", "items": _STRINGA}}, ["understanding", "criteria"]),
-    _f("pipeline", "Registra i task del piano per l'obiettivo corrente.",
+    _f("pipeline", "Registra i task del piano per l'obiettivo corrente, con ruolo e dipendenze.",
        {"tasks": {"type": "array", "items": {
            "type": "object",
            "properties": {"id": _STRINGA, "title": _STRINGA, "status": _STRINGA,
-                          "role": _STRINGA},
+                          "role": _STRINGA, "description": _STRINGA,
+                          "depends_on": {"type": "array", "items": _STRINGA},
+                          "files": {"type": "array", "items": _STRINGA},
+                          "verify": _STRINGA},
            "required": ["id", "title"]}}}, ["tasks"]),
+    _f("queue_add",
+       "Mette il lavoro in una coda persistente, che piu' agenti in parallelo "
+       "consumeranno. Da usare quando il lavoro e' troppo grande per un run "
+       "solo: una voce per file o per modulo, indipendenti fra loro.",
+       {"queue_id": _STRINGA,
+        "goal": _STRINGA,
+        "items": {"type": "array", "items": {
+            "type": "object",
+            "properties": {"id": _STRINGA, "title": _STRINGA,
+                           "verify": _STRINGA,
+                           "depends_on": {"type": "array", "items": _STRINGA}},
+            "required": ["id", "title"]}}},
+       ["queue_id", "items"]),
     _f("complete_goal", "Dichiara finito il lavoro, con la prova di ogni criterio.",
        {"summary": _STRINGA,
         "criteria": {"type": "array", "items": {

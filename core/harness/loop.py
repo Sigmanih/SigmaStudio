@@ -311,9 +311,30 @@ che la pagina si veda.
 {"path": "PERCORSO"}
 
 `pipeline` — registra i task del TUO piano per l'obiettivo corrente.
-{"tasks": [{"id": "1", "title": "TITOLO", "status": "in_progress"}]}
+{"tasks": [{"id": "1", "title": "TITOLO", "role": "coder",
+            "description": "COSA VA FATTO, PER ESTESO",
+            "depends_on": [], "files": ["PERCORSO"], "status": "in_progress"}]}
 I titoli devono descrivere QUESTO obiettivo, non un esempio generico.
+`role` e' uno fra architect, coder, reviewer, tester, devops: decide CHI
+esegue il task. `depends_on` elenca gli id dei task che devono essere finiti
+prima, e chi non dipende da nessuno parte subito: mettere una dipendenza dove
+non serve trasforma un lavoro parallelo in una fila indiana.
+`description` e' l'istruzione vera: il titolo e' una riga, e chi esegue il
+task vede solo cio' che scrivi qui.
 Emettilo una volta all'inizio e aggiornalo solo quando lo stato cambia davvero.
+
+`queue_add` — mette il lavoro in una coda che piu' agenti in parallelo
+consumeranno. Usalo quando il lavoro NON ci sta in un run solo: cento file da
+cambiare non si fanno in venti turni, e a meta' strada non ricorderesti piu'
+cosa hai gia' sistemato. Una voce per file o per modulo, indipendenti.
+{"queue_id": "NOME_DEL_LAVORO", "goal": "L'OBIETTIVO COMPLESSIVO",
+ "items": [{"id": "01_nome", "title": "COSA FARE, PER ESTESO",
+            "verify": "COMANDO CHE LO DIMOSTRA", "depends_on": []}]}
+Il `title` di una voce e' tutto cio' che l'agente che la prendera' vedra':
+scrivilo come se parlassi a qualcuno che non ha letto niente di questa
+conversazione — quali file, quali funzioni, cosa NON toccare.
+`verify` e' il comando che dimostra quella voce: senza, l'agente deve
+inventarsi come dimostrarla, e spesso non ci riesce.
 
 `spec` — registra cosa significa "finito" per questo obiettivo. Primo tool.
 {"understanding": "LA RICHIESTA RIFORMULATA PER ESTESO",
@@ -1466,6 +1487,54 @@ def _execute_admin_tool_impl(
             "tasks": normalized_tasks,
             "warnings": avvisi,
             "success": True,
+            "message": messaggio,
+        }
+
+    elif tool_name in ("queue_add", "add_to_queue", "enqueue", "coda"):
+        # Il ponte fra chi pianifica e chi esegue in parallelo. Prima esisteva
+        # solo `POST /api/harness/queue`: la coda si poteva riempire soltanto
+        # da fuori, e un agente che aveva appena guardato il progetto e capito
+        # come spezzare il lavoro non aveva modo di scriverlo da nessuna parte.
+        from core.harness.workqueue import get_queue
+
+        queue_id = str(params.get("queue_id") or params.get("id") or "").strip()
+        voci = params.get("items") or params.get("voci") or params.get("tasks") or []
+        if isinstance(voci, dict):
+            voci = [voci]
+        if not queue_id:
+            return {
+                "tool": "queue_add", "success": False,
+                "error": ("Manca 'queue_id': e' il nome della coda, e serve per "
+                          "ritrovarla. Usa un nome che descriva il lavoro, per "
+                          'esempio {"queue_id": "i18n_moduli", "items": [...]}.'),
+            }
+        if not isinstance(voci, list) or not voci:
+            return {
+                "tool": "queue_add", "success": False,
+                "error": ("Manca l'elenco 'items'. Ogni voce e' un pezzo di "
+                          "lavoro indipendente, nella forma "
+                          '{"id": "01_nome", "title": "cosa fare, per esteso", '
+                          '"verify": "comando che lo dimostra", '
+                          '"depends_on": ["id di una voce precedente"]}.'),
+            }
+
+        coda = get_queue(queue_id, goal=str(params.get("goal") or ""))
+        avvisi: List[str] = []
+        aggiunte = coda.add_many(voci, avvisi=avvisi)
+        stato = coda.progress()
+        messaggio = (
+            f"Coda '{queue_id}': {len(aggiunte)} voci aggiunte, "
+            f"{stato['total']} in totale ({stato['ready']} pronte a partire)."
+        )
+        if avvisi:
+            messaggio += " Correzioni: " + "; ".join(avvisi)
+        return {
+            "tool": "queue_add",
+            "success": True,
+            "queue_id": queue_id,
+            "added": len(aggiunte),
+            "warnings": avvisi,
+            "progress": stato,
             "message": messaggio,
         }
 
@@ -2759,6 +2828,8 @@ def _stream_agent_turn_impl(
                 # piano andava bene: le correzioni si dicono.
                 for avviso in result.get("warnings", []) or []:
                     obs_str += f"\nATTENZIONE: {avviso}"
+            elif t_name in ("queue_add", "add_to_queue", "enqueue", "coda"):
+                obs_str += str(result.get("message") or result.get("error") or "")
             elif t_name in ("complete_goal", "finish_task", "task_complete"):
                 if result.get("success"):
                     obs_str += f"Obiettivo finale completato: {result.get('summary', '')}"

@@ -696,8 +696,12 @@ async def api_harness_queue_create(request: Request):
             "success": False, "error": "Parametro 'queue_id' richiesto."})
 
     coda = get_queue(queue_id, goal=str(body.get("goal") or ""))
-    aggiunte = coda.add_many(body.get("items") or [])
-    return {"success": True, "added": len(aggiunte), **coda.progress()}
+    # Le dipendenze tolte perche' impossibili vanno dette: una voce che aspetta
+    # un id inesistente non parte mai, e in silenzio sembrerebbe solo lenta.
+    avvisi: list = []
+    aggiunte = coda.add_many(body.get("items") or [], avvisi=avvisi)
+    return {"success": True, "added": len(aggiunte), "warnings": avvisi,
+            **coda.progress()}
 
 
 @app.post("/api/harness/fanout")

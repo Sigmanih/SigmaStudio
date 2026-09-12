@@ -81,6 +81,10 @@ ROLE_ARCHITECT = DevRole(
     max_turns=10,
     tools=(
         "list_dir", "glob", "read_file", "search_code", "pipeline",
+        # Chi spezza il lavoro deve anche poterlo depositare: senza questo,
+        # un piano da cento voci restava una lista che nessuno poteva
+        # eseguire in parallelo.
+        "queue_add",
         "git_status", "git_log",
     ),
     focus_areas=(
@@ -103,7 +107,14 @@ punti di impatto. Decompon obiettivi complessi in task atomici e ordinati.
    - Ruolo consigliato (coder, tester, reviewer, devops)
 4. NON scrivere codice: il tuo output è il PIANO, non l'implementazione.
 5. Segnala rischi, breaking changes e dipendenze circolari.
-6. Usa il tool `pipeline` per registrare il piano come DAG di task.
+6. Usa il tool `pipeline` per registrare il piano come DAG di task, con
+   `role`, `description` e `depends_on` per ognuno: senza `role` il task va al
+   Coder, senza `depends_on` parte subito, e senza `description` chi lo esegue
+   vede soltanto il titolo.
+7. Se il lavoro non sta in un run solo — decine di file, o moduli indipendenti
+   — usa `queue_add` invece di `pipeline`: la coda sopravvive ai run e la
+   consumano piu' agenti in parallelo. Una voce per file o per modulo, con il
+   comando che la dimostra in `verify`.
 
 ## OUTPUT ATTESO
 Un piano strutturato con task, dipendenze e assegnazione ruoli, pronto per
