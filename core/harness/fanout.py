@@ -134,6 +134,18 @@ def run_queue(
     `deliver` lascia che ogni run consegni il proprio pezzo (branch, `dev`,
     richiesta). Spento, il lavoro resta sui branch dei singoli run.
     """
+    # Il confine dei percorsi impedisce di uscire dalla radice, e non dice
+    # niente su quanto quella radice sia larga: con `C:/` come radice, «non
+    # uscire» non vieta piu' niente. Qui si rifiuta prima di partire, perche'
+    # N agenti in parallelo su un disco intero e' esattamente lo scenario che
+    # nessuno vuole scoprire a cose fatte.
+    from core.progetti import radice_pericolosa
+
+    motivo = radice_pericolosa(workspace_root)
+    if motivo:
+        yield {"type": "error", "error": motivo}
+        return
+
     coda = get_queue(queue_id, goal=goal)
     obiettivo = coda.goal or goal
     numero = max(1, min(int(workers or LAVORATORI_PREDEFINITI), LAVORATORI_MASSIMI))
