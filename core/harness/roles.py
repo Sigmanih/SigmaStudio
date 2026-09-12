@@ -383,8 +383,6 @@ class RoleEngine:
         max_turns: Optional[int] = None,
         session_id: Optional[str] = None,
         review_writes: bool = False,
-        isolate_worktree: bool = False,
-        review_run: bool = False,
         verify_command: str = "",
     ) -> Generator[Dict[str, Any], None, None]:
         """Generate a response using a specific role, with streaming.
@@ -458,14 +456,16 @@ class RoleEngine:
             session_id=session_id,
             allowed_tools=list(role.tools) or None,
             policy_label=role.name,
-            # Le stesse due garanzie della chat libera valgono per una fase
-            # orchestrata: dichiararle solo nel ciclo e non passarle di qui
-            # significherebbe che l'orchestratore — l'unico posto dove girano
-            # cinque ruoli di fila senza che nessuno guardi — e' anche l'unico
-            # che non puo' usarle.
+            # La revisione per scrittura e la verifica dichiarata sono per
+            # ruolo, e passano di qui.
+            #
+            # L'isolamento e la revisione di fine run NON sono per ruolo, e
+            # infatti non compaiono: l'unita' su cui valgono e' l'obiettivo.
+            # Dando un worktree a ogni ruolo si otterrebbero cinque alberi che
+            # non si vedono fra loro, e il Tester non troverebbe i file che il
+            # Coder ha appena scritto. Li apre l'orchestratore, una volta sola,
+            # e ogni ruolo li eredita attraverso `workspace_root`.
             review_writes=review_writes,
-            isolate_worktree=isolate_worktree,
-            review_run=review_run,
             verify_command=verify_command,
         ):
             yield event

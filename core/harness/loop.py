@@ -2977,7 +2977,7 @@ def _stream_agent_turn_impl(
     # e' il posto dove far attendere chi ha appena premuto stop.
     applica = bool(goal_reached)
     if review_run and session_wt is not None and review_gate is not None:
-        for evento in _rivedi_lavoro_del_run(
+        for evento in rivedi_lavoro_del_run(
             session_wt, review_gate, session_id, goal_reached
         ):
             if evento.get("type") == "__decisione__":
@@ -2998,7 +2998,7 @@ def _stream_agent_turn_impl(
         delivery.in_pull_request_mode() if deliver is None else bool(deliver)
     )
     if applica and session_wt is not None and consegna_prevista:
-        for evento in _consegna_il_lavoro(session_wt, workspace_root, ledger):
+        for evento in consegna_il_lavoro(session_wt, workspace_root, ledger):
             if evento.get("type") == "__consegnato__":
                 consegnato = bool(evento.get("ok"))
                 continue
@@ -3084,7 +3084,7 @@ def _sincronizza_moduli_toccati(ledger: Any, obiettivo: str = "") -> Optional[Di
 MAX_CARATTERI_DIFF_RUN = 60_000
 
 
-def _rivedi_lavoro_del_run(
+def rivedi_lavoro_del_run(
     sessione_wt: Any,
     gate: Any,
     session_id: Optional[str],
@@ -3146,7 +3146,7 @@ def _rivedi_lavoro_del_run(
     yield {"type": "__decisione__", "apply": applica}
 
 
-def _consegna_il_lavoro(
+def consegna_il_lavoro(
     sessione_wt: Any,
     workspace_root: str,
     ledger: Any,

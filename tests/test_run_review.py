@@ -120,12 +120,12 @@ class TestLaDecisioneSulRun:
         return Finto()
 
     def test_approvare_fa_applicare(self):
-        from core.harness.loop import _rivedi_lavoro_del_run
+        from core.harness.loop import rivedi_lavoro_del_run
         import threading
 
         gate = review.ReviewGate(timeout_s=5.0)
         eventi = []
-        gen = _rivedi_lavoro_del_run(self._finto_worktree(), gate, "s1", True)
+        gen = rivedi_lavoro_del_run(self._finto_worktree(), gate, "s1", True)
 
         primo = next(gen)
         assert primo["type"] == "run_diff_proposed"
@@ -138,11 +138,11 @@ class TestLaDecisioneSulRun:
         assert eventi[-1] == {"type": "__decisione__", "apply": True}
 
     def test_rifiutare_non_applica_ma_dice_dov_e_il_lavoro(self):
-        from core.harness.loop import _rivedi_lavoro_del_run
+        from core.harness.loop import rivedi_lavoro_del_run
         import threading
 
         gate = review.ReviewGate(timeout_s=5.0)
-        gen = _rivedi_lavoro_del_run(self._finto_worktree(), gate, "s2", True)
+        gen = rivedi_lavoro_del_run(self._finto_worktree(), gate, "s2", True)
         proposta = next(gen)
         threading.Timer(0.05, lambda: gate.decide(proposta["id"], "rejected")).start()
         eventi = list(gen)
@@ -154,14 +154,14 @@ class TestLaDecisioneSulRun:
 
     def test_il_silenzio_non_applica(self):
         """Come per la revisione per file: chi non risponde non ha approvato."""
-        from core.harness.loop import _rivedi_lavoro_del_run
+        from core.harness.loop import rivedi_lavoro_del_run
 
         gate = review.ReviewGate(timeout_s=0.15)
-        eventi = list(_rivedi_lavoro_del_run(self._finto_worktree(), gate, "s3", True))
+        eventi = list(rivedi_lavoro_del_run(self._finto_worktree(), gate, "s3", True))
         assert eventi[-1] == {"type": "__decisione__", "apply": False}
 
     def test_un_run_senza_modifiche_non_chiede_niente(self):
-        from core.harness.loop import _rivedi_lavoro_del_run
+        from core.harness.loop import rivedi_lavoro_del_run
 
         class Vuoto:
             branch_name = "b"
@@ -170,11 +170,11 @@ class TestLaDecisioneSulRun:
             def diff_from_main(self): return ""
 
         gate = review.ReviewGate(timeout_s=5.0)
-        eventi = list(_rivedi_lavoro_del_run(Vuoto(), gate, "s4", True))
+        eventi = list(rivedi_lavoro_del_run(Vuoto(), gate, "s4", True))
         assert eventi == [{"type": "__decisione__", "apply": True}]
 
     def test_un_diff_enorme_viene_troncato_e_lo_dichiara(self):
-        from core.harness.loop import MAX_CARATTERI_DIFF_RUN, _rivedi_lavoro_del_run
+        from core.harness.loop import MAX_CARATTERI_DIFF_RUN, rivedi_lavoro_del_run
 
         class Enorme:
             branch_name = "b"
@@ -183,7 +183,7 @@ class TestLaDecisioneSulRun:
             def diff_from_main(self): return "+riga\n" * (MAX_CARATTERI_DIFF_RUN // 2)
 
         gate = review.ReviewGate(timeout_s=0.15)
-        gen = _rivedi_lavoro_del_run(Enorme(), gate, "s5", True)
+        gen = rivedi_lavoro_del_run(Enorme(), gate, "s5", True)
         proposta = next(gen)
 
         assert proposta["truncated"] is True
@@ -195,7 +195,7 @@ class TestLaDecisioneSulRun:
 
     def test_un_errore_nel_calcolo_non_blocca_la_chiusura(self):
         """La revisione e' una garanzia in piu', non un punto di rottura."""
-        from core.harness.loop import _rivedi_lavoro_del_run
+        from core.harness.loop import rivedi_lavoro_del_run
 
         class Rotto:
             branch_name = "b"
@@ -204,7 +204,7 @@ class TestLaDecisioneSulRun:
             def diff_from_main(self): return ""
 
         gate = review.ReviewGate(timeout_s=5.0)
-        eventi = list(_rivedi_lavoro_del_run(Rotto(), gate, "s6", True))
+        eventi = list(rivedi_lavoro_del_run(Rotto(), gate, "s6", True))
         assert eventi == [{"type": "__decisione__", "apply": True}]
 
 
@@ -250,12 +250,29 @@ class TestRaggiungibilita:
         assert 'body.get("review_run")' in sorgente
         assert "review_run=review_run" in sorgente
 
-    def test_anche_i_ruoli_la_passano(self):
-        import inspect
-        from core.harness.roles import RoleEngine
+    def test_la_squadra_la_chiede_per_l_obiettivo_non_per_ruolo(self):
+        """La revisione di fine run guarda **tutto** il lavoro in una volta.
 
-        assert "review_run" in inspect.signature(RoleEngine.generate_with_role).parameters
-        assert "review_run=review_run" in inspect.getsource(RoleEngine.generate_with_role)
+        Con cinque ruoli in fila, «fine run» non e' la fine del Coder: e' la
+        fine dell'obiettivo. Chiederla per ruolo darebbe cinque revisioni
+        parziali di cinque worktree diversi, ognuna su un pezzo che da solo non
+        si capisce. Per questo il parametro sta su `execute_goal` e non su
+        `generate_with_role`.
+        """
+        import inspect
+
+        from core.harness.roles import RoleEngine
+        from core.modules.sigma_developer_lab.orchestrator import DevOrchestrator
+
+        assert "review_run" in inspect.signature(DevOrchestrator.execute_goal).parameters
+        assert "review_run" not in inspect.signature(
+            RoleEngine.generate_with_role).parameters, (
+            "un ruolo non ha una 'fine run' propria da far rivedere")
+
+        sorgente = inspect.getsource(DevOrchestrator._rivedi_e_consegna)
+        assert "rivedi_lavoro_del_run" in sorgente, (
+            "la squadra deve usare la stessa revisione del singolo agente, "
+            "non una seconda che diverge")
 
     def test_chiederla_senza_isolamento_lo_dice_invece_di_fingere(self):
         import inspect
