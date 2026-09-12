@@ -1366,32 +1366,24 @@ def execute_admin_tool(
         return {"tool": "search_code", "query": query, "path": raw_path, **res}
 
     elif tool_name in ("pipeline", "tasks", "set_tasks", "update_pipeline"):
-        raw_tasks = params.get("tasks") or params.get("task_list") or params.get("pipeline") or params.get("items") or []
-        if isinstance(raw_tasks, str):
-            try:
-                raw_tasks = json.loads(raw_tasks)
-            except Exception:
-                lines = [l.strip("- *0123456789.) ").strip() for l in raw_tasks.splitlines() if l.strip()]
-                raw_tasks = [{"id": str(i+1), "title": l, "status": "pending"} for i, l in enumerate(lines)]
+        # La normalizzazione sta in `core.harness.plan` perche' non e' piu'
+        # rinominare tre chiavi: tiene ruolo, descrizione e dipendenze — che
+        # l'Architect scrive e che qui venivano scartate — e corregge le
+        # dipendenze impossibili dicendo cosa ha corretto.
+        from core.harness.plan import normalizza_piano
+        raw_tasks = (params.get("tasks") or params.get("task_list")
+                     or params.get("pipeline") or params.get("items") or [])
+        normalized_tasks, avvisi = normalizza_piano(raw_tasks)
 
-        normalized_tasks = []
-        if isinstance(raw_tasks, list):
-            for i, t in enumerate(raw_tasks):
-                if isinstance(t, dict):
-                    t_id = str(t.get("id") or (i + 1))
-                    t_title = str(t.get("title") or t.get("name") or t.get("task") or f"Task {i+1}")
-                    t_status = str(t.get("status") or "pending").lower()
-                    if t_status not in ("pending", "in_progress", "done"):
-                        t_status = "done" if "complet" in t_status or "done" in t_status else ("in_progress" if "prog" in t_status or "corr" in t_status else "pending")
-                    normalized_tasks.append({"id": t_id, "title": t_title, "status": t_status})
-                elif isinstance(t, str) and t.strip():
-                    normalized_tasks.append({"id": str(i+1), "title": t.strip(), "status": "pending"})
-
+        messaggio = f"Pipeline aggiornata con {len(normalized_tasks)} sotto-task."
+        if avvisi:
+            messaggio += " Correzioni: " + "; ".join(avvisi)
         return {
             "tool": "pipeline",
             "tasks": normalized_tasks,
+            "warnings": avvisi,
             "success": True,
-            "message": f"Pipeline aggiornata con {len(normalized_tasks)} sotto-task."
+            "message": messaggio,
         }
 
     elif tool_name in ("restore_file", "undo_file", "restore_backup", "revert_file"):
@@ -2672,7 +2664,18 @@ def _stream_agent_turn_impl(
                         + "\n".join(f"  #{c['id']} {c['text']}" for c in registrati)
                     )
             elif t_name in ("pipeline", "tasks", "set_tasks", "update_pipeline"):
-                obs_str += f"Pipeline aggiornata: {len(result.get('tasks', []))} task registrati."
+                registrati = result.get("tasks", []) or []
+                obs_str += f"Pipeline aggiornata: {len(registrati)} task registrati."
+                per_ruolo: Dict[str, int] = {}
+                for t in registrati:
+                    per_ruolo[t.get("role", "")] = per_ruolo.get(t.get("role", ""), 0) + 1
+                if per_ruolo:
+                    obs_str += " Ruoli: " + ", ".join(
+                        f"{r} x{n}" for r, n in sorted(per_ruolo.items()))
+                # Un piano corretto di nascosto insegna al modello che quel
+                # piano andava bene: le correzioni si dicono.
+                for avviso in result.get("warnings", []) or []:
+                    obs_str += f"\nATTENZIONE: {avviso}"
             elif t_name in ("complete_goal", "finish_task", "task_complete"):
                 if result.get("success"):
                     obs_str += f"Obiettivo finale completato: {result.get('summary', '')}"
