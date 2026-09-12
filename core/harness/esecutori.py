@@ -394,6 +394,26 @@ class EsecutoreContenitore:
         )
 
 
+def _config_del_progetto(radice: Optional[str]) -> Dict[str, Any]:
+    """Il `sandbox.json` dentro la cartella del progetto, se c'e'.
+
+    E' la voce di chi conosce quel progetto, e vince su quella generale. Serve
+    perche' la domanda «host o contenitore» non ha una risposta sola: dipende
+    da dove stanno gli strumenti con cui quel lavoro si dimostra.
+    """
+    if not radice:
+        return {}
+    try:
+        percorso = Path(radice) / "sandbox.json"
+        if not percorso.is_file():
+            return {}
+        dati = json.loads(percorso.read_text(encoding="utf-8"))
+        return dati if isinstance(dati, dict) else {}
+    except (OSError, ValueError) as exc:
+        log.debug("[Sandbox] '%s/sandbox.json' non leggibile: %s", radice, exc)
+        return {}
+
+
 def scegli_esecutore(configurazione: Optional[Dict[str, Any]] = None,
                      radice: Optional[str] = None) -> Any:
     """L'esecutore che la configurazione descrive. Host se non dice altro.
@@ -404,7 +424,22 @@ def scegli_esecutore(configurazione: Optional[Dict[str, Any]] = None,
     ragione che sembra colpa dell'agente.
     """
     cfg = dict(configurazione or carica_config())
-    if str(cfg.get("mode") or "host").lower() != "container":
+
+    # Il progetto ha l'ultima parola sul dove, non solo sul con cosa.
+    #
+    # Misurato accendendo la sandbox su Sigma Studio stesso: dentro
+    # `python:3.12-slim` non ci sono ne' pytest ne' fastapi, quindi OGNI
+    # verifica falliva con «No module named pytest». Le dipendenze di questo
+    # progetto stanno nel `.venv` dell'host, e un worktree non se le porta.
+    #
+    # E' la distinzione giusta, non una toppa: il contenitore serve a un
+    # **progetto nuovo**, dove l'agente installa e compila ciò che vuole senza
+    # che nessuno debba fidarsi. Sigma Studio ha gia' il suo ambiente, sta in
+    # un repository versionato con revisione e worktree, e metterlo in un
+    # contenitore che non ha i suoi strumenti lo peggiora soltanto.
+    progetto = _config_del_progetto(radice) if radice else {}
+    modalita = str(progetto.get("mode") or cfg.get("mode") or "host").lower()
+    if modalita != "container":
         return EsecutoreHost()
 
     immagine = str(cfg.get("image") or IMMAGINE_PREDEFINITA)

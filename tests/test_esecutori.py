@@ -217,3 +217,79 @@ class TestLeRotteDellaSandbox:
         dati = _json.loads(asyncio.run(handle_sandbox(None)).body)
         assert dati["success"] is True
         assert "docker_available" in dati and "active" in dati
+
+
+class TestLaModalitaEDelProgetto:
+    """La domanda «host o contenitore» non ha una risposta sola: dipende da
+    dove stanno gli strumenti con cui quel lavoro si dimostra.
+
+    Misurato accendendo la sandbox su Sigma Studio stesso: dentro
+    `python:3.12-slim` non ci sono ne' pytest ne' fastapi, e OGNI verifica
+    falliva con «No module named pytest». Le dipendenze di questo progetto
+    stanno nel .venv dell'host, e un worktree non se le porta.
+    """
+
+    GENERALE = {"mode": "host", "image": "python:3.12-slim", "network": False,
+                "memory": "4g", "cpus": "2"}
+
+    def test_senza_sandbox_json_vale_la_configurazione_generale(self, tmp_path):
+        assert isinstance(E.scegli_esecutore(self.GENERALE, radice=str(tmp_path)),
+                          E.EsecutoreHost)
+
+    def test_il_progetto_puo_chiedere_il_contenitore(self, tmp_path):
+        (tmp_path / "sandbox.json").write_text(
+            json.dumps({"mode": "container"}), encoding="utf-8")
+        assert isinstance(E.scegli_esecutore(self.GENERALE, radice=str(tmp_path)),
+                          E.EsecutoreContenitore)
+
+    def test_il_progetto_puo_restare_sull_host_quando_il_generale_dice_contenitore(
+            self, tmp_path):
+        """E' il caso di Sigma Studio: il suo ambiente e' sull'host."""
+        (tmp_path / "sandbox.json").write_text(
+            json.dumps({"mode": "host"}), encoding="utf-8")
+        generale = dict(self.GENERALE, mode="container")
+        assert isinstance(E.scegli_esecutore(generale, radice=str(tmp_path)),
+                          E.EsecutoreHost)
+
+    def test_un_sandbox_json_rotto_non_cambia_niente(self, tmp_path):
+        (tmp_path / "sandbox.json").write_text("{rotto", encoding="utf-8")
+        generale = dict(self.GENERALE, mode="container")
+        assert isinstance(E.scegli_esecutore(generale, radice=str(tmp_path)),
+                          E.EsecutoreContenitore), "si ricade sul generale"
+
+    def test_senza_radice_decide_la_configurazione_generale(self):
+        assert isinstance(E.scegli_esecutore(self.GENERALE), E.EsecutoreHost)
+
+
+class TestLaCacheDelleDipendenze:
+    def test_i_volumi_ci_sono_e_hanno_nomi_stabili(self, tmp_path):
+        """Una cache con un nome diverso ogni volta non e' una cache."""
+        primo = E.EsecutoreContenitore().argv("npm install", str(tmp_path))
+        secondo = E.EsecutoreContenitore().argv("npm install", str(tmp_path))
+        volumi = [primo[i + 1] for i, v in enumerate(primo) if v == "-v"]
+        assert any(v.startswith("sigma-cache-npm:") for v in volumi)
+        assert primo == secondo
+
+    def test_le_cache_non_finiscono_nel_workspace(self, tmp_path):
+        """Dentro /lavoro, node_modules comparirebbe nel diff del run e chi
+        rivede si troverebbe diecimila file al posto delle tre che contano."""
+        argv = E.EsecutoreContenitore().argv("npm install", str(tmp_path))
+        montaggi = [argv[i + 1] for i, v in enumerate(argv) if v == "-v"]
+        for montaggio in montaggi:
+            dentro = montaggio.rsplit(":", 1)[-1]
+            if dentro == E.PUNTO_DI_MONTAGGIO:
+                continue
+            assert not dentro.startswith(E.PUNTO_DI_MONTAGGIO + "/"), dentro
+
+    def test_home_non_e_il_workspace(self):
+        """Con HOME in /lavoro npm ci scrive dentro la propria cache, e va
+        persa a ogni run perche' il worktree di un run isolato e' nuovo."""
+        assert E.AMBIENTE_CONTENITORE["HOME"] != E.PUNTO_DI_MONTAGGIO
+
+    def test_ogni_gestore_punta_alla_propria_cache_per_nome(self):
+        """Dedurla da HOME funziona finche' qualcuno non cambia HOME, e allora
+        il volume resta montato e inutilizzato: sembra a posto e non lo e'."""
+        ambiente = E.AMBIENTE_CONTENITORE
+        montati = set(E.CACHE_DIPENDENZE.values())
+        assert ambiente["npm_config_cache"] in montati
+        assert ambiente["PIP_CACHE_DIR"] in montati
