@@ -9,6 +9,8 @@ import ChatHistory from '../ChatHistory';
 import FilePicker from '../FilePicker';
 import ActionsBar from '../ActionsBar';
 import QuickConfigPanel from '../ui/QuickConfigPanel';
+import { exportChatPdf } from '../../../utils/exportChatPdf';
+import { loadMessagesFromStorage } from '../chatStorage';
 
 export default function ChatWorkspaceTab() {
   const { theme } = useApp();
@@ -56,6 +58,19 @@ export default function ChatWorkspaceTab() {
           }).join('\n\n---\n\n');
           navigator.clipboard.writeText(formatted);
         }}
+        onExportPdf={() => {
+          const msgs = core.messages || [];
+          if (msgs.length === 0) return;
+          const currentSession = core.sessions.find(s => s.id === core.activeSessionId) || {
+            name: 'Conversazione AI',
+            model: core.selectedModel
+          };
+          exportChatPdf({
+            session: currentSession,
+            messages: msgs,
+            selectedModel: core.selectedModel
+          });
+        }}
       />
 
       <div className="chat-workspace-body">
@@ -63,21 +78,30 @@ export default function ChatWorkspaceTab() {
           <ChatHistory
             showHistory={core.showHistory}
             onToggle={() => core.setShowHistory(!core.showHistory)}
-          sessions={core.sessions}
-          groupedSessions={groupedSessions}
-          sessionMessages={core.sessionMessages}
-          activeSessionId={core.activeSessionId}
-          onSwitchSession={handleSwitchSession}
-          editingSessionName={core.editingSessionName}
-          editNameValue={core.editNameValue}
-          onEditNameChange={core.setEditNameValue}
-          onFinishRename={core.handleFinishRename}
-          onKeyDown={core.handleRenameKeyDown}
-          onStartRename={core.handleStartRename}
-          onDeleteSession={core.handleDeleteSession}
-          onNewSession={handleNewSession}
-          onDuplicateSession={core.handleDuplicateSession}
-        />
+            sessions={core.sessions}
+            groupedSessions={groupedSessions}
+            sessionMessages={core.sessionMessages}
+            activeSessionId={core.activeSessionId}
+            onSwitchSession={handleSwitchSession}
+            editingSessionName={core.editingSessionName}
+            editNameValue={core.editNameValue}
+            onEditNameChange={core.setEditNameValue}
+            onFinishRename={core.handleFinishRename}
+            onKeyDown={core.handleRenameKeyDown}
+            onStartRename={core.handleStartRename}
+            onDeleteSession={core.handleDeleteSession}
+            onNewSession={handleNewSession}
+            onDuplicateSession={core.handleDuplicateSession}
+            onExportPdfSession={(session) => {
+              const msgs = core.sessionMessages[session.id] || loadMessagesFromStorage(session.id) || [];
+              if (msgs.length === 0) return;
+              exportChatPdf({
+                session,
+                messages: msgs,
+                selectedModel: session.model || core.selectedModel
+              });
+            }}
+          />
         )}
         <ChatMessages
           messages={core.messages}

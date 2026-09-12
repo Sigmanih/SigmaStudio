@@ -17,6 +17,10 @@
   display: none;
 }
 
+.chat-header-pdf-short {
+  display: none;
+}
+
 .context-gauge-text-short {
   display: none;
 }
@@ -168,6 +172,14 @@
     display: inline !important;
   }
 
+  .chat-header-pdf-full {
+    display: none !important;
+  }
+
+  .chat-header-pdf-short {
+    display: inline !important;
+  }
+
   /* 5. Chat Body & Off-Canvas Drawer Cronologia */
   .chat-body,
   .chat-workspace-body {
@@ -305,7 +317,9 @@
     font-size: 0.68rem !important;
   }
 
-  .chat-history-item-delete {
+  .chat-history-item-delete,
+  .chat-history-item-duplicate,
+  .chat-history-item-pdf {
     width: 28px !important;
     height: 28px !important;
     opacity: 0.75 !important;

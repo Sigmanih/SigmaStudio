@@ -9,6 +9,7 @@ import ActionsBar from '../ActionsBar';
 import QuickConfigPanel from '../ui/QuickConfigPanel';
 import useChatResize from '../useChatResize';
 import useChatDrag from '../useChatDrag';
+import { exportChatPdf } from '../../../utils/exportChatPdf';
 
 export default function ChatFloatingPanel({ openFiles, onClose, onOpenConfig, onTasksUpdated, addToast }) {
   const core = useChatCore({ openFiles, onTasksUpdated, addToast });
@@ -85,6 +86,22 @@ export default function ChatFloatingPanel({ openFiles, onClose, onOpenConfig, on
             return `${role}:\n${text}`;
           }).join('\n\n---\n\n');
           navigator.clipboard.writeText(formatted);
+        }}
+        onExportPdf={() => {
+          const msgs = core.messages || [];
+          if (msgs.length === 0) {
+            if (addToast) addToast('Nessun messaggio da salvare in PDF', 'warning');
+            return;
+          }
+          const currentSession = core.sessions.find(s => s.id === core.activeSessionId) || {
+            name: 'Conversazione AI',
+            model: core.selectedModel
+          };
+          exportChatPdf({
+            session: currentSession,
+            messages: msgs,
+            selectedModel: core.selectedModel
+          });
         }}
       />
 

@@ -1364,9 +1364,16 @@
 .chat-history-item-actions { position: absolute; right: 6px; top: 50%; transform: translateY(-50%); display: flex; align-items: center; gap: 2px; opacity: 0; transition: var(--trans-fast); z-index: 2; }
 .chat-history-item:hover .chat-history-item-actions { opacity: 1; }
 .chat-history-item-delete,
-.chat-history-item-duplicate { background: none; border: none; color: var(--text-dark); cursor: pointer; padding: 3px; border-radius: 4px; transition: var(--trans-fast); display: flex; align-items: center; justify-content: center; }
+.chat-history-item-duplicate,
+.chat-history-item-pdf { background: none; border: none; color: var(--text-dark); cursor: pointer; padding: 3px; border-radius: 4px; transition: var(--trans-fast); display: flex; align-items: center; justify-content: center; }
 .chat-history-item-delete:hover { color: var(--error); background: rgba(255,85,85,0.15); }
 .chat-history-item-duplicate:hover { color: var(--primary, #00d2ff); background: rgba(0,210,255,0.15); }
+.chat-history-item-pdf:hover { color: #f87171; background: rgba(239,68,68,0.15); }
+
+.chat-header-pdf-full { display: inline; }
+.chat-header-pdf-short { display: none; }
+.chat-header-pdf-btn:hover { background: rgba(239, 68, 68, 0.2) !important; border-color: rgba(239, 68, 68, 0.45) !important; }
+.theme-light .chat-header-pdf-btn { background: rgba(239, 68, 68, 0.1) !important; color: #dc2626 !important; border-color: rgba(239, 68, 68, 0.3) !important; }
 .chat-history-empty { padding: 20px; text-align: center; font-size: 0.7rem; color: var(--text-dark); }
 .chat-collapse-btn { position: absolute; left: 0; top: 50%; transform: translateY(-50%); width: 22px; height: 24px; background: var(--surface-bright); border: 1px solid var(--border-bright); border-left: none; border-radius: 0 6px 6px 0; color: var(--text-dark); cursor: pointer; display: flex; align-items: center; justify-content: center; transition: var(--trans-fast); z-index: 10; }
 .chat-collapse-btn:hover { background: var(--primary); color: #000; border-color: var(--primary); }

@@ -1380,6 +1380,7 @@ class UniversalSigmaEngine:
         tools: Optional[List[Dict[str, Any]]] = None,
         tool_choice: Optional[Any] = None,
         cache_slot: Optional[str] = None,
+        retried_after_oom: bool = False,
     ) -> Generator[Dict[str, Any], None, None]:
         """
         Serialises access to the engine, then streams the answer.
@@ -1445,6 +1446,7 @@ class UniversalSigmaEngine:
                 tools=tools,
                 tool_choice=tool_choice,
                 cache_slot=cache_slot,
+                retried_after_oom=retried_after_oom,
             )
         finally:
             self._generation_lock.release()
@@ -1722,12 +1724,13 @@ class UniversalSigmaEngine:
                         "model_status": "♻️ VRAM esaurita: libero la cache e riprovo...",
                         "done": False,
                     }
-                    yield from self.generate_stream(
+                    yield from self._generate_stream_locked(
                         prompt=prompt, system_prompt=system_prompt,
                         temperature=temperature, max_tokens=max_tokens,
                         model_name=model_name, messages=messages,
                         params=params, cancel=cancel, thinking=thinking,
                         tools=tools, tool_choice=tool_choice,
+                        cache_slot=cache_slot,
                         retried_after_oom=True,
                     )
                     return
