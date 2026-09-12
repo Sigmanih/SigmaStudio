@@ -65,7 +65,19 @@ IMMAGINE_PREDEFINITA = "python:3.12-slim"
 #: qui non entra, e questa e' la differenza con l'ambiente dell'host.
 AMBIENTE_CONTENITORE: Dict[str, str] = {
     "CI": "1",
-    "HOME": "/lavoro",
+    # NON `/lavoro`. Con HOME nel workspace, npm ci scrive dentro la propria
+    # cache e i propri log: comparirebbero nel diff del run e nella revisione,
+    # e chi rivede si troverebbe diecimila file al posto delle tre righe che
+    # contano. E la cache andrebbe persa a ogni run, perche' il workspace di un
+    # run isolato e' un worktree nuovo.
+    "HOME": "/root",
+    # Ogni gestore di pacchetti puntato alla propria cache in modo esplicito.
+    # Dedurla da HOME funziona finche' qualcuno non cambia HOME, e allora il
+    # volume di cache resta montato e inutilizzato — che e' il modo peggiore
+    # di sbagliare, perche' sembra a posto.
+    "npm_config_cache": "/root/.npm",
+    "PIP_CACHE_DIR": "/root/.cache/pip",
+    "UV_CACHE_DIR": "/root/.cache/uv",
     "LANG": "C.UTF-8",
     "PYTHONUNBUFFERED": "1",
     "PIP_DISABLE_PIP_VERSION_CHECK": "1",
@@ -77,6 +89,27 @@ AMBIENTE_CONTENITORE: Dict[str, str] = {
 
 #: Dove il workspace compare dentro il contenitore.
 PUNTO_DI_MONTAGGIO = "/lavoro"
+
+#: Le cache delle dipendenze, come volumi con nome.
+#:
+#: Il contenitore e' usa e getta (`--rm`): va bene per i file, che stanno nel
+#: workspace montato, e non va bene per cio' che un gestore di pacchetti
+#: scarica. Senza questi volumi ogni voce della coda rifarebbe `npm install` da
+#: zero, e su un ventaglio da venti voci il tempo del lavoro diventa il tempo
+#: delle installazioni.
+#:
+#: **Il punto di montaggio non sta dentro `/lavoro`.** Se `node_modules`
+#: finisse nel workspace comparirebbe nel diff del run e nella revisione, e chi
+#: rivede si troverebbe diecimila file da guardare al posto delle tre righe che
+#: contano.
+#:
+#: I nomi sono stabili fra un run e l'altro: una cache con un nome diverso ogni
+#: volta non e' una cache.
+CACHE_DIPENDENZE: Dict[str, str] = {
+    "sigma-cache-npm": "/root/.npm",
+    "sigma-cache-pip": "/root/.cache/pip",
+    "sigma-cache-uv": "/root/.cache/uv",
+}
 
 PREDEFINITI: Dict[str, Any] = {
     #: "host" oppure "container". Host finche' non lo si cambia: accendere una
@@ -278,6 +311,9 @@ class EsecutoreContenitore:
     memoria: str = "4g"
     cpu: str = "2"
     ambiente: Dict[str, str] = field(default_factory=lambda: dict(AMBIENTE_CONTENITORE))
+    #: I volumi di cache. Vuoto per disattivarli, ma non c'e' motivo di farlo
+    #: se non per misurare quanto costano.
+    cache: Dict[str, str] = field(default_factory=lambda: dict(CACHE_DIPENDENZE))
 
     nome = "container"
 
@@ -304,6 +340,8 @@ class EsecutoreContenitore:
             "-v", f"{montaggio}:{PUNTO_DI_MONTAGGIO}",
             "-w", PUNTO_DI_MONTAGGIO,
         ]
+        for volume, dentro in sorted(self.cache.items()):
+            argv += ["-v", f"{volume}:{dentro}"]
         if not self.rete:
             argv += ["--network", "none"]
         if self.memoria:

@@ -436,6 +436,31 @@ STATE_TAIL_SPEC = (
     "richiesta riformulata per esteso e i criteri verificabili che rendono "
     "il lavoro finito. Un solo blocco tool, nient altro."
 )
+#: Quando l'agente scrive e scrive senza mai dimostrare niente.
+#:
+#: Il recupero dallo stallo copre l'esplorazione infinita: chi legge e rilegge
+#: senza scrivere. Non copre il caso opposto, ed e' quello che costa di piu':
+#: `turn_was_productive` e' vero per QUALUNQUE tool riuscito, quindi un agente
+#: che scrive dieci file di fila non accumula mai un turno improduttivo e non
+#: viene mai interrotto. Su una prova dal vivo: ventisei turni, cinque file
+#: scritti, **zero comandi eseguiti**, e il cancello che rifiuta la chiusura
+#: alla fine per una verifica che nessuno aveva chiesto per tempo.
+#:
+#: Un difetto che sarebbe stato visibile alla prima esecuzione del test.
+STATE_TAIL_VERIFICA = (
+    "Hai scritto {file} file e non hai ancora eseguito nessuna verifica. "
+    "ESEGUI ORA `{comando}` con il tool `terminal`, e leggi cosa risponde. "
+    "Senza un comando riuscito la chiusura verra' rifiutata, e ogni file che "
+    "scrivi da qui in avanti e' lavoro non dimostrato che si somma a quello "
+    "che gia' non lo e'."
+)
+#: Uguale, ma senza un comando dichiarato: si dice cosa scegliere.
+STATE_TAIL_VERIFICA_LIBERA = (
+    "Hai scritto {file} file e non hai ancora eseguito nessun comando. "
+    "ESEGUI ORA con `terminal` la prova che dimostra questo lavoro — il test "
+    "che lo copre, l'import del modulo che hai scritto, il lint. Senza un "
+    "comando riuscito la chiusura verra' rifiutata."
+)
 #: Ricordato in coda allo stato quando il cancello di completamento ha ceduto.
 STATE_TAIL_SUMMARISE = (
     "Il lavoro risulta completo e verificato: scrivi il riepilogo per l'utente."
@@ -607,6 +632,39 @@ def _as_history(full_text: str) -> str:
         tail = text[-MAX_ASSISTANT_HISTORY_CHARS // 2:]
         return f"{head}\n[...]\n{tail}"
     return text
+
+
+#: Da quante scritture in poi la mancanza di una prova diventa un problema.
+#: Una sola scrittura non ancora verificata e' il caso normale a meta' lavoro;
+#: tre senza nemmeno un comando sono un modo di lavorare.
+SCRITTURE_SENZA_PROVA = 3
+
+
+def _promemoria_di_verifica(ledger: Any, verify_command: str = "") -> str:
+    """La coda da mettere allo stato quando si scrive e non si dimostra.
+
+    Ritorna stringa vuota quando non serve — che e' quasi sempre. Il costo di
+    questo controllo e' tre letture dal ledger; il costo di non averlo era
+    ventisei turni.
+    """
+    # `modified_files` e' una proprieta', `successful_commands()` un metodo:
+    # il ledger usa le due convenzioni fianco a fianco. Scritto con `getattr`
+    # e un `except Exception` largo, il secondo ritornava il metodo legato,
+    # `list()` sollevava, e l'eccezione veniva inghiottita: il promemoria
+    # taceva sempre e sembrava funzionare. Chiamarli per nome, e lasciare che
+    # un errore di programmazione si veda.
+    modificati = list(ledger.modified_files or [])
+    if len(modificati) < SCRITTURE_SENZA_PROVA:
+        return ""
+    # Un comando riuscito qualsiasi toglie il sospetto: l'agente ha mostrato di
+    # saper eseguire, e il cancello valutera' il resto.
+    if ledger.successful_commands():
+        return ""
+
+    comando = str(verify_command or "").strip()
+    if comando:
+        return STATE_TAIL_VERIFICA.format(file=len(modificati), comando=comando)
+    return STATE_TAIL_VERIFICA_LIBERA.format(file=len(modificati))
 
 
 def _recovery_directive(ledger: Optional["DevSessionLedger"] = None) -> str:
@@ -1991,12 +2049,24 @@ def _stream_agent_turn_impl(
         if needs_spec_turn:
             spec_attempts += 1
 
+        # Chi scrive senza mai provare va fermato prima della fine, non dopo.
+        # Il momento giusto non e' il primo turno — scrivere prima di
+        # verificare e' l'ordine naturale — ma quando i file cominciano a
+        # essere piu' d'uno e la verifica continua a non esserci.
+        coda_verifica = ""
+        if not needs_spec_turn and not goal_reached and not force_action_turn:
+            coda_verifica = _promemoria_di_verifica(ledger, verify_command)
+
         render_messages = _with_state_block(
             full_messages,
             ledger.render_state_block(),
             STATE_TAIL_SPEC if needs_spec_turn
-            else (STATE_TAIL_SUMMARISE if goal_reached else STATE_TAIL_ACT),
+            else (STATE_TAIL_SUMMARISE if goal_reached
+                  else (coda_verifica or STATE_TAIL_ACT)),
         )
+        if coda_verifica:
+            yield {"type": "status",
+                   "text": "⚠ Scritture senza prove: verifica sollecitata"}
 
         accumulated_response = []
         # Le chiamate strutturate di questo turno, se il provider le produce.
