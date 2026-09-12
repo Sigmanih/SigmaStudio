@@ -216,6 +216,25 @@ def narra(evento: Dict[str, Any]) -> Optional[str]:
     if tipo == "evidence_rejected":
         return f"Prova rifiutata: {str(evento.get('reason') or evento.get('error') or '')[:200]}"
 
+    if tipo == "self_correction":
+        # La mossa dopo un fallimento e' la cosa piu' importante da vedere in
+        # un flusso autonomo: e' li' che si capisce se il sistema si sta
+        # correggendo o sta girando a vuoto.
+        livello = {
+            "riprova": "Riprova", "correggi": "Correzione inserita",
+            "ripianifica": "Ripianificazione", "rinuncia": "Rinuncia",
+        }.get(evento.get("livello", ""), str(evento.get("livello", "")))
+        riga = f"{livello} su «{evento.get('title', evento.get('task_id', ''))}»: {evento.get('motivo', '')}"
+        prove = evento.get("prove") or []
+        if prove:
+            riga += f" — {prove[0][:160]}"
+        return riga
+
+    if tipo == "replanned":
+        return (f"Piano rifatto: {evento.get('kept', 0)} task tenuti, "
+                f"{evento.get('replaced', 0)} sostituiti, "
+                f"{evento.get('added', 0)} nuovi.")
+
     if tipo == "goal_complete":
         return f"Obiettivo chiuso: {str(evento.get('summary') or '')[:300]}"
 
