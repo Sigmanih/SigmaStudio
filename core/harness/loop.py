@@ -2943,6 +2943,26 @@ def _stream_agent_turn_impl(
     if sincronizzati:
         yield sincronizzati
 
+    # Il consuntivo: cosa e' stato fatto, come funziona, come lo sappiamo.
+    # Costruito dai fatti che il ledger ha registrato mentre succedevano, non
+    # da cio' che il modello dice di aver fatto — quello lo sa scrivere anche
+    # un modello che non ha fatto niente, e su questo progetto e' successo.
+    try:
+        from core.harness.resoconto import resoconto as _resoconto
+
+        yield {
+            "type": "run_report",
+            "goal_reached": bool(goal_reached),
+            "report": _resoconto(
+                ledger.snapshot(),
+                obiettivo=goal_text,
+                branch=getattr(session_wt, "branch_name", "") or "",
+                raggiunto=bool(goal_reached),
+            ),
+        }
+    except Exception as exc:  # il resoconto non deve poter far fallire un run
+        log.debug("[Resoconto] non prodotto: %s", exc)
+
     yield {"type": "run_metrics", **run_metrics}
     yield {"type": "done", "full_text": full_text}
 
@@ -3065,11 +3085,22 @@ def _consegna_il_lavoro(
             len(getattr(sessione_wt, "checkpoints", [])) + 1, "consegna"
         )
         obiettivo = str(getattr(ledger, "goal", "") or "")
+        # Chi deve accettare il lavoro vuole sapere quali criteri sono stati
+        # accettati e quale comando li ha dimostrati. Sono nel ledger: qui
+        # diventano il corpo della richiesta.
+        from core.harness.resoconto import resoconto as _resoconto
+        try:
+            racconto = _resoconto(ledger.snapshot(), obiettivo=obiettivo,
+                                  branch=getattr(sessione_wt, "branch_name", ""))
+        except Exception as exc:
+            log.debug("[Delivery] resoconto non prodotto: %s", exc)
+            racconto = ""
         esito = delivery.deliver_branch(
             workspace_root,
             getattr(sessione_wt, "branch_name", ""),
             obiettivo=obiettivo,
             file=toccati,
+            resoconto=racconto,
         )
     except Exception as exc:
         log.warning("[AdminAgent] consegna non riuscita: %s", exc)
@@ -3147,11 +3178,23 @@ def stream_admin_agent_turn(*args: Any, **kwargs: Any) -> Generator[Dict[str, An
     Un `finally` qui vale anche per quel caso, perche' la chiusura del
     generatore lo attraversa.
     """
+    from core.harness.resoconto import narra
+
     chiusura: Dict[str, Any] = {}
     completato = False
     try:
         for evento in _stream_agent_turn_impl(*args, _chiusura=chiusura, **kwargs):
             yield evento
+            # Il diario sta qui e non dentro il ciclo perche' qui passano
+            # **tutti** gli eventi, compresi quelli che il ciclo emette da
+            # rami diversi: una riga aggiunta la' andrebbe aggiunta in
+            # quindici posti, e il sedicesimo verrebbe dimenticato.
+            try:
+                riga = narra(evento)
+            except Exception:  # nessun racconto vale un run interrotto
+                riga = None
+            if riga:
+                yield {"type": "diario", "text": riga, "at": time.time()}
         completato = True
     finally:
         esito = _chiudi_run(chiusura)
