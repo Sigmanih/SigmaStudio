@@ -149,31 +149,42 @@ class TestOrchestratorLive5Phases(unittest.TestCase):
         self.assertIn("setup", skipped_phases)
 
     def test_feedback_loop_triggers_when_test_fails(self):
-        """Se il Tester riporta test falliti, il feedback loop si attiva ed esegue il Coder per correggere."""
+        """Test rossi -> il ciclo di correzione parte, corregge, e si ferma
+        quando la verifica torna verde.
+
+        Prima questo test riconosceva la chiamata al Coder cercando «feedback
+        del tester» dentro il prompt. Era esattamente la cosa da togliere: al
+        Coder non si passa piu' il racconto del Tester — la prosa di un modello
+        — ma l'istruzione costruita sui fatti che il ledger ha registrato.
+        """
         orch = DevOrchestrator(workspace_root=self.workspace_root)
         orch.mode = ExecutionMode.AUTONOMOUS
         goal = "Correggi bug di divisione per zero"
 
-        runs = {"tester_calls": 0, "feedback_coder_calls": 0}
+        runs = {"tester_calls": 0, "coder_calls": 0}
+        istruzioni_al_coder = []
 
         def fake_generate(role_id, prompt, *args, **kwargs):
             if role_id == "tester":
                 runs["tester_calls"] += 1
                 if runs["tester_calls"] == 1:
-                    # Primo giro: test fallito
                     yield {
                         "type": "tool_result",
-                        "result": {"tool": "terminal", "command": "pytest", "returncode": 1, "stderr": "ZeroDivisionError"}
+                        "result": {"tool": "terminal", "command": "pytest",
+                                   "returncode": 1, "stderr": "ZeroDivisionError"},
                     }
                 else:
-                    # Secondo giro (post feedback): test superato
                     yield {
                         "type": "tool_result",
-                        "result": {"tool": "terminal", "command": "pytest", "returncode": 0, "stdout": "1 passed"}
+                        "result": {"tool": "terminal", "command": "pytest",
+                                   "returncode": 0, "stdout": "1 passed"},
                     }
-            elif role_id == "coder" and "feedback del tester" in prompt.lower():
-                runs["feedback_coder_calls"] += 1
+            elif role_id == "coder":
+                runs["coder_calls"] += 1
+                istruzioni_al_coder.append(prompt)
                 yield {"type": "token", "token": "Bug corretto con try/except."}
+            elif role_id == "reviewer":
+                yield {"type": "token", "token": "Ok"}
             else:
                 yield {"type": "token", "token": "Ok"}
 
@@ -182,11 +193,42 @@ class TestOrchestratorLive5Phases(unittest.TestCase):
         events = list(orch._run_phase("verify", goal))
         status_texts = [e.get("text", "") for e in events if e.get("type") == "status"]
 
-        # Verifica attivazione del ciclo di correzione e superamento
         self.assertTrue(any("avvio ciclo di correzione" in s for s in status_texts))
-        self.assertTrue(any("Test superati dopo correzione" in s for s in status_texts))
-        self.assertEqual(runs["feedback_coder_calls"], 1)
+        self.assertTrue(any("Verifica superata" in s for s in status_texts))
+        self.assertEqual(runs["coder_calls"], 1,
+                         "una correzione sola: poi la verifica e' tornata verde")
         self.assertEqual(runs["tester_calls"], 2)
+
+        # La diagnosi deve essere passata dall'autocorrezione, ed essere
+        # visibile a chi guarda.
+        diagnosi = [e for e in events if e.get("type") == "self_correction"]
+        self.assertTrue(diagnosi, "la mossa scelta deve essere dichiarata")
+        self.assertIn("budget", diagnosi[0])
+
+        # E l'istruzione al Coder non deve essere il testo di un modello.
+        self.assertTrue(istruzioni_al_coder)
+        self.assertNotIn("feedback del tester", istruzioni_al_coder[0].lower())
+
+    def test_il_bilancio_ferma_il_ciclo_di_correzione(self):
+        """Un sistema che riprova per sempre non e' autonomo, e' bloccato."""
+        from core.harness import autocorrezione
+
+        orch = DevOrchestrator(workspace_root=self.workspace_root)
+        orch.mode = ExecutionMode.AUTONOMOUS
+        orch.bilancio = autocorrezione.Bilancio(correzioni=0)
+
+        chiamate = {"n": 0}
+
+        def fake_generate(role_id, prompt, *args, **kwargs):
+            chiamate["n"] += 1
+            yield {"type": "token", "token": "ok"}
+
+        orch.role_engine.generate_with_role = fake_generate
+        eventi = list(orch._feedback_loop("obiettivo", None, max_retries=2))
+
+        self.assertEqual(chiamate["n"], 0, "non deve chiamare nessun ruolo")
+        testi = [e.get("text", "") for e in eventi if e.get("type") == "status"]
+        self.assertTrue(any("esaurito" in t for t in testi))
 
 
 if __name__ == "__main__":

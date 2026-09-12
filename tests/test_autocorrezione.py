@@ -352,3 +352,63 @@ class TestSiVedeMentreSuccede:
         riga = narra({"type": "self_correction", "title": "x",
                       "livello": AC.RINUNCIA, "motivo": "bilancio finito"})
         assert riga and "Rinuncia" in riga
+
+
+class TestUnSoloSistemaDiCorrezione:
+    """`_feedback_loop` era nato prima dell'autocorrezione e faceva la stessa
+    cosa in modo piu' grezzo. Convivendo erano due sistemi che non si parlano:
+    uno contava le proprie mosse, l'altro no, e insieme potevano spendere molto
+    piu' del tetto che il primo credeva di far rispettare."""
+
+    def test_il_ciclo_di_correzione_passa_dalla_diagnosi(self):
+        import inspect
+
+        from core.modules.sigma_developer_lab.orchestrator import DevOrchestrator
+
+        sorgente = inspect.getsource(DevOrchestrator._feedback_loop)
+        assert "autocorrezione.diagnostica" in sorgente
+        assert "self.bilancio" in sorgente
+
+    def test_non_passa_piu_la_prosa_del_tester_al_coder(self):
+        """Erano i fatti del ledger travestiti da racconto di un modello."""
+        import inspect
+
+        from core.modules.sigma_developer_lab.orchestrator import DevOrchestrator
+
+        sorgente = inspect.getsource(DevOrchestrator._feedback_loop)
+        assert 'upstream_outputs={\n                    "tester"' not in sorgente
+        assert "tester_feedback" not in sorgente
+
+    def test_con_il_bilancio_finito_si_ferma_invece_di_riprovare(self):
+        import inspect
+
+        from core.modules.sigma_developer_lab.orchestrator import DevOrchestrator
+
+        sorgente = inspect.getsource(DevOrchestrator._feedback_loop)
+        assert "puo_correggere()" in sorgente
+
+    def test_una_verifica_mai_eseguita_non_e_una_verifica_superata(self):
+        """E' la distinzione che il cancello di completamento fa da sempre, e
+        vale anche qui: nessun comando eseguito significa che la prova non ha
+        avuto luogo."""
+        import inspect
+
+        from core.modules.sigma_developer_lab.orchestrator import DevOrchestrator
+
+        sorgente = inspect.getsource(DevOrchestrator._riesegui_la_verifica)
+        assert "superata and visto" in sorgente
+
+    def test_la_prova_del_piano_viene_riusata(self):
+        """Il primo task che dichiara un `verify` vale per l'obiettivo."""
+        from core.harness.pipeline import TaskNode, TaskPipeline
+        from core.modules.sigma_developer_lab.orchestrator import DevOrchestrator
+
+        orch = DevOrchestrator(workspace_root=".")
+        assert orch._comando_di_verifica() == ""
+
+        orch.pipeline = TaskPipeline(goal="x")
+        orch.pipeline.add_task(TaskNode(id="a", title="a", role="coder"))
+        orch.pipeline.add_task(TaskNode(
+            id="b", title="b", role="coder",
+            metadata={"verify": "python tools/check_i18n.py sigma_network"}))
+        assert orch._comando_di_verifica().startswith("python tools/check_i18n")
