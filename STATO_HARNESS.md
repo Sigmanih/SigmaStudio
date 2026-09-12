@@ -1,16 +1,17 @@
-# Stato dell'Harness · 12 settembre 2026 (rev. 5)
+# Stato dell'Harness · 13 settembre 2026 (rev. 6)
 
 Valutazione dell'harness dell'agente nel kernel: cosa regge, cosa no, e come si
 guida un lavoro grande da dentro Sigma Studio.
 
 | | |
 |:---|:---|
-| Test verdi | **1655** |
+| Test verdi | **1707** |
 | Build frontend | verde (~0,9 s) |
 | `npm run lint:undef` | 0 riferimenti non definiti |
 | Punti dell'audit tecnico | 11 / 11 chiusi |
 | Difetti trovati **dopo** la chiusura dell'audit | 29, tutti nell'integrazione |
 | Ventaglio parallelo, prova dal vivo | da 0 voci su 6 a **2 su 2**, in 8 e 9 turni |
+| Sandbox Docker | **provata dal vivo**: 4 garanzie su 4 |
 | Banco sul protocollo dei tool | Qwen 27B **100/100**; Ornith 35B e gemma 12B **70/100** |
 | Voto del flusso di squadra | **8,5 / 10** (era 6) |
 
@@ -505,4 +506,103 @@ inesistente è peggio di una che manca.
 `stato_sandbox()` dice `active: false` con il motivo, ed è l'unica cosa onesta
 da dire.
 
+---
 
+## 10. La sandbox accesa, e cosa ha insegnato · 13 settembre 2026
+
+Docker installato, quindi per la prima volta le garanzie scritte nei test a
+freddo si sono potute misurare a caldo. Tutte e quattro tengono:
+
+| garanzia | prova |
+|:---|:---|
+| il workspace si vede | `/lavoro` → i file del progetto |
+| `config/` **non** si vede | `cat /lavoro/../config/config.json` → *No such file* |
+| la rete è spenta | `OSError: [Errno 101] Network is unreachable` |
+| l'ambiente è una lista bianca | nessuna variabile con `TOKEN` |
+
+0,6 secondi per comando, `python 3.12.14` dentro il contenitore.
+
+### Due strati dello stesso problema, prima di arrivarci
+
+Docker Desktop era installato e `stato_sandbox()` rispondeva *«non è
+installato»*: non incompleto, **sbagliato**. L'installazione è per-utente e
+aggiunge la sua cartella al PATH *dell'utente*; un server già avviato ha
+ereditato il PATH di prima. Poi `docker pull` falliva con *«error getting
+credentials — docker-credential-desktop not found»*, che sembra un problema di
+rete e non lo è: il CLI cerca il credential helper nel PATH del **proprio**
+processo.
+
+> Due volte lo stesso errore di forma: dedurre un percorso dall'ambiente invece
+> di cercarlo dove sta.
+
+### La scoperta che ha cambiato il disegno
+
+Acceso il contenitore su Sigma Studio stesso, **ogni verifica falliva**: dentro
+`python:3.12-slim` non ci sono né `pytest` né `fastapi`. Le dipendenze di
+questo progetto stanno nel `.venv` dell'host, e un worktree non se le porta.
+
+La risposta non è una toppa: è la distinzione giusta. Il contenitore serve a un
+**progetto nuovo**, dove l'agente installa e compila ciò che vuole senza che
+nessuno debba fidarsi. Sigma Studio ha già il suo ambiente, sta in un
+repository versionato con revisione e worktree, e metterlo in un contenitore
+che non ha i suoi strumenti lo peggiora soltanto. Quindi `mode` si legge dal
+`sandbox.json` **del progetto** prima che dalla configurazione generale — come
+già faceva l'immagine.
+
+### Il sollecito di verifica: 26 turni che diventano pochi
+
+Il recupero dallo stallo copre l'esplorazione infinita — chi legge e rilegge
+senza scrivere. Non copriva il caso opposto, ed è quello che costa di più:
+`turn_was_productive` è vero per **qualunque** tool riuscito, quindi chi scrive
+dieci file di fila non accumula mai un turno improduttivo e non viene mai
+interrotto.
+
+Misurato: **26 turni, 5 file scritti, zero comandi eseguiti**, e il cancello
+che rifiuta la chiusura alla fine. Il difetto nel codice prodotto era un `"+"`
+contro un `" + "` atteso dal suo stesso test — visibile alla prima esecuzione.
+
+Dalla terza scrittura senza nemmeno un comando riuscito, la coda dello stato
+dice quale comando eseguire e perché conviene farlo adesso.
+
+### Il difetto dentro la correzione
+
+Vale più della correzione. `modified_files` è una proprietà,
+`successful_commands()` un metodo: il ledger usa le due convenzioni fianco a
+fianco. Scritto con `getattr` e un `except Exception` largo, il secondo
+ritornava il metodo legato, `list()` sollevava, l'eccezione veniva inghiottita
+— e il promemoria **taceva sempre, sembrando funzionare**.
+
+> Un `except` largo su codice che interroga un'API trasforma un difetto in
+> silenzio. C'è un test che lo tiene aperto.
+
+### L'incidente: una giunzione seguita da `rmtree`
+
+Per far girare `npm run lint` dentro un worktree — che non porta
+`node_modules`, perché git porta solo ciò che è versionato — ho creato una
+**giunzione** verso il `node_modules` del progetto. Funzionava: `eslint`
+diventava raggiungibile.
+
+Poi `git worktree remove --force` l'ha **attraversata**, cancellando i file
+veri. Il progetto è stato ripristinato con `npm ci` e la modifica revocata.
+
+> Su Windows, una giunzione dentro una cartella che qualcun altro cancellerà
+> ricorsivamente è una trappola: chi cancella non sa che sta seguendo un
+> collegamento, e il danno è nel bersaglio, non nella copia.
+
+La necessità resta reale — un worktree senza dipendenze non può dimostrare
+niente per un frontend — e la strada giusta è quella già costruita: il
+contenitore con il volume di cache, dove le dipendenze vivono fuori dal
+workspace per costruzione.
+
+### La cache delle dipendenze
+
+Volumi con nome per npm, pip e uv, montati **fuori** da `/lavoro`: dentro,
+`node_modules` comparirebbe nel diff del run e chi rivede si troverebbe
+diecimila file al posto delle tre righe che contano.
+
+E `HOME` non è più `/lavoro`: con HOME nel workspace npm ci scriveva dentro la
+propria cache — lo stesso problema per un'altra strada — e la cache andava
+persa a ogni run, perché il worktree di un run isolato è nuovo. Ogni gestore
+punta alla propria cache per variabile esplicita: dedurla da `HOME` funziona
+finché qualcuno non cambia `HOME`, e allora il volume resta montato e
+inutilizzato — il modo peggiore di sbagliare, perché sembra a posto.
