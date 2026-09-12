@@ -98,9 +98,33 @@ class TestQuandoDockerNonCE:
 
     def test_docker_disponibile_distingue_assente_da_spento(self, monkeypatch):
         monkeypatch.setattr(E.shutil, "which", lambda _: None)
+        # Anche i posti noti vanno svuotati: da quando `trova_docker` li
+        # guarda, togliere Docker dal PATH non basta piu' a farlo sparire —
+        # ed e' proprio il punto di quella ricerca.
+        monkeypatch.setattr(E, "_posti_noti", list)
         ok, motivo = E.docker_disponibile()
         assert ok is False
         assert "non e' installato" in motivo
+
+    def test_lo_trova_anche_fuori_dal_PATH(self, tmp_path, monkeypatch):
+        """Su Windows Docker Desktop si installa per utente e aggiunge la sua
+        cartella al PATH **dell'utente**: un server gia' avviato ha ereditato
+        il PATH di prima e non lo vedra' mai. E' successo davvero, e la
+        risposta «Docker non e' installato» era sbagliata, non incompleta."""
+        finto = tmp_path / "docker.exe"
+        finto.write_text("", encoding="utf-8")
+        monkeypatch.setattr(E.shutil, "which", lambda _: None)
+        monkeypatch.setattr(E, "_posti_noti", lambda: [finto])
+        assert E.trova_docker() == str(finto)
+
+    def test_il_contenitore_usa_l_eseguibile_trovato(self, tmp_path, monkeypatch):
+        """Passare la parola «docker» quando non e' nel PATH farebbe fallire il
+        contenitore per una ragione che non c'entra col comando dell'agente."""
+        finto = tmp_path / "docker.exe"
+        finto.write_text("", encoding="utf-8")
+        monkeypatch.setattr(E, "trova_docker", lambda: str(finto))
+        argv = E.EsecutoreContenitore().argv("pytest", str(tmp_path))
+        assert argv[0] == str(finto)
 
 
 class TestLaScelta:
@@ -149,7 +173,10 @@ class TestIlToolTerminalePassaDaLi:
         from core.harness.loop import _execute_admin_tool_impl
 
         sorgente = inspect.getsource(_execute_admin_tool_impl)
-        assert "scegli_esecutore()" in sorgente
+        assert "scegli_esecutore(" in sorgente
+        assert "radice=workspace_root" in sorgente, (
+            "senza la radice ogni contenitore userebbe l'immagine generale, e "
+            "un frontend Vite dentro python:3.12-slim non ha node")
 
     def test_il_risultato_dice_dove_e_girato(self, tmp_path):
         from core.harness.loop import execute_admin_tool

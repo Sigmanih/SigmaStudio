@@ -125,6 +125,69 @@ def salva_config(valori: Dict[str, Any]) -> Dict[str, Any]:
 # Disponibilita' di Docker
 # ---------------------------------------------------------------------------
 
+def _posti_noti() -> List[Path]:
+    """Dove Docker Desktop si installa, quando non e' nel PATH.
+
+    Su Windows l'installazione per-utente mette `docker.exe` sotto
+    `%LOCALAPPDATA%` e aggiunge quella cartella al PATH **dell'utente**. Un
+    processo gia' avviato — il server di Sigma Studio, per esempio — ha
+    ereditato il PATH di prima e non la vedra' mai. E' successo davvero: con
+    Docker installato e funzionante, `stato_sandbox()` continuava a rispondere
+    «Docker non e' installato», che e' una diagnosi sbagliata, non incompleta.
+
+    Cercare nei posti noti costa quattro `exists()` e rende la risposta vera.
+    """
+    candidati = []
+    for base in (os.environ.get("LOCALAPPDATA"), os.environ.get("ProgramFiles"),
+                 os.environ.get("ProgramW6432"), "/usr/bin", "/usr/local/bin",
+                 "/opt/homebrew/bin"):
+        if not base:
+            continue
+        radice = Path(base)
+        candidati += [
+            radice / "Programs" / "DockerDesktop" / "resources" / "bin" / "docker.exe",
+            radice / "Docker" / "Docker" / "resources" / "bin" / "docker.exe",
+            radice / "docker",
+        ]
+    return candidati
+
+
+def _ambiente_per_docker() -> Dict[str, str]:
+    """L'ambiente con cui si invoca il CLI di docker.
+
+    Non e' l'ambiente del contenitore — quello e' una lista bianca — ma quello
+    del **comando docker stesso**, che gira sull'host. Serve una cosa sola, e
+    senza di essa nulla funziona: la cartella di docker nel PATH, perche' il
+    CLI cerca li' `docker-credential-desktop` per parlare con il registro.
+
+    Misurato: `docker pull python:3.12-slim` senza questa riga fallisce con
+    «error getting credentials — exec: docker-credential-desktop: executable
+    file not found», che sembra un problema di rete e non lo e'.
+    """
+    ambiente = dict(os.environ)
+    eseguibile = trova_docker()
+    if eseguibile:
+        cartella = str(Path(eseguibile).parent)
+        percorsi = ambiente.get("PATH", "")
+        if cartella and cartella not in percorsi.split(os.pathsep):
+            ambiente["PATH"] = cartella + os.pathsep + percorsi
+    return ambiente
+
+
+def trova_docker() -> str:
+    """Il percorso dell'eseguibile docker, o stringa vuota."""
+    trovato = shutil.which("docker")
+    if trovato:
+        return trovato
+    for candidato in _posti_noti():
+        try:
+            if candidato.is_file():
+                return str(candidato)
+        except OSError:
+            continue
+    return ""
+
+
 def docker_disponibile() -> Tuple[bool, str]:
     """Se Docker c'e' ed e' in ascolto. Il secondo valore dice cosa manca.
 
@@ -132,7 +195,7 @@ def docker_disponibile() -> Tuple[bool, str]:
     il comando c'e' anche quando Docker Desktop e' spento, e l'errore che ne
     esce a quel punto sarebbe indistinguibile da un comando sbagliato.
     """
-    eseguibile = shutil.which("docker")
+    eseguibile = trova_docker()
     if not eseguibile:
         return False, (
             "Docker non e' installato su questa macchina. Su Windows serve "
@@ -142,6 +205,7 @@ def docker_disponibile() -> Tuple[bool, str]:
         esito = subprocess.run(
             [eseguibile, "info", "--format", "{{.ServerVersion}}"],
             capture_output=True, text=True, timeout=20,
+            env=_ambiente_per_docker(),
         )
     except (OSError, subprocess.SubprocessError) as exc:
         return False, f"Docker c'e' ma non risponde: {exc}"
@@ -232,7 +296,11 @@ class EsecutoreContenitore:
         """
         montaggio = str(Path(cwd).resolve())
         argv = [
-            "docker", "run", "--rm",
+            # Non la parola "docker" ma il percorso trovato: se l'eseguibile
+            # non e' nel PATH di questo processo, `subprocess` non lo troverebbe
+            # comunque, e il contenitore fallirebbe per una ragione che non ha
+            # niente a che vedere con il comando dell'agente.
+            trova_docker() or "docker", "run", "--rm",
             "-v", f"{montaggio}:{PUNTO_DI_MONTAGGIO}",
             "-w", PUNTO_DI_MONTAGGIO,
         ]
@@ -268,6 +336,7 @@ class EsecutoreContenitore:
             esito = subprocess.run(
                 argv, capture_output=True, text=True, encoding="utf-8",
                 errors="replace", timeout=timeout_s, stdin=subprocess.DEVNULL,
+                env=_ambiente_per_docker(),
             )
         except subprocess.TimeoutExpired:
             return Esito(success=False, returncode=124, dove="container",
@@ -287,13 +356,28 @@ class EsecutoreContenitore:
         )
 
 
-def scegli_esecutore(configurazione: Optional[Dict[str, Any]] = None) -> Any:
-    """L'esecutore che la configurazione descrive. Host se non dice altro."""
+def scegli_esecutore(configurazione: Optional[Dict[str, Any]] = None,
+                     radice: Optional[str] = None) -> Any:
+    """L'esecutore che la configurazione descrive. Host se non dice altro.
+
+    `radice` e' la cartella su cui si sta lavorando: con quella, l'immagine la
+    sceglie il progetto invece della configurazione generale. Un frontend Vite
+    dentro `python:3.12-slim` non ha `node`, e `npm run build` fallisce per una
+    ragione che sembra colpa dell'agente.
+    """
     cfg = dict(configurazione or carica_config())
     if str(cfg.get("mode") or "host").lower() != "container":
         return EsecutoreHost()
+
+    immagine = str(cfg.get("image") or IMMAGINE_PREDEFINITA)
+    if radice:
+        try:
+            from core.harness.immagini import immagine_per
+            immagine = immagine_per(radice)
+        except Exception as exc:
+            log.debug("[Sandbox] immagine del progetto non risolta: %s", exc)
     return EsecutoreContenitore(
-        immagine=str(cfg.get("image") or IMMAGINE_PREDEFINITA),
+        immagine=immagine,
         rete=bool(cfg.get("network")),
         memoria=str(cfg.get("memory") or ""),
         cpu=str(cfg.get("cpus") or ""),

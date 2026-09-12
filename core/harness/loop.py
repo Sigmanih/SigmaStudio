@@ -1222,7 +1222,9 @@ def _execute_admin_tool_impl(
         # e nient'altro.
         from core.harness.esecutori import scegli_esecutore
 
-        esecutore = scegli_esecutore()
+        # La radice serve a scegliere l'immagine giusta per QUESTO
+        # progetto: senza, ogni contenitore userebbe quella generale.
+        esecutore = scegli_esecutore(radice=workspace_root)
         esito = esecutore.esegui(cmd, cwd=cwd, timeout_s=timeout_sec,
                                  should_cancel=should_cancel)
         return {
@@ -1533,6 +1535,34 @@ def _execute_admin_tool_impl(
 
         coda = get_queue(queue_id, goal=str(params.get("goal") or ""))
         avvisi: List[str] = []
+
+        # Una voce piu' grande di quanto sembrava si spezza invece di fallire.
+        # E' la mossa che mancava a chi sta lavorando: su una prova dal vivo un
+        # agente ha speso ventisei turni su una voce che erano tre, e non aveva
+        # modo di dirlo se non fallendo.
+        sostituisce = str(params.get("replaces") or params.get("sostituisce") or "").strip()
+        if sostituisce:
+            esito = coda.sostituisci(sostituisce, voci,
+                                     motivo=str(params.get("reason")
+                                                or params.get("motivo") or ""))
+            if not esito.get("ok"):
+                return {"tool": "queue_add", "success": False,
+                        "error": esito.get("error", "sostituzione non riuscita")}
+            stato = coda.progress()
+            return {
+                "tool": "queue_add", "success": True, "queue_id": queue_id,
+                "added": len(esito["created"]), "replaced": esito["replaced"],
+                "warnings": esito.get("warnings") or [],
+                "progress": stato,
+                "message": (
+                    f"Voce '{esito['replaced']}' spezzata in "
+                    f"{len(esito['created'])}: {', '.join(esito['created'])}. "
+                    f"Coda: {stato['total']} voci, {stato['ready']} pronte. "
+                    "Il tuo compito adesso e' chiuso: le parti le prendera' chi "
+                    "viene dopo, te compreso se ne resta una libera."
+                ),
+            }
+
         aggiunte = coda.add_many(voci, avvisi=avvisi)
         stato = coda.progress()
         messaggio = (
@@ -3262,13 +3292,35 @@ def stream_admin_agent_turn(*args: Any, **kwargs: Any) -> Generator[Dict[str, An
     Un `finally` qui vale anche per quel caso, perche' la chiusura del
     generatore lo attraversa.
     """
+    from core.harness import attivita
     from core.harness.resoconto import narra
+
+    # Chi guarda l'interfaccia deve vedere che qualcosa sta girando, anche se
+    # il run e' stato lanciato da un'altra parte: una curl, il ventaglio, un
+    # altro browser. Lo stream degli eventi vale solo per chi e' attaccato
+    # allo stream, e non e' quasi mai chi apre la pagina.
+    obiettivo = ""
+    try:
+        messaggi = kwargs.get("messages") or (args[0] if args else [])
+        obiettivo = str((messaggi or [{}])[-1].get("content") or "")[:200]
+    except Exception:
+        obiettivo = ""
+    voce_attivita = attivita.apri(
+        "agente", obiettivo,
+        workspace_root=kwargs.get("workspace_root"),
+        session_id=kwargs.get("session_id"),
+        ruolo=kwargs.get("policy_label") or None,
+    )
 
     chiusura: Dict[str, Any] = {}
     completato = False
+    turni = 0
     try:
         for evento in _stream_agent_turn_impl(*args, _chiusura=chiusura, **kwargs):
             yield evento
+            if evento.get("type") == "turn_start":
+                turni += 1
+                attivita.aggiorna(voce_attivita, progress=f"turno {turni}")
             # Il diario sta qui e non dentro il ciclo perche' qui passano
             # **tutti** gli eventi, compresi quelli che il ciclo emette da
             # rami diversi: una riga aggiunta la' andrebbe aggiunta in
@@ -3281,6 +3333,11 @@ def stream_admin_agent_turn(*args: Any, **kwargs: Any) -> Generator[Dict[str, An
                 yield {"type": "diario", "text": riga, "at": time.time()}
         completato = True
     finally:
+        attivita.chiudi(
+            voce_attivita,
+            "obiettivo raggiunto" if chiusura.get("goal_reached") else "chiuso",
+            turni=turni,
+        )
         esito = _chiudi_run(chiusura)
 
     # Dove e' finito il lavoro, quando c'e' un worktree di mezzo. Un branch di
