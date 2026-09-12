@@ -1,15 +1,15 @@
-# Stato dell'Harness · 9 settembre 2026 (rev. 3)
+# Stato dell'Harness · 12 settembre 2026 (rev. 4)
 
 Valutazione dell'harness dell'agente nel kernel: cosa regge, cosa no, e come si
 guida un lavoro grande da dentro Sigma Studio.
 
 | | |
 |:---|:---|
-| Test verdi | **1369** |
+| Test verdi | **1579** |
 | Build frontend | verde (~0,9 s) |
 | `npm run lint:undef` | 0 riferimenti non definiti |
 | Punti dell'audit tecnico | 11 / 11 chiusi |
-| Difetti trovati **dopo** la chiusura dell'audit | 17, tutti nell'integrazione |
+| Difetti trovati **dopo** la chiusura dell'audit | 20, tutti nell'integrazione |
 | Ventaglio parallelo, prova dal vivo | da 0 voci su 6 a **2 su 2**, in 8 e 9 turni |
 | Banco sul protocollo dei tool | Qwen 27B **100/100**; Ornith 35B e gemma 12B **70/100** |
 
@@ -243,3 +243,156 @@ sparisce anche quel passaggio.
 
 ### 5. P2P
 Resta per ultimo, come deciso.
+
+---
+
+## 6. Revisione del 12 settembre: dal piano alla sandbox
+
+La domanda di partenza era diversa dalle precedenti: non «cosa si rompe», ma
+**come si scrive un task, chi lo scrive, e come lo si segue**. Guardando quel
+percorso da capo sono usciti altri sette punti. Tre erano difetti attivi, e il
+primo è il più grosso trovato finora.
+
+### Il piano dell'architetto perdeva tre campi su cinque
+
+Il ruolo `architect` chiede — e il prompt lo dice esplicitamente — un piano con
+*file coinvolti, dipendenze da altri task, ruolo consigliato*. Il
+normalizzatore del tool `pipeline` teneva `id`, `title`, `status` e scartava
+tutto il resto:
+
+```
+in:  {"id": "t2", "title": "Estrai le stringhe", "role": "coder",
+      "description": "Usa tools/estrai_stringhe.py", "depends_on": ["t1"]}
+out: {"id": "t2", "title": "Estrai le stringhe", "status": "pending"}
+```
+
+Tre conseguenze che si sommavano: **ogni task finiva al Coder** (il ripiego di
+`_build_pipeline_from_architect`), **il grafo non aveva archi** — tutto sempre
+pronto — e **l'istruzione del task era il suo titolo**, una riga.
+
+Sotto c'è `next_role_batch()`, che esiste per raggruppare i task per ruolo
+senza violare le dipendenze, e che ha centoventi righe di test. Girava su un
+grafo che nella realtà era sempre senza archi e sempre di un ruolo solo.
+
+> È la quarta volta che uno stesso test costruisce a mano il dato che il codice
+> riceverà. `tests/test_role_scheduling.py` fabbricava i `TaskNode` con `role`
+> e `depends_on`: provava che lo scheduler funziona su un dato che non
+> riceveva mai.
+
+`tests/test_plan.py` parte ora **dalla chiamata del tool** e arriva al grafo
+eseguito, senza costruire niente in mezzo.
+
+### La cartella di lavoro non era un confine
+
+`resolve_workspace_path` prometteva nel nome di risolvere i percorsi *dentro*
+la radice. Con il workspace su un progetto esterno, due vie su tre uscivano:
+
+| percorso chiesto | prima |
+|:---|:---|
+| `C:/…/Sigma_Studio/config/config.json` | passava — assoluto, restituito tale e quale |
+| `x/../../Sigma_Studio/config/config.json` | passava — `normpath` non ricontrollava |
+| `../Sigma_Studio/config/config.json` | bloccato |
+
+Da lì si leggeva `config/config.json`, dove stanno le credenziali. I tool di
+file avevano una staccionata bucata; **il terminale non ne aveva nessuna**, e
+non può averne una scritta in Python: `cd ..` è una riga.
+
+### Nessuno poteva depositare il lavoro, e il lavoro non sapeva aspettare
+
+La `WorkQueue` — quella che sopravvive ai run e regge il ventaglio — si
+riempiva solo da `POST /api/harness/queue`. Un agente che aveva appena
+guardato il progetto e capito come spezzare il lavoro non aveva dove
+scriverlo. E le voci non sapevano esprimere un ordine: sulla Biblioteca le
+voci 06 e 07 dipendevano dalla 05, e l'unica alternativa era la fila indiana
+con un lavoratore solo.
+
+### Cosa è stato fatto
+
+| | |
+|:---|:---|
+| `core/harness/plan.py` | Il piano arriva intero. Dipendenze impossibili — id inesistenti, cicli — tolte **dicendo cosa si è tolto**: un piano corretto di nascosto insegna al modello che andava bene |
+| `FuoriDalWorkspace` | Un percorso che esce viene rifiutato, con il confronto sui percorsi reali (un collegamento non è una scorciatoia). Il rifiuto torna all'agente come risultato leggibile, non come eccezione che uccide il turno |
+| `core/harness/resoconto.py` | Cosa è stato fatto, come funziona, come lo sappiamo — **dai fatti del ledger**. Due forme: il consuntivo di fine run (e corpo della pull request) e il diario, un pezzo per volta mentre succede |
+| `queue_add` | L'Architect riempie la coda. Nello schema, nella policy, nel prompt e fra i suoi tool |
+| `depends_on` nella coda | Chi dipende da una voce fallita diventa `blocked` e dice da cosa; il lavoratore che non trova niente non se ne va se un altro sta lavorando a ciò che lo sbloccherà |
+| `core/progetti.py` | `data/progetti/` come indirizzo di sviluppo, spostabile. E `radice_pericolosa()`: dischi, cartella utente e cartelle di sistema non si danno a un agente |
+| `core/harness/esecutori.py` | La cucitura per la sandbox: host oggi, contenitore quando Docker c'è |
+
+### Sul resoconto: perché dai fatti e non dal modello
+
+Un modello sa scrivere «ho verificato tutto» senza aver eseguito niente, e su
+questo progetto lo ha già fatto. Ogni riga del resoconto viene da qualcosa che
+è successo e che qualcuno ha registrato mentre succedeva. Un comando che il
+ledger non ha riconosciuto come verifica non compare fra le prove; un run che
+ha scritto senza verificare si legge **«il lavoro non è dimostrato»**.
+
+È anche ciò che finisce nel corpo della pull request. Prima elencava obiettivo
+e nomi di file: chi doveva accettare non trovava scritto da nessuna parte quali
+criteri fossero stati accettati né quale comando li avesse dimostrati — le due
+cose che si vogliono sapere prima di premere merge.
+
+---
+
+## 7. Docker: il disegno, e cosa costa davvero
+
+**Il contenitore non è una comodità: è la metà mancante del confinamento.** Un
+recinto sui percorsi scritto in Python è aggirabile da qualunque comando di
+shell. E l'obiettivo dichiarato — che i modelli possano installare, compilare,
+rompere e ricominciare senza che nessuno debba fidarsi — è lo stesso problema
+visto dall'altro lato.
+
+**Stato della macchina**, verificato: `docker` non è installato, **e WSL non
+c'è**. Docker Desktop su Windows 11 richiede WSL2 o Hyper-V: è un'installazione
+vera, con riavvio. Non è `pip install`.
+
+**La cucitura è `core/harness/esecutori.py`**, dietro al tool `terminal` — che
+è l'unico punto da cui passano i comandi dell'agente. I tool di file
+continuano a scrivere sul disco dell'host, e il contenitore monta la stessa
+cartella: stessi byte, due viste. Così il diff, i backup, il cancello di
+revisione e `apply_to_main` continuano a funzionare senza sapere che esiste un
+contenitore.
+
+Quattro scelte che non sono dettagli, tutte già verificate nei test **senza
+Docker installato** — perché ciò che si può controllare a freddo è come viene
+costruita la riga di comando, ed è proprio quella a distinguere una sandbox da
+un modo complicato di eseguire un comando:
+
+- **si monta il worktree, non il repository** — altrimenti i lavoratori
+  paralleli tornano in comunicazione proprio dove l'isolamento li separa;
+- **`config/` non entra mai** — è il punto dell'operazione;
+- **l'ambiente è una lista bianca**, non `dict(os.environ)`;
+- **la rete è spenta**, con deroga esplicita: senza, `npm install` fallisce e
+  l'idea sembra sbagliata quando invece è solo stretta.
+
+E la regola che conta più di tutte: **se il contenitore non c'è, si dice**. Mai
+ripiegare in silenzio sull'host — chi ha acceso la sandbox crederebbe di essere
+protetto senza esserlo, ed è peggio che non averla. Per lo stesso motivo
+`stato_sandbox()` riporta `active` vero solo se la sandbox è chiesta **e**
+possibile.
+
+**Cosa resta da fare**, quando WSL2 sarà installato: le immagini per progetto
+(un `node:22` per il frontend, un `python:3.12` per il backend, dichiarate
+accanto al progetto), la cache dei volumi — altrimenti ogni voce della coda
+reinstalla tutto — e il `verify` della coda, che deve girare dalla stessa parte
+del lavoro.
+
+**Il prezzo onesto**: un errore in più da diagnosticare. «Passa sull'host e
+fallisce nel contenitore» è la frase che si dirà spesso, ed è per questo che il
+risultato del tool `terminal` porta ora il campo `dove`.
+
+---
+
+## 8. Cosa manca, dopo questo giro
+
+1. **Docker installato** (WSL2 o Hyper-V), e le immagini per progetto.
+2. **Il comando del terminale resta senza recinto** finché la sandbox non è
+   accesa: il confine sui percorsi copre i tool di file e la `cwd`, non ciò che
+   un comando fa dopo essere partito.
+3. **Il consuntivo non arriva al ventaglio**: `run_report` è per singolo run.
+   Un lavoro da cinquanta voci merita un resoconto complessivo.
+4. **Le dipendenze della coda non attraversano i worktree**: una voce che
+   dipende da un'altra vede il lavoro della prima solo dopo la consegna.
+5. I punti 1-4 della sezione precedente restano: `check_i18n`, la lingua nel
+   backend, i campi `sidebar*`, `gh`.
+6. **P2P**, per ultimo.
+

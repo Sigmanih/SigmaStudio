@@ -1216,15 +1216,28 @@ def _execute_admin_tool_impl(
             }
 
         timeout_sec = int(params.get("timeout_seconds") or params.get("timeout") or 300)
-        res = execute_shell_command_sync(cmd, cwd=cwd, timeout_seconds=timeout_sec, should_cancel=should_cancel)
+        # L'unico punto in cui passano i comandi dell'agente, e quindi l'unico
+        # posto dove ha senso decidere *dove* girano. Host per default; dentro
+        # un contenitore quando la sandbox e' accesa, con il workspace montato
+        # e nient'altro.
+        from core.harness.esecutori import scegli_esecutore
+
+        esecutore = scegli_esecutore()
+        esito = esecutore.esegui(cmd, cwd=cwd, timeout_s=timeout_sec,
+                                 should_cancel=should_cancel)
         return {
             "tool": "terminal",
             "command": cmd,
             "cwd": cwd,
-            "success": res.get("success", False),
-            "stdout": res.get("stdout", ""),
-            "stderr": res.get("stderr", ""),
-            "returncode": res.get("returncode", 0)
+            "success": esito.success,
+            "stdout": esito.stdout,
+            "stderr": esito.stderr,
+            "returncode": esito.returncode,
+            # Dove e' girato davvero. «Passa sull'host e fallisce nel
+            # contenitore» e' la frase che si dira' piu' spesso quando la
+            # sandbox sara' accesa: senza questo campo non si saprebbe quale
+            # dei due casi si sta guardando.
+            "dove": esito.dove,
         }
 
     elif tool_name in ("read_file", "read"):
