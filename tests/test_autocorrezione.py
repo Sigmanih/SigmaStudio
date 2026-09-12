@@ -412,3 +412,81 @@ class TestUnSoloSistemaDiCorrezione:
             id="b", title="b", role="coder",
             metadata={"verify": "python tools/check_i18n.py sigma_network"}))
         assert orch._comando_di_verifica().startswith("python tools/check_i18n")
+
+
+class TestLaSquadraSiPassaIlLavoro:
+    """`upstream_outputs` esisteva in tutti e cinque i punti in cui si
+    costruisce il contesto di un ruolo, e in tutti e cinque portava la stessa
+    cosa: l'output dell'Architetto. Cinque ruoli che lavoravano in parallelo
+    fingendo una fila."""
+
+    def _orchestratore(self):
+        from core.modules.sigma_developer_lab.orchestrator import DevOrchestrator
+
+        orch = DevOrchestrator(workspace_root=".")
+        for ruolo, testo in (("architect", "il piano"), ("devops", "il branch"),
+                             ("coder", "il codice"), ("tester", "i test")):
+            orch.context.record_role_output(ruolo, testo)
+        return orch
+
+    def test_il_reviewer_vede_anche_il_tester(self):
+        monte = self._orchestratore()._monte("reviewer")
+        assert "tester" in monte, "il Reviewer deve sapere cosa ha trovato il Tester"
+        assert "coder" in monte
+        assert "architect" in monte
+
+    def test_il_coder_non_vede_chi_viene_dopo(self):
+        """Passare l'output del Tester al Coder significherebbe dargli il
+        risultato di un lavoro che non e' ancora stato fatto."""
+        monte = self._orchestratore()._monte("coder")
+        assert "tester" not in monte
+        assert "reviewer" not in monte
+        assert "architect" in monte
+
+    def test_l_architetto_non_ha_nessuno_a_monte(self):
+        assert self._orchestratore()._monte("architect") == {}
+
+    def test_un_ruolo_che_non_ha_prodotto_niente_non_occupa_finestra(self):
+        from core.modules.sigma_developer_lab.orchestrator import DevOrchestrator
+
+        orch = DevOrchestrator(workspace_root=".")
+        orch.context.record_role_output("architect", "il piano")
+        orch.context.record_role_output("coder", "   ")
+        monte = orch._monte("tester")
+        assert "coder" not in monte, "una sezione vuota non dice niente"
+
+    def test_tutti_i_punti_usano_il_monte(self):
+        import inspect
+
+        from core.modules.sigma_developer_lab import orchestrator as O
+
+        sorgente = inspect.getsource(O)
+        assert 'upstream_outputs={"architect"' not in sorgente, (
+            "un solo ruolo a monte, ovunque, e' la fila finta")
+        assert sorgente.count("upstream_outputs=self._monte(") >= 5
+
+
+class TestUnPianoNuovoSiFaApprovare:
+    def test_in_interattivo_la_ripianificazione_chiede(self):
+        """Approvare un piano e ritrovarsene un altro e' peggio che non
+        approvare niente."""
+        import inspect
+
+        from core.modules.sigma_developer_lab.orchestrator import DevOrchestrator
+
+        sorgente = inspect.getsource(DevOrchestrator._ripianifica)
+        assert "ExecutionMode.INTERACTIVE" in sorgente
+        assert '"approval_required"' in sorgente
+        assert '_wait_for_approval("replan")' in sorgente
+
+    def test_il_rifiuto_lascia_il_piano_di_prima(self):
+        import inspect
+
+        from core.modules.sigma_developer_lab.orchestrator import DevOrchestrator
+
+        sorgente = inspect.getsource(DevOrchestrator._ripianifica)
+        i_rifiuto = sorgente.index('!= "approved"')
+        i_replan = sorgente.index("self.pipeline.replan(")
+        assert i_rifiuto < i_replan, (
+            "il controllo deve venire prima della sostituzione, altrimenti "
+            "il piano e' gia' cambiato quando si chiede il permesso")
