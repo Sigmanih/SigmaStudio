@@ -836,8 +836,60 @@ def extract_implicit_pipeline_from_text(text: str) -> List[Dict[str, Any]]:
     return []
 
 
-def resolve_workspace_path(path: Optional[str], workspace_root: str) -> str:
-    """Normalizes and safely resolves paths within the workspace root."""
+class FuoriDalWorkspace(ValueError):
+    """Un percorso che uscirebbe dalla radice su cui il run sta lavorando.
+
+    Non e' un caso limite teorico. Con il workspace su un progetto esterno,
+    due vie su tre portavano fuori: il percorso assoluto, che veniva
+    restituito tale e quale, e il `..` in mezzo al percorso, che `normpath`
+    risolveva senza che nessuno ricontrollasse il risultato. Da li' si
+    leggeva `config/config.json` di Sigma Studio, dove stanno le credenziali.
+    """
+
+    def __init__(self, percorso: str, radice: str):
+        self.percorso = percorso
+        self.radice = radice
+        super().__init__(
+            f"Percorso rifiutato: '{percorso}' sta fuori dalla cartella di "
+            f"lavoro di questo run ({radice}). Usa un percorso relativo a "
+            "quella cartella. Se il file che ti serve sta davvero altrove, "
+            "il run e' stato aperto sulla cartella sbagliata: dillo invece "
+            "di aggirare il limite."
+        )
+
+
+def _dentro_la_radice(candidato: str, radice: str, richiesto: str) -> str:
+    """Il percorso, se sta nella radice. Altrimenti solleva.
+
+    Il confronto avviene sui percorsi reali: un collegamento simbolico che
+    punta fuori e' un'uscita quanto un `..`, e senza `realpath` passerebbe.
+    `normcase` perche' su Windows due percorsi che differiscono solo nelle
+    maiuscole sono lo stesso percorso.
+
+    Ritorna `candidato` e non la sua forma reale perche' i chiamanti
+    confrontano questa stringa con altre gia' calcolate: risolvere i
+    collegamenti solo qui li farebbe smettere di combaciare.
+    """
+    reale = os.path.normcase(os.path.realpath(candidato))
+    reale_radice = os.path.normcase(os.path.realpath(radice))
+    if reale == reale_radice or reale.startswith(reale_radice + os.sep):
+        return candidato
+    raise FuoriDalWorkspace(richiesto, radice)
+
+
+def resolve_workspace_path(path: Optional[str], workspace_root: str,
+                           strict: bool = True) -> str:
+    """Il percorso assoluto corrispondente, **dentro** la radice di lavoro.
+
+    Il nome prometteva gia' questo; l'implementazione non lo faceva. Ora un
+    percorso che esce solleva `FuoriDalWorkspace`, che `execute_admin_tool`
+    trasforma in un rifiuto leggibile per l'agente.
+
+    `strict=False` serve ai pochi punti che usano il risultato come
+    **etichetta** — una stringa da confrontare con un'altra per capire se un
+    file era gia' stato letto — e non per aprire niente. Non va usato per
+    nessuna operazione sul filesystem: li' il controllo e' l'unica difesa.
+    """
     if not workspace_root:
         workspace_root = get_default_workspace_root()
     workspace_root = os.path.abspath(workspace_root)
@@ -888,10 +940,13 @@ def resolve_workspace_path(path: Optional[str], workspace_root: str) -> str:
         clean = migliore
 
     if os.path.isabs(clean):
-        return os.path.abspath(clean)
+        candidato = os.path.abspath(clean)
+    else:
+        candidato = os.path.normpath(os.path.join(workspace_root, clean))
 
-    norm = os.path.normpath(os.path.join(workspace_root, clean))
-    return norm
+    if not strict:
+        return candidato
+    return _dentro_la_radice(candidato, workspace_root, str(path))
 
 
 def normalize_tool_params(raw_body: str, tool_name: str) -> Dict[str, Any]:
@@ -1030,6 +1085,34 @@ def extract_tool_invocations(text: str) -> List[Dict[str, Any]]:
 
 
 def execute_admin_tool(
+    tool_name: str,
+    params: Dict[str, Any],
+    workspace_root: str,
+    should_cancel: Optional[Callable[[], bool]] = None,
+    dimensioni_viste: Optional[Dict[str, int]] = None,
+) -> Dict[str, Any]:
+    """Esegue un tool, con il confine del workspace fatto rispettare.
+
+    Il guscio esiste per un motivo solo: `resolve_workspace_path` viene
+    chiamata da una dozzina di rami diversi, e un rifiuto deve tornare
+    all'agente come risultato leggibile — non come eccezione che interrompe
+    il turno. Cosi' l'agente legge perche' il percorso e' stato rifiutato e
+    riprova con uno buono, invece di vedere il run morire.
+    """
+    try:
+        return _execute_admin_tool_impl(
+            tool_name, params, workspace_root, should_cancel, dimensioni_viste)
+    except FuoriDalWorkspace as fuori:
+        log.warning("[Tool] '%s' fuori dal workspace: %s", tool_name, fuori.percorso)
+        return {
+            "tool": tool_name.lower(),
+            "path": fuori.percorso,
+            "success": False,
+            "error": str(fuori),
+        }
+
+
+def _execute_admin_tool_impl(
     tool_name: str,
     params: Dict[str, Any],
     workspace_root: str,
@@ -2249,7 +2332,7 @@ def _stream_agent_turn_impl(
             if force_action_turn and t_name in ("read_file", "read"):
                 probe = t_params.get("path") or ""
                 already = ledger.was_read_before_change(
-                    resolve_workspace_path(probe, workspace_root).replace("\\", "/")
+                    resolve_workspace_path(probe, workspace_root, strict=False).replace("\\", "/")
                 )
                 if already:
                     turn_gave_direction = True
@@ -2270,7 +2353,7 @@ def _stream_agent_turn_impl(
 
             if t_name in ("read_file", "read"):
                 probe = t_params.get("path") or ""
-                resolved = resolve_workspace_path(probe, workspace_root)
+                resolved = resolve_workspace_path(probe, workspace_root, strict=False)
                 marker = f"Contenuto di '{resolved.replace(chr(92), '/')}'"
                 still_visible = any(
                     marker in m.get("content", "") for m in full_messages[2:]

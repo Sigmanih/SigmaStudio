@@ -73,13 +73,29 @@ class TestIlCicloRicorda:
         assert "dimensioni_viste: Dict[str, int] = {}" in sorgente
         assert "dimensioni_viste=dimensioni_viste" in sorgente
 
-    def test_lo_strumento_le_aggiorna_dopo_una_scrittura(self):
+    def test_lo_strumento_le_aggiorna_dopo_una_scrittura(self, tmp_path):
+        """Il registro delle dimensioni si riempie davvero.
+
+        Prima questo test leggeva il **sorgente** di `execute_admin_tool` e
+        cercava la riga che aggiorna il dizionario. Ha smesso di passare
+        appena la funzione e' diventata un guscio attorno alla sua
+        implementazione — pur funzionando esattamente come prima. Un test che
+        controlla com'e' scritto il codice fallisce quando il codice viene
+        spostato e tace quando smette di funzionare: qui si guarda l'effetto.
+        """
         from core.harness.loop import execute_admin_tool
 
         parametri = inspect.signature(execute_admin_tool).parameters
         assert "dimensioni_viste" in parametri
-        sorgente = inspect.getsource(execute_admin_tool)
-        assert "dimensioni_viste[full_path] = max(" in sorgente
+
+        viste = {}
+        contenuto = "riga di codice\n" * 200
+        esito = execute_admin_tool(
+            "write_file", {"path": "modulo.py", "content": contenuto},
+            str(tmp_path), dimensioni_viste=viste)
+        assert esito.get("success") is True
+        assert viste, "dopo una scrittura il registro non puo' essere vuoto"
+        assert max(viste.values()) >= len(contenuto.strip())
 
     def test_una_riscrittura_erosiva_viene_rifiutata_dallo_strumento(self, tmp_path):
         from core.harness.loop import execute_admin_tool
