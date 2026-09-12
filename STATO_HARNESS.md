@@ -1,17 +1,18 @@
-# Stato dell'Harness · 12 settembre 2026 (rev. 4)
+# Stato dell'Harness · 12 settembre 2026 (rev. 5)
 
 Valutazione dell'harness dell'agente nel kernel: cosa regge, cosa no, e come si
 guida un lavoro grande da dentro Sigma Studio.
 
 | | |
 |:---|:---|
-| Test verdi | **1579** |
+| Test verdi | **1655** |
 | Build frontend | verde (~0,9 s) |
 | `npm run lint:undef` | 0 riferimenti non definiti |
 | Punti dell'audit tecnico | 11 / 11 chiusi |
-| Difetti trovati **dopo** la chiusura dell'audit | 20, tutti nell'integrazione |
+| Difetti trovati **dopo** la chiusura dell'audit | 29, tutti nell'integrazione |
 | Ventaglio parallelo, prova dal vivo | da 0 voci su 6 a **2 su 2**, in 8 e 9 turni |
 | Banco sul protocollo dei tool | Qwen 27B **100/100**; Ornith 35B e gemma 12B **70/100** |
+| Voto del flusso di squadra | **8,5 / 10** (era 6) |
 
 ---
 
@@ -395,4 +396,113 @@ risultato del tool `terminal` porta ora il campo `dove`.
 5. I punti 1-4 della sezione precedente restano: `check_i18n`, la lingua nel
    backend, i campi `sidebar*`, `gh`.
 6. **P2P**, per ultimo.
+
+---
+
+## 9. Il flusso di squadra, esaminato riga per riga · 12 settembre 2026
+
+Non «cosa si rompe» ma: **il percorso dei cinque ruoli è coerente,
+ispezionabile, testato, completo e spiegato?** Sei criteri, un voto per
+ciascuno, e i difetti trovati sono nove — tutti nei punti in cui le parti si
+incontrano, nessuno dentro un pezzo.
+
+### Il difetto più grosso: la squadra lavorava senza rete
+
+`generate_with_role` dichiarava `isolate_worktree`, `review_run`,
+`review_writes` e `verify_command`. Li passava la chat a un agente solo.
+**L'orchestratore non ne passava nessuno** — cioè l'unico posto dove cinque
+ruoli lavorano di fila senza che nessuno guardi era anche l'unico senza
+isolamento, senza revisione del diff e senza la prova che il task stesso
+dichiarava.
+
+È la quinta volta con la stessa firma: *scritto, testato, scollegato*. La
+guardia `tests/test_no_dead_wiring.py` copriva il ciclo e il ventaglio, non
+questo ingresso. Estesa a `generate_with_role` e a `execute_goal`, ha trovato
+il difetto al primo giro.
+
+> Una guardia che non copre tutte le porte non è una guardia incompleta: è una
+> guardia che dà l'impressione di esserci.
+
+E ha trovato anche che **due di quei quattro parametri erano sul livello
+sbagliato**. L'unità dell'isolamento non è il ruolo: è l'obiettivo. Un worktree
+per ruolo darebbe cinque alberi che non si vedono fra loro, e il Tester non
+troverebbe i file che il Coder ha appena scritto — la squadra smetterebbe di
+essere una squadra. Ora `execute_goal` apre **un albero solo** e lo fa ereditare
+a tutti e cinque; `review_writes` e `verify_command` restano per ruolo, perché
+lì l'unità giusta è la scrittura e il task.
+
+### Gli altri otto
+
+| # | Difetto | Perché conta |
+|:--|:---|:---|
+| 2 | Due sistemi di correzione che non si conoscono | `_feedback_loop` contava le proprie mosse in modo separato dal `Bilancio`: insieme potevano spendere il doppio del tetto che il primo credeva di far rispettare |
+| 3 | Al Coder si passava **la prosa del Tester** | Gli stessi fatti erano nel ledger, misurati invece che raccontati |
+| 4 | Ogni ruolo vedeva solo l'Architetto | `upstream_outputs` esisteva in cinque punti e in cinque portava la stessa cosa: cinque ruoli in parallelo che fingevano una fila |
+| 5 | La ripianificazione non si faceva approvare | L'utente approva ogni fase, poi il piano gli viene sostituito dentro una fase già approvata |
+| 6 | `verify` del task dichiarato e mai passato | Il piano diceva come si dimostra quel task, e chi lo eseguiva doveva inventarselo |
+| 7 | Il bilancio non si azzerava fra un obiettivo e l'altro | L'orchestratore vive per sessione: il secondo obiettivo partiva con le correzioni già spese |
+| 8 | La consegna era un prompt con dentro quattro comandi git | Mentre il resto del sistema va branch → `dev` → pull request, come da regola |
+| 9 | Il resoconto finale erano tre frasi scritte a mano | Identiche a ogni run, accanto a un elenco di file: non dicevano quali criteri fossero stati accettati né quale comando li avesse dimostrati |
+
+Tutti e nove corretti, con i loro test.
+
+### Due cose che sembravano difetti e non lo erano
+
+Le scrivo perché **misurare prima di intervenire** è metà del mestiere, e
+tutte e due le avrei «aggiustate» a occhio.
+
+**Il blocco di stato condiviso non esplode.** Sessanta file toccati e quaranta
+comandi eseguiti producono 2 794 caratteri — circa 700 token. Il ledger tronca
+già la propria resa: il problema che stavo per risolvere non esiste.
+
+**`next_role_batch` non ottimizza un costo nullo.** Avevo pensato: i cinque
+ruoli usano lo stesso modello, quindi non c'è nessun cambio di pesi da
+ammortizzare. Sbagliato — il guadagno non è il modello, è **la cache di
+prefisso KV**, che è chiavata sul ruolo (`cache_slot = f"role:{...}"`) perché
+il system prompt è costante dentro un ruolo e diverso fra ruoli. Con
+`-np 1` c'è un solo slot, quindi cambiare ruolo sfratta il prefisso
+precedente: raggruppare i task per ruolo è **esattamente** la mossa giusta, per
+una ragione diversa da quella scritta nel commento. Circa 2 500 token di
+prompt per task che non vengono rielaborati.
+
+### Il voto
+
+| criterio | prima | dopo | perché |
+|:---|:---:|:---:|:---|
+| **Coerente** | 4 | 9 | Era il lato debole: la squadra e il singolo agente facevano cose diverse in cinque punti. Ora condividono revisione, consegna, diagnosi e bilancio — le stesse funzioni, non due copie |
+| **Ispezionabile** | 6 | 9 | Ogni mossa dell'autocorrezione è un evento con dentro **le prove su cui si è deciso**; il piano nuovo si fa approvare; il consuntivo viene dai fatti. Manca il resoconto d'insieme del ventaglio |
+| **Testato** | 7 | 9 | 1 655 verdi, e soprattutto: i test partono dalla chiamata vera. Due che leggevano il **sorgente** invece dell'effetto sono stati riscritti — fallivano per uno spostamento che non cambiava niente |
+| **Completo** | 5 | 7 | Docker non è installato: la sandbox è verificata a freddo, mai dal vivo. Il ventaglio non diagnostica i propri fallimenti. `get_parallel_groups` non lo chiama nessuno |
+| **Commentato** | 9 | 9 | È la cosa migliore di questo progetto. Ogni decisione non ovvia porta il suo perché, e spesso il numero che l'ha decisa |
+| **Perfetto** | — | no | Tre cose aperte, elencate sotto |
+
+**Voto complessivo: 8,5 / 10.** Era 6 all'inizio di questa revisione.
+
+Il punto e mezzo che manca non è un dettaglio: è **la prova dal vivo**. Il
+flusso di squadra con isolamento e revisione non ha ancora attraversato un
+obiettivo vero dall'inizio alla fine. Vale qui quello che vale sempre:
+
+> Una capacità non è finita quando i suoi test passano. È finita quando l'ha
+> attraversata un run vero.
+
+### Le tre cose aperte, in ordine
+
+**1. Il ventaglio non si corregge.** L'orchestratore diagnostica un fallimento
+e sceglie fra riprovare, correggere, ripianificare e rinunciare. Il ventaglio —
+che è il percorso per il lavoro **grande**, quello dove i fallimenti costano di
+più — si limita a rimettere la voce in coda per tre volte identiche. La
+diagnosi è già scritta e non dipende dalla pipeline: le serve solo uno snapshot
+del ledger. Andrebbe chiamata anche lì, e il suo esito scritto nel `payload`
+della voce, così il tentativo successivo parte sapendo cosa è andato storto.
+
+**2. `get_parallel_groups()` non lo chiama nessuno.** Esiste, è testata, e
+promette un parallelismo che dentro un obiettivo non è ottenibile: il motore è
+uno solo e `generate_stream` prende un lucchetto di processo. O la si collega a
+`parallel_slots > 1`, o va tolta — una funzione che promette una capacità
+inesistente è peggio di una che manca.
+
+**3. Docker.** WSL2 con Ubuntu adesso c'è; Docker Desktop no. Finché non c'è,
+`stato_sandbox()` dice `active: false` con il motivo, ed è l'unica cosa onesta
+da dire.
+
 

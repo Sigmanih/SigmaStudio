@@ -56,6 +56,9 @@ class EsitoVoce:
     turns: int = 0
     files: List[str] = field(default_factory=list)
     error: str = ""
+    #: La mossa che la diagnosi suggerisce: riprova, correggi, ripianifica,
+    #: rinuncia. Vuota quando la voce e' riuscita.
+    diagnosi: str = ""
     #: Dove sta il lavoro, riuscito o no. Un branch di cui nessuno conosce
     #: il nome e' perso quanto uno cancellato.
     branch: str = ""
@@ -63,7 +66,8 @@ class EsitoVoce:
     def to_dict(self) -> Dict[str, Any]:
         return {"item_id": self.item_id, "title": self.title, "ok": self.ok,
                 "turns": self.turns, "files": self.files,
-                "error": self.error, "branch": self.branch}
+                "error": self.error, "diagnosi": self.diagnosi,
+                "branch": self.branch}
 
 
 def _prompt_voce(voce: Voce, obiettivo_generale: str) -> str:
@@ -266,6 +270,7 @@ def _esegui_voce(
     verifica = str((voce.payload or {}).get("verify") or "").strip()
     esito = EsitoVoce(item_id=voce.id, title=voce.title, ok=False)
     file_toccati: List[str] = []
+    ultimo_stato: Dict[str, Any] = {}
     raggiunto = False
     non_applicato = {"si": False}
 
@@ -300,7 +305,11 @@ def _esegui_voce(
                 esito.turns = int(evento.get("turns") or 0)
                 raggiunto = bool(evento.get("goal_reached"))
             elif tipo == "ledger":
-                file_toccati = _file_modificati(evento.get("state") or {}) or file_toccati
+                stato = evento.get("state") or {}
+                file_toccati = _file_modificati(stato) or file_toccati
+                # L'ultimo snapshot e' la materia su cui si diagnostica un
+                # fallimento: senza, resterebbe solo «non ha funzionato».
+                ultimo_stato.update(stato)
             elif tipo in ("run_delivered", "delivery_failed"):
                 file_toccati = list(evento.get("files") or file_toccati)
             elif tipo == "apply_failed":
@@ -349,5 +358,48 @@ def _esegui_voce(
             )
         else:
             esito.error = "nessuna modifica prodotta entro i turni disponibili"
+        _annota_la_diagnosi(coda, voce, esito, ultimo_stato)
         coda.fail(voce.id, esito.error)
     return esito
+
+
+def _annota_la_diagnosi(coda: WorkQueue, voce: Voce, esito: EsitoVoce,
+                        stato: Dict[str, Any]) -> None:
+    """Scrive nella voce cosa e' andato storto, per chi la riprendera'.
+
+    Riprovare identico dopo un fallimento e' esattamente il comportamento che
+    il banco sul protocollo misura come errore in un modello. Vale anche per il
+    sistema che lo ospita: se la voce torna in coda senza portarsi dietro cio'
+    che si e' imparato, il secondo tentativo e' il primo.
+
+    La diagnosi e' la stessa dell'orchestratore — un file che non compila, una
+    verifica fallita, una premessa sbagliata — e arriva al tentativo successivo
+    dentro il prompt, perche' `_prompt_voce` stampa le chiavi del payload.
+
+    Accessoria per costruzione: se qualcosa qui va storto, la voce fallisce
+    comunque come prima. Non si perde niente, si perde solo il consiglio.
+    """
+    try:
+        from core.harness.autocorrezione import Bilancio, diagnostica
+
+        class _Voce:
+            id = voce.id
+            title = voce.title
+            error = esito.error
+            metadata: Dict[str, Any] = {}
+            files_modified = list(esito.files)
+
+        diagnosi = diagnostica(_Voce(), stato, Bilancio())
+        esito.diagnosi = diagnosi.livello
+        esito.error = f"{esito.error} — {diagnosi.motivo}"
+        if diagnosi.istruzione:
+            # Il nome della chiave e' cio' che l'agente leggera' come etichetta:
+            # «nota» perche' e' un consiglio sul tentativo precedente, non una
+            # parte nuova del compito.
+            carico = dict(voce.payload or {})
+            carico["nota dal tentativo precedente"] = diagnosi.istruzione
+            voce.payload = carico
+        log.info("[Fanout] '%s' fallita: %s (%s)",
+                 voce.id, diagnosi.motivo, diagnosi.livello)
+    except Exception as exc:
+        log.debug("[Fanout] diagnosi non riuscita per '%s': %s", voce.id, exc)
