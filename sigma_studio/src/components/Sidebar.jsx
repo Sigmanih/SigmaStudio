@@ -608,7 +608,7 @@ export default function Sidebar({
             badgeColor="rgba(255,184,108,0.2)"
             active={activeTabId != null && activeTabId.startsWith('model_hub')}
             onClick={() => {
-              openTab({ name: 'Modelli' }, 'model_hub');
+              handleSelectModelTab('inventory');
               setModelsExpanded(true);
             }} 
             expandable={true}

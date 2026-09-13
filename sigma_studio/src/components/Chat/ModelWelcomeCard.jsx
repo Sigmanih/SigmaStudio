@@ -159,18 +159,24 @@ export default function ModelWelcomeCard({
             </div>
           </div>
 
-          {openTab && (
-            <div className="model-welcome-strip-actions">
-              <button 
-                type="button" 
-                className="model-welcome-strip-link"
-                onClick={() => openTab('models')}
-              >
-                <ExternalLink size={11} />
-                <span>Apri tab Modelli</span>
-              </button>
-            </div>
-          )}
+          <div className="model-welcome-strip-actions">
+            <button 
+              type="button" 
+              className="model-welcome-strip-link"
+              onClick={() => {
+                try {
+                  localStorage.setItem('sigma_model_hub_active_subtab', 'inventory');
+                } catch {}
+                window.dispatchEvent(new CustomEvent('sigma-model-hub-set-tab', { detail: 'inventory' }));
+                if (openTab) {
+                  openTab({ name: 'Modelli' }, 'model_hub');
+                }
+              }}
+            >
+              <ExternalLink size={11} />
+              <span>Apri Modelli Locali</span>
+            </button>
+          </div>
         </div>
       )}
     </div>

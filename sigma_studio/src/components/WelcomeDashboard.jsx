@@ -159,6 +159,14 @@ export default function WelcomeDashboard({ modules, openTab }) {
     setExpandedPillar(prev => prev === id ? null : id);
   };
 
+  const openLocalModels = () => {
+    try {
+      localStorage.setItem('sigma_model_hub_active_subtab', 'inventory');
+    } catch {}
+    window.dispatchEvent(new CustomEvent('sigma-model-hub-set-tab', { detail: 'inventory' }));
+    openTab({ name: 'Modelli' }, 'model_hub');
+  };
+
   const pillarsData = [
     {
       id: 'engine',
@@ -289,7 +297,7 @@ export default function WelcomeDashboard({ modules, openTab }) {
 
             <button
               className="home-cta-btn secondary"
-              onClick={() => openTab({ name: 'Modelli' }, 'model_hub')}
+              onClick={openLocalModels}
               title="Gestisci ed esegui i modelli locali GGUF e Safetensors"
             >
               <Cpu size={16} />
@@ -435,7 +443,13 @@ export default function WelcomeDashboard({ modules, openTab }) {
                       type="button"
                       className="home-pillar-action-link"
                       style={{ color: p.color }}
-                      onClick={() => openTab({ name: p.title }, p.actionTab)}
+                      onClick={() => {
+                        if (p.actionTab === 'model_hub') {
+                          openLocalModels();
+                        } else {
+                          openTab({ name: p.title }, p.actionTab);
+                        }
+                      }}
                     >
                       <span>{p.actionText}</span>
                       <ArrowRight size={12} />

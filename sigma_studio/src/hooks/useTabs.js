@@ -44,6 +44,29 @@ export function useTabs() {
   const [activeTabId, setActiveTabId] = useState(null);
 
   const openTab = useCallback((item, type) => {
+    let normItem = item;
+    let normType = type;
+
+    // Normalizzazione se invocato con un solo argomento stringa (es. openTab('models'))
+    if (typeof item === 'string' && !type) {
+      if (item === 'models' || item === 'model_hub' || item === 'inventory') {
+        normItem = { name: 'Modelli' };
+        normType = 'model_hub';
+        try {
+          localStorage.setItem('sigma_model_hub_active_subtab', 'inventory');
+          window.dispatchEvent(new CustomEvent('sigma-model-hub-set-tab', { detail: 'inventory' }));
+        } catch (_) {}
+      } else {
+        normItem = { name: TITOLI_DA_URL[item] || item };
+        normType = item;
+      }
+    } else if (normType === 'models') {
+      normType = 'model_hub';
+      if (!normItem || typeof normItem !== 'object') {
+        normItem = { name: 'Modelli' };
+      }
+    }
+
     // Singleton types (no path needed — one tab per type)
     const SINGLETON_TYPES = [
       'chat', 'benchmark_lab', 'benchmark', 'research_lab', 'training_lab', 'hardware_lab', 'hardware',
@@ -55,17 +78,17 @@ export function useTabs() {
       'creative_studio', 'voice_studio', 'developer_studio', 'developer_lab',
       'network_lab', 'sigma_network', 'email_client', 'messaging_hub'
     ];
-    const tabId = SINGLETON_TYPES.includes(type)
-      ? `${type}-singleton`
-      : `${type}-${item.path || item.folder || item.name || type}`;
+    const tabId = SINGLETON_TYPES.includes(normType)
+      ? `${normType}-singleton`
+      : `${normType}-${normItem?.path || normItem?.folder || normItem?.name || normType}`;
     setOpenTabs(prev => {
       if (prev.find(t => t.id === tabId)) return prev;
       return [...prev, {
         id: tabId,
-        name: item.filename || item.name || `Mod ${item.number}`,
-        type,
-        path: item.path,
-        folder: item.folder
+        name: normItem?.filename || normItem?.name || `Mod ${normItem?.number || ''}`,
+        type: normType,
+        path: normItem?.path,
+        folder: normItem?.folder
       }];
     });
     setActiveTabId(tabId);
