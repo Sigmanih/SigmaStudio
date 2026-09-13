@@ -27,14 +27,23 @@
 ## 🎬 Video Demo & Platform Tour
 
 <p align="center">
-  <video src="images/screenshots/chat_record.mp4" controls="controls" width="100%" style="border-radius: 14px; box-shadow: 0 10px 36px rgba(0,210,255,0.25);">
-    Your browser does not support the video tag. Watch the <a href="images/screenshots/chat_record.mp4">Sigma Studio Video Demo</a>.
+  <video src="https://github.com/Sigmanih/SigmaStudio/raw/main/images/Registrazione_chat.mp4" controls="controls" width="100%" style="border-radius: 14px; box-shadow: 0 10px 36px rgba(0,210,255,0.25);">
+    Your browser does not support the video tag. Watch the <a href="https://github.com/Sigmanih/SigmaStudio/blob/main/images/Registrazione_chat.mp4">Sigma Studio Video Demo on GitHub</a>.
   </video>
 </p>
 
 <p align="center">
-  <em>▶️ Live Demo: Multi-Agent Streaming Chat, Autonomous Swarm, MCP Tools Execution & Real-Time Cognitive Pipeline (<code>chat_record.mp4</code>)</em><br/>
-  <a href="images/screenshots/chat_record.mp4"><strong>📥 Download / Watch Video Demo Directly (chat_record.mp4)</strong></a>
+  <a href="https://github.com/Sigmanih/SigmaStudio/blob/main/images/Registrazione_chat.mp4">
+    <img src="https://img.shields.io/badge/▶️_Watch_Video_on_GitHub-Registrazione__chat.mp4-00d2ff?style=for-the-badge&logo=github&logoColor=white" alt="Watch Video on GitHub" />
+  </a>
+  <a href="https://github.com/Sigmanih/SigmaStudio/raw/main/images/Registrazione_chat.mp4">
+    <img src="https://img.shields.io/badge/📥_Direct_Stream_/_Download-MP4-38bdf8?style=for-the-badge" alt="Direct Stream / Download MP4" />
+  </a>
+</p>
+
+<p align="center">
+  <em>▶️ Live Demo: Multi-Agent Streaming Chat, Autonomous Swarm, MCP Tools Execution & Real-Time Cognitive Pipeline (<code>Registrazione_chat.mp4</code>)</em><br/>
+  👉 <strong><a href="https://github.com/Sigmanih/SigmaStudio/blob/main/images/Registrazione_chat.mp4">Click here to play the full demo directly in the GitHub Video Player</a></strong>
 </p>
 
 ---

@@ -1,5 +1,4 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { createPortal } from 'react-dom';
 import { 
   Home, 
   Scroll, 
@@ -26,9 +25,7 @@ import {
   Sliders, 
   Flame, 
   Globe,
-  Play,
-  Heart,
-  X
+  Heart
 } from 'lucide-react';
 
 import { useApp } from '../contexts/AppContext';
@@ -41,9 +38,6 @@ export default function WelcomeDashboard({ modules, openTab }) {
   // Stato per l'espansione dei pilastri informativi (click o hover)
   const [expandedPillar, setExpandedPillar] = useState(null);
   const [hoveredPillar, setHoveredPillar] = useState(null);
-
-  // Stato per apertura modale video demo (chat_record.mp4)
-  const [showVideoModal, setShowVideoModal] = useState(false);
 
   // GitHub & Roles Update Check State
   const [updateState, setUpdateState] = useState({
@@ -238,16 +232,6 @@ export default function WelcomeDashboard({ modules, openTab }) {
         </div>
 
         <div className="home-topbar-right">
-          <button
-            type="button"
-            onClick={() => setShowVideoModal(true)}
-            className="home-topbar-video-btn"
-            title="Guarda il video tour e la dimostrazione di Sigma Studio"
-          >
-            <Play size={11} fill="currentColor" />
-            <span>Video Demo</span>
-          </button>
-
           <a
             href="https://www.paypal.com/ncp/payment/RP2DYUXVJ8FRC"
             target="_blank"
@@ -363,17 +347,6 @@ export default function WelcomeDashboard({ modules, openTab }) {
 
             {/* Destra: Azioni Bacheca */}
             <div className="home-bacheca-actions">
-              {/* Guarda Video Demo */}
-              <button
-                type="button"
-                className="home-bacheca-btn video"
-                onClick={() => setShowVideoModal(true)}
-                title="Guarda la sessione dimostrativa video di Sigma Studio"
-              >
-                <Play size={12} fill="currentColor" />
-                <span>Video Demo</span>
-              </button>
-
               {/* Verifica Manuale */}
               <button
                 type="button"
@@ -592,15 +565,6 @@ export default function WelcomeDashboard({ modules, openTab }) {
             </div>
           </div>
           <div className="home-community-actions">
-            <button
-              type="button"
-              className="home-community-btn-video"
-              onClick={() => setShowVideoModal(true)}
-              title="Guarda la registrazione dimostrativa del sistema"
-            >
-              <Play size={12} fill="currentColor" />
-              <span>Video Demo (chat_record.mp4)</span>
-            </button>
             <a
               href="https://www.paypal.com/ncp/payment/RP2DYUXVJ8FRC"
               target="_blank"
@@ -623,15 +587,6 @@ export default function WelcomeDashboard({ modules, openTab }) {
         {/* ── Footer Minimale ── */}
         <footer className="home-footer">
           <div className="home-footer-left">
-            <button
-              onClick={() => setShowVideoModal(true)}
-              className="home-footer-link"
-              style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}
-            >
-              <Play size={10} fill="currentColor" />
-              <span>Video Tour</span>
-            </button>
-            <span className="home-footer-bullet">•</span>
             <button
               onClick={() => openTab({ path: 'README_IT.md', filename: 'README_IT.md' }, 'editor')}
               className="home-footer-link"
@@ -665,107 +620,6 @@ export default function WelcomeDashboard({ modules, openTab }) {
           </div>
         </footer>
       </div>
-
-      {/* ── Modale Video Demo (chat_record.mp4) tramite React Portal ── */}
-      {showVideoModal && createPortal(
-        <div className="home-video-modal-overlay" onClick={() => setShowVideoModal(false)}>
-          <div className="home-video-modal-box" onClick={e => e.stopPropagation()}>
-            <div className="home-video-modal-header">
-              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                <div style={{
-                  width: '32px',
-                  height: '32px',
-                  borderRadius: '8px',
-                  background: 'rgba(0, 210, 255, 0.12)',
-                  border: '1px solid rgba(0, 210, 255, 0.3)',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  color: '#00d2ff'
-                }}>
-                  <Play size={16} fill="currentColor" />
-                </div>
-                <div>
-                  <h3 style={{ margin: 0, fontSize: '0.98rem', fontWeight: 800, color: isLight ? '#0f172a' : '#f1f5f9' }}>
-                    Tour Operativo & Demo Swarm Multi-Agente
-                  </h3>
-                  <span style={{ fontSize: '0.70rem', color: '#94a3b8' }}>
-                    Sessione registrata: streaming sub-100ms, coordinamento ruoli e strumenti MCP
-                  </span>
-                </div>
-              </div>
-              <button
-                type="button"
-                className="home-video-modal-close-btn"
-                onClick={() => setShowVideoModal(false)}
-                title="Chiudi Video"
-              >
-                <X size={18} />
-              </button>
-            </div>
-
-            <div style={{ padding: '16px', background: '#000000', display: 'flex', justifyContent: 'center' }}>
-              <video
-                src="/images/screenshots/chat_record.mp4"
-                controls
-                autoPlay
-                style={{
-                  width: '100%',
-                  maxHeight: '62vh',
-                  borderRadius: '10px',
-                  outline: 'none',
-                  backgroundColor: '#000'
-                }}
-              >
-                Il tuo browser non supporta la riproduzione video HTML5.
-              </video>
-            </div>
-
-            <div className="home-video-modal-footer">
-              <a
-                href="/images/screenshots/chat_record.mp4"
-                download="chat_record.mp4"
-                className="home-footer-link"
-                style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', color: '#38bdf8', textDecoration: 'none', fontSize: '0.74rem', fontWeight: 700 }}
-              >
-                <Download size={13} />
-                <span>Scarica File Video (chat_record.mp4)</span>
-              </a>
-
-              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                <a
-                  href="https://www.paypal.com/ncp/payment/RP2DYUXVJ8FRC"
-                  target="_blank"
-                  rel="noreferrer"
-                  className="home-community-btn-donate"
-                  style={{ padding: '6px 14px', fontSize: '0.74rem' }}
-                >
-                  <Heart size={12} fill="#ffffff" />
-                  <span>Sostieni su PayPal</span>
-                </a>
-
-                <button
-                  type="button"
-                  onClick={() => setShowVideoModal(false)}
-                  style={{
-                    padding: '6px 14px',
-                    borderRadius: '8px',
-                    background: 'rgba(255, 255, 255, 0.08)',
-                    border: '1px solid rgba(255, 255, 255, 0.15)',
-                    color: isLight ? '#0f172a' : '#f1f5f9',
-                    fontSize: '0.74rem',
-                    fontWeight: 700,
-                    cursor: 'pointer'
-                  }}
-                >
-                  Chiudi
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>,
-        document.body
-      )}
     </div>
   );
 }

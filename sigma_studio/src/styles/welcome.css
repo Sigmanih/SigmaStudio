@@ -1265,27 +1265,7 @@
   border-color: rgba(0, 0, 0, 0.08) !important;
 }
 
-/* ── Home Topbar Video & Support Buttons ── */
-.home-topbar-video-btn {
-  display: flex;
-  align-items: center;
-  gap: 5px;
-  padding: 3px 9px;
-  border-radius: 6px;
-  background: rgba(0, 210, 255, 0.08);
-  border: 1px solid rgba(0, 210, 255, 0.25);
-  color: #00d2ff;
-  font-size: 0.68rem;
-  font-weight: 700;
-  cursor: pointer;
-  transition: all 0.15s ease;
-}
-
-.home-topbar-video-btn:hover {
-  background: rgba(0, 210, 255, 0.18);
-  border-color: #00d2ff;
-}
-
+/* ── Home Topbar Support Button ── */
 .home-topbar-donate-link {
   display: flex;
   align-items: center;
@@ -1305,17 +1285,6 @@
   background: rgba(244, 63, 94, 0.18);
   color: #fff;
   border-color: #f43f5e;
-}
-
-.home-bacheca-btn.video {
-  background: rgba(0, 210, 255, 0.08);
-  border: 1px solid rgba(0, 210, 255, 0.28);
-  color: #00d2ff;
-}
-
-.home-bacheca-btn.video:hover {
-  background: rgba(0, 210, 255, 0.16);
-  border-color: #00d2ff;
 }
 
 /* ── Community & Support Banner (Non-Speculativo, Elegante) ── */
@@ -1374,27 +1343,6 @@
   flex-wrap: wrap;
 }
 
-.home-community-btn-video {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 8px 15px;
-  border-radius: 9px;
-  background: rgba(0, 210, 255, 0.1);
-  border: 1px solid rgba(0, 210, 255, 0.3);
-  color: #00d2ff;
-  font-size: 0.76rem;
-  font-weight: 700;
-  cursor: pointer;
-  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
-}
-
-.home-community-btn-video:hover {
-  background: rgba(0, 210, 255, 0.2);
-  border-color: #00d2ff;
-  transform: translateY(-1px);
-}
-
 .home-community-btn-donate {
   display: inline-flex;
   align-items: center;
@@ -1418,65 +1366,6 @@
   box-shadow: 0 5px 16px rgba(244, 63, 94, 0.45);
 }
 
-/* ── Video Modal ── */
-.home-video-modal-overlay {
-  position: fixed;
-  inset: 0;
-  background: rgba(4, 7, 14, 0.85);
-  backdrop-filter: blur(12px);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 24px;
-  z-index: 9999;
-}
-
-.home-video-modal-box {
-  background: #0b0f19;
-  border: 1px solid rgba(0, 210, 255, 0.35);
-  border-radius: 18px;
-  max-width: 960px;
-  width: 100%;
-  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.8), 0 0 36px rgba(0, 210, 255, 0.15);
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-}
-
-.home-video-modal-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 14px 20px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
-}
-
-.home-video-modal-close-btn {
-  background: transparent;
-  border: none;
-  color: #94a3b8;
-  cursor: pointer;
-  padding: 4px;
-  border-radius: 6px;
-  transition: all 0.15s ease;
-}
-
-.home-video-modal-close-btn:hover {
-  color: #fff;
-  background: rgba(255, 255, 255, 0.08);
-}
-
-.home-video-modal-footer {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 12px 20px;
-  border-top: 1px solid rgba(255, 255, 255, 0.08);
-  background: rgba(0, 0, 0, 0.25);
-  flex-wrap: wrap;
-  gap: 10px;
-}
-
 /* Light theme additions */
 .theme-light .home-community-banner {
   background: linear-gradient(135deg, rgba(244, 63, 94, 0.04) 0%, rgba(234, 88, 12, 0.03) 100%) !important;
@@ -1490,16 +1379,4 @@
 
 .theme-light .home-community-desc {
   color: #475569 !important;
-}
-
-.theme-light .home-video-modal-box {
-  background: #ffffff !important;
-  border-color: rgba(234, 88, 12, 0.35) !important;
-  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.25) !important;
-}
-
-.theme-light .home-video-modal-header,
-.theme-light .home-video-modal-footer {
-  border-color: rgba(0, 0, 0, 0.08) !important;
-  background: #f8fafc !important;
 }

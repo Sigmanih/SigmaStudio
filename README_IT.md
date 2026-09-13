@@ -27,14 +27,23 @@
 ## 🎬 Video Demo & Tour della Piattaforma
 
 <p align="center">
-  <video src="images/screenshots/chat_record.mp4" controls="controls" width="100%" style="border-radius: 14px; box-shadow: 0 10px 36px rgba(0,210,255,0.25);">
-    Il tuo browser non supporta il tag video. Puoi visualizzare direttamente il <a href="images/screenshots/chat_record.mp4">Video Demo di Sigma Studio</a>.
+  <video src="https://github.com/Sigmanih/SigmaStudio/raw/main/images/Registrazione_chat.mp4" controls="controls" width="100%" style="border-radius: 14px; box-shadow: 0 10px 36px rgba(0,210,255,0.25);">
+    Il tuo browser non supporta il tag video. Puoi guardare la <a href="https://github.com/Sigmanih/SigmaStudio/blob/main/images/Registrazione_chat.mp4">Registrazione Chat direttamente su GitHub</a>.
   </video>
 </p>
 
 <p align="center">
-  <em>▶️ Dimostrazione Live: Chat Multi-Agente in Streaming, Swarm Autonomo, Esecuzione Strumenti MCP e Pipeline Cognitiva Real-Time (<code>chat_record.mp4</code>)</em><br/>
-  <a href="images/screenshots/chat_record.mp4"><strong>📥 Scarica / Guarda Direttamente il Video Demo (chat_record.mp4)</strong></a>
+  <a href="https://github.com/Sigmanih/SigmaStudio/blob/main/images/Registrazione_chat.mp4">
+    <img src="https://img.shields.io/badge/▶️_Guarda_il_Video_su_GitHub-Registrazione__chat.mp4-00d2ff?style=for-the-badge&logo=github&logoColor=white" alt="Guarda il Video su GitHub" />
+  </a>
+  <a href="https://github.com/Sigmanih/SigmaStudio/raw/main/images/Registrazione_chat.mp4">
+    <img src="https://img.shields.io/badge/📥_Streaming_Diretto_/_Download-MP4-38bdf8?style=for-the-badge" alt="Streaming Diretto / Download MP4" />
+  </a>
+</p>
+
+<p align="center">
+  <em>▶️ Dimostrazione Live: Chat Multi-Agente in Streaming, Swarm Autonomo, Esecuzione Strumenti MCP e Pipeline Cognitiva Real-Time (<code>Registrazione_chat.mp4</code>)</em><br/>
+  👉 <strong><a href="https://github.com/Sigmanih/SigmaStudio/blob/main/images/Registrazione_chat.mp4">Clicca qui per riprodurre il video dimostrativo a schermo intero direttamente sul player di GitHub</a></strong>
 </p>
 
 ---
