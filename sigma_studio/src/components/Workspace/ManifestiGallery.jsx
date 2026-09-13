@@ -6,7 +6,7 @@ import {
   ExternalLink, Sparkles, Terminal, Layers, Plus, X, ArrowRight,
   Info, RefreshCw, ChevronRight, Sliders, Box, Download, Globe,
   Users, BookOpen, GraduationCap, Briefcase, HeartPulse, Scale, TrendingUp,
-  Trash2, UserCheck, Star, Eye, ScrollText, Boxes
+  Trash2, UserCheck, Star, Eye, ScrollText, Boxes, Upload
 } from 'lucide-react';
 import { useApp } from '../../contexts/AppContext';
 import TabHeader from '../common/TabHeader';
@@ -32,6 +32,39 @@ const ROLE_CATEGORY_META = {
 const getRoleCategoryMeta = (cat) => {
   if (!cat) return { icon: '🧠', color: '#00d2ff', desc: 'Ruolo cognitivo specializzato' };
   return ROLE_CATEGORY_META[cat] || { icon: '🧠', color: '#00d2ff', desc: cat };
+};
+
+// ==============================================================================
+// Helper di risoluzione immagine avatar per ogni ruolo/profilo
+// ==============================================================================
+const getRoleImage = (role) => {
+  if (!role) return '/images/default.png';
+  if (role.image && role.image !== '/images/default.png') return role.image;
+  
+  const text = `${role.id || ''} ${role.filename || ''} ${role.name || ''} ${role.role || ''} ${role.category || ''}`.toLowerCase();
+  
+  if (text.includes('medic') || text.includes('clin') || text.includes('salut') || text.includes('biol') || text.includes('genet')) {
+    return '/images/medico_ai.jpg';
+  }
+  if (text.includes('design') || text.includes('grafic') || text.includes('creativ') || text.includes('visual') || text.includes('art') || text.includes('ui/ux')) {
+    return '/images/designer_ai.jpg';
+  }
+  if (text.includes('avvocat') || text.includes('leg') || text.includes('giur') || text.includes('finanz') || text.includes('quant') || text.includes('econom') || text.includes('mercati')) {
+    return '/images/quant_law_ai.jpg';
+  }
+  if (text.includes('matemat') || text.includes('fisic') || text.includes('scienz') || text.includes('statist') || text.includes('quantum')) {
+    return '/images/matematicoAi.png';
+  }
+  if (text.includes('programm') || text.includes('cod') || text.includes('svilupp') || text.includes('web') || text.includes('fullstack') || text.includes('software') || text.includes('dev')) {
+    return '/images/programmatoreAi.png';
+  }
+  if (text.includes('arch') || text.includes('kernel') || text.includes('admin') || text.includes('sistem')) {
+    return '/images/agente0.png';
+  }
+  if (text.includes('sigma') || text.includes('assistan')) {
+    return '/images/sigma_logo_harmonic_flow.jpg';
+  }
+  return '/images/default.png';
 };
 
 // ==============================================================================
@@ -106,7 +139,7 @@ function RoleDetailModal({
               }}
             >
               <img
-                src={role.image || '/images/default.png'}
+                src={getRoleImage(role)}
                 alt={role.name}
                 style={{ width: '100%', height: '100%', objectFit: 'cover' }}
                 onError={e => { e.target.src = '/images/default.png'; }}
@@ -956,11 +989,44 @@ Creato per l'ecosistema sovrano Sigma AI Studio.
   // Avatar presets
   const AVATAR_PRESETS = [
     { label: 'Architect (Agente 0)', path: '/images/agente0.png' },
-    { label: 'Matematico AI', path: '/images/matematicoAi.png' },
     { label: 'Programmatore AI', path: '/images/programmatoreAi.png' },
-    { label: 'Sigma Logo Harmonic', path: '/images/sigma_logo_harmonic_flow.jpg' },
+    { label: 'Matematico AI', path: '/images/matematicoAi.png' },
+    { label: 'Scienze Mediche AI', path: '/images/medico_ai.jpg' },
+    { label: 'Visual Designer AI', path: '/images/designer_ai.jpg' },
+    { label: 'Quant & Legale AI', path: '/images/quant_law_ai.jpg' },
+    { label: 'Sigma Harmonic', path: '/images/sigma_logo_harmonic_flow.jpg' },
     { label: 'Default Avatar', path: '/images/default.png' }
   ];
+
+  const fileInputRef = useRef(null);
+  const [uploadingAvatar, setUploadingAvatar] = useState(false);
+
+  const handleUploadCustomAvatar = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file || !editingAvatarManifesto) return;
+    setUploadingAvatar(true);
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+      formData.append('path', editingAvatarManifesto.path || `Ruoli/${editingAvatarManifesto.filename || editingAvatarManifesto.id + '.md'}`);
+      const res = await fetch('/api/agents/upload_image', {
+        method: 'POST',
+        body: formData
+      });
+      const data = await res.json();
+      if (data.success && data.image) {
+        await handleUpdateAvatar(editingAvatarManifesto, data.image);
+      } else {
+        alert(data.error || 'Errore durante il caricamento immagine');
+      }
+    } catch (err) {
+      console.error(err);
+      alert('Errore durante il caricamento del file');
+    } finally {
+      setUploadingAvatar(false);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    }
+  };
 
   const handleUpdateAvatar = async (manifesto, imagePath) => {
     try {
@@ -1197,7 +1263,7 @@ Creato per l'ecosistema sovrano Sigma AI Studio.
                               }}
                             >
                               <img 
-                                src={manifesto.image || '/images/default.png'} 
+                                src={getRoleImage(manifesto)} 
                                 alt={manifesto.name}
                                 style={{ width: '100%', height: '100%', objectFit: 'cover' }}
                                 onError={e => { e.target.src = '/images/default.png'; }}
@@ -1516,6 +1582,29 @@ Creato per l'ecosistema sovrano Sigma AI Studio.
 
                         <div className="marketplace-card-header">
                           <div className="marketplace-card-title-area">
+                            <div 
+                              style={{
+                                width: '56px',
+                                height: '56px',
+                                borderRadius: '14px',
+                                overflow: 'hidden',
+                                border: `2px solid ${domainColor}`,
+                                boxShadow: `0 0 14px ${domainColor}35`,
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                background: isLight ? '#f1f5f9' : '#0a0d14',
+                                flexShrink: 0
+                              }}
+                            >
+                              <img 
+                                src={getRoleImage(item)} 
+                                alt={item.name}
+                                style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                                onError={e => { e.target.src = '/images/default.png'; }}
+                              />
+                            </div>
+
                             <div className="marketplace-card-titles">
                               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '8px' }}>
                                 <span style={{
@@ -1657,7 +1746,7 @@ Creato per l'ecosistema sovrano Sigma AI Studio.
                   overflow: 'hidden',
                   border: `2px solid ${inspectManifesto.domainColor || (isLight ? '#ea580c' : '#00d2ff')}`
                 }}>
-                  <img src={inspectManifesto.image || '/images/default.png'} alt="avatar" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                  <img src={getRoleImage(inspectManifesto)} alt="avatar" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                 </div>
                 <div>
                   <h3 style={{ margin: 0, fontSize: '1.2rem', fontWeight: 800, color: textPrimary }}>
@@ -1861,41 +1950,132 @@ Creato per l'ecosistema sovrano Sigma AI Studio.
             background: isLight ? '#ffffff' : '#0d1117',
             border: isLight ? '1px solid rgba(190, 160, 110, 0.45)' : '1px solid rgba(0, 210, 255, 0.3)',
             borderRadius: '20px',
-            maxWidth: '520px',
+            maxWidth: '620px',
             width: '100%',
             boxShadow: '0 16px 48px rgba(0,0,0,0.6)',
             padding: '24px'
           }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '18px' }}>
-              <h3 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 800, color: textPrimary }}>
-                🎨 Personalizza Avatar per {editingAvatarManifesto.name}
-              </h3>
-              <button onClick={() => setEditingAvatarManifesto(null)} style={{ background: 'transparent', border: 'none', color: textPrimary, cursor: 'pointer' }}><X size={18} /></button>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <div style={{
+                  width: '40px',
+                  height: '40px',
+                  borderRadius: '10px',
+                  overflow: 'hidden',
+                  border: '2px solid #00d2ff'
+                }}>
+                  <img
+                    src={getRoleImage(editingAvatarManifesto)}
+                    alt="current avatar"
+                    style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                  />
+                </div>
+                <div>
+                  <h3 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 800, color: textPrimary }}>
+                    Personalizza Avatar: {editingAvatarManifesto.name}
+                  </h3>
+                  <span style={{ fontSize: '0.72rem', color: textSecondary }}>
+                    Scegli un preset ufficiale o carica un'immagine personalizzata
+                  </span>
+                </div>
+              </div>
+              <button 
+                onClick={() => setEditingAvatarManifesto(null)} 
+                style={{ background: 'transparent', border: 'none', color: textPrimary, cursor: 'pointer', padding: '4px' }}
+              >
+                <X size={18} />
+              </button>
             </div>
 
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '14px', marginBottom: '20px' }}>
-              {AVATAR_PRESETS.map(av => (
-                <div
-                  key={av.path}
-                  onClick={() => handleUpdateAvatar(editingAvatarManifesto, av.path)}
-                  style={{
-                    padding: '10px',
-                    borderRadius: '12px',
-                    background: innerCardBg,
-                    border: editingAvatarManifesto.image === av.path ? '2px solid #00d2ff' : innerCardBorder,
-                    cursor: 'pointer',
-                    display: 'flex',
-                    flexDirection: 'column',
-                    alignItems: 'center',
-                    gap: '8px'
-                  }}
-                >
-                  <div style={{ width: '56px', height: '56px', borderRadius: '12px', overflow: 'hidden', border: '1px solid rgba(255,255,255,0.1)' }}>
-                    <img src={av.path} alt={av.label} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                  </div>
-                  <span style={{ fontSize: '0.68rem', fontWeight: 700, color: textPrimary, textAlign: 'center' }}>{av.label}</span>
+            {/* Upload Immagine Personalizzata */}
+            <div style={{
+              marginBottom: '18px',
+              padding: '12px 14px',
+              borderRadius: '12px',
+              background: innerCardBg,
+              border: innerCardBorder,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              gap: '12px'
+            }}>
+              <div>
+                <div style={{ fontSize: '0.78rem', fontWeight: 700, color: textPrimary }}>
+                  Carica Avatar Personalizzato
                 </div>
-              ))}
+                <div style={{ fontSize: '0.68rem', color: textSecondary }}>
+                  Formati supportati: PNG, JPG, WEBP, SVG
+                </div>
+              </div>
+
+              <input
+                type="file"
+                ref={fileInputRef}
+                accept="image/*"
+                onChange={handleUploadCustomAvatar}
+                style={{ display: 'none' }}
+              />
+
+              <button
+                type="button"
+                onClick={() => fileInputRef.current && fileInputRef.current.click()}
+                disabled={uploadingAvatar}
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  padding: '8px 14px',
+                  borderRadius: '8px',
+                  background: isLight ? '#f1f5f9' : 'rgba(0, 210, 255, 0.12)',
+                  border: isLight ? '1px solid #cbd5e1' : '1px solid rgba(0, 210, 255, 0.3)',
+                  color: isLight ? '#0f172a' : '#00d2ff',
+                  fontSize: '0.74rem',
+                  fontWeight: 700,
+                  cursor: 'pointer'
+                }}
+              >
+                {uploadingAvatar ? <RefreshCw size={13} className="spin" /> : <Upload size={13} />}
+                <span>{uploadingAvatar ? 'Caricamento...' : 'Seleziona File...'}</span>
+              </button>
+            </div>
+
+            {/* Presets Grid */}
+            <div style={{ fontSize: '0.75rem', fontWeight: 800, color: textSecondary, textTransform: 'uppercase', marginBottom: '10px' }}>
+              Preset di Sistema Disponibili ({AVATAR_PRESETS.length})
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '10px', marginBottom: '20px' }}>
+              {AVATAR_PRESETS.map(av => {
+                const isCurrent = (editingAvatarManifesto.image === av.path) || 
+                  (!editingAvatarManifesto.image && av.path === getRoleImage(editingAvatarManifesto));
+
+                return (
+                  <div
+                    key={av.path}
+                    onClick={() => handleUpdateAvatar(editingAvatarManifesto, av.path)}
+                    style={{
+                      padding: '8px',
+                      borderRadius: '12px',
+                      background: innerCardBg,
+                      border: isCurrent ? '2px solid #00d2ff' : innerCardBorder,
+                      boxShadow: isCurrent ? '0 0 10px rgba(0, 210, 255, 0.3)' : 'none',
+                      cursor: 'pointer',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      alignItems: 'center',
+                      gap: '6px',
+                      transition: 'all 0.15s ease'
+                    }}
+                  >
+                    <div style={{ width: '52px', height: '52px', borderRadius: '10px', overflow: 'hidden', border: '1px solid rgba(255,255,255,0.1)' }}>
+                      <img src={av.path} alt={av.label} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                    </div>
+                    <span style={{ fontSize: '0.64rem', fontWeight: 700, color: textPrimary, textAlign: 'center', lineHeight: 1.2 }}>
+                      {av.label}
+                    </span>
+                  </div>
+                );
+              })}
             </div>
 
             <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
