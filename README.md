@@ -26,11 +26,10 @@
 
 ## 🎬 Video Demo & Platform Tour
 
-<p align="center">
-  <a href="https://github.com/Sigmanih/SigmaStudio/blob/main/images/screenshots/chat_record.mp4">
-    <img src="https://img.shields.io/badge/▶️_Watch_Video_on_GitHub-chat__record.mp4-00d2ff?style=for-the-badge&logo=github&logoColor=white" alt="Watch Video on GitHub" />
-  </a>
-</p>
+
+https://github.com/user-attachments/assets/3b03d269-f130-4d09-8919-89cb54ee7d0f
+
+
 
 <p align="center">
   <em>▶️ Live Demo: Multi-Agent Streaming Chat, Autonomous Swarm, MCP Tools Execution & Real-Time Cognitive Pipeline (<code>chat_record.mp4</code>)</em><br/>
