@@ -706,95 +706,296 @@
   border-color: rgba(255, 255, 255, 0.25);
 }
 
-/* 4. Alert Strip for Updates */
-.home-alert-strip {
+/* 4. Bacheca di Sistema & Aggiornamenti Git */
+.home-bacheca-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px 20px;
+  border-radius: 14px;
+  background: linear-gradient(135deg, rgba(14, 20, 36, 0.85) 0%, rgba(10, 14, 26, 0.95) 100%);
+  border: 1px solid rgba(0, 210, 255, 0.18);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4), 0 0 20px rgba(0, 210, 255, 0.05);
+  transition: all 0.25s ease;
+}
+
+.home-bacheca-card.has-update {
+  background: linear-gradient(135deg, rgba(28, 20, 14, 0.9) 0%, rgba(18, 12, 10, 0.95) 100%);
+  border-color: rgba(250, 160, 60, 0.45);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4), 0 0 24px rgba(250, 160, 60, 0.12);
+}
+
+.home-bacheca-main {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
-  padding: 10px 16px;
-  border-radius: 12px;
-  background: linear-gradient(135deg, rgba(250, 160, 60, 0.12) 0%, rgba(244, 63, 94, 0.1) 100%);
-  border: 1px solid rgba(250, 160, 60, 0.35);
-  box-shadow: 0 4px 18px rgba(250, 160, 60, 0.15);
   flex-wrap: wrap;
+  gap: 16px;
 }
 
-.home-alert-left {
+.home-bacheca-left {
   display: flex;
   align-items: center;
-  gap: 10px;
-  font-size: 0.78rem;
-  color: #f1f5f9;
+  gap: 14px;
+  min-width: 280px;
+  flex: 1;
 }
 
-.home-alert-right {
+.home-bacheca-icon-box {
+  width: 42px;
+  height: 42px;
+  border-radius: 12px;
+  background: rgba(0, 210, 255, 0.1);
+  border: 1px solid rgba(0, 210, 255, 0.25);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+}
+
+.home-bacheca-card.has-update .home-bacheca-icon-box {
+  background: rgba(250, 160, 60, 0.18);
+  border-color: rgba(250, 160, 60, 0.45);
+}
+
+.home-bacheca-info {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.home-bacheca-title-row {
   display: flex;
   align-items: center;
   gap: 8px;
+  flex-wrap: wrap;
 }
 
-.home-alert-toggle {
+.home-bacheca-title {
+  font-size: 0.90rem;
+  font-weight: 800;
+  color: #f8fafc;
+  letter-spacing: -0.1px;
+}
+
+.home-bacheca-badge {
+  font-size: 0.62rem;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 4px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.home-bacheca-badge.synced {
+  background: rgba(16, 185, 129, 0.15);
+  border: 1px solid rgba(16, 185, 129, 0.35);
+  color: #34d399;
+}
+
+.home-bacheca-badge.update {
+  background: rgba(250, 160, 60, 0.2);
+  border: 1px solid rgba(250, 160, 60, 0.4);
+  color: #faa03c;
+}
+
+.home-bacheca-sub {
+  font-size: 0.74rem;
+  color: #94a3b8;
+  line-height: 1.45;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.home-bacheca-mono {
+  font-family: 'JetBrains Mono', 'Fira Code', monospace;
+  font-size: 0.72rem;
+  padding: 1px 5px;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: #00d2ff;
+}
+
+.home-bacheca-card.has-update .home-bacheca-mono {
+  color: #faa03c;
+  border-color: rgba(250, 160, 60, 0.3);
+}
+
+.home-bacheca-time {
+  opacity: 0.75;
+  font-size: 0.70rem;
+}
+
+.home-bacheca-toggle-commits {
   background: transparent;
   border: none;
   color: #faa03c;
-  font-size: 0.74rem;
+  font-size: 0.72rem;
   font-weight: 700;
   cursor: pointer;
+  padding: 0;
   text-decoration: underline;
 }
 
-.home-alert-apply-btn {
+.home-bacheca-toggle-commits:hover {
+  color: #ffb86c;
+}
+
+/* Actions */
+.home-bacheca-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.home-bacheca-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 14px;
+  border-radius: 8px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.home-bacheca-btn.check {
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  color: #e2e8f0;
+}
+
+.home-bacheca-btn.check:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 255, 255, 0.25);
+  color: #fff;
+  transform: translateY(-1px);
+}
+
+.home-bacheca-btn.sync {
+  background: linear-gradient(135deg, rgba(0, 210, 255, 0.15), rgba(79, 172, 254, 0.15));
+  border: 1px solid rgba(0, 210, 255, 0.35);
+  color: #00d2ff;
+}
+
+.home-bacheca-btn.sync:hover:not(:disabled) {
+  background: linear-gradient(135deg, rgba(0, 210, 255, 0.25), rgba(79, 172, 254, 0.25));
+  border-color: rgba(0, 210, 255, 0.55);
+  box-shadow: 0 2px 10px rgba(0, 210, 255, 0.2);
+  transform: translateY(-1px);
+}
+
+.home-bacheca-btn.apply {
+  background: linear-gradient(135deg, #faa03c, #ff5064);
+  border: none;
+  color: #fff;
+  font-weight: 800;
+  box-shadow: 0 4px 14px rgba(250, 160, 60, 0.35);
+}
+
+.home-bacheca-btn.apply:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: 0 6px 18px rgba(250, 160, 60, 0.5);
+}
+
+.home-bacheca-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.home-bacheca-link {
   display: flex;
   align-items: center;
   gap: 5px;
-  padding: 5px 12px;
+  padding: 6px 12px;
   border-radius: 8px;
-  background: linear-gradient(135deg, #faa03c, #f43f5e);
-  border: none;
-  color: #fff;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  color: #94a3b8;
   font-size: 0.74rem;
-  font-weight: 700;
-  cursor: pointer;
-  box-shadow: 0 2px 8px rgba(250, 160, 60, 0.3);
+  font-weight: 600;
+  text-decoration: none;
+  transition: all 0.2s ease;
 }
 
-.home-commits-box {
-  background: rgba(10, 14, 24, 0.85);
+.home-bacheca-link:hover {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 255, 255, 0.18);
+  color: #f1f5f9;
+  transform: translateY(-1px);
+}
+
+/* Commits Box */
+.home-bacheca-commits {
+  margin-top: 4px;
+  background: rgba(0, 0, 0, 0.4);
   border: 1px solid rgba(255, 255, 255, 0.08);
   border-radius: 10px;
-  padding: 10px 14px;
+  padding: 12px 14px;
   display: flex;
   flex-direction: column;
-  gap: 6px;
-  max-height: 180px;
+  gap: 8px;
+  max-height: 190px;
   overflow-y: auto;
+  animation: commitsExpand 0.2s ease-out;
 }
 
-.home-commit-row {
+@keyframes commitsExpand {
+  from { opacity: 0; transform: translateY(-4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.home-bacheca-commits-header {
+  font-size: 0.70rem;
+  font-weight: 700;
+  color: #faa03c;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.home-bacheca-commit-row {
   display: flex;
   align-items: baseline;
   gap: 8px;
   font-size: 0.72rem;
+  padding: 3px 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
 }
 
-.home-commit-sha {
+.home-bacheca-commit-row:last-child {
+  border-bottom: none;
+}
+
+.home-bacheca-commit-sha {
   font-family: 'JetBrains Mono', monospace;
   color: #faa03c;
   font-weight: 700;
+  flex-shrink: 0;
 }
 
-.home-commit-msg {
+.home-bacheca-commit-msg {
   color: #e2e8f0;
   flex: 1;
+  min-width: 0;
+  word-break: break-word;
 }
 
-.home-commit-date {
-  color: #8b8fa3;
+.home-bacheca-commit-date {
+  color: #64748b;
   font-size: 0.66rem;
+  flex-shrink: 0;
 }
 
-.home-toast-banner {
+/* Toast / Feedback Banner */
+.home-bacheca-feedback {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -802,32 +1003,66 @@
   border-radius: 8px;
   font-size: 0.76rem;
   font-weight: 600;
+  animation: feedbackIn 0.2s ease-out;
 }
 
-.home-toast-banner.success {
+@keyframes feedbackIn {
+  from { opacity: 0; transform: translateY(-2px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.home-bacheca-feedback.success {
   background: rgba(16, 185, 129, 0.15);
   border: 1px solid rgba(16, 185, 129, 0.35);
   color: #34d399;
 }
 
-.home-toast-banner.error {
+.home-bacheca-feedback.error {
   background: rgba(239, 68, 68, 0.15);
   border: 1px solid rgba(239, 68, 68, 0.35);
   color: #f87171;
 }
 
-.home-toast-content {
-  display: flex;
-  align-items: center;
-  gap: 8px;
+/* Light Theme overrides for Bacheca */
+.theme-light .home-bacheca-card {
+  background: #ffffff !important;
+  border: 1px solid rgba(190, 160, 110, 0.45) !important;
+  box-shadow: 0 4px 16px rgba(190, 160, 110, 0.12) !important;
 }
 
-.home-toast-close {
-  background: transparent;
-  border: none;
-  color: inherit;
-  cursor: pointer;
-  font-size: 0.8rem;
+.theme-light .home-bacheca-card.has-update {
+  background: #fffdfa !important;
+  border: 1px solid rgba(234, 88, 12, 0.45) !important;
+  box-shadow: 0 4px 18px rgba(234, 88, 12, 0.15) !important;
+}
+
+.theme-light .home-bacheca-title {
+  color: #0f172a !important;
+}
+
+.theme-light .home-bacheca-sub {
+  color: #475569 !important;
+}
+
+.theme-light .home-bacheca-mono {
+  background: #f1f5f9 !important;
+  border-color: rgba(0, 0, 0, 0.08) !important;
+  color: #0284c7 !important;
+}
+
+.theme-light .home-bacheca-btn.check {
+  background: #f8fafc !important;
+  border-color: rgba(0, 0, 0, 0.12) !important;
+  color: #0f172a !important;
+}
+
+.theme-light .home-bacheca-commits {
+  background: #f8fafc !important;
+  border-color: rgba(0, 0, 0, 0.08) !important;
+}
+
+.theme-light .home-bacheca-commit-msg {
+  color: #1e293b !important;
 }
 
 /* 5. 4 Pilastri Card Interattive (Hover & Click per info) */

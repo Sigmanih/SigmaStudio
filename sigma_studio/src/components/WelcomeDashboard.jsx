@@ -324,57 +324,164 @@ export default function WelcomeDashboard({ modules, openTab }) {
           </div>
         </section>
 
-        {/* ── Strip Aggiornamenti Git (se disponibili o al click) ── */}
-        {updateState.updateAvailable && (
-          <div className="home-alert-strip">
-            <div className="home-alert-left">
-              <Bell size={16} color="#faa03c" />
-              <div className="home-alert-text">
-                <strong>Aggiornamento Disponibile:</strong> {updateState.commitsBehind > 0 
-                  ? `${updateState.commitsBehind} nuovi commit da scaricare su GitHub.`
-                  : `Nuova versione v${updateState.latestVersion} pronta.`}
+        {/* ── Bacheca di Sistema: Aggiornamenti Git & Ruoli ── */}
+        <div className={`home-bacheca-card ${updateState.updateAvailable ? 'has-update' : ''}`}>
+          <div className="home-bacheca-main">
+            {/* Sinistra: Icona + Info Stato Git/Sistema */}
+            <div className="home-bacheca-left">
+              <div className="home-bacheca-icon-box">
+                {updateState.checking ? (
+                  <RefreshCw size={20} className="spin" color="#00d2ff" />
+                ) : updateState.updateAvailable ? (
+                  <Bell size={20} color="#faa03c" />
+                ) : (
+                  <CheckCircle2 size={20} color="#3fb950" />
+                )}
+              </div>
+
+              <div className="home-bacheca-info">
+                <div className="home-bacheca-title-row">
+                  <span className="home-bacheca-title">
+                    {updateState.updateAvailable
+                      ? (updateState.commitsBehind > 0
+                          ? `⚡ ${updateState.commitsBehind} ${updateState.commitsBehind === 1 ? 'nuovo commit disponibile' : 'nuovi commit disponibili'} su GitHub`
+                          : `⚡ Nuova Versione Rilasciata: v${updateState.latestVersion}`)
+                      : `🟢 Sigma AI Studio v${updateState.currentVersion} • Sistema & Ruoli Sincronizzati`}
+                  </span>
+                  <span className={`home-bacheca-badge ${updateState.updateAvailable ? 'update' : 'synced'}`}>
+                    {updateState.updateAvailable ? 'Aggiornamento Disponibile' : 'Sistema Sincronizzato'}
+                  </span>
+                </div>
+
+                <div className="home-bacheca-sub">
+                  {updateState.updateAvailable ? (
+                    <span>{updateState.releaseNotes || updateState.releaseTitle || 'Disponibile nuova versione con miglioramenti kernel e nuovi manifesti.'}</span>
+                  ) : updateState.gitAvailable && updateState.localCommit ? (
+                    <span>
+                      Allineato al commit <code className="home-bacheca-mono">{updateState.localCommit}</code>
+                      {updateState.localBranch ? ` · ramo ${updateState.localBranch}` : ''}
+                      <span> • Catalogo ruoli verificato ({updateState.activeRolesCount} ruoli attivi)</span>
+                    </span>
+                  ) : (
+                    <span>Versione open per la community. Repository GitHub sincronizzato con il catalogo dei ruoli attivi ({updateState.activeRolesCount} ruoli).</span>
+                  )}
+                  {updateState.lastChecked && (
+                    <span className="home-bacheca-time">• Verificato alle {updateState.lastChecked}</span>
+                  )}
+
+                  {/* Dettaglio delta commit locale -> remoto */}
+                  {updateState.updateAvailable && updateState.commitsBehind > 0 && (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', width: '100%', marginTop: '2px' }}>
+                      <span className="home-bacheca-mono">
+                        {updateState.localCommit} → {updateState.remoteCommit}
+                      </span>
+                      <span style={{ opacity: 0.8 }}>· ramo {updateState.remoteBranch}</span>
+                      {updateState.newCommits.length > 0 && (
+                        <button
+                          type="button"
+                          className="home-bacheca-toggle-commits"
+                          onClick={() => setShowCommits(v => !v)}
+                        >
+                          {showCommits ? 'Nascondi novità' : 'Vedi cosa cambia'}
+                        </button>
+                      )}
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
-            <div className="home-alert-right">
-              {updateState.newCommits.length > 0 && (
-                <button 
-                  className="home-alert-toggle" 
-                  onClick={() => setShowCommits(v => !v)}
+
+            {/* Destra: Azioni Bacheca */}
+            <div className="home-bacheca-actions">
+              {/* Verifica Manuale */}
+              <button
+                type="button"
+                className="home-bacheca-btn check"
+                onClick={() => checkForUpdates(true)}
+                disabled={updateState.checking || updateState.applying}
+                title="Verifica se ci sono novità o nuovi manifesti su GitHub"
+              >
+                <RefreshCw size={12} className={updateState.checking ? "spin" : ""} />
+                <span>{updateState.checking ? 'Controllo...' : 'Verifica Aggiornamenti'}</span>
+              </button>
+
+              {/* Aggiorna Ora o Sincronizza Ruoli */}
+              {updateState.updateAvailable ? (
+                <button
+                  type="button"
+                  className="home-bacheca-btn apply"
+                  onClick={applyUpdate}
+                  disabled={updateState.applying}
+                  title="Scarica e applica i commit da GitHub"
                 >
-                  {showCommits ? 'Nascondi novità' : 'Cosa cambia'}
+                  {updateState.applying ? <RefreshCw size={13} className="spin" /> : <Download size={13} />}
+                  <span>{updateState.applying ? 'Download...' : 'Scarica & Aggiorna Ora'}</span>
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  className="home-bacheca-btn sync"
+                  onClick={applyUpdate}
+                  disabled={updateState.applying}
+                  title="Sincronizza i manifesti e ruoli dal repository ufficiale"
+                >
+                  {updateState.applying ? <RefreshCw size={12} className="spin" /> : <GitBranch size={12} />}
+                  <span>{updateState.applying ? 'Sincronizzazione...' : 'Sincronizza Ruoli'}</span>
                 </button>
               )}
-              <button className="home-alert-apply-btn" onClick={applyUpdate} disabled={updateState.applying}>
-                {updateState.applying ? <RefreshCw size={12} className="spin" /> : <Download size={12} />}
-                <span>{updateState.applying ? 'Applicazione...' : 'Aggiorna Adesso'}</span>
+
+              {/* Link Release GitHub */}
+              <a
+                href={updateState.htmlUrl || "https://github.com/Sigmanih/SigmaStudio/releases"}
+                target="_blank"
+                rel="noreferrer"
+                className="home-bacheca-link"
+                title="Apri le release o il repository su GitHub"
+              >
+                <ExternalLink size={12} />
+                <span>{updateState.commitsBehind > 0 ? 'Vedi su GitHub' : 'Release GitHub'}</span>
+              </a>
+            </div>
+          </div>
+
+          {/* Drawer Novità Commit */}
+          {showCommits && updateState.newCommits.length > 0 && (
+            <div className="home-bacheca-commits">
+              <div className="home-bacheca-commits-header">
+                Nuovi commit da integrare da GitHub ({updateState.newCommits.length}):
+              </div>
+              {updateState.newCommits.map(c => (
+                <div key={c.sha} className="home-bacheca-commit-row">
+                  <code className="home-bacheca-commit-sha">{c.sha}</code>
+                  <span className="home-bacheca-commit-msg">{c.message}</span>
+                  <span className="home-bacheca-commit-date">{c.date}</span>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Feedback Applicazione Aggiornamento */}
+          {updateState.applyResult && (
+            <div className={`home-bacheca-feedback ${updateState.applyResult.success ? 'success' : 'error'}`}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                {updateState.applyResult.success ? <Check size={14} /> : <AlertCircle size={14} />}
+                <span>{updateState.applyResult.message}</span>
+                {updateState.applyResult.restartRequired && (
+                  <span style={{ fontSize: '0.70rem', opacity: 0.9 }}>
+                    (Riavvio del kernel consigliato)
+                  </span>
+                )}
+              </div>
+              <button
+                type="button"
+                className="home-toast-close"
+                onClick={() => setUpdateState(p => ({ ...p, applyResult: null }))}
+              >
+                ✕
               </button>
             </div>
-          </div>
-        )}
-
-        {/* Elenco novità commit a scomparsa */}
-        {showCommits && updateState.newCommits.length > 0 && (
-          <div className="home-commits-box">
-            {updateState.newCommits.map(c => (
-              <div key={c.sha} className="home-commit-row">
-                <code className="home-commit-sha">{c.sha}</code>
-                <span className="home-commit-msg">{c.message}</span>
-                <span className="home-commit-date">{c.date}</span>
-              </div>
-            ))}
-          </div>
-        )}
-
-        {/* Feedback applicazione update */}
-        {updateState.applyResult && (
-          <div className={`home-toast-banner ${updateState.applyResult.success ? 'success' : 'error'}`}>
-            <div className="home-toast-content">
-              {updateState.applyResult.success ? <Check size={14} /> : <AlertCircle size={14} />}
-              <span>{updateState.applyResult.message}</span>
-            </div>
-            <button className="home-toast-close" onClick={() => setUpdateState(p => ({ ...p, applyResult: null }))}>✕</button>
-          </div>
-        )}
+          )}
+        </div>
 
         {/* ── 4 Pilastri Card Interattive (Hover & Click per info complete) ── */}
         <section className="home-pillars-section">
