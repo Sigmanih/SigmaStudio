@@ -1,15 +1,15 @@
-# Stato dell'Harness · 13 settembre 2026 (rev. 6)
+# Stato dell'Harness · 13 settembre 2026 (rev. 7)
 
 Valutazione dell'harness dell'agente nel kernel: cosa regge, cosa no, e come si
 guida un lavoro grande da dentro Sigma Studio.
 
 | | |
 |:---|:---|
-| Test verdi | **1707** |
+| Test verdi | **1784** |
 | Build frontend | verde (~0,9 s) |
 | `npm run lint:undef` | 0 riferimenti non definiti |
 | Punti dell'audit tecnico | 11 / 11 chiusi |
-| Difetti trovati **dopo** la chiusura dell'audit | 29, tutti nell'integrazione |
+| Difetti trovati **dopo** la chiusura dell'audit | 36, tutti nell'integrazione |
 | Ventaglio parallelo, prova dal vivo | da 0 voci su 6 a **2 su 2**, in 8 e 9 turni |
 | Sandbox Docker | **provata dal vivo**: 4 garanzie su 4 |
 | Banco sul protocollo dei tool | Qwen 27B **100/100**; Ornith 35B e gemma 12B **70/100** |
@@ -606,3 +606,111 @@ persa a ogni run, perché il worktree di un run isolato è nuovo. Ogni gestore
 punta alla propria cache per variabile esplicita: dedurla da `HOME` funziona
 finché qualcuno non cambia `HOME`, e allora il volume resta montato e
 inutilizzato — il modo peggiore di sbagliare, perché sembra a posto.
+
+---
+
+## 11. Il lavoro parallelo smette di perdersi · 13 settembre 2026
+
+### La patch cieca era la causa più cara del sistema
+
+**Quattro voci su otto** morivano con *«obiettivo chiuso ma il lavoro non è
+arrivato nell'albero»*. Gli stessi diff, provati uno per uno, si applicavano
+senza un rumore.
+
+La patch di un run è calcolata dal commit da cui è partito, e `git apply` è
+tutto-o-niente sul contenuto esatto: basta che un altro lavoratore abbia già
+trasferito il suo lavoro su quel file perché l'intera patch venga rifiutata,
+anche quando i due hanno toccato punti lontanissimi.
+
+Ora, quando la patch cieca fallisce, si fonde file per file con
+`git merge-file`. Tre regole:
+
+- **tutto o niente** — si calcola in memoria e si scrive solo se ogni file si
+  fonde pulito. Mezzo trasferimento è lo stato peggiore di tutti, perché
+  sembra riuscito;
+- **mai marcatori nell'albero di lavoro** — un file con `<<<<<<<` dentro non
+  compila e nessuno sa perché, mentre il lavoro rifiutato resta sul branch e
+  si recupera in un comando;
+- **cancellazioni e rinomine fanno rinunciare** — «cancellato da una parte e
+  modificato dall'altra» è una domanda per una persona.
+
+E un difetto che il test ha trovato per conto suo: **`has_work()` veniva
+chiesta prima del checkpoint di chiusura**. Un run che aveva prodotto tutto
+nell'ultimo turno risultava vuoto, e se il trasferimento falliva il branch
+veniva buttato **con dentro l'unica copia del lavoro**.
+
+### I file dichiarati: prevenire invece di curare
+
+La fusione recupera il caso normale, non quello in cui due voci cambiano
+davvero la stessa riga. Quello si previene prima di partire: `queue_add`
+accetta `files`, e la coda avvisa quando due voci indipendenti dichiarano lo
+stesso file.
+
+Si **avvisa e non si rifiuta**: a volte due voci devono toccarlo entrambe, e
+chi riempie la coda lo sa. Ma deve saperlo adesso, non tre run dopo, e il
+rimedio è una riga di `depends_on` che le mette in fila.
+
+---
+
+## 12. Il modello sa cos'è Sigma Studio
+
+Chiedendo a Qwen, dentro Sigma Studio, «cos'è l'harness e come si migliora», la
+risposta descriveva **sette agenti che non esistono**, indicava la sandbox in
+`data/` — che è quella della chat, non quella dell'harness — e dei trentacinque
+moduli del kernel non ne nominava uno.
+
+Non era un difetto del modello: **nessuno gli aveva dato i fatti**. Il prompt di
+sistema descrive un assistente, non questo programma, e da lì si può solo
+dedurre. Il risultato ha la forma di una diagnosi e il contenuto di
+un'immaginazione, che è il modo più costoso di sbagliare.
+
+Due pezzi, e la divisione fra i due è la soluzione:
+
+| | cosa dice | dove sta | costo |
+|:---|:---|:---|:---|
+| **la scheda** | *cosa esiste*: ruoli, tool, moduli, dove si scrive | prefisso stabile della chat | ~500 token, una volta per conversazione |
+| **`consulta_progetto`** | *perché*, e cosa è già successo | strumento MCP, a richiesta | zero finché nessuno lo chiama |
+
+**La scheda si genera, non si scrive.** Un testo scritto a mano dice la verità
+il giorno in cui lo si scrive e comincia a mentire il giorno dopo: i ruoli
+cambiano, i tool si aggiungono. Qui ogni riga viene letta dal codice, e non
+può divergere da ciò che descrive.
+
+> Tenere tutto in finestra sembra più sicuro ed è il modo più rapido di non
+> avere spazio per il lavoro.
+
+E una fragilità che il test ha trovato: un solo `config/` illeggibile faceva
+sparire **l'intera scheda**, e il modello tornava a rispondere a memoria —
+cioè riapriva il difetto che la scheda esiste per chiudere, dal caso più
+banale. Ora ogni sorgente è isolata: si perde una riga, non la scheda.
+
+---
+
+## 13. Un bug di chat che vale una regola
+
+Chiedendo «scrivimi una breve descrizione sia in italiano che in inglese»,
+l'utente vedeva arrivare **soltanto** la riga di chiusura: *«Fammi sapere se
+desideri altre modifiche!»*. Descrizione italiana e inglese finivano entrambe
+nel ragionamento.
+
+La causa sta in due euristiche nate per un motivo buono — certi modelli lasciano
+colare il proprio ragionamento in chiaro, quasi sempre in inglese, prima della
+risposta in italiano. Da lì l'assunzione **«inglese = ragionamento, italiano =
+risposta»**, che regge quasi sempre e cade esattamente dove serve di più: una
+traduzione, una descrizione bilingue, un messaggio d'errore citato.
+
+Due difese, e servono entrambe:
+
+1. **se la domanda chiede inglese**, quelle euristiche non girano. Precisa, ma
+   dipende dal fatto che il chiamante abbia la domanda — e tre chiamanti su
+   quattro non ce l'hanno;
+2. **se di una risposta sopravvive meno di un quarto**, non è stato tolto un
+   preambolo: è stata tolta la risposta, e si rimette tutto.
+
+> Un po' di ragionamento in chiaro si legge. Una risposta che non c'è non si
+> recupera.
+
+I tag espliciti — `<think>`, `...done thinking` — non hanno rete e non ne hanno
+bisogno: lì non c'è niente da indovinare, il modello ha detto lui dov'era il
+ragionamento. La rete serve solo alle euristiche che tirano a indovinare, ed è
+una distinzione che vale ovunque ce ne siano.
