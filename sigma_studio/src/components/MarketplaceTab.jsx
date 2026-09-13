@@ -13,11 +13,54 @@ import TabHeader from './common/TabHeader';
 // ==============================================================================
 // Built-in Kernel Modules Data
 // ==============================================================================
+// ==============================================================================
+// Category Canonical Ordering & Metadata (Allineati con la Sidebar del Kernel)
+// ==============================================================================
+export const CATEGORY_ORDER = [
+  'Multimodale & Creatività',
+  'Studio, Ricerca & AI',
+  'Infrastruttura & Rete',
+  'Comunicazione & Social',
+  'Protocollo & Governance'
+];
+
+export const CATEGORY_META = {
+  'Multimodale & Creatività': {
+    icon: '🎨',
+    color: '#ff5064',
+    desc: 'Audio, Voce, Visione, Grafica 8K, 3D e Domotica'
+  },
+  'Studio, Ricerca & AI': {
+    icon: '🧠',
+    color: '#7c5bf0',
+    desc: 'Benchmark, Training, Sciame DAG, Roadmap e Knowledge Graph'
+  },
+  'Infrastruttura & Rete': {
+    icon: '⚡',
+    color: '#00d2ff',
+    desc: 'Docker Sandbox, Monitor GPU VRAM, Browser Web e Robotica ROS2'
+  },
+  'Comunicazione & Social': {
+    icon: '📬',
+    color: '#bc8cff',
+    desc: 'Client Webmail, Telegram, Slack e Discord'
+  },
+  'Protocollo & Governance': {
+    icon: '🛡️',
+    color: '#00f2fe',
+    desc: 'Model Context Protocol, Gateway RPC e Permessi'
+  }
+};
+
+// ==============================================================================
+// Built-in Kernel Modules Data
+// ==============================================================================
 const KERNEL_MODULES = [
   {
     id: 'mcp_hub',
     name: 'MCP Tools & Governance Gateway',
     category: 'Protocollo & Governance',
+    domain: 'Model Context Protocol & RPC',
     icon: Wrench,
     color: '#00f2fe',
     tabType: 'mcp_hub',
@@ -48,7 +91,8 @@ const OPTIONAL_MODULES = [
   {
     id: 'sigma_creative_lab',
     name: 'Creative Lab 3D/2D',
-    category: 'Multimodale & Grafica',
+    category: 'Multimodale & Creatività',
+    domain: 'Grafica 8K & 3D Blender',
     icon: Palette,
     color: '#ff5064',
     tabType: 'creative_studio',
@@ -75,7 +119,8 @@ const OPTIONAL_MODULES = [
   {
     id: 'audio_studio',
     name: 'Hi-Fi Sound & FM Radio Studio',
-    category: 'Audio & Streaming',
+    category: 'Multimodale & Creatività',
+    domain: 'Streaming FM & Hi-Fi Lounge',
     icon: Radio,
     color: '#00f2fe',
     tabType: 'music',
@@ -101,7 +146,8 @@ const OPTIONAL_MODULES = [
   {
     id: 'sigma_domotica',
     name: 'Domotica & Home Assistant IoT',
-    category: 'Automazione Domotica',
+    category: 'Multimodale & Creatività',
+    domain: 'Home Assistant & IoT Smart',
     icon: Home,
     color: '#a78bfa',
     tabType: 'domotica',
@@ -126,61 +172,37 @@ const OPTIONAL_MODULES = [
     author: 'Sigma Core Team'
   },
   {
-    id: 'sigma_hardware_lab',
-    name: 'Hardware Lab & VRAM Telemetry',
-    category: 'Infrastruttura & GPU',
-    icon: Zap,
-    color: '#00d2ff',
-    tabType: 'hardware_lab',
+    id: 'sigma_voice_studio',
+    name: 'Voice Studio & Neural Speech Lab',
+    category: 'Multimodale & Creatività',
+    domain: 'Sintesi Vocale Neurale & TTS',
+    icon: Mic,
+    color: '#ff79c6',
+    tabType: 'voice_studio',
     version: 'v1.0.0',
-    description: 'Telemetria in tempo reale di GPU VRAM, RAM di sistema, carico CPU, gestione processi CUDA e terminazione selettiva dei processi zombie.',
+    description: 'Laboratorio di sintesi vocale neurale: motore Kokoro 82M ultra-veloce, Coqui XTTS-v2 zero-shot voice cloning, personalizzazione tono e Voice MCP Server.',
     highlights: [
-      'Monitoraggio costante della memoria video VRAM e carichi GPU NVML',
-      'Telemetria di sistema (CPU, RAM fisica, carichi termici e disco)',
-      'Gestione processi CUDA e terminazione istantanea processi orfani'
+      'Sintesi vocale ultra-veloce a bassa latenza con modello Kokoro 82M',
+      'Clonazione vocale neurale zero-shot con Coqui XTTS-v2',
+      'Regolazione fine di timbro, intonazione, velocità e streaming real-time'
     ],
-    detailedDescription: 'Cruscotto telemetrico e diagnostico per l\'infrastruttura di calcolo. Interroga costantemente i driver NVIDIA (NVML) o le metriche hardware CPU/RAM/Disco, permettendo di prevenire Out-Of-Memory (OOM) durante l\'inferenza di LLM locali pesanti e terminare istanze orfane del demone Ollama o container di supporto.',
+    detailedDescription: 'Laboratorio avanzato di vocalizzazione e audio sintetico. Fornisce supporto per modelli neurale TTS a bassissimo impatto di risorse (Kokoro) per risposte vocali sub-secondo dell\'assistente, e modelli avanzati di clonazione vocale per replicare intonazioni e timbri specifici da campioni audio di pochi secondi.',
     mcpTools: [
-      { name: 'hardware_get_vram_status', desc: 'Rileva memoria video allocata, libera e temperatura della GPU' },
-      { name: 'hardware_kill_process', desc: 'Termina forzatamente processi CUDA o worker bloccati' }
+      { name: 'voice_synthesize_text', desc: 'Converte testo in streaming audio WAV/MP3 con la voce selezionata' },
+      { name: 'voice_clone_speaker', desc: 'Estrae l\'impronta vocale da una registrazione audio di pochi secondi' }
     ],
-    techStack: ['NVIDIA NVML', 'PyNVML', 'psutil', 'CUDA Runtime API'],
-    gitUrl: 'https://github.com/Sigmanih/SigmaStudio-Moduli/tree/main/modules/sigma_hardware_lab',
+    techStack: ['Kokoro 82M ONNX', 'Coqui XTTS-v2', 'WebRTC Audio', 'PyAudio'],
+    gitUrl: 'https://github.com/Sigmanih/SigmaStudio-Moduli/tree/main/modules/sigma_voice_studio',
     branch: 'main',
-    tags: ['NVIDIA NVML', 'GPU VRAM', 'Ollama Daemon', 'Process Manager', 'CUDA Telemetry'],
-    size: '1 MB',
-    author: 'Sigma Core Team'
-  },
-  {
-    id: 'sigma_research_lab',
-    name: 'Pipelines Lab & Dynamic Swarm',
-    category: 'Orchestrazione Multi-Agente',
-    icon: FlaskConical,
-    color: '#7c5bf0',
-    tabType: 'research_lab',
-    version: 'v1.0.0',
-    description: 'Pianificatore DAG di swarm multi-agente, decomposizione automatica di obiettivi scientifici, feedback loop iterativo e self-healing dei task.',
-    highlights: [
-      'Pianificazione e orchestrazione di swarm multi-agente in topologia DAG',
-      'Decomposizione ricorsiva di problemi scientifici complessi',
-      'Self-healing dei task ed execution feedback-loop continuo'
-    ],
-    detailedDescription: 'Ambiente di ricerca scientifica e orchestrazione ad agenti multipli. Trasforma obiettivi astratti in grafi aciclici orientati (DAG) di compiti paralleli, distribuendo l\'elaborazione su agenti specializzati con verifica incrociata dei risultati, gestione fallimenti e riesecuzione adattiva.',
-    mcpTools: [
-      { name: 'research_plan_dag', desc: 'Costruisce e convalida il piano di esecuzione a grafo multi-nodo' },
-      { name: 'research_run_swarm', desc: 'Coordina l\'esecuzione parallela dei worker con sincronizzazione di stato' }
-    ],
-    techStack: ['NetworkX DAG', 'Multi-Agent Swarm', 'FastAPI Async', 'JSON Schema'],
-    gitUrl: 'https://github.com/Sigmanih/SigmaStudio-Moduli/tree/main/modules/sigma_research_lab',
-    branch: 'main',
-    tags: ['Swarm DAG', 'Multi-Agent', 'Workflow Automation', 'Pipeline Designer', 'Self-Healing'],
-    size: '1.5 MB',
+    tags: ['Kokoro 82M', 'XTTS-v2', 'Neural TTS', 'Voice Cloning', 'Speech Synthesis', 'Voice MCP'],
+    size: '3 MB',
     author: 'Sigma Core Team'
   },
   {
     id: 'sigma_benchmark_lab',
     name: 'Benchmark Lab & Model Evaluation',
-    category: 'Valutazione & Benchmark',
+    category: 'Studio, Ricerca & AI',
+    domain: 'Valutazione & 11 Benchmark',
     icon: Award,
     color: '#00d2ff',
     tabType: 'benchmark_lab',
@@ -206,7 +228,8 @@ const OPTIONAL_MODULES = [
   {
     id: 'sigma_training_lab',
     name: 'Training Lab & SLM Forge',
-    category: 'Fine-Tuning & Valutazione',
+    category: 'Studio, Ricerca & AI',
+    domain: 'Fine-Tuning QLoRA & SLM',
     icon: Brain,
     color: '#d29922',
     tabType: 'training_lab',
@@ -230,9 +253,37 @@ const OPTIONAL_MODULES = [
     author: 'Sigma Core Team'
   },
   {
+    id: 'sigma_research_lab',
+    name: 'Pipelines Lab & Dynamic Swarm',
+    category: 'Studio, Ricerca & AI',
+    domain: 'Sciame AI & Pipelines DAG',
+    icon: FlaskConical,
+    color: '#7c5bf0',
+    tabType: 'research_lab',
+    version: 'v1.0.0',
+    description: 'Pianificatore DAG di swarm multi-agente, decomposizione automatica di obiettivi scientifici, feedback loop iterativo e self-healing dei task.',
+    highlights: [
+      'Pianificazione e orchestrazione di swarm multi-agente in topologia DAG',
+      'Decomposizione ricorsiva di problemi scientifici complessi',
+      'Self-healing dei task ed execution feedback-loop continuo'
+    ],
+    detailedDescription: 'Ambiente di ricerca scientifica e orchestrazione ad agenti multipli. Trasforma obiettivi astratti in grafi aciclici orientati (DAG) di compiti paralleli, distribuendo l\'elaborazione su agenti specializzati con verifica incrociata dei risultati, gestione fallimenti e riesecuzione adattiva.',
+    mcpTools: [
+      { name: 'research_plan_dag', desc: 'Costruisce e convalida il piano di esecuzione a grafo multi-nodo' },
+      { name: 'research_run_swarm', desc: 'Coordina l\'esecuzione parallela dei worker con sincronizzazione di stato' }
+    ],
+    techStack: ['NetworkX DAG', 'Multi-Agent Swarm', 'FastAPI Async', 'JSON Schema'],
+    gitUrl: 'https://github.com/Sigmanih/SigmaStudio-Moduli/tree/main/modules/sigma_research_lab',
+    branch: 'main',
+    tags: ['Swarm DAG', 'Multi-Agent', 'Workflow Automation', 'Pipeline Designer', 'Self-Healing'],
+    size: '1.5 MB',
+    author: 'Sigma Core Team'
+  },
+  {
     id: 'sigma_roadmap',
     name: 'Pianificazione, Roadmap & Task Audit',
-    category: 'Pianificazione & Task',
+    category: 'Studio, Ricerca & AI',
+    domain: 'Pianificazione & Task Kanban',
     icon: Calendar,
     color: '#ffd700',
     tabType: 'roadmap',
@@ -258,7 +309,8 @@ const OPTIONAL_MODULES = [
   {
     id: 'sigma_knowledge',
     name: 'Argomenti, Memoria & Knowledge Graph',
-    category: 'Conoscenza & Memoria',
+    category: 'Studio, Ricerca & AI',
+    domain: 'Argomenti & Grafo D3.js',
     icon: PieChart,
     color: '#00d2ff',
     tabType: 'knowledge',
@@ -282,35 +334,10 @@ const OPTIONAL_MODULES = [
     author: 'Sigma Core Team'
   },
   {
-    id: 'sigma_voice_studio',
-    name: 'Voice Studio & Neural Speech Lab',
-    category: 'Audio & Voce Neurale',
-    icon: Mic,
-    color: '#ff79c6',
-    tabType: 'voice_studio',
-    version: 'v1.0.0',
-    description: 'Laboratorio di sintesi vocale neurale: motore Kokoro 82M ultra-veloce, Coqui XTTS-v2 zero-shot voice cloning, personalizzazione tono e Voice MCP Server.',
-    highlights: [
-      'Sintesi vocale ultra-veloce a bassa latenza con modello Kokoro 82M',
-      'Clonazione vocale neurale zero-shot con Coqui XTTS-v2',
-      'Regolazione fine di timbro, intonazione, velocità e streaming real-time'
-    ],
-    detailedDescription: 'Laboratorio avanzato di vocalizzazione e audio sintetico. Fornisce supporto per modelli neurale TTS a bassissimo impatto di risorse (Kokoro) per risposte vocali sub-secondo dell\'assistente, e modelli avanzati di clonazione vocale per replicare intonazioni e timbri specifici da campioni audio di pochi secondi.',
-    mcpTools: [
-      { name: 'voice_synthesize_text', desc: 'Converte testo in streaming audio WAV/MP3 con la voce selezionata' },
-      { name: 'voice_clone_speaker', desc: 'Estrae l\'impronta vocale da una registrazione audio di pochi secondi' }
-    ],
-    techStack: ['Kokoro 82M ONNX', 'Coqui XTTS-v2', 'WebRTC Audio', 'PyAudio'],
-    gitUrl: 'https://github.com/Sigmanih/SigmaStudio-Moduli/tree/main/modules/sigma_voice_studio',
-    branch: 'main',
-    tags: ['Kokoro 82M', 'XTTS-v2', 'Neural TTS', 'Voice Cloning', 'Speech Synthesis', 'Voice MCP'],
-    size: '3 MB',
-    author: 'Sigma Core Team'
-  },
-  {
     id: 'sigma_developer_lab',
     name: 'Developer Lab & Docker Sandbox',
-    category: 'Sviluppo & Sandbox',
+    category: 'Infrastruttura & Rete',
+    domain: 'Docker Sandbox & Pytest',
     icon: Terminal,
     color: '#00d2ff',
     tabType: 'developer_lab',
@@ -334,9 +361,37 @@ const OPTIONAL_MODULES = [
     author: 'Sigma Core Team'
   },
   {
+    id: 'sigma_hardware_lab',
+    name: 'Hardware Lab & VRAM Telemetry',
+    category: 'Infrastruttura & Rete',
+    domain: 'Monitor Hardware & GPU VRAM',
+    icon: Zap,
+    color: '#00d2ff',
+    tabType: 'hardware_lab',
+    version: 'v1.0.0',
+    description: 'Telemetria in tempo reale di GPU VRAM, RAM di sistema, carico CPU, gestione processi CUDA e terminazione selettiva dei processi zombie.',
+    highlights: [
+      'Monitoraggio costante della memoria video VRAM e carichi GPU NVML',
+      'Telemetria di sistema (CPU, RAM fisica, carichi termici e disco)',
+      'Gestione processi CUDA e terminazione istantanea processi orfani'
+    ],
+    detailedDescription: 'Cruscotto telemetrico e diagnostico per l\'infrastruttura di calcolo. Interroga costantemente i driver NVIDIA (NVML) o le metriche hardware CPU/RAM/Disco, permettendo di prevenire Out-Of-Memory (OOM) durante l\'inferenza di LLM locali pesanti e terminare istanze orfane del demone Ollama o container di supporto.',
+    mcpTools: [
+      { name: 'hardware_get_vram_status', desc: 'Rileva memoria video allocata, libera e temperatura della GPU' },
+      { name: 'hardware_kill_process', desc: 'Termina forzatamente processi CUDA o worker bloccati' }
+    ],
+    techStack: ['NVIDIA NVML', 'PyNVML', 'psutil', 'CUDA Runtime API'],
+    gitUrl: 'https://github.com/Sigmanih/SigmaStudio-Moduli/tree/main/modules/sigma_hardware_lab',
+    branch: 'main',
+    tags: ['NVIDIA NVML', 'GPU VRAM', 'Ollama Daemon', 'Process Manager', 'CUDA Telemetry'],
+    size: '1 MB',
+    author: 'Sigma Core Team'
+  },
+  {
     id: 'sigma_network_lab',
     name: 'Network Explorer & Web Research',
-    category: 'Rete & Ricerca',
+    category: 'Infrastruttura & Rete',
+    domain: 'AI Web Browser & Rete',
     icon: Globe,
     color: '#3fb950',
     tabType: 'network_lab',
@@ -364,6 +419,7 @@ const OPTIONAL_MODULES = [
     id: 'sigma_email_client',
     name: 'Email Hub & Client',
     category: 'Comunicazione & Social',
+    domain: 'Client Webmail IMAP/SMTP',
     icon: Mail,
     color: '#ffb454',
     tabType: 'email_client',
@@ -390,6 +446,7 @@ const OPTIONAL_MODULES = [
     id: 'sigma_messaging_hub',
     name: 'Messaging & Notification Hub',
     category: 'Comunicazione & Social',
+    domain: 'Telegram, Slack & Discord',
     icon: Send,
     color: '#bc8cff',
     tabType: 'messaging_hub',
@@ -422,7 +479,8 @@ const REMOTE_CATALOG_MODULES = [
   {
     id: 'audio_engine',
     name: 'Neural Audio & Voice Engine',
-    category: 'Audio & Voce Neurale',
+    category: 'Multimodale & Creatività',
+    domain: 'Audio Neurale & Whisper',
     icon: Sparkles,
     color: '#ff79c6',
     tabType: 'audio_studio',
@@ -449,7 +507,8 @@ const REMOTE_CATALOG_MODULES = [
   {
     id: 'vision_agent',
     name: 'Vision & Visual Grounding Lab',
-    category: 'Computer Vision & OCR',
+    category: 'Multimodale & Creatività',
+    domain: 'Computer Vision & OCR',
     icon: Sparkles,
     color: '#00d2ff',
     tabType: 'vision_lab',
@@ -474,36 +533,10 @@ const REMOTE_CATALOG_MODULES = [
     author: 'Sigma Core Team'
   },
   {
-    id: 'robotics_ros2',
-    name: 'ROS2 & Robotics Bridge',
-    category: 'Robotica & Meccatronica',
-    icon: Sparkles,
-    color: '#3fb950',
-    tabType: 'robotics_tab',
-    version: 'v0.9.0',
-    status: 'available',
-    description: 'Interfaccia nativa ROS2 / micro-ROS per inviare comandi cinematica, visualizzare odometria laser e teleoperare bracci robotici.',
-    highlights: [
-      'Integrazione nativa ROS2 Humble e micro-ROS per periferiche embedded',
-      'Visualizzazione telemetria odometrica e scansione laser LiDAR',
-      'Controllo cinematica diretta e inversa per attuatori e bracci'
-    ],
-    detailedDescription: 'Bridge di controllo meccatronico per la robotica autonoma. Collega il kernel Sigma a nodi ROS2 (Robot Operating System), consentendo il monitoraggio di sensori ambientali, telemetria laser LiDAR e invio di comandi di movimento e navigazione Nav2.',
-    mcpTools: [
-      { name: 'ros2_publish_cmd_vel', desc: 'Invia comandi di velocità lineare e angolare su topic ROS2' },
-      { name: 'ros2_get_telemetry', desc: 'Legge lo stato attuale dei giunti, della batteria e dell\'odometria' }
-    ],
-    techStack: ['ROS2 Humble', 'rclpy', 'Nav2 Stack', 'URDF Parser'],
-    gitUrl: 'https://github.com/Sigmanih/SigmaStudio-Module-Robotics.git',
-    branch: 'main',
-    tags: ['ROS2 Humble', 'Nav2', 'Kinematics', 'URDF Visualizer'],
-    size: '64 MB',
-    author: 'Sigma Robotics Group'
-  },
-  {
     id: 'financial_quant',
     name: 'Quant & Algorithmic Trading Lab',
-    category: 'Finanza Quantitativa',
+    category: 'Studio, Ricerca & AI',
+    domain: 'Trading & Finanza Quantitativa',
     icon: Sparkles,
     color: '#d29922',
     tabType: 'quant_lab',
@@ -526,6 +559,34 @@ const REMOTE_CATALOG_MODULES = [
     tags: ['Backtesting', 'VectorBT', 'Markowitz', 'Risk Engine'],
     size: '35 MB',
     author: 'Sigma Community'
+  },
+  {
+    id: 'robotics_ros2',
+    name: 'ROS2 & Robotics Bridge',
+    category: 'Infrastruttura & Rete',
+    domain: 'Robotica & Meccatronica ROS2',
+    icon: Sparkles,
+    color: '#3fb950',
+    tabType: 'robotics_tab',
+    version: 'v0.9.0',
+    status: 'available',
+    description: 'Interfaccia nativa ROS2 / micro-ROS per inviare comandi cinematica, visualizzare odometria laser e teleoperare bracci robotici.',
+    highlights: [
+      'Integrazione nativa ROS2 Humble e micro-ROS per periferiche embedded',
+      'Visualizzazione telemetria odometrica e scansione laser LiDAR',
+      'Controllo cinematica diretta e inversa per attuatori e bracci'
+    ],
+    detailedDescription: 'Bridge di controllo meccatronico per la robotica autonoma. Collega il kernel Sigma a nodi ROS2 (Robot Operating System), consentendo il monitoraggio di sensori ambientali, telemetria laser LiDAR e invio di comandi di movimento e navigazione Nav2.',
+    mcpTools: [
+      { name: 'ros2_publish_cmd_vel', desc: 'Invia comandi di velocità lineare e angolare su topic ROS2' },
+      { name: 'ros2_get_telemetry', desc: 'Legge lo stato attuale dei giunti, della batteria e dell\'odometria' }
+    ],
+    techStack: ['ROS2 Humble', 'rclpy', 'Nav2 Stack', 'URDF Parser'],
+    gitUrl: 'https://github.com/Sigmanih/SigmaStudio-Module-Robotics.git',
+    branch: 'main',
+    tags: ['ROS2 Humble', 'Nav2', 'Kinematics', 'URDF Visualizer'],
+    size: '64 MB',
+    author: 'Sigma Robotics Group'
   }
 ];
 
@@ -571,7 +632,13 @@ function ModuleCard({
           <div className="marketplace-card-titles">
             <h3 className="marketplace-card-name" title={mod.name}>{mod.name}</h3>
             <div className="marketplace-card-meta-line">
-              <span>{mod.category}</span>
+              <span style={{ fontWeight: 700, color: mod.color || '#00d2ff' }}>{mod.category}</span>
+              {mod.domain && (
+                <>
+                  <span>•</span>
+                  <span style={{ color: '#94a3b8' }}>{mod.domain}</span>
+                </>
+              )}
               <span>•</span>
               <span style={{ fontFamily: 'monospace', fontWeight: 700 }}>{mod.version || 'v1.0.0'}</span>
             </div>
@@ -700,8 +767,14 @@ function ModuleDetailModal({
                   <span className="marketplace-status-badge available"><Download size={11} /> Disponibile</span>
                 )}
               </div>
-              <div style={{ fontSize: '0.74rem', color: '#8b8fa3', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <span><strong>Categoria:</strong> {mod.category}</span>
+              <div style={{ fontSize: '0.74rem', color: '#8b8fa3', display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                <span><strong>Macro Categoria:</strong> <span style={{ color: mod.color || '#00d2ff', fontWeight: 700 }}>{mod.category}</span></span>
+                {mod.domain && (
+                  <>
+                    <span>•</span>
+                    <span><strong>Ambito:</strong> {mod.domain}</span>
+                  </>
+                )}
                 <span>•</span>
                 <span><strong>Versione:</strong> <code>{mod.version || 'v1.0.0'}</code></span>
                 <span>•</span>
@@ -1181,7 +1254,7 @@ export default function MarketplaceTab({ openTab }) {
   const totalInstalledCount = KERNEL_MODULES.length + OPTIONAL_MODULES.filter(m => optionalInstalledState[m.id] === true).length;
   const totalAvailableCount = OPTIONAL_MODULES.filter(m => optionalInstalledState[m.id] !== true).length + REMOTE_CATALOG_MODULES.filter(m => optionalInstalledState[m.id] !== true).length;
 
-  // Categories list for current tab
+  // Categories list for current tab sorted according to canonical CATEGORY_ORDER
   const availableCategories = useMemo(() => {
     const sourceList = activeSubTab === 'installed'
       ? [...KERNEL_MODULES, ...OPTIONAL_MODULES.filter(m => optionalInstalledState[m.id] === true)]
@@ -1191,7 +1264,7 @@ export default function MarketplaceTab({ openTab }) {
     sourceList.forEach(m => {
       if (m.category) set.add(m.category);
     });
-    return Array.from(set);
+    return CATEGORY_ORDER.filter(cat => set.has(cat));
   }, [activeSubTab, optionalInstalledState]);
 
   // Determine statusType for the modal
@@ -1313,25 +1386,31 @@ export default function MarketplaceTab({ openTab }) {
             )}
           </div>
 
-          {/* Category Chips */}
+          {/* Category Chips with Emojis matching Sidebar */}
           <div className="marketplace-categories">
             <button
               type="button"
               className={`marketplace-cat-chip ${selectedCategory === 'all' ? 'active' : ''}`}
               onClick={() => setSelectedCategory('all')}
             >
-              Tutte le Categorie
+              <span>✨</span>
+              <span>Tutte le Categorie</span>
             </button>
-            {availableCategories.map(cat => (
-              <button
-                key={cat}
-                type="button"
-                className={`marketplace-cat-chip ${selectedCategory === cat ? 'active' : ''}`}
-                onClick={() => setSelectedCategory(cat)}
-              >
-                {cat}
-              </button>
-            ))}
+            {availableCategories.map(cat => {
+              const meta = CATEGORY_META[cat];
+              return (
+                <button
+                  key={cat}
+                  type="button"
+                  className={`marketplace-cat-chip ${selectedCategory === cat ? 'active' : ''}`}
+                  onClick={() => setSelectedCategory(cat)}
+                  title={meta?.desc || cat}
+                >
+                  {meta?.icon && <span>{meta.icon}</span>}
+                  <span>{cat}</span>
+                </button>
+              );
+            })}
           </div>
         </div>
 
