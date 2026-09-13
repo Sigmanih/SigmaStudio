@@ -118,6 +118,7 @@ export default function ChatWorkspaceTab() {
           onStop={core.stopInference}
           activeManifesto={core.activeManifesto}
           manifestos={core.manifestos}
+          availableModels={core.availableModels}
           autoScroll={core.autoScroll}
           setAutoScroll={core.setAutoScroll}
         />

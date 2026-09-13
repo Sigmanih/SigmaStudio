@@ -56,7 +56,7 @@ function groupMessages(messages) {
 export default function ChatMessages({
   messages, loading, actionsLog, expandedThinking, onToggleThinking,
   selectedModel, onDeleteMessage, refs, onStop, agentPipeline,
-  activeManifesto, manifestos, autoScroll, setAutoScroll,
+  activeManifesto, manifestos, availableModels, autoScroll, setAutoScroll,
 }) {
   let displayMessages = messages || [];
   if (loading && displayMessages.length > 0) {
@@ -92,39 +92,56 @@ export default function ChatMessages({
 
   return (
     <div className="chat-messages" onScroll={handleScroll}>
-      {/* Pipeline status bar */}
-      <AgentPipelineStatus pipeline={agentPipeline} />
-      
-      {grouped.map((msgGroup, i) => {
-        // Calcola l'indice reale di ciascun messaggio del gruppo all'interno dell'array flat 'messages'
-        const realIndices = msgGroup.map(m => messages.indexOf(m)).filter(idx => idx !== -1);
-        const indexValue = realIndices.length === 1 ? realIndices[0] : realIndices;
-        return (
-          <div key={i} className="chat-message-wrapper">
-            <AgentMessage
-              groupedMessages={msgGroup.length > 1 ? msgGroup : undefined}
-              msg={msgGroup.length === 1 ? msgGroup[0] : undefined}
-              msgId={`msg-${i}`}
-              msgIndex={indexValue}
-              expandedThinking={expandedThinking}
-              onToggleThinking={(id, forced) => onToggleThinking && onToggleThinking(id, forced)}
-              effectiveModelName={selectedModel}
-              onDeleteMessage={onDeleteMessage}
-              activeManifesto={activeManifesto}
-              manifestos={manifestos}
-              autoScroll={autoScroll}
-              setAutoScroll={setAutoScroll}
-            />
+      <div className="chat-messages-container">
+        {/* Pipeline status bar */}
+        <AgentPipelineStatus pipeline={agentPipeline} />
+        
+        {grouped.map((msgGroup, i) => {
+          // Calcola l'indice reale di ciascun messaggio del gruppo all'interno dell'array flat 'messages'
+          const realIndices = msgGroup.map(m => messages.indexOf(m)).filter(idx => idx !== -1);
+          const indexValue = realIndices.length === 1 ? realIndices[0] : realIndices;
+          const firstMsg = msgGroup[0] || {};
+          const isUserGroup = firstMsg.role === 'user';
+          const isWelcomeGroup = !isUserGroup && (
+            firstMsg.isWelcome ||
+            firstMsg.content === '# 🤖 Sigma AI Studio\n\nChat pronta.' ||
+            firstMsg.content === 'Chat pronta.' ||
+            (typeof firstMsg.content === 'string' && firstMsg.content.includes('Chat pronta.') && !firstMsg.thinking && msgGroup.length === 1)
+          );
+
+          let wrapperClass = 'chat-message-wrapper';
+          if (isUserGroup) wrapperClass += ' user-wrapper';
+          else if (isWelcomeGroup) wrapperClass += ' welcome-wrapper';
+          else wrapperClass += ' assistant-wrapper';
+
+          return (
+            <div key={i} className={wrapperClass}>
+              <AgentMessage
+                groupedMessages={msgGroup.length > 1 ? msgGroup : undefined}
+                msg={msgGroup.length === 1 ? msgGroup[0] : undefined}
+                msgId={`msg-${i}`}
+                msgIndex={indexValue}
+                expandedThinking={expandedThinking}
+                onToggleThinking={(id, forced) => onToggleThinking && onToggleThinking(id, forced)}
+                effectiveModelName={selectedModel}
+                onDeleteMessage={onDeleteMessage}
+                activeManifesto={activeManifesto}
+                manifestos={manifestos}
+                availableModels={availableModels}
+                autoScroll={autoScroll}
+                setAutoScroll={setAutoScroll}
+              />
+            </div>
+          );
+        })}
+        {actionsLog.length > 0 && !loading && (
+          <div className="chat-actions-summary">
+            <FileText size={12} />
+            <span>{actionsLog.filter(a => a.success).length}/{actionsLog.length} azioni</span>
           </div>
-        );
-      })}
-      {actionsLog.length > 0 && !loading && (
-        <div className="chat-actions-summary">
-          <FileText size={12} />
-          <span>{actionsLog.filter(a => a.success).length}/{actionsLog.length} azioni</span>
-        </div>
-      )}
-      <div ref={refs.messagesEnd} />
+        )}
+        <div ref={refs.messagesEnd} />
+      </div>
     </div>
   );
 }

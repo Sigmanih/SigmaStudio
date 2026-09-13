@@ -3,6 +3,7 @@ import { Bot, User, Terminal, FileText, Zap, Play, Pause, RotateCcw, RotateCw, S
 import { renderMarkdownLatex } from '../../utils/markdownLatex';
 import McpToolStrip from './McpToolStrip';
 import ImageLightbox from './ImageLightbox';
+import ModelWelcomeCard from './ModelWelcomeCard';
 import { useApp } from '../../contexts/AppContext';
 import { useMusic } from '../../contexts/MusicContext';
 import { getModelSpecs, isErrorMessage } from './core/modelSpecsHelper';
@@ -248,6 +249,11 @@ export default function AgentMessage({
   onDeleteMessage,
   msgIndex,
   loading: standaloneLoading,
+  activeManifesto,
+  manifestos,
+  availableModels,
+  autoScroll,
+  setAutoScroll,
 }) {
   const app = useApp();
   const openTab = app ? app.openTab : null;
@@ -445,6 +451,32 @@ export default function AgentMessage({
     }, 2800);
     return () => clearInterval(interval);
   }, [isLoading]);
+
+  const isWelcome = Boolean(
+    first.isWelcome || (
+      !isUser && !isSystem && (
+        first.content === '# 🤖 Sigma AI Studio\n\nChat pronta.' ||
+        first.content === 'Chat pronta.' ||
+        (typeof first.content === 'string' && first.content.includes('Chat pronta.') && !first.thinking && (!messages || messages.length === 1))
+      )
+    )
+  );
+
+  if (isWelcome) {
+    return (
+      <div className="chat-message chat-welcome-message">
+        <ModelWelcomeCard
+          modelName={first.model || cleanModelName}
+          effectiveModelName={effectiveModelName}
+          roleName={roleName}
+          agentStyle={agentStyle}
+          activeManifesto={activeManifesto}
+          availableModels={availableModels}
+          openTab={openTab}
+        />
+      </div>
+    );
+  }
 
   return (
     <div

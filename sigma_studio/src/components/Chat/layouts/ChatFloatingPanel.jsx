@@ -121,6 +121,7 @@ export default function ChatFloatingPanel({ openFiles, onClose, onOpenConfig, on
           onStop={core.stopInference}
           activeManifesto={core.activeManifesto}
           manifestos={core.manifestos}
+          availableModels={core.availableModels}
           autoScroll={core.autoScroll}
           setAutoScroll={core.setAutoScroll}
         />
