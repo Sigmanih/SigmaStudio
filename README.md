@@ -27,17 +27,8 @@
 ## 🎬 Video Demo & Platform Tour
 
 <p align="center">
-  <video src="images/screenshots/chat_record.mp4" controls="controls" width="100%" style="border-radius: 14px; box-shadow: 0 10px 36px rgba(0,210,255,0.25);">
-    Your browser does not support the video tag. Watch the <a href="https://github.com/Sigmanih/SigmaStudio/blob/main/images/screenshots/chat_record.mp4">Sigma Studio Video Demo on GitHub</a>.
-  </video>
-</p>
-
-<p align="center">
   <a href="https://github.com/Sigmanih/SigmaStudio/blob/main/images/screenshots/chat_record.mp4">
     <img src="https://img.shields.io/badge/▶️_Watch_Video_on_GitHub-chat__record.mp4-00d2ff?style=for-the-badge&logo=github&logoColor=white" alt="Watch Video on GitHub" />
-  </a>
-  <a href="https://github.com/Sigmanih/SigmaStudio/raw/main/images/screenshots/chat_record.mp4">
-    <img src="https://img.shields.io/badge/📥_Direct_Stream_/_Download-MP4-38bdf8?style=for-the-badge" alt="Direct Stream / Download MP4" />
   </a>
 </p>
 

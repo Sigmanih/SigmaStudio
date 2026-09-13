@@ -27,17 +27,8 @@
 ## 🎬 Video Demo & Tour della Piattaforma
 
 <p align="center">
-  <video src="images/screenshots/chat_record.mp4" controls="controls" width="100%" style="border-radius: 14px; box-shadow: 0 10px 36px rgba(0,210,255,0.25);">
-    Il tuo browser non supporta il tag video. Puoi guardare la <a href="https://github.com/Sigmanih/SigmaStudio/blob/main/images/screenshots/chat_record.mp4">Registrazione Chat direttamente su GitHub</a>.
-  </video>
-</p>
-
-<p align="center">
   <a href="https://github.com/Sigmanih/SigmaStudio/blob/main/images/screenshots/chat_record.mp4">
     <img src="https://img.shields.io/badge/▶️_Guarda_il_Video_su_GitHub-chat__record.mp4-00d2ff?style=for-the-badge&logo=github&logoColor=white" alt="Guarda il Video su GitHub" />
-  </a>
-  <a href="https://github.com/Sigmanih/SigmaStudio/raw/main/images/screenshots/chat_record.mp4">
-    <img src="https://img.shields.io/badge/📥_Streaming_Diretto_/_Download-MP4-38bdf8?style=for-the-badge" alt="Streaming Diretto / Download MP4" />
   </a>
 </p>
 
