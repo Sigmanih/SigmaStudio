@@ -6,14 +6,555 @@ import {
   ExternalLink, Sparkles, Terminal, Layers, Plus, X, ArrowRight,
   Info, RefreshCw, ChevronRight, Sliders, Box, Download, Globe,
   Users, BookOpen, GraduationCap, Briefcase, HeartPulse, Scale, TrendingUp,
-  Trash2, UserCheck, Star, Eye, ScrollText
+  Trash2, UserCheck, Star, Eye, ScrollText, Boxes
 } from 'lucide-react';
 import { useApp } from '../../contexts/AppContext';
 import TabHeader from '../common/TabHeader';
 
 // ==============================================================================
-// Icon Mapper for Dynamic Role Icons
+// Icon & Category Mapper for Roles & Professions
 // ==============================================================================
+const ROLE_CATEGORY_META = {
+  'Architettura & Kernel': { icon: '🏛️', color: '#00d2ff', desc: 'Kernel, routing, amministrazione e coordinamento' },
+  'Scienze, Ingegneria & Tech': { icon: '⚡', color: '#38bdf8', desc: 'Scienze esatte, ingegneria, fisica e calcolo' },
+  'Sviluppo & Test': { icon: '💻', color: '#3fb950', desc: 'Sviluppo software, test suite, refactoring' },
+  'Sviluppo & Codice': { icon: '💻', color: '#3fb950', desc: 'Programmazione, architettura web e algoritmi' },
+  'Scienze & Medicina': { icon: '🧬', color: '#10b981', desc: 'Medicina, biologia, genetica e divulgazione clinica' },
+  'Medicina & Salute': { icon: '🩺', color: '#10b981', desc: 'Sanità, protocolli clinici e benessere' },
+  'Comunicazione & Creatività': { icon: '🎨', color: '#f43f5e', desc: 'Grafica, design visivo, scrittura e media' },
+  'Creatività & Design': { icon: '🎨', color: '#f43f5e', desc: 'Design di interfacce, infografiche e creatività' },
+  'Economia & Diritto': { icon: '⚖️', color: '#eab308', desc: 'Diritto, finanza quantitativa e contrattualistica' },
+  'Finanza & Business': { icon: '📊', color: '#eab308', desc: 'Analisi mercati, business plan e contabilità' },
+  'Studenti & Università': { icon: '🎓', color: '#a855f7', desc: 'Tutoraggio accademico, studio e preparazione esami' },
+  'Assistente Generale': { icon: '🤖', color: '#00d2ff', desc: 'Front-desk cognitivo ed assistenza quotidiana' }
+};
+
+const getRoleCategoryMeta = (cat) => {
+  if (!cat) return { icon: '🧠', color: '#00d2ff', desc: 'Ruolo cognitivo specializzato' };
+  return ROLE_CATEGORY_META[cat] || { icon: '🧠', color: '#00d2ff', desc: cat };
+};
+
+// ==============================================================================
+// Componente Scheda Dettaglio Ruolo (Modal) - Allineato allo stile delle Skills
+// ==============================================================================
+function RoleDetailModal({
+  role,
+  isInstalled,
+  isLight,
+  onClose,
+  onLaunchChat,
+  onEdit,
+  onInspect,
+  onUninstall,
+  onInstallFromHub,
+  onChangeAvatar,
+  isInstalling,
+  isUninstalling,
+  extractSystemPrompt
+}) {
+  const [copiedPrompt, setCopiedPrompt] = useState(false);
+  const [showRawModelfile, setShowRawModelfile] = useState(false);
+
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if (e.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [onClose]);
+
+  if (!role) return null;
+
+  const domainColor = role.domainColor || (isLight ? '#ea580c' : '#00d2ff');
+  const catMeta = getRoleCategoryMeta(role.category);
+  const systemPrompt = extractSystemPrompt(role);
+
+  const handleCopyPrompt = () => {
+    navigator.clipboard.writeText(systemPrompt || '');
+    setCopiedPrompt(true);
+    setTimeout(() => setCopiedPrompt(false), 2000);
+  };
+
+  return (
+    <div className="marketplace-modal-overlay" onClick={onClose}>
+      <div 
+        className="marketplace-modal-box"
+        style={{ maxWidth: '820px', border: `1px solid ${domainColor}40` }}
+        onClick={e => e.stopPropagation()}
+      >
+        {/* Modal Header */}
+        <div className="marketplace-modal-header">
+          <div className="marketplace-modal-title-row">
+            {/* Avatar con badge per personalizzazione se installato */}
+            <div
+              onClick={() => isInstalled && onChangeAvatar && onChangeAvatar(role)}
+              title={isInstalled ? "Clicca per cambiare avatar del ruolo" : role.name}
+              style={{
+                width: '68px',
+                height: '68px',
+                borderRadius: '16px',
+                overflow: 'hidden',
+                border: `2px solid ${domainColor}`,
+                boxShadow: `0 0 16px ${domainColor}35`,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                background: isLight ? '#f1f5f9' : '#0a0d14',
+                flexShrink: 0,
+                position: 'relative',
+                cursor: isInstalled ? 'pointer' : 'default'
+              }}
+            >
+              <img
+                src={role.image || '/images/default.png'}
+                alt={role.name}
+                style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                onError={e => { e.target.src = '/images/default.png'; }}
+              />
+              {isInstalled && (
+                <div style={{
+                  position: 'absolute',
+                  bottom: 0,
+                  left: 0,
+                  right: 0,
+                  background: 'rgba(0,0,0,0.68)',
+                  textAlign: 'center',
+                  fontSize: '0.52rem',
+                  color: '#fff',
+                  fontWeight: 800,
+                  letterSpacing: '0.4px',
+                  padding: '2px 0'
+                }}>
+                  AVATAR
+                </div>
+              )}
+            </div>
+
+            {/* Titoli e Badge */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', minWidth: 0, flex: 1 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                <span style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '4px',
+                  padding: '2px 8px',
+                  borderRadius: '6px',
+                  background: `${domainColor}18`,
+                  border: `1px solid ${domainColor}40`,
+                  color: domainColor,
+                  fontSize: '0.68rem',
+                  fontWeight: 800,
+                  textTransform: 'uppercase'
+                }}>
+                  <span>{catMeta.icon}</span>
+                  <span>{role.category || 'Specializzazione'}</span>
+                </span>
+
+                {role.filename && (
+                  <code style={{
+                    fontSize: '0.68rem',
+                    padding: '2px 6px',
+                    borderRadius: '4px',
+                    background: isLight ? '#f1f5f9' : 'rgba(255,255,255,0.06)',
+                    color: isLight ? '#475569' : '#94a3b8'
+                  }}>
+                    {role.filename}
+                  </code>
+                )}
+
+                <span style={{
+                  padding: '2px 8px',
+                  borderRadius: '6px',
+                  background: isInstalled ? 'rgba(63, 185, 80, 0.12)' : 'rgba(168, 85, 247, 0.12)',
+                  border: `1px solid ${isInstalled ? 'rgba(63, 185, 80, 0.3)' : 'rgba(168, 85, 247, 0.3)'}`,
+                  color: isInstalled ? '#3fb950' : '#c084fc',
+                  fontSize: '0.65rem',
+                  fontWeight: 700
+                }}>
+                  {isInstalled ? '✓ Attivo nel Kernel' : '🌐 Catalogo Community'}
+                </span>
+              </div>
+
+              <h3 style={{ margin: 0, fontSize: '1.25rem', fontWeight: 800, color: isLight ? '#0f172a' : '#f8fafc' }}>
+                {role.name}
+              </h3>
+              <span style={{ fontSize: '0.80rem', color: domainColor, fontWeight: 700 }}>
+                {role.role}
+              </span>
+            </div>
+          </div>
+
+          <button
+            type="button"
+            className="marketplace-modal-close-btn"
+            onClick={onClose}
+            title="Chiudi Scheda"
+          >
+            <X size={16} />
+          </button>
+        </div>
+
+        {/* Modal Body */}
+        <div className="marketplace-modal-body">
+          {/* Primary Action Banner */}
+          <div>
+            {isInstalled ? (
+              <button
+                type="button"
+                className="marketplace-action-btn primary"
+                onClick={() => { onLaunchChat(role); onClose(); }}
+                style={{
+                  width: '100%',
+                  padding: '12px 20px',
+                  fontSize: '0.90rem',
+                  borderRadius: '12px',
+                  justifyContent: 'center',
+                  background: isLight
+                    ? 'linear-gradient(135deg, #ea580c 0%, #f97316 100%)'
+                    : `linear-gradient(135deg, ${domainColor} 0%, #7c5bf0 100%)`
+                }}
+              >
+                <MessageSquare size={16} />
+                <span>Avvia Chat con {role.name}</span>
+                <ArrowRight size={14} />
+              </button>
+            ) : (
+              <button
+                type="button"
+                className="marketplace-action-btn primary"
+                onClick={() => onInstallFromHub(role)}
+                disabled={isInstalling}
+                style={{
+                  width: '100%',
+                  padding: '12px 20px',
+                  fontSize: '0.90rem',
+                  borderRadius: '12px',
+                  justifyContent: 'center',
+                  background: 'linear-gradient(135deg, #a855f7 0%, #7c3aed 100%)'
+                }}
+              >
+                {isInstalling ? <RefreshCw size={16} className="spin" /> : <Download size={16} />}
+                <span>{isInstalling ? 'Scaricamento in corso...' : `Scarica & Attiva ${role.name} nel Kernel`}</span>
+              </button>
+            )}
+          </div>
+
+          {/* Parameters Grid */}
+          <div style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))',
+            gap: '10px'
+          }}>
+            <div style={{
+              padding: '10px 14px',
+              borderRadius: '10px',
+              background: isLight ? '#f8fafc' : 'rgba(255,255,255,0.03)',
+              border: isLight ? '1px solid #e2e8f0' : '1px solid rgba(255,255,255,0.06)'
+            }}>
+              <div style={{ fontSize: '0.64rem', color: '#94a3b8', fontWeight: 700, textTransform: 'uppercase', display: 'flex', alignItems: 'center', gap: '5px' }}>
+                <Cpu size={12} color="#00d2ff" /> Modello Base
+              </div>
+              <div style={{ fontSize: '0.90rem', fontWeight: 800, color: isLight ? '#0f172a' : '#f8fafc', marginTop: '3px' }}>
+                {role.baseModel || 'sigma'}
+              </div>
+            </div>
+
+            <div style={{
+              padding: '10px 14px',
+              borderRadius: '10px',
+              background: isLight ? '#f8fafc' : 'rgba(255,255,255,0.03)',
+              border: isLight ? '1px solid #e2e8f0' : '1px solid rgba(255,255,255,0.06)'
+            }}>
+              <div style={{ fontSize: '0.64rem', color: '#94a3b8', fontWeight: 700, textTransform: 'uppercase', display: 'flex', alignItems: 'center', gap: '5px' }}>
+                <Sliders size={12} color="#f59e0b" /> Temperatura
+              </div>
+              <div style={{ fontSize: '0.90rem', fontWeight: 800, color: domainColor, marginTop: '3px' }}>
+                {role.temperature ?? 0.2}
+              </div>
+            </div>
+
+            <div style={{
+              padding: '10px 14px',
+              borderRadius: '10px',
+              background: isLight ? '#f8fafc' : 'rgba(255,255,255,0.03)',
+              border: isLight ? '1px solid #e2e8f0' : '1px solid rgba(255,255,255,0.06)'
+            }}>
+              <div style={{ fontSize: '0.64rem', color: '#94a3b8', fontWeight: 700, textTransform: 'uppercase', display: 'flex', alignItems: 'center', gap: '5px' }}>
+                <Box size={12} color="#10b981" /> Finestra Contesto
+              </div>
+              <div style={{ fontSize: '0.90rem', fontWeight: 800, color: '#10b981', marginTop: '3px' }}>
+                {role.numCtx ? `${Math.round(role.numCtx / 1024)}k tokens` : '32k tokens'}
+              </div>
+            </div>
+
+            <div style={{
+              padding: '10px 14px',
+              borderRadius: '10px',
+              background: isLight ? '#f8fafc' : 'rgba(255,255,255,0.03)',
+              border: isLight ? '1px solid #e2e8f0' : '1px solid rgba(255,255,255,0.06)'
+            }}>
+              <div style={{ fontSize: '0.64rem', color: '#94a3b8', fontWeight: 700, textTransform: 'uppercase', display: 'flex', alignItems: 'center', gap: '5px' }}>
+                <Sparkles size={12} color="#a855f7" /> Top-P / Penality
+              </div>
+              <div style={{ fontSize: '0.90rem', fontWeight: 800, color: isLight ? '#0f172a' : '#f8fafc', marginTop: '3px' }}>
+                {role.topP || 0.85} / 1.1
+              </div>
+            </div>
+          </div>
+
+          {/* Missione & Descrizione */}
+          <div>
+            <div className="marketplace-modal-section-title">
+              <Sparkles size={14} /> Missione & Profilo Cognitivo
+            </div>
+            <p style={{ margin: 0, fontSize: '0.82rem', color: isLight ? '#334155' : '#cbd5e1', lineHeight: 1.6 }}>
+              {role.description || 'Nessuna descrizione specificata per questo ruolo.'}
+            </p>
+            {role.target && (
+              <div style={{
+                marginTop: '10px',
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '6px',
+                padding: '4px 10px',
+                borderRadius: '6px',
+                background: isLight ? '#f1f5f9' : 'rgba(0, 210, 255, 0.08)',
+                border: isLight ? '1px solid #e2e8f0' : '1px solid rgba(0, 210, 255, 0.2)',
+                color: isLight ? '#0284c7' : '#38bdf8',
+                fontSize: '0.74rem',
+                fontWeight: 700
+              }}>
+                <Users size={12} /> Target: {role.target}
+              </div>
+            )}
+          </div>
+
+          {/* Competenze Chiave */}
+          {role.capabilities && role.capabilities.length > 0 && (
+            <div>
+              <div className="marketplace-modal-section-title">
+                <Boxes size={14} /> Competenze & Artifacts Prodotti
+              </div>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+                {role.capabilities.map((cap, idx) => (
+                  <span
+                    key={idx}
+                    style={{
+                      padding: '4px 10px',
+                      borderRadius: '6px',
+                      background: isLight ? '#f1f5f9' : 'rgba(255, 255, 255, 0.04)',
+                      border: isLight ? '1px solid #e2e8f0' : '1px solid rgba(255, 255, 255, 0.08)',
+                      color: isLight ? '#0f172a' : '#f1f5f9',
+                      fontSize: '0.72rem',
+                      fontWeight: 600,
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '5px'
+                    }}
+                  >
+                    <span style={{ color: domainColor }}>✓</span>
+                    <span>{cap}</span>
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* MCP Tools */}
+          {role.mcpTools && role.mcpTools.length > 0 && (
+            <div>
+              <div className="marketplace-modal-section-title">
+                <Wrench size={14} /> Strumenti MCP Associati
+              </div>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+                {role.mcpTools.map((tool, idx) => (
+                  <span
+                    key={idx}
+                    style={{
+                      padding: '3px 8px',
+                      borderRadius: '6px',
+                      background: 'rgba(0, 210, 255, 0.08)',
+                      border: '1px solid rgba(0, 210, 255, 0.25)',
+                      color: '#00d2ff',
+                      fontSize: '0.72rem',
+                      fontWeight: 700
+                    }}
+                  >
+                    {typeof tool === 'string' ? tool : tool.name}
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Direttive di Sistema / System Prompt */}
+          <div>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
+              <div className="marketplace-modal-section-title" style={{ margin: 0 }}>
+                <ScrollText size={14} /> Direttive & Prompt di Sistema
+              </div>
+              <button
+                type="button"
+                onClick={handleCopyPrompt}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  color: isLight ? '#ea580c' : '#00d2ff',
+                  fontSize: '0.72rem',
+                  fontWeight: 700,
+                  cursor: 'pointer',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '4px'
+                }}
+              >
+                {copiedPrompt ? <Check size={12} color="#10b981" /> : <Copy size={12} />}
+                <span>{copiedPrompt ? 'Copiato!' : 'Copia Prompt'}</span>
+              </button>
+            </div>
+
+            <div style={{
+              padding: '14px',
+              borderRadius: '10px',
+              background: isLight ? '#f1f5f9' : '#07090e',
+              border: isLight ? '1px solid #e2e8f0' : '1px solid rgba(255, 255, 255, 0.08)',
+              maxHeight: '180px',
+              overflowY: 'auto',
+              fontSize: '0.74rem',
+              lineHeight: 1.55,
+              color: isLight ? '#334155' : '#94a3b8',
+              whiteSpace: 'pre-wrap',
+              fontFamily: 'inherit'
+            }}>
+              {systemPrompt}
+            </div>
+          </div>
+
+          {/* Toggle Raw Modelfile Box */}
+          {(role.rawContent || role.content) && (
+            <div>
+              <button
+                type="button"
+                onClick={() => setShowRawModelfile(prev => !prev)}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  color: '#64748b',
+                  fontSize: '0.72rem',
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '5px',
+                  padding: 0
+                }}
+              >
+                <Terminal size={12} />
+                <span>{showRawModelfile ? 'Nascondi Modelfile Raw' : 'Mostra Modelfile Raw Markdown'}</span>
+              </button>
+
+              {showRawModelfile && (
+                <pre style={{
+                  marginTop: '8px',
+                  background: isLight ? '#f8fafc' : '#05070a',
+                  border: isLight ? '1px solid #e2e8f0' : '1px solid rgba(255,255,255,0.08)',
+                  borderRadius: '10px',
+                  padding: '12px',
+                  fontFamily: 'monospace',
+                  fontSize: '0.72rem',
+                  color: isLight ? '#0f172a' : '#38bdf8',
+                  lineHeight: 1.45,
+                  maxHeight: '160px',
+                  overflowY: 'auto',
+                  whiteSpace: 'pre-wrap'
+                }}>
+                  {role.rawContent || role.content}
+                </pre>
+              )}
+            </div>
+          )}
+        </div>
+
+        {/* Modal Footer */}
+        <div className="marketplace-modal-footer">
+          <button
+            type="button"
+            className="marketplace-action-btn"
+            style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', color: '#cbd5e1' }}
+            onClick={onClose}
+          >
+            Chiudi Scheda
+          </button>
+
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+            {isInstalled && role.filename !== 'sigma_assistant.md' && role.id !== 'sigma_assistant' && onUninstall && (
+              <button
+                type="button"
+                className="marketplace-action-btn danger"
+                onClick={() => onUninstall(role)}
+                disabled={isUninstalling}
+                title="Disinstalla ruolo dal Kernel"
+              >
+                <Trash2 size={13} />
+                <span>{isUninstalling ? 'Rimozione...' : 'Disinstalla'}</span>
+              </button>
+            )}
+
+            {isInstalled && onEdit && (
+              <button
+                type="button"
+                className="marketplace-action-btn"
+                style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', color: '#cbd5e1' }}
+                onClick={() => { onEdit(role); onClose(); }}
+                title="Modifica istruzioni nel SigmaLab Editor"
+              >
+                <Edit3 size={13} />
+                <span>Modifica nel SigmaLab Editor</span>
+              </button>
+            )}
+
+            <button
+              type="button"
+              className="marketplace-action-btn"
+              style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', color: '#cbd5e1' }}
+              onClick={() => { onInspect(role); }}
+              title="Ispeziona formato Modelfile completo"
+            >
+              <Terminal size={13} />
+              <span>Modelfile</span>
+            </button>
+
+            {isInstalled && onLaunchChat && (
+              <button
+                type="button"
+                className="marketplace-action-btn primary"
+                onClick={() => { onLaunchChat(role); onClose(); }}
+              >
+                <MessageSquare size={13} />
+                <span>Apri Chat</span>
+                <ArrowRight size={13} />
+              </button>
+            )}
+
+            {!isInstalled && onInstallFromHub && (
+              <button
+                type="button"
+                className="marketplace-action-btn primary"
+                onClick={() => onInstallFromHub(role)}
+                disabled={isInstalling}
+              >
+                {isInstalling ? <RefreshCw size={13} className="spin" /> : <Download size={13} />}
+                <span>{isInstalling ? 'Installazione...' : 'Installa Ruolo'}</span>
+              </button>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Icon Mapper for Dynamic Role Icons
 const ICON_MAP = {
   Cpu, Brain, Code, ShieldCheck, CheckCircle, Palette, 
   Atom, FlaskConical, Award, Wand2, Wrench, MessageSquare, 
@@ -60,8 +601,8 @@ export default function ManifestiGallery({
   const [selectedCategory, setSelectedCategory] = useState('Tutti');
   const [searchQuery, setSearchQuery] = useState('');
   
-  // Selected Role for the Right Detail Pane
-  const [selectedRole, setSelectedRole] = useState(null);
+  // Selected Role for the Full Detail Modal (Skills Marketplace UX)
+  const [selectedRoleModal, setSelectedRoleModal] = useState(null);
 
   // Professions Hub State
   const [hubCatalog, setHubCatalog] = useState([]);
@@ -103,12 +644,9 @@ export default function ManifestiGallery({
       const data = await res.json();
       if (data.success && Array.isArray(data.manifesti)) {
         setManifestiList(data.manifesti);
-        // If no selected role or current selected role was deleted, default to the first one
-        if (!selectedRole && data.manifesti.length > 0) {
-          setSelectedRole(data.manifesti[0]);
-        } else if (selectedRole) {
-          const matched = data.manifesti.find(m => (m.id && m.id === selectedRole.id) || (m.path && m.path === selectedRole.path));
-          if (matched) setSelectedRole(matched);
+        if (selectedRoleModal) {
+          const matched = data.manifesti.find(m => (m.id && m.id === selectedRoleModal.id) || (m.path && m.path === selectedRoleModal.path));
+          if (matched) setSelectedRoleModal(matched);
         }
       }
     } catch (e) {
@@ -186,13 +724,6 @@ export default function ManifestiGallery({
       return matchesCat && matchesSearch;
     });
   }, [hubCatalog, hubCategory, hubSearchQuery]);
-
-  // Update selected role if active list changes
-  useEffect(() => {
-    if (!selectedRole && filteredManifesti.length > 0) {
-      setSelectedRole(filteredManifesti[0]);
-    }
-  }, [filteredManifesti, selectedRole]);
 
   // Copy Modelfile text helper
   const handleCopyModelfile = (text) => {
@@ -294,8 +825,8 @@ export default function ManifestiGallery({
         setHubMessage({ type: 'success', text: data.message });
         await loadManifesti();
         await loadHubCatalog();
-        if (selectedRole && (selectedRole.filename === filename || selectedRole.id === manifesto.id)) {
-          setSelectedRole(null);
+        if (selectedRoleModal && (selectedRoleModal.filename === filename || selectedRoleModal.id === manifesto.id)) {
+          setSelectedRoleModal(null);
         }
         if (externalFetchManifesti) externalFetchManifesti();
       } else {
@@ -443,6 +974,9 @@ Creato per l'ecosistema sovrano Sigma AI Studio.
       });
       setEditingAvatarManifesto(null);
       await loadManifesti();
+      if (selectedRoleModal && (selectedRoleModal.path === manifesto.path || selectedRoleModal.id === manifesto.id)) {
+        setSelectedRoleModal(prev => prev ? ({ ...prev, image: imagePath }) : null);
+      }
     } catch (e) {
       console.error(e);
     }
@@ -536,132 +1070,123 @@ Creato per l'ecosistema sovrano Sigma AI Studio.
         )}
 
         {/* =================================================================== */}
-        {/* DUAL-PANE CONTAINER (SINISTRA: LISTA RUOLI - DESTRA: RUOLO ASSOCIATO) */}
+        {/* GRIGLIA RUOLI FULL-WIDTH — STILE CATALOGO SKILLS                   */}
         {/* =================================================================== */}
-        <div style={{
-          display: 'grid',
-          gridTemplateColumns: 'minmax(0, 1.35fr) minmax(360px, 0.95fr)',
-          gap: '20px',
-          alignItems: 'start'
-        }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '20px', width: '100%' }}>
           
-          {/* ── COLONNA SINISTRA: SELETTORE E GRIGLIA RUOLI ──────── */}
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '14px', minWidth: 0 }}>
-            
-            {/* VIEW 1: RUOLI INSTALLATI NEL KERNEL */}
-            {activeGalleryView === 'installed' && (
-              <>
-                {/* Categories Filter Pills & Search */}
-                <div style={{
-                  display: 'flex',
-                  justifyContent: 'space-between',
-                  alignItems: 'center',
-                  flexWrap: 'wrap',
-                  gap: '10px'
-                }}>
-                  {/* Category Pills */}
-                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
-                    {categories.map(cat => {
-                      const active = selectedCategory === cat;
-                      return (
-                        <button
-                          key={cat}
-                          onClick={() => setSelectedCategory(cat)}
-                          style={{
-                            padding: '5px 12px',
-                            borderRadius: '8px',
-                            background: active 
-                              ? (isLight ? '#ea580c' : '#00d2ff') 
-                              : (isLight ? '#ffffff' : 'rgba(255,255,255,0.04)'),
-                            color: active ? '#ffffff' : textPrimary,
-                            border: active 
-                              ? `1px solid ${isLight ? '#ea580c' : '#00d2ff'}` 
-                              : (isLight ? '1px solid rgba(226, 232, 240, 0.9)' : '1px solid rgba(255,255,255,0.1)'),
-                            fontWeight: 700,
-                            fontSize: '0.74rem',
-                            cursor: 'pointer',
-                            boxShadow: active && isLight ? '0 2px 8px rgba(234, 88, 12, 0.2)' : 'none',
-                            transition: 'all 0.15s ease'
-                          }}
-                        >
-                          {cat} {cat === 'Tutti' ? `(${manifestiList.length})` : ''}
-                        </button>
-                      );
-                    })}
-                  </div>
-
-                  {/* Search Box */}
-                  <div style={{ position: 'relative', width: '240px' }}>
-                    <Search size={14} style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', color: textMuted }} />
-                    <input
-                      type="text"
-                      placeholder="Cerca ruolo o competenza..."
-                      value={searchQuery}
-                      onChange={e => setSearchQuery(e.target.value)}
+          {/* VIEW 1: RUOLI INSTALLATI NEL KERNEL */}
+          {activeGalleryView === 'installed' && (
+            <>
+              {/* Filter & Search Bar */}
+              <div className="marketplace-filter-bar">
+                <div className="marketplace-search-wrapper">
+                  <Search size={14} className="marketplace-search-icon" />
+                  <input
+                    type="text"
+                    className="marketplace-search-input"
+                    placeholder="Cerca ruolo per nome, modello base o competenze..."
+                    value={searchQuery}
+                    onChange={e => setSearchQuery(e.target.value)}
+                  />
+                  {searchQuery && (
+                    <button
+                      type="button"
+                      onClick={() => setSearchQuery('')}
                       style={{
-                        width: '100%',
-                        padding: '7px 12px 7px 32px',
-                        borderRadius: '8px',
-                        background: isLight ? '#ffffff' : 'rgba(255,255,255,0.04)',
-                        border: isLight ? '1px solid rgba(226, 232, 240, 0.9)' : '1px solid rgba(255,255,255,0.15)',
-                        color: textPrimary,
-                        fontSize: '0.78rem',
-                        outline: 'none',
-                        boxSizing: 'border-box'
+                        position: 'absolute',
+                        right: '10px',
+                        top: '50%',
+                        transform: 'translateY(-50%)',
+                        background: 'none',
+                        border: 'none',
+                        color: '#94a3b8',
+                        cursor: 'pointer',
+                        padding: 0
                       }}
-                    />
-                  </div>
+                    >
+                      <X size={13} />
+                    </button>
+                  )}
                 </div>
 
-                {/* Role Cards Grid */}
+                {/* Category Chips with Icons */}
+                <div className="marketplace-categories">
+                  <button
+                    type="button"
+                    className={`marketplace-cat-chip ${selectedCategory === 'Tutti' ? 'active' : ''}`}
+                    onClick={() => setSelectedCategory('Tutti')}
+                  >
+                    <span>✨</span>
+                    <span>Tutti i Ruoli ({manifestiList.length})</span>
+                  </button>
+                  {categories.filter(c => c !== 'Tutti').map(cat => {
+                    const meta = getRoleCategoryMeta(cat);
+                    const active = selectedCategory === cat;
+                    return (
+                      <button
+                        key={cat}
+                        type="button"
+                        className={`marketplace-cat-chip ${active ? 'active' : ''}`}
+                        onClick={() => setSelectedCategory(cat)}
+                        title={meta.desc || cat}
+                      >
+                        <span>{meta.icon}</span>
+                        <span>{cat}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Role Cards Grid */}
+              {filteredManifesti.length === 0 ? (
                 <div style={{
-                  display: 'grid',
-                  gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))',
+                  padding: '48px 24px',
+                  borderRadius: '16px',
+                  background: isLight ? '#ffffff' : 'rgba(255, 255, 255, 0.02)',
+                  border: isLight ? '1px solid #e2e8f0' : '1px solid rgba(255, 255, 255, 0.08)',
+                  textAlign: 'center',
+                  color: '#94a3b8',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'center',
                   gap: '12px'
                 }}>
+                  <Brain size={36} style={{ opacity: 0.5, color: '#00d2ff' }} />
+                  <div style={{ fontSize: '1rem', fontWeight: 800, color: textPrimary }}>
+                    Nessun ruolo trovato con i criteri di ricerca
+                  </div>
+                  <div style={{ fontSize: '0.78rem' }}>
+                    Prova a modificare il testo di ricerca o seleziona "Tutti i Ruoli".
+                  </div>
+                </div>
+              ) : (
+                <div className="marketplace-grid">
                   {filteredManifesti.map(manifesto => {
                     const domainColor = manifesto.domainColor || (isLight ? '#ea580c' : '#00d2ff');
-                    const isSelected = selectedRole && ((selectedRole.id && selectedRole.id === manifesto.id) || (selectedRole.path && selectedRole.path === manifesto.path));
+                    const catMeta = getRoleCategoryMeta(manifesto.category);
 
                     return (
                       <div
                         key={manifesto.path || manifesto.id}
-                        onClick={() => setSelectedRole(manifesto)}
-                        className="mg-card"
-                        style={{
-                          borderRadius: '16px',
-                          background: isSelected 
-                            ? (isLight ? 'rgba(234, 88, 12, 0.06)' : 'rgba(0, 210, 255, 0.07)')
-                            : cardBg,
-                          border: isSelected 
-                            ? `2px solid ${isLight ? '#ea580c' : '#00d2ff'}` 
-                            : cardBorder,
-                          padding: '14px',
-                          display: 'flex',
-                          flexDirection: 'column',
-                          justifyContent: 'space-between',
-                          position: 'relative',
-                          boxShadow: isSelected 
-                            ? (isLight ? '0 6px 20px rgba(234, 88, 12, 0.2)' : '0 6px 24px rgba(0, 210, 255, 0.25)')
-                            : cardShadow,
-                          cursor: 'pointer',
-                          transition: 'all 0.18s ease'
-                        }}
+                        className="marketplace-card"
+                        onClick={() => setSelectedRoleModal(manifesto)}
                       >
-                        <div>
-                          {/* Card Header: Big Avatar (64px) + Titles */}
-                          <div style={{ display: 'flex', alignItems: 'flex-start', gap: '12px', marginBottom: '10px' }}>
-                            {/* Avatar Immagine Più Grande */}
+                        <div className="marketplace-card-glow" style={{ background: `linear-gradient(90deg, ${domainColor}, transparent)` }} />
+
+                        {/* Card Header: Avatar (60px) + Titles */}
+                        <div className="marketplace-card-header">
+                          <div className="marketplace-card-title-area">
                             <div 
                               onClick={(e) => { e.stopPropagation(); setEditingAvatarManifesto(manifesto); }}
-                              title="Clicca per cambiare avatar"
+                              title="Clicca per cambiare avatar del ruolo"
                               style={{
-                                width: '60px',
-                                height: '60px',
+                                width: '56px',
+                                height: '56px',
                                 borderRadius: '14px',
                                 overflow: 'hidden',
                                 border: `2px solid ${domainColor}`,
-                                boxShadow: isLight ? '0 4px 12px rgba(0,0,0,0.1)' : `0 0 14px ${domainColor}45`,
+                                boxShadow: `0 0 14px ${domainColor}35`,
                                 display: 'flex',
                                 alignItems: 'center',
                                 justifyContent: 'center',
@@ -679,10 +1204,13 @@ Creato per l'ecosistema sovrano Sigma AI Studio.
                               />
                             </div>
 
-                            <div style={{ minWidth: 0, flex: 1 }}>
-                              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '6px' }}>
+                            <div className="marketplace-card-titles">
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
                                 <span style={{
-                                  padding: '2px 6px',
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  gap: '3px',
+                                  padding: '1px 6px',
                                   borderRadius: '5px',
                                   background: `${domainColor}18`,
                                   border: `1px solid ${domainColor}40`,
@@ -691,130 +1219,109 @@ Creato per l'ecosistema sovrano Sigma AI Studio.
                                   fontWeight: 800,
                                   textTransform: 'uppercase'
                                 }}>
-                                  {manifesto.category}
+                                  <span>{catMeta.icon}</span>
+                                  <span>{manifesto.category}</span>
                                 </span>
-
-                                {isSelected && (
-                                  <span style={{
-                                    fontSize: '0.62rem',
-                                    color: isLight ? '#ea580c' : '#00d2ff',
-                                    fontWeight: 800,
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    gap: '3px'
-                                  }}>
-                                    <Star size={10} fill="currentColor" /> Selezionato
-                                  </span>
-                                )}
                               </div>
 
-                              <h3 style={{ margin: '4px 0 2px 0', fontSize: '0.94rem', fontWeight: 800, color: textPrimary, lineHeight: 1.3 }}>
+                              <h4 className="marketplace-card-name" style={{ marginTop: '2px' }}>
                                 {manifesto.name}
-                              </h3>
-                              <span style={{ fontSize: '0.74rem', color: isLight ? '#ea580c' : domainColor, fontWeight: 700, lineHeight: 1.35, display: 'block' }}>
+                              </h4>
+                              <span style={{ fontSize: '0.74rem', color: domainColor, fontWeight: 700, lineHeight: 1.3 }}>
                                 {manifesto.role}
                               </span>
                             </div>
                           </div>
+                        </div>
 
-                          {/* Description Excerpt */}
-                          <p style={{
-                            fontSize: '0.74rem',
-                            color: textSecondary,
-                            lineHeight: 1.4,
-                            margin: '0 0 10px 0',
-                            display: '-webkit-box',
-                            WebkitLineClamp: 2,
-                            WebkitBoxOrient: 'vertical',
-                            overflow: 'hidden'
+                        {/* Description Excerpt */}
+                        <p className="marketplace-card-desc" style={{
+                          margin: 0,
+                          fontSize: '0.75rem',
+                          color: textSecondary,
+                          lineHeight: 1.45,
+                          display: '-webkit-box',
+                          WebkitLineClamp: 2,
+                          WebkitBoxOrient: 'vertical',
+                          overflow: 'hidden'
+                        }}>
+                          {manifesto.description || 'Nessuna descrizione disponibile.'}
+                        </p>
+
+                        {/* Parameter Badges Row */}
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+                          <span style={{
+                            display: 'inline-flex', alignItems: 'center', gap: '3px',
+                            padding: '2px 7px', borderRadius: '5px',
+                            background: innerCardBg, border: innerCardBorder,
+                            color: textPrimary, fontSize: '0.64rem', fontWeight: 700
                           }}>
-                            {manifesto.description || 'Nessuna descrizione disponibile.'}
-                          </p>
+                            <Cpu size={10} style={{ color: isLight ? '#0284c7' : '#00d2ff' }} /> {manifesto.baseModel || 'sigma'}
+                          </span>
 
-                          {/* Parameter Badges Row */}
-                          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '5px', marginBottom: '8px' }}>
-                            <span style={{
-                              display: 'inline-flex', alignItems: 'center', gap: '3px',
-                              padding: '2px 7px', borderRadius: '5px',
-                              background: innerCardBg, border: innerCardBorder,
-                              color: textPrimary, fontSize: '0.64rem', fontWeight: 700
-                            }}>
-                              <Cpu size={10} style={{ color: isLight ? '#0284c7' : '#00d2ff' }} /> {manifesto.baseModel || 'sigma'}
-                            </span>
+                          <span style={{
+                            display: 'inline-flex', alignItems: 'center', gap: '3px',
+                            padding: '2px 7px', borderRadius: '5px',
+                            background: innerCardBg, border: innerCardBorder,
+                            color: textPrimary, fontSize: '0.64rem', fontWeight: 700
+                          }}>
+                            <Sliders size={10} style={{ color: isLight ? '#7c3aed' : '#bc8cff' }} /> {manifesto.temperature ?? 0.2}
+                          </span>
 
-                            <span style={{
-                              display: 'inline-flex', alignItems: 'center', gap: '3px',
-                              padding: '2px 7px', borderRadius: '5px',
-                              background: innerCardBg, border: innerCardBorder,
-                              color: textPrimary, fontSize: '0.64rem', fontWeight: 700
-                            }}>
-                              <Sliders size={10} style={{ color: isLight ? '#7c3aed' : '#bc8cff' }} /> {manifesto.temperature ?? 0.2}
-                            </span>
-
-                            <span style={{
-                              display: 'inline-flex', alignItems: 'center', gap: '3px',
-                              padding: '2px 7px', borderRadius: '5px',
-                              background: innerCardBg, border: innerCardBorder,
-                              color: textPrimary, fontSize: '0.64rem', fontWeight: 700
-                            }}>
-                              <Box size={10} style={{ color: isLight ? '#16a34a' : '#3fb950' }} /> {manifesto.numCtx ? `${Math.round(manifesto.numCtx / 1024)}k` : '32k'}
-                            </span>
-                          </div>
+                          <span style={{
+                            display: 'inline-flex', alignItems: 'center', gap: '3px',
+                            padding: '2px 7px', borderRadius: '5px',
+                            background: innerCardBg, border: innerCardBorder,
+                            color: textPrimary, fontSize: '0.64rem', fontWeight: 700
+                          }}>
+                            <Box size={10} style={{ color: isLight ? '#16a34a' : '#3fb950' }} /> {manifesto.numCtx ? `${Math.round(manifesto.numCtx / 1024)}k` : '32k'}
+                          </span>
                         </div>
 
                         {/* Card Action Buttons */}
-                        <div style={{
-                          display: 'flex',
-                          justifyContent: 'space-between',
-                          alignItems: 'center',
-                          borderTop: isLight ? '1px solid rgba(226, 232, 240, 0.9)' : '1px solid rgba(255,255,255,0.06)',
-                          paddingTop: '10px',
-                          gap: '6px'
-                        }}>
+                        <div className="marketplace-card-footer" style={{ marginTop: 'auto', paddingTop: '10px' }}>
                           <button
-                            onClick={(e) => { e.stopPropagation(); setSelectedRole(manifesto); }}
+                            type="button"
+                            className="marketplace-action-btn"
+                            onClick={(e) => { e.stopPropagation(); setSelectedRoleModal(manifesto); }}
                             style={{
-                              display: 'inline-flex', alignItems: 'center', gap: '4px',
-                              padding: '4px 8px', borderRadius: '6px',
-                              background: isLight ? '#ffffff' : 'rgba(255, 255, 255, 0.05)',
-                              border: isLight ? '1px solid rgba(226, 232, 240, 0.9)' : '1px solid rgba(255, 255, 255, 0.15)',
-                              color: textPrimary, fontSize: '0.70rem', fontWeight: 700, cursor: 'pointer'
+                              padding: '5px 10px',
+                              fontSize: '0.72rem',
+                              fontWeight: 700
                             }}
-                            title="Visualizza dettagli a destra"
+                            title="Visualizza scheda tecnica completa del ruolo"
                           >
-                            <Eye size={12} color={isLight ? '#ea580c' : '#00d2ff'} /> Dettagli
+                            <Eye size={12} color={domainColor} />
+                            <span>Dettagli</span>
                           </button>
 
                           <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
                             <button
+                              type="button"
+                              className="marketplace-action-btn"
                               onClick={(e) => { e.stopPropagation(); handleEditManifesto(manifesto); }}
-                              style={{
-                                display: 'inline-flex', alignItems: 'center', gap: '4px',
-                                padding: '4px 8px', borderRadius: '6px',
-                                background: isLight ? '#ffffff' : 'rgba(255, 255, 255, 0.05)',
-                                border: isLight ? '1px solid rgba(226, 232, 240, 0.9)' : '1px solid rgba(255, 255, 255, 0.15)',
-                                color: textPrimary, fontSize: '0.70rem', fontWeight: 700, cursor: 'pointer'
-                              }}
+                              style={{ padding: '5px 8px' }}
                               title="Modifica istruzioni nel SigmaLab Editor"
                             >
                               <Edit3 size={11} />
                             </button>
 
                             <button
+                              type="button"
+                              className="marketplace-action-btn primary"
                               onClick={(e) => { e.stopPropagation(); handleLaunchChat(manifesto); }}
                               style={{
-                                display: 'inline-flex', alignItems: 'center', gap: '5px',
-                                padding: '5px 12px', borderRadius: '6px',
+                                padding: '5px 12px',
+                                fontSize: '0.74rem',
+                                fontWeight: 800,
                                 background: isLight 
                                   ? 'linear-gradient(135deg, #ea580c 0%, #d97706 100%)' 
-                                  : `linear-gradient(135deg, ${domainColor} 0%, #7c5bf0 100%)`,
-                                border: 'none', color: '#fff',
-                                fontSize: '0.74rem', fontWeight: 800, cursor: 'pointer',
-                                boxShadow: isLight ? '0 2px 8px rgba(234, 88, 12, 0.25)' : `0 2px 8px ${domainColor}35`,
-                                transition: 'all 0.15s ease'
+                                  : `linear-gradient(135deg, ${domainColor} 0%, #7c5bf0 100%)`
                               }}
                             >
-                              <MessageSquare size={12} /> Chat <ArrowRight size={10} />
+                              <MessageSquare size={12} />
+                              <span>Chat</span>
+                              <ArrowRight size={10} />
                             </button>
                           </div>
                         </div>
@@ -822,192 +1329,255 @@ Creato per l'ecosistema sovrano Sigma AI Studio.
                     );
                   })}
                 </div>
-              </>
-            )}
+              )}
+            </>
+          )}
 
-            {/* VIEW 2: HUB PROFESSIONI (GITHUB REPOSITORY) */}
-            {activeGalleryView === 'hub' && (
-              <>
-                {/* Custom Git Raw URL Importer */}
-                <div style={{
-                  borderRadius: '14px',
-                  background: isLight ? '#ffffff' : 'rgba(168, 85, 247, 0.05)',
-                  border: isLight ? '1px solid rgba(226, 232, 240, 0.9)' : '1px solid rgba(168, 85, 247, 0.2)',
-                  boxShadow: cardShadow,
-                  padding: '14px 18px'
-                }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px', marginBottom: '10px' }}>
-                    <div>
-                      <h2 style={{ fontSize: '0.96rem', fontWeight: 800, margin: '0 0 2px 0', color: textPrimary }}>
-                        🌐 Repository GitHub Ruoli Specialistici
-                      </h2>
-                      <p style={{ fontSize: '0.74rem', color: textSecondary, margin: 0 }}>
-                        Pacchetti di ruoli e istruzioni specialistiche per studenti, ricercatori e professionisti.
-                      </p>
-                    </div>
-
-                    <a
-                      href="https://github.com/Sigmanih/SigmaStudio-Manifesti"
-                      target="_blank"
-                      rel="noreferrer"
-                      style={{
-                        display: 'inline-flex', alignItems: 'center', gap: '5px',
-                        padding: '5px 10px', borderRadius: '6px',
-                        background: isLight ? 'rgba(234, 88, 12, 0.12)' : 'rgba(255,255,255,0.06)',
-                        border: isLight ? '1px solid rgba(234, 88, 12, 0.35)' : '1px solid rgba(255,255,255,0.15)',
-                        color: isLight ? '#c2410c' : '#bc8cff',
-                        fontSize: '0.72rem', fontWeight: 700, textDecoration: 'none'
-                      }}
-                    >
-                      <ExternalLink size={12} /> Repository Ufficiale
-                    </a>
+          {/* VIEW 2: HUB PROFESSIONI (GITHUB REPOSITORY) */}
+          {activeGalleryView === 'hub' && (
+            <>
+              {/* Custom Git Raw URL Importer */}
+              <div style={{
+                borderRadius: '14px',
+                background: isLight ? '#ffffff' : 'rgba(168, 85, 247, 0.05)',
+                border: isLight ? '1px solid rgba(226, 232, 240, 0.9)' : '1px solid rgba(168, 85, 247, 0.2)',
+                boxShadow: cardShadow,
+                padding: '14px 18px'
+              }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px', marginBottom: '10px' }}>
+                  <div>
+                    <h2 style={{ fontSize: '0.96rem', fontWeight: 800, margin: '0 0 2px 0', color: textPrimary }}>
+                      🌐 Repository GitHub Ruoli Specialistici
+                    </h2>
+                    <p style={{ fontSize: '0.74rem', color: textSecondary, margin: 0 }}>
+                      Pacchetti di ruoli e istruzioni specialistiche per studenti, ricercatori e professionisti.
+                    </p>
                   </div>
 
-                  <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
-                    <input
-                      type="text"
-                      placeholder="URL Raw GitHub (.md)..."
-                      value={customImportUrl}
-                      onChange={e => setCustomImportUrl(e.target.value)}
-                      style={{
-                        flex: 2, minWidth: '180px', padding: '6px 10px', borderRadius: '6px',
-                        background: isLight ? '#f8fafc' : 'rgba(255,255,255,0.05)',
-                        border: isLight ? '1px solid rgba(226, 232, 240, 0.9)' : '1px solid rgba(255,255,255,0.15)',
-                        color: textPrimary, fontSize: '0.76rem'
-                      }}
-                    />
-                    <input
-                      type="text"
-                      placeholder="Nome file..."
-                      value={customImportName}
-                      onChange={e => setCustomImportName(e.target.value)}
-                      style={{
-                        flex: 1, minWidth: '110px', padding: '6px 10px', borderRadius: '6px',
-                        background: isLight ? '#f8fafc' : 'rgba(255,255,255,0.05)',
-                        border: isLight ? '1px solid rgba(226, 232, 240, 0.9)' : '1px solid rgba(255,255,255,0.15)',
-                        color: textPrimary, fontSize: '0.76rem'
-                      }}
-                    />
-                    <button
-                      onClick={handleCustomImport}
-                      disabled={importingCustom || !customImportUrl.trim()}
-                      style={{
-                        padding: '6px 14px', borderRadius: '6px',
-                        background: isLight ? '#ea580c' : '#a855f7',
-                        border: 'none', color: '#fff', fontWeight: 800, fontSize: '0.76rem',
-                        cursor: (importingCustom || !customImportUrl.trim()) ? 'not-allowed' : 'pointer'
-                      }}
-                    >
-                      {importingCustom ? 'Import...' : '📥 Importa'}
-                    </button>
-                  </div>
+                  <a
+                    href="https://github.com/Sigmanih/SigmaStudio-Manifesti"
+                    target="_blank"
+                    rel="noreferrer"
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '5px',
+                      padding: '5px 10px',
+                      borderRadius: '6px',
+                      background: isLight ? 'rgba(234, 88, 12, 0.12)' : 'rgba(255,255,255,0.06)',
+                      border: isLight ? '1px solid rgba(234, 88, 12, 0.35)' : '1px solid rgba(255,255,255,0.15)',
+                      color: isLight ? '#c2410c' : '#bc8cff',
+                      fontSize: '0.72rem',
+                      fontWeight: 700,
+                      textDecoration: 'none'
+                    }}
+                  >
+                    <ExternalLink size={12} /> Repository Ufficiale
+                  </a>
                 </div>
 
-                {/* Hub Filters */}
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
-                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
-                    {hubCategories.map(cat => (
+                <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
+                  <input
+                    type="text"
+                    placeholder="URL Raw GitHub (.md)..."
+                    value={customImportUrl}
+                    onChange={e => setCustomImportUrl(e.target.value)}
+                    style={{
+                      flex: 2, minWidth: '180px', padding: '6px 10px', borderRadius: '6px',
+                      background: isLight ? '#f8fafc' : 'rgba(255,255,255,0.05)',
+                      border: isLight ? '1px solid rgba(226, 232, 240, 0.9)' : '1px solid rgba(255,255,255,0.15)',
+                      color: textPrimary, fontSize: '0.76rem'
+                    }}
+                  />
+                  <input
+                    type="text"
+                    placeholder="Nome file..."
+                    value={customImportName}
+                    onChange={e => setCustomImportName(e.target.value)}
+                    style={{
+                      flex: 1, minWidth: '110px', padding: '6px 10px', borderRadius: '6px',
+                      background: isLight ? '#f8fafc' : 'rgba(255,255,255,0.05)',
+                      border: isLight ? '1px solid rgba(226, 232, 240, 0.9)' : '1px solid rgba(255,255,255,0.15)',
+                      color: textPrimary, fontSize: '0.76rem'
+                    }}
+                  />
+                  <button
+                    type="button"
+                    onClick={handleCustomImport}
+                    disabled={importingCustom || !customImportUrl.trim()}
+                    style={{
+                      padding: '6px 14px', borderRadius: '6px',
+                      background: isLight ? '#ea580c' : '#a855f7',
+                      border: 'none', color: '#fff', fontWeight: 800, fontSize: '0.76rem',
+                      cursor: (importingCustom || !customImportUrl.trim()) ? 'not-allowed' : 'pointer'
+                    }}
+                  >
+                    {importingCustom ? 'Import...' : '📥 Importa'}
+                  </button>
+                </div>
+              </div>
+
+              {/* Hub Filters & Search */}
+              <div className="marketplace-filter-bar">
+                <div className="marketplace-search-wrapper">
+                  <Search size={14} className="marketplace-search-icon" />
+                  <input
+                    type="text"
+                    className="marketplace-search-input"
+                    placeholder="Cerca professione, ruolo o target..."
+                    value={hubSearchQuery}
+                    onChange={e => setHubSearchQuery(e.target.value)}
+                  />
+                  {hubSearchQuery && (
+                    <button
+                      type="button"
+                      onClick={() => setHubSearchQuery('')}
+                      style={{
+                        position: 'absolute',
+                        right: '10px',
+                        top: '50%',
+                        transform: 'translateY(-50%)',
+                        background: 'none',
+                        border: 'none',
+                        color: '#94a3b8',
+                        cursor: 'pointer',
+                        padding: 0
+                      }}
+                    >
+                      <X size={13} />
+                    </button>
+                  )}
+                </div>
+
+                <div className="marketplace-categories">
+                  <button
+                    type="button"
+                    className={`marketplace-cat-chip ${hubCategory === 'Tutti' ? 'active' : ''}`}
+                    onClick={() => setHubCategory('Tutti')}
+                  >
+                    <span>✨</span>
+                    <span>Tutte le Professioni ({hubCatalog.length})</span>
+                  </button>
+                  {hubCategories.filter(c => c !== 'Tutti').map(cat => {
+                    const meta = getRoleCategoryMeta(cat);
+                    const active = hubCategory === cat;
+                    return (
                       <button
                         key={cat}
+                        type="button"
+                        className={`marketplace-cat-chip ${active ? 'active' : ''}`}
                         onClick={() => setHubCategory(cat)}
-                        style={{
-                          padding: '5px 12px', borderRadius: '8px',
-                          background: hubCategory === cat ? (isLight ? '#7c3aed' : '#a855f7') : (isLight ? '#ffffff' : 'rgba(255,255,255,0.04)'),
-                          color: hubCategory === cat ? '#ffffff' : textPrimary,
-                          border: hubCategory === cat ? '1px solid #7c3aed' : (isLight ? '1px solid rgba(226, 232, 240, 0.9)' : '1px solid rgba(255,255,255,0.1)'),
-                          fontWeight: 700, fontSize: '0.74rem', cursor: 'pointer'
-                        }}
+                        title={meta.desc || cat}
                       >
-                        {cat} {cat === 'Tutti' ? `(${hubCatalog.length})` : ''}
+                        <span>{meta.icon}</span>
+                        <span>{cat}</span>
                       </button>
-                    ))}
-                  </div>
+                    );
+                  })}
+                </div>
+              </div>
 
-                  <div style={{ position: 'relative', width: '240px' }}>
-                    <Search size={14} style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', color: textMuted }} />
-                    <input
-                      type="text"
-                      placeholder="Cerca professione..."
-                      value={hubSearchQuery}
-                      onChange={e => setHubSearchQuery(e.target.value)}
-                      style={{
-                        width: '100%', padding: '7px 12px 7px 32px', borderRadius: '8px',
-                        background: isLight ? '#ffffff' : 'rgba(255,255,255,0.04)',
-                        border: isLight ? '1px solid rgba(226, 232, 240, 0.9)' : '1px solid rgba(255,255,255,0.15)',
-                        color: textPrimary, fontSize: '0.78rem', outline: 'none', boxSizing: 'border-box'
-                      }}
-                    />
+              {/* Hub Cards Grid */}
+              {filteredHubCatalog.length === 0 ? (
+                <div style={{
+                  padding: '48px 24px',
+                  borderRadius: '16px',
+                  background: isLight ? '#ffffff' : 'rgba(255, 255, 255, 0.02)',
+                  border: isLight ? '1px solid #e2e8f0' : '1px solid rgba(255, 255, 255, 0.08)',
+                  textAlign: 'center',
+                  color: '#94a3b8',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'center',
+                  gap: '12px'
+                }}>
+                  <Globe size={36} style={{ opacity: 0.5, color: '#a855f7' }} />
+                  <div style={{ fontSize: '1rem', fontWeight: 800, color: textPrimary }}>
+                    Nessuna professione corrisponde alla ricerca
+                  </div>
+                  <div style={{ fontSize: '0.78rem' }}>
+                    Prova a reimpostare i filtri o visualizza tutte le categorie.
                   </div>
                 </div>
-
-                {/* Hub Cards Grid */}
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '12px' }}>
+              ) : (
+                <div className="marketplace-grid">
                   {filteredHubCatalog.map(item => {
                     const domainColor = item.domainColor || (isLight ? '#7c3aed' : '#a855f7');
+                    const catMeta = getRoleCategoryMeta(item.category);
                     const isInstalling = installingId === item.id;
-                    const isSelected = selectedRole && (selectedRole.id === item.id);
 
                     return (
                       <div
                         key={item.id}
-                        onClick={() => setSelectedRole(item)}
-                        className="mg-card"
-                        style={{
-                          borderRadius: '16px',
-                          background: isSelected ? (isLight ? 'rgba(124, 58, 237, 0.08)' : 'rgba(168, 85, 247, 0.1)') : cardBg,
-                          border: isSelected ? '2px solid #a855f7' : cardBorder,
-                          padding: '14px',
-                          display: 'flex',
-                          flexDirection: 'column',
-                          justifyContent: 'space-between',
-                          boxShadow: cardShadow,
-                          cursor: 'pointer'
-                        }}
+                        className="marketplace-card"
+                        onClick={() => setSelectedRoleModal(item)}
                       >
-                        <div>
-                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '8px' }}>
-                            <div style={{ flex: 1, minWidth: 0 }}>
-                              <h3 style={{ margin: '0 0 2px 0', fontSize: '0.92rem', fontWeight: 800, color: textPrimary }}>
+                        <div className="marketplace-card-glow" style={{ background: `linear-gradient(90deg, ${domainColor}, transparent)` }} />
+
+                        <div className="marketplace-card-header">
+                          <div className="marketplace-card-title-area">
+                            <div className="marketplace-card-titles">
+                              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '8px' }}>
+                                <span style={{
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  gap: '3px',
+                                  padding: '1px 6px',
+                                  borderRadius: '5px',
+                                  background: `${domainColor}18`,
+                                  border: `1px solid ${domainColor}40`,
+                                  color: domainColor,
+                                  fontSize: '0.62rem',
+                                  fontWeight: 800,
+                                  textTransform: 'uppercase'
+                                }}>
+                                  <span>{catMeta.icon}</span>
+                                  <span>{item.category}</span>
+                                </span>
+                              </div>
+
+                              <h4 className="marketplace-card-name" style={{ marginTop: '3px' }}>
                                 {item.name}
-                              </h3>
+                              </h4>
                               <span style={{ fontSize: '0.74rem', color: domainColor, fontWeight: 700 }}>
                                 {item.role}
                               </span>
                             </div>
-                            <span style={{
-                              padding: '2px 7px', borderRadius: '6px',
-                              background: `${domainColor}15`, border: `1px solid ${domainColor}40`,
-                              color: domainColor, fontSize: '0.62rem', fontWeight: 700, textTransform: 'uppercase'
-                            }}>
-                              {item.category}
-                            </span>
                           </div>
-
-                          <div style={{
-                            display: 'inline-flex', alignItems: 'center', gap: '4px',
-                            padding: '2px 7px', borderRadius: '5px',
-                            background: innerCardBg, border: innerCardBorder,
-                            color: textPrimary, fontSize: '0.66rem', fontWeight: 700, marginBottom: '8px'
-                          }}>
-                            <Users size={11} style={{ color: domainColor }} /> Target: {item.target}
-                          </div>
-
-                          <p style={{ fontSize: '0.74rem', color: textSecondary, lineHeight: 1.35, margin: '0 0 8px 0', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
-                            {item.description}
-                          </p>
                         </div>
 
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTop: isLight ? '1px solid rgba(226, 232, 240, 0.9)' : '1px solid rgba(255,255,255,0.06)', paddingTop: '10px' }}>
+                        <div style={{
+                          display: 'inline-flex', alignItems: 'center', gap: '4px',
+                          padding: '2px 7px', borderRadius: '5px',
+                          background: innerCardBg, border: innerCardBorder,
+                          color: textPrimary, fontSize: '0.66rem', fontWeight: 700
+                        }}>
+                          <Users size={11} style={{ color: domainColor }} /> Target: {item.target}
+                        </div>
+
+                        <p className="marketplace-card-desc" style={{
+                          margin: 0,
+                          fontSize: '0.74rem',
+                          color: textSecondary,
+                          lineHeight: 1.45,
+                          display: '-webkit-box',
+                          WebkitLineClamp: 2,
+                          WebkitBoxOrient: 'vertical',
+                          overflow: 'hidden'
+                        }}>
+                          {item.description}
+                        </p>
+
+                        <div className="marketplace-card-footer" style={{ marginTop: 'auto', paddingTop: '10px' }}>
                           <button
-                            onClick={(e) => { e.stopPropagation(); setSelectedRole(item); }}
-                            style={{
-                              padding: '4px 8px', borderRadius: '6px',
-                              background: isLight ? '#ffffff' : 'rgba(255, 255, 255, 0.05)',
-                              border: isLight ? '1px solid rgba(226, 232, 240, 0.9)' : '1px solid rgba(255, 255, 255, 0.15)',
-                              color: textPrimary, fontSize: '0.70rem', fontWeight: 700, cursor: 'pointer'
-                            }}
+                            type="button"
+                            className="marketplace-action-btn"
+                            onClick={(e) => { e.stopPropagation(); setSelectedRoleModal(item); }}
+                            style={{ padding: '5px 10px', fontSize: '0.72rem', fontWeight: 700 }}
+                            title="Visualizza scheda tecnica completa della professione"
                           >
-                            <Eye size={12} /> Dettagli
+                            <Eye size={12} />
+                            <span>Dettagli</span>
                           </button>
 
                           {item.installed ? (
@@ -1016,15 +1586,19 @@ Creato per l'ecosistema sovrano Sigma AI Studio.
                             </span>
                           ) : (
                             <button
+                              type="button"
+                              className="marketplace-action-btn primary"
                               onClick={(e) => { e.stopPropagation(); handleInstallFromHub(item); }}
                               disabled={isInstalling}
                               style={{
-                                padding: '5px 12px', borderRadius: '6px',
-                                background: 'linear-gradient(135deg, #a855f7 0%, #7c3aed 100%)',
-                                border: 'none', color: '#fff', fontSize: '0.74rem', fontWeight: 800, cursor: isInstalling ? 'not-allowed' : 'pointer'
+                                padding: '5px 12px',
+                                fontSize: '0.74rem',
+                                fontWeight: 800,
+                                background: 'linear-gradient(135deg, #a855f7 0%, #7c3aed 100%)'
                               }}
                             >
-                              <Download size={12} /> {isInstalling ? 'Scaricamento...' : 'Scarica & Attiva'}
+                              {isInstalling ? <RefreshCw size={12} className="spin" /> : <Download size={12} />}
+                              <span>{isInstalling ? 'Scaricamento...' : 'Scarica & Attiva'}</span>
                             </button>
                           )}
                         </div>
@@ -1032,293 +1606,9 @@ Creato per l'ecosistema sovrano Sigma AI Studio.
                     );
                   })}
                 </div>
-              </>
-            )}
-
-          </div>
-
-          {/* ── COLONNA DESTRA: PANNELLO DETTAGLIO RUOLO ASSOCIATO (STICKY) ──────── */}
-          <div style={{
-            position: 'sticky',
-            top: '16px',
-            borderRadius: '20px',
-            background: isLight ? '#ffffff' : 'linear-gradient(135deg, #111522 0%, #0c0f1a 100%)',
-            border: isLight ? '1px solid rgba(234, 88, 12, 0.35)' : '1px solid rgba(0, 210, 255, 0.35)',
-            boxShadow: isLight ? '0 10px 30px rgba(0,0,0,0.08)' : '0 10px 40px rgba(0,0,0,0.6)',
-            padding: '22px',
-            display: 'flex',
-            flexDirection: 'column',
-            gap: '16px',
-            minHeight: '480px'
-          }}>
-            {selectedRole ? (
-              <>
-                {/* Header Dettaglio Ruolo */}
-                <div style={{ display: 'flex', alignItems: 'flex-start', gap: '16px' }}>
-                  {/* Large Avatar */}
-                  <div 
-                    onClick={() => selectedRole.path && setEditingAvatarManifesto(selectedRole)}
-                    title="Clicca per cambiare avatar"
-                    style={{
-                      width: '76px',
-                      height: '76px',
-                      borderRadius: '18px',
-                      overflow: 'hidden',
-                      border: `3px solid ${selectedRole.domainColor || (isLight ? '#ea580c' : '#00d2ff')}`,
-                      boxShadow: isLight ? '0 6px 16px rgba(0,0,0,0.12)' : `0 0 20px ${(selectedRole.domainColor || '#00d2ff')}50`,
-                      background: isLight ? '#f1f5f9' : '#080a10',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      flexShrink: 0,
-                      cursor: selectedRole.path ? 'pointer' : 'default'
-                    }}
-                  >
-                    <img 
-                      src={selectedRole.image || '/images/default.png'} 
-                      alt={selectedRole.name} 
-                      style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-                      onError={e => { e.target.src = '/images/default.png'; }}
-                    />
-                  </div>
-
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap', marginBottom: '4px' }}>
-                      <span style={{
-                        padding: '2px 8px',
-                        borderRadius: '6px',
-                        background: `${selectedRole.domainColor || '#00d2ff'}20`,
-                        border: `1px solid ${selectedRole.domainColor || '#00d2ff'}40`,
-                        color: selectedRole.domainColor || (isLight ? '#ea580c' : '#00d2ff'),
-                        fontSize: '0.66rem',
-                        fontWeight: 800,
-                        textTransform: 'uppercase'
-                      }}>
-                        {selectedRole.category || 'Specializzazione'}
-                      </span>
-                      {selectedRole.filename && (
-                        <code style={{ fontSize: '0.68rem', color: textMuted }}>{selectedRole.filename}</code>
-                      )}
-                    </div>
-
-                    <h2 style={{ margin: '0 0 3px 0', fontSize: '1.25rem', fontWeight: 800, color: textPrimary, letterSpacing: '-0.3px' }}>
-                      {selectedRole.name}
-                    </h2>
-                    <span style={{ fontSize: '0.84rem', color: isLight ? '#ea580c' : (selectedRole.domainColor || '#00d2ff'), fontWeight: 700 }}>
-                      {selectedRole.role}
-                    </span>
-                  </div>
-                </div>
-
-                {/* Primary Action Button: Launch Chat */}
-                <button
-                  onClick={() => handleLaunchChat(selectedRole)}
-                  style={{
-                    width: '100%',
-                    padding: '12px 20px',
-                    borderRadius: '12px',
-                    background: isLight 
-                      ? 'linear-gradient(135deg, #ea580c 0%, #f97316 100%)' 
-                      : 'linear-gradient(135deg, #00d2ff 0%, #0077ff 100%)',
-                    border: 'none',
-                    color: '#ffffff',
-                    fontWeight: 800,
-                    fontSize: '0.90rem',
-                    cursor: 'pointer',
-                    boxShadow: isLight ? '0 4px 16px rgba(234, 88, 12, 0.35)' : '0 4px 20px rgba(0, 210, 255, 0.4)',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    gap: '8px',
-                    transition: 'transform 0.15s ease'
-                  }}
-                >
-                  <MessageSquare size={16} />
-                  <span>Avvia Chat con {selectedRole.name}</span>
-                  <ArrowRight size={14} />
-                </button>
-
-                {/* Parameters & Specs Grid */}
-                <div style={{
-                  display: 'grid',
-                  gridTemplateColumns: 'repeat(3, 1fr)',
-                  gap: '8px',
-                  background: innerCardBg,
-                  border: innerCardBorder,
-                  padding: '10px',
-                  borderRadius: '12px'
-                }}>
-                  <div style={{ textAlign: 'center' }}>
-                    <div style={{ fontSize: '0.62rem', color: textMuted, fontWeight: 700, textTransform: 'uppercase' }}>MODELLO BASE</div>
-                    <div style={{ fontSize: '0.82rem', fontWeight: 800, color: textPrimary, marginTop: '2px' }}>
-                      {selectedRole.baseModel || 'sigma'}
-                    </div>
-                  </div>
-                  <div style={{ textAlign: 'center' }}>
-                    <div style={{ fontSize: '0.62rem', color: textMuted, fontWeight: 700, textTransform: 'uppercase' }}>TEMPERATURA</div>
-                    <div style={{ fontSize: '0.82rem', fontWeight: 800, color: isLight ? '#ea580c' : '#00d2ff', marginTop: '2px' }}>
-                      {selectedRole.temperature ?? 0.2}
-                    </div>
-                  </div>
-                  <div style={{ textAlign: 'center' }}>
-                    <div style={{ fontSize: '0.62rem', color: textMuted, fontWeight: 700, textTransform: 'uppercase' }}>CONTESTO</div>
-                    <div style={{ fontSize: '0.82rem', fontWeight: 800, color: '#10b981', marginTop: '2px' }}>
-                      {selectedRole.numCtx ? `${Math.round(selectedRole.numCtx / 1024)}k` : '32k'}
-                    </div>
-                  </div>
-                </div>
-
-                {/* System Prompt & Directive Preview */}
-                <div>
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '6px' }}>
-                    <div style={{ fontSize: '0.74rem', fontWeight: 800, color: textPrimary, display: 'flex', alignItems: 'center', gap: '6px' }}>
-                      <ScrollText size={13} color={isLight ? '#ea580c' : '#00d2ff'} />
-                      <span>DIRETTIVE & PROMPT DI SISTEMA</span>
-                    </div>
-                    <button
-                      onClick={() => handleCopyPrompt(extractSystemPrompt(selectedRole))}
-                      style={{
-                        background: 'transparent',
-                        border: 'none',
-                        color: isLight ? '#ea580c' : '#00d2ff',
-                        fontSize: '0.68rem',
-                        fontWeight: 700,
-                        cursor: 'pointer',
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '3px'
-                      }}
-                    >
-                      {copiedPrompt ? <Check size={11} color="#10b981" /> : <Copy size={11} />}
-                      <span>{copiedPrompt ? 'Copiato!' : 'Copia Prompt'}</span>
-                    </button>
-                  </div>
-
-                  <div style={{
-                    padding: '12px',
-                    borderRadius: '10px',
-                    background: isLight ? '#f1f5f9' : '#07090e',
-                    border: isLight ? '1px solid #e2e8f0' : '1px solid rgba(255,255,255,0.08)',
-                    maxHeight: '160px',
-                    overflowY: 'auto',
-                    fontSize: '0.74rem',
-                    lineHeight: 1.5,
-                    color: textSecondary,
-                    whiteSpace: 'pre-wrap'
-                  }}>
-                    {extractSystemPrompt(selectedRole)}
-                  </div>
-                </div>
-
-                {/* Capabilities & Artifacts */}
-                {selectedRole.capabilities && selectedRole.capabilities.length > 0 && (
-                  <div>
-                    <div style={{ fontSize: '0.70rem', fontWeight: 800, color: textMuted, textTransform: 'uppercase', marginBottom: '6px' }}>
-                      COMPETENZE E ARTIFACTS GENERATI
-                    </div>
-                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
-                      {selectedRole.capabilities.map(cap => (
-                        <span
-                          key={cap}
-                          style={{
-                            padding: '2px 8px',
-                            borderRadius: '5px',
-                            background: innerCardBg,
-                            border: innerCardBorder,
-                            color: textPrimary,
-                            fontSize: '0.68rem',
-                            fontWeight: 700
-                          }}
-                        >
-                          ✓ {cap}
-                        </span>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                {/* Secondary Actions Row */}
-                <div style={{
-                  display: 'flex',
-                  gap: '8px',
-                  alignItems: 'center',
-                  borderTop: isLight ? '1px solid rgba(226, 232, 240, 0.9)' : '1px solid rgba(255,255,255,0.08)',
-                  paddingTop: '12px',
-                  marginTop: 'auto',
-                  flexWrap: 'wrap'
-                }}>
-                  {selectedRole.path && (
-                    <button
-                      onClick={() => handleEditManifesto(selectedRole)}
-                      style={{
-                        flex: 1,
-                        padding: '7px 12px',
-                        borderRadius: '8px',
-                        background: innerCardBg,
-                        border: innerCardBorder,
-                        color: textPrimary,
-                        fontSize: '0.74rem',
-                        fontWeight: 700,
-                        cursor: 'pointer',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        gap: '5px'
-                      }}
-                    >
-                      <Edit3 size={13} /> Modifica Istruzioni
-                    </button>
-                  )}
-
-                  <button
-                    onClick={() => setInspectManifesto(selectedRole)}
-                    style={{
-                      padding: '7px 12px',
-                      borderRadius: '8px',
-                      background: innerCardBg,
-                      border: innerCardBorder,
-                      color: textPrimary,
-                      fontSize: '0.74rem',
-                      fontWeight: 700,
-                      cursor: 'pointer',
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '4px'
-                    }}
-                    title="Ispeziona formato completo"
-                  >
-                    <Terminal size={13} /> Modelfile
-                  </button>
-
-                  {selectedRole.filename !== 'sigma_assistant.md' && selectedRole.id !== 'sigma_assistant' && selectedRole.path && (
-                    <button
-                      onClick={() => handleUninstallManifesto(selectedRole)}
-                      disabled={uninstallingId === (selectedRole.id || selectedRole.filename)}
-                      style={{
-                        padding: '7px 10px',
-                        borderRadius: '8px',
-                        background: 'rgba(239, 68, 68, 0.12)',
-                        border: '1px solid rgba(239, 68, 68, 0.3)',
-                        color: '#ef4444',
-                        fontSize: '0.74rem',
-                        fontWeight: 700,
-                        cursor: 'pointer'
-                      }}
-                      title="Disinstalla ruolo dal Kernel"
-                    >
-                      <Trash2 size={13} />
-                    </button>
-                  )}
-                </div>
-              </>
-            ) : (
-              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '40px 20px', textAlign: 'center', color: textMuted }}>
-                <Brain size={36} style={{ marginBottom: '12px', opacity: 0.5 }} />
-                <h3 style={{ margin: '0 0 6px 0', fontSize: '0.98rem', fontWeight: 800, color: textPrimary }}>Nessun Ruolo Selezionato</h3>
-                <p style={{ margin: 0, fontSize: '0.78rem' }}>Clicca su un ruolo nella lista a sinistra per visualizzarne i dettagli, il prompt e i parametri.</p>
-              </div>
-            )}
-          </div>
+              )}
+            </>
+          )}
 
         </div>
 
@@ -1762,6 +2052,27 @@ Creato per l'ecosistema sovrano Sigma AI Studio.
             </div>
           </div>
         </div>
+      )}
+
+      {/* ===================================================================== */}
+      {/* MODALE DETTAGLIO SCHEDA RUOLO (STILE SKILLS)                          */}
+      {/* ===================================================================== */}
+      {selectedRoleModal && (
+        <RoleDetailModal
+          role={selectedRoleModal}
+          isInstalled={Boolean(selectedRoleModal.path || selectedRoleModal.installed || manifestiList.some(m => (m.filename && m.filename === selectedRoleModal.filename) || (m.id && m.id === selectedRoleModal.id)))}
+          isLight={isLight}
+          onClose={() => setSelectedRoleModal(null)}
+          onLaunchChat={handleLaunchChat}
+          onEdit={handleEditManifesto}
+          onInspect={(r) => setInspectManifesto(r)}
+          onUninstall={handleUninstallManifesto}
+          onInstallFromHub={handleInstallFromHub}
+          onChangeAvatar={(r) => setEditingAvatarManifesto(r)}
+          isInstalling={installingId === selectedRoleModal.id}
+          isUninstalling={uninstallingId === (selectedRoleModal.id || selectedRoleModal.filename)}
+          extractSystemPrompt={extractSystemPrompt}
+        />
       )}
 
     </div>
