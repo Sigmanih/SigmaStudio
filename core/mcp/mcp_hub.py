@@ -20,12 +20,18 @@ from core.mcp import governance
 from core.mcp.base_server import BaseMCPServer
 from core.mcp.client import ExternalMCPServer
 from core.mcp.inference_server import InferenceMCPServer
+from core.mcp.progetto_server import ProgettoMCPServer
 
 log = get_logger(__name__)
 
 # Built-in micro-kernel servers (Inference provider selector & dynamic routing)
 BUILTIN_SERVERS = [
     InferenceMCPServer,
+    # La documentazione di Sigma Studio, interrogabile. Sta fra i built-in e
+    # non fra i moduli perche' deve esserci sempre: e' cio' che impedisce a un
+    # modello di rispondere a memoria su questo programma, e un modello che
+    # risponde a memoria su questo programma inventa i nomi.
+    ProgettoMCPServer,
 ]
 
 

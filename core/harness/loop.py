@@ -335,6 +335,10 @@ scrivilo come se parlassi a qualcuno che non ha letto niente di questa
 conversazione — quali file, quali funzioni, cosa NON toccare.
 `verify` e' il comando che dimostra quella voce: senza, l'agente deve
 inventarsi come dimostrarla, e spesso non ci riesce.
+`files` elenca i file che quella voce tocchera'. Dichiararli serve a una cosa
+sola e importante: due voci che lavorano in parallelo sullo stesso file si
+ostacolano, e la seconda puo' non riuscire a consegnare. Se due voci devono
+davvero toccare lo stesso file, mettine una in `depends_on` dell'altra.
 
 `spec` — registra cosa significa "finito" per questo obiettivo. Primo tool.
 {"understanding": "LA RICHIESTA RIFORMULATA PER ESTESO",
@@ -1653,6 +1657,7 @@ def _execute_admin_tool_impl(
                           "lavoro indipendente, nella forma "
                           '{"id": "01_nome", "title": "cosa fare, per esteso", '
                           '"verify": "comando che lo dimostra", '
+                          '"files": ["i file che toccherai"], '
                           '"depends_on": ["id di una voce precedente"]}.'),
             }
 

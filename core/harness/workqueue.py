@@ -231,8 +231,51 @@ class WorkQueue:
                 self._ordine.append(vid)
                 create.append(voce)
             note.extend(self._spezza_cicli())
+            note.extend(self._avvisa_sovrapposizioni(create))
             self._salva()
         return create
+
+    def _avvisa_sovrapposizioni(self, nuove: List[Voce]) -> List[str]:
+        """Dice quali voci indipendenti toccheranno lo stesso file.
+
+        E' la causa piu' cara che questo sistema abbia: due lavoratori partono
+        dallo stesso commit, lavorano bene, e il secondo non riesce a
+        trasferire perche' il primo ha gia' cambiato quel file. La fusione a
+        tre vie recupera il caso normale, ma non quello in cui i due cambiano
+        davvero la stessa riga — e quello si previene solo prima di partire.
+
+        Si avvisa e non si rifiuta: a volte due voci **devono** toccare lo
+        stesso file, e chi riempie la coda lo sa. Ma deve saperlo adesso, non
+        tre run dopo, e il rimedio e' una riga: una dipendenza fra le due, che
+        le mette in fila invece che in parallelo.
+
+        Va chiamata dentro il lucchetto.
+        """
+        per_file: Dict[str, List[str]] = {}
+        for voce in self._voci.values():
+            if voce.state in (FATTA, FALLITA):
+                continue
+            for grezzo in (voce.payload or {}).get("files") or []:
+                chiave = str(grezzo).replace("\\", "/").strip().lstrip("./")
+                if chiave:
+                    per_file.setdefault(chiave, []).append(voce.id)
+
+        nuovi = {v.id for v in nuove}
+        avvisi: List[str] = []
+        for percorso, voci in sorted(per_file.items()):
+            if len(voci) < 2 or not (set(voci) & nuovi):
+                continue
+            # Se una dipende dall'altra sono gia' in fila: nessun rischio.
+            if any(a in self._voci and b in self._voci[a].depends_on
+                   for a in voci for b in voci if a != b):
+                continue
+            avvisi.append(
+                f"'{percorso}' e' dichiarato da piu' voci ({', '.join(sorted(voci))}): "
+                "lavoreranno in parallelo sullo stesso file e la seconda "
+                "potrebbe non riuscire a trasferire. Mettine una in "
+                "`depends_on` dell'altra se devono davvero toccarlo entrambe."
+            )
+        return avvisi
 
     def sostituisci(self, item_id: str, voci: Iterable[Any],
                     motivo: str = "") -> Dict[str, Any]:

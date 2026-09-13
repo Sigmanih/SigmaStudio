@@ -355,3 +355,69 @@ class TestUnaVoceSpezzataNonTornaInCoda:
         # va in eccezione dopo aver spezzato.
         assert sorgente.count("_e_stata_spezzata(") == 2
         assert sorgente.index("_e_stata_spezzata(") < sorgente.index("coda.fail(voce.id")
+
+
+class TestIFileDichiaratiPrevengonoLaContesa:
+    """La causa piu' cara che questo sistema abbia avuto: due lavoratori
+    partono dallo stesso commit, lavorano bene, e il secondo non riesce a
+    trasferire perche' il primo ha gia' cambiato quel file. Misurato su un
+    ventaglio vero: quattro voci su otto.
+
+    La fusione a tre vie recupera il caso normale. Quello in cui i due cambiano
+    davvero la stessa riga si previene solo prima di partire."""
+
+    def test_due_voci_sullo_stesso_file_vengono_segnalate(self, coda):
+        avvisi = []
+        coda.add_many([
+            {"id": "a", "title": "il preflight", "files": ["core/esecutori.py"]},
+            {"id": "b", "title": "la cache", "files": ["core/esecutori.py"]},
+        ], avvisi=avvisi)
+        assert any("core/esecutori.py" in x and "a, b" in x for x in avvisi)
+        assert any("depends_on" in x for x in avvisi), "deve dire il rimedio"
+
+    def test_file_diversi_non_producono_rumore(self, coda):
+        avvisi = []
+        coda.add_many([
+            {"id": "a", "title": "uno", "files": ["core/a.py"]},
+            {"id": "b", "title": "due", "files": ["core/b.py"]},
+        ], avvisi=avvisi)
+        assert avvisi == []
+
+    def test_se_sono_gia_in_fila_non_c_e_niente_da_dire(self, coda):
+        """Una dipendenza fra le due le serializza: nessun rischio di contesa."""
+        avvisi = []
+        coda.add_many([
+            {"id": "a", "title": "primo", "files": ["core/x.py"]},
+            {"id": "b", "title": "dopo", "files": ["core/x.py"],
+             "depends_on": ["a"]},
+        ], avvisi=avvisi)
+        assert avvisi == []
+
+    def test_una_voce_gia_fatta_non_conta(self, coda):
+        """Il conflitto e' fra chi lavora, non con chi ha gia' finito."""
+        coda.add_many([{"id": "a", "title": "primo", "files": ["core/x.py"]}])
+        coda.claim("w1")
+        coda.complete("a")
+        avvisi = []
+        coda.add_many([{"id": "b", "title": "dopo", "files": ["core/x.py"]}],
+                      avvisi=avvisi)
+        assert avvisi == []
+
+    def test_i_file_arrivano_nel_payload_e_nel_prompt(self, coda, tmp_path):
+        from core.harness.fanout import _prompt_voce
+
+        execute_admin_tool("queue_add", {
+            "queue_id": "prova",
+            "items": [{"id": "z", "title": "scrivi", "files": ["core/z.py"]}],
+        }, workspace_root=str(tmp_path))
+        voce = [v for v in coda.items() if v.id == "z"][0]
+        assert voce.payload.get("files") == ["core/z.py"]
+        assert "core/z.py" in _prompt_voce(voce, "obiettivo", "prova")
+
+    def test_lo_schema_dichiara_files(self):
+        from core.harness.tool_schema import TOOL_SCHEMAS
+
+        schema = [s for s in TOOL_SCHEMAS
+                  if s["function"]["name"] == "queue_add"][0]
+        voce = schema["function"]["parameters"]["properties"]["items"]["items"]
+        assert "files" in voce["properties"]

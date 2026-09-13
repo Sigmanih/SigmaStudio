@@ -1113,9 +1113,26 @@ def handle_chat(self):
         # it belongs here rather than in the tail.
         today = _get_date_context()
 
+        # Cosa e' Sigma Studio, letto da Sigma Studio. Sta nel prefisso
+        # stabile perche' cambia solo quando cambia il programma, e costa
+        # cinquecento token pagati una volta per conversazione.
+        #
+        # Serve a una cosa precisa: chiedendo a un modello «cos'e' l'harness»,
+        # la risposta descriveva sette agenti che non esistono e una sandbox
+        # nel posto sbagliato. Non era un difetto del modello: nessuno gli
+        # aveva dato i fatti, e da un prompt che descrive un assistente si puo'
+        # solo dedurre.
+        try:
+            from core.scheda_progetto import scheda
+            scheda_testo = scheda()
+        except Exception as exc:
+            log.debug("Scheda del progetto non disponibile: %s", exc)
+            scheda_testo = ""
+        scheda_blocco = ("\n" + scheda_testo + "\n") if scheda_testo else ""
+
         full_prompt = f"""{identity_header}
 
-{system_prompt}{mcp_tools_catalogue}{project_structure}
+{system_prompt}{mcp_tools_catalogue}{scheda_blocco}{project_structure}
 {today}
 
 ## ISTRUZIONI CREAZIONE E SALVATAGGIO FILE SU DISCO

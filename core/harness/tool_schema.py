@@ -117,6 +117,7 @@ TOOL_SCHEMAS: List[Dict[str, Any]] = [
             "type": "object",
             "properties": {"id": _STRINGA, "title": _STRINGA,
                            "verify": _STRINGA,
+                           "files": {"type": "array", "items": _STRINGA},
                            "depends_on": {"type": "array", "items": _STRINGA}},
             "required": ["id", "title"]}}},
        ["queue_id", "items"]),
