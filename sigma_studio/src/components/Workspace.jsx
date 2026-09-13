@@ -199,7 +199,7 @@ export default function Workspace({
     }
 
     if (tab.type === 'chat') {
-      return <ChatWorkspace />;
+      return null;
     }
     if (tab.type === 'research_lab') {
       const isResearchInstalled = modulesState.sigma_research_lab === true;
@@ -398,6 +398,10 @@ export default function Workspace({
   const { theme, toggleMobileSidebar } = useApp ? useApp() : { theme: 'dark', toggleMobileSidebar: () => {} };
   const isLight = theme === 'light';
 
+  const activeTab = openTabs.find(t => t.id === activeTabId);
+  const hasChatTab = openTabs.some(t => t.type === 'chat');
+  const isChatActive = Boolean(activeTab && activeTab.type === 'chat');
+
   return (
     <main className="workspace">
       {/* Background animato Cyber/Space applicato a tutte le schede */}
@@ -455,7 +459,22 @@ export default function Workspace({
         )}
       </div>
       <div className="content-area">
-        {getActiveContent()}
+        {hasChatTab && (
+          <div
+            key="workspace-persistent-chat"
+            style={{
+              display: isChatActive ? 'flex' : 'none',
+              flexDirection: 'column',
+              height: '100%',
+              width: '100%',
+              flex: 1,
+              minHeight: 0
+            }}
+          >
+            <ChatWorkspace />
+          </div>
+        )}
+        {!isChatActive && getActiveContent()}
       </div>
     </main>
   );

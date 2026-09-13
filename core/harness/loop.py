@@ -311,9 +311,34 @@ che la pagina si veda.
 {"path": "PERCORSO"}
 
 `pipeline` — registra i task del TUO piano per l'obiettivo corrente.
-{"tasks": [{"id": "1", "title": "TITOLO", "status": "in_progress"}]}
+{"tasks": [{"id": "1", "title": "TITOLO", "role": "coder",
+            "description": "COSA VA FATTO, PER ESTESO",
+            "depends_on": [], "files": ["PERCORSO"], "status": "in_progress"}]}
 I titoli devono descrivere QUESTO obiettivo, non un esempio generico.
+`role` e' uno fra architect, coder, reviewer, tester, devops: decide CHI
+esegue il task. `depends_on` elenca gli id dei task che devono essere finiti
+prima, e chi non dipende da nessuno parte subito: mettere una dipendenza dove
+non serve trasforma un lavoro parallelo in una fila indiana.
+`description` e' l'istruzione vera: il titolo e' una riga, e chi esegue il
+task vede solo cio' che scrivi qui.
 Emettilo una volta all'inizio e aggiornalo solo quando lo stato cambia davvero.
+
+`queue_add` — mette il lavoro in una coda che piu' agenti in parallelo
+consumeranno. Usalo quando il lavoro NON ci sta in un run solo: cento file da
+cambiare non si fanno in venti turni, e a meta' strada non ricorderesti piu'
+cosa hai gia' sistemato. Una voce per file o per modulo, indipendenti.
+{"queue_id": "NOME_DEL_LAVORO", "goal": "L'OBIETTIVO COMPLESSIVO",
+ "items": [{"id": "01_nome", "title": "COSA FARE, PER ESTESO",
+            "verify": "COMANDO CHE LO DIMOSTRA", "depends_on": []}]}
+Il `title` di una voce e' tutto cio' che l'agente che la prendera' vedra':
+scrivilo come se parlassi a qualcuno che non ha letto niente di questa
+conversazione — quali file, quali funzioni, cosa NON toccare.
+`verify` e' il comando che dimostra quella voce: senza, l'agente deve
+inventarsi come dimostrarla, e spesso non ci riesce.
+`files` elenca i file che quella voce tocchera'. Dichiararli serve a una cosa
+sola e importante: due voci che lavorano in parallelo sullo stesso file si
+ostacolano, e la seconda puo' non riuscire a consegnare. Se due voci devono
+davvero toccare lo stesso file, mettine una in `depends_on` dell'altra.
 
 `spec` — registra cosa significa "finito" per questo obiettivo. Primo tool.
 {"understanding": "LA RICHIESTA RIFORMULATA PER ESTESO",
@@ -414,6 +439,31 @@ STATE_TAIL_SPEC = (
     "Prima di toccare qualunque file: emetti ORA il tool `spec` con la "
     "richiesta riformulata per esteso e i criteri verificabili che rendono "
     "il lavoro finito. Un solo blocco tool, nient altro."
+)
+#: Quando l'agente scrive e scrive senza mai dimostrare niente.
+#:
+#: Il recupero dallo stallo copre l'esplorazione infinita: chi legge e rilegge
+#: senza scrivere. Non copre il caso opposto, ed e' quello che costa di piu':
+#: `turn_was_productive` e' vero per QUALUNQUE tool riuscito, quindi un agente
+#: che scrive dieci file di fila non accumula mai un turno improduttivo e non
+#: viene mai interrotto. Su una prova dal vivo: ventisei turni, cinque file
+#: scritti, **zero comandi eseguiti**, e il cancello che rifiuta la chiusura
+#: alla fine per una verifica che nessuno aveva chiesto per tempo.
+#:
+#: Un difetto che sarebbe stato visibile alla prima esecuzione del test.
+STATE_TAIL_VERIFICA = (
+    "Hai scritto {file} file e non hai ancora eseguito nessuna verifica. "
+    "ESEGUI ORA `{comando}` con il tool `terminal`, e leggi cosa risponde. "
+    "Senza un comando riuscito la chiusura verra' rifiutata, e ogni file che "
+    "scrivi da qui in avanti e' lavoro non dimostrato che si somma a quello "
+    "che gia' non lo e'."
+)
+#: Uguale, ma senza un comando dichiarato: si dice cosa scegliere.
+STATE_TAIL_VERIFICA_LIBERA = (
+    "Hai scritto {file} file e non hai ancora eseguito nessun comando. "
+    "ESEGUI ORA con `terminal` la prova che dimostra questo lavoro — il test "
+    "che lo copre, l'import del modulo che hai scritto, il lint. Senza un "
+    "comando riuscito la chiusura verra' rifiutata."
 )
 #: Ricordato in coda allo stato quando il cancello di completamento ha ceduto.
 STATE_TAIL_SUMMARISE = (
@@ -586,6 +636,97 @@ def _as_history(full_text: str) -> str:
         tail = text[-MAX_ASSISTANT_HISTORY_CHARS // 2:]
         return f"{head}\n[...]\n{tail}"
     return text
+
+
+#: Da quante scritture in poi la mancanza di una prova diventa un problema.
+#: Una sola scrittura non ancora verificata e' il caso normale a meta' lavoro;
+#: tre senza nemmeno un comando sono un modo di lavorare.
+SCRITTURE_SENZA_PROVA = 3
+
+
+def _riassunto_ricerca(result: Dict[str, Any]) -> str:
+    """Una riga che dice com'e' andata la ricerca, per chi guarda il pannello.
+
+    L'osservazione per il modello e' piu' lunga e consiglia cosa fare dopo;
+    questa e' il titolo del fatto, e serve a non lasciare una scheda vuota.
+    """
+    trovate = len(result.get("results") or [])
+    esaminati = int(result.get("scanned_files") or 0)
+    if not trovate:
+        if esaminati == 0 and not int(result.get("skipped_files") or 0):
+            return (f"Nessun file esaminato in '{result.get('path') or '.'}': "
+                    "il percorso non esiste o non contiene file di testo.")
+        return (f"Nessuna corrispondenza per '{result.get('query')}' "
+                f"in {esaminati} file esaminati.")
+    riga = (f"{trovate} corrispondenze per '{result.get('query')}' "
+            f"in {esaminati} file esaminati.")
+    if result.get("capped"):
+        riga += f" Elenco troncato ({result.get('stop_reason') or 'limite'})."
+    return riga
+
+
+def _ricerca_a_vuoto(result: Dict[str, Any]) -> str:
+    """Cosa dire quando una ricerca non trova niente.
+
+    Tre casi diversi che «nessuna corrispondenza» confondeva in uno:
+
+    - **zero file esaminati**: il percorso non esiste o e' vuoto. Cercare
+      un'altra parola non servira' a niente, e il rimedio e' guardare dove si
+      sta cercando;
+    - **file esaminati ma tutti saltati**: erano binari o troppo grandi;
+    - **molti file esaminati**: quel testo li' dentro non c'e', ed e' una
+      risposta utile — ci si puo' contare sopra invece di ricercare.
+    """
+    query = result.get("query")
+    dove = result.get("path") or "."
+    esaminati = int(result.get("scanned_files") or 0)
+    saltati = int(result.get("skipped_files") or 0)
+
+    if esaminati == 0 and saltati == 0:
+        return (
+            f"Nessuna corrispondenza per '{query}': ESAMINATI 0 FILE in "
+            f"'{dove}'. Non e' una risposta sul testo cercato — la cartella "
+            "non esiste, e' vuota, o non contiene file di testo. Verifica il "
+            "percorso con `list_dir` prima di cercare di nuovo: ripetere la "
+            "ricerca con un'altra parola dara' di nuovo zero."
+        )
+
+    riga = (f"Nessuna corrispondenza per '{query}' in '{dove}'. "
+            f"Esaminati {esaminati} file")
+    if saltati:
+        riga += f", {saltati} saltati perche' binari o troppo grandi"
+    riga += (". Il testo cercato li' dentro non c'e': e' una risposta "
+             "affidabile, non un errore. Se ti aspettavi di trovarlo, il nome "
+             "e' diverso da come lo ricordi — cerca una parte piu' corta, "
+             "oppure guarda con `list_dir` dove sta davvero.")
+    return riga
+
+
+def _promemoria_di_verifica(ledger: Any, verify_command: str = "") -> str:
+    """La coda da mettere allo stato quando si scrive e non si dimostra.
+
+    Ritorna stringa vuota quando non serve — che e' quasi sempre. Il costo di
+    questo controllo e' tre letture dal ledger; il costo di non averlo era
+    ventisei turni.
+    """
+    # `modified_files` e' una proprieta', `successful_commands()` un metodo:
+    # il ledger usa le due convenzioni fianco a fianco. Scritto con `getattr`
+    # e un `except Exception` largo, il secondo ritornava il metodo legato,
+    # `list()` sollevava, e l'eccezione veniva inghiottita: il promemoria
+    # taceva sempre e sembrava funzionare. Chiamarli per nome, e lasciare che
+    # un errore di programmazione si veda.
+    modificati = list(ledger.modified_files or [])
+    if len(modificati) < SCRITTURE_SENZA_PROVA:
+        return ""
+    # Un comando riuscito qualsiasi toglie il sospetto: l'agente ha mostrato di
+    # saper eseguire, e il cancello valutera' il resto.
+    if ledger.successful_commands():
+        return ""
+
+    comando = str(verify_command or "").strip()
+    if comando:
+        return STATE_TAIL_VERIFICA.format(file=len(modificati), comando=comando)
+    return STATE_TAIL_VERIFICA_LIBERA.format(file=len(modificati))
 
 
 def _recovery_directive(ledger: Optional["DevSessionLedger"] = None) -> str:
@@ -836,8 +977,60 @@ def extract_implicit_pipeline_from_text(text: str) -> List[Dict[str, Any]]:
     return []
 
 
-def resolve_workspace_path(path: Optional[str], workspace_root: str) -> str:
-    """Normalizes and safely resolves paths within the workspace root."""
+class FuoriDalWorkspace(ValueError):
+    """Un percorso che uscirebbe dalla radice su cui il run sta lavorando.
+
+    Non e' un caso limite teorico. Con il workspace su un progetto esterno,
+    due vie su tre portavano fuori: il percorso assoluto, che veniva
+    restituito tale e quale, e il `..` in mezzo al percorso, che `normpath`
+    risolveva senza che nessuno ricontrollasse il risultato. Da li' si
+    leggeva `config/config.json` di Sigma Studio, dove stanno le credenziali.
+    """
+
+    def __init__(self, percorso: str, radice: str):
+        self.percorso = percorso
+        self.radice = radice
+        super().__init__(
+            f"Percorso rifiutato: '{percorso}' sta fuori dalla cartella di "
+            f"lavoro di questo run ({radice}). Usa un percorso relativo a "
+            "quella cartella. Se il file che ti serve sta davvero altrove, "
+            "il run e' stato aperto sulla cartella sbagliata: dillo invece "
+            "di aggirare il limite."
+        )
+
+
+def _dentro_la_radice(candidato: str, radice: str, richiesto: str) -> str:
+    """Il percorso, se sta nella radice. Altrimenti solleva.
+
+    Il confronto avviene sui percorsi reali: un collegamento simbolico che
+    punta fuori e' un'uscita quanto un `..`, e senza `realpath` passerebbe.
+    `normcase` perche' su Windows due percorsi che differiscono solo nelle
+    maiuscole sono lo stesso percorso.
+
+    Ritorna `candidato` e non la sua forma reale perche' i chiamanti
+    confrontano questa stringa con altre gia' calcolate: risolvere i
+    collegamenti solo qui li farebbe smettere di combaciare.
+    """
+    reale = os.path.normcase(os.path.realpath(candidato))
+    reale_radice = os.path.normcase(os.path.realpath(radice))
+    if reale == reale_radice or reale.startswith(reale_radice + os.sep):
+        return candidato
+    raise FuoriDalWorkspace(richiesto, radice)
+
+
+def resolve_workspace_path(path: Optional[str], workspace_root: str,
+                           strict: bool = True) -> str:
+    """Il percorso assoluto corrispondente, **dentro** la radice di lavoro.
+
+    Il nome prometteva gia' questo; l'implementazione non lo faceva. Ora un
+    percorso che esce solleva `FuoriDalWorkspace`, che `execute_admin_tool`
+    trasforma in un rifiuto leggibile per l'agente.
+
+    `strict=False` serve ai pochi punti che usano il risultato come
+    **etichetta** — una stringa da confrontare con un'altra per capire se un
+    file era gia' stato letto — e non per aprire niente. Non va usato per
+    nessuna operazione sul filesystem: li' il controllo e' l'unica difesa.
+    """
     if not workspace_root:
         workspace_root = get_default_workspace_root()
     workspace_root = os.path.abspath(workspace_root)
@@ -888,10 +1081,13 @@ def resolve_workspace_path(path: Optional[str], workspace_root: str) -> str:
         clean = migliore
 
     if os.path.isabs(clean):
-        return os.path.abspath(clean)
+        candidato = os.path.abspath(clean)
+    else:
+        candidato = os.path.normpath(os.path.join(workspace_root, clean))
 
-    norm = os.path.normpath(os.path.join(workspace_root, clean))
-    return norm
+    if not strict:
+        return candidato
+    return _dentro_la_radice(candidato, workspace_root, str(path))
 
 
 def normalize_tool_params(raw_body: str, tool_name: str) -> Dict[str, Any]:
@@ -1033,7 +1229,36 @@ def execute_admin_tool(
     tool_name: str,
     params: Dict[str, Any],
     workspace_root: str,
-    should_cancel: Optional[Callable[[], bool]] = None
+    should_cancel: Optional[Callable[[], bool]] = None,
+    dimensioni_viste: Optional[Dict[str, int]] = None,
+) -> Dict[str, Any]:
+    """Esegue un tool, con il confine del workspace fatto rispettare.
+
+    Il guscio esiste per un motivo solo: `resolve_workspace_path` viene
+    chiamata da una dozzina di rami diversi, e un rifiuto deve tornare
+    all'agente come risultato leggibile — non come eccezione che interrompe
+    il turno. Cosi' l'agente legge perche' il percorso e' stato rifiutato e
+    riprova con uno buono, invece di vedere il run morire.
+    """
+    try:
+        return _execute_admin_tool_impl(
+            tool_name, params, workspace_root, should_cancel, dimensioni_viste)
+    except FuoriDalWorkspace as fuori:
+        log.warning("[Tool] '%s' fuori dal workspace: %s", tool_name, fuori.percorso)
+        return {
+            "tool": tool_name.lower(),
+            "path": fuori.percorso,
+            "success": False,
+            "error": str(fuori),
+        }
+
+
+def _execute_admin_tool_impl(
+    tool_name: str,
+    params: Dict[str, Any],
+    workspace_root: str,
+    should_cancel: Optional[Callable[[], bool]] = None,
+    dimensioni_viste: Optional[Dict[str, int]] = None,
 ) -> Dict[str, Any]:
     """Executes a single admin developer tool with full workspace resolution and lifecycle hooks."""
     tool_name = tool_name.lower()
@@ -1111,15 +1336,30 @@ def execute_admin_tool(
             }
 
         timeout_sec = int(params.get("timeout_seconds") or params.get("timeout") or 300)
-        res = execute_shell_command_sync(cmd, cwd=cwd, timeout_seconds=timeout_sec, should_cancel=should_cancel)
+        # L'unico punto in cui passano i comandi dell'agente, e quindi l'unico
+        # posto dove ha senso decidere *dove* girano. Host per default; dentro
+        # un contenitore quando la sandbox e' accesa, con il workspace montato
+        # e nient'altro.
+        from core.harness.esecutori import scegli_esecutore
+
+        # La radice serve a scegliere l'immagine giusta per QUESTO
+        # progetto: senza, ogni contenitore userebbe quella generale.
+        esecutore = scegli_esecutore(radice=workspace_root)
+        esito = esecutore.esegui(cmd, cwd=cwd, timeout_s=timeout_sec,
+                                 should_cancel=should_cancel)
         return {
             "tool": "terminal",
             "command": cmd,
             "cwd": cwd,
-            "success": res.get("success", False),
-            "stdout": res.get("stdout", ""),
-            "stderr": res.get("stderr", ""),
-            "returncode": res.get("returncode", 0)
+            "success": esito.success,
+            "stdout": esito.stdout,
+            "stderr": esito.stderr,
+            "returncode": esito.returncode,
+            # Dove e' girato davvero. «Passa sull'host e fallisce nel
+            # contenitore» e' la frase che si dira' piu' spesso quando la
+            # sandbox sara' accesa: senza questo campo non si saprebbe quale
+            # dei due casi si sta guardando.
+            "dove": esito.dove,
         }
 
     elif tool_name in ("read_file", "read"):
@@ -1179,7 +1419,11 @@ def execute_admin_tool(
                 precedente = Path(full_path).read_text(encoding="utf-8", errors="replace")
             except OSError:
                 precedente = ""
-            if would_truncate(precedente, content):
+            # Il confronto e' con la versione piu' grande vista in questo
+            # run, non con l'ultima: altrimenti la guardia si aggira
+            # riscrivendo il file un pezzo per volta.
+            massimo = (dimensioni_viste or {}).get(full_path, 0)
+            if would_truncate(precedente, content, high_water=massimo):
                 return {
                     "tool": "write_file",
                     "path": raw_path,
@@ -1187,8 +1431,9 @@ def execute_admin_tool(
                     "success": False,
                     "error": (
                         f"Rifiutato: la nuova versione di '{raw_path}' e molto piu "
-                        f"corta di quella attuale ({len(content.strip())} caratteri "
-                        f"contro {len(precedente.strip())}), quindi cancellerebbe la "
+                        f"corta ({len(content.strip())} caratteri contro "
+                        f"{max(len(precedente.strip()), massimo)} gia visti in questo "
+                        f"run), quindi cancellerebbe la "
                         "maggior parte del file. Se vuoi modificarne una parte usa "
                         "edit_file. Se la riduzione e voluta, ripeti con "
                         '"allow_truncate": true.'
@@ -1213,6 +1458,10 @@ def execute_admin_tool(
                 pass
 
         res = write_file_content(full_path, content, root=workspace_root)
+        if res.get("success") and dimensioni_viste is not None:
+            dimensioni_viste[full_path] = max(
+                dimensioni_viste.get(full_path, 0), len(content.strip())
+            )
         
         # Multi-language Syntax & Structure Validation (Python, JS/TS, JSX, CSS, JSON)
         if res.get("success") and os.path.exists(full_path):
@@ -1353,35 +1602,111 @@ def execute_admin_tool(
                 "error": "Nessun termine di ricerca fornito: specifica il campo 'query'."
             }
         res = search_workspace_files(full_path, query, should_cancel=should_cancel)
-        return {"tool": "search_code", "query": query, "path": raw_path, **res}
+        esito = {"tool": "search_code", "query": query, "path": raw_path, **res}
+        # Il risultato si descrive da solo. Senza, il pannello mostrava una
+        # scheda «AZIONE: SEARCH_CODE ✓ Completato» e dentro il vuoto: la
+        # ricerca era andata a buon fine e non si vedeva cosa avesse trovato,
+        # ne' quanto avesse guardato per non trovarlo.
+        if not esito.get("error"):
+            esito.setdefault("message", _riassunto_ricerca(esito))
+        return esito
 
     elif tool_name in ("pipeline", "tasks", "set_tasks", "update_pipeline"):
-        raw_tasks = params.get("tasks") or params.get("task_list") or params.get("pipeline") or params.get("items") or []
-        if isinstance(raw_tasks, str):
-            try:
-                raw_tasks = json.loads(raw_tasks)
-            except Exception:
-                lines = [l.strip("- *0123456789.) ").strip() for l in raw_tasks.splitlines() if l.strip()]
-                raw_tasks = [{"id": str(i+1), "title": l, "status": "pending"} for i, l in enumerate(lines)]
+        # La normalizzazione sta in `core.harness.plan` perche' non e' piu'
+        # rinominare tre chiavi: tiene ruolo, descrizione e dipendenze — che
+        # l'Architect scrive e che qui venivano scartate — e corregge le
+        # dipendenze impossibili dicendo cosa ha corretto.
+        from core.harness.plan import normalizza_piano
+        raw_tasks = (params.get("tasks") or params.get("task_list")
+                     or params.get("pipeline") or params.get("items") or [])
+        normalized_tasks, avvisi = normalizza_piano(raw_tasks)
 
-        normalized_tasks = []
-        if isinstance(raw_tasks, list):
-            for i, t in enumerate(raw_tasks):
-                if isinstance(t, dict):
-                    t_id = str(t.get("id") or (i + 1))
-                    t_title = str(t.get("title") or t.get("name") or t.get("task") or f"Task {i+1}")
-                    t_status = str(t.get("status") or "pending").lower()
-                    if t_status not in ("pending", "in_progress", "done"):
-                        t_status = "done" if "complet" in t_status or "done" in t_status else ("in_progress" if "prog" in t_status or "corr" in t_status else "pending")
-                    normalized_tasks.append({"id": t_id, "title": t_title, "status": t_status})
-                elif isinstance(t, str) and t.strip():
-                    normalized_tasks.append({"id": str(i+1), "title": t.strip(), "status": "pending"})
-
+        messaggio = f"Pipeline aggiornata con {len(normalized_tasks)} sotto-task."
+        if avvisi:
+            messaggio += " Correzioni: " + "; ".join(avvisi)
         return {
             "tool": "pipeline",
             "tasks": normalized_tasks,
+            "warnings": avvisi,
             "success": True,
-            "message": f"Pipeline aggiornata con {len(normalized_tasks)} sotto-task."
+            "message": messaggio,
+        }
+
+    elif tool_name in ("queue_add", "add_to_queue", "enqueue", "coda"):
+        # Il ponte fra chi pianifica e chi esegue in parallelo. Prima esisteva
+        # solo `POST /api/harness/queue`: la coda si poteva riempire soltanto
+        # da fuori, e un agente che aveva appena guardato il progetto e capito
+        # come spezzare il lavoro non aveva modo di scriverlo da nessuna parte.
+        from core.harness.workqueue import get_queue
+
+        queue_id = str(params.get("queue_id") or params.get("id") or "").strip()
+        voci = params.get("items") or params.get("voci") or params.get("tasks") or []
+        if isinstance(voci, dict):
+            voci = [voci]
+        if not queue_id:
+            return {
+                "tool": "queue_add", "success": False,
+                "error": ("Manca 'queue_id': e' il nome della coda, e serve per "
+                          "ritrovarla. Usa un nome che descriva il lavoro, per "
+                          'esempio {"queue_id": "i18n_moduli", "items": [...]}.'),
+            }
+        if not isinstance(voci, list) or not voci:
+            return {
+                "tool": "queue_add", "success": False,
+                "error": ("Manca l'elenco 'items'. Ogni voce e' un pezzo di "
+                          "lavoro indipendente, nella forma "
+                          '{"id": "01_nome", "title": "cosa fare, per esteso", '
+                          '"verify": "comando che lo dimostra", '
+                          '"files": ["i file che toccherai"], '
+                          '"depends_on": ["id di una voce precedente"]}.'),
+            }
+
+        coda = get_queue(queue_id, goal=str(params.get("goal") or ""))
+        avvisi: List[str] = []
+
+        # Una voce piu' grande di quanto sembrava si spezza invece di fallire.
+        # E' la mossa che mancava a chi sta lavorando: su una prova dal vivo un
+        # agente ha speso ventisei turni su una voce che erano tre, e non aveva
+        # modo di dirlo se non fallendo.
+        sostituisce = str(params.get("replaces") or params.get("sostituisce") or "").strip()
+        if sostituisce:
+            esito = coda.sostituisci(sostituisce, voci,
+                                     motivo=str(params.get("reason")
+                                                or params.get("motivo") or ""))
+            if not esito.get("ok"):
+                return {"tool": "queue_add", "success": False,
+                        "error": esito.get("error", "sostituzione non riuscita")}
+            stato = coda.progress()
+            return {
+                "tool": "queue_add", "success": True, "queue_id": queue_id,
+                "added": len(esito["created"]), "replaced": esito["replaced"],
+                "warnings": esito.get("warnings") or [],
+                "progress": stato,
+                "message": (
+                    f"Voce '{esito['replaced']}' spezzata in "
+                    f"{len(esito['created'])}: {', '.join(esito['created'])}. "
+                    f"Coda: {stato['total']} voci, {stato['ready']} pronte. "
+                    "Il tuo compito adesso e' chiuso: le parti le prendera' chi "
+                    "viene dopo, te compreso se ne resta una libera."
+                ),
+            }
+
+        aggiunte = coda.add_many(voci, avvisi=avvisi)
+        stato = coda.progress()
+        messaggio = (
+            f"Coda '{queue_id}': {len(aggiunte)} voci aggiunte, "
+            f"{stato['total']} in totale ({stato['ready']} pronte a partire)."
+        )
+        if avvisi:
+            messaggio += " Correzioni: " + "; ".join(avvisi)
+        return {
+            "tool": "queue_add",
+            "success": True,
+            "queue_id": queue_id,
+            "added": len(aggiunte),
+            "warnings": avvisi,
+            "progress": stato,
+            "message": messaggio,
         }
 
     elif tool_name in ("restore_file", "undo_file", "restore_backup", "revert_file"):
@@ -1629,6 +1954,12 @@ def _stream_agent_turn_impl(
     # quella che sta streammando il lavoro.
     review_gate = review.gate_for(session_id) if (review_writes or review_run) else None
 
+    # Quanto e' stato grande ogni file durante questo run. Serve alla
+    # guardia sul troncamento: confrontando solo con la versione
+    # precedente, un agente che riscrive lo stesso file piu' volte lo
+    # erode un pezzo per volta e nessun passo viene mai rifiutato.
+    dimensioni_viste: Dict[str, int] = {}
+
     # Cio' che va rilasciato viene dichiarato adesso, non alla fine: se il run
     # viene abbandonato a meta' — l'utente preme stop, il client chiude lo
     # stream — l'ultima riga di questa funzione non viene mai eseguita, mentre
@@ -1788,12 +2119,24 @@ def _stream_agent_turn_impl(
         if needs_spec_turn:
             spec_attempts += 1
 
+        # Chi scrive senza mai provare va fermato prima della fine, non dopo.
+        # Il momento giusto non e' il primo turno — scrivere prima di
+        # verificare e' l'ordine naturale — ma quando i file cominciano a
+        # essere piu' d'uno e la verifica continua a non esserci.
+        coda_verifica = ""
+        if not needs_spec_turn and not goal_reached and not force_action_turn:
+            coda_verifica = _promemoria_di_verifica(ledger, verify_command)
+
         render_messages = _with_state_block(
             full_messages,
             ledger.render_state_block(),
             STATE_TAIL_SPEC if needs_spec_turn
-            else (STATE_TAIL_SUMMARISE if goal_reached else STATE_TAIL_ACT),
+            else (STATE_TAIL_SUMMARISE if goal_reached
+                  else (coda_verifica or STATE_TAIL_ACT)),
         )
+        if coda_verifica:
+            yield {"type": "status",
+                   "text": "⚠ Scritture senza prove: verifica sollecitata"}
 
         accumulated_response = []
         # Le chiamate strutturate di questo turno, se il provider le produce.
@@ -2241,7 +2584,7 @@ def _stream_agent_turn_impl(
             if force_action_turn and t_name in ("read_file", "read"):
                 probe = t_params.get("path") or ""
                 already = ledger.was_read_before_change(
-                    resolve_workspace_path(probe, workspace_root).replace("\\", "/")
+                    resolve_workspace_path(probe, workspace_root, strict=False).replace("\\", "/")
                 )
                 if already:
                     turn_gave_direction = True
@@ -2262,7 +2605,7 @@ def _stream_agent_turn_impl(
 
             if t_name in ("read_file", "read"):
                 probe = t_params.get("path") or ""
-                resolved = resolve_workspace_path(probe, workspace_root)
+                resolved = resolve_workspace_path(probe, workspace_root, strict=False)
                 marker = f"Contenuto di '{resolved.replace(chr(92), '/')}'"
                 still_visible = any(
                     marker in m.get("content", "") for m in full_messages[2:]
@@ -2391,9 +2734,13 @@ def _stream_agent_turn_impl(
                 if is_mcp_tool(t_name):
                     result = execute_via_mcp(t_name, t_params)
                 else:
-                    result = execute_admin_tool(t_name, t_params, workspace_root, should_cancel=should_cancel)
+                    result = execute_admin_tool(t_name, t_params, workspace_root,
+                                             should_cancel=should_cancel,
+                                             dimensioni_viste=dimensioni_viste)
             except ImportError:
-                result = execute_admin_tool(t_name, t_params, workspace_root, should_cancel=should_cancel)
+                result = execute_admin_tool(t_name, t_params, workspace_root,
+                                             should_cancel=should_cancel,
+                                             dimensioni_viste=dimensioni_viste)
 
             # Il gate di revisione. La modifica e' gia' sul disco — ha superato
             # backup, guardia sul troncamento e controllo di sintassi — ma resta
@@ -2652,7 +2999,20 @@ def _stream_agent_turn_impl(
                         + "\n".join(f"  #{c['id']} {c['text']}" for c in registrati)
                     )
             elif t_name in ("pipeline", "tasks", "set_tasks", "update_pipeline"):
-                obs_str += f"Pipeline aggiornata: {len(result.get('tasks', []))} task registrati."
+                registrati = result.get("tasks", []) or []
+                obs_str += f"Pipeline aggiornata: {len(registrati)} task registrati."
+                per_ruolo: Dict[str, int] = {}
+                for t in registrati:
+                    per_ruolo[t.get("role", "")] = per_ruolo.get(t.get("role", ""), 0) + 1
+                if per_ruolo:
+                    obs_str += " Ruoli: " + ", ".join(
+                        f"{r} x{n}" for r, n in sorted(per_ruolo.items()))
+                # Un piano corretto di nascosto insegna al modello che quel
+                # piano andava bene: le correzioni si dicono.
+                for avviso in result.get("warnings", []) or []:
+                    obs_str += f"\nATTENZIONE: {avviso}"
+            elif t_name in ("queue_add", "add_to_queue", "enqueue", "coda"):
+                obs_str += str(result.get("message") or result.get("error") or "")
             elif t_name in ("complete_goal", "finish_task", "task_complete"):
                 if result.get("success"):
                     obs_str += f"Obiettivo finale completato: {result.get('summary', '')}"
@@ -2669,7 +3029,15 @@ def _stream_agent_turn_impl(
                 if result.get("error"):
                     obs_str = f"Tool 'search_code' non eseguito: {result.get('error')}\n"
                 elif not matches:
-                    obs_str += f"Nessuna corrispondenza per '{result.get('query')}' in '{result.get('path')}'."
+                    # Una ricerca a vuoto non e' un'osservazione vuota: e'
+                    # un'informazione, ma solo se dice **quanto** ha guardato.
+                    # «Nessuna corrispondenza» dopo quattrocento file significa
+                    # che quel nome non esiste; dopo zero file significa che il
+                    # percorso e' sbagliato, ed e' un problema completamente
+                    # diverso. Il risultato portava gia' `scanned_files` e non
+                    # arrivava all'agente: leggeva una scatola vuota e ripeteva
+                    # la stessa ricerca con un termine simile.
+                    obs_str += _ricerca_a_vuoto(result)
                 else:
                     lines = [
                         f"{m.get('path')}:{m.get('line_number')}: {str(m.get('line_content', ''))[:160]}"
@@ -2787,7 +3155,7 @@ def _stream_agent_turn_impl(
     # e' il posto dove far attendere chi ha appena premuto stop.
     applica = bool(goal_reached)
     if review_run and session_wt is not None and review_gate is not None:
-        for evento in _rivedi_lavoro_del_run(
+        for evento in rivedi_lavoro_del_run(
             session_wt, review_gate, session_id, goal_reached
         ):
             if evento.get("type") == "__decisione__":
@@ -2808,7 +3176,7 @@ def _stream_agent_turn_impl(
         delivery.in_pull_request_mode() if deliver is None else bool(deliver)
     )
     if applica and session_wt is not None and consegna_prevista:
-        for evento in _consegna_il_lavoro(session_wt, workspace_root, ledger):
+        for evento in consegna_il_lavoro(session_wt, workspace_root, ledger):
             if evento.get("type") == "__consegnato__":
                 consegnato = bool(evento.get("ok"))
                 continue
@@ -2824,6 +3192,11 @@ def _stream_agent_turn_impl(
         _chiusura["goal_reached"] = bool(goal_reached)
         _chiusura["apply_changes"] = applica
         _chiusura["delivered"] = consegnato
+        # Serve alla chiusura per recuperare cio' che git ignora.
+        try:
+            _chiusura["file_scritti"] = list(ledger.modified_files or [])
+        except Exception:
+            _chiusura["file_scritti"] = []
 
     # Se il run ha toccato dei file di un modulo, quel lavoro appartiene al
     # repository del modulo, non a questo. Senza questo passo non finirebbe in
@@ -2836,6 +3209,26 @@ def _stream_agent_turn_impl(
     sincronizzati = _sincronizza_moduli_toccati(ledger, goal_text)
     if sincronizzati:
         yield sincronizzati
+
+    # Il consuntivo: cosa e' stato fatto, come funziona, come lo sappiamo.
+    # Costruito dai fatti che il ledger ha registrato mentre succedevano, non
+    # da cio' che il modello dice di aver fatto — quello lo sa scrivere anche
+    # un modello che non ha fatto niente, e su questo progetto e' successo.
+    try:
+        from core.harness.resoconto import resoconto as _resoconto
+
+        yield {
+            "type": "run_report",
+            "goal_reached": bool(goal_reached),
+            "report": _resoconto(
+                ledger.snapshot(),
+                obiettivo=goal_text,
+                branch=getattr(session_wt, "branch_name", "") or "",
+                raggiunto=bool(goal_reached),
+            ),
+        }
+    except Exception as exc:  # il resoconto non deve poter far fallire un run
+        log.debug("[Resoconto] non prodotto: %s", exc)
 
     yield {"type": "run_metrics", **run_metrics}
     yield {"type": "done", "full_text": full_text}
@@ -2874,7 +3267,7 @@ def _sincronizza_moduli_toccati(ledger: Any, obiettivo: str = "") -> Optional[Di
 MAX_CARATTERI_DIFF_RUN = 60_000
 
 
-def _rivedi_lavoro_del_run(
+def rivedi_lavoro_del_run(
     sessione_wt: Any,
     gate: Any,
     session_id: Optional[str],
@@ -2936,7 +3329,7 @@ def _rivedi_lavoro_del_run(
     yield {"type": "__decisione__", "apply": applica}
 
 
-def _consegna_il_lavoro(
+def consegna_il_lavoro(
     sessione_wt: Any,
     workspace_root: str,
     ledger: Any,
@@ -2959,11 +3352,22 @@ def _consegna_il_lavoro(
             len(getattr(sessione_wt, "checkpoints", [])) + 1, "consegna"
         )
         obiettivo = str(getattr(ledger, "goal", "") or "")
+        # Chi deve accettare il lavoro vuole sapere quali criteri sono stati
+        # accettati e quale comando li ha dimostrati. Sono nel ledger: qui
+        # diventano il corpo della richiesta.
+        from core.harness.resoconto import resoconto as _resoconto
+        try:
+            racconto = _resoconto(ledger.snapshot(), obiettivo=obiettivo,
+                                  branch=getattr(sessione_wt, "branch_name", ""))
+        except Exception as exc:
+            log.debug("[Delivery] resoconto non prodotto: %s", exc)
+            racconto = ""
         esito = delivery.deliver_branch(
             workspace_root,
             getattr(sessione_wt, "branch_name", ""),
             obiettivo=obiettivo,
             file=toccati,
+            resoconto=racconto,
         )
     except Exception as exc:
         log.warning("[AdminAgent] consegna non riuscita: %s", exc)
@@ -3021,7 +3425,13 @@ def _chiudi_run(chiusura: Dict[str, Any]) -> Dict[str, Any]:
     try:
         if chiusura.get("worktree") is not None:
             esito = worktree.release_session_worktree(
-                session_id, apply_changes=raggiunto
+                session_id, apply_changes=raggiunto,
+                # I file che git ignora non passano dal diff: senza questo
+                # elenco sparirebbero con la cartella del run. In questo
+                # progetto e' meta' dell'interfaccia — `sigma_studio/src/
+                # modules/*` e' ignorato, e ogni lavoro sui moduli fatto in
+                # isolamento veniva buttato senza una parola.
+                percorsi_scritti=chiusura.get("file_scritti") or [],
             ) or {}
     except Exception as exc:
         log.warning("[AdminAgent] rilascio worktree non riuscito: %s", exc)
@@ -3041,13 +3451,52 @@ def stream_admin_agent_turn(*args: Any, **kwargs: Any) -> Generator[Dict[str, An
     Un `finally` qui vale anche per quel caso, perche' la chiusura del
     generatore lo attraversa.
     """
+    from core.harness import attivita
+    from core.harness.resoconto import narra
+
+    # Chi guarda l'interfaccia deve vedere che qualcosa sta girando, anche se
+    # il run e' stato lanciato da un'altra parte: una curl, il ventaglio, un
+    # altro browser. Lo stream degli eventi vale solo per chi e' attaccato
+    # allo stream, e non e' quasi mai chi apre la pagina.
+    obiettivo = ""
+    try:
+        messaggi = kwargs.get("messages") or (args[0] if args else [])
+        obiettivo = str((messaggi or [{}])[-1].get("content") or "")[:200]
+    except Exception:
+        obiettivo = ""
+    voce_attivita = attivita.apri(
+        "agente", obiettivo,
+        workspace_root=kwargs.get("workspace_root"),
+        session_id=kwargs.get("session_id"),
+        ruolo=kwargs.get("policy_label") or None,
+    )
+
     chiusura: Dict[str, Any] = {}
     completato = False
+    turni = 0
     try:
         for evento in _stream_agent_turn_impl(*args, _chiusura=chiusura, **kwargs):
             yield evento
+            if evento.get("type") == "turn_start":
+                turni += 1
+                attivita.aggiorna(voce_attivita, progress=f"turno {turni}")
+            # Il diario sta qui e non dentro il ciclo perche' qui passano
+            # **tutti** gli eventi, compresi quelli che il ciclo emette da
+            # rami diversi: una riga aggiunta la' andrebbe aggiunta in
+            # quindici posti, e il sedicesimo verrebbe dimenticato.
+            try:
+                riga = narra(evento)
+            except Exception:  # nessun racconto vale un run interrotto
+                riga = None
+            if riga:
+                yield {"type": "diario", "text": riga, "at": time.time()}
         completato = True
     finally:
+        attivita.chiudi(
+            voce_attivita,
+            "obiettivo raggiunto" if chiusura.get("goal_reached") else "chiuso",
+            turni=turni,
+        )
         esito = _chiudi_run(chiusura)
 
     # Dove e' finito il lavoro, quando c'e' un worktree di mezzo. Un branch di
@@ -3056,6 +3505,17 @@ def stream_admin_agent_turn(*args: Any, **kwargs: Any) -> Generator[Dict[str, An
     # Solo sul percorso normale: durante la chiusura di un generatore non si
     # puo' emettere altro, e a quel punto non c'e' nemmeno piu' nessuno che
     # ascolta.
+    # Un run che ha chiuso l'obiettivo ma il cui lavoro non e' arrivato
+    # all'albero non e' un run riuscito: chi lo ha lanciato deve saperlo, e
+    # soprattutto deve saperlo il ventaglio, che altrimenti segna la voce come
+    # fatta mentre il lavoro resta su un branch.
+    if completato and chiusura.get("goal_reached") and esito.get("branch")             and not esito.get("applied") and not chiusura.get("delivered"):
+        yield {
+            "type": "apply_failed",
+            "branch": esito["branch"],
+            "checkpoints": esito.get("checkpoints", 0),
+        }
+
     if completato and esito.get("branch") and not chiusura.get("delivered"):
         yield {
             "type": "worktree_preserved",

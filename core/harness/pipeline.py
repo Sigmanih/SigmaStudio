@@ -304,6 +304,48 @@ class TaskPipeline:
         log.info("Inserted fix task '%s' after failed '%s'", fix_id, after_task_id)
         return fix_task
 
+    def replan(self, nuovi_task: List[TaskNode]) -> Dict[str, Any]:
+        """Sostituisce la parte non fatta del piano, tenendo quella fatta.
+
+        Serve quando il piano stesso si rivela sbagliato a meta' strada. Il
+        punto delicato e' uno solo: **cio' che e' gia' stato fatto non si
+        rifa'**. Un piano nuovo che riparte da zero sovrascrive lavoro buono
+        con lavoro identico o peggiore, e sul conto dei turni lo paga due volte.
+
+        Restano quindi i nodi `DONE` — con i loro file e il loro esito — e
+        spariscono tutti gli altri, compresi i falliti: la loro sostituzione e'
+        esattamente cio' che il piano nuovo sta portando.
+
+        Una dipendenza del piano nuovo verso un task gia' fatto viene tenuta:
+        e' soddisfatta per costruzione. Una verso qualcosa che non esiste piu'
+        viene tolta, altrimenti quel task non partirebbe mai.
+        """
+        with self._lock:
+            tenuti = {nid: n for nid, n in self.nodes.items()
+                      if n.status == TaskStatus.DONE}
+            sostituiti = [nid for nid in self.nodes if nid not in tenuti]
+
+            aggiunti: List[str] = []
+            for nodo in nuovi_task:
+                if nodo.id in tenuti:
+                    # Un id riusato per un task diverso: rinominarlo e' meglio
+                    # che sovrascrivere la storia di quello fatto.
+                    nodo.id = f"{nodo.id}-bis"
+                tenuti[nodo.id] = nodo
+                aggiunti.append(nodo.id)
+
+            noti = set(tenuti)
+            for nid in aggiunti:
+                nodo = tenuti[nid]
+                nodo.depends_on = [d for d in nodo.depends_on
+                                   if d in noti and d != nid]
+
+            self.nodes = tenuti
+            log.info("Pipeline ripianificata: %d task tenuti, %d sostituiti, %d nuovi",
+                     len(tenuti) - len(aggiunti), len(sostituiti), len(aggiunti))
+            return {"kept": len(tenuti) - len(aggiunti),
+                    "replaced": len(sostituiti), "added": len(aggiunti)}
+
     def reorder_after_failure(self, failed_task_id: str) -> None:
         """Block downstream tasks when a task fails without retries left."""
         with self._lock:

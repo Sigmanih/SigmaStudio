@@ -222,7 +222,7 @@ class TestIlCicloConsegna:
 
         sorgente = inspect.getsource(_stream_agent_turn_impl)
         assert "delivery.in_pull_request_mode()" in sorgente
-        assert "_consegna_il_lavoro(" in sorgente
+        assert "consegna_il_lavoro(" in sorgente
 
     def test_una_consegna_riuscita_non_applica_anche_all_albero(self, monkeypatch):
         """Sarebbe il lavoro in due posti, e uno dei due nessuno lo ha accettato."""
@@ -241,7 +241,7 @@ class TestIlCicloConsegna:
         class Ledger:
             goal = "obiettivo"
 
-        eventi = list(modulo_loop._consegna_il_lavoro(Sessione(), ".", Ledger()))
+        eventi = list(modulo_loop.consegna_il_lavoro(Sessione(), ".", Ledger()))
         assert eventi[0]["type"] == "run_delivered"
         assert eventi[-1] == {"type": "__consegnato__", "ok": True}
 
@@ -262,7 +262,7 @@ class TestIlCicloConsegna:
         class Ledger:
             goal = "obiettivo"
 
-        eventi = list(modulo_loop._consegna_il_lavoro(Sessione(), ".", Ledger()))
+        eventi = list(modulo_loop.consegna_il_lavoro(Sessione(), ".", Ledger()))
         assert eventi[0]["type"] == "delivery_failed"
         assert eventi[-1] == {"type": "__consegnato__", "ok": False}
 
@@ -277,5 +277,5 @@ class TestIlCicloConsegna:
         class Ledger:
             goal = "x"
 
-        eventi = list(modulo_loop._consegna_il_lavoro(Vuota(), ".", Ledger()))
+        eventi = list(modulo_loop.consegna_il_lavoro(Vuota(), ".", Ledger()))
         assert eventi == [{"type": "__consegnato__", "ok": False}]

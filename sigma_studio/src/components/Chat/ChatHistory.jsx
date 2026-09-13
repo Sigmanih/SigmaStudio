@@ -1,5 +1,5 @@
 import React from 'react';
-import { FileText, Plus, Bot, Trash2, ChevronDown, X, Copy } from 'lucide-react';
+import { FileText, Plus, Bot, Trash2, ChevronDown, X, Copy, Download } from 'lucide-react';
 import { getSessionStats, formatSessionTime } from './chatStorage';
 
 export default function ChatHistory({
@@ -7,7 +7,7 @@ export default function ChatHistory({
   sessions, groupedSessions, sessionMessages,
   activeSessionId, onSwitchSession,
   editingSessionName, editNameValue, onEditNameChange, onFinishRename, onKeyDown,
-  onStartRename, onDeleteSession, onNewSession, onDuplicateSession
+  onStartRename, onDeleteSession, onNewSession, onDuplicateSession, onExportPdfSession
 }) {
   const handleItemSelect = (sessionId) => {
     onSwitchSession(sessionId);
@@ -116,6 +116,19 @@ export default function ChatHistory({
                         </div>
                       </div>
                       <div className="chat-history-item-actions" style={{ display: 'flex', alignItems: 'center', gap: '3px', flexShrink: 0 }}>
+                        {onExportPdfSession && (
+                          <button
+                            type="button"
+                            className="chat-history-item-pdf"
+                            onClick={e => {
+                              e.stopPropagation();
+                              onExportPdfSession(session);
+                            }}
+                            title="Salva sessione in PDF"
+                          >
+                            <Download size={11} />
+                          </button>
+                        )}
                         {onDuplicateSession && (
                           <button 
                             type="button"

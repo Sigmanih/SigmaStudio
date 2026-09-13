@@ -287,12 +287,20 @@ def handle_knowledge_db(self):
 
 def _get_fallback_image(filename: str) -> str:
     fn = filename.lower()
-    if "math" in fn:
+    if any(k in fn for k in ("medic", "salute", "health", "bio", "doctor")):
+        return "/images/medico_ai.jpg"
+    if any(k in fn for k in ("design", "viz", "art", "creat", "ui", "writer", "narrat", "content")):
+        return "/images/designer_ai.jpg"
+    if any(k in fn for k in ("law", "leg", "avvocat", "diritto", "finan", "quant", "econom", "tradut")):
+        return "/images/quant_law_ai.jpg"
+    if any(k in fn for k in ("math", "matemat", "fisic", "comput")):
         return "/images/matematicoAi.png"
-    if "code" in fn or "program" in fn or "dev" in fn:
+    if any(k in fn for k in ("code", "program", "dev", "test", "engineer", "cyber", "robot", "iot")):
         return "/images/programmatoreAi.png"
-    if "architect" in fn or "admin" in fn:
+    if any(k in fn for k in ("architect", "admin", "kernel")):
         return "/images/agente0.png"
+    if any(k in fn for k in ("sigma", "assist", "docente", "tutor")):
+        return "/images/sigma_logo_harmonic_flow.jpg"
     return "/images/default.png"
 
 
@@ -598,6 +606,8 @@ def handle_manifesti_hub(self):
         for item in MANIFESTS_CATALOG:
             item_copy = dict(item)
             item_copy["installed"] = item["filename"].lower() in installed_files
+            if not item_copy.get("image"):
+                item_copy["image"] = _get_fallback_image(item.get("filename", "") or item.get("id", ""))
             catalog.append(item_copy)
 
         self.send_json_response({

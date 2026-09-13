@@ -362,18 +362,20 @@ export default function Sidebar({
   const isVoiceInstalled = modulesState.sigma_voice_studio === true;
   const isDevInstalled = modulesState.sigma_developer_lab === true;
   const isNetworkInstalled = modulesState.sigma_network_lab === true;
-  // NOTA: queste bandiere sono scritte a mano una per modulo. Il backend
-  // scopre i moduli dai manifest e useModuleState ne riporta lo stato, ma
-  // la sidebar li elenca ancora qui: un modulo installato senza la sua riga
-  // resta invisibile pur funzionando in tutto il resto.
   const isSigmaNetworkInstalled = modulesState.sigma_network === true;
   const isEmailInstalled = modulesState.sigma_email_client === true;
   const isMessagingInstalled = modulesState.sigma_messaging_hub === true;
 
-  // Verifica se ci sono skill installate per ciascun sottoargomento
-  const hasMultimodal = isCreativeInstalled || isVoiceInstalled || isDomoticaInstalled || isAudioInstalled;
-  const hasStudio = isBenchmarkInstalled || isTrainingInstalled || isResearchInstalled || isRoadmapInstalled || isKnowledgeInstalled;
-  const hasInfra = isDevInstalled || isHardwareInstalled || isNetworkInstalled || isSigmaNetworkInstalled;
+  // Moduli opzionali remoti (Catalogo Git)
+  const isAudioEngineInstalled = modulesState.audio_engine === true;
+  const isVisionInstalled = modulesState.vision_agent === true;
+  const isRoboticsInstalled = modulesState.robotics_ros2 === true;
+  const isQuantInstalled = modulesState.financial_quant === true;
+
+  // Verifica se ci sono skill installate per ciascun macro-sottoargomento (allineato con il catalogo Skills)
+  const hasMultimodal = isCreativeInstalled || isVoiceInstalled || isDomoticaInstalled || isAudioInstalled || isAudioEngineInstalled || isVisionInstalled;
+  const hasStudio = isBenchmarkInstalled || isTrainingInstalled || isResearchInstalled || isRoadmapInstalled || isKnowledgeInstalled || isQuantInstalled;
+  const hasInfra = isDevInstalled || isHardwareInstalled || isNetworkInstalled || isSigmaNetworkInstalled || isRoboticsInstalled;
   const hasComms = isEmailInstalled || isMessagingInstalled;
 
   // Poll for counts (chat sessions, manifesti, topics, etc.)
@@ -463,9 +465,9 @@ export default function Sidebar({
 
   // Count total active modular skills
   const totalActiveSkills = [
-    isCreativeInstalled, isVoiceInstalled, isDomoticaInstalled, isAudioInstalled,
-    isTrainingInstalled, isResearchInstalled, isRoadmapInstalled, isKnowledgeInstalled,
-    isDevInstalled, isHardwareInstalled, isNetworkInstalled, isSigmaNetworkInstalled,
+    isCreativeInstalled, isVoiceInstalled, isDomoticaInstalled, isAudioInstalled, isAudioEngineInstalled, isVisionInstalled,
+    isTrainingInstalled, isResearchInstalled, isRoadmapInstalled, isKnowledgeInstalled, isBenchmarkInstalled, isQuantInstalled,
+    isDevInstalled, isHardwareInstalled, isNetworkInstalled, isSigmaNetworkInstalled, isRoboticsInstalled,
     isEmailInstalled, isMessagingInstalled,
     ...dynamicInstalledModules.map(() => true)
   ].filter(Boolean).length;
@@ -608,7 +610,7 @@ export default function Sidebar({
             badgeColor="rgba(255,184,108,0.2)"
             active={activeTabId != null && activeTabId.startsWith('model_hub')}
             onClick={() => {
-              openTab({ name: 'Modelli' }, 'model_hub');
+              handleSelectModelTab('inventory');
               setModelsExpanded(true);
             }} 
             expandable={true}
@@ -684,10 +686,7 @@ export default function Sidebar({
             badge="STORE"
             badgeColor="rgba(234,179,8,0.2)"
             active={activeTabId != null && activeTabId.startsWith('marketplace')}
-            onClick={() => {
-              openTab({ name: 'Skills' }, 'marketplace');
-              setSkillsExpanded(true);
-            }} 
+            onClick={() => setSkillsExpanded(prev => !prev)} 
             expandable={true}
             expanded={skillsExpanded}
             onToggleExpand={() => setSkillsExpanded(prev => !prev)}
@@ -876,6 +875,28 @@ export default function Sidebar({
                       onClick={() => openTab({ name: 'Musica' }, 'music')} 
                     />
                   )}
+
+                  {isAudioEngineInstalled && (
+                    <SidebarItem 
+                      icon={Sparkles} 
+                      label="Audio Engine" 
+                      badge="VOICE"
+                      badgeColor="rgba(255,121,198,0.15)"
+                      active={activeTabId != null && activeTabId.startsWith('audio_studio')}
+                      onClick={() => openTab({ name: 'Audio Engine' }, 'audio_studio')} 
+                    />
+                  )}
+
+                  {isVisionInstalled && (
+                    <SidebarItem 
+                      icon={Sparkles} 
+                      label="Vision Lab" 
+                      badge="VL"
+                      badgeColor="rgba(0,210,255,0.15)"
+                      active={activeTabId != null && activeTabId.startsWith('vision_lab')}
+                      onClick={() => openTab({ name: 'Vision Lab' }, 'vision_lab')} 
+                    />
+                  )}
                 </div>
               )}
             </div>
@@ -965,6 +986,17 @@ export default function Sidebar({
                       onClick={() => openTab({ name: 'Argomenti' }, 'knowledge')} 
                     />
                   )}
+
+                  {isQuantInstalled && (
+                    <SidebarItem 
+                      icon={Sparkles} 
+                      label="Quant Lab" 
+                      badge="QUANT"
+                      badgeColor="rgba(210,153,34,0.15)"
+                      active={activeTabId != null && activeTabId.startsWith('quant_lab')}
+                      onClick={() => openTab({ name: 'Quant Lab' }, 'quant_lab')} 
+                    />
+                  )}
                 </div>
               )}
             </div>
@@ -1040,6 +1072,17 @@ export default function Sidebar({
                       badgeColor="rgba(88,101,242,0.15)"
                       active={activeTabId != null && activeTabId.startsWith('sigma_network')}
                       onClick={() => openTab({ name: 'Sigma Network' }, 'sigma_network')}
+                    />
+                  )}
+
+                  {isRoboticsInstalled && (
+                    <SidebarItem 
+                      icon={Sparkles} 
+                      label="Robotica ROS2" 
+                      badge="ROS2"
+                      badgeColor="rgba(63,185,80,0.15)"
+                      active={activeTabId != null && activeTabId.startsWith('robotics_tab')}
+                      onClick={() => openTab({ name: 'Robotica ROS2' }, 'robotics_tab')} 
                     />
                   )}
                 </div>

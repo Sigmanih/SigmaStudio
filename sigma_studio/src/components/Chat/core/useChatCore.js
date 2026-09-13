@@ -39,7 +39,8 @@ export default function useChatCore(extraProps = {}) {
 
   const welcomeMessageObj = {
     role: 'assistant',
-    content: '# 🤖 Sigma AI Studio\n\nChat pronta.',
+    isWelcome: true,
+    content: '',
     timestamp: new Date().toISOString()
   };
 

@@ -56,6 +56,9 @@ class EsitoVoce:
     turns: int = 0
     files: List[str] = field(default_factory=list)
     error: str = ""
+    #: La mossa che la diagnosi suggerisce: riprova, correggi, ripianifica,
+    #: rinuncia. Vuota quando la voce e' riuscita.
+    diagnosi: str = ""
     #: Dove sta il lavoro, riuscito o no. Un branch di cui nessuno conosce
     #: il nome e' perso quanto uno cancellato.
     branch: str = ""
@@ -63,10 +66,11 @@ class EsitoVoce:
     def to_dict(self) -> Dict[str, Any]:
         return {"item_id": self.item_id, "title": self.title, "ok": self.ok,
                 "turns": self.turns, "files": self.files,
-                "error": self.error, "branch": self.branch}
+                "error": self.error, "diagnosi": self.diagnosi,
+                "branch": self.branch}
 
 
-def _prompt_voce(voce: Voce, obiettivo_generale: str) -> str:
+def _prompt_voce(voce: Voce, obiettivo_generale: str, queue_id: str = "") -> str:
     """Il compito di un singolo lavoratore.
 
     L'obiettivo generale c'e' perche' senza di esso la voce non si capisce:
@@ -95,6 +99,24 @@ def _prompt_voce(voce: Voce, obiettivo_generale: str) -> str:
             "Occupati SOLO del pezzo qui sopra. Altri agenti stanno lavorando "
             "sugli altri in parallelo: non toccare file che non ti competono, "
             "e non riscrivere parti condivise se non e' proprio il tuo compito.",
+        ]
+    if queue_id:
+        # Chi lavora deve poter dire «questo e' piu' grande di quanto
+        # sembrava». Senza questa via d'uscita l'unico modo e' fallire: su una
+        # prova dal vivo un agente ha speso ventisei turni su una voce che
+        # erano tre, ha scritto cinque file e non ne ha dimostrato nessuno.
+        righe += [
+            "",
+            f"SEI SULLA VOCE `{voce.id}` DELLA CODA `{queue_id}`.",
+            "Se ti accorgi che e' piu' grande di un solo lavoro — piu' file "
+            "indipendenti, o passi che vanno in ordine — NON provare a farla "
+            "tutta: spezzala, con",
+            f'  tool:queue_add {{"queue_id": "{queue_id}", '
+            f'"replaces": "{voce.id}", "reason": "PERCHE ERA TROPPO GRANDE", '
+            '"items": [{"id": "...", "title": "...", "verify": "..."}]}',
+            "Spezzare al secondo o terzo turno vale piu' che arrivare al "
+            "ventiseiesimo senza aver dimostrato niente. Dopo averla spezzata "
+            "il tuo compito e' finito: chiudi.",
         ]
     if verifica:
         righe += [
@@ -134,6 +156,18 @@ def run_queue(
     `deliver` lascia che ogni run consegni il proprio pezzo (branch, `dev`,
     richiesta). Spento, il lavoro resta sui branch dei singoli run.
     """
+    # Il confine dei percorsi impedisce di uscire dalla radice, e non dice
+    # niente su quanto quella radice sia larga: con `C:/` come radice, «non
+    # uscire» non vieta piu' niente. Qui si rifiuta prima di partire, perche'
+    # N agenti in parallelo su un disco intero e' esattamente lo scenario che
+    # nessuno vuole scoprire a cose fatte.
+    from core.progetti import radice_pericolosa
+
+    motivo = radice_pericolosa(workspace_root)
+    if motivo:
+        yield {"type": "error", "error": motivo}
+        return
+
     coda = get_queue(queue_id, goal=goal)
     obiettivo = coda.goal or goal
     numero = max(1, min(int(workers or LAVORATORI_PREDEFINITI), LAVORATORI_MASSIMI))
@@ -154,6 +188,13 @@ def run_queue(
         while not annullato():
             voce = coda.claim(worker=nome)
             if voce is None:
+                # Niente da prendere non vuol dire niente da fare: l'unica
+                # voce rimasta puo' essere in attesa di quella che un altro
+                # lavoratore ha in mano adesso. Andarsene qui chiuderebbe i
+                # thread con la coda a meta'.
+                if coda.attesa_utile():
+                    time.sleep(0.5)
+                    continue
                 return
             emetti({"type": "item_started", "worker": nome,
                     "item_id": voce.id, "title": voce.title})
@@ -163,7 +204,22 @@ def run_queue(
                 should_cancel=annullato, deliver=deliver,
             )
             emetti({"type": "item_finished", "worker": nome, **esito.to_dict()})
-            emetti({"type": "fanout_progress", **coda.progress()})
+            avanzamento = coda.progress()
+            emetti({"type": "fanout_progress", **avanzamento})
+            attivita.aggiorna(
+                voce_attivita,
+                progress="%s fatte su %s" % (avanzamento["done"], avanzamento["total"]),
+                queue=avanzamento,
+            )
+
+    # Il ventaglio nel registro: chi apre il Developer Studio deve vedere che
+    # c'e' un lavoro grande in corso, non solo i singoli run che lo compongono.
+    from core.harness import attivita
+
+    voce_attivita = attivita.apri(
+        "ventaglio", obiettivo or f"coda {queue_id}",
+        workspace_root=workspace_root, queue_id=queue_id, workers=numero,
+    )
 
     yield {"type": "fanout_started", "workers": numero, **coda.progress()}
 
@@ -197,7 +253,13 @@ def run_queue(
         for evento in eventi:
             yield evento
 
-    yield {"type": "fanout_finished", "cancelled": annullato(), **coda.progress()}
+    finale = coda.progress()
+    attivita.chiudi(
+        voce_attivita,
+        "annullato" if annullato() else "finito",
+        queue=finale,
+    )
+    yield {"type": "fanout_finished", "cancelled": annullato(), **finale}
 
 
 def _file_modificati(stato: Dict[str, Any]) -> List[str]:
@@ -247,11 +309,14 @@ def _esegui_voce(
     verifica = str((voce.payload or {}).get("verify") or "").strip()
     esito = EsitoVoce(item_id=voce.id, title=voce.title, ok=False)
     file_toccati: List[str] = []
+    ultimo_stato: Dict[str, Any] = {}
     raggiunto = False
+    non_applicato = {"si": False}
 
     try:
         for evento in stream_admin_agent_turn(
-            messages=[{"role": "user", "content": _prompt_voce(voce, obiettivo)}],
+            messages=[{"role": "user",
+                       "content": _prompt_voce(voce, obiettivo, coda.queue_id)}],
             workspace_root=workspace_root,
             model_name=model_name,
             max_turns=max_turns,
@@ -280,9 +345,20 @@ def _esegui_voce(
                 esito.turns = int(evento.get("turns") or 0)
                 raggiunto = bool(evento.get("goal_reached"))
             elif tipo == "ledger":
-                file_toccati = _file_modificati(evento.get("state") or {}) or file_toccati
+                stato = evento.get("state") or {}
+                file_toccati = _file_modificati(stato) or file_toccati
+                # L'ultimo snapshot e' la materia su cui si diagnostica un
+                # fallimento: senza, resterebbe solo «non ha funzionato».
+                ultimo_stato.update(stato)
             elif tipo in ("run_delivered", "delivery_failed"):
                 file_toccati = list(evento.get("files") or file_toccati)
+            elif tipo == "apply_failed":
+                # L'obiettivo e' stato chiuso ma il lavoro non e' arrivato
+                # nell'albero: la voce NON e' fatta. Segnarla fatta lascerebbe
+                # la coda che dichiara un lavoro compiuto mentre il codice sta
+                # su un branch che nessuno guardera'.
+                esito.branch = str(evento.get("branch") or esito.branch)
+                non_applicato["si"] = True
             elif tipo == "worktree_preserved":
                 # Il run e' finito senza chiudere: qui c'e' il branch su cui il
                 # lavoro e' rimasto, ed e' l'unica cosa che serve sapere per
@@ -291,15 +367,38 @@ def _esegui_voce(
     except Exception as exc:
         log.warning("[Fanout] voce '%s' interrotta da un errore: %s", voce.id, exc)
         esito.error = str(exc)
+        # Anche qui: se la voce e' gia' stata spezzata, farla fallire la
+        # riporterebbe in coda accanto ai propri pezzi.
+        if _e_stata_spezzata(coda, voce, esito, file_toccati):
+            return esito
         coda.fail(voce.id, esito.error)
         return esito
 
+    # Se durante il run la voce e' stata spezzata — l'agente ha usato
+    # `queue_add` con `replaces` — non c'e' piu' niente da chiudere: i pezzi
+    # hanno preso il suo posto. Scriverci sopra un fallimento la riporterebbe
+    # in coda accanto ai propri pezzi, e verrebbe rifatta da capo mentre loro
+    # la stanno gia' facendo. E' successo: la voce risultava «spezzata in due»
+    # **e** fallita, e due lavoratori hanno prodotto lo stesso modulo con due
+    # nomi diversi.
+    if _e_stata_spezzata(coda, voce, esito, file_toccati):
+        return esito
+
     esito.files = file_toccati
-    esito.ok = raggiunto
+    # Chiudere l'obiettivo non basta: il lavoro deve essere arrivato dove
+    # serve. Su un ventaglio vero cinque voci su otto hanno chiuso mentre la
+    # patch verso l'albero falliva, e la coda le ha segnate fatte.
+    esito.ok = raggiunto and not non_applicato["si"]
     esito.branch = esito.branch or ("sigma-run/" + sessione)
-    if raggiunto:
+    if esito.ok:
         coda.complete(voce.id, {"turns": esito.turns, "files": file_toccati,
                                 "session_id": sessione, "worker": worker})
+    elif non_applicato["si"]:
+        esito.error = (
+            "obiettivo chiuso ma il lavoro non e' arrivato nell'albero: "
+            "resta sul branch %s" % esito.branch
+        )
+        coda.fail(voce.id, esito.error)
     else:
         # Distinguere «non ha fatto niente» da «ha fatto e non l'ha
         # dimostrato»: sono due problemi diversi e chiedono due rimedi
@@ -313,5 +412,72 @@ def _esegui_voce(
             )
         else:
             esito.error = "nessuna modifica prodotta entro i turni disponibili"
+        _annota_la_diagnosi(coda, voce, esito, ultimo_stato)
         coda.fail(voce.id, esito.error)
     return esito
+
+
+def _e_stata_spezzata(coda: WorkQueue, voce: Voce, esito: EsitoVoce,
+                      file_toccati: List[str]) -> bool:
+    """Se durante il run l'agente ha spezzato la propria voce, non c'e' piu'
+    niente da chiudere: i pezzi hanno preso il suo posto.
+
+    Scriverci sopra un fallimento la riporterebbe in coda **accanto ai propri
+    pezzi**, e verrebbe rifatta da capo mentre loro la stanno gia' facendo. E'
+    successo su un ventaglio vero: la voce risultava «spezzata in due» e
+    fallita insieme, e due lavoratori hanno prodotto lo stesso modulo con due
+    nomi diversi.
+    """
+    aggiornata = next((v for v in coda.items() if v.id == voce.id), None)
+    pezzi = ((aggiornata.result if aggiornata else None) or {}).get("spezzata_in")
+    if not pezzi:
+        return False
+    esito.ok = True
+    esito.files = list(file_toccati)
+    esito.error = ""
+    esito.diagnosi = "spezzata"
+    log.info("[Fanout] '%s' non viene chiusa: spezzata in %s",
+             voce.id, ", ".join(pezzi))
+    return True
+
+
+def _annota_la_diagnosi(coda: WorkQueue, voce: Voce, esito: EsitoVoce,
+                        stato: Dict[str, Any]) -> None:
+    """Scrive nella voce cosa e' andato storto, per chi la riprendera'.
+
+    Riprovare identico dopo un fallimento e' esattamente il comportamento che
+    il banco sul protocollo misura come errore in un modello. Vale anche per il
+    sistema che lo ospita: se la voce torna in coda senza portarsi dietro cio'
+    che si e' imparato, il secondo tentativo e' il primo.
+
+    La diagnosi e' la stessa dell'orchestratore — un file che non compila, una
+    verifica fallita, una premessa sbagliata — e arriva al tentativo successivo
+    dentro il prompt, perche' `_prompt_voce` stampa le chiavi del payload.
+
+    Accessoria per costruzione: se qualcosa qui va storto, la voce fallisce
+    comunque come prima. Non si perde niente, si perde solo il consiglio.
+    """
+    try:
+        from core.harness.autocorrezione import Bilancio, diagnostica
+
+        class _Voce:
+            id = voce.id
+            title = voce.title
+            error = esito.error
+            metadata: Dict[str, Any] = {}
+            files_modified = list(esito.files)
+
+        diagnosi = diagnostica(_Voce(), stato, Bilancio())
+        esito.diagnosi = diagnosi.livello
+        esito.error = f"{esito.error} — {diagnosi.motivo}"
+        if diagnosi.istruzione:
+            # Il nome della chiave e' cio' che l'agente leggera' come etichetta:
+            # «nota» perche' e' un consiglio sul tentativo precedente, non una
+            # parte nuova del compito.
+            carico = dict(voce.payload or {})
+            carico["nota dal tentativo precedente"] = diagnosi.istruzione
+            voce.payload = carico
+        log.info("[Fanout] '%s' fallita: %s (%s)",
+                 voce.id, diagnosi.motivo, diagnosi.livello)
+    except Exception as exc:
+        log.debug("[Fanout] diagnosi non riuscita per '%s': %s", voce.id, exc)

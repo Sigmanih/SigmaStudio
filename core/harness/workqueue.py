@@ -45,6 +45,10 @@ DA_FARE = "todo"
 IN_CORSO = "doing"
 FATTA = "done"
 FALLITA = "failed"
+#: Una voce che non potra' mai partire, perche' cio' da cui dipende non e'
+#: stato fatto. Diverso da FALLITA: questa non ha nemmeno provato, e
+#: riprovarla non servirebbe finche' la sua dipendenza resta indietro.
+BLOCCATA = "blocked"
 
 #: Dopo quanto una voce «in corso» viene considerata abbandonata. Generoso: un
 #: run dell'agente puo' durare parecchio, e riprendere una voce ancora viva
@@ -64,6 +68,11 @@ class Voce:
     id: str
     title: str
     payload: Dict[str, Any] = field(default_factory=dict)
+    #: Le voci che devono essere `done` prima che questa possa partire.
+    #: Senza, l'unico modo di ordinare il lavoro era metterlo in fila e usare
+    #: un solo lavoratore — cioe' rinunciare al parallelismo per esprimere un
+    #: vincolo che riguardava due voci su venti.
+    depends_on: List[str] = field(default_factory=list)
     state: str = DA_FARE
     attempts: int = 0
     worker: str = ""
@@ -149,41 +158,207 @@ class WorkQueue:
     # -- costruzione ---------------------------------------------------------
 
     def add(self, title: str, payload: Optional[Dict[str, Any]] = None,
-            item_id: str = "") -> Voce:
+            item_id: str = "", depends_on: Optional[Iterable[str]] = None) -> Voce:
         """Aggiunge una voce. Un id gia' presente non viene duplicato."""
         with self._lock:
             vid = str(item_id or "").strip() or f"w_{uuid.uuid4().hex[:10]}"
             if vid in self._voci:
                 return self._voci[vid]
             voce = Voce(id=vid, title=str(title), payload=dict(payload or {}),
+                        depends_on=[d for d in (depends_on or [])
+                                    if d in self._voci and d != vid],
                         updated_at=time.time())
             self._voci[vid] = voce
             self._ordine.append(vid)
             self._salva()
             return voce
 
-    def add_many(self, voci: Iterable[Any]) -> List[Voce]:
-        """Riempie la coda in un colpo solo, salvando una volta sola."""
+    def add_many(self, voci: Iterable[Any],
+                 avvisi: Optional[List[str]] = None) -> List[Voce]:
+        """Riempie la coda in un colpo solo, salvando una volta sola.
+
+        Le dipendenze vengono verificate contro cio' che la coda conosce **piu'
+        cio' che sta entrando adesso**: un piano nomina le proprie voci fra
+        loro, e controllarle una per una le rifiuterebbe tutte tranne la prima.
+
+        Una dipendenza verso un id che non esiste viene tolta, non ignorata:
+        `claim()` non la considerera' mai soddisfatta, e la voce che la nomina
+        resterebbe ferma per sempre senza che nessuno dica perche'. Cio' che
+        viene tolto finisce in `avvisi`, se il chiamante ne passa una lista.
+        """
+        grezze = list(voci)
         create: List[Voce] = []
+        note = avvisi if avvisi is not None else []
+
+        def _scomponi(grezza: Any):
+            if isinstance(grezza, str):
+                return grezza, {}, "", []
+            titolo = str(grezza.get("title") or grezza.get("path") or "")
+            dipendenze = grezza.get("depends_on") or grezza.get("dipende_da") or []
+            if isinstance(dipendenze, str):
+                dipendenze = [d.strip() for d in dipendenze.replace(";", ",").split(",")]
+            dipendenze = [str(d).strip() for d in dipendenze if str(d).strip()]
+            carico = dict(grezza.get("payload") or
+                          {k: v for k, v in grezza.items()
+                           if k not in ("title", "id", "payload", "depends_on",
+                                        "dipende_da")})
+            return titolo, carico, str(grezza.get("id") or ""), dipendenze
+
         with self._lock:
-            for grezza in voci:
-                if isinstance(grezza, str):
-                    titolo, carico, vid = grezza, {}, ""
-                else:
-                    titolo = str(grezza.get("title") or grezza.get("path") or "")
-                    carico = dict(grezza.get("payload") or
-                                  {k: v for k, v in grezza.items()
-                                   if k not in ("title", "id", "payload")})
-                    vid = str(grezza.get("id") or "")
+            in_arrivo = {str(g.get("id") or "").strip()
+                         for g in grezze if isinstance(g, dict) and g.get("id")}
+            conosciuti = set(self._voci) | in_arrivo
+            for grezza in grezze:
+                titolo, carico, vid, dipendenze = _scomponi(grezza)
                 vid = vid or f"w_{uuid.uuid4().hex[:10]}"
                 if vid in self._voci:
                     continue
-                voce = Voce(id=vid, title=titolo, payload=carico, updated_at=time.time())
+                tenute: List[str] = []
+                for dep in dipendenze:
+                    if dep == vid:
+                        note.append(f"'{vid}' dipendeva da se stessa: tolta")
+                    elif dep not in conosciuti:
+                        note.append(
+                            f"dipendenza '{vid}' -> '{dep}' tolta: nella coda non "
+                            f"c'e' nessuna voce '{dep}', e una voce che aspetta "
+                            "un id inesistente non parte mai"
+                        )
+                    elif dep not in tenute:
+                        tenute.append(dep)
+                voce = Voce(id=vid, title=titolo, payload=carico,
+                            depends_on=tenute, updated_at=time.time())
                 self._voci[vid] = voce
                 self._ordine.append(vid)
                 create.append(voce)
+            note.extend(self._spezza_cicli())
+            note.extend(self._avvisa_sovrapposizioni(create))
             self._salva()
         return create
+
+    def _avvisa_sovrapposizioni(self, nuove: List[Voce]) -> List[str]:
+        """Dice quali voci indipendenti toccheranno lo stesso file.
+
+        E' la causa piu' cara che questo sistema abbia: due lavoratori partono
+        dallo stesso commit, lavorano bene, e il secondo non riesce a
+        trasferire perche' il primo ha gia' cambiato quel file. La fusione a
+        tre vie recupera il caso normale, ma non quello in cui i due cambiano
+        davvero la stessa riga — e quello si previene solo prima di partire.
+
+        Si avvisa e non si rifiuta: a volte due voci **devono** toccare lo
+        stesso file, e chi riempie la coda lo sa. Ma deve saperlo adesso, non
+        tre run dopo, e il rimedio e' una riga: una dipendenza fra le due, che
+        le mette in fila invece che in parallelo.
+
+        Va chiamata dentro il lucchetto.
+        """
+        per_file: Dict[str, List[str]] = {}
+        for voce in self._voci.values():
+            if voce.state in (FATTA, FALLITA):
+                continue
+            for grezzo in (voce.payload or {}).get("files") or []:
+                chiave = str(grezzo).replace("\\", "/").strip().lstrip("./")
+                if chiave:
+                    per_file.setdefault(chiave, []).append(voce.id)
+
+        nuovi = {v.id for v in nuove}
+        avvisi: List[str] = []
+        for percorso, voci in sorted(per_file.items()):
+            if len(voci) < 2 or not (set(voci) & nuovi):
+                continue
+            # Se una dipende dall'altra sono gia' in fila: nessun rischio.
+            if any(a in self._voci and b in self._voci[a].depends_on
+                   for a in voci for b in voci if a != b):
+                continue
+            avvisi.append(
+                f"'{percorso}' e' dichiarato da piu' voci ({', '.join(sorted(voci))}): "
+                "lavoreranno in parallelo sullo stesso file e la seconda "
+                "potrebbe non riuscire a trasferire. Mettine una in "
+                "`depends_on` dell'altra se devono davvero toccarlo entrambe."
+            )
+        return avvisi
+
+    def sostituisci(self, item_id: str, voci: Iterable[Any],
+                    motivo: str = "") -> Dict[str, Any]:
+        """Una voce troppo grande diventa le voci piu' piccole che la compongono.
+
+        E' la mossa che mancava a chi sta lavorando. Su una prova dal vivo un
+        agente ha speso ventisei turni su una voce che era tre voci, ha scritto
+        cinque file e non ne ha dimostrato nessuno: non aveva modo di dire
+        «questa e' piu' grande di quanto sembrava» se non fallendo.
+
+        La voce originale non viene cancellata ma chiusa come `done` con il
+        motivo: cancellarla perderebbe la traccia di cosa era stato chiesto, e
+        lasciarla `todo` la farebbe riprendere da qualcun altro.
+
+        **Chi la aspettava aspetta i pezzi.** Senza questo, una dipendenza
+        verso la voce spezzata sarebbe soddisfatta appena la si chiude — cioe'
+        subito, prima che i pezzi siano fatti, che e' esattamente il contrario
+        di cio' che quella dipendenza voleva dire.
+        """
+        with self._lock:
+            originale = self._voci.get(str(item_id))
+            if originale is None:
+                return {"ok": False, "error": f"la voce '{item_id}' non esiste"}
+
+            avvisi: List[str] = []
+            nuove = self.add_many(voci, avvisi=avvisi)
+            if not nuove:
+                return {"ok": False, "error": "nessuna voce nuova da mettere al posto",
+                        "warnings": avvisi}
+
+            ids_nuove = [v.id for v in nuove]
+            for voce in self._voci.values():
+                if voce.id in ids_nuove or originale.id not in voce.depends_on:
+                    continue
+                voce.depends_on = [d for d in voce.depends_on if d != originale.id]
+                voce.depends_on.extend(i for i in ids_nuove if i not in voce.depends_on)
+
+            # I pezzi ereditano cio' che la voce originale aspettava: se non
+            # poteva partire prima, non possono partire nemmeno loro.
+            for nuova in nuove:
+                for dipendenza in originale.depends_on:
+                    if dipendenza not in nuova.depends_on and dipendenza != nuova.id:
+                        nuova.depends_on.append(dipendenza)
+
+            originale.state = FATTA
+            originale.result = {"spezzata_in": ids_nuove, "motivo": str(motivo or "")}
+            originale.error = ""
+            originale.updated_at = time.time()
+            avvisi.extend(self._spezza_cicli())
+            self._salva()
+            log.info("[WorkQueue] '%s' spezzata in %s", item_id, ", ".join(ids_nuove))
+            return {"ok": True, "replaced": originale.id, "created": ids_nuove,
+                    "warnings": avvisi}
+
+    def _spezza_cicli(self) -> List[str]:
+        """Toglie gli archi che chiudono un anello. Da chiamare nel lucchetto.
+
+        Due voci che si aspettano a vicenda non partono mai, e il ventaglio
+        resterebbe fermo senza dire perche'.
+        """
+        avvisi: List[str] = []
+        visitati: set = set()
+        in_pila: set = set()
+
+        def visita(vid: str) -> None:
+            visitati.add(vid)
+            in_pila.add(vid)
+            tenute: List[str] = []
+            for dep in self._voci[vid].depends_on:
+                if dep in in_pila:
+                    avvisi.append(
+                        f"dipendenza '{vid}' -> '{dep}' tolta: chiudeva un ciclo")
+                    continue
+                tenute.append(dep)
+                if dep in self._voci and dep not in visitati:
+                    visita(dep)
+            self._voci[vid].depends_on = tenute
+            in_pila.discard(vid)
+
+        for vid in list(self._voci):
+            if vid not in visitati:
+                visita(vid)
+        return avvisi
 
     # -- consumo -------------------------------------------------------------
 
@@ -208,17 +383,57 @@ class WorkQueue:
             log.info("[WorkQueue] '%s' riportata a '%s': nessuno la stava lavorando",
                      voce.id, voce.state)
 
+    def _dipendenze_soddisfatte(self, voce: Voce) -> bool:
+        return all(
+            (self._voci.get(dep) is not None and self._voci[dep].state == FATTA)
+            for dep in voce.depends_on
+        )
+
+    def _blocca_gli_irraggiungibili(self) -> None:
+        """Segna come bloccate le voci che non potranno mai partire.
+
+        Una voce che dipende da qualcosa di fallito resterebbe «da fare» per
+        sempre: la coda non finirebbe mai, e nessuno saprebbe perche'. Si
+        propaga, perche' chi dipende da una bloccata e' bloccato a sua volta.
+
+        Va chiamata dentro il lucchetto.
+        """
+        cambiato = True
+        while cambiato:
+            cambiato = False
+            for voce in self._voci.values():
+                if voce.state != DA_FARE:
+                    continue
+                for dep in voce.depends_on:
+                    a_monte = self._voci.get(dep)
+                    if a_monte is not None and a_monte.state in (FALLITA, BLOCCATA):
+                        voce.state = BLOCCATA
+                        voce.error = (
+                            f"dipende da '{dep}', che non e' stato fatto "
+                            f"({a_monte.state})"
+                        )
+                        voce.updated_at = time.time()
+                        cambiato = True
+                        break
+
     def claim(self, worker: str = "") -> Optional[Voce]:
         """Prende la prossima voce disponibile. None se non ce ne sono.
 
         Atomico rispetto agli altri consumatori: e' cio' che impedisce a due
         agenti di lavorare sullo stesso pezzo.
+
+        Una voce le cui dipendenze non sono ancora `done` viene saltata, non
+        presa: il lavoratore passa alla successiva, e quella tocchera' a chi
+        arriva dopo che la dipendenza e' stata chiusa.
         """
         with self._lock:
             self._recupera_abbandonate()
+            self._blocca_gli_irraggiungibili()
             for vid in self._ordine:
                 voce = self._voci.get(vid)
                 if voce is None or voce.state != DA_FARE:
+                    continue
+                if not self._dipendenze_soddisfatte(voce):
                     continue
                 voce.state = IN_CORSO
                 voce.worker = str(worker or "")
@@ -295,20 +510,43 @@ class WorkQueue:
     def progress(self) -> Dict[str, Any]:
         """Il consuntivo: e' cio' che si guarda mentre gira."""
         with self._lock:
-            conteggi = {DA_FARE: 0, IN_CORSO: 0, FATTA: 0, FALLITA: 0}
+            self._blocca_gli_irraggiungibili()
+            conteggi = {DA_FARE: 0, IN_CORSO: 0, FATTA: 0, FALLITA: 0, BLOCCATA: 0}
             for voce in self._voci.values():
                 conteggi[voce.state] = conteggi.get(voce.state, 0) + 1
-            totale = len(self._voci)
+            pronte = sum(
+                1 for v in self._voci.values()
+                if v.state == DA_FARE and self._dipendenze_soddisfatte(v)
+            )
             return {
                 "queue_id": self.queue_id,
                 "goal": self.goal,
-                "total": totale,
+                "total": len(self._voci),
                 "todo": conteggi[DA_FARE],
+                # Quante di quelle «da fare» possono partire adesso. Senza
+                # questo numero, «10 da fare, 0 in corso» non distingue una
+                # coda ferma da una coda che sta aspettando una dipendenza.
+                "ready": pronte,
                 "doing": conteggi[IN_CORSO],
                 "done": conteggi[FATTA],
                 "failed": conteggi[FALLITA],
+                "blocked": conteggi[BLOCCATA],
                 "finished": conteggi[DA_FARE] == 0 and conteggi[IN_CORSO] == 0,
             }
+
+    def attesa_utile(self) -> bool:
+        """Se conviene aspettare invece di andarsene.
+
+        Un lavoratore che non trova niente da prendere non puo' concludere che
+        il lavoro sia finito: puo' darsi che l'unica voce rimasta stia
+        aspettando quella che un altro lavoratore ha in mano proprio adesso.
+        Andarsene li' lascerebbe la coda a meta' con i thread gia' chiusi.
+        """
+        with self._lock:
+            self._blocca_gli_irraggiungibili()
+            in_corso = any(v.state == IN_CORSO for v in self._voci.values())
+            in_attesa = any(v.state == DA_FARE for v in self._voci.values())
+            return in_corso and in_attesa
 
     def is_finished(self) -> bool:
         return bool(self.progress()["finished"])
@@ -318,7 +556,7 @@ class WorkQueue:
         with self._lock:
             n = 0
             for voce in self._voci.values():
-                if voce.state == FALLITA:
+                if voce.state in (FALLITA, BLOCCATA):
                     voce.state = DA_FARE
                     voce.attempts = 0
                     voce.error = ""

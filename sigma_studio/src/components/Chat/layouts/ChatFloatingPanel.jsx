@@ -9,6 +9,7 @@ import ActionsBar from '../ActionsBar';
 import QuickConfigPanel from '../ui/QuickConfigPanel';
 import useChatResize from '../useChatResize';
 import useChatDrag from '../useChatDrag';
+import { exportChatPdf } from '../../../utils/exportChatPdf';
 
 export default function ChatFloatingPanel({ openFiles, onClose, onOpenConfig, onTasksUpdated, addToast }) {
   const core = useChatCore({ openFiles, onTasksUpdated, addToast });
@@ -86,6 +87,22 @@ export default function ChatFloatingPanel({ openFiles, onClose, onOpenConfig, on
           }).join('\n\n---\n\n');
           navigator.clipboard.writeText(formatted);
         }}
+        onExportPdf={() => {
+          const msgs = core.messages || [];
+          if (msgs.length === 0) {
+            if (addToast) addToast('Nessun messaggio da salvare in PDF', 'warning');
+            return;
+          }
+          const currentSession = core.sessions.find(s => s.id === core.activeSessionId) || {
+            name: 'Conversazione AI',
+            model: core.selectedModel
+          };
+          exportChatPdf({
+            session: currentSession,
+            messages: msgs,
+            selectedModel: core.selectedModel
+          });
+        }}
       />
 
       <div className="chat-body" style={{ flex: 1, minHeight: 0 }}>
@@ -94,13 +111,17 @@ export default function ChatFloatingPanel({ openFiles, onClose, onOpenConfig, on
           loading={core.loading}
           actionsLog={core.actionsLog}
           expandedThinking={core.expandedThinking}
-          onToggleThinking={(id) => core.setExpandedThinking(prev => ({ ...prev, [id]: !prev[id] }))}
+          onToggleThinking={(id, forced) => core.setExpandedThinking(prev => ({
+            ...prev,
+            [id]: forced !== undefined ? forced : !prev[id]
+          }))}
           selectedModel={core.selectedModel}
           onDeleteMessage={core.deleteMessage}
           refs={core.refs}
           onStop={core.stopInference}
           activeManifesto={core.activeManifesto}
           manifestos={core.manifestos}
+          availableModels={core.availableModels}
           autoScroll={core.autoScroll}
           setAutoScroll={core.setAutoScroll}
         />

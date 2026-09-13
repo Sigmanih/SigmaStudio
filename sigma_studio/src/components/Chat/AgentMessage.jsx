@@ -3,6 +3,7 @@ import { Bot, User, Terminal, FileText, Zap, Play, Pause, RotateCcw, RotateCw, S
 import { renderMarkdownLatex } from '../../utils/markdownLatex';
 import McpToolStrip from './McpToolStrip';
 import ImageLightbox from './ImageLightbox';
+import ModelWelcomeCard from './ModelWelcomeCard';
 import { useApp } from '../../contexts/AppContext';
 import { useMusic } from '../../contexts/MusicContext';
 import { getModelSpecs, isErrorMessage } from './core/modelSpecsHelper';
@@ -248,6 +249,11 @@ export default function AgentMessage({
   onDeleteMessage,
   msgIndex,
   loading: standaloneLoading,
+  activeManifesto,
+  manifestos,
+  availableModels,
+  autoScroll,
+  setAutoScroll,
 }) {
   const app = useApp();
   const openTab = app ? app.openTab : null;
@@ -445,6 +451,32 @@ export default function AgentMessage({
     }, 2800);
     return () => clearInterval(interval);
   }, [isLoading]);
+
+  const isWelcome = Boolean(
+    first.isWelcome || (
+      !isUser && !isSystem && (
+        first.content === '# 🤖 Sigma AI Studio\n\nChat pronta.' ||
+        first.content === 'Chat pronta.' ||
+        (typeof first.content === 'string' && first.content.includes('Chat pronta.') && !first.thinking && (!messages || messages.length === 1))
+      )
+    )
+  );
+
+  if (isWelcome) {
+    return (
+      <div className="chat-message chat-welcome-message">
+        <ModelWelcomeCard
+          modelName={first.model || cleanModelName}
+          effectiveModelName={effectiveModelName}
+          roleName={roleName}
+          agentStyle={agentStyle}
+          activeManifesto={activeManifesto}
+          availableModels={availableModels}
+          openTab={openTab}
+        />
+      </div>
+    );
+  }
 
   return (
     <div
@@ -759,20 +791,30 @@ export default function AgentMessage({
               }
             }
 
+            const isThinkingOpen = expandedThinking?.[mid] !== undefined
+              ? Boolean(expandedThinking[mid])
+              : Boolean(m.streamingThinking);
+
             return (
               <div key={idx} className={isGrouped && !isLast ? 'chat-msg-grouped-item chat-msg-grouped-border' : 'chat-msg-grouped-item'}>
                 {/* Thinking toggle */}
                 {!isUser && !isSystem && displayThinking && (
-                  <div className={`chat-thinking ${m.streamingThinking ? 'chat-thinking-streaming' : ''}`}>
-                    <button className="chat-thinking-toggle" onClick={() => onToggleThinking(mid)}>
+                  <div className={`chat-thinking ${m.streamingThinking && isThinkingOpen ? 'chat-thinking-streaming' : ''}`}>
+                    <button
+                      className="chat-thinking-toggle"
+                      onClick={() => onToggleThinking && onToggleThinking(mid, !isThinkingOpen)}
+                      title={isThinkingOpen ? "Richiudi ragionamento" : "Mostra ragionamento"}
+                    >
                       <span>
-                        🧠 {m.streamingThinking
-                          ? <span className="chat-thinking-live"><span className="thinking-pulse"></span> Ragionando...</span>
-                          : (expandedThinking?.[mid] ? 'Nascondi ragionamento' : 'Mostra ragionamento')
+                        🧠 {!isThinkingOpen
+                          ? 'Mostra ragionamento'
+                          : (m.streamingThinking
+                              ? <span className="chat-thinking-live"><span className="thinking-pulse"></span> Ragionando...</span>
+                              : 'Nascondi ragionamento')
                         }
                       </span>
                     </button>
-                    {(m.streamingThinking || expandedThinking?.[mid]) && (
+                    {isThinkingOpen && (
                       <div
                         className="chat-thinking-content chat-md"
                         onClick={e => {

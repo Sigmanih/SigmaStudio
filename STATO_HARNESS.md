@@ -1,17 +1,19 @@
-# Stato dell'Harness · 9 settembre 2026 (rev. 3)
+# Stato dell'Harness · 13 settembre 2026 (rev. 7)
 
 Valutazione dell'harness dell'agente nel kernel: cosa regge, cosa no, e come si
 guida un lavoro grande da dentro Sigma Studio.
 
 | | |
 |:---|:---|
-| Test verdi | **1369** |
+| Test verdi | **1784** |
 | Build frontend | verde (~0,9 s) |
 | `npm run lint:undef` | 0 riferimenti non definiti |
 | Punti dell'audit tecnico | 11 / 11 chiusi |
-| Difetti trovati **dopo** la chiusura dell'audit | 17, tutti nell'integrazione |
+| Difetti trovati **dopo** la chiusura dell'audit | 36, tutti nell'integrazione |
 | Ventaglio parallelo, prova dal vivo | da 0 voci su 6 a **2 su 2**, in 8 e 9 turni |
+| Sandbox Docker | **provata dal vivo**: 4 garanzie su 4 |
 | Banco sul protocollo dei tool | Qwen 27B **100/100**; Ornith 35B e gemma 12B **70/100** |
+| Voto del flusso di squadra | **8,5 / 10** (era 6) |
 
 ---
 
@@ -243,3 +245,472 @@ sparisce anche quel passaggio.
 
 ### 5. P2P
 Resta per ultimo, come deciso.
+
+---
+
+## 6. Revisione del 12 settembre: dal piano alla sandbox
+
+La domanda di partenza era diversa dalle precedenti: non «cosa si rompe», ma
+**come si scrive un task, chi lo scrive, e come lo si segue**. Guardando quel
+percorso da capo sono usciti altri sette punti. Tre erano difetti attivi, e il
+primo è il più grosso trovato finora.
+
+### Il piano dell'architetto perdeva tre campi su cinque
+
+Il ruolo `architect` chiede — e il prompt lo dice esplicitamente — un piano con
+*file coinvolti, dipendenze da altri task, ruolo consigliato*. Il
+normalizzatore del tool `pipeline` teneva `id`, `title`, `status` e scartava
+tutto il resto:
+
+```
+in:  {"id": "t2", "title": "Estrai le stringhe", "role": "coder",
+      "description": "Usa tools/estrai_stringhe.py", "depends_on": ["t1"]}
+out: {"id": "t2", "title": "Estrai le stringhe", "status": "pending"}
+```
+
+Tre conseguenze che si sommavano: **ogni task finiva al Coder** (il ripiego di
+`_build_pipeline_from_architect`), **il grafo non aveva archi** — tutto sempre
+pronto — e **l'istruzione del task era il suo titolo**, una riga.
+
+Sotto c'è `next_role_batch()`, che esiste per raggruppare i task per ruolo
+senza violare le dipendenze, e che ha centoventi righe di test. Girava su un
+grafo che nella realtà era sempre senza archi e sempre di un ruolo solo.
+
+> È la quarta volta che uno stesso test costruisce a mano il dato che il codice
+> riceverà. `tests/test_role_scheduling.py` fabbricava i `TaskNode` con `role`
+> e `depends_on`: provava che lo scheduler funziona su un dato che non
+> riceveva mai.
+
+`tests/test_plan.py` parte ora **dalla chiamata del tool** e arriva al grafo
+eseguito, senza costruire niente in mezzo.
+
+### La cartella di lavoro non era un confine
+
+`resolve_workspace_path` prometteva nel nome di risolvere i percorsi *dentro*
+la radice. Con il workspace su un progetto esterno, due vie su tre uscivano:
+
+| percorso chiesto | prima |
+|:---|:---|
+| `C:/…/Sigma_Studio/config/config.json` | passava — assoluto, restituito tale e quale |
+| `x/../../Sigma_Studio/config/config.json` | passava — `normpath` non ricontrollava |
+| `../Sigma_Studio/config/config.json` | bloccato |
+
+Da lì si leggeva `config/config.json`, dove stanno le credenziali. I tool di
+file avevano una staccionata bucata; **il terminale non ne aveva nessuna**, e
+non può averne una scritta in Python: `cd ..` è una riga.
+
+### Nessuno poteva depositare il lavoro, e il lavoro non sapeva aspettare
+
+La `WorkQueue` — quella che sopravvive ai run e regge il ventaglio — si
+riempiva solo da `POST /api/harness/queue`. Un agente che aveva appena
+guardato il progetto e capito come spezzare il lavoro non aveva dove
+scriverlo. E le voci non sapevano esprimere un ordine: sulla Biblioteca le
+voci 06 e 07 dipendevano dalla 05, e l'unica alternativa era la fila indiana
+con un lavoratore solo.
+
+### Cosa è stato fatto
+
+| | |
+|:---|:---|
+| `core/harness/plan.py` | Il piano arriva intero. Dipendenze impossibili — id inesistenti, cicli — tolte **dicendo cosa si è tolto**: un piano corretto di nascosto insegna al modello che andava bene |
+| `FuoriDalWorkspace` | Un percorso che esce viene rifiutato, con il confronto sui percorsi reali (un collegamento non è una scorciatoia). Il rifiuto torna all'agente come risultato leggibile, non come eccezione che uccide il turno |
+| `core/harness/resoconto.py` | Cosa è stato fatto, come funziona, come lo sappiamo — **dai fatti del ledger**. Due forme: il consuntivo di fine run (e corpo della pull request) e il diario, un pezzo per volta mentre succede |
+| `queue_add` | L'Architect riempie la coda. Nello schema, nella policy, nel prompt e fra i suoi tool |
+| `depends_on` nella coda | Chi dipende da una voce fallita diventa `blocked` e dice da cosa; il lavoratore che non trova niente non se ne va se un altro sta lavorando a ciò che lo sbloccherà |
+| `core/progetti.py` | `data/progetti/` come indirizzo di sviluppo, spostabile. E `radice_pericolosa()`: dischi, cartella utente e cartelle di sistema non si danno a un agente |
+| `core/harness/esecutori.py` | La cucitura per la sandbox: host oggi, contenitore quando Docker c'è |
+
+### Sul resoconto: perché dai fatti e non dal modello
+
+Un modello sa scrivere «ho verificato tutto» senza aver eseguito niente, e su
+questo progetto lo ha già fatto. Ogni riga del resoconto viene da qualcosa che
+è successo e che qualcuno ha registrato mentre succedeva. Un comando che il
+ledger non ha riconosciuto come verifica non compare fra le prove; un run che
+ha scritto senza verificare si legge **«il lavoro non è dimostrato»**.
+
+È anche ciò che finisce nel corpo della pull request. Prima elencava obiettivo
+e nomi di file: chi doveva accettare non trovava scritto da nessuna parte quali
+criteri fossero stati accettati né quale comando li avesse dimostrati — le due
+cose che si vogliono sapere prima di premere merge.
+
+---
+
+## 7. Docker: il disegno, e cosa costa davvero
+
+**Il contenitore non è una comodità: è la metà mancante del confinamento.** Un
+recinto sui percorsi scritto in Python è aggirabile da qualunque comando di
+shell. E l'obiettivo dichiarato — che i modelli possano installare, compilare,
+rompere e ricominciare senza che nessuno debba fidarsi — è lo stesso problema
+visto dall'altro lato.
+
+**Stato della macchina**, verificato: `docker` non è installato, **e WSL non
+c'è**. Docker Desktop su Windows 11 richiede WSL2 o Hyper-V: è un'installazione
+vera, con riavvio. Non è `pip install`.
+
+**La cucitura è `core/harness/esecutori.py`**, dietro al tool `terminal` — che
+è l'unico punto da cui passano i comandi dell'agente. I tool di file
+continuano a scrivere sul disco dell'host, e il contenitore monta la stessa
+cartella: stessi byte, due viste. Così il diff, i backup, il cancello di
+revisione e `apply_to_main` continuano a funzionare senza sapere che esiste un
+contenitore.
+
+Quattro scelte che non sono dettagli, tutte già verificate nei test **senza
+Docker installato** — perché ciò che si può controllare a freddo è come viene
+costruita la riga di comando, ed è proprio quella a distinguere una sandbox da
+un modo complicato di eseguire un comando:
+
+- **si monta il worktree, non il repository** — altrimenti i lavoratori
+  paralleli tornano in comunicazione proprio dove l'isolamento li separa;
+- **`config/` non entra mai** — è il punto dell'operazione;
+- **l'ambiente è una lista bianca**, non `dict(os.environ)`;
+- **la rete è spenta**, con deroga esplicita: senza, `npm install` fallisce e
+  l'idea sembra sbagliata quando invece è solo stretta.
+
+E la regola che conta più di tutte: **se il contenitore non c'è, si dice**. Mai
+ripiegare in silenzio sull'host — chi ha acceso la sandbox crederebbe di essere
+protetto senza esserlo, ed è peggio che non averla. Per lo stesso motivo
+`stato_sandbox()` riporta `active` vero solo se la sandbox è chiesta **e**
+possibile.
+
+**Cosa resta da fare**, quando WSL2 sarà installato: le immagini per progetto
+(un `node:22` per il frontend, un `python:3.12` per il backend, dichiarate
+accanto al progetto), la cache dei volumi — altrimenti ogni voce della coda
+reinstalla tutto — e il `verify` della coda, che deve girare dalla stessa parte
+del lavoro.
+
+**Il prezzo onesto**: un errore in più da diagnosticare. «Passa sull'host e
+fallisce nel contenitore» è la frase che si dirà spesso, ed è per questo che il
+risultato del tool `terminal` porta ora il campo `dove`.
+
+---
+
+## 8. Cosa manca, dopo questo giro
+
+1. **Docker installato** (WSL2 o Hyper-V), e le immagini per progetto.
+2. **Il comando del terminale resta senza recinto** finché la sandbox non è
+   accesa: il confine sui percorsi copre i tool di file e la `cwd`, non ciò che
+   un comando fa dopo essere partito.
+3. **Il consuntivo non arriva al ventaglio**: `run_report` è per singolo run.
+   Un lavoro da cinquanta voci merita un resoconto complessivo.
+4. **Le dipendenze della coda non attraversano i worktree**: una voce che
+   dipende da un'altra vede il lavoro della prima solo dopo la consegna.
+5. I punti 1-4 della sezione precedente restano: `check_i18n`, la lingua nel
+   backend, i campi `sidebar*`, `gh`.
+6. **P2P**, per ultimo.
+
+---
+
+## 9. Il flusso di squadra, esaminato riga per riga · 12 settembre 2026
+
+Non «cosa si rompe» ma: **il percorso dei cinque ruoli è coerente,
+ispezionabile, testato, completo e spiegato?** Sei criteri, un voto per
+ciascuno, e i difetti trovati sono nove — tutti nei punti in cui le parti si
+incontrano, nessuno dentro un pezzo.
+
+### Il difetto più grosso: la squadra lavorava senza rete
+
+`generate_with_role` dichiarava `isolate_worktree`, `review_run`,
+`review_writes` e `verify_command`. Li passava la chat a un agente solo.
+**L'orchestratore non ne passava nessuno** — cioè l'unico posto dove cinque
+ruoli lavorano di fila senza che nessuno guardi era anche l'unico senza
+isolamento, senza revisione del diff e senza la prova che il task stesso
+dichiarava.
+
+È la quinta volta con la stessa firma: *scritto, testato, scollegato*. La
+guardia `tests/test_no_dead_wiring.py` copriva il ciclo e il ventaglio, non
+questo ingresso. Estesa a `generate_with_role` e a `execute_goal`, ha trovato
+il difetto al primo giro.
+
+> Una guardia che non copre tutte le porte non è una guardia incompleta: è una
+> guardia che dà l'impressione di esserci.
+
+E ha trovato anche che **due di quei quattro parametri erano sul livello
+sbagliato**. L'unità dell'isolamento non è il ruolo: è l'obiettivo. Un worktree
+per ruolo darebbe cinque alberi che non si vedono fra loro, e il Tester non
+troverebbe i file che il Coder ha appena scritto — la squadra smetterebbe di
+essere una squadra. Ora `execute_goal` apre **un albero solo** e lo fa ereditare
+a tutti e cinque; `review_writes` e `verify_command` restano per ruolo, perché
+lì l'unità giusta è la scrittura e il task.
+
+### Gli altri otto
+
+| # | Difetto | Perché conta |
+|:--|:---|:---|
+| 2 | Due sistemi di correzione che non si conoscono | `_feedback_loop` contava le proprie mosse in modo separato dal `Bilancio`: insieme potevano spendere il doppio del tetto che il primo credeva di far rispettare |
+| 3 | Al Coder si passava **la prosa del Tester** | Gli stessi fatti erano nel ledger, misurati invece che raccontati |
+| 4 | Ogni ruolo vedeva solo l'Architetto | `upstream_outputs` esisteva in cinque punti e in cinque portava la stessa cosa: cinque ruoli in parallelo che fingevano una fila |
+| 5 | La ripianificazione non si faceva approvare | L'utente approva ogni fase, poi il piano gli viene sostituito dentro una fase già approvata |
+| 6 | `verify` del task dichiarato e mai passato | Il piano diceva come si dimostra quel task, e chi lo eseguiva doveva inventarselo |
+| 7 | Il bilancio non si azzerava fra un obiettivo e l'altro | L'orchestratore vive per sessione: il secondo obiettivo partiva con le correzioni già spese |
+| 8 | La consegna era un prompt con dentro quattro comandi git | Mentre il resto del sistema va branch → `dev` → pull request, come da regola |
+| 9 | Il resoconto finale erano tre frasi scritte a mano | Identiche a ogni run, accanto a un elenco di file: non dicevano quali criteri fossero stati accettati né quale comando li avesse dimostrati |
+
+Tutti e nove corretti, con i loro test.
+
+### Due cose che sembravano difetti e non lo erano
+
+Le scrivo perché **misurare prima di intervenire** è metà del mestiere, e
+tutte e due le avrei «aggiustate» a occhio.
+
+**Il blocco di stato condiviso non esplode.** Sessanta file toccati e quaranta
+comandi eseguiti producono 2 794 caratteri — circa 700 token. Il ledger tronca
+già la propria resa: il problema che stavo per risolvere non esiste.
+
+**`next_role_batch` non ottimizza un costo nullo.** Avevo pensato: i cinque
+ruoli usano lo stesso modello, quindi non c'è nessun cambio di pesi da
+ammortizzare. Sbagliato — il guadagno non è il modello, è **la cache di
+prefisso KV**, che è chiavata sul ruolo (`cache_slot = f"role:{...}"`) perché
+il system prompt è costante dentro un ruolo e diverso fra ruoli. Con
+`-np 1` c'è un solo slot, quindi cambiare ruolo sfratta il prefisso
+precedente: raggruppare i task per ruolo è **esattamente** la mossa giusta, per
+una ragione diversa da quella scritta nel commento. Circa 2 500 token di
+prompt per task che non vengono rielaborati.
+
+### Il voto
+
+| criterio | prima | dopo | perché |
+|:---|:---:|:---:|:---|
+| **Coerente** | 4 | 9 | Era il lato debole: la squadra e il singolo agente facevano cose diverse in cinque punti. Ora condividono revisione, consegna, diagnosi e bilancio — le stesse funzioni, non due copie |
+| **Ispezionabile** | 6 | 9 | Ogni mossa dell'autocorrezione è un evento con dentro **le prove su cui si è deciso**; il piano nuovo si fa approvare; il consuntivo viene dai fatti. Manca il resoconto d'insieme del ventaglio |
+| **Testato** | 7 | 9 | 1 655 verdi, e soprattutto: i test partono dalla chiamata vera. Due che leggevano il **sorgente** invece dell'effetto sono stati riscritti — fallivano per uno spostamento che non cambiava niente |
+| **Completo** | 5 | 7 | Docker non è installato: la sandbox è verificata a freddo, mai dal vivo. Il ventaglio non diagnostica i propri fallimenti. `get_parallel_groups` non lo chiama nessuno |
+| **Commentato** | 9 | 9 | È la cosa migliore di questo progetto. Ogni decisione non ovvia porta il suo perché, e spesso il numero che l'ha decisa |
+| **Perfetto** | — | no | Tre cose aperte, elencate sotto |
+
+**Voto complessivo: 8,5 / 10.** Era 6 all'inizio di questa revisione.
+
+Il punto e mezzo che manca non è un dettaglio: è **la prova dal vivo**. Il
+flusso di squadra con isolamento e revisione non ha ancora attraversato un
+obiettivo vero dall'inizio alla fine. Vale qui quello che vale sempre:
+
+> Una capacità non è finita quando i suoi test passano. È finita quando l'ha
+> attraversata un run vero.
+
+### Le tre cose aperte, in ordine
+
+**1. Il ventaglio non si corregge.** L'orchestratore diagnostica un fallimento
+e sceglie fra riprovare, correggere, ripianificare e rinunciare. Il ventaglio —
+che è il percorso per il lavoro **grande**, quello dove i fallimenti costano di
+più — si limita a rimettere la voce in coda per tre volte identiche. La
+diagnosi è già scritta e non dipende dalla pipeline: le serve solo uno snapshot
+del ledger. Andrebbe chiamata anche lì, e il suo esito scritto nel `payload`
+della voce, così il tentativo successivo parte sapendo cosa è andato storto.
+
+**2. `get_parallel_groups()` non lo chiama nessuno.** Esiste, è testata, e
+promette un parallelismo che dentro un obiettivo non è ottenibile: il motore è
+uno solo e `generate_stream` prende un lucchetto di processo. O la si collega a
+`parallel_slots > 1`, o va tolta — una funzione che promette una capacità
+inesistente è peggio di una che manca.
+
+**3. Docker.** WSL2 con Ubuntu adesso c'è; Docker Desktop no. Finché non c'è,
+`stato_sandbox()` dice `active: false` con il motivo, ed è l'unica cosa onesta
+da dire.
+
+---
+
+## 10. La sandbox accesa, e cosa ha insegnato · 13 settembre 2026
+
+Docker installato, quindi per la prima volta le garanzie scritte nei test a
+freddo si sono potute misurare a caldo. Tutte e quattro tengono:
+
+| garanzia | prova |
+|:---|:---|
+| il workspace si vede | `/lavoro` → i file del progetto |
+| `config/` **non** si vede | `cat /lavoro/../config/config.json` → *No such file* |
+| la rete è spenta | `OSError: [Errno 101] Network is unreachable` |
+| l'ambiente è una lista bianca | nessuna variabile con `TOKEN` |
+
+0,6 secondi per comando, `python 3.12.14` dentro il contenitore.
+
+### Due strati dello stesso problema, prima di arrivarci
+
+Docker Desktop era installato e `stato_sandbox()` rispondeva *«non è
+installato»*: non incompleto, **sbagliato**. L'installazione è per-utente e
+aggiunge la sua cartella al PATH *dell'utente*; un server già avviato ha
+ereditato il PATH di prima. Poi `docker pull` falliva con *«error getting
+credentials — docker-credential-desktop not found»*, che sembra un problema di
+rete e non lo è: il CLI cerca il credential helper nel PATH del **proprio**
+processo.
+
+> Due volte lo stesso errore di forma: dedurre un percorso dall'ambiente invece
+> di cercarlo dove sta.
+
+### La scoperta che ha cambiato il disegno
+
+Acceso il contenitore su Sigma Studio stesso, **ogni verifica falliva**: dentro
+`python:3.12-slim` non ci sono né `pytest` né `fastapi`. Le dipendenze di
+questo progetto stanno nel `.venv` dell'host, e un worktree non se le porta.
+
+La risposta non è una toppa: è la distinzione giusta. Il contenitore serve a un
+**progetto nuovo**, dove l'agente installa e compila ciò che vuole senza che
+nessuno debba fidarsi. Sigma Studio ha già il suo ambiente, sta in un
+repository versionato con revisione e worktree, e metterlo in un contenitore
+che non ha i suoi strumenti lo peggiora soltanto. Quindi `mode` si legge dal
+`sandbox.json` **del progetto** prima che dalla configurazione generale — come
+già faceva l'immagine.
+
+### Il sollecito di verifica: 26 turni che diventano pochi
+
+Il recupero dallo stallo copre l'esplorazione infinita — chi legge e rilegge
+senza scrivere. Non copriva il caso opposto, ed è quello che costa di più:
+`turn_was_productive` è vero per **qualunque** tool riuscito, quindi chi scrive
+dieci file di fila non accumula mai un turno improduttivo e non viene mai
+interrotto.
+
+Misurato: **26 turni, 5 file scritti, zero comandi eseguiti**, e il cancello
+che rifiuta la chiusura alla fine. Il difetto nel codice prodotto era un `"+"`
+contro un `" + "` atteso dal suo stesso test — visibile alla prima esecuzione.
+
+Dalla terza scrittura senza nemmeno un comando riuscito, la coda dello stato
+dice quale comando eseguire e perché conviene farlo adesso.
+
+### Il difetto dentro la correzione
+
+Vale più della correzione. `modified_files` è una proprietà,
+`successful_commands()` un metodo: il ledger usa le due convenzioni fianco a
+fianco. Scritto con `getattr` e un `except Exception` largo, il secondo
+ritornava il metodo legato, `list()` sollevava, l'eccezione veniva inghiottita
+— e il promemoria **taceva sempre, sembrando funzionare**.
+
+> Un `except` largo su codice che interroga un'API trasforma un difetto in
+> silenzio. C'è un test che lo tiene aperto.
+
+### L'incidente: una giunzione seguita da `rmtree`
+
+Per far girare `npm run lint` dentro un worktree — che non porta
+`node_modules`, perché git porta solo ciò che è versionato — ho creato una
+**giunzione** verso il `node_modules` del progetto. Funzionava: `eslint`
+diventava raggiungibile.
+
+Poi `git worktree remove --force` l'ha **attraversata**, cancellando i file
+veri. Il progetto è stato ripristinato con `npm ci` e la modifica revocata.
+
+> Su Windows, una giunzione dentro una cartella che qualcun altro cancellerà
+> ricorsivamente è una trappola: chi cancella non sa che sta seguendo un
+> collegamento, e il danno è nel bersaglio, non nella copia.
+
+La necessità resta reale — un worktree senza dipendenze non può dimostrare
+niente per un frontend — e la strada giusta è quella già costruita: il
+contenitore con il volume di cache, dove le dipendenze vivono fuori dal
+workspace per costruzione.
+
+### La cache delle dipendenze
+
+Volumi con nome per npm, pip e uv, montati **fuori** da `/lavoro`: dentro,
+`node_modules` comparirebbe nel diff del run e chi rivede si troverebbe
+diecimila file al posto delle tre righe che contano.
+
+E `HOME` non è più `/lavoro`: con HOME nel workspace npm ci scriveva dentro la
+propria cache — lo stesso problema per un'altra strada — e la cache andava
+persa a ogni run, perché il worktree di un run isolato è nuovo. Ogni gestore
+punta alla propria cache per variabile esplicita: dedurla da `HOME` funziona
+finché qualcuno non cambia `HOME`, e allora il volume resta montato e
+inutilizzato — il modo peggiore di sbagliare, perché sembra a posto.
+
+---
+
+## 11. Il lavoro parallelo smette di perdersi · 13 settembre 2026
+
+### La patch cieca era la causa più cara del sistema
+
+**Quattro voci su otto** morivano con *«obiettivo chiuso ma il lavoro non è
+arrivato nell'albero»*. Gli stessi diff, provati uno per uno, si applicavano
+senza un rumore.
+
+La patch di un run è calcolata dal commit da cui è partito, e `git apply` è
+tutto-o-niente sul contenuto esatto: basta che un altro lavoratore abbia già
+trasferito il suo lavoro su quel file perché l'intera patch venga rifiutata,
+anche quando i due hanno toccato punti lontanissimi.
+
+Ora, quando la patch cieca fallisce, si fonde file per file con
+`git merge-file`. Tre regole:
+
+- **tutto o niente** — si calcola in memoria e si scrive solo se ogni file si
+  fonde pulito. Mezzo trasferimento è lo stato peggiore di tutti, perché
+  sembra riuscito;
+- **mai marcatori nell'albero di lavoro** — un file con `<<<<<<<` dentro non
+  compila e nessuno sa perché, mentre il lavoro rifiutato resta sul branch e
+  si recupera in un comando;
+- **cancellazioni e rinomine fanno rinunciare** — «cancellato da una parte e
+  modificato dall'altra» è una domanda per una persona.
+
+E un difetto che il test ha trovato per conto suo: **`has_work()` veniva
+chiesta prima del checkpoint di chiusura**. Un run che aveva prodotto tutto
+nell'ultimo turno risultava vuoto, e se il trasferimento falliva il branch
+veniva buttato **con dentro l'unica copia del lavoro**.
+
+### I file dichiarati: prevenire invece di curare
+
+La fusione recupera il caso normale, non quello in cui due voci cambiano
+davvero la stessa riga. Quello si previene prima di partire: `queue_add`
+accetta `files`, e la coda avvisa quando due voci indipendenti dichiarano lo
+stesso file.
+
+Si **avvisa e non si rifiuta**: a volte due voci devono toccarlo entrambe, e
+chi riempie la coda lo sa. Ma deve saperlo adesso, non tre run dopo, e il
+rimedio è una riga di `depends_on` che le mette in fila.
+
+---
+
+## 12. Il modello sa cos'è Sigma Studio
+
+Chiedendo a Qwen, dentro Sigma Studio, «cos'è l'harness e come si migliora», la
+risposta descriveva **sette agenti che non esistono**, indicava la sandbox in
+`data/` — che è quella della chat, non quella dell'harness — e dei trentacinque
+moduli del kernel non ne nominava uno.
+
+Non era un difetto del modello: **nessuno gli aveva dato i fatti**. Il prompt di
+sistema descrive un assistente, non questo programma, e da lì si può solo
+dedurre. Il risultato ha la forma di una diagnosi e il contenuto di
+un'immaginazione, che è il modo più costoso di sbagliare.
+
+Due pezzi, e la divisione fra i due è la soluzione:
+
+| | cosa dice | dove sta | costo |
+|:---|:---|:---|:---|
+| **la scheda** | *cosa esiste*: ruoli, tool, moduli, dove si scrive | prefisso stabile della chat | ~500 token, una volta per conversazione |
+| **`consulta_progetto`** | *perché*, e cosa è già successo | strumento MCP, a richiesta | zero finché nessuno lo chiama |
+
+**La scheda si genera, non si scrive.** Un testo scritto a mano dice la verità
+il giorno in cui lo si scrive e comincia a mentire il giorno dopo: i ruoli
+cambiano, i tool si aggiungono. Qui ogni riga viene letta dal codice, e non
+può divergere da ciò che descrive.
+
+> Tenere tutto in finestra sembra più sicuro ed è il modo più rapido di non
+> avere spazio per il lavoro.
+
+E una fragilità che il test ha trovato: un solo `config/` illeggibile faceva
+sparire **l'intera scheda**, e il modello tornava a rispondere a memoria —
+cioè riapriva il difetto che la scheda esiste per chiudere, dal caso più
+banale. Ora ogni sorgente è isolata: si perde una riga, non la scheda.
+
+---
+
+## 13. Un bug di chat che vale una regola
+
+Chiedendo «scrivimi una breve descrizione sia in italiano che in inglese»,
+l'utente vedeva arrivare **soltanto** la riga di chiusura: *«Fammi sapere se
+desideri altre modifiche!»*. Descrizione italiana e inglese finivano entrambe
+nel ragionamento.
+
+La causa sta in due euristiche nate per un motivo buono — certi modelli lasciano
+colare il proprio ragionamento in chiaro, quasi sempre in inglese, prima della
+risposta in italiano. Da lì l'assunzione **«inglese = ragionamento, italiano =
+risposta»**, che regge quasi sempre e cade esattamente dove serve di più: una
+traduzione, una descrizione bilingue, un messaggio d'errore citato.
+
+Due difese, e servono entrambe:
+
+1. **se la domanda chiede inglese**, quelle euristiche non girano. Precisa, ma
+   dipende dal fatto che il chiamante abbia la domanda — e tre chiamanti su
+   quattro non ce l'hanno;
+2. **se di una risposta sopravvive meno di un quarto**, non è stato tolto un
+   preambolo: è stata tolta la risposta, e si rimette tutto.
+
+> Un po' di ragionamento in chiaro si legge. Una risposta che non c'è non si
+> recupera.
+
+I tag espliciti — `<think>`, `...done thinking` — non hanno rete e non ne hanno
+bisogno: lì non c'è niente da indovinare, il modello ha detto lui dov'era il
+ragionamento. La rete serve solo alle euristiche che tirano a indovinare, ed è
+una distinzione che vale ovunque ce ne siano.

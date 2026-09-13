@@ -34,6 +34,28 @@ def get_default_shell() -> list[str]:
         return [shell, "-c"]
 
 
+def _ambiente_non_interattivo() -> Dict[str, str]:
+    """L'ambiente dei comandi dell'agente, con le domande gia' disinnescate.
+
+    Chiudere stdin fa fallire in fretta i comandi che chiedono conferma, ma
+    fallire non era cio' che l'agente voleva: `npx` e `npm` hanno un modo
+    dichiarato di non chiedere, e usarlo trasforma «si blocca» in «funziona».
+    Le variabili sono quelle che ogni sistema di integrazione continua
+    imposta, e che gli strumenti del mondo Node rispettano gia'.
+    """
+    ambiente = dict(os.environ)
+    ambiente.setdefault("CI", "1")
+    ambiente.setdefault("npm_config_yes", "true")
+    ambiente.setdefault("npm_config_audit", "false")
+    ambiente.setdefault("npm_config_fund", "false")
+    # Un installatore che stampa una barra di avanzamento riempie l'output di
+    # ritorni a capo che l'agente dovrebbe poi leggere.
+    ambiente.setdefault("npm_config_progress", "false")
+    ambiente.setdefault("PIP_DISABLE_PIP_VERSION_CHECK", "1")
+    ambiente.setdefault("PYTHONUNBUFFERED", "1")
+    return ambiente
+
+
 def execute_shell_command_sync(
     command: str,
     cwd: Optional[str] = None,
@@ -53,6 +75,13 @@ def execute_shell_command_sync(
             cwd=cwd,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
+            # Nessuno rispondera' a una domanda: senza questo, un comando che
+            # chiede conferma resta appeso fino al timeout. Su un run vero
+            # `npx create-react-app .` ha chiesto «Ok to proceed? (y)» e il run
+            # si e' fermato li'. Con stdin chiuso il comando fallisce subito e
+            # l'agente legge un errore invece di aspettare cinque minuti.
+            stdin=subprocess.DEVNULL,
+            env=_ambiente_non_interattivo(),
             text=True,
             encoding="utf-8",
             errors="replace",

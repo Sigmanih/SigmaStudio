@@ -540,3 +540,100 @@ class TestLaSceltaSullaConsegna:
         list(fanout.run_queue("c32", workspace_root=".", workers=1, deliver=False))
 
         assert viste[0]["verify_command"] == "pytest -q"
+
+
+# ==============================================================================
+# La diagnosi arriva anche al ventaglio
+# ==============================================================================
+# L'orchestratore guarda cos'e' andato storto e sceglie la mossa. Il ventaglio —
+# che e' il percorso per il lavoro *grande*, dove i fallimenti costano di piu' —
+# rimetteva la voce in coda tre volte identica, e la terza falliva come la
+# prima. Riprovare identico dopo un fallimento e' esattamente cio' che il banco
+# sul protocollo misura come errore in un modello: vale anche per il sistema.
+
+class TestUnaVoceFallitaImparaQualcosa:
+    def _voce_e_coda(self, tmp_path, monkeypatch):
+        from core.harness import workqueue as WQ
+
+        monkeypatch.setattr(WQ.paths, "var_dir", lambda: tmp_path)
+        WQ._code.clear()
+        coda = WQ.get_queue("diagnosi")
+        coda.add_many([{"id": "v1", "title": "scrivi il modulo"}])
+        return coda, coda.claim("w1")
+
+    def test_il_motivo_finisce_nell_errore_della_voce(self, tmp_path, monkeypatch):
+        from core.harness import fanout, workqueue as WQ
+        from core.harness.ledger import DevSessionLedger
+
+        coda, voce = self._voce_e_coda(tmp_path, monkeypatch)
+        ledger = DevSessionLedger(goal="x", workspace_root=str(tmp_path))
+        ledger.record_tool("write_file", {"path": "app.py"}, {
+            "tool": "write_file", "success": True, "path": "app.py",
+            "full_path": "app.py", "content": "x\n", "created": True})
+        ledger.record_tool("terminal", {"command": "python -m pytest -q"}, {
+            "tool": "terminal", "success": False, "command": "python -m pytest -q",
+            "returncode": 1, "stdout": "2 failed", "stderr": ""})
+
+        esito = fanout.EsitoVoce(item_id="v1", title="scrivi il modulo", ok=False,
+                                 error="lavoro prodotto ma non dimostrato",
+                                 files=["app.py"])
+        fanout._annota_la_diagnosi(coda, voce, esito, ledger.snapshot())
+
+        assert esito.diagnosi == "correggi"
+        assert "verifiche fallite" in esito.error
+        WQ._code.clear()
+
+    def test_il_tentativo_successivo_riceve_cio_che_si_e_imparato(
+            self, tmp_path, monkeypatch):
+        """Se la voce torna in coda senza portarsi dietro la diagnosi, il
+        secondo tentativo e' il primo."""
+        from core.harness import fanout, workqueue as WQ
+        from core.harness.ledger import DevSessionLedger
+
+        coda, voce = self._voce_e_coda(tmp_path, monkeypatch)
+        ledger = DevSessionLedger(goal="x", workspace_root=str(tmp_path))
+        ledger.record_tool("write_file", {"path": "app.py"}, {
+            "tool": "write_file", "success": True, "path": "app.py",
+            "full_path": "app.py", "content": "x\n", "created": True})
+        ledger.record_tool("terminal", {"command": "python app.py"}, {
+            "tool": "terminal", "success": False, "command": "python app.py",
+            "returncode": 1, "stdout": "",
+            "stderr": "ModuleNotFoundError: No module named 'validatore'"})
+
+        esito = fanout.EsitoVoce(item_id="v1", title="scrivi il modulo", ok=False,
+                                 error="non dimostrato", files=["app.py"])
+        fanout._annota_la_diagnosi(coda, voce, esito, ledger.snapshot())
+
+        nota = voce.payload.get("nota dal tentativo precedente", "")
+        assert nota, "la diagnosi deve arrivare a chi riprova"
+        # E il prompt della voce la deve stampare: una nota nel payload che
+        # nessuno legge non e' una nota.
+        assert "nota dal tentativo precedente" in fanout._prompt_voce(voce, "")
+        WQ._code.clear()
+
+    def test_una_diagnosi_impossibile_non_fa_fallire_di_piu(
+            self, tmp_path, monkeypatch):
+        """Accessoria per costruzione: se la diagnosi va storta, la voce
+        fallisce comunque come prima. Si perde il consiglio, non il resto."""
+        from core.harness import fanout, workqueue as WQ
+
+        coda, voce = self._voce_e_coda(tmp_path, monkeypatch)
+        esito = fanout.EsitoVoce(item_id="v1", title="x", ok=False,
+                                 error="originale")
+        fanout._annota_la_diagnosi(coda, voce, esito, None)
+        assert "originale" in esito.error
+        WQ._code.clear()
+
+    def test_l_esito_porta_la_diagnosi_a_chi_guarda(self):
+        from core.harness import fanout
+
+        esito = fanout.EsitoVoce(item_id="v", title="t", ok=False,
+                                 diagnosi="ripianifica")
+        assert esito.to_dict()["diagnosi"] == "ripianifica"
+
+    def test_il_percorso_di_fallimento_la_chiama(self):
+        import inspect
+
+        from core.harness import fanout
+
+        assert "_annota_la_diagnosi(" in inspect.getsource(fanout._esegui_voce)

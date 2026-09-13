@@ -143,3 +143,131 @@ class TestLaGuardiaFunziona:
         # I quattro che sono stati collegati proprio per questo motivo.
         for atteso in ("review_writes", "isolate_worktree", "allowed_tools", "profile"):
             assert atteso in argomenti_collegati
+
+
+# ==============================================================================
+# Il flusso di squadra: la quinta volta, allo stesso modo
+# ==============================================================================
+# `generate_with_role` dichiarava `isolate_worktree`, `review_run`,
+# `review_writes` e `verify_command`. Li passava la chat a un agente solo;
+# l'orchestratore — cioe' i cinque ruoli che lavorano insieme su un obiettivo
+# vero — non ne passava nessuno. La squadra lavorava senza nessuna delle reti
+# di sicurezza che il singolo agente aveva tutte, e il task dichiarava la
+# propria verifica a nessuno.
+#
+# La guardia copriva il ciclo e il ventaglio, non questo ingresso. Un difetto
+# che ritorna dalla porta che la guardia non guarda e' una guardia incompleta.
+
+def _parametri(funzione):
+    import inspect
+    return [
+        nome for nome in inspect.signature(funzione).parameters
+        if nome not in STRUTTURALI
+        and nome not in ("self", "role_id", "user_prompt", "context",
+                         "should_cancel", "ledger", "session_id", "max_turns")
+    ]
+
+
+def _chiamanti_di(nome_funzione: str):
+    file = []
+    for percorso in (RADICE / "core").rglob("*.py"):
+        if "__pycache__" in percorso.parts:
+            continue
+        try:
+            testo = percorso.read_text(encoding="utf-8")
+        except (OSError, UnicodeDecodeError):
+            continue
+        if f"{nome_funzione}(" in testo:
+            file.append((percorso, testo))
+    return file
+
+
+def _argomenti_verso(testo: str, nomi: tuple) -> set:
+    passati = set()
+    try:
+        albero = ast.parse(testo)
+    except SyntaxError:
+        return passati
+    for nodo in ast.walk(albero):
+        if not isinstance(nodo, ast.Call):
+            continue
+        funzione = nodo.func
+        nome = getattr(funzione, "id", None) or getattr(funzione, "attr", None)
+        if nome not in nomi:
+            continue
+        for kw in nodo.keywords:
+            if kw.arg:
+                passati.add(kw.arg)
+    return passati
+
+
+@pytest.fixture(scope="module")
+def argomenti_verso_i_ruoli():
+    from core.harness.roles import RoleEngine  # noqa: F401
+
+    collegati = set()
+    for percorso, testo in _chiamanti_di("generate_with_role"):
+        if percorso.name == "roles.py":
+            # E' la definizione, non un collegamento.
+            continue
+        collegati |= _argomenti_verso(testo, ("generate_with_role",))
+    return collegati
+
+
+@pytest.mark.parametrize("parametro", _parametri(
+    __import__("core.harness.roles", fromlist=["RoleEngine"]).RoleEngine.generate_with_role))
+def test_ogni_interruttore_dei_ruoli_ha_un_chiamante(parametro, argomenti_verso_i_ruoli):
+    assert parametro in argomenti_verso_i_ruoli, (
+        f"'{parametro}' e' dichiarato in generate_with_role e nessun chiamante "
+        "di produzione lo passa: dal punto di vista di chi lo userebbe non "
+        "esiste. Collegalo, oppure non dichiararlo finche' non serve."
+    )
+
+
+@pytest.fixture(scope="module")
+def argomenti_verso_l_obiettivo():
+    collegati = set()
+    for percorso, testo in _chiamanti_di("execute_goal"):
+        if percorso.name == "orchestrator.py":
+            continue
+        collegati |= _argomenti_verso(testo, ("execute_goal",))
+    return collegati
+
+
+@pytest.mark.parametrize("parametro", _parametri(
+    __import__("core.modules.sigma_developer_lab.orchestrator",
+               fromlist=["DevOrchestrator"]).DevOrchestrator.execute_goal))
+def test_ogni_opzione_dell_obiettivo_ha_un_chiamante(parametro,
+                                                     argomenti_verso_l_obiettivo):
+    assert parametro in argomenti_verso_l_obiettivo, (
+        f"'{parametro}' e' un'opzione di execute_goal che nessuna rotta "
+        "spedisce: la squadra non puo' accenderla."
+    )
+
+
+def test_la_verifica_del_task_arriva_a_chi_lo_esegue():
+    """Il piano dichiara come si dimostra un task. Non passarla significa
+    chiedere all'agente di inventarsi la prova."""
+    import inspect
+
+    from core.modules.sigma_developer_lab.orchestrator import DevOrchestrator
+
+    sorgente = inspect.getsource(DevOrchestrator._execute_task)
+    assert "verify_command=" in sorgente
+    assert '"verify"' in sorgente
+
+
+def test_l_isolamento_della_squadra_e_dell_obiettivo_non_del_ruolo():
+    """Isolare ogni ruolo darebbe cinque alberi che non si vedono, e il Tester
+    non troverebbe i file che il Coder ha appena scritto."""
+    import inspect
+
+    from core.modules.sigma_developer_lab.orchestrator import DevOrchestrator
+
+    apertura = inspect.getsource(DevOrchestrator.execute_goal)
+    assert "create_session_worktree" in apertura
+    assert "self.context.session.workspace_root = " in apertura
+
+    esecuzione = inspect.getsource(DevOrchestrator._execute_task)
+    assert "isolate_worktree" not in esecuzione, (
+        "il singolo ruolo non deve aprirsi un worktree suo")

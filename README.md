@@ -15,30 +15,27 @@
   <a href="https://developer.nvidia.com/cuda-zone"><img src="https://img.shields.io/badge/cuda-multi--gpu-76B900?style=flat-square&logo=nvidia&logoColor=white" alt="NVIDIA CUDA Multi-GPU"></a>
   <a href="https://modelcontextprotocol.io"><img src="https://img.shields.io/badge/mcp-12--servers-00f2fe?style=flat-square" alt="Model Context Protocol"></a>
   <a href="https://github.com/Sigmanih/SigmaStudio"><img src="https://img.shields.io/badge/architecture-modular--microkernel-success?style=flat-square" alt="Modular Microkernel"></a>
+  <a href="https://www.paypal.com/ncp/payment/RP2DYUXVJ8FRC"><img src="https://img.shields.io/badge/Donate-PayPal-00457C?style=flat-square&logo=paypal&logoColor=white" alt="Donate with PayPal"></a>
 </p>
 
 <p align="center">
-  <a href="README.md">🇬🇧 English</a> • <a href="README_IT.md">🇮🇹 Italiano</a> • <a href="https://github.com/Sigmanih/SigmaStudio">📦 GitHub Repository</a>
+  <a href="README.md">🇬🇧 English</a> • <a href="README_IT.md">🇮🇹 Italiano</a> • <a href="https://www.paypal.com/ncp/payment/RP2DYUXVJ8FRC">☕ Donate</a> • <a href="https://github.com/Sigmanih/SigmaStudio">📦 GitHub Repository</a>
 </p>
 
 ---
 
-## 📸 Platform Screenshots
+## 🎬 Video Demo & Platform Tour
 
 <p align="center">
-  <img src="images/screenshots/bacheca.png" alt="Sigma Studio Bacheca & Skills Hub" width="100%" />
+  <video src="images/screenshots/chat_record.mp4" controls="controls" width="100%" style="border-radius: 14px; box-shadow: 0 10px 36px rgba(0,210,255,0.25);">
+    Your browser does not support the video tag. Watch the <a href="images/screenshots/chat_record.mp4">Sigma Studio Video Demo</a>.
+  </video>
 </p>
-<p align="center"><em>1. Interactive Release Board, Dynamic Skills Showcase Slider & 4-Step Kernel Workflow</em></p>
 
 <p align="center">
-  <img src="images/screenshots/chat.png" alt="Sigma Studio Chat AI & Multi-Agent Swarm" width="100%" />
+  <em>▶️ Live Demo: Multi-Agent Streaming Chat, Autonomous Swarm, MCP Tools Execution & Real-Time Cognitive Pipeline (<code>chat_record.mp4</code>)</em><br/>
+  <a href="images/screenshots/chat_record.mp4"><strong>📥 Download / Watch Video Demo Directly (chat_record.mp4)</strong></a>
 </p>
-<p align="center"><em>2. Streaming Chat AI Workspace with Sub-100ms TTFT, SigmaEngine Multi-GPU & 12 MCP Servers</em></p>
-
-<p align="center">
-  <img src="images/screenshots/modelli.png" alt="Sigma Studio Modelli Hub & GGUF Forge" width="100%" />
-</p>
-<p align="center"><em>3. Modelli Hub: Hugging Face Downloader & Tab 2 GGUF Quantization Forge</em></p>
 
 ---
 
@@ -172,6 +169,23 @@ Run the Pytest kernel test suite:
 pytest tests/ -v
 ```
 All kernel tests validate MCP governance, agent routing, FastAPI endpoints, security sandboxing, and chat streaming with a 100% success rate.
+
+---
+
+## ☕ Support & Donations
+
+If you find **Sigma Studio** valuable for your local AI research, autonomous agent swarms, or sovereign homelab setup, consider supporting ongoing development! Your contributions directly sustain:
+- ⚡ High-performance multi-GPU inference optimizations & low-latency C++/Python engines.
+- 🧠 Free, open-source community AI roles and modular lab environments.
+- 🛡️ Sandboxing, local data sovereignty, and hardware telemetry tools.
+
+<p align="center">
+  <a href="https://www.paypal.com/ncp/payment/RP2DYUXVJ8FRC">
+    <img src="https://img.shields.io/badge/Donate-PayPal-00457C?style=for-the-badge&logo=paypal&logoColor=white" alt="Donate with PayPal" />
+  </a>
+  <br/><br/>
+  <strong><a href="https://www.paypal.com/ncp/payment/RP2DYUXVJ8FRC">👉 Click here to donate via PayPal</a></strong>
+</p>
 
 ---
 

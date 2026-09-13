@@ -67,17 +67,26 @@ ALIASES: Dict[str, str] = {
     "finish_task": "complete_goal",
     "task_complete": "complete_goal",
     "complete_goal": "complete_goal",
+    # coda di lavoro
+    "queue_add": "queue_add",
+    "add_to_queue": "queue_add",
+    "enqueue": "queue_add",
+    "coda": "queue_add",
 }
 
 #: Non toccano il workspace: registrano il piano e chiudono il lavoro.
-CONTROL_TOOLS: Set[str] = {"spec", "pipeline", "complete_goal"}
+#: `queue_add` sta qui perche' non scrive un file: mette in fila del lavoro che
+#: altri run faranno. Chi puo' pianificare puo' anche depositare il piano.
+CONTROL_TOOLS: Set[str] = {"spec", "pipeline", "complete_goal", "queue_add"}
 
 READ_ONLY_TOOLS: Set[str] = {
-    "spec", "read_file", "list_dir", "glob", "search_code", "find_symbol", "screenshot", "pipeline", "complete_goal"
+    "spec", "read_file", "list_dir", "glob", "search_code", "find_symbol",
+    "screenshot", "pipeline", "queue_add", "complete_goal"
 }
 
 PLAN_ONLY_TOOLS: Set[str] = {
-    "spec", "read_file", "list_dir", "glob", "search_code", "find_symbol", "pipeline", "complete_goal"
+    "spec", "read_file", "list_dir", "glob", "search_code", "find_symbol",
+    "pipeline", "queue_add", "complete_goal"
 }
 
 

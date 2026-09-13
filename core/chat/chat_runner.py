@@ -715,7 +715,9 @@ def _stream_chat_response(handler, messages, ai_cfg, model, provider,
 
         # Second pass for reasoning shapes no tag can catch (bullet monologues,
         # "done thinking." markers, English self-analysis preambles).
-        clean_text, extracted_thinking = _clean_all_tags(full_text)
+        # La domanda serve a non scambiare per ragionamento l'inglese
+        # che l'utente ha chiesto.
+        clean_text, extracted_thinking = _clean_all_tags(full_text, message)
         thinking_out = "\n\n".join(t for t in (full_thinking, extracted_thinking) if t and t.strip())
 
         # A reasoning-only answer is still an answer: don't leave the bubble empty.
@@ -1113,9 +1115,26 @@ def handle_chat(self):
         # it belongs here rather than in the tail.
         today = _get_date_context()
 
+        # Cosa e' Sigma Studio, letto da Sigma Studio. Sta nel prefisso
+        # stabile perche' cambia solo quando cambia il programma, e costa
+        # cinquecento token pagati una volta per conversazione.
+        #
+        # Serve a una cosa precisa: chiedendo a un modello «cos'e' l'harness»,
+        # la risposta descriveva sette agenti che non esistono e una sandbox
+        # nel posto sbagliato. Non era un difetto del modello: nessuno gli
+        # aveva dato i fatti, e da un prompt che descrive un assistente si puo'
+        # solo dedurre.
+        try:
+            from core.scheda_progetto import scheda
+            scheda_testo = scheda()
+        except Exception as exc:
+            log.debug("Scheda del progetto non disponibile: %s", exc)
+            scheda_testo = ""
+        scheda_blocco = ("\n" + scheda_testo + "\n") if scheda_testo else ""
+
         full_prompt = f"""{identity_header}
 
-{system_prompt}{mcp_tools_catalogue}{project_structure}
+{system_prompt}{mcp_tools_catalogue}{scheda_blocco}{project_structure}
 {today}
 
 ## ISTRUZIONI CREAZIONE E SALVATAGGIO FILE SU DISCO
@@ -1169,6 +1188,23 @@ Contenuto completo...
             volatile_parts.append(_get_time_context())
         if retrieved_memory:
             volatile_parts.append(retrieved_memory)
+
+        # Se il Developer Studio sta lavorando, la chat deve saperlo: scrivono
+        # negli stessi file. Senza, la chat propone modifiche su un albero che
+        # sta cambiando sotto, e l'utente si ritrova due versioni dello stesso
+        # file senza capire perche'.
+        #
+        # Sta nella coda volatile e non nel prefisso stabile per la ragione
+        # opposta a quella dell'albero della conoscenza: questa riga cambia
+        # ogni pochi secondi, e metterla nel prefisso lo invaliderebbe a ogni
+        # messaggio. E' anche vuota quasi sempre, quindi non costa nulla.
+        try:
+            from core.harness import attivita
+            riga_agenti = attivita.riga_per_la_chat()
+            if riga_agenti:
+                volatile_parts.append(riga_agenti)
+        except Exception as exc:
+            log.debug("Registro delle attivita' non leggibile: %s", exc)
 
         # Open workspace context files
         context_files = req.get("context", {}).get("open_files", [])

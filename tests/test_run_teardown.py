@@ -46,18 +46,34 @@ class TestLIsolamentoEAccendibile:
             "la scelta non arriva al ciclo dell'agente"
         )
 
-    def test_anche_una_fase_orchestrata_puo_isolarsi_e_farsi_rivedere(self):
+    def test_la_squadra_si_isola_una_volta_sola_per_tutto_l_obiettivo(self):
         """L'orchestratore e' l'unico posto dove cinque ruoli lavorano di fila
-        senza che nessuno guardi: escluderlo sarebbe stato il contrario."""
+        senza che nessuno guardi: escluderlo sarebbe stato il contrario. Ma
+        l'unita' dell'isolamento e' **l'obiettivo**, non il ruolo.
+
+        Un worktree per ruolo darebbe cinque alberi che non si vedono fra loro:
+        il Tester non troverebbe i file che il Coder ha appena scritto, e la
+        squadra smetterebbe di essere una squadra. Si apre un albero solo, e
+        tutti e cinque ci lavorano dentro perche' ereditano `workspace_root`.
+        """
         from core.harness.roles import RoleEngine
+        from core.modules.sigma_developer_lab.orchestrator import DevOrchestrator
 
         parametri = inspect.signature(RoleEngine.generate_with_role).parameters
-        assert "isolate_worktree" in parametri
-        assert "review_writes" in parametri
+        assert "review_writes" in parametri, "questa e' per scrittura: resta"
+        assert "verify_command" in parametri, "questa e' per task: resta"
+        assert "isolate_worktree" not in parametri, (
+            "un ruolo non ha un albero suo da isolare")
 
-        sorgente = inspect.getsource(RoleEngine.generate_with_role)
-        assert "isolate_worktree=isolate_worktree" in sorgente
-        assert "review_writes=review_writes" in sorgente
+        apertura = inspect.getsource(DevOrchestrator.execute_goal)
+        assert "isolate_worktree" in inspect.signature(
+            DevOrchestrator.execute_goal).parameters
+        assert "create_session_worktree" in apertura
+        assert "self.context.session.workspace_root = " in apertura, (
+            "senza questo i ruoli continuerebbero a scrivere nell'albero vero")
+
+        chiusura = inspect.getsource(DevOrchestrator._chiudi_worktree)
+        assert "release_session_worktree" in chiusura
 
 
 # ---------------------------------------------------------------------------
@@ -74,7 +90,7 @@ class TestChiusuraDiUnRunAbbandonato:
         rilasciati = []
         monkeypatch.setattr(
             modulo_loop.worktree, "release_session_worktree",
-            lambda sid, apply_changes=False: rilasciati.append((sid, apply_changes)) or {},
+            lambda sid, apply_changes=False, **_: rilasciati.append((sid, apply_changes)) or {},
         )
 
         finto_wt = object()
@@ -135,7 +151,7 @@ class TestChiusuraDiUnRunAbbandonato:
         conta = []
         monkeypatch.setattr(
             modulo_loop.worktree, "release_session_worktree",
-            lambda sid, apply_changes=False: conta.append(sid) or {},
+            lambda sid, apply_changes=False, **_: conta.append(sid) or {},
         )
 
         def impl_finta(*args, **kwargs):
@@ -159,7 +175,7 @@ class TestChiusuraDiUnRunAbbandonato:
         """E' codice di pulizia: se rompe, lascia i residui che doveva togliere."""
         from core.harness import loop as modulo_loop
 
-        def esplode(sid, apply_changes=False):
+        def esplode(sid, apply_changes=False, **_):
             raise RuntimeError("git non risponde")
 
         monkeypatch.setattr(modulo_loop.worktree, "release_session_worktree", esplode)
@@ -296,7 +312,7 @@ class TestIlBranchConservatoVieneDetto:
 
         monkeypatch.setattr(
             modulo_loop.worktree, "release_session_worktree",
-            lambda sid, apply_changes=False: {
+            lambda sid, apply_changes=False, **_: {
                 "released": True, "applied": False,
                 "branch": "sigma-run/sess-x", "checkpoints": 3,
             },
@@ -407,7 +423,7 @@ class TestIlTrasferimentoAllAlberoPrincipale:
 
         monkeypatch.setattr(
             modulo_loop.worktree, "release_session_worktree",
-            lambda sid, apply_changes=False: {
+            lambda sid, apply_changes=False, **_: {
                 "released": True, "applied": False,
                 "branch": "sigma-run/sess-c", "checkpoints": 2,
             },

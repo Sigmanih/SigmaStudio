@@ -560,6 +560,24 @@ class LlamaServerBackend(InferenceBackend):
             return {"success": False, "stage": "load", "error": ultimo_errore,
                     "stderr": ultima_uscita, "settings": settings_correnti}
 
+        # Se e' servito il ripiego senza mmap, quel modello se lo tiene. Il
+        # tentativo fallito costa un avvio intero: pagarlo una volta e'
+        # accettabile, pagarlo a ogni caricamento no. E il contrario —
+        # spegnere mmap in anticipo su tutto cio' che sta su un disco
+        # rimovibile — costava la lettura completa del file **sempre**, anche
+        # sui dischi dove mmap funziona: su questa macchina erano cinquanta
+        # secondi invece di sei.
+        if (settings_correnti.get("use_mmap") is False
+                and settings.get("use_mmap") is not False):
+            try:
+                from core.engine import load_overrides
+                load_overrides.set_for(facts.name, {"use_mmap": False})
+                log.info(
+                    "[LlamaServer] '%s' e' partito solo senza mmap: annotato, "
+                    "i prossimi caricamenti ci vanno diretti.", facts.name)
+            except Exception as exc:
+                log.debug("[LlamaServer] annotazione mmap non riuscita: %s", exc)
+
         slot = int(settings_correnti.get("parallel_slots")
                    or slot_per_contesto(settings_correnti.get("n_ctx")))
         self._facts = facts

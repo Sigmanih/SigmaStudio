@@ -1,10 +1,10 @@
 import React from 'react';
-import { Settings, MessageSquare, Plus } from 'lucide-react';
+import { Settings, MessageSquare, Plus, Download } from 'lucide-react';
 
 export default function ChatHeader({
   isDragging, onStartDrag,
   onOpenConfig, onClose, isPanel = false, contextStats, onCopyAll,
-  onNewSession
+  onNewSession, onExportPdf
 }) {
   const [copiedAll, setCopiedAll] = React.useState(false);
 
@@ -108,6 +108,34 @@ export default function ChatHeader({
           >
             <span className="chat-header-copy-full">{copiedAll ? '✓ Copiato!' : '📋 Copia Tutto'}</span>
             <span className="chat-header-copy-short">{copiedAll ? '✓' : '📋'}</span>
+          </button>
+        )}
+        {onExportPdf && (
+          <button
+            className="chat-header-btn chat-header-pdf-btn"
+            onClick={(e) => {
+              e.stopPropagation();
+              onExportPdf();
+            }}
+            title="Salva l'intera conversazione in un documento PDF impaginato"
+            style={{
+              gap: '4px',
+              fontSize: '0.68rem',
+              padding: '3px 8px',
+              background: 'rgba(239, 68, 68, 0.12)',
+              color: '#f87171',
+              border: '1px solid rgba(239, 68, 68, 0.28)',
+              borderRadius: '6px',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              fontWeight: 600,
+              transition: 'all 0.2s ease'
+            }}
+          >
+            <Download size={12} />
+            <span className="chat-header-pdf-full">Salva PDF</span>
+            <span className="chat-header-pdf-short">PDF</span>
           </button>
         )}
         {onOpenConfig && (

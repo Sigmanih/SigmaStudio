@@ -305,10 +305,20 @@ class Consegna:
         }
 
 
-def _corpo_richiesta(obiettivo: str, file: List[str], branch_run: str) -> str:
-    righe = [
-        "Lavoro prodotto da un run dell'agente di Sigma Studio.",
-        "",
+def _corpo_richiesta(obiettivo: str, file: List[str], branch_run: str,
+                     resoconto: str = "") -> str:
+    """Il corpo della richiesta: cosa e' stato fatto e come lo sappiamo.
+
+    Prima elencava obiettivo e nomi di file. Chi doveva accettare il lavoro
+    non trovava scritto da nessuna parte **quali criteri** l'agente avesse
+    accettato ne' **quale comando** avesse dimostrato il lavoro — e sono le
+    due cose che si vogliono sapere prima di premere merge. Il ledger le
+    aveva gia' registrate mentre succedevano; qui vengono messe in cima.
+    """
+    righe = ["Lavoro prodotto da un run dell'agente di Sigma Studio.", ""]
+    if resoconto.strip():
+        righe += [resoconto.strip(), "", "---", ""]
+    righe += [
         f"**Obiettivo:** {obiettivo.strip() or '(non dichiarato)'}",
         "",
         f"**File toccati:** {len(file)}",
@@ -351,6 +361,7 @@ def deliver_branch(
     obiettivo: str = "",
     file: Optional[List[str]] = None,
     configurazione: Optional[Dict[str, Any]] = None,
+    resoconto: str = "",
 ) -> Consegna:
     """Porta il branch di un run su `dev` e apre la richiesta verso il principale.
 
@@ -363,7 +374,8 @@ def deliver_branch(
     """
     radice = Path(repo_root).resolve()
     with _lucchetto_per(radice):
-        return _deliver_branch_bloccato(radice, branch_run, obiettivo, file, configurazione)
+        return _deliver_branch_bloccato(radice, branch_run, obiettivo, file,
+                                        configurazione, resoconto)
 
 
 def _deliver_branch_bloccato(
@@ -372,6 +384,7 @@ def _deliver_branch_bloccato(
     obiettivo: str = "",
     file: Optional[List[str]] = None,
     configurazione: Optional[Dict[str, Any]] = None,
+    resoconto: str = "",
 ) -> Consegna:
     cfg = configurazione or load_config()
     dev = str(cfg.get("integration_branch") or BRANCH_INTEGRAZIONE)
@@ -413,7 +426,7 @@ def _deliver_branch_bloccato(
         return esito
 
     titolo = f"Agente: {obiettivo.strip()[:100] or branch_run}"
-    corpo = _corpo_richiesta(obiettivo, esito.files, branch_run)
+    corpo = _corpo_richiesta(obiettivo, esito.files, branch_run, resoconto)
 
     indirizzo, motivo = _apri_con_gh(radice, base, dev, titolo, corpo)
     if not indirizzo:

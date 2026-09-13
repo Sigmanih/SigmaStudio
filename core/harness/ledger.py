@@ -386,12 +386,25 @@ class DevSessionLedger:
             return list(self._session_memory)
 
     def _rel(self, path: str) -> str:
-        """Workspace-relative form of a path, or the path itself if outside."""
+        """Workspace-relative form of a path, or the path itself if outside.
+
+        Normalizza anche la forma, non solo il prefisso. Il ledger indicizza i
+        file per questa chiave, e senza normalizzazione `backend/index.js` e
+        `./backend/index.js` diventano due file diversi: la lettura finisce
+        sotto una chiave e la guardia «non hai ancora letto questo file» cerca
+        sotto l'altra. Su un run vero e' costato otto rifiuti di fila su un
+        file che l'agente aveva letto dieci volte — e dal suo punto di vista il
+        sistema mentiva.
+        """
+        import posixpath
+
         p = str(path or "").replace("\\", "/")
         root = self.workspace_root
         if root and p.lower().startswith(root.lower() + "/"):
-            return p[len(root) + 1:]
-        return p
+            p = p[len(root) + 1:]
+        # `./a` -> `a`, `a/../b` -> `b`, `a//b` -> `a/b`.
+        normalizzato = posixpath.normpath(p) if p else p
+        return "" if normalizzato == "." else normalizzato
 
     def _file(self, path: str) -> FileRecord:
         rec = self._files.get(path)
@@ -502,6 +515,13 @@ class DevSessionLedger:
                         entry["error"] = verif_dict["summary"]
                     else:
                         entry["error"] = tail[-MAX_ERROR_CHARS:]
+                    # Il riassunto della verifica dice *quanti* test sono
+                    # falliti; non dice che il comando e' morto perche' un file
+                    # era occupato. Prendendone solo uno si perde il secondo, e
+                    # sono due guasti con rimedi opposti: uno si corregge, e
+                    # l'altro si riprova tale e quale.
+                    if tail and tail[-MAX_ERROR_CHARS:] != entry["error"]:
+                        entry["stderr"] = tail[-MAX_ERROR_CHARS:]
                 self._commands.append(entry)
                 del self._commands[:-MAX_TRACKED_COMMANDS]
 
@@ -683,6 +703,12 @@ class DevSessionLedger:
                         "fully_read": r.fully_read,
                         "created": r.created,
                         "last_error": r.last_error,
+                        # Un file scritto in questa sessione che non compila e'
+                        # la causa di guasto piu' netta che esista: si sa il
+                        # file, si sa l'errore, e si sa chi lo ripara. Stava
+                        # solo in `serialize()`, quindi chi leggeva lo snapshot
+                        # — il pannello e l'autocorrezione — non poteva vederlo.
+                        "syntax_error": r.syntax_error,
                         "diff": self._diffs.get(r.path),
                     }
                     for r in sorted(self._files.values(), key=lambda x: -x.last_touch)

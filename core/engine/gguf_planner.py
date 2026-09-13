@@ -276,12 +276,14 @@ def _plan_settings(facts: ModelFacts, hardware: Dict[str, Any], context_tokens: 
             ),
             "prompt_lookup_tokens": fit["prompt_lookup_tokens"],
             "device": "metal",
-            "use_mmap": False if on_usb else True,
+            "use_mmap": True,
         }
         if on_usb:
             settings.setdefault("notes", []).append(
-                "Modello collocato su storage USB/rimovibile: disattivato memory mapping (mmap) "
-                "per prevenire errori di paginazione I/O."
+                "Modello su storage USB/rimovibile: il caricamento resta con memory "
+                "mapping attivo, perche' leggere l'intero file a ogni avvio costa "
+                "decine di secondi. Se dovesse fallire con un errore di paginazione, "
+                "il runtime riparte da solo con --no-mmap e se lo ricorda."
             )
         return _merge_host_fit(settings, fit)
 
@@ -316,7 +318,7 @@ def _plan_settings(facts: ModelFacts, hardware: Dict[str, Any], context_tokens: 
             "prompt_lookup_tokens": fit["prompt_lookup_tokens"],
             "device": "arm_neon" if is_arm else "cpu",
             "weights_gb": round(weights_gb, 2),
-            "use_mmap": False if on_usb else True,
+            "use_mmap": True,
         }
         if on_usb:
             settings.setdefault("notes", []).append(
@@ -433,7 +435,7 @@ def _plan_settings(facts: ModelFacts, hardware: Dict[str, Any], context_tokens: 
         "kv_quant": kv_quant,
         "prompt_lookup_tokens": fit["prompt_lookup_tokens"],
         "device": "cuda",
-        "use_mmap": False if on_usb else True,
+        "use_mmap": True,
         "usable_vram_gb": round(total_usable, 2),
         "weights_gb": round(weights_gb, 2),
         "kv_cache_gb": kv_gb,
@@ -441,8 +443,10 @@ def _plan_settings(facts: ModelFacts, hardware: Dict[str, Any], context_tokens: 
     }
     if on_usb:
         settings.setdefault("notes", []).append(
-            "Modello collocato su storage USB/rimovibile: disattivato memory mapping (mmap) "
-            "per prevenire STATUS_IN_PAGE_ERROR (0xC0000006) durante il trasferimento VRAM."
+            "Modello su storage USB/rimovibile: il caricamento resta con memory "
+            "mapping attivo, perche' leggere l'intero file a ogni avvio costa "
+            "decine di secondi. Se dovesse fallire con un errore di paginazione, "
+            "il runtime riparte da solo con --no-mmap e se lo ricorda."
         )
     if kv_quant:
         settings["kv_saving_gb"] = round(kv_gb_f16 - kv_gb, 2)
@@ -582,9 +586,7 @@ def _plan_moe_offload(facts: ModelFacts, hardware: Dict[str, Any],
         "kv_quant": kv_quant,
         "prompt_lookup_tokens": fit["prompt_lookup_tokens"],
         "device": "cuda",
-        # Su disco USB/rimovibile disattiviamo mmap per evitare STATUS_IN_PAGE_ERROR (0xC0000006);
-        # su disco fisso mmap rimane abilitato per gli esperti residenti in host.
-        "use_mmap": False if on_usb else True,
+        "use_mmap": True,
         "usable_vram_gb": round(total_usable, 2),
         "weights_gb": round(facts.total_bytes / 2**30, 2),
         "dense_gb": round(dense_gb, 2),
@@ -596,8 +598,10 @@ def _plan_moe_offload(facts: ModelFacts, hardware: Dict[str, Any],
     }
     if on_usb:
         settings.setdefault("notes", []).append(
-            "Modello collocato su storage USB/rimovibile: disattivato memory mapping (mmap) "
-            "per prevenire STATUS_IN_PAGE_ERROR (0xC0000006) durante il caricamento."
+            "Modello su storage USB/rimovibile: il caricamento resta con memory "
+            "mapping attivo, perche' leggere l'intero file a ogni avvio costa "
+            "decine di secondi. Se dovesse fallire con un errore di paginazione, "
+            "il runtime riparte da solo con --no-mmap e se lo ricorda."
         )
     if kv_quant:
         settings["kv_saving_gb"] = round(kv_gb_f16 - kv_gb, 2)

@@ -27,6 +27,7 @@ sviluppo:
 import os
 import shutil
 import subprocess
+import threading
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -48,6 +49,53 @@ def _run_git(args: List[str], cwd: Path, timeout_s: float = 30.0) -> subprocess.
         errors="replace",
         timeout=timeout_s,
     )
+
+
+#: Cio' che l'harness scrive dentro il workspace e che non e' lavoro
+#: dell'agente: gli snapshot di backup dei file toccati.
+#:
+#: Vanno tolti dal diff, non solo per pulizia. Finivano nella patch e la
+#: facevano fallire con «.sigma_backups/backups_index.jsonl: already exists
+#: in working directory», perche' quel file esiste anche nell'albero
+#: principale: la contabilita' del sistema entrava in conflitto con se'
+#: stessa e impediva al lavoro vero di arrivare a destinazione. Su un
+#: ventaglio da otto voci e' successo quattro volte su cinque.
+ESCLUSI_DAL_DIFF = (":(exclude).sigma_backups/**", ":(exclude)node_modules/**")
+
+
+def _fondi_tre_testi(nostro: str, partenza: str, loro: str) -> tuple:
+    """Unisce tre versioni di un file. Ritorna (testo, pulito).
+
+    Si appoggia a `git merge-file`, che e' lo stesso motore che git usa per un
+    merge vero: scriverne uno a mano vorrebbe dire avere due algoritmi di
+    fusione nello stesso programma, e il secondo sarebbe quello sbagliato.
+
+    `pulito` e' falso quando i cambiamenti si sovrappongono davvero. In quel
+    caso il testo ritornato non va usato: contiene i marcatori di conflitto.
+    """
+    import tempfile
+
+    cartella = tempfile.mkdtemp(prefix="sigma_fusione_")
+    percorsi = {}
+    try:
+        for nome, contenuto in (("nostro", nostro), ("base", partenza), ("loro", loro)):
+            percorso = Path(cartella) / nome
+            percorso.write_text(contenuto, encoding="utf-8", newline="")
+            percorsi[nome] = str(percorso)
+
+        esito = subprocess.run(
+            ["git", "merge-file", "-p", "--diff3",
+             percorsi["nostro"], percorsi["base"], percorsi["loro"]],
+            capture_output=True, text=True, encoding="utf-8",
+            errors="replace", timeout=30.0,
+        )
+        # `git merge-file` ritorna il numero di conflitti, o < 0 per un errore.
+        return esito.stdout, esito.returncode == 0
+    except (OSError, subprocess.SubprocessError) as exc:
+        log.warning("[Worktree] fusione non riuscita: %s", exc)
+        return "", False
+    finally:
+        shutil.rmtree(cartella, ignore_errors=True)
 
 
 def is_git_repository(path: Path | str) -> bool:
@@ -160,7 +208,10 @@ class WorktreeSession:
             return ""
         try:
             _run_git(["add", "-A"], cwd=self.worktree_path)
-            res = _run_git(["diff", "--cached", base] + extra, cwd=self.worktree_path)
+            res = _run_git(
+                ["diff", "--cached", base] + extra + ["--"] + list(ESCLUSI_DAL_DIFF),
+                cwd=self.worktree_path,
+            )
             return res.stdout
         except (OSError, subprocess.SubprocessError) as exc:
             log.warning("[Worktree] diff non calcolabile: %s", exc)
@@ -196,7 +247,10 @@ class WorktreeSession:
 
             # Crea una patch unificata dal branch del worktree e applicala sul repo originario
             base = self.base_commit or f"HEAD~{len(self.checkpoints)}"
-            diff_res = _run_git(["diff", base, "HEAD"], cwd=self.worktree_path)
+            diff_res = _run_git(
+                ["diff", base, "HEAD", "--"] + list(ESCLUSI_DAL_DIFF),
+                cwd=self.worktree_path,
+            )
             patch = diff_res.stdout
             if not patch.strip():
                 return True  # Nessuna modifica da applicare
@@ -210,14 +264,108 @@ class WorktreeSession:
                 encoding="utf-8",
                 timeout=30.0,
             )
-            if apply_res.returncode != 0:
-                log.error("[Worktree] Applicazione modifiche a main fallita: %s", apply_res.stderr)
-                return False
-            log.info("[Worktree] Modifiche della sessione %s applicate con successo a main", self.session_id)
-            return True
+            if apply_res.returncode == 0:
+                log.info("[Worktree] Modifiche della sessione %s applicate con successo a main",
+                         self.session_id)
+                return True
+
+            # La patch e' calcolata da `base`, e l'albero principale puo'
+            # essersi mosso nel frattempo — tipicamente perche' un altro
+            # lavoratore del ventaglio ha gia' trasferito il suo. `git apply`
+            # e' tutto-o-niente sul contenuto esatto: basta una riga diversa
+            # altrove nello stesso file e rifiuta l'intera patch.
+            #
+            # Misurato su un ventaglio vero: quattro voci su otto morte con
+            # «obiettivo chiuso ma il lavoro non e' arrivato nell'albero», e
+            # gli stessi diff si applicavano benissimo da soli.
+            log.info("[Worktree] La patch non si applica alla cieca (%s): "
+                     "provo la fusione a tre vie.",
+                     apply_res.stderr.strip().splitlines()[:1])
+            return self._fondi_a_tre_vie(base)
         except (OSError, subprocess.SubprocessError) as exc:
             log.error("[Worktree] Errore applicazione a main: %s", exc)
             return False
+
+    def _fondi_a_tre_vie(self, base: str) -> bool:
+        """Fonde file per file con `git merge-file`. Tutto, o niente.
+
+        Tre versioni per ogni file: quella di partenza (`base`), quella che il
+        run ha prodotto, e quella che c'e' **adesso** nell'albero principale.
+        `git merge-file` sa unirle quando i cambiamenti non si sovrappongono —
+        ed e' il caso normale, perche' due lavoratori lavorano su parti
+        diverse dello stesso file.
+
+        **Tutto o niente, e nessun marcatore di conflitto.** Si calcola tutto
+        in memoria e si scrive solo se ogni file si e' fuso pulito. Lasciare
+        `<<<<<<<` dentro l'albero di lavoro di qualcuno sarebbe molto peggio
+        che rifiutare il trasferimento: il lavoro rifiutato resta sul branch e
+        si recupera, un file con i marcatori dentro non compila e nessuno sa
+        perche'.
+
+        I file cancellati o rinominati fanno rinunciare: fonderli richiede di
+        decidere cosa significhi «cancellato da una parte e modificato
+        dall'altra», ed e' una domanda per una persona.
+        """
+        elenco = _run_git(["diff", "--name-status", base, "HEAD", "--"]
+                          + list(ESCLUSI_DAL_DIFF), cwd=self.worktree_path)
+        if elenco.returncode != 0:
+            return False
+
+        da_scrivere: List[tuple] = []
+        conflitti: List[str] = []
+        for riga in elenco.stdout.splitlines():
+            if not riga.strip():
+                continue
+            pezzi = riga.split("\t")
+            stato, percorso = pezzi[0].strip(), pezzi[-1].strip()
+            if stato[:1] not in ("A", "M"):
+                log.warning("[Worktree] Fusione rinunciata: '%s' e' %s, "
+                            "non un'aggiunta o una modifica", percorso, stato)
+                return False
+
+            loro = _run_git(["show", f"HEAD:{percorso}"], cwd=self.worktree_path)
+            if loro.returncode != 0:
+                return False
+            partenza = _run_git(["show", f"{base}:{percorso}"], cwd=self.worktree_path)
+            testo_partenza = partenza.stdout if partenza.returncode == 0 else ""
+
+            destinazione = self.repo_root / percorso
+            try:
+                nostro = destinazione.read_text(encoding="utf-8", errors="replace") \
+                    if destinazione.is_file() else ""
+            except OSError as exc:
+                log.warning("[Worktree] '%s' non leggibile: %s", percorso, exc)
+                return False
+
+            if nostro == testo_partenza:
+                # Nessuno l'ha toccato dopo di noi: la nostra versione vince
+                # senza bisogno di fondere niente.
+                da_scrivere.append((destinazione, loro.stdout))
+                continue
+
+            fuso, pulito = _fondi_tre_testi(nostro, testo_partenza, loro.stdout)
+            if not pulito:
+                conflitti.append(percorso)
+                continue
+            da_scrivere.append((destinazione, fuso))
+
+        if conflitti:
+            log.error("[Worktree] Fusione impossibile su %d file: %s. "
+                      "Il lavoro resta sul branch '%s'.",
+                      len(conflitti), ", ".join(conflitti[:5]), self.branch_name)
+            return False
+
+        for destinazione, contenuto in da_scrivere:
+            try:
+                destinazione.parent.mkdir(parents=True, exist_ok=True)
+                destinazione.write_text(contenuto, encoding="utf-8", newline="")
+            except OSError as exc:
+                log.error("[Worktree] '%s' non scritto: %s", destinazione, exc)
+                return False
+
+        log.info("[Worktree] Sessione %s trasferita con una fusione a tre vie "
+                 "(%d file).", self.session_id, len(da_scrivere))
+        return True
 
     def has_work(self) -> bool:
         """True se almeno un checkpoint ha davvero salvato qualcosa.
@@ -351,7 +499,73 @@ def get_session_worktree(session_id: str) -> Optional[WorktreeSession]:
     return _active_worktrees.get(str(session_id or "").strip())
 
 
-def release_session_worktree(session_id: str, apply_changes: bool = False) -> Dict[str, Any]:
+#: Un trasferimento per volta e per repository: con il ventaglio due run
+#: che finiscono insieme applicano due patch allo stesso albero, e la
+#: seconda trova un file gia' cambiato dalla prima. Non e' un caso limite,
+#: e' il caso normale appena i lavoratori sono piu' di uno.
+_lucchetti_applicazione: Dict[str, threading.Lock] = {}
+_registro_lucchetti = threading.Lock()
+
+
+def _lucchetto_repo(radice: Path) -> threading.Lock:
+    chiave = str(radice)
+    with _registro_lucchetti:
+        lucchetto = _lucchetti_applicazione.get(chiave)
+        if lucchetto is None:
+            lucchetto = threading.Lock()
+            _lucchetti_applicazione[chiave] = lucchetto
+        return lucchetto
+
+
+def _salva_gli_ignorati(session: "WorktreeSession",
+                        percorsi: Optional[List[str]]) -> List[str]:
+    """Riporta nell'albero vero i file che git ignora ma l'agente ha scritto.
+
+    Un worktree porta soltanto cio' che e' versionato, e restituisce soltanto
+    cio' che finisce in un diff. Un file su un percorso **ignorato** non e' ne'
+    l'uno ne' l'altro: viene scritto nella cartella del run e sparisce con
+    essa, senza che nessuno lo dica.
+
+    Non e' un caso limite in questo progetto. `/sigma_studio/src/modules/*` e'
+    ignorato — i moduli vivono nel loro repository — quindi **ogni lavoro
+    sull'interfaccia fatto in isolamento veniva buttato**. Misurato su un
+    ventaglio vero: l'agente scrive `SandboxPanel.jsx`, `ActivityBar.jsx` e
+    `DeveloperStudio.jsx`, il ledger ne conta tre, il branch ne contiene zero,
+    e l'unico file sopravvissuto e' il test — che sta in `tests/`, versionato.
+
+    Si copia solo cio' che il ledger dichiara scritto: chiedere a git l'elenco
+    completo degli ignorati vorrebbe dire copiare `node_modules`, `var/` e le
+    cache. La precisione qui e' la differenza fra un recupero e un disastro.
+    """
+    recuperati: List[str] = []
+    for relativo in (percorsi or []):
+        pulito = str(relativo or "").replace("\\", "/").strip().lstrip("/")
+        if not pulito or ".." in pulito.split("/"):
+            continue
+        origine = session.worktree_path / pulito
+        if not origine.is_file():
+            continue
+        # Se git lo conosce, il diff lo ha gia' portato: ricopiarlo
+        # sovrascriverebbe l'esito della revisione con la versione grezza.
+        conosciuto = _run_git(["ls-files", "--error-unmatch", pulito],
+                              cwd=session.worktree_path)
+        if conosciuto.returncode == 0:
+            continue
+        destinazione = session.repo_root / pulito
+        try:
+            destinazione.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copyfile(str(origine), str(destinazione))
+            recuperati.append(pulito)
+        except OSError as exc:
+            log.warning("[Worktree] '%s' non recuperato: %s", pulito, exc)
+    if recuperati:
+        log.info("[Worktree] Recuperati %d file ignorati da git: %s",
+                 len(recuperati), ", ".join(recuperati[:6]))
+    return recuperati
+
+
+def release_session_worktree(session_id: str, apply_changes: bool = False,
+                             percorsi_scritti: Optional[List[str]] = None) -> Dict[str, Any]:
     """Chiude il worktree di una sessione e dice cosa ne e' stato del lavoro.
 
     **Un run che non raggiunge l'obiettivo non e' un run da buttare.** Qui
@@ -375,10 +589,25 @@ def release_session_worktree(session_id: str, apply_changes: bool = False) -> Di
     if session is None:
         return {"released": False, "applied": False, "branch": "", "checkpoints": 0}
 
+    # Il checkpoint di chiusura PRIMA di chiedersi se c'e' lavoro. `has_work()`
+    # guarda i commit, e l'ultimo turno puo' aver scritto dopo l'ultimo
+    # checkpoint: chiedendolo prima, un run che ha prodotto tutto nell'ultimo
+    # turno risultava vuoto — e se il trasferimento falliva, il branch veniva
+    # buttato con dentro l'unica copia del lavoro.
+    try:
+        session.checkpoint(len(session.checkpoints) + 1, "chiusura del run")
+    except Exception as exc:
+        log.debug("[Worktree] checkpoint di chiusura non riuscito: %s", exc)
+
     aveva_lavoro = session.has_work()
     applicato = False
+    ignorati: List[str] = []
     if apply_changes:
-        applicato = session.apply_to_main()
+        with _lucchetto_repo(session.repo_root):
+            applicato = session.apply_to_main()
+            # Dopo il diff, e solo se il lavoro e' stato approvato: cio' che
+            # git ignora non e' passato dal diff e andrebbe perso.
+            ignorati = _salva_gli_ignorati(session, percorsi_scritti)
 
     # Il branch si butta solo se il lavoro e' al sicuro altrove, o se non c'e'.
     scarta_branch = applicato or not aveva_lavoro
@@ -389,6 +618,7 @@ def release_session_worktree(session_id: str, apply_changes: bool = False) -> Di
         "applied": applicato,
         "branch": "" if scarta_branch else session.branch_name,
         "checkpoints": len([c for c in session.checkpoints if c.get("has_changes")]),
+        "ignored_recovered": ignorati,
     }
     if resoconto["branch"]:
         log.info(

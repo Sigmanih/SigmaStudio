@@ -290,9 +290,20 @@ TRUNCATION_RATIO = 0.25
 TRUNCATION_MIN_CHARS = 200
 
 
-def would_truncate(previous: str, new: str) -> bool:
-    """Se la nuova versione riduce il file al punto da somigliare a una cancellazione."""
-    prima = len((previous or "").strip())
+def would_truncate(previous: str, new: str, high_water: int = 0) -> bool:
+    """Se la nuova versione riduce il file al punto da somigliare a una cancellazione.
+
+    `high_water` e' la dimensione massima che il file ha avuto **durante questo
+    run**, e senza di essa la guardia si aggira da sola. Confrontando solo con
+    la versione immediatamente precedente, un agente che riscrive lo stesso file
+    piu' volte lo erode un pezzo per volta: 2600 caratteri, poi 1800, poi 900,
+    poi 400, poi 167. Nessun singolo passo scende sotto un quarto del
+    precedente, quindi ogni passo viene accettato — e alla fine del run resta
+    un moncone, con l'harness che ha risposto «ok» undici volte.
+
+    E' successo davvero, su uno strumento da 120 righe ridotto a sette.
+    """
+    prima = max(len((previous or "").strip()), int(high_water or 0))
     if prima < TRUNCATION_MIN_CHARS:
         return False
     return len((new or "").strip()) < prima * TRUNCATION_RATIO

@@ -125,7 +125,11 @@ export function useChatStreaming({
 
   useEffect(() => {
     if (autoScroll && messagesEndRef.current) {
-      messagesEndRef.current.scrollIntoView({ behavior: 'smooth' });
+      // Durante caricamento o streaming attivo, evita lo smooth scroll che innesca rimbalzi continui (rubber-banding)
+      const isLive = loading || Object.values(sessionMessages || {}).some(msgs =>
+        Array.isArray(msgs) && msgs.some(m => m.streaming || m.streamingThinking)
+      );
+      messagesEndRef.current.scrollIntoView({ behavior: isLive ? 'auto' : 'smooth' });
     }
   }, [sessionMessages, activeSessionId, loading, autoScroll]);
 
@@ -319,10 +323,25 @@ export function useChatStreaming({
       if (timerHandle !== null) { clearTimeout(timerHandle); timerHandle = null; }
     };
 
+    let lastStorageSaveTime = 0;
+    const maybeSyncStorage = () => {
+      const now = Date.now();
+      if (now - lastStorageSaveTime > 1500) {
+        lastStorageSaveTime = now;
+        try {
+          const currentList = sessionRefs.sessionMessages.current[sessionId];
+          if (Array.isArray(currentList) && currentList.length > 0) {
+            localStorage.setItem(`sigma_chat_msgs_${sessionId}`, JSON.stringify(currentList));
+          }
+        } catch (e) {}
+      }
+    };
+
     const paintNow = () => {
       clearHandles();
       paintDirty = false;
       commitStreamState();
+      maybeSyncStorage();
     };
 
     // Both a frame and a timer, and the first to run cancels the other.
@@ -686,7 +705,22 @@ export function useChatStreaming({
       setLoading(false);
       stopSpeech();
       setSessionMessages(prev => {
-        const msgs = [...(prev[sessionId] || []), { role: 'assistant', content: `⚠️ **Errore:** ${e.message}`, timestamp: new Date().toISOString(), error: true, agentImage: activeManifesto?.image || '/images/default.png', agentRole: activeManifesto?.name || '' }];
+        const existing = [...(prev[sessionId] || [])];
+        const hasPlaceholder = existing.length > 0 && existing[existing.length - 1].role === 'assistant' && existing[existing.length - 1].streaming;
+        const errObj = {
+          role: 'assistant',
+          content: `⚠️ **Errore:** ${e.message}`,
+          timestamp: new Date().toISOString(),
+          error: true,
+          streaming: false,
+          streamingThinking: false,
+          statusMessage: undefined,
+          agentImage: activeManifesto?.image || '/images/default.png',
+          agentRole: activeManifesto?.name || ''
+        };
+        const msgs = hasPlaceholder
+          ? [...existing.slice(0, -1), errObj]
+          : [...existing, errObj];
         saveMessagesImmediately(sessionId, msgs);
         return { ...prev, [sessionId]: msgs };
       });
